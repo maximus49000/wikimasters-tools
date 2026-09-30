@@ -27,6 +27,6 @@ export default defineConfig({
     name: 'wikimasters-tools',
     artifactTemplate: '{{name}}-{{version}}-{{browser}}.zip',
     sourcesTemplate: '{{name}}-{{version}}-sources.zip',
-    excludeSources: ['.output/**', '.wxt/**', 'node_modules/**', '.superpowers/**', '.claude/**'],
+    excludeSources: ['.output/**', '.wxt/**', 'node_modules/**', '.superpowers/**', 'livrables/**', '.claude/**'],
   },
 });
