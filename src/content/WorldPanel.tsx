@@ -19,7 +19,6 @@ export const PANEL_CSS = `
 .wmt-card-tip{padding:0;border:0;background:none;box-shadow:none}
 .wmt-card-tip::before{display:none}
 .wmt-card{position:relative;width:288px;height:420px;border-radius:16px;overflow:hidden;background:linear-gradient(160deg,#e2e8f0,#94a3b8);color:#000;font:400 12px/16px system-ui,sans-serif;white-space:normal}
-.wmt-card[data-rarity="SR"]{background:linear-gradient(160deg,#fbcfe8,#f472b6 60%,#ec4899)}
 .wmt-card-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.8)}
 .wmt-card-shade{position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.1),transparent);pointer-events:none;z-index:10}
 .wmt-card-art{position:absolute;top:0;left:0;right:0;height:45%;z-index:20;background:rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;overflow:hidden}

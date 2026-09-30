@@ -4,6 +4,7 @@
 const BACKGROUNDS: Record<string, string> = {
   L: '/legendaire.png',
   UR: '/ultra_rare.png',
+  SR: '/super_rare.png',
 };
 
 export const rarityBackground = (rarity: string | null): string | null =>
