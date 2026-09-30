@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { CollectionScanner } from '../core/collection/collection-scan';
 import type { GeoRepo } from '../core/geo/geo-repo';
+import type { PriceBook } from '../core/pricing/price-book';
 import {
   findCardGrid,
   findCollectionRoot,
@@ -22,12 +23,14 @@ export type CollectionUiDeps = {
   collection: CollectionRepo;
   geo: GeoRepo;
   scanner: CollectionScanner;
+  // Prix connus (null si indisponibles) : l'aperçu d'une carte s'en passe.
+  book: PriceBook | null;
   openCard: (slug: string) => void;
 };
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement };
 
-export function createCollectionUi({ collection, geo, scanner, openCard }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, scanner, book, openCard }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
 
@@ -50,7 +53,7 @@ export function createCollectionUi({ collection, geo, scanner, openCard }: Colle
     grid.insertAdjacentElement('beforebegin', host);
 
     const root = createRoot(mountPoint);
-    root.render(<WorldPanel collection={collection} geo={geo} scanner={scanner} onOpen={openCard} />);
+    root.render(<WorldPanel collection={collection} geo={geo} scanner={scanner} book={book} onOpen={openCard} />);
     panel = { host, root, grid };
   }
 

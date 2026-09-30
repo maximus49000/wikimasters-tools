@@ -59,6 +59,7 @@ export default defineContentScript({
       collection: collectionRepo,
       geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
       scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
+      book,
       openCard: (slug) => void marketUi.reopenCard(slug),
     });
 

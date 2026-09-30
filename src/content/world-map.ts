@@ -1,6 +1,14 @@
 import * as L from 'leaflet';
+import type { CardPreview } from '../core/collection/card-preview';
+import { buildCardPreview } from './card-preview-dom';
 
-export type MapPoint = { slug: string; title: string; lat: number; lon: number; manual: boolean };
+export type MapPoint = {
+  slug: string;
+  preview: CardPreview;
+  lat: number;
+  lon: number;
+  manual: boolean;
+};
 
 export type WorldMapHandlers = {
   onOpen: (slug: string) => void;
@@ -57,8 +65,13 @@ export function createWorldMap(
           }),
           draggable: true,
         });
-        // Un élément (et non une chaîne) : Leaflet assignerait une chaîne via innerHTML.
-        marker.bindTooltip(Object.assign(document.createElement('span'), { textContent: point.title }));
+        // Au survol : la carte elle-même. Le pointeur peut se poser dessus sans la voir se déplacer.
+        marker.bindTooltip(buildCardPreview(point.preview), {
+          className: 'wmt-card-tip',
+          direction: 'right',
+          offset: [12, 0],
+          opacity: 1,
+        });
         marker.on('click', () => handlers.onOpen(point.slug));
         marker.on('dragend', () => {
           const { lat, lng } = marker.getLatLng().wrap();

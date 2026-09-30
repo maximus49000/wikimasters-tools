@@ -6,9 +6,14 @@ import { ApiFormatError } from './errors';
 export const collectionEndpoint = (page: number): string =>
   `/api/my-collection?sort=rarity&page=${page}&stats=0`;
 
-// On ne déclare que le titre : ni identifiant de joueur, ni étiquettes, ni pseudo n'est conservé.
+// On ne déclare que la carte (titre, rareté, image) : ni identifiant de joueur, ni étiquettes, ni pseudo
+// n'est conservé. Rareté et image sont facultatives : une valeur inattendue ne fait pas écarter la carte.
 const entrySchema = z.object({
-  card: z.object({ wikipedia_title: z.string().min(1) }),
+  card: z.object({
+    wikipedia_title: z.string().min(1),
+    rarity: z.string().min(1).nullish().catch(undefined),
+    image_url: z.string().min(1).nullish().catch(undefined),
+  }),
 });
 
 export type CollectionPage = {
@@ -32,9 +37,16 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
       skipped += 1;
       continue;
     }
-    const title = parsed.data.card.wikipedia_title;
+    const { wikipedia_title: title, rarity, image_url: imageUrl } = parsed.data.card;
     const slug = titleToSlug(title);
-    if (!cards.has(slug)) cards.set(slug, { slug, title });
+    if (!cards.has(slug)) {
+      cards.set(slug, {
+        slug,
+        title,
+        ...(rarity ? { rarity } : {}),
+        ...(imageUrl ? { imageUrl } : {}),
+      });
+    }
   }
   return { cards: [...cards.values()], entries: raw.length, skipped };
 }

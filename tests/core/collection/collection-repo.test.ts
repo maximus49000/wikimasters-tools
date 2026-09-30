@@ -24,6 +24,20 @@ describe('mergeCards', () => {
   });
 });
 
+describe('mergeCards (rareté et image)', () => {
+  it('complète une carte connue avec sa rareté et son image', () => {
+    const state = mergeCards({}, [PARIS]);
+    const next = mergeCards(state, [{ ...PARIS, rarity: 'SR', imageUrl: 'https://exemple.test/p.jpg' }]);
+    expect(next['Paris']).toEqual({ ...PARIS, rarity: 'SR', imageUrl: 'https://exemple.test/p.jpg' });
+    expect(state['Paris']).toEqual(PARIS);
+  });
+
+  it("n'efface pas la rareté connue quand une observation n'en a pas (lecture de la page)", () => {
+    const state = mergeCards({}, [{ ...PARIS, rarity: 'SR' }]);
+    expect(mergeCards(state, [PARIS])).toBe(state);
+  });
+});
+
 describe('createCollectionRepo', () => {
   it('persiste les cartes et les relit', async () => {
     const store = createMemoryStore();

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CollectionRepo } from '../core/collection/collection-repo';
+import { toCardPreview } from '../core/collection/card-preview';
 import type { KnownCard } from '../core/collection/collection-book';
 import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/collection/collection-scan';
 import { EMPTY_GEO, partitionCards, type GeoState } from '../core/geo/geo-book';
 import type { GeoRepo } from '../core/geo/geo-repo';
+import type { PriceBook } from '../core/pricing/price-book';
 import { pageIsDark } from './map-theme';
 import { createWorldMap, type MapPoint, type WorldMap } from './world-map';
 
@@ -13,6 +15,14 @@ export const PANEL_CSS = `
 .wmt-pin-manual{background:#f59e0b}
 .wmt-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9)}
 .wmt-dark{background:#1b1b1b}
+.wmt-card-tip{padding:0;border:0;background:none;box-shadow:none}
+.wmt-card-tip::before{display:none}
+.wmt-card{position:relative;width:168px;height:236px;border-radius:12px;overflow:hidden;background:#0d1117;color:#e6edf3;border:2px solid rgba(148,163,184,.5);box-shadow:0 6px 18px rgba(0,0,0,.5);font:600 13px/17px system-ui,sans-serif;white-space:normal}
+.wmt-card-art{position:absolute;inset:0;background:linear-gradient(160deg,#1f2937,#0d1117)}
+.wmt-card-art img{width:100%;height:100%;object-fit:cover;display:block}
+.wmt-card-rarity{position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:6px;background:rgba(13,17,23,.85);border:1px solid rgba(148,163,184,.5);font:700 12px/16px system-ui,sans-serif}
+.wmt-card-price{position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:6px;background:rgb(34,197,94);color:rgb(13,17,23);box-shadow:0 0 10px rgba(34,197,94,.6);font:700 12px/16px system-ui,sans-serif;text-align:center}
+.wmt-card-title{position:absolute;left:0;right:0;bottom:0;padding:22px 10px 10px;background:linear-gradient(transparent,rgba(13,17,23,.92));text-align:center}
 .wmt-placing.leaflet-grab,.wmt-placing .leaflet-interactive{cursor:crosshair !important}
 `;
 
@@ -20,6 +30,7 @@ type Props = {
   collection: CollectionRepo;
   geo: GeoRepo;
   scanner: CollectionScanner;
+  book: PriceBook | null;
   onOpen: (slug: string) => void;
 };
 
@@ -31,7 +42,7 @@ const box = {
   font: '14px/20px system-ui, sans-serif',
 } as const;
 
-export function WorldPanel({ collection, geo, scanner, onOpen }: Props) {
+export function WorldPanel({ collection, geo, scanner, book, onOpen }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [geoState, setGeoState] = useState<GeoState>(EMPTY_GEO);
@@ -106,13 +117,13 @@ export function WorldPanel({ collection, geo, scanner, onOpen }: Props) {
   useEffect(() => {
     const points: MapPoint[] = placed.map(({ card, position }) => ({
       slug: card.slug,
-      title: card.title,
+      preview: toCardPreview(card, book?.byTitle(card.title) ?? null),
       lat: position.lat,
       lon: position.lon,
       manual: position.source === 'manual',
     }));
     mapRef.current?.setPoints(points);
-  }, [placed]);
+  }, [placed, book]);
 
   useEffect(() => {
     mapRef.current?.setPlacing(placing !== null);
