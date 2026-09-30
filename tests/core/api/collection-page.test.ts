@@ -20,9 +20,9 @@ describe('parseCollectionPage', () => {
     expect(page.entries).toBe(3);
     expect(page.skipped).toBe(0);
     expect(page.cards).toEqual([
-      { slug: 'Ted_Lasso', title: 'Ted Lasso', rarity: 'L', extract: 'série télévisée américaine' },
-      { slug: "Tenture_de_l'Apocalypse", title: "Tenture de l'Apocalypse", rarity: 'UR' },
-      { slug: 'Paul_de_Grèce_(1967)', title: 'Paul de Grèce (1967)', rarity: 'SR', extract: 'financier' },
+      { slug: 'Ted_Lasso', title: 'Ted Lasso', rarity: 'L', extract: 'série télévisée américaine', tags: [] },
+      { slug: "Tenture_de_l'Apocalypse", title: "Tenture de l'Apocalypse", rarity: 'UR', tags: [] },
+      { slug: 'Paul_de_Grèce_(1967)', title: 'Paul de Grèce (1967)', rarity: 'SR', extract: 'financier', tags: [] },
     ]);
   });
 
@@ -97,5 +97,13 @@ describe('createGameApi.getCollectionPage', () => {
 
     expect(calls).toEqual(['/api/my-collection?sort=rarity&page=2&stats=0']);
     expect(page.cards).toHaveLength(3);
+  });
+});
+
+describe('étiquettes', () => {
+  it("garde nom et couleur des étiquettes, sans leur identifiant ni celui du joueur", () => {
+    const entry = { ...fixture.collection[0]!, tags: [{ id: 't1', name: '#CVIDEUH', color: '#818cf8', user_id: 'u' }, { id: 't2', name: '#SANS' }] };
+    const page = parseCollectionPage({ collection: [entry] }, ENDPOINT);
+    expect(page.cards[0]?.tags).toEqual([{ name: '#CVIDEUH', color: '#818cf8' }, { name: '#SANS' }]);
   });
 });

@@ -1,6 +1,6 @@
 import { toPurchaseModel, type PurchaseModel } from '../pricing/badge';
 import type { PriceBookEntry } from '../pricing/price-book';
-import type { KnownCard } from './collection-book';
+import type { CardTag, KnownCard } from './collection-book';
 
 export type CardPreview = {
   title: string;
@@ -9,6 +9,7 @@ export type CardPreview = {
   extract: string | null;
   attack: number | null;
   defense: number | null;
+  tags: CardTag[];
   purchase: PurchaseModel | null;
 };
 
@@ -24,6 +25,7 @@ export function toCardPreview(
     extract: card.extract ?? null,
     attack: card.attack ?? null,
     defense: card.defense ?? null,
+    tags: card.tags ?? [],
     purchase: toPurchaseModel(entry?.purchase ?? null),
   };
 }

@@ -20,6 +20,6 @@ describe('toCardPreview', () => {
   });
 
   it("s'affiche sans image, sans rareté et sans prix quand rien n'est connu", () => {
-    expect(toCardPreview(CARD, null)).toEqual({ title: 'Paris', rarity: null, imageUrl: null, extract: null, attack: null, defense: null, purchase: null });
+    expect(toCardPreview(CARD, null)).toEqual({ title: 'Paris', rarity: null, imageUrl: null, extract: null, attack: null, defense: null, tags: [], purchase: null });
   });
 });

@@ -181,8 +181,8 @@ describe('createCollectionScanner', () => {
   });
 
   it('laisse un scan récent d’un autre onglet tranquille, mais reprend un scan périmé', async () => {
-    const fresh: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 10_000, version: 3, pass: 'full' };
-    const stale: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 120_000, version: 3, pass: 'full' };
+    const fresh: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 10_000, version: 4, pass: 'full' };
+    const stale: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 120_000, version: 4, pass: 'full' };
 
     const a = setup([]);
     await a.store.set('collectionScan', fresh);
@@ -249,7 +249,7 @@ describe('createCollectionScanner', () => {
         now: () => clock,
         schedule: (fn, ms) => void scheduled.push({ fn, ms }),
       });
-      const saved: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt, version: 3, pass: 'full' };
+      const saved: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt, version: 4, pass: 'full' };
       return { store, scanner, scheduled, getCollectionPage, saved, setClock: (t: number) => void (clock = t) };
     }
 
