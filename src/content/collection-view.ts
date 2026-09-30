@@ -1,11 +1,12 @@
-export type CollectionView = 'list' | 'world';
+export type CollectionView = 'list' | 'world' | 'timeline';
 
 const KEY = 'wmt:collectionView';
 
-// Toute erreur de stockage (accès bloqué…) est absorbée : on reste en vue Liste.
+// Toute erreur de stockage (accès bloqué…) est absorbée : on reste en vue Grille.
 export function readView(storage: Pick<Storage, 'getItem'>): CollectionView {
   try {
-    return storage.getItem(KEY) === 'world' ? 'world' : 'list';
+    const value = storage.getItem(KEY);
+    return value === 'world' || value === 'timeline' ? value : 'list';
   } catch {
     return 'list';
   }

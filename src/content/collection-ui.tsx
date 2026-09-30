@@ -2,20 +2,23 @@ import leafletCss from 'leaflet/dist/leaflet.css?inline';
 import { createRoot, type Root } from 'react-dom/client';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { CollectionScanner } from '../core/collection/collection-scan';
+import type { BirthRepo } from '../core/birth/birth-repo';
 import type { GeoRepo } from '../core/geo/geo-repo';
 import type { PriceBook } from '../core/pricing/price-book';
 import {
   findCardGrid,
   findCollectionRoot,
+  findRarityFilterAnchor,
   findSelectButton,
   restoreHiddenGrids,
   scanCollectionCards,
   setGridHidden,
 } from './collection-dom';
 import type { CollectionFilterSource } from './collection-filter';
-import { readView, writeView } from './collection-view';
+import { readView, writeView, type CollectionView } from './collection-view';
+import { TimelinePanel } from './TimelinePanel';
 import { PANEL_CSS, WorldPanel } from './WorldPanel';
-import { ensureWorldToggle } from './world-toggle';
+import { ensureViewSwitch } from './world-toggle';
 
 const LOG = '[wikimasters-tools]';
 const PANEL_ATTRIBUTE = 'data-wmt-world-panel';
@@ -23,6 +26,7 @@ const PANEL_ATTRIBUTE = 'data-wmt-world-panel';
 export type CollectionUiDeps = {
   collection: CollectionRepo;
   geo: GeoRepo;
+  birth: BirthRepo;
   scanner: CollectionScanner;
   // Prix connus (null si indisponibles) : l'aperçu d'une carte s'en passe.
   book: PriceBook | null;
@@ -32,9 +36,9 @@ export type CollectionUiDeps = {
   openCard: (slug: string) => void;
 };
 
-type Panel = { host: HTMLElement; root: Root; grid: HTMLElement };
+type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, scanner, book, filterSource, loadFiltered, openCard }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, birth, scanner, book, filterSource, loadFiltered, openCard }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
 
@@ -45,7 +49,7 @@ export function createCollectionUi({ collection, geo, scanner, book, filterSourc
     panel = null;
   }
 
-  function mountPanel(grid: HTMLElement): void {
+  function mountPanel(grid: HTMLElement, view: CollectionView): void {
     const host = document.createElement('div');
     host.setAttribute(PANEL_ATTRIBUTE, '');
     host.style.display = 'block';
@@ -58,17 +62,29 @@ export function createCollectionUi({ collection, geo, scanner, book, filterSourc
 
     const root = createRoot(mountPoint);
     root.render(
-      <WorldPanel
-        collection={collection}
-        geo={geo}
-        scanner={scanner}
-        book={book}
-        filterSource={filterSource}
-        loadFiltered={loadFiltered}
-        onOpen={openCard}
-      />,
+      view === 'timeline' ? (
+        <TimelinePanel
+          collection={collection}
+          birth={birth}
+          scanner={scanner}
+          book={book}
+          filterSource={filterSource}
+          loadFiltered={loadFiltered}
+          onOpen={openCard}
+        />
+      ) : (
+        <WorldPanel
+          collection={collection}
+          geo={geo}
+          scanner={scanner}
+          book={book}
+          filterSource={filterSource}
+          loadFiltered={loadFiltered}
+          onOpen={openCard}
+        />
+      ),
     );
-    panel = { host, root, grid };
+    panel = { host, root, grid, view };
   }
 
   function showList(): void {
@@ -103,13 +119,13 @@ export function createCollectionUi({ collection, geo, scanner, book, filterSourc
     }
 
     const view = readView(window.localStorage);
-    ensureWorldToggle(button, view, () => {
-      const current = readView(window.localStorage);
-      writeView(window.localStorage, current === 'world' ? 'list' : 'world');
+    // Le sélecteur se place à côté des pastilles de rareté ; à défaut, à côté de « Sélectionner ».
+    ensureViewSwitch(findRarityFilterAnchor(document) ?? button, button, view, (next) => {
+      writeView(window.localStorage, next);
       sync();
     });
 
-    if (view !== 'world') {
+    if (view === 'list') {
       showList();
       return;
     }
@@ -126,9 +142,9 @@ export function createCollectionUi({ collection, geo, scanner, book, filterSourc
       return;
     }
     setGridHidden(grid, true);
-    if (!panel || panel.grid !== grid || !panel.host.isConnected) {
+    if (!panel || panel.grid !== grid || panel.view !== view || !panel.host.isConnected) {
       unmountPanel();
-      mountPanel(grid);
+      mountPanel(grid, view);
     }
   }
 

@@ -1,6 +1,7 @@
 import type { KnownCard } from '../core/collection/collection-book';
 import { titleToSlug } from '../core/market/market-book';
 import { findCardMounts } from './card-finder';
+import { TOGGLE_ATTRIBUTE } from './world-toggle';
 
 const HIDDEN_ATTRIBUTE = 'data-wmt-grid-hidden';
 const SELECT_LABEL = 'sélectionner';
@@ -17,6 +18,22 @@ export function findSelectButton(root: ParentNode): HTMLButtonElement | null {
     buttons.find((button) => button.querySelector('.lucide-square-check-big') !== null) ??
     null
   );
+}
+
+const RARITY_LABELS = new Set(['L', 'UR', 'SR', 'R', 'PC', 'C']);
+
+// Dernière pastille du groupe de rareté (L, UR, SR, R, PC, C) : le sélecteur de vue se place derrière, dans la même
+// rangée. Repérée par le texte des boutons, sans dépendre des classes CSS du site ; nos propres éléments sont ignorés.
+export function findRarityFilterAnchor(root: ParentNode): HTMLButtonElement | null {
+  for (const button of root.querySelectorAll<HTMLButtonElement>('button')) {
+    const parent = button.parentElement;
+    if (!parent || button !== parent.firstElementChild) continue;
+    const pills = [...parent.children].filter((child) => !child.hasAttribute(TOGGLE_ATTRIBUTE));
+    if (pills.length >= 2 && pills.every((child) => child instanceof HTMLButtonElement && RARITY_LABELS.has((child.textContent ?? '').trim()))) {
+      return pills[pills.length - 1] as HTMLButtonElement;
+    }
+  }
+  return null;
 }
 
 const allCards = () => true;

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { findRarityFilterAnchor } from '../../src/content/collection-dom';
 import { readView, writeView } from '../../src/content/collection-view';
-import { ensureWorldToggle } from '../../src/content/world-toggle';
+import { ensureViewSwitch } from '../../src/content/world-toggle';
 
 function makeSelect(): HTMLButtonElement {
   document.body.innerHTML =
@@ -41,56 +42,70 @@ describe('readView / writeView', () => {
   });
 });
 
-describe('ensureWorldToggle', () => {
-  it("insère un bouton « Monde » juste après « Sélectionner », avec son style", () => {
+describe('ensureViewSwitch', () => {
+  it("insère Grille / Monde / Chronologique juste après l'ancre, avec le style du bouton modèle", () => {
     const select = makeSelect();
-    const toggle = ensureWorldToggle(select, 'list', () => undefined);
+    const group = ensureViewSwitch(select, select, 'list', () => undefined);
 
-    expect(select.nextElementSibling).toBe(toggle);
-    expect(toggle.className).toBe(select.className);
-    expect(toggle.textContent).toBe('Monde');
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(select.nextElementSibling).toBe(group);
+    const buttons = [...group.querySelectorAll('button')];
+    expect(buttons.map((b) => b.textContent)).toEqual(['Grille', 'Monde', 'Chronologique']);
+    expect(buttons.every((b) => b.className === select.className)).toBe(true);
+    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
   });
 
-  it("est idempotent et met à jour l'état affiché", () => {
+  it("est idempotent et met à jour la vue active", () => {
     const select = makeSelect();
-    const first = ensureWorldToggle(select, 'list', () => undefined);
-    const second = ensureWorldToggle(select, 'world', () => undefined);
+    const first = ensureViewSwitch(select, select, 'list', () => undefined);
+    const second = ensureViewSwitch(select, select, 'timeline', () => undefined);
 
     expect(second).toBe(first);
-    expect(document.querySelectorAll('[data-wmt-world-toggle]')).toHaveLength(1);
-    expect(second.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelectorAll('[data-wmt-view-switch]')).toHaveLength(1);
+    expect([...second.querySelectorAll('button')].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true']);
   });
 
-  it("ne copie ni id, ni disabled, ni aria-label du bouton « Sélectionner »", () => {
-    document.body.innerHTML =
-      '<div><button type="button" id="sel" disabled aria-label="x" class="a">Sélectionner</button></div>';
+  it("ne copie ni id, ni disabled, ni aria-label du bouton modèle", () => {
+    document.body.innerHTML = '<div><button type="button" id="sel" disabled aria-label="x" class="a">Sélectionner</button></div>';
     const select = document.querySelector('button') as HTMLButtonElement;
-    const toggle = ensureWorldToggle(select, 'list', () => undefined);
+    const group = ensureViewSwitch(select, select, 'list', () => undefined);
 
-    expect(toggle.hasAttribute('id')).toBe(false);
-    expect(toggle.disabled).toBe(false);
-    expect(toggle.hasAttribute('aria-label')).toBe(false);
+    for (const button of group.querySelectorAll('button')) {
+      expect(button.hasAttribute('id')).toBe(false);
+      expect(button.disabled).toBe(false);
+      expect(button.hasAttribute('aria-label')).toBe(false);
+    }
   });
 
-  it("réactive un bouton réutilisé qui aurait été désactivé", () => {
-    const select = makeSelect();
-    const toggle = ensureWorldToggle(select, 'list', () => undefined);
-    toggle.disabled = true;
-    const again = ensureWorldToggle(select, 'list', () => undefined);
-
-    expect(again).toBe(toggle);
-    expect(again.disabled).toBe(false);
-  });
-
-  it("appelle le dernier gestionnaire fourni au clic", () => {
+  it("appelle le dernier gestionnaire fourni avec la vue cliquée", () => {
     const select = makeSelect();
     const oldHandler = vi.fn();
     const newHandler = vi.fn();
-    ensureWorldToggle(select, 'list', oldHandler);
-    ensureWorldToggle(select, 'list', newHandler).click();
+    ensureViewSwitch(select, select, 'list', oldHandler);
+    const group = ensureViewSwitch(select, select, 'list', newHandler);
+    (group.querySelector('[data-wmt-view="timeline"]') as HTMLButtonElement).click();
 
     expect(oldHandler).not.toHaveBeenCalled();
-    expect(newHandler).toHaveBeenCalledTimes(1);
+    expect(newHandler).toHaveBeenCalledWith('timeline');
+  });
+});
+
+describe('findRarityFilterAnchor', () => {
+  const pills = '<button>L</button><button>UR</button><button>SR</button><button>R</button><button>PC</button><button>C</button>';
+
+  it("trouve la dernière pastille de rareté", () => {
+    document.body.innerHTML = `<div id="g">${pills}</div>`;
+    expect(findRarityFilterAnchor(document)?.textContent).toBe('C');
+  });
+
+  it("ignore notre propre sélecteur déjà inséré dans la rangée", () => {
+    document.body.innerHTML = `<div id="g">${pills}</div>`;
+    const anchor = findRarityFilterAnchor(document) as HTMLButtonElement;
+    ensureViewSwitch(anchor, anchor, 'list', () => undefined);
+    expect(findRarityFilterAnchor(document)).toBe(anchor);
+  });
+
+  it("renvoie null sans groupe de rareté", () => {
+    document.body.innerHTML = '<div><button>Sélectionner</button><button>Trier</button></div>';
+    expect(findRarityFilterAnchor(document)).toBeNull();
   });
 });
