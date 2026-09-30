@@ -58,6 +58,10 @@ export function createCollectionUi({ collection, geo, openCard }: CollectionUiDe
 
   // Idempotent : appelé à chaque changement du DOM, il ne touche à rien quand tout est déjà en place.
   function sync(): void {
+    if (!window.location.pathname.startsWith('/collection')) {
+      showList();
+      return;
+    }
     const button = findSelectButton(document);
     if (!button) {
       showList();
@@ -85,13 +89,18 @@ export function createCollectionUi({ collection, geo, openCard }: CollectionUiDe
     }
 
     // On garde la grille déjà masquée tant qu'elle est dans la page : la carte garde son zoom.
-    const grid = panel?.grid.isConnected ? panel.grid : scope ? findCardGrid(scope, button) : null;
+    const grid =
+      panel?.grid.isConnected && panel.host.isConnected
+        ? panel.grid
+        : scope
+          ? findCardGrid(scope, button)
+          : null;
     if (!grid) {
       showList();
       return;
     }
     setGridHidden(grid, true);
-    if (!panel || panel.grid !== grid) {
+    if (!panel || panel.grid !== grid || !panel.host.isConnected) {
       unmountPanel();
       mountPanel(grid);
     }

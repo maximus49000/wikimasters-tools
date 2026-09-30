@@ -62,6 +62,27 @@ describe('ensureWorldToggle', () => {
     expect(second.getAttribute('aria-pressed')).toBe('true');
   });
 
+  it("ne copie ni id, ni disabled, ni aria-label du bouton « Sélectionner »", () => {
+    document.body.innerHTML =
+      '<div><button type="button" id="sel" disabled aria-label="x" class="a">Sélectionner</button></div>';
+    const select = document.querySelector('button') as HTMLButtonElement;
+    const toggle = ensureWorldToggle(select, 'list', () => undefined);
+
+    expect(toggle.hasAttribute('id')).toBe(false);
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.hasAttribute('aria-label')).toBe(false);
+  });
+
+  it("réactive un bouton réutilisé qui aurait été désactivé", () => {
+    const select = makeSelect();
+    const toggle = ensureWorldToggle(select, 'list', () => undefined);
+    toggle.disabled = true;
+    const again = ensureWorldToggle(select, 'list', () => undefined);
+
+    expect(again).toBe(toggle);
+    expect(again.disabled).toBe(false);
+  });
+
   it("appelle le dernier gestionnaire fourni au clic", () => {
     const select = makeSelect();
     const oldHandler = vi.fn();

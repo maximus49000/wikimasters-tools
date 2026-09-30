@@ -22,13 +22,15 @@ Ajouter à la page Collection un interrupteur ON/OFF, à côté du bouton « Sé
 - Si le bouton « Sélectionner » est introuvable, rien n'est injecté (aucun effet sur la page).
 
 ### Carte (`src/content/WorldMap.tsx`)
-- Leaflet (import statique : WXT regroupe le script de contenu en un seul fichier). Tuiles CARTO (clair/sombre selon `prefers-color-scheme` ou la classe du site). Hôtes des tuiles ajoutés aux `host_permissions`/CSP de `wxt.config.ts`.
+- Leaflet (import statique : WXT regroupe le script de contenu en un seul fichier). Tuiles CARTO (clair/sombre selon `prefers-color-scheme` ou la classe du site). Aucun `host_permissions` nécessaire : les appels Wikipédia utilisent `origin=*` (CORS), les tuiles sont de simples `<img>` et le site n'envoie pas d'en-tête CSP.
 - Un marqueur par carte positionnée ; survol = titre ; clic = ouverture de la fiche via `collection-reopen` (`marketUi.reopenCard`). La page ne change pas : la vue Monde reste affichée, aucun mécanisme de retour n'est nécessaire.
 - Liste latérale « À placer » : cartes connues sans position. Clic sur une carte de la liste, puis clic sur la carte du monde = position manuelle. Déplacer un point = le glisser (il devient un placement manuel, en orange) ; clic droit sur un point orange = retirer le placement manuel (retour à la position Wikipédia, ou « À placer »).
 
 ### Positions (`src/core/geo/`)
 - `wiki-coords.ts` : appel `https://<lang>.wikipedia.org/w/api.php?action=query&prop=coordinates&titles=…&format=json&origin=*`, schéma zod, retourne `{lat, lon} | null`. Un seul appel par carte, résultat (y compris « aucune ») mis en cache.
 - `geo-book.ts` : `slug → {lat, lon, source: "wiki" | "manual"}` dans `wmt:geo` ; priorité manuel > wiki ; `resolve(slug)`, `setManual`, `clearManual`.
+- Seule Wikipédia en français est interrogée (`fr.wikipedia.org`) : toutes les cartes du jeu pointent vers fr.wikipedia.org et le DOM de la Collection n'expose pas de langue. Le placement manuel sert de repli.
+- La fonctionnalité ne s'exécute que sur les chemins commençant par `/collection`.
 - Les appels Wikipédia ne portent que le titre de l'article (aucune donnée du jeu ni du compte) et sont espacés en file d'attente (un à la fois).
 
 ### Cartes connues

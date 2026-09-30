@@ -18,6 +18,9 @@ export function ensureWorldToggle(
   let toggle: Element | null = selectButton.nextElementSibling;
   if (!(toggle instanceof HTMLButtonElement) || !toggle.hasAttribute(TOGGLE_ATTRIBUTE)) {
     toggle = selectButton.cloneNode(false) as HTMLButtonElement;
+    for (const name of ['id', 'disabled', 'aria-label', 'aria-describedby', 'aria-controls', 'aria-expanded']) {
+      toggle.removeAttribute(name);
+    }
     toggle.setAttribute(TOGGLE_ATTRIBUTE, '');
     toggle.innerHTML = `${GLOBE_ICON}Monde`;
     (toggle as HTMLElement).title = 'Afficher la Collection sur une carte du monde';
@@ -26,6 +29,7 @@ export function ensureWorldToggle(
 
   const button = toggle as HTMLButtonElement;
   const on = view === 'world';
+  button.disabled = false;
   button.onclick = onToggle;
   button.setAttribute('aria-pressed', String(on));
   button.style.borderColor = on ? 'var(--color-accent, #34d399)' : '';
