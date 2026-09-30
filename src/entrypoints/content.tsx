@@ -20,6 +20,7 @@ export default defineContentScript({
       cache: createTtlCache(createChromeLocalStore()),
     });
 
+    console.info(LOG, 'démarré');
     let book: PriceBook;
     try {
       book = await dataSource.getMyPriceBook();
@@ -39,7 +40,12 @@ export default defineContentScript({
       // On se déconnecte pendant nos propres insertions pour éviter une boucle.
       observer.disconnect();
       try {
-        decorate(document, book, mountBadge);
+        const mounted = decorate(document, book, mountBadge);
+        const titles = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(
+          (heading) => heading.textContent?.trim() ?? '',
+        );
+        const known = titles.filter((title) => book.byTitle(title) !== null).length;
+        console.info(LOG, `titres : ${titles.length}, connus : ${known}, badges posés : ${mounted}`, titles.slice(0, 5));
       } finally {
         observer.observe(document.body, { childList: true, subtree: true });
       }
