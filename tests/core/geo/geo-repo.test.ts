@@ -65,4 +65,67 @@ describe('createGeoRepo', () => {
     expect((await repo.load()).manual).toEqual({});
     expect(listener).toHaveBeenCalledTimes(2);
   });
+
+  it('fusionne cinq demandes qui se chevauchent : chaque article une fois, jamais en parallèle', async () => {
+    let running = 0;
+    let peak = 0;
+    const fetchCoords = vi.fn(async (_slug: string) => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await Promise.resolve();
+      running -= 1;
+      return null;
+    });
+    const repo = createGeoRepo(createMemoryStore(), fetchCoords, noSleep);
+
+    await Promise.all(Array.from({ length: 5 }, () => repo.resolveMissing(['A', 'B', 'C'])));
+
+    expect(fetchCoords.mock.calls.map(([slug]) => slug).sort()).toEqual(['A', 'B', 'C']);
+    expect(peak).toBe(1);
+  });
+
+  it('après un échec, ne refait aucune requête pendant 60 s puis réessaie', async () => {
+    let clock = 1_000_000;
+    const fetchCoords = vi
+      .fn<(slug: string) => Promise<{ lat: number; lon: number } | null>>()
+      .mockRejectedValueOnce(new Error('429'))
+      .mockResolvedValue(null);
+    const repo = createGeoRepo(createMemoryStore(), fetchCoords, noSleep, 150, () => clock);
+
+    await repo.resolveMissing(['A']);
+    expect(fetchCoords).toHaveBeenCalledTimes(1);
+
+    clock += 59_000;
+    await repo.resolveMissing(['A']);
+    expect(fetchCoords).toHaveBeenCalledTimes(1);
+
+    clock += 2_000;
+    await repo.resolveMissing(['A']);
+    expect(fetchCoords).toHaveBeenCalledTimes(2);
+    expect((await repo.load()).wiki).toEqual({ A: null });
+  });
+
+  it('les articles ajoutés pendant un parcours sont traités par ce même parcours', async () => {
+    let running = 0;
+    let peak = 0;
+    const fetched: string[] = [];
+    let repo!: ReturnType<typeof createGeoRepo>;
+    let second: Promise<void> | undefined;
+    const fetchCoords = async (slug: string) => {
+      running += 1;
+      peak = Math.max(peak, running);
+      fetched.push(slug);
+      if (slug === 'A') second = repo.resolveMissing(['C', 'D']);
+      await Promise.resolve();
+      running -= 1;
+      return null;
+    };
+    repo = createGeoRepo(createMemoryStore(), fetchCoords, noSleep);
+
+    await repo.resolveMissing(['A', 'B']);
+    await second;
+
+    expect(fetched).toEqual(['A', 'B', 'C', 'D']);
+    expect(peak).toBe(1);
+  });
 });
