@@ -55,3 +55,12 @@ Ajouter à la page Collection un interrupteur ON/OFF, à côté du bouton « Sé
 ## Questions ouvertes
 - Nom exact des éléments du DOM pour extraire titre/image/slug des cartes de la Collection (à relever dans les DevTools lors de la mise en œuvre, comme pour `card-finder`).
 - Usage des tuiles OSM : la politique d'OpenStreetMap tolère un usage léger avec attribution ; si l'usage grossit, prévoir un fournisseur avec clé.
+
+## Scan de la Collection en arrière plan (ajout du 30/09/2026)
+
+Décision de l'utilisateur : au premier chargement de la Collection, l'extension récupère **toutes** les cartes en arrière plan (elle remplace donc, pour la complétude, la seule observation passive, qui reste active en complément).
+
+- Source : `GET /api/my-collection?sort=rarity&page=N&stats=0` (page 0-indexée, `total` toujours `null`, pas de `hasMore`) ; une page vide marque la fin. On ne conserve que titre et slug.
+- Débit : une requête à la fois, 1 500 ms d'écart, backoff 429 de `createGameApi` ; arrêt à la première erreur, reprise au chargement suivant (état `wmt:collectionScan` : `idle | running | done | error`, `nextPage`, `entries`).
+- Affichage : la carte se recharge (au plus une fois par seconde) à mesure que les pages arrivent ; le panneau affiche l'état du scan et un bouton « Re-scanner » / « Reprendre ».
+- Risque : les règles du jeu interdisent l'automatisation ; ce scan est un choix explicite de l'utilisateur, noté dans le README. Plan : `docs/superpowers/plans/2026-09-30-collection-scan.md`.
