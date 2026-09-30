@@ -2,6 +2,10 @@ import { createGameApi } from '../core/api/game-api';
 import { createChromeLocalStore } from '../core/cache/store';
 import { createTtlCache } from '../core/cache/ttl-cache';
 import { createDataSource } from '../core/data-source';
+import { createCollectionRepo } from '../core/collection/collection-repo';
+import { fetchWikiCoords } from '../core/geo/wiki-coords';
+import { createGeoRepo } from '../core/geo/geo-repo';
+import { createCollectionUi } from '../content/collection-ui';
 import { createMarketRepo } from '../core/market/market-repo';
 import { parseMarketAuctions } from '../core/market/schemas';
 import type { PriceBook } from '../core/pricing/price-book';
@@ -47,6 +51,12 @@ export default defineContentScript({
     }
 
     const marketUi = createMarketUi(marketRepo);
+    // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
+    const collectionUi = createCollectionUi({
+      collection: createCollectionRepo(store),
+      geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
+      openCard: (slug) => void marketUi.reopenCard(slug),
+    });
 
     let timer: number | undefined;
     const observer = new MutationObserver(() => {
@@ -59,6 +69,11 @@ export default defineContentScript({
       observer.disconnect();
       try {
         const links = decorateMarketLinks(document, marketUi.mountLink);
+        try {
+          collectionUi.sync();
+        } catch (error) {
+          console.warn(LOG, 'vue Monde indisponible :', error);
+        }
         if (book) {
           const mounted = decorate(document, book, mountPurchaseBadge);
           const titles = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(

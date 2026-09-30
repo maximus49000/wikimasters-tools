@@ -1,0 +1,101 @@
+import leafletCss from 'leaflet/dist/leaflet.css?inline';
+import { createRoot, type Root } from 'react-dom/client';
+import type { CollectionRepo } from '../core/collection/collection-repo';
+import type { GeoRepo } from '../core/geo/geo-repo';
+import {
+  findCardGrid,
+  findCollectionRoot,
+  findSelectButton,
+  restoreHiddenGrids,
+  scanCollectionCards,
+  setGridHidden,
+} from './collection-dom';
+import { readView, writeView } from './collection-view';
+import { PANEL_CSS, WorldPanel } from './WorldPanel';
+import { ensureWorldToggle } from './world-toggle';
+
+const LOG = '[wikimasters-tools]';
+const PANEL_ATTRIBUTE = 'data-wmt-world-panel';
+
+export type CollectionUiDeps = {
+  collection: CollectionRepo;
+  geo: GeoRepo;
+  openCard: (slug: string) => void;
+};
+
+type Panel = { host: HTMLElement; root: Root; grid: HTMLElement };
+
+export function createCollectionUi({ collection, geo, openCard }: CollectionUiDeps) {
+  let panel: Panel | null = null;
+
+  function unmountPanel(): void {
+    if (!panel) return;
+    panel.root.unmount();
+    panel.host.remove();
+    panel = null;
+  }
+
+  function mountPanel(grid: HTMLElement): void {
+    const host = document.createElement('div');
+    host.setAttribute(PANEL_ATTRIBUTE, '');
+    host.style.display = 'block';
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = leafletCss + PANEL_CSS;
+    const mountPoint = document.createElement('div');
+    shadow.append(style, mountPoint);
+    grid.insertAdjacentElement('beforebegin', host);
+
+    const root = createRoot(mountPoint);
+    root.render(<WorldPanel collection={collection} geo={geo} onOpen={openCard} />);
+    panel = { host, root, grid };
+  }
+
+  function showList(): void {
+    unmountPanel();
+    restoreHiddenGrids(document);
+  }
+
+  // Idempotent : appelé à chaque changement du DOM, il ne touche à rien quand tout est déjà en place.
+  function sync(): void {
+    const button = findSelectButton(document);
+    if (!button) {
+      showList();
+      return;
+    }
+
+    const scope = findCollectionRoot(button);
+    if (scope) {
+      const cards = scanCollectionCards(scope);
+      if (cards.length > 0) {
+        collection.observe(cards).catch((error) => console.warn(LOG, 'collection non enregistrée :', error));
+      }
+    }
+
+    const view = readView(window.localStorage);
+    ensureWorldToggle(button, view, () => {
+      const current = readView(window.localStorage);
+      writeView(window.localStorage, current === 'world' ? 'list' : 'world');
+      sync();
+    });
+
+    if (view !== 'world') {
+      showList();
+      return;
+    }
+
+    // On garde la grille déjà masquée tant qu'elle est dans la page : la carte garde son zoom.
+    const grid = panel?.grid.isConnected ? panel.grid : scope ? findCardGrid(scope, button) : null;
+    if (!grid) {
+      showList();
+      return;
+    }
+    setGridHidden(grid, true);
+    if (!panel || panel.grid !== grid) {
+      unmountPanel();
+      mountPanel(grid);
+    }
+  }
+
+  return { sync };
+}
