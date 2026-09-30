@@ -41,7 +41,7 @@ export function createGameApi(options: GameApiOptions) {
       const response = await doFetch(path, { headers: { Accept: 'application/json' } });
 
       if (response.status === 401 || response.status === 403) {
-        throw new NotAuthenticatedError(path);
+        throw new NotAuthenticatedError(path, response.status);
       }
       if (response.status === 429) {
         if (attempt >= maxRetries) throw new ApiHttpError(429, path);

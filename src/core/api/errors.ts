@@ -24,10 +24,12 @@ export class ApiFormatError extends Error {
 
 export class NotAuthenticatedError extends Error {
   readonly endpoint: string;
+  readonly status: number;
 
-  constructor(endpoint: string) {
-    super(`Non connecté (accès refusé à ${endpoint})`);
+  constructor(endpoint: string, status: number) {
+    super(`Non connecté (HTTP ${status} pour ${endpoint})`);
     this.name = 'NotAuthenticatedError';
     this.endpoint = endpoint;
+    this.status = status;
   }
 }
