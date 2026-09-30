@@ -6,6 +6,9 @@ export type CardPreview = {
   title: string;
   rarity: string | null;
   imageUrl: string | null;
+  extract: string | null;
+  attack: number | null;
+  defense: number | null;
   purchase: PurchaseModel | null;
 };
 
@@ -18,6 +21,9 @@ export function toCardPreview(
     title: card.title,
     rarity: card.rarity ?? entry?.rarity ?? null,
     imageUrl: card.imageUrl ?? null,
+    extract: card.extract ?? null,
+    attack: card.attack ?? null,
+    defense: card.defense ?? null,
     purchase: toPurchaseModel(entry?.purchase ?? null),
   };
 }

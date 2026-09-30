@@ -18,12 +18,19 @@ export const PANEL_CSS = `
 .wmt-dark{background:#1b1b1b}
 .wmt-card-tip{padding:0;border:0;background:none;box-shadow:none}
 .wmt-card-tip::before{display:none}
-.wmt-card{position:relative;width:168px;height:236px;border-radius:12px;overflow:hidden;background:#0d1117;color:#e6edf3;border:2px solid rgba(148,163,184,.5);box-shadow:0 6px 18px rgba(0,0,0,.5);font:600 13px/17px system-ui,sans-serif;white-space:normal}
-.wmt-card-art{position:absolute;inset:0;background:linear-gradient(160deg,#1f2937,#0d1117)}
+.wmt-card{position:relative;display:flex;flex-direction:column;width:260px;height:378px;border-radius:16px;overflow:hidden;background:#f1f5f9;color:#0f172a;border:1px solid rgba(15,23,42,.12);box-shadow:0 8px 24px rgba(0,0,0,.45);font:400 12px/16px system-ui,sans-serif;white-space:normal}
+.wmt-card[data-rarity="SR"]{background:linear-gradient(160deg,#fbcfe8,#f472b6 60%,#ec4899)}
+.wmt-card-art{flex:0 0 45%;background:linear-gradient(160deg,#cbd5e1,#94a3b8)}
 .wmt-card-art img{width:100%;height:100%;object-fit:cover;display:block}
-.wmt-card-rarity{position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:6px;background:rgba(13,17,23,.85);border:1px solid rgba(148,163,184,.5);font:700 12px/16px system-ui,sans-serif}
-.wmt-card-price{position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:6px;background:rgb(34,197,94);color:rgb(13,17,23);box-shadow:0 0 10px rgba(34,197,94,.6);font:700 12px/16px system-ui,sans-serif;text-align:center}
-.wmt-card-title{position:absolute;left:0;right:0;bottom:0;padding:22px 10px 10px;background:linear-gradient(transparent,rgba(13,17,23,.92));text-align:center}
+.wmt-card-rarity{position:absolute;top:10px;left:10px;padding:2px 10px;border-radius:8px;background:#94a3b8;color:#fff;font:700 13px/18px system-ui,sans-serif}
+.wmt-card[data-rarity="SR"] .wmt-card-rarity{background:#f472b6}
+.wmt-card-star{position:absolute;top:8px;right:10px;font:400 26px/28px system-ui,sans-serif;color:rgba(234,179,8,.85)}
+.wmt-card-price{position:absolute;top:44px;right:8px;padding:2px 8px;border-radius:6px;background:rgb(34,197,94);color:rgb(13,17,23);box-shadow:0 0 10px rgba(34,197,94,.6);font:700 12px/16px system-ui,sans-serif;text-align:center}
+.wmt-card-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 12px 8px;gap:4px}
+.wmt-card-title{font:700 16px/20px system-ui,sans-serif;color:#0b0f19}
+.wmt-card-extract{flex:1;min-height:0;overflow:hidden;color:rgba(15,23,42,.75);-webkit-mask-image:linear-gradient(#000 75%,transparent)}
+.wmt-card-stats{display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid rgba(15,23,42,.15);font:700 15px/20px system-ui,sans-serif}
+.wmt-card-atk{color:#dc2626}.wmt-card-def{color:#1d4ed8}
 .wmt-placing.leaflet-grab,.wmt-placing .leaflet-interactive{cursor:crosshair !important}
 `;
 
