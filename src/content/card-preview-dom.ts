@@ -82,6 +82,15 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
     const short = !preview.extract.includes('\n') && preview.extract.length <= SHORT_EXTRACT_MAX;
     body.append(Object.assign(document.createElement('p'), { className: short ? 'wmt-card-extract wmt-card-extract-short' : 'wmt-card-extract', textContent: preview.extract }));
   }
+  if (preview.tags.length > 0) {
+    const tags = div('wmt-card-tags');
+    for (const tag of preview.tags) {
+      const chip = div('wmt-card-tag', tag.name);
+      if (tag.color) chip.style.setProperty('--wmt-tag', tag.color);
+      tags.append(chip);
+    }
+    body.append(tags);
+  }
   if (preview.attack !== null || preview.defense !== null) {
     const stats = div('wmt-card-stats');
     const atk = document.createElement('span');

@@ -1,5 +1,8 @@
 // `rarity` et `imageUrl` viennent de l'API de la Collection : absents tant que le scan n'a pas
 // vu la carte, et `imageUrl` reste absent pour une carte sans image.
+// Étiquette posée par le joueur sur la carte (nom et couleur du site, ex. « #818cf8 »).
+export type CardTag = { name: string; color?: string };
+
 export type KnownCard = {
   slug: string;
   title: string;
@@ -8,6 +11,8 @@ export type KnownCard = {
   extract?: string;
   attack?: number;
   defense?: number;
+  // Absent tant que l'API ne l'a pas donné ; `[]` = carte sans étiquette (efface d'anciennes étiquettes).
+  tags?: CardTag[];
 };
 
 // Clé : slug de l'article Wikipédia.
@@ -27,6 +32,7 @@ export function mergeCards(state: CollectionState, cards: KnownCard[]): Collecti
       ...(card.extract ?? known?.extract ? { extract: card.extract ?? known?.extract } : {}),
       ...(card.attack ?? known?.attack ? { attack: card.attack ?? known?.attack } : {}),
       ...(card.defense ?? known?.defense ? { defense: card.defense ?? known?.defense } : {}),
+      ...((card.tags ?? known?.tags) ? { tags: card.tags ?? known?.tags } : {}),
     };
     if (
       known?.title === merged.title &&
@@ -34,7 +40,8 @@ export function mergeCards(state: CollectionState, cards: KnownCard[]): Collecti
       known.imageUrl === merged.imageUrl &&
       known.extract === merged.extract &&
       known.attack === merged.attack &&
-      known.defense === merged.defense
+      known.defense === merged.defense &&
+      sameTags(known.tags, merged.tags)
     ) {
       continue;
     }
@@ -43,3 +50,6 @@ export function mergeCards(state: CollectionState, cards: KnownCard[]): Collecti
   }
   return next;
 }
+
+const sameTags = (a: CardTag[] | undefined, b: CardTag[] | undefined): boolean =>
+  a === b || (a !== undefined && b !== undefined && a.length === b.length && a.every((tag, i) => tag.name === b[i]?.name && tag.color === b[i]?.color));

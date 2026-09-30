@@ -35,6 +35,8 @@ export const PANEL_CSS = `
 .wmt-card-title{margin:0;font:700 16px/1.25 var(--font-heading,system-ui,sans-serif);color:#000;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex-shrink:0}
 .wmt-card-extract{margin:0;flex:1;min-height:0;overflow:hidden;font-size:10px;line-height:1.375;color:rgba(38,38,38,.88);display:-webkit-box;-webkit-line-clamp:10;-webkit-box-orient:vertical}
 .wmt-card-extract-short{font-size:11px;line-height:1.375;color:rgba(23,23,23,.9);-webkit-line-clamp:3}
+.wmt-card-tags{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;flex-shrink:0;max-height:44px;overflow:hidden}
+.wmt-card-tag{max-width:100%;padding:1px 8px;border-radius:9999px;border:1px solid color-mix(in srgb,var(--wmt-tag,#818cf8) 55%,transparent);background:color-mix(in srgb,var(--wmt-tag,#818cf8) 28%,white);color:color-mix(in srgb,var(--wmt-tag,#818cf8) 55%,black);font:600 11px/16px system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wmt-card-stats{margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid rgba(0,0,0,.2);font-size:14px;line-height:20px}
 .wmt-card-stat{display:flex;align-items:center;gap:4px}.wmt-card-stat b{color:rgba(0,0,0,.9)}
 .wmt-card-ico{width:1em;height:1em;flex-shrink:0}.wmt-card-atk{color:#991b1b}.wmt-card-def{color:#1e40af}
