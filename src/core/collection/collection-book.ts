@@ -1,7 +1,7 @@
 // `rarity` et `imageUrl` viennent de l'API de la Collection : absents tant que le scan n'a pas
 // vu la carte, et `imageUrl` reste absent pour une carte sans image.
 // Étiquette posée par le joueur sur la carte (nom et couleur du site, ex. « #818cf8 »).
-export type CardTag = { name: string; color?: string };
+export type CardTag = { id?: string; name: string; color?: string };
 
 export type KnownCard = {
   slug: string;
@@ -52,4 +52,4 @@ export function mergeCards(state: CollectionState, cards: KnownCard[]): Collecti
 }
 
 const sameTags = (a: CardTag[] | undefined, b: CardTag[] | undefined): boolean =>
-  a === b || (a !== undefined && b !== undefined && a.length === b.length && a.every((tag, i) => tag.name === b[i]?.name && tag.color === b[i]?.color));
+  a === b || (a !== undefined && b !== undefined && a.length === b.length && a.every((tag, i) => tag.id === b[i]?.id && tag.name === b[i]?.name && tag.color === b[i]?.color));

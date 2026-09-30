@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import { toCardPreview } from '../core/collection/card-preview';
+import { filterLocally } from '../core/collection/local-filter';
 import type { KnownCard } from '../core/collection/collection-book';
 import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/collection/collection-scan';
 import { EMPTY_GEO, partitionCards, type GeoState } from '../core/geo/geo-book';
@@ -105,22 +106,17 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
 
   useEffect(() => filterSource.subscribe(() => setFilter(filterSource.current())), [filterSource]);
 
-  // Filtre de rareté seul, collection entièrement scannée : la rareté est déjà connue, pas de requête.
-  const rarityOnly = useMemo(() => {
-    const params = new URLSearchParams(filter);
-    const rarity = params.get('rarity');
-    return rarity && [...params.keys()].every((key) => key === 'rarity') ? rarity : null;
-  }, [filter]);
-  const localRarity = useMemo(
-    () => (rarityOnly && scan.status === 'done' ? new Set(cards.filter((c) => c.rarity === rarityOnly).map((c) => c.slug)) : null),
-    [rarityOnly, scan.status, cards],
+  // Collection entièrement scannée et filtre simple (rareté, étiquette) : les cartes sont déjà connues, pas de requête.
+  const localSlugs = useMemo(
+    () => (filter && scan.status === 'done' ? filterLocally(cards, filter) : null),
+    [filter, scan.status, cards],
   );
   // Une sélection déjà lue est gardée : la retrouver est instantané.
   const filterCache = useRef(new Map<string, Set<string>>());
 
   useEffect(() => {
     setFilterError(false);
-    if (!filter || localRarity) return;
+    if (!filter || localSlugs) return;
     const cached = filterCache.current.get(filter);
     if (cached) {
       setAllowed({ filter, slugs: cached });
@@ -137,10 +133,10 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
     return () => {
       cancelled = true;
     };
-  }, [filter, loadFiltered, localRarity]);
+  }, [filter, loadFiltered, localSlugs]);
 
   // Tant que la lecture du filtre courant n'est pas finie, la carte montre tout (ou l'ancien filtre reste écarté).
-  const visible = localRarity ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
+  const visible = localSlugs ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
   const filtering = Boolean(filter) && visible === null && !filterError;
 
   useEffect(() => {

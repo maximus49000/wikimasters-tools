@@ -1,0 +1,24 @@
+import { describe, expect, it } from 'vitest';
+import { filterLocally } from '../../../src/core/collection/local-filter';
+import type { KnownCard } from '../../../src/core/collection/collection-book';
+
+const cards: KnownCard[] = [
+  { slug: 'A', title: 'A', rarity: 'UR', tags: [{ id: 't1', name: '#X' }] },
+  { slug: 'B', title: 'B', rarity: 'SR', tags: [{ id: 't1', name: '#X' }, { id: 't2', name: '#Y' }] },
+  { slug: 'C', title: 'C', rarity: 'UR', tags: [] },
+];
+
+describe('filterLocally', () => {
+  it('filtre par étiquette, par rareté, ou les deux', () => {
+    expect([...filterLocally(cards, 'tag_id=t1')!]).toEqual(['A', 'B']);
+    expect([...filterLocally(cards, 'rarity=UR')!]).toEqual(['A', 'C']);
+    expect([...filterLocally(cards, 'rarity=UR&tag_id=t1')!]).toEqual(['A']);
+  });
+
+  it('rend null quand il faut interroger le site', () => {
+    expect(filterLocally(cards, '')).toBeNull();
+    expect(filterLocally(cards, 'q=paris')).toBeNull();
+    expect(filterLocally(cards, 'tag_id=inconnue')).toBeNull();
+    expect(filterLocally([...cards, { slug: 'D', title: 'D' }], 'tag_id=t1')).toBeNull();
+  });
+});
