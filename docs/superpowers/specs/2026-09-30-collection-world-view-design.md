@@ -1,0 +1,55 @@
+# Vue « Monde » de la Collection — design
+
+Date : 2026-09-30. Branche : `plan-1-foundation`.
+
+## Objectif
+
+Ajouter à la page Collection un interrupteur ON/OFF, à côté du bouton « Sélectionner », qui bascule entre la vue « Liste » (grille actuelle du site) et la vue « Monde » : une carte du monde sur laquelle les cartes du joueur sont des points. Un clic sur un point ouvre la fiche de la carte dans le jeu.
+
+## Contraintes héritées
+
+- Extension en lecture seule ; aucune requête ajoutée vers l'API du jeu, pas de crawl, pas d'appel à `/sales` (voir spec `2026-09-30-wikimasters-tools-design.md`).
+- Les cartes connues viennent de l'observation passive (comme `market-tap`). Pas de parcours automatique des 35 pages.
+- Appariement carte ↔ article par le slug de l'URL Wikipédia (comme pour le marché).
+
+## Composants
+
+### Interrupteur (`src/content/WorldToggle.tsx`, `world-toggle.ts`)
+- Repère le bouton « Sélectionner » : un `<button>` dont le texte est « Sélectionner » (repli : icône `.lucide-square-check-big`). Injecte l'interrupteur comme frère, dans le même parent, avec le même style (`rounded-lg border`, variables `--color-*` du site).
+- Ré-injection idempotente (le site est une SPA ; un `MutationObserver` existe déjà dans `mount.tsx`, on s'y greffe).
+- État persisté dans `localStorage` `wmt:collectionView` (`"list"` | `"world"`), défaut `"list"`.
+- ON : masque la grille de cartes (`hidden`, sans la retirer du DOM) et monte le panneau carte à sa place. OFF : démonte la carte et ré-affiche la grille.
+- Si le bouton « Sélectionner » est introuvable, rien n'est injecté (aucun effet sur la page).
+
+### Carte (`src/content/WorldMap.tsx`)
+- Leaflet, chargé en import dynamique uniquement en vue Monde. Tuiles CARTO (clair/sombre selon `prefers-color-scheme` ou la classe du site). Hôtes des tuiles ajoutés aux `host_permissions`/CSP de `wxt.config.ts`.
+- Un marqueur par carte positionnée ; survol = titre ; clic = ouverture de la fiche via `return-target` + `collection-reopen` (même mécanisme que le retour à la carte du popup marché, sens inverse : on mémorise la vue Monde pour y revenir).
+- Liste latérale « À placer » : cartes connues sans position. Clic sur une carte de la liste, puis clic sur la carte du monde = position manuelle. Menu contextuel d'un marqueur : « Déplacer », « Revenir à la position Wikipédia ».
+
+### Positions (`src/core/geo/`)
+- `wiki-coords.ts` : appel `https://<lang>.wikipedia.org/w/api.php?action=query&prop=coordinates&titles=…&format=json&origin=*`, schéma zod, retourne `{lat, lon} | null`. Un seul appel par carte, résultat (y compris « aucune ») mis en cache.
+- `geo-book.ts` : `slug → {lat, lon, source: "wiki" | "manual"}` dans `wmt:geo` ; priorité manuel > wiki ; `resolve(slug)`, `setManual`, `clearManual`.
+- Les appels Wikipédia ne portent que le titre de l'article (aucune donnée du jeu ni du compte) et sont espacés en file d'attente (un à la fois).
+
+### Cartes connues
+- Source : observation passive des cartes affichées sur la Collection (titre, image, slug Wikipédia, id), stockées dans `wmt:collection`. Au démarrage, la carte affiche ce qui est déjà connu ; elle se complète au fil de la navigation du joueur.
+- Un message « N cartes connues — parcourez la Collection pour en ajouter » indique les limites de la vue.
+
+## Cas limites
+- Aucune carte connue : état vide explicatif.
+- Wikipédia injoignable : les cartes restent dans « À placer », réessai au prochain affichage.
+- Plusieurs cartes à la même position : regroupement (clustering) à prévoir seulement si le besoin apparaît (YAGNI en V1).
+- Le site change son DOM : l'interrupteur disparaît sans casser la page.
+
+## Tests (Vitest)
+- `wiki-coords` : parsing de réponses avec, sans et avec plusieurs coordonnées.
+- `geo-book` : priorité manuel/wiki, persistance, retour à Wikipédia.
+- `world-toggle` : repérage du bouton (texte et repli icône), idempotence, persistance de la vue.
+- Vérification manuelle dans Chrome : rendu de la carte, thème, clic vers la fiche, retour en vue Monde.
+
+## Hors périmètre
+- Crawl de toute la collection, clustering, import/export des positions, autres pages que la Collection.
+
+## Questions ouvertes
+- Nom exact des éléments du DOM pour extraire titre/image/slug des cartes de la Collection (à relever dans les DevTools lors de la mise en œuvre, comme pour `card-finder`).
+- Hôte des tuiles CARTO retenu (style clair et sombre) à confirmer à l'implémentation.
