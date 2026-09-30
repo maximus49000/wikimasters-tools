@@ -18,12 +18,26 @@ export const PANEL_CSS = `
 .wmt-dark{background:#1b1b1b}
 .wmt-card-tip{padding:0;border:0;background:none;box-shadow:none}
 .wmt-card-tip::before{display:none}
-.wmt-card{position:relative;width:168px;height:236px;border-radius:12px;overflow:hidden;background:#0d1117;color:#e6edf3;border:2px solid rgba(148,163,184,.5);box-shadow:0 6px 18px rgba(0,0,0,.5);font:600 13px/17px system-ui,sans-serif;white-space:normal}
-.wmt-card-art{position:absolute;inset:0;background:linear-gradient(160deg,#1f2937,#0d1117)}
-.wmt-card-art img{width:100%;height:100%;object-fit:cover;display:block}
-.wmt-card-rarity{position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:6px;background:rgba(13,17,23,.85);border:1px solid rgba(148,163,184,.5);font:700 12px/16px system-ui,sans-serif}
-.wmt-card-price{position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:6px;background:rgb(34,197,94);color:rgb(13,17,23);box-shadow:0 0 10px rgba(34,197,94,.6);font:700 12px/16px system-ui,sans-serif;text-align:center}
-.wmt-card-title{position:absolute;left:0;right:0;bottom:0;padding:22px 10px 10px;background:linear-gradient(transparent,rgba(13,17,23,.92));text-align:center}
+.wmt-card{position:relative;width:288px;height:420px;border-radius:16px;overflow:hidden;background:linear-gradient(160deg,#e2e8f0,#94a3b8);color:#000;font:400 12px/16px system-ui,sans-serif;white-space:normal}
+.wmt-card-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.8)}
+.wmt-card-shade{position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.1),transparent);pointer-events:none;z-index:10}
+.wmt-card-art{position:absolute;top:0;left:0;right:0;height:45%;z-index:20;background:rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.wmt-card-art img{width:100%;height:100%;object-fit:cover;object-position:center 28%;display:block}
+.wmt-card-art-fade{position:absolute;left:0;right:0;bottom:0;height:48px;background:linear-gradient(to top,rgba(0,0,0,.5),transparent)}
+.wmt-card-art img.wmt-card-logo{width:52%;height:auto;max-height:100%;object-fit:contain;opacity:.7}
+.wmt-card-rarity{position:absolute;top:8px;left:8px;z-index:30;padding:2px 8px;border-radius:6px;background:var(--wmt-rarity,#94a3b8);color:rgb(13,17,23);box-shadow:0 0 10px var(--wmt-rarity,transparent);font:700 12px/16px system-ui,sans-serif}
+.wmt-card-corner{position:absolute;top:8px;right:8px;z-index:30;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.wmt-card-star{width:28px;height:28px;padding:2px;color:rgba(253,230,138,.65);filter:drop-shadow(0 .5px 2px rgba(0,0,0,.55))}
+.wmt-card-star path{stroke-width:1}
+.wmt-card-price{padding:2px 8px;border-radius:6px;background:rgb(34,197,94);color:rgb(13,17,23);box-shadow:0 0 10px rgba(34,197,94,.6);font:700 12px/16px system-ui,sans-serif;text-align:center}
+.wmt-card-body{position:absolute;top:45%;left:0;right:0;bottom:0;z-index:20;display:flex;flex-direction:column;min-height:0;padding:12px}
+.wmt-card-title{margin:0;font:700 16px/1.25 var(--font-heading,system-ui,sans-serif);color:#000;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex-shrink:0}
+.wmt-card-extract{margin:0;flex:1;min-height:0;overflow:hidden;font-size:10px;line-height:1.375;color:rgba(38,38,38,.88);display:-webkit-box;-webkit-line-clamp:10;-webkit-box-orient:vertical}
+.wmt-card-extract-short{font-size:11px;line-height:1.375;color:rgba(23,23,23,.9);-webkit-line-clamp:3}
+.wmt-card-stats{margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid rgba(0,0,0,.2);font-size:14px;line-height:20px}
+.wmt-card-stat{display:flex;align-items:center;gap:4px}.wmt-card-stat b{color:rgba(0,0,0,.9)}
+.wmt-card-ico{width:1em;height:1em;flex-shrink:0}.wmt-card-atk{color:#991b1b}.wmt-card-def{color:#1e40af}
+.wmt-card-sheen{position:absolute;inset:0;z-index:40;overflow:hidden;pointer-events:none}
 .wmt-placing.leaflet-grab,.wmt-placing .leaflet-interactive{cursor:crosshair !important}
 `;
 

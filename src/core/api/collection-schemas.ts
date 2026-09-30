@@ -13,6 +13,10 @@ const entrySchema = z.object({
     wikipedia_title: z.string().min(1),
     rarity: z.string().min(1).nullish().catch(undefined),
     image_url: z.string().min(1).nullish().catch(undefined),
+    extract: z.string().min(1).nullish().catch(undefined),
+    category: z.string().min(1).nullish().catch(undefined),
+    atk: z.number().nullish().catch(undefined),
+    def: z.number().nullish().catch(undefined),
   }),
 });
 
@@ -37,7 +41,9 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
       skipped += 1;
       continue;
     }
-    const { wikipedia_title: title, rarity, image_url: imageUrl } = parsed.data.card;
+    const { wikipedia_title: title, rarity, image_url: imageUrl, category, atk: attack, def: defense } = parsed.data.card;
+    // Sans extrait, le jeu affiche la description courte de la carte (`category`).
+    const extract = parsed.data.card.extract ?? category;
     const slug = titleToSlug(title);
     if (!cards.has(slug)) {
       cards.set(slug, {
@@ -45,6 +51,9 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
         title,
         ...(rarity ? { rarity } : {}),
         ...(imageUrl ? { imageUrl } : {}),
+        ...(extract ? { extract } : {}),
+        ...(attack != null ? { attack } : {}),
+        ...(defense != null ? { defense } : {}),
       });
     }
   }
