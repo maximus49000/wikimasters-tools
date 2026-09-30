@@ -54,7 +54,8 @@ export function createWorldMap(
           }),
           draggable: true,
         });
-        marker.bindTooltip(point.title);
+        // Un élément (et non une chaîne) : Leaflet assignerait une chaîne via innerHTML.
+        marker.bindTooltip(Object.assign(document.createElement('span'), { textContent: point.title }));
         marker.on('click', () => handlers.onOpen(point.slug));
         marker.on('dragend', () => {
           const { lat, lng } = marker.getLatLng().wrap();
