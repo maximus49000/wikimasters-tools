@@ -11,8 +11,8 @@ export function needsBirthLookup(state: BirthState, slug: string): boolean {
   return !Object.prototype.hasOwnProperty.call(state.years, slug);
 }
 
-export function setBirth(state: BirthState, slug: string, year: number | null): BirthState {
-  return { years: { ...state.years, [slug]: year } };
+export function setBirths(state: BirthState, years: Record<string, number | null>): BirthState {
+  return { years: { ...state.years, ...years } };
 }
 
 export type DatedCard = { card: KnownCard; year: number };
