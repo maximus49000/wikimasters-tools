@@ -22,13 +22,13 @@ Chrome Android et Safari iOS ne savent pas installer d'extension : seul Firefox 
 
 ## Firefox (ordinateur)
 
-**Essai rapide (disparaît au redémarrage)** : `about:debugging#/runtime/this-firefox` → *Charger un module complémentaire temporaire…* → choisissez le zip (ou `manifest.json` du dossier `firefox-mv3`). Firefox 128 minimum.
+**Essai rapide (disparaît au redémarrage)** : `about:debugging#/runtime/this-firefox` → *Charger un module complémentaire temporaire…* → choisissez le zip (ou `manifest.json` du dossier `firefox-mv3`). Firefox 140 minimum.
 
 **Installation durable** : Firefox n'installe durablement que des extensions **signées** (voir « Signature » ci-dessous), puis `about:addons` → roue dentée → *Installer un module depuis un fichier…*.
 
 ## Firefox Android
 
-Prérequis : Firefox 128 ou plus récent (Firefox Nightly non requis si l'extension est signée).
+Prérequis : Firefox 140 ou plus récent (Firefox Nightly non requis si l'extension est signée).
 
 Le zip seul ne s'installe pas sur Android (pas de chargement temporaire sans câble). Deux voies :
 

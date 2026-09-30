@@ -14,12 +14,12 @@ export default defineConfig({
       browser_specific_settings: {
         gecko: {
           id: 'wikimasters-tools@maximus49000.github.io',
-          // MV3 + scripts de contenu en monde MAIN : Firefox 128 minimum.
-          strict_min_version: '128.0',
+          // data_collection_permissions n'est reconnu qu'à partir de Firefox 140 (142 sur Android).
+          strict_min_version: '140.0',
           // Champ exigé par addons.mozilla.org : l'extension ne collecte ni n'envoie de données personnelles.
           data_collection_permissions: { required: ['none'] },
         },
-        gecko_android: { strict_min_version: '128.0' },
+        gecko_android: { strict_min_version: '142.0' },
       },
     }),
   }),
