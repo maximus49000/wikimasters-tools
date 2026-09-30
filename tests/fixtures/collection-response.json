@@ -1,0 +1,65 @@
+{
+  "collection": [
+    {
+      "id": "entry-1",
+      "card": {
+        "id": "card-1",
+        "lang": "fr",
+        "rarity": "L",
+        "category": "série télévisée américaine",
+        "image_url": null,
+        "wikipedia_url": "https://fr.wikipedia.org/wiki/Ted_Lasso",
+        "wikipedia_title": "Ted Lasso"
+      },
+      "tags": [],
+      "count": 1,
+      "card_id": "card-1",
+      "starred": false,
+      "user_id": "user-1",
+      "is_shiny": false,
+      "obtained_at": "2026-09-28T20:07:30.85111+00:00"
+    },
+    {
+      "id": "entry-2",
+      "card": {
+        "id": "card-2",
+        "lang": "fr",
+        "rarity": "UR",
+        "category": null,
+        "image_url": null,
+        "wikipedia_url": "https://fr.wikipedia.org/wiki/Tenture_de_l%27Apocalypse",
+        "wikipedia_title": "Tenture de l'Apocalypse"
+      },
+      "tags": [],
+      "count": 1,
+      "card_id": "card-2",
+      "starred": false,
+      "user_id": "user-1",
+      "is_shiny": false,
+      "obtained_at": "2026-09-28T14:07:03.547446+00:00"
+    },
+    {
+      "id": "entry-3",
+      "card": {
+        "id": "card-3",
+        "lang": "fr",
+        "rarity": "SR",
+        "category": "financier",
+        "image_url": null,
+        "wikipedia_url": "https://fr.wikipedia.org/wiki/Paul_de_Gr%C3%A8ce_(1967)",
+        "wikipedia_title": "Paul de Grèce (1967)"
+      },
+      "tags": [],
+      "count": 1,
+      "card_id": "card-3",
+      "starred": false,
+      "user_id": "user-1",
+      "is_shiny": false,
+      "obtained_at": "2026-09-29T19:51:14.639354+00:00"
+    }
+  ],
+  "total": null,
+  "rarityCounts": {},
+  "tagOptions": [],
+  "pendingTradeCardIds": []
+}

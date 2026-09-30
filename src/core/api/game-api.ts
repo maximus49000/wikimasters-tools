@@ -1,5 +1,6 @@
 import { ApiFormatError, ApiHttpError, NotAuthenticatedError } from './errors';
 import { MINE_ENDPOINT, parseMineResponse, type MineResponse } from './schemas';
+import { collectionEndpoint, parseCollectionPage, type CollectionPage } from './collection-schemas';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -62,6 +63,11 @@ export function createGameApi(options: GameApiOptions) {
   return {
     getMine: (): Promise<MineResponse> =>
       enqueue(async () => parseMineResponse(await requestJson(MINE_ENDPOINT))),
+    getCollectionPage: (page: number): Promise<CollectionPage> =>
+      enqueue(async () => {
+        const path = collectionEndpoint(page);
+        return parseCollectionPage(await requestJson(path), path);
+      }),
   };
 }
 
