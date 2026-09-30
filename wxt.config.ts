@@ -13,7 +13,7 @@ export default defineConfig({
       host_permissions: ['https://www.wiki-masters.com/*'],
       browser_specific_settings: {
         gecko: {
-          id: 'wikimasters-tools@maximus49000.github.io',
+          id: 'wikimasters-tools-unofficial@maximus49000.github.io',
           // data_collection_permissions n'est reconnu qu'à partir de Firefox 140 (142 sur Android).
           strict_min_version: '140.0',
           // Champ exigé par addons.mozilla.org : l'extension ne collecte ni n'envoie de données personnelles.
