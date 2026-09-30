@@ -49,6 +49,10 @@ export function slugToTitle(slug: string): string {
   return slug.replace(/_/g, ' ');
 }
 
+export function titleToSlug(title: string): string {
+  return title.trim().replace(/\s+/g, '_').normalize('NFC');
+}
+
 function cardKey(cardId: string, isShiny: boolean): string {
   return `${cardId}|${isShiny ? 1 : 0}`;
 }
