@@ -7,6 +7,7 @@ import { EMPTY_GEO, partitionCards, type GeoState } from '../core/geo/geo-book';
 import type { GeoRepo } from '../core/geo/geo-repo';
 import type { PriceBook } from '../core/pricing/price-book';
 import { pageIsDark } from './map-theme';
+import { createThrottledLoader } from './throttle';
 import { createWorldMap, type MapPoint, type WorldMap } from './world-map';
 
 // Styles des marqueurs et du mode « placement » (le CSS de Leaflet est ajouté à part).
@@ -42,6 +43,9 @@ const box = {
   font: '14px/20px system-ui, sans-serif',
 } as const;
 
+// Un scan « en cours » sans aucune activité depuis cette durée est considéré comme interrompu.
+const STALLED_MS = 60_000;
+
 export function WorldPanel({ collection, geo, scanner, book, onOpen }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
@@ -58,19 +62,8 @@ export function WorldPanel({ collection, geo, scanner, book, onOpen }: Props) {
     const loadCards = () => void collection.list().then((list) => alive && setCards(list));
     const loadGeo = () => void geo.load().then((state) => alive && setGeoState(state));
     const loadScan = () => void scanner.state().then((state) => alive && setScan(state));
-    // Rechargement groupé : au plus un par seconde, le dernier événement gagne.
-    const grouped = (load: () => void) => {
-      let timer: number | undefined;
-      return {
-        call: () => {
-          window.clearTimeout(timer);
-          timer = window.setTimeout(load, 1000);
-        },
-        cancel: () => window.clearTimeout(timer),
-      };
-    };
-    const cardsReload = grouped(loadCards);
-    const geoReload = grouped(loadGeo);
+    const cardsReload = createThrottledLoader(loadCards, 1000);
+    const geoReload = createThrottledLoader(loadGeo, 1000);
     loadCards();
     loadGeo();
     loadScan();
@@ -129,6 +122,7 @@ export function WorldPanel({ collection, geo, scanner, book, onOpen }: Props) {
     mapRef.current?.setPlacing(placing !== null);
   }, [placing]);
 
+  const stalled = scan.status === 'running' && Date.now() - scan.updatedAt > STALLED_MS;
   const placingTitle = cards.find((card) => card.slug === placing)?.title;
 
   return (
@@ -136,17 +130,18 @@ export function WorldPanel({ collection, geo, scanner, book, onOpen }: Props) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div ref={containerRef} style={{ height: '70vh', minHeight: 420, borderRadius: 8 }} />
         <p style={{ margin: '8px 0 0', fontSize: 12 }}>
-          {scan.status === 'running' && `Scan de la Collection en cours… page ${scan.nextPage + 1}, ${scan.entries} cartes lues.`}
+          {scan.status === 'running' && !stalled && `Scan de la Collection en cours… page ${scan.nextPage + 1}, ${scan.entries} cartes lues.`}
+          {stalled && 'Scan interrompu (aucune activité). '}
           {scan.status === 'done' && `Collection scannée (${scan.entries} cartes lues). `}
           {scan.status === 'error' && `Scan interrompu : ${scan.error ?? 'erreur inconnue'}. `}
           {scan.status === 'idle' && 'Scan de la Collection pas encore lancé. '}
-          {scan.status !== 'running' && (
+          {(scan.status !== 'running' || stalled) && (
             <button
               type="button"
               onClick={() => void scanner.run({ force: scan.status === 'done' })}
               style={linkButton}
             >
-              {scan.status === 'done' ? 'Re-scanner' : scan.status === 'error' ? 'Reprendre' : 'Lancer le scan'}
+              {scan.status === 'done' ? 'Re-scanner' : scan.status === 'error' || stalled ? 'Reprendre' : 'Lancer le scan'}
             </button>
           )}
         </p>
