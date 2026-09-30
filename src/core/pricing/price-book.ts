@@ -6,6 +6,8 @@ export type PriceBookEntry = {
   rarity: string;
   isShiny: boolean;
   stats: PriceStats;
+  // Tous les achats connus (sans fenêtre de temps) ; null si la carte n'a jamais été achetée.
+  purchase: { min: number; max: number } | null;
 };
 
 export type PriceBook = {
@@ -41,11 +43,14 @@ export function buildPriceBook(
       const [group] = [...groups.values()];
       const first = group?.[0];
       if (!first) return null;
+      const bought = group.filter((o) => o.kind === 'bought').map((o) => o.price);
+      const purchase = bought.length > 0 ? { min: Math.min(...bought), max: Math.max(...bought) } : null;
       return {
         cardId: first.cardId,
         rarity: first.rarity,
         isShiny: first.isShiny,
         stats: computeStats(group, options),
+        purchase,
       };
     },
   };

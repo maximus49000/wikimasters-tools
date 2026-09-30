@@ -9,6 +9,8 @@ Un badge de prix sous chaque carte que vous avez déjà achetée ou vendue : mé
 transactions (ventes et achats), fourchette, nombre de transactions et tendance. Le calcul se fait
 dans votre navigateur ; rien n'est envoyé à un serveur.
 
+Une pastille verte « $ » en haut à droite des cartes que vous avez achetées indique le prix d'achat (ou la fourchette).
+
 ## Ce qu'elle ne fait pas
 
 - Aucune enchère, mise, vente ni ouverture de pack, aucune action automatique (les règles du jeu

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toBadgeModel } from '../../../src/core/pricing/badge';
+import { toBadgeModel, toPurchaseModel } from '../../../src/core/pricing/badge';
 import type { PriceStats } from '../../../src/core/pricing/stats';
 
 const base: PriceStats = { count: 0, median: null, min: null, max: null, trend: null, reliability: 'none' };
@@ -37,5 +37,25 @@ describe('toBadgeModel', () => {
   it("n'affiche pas de flèche quand la tendance est stable", () => {
     const model = toBadgeModel({ ...base, count: 5, median: 15, min: 12, max: 20, trend: 'flat', reliability: 'ok' });
     expect(model?.detail).toBe('12–20 · 5 transactions');
+  });
+});
+
+describe('toPurchaseModel', () => {
+  it('ne rend rien sans achat', () => {
+    expect(toPurchaseModel(null)).toBeNull();
+  });
+
+  it('affiche un prix unique', () => {
+    expect(toPurchaseModel({ min: 6, max: 6 })).toEqual({
+      label: '6',
+      tooltip: 'Acheté 6 WB. Calcul local, outil non officiel.',
+    });
+  });
+
+  it('affiche une fourchette avec un tiret demi-cadratin', () => {
+    expect(toPurchaseModel({ min: 3, max: 6 })).toEqual({
+      label: '3–6',
+      tooltip: 'Acheté entre 3 et 6 WB. Calcul local, outil non officiel.',
+    });
   });
 });

@@ -24,6 +24,35 @@ describe('normalizeTitle', () => {
   });
 });
 
+describe('buildPriceBook — prix d\'achat', () => {
+  it('donne min et max des achats uniquement', () => {
+    const book = buildPriceBook(
+      [obs({ price: 6, kind: 'bought' }), obs({ price: 3, kind: 'bought' }), obs({ price: 50, kind: 'sold' })],
+      { now: NOW },
+    );
+    expect(book.byTitle('Mad Max')?.purchase).toEqual({ min: 3, max: 6 });
+  });
+
+  it("vaut null quand la carte n'a été que vendue", () => {
+    const book = buildPriceBook([obs({ price: 10, kind: 'sold' })], { now: NOW });
+    expect(book.byTitle('Mad Max')?.purchase).toBeNull();
+  });
+
+  it("n'est pas influencé par les ventes", () => {
+    const book = buildPriceBook(
+      [obs({ price: 4, kind: 'bought' }), obs({ price: 1, kind: 'sold' }), obs({ price: 99, kind: 'sold' })],
+      { now: NOW },
+    );
+    expect(book.byTitle('Mad Max')?.purchase).toEqual({ min: 4, max: 4 });
+  });
+
+  it('compte aussi les achats anciens (sans fenêtre de 60 jours)', () => {
+    const old = new Date(NOW.getTime() - 200 * 86_400_000).toISOString();
+    const book = buildPriceBook([obs({ price: 2, kind: 'bought', at: old })], { now: NOW });
+    expect(book.byTitle('Mad Max')?.purchase).toEqual({ min: 2, max: 2 });
+  });
+});
+
 describe('buildPriceBook', () => {
   it('renvoie les statistiques de la carte connue', () => {
     const book = buildPriceBook([obs({ price: 10 }), obs({ price: 20 }), obs({ price: 30 })], { now: NOW });

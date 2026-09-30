@@ -33,3 +33,20 @@ export function toBadgeModel(stats: PriceStats): BadgeModel | null {
     tooltip,
   };
 }
+
+export type PurchaseModel = {
+  label: string;
+  tooltip: string;
+};
+
+export function toPurchaseModel(purchase: { min: number; max: number } | null): PurchaseModel | null {
+  if (!purchase) return null;
+  const { min, max } = purchase;
+  const same = min === max;
+  return {
+    label: same ? String(min) : `${min}–${max}`,
+    tooltip:
+      (same ? `Acheté ${min} WB.` : `Acheté entre ${min} et ${max} WB.`) +
+      ' Calcul local, outil non officiel.',
+  };
+}

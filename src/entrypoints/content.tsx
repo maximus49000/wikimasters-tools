@@ -4,7 +4,7 @@ import { createTtlCache } from '../core/cache/ttl-cache';
 import { createDataSource } from '../core/data-source';
 import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
-import { mountBadge } from '../content/mount';
+import { mountBadge, mountPurchaseBadge } from '../content/mount';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
@@ -40,7 +40,7 @@ export default defineContentScript({
       // On se déconnecte pendant nos propres insertions pour éviter une boucle.
       observer.disconnect();
       try {
-        const mounted = decorate(document, book, mountBadge);
+        const mounted = decorate(document, book, mountBadge, mountPurchaseBadge);
         const titles = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(
           (heading) => heading.textContent?.trim() ?? '',
         );
