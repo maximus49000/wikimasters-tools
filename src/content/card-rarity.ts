@@ -3,6 +3,7 @@
 // À compléter à partir du HTML des cartes du jeu (`<img src="/_next/image?url=%2F…png">`).
 const BACKGROUNDS: Record<string, string> = {
   L: '/legendaire.png',
+  UR: '/ultra_rare.png',
 };
 
 export const rarityBackground = (rarity: string | null): string | null =>

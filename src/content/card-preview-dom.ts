@@ -58,6 +58,8 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
   if (preview.imageUrl) image.referrerPolicy = 'no-referrer';
   else image.className = 'wmt-card-logo';
   art.append(image);
+  // Dégradé sombre en pied de photo, comme dans le jeu.
+  if (preview.imageUrl) art.append(div('wmt-card-art-fade'));
   card.append(art);
 
   if (preview.rarity) card.append(Object.assign(div('wmt-card-rarity', preview.rarity)));

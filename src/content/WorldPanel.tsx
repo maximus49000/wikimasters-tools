@@ -23,7 +23,8 @@ export const PANEL_CSS = `
 .wmt-card-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.8)}
 .wmt-card-shade{position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.1),transparent);pointer-events:none;z-index:10}
 .wmt-card-art{position:absolute;top:0;left:0;right:0;height:45%;z-index:20;background:rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;overflow:hidden}
-.wmt-card-art img{width:100%;height:100%;object-fit:cover;display:block}
+.wmt-card-art img{width:100%;height:100%;object-fit:cover;object-position:center 28%;display:block}
+.wmt-card-art-fade{position:absolute;left:0;right:0;bottom:0;height:48px;background:linear-gradient(to top,rgba(0,0,0,.5),transparent)}
 .wmt-card-art img.wmt-card-logo{width:52%;height:auto;max-height:100%;object-fit:contain;opacity:.7}
 .wmt-card-rarity{position:absolute;top:8px;left:8px;z-index:30;padding:2px 8px;border-radius:6px;background:var(--wmt-rarity,#94a3b8);color:rgb(13,17,23);box-shadow:0 0 10px var(--wmt-rarity,transparent);font:700 12px/16px system-ui,sans-serif}
 .wmt-card-corner{position:absolute;top:8px;right:8px;z-index:30;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
