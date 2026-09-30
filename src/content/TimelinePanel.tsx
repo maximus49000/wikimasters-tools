@@ -354,7 +354,7 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
         {visible && `Filtre actif : ${visible.size} cartes. `}
         {cards.length === 0
           ? 'Aucune carte connue : parcourez la Collection pour que l’extension les découvre.'
-          : `${cards.length} cartes connues · ${dated.length} datées (${mode === 'person' ? 'date de naissance' : 'début de l’évènement, fin quand elle est connue'}, d’après Wikidata).`}
+          : `${cards.length} cartes connues · ${dated.length} datées (${mode === 'person' ? 'de la naissance à la mort, ou jusqu’à aujourd’hui' : 'début, fin ou construction quand elles sont connues'}, d’après Wikidata).`}
       </p>
       {undated.length > 0 && (
         <details style={{ marginTop: 8, fontSize: 12 }}>

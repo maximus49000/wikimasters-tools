@@ -8,7 +8,7 @@ const claim = (time: string, precision: number, rank = 'normal') => ({
 const entities = (record: Record<string, Record<string, unknown[]>>) => ({
   entities: Object.fromEntries(Object.entries(record).map(([id, claims]) => [id, { claims }])),
 });
-const none = { birth: null, start: null, end: null };
+const none = { birth: null, death: null, start: null, end: null };
 
 describe('parseCardDates', () => {
   it('lit la date de naissance, mois compris', () => {
@@ -50,6 +50,47 @@ describe('parseCardDates', () => {
     expect(parseCardDates(entities({ Q1: { P569: [claim('+1800-01-01T00:00:00Z', 8)] }, Q2: {} }))).toEqual({ Q1: none, Q2: none });
   });
 
+  it('lit la date de mort', () => {
+    const dates = parseCardDates(entities({ Q1: { P569: [claim('+1889-01-01T00:00:00Z', 9)], P570: [claim('+1977-12-25T00:00:00Z', 11)] } }));
+    expect(dates.Q1?.birth).toBe(1889);
+    expect(dates.Q1?.death).toBeCloseTo(1977.92, 1);
+  });
+
+  describe('bâtiments', () => {
+    const construction = (start?: string, end?: string, id = 'Q385378') => ({
+      mainsnak: { datavalue: { value: { id }, type: 'wikibase-entityid' } },
+      qualifiers: {
+        ...(start ? { P580: [{ datavalue: { value: { time: start, precision: 9 } } }] } : {}),
+        ...(end ? { P582: [{ datavalue: { value: { time: end, precision: 9 } } }] } : {}),
+      },
+    });
+
+    it('préfère la période de construction (plusieurs phases : début le plus tôt, fin la plus tardive)', () => {
+      const json = entities({
+        Q1: {
+          P571: [claim('+1888-01-01T00:00:00Z', 9)],
+          P793: [construction('+1882-00-00T00:00:00Z', '+1883-00-00T00:00:00Z'), construction('+1883-00-00T00:00:00Z', '+1926-00-00T00:00:00Z'), construction(undefined, undefined, 'Q5')],
+        },
+      });
+      expect(parseCardDates(json).Q1).toMatchObject({ start: 1882, end: 1926 });
+    });
+
+    it('sans période de construction : création jusqu’à l’ouverture', () => {
+      const json = entities({ Q1: { P571: [claim('+1861-01-01T00:00:00Z', 9)], P1619: [claim('+1875-01-01T00:00:00Z', 9)] } });
+      expect(parseCardDates(json).Q1).toMatchObject({ start: 1861, end: 1875 });
+    });
+
+    it('plusieurs créations : la première est le début, la dernière la fin', () => {
+      const json = entities({ Q1: { P571: [claim('+1889-01-01T00:00:00Z', 9), claim('+1887-01-01T00:00:00Z', 9)] } });
+      expect(parseCardDates(json).Q1).toMatchObject({ start: 1887, end: 1889 });
+    });
+
+    it('une seule création : pas de fin', () => {
+      const json = entities({ Q1: { P571: [claim('+1036-01-01T00:00:00Z', 9)] } });
+      expect(parseCardDates(json).Q1).toMatchObject({ start: 1036, end: null });
+    });
+  });
+
   it('ignore les autres propriétés, quel que soit leur format (texte, identifiant d’élément…)', () => {
     const json = entities({
       Q1: {
@@ -59,7 +100,7 @@ describe('parseCardDates', () => {
         P580: [{ mainsnak: { snaktype: 'somevalue' } }],
       },
     });
-    expect(parseCardDates(json)).toEqual({ Q1: { birth: 1889, start: null, end: null } });
+    expect(parseCardDates(json)).toEqual({ Q1: { birth: 1889, death: null, start: null, end: null } });
   });
 
   it('lève pour une réponse inattendue', () => {
@@ -102,7 +143,7 @@ describe('fetchWikidataDates', () => {
     expect(urls).toHaveLength(2);
     expect(new URL(urls[0] ?? '').searchParams.get('titles')).toBe('Charlie Chaplin|Paris');
     expect(new URL(urls[1] ?? '').searchParams.get('ids')).toBe('Q882');
-    expect(result).toEqual({ Charlie_Chaplin: { birth: 1889, start: null, end: null }, Paris: none });
+    expect(result).toEqual({ Charlie_Chaplin: { birth: 1889, death: null, start: null, end: null }, Paris: none });
   });
 
   it("n'appelle pas Wikidata quand aucun article n'a d'élément", async () => {

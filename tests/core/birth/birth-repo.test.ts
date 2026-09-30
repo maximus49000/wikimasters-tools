@@ -4,7 +4,7 @@ import { createBirthRepo } from '../../../src/core/birth/birth-repo';
 import type { CardDates } from '../../../src/core/birth/wikidata-birth';
 
 const noSleep = async () => undefined;
-const none: CardDates = { birth: null, start: null, end: null };
+const none: CardDates = { birth: null, death: null, start: null, end: null };
 const years = (slugs: string[]) => Object.fromEntries(slugs.map((slug) => [slug, slug === 'Chaplin' ? { ...none, birth: 1889 } : none]));
 
 describe('createBirthRepo', () => {
