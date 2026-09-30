@@ -45,6 +45,10 @@ export function wikipediaSlug(url: string): string | null {
   return title.replace(/ /g, '_').normalize('NFC');
 }
 
+export function slugToTitle(slug: string): string {
+  return slug.replace(/_/g, ' ');
+}
+
 function cardKey(cardId: string, isShiny: boolean): string {
   return `${cardId}|${isShiny ? 1 : 0}`;
 }

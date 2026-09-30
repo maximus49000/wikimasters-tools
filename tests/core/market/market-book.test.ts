@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findBySlug,
   mergeObservation,
+  slugToTitle,
   summarize,
   wikipediaSlug,
   type MarketState,
@@ -37,6 +38,12 @@ describe('wikipediaSlug', () => {
     expect(wikipediaSlug('https://example.com/wiki/Ted_Lasso')).toBeNull();
     expect(wikipediaSlug('https://fr.wikipedia.org/w/index.php')).toBeNull();
     expect(wikipediaSlug('pas une url')).toBeNull();
+  });
+});
+
+describe('slugToTitle', () => {
+  it('redonne le titre lisible d’un article', () => {
+    expect(slugToTitle('Théorème_de_Ptolémée')).toBe('Théorème de Ptolémée');
   });
 });
 

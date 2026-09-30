@@ -1,7 +1,12 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { formatAge, formatRemaining } from '../core/market/format';
-import { summarize, type CardMarket } from '../core/market/market-book';
+import { slugToTitle, summarize, type CardMarket } from '../core/market/market-book';
 import type { MarketRepo } from '../core/market/market-repo';
+import type { StartSearchOutcome } from './market-search-flow';
+
+type Phase = 'idle' | 'searching' | 'done' | 'timeout' | 'no-controls';
+
+const NO_RESPONSE_MS = 12_000;
 
 const overlay: CSSProperties = {
   position: 'fixed',
@@ -28,6 +33,18 @@ const panel: CSSProperties = {
 };
 
 const muted: CSSProperties = { color: '#9aa7b4', fontSize: 12 };
+
+const searchButton: CSSProperties = {
+  marginTop: 12,
+  padding: '6px 12px',
+  border: 0,
+  borderRadius: 8,
+  cursor: 'pointer',
+  font: '600 13px/18px system-ui, sans-serif',
+  fontFamily: 'inherit',
+  background: 'var(--color-accent, #34d399)',
+  color: 'var(--color-accent-foreground, #0d1117)',
+};
 
 function OfferList({ card, now }: { card: CardMarket; now: number }) {
   const summary = summarize(card, now);
@@ -64,30 +81,99 @@ function OfferList({ card, now }: { card: CardMarket; now: number }) {
   );
 }
 
+function SearchStatus({ phase, hasOffers }: { phase: Phase; hasOffers: boolean }) {
+  if (phase === 'searching') return <p style={muted}>Recherche en cours sur le marché…</p>;
+  if (phase === 'no-controls') {
+    return (
+      <p style={{ ...muted, color: '#f0b429' }}>
+        Le champ de recherche du site est introuvable (la page a peut-être changé).
+      </p>
+    );
+  }
+  if (phase === 'timeout') {
+    return (
+      <p style={{ ...muted, color: '#f0b429' }}>
+        Recherche lancée, mais aucune réponse observée. Elle n&apos;est peut-être pas passée par l&apos;API
+        que l&apos;extension écoute.
+      </p>
+    );
+  }
+  if (phase === 'done' && !hasOffers) {
+    return (
+      <p style={muted}>
+        Aucune offre trouvée pour cette carte parmi les résultats chargés. Le site en affiche 50 à la
+        fois : elle peut figurer plus loin.
+      </p>
+    );
+  }
+  return null;
+}
+
 export function MarketPopup({
   slug,
   repo,
+  search,
+  autoStart,
   onClose,
 }: {
   slug: string;
   repo: MarketRepo;
+  search: (slug: string) => Promise<StartSearchOutcome>;
+  autoStart: boolean;
   onClose: () => void;
 }) {
   const [cards, setCards] = useState<CardMarket[] | null>(null);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const searching = useRef(false);
+  const timer = useRef<number | undefined>(undefined);
 
-  useEffect(() => {
-    let cancelled = false;
+  const reload = useCallback(() => {
     repo
       .lookup(slug)
-      .then((found) => !cancelled && setCards(found))
-      .catch(() => !cancelled && setCards([]));
-    return () => {
-      cancelled = true;
-    };
+      .then(setCards)
+      .catch(() => setCards([]));
   }, [repo, slug]);
 
+  useEffect(() => {
+    reload();
+    return repo.subscribe(() => {
+      reload();
+      if (searching.current) {
+        searching.current = false;
+        window.clearTimeout(timer.current);
+        setPhase('done');
+      }
+    });
+  }, [repo, reload]);
+
+  const startSearch = useCallback(async () => {
+    searching.current = true;
+    window.clearTimeout(timer.current);
+    setPhase('searching');
+    const outcome = await search(slug);
+    if (outcome === 'no-controls') {
+      searching.current = false;
+      setPhase('no-controls');
+    } else if (outcome === 'started') {
+      timer.current = window.setTimeout(() => {
+        if (!searching.current) return;
+        searching.current = false;
+        setPhase('timeout');
+      }, NO_RESPONSE_MS);
+    }
+    // 'navigating' : la page se recharge, le popup sera rouvert de l'autre côté.
+  }, [search, slug]);
+
+  useEffect(() => {
+    if (autoStart) void startSearch();
+    return () => window.clearTimeout(timer.current);
+    // Lancement unique à l'ouverture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const now = Date.now();
-  const title = cards?.[0]?.title ?? slug.replace(/_/g, ' ');
+  const title = cards?.[0]?.title ?? slugToTitle(slug);
+  const hasOffers = cards?.some((card) => summarize(card, now) !== null) ?? false;
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -105,10 +191,10 @@ export function MarketPopup({
         </div>
 
         {cards === null && <p style={muted}>Chargement…</p>}
-        {cards?.length === 0 && (
+        {cards?.length === 0 && phase === 'idle' && (
           <p>
-            Cette carte n&apos;a jamais été vue sur le marché. Ouvrez la page Marché : l&apos;extension
-            mémorise les enchères que le site charge.
+            Cette carte n&apos;a jamais été vue sur le marché. Lancez une recherche ci-dessous, ou ouvrez
+            la page Marché : l&apos;extension mémorise les enchères que le site charge.
           </p>
         )}
         {cards?.map((card) => (
@@ -119,6 +205,16 @@ export function MarketPopup({
             <OfferList card={card} now={now} />
           </section>
         ))}
+
+        <SearchStatus phase={phase} hasOffers={hasOffers} />
+        <button
+          type="button"
+          style={{ ...searchButton, opacity: phase === 'searching' ? 0.5 : 1 }}
+          disabled={phase === 'searching'}
+          onClick={() => void startSearch()}
+        >
+          {phase === 'searching' ? 'Recherche en cours…' : 'Rechercher sur le marché'}
+        </button>
 
         <p style={{ ...muted, marginTop: 12, marginBottom: 0 }}>
           Échantillon : seules les enchères chargées sur la page Marché sont vues. Calcul local, outil

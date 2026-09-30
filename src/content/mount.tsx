@@ -5,6 +5,7 @@ import { HOST_ATTRIBUTE, PURCHASE_HOST_ATTRIBUTE } from './decorate';
 import { MarketLink } from './MarketLink';
 import { MARKET_HOST_ATTRIBUTE, type MountMarketLink } from './market-link';
 import { MarketPopup } from './MarketPopup';
+import { createSearchStarter, type SearchStarter } from './market-search-flow';
 import { PriceBadge } from './PriceBadge';
 import { PurchaseBadge } from './PurchaseBadge';
 
@@ -36,7 +37,12 @@ export function mountPurchaseBadge(frame: HTMLElement, model: PurchaseModel): vo
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
 
-function openMarketPopup(repo: MarketRepo, slug: string): void {
+function openMarketPopup(
+  repo: MarketRepo,
+  search: SearchStarter,
+  slug: string,
+  autoStart: boolean,
+): void {
   if (document.querySelector(`[${POPUP_HOST_ATTRIBUTE}]`)) return;
 
   const host = document.createElement('div');
@@ -64,11 +70,21 @@ function openMarketPopup(repo: MarketRepo, slug: string): void {
     close();
   }
   document.addEventListener('keydown', onKey, true);
-  root.render(<MarketPopup slug={slug} repo={repo} onClose={close} />);
+  root.render(
+    <MarketPopup slug={slug} repo={repo} search={search} autoStart={autoStart} onClose={close} />,
+  );
 }
 
-export function createMarketLinkMounter(repo: MarketRepo): MountMarketLink {
-  return (anchor, slug) => {
+export function createMarketUi(repo: MarketRepo) {
+  const search = createSearchStarter({
+    root: document,
+    pathname: () => window.location.pathname,
+    navigate: (url) => window.location.assign(url),
+    storage: window.sessionStorage,
+    now: () => Date.now(),
+  });
+
+  const mountLink: MountMarketLink = (anchor, slug) => {
     const host = document.createElement('div');
     host.setAttribute(MARKET_HOST_ATTRIBUTE, '');
     host.style.display = 'block';
@@ -78,6 +94,14 @@ export function createMarketLinkMounter(repo: MarketRepo): MountMarketLink {
     shadow.appendChild(mountPoint);
 
     anchor.insertAdjacentElement('afterend', host);
-    createRoot(mountPoint).render(<MarketLink onOpen={() => openMarketPopup(repo, slug)} />);
+    createRoot(mountPoint).render(
+      <MarketLink onOpen={() => openMarketPopup(repo, search, slug, false)} />,
+    );
+  };
+
+  return {
+    mountLink,
+    // Reprise après la navigation vers la page Marché : le popup lance lui-même la recherche.
+    resumeSearch: (slug: string) => openMarketPopup(repo, search, slug, true),
   };
 }

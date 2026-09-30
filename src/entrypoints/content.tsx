@@ -8,7 +8,8 @@ import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
 import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
-import { createMarketLinkMounter, mountBadge, mountPurchaseBadge } from '../content/mount';
+import { createMarketUi, mountBadge, mountPurchaseBadge } from '../content/mount';
+import { takePendingSearch } from '../content/pending-search';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
@@ -44,7 +45,7 @@ export default defineContentScript({
       console.warn(LOG, 'prix indisponibles :', error);
     }
 
-    const mountMarketLink = createMarketLinkMounter(marketRepo);
+    const marketUi = createMarketUi(marketRepo);
 
     let timer: number | undefined;
     const observer = new MutationObserver(() => {
@@ -56,7 +57,7 @@ export default defineContentScript({
       // On se déconnecte pendant nos propres insertions pour éviter une boucle.
       observer.disconnect();
       try {
-        const links = decorateMarketLinks(document, mountMarketLink);
+        const links = decorateMarketLinks(document, marketUi.mountLink);
         if (book) {
           const mounted = decorate(document, book, mountBadge, mountPurchaseBadge);
           const titles = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(
@@ -75,5 +76,11 @@ export default defineContentScript({
     }
 
     run();
+
+    // Une recherche demandée depuis une fiche reprend ici, sur la page Marché.
+    if (window.location.pathname.startsWith('/marketplace')) {
+      const pending = takePendingSearch(window.sessionStorage, Date.now());
+      if (pending) marketUi.resumeSearch(pending);
+    }
   },
 });

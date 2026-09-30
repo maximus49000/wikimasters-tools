@@ -17,6 +17,11 @@ viennent **uniquement** des enchères que le site charge lui-même quand vous ou
 l'extension les observe passivement, sans envoyer aucune requête. Ce sont donc des chiffres d'échantillon
 (« observé il y a X min »), pas un état complet du marché. Aucun pseudo de joueur n'est conservé.
 
+Le popup propose aussi « Rechercher sur le marché » : l'extension saisit le titre de la carte dans le champ de
+recherche du site et clique sur son bouton « Rechercher » (une saisie et un clic, comme vous le feriez).
+C'est le site qui envoie sa propre requête ; l'extension se contente de l'observer. Le site affiche 50
+résultats à la fois, l'extension ne charge jamais les pages suivantes.
+
 ## Ce qu'elle ne fait pas
 
 - Aucune enchère, mise, vente ni ouverture de pack, aucune action automatique (les règles du jeu

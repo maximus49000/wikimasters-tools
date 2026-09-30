@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../../src/core/cache/store';
 import { createMarketRepo } from '../../../src/core/market/market-repo';
 import type { MarketAuction } from '../../../src/core/market/schemas';
@@ -37,5 +37,18 @@ describe('createMarketRepo', () => {
 
   it('renvoie une liste vide pour une carte jamais observée', async () => {
     expect(await createMarketRepo(createMemoryStore(), () => NOW).lookup('Inconnue')).toEqual([]);
+  });
+
+  it('prévient les abonnés après chaque observation enregistrée, jusqu’au désabonnement', async () => {
+    const repo = createMarketRepo(createMemoryStore(), () => NOW);
+    const listener = vi.fn();
+    const unsubscribe = repo.subscribe(listener);
+
+    await repo.observe([auction('a1', 12)]);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    await repo.observe([auction('a2', 30)]);
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });
