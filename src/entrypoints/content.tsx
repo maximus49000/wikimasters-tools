@@ -5,6 +5,8 @@ import { createDataSource } from '../core/data-source';
 import { createCollectionRepo } from '../core/collection/collection-repo';
 import { createCollectionScanner } from '../core/collection/collection-scan';
 import { fetchWikiCoords } from '../core/geo/wiki-coords';
+import { fetchWikidataBirth } from '../core/birth/wikidata-birth';
+import { createBirthRepo } from '../core/birth/birth-repo';
 import { createGeoRepo } from '../core/geo/geo-repo';
 import { createCollectionFilterSource } from '../content/collection-filter';
 import { createCollectionUi } from '../content/collection-ui';
@@ -66,6 +68,7 @@ export default defineContentScript({
     const collectionUi = createCollectionUi({
       collection: collectionRepo,
       geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
+      birth: createBirthRepo(store, (slug) => fetchWikidataBirth((url) => fetch(url), slug)),
       scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
       book,
       filterSource,
@@ -87,7 +90,7 @@ export default defineContentScript({
         try {
           collectionUi.sync();
         } catch (error) {
-          console.warn(LOG, 'vue Monde indisponible :', error);
+          console.warn(LOG, 'vues de la Collection indisponibles :', error);
         }
         if (book) {
           const mounted = decorate(document, book, mountPurchaseBadge);
