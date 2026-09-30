@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { KnownCard } from '../core/collection/collection-book';
+import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/collection/collection-scan';
 import { EMPTY_GEO, partitionCards, type GeoState } from '../core/geo/geo-book';
 import type { GeoRepo } from '../core/geo/geo-repo';
 import { pageIsDark } from './map-theme';
@@ -18,6 +19,7 @@ export const PANEL_CSS = `
 type Props = {
   collection: CollectionRepo;
   geo: GeoRepo;
+  scanner: CollectionScanner;
   onOpen: (slug: string) => void;
 };
 
@@ -29,8 +31,9 @@ const box = {
   font: '14px/20px system-ui, sans-serif',
 } as const;
 
-export function WorldPanel({ collection, geo, onOpen }: Props) {
+export function WorldPanel({ collection, geo, scanner, onOpen }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
+  const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [geoState, setGeoState] = useState<GeoState>(EMPTY_GEO);
   const [placing, setPlacing] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,16 +46,35 @@ export function WorldPanel({ collection, geo, onOpen }: Props) {
     let alive = true;
     const loadCards = () => void collection.list().then((list) => alive && setCards(list));
     const loadGeo = () => void geo.load().then((state) => alive && setGeoState(state));
+    const loadScan = () => void scanner.state().then((state) => alive && setScan(state));
+    // Rechargement groupé : au plus un par seconde, le dernier événement gagne.
+    const grouped = (load: () => void) => {
+      let timer: number | undefined;
+      return {
+        call: () => {
+          window.clearTimeout(timer);
+          timer = window.setTimeout(load, 1000);
+        },
+        cancel: () => window.clearTimeout(timer),
+      };
+    };
+    const cardsReload = grouped(loadCards);
+    const geoReload = grouped(loadGeo);
     loadCards();
     loadGeo();
-    const offCollection = collection.subscribe(loadCards);
-    const offGeo = geo.subscribe(loadGeo);
+    loadScan();
+    const offCollection = collection.subscribe(cardsReload.call);
+    const offGeo = geo.subscribe(geoReload.call);
+    const offScan = scanner.subscribe(loadScan);
     return () => {
       alive = false;
+      cardsReload.cancel();
+      geoReload.cancel();
       offCollection();
       offGeo();
+      offScan();
     };
-  }, [collection, geo]);
+  }, [collection, geo, scanner]);
 
   useEffect(() => {
     if (cards.length > 0) void geo.resolveMissing(cards.map((card) => card.slug));
@@ -102,6 +124,21 @@ export function WorldPanel({ collection, geo, onOpen }: Props) {
     <div style={{ ...box, display: 'flex', gap: 12, padding: 12, margin: '12px 0' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div ref={containerRef} style={{ height: '70vh', minHeight: 420, borderRadius: 8 }} />
+        <p style={{ margin: '8px 0 0', fontSize: 12 }}>
+          {scan.status === 'running' && `Scan de la Collection en cours… page ${scan.nextPage + 1}, ${scan.entries} cartes lues.`}
+          {scan.status === 'done' && `Collection scannée (${scan.entries} cartes lues). `}
+          {scan.status === 'error' && `Scan interrompu : ${scan.error ?? 'erreur inconnue'}. `}
+          {scan.status === 'idle' && 'Scan de la Collection pas encore lancé. '}
+          {scan.status !== 'running' && (
+            <button
+              type="button"
+              onClick={() => void scanner.run({ force: scan.status === 'done' })}
+              style={linkButton}
+            >
+              {scan.status === 'done' ? 'Re-scanner' : scan.status === 'error' ? 'Reprendre' : 'Lancer le scan'}
+            </button>
+          )}
+        </p>
         <p style={{ margin: '8px 0 0', opacity: 0.7, fontSize: 12 }}>
           {cards.length === 0
             ? 'Aucune carte connue : parcourez la Collection pour que l’extension les découvre.'

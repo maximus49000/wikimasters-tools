@@ -3,6 +3,7 @@ import { createChromeLocalStore } from '../core/cache/store';
 import { createTtlCache } from '../core/cache/ttl-cache';
 import { createDataSource } from '../core/data-source';
 import { createCollectionRepo } from '../core/collection/collection-repo';
+import { createCollectionScanner } from '../core/collection/collection-scan';
 import { fetchWikiCoords } from '../core/geo/wiki-coords';
 import { createGeoRepo } from '../core/geo/geo-repo';
 import { createCollectionUi } from '../content/collection-ui';
@@ -25,6 +26,7 @@ export default defineContentScript({
     const store = createChromeLocalStore();
     const api = createGameApi({
       fetch: (input, init) => fetch(input, { credentials: 'same-origin', ...init }),
+      minIntervalMs: 1500,
     });
     const dataSource = createDataSource({ api, cache: createTtlCache(store) });
     const marketRepo = createMarketRepo(store);
@@ -52,9 +54,11 @@ export default defineContentScript({
 
     const marketUi = createMarketUi(marketRepo);
     // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
+    const collectionRepo = createCollectionRepo(store);
     const collectionUi = createCollectionUi({
-      collection: createCollectionRepo(store),
+      collection: collectionRepo,
       geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
+      scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
       openCard: (slug) => void marketUi.reopenCard(slug),
     });
 

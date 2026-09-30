@@ -1,6 +1,7 @@
 import leafletCss from 'leaflet/dist/leaflet.css?inline';
 import { createRoot, type Root } from 'react-dom/client';
 import type { CollectionRepo } from '../core/collection/collection-repo';
+import type { CollectionScanner } from '../core/collection/collection-scan';
 import type { GeoRepo } from '../core/geo/geo-repo';
 import {
   findCardGrid,
@@ -20,13 +21,15 @@ const PANEL_ATTRIBUTE = 'data-wmt-world-panel';
 export type CollectionUiDeps = {
   collection: CollectionRepo;
   geo: GeoRepo;
+  scanner: CollectionScanner;
   openCard: (slug: string) => void;
 };
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement };
 
-export function createCollectionUi({ collection, geo, openCard }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, scanner, openCard }: CollectionUiDeps) {
   let panel: Panel | null = null;
+  let scanStarted = false;
 
   function unmountPanel(): void {
     if (!panel) return;
@@ -47,7 +50,7 @@ export function createCollectionUi({ collection, geo, openCard }: CollectionUiDe
     grid.insertAdjacentElement('beforebegin', host);
 
     const root = createRoot(mountPoint);
-    root.render(<WorldPanel collection={collection} geo={geo} onOpen={openCard} />);
+    root.render(<WorldPanel collection={collection} geo={geo} scanner={scanner} onOpen={openCard} />);
     panel = { host, root, grid };
   }
 
@@ -61,6 +64,12 @@ export function createCollectionUi({ collection, geo, openCard }: CollectionUiDe
     if (!window.location.pathname.startsWith('/collection')) {
       showList();
       return;
+    }
+    // Premier chargement : le scan tourne en arrière plan (une fois par chargement de page ;
+    // il ne refait rien s'il est déjà terminé, et reprend où il s'était arrêté sinon).
+    if (!scanStarted) {
+      scanStarted = true;
+      scanner.run().catch((error) => console.warn(LOG, 'scan de la Collection interrompu :', error));
     }
     const button = findSelectButton(document);
     if (!button) {

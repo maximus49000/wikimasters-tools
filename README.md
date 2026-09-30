@@ -42,3 +42,11 @@ Node.js 22.12 ou plus est requis.
 
 Chargement dans Chrome : `chrome://extensions` → mode développeur → « Charger l'extension non
 empaquetée » → dossier `.output/chrome-mv3`.
+
+## Scan de la Collection
+
+Au premier chargement de la Collection, l'extension lit toutes les pages de votre Collection en arrière
+plan (une requête toutes les 1,5 s, avec votre session), pour alimenter la vue Monde. Les règles du jeu
+interdisent l'automatisation : ce scan est un choix de l'utilisateur, à ses risques. Bouton « Re-scanner »
+dans la vue Monde ; aucune donnée n'est envoyée ailleurs (seuls les titres d'articles partent vers
+Wikipédia).
