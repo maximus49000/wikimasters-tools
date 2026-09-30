@@ -14,8 +14,9 @@ import { createWorldMap, type MapPoint, type WorldMap } from './world-map';
 
 // Styles des marqueurs et du mode « placement » (le CSS de Leaflet est ajouté à part).
 export const PANEL_CSS = `
-.wmt-pin{background:#34d399;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
-.wmt-pin-manual{background:#f59e0b}
+.wmt-pin-wrap{background:none;border:0}
+.wmt-pin{box-sizing:border-box;width:14px;height:14px;background:var(--wmt-pin,#34d399);border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+.wmt-pin-manual{border-color:#f59e0b}
 .wmt-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9)}
 .wmt-dark{background:#1b1b1b}
 .wmt-card-tip{padding:0;border:0;background:none;box-shadow:none}
@@ -218,7 +219,7 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
           {visible && `Filtre actif : ${visible.size} cartes. `}
           {cards.length === 0
             ? 'Aucune carte connue : parcourez la Collection pour que l’extension les découvre.'
-            : `${cards.length} cartes connues · ${placed.length} placées. Glissez un point pour le corriger, clic droit sur un point orange pour retirer votre placement.`}
+            : `${cards.length} cartes connues · ${placed.length} placées. Glissez un point pour le corriger, clic droit sur un point à bordure orange pour retirer votre placement.`}
         </p>
       </div>
       <aside style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>

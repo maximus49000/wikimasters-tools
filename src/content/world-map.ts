@@ -1,6 +1,7 @@
 import * as L from 'leaflet';
 import type { CardPreview } from '../core/collection/card-preview';
 import { buildCardPreview } from './card-preview-dom';
+import { rarityKey } from './card-rarity';
 
 export type MapPoint = {
   slug: string;
@@ -27,6 +28,16 @@ export type WorldMap = {
 };
 
 const PLACING_CLASS = 'wmt-placing';
+
+// Point à la couleur de rareté du site (variable CSS héritée de la page) ; bordure orange si placé à la main.
+function pinIcon(point: MapPoint): L.DivIcon {
+  const dot = document.createElement('div');
+  dot.className = point.manual ? 'wmt-pin wmt-pin-manual' : 'wmt-pin';
+  if (point.preview.rarity) {
+    dot.style.setProperty('--wmt-pin', `var(--color-rarity-${rarityKey(point.preview.rarity)}, #34d399)`);
+  }
+  return L.divIcon({ className: 'wmt-pin-wrap', html: dot, iconSize: [14, 14] });
+}
 
 export function createWorldMap(
   container: HTMLElement,
@@ -59,10 +70,7 @@ export function createWorldMap(
       markers.clearLayers();
       for (const point of points) {
         const marker = L.marker([point.lat, point.lon], {
-          icon: L.divIcon({
-            className: point.manual ? 'wmt-pin wmt-pin-manual' : 'wmt-pin',
-            iconSize: [14, 14],
-          }),
+          icon: pinIcon(point),
           draggable: true,
         });
         // Au survol : la carte elle-même. Le pointeur peut se poser dessus sans la voir se déplacer.
