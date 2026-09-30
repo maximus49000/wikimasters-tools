@@ -1,0 +1,58 @@
+{
+  "auctions": [
+    {
+      "id": "a0000000-0000-4000-8000-000000000001",
+      "seller_id": "s0000000-0000-4000-8000-000000000001",
+      "card_id": "c0000000-0000-4000-8000-0000000000aa",
+      "base_amount": 10,
+      "current_bid": 48,
+      "current_bidder_id": "b0000000-0000-4000-8000-000000000001",
+      "end_at": "2026-09-30T09:52:51.254616+00:00",
+      "status": "active",
+      "snapshot_rarity": "SR",
+      "effective_bid": 48,
+      "is_shiny": false,
+      "seller": { "id": "s0000000-0000-4000-8000-000000000001", "username": "vendeur-fictif" },
+      "current_bidder": { "id": "b0000000-0000-4000-8000-000000000001", "username": "encherisseur-fictif" },
+      "card": {
+        "id": "c0000000-0000-4000-8000-0000000000aa",
+        "rarity": "SR",
+        "wikipedia_url": "https://fr.wikipedia.org/wiki/Th%C3%A9or%C3%A8me_de_Ptol%C3%A9m%C3%A9e",
+        "wikipedia_title": "Théorème de Ptolémée",
+        "is_shiny": false
+      },
+      "owned": false
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000002",
+      "seller_id": "s0000000-0000-4000-8000-000000000002",
+      "card_id": "c0000000-0000-4000-8000-0000000000bb",
+      "base_amount": 20,
+      "current_bid": null,
+      "current_bidder_id": null,
+      "end_at": "2026-09-30T09:52:52.038057+00:00",
+      "status": "active",
+      "snapshot_rarity": "R",
+      "effective_bid": 20,
+      "is_shiny": false,
+      "card": {
+        "id": "c0000000-0000-4000-8000-0000000000bb",
+        "rarity": "R",
+        "wikipedia_url": "https://fr.wikipedia.org/wiki/Ted_Lasso",
+        "wikipedia_title": "Ted Lasso",
+        "is_shiny": false
+      },
+      "owned": false
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000003",
+      "card_id": "c0000000-0000-4000-8000-0000000000cc",
+      "status": "active",
+      "note": "entrée volontairement invalide : pas de champ card ni effective_bid"
+    }
+  ],
+  "page": 1,
+  "limit": 50,
+  "hasMore": true,
+  "selling": [{ "id": "ne-doit-pas-etre-lu" }]
+}
