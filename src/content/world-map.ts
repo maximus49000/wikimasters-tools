@@ -68,9 +68,21 @@ export function createWorldMap(
         // Au survol : la carte elle-même. Le pointeur peut se poser dessus sans la voir se déplacer.
         marker.bindTooltip(buildCardPreview(point.preview), {
           className: 'wmt-card-tip',
-          direction: 'right',
+          direction: 'auto',
           offset: [12, 0],
           opacity: 1,
+        });
+        // La carte est haute : près du bord de la map, on la décale verticalement pour qu'elle reste entière.
+        marker.on('tooltipopen', () => {
+          const el = marker.getTooltip()?.getElement();
+          if (!el) return;
+          el.style.marginTop = '0px';
+          const bounds = container.getBoundingClientRect();
+          const rect = el.getBoundingClientRect();
+          const shift = rect.bottom > bounds.bottom ? bounds.bottom - rect.bottom : 0;
+          // Si la map est plus basse que la carte, on privilégie le haut de la carte.
+          const top = rect.top + shift < bounds.top ? bounds.top - rect.top : shift;
+          el.style.marginTop = `${top}px`;
         });
         marker.on('click', () => handlers.onOpen(point.slug));
         marker.on('dragend', () => {
