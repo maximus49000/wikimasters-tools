@@ -24,6 +24,8 @@ export type ScannerDeps = {
   store: KeyValueStore;
   now?: () => number;
   maxPages?: number;
+  // Programme une reprise différée (setTimeout par défaut) ; injectable pour les tests.
+  schedule?: (fn: () => void, ms: number) => void;
 };
 
 export function createCollectionScanner({
@@ -32,9 +34,11 @@ export function createCollectionScanner({
   store,
   now = () => Date.now(),
   maxPages = 200,
+  schedule = (fn, ms) => void setTimeout(fn, ms),
 }: ScannerDeps) {
   const listeners = new Set<() => void>();
   let active = false;
+  let retryScheduled = false;
 
   async function state(): Promise<ScanState> {
     return (await store.get<ScanState>(KEY)) ?? IDLE_SCAN;
@@ -55,7 +59,19 @@ export function createCollectionScanner({
     try {
       const saved = await state();
       if (!force && saved.status === 'done') return;
-      if (saved.status === 'running' && now() - saved.updatedAt < LOCK_MS) return;
+      if (saved.status === 'running' && now() - saved.updatedAt < LOCK_MS) {
+        // Un autre chargement de page scanne (ou vient de l'être, p. ex. rechargement en cours de
+        // scan) : on revient voir une fois le verrou expiré, une seule fois à la fois.
+        if (!retryScheduled) {
+          retryScheduled = true;
+          const remaining = LOCK_MS - (now() - saved.updatedAt);
+          schedule(() => {
+            retryScheduled = false;
+            void run();
+          }, remaining + 1000);
+        }
+        return;
+      }
       if (!force) {
         page = saved.nextPage;
         entries = saved.entries;

@@ -121,4 +121,49 @@ describe('createCollectionScanner', () => {
     await scanner.run({ force: true });
     expect(listener).not.toHaveBeenCalled();
   });
+
+  describe('verrou d’un autre chargement de page', () => {
+    function lockedSetup(updatedAt: number) {
+      const scheduled: { fn: () => void; ms: number }[] = [];
+      const store = createMemoryStore();
+      const collection = createCollectionRepo(store);
+      let clock = 1_000_000;
+      const getCollectionPage = vi.fn(async (index: number) => (index === 4 ? page('Z') : EMPTY));
+      const scanner = createCollectionScanner({
+        api: { getCollectionPage },
+        collection,
+        store,
+        now: () => clock,
+        schedule: (fn, ms) => void scheduled.push({ fn, ms }),
+      });
+      const saved: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt };
+      return { store, scanner, scheduled, getCollectionPage, saved, setClock: (t: number) => void (clock = t) };
+    }
+
+    it('programme une seule reprise à la fin du verrou', async () => {
+      const t = lockedSetup(1_000_000 - 10_000);
+      await t.store.set('collectionScan', t.saved);
+      await t.scanner.run();
+      expect(t.getCollectionPage).not.toHaveBeenCalled();
+      expect(t.scheduled.map((s) => s.ms)).toEqual([50_000 + 1000]);
+    });
+
+    it('ne programme pas de seconde reprise si run est rappelé pendant l’attente', async () => {
+      const t = lockedSetup(1_000_000 - 10_000);
+      await t.store.set('collectionScan', t.saved);
+      await t.scanner.run();
+      await t.scanner.run();
+      expect(t.scheduled).toHaveLength(1);
+    });
+
+    it('la reprise programmée repart de la page suivante une fois le verrou périmé', async () => {
+      const t = lockedSetup(1_000_000 - 10_000);
+      await t.store.set('collectionScan', t.saved);
+      await t.scanner.run();
+      t.setClock(1_000_000 + 51_000);
+      t.scheduled[0]?.fn();
+      await vi.waitFor(async () => expect(await t.scanner.state()).toMatchObject({ status: 'done' }));
+      expect(t.getCollectionPage.mock.calls[0]?.[0]).toBe(4);
+    });
+  });
 });
