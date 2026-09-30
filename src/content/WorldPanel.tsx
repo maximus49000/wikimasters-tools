@@ -33,6 +33,7 @@ export const PANEL_CSS = `
 .wmt-card-body{position:absolute;top:45%;left:0;right:0;bottom:0;z-index:20;display:flex;flex-direction:column;min-height:0;padding:12px}
 .wmt-card-title{margin:0;font:700 16px/1.25 var(--font-heading,system-ui,sans-serif);color:#000;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex-shrink:0}
 .wmt-card-extract{margin:0;flex:1;min-height:0;overflow:hidden;font-size:10px;line-height:1.375;color:rgba(38,38,38,.88);display:-webkit-box;-webkit-line-clamp:10;-webkit-box-orient:vertical}
+.wmt-card-extract-short{font-size:11px;line-height:1.375;color:rgba(23,23,23,.9);-webkit-line-clamp:3}
 .wmt-card-stats{margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid rgba(0,0,0,.2);font-size:14px;line-height:20px}
 .wmt-card-stat{display:flex;align-items:center;gap:4px}.wmt-card-stat b{color:rgba(0,0,0,.9)}
 .wmt-card-ico{width:1em;height:1em;flex-shrink:0}.wmt-card-atk{color:#991b1b}.wmt-card-def{color:#1e40af}

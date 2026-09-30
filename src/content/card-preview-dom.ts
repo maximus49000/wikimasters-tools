@@ -24,6 +24,7 @@ function icon(className: string, paths: string[], fill = 'none'): SVGElement {
 const SWORDS = ['M14.5 17.5 3 6V3h3l11.5 11.5', 'M13 19l6-6', 'M16 16l4 4', 'M19 21l2-2', 'M14.5 6.5 18 3h3v3l-3.5 3.5', 'M5 14l4 4', 'M7 17l-3 3', 'M3 19l2 2'];
 const SHIELD = ['M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'];
 const STAR = ['M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'];
+const SHORT_EXTRACT_MAX = 100;
 const div = (className: string, text?: string): HTMLElement =>
   Object.assign(document.createElement('div'), { className, ...(text !== undefined ? { textContent: text } : {}) });
 
@@ -76,7 +77,11 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
 
   const body = div('wmt-card-body');
   body.append(Object.assign(document.createElement('h3'), { className: 'wmt-card-title', textContent: preview.title }));
-  if (preview.extract) body.append(Object.assign(document.createElement('p'), { className: 'wmt-card-extract', textContent: preview.extract }));
+  if (preview.extract) {
+    // Une simple description d'une ligne (« navire de guerre ») est composée en plus gros que les extraits.
+    const short = !preview.extract.includes('\n') && preview.extract.length <= SHORT_EXTRACT_MAX;
+    body.append(Object.assign(document.createElement('p'), { className: short ? 'wmt-card-extract wmt-card-extract-short' : 'wmt-card-extract', textContent: preview.extract }));
+  }
   if (preview.attack !== null || preview.defense !== null) {
     const stats = div('wmt-card-stats');
     const atk = document.createElement('span');
