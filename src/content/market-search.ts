@@ -37,7 +37,7 @@ export function fillInput(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-async function waitFor<T>(probe: () => T | null | false, timeoutMs: number): Promise<T | null> {
+export async function waitFor<T>(probe: () => T | null | false, timeoutMs: number): Promise<T | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const found = probe();

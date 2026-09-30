@@ -5,7 +5,13 @@ import { HOST_ATTRIBUTE, PURCHASE_HOST_ATTRIBUTE } from './decorate';
 import { MarketLink } from './MarketLink';
 import { MARKET_HOST_ATTRIBUTE, type MountMarketLink } from './market-link';
 import { MarketPopup } from './MarketPopup';
+import { reopenCard } from './collection-reopen';
 import { createSearchStarter, type SearchStarter } from './market-search-flow';
+import {
+  clearReturnTarget,
+  getReturnTarget,
+  setPendingReopen,
+} from './return-target';
 import { PriceBadge } from './PriceBadge';
 import { PurchaseBadge } from './PurchaseBadge';
 
@@ -37,11 +43,33 @@ export function mountPurchaseBadge(frame: HTMLElement, model: PurchaseModel): vo
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
 
+const TOAST_HOST_ATTRIBUTE = 'data-wmt-toast';
+const TOAST_MS = 6_000;
+
+// Message discret et éphémère, hors du DOM du jeu (shadow DOM), sans dépendance à React.
+function showToast(text: string): void {
+  document.querySelector(`[${TOAST_HOST_ATTRIBUTE}]`)?.remove();
+  const host = document.createElement('div');
+  host.setAttribute(TOAST_HOST_ATTRIBUTE, '');
+  host.style.cssText = 'position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:2147483000';
+  const shadow = host.attachShadow({ mode: 'open' });
+  const box = document.createElement('div');
+  box.textContent = text;
+  box.style.cssText =
+    'padding:8px 14px; border-radius:8px; background:#0d1117; color:#e6edf3; ' +
+    'border:1px solid rgba(148,163,184,0.35); font:500 13px/18px system-ui,sans-serif';
+  shadow.appendChild(box);
+  document.body.appendChild(host);
+  window.setTimeout(() => host.remove(), TOAST_MS);
+}
+
 function openMarketPopup(
   repo: MarketRepo,
   search: SearchStarter,
   slug: string,
   autoStart: boolean,
+  goBack: (slug: string) => void,
+  canReturn: boolean,
 ): void {
   if (document.querySelector(`[${POPUP_HOST_ATTRIBUTE}]`)) return;
 
@@ -71,7 +99,15 @@ function openMarketPopup(
   }
   document.addEventListener('keydown', onKey, true);
   root.render(
-    <MarketPopup slug={slug} repo={repo} search={search} autoStart={autoStart} onClose={close} />,
+    <MarketPopup
+      slug={slug}
+      repo={repo}
+      search={search}
+      autoStart={autoStart}
+      canReturn={canReturn}
+      onReturn={() => goBack(slug)}
+      onClose={close}
+    />,
   );
 }
 
@@ -79,10 +115,25 @@ export function createMarketUi(repo: MarketRepo) {
   const search = createSearchStarter({
     root: document,
     pathname: () => window.location.pathname,
+    fullPath: () => window.location.pathname + window.location.search,
     navigate: (url) => window.location.assign(url),
     storage: window.sessionStorage,
     now: () => Date.now(),
   });
+
+  const openPopup = (slug: string, autoStart: boolean) => {
+    const target = getReturnTarget(window.sessionStorage, Date.now());
+    openMarketPopup(repo, search, slug, autoStart, goBack, target?.slug === slug);
+  };
+
+  // Retour à la page d'origine ; la fiche sera rouverte au chargement de cette page.
+  function goBack(slug: string): void {
+    const target = getReturnTarget(window.sessionStorage, Date.now());
+    if (!target || target.slug !== slug) return;
+    clearReturnTarget(window.sessionStorage);
+    setPendingReopen(window.sessionStorage, slug, Date.now());
+    window.location.assign(target.path);
+  }
 
   const mountLink: MountMarketLink = (anchor, slug) => {
     const host = document.createElement('div');
@@ -95,13 +146,19 @@ export function createMarketUi(repo: MarketRepo) {
 
     anchor.insertAdjacentElement('afterend', host);
     createRoot(mountPoint).render(
-      <MarketLink onOpen={() => openMarketPopup(repo, search, slug, false)} />,
+      <MarketLink onOpen={() => openPopup(slug, false)} />,
     );
   };
 
   return {
     mountLink,
     // Reprise après la navigation vers la page Marché : le popup lance lui-même la recherche.
-    resumeSearch: (slug: string) => openMarketPopup(repo, search, slug, true),
+    resumeSearch: (slug: string) => openPopup(slug, true),
+    // Chargement de la page d'origine : on rouvre la fiche, ou on dit pourquoi on n'y arrive pas.
+    reopenCard: async (slug: string) => {
+      if ((await reopenCard(document, slug)) === 'not-found') {
+        showToast('Carte introuvable dans la Collection.');
+      }
+    },
   };
 }

@@ -22,6 +22,10 @@ recherche du site et clique sur son bouton « Rechercher » (une saisie et un cl
 C'est le site qui envoie sa propre requête ; l'extension se contente de l'observer. Le site affiche 50
 résultats à la fois, l'extension ne charge jamais les pages suivantes.
 
+Quand la recherche vous a envoyé sur le Marché depuis une fiche, le popup propose « ← Retour à la carte » :
+l'extension retourne à la page d'origine, saisit le titre dans la recherche de la Collection et clique sur
+la carte pour rouvrir sa fiche (vos filtres et votre tri précédents ne sont pas conservés).
+
 ## Ce qu'elle ne fait pas
 
 - Aucune enchère, mise, vente ni ouverture de pack, aucune action automatique (les règles du jeu

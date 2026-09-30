@@ -34,6 +34,18 @@ const panel: CSSProperties = {
 
 const muted: CSSProperties = { color: '#9aa7b4', fontSize: 12 };
 
+const returnButton: CSSProperties = {
+  display: 'inline-flex',
+  margin: '0 0 8px',
+  padding: 0,
+  border: 0,
+  background: 'none',
+  cursor: 'pointer',
+  font: '500 13px/18px system-ui, sans-serif',
+  fontFamily: 'inherit',
+  color: 'var(--color-accent, #34d399)',
+};
+
 const searchButton: CSSProperties = {
   marginTop: 12,
   padding: '6px 12px',
@@ -114,12 +126,16 @@ export function MarketPopup({
   repo,
   search,
   autoStart,
+  canReturn,
+  onReturn,
   onClose,
 }: {
   slug: string;
   repo: MarketRepo;
   search: (slug: string) => Promise<StartSearchOutcome>;
   autoStart: boolean;
+  canReturn: boolean;
+  onReturn: () => void;
   onClose: () => void;
 }) {
   const [cards, setCards] = useState<CardMarket[] | null>(null);
@@ -178,6 +194,11 @@ export function MarketPopup({
   return (
     <div style={overlay} onClick={onClose}>
       <div style={panel} role="dialog" aria-label={`Marché : ${title}`} onClick={(e) => e.stopPropagation()}>
+        {canReturn && (
+          <button type="button" onClick={onReturn} style={returnButton}>
+            ← Retour à la carte
+          </button>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
           <strong style={{ fontSize: 16 }}>Marché · {title}</strong>
           <button

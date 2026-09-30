@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSearchStarter } from '../../src/content/market-search-flow';
 import { takePendingSearch, type PendingStorage } from '../../src/content/pending-search';
+import { getReturnTarget } from '../../src/content/return-target';
 
 const CONTROLS =
   '<input placeholder="Rechercher une carte…" type="search" value="">' +
@@ -22,6 +23,7 @@ function setup(pathname: string) {
   const start = createSearchStarter({
     root: document,
     pathname: () => pathname,
+    fullPath: () => pathname + '?tri=rarete',
     navigate,
     storage,
     now: () => 1_000,
@@ -52,6 +54,22 @@ describe('createSearchStarter', () => {
     expect(await start('Ted_Lasso')).toBe('navigating');
     expect(navigate).toHaveBeenCalledWith('/marketplace');
     expect(takePendingSearch(storage, 1_000)).toBe('Ted_Lasso');
+  });
+
+  it('mémorise la page d’origine pour pouvoir y revenir', async () => {
+    const { start, storage } = setup('/collection');
+    await start('Ted_Lasso');
+    expect(getReturnTarget(storage, 1_000)).toEqual({
+      slug: 'Ted_Lasso',
+      path: '/collection?tri=rarete',
+    });
+  });
+
+  it('ne mémorise aucun retour quand la recherche se lance sur place', async () => {
+    document.body.innerHTML = `<div>${CONTROLS}</div>`;
+    const { start, storage } = setup('/collection');
+    await start('Ted_Lasso');
+    expect(getReturnTarget(storage, 1_000)).toBeNull();
   });
 
   it('attend les contrôles sans naviguer quand on est déjà sur la page Marché', async () => {

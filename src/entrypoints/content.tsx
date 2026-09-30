@@ -10,6 +10,7 @@ import { decorateMarketLinks } from '../content/market-link';
 import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
 import { createMarketUi, mountBadge, mountPurchaseBadge } from '../content/mount';
 import { takePendingSearch } from '../content/pending-search';
+import { takePendingReopen } from '../content/return-target';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
@@ -81,6 +82,10 @@ export default defineContentScript({
     if (window.location.pathname.startsWith('/marketplace')) {
       const pending = takePendingSearch(window.sessionStorage, Date.now());
       if (pending) marketUi.resumeSearch(pending);
+    } else {
+      // Retour depuis le marché : la fiche de la carte se rouvre ici.
+      const reopen = takePendingReopen(window.sessionStorage, Date.now());
+      if (reopen) void marketUi.reopenCard(reopen);
     }
   },
 });
