@@ -22,9 +22,9 @@ Ajouter à la page Collection un interrupteur ON/OFF, à côté du bouton « Sé
 - Si le bouton « Sélectionner » est introuvable, rien n'est injecté (aucun effet sur la page).
 
 ### Carte (`src/content/WorldMap.tsx`)
-- Leaflet, chargé en import dynamique uniquement en vue Monde. Tuiles CARTO (clair/sombre selon `prefers-color-scheme` ou la classe du site). Hôtes des tuiles ajoutés aux `host_permissions`/CSP de `wxt.config.ts`.
-- Un marqueur par carte positionnée ; survol = titre ; clic = ouverture de la fiche via `return-target` + `collection-reopen` (même mécanisme que le retour à la carte du popup marché, sens inverse : on mémorise la vue Monde pour y revenir).
-- Liste latérale « À placer » : cartes connues sans position. Clic sur une carte de la liste, puis clic sur la carte du monde = position manuelle. Menu contextuel d'un marqueur : « Déplacer », « Revenir à la position Wikipédia ».
+- Leaflet (import statique : WXT regroupe le script de contenu en un seul fichier). Tuiles CARTO (clair/sombre selon `prefers-color-scheme` ou la classe du site). Hôtes des tuiles ajoutés aux `host_permissions`/CSP de `wxt.config.ts`.
+- Un marqueur par carte positionnée ; survol = titre ; clic = ouverture de la fiche via `collection-reopen` (`marketUi.reopenCard`). La page ne change pas : la vue Monde reste affichée, aucun mécanisme de retour n'est nécessaire.
+- Liste latérale « À placer » : cartes connues sans position. Clic sur une carte de la liste, puis clic sur la carte du monde = position manuelle. Déplacer un point = le glisser (il devient un placement manuel, en orange) ; clic droit sur un point orange = retirer le placement manuel (retour à la position Wikipédia, ou « À placer »).
 
 ### Positions (`src/core/geo/`)
 - `wiki-coords.ts` : appel `https://<lang>.wikipedia.org/w/api.php?action=query&prop=coordinates&titles=…&format=json&origin=*`, schéma zod, retourne `{lat, lon} | null`. Un seul appel par carte, résultat (y compris « aucune ») mis en cache.
@@ -32,7 +32,7 @@ Ajouter à la page Collection un interrupteur ON/OFF, à côté du bouton « Sé
 - Les appels Wikipédia ne portent que le titre de l'article (aucune donnée du jeu ni du compte) et sont espacés en file d'attente (un à la fois).
 
 ### Cartes connues
-- Source : observation passive des cartes affichées sur la Collection (titre, image, slug Wikipédia, id), stockées dans `wmt:collection`. Au démarrage, la carte affiche ce qui est déjà connu ; elle se complète au fil de la navigation du joueur.
+- Source : observation passive des cartes affichées sur la Collection (titre et slug), stockées dans `wmt:collection`. Au démarrage, la carte affiche ce qui est déjà connu ; elle se complète au fil de la navigation du joueur.
 - Un message « N cartes connues — parcourez la Collection pour en ajouter » indique les limites de la vue.
 
 ## Cas limites
