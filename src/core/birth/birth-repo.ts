@@ -1,12 +1,13 @@
 import type { KeyValueStore } from '../cache/store';
-import { BATCH_SIZE } from './wikidata-birth';
+import { BATCH_SIZE, type CardDates } from './wikidata-birth';
 import { EMPTY_BIRTH, needsBirthLookup, setBirths, type BirthState } from './birth-book';
 
-const KEY = 'birth';
+// Nouvelle clé : l'ancien format (années de naissance seules) n'est plus relu.
+const KEY = 'dates';
 // Après un échec (429, hors ligne), on laisse Wikidata respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
 
-export type BirthFetcher = (slugs: string[]) => Promise<Record<string, number | null>>;
+export type BirthFetcher = (slugs: string[]) => Promise<Record<string, CardDates>>;
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -56,10 +57,10 @@ export function createBirthRepo(
         if (!first) await sleep(gapMs);
         first = false;
         try {
-          const years = await fetchBirth(batch);
-          await update((latest) => setBirths(latest, years));
+          const dates = await fetchBirth(batch);
+          await update((latest) => setBirths(latest, dates));
         } catch (error) {
-          console.warn('[wikimasters-tools]', 'dates de naissance Wikidata indisponibles :', error);
+          console.warn('[wikimasters-tools]', 'dates Wikidata indisponibles :', error);
           failedAt = now();
           pending.clear();
           return;

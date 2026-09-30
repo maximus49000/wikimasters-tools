@@ -1,12 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KnownCard } from '../core/collection/collection-book';
 import { toCardPreview } from '../core/collection/card-preview';
 import { filterLocally } from '../core/collection/local-filter';
 import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/collection/collection-scan';
 import type { CollectionRepo } from '../core/collection/collection-repo';
-import { EMPTY_BIRTH, partitionByBirth, type BirthState } from '../core/birth/birth-book';
+import { EMPTY_BIRTH, partitionByDates, type BirthState, type TimelineMode } from '../core/birth/birth-book';
 import type { BirthRepo } from '../core/birth/birth-repo';
-import { CHIP_WIDTH, formatYear, layoutTimeline } from '../core/birth/timeline-layout';
+import {
+  MAX_PX_PER_YEAR,
+  PADDING,
+  ZOOM_STEP,
+  clampScale,
+  fitScale,
+  formatYear,
+  layoutTimeline,
+  tickStep,
+} from '../core/birth/timeline-layout';
 import type { PriceBook } from '../core/pricing/price-book';
 import type { CollectionFilterSource } from './collection-filter';
 import { buildCardPreview } from './card-preview-dom';
@@ -24,8 +33,39 @@ type Props = {
 
 const LANE_HEIGHT = 30;
 const AXIS_HEIGHT = 34;
-const TIP_WIDTH = 288;
-const TIP_HEIGHT = 420;
+const MODES: { value: TimelineMode; label: string }[] = [
+  { value: 'person', label: 'Personne' },
+  { value: 'event', label: 'Évènement' },
+];
+const MODE_KEY = 'wmt:timelineMode';
+
+// Toute erreur de stockage est absorbée : on reste en mode Personne.
+function readMode(): TimelineMode {
+  try {
+    return window.localStorage.getItem(MODE_KEY) === 'event' ? 'event' : 'person';
+  } catch {
+    return 'person';
+  }
+}
+
+function writeMode(mode: TimelineMode): void {
+  try {
+    window.localStorage.setItem(MODE_KEY, mode);
+  } catch {
+    // stockage indisponible
+  }
+}
+
+const zoomButton = {
+  width: 28,
+  height: 28,
+  cursor: 'pointer',
+  font: '600 16px/1 system-ui, sans-serif',
+  color: 'inherit',
+  background: 'none',
+  border: '1px solid var(--color-border, rgba(148,163,184,0.5))',
+  borderRadius: 6,
+} as const;
 
 const box = {
   border: '1px solid var(--color-border, rgba(148,163,184,0.35))',
@@ -42,8 +82,18 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
   const [filter, setFilter] = useState(() => filterSource.current());
   const [allowed, setAllowed] = useState<{ filter: string; slugs: Set<string> } | null>(null);
   const [filterError, setFilterError] = useState(false);
-  const [tip, setTip] = useState<{ slug: string; x: number; y: number } | null>(null);
+  const [tip, setTip] = useState<{ slug: string; chip: { left: number; right: number; top: number } } | null>(null);
   const tipRef = useRef<HTMLDivElement>(null);
+  // Zoom en pixels par année ; null = toute la frise visible.
+  const [mode, setModeState] = useState<TimelineMode>(readMode);
+  const setMode = (next: TimelineMode) => {
+    setModeState(next);
+    writeMode(next);
+  };
+  const [zoom, setZoom] = useState<number | null>(null);
+  const [viewportWidth, setViewportWidth] = useState(1000);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const anchor = useRef<{ year: number; anchorX: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -105,35 +155,131 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
   }, [cards, birth]);
 
   const { dated, undated } = useMemo(() => {
-    const all = partitionByBirth(cards, birthState);
+    const all = partitionByDates(cards, birthState, mode);
     return visible
       ? {
           dated: all.dated.filter(({ card }) => visible.has(card.slug)),
           undated: all.undated.filter((card) => visible.has(card.slug)),
         }
       : all;
-  }, [cards, birthState, visible]);
-  const timeline = useMemo(() => layoutTimeline(dated), [dated]);
+  }, [cards, birthState, mode, visible]);
+  const fit = fitScale(dated, viewportWidth);
+  const scale = clampScale(zoom ?? fit, dated, viewportWidth);
+  const timeline = useMemo(() => layoutTimeline(dated, scale), [dated, scale]);
   const tipCard = tip ? cards.find((card) => card.slug === tip.slug) : undefined;
 
-  // La carte du survol est construite comme sur la vue Monde, puis gardée entière dans l'écran.
+  // Largeur visible de la frise : elle borne le dézoom (toute la frise tient à l'écran).
   useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const measure = () => setViewportWidth(scroller.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, []);
+
+  // Le zoom garde sous le curseur (ou au centre) l'année qui s'y trouvait.
+  const zoomBy = (factor: number, clientX?: number) => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const anchorX = clientX === undefined ? scroller.clientWidth / 2 : clientX - scroller.getBoundingClientRect().left;
+    const year = timeline.first + (scroller.scrollLeft + anchorX - PADDING) / scale;
+    const next = clampScale(scale * factor, dated, viewportWidth);
+    if (next === scale) return;
+    anchor.current = { year, anchorX };
+    setZoom(next);
+  };
+  const latestZoom = useRef(zoomBy);
+  latestZoom.current = zoomBy;
+
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    const pending = anchor.current;
+    anchor.current = null;
+    if (scroller && pending) scroller.scrollLeft = PADDING + (pending.year - timeline.first) * timeline.scale - pending.anchorX;
+  }, [timeline.first, timeline.scale]);
+
+  // Ctrl + molette : zoom (la molette seule fait défiler la page). Écouteur natif : il doit pouvoir annuler le défilement.
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      latestZoom.current(event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, event.clientX);
+    };
+    scroller.addEventListener('wheel', onWheel, { passive: false });
+    return () => scroller.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // La carte du survol est construite comme sur la vue Monde, avant d'être mesurée et placée (effet suivant).
+  useLayoutEffect(() => {
     const el = tipRef.current;
     if (!el) return;
     el.replaceChildren();
     if (tipCard) el.append(buildCardPreview(toCardPreview(tipCard, book?.byTitle(tipCard.title) ?? null)));
   }, [tipCard, book]);
 
+  // La carte se pose contre sa case : à droite, sinon à gauche, alignée sur la case et gardée entière à l'écran.
+  // La position est mesurée depuis l'origine réelle de l'élément : un ancêtre transformé du site ne la décale pas.
+  useLayoutEffect(() => {
+    const el = tipRef.current;
+    if (!el || !tip) return;
+    el.style.left = '0px';
+    el.style.top = '0px';
+    const origin = el.getBoundingClientRect();
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
+    const { chip } = tip;
+    const gap = 8;
+    const right = chip.right + gap;
+    const left = right + width <= window.innerWidth - gap ? right : Math.max(gap, chip.left - gap - width);
+    const top = Math.max(gap, Math.min(chip.top, window.innerHeight - height - gap));
+    el.style.left = `${left - origin.left}px`;
+    el.style.top = `${top - origin.top}px`;
+  }, [tip, tipCard]);
+
   const showTip = (slug: string, target: HTMLElement) => {
-    const rect = target.getBoundingClientRect();
-    const left = rect.right + TIP_WIDTH + 12 > window.innerWidth ? rect.left - TIP_WIDTH - 12 : rect.right + 12;
-    const top = Math.max(8, Math.min(rect.top, window.innerHeight - TIP_HEIGHT - 8));
-    setTip({ slug, x: Math.max(8, left), y: top });
+    const { left, right, top } = target.getBoundingClientRect();
+    setTip({ slug, chip: { left, right, top } });
   };
 
   return (
     <div style={{ ...box, padding: 12, margin: '12px 0' }}>
-      <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
+      <div role="group" aria-label="Type de frise" style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        {MODES.map(({ value, label }) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={mode === value}
+            onClick={() => setMode(value)}
+            style={{
+              ...zoomButton,
+              width: 'auto',
+              padding: '0 12px',
+              font: '13px/1 system-ui, sans-serif',
+              borderColor: mode === value ? 'var(--color-accent, #34d399)' : undefined,
+              color: mode === value ? 'var(--color-accent, #34d399)' : 'inherit',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <button type="button" aria-label="Dézoomer" title="Dézoomer (Ctrl + molette)" onClick={() => zoomBy(1 / ZOOM_STEP)} disabled={scale <= fit} style={{ ...zoomButton, opacity: scale <= fit ? 0.4 : 1 }}>
+          −
+        </button>
+        <button type="button" aria-label="Zoomer" title="Zoomer (Ctrl + molette)" onClick={() => zoomBy(ZOOM_STEP)} disabled={scale >= MAX_PX_PER_YEAR} style={{ ...zoomButton, opacity: scale >= MAX_PX_PER_YEAR ? 0.4 : 1 }}>
+          +
+        </button>
+        <button type="button" onClick={() => setZoom(null)} style={{ ...zoomButton, width: 'auto', padding: '0 10px', font: '12px/1 system-ui, sans-serif' }}>
+          Tout voir
+        </button>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>Repères tous les {tickStep(scale)} an{tickStep(scale) > 1 ? 's' : ''}</span>
+      </div>
+      <div ref={scrollRef} style={{ overflowX: 'auto', paddingBottom: 8 }}>
         <div
           style={{
             position: 'relative',
@@ -169,26 +315,26 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
               <div style={{ width: 1, height: 8, margin: '2px auto 0', background: 'currentColor', opacity: 0.6 }} />
             </div>
           ))}
-          {timeline.items.map(({ card, year, x, lane }) => (
+          {timeline.items.map(({ card, year, end, x, lane, width, span }) => (
             <button
               key={card.slug}
               type="button"
               onClick={() => onOpen(card.slug)}
               onMouseEnter={(event) => showTip(card.slug, event.currentTarget)}
               onMouseLeave={() => setTip(null)}
-              title={`${card.title} · ${formatYear(year)}`}
+              title={`${card.title} · ${formatYear(year)}${end === undefined ? '' : ` – ${formatYear(end)}`}`}
               style={{
                 position: 'absolute',
                 left: x,
                 top: AXIS_HEIGHT + lane * LANE_HEIGHT,
-                width: CHIP_WIDTH,
+                width,
                 height: LANE_HEIGHT - 4,
                 padding: '0 8px 0 10px',
                 textAlign: 'left',
                 cursor: 'pointer',
                 font: '12px/1 system-ui, sans-serif',
                 color: 'inherit',
-                background: 'rgba(52,211,153,0.12)',
+                background: span ? 'rgba(52,211,153,0.28)' : 'rgba(52,211,153,0.12)',
                 border: 0,
                 borderLeft: `3px solid ${card.rarity ? `var(--color-rarity-${card.rarity.toLowerCase()}, #34d399)` : '#34d399'}`,
                 borderRadius: 4,
@@ -208,11 +354,11 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
         {visible && `Filtre actif : ${visible.size} cartes. `}
         {cards.length === 0
           ? 'Aucune carte connue : parcourez la Collection pour que l’extension les découvre.'
-          : `${cards.length} cartes connues · ${dated.length} datées (date de naissance d’après Wikidata).`}
+          : `${cards.length} cartes connues · ${dated.length} datées (${mode === 'person' ? 'date de naissance' : 'début de l’évènement, fin quand elle est connue'}, d’après Wikidata).`}
       </p>
       {undated.length > 0 && (
         <details style={{ marginTop: 8, fontSize: 12 }}>
-          <summary style={{ cursor: 'pointer' }}>Sans date de naissance ({undated.length})</summary>
+          <summary style={{ cursor: 'pointer' }}>{mode === 'person' ? 'Sans date de naissance' : 'Sans date d’évènement'} ({undated.length})</summary>
           <ul style={{ margin: '4px 0 0', padding: 0, listStyle: 'none', columns: 3 }}>
             {undated.map((card) => (
               <li key={card.slug}>{card.title}</li>
@@ -224,8 +370,6 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
         ref={tipRef}
         style={{
           position: 'fixed',
-          left: tip?.x ?? 0,
-          top: tip?.y ?? 0,
           zIndex: 2147483647,
           pointerEvents: 'none',
           display: tip ? 'block' : 'none',

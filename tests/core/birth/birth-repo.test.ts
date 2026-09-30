@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../../src/core/cache/store';
 import { createBirthRepo } from '../../../src/core/birth/birth-repo';
+import type { CardDates } from '../../../src/core/birth/wikidata-birth';
 
 const noSleep = async () => undefined;
-const years = (slugs: string[]) => Object.fromEntries(slugs.map((slug) => [slug, slug === 'Chaplin' ? 1889 : null]));
+const none: CardDates = { birth: null, start: null, end: null };
+const years = (slugs: string[]) => Object.fromEntries(slugs.map((slug) => [slug, slug === 'Chaplin' ? { ...none, birth: 1889 } : none]));
 
 describe('createBirthRepo', () => {
   it('interroge chaque article une fois, y compris sans date, par lots', async () => {
@@ -14,7 +16,7 @@ describe('createBirthRepo', () => {
     await repo.resolveMissing(['Chaplin', 'Paris']);
 
     expect(fetchBirth).toHaveBeenCalledTimes(1);
-    expect((await repo.load()).years).toEqual({ Chaplin: 1889, Paris: null });
+    expect((await repo.load()).dates).toEqual({ Chaplin: { ...none, birth: 1889 }, Paris: none });
   });
 
   it('découpe en lots de 50 articles', async () => {
@@ -27,7 +29,7 @@ describe('createBirthRepo', () => {
   it("s'arrête à la première erreur, puis attend avant de réessayer", async () => {
     let time = 0;
     const fetchBirth = vi
-      .fn<(slugs: string[]) => Promise<Record<string, number | null>>>()
+      .fn<(slugs: string[]) => Promise<Record<string, CardDates>>>()
       .mockRejectedValueOnce(new Error('hors ligne'))
       .mockImplementation(async (slugs) => years(slugs));
     const repo = createBirthRepo(createMemoryStore(), fetchBirth, noSleep, 0, () => time);
@@ -35,11 +37,11 @@ describe('createBirthRepo', () => {
     await repo.resolveMissing(['A', 'B']);
     await repo.resolveMissing(['A', 'B']);
     expect(fetchBirth).toHaveBeenCalledTimes(1);
-    expect((await repo.load()).years).toEqual({});
+    expect((await repo.load()).dates).toEqual({});
 
     time = 61_000;
     await repo.resolveMissing(['A', 'B']);
-    expect(Object.keys((await repo.load()).years).sort()).toEqual(['A', 'B']);
+    expect(Object.keys((await repo.load()).dates).sort()).toEqual(['A', 'B']);
   });
 
   it('prévient les abonnés à chaque écriture', async () => {

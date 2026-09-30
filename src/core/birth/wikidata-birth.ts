@@ -4,18 +4,24 @@ import { slugToTitle } from '../market/market-book';
 // Limite des API MediaWiki / Wikidata pour un utilisateur anonyme.
 export const BATCH_SIZE = 50;
 
+// Années décimales (1889.25 ≈ avril 1889) ; null : l'information n'existe pas sur Wikidata.
+// `start`/`end` servent aux évènements (début/fin), `birth` aux personnes.
+export type CardDates = { birth: number | null; start: number | null; end: number | null };
+
+const NO_DATES: CardDates = { birth: null, start: null, end: null };
+
 const claimSchema = z.object({
   rank: z.string().optional(),
   mainsnak: z.object({
     datavalue: z.object({ value: z.object({ time: z.string(), precision: z.number() }) }).optional(),
   }),
 });
+type Claim = z.infer<typeof claimSchema>;
+
+const claimsSchema = z.record(z.string(), z.array(claimSchema));
 
 const entitiesSchema = z.object({
-  entities: z.record(
-    z.string(),
-    z.object({ claims: z.object({ P569: z.array(claimSchema).optional() }).optional() }),
-  ),
+  entities: z.record(z.string(), z.object({ claims: claimsSchema.optional() })),
 });
 
 const pagesSchema = z.object({
@@ -25,6 +31,11 @@ const pagesSchema = z.object({
     pages: z.array(z.object({ title: z.string(), pageprops: z.object({ wikibase_item: z.string().optional() }).optional() })),
   }),
 });
+
+// Propriétés Wikidata, par ordre de préférence : naissance ; début (début, date, création) ; fin (fin, dissolution).
+const BIRTH = ['P569'];
+const START = ['P580', 'P585', 'P571'];
+const END = ['P582', 'P576'];
 
 // « +1889-04-20T00:00:00Z » → année décimale (1889.3) ; « -0384-… » → -384 (le mois n'est lu qu'au jour ou au mois près).
 function toYear(time: string, precision: number): number | null {
@@ -36,26 +47,30 @@ function toYear(time: string, precision: number): number | null {
   return year + (month > 0 ? (month - 1) / 12 : 0);
 }
 
-// Un format inattendu lève : il ne doit pas être enregistré comme « pas de date de naissance ».
-export function parseBirthYears(json: unknown): Record<string, number | null> {
-  const parsed = entitiesSchema.safeParse(json);
-  if (!parsed.success) throw new Error('Réponse Wikidata inattendue');
-  const years: Record<string, number | null> = {};
-  for (const [id, entity] of Object.entries(parsed.data.entities)) {
-    const claims = (entity.claims?.P569 ?? []).filter((claim) => claim.rank !== 'deprecated');
-    // Rang « préféré » d'abord, sinon la première date connue (au moins à l'année près).
-    const ordered = [...claims.filter((c) => c.rank === 'preferred'), ...claims.filter((c) => c.rank !== 'preferred')];
-    years[id] = null;
+// Première propriété qui donne une date, au moins à l'année près : rang « préféré » d'abord, rangs dépréciés ignorés.
+function pickYear(claims: Record<string, Claim[]>, properties: string[]): number | null {
+  for (const property of properties) {
+    const usable = (claims[property] ?? []).filter((claim) => claim.rank !== 'deprecated');
+    const ordered = [...usable.filter((c) => c.rank === 'preferred'), ...usable.filter((c) => c.rank !== 'preferred')];
     for (const claim of ordered) {
       const value = claim.mainsnak.datavalue?.value;
       const year = value && value.precision >= 9 ? toYear(value.time, value.precision) : null;
-      if (year !== null) {
-        years[id] = year;
-        break;
-      }
+      if (year !== null) return year;
     }
   }
-  return years;
+  return null;
+}
+
+// Un format inattendu lève : il ne doit pas être enregistré comme « pas de date ».
+export function parseCardDates(json: unknown): Record<string, CardDates> {
+  const parsed = entitiesSchema.safeParse(json);
+  if (!parsed.success) throw new Error('Réponse Wikidata inattendue');
+  const dates: Record<string, CardDates> = {};
+  for (const [id, entity] of Object.entries(parsed.data.entities)) {
+    const claims = entity.claims ?? {};
+    dates[id] = { birth: pickYear(claims, BIRTH), start: pickYear(claims, START), end: pickYear(claims, END) };
+  }
+  return dates;
 }
 
 // Titre demandé → identifiant Wikidata (null : article inexistant ou sans élément), en suivant normalisations et redirections.
@@ -78,9 +93,9 @@ async function getJson(fetchFn: FetchLike, base: string, params: Record<string, 
   return response.json();
 }
 
-// Un lot d'articles en deux requêtes (élément Wikidata, puis dates de naissance).
+// Un lot d'articles en deux requêtes (élément Wikidata, puis dates).
 // Seuls les titres sont envoyés : aucune donnée du jeu ni du compte.
-export async function fetchWikidataBirths(fetchFn: FetchLike, slugs: string[]): Promise<Record<string, number | null>> {
+export async function fetchWikidataDates(fetchFn: FetchLike, slugs: string[]): Promise<Record<string, CardDates>> {
   const titles = slugs.map(slugToTitle);
   const pagesJson = await getJson(
     fetchFn,
@@ -90,16 +105,16 @@ export async function fetchWikidataBirths(fetchFn: FetchLike, slugs: string[]): 
   );
   const items = parseWikibaseItems(pagesJson, titles);
   const ids = [...new Set(Object.values(items).filter((id): id is string => id !== null))];
-  let years: Record<string, number | null> = {};
+  let dates: Record<string, CardDates> = {};
   if (ids.length > 0) {
-    years = parseBirthYears(
+    dates = parseCardDates(
       await getJson(fetchFn, 'https://www.wikidata.org/w/api.php', { action: 'wbgetentities', props: 'claims', ids: ids.join('|') }, 'Wikidata'),
     );
   }
-  const result: Record<string, number | null> = {};
+  const result: Record<string, CardDates> = {};
   slugs.forEach((slug, index) => {
     const id = items[titles[index] ?? ''];
-    result[slug] = id ? (years[id] ?? null) : null;
+    result[slug] = (id ? dates[id] : undefined) ?? NO_DATES;
   });
   return result;
 }
