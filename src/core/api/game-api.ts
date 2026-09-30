@@ -64,9 +64,9 @@ export function createGameApi(options: GameApiOptions) {
   return {
     getMine: (): Promise<MineResponse> =>
       enqueue(async () => parseMineResponse(await requestJson(MINE_ENDPOINT))),
-    getCollectionPage: (page: number, filter?: string): Promise<CollectionPage> =>
+    getCollectionPage: (page: number, filter?: string, sort?: 'rarity' | 'added'): Promise<CollectionPage> =>
       enqueue(async () => {
-        const path = collectionEndpoint(page, filter);
+        const path = collectionEndpoint(page, filter, sort);
         return parseCollectionPage(await requestJson(path), path);
       }),
   };

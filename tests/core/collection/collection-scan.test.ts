@@ -8,6 +8,13 @@ import { createCollectionScanner, type ScanState } from '../../../src/core/colle
 const card = (name: string) => ({ slug: name, title: name });
 const page = (...names: string[]): CollectionPage => ({ cards: names.map(card), entries: names.length, skipped: 0 });
 const EMPTY = page();
+// Page dont chaque carte porte une date d'obtention (plus grand = plus récent).
+const dated = (...items: [string, number][]): CollectionPage => ({
+  cards: items.map(([name]) => card(name)),
+  obtained: items.map(([slug, at]) => ({ slug, at })),
+  entries: items.length,
+  skipped: 0,
+});
 
 function setup(pages: (CollectionPage | Error)[], options: { maxPages?: number } = {}) {
   const store = createMemoryStore();
@@ -38,21 +45,118 @@ describe('createCollectionScanner', () => {
     expect(await scanner.state()).toMatchObject({ status: 'done', entries: 3, nextPage: 2 });
   });
 
-  it('ne refait rien une fois terminé, sauf avec force (repart de la page 0)', async () => {
-    const { scanner, getCollectionPage } = setup([page('A')]);
+  it('après un parcours terminé, force repart de la page 0 et lit tout', async () => {
+    const { scanner, getCollectionPage } = setup([dated(['A', 1])]);
     await scanner.run();
     getCollectionPage.mockClear();
-
-    await scanner.run();
-    expect(getCollectionPage).not.toHaveBeenCalled();
 
     await scanner.run({ force: true });
     expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
   });
 
+  it("demande le tri par date d'ajout", async () => {
+    const { scanner, getCollectionPage } = setup([page('A')]);
+    await scanner.run();
+    expect(getCollectionPage).toHaveBeenCalledWith(0, undefined, 'added');
+  });
+
+  describe('mise à jour incrémentale', () => {
+    it('retient la date de la carte la plus récente à la fin du parcours complet', async () => {
+      const { scanner } = setup([dated(['A', 30], ['B', 20]), dated(['C', 10])]);
+      await scanner.run();
+      expect(await scanner.state()).toMatchObject({ status: 'done', lastObtainedAt: 30 });
+      expect(await scanner.state()).not.toHaveProperty('pendingObtainedAt');
+    });
+
+    it("ne lit que la première page quand rien n'est arrivé depuis le dernier import", async () => {
+      const { scanner, collection, getCollectionPage } = setup([dated(['A', 30], ['B', 20]), dated(['C', 10])]);
+      await scanner.run();
+      getCollectionPage.mockClear();
+
+      await scanner.run();
+
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0]);
+      expect((await collection.list()).map((c) => c.slug).sort()).toEqual(['A', 'B', 'C']);
+      expect(await scanner.state()).toMatchObject({ status: 'done', lastObtainedAt: 30 });
+    });
+
+    it("n'importe que les cartes plus récentes que le dernier import et s'arrête à la première ancienne", async () => {
+      const { scanner, collection, getCollectionPage } = setup([dated(['A', 30], ['B', 20]), dated(['C', 10])]);
+      await scanner.run();
+      getCollectionPage.mockClear();
+      const observe = vi.spyOn(collection, 'observe');
+      getCollectionPage.mockImplementation(async (index: number) =>
+        index === 0 ? dated(['N2', 50], ['N1', 40], ['A', 30], ['B', 20]) : EMPTY,
+      );
+
+      await scanner.run();
+
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0]);
+      expect(observe).toHaveBeenCalledTimes(1);
+      expect(observe.mock.calls[0]?.[0].map((c) => c.slug)).toEqual(['N2', 'N1']);
+      expect(await scanner.state()).toMatchObject({ status: 'done', lastObtainedAt: 50, entries: 5 });
+    });
+
+    it('passe à la page suivante tant que toutes les cartes sont plus récentes', async () => {
+      const { scanner, getCollectionPage } = setup([dated(['A', 10])]);
+      await scanner.run();
+      getCollectionPage.mockClear();
+      getCollectionPage.mockImplementation(async (index: number) =>
+        index === 0 ? dated(['N3', 40], ['N2', 30]) : index === 1 ? dated(['N1', 20], ['A', 10]) : EMPTY,
+      );
+
+      await scanner.run();
+
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
+    });
+
+    it('refuse un ordre non décroissant (tri ignoré par le site) au lieu de rater des cartes', async () => {
+      const { scanner, collection, getCollectionPage } = setup([dated(['A', 10])]);
+      await scanner.run();
+      getCollectionPage.mockClear();
+      getCollectionPage.mockImplementation(async () => dated(['X', 5], ['Y', 50]));
+
+      await scanner.run();
+
+      expect(await scanner.state()).toMatchObject({ status: 'error', lastObtainedAt: 10 });
+      expect((await collection.list()).map((c) => c.slug)).toEqual(['A']);
+
+      // Après l'erreur, on retente en incrémental (pas de reprise d'un parcours complet).
+      getCollectionPage.mockClear();
+      getCollectionPage.mockImplementation(async () => dated(['N', 20], ['A', 10]));
+      await scanner.run();
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0]);
+      expect(await scanner.state()).toMatchObject({ status: 'done', lastObtainedAt: 20 });
+    });
+
+    it('lit tout quand les entrées n’ont pas de date (repli sur le parcours complet)', async () => {
+      const { scanner, getCollectionPage } = setup([dated(['A', 10])]);
+      await scanner.run();
+      getCollectionPage.mockClear();
+      getCollectionPage.mockImplementation(async (index: number) => (index < 2 ? page(`P${index}`) : EMPTY));
+
+      await scanner.run();
+
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1, 2]);
+    });
+
+    it('un parcours complet interrompu reprend à sa page sans perdre la date la plus récente', async () => {
+      const { scanner, getCollectionPage } = setup([dated(['A', 30]), new Error('panne')]);
+      await scanner.run();
+      expect(await scanner.state()).toMatchObject({ status: 'error', nextPage: 1, pendingObtainedAt: 30 });
+
+      getCollectionPage.mockClear();
+      getCollectionPage.mockImplementation(async (index: number) => (index === 1 ? dated(['B', 10]) : EMPTY));
+      await scanner.run();
+
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([1, 2]);
+      expect(await scanner.state()).toMatchObject({ status: 'done', lastObtainedAt: 30 });
+    });
+  });
+
   it('refait un parcours terminé avec une ancienne version du scan', async () => {
     const { scanner, store, getCollectionPage } = setup([page('A')]);
-    await store.set('collectionScan', { status: 'done', nextPage: 5, entries: 250, updatedAt: 1 });
+    await store.set('collectionScan', { status: 'done', nextPage: 5, entries: 250, updatedAt: 1, version: 2, lastObtainedAt: 5 });
 
     await scanner.run();
 
@@ -77,8 +181,8 @@ describe('createCollectionScanner', () => {
   });
 
   it('laisse un scan récent d’un autre onglet tranquille, mais reprend un scan périmé', async () => {
-    const fresh: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 10_000 };
-    const stale: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 120_000 };
+    const fresh: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 10_000, version: 3, pass: 'full' };
+    const stale: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 120_000, version: 3, pass: 'full' };
 
     const a = setup([]);
     await a.store.set('collectionScan', fresh);
@@ -145,7 +249,7 @@ describe('createCollectionScanner', () => {
         now: () => clock,
         schedule: (fn, ms) => void scheduled.push({ fn, ms }),
       });
-      const saved: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt };
+      const saved: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt, version: 3, pass: 'full' };
       return { store, scanner, scheduled, getCollectionPage, saved, setClock: (t: number) => void (clock = t) };
     }
 

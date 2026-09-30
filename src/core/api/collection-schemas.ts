@@ -4,12 +4,15 @@ import { titleToSlug } from '../market/market-book';
 import { ApiFormatError } from './errors';
 
 // `filter` : les filtres de la page (« rarity=UR&tag_id=… »), pour lire la même sélection que le site.
-export const collectionEndpoint = (page: number, filter = ''): string =>
-  `/api/my-collection?sort=rarity${filter ? `&${filter}` : ''}&page=${page}&stats=0`;
+// `sort` : « rarity » (défaut) ou « added » (date d'obtention, la plus récente d'abord).
+export const collectionEndpoint = (page: number, filter = '', sort: 'rarity' | 'added' = 'rarity'): string =>
+  `/api/my-collection?sort=${sort}${filter ? `&${filter}` : ''}&page=${page}&stats=0`;
 
 // On ne déclare que la carte (titre, rareté, image) : ni identifiant de joueur, ni étiquettes, ni pseudo
 // n'est conservé. Rareté et image sont facultatives : une valeur inattendue ne fait pas écarter la carte.
 const entrySchema = z.object({
+  // Date d'obtention (ISO) : facultative, une date illisible ne fait pas écarter la carte.
+  obtained_at: z.string().min(1).nullish().catch(undefined),
   card: z.object({
     wikipedia_title: z.string().min(1),
     rarity: z.string().min(1).nullish().catch(undefined),
@@ -23,6 +26,8 @@ const entrySchema = z.object({
 
 export type CollectionPage = {
   cards: KnownCard[];
+  // Une ligne par entrée valide, dans l'ordre reçu : sert au scan incrémental (tri par date d'ajout).
+  obtained?: { slug: string; at?: number }[];
   // Entrées brutes reçues (0 = fin de la collection : l'API ne donne ni total ni `hasMore`).
   entries: number;
   skipped: number;
@@ -35,6 +40,7 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
   if (!Array.isArray(raw)) throw new ApiFormatError(endpoint, 'tableau « collection » absent');
 
   const cards = new Map<string, KnownCard>();
+  const obtained: { slug: string; at?: number }[] = [];
   let skipped = 0;
   for (const item of raw) {
     const parsed = entrySchema.safeParse(item);
@@ -46,6 +52,8 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
     // Sans extrait, le jeu affiche la description courte de la carte (`category`).
     const extract = parsed.data.card.extract ?? category;
     const slug = titleToSlug(title);
+    const at = parsed.data.obtained_at ? Date.parse(parsed.data.obtained_at) : Number.NaN;
+    obtained.push(Number.isNaN(at) ? { slug } : { slug, at });
     if (!cards.has(slug)) {
       cards.set(slug, {
         slug,
@@ -58,5 +66,5 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
       });
     }
   }
-  return { cards: [...cards.values()], entries: raw.length, skipped };
+  return { cards: [...cards.values()], obtained, entries: raw.length, skipped };
 }

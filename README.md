@@ -47,6 +47,9 @@ empaquetée » → dossier `.output/chrome-mv3`.
 
 Au premier chargement de la Collection, l'extension lit toutes les pages de votre Collection en arrière
 plan (une requête toutes les 1,5 s, avec votre session), pour alimenter la vue Monde. Les règles du jeu
-interdisent l'automatisation : ce scan est un choix de l'utilisateur, à ses risques. Bouton « Re-scanner »
-dans la vue Monde ; aucune donnée n'est envoyée ailleurs (seuls les titres d'articles partent vers
+interdisent l'automatisation : ce scan est un choix de l'utilisateur, à ses risques. Une fois la première
+lecture terminée, les chargements suivants ne lisent que les cartes obtenues depuis le dernier import
+(tri par date d'ajout, arrêt à la première carte plus ancienne : souvent une seule requête) ; les cartes
+perdues ne sont pas détectées, le bouton « Re-scanner » de la vue Monde relit tout. Aucune donnée
+n'est envoyée ailleurs ; aucune donnée n'est envoyée ailleurs (seuls les titres d'articles partent vers
 Wikipédia).
