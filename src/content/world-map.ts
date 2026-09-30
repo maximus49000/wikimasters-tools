@@ -13,6 +13,8 @@ export type MapPoint = {
 
 export type WorldMapHandlers = {
   onOpen: (slug: string) => void;
+  // Tactile, mode déplacement actif : un appui sélectionne le point (ouvrir / retirer) au lieu d'ouvrir la carte.
+  onSelect: (slug: string) => void;
   // Un marqueur a été glissé : nouvelle position manuelle.
   onMove: (slug: string, lat: number, lon: number) => void;
   // Clic droit sur un marqueur placé à la main : on retire le placement manuel.
@@ -24,10 +26,17 @@ export type WorldMapHandlers = {
 export type WorldMap = {
   setPoints(points: MapPoint[]): void;
   setPlacing(on: boolean): void;
+  // Tactile : les points ne sont déplaçables qu'en mode déplacement, pour ne pas les glisser en faisant défiler la carte.
+  setMoveMode(on: boolean): void;
   destroy(): void;
 };
 
 const PLACING_CLASS = 'wmt-placing';
+
+// Écran tactile (doigt) : pas de survol ni de clic droit.
+export function isCoarsePointer(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+}
 
 // Point à la couleur de rareté du site (variable CSS héritée de la page) ; bordure orange si placé à la main.
 function pinIcon(point: MapPoint): L.DivIcon {
@@ -55,6 +64,8 @@ export function createWorldMap(
 
   const markers = L.layerGroup().addTo(map);
   let placing = false;
+  const coarse = isCoarsePointer();
+  let moveMode = !coarse;
 
   map.on('click', (event: L.LeafletMouseEvent) => {
     if (!placing) return;
@@ -65,21 +76,31 @@ export function createWorldMap(
   // Le conteneur vient d'être inséré : Leaflet doit relire sa taille une fois la mise en page faite.
   const frame = requestAnimationFrame(() => map.invalidateSize());
 
+  const applyMoveMode = () => {
+    markers.eachLayer((layer) => {
+      const marker = layer as L.Marker;
+      if (moveMode) marker.dragging?.enable();
+      else marker.dragging?.disable();
+    });
+  };
+
   return {
     setPoints(points) {
       markers.clearLayers();
       for (const point of points) {
         const marker = L.marker([point.lat, point.lon], {
           icon: pinIcon(point),
-          draggable: true,
+          draggable: moveMode,
         });
         // Au survol : la carte elle-même. Le pointeur peut se poser dessus sans la voir se déplacer.
-        marker.bindTooltip(buildCardPreview(point.preview), {
-          className: 'wmt-card-tip',
-          direction: 'auto',
-          offset: [12, 0],
-          opacity: 1,
-        });
+        if (!coarse) {
+          marker.bindTooltip(buildCardPreview(point.preview), {
+            className: 'wmt-card-tip',
+            direction: 'auto',
+            offset: [12, 0],
+            opacity: 1,
+          });
+        }
         // La carte est haute : près du bord de la map, on la décale verticalement pour qu'elle reste entière.
         marker.on('tooltipopen', () => {
           const el = marker.getTooltip()?.getElement();
@@ -92,7 +113,7 @@ export function createWorldMap(
           const top = rect.top + shift < bounds.top ? bounds.top - rect.top : shift;
           el.style.marginTop = `${top}px`;
         });
-        marker.on('click', () => handlers.onOpen(point.slug));
+        marker.on('click', () => (coarse && moveMode ? handlers.onSelect(point.slug) : handlers.onOpen(point.slug)));
         marker.on('dragend', () => {
           const { lat, lng } = marker.getLatLng().wrap();
           handlers.onMove(point.slug, lat, lng);
@@ -104,6 +125,10 @@ export function createWorldMap(
     setPlacing(on) {
       placing = on;
       container.classList.toggle(PLACING_CLASS, on);
+    },
+    setMoveMode(on) {
+      moveMode = on;
+      applyMoveMode();
     },
     destroy() {
       cancelAnimationFrame(frame);

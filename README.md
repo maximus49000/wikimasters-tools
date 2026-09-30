@@ -1,6 +1,6 @@
 # Wikimasters Tools (non officiel)
 
-Extension Chrome **non officielle et en lecture seule** pour [WikiMasters](https://www.wiki-masters.com).
+Extension Chrome, Firefox et Firefox Android **non officielle et en lecture seule** pour [WikiMasters](https://www.wiki-masters.com).
 Elle n'est liée ni au jeu, ni à Wikipédia.
 
 ## Ce que fait la V1
@@ -39,6 +39,8 @@ Node.js 22.12 ou plus est requis.
     npm install
     npm test
     npm run build     # produit .output/chrome-mv3
+
+Installation sur Chrome, Firefox et Firefox Android (paquets, signature, usage tactile) : voir [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 Chargement dans Chrome : `chrome://extensions` → mode développeur → « Charger l'extension non
 empaquetée » → dossier `.output/chrome-mv3`.

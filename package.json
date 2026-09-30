@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Extension Chrome non officielle et en lecture seule pour wiki-masters.com",
+  "description": "Extension non officielle et en lecture seule pour wiki-masters.com (Chrome, Firefox, Firefox Android)",
   "engines": {
     "node": ">=22.12"
   },
@@ -12,7 +12,12 @@
     "build": "wxt build",
     "postinstall": "wxt prepare",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:firefox": "wxt build -b firefox --mv3",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox --mv3",
+    "dev:firefox": "wxt -b firefox --mv3",
+    "package": "npm run zip && npm run zip:firefox"
   },
   "dependencies": {
     "leaflet": "^1.9.4",
