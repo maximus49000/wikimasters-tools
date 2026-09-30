@@ -44,8 +44,9 @@ export function createGameApi(options: GameApiOptions) {
       if (response.status === 401 || response.status === 403) {
         throw new NotAuthenticatedError(path, response.status);
       }
-      if (response.status === 429) {
-        if (attempt >= maxRetries) throw new ApiHttpError(429, path);
+      // 429 et erreurs serveur (5xx, souvent passagères) : on réessaie avec un délai croissant.
+      if (response.status === 429 || response.status >= 500) {
+        if (attempt >= maxRetries) throw new ApiHttpError(response.status, path);
         const retryAfter = Number(response.headers.get('Retry-After'));
         await sleep(retryAfter > 0 ? retryAfter * 1000 : baseBackoffMs * 2 ** attempt);
         continue;
