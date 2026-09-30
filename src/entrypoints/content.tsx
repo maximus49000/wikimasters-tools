@@ -5,7 +5,7 @@ import { createDataSource } from '../core/data-source';
 import { createCollectionRepo } from '../core/collection/collection-repo';
 import { createCollectionScanner } from '../core/collection/collection-scan';
 import { fetchWikiCoords } from '../core/geo/wiki-coords';
-import { fetchWikidataBirths } from '../core/birth/wikidata-birth';
+import { fetchWikidataDates } from '../core/birth/wikidata-birth';
 import { createBirthRepo } from '../core/birth/birth-repo';
 import { createGeoRepo } from '../core/geo/geo-repo';
 import { createCollectionFilterSource } from '../content/collection-filter';
@@ -68,7 +68,7 @@ export default defineContentScript({
     const collectionUi = createCollectionUi({
       collection: collectionRepo,
       geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
-      birth: createBirthRepo(store, (slugs) => fetchWikidataBirths((url) => fetch(url), slugs)),
+      birth: createBirthRepo(store, (slugs) => fetchWikidataDates((url) => fetch(url), slugs)),
       scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
       book,
       filterSource,
