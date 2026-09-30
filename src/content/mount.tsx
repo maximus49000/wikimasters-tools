@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
-import type { BadgeModel, PurchaseModel } from '../core/pricing/badge';
+import type { PurchaseModel } from '../core/pricing/badge';
 import type { MarketRepo } from '../core/market/market-repo';
-import { HOST_ATTRIBUTE, PURCHASE_HOST_ATTRIBUTE } from './decorate';
+import { PURCHASE_HOST_ATTRIBUTE } from './decorate';
 import { MarketLink } from './MarketLink';
 import { MARKET_HOST_ATTRIBUTE, type MountMarketLink } from './market-link';
 import { MarketPopup } from './MarketPopup';
@@ -12,21 +12,7 @@ import {
   getReturnTarget,
   setPendingReopen,
 } from './return-target';
-import { PriceBadge } from './PriceBadge';
 import { PurchaseBadge } from './PurchaseBadge';
-
-export function mountBadge(container: HTMLElement, model: BadgeModel): void {
-  const host = document.createElement('div');
-  host.setAttribute(HOST_ATTRIBUTE, '');
-  host.style.display = 'block';
-
-  const shadow = host.attachShadow({ mode: 'open' });
-  const mountPoint = document.createElement('div');
-  shadow.appendChild(mountPoint);
-
-  container.appendChild(host);
-  createRoot(mountPoint).render(<PriceBadge model={model} />);
-}
 
 export function mountPurchaseBadge(frame: HTMLElement, model: PurchaseModel): void {
   const host = document.createElement('div');

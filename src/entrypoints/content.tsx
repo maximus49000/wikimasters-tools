@@ -8,7 +8,7 @@ import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
 import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
-import { createMarketUi, mountBadge, mountPurchaseBadge } from '../content/mount';
+import { createMarketUi, mountPurchaseBadge } from '../content/mount';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
 
@@ -60,7 +60,7 @@ export default defineContentScript({
       try {
         const links = decorateMarketLinks(document, marketUi.mountLink);
         if (book) {
-          const mounted = decorate(document, book, mountBadge, mountPurchaseBadge);
+          const mounted = decorate(document, book, mountPurchaseBadge);
           const titles = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(
             (heading) => heading.textContent?.trim() ?? '',
           );
