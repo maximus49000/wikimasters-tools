@@ -2,8 +2,8 @@ import type { KeyValueStore } from '../cache/store';
 import { BATCH_SIZE, type CardDates } from './wikidata-birth';
 import { EMPTY_BIRTH, needsBirthLookup, setBirths, type BirthState } from './birth-book';
 
-// Nouvelle clé : l'ancien format (années de naissance seules) n'est plus relu.
-const KEY = 'dates';
+// Nouvelle clé : les anciens formats (sans mort ni construction) ne sont plus relus.
+const KEY = 'dates-v2';
 // Après un échec (429, hors ligne), on laisse Wikidata respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
 

@@ -18,17 +18,21 @@ export function setBirths(state: BirthState, dates: Record<string, CardDates>): 
   return { dates: { ...state.dates, ...dates } };
 }
 
-// `end` : fin de l'évènement, quand elle est connue (jamais pour une personne).
+// `end` : mort, ou fin de l'évènement / de la construction, quand elle est connue.
 export type DatedCard = { card: KnownCard; year: number; end?: number };
 
 const byTitle = (a: KnownCard, b: KnownCard) => a.title.localeCompare(b.title, 'fr');
 
-// Personne : date de naissance. Évènement : date de début, et de fin si elle existe.
-// `dated` est trié du plus ancien au plus récent.
+// Au-delà, une personne sans date de mort est plutôt inconnue de Wikidata que vivante : sa barre s'arrête à la naissance.
+export const MAX_LIVING_AGE = 110;
+
+// Personne : de la naissance à la mort ; sans date de mort, jusqu'à l'année en cours si elle peut encore être en vie.
+// Évènement : du début à la fin si elle est connue. `dated` est trié du plus ancien au plus récent.
 export function partitionByDates(
   cards: KnownCard[],
   state: BirthState,
   mode: TimelineMode,
+  nowYear: number = new Date().getFullYear(),
 ): { dated: DatedCard[]; undated: KnownCard[] } {
   const dated: DatedCard[] = [];
   const undated: KnownCard[] = [];
@@ -39,7 +43,8 @@ export function partitionByDates(
       undated.push(card);
       continue;
     }
-    const end = mode === 'event' ? dates?.end : null;
+    const alive = dates?.death == null && nowYear - year <= MAX_LIVING_AGE;
+    const end = mode === 'event' ? dates?.end : (dates?.death ?? (alive ? nowYear : null));
     dated.push(typeof end === 'number' && end >= year ? { card, year, end } : { card, year });
   }
   dated.sort((a, b) => a.year - b.year);
