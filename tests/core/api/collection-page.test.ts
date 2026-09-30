@@ -19,9 +19,9 @@ describe('parseCollectionPage', () => {
     expect(page.entries).toBe(3);
     expect(page.skipped).toBe(0);
     expect(page.cards).toEqual([
-      { slug: 'Ted_Lasso', title: 'Ted Lasso', rarity: 'L' },
+      { slug: 'Ted_Lasso', title: 'Ted Lasso', rarity: 'L', extract: 'série télévisée américaine' },
       { slug: "Tenture_de_l'Apocalypse", title: "Tenture de l'Apocalypse", rarity: 'UR' },
-      { slug: 'Paul_de_Grèce_(1967)', title: 'Paul de Grèce (1967)', rarity: 'SR' },
+      { slug: 'Paul_de_Grèce_(1967)', title: 'Paul de Grèce (1967)', rarity: 'SR', extract: 'financier' },
     ]);
   });
 
@@ -31,6 +31,13 @@ describe('parseCollectionPage', () => {
     const page = parseCollectionPage({ collection: [withImage, fixture.collection[1]] }, ENDPOINT);
     expect(page.cards[0]?.imageUrl).toBe('https://exemple.test/a.jpg');
     expect(page.cards[1]).not.toHaveProperty('imageUrl');
+  });
+
+  it("garde attaque et défense, et préfère l'extrait à la catégorie", () => {
+    const entry = fixture.collection[0]!;
+    const card = { ...entry.card, atk: 9751, def: 7972, extract: 'Un extrait.' };
+    const page = parseCollectionPage({ collection: [{ ...entry, card }] }, ENDPOINT);
+    expect(page.cards[0]).toMatchObject({ attack: 9751, defense: 7972, extract: 'Un extrait.' });
   });
 
   it('dédoublonne une carte présente en normal et en shiny, mais compte les deux entrées', () => {
