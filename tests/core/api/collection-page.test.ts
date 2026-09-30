@@ -10,6 +10,7 @@ describe('collectionEndpoint', () => {
   it("construit l'adresse paginée (page 0-indexée, tri obligatoire)", () => {
     expect(collectionEndpoint(0)).toBe(ENDPOINT);
     expect(collectionEndpoint(12)).toBe('/api/my-collection?sort=rarity&page=12&stats=0');
+    expect(collectionEndpoint(0, '', 'added')).toBe('/api/my-collection?sort=added&page=0&stats=0');
   });
 });
 
@@ -47,6 +48,25 @@ describe('parseCollectionPage', () => {
     expect(page.cards).toHaveLength(1);
   });
 
+  it("lit la date d'obtention de chaque entrée, et l'omet quand elle manque ou est illisible", () => {
+    const entry = fixture.collection[0]!;
+    const page = parseCollectionPage(
+      {
+        collection: [
+          { ...entry, obtained_at: '2026-09-30T11:45:58.754742+00:00' },
+          { ...entry, obtained_at: 'pas une date' },
+          { ...entry, obtained_at: undefined },
+        ],
+      },
+      ENDPOINT,
+    );
+    expect(page.obtained).toEqual([
+      { slug: 'Ted_Lasso', at: Date.parse('2026-09-30T11:45:58.754742+00:00') },
+      { slug: 'Ted_Lasso' },
+      { slug: 'Ted_Lasso' },
+    ]);
+  });
+
   it('écarte une entrée invalide sans faire échouer les autres', () => {
     const page = parseCollectionPage({ collection: [fixture.collection[0], { id: 'x' }] }, ENDPOINT);
     expect(page.entries).toBe(2);
@@ -55,7 +75,7 @@ describe('parseCollectionPage', () => {
   });
 
   it('renvoie une page vide pour une collection vide (fin du parcours)', () => {
-    expect(parseCollectionPage({ collection: [] }, ENDPOINT)).toEqual({ cards: [], entries: 0, skipped: 0 });
+    expect(parseCollectionPage({ collection: [] }, ENDPOINT)).toEqual({ cards: [], obtained: [], entries: 0, skipped: 0 });
   });
 
   it('lève si « collection » est absente : ce n\'est pas une page vide', () => {
