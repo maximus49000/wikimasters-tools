@@ -59,9 +59,23 @@ describe('createGameApi.getMine', () => {
     await expect(api.getMine()).rejects.toBeInstanceOf(NotAuthenticatedError);
   });
 
-  it("remonte les autres erreurs HTTP", async () => {
-    const { api } = setup([json({}, 500)]);
+  it("réessaie après une erreur serveur passagère (5xx)", async () => {
+    const { api, calls, sleeps } = setup([json({}, 500), json(fixture)]);
+    await api.getMine();
+    expect(calls).toHaveLength(2);
+    expect(sleeps).toEqual([2000]);
+  });
+
+  it("remonte une erreur serveur persistante", async () => {
+    const { api, calls } = setup([json({}, 500), json({}, 500), json({}, 500), json({}, 500)]);
+    await expect(api.getMine()).rejects.toMatchObject({ name: 'ApiHttpError', status: 500 });
+    expect(calls).toHaveLength(4);
+  });
+
+  it("remonte sans réessayer les autres erreurs HTTP (4xx)", async () => {
+    const { api, calls } = setup([json({}, 404)]);
     await expect(api.getMine()).rejects.toBeInstanceOf(ApiHttpError);
+    expect(calls).toHaveLength(1);
   });
 
   it("rejette une réponse au format inattendu", async () => {
