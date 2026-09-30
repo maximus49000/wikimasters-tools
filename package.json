@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Extension Chrome non officielle et en lecture seule pour wiki-masters.com",
-  "engines": { "node": ">=22.12" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
@@ -13,12 +15,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "leaflet": "^1.9.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.4",
+    "@types/leaflet": "^1.9.22",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@wxt-dev/module-react": "^1.2.2",
