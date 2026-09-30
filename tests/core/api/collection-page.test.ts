@@ -101,9 +101,9 @@ describe('createGameApi.getCollectionPage', () => {
 });
 
 describe('étiquettes', () => {
-  it("garde nom et couleur des étiquettes, sans leur identifiant ni celui du joueur", () => {
+  it("garde identifiant, nom et couleur des étiquettes, sans l'identifiant du joueur", () => {
     const entry = { ...fixture.collection[0]!, tags: [{ id: 't1', name: '#CVIDEUH', color: '#818cf8', user_id: 'u' }, { id: 't2', name: '#SANS' }] };
     const page = parseCollectionPage({ collection: [entry] }, ENDPOINT);
-    expect(page.cards[0]?.tags).toEqual([{ name: '#CVIDEUH', color: '#818cf8' }, { name: '#SANS' }]);
+    expect(page.cards[0]?.tags).toEqual([{ id: 't1', name: '#CVIDEUH', color: '#818cf8' }, { id: 't2', name: '#SANS' }]);
   });
 });

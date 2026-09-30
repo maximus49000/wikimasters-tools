@@ -6,7 +6,7 @@ const KEY = 'collectionScan';
 // Un autre onglet qui a écrit son état il y a moins longtemps est considéré comme toujours en cours.
 const LOCK_MS = 60_000;
 // À incrémenter quand le scan lit de nouveaux champs : un parcours terminé avant repart de zéro.
-const SCAN_VERSION = 4;
+const SCAN_VERSION = 5;
 
 export type ScanState = {
   status: 'idle' | 'running' | 'done' | 'error';
