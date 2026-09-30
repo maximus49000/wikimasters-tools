@@ -50,6 +50,15 @@ describe('createCollectionScanner', () => {
     expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
   });
 
+  it('refait un parcours terminé avec une ancienne version du scan', async () => {
+    const { scanner, store, getCollectionPage } = setup([page('A')]);
+    await store.set('collectionScan', { status: 'done', nextPage: 5, entries: 250, updatedAt: 1 });
+
+    await scanner.run();
+
+    expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
+  });
+
   it('s’arrête à la première erreur, garde sa place et reprend à cette page', async () => {
     const { scanner, collection, getCollectionPage } = setup([page('A'), new NotAuthenticatedError('/x', 401), page('C')]);
 
