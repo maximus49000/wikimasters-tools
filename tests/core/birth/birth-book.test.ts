@@ -1,20 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_BIRTH, needsBirthLookup, partitionByBirth, setBirth } from '../../../src/core/birth/birth-book';
+import { EMPTY_BIRTH, needsBirthLookup, partitionByBirth, setBirths } from '../../../src/core/birth/birth-book';
 import { formatYear, layoutTimeline } from '../../../src/core/birth/timeline-layout';
 
 const card = (slug: string) => ({ slug, title: slug });
 
 describe('birth-book', () => {
   it('mémorise aussi les articles sans date', () => {
-    const state = setBirth(EMPTY_BIRTH, 'A', null);
+    const state = setBirths(EMPTY_BIRTH, { A: null });
     expect(needsBirthLookup(state, 'A')).toBe(false);
     expect(needsBirthLookup(state, 'constructor')).toBe(true);
   });
 
   it('sépare les cartes datées (triées) des autres', () => {
-    let state = setBirth(EMPTY_BIRTH, 'B', 1900);
-    state = setBirth(state, 'A', -300);
-    state = setBirth(state, 'C', null);
+    const state = setBirths(EMPTY_BIRTH, { B: 1900, A: -300, C: null });
     const { dated, undated } = partitionByBirth([card('B'), card('A'), card('C'), card('D')], state);
     expect(dated.map((d) => d.card.slug)).toEqual(['A', 'B']);
     expect(undated.map((c) => c.slug)).toEqual(['C', 'D']);

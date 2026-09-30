@@ -1,11 +1,12 @@
 import type { KeyValueStore } from '../cache/store';
-import { EMPTY_BIRTH, needsBirthLookup, setBirth, type BirthState } from './birth-book';
+import { BATCH_SIZE } from './wikidata-birth';
+import { EMPTY_BIRTH, needsBirthLookup, setBirths, type BirthState } from './birth-book';
 
 const KEY = 'birth';
 // Après un échec (429, hors ligne), on laisse Wikidata respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
 
-export type BirthFetcher = (slug: string) => Promise<number | null>;
+export type BirthFetcher = (slugs: string[]) => Promise<Record<string, number | null>>;
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -46,17 +47,17 @@ export function createBirthRepo(
       let first = true;
       for (;;) {
         const state = await load();
-        const slug = [...pending].find((candidate) => needsBirthLookup(state, candidate));
-        if (slug === undefined) {
+        const batch = [...pending].filter((candidate) => needsBirthLookup(state, candidate)).slice(0, BATCH_SIZE);
+        if (batch.length === 0) {
           pending.clear();
           return;
         }
-        pending.delete(slug);
+        for (const slug of batch) pending.delete(slug);
         if (!first) await sleep(gapMs);
         first = false;
         try {
-          const year = await fetchBirth(slug);
-          await update((latest) => setBirth(latest, slug, year));
+          const years = await fetchBirth(batch);
+          await update((latest) => setBirths(latest, years));
         } catch (error) {
           console.warn('[wikimasters-tools]', 'dates de naissance Wikidata indisponibles :', error);
           failedAt = now();
