@@ -10,13 +10,17 @@ import type { PriceBook } from '../core/pricing/price-book';
 import type { CollectionFilterSource } from './collection-filter';
 import { pageIsDark } from './map-theme';
 import { createThrottledLoader } from './throttle';
-import { createWorldMap, type MapPoint, type WorldMap } from './world-map';
+import { createWorldMap, isCoarsePointer, type MapPoint, type WorldMap } from './world-map';
 
 // Styles des marqueurs et du mode « placement » (le CSS de Leaflet est ajouté à part).
 export const PANEL_CSS = `
 .wmt-pin-wrap{background:none;border:0}
-.wmt-pin{box-sizing:border-box;width:14px;height:14px;background:var(--wmt-pin,#34d399);border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+.wmt-pin{position:relative;box-sizing:border-box;width:14px;height:14px;background:var(--wmt-pin,#34d399);border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
 .wmt-pin-manual{border-color:#f59e0b}
+.wmt-world{display:flex;gap:12px;padding:12px;margin:12px 0}
+.wmt-world-side{width:240px;flex-shrink:0;display:flex;flex-direction:column;gap:8px}
+@media (pointer:coarse){.wmt-pin::after{content:'';position:absolute;inset:-14px;border-radius:50%}.wmt-world-side button{min-height:40px}}
+@media (max-width:720px){.wmt-world{flex-direction:column;padding:8px}.wmt-world-side{width:auto}.wmt-world-side ul{max-height:30vh !important}}
 .wmt-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9)}
 .wmt-dark{background:#1b1b1b}
 .wmt-card-tip{padding:0;border:0;background:none;box-shadow:none}
@@ -56,6 +60,8 @@ type Props = {
   onOpen: (slug: string) => void;
 };
 
+const TOUCH = isCoarsePointer();
+
 const box = {
   border: '1px solid var(--color-border, rgba(148,163,184,0.35))',
   borderRadius: 12,
@@ -72,6 +78,9 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [geoState, setGeoState] = useState<GeoState>(EMPTY_GEO);
   const [placing, setPlacing] = useState<string | null>(null);
+  // Tactile : déplacement des points seulement quand on l'active, et point sélectionné dans ce mode.
+  const [moveMode, setMoveMode] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState(() => filterSource.current());
   // Cartes qui passent le filtre (null : pas de filtre, ou lecture en cours).
   const [allowed, setAllowed] = useState<{ filter: string; slugs: Set<string> } | null>(null);
@@ -159,6 +168,7 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
     if (!container) return;
     const map = createWorldMap(container, pageIsDark(), {
       onOpen: (slug) => latest.current.onOpen(slug),
+      onSelect: (slug) => setSelected(slug),
       onMove: (slug, lat, lon) => void latest.current.geo.setManual(slug, { lat, lon }),
       onRelease: (slug) => void latest.current.geo.clearManual(slug),
       onPlace: (lat, lon) => {
@@ -190,12 +200,52 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
     mapRef.current?.setPlacing(placing !== null);
   }, [placing]);
 
+  useEffect(() => {
+    if (!TOUCH) return;
+    mapRef.current?.setMoveMode(moveMode);
+    if (!moveMode) setSelected(null);
+  }, [moveMode]);
+
   const stalled = scan.status === 'running' && Date.now() - scan.updatedAt > STALLED_MS;
   const placingTitle = cards.find((card) => card.slug === placing)?.title;
+  const selectedPosition = selected ? geoState.manual[selected] : undefined;
+  const selectedTitle = cards.find((card) => card.slug === selected)?.title;
 
   return (
-    <div style={{ ...box, display: 'flex', gap: 12, padding: 12, margin: '12px 0' }}>
+    <div className="wmt-world" style={box}>
       <div style={{ flex: 1, minWidth: 0 }}>
+        {TOUCH && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13 }}>
+            <button
+              type="button"
+              onClick={() => setMoveMode((on) => !on)}
+              style={{ ...linkButton, minHeight: 40, padding: '0 12px', border: '1px solid currentColor', borderRadius: 8 }}
+            >
+              {moveMode ? 'Terminer le déplacement' : 'Déplacer des points'}
+            </button>
+            {moveMode && !selected && <span>Touchez un point pour le choisir, glissez-le pour le corriger.</span>}
+            {moveMode && selected && (
+              <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                <strong>{selectedTitle ?? selected}</strong>
+                <button type="button" onClick={() => onOpen(selected)} style={{ ...linkButton, minHeight: 40 }}>
+                  Ouvrir la carte
+                </button>
+                {selectedPosition && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void geo.clearManual(selected);
+                      setSelected(null);
+                    }}
+                    style={{ ...linkButton, minHeight: 40 }}
+                  >
+                    Retirer mon placement
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        )}
         <div ref={containerRef} style={{ height: '70vh', minHeight: 420, borderRadius: 8 }} />
         <p style={{ margin: '8px 0 0', fontSize: 12 }}>
           {scan.status === 'running' && !stalled && `Scan de la Collection en cours… page ${scan.nextPage + 1}, ${scan.entries} cartes lues.`}
@@ -219,14 +269,14 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
           {visible && `Filtre actif : ${visible.size} cartes. `}
           {cards.length === 0
             ? 'Aucune carte connue : parcourez la Collection pour que l’extension les découvre.'
-            : `${cards.length} cartes connues · ${placed.length} placées. Glissez un point pour le corriger, clic droit sur un point à bordure orange pour retirer votre placement.`}
+            : `${cards.length} cartes connues · ${placed.length} placées. ${TOUCH ? 'Activez « Déplacer des points » pour corriger un point ; un point à bordure orange peut être retiré après l’avoir touché.' : 'Glissez un point pour le corriger, clic droit sur un point à bordure orange pour retirer votre placement.'}`}
         </p>
       </div>
-      <aside style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <aside className="wmt-world-side">
         <strong>À placer ({unplaced.length})</strong>
         {placingTitle && (
           <div style={{ fontSize: 12 }}>
-            Cliquez sur la carte pour placer « {placingTitle} ».{' '}
+            {TOUCH ? 'Touchez' : 'Cliquez sur'} la carte pour placer « {placingTitle} ».{' '}
             <button type="button" onClick={() => setPlacing(null)} style={linkButton}>
               Annuler
             </button>
