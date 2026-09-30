@@ -26,10 +26,13 @@ export function createWorldMap(
   handlers: WorldMapHandlers,
 ): WorldMap {
   const map = L.map(container, { worldCopyJump: true, minZoom: 2, zoomSnap: 1 }).setView([25, 10], 2);
-  L.tileLayer(
-    `https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`,
-    { subdomains: 'abcd', maxZoom: 19, attribution: '© OpenStreetMap © CARTO' },
-  ).addTo(map);
+  // Tuiles OpenStreetMap : pas de clé API (CARTO en exige une désormais). Pas de version sombre :
+  // en thème sombre, un filtre CSS (.wmt-dark, voir PANEL_CSS) inverse les couleurs des tuiles.
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+  container.classList.toggle('wmt-dark', dark);
 
   const markers = L.layerGroup().addTo(map);
   let placing = false;

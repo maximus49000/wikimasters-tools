@@ -10,6 +10,8 @@ import { createWorldMap, type MapPoint, type WorldMap } from './world-map';
 export const PANEL_CSS = `
 .wmt-pin{background:#34d399;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
 .wmt-pin-manual{background:#f59e0b}
+.wmt-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9)}
+.wmt-dark{background:#1b1b1b}
 .wmt-placing.leaflet-grab,.wmt-placing .leaflet-interactive{cursor:crosshair !important}
 `;
 

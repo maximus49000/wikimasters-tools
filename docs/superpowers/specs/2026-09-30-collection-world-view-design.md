@@ -22,7 +22,7 @@ Ajouter à la page Collection un interrupteur ON/OFF, à côté du bouton « Sé
 - Si le bouton « Sélectionner » est introuvable, rien n'est injecté (aucun effet sur la page).
 
 ### Carte (`src/content/WorldMap.tsx`)
-- Leaflet (import statique : WXT regroupe le script de contenu en un seul fichier). Tuiles CARTO (clair/sombre selon `prefers-color-scheme` ou la classe du site). Aucun `host_permissions` nécessaire : les appels Wikipédia utilisent `origin=*` (CORS), les tuiles sont de simples `<img>` et le site n'envoie pas d'en-tête CSP.
+- Leaflet (import statique : WXT regroupe le script de contenu en un seul fichier). Tuiles OpenStreetMap (`tile.openstreetmap.org`, sans clé API ; CARTO a été écarté car il exige désormais une clé). Thème sombre : filtre CSS d'inversion des tuiles, selon la couleur de fond de la page. Aucun `host_permissions` nécessaire : les appels Wikipédia utilisent `origin=*` (CORS), les tuiles sont de simples `<img>` et le site n'envoie pas d'en-tête CSP.
 - Un marqueur par carte positionnée ; survol = titre ; clic = ouverture de la fiche via `collection-reopen` (`marketUi.reopenCard`). La page ne change pas : la vue Monde reste affichée, aucun mécanisme de retour n'est nécessaire.
 - Liste latérale « À placer » : cartes connues sans position. Clic sur une carte de la liste, puis clic sur la carte du monde = position manuelle. Déplacer un point = le glisser (il devient un placement manuel, en orange) ; clic droit sur un point orange = retirer le placement manuel (retour à la position Wikipédia, ou « À placer »).
 
@@ -54,4 +54,4 @@ Ajouter à la page Collection un interrupteur ON/OFF, à côté du bouton « Sé
 
 ## Questions ouvertes
 - Nom exact des éléments du DOM pour extraire titre/image/slug des cartes de la Collection (à relever dans les DevTools lors de la mise en œuvre, comme pour `card-finder`).
-- Hôte des tuiles CARTO retenu (style clair et sombre) à confirmer à l'implémentation.
+- Usage des tuiles OSM : la politique d'OpenStreetMap tolère un usage léger avec attribution ; si l'usage grossit, prévoir un fournisseur avec clé.
