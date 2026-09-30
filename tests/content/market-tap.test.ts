@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HELLO_MESSAGE, MARKET_MESSAGE } from '../../src/content/market-messages';
+import { COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from '../../src/content/market-messages';
 import { installMarketTap, type TapWindow } from '../../src/content/market-tap';
 
 function json(body: unknown, init?: ResponseInit): Response {
@@ -69,5 +69,27 @@ describe('installMarketTap', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     hello();
     expect(posted).toHaveLength(2);
+  });
+});
+
+describe('installMarketTap — filtres de la Collection', () => {
+  it('relaie les filtres (sans page, tri ni stats) une seule fois par sélection', async () => {
+    const { win, posted } = setup(() => json({ collection: [] }));
+    await win.fetch('/api/my-collection?sort=rarity&rarity=UR&tag_id=t1&page=0&stats=0');
+    await win.fetch('/api/my-collection?sort=rarity&rarity=UR&tag_id=t1&page=1&stats=0');
+    await win.fetch('/api/my-collection/stats?sort=rarity&rarity=UR&tag_id=t1');
+    await win.fetch('/api/my-collection?sort=rarity&page=0&stats=0');
+    expect(posted).toEqual([
+      { type: COLLECTION_FILTER_MESSAGE, filter: 'rarity=UR&tag_id=t1' },
+      { type: COLLECTION_FILTER_MESSAGE, filter: '' },
+    ]);
+  });
+
+  it('rejoue le dernier filtre à la demande du script de contenu', async () => {
+    const { win, posted, hello } = setup(() => json({ collection: [] }));
+    await win.fetch('/api/my-collection?sort=rarity&rarity=SR&page=0&stats=0');
+    posted.length = 0;
+    hello();
+    expect(posted).toEqual([{ type: COLLECTION_FILTER_MESSAGE, filter: 'rarity=SR' }]);
   });
 });

@@ -3,8 +3,9 @@ import type { KnownCard } from '../collection/collection-book';
 import { titleToSlug } from '../market/market-book';
 import { ApiFormatError } from './errors';
 
-export const collectionEndpoint = (page: number): string =>
-  `/api/my-collection?sort=rarity&page=${page}&stats=0`;
+// `filter` : les filtres de la page (« rarity=UR&tag_id=… »), pour lire la même sélection que le site.
+export const collectionEndpoint = (page: number, filter = ''): string =>
+  `/api/my-collection?sort=rarity${filter ? `&${filter}` : ''}&page=${page}&stats=0`;
 
 // On ne déclare que la carte (titre, rareté, image) : ni identifiant de joueur, ni étiquettes, ni pseudo
 // n'est conservé. Rareté et image sont facultatives : une valeur inattendue ne fait pas écarter la carte.

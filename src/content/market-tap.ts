@@ -1,4 +1,4 @@
-import { HELLO_MESSAGE, MARKET_MESSAGE } from './market-messages';
+import { COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from './market-messages';
 
 export type TapWindow = {
   location: { href: string; origin: string };
@@ -11,7 +11,18 @@ export type TapWindow = {
 };
 
 const MARKETPLACE_PATH = '/api/marketplace';
+const COLLECTION_PATH = '/api/my-collection';
 const REPLAY_LIMIT = 10;
+// Paramètres de la requête qui ne sont pas des filtres.
+const NON_FILTER_PARAMS = ['page', 'stats', 'sort'];
+
+// Les filtres de la requête, triés pour qu'une même sélection donne toujours la même chaîne.
+export function collectionFilterOf(url: URL): string {
+  const params = new URLSearchParams(url.search);
+  for (const name of NON_FILTER_PARAMS) params.delete(name);
+  params.sort();
+  return params.toString();
+}
 
 function requestUrl(input: string | URL | Request): string {
   if (typeof input === 'string') return input;
@@ -23,6 +34,7 @@ function requestUrl(input: string | URL | Request): string {
 export function installMarketTap(win: TapWindow): void {
   const original = win.fetch.bind(win);
   const recent: unknown[] = [];
+  let lastFilter: string | null = null;
 
   function relay(auctions: unknown): void {
     const message = { type: MARKET_MESSAGE, auctions };
@@ -42,7 +54,22 @@ export function installMarketTap(win: TapWindow): void {
     }
   }
 
+  // Le filtre de la Collection se lit sur la requête elle-même, dès son émission.
+  function watchFilter(input: string | URL | Request): void {
+    try {
+      const url = new URL(requestUrl(input), win.location.href);
+      if (url.pathname !== COLLECTION_PATH) return;
+      const filter = collectionFilterOf(url);
+      if (filter === lastFilter) return;
+      lastFilter = filter;
+      win.postMessage({ type: COLLECTION_FILTER_MESSAGE, filter }, win.location.origin);
+    } catch {
+      // URL illisible : la page ne doit jamais en pâtir
+    }
+  }
+
   win.fetch = async (input, init) => {
+    watchFilter(input);
     const response = await original(input, init);
     void inspect(input, response);
     return response;
@@ -53,5 +80,8 @@ export function installMarketTap(win: TapWindow): void {
     if (event.source !== win) return;
     if ((event.data as { type?: unknown } | null)?.type !== HELLO_MESSAGE) return;
     for (const message of recent) win.postMessage(message, win.location.origin);
+    if (lastFilter !== null) {
+      win.postMessage({ type: COLLECTION_FILTER_MESSAGE, filter: lastFilter }, win.location.origin);
+    }
   });
 }
