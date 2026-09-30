@@ -50,6 +50,18 @@ describe('parseCardDates', () => {
     expect(parseCardDates(entities({ Q1: { P569: [claim('+1800-01-01T00:00:00Z', 8)] }, Q2: {} }))).toEqual({ Q1: none, Q2: none });
   });
 
+  it('ignore les autres propriétés, quel que soit leur format (texte, identifiant d’élément…)', () => {
+    const json = entities({
+      Q1: {
+        P31: [{ mainsnak: { snaktype: 'value', datavalue: { value: { 'entity-type': 'item', id: 'Q5' }, type: 'wikibase-entityid' } } }],
+        P18: [{ mainsnak: { datavalue: { value: 'Image.jpg', type: 'string' } } }],
+        P569: [claim('+1889-01-01T00:00:00Z', 9)],
+        P580: [{ mainsnak: { snaktype: 'somevalue' } }],
+      },
+    });
+    expect(parseCardDates(json)).toEqual({ Q1: { birth: 1889, start: null, end: null } });
+  });
+
   it('lève pour une réponse inattendue', () => {
     expect(() => parseCardDates({ error: { code: 'x' } })).toThrow();
   });

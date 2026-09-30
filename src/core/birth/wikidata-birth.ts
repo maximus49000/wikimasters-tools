@@ -16,9 +16,10 @@ const claimSchema = z.object({
     datavalue: z.object({ value: z.object({ time: z.string(), precision: z.number() }) }).optional(),
   }),
 });
-type Claim = z.infer<typeof claimSchema>;
 
-const claimsSchema = z.record(z.string(), z.array(claimSchema));
+// Seules les propriétés de dates sont lues (les autres ont d'autres formats) : chacune est validée à part.
+const claimsSchema = z.record(z.string(), z.unknown());
+const claimListSchema = z.array(claimSchema);
 
 const entitiesSchema = z.object({
   entities: z.record(z.string(), z.object({ claims: claimsSchema.optional() })),
@@ -48,9 +49,10 @@ function toYear(time: string, precision: number): number | null {
 }
 
 // Première propriété qui donne une date, au moins à l'année près : rang « préféré » d'abord, rangs dépréciés ignorés.
-function pickYear(claims: Record<string, Claim[]>, properties: string[]): number | null {
+function pickYear(claims: Record<string, unknown>, properties: string[]): number | null {
   for (const property of properties) {
-    const usable = (claims[property] ?? []).filter((claim) => claim.rank !== 'deprecated');
+    const list = claimListSchema.safeParse(claims[property] ?? []);
+    const usable = (list.success ? list.data : []).filter((claim) => claim.rank !== 'deprecated');
     const ordered = [...usable.filter((c) => c.rank === 'preferred'), ...usable.filter((c) => c.rank !== 'preferred')];
     for (const claim of ordered) {
       const value = claim.mainsnak.datavalue?.value;
