@@ -6,7 +6,9 @@ import { createCollectionRepo } from '../core/collection/collection-repo';
 import { createCollectionScanner } from '../core/collection/collection-scan';
 import { fetchWikiCoords } from '../core/geo/wiki-coords';
 import { createGeoRepo } from '../core/geo/geo-repo';
+import { createCollectionFilterSource } from '../content/collection-filter';
 import { createCollectionUi } from '../content/collection-ui';
+import { loadFilteredSlugs } from '../core/collection/filtered-slugs';
 import { createMarketRepo } from '../core/market/market-repo';
 import { parseMarketAuctions } from '../core/market/schemas';
 import type { PriceBook } from '../core/pricing/price-book';
@@ -41,6 +43,7 @@ export default defineContentScript({
       if (skipped > 0) console.warn(LOG, `marché : ${skipped} enchère(s) au format inattendu ignorée(s)`);
       marketRepo.observe(auctions).catch((error) => console.warn(LOG, 'marché non enregistré :', error));
     });
+    const filterSource = createCollectionFilterSource(window);
     window.postMessage({ type: HELLO_MESSAGE }, window.location.origin);
 
     // Le lien du marché ne dépend pas de vos prix : on ne l'abandonne pas si ceux-ci échouent.
@@ -60,6 +63,8 @@ export default defineContentScript({
       geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
       scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
       book,
+      filterSource,
+      loadFiltered: (filter, isCancelled) => loadFilteredSlugs(api, filter, isCancelled),
       openCard: (slug) => void marketUi.reopenCard(slug),
     });
 

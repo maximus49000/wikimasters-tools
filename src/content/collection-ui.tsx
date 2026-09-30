@@ -12,6 +12,7 @@ import {
   scanCollectionCards,
   setGridHidden,
 } from './collection-dom';
+import type { CollectionFilterSource } from './collection-filter';
 import { readView, writeView } from './collection-view';
 import { PANEL_CSS, WorldPanel } from './WorldPanel';
 import { ensureWorldToggle } from './world-toggle';
@@ -25,12 +26,15 @@ export type CollectionUiDeps = {
   scanner: CollectionScanner;
   // Prix connus (null si indisponibles) : l'aperçu d'une carte s'en passe.
   book: PriceBook | null;
+  // Filtres (étiquette, rareté…) appliqués sur la page, et lecture des cartes qu'ils laissent.
+  filterSource: CollectionFilterSource;
+  loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   openCard: (slug: string) => void;
 };
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement };
 
-export function createCollectionUi({ collection, geo, scanner, book, openCard }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, scanner, book, filterSource, loadFiltered, openCard }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
 
@@ -53,7 +57,17 @@ export function createCollectionUi({ collection, geo, scanner, book, openCard }:
     grid.insertAdjacentElement('beforebegin', host);
 
     const root = createRoot(mountPoint);
-    root.render(<WorldPanel collection={collection} geo={geo} scanner={scanner} book={book} onOpen={openCard} />);
+    root.render(
+      <WorldPanel
+        collection={collection}
+        geo={geo}
+        scanner={scanner}
+        book={book}
+        filterSource={filterSource}
+        loadFiltered={loadFiltered}
+        onOpen={openCard}
+      />,
+    );
     panel = { host, root, grid };
   }
 

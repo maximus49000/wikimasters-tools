@@ -6,6 +6,7 @@ import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/colle
 import { EMPTY_GEO, partitionCards, type GeoState } from '../core/geo/geo-book';
 import type { GeoRepo } from '../core/geo/geo-repo';
 import type { PriceBook } from '../core/pricing/price-book';
+import type { CollectionFilterSource } from './collection-filter';
 import { pageIsDark } from './map-theme';
 import { createThrottledLoader } from './throttle';
 import { createWorldMap, type MapPoint, type WorldMap } from './world-map';
@@ -46,6 +47,8 @@ type Props = {
   geo: GeoRepo;
   scanner: CollectionScanner;
   book: PriceBook | null;
+  filterSource: CollectionFilterSource;
+  loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   onOpen: (slug: string) => void;
 };
 
@@ -60,11 +63,15 @@ const box = {
 // Un scan « en cours » sans aucune activité depuis cette durée est considéré comme interrompu.
 const STALLED_MS = 60_000;
 
-export function WorldPanel({ collection, geo, scanner, book, onOpen }: Props) {
+export function WorldPanel({ collection, geo, scanner, book, filterSource, loadFiltered, onOpen }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [geoState, setGeoState] = useState<GeoState>(EMPTY_GEO);
   const [placing, setPlacing] = useState<string | null>(null);
+  const [filter, setFilter] = useState(() => filterSource.current());
+  // Cartes qui passent le filtre (null : pas de filtre, ou lecture en cours).
+  const [allowed, setAllowed] = useState<{ filter: string; slugs: Set<string> } | null>(null);
+  const [filterError, setFilterError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<WorldMap | null>(null);
   // Les gestionnaires de la carte, créée une seule fois, lisent toujours l'état courant.
@@ -94,11 +101,37 @@ export function WorldPanel({ collection, geo, scanner, book, onOpen }: Props) {
     };
   }, [collection, geo, scanner]);
 
+  useEffect(() => filterSource.subscribe(() => setFilter(filterSource.current())), [filterSource]);
+
+  useEffect(() => {
+    setFilterError(false);
+    if (!filter) return;
+    let cancelled = false;
+    loadFiltered(filter, () => cancelled)
+      .then((slugs) => !cancelled && setAllowed({ filter, slugs }))
+      .catch(() => !cancelled && setFilterError(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [filter, loadFiltered]);
+
+  // Tant que la lecture du filtre courant n'est pas finie, la carte montre tout (ou l'ancien filtre reste écarté).
+  const visible = filter && allowed?.filter === filter ? allowed.slugs : null;
+  const filtering = Boolean(filter) && visible === null && !filterError;
+
   useEffect(() => {
     if (cards.length > 0) void geo.resolveMissing(cards.map((card) => card.slug));
   }, [cards, geo]);
 
-  const { placed, unplaced } = useMemo(() => partitionCards(cards, geoState), [cards, geoState]);
+  const { placed: allPlaced, unplaced: allUnplaced } = useMemo(() => partitionCards(cards, geoState), [cards, geoState]);
+  const placed = useMemo(
+    () => (visible ? allPlaced.filter(({ card }) => visible.has(card.slug)) : allPlaced),
+    [allPlaced, visible],
+  );
+  const unplaced = useMemo(
+    () => (visible ? allUnplaced.filter((card) => visible.has(card.slug)) : allUnplaced),
+    [allUnplaced, visible],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -160,6 +193,9 @@ export function WorldPanel({ collection, geo, scanner, book, onOpen }: Props) {
           )}
         </p>
         <p style={{ margin: '8px 0 0', opacity: 0.7, fontSize: 12 }}>
+          {filtering && 'Filtre en cours de lecture… '}
+          {filterError && 'Filtre illisible : toutes les cartes sont affichées. '}
+          {visible && `Filtre actif : ${visible.size} cartes. `}
           {cards.length === 0
             ? 'Aucune carte connue : parcourez la Collection pour que l’extension les découvre.'
             : `${cards.length} cartes connues · ${placed.length} placées. Glissez un point pour le corriger, clic droit sur un point orange pour retirer votre placement.`}
