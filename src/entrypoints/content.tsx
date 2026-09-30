@@ -30,6 +30,11 @@ export default defineContentScript({
       fetch: (input, init) => fetch(input, { credentials: 'same-origin', ...init }),
       minIntervalMs: 1500,
     });
+    // Lecture des cartes filtrées : action de l'utilisateur, on peut espacer moins les pages (le 429 est géré).
+    const filterApi = createGameApi({
+      fetch: (input, init) => fetch(input, { credentials: 'same-origin', ...init }),
+      minIntervalMs: 400,
+    });
     const dataSource = createDataSource({ api, cache: createTtlCache(store) });
     const marketRepo = createMarketRepo(store);
 
@@ -64,7 +69,7 @@ export default defineContentScript({
       scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
       book,
       filterSource,
-      loadFiltered: (filter, isCancelled) => loadFilteredSlugs(api, filter, isCancelled),
+      loadFiltered: (filter, isCancelled) => loadFilteredSlugs(filterApi, filter, isCancelled),
       openCard: (slug) => void marketUi.reopenCard(slug),
     });
 

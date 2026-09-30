@@ -103,20 +103,42 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
 
   useEffect(() => filterSource.subscribe(() => setFilter(filterSource.current())), [filterSource]);
 
+  // Filtre de rareté seul, collection entièrement scannée : la rareté est déjà connue, pas de requête.
+  const rarityOnly = useMemo(() => {
+    const params = new URLSearchParams(filter);
+    const rarity = params.get('rarity');
+    return rarity && [...params.keys()].every((key) => key === 'rarity') ? rarity : null;
+  }, [filter]);
+  const localRarity = useMemo(
+    () => (rarityOnly && scan.status === 'done' ? new Set(cards.filter((c) => c.rarity === rarityOnly).map((c) => c.slug)) : null),
+    [rarityOnly, scan.status, cards],
+  );
+  // Une sélection déjà lue est gardée : la retrouver est instantané.
+  const filterCache = useRef(new Map<string, Set<string>>());
+
   useEffect(() => {
     setFilterError(false);
-    if (!filter) return;
+    if (!filter || localRarity) return;
+    const cached = filterCache.current.get(filter);
+    if (cached) {
+      setAllowed({ filter, slugs: cached });
+      return;
+    }
     let cancelled = false;
     loadFiltered(filter, () => cancelled)
-      .then((slugs) => !cancelled && setAllowed({ filter, slugs }))
+      .then((slugs) => {
+        if (cancelled) return;
+        filterCache.current.set(filter, slugs);
+        setAllowed({ filter, slugs });
+      })
       .catch(() => !cancelled && setFilterError(true));
     return () => {
       cancelled = true;
     };
-  }, [filter, loadFiltered]);
+  }, [filter, loadFiltered, localRarity]);
 
   // Tant que la lecture du filtre courant n'est pas finie, la carte montre tout (ou l'ancien filtre reste écarté).
-  const visible = filter && allowed?.filter === filter ? allowed.slugs : null;
+  const visible = localRarity ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
   const filtering = Boolean(filter) && visible === null && !filterError;
 
   useEffect(() => {
