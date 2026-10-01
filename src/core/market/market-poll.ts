@@ -20,6 +20,8 @@ const LOCK_KEY = 'market-lock';
 
 export type Target = { slug: string; title: string };
 
+type Wanted = Targets['wanted'][string];
+
 type Targets = {
   wanted: Record<string, { title: string; seenAt: number }>;
   polledAt: Record<string, number>;
@@ -55,6 +57,22 @@ export function createMarketCollector(deps: CollectorDeps) {
   let releasing: Promise<void> = Promise.resolve();
   let tail: Promise<unknown> = Promise.resolve();
   const lastWanted = new Map<string, number>();
+  // Cartes dont la recherche est faite dans cet onglet (avant même l'écriture par lot dans le stockage).
+  const handled = new Map<string, number>();
+  const listeners = new Set<() => void>();
+  const notify = (): void => {
+    for (const listener of listeners) listener();
+  };
+
+  // Les cartes à relever : vues récemment à l'écran, pas relevées depuis 30 min, hors délai de retrait.
+  function dueEntries(state: Targets, t: number): [string, Wanted][] {
+    if (state.cooldownUntil !== undefined && t < state.cooldownUntil) return [];
+    return Object.entries(state.wanted).filter(([slug, w]) => {
+      if (t - w.seenAt >= WANTED_TTL_MS) return false;
+      const last = Math.max(state.polledAt[slug] ?? -Infinity, handled.get(slug) ?? -Infinity);
+      return t - last >= POLL_INTERVAL_MS;
+    });
+  }
 
   const load = async (): Promise<Targets> =>
     (await store.get<Targets>(TARGETS_KEY)) ?? { wanted: {}, polledAt: {} };
@@ -97,7 +115,10 @@ export function createMarketCollector(deps: CollectorDeps) {
           Object.entries(state.polledAt).filter(([, at]) => t - at < 24 * 3_600_000),
         );
         return { ...state, wanted, polledAt };
-      }).then(() => true);
+      }).then(() => {
+        notify();
+        return true;
+      });
     },
 
     async tick(): Promise<TickResult> {
@@ -106,11 +127,7 @@ export function createMarketCollector(deps: CollectorDeps) {
       try {
         const t = now();
         const state = await load();
-        if (state.cooldownUntil !== undefined && t < state.cooldownUntil) return 'skipped';
-
-        const pending = Object.entries(state.wanted)
-          .filter(([slug, w]) => t - w.seenAt < WANTED_TTL_MS && t - (state.polledAt[slug] ?? -Infinity) >= POLL_INTERVAL_MS)
-          .slice(0, MAX_PER_PASS);
+        const pending = dueEntries(state, t).slice(0, MAX_PER_PASS);
         if (pending.length === 0) return 'skipped';
         if (!(await takeLock(t))) return 'skipped';
 
@@ -139,6 +156,7 @@ export function createMarketCollector(deps: CollectorDeps) {
             await flush();
             await mutate((s) => ({ ...s, cooldownUntil: now() + POLL_INTERVAL_MS }));
             await dropLock();
+            notify();
             return 'failed';
           }
           if (unloading) return 'interrupted';
@@ -146,6 +164,8 @@ export function createMarketCollector(deps: CollectorDeps) {
           // La recherche renvoie aussi les titres voisins : seules les enchères de cette carte comptent.
           batch.push(...result.auctions.filter((a) => wikipediaSlug(a.card.wikipedia_url) === slug));
           done.push(slug);
+          handled.set(slug, now());
+          notify();
           await store.set(LOCK_KEY, { owner: id, updatedAt: now() });
           if (done.length >= CHUNK) await flush();
         }
@@ -155,13 +175,26 @@ export function createMarketCollector(deps: CollectorDeps) {
       } finally {
         running = false;
         await releasing;
+        notify();
       }
+    },
+
+    // Les cartes en attente de relevé (en file ou en cours) : elles affichent le glyphe de chargement.
+    async pendingSlugs(): Promise<Set<string>> {
+      await tail;
+      return new Set(dueEntries(await load(), now()).map(([slug]) => slug));
+    },
+
+    subscribe(listener: () => void): () => void {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
     },
 
     // La page se décharge (pagehide) : on libère le verrou pour que la page suivante reprenne aussitôt.
     release(): Promise<void> {
       unloading = true;
       releasing = holdsLock ? dropLock() : Promise.resolve();
+      notify();
       return releasing;
     },
 

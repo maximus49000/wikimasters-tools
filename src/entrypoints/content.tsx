@@ -16,12 +16,13 @@ import { createHistoryRepo } from '../core/market/history-repo';
 import { createMarketCollector } from '../core/market/market-poll';
 import { cardsForSlug, emptyHistory, type HistoryState } from '../core/market/price-history';
 import { decorateHistory } from '../content/decorate-history';
+import { decorateLoading } from '../content/decorate-loading';
 import { parseMarketAuctions } from '../core/market/schemas';
 import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
 import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
-import { createMarketUi, mountHistoryBadge, mountPurchaseBadge } from '../content/mount';
+import { createMarketUi, mountHistoryBadge, mountLoadingGlyph, mountPurchaseBadge } from '../content/mount';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
 
@@ -96,6 +97,8 @@ export default defineContentScript({
 
     // Historique du marché chargé en mémoire : la décoration de la page est synchrone.
     let history: HistoryState = emptyHistory();
+    // Cartes en attente de relevé : elles affichent le glyphe de chargement.
+    let pending: ReadonlySet<string> = new Set();
     let timer: number | undefined;
     const observer = new MutationObserver(() => {
       window.clearTimeout(timer);
@@ -111,6 +114,11 @@ export default defineContentScript({
           collectionUi.sync();
         } catch (error) {
           console.warn(LOG, 'vues de la Collection indisponibles :', error);
+        }
+        try {
+          decorateLoading(document, pending, mountLoadingGlyph);
+        } catch (error) {
+          console.warn(LOG, 'glyphe de chargement indisponible :', error);
         }
         try {
           decorateHistory(document, (slug) => cardsForSlug(history, slug), Date.now(), mountHistoryBadge);
@@ -143,6 +151,15 @@ export default defineContentScript({
         (error) => console.warn(LOG, 'historique du marché illisible :', error),
       );
     void refreshHistory();
+    const refreshPending = () =>
+      collector.pendingSlugs().then(
+        (slugs) => {
+          pending = slugs;
+          run();
+        },
+        (error) => console.warn(LOG, 'cartes en attente illisibles :', error),
+      );
+    collector.subscribe(() => void refreshPending());
     historyRepo.subscribe(() => void refreshHistory());
 
     run();

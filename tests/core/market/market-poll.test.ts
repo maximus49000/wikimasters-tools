@@ -290,3 +290,78 @@ describe('historique local', () => {
     expect((await later.lookup('Ted_Lasso'))[0]?.samples).toHaveLength(1);
   });
 });
+
+describe('cartes en attente de relevé (glyphe de chargement)', () => {
+  const names = ['Carte A', 'Carte B', 'Carte C'];
+
+  it('une carte demandée est en attente, puis ne l’est plus une fois relevée', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.want(names.map(target));
+    expect([...(await tab.pendingSlugs())].sort()).toEqual(names.map(slugOf));
+    await tab.tick();
+    expect((await tab.pendingSlugs()).size).toBe(0);
+  });
+
+  it('chaque carte sort de l’attente dès sa propre requête, sans attendre la fin du lot', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.want(names.map(target));
+    let during: string[] = [];
+    w.fake.hooks.set('Carte B', async () => {
+      during = [...(await tab.pendingSlugs())].sort();
+      return { auctions: [] };
+    });
+    await tab.tick();
+    // A est terminée ; B (en cours) et C (en file) attendent encore.
+    expect(during).toEqual([slugOf('Carte B'), slugOf('Carte C')]);
+  });
+
+  it('une carte relevée il y a moins de 30 min n’est pas en attente : pas de glyphe', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.want([target('Carte A')]);
+    await tab.tick();
+    w.clock.now += 10 * MIN;
+    await tab.want([target('Carte A'), target('Carte B')]);
+    expect([...(await tab.pendingSlugs())]).toEqual([slugOf('Carte B')]);
+    w.clock.now += 20 * MIN;
+    await tab.want([target('Carte A')]);
+    // A est de nouveau due ; B, vue il y a 20 min, n'est plus demandée.
+    expect([...(await tab.pendingSlugs())]).toEqual([slugOf('Carte A')]);
+  });
+
+  it('plus aucune carte en attente après une erreur (rien n’est retenté avant 30 min)', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.want(names.map(target));
+    w.fake.hooks.set('Carte B', async () => {
+      throw new Error('429');
+    });
+    expect(await tab.tick()).toBe('failed');
+    expect((await tab.pendingSlugs()).size).toBe(0);
+  });
+
+  it('une carte qui n’est plus affichée depuis plus de 10 min n’est plus en attente', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.want([target('Carte A')]);
+    w.clock.now += 11 * MIN;
+    expect((await tab.pendingSlugs()).size).toBe(0);
+  });
+
+  it('prévient les abonnés quand la liste change, jusqu’au désabonnement', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    let calls = 0;
+    const unsubscribe = tab.subscribe(() => (calls += 1));
+    await tab.want([target('Carte A')]);
+    expect(calls).toBeGreaterThan(0);
+    await tab.tick();
+    const afterTick = calls;
+    expect(afterTick).toBeGreaterThan(1);
+    unsubscribe();
+    await tab.want([target('Carte B')]);
+    expect(calls).toBe(afterTick);
+  });
+});
