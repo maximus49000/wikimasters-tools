@@ -153,6 +153,13 @@ describe('createSpotifyApi', () => {
     expect(await api.playerState()).toBeNull();
   });
 
+  it("lit un épisode de podcast déjà en cours (sans artistes)", async () => {
+    const { api } = setup([
+      json({ is_playing: true, item: { uri: 'spotify:episode:E', name: 'Épisode 1', show: { name: 'Mon podcast' }, images: [{ url: 'https://i/e.jpg' }] } }),
+    ]);
+    expect(await api.playerState()).toEqual({ playing: true, uri: 'spotify:episode:E', title: 'Épisode 1', artist: 'Mon podcast', imageUrl: 'https://i/e.jpg' });
+  });
+
   it('traduit les erreurs : 404 sans appareil, 403 sans Premium, 429 avec attente', async () => {
     const { api } = setup([empty(404), empty(403), empty(429, { 'Retry-After': '3' }), empty(500)]);
     await expect(api.pause()).rejects.toMatchObject({ code: 'no-device' });

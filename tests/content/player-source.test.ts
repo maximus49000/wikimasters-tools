@@ -229,4 +229,23 @@ describe('isPlayingUri', () => {
     expect(isPlayingUri(view({ track: null }), 'spotify:track:S')).toBe(false);
     expect(isPlayingUri(view({ linked: false }), 'spotify:track:S')).toBe(false);
   });
+
+  it("réessaie vite tant que l'état n'a jamais pu être lu (lecture déjà en cours à l'ouverture)", async () => {
+    const { source, api, scheduled } = setup();
+    api.playerState.mockRejectedValueOnce(new SpotifyError('http', 'réseau pas prêt'));
+    source.start();
+    await vi.waitFor(() => expect(scheduled.at(-1)?.ms).toBe(2000));
+    scheduled.at(-1)?.fn();
+    await vi.waitFor(() => expect(source.current().track?.title).toBe('Something'));
+  });
+
+  it("n'affiche plus l'ancien titre quand Spotify n'a plus d'appareil", async () => {
+    const { source, api, scheduled } = setup();
+    source.start();
+    await vi.waitFor(() => expect(source.current().track?.title).toBe('Something'));
+    api.playerState.mockRejectedValueOnce(new SpotifyError('no-device', 'aucun appareil'));
+    scheduled.at(-1)?.fn();
+    await vi.waitFor(() => expect(source.current().track).toBeNull());
+    expect(source.current().linked).toBe(true);
+  });
 });

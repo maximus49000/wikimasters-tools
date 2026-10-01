@@ -13,6 +13,8 @@ const HIDDEN_KEY = 'wmt:spotifyPlayerHidden';
 const ENABLED_KEY = 'wmt:spotifyPlayerEnabled';
 const PLAYING_MS = 5_000;
 const IDLE_MS = 15_000;
+// Tant qu'aucun état n'a pu être lu (ouverture, réseau pas prêt), on réessaie vite.
+const RETRY_MS = 2_000;
 
 export type PlayerSourceDeps = {
   api: Pick<SpotifyApi, 'playerState' | 'play' | 'pause'>;
@@ -45,6 +47,7 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
   let unsubscribeVisible: (() => void) | null = null;
   let running = false;
   let generation = 0;
+  let stateKnown = false;
 
   let hidden = false;
   try {
@@ -82,6 +85,7 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
       const linked = await session.isLinked();
       if (mine !== generation) return;
       if (!linked) {
+        stateKnown = false;
         set({ linked: false, track: null });
         return;
       }
@@ -89,16 +93,24 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
       if (!view.linked) set({ linked: true });
       const state = await api.playerState();
       if (mine !== generation) return;
+      stateKnown = true;
       set({ linked: true, track: state });
       wait = state?.playing ? PLAYING_MS : IDLE_MS;
     } catch (error) {
       if (mine !== generation) return;
       if (error instanceof SpotifyError && error.code === 'not-linked') {
+        stateKnown = false;
         set({ linked: false, track: null });
         return;
       }
-      if (error instanceof SpotifyError && error.code === 'rate-limited') {
+      if (error instanceof SpotifyError && error.code === 'no-device') {
+        // Plus aucun appareil Spotify : on n'affiche plus l'ancien titre.
+        stateKnown = true;
+        set({ track: null });
+      } else if (error instanceof SpotifyError && error.code === 'rate-limited') {
         wait = Math.max(error.retryAfterMs ?? wait, 1000);
+      } else if (!stateKnown) {
+        wait = RETRY_MS;
       }
     }
     if (running) cancel = schedule(() => void poll(), wait);

@@ -24,7 +24,15 @@ const albumTracksSchema = z.object({ items: z.array(trackSchema) });
 const stateSchema = z.object({
   is_playing: z.boolean(),
   item: z
-    .object({ uri: z.string(), name: z.string(), artists: z.array(artistSchema), album: z.object({ images: z.array(z.object({ url: z.string() })) }).optional() })
+    .object({
+      uri: z.string(),
+      name: z.string(),
+      // Un épisode de podcast n'a pas d'artistes : l'émission fait office d'artiste, et la pochette est sur l'élément lui-même.
+      artists: z.array(artistSchema).optional(),
+      show: z.object({ name: z.string() }).optional(),
+      images: z.array(z.object({ url: z.string() })).optional(),
+      album: z.object({ images: z.array(z.object({ url: z.string() })) }).optional(),
+    })
     .nullish(),
 });
 
@@ -180,8 +188,8 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
         playing: state.is_playing,
         uri: state.item.uri,
         title: state.item.name,
-        artist: joinArtists(state.item.artists),
-        imageUrl: state.item.album?.images[0]?.url ?? null,
+        artist: state.item.artists ? joinArtists(state.item.artists) : (state.item.show?.name ?? ''),
+        imageUrl: state.item.album?.images[0]?.url ?? state.item.images?.[0]?.url ?? null,
       };
     },
   };
