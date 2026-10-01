@@ -29,8 +29,9 @@ const TRIGGER_STYLE =
   'text-align:left;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05)';
 const LABEL_STYLE = 'min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1';
 const CHEVRON_STYLE = 'width:16px;height:16px;flex:none;opacity:.4;transition:transform .2s';
+// overscroll-behavior : un geste qui dépasse le haut ou le bas de la liste ne passe pas à la page, dont le défilement refermerait la liste.
 const LIST_STYLE =
-  'position:fixed;inset:auto;z-index:2147483000;margin:0;padding:4px 0;box-sizing:border-box;color:inherit;list-style:none;max-height:208px;overflow-y:auto;' +
+  'position:fixed;inset:auto;z-index:2147483000;margin:0;padding:4px 0;box-sizing:border-box;color:inherit;list-style:none;max-height:208px;overflow-y:auto;overscroll-behavior:contain;' +
   'border-radius:12px;border:1px solid var(--color-border, rgba(148,163,184,0.35));background:#0d1117;opacity:1;' +
   'box-shadow:0 20px 25px -5px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.25)';
 const OPTION_STYLE =

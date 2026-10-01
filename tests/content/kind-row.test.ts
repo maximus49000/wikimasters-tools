@@ -87,6 +87,11 @@ describe('ensureKindRow', () => {
     expect(listOf(row, 'nature').hidden).toBe(true);
   });
 
+  it('garde le défilement dans la liste : un geste au bord ne fait pas défiler la page (qui refermerait la liste)', () => {
+    const row = ensureKindRow(target, model(), handlers());
+    for (const kind of ['category', 'nature', 'facet']) expect(listOf(row, kind).style.overscrollBehavior).toBe('contain');
+  });
+
   it('est idempotent et ne reconstruit pas des options inchangées', () => {
     const first = ensureKindRow(target, model(), handlers());
     const kept = option(first, 'nature', 1);
