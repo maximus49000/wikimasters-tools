@@ -215,7 +215,6 @@ export function HomemadePanel({
         <CardPopup
           preview={tipPreview}
           anchor={tip.anchor}
-          slug={tip.slug}
           onOpen={() => {
             setTip(null);
             onOpen(tip.slug);

@@ -26,8 +26,8 @@ import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
 import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
-import { createMarketUi, mountHistoryBadge, mountListenSection, mountLoadingGlyph, mountPurchaseBadge, pruneListenSections, syncRefreshButton } from '../content/mount';
-import { decorateListen } from '../content/decorate-listen';
+import { createMarketUi, mountHistoryBadge, mountListenSection, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
 import { createMusicRepo } from '../core/music/music-repo';
@@ -44,7 +44,7 @@ import { createScreenRepo } from '../core/screen/screen-repo';
 import { createTmdbApi } from '../core/screen/tmdb-api';
 import { fetchWikidataScreen } from '../core/screen/wikidata-screen';
 import { createScreenService } from '../content/screen-service';
-import { setScreenService } from '../content/screen-registry';
+import { getScreenService, setScreenService } from '../content/screen-registry';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
@@ -156,6 +156,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         if (getMusicService()) decorateListen(document, mountListenSection);
       } catch (error) {
         console.warn(LOG, 'section « Écouter » indisponible :', error);
+      }
+      try {
+        pruneScreenSections();
+        // La section film / série ne se pose que si TMDB est configuré (clé à la compilation).
+        if (getScreenService()) decorateScreen(document, mountScreenSection);
+      } catch (error) {
+        console.warn(LOG, 'section film / série indisponible :', error);
       }
       try {
         decorateLoading(document, pending, mountLoadingGlyph);
