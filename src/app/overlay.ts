@@ -46,8 +46,9 @@ import { createTmdbApi } from '../core/screen/tmdb-api';
 import { fetchWikidataScreen } from '../core/screen/wikidata-screen';
 import { createScreenService } from '../content/screen-service';
 import { getScreenService, setScreenService } from '../content/screen-registry';
+import { createMediaArt, type MediaArt, type MediaArtSources } from '../content/media-art';
 import { createImageService } from '../core/images/image-service';
-import { searchCardImages } from '../core/images/card-image-search';
+import { MAX_CANDIDATES, searchCardImages } from '../core/images/card-image-search';
 import { setImageService } from '../content/image-registry';
 import { syncCardArt } from '../content/card-art';
 import { decorateImageSetting } from '../content/image-setting-menu';
@@ -116,9 +117,17 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
   const kindsRepo = createKindsRepo(store, (slugs) => fetchWikidataKinds((url) => fetch(url), slugs));
   // Images de remplacement des cartes sans image (Wikipédia, puis Wikimedia Commons) : requêtes sans identifiants.
+  // Sources de pochettes / affiches : renseignées plus bas, quand Spotify et TMDB sont prêts.
+  const artSources: MediaArtSources = {};
+  const mediaArt: MediaArt = createMediaArt({ kinds: kindsRepo, sources: artSources });
   const images = createImageService({
     store,
-    search: (title, skip) => searchCardImages((url) => fetch(url), title, skip),
+    // Pochette Spotify / affiche TMDB d'abord (première recherche seulement), puis Wikipédia et Commons.
+    search: async (title, skip, slug) => {
+      const art = skip === 0 ? await mediaArt(slug, title).catch(() => []) : [];
+      const wiki = await searchCardImages((url) => fetch(url), title, skip);
+      return [...art, ...wiki.filter((url) => !art.includes(url))].slice(0, MAX_CANDIDATES);
+    },
     settings: window.localStorage,
   });
   setImageService(images);
@@ -273,12 +282,14 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     try {
       const session = createSpotifySession({ store, ...spotify });
       const spotifyApi = createSpotifyApi({ session, fetch: spotify.fetch });
+      const musicRepo = createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs));
+      artSources.spotify = { api: spotifyApi, session, music: musicRepo };
       const player = createPlayerSource({ api: spotifyApi, session, storage: window.localStorage });
       setMusicService(
         createMusicService({
           collection: collectionRepo,
           kinds: kindsRepo,
-          music: createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs)),
+          music: musicRepo,
           session,
           api: spotifyApi,
           onPlayed: () => void player.refresh(),
@@ -297,13 +308,15 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   // (service worker dans l'extension, `window.fetch` dans l'APK). Une panne ici ne doit jamais empêcher la surcouche.
   if (TMDB_API_KEY) {
     try {
+      const tmdbApi = createTmdbApi({ fetch: (url) => (spotify ? spotify.fetch(url) : fetch(url)), apiKey: TMDB_API_KEY });
+      artSources.tmdb = tmdbApi;
       setScreenService(
         createScreenService({
           hasKey: true,
           collection: collectionRepo,
           kinds: kindsRepo,
           screen: createScreenRepo(store, (slugs) => fetchWikidataScreen((url) => fetch(url), slugs)),
-          api: createTmdbApi({ fetch: (url) => (spotify ? spotify.fetch(url) : fetch(url)), apiKey: TMDB_API_KEY }),
+          api: tmdbApi,
           cache: createTtlCache(store, { ttlMs: 24 * 3_600_000 }),
         }),
       );

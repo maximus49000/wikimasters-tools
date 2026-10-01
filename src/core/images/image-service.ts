@@ -6,7 +6,7 @@ const SETTING_KEY = 'wmt:imageReplace';
 // Après un échec (429, hors ligne), on laisse Wikimedia respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
 
-export type ImageSearch = (title: string, skip: number) => Promise<string[]>;
+export type ImageSearch = (title: string, skip: number, slug: string) => Promise<string[]>;
 
 // Remplacement des images manquantes des cartes. L'état est gardé en mémoire (la décoration de la page est synchrone)
 // et écrit dans le stockage à chaque changement.
@@ -96,7 +96,7 @@ export function createImageService(deps: {
     request(slug: string, title: string): Promise<void> {
       if (!enabled || !loaded || state[slug] || coolingDown(slug)) return Promise.resolve();
       return track(slug, async () => {
-        commit(setFound(state, slug, await deps.search(title, 0)));
+        commit(setFound(state, slug, await deps.search(title, 0, slug)));
       });
     },
     // Image d'une carte, cherchée si besoin (aperçus, qui ne se redessinent pas seuls).
@@ -113,7 +113,7 @@ export function createImageService(deps: {
         let next = rejectCurrent(state, slug);
         if (next[slug]?.url) return commit(next);
         const known = next[slug];
-        const fresh = await deps.search(title, known?.candidates.length ?? 0);
+        const fresh = await deps.search(title, known?.candidates.length ?? 0, slug);
         next = addCandidates(rejectCurrent(state, slug), slug, fresh);
         commit(next);
       });

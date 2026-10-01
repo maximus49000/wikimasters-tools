@@ -51,7 +51,7 @@ describe('createImageService', () => {
     const { service } = make(search);
     await service.resolve('A', 'A');
     await service.reject('A', 'A');
-    expect(search).toHaveBeenLastCalledWith('A', 1);
+    expect(search).toHaveBeenLastCalledWith('A', 1, 'A');
     expect(service.peek('A')).toBe('u9');
   });
   it('un échec n’est pas enregistré comme « sans image » et laisse un temps de repos', async () => {
