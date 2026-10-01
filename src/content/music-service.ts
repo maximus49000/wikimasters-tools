@@ -68,7 +68,11 @@ export function createMusicService(deps: MusicServiceDeps) {
 
     // Lance une piste ; rend null si tout va bien, sinon le message à afficher.
     async play(item: Track, listen: Listen): Promise<string | null> {
-      const target = listen.albumUri ? { contextUri: listen.albumUri, offsetUri: item.uri } : { uris: [item.uri] };
+      // Hors album : on envoie la suite de la liste pour que Spotify enchaîne les titres.
+      const from = Math.max(0, listen.items.findIndex((candidate) => candidate.uri === item.uri));
+      const target = listen.albumUri
+        ? { contextUri: listen.albumUri, offsetUri: item.uri }
+        : { uris: listen.items.length > 0 ? listen.items.slice(from).map((candidate) => candidate.uri) : [item.uri] };
       try {
         try {
           await api.play(target);
