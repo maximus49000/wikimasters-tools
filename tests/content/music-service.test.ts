@@ -59,10 +59,20 @@ describe('createMusicService.view', () => {
 
     const down = setup();
     down.api.albumTracks.mockRejectedValueOnce(new SpotifyError('rate-limited', 'x', 1000));
+    // Le délai demandé par Spotify accompagne le message : la fiche s'en sert pour recharger toute seule.
     expect(await down.service.view('Abbey_Road', 'Abbey Road')).toEqual({
       status: 'error',
       message: 'Spotify demande de patienter un instant. Réessaie dans quelques secondes.',
+      retryAfterMs: 1000,
     });
+  });
+
+  it("ne donne un délai qu'aux limites connues : les autres pannes ne se relancent pas toutes seules", async () => {
+    for (const error of [new SpotifyError('http', 'x'), new SpotifyError('not-premium', 'x'), new Error('boom'), new SpotifyError('rate-limited', 'x')]) {
+      const down = setup();
+      down.api.albumTracks.mockRejectedValueOnce(error);
+      expect(await down.service.view('Abbey_Road', 'Abbey Road')).not.toHaveProperty('retryAfterMs');
+    }
   });
 });
 

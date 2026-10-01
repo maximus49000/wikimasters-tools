@@ -13,7 +13,8 @@ export type ListenView =
   | { status: 'notfound' }
   | { status: 'unlinked' }
   | { status: 'ready'; listen: Listen }
-  | { status: 'error'; message: string };
+  // `retryAfterMs` : limite de Spotify (429) ; la fiche recharge d'elle-même une fois ce délai passé.
+  | { status: 'error'; message: string; retryAfterMs?: number };
 
 export type MusicServiceDeps = {
   collection: { list(): Promise<KnownCard[]> };
@@ -91,7 +92,8 @@ export function createMusicService(deps: MusicServiceDeps) {
         const listen = await resolveListen(api, { title, kind, music: cardMusic });
         return listen ? { status: 'ready', listen } : { status: 'notfound' };
       } catch (error) {
-        return { status: 'error', message: userMessage(error) };
+        const retryAfterMs = error instanceof SpotifyError && error.code === 'rate-limited' ? error.retryAfterMs : undefined;
+        return { status: 'error', message: userMessage(error), ...(retryAfterMs === undefined ? {} : { retryAfterMs }) };
       }
     },
 
