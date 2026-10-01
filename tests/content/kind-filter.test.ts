@@ -53,3 +53,13 @@ describe('createKindFilterSource', () => {
     expect(source.current()).toEqual({ nature: 'x', facet: '' });
   });
 });
+
+describe('catégorie mémorisée', () => {
+  it('se garde et se relit, une valeur inconnue étant ignorée', () => {
+    const storage = memoryStorage();
+    createKindFilterSource(storage).set({ nature: '', facet: '', category: 'film' });
+    expect(createKindFilterSource(storage).current()).toEqual({ nature: '', facet: '', category: 'film' });
+    storage.setItem('wmt:kindFilter', JSON.stringify({ nature: '', facet: '', category: 'bidon' }));
+    expect(createKindFilterSource(storage).current()).toEqual({ nature: '', facet: '' });
+  });
+});

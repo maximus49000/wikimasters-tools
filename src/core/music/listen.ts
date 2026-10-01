@@ -12,6 +12,17 @@ export const cleanTitle = (title: string): string =>
 const quoted = (text: string): string => text.replaceAll('"', '').trim();
 const normalize = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
+// Le titre joué est-il celui de la liste ? Même URI, ou à défaut même titre et même artiste (Spotify propose parfois
+// plusieurs versions du même morceau) ; un artiste qui en contient un autre (« A, B » et « A ») compte comme le même.
+export function sameTrack(a: Pick<Track, 'uri' | 'title' | 'artist'>, b: Pick<Track, 'uri' | 'title' | 'artist'>): boolean {
+  if (a.uri === b.uri) return true;
+  const title = normalize(a.title);
+  if (title === '' || title !== normalize(b.title)) return false;
+  const artistA = normalize(a.artist);
+  const artistB = normalize(b.artist);
+  return artistA === '' || artistB === '' || artistA.includes(artistB) || artistB.includes(artistA);
+}
+
 type Api = Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'albumTracks'>;
 
 // Ce qu'on peut écouter d'une carte : l'identifiant Spotify de Wikidata d'abord, sinon une recherche titre + interprète.

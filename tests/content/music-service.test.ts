@@ -138,3 +138,26 @@ describe('createMusicService.link', () => {
     expect(await service.link()).toBe('Liaison Spotify impossible : Authorization page could not be loaded.');
   });
 });
+
+describe('createMusicService.playingSlugs', () => {
+  const cards = [card('Abbey_Road')];
+
+  it("reconnaît la carte dont la liste contient le titre joué, par URI ou par titre et artiste", async () => {
+    const { service } = setup();
+    expect([...(await service.playingSlugs(cards, { uri: 'spotify:track:1', title: 'x', artist: 'y' }))]).toEqual(['Abbey_Road']);
+    expect([...(await service.playingSlugs(cards, { uri: 'spotify:track:9', title: 'come together', artist: 'The Beatles, X' }))]).toEqual(['Abbey_Road']);
+  });
+
+  it("ne reconnaît ni un autre titre, ni une carte non musicale, ni un compte non lié", async () => {
+    expect((await setup().service.playingSlugs(cards, { uri: 'spotify:track:2', title: 'Something', artist: 'The Beatles' })).size).toBe(0);
+    expect((await setup({ natures: ['Q11424'] }).service.playingSlugs(cards, { uri: 'spotify:track:1', title: 'x', artist: 'y' })).size).toBe(0);
+    expect((await setup({ linked: false }).service.playingSlugs(cards, { uri: 'spotify:track:1', title: 'x', artist: 'y' })).size).toBe(0);
+  });
+
+  it("garde la liste d'une carte : pas de nouvelle recherche au titre suivant", async () => {
+    const { service, api } = setup();
+    await service.playingSlugs(cards, { uri: 'spotify:track:1', title: 'x', artist: 'y' });
+    await service.playingSlugs(cards, { uri: 'spotify:track:2', title: 'z', artist: 'y' });
+    expect(api.albumTracks).toHaveBeenCalledTimes(1);
+  });
+});

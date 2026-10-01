@@ -16,6 +16,7 @@ import { intersectSlugs, kindSlugs } from '../core/kinds/kinds-filter';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { KindFilterSource } from './kind-filter';
 import { useKindState } from './useKindState';
+import { useNowPlayingSlugs } from './useNowPlayingSlugs';
 import type { Rect } from './card-popup-position';
 import { CardPopup } from './CardPopup';
 import { createWorldMap, isCoarsePointer, type MapPoint, type WorldMap } from './world-map';
@@ -62,6 +63,11 @@ export const PANEL_CSS = `
 .wmt-card-stat{display:flex;align-items:center;gap:4px}.wmt-card-stat b{color:rgba(0,0,0,.9)}
 .wmt-card-ico{width:1em;height:1em;flex-shrink:0}.wmt-card-atk{color:#991b1b}.wmt-card-def{color:#1e40af}
 .wmt-card-copies{position:absolute;right:12px;bottom:46px;z-index:35;padding:1px 9px;border-radius:9999px;background:rgba(13,17,23,.55);color:#fff;border:1px solid rgba(255,255,255,.25);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);font:800 15px/22px system-ui,sans-serif;letter-spacing:.02em;pointer-events:none}
+.wmt-card-playing{position:absolute;left:12px;bottom:46px;z-index:35;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:9999px;background:var(--color-accent,#34d399);color:#0d1117;opacity:.8;pointer-events:none}
+.wmt-card-playing svg{width:18px;height:18px}
+.wmt-eq{transform-box:fill-box;transform-origin:50% 100%;animation:wmt-eq 1s ease-in-out infinite}.wmt-eq-1{animation-delay:-.4s}.wmt-eq-2{animation-delay:-.7s}
+@keyframes wmt-eq{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+@media (prefers-reduced-motion:reduce){.wmt-eq{animation:none}}
 .wmt-card-multi .wmt-card-loading{right:56px}
 .wmt-card-sheen{position:absolute;inset:0;z-index:40;overflow:hidden;pointer-events:none}
 .wmt-placing.leaflet-grab,.wmt-placing .leaflet-interactive{cursor:crosshair !important}
@@ -242,6 +248,8 @@ export function WorldPanel({ collection, geo, kinds, kindFilterSource, scanner, 
   const selectedTitle = cards.find((card) => card.slug === selected)?.title;
   const pickedCard = picked ? cards.find((card) => card.slug === picked.slug) : undefined;
   const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
+  const pickedCards = useMemo(() => (pickedCard ? [pickedCard] : []), [pickedCard]);
+  const nowPlaying = useNowPlayingSlugs(pickedCards);
   const pickedPreview = useMemo(
     () =>
       pickedCard
@@ -249,9 +257,10 @@ export function WorldPanel({ collection, geo, kinds, kindFilterSource, scanner, 
             pickedCard,
             book?.byTitle(pickedCard.title) ?? null,
             cardMarket(marketNow.history, marketNow.pending, pickedCard.slug, Date.now()),
+            nowPlaying.has(pickedCard.slug),
           )
         : null,
-    [pickedCard, book, marketNow],
+    [pickedCard, book, marketNow, nowPlaying],
   );
   // Toutes les cartes affichées (filtre compris) ont leurs prix relevés, sans parcourir les pages à la main.
   const shown = useMemo(() => (visible ? cards.filter((card) => visible.has(card.slug)) : cards), [cards, visible]);

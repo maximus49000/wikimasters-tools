@@ -1,6 +1,6 @@
 import type { KnownCard } from '../core/collection/collection-book';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
-import { resolveListen, type Listen } from '../core/music/listen';
+import { resolveListen, sameTrack, type Listen } from '../core/music/listen';
 import { musicKindOf } from '../core/music/music-kinds';
 import type { MusicRepo } from '../core/music/music-repo';
 import { SpotifyError, userMessage } from '../core/spotify/errors';
@@ -49,7 +49,35 @@ export function createMusicService(deps: MusicServiceDeps) {
     }
   }
 
+  // Ce qu'on peut écouter de chaque carte, gardé le temps de la liaison : on ne relance pas les recherches Spotify à chaque titre.
+  const listens = new Map<string, Listen | null>();
+  session.subscribe(() => listens.clear());
+
   return {
+    // Les cartes dont la liste d'écoute contient le titre en cours : ce sont celles qui jouent.
+    async playingSlugs(cards: Pick<KnownCard, 'slug' | 'title'>[], track: Pick<Track, 'uri' | 'title' | 'artist'>): Promise<Set<string>> {
+      const playing = new Set<string>();
+      const loaded = await kinds.load();
+      for (const card of cards) {
+        const kind = musicKindOf(loaded.cards[card.slug]);
+        if (!kind) continue;
+        let listen = listens.get(card.slug);
+        if (listen === undefined) {
+          try {
+            if (!(await session.isLinked())) return playing;
+            const cardMusic = (await music.resolve([card.slug]))[card.slug] ?? {};
+            listen = await resolveListen(api, { title: card.title, kind, music: cardMusic });
+          } catch {
+            // Une erreur passagère (réseau, limite) n'est pas gardée : on réessaiera au titre suivant.
+            continue;
+          }
+          listens.set(card.slug, listen);
+        }
+        if (listen?.items.some((item) => sameTrack(item, track))) playing.add(card.slug);
+      }
+      return playing;
+    },
+
     // Ce que la fiche d'une carte propose d'écouter : rien, lier le compte, des pistes, ou une erreur.
     async view(slug: string, title: string): Promise<ListenView> {
       try {
