@@ -4,6 +4,12 @@ import { KIND_ROW_ATTRIBUTE, ensureKindRow, removeKindRow, type KindRowModel } f
 import { ensureViewSwitch } from '../../src/content/world-toggle';
 
 const model = (over: Partial<KindRowModel> = {}): KindRowModel => ({
+  category: '',
+  categories: [
+    { id: 'music', label: 'Musique', count: 5 },
+    { id: 'film', label: 'Films / Série', count: 1 },
+    { id: 'other', label: 'Autre', count: 0 },
+  ],
   nature: '',
   facet: '',
   natures: [
@@ -15,7 +21,7 @@ const model = (over: Partial<KindRowModel> = {}): KindRowModel => ({
   progress: null,
   ...over,
 });
-const handlers = () => ({ onNature: vi.fn(), onFacet: vi.fn() });
+const handlers = () => ({ onCategory: vi.fn(), onNature: vi.fn(), onFacet: vi.fn() });
 
 let target: HTMLElement;
 beforeEach(() => {
@@ -31,12 +37,23 @@ const option = (row: HTMLElement, kind: string, index: number) =>
   row.querySelectorAll(`[data-wmt-kind-list="${kind}"] [role="option"]`)[index] as HTMLElement;
 
 describe('ensureKindRow', () => {
-  it('insère la rangée juste avant la cible, avec deux listes qui commencent par « Tout »', () => {
+  it('insère la rangée juste avant la cible, avec trois listes qui commencent par « Tout »', () => {
     const row = ensureKindRow(target, model(), handlers());
     expect(target.previousElementSibling).toBe(row);
     expect(row.hasAttribute(KIND_ROW_ATTRIBUTE)).toBe(true);
+    expect(texts(row, 'category')).toEqual(['Tout', 'Musique (5)', 'Films / Série (1)', 'Autre (0)']);
     expect(texts(row, 'nature')).toEqual(['Tout', 'Personne (3)', 'Album (2)']);
     expect(texts(row, 'facet')).toEqual(['Tout', 'Chanteur (2)']);
+  });
+
+  it('signale le choix d’une catégorie', () => {
+    const h = handlers();
+    const row = ensureKindRow(target, model(), h);
+    document.body.append(row);
+    trigger(row, 'category').click();
+    option(row, 'category', 1).click();
+    expect(h.onCategory).toHaveBeenCalledWith('music');
+    expect(trigger(row, 'category').textContent).toBe('Catégorie');
   });
 
   it('affiche le nom de la liste quand rien n’est choisi, et le choix courant sinon', () => {

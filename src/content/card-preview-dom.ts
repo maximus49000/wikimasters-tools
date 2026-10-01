@@ -136,6 +136,9 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
     card.append(div('wmt-card-copies', `X${preview.copies}`));
   }
 
+  // Au-dessus de l'attaque, en face de la marque d'exemplaires : un titre de cette carte joue sur Spotify.
+  if (preview.playing) card.append(playingGlyph());
+
   // Reflet animé des légendaires : classe du site.
   if (preview.rarity === 'L') {
     const sheen = div('wmt-card-sheen');
@@ -143,6 +146,24 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
     card.append(sheen);
   }
   return card;
+}
+
+// Égaliseur de trois barres dans une pastille ; les barres bougent (voir `.wmt-card-playing` dans PANEL_CSS).
+function playingGlyph(): HTMLElement {
+  const glyph = div('wmt-card-playing');
+  glyph.setAttribute('role', 'img');
+  glyph.title = 'En cours de lecture';
+  glyph.setAttribute('aria-label', glyph.title);
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'currentColor');
+  [4, 10, 16].forEach((x, index) => {
+    const bar = document.createElementNS(SVG_NS, 'rect');
+    for (const [name, value] of Object.entries({ x: String(x), y: '4', width: '4', height: '16', rx: '1', class: `wmt-eq wmt-eq-${index}` })) bar.setAttribute(name, value);
+    svg.append(bar);
+  });
+  glyph.append(svg);
+  return glyph;
 }
 
 // Carte sans image : le logo est remplacé par l'image trouvée (si l'option est active), dès qu'elle arrive.

@@ -8,6 +8,7 @@ import {
   intersectSlugs,
   isKindFilterActive,
   kindSlugs,
+  selectCategory,
   selectNature,
 } from '../../../src/core/kinds/kinds-filter';
 
@@ -130,5 +131,48 @@ describe('filtre des doubles', () => {
   it('ne garde que les cartes en 2 exemplaires ou plus', () => {
     expect(applyKindFilter(cards, empty, { nature: '', facet: '', duplicates: true }).map((c) => c.slug)).toEqual(['a']);
     expect(applyKindFilter(cards, empty, { nature: '', facet: '' })).toHaveLength(3);
+  });
+});
+
+describe('catégories', () => {
+  const mixed = ['Piaf', 'Thriller', 'Film', 'Serie', 'Nouvelle'].map(card);
+  const kinds = setKinds(
+    EMPTY_KINDS,
+    {
+      Piaf: k(['Q5'], ['Q177220']),
+      Thriller: k(['Q482994'], [], ['pop']),
+      Film: k(['Q11424'], [], ['drame']),
+      Serie: k(['Q5398426'], [], ['comédie']),
+    },
+    {},
+  );
+
+  it('compte les cartes de chaque catégorie, les cartes pas classées allant dans « Autre »', () => {
+    const { categories } = buildKindOptions(mixed, kinds, NO_KIND_FILTER);
+    expect(categories.map((o) => [o.id, o.count])).toEqual([
+      ['music', 2],
+      ['film', 2],
+      ['other', 1],
+    ]);
+  });
+
+  it('limite les natures et les facettes à la catégorie choisie', () => {
+    const { natures, facets } = buildKindOptions(mixed, kinds, { nature: '', facet: '', category: 'film' });
+    expect(ids(natures).sort()).toEqual(['group:Film', 'group:Série télévisée']);
+    expect(ids(facets).sort()).toEqual(['comédie', 'drame']);
+  });
+
+  it('filtre les cartes par catégorie', () => {
+    const filter = { nature: '', facet: '', category: 'music' };
+    expect(isKindFilterActive(filter)).toBe(true);
+    expect(applyKindFilter(mixed, kinds, filter).map((c) => c.slug)).toEqual(['Piaf', 'Thriller']);
+    expect(applyKindFilter(mixed, kinds, { nature: '', facet: '', category: 'other' }).map((c) => c.slug)).toEqual(['Nouvelle']);
+  });
+
+  it('changer de catégorie garde la nature seulement si elle y existe', () => {
+    const current = { nature: 'group:Film', facet: 'drame', category: 'film' };
+    expect(selectCategory(mixed, kinds, current, 'music')).toEqual({ category: 'music', nature: '', facet: '' });
+    expect(selectCategory(mixed, kinds, { nature: 'group:Film', facet: 'drame' }, 'film')).toEqual({ category: 'film', nature: 'group:Film', facet: 'drame' });
+    expect(selectCategory(mixed, kinds, current, '')).toEqual({ nature: 'group:Film', facet: 'drame' });
   });
 });

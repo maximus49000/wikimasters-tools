@@ -19,6 +19,8 @@ export type CardPreview = {
   market: CardMarket;
   // Nombre d'exemplaires possédés, seulement s'il dépasse 1.
   copies: number | null;
+  // Carte musique dont un titre joue en ce moment sur Spotify ; absent sinon.
+  playing?: boolean;
 };
 
 const NO_MARKET: CardMarket = { history: null, loading: false };
@@ -33,6 +35,7 @@ export function toCardPreview(
   card: KnownCard,
   entry: Pick<PriceBookEntry, 'rarity' | 'purchase'> | null,
   market: CardMarket = NO_MARKET,
+  playing = false,
 ): CardPreview {
   return {
     title: card.title,
@@ -45,5 +48,6 @@ export function toCardPreview(
     purchase: toPurchaseModel(entry?.purchase ?? null),
     market,
     copies: card.copies !== undefined && card.copies > 1 ? card.copies : null,
+    ...(playing ? { playing: true } : {}),
   };
 }

@@ -3,6 +3,8 @@ import type { KindOption } from '../core/kinds/kinds-filter';
 export const KIND_ROW_ATTRIBUTE = 'data-wmt-kind-row';
 
 export type KindRowModel = {
+  category: string;
+  categories: KindOption[];
   nature: string;
   facet: string;
   natures: KindOption[];
@@ -13,10 +15,10 @@ export type KindRowModel = {
   progress: string | null;
 };
 
-export type KindRowHandlers = { onNature: (value: string) => void; onFacet: (value: string) => void };
+export type KindRowHandlers = { onCategory: (value: string) => void; onNature: (value: string) => void; onFacet: (value: string) => void };
 
 // position + z-index : la rangée forme sa propre couche au-dessus des cartes et de la pagination, que les listes ouvertes recouvrent.
-const ROW_STYLE = 'position:relative;z-index:1000;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0 0 8px;align-items:center';
+const ROW_STYLE = 'position:relative;z-index:1000;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 8px;align-items:center';
 const PROGRESS_STYLE = 'grid-column:1 / -1;margin:0;font:12px/16px system-ui,sans-serif;opacity:.7';
 const WRAP_STYLE = 'position:relative;min-width:0';
 // Même habillage que les listes du site (étiquettes, rareté) : bouton + liste déroulante, pas de <select> natif.
@@ -73,7 +75,7 @@ function closeAll(except?: Element): void {
   for (const wrap of document.querySelectorAll('[data-wmt-kind-wrap]')) if (wrap !== except) setOpen(wrap, false);
 }
 
-function makeDropdown(kind: 'nature' | 'facet', label: string): HTMLElement {
+function makeDropdown(kind: 'category' | 'nature' | 'facet', label: string): HTMLElement {
   const wrap = document.createElement('div');
   wrap.dataset.wmtKindWrap = kind;
   wrap.style.cssText = WRAP_STYLE;
@@ -185,7 +187,7 @@ function fillDropdown(wrap: HTMLElement, placeholder: string, options: KindOptio
   if (text.textContent !== shown) text.textContent = shown;
 }
 
-// Rangée de deux listes (nature, puis occupation ou genre), posée juste avant `target`.
+// Rangée de trois listes (catégorie, nature, puis occupation ou genre), posée juste avant `target`.
 // Idempotent : appelée à chaque changement du DOM, elle ne touche à rien quand tout est déjà en place.
 export function ensureKindRow(target: HTMLElement, model: KindRowModel, handlers: KindRowHandlers): HTMLElement {
   const existing = target.previousElementSibling;
@@ -199,18 +201,20 @@ export function ensureKindRow(target: HTMLElement, model: KindRowModel, handlers
     const progress = document.createElement('p');
     progress.dataset.wmtKind = 'progress';
     progress.style.cssText = PROGRESS_STYLE;
-    row.append(makeDropdown('nature', 'Nature'), makeDropdown('facet', 'Occupation ou genre'), progress);
+    row.append(makeDropdown('category', 'Catégorie'), makeDropdown('nature', 'Nature'), makeDropdown('facet', 'Occupation ou genre'), progress);
     target.insertAdjacentElement('beforebegin', row);
   }
 
+  const category = row.querySelector<HTMLElement>('[data-wmt-kind-wrap="category"]');
   const nature = row.querySelector<HTMLElement>('[data-wmt-kind-wrap="nature"]');
   const facet = row.querySelector<HTMLElement>('[data-wmt-kind-wrap="facet"]');
   const progress = row.querySelector<HTMLElement>('p[data-wmt-kind="progress"]');
-  if (!nature || !facet || !progress) return row;
+  if (!category || !nature || !facet || !progress) return row;
 
   // Aucune écriture sans changement : la surcouche observe le DOM et rappelle `sync()` à chaque mutation,
   // une réécriture identique relancerait la boucle sans fin.
   handlersByRow.set(row, handlers);
+  fillDropdown(category, 'Catégorie', model.categories, model.category, (value) => handlersByRow.get(row)?.onCategory(value));
   fillDropdown(nature, 'Nature', model.natures, model.nature, (value) => handlersByRow.get(row)?.onNature(value));
   fillDropdown(facet, model.facetPlaceholder, model.facets, model.facet, (value) => handlersByRow.get(row)?.onFacet(value));
   const noChoice = model.facets.length === 0;

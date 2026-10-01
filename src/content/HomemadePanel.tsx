@@ -15,6 +15,7 @@ import type { MarketSource } from './market-source';
 import type { SortSource } from './sort-source';
 import { createThrottledLoader } from './throttle';
 import { useKindState } from './useKindState';
+import { useNowPlayingSlugs } from './useNowPlayingSlugs';
 import { useNativeFilter } from './useNativeFilter';
 import { useWantPrices } from './useWantPrices';
 
@@ -172,7 +173,7 @@ export function HomemadePanel({
   const current = useMemo(() => pageSlice(list, page, size), [list, page, size]);
 
   // Un autre filtre : retour à la première page.
-  const filterKey = `${filter}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}|${sort}`;
+  const filterKey = `${filter}|${kindFilter.category ?? ''}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}|${sort}`;
   const lastFilterKey = useRef(filterKey);
   useEffect(() => {
     if (lastFilterKey.current === filterKey) return;
@@ -181,12 +182,13 @@ export function HomemadePanel({
     setPage(1);
   }, [filterKey]);
 
+  const nowPlaying = useNowPlayingSlugs(current.items);
   const previews = useMemo(
     () =>
       current.items.map((card) =>
-        toCardPreview(card, book?.byTitle(card.title) ?? null, cardMarket(marketNow.history, marketNow.pending, card.slug, Date.now())),
+        toCardPreview(card, book?.byTitle(card.title) ?? null, cardMarket(marketNow.history, marketNow.pending, card.slug, Date.now()), nowPlaying.has(card.slug)),
       ),
-    [current.items, book, marketNow],
+    [current.items, book, marketNow, nowPlaying],
   );
   // Seules les cartes de la page affichée ont leurs prix relevés, comme sur la liste du site.
   useWantPrices(current.items, onWantCards);

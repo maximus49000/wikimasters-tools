@@ -1,3 +1,4 @@
+import { isCategory } from '../core/kinds/kinds-category';
 import { NO_KIND_FILTER, type KindFilter } from '../core/kinds/kinds-filter';
 
 const KEY = 'wmt:kindFilter';
@@ -7,9 +8,9 @@ function read(storage: Pick<Storage, 'getItem'>): KindFilter {
   try {
     const raw = storage.getItem(KEY);
     if (raw === null) return NO_KIND_FILTER;
-    const value = JSON.parse(raw) as { nature?: unknown; facet?: unknown; duplicates?: unknown } | null;
+    const value = JSON.parse(raw) as { nature?: unknown; facet?: unknown; category?: unknown; duplicates?: unknown } | null;
     return typeof value?.nature === 'string' && typeof value.facet === 'string'
-      ? { nature: value.nature, facet: value.facet, ...(value.duplicates === true ? { duplicates: true } : {}) }
+      ? { nature: value.nature, facet: value.facet, ...(isCategory(value.category) ? { category: value.category } : {}), ...(value.duplicates === true ? { duplicates: true } : {}) }
       : NO_KIND_FILTER;
   } catch {
     return NO_KIND_FILTER;
@@ -23,8 +24,20 @@ export function createKindFilterSource(storage: Pick<Storage, 'getItem' | 'setIt
   return {
     current: (): KindFilter => current,
     set(next: KindFilter): void {
-      if (next.nature === current.nature && next.facet === current.facet && Boolean(next.duplicates) === Boolean(current.duplicates)) return;
-      current = next.duplicates ? next : { nature: next.nature, facet: next.facet };
+      if (
+        next.nature === current.nature &&
+        next.facet === current.facet &&
+        (next.category ?? '') === (current.category ?? '') &&
+        Boolean(next.duplicates) === Boolean(current.duplicates)
+      ) {
+        return;
+      }
+      current = {
+        nature: next.nature,
+        facet: next.facet,
+        ...(next.category ? { category: next.category } : {}),
+        ...(next.duplicates ? { duplicates: true } : {}),
+      };
       try {
         storage.setItem(KEY, JSON.stringify(current));
       } catch {

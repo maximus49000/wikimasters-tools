@@ -2,7 +2,7 @@ import type { KnownCard } from '../core/collection/collection-book';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import { filterLocally } from '../core/collection/local-filter';
 import type { KindsState } from '../core/kinds/kinds-book';
-import { buildKindOptions, hasDuplicates, selectNature } from '../core/kinds/kinds-filter';
+import { buildKindOptions, hasDuplicates, selectCategory, selectNature } from '../core/kinds/kinds-filter';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { CollectionFilterSource } from './collection-filter';
 import type { KindFilterSource } from './kind-filter';
@@ -17,7 +17,7 @@ export type KindRowDeps = {
   kindFilterSource: KindFilterSource;
 };
 
-// Rangée de listes nature / occupation : elle propose les valeurs des cartes que laisse le filtre natif en cours
+// Rangée de listes catégorie / nature / occupation : elle propose les valeurs des cartes que laisse le filtre natif en cours
 // (étiquette, rareté), lance le relevé Wikidata des cartes pas encore classées, et écrit le choix dans `kindFilterSource`.
 export function createKindRowController({ collection, kinds, filterSource, kindFilterSource }: KindRowDeps) {
   let target: HTMLElement | null = null;
@@ -28,6 +28,9 @@ export function createKindRowController({ collection, kinds, filterSource, kindF
   let state: KindsState | null = null;
 
   const handlers = {
+    onCategory(value: string) {
+      if (state) kindFilterSource.set({ ...selectCategory(base, state, kindFilterSource.current(), value), duplicates: kindFilterSource.current().duplicates });
+    },
     onNature(value: string) {
       if (state) kindFilterSource.set({ ...selectNature(base, state, kindFilterSource.current(), value), duplicates: kindFilterSource.current().duplicates });
     },
@@ -51,6 +54,8 @@ export function createKindRowController({ collection, kinds, filterSource, kindF
     const options = buildKindOptions(base, loaded, filter);
     const classified = cards.filter((card) => Object.prototype.hasOwnProperty.call(loaded.cards, card.slug)).length;
     const model: KindRowModel = {
+      category: filter.category ?? '',
+      categories: options.categories,
       nature: filter.nature,
       facet: filter.facet,
       natures: options.natures,
