@@ -118,3 +118,17 @@ describe('selectNature', () => {
     expect(selectNature(cards, state, { nature: PERSON_NATURE, facet: 'chanteur' }, '')).toEqual({ nature: '', facet: 'chanteur' });
   });
 });
+
+describe('filtre des doubles', () => {
+  const cards = [
+    { slug: 'a', title: 'A', copies: 2 },
+    { slug: 'b', title: 'B', copies: 1 },
+    { slug: 'c', title: 'C' },
+  ];
+  const empty = { cards: {}, occupations: {}, genres: {} } as unknown as Parameters<typeof applyKindFilter>[1];
+
+  it('ne garde que les cartes en 2 exemplaires ou plus', () => {
+    expect(applyKindFilter(cards, empty, { nature: '', facet: '', duplicates: true }).map((c) => c.slug)).toEqual(['a']);
+    expect(applyKindFilter(cards, empty, { nature: '', facet: '' })).toHaveLength(3);
+  });
+});

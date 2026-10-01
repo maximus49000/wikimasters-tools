@@ -2,7 +2,7 @@ import type { KnownCard } from '../core/collection/collection-book';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import { filterLocally } from '../core/collection/local-filter';
 import type { KindsState } from '../core/kinds/kinds-book';
-import { buildKindOptions, selectNature } from '../core/kinds/kinds-filter';
+import { buildKindOptions, hasDuplicates, selectNature } from '../core/kinds/kinds-filter';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { CollectionFilterSource } from './collection-filter';
 import type { KindFilterSource } from './kind-filter';
@@ -29,10 +29,10 @@ export function createKindRowController({ collection, kinds, filterSource, kindF
 
   const handlers = {
     onNature(value: string) {
-      if (state) kindFilterSource.set(selectNature(base, state, kindFilterSource.current(), value));
+      if (state) kindFilterSource.set({ ...selectNature(base, state, kindFilterSource.current(), value), duplicates: kindFilterSource.current().duplicates });
     },
     onFacet(value: string) {
-      kindFilterSource.set({ nature: kindFilterSource.current().nature, facet: value });
+      kindFilterSource.set({ ...kindFilterSource.current(), facet: value });
     },
   };
 
@@ -44,9 +44,10 @@ export function createKindRowController({ collection, kinds, filterSource, kindF
     void kinds.resolveMissing(cards.map((card) => card.slug)).catch((error) => console.warn(LOG, 'natures non relevées :', error));
 
     const native = filterLocally(cards, filterSource.current());
-    base = native ? cards.filter((card) => native.has(card.slug)) : cards;
-    state = loaded;
     const filter = kindFilterSource.current();
+    const nativeCards = native ? cards.filter((card) => native.has(card.slug)) : cards;
+    base = filter.duplicates ? nativeCards.filter(hasDuplicates) : nativeCards;
+    state = loaded;
     const options = buildKindOptions(base, loaded, filter);
     const classified = cards.filter((card) => Object.prototype.hasOwnProperty.call(loaded.cards, card.slug)).length;
     const model: KindRowModel = {
