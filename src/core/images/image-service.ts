@@ -36,12 +36,12 @@ export function createImageService(deps: {
     },
   );
 
-  // Actif par défaut ; un stockage illisible ne coupe pas la fonction.
+  // Inactif par défaut (on l'active depuis « Plus ») ; un stockage illisible laisse la fonction coupée.
   let enabled = ((): boolean => {
     try {
-      return deps.settings.getItem(SETTING_KEY) !== 'off';
+      return deps.settings.getItem(SETTING_KEY) === 'on';
     } catch {
-      return true;
+      return false;
     }
   })();
 
