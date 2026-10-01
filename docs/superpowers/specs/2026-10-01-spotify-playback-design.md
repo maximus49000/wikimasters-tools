@@ -45,7 +45,8 @@ Dépend de la fonction « nature / occupation » ([spec](2026-10-01-nature-occup
 
 - **Extension** : nouveau service worker `entrypoints/background.ts`, permission `identity`, `host_permissions` `https://api.spotify.com/*` et `https://accounts.spotify.com/*`. Le content script envoie un message ; le service worker lance `identity.launchWebAuthFlow`, échange le code et enregistre les jetons. Tous les appels à l'API Spotify passent par le service worker (hors des règles CSP du site). Firefox Android n'a probablement pas `identity` : la liaison n'y est pas garantie, l'APK couvre le mobile.
 - **APK** : `MainActivity` ouvre l'autorisation dans le navigateur du téléphone (jamais dans la WebView), reçoit `wikimasterstools://spotify?code=…` (filtre d'intent), puis le transmet à la surcouche (`evaluateJavascript`) qui finit l'échange.
-- À vérifier en tout premier au plan : que la surcouche de l'APK peut appeler `api.spotify.com` depuis la page du jeu (CSP/CORS) ; sinon, passer les appels par un pont natif.
+- **Extension** : L'identifiant Chrome est fixé par une clé publique dans le manifeste : `mdkdnoegkdbdohmpcidefciomgdaecoj`, d'où l'adresse de retour `https://mdkdnoegkdbdohmpcidefciomgdaecoj.chromiumapp.org/` (à déclarer dans le tableau de bord Spotify ; une publication sur le Chrome Web Store donnera un autre identifiant).
+- À vérifier à la main (voir le plan, tâche 10) : que la surcouche de l'APK peut appeler `api.spotify.com` depuis la page du jeu (CSP/CORS) ; sinon, passer les appels par un pont natif (hors de cette conception).
 
 ## 4. Lecture
 
@@ -55,7 +56,7 @@ Dépend de la fonction « nature / occupation » ([spec](2026-10-01-nature-occup
 ## 5. Interface (maquettes validées)
 
 - **Fiche de la carte (`CardPopup`)** : section « Écouter » en glyphes sous l'en-tête. Non lié : bouton « Lier Spotify ». Morceau : un ▶. Album / artiste : liste ligne à ligne (numéro, titre, ▶ ; ⏸ sur la piste qui joue).
-- **Mini-lecteur** (`SpotifyPlayer.tsx`, shadow DOM, monté par le script de contenu et par `app/overlay.ts` sur toutes les pages du jeu) : pochette/note, titre, artiste, ▶/⏸, flèche pour masquer. Masqué : pastille ronde en bas à droite (note, ⏸, flèche pour rouvrir). Sondage `GET /me/player` toutes les 5 s tant que le lecteur est visible et lié ; en pause ou masqué, 15 s. Visible seulement si une lecture existe. État masqué mémorisé (`wmt:spotifyPlayerHidden`, erreurs de stockage absorbées).
+- **Mini-lecteur** (`SpotifyPlayer.tsx`, shadow DOM, monté par le script de contenu et par `app/overlay.ts` sur toutes les pages du jeu) : pochette/note, titre, artiste, ▶/⏸, flèche pour masquer. Masqué : pastille ronde en bas à droite (note, ⏸, flèche pour rouvrir). Sondage `GET /me/player` toutes les 5 s pendant une lecture, 15 s sinon (lecteur visible ou masqué, tant que le compte est lié) ; un seul sondage actif à la fois, un sondage périmé (arrêt, nouvel appel) est ignoré. Visible seulement si une lecture existe. État masqué mémorisé (`wmt:spotifyPlayerHidden`, erreurs de stockage absorbées).
 - Tout en glyphes (SVG en ligne, style du site), cibles larges, sans survol, utilisable à l'écran étroit.
 
 ## 6. Câblage
@@ -72,4 +73,4 @@ PKCE (challenge, `state`), échange et rafraîchissement ; client (corps des req
 
 ## Hors périmètre
 
-Lecture dans l'extension elle-même (Web Playback SDK), playlists, file d'attente, volume, Last.fm, Firefox Android garanti.
+Lecture dans l'extension elle-même (Web Playback SDK), playlists, file d'attente, volume, Last.fm, Firefox Android garanti, cartes hors collection.
