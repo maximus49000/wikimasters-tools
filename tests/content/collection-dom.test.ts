@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   findCardGrid,
   findCollectionRoot,
+  findPagination,
   findSelectButton,
   restoreHiddenGrids,
   scanCollectionCards,
@@ -105,5 +106,30 @@ describe('setGridHidden / restoreHiddenGrids', () => {
     restoreHiddenGrids(document);
     expect(document.querySelectorAll('[data-wmt-grid-hidden]')).toHaveLength(0);
     expect((document.getElementById('a') as HTMLElement).style.display).toBe('');
+  });
+});
+
+describe('findPagination', () => {
+  const PAGER = '<div id="pager"><button>← Précédent</button><span>Page 2 / 36</span><button>Suivant →</button></div>';
+
+  it('repère le bloc de navigation entre les pages', () => {
+    document.body.innerHTML = page([card('Paris')]).replace('</main>', `${PAGER}</main>`);
+    const pagers = findPagination(document, findSelectButton(document) as HTMLElement);
+    expect(pagers.map((el) => el.id)).toEqual(['pager']);
+  });
+
+  it('trouve la navigation du haut et celle du bas', () => {
+    document.body.innerHTML = `<main>${PAGER}${page([card('Paris')])}${PAGER}</main>`;
+    expect(findPagination(document, findSelectButton(document) as HTMLElement)).toHaveLength(2);
+  });
+
+  it('ne masque pas un bloc qui contient des cartes', () => {
+    document.body.innerHTML = `<main>${SELECT}<div><div>${card('Paris')}</div><button>Suivant</button><span>Page 1 / 3</span></div></main>`;
+    expect(findPagination(document, findSelectButton(document) as HTMLElement)).toEqual([]);
+  });
+
+  it('ne trouve rien sans libellé de page', () => {
+    document.body.innerHTML = page([card('Paris')]);
+    expect(findPagination(document, findSelectButton(document) as HTMLElement)).toEqual([]);
   });
 });

@@ -73,6 +73,23 @@ export function findCardGrid(root: ParentNode, button: HTMLElement): HTMLElement
   return grid;
 }
 
+const PAGE_LABEL = /^\s*Page\s+\d+\s*\/\s*\d+\s*$/;
+
+// Navigation entre les pages (« ← Précédent  Page 2 / 36  Suivant → »), repérée par son libellé de page : le plus petit
+// bloc qui contient aussi des boutons. Jamais un bloc qui contient des cartes, la barre d'outils ou la page entière.
+export function findPagination(root: ParentNode, button: HTMLElement): HTMLElement[] {
+  const found: HTMLElement[] = [];
+  for (const label of root.querySelectorAll<HTMLElement>('*')) {
+    if (label.children.length > 0 || !PAGE_LABEL.test(label.textContent ?? '')) continue;
+    for (let node = label.parentElement; node && !['MAIN', 'BODY', 'HTML'].includes(node.tagName); node = node.parentElement) {
+      if (!node.querySelector('button, a')) continue;
+      if (!node.contains(button) && findCardMounts(node, allCards).length === 0) found.push(node);
+      break;
+    }
+  }
+  return found;
+}
+
 export function setGridHidden(grid: HTMLElement, hidden: boolean): void {
   if (hidden) {
     if (grid.hasAttribute(HIDDEN_ATTRIBUTE)) return;

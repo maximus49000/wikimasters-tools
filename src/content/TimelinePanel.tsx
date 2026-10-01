@@ -3,6 +3,7 @@ import type { Rect } from './card-popup-position';
 import type { KnownCard } from '../core/collection/collection-book';
 import { cardMarket, toCardPreview } from '../core/collection/card-preview';
 import type { MarketSource } from './market-source';
+import { useWantPrices } from './useWantPrices';
 import { filterLocally } from '../core/collection/local-filter';
 import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/collection/collection-scan';
 import type { CollectionRepo } from '../core/collection/collection-repo';
@@ -33,7 +34,8 @@ type Props = {
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   // Fiche de marché de la carte.
   onOpen: (slug: string) => void;
-  onShowCard: (card: KnownCard) => void;
+  // Cartes affichées dont les prix du marché sont à relever.
+  onWantCards: (cards: KnownCard[]) => void;
 };
 
 const LANE_HEIGHT = 30;
@@ -80,7 +82,7 @@ const box = {
   font: '14px/20px system-ui, sans-serif',
 } as const;
 
-export function TimelinePanel({ collection, birth, scanner, book, market, filterSource, loadFiltered, onOpen, onShowCard }: Props) {
+export function TimelinePanel({ collection, birth, scanner, book, market, filterSource, loadFiltered, onOpen, onWantCards }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [birthState, setBirthState] = useState<BirthState>(EMPTY_BIRTH);
@@ -185,10 +187,9 @@ export function TimelinePanel({ collection, birth, scanner, book, market, filter
         : null,
     [tipCard, book, marketNow],
   );
-  // L'aperçu s'ouvre : les prix de cette carte sont relevés (une fois par 30 min), comme sur la liste.
-  useEffect(() => {
-    if (tipCard) onShowCard(tipCard);
-  }, [tipCard?.slug]);
+  // Toutes les cartes affichées (filtre compris) ont leurs prix relevés, sans parcourir les pages à la main.
+  const shown = useMemo(() => (visible ? cards.filter((card) => visible.has(card.slug)) : cards), [cards, visible]);
+  useWantPrices(shown, onWantCards);
 
   // Largeur visible de la frise : elle borne le dézoom (toute la frise tient à l'écran).
   useEffect(() => {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import { cardMarket, toCardPreview } from '../core/collection/card-preview';
 import type { MarketSource } from './market-source';
+import { useWantPrices } from './useWantPrices';
 import { filterLocally } from '../core/collection/local-filter';
 import type { KnownCard } from '../core/collection/collection-book';
 import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/collection/collection-scan';
@@ -70,7 +71,8 @@ type Props = {
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   // Fiche de marché de la carte.
   onOpen: (slug: string) => void;
-  onShowCard: (card: KnownCard) => void;
+  // Cartes affichées dont les prix du marché sont à relever.
+  onWantCards: (cards: KnownCard[]) => void;
 };
 
 const TOUCH = isCoarsePointer();
@@ -86,7 +88,7 @@ const box = {
 // Un scan « en cours » sans aucune activité depuis cette durée est considéré comme interrompu.
 const STALLED_MS = 60_000;
 
-export function WorldPanel({ collection, geo, scanner, book, market, filterSource, loadFiltered, onOpen, onShowCard }: Props) {
+export function WorldPanel({ collection, geo, scanner, book, market, filterSource, loadFiltered, onOpen, onWantCards }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [geoState, setGeoState] = useState<GeoState>(EMPTY_GEO);
@@ -238,10 +240,9 @@ export function WorldPanel({ collection, geo, scanner, book, market, filterSourc
         : null,
     [pickedCard, book, marketNow],
   );
-  // L'aperçu s'ouvre : les prix de cette carte sont relevés (une fois par 30 min), comme sur la liste.
-  useEffect(() => {
-    if (pickedCard) onShowCard(pickedCard);
-  }, [pickedCard?.slug]);
+  // Toutes les cartes affichées (filtre compris) ont leurs prix relevés, sans parcourir les pages à la main.
+  const shown = useMemo(() => (visible ? cards.filter((card) => visible.has(card.slug)) : cards), [cards, visible]);
+  useWantPrices(shown, onWantCards);
 
   return (
     <div className="wmt-world" style={box}>

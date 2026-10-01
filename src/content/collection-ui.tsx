@@ -9,6 +9,7 @@ import type { PriceBook } from '../core/pricing/price-book';
 import {
   findCardGrid,
   findCollectionRoot,
+  findPagination,
   findRarityFilterAnchor,
   findSelectButton,
   restoreHiddenGrids,
@@ -56,8 +57,8 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
     panel = null;
   }
 
-  // Une carte dont l'aperçu s'ouvre : on relève ses prix, comme pour les cartes de la liste.
-  const showCard = (card: KnownCard): void => onVisibleCards?.([card]);
+  // Les cartes d'une vue (toutes celles du filtre) : leurs prix sont relevés comme ceux de la page de la liste.
+  const wantCards = (cards: KnownCard[]): void => onVisibleCards?.(cards);
 
   function mountPanel(grid: HTMLElement, view: CollectionView): void {
     const host = document.createElement('div');
@@ -82,7 +83,7 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
           filterSource={filterSource}
           loadFiltered={loadFiltered}
           onOpen={openCard}
-          onShowCard={showCard}
+          onWantCards={wantCards}
         />
       ) : (
         <WorldPanel
@@ -94,7 +95,7 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
           filterSource={filterSource}
           loadFiltered={loadFiltered}
           onOpen={openCard}
-          onShowCard={showCard}
+          onWantCards={wantCards}
         />
       ),
     );
@@ -157,6 +158,8 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
       return;
     }
     setGridHidden(grid, true);
+    // Les panneaux montrent toutes les cartes : la navigation entre les pages de la liste n'a plus de sens.
+    for (const pagination of findPagination(document, button)) setGridHidden(pagination, true);
     if (!panel || panel.grid !== grid || panel.view !== view || !panel.host.isConnected) {
       unmountPanel();
       mountPanel(grid, view);
