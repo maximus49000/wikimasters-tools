@@ -122,3 +122,16 @@ describe('erreurs', () => {
     expect(userMessage(new Error('?'))).toMatch(/indisponible/);
   });
 });
+
+describe('posterUrl', () => {
+  it("donne l'affiche du titre exact, ou null sans affiche ni correspondance", async () => {
+    const { api: tmdb, fetchFn } = api(() =>
+      Response.json({ results: [{ id: 1, title: 'Amélie 2', poster_path: '/autre.jpg' }, { id: 6, title: 'Amélie', poster_path: '/ok.jpg' }, { id: 7, title: 'Sans', poster_path: null }] }),
+    );
+    expect(await tmdb.posterUrl('film', 'amelie')).toBe('https://image.tmdb.org/t/p/w500/ok.jpg');
+    expect(new URL(fetchFn.mock.calls[0]![0]).pathname).toBe('/3/search/movie');
+    expect(await tmdb.posterUrl('series', 'Sans')).toBeNull();
+    expect(new URL(fetchFn.mock.calls[1]![0]).pathname).toBe('/3/search/tv');
+    expect(await tmdb.posterUrl('film', 'Inconnu')).toBeNull();
+  });
+});

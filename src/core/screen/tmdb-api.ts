@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TMDB_BASE } from './config';
+import { TMDB_BASE, TMDB_POSTER_BASE } from './config';
 import type { ScreenKind } from './screen-kinds';
 
 export type MediaType = 'movie' | 'tv';
@@ -73,6 +73,7 @@ const searchSchema = z.object({
       name: z.string().optional(),
       original_title: z.string().optional(),
       original_name: z.string().optional(),
+      poster_path: z.string().nullish(),
     }),
   ),
 });
@@ -104,6 +105,14 @@ export function createTmdbApi(deps: { fetch: TmdbFetch; apiKey: string }) {
     const parsed = schema.safeParse(await response.json());
     if (!parsed.success) throw new TmdbError('http', 'Réponse TMDB inattendue');
     return parsed.data;
+  }
+
+  async function findExact(path: string, query: string) {
+    const data = await get(path, { query }, searchSchema);
+    const wanted = normalize(query);
+    return data.results.find((result) =>
+      [result.title, result.name, result.original_title, result.original_name].some((label) => label !== undefined && normalize(label) === wanted),
+    );
   }
 
   return {
@@ -160,12 +169,13 @@ export function createTmdbApi(deps: { fetch: TmdbFetch; apiKey: string }) {
     // Recherche par titre quand Wikidata n'a pas d'identifiant : on ne retient qu'un titre strictement identique.
     async search(kind: ScreenKind, query: string): Promise<number | null> {
       const path = kind === 'film' ? '/search/movie' : kind === 'series' ? '/search/tv' : '/search/person';
-      const data = await get(path, { query }, searchSchema);
-      const wanted = normalize(query);
-      const found = data.results.find((result) =>
-        [result.title, result.name, result.original_title, result.original_name].some((label) => label !== undefined && normalize(label) === wanted),
-      );
-      return found?.id ?? null;
+      return (await findExact(path, query))?.id ?? null;
+    },
+
+    // Affiche d'un film ou d'une série trouvé par son titre exact ; null sinon.
+    async posterUrl(kind: 'film' | 'series', query: string): Promise<string | null> {
+      const found = await findExact(kind === 'film' ? '/search/movie' : '/search/tv', query);
+      return found?.poster_path ? `${TMDB_POSTER_BASE}${found.poster_path}` : null;
     },
   };
 }

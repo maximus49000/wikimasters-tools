@@ -33,6 +33,20 @@ describe('createSpotifyApi', () => {
     expect(headers.Authorization).toBe('Bearer TOKEN');
   });
 
+  it("donne la pochette d'un album, ou celle du disque d'un morceau", async () => {
+    const { api, fetch } = setup([
+      json({ albums: { items: [{ images: [{ url: 'https://i.scdn.co/big' }, { url: 'https://i.scdn.co/small' }] }] } }),
+      json({ tracks: { items: [{ album: { images: [{ url: 'https://i.scdn.co/single' }] } }] } }),
+      json({ albums: { items: [] } }),
+    ]);
+    expect(await api.findCover('album', 'Abbey Road', 'The Beatles')).toBe('https://i.scdn.co/big');
+    expect(call(fetch, 0).url.searchParams.get('type')).toBe('album');
+    expect(call(fetch, 0).url.searchParams.get('q')).toBe('album:"Abbey Road" artist:"The Beatles"');
+    expect(await api.findCover('track', 'Yesterday')).toBe('https://i.scdn.co/single');
+    expect(call(fetch, 1).url.searchParams.get('q')).toBe('track:"Yesterday"');
+    expect(await api.findCover('album', 'Inconnu')).toBeNull();
+  });
+
   it('limite la recherche à 10 résultats, maximum de Spotify', async () => {
     const { api, fetch } = setup([json({ tracks: { items: [] } })]);
     await api.searchTracks('x', 50);
