@@ -10,7 +10,7 @@ Pour chaque carte de la Collection, récupérer sur Wikidata sa **nature** (P31)
 - Une carte passe un filtre si **au moins une** de ses valeurs correspond.
 - 2ᵉ filtre adaptatif : nature « personne » (Q5) → occupations ; sinon → genres. Ses choix viennent **uniquement des cartes de la nature active**. Grisé si rien n'existe.
 - Les filtres apparaissent dans Homemade, Map et Chronologique, pas dans la Grille legacy.
-- Homemade : même nombre de cartes par page que le site, rendu le plus proche possible de la grille native.
+- Homemade : même nombre de cartes par page que le site, rendu le plus proche possible de la grille native (voir section 4 pour la méthode retenue).
 
 ## 1. Données
 
@@ -46,9 +46,8 @@ Pour chaque carte de la Collection, récupérer sur Wikidata sa **nature** (P31)
 - **Map / Chronologique** : `kindFilterSource` s'ajoute en intersection avec `visible` ([TimelinePanel.tsx](../../../src/content/TimelinePanel.tsx), [WorldPanel.tsx](../../../src/content/WorldPanel.tsx)). Le relevé des prix ne porte que sur les cartes qui passent.
 - **Homemade** (`CollectionView` : `'list' | 'world' | 'timeline' | 'homemade'`, bouton ajouté dans `world-toggle.ts`) :
   - Cartes locales → filtre natif en cours → filtre nature/occupation → tri rareté puis titre → pagination.
-  - **Taille de page** : lue sur le site, jamais en dur. Plus grande valeur de `entries` vue pendant le scan, mémorisée ; à défaut, nombre de cartes de la grille native (`findCardMounts`).
-  - **Rendu** : dans le DOM normal (pas de shadow DOM) pour que les classes du site s'appliquent. Conteneur avec la classe de la grille native. Chaque tuile est un clone d'une carte native dont on remplace titre, image, pastille de rareté (éléments repérés par structure, pas par classes CSS). Clics recâblés vers la fiche de marché et la fiche du jeu. Pagination « ← Précédent · Page N / M · Suivant → » clonée de la pagination native (`findPagination`).
-  - **Repli** : sans carte native modèle, ou si la structure ne correspond plus, les tuiles de l'aperçu actuel sont utilisées.
+  - **Taille de page** : lue sur le site, jamais en dur. Le scan mémorise la plus grande valeur de `entries` d'une page de l'API (`ScanState.pageSize`) ; avant le premier scan, on compte les cartes de la grille native (`scanCollectionCards`) ; la taille retenue est la plus grande des deux, avec 12 en dernier recours.
+  - **Rendu** (révisé après lecture du code : cloner une carte native ne permet pas de remplacer extrait, ATK/DEF et étiquettes, qui varient d'une carte à l'autre) : panneau React dans un shadow DOM, comme Map et Chronologique. Les tuiles sont `buildCardPreview` ([card-preview-dom.ts](../../../src/content/card-preview-dom.ts)), qui reproduit déjà la carte du jeu (fond de rareté, image, extrait, étiquettes, ATK/DEF, prix d'achat et prix du marché), réduites pour remplir la colonne (2 colonnes à l'écran étroit, comme la grille du site). Un clic sur une tuile ouvre le même `CardPopup` (fiche de marché, carte du jeu). Pagination « ← Précédent · Page N / M · Suivant → » dessinée par nos soins, avec le style des boutons de la capture.
   - Prix relevés comme dans les autres vues (`useWantPrices`).
 
 ## 4 bis. Sélecteur de vue
