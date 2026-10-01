@@ -357,6 +357,7 @@ export function WorldPanel({ collection, geo, kinds, kindFilterSource, scanner, 
         <CardPopup
           preview={pickedPreview}
           anchor={picked.anchor}
+          slug={pickedCard.slug}
           onOpen={() => {
             setPicked(null);
             onOpen(pickedCard.slug);

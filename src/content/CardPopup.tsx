@@ -1,11 +1,14 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CardPreview } from '../core/collection/card-preview';
 import { buildCardPreview } from './card-preview-dom';
 import { placePopup, type Rect } from './card-popup-position';
+import { ListenSection } from './ListenSection';
 
 type Props = {
   preview: CardPreview;
   anchor: Rect;
+  // Slug de l'article : active la section « Écouter » des cartes musique de la collection.
+  slug?: string;
   // Fiche de marché de la carte.
   onOpen: () => void;
   // La carte elle-même, dans la Collection du jeu.
@@ -41,12 +44,14 @@ const buttonStyle = {
 
 // Aperçu d'une carte posé contre un point de la map ou une case de la frise : toujours entier à l'écran,
 // avec ses boutons (marché, carte, fermer). Seule la carte est réduite pour tenir : les boutons gardent leur taille. Il se ferme au clic ailleurs, avec Échap, au défilement ou au redimensionnement.
-export function CardPopup({ preview, anchor, onOpen, onOpenCard, onClose }: Props) {
+export function CardPopup({ preview, anchor, slug, onOpen, onOpenCard, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  // Hauteur de la section « Écouter » : réservée dans le calcul de l'échelle de la carte.
+  const [listenHeight, setListenHeight] = useState(0);
 
   useLayoutEffect(() => {
     cardRef.current?.replaceChildren(buildCardPreview(preview));
@@ -66,7 +71,7 @@ export function CardPopup({ preview, anchor, onOpen, onOpenCard, onClose }: Prop
     const natural = { width: card.offsetWidth, height: card.offsetHeight };
     const cardScale = Math.min(
       1,
-      (viewport.height - 2 * EDGE - 2 * PADDING - ROW_HEIGHT) / natural.height,
+      (viewport.height - 2 * EDGE - 2 * PADDING - ROW_HEIGHT - listenHeight) / natural.height,
       (viewport.width - 2 * EDGE - 2 * PADDING) / natural.width,
     );
     const scaled = { width: natural.width * cardScale, height: natural.height * cardScale };
@@ -82,7 +87,7 @@ export function CardPopup({ preview, anchor, onOpen, onOpenCard, onClose }: Prop
     const { left, top } = placePopup(anchor, { width: el.offsetWidth, height: el.offsetHeight }, viewport);
     el.style.left = `${left - origin.left}px`;
     el.style.top = `${top - origin.top}px`;
-  }, [anchor, preview]);
+  }, [anchor, preview, listenHeight]);
 
   useEffect(() => {
     const close = () => closeRef.current();
@@ -93,12 +98,16 @@ export function CardPopup({ preview, anchor, onOpen, onOpenCard, onClose }: Prop
     const onKey = (event: KeyboardEvent) => event.key === 'Escape' && close();
     document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('keydown', onKey);
-    window.addEventListener('scroll', close, true);
+    const onScroll = (event: Event) => {
+      const el = ref.current;
+      if (!el || !event.composedPath().includes(el)) close();
+    };
+    window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', close);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('keydown', onKey);
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', close);
     };
   }, []);
@@ -139,6 +148,7 @@ export function CardPopup({ preview, anchor, onOpen, onOpenCard, onClose }: Prop
           ✕
         </button>
       </div>
+      {slug && <ListenSection slug={slug} title={preview.title} onHeight={setListenHeight} />}
     </div>
   );
 }

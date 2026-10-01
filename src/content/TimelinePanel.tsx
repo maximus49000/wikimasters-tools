@@ -376,6 +376,7 @@ export function TimelinePanel({ collection, birth, kinds, kindFilterSource, scan
         <CardPopup
           preview={tipPreview}
           anchor={tip.chip}
+          slug={tipCard.slug}
           onOpen={() => {
             setTip(null);
             onOpen(tipCard.slug);
