@@ -6,7 +6,10 @@ const KEY = 'collectionScan';
 // Un autre onglet qui a écrit son état il y a moins longtemps est considéré comme toujours en cours.
 export const LOCK_MS = 60_000;
 // À incrémenter quand le scan lit de nouveaux champs : un parcours terminé avant repart de zéro.
-const SCAN_VERSION = 6;
+const SCAN_VERSION = 7;
+// La mise à jour incrémentale n'ajoute que les cartes récentes : une carte vendue ou échangée n'est jamais décomptée.
+// Les exemplaires sont donc recomptés sur toute la Collection au plus tard à cette échéance.
+export const FULL_REFRESH_MS = 3_600_000;
 
 export type ScanState = {
   status: 'idle' | 'running' | 'done' | 'error';
@@ -26,6 +29,8 @@ export type ScanState = {
   pendingObtainedAt?: number;
   // Plus grande page lue (entrées d'une page de l'API du site) : la taille de page de la vue Homemade.
   pageSize?: number;
+  // Fin (ms) du dernier parcours complet : les exemplaires comptés sont exacts à cette date.
+  fullAt?: number;
 };
 
 export const IDLE_SCAN: ScanState = { status: 'idle', nextPage: 0, entries: 0, updatedAt: 0 };
@@ -100,11 +105,13 @@ export function createCollectionScanner({
       }
 
       const current = saved.version === SCAN_VERSION;
-      const canIncrement = current && saved.lastObtainedAt !== undefined;
+      // Un parcours complet récent : les nombres d'exemplaires sont frais, la mise à jour incrémentale suffit.
+      const countsFresh = saved.fullAt !== undefined && now() - saved.fullAt < FULL_REFRESH_MS;
+      const canIncrement = current && saved.lastObtainedAt !== undefined && countsFresh;
       if (!force && canIncrement && (saved.status === 'done' || saved.pass === 'incremental')) {
         mode = 'incremental';
         entries = saved.entries;
-      } else if (!force && current && saved.status !== 'done' && saved.status !== 'idle') {
+      } else if (!force && current && saved.pass !== 'incremental' && saved.status !== 'done' && saved.status !== 'idle') {
         page = saved.nextPage;
         entries = saved.entries;
         pending = saved.pendingObtainedAt;
@@ -118,6 +125,7 @@ export function createCollectionScanner({
         version: SCAN_VERSION,
         pass: mode,
         ...(last !== undefined ? { lastObtainedAt: last } : {}),
+        ...(saved.fullAt !== undefined ? { fullAt: saved.fullAt } : {}),
         ...(mode === 'full' && status !== 'done' && pending !== undefined ? { pendingObtainedAt: pending } : {}),
         ...(pageSize > 0 ? { pageSize } : {}),
         ...extra,
@@ -167,7 +175,7 @@ export function createCollectionScanner({
         const result = await api.getCollectionPage(page, undefined, 'added');
         pageSize = Math.max(pageSize, result.entries);
         if (result.entries === 0) {
-          await write(snapshot('done', pending !== undefined ? { lastObtainedAt: pending } : {}));
+          await write(snapshot('done', { fullAt: now(), ...(pending !== undefined ? { lastObtainedAt: pending } : {}) }));
           return;
         }
         await collection.observe(result.cards, true);
@@ -186,6 +194,7 @@ export function createCollectionScanner({
         version: SCAN_VERSION,
         pass: mode,
         ...(saved.lastObtainedAt !== undefined ? { lastObtainedAt: saved.lastObtainedAt } : {}),
+        ...(saved.fullAt !== undefined ? { fullAt: saved.fullAt } : {}),
         ...(mode === 'full' && pending !== undefined ? { pendingObtainedAt: pending } : {}),
         ...(pageSize > 0 ? { pageSize } : {}),
         error: message,

@@ -95,7 +95,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
     const root = createRoot(mountPoint);
     const common = { collection, scanner, book, market, filterSource, loadFiltered, onOpen: openCard, onOpenCard: openGameCard, onWantCards: wantCards };
     root.render(
-      <RecountGate recount={recount} scanner={scanner}>
+      <RecountGate recount={recount} scanner={scanner} kindFilterSource={kindFilterSource}>
         {view === 'timeline' ? (
           <TimelinePanel {...common} birth={birth} kinds={kinds} kindFilterSource={kindFilterSource} />
         ) : view === 'world' ? (

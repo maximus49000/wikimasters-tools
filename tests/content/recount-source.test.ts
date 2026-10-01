@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRecountSource } from '../../src/content/recount-source';
+import { createRecountSource, isRecounting } from '../../src/content/recount-source';
 import type { ScanState } from '../../src/core/collection/collection-scan';
 
 const state = (status: ScanState['status'], error?: string): ScanState => ({ status, nextPage: 0, entries: 0, updatedAt: 0, ...(error ? { error } : {}) });
@@ -47,5 +47,25 @@ describe('createRecountSource', () => {
     source.start();
     await settle();
     expect(source.current()).toEqual({ running: false, error: 'réseau' });
+  });
+});
+
+describe('isRecounting', () => {
+  const scan = (extra: Partial<ScanState>): ScanState => ({ status: 'running', nextPage: 3, entries: 90, updatedAt: 1_000, pass: 'full', ...extra });
+  const idle = { running: false, error: null };
+
+  it('montre l’avancement pendant le recomptage demandé par « ×2 »', () => {
+    expect(isRecounting({ running: true, error: null }, scan({}), false, 1_500)).toBe(true);
+  });
+
+  it('montre aussi un parcours complet automatique en cours quand « ×2 » est actif', () => {
+    expect(isRecounting(idle, scan({}), true, 1_500)).toBe(true);
+  });
+
+  it('ne cache rien sans « ×2 », ni pendant une simple mise à jour, ni sur un scan interrompu', () => {
+    expect(isRecounting(idle, scan({}), false, 1_500)).toBe(false);
+    expect(isRecounting(idle, scan({ pass: 'incremental' }), true, 1_500)).toBe(false);
+    expect(isRecounting(idle, scan({ status: 'done' }), true, 1_500)).toBe(false);
+    expect(isRecounting(idle, scan({ updatedAt: 1 }), true, 1_000_000)).toBe(false);
   });
 });
