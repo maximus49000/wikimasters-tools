@@ -29,12 +29,21 @@ import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
 import { createMarketUi, mountHistoryBadge, mountLoadingGlyph, mountPurchaseBadge, syncRefreshButton } from '../content/mount';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
+import { createMusicRepo } from '../core/music/music-repo';
+import { fetchWikidataMusic } from '../core/music/wikidata-music';
+import { createSpotifyApi } from '../core/spotify/spotify-api';
+import { createSpotifySession } from '../core/spotify/spotify-session';
+import type { SpotifyEnv } from '../core/spotify/transport';
+import { createMusicService } from '../content/music-service';
+import { setMusicService } from '../content/music-registry';
+import { createPlayerSource } from '../content/player-source';
+import { mountSpotifyPlayer } from '../content/mount-player';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
 
 // Surcouche Wikimasters : partagée par l'extension (content script) et l'application Android (WebView).
-export async function startOverlay(store: KeyValueStore): Promise<void> {
+export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): Promise<void> {
   const api = createGameApi({
     fetch: (input, init) => fetch(input, { credentials: 'same-origin', ...init }),
     minIntervalMs: 1500,
@@ -83,11 +92,12 @@ export async function startOverlay(store: KeyValueStore): Promise<void> {
   const market = createMarketSource();
   // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
   const collectionRepo = createCollectionRepo(store);
+  const kindsRepo = createKindsRepo(store, (slugs) => fetchWikidataKinds((url) => fetch(url), slugs));
   const collectionUi = createCollectionUi({
     collection: collectionRepo,
     geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
     birth: createBirthRepo(store, (slugs) => fetchWikidataDates((url) => fetch(url), slugs)),
-    kinds: createKindsRepo(store, (slugs) => fetchWikidataKinds((url) => fetch(url), slugs)),
+    kinds: kindsRepo,
     kindFilterSource: createKindFilterSource(window.localStorage),
     scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
     book,
@@ -102,6 +112,25 @@ export async function startOverlay(store: KeyValueStore): Promise<void> {
         .then((added) => (added ? collector.tick() : undefined))
         .catch((error) => console.warn(LOG, 'relevé du marché :', error)),
   });
+
+  // Spotify : télécommande de l'appli Spotify (voir la spec). Absent si la plateforme ne le fournit pas.
+  if (spotify) {
+    const session = createSpotifySession({ store, ...spotify });
+    const api = createSpotifyApi({ session, fetch: spotify.fetch });
+    const player = createPlayerSource({ api, session, storage: window.localStorage });
+    setMusicService(
+      createMusicService({
+        collection: collectionRepo,
+        kinds: kindsRepo,
+        music: createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs)),
+        session,
+        api,
+        onPlayed: () => void player.refresh(),
+      }),
+    );
+    mountSpotifyPlayer(player);
+    player.start();
+  }
 
   // Historique du marché chargé en mémoire : la décoration de la page est synchrone.
   let history: HistoryState = emptyHistory();
