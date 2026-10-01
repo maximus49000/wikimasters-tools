@@ -4,7 +4,7 @@ import type { SpotifyEnv } from '../core/spotify/transport';
 // Ce que MainActivity.java expose à la page : `WmtSpotify.openAuth(url)` ouvre le navigateur du téléphone ;
 // au retour sur `wikimasterstools://spotify?…`, l'activité appelle `window.__wmtSpotifyRedirect(url)`.
 export type AndroidWindow = {
-  WmtSpotify?: { openAuth(url: string): void };
+  WmtSpotify?: { openAuth(url: string): void; openApp?(): void };
   __wmtSpotifyRedirect?: (url: string) => void;
   fetch: typeof fetch;
 };
@@ -18,6 +18,7 @@ export function createAndroidSpotifyEnv(win: AndroidWindow, timeoutMs: number = 
   return {
     fetch: (url, init) => win.fetch(url, init),
     redirectUri: async () => ANDROID_REDIRECT_URI,
+    launchApp: () => win.WmtSpotify?.openApp?.(),
     authorize: (authUrl) => {
       abandon?.();
       return new Promise<string>((resolve, reject) => {

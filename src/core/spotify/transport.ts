@@ -5,6 +5,8 @@ export type SpotifyEnv = {
   fetch: SpotifyFetch;
   authorize: (authUrl: string) => Promise<string>;
   redirectUri: () => Promise<string>;
+  // Ouvre l'application Spotify (lecture demandée alors qu'elle est fermée) ; absent si la plateforme ne sait pas.
+  launchApp?: () => void;
 };
 
 type FetchInit = { method?: string; headers?: Record<string, string>; body?: string };
@@ -55,13 +57,14 @@ export function handleSpotifyMessage(message: unknown, deps: BackgroundDeps): Pr
 const NO_BODY = new Set([101, 204, 205, 304]);
 
 // Côté script de contenu : un `fetch` et une autorisation qui passent par le service worker.
-export function createExtensionEnv(send: (request: SpotifyRequest) => Promise<SpotifyReply>): SpotifyEnv {
+export function createExtensionEnv(send: (request: SpotifyRequest) => Promise<SpotifyReply>, launchApp?: () => void): SpotifyEnv {
   async function ask(request: SpotifyRequest): Promise<string | FetchValue> {
     const reply = await send(request);
     if (!reply.ok) throw new Error(reply.error);
     return reply.value;
   }
   return {
+    ...(launchApp ? { launchApp } : {}),
     redirectUri: async () => (await ask({ type: 'wmt:spotify', op: 'redirect-uri' })) as string,
     authorize: async (url) => (await ask({ type: 'wmt:spotify', op: 'auth', url })) as string,
     fetch: async (url, init) => {

@@ -3,7 +3,7 @@ import type { KindsRepo } from '../core/kinds/kinds-repo';
 import { resolveListen, type Listen } from '../core/music/listen';
 import { musicKindOf } from '../core/music/music-kinds';
 import type { MusicRepo } from '../core/music/music-repo';
-import { userMessage } from '../core/spotify/errors';
+import { SpotifyError, userMessage } from '../core/spotify/errors';
 import type { SpotifyApi, Track } from '../core/spotify/spotify-api';
 import type { SpotifySession } from '../core/spotify/spotify-session';
 
@@ -22,10 +22,32 @@ export type MusicServiceDeps = {
   api: Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'albumTracks' | 'play'>;
   // Après un lancement : le mini-lecteur relit l'état tout de suite.
   onPlayed: () => void;
+  // Ouvre l'application Spotify quand aucun appareil n'est actif ; absent sur les plateformes qui ne savent pas le faire.
+  launchApp?: () => void;
+  // Attente entre deux essais pendant le démarrage de Spotify (remplaçable en test).
+  sleep?: (ms: number) => Promise<void>;
 };
 
+// Spotify met quelques secondes à se déclarer comme appareil après son ouverture.
+const LAUNCH_RETRIES = 8;
+const LAUNCH_RETRY_MS = 1500;
+
 export function createMusicService(deps: MusicServiceDeps) {
-  const { collection, kinds, music, session, api, onPlayed } = deps;
+  const { collection, kinds, music, session, api, onPlayed, launchApp } = deps;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  async function retryWhileStarting(target: Parameters<typeof api.play>[0]): Promise<void> {
+    for (let attempt = 1; ; attempt += 1) {
+      await sleep(LAUNCH_RETRY_MS);
+      try {
+        await api.play(target);
+        return;
+      } catch (error) {
+        const stillStarting = error instanceof SpotifyError && error.code === 'no-device';
+        if (!stillStarting || attempt >= LAUNCH_RETRIES) throw error;
+      }
+    }
+  }
 
   return {
     // Ce que la fiche d'une carte propose d'écouter : rien, lier le compte, des pistes, ou une erreur.
@@ -46,8 +68,16 @@ export function createMusicService(deps: MusicServiceDeps) {
 
     // Lance une piste ; rend null si tout va bien, sinon le message à afficher.
     async play(item: Track, listen: Listen): Promise<string | null> {
+      const target = listen.albumUri ? { contextUri: listen.albumUri, offsetUri: item.uri } : { uris: [item.uri] };
       try {
-        await api.play(listen.albumUri ? { contextUri: listen.albumUri, offsetUri: item.uri } : { uris: [item.uri] });
+        try {
+          await api.play(target);
+        } catch (error) {
+          // Spotify fermé : on l'ouvre puis on relance la lecture dès qu'il répond.
+          if (!launchApp || !(error instanceof SpotifyError) || error.code !== 'no-device') throw error;
+          launchApp();
+          await retryWhileStarting(target);
+        }
         onPlayed();
         return null;
       } catch (error) {

@@ -1,6 +1,7 @@
 package io.github.maximus49000.wikimasterstools;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
@@ -98,6 +99,20 @@ public class MainActivity extends Activity {
         public void openAuth(String url) {
             if (url == null || !url.startsWith(SPOTIFY_AUTH_PREFIX)) return;
             runOnUiThread(() -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))));
+        }
+
+        @JavascriptInterface
+        public void openApp() {
+            runOnUiThread(MainActivity.this::launchSpotifyApp);
+        }
+    }
+
+    // Ouvre l'application Spotify (lecture demandée alors qu'elle est fermée). Sans Spotify installé, rien ne se passe.
+    private void launchSpotifyApp() {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (ActivityNotFoundException ignored) {
+            // Spotify n'est pas installé : la surcouche affiche son message habituel.
         }
     }
 

@@ -29,7 +29,7 @@ export function SpotifyPlayer({ source }: { source: PlayerSource }) {
   const shell = {
     position: 'fixed',
     zIndex: 2147483000,
-    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+    top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
     display: 'flex',
     alignItems: 'center',
     borderRadius: 999,
@@ -41,7 +41,7 @@ export function SpotifyPlayer({ source }: { source: PlayerSource }) {
 
   if (view.hidden) {
     return (
-      <div style={{ ...shell, right: 12, paddingLeft: 8 }}>
+      <div style={{ ...shell, left: 12, paddingLeft: 8 }}>
         <Glyph name="note" size={16} />
         {toggle}
         <button type="button" onClick={() => source.setHidden(false)} aria-label="Afficher le lecteur" title="Afficher le lecteur" style={base}>
@@ -51,7 +51,7 @@ export function SpotifyPlayer({ source }: { source: PlayerSource }) {
     );
   }
   return (
-    <div style={{ ...shell, left: 12, right: 12, margin: '0 auto', maxWidth: 420, paddingLeft: 14 }}>
+    <div style={{ ...shell, left: 12, width: 'min(320px, calc(100vw - 24px))', paddingLeft: 14 }}>
       {track.imageUrl ? (
         <img src={track.imageUrl} alt="" loading="lazy" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', flex: 'none', marginRight: 10 }} />
       ) : (

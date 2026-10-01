@@ -1,4 +1,4 @@
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import type { PurchaseModel } from '../core/pricing/badge';
 import type { MarketRepo } from '../core/market/market-repo';
 import { PURCHASE_HOST_ATTRIBUTE } from './decorate';
@@ -14,6 +14,8 @@ import {
 } from './return-target';
 import { PurchaseBadge } from './PurchaseBadge';
 import { HistoryBadge } from './HistoryBadge';
+import { ListenSection } from './ListenSection';
+import { LISTEN_HOST_ATTRIBUTE, type MountListen } from './decorate-listen';
 import { LoadingGlyph } from './LoadingGlyph';
 import { RefreshButton, type CollectionView } from './RefreshButton';
 import { findCollectionRoot, findSelectButton, scanCollectionCards } from './collection-dom';
@@ -111,6 +113,32 @@ export function syncRefreshButton(
     return { unmount: () => window.setTimeout(() => root.unmount(), 0) };
   };
   ensureRefreshButton(document, mount);
+}
+
+// Sections « Écouter » posées dans les fiches natives : démontées dès que le jeu referme la fiche.
+const listenRoots = new Map<HTMLElement, Root>();
+
+export const mountListenSection: MountListen = (anchor, slug, title) => {
+  const host = document.createElement('div');
+  host.setAttribute(LISTEN_HOST_ATTRIBUTE, '');
+  host.style.display = 'block';
+  host.style.marginTop = '8px';
+  const shadow = host.attachShadow({ mode: 'open' });
+  const mountPoint = document.createElement('div');
+  mountPoint.style.cssText = 'color:inherit; font:inherit';
+  shadow.appendChild(mountPoint);
+  anchor.insertAdjacentElement('afterend', host);
+  const root = createRoot(mountPoint);
+  listenRoots.set(host, root);
+  root.render(<ListenSection slug={slug} title={title} />);
+};
+
+export function pruneListenSections(): void {
+  for (const [host, root] of listenRoots) {
+    if (host.isConnected) continue;
+    listenRoots.delete(host);
+    window.setTimeout(() => root.unmount(), 0);
+  }
 }
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
