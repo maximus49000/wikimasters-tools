@@ -34,6 +34,15 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
 
   const one = (url: string | null): string[] => (url ? [url] : []);
 
+  // Une recherche Spotify à la fois : une page de cartes sans image en demande des dizaines d'un coup, et Spotify limite l'application entière.
+  // Une recherche en échec ne bloque pas les suivantes.
+  let queue: Promise<unknown> = Promise.resolve();
+  const oneAtATime = <T>(job: () => Promise<T>): Promise<T> => {
+    const run = queue.then(job);
+    queue = run.catch(() => undefined);
+    return run;
+  };
+
   return {
     async primary(slug, title) {
       const { spotify, tmdb } = deps.sources;
@@ -43,7 +52,7 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
       if (spotify && (music === 'album' || music === 'track')) {
         if (!(await spotify.session.isLinked())) return [];
         const performer = await performerOf(spotify, slug);
-        return one(await spotify.api.findCover(music, query, performer ? quoted(performer) : undefined));
+        return one(await oneAtATime(() => spotify.api.findCover(music, query, performer ? quoted(performer) : undefined)));
       }
       if (tmdb && (screen === 'film' || screen === 'series')) return one(await tmdb.posterUrl(screen, cleanTitle(title)));
       return [];
@@ -56,7 +65,7 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
       if (spotify && music && (await spotify.session.isLinked())) {
         // Album ou morceau : l'artiste ; carte d'artiste : le titre lui-même.
         const name = music === 'artist' ? quoted(cleanTitle(title)) : await performerOf(spotify, slug);
-        return name ? one(await spotify.api.findArtistImage(quoted(name))) : [];
+        return name ? one(await oneAtATime(() => spotify.api.findArtistImage(quoted(name)))) : [];
       }
       if (tmdb && (screen === 'film' || screen === 'series')) return one(await tmdb.closestPosterUrl(cleanTitle(title)));
       return [];

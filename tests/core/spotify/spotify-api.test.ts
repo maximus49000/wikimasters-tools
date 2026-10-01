@@ -5,11 +5,11 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
   new Response(JSON.stringify(body), { status, headers });
 const empty = (status: number, headers: Record<string, string> = {}) => new Response(null, { status, headers });
 
-function setup(responses: Response[], deviceTypes?: string[]) {
+function setup(responses: Response[], deviceTypes?: string[], now?: () => number) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   const session = { accessToken: vi.fn(async () => 'TOKEN') };
-  return { api: createSpotifyApi({ session, fetch, ...(deviceTypes ? { deviceTypes } : {}) }), fetch, session };
+  return { api: createSpotifyApi({ session, fetch, ...(deviceTypes ? { deviceTypes } : {}), ...(now ? { now } : {}) }), fetch, session };
 }
 
 const call = (fetch: ReturnType<typeof vi.fn>, index = 0) => {
@@ -161,11 +161,30 @@ describe('createSpotifyApi', () => {
   });
 
   it('traduit les erreurs : 404 sans appareil, 403 sans Premium, 429 avec attente', async () => {
-    const { api } = setup([empty(404), empty(403), empty(429, { 'Retry-After': '3' }), empty(500)]);
+    const { api } = setup([empty(404), empty(403), empty(500)]);
     await expect(api.pause()).rejects.toMatchObject({ code: 'no-device' });
     await expect(api.pause()).rejects.toMatchObject({ code: 'not-premium' });
-    await expect(api.pause()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 3000 });
     await expect(api.pause()).rejects.toMatchObject({ code: 'http' });
+    await expect(setup([empty(429, { 'Retry-After': '3' })]).api.pause()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 3000 });
+    // Sans Retry-After exploitable : 5 s.
+    await expect(setup([empty(429)]).api.pause()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 5000 });
+  });
+
+  it("après un 429, n'envoie plus rien à Spotify tant que dure l'attente demandée, quel que soit l'appel, puis reprend", async () => {
+    let clock = 1_000;
+    const { api, fetch } = setup([empty(429, { 'Retry-After': '120' }), empty(204)], undefined, () => clock);
+    await expect(api.pause()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 120_000 });
+
+    // La limite vaut pour toute l'application : les autres appels ne partent pas non plus, et annoncent le reste de l'attente.
+    clock += 30_000;
+    await expect(api.playerState()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 90_000 });
+    await expect(api.searchAlbum('Abbey Road')).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 90_000 });
+    await expect(api.findCover('album', 'Abbey Road')).rejects.toMatchObject({ code: 'rate-limited' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    clock += 90_000;
+    await api.pause();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('retente une fois avec un jeton neuf après un 401', async () => {

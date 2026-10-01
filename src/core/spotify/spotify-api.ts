@@ -51,11 +51,15 @@ function parse<T>(schema: z.ZodType<T>, json: unknown): T {
 type Device = z.infer<typeof devicesSchema>['devices'][number];
 
 // `deviceTypes` : types d'appareil Spotify où lancer la lecture, par ordre de préférence (ex. `Smartphone` sur le téléphone).
-export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessToken'>; fetch: SpotifyFetch; deviceTypes?: readonly string[] }) {
-  const { session, fetch, deviceTypes = [] } = deps;
+export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessToken'>; fetch: SpotifyFetch; deviceTypes?: readonly string[]; now?: () => number }) {
+  const { session, fetch, deviceTypes = [], now = () => Date.now() } = deps;
+  // Spotify limite l'application entière (fenêtre de 30 s, plus étroite en mode développement) : après un 429, plus aucun appel ne part avant la fin de l'attente demandée.
+  let blockedUntil = 0;
 
   async function send(method: string, path: string, options: { query?: Record<string, string>; body?: unknown } = {}): Promise<Response> {
     const url = `${API_URL}${path}${options.query ? `?${new URLSearchParams(options.query).toString()}` : ''}`;
+    const remaining = blockedUntil - now();
+    if (remaining > 0) throw new SpotifyError('rate-limited', 'Limite Spotify atteinte', remaining);
     for (let attempt = 0; ; attempt += 1) {
       const token = await session.accessToken(attempt > 0);
       const response = await fetch(url, {
@@ -72,7 +76,10 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
       if (response.status === 403) throw new SpotifyError('not-premium', 'Spotify Premium requis');
       if (response.status === 429) {
         const seconds = Number(response.headers.get('Retry-After'));
-        throw new SpotifyError('rate-limited', 'Trop de requêtes', Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 5000);
+        const retryAfterMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 5000;
+        blockedUntil = now() + retryAfterMs;
+        console.warn('[wikimasters-tools]', `Spotify : limite atteinte (${method} ${path}), pause de ${Math.round(retryAfterMs / 1000)} s`);
+        throw new SpotifyError('rate-limited', 'Trop de requêtes', retryAfterMs);
       }
       if (!response.ok) throw new SpotifyError('http', `Spotify : HTTP ${response.status}`);
       return response;

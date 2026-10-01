@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMediaArt } from '../../src/content/media-art';
 
-const setup = (natures: string[], overrides: { linked?: boolean; spotify?: boolean; tmdb?: boolean } = {}) => {
-  const findCover = vi.fn(async () => 'https://i.scdn.co/cover');
-  const findArtistImage = vi.fn(async () => 'https://i.scdn.co/artist');
+const setup = (natures: string[], overrides: { linked?: boolean; spotify?: boolean; tmdb?: boolean; slow?: () => Promise<null> } = {}) => {
+  const findCover = vi.fn(overrides.slow ?? (async () => 'https://i.scdn.co/cover'));
+  const findArtistImage = vi.fn(overrides.slow ?? (async () => 'https://i.scdn.co/artist'));
   const closestPosterUrl = vi.fn(async () => 'https://image.tmdb.org/closest');
   const posterUrl = vi.fn(async () => 'https://image.tmdb.org/poster');
   const kinds = { resolveMissing: vi.fn(async () => undefined), load: vi.fn(async () => ({ cards: { x: { natures, occupations: [] } } })) };
@@ -65,5 +65,31 @@ describe('createMediaArt', () => {
     const { art, findArtistImage } = setup(['Q482994'], { linked: false });
     expect(await art.fallback('x', 'Abbey Road')).toEqual([]);
     expect(findArtistImage).not.toHaveBeenCalled();
+  });
+
+  it('lance les recherches Spotify une à une, même quand toute une page de cartes les demande à la fois', async () => {
+    // Spotify limite l'application entière : des dizaines de recherches simultanées suffisent à la bloquer.
+    let running = 0;
+    let peak = 0;
+    const slow = async (): Promise<null> => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      running -= 1;
+      return null;
+    };
+    const { art, findCover, findArtistImage } = setup(['Q482994'], { slow });
+    await Promise.all(Array.from({ length: 12 }, (_, i) => (i % 2 ? art.primary('x', 'Abbey Road') : art.fallback('x', 'Abbey Road'))));
+    expect(findCover).toHaveBeenCalledTimes(6);
+    expect(findArtistImage).toHaveBeenCalledTimes(6);
+    expect(peak).toBe(1);
+  });
+
+  it("une recherche Spotify en échec n'empêche pas les suivantes", async () => {
+    const { art, findCover } = setup(['Q482994']);
+    findCover.mockRejectedValueOnce(new Error('429'));
+    const [first, second] = await Promise.allSettled([art.primary('x', 'A'), art.primary('x', 'B')]);
+    expect(first.status).toBe('rejected');
+    expect(second).toEqual({ status: 'fulfilled', value: ['https://i.scdn.co/cover'] });
   });
 });
