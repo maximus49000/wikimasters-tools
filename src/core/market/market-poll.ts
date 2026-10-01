@@ -27,6 +27,10 @@ type Targets = {
   polledAt: Record<string, number>;
   // Après une vraie erreur (déconnexion, 429 persistant), on n'insiste pas avant cette date.
   cooldownUntil?: number;
+  // Cartes dont l'utilisateur a demandé le rechargement : relevées en priorité, sans attendre les 30 min.
+  // La valeur est un numéro d'ordre (le stockage ne garantit pas l'ordre des clés).
+  forced?: Record<string, number>;
+  forceSeq?: number;
 };
 
 type Lock = { owner: string | null; updatedAt: number };
@@ -64,14 +68,30 @@ export function createMarketCollector(deps: CollectorDeps) {
     for (const listener of listeners) listener();
   };
 
-  // Les cartes à relever : vues récemment à l'écran, pas relevées depuis 30 min, hors délai de retrait.
+  // Cartes forcées dont la recherche est faite dans cet onglet (avant l'écriture par lot dans le stockage).
+  const forcedDone = new Set<string>();
+  // Taille du dernier forçage, pour afficher l'avancement (« 23 / 50 »).
+  let forcedTotal = 0;
+
+  function forcedSlugs(state: Targets): string[] {
+    return Object.entries(state.forced ?? {})
+      .filter(([slug]) => !forcedDone.has(slug) && state.wanted[slug] !== undefined)
+      .sort(([, a], [, b]) => a - b)
+      .map(([slug]) => slug);
+  }
+
+  // Les cartes à relever : d'abord celles dont le rechargement est forcé (dans l'ordre demandé), puis celles vues
+  // récemment à l'écran et pas relevées depuis 30 min. Pas de relevé pendant l'attente qui suit une erreur.
   function dueEntries(state: Targets, t: number): [string, Wanted][] {
     if (state.cooldownUntil !== undefined && t < state.cooldownUntil) return [];
-    return Object.entries(state.wanted).filter(([slug, w]) => {
-      if (t - w.seenAt >= WANTED_TTL_MS) return false;
+    const forced = forcedSlugs(state);
+    const isForced = new Set(forced);
+    const normal = Object.entries(state.wanted).filter(([slug, w]) => {
+      if (isForced.has(slug) || t - w.seenAt >= WANTED_TTL_MS) return false;
       const last = Math.max(state.polledAt[slug] ?? -Infinity, handled.get(slug) ?? -Infinity);
       return t - last >= POLL_INTERVAL_MS;
     });
+    return [...forced.map((slug): [string, Wanted] => [slug, state.wanted[slug]!]), ...normal];
   }
 
   const load = async (): Promise<Targets> =>
@@ -121,14 +141,46 @@ export function createMarketCollector(deps: CollectorDeps) {
       });
     },
 
+    // Rechargement demandé par l'utilisateur : ces cartes passent devant toutes les autres (y compris dans une
+    // passe déjà en cours), sans attendre les 30 min ni l'attente qui suit une erreur.
+    force(targets: Target[]): Promise<void> {
+      const t = now();
+      for (const target of targets) {
+        forcedDone.delete(target.slug);
+        lastWanted.set(target.slug, t);
+      }
+      return mutate((state) => {
+        let seq = state.forceSeq ?? 0;
+        const wanted = { ...state.wanted };
+        const forced = { ...state.forced };
+        for (const target of targets) {
+          wanted[target.slug] = { title: target.title, seenAt: t };
+          forced[target.slug] = ++seq;
+        }
+        const { cooldownUntil: _lifted, ...rest } = state;
+        return { ...rest, wanted, forced, forceSeq: seq };
+      }).then(notify);
+    },
+
+    // Avancement du rechargement forcé : `remaining` cartes restantes sur `total` (0 / 0 hors forçage).
+    async forceProgress(): Promise<{ remaining: number; total: number }> {
+      await tail;
+      const remaining = forcedSlugs(await load()).length;
+      if (remaining === 0) {
+        forcedTotal = 0;
+        return { remaining: 0, total: 0 };
+      }
+      forcedTotal = Math.max(forcedTotal, remaining);
+      return { remaining, total: forcedTotal };
+    },
+
     async tick(): Promise<TickResult> {
       if (running || !isVisible()) return 'skipped';
       running = true;
       try {
         const t = now();
         const state = await load();
-        const pending = dueEntries(state, t).slice(0, MAX_PER_PASS);
-        if (pending.length === 0) return 'skipped';
+        if (dueEntries(state, t).length === 0) return 'skipped';
         if (!(await takeLock(t))) return 'skipped';
 
         let batch: MarketAuction[] = [];
@@ -140,12 +192,30 @@ export function createMarketCollector(deps: CollectorDeps) {
           batch = [];
           done = [];
           if (slugs.length > 0) {
-            await mutate((s) => ({ ...s, polledAt: { ...s.polledAt, ...Object.fromEntries(slugs.map((slug) => [slug, at])) } }));
+            await mutate((s) => {
+              const forced = { ...s.forced };
+              for (const slug of slugs) delete forced[slug];
+              return { ...s, forced, polledAt: { ...s.polledAt, ...Object.fromEntries(slugs.map((slug) => [slug, at])) } };
+            });
           }
         };
 
-        for (const [slug, wanted] of pending) {
+        // La liste est relue à chaque tour : un rechargement forcé demandé pendant la passe passe aussitôt devant.
+        // Les cartes forcées ne comptent pas dans la limite de 60 requêtes de la passe.
+        let normalDone = 0;
+        const seen = new Set<string>();
+        for (;;) {
           if (unloading) return 'interrupted';
+          await tail;
+          const current = await load();
+          const forced = new Set(forcedSlugs(current));
+          const next = dueEntries(current, now()).find(
+            ([slug]) => !seen.has(slug) && (forced.has(slug) || normalDone < MAX_PER_PASS),
+          );
+          if (!next) break;
+          const [slug, wanted] = next;
+          seen.add(slug);
+
           let result: { auctions: MarketAuction[] };
           try {
             result = await api.searchMarket(wanted.title);
@@ -154,7 +224,8 @@ export function createMarketCollector(deps: CollectorDeps) {
             if (unloading) return 'interrupted';
             console.warn('[wikimasters-tools]', 'relevé du marché abandonné :', error);
             await flush();
-            await mutate((s) => ({ ...s, cooldownUntil: now() + POLL_INTERVAL_MS }));
+            await mutate((s) => ({ ...s, forced: {}, cooldownUntil: now() + POLL_INTERVAL_MS }));
+            forcedTotal = 0;
             await dropLock();
             notify();
             return 'failed';
@@ -164,6 +235,8 @@ export function createMarketCollector(deps: CollectorDeps) {
           // La recherche renvoie aussi les titres voisins : seules les enchères de cette carte comptent.
           batch.push(...result.auctions.filter((a) => wikipediaSlug(a.card.wikipedia_url) === slug));
           done.push(slug);
+          if (forced.has(slug)) forcedDone.add(slug);
+          else normalDone += 1;
           handled.set(slug, now());
           notify();
           await store.set(LOCK_KEY, { owner: id, updatedAt: now() });

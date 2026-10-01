@@ -41,4 +41,8 @@ describe('câblage du relevé du marché', () => {
     expect(source).toMatch(/collectionRepo\.list\(\)/);
     expect(source).toMatch(/\(slug\) => owned\.has\(slug\)/);
   });
+
+  it('le bouton de rechargement est branché sur le collecteur', () => {
+    expect(source).toMatch(/syncRefreshButton\(collector\)/);
+  });
 });

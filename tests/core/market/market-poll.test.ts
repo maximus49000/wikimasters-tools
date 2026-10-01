@@ -365,3 +365,111 @@ describe('cartes en attente de relevé (glyphe de chargement)', () => {
     expect(calls).toBe(afterTick);
   });
 });
+
+describe('rechargement forcé d’une page', () => {
+  it('relève tout de suite des cartes pourtant à jour (moins de 30 min)', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    const tab = w.tab('A');
+    await tab.want([target('Ted Lasso')]);
+    await tab.tick();
+    w.fake.calls.length = 0;
+    w.clock.now += 5 * MIN;
+    expect(await tab.tick()).toBe('skipped');
+
+    await tab.force([target('Ted Lasso')]);
+    expect(await tab.tick()).toBe('ran');
+    expect(w.fake.calls).toEqual(['Ted Lasso']);
+    expect(await samplesOf(w, 'Ted Lasso')).toHaveLength(2);
+  });
+
+  it('passe devant les cartes déjà en attente', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    const waiting = ['Carte 1', 'Carte 2', 'Carte 3', 'Carte 4', 'Carte 5'];
+    await tab.want(waiting.map(target));
+    await tab.force([target('Zeta'), target('Alpha')]);
+    await tab.tick();
+    expect(w.fake.calls.slice(0, 2)).toEqual(['Zeta', 'Alpha']);
+    expect(w.fake.calls.slice(2).sort()).toEqual(waiting);
+  });
+
+  it('prend aussi la priorité sur une passe déjà en cours', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    const waiting = ['Carte 1', 'Carte 2', 'Carte 3', 'Carte 4', 'Carte 5'];
+    await tab.want(waiting.map(target));
+    // Pendant la première requête de la passe, l'utilisateur clique sur « Recharger ».
+    w.fake.hooks.set('Carte 1', async () => {
+      await tab.force([target('Urgent')]);
+      return { auctions: [] };
+    });
+    await tab.tick();
+    expect(w.fake.calls[0]).toBe('Carte 1');
+    expect(w.fake.calls[1]).toBe('Urgent');
+    expect(w.fake.calls).toHaveLength(6);
+  });
+
+  it('les cartes forcées ne sont pas limitées par les 60 requêtes d’une passe', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.want(Array.from({ length: 70 }, (_, i) => target(`N ${i}`)));
+    await tab.force(Array.from({ length: 5 }, (_, i) => target(`F ${i}`)));
+    await tab.tick();
+    expect(w.fake.calls).toHaveLength(65);
+    expect(w.fake.calls.slice(0, 5)).toEqual(['F 0', 'F 1', 'F 2', 'F 3', 'F 4']);
+  });
+
+  it('outrepasse l’attente qui suit une erreur', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    const tab = w.tab('A');
+    await tab.want([target('Ted Lasso')]);
+    w.fake.hooks.set('Ted Lasso', async () => {
+      throw new Error('429');
+    });
+    expect(await tab.tick()).toBe('failed');
+    w.fake.hooks.clear();
+    expect(await tab.tick()).toBe('skipped');
+
+    await tab.force([target('Ted Lasso')]);
+    expect(await tab.tick()).toBe('ran');
+  });
+
+  it('une erreur pendant un forçage libère le bouton : plus rien en attente', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.force([target('Carte A'), target('Carte B')]);
+    w.fake.hooks.set('Carte A', async () => {
+      throw new Error('401');
+    });
+    expect(await tab.tick()).toBe('failed');
+    expect(await tab.forceProgress()).toEqual({ remaining: 0, total: 0 });
+    expect((await tab.pendingSlugs()).size).toBe(0);
+  });
+
+  it('suit l’avancement du forçage', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    expect(await tab.forceProgress()).toEqual({ remaining: 0, total: 0 });
+    await tab.force(['A', 'B', 'C'].map((n) => target(`Carte ${n}`)));
+    expect(await tab.forceProgress()).toEqual({ remaining: 3, total: 3 });
+    let during: { remaining: number; total: number } | undefined;
+    w.fake.hooks.set('Carte C', async () => {
+      during = await tab.forceProgress();
+      return { auctions: [] };
+    });
+    await tab.tick();
+    expect(during).toEqual({ remaining: 1, total: 3 });
+    expect(await tab.forceProgress()).toEqual({ remaining: 0, total: 0 });
+  });
+
+  it('un nouveau forçage après un premier terminé repart de zéro', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.force([target('Carte A')]);
+    await tab.tick();
+    await tab.force([target('Carte A')]);
+    expect(await tab.forceProgress()).toEqual({ remaining: 1, total: 1 });
+    expect(await tab.tick()).toBe('ran');
+    expect(w.fake.calls).toEqual(['Carte A', 'Carte A']);
+  });
+});

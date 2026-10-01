@@ -15,6 +15,15 @@ import {
 import { PurchaseBadge } from './PurchaseBadge';
 import { HistoryBadge } from './HistoryBadge';
 import { LoadingGlyph } from './LoadingGlyph';
+import { RefreshButton } from './RefreshButton';
+import { findCollectionRoot, findSelectButton, scanCollectionCards } from './collection-dom';
+import {
+  ensureRefreshButton,
+  REFRESH_HOST_ATTRIBUTE,
+  removeRefreshButton,
+  type MountRefresh,
+} from './refresh-button';
+import type { MarketCollector } from '../core/market/market-poll';
 import { LOADING_HOST_ATTRIBUTE, type MountLoading } from './decorate-loading';
 import { HISTORY_HOST_ATTRIBUTE, type MountHistory } from './decorate-history';
 import type { HistoryRepo } from '../core/market/history-repo';
@@ -64,6 +73,34 @@ export const mountLoadingGlyph: MountLoading = (frame) => {
   root.render(<LoadingGlyph />);
   return { unmount: () => window.setTimeout(() => root.unmount(), 0) };
 };
+
+// Les cartes de la Collection affichées à l'écran (à recharger).
+function visibleCollectionCards(): { slug: string; title: string }[] {
+  const select = findSelectButton(document);
+  const scope = select ? findCollectionRoot(select) : null;
+  return scope ? scanCollectionCards(scope).map(({ slug, title }) => ({ slug, title })) : [];
+}
+
+// Bouton « Recharger les prix de cette page » : uniquement sur la Collection, sous la grille des cartes.
+export function syncRefreshButton(collector: MarketCollector): void {
+  if (!window.location.pathname.startsWith('/collection')) {
+    removeRefreshButton(document);
+    return;
+  }
+  const mount: MountRefresh = (grid) => {
+    const host = document.createElement('div');
+    host.setAttribute(REFRESH_HOST_ATTRIBUTE, '');
+    host.style.display = 'block';
+    const shadow = host.attachShadow({ mode: 'open' });
+    const mountPoint = document.createElement('div');
+    shadow.appendChild(mountPoint);
+    grid.insertAdjacentElement('afterend', host);
+    const root = createRoot(mountPoint);
+    root.render(<RefreshButton collector={collector} getTargets={visibleCollectionCards} />);
+    return { unmount: () => window.setTimeout(() => root.unmount(), 0) };
+  };
+  ensureRefreshButton(document, mount);
+}
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
 
