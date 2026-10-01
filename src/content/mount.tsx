@@ -154,7 +154,7 @@ export function createMarketUi(repo: MarketRepo, history: HistoryRepo) {
 
     anchor.insertAdjacentElement('afterend', host);
     createRoot(mountPoint).render(
-      <MarketLink onOpen={() => openPopup(slug, false)} />,
+      <MarketLink onOpen={() => openPopup(slug, false)} history={history} slug={slug} />,
     );
   };
 

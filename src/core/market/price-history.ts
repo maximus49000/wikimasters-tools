@@ -1,7 +1,8 @@
 import { wikipediaSlug } from './market-book';
 import type { MarketAuction } from './schemas';
 
-export type Sample = { t: number; avgBid: number; bidCount: number };
+// min / max : extrêmes des enchères avec mise au moment du relevé (absents des anciens points).
+export type Sample = { t: number; avgBid: number; bidCount: number; minBid?: number; maxBid?: number };
 
 // Cumul sur tous les relevés pour une tranche d'heures restantes ; la moyenne = sum / n.
 export type HourStat = { n: number; min: number; max: number; sum: number };
@@ -9,6 +10,7 @@ export type HourStat = { n: number; min: number; max: number; sum: number };
 export type CardHistory = {
   slug: string;
   rarity: string;
+  isShiny?: boolean;
   samples: Sample[];
   hours: Record<string, HourStat>;
 };
@@ -44,7 +46,7 @@ export function recordSnapshot(
     if (auction.status !== 'active' || Number.isNaN(endAt) || endAt <= now || slug === null) continue;
 
     const key = `${auction.card_id}|${auction.is_shiny ? 1 : 0}`;
-    const card = (cards[key] ??= { slug, rarity: auction.snapshot_rarity, samples: [], hours: {} });
+    const card = (cards[key] ??= { slug, rarity: auction.snapshot_rarity, isShiny: auction.is_shiny, samples: [], hours: {} });
     const hour = String(Math.floor((endAt - now) / HOUR_MS));
     const stat = card.hours[hour];
     const price = auction.effective_bid;
@@ -57,7 +59,13 @@ export function recordSnapshot(
 
   for (const [key, prices] of bids) {
     const total = prices.reduce((sum, p) => sum + p, 0);
-    cards[key]!.samples.push({ t: now, avgBid: Math.round(total / prices.length), bidCount: prices.length });
+    cards[key]!.samples.push({
+      t: now,
+      avgBid: Math.round(total / prices.length),
+      bidCount: prices.length,
+      minBid: Math.min(...prices),
+      maxBid: Math.max(...prices),
+    });
   }
 
   for (const card of Object.values(cards)) {
@@ -72,13 +80,13 @@ export function weekAverage(card: CardHistory, now: number): number | null {
   return Math.round(recent.reduce((sum, s) => sum + s.avgBid, 0) / recent.length);
 }
 
-// Dernier relevé comparé au précédent ; rien si égal ou si l'historique est trop court.
-export function trendOf(card: CardHistory): 'up' | 'down' | null {
+// Dernier relevé comparé au précédent ; null tant qu'il n'y a pas deux relevés.
+export function trendOf(card: CardHistory): 'up' | 'down' | 'flat' | null {
   const [previous, last] = card.samples.slice(-2);
   if (!previous || !last) return null;
   if (last.avgBid > previous.avgBid) return 'up';
   if (last.avgBid < previous.avgBid) return 'down';
-  return null;
+  return 'flat';
 }
 
 export function hourRows(card: CardHistory): HourRow[] {
