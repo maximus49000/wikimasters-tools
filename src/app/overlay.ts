@@ -122,11 +122,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   const mediaArt: MediaArt = createMediaArt({ kinds: kindsRepo, sources: artSources });
   const images = createImageService({
     store,
-    // Pochette Spotify / affiche TMDB d'abord (première recherche seulement), puis Wikipédia et Commons.
+    // Pochette Spotify / affiche TMDB d'abord (première recherche seulement), puis Wikipédia et Commons, puis l'artiste / l'affiche la plus proche.
     search: async (title, skip, slug) => {
-      const art = skip === 0 ? await mediaArt(slug, title).catch(() => []) : [];
+      const art = skip === 0 ? await mediaArt.primary(slug, title).catch(() => []) : [];
       const wiki = await searchCardImages((url) => fetch(url), title, skip);
-      return [...art, ...wiki.filter((url) => !art.includes(url))].slice(0, MAX_CANDIDATES);
+      const found = [...art, ...wiki.filter((url) => !art.includes(url))].slice(0, MAX_CANDIDATES);
+      // Toujours rien : photo de l'artiste (album) ou affiche la plus proche du nom (film, série).
+      return found.length === 0 && skip === 0 ? await mediaArt.fallback(slug, title).catch(() => []) : found;
     },
     settings: window.localStorage,
   });

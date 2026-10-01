@@ -9,11 +9,13 @@ import type { TmdbApi } from '../core/screen/tmdb-api';
 
 // Sources renseignées au fil du démarrage : Spotify (extension / APK) et TMDB (clé à la compilation) peuvent manquer.
 export type MediaArtSources = {
-  spotify?: { api: Pick<SpotifyApi, 'findCover'>; session: Pick<SpotifySession, 'isLinked'>; music: Pick<MusicRepo, 'resolve'> };
-  tmdb?: Pick<TmdbApi, 'posterUrl'>;
+  spotify?: { api: Pick<SpotifyApi, 'findCover' | 'findArtistImage'>; session: Pick<SpotifySession, 'isLinked'>; music: Pick<MusicRepo, 'resolve'> };
+  tmdb?: Pick<TmdbApi, 'posterUrl' | 'closestPosterUrl'>;
 };
 
-export type MediaArt = (slug: string, title: string) => Promise<string[]>;
+type Art = (slug: string, title: string) => Promise<string[]>;
+// `primary` : pochette / affiche exacte ; `fallback` : à défaut de toute image, la photo de l'artiste ou l'affiche la plus proche du nom.
+export type MediaArt = { primary: Art; fallback: Art };
 
 // Les guillemets casseraient la requête de recherche Spotify.
 const quoted = (text: string): string => text.replaceAll('"', '').trim();
@@ -21,26 +23,43 @@ const quoted = (text: string): string => text.replaceAll('"', '').trim();
 // Pochette (album, single) ou affiche (film, série) d'une carte, pour remplacer l'image manquante.
 // Aucune source utilisable (compte non lié, autre type de carte, rien trouvé) : liste vide, Wikipédia prend le relais.
 export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' | 'load'>; sources: MediaArtSources }): MediaArt {
-  return async (slug, title) => {
-    const { spotify, tmdb } = deps.sources;
-    if (!spotify && !tmdb) return [];
+  async function kindsOf(slug: string) {
     await deps.kinds.resolveMissing([slug]);
     const cardKinds = (await deps.kinds.load()).cards[slug];
-    const query = quoted(cleanTitle(title));
+    return { music: musicKindOf(cardKinds), screen: screenKindOf(cardKinds) };
+  }
 
-    const music = musicKindOf(cardKinds);
-    if (spotify && (music === 'album' || music === 'track')) {
-      if (!(await spotify.session.isLinked())) return [];
-      const performer = (await spotify.music.resolve([slug]))[slug]?.performer;
-      const cover = await spotify.api.findCover(music, query, performer ? quoted(performer) : undefined);
-      return cover ? [cover] : [];
-    }
+  const performerOf = async (spotify: NonNullable<MediaArtSources['spotify']>, slug: string): Promise<string | undefined> =>
+    (await spotify.music.resolve([slug]))[slug]?.performer;
 
-    const screen = screenKindOf(cardKinds);
-    if (tmdb && (screen === 'film' || screen === 'series')) {
-      const poster = await tmdb.posterUrl(screen, cleanTitle(title));
-      return poster ? [poster] : [];
-    }
-    return [];
+  const one = (url: string | null): string[] => (url ? [url] : []);
+
+  return {
+    async primary(slug, title) {
+      const { spotify, tmdb } = deps.sources;
+      if (!spotify && !tmdb) return [];
+      const { music, screen } = await kindsOf(slug);
+      const query = quoted(cleanTitle(title));
+      if (spotify && (music === 'album' || music === 'track')) {
+        if (!(await spotify.session.isLinked())) return [];
+        const performer = await performerOf(spotify, slug);
+        return one(await spotify.api.findCover(music, query, performer ? quoted(performer) : undefined));
+      }
+      if (tmdb && (screen === 'film' || screen === 'series')) return one(await tmdb.posterUrl(screen, cleanTitle(title)));
+      return [];
+    },
+
+    async fallback(slug, title) {
+      const { spotify, tmdb } = deps.sources;
+      if (!spotify && !tmdb) return [];
+      const { music, screen } = await kindsOf(slug);
+      if (spotify && music && (await spotify.session.isLinked())) {
+        // Album ou morceau : l'artiste ; carte d'artiste : le titre lui-même.
+        const name = music === 'artist' ? quoted(cleanTitle(title)) : await performerOf(spotify, slug);
+        return name ? one(await spotify.api.findArtistImage(quoted(name))) : [];
+      }
+      if (tmdb && (screen === 'film' || screen === 'series')) return one(await tmdb.closestPosterUrl(cleanTitle(title)));
+      return [];
+    },
   };
 }

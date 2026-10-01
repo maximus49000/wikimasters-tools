@@ -19,6 +19,7 @@ const searchAlbumsSchema = z.object({ albums: z.object({ items: z.array(z.object
 const coverImages = z.array(z.object({ url: z.string() }));
 const coverAlbumsSchema = z.object({ albums: z.object({ items: z.array(z.object({ images: coverImages })) }) });
 const coverTracksSchema = z.object({ tracks: z.object({ items: z.array(z.object({ album: z.object({ images: coverImages }).optional() })) }) });
+const coverArtistsSchema = z.object({ artists: z.object({ items: z.array(z.object({ images: coverImages })) }) });
 const albumTracksSchema = z.object({ items: z.array(trackSchema) });
 const stateSchema = z.object({
   is_playing: z.boolean(),
@@ -104,6 +105,19 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
       return parse(coverTracksSchema, await response.json()).tracks.items[0]?.album?.images[0]?.url ?? null;
     },
 
+    // Photo d'un artiste, en dernier recours quand l'album n'a pas de pochette.
+    async findArtistImage(name: string): Promise<string | null> {
+      const response = await send('GET', '/search', { query: { q: `artist:"${name}"`, type: 'artist', limit: '1' } });
+      return parse(coverArtistsSchema, await response.json()).artists.items[0]?.images[0]?.url ?? null;
+    },
+
+    // Pochette d'un album (ou du disque d'un morceau) ; Spotify classe les images de la plus grande à la plus petite.
+    async findCover(kind: 'album' | 'track', title: string, performer?: string): Promise<string | null> {
+      const artist = performer ? ` artist:"${performer}"` : '';
+      if (kind === 'album') {
+        const response = await send('GET', '/search', { query: { q: `album:"${title}"${artist}`, type: 'album', limit: '1' } });
+        return parse(coverAlbumsSchema, await response.json()).albums.items[0]?.images[0]?.url ?? null;
+      }
     },
 
     async pause(): Promise<void> {

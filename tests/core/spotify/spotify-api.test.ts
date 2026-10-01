@@ -47,6 +47,13 @@ describe('createSpotifyApi', () => {
     expect(await api.findCover('album', 'Inconnu')).toBeNull();
   });
 
+  it("donne la photo d'un artiste", async () => {
+    const { api, fetch } = setup([json({ artists: { items: [{ images: [{ url: 'https://i.scdn.co/a' }] }] } }), json({ artists: { items: [] } })]);
+    expect(await api.findArtistImage('The Beatles')).toBe('https://i.scdn.co/a');
+    expect(call(fetch, 0).url.searchParams.get('type')).toBe('artist');
+    expect(await api.findArtistImage('Inconnu')).toBeNull();
+  });
+
   it('limite la recherche à 10 résultats, maximum de Spotify', async () => {
     const { api, fetch } = setup([json({ tracks: { items: [] } })]);
     await api.searchTracks('x', 50);

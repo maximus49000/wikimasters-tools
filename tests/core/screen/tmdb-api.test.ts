@@ -135,3 +135,13 @@ describe('posterUrl', () => {
     expect(await tmdb.posterUrl('film', 'Inconnu')).toBeNull();
   });
 });
+
+describe('closestPosterUrl', () => {
+  it("prend la première affiche de film ou de série, sans exiger le titre exact, et ignore les personnes", async () => {
+    const { api: tmdb, fetchFn } = api(() =>
+      Response.json({ results: [{ id: 1, name: 'Une actrice', media_type: 'person', poster_path: '/p.jpg' }, { id: 2, title: 'Inception 2', media_type: 'movie', poster_path: '/ok.jpg' }] }),
+    );
+    expect(await tmdb.closestPosterUrl('Inception')).toBe('https://image.tmdb.org/t/p/w500/ok.jpg');
+    expect(new URL(fetchFn.mock.calls[0]![0]).pathname).toBe('/3/search/multi');
+  });
+});
