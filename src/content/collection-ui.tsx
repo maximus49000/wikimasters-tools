@@ -134,7 +134,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
     const view = readView(window.localStorage);
     // Le sélecteur se place à côté des pastilles de rareté ; à défaut, à côté de « Sélectionner ».
     const rarityAnchor = findRarityFilterAnchor(document);
-    const switchGroup = ensureViewSwitch(rarityAnchor ?? button, button, view, (next) => {
+    ensureViewSwitch(rarityAnchor ?? button, button, view, (next) => {
       writeView(window.localStorage, next);
       sync();
     });
@@ -155,8 +155,9 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
       showList();
       return;
     }
-    // Les filtres nature / occupation sont posés avant les pastilles de rareté (sinon avant le sélecteur de vues).
-    kindRow.mount(rarityAnchor?.parentElement ?? switchGroup);
+    // Les filtres nature / occupation sont posés avant les pastilles de rareté, sinon avant « Sélectionner » :
+    // jamais entre ce bouton et le sélecteur de vues (ensureViewSwitch créerait alors un second sélecteur).
+    kindRow.mount(rarityAnchor?.parentElement ?? button);
     setGridHidden(grid, true);
     // Les panneaux montrent toutes les cartes : la navigation entre les pages de la liste n'a plus de sens.
     for (const pagination of findPagination(document, button)) setGridHidden(pagination, true);

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { KIND_ROW_ATTRIBUTE, ensureKindRow, removeKindRow, type KindRowModel } from '../../src/content/kind-row';
+import { ensureViewSwitch } from '../../src/content/world-toggle';
 
 const model = (over: Partial<KindRowModel> = {}): KindRowModel => ({
   nature: '',
@@ -108,5 +109,19 @@ describe('removeKindRow', () => {
     ensureKindRow(target, model(), handlers());
     removeKindRow(document);
     expect(document.querySelector(`[${KIND_ROW_ATTRIBUTE}]`)).toBeNull();
+  });
+});
+
+describe('sans pastilles de rareté (repli sur « Sélectionner »)', () => {
+  it('ne duplique ni la rangée ni le sélecteur de vues à la synchronisation suivante', () => {
+    document.body.innerHTML = '<div id="bar"><button type="button" class="px-3">Sélectionner</button></div>';
+    const button = document.querySelector('button') as HTMLButtonElement;
+    for (let round = 0; round < 2; round += 1) {
+      ensureViewSwitch(button, button, 'homemade', () => undefined);
+      ensureKindRow(button, model(), handlers());
+    }
+    expect(document.querySelectorAll('[data-wmt-view-switch]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-wmt-kind-row]')).toHaveLength(1);
+    expect(button.nextElementSibling?.hasAttribute('data-wmt-view-switch')).toBe(true);
   });
 });
