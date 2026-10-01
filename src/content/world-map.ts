@@ -1,6 +1,6 @@
 import * as L from 'leaflet';
 import type { CardPreview } from '../core/collection/card-preview';
-import { buildCardPreview } from './card-preview-dom';
+import type { Rect } from './card-popup-position';
 import { rarityKey } from './card-rarity';
 
 export type MapPoint = {
@@ -12,7 +12,10 @@ export type MapPoint = {
 };
 
 export type WorldMapHandlers = {
-  onOpen: (slug: string) => void;
+  // Un appui sur un point (hors mode déplacement tactile) : l'aperçu de la carte s'affiche contre lui.
+  onPick: (slug: string, anchor: Rect) => void;
+  // La vue bouge ou un point est saisi : l'aperçu affiché n'est plus à sa place.
+  onDismiss: () => void;
   // Tactile, mode déplacement actif : un appui sélectionne le point (ouvrir / retirer) au lieu d'ouvrir la carte.
   onSelect: (slug: string) => void;
   // Un marqueur a été glissé : nouvelle position manuelle.
@@ -67,6 +70,7 @@ export function createWorldMap(
   const coarse = isCoarsePointer();
   let moveMode = !coarse;
 
+  map.on('movestart zoomstart', handlers.onDismiss);
   map.on('click', (event: L.LeafletMouseEvent) => {
     if (!placing) return;
     const { lat, lng } = event.latlng.wrap();
@@ -92,28 +96,14 @@ export function createWorldMap(
           icon: pinIcon(point),
           draggable: moveMode,
         });
-        // Au survol : la carte elle-même. Le pointeur peut se poser dessus sans la voir se déplacer.
-        if (!coarse) {
-          marker.bindTooltip(buildCardPreview(point.preview), {
-            className: 'wmt-card-tip',
-            direction: 'auto',
-            offset: [12, 0],
-            opacity: 1,
-          });
-        }
-        // La carte est haute : près du bord de la map, on la décale verticalement pour qu'elle reste entière.
-        marker.on('tooltipopen', () => {
-          const el = marker.getTooltip()?.getElement();
+        marker.on('click', () => {
+          if (coarse && moveMode) return handlers.onSelect(point.slug);
+          const el = marker.getElement();
           if (!el) return;
-          el.style.marginTop = '0px';
-          const bounds = container.getBoundingClientRect();
-          const rect = el.getBoundingClientRect();
-          const shift = rect.bottom > bounds.bottom ? bounds.bottom - rect.bottom : 0;
-          // Si la map est plus basse que la carte, on privilégie le haut de la carte.
-          const top = rect.top + shift < bounds.top ? bounds.top - rect.top : shift;
-          el.style.marginTop = `${top}px`;
+          const { left, right, top, bottom } = el.getBoundingClientRect();
+          handlers.onPick(point.slug, { left, right, top, bottom });
         });
-        marker.on('click', () => (coarse && moveMode ? handlers.onSelect(point.slug) : handlers.onOpen(point.slug)));
+        marker.on('dragstart', handlers.onDismiss);
         marker.on('dragend', () => {
           const { lat, lng } = marker.getLatLng().wrap();
           handlers.onMove(point.slug, lat, lng);
