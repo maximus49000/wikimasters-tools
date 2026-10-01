@@ -74,6 +74,7 @@ const searchSchema = z.object({
       original_title: z.string().optional(),
       original_name: z.string().optional(),
       poster_path: z.string().nullish(),
+      media_type: z.string().optional(),
     }),
   ),
 });
@@ -170,6 +171,13 @@ export function createTmdbApi(deps: { fetch: TmdbFetch; apiKey: string }) {
     async search(kind: ScreenKind, query: string): Promise<number | null> {
       const path = kind === 'film' ? '/search/movie' : kind === 'series' ? '/search/tv' : '/search/person';
       return (await findExact(path, query))?.id ?? null;
+    },
+
+    // Dernier recours : l'affiche du film ou de la série le plus proche du nom, sans exiger un titre identique.
+    async closestPosterUrl(query: string): Promise<string | null> {
+      const data = await get('/search/multi', { query }, searchSchema);
+      const found = data.results.find((result) => (result.media_type === 'movie' || result.media_type === 'tv') && result.poster_path);
+      return found?.poster_path ? `${TMDB_POSTER_BASE}${found.poster_path}` : null;
     },
 
     // Affiche d'un film ou d'une série trouvé par son titre exact ; null sinon.
