@@ -92,4 +92,61 @@ describe('createPlayerSource', () => {
     source.stop();
     expect(scheduled).toHaveLength(0);
   });
+
+  describe('tours concurrents', () => {
+    type State = typeof playing | null;
+    // Chaque appel à playerState reste en attente jusqu'à ce que le test le résolve.
+    function deferredSetup() {
+      const ctx = setup();
+      const pending: ((value: State) => void)[] = [];
+      ctx.api.playerState.mockImplementation(() => new Promise<State>((resolve) => void pending.push(resolve)));
+      const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+      return { ...ctx, pending, flush };
+    }
+
+    it('deux tours qui se chevauchent ne laissent qu’un seul minuteur', async () => {
+      const { source, scheduled, pending, flush } = deferredSetup();
+      source.start();
+      await flush();
+      void source.refresh();
+      void source.refresh();
+      await flush();
+      expect(pending).toHaveLength(2); // le tour 2 est périmé avant d’interroger l’API
+      pending.forEach((resolve) => resolve(playing));
+      await flush();
+      expect(scheduled).toHaveLength(1);
+    });
+
+    it("n'applique ni ne programme rien si l'arrêt survient pendant un tour", async () => {
+      const { source, scheduled, pending, flush } = deferredSetup();
+      source.start();
+      await flush();
+      source.stop();
+      pending[0]!(playing);
+      await flush();
+      expect(scheduled).toHaveLength(0);
+      expect(source.current().track).toBeNull();
+    });
+
+    it('arrêt puis démarrage pendant un tour : un seul minuteur', async () => {
+      const { source, scheduled, pending, flush } = deferredSetup();
+      source.start();
+      await flush();
+      source.stop();
+      source.start();
+      await flush();
+      expect(pending).toHaveLength(2);
+      pending.forEach((resolve) => resolve(playing));
+      await flush();
+      expect(scheduled).toHaveLength(1);
+    });
+
+    it('impose un plancher de 1 s après un 429', async () => {
+      const { source, api, scheduled } = setup();
+      api.playerState.mockRejectedValueOnce(new SpotifyError('rate-limited', 'x', 0));
+      source.start();
+      await vi.waitFor(() => expect(scheduled).toHaveLength(1));
+      expect(scheduled[0]!.ms).toBeGreaterThanOrEqual(1000);
+    });
+  });
 });

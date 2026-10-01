@@ -28,6 +28,7 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
   let cancel: (() => void) | null = null;
   let unsubscribe: (() => void) | null = null;
   let running = false;
+  let generation = 0;
 
   let hidden = false;
   try {
@@ -44,23 +45,31 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
 
   // Un tour : lit l'état, puis reprogramme selon ce qu'on a vu.
   async function poll(): Promise<void> {
+    // Jeton de génération : seul le tour le plus récent (et avant tout arrêt) a le droit d'agir.
+    const mine = ++generation;
     cancel?.();
     cancel = null;
     let wait = IDLE_MS;
     try {
-      if (!(await session.isLinked())) {
+      const linked = await session.isLinked();
+      if (mine !== generation) return;
+      if (!linked) {
         set({ linked: false, track: null });
         return;
       }
       const state = await api.playerState();
+      if (mine !== generation) return;
       set({ linked: true, track: state });
       wait = state?.playing ? PLAYING_MS : IDLE_MS;
     } catch (error) {
+      if (mine !== generation) return;
       if (error instanceof SpotifyError && error.code === 'not-linked') {
         set({ linked: false, track: null });
         return;
       }
-      if (error instanceof SpotifyError && error.code === 'rate-limited') wait = error.retryAfterMs ?? wait;
+      if (error instanceof SpotifyError && error.code === 'rate-limited') {
+        wait = Math.max(error.retryAfterMs ?? wait, 1000);
+      }
     }
     if (running) cancel = schedule(() => void poll(), wait);
   }
@@ -80,6 +89,7 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
     },
     stop(): void {
       running = false;
+      generation++; // les tours en cours deviennent périmés
       cancel?.();
       cancel = null;
       unsubscribe?.();
