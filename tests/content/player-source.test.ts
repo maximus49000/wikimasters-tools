@@ -83,7 +83,7 @@ describe('createPlayerSource', () => {
 
   it("est lié dès que le compte l'est, même si la lecture de l'état échoue", async () => {
     const { source, api } = setup();
-    api.playerState.mockRejectedValue(new SpotifyError('network', 'hors ligne'));
+    api.playerState.mockRejectedValue(new SpotifyError('http', 'hors ligne'));
     source.start();
     await vi.waitFor(() => expect(source.current().linked).toBe(true));
     expect(source.current().track).toBeNull();
