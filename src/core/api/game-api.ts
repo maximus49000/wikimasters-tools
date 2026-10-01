@@ -4,8 +4,9 @@ import { collectionEndpoint, parseCollectionPage, type CollectionPage } from './
 
 import { parseMarketAuctions, type MarketAuction } from '../market/schemas';
 
-// Même taille de page que la page Marché du site.
-const marketEndpoint = (page: number): string => `/api/marketplace?page=${page}&limit=50`;
+// Même requête que la recherche de la page Marché du site : première page des résultats pour un titre.
+const marketSearchEndpoint = (title: string): string =>
+  `/api/marketplace?page=1&limit=50&sort=recent&q=${encodeURIComponent(title)}`;
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -69,14 +70,15 @@ export function createGameApi(options: GameApiOptions) {
   return {
     getMine: (): Promise<MineResponse> =>
       enqueue(async () => parseMineResponse(await requestJson(MINE_ENDPOINT))),
-    getMarketPage: (page: number): Promise<{ auctions: MarketAuction[]; hasMore: boolean }> =>
+    searchMarket: (title: string): Promise<{ auctions: MarketAuction[] }> =>
       enqueue(async () => {
-        const json = await requestJson(marketEndpoint(page));
-        const hasMore = (json as { hasMore?: unknown } | null)?.hasMore;
-        if (!Array.isArray((json as { auctions?: unknown } | null)?.auctions) || typeof hasMore !== 'boolean') {
-          throw new ApiFormatError(marketEndpoint(page), 'auctions / hasMore absents');
+        const path = marketSearchEndpoint(title);
+        const json = await requestJson(path);
+        // Une réponse sans tableau n'est pas « aucune enchère » : on ne la confond pas avec un résultat vide.
+        if (!Array.isArray((json as { auctions?: unknown } | null)?.auctions)) {
+          throw new ApiFormatError(path, 'tableau « auctions » absent');
         }
-        return { auctions: parseMarketAuctions(json).auctions, hasMore };
+        return { auctions: parseMarketAuctions(json).auctions };
       }),
     getCollectionPage: (page: number, filter?: string, sort?: 'rarity' | 'added'): Promise<CollectionPage> =>
       enqueue(async () => {
