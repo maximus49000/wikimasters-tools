@@ -285,7 +285,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   if (spotify) {
     try {
       const session = createSpotifySession({ store, ...spotify });
-      const spotifyApi = createSpotifyApi({ session, fetch: spotify.fetch });
+      const spotifyApi = createSpotifyApi({ session, fetch: spotify.fetch, ...(spotify.deviceTypes ? { deviceTypes: spotify.deviceTypes } : {}) });
       const musicRepo = createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs));
       artSources.spotify = { api: spotifyApi, session, music: musicRepo };
       const player = createPlayerSource({ api: spotifyApi, session, storage: window.localStorage });

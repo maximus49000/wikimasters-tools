@@ -7,6 +7,8 @@ export type SpotifyEnv = {
   redirectUri: () => Promise<string>;
   // Ouvre l'application Spotify (lecture demandée alors qu'elle est fermée) ; absent si la plateforme ne sait pas.
   launchApp?: () => void;
+  // Types d'appareil Spotify où lancer la lecture, par ordre de préférence (l'appareil sur lequel on joue à Wikimasters).
+  deviceTypes?: readonly string[];
 };
 
 type FetchInit = { method?: string; headers?: Record<string, string>; body?: string };
@@ -64,6 +66,7 @@ export function createExtensionEnv(send: (request: SpotifyRequest) => Promise<Sp
     return reply.value;
   }
   return {
+    deviceTypes: ['Computer'],
     ...(launchApp ? { launchApp } : {}),
     redirectUri: async () => (await ask({ type: 'wmt:spotify', op: 'redirect-uri' })) as string,
     authorize: async (url) => (await ask({ type: 'wmt:spotify', op: 'auth', url })) as string,
