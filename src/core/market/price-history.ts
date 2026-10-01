@@ -7,11 +7,15 @@ export type Sample = { t: number; avgBid: number; bidCount: number; minBid?: num
 // Cumul sur tous les relevés pour une tranche d'heures restantes ; la moyenne = sum / n.
 export type HourStat = { n: number; min: number; max: number; sum: number };
 
+// Cumul d'une journée (UTC) pour les vues longues : la moyenne = sum / n (n = nombre de relevés).
+export type DayPoint = { day: number; sum: number; n: number; min: number; max: number };
+
 export type CardHistory = {
   slug: string;
   rarity: string;
   isShiny?: boolean;
   samples: Sample[];
+  days?: DayPoint[];
   hours: Record<string, HourStat>;
 };
 
@@ -24,7 +28,9 @@ export type HistoryState = {
 export type HourRow = { hour: number; n: number; min: number; max: number; avg: number };
 
 const HOUR_MS = 3_600_000;
-export const SAMPLE_RETENTION_MS = 7 * 24 * HOUR_MS;
+const DAY_MS = 24 * HOUR_MS;
+export const SAMPLE_RETENTION_MS = 7 * DAY_MS;
+const DAY_RETENTION_MS = 365 * DAY_MS;
 
 export const emptyHistory = (): HistoryState => ({ lastPollAt: 0, cards: {} });
 
@@ -36,7 +42,12 @@ export function recordSnapshot(
 ): HistoryState {
   const cards: Record<string, CardHistory> = {};
   for (const [key, card] of Object.entries(state.cards)) {
-    cards[key] = { ...card, samples: [...card.samples], hours: { ...card.hours } };
+    cards[key] = {
+      ...card,
+      samples: [...card.samples],
+      days: (card.days ?? []).map((d) => ({ ...d })),
+      hours: { ...card.hours },
+    };
   }
 
   const bids = new Map<string, number[]>();
@@ -59,17 +70,28 @@ export function recordSnapshot(
 
   for (const [key, prices] of bids) {
     const total = prices.reduce((sum, p) => sum + p, 0);
-    cards[key]!.samples.push({
-      t: now,
-      avgBid: Math.round(total / prices.length),
-      bidCount: prices.length,
-      minBid: Math.min(...prices),
-      maxBid: Math.max(...prices),
-    });
+    const card = cards[key]!;
+    const minBid = Math.min(...prices);
+    const maxBid = Math.max(...prices);
+    const avgBid = Math.round(total / prices.length);
+    card.samples.push({ t: now, avgBid, bidCount: prices.length, minBid, maxBid });
+
+    const day = Math.floor(now / DAY_MS) * DAY_MS;
+    const days = card.days ?? (card.days = []);
+    const today = days.at(-1);
+    if (today && today.day === day) {
+      today.sum += avgBid;
+      today.n += 1;
+      today.min = Math.min(today.min, minBid);
+      today.max = Math.max(today.max, maxBid);
+    } else {
+      days.push({ day, sum: avgBid, n: 1, min: minBid, max: maxBid });
+    }
   }
 
   for (const card of Object.values(cards)) {
     card.samples = card.samples.filter((s) => now - s.t <= SAMPLE_RETENTION_MS);
+    card.days = card.days?.filter((d) => now - d.day <= DAY_RETENTION_MS);
   }
   return { lastPollAt: state.lastPollAt, cards };
 }
@@ -101,4 +123,28 @@ export function cardsForSlug(state: HistoryState, slug: string): CardHistory[] {
     .filter(([, card]) => card.slug === slug)
     .sort(([a], [b]) => Number(a.endsWith('|1')) - Number(b.endsWith('|1')))
     .map(([, card]) => card);
+}
+
+export type ChartView = 'day' | 'week' | 'month' | 'year';
+
+const VIEW_SPAN_MS: Record<ChartView, number> = {
+  day: DAY_MS,
+  week: 7 * DAY_MS,
+  month: 30 * DAY_MS,
+  year: 365 * DAY_MS,
+};
+
+// Jour et semaine : relevés de 30 min ; mois et année : un point par jour (moyenne, min, max).
+export function seriesFor(card: CardHistory, view: ChartView, now: number): Sample[] {
+  const from = now - VIEW_SPAN_MS[view];
+  if (view === 'day' || view === 'week') return card.samples.filter((s) => s.t >= from);
+  return (card.days ?? [])
+    .filter((d) => d.day + DAY_MS > from)
+    .map((d) => ({
+      t: d.day + DAY_MS / 2,
+      avgBid: Math.round(d.sum / d.n),
+      bidCount: d.n,
+      minBid: d.min,
+      maxBid: d.max,
+    }));
 }
