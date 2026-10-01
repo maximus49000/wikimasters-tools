@@ -1,4 +1,4 @@
-import type { ScanState } from '../core/collection/collection-scan';
+import { LOCK_MS, type ScanState } from '../core/collection/collection-scan';
 
 export type RecountView = { running: boolean; error: string | null };
 
@@ -30,3 +30,11 @@ export function createRecountSource(task: () => Promise<ScanState>) {
 }
 
 export type RecountSource = ReturnType<typeof createRecountSource>;
+
+// Faut-il remplacer la vue par l'avancement ? Pendant un recomptage demandé par « ×2 », ou quand « ×2 » est actif et qu'un
+// parcours complet est en cours (automatique, ou premier scan) : les nombres d'exemplaires sont alors incomplets.
+// Un scan « en cours » sans activité depuis le verrou est considéré comme interrompu.
+export function isRecounting(view: RecountView, scan: ScanState, duplicatesOn: boolean, now: number): boolean {
+  if (view.running) return true;
+  return duplicatesOn && scan.status === 'running' && scan.pass !== 'incremental' && now - scan.updatedAt < LOCK_MS;
+}

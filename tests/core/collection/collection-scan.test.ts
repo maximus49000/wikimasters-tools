@@ -16,7 +16,7 @@ const dated = (...items: [string, number][]): CollectionPage => ({
   skipped: 0,
 });
 
-function setup(pages: (CollectionPage | Error)[], options: { maxPages?: number } = {}) {
+function setup(pages: (CollectionPage | Error)[], options: { maxPages?: number; now?: () => number } = {}) {
   const store = createMemoryStore();
   const collection = createCollectionRepo(store);
   const getCollectionPage = vi.fn(async (index: number) => {
@@ -167,6 +167,58 @@ describe('createCollectionScanner', () => {
     });
   });
 
+  describe('exemplaires périmés', () => {
+    const HOUR = 3_600_000;
+
+    it('relit tout quand le dernier parcours complet date de plus d’une heure (une carte vendue n’est jamais décomptée autrement)', async () => {
+      let clock = 1_000_000;
+      const { scanner, getCollectionPage } = setup([dated(['A', 1])], { now: () => clock });
+      await scanner.run();
+      expect(await scanner.state()).toMatchObject({ status: 'done', fullAt: 1_000_000 });
+
+      clock += HOUR - 1_000;
+      getCollectionPage.mockClear();
+      await scanner.run();
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0]);
+      expect(await scanner.state()).toMatchObject({ fullAt: 1_000_000 });
+
+      clock += 2_000;
+      getCollectionPage.mockClear();
+      await scanner.run();
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
+      expect(await scanner.state()).toMatchObject({ status: 'done', fullAt: clock });
+    });
+
+    it('recompte depuis zéro : un exemplaire disparu n’est plus compté', async () => {
+      let clock = 1_000_000;
+      // Comme l'API réelle : une carte par titre, avec son nombre d'exemplaires.
+      const twice: CollectionPage = { cards: [{ ...card('A'), copies: 2 }], obtained: [{ slug: 'A', at: 2 }, { slug: 'A', at: 1 }], entries: 2, skipped: 0 };
+      const once: CollectionPage = { cards: [{ ...card('A'), copies: 1 }], obtained: [{ slug: 'A', at: 2 }], entries: 1, skipped: 0 };
+      const { scanner, collection, getCollectionPage } = setup([twice], { now: () => clock });
+      await scanner.run();
+      expect((await collection.list()).find((c) => c.slug === 'A')?.copies).toBe(2);
+
+      clock += 2 * HOUR;
+      getCollectionPage.mockImplementation(async (index: number) => (index === 0 ? once : EMPTY));
+      await scanner.run();
+      expect((await collection.list()).find((c) => c.slug === 'A')?.copies).toBe(1);
+    });
+
+    it('un parcours terminé sans date de parcours complet (ancien état) est refait', async () => {
+      const { scanner, store, getCollectionPage } = setup([dated(['A', 1])]);
+      await store.set('collectionScan', { status: 'done', nextPage: 0, entries: 1, updatedAt: 1, version: 7, pass: 'full', lastObtainedAt: 1 });
+      await scanner.run();
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
+    });
+
+    it('une mise à jour incrémentale interrompue ne reprend pas comme un parcours complet', async () => {
+      const { scanner, store, getCollectionPage } = setup([dated(['A', 1])], { now: () => 10_000_000 });
+      await store.set('collectionScan', { status: 'error', nextPage: 0, entries: 1, updatedAt: 1, version: 7, pass: 'incremental', lastObtainedAt: 1, fullAt: 1 });
+      await scanner.run();
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
+    });
+  });
+
   it('refait un parcours terminé avec une ancienne version du scan', async () => {
     const { scanner, store, getCollectionPage } = setup([page('A')]);
     await store.set('collectionScan', { status: 'done', nextPage: 5, entries: 250, updatedAt: 1, version: 2, lastObtainedAt: 5 });
@@ -194,8 +246,8 @@ describe('createCollectionScanner', () => {
   });
 
   it('laisse un scan récent d’un autre onglet tranquille, mais reprend un scan périmé', async () => {
-    const fresh: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 10_000, version: 6, pass: 'full' };
-    const stale: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 120_000, version: 6, pass: 'full' };
+    const fresh: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 10_000, version: 7, pass: 'full' };
+    const stale: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 120_000, version: 7, pass: 'full' };
 
     const a = setup([]);
     await a.store.set('collectionScan', fresh);
@@ -275,7 +327,7 @@ describe('createCollectionScanner', () => {
         now: () => clock,
         schedule: (fn, ms) => void scheduled.push({ fn, ms }),
       });
-      const saved: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt, version: 6, pass: 'full' };
+      const saved: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt, version: 7, pass: 'full' };
       return { store, scanner, scheduled, getCollectionPage, saved, setClock: (t: number) => void (clock = t) };
     }
 
