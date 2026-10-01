@@ -11,6 +11,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -18,6 +19,8 @@ import android.webkit.WebViewClient;
 
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
+
+import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -30,6 +33,8 @@ public class MainActivity extends Activity {
     private static final String HOST = "www.wiki-masters.com";
     private static final String START_URL = "https://" + HOST + "/";
     private static final String OVERLAY_ASSET = "wikimasters-overlay.js";
+    private static final String SPOTIFY_AUTH_PREFIX = "https://accounts.spotify.com/authorize?";
+    private static final String SPOTIFY_REDIRECT_SCHEME = "wikimasterstools";
 
     private WebView webView;
     private String overlayScript;
@@ -55,6 +60,7 @@ public class MainActivity extends Activity {
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, true);
+        webView.addJavascriptInterface(new SpotifyBridge(), "WmtSpotify");
 
         overlayScript = readAsset(OVERLAY_ASSET);
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -83,6 +89,27 @@ public class MainActivity extends Activity {
 
         if (savedInstanceState != null) webView.restoreState(savedInstanceState);
         else webView.loadUrl(START_URL);
+    }
+
+    // Pont vers la surcouche : ouvre l'autorisation Spotify dans le navigateur du téléphone (jamais dans la WebView).
+    // Seule l'adresse d'autorisation de Spotify est acceptée.
+    private final class SpotifyBridge {
+        @JavascriptInterface
+        public void openAuth(String url) {
+            if (url == null || !url.startsWith(SPOTIFY_AUTH_PREFIX)) return;
+            runOnUiThread(() -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))));
+        }
+    }
+
+    // Retour de l'autorisation (wikimasterstools://spotify?code=…) : transmis à la surcouche, qui termine la liaison.
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        Uri uri = intent.getData();
+        if (uri == null || !SPOTIFY_REDIRECT_SCHEME.equals(uri.getScheme())) return;
+        webView.evaluateJavascript(
+                "window.__wmtSpotifyRedirect && window.__wmtSpotifyRedirect(" + JSONObject.quote(uri.toString()) + ")", null);
     }
 
     private String readAsset(String name) {

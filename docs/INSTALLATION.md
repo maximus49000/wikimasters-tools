@@ -18,6 +18,7 @@ Chrome Android et Safari iOS ne savent pas installer d'extension : seul Firefox 
 2. Ouvrez `chrome://extensions`, activez le **mode développeur**.
 3. **Charger l'extension non empaquetée** → choisissez le dossier décompressé.
 4. Ouvrez https://www.wiki-masters.com : l'extension agit sur ce site uniquement.
+5. Pour écouter la musique : copiez l'identifiant de l'extension affiché sur chrome://extensions, et déclarez `https://<identifiant>.chromiumapp.org/` dans les Redirect URIs de votre application Spotify.
 
 (Pour la Chrome Web Store : envoyez le même zip dans le tableau de bord développeur ; 5 $ de frais uniques.)
 
@@ -50,7 +51,7 @@ Autorisez l'accès à `www.wiki-masters.com` si Firefox le demande (Menu → Mod
 
 ## Signature (Firefox)
 
-Identifiant d'extension : `wikimasters-tools-unofficial@maximus49000.github.io` (fixé dans `wxt.config.ts`, à garder identique entre versions). Le manifeste déclare `data_collection_permissions: none` : aucune donnée n'est envoyée à un serveur du projet (seuls des titres d'articles partent vers Wikipédia / Wikidata).
+Identifiant d'extension : `wikimasters-tools-unofficial@maximus49000.github.io` (fixé dans `wxt.config.ts`, à garder identique entre versions). Le manifeste déclare `data_collection_permissions: none` : aucune donnée n'est envoyée à un serveur du projet (seuls des titres d'articles partent vers Wikipédia / Wikidata). Une fois le compte Spotify lié, les titres des cartes musique et leurs interprètes sont envoyés à la recherche Spotify et les jetons OAuth sont échangés avec accounts.spotify.com, jamais avec un serveur du développeur.
 
 ## Reconstruire les paquets
 

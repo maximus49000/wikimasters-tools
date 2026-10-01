@@ -7,10 +7,16 @@ export default defineConfig({
     name: 'Wikimasters Tools (non officiel)',
     description:
       'Outils en lecture seule pour WikiMasters : prix estimés à partir de vos propres transactions.',
-    permissions: ['storage'],
-    ...(browser === 'firefox' && {
+    // `identity` : liaison du compte Spotify (écoute des cartes musique).
+    permissions: ['storage', 'identity'],
+    // Le service worker appelle Spotify (jamais le site du jeu).
+    host_permissions: [
+      'https://api.spotify.com/*',
+      'https://accounts.spotify.com/*',
       // Firefox MV3 : l'accès au site est une permission d'hôte à accorder (demandée à l'installation).
-      host_permissions: ['https://www.wiki-masters.com/*'],
+      ...(browser === 'firefox' ? ['https://www.wiki-masters.com/*'] : []),
+    ],
+    ...(browser === 'firefox' && {
       browser_specific_settings: {
         gecko: {
           id: 'wikimasters-tools-unofficial@maximus49000.github.io',

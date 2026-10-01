@@ -50,11 +50,23 @@ Un bouton « Recharger les prix de cette page » sous la grille de la Collection
 Les relevés se poursuivent d'une page à l'autre du site (un changement de page ne perd rien) et un seul onglet à la
 fois relève. Une erreur (déconnexion, 429 persistant) arrête la passe et rien n'est retenté avant 30 min.
 
+### Écouter la musique d'une carte (Spotify)
+
+Sur la fiche d'une carte **de votre Collection** qui est un morceau, un album ou un artiste, une section « Écouter »
+propose un bouton ▶ par morceau (album : toutes les pistes ; artiste : jusqu'à 10 titres trouvés par recherche Spotify).
+L'extension **pilote votre appli Spotify** (Spotify Connect) : il faut **Spotify Premium** et l'appli ouverte sur un appareil.
+La musique continue quand vous changez de page ; un mini-lecteur (titre, ▶/⏸, masquable) reste affiché sur le site.
+
+Le lien avec votre compte se fait par l'autorisation officielle de Spotify (PKCE, sans mot de passe ni secret) ; seuls
+les droits « lire l'état de la lecture » et « contrôler la lecture » sont demandés. Le bouton ✕ de la section « Écouter »
+délie le compte. Les titres retrouvés viennent de Wikidata (interprète, identifiants Spotify), puis d'une recherche Spotify.
+
 ## Ce qu'elle ne fait pas
 
 - Aucune enchère, mise, vente ni ouverture de pack, aucune action automatique (les règles du jeu
   interdisent l'automatisation).
 - Aucun appel à la « Vue du marché PRO » du jeu (fonction payante).
+- Aucune lecture dans l'extension elle-même : elle ne fait que commander votre appli Spotify.
 
 ## Développement
 
@@ -77,5 +89,7 @@ interdisent l'automatisation : ce scan est un choix de l'utilisateur, à ses ris
 lecture terminée, les chargements suivants ne lisent que les cartes obtenues depuis le dernier import
 (tri par date d'ajout, arrêt à la première carte plus ancienne : souvent une seule requête) ; les cartes
 perdues ne sont pas détectées, le bouton « Re-scanner » de la vue Monde relit tout. Aucune donnée
-n'est envoyée ailleurs ; aucune donnée n'est envoyée ailleurs (seuls les titres d'articles partent vers
-Wikipédia).
+n'est envoyée à un serveur du développeur ; seuls les titres d'articles partent vers Wikipédia / Wikidata.
+Une fois votre compte Spotify lié, les titres des cartes musique et leurs interprètes sont aussi envoyés à la
+recherche Spotify, et les jetons OAuth sont échangés avec accounts.spotify.com (rien ne passe par un serveur
+du développeur).
