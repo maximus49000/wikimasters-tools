@@ -64,11 +64,10 @@ afterEach(async () => {
 });
 
 describe('ListenSection, relance après une limite Spotify', () => {
-  it('annonce la nouvelle tentative, recharge une fois le délai passé (plus une seconde de marge) et affiche alors les titres', async () => {
+  it('recharge une fois le délai passé (plus une seconde de marge) et affiche alors les titres', async () => {
     const view = serviceOf(vi.fn().mockResolvedValueOnce(limited(3_000)).mockResolvedValue(ready('Come Together')));
     await render();
     expect(text()).toContain(LIMITED);
-    expect(text()).toContain('Nouvelle tentative automatique.');
 
     await wait(3_999);
     expect(view).toHaveBeenCalledTimes(1);
@@ -109,9 +108,8 @@ describe('ListenSection, relance après une limite Spotify', () => {
     await render();
     await wait(60_000);
     expect(view).toHaveBeenCalledTimes(6);
-    // Plus de relance : le message reste, sans promettre de nouvelle tentative.
+    // Plus de relance : le message reste.
     expect(text()).toContain(LIMITED);
-    expect(text()).not.toContain('Nouvelle tentative automatique.');
     await wait(3_600_000, 600_000);
     expect(view).toHaveBeenCalledTimes(6);
   });
@@ -147,7 +145,6 @@ describe('ListenSection, relance après une limite Spotify', () => {
     await render();
     await wait(3_600_000, 600_000);
     expect(other).toHaveBeenCalledTimes(1);
-    expect(text()).not.toContain('Nouvelle tentative automatique.');
 
     const unknownDelay = serviceOf(vi.fn(async () => limited()));
     await render('Revolver');
@@ -181,5 +178,12 @@ describe('ListenSection, relance après une limite Spotify', () => {
     expect(vi.getTimerCount()).toBe(0);
     await wait(60_000);
     expect(view).toHaveBeenCalledTimes(1);
+  });
+
+  it("n'offre aucun bouton pour réessayer à la main : un nouvel essai pendant la pause ne servirait à rien", async () => {
+    serviceOf(vi.fn(async () => limited(30_000)));
+    await render();
+    expect(text()).toContain(LIMITED);
+    expect(container.querySelector('button')).toBeNull();
   });
 });
