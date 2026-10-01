@@ -15,17 +15,29 @@ beforeEach(() => {
 });
 
 describe('readView / writeView', () => {
-  it("vaut « list » par défaut et relit ce qui a été écrit", () => {
+  const memory = () => {
     const data = new Map<string, string>();
-    const storage = {
+    return {
       getItem: (key: string) => data.get(key) ?? null,
       setItem: (key: string, value: string) => void data.set(key, value),
     };
-    expect(readView(storage)).toBe('list');
+  };
+
+  it("vaut « homemade » quand aucune vue n'est mémorisée, et relit ce qui a été écrit", () => {
+    const storage = memory();
+    expect(readView(storage)).toBe('homemade');
     writeView(storage, 'world');
     expect(readView(storage)).toBe('world');
     writeView(storage, 'list');
     expect(readView(storage)).toBe('list');
+    writeView(storage, 'timeline');
+    expect(readView(storage)).toBe('timeline');
+  });
+
+  it("ignore une valeur inconnue", () => {
+    const storage = memory();
+    storage.setItem('wmt:collectionView', 'autre');
+    expect(readView(storage)).toBe('homemade');
   });
 
   it("absorbe les erreurs de stockage", () => {
@@ -37,42 +49,48 @@ describe('readView / writeView', () => {
         throw new Error('bloqué');
       },
     };
-    expect(readView(broken)).toBe('list');
+    expect(readView(broken)).toBe('homemade');
     expect(() => writeView(broken, 'world')).not.toThrow();
   });
 });
 
 describe('ensureViewSwitch', () => {
-  it("insère Grille / Monde / Chronologique juste après l'ancre, avec le style du bouton modèle", () => {
+  const NAMES = ['Homemade', 'Monde', 'Chronologique', 'Grille'];
+
+  it("insère quatre boutons en glyphes juste après l'ancre, Homemade en tête et la Grille à droite", () => {
     const select = makeSelect();
-    const group = ensureViewSwitch(select, select, 'list', () => undefined);
+    const group = ensureViewSwitch(select, select, 'homemade', () => undefined);
 
     expect(select.nextElementSibling).toBe(group);
     const buttons = [...group.querySelectorAll('button')];
-    expect(buttons.map((b) => b.textContent)).toEqual(['Grille', 'Monde', 'Chronologique']);
+    expect(buttons.map((b) => b.getAttribute('data-wmt-view'))).toEqual(['homemade', 'world', 'timeline', 'list']);
+    expect(buttons.map((b) => b.getAttribute('aria-label')?.split(' ')[0])).toEqual(NAMES.map((name) => name.split(' ')[0]));
+    expect(buttons.every((b) => b.textContent === '')).toBe(true);
+    expect(buttons.every((b) => b.querySelector('svg') !== null)).toBe(true);
     expect(buttons.every((b) => b.className === select.className)).toBe(true);
-    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false']);
   });
 
   it("est idempotent et met à jour la vue active", () => {
     const select = makeSelect();
-    const first = ensureViewSwitch(select, select, 'list', () => undefined);
+    const first = ensureViewSwitch(select, select, 'homemade', () => undefined);
     const second = ensureViewSwitch(select, select, 'timeline', () => undefined);
 
     expect(second).toBe(first);
     expect(document.querySelectorAll('[data-wmt-view-switch]')).toHaveLength(1);
-    expect([...second.querySelectorAll('button')].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true']);
+    expect([...second.querySelectorAll('button')].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true', 'false']);
   });
 
-  it("ne copie ni id, ni disabled, ni aria-label du bouton modèle", () => {
+  it("ne copie ni id, ni disabled, ni l'aria-label du bouton modèle", () => {
     document.body.innerHTML = '<div><button type="button" id="sel" disabled aria-label="x" class="a">Sélectionner</button></div>';
     const select = document.querySelector('button') as HTMLButtonElement;
-    const group = ensureViewSwitch(select, select, 'list', () => undefined);
+    const group = ensureViewSwitch(select, select, 'homemade', () => undefined);
 
     for (const button of group.querySelectorAll('button')) {
       expect(button.hasAttribute('id')).toBe(false);
       expect(button.disabled).toBe(false);
-      expect(button.hasAttribute('aria-label')).toBe(false);
+      expect(button.getAttribute('aria-label')).not.toBe('x');
+      expect(button.getAttribute('aria-label')).toBeTruthy();
     }
   });
 
@@ -80,8 +98,8 @@ describe('ensureViewSwitch', () => {
     const select = makeSelect();
     const oldHandler = vi.fn();
     const newHandler = vi.fn();
-    ensureViewSwitch(select, select, 'list', oldHandler);
-    const group = ensureViewSwitch(select, select, 'list', newHandler);
+    ensureViewSwitch(select, select, 'homemade', oldHandler);
+    const group = ensureViewSwitch(select, select, 'homemade', newHandler);
     (group.querySelector('[data-wmt-view="timeline"]') as HTMLButtonElement).click();
 
     expect(oldHandler).not.toHaveBeenCalled();
