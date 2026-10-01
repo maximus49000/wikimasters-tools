@@ -80,6 +80,8 @@ export function createMarketCollector(deps: CollectorDeps) {
 
   // Cartes forcées dont la recherche est faite dans cet onglet (avant l'écriture par lot dans le stockage).
   const forcedDone = new Set<string>();
+  // Cartes déjà relevées dans la passe en cours : un rechargement forcé en cours de passe ne les relit pas.
+  const passSeen = new Set<string>();
 
   // Cartes restantes d'un rechargement.
   const remainingOf = (state: Targets, job: Job): string[] =>
@@ -189,7 +191,11 @@ export function createMarketCollector(deps: CollectorDeps) {
           return { ...state, jobs, forceSeq: seq };
         }
 
-        for (const slug of slugs) forcedDone.delete(slug);
+        // Une carte relevée à l'instant dans la passe en cours est déjà à jour : on ne la relit pas.
+        for (const slug of slugs) {
+          if (passSeen.has(slug)) forcedDone.add(slug);
+          else forcedDone.delete(slug);
+        }
         const wanted = { ...state.wanted };
         for (const target of targets) {
           wanted[target.slug] = { title: target.title, seenAt: t };
@@ -256,7 +262,8 @@ export function createMarketCollector(deps: CollectorDeps) {
         // La liste est relue à chaque tour : un rechargement forcé demandé pendant la passe passe aussitôt devant.
         // Les cartes forcées ne comptent pas dans la limite de 60 requêtes de la passe.
         let normalDone = 0;
-        const seen = new Set<string>();
+        passSeen.clear();
+        const seen = passSeen;
         for (;;) {
           if (unloading) return 'interrupted';
           await tail;
@@ -299,6 +306,7 @@ export function createMarketCollector(deps: CollectorDeps) {
         return 'ran';
       } finally {
         running = false;
+        passSeen.clear();
         await releasing;
         notify();
       }
