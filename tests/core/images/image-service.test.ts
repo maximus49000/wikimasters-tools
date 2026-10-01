@@ -73,4 +73,29 @@ describe('createImageService', () => {
     const service = createImageService({ store, search: vi.fn(async () => []), settings: settings('on') });
     expect(await service.resolve('A', 'A')).toBe('u7');
   });
+
+  it('place la pochette officielle devant les images de Wikipédia', async () => {
+    const service = createImageService({
+      store: createMemoryStore(),
+      search: async () => ['wiki'],
+      art: async () => ['spotify'],
+      settings: settings('on'),
+    });
+    expect(await service.resolve('A', 'A')).toBe('spotify');
+  });
+
+  it('remplace une image déjà trouvée dès que la pochette officielle est disponible', async () => {
+    const store = createMemoryStore();
+    await store.set('card-images', { A: { url: 'wiki', candidates: ['wiki'], rejected: [] } });
+    const service = createImageService({ store, search: vi.fn(async () => []), art: async () => ['spotify'], settings: settings('on') });
+    expect(await service.resolve('A', 'A')).toBe('spotify');
+  });
+
+  it("ne remet pas une pochette écartée par « Mauvaise image »", async () => {
+    const store = createMemoryStore();
+    await store.set('card-images', { A: { url: 'wiki', candidates: ['wiki'], rejected: ['spotify'] } });
+    const service = createImageService({ store, search: vi.fn(async () => []), art: async () => ['spotify'], settings: settings('on') });
+    await service.resolve('A', 'A');
+    expect(service.peek('A')).toBe('wiki');
+  });
 });
