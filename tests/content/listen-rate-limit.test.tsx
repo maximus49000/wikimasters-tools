@@ -24,7 +24,7 @@ function setup(retryAfter: string | null) {
     await new Promise((resolve) => setTimeout(resolve, 300));
     return new Response('', { status: 429, ...(retryAfter ? { headers: { 'Retry-After': retryAfter } } : {}) });
   });
-  const api = createSpotifyApi({ session: { accessToken: async () => 'token' }, fetch });
+  const api = createSpotifyApi({ session: { accessToken: async () => 'token' }, fetch, store: createMemoryStore() });
   const service = createMusicService({
     collection: { list: async () => [{ slug: 'Abbey_Road', title: 'Abbey Road' }] as never },
     kinds: { resolveMissing: async () => undefined, load: async () => ({ cards: { Abbey_Road: { natures: ['Q482994'], occupations: [], genres: [] } }, labels: {} }) as never },
@@ -40,7 +40,7 @@ function setup(retryAfter: string | null) {
 
 const text = () => container.textContent ?? '';
 
-// Avance l'horloge par pas de 100 ms et note chaque changement d'affichage (R = message + « Nouvelle tentative », M = message seul, · = rien).
+// Avance l'horloge par pas de 100 ms et note chaque changement d'affichage (M = message, · = rien).
 async function observe(totalMs: number) {
   const changes: string[] = [];
   let last = '';
@@ -48,7 +48,7 @@ async function observe(totalMs: number) {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(100);
     });
-    const now = text() === '' ? '·' : text().includes('Nouvelle tentative') ? 'R' : 'M';
+    const now = text() === '' ? '·' : 'M';
     if (now !== last) changes.push(`${(t / 1000).toFixed(1)}s:${now}`);
     last = now;
   }
@@ -86,7 +86,7 @@ describe('ListenSection + client Spotify, limite qui persiste', () => {
     expect(calls[5]! - calls[0]!).toBeGreaterThan(5 * 60_000);
 
     // Le message est affiché dès la première réponse et n'est plus retiré : plus de disparition à chaque essai.
-    expect(display).toMatch(/^0\.0s:· 0\.2s:R \d+\.\ds:M$/);
+    expect(display).toMatch(/^0\.0s:· \d+\.\ds:M$/);
   });
 
   it('Retry-After lisible (extension) : une relance par délai demandé, sans clignotement', async () => {
@@ -96,6 +96,6 @@ describe('ListenSection + client Spotify, limite qui persiste', () => {
     });
     const display = await observe(10 * 60_000);
     expect(calls.slice(1).map((time, index) => Math.round((time - calls[index]!) / 1000))).toEqual([41, 41, 41, 41, 41]);
-    expect(display).toMatch(/^0\.0s:· 0\.2s:R \d+\.\ds:M$/);
+    expect(display).toMatch(/^0\.0s:· \d+\.\ds:M$/);
   });
 });

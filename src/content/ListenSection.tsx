@@ -14,7 +14,6 @@ const MAX_AUTO_RETRIES = 5;
 const MAX_TIMER_MS = 2_147_483_647;
 
 const REFRESH_LABEL = 'Actualiser les meilleurs titres';
-const RETRY_LABEL = 'Réessayer maintenant';
 
 const SIZE = 44; // cible tactile
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -52,8 +51,6 @@ export function ListenSection({ slug, title }: Props) {
   const [autoRetries, setAutoRetries] = useState(0);
   // Actualisation des meilleurs titres en cours (bouton d'un artiste).
   const [refreshing, setRefreshing] = useState(false);
-  // Rechargement demandé par « Réessayer maintenant » (limite de Spotify) en cours.
-  const [forcing, setForcing] = useState(false);
 
   // Carte dont la vue affichée est issue : un rechargement de la même carte (nouvelle tentative, liaison) garde l'affichage jusqu'à la réponse.
   const shownFor = useRef<string | null>(null);
@@ -68,7 +65,6 @@ export function ListenSection({ slug, title }: Props) {
       setView(null);
       setMessage(null);
       setRefreshing(false);
-      setForcing(false);
     }
     void service.view(slug, title).then((next) => !cancelled && setView(next));
     // Liaison ou déliaison pendant que la fiche est ouverte : on recharge.
@@ -81,40 +77,26 @@ export function ListenSection({ slug, title }: Props) {
 
   useEffect(() => setAutoRetries(0), [slug, title]);
 
-  // Limite de Spotify : le chargement est relancé après le délai demandé. Un chargement abouti remet le compte à zéro.
-  // Pendant un rechargement demandé à la main, la minuterie attend sa réponse (et repart de la nouvelle échéance).
+  // Limite de Spotify : le chargement est relancé à l'heure annoncée par le message. Un chargement abouti remet le compte à zéro.
   useEffect(() => {
     if (!view) return;
     if (view.status !== 'error' || view.retryAfterMs === undefined) {
       setAutoRetries(0);
       return;
     }
-    if (autoRetries >= MAX_AUTO_RETRIES || forcing) return;
+    if (autoRetries >= MAX_AUTO_RETRIES) return;
     const timer = setTimeout(() => {
       setAutoRetries((count) => count + 1);
       setVersion((value) => value + 1);
     }, Math.min(view.retryAfterMs + RETRY_MARGIN_MS, MAX_TIMER_MS));
     return () => clearTimeout(timer);
-  }, [view, autoRetries, forcing]);
+  }, [view, autoRetries]);
 
   if (!service || !view || view.status === 'none') return null;
-  const retrying = view.status === 'error' && view.retryAfterMs !== undefined && autoRetries < MAX_AUTO_RETRIES && !forcing;
 
   // La carte est retenue par le lecteur : il en offre ensuite la fiche (bouton « Carte »).
   const play = async (item: Track, listen: Listen) => setMessage(await service.play(item, listen, { slug, title }));
   const link = async () => setMessage(await service.link());
-  // Après une limite de Spotify : lève la pause du client et recharge tout de suite, sans attendre le délai. Les relances automatiques repartent de zéro.
-  const retryNow = async () => {
-    if (forcing) return;
-    const card = `${slug}\n${title}`;
-    setForcing(true);
-    const next = await service.retry(slug, title);
-    // Réponse d'une carte quittée entre-temps : la fiche affichée n'est plus la sienne.
-    if (shownFor.current !== card) return;
-    setForcing(false);
-    setAutoRetries(0);
-    setView(next);
-  };
   // Les meilleurs titres d'un artiste viennent d'une recherche gardée : ce bouton la refait. Une panne laisse la liste affichée.
   const refresh = async () => {
     if (refreshing) return;
@@ -137,26 +119,7 @@ export function ListenSection({ slug, title }: Props) {
         </button>
       )}
       {view.status === 'notfound' && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>Introuvable sur Spotify.</p>}
-      {view.status === 'error' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <p style={{ flex: 1, minWidth: 0, margin: 0, fontSize: 12, opacity: 0.8 }}>
-            {view.message}
-            {retrying && ' Nouvelle tentative automatique.'}
-          </p>
-          {view.retryAfterMs !== undefined && (
-            <button
-              type="button"
-              onClick={() => void retryNow()}
-              disabled={forcing}
-              aria-label={RETRY_LABEL}
-              title={RETRY_LABEL}
-              style={{ ...iconButton, opacity: forcing ? 0.3 : 0.6, cursor: forcing ? 'default' : 'pointer' }}
-            >
-              <Glyph name="refresh" size={14} />
-            </button>
-          )}
-        </div>
-      )}
+      {view.status === 'error' && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>{view.message}</p>}
       {view.status === 'ready' && (
         <>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 'min(160px, 25vh)', overflowY: 'auto' }}>
