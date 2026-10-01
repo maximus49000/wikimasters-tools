@@ -21,6 +21,14 @@ const MESSAGES: Record<SpotifyErrorCode, string> = {
   http: 'Spotify est indisponible pour le moment.',
 };
 
+// La limite de Spotify peut durer des minutes, voire des heures : on annonce l'attente réelle quand on la connaît.
+function rateLimitedMessage(retryAfterMs: number | undefined): string {
+  if (retryAfterMs === undefined || retryAfterMs < 60_000) return MESSAGES['rate-limited'];
+  const minutes = Math.ceil(retryAfterMs / 60_000);
+  return `Spotify demande de patienter. Réessaie dans environ ${minutes < 120 ? `${minutes} min` : `${Math.ceil(minutes / 60)} h`}.`;
+}
+
 export function userMessage(error: unknown): string {
-  return error instanceof SpotifyError ? MESSAGES[error.code] : MESSAGES.http;
+  if (!(error instanceof SpotifyError)) return MESSAGES.http;
+  return error.code === 'rate-limited' ? rateLimitedMessage(error.retryAfterMs) : MESSAGES[error.code];
 }

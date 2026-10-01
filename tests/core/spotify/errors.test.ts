@@ -11,4 +11,15 @@ describe('userMessage', () => {
     expect(userMessage(new SpotifyError('http', 'x'))).toBe('Spotify est indisponible pour le moment.');
     expect(userMessage(new Error('boom'))).toBe('Spotify est indisponible pour le moment.');
   });
+
+  it("annonce l'attente réelle d'une limite : quelques secondes, puis des minutes, puis des heures", () => {
+    const limited = (ms?: number) => userMessage(new SpotifyError('rate-limited', 'x', ms));
+    const seconds = 'Spotify demande de patienter un instant. Réessaie dans quelques secondes.';
+    expect(limited()).toBe(seconds);
+    expect(limited(59_000)).toBe(seconds);
+    expect(limited(60_000)).toBe('Spotify demande de patienter. Réessaie dans environ 1 min.');
+    expect(limited(90_000)).toBe('Spotify demande de patienter. Réessaie dans environ 2 min.');
+    expect(limited(119 * 60_000)).toBe('Spotify demande de patienter. Réessaie dans environ 119 min.');
+    expect(limited(3 * 3_600_000)).toBe('Spotify demande de patienter. Réessaie dans environ 3 h.');
+  });
 });
