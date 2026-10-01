@@ -13,7 +13,7 @@ import { createCollectionUi } from '../content/collection-ui';
 import { loadFilteredSlugs } from '../core/collection/filtered-slugs';
 import { createMarketRepo } from '../core/market/market-repo';
 import { createHistoryRepo } from '../core/market/history-repo';
-import { createMarketWatcher, fetchFullMarket } from '../core/market/market-poll';
+import { createMarketCollector } from '../core/market/market-poll';
 import { cardsForSlug, emptyHistory, type HistoryState } from '../core/market/price-history';
 import { decorateHistory } from '../content/decorate-history';
 import { parseMarketAuctions } from '../core/market/schemas';
@@ -134,26 +134,27 @@ export default defineContentScript({
 
     run();
 
-    // Relevé du marché en arrière-plan, uniquement sur la Collection et onglet visible.
-    const watcher = createMarketWatcher({
-      poll: async () => {
-        // La tentative est datée d'abord : un échec n'entraîne pas de relance en boucle.
-        await historyRepo.markAttempt();
-        try {
-          await historyRepo.record(await fetchFullMarket(api));
-        } catch (error) {
-          console.warn(LOG, 'relevé du marché abandonné :', error);
-        }
-      },
-      lastPollAt: () => historyRepo.lastPollAt(),
+    // Relevé du marché en arrière-plan : sur toutes les pages du site (onglet visible), et repris
+    // d'une page à l'autre quand l'utilisateur navigue.
+    const collector = createMarketCollector({
+      api,
+      history: historyRepo,
+      store,
       now: () => Date.now(),
-      isVisible: () =>
-        document.visibilityState === 'visible' && window.location.pathname.startsWith('/collection'),
+      isVisible: () => document.visibilityState === 'visible',
+      id: crypto.randomUUID(),
     });
-    const tick = () => void watcher.tick().catch((error) => console.warn(LOG, 'relevé du marché :', error));
+    const tick = () => void collector.tick().catch((error) => console.warn(LOG, 'relevé du marché :', error));
     tick();
     window.setInterval(tick, 60_000);
     document.addEventListener('visibilitychange', tick);
+    // La page se décharge : on libère le relevé en cours pour que la page suivante le reprenne aussitôt.
+    window.addEventListener('pagehide', () => void collector.release());
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted) return;
+      collector.activate();
+      tick();
+    });
 
     // Une recherche demandée depuis une fiche reprend ici, sur la page Marché.
     if (window.location.pathname.startsWith('/marketplace')) {
