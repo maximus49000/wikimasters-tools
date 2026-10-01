@@ -10,8 +10,17 @@ const rank = (rarity: string | undefined): number => {
 };
 
 // Comme le tri par défaut du site : rareté décroissante, puis titre.
-export function sortCards(cards: KnownCard[]): KnownCard[] {
-  return [...cards].sort((a, b) => rank(a.rarity) - rank(b.rarity) || a.title.localeCompare(b.title, 'fr'));
+// `priceOf` : tri par dernier prix de vente connu, décroissant ; les cartes sans prix viennent en dernier.
+export function sortCards(cards: KnownCard[], priceOf?: (slug: string) => number | null): KnownCard[] {
+  const byRarity = (a: KnownCard, b: KnownCard) => rank(a.rarity) - rank(b.rarity) || a.title.localeCompare(b.title, 'fr');
+  if (!priceOf) return [...cards].sort(byRarity);
+  const prices = new Map(cards.map((card) => [card.slug, priceOf(card.slug)]));
+  return [...cards].sort((a, b) => {
+    const pa = prices.get(a.slug) ?? null;
+    const pb = prices.get(b.slug) ?? null;
+    if (pa === null || pb === null) return pa === pb ? byRarity(a, b) : pa === null ? 1 : -1;
+    return pb - pa || byRarity(a, b);
+  });
 }
 
 // Nombre de cartes par page du site : la plus grande page vue par le scan, ou comptée dans la grille native.

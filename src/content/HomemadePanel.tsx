@@ -6,11 +6,13 @@ import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/colle
 import { pageSizeOf, pageSlice, sortCards } from '../core/collection/homemade-page';
 import { applyKindFilter } from '../core/kinds/kinds-filter';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
+import { lastPriceOf } from '../core/market/price-history';
 import type { PriceBook } from '../core/pricing/price-book';
 import { buildCardPreview } from './card-preview-dom';
 import type { CollectionFilterSource } from './collection-filter';
 import type { KindFilterSource } from './kind-filter';
 import type { MarketSource } from './market-source';
+import type { SortSource } from './sort-source';
 import { createThrottledLoader } from './throttle';
 import { useKindState } from './useKindState';
 import { useNativeFilter } from './useNativeFilter';
@@ -24,6 +26,8 @@ type Props = {
   book: PriceBook | null;
   market: MarketSource;
   filterSource: CollectionFilterSource;
+  // Tri choisi dans la liste « Trier la collection » du site.
+  sortSource: SortSource;
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   // Nombre de cartes comptées dans la grille native de la page (0 si aucune).
   nativePageSize: () => number;
@@ -123,6 +127,7 @@ export function HomemadePanel({
   book,
   market,
   filterSource,
+  sortSource,
   loadFiltered,
   nativePageSize,
   onOpenCard,
@@ -153,15 +158,21 @@ export function HomemadePanel({
   const { filter, visible, filtering, error } = useNativeFilter({ filterSource, loadFiltered, cards, scan });
   const { kindsState, kindFilter } = useKindState(kinds, kindFilterSource);
 
+  const sort = useSyncExternalStore(sortSource.subscribe, sortSource.current);
+  const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
   const list = useMemo(
-    () => sortCards(applyKindFilter(visible ? cards.filter((card) => visible.has(card.slug)) : cards, kindsState, kindFilter)),
-    [cards, visible, kindsState, kindFilter],
+    () =>
+      sortCards(
+        applyKindFilter(visible ? cards.filter((card) => visible.has(card.slug)) : cards, kindsState, kindFilter),
+        sort === 'price' ? (slug) => lastPriceOf(marketNow.history, slug, Date.now()) : undefined,
+      ),
+    [cards, visible, kindsState, kindFilter, sort, marketNow.history],
   );
   const size = pageSizeOf(scan.pageSize, nativePageSize());
   const current = useMemo(() => pageSlice(list, page, size), [list, page, size]);
 
   // Un autre filtre : retour à la première page.
-  const filterKey = `${filter}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}`;
+  const filterKey = `${filter}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}|${sort}`;
   const lastFilterKey = useRef(filterKey);
   useEffect(() => {
     if (lastFilterKey.current === filterKey) return;
@@ -170,7 +181,6 @@ export function HomemadePanel({
     setPage(1);
   }, [filterKey]);
 
-  const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
   const previews = useMemo(
     () =>
       current.items.map((card) =>

@@ -10,6 +10,7 @@ import { createBirthRepo } from '../core/birth/birth-repo';
 import { createGeoRepo } from '../core/geo/geo-repo';
 import { fetchWikidataKinds } from '../core/kinds/wikidata-kinds';
 import { createKindsRepo } from '../core/kinds/kinds-repo';
+import { createSortSource } from '../content/sort-source';
 import { createKindFilterSource } from '../content/kind-filter';
 import { createCollectionFilterSource } from '../content/collection-filter';
 import { createCollectionUi } from '../content/collection-ui';
@@ -138,6 +139,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
     book,
     filterSource,
+    sortSource: createSortSource(),
     loadFiltered: (filter, isCancelled) => loadFilteredSlugs(filterApi, filter, isCancelled),
     openCard: (slug) => marketUi.openMarket(slug),
     openGameCard: (slug) => void marketUi.reopenCard(slug),

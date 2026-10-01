@@ -157,3 +157,12 @@ export function lastKnown(card: CardHistory): { value: number; at: number } | nu
   const sample = card.samples.at(-1);
   return sample ? { value: sample.avgBid, at: sample.t } : null;
 }
+
+// Dernier prix de vente connu d'une carte (moyenne des 7 derniers jours, sinon dernière valeur observée) ;
+// si la carte et sa variante shiny ont toutes deux un prix, le plus élevé.
+export function lastPriceOf(state: HistoryState, slug: string, now: number): number | null {
+  const prices = cardsForSlug(state, slug)
+    .map((card) => weekAverage(card, now) ?? lastKnown(card)?.value ?? null)
+    .filter((price): price is number => price !== null);
+  return prices.length > 0 ? Math.max(...prices) : null;
+}
