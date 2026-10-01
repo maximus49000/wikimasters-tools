@@ -1,4 +1,6 @@
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { Glyph } from './Glyphs';
+import { getMusicService } from './music-registry';
 import type { PlayerSource } from './player-source';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -15,9 +17,23 @@ const choice = (selected: boolean) =>
     borderRadius: 8,
   }) as const;
 
-// « Lecteur » : afficher ou masquer le mini-lecteur Spotify (affiché par défaut, dès que Spotify est lié).
+// « Lecteur » : afficher ou masquer le mini-lecteur Spotify (affiché par défaut, dès que Spotify est lié), et lier ou délier le compte.
 export function PlayerSettings({ source, onClose }: { source: PlayerSource; onClose: () => void }) {
-  const { enabled } = useSyncExternalStore(source.subscribe, source.current);
+  const { enabled, linked } = useSyncExternalStore(source.subscribe, source.current);
+  const service = getMusicService();
+  // Liaison en cours (la fenêtre d'autorisation de Spotify est ouverte) et cause d'un échec.
+  const [linking, setLinking] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const link = async () => {
+    if (!service || linking) return;
+    setLinking(true);
+    setMessage(null);
+    setMessage(await service.link());
+    setLinking(false);
+  };
+  const accountLabel = linked ? 'Délier Spotify' : 'Lier Spotify';
+
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
       <div
@@ -41,6 +57,26 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
             Masqué
           </button>
         </div>
+        {service && (
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: border }}>
+            <p style={{ margin: '0 0 8px', opacity: 0.8 }}>Compte Spotify : {linked ? 'lié' : 'non lié'}.</p>
+            <button
+              type="button"
+              onClick={() => (linked ? void service.unlink() : void link())}
+              disabled={linking}
+              aria-label={accountLabel}
+              title={accountLabel}
+              style={{ ...choice(false), flex: 'none', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, ...(linking ? { opacity: 0.5, cursor: 'default' } : {}) }}
+            >
+              <Glyph name={linked ? 'unlink' : 'link'} /> {accountLabel}
+            </button>
+            {message && (
+              <p role="status" style={{ margin: '8px 0 0', fontSize: 12 }}>
+                {message}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
