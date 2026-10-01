@@ -2,13 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CardPreview } from '../core/collection/card-preview';
 import { buildCardPreview } from './card-preview-dom';
 import { placePopup, type Rect } from './card-popup-position';
-import { ListenSection } from './ListenSection';
 import { ScreenSection } from './ScreenSection';
 
 type Props = {
   preview: CardPreview;
   anchor: Rect;
-  // Slug de l'article : active les sections « Écouter » (musique) et film / série des cartes de la collection.
+  // Slug de l'article : active la section film / série des cartes de la collection.
   slug?: string;
   // Fiche de marché de la carte.
   onOpen: () => void;
@@ -51,10 +50,9 @@ export function CardPopup({ preview, anchor, slug, onOpen, onOpenCard, onClose }
   const cardRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-  // Hauteur des sections « Écouter » et film / série : réservée dans le calcul de l'échelle de la carte.
-  const [listenHeight, setListenHeight] = useState(0);
+  // Hauteur de la section film / série : réservée dans le calcul de l'échelle de la carte.
   const [screenHeight, setScreenHeight] = useState(0);
-  const extraHeight = listenHeight + screenHeight;
+  const extraHeight = screenHeight;
 
   useLayoutEffect(() => {
     cardRef.current?.replaceChildren(buildCardPreview(preview));
@@ -151,7 +149,6 @@ export function CardPopup({ preview, anchor, slug, onOpen, onOpenCard, onClose }
           ✕
         </button>
       </div>
-      {slug && <ListenSection slug={slug} title={preview.title} onHeight={setListenHeight} />}
       {slug && <ScreenSection slug={slug} title={preview.title} onHeight={setScreenHeight} />}
     </div>
   );

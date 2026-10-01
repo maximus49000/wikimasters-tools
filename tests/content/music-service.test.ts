@@ -4,7 +4,7 @@ import { SpotifyError } from '../../src/core/spotify/errors';
 
 const card = (slug: string) => ({ slug, title: slug });
 
-function setup(over: { linked?: boolean; collection?: string[]; natures?: string[]; music?: Record<string, object> } = {}) {
+function setup(over: { linked?: boolean; collection?: string[]; natures?: string[]; music?: Record<string, object>; launchApp?: () => void } = {}) {
   const api = {
     searchTracks: vi.fn(async () => []),
     searchAlbum: vi.fn(async () => null),
@@ -28,6 +28,7 @@ function setup(over: { linked?: boolean; collection?: string[]; natures?: string
     session,
     api: api as never,
     onPlayed: vi.fn(),
+    ...(over.launchApp ? { launchApp: over.launchApp, sleep: async () => undefined } : {}),
   });
   return { service, api, session };
 }
@@ -83,6 +84,36 @@ describe('createMusicService.play', () => {
     const { service, api } = setup();
     api.play.mockRejectedValueOnce(new SpotifyError('no-device', 'x'));
     expect(await service.play(track, { kind: 'track', items: [track] })).toBe('Ouvre Spotify sur un de tes appareils, puis réessaie.');
+  });
+});
+
+describe('createMusicService.play, Spotify fermé', () => {
+  const track = { uri: 'spotify:track:1', title: 'Come Together', artist: 'The Beatles' };
+  const listen = { kind: 'track' as const, items: [track] };
+  const noDevice = () => new SpotifyError('no-device', 'x');
+
+  it("ouvre Spotify puis relance la lecture dès qu'un appareil répond", async () => {
+    const launchApp = vi.fn();
+    const { service, api } = setup({ launchApp });
+    api.play.mockRejectedValueOnce(noDevice()).mockRejectedValueOnce(noDevice());
+    expect(await service.play(track, listen)).toBeNull();
+    expect(launchApp).toHaveBeenCalledTimes(1);
+    expect(api.play).toHaveBeenCalledTimes(3);
+  });
+
+  it('abandonne avec le message habituel si Spotify ne répond jamais', async () => {
+    const { service, api } = setup({ launchApp: vi.fn() });
+    api.play.mockRejectedValue(noDevice());
+    expect(await service.play(track, listen)).toBe('Ouvre Spotify sur un de tes appareils, puis réessaie.');
+    expect(api.play).toHaveBeenCalledTimes(9);
+  });
+
+  it("n'ouvre pas Spotify pour une autre erreur", async () => {
+    const launchApp = vi.fn();
+    const { service, api } = setup({ launchApp });
+    api.play.mockRejectedValueOnce(new SpotifyError('not-premium', 'x'));
+    await service.play(track, listen);
+    expect(launchApp).not.toHaveBeenCalled();
   });
 });
 

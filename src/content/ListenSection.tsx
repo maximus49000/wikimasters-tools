@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Track } from '../core/spotify/spotify-api';
 import type { Listen } from '../core/music/listen';
 import { Glyph } from './Glyphs';
@@ -28,16 +28,15 @@ const NO_PLAYER: PlayerView = { linked: false, track: null, hidden: false };
 const noSubscribe = () => () => undefined;
 const noPlayer = () => NO_PLAYER;
 
-type Props = { slug: string; title: string; onHeight: (px: number) => void };
+type Props = { slug: string; title: string };
 
-// Section « Écouter » de la fiche d'une carte musique de la collection ; rien pour les autres cartes.
-export function ListenSection({ slug, title, onHeight }: Props) {
+// Section « Écouter » de la fiche native d'une carte musique de la collection ; rien pour les autres cartes.
+export function ListenSection({ slug, title }: Props) {
   const service = getMusicService();
   const source = getPlayerSource();
   const player = useSyncExternalStore(source?.subscribe ?? noSubscribe, source?.current ?? noPlayer);
   const [view, setView] = useState<ListenView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -55,18 +54,13 @@ export function ListenSection({ slug, title, onHeight }: Props) {
     };
   }, [service, slug, title, version]);
 
-  // La fiche se replace selon la hauteur réelle de la section.
-  useLayoutEffect(() => {
-    onHeight(view && view.status !== 'none' ? ((ref.current?.offsetHeight ?? 0) + 8) : 0);
-  }, [view, message, onHeight]);
-
   if (!service || !view || view.status === 'none') return null;
 
   const play = async (item: Track, listen: Listen) => setMessage(await service.play(item, listen));
   const link = async () => setMessage(await service.link());
 
   return (
-    <div ref={ref} style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {view.status === 'unlinked' && (
         <button type="button" onClick={link} aria-label="Lier Spotify pour écouter" title="Lier Spotify pour écouter" style={{ ...iconButton, width: '100%', gap: 8, font: '600 13px system-ui, sans-serif' }}>
           <Glyph name="link" /> Spotify

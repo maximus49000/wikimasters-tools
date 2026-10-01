@@ -26,7 +26,8 @@ import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
 import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
-import { createMarketUi, mountHistoryBadge, mountLoadingGlyph, mountPurchaseBadge, syncRefreshButton } from '../content/mount';
+import { createMarketUi, mountHistoryBadge, mountListenSection, mountLoadingGlyph, mountPurchaseBadge, pruneListenSections, syncRefreshButton } from '../content/mount';
+import { decorateListen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
 import { createMusicRepo } from '../core/music/music-repo';
@@ -35,7 +36,7 @@ import { createSpotifyApi } from '../core/spotify/spotify-api';
 import { createSpotifySession } from '../core/spotify/spotify-session';
 import type { SpotifyEnv } from '../core/spotify/transport';
 import { createMusicService } from '../content/music-service';
-import { setMusicService, setPlayerSource } from '../content/music-registry';
+import { getMusicService, setMusicService, setPlayerSource } from '../content/music-registry';
 import { createPlayerSource } from '../content/player-source';
 import { mountSpotifyPlayer } from '../content/mount-player';
 import { TMDB_API_KEY } from '../core/screen/config';
@@ -150,6 +151,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         console.warn(LOG, 'bouton de rechargement indisponible :', error);
       }
       try {
+        pruneListenSections();
+        // La section « Écouter » ne se pose que si Spotify est disponible sur cette plateforme.
+        if (getMusicService()) decorateListen(document, mountListenSection);
+      } catch (error) {
+        console.warn(LOG, 'section « Écouter » indisponible :', error);
+      }
+      try {
         decorateLoading(document, pending, mountLoadingGlyph);
       } catch (error) {
         console.warn(LOG, 'glyphe de chargement indisponible :', error);
@@ -231,6 +239,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           session,
           api: spotifyApi,
           onPlayed: () => void player.refresh(),
+          ...(spotify.launchApp ? { launchApp: spotify.launchApp } : {}),
         }),
       );
       setPlayerSource(player);
