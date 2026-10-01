@@ -28,7 +28,7 @@ la carte pour rouvrir sa fiche (vos filtres et votre tri précédents ne sont pa
 
 ### Relevé du marché en arrière-plan (Collection)
 
-Tant que vous êtes sur la page Collection (onglet visible), l'extension relit en lecture seule les enchères
+Sur n'importe quelle page du site (onglet visible), l'extension relit en lecture seule les enchères
 actives (`/api/marketplace`, 50 par page, 1,5 s entre deux pages) **toutes les 30 min au plus**, et enregistre
 localement :
 
@@ -37,7 +37,7 @@ localement :
 
 Chaque carte de la Collection affiche, sous sa rareté (à gauche), la moyenne des 7 derniers jours avec une flèche
 ▲ verte ou ▼ rouge selon la variation du dernier relevé. Le popup du marché détaille les tranches d'heures.
-Un relevé échoué (déconnexion, 429, format inattendu) est abandonné sans rien enregistrer.
+Si vous changez de page pendant un relevé, la page suivante le reprend à la page non lue (au plus 10 min après son début ; un seul onglet relève à la fois). Un relevé échoué (déconnexion, 429, format inattendu) est abandonné sans rien enregistrer.
 
 ## Ce qu'elle ne fait pas
 
