@@ -7,6 +7,7 @@ const GRID = 'rgba(148,163,184,0.22)';
 const COLORS = { max: '#f59e0b', avg: '#34d399', min: '#38bdf8' };
 
 const VIEWS: { id: ChartView; label: string; range: string }[] = [
+  { id: 'hour', label: 'Heure', range: '6 dernières heures' },
   { id: 'day', label: 'Jour', range: '24 dernières heures' },
   { id: 'week', label: 'Semaine', range: '7 derniers jours' },
   { id: 'month', label: 'Mois', range: '30 derniers jours' },
