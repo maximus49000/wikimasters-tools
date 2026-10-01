@@ -1,5 +1,7 @@
 import type { CardPreview } from '../core/collection/card-preview';
+import { titleToSlug } from '../core/market/market-book';
 import { rarityBackground, rarityKey } from './card-rarity';
+import { getImageService } from './image-registry';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -62,6 +64,7 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
   art.append(image);
   // Dégradé sombre en pied de photo, comme dans le jeu.
   if (preview.imageUrl) art.append(div('wmt-card-art-fade'));
+  else void replaceMissingArt(preview.title, image, art);
   card.append(art);
 
   if (preview.rarity) card.append(Object.assign(div('wmt-card-rarity', preview.rarity)));
@@ -135,6 +138,19 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
     card.append(sheen);
   }
   return card;
+}
+
+// Carte sans image : le logo est remplacé par l'image trouvée (si l'option est active), dès qu'elle arrive.
+async function replaceMissingArt(title: string, image: HTMLImageElement, art: HTMLElement): Promise<void> {
+  const images = getImageService();
+  if (!images?.enabled()) return;
+  const url = await images.resolve(titleToSlug(title) || title, title).catch(() => null);
+  if (!url || !images.enabled()) return;
+  image.alt = '';
+  image.className = '';
+  image.referrerPolicy = 'no-referrer';
+  image.src = url;
+  art.append(div('wmt-card-art-fade'));
 }
 
 const formatStat = (value: number | null): string => (value === null ? '–' : value.toLocaleString('fr-FR'));
