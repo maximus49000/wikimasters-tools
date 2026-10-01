@@ -5,6 +5,7 @@ import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { CollectionScanner } from '../core/collection/collection-scan';
 import type { BirthRepo } from '../core/birth/birth-repo';
 import type { GeoRepo } from '../core/geo/geo-repo';
+import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { PriceBook } from '../core/pricing/price-book';
 import {
   findCardGrid,
@@ -18,6 +19,9 @@ import {
 } from './collection-dom';
 import type { CollectionFilterSource } from './collection-filter';
 import { readView, writeView, type CollectionView } from './collection-view';
+import { HomemadePanel } from './HomemadePanel';
+import type { KindFilterSource } from './kind-filter';
+import { createKindRowController } from './kind-row-controller';
 import type { MarketSource } from './market-source';
 import { TimelinePanel } from './TimelinePanel';
 import { PANEL_CSS, WorldPanel } from './WorldPanel';
@@ -30,6 +34,9 @@ export type CollectionUiDeps = {
   collection: CollectionRepo;
   geo: GeoRepo;
   birth: BirthRepo;
+  kinds: KindsRepo;
+  // Filtre nature / occupation choisi dans la rangée de listes (Homemade, Monde, Chronologique).
+  kindFilterSource: KindFilterSource;
   scanner: CollectionScanner;
   // Prix connus (null si indisponibles) : l'aperçu d'une carte s'en passe.
   book: PriceBook | null;
@@ -48,9 +55,12 @@ export type CollectionUiDeps = {
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, birth, scanner, book, filterSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSource, scanner, book, filterSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
+  const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
+  // Plus grand nombre de cartes vues dans la grille native : la taille de page du site, avant que le scan la connaisse.
+  let nativeCount = 0;
 
   function unmountPanel(): void {
     if (!panel) return;
@@ -74,33 +84,14 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
     grid.insertAdjacentElement('beforebegin', host);
 
     const root = createRoot(mountPoint);
+    const common = { collection, scanner, book, market, filterSource, loadFiltered, onOpen: openCard, onOpenCard: openGameCard, onWantCards: wantCards };
     root.render(
       view === 'timeline' ? (
-        <TimelinePanel
-          collection={collection}
-          birth={birth}
-          scanner={scanner}
-          book={book}
-          market={market}
-          filterSource={filterSource}
-          loadFiltered={loadFiltered}
-          onOpen={openCard}
-          onOpenCard={openGameCard}
-          onWantCards={wantCards}
-        />
+        <TimelinePanel {...common} birth={birth} kinds={kinds} kindFilterSource={kindFilterSource} />
+      ) : view === 'world' ? (
+        <WorldPanel {...common} geo={geo} kinds={kinds} kindFilterSource={kindFilterSource} />
       ) : (
-        <WorldPanel
-          collection={collection}
-          geo={geo}
-          scanner={scanner}
-          book={book}
-          market={market}
-          filterSource={filterSource}
-          loadFiltered={loadFiltered}
-          onOpen={openCard}
-          onOpenCard={openGameCard}
-          onWantCards={wantCards}
-        />
+        <HomemadePanel {...common} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} />
       ),
     );
     panel = { host, root, grid, view };
@@ -108,6 +99,7 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
 
   function showList(): void {
     unmountPanel();
+    kindRow.unmount();
     restoreHiddenGrids(document);
   }
 
@@ -133,6 +125,7 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
     if (scope) {
       const cards = scanCollectionCards(scope);
       if (cards.length > 0) {
+        nativeCount = Math.max(nativeCount, cards.length);
         collection.observe(cards).catch((error) => console.warn(LOG, 'collection non enregistrée :', error));
         onVisibleCards?.(cards);
       }
@@ -140,7 +133,8 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
 
     const view = readView(window.localStorage);
     // Le sélecteur se place à côté des pastilles de rareté ; à défaut, à côté de « Sélectionner ».
-    ensureViewSwitch(findRarityFilterAnchor(document) ?? button, button, view, (next) => {
+    const rarityAnchor = findRarityFilterAnchor(document);
+    const switchGroup = ensureViewSwitch(rarityAnchor ?? button, button, view, (next) => {
       writeView(window.localStorage, next);
       sync();
     });
@@ -149,6 +143,8 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
       showList();
       return;
     }
+    // Les filtres nature / occupation sont posés avant les pastilles de rareté (sinon avant le sélecteur de vues).
+    kindRow.mount(rarityAnchor?.parentElement ?? switchGroup);
 
     // On garde la grille déjà masquée tant qu'elle est dans la page : la carte garde son zoom.
     const grid =

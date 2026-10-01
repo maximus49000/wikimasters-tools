@@ -8,6 +8,9 @@ import { fetchWikiCoords } from '../core/geo/wiki-coords';
 import { fetchWikidataDates } from '../core/birth/wikidata-birth';
 import { createBirthRepo } from '../core/birth/birth-repo';
 import { createGeoRepo } from '../core/geo/geo-repo';
+import { fetchWikidataKinds } from '../core/kinds/wikidata-kinds';
+import { createKindsRepo } from '../core/kinds/kinds-repo';
+import { createKindFilterSource } from '../content/kind-filter';
 import { createCollectionFilterSource } from '../content/collection-filter';
 import { createCollectionUi } from '../content/collection-ui';
 import { createMarketSource } from '../content/market-source';
@@ -84,6 +87,8 @@ export async function startOverlay(store: KeyValueStore): Promise<void> {
     collection: collectionRepo,
     geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
     birth: createBirthRepo(store, (slugs) => fetchWikidataDates((url) => fetch(url), slugs)),
+    kinds: createKindsRepo(store, (slugs) => fetchWikidataKinds((url) => fetch(url), slugs)),
+    kindFilterSource: createKindFilterSource(window.localStorage),
     scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
     book,
     filterSource,
