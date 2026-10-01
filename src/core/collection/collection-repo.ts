@@ -11,11 +11,26 @@ export function createCollectionRepo(store: KeyValueStore) {
   let latest: KnownCard[] | null = null;
 
   return {
-    observe(cards: KnownCard[]): Promise<void> {
+    observe(cards: KnownCard[], addCopies = false): Promise<void> {
       const run = tail.then(async () => {
         const state = (await store.get<CollectionState>(KEY)) ?? {};
-        const next = mergeCards(state, cards);
+        const next = mergeCards(state, cards, addCopies);
         if (next === state) return;
+        await store.set(KEY, next);
+        latest = Object.values(next);
+        for (const listener of listeners) listener();
+      });
+      tail = run.catch(() => undefined);
+      return run;
+    },
+
+    // Début d'un parcours complet : les exemplaires sont recomptés depuis zéro.
+    resetCopies(): Promise<void> {
+      const run = tail.then(async () => {
+        const state = (await store.get<CollectionState>(KEY)) ?? {};
+        if (!Object.values(state).some((card) => card.copies !== undefined)) return;
+        const next: CollectionState = {};
+        for (const [slug, { copies: _copies, ...card }] of Object.entries(state)) next[slug] = card;
         await store.set(KEY, next);
         latest = Object.values(next);
         for (const listener of listeners) listener();

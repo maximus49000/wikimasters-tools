@@ -58,9 +58,12 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
     const slug = titleToSlug(title);
     const at = parsed.data.obtained_at ? Date.parse(parsed.data.obtained_at) : Number.NaN;
     obtained.push(Number.isNaN(at) ? { slug } : { slug, at });
-    if (!cards.has(slug)) {
+    const known = cards.get(slug);
+    if (known) known.copies = (known.copies ?? 1) + 1;
+    else {
       cards.set(slug, {
         slug,
+        copies: 1,
         title,
         ...(rarity ? { rarity } : {}),
         ...(imageUrl ? { imageUrl } : {}),

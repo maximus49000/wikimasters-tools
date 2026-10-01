@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildCardPreview } from '../../src/content/card-preview-dom';
 import type { CardPreview } from '../../src/core/collection/card-preview';
 
-const base: CardPreview = { title: 'Paris', rarity: 'SR', imageUrl: null, extract: null, attack: null, defense: null, tags: [], purchase: null, market: { history: null, loading: false } };
+const base: CardPreview = { title: 'Paris', rarity: 'SR', imageUrl: null, extract: null, attack: null, defense: null, tags: [], purchase: null, market: { history: null, loading: false }, copies: null };
 
 describe('buildCardPreview : étiquettes', () => {
   it('affiche chaque étiquette avec sa couleur', () => {
@@ -37,5 +37,16 @@ describe('buildCardPreview : prix du marché', () => {
     const card = buildCardPreview(base);
     expect(card.querySelector('.wmt-card-market')).toBeNull();
     expect(card.querySelector('.wmt-card-loading')).toBeNull();
+  });
+});
+
+describe('buildCardPreview : exemplaires', () => {
+  it('affiche « X2 » au-dessus de la défense quand il y a plusieurs exemplaires', () => {
+    const card = buildCardPreview({ ...base, copies: 2 });
+    expect(card.querySelector('.wmt-card-copies')?.textContent).toBe('X2');
+  });
+
+  it('n’affiche rien pour un seul exemplaire', () => {
+    expect(buildCardPreview(base).querySelector('.wmt-card-copies')).toBeNull();
   });
 });

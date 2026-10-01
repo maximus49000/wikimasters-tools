@@ -130,6 +130,11 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
     body.append(stats);
   }
   card.append(body);
+  // Au-dessus de la défense, comme une marque de rareté discrète (voir `.wmt-card-copies`).
+  if (preview.copies !== null) {
+    card.classList.add('wmt-card-multi');
+    card.append(div('wmt-card-copies', `X${preview.copies}`));
+  }
 
   // Reflet animé des légendaires : classe du site.
   if (preview.rarity === 'L') {

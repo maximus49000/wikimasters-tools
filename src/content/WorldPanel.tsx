@@ -61,6 +61,8 @@ export const PANEL_CSS = `
 .wmt-card-stats{margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid rgba(0,0,0,.2);font-size:14px;line-height:20px}
 .wmt-card-stat{display:flex;align-items:center;gap:4px}.wmt-card-stat b{color:rgba(0,0,0,.9)}
 .wmt-card-ico{width:1em;height:1em;flex-shrink:0}.wmt-card-atk{color:#991b1b}.wmt-card-def{color:#1e40af}
+.wmt-card-copies{position:absolute;right:12px;bottom:46px;z-index:35;padding:1px 9px;border-radius:9999px;background:rgba(13,17,23,.55);color:#fff;border:1px solid rgba(255,255,255,.25);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);font:800 15px/22px system-ui,sans-serif;letter-spacing:.02em;pointer-events:none}
+.wmt-card-multi .wmt-card-loading{right:56px}
 .wmt-card-sheen{position:absolute;inset:0;z-index:40;overflow:hidden;pointer-events:none}
 .wmt-placing.leaflet-grab,.wmt-placing .leaflet-interactive{cursor:crosshair !important}
 `;

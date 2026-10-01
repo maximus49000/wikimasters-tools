@@ -6,7 +6,7 @@ const KEY = 'collectionScan';
 // Un autre onglet qui a écrit son état il y a moins longtemps est considéré comme toujours en cours.
 const LOCK_MS = 60_000;
 // À incrémenter quand le scan lit de nouveaux champs : un parcours terminé avant repart de zéro.
-const SCAN_VERSION = 5;
+const SCAN_VERSION = 6;
 
 export type ScanState = {
   status: 'idle' | 'running' | 'done' | 'error';
@@ -32,7 +32,7 @@ export const IDLE_SCAN: ScanState = { status: 'idle', nextPage: 0, entries: 0, u
 
 export type ScannerDeps = {
   api: { getCollectionPage(page: number, filter?: string, sort?: 'rarity' | 'added'): Promise<CollectionPage> };
-  collection: Pick<CollectionRepo, 'observe'>;
+  collection: Pick<CollectionRepo, 'observe' | 'resetCopies'>;
   store: KeyValueStore;
   now?: () => number;
   maxPages?: number;
@@ -139,14 +139,18 @@ export function createCollectionScanner({
               throw new Error('le tri par date d’ajout n’est pas respecté');
             }
           }
-          const fresh = new Set<string>();
+          const fresh = new Map<string, number>();
           for (const row of rows) {
             if (row.at !== undefined && last !== undefined && row.at <= last) reached = true;
-            else fresh.add(row.slug);
+            else fresh.set(row.slug, (fresh.get(row.slug) ?? 0) + 1);
             seenNewest = newest(seenNewest, row.at);
           }
           if (result.entries === 0) reached = true;
-          else await collection.observe(rows.length > 0 ? result.cards.filter((c) => fresh.has(c.slug)) : result.cards);
+          else {
+            // Seules les copies nouvelles s'ajoutent au compte déjà connu.
+            const added = rows.length > 0 ? result.cards.filter((c) => fresh.has(c.slug)).map((c) => ({ ...c, copies: fresh.get(c.slug) ?? 0 })) : result.cards;
+            await collection.observe(added, true);
+          }
           entries += rows.filter((row) => fresh.has(row.slug)).length;
           page += 1;
         }
@@ -156,6 +160,8 @@ export function createCollectionScanner({
         return;
       }
 
+      // Un parcours qui repart de la première page recompte les exemplaires depuis zéro.
+      if (page === 0) await collection.resetCopies();
       while (page < maxPages) {
         await write(snapshot('running'));
         const result = await api.getCollectionPage(page, undefined, 'added');
@@ -164,7 +170,7 @@ export function createCollectionScanner({
           await write(snapshot('done', pending !== undefined ? { lastObtainedAt: pending } : {}));
           return;
         }
-        await collection.observe(result.cards);
+        await collection.observe(result.cards, true);
         for (const row of result.obtained ?? []) pending = newest(pending, row.at);
         entries += result.entries;
         page += 1;

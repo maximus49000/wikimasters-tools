@@ -32,7 +32,13 @@ describe('toCardPreview', () => {
       tags: [],
       purchase: null,
       market: { history: null, loading: false },
+      copies: null,
     });
+  });
+
+  it("ne garde le nombre d'exemplaires qu'au-delà de 1", () => {
+    expect(toCardPreview({ ...CARD, copies: 1 }, null).copies).toBeNull();
+    expect(toCardPreview({ ...CARD, copies: 3 }, null).copies).toBe(3);
   });
 
   it('joint les prix du marché fournis', () => {
