@@ -81,6 +81,14 @@ describe('createPlayerSource', () => {
     expect(stored.get('wmt:spotifyPlayerHidden')).toBe('0');
   });
 
+  it("est lié dès que le compte l'est, même si la lecture de l'état échoue", async () => {
+    const { source, api } = setup();
+    api.playerState.mockRejectedValue(new SpotifyError('network', 'hors ligne'));
+    source.start();
+    await vi.waitFor(() => expect(source.current().linked).toBe(true));
+    expect(source.current().track).toBeNull();
+  });
+
   it('est activé par défaut, se désactive et mémorise le choix', () => {
     const { source, stored } = setup();
     expect(source.current().enabled).toBe(true);

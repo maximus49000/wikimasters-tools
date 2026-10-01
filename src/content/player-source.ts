@@ -85,6 +85,8 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
         set({ linked: false, track: null });
         return;
       }
+      // Lié : le lecteur s'affiche aussitôt, même si la lecture de l'état échoue ensuite.
+      if (!view.linked) set({ linked: true });
       const state = await api.playerState();
       if (mine !== generation) return;
       set({ linked: true, track: state });
