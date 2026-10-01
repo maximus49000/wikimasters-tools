@@ -59,6 +59,8 @@ Identifiant d'extension : `wikimasters-tools-unofficial@maximus49000.github.io` 
     npm test
     npm run package          # zip Chrome + zip Firefox (MV3) + zip des sources, dans .output/
 
+Films et séries (TMDB) : créer un fichier `.env.local` à la racine avec `WXT_TMDB_API_KEY=<votre clé TMDB v3>` avant de compiler (extension et APK) ; sans lui, la section n'apparaît pas. Le fichier n'est jamais commité.
+
 Commandes séparées : `npm run build` (Chrome, dossier `.output/chrome-mv3`), `npm run build:firefox` (`.output/firefox-mv3`), `npm run dev:firefox`. Une nouvelle version = changer `version` dans `package.json` avant `npm run package`.
 
 ## Non vérifié
