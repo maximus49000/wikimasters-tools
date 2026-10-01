@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { formatAge, formatRemaining } from '../core/market/format';
 import { slugToTitle, summarize, type CardMarket } from '../core/market/market-book';
 import type { MarketRepo } from '../core/market/market-repo';
+import type { HistoryRepo } from '../core/market/history-repo';
+import { hourRows, trendOf, weekAverage, type CardHistory } from '../core/market/price-history';
 import type { StartSearchOutcome } from './market-search-flow';
 
 type Phase = 'idle' | 'searching' | 'done' | 'timeout' | 'no-controls';
@@ -93,6 +95,51 @@ function OfferList({ card, now }: { card: CardMarket; now: number }) {
   );
 }
 
+function HistorySection({ card, now }: { card: CardHistory; now: number }) {
+  const average = weekAverage(card, now);
+  const trend = trendOf(card);
+  const rows = hourRows(card);
+  if (average === null && rows.length === 0) return null;
+  const cell: CSSProperties = { padding: '2px 6px', textAlign: 'right' };
+  return (
+    <div style={{ marginTop: 8 }}>
+      {average !== null && (
+        <p style={{ margin: '4px 0' }}>
+          Moyenne des enchères avec mise (7 j) : <strong>{average} WB</strong>
+          {trend && (
+            <span style={{ color: trend === 'up' ? '#22c55e' : '#ef4444', marginLeft: 4 }}>
+              {trend === 'up' ? '▲' : '▼'}
+            </span>
+          )}
+        </p>
+      )}
+      {rows.length > 0 && (
+        <table style={{ ...muted, borderCollapse: 'collapse', width: '100%' }}>
+          <caption style={{ textAlign: 'left', paddingBottom: 2 }}>Par heure restante (cumul des relevés)</caption>
+          <thead>
+            <tr>
+              {['Reste', 'Nb', 'Min', 'Moy.', 'Max'].map((head) => (
+                <th key={head} style={{ ...cell, fontWeight: 600 }}>{head}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.hour}>
+                <td style={cell}>{row.hour} h</td>
+                <td style={cell}>{row.n}</td>
+                <td style={cell}>{row.min}</td>
+                <td style={cell}>{row.avg}</td>
+                <td style={cell}>{row.max}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function SearchStatus({ phase, hasOffers }: { phase: Phase; hasOffers: boolean }) {
   if (phase === 'searching') return <p style={muted}>Recherche en cours sur le marché…</p>;
   if (phase === 'no-controls') {
@@ -124,6 +171,7 @@ function SearchStatus({ phase, hasOffers }: { phase: Phase; hasOffers: boolean }
 export function MarketPopup({
   slug,
   repo,
+  history,
   search,
   autoStart,
   canReturn,
@@ -132,6 +180,7 @@ export function MarketPopup({
 }: {
   slug: string;
   repo: MarketRepo;
+  history: HistoryRepo;
   search: (slug: string) => Promise<StartSearchOutcome>;
   autoStart: boolean;
   canReturn: boolean;
@@ -139,6 +188,7 @@ export function MarketPopup({
   onClose: () => void;
 }) {
   const [cards, setCards] = useState<CardMarket[] | null>(null);
+  const [past, setPast] = useState<CardHistory[]>([]);
   const [phase, setPhase] = useState<Phase>('idle');
   const searching = useRef(false);
   const timer = useRef<number | undefined>(undefined);
@@ -149,6 +199,12 @@ export function MarketPopup({
       .then(setCards)
       .catch(() => setCards([]));
   }, [repo, slug]);
+
+  useEffect(() => {
+    const loadPast = () => history.lookup(slug).then(setPast, () => setPast([]));
+    void loadPast();
+    return history.subscribe(() => void loadPast());
+  }, [history, slug]);
 
   useEffect(() => {
     reload();
@@ -224,6 +280,13 @@ export function MarketPopup({
               <strong>{card.isShiny ? '✨ Shiny' : 'Normale'} · {card.rarity}</strong>
             )}
             <OfferList card={card} now={now} />
+          </section>
+        ))}
+
+        {past.map((card, index) => (
+          <section key={`${card.rarity}-${index}`} style={{ marginTop: 12 }}>
+            <strong>Historique · {card.rarity}</strong>
+            <HistorySection card={card} now={now} />
           </section>
         ))}
 

@@ -14,7 +14,7 @@ Une pastille verte « $ » en haut à droite des cartes que vous avez achetées 
 Sur la fiche d'une carte, un lien « Voir l'article sur le marché » ouvre un popup avec le nombre
 d'offres, le nombre d'enchères déjà misées, le prix moyen et la liste des offres connues. Ces données
 viennent **uniquement** des enchères que le site charge lui-même quand vous ouvrez la page Marché :
-l'extension les observe passivement, sans envoyer aucune requête. Ce sont donc des chiffres d'échantillon
+l'extension les observe passivement (voir aussi le relevé en arrière-plan ci-dessous). Ce sont donc des chiffres d'échantillon
 (« observé il y a X min »), pas un état complet du marché. Aucun pseudo de joueur n'est conservé.
 
 Le popup propose aussi « Rechercher sur le marché » : l'extension saisit le titre de la carte dans le champ de
@@ -25,6 +25,19 @@ résultats à la fois, l'extension ne charge jamais les pages suivantes.
 Quand la recherche vous a envoyé sur le Marché depuis une fiche, le popup propose « ← Retour à la carte » :
 l'extension retourne à la page d'origine, saisit le titre dans la recherche de la Collection et clique sur
 la carte pour rouvrir sa fiche (vos filtres et votre tri précédents ne sont pas conservés).
+
+### Relevé du marché en arrière-plan (Collection)
+
+Tant que vous êtes sur la page Collection (onglet visible), l'extension relit en lecture seule les enchères
+actives (`/api/marketplace`, 50 par page, 1,5 s entre deux pages) **toutes les 30 min au plus**, et enregistre
+localement :
+
+- toutes les 30 min, la **moyenne des enchères déjà misées** de chaque carte, gardée 7 jours ;
+- par tranche d'**heures restantes** (7 h 11 → tranche 7 h), le nombre d'enchères, le min, le max et la moyenne.
+
+Chaque carte de la Collection affiche, sous sa rareté (à gauche), la moyenne des 7 derniers jours avec une flèche
+▲ verte ou ▼ rouge selon la variation du dernier relevé. Le popup du marché détaille les tranches d'heures.
+Un relevé échoué (déconnexion, 429, format inattendu) est abandonné sans rien enregistrer.
 
 ## Ce qu'elle ne fait pas
 
