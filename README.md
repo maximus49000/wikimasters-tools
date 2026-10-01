@@ -61,6 +61,19 @@ Le lien avec votre compte se fait par l'autorisation officielle de Spotify (PKCE
 les droits « lire l'état de la lecture » et « contrôler la lecture » sont demandés. Le bouton ✕ de la section « Écouter »
 délie le compte. Les titres retrouvés viennent de Wikidata (interprète, identifiants Spotify), puis d'une recherche Spotify.
 
+### Films, séries, acteurs et réalisateurs (TMDB)
+
+Sur la fiche d'une carte **de votre Collection** qui est un film ou une série, la fiche affiche la bande-annonce
+(lecteur YouTube sans cookies, chargé seulement au clic ▶ ; un bouton ouvre aussi YouTube), la note ★ sur 10 avec le
+nombre de votes, et la description. Pour un acteur ou un réalisateur, elle affiche sa filmographie (40 titres au
+plus, du plus récent au plus ancien) ; un clic sur un titre ouvre sa fiche, ← revient à la liste.
+
+La carte est reconnue grâce à Wikidata (nature, métier, identifiant TMDB), puis le contenu vient de [TMDB](https://www.themoviedb.org).
+Seuls des titres et des identifiants partent vers TMDB, jamais de donnée du jeu ni de votre compte. La clé API TMDB (v3)
+est lue à la compilation dans `.env.local` (`WXT_TMDB_API_KEY=…`, fichier ignoré par git) ; sans clé, la section n'apparaît pas.
+
+Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.
+
 ## Ce qu'elle ne fait pas
 
 - Aucune enchère, mise, vente ni ouverture de pack, aucune action automatique (les règles du jeu

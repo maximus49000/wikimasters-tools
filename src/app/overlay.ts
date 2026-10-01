@@ -38,6 +38,12 @@ import { createMusicService } from '../content/music-service';
 import { setMusicService, setPlayerSource } from '../content/music-registry';
 import { createPlayerSource } from '../content/player-source';
 import { mountSpotifyPlayer } from '../content/mount-player';
+import { TMDB_API_KEY } from '../core/screen/config';
+import { createScreenRepo } from '../core/screen/screen-repo';
+import { createTmdbApi } from '../core/screen/tmdb-api';
+import { fetchWikidataScreen } from '../core/screen/wikidata-screen';
+import { createScreenService } from '../content/screen-service';
+import { setScreenService } from '../content/screen-registry';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
@@ -232,6 +238,25 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       player.start();
     } catch (error) {
       console.warn(LOG, 'Spotify indisponible :', error);
+    }
+  }
+
+  // Films, séries, acteurs et réalisateurs (TMDB) : absent sans clé. TMDB passe par le même `fetch` que Spotify
+  // (service worker dans l'extension, `window.fetch` dans l'APK). Une panne ici ne doit jamais empêcher la surcouche.
+  if (TMDB_API_KEY) {
+    try {
+      setScreenService(
+        createScreenService({
+          hasKey: true,
+          collection: collectionRepo,
+          kinds: kindsRepo,
+          screen: createScreenRepo(store, (slugs) => fetchWikidataScreen((url) => fetch(url), slugs)),
+          api: createTmdbApi({ fetch: (url) => (spotify ? spotify.fetch(url) : fetch(url)), apiKey: TMDB_API_KEY }),
+          cache: createTtlCache(store, { ttlMs: 24 * 3_600_000 }),
+        }),
+      );
+    } catch (error) {
+      console.warn(LOG, 'films et séries indisponibles :', error);
     }
   }
 

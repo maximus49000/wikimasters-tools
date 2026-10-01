@@ -3,11 +3,12 @@ import type { CardPreview } from '../core/collection/card-preview';
 import { buildCardPreview } from './card-preview-dom';
 import { placePopup, type Rect } from './card-popup-position';
 import { ListenSection } from './ListenSection';
+import { ScreenSection } from './ScreenSection';
 
 type Props = {
   preview: CardPreview;
   anchor: Rect;
-  // Slug de l'article : active la section « Écouter » des cartes musique de la collection.
+  // Slug de l'article : active les sections « Écouter » (musique) et film / série des cartes de la collection.
   slug?: string;
   // Fiche de marché de la carte.
   onOpen: () => void;
@@ -50,8 +51,10 @@ export function CardPopup({ preview, anchor, slug, onOpen, onOpenCard, onClose }
   const cardRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-  // Hauteur de la section « Écouter » : réservée dans le calcul de l'échelle de la carte.
+  // Hauteur des sections « Écouter » et film / série : réservée dans le calcul de l'échelle de la carte.
   const [listenHeight, setListenHeight] = useState(0);
+  const [screenHeight, setScreenHeight] = useState(0);
+  const extraHeight = listenHeight + screenHeight;
 
   useLayoutEffect(() => {
     cardRef.current?.replaceChildren(buildCardPreview(preview));
@@ -71,7 +74,7 @@ export function CardPopup({ preview, anchor, slug, onOpen, onOpenCard, onClose }
     const natural = { width: card.offsetWidth, height: card.offsetHeight };
     const cardScale = Math.min(
       1,
-      (viewport.height - 2 * EDGE - 2 * PADDING - ROW_HEIGHT - listenHeight) / natural.height,
+      (viewport.height - 2 * EDGE - 2 * PADDING - ROW_HEIGHT - extraHeight) / natural.height,
       (viewport.width - 2 * EDGE - 2 * PADDING) / natural.width,
     );
     const scaled = { width: natural.width * cardScale, height: natural.height * cardScale };
@@ -87,7 +90,7 @@ export function CardPopup({ preview, anchor, slug, onOpen, onOpenCard, onClose }
     const { left, top } = placePopup(anchor, { width: el.offsetWidth, height: el.offsetHeight }, viewport);
     el.style.left = `${left - origin.left}px`;
     el.style.top = `${top - origin.top}px`;
-  }, [anchor, preview, listenHeight]);
+  }, [anchor, preview, extraHeight]);
 
   useEffect(() => {
     const close = () => closeRef.current();
@@ -149,6 +152,7 @@ export function CardPopup({ preview, anchor, slug, onOpen, onOpenCard, onClose }
         </button>
       </div>
       {slug && <ListenSection slug={slug} title={preview.title} onHeight={setListenHeight} />}
+      {slug && <ScreenSection slug={slug} title={preview.title} onHeight={setScreenHeight} />}
     </div>
   );
 }

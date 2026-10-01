@@ -62,3 +62,19 @@ describe('createExtensionEnv', () => {
     await expect(env.authorize('https://accounts.spotify.com/authorize?x=1')).rejects.toThrow('annulé');
   });
 });
+
+describe('handleSpotifyMessage — TMDB', () => {
+  it("relaie une requête vers l'API TMDB", async () => {
+    const d = deps();
+    const reply = await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url: 'https://api.themoviedb.org/3/movie/1?api_key=x' }, d);
+    expect(reply).toMatchObject({ ok: true, value: { status: 200, body: '{"ok":true}' } });
+    expect(d.fetch).toHaveBeenCalledOnce();
+  });
+
+  it("refuse une autre adresse que l'API TMDB v3", async () => {
+    const d = deps();
+    const reply = await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url: 'https://api.themoviedb.org.evil.test/3/x' }, d);
+    expect(reply).toEqual({ ok: false, error: 'adresse refusée' });
+    expect(d.fetch).not.toHaveBeenCalled();
+  });
+});

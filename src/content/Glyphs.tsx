@@ -28,6 +28,28 @@ const PATHS = {
       <path d="M6 6l12 12" />
     </>
   ),
+  star: <polygon points="12,3 14.8,9 21,9.8 16.4,14.2 17.6,21 12,17.8 6.4,21 7.6,14.2 3,9.8 9.2,9" />,
+  back: (
+    <>
+      <line x1="19" y1="12" x2="5" y2="12" />
+      <polyline points="12,5 5,12 12,19" />
+    </>
+  ),
+  film: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="7" y1="4" x2="7" y2="20" />
+      <line x1="17" y1="4" x2="17" y2="20" />
+      <line x1="3" y1="12" x2="21" y2="12" />
+    </>
+  ),
+  external: (
+    <>
+      <path d="M14 4h6v6" />
+      <line x1="20" y1="4" x2="11" y2="13" />
+      <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </>
+  ),
 } as const;
 
 export type GlyphName = keyof typeof PATHS;

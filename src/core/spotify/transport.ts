@@ -23,7 +23,8 @@ export type BackgroundDeps = {
 };
 
 const AUTH_PREFIX = 'https://accounts.spotify.com/authorize?';
-const FETCH_PREFIXES = ['https://api.spotify.com/', 'https://accounts.spotify.com/api/token'];
+// Le service worker relaie aussi TMDB (films et séries) : même contournement de la CSP du site.
+const FETCH_PREFIXES = ['https://api.spotify.com/', 'https://accounts.spotify.com/api/token', 'https://api.themoviedb.org/3/'];
 
 // Côté service worker : ne répond qu'aux messages Spotify, et seulement vers les adresses de Spotify.
 export function handleSpotifyMessage(message: unknown, deps: BackgroundDeps): Promise<SpotifyReply> | null {

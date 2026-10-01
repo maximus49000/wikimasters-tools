@@ -13,6 +13,7 @@ export default defineConfig({
     host_permissions: [
       'https://api.spotify.com/*',
       'https://accounts.spotify.com/*',
+      'https://api.themoviedb.org/*',
       // Firefox MV3 : l'accès au site est une permission d'hôte à accorder (demandée à l'installation).
       ...(browser === 'firefox' ? ['https://www.wiki-masters.com/*'] : []),
     ],
