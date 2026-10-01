@@ -18,10 +18,14 @@ const ARROW = {
   flat: { glyph: '=', color: 'rgb(148, 163, 184)' },
 } as const;
 
+// Valeur ancienne ou inconnue : discrète, pour ne pas se confondre avec une moyenne récente.
+const MUTED = '#9aa7b4';
+
 export function HistoryBadge({ model }: { model: HistoryBadgeModel }) {
   const arrow = model.trend ? ARROW[model.trend] : null;
+  const muted = model.kind !== 'average';
   return (
-    <div title={model.tooltip} style={chip}>
+    <div title={model.tooltip} style={muted ? { ...chip, color: MUTED, fontStyle: model.kind === 'unknown' ? 'normal' : 'italic' } : chip}>
       {model.label}
       {arrow && <span style={{ color: arrow.color, marginLeft: 4 }}>{arrow.glyph}</span>}
     </div>

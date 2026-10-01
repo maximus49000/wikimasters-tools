@@ -18,9 +18,13 @@ export function decorateHistory(
   lookup: (slug: string) => CardHistory[],
   now: number,
   mount: MountHistory,
+  isOwned: (slug: string) => boolean = () => false,
 ): number {
   let touched = 0;
-  const modelOf = (title: string) => toHistoryBadge(lookup(titleToSlug(title)), now);
+  const modelOf = (title: string) => {
+    const slug = titleToSlug(title);
+    return toHistoryBadge(lookup(slug), now, isOwned(slug));
+  };
   for (const { title, container } of findCardMounts(root, (t) => modelOf(t) !== null)) {
     const model = modelOf(title);
     if (!model) continue;

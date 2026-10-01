@@ -62,4 +62,21 @@ describe('decorateHistory', () => {
     decorateHistory(document, () => [], NOW, mount);
     expect(labels).toEqual([]);
   });
+
+  it('affiche ??? sur une carte possédée sans aucune donnée, puis la valeur quand elle arrive', () => {
+    const { labels, mount } = setup();
+    decorateHistory(document, () => [], NOW, mount, (slug) => slug === 'Mad_Max');
+    expect(labels).toEqual(['???']);
+    expect(document.querySelectorAll(`[${HISTORY_HOST_ATTRIBUTE}]`)).toHaveLength(1);
+
+    decorateHistory(document, () => [card([100, 150])], NOW, mount, () => true);
+    expect(document.querySelectorAll(`[${HISTORY_HOST_ATTRIBUTE}]`)).toHaveLength(1);
+    expect(labels[1]).toBe('maj:≈ 125up');
+  });
+
+  it('ne pose pas de ??? sur une carte qui n’est pas dans la Collection', () => {
+    const { labels, mount } = setup();
+    decorateHistory(document, () => [], NOW, mount, () => false);
+    expect(labels).toEqual([]);
+  });
 });

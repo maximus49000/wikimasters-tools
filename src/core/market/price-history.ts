@@ -149,3 +149,11 @@ export function seriesFor(card: CardHistory, view: ChartView, now: number): Samp
       maxBid: d.max,
     }));
 }
+
+// Dernière valeur observée, même ancienne : le cumul par jour est gardé 365 jours, les relevés fins 7 jours.
+export function lastKnown(card: CardHistory): { value: number; at: number } | null {
+  const day = card.days?.at(-1);
+  if (day) return { value: Math.round(day.sum / day.n), at: day.day };
+  const sample = card.samples.at(-1);
+  return sample ? { value: sample.avgBid, at: sample.t } : null;
+}

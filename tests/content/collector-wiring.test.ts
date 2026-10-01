@@ -36,4 +36,9 @@ describe('câblage du relevé du marché', () => {
     expect(source).toMatch(/collector\.subscribe\(/);
     expect(source).toMatch(/decorateLoading\(document, pending, mountLoadingGlyph\)/);
   });
+
+  it('les cartes de la Collection affichent leur case de prix même sans donnée', () => {
+    expect(source).toMatch(/collectionRepo\.list\(\)/);
+    expect(source).toMatch(/\(slug\) => owned\.has\(slug\)/);
+  });
 });
