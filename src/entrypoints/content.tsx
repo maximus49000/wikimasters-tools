@@ -22,7 +22,7 @@ import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
 import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
-import { createMarketUi, mountHistoryBadge, mountLoadingGlyph, mountPurchaseBadge } from '../content/mount';
+import { createMarketUi, mountHistoryBadge, mountLoadingGlyph, mountPurchaseBadge, syncRefreshButton } from '../content/mount';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
 
@@ -116,6 +116,11 @@ export default defineContentScript({
           collectionUi.sync();
         } catch (error) {
           console.warn(LOG, 'vues de la Collection indisponibles :', error);
+        }
+        try {
+          syncRefreshButton(collector);
+        } catch (error) {
+          console.warn(LOG, 'bouton de rechargement indisponible :', error);
         }
         try {
           decorateLoading(document, pending, mountLoadingGlyph);

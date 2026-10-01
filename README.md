@@ -45,6 +45,8 @@ Chaque carte de la Collection affiche sa case de prix : « ??? » tant qu'aucune
 
 Pendant qu'une carte attend son relevé ou est en cours de relevé, un petit glyphe rond qui tourne s'affiche en bas à droite de la carte (au-dessus de la ligne ATK / DEF) ; il disparaît dès que la carte est relevée. Une carte déjà relevée depuis moins de 30 min n'en affiche pas.
 
+Un bouton « Recharger les prix de cette page » sous la grille de la Collection relit tout de suite le prix des cartes affichées, sans attendre les 30 min : ces cartes passent devant toutes celles déjà en attente (même dans une passe en cours) et le bouton affiche l'avancement (« Rechargement… 23 / 50 »).
+
 Les relevés se poursuivent d'une page à l'autre du site (un changement de page ne perd rien) et un seul onglet à la
 fois relève. Une erreur (déconnexion, 429 persistant) arrête la passe et rien n'est retenté avant 30 min.
 
