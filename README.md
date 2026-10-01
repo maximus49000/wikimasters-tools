@@ -26,18 +26,23 @@ Quand la recherche vous a envoyé sur le Marché depuis une fiche, le popup prop
 l'extension retourne à la page d'origine, saisit le titre dans la recherche de la Collection et clique sur
 la carte pour rouvrir sa fiche (vos filtres et votre tri précédents ne sont pas conservés).
 
-### Relevé du marché en arrière-plan (Collection)
+### Relevé du marché des cartes de votre Collection
 
-Sur n'importe quelle page du site (onglet visible), l'extension relit en lecture seule les enchères
-actives (`/api/marketplace`, 50 par page, 1,5 s entre deux pages) **toutes les 30 min au plus**, et enregistre
-localement :
+Le marché compte des dizaines de milliers d'enchères : l'extension ne le parcourt **jamais**. Pour les seules
+cartes de votre Collection affichées à l'écran, elle envoie la même recherche par titre que la page Marché
+du site (une requête par carte, 1,5 s entre deux, au plus 60 par passe), **une fois par carte et par 30 min**.
+Seules les enchères de la carte elle-même sont gardées (pas les titres voisins). Elle enregistre localement :
 
-- toutes les 30 min, la **moyenne des enchères déjà misées** de chaque carte, gardée 7 jours ;
+- à chaque relevé, la **moyenne des enchères déjà misées** de la carte (avec min et max), gardée 7 jours, puis un
+  cumul par jour gardé 365 jours ;
 - par tranche d'**heures restantes** (7 h 11 → tranche 7 h), le nombre d'enchères, le min, le max et la moyenne.
 
 Chaque carte de la Collection affiche, sous sa rareté (à gauche), la moyenne des 7 derniers jours avec une flèche
-▲ verte ou ▼ rouge selon la variation du dernier relevé. Le popup du marché détaille les tranches d'heures.
-Si vous changez de page pendant un relevé, la page suivante le reprend à la page non lue (au plus 10 min après son début ; un seul onglet relève à la fois). Un relevé échoué (déconnexion, 429, format inattendu) est abandonné sans rien enregistrer.
+▲ verte, ▼ rouge ou = grise selon la variation du dernier relevé. La fiche de la carte montre le graphique
+(Heure / Jour / Semaine / Mois / Année) et le popup du marché détaille les tranches d'heures.
+
+Les relevés se poursuivent d'une page à l'autre du site (un changement de page ne perd rien) et un seul onglet à la
+fois relève. Une erreur (déconnexion, 429 persistant) arrête la passe et rien n'est retenté avant 30 min.
 
 ## Ce qu'elle ne fait pas
 

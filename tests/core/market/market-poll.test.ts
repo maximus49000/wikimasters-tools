@@ -8,209 +8,250 @@ import type { MarketAuction } from '../../../src/core/market/schemas';
 const T0 = Date.parse('2026-09-30T10:00:00Z');
 const MIN = 60_000;
 
-function auction(id: string, price: number): MarketAuction {
+const slugOf = (title: string): string => title.replace(/ /g, '_');
+
+function auction(id: string, title: string, price: number, bid = true): MarketAuction {
   return {
     id,
-    card_id: 'card-1',
+    card_id: `card-${title}`,
     status: 'active',
     end_at: new Date(T0 + 3_600_000 * 5).toISOString(),
     effective_bid: price,
-    current_bidder_id: 'b',
+    current_bidder_id: bid ? 'b' : null,
     is_shiny: false,
     snapshot_rarity: 'SR',
-    card: { wikipedia_title: 'Ted Lasso', wikipedia_url: 'https://fr.wikipedia.org/wiki/Ted_Lasso' },
+    card: { wikipedia_title: title, wikipedia_url: `https://fr.wikipedia.org/wiki/${slugOf(title)}` },
   };
 }
 
-type PageResult = { auctions: MarketAuction[]; hasMore: boolean };
+const target = (title: string) => ({ slug: slugOf(title), title });
 
-// Un marché de `pages` pages d'une enchère chacune (prix = 100 × numéro de page).
-function market(pages: number) {
-  const calls: number[] = [];
-  const hooks = new Map<number, () => Promise<PageResult>>();
+// Un faux site : chaque recherche renvoie les enchères du catalogue dont le titre contient la requête.
+function site(catalog: MarketAuction[]) {
+  const calls: string[] = [];
+  const hooks = new Map<string, () => Promise<{ auctions: MarketAuction[] }>>();
   return {
     calls,
     hooks,
     api: {
-      getMarketPage: async (page: number): Promise<PageResult> => {
-        calls.push(page);
-        const hook = hooks.get(page);
+      searchMarket: async (title: string) => {
+        calls.push(title);
+        const hook = hooks.get(title);
         if (hook) return hook();
-        return { auctions: [auction(`a${page}`, 100 * page)], hasMore: page < pages };
+        return { auctions: catalog.filter((a) => a.card.wikipedia_title.includes(title)) };
       },
     },
   };
 }
 
 // Chaque `tab(id)` simule un onglet : un collecteur neuf sur le même stockage et la même horloge.
-function world(pages = 3) {
+function world(catalog: MarketAuction[] = []) {
   const store = createMemoryStore();
   const clock = { now: T0 };
-  const mk = market(pages);
+  const fake = site(catalog);
   const history = createHistoryRepo(store, () => clock.now);
   const tab = (id: string, visible = true) =>
     createMarketCollector({
-      api: mk.api,
+      api: fake.api,
       history,
       store,
       now: () => clock.now,
       isVisible: () => visible,
       id,
     });
-  return { store, clock, mk, history, tab };
+  return { store, clock, fake, history, tab };
 }
 
-const samples = async (w: ReturnType<typeof world>) => (await w.history.lookup('Ted_Lasso'))[0]?.samples ?? [];
+type Tab = ReturnType<ReturnType<typeof world>['tab']>;
 
-// La page 3 (par exemple) est en vol quand l'utilisateur change de page : l'onglet se décharge.
-function unloadDuring(w: ReturnType<typeof world>, tab: ReturnType<typeof world>['tab'] extends (...a: never[]) => infer R ? R : never, page: number) {
-  w.mk.hooks.set(page, async () => {
-    tab.release();
+// La requête de `title` est en vol quand l'utilisateur change de page : l'onglet se décharge.
+function unloadDuring(w: ReturnType<typeof world>, tab: Tab, title: string) {
+  w.fake.hooks.set(title, async () => {
+    void tab.release();
     throw new TypeError('Failed to fetch');
   });
 }
 
-describe('collecte du marché', () => {
-  it('lit toutes les pages et enregistre un seul relevé', async () => {
-    const w = world(3);
-    expect(await w.tab('A').tick()).toBe('ran');
-    expect(w.mk.calls).toEqual([1, 2, 3]);
-    expect(await samples(w)).toEqual([{ t: T0, avgBid: 200, bidCount: 3, minBid: 100, maxBid: 300 }]);
+const samplesOf = async (w: ReturnType<typeof world>, title: string) =>
+  (await w.history.lookup(slugOf(title)))[0]?.samples ?? [];
+
+describe('relevé des cartes de la Collection', () => {
+  it('ne cherche que les cartes demandées, une requête par carte', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100), auction('a2', 'Mad Max', 50)]);
+    const tab = w.tab('A');
+    await tab.want([target('Ted Lasso')]);
+    expect(await tab.tick()).toBe('ran');
+    expect(w.fake.calls).toEqual(['Ted Lasso']);
+    expect(await samplesOf(w, 'Ted Lasso')).toEqual([{ t: T0, avgBid: 100, bidCount: 1, minBid: 100, maxBid: 100 }]);
+    expect(await samplesOf(w, 'Mad Max')).toEqual([]);
   });
 
-  it('ne dépend d’aucune page du site : seul l’état visible de l’onglet compte', async () => {
-    const w = world(1);
-    expect(await w.tab('hidden', false).tick()).toBe('skipped');
-    expect(w.mk.calls).toEqual([]);
-    expect(await w.tab('visible', true).tick()).toBe('ran');
+  it('ne garde que les enchères de la carte elle-même, pas celles des titres voisins', async () => {
+    const w = world([
+      auction('a1', 'Paris', 100),
+      auction('a2', 'Paris Saint-Germain', 9_000),
+      auction('a3', 'Banlieue de Paris', 5_000),
+    ]);
+    const tab = w.tab('A');
+    await tab.want([target('Paris')]);
+    await tab.tick();
+    expect(w.fake.calls).toEqual(['Paris']);
+    expect(await samplesOf(w, 'Paris')).toEqual([{ t: T0, avgBid: 100, bidCount: 1, minBid: 100, maxBid: 100 }]);
+    expect(await samplesOf(w, 'Paris Saint-Germain')).toEqual([]);
   });
 
-  it('ne relève pas avant 30 min, puis relève de nouveau', async () => {
-    const w = world(1);
-    await w.tab('A').tick();
+  it('ne relève pas une carte avant 30 min, puis la relève de nouveau', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    const tab = w.tab('A');
+    await tab.want([target('Ted Lasso')]);
+    await tab.tick();
     w.clock.now += POLL_INTERVAL_MS - 1;
+    await tab.want([target('Ted Lasso')]);
     expect(await w.tab('B').tick()).toBe('skipped');
     w.clock.now += 1;
+    await tab.want([target('Ted Lasso')]);
     expect(await w.tab('C').tick()).toBe('ran');
-    expect(await samples(w)).toHaveLength(2);
+    expect(w.fake.calls).toEqual(['Ted Lasso', 'Ted Lasso']);
+    expect(await samplesOf(w, 'Ted Lasso')).toHaveLength(2);
   });
 
-  it('un relevé interrompu par la navigation reprend sur la page suivante sans rien relire', async () => {
-    const w = world(5);
-    const first = w.tab('A');
-    unloadDuring(w, first, 3);
-    expect(await first.tick()).toBe('interrupted');
-    expect(w.mk.calls).toEqual([1, 2, 3]);
-    expect(await samples(w)).toEqual([]);
+  it('une carte sans enchère est quand même marquée comme relevée', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.want([target('Mad Max')]);
+    expect(await tab.tick()).toBe('ran');
+    expect(await w.tab('B').tick()).toBe('skipped');
+    expect(w.fake.calls).toEqual(['Mad Max']);
+  });
 
-    // Nouvelle page du site : un autre collecteur reprend là où le premier s'est arrêté.
-    w.mk.hooks.clear();
-    w.mk.calls.length = 0;
+  it('rien à relever : aucune requête', async () => {
+    const w = world([]);
+    expect(await w.tab('A').tick()).toBe('skipped');
+    expect(w.fake.calls).toEqual([]);
+  });
+
+  it('oublie les cartes vues il y a plus de 10 min', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    await w.tab('A').want([target('Ted Lasso')]);
+    w.clock.now += 11 * MIN;
+    expect(await w.tab('B').tick()).toBe('skipped');
+    expect(w.fake.calls).toEqual([]);
+  });
+
+  it('plafonne une passe à 60 requêtes ; le reste suit à la passe suivante', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    const titles = Array.from({ length: 75 }, (_, i) => `Carte ${i}`);
+    await tab.want(titles.map(target));
+    await tab.tick();
+    expect(w.fake.calls).toHaveLength(60);
+    await tab.tick();
+    expect(w.fake.calls).toHaveLength(75);
+    expect(new Set(w.fake.calls).size).toBe(75);
+  });
+
+  it('seul l’état visible de l’onglet compte, aucune page du site n’est exigée', async () => {
+    const w = world([]);
+    await w.tab('hidden').want([target('Ted Lasso')]);
+    expect(await w.tab('hidden', false).tick()).toBe('skipped');
+    expect(w.fake.calls).toEqual([]);
+    expect(await w.tab('visible', true).tick()).toBe('ran');
+  });
+});
+
+describe('navigation, onglets multiples, erreurs', () => {
+  const titles = Array.from({ length: 25 }, (_, i) => `Carte ${String(i).padStart(2, '0')}`);
+
+  it('une navigation en cours de passe : la page suivante ne reprend que les cartes restantes', async () => {
+    const w = world(titles.map((t, i) => auction(`a${i}`, t, 100 + i)));
+    const first = w.tab('A');
+    await first.want(titles.map(target));
+    unloadDuring(w, first, 'Carte 12');
+    expect(await first.tick()).toBe('interrupted');
+
+    w.fake.hooks.clear();
+    w.fake.calls.length = 0;
+    w.clock.now += 5_000;
+    const second = w.tab('B');
+    expect(await second.tick()).toBe('ran');
+    // Les 10 premières (lot enregistré) ne sont pas relues ; on repart de la 11e.
+    expect(w.fake.calls[0]).toBe('Carte 10');
+    expect(w.fake.calls).toHaveLength(15);
+    for (const t of titles) expect(await samplesOf(w, t)).toHaveLength(1);
+  });
+
+  it('l’erreur due au déchargement de la page n’empêche pas la reprise', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    const first = w.tab('A');
+    await first.want([target('Ted Lasso')]);
+    unloadDuring(w, first, 'Ted Lasso');
+    expect(await first.tick()).toBe('interrupted');
+    w.fake.hooks.clear();
     w.clock.now += 5_000;
     expect(await w.tab('B').tick()).toBe('ran');
-    expect(w.mk.calls).toEqual([3, 4, 5]);
-    // Les 5 enchères, chacune une seule fois, dans un seul relevé.
-    expect(await samples(w)).toEqual([{ t: w.clock.now, avgBid: 300, bidCount: 5, minBid: 100, maxBid: 500 }]);
+    expect(await samplesOf(w, 'Ted Lasso')).toHaveLength(1);
   });
 
-  it('survit à plusieurs navigations successives pendant un même relevé', async () => {
-    const w = world(6);
+  it('un autre onglet qui relève en ce moment est respecté', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
     const a = w.tab('A');
-    unloadDuring(w, a, 2);
-    await a.tick();
-    w.mk.hooks.clear();
-    w.clock.now += 3_000;
-    const b = w.tab('B');
-    unloadDuring(w, b, 4);
-    await b.tick();
-    w.mk.hooks.clear();
-    w.clock.now += 3_000;
-    expect(await w.tab('C').tick()).toBe('ran');
-    expect(w.mk.calls).toEqual([1, 2, 2, 3, 4, 4, 5, 6]);
-    expect((await samples(w))[0]).toMatchObject({ bidCount: 6 });
-  });
-
-  it('une erreur due au déchargement de la page n’efface pas la progression', async () => {
-    const w = world(4);
-    const first = w.tab('A');
-    unloadDuring(w, first, 2);
-    await first.tick();
-    expect(await w.store.get('market-poll')).toMatchObject({ nextPage: 2, owner: null });
-  });
-
-  it('un onglet qui relève en ce moment est respecté', async () => {
-    const w = world(3);
-    const a = w.tab('A');
+    await a.want([target('Ted Lasso')]);
     let other: string | undefined;
-    w.mk.hooks.set(2, async () => {
+    w.fake.hooks.set('Ted Lasso', async () => {
       other = await w.tab('B').tick();
-      return { auctions: [auction('a2', 200)], hasMore: true };
+      return { auctions: [auction('a1', 'Ted Lasso', 100)] };
     });
     expect(await a.tick()).toBe('ran');
     expect(other).toBe('skipped');
-    expect(w.mk.calls).toEqual([1, 2, 3]);
   });
 
-  it('reprend le relevé d’un onglet mort (verrou jamais libéré) après 20 s', async () => {
-    const w = world(3);
-    w.mk.hooks.set(2, () => new Promise<PageResult>(() => {}));
+  it('reprend après 20 s le travail d’un onglet mort dont le verrou n’a jamais été libéré', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    await w.tab('A').want([target('Ted Lasso')]);
+    w.fake.hooks.set('Ted Lasso', () => new Promise(() => {}));
     void w.tab('A').tick();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    w.mk.hooks.clear();
-    w.mk.calls.length = 0;
+    w.fake.hooks.clear();
 
     w.clock.now += 5_000;
     expect(await w.tab('B').tick()).toBe('skipped');
     w.clock.now += 20_000;
     expect(await w.tab('B').tick()).toBe('ran');
-    expect(w.mk.calls).toEqual([2, 3]);
   });
 
-  it('abandonne un relevé de plus de 10 min et recommence à la page 1 quand il est dû', async () => {
-    const w = world(3);
-    const first = w.tab('A');
-    unloadDuring(w, first, 2);
-    await first.tick();
-    w.mk.hooks.clear();
-    w.mk.calls.length = 0;
-    w.clock.now += 31 * MIN;
-    expect(await w.tab('B').tick()).toBe('ran');
-    expect(w.mk.calls).toEqual([1, 2, 3]);
-  });
-
-  it('une vraie erreur (401, 429 persistant…) abandonne sans rien enregistrer ni réessayer avant 30 min', async () => {
-    const w = world(3);
-    w.mk.hooks.set(2, async () => {
+  it('une vraie erreur (401, 429 persistant…) arrête la passe et attend 30 min', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    const tab = w.tab('A');
+    await tab.want([target('Ted Lasso')]);
+    w.fake.hooks.set('Ted Lasso', async () => {
       throw new Error('401');
     });
-    expect(await w.tab('A').tick()).toBe('failed');
-    expect(await samples(w)).toEqual([]);
-    expect(await w.store.get('market-poll')).toBeNull();
+    expect(await tab.tick()).toBe('failed');
+    expect(await samplesOf(w, 'Ted Lasso')).toEqual([]);
 
-    w.mk.hooks.clear();
-    w.mk.calls.length = 0;
-    w.clock.now += 10 * MIN;
+    w.fake.hooks.clear();
+    w.fake.calls.length = 0;
+    w.clock.now += 5 * MIN;
+    await tab.want([target('Ted Lasso')]);
     expect(await w.tab('B').tick()).toBe('skipped');
-    expect(w.mk.calls).toEqual([]);
+    expect(w.fake.calls).toEqual([]);
+
+    w.clock.now += 30 * MIN;
+    await tab.want([target('Ted Lasso')]);
+    expect(await w.tab('C').tick()).toBe('ran');
   });
 
-  it('écarte les enchères vues deux fois quand la liste bouge entre deux pages', async () => {
-    const w = world(2);
-    w.mk.hooks.set(2, async () => ({ auctions: [auction('a1', 100), auction('a2', 200)], hasMore: false }));
-    await w.tab('A').tick();
-    expect((await samples(w))[0]).toMatchObject({ bidCount: 2, avgBid: 150 });
-  });
-
-  it('ne lance jamais deux relevés en même temps dans un même onglet', async () => {
-    const w = world(2);
+  it('ne lance jamais deux passes en même temps dans un même onglet', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
     const tab = w.tab('A');
+    await tab.want([target('Ted Lasso')]);
     const results = await Promise.all([tab.tick(), tab.tick()]);
     expect(results.sort()).toEqual(['ran', 'skipped']);
-    expect(w.mk.calls).toEqual([1, 2]);
+    expect(w.fake.calls).toEqual(['Ted Lasso']);
   });
 });
 
-describe('createGameApi.getMarketPage', () => {
+describe('createGameApi.searchMarket', () => {
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
   const setup = (responses: Response[]) => {
     const calls: string[] = [];
@@ -222,33 +263,30 @@ describe('createGameApi.getMarketPage', () => {
     return { calls, api: createGameApi({ fetch, sleep: async () => {}, now: () => 0, minIntervalMs: 0, maxRetries: 0 }) };
   };
 
-  it('appelle la page demandée (50 par page) et lit hasMore', async () => {
-    const wire = { ...auction('a', 10), end_at: auction('a', 10).end_at };
-    const { api, calls } = setup([json({ auctions: [wire], hasMore: true })]);
-    const page = await api.getMarketPage(2);
-    expect(calls).toEqual(['/api/marketplace?page=2&limit=50']);
-    expect(page.hasMore).toBe(true);
-    expect(page.auctions).toHaveLength(1);
+  it('envoie la même requête que la recherche du site, titre encodé', async () => {
+    const { api, calls } = setup([json({ auctions: [auction('a', 'Ted Lasso', 10)], hasMore: false })]);
+    const result = await api.searchMarket('Théorème de Ptolémée & co');
+    expect(calls).toEqual([
+      '/api/marketplace?page=1&limit=50&sort=recent&q=Th%C3%A9or%C3%A8me%20de%20Ptol%C3%A9m%C3%A9e%20%26%20co',
+    ]);
+    expect(result.auctions).toHaveLength(1);
   });
 
-  it('refuse une réponse sans hasMore, plutôt que de la prendre pour la fin du marché', async () => {
-    const { api } = setup([json({ auctions: [] })]);
-    await expect(api.getMarketPage(1)).rejects.toThrow();
+  it('accepte un résultat vide, refuse une réponse sans tableau', async () => {
+    expect((await setup([json({ auctions: [] })]).api.searchMarket('x')).auctions).toEqual([]);
+    await expect(setup([json({ error: 'x' })]).api.searchMarket('x')).rejects.toThrow();
   });
 
   it('propage une déconnexion', async () => {
-    const { api } = setup([json({}, 401)]);
-    await expect(api.getMarketPage(1)).rejects.toThrow();
+    await expect(setup([json({}, 401)]).api.searchMarket('x')).rejects.toThrow();
   });
 });
 
 describe('historique local', () => {
-  it('une tentative ratée met la date à jour sans effacer l’historique', async () => {
+  it('l’historique survit à la relecture du stockage', async () => {
     const store = createMemoryStore();
-    await createHistoryRepo(store, () => T0).record([auction('a', 100)]);
+    await createHistoryRepo(store, () => T0).record([auction('a', 'Ted Lasso', 100)]);
     const later = createHistoryRepo(store, () => T0 + MIN);
-    await later.markAttempt();
-    expect(await later.lastPollAt()).toBe(T0 + MIN);
     expect((await later.lookup('Ted_Lasso'))[0]?.samples).toHaveLength(1);
   });
 });

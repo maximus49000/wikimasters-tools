@@ -1,3 +1,4 @@
+import type { KnownCard } from '../core/collection/collection-book';
 import leafletCss from 'leaflet/dist/leaflet.css?inline';
 import { createRoot, type Root } from 'react-dom/client';
 import type { CollectionRepo } from '../core/collection/collection-repo';
@@ -34,11 +35,13 @@ export type CollectionUiDeps = {
   filterSource: CollectionFilterSource;
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   openCard: (slug: string) => void;
+  // Cartes affichées dans la Collection (à relever sur le marché).
+  onVisibleCards?: (cards: KnownCard[]) => void;
 };
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, birth, scanner, book, filterSource, loadFiltered, openCard }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, birth, scanner, book, filterSource, loadFiltered, openCard, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
 
@@ -115,6 +118,7 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
       const cards = scanCollectionCards(scope);
       if (cards.length > 0) {
         collection.observe(cards).catch((error) => console.warn(LOG, 'collection non enregistrée :', error));
+        onVisibleCards?.(cards);
       }
     }
 

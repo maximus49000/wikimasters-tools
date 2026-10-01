@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import source from '../../src/entrypoints/content.tsx?raw';
 
-const wiring = source.slice(source.indexOf('createMarketCollector({'), source.indexOf('// Une recherche demandée'));
+const start = source.indexOf('createMarketCollector({');
+const wiring = source.slice(start, source.indexOf('// Une recherche demandée'));
+const creation = source.slice(start, source.indexOf('});', start) + 3);
 
 describe('câblage du relevé du marché', () => {
   it('le script de contenu est chargé sur toutes les pages du site', () => {
@@ -9,8 +11,9 @@ describe('câblage du relevé du marché', () => {
   });
 
   it('le relevé ne dépend d’aucune page : ni /collection ni aucun autre chemin', () => {
-    expect(wiring.length).toBeGreaterThan(100);
-    expect(wiring).not.toMatch(/pathname|location|\/collection|\/marketplace/);
+    expect(creation.length).toBeGreaterThan(100);
+    expect(creation).not.toMatch(/pathname|location|\/collection|\/marketplace/);
+    expect(wiring).not.toMatch(/pathname|\/collection|\/marketplace/);
   });
 
   it('libère le relevé quand la page se décharge et le reprend au retour du cache', () => {
@@ -18,5 +21,13 @@ describe('câblage du relevé du marché', () => {
     expect(wiring).toContain('collector.release()');
     expect(wiring).toContain("'pageshow'");
     expect(wiring).toContain('collector.activate()');
+  });
+
+  it('seules les cartes affichées dans la Collection sont demandées au collecteur', () => {
+    expect(source).toMatch(/onVisibleCards:[\s\S]*collector[\s\S]*\.want\(/);
+  });
+
+  it('plus aucun parcours du marché entier', () => {
+    expect(source).not.toMatch(/getMarketPage|fetchFullMarket/);
   });
 });

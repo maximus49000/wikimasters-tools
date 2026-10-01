@@ -44,6 +44,14 @@ export default defineContentScript({
     const dataSource = createDataSource({ api, cache: createTtlCache(store) });
     const marketRepo = createMarketRepo(store);
     const historyRepo = createHistoryRepo(store);
+    const collector = createMarketCollector({
+      api,
+      history: historyRepo,
+      store,
+      now: () => Date.now(),
+      isVisible: () => document.visibilityState === 'visible',
+      id: crypto.randomUUID(),
+    });
 
     console.info(LOG, 'démarré');
 
@@ -79,6 +87,11 @@ export default defineContentScript({
       filterSource,
       loadFiltered: (filter, isCancelled) => loadFilteredSlugs(filterApi, filter, isCancelled),
       openCard: (slug) => void marketUi.reopenCard(slug),
+      onVisibleCards: (cards) =>
+        void collector
+          .want(cards.map(({ slug, title }) => ({ slug, title })))
+          .then((added) => (added ? collector.tick() : undefined))
+          .catch((error) => console.warn(LOG, 'relevé du marché :', error)),
     });
 
     // Historique du marché chargé en mémoire : la décoration de la page est synchrone.
@@ -134,16 +147,8 @@ export default defineContentScript({
 
     run();
 
-    // Relevé du marché en arrière-plan : sur toutes les pages du site (onglet visible), et repris
-    // d'une page à l'autre quand l'utilisateur navigue.
-    const collector = createMarketCollector({
-      api,
-      history: historyRepo,
-      store,
-      now: () => Date.now(),
-      isVisible: () => document.visibilityState === 'visible',
-      id: crypto.randomUUID(),
-    });
+    // Relevé du marché : seulement les cartes de la Collection affichées à l'écran (une recherche par titre,
+    // une fois par carte et par 30 min). Il se poursuit d'une page à l'autre quand l'utilisateur navigue.
     const tick = () => void collector.tick().catch((error) => console.warn(LOG, 'relevé du marché :', error));
     tick();
     window.setInterval(tick, 60_000);
