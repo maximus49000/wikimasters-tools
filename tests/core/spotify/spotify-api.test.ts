@@ -1,15 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createMemoryStore, type KeyValueStore } from '../../../src/core/cache/store';
 import { createSpotifyApi } from '../../../src/core/spotify/spotify-api';
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers });
 const empty = (status: number, headers: Record<string, string> = {}) => new Response(null, { status, headers });
 
-function setup(responses: Response[], deviceTypes?: string[], now?: () => number) {
+// `gaps` à zéro : les tests n'attendent pas les délais d'espacement (testés à part).
+function setup(responses: Response[], deviceTypes?: string[], now?: () => number, store: KeyValueStore = createMemoryStore()) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   const session = { accessToken: vi.fn(async () => 'TOKEN') };
-  return { api: createSpotifyApi({ session, fetch, ...(deviceTypes ? { deviceTypes } : {}), ...(now ? { now } : {}) }), fetch, session };
+  return {
+    api: createSpotifyApi({ session, fetch, store, gaps: { page: 0, image: 0 }, ...(deviceTypes ? { deviceTypes } : {}), ...(now ? { now } : {}) }),
+    fetch,
+    session,
+  };
 }
 
 const call = (fetch: ReturnType<typeof vi.fn>, index = 0) => {
@@ -170,16 +176,15 @@ describe('createSpotifyApi', () => {
     await expect(setup([empty(429)]).api.pause()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 5000 });
   });
 
-  it("après un 429, n'envoie plus rien à Spotify tant que dure l'attente demandée, quel que soit l'appel, puis reprend", async () => {
+  it("après un 429, n'envoie plus rien de la même famille tant que dure l'attente demandée, puis reprend", async () => {
     let clock = 1_000;
     const { api, fetch } = setup([empty(429, { 'Retry-After': '120' }), empty(204)], undefined, () => clock);
-    await expect(api.pause()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 120_000 });
+    await expect(api.pause()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 120_000, retryAt: 121_000 });
 
-    // La limite vaut pour toute l'application : les autres appels ne partent pas non plus, et annoncent le reste de l'attente.
+    // Même famille (lecteur) : rien ne part, et l'erreur annonce le reste de l'attente.
     clock += 30_000;
-    await expect(api.playerState()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 90_000 });
-    await expect(api.searchAlbum('Abbey Road')).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 90_000 });
-    await expect(api.findCover('album', 'Abbey Road')).rejects.toMatchObject({ code: 'rate-limited' });
+    await expect(api.playerState()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 90_000, retryAt: 121_000 });
+    await expect(api.play(null)).rejects.toMatchObject({ code: 'rate-limited' });
     expect(fetch).toHaveBeenCalledTimes(1);
 
     clock += 90_000;
@@ -187,21 +192,62 @@ describe('createSpotifyApi', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("clearLimit lève la pause en cours : l'appel suivant part aussitôt, et l'escalade des attentes n'est pas remise à zéro", async () => {
+  it('une limite sur la recherche ne bloque ni la lecture ni le lecteur ; une limite sur la lecture ne bloque pas la recherche', async () => {
+    const search = setup([empty(429, { 'Retry-After': '3600' }), empty(204), empty(204), json({ items: [] })]);
+    await expect(search.api.searchAlbum('Abbey Road')).rejects.toMatchObject({ code: 'rate-limited' });
+    await expect(search.api.searchAlbum('Abbey Road')).rejects.toMatchObject({ code: 'rate-limited' });
+    await search.api.pause();
+    expect(await search.api.playerState()).toBeNull();
+    await search.api.albumTracks('alb1');
+    expect(search.fetch).toHaveBeenCalledTimes(4);
+
+    const player = setup([empty(429, { 'Retry-After': '60' }), json({ albums: { items: [] } })]);
+    await expect(player.api.pause()).rejects.toMatchObject({ code: 'rate-limited' });
+    await expect(player.api.playerState()).rejects.toMatchObject({ code: 'rate-limited' });
+    expect(await player.api.searchAlbum('Abbey Road')).toBeNull();
+    expect(player.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("la pause est gardée dans le stockage : une autre page n'envoie rien tant qu'elle dure", async () => {
     let clock = 1_000;
-    const { api, fetch } = setup([empty(429), empty(429), empty(204)], undefined, () => clock);
-    await expect(api.pause()).rejects.toMatchObject({ retryAfterMs: 5_000 });
-    await expect(api.pause()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 5_000 });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    const store = createMemoryStore();
+    const first = setup([empty(429, { 'Retry-After': '120' })], undefined, () => clock, store);
+    await expect(first.api.searchAlbum('Abbey Road')).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 120_000, retryAt: 121_000 });
 
-    api.clearLimit();
-    // Spotify limite encore : on ne harcèle pas pour autant, la pause suivante est plus longue.
-    await expect(api.pause()).rejects.toMatchObject({ retryAfterMs: 15_000 });
-    expect(fetch).toHaveBeenCalledTimes(2);
+    clock += 30_000;
+    const second = setup([], undefined, () => clock, store);
+    await expect(second.api.findCover('album', 'Abbey Road')).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 90_000, retryAt: 121_000 });
+    expect(second.fetch).not.toHaveBeenCalled();
+  });
 
-    api.clearLimit();
-    await api.pause();
-    expect(fetch).toHaveBeenCalledTimes(3);
+  it('passe le contenu de la page avant les images arrivées plus tôt', async () => {
+    const { api, fetch } = setup([json({ items: [] }), json({ tracks: { items: [] } })]);
+    const cover = api.findCover('track', 'Yesterday');
+    const tracks = api.albumTracks('alb1');
+    await Promise.all([cover, tracks]);
+    expect(call(fetch, 0).url.pathname).toBe('/v1/albums/alb1/tracks');
+    expect(call(fetch, 1).url.pathname).toBe('/v1/search');
+  });
+
+  it('espace les appels : 250 ms pour le contenu de la page, 1 s pour les images', async () => {
+    let clock = 0;
+    const waits: number[] = [];
+    const fetch = vi.fn(async () => json({ albums: { items: [] } }));
+    const api = createSpotifyApi({
+      session: { accessToken: async () => 'TOKEN' },
+      fetch,
+      store: createMemoryStore(),
+      now: () => clock,
+      sleep: async (ms) => {
+        waits.push(ms);
+        clock += ms;
+      },
+    });
+    await api.searchAlbum('A');
+    await api.searchAlbum('B');
+    await api.findCover('album', 'C');
+    await api.findCover('album', 'D');
+    expect(waits).toEqual([250, 1_000, 1_000]);
   });
 
   it("sans Retry-After lisible (page web, WebView : Spotify ne l'expose pas en CORS), l'attente s'allonge à chaque limite d'affilée, puis repart de zéro après un succès", async () => {
