@@ -10,6 +10,8 @@ import type { PriceBook } from '../core/pricing/price-book';
 import type { CollectionFilterSource } from './collection-filter';
 import { pageIsDark } from './map-theme';
 import { createThrottledLoader } from './throttle';
+import type { Rect } from './card-popup-position';
+import { CardPopup } from './CardPopup';
 import { createWorldMap, isCoarsePointer, type MapPoint, type WorldMap } from './world-map';
 
 // Styles des marqueurs et du mode « placement » (le CSS de Leaflet est ajouté à part).
@@ -81,6 +83,7 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
   // Tactile : déplacement des points seulement quand on l'active, et point sélectionné dans ce mode.
   const [moveMode, setMoveMode] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [picked, setPicked] = useState<{ slug: string; anchor: Rect } | null>(null);
   const [filter, setFilter] = useState(() => filterSource.current());
   // Cartes qui passent le filtre (null : pas de filtre, ou lecture en cours).
   const [allowed, setAllowed] = useState<{ filter: string; slugs: Set<string> } | null>(null);
@@ -167,7 +170,8 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
     const container = containerRef.current;
     if (!container) return;
     const map = createWorldMap(container, pageIsDark(), {
-      onOpen: (slug) => latest.current.onOpen(slug),
+      onPick: (slug, anchor) => setPicked({ slug, anchor }),
+      onDismiss: () => setPicked(null),
       onSelect: (slug) => setSelected(slug),
       onMove: (slug, lat, lon) => void latest.current.geo.setManual(slug, { lat, lon }),
       onRelease: (slug) => void latest.current.geo.clearManual(slug),
@@ -210,6 +214,7 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
   const placingTitle = cards.find((card) => card.slug === placing)?.title;
   const selectedPosition = selected ? geoState.manual[selected] : undefined;
   const selectedTitle = cards.find((card) => card.slug === selected)?.title;
+  const pickedCard = picked ? cards.find((card) => card.slug === picked.slug) : undefined;
 
   return (
     <div className="wmt-world" style={box}>
@@ -304,6 +309,17 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
           ))}
         </ul>
       </aside>
+      {picked && pickedCard && (
+        <CardPopup
+          preview={toCardPreview(pickedCard, book?.byTitle(pickedCard.title) ?? null)}
+          anchor={picked.anchor}
+          onOpen={() => {
+            setPicked(null);
+            onOpen(pickedCard.slug);
+          }}
+          onClose={() => setPicked(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { Rect } from './card-popup-position';
 import type { KnownCard } from '../core/collection/collection-book';
 import { toCardPreview } from '../core/collection/card-preview';
 import { filterLocally } from '../core/collection/local-filter';
@@ -18,7 +19,7 @@ import {
 } from '../core/birth/timeline-layout';
 import type { PriceBook } from '../core/pricing/price-book';
 import type { CollectionFilterSource } from './collection-filter';
-import { buildCardPreview } from './card-preview-dom';
+import { CardPopup } from './CardPopup';
 import { createThrottledLoader } from './throttle';
 
 type Props = {
@@ -82,8 +83,7 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
   const [filter, setFilter] = useState(() => filterSource.current());
   const [allowed, setAllowed] = useState<{ filter: string; slugs: Set<string> } | null>(null);
   const [filterError, setFilterError] = useState(false);
-  const [tip, setTip] = useState<{ slug: string; chip: { left: number; right: number; top: number } } | null>(null);
-  const tipRef = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState<{ slug: string; chip: Rect } | null>(null);
   // Zoom en pixels par année ; null = toute la frise visible.
   const [mode, setModeState] = useState<TimelineMode>(readMode);
   const setMode = (next: TimelineMode) => {
@@ -166,6 +166,8 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
   const fit = fitScale(dated, viewportWidth);
   const scale = clampScale(zoom ?? fit, dated, viewportWidth);
   const timeline = useMemo(() => layoutTimeline(dated, scale), [dated, scale]);
+  // Zoom, changement de frise ou de filtre : la case visée a bougé, l'aperçu se ferme.
+  useEffect(() => setTip(null), [scale, mode, visible]);
   const tipCard = tip ? cards.find((card) => card.slug === tip.slug) : undefined;
 
   // Largeur visible de la frise : elle borne le dézoom (toute la frise tient à l'écran).
@@ -213,36 +215,9 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
     return () => scroller.removeEventListener('wheel', onWheel);
   }, []);
 
-  // La carte du survol est construite comme sur la vue Monde, avant d'être mesurée et placée (effet suivant).
-  useLayoutEffect(() => {
-    const el = tipRef.current;
-    if (!el) return;
-    el.replaceChildren();
-    if (tipCard) el.append(buildCardPreview(toCardPreview(tipCard, book?.byTitle(tipCard.title) ?? null)));
-  }, [tipCard, book]);
-
-  // La carte se pose contre sa case : à droite, sinon à gauche, alignée sur la case et gardée entière à l'écran.
-  // La position est mesurée depuis l'origine réelle de l'élément : un ancêtre transformé du site ne la décale pas.
-  useLayoutEffect(() => {
-    const el = tipRef.current;
-    if (!el || !tip) return;
-    el.style.left = '0px';
-    el.style.top = '0px';
-    const origin = el.getBoundingClientRect();
-    const width = el.offsetWidth;
-    const height = el.offsetHeight;
-    const { chip } = tip;
-    const gap = 8;
-    const right = chip.right + gap;
-    const left = right + width <= window.innerWidth - gap ? right : Math.max(gap, chip.left - gap - width);
-    const top = Math.max(gap, Math.min(chip.top, window.innerHeight - height - gap));
-    el.style.left = `${left - origin.left}px`;
-    el.style.top = `${top - origin.top}px`;
-  }, [tip, tipCard]);
-
   const showTip = (slug: string, target: HTMLElement) => {
-    const { left, right, top } = target.getBoundingClientRect();
-    setTip({ slug, chip: { left, right, top } });
+    const { left, right, top, bottom } = target.getBoundingClientRect();
+    setTip({ slug, chip: { left, right, top, bottom } });
   };
 
   return (
@@ -319,9 +294,8 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
             <button
               key={card.slug}
               type="button"
-              onClick={() => onOpen(card.slug)}
-              onMouseEnter={(event) => showTip(card.slug, event.currentTarget)}
-              onMouseLeave={() => setTip(null)}
+              onClick={(event) => showTip(card.slug, event.currentTarget)}
+              aria-haspopup="dialog"
               title={`${card.title} · ${formatYear(year)}${end === undefined ? '' : ` – ${formatYear(end)}`}`}
               style={{
                 position: 'absolute',
@@ -366,15 +340,17 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
           </ul>
         </details>
       )}
-      <div
-        ref={tipRef}
-        style={{
-          position: 'fixed',
-          zIndex: 2147483647,
-          pointerEvents: 'none',
-          display: tip ? 'block' : 'none',
-        }}
-      />
+      {tip && tipCard && (
+        <CardPopup
+          preview={toCardPreview(tipCard, book?.byTitle(tipCard.title) ?? null)}
+          anchor={tip.chip}
+          onOpen={() => {
+            setTip(null);
+            onOpen(tipCard.slug);
+          }}
+          onClose={() => setTip(null)}
+        />
+      )}
     </div>
   );
 }
