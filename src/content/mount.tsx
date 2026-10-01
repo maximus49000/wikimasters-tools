@@ -20,6 +20,8 @@ import { IMAGE_HOST_ATTRIBUTE, LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, typ
 import { ScreenSection } from './ScreenSection';
 import { ImageSection } from './ImageSection';
 import { ImageSettings } from './ImageSettings';
+import { PlayerSettings } from './PlayerSettings';
+import type { PlayerSource } from './player-source';
 import type { ImageService } from '../core/images/image-service';
 import { LoadingGlyph } from './LoadingGlyph';
 import { RefreshButton, type CollectionView } from './RefreshButton';
@@ -160,12 +162,13 @@ export const mountImageSection: MountListen = imageSections.mount;
 export const pruneImageSections = imageSections.prune;
 
 const IMAGE_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-image-settings';
+const PLAYER_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-player-settings';
 
-// Fenêtre « Paramètre d'image », ouverte depuis le menu « Plus » : hors du DOM du jeu (shadow DOM).
-export function openImageSettings(images: ImageService): void {
-  if (document.querySelector(`[${IMAGE_SETTINGS_HOST_ATTRIBUTE}]`)) return;
+// Fenêtre de réglage ouverte depuis le menu « Plus » : hors du DOM du jeu (shadow DOM).
+function openSettingsWindow(hostAttribute: string, render: (close: () => void) => ReactElement): void {
+  if (document.querySelector(`[${hostAttribute}]`)) return;
   const host = document.createElement('div');
-  host.setAttribute(IMAGE_SETTINGS_HOST_ATTRIBUTE, '');
+  host.setAttribute(hostAttribute, '');
   host.style.cssText = 'position:fixed; inset:0; z-index:2147483000';
   // Le menu du jeu se ferme sur un appui « à l'extérieur » : on garde ces événements chez nous.
   for (const type of ['pointerdown', 'mousedown', 'touchstart']) {
@@ -187,8 +190,14 @@ export function openImageSettings(images: ImageService): void {
     close();
   }
   document.addEventListener('keydown', onKey, true);
-  root.render(<ImageSettings images={images} onClose={close} />);
+  root.render(render(close));
 }
+
+export const openImageSettings = (images: ImageService): void =>
+  openSettingsWindow(IMAGE_SETTINGS_HOST_ATTRIBUTE, (close) => <ImageSettings images={images} onClose={close} />);
+
+export const openPlayerSettings = (source: PlayerSource): void =>
+  openSettingsWindow(PLAYER_SETTINGS_HOST_ATTRIBUTE, (close) => <PlayerSettings source={source} onClose={close} />);
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
 

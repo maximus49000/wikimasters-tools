@@ -4,11 +4,15 @@ const LABEL = 'Paramètre d’image';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const ICON_PATHS = ['M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M9 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'm21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21'];
 
+const IMAGE_ENTRY: EntrySpec = { attribute: IMAGE_SETTING_ATTRIBUTE, label: LABEL, iconPaths: ICON_PATHS };
+
 // Même ligne que « Paramètres » (menu « Plus » du mobile, barre latérale du bureau), posée juste dessous : le lien est
 // copié pour garder le style du site, puis son libellé, son icône et son action sont remplacés.
-function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void): HTMLElement {
+export type EntrySpec = { attribute: string; label: string; iconPaths: string[] };
+
+export function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void, spec: EntrySpec = IMAGE_ENTRY): HTMLElement {
   const entry = settingsLink.cloneNode(true) as HTMLElement;
-  entry.setAttribute(IMAGE_SETTING_ATTRIBUTE, '');
+  entry.setAttribute(spec.attribute, '');
   entry.removeAttribute('href');
   entry.removeAttribute('aria-current');
   entry.setAttribute('role', 'button');
@@ -17,7 +21,7 @@ function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void): HTMLEl
   const svg = entry.querySelector('svg');
   if (svg) {
     svg.replaceChildren(
-      ...ICON_PATHS.map((d) => {
+      ...spec.iconPaths.map((d) => {
         const path = document.createElementNS(SVG_NS, 'path');
         path.setAttribute('d', d);
         return path;
@@ -28,8 +32,8 @@ function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void): HTMLEl
   const walker = document.createTreeWalker(entry, NodeFilter.SHOW_TEXT);
   let label: Node | null = null;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) if (node.textContent?.trim()) label = node;
-  if (label) label.textContent = LABEL;
-  else entry.append(LABEL);
+  if (label) label.textContent = spec.label;
+  else entry.append(spec.label);
   entry.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
