@@ -113,25 +113,6 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         .catch((error) => console.warn(LOG, 'relevé du marché :', error)),
   });
 
-  // Spotify : télécommande de l'appli Spotify (voir la spec). Absent si la plateforme ne le fournit pas.
-  if (spotify) {
-    const session = createSpotifySession({ store, ...spotify });
-    const api = createSpotifyApi({ session, fetch: spotify.fetch });
-    const player = createPlayerSource({ api, session, storage: window.localStorage });
-    setMusicService(
-      createMusicService({
-        collection: collectionRepo,
-        kinds: kindsRepo,
-        music: createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs)),
-        session,
-        api,
-        onPlayed: () => void player.refresh(),
-      }),
-    );
-    mountSpotifyPlayer(player);
-    player.start();
-  }
-
   // Historique du marché chargé en mémoire : la décoration de la page est synchrone.
   let history: HistoryState = emptyHistory();
   // Cartes en attente de relevé : elles affichent le glyphe de chargement.
@@ -228,6 +209,30 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   historyRepo.subscribe(() => void refreshHistory());
 
   run();
+
+  // Spotify : télécommande de l'appli Spotify (voir la spec). Absent si la plateforme ne le fournit pas.
+  // Après le démarrage de la surcouche : une panne ici ne doit jamais l'empêcher.
+  if (spotify) {
+    try {
+      const session = createSpotifySession({ store, ...spotify });
+      const spotifyApi = createSpotifyApi({ session, fetch: spotify.fetch });
+      const player = createPlayerSource({ api: spotifyApi, session, storage: window.localStorage });
+      setMusicService(
+        createMusicService({
+          collection: collectionRepo,
+          kinds: kindsRepo,
+          music: createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs)),
+          session,
+          api: spotifyApi,
+          onPlayed: () => void player.refresh(),
+        }),
+      );
+      mountSpotifyPlayer(player);
+      player.start();
+    } catch (error) {
+      console.warn(LOG, 'Spotify indisponible :', error);
+    }
+  }
 
   // Relevé du marché : seulement les cartes de la Collection affichées à l'écran (une recherche par titre,
   // une fois par carte et par 30 min). Il se poursuit d'une page à l'autre quand l'utilisateur navigue.
