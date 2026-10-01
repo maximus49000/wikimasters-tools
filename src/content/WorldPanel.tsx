@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { CollectionRepo } from '../core/collection/collection-repo';
-import { toCardPreview } from '../core/collection/card-preview';
+import { cardMarket, toCardPreview } from '../core/collection/card-preview';
+import type { MarketSource } from './market-source';
 import { filterLocally } from '../core/collection/local-filter';
 import type { KnownCard } from '../core/collection/collection-book';
 import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/collection/collection-scan';
@@ -39,6 +40,13 @@ export const PANEL_CSS = `
 .wmt-card-star{width:28px;height:28px;padding:2px;color:rgba(253,230,138,.65);filter:drop-shadow(0 .5px 2px rgba(0,0,0,.55))}
 .wmt-card-star path{stroke-width:1}
 .wmt-card-price{padding:2px 8px;border-radius:6px;background:rgb(34,197,94);color:rgb(13,17,23);box-shadow:0 0 10px rgba(34,197,94,.6);font:700 12px/16px system-ui,sans-serif;text-align:center}
+.wmt-card-market{position:absolute;top:34px;left:8px;z-index:30;padding:2px 8px;border-radius:6px;background:rgba(13,17,23,.85);border:1px solid rgba(148,163,184,.45);color:#e6edf3;font:700 12px/16px system-ui,sans-serif;white-space:nowrap}
+.wmt-card-market-stale,.wmt-card-market-unknown{color:#9aa7b4}
+.wmt-card-market-stale{font-style:italic}
+.wmt-card-trend{margin-left:4px}.wmt-card-trend-up{color:rgb(34,197,94)}.wmt-card-trend-down{color:rgb(239,68,68)}.wmt-card-trend-flat{color:rgb(148,163,184)}
+.wmt-card-loading{position:absolute;right:8px;bottom:34px;z-index:30;width:22px;height:22px;border-radius:50%;background:rgba(13,17,23,.85);border:1px solid rgba(148,163,184,.45);display:flex;align-items:center;justify-content:center}
+.wmt-card-spinner{width:14px;height:14px;box-sizing:border-box;border:3px solid rgba(148,163,184,.35);border-top-color:#34d399;border-radius:50%;animation:wmt-spin .9s linear infinite}
+@keyframes wmt-spin{to{transform:rotate(360deg)}}
 .wmt-card-body{position:absolute;top:45%;left:0;right:0;bottom:0;z-index:20;display:flex;flex-direction:column;min-height:0;padding:12px}
 .wmt-card-title{margin:0;font:700 16px/1.25 var(--font-heading,system-ui,sans-serif);color:#000;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex-shrink:0}
 .wmt-card-extract{margin:0;flex:1;min-height:0;overflow:hidden;font-size:10px;line-height:1.375;color:rgba(38,38,38,.88);display:-webkit-box;-webkit-line-clamp:10;-webkit-box-orient:vertical}
@@ -57,9 +65,12 @@ type Props = {
   geo: GeoRepo;
   scanner: CollectionScanner;
   book: PriceBook | null;
+  market: MarketSource;
   filterSource: CollectionFilterSource;
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
+  // Fiche de marché de la carte.
   onOpen: (slug: string) => void;
+  onShowCard: (card: KnownCard) => void;
 };
 
 const TOUCH = isCoarsePointer();
@@ -75,7 +86,7 @@ const box = {
 // Un scan « en cours » sans aucune activité depuis cette durée est considéré comme interrompu.
 const STALLED_MS = 60_000;
 
-export function WorldPanel({ collection, geo, scanner, book, filterSource, loadFiltered, onOpen }: Props) {
+export function WorldPanel({ collection, geo, scanner, book, market, filterSource, loadFiltered, onOpen, onShowCard }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [geoState, setGeoState] = useState<GeoState>(EMPTY_GEO);
@@ -215,6 +226,22 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
   const selectedPosition = selected ? geoState.manual[selected] : undefined;
   const selectedTitle = cards.find((card) => card.slug === selected)?.title;
   const pickedCard = picked ? cards.find((card) => card.slug === picked.slug) : undefined;
+  const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
+  const pickedPreview = useMemo(
+    () =>
+      pickedCard
+        ? toCardPreview(
+            pickedCard,
+            book?.byTitle(pickedCard.title) ?? null,
+            cardMarket(marketNow.history, marketNow.pending, pickedCard.slug, Date.now()),
+          )
+        : null,
+    [pickedCard, book, marketNow],
+  );
+  // L'aperçu s'ouvre : les prix de cette carte sont relevés (une fois par 30 min), comme sur la liste.
+  useEffect(() => {
+    if (pickedCard) onShowCard(pickedCard);
+  }, [pickedCard?.slug]);
 
   return (
     <div className="wmt-world" style={box}>
@@ -233,7 +260,7 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
               <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                 <strong>{selectedTitle ?? selected}</strong>
                 <button type="button" onClick={() => onOpen(selected)} style={{ ...linkButton, minHeight: 40 }}>
-                  Ouvrir la carte
+                  Voir le marché
                 </button>
                 {selectedPosition && (
                   <button
@@ -309,9 +336,9 @@ export function WorldPanel({ collection, geo, scanner, book, filterSource, loadF
           ))}
         </ul>
       </aside>
-      {picked && pickedCard && (
+      {picked && pickedCard && pickedPreview && (
         <CardPopup
-          preview={toCardPreview(pickedCard, book?.byTitle(pickedCard.title) ?? null)}
+          preview={pickedPreview}
           anchor={picked.anchor}
           onOpen={() => {
             setPicked(null);

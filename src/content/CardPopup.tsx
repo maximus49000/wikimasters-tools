@@ -22,7 +22,7 @@ const buttonStyle = {
 } as const;
 
 // Aperçu d'une carte posé contre un point de la map ou une case de la frise : toujours entier à l'écran,
-// avec un bouton pour ouvrir la carte. Il se ferme au clic ailleurs, avec Échap, au défilement ou au redimensionnement.
+// avec un bouton pour ouvrir sa fiche de marché. Il se ferme au clic ailleurs, avec Échap, au défilement ou au redimensionnement.
 export function CardPopup({ preview, anchor, onOpen, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -90,7 +90,7 @@ export function CardPopup({ preview, anchor, onOpen, onClose }: Props) {
       <div ref={cardRef} />
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button type="button" onClick={onOpen} style={{ ...buttonStyle, background: 'var(--color-accent, #34d399)', color: '#0d1117', borderColor: 'transparent' }}>
-          Ouvrir
+          Voir le marché
         </button>
         <button type="button" onClick={onClose} aria-label="Fermer" style={{ ...buttonStyle, flex: '0 0 40px' }}>
           ✕

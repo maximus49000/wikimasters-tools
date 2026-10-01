@@ -10,6 +10,7 @@ import { createBirthRepo } from '../core/birth/birth-repo';
 import { createGeoRepo } from '../core/geo/geo-repo';
 import { createCollectionFilterSource } from '../content/collection-filter';
 import { createCollectionUi } from '../content/collection-ui';
+import { createMarketSource } from '../content/market-source';
 import { loadFilteredSlugs } from '../core/collection/filtered-slugs';
 import { createMarketRepo } from '../core/market/market-repo';
 import { createHistoryRepo } from '../core/market/history-repo';
@@ -77,6 +78,8 @@ export default defineContentScript({
     }
 
     const marketUi = createMarketUi(marketRepo, historyRepo);
+    // Prix du marché partagés avec la Map et la Chronologique (mis à jour avec la liste).
+    const market = createMarketSource();
     // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
     const collectionRepo = createCollectionRepo(store);
     const collectionUi = createCollectionUi({
@@ -87,7 +90,8 @@ export default defineContentScript({
       book,
       filterSource,
       loadFiltered: (filter, isCancelled) => loadFilteredSlugs(filterApi, filter, isCancelled),
-      openCard: (slug) => void marketUi.reopenCard(slug),
+      openCard: (slug) => marketUi.openMarket(slug),
+      market: market.source,
       onVisibleCards: (cards) =>
         void collector
           .want(cards.map(({ slug, title }) => ({ slug, title })))
@@ -162,6 +166,7 @@ export default defineContentScript({
       historyRepo.all().then(
         (state) => {
           history = state;
+          market.update({ history: state });
           run();
         },
         (error) => console.warn(LOG, 'historique du marché illisible :', error),
@@ -181,6 +186,7 @@ export default defineContentScript({
       collector.pendingSlugs().then(
         (slugs) => {
           pending = slugs;
+          market.update({ pending: slugs });
           run();
         },
         (error) => console.warn(LOG, 'cartes en attente illisibles :', error),

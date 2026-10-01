@@ -25,6 +25,7 @@ const SWORDS = ['M14.5 17.5 3 6V3h3l11.5 11.5', 'M13 19l6-6', 'M16 16l4 4', 'M19
 const SHIELD = ['M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'];
 const STAR = ['M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'];
 const SHORT_EXTRACT_MAX = 100;
+const TREND_GLYPH = { up: '▲', down: '▼', flat: '=' } as const;
 const div = (className: string, text?: string): HTMLElement =>
   Object.assign(document.createElement('div'), { className, ...(text !== undefined ? { textContent: text } : {}) });
 
@@ -64,6 +65,29 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
   card.append(art);
 
   if (preview.rarity) card.append(Object.assign(div('wmt-card-rarity', preview.rarity)));
+
+  // Même pastille que sous la rareté sur la liste (voir HistoryBadge) : moyenne des enchères et tendance.
+  const { history, loading } = preview.market;
+  if (history) {
+    const chip = div(`wmt-card-market wmt-card-market-${history.kind}`, history.label);
+    chip.title = history.tooltip;
+    if (history.trend) {
+      const arrow = document.createElement('span');
+      arrow.className = `wmt-card-trend wmt-card-trend-${history.trend}`;
+      arrow.textContent = TREND_GLYPH[history.trend];
+      chip.append(arrow);
+    }
+    card.append(chip);
+  }
+  // Même glyphe que sur la liste (voir LoadingGlyph) : relevé du marché en attente.
+  if (loading) {
+    const glyph = div('wmt-card-loading');
+    glyph.setAttribute('role', 'status');
+    glyph.title = 'Prix du marché en cours de chargement';
+    glyph.setAttribute('aria-label', glyph.title);
+    glyph.append(div('wmt-card-spinner'));
+    card.append(glyph);
+  }
 
   const corner = div('wmt-card-corner');
   corner.append(icon('wmt-card-star', STAR));

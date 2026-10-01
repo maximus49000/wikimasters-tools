@@ -226,6 +226,8 @@ export function createMarketUi(repo: MarketRepo, history: HistoryRepo) {
 
   return {
     mountLink,
+    // Fiche de marché d'une carte (Map, Chronologique) : la même popup que le lien de la liste.
+    openMarket: (slug: string) => openPopup(slug, false),
     // Reprise après la navigation vers la page Marché : le popup lance lui-même la recherche.
     resumeSearch: (slug: string) => openPopup(slug, true),
     // Chargement de la page d'origine : on rouvre la fiche, ou on dit pourquoi on n'y arrive pas.
