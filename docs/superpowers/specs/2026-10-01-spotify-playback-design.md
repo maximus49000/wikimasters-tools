@@ -21,7 +21,7 @@ Dépend de la fonction « nature / occupation » ([spec](2026-10-01-nature-occup
 ## Prérequis Spotify (faits)
 
 - Application créée sur https://developer.spotify.com/dashboard, API Web.
-- **Client ID : `ca54efea8df646afa19e21754eb607ec`** (public, PKCE : aucun secret ; remplace l'application d'origine, le 2026-10-01).
+- **Client ID : `30d88341188741668651e8ab170849cb`** (public, PKCE : aucun secret ; 3ᵉ application, le 2026-10-01 : la précédente (`ca54efea…`) était en pause de 16 h après une limite de débit).
 - Redirect URIs déclarées : `wikimasterstools://spotify` (APK). À ajouter à l'implémentation : l'adresse Chrome `https://<id>.chromiumapp.org/` (identifiant affiché sur chrome://extensions) et l'adresse Firefox `https://<hash>.extensions.allizom.org/` (donnée par `browser.identity.getRedirectURL()`).
 
 ## 1. Données Wikidata (`core/music/`)
