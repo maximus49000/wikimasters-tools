@@ -24,7 +24,7 @@ export type MusicServiceDeps = {
   // Les listes d'écoute déjà trouvées : Spotify n'est interrogé qu'une fois par carte.
   listens: Pick<ListenRepo, 'load' | 'save'>;
   session: Pick<SpotifySession, 'isLinked' | 'link' | 'unlink' | 'subscribe'>;
-  api: Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'albumTracks' | 'play'>;
+  api: Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'albumTracks' | 'play' | 'clearLimit'>;
   // Après un lancement : le mini-lecteur relit l'état tout de suite, et retient la carte qui l'a demandé.
   onPlayed: (card?: PlayerCard) => void;
   // Ouvre l'application Spotify quand aucun appareil n'est actif ; absent sur les plateformes qui ne savent pas le faire.
@@ -112,6 +112,12 @@ export function createMusicService(deps: MusicServiceDeps) {
 
     // Redemande la liste à Spotify (bouton d'actualisation des meilleurs titres d'un artiste) ; une panne laisse la liste gardée.
     refresh: (slug: string, title: string): Promise<ListenView> => show(slug, title, true),
+
+    // Bouton « Réessayer maintenant » après une limite : lève la pause du client (sinon rien ne partirait), puis recharge la fiche.
+    retry(slug: string, title: string): Promise<ListenView> {
+      api.clearLimit();
+      return show(slug, title, false);
+    },
 
     // Lance une piste ; rend null si tout va bien, sinon le message à afficher.
     // `card` : la carte dont la fiche propose cette lecture (le lecteur en offre ensuite la fiche).
