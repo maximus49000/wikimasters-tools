@@ -1,0 +1,159 @@
+// @vitest-environment jsdom
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ListenSection } from '../../src/content/ListenSection';
+import { setMusicService } from '../../src/content/music-registry';
+import type { ListenView, MusicService } from '../../src/content/music-service';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const LIMITED = 'Spotify demande de patienter un instant. Réessaie dans quelques secondes.';
+const limited = (retryAfterMs?: number): ListenView => ({ status: 'error', message: LIMITED, ...(retryAfterMs === undefined ? {} : { retryAfterMs }) });
+const ready = (title: string): ListenView => ({
+  status: 'ready',
+  listen: { kind: 'album', items: [{ uri: `spotify:track:${title}`, title, artist: 'The Beatles' }], albumUri: 'spotify:album:A' },
+});
+
+let container: HTMLDivElement;
+let root: Root;
+// Auditeurs du service (liaison ou déliaison de Spotify) : `relink()` simule l'événement.
+let listeners: Set<() => void>;
+const relink = () => act(async () => listeners.forEach((listener) => listener()));
+
+const serviceOf = (view: ReturnType<typeof vi.fn>) => {
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
+  };
+  setMusicService({ view, subscribe, play: vi.fn(), link: vi.fn(), unlink: vi.fn() } as unknown as MusicService);
+  return view;
+};
+
+async function render(slug = 'Abbey_Road') {
+  await act(async () => {
+    root.render(<ListenSection slug={slug} title={slug} />);
+  });
+}
+
+// Fait avancer l'horloge simulée par pas, chacun dans son `act` : React ne rend qu'à la sortie d'un `act`, et la fiche
+// doit pouvoir réarmer son minuteur entre deux échéances.
+const wait = async (ms: number, step = 1_000) => {
+  for (let left = ms; left > 0; left -= step) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(Math.min(step, left));
+    });
+  }
+};
+
+const text = () => container.textContent ?? '';
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  listeners = new Set();
+  container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+});
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+  setMusicService(null);
+  vi.useRealTimers();
+});
+
+describe('ListenSection, relance après une limite Spotify', () => {
+  it('annonce la nouvelle tentative, recharge une fois le délai passé (plus une seconde de marge) et affiche alors les titres', async () => {
+    const view = serviceOf(vi.fn().mockResolvedValueOnce(limited(3_000)).mockResolvedValue(ready('Come Together')));
+    await render();
+    expect(text()).toContain(LIMITED);
+    expect(text()).toContain('Nouvelle tentative automatique.');
+
+    await wait(3_999);
+    expect(view).toHaveBeenCalledTimes(1);
+    await wait(1);
+    expect(view).toHaveBeenCalledTimes(2);
+    expect(text()).toContain('Come Together');
+    expect(text()).not.toContain(LIMITED);
+  });
+
+  it("réarme avec le nouveau délai si la limite revient, mais s'arrête après 5 tentatives automatiques d'affilée", async () => {
+    const view = serviceOf(vi.fn(async () => limited(1_000)));
+    await render();
+    await wait(60_000);
+    expect(view).toHaveBeenCalledTimes(6);
+    // Plus de relance : le message reste, sans promettre de nouvelle tentative.
+    expect(text()).toContain(LIMITED);
+    expect(text()).not.toContain('Nouvelle tentative automatique.');
+    await wait(3_600_000, 600_000);
+    expect(view).toHaveBeenCalledTimes(6);
+  });
+
+  it("remet le compteur d'essais à zéro quand le chargement réussit : une nouvelle limite retrouve ses 5 tentatives", async () => {
+    const view = serviceOf(
+      vi
+        .fn()
+        .mockResolvedValueOnce(limited(1_000))
+        .mockResolvedValueOnce(ready('Come Together'))
+        .mockResolvedValue(limited(1_000)),
+    );
+    await render();
+    await wait(2_000);
+    expect(text()).toContain('Come Together');
+    // Même fiche, rechargée (liaison de Spotify) : la limite revient, avec son budget d'essais entier.
+    await relink();
+    await wait(60_000);
+    expect(view).toHaveBeenCalledTimes(2 + 1 + 5);
+  });
+
+  it("compte les essais par carte : une autre carte retrouve ses 5 tentatives", async () => {
+    const view = serviceOf(vi.fn(async () => limited(1_000)));
+    await render();
+    await wait(60_000);
+    await render('Revolver');
+    await wait(60_000);
+    expect(view).toHaveBeenCalledTimes(6 + 6);
+  });
+
+  it("ne relance pas une autre erreur, ni une limite sans délai connu", async () => {
+    const other = serviceOf(vi.fn(async (): Promise<ListenView> => ({ status: 'error', message: 'Spotify est indisponible pour le moment.' })));
+    await render();
+    await wait(3_600_000, 600_000);
+    expect(other).toHaveBeenCalledTimes(1);
+    expect(text()).not.toContain('Nouvelle tentative automatique.');
+
+    const unknownDelay = serviceOf(vi.fn(async () => limited()));
+    await render('Revolver');
+    await wait(3_600_000, 600_000);
+    expect(unknownDelay).toHaveBeenCalledTimes(1);
+  });
+
+  it("abandonne la relance en attente quand on change de carte", async () => {
+    const view = serviceOf(vi.fn(async (slug: string) => (slug === 'Abbey_Road' ? limited(10_000) : ready('Taxman'))));
+    await render();
+    await render('Revolver');
+    expect(text()).toContain('Taxman');
+    await wait(60_000);
+    // Une fois pour Abbey Road, une fois pour Revolver : aucun rechargement de la carte quittée.
+    expect(view.mock.calls.map(([slug]) => slug)).toEqual(['Abbey_Road', 'Revolver']);
+  });
+
+  it("borne le délai à la limite des minuteurs : un très long délai ne déclenche pas une relance immédiate", async () => {
+    const view = serviceOf(vi.fn(async () => limited(10_000_000_000)));
+    await render();
+    await wait(5_000);
+    expect(view).toHaveBeenCalledTimes(1);
+  });
+
+  it("n'a plus rien à relancer une fois la fiche fermée", async () => {
+    const view = serviceOf(vi.fn(async () => limited(2_000)));
+    await render();
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => root.render(<div />));
+    // Le minuteur en attente est annulé avec la fiche.
+    expect(vi.getTimerCount()).toBe(0);
+    await wait(60_000);
+    expect(view).toHaveBeenCalledTimes(1);
+  });
+});

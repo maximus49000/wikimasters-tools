@@ -6,6 +6,13 @@ import { getMusicService, getPlayerSource } from './music-registry';
 import type { ListenView } from './music-service';
 import { isPlayingUri, type PlayerView } from './player-source';
 
+// Après une limite de Spotify (429) : on recharge d'elle-même la section une fois le délai demandé passé,
+// avec une marge (la pause du client se termine à la milliseconde près) et au plus 5 fois d'affilée.
+const RETRY_MARGIN_MS = 1_000;
+const MAX_AUTO_RETRIES = 5;
+// Au-delà, un minuteur se déclencherait aussitôt.
+const MAX_TIMER_MS = 2_147_483_647;
+
 const SIZE = 44; // cible tactile
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -38,6 +45,8 @@ export function ListenSection({ slug, title }: Props) {
   const [view, setView] = useState<ListenView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  // Rechargements automatiques d'affilée après une limite ; chaque carte repart de zéro.
+  const [autoRetries, setAutoRetries] = useState(0);
 
   useEffect(() => {
     if (!service) return;
@@ -54,7 +63,25 @@ export function ListenSection({ slug, title }: Props) {
     };
   }, [service, slug, title, version]);
 
+  useEffect(() => setAutoRetries(0), [slug, title]);
+
+  // Limite de Spotify : le chargement est relancé après le délai demandé. Un chargement abouti remet le compte à zéro.
+  useEffect(() => {
+    if (!view) return;
+    if (view.status !== 'error' || view.retryAfterMs === undefined) {
+      setAutoRetries(0);
+      return;
+    }
+    if (autoRetries >= MAX_AUTO_RETRIES) return;
+    const timer = setTimeout(() => {
+      setAutoRetries((count) => count + 1);
+      setVersion((value) => value + 1);
+    }, Math.min(view.retryAfterMs + RETRY_MARGIN_MS, MAX_TIMER_MS));
+    return () => clearTimeout(timer);
+  }, [view, autoRetries]);
+
   if (!service || !view || view.status === 'none') return null;
+  const retrying = view.status === 'error' && view.retryAfterMs !== undefined && autoRetries < MAX_AUTO_RETRIES;
 
   // La carte est retenue par le lecteur : il en offre ensuite la fiche (bouton « Carte »).
   const play = async (item: Track, listen: Listen) => setMessage(await service.play(item, listen, { slug, title }));
@@ -68,7 +95,12 @@ export function ListenSection({ slug, title }: Props) {
         </button>
       )}
       {view.status === 'notfound' && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>Introuvable sur Spotify.</p>}
-      {view.status === 'error' && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>{view.message}</p>}
+      {view.status === 'error' && (
+        <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>
+          {view.message}
+          {retrying && ' Nouvelle tentative automatique.'}
+        </p>
+      )}
       {view.status === 'ready' && (
         <>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 'min(160px, 25vh)', overflowY: 'auto' }}>
