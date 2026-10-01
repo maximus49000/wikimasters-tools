@@ -51,6 +51,12 @@ describe('decorateHistory', () => {
     expect(labels[1]).toBe('maj:≈ 113down');
   });
 
+  it('affiche un = gris quand le prix est stable', () => {
+    const { labels, mount } = setup();
+    decorateHistory(document, () => [card([100, 100])], NOW, mount);
+    expect(labels).toEqual(['≈ 100flat']);
+  });
+
   it('ne pose rien pour une carte sans historique', () => {
     const { labels, mount } = setup();
     decorateHistory(document, () => [], NOW, mount);

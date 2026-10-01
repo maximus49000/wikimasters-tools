@@ -15,6 +15,7 @@ const chip: CSSProperties = {
 const ARROW = {
   up: { glyph: '▲', color: 'rgb(34, 197, 94)' },
   down: { glyph: '▼', color: 'rgb(239, 68, 68)' },
+  flat: { glyph: '=', color: 'rgb(148, 163, 184)' },
 } as const;
 
 export function HistoryBadge({ model }: { model: HistoryBadgeModel }) {

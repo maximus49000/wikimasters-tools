@@ -107,8 +107,8 @@ function HistorySection({ card, now }: { card: CardHistory; now: number }) {
         <p style={{ margin: '4px 0' }}>
           Moyenne des enchères avec mise (7 j) : <strong>{average} WB</strong>
           {trend && (
-            <span style={{ color: trend === 'up' ? '#22c55e' : '#ef4444', marginLeft: 4 }}>
-              {trend === 'up' ? '▲' : '▼'}
+            <span style={{ color: trend === 'up' ? '#22c55e' : trend === 'down' ? '#ef4444' : '#94a3b8', marginLeft: 4 }}>
+              {trend === 'up' ? '▲' : trend === 'down' ? '▼' : '='}
             </span>
           )}
         </p>

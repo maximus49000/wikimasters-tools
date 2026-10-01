@@ -2,7 +2,7 @@ import { trendOf, weekAverage, type CardHistory } from './price-history';
 
 export type HistoryBadgeModel = {
   label: string;
-  trend: 'up' | 'down' | null;
+  trend: 'up' | 'down' | 'flat' | null;
   rarity: string;
   tooltip: string;
 };
@@ -15,7 +15,7 @@ export function toHistoryBadge(cards: CardHistory[], now: number): HistoryBadgeM
 
   const avg = weekAverage(card, now)!;
   const trend = trendOf(card);
-  const move = trend === 'up' ? ' Dernier relevé : en hausse.' : trend === 'down' ? ' Dernier relevé : en baisse.' : '';
+  const move = trend === 'up' ? ' Dernier relevé : en hausse.' : trend === 'down' ? ' Dernier relevé : en baisse.' : trend === 'flat' ? ' Dernier relevé : stable.' : '';
   return {
     label: `≈ ${avg.toLocaleString('fr-FR')}`,
     trend,

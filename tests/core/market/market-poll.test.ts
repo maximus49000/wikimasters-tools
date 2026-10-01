@@ -107,7 +107,7 @@ describe('createHistoryRepo', () => {
     await repo.record(await fetchFullMarket(api));
     expect(await repo.lastPollAt()).toBe(NOW);
     const [card] = await repo.lookup('Ted_Lasso');
-    expect(card?.samples).toEqual([{ t: NOW, avgBid: 150, bidCount: 2 }]);
+    expect(card?.samples).toEqual([{ t: NOW, avgBid: 150, bidCount: 2, minBid: 100, maxBid: 200 }]);
   });
 
   it('une tentative ratée met à jour la date sans effacer l’historique', async () => {

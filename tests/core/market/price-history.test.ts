@@ -35,7 +35,7 @@ describe('recordSnapshot', () => {
       T0,
     );
     expect(state.cards[KEY]!.slug).toBe('Ted_Lasso');
-    expect(state.cards[KEY]!.samples).toEqual([{ t: T0, avgBid: 150, bidCount: 2 }]);
+    expect(state.cards[KEY]!.samples).toEqual([{ t: T0, avgBid: 150, bidCount: 2, minBid: 100, maxBid: 200 }]);
   });
 
   it('n’ajoute pas de point quand aucune enchère n’a de mise', () => {
@@ -100,6 +100,6 @@ describe('weekAverage et trendOf', () => {
     state = recordSnapshot(state, [auction('a', 90, HOUR, true, T0 + 2 * step)], T0 + 2 * step);
     expect(trendOf(state.cards[KEY]!)).toBe('down');
     state = recordSnapshot(state, [auction('a', 90, HOUR, true, T0 + 3 * step)], T0 + 3 * step);
-    expect(trendOf(state.cards[KEY]!)).toBeNull();
+    expect(trendOf(state.cards[KEY]!)).toBe('flat');
   });
 });
