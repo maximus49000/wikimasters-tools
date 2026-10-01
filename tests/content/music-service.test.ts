@@ -18,6 +18,7 @@ function setup(over: { linked?: boolean; collection?: string[]; natures?: string
     unlink: vi.fn(async () => undefined),
     subscribe: vi.fn(() => () => undefined),
   };
+  const onPlayed = vi.fn();
   const service = createMusicService({
     collection: { list: async () => (over.collection ?? ['Abbey_Road']).map(card) },
     kinds: {
@@ -27,10 +28,10 @@ function setup(over: { linked?: boolean; collection?: string[]; natures?: string
     music: { resolve: async () => ({ Abbey_Road: { albumId: 'A'.repeat(22), ...(over.music?.Abbey_Road ?? {}) } }) },
     session,
     api: api as never,
-    onPlayed: vi.fn(),
+    onPlayed,
     ...(over.launchApp ? { launchApp: over.launchApp, sleep: async () => undefined } : {}),
   });
-  return { service, api, session };
+  return { service, api, session, onPlayed };
 }
 
 describe('createMusicService.view', () => {
@@ -91,6 +92,27 @@ describe('createMusicService.play', () => {
     const { service, api } = setup();
     api.play.mockRejectedValueOnce(new SpotifyError('no-device', 'x'));
     expect(await service.play(track, { kind: 'track', items: [track] })).toBe('Ouvre Spotify sur un de tes appareils, puis réessaie.');
+  });
+
+  it('une fois la lecture lancée, donne au lecteur la carte qui l’a demandée', async () => {
+    const { service, onPlayed } = setup();
+    await service.play(track, { kind: 'album', items: [track], albumUri: 'spotify:album:AAA' }, { slug: 'Abbey_Road', title: 'Abbey Road' });
+    expect(onPlayed).toHaveBeenCalledTimes(1);
+    expect(onPlayed).toHaveBeenCalledWith({ slug: 'Abbey_Road', title: 'Abbey Road' });
+  });
+
+  it('prévient quand même le lecteur sans carte', async () => {
+    const { service, onPlayed } = setup();
+    await service.play(track, { kind: 'track', items: [track] });
+    expect(onPlayed).toHaveBeenCalledTimes(1);
+    expect(onPlayed).toHaveBeenCalledWith(undefined);
+  });
+
+  it("ne dit rien au lecteur quand la lecture échoue : la carte reste celle d'avant", async () => {
+    const { service, api, onPlayed } = setup();
+    api.play.mockRejectedValueOnce(new SpotifyError('no-device', 'x'));
+    await service.play(track, { kind: 'track', items: [track] }, { slug: 'Abbey_Road', title: 'Abbey Road' });
+    expect(onPlayed).not.toHaveBeenCalled();
   });
 });
 

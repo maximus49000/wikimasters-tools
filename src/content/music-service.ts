@@ -6,6 +6,7 @@ import type { MusicRepo } from '../core/music/music-repo';
 import { SpotifyError, userMessage } from '../core/spotify/errors';
 import type { SpotifyApi, Track } from '../core/spotify/spotify-api';
 import type { SpotifySession } from '../core/spotify/spotify-session';
+import type { PlayerCard } from './player-source';
 
 export type ListenView =
   | { status: 'none' }
@@ -20,8 +21,8 @@ export type MusicServiceDeps = {
   music: Pick<MusicRepo, 'resolve'>;
   session: Pick<SpotifySession, 'isLinked' | 'link' | 'unlink' | 'subscribe'>;
   api: Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'albumTracks' | 'play'>;
-  // Après un lancement : le mini-lecteur relit l'état tout de suite.
-  onPlayed: () => void;
+  // Après un lancement : le mini-lecteur relit l'état tout de suite, et retient la carte qui l'a demandé.
+  onPlayed: (card?: PlayerCard) => void;
   // Ouvre l'application Spotify quand aucun appareil n'est actif ; absent sur les plateformes qui ne savent pas le faire.
   launchApp?: () => void;
   // Attente entre deux essais pendant le démarrage de Spotify (remplaçable en test).
@@ -95,7 +96,8 @@ export function createMusicService(deps: MusicServiceDeps) {
     },
 
     // Lance une piste ; rend null si tout va bien, sinon le message à afficher.
-    async play(item: Track, listen: Listen): Promise<string | null> {
+    // `card` : la carte dont la fiche propose cette lecture (le lecteur en offre ensuite la fiche).
+    async play(item: Track, listen: Listen, card?: PlayerCard): Promise<string | null> {
       // Hors album : on envoie la suite de la liste pour que Spotify enchaîne les titres.
       const from = Math.max(0, listen.items.findIndex((candidate) => candidate.uri === item.uri));
       const target = listen.albumUri
@@ -110,7 +112,7 @@ export function createMusicService(deps: MusicServiceDeps) {
           launchApp();
           await retryWhileStarting(target);
         }
-        onPlayed();
+        onPlayed(card);
         return null;
       } catch (error) {
         return userMessage(error);

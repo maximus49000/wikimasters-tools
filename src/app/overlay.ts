@@ -41,6 +41,7 @@ import { createMusicService } from '../content/music-service';
 import { getMusicService, getPlayerSource, setMusicService, setPlayerSource } from '../content/music-registry';
 import { createPlayerSource } from '../content/player-source';
 import { mountSpotifyPlayer } from '../content/mount-player';
+import { openCardInPage } from '../content/open-card';
 import { TMDB_API_KEY } from '../core/screen/config';
 import { createScreenRepo } from '../core/screen/screen-repo';
 import { createTmdbApi } from '../core/screen/tmdb-api';
@@ -114,6 +115,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   }
 
   const marketUi = createMarketUi(marketRepo, historyRepo);
+  // Bouton « Carte » du lecteur : la fiche de la carte dont vient la lecture, depuis n'importe quelle page.
+  const openPlayerCard = (slug: string) => openCardInPage(slug, (target) => void marketUi.reopenCard(target));
   // Prix du marché partagés avec la Map et la Chronologique (mis à jour avec la liste).
   const market = createMarketSource();
   // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
@@ -210,7 +213,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         if (player) {
           decoratePlayerSetting(document, () => openPlayerSettings(player));
           // Le site a pu vider <body> depuis le montage : le lecteur y est remis.
-          mountSpotifyPlayer(player);
+          mountSpotifyPlayer(player, openPlayerCard);
         }
       } catch (error) {
         console.warn(LOG, 'réglage des images indisponible :', error);
@@ -300,12 +303,15 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           music: musicRepo,
           session,
           api: spotifyApi,
-          onPlayed: () => void player.refresh(),
+          onPlayed: (card) => {
+            if (card) player.setCard(card);
+            void player.refresh();
+          },
           ...(spotify.launchApp ? { launchApp: spotify.launchApp } : {}),
         }),
       );
       setPlayerSource(player);
-      mountSpotifyPlayer(player);
+      mountSpotifyPlayer(player, openPlayerCard);
       player.start();
     } catch (error) {
       console.warn(LOG, 'Spotify indisponible :', error);

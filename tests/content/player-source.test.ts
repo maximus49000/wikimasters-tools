@@ -4,11 +4,13 @@ import { SpotifyError } from '../../src/core/spotify/errors';
 
 const playing = { playing: true, uri: 'spotify:track:S', title: 'Something', artist: 'The Beatles', imageUrl: null };
 
-function setup(over: { linked?: boolean; hidden?: string | null } = {}) {
+function setup(over: { linked?: boolean; hidden?: string | null; card?: string } = {}) {
   let visible = true;
   const visibleListeners = new Set<() => void>();
   const scheduled: { fn: () => void; ms: number }[] = [];
-  const stored = new Map<string, string>(over.hidden ? [['wmt:spotifyPlayerHidden', over.hidden]] : []);
+  const stored = new Map<string, string>();
+  if (over.hidden) stored.set('wmt:spotifyPlayerHidden', over.hidden);
+  if (over.card) stored.set('wmt:spotifyPlayerCard', over.card);
   const api = {
     playerState: vi.fn(async () => playing as typeof playing | null),
     play: vi.fn(async () => undefined),
@@ -79,6 +81,45 @@ describe('createPlayerSource', () => {
     source.setHidden(false);
     expect(source.current().hidden).toBe(false);
     expect(stored.get('wmt:spotifyPlayerHidden')).toBe('0');
+  });
+
+  it('retient la carte depuis laquelle la lecture est lancée, et la retrouve au chargement suivant', () => {
+    const { source, stored } = setup();
+    const heard = vi.fn();
+    source.subscribe(heard);
+    expect(source.current().card).toBeNull();
+    source.setCard({ slug: 'Queen_(band)', title: 'Queen' });
+    expect(source.current().card).toEqual({ slug: 'Queen_(band)', title: 'Queen' });
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(setup({ card: stored.get('wmt:spotifyPlayerCard') }).source.current().card).toEqual({ slug: 'Queen_(band)', title: 'Queen' });
+  });
+
+  it('oublie la carte quand on la retire', () => {
+    const { source, stored } = setup({ card: JSON.stringify({ slug: 'Queen_(band)', title: 'Queen' }) });
+    source.setCard(null);
+    expect(source.current().card).toBeNull();
+    expect(setup({ card: stored.get('wmt:spotifyPlayerCard') }).source.current().card).toBeNull();
+  });
+
+  it('ignore une carte mémorisée illisible ou incomplète', () => {
+    expect(setup({ card: 'pas du json' }).source.current().card).toBeNull();
+    expect(setup({ card: JSON.stringify({ slug: 3, title: 'Queen' }) }).source.current().card).toBeNull();
+    expect(setup({ card: JSON.stringify({ slug: 'Queen_(band)' }) }).source.current().card).toBeNull();
+  });
+
+  it('stockage indisponible : setCard ne lève pas et garde la carte pour la page en cours', () => {
+    const boom = () => {
+      throw new Error('stockage bloqué');
+    };
+    const source = createPlayerSource({
+      api: { playerState: vi.fn(async () => null), play: vi.fn(async () => undefined), pause: vi.fn(async () => undefined) },
+      session: { isLinked: async () => false, subscribe: () => () => undefined },
+      storage: { getItem: boom, setItem: boom },
+      isVisible: () => true,
+      onVisible: () => () => undefined,
+    });
+    expect(() => source.setCard({ slug: 'Queen_(band)', title: 'Queen' })).not.toThrow();
+    expect(source.current().card).toEqual({ slug: 'Queen_(band)', title: 'Queen' });
   });
 
   it("est lié dès que le compte l'est, même si la lecture de l'état échoue", async () => {
@@ -212,6 +253,7 @@ describe('isPlayingUri', () => {
     linked: true,
     hidden: false,
     enabled: true,
+    card: null,
     track: { uri: 'spotify:track:S', title: 'T', artist: 'A', imageUrl: null, playing: playingNow },
     ...over,
   });

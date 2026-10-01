@@ -3,7 +3,9 @@ import type { SpotifyApi } from '../core/spotify/spotify-api';
 import type { SpotifySession } from '../core/spotify/spotify-session';
 
 export type PlayerTrack = { uri: string; title: string; artist: string; imageUrl: string | null; playing: boolean };
-export type PlayerView = { linked: boolean; track: PlayerTrack | null; hidden: boolean; enabled: boolean };
+// La carte depuis laquelle la lecture a été lancée (section « Écouter ») : le lecteur en propose la fiche.
+export type PlayerCard = { slug: string; title: string };
+export type PlayerView = { linked: boolean; track: PlayerTrack | null; hidden: boolean; enabled: boolean; card: PlayerCard | null };
 
 // La piste `uri` est-elle celle qui joue en ce moment ? (pour afficher pause à sa place)
 export const isPlayingUri = (view: PlayerView, uri: string): boolean =>
@@ -11,6 +13,7 @@ export const isPlayingUri = (view: PlayerView, uri: string): boolean =>
 
 const HIDDEN_KEY = 'wmt:spotifyPlayerHidden';
 const ENABLED_KEY = 'wmt:spotifyPlayerEnabled';
+const CARD_KEY = 'wmt:spotifyPlayerCard';
 const PLAYING_MS = 5_000;
 const IDLE_MS = 15_000;
 // Tant qu'aucun état n'a pu être lu (ouverture, réseau pas prêt), on réessaie vite.
@@ -62,7 +65,15 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
   } catch {
     // Stockage inaccessible : lecteur affiché.
   }
-  let view: PlayerView = { linked: false, track: null, hidden, enabled };
+  // Carte de la dernière lecture lancée : gardée d'une page à l'autre (la Collection s'ouvre sur une autre page).
+  let card: PlayerCard | null = null;
+  try {
+    const stored = JSON.parse(storage.getItem(CARD_KEY) ?? 'null') as Partial<PlayerCard> | null;
+    if (typeof stored?.slug === 'string' && typeof stored.title === 'string') card = { slug: stored.slug, title: stored.title };
+  } catch {
+    // Stockage inaccessible ou valeur illisible : pas de carte.
+  }
+  let view: PlayerView = { linked: false, track: null, hidden, enabled, card };
 
   const set = (next: Partial<PlayerView>) => {
     view = { ...view, ...next };
@@ -160,6 +171,14 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
         // Préférence d'affichage : on garde le choix pour la page en cours seulement.
       }
       set({ hidden: next });
+    },
+    setCard(next: PlayerCard | null): void {
+      try {
+        storage.setItem(CARD_KEY, JSON.stringify(next));
+      } catch {
+        // Mémoire de la carte : on la garde pour la page en cours seulement.
+      }
+      set({ card: next });
     },
     setEnabled(next: boolean): void {
       try {

@@ -58,6 +58,14 @@ const PATHS = {
       <path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" />
     </>
   ),
+  card: (
+    <>
+      <rect x="5" y="2" width="14" height="20" rx="2" />
+      <rect x="8" y="5" width="8" height="7" rx="1" />
+      <path d="M8 15h8" />
+      <path d="M8 18h5" />
+    </>
+  ),
   external: (
     <>
       <path d="M14 4h6v6" />
