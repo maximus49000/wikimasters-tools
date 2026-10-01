@@ -28,7 +28,7 @@ import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
-import { createMarketUi, mountHistoryBadge, mountImageSection, mountListenSection, openImageSettings, pruneImageSections, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { createMarketUi, mountHistoryBadge, mountImageSection, mountListenSection, openImageSettings, openPlayerSettings, pruneImageSections, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
 import { decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
@@ -38,7 +38,7 @@ import { createSpotifyApi } from '../core/spotify/spotify-api';
 import { createSpotifySession } from '../core/spotify/spotify-session';
 import type { SpotifyEnv } from '../core/spotify/transport';
 import { createMusicService } from '../content/music-service';
-import { getMusicService, setMusicService, setPlayerSource } from '../content/music-registry';
+import { getMusicService, getPlayerSource, setMusicService, setPlayerSource } from '../content/music-registry';
 import { createPlayerSource } from '../content/player-source';
 import { mountSpotifyPlayer } from '../content/mount-player';
 import { TMDB_API_KEY } from '../core/screen/config';
@@ -53,6 +53,7 @@ import { searchCardImages } from '../core/images/card-image-search';
 import { setImageService } from '../content/image-registry';
 import { syncCardArt } from '../content/card-art';
 import { decorateImageSetting } from '../content/image-setting-menu';
+import { decoratePlayerSetting } from '../content/player-setting-menu';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
@@ -204,6 +205,9 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         pruneImageSections();
         decorateImage(document, mountImageSection);
         decorateImageSetting(document, () => openImageSettings(images));
+        // Le réglage « Lecteur » n'existe que si Spotify est fourni par la plateforme.
+        const player = getPlayerSource();
+        if (player) decoratePlayerSetting(document, () => openPlayerSettings(player));
       } catch (error) {
         console.warn(LOG, 'réglage des images indisponible :', error);
       }

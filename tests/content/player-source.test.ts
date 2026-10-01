@@ -81,6 +81,16 @@ describe('createPlayerSource', () => {
     expect(stored.get('wmt:spotifyPlayerHidden')).toBe('0');
   });
 
+  it('est activé par défaut, se désactive et mémorise le choix', () => {
+    const { source, stored } = setup();
+    expect(source.current().enabled).toBe(true);
+    source.setEnabled(false);
+    expect(source.current().enabled).toBe(false);
+    expect(stored.get('wmt:spotifyPlayerEnabled')).toBe('0');
+    source.setEnabled(true);
+    expect(stored.get('wmt:spotifyPlayerEnabled')).toBe('1');
+  });
+
   it("interroge l'état puis reprogramme : 5 s en lecture, 15 s sinon", async () => {
     const { source, api, scheduled } = setup();
     source.start();
@@ -193,6 +203,7 @@ describe('isPlayingUri', () => {
   const view = (over: Partial<PlayerView> = {}, playingNow = true): PlayerView => ({
     linked: true,
     hidden: false,
+    enabled: true,
     track: { uri: 'spotify:track:S', title: 'T', artist: 'A', imageUrl: null, playing: playingNow },
     ...over,
   });

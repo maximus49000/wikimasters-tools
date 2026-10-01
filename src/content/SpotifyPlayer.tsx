@@ -18,12 +18,13 @@ const base = {
 
 export function SpotifyPlayer({ source }: { source: PlayerSource }) {
   const view = useSyncExternalStore(source.subscribe, source.current);
-  // Visible seulement s'il y a une lecture à montrer.
-  if (!view.linked || !view.track) return null;
+  // Visible dès que Spotify est lié, sauf si le réglage « Lecteur » le masque ; sans lecture, il reste là, au repos.
+  if (!view.linked || !view.enabled) return null;
   const { track } = view;
+  const playing = track?.playing ?? false;
   const toggle = (
-    <button type="button" onClick={() => void source.toggle()} aria-label={track.playing ? 'Pause' : 'Lecture'} title={track.playing ? 'Pause' : 'Lecture'} style={{ ...base, borderRadius: '50%', background: 'var(--color-accent, #34d399)', color: '#0d1117' }}>
-      <Glyph name={track.playing ? 'pause' : 'play'} size={20} />
+    <button type="button" onClick={() => void source.toggle()} aria-label={playing ? 'Pause' : 'Lecture'} title={playing ? 'Pause' : 'Lecture'} style={{ ...base, borderRadius: '50%', background: 'var(--color-accent, #34d399)', color: '#0d1117' }}>
+      <Glyph name={playing ? 'pause' : 'play'} size={20} />
     </button>
   );
   const shell = {
@@ -60,10 +61,10 @@ export function SpotifyPlayer({ source }: { source: PlayerSource }) {
       {fold(true)}
       {toggle}
       <div style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
-        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.65, fontSize: 11 }}>{track.artist}</div>
+        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track?.title ?? 'Aucune lecture'}</div>
+        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.65, fontSize: 11 }}>{track?.artist ?? ''}</div>
       </div>
-      {track.imageUrl ? (
+      {track?.imageUrl ? (
         <img src={track.imageUrl} alt="" loading="lazy" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', flex: 'none', marginLeft: 10 }} />
       ) : (
         <span style={{ marginLeft: 10, display: 'inline-flex', flex: 'none' }}>

@@ -3,13 +3,14 @@ import type { SpotifyApi } from '../core/spotify/spotify-api';
 import type { SpotifySession } from '../core/spotify/spotify-session';
 
 export type PlayerTrack = { uri: string; title: string; artist: string; imageUrl: string | null; playing: boolean };
-export type PlayerView = { linked: boolean; track: PlayerTrack | null; hidden: boolean };
+export type PlayerView = { linked: boolean; track: PlayerTrack | null; hidden: boolean; enabled: boolean };
 
 // La piste `uri` est-elle celle qui joue en ce moment ? (pour afficher pause à sa place)
 export const isPlayingUri = (view: PlayerView, uri: string): boolean =>
   view.linked && view.track !== null && view.track.playing && view.track.uri === uri;
 
 const HIDDEN_KEY = 'wmt:spotifyPlayerHidden';
+const ENABLED_KEY = 'wmt:spotifyPlayerEnabled';
 const PLAYING_MS = 5_000;
 const IDLE_MS = 15_000;
 
@@ -51,7 +52,14 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
   } catch {
     // Stockage inaccessible : lecteur visible.
   }
-  let view: PlayerView = { linked: false, track: null, hidden };
+  // Réglage « Lecteur » : affiché par défaut.
+  let enabled = true;
+  try {
+    enabled = storage.getItem(ENABLED_KEY) !== '0';
+  } catch {
+    // Stockage inaccessible : lecteur affiché.
+  }
+  let view: PlayerView = { linked: false, track: null, hidden, enabled };
 
   const set = (next: Partial<PlayerView>) => {
     view = { ...view, ...next };
@@ -138,6 +146,14 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
         // Préférence d'affichage : on garde le choix pour la page en cours seulement.
       }
       set({ hidden: next });
+    },
+    setEnabled(next: boolean): void {
+      try {
+        storage.setItem(ENABLED_KEY, next ? '1' : '0');
+      } catch {
+        // Réglage d'affichage : on garde le choix pour la page en cours seulement.
+      }
+      set({ enabled: next });
     },
   };
 }
