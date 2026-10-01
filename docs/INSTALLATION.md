@@ -51,7 +51,7 @@ Autorisez l'accès à `www.wiki-masters.com` si Firefox le demande (Menu → Mod
 
 ## Signature (Firefox)
 
-Identifiant d'extension : `wikimasters-tools-unofficial@maximus49000.github.io` (fixé dans `wxt.config.ts`, à garder identique entre versions). Le manifeste déclare `data_collection_permissions: none` : aucune donnée n'est envoyée à un serveur du projet (seuls des titres d'articles partent vers Wikipédia / Wikidata).
+Identifiant d'extension : `wikimasters-tools-unofficial@maximus49000.github.io` (fixé dans `wxt.config.ts`, à garder identique entre versions). Le manifeste déclare `data_collection_permissions: none` : aucune donnée n'est envoyée à un serveur du projet (seuls des titres d'articles partent vers Wikipédia / Wikidata). Une fois le compte Spotify lié, les titres des cartes musique et leurs interprètes sont envoyés à la recherche Spotify et les jetons OAuth sont échangés avec accounts.spotify.com, jamais avec un serveur du développeur.
 
 ## Reconstruire les paquets
 

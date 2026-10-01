@@ -89,5 +89,7 @@ interdisent l'automatisation : ce scan est un choix de l'utilisateur, à ses ris
 lecture terminée, les chargements suivants ne lisent que les cartes obtenues depuis le dernier import
 (tri par date d'ajout, arrêt à la première carte plus ancienne : souvent une seule requête) ; les cartes
 perdues ne sont pas détectées, le bouton « Re-scanner » de la vue Monde relit tout. Aucune donnée
-n'est envoyée ailleurs ; aucune donnée n'est envoyée ailleurs (seuls les titres d'articles partent vers
-Wikipédia).
+n'est envoyée à un serveur du développeur ; seuls les titres d'articles partent vers Wikipédia / Wikidata.
+Une fois votre compte Spotify lié, les titres des cartes musique et leurs interprètes sont aussi envoyés à la
+recherche Spotify, et les jetons OAuth sont échangés avec accounts.spotify.com (rien ne passe par un serveur
+du développeur).
