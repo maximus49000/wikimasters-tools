@@ -7,9 +7,7 @@ import { pageSizeOf, pageSlice, sortCards } from '../core/collection/homemade-pa
 import { applyKindFilter } from '../core/kinds/kinds-filter';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { PriceBook } from '../core/pricing/price-book';
-import type { Rect } from './card-popup-position';
 import { buildCardPreview } from './card-preview-dom';
-import { CardPopup } from './CardPopup';
 import type { CollectionFilterSource } from './collection-filter';
 import type { KindFilterSource } from './kind-filter';
 import type { MarketSource } from './market-source';
@@ -29,8 +27,7 @@ type Props = {
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   // Nombre de cartes comptées dans la grille native de la page (0 si aucune).
   nativePageSize: () => number;
-  // Fiche de marché de la carte.
-  onOpen: (slug: string) => void;
+  // Fiche native de la carte (celle du jeu : musique, film, etc.).
   onOpenCard: (slug: string) => void;
   // Cartes affichées dont les prix du marché sont à relever.
   onWantCards: (cards: KnownCard[]) => void;
@@ -69,7 +66,7 @@ function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (
 }
 
 // La carte du jeu, réduite pour remplir sa colonne (la largeur est mesurée : 2 colonnes sur écran étroit).
-function CardTile({ preview, onPick }: { preview: CardPreview; onPick: (anchor: Rect) => void }) {
+function CardTile({ preview, onPick }: { preview: CardPreview; onPick: () => void }) {
   const wrapRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
@@ -93,10 +90,7 @@ function CardTile({ preview, onPick }: { preview: CardPreview; onPick: (anchor: 
       ref={wrapRef}
       type="button"
       aria-label={preview.title}
-      onClick={() => {
-        const box = wrapRef.current?.getBoundingClientRect();
-        if (box) onPick({ left: box.left, right: box.right, top: box.top, bottom: box.bottom });
-      }}
+      onClick={onPick}
       style={{
         position: 'relative',
         display: 'block',
@@ -128,14 +122,12 @@ export function HomemadePanel({
   filterSource,
   loadFiltered,
   nativePageSize,
-  onOpen,
   onOpenCard,
   onWantCards,
 }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [page, setPage] = useState(1);
-  const [tip, setTip] = useState<{ slug: string; anchor: Rect } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -164,11 +156,10 @@ export function HomemadePanel({
   const size = pageSizeOf(scan.pageSize, nativePageSize());
   const current = useMemo(() => pageSlice(list, page, size), [list, page, size]);
 
-  // Un autre filtre : retour à la première page, et l'aperçu ouvert se ferme.
+  // Un autre filtre : retour à la première page.
   const filterKey = `${filter}|${kindFilter.nature}|${kindFilter.facet}`;
   useEffect(() => {
     setPage(1);
-    setTip(null);
   }, [filterKey]);
 
   const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
@@ -182,12 +173,7 @@ export function HomemadePanel({
   // Seules les cartes de la page affichée ont leurs prix relevés, comme sur la liste du site.
   useWantPrices(current.items, onWantCards);
 
-  const goTo = (next: number) => {
-    setTip(null);
-    setPage(next);
-  };
-  const tipIndex = tip ? current.items.findIndex((card) => card.slug === tip.slug) : -1;
-  const tipPreview = tipIndex >= 0 ? previews[tipIndex] : undefined;
+  const goTo = setPage;
 
   return (
     <div style={{ color: 'var(--color-foreground, #e6edf3)', font: '14px/20px system-ui, sans-serif' }}>
@@ -195,7 +181,7 @@ export function HomemadePanel({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
         {current.items.map((card, index) => {
           const preview = previews[index];
-          return preview ? <CardTile key={card.slug} preview={preview} onPick={(anchor) => setTip({ slug: card.slug, anchor })} /> : null;
+          return preview ? <CardTile key={card.slug} preview={preview} onPick={() => onOpenCard(card.slug)} /> : null;
         })}
       </div>
       {current.items.length === 0 && (
@@ -211,21 +197,6 @@ export function HomemadePanel({
         {error && 'Filtre illisible : toutes les cartes sont affichées. '}
         {list.length} carte{list.length > 1 ? 's' : ''} · {size} par page
       </p>
-      {tip && tipPreview && (
-        <CardPopup
-          preview={tipPreview}
-          anchor={tip.anchor}
-          onOpen={() => {
-            setTip(null);
-            onOpen(tip.slug);
-          }}
-          onOpenCard={() => {
-            setTip(null);
-            onOpenCard(tip.slug);
-          }}
-          onClose={() => setTip(null)}
-        />
-      )}
     </div>
   );
 }
