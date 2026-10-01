@@ -63,7 +63,8 @@ délie le compte. Les titres retrouvés viennent de Wikidata (interprète, ident
 
 ### Films, séries, acteurs et réalisateurs (TMDB)
 
-Sur la fiche d'une carte **de votre Collection** qui est un film ou une série, la fiche affiche la bande-annonce
+Dans la **fiche de la carte du jeu** (sous les étiquettes, sous la section « Écouter » s'il y en a une), pour une carte
+**de votre Collection** qui est un film ou une série, une section affiche la bande-annonce
 (lecteur YouTube sans cookies, chargé seulement au clic ▶ ; un bouton ouvre aussi YouTube), la note ★ sur 10 avec le
 nombre de votes, et la description. Pour un acteur ou un réalisateur, elle affiche sa filmographie (40 titres au
 plus, du plus récent au plus ancien) ; un clic sur un titre ouvre sa fiche, ← revient à la liste.

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatRating, formatVotes, posterUrl } from '../core/screen/screen-format';
 import type { FilmographyItem, ScreenDetail } from '../core/screen/tmdb-api';
 import { Glyph } from './Glyphs';
@@ -24,7 +24,7 @@ const iconButton = {
 const STAR = '#fbbf24';
 
 type Opened = { item: FilmographyItem; result: ScreenDetailResult | null };
-type Props = { slug: string; title: string; onHeight: (px: number) => void };
+type Props = { slug: string; title: string };
 
 function Rating({ detail }: { detail: ScreenDetail }) {
   if (!detail.rating) return null;
@@ -49,12 +49,11 @@ function Detail({ detail }: { detail: ScreenDetail }) {
   );
 }
 
-// Section « film, série ou filmographie » de la fiche d'une carte de la collection ; rien pour les autres cartes.
-export function ScreenSection({ slug, title, onHeight }: Props) {
+// Section « film, série ou filmographie » de la fiche native d'une carte de la collection ; rien pour les autres cartes.
+export function ScreenSection({ slug, title }: Props) {
   const service = getScreenService();
   const [view, setView] = useState<ScreenView | null>(null);
   const [opened, setOpened] = useState<Opened | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
   const token = useRef(0);
 
   useEffect(() => {
@@ -66,11 +65,6 @@ export function ScreenSection({ slug, title, onHeight }: Props) {
       cancelled = true;
     };
   }, [service, slug, title]);
-
-  // La fiche se replace selon la hauteur réelle de la section.
-  useLayoutEffect(() => {
-    onHeight(view && view.status !== 'none' ? (ref.current?.offsetHeight ?? 0) : 0);
-  }, [view, opened, onHeight]);
 
   if (!service || !view || view.status === 'none') return null;
 
@@ -87,7 +81,7 @@ export function ScreenSection({ slug, title, onHeight }: Props) {
   };
 
   return (
-    <div ref={ref} style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
       {view.status === 'error' && (
         <p role="status" style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>
           {view.message}

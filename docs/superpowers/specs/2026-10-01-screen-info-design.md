@@ -2,12 +2,12 @@
 
 ## Objectif
 
-Dans la **fiche de la carte** (`CardPopup`), pour une carte **de ma collection** :
+Dans la **fiche native de la carte du jeu** (pas dans le popup de la surcouche), sous les étiquettes et sous la section « Écouter » quand elle existe, pour une carte **de ma collection** :
 
 - **film ou série** : bande-annonce, note et description ;
 - **acteur ou réalisateur** : sa filmographie ; un clic sur un titre remplace la fiche par celle du film (bande-annonce, description, note), avec « ← » pour revenir à la liste.
 
-Rien ne change dans la grille, la map ou la frise : ces vues continuent d'ouvrir la même fiche. Fonctionne dans l'extension (Chrome, Firefox) et dans l'APK.
+Rien ne change dans la grille, la map ou la frise, ni dans leur popup d'aperçu (`CardPopup`). Fonctionne dans l'extension (Chrome, Firefox) et dans l'APK.
 
 Dépend de `core/kinds/` (nature et occupation Wikidata) et suit le modèle de la section « Écouter » ([spec](2026-10-01-spotify-playback-design.md)).
 
@@ -64,7 +64,7 @@ detail(mediaType, id): Promise<ScreenDetail | { error: string }> // clic sur un 
 
 ## 5. Interface (maquette validée)
 
-- `ScreenSection.tsx`, rendue par `CardPopup` sous les boutons, à côté de `ListenSection` (les deux sont exclusives : une carte est de la musique ou de l'écran). Même mécanisme `onHeight` pour réserver la hauteur dans le calcul d'échelle de la carte.
+- `ScreenSection.tsx`, posée dans la fiche native par `decorateScreen` (`decorate-listen.ts`) et `mountScreenSection` (`mount.tsx`) : hôte en shadow DOM sous la section « Écouter » (ou sous les étiquettes), démonté quand le jeu referme la fiche. Les deux sections sont exclusives (une carte est de la musique ou de l'écran) mais le mécanisme les laisse cohabiter sans doublon.
 - **Détail** : `TrailerPlayer` (miniature TMDB `img.youtube.com/vi/<clé>/hqdefault.jpg`, ▶), `★ 7,8 /10 · 12 450 votes`, description sur quelques lignes (défilement au-delà).
 - **Filmographie** : titre « Filmographie · N », liste défilante (affiche miniature, titre, année, ★ note). Chaque ligne est un bouton de 44 px minimum.
 - **Fiche d'un film ouvert depuis la liste** : ligne `←` / titre + année / `✕`, puis le même détail. `←` rétablit la liste (position de défilement conservée).
