@@ -23,6 +23,7 @@ import { readView, writeView, type CollectionView } from './collection-view';
 import { HomemadePanel } from './HomemadePanel';
 import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
+import { createPageMemory } from './page-memory';
 import { RecountGate } from './RecountGate';
 import { createRecountSource } from './recount-source';
 import type { MarketSource } from './market-source';
@@ -68,6 +69,8 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
   // « ×2 » : les exemplaires sont recomptés sur toute la Collection avant d'afficher les cartes en double.
   const recount = createRecountSource(() => recountCopies(scanner));
+  // Page de la vue Homemade pour chaque sélection de filtres : la vue est remontée à la fermeture d'une fiche.
+  const pages = createPageMemory();
   // Plus grand nombre de cartes vues dans la grille native : la taille de page du site, avant que le scan la connaisse.
   let nativeCount = 0;
 
@@ -101,7 +104,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
         ) : view === 'world' ? (
           <WorldPanel {...common} geo={geo} kinds={kinds} kindFilterSource={kindFilterSource} />
         ) : (
-          <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} />
+          <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} />
         )}
       </RecountGate>,
     );
