@@ -3,12 +3,13 @@ import { findWikipediaLinks } from './market-link';
 
 export const LISTEN_HOST_ATTRIBUTE = 'data-wmt-listen';
 export const SCREEN_HOST_ATTRIBUTE = 'data-wmt-screen';
+export const IMAGE_HOST_ATTRIBUTE = 'data-wmt-image';
 
 export type MountListen = (anchor: HTMLElement, slug: string, title: string) => void;
 
 const HEADING_SELECTOR = 'h1,h2,h3,h4,h5,h6,[role="heading"]';
 // Sections de l'extension posées les unes sous les autres, juste sous le bloc d'étiquettes.
-const NATIVE_HOSTS = [LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE];
+const NATIVE_HOSTS = [LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, IMAGE_HOST_ATTRIBUTE];
 
 function normalize(text: string | null): string {
   return (text ?? '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -67,3 +68,6 @@ export const decorateListen = (root: ParentNode, mount: MountListen): number => 
 
 // Section film / série / filmographie : sous « Écouter » si elle est là.
 export const decorateScreen = (root: ParentNode, mount: MountListen): number => decorateNative(root, SCREEN_HOST_ATTRIBUTE, true, mount);
+
+// Bouton « Mauvaise image » : en dernier, sous les autres sections.
+export const decorateImage = (root: ParentNode, mount: MountListen): number => decorateNative(root, IMAGE_HOST_ATTRIBUTE, true, mount);

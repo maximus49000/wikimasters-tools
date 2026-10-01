@@ -16,8 +16,11 @@ import {
 import { PurchaseBadge } from './PurchaseBadge';
 import { HistoryBadge } from './HistoryBadge';
 import { ListenSection } from './ListenSection';
-import { LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, type MountListen } from './decorate-listen';
+import { IMAGE_HOST_ATTRIBUTE, LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, type MountListen } from './decorate-listen';
 import { ScreenSection } from './ScreenSection';
+import { ImageSection } from './ImageSection';
+import { ImageSettings } from './ImageSettings';
+import type { ImageService } from '../core/images/image-service';
 import { LoadingGlyph } from './LoadingGlyph';
 import { RefreshButton, type CollectionView } from './RefreshButton';
 import { findCollectionRoot, findSelectButton, scanCollectionCards } from './collection-dom';
@@ -151,6 +154,41 @@ export const pruneListenSections = listenSections.prune;
 const screenSections = createNativeSections(SCREEN_HOST_ATTRIBUTE, '0', (slug, title) => <ScreenSection slug={slug} title={title} />);
 export const mountScreenSection: MountListen = screenSections.mount;
 export const pruneScreenSections = screenSections.prune;
+
+const imageSections = createNativeSections(IMAGE_HOST_ATTRIBUTE, '0', (slug, title) => <ImageSection slug={slug} title={title} />);
+export const mountImageSection: MountListen = imageSections.mount;
+export const pruneImageSections = imageSections.prune;
+
+const IMAGE_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-image-settings';
+
+// Fenêtre « Paramètre d'image », ouverte depuis le menu « Plus » : hors du DOM du jeu (shadow DOM).
+export function openImageSettings(images: ImageService): void {
+  if (document.querySelector(`[${IMAGE_SETTINGS_HOST_ATTRIBUTE}]`)) return;
+  const host = document.createElement('div');
+  host.setAttribute(IMAGE_SETTINGS_HOST_ATTRIBUTE, '');
+  host.style.cssText = 'position:fixed; inset:0; z-index:2147483000';
+  // Le menu du jeu se ferme sur un appui « à l'extérieur » : on garde ces événements chez nous.
+  for (const type of ['pointerdown', 'mousedown', 'touchstart']) {
+    host.addEventListener(type, (event) => event.stopPropagation());
+  }
+  const shadow = host.attachShadow({ mode: 'open' });
+  const mountPoint = document.createElement('div');
+  shadow.appendChild(mountPoint);
+  document.body.appendChild(host);
+  const root = createRoot(mountPoint);
+  function close() {
+    document.removeEventListener('keydown', onKey, true);
+    root.unmount();
+    host.remove();
+  }
+  function onKey(event: KeyboardEvent) {
+    if (event.key !== 'Escape') return;
+    event.stopPropagation();
+    close();
+  }
+  document.addEventListener('keydown', onKey, true);
+  root.render(<ImageSettings images={images} onClose={close} />);
+}
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
 

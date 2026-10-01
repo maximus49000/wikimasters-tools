@@ -27,8 +27,8 @@ import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
-import { createMarketUi, mountHistoryBadge, mountListenSection, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
-import { decorateListen, decorateScreen } from '../content/decorate-listen';
+import { createMarketUi, mountHistoryBadge, mountImageSection, mountListenSection, openImageSettings, pruneImageSections, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
 import { createMusicRepo } from '../core/music/music-repo';
@@ -46,6 +46,11 @@ import { createTmdbApi } from '../core/screen/tmdb-api';
 import { fetchWikidataScreen } from '../core/screen/wikidata-screen';
 import { createScreenService } from '../content/screen-service';
 import { getScreenService, setScreenService } from '../content/screen-registry';
+import { createImageService } from '../core/images/image-service';
+import { searchCardImages } from '../core/images/card-image-search';
+import { setImageService } from '../content/image-registry';
+import { syncCardArt } from '../content/card-art';
+import { decorateImageSetting } from '../content/image-setting-menu';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
@@ -110,6 +115,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   const market = createMarketSource();
   // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
   const kindsRepo = createKindsRepo(store, (slugs) => fetchWikidataKinds((url) => fetch(url), slugs));
+  // Images de remplacement des cartes sans image (Wikipédia, puis Wikimedia Commons) : requêtes sans identifiants.
+  const images = createImageService({
+    store,
+    search: (title, skip) => searchCardImages((url) => fetch(url), title, skip),
+    settings: window.localStorage,
+  });
+  setImageService(images);
   const collectionUi = createCollectionUi({
     collection: collectionRepo,
     geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
@@ -175,6 +187,18 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         console.warn(LOG, 'section film / série indisponible :', error);
       }
       try {
+        syncCardArt(document, images);
+      } catch (error) {
+        console.warn(LOG, 'images de remplacement indisponibles :', error);
+      }
+      try {
+        pruneImageSections();
+        decorateImage(document, mountImageSection);
+        decorateImageSetting(document, () => openImageSettings(images));
+      } catch (error) {
+        console.warn(LOG, 'réglage des images indisponible :', error);
+      }
+      try {
         decorateLoading(document, pending, mountLoadingGlyph);
       } catch (error) {
         console.warn(LOG, 'glyphe de chargement indisponible :', error);
@@ -227,6 +251,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     );
   void refreshOwned();
   collectionRepo.subscribe(() => void refreshOwned());
+  // Image trouvée, écartée ou option changée : la page se redécore.
+  images.subscribe(run);
   const refreshPending = () =>
     collector.pendingSlugs().then(
       (slugs) => {
