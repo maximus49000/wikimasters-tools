@@ -3,6 +3,7 @@ import type { KeyValueStore } from '../core/cache/store';
 import { createTtlCache } from '../core/cache/ttl-cache';
 import { createDataSource } from '../core/data-source';
 import { createCollectionRepo } from '../core/collection/collection-repo';
+import { sortCards } from '../core/collection/homemade-page';
 import { createCollectionScanner } from '../core/collection/collection-scan';
 import { fetchWikiCoords } from '../core/geo/wiki-coords';
 import { fetchWikidataDates } from '../core/birth/wikidata-birth';
@@ -81,6 +82,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     now: () => Date.now(),
     isVisible: () => document.visibilityState === 'visible',
     id: crypto.randomUUID(),
+    // Quand la page affichée est à jour : toute la Collection connue, sans filtre, dans l'ordre par défaut du site.
+    background: async () => sortCards(await collectionRepo.list()).map(({ slug, title }) => ({ slug, title })),
   });
 
   console.info(LOG, 'démarré');
@@ -339,8 +342,9 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     }
   }
 
-  // Relevé du marché : seulement les cartes de la Collection affichées à l'écran (une recherche par titre,
-  // une fois par carte et par 30 min). Il se poursuit d'une page à l'autre quand l'utilisateur navigue.
+  // Relevé du marché : les cartes de la Collection affichées à l'écran d'abord, puis en fond le reste de la
+  // Collection (une recherche par titre, une fois par carte et par 30 min). Il se poursuit d'une page à l'autre
+  // quand l'utilisateur navigue.
   const tick = () => void collector.tick().catch((error) => console.warn(LOG, 'relevé du marché :', error));
   tick();
   window.setInterval(tick, 60_000);
