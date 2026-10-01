@@ -25,7 +25,8 @@ import { parseMarketAuctions } from '../core/market/schemas';
 import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
-import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
+import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
+import { extractCards } from '../core/api/collection-schemas';
 import { createMarketUi, mountHistoryBadge, mountListenSection, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
 import { decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
@@ -62,6 +63,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   });
   const dataSource = createDataSource({ api, cache: createTtlCache(store) });
   const marketRepo = createMarketRepo(store);
+  const collectionRepo = createCollectionRepo(store);
   const historyRepo = createHistoryRepo(store);
   const collector = createMarketCollector({
     api,
@@ -82,6 +84,15 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     if (skipped > 0) console.warn(LOG, `marché : ${skipped} enchère(s) au format inattendu ignorée(s)`);
     marketRepo.observe(auctions).catch((error) => console.warn(LOG, 'marché non enregistré :', error));
   });
+  // Cartes obtenues (pack, achat) : la réponse du jeu les décrit déjà, on les enregistre sans relecture.
+  window.addEventListener('message', (event) => {
+    const data = event.data as { type?: unknown; payload?: unknown } | null;
+    if (event.source !== window || data?.type !== CARDS_MESSAGE) return;
+    const cards = extractCards(data.payload);
+    if (cards.length === 0) return;
+    console.info(LOG, `${cards.length} carte(s) obtenue(s) enregistrée(s)`);
+    collectionRepo.observe(cards).catch((error) => console.warn(LOG, 'cartes obtenues non enregistrées :', error));
+  });
   const filterSource = createCollectionFilterSource(window);
   window.postMessage({ type: HELLO_MESSAGE }, window.location.origin);
 
@@ -98,7 +109,6 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   // Prix du marché partagés avec la Map et la Chronologique (mis à jour avec la liste).
   const market = createMarketSource();
   // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
-  const collectionRepo = createCollectionRepo(store);
   const kindsRepo = createKindsRepo(store, (slugs) => fetchWikidataKinds((url) => fetch(url), slugs));
   const collectionUi = createCollectionUi({
     collection: collectionRepo,

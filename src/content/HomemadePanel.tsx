@@ -33,6 +33,9 @@ type Props = {
   onWantCards: (cards: KnownCard[]) => void;
 };
 
+// Page affichée, gardée d'une montée de la vue à la suivante.
+const remembered = { page: 1 };
+
 // Taille de la carte construite par `buildCardPreview` (voir `.wmt-card` dans PANEL_CSS).
 const CARD_WIDTH = 288;
 const CARD_HEIGHT = 420;
@@ -125,9 +128,10 @@ export function HomemadePanel({
   onOpenCard,
   onWantCards,
 }: Props) {
-  const [cards, setCards] = useState<KnownCard[]>([]);
-  const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
-  const [page, setPage] = useState(1);
+  // Remontée de la vue (le jeu remplace sa grille à la fermeture d'une fiche) : cartes, scan et page sont repris tels quels.
+  const [cards, setCards] = useState<KnownCard[]>(() => collection.snapshot() ?? []);
+  const [scan, setScan] = useState<ScanState>(() => scanner.snapshot() ?? IDLE_SCAN);
+  const [page, setPage] = useState(() => remembered.page);
 
   useEffect(() => {
     let alive = true;
@@ -158,7 +162,11 @@ export function HomemadePanel({
 
   // Un autre filtre : retour à la première page.
   const filterKey = `${filter}|${kindFilter.nature}|${kindFilter.facet}`;
+  const lastFilterKey = useRef(filterKey);
   useEffect(() => {
+    if (lastFilterKey.current === filterKey) return;
+    lastFilterKey.current = filterKey;
+    remembered.page = 1;
     setPage(1);
   }, [filterKey]);
 
@@ -173,7 +181,10 @@ export function HomemadePanel({
   // Seules les cartes de la page affichée ont leurs prix relevés, comme sur la liste du site.
   useWantPrices(current.items, onWantCards);
 
-  const goTo = setPage;
+  const goTo = (next: number) => {
+    remembered.page = next;
+    setPage(next);
+  };
 
   return (
     <div style={{ color: 'var(--color-foreground, #e6edf3)', font: '14px/20px system-ui, sans-serif' }}>
