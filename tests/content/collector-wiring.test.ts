@@ -30,4 +30,10 @@ describe('câblage du relevé du marché', () => {
   it('plus aucun parcours du marché entier', () => {
     expect(source).not.toMatch(/getMarketPage|fetchFullMarket/);
   });
+
+  it('le glyphe de chargement suit les cartes en attente du collecteur', () => {
+    expect(source).toMatch(/collector\.pendingSlugs\(\)/);
+    expect(source).toMatch(/collector\.subscribe\(/);
+    expect(source).toMatch(/decorateLoading\(document, pending, mountLoadingGlyph\)/);
+  });
 });

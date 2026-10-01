@@ -20,3 +20,18 @@ export function findRarityChip(
 export function findCardFrame(container: HTMLElement, rarity: string): HTMLElement | null {
   return findRarityChip(container, rarity)?.frame ?? null;
 }
+
+const RARITY_TEXT = /^(L|UR|SR|R|PC|C)$/;
+
+// Comme `findCardFrame`, sans connaître la rareté de la carte : toute pastille de rareté du jeu convient.
+export function findAnyCardFrame(container: HTMLElement): HTMLElement | null {
+  for (const el of container.querySelectorAll<HTMLElement>('*')) {
+    if (el.children.length > 0) continue;
+    if (el.closest('[data-wmt-host], [data-wmt-purchase], [data-wmt-history], [data-wmt-loading]')) continue;
+    if (!RARITY_TEXT.test(el.textContent?.trim() ?? '')) continue;
+    if (getComputedStyle(el).position !== 'absolute') continue;
+    const parent = el.parentElement;
+    return parent && getComputedStyle(parent).position !== 'static' ? parent : null;
+  }
+  return null;
+}

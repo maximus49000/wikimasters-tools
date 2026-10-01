@@ -14,6 +14,8 @@ import {
 } from './return-target';
 import { PurchaseBadge } from './PurchaseBadge';
 import { HistoryBadge } from './HistoryBadge';
+import { LoadingGlyph } from './LoadingGlyph';
+import { LOADING_HOST_ATTRIBUTE, type MountLoading } from './decorate-loading';
 import { HISTORY_HOST_ATTRIBUTE, type MountHistory } from './decorate-history';
 import type { HistoryRepo } from '../core/market/history-repo';
 
@@ -45,6 +47,22 @@ export const mountHistoryBadge: MountHistory = (frame, chip, model) => {
   const root = createRoot(mountPoint);
   root.render(<HistoryBadge model={model} />);
   return { update: (next) => root.render(<HistoryBadge model={next} />) };
+};
+
+// En bas à droite de la carte, juste au-dessus de la ligne ATK / DEF (qui occupe le coin).
+export const mountLoadingGlyph: MountLoading = (frame) => {
+  const host = document.createElement('div');
+  host.setAttribute(LOADING_HOST_ATTRIBUTE, '');
+  host.style.cssText = 'position:absolute; right:8px; bottom:34px; z-index:30; pointer-events:none';
+
+  const shadow = host.attachShadow({ mode: 'open' });
+  const mountPoint = document.createElement('div');
+  shadow.appendChild(mountPoint);
+
+  frame.appendChild(host);
+  const root = createRoot(mountPoint);
+  root.render(<LoadingGlyph />);
+  return { unmount: () => window.setTimeout(() => root.unmount(), 0) };
 };
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';

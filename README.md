@@ -41,6 +41,8 @@ Chaque carte de la Collection affiche, sous sa rareté (à gauche), la moyenne d
 ▲ verte, ▼ rouge ou = grise selon la variation du dernier relevé. La fiche de la carte montre le graphique
 (Heure / Jour / Semaine / Mois / Année) et le popup du marché détaille les tranches d'heures.
 
+Pendant qu'une carte attend son relevé ou est en cours de relevé, un petit glyphe rond qui tourne s'affiche en bas à droite de la carte (au-dessus de la ligne ATK / DEF) ; il disparaît dès que la carte est relevée. Une carte déjà relevée depuis moins de 30 min n'en affiche pas.
+
 Les relevés se poursuivent d'une page à l'autre du site (un changement de page ne perd rien) et un seul onglet à la
 fois relève. Une erreur (déconnexion, 429 persistant) arrête la passe et rien n'est retenté avant 30 min.
 
