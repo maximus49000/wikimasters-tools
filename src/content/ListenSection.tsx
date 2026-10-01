@@ -24,7 +24,7 @@ const iconButton = {
 } as const;
 
 // Sans lecteur (plateforme sans Spotify) : une vue vide stable.
-const NO_PLAYER: PlayerView = { linked: false, track: null, hidden: false, enabled: true };
+const NO_PLAYER: PlayerView = { linked: false, track: null, hidden: false, enabled: true, card: null };
 const noSubscribe = () => () => undefined;
 const noPlayer = () => NO_PLAYER;
 
@@ -56,7 +56,8 @@ export function ListenSection({ slug, title }: Props) {
 
   if (!service || !view || view.status === 'none') return null;
 
-  const play = async (item: Track, listen: Listen) => setMessage(await service.play(item, listen));
+  // La carte est retenue par le lecteur : il en offre ensuite la fiche (bouton « Carte »).
+  const play = async (item: Track, listen: Listen) => setMessage(await service.play(item, listen, { slug, title }));
   const link = async () => setMessage(await service.link());
 
   return (

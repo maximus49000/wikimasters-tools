@@ -3,7 +3,7 @@ import type { KnownCard } from '../core/collection/collection-book';
 import { getMusicService, getPlayerSource } from './music-registry';
 import type { PlayerView } from './player-source';
 
-const NO_PLAYER: PlayerView = { linked: false, track: null, hidden: false, enabled: true };
+const NO_PLAYER: PlayerView = { linked: false, track: null, hidden: false, enabled: true, card: null };
 const NONE: ReadonlySet<string> = new Set();
 const noSubscribe = () => () => undefined;
 const noPlayer = () => NO_PLAYER;
