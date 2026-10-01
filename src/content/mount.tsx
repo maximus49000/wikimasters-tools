@@ -13,6 +13,9 @@ import {
   setPendingReopen,
 } from './return-target';
 import { PurchaseBadge } from './PurchaseBadge';
+import { HistoryBadge } from './HistoryBadge';
+import { HISTORY_HOST_ATTRIBUTE, type MountHistory } from './decorate-history';
+import type { HistoryRepo } from '../core/market/history-repo';
 
 export function mountPurchaseBadge(frame: HTMLElement, model: PurchaseModel): void {
   const host = document.createElement('div');
@@ -26,6 +29,23 @@ export function mountPurchaseBadge(frame: HTMLElement, model: PurchaseModel): vo
   frame.appendChild(host);
   createRoot(mountPoint).render(<PurchaseBadge model={model} />);
 }
+
+// Sous la pastille de rareté, alignée à gauche, dans le cadre de la carte.
+export const mountHistoryBadge: MountHistory = (frame, chip, model) => {
+  const host = document.createElement('div');
+  host.setAttribute(HISTORY_HOST_ATTRIBUTE, '');
+  host.style.cssText =
+    `position:absolute; left:${chip.offsetLeft}px; top:${chip.offsetTop + chip.offsetHeight + 4}px; z-index:30`;
+
+  const shadow = host.attachShadow({ mode: 'open' });
+  const mountPoint = document.createElement('div');
+  shadow.appendChild(mountPoint);
+
+  frame.appendChild(host);
+  const root = createRoot(mountPoint);
+  root.render(<HistoryBadge model={model} />);
+  return { update: (next) => root.render(<HistoryBadge model={next} />) };
+};
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
 
@@ -51,6 +71,7 @@ function showToast(text: string): void {
 
 function openMarketPopup(
   repo: MarketRepo,
+  history: HistoryRepo,
   search: SearchStarter,
   slug: string,
   autoStart: boolean,
@@ -88,6 +109,7 @@ function openMarketPopup(
     <MarketPopup
       slug={slug}
       repo={repo}
+      history={history}
       search={search}
       autoStart={autoStart}
       canReturn={canReturn}
@@ -97,7 +119,7 @@ function openMarketPopup(
   );
 }
 
-export function createMarketUi(repo: MarketRepo) {
+export function createMarketUi(repo: MarketRepo, history: HistoryRepo) {
   const search = createSearchStarter({
     root: document,
     pathname: () => window.location.pathname,
@@ -109,7 +131,7 @@ export function createMarketUi(repo: MarketRepo) {
 
   const openPopup = (slug: string, autoStart: boolean) => {
     const target = getReturnTarget(window.sessionStorage, Date.now());
-    openMarketPopup(repo, search, slug, autoStart, goBack, target?.slug === slug);
+    openMarketPopup(repo, history, search, slug, autoStart, goBack, target?.slug === slug);
   };
 
   // Retour à la page d'origine ; la fiche sera rouverte au chargement de cette page.

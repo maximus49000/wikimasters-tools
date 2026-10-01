@@ -12,12 +12,16 @@ import { createCollectionFilterSource } from '../content/collection-filter';
 import { createCollectionUi } from '../content/collection-ui';
 import { loadFilteredSlugs } from '../core/collection/filtered-slugs';
 import { createMarketRepo } from '../core/market/market-repo';
+import { createHistoryRepo } from '../core/market/history-repo';
+import { createMarketWatcher, fetchFullMarket } from '../core/market/market-poll';
+import { cardsForSlug, emptyHistory, type HistoryState } from '../core/market/price-history';
+import { decorateHistory } from '../content/decorate-history';
 import { parseMarketAuctions } from '../core/market/schemas';
 import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
 import { HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
-import { createMarketUi, mountPurchaseBadge } from '../content/mount';
+import { createMarketUi, mountHistoryBadge, mountPurchaseBadge } from '../content/mount';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
 
@@ -39,6 +43,7 @@ export default defineContentScript({
     });
     const dataSource = createDataSource({ api, cache: createTtlCache(store) });
     const marketRepo = createMarketRepo(store);
+    const historyRepo = createHistoryRepo(store);
 
     console.info(LOG, 'démarré');
 
@@ -62,7 +67,7 @@ export default defineContentScript({
       console.warn(LOG, 'prix indisponibles :', error);
     }
 
-    const marketUi = createMarketUi(marketRepo);
+    const marketUi = createMarketUi(marketRepo, historyRepo);
     // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
     const collectionRepo = createCollectionRepo(store);
     const collectionUi = createCollectionUi({
@@ -76,6 +81,8 @@ export default defineContentScript({
       openCard: (slug) => void marketUi.reopenCard(slug),
     });
 
+    // Historique du marché chargé en mémoire : la décoration de la page est synchrone.
+    let history: HistoryState = emptyHistory();
     let timer: number | undefined;
     const observer = new MutationObserver(() => {
       window.clearTimeout(timer);
@@ -91,6 +98,11 @@ export default defineContentScript({
           collectionUi.sync();
         } catch (error) {
           console.warn(LOG, 'vues de la Collection indisponibles :', error);
+        }
+        try {
+          decorateHistory(document, (slug) => cardsForSlug(history, slug), Date.now(), mountHistoryBadge);
+        } catch (error) {
+          console.warn(LOG, 'moyennes du marché indisponibles :', error);
         }
         if (book) {
           const mounted = decorate(document, book, mountPurchaseBadge);
@@ -109,7 +121,39 @@ export default defineContentScript({
       }
     }
 
+    const refreshHistory = () =>
+      historyRepo.all().then(
+        (state) => {
+          history = state;
+          run();
+        },
+        (error) => console.warn(LOG, 'historique du marché illisible :', error),
+      );
+    void refreshHistory();
+    historyRepo.subscribe(() => void refreshHistory());
+
     run();
+
+    // Relevé du marché en arrière-plan, uniquement sur la Collection et onglet visible.
+    const watcher = createMarketWatcher({
+      poll: async () => {
+        // La tentative est datée d'abord : un échec n'entraîne pas de relance en boucle.
+        await historyRepo.markAttempt();
+        try {
+          await historyRepo.record(await fetchFullMarket(api));
+        } catch (error) {
+          console.warn(LOG, 'relevé du marché abandonné :', error);
+        }
+      },
+      lastPollAt: () => historyRepo.lastPollAt(),
+      now: () => Date.now(),
+      isVisible: () =>
+        document.visibilityState === 'visible' && window.location.pathname.startsWith('/collection'),
+    });
+    const tick = () => void watcher.tick().catch((error) => console.warn(LOG, 'relevé du marché :', error));
+    tick();
+    window.setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
 
     // Une recherche demandée depuis une fiche reprend ici, sur la page Marché.
     if (window.location.pathname.startsWith('/marketplace')) {
