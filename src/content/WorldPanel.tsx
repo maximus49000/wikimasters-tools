@@ -12,6 +12,10 @@ import type { PriceBook } from '../core/pricing/price-book';
 import type { CollectionFilterSource } from './collection-filter';
 import { pageIsDark } from './map-theme';
 import { createThrottledLoader } from './throttle';
+import { intersectSlugs, kindSlugs } from '../core/kinds/kinds-filter';
+import type { KindsRepo } from '../core/kinds/kinds-repo';
+import type { KindFilterSource } from './kind-filter';
+import { useKindState } from './useKindState';
 import type { Rect } from './card-popup-position';
 import { CardPopup } from './CardPopup';
 import { createWorldMap, isCoarsePointer, type MapPoint, type WorldMap } from './world-map';
@@ -64,6 +68,8 @@ export const PANEL_CSS = `
 type Props = {
   collection: CollectionRepo;
   geo: GeoRepo;
+  kinds: KindsRepo;
+  kindFilterSource: KindFilterSource;
   scanner: CollectionScanner;
   book: PriceBook | null;
   market: MarketSource;
@@ -89,7 +95,7 @@ const box = {
 // Un scan « en cours » sans aucune activité depuis cette durée est considéré comme interrompu.
 const STALLED_MS = 60_000;
 
-export function WorldPanel({ collection, geo, scanner, book, market, filterSource, loadFiltered, onOpen, onOpenCard, onWantCards }: Props) {
+export function WorldPanel({ collection, geo, kinds, kindFilterSource, scanner, book, market, filterSource, loadFiltered, onOpen, onOpenCard, onWantCards }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [geoState, setGeoState] = useState<GeoState>(EMPTY_GEO);
@@ -163,8 +169,12 @@ export function WorldPanel({ collection, geo, scanner, book, market, filterSourc
   }, [filter, loadFiltered, localSlugs]);
 
   // Tant que la lecture du filtre courant n'est pas finie, la carte montre tout (ou l'ancien filtre reste écarté).
-  const visible = localSlugs ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
-  const filtering = Boolean(filter) && visible === null && !filterError;
+  const nativeVisible = localSlugs ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
+  const { kindsState, kindFilter } = useKindState(kinds, kindFilterSource);
+  const kindVisible = useMemo(() => kindSlugs(cards, kindsState, kindFilter), [cards, kindsState, kindFilter]);
+  // Filtre du site (étiquette, rareté) et filtre nature / occupation : une carte doit passer les deux.
+  const visible = useMemo(() => intersectSlugs(nativeVisible, kindVisible), [nativeVisible, kindVisible]);
+  const filtering = Boolean(filter) && nativeVisible === null && !filterError;
 
   useEffect(() => {
     if (cards.length > 0) void geo.resolveMissing(cards.map((card) => card.slug));
