@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPlayerSource } from '../../src/content/player-source';
+import { createPlayerSource, isPlayingUri, type PlayerView } from '../../src/content/player-source';
 import { SpotifyError } from '../../src/core/spotify/errors';
 
-const playing = { playing: true, title: 'Something', artist: 'The Beatles', imageUrl: null };
+const playing = { playing: true, uri: 'spotify:track:S', title: 'Something', artist: 'The Beatles', imageUrl: null };
 
 function setup(over: { linked?: boolean; hidden?: string | null } = {}) {
   let visible = true;
@@ -84,7 +84,7 @@ describe('createPlayerSource', () => {
   it("interroge l'état puis reprogramme : 5 s en lecture, 15 s sinon", async () => {
     const { source, api, scheduled } = setup();
     source.start();
-    await vi.waitFor(() => expect(source.current().track).toEqual({ title: 'Something', artist: 'The Beatles', imageUrl: null, playing: true }));
+    await vi.waitFor(() => expect(source.current().track).toEqual({ uri: 'spotify:track:S', title: 'Something', artist: 'The Beatles', imageUrl: null, playing: true }));
     expect(source.current().linked).toBe(true);
     expect(scheduled.at(-1)?.ms).toBe(5000);
     api.playerState.mockResolvedValueOnce({ ...playing, playing: false });
@@ -186,5 +186,28 @@ describe('createPlayerSource', () => {
       await vi.waitFor(() => expect(scheduled).toHaveLength(1));
       expect(scheduled[0]!.ms).toBeGreaterThanOrEqual(1000);
     });
+  });
+});
+
+describe('isPlayingUri', () => {
+  const view = (over: Partial<PlayerView> = {}, playingNow = true): PlayerView => ({
+    linked: true,
+    hidden: false,
+    track: { uri: 'spotify:track:S', title: 'T', artist: 'A', imageUrl: null, playing: playingNow },
+    ...over,
+  });
+
+  it('vrai pour la piste en cours de lecture', () => {
+    expect(isPlayingUri(view(), 'spotify:track:S')).toBe(true);
+  });
+
+  it('faux pour une autre piste', () => {
+    expect(isPlayingUri(view(), 'spotify:track:X')).toBe(false);
+  });
+
+  it('faux en pause, sans piste ou sans compte lié', () => {
+    expect(isPlayingUri(view({}, false), 'spotify:track:S')).toBe(false);
+    expect(isPlayingUri(view({ track: null }), 'spotify:track:S')).toBe(false);
+    expect(isPlayingUri(view({ linked: false }), 'spotify:track:S')).toBe(false);
   });
 });

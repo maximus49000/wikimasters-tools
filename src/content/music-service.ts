@@ -9,6 +9,7 @@ import type { SpotifySession } from '../core/spotify/spotify-session';
 
 export type ListenView =
   | { status: 'none' }
+  | { status: 'notfound' }
   | { status: 'unlinked' }
   | { status: 'ready'; listen: Listen }
   | { status: 'error'; message: string };
@@ -37,7 +38,7 @@ export function createMusicService(deps: MusicServiceDeps) {
         if (!(await session.isLinked())) return { status: 'unlinked' };
         const cardMusic = (await music.resolve([slug]))[slug] ?? {};
         const listen = await resolveListen(api, { title, kind, music: cardMusic });
-        return listen ? { status: 'ready', listen } : { status: 'none' };
+        return listen ? { status: 'ready', listen } : { status: 'notfound' };
       } catch (error) {
         return { status: 'error', message: userMessage(error) };
       }

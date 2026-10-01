@@ -79,11 +79,11 @@ describe('createSpotifyApi', () => {
     const { api } = setup([
       json({
         is_playing: true,
-        item: { name: 'Something', artists: [{ name: 'The Beatles' }], album: { images: [{ url: 'https://i/1.jpg' }] } },
+        item: { uri: 'spotify:track:S', name: 'Something', artists: [{ name: 'The Beatles' }], album: { images: [{ url: 'https://i/1.jpg' }] } },
       }),
       empty(204),
     ]);
-    expect(await api.playerState()).toEqual({ playing: true, title: 'Something', artist: 'The Beatles', imageUrl: 'https://i/1.jpg' });
+    expect(await api.playerState()).toEqual({ playing: true, uri: 'spotify:track:S', title: 'Something', artist: 'The Beatles', imageUrl: 'https://i/1.jpg' });
     expect(await api.playerState()).toBeNull();
   });
 

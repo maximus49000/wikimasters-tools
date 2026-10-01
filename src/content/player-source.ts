@@ -2,8 +2,12 @@ import { SpotifyError } from '../core/spotify/errors';
 import type { SpotifyApi } from '../core/spotify/spotify-api';
 import type { SpotifySession } from '../core/spotify/spotify-session';
 
-export type PlayerTrack = { title: string; artist: string; imageUrl: string | null; playing: boolean };
+export type PlayerTrack = { uri: string; title: string; artist: string; imageUrl: string | null; playing: boolean };
 export type PlayerView = { linked: boolean; track: PlayerTrack | null; hidden: boolean };
+
+// La piste `uri` est-elle celle qui joue en ce moment ? (pour afficher pause à sa place)
+export const isPlayingUri = (view: PlayerView, uri: string): boolean =>
+  view.linked && view.track !== null && view.track.playing && view.track.uri === uri;
 
 const HIDDEN_KEY = 'wmt:spotifyPlayerHidden';
 const PLAYING_MS = 5_000;

@@ -35,7 +35,7 @@ import { createSpotifyApi } from '../core/spotify/spotify-api';
 import { createSpotifySession } from '../core/spotify/spotify-session';
 import type { SpotifyEnv } from '../core/spotify/transport';
 import { createMusicService } from '../content/music-service';
-import { setMusicService } from '../content/music-registry';
+import { setMusicService, setPlayerSource } from '../content/music-registry';
 import { createPlayerSource } from '../content/player-source';
 import { mountSpotifyPlayer } from '../content/mount-player';
 
@@ -227,6 +227,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           onPlayed: () => void player.refresh(),
         }),
       );
+      setPlayerSource(player);
       mountSpotifyPlayer(player);
       player.start();
     } catch (error) {

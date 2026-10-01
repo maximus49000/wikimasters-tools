@@ -52,6 +52,13 @@ export function SpotifyPlayer({ source }: { source: PlayerSource }) {
   }
   return (
     <div style={{ ...shell, left: 12, right: 12, margin: '0 auto', maxWidth: 420, paddingLeft: 14 }}>
+      {track.imageUrl ? (
+        <img src={track.imageUrl} alt="" loading="lazy" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', flex: 'none', marginRight: 10 }} />
+      ) : (
+        <span style={{ marginRight: 10, display: 'inline-flex', flex: 'none' }}>
+          <Glyph name="note" size={20} />
+        </span>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.65, fontSize: 11 }}>{track.artist}</div>

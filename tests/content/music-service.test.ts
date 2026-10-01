@@ -50,10 +50,10 @@ describe('createMusicService.view', () => {
     expect(api.albumTracks).not.toHaveBeenCalled();
   });
 
-  it('rend none quand rien ne se retrouve sur Spotify, et error avec un message en cas de panne', async () => {
+  it('rend notfound quand rien ne se retrouve sur Spotify, et error avec un message en cas de panne', async () => {
     const empty = setup();
     empty.api.albumTracks.mockResolvedValueOnce([]);
-    expect(await empty.service.view('Abbey_Road', 'Abbey Road')).toEqual({ status: 'none' });
+    expect(await empty.service.view('Abbey_Road', 'Abbey Road')).toEqual({ status: 'notfound' });
 
     const down = setup();
     down.api.albumTracks.mockRejectedValueOnce(new SpotifyError('rate-limited', 'x', 1000));

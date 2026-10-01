@@ -7,7 +7,7 @@ export type Track = { uri: string; title: string; artist: string };
 export type FoundTrack = Track & { artistIds: string[]; artists: string[] };
 // `null` : reprendre la lecture en cours.
 export type PlayTarget = { uris: string[] } | { contextUri: string; offsetUri: string } | null;
-export type PlayerState = { playing: boolean; title: string; artist: string; imageUrl: string | null } | null;
+export type PlayerState = { playing: boolean; uri: string; title: string; artist: string; imageUrl: string | null } | null;
 
 // Maximum accepté par Spotify pour les applications en mode développement (février 2026).
 const SEARCH_MAX = 10;
@@ -20,7 +20,7 @@ const albumTracksSchema = z.object({ items: z.array(trackSchema) });
 const stateSchema = z.object({
   is_playing: z.boolean(),
   item: z
-    .object({ name: z.string(), artists: z.array(artistSchema), album: z.object({ images: z.array(z.object({ url: z.string() })) }).optional() })
+    .object({ uri: z.string(), name: z.string(), artists: z.array(artistSchema), album: z.object({ images: z.array(z.object({ url: z.string() })) }).optional() })
     .nullish(),
 });
 
@@ -104,6 +104,7 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
       if (!state.item) return null;
       return {
         playing: state.is_playing,
+        uri: state.item.uri,
         title: state.item.name,
         artist: joinArtists(state.item.artists),
         imageUrl: state.item.album?.images[0]?.url ?? null,
