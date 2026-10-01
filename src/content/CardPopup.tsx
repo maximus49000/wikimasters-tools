@@ -23,7 +23,12 @@ const MIN_WIDTH = 3 * BUTTON_SIZE + 2 * ROW_GAP;
 // Fenêtre réellement visible : sur mobile, `innerHeight` ignore le zoom et la barre d'adresse.
 function visibleViewport() {
   const visual = window.visualViewport;
-  return { width: visual?.width ?? window.innerWidth, height: visual?.height ?? window.innerHeight };
+  return {
+    left: visual?.offsetLeft ?? 0,
+    top: visual?.offsetTop ?? 0,
+    width: visual?.width ?? window.innerWidth,
+    height: visual?.height ?? window.innerHeight,
+  };
 }
 
 // Boutons à glyphe seul (le texte tient mal sur mobile) : zone tactile de 44 px.
@@ -64,10 +69,15 @@ export function CardPopup({ preview, anchor, onOpen, onOpenCard, onClose }: Prop
     frame.style.width = '';
     frame.style.height = '';
     const natural = { width: card.offsetWidth, height: card.offsetHeight };
+    // Encombrement réel autour de la carte (marges, bordure, rangée de boutons) : mesuré, pas supposé.
+    frame.style.height = '0px';
+    frame.style.width = `${MIN_WIDTH}px`;
+    const chromeHeight = Math.max(el.offsetHeight, 2 * PADDING + ROW_HEIGHT);
+    const chromeWidth = el.offsetWidth - MIN_WIDTH;
     const cardScale = Math.min(
       1,
-      (viewport.height - 2 * EDGE - 2 * PADDING - ROW_HEIGHT) / natural.height,
-      (viewport.width - 2 * EDGE - 2 * PADDING) / natural.width,
+      (viewport.height - 2 * EDGE - chromeHeight) / natural.height,
+      (viewport.width - 2 * EDGE - chromeWidth) / natural.width,
     );
     const scaled = { width: natural.width * cardScale, height: natural.height * cardScale };
     card.style.transformOrigin = '0 0';
@@ -76,12 +86,19 @@ export function CardPopup({ preview, anchor, onOpen, onOpenCard, onClose }: Prop
     frame.style.height = `${scaled.height}px`;
 
     // La position est mesurée depuis l'origine réelle de l'élément : un ancêtre transformé du site ne la décale pas.
+    // `position: fixed` suit la fenêtre de mise en page : si la fenêtre visible est décalée (zoom), on la prend pour repère.
     el.style.left = '0px';
     el.style.top = '0px';
     const origin = el.getBoundingClientRect();
-    const { left, top } = placePopup(anchor, { width: el.offsetWidth, height: el.offsetHeight }, viewport);
-    el.style.left = `${left - origin.left}px`;
-    el.style.top = `${top - origin.top}px`;
+    const shift = (rect: Rect): Rect => ({
+      left: rect.left - viewport.left,
+      right: rect.right - viewport.left,
+      top: rect.top - viewport.top,
+      bottom: rect.bottom - viewport.top,
+    });
+    const placed = placePopup(shift(anchor), { width: el.offsetWidth, height: el.offsetHeight }, viewport);
+    el.style.left = `${placed.left + viewport.left - origin.left}px`;
+    el.style.top = `${placed.top + viewport.top - origin.top}px`;
   }, [anchor, preview]);
 
   useEffect(() => {
