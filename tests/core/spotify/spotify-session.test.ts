@@ -31,7 +31,7 @@ describe('createSpotifySession', () => {
     expect(await session.isLinked()).toBe(true);
 
     const authUrl = new URL(authorize.mock.calls[0]![0] as string);
-    expect(authUrl.searchParams.get('client_id')).toBe('53483f8dd5374f1889f994488d989283');
+    expect(authUrl.searchParams.get('client_id')).toBe('ca54efea8df646afa19e21754eb607ec');
     expect(authUrl.searchParams.get('scope')).toBe('user-modify-playback-state user-read-playback-state');
 
     const [url, init] = fetch.mock.calls[0]! as [string, RequestInit];

@@ -8,7 +8,8 @@ export default defineConfig({
     description:
       'Outils en lecture seule pour WikiMasters : prix estimés à partir de vos propres transactions.',
     // `identity` : liaison du compte Spotify (écoute des cartes musique).
-    permissions: ['storage', 'identity'],
+    // `unlimitedStorage` : lève le plafond de 10 Mo de `chrome.storage.local` (historique du marché, listes d'écoute, pochettes).
+    permissions: ['storage', 'unlimitedStorage', 'identity'],
     // Le service worker appelle Spotify (jamais le site du jeu).
     host_permissions: [
       'https://api.spotify.com/*',
