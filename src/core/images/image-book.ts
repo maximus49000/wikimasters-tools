@@ -1,7 +1,8 @@
 // Image de remplacement d'une carte sans image : `url` est l'image affichée (`null` : rien de trouvé),
 // `candidates` les autres images proposées par la recherche, `rejected` celles écartées par « Mauvaise image »,
-// `art` : la pochette / l'affiche officielle (Spotify, TMDB) a été trouvée et placée en tête.
-export type CardImage = { url: string | null; candidates: string[]; rejected: string[]; art?: true };
+// `art` : la pochette / l'affiche officielle (Spotify, TMDB) a été trouvée et placée en tête : on ne la redemande plus.
+// `artCheckedAt` : (ms) la source officielle a répondu qu'elle n'avait rien ; on ne la redemande qu'au bout de 30 jours.
+export type CardImage = { url: string | null; candidates: string[]; rejected: string[]; art?: true; artCheckedAt?: number };
 
 // Clé : slug de l'article Wikipédia.
 export type ImageState = Record<string, CardImage>;
@@ -12,8 +13,15 @@ export const EMPTY_IMAGES: ImageState = {};
 export const pickImage = (candidates: string[], rejected: string[]): string | null =>
   candidates.find((url) => !rejected.includes(url)) ?? null;
 
-export function setFound(state: ImageState, slug: string, candidates: string[], art = false): ImageState {
-  return { ...state, [slug]: { url: pickImage(candidates, []), candidates, rejected: [], ...(art ? { art: true as const } : {}) } };
+export function setFound(state: ImageState, slug: string, candidates: string[], art = false, artCheckedAt?: number): ImageState {
+  const checked = !art && artCheckedAt !== undefined ? { artCheckedAt } : {};
+  return { ...state, [slug]: { url: pickImage(candidates, []), candidates, rejected: [], ...(art ? { art: true as const } : {}), ...checked } };
+}
+
+// La source officielle a répondu « rien » (ou sa pochette a été écartée) : on date la recherche sans toucher à l'image.
+export function markArtChecked(state: ImageState, slug: string, at: number): ImageState {
+  const known = state[slug];
+  return known ? { ...state, [slug]: { ...known, artCheckedAt: at } } : state;
 }
 
 // Pochette officielle trouvée après coup : elle passe en tête, sauf si elle a déjà été écartée par « Mauvaise image ».

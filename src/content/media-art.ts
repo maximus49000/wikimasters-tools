@@ -13,7 +13,9 @@ export type MediaArtSources = {
   tmdb?: Pick<TmdbApi, 'posterUrl' | 'closestPosterUrl'>;
 };
 
-type Art = (slug: string, title: string) => Promise<string[]>;
+// Liste (éventuellement vide) : la source a répondu, la réponse est définitive. `null` : elle n'a pas pu répondre
+// (compte non lié, source ou natures de la carte pas prêtes) : à redemander plus tard, sans rien mémoriser.
+type Art = (slug: string, title: string) => Promise<string[] | null>;
 // `primary` : pochette / affiche exacte ; `fallback` : à défaut de toute image, la photo de l'artiste ou l'affiche la plus proche du nom.
 export type MediaArt = { primary: Art; fallback: Art };
 
@@ -21,16 +23,20 @@ export type MediaArt = { primary: Art; fallback: Art };
 const quoted = (text: string): string => text.replaceAll('"', '').trim();
 
 // Pochette (album, single) ou affiche (film, série) d'une carte, pour remplacer l'image manquante.
-// Aucune source utilisable (compte non lié, autre type de carte, rien trouvé) : liste vide, Wikipédia prend le relais.
+// Autre type de carte, ou rien trouvé : liste vide (Wikipédia prend le relais). Source pas prête : null.
 export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' | 'load'>; sources: MediaArtSources }): MediaArt {
   async function kindsOf(slug: string) {
     await deps.kinds.resolveMissing([slug]);
     const cardKinds = (await deps.kinds.load()).cards[slug];
-    return { music: musicKindOf(cardKinds), screen: screenKindOf(cardKinds) };
+    // `known` : Wikidata a répondu pour cette carte ; sinon on ignore son type, ce n'est pas « rien à chercher ».
+    return { known: cardKinds !== undefined, music: musicKindOf(cardKinds), screen: screenKindOf(cardKinds) };
   }
 
-  const performerOf = async (spotify: NonNullable<MediaArtSources['spotify']>, slug: string): Promise<string | undefined> =>
-    (await spotify.music.resolve([slug]))[slug]?.performer;
+  // `undefined` : Wikidata n'a pas répondu (hors ligne, limite…) ; `null` : réponse sans interprète. Chercher sans l'interprète donnerait une réponse peu fiable, qu'on mémoriserait.
+  const performerOf = async (spotify: NonNullable<MediaArtSources['spotify']>, slug: string): Promise<string | null | undefined> => {
+    const cardMusic = (await spotify.music.resolve([slug]))[slug];
+    return cardMusic === undefined ? undefined : (cardMusic.performer ?? null);
+  };
 
   const one = (url: string | null): string[] => (url ? [url] : []);
 
@@ -46,28 +52,33 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
   return {
     async primary(slug, title) {
       const { spotify, tmdb } = deps.sources;
-      if (!spotify && !tmdb) return [];
-      const { music, screen } = await kindsOf(slug);
+      if (!spotify && !tmdb) return null;
+      const { known, music, screen } = await kindsOf(slug);
+      if (!known) return null;
       const query = quoted(cleanTitle(title));
-      if (spotify && (music === 'album' || music === 'track')) {
-        if (!(await spotify.session.isLinked())) return [];
+      if (music === 'album' || music === 'track') {
+        if (!spotify || !(await spotify.session.isLinked())) return null;
         const performer = await performerOf(spotify, slug);
+        if (performer === undefined) return null;
         return one(await oneAtATime(() => spotify.api.findCover(music, query, performer ? quoted(performer) : undefined)));
       }
-      if (tmdb && (screen === 'film' || screen === 'series')) return one(await tmdb.posterUrl(screen, cleanTitle(title)));
+      if (screen === 'film' || screen === 'series') return tmdb ? one(await tmdb.posterUrl(screen, cleanTitle(title))) : null;
       return [];
     },
 
     async fallback(slug, title) {
       const { spotify, tmdb } = deps.sources;
-      if (!spotify && !tmdb) return [];
-      const { music, screen } = await kindsOf(slug);
-      if (spotify && music && (await spotify.session.isLinked())) {
+      if (!spotify && !tmdb) return null;
+      const { known, music, screen } = await kindsOf(slug);
+      if (!known) return null;
+      if (music) {
+        if (!spotify || !(await spotify.session.isLinked())) return null;
         // Album ou morceau : l'artiste ; carte d'artiste : le titre lui-même.
         const name = music === 'artist' ? quoted(cleanTitle(title)) : await performerOf(spotify, slug);
+        if (name === undefined) return null;
         return name ? one(await oneAtATime(() => spotify.api.findArtistImage(quoted(name)))) : [];
       }
-      if (tmdb && (screen === 'film' || screen === 'series')) return one(await tmdb.closestPosterUrl(cleanTitle(title)));
+      if (screen === 'film' || screen === 'series') return tmdb ? one(await tmdb.closestPosterUrl(cleanTitle(title))) : null;
       return [];
     },
   };
