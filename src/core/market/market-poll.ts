@@ -27,11 +27,21 @@ type Targets = {
   polledAt: Record<string, number>;
   // Après une vraie erreur (déconnexion, 429 persistant), on n'insiste pas avant cette date.
   cooldownUntil?: number;
-  // Cartes dont l'utilisateur a demandé le rechargement : relevées en priorité, sans attendre les 30 min.
-  // La valeur est un numéro d'ordre (le stockage ne garantit pas l'ordre des clés).
-  forced?: Record<string, number>;
+  // Rechargements demandés par l'utilisateur, un par page et par filtre : relevés en priorité, sans attendre
+  // les 30 min. `seq` est leur rang de priorité (le plus grand passe en premier ; le stockage ne garantit pas
+  // l'ordre des clés).
+  jobs?: Record<string, Job>;
   forceSeq?: number;
 };
+
+// `all` : les cartes de la page au moment du clic (change si le tri change) ; `slugs` : celles qui restent.
+type Job = { filter: string; page: number; seq: number; all: string[]; slugs: string[] };
+
+// La page de la Collection concernée : son numéro et les filtres actifs (chaîne vide = aucun).
+export type ForceView = { filter: string; page: number };
+export type ForceOutcome = 'created' | 'promoted' | 'running';
+const DEFAULT_VIEW: ForceView = { filter: '', page: 1 };
+const jobKey = (view: ForceView): string => `${view.filter}#${view.page}`;
 
 type Lock = { owner: string | null; updatedAt: number };
 
@@ -70,14 +80,22 @@ export function createMarketCollector(deps: CollectorDeps) {
 
   // Cartes forcées dont la recherche est faite dans cet onglet (avant l'écriture par lot dans le stockage).
   const forcedDone = new Set<string>();
-  // Taille du dernier forçage, pour afficher l'avancement (« 23 / 50 »).
-  let forcedTotal = 0;
 
+  // Cartes restantes d'un rechargement.
+  const remainingOf = (state: Targets, job: Job): string[] =>
+    job.slugs.filter((slug) => !forcedDone.has(slug) && state.wanted[slug] !== undefined);
+
+  // Rechargements en cours, du plus prioritaire (le dernier forcé) au moins prioritaire.
+  function liveJobs(state: Targets): [string, Job][] {
+    return Object.entries(state.jobs ?? {})
+      .filter(([, job]) => remainingOf(state, job).length > 0)
+      .sort(([, a], [, b]) => b.seq - a.seq);
+  }
+
+  // Les cartes forcées, dans l'ordre : rechargement le plus prioritaire d'abord, puis ordre d'affichage.
   function forcedSlugs(state: Targets): string[] {
-    return Object.entries(state.forced ?? {})
-      .filter(([slug]) => !forcedDone.has(slug) && state.wanted[slug] !== undefined)
-      .sort(([, a], [, b]) => a - b)
-      .map(([slug]) => slug);
+    const ordered = liveJobs(state).flatMap(([, job]) => remainingOf(state, job));
+    return [...new Set(ordered)];
   }
 
   // Les cartes à relever : d'abord celles dont le rechargement est forcé (dans l'ordre demandé), puis celles vues
@@ -141,37 +159,68 @@ export function createMarketCollector(deps: CollectorDeps) {
       });
     },
 
-    // Rechargement demandé par l'utilisateur : ces cartes passent devant toutes les autres (y compris dans une
-    // passe déjà en cours), sans attendre les 30 min ni l'attente qui suit une erreur.
-    force(targets: Target[]): Promise<void> {
+    // Rechargement demandé par l'utilisateur pour la page et le filtre affichés.
+    // - Déjà en tête : rien de nouveau, les cartes se mettent juste à jour (`running`).
+    // - En attente mais pas en tête : il passe en premier (`promoted`).
+    // - Sinon : nouveau rechargement, prioritaire (`created`), sans attendre les 30 min ni l'attente après erreur.
+    async force(targets: Target[], view: ForceView = DEFAULT_VIEW): Promise<ForceOutcome> {
       const t = now();
-      for (const target of targets) {
-        forcedDone.delete(target.slug);
-        lastWanted.set(target.slug, t);
-      }
-      return mutate((state) => {
-        let seq = state.forceSeq ?? 0;
+      const key = jobKey(view);
+      const slugs = targets.map((target) => target.slug);
+      let outcome: ForceOutcome = 'created';
+      await mutate((state) => {
+        const existing = state.jobs?.[key];
+        const [headKey] = liveJobs(state)[0] ?? [];
+        const same =
+          existing !== undefined &&
+          remainingOf(state, existing).length > 0 &&
+          existing.all.length === slugs.length &&
+          existing.all.every((slug, i) => slug === slugs[i]);
+
+        if (same && headKey === key) {
+          outcome = 'running';
+          return state;
+        }
+        let seq = (state.forceSeq ?? 0) + 1;
+        const jobs = { ...state.jobs };
+        if (same) {
+          outcome = 'promoted';
+          jobs[key] = { ...existing!, seq };
+          return { ...state, jobs, forceSeq: seq };
+        }
+
+        for (const slug of slugs) forcedDone.delete(slug);
         const wanted = { ...state.wanted };
-        const forced = { ...state.forced };
         for (const target of targets) {
           wanted[target.slug] = { title: target.title, seenAt: t };
-          forced[target.slug] = ++seq;
+          lastWanted.set(target.slug, t);
         }
+        jobs[key] = { filter: view.filter, page: view.page, seq, all: slugs, slugs };
         const { cooldownUntil: _lifted, ...rest } = state;
-        return { ...rest, wanted, forced, forceSeq: seq };
-      }).then(notify);
+        return { ...rest, wanted, jobs, forceSeq: seq };
+      });
+      notify();
+      return outcome;
     },
 
-    // Avancement du rechargement forcé : `remaining` cartes restantes sur `total` (0 / 0 hors forçage).
+    // Avancement du rechargement le plus prioritaire : `remaining` cartes restantes sur `total` (0 / 0 sans rechargement).
     async forceProgress(): Promise<{ remaining: number; total: number }> {
       await tail;
-      const remaining = forcedSlugs(await load()).length;
-      if (remaining === 0) {
-        forcedTotal = 0;
-        return { remaining: 0, total: 0 };
-      }
-      forcedTotal = Math.max(forcedTotal, remaining);
-      return { remaining, total: forcedTotal };
+      const state = await load();
+      const [, head] = liveJobs(state)[0] ?? [];
+      return head ? { remaining: remainingOf(state, head).length, total: head.all.length } : { remaining: 0, total: 0 };
+    },
+
+    // Avancement du rechargement de la page et du filtre donnés ; `queued` : il attend derrière un autre.
+    async forceStatus(view: ForceView): Promise<{ remaining: number; total: number; queued: boolean }> {
+      await tail;
+      const state = await load();
+      const key = jobKey(view);
+      const job = state.jobs?.[key];
+      const remaining = job ? remainingOf(state, job).length : 0;
+      if (!job || remaining === 0) return { remaining: 0, total: 0, queued: false };
+      const [headKey] = liveJobs(state)[0] ?? [];
+      return { remaining, total: job.all.length, queued: headKey !== key };
     },
 
     async tick(): Promise<TickResult> {
@@ -193,9 +242,13 @@ export function createMarketCollector(deps: CollectorDeps) {
           done = [];
           if (slugs.length > 0) {
             await mutate((s) => {
-              const forced = { ...s.forced };
-              for (const slug of slugs) delete forced[slug];
-              return { ...s, forced, polledAt: { ...s.polledAt, ...Object.fromEntries(slugs.map((slug) => [slug, at])) } };
+              const finished = new Set(slugs);
+              const jobs: Record<string, Job> = {};
+              for (const [key, job] of Object.entries(s.jobs ?? {})) {
+                const left = job.slugs.filter((slug) => !finished.has(slug));
+                if (left.length > 0) jobs[key] = { ...job, slugs: left };
+              }
+              return { ...s, jobs, polledAt: { ...s.polledAt, ...Object.fromEntries(slugs.map((slug) => [slug, at])) } };
             });
           }
         };
@@ -224,8 +277,7 @@ export function createMarketCollector(deps: CollectorDeps) {
             if (unloading) return 'interrupted';
             console.warn('[wikimasters-tools]', 'relevé du marché abandonné :', error);
             await flush();
-            await mutate((s) => ({ ...s, forced: {}, cooldownUntil: now() + POLL_INTERVAL_MS }));
-            forcedTotal = 0;
+            await mutate((s) => ({ ...s, jobs: {}, cooldownUntil: now() + POLL_INTERVAL_MS }));
             await dropLock();
             notify();
             return 'failed';

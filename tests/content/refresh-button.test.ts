@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   ensureRefreshButton,
+  readCollectionPage,
   refreshLabel,
   REFRESH_HOST_ATTRIBUTE,
   type MountRefresh,
@@ -30,12 +31,37 @@ const hosts = () => document.querySelectorAll(`[${REFRESH_HOST_ATTRIBUTE}]`);
 
 describe('refreshLabel', () => {
   it('au repos : invite à recharger', () => {
-    expect(refreshLabel({ remaining: 0, total: 0 })).toEqual({ text: 'Recharger les prix de cette page', busy: false });
+    expect(refreshLabel({ remaining: 0, total: 0, queued: false })).toEqual({
+      text: 'Recharger les prix de cette page',
+      state: 'idle',
+    });
   });
 
-  it('en cours : avancement n / total, bouton occupé', () => {
-    expect(refreshLabel({ remaining: 27, total: 50 })).toEqual({ text: 'Rechargement… 23 / 50', busy: true });
-    expect(refreshLabel({ remaining: 1, total: 1 })).toEqual({ text: 'Rechargement… 0 / 1', busy: true });
+  it('en tête : avancement n / total', () => {
+    expect(refreshLabel({ remaining: 27, total: 50, queued: false })).toEqual({
+      text: 'Rechargement… 23 / 50',
+      state: 'running',
+    });
+    expect(refreshLabel({ remaining: 1, total: 1, queued: false }).text).toBe('Rechargement… 0 / 1');
+  });
+
+  it('en attente derrière un autre : propose de passer en premier', () => {
+    expect(refreshLabel({ remaining: 50, total: 50, queued: true })).toEqual({
+      text: 'Rechargement en attente : passer en premier',
+      state: 'queued',
+    });
+  });
+});
+
+describe('readCollectionPage', () => {
+  it('lit le numéro de page affiché', () => {
+    document.body.innerHTML = '<div><button>← Précédent</button><span>Page 2 / 36</span><button>Suivant →</button></div>';
+    expect(readCollectionPage(document)).toBe(2);
+  });
+
+  it('retombe sur la page 1 quand l’indicateur est absent', () => {
+    document.body.innerHTML = '<div>Rien ici</div>';
+    expect(readCollectionPage(document)).toBe(1);
   });
 });
 

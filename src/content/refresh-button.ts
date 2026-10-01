@@ -8,9 +8,25 @@ export type MountRefresh = (grid: HTMLElement) => RefreshHandle;
 
 const handles = new WeakMap<Element, RefreshHandle>();
 
-export function refreshLabel(progress: { remaining: number; total: number }): { text: string; busy: boolean } {
-  if (progress.remaining <= 0) return { text: 'Recharger les prix de cette page', busy: false };
-  return { text: `Rechargement… ${progress.total - progress.remaining} / ${progress.total}`, busy: true };
+export type RefreshState = 'idle' | 'running' | 'queued';
+
+export function refreshLabel(status: { remaining: number; total: number; queued: boolean }): {
+  text: string;
+  state: RefreshState;
+} {
+  if (status.remaining <= 0) return { text: 'Recharger les prix de cette page', state: 'idle' };
+  if (status.queued) return { text: 'Rechargement en attente : passer en premier', state: 'queued' };
+  return { text: `Rechargement… ${status.total - status.remaining} / ${status.total}`, state: 'running' };
+}
+
+// Numéro de la page de Collection affichée (« Page 2 / 36 »), 1 à défaut.
+export function readCollectionPage(root: Node): number {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const match = /^\s*Page\s+(\d+)\s*\/\s*\d+\s*$/.exec(node.textContent ?? '');
+    if (match) return Number(match[1]);
+  }
+  return 1;
 }
 
 export function removeRefreshButton(root: ParentNode): void {
