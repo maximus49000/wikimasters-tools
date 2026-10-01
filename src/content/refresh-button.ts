@@ -19,11 +19,12 @@ export function refreshLabel(status: { remaining: number; total: number; queued:
   return { text: `Rechargement… ${status.total - status.remaining} / ${status.total}`, state: 'running' };
 }
 
-// Numéro de la page de Collection affichée (« Page 2 / 36 »), 1 à défaut.
-export function readCollectionPage(root: Node): number {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const match = /^\s*Page\s+(\d+)\s*\/\s*\d+\s*$/.exec(node.textContent ?? '');
+// Numéro de la page de Collection affichée (« Page 2 / 36 »), 1 à défaut. Le site coupe ce texte en plusieurs
+// morceaux (« Page », « 2 », « / », « 36 ») : on lit le texte de l'élément, pas celui d'un morceau.
+export function readCollectionPage(root: ParentNode): number {
+  for (const el of root.querySelectorAll('*')) {
+    if (el.children.length > 0) continue;
+    const match = /^\s*Page\s+(\d+)\s*\/\s*\d+\s*$/.exec(el.textContent ?? '');
     if (match) return Number(match[1]);
   }
   return 1;

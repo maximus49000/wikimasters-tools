@@ -570,3 +570,37 @@ describe('rechargements par page et par filtre', () => {
     expect(await tab.forceStatus({ filter: '', page: 1 })).toEqual({ remaining: 0, total: 0, queued: false });
   });
 });
+
+describe('rechargement forcé pendant une passe déjà en cours', () => {
+  it('ne relit pas les cartes qu’elle vient de relever, et le rechargement se termine dans la même passe', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    const cards = ['Carte A', 'Carte B', 'Carte C', 'Carte D', 'Carte E'].map(target);
+    await tab.want(cards);
+    // Pendant la requête de C, l'utilisateur recharge la page (A et B viennent d'être relevées).
+    w.fake.hooks.set('Carte C', async () => {
+      await tab.force(cards, { filter: '', page: 1 });
+      return { auctions: [] };
+    });
+    await tab.tick();
+    expect(w.fake.calls.sort()).toEqual(['Carte A', 'Carte B', 'Carte C', 'Carte D', 'Carte E']);
+    expect(await tab.forceStatus({ filter: '', page: 1 })).toEqual({ remaining: 0, total: 0, queued: false });
+    expect((await tab.pendingSlugs()).size).toBe(0);
+  });
+
+  it('compte ces cartes comme déjà faites dans l’avancement', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    const cards = ['Carte A', 'Carte B', 'Carte C', 'Carte D', 'Carte E'].map(target);
+    await tab.want(cards);
+    let status: { remaining: number; total: number; queued: boolean } | undefined;
+    w.fake.hooks.set('Carte C', async () => {
+      await tab.force(cards, { filter: '', page: 1 });
+      status = await tab.forceStatus({ filter: '', page: 1 });
+      return { auctions: [] };
+    });
+    await tab.tick();
+    // A, B et C (en vol) viennent d'être relevées dans cette passe : il en reste 2 sur 5.
+    expect(status).toEqual({ remaining: 2, total: 5, queued: false });
+  });
+});

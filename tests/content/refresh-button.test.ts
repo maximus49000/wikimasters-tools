@@ -59,6 +59,15 @@ describe('readCollectionPage', () => {
     expect(readCollectionPage(document)).toBe(2);
   });
 
+  it('lit le numéro même quand le site le coupe en plusieurs morceaux de texte (React)', () => {
+    const span = document.createElement('span');
+    for (const part of ['Page ', '2', ' / ', '36']) span.appendChild(document.createTextNode(part));
+    document.body.innerHTML = '';
+    document.body.appendChild(span);
+    expect(span.childNodes.length).toBe(4);
+    expect(readCollectionPage(document)).toBe(2);
+  });
+
   it('retombe sur la page 1 quand l’indicateur est absent', () => {
     document.body.innerHTML = '<div>Rien ici</div>';
     expect(readCollectionPage(document)).toBe(1);
