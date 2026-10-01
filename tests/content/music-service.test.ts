@@ -80,6 +80,13 @@ describe('createMusicService.play', () => {
     expect(api.play).toHaveBeenCalledWith({ uris: ['spotify:track:1'] });
   });
 
+  it("enchaîne les titres suivants d'un artiste", async () => {
+    const { service, api } = setup();
+    const items = ['1', '2', '3'].map((id) => ({ uri: `spotify:track:${id}`, title: id, artist: 'A' }));
+    await service.play(items[1], { kind: 'artist', items });
+    expect(api.play).toHaveBeenCalledWith({ uris: ['spotify:track:2', 'spotify:track:3'] });
+  });
+
   it("rend le message d'erreur, par exemple sans appareil", async () => {
     const { service, api } = setup();
     api.play.mockRejectedValueOnce(new SpotifyError('no-device', 'x'));
