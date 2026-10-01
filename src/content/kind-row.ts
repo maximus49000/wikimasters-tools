@@ -29,7 +29,7 @@ const LABEL_STYLE = 'min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;w
 const CHEVRON_STYLE = 'width:16px;height:16px;flex:none;opacity:.4;transition:transform .2s';
 const LIST_STYLE =
   'position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;margin:0;padding:4px 0;list-style:none;max-height:208px;overflow-y:auto;' +
-  'border-radius:12px;border:1px solid var(--color-border, rgba(148,163,184,0.35));background:var(--color-background, #0d1117);' +
+  'border-radius:12px;border:1px solid var(--color-border, rgba(148,163,184,0.35));background:#0d1117;opacity:1;' +
   'box-shadow:0 20px 25px -5px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.25)';
 const OPTION_STYLE =
   'display:flex;width:100%;box-sizing:border-box;align-items:center;padding:8px 12px;border:0;background:transparent;' +
