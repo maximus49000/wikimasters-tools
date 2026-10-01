@@ -93,3 +93,20 @@ describe('installMarketTap — filtres de la Collection', () => {
     expect(posted).toEqual([{ type: COLLECTION_FILTER_MESSAGE, filter: 'rarity=SR' }]);
   });
 });
+
+describe('cartes obtenues', () => {
+  it('relaie la réponse d’une ouverture de pack ou d’un achat (requête d’écriture)', async () => {
+    const { win, posted } = setup(() => json({ cards: [{ wikipedia_title: 'Paris' }] }));
+    await win.fetch('/api/packs/open', { method: 'POST' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(posted).toEqual([{ type: 'wmt:cards', payload: { cards: [{ wikipedia_title: 'Paris' }] } }]);
+  });
+
+  it('ignore les lectures et les autres routes', async () => {
+    const { win, posted } = setup(() => json({ cards: [{ wikipedia_title: 'Paris' }] }));
+    await win.fetch('/api/packs/open');
+    await win.fetch('/api/wikibidous', { method: 'POST' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(posted).toEqual([]);
+  });
+});

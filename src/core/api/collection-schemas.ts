@@ -73,3 +73,42 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
   }
   return { cards: [...cards.values()], obtained, entries: raw.length, skipped };
 }
+
+const MAX_DEPTH = 6;
+
+// Cartes décrites dans une réponse quelconque du jeu (ouverture d'un pack, achat) : tout objet portant un
+// `wikipedia_title` est lu comme une carte, quelle que soit la forme exacte de la réponse.
+export function extractCards(json: unknown): KnownCard[] {
+  const found = new Map<string, KnownCard>();
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > MAX_DEPTH || typeof value !== 'object' || value === null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (typeof record.wikipedia_title === 'string') {
+      const parsed = entrySchema.safeParse({ card: record });
+      if (parsed.success) {
+        const { wikipedia_title: title, rarity, image_url: imageUrl, category, atk, def } = parsed.data.card;
+        const extract = parsed.data.card.extract ?? category;
+        const slug = titleToSlug(title);
+        if (!found.has(slug)) {
+          found.set(slug, {
+            slug,
+            title,
+            ...(rarity ? { rarity } : {}),
+            ...(imageUrl ? { imageUrl } : {}),
+            ...(extract ? { extract } : {}),
+            ...(atk != null ? { attack: atk } : {}),
+            ...(def != null ? { defense: def } : {}),
+          });
+        }
+      }
+      return;
+    }
+    for (const item of Object.values(record)) visit(item, depth + 1);
+  };
+  visit(json, 0);
+  return [...found.values()];
+}

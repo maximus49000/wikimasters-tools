@@ -7,6 +7,8 @@ export function createCollectionRepo(store: KeyValueStore) {
   // Lecture-fusion-écriture sérialisées : deux observations simultanées ne s'écrasent pas.
   let tail: Promise<unknown> = Promise.resolve();
   const listeners = new Set<() => void>();
+  // Dernier état lu ou écrit : une vue qui se remonte repart de là, sans attendre le stockage.
+  let latest: KnownCard[] | null = null;
 
   return {
     observe(cards: KnownCard[]): Promise<void> {
@@ -15,6 +17,7 @@ export function createCollectionRepo(store: KeyValueStore) {
         const next = mergeCards(state, cards);
         if (next === state) return;
         await store.set(KEY, next);
+        latest = Object.values(next);
         for (const listener of listeners) listener();
       });
       tail = run.catch(() => undefined);
@@ -26,9 +29,12 @@ export function createCollectionRepo(store: KeyValueStore) {
       return () => void listeners.delete(listener);
     },
 
+    snapshot: (): KnownCard[] | null => latest,
+
     async list(): Promise<KnownCard[]> {
       await tail;
-      return Object.values((await store.get<CollectionState>(KEY)) ?? {});
+      latest = Object.values((await store.get<CollectionState>(KEY)) ?? {});
+      return latest;
     },
   };
 }

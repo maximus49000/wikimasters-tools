@@ -52,12 +52,17 @@ export function createCollectionScanner({
   let active = false;
   let retryScheduled = false;
 
+  // Dernier état lu ou écrit : une vue qui se remonte repart de là, sans attendre le stockage.
+  let latest: ScanState | null = null;
+
   async function state(): Promise<ScanState> {
-    return (await store.get<ScanState>(KEY)) ?? IDLE_SCAN;
+    latest = (await store.get<ScanState>(KEY)) ?? IDLE_SCAN;
+    return latest;
   }
 
   async function write(next: ScanState): Promise<void> {
     await store.set(KEY, next);
+    latest = next;
     for (const listener of listeners) listener();
   }
 
@@ -187,6 +192,7 @@ export function createCollectionScanner({
   return {
     run,
     state,
+    snapshot: (): ScanState | null => latest,
     subscribe(listener: () => void): () => void {
       listeners.add(listener);
       return () => void listeners.delete(listener);

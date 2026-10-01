@@ -1,4 +1,4 @@
-import { COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from './market-messages';
+import { CARDS_MESSAGE, COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from './market-messages';
 
 export type TapWindow = {
   location: { href: string; origin: string };
@@ -13,6 +13,8 @@ export type TapWindow = {
 const MARKETPLACE_PATH = '/api/marketplace';
 const COLLECTION_PATH = '/api/my-collection';
 const REPLAY_LIMIT = 10;
+// Actions du jeu qui donnent une carte (ouverture d'un pack, achat) : une requête d'écriture vers l'une de ces routes.
+const OBTAIN_PATH = /^\/api\/.*(pack|booster|open|buy|purchase|claim|reveal|draw)/i;
 // Paramètres de la requête qui ne sont pas des filtres.
 const NON_FILTER_PARAMS = ['page', 'stats', 'sort'];
 
@@ -54,6 +56,23 @@ export function installMarketTap(win: TapWindow): void {
     }
   }
 
+  // La réponse d'un pack ouvert ou d'un achat décrit déjà la carte : on la relaie pour éviter de la relire.
+  async function inspectObtained(
+    input: string | URL | Request,
+    init: RequestInit | undefined,
+    response: Response,
+  ): Promise<void> {
+    try {
+      if (!response.ok) return;
+      const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
+      if (method === 'GET' || method === 'HEAD') return;
+      if (!OBTAIN_PATH.test(new URL(requestUrl(input), win.location.href).pathname)) return;
+      win.postMessage({ type: CARDS_MESSAGE, payload: await response.clone().json() }, win.location.origin);
+    } catch {
+      // réponse illisible : la page ne doit jamais en pâtir
+    }
+  }
+
   // Le filtre de la Collection se lit sur la requête elle-même, dès son émission.
   function watchFilter(input: string | URL | Request): void {
     try {
@@ -72,6 +91,7 @@ export function installMarketTap(win: TapWindow): void {
     watchFilter(input);
     const response = await original(input, init);
     void inspect(input, response);
+    void inspectObtained(input, init, response);
     return response;
   };
 
