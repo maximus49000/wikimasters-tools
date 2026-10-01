@@ -34,6 +34,7 @@ type Props = {
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   // Fiche de marché de la carte.
   onOpen: (slug: string) => void;
+  onOpenCard: (slug: string) => void;
   // Cartes affichées dont les prix du marché sont à relever.
   onWantCards: (cards: KnownCard[]) => void;
 };
@@ -82,7 +83,7 @@ const box = {
   font: '14px/20px system-ui, sans-serif',
 } as const;
 
-export function TimelinePanel({ collection, birth, scanner, book, market, filterSource, loadFiltered, onOpen, onWantCards }: Props) {
+export function TimelinePanel({ collection, birth, scanner, book, market, filterSource, loadFiltered, onOpen, onOpenCard, onWantCards }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [birthState, setBirthState] = useState<BirthState>(EMPTY_BIRTH);
@@ -368,6 +369,10 @@ export function TimelinePanel({ collection, birth, scanner, book, market, filter
           onOpen={() => {
             setTip(null);
             onOpen(tipCard.slug);
+          }}
+          onOpenCard={() => {
+            setTip(null);
+            onOpenCard(tipCard.slug);
           }}
           onClose={() => setTip(null)}
         />

@@ -71,6 +71,7 @@ type Props = {
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   // Fiche de marché de la carte.
   onOpen: (slug: string) => void;
+  onOpenCard: (slug: string) => void;
   // Cartes affichées dont les prix du marché sont à relever.
   onWantCards: (cards: KnownCard[]) => void;
 };
@@ -88,7 +89,7 @@ const box = {
 // Un scan « en cours » sans aucune activité depuis cette durée est considéré comme interrompu.
 const STALLED_MS = 60_000;
 
-export function WorldPanel({ collection, geo, scanner, book, market, filterSource, loadFiltered, onOpen, onWantCards }: Props) {
+export function WorldPanel({ collection, geo, scanner, book, market, filterSource, loadFiltered, onOpen, onOpenCard, onWantCards }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [geoState, setGeoState] = useState<GeoState>(EMPTY_GEO);
@@ -260,8 +261,11 @@ export function WorldPanel({ collection, geo, scanner, book, market, filterSourc
             {moveMode && selected && (
               <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                 <strong>{selectedTitle ?? selected}</strong>
-                <button type="button" onClick={() => onOpen(selected)} style={{ ...linkButton, minHeight: 40 }}>
-                  Voir le marché
+                <button type="button" onClick={() => onOpen(selected)} aria-label="Voir le marché" title="Voir le marché" style={glyphButton}>
+                  📈
+                </button>
+                <button type="button" onClick={() => onOpenCard(selected)} aria-label="Ouvrir la carte" title="Ouvrir la carte" style={glyphButton}>
+                  🃏
                 </button>
                 {selectedPosition && (
                   <button
@@ -270,9 +274,11 @@ export function WorldPanel({ collection, geo, scanner, book, market, filterSourc
                       void geo.clearManual(selected);
                       setSelected(null);
                     }}
-                    style={{ ...linkButton, minHeight: 40 }}
+                    aria-label="Retirer mon placement"
+                    title="Retirer mon placement"
+                    style={glyphButton}
                   >
-                    Retirer mon placement
+                    🗑
                   </button>
                 )}
               </span>
@@ -345,6 +351,10 @@ export function WorldPanel({ collection, geo, scanner, book, market, filterSourc
             setPicked(null);
             onOpen(pickedCard.slug);
           }}
+          onOpenCard={() => {
+            setPicked(null);
+            onOpenCard(pickedCard.slug);
+          }}
           onClose={() => setPicked(null)}
         />
       )}
@@ -360,3 +370,5 @@ const linkButton = {
   color: 'var(--color-accent, #34d399)',
   padding: 0,
 } as const;
+
+const glyphButton = { ...linkButton, minWidth: 44, minHeight: 44, fontSize: 20 } as const;

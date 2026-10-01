@@ -89,6 +89,7 @@ export async function startOverlay(store: KeyValueStore): Promise<void> {
     filterSource,
     loadFiltered: (filter, isCancelled) => loadFilteredSlugs(filterApi, filter, isCancelled),
     openCard: (slug) => marketUi.openMarket(slug),
+    openGameCard: (slug) => void marketUi.reopenCard(slug),
     market: market.source,
     onVisibleCards: (cards) =>
       void collector
