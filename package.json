@@ -17,7 +17,9 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox --mv3",
     "dev:firefox": "wxt -b firefox --mv3",
-    "package": "npm run zip && npm run zip:firefox"
+    "package": "npm run zip && npm run zip:firefox",
+    "build:overlay": "vite build -c vite.android.config.ts",
+    "apk": "node scripts/build-apk.mjs"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

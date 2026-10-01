@@ -7,6 +7,7 @@ Trois cibles, deux paquets (`npm run package` les produit dans `.output/`, copi�
 | Chrome / Edge / Brave (ordinateur) | `wikimasters-tools-0.1.0-chrome.zip` | chargement manuel |
 | Firefox (ordinateur) | `wikimasters-tools-0.1.0-firefox.zip` | chargement temporaire, ou installation signée |
 | Firefox Android (« mobile ») | `wikimasters-tools-0.1.0-firefox.zip` | installation signée (voir plus bas) |
+| Android, application autonome (sans Firefox) | `wikimasters-tools-0.1.0-android.apk` | installation directe de l'APK (voir plus bas) |
 | Code source (demandé par Mozilla) | `wikimasters-tools-0.1.0-sources.zip` | envoi avec la soumission AMO |
 
 Chrome Android et Safari iOS ne savent pas installer d'extension : seul Firefox Android convient sur mobile.
@@ -62,3 +63,13 @@ Commandes séparées : `npm run build` (Chrome, dossier `.output/chrome-mv3`), `
 ## Non vérifié
 
 Le tactile et l'installation Firefox n'ont pas été essayés sur un vrai appareil : à confirmer (le glisser des points en mode déplacement, l'empilement de la vue Monde, l'invite de permission d'hôte de Firefox).
+
+## Application Android (APK)
+
+Une application qui affiche WikiMasters en plein écran (WebView) et applique la surcouche à chaque page ; aucune extension ni Firefox requis. Android 11 minimum.
+
+**Installer** : copiez `wikimasters-tools-0.1.0-android.apk` sur le téléphone, ouvrez-le et autorisez l'installation depuis cette source. Connectez-vous à WikiMasters dans l'application : la session et les données de la surcouche (prix, collection) restent dans l'application, séparées de celles de Firefox/Chrome.
+
+**Fonctionnement** : la surcouche est le même code que l'extension, empaqueté en un script (`vite.android.config.ts`) injecté dès le début de chaque page de `www.wiki-masters.com`. Les appels vers Wikipédia, Wikidata et OpenStreetMap passent par les en-têtes CORS ouverts de ces services. Les autres liens s'ouvrent dans le navigateur du téléphone. Le bouton retour remonte l'historique de la page.
+
+**Reconstruire** : `npm run apk` (Android Studio installé : SDK Android et son JDK 17+ ; Gradle est téléchargé au premier lancement). Le fichier est copié dans `livrables/`. L'APK est signé avec la clé de debug du poste : conservez le même poste (ou `~/.android/debug.keystore`) pour pouvoir mettre l'application à jour sans la désinstaller. Le Play Store exigerait une clé de publication dédiée.

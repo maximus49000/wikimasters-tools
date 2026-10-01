@@ -36,3 +36,16 @@ export function createChromeLocalStore(
     },
   };
 }
+
+// Hors extension (application Android) : `localStorage` de la page, avec le même préfixe.
+export function createLocalStorageStore(storage: Storage = window.localStorage): KeyValueStore {
+  return {
+    async get<T>(key: string) {
+      const raw = storage.getItem(PREFIX + key);
+      return raw === null ? undefined : (JSON.parse(raw) as T);
+    },
+    async set<T>(key: string, value: T) {
+      storage.setItem(PREFIX + key, JSON.stringify(value));
+    },
+  };
+}
