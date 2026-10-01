@@ -4,7 +4,7 @@ import type { CollectionRepo } from './collection-repo';
 
 const KEY = 'collectionScan';
 // Un autre onglet qui a écrit son état il y a moins longtemps est considéré comme toujours en cours.
-const LOCK_MS = 60_000;
+export const LOCK_MS = 60_000;
 // À incrémenter quand le scan lit de nouveaux champs : un parcours terminé avant repart de zéro.
 const SCAN_VERSION = 6;
 
@@ -49,7 +49,9 @@ export function createCollectionScanner({
   schedule = (fn, ms) => void setTimeout(fn, ms),
 }: ScannerDeps) {
   const listeners = new Set<() => void>();
-  let active = false;
+  // Parcours en cours dans cet onglet (rendu aux appels simultanés), et force demandé pendant ce temps.
+  let active: Promise<void> | null = null;
+  let forceQueued = false;
   let retryScheduled = false;
 
   // Dernier état lu ou écrit : une vue qui se remonte repart de là, sans attendre le stockage.
@@ -73,9 +75,7 @@ export function createCollectionScanner({
   // tentative en boucle : à la première erreur on s'arrête, la reprise se fait au prochain appel.
   // Import déjà terminé : on lit les cartes de la plus récente à la plus ancienne et on s'arrête
   // à la première obtenue avant le dernier import (souvent une seule requête).
-  async function run({ force = false }: { force?: boolean } = {}): Promise<void> {
-    if (active) return;
-    active = true;
+  async function pass({ force }: { force: boolean }): Promise<void> {
     let saved: ScanState = IDLE_SCAN;
     let mode: 'full' | 'incremental' = 'full';
     let page = 0;
@@ -190,9 +190,28 @@ export function createCollectionScanner({
         ...(pageSize > 0 ? { pageSize } : {}),
         error: message,
       }).catch(() => undefined);
-    } finally {
-      active = false;
     }
+  }
+
+  // Un seul parcours à la fois dans cet onglet. Un `force` demandé pendant un parcours déjà en cours (p. ex. la mise à jour
+  // du chargement de la page) n'est pas perdu : un parcours complet suit, et l'appel ne se termine qu'ensuite.
+  function run({ force = false }: { force?: boolean } = {}): Promise<void> {
+    if (active) {
+      if (force) forceQueued = true;
+      return active;
+    }
+    active = (async () => {
+      try {
+        await pass({ force });
+        while (forceQueued) {
+          forceQueued = false;
+          await pass({ force: true });
+        }
+      } finally {
+        active = null;
+      }
+    })();
+    return active;
   }
 
   return {

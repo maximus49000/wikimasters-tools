@@ -18,10 +18,13 @@ import {
   setGridHidden,
 } from './collection-dom';
 import type { CollectionFilterSource } from './collection-filter';
+import { recountCopies } from '../core/collection/recount';
 import { readView, writeView, type CollectionView } from './collection-view';
 import { HomemadePanel } from './HomemadePanel';
 import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
+import { RecountGate } from './RecountGate';
+import { createRecountSource } from './recount-source';
 import type { MarketSource } from './market-source';
 import { TimelinePanel } from './TimelinePanel';
 import { syncPriceSort } from './price-sort-menu';
@@ -63,6 +66,8 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
   let panel: Panel | null = null;
   let scanStarted = false;
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
+  // « ×2 » : les exemplaires sont recomptés sur toute la Collection avant d'afficher les cartes en double.
+  const recount = createRecountSource(() => recountCopies(scanner));
   // Plus grand nombre de cartes vues dans la grille native : la taille de page du site, avant que le scan la connaisse.
   let nativeCount = 0;
 
@@ -90,13 +95,15 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
     const root = createRoot(mountPoint);
     const common = { collection, scanner, book, market, filterSource, loadFiltered, onOpen: openCard, onOpenCard: openGameCard, onWantCards: wantCards };
     root.render(
-      view === 'timeline' ? (
-        <TimelinePanel {...common} birth={birth} kinds={kinds} kindFilterSource={kindFilterSource} />
-      ) : view === 'world' ? (
-        <WorldPanel {...common} geo={geo} kinds={kinds} kindFilterSource={kindFilterSource} />
-      ) : (
-        <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} />
-      ),
+      <RecountGate recount={recount} scanner={scanner}>
+        {view === 'timeline' ? (
+          <TimelinePanel {...common} birth={birth} kinds={kinds} kindFilterSource={kindFilterSource} />
+        ) : view === 'world' ? (
+          <WorldPanel {...common} geo={geo} kinds={kinds} kindFilterSource={kindFilterSource} />
+        ) : (
+          <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} />
+        )}
+      </RecountGate>,
     );
     panel = { host, root, grid, view };
   }
@@ -147,7 +154,10 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
       on: kindFilterSource.current().duplicates === true,
       onToggle: () => {
         const current = kindFilterSource.current();
-        kindFilterSource.set({ ...current, duplicates: !current.duplicates });
+        const next = !current.duplicates;
+        // Activer : le recomptage démarre avant le filtre, pour ne jamais montrer une liste aux nombres périmés.
+        if (next) recount.start();
+        kindFilterSource.set({ ...current, duplicates: next });
         sync();
       },
     });
