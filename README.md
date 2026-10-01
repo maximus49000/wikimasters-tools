@@ -28,10 +28,11 @@ la carte pour rouvrir sa fiche (vos filtres et votre tri précédents ne sont pa
 
 ### Relevé du marché des cartes de votre Collection
 
-Le marché compte des dizaines de milliers d'enchères : l'extension ne le parcourt **jamais**. Pour les seules
-cartes de votre Collection affichées à l'écran, elle envoie la même recherche par titre que la page Marché
-du site (une requête par carte, 1,5 s entre deux, au plus 60 par passe), **une fois par carte et par 30 min**.
-Seules les enchères de la carte elle-même sont gardées (pas les titres voisins). Elle enregistre localement :
+Le marché compte des dizaines de milliers d'enchères : l'extension ne le parcourt **jamais**. Elle ne relève que
+les cartes de **votre Collection** : elle envoie la même recherche par titre que la page Marché du site (une
+requête par carte, 1,5 s entre deux, au plus 60 par passe), **une fois par carte et par 30 min**. Les cartes
+affichées à l'écran passent en premier ; quand elles sont à jour, le reste de la Collection est relevé **en fond**
+(voir plus bas). Seules les enchères de la carte elle-même sont gardées (pas les titres voisins). Elle enregistre localement :
 
 - à chaque relevé, la **moyenne des enchères déjà misées** de la carte (avec min et max), gardée 7 jours, puis un
   cumul par jour gardé 365 jours ;
@@ -47,8 +48,17 @@ Pendant qu'une carte attend son relevé ou est en cours de relevé, un petit gly
 
 Un bouton « Recharger les prix de cette page » sous la grille de la Collection relit tout de suite le prix des cartes affichées, sans attendre les 30 min. Un rechargement est identifié par la page et le filtre actif : s'il est déjà en tête, un nouveau clic ne crée aucune requête (les cartes se mettent juste à jour) ; s'il est en attente derrière un autre, il passe en premier ; sinon il est créé et passe devant tout le reste, même dans une passe en cours. Le bouton affiche l'avancement (« Rechargement… 23 / 50 ») ou « Rechargement en attente : passer en premier ».
 
+**Relevé en fond de toute la Collection.** Quand les cartes affichées (et les rechargements demandés) sont à jour,
+l'extension relève le reste de votre Collection connue, sans filtre, dans l'ordre par défaut du site (rareté, puis
+titre : page 1, puis 2… jusqu'à la dernière), en respectant la même règle : jamais une carte relevée depuis moins
+de 30 min. C'est un **cycle permanent** tant qu'un onglet du site est visible : dès qu'une carte a plus de 30 min,
+elle redevient due, la plus anciennement relevée d'abord (ainsi la fin de la Collection n'est jamais laissée de côté).
+Au rythme des passes (environ 25 cartes par minute), un tour de 1 700 cartes prend environ 70 min. Si vous ouvrez une
+page dont les prix ne sont pas à jour, ses cartes repassent devant au relevé suivant, puis le fond reprend là où il
+en était. Les cartes du fond n'affichent pas le glyphe de chargement (seules celles de l'écran le font).
+
 Les relevés se poursuivent d'une page à l'autre du site (un changement de page ne perd rien) et un seul onglet à la
-fois relève. Une erreur (déconnexion, 429 persistant) arrête la passe et rien n'est retenté avant 30 min.
+fois relève. Une erreur (déconnexion, 429 persistant) arrête la passe, fond compris, et rien n'est retenté avant 30 min.
 
 ### Écouter la musique d'une carte (Spotify)
 

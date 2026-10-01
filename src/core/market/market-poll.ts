@@ -53,18 +53,21 @@ export type CollectorDeps = {
   isVisible: () => boolean;
   // Identifiant propre à cet onglet (verrou).
   id: string;
+  // Toute la Collection connue, sans filtre, dans l'ordre du site : relevée en fond quand rien d'autre n'est dû.
+  background?: () => Promise<Target[]>;
 };
 
 export type TickResult = 'ran' | 'skipped' | 'interrupted' | 'failed';
 
-// Relevé, en lecture seule, des seules cartes de la Collection affichées à l'écran :
-// une recherche par titre (comme la page Marché du site), au plus une fois par carte et par 30 min.
+// Relevé, en lecture seule, des cartes de la Collection : une recherche par titre (comme la page Marché du site),
+// au plus une fois par carte et par 30 min. Ordre de priorité : rechargements forcés, cartes affichées à l'écran,
+// puis (en fond) le reste de la Collection, la carte relevée le plus anciennement d'abord.
 // - Indépendant de la page affichée, et sans état à sauvegarder pour survivre à une navigation :
 //   la date du dernier relevé est tenue carte par carte, la page suivante ne refait que ce qui reste.
 // - Un seul onglet à la fois (verrou daté dans le stockage, périmé après 20 s sans activité).
 // - Une vraie erreur arrête la passe ; ce qui est déjà relevé reste enregistré.
 export function createMarketCollector(deps: CollectorDeps) {
-  const { api, history, store, now, isVisible, id } = deps;
+  const { api, history, store, now, isVisible, id, background } = deps;
   let running = false;
   let unloading = false;
   let holdsLock = false;
@@ -108,11 +111,42 @@ export function createMarketCollector(deps: CollectorDeps) {
     const isForced = new Set(forced);
     const normal = Object.entries(state.wanted).filter(([slug, w]) => {
       if (isForced.has(slug) || t - w.seenAt >= WANTED_TTL_MS) return false;
-      const last = Math.max(state.polledAt[slug] ?? -Infinity, handled.get(slug) ?? -Infinity);
-      return t - last >= POLL_INTERVAL_MS;
+      return t - lastPolled(state, slug) >= POLL_INTERVAL_MS;
     });
     return [...forced.map((slug): [string, Wanted] => [slug, state.wanted[slug]!]), ...normal];
   }
+
+  // Date du dernier relevé d'une carte (stockage ou cet onglet, avant l'écriture par lot).
+  const lastPolled = (state: Targets, slug: string): number =>
+    Math.max(state.polledAt[slug] ?? -Infinity, handled.get(slug) ?? -Infinity);
+
+  // La carte du fond à relever : parmi celles de toute la Collection qui n'ont pas été relevées depuis 30 min, la
+  // relevée le plus anciennement (jamais relevée d'abord, dans l'ordre du site). Sans ça, une Collection plus longue
+  // que 30 min de relevés ne dépasserait jamais ses premières cartes, qui redeviendraient dues avant d'avoir fini.
+  function nextBackground(state: Targets, t: number, list: Target[], seen: ReadonlySet<string>): Target | undefined {
+    if (state.cooldownUntil !== undefined && t < state.cooldownUntil) return undefined;
+    let best: Target | undefined;
+    let bestAt = Infinity;
+    for (const card of list) {
+      if (seen.has(card.slug)) continue;
+      const last = lastPolled(state, card.slug);
+      if (t - last < POLL_INTERVAL_MS || last >= bestAt) continue;
+      best = card;
+      bestAt = last;
+    }
+    return best;
+  }
+
+  // Une Collection illisible ne doit pas empêcher le relevé des cartes affichées.
+  const loadBackground = async (): Promise<Target[]> => {
+    if (!background) return [];
+    try {
+      return await background();
+    } catch (error) {
+      console.warn('[wikimasters-tools]', 'collection illisible pour le relevé en fond :', error);
+      return [];
+    }
+  };
 
   const load = async (): Promise<Targets> =>
     (await store.get<Targets>(TARGETS_KEY)) ?? { wanted: {}, polledAt: {} };
@@ -235,7 +269,9 @@ export function createMarketCollector(deps: CollectorDeps) {
       try {
         const t = now();
         const state = await load();
-        if (dueEntries(state, t).length === 0) return 'skipped';
+        // La Collection est lue une fois par passe (pas à chaque requête) ; les cartes affichées sont relues, elles.
+        const rest = await loadBackground();
+        if (dueEntries(state, t).length === 0 && !nextBackground(state, t, rest, passSeen)) return 'skipped';
         if (!(await takeLock(t))) return 'skipped';
 
         let batch: MarketAuction[] = [];
@@ -269,9 +305,12 @@ export function createMarketCollector(deps: CollectorDeps) {
           await tail;
           const current = await load();
           const forced = new Set(forcedSlugs(current));
-          const next = dueEntries(current, now()).find(
+          // Les cartes affichées (ou forcées) d'abord ; le fond seulement quand il n'en reste plus, dans la limite de la passe.
+          const shown = dueEntries(current, now()).find(
             ([slug]) => !seen.has(slug) && (forced.has(slug) || normalDone < MAX_PER_PASS),
           );
+          const fond = shown || normalDone >= MAX_PER_PASS ? undefined : nextBackground(current, now(), rest, seen);
+          const next: [string, { title: string }] | undefined = shown ?? (fond ? [fond.slug, fond] : undefined);
           if (!next) break;
           const [slug, wanted] = next;
           seen.add(slug);

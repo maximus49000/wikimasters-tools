@@ -50,6 +50,8 @@ function world(catalog: MarketAuction[] = []) {
   const clock = { now: T0 };
   const fake = site(catalog);
   const history = createHistoryRepo(store, () => clock.now);
+  // La Collection entière dans l'ordre du site : les cartes relevées en fond (vide tant qu'un test n'en pose pas).
+  const fond: { cards: { slug: string; title: string }[]; fail: boolean } = { cards: [], fail: false };
   const tab = (id: string, visible = true) =>
     createMarketCollector({
       api: fake.api,
@@ -58,8 +60,12 @@ function world(catalog: MarketAuction[] = []) {
       now: () => clock.now,
       isVisible: () => visible,
       id,
+      background: async () => {
+        if (fond.fail) throw new Error('collection illisible');
+        return fond.cards;
+      },
     });
-  return { store, clock, fake, history, tab };
+  return { store, clock, fake, history, tab, fond };
 }
 
 type Tab = ReturnType<ReturnType<typeof world>['tab']>;
@@ -602,5 +608,158 @@ describe('rechargement forcé pendant une passe déjà en cours', () => {
     await tab.tick();
     // A, B et C (en vol) viennent d'être relevées dans cette passe : il en reste 2 sur 5.
     expect(status).toEqual({ remaining: 2, total: 5, queued: false });
+  });
+});
+
+describe('relevé en fond de toute la Collection', () => {
+  const nom = (i: number) => `Fond ${String(i).padStart(2, '0')}`;
+  const cartes = (n: number) => Array.from({ length: n }, (_, i) => target(nom(i)));
+  const noms = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => nom(from + i));
+
+  it('relève la Collection dans l’ordre du site quand rien d’autre n’est dû', async () => {
+    const w = world([auction('a1', nom(1), 80)]);
+    w.fond.cards = cartes(4);
+    expect(await w.tab('A').tick()).toBe('ran');
+    expect(w.fake.calls).toEqual(noms(0, 4));
+    expect(await samplesOf(w, nom(1))).toEqual([{ t: T0, avgBid: 80, bidCount: 1, minBid: 80, maxBid: 80 }]);
+  });
+
+  it('sert d’abord les cartes affichées, puis le fond', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(3);
+    const tab = w.tab('A');
+    await tab.want([target('Page active')]);
+    await tab.tick();
+    expect(w.fake.calls).toEqual(['Page active', ...noms(0, 3)]);
+  });
+
+  it('un rechargement forcé passe aussi devant le fond', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(3);
+    const tab = w.tab('A');
+    await tab.force([target('Forcée')]);
+    await tab.tick();
+    expect(w.fake.calls).toEqual(['Forcée', ...noms(0, 3)]);
+  });
+
+  it('une page ouverte en cours de fond passe devant, puis le fond reprend là où il en était', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(5);
+    const tab = w.tab('A');
+    // Pendant la requête de « Fond 01 », l'utilisateur ouvre une page dont les prix ne sont pas à jour.
+    w.fake.hooks.set(nom(1), async () => {
+      await tab.want([target('Page B 1'), target('Page B 2')]);
+      return { auctions: [] };
+    });
+    await tab.tick();
+    expect(w.fake.calls).toEqual([nom(0), nom(1), 'Page B 1', 'Page B 2', nom(2), nom(3), nom(4)]);
+  });
+
+  it('ne relève pas une carte du fond avant 30 min, puis la relève de nouveau : le cycle est permanent', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(3);
+    const tab = w.tab('A');
+    await tab.tick();
+    w.clock.now += POLL_INTERVAL_MS - 1;
+    expect(await tab.tick()).toBe('skipped');
+    expect(w.fake.calls).toEqual(noms(0, 3));
+    w.clock.now += 1;
+    expect(await tab.tick()).toBe('ran');
+    expect(w.fake.calls).toEqual([...noms(0, 3), ...noms(0, 3)]);
+  });
+
+  it('ne relit pas une carte du fond que la page affichée vient de relever', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(3);
+    const tab = w.tab('A');
+    await tab.want([target(nom(1))]);
+    await tab.tick();
+    expect(w.fake.calls).toEqual([nom(1), nom(0), nom(2)]);
+  });
+
+  it('plafonne une passe à 60 requêtes, fond compris ; le reste suit à la passe suivante', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(75);
+    const tab = w.tab('A');
+    await tab.tick();
+    expect(w.fake.calls).toHaveLength(60);
+    await tab.tick();
+    expect(w.fake.calls).toHaveLength(75);
+    expect(new Set(w.fake.calls).size).toBe(75);
+  });
+
+  it('un cycle ne laisse pas de côté la fin de la Collection : la carte relevée le plus anciennement passe d’abord', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(100);
+    const tab = w.tab('A');
+    await tab.tick();
+    expect(w.fake.calls).toEqual(noms(0, 60));
+    w.clock.now += POLL_INTERVAL_MS;
+    await tab.tick();
+    // Les 40 jamais relevées d'abord, puis on reprend par les plus anciennes.
+    expect(w.fake.calls.slice(60)).toEqual([...noms(60, 100), ...noms(0, 20)]);
+  });
+
+  it('une erreur arrête le fond et rien n’est retenté avant 30 min', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(3);
+    const tab = w.tab('A');
+    w.fake.hooks.set(nom(1), async () => {
+      throw new Error('429');
+    });
+    expect(await tab.tick()).toBe('failed');
+    expect(w.fake.calls).toEqual([nom(0), nom(1)]);
+
+    w.fake.hooks.clear();
+    w.clock.now += 5 * MIN;
+    expect(await w.tab('B').tick()).toBe('skipped');
+    expect(w.fake.calls).toEqual([nom(0), nom(1)]);
+
+    w.clock.now += POLL_INTERVAL_MS;
+    expect(await w.tab('C').tick()).toBe('ran');
+    expect(w.fake.calls[2]).toBe(nom(1));
+  });
+
+  it('les cartes du fond ne sont pas « en attente » : seul l’écran affiche le glyphe de chargement', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(3);
+    const tab = w.tab('A');
+    expect((await tab.pendingSlugs()).size).toBe(0);
+    let during: string[] = [];
+    w.fake.hooks.set(nom(1), async () => {
+      during = [...(await tab.pendingSlugs())];
+      return { auctions: [] };
+    });
+    await tab.tick();
+    expect(during).toEqual([]);
+  });
+
+  it('une Collection illisible n’empêche pas le relevé des cartes affichées', async () => {
+    const w = world([]);
+    w.fond.fail = true;
+    const tab = w.tab('A');
+    await tab.want([target('Page active')]);
+    expect(await tab.tick()).toBe('ran');
+    expect(w.fake.calls).toEqual(['Page active']);
+  });
+
+  it('un onglet masqué ne relève pas le fond', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(3);
+    expect(await w.tab('caché', false).tick()).toBe('skipped');
+    expect(w.fake.calls).toEqual([]);
+  });
+
+  it('un seul onglet relève le fond à la fois', async () => {
+    const w = world([]);
+    w.fond.cards = cartes(3);
+    let autre: string | undefined;
+    w.fake.hooks.set(nom(0), async () => {
+      autre = await w.tab('B').tick();
+      return { auctions: [] };
+    });
+    expect(await w.tab('A').tick()).toBe('ran');
+    expect(autre).toBe('skipped');
+    expect(w.fake.calls).toEqual(noms(0, 3));
   });
 });
