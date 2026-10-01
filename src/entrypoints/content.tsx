@@ -118,7 +118,10 @@ export default defineContentScript({
           console.warn(LOG, 'vues de la Collection indisponibles :', error);
         }
         try {
-          syncRefreshButton(collector);
+          syncRefreshButton(collector, {
+            getFilter: () => filterSource.current(),
+            onUpdate: () => void refreshHistory(),
+          });
         } catch (error) {
           console.warn(LOG, 'bouton de rechargement indisponible :', error);
         }

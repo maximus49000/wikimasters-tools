@@ -43,6 +43,7 @@ describe('câblage du relevé du marché', () => {
   });
 
   it('le bouton de rechargement est branché sur le collecteur', () => {
-    expect(source).toMatch(/syncRefreshButton\(collector\)/);
+    expect(source).toMatch(/syncRefreshButton\(collector, \{/);
+    expect(source).toMatch(/getFilter: \(\) => filterSource\.current\(\)/);
   });
 });

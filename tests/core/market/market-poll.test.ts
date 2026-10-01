@@ -473,3 +473,100 @@ describe('rechargement forcé d’une page', () => {
     expect(w.fake.calls).toEqual(['Carte A', 'Carte A']);
   });
 });
+
+describe('rechargements par page et par filtre', () => {
+  const UR = { filter: 'rarity=UR', page: 2 };
+  const trio = ['Carte A', 'Carte B', 'Carte C'].map(target);
+
+  it('mémorise le filtre actif et la page dans le rechargement', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.force(trio, UR);
+    const state = await w.store.get<{ jobs: Record<string, { filter: string; page: number }> }>('market-targets');
+    expect(Object.values(state!.jobs)).toEqual([expect.objectContaining({ filter: 'rarity=UR', page: 2 })]);
+  });
+
+  it('un rechargement de la même page et du même filtre déjà en tête ne crée aucune requête de plus', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    expect(await tab.force(trio, UR)).toBe('created');
+    let again: string | undefined;
+    w.fake.hooks.set('Carte A', async () => {
+      again = await tab.force(trio, UR);
+      return { auctions: [] };
+    });
+    await tab.tick();
+    expect(again).toBe('running');
+    expect(w.fake.calls).toEqual(['Carte A', 'Carte B', 'Carte C']);
+  });
+
+  it('même page mais autre filtre : c’est un autre rechargement', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    expect(await tab.force(trio, UR)).toBe('created');
+    expect(await tab.force(trio, { filter: 'rarity=SR', page: 2 })).toBe('created');
+  });
+
+  it('même filtre mais autre page : c’est un autre rechargement', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    expect(await tab.force(trio, UR)).toBe('created');
+    expect(await tab.force(['Carte D', 'Carte E'].map(target), { filter: 'rarity=UR', page: 3 })).toBe('created');
+  });
+
+  it('un rechargement forcé passe devant les rechargements déjà en attente (le dernier clic d’abord)', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.force(['P1 a', 'P1 b'].map(target), { filter: '', page: 1 });
+    await tab.force(['P2 a', 'P2 b'].map(target), { filter: '', page: 2 });
+    await tab.tick();
+    expect(w.fake.calls).toEqual(['P2 a', 'P2 b', 'P1 a', 'P1 b']);
+  });
+
+  it('forcer un rechargement en attente mais pas en tête le fait passer en premier', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    const page1 = ['P1 a', 'P1 b'].map(target);
+    await tab.force(page1, { filter: '', page: 1 });
+    await tab.force(['P2 a', 'P2 b'].map(target), { filter: '', page: 2 });
+    expect((await tab.forceStatus({ filter: '', page: 1 })).queued).toBe(true);
+    expect((await tab.forceStatus({ filter: '', page: 2 })).queued).toBe(false);
+
+    expect(await tab.force(page1, { filter: '', page: 1 })).toBe('promoted');
+    expect((await tab.forceStatus({ filter: '', page: 1 })).queued).toBe(false);
+    await tab.tick();
+    expect(w.fake.calls).toEqual(['P1 a', 'P1 b', 'P2 a', 'P2 b']);
+  });
+
+  it('la même page avec un autre tri (autres cartes) remplace l’ancien rechargement', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.force(['Carte A', 'Carte B'].map(target), UR);
+    expect(await tab.force(['Carte C', 'Carte D'].map(target), UR)).toBe('created');
+    await tab.tick();
+    // Les cartes du nouveau tri passent en priorité ; les anciennes restent à relever, mais en relevé normal.
+    expect(w.fake.calls.slice(0, 2)).toEqual(['Carte C', 'Carte D']);
+    expect(w.fake.calls.slice(2).sort()).toEqual(['Carte A', 'Carte B']);
+    expect(await tab.forceStatus(UR)).toEqual({ remaining: 0, total: 0, queued: false });
+  });
+
+  it('suit l’avancement du rechargement de la page affichée', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    expect(await tab.forceStatus(UR)).toEqual({ remaining: 0, total: 0, queued: false });
+    await tab.force(trio, UR);
+    expect(await tab.forceStatus(UR)).toEqual({ remaining: 3, total: 3, queued: false });
+    await tab.tick();
+    expect(await tab.forceStatus(UR)).toEqual({ remaining: 0, total: 0, queued: false });
+  });
+
+  it('une carte présente dans deux rechargements n’est relevée qu’une fois par passe', async () => {
+    const w = world([]);
+    const tab = w.tab('A');
+    await tab.force(['Commune', 'Seule 1'].map(target), { filter: '', page: 1 });
+    await tab.force(['Commune', 'Seule 2'].map(target), { filter: 'x', page: 1 });
+    await tab.tick();
+    expect(w.fake.calls.filter((c) => c === 'Commune')).toHaveLength(1);
+    expect(await tab.forceStatus({ filter: '', page: 1 })).toEqual({ remaining: 0, total: 0, queued: false });
+  });
+});

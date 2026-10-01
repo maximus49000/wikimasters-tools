@@ -15,10 +15,11 @@ import {
 import { PurchaseBadge } from './PurchaseBadge';
 import { HistoryBadge } from './HistoryBadge';
 import { LoadingGlyph } from './LoadingGlyph';
-import { RefreshButton } from './RefreshButton';
+import { RefreshButton, type CollectionView } from './RefreshButton';
 import { findCollectionRoot, findSelectButton, scanCollectionCards } from './collection-dom';
 import {
   ensureRefreshButton,
+  readCollectionPage,
   REFRESH_HOST_ATTRIBUTE,
   removeRefreshButton,
   type MountRefresh,
@@ -74,15 +75,19 @@ export const mountLoadingGlyph: MountLoading = (frame) => {
   return { unmount: () => window.setTimeout(() => root.unmount(), 0) };
 };
 
-// Les cartes de la Collection affichées à l'écran (à recharger).
-function visibleCollectionCards(): { slug: string; title: string }[] {
+// La page de Collection affichée : son numéro, le filtre actif et les cartes à l'écran.
+function currentCollectionView(getFilter: () => string): CollectionView {
   const select = findSelectButton(document);
   const scope = select ? findCollectionRoot(select) : null;
-  return scope ? scanCollectionCards(scope).map(({ slug, title }) => ({ slug, title })) : [];
+  const targets = scope ? scanCollectionCards(scope).map(({ slug, title }) => ({ slug, title })) : [];
+  return { filter: getFilter(), page: readCollectionPage(document), targets };
 }
 
 // Bouton « Recharger les prix de cette page » : uniquement sur la Collection, sous la grille des cartes.
-export function syncRefreshButton(collector: MarketCollector): void {
+export function syncRefreshButton(
+  collector: MarketCollector,
+  deps: { getFilter: () => string; onUpdate: () => void },
+): void {
   if (!window.location.pathname.startsWith('/collection')) {
     removeRefreshButton(document);
     return;
@@ -96,7 +101,13 @@ export function syncRefreshButton(collector: MarketCollector): void {
     shadow.appendChild(mountPoint);
     grid.insertAdjacentElement('afterend', host);
     const root = createRoot(mountPoint);
-    root.render(<RefreshButton collector={collector} getTargets={visibleCollectionCards} />);
+    root.render(
+      <RefreshButton
+        collector={collector}
+        getView={() => currentCollectionView(deps.getFilter)}
+        onUpdate={deps.onUpdate}
+      />,
+    );
     return { unmount: () => window.setTimeout(() => root.unmount(), 0) };
   };
   ensureRefreshButton(document, mount);

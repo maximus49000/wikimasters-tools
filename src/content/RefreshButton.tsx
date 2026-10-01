@@ -1,11 +1,15 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import type { MarketCollector, Target } from '../core/market/market-poll';
+import type { ForceView, MarketCollector, Target } from '../core/market/market-poll';
 import { refreshLabel } from './refresh-button';
 
+export type CollectionView = ForceView & { targets: Target[] };
+
 type Props = {
-  collector: Pick<MarketCollector, 'force' | 'forceProgress' | 'subscribe' | 'tick'>;
-  // Les cartes affichées au moment du clic.
-  getTargets: () => Target[];
+  collector: Pick<MarketCollector, 'force' | 'forceStatus' | 'subscribe' | 'tick'>;
+  // La page, le filtre actif et les cartes affichées au moment voulu.
+  getView: () => CollectionView;
+  // Met simplement à jour le contenu des cartes (sans nouvelle requête).
+  onUpdate: () => void;
 };
 
 const wrap: CSSProperties = { display: 'flex', justifyContent: 'center', padding: '16px 0' };
@@ -51,23 +55,37 @@ function Icon({ spinning }: { spinning: boolean }) {
   );
 }
 
-export function RefreshButton({ collector, getTargets }: Props) {
-  const [progress, setProgress] = useState({ remaining: 0, total: 0 });
+export function RefreshButton({ collector, getView, onUpdate }: Props) {
+  const [status, setStatus] = useState({ remaining: 0, total: 0, queued: false });
 
   useEffect(() => {
-    const load = () => collector.forceProgress().then(setProgress, () => undefined);
-    void load();
-    return collector.subscribe(() => void load());
-  }, [collector]);
+    const load = () => {
+      const view = getView();
+      void collector.forceStatus({ filter: view.filter, page: view.page }).then(setStatus, () => undefined);
+    };
+    load();
+    // La page ou le filtre peuvent changer sans événement du collecteur : on relit régulièrement.
+    const timer = window.setInterval(load, 1000);
+    const unsubscribe = collector.subscribe(load);
+    return () => {
+      window.clearInterval(timer);
+      unsubscribe();
+    };
+  }, [collector, getView]);
 
-  const { text, busy } = refreshLabel(progress);
+  const { text, state } = refreshLabel(status);
 
   function onClick(): void {
-    const targets = getTargets();
-    if (busy || targets.length === 0) return;
+    const view = getView();
+    if (view.targets.length === 0) return;
     void collector
-      .force(targets)
-      .then(() => collector.tick())
+      .force(view.targets, { filter: view.filter, page: view.page })
+      .then((outcome) => {
+        // Déjà en tête : aucune requête de plus, on met juste à jour le contenu des cartes.
+        if (outcome === 'running') onUpdate();
+        else return collector.tick();
+        return undefined;
+      })
       .catch((error) => console.warn('[wikimasters-tools]', 'rechargement du marché :', error));
   }
 
@@ -77,12 +95,11 @@ export function RefreshButton({ collector, getTargets }: Props) {
       <button
         type="button"
         onClick={onClick}
-        disabled={busy}
-        aria-busy={busy}
-        title="Relit tout de suite le prix du marché des cartes affichées sur cette page. Outil non officiel."
-        style={{ ...base, opacity: busy ? 0.7 : 1, cursor: busy ? 'default' : 'pointer' }}
+        aria-busy={state === 'running'}
+        title="Relit tout de suite le prix du marché des cartes affichées sur cette page (selon le filtre actif). Outil non officiel."
+        style={{ ...base, opacity: state === 'running' ? 0.75 : 1, cursor: 'pointer' }}
       >
-        <Icon spinning={busy} />
+        <Icon spinning={state === 'running'} />
         {text}
       </button>
     </div>
