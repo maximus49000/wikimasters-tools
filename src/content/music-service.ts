@@ -90,6 +90,8 @@ export function createMusicService(deps: MusicServiceDeps) {
         await session.link();
         return null;
       } catch (error) {
+        // Une erreur hors Spotify (fenêtre d'autorisation refusée, adresse de retour non déclarée…) : on en montre la cause.
+        if (error instanceof Error && !(error instanceof SpotifyError)) return `Liaison Spotify impossible : ${error.message}`;
         return userMessage(error);
       }
     },

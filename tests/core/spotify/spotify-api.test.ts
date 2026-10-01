@@ -90,6 +90,25 @@ describe('createSpotifyApi', () => {
     expect(call(fetch, 2).init.body).toBeUndefined();
   });
 
+  it("cible l'appareil visible quand aucun n'est actif (404), sans rien changer sinon", async () => {
+    const { api, fetch } = setup([
+      empty(404),
+      json({ devices: [{ id: 'phone', type: 'Smartphone' }, { id: 'pc', type: 'Computer' }] }),
+      empty(204),
+    ]);
+    await api.play({ uris: ['spotify:track:1'] });
+    expect(call(fetch, 1).url.pathname).toBe('/v1/me/player/devices');
+    expect(call(fetch, 2).url.pathname).toBe('/v1/me/player/play');
+    expect(call(fetch, 2).url.searchParams.get('device_id')).toBe('pc');
+    expect(JSON.parse(call(fetch, 2).init.body as string)).toEqual({ uris: ['spotify:track:1'] });
+  });
+
+  it("garde l'erreur « aucun appareil » quand Spotify n'en voit aucun", async () => {
+    const { api, fetch } = setup([empty(404), json({ devices: [] })]);
+    await expect(api.play(null)).rejects.toMatchObject({ code: 'no-device' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('met en pause', async () => {
     const { api, fetch } = setup([empty(204)]);
     await api.pause();
