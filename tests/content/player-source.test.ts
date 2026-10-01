@@ -46,6 +46,22 @@ function setup(over: { linked?: boolean; hidden?: string | null } = {}) {
 }
 
 describe('createPlayerSource', () => {
+  it('stockage indisponible : lecteur visible par défaut, setHidden ne lève pas', () => {
+    const boom = () => {
+      throw new Error('stockage bloqué');
+    };
+    const source = createPlayerSource({
+      api: { playerState: vi.fn(async () => null), play: vi.fn(async () => undefined), pause: vi.fn(async () => undefined) },
+      session: { isLinked: async () => false, subscribe: () => () => undefined },
+      storage: { getItem: boom, setItem: boom },
+      isVisible: () => true,
+      onVisible: () => () => undefined,
+    });
+    expect(source.current().hidden).toBe(false);
+    expect(() => source.setHidden(true)).not.toThrow();
+    expect(source.current().hidden).toBe(true);
+  });
+
   it("n'appelle pas l'API quand l'onglet est masqué, et sonde dès le retour au premier plan", async () => {
     const { source, api, scheduled, setVisible } = setup();
     setVisible(false);

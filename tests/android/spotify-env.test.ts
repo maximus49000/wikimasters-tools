@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAndroidSpotifyEnv, type AndroidWindow } from '../../src/android/spotify-env';
 
 function fakeWindow(): AndroidWindow & { WmtSpotify: { openAuth: ReturnType<typeof vi.fn> } } {
@@ -6,6 +6,29 @@ function fakeWindow(): AndroidWindow & { WmtSpotify: { openAuth: ReturnType<type
 }
 
 describe('createAndroidSpotifyEnv', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('un second authorize rejette la tentative précédente ; la seconde se résout', async () => {
+    const win = fakeWindow();
+    const env = createAndroidSpotifyEnv(win);
+    const first = env.authorize('https://accounts.spotify.com/authorize?x=1');
+    const firstRejected = expect(first).rejects.toThrow('liaison remplacée');
+    const second = env.authorize('https://accounts.spotify.com/authorize?x=2');
+    await firstRejected;
+    win.__wmtSpotifyRedirect?.('wikimasterstools://spotify?code=C&state=S');
+    expect(await second).toBe('wikimasterstools://spotify?code=C&state=S');
+    expect(win.__wmtSpotifyRedirect).toBeUndefined();
+  });
+
+  it("nettoie quand le pont lève à l'ouverture", async () => {
+    const win = fakeWindow();
+    win.WmtSpotify.openAuth.mockImplementation(() => {
+      throw new Error('boum');
+    });
+    await expect(createAndroidSpotifyEnv(win).authorize('https://accounts.spotify.com/authorize?x=1')).rejects.toThrow('boum');
+    expect(win.__wmtSpotifyRedirect).toBeUndefined();
+  });
+
   it("donne l'adresse de retour de l'application", async () => {
     expect(await createAndroidSpotifyEnv(fakeWindow()).redirectUri()).toBe('wikimasterstools://spotify');
   });
@@ -27,7 +50,6 @@ describe('createAndroidSpotifyEnv', () => {
     const assertion = expect(pending).rejects.toThrow('liaison annulée');
     await vi.advanceTimersByTimeAsync(1001);
     await assertion;
-    vi.useRealTimers();
   });
 
   it("échoue clairement sans le pont Java (navigateur ordinaire)", async () => {

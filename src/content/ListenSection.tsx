@@ -35,6 +35,9 @@ export function ListenSection({ slug, title, onHeight }: Props) {
   useEffect(() => {
     if (!service) return;
     let cancelled = false;
+    // Vue et message de la carte précédente : périmés dès que la fiche change.
+    setView(null);
+    setMessage(null);
     void service.view(slug, title).then((next) => !cancelled && setView(next));
     // Liaison ou déliaison pendant que la fiche est ouverte : on recharge.
     const off = service.subscribe(() => setVersion((value) => value + 1));
@@ -46,7 +49,7 @@ export function ListenSection({ slug, title, onHeight }: Props) {
 
   // La fiche se replace selon la hauteur réelle de la section.
   useLayoutEffect(() => {
-    onHeight(view && view.status !== 'none' ? (ref.current?.offsetHeight ?? 0) : 0);
+    onHeight(view && view.status !== 'none' ? ((ref.current?.offsetHeight ?? 0) + 8) : 0);
   }, [view, message, onHeight]);
 
   if (!service || !view || view.status === 'none') return null;
@@ -72,13 +75,13 @@ export function ListenSection({ slug, title, onHeight }: Props) {
                   {item.title}
                   {view.listen.kind === 'artist' && item.artist && <span style={{ opacity: 0.6 }}> · {item.artist}</span>}
                 </span>
-                <button type="button" onClick={() => void play(item, view.listen)} aria-label={`Lire ${item.title}`} title={`Lire ${item.title}`} style={{ ...iconButton, width: 36, height: 36, borderRadius: '50%' }}>
+                <button type="button" onClick={() => void play(item, view.listen)} aria-label={`Lire ${item.title}`} title={`Lire ${item.title}`} style={{ ...iconButton, borderRadius: '50%' }}>
                   <Glyph name="play" size={16} />
                 </button>
               </li>
             ))}
           </ul>
-          <button type="button" onClick={() => void service.unlink()} aria-label="Délier Spotify" title="Délier Spotify" style={{ ...iconButton, width: 28, height: 28, alignSelf: 'flex-end', opacity: 0.6 }}>
+          <button type="button" onClick={() => void service.unlink()} aria-label="Délier Spotify" title="Délier Spotify" style={{ ...iconButton, alignSelf: 'flex-end', opacity: 0.6 }}>
             <Glyph name="unlink" size={14} />
           </button>
         </>

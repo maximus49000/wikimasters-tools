@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SpotifyApi } from '../../../src/core/spotify/spotify-api';
 import { cleanTitle, resolveListen } from '../../../src/core/music/listen';
 
 const found = (title: string, artists: { id: string; name: string }[]) => ({
@@ -15,7 +16,7 @@ function api(overrides: Partial<Record<'searchTracks' | 'searchAlbum' | 'albumTr
     searchAlbum: vi.fn(async () => null),
     albumTracks: vi.fn(async () => []),
     ...overrides,
-  } as any;
+  } as unknown as Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'albumTracks'>;
 }
 
 describe('cleanTitle', () => {

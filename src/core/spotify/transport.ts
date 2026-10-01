@@ -37,10 +37,11 @@ export function handleSpotifyMessage(message: unknown, deps: BackgroundDeps): Pr
         return { ok: true, value: await deps.launchWebAuthFlow(request.url) };
       }
       if (request.op === 'fetch') {
-        if (typeof request.url !== 'string' || !FETCH_PREFIXES.some((prefix) => request.url!.startsWith(prefix))) {
+        const url = request.url;
+        if (typeof url !== 'string' || !FETCH_PREFIXES.some((prefix) => url.startsWith(prefix))) {
           return { ok: false, error: 'adresse refusée' };
         }
-        const response = await deps.fetch(request.url, request.init);
+        const response = await deps.fetch(url, request.init);
         return { ok: true, value: { status: response.status, retryAfter: response.headers.get('Retry-After'), body: await response.text() } };
       }
       return { ok: false, error: 'opération inconnue' };
