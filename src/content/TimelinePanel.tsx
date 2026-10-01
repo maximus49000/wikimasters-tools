@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Rect } from './card-popup-position';
 import type { KnownCard } from '../core/collection/collection-book';
-import { toCardPreview } from '../core/collection/card-preview';
+import { cardMarket, toCardPreview } from '../core/collection/card-preview';
+import type { MarketSource } from './market-source';
+import { useWantPrices } from './useWantPrices';
 import { filterLocally } from '../core/collection/local-filter';
 import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/collection/collection-scan';
 import type { CollectionRepo } from '../core/collection/collection-repo';
@@ -27,9 +29,13 @@ type Props = {
   birth: BirthRepo;
   scanner: CollectionScanner;
   book: PriceBook | null;
+  market: MarketSource;
   filterSource: CollectionFilterSource;
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
+  // Fiche de marché de la carte.
   onOpen: (slug: string) => void;
+  // Cartes affichées dont les prix du marché sont à relever.
+  onWantCards: (cards: KnownCard[]) => void;
 };
 
 const LANE_HEIGHT = 30;
@@ -76,7 +82,7 @@ const box = {
   font: '14px/20px system-ui, sans-serif',
 } as const;
 
-export function TimelinePanel({ collection, birth, scanner, book, filterSource, loadFiltered, onOpen }: Props) {
+export function TimelinePanel({ collection, birth, scanner, book, market, filterSource, loadFiltered, onOpen, onWantCards }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [birthState, setBirthState] = useState<BirthState>(EMPTY_BIRTH);
@@ -169,6 +175,21 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
   // Zoom, changement de frise ou de filtre : la case visée a bougé, l'aperçu se ferme.
   useEffect(() => setTip(null), [scale, mode, visible]);
   const tipCard = tip ? cards.find((card) => card.slug === tip.slug) : undefined;
+  const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
+  const tipPreview = useMemo(
+    () =>
+      tipCard
+        ? toCardPreview(
+            tipCard,
+            book?.byTitle(tipCard.title) ?? null,
+            cardMarket(marketNow.history, marketNow.pending, tipCard.slug, Date.now()),
+          )
+        : null,
+    [tipCard, book, marketNow],
+  );
+  // Toutes les cartes affichées (filtre compris) ont leurs prix relevés, sans parcourir les pages à la main.
+  const shown = useMemo(() => (visible ? cards.filter((card) => visible.has(card.slug)) : cards), [cards, visible]);
+  useWantPrices(shown, onWantCards);
 
   // Largeur visible de la frise : elle borne le dézoom (toute la frise tient à l'écran).
   useEffect(() => {
@@ -340,9 +361,9 @@ export function TimelinePanel({ collection, birth, scanner, book, filterSource, 
           </ul>
         </details>
       )}
-      {tip && tipCard && (
+      {tip && tipCard && tipPreview && (
         <CardPopup
-          preview={toCardPreview(tipCard, book?.byTitle(tipCard.title) ?? null)}
+          preview={tipPreview}
           anchor={tip.chip}
           onOpen={() => {
             setTip(null);

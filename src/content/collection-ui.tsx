@@ -9,6 +9,7 @@ import type { PriceBook } from '../core/pricing/price-book';
 import {
   findCardGrid,
   findCollectionRoot,
+  findPagination,
   findRarityFilterAnchor,
   findSelectButton,
   restoreHiddenGrids,
@@ -17,6 +18,7 @@ import {
 } from './collection-dom';
 import type { CollectionFilterSource } from './collection-filter';
 import { readView, writeView, type CollectionView } from './collection-view';
+import type { MarketSource } from './market-source';
 import { TimelinePanel } from './TimelinePanel';
 import { PANEL_CSS, WorldPanel } from './WorldPanel';
 import { ensureViewSwitch } from './world-toggle';
@@ -34,14 +36,17 @@ export type CollectionUiDeps = {
   // Filtres (étiquette, rareté…) appliqués sur la page, et lecture des cartes qu'ils laissent.
   filterSource: CollectionFilterSource;
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
+  // Un clic sur une carte d'une vue : sa fiche de marché.
   openCard: (slug: string) => void;
+  // Prix du marché des cartes, comme sur la liste.
+  market: MarketSource;
   // Cartes affichées dans la Collection (à relever sur le marché).
   onVisibleCards?: (cards: KnownCard[]) => void;
 };
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, birth, scanner, book, filterSource, loadFiltered, openCard, onVisibleCards }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, birth, scanner, book, filterSource, loadFiltered, openCard, market, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
 
@@ -51,6 +56,9 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
     panel.host.remove();
     panel = null;
   }
+
+  // Les cartes d'une vue (toutes celles du filtre) : leurs prix sont relevés comme ceux de la page de la liste.
+  const wantCards = (cards: KnownCard[]): void => onVisibleCards?.(cards);
 
   function mountPanel(grid: HTMLElement, view: CollectionView): void {
     const host = document.createElement('div');
@@ -71,9 +79,11 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
           birth={birth}
           scanner={scanner}
           book={book}
+          market={market}
           filterSource={filterSource}
           loadFiltered={loadFiltered}
           onOpen={openCard}
+          onWantCards={wantCards}
         />
       ) : (
         <WorldPanel
@@ -81,9 +91,11 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
           geo={geo}
           scanner={scanner}
           book={book}
+          market={market}
           filterSource={filterSource}
           loadFiltered={loadFiltered}
           onOpen={openCard}
+          onWantCards={wantCards}
         />
       ),
     );
@@ -146,6 +158,8 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
       return;
     }
     setGridHidden(grid, true);
+    // Les panneaux montrent toutes les cartes : la navigation entre les pages de la liste n'a plus de sens.
+    for (const pagination of findPagination(document, button)) setGridHidden(pagination, true);
     if (!panel || panel.grid !== grid || panel.view !== view || !panel.host.isConnected) {
       unmountPanel();
       mountPanel(grid, view);
