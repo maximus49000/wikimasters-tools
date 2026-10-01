@@ -99,3 +99,127 @@ describe('createImageService', () => {
     expect(service.peek('A')).toBe('wiki');
   });
 });
+
+// La source de pochettes distingue « j'ai répondu » (liste, éventuellement vide) de « je n'ai pas pu répondre » (null).
+describe('mémorisation de la recherche de pochette', () => {
+  type ArtFn = (title: string, slug: string) => Promise<string[] | null>;
+  const DAY = 86_400_000;
+  // Plusieurs services sur le même stockage et la même horloge : chaque `build()` simule un rechargement de la page.
+  const setupArt = (deps: { art: ArtFn; fallback?: ArtFn; search?: ImageSearch; store?: ReturnType<typeof createMemoryStore> }) => {
+    const clock = { now: 1_000_000 };
+    const store = deps.store ?? createMemoryStore();
+    const build = () =>
+      createImageService({
+        store,
+        search: deps.search ?? (async () => ['wiki']),
+        art: deps.art,
+        ...(deps.fallback ? { fallback: deps.fallback } : {}),
+        settings: settings('on'),
+        now: () => clock.now,
+      });
+    return { build, clock, store };
+  };
+
+  it('garde une pochette trouvée : plus aucune recherche, même longtemps après un rechargement', async () => {
+    const art = vi.fn<ArtFn>(async () => ['spotify']);
+    const { build, clock } = setupArt({ art });
+    await build().resolve('A', 'A');
+    clock.now += 365 * DAY;
+    expect(await build().resolve('A', 'A')).toBe('spotify');
+    expect(art).toHaveBeenCalledTimes(1);
+  });
+
+  it('mémorise « rien trouvé » : pas de nouvelle recherche avant 30 jours, même après un rechargement, puis une revérification', async () => {
+    const art = vi.fn<ArtFn>(async () => []);
+    const { build, clock } = setupArt({ art });
+    await build().resolve('A', 'A');
+    expect(art).toHaveBeenCalledTimes(1);
+
+    clock.now += 29 * DAY;
+    await build().resolve('A', 'A');
+    expect(art).toHaveBeenCalledTimes(1);
+
+    // Une pochette est apparue entre-temps : elle est reprise, et gardée pour toujours.
+    clock.now += 2 * DAY;
+    art.mockResolvedValueOnce(['spotify']);
+    expect(await build().resolve('A', 'A')).toBe('spotify');
+    expect(art).toHaveBeenCalledTimes(2);
+    clock.now += 400 * DAY;
+    await build().resolve('A', 'A');
+    expect(art).toHaveBeenCalledTimes(2);
+  });
+
+  it("une revérification qui ne trouve toujours rien est mémorisée pour 30 jours de plus", async () => {
+    const art = vi.fn<ArtFn>(async () => []);
+    const { build, clock } = setupArt({ art });
+    await build().resolve('A', 'A');
+    clock.now += 31 * DAY;
+    await build().resolve('A', 'A');
+    expect(art).toHaveBeenCalledTimes(2);
+    clock.now += 29 * DAY;
+    await build().resolve('A', 'A');
+    expect(art).toHaveBeenCalledTimes(2);
+  });
+
+  it("ne mémorise rien quand la source ne peut pas répondre ou échoue : nouvelle tentative après la minute de repos", async () => {
+    const art = vi.fn<ArtFn>().mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('429')).mockResolvedValue([]);
+    const { build, clock } = setupArt({ art });
+    const service = build();
+    await service.resolve('A', 'A');
+    expect(service.peek('A')).toBe('wiki');
+
+    clock.now += 61_000;
+    await service.request('A', 'A');
+    clock.now += 61_000;
+    await service.request('A', 'A');
+    expect(art).toHaveBeenCalledTimes(3);
+
+    // Cette fois la source a répondu : c'est mémorisé.
+    clock.now += 61_000;
+    await service.request('A', 'A');
+    await build().resolve('A', 'A');
+    expect(art).toHaveBeenCalledTimes(3);
+  });
+
+  it("compte la photo d'artiste (repli) comme une réponse : pas de nouvelle recherche, puis revérification à 30 jours", async () => {
+    const art = vi.fn<ArtFn>(async () => []);
+    const fallback = vi.fn<ArtFn>(async () => ['artist']);
+    const { build, clock } = setupArt({ art, fallback, search: async () => [] });
+    expect(await build().resolve('A', 'A')).toBe('artist');
+    expect(fallback).toHaveBeenCalledTimes(1);
+
+    clock.now += 5 * DAY;
+    expect(await build().resolve('A', 'A')).toBe('artist');
+    expect(art).toHaveBeenCalledTimes(1);
+
+    // Après 30 jours, la vraie pochette passe devant la photo.
+    clock.now += 30 * DAY;
+    art.mockResolvedValueOnce(['spotify']);
+    expect(await build().resolve('A', 'A')).toBe('spotify');
+    expect(fallback).toHaveBeenCalledTimes(1);
+  });
+
+  it('cherche une dernière fois une carte enregistrée avant ce changement, puis la mémorise', async () => {
+    const store = createMemoryStore();
+    await store.set('card-images', { A: { url: 'wiki', candidates: ['wiki'], rejected: [] } });
+    const art = vi.fn<ArtFn>(async () => []);
+    const { build, clock } = setupArt({ art, store });
+    await build().resolve('A', 'A');
+    clock.now += DAY;
+    await build().resolve('A', 'A');
+    expect(art).toHaveBeenCalledTimes(1);
+  });
+
+  it("ne relance pas la recherche pour une pochette écartée par « Mauvaise image »", async () => {
+    const store = createMemoryStore();
+    await store.set('card-images', { A: { url: 'wiki', candidates: ['wiki'], rejected: ['spotify'] } });
+    const art = vi.fn<ArtFn>(async () => ['spotify']);
+    const { build, clock } = setupArt({ art, store });
+    const service = build();
+    await service.resolve('A', 'A');
+    expect(service.peek('A')).toBe('wiki');
+    clock.now += DAY;
+    await build().resolve('A', 'A');
+    expect(art).toHaveBeenCalledTimes(1);
+  });
+});
