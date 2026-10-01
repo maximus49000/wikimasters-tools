@@ -38,7 +38,7 @@ function setup(state: KindsState = kindsState) {
 }
 
 const row = () => document.querySelector(`[${KIND_ROW_ATTRIBUTE}]`) as HTMLElement | null;
-const select = (kind: string) => row()?.querySelector<HTMLSelectElement>(`[data-wmt-kind="${kind}"]`);
+const options = (kind: string) => [...(row()?.querySelectorAll<HTMLElement>(`[data-wmt-kind-list="${kind}"] [role="option"]`) ?? [])];
 
 beforeEach(() => {
   document.body.innerHTML = '';
@@ -48,24 +48,22 @@ describe('createKindRowController', () => {
   it('pose la rangée avant la cible avec les natures de la collection, et lance le relevé Wikidata', async () => {
     const { target, controller, kinds } = setup();
     controller.mount(target);
-    await vi.waitFor(() => expect(select('nature')?.options.length).toBe(3));
+    await vi.waitFor(() => expect(options('nature')).toHaveLength(3));
 
     expect(target.previousElementSibling).toBe(row());
-    expect([...(select('nature')?.options ?? [])].map((o) => o.text)).toEqual(['Nature', 'Personne (2)', 'Album (1)']);
+    expect(options('nature').map((o) => o.textContent)).toEqual(['Tout', 'Personne (2)', 'Album (1)']);
     expect(kinds.resolveMissing).toHaveBeenCalledWith(['Piaf', 'Hugo', 'Thriller']);
   });
 
   it('un choix de nature met à jour le filtre partagé et les occupations proposées', async () => {
     const { target, controller, kindFilterSource } = setup();
     controller.mount(target);
-    await vi.waitFor(() => expect(select('nature')?.options.length).toBe(3));
+    await vi.waitFor(() => expect(options('nature')).toHaveLength(3));
 
-    const nature = select('nature') as HTMLSelectElement;
-    nature.value = 'group:Album';
-    nature.dispatchEvent(new Event('change'));
+    options('nature')[2]?.click();
 
     expect(kindFilterSource.current()).toEqual({ nature: 'group:Album', facet: '' });
-    await vi.waitFor(() => expect([...(select('facet')?.options ?? [])].map((o) => o.text)).toEqual(['Genre', 'Pop (1)']));
+    await vi.waitFor(() => expect(options('facet').map((o) => o.textContent)).toEqual(['Tout', 'Pop (1)']));
   });
 
   it('indique la progression tant que des cartes ne sont pas classées', async () => {
