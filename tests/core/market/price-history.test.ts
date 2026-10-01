@@ -149,3 +149,14 @@ describe('cumul par jour et vues du graphique', () => {
     expect(seriesFor(old, 'year', T0)).toEqual([]);
   });
 });
+
+describe('vue Heure', () => {
+  it('ne garde que les relevés des 6 dernières heures', () => {
+    let state = recordSnapshot(emptyHistory(), [auction('a', 100, HOUR, true)], T0);
+    const t1 = T0 + 5 * HOUR;
+    state = recordSnapshot(state, [auction('a', 200, HOUR, true, t1)], t1);
+    const t2 = T0 + 7 * HOUR;
+    state = recordSnapshot(state, [auction('a', 300, HOUR, true, t2)], t2);
+    expect(seriesFor(state.cards[KEY]!, 'hour', t2).map((p) => p.avgBid)).toEqual([200, 300]);
+  });
+});

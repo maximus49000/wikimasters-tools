@@ -16,7 +16,8 @@ describe('niceStep', () => {
 
 describe('ageLabel', () => {
   it('exprime l’âge en jours, heures, ou maintenant', () => {
-    expect(ageLabel(20 * 60_000)).toBe('maintenant');
+    expect(ageLabel(2 * 60_000)).toBe('maintenant');
+    expect(ageLabel(20 * 60_000)).toBe('il y a 20 min');
     expect(ageLabel(5 * 3_600_000)).toBe('il y a 5 h');
     expect(ageLabel(3 * DAY + 1)).toBe('il y a 3 j');
     expect(ageLabel(300 * DAY)).toBe('il y a 10 mois');

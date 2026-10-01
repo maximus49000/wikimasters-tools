@@ -39,7 +39,8 @@ export function niceStep(range: number, count: number): number {
 }
 
 export function ageLabel(ageMs: number): string {
-  if (ageMs < HOUR_MS) return 'maintenant';
+  if (ageMs < 5 * 60_000) return 'maintenant';
+  if (ageMs < HOUR_MS) return `il y a ${Math.floor(ageMs / 60_000)} min`;
   if (ageMs < DAY_MS) return `il y a ${Math.floor(ageMs / HOUR_MS)} h`;
   if (ageMs < 60 * DAY_MS) return `il y a ${Math.floor(ageMs / DAY_MS)} j`;
   return `il y a ${Math.floor(ageMs / (30 * DAY_MS))} mois`;

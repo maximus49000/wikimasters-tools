@@ -125,19 +125,20 @@ export function cardsForSlug(state: HistoryState, slug: string): CardHistory[] {
     .map(([, card]) => card);
 }
 
-export type ChartView = 'day' | 'week' | 'month' | 'year';
+export type ChartView = 'hour' | 'day' | 'week' | 'month' | 'year';
 
 const VIEW_SPAN_MS: Record<ChartView, number> = {
+  hour: 6 * HOUR_MS,
   day: DAY_MS,
   week: 7 * DAY_MS,
   month: 30 * DAY_MS,
   year: 365 * DAY_MS,
 };
 
-// Jour et semaine : relevés de 30 min ; mois et année : un point par jour (moyenne, min, max).
+// Heure, jour et semaine : relevés de 30 min ; mois et année : un point par jour (moyenne, min, max).
 export function seriesFor(card: CardHistory, view: ChartView, now: number): Sample[] {
   const from = now - VIEW_SPAN_MS[view];
-  if (view === 'day' || view === 'week') return card.samples.filter((s) => s.t >= from);
+  if (view === 'hour' || view === 'day' || view === 'week') return card.samples.filter((s) => s.t >= from);
   return (card.days ?? [])
     .filter((d) => d.day + DAY_MS > from)
     .map((d) => ({
