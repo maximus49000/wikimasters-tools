@@ -1290,7 +1290,7 @@ export const cleanTitle = (title: string): string =>
 
 // Les guillemets casseraient la requête de recherche.
 const quoted = (text: string): string => text.replaceAll('"', '').trim();
-const normalize = (text: string): string => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const normalize = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 type Api = Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'albumTracks'>;
 
