@@ -48,7 +48,7 @@ import { createScreenService } from '../content/screen-service';
 import { getScreenService, setScreenService } from '../content/screen-registry';
 import { createMediaArt, type MediaArt, type MediaArtSources } from '../content/media-art';
 import { createImageService } from '../core/images/image-service';
-import { MAX_CANDIDATES, searchCardImages } from '../core/images/card-image-search';
+import { searchCardImages } from '../core/images/card-image-search';
 import { setImageService } from '../content/image-registry';
 import { syncCardArt } from '../content/card-art';
 import { decorateImageSetting } from '../content/image-setting-menu';
@@ -122,14 +122,10 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   const mediaArt: MediaArt = createMediaArt({ kinds: kindsRepo, sources: artSources });
   const images = createImageService({
     store,
-    // Pochette Spotify / affiche TMDB d'abord (première recherche seulement), puis Wikipédia et Commons, puis l'artiste / l'affiche la plus proche.
-    search: async (title, skip, slug) => {
-      const art = skip === 0 ? await mediaArt.primary(slug, title).catch(() => []) : [];
-      const wiki = await searchCardImages((url) => fetch(url), title, skip);
-      const found = [...art, ...wiki.filter((url) => !art.includes(url))].slice(0, MAX_CANDIDATES);
-      // Toujours rien : photo de l'artiste (album) ou affiche la plus proche du nom (film, série).
-      return found.length === 0 && skip === 0 ? await mediaArt.fallback(slug, title).catch(() => []) : found;
-    },
+    // Wikipédia et Commons ; la pochette Spotify / l'affiche TMDB passe toujours devant, l'artiste / l'affiche la plus proche en dernier recours.
+    search: (title, skip) => searchCardImages((url) => fetch(url), title, skip),
+    art: (title, slug) => mediaArt.primary(slug, title),
+    fallback: (title, slug) => mediaArt.fallback(slug, title),
     settings: window.localStorage,
   });
   setImageService(images);

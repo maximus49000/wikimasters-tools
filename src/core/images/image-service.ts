@@ -1,11 +1,13 @@
 import type { KeyValueStore } from '../cache/store';
-import { addCandidates, EMPTY_IMAGES, rejectCurrent, setFound, type ImageState } from './image-book';
+import { MAX_CANDIDATES } from './card-image-search';
+import { addCandidates, EMPTY_IMAGES, promoteArt, rejectCurrent, setFound, type ImageState } from './image-book';
 
 const KEY = 'card-images';
 const SETTING_KEY = 'wmt:imageReplace';
 // Après un échec (429, hors ligne), on laisse Wikimedia respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
 
+type ArtSource = (title: string, slug: string) => Promise<string[]>;
 export type ImageSearch = (title: string, skip: number, slug: string) => Promise<string[]>;
 
 // Remplacement des images manquantes des cartes. L'état est gardé en mémoire (la décoration de la page est synchrone)
@@ -13,6 +15,10 @@ export type ImageSearch = (title: string, skip: number, slug: string) => Promise
 export function createImageService(deps: {
   store: KeyValueStore;
   search: ImageSearch;
+  // Pochette / affiche officielle (Spotify, TMDB) : toujours placée en tête quand elle existe.
+  art?: (title: string, slug: string) => Promise<string[]>;
+  // À défaut de toute image : photo de l'artiste, affiche la plus proche.
+  fallback?: (title: string, slug: string) => Promise<string[]>;
   settings: Pick<Storage, 'getItem' | 'setItem'>;
   now?: () => number;
 }) {
@@ -22,6 +28,10 @@ export function createImageService(deps: {
   const listeners = new Set<() => void>();
   const inFlight = new Map<string, Promise<void>>();
   const failedAt = new Map<string, number>();
+  const artTriedAt = new Map<string, number>();
+  // Une source d'images indisponible n'empêche pas les autres.
+  const safe = async (source: ArtSource | undefined, title: string, slug: string): Promise<string[]> =>
+    (await source?.(title, slug).catch(() => [])) ?? [];
   let writeTail: Promise<unknown> = Promise.resolve();
 
   const ready = deps.store.get<ImageState>(KEY).then(
@@ -94,9 +104,26 @@ export function createImageService(deps: {
     peek: (slug: string): string | null | undefined => state[slug]?.url,
     // Lance la recherche d'une carte jamais cherchée (sans effet si l'option est coupée).
     request(slug: string, title: string): Promise<void> {
-      if (!enabled || !loaded || state[slug] || coolingDown(slug)) return Promise.resolve();
+      if (!enabled || !loaded || coolingDown(slug)) return Promise.resolve();
+      const known = state[slug];
+      if (known?.art) return Promise.resolve();
+      if (known) {
+        // Image trouvée avant que la pochette officielle soit disponible : on la cherche, une fois par minute au plus.
+        const at = artTriedAt.get(slug);
+        if (!deps.art || (at !== undefined && now() - at < COOLDOWN_MS)) return Promise.resolve();
+        artTriedAt.set(slug, now());
+        return track(slug, async () => {
+          const [art] = await safe(deps.art, title, slug);
+          if (art) commit(promoteArt(state, slug, art));
+        });
+      }
       return track(slug, async () => {
-        commit(setFound(state, slug, await deps.search(title, 0, slug)));
+        const art = await safe(deps.art, title, slug);
+        artTriedAt.set(slug, now());
+        const wiki = await deps.search(title, 0, slug);
+        let found = [...art, ...wiki.filter((url) => !art.includes(url))].slice(0, MAX_CANDIDATES);
+        if (found.length === 0) found = await safe(deps.fallback, title, slug);
+        commit(setFound(state, slug, found, art.length > 0));
       });
     },
     // Image d'une carte, cherchée si besoin (aperçus, qui ne se redessinent pas seuls).
