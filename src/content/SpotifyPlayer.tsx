@@ -39,34 +39,37 @@ export function SpotifyPlayer({ source }: { source: PlayerSource }) {
     font: '500 13px/1.2 system-ui, sans-serif',
   } as const;
 
+  // Collé au bord gauche : le bouton de repli est le plus près du bord, puis pause, puis le titre et la pochette.
+  const fold = (hidden: boolean) => (
+    <button type="button" onClick={() => source.setHidden(hidden)} aria-label={hidden ? 'Masquer le lecteur' : 'Afficher le lecteur'} title={hidden ? 'Masquer le lecteur' : 'Afficher le lecteur'} style={base}>
+      <Glyph name={hidden ? 'chevron-down' : 'chevron-up'} />
+    </button>
+  );
+
   if (view.hidden) {
     return (
-      <div style={{ ...shell, left: 12, paddingLeft: 8 }}>
-        <Glyph name="note" size={16} />
+      <div style={{ ...shell, left: 12, paddingRight: 12 }}>
+        {fold(false)}
         {toggle}
-        <button type="button" onClick={() => source.setHidden(false)} aria-label="Afficher le lecteur" title="Afficher le lecteur" style={base}>
-          <Glyph name="chevron-up" />
-        </button>
+        <Glyph name="note" size={16} />
       </div>
     );
   }
   return (
-    <div style={{ ...shell, left: 12, width: 'min(320px, calc(100vw - 24px))', paddingLeft: 14 }}>
-      {track.imageUrl ? (
-        <img src={track.imageUrl} alt="" loading="lazy" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', flex: 'none', marginRight: 10 }} />
-      ) : (
-        <span style={{ marginRight: 10, display: 'inline-flex', flex: 'none' }}>
-          <Glyph name="note" size={20} />
-        </span>
-      )}
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div style={{ ...shell, left: 12, width: 'min(320px, calc(100vw - 24px))', paddingRight: 14 }}>
+      {fold(true)}
+      {toggle}
+      <div style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.65, fontSize: 11 }}>{track.artist}</div>
       </div>
-      {toggle}
-      <button type="button" onClick={() => source.setHidden(true)} aria-label="Masquer le lecteur" title="Masquer le lecteur" style={base}>
-        <Glyph name="chevron-down" />
-      </button>
+      {track.imageUrl ? (
+        <img src={track.imageUrl} alt="" loading="lazy" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', flex: 'none', marginLeft: 10 }} />
+      ) : (
+        <span style={{ marginLeft: 10, display: 'inline-flex', flex: 'none' }}>
+          <Glyph name="note" size={20} />
+        </span>
+      )}
     </div>
   );
 }
