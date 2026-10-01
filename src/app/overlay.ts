@@ -207,7 +207,11 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         decorateImageSetting(document, () => openImageSettings(images));
         // Le réglage « Lecteur » n'existe que si Spotify est fourni par la plateforme.
         const player = getPlayerSource();
-        if (player) decoratePlayerSetting(document, () => openPlayerSettings(player));
+        if (player) {
+          decoratePlayerSetting(document, () => openPlayerSettings(player));
+          // Le site a pu vider <body> depuis le montage : le lecteur y est remis.
+          mountSpotifyPlayer(player);
+        }
       } catch (error) {
         console.warn(LOG, 'réglage des images indisponible :', error);
       }
