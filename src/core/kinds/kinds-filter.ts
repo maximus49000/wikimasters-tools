@@ -3,9 +3,10 @@ import { PERSON_NATURE, facetLabel, facetsOf, natureKeys, natureLabel, type Kind
 import type { CardKinds } from './wikidata-kinds';
 
 // `''` = pas de choix. `nature` est une clé de `natureKeys` ; `facet` un identifiant Q (occupation ou genre).
-export type KindFilter = { nature: string; facet: string };
+// `duplicates` : ne garder que les cartes possédées en 2 exemplaires ou plus.
+export type KindFilter = { nature: string; facet: string; duplicates?: boolean };
 export const NO_KIND_FILTER: KindFilter = { nature: '', facet: '' };
-export const isKindFilterActive = (filter: KindFilter): boolean => filter.nature !== '' || filter.facet !== '';
+export const isKindFilterActive = (filter: KindFilter): boolean => filter.nature !== '' || filter.facet !== '' || filter.duplicates === true;
 
 export type KindOption = { id: string; label: string; count: number };
 export type KindOptions = { natures: KindOption[]; facets: KindOption[]; facetPlaceholder: string };
@@ -41,14 +42,17 @@ export function buildKindOptions(cards: KnownCard[], state: KindsState, filter: 
   return { natures, facets, facetPlaceholder };
 }
 
-function matches(kinds: CardKinds | undefined, filter: KindFilter): boolean {
+export const hasDuplicates = (card: KnownCard): boolean => (card.copies ?? 0) >= 2;
+
+function matches(card: KnownCard, kinds: CardKinds | undefined, filter: KindFilter): boolean {
+  if (filter.duplicates && !hasDuplicates(card)) return false;
   if (filter.nature && !natureKeys(kinds).includes(filter.nature)) return false;
   if (filter.facet && !facetsOf(kinds).includes(filter.facet)) return false;
   return true;
 }
 
 export function applyKindFilter(cards: KnownCard[], state: KindsState, filter: KindFilter): KnownCard[] {
-  return isKindFilterActive(filter) ? cards.filter((card) => matches(state.cards[card.slug], filter)) : cards;
+  return isKindFilterActive(filter) ? cards.filter((card) => matches(card, state.cards[card.slug], filter)) : cards;
 }
 
 // Cartes qui passent le filtre ; `null` : filtre inactif, aucune contrainte.

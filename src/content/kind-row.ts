@@ -28,7 +28,7 @@ const TRIGGER_STYLE =
 const LABEL_STYLE = 'min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1';
 const CHEVRON_STYLE = 'width:16px;height:16px;flex:none;opacity:.4;transition:transform .2s';
 const LIST_STYLE =
-  'position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;margin:0;padding:4px 0;list-style:none;max-height:208px;overflow-y:auto;' +
+  'position:fixed;inset:auto;z-index:2147483000;margin:0;padding:4px 0;box-sizing:border-box;color:inherit;list-style:none;max-height:208px;overflow-y:auto;' +
   'border-radius:12px;border:1px solid var(--color-border, rgba(148,163,184,0.35));background:#0d1117;opacity:1;' +
   'box-shadow:0 20px 25px -5px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.25)';
 const OPTION_STYLE =
@@ -55,6 +55,15 @@ function setOpen(wrap: Element, open: boolean): void {
   const list = listOf(wrap);
   if (!trigger || !list || list.hidden === !open) return;
   list.hidden = !open;
+  // Couche supérieure du navigateur (popover) : la liste passe au-dessus des cartes, quel que soit l'empilement du site.
+  if (open) {
+    const box = trigger.getBoundingClientRect();
+    list.style.left = `${box.left}px`;
+    list.style.top = `${box.bottom + 4}px`;
+    list.style.width = `${box.width}px`;
+    list.style.maxHeight = `${Math.max(120, Math.min(208, window.innerHeight - box.bottom - 12))}px`;
+    if (!list.matches(':popover-open')) list.showPopover?.();
+  } else if (list.matches(':popover-open')) list.hidePopover?.();
   trigger.setAttribute('aria-expanded', String(open));
   const chevron = trigger.querySelector<SVGElement>('svg');
   if (chevron) chevron.style.transform = open ? 'rotate(180deg)' : '';
@@ -100,6 +109,7 @@ function makeDropdown(kind: 'nature' | 'facet', label: string): HTMLElement {
   list.dataset.wmtKindList = kind;
   list.style.cssText = LIST_STYLE;
   list.hidden = true;
+  list.popover = 'manual';
   wrap.append(trigger, list);
 
   trigger.addEventListener('click', () => {
@@ -118,6 +128,12 @@ function makeDropdown(kind: 'nature' | 'facet', label: string): HTMLElement {
     else if (!wrap.contains(event.target as Node)) setOpen(wrap, false);
   };
   document.addEventListener('pointerdown', closeOnOutside, true);
+  // La liste est positionnée à l'écran : un défilement de la page la refermerait loin de son bouton.
+  const closeOnScroll = (event: Event) => {
+    if (!wrap.isConnected) window.removeEventListener('scroll', closeOnScroll, true);
+    else if (!list.hidden && !list.contains(event.target as Node)) setOpen(wrap, false);
+  };
+  window.addEventListener('scroll', closeOnScroll, true);
   return wrap;
 }
 

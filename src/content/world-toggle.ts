@@ -1,6 +1,11 @@
 import type { CollectionView } from './collection-view';
 
 export const TOGGLE_ATTRIBUTE = 'data-wmt-view-switch';
+const DUPLICATES_ATTRIBUTE = 'data-wmt-duplicates';
+const DUPLICATES_LABEL = 'Doubles : seulement les cartes en 2 exemplaires ou plus';
+
+// Le filtre « ×2 » ; absent en vue Grille du site (les panneaux seuls le lisent).
+export type DuplicatesToggle = { on: boolean; onToggle: () => void } | null;
 const VIEW_ATTRIBUTE = 'data-wmt-view';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -48,6 +53,7 @@ export function ensureViewSwitch(
   template: HTMLButtonElement,
   view: CollectionView,
   onSelect: (view: CollectionView) => void,
+  duplicates: DuplicatesToggle = null,
 ): HTMLElement {
   let group: Element | null = anchor.nextElementSibling;
   if (!(group instanceof HTMLElement) || !group.hasAttribute(TOGGLE_ATTRIBUTE)) {
@@ -56,6 +62,15 @@ export function ensureViewSwitch(
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', 'Vue de la Collection');
     (group as HTMLElement).style.cssText = 'display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center';
+    const doubles = template.cloneNode(false) as HTMLButtonElement;
+    for (const attr of ['id', 'disabled', 'aria-label', 'aria-describedby', 'aria-controls', 'aria-expanded']) {
+      doubles.removeAttribute(attr);
+    }
+    doubles.setAttribute(DUPLICATES_ATTRIBUTE, '');
+    doubles.setAttribute('aria-label', DUPLICATES_LABEL);
+    doubles.title = DUPLICATES_LABEL;
+    doubles.textContent = '×2';
+    group.append(doubles);
     for (const { view: name, label, glyph } of VIEWS) {
       const button = template.cloneNode(false) as HTMLButtonElement;
       for (const attr of ['id', 'disabled', 'aria-label', 'aria-describedby', 'aria-controls', 'aria-expanded']) {
@@ -79,6 +94,16 @@ export function ensureViewSwitch(
     button.setAttribute('aria-pressed', String(on));
     button.style.borderColor = on ? 'var(--color-accent, #34d399)' : '';
     button.style.color = on ? 'var(--color-accent, #34d399)' : '';
+  }
+
+  const doubles = root.querySelector<HTMLButtonElement>(`[${DUPLICATES_ATTRIBUTE}]`);
+  if (doubles) {
+    doubles.style.display = duplicates ? '' : 'none';
+    doubles.disabled = false;
+    doubles.onclick = () => duplicates?.onToggle();
+    doubles.setAttribute('aria-pressed', String(duplicates?.on === true));
+    doubles.style.borderColor = duplicates?.on ? 'var(--color-accent, #34d399)' : '';
+    doubles.style.color = duplicates?.on ? 'var(--color-accent, #34d399)' : '';
   }
   return root;
 }

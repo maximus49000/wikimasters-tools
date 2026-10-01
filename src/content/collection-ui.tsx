@@ -137,6 +137,13 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
     ensureViewSwitch(rarityAnchor ?? button, button, view, (next) => {
       writeView(window.localStorage, next);
       sync();
+    }, view === 'list' ? null : {
+      on: kindFilterSource.current().duplicates === true,
+      onToggle: () => {
+        const current = kindFilterSource.current();
+        kindFilterSource.set({ ...current, duplicates: !current.duplicates });
+        sync();
+      },
     });
 
     if (view === 'list') {

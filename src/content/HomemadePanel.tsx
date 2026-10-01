@@ -161,7 +161,7 @@ export function HomemadePanel({
   const current = useMemo(() => pageSlice(list, page, size), [list, page, size]);
 
   // Un autre filtre : retour à la première page.
-  const filterKey = `${filter}|${kindFilter.nature}|${kindFilter.facet}`;
+  const filterKey = `${filter}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}`;
   const lastFilterKey = useRef(filterKey);
   useEffect(() => {
     if (lastFilterKey.current === filterKey) return;

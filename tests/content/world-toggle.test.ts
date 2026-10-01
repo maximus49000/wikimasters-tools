@@ -62,7 +62,7 @@ describe('ensureViewSwitch', () => {
     const group = ensureViewSwitch(select, select, 'homemade', () => undefined);
 
     expect(select.nextElementSibling).toBe(group);
-    const buttons = [...group.querySelectorAll('button')];
+    const buttons = [...group.querySelectorAll('button[data-wmt-view]')];
     expect(buttons.map((b) => b.getAttribute('data-wmt-view'))).toEqual(['homemade', 'world', 'timeline', 'list']);
     expect(buttons.map((b) => b.getAttribute('aria-label')?.split(' ')[0])).toEqual(NAMES.map((name) => name.split(' ')[0]));
     expect(buttons.every((b) => b.textContent === '')).toBe(true);
@@ -78,7 +78,7 @@ describe('ensureViewSwitch', () => {
 
     expect(second).toBe(first);
     expect(document.querySelectorAll('[data-wmt-view-switch]')).toHaveLength(1);
-    expect([...second.querySelectorAll('button')].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true', 'false']);
+    expect([...second.querySelectorAll('button[data-wmt-view]')].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true', 'false']);
   });
 
   it("ne copie ni id, ni disabled, ni l'aria-label du bouton modèle", () => {
@@ -104,6 +104,26 @@ describe('ensureViewSwitch', () => {
 
     expect(oldHandler).not.toHaveBeenCalled();
     expect(newHandler).toHaveBeenCalledWith('timeline');
+  });
+});
+
+describe('filtre ×2', () => {
+  it("n'apparaît que si un réglage est fourni, et reflète son état", () => {
+    const select = makeSelect();
+    const onToggle = vi.fn();
+    const group = ensureViewSwitch(select, select, 'homemade', () => undefined, { on: false, onToggle });
+    const doubles = group.querySelector('[data-wmt-duplicates]') as HTMLButtonElement;
+    expect(doubles.textContent).toBe('×2');
+    expect(doubles.style.display).toBe('');
+    expect(doubles.getAttribute('aria-pressed')).toBe('false');
+    doubles.click();
+    expect(onToggle).toHaveBeenCalledTimes(1);
+
+    ensureViewSwitch(select, select, 'homemade', () => undefined, { on: true, onToggle });
+    expect(doubles.getAttribute('aria-pressed')).toBe('true');
+
+    ensureViewSwitch(select, select, 'list', () => undefined);
+    expect(doubles.style.display).toBe('none');
   });
 });
 
