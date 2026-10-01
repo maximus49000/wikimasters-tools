@@ -1,5 +1,5 @@
 // Identifiant public de l'application Spotify (PKCE : aucun secret côté client).
-export const SPOTIFY_CLIENT_ID = '53483f8dd5374f1889f994488d989283';
+export const SPOTIFY_CLIENT_ID = 'ca54efea8df646afa19e21754eb607ec';
 // Piloter la lecture et lire son état, rien d'autre.
 export const SPOTIFY_SCOPES = ['user-modify-playback-state', 'user-read-playback-state'];
 export const ACCOUNTS_URL = 'https://accounts.spotify.com';
