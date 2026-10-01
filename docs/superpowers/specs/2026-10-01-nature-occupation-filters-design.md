@@ -51,6 +51,12 @@ Pour chaque carte de la Collection, récupérer sur Wikidata sa **nature** (P31)
   - **Repli** : sans carte native modèle, ou si la structure ne correspond plus, les tuiles de l'aperçu actuel sont utilisées.
   - Prix relevés comme dans les autres vues (`useWantPrices`).
 
+## 4 bis. Sélecteur de vue
+
+- Boutons en **glyphes** (SVG en ligne, style lucide du site) au lieu de texte ; `title` et `aria-label` portent le nom. Ordre, de gauche à droite : **Homemade** (maison), **Monde** (globe), **Chronologique** (frise), **Grille** legacy (grille de carrés) tout à droite.
+- **Vue par défaut : Homemade**, à la première ouverture (aucune valeur mémorisée). `readView` ([collection-view.ts](../../../src/content/collection-view.ts)) accepte désormais `'list'` explicitement : une valeur `'list'` déjà mémorisée par un utilisateur est respectée, seule l'absence de valeur donne Homemade. Si le stockage est inaccessible, on reste sur Homemade.
+- Le glyphe « maison » est provisoire ; il peut être remplacé sans effet sur le reste.
+
 ## 5. Câblage
 
 Mêmes dépendances injectées dans l'extension (`entrypoints/content.tsx`) et dans l'APK (`app/overlay.ts`) : `kinds` repo + fetcher, `kindFilterSource`.
@@ -62,6 +68,7 @@ Mêmes dépendances injectées dans l'extension (`entrypoints/content.tsx`) et d
 - `buildKindOptions` et `applyKindFilter` : cascade (nature Album → pas d'occupations d'autres natures), valeurs multiples, regroupement, réinitialisation de la facette.
 - Pagination Homemade (taille lue, dernière page partielle, filtre qui réduit le nombre de pages).
 - Lecture/écriture de `kindFilterSource` avec stockage indisponible.
+- `readView` : absence de valeur → Homemade ; `'list'`, `'world'`, `'timeline'` mémorisés respectés ; stockage inaccessible → Homemade.
 - Vérification manuelle dans Chrome (extension) à la fin, comme pour les livraisons précédentes.
 
 ## Hors périmètre
