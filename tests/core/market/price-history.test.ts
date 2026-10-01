@@ -3,6 +3,7 @@ import {
   emptyHistory,
   hourRows,
   recordSnapshot,
+  seriesFor,
   trendOf,
   weekAverage,
 } from '../../../src/core/market/price-history';
@@ -101,5 +102,50 @@ describe('weekAverage et trendOf', () => {
     expect(trendOf(state.cards[KEY]!)).toBe('down');
     state = recordSnapshot(state, [auction('a', 90, HOUR, true, T0 + 3 * step)], T0 + 3 * step);
     expect(trendOf(state.cards[KEY]!)).toBe('flat');
+  });
+});
+
+describe('cumul par jour et vues du graphique', () => {
+  it('cumule moyenne, min et max de la journée, un point par jour', () => {
+    let state = recordSnapshot(emptyHistory(), [auction('a', 100, HOUR, true)], T0);
+    const later = T0 + 1_800_000;
+    state = recordSnapshot(state, [auction('a', 300, HOUR, true, later)], later);
+    const next = T0 + DAY;
+    state = recordSnapshot(state, [auction('a', 50, HOUR, true, next)], next);
+    const days = state.cards[KEY]!.days!;
+    expect(days).toHaveLength(2);
+    expect(days[0]).toMatchObject({ n: 2, sum: 400, min: 100, max: 300 });
+  });
+
+  it('ne modifie pas l’état précédent', () => {
+    const before = recordSnapshot(emptyHistory(), [auction('a', 100, HOUR, true)], T0);
+    const snapshot = JSON.stringify(before);
+    recordSnapshot(before, [auction('a', 300, HOUR, true)], T0 + 60_000);
+    expect(JSON.stringify(before)).toBe(snapshot);
+  });
+
+  it('garde les jours 365 jours alors que les relevés fins n’en gardent que 7', () => {
+    let state = recordSnapshot(emptyHistory(), [auction('a', 100, HOUR, true)], T0);
+    const later = T0 + 30 * DAY;
+    state = recordSnapshot(state, [auction('a', 200, HOUR, true, later)], later);
+    expect(state.cards[KEY]!.samples).toHaveLength(1);
+    expect(state.cards[KEY]!.days).toHaveLength(2);
+  });
+
+  it('jour et semaine lisent les relevés, mois et année lisent les jours', () => {
+    let state = recordSnapshot(emptyHistory(), [auction('a', 100, HOUR, true)], T0);
+    const t1 = T0 + 3 * DAY;
+    state = recordSnapshot(state, [auction('a', 200, HOUR, true, t1)], t1);
+    const card = state.cards[KEY]!;
+    expect(seriesFor(card, 'day', t1).map((p) => p.avgBid)).toEqual([200]);
+    expect(seriesFor(card, 'week', t1).map((p) => p.avgBid)).toEqual([100, 200]);
+    expect(seriesFor(card, 'month', t1).map((p) => p.avgBid)).toEqual([100, 200]);
+    expect(seriesFor(card, 'year', t1 + 40 * DAY).map((p) => p.avgBid)).toEqual([100, 200]);
+    expect(seriesFor(card, 'month', t1 + 40 * DAY)).toEqual([]);
+  });
+
+  it('ne plante pas sur un historique ancien sans jours', () => {
+    const old = { slug: 's', rarity: 'R', hours: {}, samples: [{ t: T0, avgBid: 5, bidCount: 1 }] };
+    expect(seriesFor(old, 'year', T0)).toEqual([]);
   });
 });
