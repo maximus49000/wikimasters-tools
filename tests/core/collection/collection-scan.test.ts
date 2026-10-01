@@ -214,6 +214,19 @@ describe('createCollectionScanner', () => {
     expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
   });
 
+  it('un force demandé pendant un scan en cours relance un parcours complet une fois celui-ci terminé', async () => {
+    const { scanner, getCollectionPage } = setup([dated(['A', 1])]);
+    await scanner.run();
+    getCollectionPage.mockClear();
+
+    // Le premier appel est une mise à jour incrémentale (une page) ; le force doit ensuite tout relire.
+    const first = scanner.run();
+    const forced = scanner.run({ force: true });
+    await forced;
+    expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 0, 1]);
+    await first;
+  });
+
   it('s’arrête sur la limite de pages', async () => {
     const { scanner, getCollectionPage } = setup([page('A'), page('B'), page('C')], { maxPages: 2 });
     await scanner.run();
