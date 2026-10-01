@@ -64,7 +64,7 @@ Node.js 22.12 ou plus est requis.
     npm test
     npm run build     # produit .output/chrome-mv3
 
-Installation sur Chrome, Firefox et Firefox Android (paquets, signature, usage tactile) : voir [docs/INSTALLATION.md](docs/INSTALLATION.md).
+Installation sur Chrome, Firefox, Firefox Android et application Android autonome (paquets, signature, APK, usage tactile) : voir [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 Chargement dans Chrome : `chrome://extensions` → mode développeur → « Charger l'extension non
 empaquetée » → dossier `.output/chrome-mv3`.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import source from '../../src/entrypoints/content.tsx?raw';
+import source from '../../src/app/overlay.ts?raw';
+import entry from '../../src/entrypoints/content.tsx?raw';
 
 const start = source.indexOf('createMarketCollector({');
 const wiring = source.slice(start, source.indexOf('// Une recherche demandée'));
@@ -7,7 +8,7 @@ const creation = source.slice(start, source.indexOf('});', start) + 3);
 
 describe('câblage du relevé du marché', () => {
   it('le script de contenu est chargé sur toutes les pages du site', () => {
-    expect(source).toMatch(/matches:\s*\['https:\/\/www\.wiki-masters\.com\/\*'\]/);
+    expect(entry).toMatch(/matches:\s*\['https:\/\/www\.wiki-masters\.com\/\*'\]/);
   });
 
   it('le relevé ne dépend d’aucune page : ni /collection ni aucun autre chemin', () => {
