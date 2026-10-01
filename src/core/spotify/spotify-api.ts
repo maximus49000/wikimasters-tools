@@ -29,7 +29,7 @@ const stateSchema = z.object({
 });
 
 const devicesSchema = z.object({
-  devices: z.array(z.object({ id: z.string().nullable(), type: z.string(), is_restricted: z.boolean().optional() })),
+  devices: z.array(z.object({ id: z.string().nullable(), type: z.string(), is_active: z.boolean().optional(), is_restricted: z.boolean().optional() })),
 });
 
 const joinArtists = (artists: { name: string }[]): string => artists.map((artist) => artist.name).join(', ');
@@ -40,8 +40,11 @@ function parse<T>(schema: z.ZodType<T>, json: unknown): T {
   return parsed.data;
 }
 
-export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessToken'>; fetch: SpotifyFetch }) {
-  const { session, fetch } = deps;
+type Device = z.infer<typeof devicesSchema>['devices'][number];
+
+// `deviceTypes` : types d'appareil Spotify où lancer la lecture, par ordre de préférence (ex. `Smartphone` sur le téléphone).
+export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessToken'>; fetch: SpotifyFetch; deviceTypes?: readonly string[] }) {
+  const { session, fetch, deviceTypes = [] } = deps;
 
   async function send(method: string, path: string, options: { query?: Record<string, string>; body?: unknown } = {}): Promise<Response> {
     const url = `${API_URL}${path}${options.query ? `?${new URLSearchParams(options.query).toString()}` : ''}`;
@@ -68,12 +71,36 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
     }
   }
 
-  async function firstDeviceId(): Promise<string | null> {
+  async function usableDevices(): Promise<Device[]> {
     const response = await send('GET', '/me/player/devices');
     const parsed = devicesSchema.safeParse(await response.json());
-    if (!parsed.success) return null;
-    const usable = parsed.data.devices.filter((device) => device.id && !device.is_restricted);
-    return (usable.find((device) => device.type === 'Computer') ?? usable[0])?.id ?? null;
+    return parsed.success ? parsed.data.devices.filter((device) => device.id && !device.is_restricted) : [];
+  }
+
+  // Premier appareil du type le plus préféré.
+  const preferredDevice = (devices: Device[]): Device | undefined => {
+    for (const type of deviceTypes) {
+      const found = devices.find((device) => device.type === type);
+      if (found) return found;
+    }
+    return undefined;
+  };
+
+  async function firstDeviceId(): Promise<string | null> {
+    const usable = await usableDevices();
+    return (preferredDevice(usable) ?? usable.find((device) => device.type === 'Computer') ?? usable[0])?.id ?? null;
+  }
+
+  // Sans consigne, Spotify joue sur le dernier appareil actif (souvent une enceinte) : on vise plutôt cet appareil-ci.
+  async function preferredDeviceId(): Promise<string | null> {
+    if (deviceTypes.length === 0) return null;
+    try {
+      const usable = await usableDevices();
+      if (usable.some((device) => device.is_active && deviceTypes.includes(device.type))) return null;
+      return preferredDevice(usable)?.id ?? null;
+    } catch {
+      return null;
+    }
   }
 
   return {
@@ -122,6 +149,12 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
 
     async play(target: PlayTarget): Promise<void> {
       const body = !target ? undefined : 'uris' in target ? { uris: target.uris } : { context_uri: target.contextUri, offset: { uri: target.offsetUri } };
+      // Reprise (sans titre) : on laisse l'appareil courant ; un nouveau titre se lance sur cet appareil-ci.
+      const here = target ? await preferredDeviceId() : null;
+      if (here) {
+        await send('PUT', '/me/player/play', { query: { device_id: here }, body });
+        return;
+      }
       try {
         await send('PUT', '/me/player/play', body ? { body } : {});
       } catch (error) {

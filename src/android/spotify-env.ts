@@ -17,6 +17,7 @@ export function createAndroidSpotifyEnv(win: AndroidWindow, timeoutMs: number = 
   let abandon: (() => void) | null = null;
   return {
     fetch: (url, init) => win.fetch(url, init),
+    deviceTypes: ['Smartphone', 'Tablet'],
     redirectUri: async () => ANDROID_REDIRECT_URI,
     launchApp: () => win.WmtSpotify?.openApp?.(),
     authorize: (authUrl) => {

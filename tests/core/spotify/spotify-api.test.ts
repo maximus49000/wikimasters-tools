@@ -5,11 +5,11 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
   new Response(JSON.stringify(body), { status, headers });
 const empty = (status: number, headers: Record<string, string> = {}) => new Response(null, { status, headers });
 
-function setup(responses: Response[]) {
+function setup(responses: Response[], deviceTypes?: string[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   const session = { accessToken: vi.fn(async () => 'TOKEN') };
-  return { api: createSpotifyApi({ session, fetch }), fetch, session };
+  return { api: createSpotifyApi({ session, fetch, ...(deviceTypes ? { deviceTypes } : {}) }), fetch, session };
 }
 
 const call = (fetch: ReturnType<typeof vi.fn>, index = 0) => {
@@ -101,6 +101,32 @@ describe('createSpotifyApi', () => {
     expect(call(fetch, 2).url.pathname).toBe('/v1/me/player/play');
     expect(call(fetch, 2).url.searchParams.get('device_id')).toBe('pc');
     expect(JSON.parse(call(fetch, 2).init.body as string)).toEqual({ uris: ['spotify:track:1'] });
+  });
+
+  it("lance un nouveau titre sur le téléphone quand une enceinte est l'appareil actif", async () => {
+    const { api, fetch } = setup(
+      [json({ devices: [{ id: 'echo', type: 'Speaker', is_active: true }, { id: 'phone', type: 'Smartphone', is_active: false }] }), empty(204)],
+      ['Smartphone'],
+    );
+    await api.play({ uris: ['spotify:track:1'] });
+    expect(call(fetch, 0).url.pathname).toBe('/v1/me/player/devices');
+    expect(call(fetch, 1).url.searchParams.get('device_id')).toBe('phone');
+    expect(JSON.parse(call(fetch, 1).init.body as string)).toEqual({ uris: ['spotify:track:1'] });
+  });
+
+  it("ne change pas d'appareil quand le téléphone est déjà actif, ni à la reprise, ni sans téléphone visible", async () => {
+    const active = setup([json({ devices: [{ id: 'phone', type: 'Smartphone', is_active: true }] }), empty(204)], ['Smartphone']);
+    await active.api.play({ uris: ['spotify:track:1'] });
+    expect(call(active.fetch, 1).url.searchParams.get('device_id')).toBeNull();
+
+    const resume = setup([empty(204)], ['Smartphone']);
+    await resume.api.play(null);
+    expect(resume.fetch).toHaveBeenCalledTimes(1);
+    expect(call(resume.fetch, 0).url.pathname).toBe('/v1/me/player/play');
+
+    const none = setup([json({ devices: [{ id: 'echo', type: 'Speaker', is_active: true }] }), empty(204)], ['Smartphone']);
+    await none.api.play({ uris: ['spotify:track:1'] });
+    expect(call(none.fetch, 1).url.searchParams.get('device_id')).toBeNull();
   });
 
   it("garde l'erreur « aucun appareil » quand Spotify n'en voit aucun", async () => {
