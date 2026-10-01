@@ -22,7 +22,7 @@ Dépend de la fonction « nature / occupation » ([spec](2026-10-01-nature-occup
 
 - Application créée sur https://developer.spotify.com/dashboard, API Web.
 - **Client ID : `53483f8dd5374f1889f994488d989283`** (public, PKCE : aucun secret).
-- Redirect URIs déclarées : `wikimasterstools://spotify` (APK). À ajouter à l'implémentation : l'adresse Chrome `https://<id>.chromiumapp.org/` (identifiant stabilisé par une `key` dans le manifeste) et l'adresse Firefox `https://<hash>.extensions.allizom.org/` (donnée par `browser.identity.getRedirectURL()`).
+- Redirect URIs déclarées : `wikimasterstools://spotify` (APK). À ajouter à l'implémentation : l'adresse Chrome `https://<id>.chromiumapp.org/` (identifiant affiché sur chrome://extensions) et l'adresse Firefox `https://<hash>.extensions.allizom.org/` (donnée par `browser.identity.getRedirectURL()`).
 
 ## 1. Données Wikidata (`core/music/`)
 
@@ -45,7 +45,7 @@ Dépend de la fonction « nature / occupation » ([spec](2026-10-01-nature-occup
 
 - **Extension** : nouveau service worker `entrypoints/background.ts`, permission `identity`, `host_permissions` `https://api.spotify.com/*` et `https://accounts.spotify.com/*`. Le content script envoie un message ; le service worker lance `identity.launchWebAuthFlow`, échange le code et enregistre les jetons. Tous les appels à l'API Spotify passent par le service worker (hors des règles CSP du site). Firefox Android n'a probablement pas `identity` : la liaison n'y est pas garantie, l'APK couvre le mobile.
 - **APK** : `MainActivity` ouvre l'autorisation dans le navigateur du téléphone (jamais dans la WebView), reçoit `wikimasterstools://spotify?code=…` (filtre d'intent), puis le transmet à la surcouche (`evaluateJavascript`) qui finit l'échange.
-- **Extension** : L'identifiant Chrome est fixé par une clé publique dans le manifeste : `mdkdnoegkdbdohmpcidefciomgdaecoj`, d'où l'adresse de retour `https://mdkdnoegkdbdohmpcidefciomgdaecoj.chromiumapp.org/` (à déclarer dans le tableau de bord Spotify ; une publication sur le Chrome Web Store donnera un autre identifiant).
+- **Extension** : L'adresse de retour Chrome est celle de l'installation : `https://<id>.chromiumapp.org/`, l'`<id>` est affiché sur chrome://extensions et loggué par le service worker ; elle change si l'extension est chargée depuis un autre dossier ou publiée sur le Chrome Web Store.
 - À vérifier à la main (voir le plan, tâche 10) : que la surcouche de l'APK peut appeler `api.spotify.com` depuis la page du jeu (CSP/CORS) ; sinon, passer les appels par un pont natif (hors de cette conception).
 
 ## 4. Lecture

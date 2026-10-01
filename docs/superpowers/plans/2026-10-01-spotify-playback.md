@@ -48,7 +48,7 @@
 | `src/entrypoints/background.ts` | Service worker de l'extension |
 | `src/app/extension-spotify.ts` | `SpotifyEnv` de l'extension (messages vers le service worker) |
 | `src/android/spotify-env.ts` | `SpotifyEnv` de l'APK (pont Java) |
-| `scripts/chrome-extension-id.mjs` | Clé et identifiant Chrome stables |
+| ~~`scripts/chrome-extension-id.mjs`~~ | Retiré en revue (voir Task 8) |
 
 ---
 
@@ -2093,6 +2093,8 @@ git commit -m "feat: section « Écouter » de la fiche et mini-lecteur Spotify"
 
 ### Task 8 : Câblage de la surcouche et extension (service worker, manifeste, identifiant Chrome)
 
+> Décision de revue : la clé a été retirée (perte de données des installations existantes). Ignorer le script `scripts/chrome-extension-id.mjs` et le champ `key` du manifeste ci-dessous ; l'adresse de retour Chrome est `https://<id>.chromiumapp.org/` avec l'identifiant affiché sur chrome://extensions.
+
 **Files :**
 - Create: `src/core/spotify/transport.ts`, `src/entrypoints/background.ts`, `src/app/extension-spotify.ts`, `scripts/chrome-extension-id.mjs`
 - Modify: `src/app/overlay.ts`, `src/entrypoints/content.tsx`, `wxt.config.ts`
@@ -2693,7 +2695,7 @@ délie le compte. Les titres retrouvés viennent de Wikidata (interprète, ident
 
 Demander à l'utilisateur d'ouvrir https://developer.spotify.com/dashboard → l'application → *Settings* → *Redirect URIs* et d'ajouter, puis *Save* :
 - `wikimasterstools://spotify` (APK) ;
-- l'adresse Chrome affichée par `node scripts/chrome-extension-id.mjs <clé>` (Task 8) : `https://<id>.chromiumapp.org/` ;
+- l'adresse Chrome `https://<id>.chromiumapp.org/` (identifiant affiché sur chrome://extensions) ;
 - l'adresse Firefox : charger l'extension Firefox (`node node_modules/wxt/bin/wxt.mjs -b firefox --mv3`), ouvrir `about:debugging` → *Inspecter* l'extension, lire dans la console la ligne « adresse de retour Spotify ».
 
 Cette étape bloque la vérification : ne pas l'ignorer.

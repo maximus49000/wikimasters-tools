@@ -18,6 +18,7 @@ Chrome Android et Safari iOS ne savent pas installer d'extension : seul Firefox 
 2. Ouvrez `chrome://extensions`, activez le **mode développeur**.
 3. **Charger l'extension non empaquetée** → choisissez le dossier décompressé.
 4. Ouvrez https://www.wiki-masters.com : l'extension agit sur ce site uniquement.
+5. Pour écouter la musique : copiez l'identifiant de l'extension affiché sur chrome://extensions, et déclarez `https://<identifiant>.chromiumapp.org/` dans les Redirect URIs de votre application Spotify.
 
 (Pour la Chrome Web Store : envoyez le même zip dans le tableau de bord développeur ; 5 $ de frais uniques.)
 

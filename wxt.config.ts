@@ -16,10 +16,6 @@ export default defineConfig({
       // Firefox MV3 : l'accès au site est une permission d'hôte à accorder (demandée à l'installation).
       ...(browser === 'firefox' ? ['https://www.wiki-masters.com/*'] : []),
     ],
-    // Chrome : clé publique qui fixe l'identifiant de l'extension (donc l'adresse de retour Spotify).
-    ...(browser !== 'firefox' && {
-      key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArqHmiTmz7PCLPn+L3IClQ0hDpzPZYMWEHWkAmQvKPyiH8GWVXV8h40n22SLoykFoi1jKTVVII+MCKBUZxc3V0d9R21vhBsIXpkTEOWN2hA6n42FfJ1zPV75/igoW3dgy7g4HfIIL9SLbeVmJBgs9ruqS7WTOdszIduAEBLrHbo6IFpZahgmVnyLPS0JVH/bLTxcZ7o9Dtsxc6/TbrLTWSKhmaKXBoyx+TDuPvrFRiLldPqQ/F7hH0v2eCeiatm4gti5IqzSZmdouwzg7lSgLrC8J76Qc5j95HN66y3ts2GRrS5uoEvaxbJnJcq7XGyp7wVbBWr6Rfgo7QHy/aP8ldQIDAQAB',
-    }),
     ...(browser === 'firefox' && {
       browser_specific_settings: {
         gecko: {
