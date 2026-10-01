@@ -15,7 +15,8 @@ export type KindRowModel = {
 
 export type KindRowHandlers = { onNature: (value: string) => void; onFacet: (value: string) => void };
 
-const ROW_STYLE = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0 0 8px;align-items:center';
+// position + z-index : la rangée forme sa propre couche au-dessus des cartes et de la pagination, que les listes ouvertes recouvrent.
+const ROW_STYLE = 'position:relative;z-index:1000;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0 0 8px;align-items:center';
 const PROGRESS_STYLE = 'grid-column:1 / -1;margin:0;font:12px/16px system-ui,sans-serif;opacity:.7';
 const WRAP_STYLE = 'position:relative;min-width:0';
 // Même habillage que les listes du site (étiquettes, rareté) : bouton + liste déroulante, pas de <select> natif.
