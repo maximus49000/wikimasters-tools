@@ -38,6 +38,8 @@ export type CollectionUiDeps = {
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   // Un clic sur une carte d'une vue : sa fiche de marché.
   openCard: (slug: string) => void;
+  // Le bouton « carte » : la fiche de la carte dans la Collection du jeu.
+  openGameCard: (slug: string) => void;
   // Prix du marché des cartes, comme sur la liste.
   market: MarketSource;
   // Cartes affichées dans la Collection (à relever sur le marché).
@@ -46,7 +48,7 @@ export type CollectionUiDeps = {
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, birth, scanner, book, filterSource, loadFiltered, openCard, market, onVisibleCards }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, birth, scanner, book, filterSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
 
@@ -83,6 +85,7 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
           filterSource={filterSource}
           loadFiltered={loadFiltered}
           onOpen={openCard}
+          onOpenCard={openGameCard}
           onWantCards={wantCards}
         />
       ) : (
@@ -95,6 +98,7 @@ export function createCollectionUi({ collection, geo, birth, scanner, book, filt
           filterSource={filterSource}
           loadFiltered={loadFiltered}
           onOpen={openCard}
+          onOpenCard={openGameCard}
           onWantCards={wantCards}
         />
       ),
