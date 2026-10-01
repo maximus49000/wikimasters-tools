@@ -187,6 +187,23 @@ describe('createSpotifyApi', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("clearLimit lève la pause en cours : l'appel suivant part aussitôt, et l'escalade des attentes n'est pas remise à zéro", async () => {
+    let clock = 1_000;
+    const { api, fetch } = setup([empty(429), empty(429), empty(204)], undefined, () => clock);
+    await expect(api.pause()).rejects.toMatchObject({ retryAfterMs: 5_000 });
+    await expect(api.pause()).rejects.toMatchObject({ code: 'rate-limited', retryAfterMs: 5_000 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    api.clearLimit();
+    // Spotify limite encore : on ne harcèle pas pour autant, la pause suivante est plus longue.
+    await expect(api.pause()).rejects.toMatchObject({ retryAfterMs: 15_000 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    api.clearLimit();
+    await api.pause();
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
   it("sans Retry-After lisible (page web, WebView : Spotify ne l'expose pas en CORS), l'attente s'allonge à chaque limite d'affilée, puis repart de zéro après un succès", async () => {
     let clock = 1_000;
     const { api } = setup([empty(429), empty(429), empty(429), empty(429), empty(429), empty(429), empty(204), empty(429)], undefined, () => clock);

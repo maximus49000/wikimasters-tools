@@ -28,6 +28,7 @@ function setup(over: Over = {}) {
     albumTracks: vi.fn(async () => [{ uri: 'spotify:track:1', title: 'Come Together', artist: 'The Beatles' }]),
     play: vi.fn(async () => undefined),
     pause: vi.fn(async () => undefined),
+    clearLimit: vi.fn(),
   };
   const sessionListeners = new Set<() => void>();
   const session = {
@@ -213,6 +214,26 @@ describe('createMusicService, listes gardées', () => {
 
     it("rend none hors collection, comme view", async () => {
       expect(await setup({ collection: [] }).service.refresh('Abbey_Road', 'Abbey Road')).toEqual({ status: 'none' });
+    });
+  });
+
+  describe('retry', () => {
+    it("lève la pause de Spotify avant de recharger la fiche : sans cela, l'appel ne partirait pas", async () => {
+      const { service, api } = setup();
+      const order: string[] = [];
+      api.clearLimit.mockImplementation(() => void order.push('clearLimit'));
+      api.albumTracks.mockImplementation(async () => {
+        order.push('albumTracks');
+        return [come];
+      });
+      expect(await service.retry('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready', listen: { items: [come] } });
+      expect(order).toEqual(['clearLimit', 'albumTracks']);
+    });
+
+    it("rend l'erreur et son attente quand Spotify limite encore", async () => {
+      const { service, api } = setup();
+      api.albumTracks.mockRejectedValueOnce(new SpotifyError('rate-limited', 'x', 15_000));
+      expect(await service.retry('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'error', retryAfterMs: 15_000 });
     });
   });
 });

@@ -130,6 +130,12 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
   }
 
   return {
+    // Bouton « Réessayer maintenant » : lève la pause d'après un 429 pour que le prochain appel parte. L'escalade des attentes est gardée :
+    // si Spotify limite encore, la pause suivante est plus longue au lieu de repartir de 5 s.
+    clearLimit(): void {
+      blockedUntil = 0;
+    },
+
     async searchTracks(query: string, limit = SEARCH_MAX): Promise<FoundTrack[]> {
       const response = await send('GET', '/search', { query: { q: query, type: 'track', limit: String(Math.min(limit, SEARCH_MAX)) } });
       return parse(searchTracksSchema, await response.json()).tracks.items.map((item) => ({
