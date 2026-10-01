@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Track } from '../core/spotify/spotify-api';
 import type { Listen } from '../core/music/listen';
 import { Glyph } from './Glyphs';
@@ -48,12 +48,19 @@ export function ListenSection({ slug, title }: Props) {
   // Rechargements automatiques d'affilée après une limite ; chaque carte repart de zéro.
   const [autoRetries, setAutoRetries] = useState(0);
 
+  // Carte dont la vue affichée est issue : un rechargement de la même carte (nouvelle tentative, liaison) garde l'affichage jusqu'à la réponse.
+  const shownFor = useRef<string | null>(null);
+
   useEffect(() => {
     if (!service) return;
     let cancelled = false;
-    // Vue et message de la carte précédente : périmés dès que la fiche change.
-    setView(null);
-    setMessage(null);
+    // Vue et message de la carte précédente : périmés dès que la fiche change. Pas à chaque rechargement : la fiche clignoterait.
+    const card = `${slug}\n${title}`;
+    if (shownFor.current !== card) {
+      shownFor.current = card;
+      setView(null);
+      setMessage(null);
+    }
     void service.view(slug, title).then((next) => !cancelled && setView(next));
     // Liaison ou déliaison pendant que la fiche est ouverte : on recharge.
     const off = service.subscribe(() => setVersion((value) => value + 1));

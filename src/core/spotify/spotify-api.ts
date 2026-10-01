@@ -12,6 +12,10 @@ export type PlayerState = { playing: boolean; uri: string; title: string; artist
 // Maximum accepté par Spotify pour les applications en mode développement (février 2026).
 const SEARCH_MAX = 10;
 
+// Attente quand Spotify limite sans que `Retry-After` soit lisible : 5 s, ×3 à chaque limite d'affilée, plafonnée à 5 min.
+const UNREADABLE_LIMIT_BASE_MS = 5_000;
+const UNREADABLE_LIMIT_MAX_MS = 300_000;
+
 const artistSchema = z.object({ id: z.string().optional(), name: z.string() });
 const trackSchema = z.object({ uri: z.string(), name: z.string(), artists: z.array(artistSchema) });
 const searchTracksSchema = z.object({ tracks: z.object({ items: z.array(trackSchema) }) });
@@ -55,6 +59,9 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
   const { session, fetch, deviceTypes = [], now = () => Date.now() } = deps;
   // Spotify limite l'application entière (fenêtre de 30 s, plus étroite en mode développement) : après un 429, plus aucun appel ne part avant la fin de l'attente demandée.
   let blockedUntil = 0;
+  // Limites d'affilée sans `Retry-After` lisible : Spotify ne l'expose pas en CORS, une page web (WebView de l'APK) ne le voit donc jamais.
+  // Deviner « 5 s » à chaque fois reviendrait frapper en boucle une application déjà limitée : l'attente s'allonge jusqu'au plafond.
+  let unreadableLimits = 0;
 
   async function send(method: string, path: string, options: { query?: Record<string, string>; body?: unknown } = {}): Promise<Response> {
     const url = `${API_URL}${path}${options.query ? `?${new URLSearchParams(options.query).toString()}` : ''}`;
@@ -67,6 +74,8 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
         headers: { Authorization: `Bearer ${token}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
         ...(options.body ? { body: JSON.stringify(options.body) } : {}),
       });
+      // Toute autre réponse prouve que la limite est levée.
+      if (response.status !== 429) unreadableLimits = 0;
       if (response.status === 401) {
         // Un seul essai avec un jeton neuf.
         if (attempt === 0) continue;
@@ -76,7 +85,9 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
       if (response.status === 403) throw new SpotifyError('not-premium', 'Spotify Premium requis');
       if (response.status === 429) {
         const seconds = Number(response.headers.get('Retry-After'));
-        const retryAfterMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 5000;
+        const readable = Number.isFinite(seconds) && seconds > 0;
+        unreadableLimits = readable ? 0 : unreadableLimits + 1;
+        const retryAfterMs = readable ? seconds * 1000 : Math.min(UNREADABLE_LIMIT_BASE_MS * 3 ** (unreadableLimits - 1), UNREADABLE_LIMIT_MAX_MS);
         blockedUntil = now() + retryAfterMs;
         console.warn('[wikimasters-tools]', `Spotify : limite atteinte (${method} ${path}), pause de ${Math.round(retryAfterMs / 1000)} s`);
         throw new SpotifyError('rate-limited', 'Trop de requêtes', retryAfterMs);

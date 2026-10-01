@@ -187,6 +187,31 @@ describe('createSpotifyApi', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("sans Retry-After lisible (page web, WebView : Spotify ne l'expose pas en CORS), l'attente s'allonge à chaque limite d'affilée, puis repart de zéro après un succès", async () => {
+    let clock = 1_000;
+    const { api } = setup([empty(429), empty(429), empty(429), empty(429), empty(429), empty(429), empty(204), empty(429)], undefined, () => clock);
+    const waits: number[] = [];
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const error = (await api.pause().catch((caught: unknown) => caught)) as { retryAfterMs: number };
+      waits.push(error.retryAfterMs);
+      clock += error.retryAfterMs;
+    }
+    // Ne pas harceler une application déjà limitée : 5 s, puis ×3, plafonné à 5 min.
+    expect(waits).toEqual([5_000, 15_000, 45_000, 135_000, 300_000, 300_000]);
+    await api.pause();
+    await expect(api.pause()).rejects.toMatchObject({ retryAfterMs: 5_000 });
+  });
+
+  it("un Retry-After lisible est respecté tel quel et remet l'escalade à zéro", async () => {
+    let clock = 1_000;
+    const { api } = setup([empty(429), empty(429, { 'Retry-After': '40' }), empty(429)], undefined, () => clock);
+    await expect(api.pause()).rejects.toMatchObject({ retryAfterMs: 5_000 });
+    clock += 5_000;
+    await expect(api.pause()).rejects.toMatchObject({ retryAfterMs: 40_000 });
+    clock += 40_000;
+    await expect(api.pause()).rejects.toMatchObject({ retryAfterMs: 5_000 });
+  });
+
   it('retente une fois avec un jeton neuf après un 401', async () => {
     const { api, fetch, session } = setup([empty(401), empty(204)]);
     await api.pause();

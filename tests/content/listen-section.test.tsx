@@ -78,6 +78,32 @@ describe('ListenSection, relance après une limite Spotify', () => {
     expect(text()).not.toContain(LIMITED);
   });
 
+  it("garde le message affiché pendant une nouvelle tentative : la fiche ne disparaît pas puis ne revient pas à chaque essai", async () => {
+    let answer: (view: ListenView) => void = () => undefined;
+    const view = serviceOf(
+      vi
+        .fn()
+        .mockResolvedValueOnce(limited(3_000))
+        .mockImplementationOnce(() => new Promise<ListenView>((resolve) => (answer = resolve)))
+        .mockResolvedValue(limited(3_000)),
+    );
+    await render();
+    await wait(4_000);
+    // La relance est partie et Spotify n'a pas encore répondu : le message est toujours là.
+    expect(view).toHaveBeenCalledTimes(2);
+    expect(text()).toContain(LIMITED);
+    await act(async () => answer(limited(3_000)));
+    expect(text()).toContain(LIMITED);
+  });
+
+  it("vide la fiche de la carte précédente dès qu'on change de carte, même si la nouvelle tarde à répondre", async () => {
+    serviceOf(vi.fn((slug: string) => (slug === 'Abbey_Road' ? Promise.resolve(limited(10_000)) : new Promise<ListenView>(() => undefined))));
+    await render();
+    expect(text()).toContain(LIMITED);
+    await render('Revolver');
+    expect(text()).toBe('');
+  });
+
   it("réarme avec le nouveau délai si la limite revient, mais s'arrête après 5 tentatives automatiques d'affilée", async () => {
     const view = serviceOf(vi.fn(async () => limited(1_000)));
     await render();
