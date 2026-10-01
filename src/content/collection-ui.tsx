@@ -143,8 +143,6 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
       showList();
       return;
     }
-    // Les filtres nature / occupation sont posés avant les pastilles de rareté (sinon avant le sélecteur de vues).
-    kindRow.mount(rarityAnchor?.parentElement ?? switchGroup);
 
     // On garde la grille déjà masquée tant qu'elle est dans la page : la carte garde son zoom.
     const grid =
@@ -157,6 +155,8 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
       showList();
       return;
     }
+    // Les filtres nature / occupation sont posés avant les pastilles de rareté (sinon avant le sélecteur de vues).
+    kindRow.mount(rarityAnchor?.parentElement ?? switchGroup);
     setGridHidden(grid, true);
     // Les panneaux montrent toutes les cartes : la navigation entre les pages de la liste n'a plus de sens.
     for (const pagination of findPagination(document, button)) setGridHidden(pagination, true);
