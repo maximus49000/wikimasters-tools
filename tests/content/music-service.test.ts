@@ -1,10 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMusicService } from '../../src/content/music-service';
+import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
+import { createListenRepo } from '../../src/core/music/listen-repo';
+import type { CardMusic } from '../../src/core/music/wikidata-music';
 import { SpotifyError } from '../../src/core/spotify/errors';
 
 const card = (slug: string) => ({ slug, title: slug });
 
-function setup(over: { linked?: boolean; collection?: string[]; natures?: string[]; music?: Record<string, object>; launchApp?: () => void } = {}) {
+type Over = {
+  linked?: boolean;
+  collection?: string[];
+  natures?: string[];
+  music?: Record<string, object>;
+  launchApp?: () => void;
+  // Stockage partagé entre deux services : simule deux sessions de la page.
+  store?: KeyValueStore;
+  // Wikidata n'a pas (encore) répondu pour la carte.
+  wikidataSilent?: boolean;
+  // Le dépôt des listes remplacé (stockage plein, par exemple).
+  listens?: Pick<ReturnType<typeof createListenRepo>, 'load' | 'save'>;
+};
+
+function setup(over: Over = {}) {
   const api = {
     searchTracks: vi.fn(async () => []),
     searchAlbum: vi.fn(async () => null),
@@ -12,26 +29,33 @@ function setup(over: { linked?: boolean; collection?: string[]; natures?: string
     play: vi.fn(async () => undefined),
     pause: vi.fn(async () => undefined),
   };
+  const sessionListeners = new Set<() => void>();
   const session = {
     isLinked: vi.fn(async () => over.linked ?? true),
     link: vi.fn(async () => undefined),
     unlink: vi.fn(async () => undefined),
-    subscribe: vi.fn(() => () => undefined),
+    subscribe: vi.fn((listener: () => void) => {
+      sessionListeners.add(listener);
+      return () => void sessionListeners.delete(listener);
+    }),
   };
   const onPlayed = vi.fn();
+  const store = over.store ?? createMemoryStore();
+  const resolve = vi.fn(async (): Promise<Record<string, CardMusic>> => (over.wikidataSilent ? {} : { Abbey_Road: { albumId: 'A'.repeat(22), ...(over.music?.Abbey_Road ?? {}) } }));
   const service = createMusicService({
     collection: { list: async () => (over.collection ?? ['Abbey_Road']).map(card) },
     kinds: {
       resolveMissing: vi.fn(async () => undefined),
       load: async () => ({ cards: { Abbey_Road: { natures: over.natures ?? ['Q482994'], occupations: [], genres: [] } }, labels: {} }),
     },
-    music: { resolve: async () => ({ Abbey_Road: { albumId: 'A'.repeat(22), ...(over.music?.Abbey_Road ?? {}) } }) },
+    music: { resolve },
+    listens: over.listens ?? createListenRepo(store),
     session,
     api: api as never,
     onPlayed,
     ...(over.launchApp ? { launchApp: over.launchApp, sleep: async () => undefined } : {}),
   });
-  return { service, api, session, onPlayed };
+  return { service, api, session, sessionListeners, onPlayed, resolve, store };
 }
 
 describe('createMusicService.view', () => {
@@ -76,6 +100,123 @@ describe('createMusicService.view', () => {
   });
 });
 
+describe('createMusicService, listes gardées', () => {
+  const come = { uri: 'spotify:track:1', title: 'Come Together', artist: 'The Beatles' };
+  const something = { uri: 'spotify:track:2', title: 'Something', artist: 'The Beatles' };
+
+  it("n'interroge Spotify ni Wikidata une seconde fois pour la même carte", async () => {
+    const { service, api, resolve } = setup();
+    await service.view('Abbey_Road', 'Abbey Road');
+    const again = await service.view('Abbey_Road', 'Abbey Road');
+    expect(again).toMatchObject({ status: 'ready', listen: { kind: 'album', items: [come] } });
+    expect(api.albumTracks).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it("retrouve la liste à la session suivante, sans aucun appel à Spotify", async () => {
+    const first = setup();
+    await first.service.view('Abbey_Road', 'Abbey Road');
+    const next = setup({ store: first.store });
+    expect(await next.service.view('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready' });
+    expect(next.api.albumTracks).not.toHaveBeenCalled();
+    expect(next.resolve).not.toHaveBeenCalled();
+  });
+
+  it('garde aussi « introuvable » : pas de nouvelle recherche à chaque ouverture', async () => {
+    const { service, api } = setup();
+    api.albumTracks.mockResolvedValueOnce([]);
+    expect(await service.view('Abbey_Road', 'Abbey Road')).toEqual({ status: 'notfound' });
+    expect(await service.view('Abbey_Road', 'Abbey Road')).toEqual({ status: 'notfound' });
+    expect(api.albumTracks).toHaveBeenCalledTimes(1);
+  });
+
+  it("ne garde pas une erreur : la fiche réessaie à l'ouverture suivante", async () => {
+    const { service, api } = setup();
+    api.albumTracks.mockRejectedValueOnce(new SpotifyError('rate-limited', 'x', 1000));
+    expect(await service.view('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'error' });
+    expect(await service.view('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready' });
+    expect(api.albumTracks).toHaveBeenCalledTimes(2);
+  });
+
+  it("ne garde pas un « introuvable » dû à Wikidata muet : sans l'interprète, Spotify n'a pas été interrogé", async () => {
+    const silent = setup({ wikidataSilent: true });
+    expect(await silent.service.view('Abbey_Road', 'Abbey Road')).toEqual({ status: 'notfound' });
+    expect(await silent.service.view('Abbey_Road', 'Abbey Road')).toEqual({ status: 'notfound' });
+    expect(silent.api.albumTracks).not.toHaveBeenCalled();
+    // Wikidata finit par répondre : la carte est enfin résolue, rien de faux n'a été gardé.
+    const answered = setup({ store: silent.store });
+    expect(await answered.service.view('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready' });
+  });
+
+  it("garde la liste quand on délie puis relie Spotify : ce sont des données de catalogue, pas du compte", async () => {
+    const { service, api, sessionListeners } = setup();
+    await service.view('Abbey_Road', 'Abbey Road');
+    sessionListeners.forEach((listener) => listener());
+    expect(await service.view('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready' });
+    expect(api.albumTracks).toHaveBeenCalledTimes(1);
+  });
+
+  it("n'affiche toujours rien de la liste tant que le compte n'est pas lié", async () => {
+    const first = setup();
+    await first.service.view('Abbey_Road', 'Abbey Road');
+    const unlinked = setup({ store: first.store, linked: false });
+    expect(await unlinked.service.view('Abbey_Road', 'Abbey Road')).toEqual({ status: 'unlinked' });
+  });
+
+  it("montre quand même la liste quand le stockage refuse l'écriture (plein)", async () => {
+    const full = { load: async () => new Map(), save: vi.fn(async () => Promise.reject(new Error('QuotaExceededError'))) };
+    const { service, api } = setup({ listens: full });
+    expect(await service.view('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready' });
+    // Sans mémoire, on retombe sur le comportement d'avant : Spotify est réinterrogé.
+    await service.view('Abbey_Road', 'Abbey Road');
+    expect(api.albumTracks).toHaveBeenCalledTimes(2);
+  });
+
+  it("ne lance aucune recherche en lançant la lecture : le seul appel est `play`", async () => {
+    const { service, api } = setup();
+    const view = await service.view('Abbey_Road', 'Abbey Road');
+    if (view.status !== 'ready') throw new Error('liste attendue');
+    api.albumTracks.mockClear();
+    await service.play(come, view.listen, { slug: 'Abbey_Road', title: 'Abbey Road' });
+    expect(api.albumTracks).not.toHaveBeenCalled();
+    expect(api.searchTracks).not.toHaveBeenCalled();
+    expect(api.play).toHaveBeenCalledTimes(1);
+  });
+
+  describe('refresh', () => {
+    it("redemande à Spotify et remplace la liste gardée, que les ouvertures suivantes reprennent sans appel", async () => {
+      const { service, api } = setup();
+      await service.view('Abbey_Road', 'Abbey Road');
+      api.albumTracks.mockResolvedValue([come, something]);
+      expect(await service.refresh('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready', listen: { items: [come, something] } });
+      expect(api.albumTracks).toHaveBeenCalledTimes(2);
+      expect(await service.view('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready', listen: { items: [come, something] } });
+      expect(api.albumTracks).toHaveBeenCalledTimes(2);
+    });
+
+    it("garde l'ancienne liste quand Spotify est indisponible : seule une réponse la remplace", async () => {
+      const { service, api } = setup();
+      await service.view('Abbey_Road', 'Abbey Road');
+      api.albumTracks.mockRejectedValueOnce(new SpotifyError('rate-limited', 'x', 1000));
+      expect(await service.refresh('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'error', retryAfterMs: 1000 });
+      expect(await service.view('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready', listen: { items: [come] } });
+      expect(api.albumTracks).toHaveBeenCalledTimes(2);
+    });
+
+    it("rend la liste gardée sans interroger Spotify quand Wikidata n'a pas répondu : l'interprète manque, l'actualisation serait faussée", async () => {
+      const first = setup();
+      await first.service.view('Abbey_Road', 'Abbey Road');
+      const silent = setup({ store: first.store, wikidataSilent: true });
+      expect(await silent.service.refresh('Abbey_Road', 'Abbey Road')).toMatchObject({ status: 'ready', listen: { items: [come] } });
+      expect(silent.api.albumTracks).not.toHaveBeenCalled();
+    });
+
+    it("rend none hors collection, comme view", async () => {
+      expect(await setup({ collection: [] }).service.refresh('Abbey_Road', 'Abbey Road')).toEqual({ status: 'none' });
+    });
+  });
+});
+
 describe('createMusicService.play', () => {
   const track = { uri: 'spotify:track:1', title: 'Come Together', artist: 'The Beatles' };
 
@@ -94,7 +235,7 @@ describe('createMusicService.play', () => {
   it("enchaîne les titres suivants d'un artiste", async () => {
     const { service, api } = setup();
     const items = ['1', '2', '3'].map((id) => ({ uri: `spotify:track:${id}`, title: id, artist: 'A' }));
-    await service.play(items[1], { kind: 'artist', items });
+    await service.play(items[1]!, { kind: 'artist', items });
     expect(api.play).toHaveBeenCalledWith({ uris: ['spotify:track:2', 'spotify:track:3'] });
   });
 

@@ -33,6 +33,7 @@ import { createMarketUi, mountHistoryBadge, mountImageSection, mountListenSectio
 import { decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
+import { createListenRepo } from '../core/music/listen-repo';
 import { createMusicRepo } from '../core/music/music-repo';
 import { fetchWikidataMusic } from '../core/music/wikidata-music';
 import { createSpotifyApi } from '../core/spotify/spotify-api';
@@ -304,6 +305,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           collection: collectionRepo,
           kinds: kindsRepo,
           music: musicRepo,
+          listens: createListenRepo(store),
           session,
           api: spotifyApi,
           onPlayed: (card) => {

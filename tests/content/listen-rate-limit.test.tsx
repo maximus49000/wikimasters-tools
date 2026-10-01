@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ListenSection } from '../../src/content/ListenSection';
 import { createMusicService } from '../../src/content/music-service';
 import { setMusicService } from '../../src/content/music-registry';
+import { createMemoryStore } from '../../src/core/cache/store';
+import { createListenRepo } from '../../src/core/music/listen-repo';
 import { createSpotifyApi } from '../../src/core/spotify/spotify-api';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,6 +29,7 @@ function setup(retryAfter: string | null) {
     collection: { list: async () => [{ slug: 'Abbey_Road', title: 'Abbey Road' }] as never },
     kinds: { resolveMissing: async () => undefined, load: async () => ({ cards: { Abbey_Road: { natures: ['Q482994'], occupations: [], genres: [] } }, labels: {} }) as never },
     music: { resolve: async () => ({ Abbey_Road: { performer: 'The Beatles' } }) as never },
+    listens: createListenRepo(createMemoryStore()),
     session: { isLinked: async () => true, link: async () => undefined, unlink: async () => undefined, subscribe: () => () => undefined },
     api,
     onPlayed: () => undefined,

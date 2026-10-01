@@ -13,6 +13,8 @@ const MAX_AUTO_RETRIES = 5;
 // Au-delà, un minuteur se déclencherait aussitôt.
 const MAX_TIMER_MS = 2_147_483_647;
 
+const REFRESH_LABEL = 'Actualiser les meilleurs titres';
+
 const SIZE = 44; // cible tactile
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -47,6 +49,8 @@ export function ListenSection({ slug, title }: Props) {
   const [version, setVersion] = useState(0);
   // Rechargements automatiques d'affilée après une limite ; chaque carte repart de zéro.
   const [autoRetries, setAutoRetries] = useState(0);
+  // Actualisation des meilleurs titres en cours (bouton d'un artiste).
+  const [refreshing, setRefreshing] = useState(false);
 
   // Carte dont la vue affichée est issue : un rechargement de la même carte (nouvelle tentative, liaison) garde l'affichage jusqu'à la réponse.
   const shownFor = useRef<string | null>(null);
@@ -60,6 +64,7 @@ export function ListenSection({ slug, title }: Props) {
       shownFor.current = card;
       setView(null);
       setMessage(null);
+      setRefreshing(false);
     }
     void service.view(slug, title).then((next) => !cancelled && setView(next));
     // Liaison ou déliaison pendant que la fiche est ouverte : on recharge.
@@ -93,6 +98,19 @@ export function ListenSection({ slug, title }: Props) {
   // La carte est retenue par le lecteur : il en offre ensuite la fiche (bouton « Carte »).
   const play = async (item: Track, listen: Listen) => setMessage(await service.play(item, listen, { slug, title }));
   const link = async () => setMessage(await service.link());
+  // Les meilleurs titres d'un artiste viennent d'une recherche gardée : ce bouton la refait. Une panne laisse la liste affichée.
+  const refresh = async () => {
+    if (refreshing) return;
+    const card = `${slug}\n${title}`;
+    setRefreshing(true);
+    setMessage(null);
+    const next = await service.refresh(slug, title);
+    // Réponse d'une carte quittée entre-temps : la fiche affichée n'est plus la sienne.
+    if (shownFor.current !== card) return;
+    setRefreshing(false);
+    if (next.status === 'error') setMessage(next.message);
+    else setView(next);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -133,9 +151,23 @@ export function ListenSection({ slug, title }: Props) {
               );
             })}
           </ul>
-          <button type="button" onClick={() => void service.unlink()} aria-label="Délier Spotify" title="Délier Spotify" style={{ ...iconButton, alignSelf: 'flex-end', opacity: 0.6 }}>
-            <Glyph name="unlink" size={14} />
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            {view.listen.kind === 'artist' && (
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                disabled={refreshing}
+                aria-label={REFRESH_LABEL}
+                title={REFRESH_LABEL}
+                style={{ ...iconButton, opacity: refreshing ? 0.3 : 0.6, cursor: refreshing ? 'default' : 'pointer' }}
+              >
+                <Glyph name="refresh" size={14} />
+              </button>
+            )}
+            <button type="button" onClick={() => void service.unlink()} aria-label="Délier Spotify" title="Délier Spotify" style={{ ...iconButton, opacity: 0.6 }}>
+              <Glyph name="unlink" size={14} />
+            </button>
+          </div>
         </>
       )}
       {message && <p role="status" style={{ margin: 0, fontSize: 12 }}>{message}</p>}
