@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import { cardMarket, toCardPreview, type CardPreview } from '../core/collection/card-preview';
 import type { KnownCard } from '../core/collection/collection-book';
 import type { CollectionRepo } from '../core/collection/collection-repo';
@@ -12,6 +12,7 @@ import { buildCardPreview } from './card-preview-dom';
 import type { CollectionFilterSource } from './collection-filter';
 import type { KindFilterSource } from './kind-filter';
 import type { MarketSource } from './market-source';
+import type { PageMemory } from './page-memory';
 import type { SortSource } from './sort-source';
 import { createThrottledLoader } from './throttle';
 import { useKindState } from './useKindState';
@@ -36,10 +37,9 @@ type Props = {
   onOpenCard: (slug: string) => void;
   // Cartes affichées dont les prix du marché sont à relever.
   onWantCards: (cards: KnownCard[]) => void;
+  // Page affichée pour chaque sélection de filtres, gardée d'une montée de la vue à la suivante.
+  pages: PageMemory;
 };
-
-// Page affichée, gardée d'une montée de la vue à la suivante.
-const remembered = { page: 1 };
 
 // Taille de la carte construite par `buildCardPreview` (voir `.wmt-card` dans PANEL_CSS).
 const CARD_WIDTH = 288;
@@ -133,11 +133,12 @@ export function HomemadePanel({
   nativePageSize,
   onOpenCard,
   onWantCards,
+  pages,
 }: Props) {
-  // Remontée de la vue (le jeu remplace sa grille à la fermeture d'une fiche) : cartes, scan et page sont repris tels quels.
+  // Remontée de la vue (le jeu remplace sa grille à la fermeture d'une fiche) : cartes et scan sont repris tels quels.
   const [cards, setCards] = useState<KnownCard[]>(() => collection.snapshot() ?? []);
   const [scan, setScan] = useState<ScanState>(() => scanner.snapshot() ?? IDLE_SCAN);
-  const [page, setPage] = useState(() => remembered.page);
+  const [, repaint] = useReducer((count: number) => count + 1, 0);
 
   useEffect(() => {
     let alive = true;
@@ -170,17 +171,11 @@ export function HomemadePanel({
     [cards, visible, kindsState, kindFilter, sort, marketNow.history],
   );
   const size = pageSizeOf(scan.pageSize, nativePageSize());
-  const current = useMemo(() => pageSlice(list, page, size), [list, page, size]);
-
-  // Un autre filtre : retour à la première page.
+  // Un autre filtre : première page. Ouvrir une carte pose une recherche sur le site, retirée à la fermeture de la
+  // fiche : la sélection d'avant retrouve alors sa page.
   const filterKey = `${filter}|${kindFilter.category ?? ''}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}|${sort}`;
-  const lastFilterKey = useRef(filterKey);
-  useEffect(() => {
-    if (lastFilterKey.current === filterKey) return;
-    lastFilterKey.current = filterKey;
-    remembered.page = 1;
-    setPage(1);
-  }, [filterKey]);
+  const page = pages.get(filterKey);
+  const current = useMemo(() => pageSlice(list, page, size), [list, page, size]);
 
   const nowPlaying = useNowPlayingSlugs(current.items);
   const previews = useMemo(
@@ -194,8 +189,8 @@ export function HomemadePanel({
   useWantPrices(current.items, onWantCards);
 
   const goTo = (next: number) => {
-    remembered.page = next;
-    setPage(next);
+    pages.set(filterKey, next);
+    repaint();
   };
 
   return (
