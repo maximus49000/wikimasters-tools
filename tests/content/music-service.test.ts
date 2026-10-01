@@ -124,4 +124,10 @@ describe('createMusicService.link', () => {
     session.link.mockRejectedValueOnce(new SpotifyError('auth-cancelled', 'x'));
     expect(await service.link()).toBe('Liaison Spotify annulée.');
   });
+
+  it("montre la cause d'une erreur hors Spotify (ex. fenêtre d'autorisation refusée)", async () => {
+    const { service, session } = setup();
+    session.link.mockRejectedValueOnce(new Error('Authorization page could not be loaded.'));
+    expect(await service.link()).toBe('Liaison Spotify impossible : Authorization page could not be loaded.');
+  });
 });

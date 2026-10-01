@@ -28,6 +28,10 @@ const stateSchema = z.object({
     .nullish(),
 });
 
+const devicesSchema = z.object({
+  devices: z.array(z.object({ id: z.string().nullable(), type: z.string(), is_restricted: z.boolean().optional() })),
+});
+
 const joinArtists = (artists: { name: string }[]): string => artists.map((artist) => artist.name).join(', ');
 
 function parse<T>(schema: z.ZodType<T>, json: unknown): T {
@@ -64,6 +68,14 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
     }
   }
 
+  async function firstDeviceId(): Promise<string | null> {
+    const response = await send('GET', '/me/player/devices');
+    const parsed = devicesSchema.safeParse(await response.json());
+    if (!parsed.success) return null;
+    const usable = parsed.data.devices.filter((device) => device.id && !device.is_restricted);
+    return (usable.find((device) => device.type === 'Computer') ?? usable[0])?.id ?? null;
+  }
+
   return {
     async searchTracks(query: string, limit = SEARCH_MAX): Promise<FoundTrack[]> {
       const response = await send('GET', '/search', { query: { q: query, type: 'track', limit: String(Math.min(limit, SEARCH_MAX)) } });
@@ -82,18 +94,6 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
       return parse(searchAlbumsSchema, await response.json()).albums.items[0]?.id ?? null;
     },
 
-    async albumTracks(albumId: string): Promise<Track[]> {
-      const response = await send('GET', `/albums/${encodeURIComponent(albumId)}/tracks`, { query: { limit: '50' } });
-      return parse(albumTracksSchema, await response.json()).items.map((item) => ({
-        uri: item.uri,
-        title: item.name,
-        artist: joinArtists(item.artists),
-      }));
-    },
-
-    async play(target: PlayTarget): Promise<void> {
-      const body = !target ? undefined : 'uris' in target ? { uris: target.uris } : { context_uri: target.contextUri, offset: { uri: target.offsetUri } };
-      await send('PUT', '/me/player/play', body ? { body } : {});
     // Pochette d'un album (ou du disque d'un morceau) ; Spotify classe les images de la plus grande à la plus petite.
     async findCover(kind: 'album' | 'track', title: string, performer?: string): Promise<string | null> {
       const artist = performer ? ` artist:"${performer}"` : '';
@@ -111,12 +111,25 @@ export function createSpotifyApi(deps: { session: Pick<SpotifySession, 'accessTo
       return parse(coverArtistsSchema, await response.json()).artists.items[0]?.images[0]?.url ?? null;
     },
 
-    // Pochette d'un album (ou du disque d'un morceau) ; Spotify classe les images de la plus grande à la plus petite.
-    async findCover(kind: 'album' | 'track', title: string, performer?: string): Promise<string | null> {
-      const artist = performer ? ` artist:"${performer}"` : '';
-      if (kind === 'album') {
-        const response = await send('GET', '/search', { query: { q: `album:"${title}"${artist}`, type: 'album', limit: '1' } });
-        return parse(coverAlbumsSchema, await response.json()).albums.items[0]?.images[0]?.url ?? null;
+    async albumTracks(albumId: string): Promise<Track[]> {
+      const response = await send('GET', `/albums/${encodeURIComponent(albumId)}/tracks`, { query: { limit: '50' } });
+      return parse(albumTracksSchema, await response.json()).items.map((item) => ({
+        uri: item.uri,
+        title: item.name,
+        artist: joinArtists(item.artists),
+      }));
+    },
+
+    async play(target: PlayTarget): Promise<void> {
+      const body = !target ? undefined : 'uris' in target ? { uris: target.uris } : { context_uri: target.contextUri, offset: { uri: target.offsetUri } };
+      try {
+        await send('PUT', '/me/player/play', body ? { body } : {});
+      } catch (error) {
+        if (!(error instanceof SpotifyError) || error.code !== 'no-device') throw error;
+        // Application ouverte mais sans lecture récente : elle est visible comme appareil sans être « active », on la cible et elle se réveille.
+        const deviceId = await firstDeviceId();
+        if (!deviceId) throw error;
+        await send('PUT', '/me/player/play', { query: { device_id: deviceId }, ...(body ? { body } : {}) });
       }
     },
 
