@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../../src/core/cache/store';
 import { SpotifyError } from '../../../src/core/spotify/errors';
-import { createSpotifySession } from '../../../src/core/spotify/spotify-session';
+import { createSpotifySession, type SpotifyFetch } from '../../../src/core/spotify/spotify-session';
 
 const tokenResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
-function setup(overrides: { fetch?: ReturnType<typeof vi.fn>; authorize?: ReturnType<typeof vi.fn> } = {}) {
+function setup(overrides: { fetch?: ReturnType<typeof vi.fn<SpotifyFetch>>; authorize?: ReturnType<typeof vi.fn<(authUrl: string) => Promise<string>>> } = {}) {
   let time = 1_000_000;
   const fetch =
     overrides.fetch ??
-    vi.fn(async () => tokenResponse({ access_token: 'A1', refresh_token: 'R1', expires_in: 3600 }));
+    vi.fn<SpotifyFetch>(async () => tokenResponse({ access_token: 'A1', refresh_token: 'R1', expires_in: 3600 }));
   const authorize =
     overrides.authorize ??
-    vi.fn(async (authUrl: string) => `wikimasterstools://spotify?code=CODE&state=${new URL(authUrl).searchParams.get('state')}`);
+    vi.fn<(authUrl: string) => Promise<string>>(async (authUrl: string) => `wikimasterstools://spotify?code=CODE&state=${new URL(authUrl).searchParams.get('state')}`);
   const session = createSpotifySession({
     store: createMemoryStore(),
     fetch,
@@ -45,14 +45,14 @@ describe('createSpotifySession', () => {
   });
 
   it('ne lie rien quand la liaison est annulée', async () => {
-    const { session } = setup({ authorize: vi.fn(async () => 'wikimasterstools://spotify?error=access_denied') });
+    const { session } = setup({ authorize: vi.fn<(authUrl: string) => Promise<string>>(async () => 'wikimasterstools://spotify?error=access_denied') });
     await expect(session.link()).rejects.toMatchObject({ code: 'auth-cancelled' });
     expect(await session.isLinked()).toBe(false);
   });
 
   it('rafraîchit le jeton expiré, en gardant le jeton de rafraîchissement si Spotify n\'en renvoie pas', async () => {
     const fetch = vi
-      .fn()
+      .fn<SpotifyFetch>()
       .mockResolvedValueOnce(tokenResponse({ access_token: 'A1', refresh_token: 'R1', expires_in: 3600 }))
       .mockResolvedValueOnce(tokenResponse({ access_token: 'A2', expires_in: 3600 }));
     const { session, advance } = setup({ fetch });
@@ -66,7 +66,7 @@ describe('createSpotifySession', () => {
 
   it('regroupe les rafraîchissements simultanés en une seule requête', async () => {
     const fetch = vi
-      .fn()
+      .fn<SpotifyFetch>()
       .mockResolvedValueOnce(tokenResponse({ access_token: 'A1', refresh_token: 'R1', expires_in: 3600 }))
       .mockResolvedValue(tokenResponse({ access_token: 'A2', expires_in: 3600 }));
     const { session, advance } = setup({ fetch });
@@ -78,7 +78,7 @@ describe('createSpotifySession', () => {
 
   it('force un rafraîchissement même si le jeton est valide', async () => {
     const fetch = vi
-      .fn()
+      .fn<SpotifyFetch>()
       .mockResolvedValueOnce(tokenResponse({ access_token: 'A1', refresh_token: 'R1', expires_in: 3600 }))
       .mockResolvedValueOnce(tokenResponse({ access_token: 'A2', expires_in: 3600 }));
     const { session } = setup({ fetch });
@@ -88,7 +88,7 @@ describe('createSpotifySession', () => {
 
   it('délie quand le jeton de rafraîchissement est refusé', async () => {
     const fetch = vi
-      .fn()
+      .fn<SpotifyFetch>()
       .mockResolvedValueOnce(tokenResponse({ access_token: 'A1', refresh_token: 'R1', expires_in: 3600 }))
       .mockResolvedValueOnce(tokenResponse({ error: 'invalid_grant' }, 400));
     const { session, advance } = setup({ fetch });
