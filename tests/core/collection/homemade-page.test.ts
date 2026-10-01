@@ -17,6 +17,14 @@ describe('sortCards', () => {
   });
 });
 
+describe('sortCards par prix', () => {
+  it('trie par prix décroissant, les cartes sans prix à la fin (rareté, puis titre à prix égal)', () => {
+    const prices: Record<string, number | null> = { A: 100, B: 500, C: null, D: 100, E: null };
+    const sorted = sortCards([card('E', 'C'), card('D', 'C'), card('C', 'L'), card('B', 'C'), card('A', 'UR')], (slug) => prices[slug] ?? null);
+    expect(sorted.map((c) => c.title)).toEqual(['B', 'A', 'D', 'C', 'E']);
+  });
+});
+
 describe('pageSizeOf', () => {
   it('retient la plus grande des deux sources', () => {
     expect(pageSizeOf(24, 20)).toBe(24);

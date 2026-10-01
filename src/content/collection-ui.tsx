@@ -24,6 +24,8 @@ import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
 import type { MarketSource } from './market-source';
 import { TimelinePanel } from './TimelinePanel';
+import { syncPriceSort } from './price-sort-menu';
+import type { SortSource } from './sort-source';
 import { PANEL_CSS, WorldPanel } from './WorldPanel';
 import { ensureViewSwitch } from './world-toggle';
 
@@ -42,6 +44,8 @@ export type CollectionUiDeps = {
   book: PriceBook | null;
   // Filtres (étiquette, rareté…) appliqués sur la page, et lecture des cartes qu'ils laissent.
   filterSource: CollectionFilterSource;
+  // Tri « Prix de vente décroissant » ajouté à la liste de tri du site (vue Homemade).
+  sortSource: SortSource;
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   // Un clic sur une carte d'une vue : sa fiche de marché.
   openCard: (slug: string) => void;
@@ -55,7 +59,7 @@ export type CollectionUiDeps = {
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSource, scanner, book, filterSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
@@ -91,13 +95,14 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
       ) : view === 'world' ? (
         <WorldPanel {...common} geo={geo} kinds={kinds} kindFilterSource={kindFilterSource} />
       ) : (
-        <HomemadePanel {...common} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} />
+        <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} />
       ),
     );
     panel = { host, root, grid, view };
   }
 
   function showList(): void {
+    syncPriceSort(document, false, sortSource);
     unmountPanel();
     kindRow.unmount();
     restoreHiddenGrids(document);
@@ -132,6 +137,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
     }
 
     const view = readView(window.localStorage);
+    syncPriceSort(document, view === 'homemade', sortSource);
     // Le sélecteur se place à côté des pastilles de rareté ; à défaut, à côté de « Sélectionner ».
     const rarityAnchor = findRarityFilterAnchor(document);
     ensureViewSwitch(rarityAnchor ?? button, button, view, (next) => {
