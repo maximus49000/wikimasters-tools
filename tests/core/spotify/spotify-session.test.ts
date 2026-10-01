@@ -108,4 +108,25 @@ describe('createSpotifySession', () => {
     expect(listener).toHaveBeenCalledTimes(2);
     expect(await session.isLinked()).toBe(false);
   });
+
+  it("reprend les jetons renouvelés par un autre onglet au lieu de délier (400 après rotation)", async () => {
+    const store = createMemoryStore();
+    const responses = [
+      tokenResponse({ access_token: 'A1', refresh_token: 'R1', expires_in: 3600 }),
+      tokenResponse({ error: 'invalid_grant' }, 400),
+    ];
+    let time = 1_000_000;
+    const make = (fetch: SpotifyFetch) =>
+      createSpotifySession({ store, fetch, authorize: async (u) => `wikimasterstools://spotify?code=C&state=${new URL(u).searchParams.get('state')}`, redirectUri: async () => 'wikimasterstools://spotify', now: () => time });
+    const tabA = make(async () => responses.shift()!);
+    await tabA.link();
+    time += 3600_000;
+    const tabB = make(async () => {
+      // Pendant l'appel de l'onglet B, l'onglet A a renouvelé : le store contient un nouveau jeton.
+      await store.set('spotify-session', { accessToken: 'A2', refreshToken: 'R2', expiresAt: time + 3600_000 });
+      return responses.shift()!;
+    });
+    expect(await tabB.accessToken()).toBe('A2');
+    expect(await tabB.isLinked()).toBe(true);
+  });
 });

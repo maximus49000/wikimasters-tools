@@ -61,6 +61,9 @@ export function createSpotifySession(deps: SessionDeps) {
     if (!response.ok) {
       // Jeton révoqué ou refusé : il faut relier le compte.
       if (response.status === 400 || response.status === 401) {
+        // Un autre onglet a peut-être déjà renouvelé le jeton (rotation) : on reprend les siens, sans délier.
+        const stored = await store.get<Tokens | null>(KEY);
+        if (stored && stored.refreshToken !== current.refreshToken) return stored;
         await unlink();
         throw new SpotifyError('not-linked', 'Jeton de rafraîchissement refusé');
       }

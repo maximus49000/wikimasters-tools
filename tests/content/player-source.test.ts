@@ -5,6 +5,8 @@ import { SpotifyError } from '../../src/core/spotify/errors';
 const playing = { playing: true, title: 'Something', artist: 'The Beatles', imageUrl: null };
 
 function setup(over: { linked?: boolean; hidden?: string | null } = {}) {
+  let visible = true;
+  const visibleListeners = new Set<() => void>();
   const scheduled: { fn: () => void; ms: number }[] = [];
   const stored = new Map<string, string>(over.hidden ? [['wmt:spotifyPlayerHidden', over.hidden]] : []);
   const api = {
@@ -25,16 +27,36 @@ function setup(over: { linked?: boolean; hidden?: string | null } = {}) {
     api,
     session,
     storage: { getItem: (k) => stored.get(k) ?? null, setItem: (k, v) => void stored.set(k, v) },
+    isVisible: () => visible,
+    onVisible: (callback) => {
+      visibleListeners.add(callback);
+      return () => void visibleListeners.delete(callback);
+    },
     schedule: (fn, ms) => {
       const entry = { fn, ms };
       scheduled.push(entry);
       return () => void scheduled.splice(scheduled.indexOf(entry), 1);
     },
   });
-  return { source, api, scheduled, stored, setLinked: (value: boolean) => { linked = value; listeners.forEach((l) => l()); } };
+  const setVisible = (value: boolean) => {
+    visible = value;
+    visibleListeners.forEach((l) => l());
+  };
+  return { source, api, scheduled, stored, setVisible, setLinked: (value: boolean) => { linked = value; listeners.forEach((l) => l()); } };
 }
 
 describe('createPlayerSource', () => {
+  it("n'appelle pas l'API quand l'onglet est masqué, et sonde dès le retour au premier plan", async () => {
+    const { source, api, scheduled, setVisible } = setup();
+    setVisible(false);
+    source.start();
+    await vi.waitFor(() => expect(scheduled.at(-1)?.ms).toBe(15000));
+    expect(api.playerState).not.toHaveBeenCalled();
+    setVisible(true);
+    await vi.waitFor(() => expect(api.playerState).toHaveBeenCalledTimes(1));
+    expect(source.current().track?.title).toBe('Something');
+  });
+
   it('commence masqué selon la valeur mémorisée, et mémorise le choix', () => {
     const { source, stored } = setup({ hidden: '1' });
     expect(source.current().hidden).toBe(true);

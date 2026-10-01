@@ -15,6 +15,16 @@ export type PlayerSourceDeps = {
   storage: Pick<Storage, 'getItem' | 'setItem'>;
   // Programme `fn` dans `ms` ; rend la fonction qui l'annule.
   schedule?: (fn: () => void, ms: number) => () => void;
+  // Onglet au premier plan ? En arrière-plan, on n'appelle pas l'API.
+  isVisible?: () => boolean;
+  // S'abonne au retour au premier plan ; rend la fonction qui se désabonne.
+  onVisible?: (callback: () => void) => () => void;
+};
+
+const realIsVisible = () => document.visibilityState === 'visible';
+const realOnVisible = (callback: () => void) => {
+  document.addEventListener('visibilitychange', callback);
+  return () => document.removeEventListener('visibilitychange', callback);
 };
 
 const realSchedule = (fn: () => void, ms: number) => {
@@ -23,10 +33,11 @@ const realSchedule = (fn: () => void, ms: number) => {
 };
 
 export function createPlayerSource(deps: PlayerSourceDeps) {
-  const { api, session, storage, schedule = realSchedule } = deps;
+  const { api, session, storage, schedule = realSchedule, isVisible = realIsVisible, onVisible = realOnVisible } = deps;
   const listeners = new Set<() => void>();
   let cancel: (() => void) | null = null;
   let unsubscribe: (() => void) | null = null;
+  let unsubscribeVisible: (() => void) | null = null;
   let running = false;
   let generation = 0;
 
@@ -50,6 +61,11 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
     cancel?.();
     cancel = null;
     let wait = IDLE_MS;
+    // Onglet masqué : aucun appel réseau, on reprogramme comme au repos (le retour au premier plan relance).
+    if (!isVisible()) {
+      if (running) cancel = schedule(() => void poll(), wait);
+      return;
+    }
     try {
       const linked = await session.isLinked();
       if (mine !== generation) return;
@@ -85,6 +101,10 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
       running = true;
       // Une liaison ou une déliaison relance ou arrête le sondage aussitôt.
       unsubscribe = session.subscribe(() => void poll());
+      // Retour au premier plan : sondage immédiat.
+      unsubscribeVisible = onVisible(() => {
+        if (isVisible()) void poll();
+      });
       void poll();
     },
     stop(): void {
@@ -94,6 +114,8 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
       cancel = null;
       unsubscribe?.();
       unsubscribe = null;
+      unsubscribeVisible?.();
+      unsubscribeVisible = null;
     },
     refresh: poll,
     async toggle(): Promise<void> {
