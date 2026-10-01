@@ -99,6 +99,8 @@ export default defineContentScript({
     let history: HistoryState = emptyHistory();
     // Cartes en attente de relevé : elles affichent le glyphe de chargement.
     let pending: ReadonlySet<string> = new Set();
+    // Cartes de la Collection : elles affichent leur case de prix (« ??? » tant que rien n'est observé).
+    let owned: ReadonlySet<string> = new Set();
     let timer: number | undefined;
     const observer = new MutationObserver(() => {
       window.clearTimeout(timer);
@@ -121,7 +123,13 @@ export default defineContentScript({
           console.warn(LOG, 'glyphe de chargement indisponible :', error);
         }
         try {
-          decorateHistory(document, (slug) => cardsForSlug(history, slug), Date.now(), mountHistoryBadge);
+          decorateHistory(
+            document,
+            (slug) => cardsForSlug(history, slug),
+            Date.now(),
+            mountHistoryBadge,
+            (slug) => owned.has(slug),
+          );
         } catch (error) {
           console.warn(LOG, 'moyennes du marché indisponibles :', error);
         }
@@ -151,6 +159,16 @@ export default defineContentScript({
         (error) => console.warn(LOG, 'historique du marché illisible :', error),
       );
     void refreshHistory();
+    const refreshOwned = () =>
+      collectionRepo.list().then(
+        (cards) => {
+          owned = new Set(cards.map((card) => card.slug));
+          run();
+        },
+        (error) => console.warn(LOG, 'collection illisible :', error),
+      );
+    void refreshOwned();
+    collectionRepo.subscribe(() => void refreshOwned());
     const refreshPending = () =>
       collector.pendingSlugs().then(
         (slugs) => {

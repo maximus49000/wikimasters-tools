@@ -41,6 +41,8 @@ Chaque carte de la Collection affiche, sous sa rareté (à gauche), la moyenne d
 ▲ verte, ▼ rouge ou = grise selon la variation du dernier relevé. La fiche de la carte montre le graphique
 (Heure / Jour / Semaine / Mois / Année) et le popup du marché détaille les tranches d'heures.
 
+Chaque carte de la Collection affiche sa case de prix : « ??? » tant qu'aucune enchère avec mise n'a été observée sur elle ; si une valeur a déjà été observée mais plus récemment (plus de 7 jours), la dernière valeur connue s'affiche en grisé et en italique, avec son ancienneté dans l'infobulle.
+
 Pendant qu'une carte attend son relevé ou est en cours de relevé, un petit glyphe rond qui tourne s'affiche en bas à droite de la carte (au-dessus de la ligne ATK / DEF) ; il disparaît dès que la carte est relevée. Une carte déjà relevée depuis moins de 30 min n'en affiche pas.
 
 Les relevés se poursuivent d'une page à l'autre du site (un changement de page ne perd rien) et un seul onglet à la
