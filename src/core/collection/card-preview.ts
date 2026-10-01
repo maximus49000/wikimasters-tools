@@ -17,6 +17,8 @@ export type CardPreview = {
   tags: CardTag[];
   purchase: PurchaseModel | null;
   market: CardMarket;
+  // Nombre d'exemplaires possédés, seulement s'il dépasse 1.
+  copies: number | null;
 };
 
 const NO_MARKET: CardMarket = { history: null, loading: false };
@@ -42,5 +44,6 @@ export function toCardPreview(
     tags: card.tags ?? [],
     purchase: toPurchaseModel(entry?.purchase ?? null),
     market,
+    copies: card.copies !== undefined && card.copies > 1 ? card.copies : null,
   };
 }

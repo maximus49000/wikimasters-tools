@@ -66,3 +66,19 @@ describe('createCollectionRepo', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('exemplaires', () => {
+  it("s'ajoutent au compte connu en mode cumul, et une observation sans compte les conserve", () => {
+    const first = mergeCards({}, [{ ...PARIS, copies: 2 }], true);
+    const second = mergeCards(first, [{ ...PARIS, copies: 1 }], true);
+    expect(second['Paris']?.copies).toBe(3);
+    expect(mergeCards(second, [PARIS])['Paris']?.copies).toBe(3);
+  });
+
+  it('remet les comptes à zéro au début d’un parcours complet', async () => {
+    const repo = createCollectionRepo(createMemoryStore());
+    await repo.observe([{ ...PARIS, copies: 2 }], true);
+    await repo.resetCopies();
+    expect((await repo.list())[0]).toEqual(PARIS);
+  });
+});

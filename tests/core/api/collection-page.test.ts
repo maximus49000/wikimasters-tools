@@ -20,9 +20,9 @@ describe('parseCollectionPage', () => {
     expect(page.entries).toBe(3);
     expect(page.skipped).toBe(0);
     expect(page.cards).toEqual([
-      { slug: 'Ted_Lasso', title: 'Ted Lasso', rarity: 'L', extract: 'série télévisée américaine', tags: [] },
-      { slug: "Tenture_de_l'Apocalypse", title: "Tenture de l'Apocalypse", rarity: 'UR', tags: [] },
-      { slug: 'Paul_de_Grèce_(1967)', title: 'Paul de Grèce (1967)', rarity: 'SR', extract: 'financier', tags: [] },
+      { slug: 'Ted_Lasso', title: 'Ted Lasso', copies: 1, rarity: 'L', extract: 'série télévisée américaine', tags: [] },
+      { slug: "Tenture_de_l'Apocalypse", title: "Tenture de l'Apocalypse", copies: 1, rarity: 'UR', tags: [] },
+      { slug: 'Paul_de_Grèce_(1967)', title: 'Paul de Grèce (1967)', copies: 1, rarity: 'SR', extract: 'financier', tags: [] },
     ]);
   });
 
@@ -65,6 +65,12 @@ describe('parseCollectionPage', () => {
       { slug: 'Ted_Lasso' },
       { slug: 'Ted_Lasso' },
     ]);
+  });
+
+  it("compte les exemplaires d'une même carte sur la page", () => {
+    const entry = fixture.collection[0]!;
+    const page = parseCollectionPage({ collection: [entry, entry, fixture.collection[1]] }, ENDPOINT);
+    expect(page.cards.map((c) => c.copies)).toEqual([2, 1]);
   });
 
   it('écarte une entrée invalide sans faire échouer les autres', () => {
