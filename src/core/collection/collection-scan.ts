@@ -24,6 +24,8 @@ export type ScanState = {
   lastObtainedAt?: number;
   // Idem pour le parcours complet en cours, pour qu'une reprise ne la perde pas.
   pendingObtainedAt?: number;
+  // Plus grande page lue (entrées d'une page de l'API du site) : la taille de page de la vue Homemade.
+  pageSize?: number;
 };
 
 export const IDLE_SCAN: ScanState = { status: 'idle', nextPage: 0, entries: 0, updatedAt: 0 };
@@ -74,8 +76,10 @@ export function createCollectionScanner({
     let page = 0;
     let entries = 0;
     let pending: number | undefined;
+    let pageSize = 0;
     try {
       saved = await state();
+      pageSize = saved.pageSize ?? 0;
       if (saved.status === 'running' && now() - saved.updatedAt < LOCK_MS) {
         // Un autre chargement de page scanne (ou vient de l'être, p. ex. rechargement en cours de
         // scan) : on revient voir une fois le verrou expiré, une seule fois à la fois.
@@ -110,6 +114,7 @@ export function createCollectionScanner({
         pass: mode,
         ...(last !== undefined ? { lastObtainedAt: last } : {}),
         ...(mode === 'full' && status !== 'done' && pending !== undefined ? { pendingObtainedAt: pending } : {}),
+        ...(pageSize > 0 ? { pageSize } : {}),
         ...extra,
       });
 
@@ -119,6 +124,7 @@ export function createCollectionScanner({
         while (page < maxPages && !reached) {
           await write(snapshot('running'));
           const result = await api.getCollectionPage(page, undefined, 'added');
+          pageSize = Math.max(pageSize, result.entries);
           const rows = result.obtained ?? [];
           // Sans le tri par date, l'arrêt anticipé raterait des cartes : mieux vaut échouer que se tromper.
           for (let i = 1; i < rows.length; i += 1) {
@@ -148,6 +154,7 @@ export function createCollectionScanner({
       while (page < maxPages) {
         await write(snapshot('running'));
         const result = await api.getCollectionPage(page, undefined, 'added');
+        pageSize = Math.max(pageSize, result.entries);
         if (result.entries === 0) {
           await write(snapshot('done', pending !== undefined ? { lastObtainedAt: pending } : {}));
           return;
@@ -169,6 +176,7 @@ export function createCollectionScanner({
         pass: mode,
         ...(saved.lastObtainedAt !== undefined ? { lastObtainedAt: saved.lastObtainedAt } : {}),
         ...(mode === 'full' && pending !== undefined ? { pendingObtainedAt: pending } : {}),
+        ...(pageSize > 0 ? { pageSize } : {}),
         error: message,
       }).catch(() => undefined);
     } finally {

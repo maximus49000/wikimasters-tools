@@ -53,7 +53,7 @@ function yearOfValue(value: unknown): number | null {
 }
 
 // Rang « préféré » d'abord, rangs dépréciés ignorés.
-function usableClaims(claims: Record<string, unknown>, property: string): Claim[] {
+export function usableClaims(claims: Record<string, unknown>, property: string): Claim[] {
   const list = claimListSchema.safeParse(claims[property] ?? []);
   const usable = (list.success ? list.data : []).filter((claim) => claim.rank !== 'deprecated');
   return [...usable.filter((c) => c.rank === 'preferred'), ...usable.filter((c) => c.rank !== 'preferred')];
@@ -130,7 +130,7 @@ export function parseWikibaseItems(json: unknown, titles: string[]): Record<stri
 
 export type FetchLike = (url: string) => Promise<Response>;
 
-async function getJson(fetchFn: FetchLike, base: string, params: Record<string, string>, name: string): Promise<unknown> {
+export async function getJson(fetchFn: FetchLike, base: string, params: Record<string, string>, name: string): Promise<unknown> {
   const response = await fetchFn(`${base}?${new URLSearchParams({ format: 'json', origin: '*', ...params }).toString()}`);
   if (!response.ok) throw new Error(`${name} : HTTP ${response.status}`);
   return response.json();

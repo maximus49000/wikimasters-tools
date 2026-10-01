@@ -1,14 +1,15 @@
-export type CollectionView = 'list' | 'world' | 'timeline';
+// `list` : la grille du site, inchangée ; `homemade` : notre grille paginée et filtrable (vue par défaut).
+export type CollectionView = 'homemade' | 'world' | 'timeline' | 'list';
 
 const KEY = 'wmt:collectionView';
 
-// Toute erreur de stockage (accès bloqué…) est absorbée : on reste en vue Grille.
+// Toute erreur de stockage (accès bloqué…) est absorbée : on reste en vue Homemade.
 export function readView(storage: Pick<Storage, 'getItem'>): CollectionView {
   try {
     const value = storage.getItem(KEY);
-    return value === 'world' || value === 'timeline' ? value : 'list';
+    return value === 'list' || value === 'world' || value === 'timeline' || value === 'homemade' ? value : 'homemade';
   } catch {
-    return 'list';
+    return 'homemade';
   }
 }
 

@@ -23,10 +23,16 @@ import type { PriceBook } from '../core/pricing/price-book';
 import type { CollectionFilterSource } from './collection-filter';
 import { CardPopup } from './CardPopup';
 import { createThrottledLoader } from './throttle';
+import { intersectSlugs, kindSlugs } from '../core/kinds/kinds-filter';
+import type { KindsRepo } from '../core/kinds/kinds-repo';
+import type { KindFilterSource } from './kind-filter';
+import { useKindState } from './useKindState';
 
 type Props = {
   collection: CollectionRepo;
   birth: BirthRepo;
+  kinds: KindsRepo;
+  kindFilterSource: KindFilterSource;
   scanner: CollectionScanner;
   book: PriceBook | null;
   market: MarketSource;
@@ -83,7 +89,7 @@ const box = {
   font: '14px/20px system-ui, sans-serif',
 } as const;
 
-export function TimelinePanel({ collection, birth, scanner, book, market, filterSource, loadFiltered, onOpen, onOpenCard, onWantCards }: Props) {
+export function TimelinePanel({ collection, birth, kinds, kindFilterSource, scanner, book, market, filterSource, loadFiltered, onOpen, onOpenCard, onWantCards }: Props) {
   const [cards, setCards] = useState<KnownCard[]>([]);
   const [scan, setScan] = useState<ScanState>(IDLE_SCAN);
   const [birthState, setBirthState] = useState<BirthState>(EMPTY_BIRTH);
@@ -154,8 +160,12 @@ export function TimelinePanel({ collection, birth, scanner, book, market, filter
     };
   }, [filter, loadFiltered, localSlugs]);
 
-  const visible = localSlugs ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
-  const filtering = Boolean(filter) && visible === null && !filterError;
+  const nativeVisible = localSlugs ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
+  const { kindsState, kindFilter } = useKindState(kinds, kindFilterSource);
+  const kindVisible = useMemo(() => kindSlugs(cards, kindsState, kindFilter), [cards, kindsState, kindFilter]);
+  // Filtre du site (étiquette, rareté) et filtre nature / occupation : une carte doit passer les deux.
+  const visible = useMemo(() => intersectSlugs(nativeVisible, kindVisible), [nativeVisible, kindVisible]);
+  const filtering = Boolean(filter) && nativeVisible === null && !filterError;
 
   useEffect(() => {
     if (cards.length > 0) void birth.resolveMissing(cards.map((card) => card.slug));

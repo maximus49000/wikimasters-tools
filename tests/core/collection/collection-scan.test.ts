@@ -60,6 +60,19 @@ describe('createCollectionScanner', () => {
     expect(getCollectionPage).toHaveBeenCalledWith(0, undefined, 'added');
   });
 
+  it('retient la plus grande page lue comme taille de page du site', async () => {
+    const { scanner } = setup([page('A', 'B', 'C'), page('D')]);
+    await scanner.run();
+    expect(await scanner.state()).toMatchObject({ status: 'done', pageSize: 3 });
+  });
+
+  it('garde la taille de page connue lors d’une mise à jour incrémentale', async () => {
+    const { scanner } = setup([dated(['A', 30], ['B', 20], ['C', 10])]);
+    await scanner.run();
+    await scanner.run();
+    expect(await scanner.state()).toMatchObject({ pageSize: 3 });
+  });
+
   describe('mise à jour incrémentale', () => {
     it('retient la date de la carte la plus récente à la fin du parcours complet', async () => {
       const { scanner } = setup([dated(['A', 30], ['B', 20]), dated(['C', 10])]);
