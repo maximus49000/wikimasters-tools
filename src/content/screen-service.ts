@@ -31,6 +31,14 @@ export function createScreenService(deps: ScreenServiceDeps) {
   const detailOf = (mediaType: MediaType, id: number) => cache.getOrLoad(`screen-detail-${mediaType}-${id}`, () => api.detail(mediaType, id));
 
   return {
+    // Les cartes (parmi `cards`) liées au cinéma (film, série, personne de cinéma) : le chargement TMDB les prend en charge. Sans clé TMDB, aucune.
+    async screenSlugs(cards: Pick<KnownCard, 'slug'>[]): Promise<Set<string>> {
+      if (!hasKey || cards.length === 0) return new Set();
+      await kinds.resolveMissing(cards.map((card) => card.slug));
+      const loaded = await kinds.load();
+      return new Set(cards.filter((card) => screenKindOf(loaded.cards[card.slug]) !== null).map((card) => card.slug));
+    },
+
     // Ce que la fiche d'une carte montre : rien, le détail d'un film ou d'une série, une filmographie, ou une erreur.
     async view(slug: string, title: string): Promise<ScreenView> {
       if (!hasKey) return { status: 'none' };

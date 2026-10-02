@@ -51,6 +51,25 @@ describe('buildCardPreview : exemplaires', () => {
   });
 });
 
+describe('buildCardPreview : bobine de cinéma', () => {
+  it('marque une carte liée au cinéma', () => {
+    const reel = buildCardPreview({ ...base, film: true }).querySelector<HTMLElement>('.wmt-card-film');
+    expect(reel?.title).toBe('Lien avec le cinéma');
+    expect(reel?.classList.contains('wmt-card-playing')).toBe(true);
+  });
+
+  it('l’emporte sur la note de musique (bande originale d’un film)', () => {
+    const card = buildCardPreview({ ...base, film: true, music: true });
+    expect(card.querySelector('.wmt-card-music')).toBeNull();
+    expect(card.querySelectorAll('.wmt-card-playing')).toHaveLength(1);
+  });
+
+  it('laisse l’égaliseur seul quand un titre joue', () => {
+    const card = buildCardPreview({ ...base, film: true, playing: true });
+    expect(card.querySelector('.wmt-card-film')).toBeNull();
+  });
+});
+
 describe('buildCardPreview : note de musique', () => {
   it('marque une carte liée à la musique, à la place du glyphe de lecture', () => {
     const note = buildCardPreview({ ...base, music: true }).querySelector<HTMLElement>('.wmt-card-music');

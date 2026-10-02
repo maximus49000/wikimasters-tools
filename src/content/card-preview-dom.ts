@@ -137,8 +137,10 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
   }
 
   // Au-dessus de l'attaque, en face de la marque d'exemplaires : un titre de cette carte joue sur Spotify.
-  // Sans lecture, une note de musique la remplace pour toute carte liée à la musique.
+  // Sans lecture, une bobine de cinéma (carte liée aux films) ou une note de musique la remplace.
+  // La bobine l'emporte : la bande originale d'un film ne change pas la pastille en note.
   if (preview.playing) card.append(playingGlyph());
+  else if (preview.film) card.append(filmGlyph());
   else if (preview.music) card.append(musicGlyph());
 
   // Reflet animé des légendaires : classe du site.
@@ -180,6 +182,23 @@ function musicGlyph(): HTMLElement {
     const dot = document.createElementNS(SVG_NS, 'circle');
     for (const [name, value] of Object.entries({ cx: String(cx), cy: String(cy), r: '3' })) dot.setAttribute(name, value);
     svg.append(dot);
+  }
+  glyph.append(svg);
+  return glyph;
+}
+
+// Bobine de cinéma (disque, moyeu et quatre trous) dans la même pastille, sans animation.
+function filmGlyph(): HTMLElement {
+  const glyph = div('wmt-card-playing wmt-card-film');
+  glyph.setAttribute('role', 'img');
+  glyph.title = 'Lien avec le cinéma';
+  glyph.setAttribute('aria-label', glyph.title);
+  const svg = icon('', []);
+  svg.setAttribute('class', 'wmt-card-film-reel');
+  for (const [cx, cy, r] of [[12, 12, 10], [12, 12, 1.5], [12, 6.5, 1.5], [12, 17.5, 1.5], [6.5, 12, 1.5], [17.5, 12, 1.5]]) {
+    const circle = document.createElementNS(SVG_NS, 'circle');
+    for (const [name, value] of Object.entries({ cx: String(cx), cy: String(cy), r: String(r) })) circle.setAttribute(name, value);
+    svg.append(circle);
   }
   glyph.append(svg);
   return glyph;

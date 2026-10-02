@@ -23,6 +23,8 @@ export type CardPreview = {
   playing?: boolean;
   // Carte ayant un lien avec la musique (Spotify, Tidal) : une note de musique marque la carte ; absent sinon.
   music?: boolean;
+  // Carte ayant un lien avec le cinéma (film, série, personne) : une bobine marque la carte ; absent sinon.
+  film?: boolean;
 };
 
 const NO_MARKET: CardMarket = { history: null, loading: false };
@@ -39,6 +41,7 @@ export function toCardPreview(
   market: CardMarket = NO_MARKET,
   playing = false,
   music = false,
+  film = false,
 ): CardPreview {
   return {
     title: card.title,
@@ -53,5 +56,6 @@ export function toCardPreview(
     copies: card.copies !== undefined && card.copies > 1 ? card.copies : null,
     ...(playing ? { playing: true } : {}),
     ...(music ? { music: true } : {}),
+    ...(film ? { film: true } : {}),
   };
 }

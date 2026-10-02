@@ -17,6 +17,7 @@ import type { SortSource } from './sort-source';
 import { createThrottledLoader } from './throttle';
 import { useKindState } from './useKindState';
 import { useMusicSlugs } from './useMusicSlugs';
+import { useScreenSlugs } from './useScreenSlugs';
 import { useNowPlayingSlugs } from './useNowPlayingSlugs';
 import { useNativeFilter } from './useNativeFilter';
 import { useWantPrices } from './useWantPrices';
@@ -180,12 +181,13 @@ export function HomemadePanel({
 
   const nowPlaying = useNowPlayingSlugs(current.items);
   const musicSlugs = useMusicSlugs(current.items);
+  const screenSlugs = useScreenSlugs(current.items);
   const previews = useMemo(
     () =>
       current.items.map((card) =>
-        toCardPreview(card, book?.byTitle(card.title) ?? null, cardMarket(marketNow.history, marketNow.pending, card.slug, Date.now()), nowPlaying.has(card.slug), musicSlugs.has(card.slug)),
+        toCardPreview(card, book?.byTitle(card.title) ?? null, cardMarket(marketNow.history, marketNow.pending, card.slug, Date.now()), nowPlaying.has(card.slug), musicSlugs.has(card.slug), screenSlugs.has(card.slug)),
       ),
-    [current.items, book, marketNow, nowPlaying, musicSlugs],
+    [current.items, book, marketNow, nowPlaying, musicSlugs, screenSlugs],
   );
   // Seules les cartes de la page affichée ont leurs prix relevés, comme sur la liste du site.
   useWantPrices(current.items, onWantCards);

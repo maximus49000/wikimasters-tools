@@ -73,3 +73,17 @@ describe('createScreenService.detail', () => {
     expect(await service.detail('movie', 2)).toMatchObject({ status: 'error' });
   });
 });
+
+describe('createScreenService.screenSlugs', () => {
+  const cards = [{ slug: 'Inception' }, { slug: 'Paris' }];
+
+  it('rend les cartes liées au cinéma, d’après leur nature', async () => {
+    const { service } = setup();
+    expect([...(await service.screenSlugs(cards))]).toEqual(['Inception']);
+  });
+
+  it('ne rend rien sans clé TMDB : le chargement des films est absent', async () => {
+    const { service } = setup({ hasKey: false });
+    expect((await service.screenSlugs(cards)).size).toBe(0);
+  });
+});
