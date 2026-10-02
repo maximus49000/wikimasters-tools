@@ -39,6 +39,19 @@ describe('createListenRepo', () => {
     expect([...state.keys()].sort()).toEqual(['A', 'B', 'C']);
   });
 
+  it('deux dépôts de clés différentes ne se mélangent pas et se conservent côte à côte', async () => {
+    const store = createMemoryStore();
+    const spotify = createListenRepo(store);
+    const tidal = createListenRepo(store, () => Date.now(), 'listens-tidal-v1');
+    await spotify.save('Abbey_Road', album);
+    expect((await tidal.load()).has('Abbey_Road')).toBe(false);
+    await tidal.save('Abbey_Road', artist);
+    expect((await spotify.load()).get('Abbey_Road')).toEqual(album);
+    expect((await tidal.load()).get('Abbey_Road')).toEqual(artist);
+    expect(await store.get('listens-v1')).toBeTruthy();
+    expect(await store.get('listens-tidal-v1')).toBeTruthy();
+  });
+
   it("ne confond pas un nom d'article avec une propriété d'objet", async () => {
     const repo = createListenRepo(createMemoryStore());
     expect((await repo.load()).has('constructor')).toBe(false);
