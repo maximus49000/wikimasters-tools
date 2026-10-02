@@ -17,6 +17,11 @@ export function isSelecting(root: ParentNode): boolean {
   return buttonsOf(root).some((button) => normalize(button.textContent).startsWith('quitter la sélection'));
 }
 
+// Quitte le mode « Sélectionner » du site en cliquant sur son bouton « Quitter la sélection ».
+export function quitSelection(root: ParentNode): void {
+  buttonsOf(root).find((button) => normalize(button.textContent).startsWith('quitter la sélection'))?.click();
+}
+
 // La barre d'actions du site (« Tout sélectionner (page) », « Étiqueter »…), repérée par son premier bouton.
 function findSelectionBar(root: ParentNode): { bar: HTMLElement; anchor: HTMLButtonElement } | null {
   const anchor = buttonsOf(root).find((button) => normalize(button.textContent).startsWith('tout sélectionner'));
