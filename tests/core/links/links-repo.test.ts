@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../../src/core/cache/store';
 import { LINKS_MAX_AGE_MS, linksOf } from '../../../src/core/links/links-book';
-import { CONCURRENCY, WRITE_EVERY, createLinksRepo } from '../../../src/core/links/links-repo';
+import { BATCH_SIZE, CONCURRENCY, createLinksRepo } from '../../../src/core/links/links-repo';
 
 const noSleep = async () => undefined;
-const answer = async (slug: string) => (slug === 'Vide' ? [] : ['Pop', `Lien_${slug}`]);
+const answer = async (slugs: string[]) => Object.fromEntries(slugs.map((slug) => [slug, slug === 'Vide' ? [] : ['Pop', `Lien_${slug}`]]));
 const slugs = (count: number) => Array.from({ length: count }, (_, i) => `A${i}`);
 const later = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -16,97 +16,105 @@ describe('createLinksRepo', () => {
     await repo.resolveMissing(['Kamini', 'Vide']);
     await repo.resolveMissing(['Kamini', 'Vide']);
 
-    expect(fetchLinks).toHaveBeenCalledTimes(2);
+    expect(fetchLinks).toHaveBeenCalledTimes(1);
     const state = await repo.load();
     expect(linksOf(state, 'Kamini')).toEqual(['Pop', 'Lien_Kamini']);
     expect(Object.keys(state.cards).sort()).toEqual(['Kamini', 'Vide']);
   });
 
-  it('lit plusieurs articles en même temps, sans dépasser la limite', async () => {
+  it('lit les articles par lots de 50, une requête par lot', async () => {
+    const fetchLinks = vi.fn(answer);
+    const repo = createLinksRepo(createMemoryStore(), fetchLinks, noSleep);
+    await repo.resolveMissing(slugs(120));
+    expect(BATCH_SIZE).toBe(50);
+    expect(fetchLinks.mock.calls.map(([batch]) => batch.length).sort((a, b) => b - a)).toEqual([50, 50, 20]);
+    expect(Object.keys((await repo.load()).cards)).toHaveLength(120);
+  });
+
+  it('lit plusieurs lots en même temps, sans dépasser la limite', async () => {
     let running = 0;
     let most = 0;
-    const slow = vi.fn(async (slug: string) => {
+    const slow = vi.fn(async (batch: string[]) => {
       running += 1;
       most = Math.max(most, running);
       await later();
       running -= 1;
-      return answer(slug);
+      return answer(batch);
     });
     const repo = createLinksRepo(createMemoryStore(), slow, noSleep);
 
-    await repo.resolveMissing(slugs(30));
+    await repo.resolveMissing(slugs(400));
 
-    expect(CONCURRENCY).toBe(4);
+    expect(CONCURRENCY).toBe(2);
     expect(most).toBe(CONCURRENCY);
-    expect(slow).toHaveBeenCalledTimes(30);
-    expect(Object.keys((await repo.load()).cards)).toHaveLength(30);
+    expect(slow).toHaveBeenCalledTimes(8);
+    expect(Object.keys((await repo.load()).cards)).toHaveLength(400);
   });
 
-  it('enregistre tous les dix articles et à la fin, et prévient les abonnés à chaque écriture', async () => {
+  it('enregistre à chaque lot, et prévient les abonnés à chaque écriture', async () => {
     const repo = createLinksRepo(createMemoryStore(), answer, noSleep);
     const listener = vi.fn();
     repo.subscribe(listener);
-    await repo.resolveMissing(slugs(25));
-    expect(WRITE_EVERY).toBe(10);
+    await repo.resolveMissing(slugs(120));
     expect(listener).toHaveBeenCalledTimes(3);
-    expect(Object.keys((await repo.load()).cards)).toHaveLength(25);
   });
 
-  it('espace les requêtes d’un même lecteur', async () => {
+  it('espace les requêtes d’un même lecteur, jamais avant la première', async () => {
     const sleep = vi.fn(noSleep);
     const repo = createLinksRepo(createMemoryStore(), answer, sleep, 200);
-    await repo.resolveMissing(slugs(40));
+    await repo.resolveMissing(slugs(400));
     expect(sleep).toHaveBeenCalledWith(200);
-    // Chaque lecteur n'attend qu'entre deux de ses propres requêtes : jamais avant la première.
-    expect(sleep.mock.calls.length).toBeLessThanOrEqual(40 - CONCURRENCY);
-    expect(sleep.mock.calls.length).toBeGreaterThan(0);
+    expect(sleep.mock.calls.length).toBe(8 - CONCURRENCY);
   });
 
   it('ajoute à la lecture en cours les articles demandés pendant qu’elle tourne, sans relire les lus', async () => {
-    const fetchLinks = vi.fn(async (slug: string) => {
+    const fetchLinks = vi.fn(async (batch: string[]) => {
       await later();
-      return answer(slug);
+      return answer(batch);
     });
     const repo = createLinksRepo(createMemoryStore(), fetchLinks, noSleep);
 
-    const first = repo.resolveMissing(slugs(8));
+    const first = repo.resolveMissing(slugs(60));
     await later();
-    const second = repo.resolveMissing([...slugs(8), 'B0', 'B1']);
+    const second = repo.resolveMissing([...slugs(60), 'B0', 'B1']);
     await Promise.all([first, second]);
 
-    expect(fetchLinks).toHaveBeenCalledTimes(10);
-    expect(Object.keys((await repo.load()).cards)).toHaveLength(10);
+    const asked = fetchLinks.mock.calls.flatMap(([batch]) => batch);
+    expect(asked).toHaveLength(62);
+    expect(new Set(asked).size).toBe(62);
+    expect(Object.keys((await repo.load()).cards)).toHaveLength(62);
   });
 
-  it('garde ce qui a été lu avant une erreur, prévient les abonnés, puis attend avant de réessayer', async () => {
+  it('garde les lots lus avant une erreur, prévient les abonnés, puis attend avant de réessayer', async () => {
     let time = 0;
-    const fetchLinks = vi.fn<(slug: string) => Promise<string[]>>(async (slug) => {
+    let calls = 0;
+    const fetchLinks = vi.fn<(batch: string[]) => Promise<Record<string, string[]>>>(async (batch) => {
       await later();
-      if (slug === 'A2') throw new Error('429');
-      return answer(slug);
+      calls += 1;
+      if (calls === 4) throw new Error('429');
+      return answer(batch);
     });
     const repo = createLinksRepo(createMemoryStore(), fetchLinks, noSleep, 0, () => time);
     const listener = vi.fn();
     repo.subscribe(listener);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    await repo.resolveMissing(slugs(20));
+    await repo.resolveMissing(slugs(400));
     expect(repo.failed()).toBe(true);
     const kept = Object.keys((await repo.load()).cards);
     expect(kept.length).toBeGreaterThan(0);
-    expect(kept.length).toBeLessThan(20);
-    expect(kept).not.toContain('A2');
+    expect(kept.length).toBeLessThan(400);
     expect(listener).toHaveBeenCalled();
 
-    const calls = fetchLinks.mock.calls.length;
-    await repo.resolveMissing(slugs(20));
-    expect(fetchLinks).toHaveBeenCalledTimes(calls);
+    const before = fetchLinks.mock.calls.length;
+    await repo.resolveMissing(slugs(400));
+    expect(fetchLinks).toHaveBeenCalledTimes(before);
 
     time = 61_000;
     expect(repo.failed()).toBe(false);
     fetchLinks.mockImplementation(answer);
-    await repo.resolveMissing(slugs(20));
-    expect(Object.keys((await repo.load()).cards)).toHaveLength(20);
+    await repo.resolveMissing(slugs(400));
+    expect(Object.keys((await repo.load()).cards)).toHaveLength(400);
   });
 
   it('relit une carte au bout de 30 jours', async () => {
@@ -119,13 +127,16 @@ describe('createLinksRepo', () => {
     expect(fetchLinks).toHaveBeenCalledTimes(2);
   });
 
-  it('stocke sous sa propre clé, sans toucher aux autres', async () => {
+  it('stocke sous sa propre clé, sans toucher aux autres ni aux liens lus avec l’ancienne méthode', async () => {
     const store = createMemoryStore();
     await store.set('kinds-v1', { cards: {}, labels: {} });
+    await store.set('links-v1', { titles: ['Ancien'], cards: { A: { at: 1, links: [0] } } });
     const repo = createLinksRepo(store, answer, noSleep);
     await repo.resolveMissing(['A']);
     expect(await store.get('kinds-v1')).toEqual({ cards: {}, labels: {} });
-    expect(await store.get('links-v1')).toBeDefined();
+    expect(await store.get('links-v1')).toEqual({ titles: ['Ancien'], cards: { A: { at: 1, links: [0] } } });
+    expect(await store.get('links-v2')).toBeDefined();
+    expect(linksOf(await repo.load(), 'A')).toEqual(['Pop', 'Lien_A']);
   });
 
   it('traite un stockage plein comme un échec, sans lever', async () => {

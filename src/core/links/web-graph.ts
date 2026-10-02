@@ -11,8 +11,8 @@ export const MAX_HUBS = 300;
 export const GENERIC_SHARE = 0.3;
 export const GENERIC_MIN = 30;
 
-// Pages citées dans les références de l'introduction, qui ne disent rien du sujet d'un article : identifiants, bibliothèques, archives,
-// prononciation (« API a », « API o »…).
+// Pages qui ne disent rien du sujet d'un article : identifiants, bibliothèques, archives, prononciation (« API a », « API o »…) et
+// sources de la critique citées dans la fiche d'un album (AllMusic, Metacritic, Pitchfork, Rolling Stone).
 const IGNORED = new Set(
   [
     'International Standard Book Number',
@@ -27,6 +27,10 @@ const IGNORED = new Set(
     'Wikidata',
     'Wikimedia Commons',
     'Alphabet phonétique international',
+    'AllMusic',
+    'Metacritic',
+    'Pitchfork',
+    'Rolling Stone',
   ].map(titleToSlug),
 );
 const isIgnored = (slug: string): boolean => IGNORED.has(slug) || /^API_.{1,2}$/.test(slug);

@@ -1,17 +1,19 @@
 import type { KeyValueStore } from '../cache/store';
 import { EMPTY_LINKS, needsLinksLookup, setLinks, type LinksState } from './links-book';
 
-const KEY = 'links-v1';
+// `v2` : les liens viennent du wikitexte de l'introduction (lots de 50 articles). Les `links-v1` lus un article par requête,
+// avec les liens que les modèles d'infobox ajoutent (« Genre musical », « Label discographique »…), sont laissés de côté.
+const KEY = 'links-v2';
 // Après un échec (429, hors ligne, stockage plein), on laisse Wikipédia respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
-// Les articles lus sont enregistrés par groupes : une écriture par article réécrirait tout le stockage à chaque fois.
-export const WRITE_EVERY = 10;
-// Articles lus en même temps. Mesuré depuis un navigateur : 4 lecteurs à la fois (3 requêtes par seconde) passent sans limitation
-// de débit, quatre fois plus vite qu'un seul (2233 cartes : douze minutes au lieu d'une heure).
-export const CONCURRENCY = 4;
+// Articles lus par requête : la limite de l'API. Wikipédia accorde 200 requêtes par minute à chaque IP (mesuré : le quota se rétablit
+// à chaque minute d'horloge, au-delà tout est refusé en 429) : 2233 cartes n'en demandent que 45.
+export const BATCH_SIZE = 50;
+// Requêtes en même temps. Peu importe : 45 requêtes tiennent en dix secondes à un seul lecteur.
+export const CONCURRENCY = 2;
 
-// Les liens de l'introduction d'un article (slugs), un article par requête.
-export type LinksFetcher = (slug: string) => Promise<string[]>;
+// Les liens de l'introduction de plusieurs articles (slugs, au plus BATCH_SIZE), par article.
+export type LinksFetcher = (slugs: string[]) => Promise<Record<string, string[]>>;
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -52,53 +54,43 @@ export function createLinksRepo(
 
   async function lookupAll(): Promise<void> {
     try {
-      // Ce qui était déjà lu au départ, et ce que ce parcours a lu depuis (les demandes qui arrivent en cours de route
-      // peuvent reprendre un article déjà lu : la vue n'a pas encore relu le stockage).
+      // Ce qui était déjà lu au départ, et ce que ce parcours a pris depuis, lu ou en cours de lecture (les demandes qui arrivent
+      // en cours de route peuvent reprendre un article déjà pris : la vue n'a pas encore relu le stockage).
       const known = await load();
-      const readNow = new Set<string>();
-      let buffer: Record<string, string[]> = {};
-      let buffered = 0;
+      const taken = new Set<string>();
       let failure: unknown;
       const writes: Promise<void>[] = [];
+      const wanted = (slug: string) => !taken.has(slug) && needsLinksLookup(known, slug, now());
 
-      // Les articles lus sont écrits dès qu'il y en a dix, sans attendre les lecteurs encore occupés.
-      const flush = () => {
-        if (buffered === 0) return;
-        const group = buffer;
-        buffer = {};
-        buffered = 0;
-        writes.push(
-          update((latest) => setLinks(latest, group, now())).catch((error: unknown) => {
-            failure ??= error;
-          }),
-        );
-      };
-
-      // Le prochain article à lire, dans l'ordre où il a été demandé.
-      const take = (): string | undefined => {
+      // Le prochain lot, dans l'ordre où les articles ont été demandés.
+      const takeBatch = (): string[] => {
+        const batch: string[] = [];
         for (const slug of pending) {
           pending.delete(slug);
-          if (!readNow.has(slug) && needsLinksLookup(known, slug, now())) return slug;
+          if (!wanted(slug)) continue;
+          taken.add(slug);
+          batch.push(slug);
+          if (batch.length >= BATCH_SIZE) break;
         }
-        return undefined;
+        return batch;
       };
 
       const worker = async () => {
         let first = true;
         while (failure === undefined) {
-          const slug = take();
-          if (slug === undefined) return;
+          const batch = takeBatch();
+          if (batch.length === 0) return;
           // Un lecteur n'attend qu'entre deux de ses propres requêtes.
           if (!first) await sleep(gapMs);
           first = false;
           try {
-            // Le résultat est d'abord attendu : `buffer[slug] = await …` viserait le tampon d'avant, déjà écrit si un
-            // enregistrement l'a remplacé pendant l'attente.
-            const links = await fetchLinks(slug);
-            buffer[slug] = links;
-            readNow.add(slug);
-            buffered += 1;
-            if (buffered >= WRITE_EVERY) flush();
+            const fetched = await fetchLinks(batch);
+            // Chaque lot est écrit dès qu'il est lu, sans attendre l'autre lecteur.
+            writes.push(
+              update((latest) => setLinks(latest, fetched, now())).catch((error: unknown) => {
+                failure ??= error;
+              }),
+            );
           } catch (error) {
             failure ??= error;
             return;
@@ -109,13 +101,12 @@ export function createLinksRepo(
       // Un article demandé juste avant la fin des lecteurs est repris par un nouveau tour.
       do {
         await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
-        flush();
         await Promise.all(writes);
-      } while (failure === undefined && [...pending].some((slug) => !readNow.has(slug) && needsLinksLookup(known, slug, now())));
+      } while (failure === undefined && [...pending].some(wanted));
 
       if (failure !== undefined) {
-        // Hors ligne, 429, stockage plein… : on s'arrête, le reste sera réessayé après le délai de repos. Ce qui a été lu avant
-        // l'échec est gardé : la lecture reprendra où elle s'est arrêtée.
+        // Hors ligne, 429, stockage plein… : on s'arrête, le reste sera réessayé après le délai de repos. Les lots lus avant
+        // l'échec sont gardés : la lecture reprendra où elle s'est arrêtée.
         console.warn('[wikimasters-tools]', 'liens Wikipédia indisponibles :', failure);
         failedAt = now();
         pending.clear();
