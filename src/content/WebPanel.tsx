@@ -304,8 +304,45 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
     },
     [view, positions, size, graph.path],
   );
+  // Pendant un geste, le cadrage « vivant » est posé directement sur le DOM (une fois par image) ; React ne le reçoit qu'à la fin du geste.
+  const live = useRef<Transform | null>(null);
   const transformRef = useRef(transform);
-  transformRef.current = transform;
+  if (!live.current) transformRef.current = transform;
+  const groupRef = useRef<SVGGElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const pickedPointRef = useRef<Point | undefined>(undefined);
+  const frame = useRef(0);
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const applyLive = (next: Transform) => {
+    groupRef.current?.setAttribute('transform', `translate(${next.x} ${next.y}) scale(${next.k})`);
+    groupRef.current?.style.setProperty('--k', String(next.k));
+    const point = pickedPointRef.current;
+    if (toolbarRef.current && point) {
+      const at = placeActions({ x: next.x + point.x * next.k, y: next.y + point.y * next.k }, (CARD_SIZE / 2) * Math.min(next.k, 1), sizeRef.current);
+      toolbarRef.current.style.left = `${at.x}px`;
+      toolbarRef.current.style.top = `${at.y}px`;
+    }
+  };
+  const moveLive = (next: Transform) => {
+    live.current = next;
+    transformRef.current = next;
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      if (live.current) applyLive(live.current);
+    });
+  };
+  const commitLive = () => {
+    const next = live.current;
+    if (!next) return;
+    cancelAnimationFrame(frame.current);
+    frame.current = 0;
+    applyLive(next);
+    live.current = null;
+    setView(next);
+  };
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
   // Taille réelle de la zone (pixels écran) : le dessin et les gestes se calculent dans la même unité.
   useLayoutEffect(() => {
@@ -354,20 +391,29 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
     if (!current || !pointers.current.has(event.pointerId)) return;
     pointers.current.set(event.pointerId, local(event));
     const now = [...pointers.current.values()];
+    // Le premier mouvement fige le cadrage automatique : React ne réécrit plus la transformation pendant le geste.
+    const freeze = () => {
+      if (!live.current) setView((view) => view ?? current.start);
+    };
     if (now.length >= 2 && current.from.length >= 2) {
       dragged.current = true;
-      setView(pinch(current.start, [current.from[0] as Point, current.from[1] as Point], [now[0] as Point, now[1] as Point]));
+      freeze();
+      moveLive(pinch(current.start, [current.from[0] as Point, current.from[1] as Point], [now[0] as Point, now[1] as Point]));
     } else if (now.length === 1 && current.from.length === 1) {
       const dx = (now[0] as Point).x - (current.from[0] as Point).x;
       const dy = (now[0] as Point).y - (current.from[0] as Point).y;
       if (!current.moved && Math.hypot(dx, dy) < DRAG_SLOP) return;
       current.moved = true;
       dragged.current = true;
-      setView({ ...current.start, x: current.start.x + dx, y: current.start.y + dy });
+      freeze();
+      moveLive({ ...current.start, x: current.start.x + dx, y: current.start.y + dy });
     }
   };
   const onPointerEnd = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (pointers.current.delete(event.pointerId)) restart();
+    if (!pointers.current.has(event.pointerId)) return;
+    commitLive();
+    pointers.current.delete(event.pointerId);
+    restart();
   };
 
   const zoomBy = (factor: number) => setView(zoomAt(transform, factor, size.width / 2, size.height / 2));
@@ -404,6 +450,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   // La barre suit la carte au zoom et au glissement : sa place se déduit de celle de la carte à l'écran.
   const pickedCard = picked ? cards.find((card) => card.slug === picked) : undefined;
   const pickedPoint = picked ? positions[cardId(picked)] : undefined;
+  pickedPointRef.current = pickedPoint;
   const actionsAt =
     pickedCard && pickedPoint
       ? placeActions(
@@ -445,7 +492,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
             setPicked(null);
           }}
         >
-          <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`} style={{ '--k': transform.k } as CSSProperties}>
+          <g ref={groupRef} transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`} style={{ '--k': transform.k } as CSSProperties}>
             <WebGraphView
               graph={graph}
               positions={positions}
@@ -472,6 +519,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
         </div>
         {pickedCard && actionsAt && (
           <div
+            ref={toolbarRef}
             role="toolbar"
             aria-label={`Ouvrir ${pickedCard.title}`}
             data-wmt-web-actions=""
