@@ -72,5 +72,7 @@ describe('toCardPreview : musique', () => {
   it('signale une carte liée à la musique, sinon laisse le champ absent', () => {
     expect(toCardPreview(CARD, null, undefined, false, true).music).toBe(true);
     expect(toCardPreview(CARD, null)).not.toHaveProperty('music');
+    expect(toCardPreview(CARD, null, undefined, false, false, true).film).toBe(true);
+    expect(toCardPreview(CARD, null)).not.toHaveProperty('film');
   });
 });
