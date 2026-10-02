@@ -1,10 +1,35 @@
 import type { KnownCard } from '../collection/collection-book';
-import { slugToTitle } from '../market/market-book';
+import { slugToTitle, titleToSlug } from '../market/market-book';
 import { linksOf, type LinksState } from './links-book';
+import type { LayoutNode } from './web-layout';
 
 export const MIN_SHARED = 2;
 // Au-delà, le dessin devient illisible et lent : on garde les points les plus partagés.
 export const MAX_HUBS = 300;
+// Un point cité par plus de cette part des cartes affichées (et par au moins GENERIC_MIN cartes) est « générique » : « France » relie
+// tout et n'apprend rien. Il passe après les autres et n'est affiché que s'il reste de la place sous la limite.
+export const GENERIC_SHARE = 0.3;
+export const GENERIC_MIN = 30;
+
+// Pages citées dans les références de l'introduction, qui ne disent rien du sujet d'un article : identifiants, bibliothèques, archives,
+// prononciation (« API a », « API o »…).
+const IGNORED = new Set(
+  [
+    'International Standard Book Number',
+    'International Standard Serial Number',
+    'Digital Object Identifier',
+    'Internet Archive',
+    "Autorité (sciences de l'information)",
+    'Bibliothèque nationale de France',
+    'Système universitaire de documentation',
+    'Virtual International Authority File',
+    'WorldCat',
+    'Wikidata',
+    'Wikimedia Commons',
+    'Alphabet phonétique international',
+  ].map(titleToSlug),
+);
+const isIgnored = (slug: string): boolean => IGNORED.has(slug) || /^API_.{1,2}$/.test(slug);
 
 export type WebHub = { slug: string; title: string; cards: string[] };
 export type WebGraph = {
@@ -19,6 +44,13 @@ export type WebGraph = {
 
 export const cardId = (slug: string): string => `c:${slug}`;
 export const hubId = (slug: string): string => `h:${slug}`;
+
+// Taille des nœuds dans le dessin : une carte est un carré de 34, un point un disque d'autant plus gros qu'il relie de cartes.
+export const CARD_SIZE = 34;
+export const hubRadius = (cards: number): number => Math.min(14, 4 + 2 * Math.sqrt(cards));
+// Rayon réservé autour d'une carte ou d'un point dans le placement : le nœud, plus la marge de son cadre.
+const CARD_ROOM = 22;
+const HUB_ROOM = 3;
 
 const EMPTY_WEB: WebGraph = { cards: [], hubs: [], cardLinks: [], hiddenHubs: 0 };
 
@@ -46,7 +78,7 @@ export function buildWeb(
           pairs.add(key);
           cardLinks.push([a, b]);
         }
-      } else if (!owned.has(link)) {
+      } else if (!owned.has(link) && !isIgnored(link)) {
         const list = citedBy.get(link);
         if (list) list.push(card.slug);
         else citedBy.set(link, [card.slug]);
@@ -55,9 +87,13 @@ export function buildWeb(
   }
   if (citedBy.size === 0 && cardLinks.length === 0) return EMPTY_WEB;
 
+  const generic = Math.max(GENERIC_MIN, GENERIC_SHARE * shown.length);
   const shared = [...citedBy]
     .filter(([, list]) => list.length >= limits.minShared)
-    .sort(([slugA, a], [slugB, b]) => b.length - a.length || slugA.localeCompare(slugB, 'fr'));
+    .sort(
+      ([slugA, a], [slugB, b]) =>
+        Number(a.length > generic) - Number(b.length > generic) || b.length - a.length || slugA.localeCompare(slugB, 'fr'),
+    );
   const hubs = shared.slice(0, limits.maxHubs).map(([slug, list]) => ({ slug, title: slugToTitle(slug), cards: list }));
 
   const linked = new Set<string>();
@@ -72,6 +108,21 @@ export function buildWeb(
     cardLinks,
     hiddenHubs: shared.length - hubs.length,
   };
+}
+
+// Ce que le placement reçoit : un nœud par carte et par point, une arête par trait.
+export function webNodes(graph: WebGraph): LayoutNode[] {
+  return [
+    ...graph.cards.map((card) => ({ id: cardId(card.slug), radius: CARD_ROOM })),
+    ...graph.hubs.map((hub) => ({ id: hubId(hub.slug), radius: hubRadius(hub.cards.length) + HUB_ROOM })),
+  ];
+}
+
+export function webEdges(graph: WebGraph): [string, string][] {
+  return [
+    ...graph.hubs.flatMap((hub) => hub.cards.map((slug): [string, string] => [hubId(hub.slug), cardId(slug)])),
+    ...graph.cardLinks.map(([a, b]): [string, string] => [cardId(a), cardId(b)]),
+  ];
 }
 
 export type Focus = { kind: 'card' | 'hub'; slug: string };

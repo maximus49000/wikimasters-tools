@@ -54,3 +54,23 @@ export function fitTransform(bounds: Bounds | null, width: number, height: numbe
   const k = clampZoom(Math.min((width - 2 * margin) / w, (height - 2 * margin) / h, MAX_FIT_ZOOM));
   return { k, x: width / 2 - (bounds.minX + w / 2) * k, y: height / 2 - (bounds.minY + h / 2) * k };
 }
+
+// Barre des deux boutons d'ouverture d'une carte (marché, carte du jeu) : deux boutons de 44 px, 6 px entre eux, 6 px de marge, 1 px de bordure.
+export const ACTIONS_BAR = { width: 108, height: 58 };
+const ACTIONS_EDGE = 4;
+const ACTIONS_GAP = 8;
+// Place d'un nom de carte (11 px de police) sous elle.
+const ACTIONS_LABEL = 18;
+
+// Coin haut gauche de la barre pour une carte dont le centre est en `anchor` (pixels de la zone) et la demi-taille à l'écran `half` :
+// au-dessus de la carte, centrée ; sous elle (et son nom) quand le haut manque de place ; toujours dans la zone.
+export function placeActions(anchor: Point, half: number, area: { width: number; height: number }): Point {
+  const above = anchor.y - half - ACTIONS_GAP - ACTIONS_BAR.height;
+  const top = above >= ACTIONS_EDGE ? above : anchor.y + half + ACTIONS_GAP + ACTIONS_LABEL;
+  const maxLeft = Math.max(area.width - ACTIONS_BAR.width - ACTIONS_EDGE, ACTIONS_EDGE);
+  const maxTop = Math.max(area.height - ACTIONS_BAR.height - ACTIONS_EDGE, ACTIONS_EDGE);
+  return {
+    x: Math.min(Math.max(anchor.x - ACTIONS_BAR.width / 2, ACTIONS_EDGE), maxLeft),
+    y: Math.min(Math.max(top, ACTIONS_EDGE), maxTop),
+  };
+}

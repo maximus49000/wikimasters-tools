@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_ZOOM, MIN_ZOOM, boundsOf, clampZoom, fitTransform, pinch, zoomAt } from '../../../src/core/links/web-view';
+import { ACTIONS_BAR, MAX_ZOOM, MIN_ZOOM, boundsOf, clampZoom, fitTransform, pinch, placeActions, zoomAt } from '../../../src/core/links/web-view';
 
 describe('zoomAt', () => {
   it('garde sous le point visé le point du graphe qui s’y trouvait', () => {
@@ -59,5 +59,31 @@ describe('pinch', () => {
     const graphPoint = { x: (150 - start.x) / start.k, y: (100 - start.y) / start.k };
     expect(t.x + graphPoint.x * t.k).toBeCloseTo(150);
     expect(t.y + graphPoint.y * t.k).toBeCloseTo(100);
+  });
+});
+
+describe('placeActions', () => {
+  const area = { width: 600, height: 400 };
+
+  it('pose la barre au-dessus de la carte, centrée sur elle', () => {
+    const { x, y } = placeActions({ x: 300, y: 200 }, 17, area);
+    expect(x).toBeCloseTo(300 - ACTIONS_BAR.width / 2);
+    expect(y + ACTIONS_BAR.height).toBeLessThan(200 - 17);
+  });
+
+  it('la pose sous la carte quand le haut de la zone manque de place', () => {
+    const { y } = placeActions({ x: 300, y: 30 }, 17, area);
+    expect(y).toBeGreaterThan(30 + 17);
+  });
+
+  it('reste dans la zone, à gauche comme à droite', () => {
+    expect(placeActions({ x: 2, y: 200 }, 17, area).x).toBeGreaterThanOrEqual(0);
+    const right = placeActions({ x: 598, y: 200 }, 17, area);
+    expect(right.x + ACTIONS_BAR.width).toBeLessThanOrEqual(area.width);
+  });
+
+  it('reste dans la zone en bas quand la carte en sort', () => {
+    const { y } = placeActions({ x: 300, y: 5000 }, 17, area);
+    expect(y + ACTIONS_BAR.height).toBeLessThanOrEqual(area.height);
   });
 });

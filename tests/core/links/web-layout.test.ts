@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutWeb, type Point } from '../../../src/core/links/web-layout';
+import { createLayout, layoutWeb, type LayoutNode, type Point } from '../../../src/core/links/web-layout';
 
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const star = (hub: string, leaves: number) => ({
@@ -31,12 +31,21 @@ describe('layoutWeb', () => {
     expect(mean(own)).toBeLessThan(mean(other));
   });
 
-  it('ne superpose pas deux nœuds', () => {
-    const { nodes, edges } = star('h', 12);
+  it('ne superpose jamais deux nœuds, même dans un graphe dense', () => {
+    const nodes: LayoutNode[] = [
+      ...Array.from({ length: 120 }, (_, i) => ({ id: `c${i}`, radius: 22 })),
+      ...Array.from({ length: 12 }, (_, i) => ({ id: `h${i}`, radius: 10 })),
+    ];
+    // Chaque carte cite les mêmes quelques points : tout pousse vers le même endroit.
+    const edges = nodes.slice(0, 120).flatMap((card, i) => [0, 1, 2].map((k) => [card.id, `h${(i + k) % 12}`] as const));
     const positions = layoutWeb(nodes, edges);
-    const points = nodes.map((node) => positions[node.id] as Point);
-    for (let i = 0; i < points.length; i++) {
-      for (let j = i + 1; j < points.length; j++) expect(dist(points[i] as Point, points[j] as Point)).toBeGreaterThan(8);
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i] as LayoutNode;
+        const b = nodes[j] as LayoutNode;
+        const minimum = (a.radius ?? 12) + (b.radius ?? 12);
+        expect(dist(positions[a.id] as Point, positions[b.id] as Point)).toBeGreaterThanOrEqual(minimum - 0.5);
+      }
     }
   });
 
@@ -44,6 +53,11 @@ describe('layoutWeb', () => {
     const positions = layoutWeb([{ id: 'a' }, { id: 'b' }], [['a', 'b']], { a: { x: 5, y: 7 } }, 0);
     expect(positions['a']).toEqual({ x: 5, y: 7 });
     expect(positions['b']).toBeDefined();
+  });
+
+  it('place un nouveau nœud près de ses voisins déjà placés', () => {
+    const positions = layoutWeb([{ id: 'a' }, { id: 'b' }], [['a', 'b']], { a: { x: 400, y: -300 } }, 0);
+    expect(dist(positions['b'] as Point, { x: 400, y: -300 })).toBeLessThan(80);
   });
 
   it('garde les anciens nœuds près de leur place quand un nouveau arrive', () => {
@@ -67,5 +81,25 @@ describe('layoutWeb', () => {
       const point = positions[node.id] as Point;
       expect(Number.isFinite(point.x) && Number.isFinite(point.y)).toBe(true);
     }
+  });
+});
+
+describe('createLayout', () => {
+  it('donne le même dessin en plusieurs tranches de temps que d’un seul coup', () => {
+    const { nodes, edges } = star('h', 20);
+    const sliced = createLayout(nodes, edges);
+    let calls = 0;
+    // Un budget nul n'avance que d'une itération à la fois : le calcul est repris appel après appel.
+    while (!sliced.run(0)) calls++;
+    expect(calls).toBeGreaterThan(10);
+    expect(sliced.positions()).toEqual(layoutWeb(nodes, edges));
+  });
+
+  it('rend des positions utilisables avant la fin du calcul', () => {
+    const { nodes, edges } = star('h', 20);
+    const layout = createLayout(nodes, edges);
+    layout.run(0);
+    const positions = layout.positions();
+    expect(Object.keys(positions)).toHaveLength(nodes.length);
   });
 });
