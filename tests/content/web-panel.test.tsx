@@ -11,6 +11,8 @@ import { EMPTY_LINKS, setLinks, type LinksState } from '../../src/core/links/lin
 import type { LinksRepo } from '../../src/core/links/links-repo';
 import type { CollectionFilterSource } from '../../src/content/collection-filter';
 import { createKindFilterSource } from '../../src/content/kind-filter';
+import { setImageService } from '../../src/content/image-registry';
+import type { ImageService } from '../../src/core/images/image-service';
 import { WebPanel } from '../../src/content/WebPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -94,6 +96,30 @@ describe('WebPanel', () => {
   it('invite à parcourir la Collection quand aucune carte n’est connue', async () => {
     await mount(EMPTY_LINKS, false, []);
     expect(container.textContent).toContain('Aucune carte connue');
+  });
+});
+
+describe('WebPanel, images', () => {
+  const withImages = (found: Record<string, string | null>, enabled = true) =>
+    setImageService({ enabled: () => enabled, peek: (slug: string) => found[slug], subscribe: () => () => undefined } as unknown as ImageService);
+  const art = (slug: string) => card(slug)?.querySelector('image')?.getAttribute('href') ?? null;
+
+  afterEach(() => setImageService(null));
+
+  it('montre l’image du jeu, sinon l’image de remplacement déjà trouvée, sinon les initiales', async () => {
+    withImages({ ChansonB: 'https://images.test/chanson.jpg', Air: null });
+    await mount();
+    // Les cartes du test n'ont pas d'image du jeu : seule ChansonB en a une de remplacement.
+    expect(art('ChansonB')).toBe('https://images.test/chanson.jpg');
+    expect(art('Kamini')).toBeNull();
+    expect(art('Air')).toBeNull();
+    expect(card('Kamini')?.textContent).toContain('Ka');
+  });
+
+  it('ignore les images de remplacement quand l’option est coupée', async () => {
+    withImages({ ChansonB: 'https://images.test/chanson.jpg' }, false);
+    await mount();
+    expect(art('ChansonB')).toBeNull();
   });
 });
 
