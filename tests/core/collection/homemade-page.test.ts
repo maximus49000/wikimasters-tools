@@ -25,6 +25,14 @@ describe('sortCards par prix', () => {
   });
 });
 
+describe('sortCards selon le tri du site', () => {
+  it("suit l'ordre donné par le site, les cartes inconnues de cet ordre à la fin (rareté)", () => {
+    const index = new Map([['C', 0], ['A', 1]]);
+    const sorted = sortCards([card('A', 'C'), card('X', 'L'), card('C', 'C'), card('Y', 'C')], undefined, { index });
+    expect(sorted.map((c) => c.title)).toEqual(['C', 'A', 'X', 'Y']);
+  });
+});
+
 describe('pageSizeOf', () => {
   it('retient la plus grande des deux sources', () => {
     expect(pageSizeOf(24, 20)).toBe(24);

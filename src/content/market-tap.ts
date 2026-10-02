@@ -26,6 +26,14 @@ export function collectionFilterOf(url: URL): string {
   return params.toString();
 }
 
+// Tri demandé par le site (« Nom », « Favoris »…) ; la rareté, tri par défaut, est omise du message.
+export function collectionSortOf(url: URL): string {
+  const sort = url.searchParams.get('sort') ?? '';
+  return sort === 'rarity' ? '' : sort;
+}
+
+const filterMessage = (filter: string, sort: string) => ({ type: COLLECTION_FILTER_MESSAGE, filter, ...(sort ? { sort } : {}) });
+
 function requestUrl(input: string | URL | Request): string {
   if (typeof input === 'string') return input;
   return input instanceof URL ? input.href : input.url;
@@ -37,6 +45,7 @@ export function installMarketTap(win: TapWindow): void {
   const original = win.fetch.bind(win);
   const recent: unknown[] = [];
   let lastFilter: string | null = null;
+  let lastSort = '';
 
   function relay(auctions: unknown): void {
     const message = { type: MARKET_MESSAGE, auctions };
@@ -79,9 +88,11 @@ export function installMarketTap(win: TapWindow): void {
       const url = new URL(requestUrl(input), win.location.href);
       if (url.pathname !== COLLECTION_PATH) return;
       const filter = collectionFilterOf(url);
-      if (filter === lastFilter) return;
+      const sort = collectionSortOf(url);
+      if (filter === lastFilter && sort === lastSort) return;
       lastFilter = filter;
-      win.postMessage({ type: COLLECTION_FILTER_MESSAGE, filter }, win.location.origin);
+      lastSort = sort;
+      win.postMessage(filterMessage(filter, sort), win.location.origin);
     } catch {
       // URL illisible : la page ne doit jamais en pâtir
     }
@@ -101,7 +112,7 @@ export function installMarketTap(win: TapWindow): void {
     if ((event.data as { type?: unknown } | null)?.type !== HELLO_MESSAGE) return;
     for (const message of recent) win.postMessage(message, win.location.origin);
     if (lastFilter !== null) {
-      win.postMessage({ type: COLLECTION_FILTER_MESSAGE, filter: lastFilter }, win.location.origin);
+      win.postMessage(filterMessage(lastFilter, lastSort), win.location.origin);
     }
   });
 }

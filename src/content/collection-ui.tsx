@@ -55,6 +55,7 @@ export type CollectionUiDeps = {
   // Tri « Prix de vente décroissant » ajouté à la liste de tri du site (vue Homemade).
   sortSource: SortSource;
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
+  loadOrdered: (filter: string, sort: string, isCancelled: () => boolean) => Promise<string[]>;
   // Un clic sur une carte d'une vue : sa fiche de marché.
   openCard: (slug: string) => void;
   // Le bouton « carte » : la fiche de la carte dans la Collection du jeu.
@@ -67,7 +68,7 @@ export type CollectionUiDeps = {
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, birth, kinds, links, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, birth, kinds, links, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, loadOrdered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
@@ -110,7 +111,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
         ) : view === 'web' ? (
           <WebPanel {...common} links={links} kinds={kinds} kindFilterSource={kindFilterSource} />
         ) : (
-          <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} />
+          <HomemadePanel {...common} sortSource={sortSource} loadOrdered={loadOrdered} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} />
         )}
       </RecountGate>,
     );
