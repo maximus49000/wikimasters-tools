@@ -1822,7 +1822,7 @@ git commit -m "feat: fiche d'écoute Tidal (lien ↗ par piste, mention TIDAL), 
 **Files:** aucun nouveau (sauf `livrables/` si l'outillage est disponible).
 
 - [ ] **Step 1:** `npm test` — Expected : tout passe. `npm run typecheck` — aucune erreur. `npm run build` — build WXT réussi ; vérifier dans `.output/chrome-mv3/manifest.json` que `host_permissions` contient les trois hôtes Tidal.
-- [ ] **Step 2:** `git grep -n "HtbTIH\|client_secret"` sur tout le dépôt — Expected : aucune ligne (le seul `client_secret` admis est la mention `has('client_secret')` du test de session).
+- [ ] **Step 2:** `git grep -n "client_secret"` sur tout le dépôt, puis une recherche de la valeur du secret (lue dans `.env.local`, jamais écrite dans un fichier suivi) — Expected : seule la mention `has('client_secret')` du test de session ressort, et la valeur du secret nulle part.
 - [ ] **Step 3:** Pousser `feat/tidal-catalogue`, ouvrir la PR (corps : résumé, ce qui reste — phase 3 extrait + vérifications manuelles : recharger l'extension, relier Tidal dans Plus → Lecteur, ouvrir la fiche d'une carte, tester l'APK), puis la fusionner (routine du projet).
 - [ ] **Step 4:** Reconstruire les livrables si l'outillage est présent : `npm run package` puis `npm run apk` ; sinon le dire à l'utilisateur.
 - [ ] **Step 5:** Mettre à jour la mémoire du projet (`project_tidal.md` : phase 2 faite, forme réelle de l'API, pièges : ordre de pertinence, homonymes, ce qui reste manuel).
