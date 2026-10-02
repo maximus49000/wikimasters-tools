@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from '../../src/content/market-messages';
-import { installMarketTap, type TapWindow } from '../../src/content/market-tap';
+import { asOwnRequest, installMarketTap, type TapWindow } from '../../src/content/market-tap';
 
 function json(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' }, ...init });
@@ -83,6 +83,14 @@ describe('installMarketTap — filtres de la Collection', () => {
       { type: COLLECTION_FILTER_MESSAGE, filter: 'rarity=UR&tag_id=t1' },
       { type: COLLECTION_FILTER_MESSAGE, filter: '' },
     ]);
+  });
+
+  it('ignore les requêtes de la surcouche elle-même (scan trié par date, lecture d’un filtre)', async () => {
+    const { win, posted } = setup(() => json({ collection: [] }));
+    await win.fetch('/api/my-collection?sort=rarity&rarity=SR&page=0&stats=0');
+    await asOwnRequest(() => win.fetch('/api/my-collection?sort=added&page=3&stats=0'));
+    await win.fetch('/api/my-collection?sort=rarity&rarity=SR&page=1&stats=0');
+    expect(posted).toEqual([{ type: COLLECTION_FILTER_MESSAGE, filter: 'rarity=SR' }]);
   });
 
   it('rejoue le dernier filtre à la demande du script de contenu', async () => {

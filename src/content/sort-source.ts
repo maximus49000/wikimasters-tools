@@ -1,5 +1,6 @@
-// `rarity` : tri du site (celui de la liste « Trier la collection ») ; `price` : notre « Prix de vente décroissant ».
-export type SortMode = 'rarity' | 'price';
+// Tri de la vue Homemade : les entrées de la liste « Trier la collection » du site (rareté, nom, favoris, date d'ajout)
+// et notre « Prix de vente décroissant ». Il se lit sur l'entrée choisie, jamais sur les requêtes du site.
+export type SortMode = 'rarity' | 'name' | 'starred' | 'added' | 'price';
 
 // Tri choisi, gardé en mémoire : le site repart de « Rareté » à chaque chargement de page.
 export function createSortSource() {

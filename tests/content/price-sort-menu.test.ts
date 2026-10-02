@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { PRICE_SORT_ATTRIBUTE, syncPriceSort } from '../../src/content/price-sort-menu';
+import { PRICE_SORT_ATTRIBUTE, sortModeOf, syncPriceSort } from '../../src/content/price-sort-menu';
 import { createSortSource } from '../../src/content/sort-source';
 
 // Comme sur le site : la liste est dans un portail, hors du parent du bouton, rattachée par aria-controls ;
@@ -50,5 +50,32 @@ describe('syncPriceSort', () => {
     syncPriceSort(document, true, createSortSource());
     syncPriceSort(document, false, createSortSource());
     expect(document.querySelector(`[${PRICE_SORT_ATTRIBUTE}]`)).toBeNull();
+  });
+
+  it('lit le tri sur l’entrée choisie dans la liste du site', () => {
+    mount();
+    const source = createSortSource();
+    syncPriceSort(document, true, source);
+    document.querySelector<HTMLElement>('#sort-list li:nth-child(2) button')?.click();
+    expect(source.current()).toBe('name');
+    rarityButton()?.click();
+    expect(source.current()).toBe('rarity');
+  });
+
+  it('reprend le tri affiché par le site au premier affichage', () => {
+    mount();
+    document.querySelector('button[aria-label]')!.textContent = "Date d'ajout";
+    const source = createSortSource();
+    syncPriceSort(document, true, source);
+    expect(source.current()).toBe('added');
+  });
+});
+
+describe('sortModeOf', () => {
+  it('associe les libellés du site à leur tri', () => {
+    expect(sortModeOf('Rareté')).toBe('rarity');
+    expect(sortModeOf('Nom')).toBe('name');
+    expect(sortModeOf('Favoris')).toBe('starred');
+    expect(sortModeOf("Date d'ajout")).toBe('added');
   });
 });
