@@ -43,8 +43,8 @@ function Rating({ detail }: { detail: ScreenDetail }) {
 function Detail({ detail }: { detail: ScreenDetail }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {detail.trailerKey && <TrailerPlayer trailerKey={detail.trailerKey} />}
       <SoundtrackButton detail={detail} />
+      {detail.trailerKey && <TrailerPlayer trailerKey={detail.trailerKey} />}
       <Rating detail={detail} />
       {detail.overview && <p style={{ margin: 0, fontSize: 12, lineHeight: 1.4, maxHeight: 'min(96px, 15vh)', overflowY: 'auto' }}>{detail.overview}</p>}
     </div>

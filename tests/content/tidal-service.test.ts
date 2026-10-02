@@ -103,3 +103,21 @@ describe('createTidalService', () => {
     expect(await service.link()).toBe('Liaison Tidal impossible : adresse de retour refusée');
   });
 });
+
+describe('createTidalService.refreshSoundtrack', () => {
+  it('relance la recherche malgré ce qui était gardé, et ne propose pas de recherche manuelle', async () => {
+    const ost = [{ id: '123', title: 'Inception (Original Motion Picture Soundtrack)', artists: ['Hans Zimmer'] }];
+    const { service, api } = setup({ albums: [] });
+    expect(await service.soundtrack('movie:1', ['Inception'])).toBeNull();
+    api.searchAlbums.mockResolvedValueOnce(ost as never);
+    expect((await service.refreshSoundtrack('movie:1', ['Inception'])).listen).toMatchObject({ albumUri: 'tidal:album:123' });
+    expect(await service.soundtrack('movie:1', ['Inception'])).toMatchObject({ albumUri: 'tidal:album:123' });
+    expect(service.manualSoundtrack).toBe(false);
+  });
+
+  it('une erreur rend un message', async () => {
+    const { service, api } = setup();
+    api.searchAlbums.mockRejectedValueOnce(new TidalError('rate-limited', 'x', 4_000));
+    expect(await service.refreshSoundtrack('movie:1', ['Inception'])).toMatchObject({ listen: null, message: expect.any(String) });
+  });
+});

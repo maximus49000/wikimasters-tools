@@ -1,7 +1,7 @@
 import type { Platform, PlatformSetting } from '../core/music/platform';
 import type { MusicService } from './music-service';
 
-export type PlatformServiceLike = Pick<MusicService, 'view' | 'refresh' | 'play' | 'link' | 'unlink' | 'subscribe' | 'isLinked' | 'playingSlugs' | 'soundtrack'>;
+export type PlatformServiceLike = Pick<MusicService, 'view' | 'refresh' | 'play' | 'link' | 'unlink' | 'subscribe' | 'isLinked' | 'playingSlugs' | 'soundtrack' | 'refreshSoundtrack' | 'searchSoundtracks' | 'chooseSoundtrack' | 'manualSoundtrack'>;
 
 // Seul Spotify sait dire si une carte est musicale : c'est une nature Wikidata, la même pour toutes les plateformes.
 type NatureService = Pick<MusicService, 'musicSlugs'>;
@@ -15,6 +15,12 @@ export function createPlatformMusicService(setting: PlatformSetting, services: P
     refresh: (slug, title) => active().refresh(slug, title),
     play: (item, listen, card) => active().play(item, listen, card),
     soundtrack: (key, titles) => active().soundtrack(key, titles),
+    refreshSoundtrack: (key, titles) => active().refreshSoundtrack(key, titles),
+    searchSoundtracks: (query) => active().searchSoundtracks(query),
+    chooseSoundtrack: (key, choice) => active().chooseSoundtrack(key, choice),
+    get manualSoundtrack() {
+      return active().manualSoundtrack;
+    },
     link: () => active().link(),
     unlink: () => active().unlink(),
     isLinked: () => active().isLinked(),
