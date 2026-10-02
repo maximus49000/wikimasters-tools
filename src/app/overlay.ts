@@ -14,6 +14,7 @@ import { createLinksRepo } from '../core/links/links-repo';
 import { fetchWikidataKinds } from '../core/kinds/wikidata-kinds';
 import { createKindsRepo } from '../core/kinds/kinds-repo';
 import { createSortSource } from '../content/sort-source';
+import { asOwnRequest } from '../content/market-tap';
 import { createKindFilterSource } from '../content/kind-filter';
 import { createCollectionFilterSource } from '../content/collection-filter';
 import { createCollectionUi } from '../content/collection-ui';
@@ -72,12 +73,12 @@ const DEBOUNCE_MS = 300;
 // Surcouche Wikimasters : partagée par l'extension (content script) et l'application Android (WebView).
 export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): Promise<void> {
   const api = createGameApi({
-    fetch: (input, init) => fetch(input, { credentials: 'same-origin', ...init }),
+    fetch: (input, init) => asOwnRequest(() => fetch(input, { credentials: 'same-origin', ...init })),
     minIntervalMs: 1500,
   });
   // Lecture des cartes filtrées : action de l'utilisateur, on peut espacer moins les pages (le 429 est géré).
   const filterApi = createGameApi({
-    fetch: (input, init) => fetch(input, { credentials: 'same-origin', ...init }),
+    fetch: (input, init) => asOwnRequest(() => fetch(input, { credentials: 'same-origin', ...init })),
     minIntervalMs: 400,
   });
   const dataSource = createDataSource({ api, cache: createTtlCache(store), store });

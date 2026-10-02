@@ -32,7 +32,20 @@ export function collectionSortOf(url: URL): string {
   return sort === 'rarity' ? '' : sort;
 }
 
-const filterMessage = (filter: string, sort: string) => ({ type: COLLECTION_FILTER_MESSAGE, filter, ...(sort ? { sort } : {}) });
+// Dans l'appli Android, la surcouche et la page partagent le même `fetch` : les requêtes de la surcouche (scan trié par
+// date, lecture d'un filtre) ne doivent pas passer pour un choix de l'utilisateur. Le marqueur est posé le temps de
+// l'appel synchrone, celui pendant lequel le relais lit l'URL.
+let ownRequest = false;
+export function asOwnRequest<T>(send: () => T): T {
+  ownRequest = true;
+  try {
+    return send();
+  } finally {
+    ownRequest = false;
+  }
+}
+
+const filterMessage =(filter: string, sort: string) => ({ type: COLLECTION_FILTER_MESSAGE, filter, ...(sort ? { sort } : {}) });
 
 function requestUrl(input: string | URL | Request): string {
   if (typeof input === 'string') return input;
@@ -84,6 +97,7 @@ export function installMarketTap(win: TapWindow): void {
 
   // Le filtre de la Collection se lit sur la requête elle-même, dès son émission.
   function watchFilter(input: string | URL | Request): void {
+    if (ownRequest) return;
     try {
       const url = new URL(requestUrl(input), win.location.href);
       if (url.pathname !== COLLECTION_PATH) return;

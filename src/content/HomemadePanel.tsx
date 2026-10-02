@@ -202,8 +202,6 @@ export function HomemadePanel({
   const { kindsState, kindFilter } = useKindState(kinds, kindFilterSource);
 
   const sort = useSyncExternalStore(sortSource.subscribe, sortSource.current);
-  // Tri choisi dans la liste du site, hors rareté (Nom, Favoris, Date d'ajout).
-  const siteSort = useSyncExternalStore(filterSource.subscribe, filterSource.sort);
   const { selecting, cards: checkedCards } = useSyncExternalStore(selection.subscribe, selection.snapshot);
   const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
   const list = useMemo(
@@ -211,14 +209,14 @@ export function HomemadePanel({
       sortCards(
         applyKindFilter(visible ? cards.filter((card) => visible.has(card.slug)) : cards, kindsState, kindFilter),
         sort === 'price' ? (slug) => lastPriceOf(marketNow.history, slug, Date.now()) : undefined,
-        sort === 'price' ? '' : siteSort,
+        sort === 'price' ? '' : sort,
       ),
-    [cards, visible, kindsState, kindFilter, sort, marketNow.history, siteSort],
+    [cards, visible, kindsState, kindFilter, sort, marketNow.history],
   );
   const size = pageSizeOf(scan.pageSize, nativePageSize());
   // Un autre filtre : première page. Ouvrir une carte pose une recherche sur le site, retirée à la fermeture de la
   // fiche : la sélection d'avant retrouve alors sa page.
-  const filterKey = `${filter}|${kindFilter.category ?? ''}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}|${sort}|${siteSort}`;
+  const filterKey = `${filter}|${kindFilter.category ?? ''}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}|${sort}`;
   const page = pages.get(filterKey);
   const current = useMemo(() => pageSlice(list, page, size), [list, page, size]);
 

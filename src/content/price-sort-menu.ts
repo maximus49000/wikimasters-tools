@@ -1,4 +1,4 @@
-import type { SortSource } from './sort-source';
+import type { SortMode, SortSource } from './sort-source';
 
 export const PRICE_SORT_ATTRIBUTE = 'data-wmt-price-sort';
 
@@ -8,6 +8,16 @@ const REMEMBERED = 'data-wmt-sort-label';
 const WIRED = 'data-wmt-sort-wired';
 const DEMOTED = 'data-wmt-demoted';
 const OPTION = 'button';
+const INITIALISED = 'data-wmt-sort-init';
+
+// Tri correspondant à une entrée de la liste du site, d'après son libellé (« Rareté » si inconnu).
+export function sortModeOf(label: string | null | undefined): SortMode {
+  const text = (label ?? '').trim().toLowerCase();
+  if (text.startsWith('nom')) return 'name';
+  if (text.startsWith('favori')) return 'starred';
+  if (text.startsWith('date')) return 'added';
+  return 'rarity';
+}
 
 function lastText(root: Element): Text | null {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -99,11 +109,21 @@ export function syncPriceSort(root: ParentNode, enabled: boolean, source: SortSo
     list.addEventListener(
       'click',
       (event) => {
-        if (!(event.target as Element).closest(`[${PRICE_SORT_ATTRIBUTE}]`)) source.set('rarity');
+        const target = event.target as Element;
+        if (target.closest(`[${PRICE_SORT_ATTRIBUTE}]`)) return;
+        // Le tri se lit sur l'entrée choisie, pas sur les requêtes du site (les nôtres s'y mêlent sur Android).
+        const option = target.closest(OPTION);
+        if (option) source.set(sortModeOf(option.textContent));
         queueMicrotask(() => syncPriceSort(root, true, source));
       },
       true,
     );
+  }
+
+  // Premier affichage : le site peut avoir gardé un tri autre que « Rareté » (le libellé du bouton le dit).
+  if (!trigger.hasAttribute(INITIALISED)) {
+    trigger.setAttribute(INITIALISED, '');
+    if (source.current() === 'rarity' && text?.nodeValue !== PRICE_LABEL) source.set(sortModeOf(text?.nodeValue));
   }
 
   paintSelection(list, source.current() === 'price');
