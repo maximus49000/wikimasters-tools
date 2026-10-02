@@ -80,7 +80,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     fetch: (input, init) => fetch(input, { credentials: 'same-origin', ...init }),
     minIntervalMs: 400,
   });
-  const dataSource = createDataSource({ api, cache: createTtlCache(store) });
+  const dataSource = createDataSource({ api, cache: createTtlCache(store), store });
   const marketRepo = createMarketRepo(store);
   const collectionRepo = createCollectionRepo(store);
   const historyRepo = createHistoryRepo(store);

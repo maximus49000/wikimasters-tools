@@ -7,17 +7,19 @@ import { createDataSource } from '../../src/core/data-source';
 
 const NOW = new Date('2026-09-30T12:00:00Z');
 
-function setup() {
+function setup(response: () => unknown = () => fixture, ttlMs?: number) {
   let calls = 0;
+  let time = NOW.getTime();
   const api = {
     getMine: async () => {
       calls++;
-      return parseMineResponse(fixture);
+      return parseMineResponse(response());
     },
   };
-  const cache = createTtlCache(createMemoryStore(), { now: () => NOW.getTime() });
-  const dataSource = createDataSource({ api, cache, now: () => NOW });
-  return { dataSource, calls: () => calls };
+  const store = createMemoryStore();
+  const cache = createTtlCache(store, { now: () => time, ...(ttlMs ? { ttlMs } : {}) });
+  const dataSource = createDataSource({ api, cache, store, now: () => NOW });
+  return { dataSource, calls: () => calls, advance: (ms: number) => (time += ms) };
 }
 
 describe('createDataSource.getMyPriceBook', () => {
@@ -37,5 +39,32 @@ describe('createDataSource.getMyPriceBook', () => {
     await dataSource.getMyPriceBook();
     await dataSource.getMyPriceBook();
     expect(calls()).toBe(1);
+  });
+
+  it("garde un achat qui n'est plus dans la liste « won » du jeu (limitée aux derniers)", async () => {
+    let current: unknown = fixture;
+    const { dataSource, advance } = setup(() => current, 1000);
+    expect((await dataSource.getMyPriceBook()).byTitle('Exemple Trois')?.purchase).toEqual({ min: 20, max: 20 });
+
+    // Le jeu ne renvoie plus l'achat : la liste est vide.
+    current = { ...fixture, won: [] };
+    advance(2000);
+    const book = await dataSource.getMyPriceBook();
+    expect(book.byTitle('Exemple Trois')?.purchase).toEqual({ min: 20, max: 20 });
+  });
+
+  it("ajoute les nouveaux achats à ceux déjà mémorisés, sans doublon", async () => {
+    let current: unknown = fixture;
+    const { dataSource, advance } = setup(() => current, 1000);
+    await dataSource.getMyPriceBook();
+
+    const other = structuredClone(fixture.won[0]!);
+    other.id = 'a0000000-0000-4000-8000-000000000009';
+    other.final_price = 30;
+    current = { ...fixture, won: [other] };
+    advance(2000);
+    const book = await dataSource.getMyPriceBook();
+    expect(book.byTitle('Exemple Trois')?.purchase).toEqual({ min: 20, max: 30 });
+    expect(book.byTitle('Exemple Trois')?.stats.count).toBe(2);
   });
 });
