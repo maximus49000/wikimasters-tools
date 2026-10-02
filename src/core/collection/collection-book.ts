@@ -15,6 +15,9 @@ export type KnownCard = {
   tags?: CardTag[];
   // Nombre d'exemplaires possédés, compté par le scan de la Collection (absent tant qu'il ne l'a pas fait).
   copies?: number;
+  // Carte mise en favori sur le site, et date d'obtention (ms) de son exemplaire le plus récent : lues par le scan.
+  starred?: boolean;
+  obtainedAt?: number;
 };
 
 // Clé : slug de l'article Wikipédia.
@@ -28,6 +31,8 @@ export function mergeCards(state: CollectionState, cards: KnownCard[], addCopies
     const known = next[card.slug];
     // Une observation sans rareté ni image (lecture de la page) ne doit pas effacer ce que l'API a donné.
     const copies = card.copies === undefined ? known?.copies : addCopies ? (known?.copies ?? 0) + card.copies : card.copies;
+    const starred = card.starred ?? known?.starred;
+    const obtainedAt = card.obtainedAt ?? known?.obtainedAt;
     const merged: KnownCard = {
       slug: card.slug,
       title: card.title,
@@ -38,6 +43,8 @@ export function mergeCards(state: CollectionState, cards: KnownCard[], addCopies
       ...(card.defense ?? known?.defense ? { defense: card.defense ?? known?.defense } : {}),
       ...((card.tags ?? known?.tags) ? { tags: card.tags ?? known?.tags } : {}),
       ...(copies !== undefined ? { copies } : {}),
+      ...(starred !== undefined ? { starred } : {}),
+      ...(obtainedAt !== undefined ? { obtainedAt } : {}),
     };
     if (
       known?.title === merged.title &&
@@ -47,6 +54,8 @@ export function mergeCards(state: CollectionState, cards: KnownCard[], addCopies
       known.attack === merged.attack &&
       known.defense === merged.defense &&
       known.copies === merged.copies &&
+      known.starred === merged.starred &&
+      known.obtainedAt === merged.obtainedAt &&
       sameTags(known.tags, merged.tags)
     ) {
       continue;

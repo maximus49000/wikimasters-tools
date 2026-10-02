@@ -11,17 +11,16 @@ const rank = (rarity: string | undefined): number => {
 
 // Comme le tri par défaut du site : rareté décroissante, puis titre.
 // `priceOf` : tri par dernier prix de vente connu, décroissant ; les cartes sans prix viennent en dernier.
-// `siteOrder` : ordre donné par le site pour un autre tri (Nom, Favoris, Date d'ajout) ; les cartes qu'il n'a pas encore
-// données viennent après, en ordre de rareté.
-export function sortCards(cards: KnownCard[], priceOf?: (slug: string) => number | null, siteOrder?: { index: Map<string, number> }): KnownCard[] {
+// `siteSort` : autre tri du site, lu sur les données de la Collection : « name » (titre), « starred » (favoris d'abord),
+// « added » (date d'obtention, la plus récente d'abord). Les cartes sans la donnée viennent après.
+export function sortCards(cards: KnownCard[], priceOf?: (slug: string) => number | null, siteSort = ''): KnownCard[] {
   const byRarity = (a: KnownCard, b: KnownCard) => rank(a.rarity) - rank(b.rarity) || a.title.localeCompare(b.title, 'fr');
-  if (siteOrder && siteOrder.index.size > 0) {
-    const { index } = siteOrder;
+  if (siteSort === 'name') return [...cards].sort((a, b) => a.title.localeCompare(b.title, 'fr', { sensitivity: 'base', numeric: true }));
+  if (siteSort === 'starred') return [...cards].sort((a, b) => Number(Boolean(b.starred)) - Number(Boolean(a.starred)) || byRarity(a, b));
+  if (siteSort === 'added') {
     return [...cards].sort((a, b) => {
-      const ia = index.get(a.slug);
-      const ib = index.get(b.slug);
-      if (ia === undefined || ib === undefined) return ia === ib ? byRarity(a, b) : ia === undefined ? 1 : -1;
-      return ia - ib;
+      if (a.obtainedAt === undefined || b.obtainedAt === undefined) return a.obtainedAt === b.obtainedAt ? byRarity(a, b) : a.obtainedAt === undefined ? 1 : -1;
+      return b.obtainedAt - a.obtainedAt || byRarity(a, b);
     });
   }
   if (!priceOf) return [...cards].sort(byRarity);

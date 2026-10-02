@@ -19,10 +19,11 @@ describe('parseCollectionPage', () => {
     const page = parseCollectionPage(fixture, ENDPOINT);
     expect(page.entries).toBe(3);
     expect(page.skipped).toBe(0);
+    const obtained = fixture.collection.map((entry) => Date.parse(entry.obtained_at));
     expect(page.cards).toEqual([
-      { slug: 'Ted_Lasso', title: 'Ted Lasso', copies: 1, rarity: 'L', extract: 'série télévisée américaine', tags: [] },
-      { slug: "Tenture_de_l'Apocalypse", title: "Tenture de l'Apocalypse", copies: 1, rarity: 'UR', tags: [] },
-      { slug: 'Paul_de_Grèce_(1967)', title: 'Paul de Grèce (1967)', copies: 1, rarity: 'SR', extract: 'financier', tags: [] },
+      { slug: 'Ted_Lasso', title: 'Ted Lasso', copies: 1, rarity: 'L', extract: 'série télévisée américaine', tags: [], starred: false, obtainedAt: obtained[0] },
+      { slug: "Tenture_de_l'Apocalypse", title: "Tenture de l'Apocalypse", copies: 1, rarity: 'UR', tags: [], starred: false, obtainedAt: obtained[1] },
+      { slug: 'Paul_de_Grèce_(1967)', title: 'Paul de Grèce (1967)', copies: 1, rarity: 'SR', extract: 'financier', tags: [], starred: false, obtainedAt: obtained[2] },
     ]);
   });
 
