@@ -64,7 +64,6 @@ async function mount() {
         filterSource={filter as CollectionFilterSource}
         sortSource={createSortSource()}
         loadFiltered={loadFiltered}
-        loadOrdered={async () => []}
         nativePageSize={() => 0}
         onOpenCard={vi.fn()}
         onWantCards={vi.fn()}
