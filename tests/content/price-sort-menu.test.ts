@@ -90,3 +90,17 @@ describe('clic sur « Prix de vente décroissant »', () => {
     expect(source.current()).toBe('price');
   });
 });
+
+describe('liste refermée par le site après le choix', () => {
+  it('garde le tri par prix et son libellé quand la liste quitte le DOM', async () => {
+    mount();
+    rarityButton()?.addEventListener('click', () => document.getElementById('sort-list')?.remove());
+    const source = createSortSource();
+    syncPriceSort(document, true, source);
+    priceButton()?.click();
+    await Promise.resolve();
+    syncPriceSort(document, true, source);
+    expect(source.current()).toBe('price');
+    expect(document.querySelector('button[aria-label]')?.textContent).toBe('Prix de vente décroissant');
+  });
+});
