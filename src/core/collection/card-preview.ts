@@ -21,6 +21,8 @@ export type CardPreview = {
   copies: number | null;
   // Carte musique dont un titre joue en ce moment sur Spotify ; absent sinon.
   playing?: boolean;
+  // Carte ayant un lien avec la musique (Spotify, Tidal) : une note de musique marque la carte ; absent sinon.
+  music?: boolean;
 };
 
 const NO_MARKET: CardMarket = { history: null, loading: false };
@@ -36,6 +38,7 @@ export function toCardPreview(
   entry: Pick<PriceBookEntry, 'rarity' | 'purchase'> | null,
   market: CardMarket = NO_MARKET,
   playing = false,
+  music = false,
 ): CardPreview {
   return {
     title: card.title,
@@ -49,5 +52,6 @@ export function toCardPreview(
     market,
     copies: card.copies !== undefined && card.copies > 1 ? card.copies : null,
     ...(playing ? { playing: true } : {}),
+    ...(music ? { music: true } : {}),
   };
 }

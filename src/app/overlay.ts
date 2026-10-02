@@ -355,7 +355,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           session: tidalSession,
           api: tidalApi,
         });
-        setMusicService(createPlatformMusicService(platformSetting, { spotify: spotifyService, tidal: tidalService }));
+        setMusicService(createPlatformMusicService(platformSetting, { spotify: spotifyService, tidal: tidalService }, spotifyService));
         setPlatformChoice({ available: ['spotify', 'tidal'], setting: platformSetting });
       } catch (error) {
         console.warn(LOG, 'Tidal indisponible :', error);

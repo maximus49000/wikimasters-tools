@@ -57,6 +57,13 @@ export function createMusicService(deps: MusicServiceDeps) {
   const viewer = createListenViewer({ collection, kinds, music, listens, session, resolve: (input) => resolveListen(api, input), describeError });
 
   return {
+    // Les cartes (parmi `cards`) qui ont un lien avec la musique, compte lié ou non : leur nature suffit.
+    async musicSlugs(cards: Pick<KnownCard, 'slug'>[]): Promise<Set<string>> {
+      await kinds.resolveMissing(cards.map((card) => card.slug));
+      const loaded = await kinds.load();
+      return new Set(cards.filter((card) => musicKindOf(loaded.cards[card.slug]) !== null).map((card) => card.slug));
+    },
+
     // Les cartes dont la liste d'écoute contient le titre en cours : ce sont celles qui jouent.
     async playingSlugs(cards: Pick<KnownCard, 'slug' | 'title'>[], track: Pick<Track, 'uri' | 'title' | 'artist'>): Promise<Set<string>> {
       const playing = new Set<string>();

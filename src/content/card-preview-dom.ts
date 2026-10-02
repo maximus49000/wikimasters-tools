@@ -137,7 +137,9 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
   }
 
   // Au-dessus de l'attaque, en face de la marque d'exemplaires : un titre de cette carte joue sur Spotify.
+  // Sans lecture, une note de musique la remplace pour toute carte liée à la musique.
   if (preview.playing) card.append(playingGlyph());
+  else if (preview.music) card.append(musicGlyph());
 
   // Reflet animé des légendaires : classe du site.
   if (preview.rarity === 'L') {
@@ -162,6 +164,23 @@ function playingGlyph(): HTMLElement {
     for (const [name, value] of Object.entries({ x: String(x), y: '4', width: '4', height: '16', rx: '1', class: `wmt-eq wmt-eq-${index}` })) bar.setAttribute(name, value);
     svg.append(bar);
   });
+  glyph.append(svg);
+  return glyph;
+}
+
+// Note de musique (Lucide « music ») dans la même pastille, sans animation.
+function musicGlyph(): HTMLElement {
+  const glyph = div('wmt-card-playing wmt-card-music');
+  glyph.setAttribute('role', 'img');
+  glyph.title = 'Lien avec la musique';
+  glyph.setAttribute('aria-label', glyph.title);
+  const svg = icon('', ['M9 18V5l12-2v13']);
+  svg.setAttribute('class', 'wmt-card-music-note');
+  for (const [cx, cy] of [[6, 18], [18, 16]]) {
+    const dot = document.createElementNS(SVG_NS, 'circle');
+    for (const [name, value] of Object.entries({ cx: String(cx), cy: String(cy), r: '3' })) dot.setAttribute(name, value);
+    svg.append(dot);
+  }
   glyph.append(svg);
   return glyph;
 }
