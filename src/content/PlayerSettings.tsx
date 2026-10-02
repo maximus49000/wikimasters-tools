@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Glyph } from './Glyphs';
-import { getMusicService } from './music-registry';
+import { PLATFORM_LABEL, type Platform } from '../core/music/platform';
+import { getMusicService, getPlatformChoice } from './music-registry';
 import type { PlayerSource } from './player-source';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -17,10 +18,16 @@ const choice = (selected: boolean) =>
     borderRadius: 8,
   }) as const;
 
+const noSubscribe = () => () => undefined;
+const spotifyOnly = (): Platform => 'spotify';
+
 // « Lecteur » : afficher ou masquer le mini-lecteur Spotify (affiché par défaut, dès que Spotify est lié), et lier ou délier le compte.
 export function PlayerSettings({ source, onClose }: { source: PlayerSource; onClose: () => void }) {
   const { enabled, linked } = useSyncExternalStore(source.subscribe, source.current);
   const service = getMusicService();
+  const platformChoice = getPlatformChoice();
+  const platform = useSyncExternalStore(platformChoice?.setting.subscribe ?? noSubscribe, platformChoice?.setting.current ?? spotifyOnly);
+  const name = PLATFORM_LABEL[platform];
   // Liaison en cours (la fenêtre d'autorisation de Spotify est ouverte) et cause d'un échec.
   const [linking, setLinking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -32,7 +39,7 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
     setMessage(await service.link());
     setLinking(false);
   };
-  const accountLabel = linked ? 'Délier Spotify' : 'Lier Spotify';
+  const accountLabel = `${linked ? 'Délier' : 'Lier'} ${name}`;
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
@@ -48,7 +55,7 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
             ✕
           </button>
         </div>
-        <p style={{ margin: '0 0 12px', opacity: 0.8 }}>Afficher le mini-lecteur en haut à gauche. Affiché, il reste visible tant que Spotify est lié, même sans lecture.</p>
+        <p style={{ margin: '0 0 12px', opacity: 0.8 }}>Afficher le mini-lecteur en haut à gauche. Affiché, il reste visible tant que {name} est lié, même sans lecture.</p>
         <div role="group" aria-label="Affichage du lecteur" style={{ display: 'flex', gap: 8 }}>
           <button type="button" aria-pressed={enabled} onClick={() => source.setEnabled(true)} style={choice(enabled)}>
             Affiché
@@ -57,9 +64,18 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
             Masqué
           </button>
         </div>
+        {platformChoice && platformChoice.available.length > 1 && (
+          <div role="group" aria-label="Plateforme d’écoute" style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            {platformChoice.available.map((candidate) => (
+              <button key={candidate} type="button" aria-pressed={candidate === platform} onClick={() => platformChoice.setting.set(candidate)} style={choice(candidate === platform)}>
+                {PLATFORM_LABEL[candidate]}
+              </button>
+            ))}
+          </div>
+        )}
         {service && (
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: border }}>
-            <p style={{ margin: '0 0 8px', opacity: 0.8 }}>Compte Spotify : {linked ? 'lié' : 'non lié'}.</p>
+            <p style={{ margin: '0 0 8px', opacity: 0.8 }}>Compte {name} : {linked ? 'lié' : 'non lié'}.</p>
             <button
               type="button"
               onClick={() => (linked ? void service.unlink() : void link())}

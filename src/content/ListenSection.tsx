@@ -145,8 +145,8 @@ export function ListenSection({ slug, title }: Props) {
               );
             })}
           </ul>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            {view.listen.kind === 'artist' && (
+          {view.listen.kind === 'artist' && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button
                 type="button"
                 onClick={() => void refresh()}
@@ -157,11 +157,8 @@ export function ListenSection({ slug, title }: Props) {
               >
                 <Glyph name="refresh" size={14} />
               </button>
-            )}
-            <button type="button" onClick={() => void service.unlink()} aria-label="Délier Spotify" title="Délier Spotify" style={{ ...iconButton, opacity: 0.6 }}>
-              <Glyph name="unlink" size={14} />
-            </button>
-          </div>
+            </div>
+          )}
         </>
       )}
       {message && <p role="status" style={{ margin: 0, fontSize: 12 }}>{message}</p>}
