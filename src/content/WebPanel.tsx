@@ -1,24 +1,18 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import type { KnownCard } from '../core/collection/collection-book';
-import { cardMarket, toCardPreview } from '../core/collection/card-preview';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { CollectionScanner } from '../core/collection/collection-scan';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import { EMPTY_LINKS, needsLinksLookup, type LinksState } from '../core/links/links-book';
 import type { LinksRepo } from '../core/links/links-repo';
-import { buildWeb, cardId, hubId, neighborhood, type Focus, type WebGraph } from '../core/links/web-graph';
-import { layoutWeb, type Point } from '../core/links/web-layout';
-import { ZOOM_STEP, boundsOf, fitTransform, pinch, zoomAt, type Transform } from '../core/links/web-view';
-import type { PriceBook } from '../core/pricing/price-book';
-import type { Rect } from './card-popup-position';
-import { CardPopup } from './CardPopup';
+import { CARD_SIZE, buildWeb, cardId, hubId, hubRadius, neighborhood, webEdges, webNodes, type Focus, type WebGraph } from '../core/links/web-graph';
+import { chooseLabels, shortTitle } from '../core/links/web-labels';
+import { createLayout, type Point } from '../core/links/web-layout';
+import { ZOOM_STEP, boundsOf, fitTransform, pinch, placeActions, zoomAt, type Transform } from '../core/links/web-view';
 import type { CollectionFilterSource } from './collection-filter';
 import type { KindFilterSource } from './kind-filter';
-import type { MarketSource } from './market-source';
 import { createThrottledLoader } from './throttle';
 import { useFilteredCards } from './useFilteredCards';
-import { useNowPlayingSlugs } from './useNowPlayingSlugs';
-import { useWantPrices } from './useWantPrices';
 
 type Props = {
   collection: CollectionRepo;
@@ -26,24 +20,26 @@ type Props = {
   kinds: KindsRepo;
   kindFilterSource: KindFilterSource;
   scanner: CollectionScanner;
-  book: PriceBook | null;
-  market: MarketSource;
   filterSource: CollectionFilterSource;
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
   // Fiche de marché de la carte.
   onOpen: (slug: string) => void;
+  // La carte elle-même, dans la Collection du jeu.
   onOpenCard: (slug: string) => void;
-  // Cartes affichées dont les prix du marché sont à relever.
-  onWantCards: (cards: KnownCard[]) => void;
 };
 
-const CARD = 34;
 const RETRY_MS = 30_000;
+// Le placement avance par tranches de cette durée (ms), entre deux rendus de la page : elle ne se fige jamais.
+const SLICE_MS = 12;
+// Pendant le calcul, la toile est redessinée au plus toutes les 300 ms.
+const PUBLISH_MS = 300;
 // Au-delà de cette distance (px), un doigt ou une souris qui bouge déplace la toile au lieu de toucher un nœud.
 const DRAG_SLOP = 5;
 const FADED = 0.2;
-// Les plus partagés gardent leur nom même dézoomés.
-const ALWAYS_LABELLED = 12;
+// Les images des cartes n'apparaissent qu'à partir de ce zoom : plus petites, une pastille de la couleur de leur rareté suffit.
+const IMAGE_ZOOM = 0.45;
+// Les noms se choisissent par paliers de zoom (6 par octave) : zoomer en continu ne les recalcule pas à chaque pas.
+const LABEL_STEPS_PER_OCTAVE = 6;
 
 const box = {
   border: '1px solid var(--color-border, rgba(148,163,184,0.35))',
@@ -63,74 +59,80 @@ const glyphButton = {
   border: '1px solid var(--color-border, rgba(148,163,184,0.5))',
   borderRadius: 8,
 } as const;
+// Boutons de la barre posée au-dessus d'une carte : glyphes seuls, zone tactile de 44 px (la barre mesure ACTIONS_BAR).
+const actionButton = { ...glyphButton, width: 44, height: 44, fontSize: 20 } as const;
+
+// Zoomer écarte les nœuds sans les grossir : une carte ne dépasse jamais sa taille de départ à l'écran (comme un repère de la vue Monde).
+// Dézoomé, les nœuds rétrécissent avec les distances pour ne pas se chevaucher. `--k` est le zoom, posé sur le groupe qui porte le dessin.
+const nodeScale = { transform: 'scale(min(1, calc(1 / var(--k, 1))))' } as const;
+// Un nom garde la même taille à l'écran quel que soit le zoom ; `half` est la demi-hauteur du nœud en unités du dessin
+// (négative : le nom passe au-dessus). Le groupe est ramené à l'échelle de l'écran, puis décalé d'autant que le nœud mesure à l'écran.
+const labelAt = (half: number) =>
+  ({ transform: `scale(calc(1 / var(--k, 1))) translateY(calc(${half}px * min(var(--k, 1), 1) ${half < 0 ? '-' : '+'} 3px))` }) as const;
+const labelStyle = {
+  paintOrder: 'stroke',
+  stroke: 'var(--color-surface, #0d1117)',
+  strokeWidth: 3,
+  strokeLinejoin: 'round',
+  fontSize: 11,
+} as const;
+// Les traits gardent aussi la même épaisseur à l'écran.
+const hairline = { vectorEffect: 'non-scaling-stroke' } as const;
+// Zone tactile d'une carte : un peu plus large que la carte (sans toucher les voisines, espacées d'au moins 52).
+const CARD_HIT = CARD_SIZE + 10;
 
 const rarityColor = (card: KnownCard) => (card.rarity ? `var(--color-rarity-${card.rarity.toLowerCase()}, #34d399)` : '#34d399');
 const initials = (title: string) => title.slice(0, 2);
-const halo = { paintOrder: 'stroke', stroke: 'var(--color-surface, #0d1117)', strokeWidth: 3, strokeLinejoin: 'round' } as const;
 
 type GraphProps = {
   graph: WebGraph;
   positions: Record<string, Point>;
   focusId: string | null;
   lit: ReadonlySet<string> | null;
-  // 0 : dézoomé, 1 : zoom moyen, 2 : zoomé (plus il y a de zoom, plus il y a de noms).
-  labels: 0 | 1 | 2;
-  onCard: (slug: string, target: Element) => void;
+  // Zoom assez fort pour montrer l'image des cartes (sinon, une pastille de la couleur de leur rareté).
+  images: boolean;
+  // Les nœuds (cartes et points) dont le nom s'affiche à ce zoom.
+  labelled: ReadonlySet<string>;
+  onCard: (slug: string) => void;
   onHub: (slug: string) => void;
 };
 
-// Les nœuds ne se redessinent que si le graphe, le placement, la mise en avant ou le niveau de noms changent : glisser ne les touche pas.
-const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit, labels, onCard, onHub }: GraphProps) {
-  const at = (id: string): Point => positions[id] ?? { x: 0, y: 0 };
+// Les nœuds ne se redessinent que si le graphe, le placement, la mise en avant ou le niveau de détail changent : glisser ne les touche pas.
+const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit, images, labelled, onCard, onHub }: GraphProps) {
   const opacityOf = (id: string) => (lit && !lit.has(id) ? FADED : 1);
+  const edge = (key: string, a: string, b: string, dashed: boolean) => {
+    const from = positions[a];
+    const to = positions[b];
+    if (!from || !to) return null;
+    const on = focusId === a || focusId === b;
+    return (
+      <line
+        key={key}
+        x1={from.x}
+        y1={from.y}
+        x2={to.x}
+        y2={to.y}
+        strokeDasharray={dashed ? '4 3' : undefined}
+        stroke={on ? 'var(--color-accent, #34d399)' : 'rgba(148,163,184,0.45)'}
+        strokeWidth={1}
+        style={{ ...hairline, opacity: lit ? (on ? 1 : 0.06) : 1 }}
+      />
+    );
+  };
   return (
     <>
-      <g stroke="rgba(148,163,184,0.45)" strokeWidth={1}>
-        {graph.hubs.flatMap((hub) =>
-          hub.cards.map((slug) => {
-            const a = at(hubId(hub.slug));
-            const b = at(cardId(slug));
-            const on = focusId === hubId(hub.slug) || focusId === cardId(slug);
-            return (
-              <line
-                key={`${hub.slug}\u0000${slug}`}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                style={{ vectorEffect: 'non-scaling-stroke', opacity: lit ? (on ? 1 : 0.06) : 1 }}
-                stroke={on ? 'var(--color-accent, #34d399)' : undefined}
-              />
-            );
-          }),
-        )}
-        {graph.cardLinks.map(([first, second]) => {
-          const a = at(cardId(first));
-          const b = at(cardId(second));
-          const on = focusId === cardId(first) || focusId === cardId(second);
-          return (
-            <line
-              key={`${first}\u0000${second}`}
-              x1={a.x}
-              y1={a.y}
-              x2={b.x}
-              y2={b.y}
-              strokeDasharray="4 3"
-              style={{ vectorEffect: 'non-scaling-stroke', opacity: lit ? (on ? 1 : 0.06) : 1 }}
-              stroke={on ? 'var(--color-accent, #34d399)' : undefined}
-            />
-          );
-        })}
-      </g>
-      {graph.hubs.map((hub, index) => {
-        const { x, y } = at(hubId(hub.slug));
-        const radius = Math.min(14, 4 + 2 * Math.sqrt(hub.cards.length));
-        const named = index < ALWAYS_LABELLED || labels >= 2 || (labels >= 1 && hub.cards.length >= 3) || lit?.has(hubId(hub.slug));
+      {graph.hubs.flatMap((hub) => hub.cards.map((slug) => edge(`${hub.slug}\u0000${slug}`, hubId(hub.slug), cardId(slug), false)))}
+      {graph.cardLinks.map(([first, second]) => edge(`${first}\u0000${second}`, cardId(first), cardId(second), true))}
+      {graph.hubs.map((hub) => {
+        const point = positions[hubId(hub.slug)];
+        if (!point) return null;
+        const radius = hubRadius(hub.cards.length);
+        const named = labelled.has(hubId(hub.slug));
         return (
           <g
             key={hub.slug}
             data-hub={hub.slug}
-            transform={`translate(${x} ${y})`}
+            transform={`translate(${point.x} ${point.y})`}
             style={{ cursor: 'pointer', opacity: opacityOf(hubId(hub.slug)) }}
             onClick={(event) => {
               event.stopPropagation();
@@ -138,43 +140,56 @@ const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit
             }}
           >
             <title>{`${hub.title} · ${hub.cards.length} cartes`}</title>
-            <circle r={radius} fill="var(--color-hub, #8b949e)" stroke="var(--color-surface, #0d1117)" strokeWidth={1.5} />
+            <g style={nodeScale}>
+              <circle r={Math.max(radius + 6, 12)} fill="transparent" />
+              <circle r={radius} fill="var(--color-hub, #8b949e)" stroke="var(--color-surface, #0d1117)" strokeWidth={1.5} style={hairline} />
+            </g>
             {named && (
-              <text y={-radius - 4} textAnchor="middle" fontSize={11} fill="currentColor" style={halo}>
-                {hub.title}
-              </text>
+              <g style={labelAt(-radius)}>
+                <text textAnchor="middle" fill="currentColor" style={labelStyle}>
+                  {shortTitle(hub.title)}
+                </text>
+              </g>
             )}
           </g>
         );
       })}
       {graph.cards.map((card) => {
-        const { x, y } = at(cardId(card.slug));
-        const named = labels >= 2 || lit?.has(cardId(card.slug));
+        const point = positions[cardId(card.slug)];
+        if (!point) return null;
+        const half = CARD_SIZE / 2;
+        const named = labelled.has(cardId(card.slug));
         return (
           <g
             key={card.slug}
             data-card={card.slug}
-            transform={`translate(${x} ${y})`}
+            transform={`translate(${point.x} ${point.y})`}
             style={{ cursor: 'pointer', opacity: opacityOf(cardId(card.slug)) }}
             onClick={(event) => {
               event.stopPropagation();
-              onCard(card.slug, event.currentTarget);
+              onCard(card.slug);
             }}
           >
             <title>{card.title}</title>
-            <rect x={-CARD / 2} y={-CARD / 2} width={CARD} height={CARD} fill="rgba(148,163,184,0.25)" />
-            {card.imageUrl ? (
-              <image href={card.imageUrl} x={-CARD / 2} y={-CARD / 2} width={CARD} height={CARD} preserveAspectRatio="xMidYMid slice" />
-            ) : (
-              <text textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight={600} fill="currentColor">
-                {initials(card.title)}
-              </text>
-            )}
-            <rect x={-CARD / 2} y={-CARD / 2} width={CARD} height={CARD} fill="none" stroke={rarityColor(card)} strokeWidth={2} />
+            <g style={nodeScale}>
+              <rect x={-CARD_HIT / 2} y={-CARD_HIT / 2} width={CARD_HIT} height={CARD_HIT} fill="transparent" />
+              <rect x={-half} y={-half} width={CARD_SIZE} height={CARD_SIZE} fill={images ? 'rgba(148,163,184,0.25)' : rarityColor(card)} />
+              {images &&
+                (card.imageUrl ? (
+                  <image href={card.imageUrl} x={-half} y={-half} width={CARD_SIZE} height={CARD_SIZE} preserveAspectRatio="xMidYMid slice" />
+                ) : (
+                  <text textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight={600} fill="currentColor">
+                    {initials(card.title)}
+                  </text>
+                ))}
+              <rect x={-half} y={-half} width={CARD_SIZE} height={CARD_SIZE} fill="none" stroke={rarityColor(card)} strokeWidth={2} style={hairline} />
+            </g>
             {named && (
-              <text y={CARD / 2 + 13} textAnchor="middle" fontSize={11} fill="currentColor" style={halo}>
-                {card.title}
-              </text>
+              <g style={labelAt(half)}>
+                <text dy="1em" textAnchor="middle" fill="currentColor" style={labelStyle}>
+                  {shortTitle(card.title)}
+                </text>
+              </g>
             )}
           </g>
         );
@@ -183,14 +198,16 @@ const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit
   );
 });
 
-export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, book, market, filterSource, loadFiltered, onOpen, onOpenCard, onWantCards }: Props) {
+export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, filterSource, loadFiltered, onOpen, onOpenCard }: Props) {
   const { cards, visible, filtering, filterError } = useFilteredCards({ collection, scanner, kinds, kindFilterSource, filterSource, loadFiltered });
   const [linksState, setLinksState] = useState<LinksState>(EMPTY_LINKS);
   const [focus, setFocus] = useState<Focus | null>(null);
-  const [picked, setPicked] = useState<{ slug: string; anchor: Rect } | null>(null);
+  // La carte touchée : ses boutons d'ouverture sont posés au-dessus d'elle, la toile reste entièrement visible.
+  const [picked, setPicked] = useState<string | null>(null);
   // null : la toile est cadrée toute seule (elle grandit pendant la lecture) ; sinon, le zoom et le glissement de l'utilisateur.
   const [view, setView] = useState<Transform | null>(null);
   const [size, setSize] = useState({ width: 1000, height: 700 });
+  const [positions, setPositions] = useState<Record<string, Point>>({});
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -221,19 +238,30 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
 
   const graph = useMemo(() => buildWeb(cards, linksState, visible), [cards, linksState, visible]);
 
-  // Le nouveau placement repart du précédent : la toile se complète sans tout rebattre.
+  // Le placement se calcule par petites tranches (la page reste fluide) et repart du précédent : la toile se complète sans tout rebattre.
   const previous = useRef<Record<string, Point>>({});
-  const positions = useMemo(() => {
-    const nodes = [...graph.cards.map((card) => ({ id: cardId(card.slug) })), ...graph.hubs.map((hub) => ({ id: hubId(hub.slug) }))];
-    const edges = [
-      ...graph.hubs.flatMap((hub) => hub.cards.map((slug) => [hubId(hub.slug), cardId(slug)] as const)),
-      ...graph.cardLinks.map(([a, b]) => [cardId(a), cardId(b)] as const),
-    ];
-    return layoutWeb(nodes, edges, previous.current);
-  }, [graph]);
   useEffect(() => {
-    previous.current = positions;
-  }, [positions]);
+    const layout = createLayout(webNodes(graph), webEdges(graph), previous.current);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let published = 0;
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      const done = layout.run(SLICE_MS);
+      const now = Date.now();
+      if (done || now - published >= PUBLISH_MS) {
+        published = now;
+        previous.current = layout.positions();
+        setPositions(previous.current);
+      }
+      if (!done) timer = setTimeout(tick, 0);
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [graph]);
 
   const transform = useMemo(
     () => view ?? fitTransform(boundsOf(Object.values(positions)), size.width, size.height),
@@ -308,11 +336,10 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   const zoomBy = (factor: number) => setView(zoomAt(transform, factor, size.width / 2, size.height / 2));
 
   // Identité stable : sinon `WebGraphView` (mémoïsée) se redessinerait à chaque glissement.
-  const onCard = useCallback((slug: string, target: Element) => {
+  const onCard = useCallback((slug: string) => {
     if (dragged.current) return;
-    const { left, right, top, bottom } = target.getBoundingClientRect();
     setFocus(null);
-    setPicked({ slug, anchor: { left, right, top, bottom } });
+    setPicked((current) => (current === slug ? null : slug));
   }, []);
   const onHub = useCallback((slug: string) => {
     if (dragged.current) return;
@@ -321,34 +348,38 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   }, []);
 
   const lighting = useMemo(() => {
-    const active: Focus | null = picked ? { kind: 'card', slug: picked.slug } : focus;
+    const active: Focus | null = picked ? { kind: 'card', slug: picked } : focus;
     return active ? neighborhood(graph, active) : null;
   }, [graph, focus, picked]);
 
-  const pickedCard = picked ? cards.find((card) => card.slug === picked.slug) : undefined;
-  const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
-  const pickedCards = useMemo(() => (pickedCard ? [pickedCard] : []), [pickedCard]);
-  const nowPlaying = useNowPlayingSlugs(pickedCards);
-  const pickedPreview = useMemo(
-    () =>
-      pickedCard
-        ? toCardPreview(
-            pickedCard,
-            book?.byTitle(pickedCard.title) ?? null,
-            cardMarket(marketNow.history, marketNow.pending, pickedCard.slug, Date.now()),
-            nowPlaying.has(pickedCard.slug),
-          )
-        : null,
-    [pickedCard, book, marketNow, nowPlaying],
-  );
-  // Toutes les cartes affichées (filtre compris) ont leurs prix relevés, sans parcourir les pages à la main.
-  const shown = useMemo(() => (visible ? cards.filter((card) => visible.has(card.slug)) : cards), [cards, visible]);
-  useWantPrices(shown, onWantCards);
+  // Échap referme la barre d'actions.
+  useEffect(() => {
+    if (picked === null) return;
+    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && setPicked(null);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [picked]);
+
+  // La barre suit la carte au zoom et au glissement : sa place se déduit de celle de la carte à l'écran.
+  const pickedCard = picked ? cards.find((card) => card.slug === picked) : undefined;
+  const pickedPoint = picked ? positions[cardId(picked)] : undefined;
+  const actionsAt =
+    pickedCard && pickedPoint
+      ? placeActions(
+          { x: transform.x + pickedPoint.x * transform.k, y: transform.y + pickedPoint.y * transform.k },
+          (CARD_SIZE / 2) * Math.min(transform.k, 1),
+          size,
+        )
+      : null;
 
   const focusedHub = focus?.kind === 'hub' ? graph.hubs.find((hub) => hub.slug === focus.slug) : undefined;
   const titleOf = (slug: string) => cards.find((card) => card.slug === slug)?.title ?? slug;
   const read = cards.length - cards.filter((card) => needsLinksLookup(linksState, card.slug, Date.now())).length;
-  const labels = transform.k >= 1.6 ? 2 : transform.k >= 0.9 ? 1 : 0;
+  const zoomStep = Math.round(Math.log2(transform.k) * LABEL_STEPS_PER_OCTAVE);
+  const labelled = useMemo(
+    () => chooseLabels(graph, positions, lighting?.lit ?? null, 2 ** (zoomStep / LABEL_STEPS_PER_OCTAVE)),
+    [graph, positions, lighting, zoomStep],
+  );
 
   return (
     <div data-wmt-web="" style={{ ...box, padding: 12, margin: '12px 0' }}>
@@ -372,13 +403,14 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
             setPicked(null);
           }}
         >
-          <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
+          <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`} style={{ '--k': transform.k } as CSSProperties}>
             <WebGraphView
               graph={graph}
               positions={positions}
               focusId={lighting?.focusId ?? null}
               lit={lighting?.lit ?? null}
-              labels={labels}
+              images={transform.k >= IMAGE_ZOOM}
+              labelled={labelled}
               onCard={onCard}
               onHub={onHub}
             />
@@ -395,6 +427,50 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
             ⤢
           </button>
         </div>
+        {pickedCard && actionsAt && (
+          <div
+            role="toolbar"
+            aria-label={`Ouvrir ${pickedCard.title}`}
+            data-wmt-web-actions=""
+            style={{
+              position: 'absolute',
+              left: actionsAt.x,
+              top: actionsAt.y,
+              display: 'flex',
+              gap: 6,
+              padding: 6,
+              borderRadius: 12,
+              border: '1px solid var(--color-border, rgba(148,163,184,0.5))',
+              background: 'var(--color-surface, #0d1117)',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
+            }}
+          >
+            <button
+              type="button"
+              aria-label="Voir le marché"
+              title="Voir le marché"
+              onClick={() => {
+                setPicked(null);
+                onOpen(pickedCard.slug);
+              }}
+              style={{ ...actionButton, background: 'var(--color-accent, #34d399)', color: '#0d1117', borderColor: 'transparent' }}
+            >
+              📈
+            </button>
+            <button
+              type="button"
+              aria-label="Ouvrir la carte"
+              title="Ouvrir la carte"
+              onClick={() => {
+                setPicked(null);
+                onOpenCard(pickedCard.slug);
+              }}
+              style={actionButton}
+            >
+              🃏
+            </button>
+          </div>
+        )}
       </div>
       {focusedHub && (
         <p style={{ margin: '8px 0 0', fontSize: 13 }}>
@@ -412,21 +488,6 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
         {cards.length > 0 && read < cards.length && (links.failed() ? ' Wikipédia est indisponible pour l’instant : nouvel essai automatique.' : ' Lecture en cours…')}
         {cards.length > 0 && read === cards.length && graph.cards.length === 0 && ' Aucun article n’est cité par au moins deux de vos cartes pour l’instant.'}
       </p>
-      {picked && pickedCard && pickedPreview && (
-        <CardPopup
-          preview={pickedPreview}
-          anchor={picked.anchor}
-          onOpen={() => {
-            setPicked(null);
-            onOpen(pickedCard.slug);
-          }}
-          onOpenCard={() => {
-            setPicked(null);
-            onOpenCard(pickedCard.slug);
-          }}
-          onClose={() => setPicked(null)}
-        />
-      )}
     </div>
   );
 }
