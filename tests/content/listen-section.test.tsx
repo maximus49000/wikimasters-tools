@@ -3,8 +3,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ListenSection } from '../../src/content/ListenSection';
-import { setMusicService } from '../../src/content/music-registry';
+import { setMusicService, setPlatformChoice } from '../../src/content/music-registry';
 import type { ListenView, MusicService } from '../../src/content/music-service';
+import { createPlatformSetting } from '../../src/core/music/platform';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,6 +61,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   setMusicService(null);
+  setPlatformChoice(null);
   vi.useRealTimers();
 });
 
@@ -202,5 +204,47 @@ describe('ListenSection, déliaison', () => {
     serviceOf(vi.fn().mockResolvedValue({ status: 'unlinked' }));
     await render();
     expect(labels()).toContain('Lier Spotify pour écouter');
+  });
+});
+
+describe('ListenSection, Tidal', () => {
+  const memory = (initial: string) => {
+    const data = new Map<string, string>([['wmt:musicPlatform', initial]]);
+    return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value) };
+  };
+  const tidalReady = (): ListenView => ({
+    status: 'ready',
+    listen: { kind: 'album', items: [{ uri: 'tidal:track:11564034', title: 'Love Me Do', artist: 'The Beatles' }], albumUri: 'tidal:album:11564033' },
+  });
+  const useTidal = () => setPlatformChoice({ available: ['spotify', 'tidal'], setting: createPlatformSetting(memory('tidal')) });
+
+  it('propose un lien vers Tidal par piste (pas de lecture), et la mention Tidal', async () => {
+    useTidal();
+    serviceOf(vi.fn().mockResolvedValue(tidalReady()));
+    await render();
+    const link = container.querySelector<HTMLAnchorElement>('a[aria-label="Ouvrir Love Me Do dans Tidal"]');
+    expect(link?.getAttribute('href')).toBe('https://tidal.com/browse/track/11564034');
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.getAttribute('rel')).toContain('noopener');
+    expect(container.querySelector('button[aria-label="Lire Love Me Do"]')).toBeNull();
+    const brand = [...container.querySelectorAll('a')].find((anchor) => anchor.textContent === 'Écoute sur TIDAL');
+    expect(brand?.getAttribute('href')).toBe('https://tidal.com');
+  });
+
+  it("nomme Tidal quand le compte n'est pas lié ou que la carte est introuvable", async () => {
+    useTidal();
+    serviceOf(vi.fn().mockResolvedValue({ status: 'unlinked' }));
+    await render();
+    expect(container.querySelector('button[aria-label="Lier Tidal pour écouter"]')).not.toBeNull();
+    serviceOf(vi.fn().mockResolvedValue({ status: 'notfound' }));
+    await relink();
+    expect(text()).toContain('Introuvable sur Tidal.');
+  });
+
+  it("avec Spotify, la section reste celle d'avant : ▶ et aucune mention Tidal", async () => {
+    serviceOf(vi.fn().mockResolvedValue(ready('Come Together')));
+    await render();
+    expect(container.querySelector('button[aria-label="Lire Come Together"]')).not.toBeNull();
+    expect(text()).not.toContain('TIDAL');
   });
 });

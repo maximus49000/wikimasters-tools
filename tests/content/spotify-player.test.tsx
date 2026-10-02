@@ -2,10 +2,11 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setMusicService } from '../../src/content/music-registry';
+import { setMusicService, setPlatformChoice } from '../../src/content/music-registry';
 import type { MusicService } from '../../src/content/music-service';
 import type { PlayerSource, PlayerView } from '../../src/content/player-source';
 import { SpotifyPlayer } from '../../src/content/SpotifyPlayer';
+import { createPlatformSetting } from '../../src/core/music/platform';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -48,6 +49,7 @@ describe('SpotifyPlayer, bouton « Carte »', () => {
     await act(async () => root.unmount());
     container.remove();
     setMusicService(null);
+    setPlatformChoice(null);
   });
 
   it('ouvre la fiche de la carte quand le titre en cours est le sien', async () => {
@@ -105,5 +107,30 @@ describe('SpotifyPlayer, bouton « Carte »', () => {
     await render({ hidden: true, card: null });
     expect(cardButton()).toBeNull();
     expect(container.querySelectorAll('button')).toHaveLength(2);
+  });
+});
+
+describe('SpotifyPlayer, plateforme', () => {
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    setMusicService(null);
+    setPlatformChoice(null);
+  });
+
+  it("reste caché quand la plateforme choisie est Tidal, et revient avec Spotify", async () => {
+    serviceFinding(true);
+    setPlatformChoice({ available: ['spotify', 'tidal'], setting: createPlatformSetting({ getItem: () => 'tidal', setItem: () => undefined }) });
+    await render();
+    expect(container.textContent).toBe('');
+    setPlatformChoice({ available: ['spotify', 'tidal'], setting: createPlatformSetting({ getItem: () => 'spotify', setItem: () => undefined }) });
+    await render();
+    expect(container.textContent).toContain('Bohemian Rhapsody');
   });
 });
