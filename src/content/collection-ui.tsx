@@ -238,5 +238,11 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
     }
   }
 
-  return { sync };
+  // Sans attendre la mise à jour des vues : « Prix de vente décroissant » doit apparaître dès que la liste de tri s'ouvre.
+  function syncSortMenu(): void {
+    if (!window.location.pathname.startsWith('/collection')) return;
+    syncPriceSort(document, readView(window.localStorage) === 'homemade', sortSource);
+  }
+
+  return { sync, syncSortMenu };
 }
