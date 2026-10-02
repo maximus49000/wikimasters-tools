@@ -2,7 +2,8 @@ import type { SpotifyApi, Track } from '../spotify/spotify-api';
 import type { MusicKind } from './music-kinds';
 import type { CardMusic } from './wikidata-music';
 
-export type Listen = { kind: MusicKind; items: Track[]; albumUri?: string };
+// `album` : nom et artiste de l'album, gardés pour les bandes originales de films (affichés sur la fiche du film).
+export type Listen = { kind: MusicKind; items: Track[]; albumUri?: string; album?: { name: string; artist: string } };
 
 // « Yesterday_(chanson) » → « Yesterday » : la précision de Wikipédia nuit à la recherche Spotify.
 export const cleanTitle = (title: string): string =>

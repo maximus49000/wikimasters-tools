@@ -323,6 +323,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           kinds: kindsRepo,
           music: musicRepo,
           listens: createListenRepo(store),
+          soundtracks: createListenRepo(store, undefined, 'soundtracks-v1'),
           session,
           api: spotifyApi,
           onPlayed: (card) => {

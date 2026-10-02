@@ -25,6 +25,7 @@ function setup(over: Over = {}) {
   const api = {
     searchTracks: vi.fn(async () => []),
     searchAlbum: vi.fn(async () => null),
+    searchAlbums: vi.fn(async () => [{ id: 'OST', name: 'Inception (Original Motion Picture Soundtrack)', artist: 'Hans Zimmer' }]),
     albumTracks: vi.fn(async () => [{ uri: 'spotify:track:1', title: 'Come Together', artist: 'The Beatles' }]),
     play: vi.fn(async () => undefined),
     pause: vi.fn(async () => undefined),
@@ -50,6 +51,7 @@ function setup(over: Over = {}) {
     },
     music: { resolve },
     listens: over.listens ?? createListenRepo(store),
+    soundtracks: createListenRepo(store, undefined, 'soundtracks-v1'),
     session,
     api: api as never,
     onPlayed,
@@ -57,6 +59,42 @@ function setup(over: Over = {}) {
   });
   return { service, api, session, sessionListeners, onPlayed, resolve, store };
 }
+
+describe('createMusicService.soundtrack', () => {
+  it('trouve la BO, la garde, et ne redemande rien à Spotify la fois suivante (même après un rechargement)', async () => {
+    const first = setup();
+    const listen = await first.service.soundtrack('movie:27205', ['Inception']);
+    expect(listen).toMatchObject({ albumUri: 'spotify:album:OST', album: { artist: 'Hans Zimmer' } });
+    expect(first.api.searchAlbums).toHaveBeenCalledTimes(1);
+
+    const second = setup({ store: first.store });
+    expect(await second.service.soundtrack('movie:27205', ['Inception'])).toEqual(listen);
+    expect(second.api.searchAlbums).not.toHaveBeenCalled();
+    expect(second.api.albumTracks).not.toHaveBeenCalled();
+  });
+
+  it('garde aussi « pas de BO » : pas de nouvelle recherche', async () => {
+    const { service, api } = setup();
+    api.searchAlbums.mockResolvedValue([]);
+    expect(await service.soundtrack('movie:1', ['Film sans BO'])).toBeNull();
+    expect(await service.soundtrack('movie:1', ['Film sans BO'])).toBeNull();
+    expect(api.searchAlbums).toHaveBeenCalledTimes(1);
+  });
+
+  it('ne garde pas une erreur de Spotify : la recherche est retentée', async () => {
+    const { service, api } = setup();
+    api.searchAlbums.mockRejectedValueOnce(new SpotifyError('rate-limited', 'limite', 5000, Date.now() + 5000));
+    expect(await service.soundtrack('movie:27205', ['Inception'])).toBeNull();
+    expect(await service.soundtrack('movie:27205', ['Inception'])).not.toBeNull();
+    expect(api.searchAlbums).toHaveBeenCalledTimes(2);
+  });
+
+  it('ne cherche rien sans compte lié', async () => {
+    const { service, api } = setup({ linked: false });
+    expect(await service.soundtrack('movie:27205', ['Inception'])).toBeNull();
+    expect(api.searchAlbums).not.toHaveBeenCalled();
+  });
+});
 
 describe('createMusicService.view', () => {
   it('rend les pistes pour une carte album de la collection quand le compte est lié', async () => {

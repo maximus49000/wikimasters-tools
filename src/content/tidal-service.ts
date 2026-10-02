@@ -1,5 +1,6 @@
 import type { KnownCard } from '../core/collection/collection-book';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
+import type { Listen } from '../core/music/listen';
 import type { ListenRepo } from '../core/music/listen-repo';
 import type { MusicRepo } from '../core/music/music-repo';
 import { TidalError, tidalMessage } from '../core/tidal/errors';
@@ -36,6 +37,8 @@ export function createTidalService(deps: TidalServiceDeps) {
   return {
     view: (slug: string, title: string) => viewer.show(slug, title, false),
     refresh: (slug: string, title: string) => viewer.show(slug, title, true),
+    // Pas de lecture dans l'appli pour Tidal, donc pas de bouton « BO » sur la fiche d'un film.
+    soundtrack: async (_key?: string, _titles?: string[]): Promise<Listen | null> => null,
     // Rien ne joue dans l'appli pour Tidal : aucune carte n'est « en cours ».
     playingSlugs: async (_cards?: unknown, _track?: unknown): Promise<Set<string>> => new Set<string>(),
     // Pas de lecture dans l'appli pour l'instant : le lien ↗ de chaque piste ouvre Tidal.
