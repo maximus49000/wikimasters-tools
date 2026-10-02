@@ -27,7 +27,9 @@ async function show(listen: Listen | null, play = vi.fn(async () => null as stri
   return { soundtrack, play };
 }
 
-const byLabel = (label: string) => container.querySelector<HTMLElement>(`[aria-label="${label}"]`)!;
+// La fenêtre de réglage vit dans un shadow DOM posé sur le <body>, hors de la fiche.
+const dialog = (): ParentNode => Array.from(document.body.children).find((child) => child.shadowRoot)?.shadowRoot ?? document.createDocumentFragment();
+const byLabel = (label: string) => (container.querySelector<HTMLElement>(`[aria-label="${label}"]`) ?? dialog().querySelector<HTMLElement>(`[aria-label="${label}"]`))!;
 const click = (element: HTMLElement) => act(async () => element.click());
 const type = (input: HTMLInputElement, value: string) =>
   act(async () => {
@@ -107,9 +109,9 @@ describe('SoundtrackButton : réglage', () => {
     await show(null, undefined, { refreshSoundtrack });
     await click(byLabel('Régler la bande originale'));
     await click(byLabel('Relancer la recherche'));
-    expect(container.textContent).toContain('Aucune bande originale trouvée.');
+    expect(dialog().textContent).toContain('Aucune bande originale trouvée.');
     await click(byLabel('Relancer la recherche'));
-    expect(container.textContent).toContain('Trop de requêtes.');
+    expect(dialog().textContent).toContain('Trop de requêtes.');
   });
 
   it('Manuel : cherche le texte saisi, puis ▶ garde le résultat et le lance', async () => {
@@ -118,23 +120,23 @@ describe('SoundtrackButton : réglage', () => {
     const chooseSoundtrack = vi.fn(async () => ({ listen: playlist }));
     const { play } = await show(null, undefined, { searchSoundtracks, chooseSoundtrack });
     await click(byLabel('Régler la bande originale'));
-    await click(Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Manuel')!);
-    const input = container.querySelector<HTMLInputElement>('input[aria-label="Titre à chercher"]')!;
+    await click(Array.from(dialog().querySelectorAll('button')).find((button) => button.textContent === 'Manuel')!);
+    const input = dialog().querySelector<HTMLInputElement>('input[aria-label="Titre à chercher"]')!;
     expect(input.value).toBe('Inception');
     await type(input, 'BO Nos jours heureux');
-    await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    await act(async () => dialog().querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(searchSoundtracks).toHaveBeenCalledWith('BO Nos jours heureux');
     await click(byLabel('Lancer BO Nos jours Heureux'));
     expect(chooseSoundtrack).toHaveBeenCalledWith('movie:27205', choice);
     expect(play).toHaveBeenCalledWith(null, playlist);
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialog().querySelector('[role="dialog"]')).toBeNull();
     expect(container.textContent).toContain('BO Nos jours Heureux');
   });
 
   it('Tidal : pas d’onglet Manuel', async () => {
     await show(tidal, undefined, { manualSoundtrack: false, refreshSoundtrack: vi.fn() });
     await click(byLabel('Régler la bande originale'));
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
-    expect(Array.from(container.querySelectorAll('button')).some((button) => button.textContent === 'Manuel')).toBe(false);
+    expect(dialog().querySelector('[role="dialog"]')).not.toBeNull();
+    expect(Array.from(dialog().querySelectorAll('button')).some((button) => button.textContent === 'Manuel')).toBe(false);
   });
 });

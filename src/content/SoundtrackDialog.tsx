@@ -1,4 +1,5 @@
-import { useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import type { Listen } from '../core/music/listen';
 import type { SoundtrackChoice } from '../core/music/soundtrack';
 import { Glyph } from './Glyphs';
@@ -82,13 +83,16 @@ export function SoundtrackDialog({ service, soundtrackKey, titles, current, init
     else onClose();
   };
 
-  return (
+  const mountPoint = useOverlayHost();
+  if (!mountPoint) return null;
+
+  return createPortal(
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
       <div
         role="dialog"
         aria-label="Bande originale"
         onClick={(event) => event.stopPropagation()}
-        style={{ width: 'min(380px, 100%)', maxHeight: '85vh', overflowY: 'auto', boxSizing: 'border-box', padding: 16, borderRadius: 12, border, background: 'var(--color-surface, #0d1117)', color: 'var(--color-foreground, #e6edf3)', font: '14px/20px system-ui, sans-serif' }}
+        style={{ width: 'min(380px, 100%)', maxHeight: '85vh', overflowY: 'auto', boxSizing: 'border-box', padding: 16, borderRadius: 12, border, background: '#0d1117', color: '#e6edf3', font: '14px/20px system-ui, sans-serif' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
           <strong style={{ fontSize: 16 }}>Bande originale</strong>
@@ -156,6 +160,26 @@ export function SoundtrackDialog({ service, soundtrackKey, titles, current, init
           </p>
         )}
       </div>
-    </div>
+    </div>,
+    mountPoint,
   );
+}
+
+// Un hôte posé sur le <body>, dans un shadow DOM : la fenêtre sort de la fiche (ni défilement, ni empilement du site) et passe au premier plan.
+function useOverlayHost(): HTMLElement | null {
+  const [mountPoint, setMountPoint] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed; inset:0; z-index:2147483647';
+    // La fiche du jeu se ferme sur un appui « à l'extérieur » : on garde ces événements chez nous.
+    for (const type of ['pointerdown', 'mousedown', 'touchstart']) {
+      host.addEventListener(type, (event) => event.stopPropagation());
+    }
+    const point = document.createElement('div');
+    host.attachShadow({ mode: 'open' }).appendChild(point);
+    document.body.appendChild(host);
+    setMountPoint(point);
+    return () => host.remove();
+  }, []);
+  return mountPoint;
 }
