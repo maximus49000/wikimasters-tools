@@ -187,3 +187,20 @@ describe('ListenSection, relance après une limite Spotify', () => {
     expect(container.querySelector('button')).toBeNull();
   });
 });
+
+describe('ListenSection, déliaison', () => {
+  const labels = () => [...container.querySelectorAll('button')].map((button) => button.getAttribute('aria-label'));
+
+  it('ne propose jamais de délier le compte (réservé à Plus, Lecteur)', async () => {
+    serviceOf(vi.fn().mockResolvedValue(ready('Come Together')));
+    await render();
+    expect(labels()).toContain('Lire Come Together');
+    expect(labels()).not.toContain('Délier Spotify');
+  });
+
+  it("garde « Lier » quand le compte n'est pas lié", async () => {
+    serviceOf(vi.fn().mockResolvedValue({ status: 'unlinked' }));
+    await render();
+    expect(labels()).toContain('Lier Spotify pour écouter');
+  });
+});
