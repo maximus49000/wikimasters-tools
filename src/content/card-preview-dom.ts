@@ -130,18 +130,21 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
     body.append(stats);
   }
   card.append(body);
-  // Au-dessus de la défense, comme une marque de rareté discrète (voir `.wmt-card-copies`).
+  // Un titre de cette carte joue sur Spotify : égaliseur vert, au-dessus de l'attaque.
+  if (preview.playing) card.append(playingGlyph());
+
+  // Au-dessus de la défense : le lien avec le cinéma ou la musique (bobine ou note, sans fond), puis la marque d'exemplaires.
+  // Les deux sont dans un même conteneur aligné à droite : seul, chacun garde le bord droit. La bobine l'emporte sur la note.
+  const marks = div('wmt-card-marks');
+  if (preview.film || preview.music) {
+    card.classList.add('wmt-card-linked');
+    marks.append(preview.film ? filmGlyph() : musicGlyph());
+  }
   if (preview.copies !== null) {
     card.classList.add('wmt-card-multi');
-    card.append(div('wmt-card-copies', `X${preview.copies}`));
+    marks.append(div('wmt-card-copies', `X${preview.copies}`));
   }
-
-  // Au-dessus de l'attaque, en face de la marque d'exemplaires : un titre de cette carte joue sur Spotify.
-  // Sans lecture, une bobine de cinéma (carte liée aux films) ou une note de musique la remplace.
-  // La bobine l'emporte : la bande originale d'un film ne change pas la pastille en note.
-  if (preview.playing) card.append(playingGlyph());
-  else if (preview.film) card.append(filmGlyph());
-  else if (preview.music) card.append(musicGlyph());
+  if (marks.childElementCount > 0) card.append(marks);
 
   // Reflet animé des légendaires : classe du site.
   if (preview.rarity === 'L') {
@@ -170,9 +173,9 @@ function playingGlyph(): HTMLElement {
   return glyph;
 }
 
-// Note de musique (Lucide « music ») dans la même pastille, sans animation.
+// Note de musique (Lucide « music »), sans fond ni animation.
 function musicGlyph(): HTMLElement {
-  const glyph = div('wmt-card-playing wmt-card-music');
+  const glyph = div('wmt-card-link wmt-card-music');
   glyph.setAttribute('role', 'img');
   glyph.title = 'Lien avec la musique';
   glyph.setAttribute('aria-label', glyph.title);
@@ -187,9 +190,9 @@ function musicGlyph(): HTMLElement {
   return glyph;
 }
 
-// Bobine de cinéma (disque, moyeu et quatre trous) dans la même pastille, sans animation.
+// Bobine de cinéma (disque, moyeu et quatre trous), sans fond ni animation.
 function filmGlyph(): HTMLElement {
-  const glyph = div('wmt-card-playing wmt-card-film');
+  const glyph = div('wmt-card-link wmt-card-film');
   glyph.setAttribute('role', 'img');
   glyph.title = 'Lien avec le cinéma';
   glyph.setAttribute('aria-label', glyph.title);

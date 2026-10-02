@@ -55,18 +55,20 @@ describe('buildCardPreview : bobine de cinéma', () => {
   it('marque une carte liée au cinéma', () => {
     const reel = buildCardPreview({ ...base, film: true }).querySelector<HTMLElement>('.wmt-card-film');
     expect(reel?.title).toBe('Lien avec le cinéma');
-    expect(reel?.classList.contains('wmt-card-playing')).toBe(true);
+    expect(reel?.classList.contains('wmt-card-link')).toBe(true);
+    expect(reel?.closest('.wmt-card-marks')).not.toBeNull();
   });
 
   it('l’emporte sur la note de musique (bande originale d’un film)', () => {
     const card = buildCardPreview({ ...base, film: true, music: true });
     expect(card.querySelector('.wmt-card-music')).toBeNull();
-    expect(card.querySelectorAll('.wmt-card-playing')).toHaveLength(1);
+    expect(card.querySelectorAll('.wmt-card-link')).toHaveLength(1);
   });
 
-  it('laisse l’égaliseur seul quand un titre joue', () => {
+  it('garde l’égaliseur à gauche et la bobine à droite quand un titre joue', () => {
     const card = buildCardPreview({ ...base, film: true, playing: true });
-    expect(card.querySelector('.wmt-card-film')).toBeNull();
+    expect(card.querySelectorAll('.wmt-card-playing')).toHaveLength(1);
+    expect(card.querySelector('.wmt-card-marks .wmt-card-film')).not.toBeNull();
   });
 });
 
@@ -74,16 +76,22 @@ describe('buildCardPreview : note de musique', () => {
   it('marque une carte liée à la musique, à la place du glyphe de lecture', () => {
     const note = buildCardPreview({ ...base, music: true }).querySelector<HTMLElement>('.wmt-card-music');
     expect(note?.title).toBe('Lien avec la musique');
-    expect(note?.classList.contains('wmt-card-playing')).toBe(true);
+    expect(note?.classList.contains('wmt-card-link')).toBe(true);
   });
 
-  it('laisse l’égaliseur seul quand un titre joue', () => {
+  it('garde l’égaliseur à gauche et la note à droite quand un titre joue', () => {
     const card = buildCardPreview({ ...base, music: true, playing: true });
-    expect(card.querySelector('.wmt-card-music')).toBeNull();
     expect(card.querySelectorAll('.wmt-card-playing')).toHaveLength(1);
+    expect(card.querySelector('.wmt-card-marks .wmt-card-music')).not.toBeNull();
+  });
+
+  it('place le glyphe avant « X2 » dans le même conteneur', () => {
+    const marks = buildCardPreview({ ...base, music: true, copies: 2 }).querySelector('.wmt-card-marks');
+    expect(marks?.children[0].classList.contains('wmt-card-music')).toBe(true);
+    expect(marks?.children[1].classList.contains('wmt-card-copies')).toBe(true);
   });
 
   it('n’ajoute rien aux autres cartes', () => {
-    expect(buildCardPreview(base).querySelector('.wmt-card-playing')).toBeNull();
+    expect(buildCardPreview(base).querySelector('.wmt-card-marks')).toBeNull();
   });
 });
