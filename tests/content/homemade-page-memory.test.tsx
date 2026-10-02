@@ -31,6 +31,7 @@ function fakeFilter() {
   const listeners = new Set<() => void>();
   return {
     current: () => current,
+    sort: () => '',
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
@@ -63,6 +64,7 @@ async function mount() {
         filterSource={filter as CollectionFilterSource}
         sortSource={createSortSource()}
         loadFiltered={loadFiltered}
+        loadOrdered={async () => []}
         nativePageSize={() => 0}
         onOpenCard={vi.fn()}
         onWantCards={vi.fn()}

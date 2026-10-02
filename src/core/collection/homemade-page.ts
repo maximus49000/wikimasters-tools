@@ -11,8 +11,19 @@ const rank = (rarity: string | undefined): number => {
 
 // Comme le tri par défaut du site : rareté décroissante, puis titre.
 // `priceOf` : tri par dernier prix de vente connu, décroissant ; les cartes sans prix viennent en dernier.
-export function sortCards(cards: KnownCard[], priceOf?: (slug: string) => number | null): KnownCard[] {
+// `siteOrder` : ordre donné par le site pour un autre tri (Nom, Favoris, Date d'ajout) ; les cartes qu'il n'a pas encore
+// données viennent après, en ordre de rareté.
+export function sortCards(cards: KnownCard[], priceOf?: (slug: string) => number | null, siteOrder?: { index: Map<string, number> }): KnownCard[] {
   const byRarity = (a: KnownCard, b: KnownCard) => rank(a.rarity) - rank(b.rarity) || a.title.localeCompare(b.title, 'fr');
+  if (siteOrder && siteOrder.index.size > 0) {
+    const { index } = siteOrder;
+    return [...cards].sort((a, b) => {
+      const ia = index.get(a.slug);
+      const ib = index.get(b.slug);
+      if (ia === undefined || ib === undefined) return ia === ib ? byRarity(a, b) : ia === undefined ? 1 : -1;
+      return ia - ib;
+    });
+  }
   if (!priceOf) return [...cards].sort(byRarity);
   const prices = new Map(cards.map((card) => [card.slug, priceOf(card.slug)]));
   return [...cards].sort((a, b) => {

@@ -80,7 +80,7 @@ export function createGameApi(options: GameApiOptions) {
         }
         return { auctions: parseMarketAuctions(json).auctions };
       }),
-    getCollectionPage: (page: number, filter?: string, sort?: 'rarity' | 'added'): Promise<CollectionPage> =>
+    getCollectionPage: (page: number, filter?: string, sort?: string): Promise<CollectionPage> =>
       enqueue(async () => {
         const path = collectionEndpoint(page, filter, sort);
         return parseCollectionPage(await requestJson(path), path);

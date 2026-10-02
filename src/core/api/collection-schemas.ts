@@ -4,9 +4,9 @@ import { titleToSlug } from '../market/market-book';
 import { ApiFormatError } from './errors';
 
 // `filter` : les filtres de la page (« rarity=UR&tag_id=… »), pour lire la même sélection que le site.
-// `sort` : « rarity » (défaut) ou « added » (date d'obtention, la plus récente d'abord).
-export const collectionEndpoint = (page: number, filter = '', sort: 'rarity' | 'added' = 'rarity'): string =>
-  `/api/my-collection?sort=${sort}${filter ? `&${filter}` : ''}&page=${page}&stats=0`;
+// `sort` : « rarity » (défaut), « added » (date d'obtention, la plus récente d'abord) ou tout autre tri du site.
+export const collectionEndpoint = (page: number, filter = '', sort = 'rarity'): string =>
+  `/api/my-collection?sort=${encodeURIComponent(sort)}${filter ? `&${filter}` : ''}&page=${page}&stats=0`;
 
 // On ne déclare que la carte (titre, rareté, image…) et les étiquettes (identifiant, nom, couleur) : ni identifiant// de joueur, ni pseudo n'est conservé. Rareté et image sont facultatives : une valeur inattendue ne fait pas écarter la carte.
 const entrySchema = z.object({
