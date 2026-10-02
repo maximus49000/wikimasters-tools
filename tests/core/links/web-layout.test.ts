@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createLayout, layoutWeb, type LayoutNode, type Point } from '../../../src/core/links/web-layout';
+import { createLayout, layoutWeb, samePositions, type LayoutNode, type Point } from '../../../src/core/links/web-layout';
 
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const star = (hub: string, leaves: number) => ({
@@ -60,12 +60,43 @@ describe('layoutWeb', () => {
     expect(dist(positions['b'] as Point, { x: 400, y: -300 })).toBeLessThan(80);
   });
 
-  it('garde les anciens nœuds près de leur place quand un nouveau arrive', () => {
-    const { nodes, edges } = star('h', 6);
+  it('ne bouge pas les nœuds déjà placés quand la toile grandit, et place les nouveaux sans chevauchement', () => {
+    const { nodes, edges } = star('h', 30);
     const first = layoutWeb(nodes, edges);
-    const grown = layoutWeb([...nodes, { id: 'h-6' }], [...edges, ['h', 'h-6'] as const], first);
-    const moved = nodes.map((node) => dist(first[node.id] as Point, grown[node.id] as Point));
-    expect(Math.max(...moved)).toBeLessThan(120);
+    const grownNodes = [...nodes, ...Array.from({ length: 6 }, (_, i) => ({ id: `new-${i}` }))];
+    const grownEdges = [...edges, ...Array.from({ length: 6 }, (_, i) => ['h', `new-${i}`] as const)];
+    const grown = layoutWeb(grownNodes, grownEdges, first);
+
+    for (const node of nodes) expect(grown[node.id]).toEqual(first[node.id]);
+    const added = grownNodes.slice(nodes.length);
+    for (const node of added) {
+      for (const other of grownNodes) {
+        if (other.id !== node.id) expect(dist(grown[node.id] as Point, grown[other.id] as Point)).toBeGreaterThan(20);
+      }
+    }
+  });
+
+  it('rend le même dessin quand le graphe n’a pas changé, relance après relance', () => {
+    const { nodes, edges } = star('h', 20);
+    let positions = layoutWeb(nodes, edges);
+    const first = positions;
+    for (let run = 0; run < 3; run++) positions = layoutWeb(nodes, edges, positions);
+    expect(positions).toEqual(first);
+  });
+
+  it('repart de zéro quand le graphe change beaucoup (un filtre ne garde que quelques nœuds)', () => {
+    const { nodes, edges } = star('h', 60);
+    const wide = layoutWeb(nodes, edges);
+    const kept = nodes.slice(0, 8);
+    const keptEdges = edges.filter(([, leaf]) => kept.some((node) => node.id === leaf));
+    const narrow = layoutWeb(kept, keptEdges, wide);
+
+    const extent = (positions: Record<string, Point>, ids: string[]) => {
+      const xs = ids.map((id) => (positions[id] as Point).x);
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    const ids = kept.map((node) => node.id);
+    expect(extent(narrow, ids)).toBeLessThan(extent(wide, ids) / 2);
   });
 
   it('ignore une arête vers un nœud inconnu', () => {
@@ -101,5 +132,35 @@ describe('createLayout', () => {
     layout.run(0);
     const positions = layout.positions();
     expect(Object.keys(positions)).toHaveLength(nodes.length);
+  });
+});
+
+describe('layoutWeb, grande toile qui grandit', () => {
+  it('ajoute quelques nœuds à un grand graphe sans rien bouger ni tout recalculer', { timeout: 30_000 }, () => {
+    const nodes = Array.from({ length: 1500 }, (_, i) => ({ id: `n${i}` }));
+    const edges = Array.from({ length: 4500 }, (_, i) => [`n${i % 1500}`, `n${(i * 7 + 13) % 1500}`] as const);
+    const first = layoutWeb(nodes, edges);
+
+    const more = [...nodes, ...Array.from({ length: 12 }, (_, i) => ({ id: `m${i}` }))];
+    const moreEdges = [...edges, ...Array.from({ length: 24 }, (_, i) => [`m${i % 12}`, `n${(i * 31) % 1500}`] as const)];
+    const start = performance.now();
+    const grown = layoutWeb(more, moreEdges, first);
+    const ms = performance.now() - start;
+
+    for (const node of nodes) expect(grown[node.id]).toEqual(first[node.id]);
+    expect(Object.keys(grown)).toHaveLength(1512);
+    // Seuls les nouveaux nœuds se calculent : bien moins que la première fois.
+    expect(ms).toBeLessThan(3000);
+  });
+});
+
+describe('samePositions', () => {
+  it('reconnaît deux placements identiques, et le moindre écart', () => {
+    const a = { x: { x: 1, y: 2 }, y: { x: 3, y: 4 } };
+    expect(samePositions(a, { x: { x: 1, y: 2 }, y: { x: 3, y: 4 } })).toBe(true);
+    expect(samePositions(a, { x: { x: 1, y: 2 }, y: { x: 3, y: 4.5 } })).toBe(false);
+    expect(samePositions(a, { x: { x: 1, y: 2 } })).toBe(false);
+    expect(samePositions(a, { x: { x: 1, y: 2 }, z: { x: 3, y: 4 } })).toBe(false);
+    expect(samePositions({}, {})).toBe(true);
   });
 });

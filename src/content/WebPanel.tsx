@@ -7,9 +7,10 @@ import { EMPTY_LINKS, needsLinksLookup, type LinksState } from '../core/links/li
 import type { LinksRepo } from '../core/links/links-repo';
 import { CARD_SIZE, buildWeb, cardId, hubId, hubRadius, neighborhood, webEdges, webNodes, type Focus, type WebGraph } from '../core/links/web-graph';
 import { chooseLabels, shortTitle } from '../core/links/web-labels';
-import { createLayout, type Point } from '../core/links/web-layout';
+import { createLayout, samePositions, type Point } from '../core/links/web-layout';
 import { ZOOM_STEP, boundsOf, fitTransform, pinch, placeActions, zoomAt, type Transform } from '../core/links/web-view';
 import type { CollectionFilterSource } from './collection-filter';
+import { getImageService } from './image-registry';
 import type { KindFilterSource } from './kind-filter';
 import { createThrottledLoader } from './throttle';
 import { useFilteredCards } from './useFilteredCards';
@@ -93,12 +94,14 @@ type GraphProps = {
   images: boolean;
   // Les nœuds (cartes et points) dont le nom s'affiche à ce zoom.
   labelled: ReadonlySet<string>;
+  // L'image d'une carte : celle du jeu, sinon l'image de remplacement déjà trouvée (jamais de nouvelle recherche ici).
+  imageOf: (card: KnownCard) => string | undefined;
   onCard: (slug: string) => void;
   onHub: (slug: string) => void;
 };
 
 // Les nœuds ne se redessinent que si le graphe, le placement, la mise en avant ou le niveau de détail changent : glisser ne les touche pas.
-const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit, images, labelled, onCard, onHub }: GraphProps) {
+const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit, images, labelled, imageOf, onCard, onHub }: GraphProps) {
   const opacityOf = (id: string) => (lit && !lit.has(id) ? FADED : 1);
   const edge = (key: string, a: string, b: string, dashed: boolean) => {
     const from = positions[a];
@@ -158,6 +161,7 @@ const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit
         const point = positions[cardId(card.slug)];
         if (!point) return null;
         const half = CARD_SIZE / 2;
+        const art = images ? imageOf(card) : undefined;
         const named = labelled.has(cardId(card.slug));
         return (
           <g
@@ -175,8 +179,8 @@ const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit
               <rect x={-CARD_HIT / 2} y={-CARD_HIT / 2} width={CARD_HIT} height={CARD_HIT} fill="transparent" />
               <rect x={-half} y={-half} width={CARD_SIZE} height={CARD_SIZE} fill={images ? 'rgba(148,163,184,0.25)' : rarityColor(card)} />
               {images &&
-                (card.imageUrl ? (
-                  <image href={card.imageUrl} x={-half} y={-half} width={CARD_SIZE} height={CARD_SIZE} preserveAspectRatio="xMidYMid slice" />
+                (art ? (
+                  <image href={art} x={-half} y={-half} width={CARD_SIZE} height={CARD_SIZE} preserveAspectRatio="xMidYMid slice" />
                 ) : (
                   <text textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight={600} fill="currentColor">
                     {initials(card.title)}
@@ -209,6 +213,17 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   const [size, setSize] = useState({ width: 1000, height: 700 });
   const [positions, setPositions] = useState<Record<string, Point>>({});
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // Les images de remplacement (option « Images de remplacement ») qui arrivent pendant qu'on regarde la toile.
+  const imageService = getImageService();
+  const [imagesVersion, setImagesVersion] = useState(0);
+  useEffect(() => imageService?.subscribe(() => setImagesVersion((version) => version + 1)), [imageService]);
+  const imageOf = useCallback(
+    (card: KnownCard): string | undefined => card.imageUrl ?? (imageService?.enabled() ? (imageService.peek(card.slug) ?? undefined) : undefined),
+    // `imagesVersion` change quand une image est trouvée : la fonction change, les cartes se redessinent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [imageService, imagesVersion],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -251,8 +266,10 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
       const now = Date.now();
       if (done || now - published >= PUBLISH_MS) {
         published = now;
-        previous.current = layout.positions();
-        setPositions(previous.current);
+        const next = layout.positions();
+        previous.current = next;
+        // Rien n'a bougé (la toile n'a pas changé, ou ne fait que grandir ailleurs) : pas de nouveau dessin.
+        setPositions((current) => (samePositions(current, next) ? current : next));
       }
       if (!done) timer = setTimeout(tick, 0);
     };
@@ -336,13 +353,16 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   const zoomBy = (factor: number) => setView(zoomAt(transform, factor, size.width / 2, size.height / 2));
 
   // Identité stable : sinon `WebGraphView` (mémoïsée) se redessinerait à chaque glissement.
+  // Toucher un nœud fige le cadrage : la lecture des liens continue, la toile ne doit pas glisser sous le doigt.
   const onCard = useCallback((slug: string) => {
     if (dragged.current) return;
+    setView((current) => current ?? transformRef.current);
     setFocus(null);
     setPicked((current) => (current === slug ? null : slug));
   }, []);
   const onHub = useCallback((slug: string) => {
     if (dragged.current) return;
+    setView((current) => current ?? transformRef.current);
     setPicked(null);
     setFocus((current) => (current?.kind === 'hub' && current.slug === slug ? null : { kind: 'hub', slug }));
   }, []);
@@ -411,6 +431,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
               lit={lighting?.lit ?? null}
               images={transform.k >= IMAGE_ZOOM}
               labelled={labelled}
+              imageOf={imageOf}
               onCard={onCard}
               onHub={onHub}
             />

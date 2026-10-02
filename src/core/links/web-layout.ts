@@ -23,6 +23,11 @@ const GAP = 8;
 // au point de se chevaucher (réglé sur des Collections de 30 à 2000 cartes).
 const CHARGE = 0.045;
 const COLLISION_PASSES = 120;
+// La toile « grandit » si au moins 90 % des nœuds déjà placés sont encore là et que les nouveaux n'en font pas plus de la moitié
+// (ou trois : un tout petit graphe a vite plus de nouveaux que d'anciens).
+const INCREMENTAL_KEPT = 0.9;
+const INCREMENTAL_NEW = 0.5;
+const INCREMENTAL_MIN_NEW = 3;
 const DEFAULT_RADIUS = 12;
 const GOLDEN_ANGLE = 2.399963229728653;
 
@@ -30,8 +35,10 @@ const cellKey = (cx: number, cy: number): number => (cx + 4096) * 8192 + (cy + 4
 
 // Placement « forces » sans hasard : le même graphe donne toujours le même dessin.
 // - Les ressorts sont affaiblis par le degré (comme d3-force) : un article cité par cent cartes ne les écrase pas toutes au même endroit.
-// - Les nœuds déjà placés (`previous`) repartent de leur position et les nouveaux naissent près de leurs voisins :
-//   la toile se complète sans tout rebattre (la moitié des itérations suffit).
+// - Quand la toile grandit (la plupart des nœuds de `previous` sont encore là, et il y en a peu de nouveaux), les nœuds déjà placés
+//   ne bougent plus et les nouveaux naissent près de leurs voisins : relancer le calcul ne rebat jamais ce que l'on regarde.
+//   (Un placement par forces ne se stabilise jamais tout à fait : relancé sur lui-même, il dérive de dizaines de pixels.)
+//   Quand le graphe change beaucoup (un filtre n'en garde qu'une partie), `previous` est ignoré et le placement repart de zéro.
 // - Une dernière passe écarte les nœuds qui se chevauchent encore.
 export function createLayout(
   nodes: LayoutNode[],
@@ -45,15 +52,20 @@ export function createLayout(
   const ys = new Float64Array(n);
   const rs = new Float64Array(n);
   const known = new Uint8Array(n);
-  let seeded = false;
+  // La toile grandit-elle (au lieu de changer) ? Alors les nœuds déjà placés sont figés.
+  let kept = 0;
+  for (const node of nodes) if (Object.prototype.hasOwnProperty.call(previous, node.id)) kept += 1;
+  const placedBefore = Object.keys(previous).length;
+  const incremental = kept > 0 && kept >= INCREMENTAL_KEPT * placedBefore && n - kept <= Math.max(INCREMENTAL_MIN_NEW, INCREMENTAL_NEW * kept);
+  const pinned = new Uint8Array(n);
   nodes.forEach((node, i) => {
     rs[i] = node.radius ?? DEFAULT_RADIUS;
-    const before = Object.prototype.hasOwnProperty.call(previous, node.id) ? previous[node.id] : undefined;
+    const before = incremental && Object.prototype.hasOwnProperty.call(previous, node.id) ? previous[node.id] : undefined;
     if (before) {
       xs[i] = before.x;
       ys[i] = before.y;
       known[i] = 1;
-      seeded = true;
+      pinned[i] = 1;
     }
   });
 
@@ -103,8 +115,10 @@ export function createLayout(
     }
   }
 
-  const total = seeded ? Math.ceil(iterations / 2) : iterations;
-  const startTemperature = REST * (seeded ? 1.5 : 3);
+  const total = incremental ? Math.ceil(iterations / 2) : iterations;
+  const startTemperature = REST * (incremental ? 1.5 : 3);
+  let free = 0;
+  for (let i = 0; i < n; i++) if (!pinned[i]) free += 1;
   const charge = CHARGE * Math.pow(Math.max(n, 1), 1.7);
   let maxRadius = 0;
   for (let i = 0; i < n; i++) maxRadius = Math.max(maxRadius, rs[i]!);
@@ -137,7 +151,8 @@ export function createLayout(
       for (let gx = cx - 1; gx <= cx + 1; gx++) {
         for (let gy = cy - 1; gy <= cy + 1; gy++) {
           for (let j = heads.get(cellKey(gx, gy)) ?? -1; j !== -1; j = next[j]!) {
-            if (j <= i) continue;
+            // Deux nœuds figés ne bougent pas : leurs forces seraient calculées pour rien.
+            if (j <= i || (pinned[i] && pinned[j])) continue;
             let ddx = xs[i]! - xs[j]!;
             let ddy = ys[i]! - ys[j]!;
             let squared = ddx * ddx + ddy * ddy;
@@ -165,6 +180,7 @@ export function createLayout(
     for (let e = 0; e < from.length; e++) {
       const a = from[e]!;
       const b = to[e]!;
+      if (pinned[a] && pinned[b]) continue;
       const ddx = xs[a]! - xs[b]!;
       const ddy = ys[a]! - ys[b]!;
       const distance = Math.sqrt(ddx * ddx + ddy * ddy) || 0.01;
@@ -177,6 +193,7 @@ export function createLayout(
       dy[b]! += fy;
     }
     for (let i = 0; i < n; i++) {
+      if (pinned[i]) continue;
       dx[i]! -= xs[i]! * GRAVITY;
       dy[i]! -= ys[i]! * GRAVITY;
       const length = Math.hypot(dx[i]!, dy[i]!);
@@ -209,11 +226,17 @@ export function createLayout(
               ddy = 0.3;
               distance = Math.hypot(ddx, ddy);
             }
-            const push = (minimum - distance) / 2 + 0.01;
-            xs[i]! += (ddx / distance) * push;
-            ys[i]! += (ddy / distance) * push;
-            xs[j]! -= (ddx / distance) * push;
-            ys[j]! -= (ddy / distance) * push;
+            if (pinned[i] && pinned[j]) continue;
+            // Un nœud figé ne bouge pas : l'autre prend tout l'écart.
+            const push = pinned[i] || pinned[j] ? minimum - distance + 0.01 : (minimum - distance) / 2 + 0.01;
+            if (!pinned[i]) {
+              xs[i]! += (ddx / distance) * push;
+              ys[i]! += (ddy / distance) * push;
+            }
+            if (!pinned[j]) {
+              xs[j]! -= (ddx / distance) * push;
+              ys[j]! -= (ddy / distance) * push;
+            }
             moved = true;
           }
         }
@@ -226,6 +249,8 @@ export function createLayout(
   let pass = 0;
   return {
     run(budgetMs) {
+      // Tout est déjà placé : rien à calculer.
+      if (free === 0) return true;
       const deadline = performance.now() + budgetMs;
       while (step < total) {
         applyForces(step);
@@ -261,4 +286,16 @@ export function layoutWeb(
   const layout = createLayout(nodes, edges, previous, iterations);
   layout.run(Infinity);
   return layout.positions();
+}
+
+// Les deux placements sont-ils identiques ? (la vue ne se redessine pas quand rien n'a bougé)
+export function samePositions(a: Record<string, Point>, b: Record<string, Point>): boolean {
+  const ids = Object.keys(a);
+  if (ids.length !== Object.keys(b).length) return false;
+  for (const id of ids) {
+    const p = a[id];
+    const q = b[id];
+    if (!p || !q || p.x !== q.x || p.y !== q.y) return false;
+  }
+  return true;
 }

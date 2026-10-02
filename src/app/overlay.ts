@@ -145,9 +145,9 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
     birth: createBirthRepo(store, (slugs) => fetchWikidataDates((url) => fetch(url), slugs)),
     kinds: kindsRepo,
-    // Liens des articles Wikipédia entre cartes (introduction de chaque article) : requêtes sans identifiants, seuls les titres partent.
-    // Une réponse qui n'arrive pas ne doit pas arrêter toute la lecture : au bout de 20 s, la requête est abandonnée.
-    links: createLinksRepo(store, (slug) => fetchLeadLinks((url) => fetch(url, { signal: AbortSignal.timeout(20_000) }), slug)),
+    // Liens des articles Wikipédia entre cartes (introduction de chaque article, 50 articles par requête) : requêtes sans identifiants,
+    // seuls les titres partent. Une réponse qui n'arrive pas ne doit pas arrêter toute la lecture : au bout de 20 s, la requête est abandonnée.
+    links: createLinksRepo(store, (slugs) => fetchLeadLinks((url) => fetch(url, { signal: AbortSignal.timeout(20_000) }), slugs)),
     kindFilterSource: createKindFilterSource(window.localStorage),
     scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
     book,

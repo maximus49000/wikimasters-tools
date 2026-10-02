@@ -85,12 +85,12 @@ describe('buildWeb, points génériques et pages ignorées', () => {
     expect(web.hubs.map((hub) => hub.slug)).toEqual(['Global']);
   });
 
-  it('ignore les pages qui ne disent rien du sujet (identifiants, bibliothèques, archives)', () => {
+  it('ignore les pages qui ne disent rien du sujet (identifiants, bibliothèques, archives, sources de la critique)', () => {
     const noisy = setLinks(
       EMPTY_LINKS,
       {
-        Kamini: ['International_Standard_Book_Number', 'Internet_Archive', 'API_a', 'Pop'],
-        ChansonB: ['International_Standard_Book_Number', 'Internet_Archive', 'API_a', 'Pop'],
+        Kamini: ['International_Standard_Book_Number', 'Internet_Archive', 'API_a', 'AllMusic', 'Rolling_Stone', 'Pop'],
+        ChansonB: ['International_Standard_Book_Number', 'Internet_Archive', 'API_a', 'AllMusic', 'Rolling_Stone', 'Pop'],
       },
       1,
     );
