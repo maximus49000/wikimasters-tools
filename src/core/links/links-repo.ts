@@ -6,6 +6,9 @@ const KEY = 'links-v1';
 const COOLDOWN_MS = 60_000;
 // Les articles lus sont enregistrés par groupes : une écriture par article réécrirait tout le stockage à chaque fois.
 export const WRITE_EVERY = 10;
+// Articles lus en même temps. Mesuré depuis un navigateur : 4 lecteurs à la fois (3 requêtes par seconde) passent sans limitation
+// de débit, quatre fois plus vite qu'un seul (2233 cartes : douze minutes au lieu d'une heure).
+export const CONCURRENCY = 4;
 
 // Les liens de l'introduction d'un article (slugs), un article par requête.
 export type LinksFetcher = (slug: string) => Promise<string[]>;
@@ -49,43 +52,76 @@ export function createLinksRepo(
 
   async function lookupAll(): Promise<void> {
     try {
-      let first = true;
-      for (;;) {
-        const state = await load();
-        const group = [...pending].filter((candidate) => needsLinksLookup(state, candidate, now())).slice(0, WRITE_EVERY);
-        if (group.length === 0) {
-          pending.clear();
-          return;
+      // Ce qui était déjà lu au départ, et ce que ce parcours a lu depuis (les demandes qui arrivent en cours de route
+      // peuvent reprendre un article déjà lu : la vue n'a pas encore relu le stockage).
+      const known = await load();
+      const readNow = new Set<string>();
+      let buffer: Record<string, string[]> = {};
+      let buffered = 0;
+      let failure: unknown;
+      const writes: Promise<void>[] = [];
+
+      // Les articles lus sont écrits dès qu'il y en a dix, sans attendre les lecteurs encore occupés.
+      const flush = () => {
+        if (buffered === 0) return;
+        const group = buffer;
+        buffer = {};
+        buffered = 0;
+        writes.push(
+          update((latest) => setLinks(latest, group, now())).catch((error: unknown) => {
+            failure ??= error;
+          }),
+        );
+      };
+
+      // Le prochain article à lire, dans l'ordre où il a été demandé.
+      const take = (): string | undefined => {
+        for (const slug of pending) {
+          pending.delete(slug);
+          if (!readNow.has(slug) && needsLinksLookup(known, slug, now())) return slug;
         }
-        for (const slug of group) pending.delete(slug);
-        const fetched: Record<string, string[]> = {};
-        let failure: unknown;
-        for (const slug of group) {
+        return undefined;
+      };
+
+      const worker = async () => {
+        let first = true;
+        while (failure === undefined) {
+          const slug = take();
+          if (slug === undefined) return;
+          // Un lecteur n'attend qu'entre deux de ses propres requêtes.
           if (!first) await sleep(gapMs);
           first = false;
           try {
-            fetched[slug] = await fetchLinks(slug);
-          } catch (error) {
-            failure = error;
-            break;
-          }
-        }
-        // Ce qui a été lu avant un échec est gardé : la lecture reprendra où elle s'est arrêtée.
-        if (Object.keys(fetched).length > 0) {
-          try {
-            await update((latest) => setLinks(latest, fetched, now()));
+            // Le résultat est d'abord attendu : `buffer[slug] = await …` viserait le tampon d'avant, déjà écrit si un
+            // enregistrement l'a remplacé pendant l'attente.
+            const links = await fetchLinks(slug);
+            buffer[slug] = links;
+            readNow.add(slug);
+            buffered += 1;
+            if (buffered >= WRITE_EVERY) flush();
           } catch (error) {
             failure ??= error;
+            return;
           }
         }
-        if (failure !== undefined) {
-          // Hors ligne, 429, stockage plein… : on s'arrête, le reste sera réessayé après le délai de repos.
-          console.warn('[wikimasters-tools]', 'liens Wikipédia indisponibles :', failure);
-          failedAt = now();
-          pending.clear();
-          notify();
-          return;
-        }
+      };
+
+      // Un article demandé juste avant la fin des lecteurs est repris par un nouveau tour.
+      do {
+        await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+        flush();
+        await Promise.all(writes);
+      } while (failure === undefined && [...pending].some((slug) => !readNow.has(slug) && needsLinksLookup(known, slug, now())));
+
+      if (failure !== undefined) {
+        // Hors ligne, 429, stockage plein… : on s'arrête, le reste sera réessayé après le délai de repos. Ce qui a été lu avant
+        // l'échec est gardé : la lecture reprendra où elle s'est arrêtée.
+        console.warn('[wikimasters-tools]', 'liens Wikipédia indisponibles :', failure);
+        failedAt = now();
+        pending.clear();
+        notify();
+      } else {
+        pending.clear();
       }
     } finally {
       current = null;
