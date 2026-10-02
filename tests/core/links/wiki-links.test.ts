@@ -74,7 +74,7 @@ describe('fetchLeadLinks', () => {
   });
 
   it('rattache les liens à l’article demandé malgré normalisation et redirection', async () => {
-    const fetchFn = vi.fn(async () =>
+    const fetchFn = vi.fn(async (_url: string) =>
       respond({
         batchcomplete: true,
         query: {
@@ -88,7 +88,7 @@ describe('fetchLeadLinks', () => {
   });
 
   it('rend une liste vide pour un titre invalide, ou une page dont le contenu est masqué', async () => {
-    const fetchFn = vi.fn(async () =>
+    const fetchFn = vi.fn(async (_url: string) =>
       respond({
         batchcomplete: true,
         query: { pages: [{ title: 'A|B', invalid: true, invalidreason: 'mauvais' }, { title: 'Masquée', revisions: [{ slots: { main: {} } }] }] },
@@ -149,5 +149,23 @@ describe('fetchLeadLinks', () => {
   it('abandonne si la suite ne se termine jamais', async () => {
     const endless = vi.fn(async () => respond({ continue: { rvcontinue: 'x', continue: '||' }, query: { pages: [page('A', '[[Pop]]')] } }));
     await expect(fetchLeadLinks(endless, ['A'])).rejects.toThrow('trop de pages');
+  });
+});
+
+describe('fetchBacklinks', () => {
+  it('rend, par article, ceux qui le citent, en une requête', async () => {
+    const { fetchBacklinks } = await import('../../../src/core/links/wiki-links');
+    const fetchFn = vi.fn(async (_url: string) =>
+      respond({ query: { pages: [{ title: 'Marie Curie', linkshere: [{ title: 'Pierre Curie' }, { title: 'Marie Curie' }] }, { title: 'Pop', linkshere: [] }] } }),
+    );
+    const result = await fetchBacklinks(fetchFn, ['Marie_Curie', 'Pop']);
+    expect(result).toEqual({ Marie_Curie: ['Pierre_Curie'], Pop: [] });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(String(fetchFn.mock.calls[0]?.[0])).toContain('prop=linkshere');
+  });
+
+  it('lève devant une réponse inattendue', async () => {
+    const { fetchBacklinks } = await import('../../../src/core/links/wiki-links');
+    await expect(fetchBacklinks(async () => respond({ bad: 1 }), ['Pop'])).rejects.toThrow();
   });
 });

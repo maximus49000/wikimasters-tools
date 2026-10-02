@@ -152,3 +152,29 @@ describe('createLinksRepo', () => {
     expect(repo.failed()).toBe(true);
   });
 });
+
+describe('createLinksRepo : recherche de liaison', () => {
+  it('readNow lit ce qui manque, par lots de 50, sans relire ce qui est connu', async () => {
+    const fetchLinks = vi.fn(answer);
+    const repo = createLinksRepo(createMemoryStore(), fetchLinks, noSleep);
+    await repo.readNow(['Kamini']);
+    const state = await repo.readNow(['Kamini', ...slugs(60)]);
+    expect(fetchLinks.mock.calls.map(([batch]) => batch.length)).toEqual([1, 50, 10]);
+    expect(linksOf(state, 'A59')).toEqual(['Pop', 'Lien_A59']);
+  });
+
+  it('attend quand le budget de la minute est épuisé', async () => {
+    let clock = 0;
+    const sleep = vi.fn(async (ms: number) => void (clock += ms));
+    const repo = createLinksRepo(createMemoryStore(), answer, sleep, 0, () => clock);
+    await repo.readNow(slugs(50 * 121));
+    expect(sleep).toHaveBeenCalled();
+    expect(clock).toBeGreaterThanOrEqual(60_000);
+  });
+
+  it('citers passe par le lecteur fourni, sinon rend vide', async () => {
+    const withCiters = createLinksRepo(createMemoryStore(), answer, noSleep, 0, () => 0, async (batch) => Object.fromEntries(batch.map((s) => [s, ['X']])));
+    expect(await withCiters.citers(['B'])).toEqual({ B: ['X'] });
+    expect(await createLinksRepo(createMemoryStore(), answer, noSleep).citers(['B'])).toEqual({});
+  });
+});

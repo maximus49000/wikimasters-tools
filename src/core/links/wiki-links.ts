@@ -127,3 +127,67 @@ export async function fetchLeadLinks(fetchFn: FetchLike, slugs: string[]): Promi
   });
   return result;
 }
+
+// Au plus ce nombre de requêtes pour les articles qui en citent d'autres (la suite d'une réponse trop grosse) : le reste est laissé.
+const MAX_BACKLINK_REQUESTS = 3;
+export const BACKLINK_PAGE_LIMIT = 500;
+
+const backlinkPage = z.object({ title: z.string(), linkshere: z.array(z.object({ title: z.string() })).optional() });
+const backlinkResponse = z.union([
+  z.object({
+    continue: z.record(z.string(), z.string()).optional(),
+    query: z.object({ normalized: renames.optional(), redirects: renames.optional(), pages: z.array(backlinkPage) }),
+  }),
+  z.object({ error: z.object({ code: z.string() }) }),
+]);
+
+// Les articles qui citent chacun des articles donnés (slugs, hors redirections et hors autres espaces de noms), en UNE requête
+// pour au plus 50 articles : par article, les citeurs dans l'ordre de Wikipédia. Sert à chercher une liaison depuis l'arrivée.
+// Une réponse inattendue lève, comme `fetchLeadLinks`. Seuls les titres sont envoyés.
+export async function fetchBacklinks(fetchFn: FetchLike, slugs: string[]): Promise<Record<string, string[]>> {
+  if (slugs.length === 0) return {};
+  if (slugs.length > LEAD_BATCH) throw new Error(`Wikipédia : au plus ${LEAD_BATCH} articles par requête`);
+  const titles = slugs.map(slugToTitle);
+  const normalized = new Map<string, string>();
+  const redirects = new Map<string, string>();
+  const citers = new Map<string, Set<string>>();
+  let next: Record<string, string> | null = {};
+  for (let requests = 0; next && requests < MAX_BACKLINK_REQUESTS; requests++) {
+    const json = await getJson(
+      fetchFn,
+      WIKIPEDIA,
+      {
+        action: 'query',
+        prop: 'linkshere',
+        lhnamespace: '0',
+        lhshow: '!redirect',
+        lhprop: 'title',
+        lhlimit: String(BACKLINK_PAGE_LIMIT),
+        redirects: '1',
+        formatversion: '2',
+        titles: titles.join('|'),
+        ...next,
+      },
+      'Wikipédia',
+    );
+    const parsed = backlinkResponse.safeParse(json);
+    if (!parsed.success) throw new Error('Réponse Wikipédia inattendue');
+    const body = parsed.data;
+    if ('error' in body) throw new Error(`Wikipédia : ${body.error.code}`);
+    for (const { from, to } of body.query.normalized ?? []) normalized.set(from, to);
+    for (const { from, to } of body.query.redirects ?? []) redirects.set(from, to);
+    for (const page of body.query.pages) {
+      const set = citers.get(page.title) ?? new Set<string>();
+      for (const link of page.linkshere ?? []) set.add(titleToSlug(link.title));
+      citers.set(page.title, set);
+    }
+    next = body.continue ?? null;
+  }
+  const step = (map: Map<string, string>, title: string) => map.get(title) ?? title;
+  const result: Record<string, string[]> = {};
+  slugs.forEach((slug, index) => {
+    const title = titles[index] ?? '';
+    result[slug] = [...(citers.get(step(redirects, step(normalized, title))) ?? [])].filter((citer) => citer !== slug);
+  });
+  return result;
+}
