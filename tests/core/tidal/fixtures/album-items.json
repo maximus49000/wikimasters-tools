@@ -1,0 +1,217 @@
+{
+ "data": [
+  {
+   "id": "11564034",
+   "type": "tracks",
+   "meta": {
+    "volumeNumber": 1,
+    "trackNumber": 1,
+    "itemCursor": "HRBLh8AIWkjy"
+   }
+  },
+  {
+   "id": "11564035",
+   "type": "tracks",
+   "meta": {
+    "volumeNumber": 1,
+    "trackNumber": 2,
+    "itemCursor": "HRBLh8AIWko6"
+   }
+  },
+  {
+   "id": "11564036",
+   "type": "tracks",
+   "meta": {
+    "volumeNumber": 1,
+    "trackNumber": 3,
+    "itemCursor": "HRBLh8AIWksE"
+   }
+  },
+  {
+   "id": "11564037",
+   "type": "tracks",
+   "meta": {
+    "volumeNumber": 1,
+    "trackNumber": 4,
+    "itemCursor": "HRBLh8AIWkwM"
+   }
+  },
+  {
+   "id": "11564038",
+   "type": "tracks",
+   "meta": {
+    "volumeNumber": 1,
+    "trackNumber": 5,
+    "itemCursor": "HRBLh8AIWl0U"
+   }
+  }
+ ],
+ "links": {},
+ "included": [
+  {
+   "id": "11564034",
+   "type": "tracks",
+   "attributes": {
+    "title": "Love Me Do",
+    "version": null,
+    "isrc": "ES41A0800001",
+    "duration": "PT2M36S",
+    "copyright": {
+     "text": "1994 Discoloco"
+    },
+    "explicit": false,
+    "popularity": 0.12434381315632287,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/11564034",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2011-12-29T17:22:11Z"
+   }
+  },
+  {
+   "id": "11564035",
+   "type": "tracks",
+   "attributes": {
+    "title": "Please Please Me",
+    "version": null,
+    "isrc": "ES41A0800002",
+    "duration": "PT2M2S",
+    "copyright": {
+     "text": "1994 Discoloco"
+    },
+    "explicit": false,
+    "popularity": 0.20514885869072771,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/11564035",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2011-12-29T17:22:11Z"
+   }
+  },
+  {
+   "id": "11564036",
+   "type": "tracks",
+   "attributes": {
+    "title": "Do You Want To Know A Secret",
+    "version": null,
+    "isrc": "ES41A0800003",
+    "duration": "PT1M58S",
+    "copyright": {
+     "text": "1994 Discoloco"
+    },
+    "explicit": false,
+    "popularity": 0.08808485502577684,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/11564036",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2011-12-29T17:22:11Z"
+   }
+  },
+  {
+   "id": "11564037",
+   "type": "tracks",
+   "attributes": {
+    "title": "Baby's In Black",
+    "version": null,
+    "isrc": "ES41A0800004",
+    "duration": "PT2M8S",
+    "copyright": {
+     "text": "1994 Discoloco"
+    },
+    "explicit": false,
+    "popularity": 0.05995226524472366,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/11564037",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2011-12-29T17:22:11Z"
+   }
+  },
+  {
+   "id": "11564038",
+   "type": "tracks",
+   "attributes": {
+    "title": "Words Of Love",
+    "version": null,
+    "isrc": "ES41A0800005",
+    "duration": "PT2M6S",
+    "copyright": {
+     "text": "1994 Discoloco"
+    },
+    "explicit": false,
+    "popularity": 0.05992596209196889,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/11564038",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2011-12-29T17:22:11Z"
+   }
+  }
+ ]
+}

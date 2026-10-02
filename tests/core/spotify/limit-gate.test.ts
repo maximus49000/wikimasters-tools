@@ -58,4 +58,14 @@ describe('createLimitGate', () => {
     expect((await gate.trip('search', 40_000)).waitMs).toBe(40_000);
     expect((await gate.trip('search', null)).waitMs).toBe(5_000);
   });
+
+  it('un autre préfixe garde sa pause à part (Tidal) sans toucher celle de Spotify', async () => {
+    const store = createMemoryStore();
+    const spotify = createLimitGate({ store, now: () => 0 });
+    const tidal = createLimitGate({ store, now: () => 0, prefix: 'tidal-limit' });
+    await tidal.trip('catalog', 30_000);
+    expect(await tidal.remainingMs('catalog')).toBe(30_000);
+    expect(await spotify.remainingMs('catalog')).toBe(0);
+    expect(await store.get('tidal-limit:catalog')).toBeTruthy();
+  });
 });
