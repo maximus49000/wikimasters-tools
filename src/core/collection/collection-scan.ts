@@ -6,7 +6,7 @@ const KEY = 'collectionScan';
 // Un autre onglet qui a écrit son état il y a moins longtemps est considéré comme toujours en cours.
 export const LOCK_MS = 60_000;
 // À incrémenter quand le scan lit de nouveaux champs : un parcours terminé avant repart de zéro.
-const SCAN_VERSION = 7;
+const SCAN_VERSION = 8;
 // La mise à jour incrémentale n'ajoute que les cartes récentes : une carte vendue ou échangée n'est jamais décomptée.
 // Les exemplaires sont donc recomptés sur toute la Collection au plus tard à cette échéance.
 export const FULL_REFRESH_MS = 3_600_000;

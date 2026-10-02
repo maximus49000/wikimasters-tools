@@ -18,7 +18,7 @@ import { createKindFilterSource } from '../content/kind-filter';
 import { createCollectionFilterSource } from '../content/collection-filter';
 import { createCollectionUi } from '../content/collection-ui';
 import { createMarketSource } from '../content/market-source';
-import { loadFilteredSlugs, loadOrderedSlugs } from '../core/collection/filtered-slugs';
+import { loadFilteredSlugs } from '../core/collection/filtered-slugs';
 import { createMarketRepo } from '../core/market/market-repo';
 import { createHistoryRepo } from '../core/market/history-repo';
 import { createMarketCollector } from '../core/market/market-poll';
@@ -167,7 +167,6 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     filterSource,
     sortSource: createSortSource(),
     loadFiltered: (filter, isCancelled) => loadFilteredSlugs(filterApi, filter, isCancelled),
-    loadOrdered: (filter, sort, isCancelled) => loadOrderedSlugs(filterApi, filter, sort, isCancelled),
     openCard: (slug) => marketUi.openMarket(slug),
     openGameCard: (slug) => void marketUi.reopenCard(slug),
     market: market.source,

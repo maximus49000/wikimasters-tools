@@ -44,7 +44,6 @@ beforeEach(async () => {
         filterSource={{ current: () => '', sort: () => '', subscribe: noSubscribe } as unknown as CollectionFilterSource}
         sortSource={createSortSource()}
         loadFiltered={async () => new Set(cards.map((card) => card.slug))}
-        loadOrdered={async () => []}
         nativePageSize={() => 0}
         onOpenCard={onOpenCard}
         onWantCards={vi.fn()}

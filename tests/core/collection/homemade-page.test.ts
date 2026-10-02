@@ -26,10 +26,18 @@ describe('sortCards par prix', () => {
 });
 
 describe('sortCards selon le tri du site', () => {
-  it("suit l'ordre donné par le site, les cartes inconnues de cet ordre à la fin (rareté)", () => {
-    const index = new Map([['C', 0], ['A', 1]]);
-    const sorted = sortCards([card('A', 'C'), card('X', 'L'), card('C', 'C'), card('Y', 'C')], undefined, { index });
-    expect(sorted.map((c) => c.title)).toEqual(['C', 'A', 'X', 'Y']);
+  it('trie par nom', () => {
+    expect(sortCards([card('b', 'L'), card('A', 'C'), card('C', 'UR')], undefined, 'name').map((c) => c.title)).toEqual(['A', 'b', 'C']);
+  });
+
+  it('met les favoris en tête (puis rareté)', () => {
+    const cards = [card('A', 'C'), { ...card('B', 'C'), starred: true }, { ...card('C', 'L'), starred: false }];
+    expect(sortCards(cards, undefined, 'starred').map((c) => c.title)).toEqual(['B', 'C', 'A']);
+  });
+
+  it("trie par date d'ajout, la plus récente d'abord, les cartes sans date à la fin", () => {
+    const cards = [{ ...card('A', 'C'), obtainedAt: 1 }, card('X', 'L'), { ...card('B', 'C'), obtainedAt: 5 }];
+    expect(sortCards(cards, undefined, 'added').map((c) => c.title)).toEqual(['B', 'A', 'X']);
   });
 });
 

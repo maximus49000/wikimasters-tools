@@ -12,6 +12,8 @@ export const collectionEndpoint = (page: number, filter = '', sort = 'rarity'): 
 const entrySchema = z.object({
   // Date d'obtention (ISO) : facultative, une date illisible ne fait pas écarter la carte.
   obtained_at: z.string().min(1).nullish().catch(undefined),
+  // Favori sur le site.
+  starred: z.boolean().nullish().catch(undefined),
   tags: z
     .array(z.object({ id: z.string().min(1).nullish().catch(undefined), name: z.string().min(1), color: z.string().min(1).nullish().catch(undefined) }))
     .nullish()
@@ -58,9 +60,13 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
     const slug = titleToSlug(title);
     const at = parsed.data.obtained_at ? Date.parse(parsed.data.obtained_at) : Number.NaN;
     obtained.push(Number.isNaN(at) ? { slug } : { slug, at });
+    const starred = parsed.data.starred;
     const known = cards.get(slug);
-    if (known) known.copies = (known.copies ?? 1) + 1;
-    else {
+    if (known) {
+      known.copies = (known.copies ?? 1) + 1;
+      if (starred) known.starred = true;
+      if (!Number.isNaN(at) && (known.obtainedAt === undefined || at > known.obtainedAt)) known.obtainedAt = at;
+    } else {
       cards.set(slug, {
         slug,
         copies: 1,
@@ -71,6 +77,8 @@ export function parseCollectionPage(json: unknown, endpoint: string): Collection
         ...(attack != null ? { attack } : {}),
         ...(defense != null ? { defense } : {}),
         ...(tags ? { tags } : {}),
+        ...(starred != null ? { starred } : {}),
+        ...(Number.isNaN(at) ? {} : { obtainedAt: at }),
       });
     }
   }

@@ -18,7 +18,6 @@ import type { SortSource } from './sort-source';
 import { createThrottledLoader } from './throttle';
 import { useKindState } from './useKindState';
 import { useMusicSlugs } from './useMusicSlugs';
-import { useSiteOrder } from './useSiteOrder';
 import { useScreenSlugs } from './useScreenSlugs';
 import { useNowPlayingSlugs } from './useNowPlayingSlugs';
 import { useNativeFilter } from './useNativeFilter';
@@ -35,8 +34,6 @@ type Props = {
   // Tri choisi dans la liste « Trier la collection » du site.
   sortSource: SortSource;
   loadFiltered: (filter: string, isCancelled: () => boolean) => Promise<Set<string>>;
-  // Cartes dans l'ordre du tri du site (Nom, Favoris, Date d'ajout…).
-  loadOrdered: (filter: string, sort: string, isCancelled: () => boolean) => Promise<string[]>;
   // Nombre de cartes comptées dans la grille native de la page (0 si aucune).
   nativePageSize: () => number;
   // Fiche native de la carte (celle du jeu : musique, film, etc.).
@@ -172,7 +169,6 @@ export function HomemadePanel({
   filterSource,
   sortSource,
   loadFiltered,
-  loadOrdered,
   nativePageSize,
   onOpenCard,
   onWantCards,
@@ -206,7 +202,8 @@ export function HomemadePanel({
   const { kindsState, kindFilter } = useKindState(kinds, kindFilterSource);
 
   const sort = useSyncExternalStore(sortSource.subscribe, sortSource.current);
-  const siteOrder = useSiteOrder(filterSource, loadOrdered, filter);
+  // Tri choisi dans la liste du site, hors rareté (Nom, Favoris, Date d'ajout).
+  const siteSort = useSyncExternalStore(filterSource.subscribe, filterSource.sort);
   const { selecting, cards: checkedCards } = useSyncExternalStore(selection.subscribe, selection.snapshot);
   const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
   const list = useMemo(
@@ -214,14 +211,14 @@ export function HomemadePanel({
       sortCards(
         applyKindFilter(visible ? cards.filter((card) => visible.has(card.slug)) : cards, kindsState, kindFilter),
         sort === 'price' ? (slug) => lastPriceOf(marketNow.history, slug, Date.now()) : undefined,
-        sort === 'price' ? undefined : siteOrder,
+        sort === 'price' ? '' : siteSort,
       ),
-    [cards, visible, kindsState, kindFilter, sort, marketNow.history, siteOrder],
+    [cards, visible, kindsState, kindFilter, sort, marketNow.history, siteSort],
   );
   const size = pageSizeOf(scan.pageSize, nativePageSize());
   // Un autre filtre : première page. Ouvrir une carte pose une recherche sur le site, retirée à la fermeture de la
   // fiche : la sélection d'avant retrouve alors sa page.
-  const filterKey = `${filter}|${kindFilter.category ?? ''}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}|${sort}|${siteOrder.key}`;
+  const filterKey = `${filter}|${kindFilter.category ?? ''}|${kindFilter.nature}|${kindFilter.facet}|${kindFilter.duplicates ?? false}|${sort}|${siteSort}`;
   const page = pages.get(filterKey);
   const current = useMemo(() => pageSlice(list, page, size), [list, page, size]);
 
