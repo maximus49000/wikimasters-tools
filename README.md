@@ -117,3 +117,15 @@ n'est envoyée à un serveur du développeur ; seuls les titres d'articles parte
 Une fois votre compte Spotify lié, les titres des cartes musique et leurs interprètes sont aussi envoyés à la
 recherche Spotify, et les jetons OAuth sont échangés avec accounts.spotify.com (rien ne passe par un serveur
 du développeur).
+
+## Vue Toile
+
+La vue « Toile » de la Collection relie vos cartes par les articles Wikipédia qu'elles citent. Pour chaque
+carte, l'extension lit les liens vers des articles de l'introduction de son article (résumé et infobox : genre,
+métier, lieu, époque…), une requête par article (environ 1,3 s), en arrière plan, puis une fois par mois. Seuls
+les titres d'articles partent vers Wikipédia ; rien du jeu ni de votre compte. Un article cité par au moins deux
+de vos cartes devient un point de la toile (les 300 plus partagés sont affichés ; les points trop généraux,
+cités par plus de 30 % des cartes, passent après les autres) ; une carte qui en cite une autre lui est reliée par
+un trait en pointillés. Les filtres de la page (rareté, nature, occupation, ×2) s'appliquent. Toucher un point met
+en avant ses cartes ; toucher une carte pose, au-dessus d'elle, les boutons 📈 (marché) et 🃏 (carte du jeu).
+Zoomer écarte les nœuds sans les grossir.

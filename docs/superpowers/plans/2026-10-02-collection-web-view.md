@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-02-collection-web-view-design.md`
 
+> **Note d'exécution (2026-10-02).** Mesuré sur la vraie API de Wikipédia FR pendant l'exécution, le code livré s'écarte du code de ce plan sur quatre points, tous décrits dans le design : (1) on lit les liens de **l'introduction** de chaque article (`action=parse&section=0`, une requête par article, `fetchLeadLinks`) et non tous les liens par lots de 50 (un article en compte ~1000, du bruit bibliographique, ~15 Mo pour 1000 cartes) ; le dépôt écrit tous les 10 articles et garde ce qui a été lu avant un échec ; (2) le placement ajoute rayons, collision, répulsion croissante avec le nombre de nœuds et calcul par tranches de temps (`createLayout`), et les noms sont choisis sans chevauchement (`web-labels.ts`) ; (3) les nœuds gardent leur taille à l'écran au zoom ; (4) toucher une carte pose **seulement** les boutons 📈 et 🃏 au-dessus d'elle (`placeActions`) au lieu de la carte en grand (`CardPopup`), sur demande de l'utilisateur.
+
 ## Global Constraints
 
 - Sentence case et français partout ; boutons en glyphes seuls (avec `aria-label` et `title`), jamais en texte (retour utilisateur « Toutes les interfaces »).
