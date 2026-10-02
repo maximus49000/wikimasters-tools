@@ -120,7 +120,7 @@ const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit
         y1={from.y}
         x2={to.x}
         y2={to.y}
-        strokeDasharray={dashed ? '4 3' : undefined}
+        strokeDasharray={dashed && !route ? '4 3' : undefined}
         stroke={on ? 'var(--color-accent, #34d399)' : 'rgba(148,163,184,0.45)'}
         strokeWidth={route ? 3 : 1}
         style={{ ...hairline, opacity: lit ? (on ? 1 : 0.06) : 1 }}
@@ -296,8 +296,13 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   }, [graph]);
 
   const transform = useMemo(
-    () => view ?? fitTransform(boundsOf(Object.values(positions)), size.width, size.height),
-    [view, positions, size],
+    () => {
+      if (view) return view;
+      // Une liaison cherchée : la toile est cadrée sur elle, pas sur les milliers de cartes autour.
+      const route = graph.path ? [...graph.path.ids].flatMap((id) => positions[id] ?? []) : [];
+      return fitTransform(boundsOf(route.length > 0 ? route : Object.values(positions)), size.width, size.height);
+    },
+    [view, positions, size, graph.path],
   );
   const transformRef = useRef(transform);
   transformRef.current = transform;
