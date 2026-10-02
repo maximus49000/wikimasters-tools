@@ -19,6 +19,8 @@ type Over = {
   wikidataSilent?: boolean;
   // Le dépôt des listes remplacé (stockage plein, par exemple).
   listens?: Pick<ReturnType<typeof createListenRepo>, 'load' | 'save'>;
+  // Identifiants TMDB connus pour la carte (dépôt `screen-v1`).
+  screen?: Record<string, { movieId?: number; tvId?: number }>;
 };
 
 function setup(over: Over = {}) {
@@ -53,6 +55,7 @@ function setup(over: Over = {}) {
     music: { resolve },
     listens: over.listens ?? createListenRepo(store),
     soundtracks: createListenRepo(store, undefined, 'soundtracks-v1'),
+    ...(over.screen ? { screen: { load: async () => over.screen! } } : {}),
     session,
     api: api as never,
     onPlayed,
@@ -418,6 +421,24 @@ describe('createMusicService.playingSlugs', () => {
     await service.playingSlugs(cards, { uri: 'spotify:track:1', title: 'x', artist: 'y' });
     await service.playingSlugs(cards, { uri: 'spotify:track:2', title: 'z', artist: 'y' });
     expect(api.albumTracks).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('createMusicService.playingSlugs, BO de film', () => {
+  const cards = [card('Abbey_Road')];
+  const film = { natures: ['Q11424'], screen: { Abbey_Road: { movieId: 27205 } } };
+
+  it('reconnaît la carte du film dont la BO gardée contient le titre joué', async () => {
+    const { service } = setup(film);
+    await service.soundtrack('movie:27205', ['Inception']);
+    expect([...(await service.playingSlugs(cards, { uri: 'spotify:track:1', title: 'x', artist: 'y' }))]).toEqual(['Abbey_Road']);
+    expect((await service.playingSlugs(cards, { uri: 'spotify:track:2', title: 'Autre', artist: 'z' })).size).toBe(0);
+  });
+
+  it("n'interroge pas Spotify : une BO jamais trouvée ne fait rien", async () => {
+    const { service, api } = setup(film);
+    expect((await service.playingSlugs(cards, { uri: 'spotify:track:1', title: 'x', artist: 'y' })).size).toBe(0);
+    expect(api.searchAlbums).not.toHaveBeenCalled();
   });
 });
 

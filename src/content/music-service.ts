@@ -1,5 +1,8 @@
 import type { KnownCard } from '../core/collection/collection-book';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
+import type { CardKinds } from '../core/kinds/wikidata-kinds';
+import type { ScreenRepo } from '../core/screen/screen-repo';
+import { screenKindOf } from '../core/screen/screen-kinds';
 import { resolveListen, sameTrack, type Listen } from '../core/music/listen';
 import type { ListenRepo } from '../core/music/listen-repo';
 import { musicKindOf } from '../core/music/music-kinds';
@@ -25,6 +28,8 @@ export type MusicServiceDeps = {
   listens: Pick<ListenRepo, 'load' | 'save'>;
   // Les bandes originales déjà trouvées (clé `movie:<id TMDB>`) : mêmes règles que les listes, Spotify n'est interrogé qu'une fois par film.
   soundtracks: Pick<ListenRepo, 'load' | 'save'>;
+  // Identifiants TMDB des cartes : relie une carte de film à sa BO gardée, pour montrer qu'elle joue.
+  screen?: Pick<ScreenRepo, 'load'>;
   session: Pick<SpotifySession, 'isLinked' | 'link' | 'unlink' | 'subscribe'>;
   api: Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'searchAlbums' | 'searchPlaylists' | 'albumTracks' | 'play'>;
   // Après un lancement : le mini-lecteur relit l'état tout de suite, et retient la carte qui l'a demandé.
@@ -40,7 +45,7 @@ const LAUNCH_RETRIES = 8;
 const LAUNCH_RETRY_MS = 1500;
 
 export function createMusicService(deps: MusicServiceDeps) {
-  const { collection, kinds, music, listens, soundtracks, session, api, onPlayed, launchApp } = deps;
+  const { collection, kinds, music, listens, soundtracks, screen, session, api, onPlayed, launchApp } = deps;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
   async function retryWhileStarting(target: Parameters<typeof api.play>[0]): Promise<void> {
@@ -63,6 +68,18 @@ export function createMusicService(deps: MusicServiceDeps) {
   };
   const viewer = createListenViewer({ collection, kinds, music, listens, session, resolve: (input) => resolveListen(api, input), describeError });
 
+  // La BO gardée du film ou de la série de cette carte (identifiants TMDB de `screen-v1`) contient-elle le titre en cours ?
+  async function soundtrackPlaying(slug: string, cardKinds: CardKinds | undefined, track: Pick<Track, 'uri' | 'title' | 'artist'>): Promise<boolean> {
+    if (!screen) return false;
+    const kind = screenKindOf(cardKinds);
+    if (kind !== 'film' && kind !== 'series') return false;
+    const ids = (await screen.load())[slug];
+    const id = kind === 'film' ? ids?.movieId : ids?.tvId;
+    if (id === undefined) return false;
+    const kept = await soundtracks.load();
+    return kept.get(`${kind === 'film' ? 'movie' : 'tv'}:${id}`)?.items.some((item) => sameTrack(item, track)) ?? false;
+  }
+
   return {
     // Les cartes (parmi `cards`) qui ont un lien avec la musique, compte lié ou non : leur nature suffit.
     async musicSlugs(cards: Pick<KnownCard, 'slug'>[]): Promise<Set<string>> {
@@ -78,7 +95,11 @@ export function createMusicService(deps: MusicServiceDeps) {
       const kept = await listens.load();
       for (const card of cards) {
         const kind = musicKindOf(loaded.cards[card.slug]);
-        if (!kind) continue;
+        if (!kind) {
+          // Un film ou une série : sa BO (déjà trouvée, sans appel réseau) peut être en cours.
+          if (await soundtrackPlaying(card.slug, loaded.cards[card.slug], track)) playing.add(card.slug);
+          continue;
+        }
         let listen: Listen | null;
         try {
           if (!kept.has(card.slug) && !(await session.isLinked())) return playing;
