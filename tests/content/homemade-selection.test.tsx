@@ -25,6 +25,7 @@ let root: Root;
 let selection: ReturnType<typeof createSelectionSource>;
 const onOpenCard = vi.fn();
 const onToggleCard = vi.fn();
+const onLongPressCard = vi.fn();
 
 beforeEach(async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
@@ -50,6 +51,7 @@ beforeEach(async () => {
         pages={createPageMemory()}
         selection={selection}
         onToggleCard={onToggleCard}
+        onLongPressCard={onLongPressCard}
       />,
     );
   });
@@ -87,5 +89,45 @@ describe('vue Homemade : sélection', () => {
     });
     expect(tile('Rodez')?.getAttribute('aria-checked')).toBe('true');
     expect(tile('Ovide')?.getAttribute('aria-checked')).toBe('false');
+  });
+
+  describe('appui long', () => {
+    const press = (element: Element | null | undefined, type: string, clientY = 0) =>
+      element?.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: 0, clientY }));
+
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('ouvre la sélection avec la carte, sans ouvrir sa fiche au relâchement', async () => {
+      const ovide = tile('Ovide');
+      await act(async () => press(ovide, 'pointerdown'));
+      await act(async () => vi.advanceTimersByTime(500));
+      expect(onLongPressCard).toHaveBeenCalledWith({ slug: 'Ovide', title: 'Ovide' });
+      await act(async () => {
+        press(ovide, 'pointerup');
+        ovide?.click();
+      });
+      expect(onOpenCard).not.toHaveBeenCalled();
+      await act(async () => ovide?.click());
+      expect(onOpenCard).toHaveBeenCalledWith('Ovide');
+    });
+
+    it('un appui court ou un défilement ne déclenchent rien', async () => {
+      const ovide = tile('Ovide');
+      await act(async () => press(ovide, 'pointerdown'));
+      await act(async () => vi.advanceTimersByTime(200));
+      await act(async () => press(ovide, 'pointerup'));
+      await act(async () => press(ovide, 'pointerdown'));
+      await act(async () => press(ovide, 'pointermove', 40));
+      await act(async () => vi.advanceTimersByTime(1000));
+      expect(onLongPressCard).not.toHaveBeenCalled();
+    });
+
+    it('en mode sélection, l’appui long ne fait rien de plus que le clic', async () => {
+      await act(async () => selection.setSelecting(true));
+      await act(async () => press(tile('Ovide'), 'pointerdown'));
+      await act(async () => vi.advanceTimersByTime(1000));
+      expect(onLongPressCard).not.toHaveBeenCalled();
+    });
   });
 });

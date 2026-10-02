@@ -11,6 +11,7 @@ import type { PriceBook } from '../core/pricing/price-book';
 import { buildCardPreview } from './card-preview-dom';
 import type { CollectionFilterSource } from './collection-filter';
 import type { KindFilterSource } from './kind-filter';
+import { createLongPress } from './long-press';
 import type { MarketSource } from './market-source';
 import type { PageMemory } from './page-memory';
 import type { SelectedCard, SelectionSource } from './selection-source';
@@ -45,6 +46,8 @@ type Props = {
   // Cartes cochées dans le mode « Sélectionner » du site, et la façon de cocher ou décocher une carte.
   selection: SelectionSource;
   onToggleCard: (card: SelectedCard) => void;
+  // Appui long sur une carte : ouvre la sélection avec elle.
+  onLongPressCard: (card: SelectedCard) => void;
 };
 
 // Taille de la carte construite par `buildCardPreview` (voir `.wmt-card` dans PANEL_CSS).
@@ -110,10 +113,15 @@ function Checkbox({ checked }: { checked: boolean }) {
   );
 }
 
-function CardTile({ preview, selecting, checked, onPick }: { preview: CardPreview; selecting: boolean; checked: boolean; onPick: () => void }) {
+function CardTile({ preview, selecting, checked, onPick, onLongPress }: { preview: CardPreview; selecting: boolean; checked: boolean; onPick: () => void; onLongPress: () => void }) {
   const wrapRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
+  // L'appui long ouvre la sélection ; le rappel le plus récent est lu au déclenchement, pas à l'appui.
+  const longPressRef = useRef(onLongPress);
+  longPressRef.current = onLongPress;
+  const press = useMemo(() => createLongPress(() => longPressRef.current()), []);
+  useEffect(() => press.cancel, [press]);
 
   useLayoutEffect(() => {
     cardRef.current?.replaceChildren(buildCardPreview(preview));
@@ -135,7 +143,20 @@ function CardTile({ preview, selecting, checked, onPick }: { preview: CardPrevie
       type="button"
       aria-label={preview.title}
       {...(selecting ? { role: 'checkbox', 'aria-checked': checked } : {})}
-      onClick={onPick}
+      onClick={(event) => {
+        if (press.consumeClick()) return event.preventDefault();
+        onPick();
+      }}
+      {...(selecting
+        ? {}
+        : {
+            onPointerDown: (event: React.PointerEvent) => press.start(event.clientX, event.clientY),
+            onPointerMove: (event: React.PointerEvent) => press.move(event.clientX, event.clientY),
+            onPointerUp: press.cancel,
+            onPointerLeave: press.cancel,
+            onPointerCancel: press.cancel,
+          })}
+      onContextMenu={(event) => event.preventDefault()}
       style={{
         position: 'relative',
         display: 'block',
@@ -145,6 +166,8 @@ function CardTile({ preview, selecting, checked, onPick }: { preview: CardPrevie
         border: 0,
         background: 'none',
         cursor: 'pointer',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
         overflow: 'hidden',
         borderRadius: 16,
         ...(checked ? { outline: '3px solid var(--color-accent, #34d399)', outlineOffset: -3 } : {}),
@@ -175,6 +198,7 @@ export function HomemadePanel({
   pages,
   selection,
   onToggleCard,
+  onLongPressCard,
 }: Props) {
   // Remontée de la vue (le jeu remplace sa grille à la fermeture d'une fiche) : cartes et scan sont repris tels quels.
   const [cards, setCards] = useState<KnownCard[]>(() => collection.snapshot() ?? []);
@@ -251,6 +275,7 @@ export function HomemadePanel({
               selecting={selecting}
               checked={selecting && checkedCards.has(card.slug)}
               onPick={() => (selecting ? onToggleCard({ slug: card.slug, title: card.title }) : onOpenCard(card.slug))}
+              onLongPress={() => onLongPressCard({ slug: card.slug, title: card.title })}
             />
           ) : null;
         })}

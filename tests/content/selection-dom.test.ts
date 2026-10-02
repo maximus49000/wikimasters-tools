@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureWebAction, isSelecting, quitSelection, readNativeCards, removeWebAction } from '../../src/content/selection-dom';
+import { ensureTradeAction, ensureWebAction, isSelecting, quitSelection, readNativeCards, removeWebAction } from '../../src/content/selection-dom';
 
 const CHECK_OFF = '<span aria-hidden="true"><svg class="lucide lucide-square opacity-0"></svg></span>';
 const CHECK_ON = '<span aria-hidden="true"><svg class="lucide lucide-check"></svg></span>';
@@ -73,5 +73,27 @@ describe('ensureWebAction', () => {
     document.body.innerHTML = '<button>Sélectionner</button>';
     ensureWebAction(document, true, vi.fn());
     expect(action()).toBeNull();
+  });
+});
+
+describe('ensureTradeAction', () => {
+  const bar = () =>
+    (document.body.innerHTML = '<div id="bar"><button class="site">Tout sélectionner (page)</button><button class="site">Étiqueter</button></div>');
+  const trade = () => document.querySelector<HTMLButtonElement>('[data-wmt-selection-trade]');
+
+  it('pose le bouton après la Toile, actif selon l’état, et le retire avec elle', () => {
+    bar();
+    const onClick = vi.fn();
+    ensureTradeAction(document, false, onClick);
+    ensureWebAction(document, false, vi.fn());
+    ensureTradeAction(document, false, onClick);
+    expect(document.querySelectorAll('[data-wmt-selection-trade]')).toHaveLength(1);
+    expect(trade()?.previousElementSibling?.hasAttribute('data-wmt-selection-web')).toBe(true);
+    expect(trade()?.disabled).toBe(true);
+    ensureTradeAction(document, true, onClick);
+    trade()?.click();
+    expect(onClick).toHaveBeenCalledOnce();
+    removeWebAction(document);
+    expect(trade()).toBeNull();
   });
 });
