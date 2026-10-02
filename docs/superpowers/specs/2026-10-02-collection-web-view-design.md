@@ -38,12 +38,12 @@ Calquée sur la vue Monde (`geo`).
 
 - `src/core/links/wiki-links.ts` : `fetchLeadLinks(fetch, slug)` (`action=parse`, `section=0`, `redirects=1`), `parseLeadLinks`. Garde les articles existants de l'espace de noms principal ; un article supprimé donne une liste vide ; toute autre erreur lève.
 - `src/core/links/links-book.ts` : état `links-v1` : dictionnaire partagé de titres + identifiants par carte (`{ at, links }`), fraîcheur 30 jours, 400 liens au plus par carte.
-- `src/core/links/links-repo.ts` : un article par requête (150 ms entre deux), enregistrement tous les 10 articles ; ce qui a été lu avant un échec est gardé ; pause de 60 s après un échec (429, hors ligne, stockage plein) ; `failed()` ; abonnés.
+- `src/core/links/links-repo.ts` : un article par requête, **4 lecteurs en parallèle** (`CONCURRENCY`, 150 ms entre deux requêtes d'un même lecteur), enregistrement tous les 10 articles sans attendre les lecteurs lents ; ce qui a été lu avant un échec est gardé ; pause de 60 s après un échec (429, hors ligne, stockage plein) ; `failed()` ; abonnés.
 - `src/core/links/web-graph.ts` : `buildWeb`, `neighborhood`, `webNodes`, `webEdges`, rayons.
-- `src/core/links/web-layout.ts` : `createLayout` / `layoutWeb` : forces sans hasard, ressorts affaiblis par le degré, repousse croissante avec le nombre de nœuds, passe finale anti-chevauchement, repart des positions précédentes ; calcul par tranches de temps.
+- `src/core/links/web-layout.ts` : `createLayout` / `layoutWeb` : forces sans hasard, ressorts affaiblis par le degré, repousse croissante avec le nombre de nœuds, passe finale anti-chevauchement ; calcul par tranches de temps. **Incrémental** : quand la toile grandit (90 % des nœuds déjà placés sont encore là), ils sont figés et seuls les nouveaux se placent, près de leurs voisins ; un graphe qui change beaucoup (filtre) repart de zéro. Mesuré : un placement par forces relancé sur lui-même dérive de 40 à 90 px à chaque fois, d'où le figement.
 - `src/core/links/web-labels.ts` : `chooseLabels`, `shortTitle`.
 - `src/core/links/web-view.ts` : zoom, pincer, cadrage, `placeActions` (place de la barre de boutons).
-- `src/content/useFilteredCards.ts`, `src/content/WebPanel.tsx` : le panneau.
+- `src/content/useFilteredCards.ts`, `src/content/WebPanel.tsx` : le panneau (une carte sans image du jeu prend l'image de remplacement déjà trouvée par le service d'images, sans nouvelle recherche ; toucher un nœud fige le cadrage).
 - `collection-view.ts`, `world-toggle.ts`, `collection-ui.tsx`, `overlay.ts` : branchement (une requête abandonnée au bout de 20 s).
 
 Le code est commun à l'extension WXT et à l'APK Android.
@@ -51,14 +51,14 @@ Le code est commun à l'extension WXT et à l'APK Android.
 ## Flux de données
 
 1. La vue s'ouvre, lit les cartes, et demande au dépôt la lecture des cartes sans entrée (les cartes affichées d'abord, puis le reste) ; un nouvel essai part toutes les 30 s tant qu'il en reste.
-2. Chaque groupe de dix articles lus est écrit dans le stockage et notifie le panneau, qui recalcule le graphe puis le placement (par tranches de 12 ms, repartant du précédent) ; l'affichage est rafraîchi au plus toutes les 300 ms pendant le calcul.
+2. Chaque groupe de dix articles lus est écrit dans le stockage et notifie le panneau, qui recalcule le graphe puis le placement (par tranches de 12 ms, incrémental) ; l'affichage est rafraîchi au plus toutes les 300 ms pendant le calcul, et pas du tout si rien n'a bougé.
 3. Les liens mémorisés ne sont pas relus avant 30 jours. Un article lu sans aucun lien est mémorisé aussi.
 
 ## Erreurs et limites
 
 - Wikipédia indisponible ou 429 : pause de 60 s, message « Wikipédia est indisponible pour l'instant : nouvel essai automatique », les liens déjà connus restent affichés.
 - Stockage plein : même traitement que l'indisponibilité.
-- La lecture est lente (environ 1,3 s par article, 22 minutes pour 1000 cartes) : elle se fait en arrière-plan, une fois, puis une fois par mois.
+- La lecture se fait en arrière-plan, une fois, puis une fois par mois : environ 0,4 s par article avec 4 lectures en parallèle (3 requêtes par seconde, sans limitation de débit mesurée depuis un navigateur), soit douze minutes pour 2233 cartes.
 - Les liens sont ceux écrits dans l'article : deux synonymes (une redirection et sa cible) donnent deux points.
 
 ## Tests

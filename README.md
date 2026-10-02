@@ -122,7 +122,8 @@ du développeur).
 
 La vue « Toile » de la Collection relie vos cartes par les articles Wikipédia qu'elles citent. Pour chaque
 carte, l'extension lit les liens vers des articles de l'introduction de son article (résumé et infobox : genre,
-métier, lieu, époque…), une requête par article (environ 1,3 s), en arrière plan, puis une fois par mois. Seuls
+métier, lieu, époque…), une requête par article, quatre à la fois (environ 0,4 s par article : douze minutes pour
+2233 cartes), en arrière plan, puis une fois par mois. Seuls
 les titres d'articles partent vers Wikipédia ; rien du jeu ni de votre compte. Un article cité par au moins deux
 de vos cartes devient un point de la toile (les 300 plus partagés sont affichés ; les points trop généraux,
 cités par plus de 30 % des cartes, passent après les autres) ; une carte qui en cite une autre lui est reliée par
