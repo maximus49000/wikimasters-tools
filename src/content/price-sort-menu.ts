@@ -29,7 +29,12 @@ function buildEntry(model: HTMLElement): HTMLElement {
 export function syncPriceSort(root: ParentNode, enabled: boolean, source: SortSource): void {
   const trigger = root.querySelector<HTMLElement>(TRIGGER_SELECTOR);
   if (!trigger) return;
-  const list = trigger.parentElement?.querySelector<HTMLElement>('[role="listbox"]') ?? null;
+  // La liste est affichée dans un portail, hors du parent du bouton : elle s'y rattache par `aria-controls`.
+  const controlled = trigger.getAttribute('aria-controls');
+  const list =
+    (controlled ? trigger.ownerDocument.getElementById(controlled) : null) ??
+    trigger.parentElement?.querySelector<HTMLElement>('[role="listbox"]') ??
+    null;
   const text = lastText(trigger);
 
   if (!enabled || !list) {
