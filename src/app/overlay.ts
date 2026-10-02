@@ -322,6 +322,9 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
 
   run();
 
+  // Identifiants TMDB des cartes, partagés par la fiche film/série et par la lecture (BO d'un film en cours).
+  const screenRepo = createScreenRepo(store, (slugs) => fetchWikidataScreen((url) => fetch(url), slugs));
+
   // Spotify : télécommande de l'appli Spotify (voir la spec). Absent si la plateforme ne le fournit pas.
   // Après le démarrage de la surcouche : une panne ici ne doit jamais l'empêcher.
   if (spotify) {
@@ -337,6 +340,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           music: musicRepo,
           listens: createListenRepo(store),
           soundtracks: createListenRepo(store, undefined, 'soundtracks-v1'),
+          screen: screenRepo,
           session,
           api: spotifyApi,
           onPlayed: (card) => {
@@ -391,7 +395,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           hasKey: true,
           collection: collectionRepo,
           kinds: kindsRepo,
-          screen: createScreenRepo(store, (slugs) => fetchWikidataScreen((url) => fetch(url), slugs)),
+          screen: screenRepo,
           api: tmdbApi,
           cache: createTtlCache(store, { ttlMs: 24 * 3_600_000 }),
         }),
