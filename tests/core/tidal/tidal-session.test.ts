@@ -67,7 +67,7 @@ describe('createTidalSession', () => {
     const fetch = vi
       .fn<TidalFetch>()
       .mockResolvedValueOnce(tokenResponse({ access_token: 'A1', refresh_token: 'R1', expires_in: 86_400 }))
-      .mockResolvedValue(tokenResponse({ access_token: 'A2', expires_in: 86_400 }));
+      .mockImplementation(async () => tokenResponse({ access_token: 'A2', expires_in: 86_400 }));
     const { session, advance } = setup({ fetch });
     await session.link();
     advance(86_400_000);
