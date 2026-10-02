@@ -9,10 +9,18 @@ export type DuplicatesToggle = { on: boolean; onToggle: () => void } | null;
 const VIEW_ATTRIBUTE = 'data-wmt-view';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-// Icônes Lucide (« house », « globe », « chart-no-axes-gantt », « layout-grid »), comme celles du site.
+// Icônes Lucide (« house », « globe », « chart-no-axes-gantt », « network », « layout-grid »), comme celles du site.
 const HOUSE = ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8', 'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'];
 const GLOBE = ['M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z', 'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20', 'M2 12h20'];
 const GANTT = ['M8 6h10', 'M6 12h9', 'M11 18h7'];
+// « network » : trois nœuds reliés (ses rectangles sont tracés en chemins, comme ceux de GRID).
+const NETWORK = [
+  'M17 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
+  'M3 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
+  'M10 2h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z',
+  'M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3',
+  'M12 12V8',
+];
 const GRID = [
   'M4 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z',
   'M15 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z',
@@ -25,6 +33,7 @@ const VIEWS: { view: CollectionView; label: string; glyph: string[] }[] = [
   { view: 'homemade', label: 'Homemade : grille paginée et filtrable', glyph: HOUSE },
   { view: 'world', label: 'Monde : la Collection sur une carte du monde', glyph: GLOBE },
   { view: 'timeline', label: 'Chronologique : la Collection sur une frise', glyph: GANTT },
+  { view: 'web', label: 'Toile : les cartes reliées par les articles Wikipédia qu’elles citent', glyph: NETWORK },
   { view: 'list', label: 'Grille du site', glyph: GRID },
 ];
 

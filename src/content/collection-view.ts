@@ -1,5 +1,5 @@
 // `list` : la grille du site, inchangée ; `homemade` : notre grille paginée et filtrable (vue par défaut).
-export type CollectionView = 'homemade' | 'world' | 'timeline' | 'list';
+export type CollectionView = 'homemade' | 'world' | 'timeline' | 'web' | 'list';
 
 const KEY = 'wmt:collectionView';
 
@@ -7,7 +7,7 @@ const KEY = 'wmt:collectionView';
 export function readView(storage: Pick<Storage, 'getItem'>): CollectionView {
   try {
     const value = storage.getItem(KEY);
-    return value === 'list' || value === 'world' || value === 'timeline' || value === 'homemade' ? value : 'homemade';
+    return value === 'list' || value === 'world' || value === 'timeline' || value === 'web' || value === 'homemade' ? value : 'homemade';
   } catch {
     return 'homemade';
   }
