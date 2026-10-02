@@ -9,7 +9,7 @@ import { fetchWikiCoords } from '../core/geo/wiki-coords';
 import { fetchWikidataDates } from '../core/birth/wikidata-birth';
 import { createBirthRepo } from '../core/birth/birth-repo';
 import { createGeoRepo } from '../core/geo/geo-repo';
-import { fetchWikiLinks } from '../core/links/wiki-links';
+import { fetchLeadLinks } from '../core/links/wiki-links';
 import { createLinksRepo } from '../core/links/links-repo';
 import { fetchWikidataKinds } from '../core/kinds/wikidata-kinds';
 import { createKindsRepo } from '../core/kinds/kinds-repo';
@@ -145,8 +145,9 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
     birth: createBirthRepo(store, (slugs) => fetchWikidataDates((url) => fetch(url), slugs)),
     kinds: kindsRepo,
-    // Liens des articles Wikipédia entre cartes : requêtes sans identifiants, seuls les titres partent.
-    links: createLinksRepo(store, (slugs) => fetchWikiLinks((url) => fetch(url), slugs)),
+    // Liens des articles Wikipédia entre cartes (introduction de chaque article) : requêtes sans identifiants, seuls les titres partent.
+    // Une réponse qui n'arrive pas ne doit pas arrêter toute la lecture : au bout de 20 s, la requête est abandonnée.
+    links: createLinksRepo(store, (slug) => fetchLeadLinks((url) => fetch(url, { signal: AbortSignal.timeout(20_000) }), slug)),
     kindFilterSource: createKindFilterSource(window.localStorage),
     scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
     book,

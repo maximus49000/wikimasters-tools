@@ -1,62 +1,69 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../../src/core/cache/store';
 import { LINKS_MAX_AGE_MS, linksOf } from '../../../src/core/links/links-book';
-import { createLinksRepo } from '../../../src/core/links/links-repo';
+import { WRITE_EVERY, createLinksRepo } from '../../../src/core/links/links-repo';
 
 const noSleep = async () => undefined;
-const answer = async (slugs: string[]) => Object.fromEntries(slugs.map((slug) => [slug, slug === 'Vide' ? [] : ['Pop', `Lien_${slug}`]]));
+const answer = async (slug: string) => (slug === 'Vide' ? [] : ['Pop', `Lien_${slug}`]);
+const slugs = (count: number) => Array.from({ length: count }, (_, i) => `A${i}`);
 
 describe('createLinksRepo', () => {
-  it('lit chaque article une fois, y compris sans lien, par lots', async () => {
+  it('lit chaque article une fois, y compris sans lien', async () => {
     const fetchLinks = vi.fn(answer);
     const repo = createLinksRepo(createMemoryStore(), fetchLinks, noSleep);
 
     await repo.resolveMissing(['Kamini', 'Vide']);
     await repo.resolveMissing(['Kamini', 'Vide']);
 
-    expect(fetchLinks).toHaveBeenCalledTimes(1);
+    expect(fetchLinks).toHaveBeenCalledTimes(2);
     const state = await repo.load();
     expect(linksOf(state, 'Kamini')).toEqual(['Pop', 'Lien_Kamini']);
     expect(Object.keys(state.cards).sort()).toEqual(['Kamini', 'Vide']);
   });
 
-  it('découpe en lots de 50 articles', async () => {
-    const fetchLinks = vi.fn(answer);
-    const repo = createLinksRepo(createMemoryStore(), fetchLinks, noSleep);
-    await repo.resolveMissing(Array.from({ length: 120 }, (_, i) => `A${i}`));
-    expect(fetchLinks.mock.calls.map(([batch]) => batch.length)).toEqual([50, 50, 20]);
+  it('enregistre par groupes de dix articles et prévient les abonnés à chaque écriture', async () => {
+    const repo = createLinksRepo(createMemoryStore(), answer, noSleep);
+    const listener = vi.fn();
+    repo.subscribe(listener);
+    await repo.resolveMissing(slugs(25));
+    expect(WRITE_EVERY).toBe(10);
+    expect(listener).toHaveBeenCalledTimes(3);
+    expect(Object.keys((await repo.load()).cards)).toHaveLength(25);
   });
 
-  it('s’arrête à la première erreur, prévient les abonnés, puis attend avant de réessayer', async () => {
+  it('espace les requêtes, sans attendre avant la première', async () => {
+    const sleep = vi.fn(noSleep);
+    const repo = createLinksRepo(createMemoryStore(), answer, sleep, 200);
+    await repo.resolveMissing(slugs(12));
+    expect(sleep).toHaveBeenCalledTimes(11);
+    expect(sleep).toHaveBeenCalledWith(200);
+  });
+
+  it('garde ce qui a été lu avant une erreur, prévient les abonnés, puis attend avant de réessayer', async () => {
     let time = 0;
     const fetchLinks = vi
-      .fn<(slugs: string[]) => Promise<Record<string, string[]>>>()
-      .mockRejectedValueOnce(new Error('hors ligne'))
+      .fn<(slug: string) => Promise<string[]>>()
+      .mockResolvedValueOnce(['Pop'])
+      .mockRejectedValueOnce(new Error('429'))
       .mockImplementation(answer);
     const repo = createLinksRepo(createMemoryStore(), fetchLinks, noSleep, 0, () => time);
     const listener = vi.fn();
     repo.subscribe(listener);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    await repo.resolveMissing(['A', 'B']);
+    await repo.resolveMissing(['A', 'B', 'C']);
     expect(repo.failed()).toBe(true);
-    expect(listener).toHaveBeenCalledTimes(1);
-    await repo.resolveMissing(['A', 'B']);
-    expect(fetchLinks).toHaveBeenCalledTimes(1);
-    expect((await repo.load()).cards).toEqual({});
+    expect(Object.keys((await repo.load()).cards)).toEqual(['A']);
+    expect(listener).toHaveBeenCalled();
+
+    await repo.resolveMissing(['B', 'C']);
+    expect(fetchLinks).toHaveBeenCalledTimes(2);
 
     time = 61_000;
     expect(repo.failed()).toBe(false);
-    await repo.resolveMissing(['A', 'B']);
-    expect(Object.keys((await repo.load()).cards).sort()).toEqual(['A', 'B']);
-  });
-
-  it('prévient les abonnés à chaque écriture', async () => {
-    const repo = createLinksRepo(createMemoryStore(), answer, noSleep);
-    const listener = vi.fn();
-    repo.subscribe(listener);
-    await repo.resolveMissing(Array.from({ length: 60 }, (_, i) => `A${i}`));
-    expect(listener).toHaveBeenCalledTimes(2);
+    await repo.resolveMissing(['A', 'B', 'C']);
+    expect(Object.keys((await repo.load()).cards).sort()).toEqual(['A', 'B', 'C']);
+    expect(fetchLinks).toHaveBeenCalledTimes(4);
   });
 
   it('relit une carte au bout de 30 jours', async () => {

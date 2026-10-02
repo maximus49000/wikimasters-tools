@@ -1,88 +1,64 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fetchWikiLinks, parseLinksPage } from '../../../src/core/links/wiki-links';
+import { fetchLeadLinks, parseLeadLinks } from '../../../src/core/links/wiki-links';
 
 const respond = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response;
-const noSleep = async () => undefined;
-const links = (...titles: string[]) => titles.map((title) => ({ title }));
+const link = (title: string, extra: Record<string, unknown> = {}) => ({ ns: 0, title, exists: true, ...extra });
 
-describe('parseLinksPage', () => {
-  it('lit les liens par page, la suite de la pagination, les normalisations et les redirections', () => {
-    const page = parseLinksPage({
-      continue: { plcontinue: '12|0|Pop', continue: '||' },
-      query: {
-        normalized: [{ from: 'piaf', to: 'Piaf' }],
-        redirects: [{ from: 'Piaf', to: 'Édith Piaf' }],
-        pages: [{ title: 'Édith Piaf', links: links('Pop', 'Paris') }, { title: 'Vide' }],
-      },
-    });
-    expect(page.next).toEqual({ plcontinue: '12|0|Pop', continue: '||' });
-    expect(page.normalized.get('piaf')).toBe('Piaf');
-    expect(page.redirects.get('Piaf')).toBe('Édith Piaf');
-    expect(page.links.get('Édith Piaf')).toEqual(['Pop', 'Paris']);
-    expect(page.links.get('Vide')).toEqual([]);
+describe('parseLeadLinks', () => {
+  it('rend les slugs des articles cités, sans doublon', () => {
+    const links = parseLeadLinks({ parse: { title: 'Kamini', links: [link('Hip-hop français'), link('Édith Piaf'), link('Hip-hop français')] } });
+    expect(links).toEqual(['Hip-hop_français', 'Édith_Piaf']);
   });
 
-  it('lève sur une réponse inattendue (pour ne pas la mémoriser comme « sans lien »)', () => {
-    expect(() => parseLinksPage({})).toThrow('Réponse Wikipédia inattendue');
-    expect(() => parseLinksPage({ query: {} })).toThrow();
+  it('ne garde que les articles : ni les autres espaces de noms, ni les liens rouges', () => {
+    const links = parseLeadLinks({
+      parse: {
+        title: 'A',
+        links: [link('Pop'), { ns: 14, title: 'Catégorie:Chanteur', exists: true }, { ns: 6, title: 'Fichier:A.jpg', exists: true }, link('Inexistant', { exists: false })],
+      },
+    });
+    expect(links).toEqual(['Pop']);
+  });
+
+  it('rend une liste vide pour une introduction sans lien', () => {
+    expect(parseLeadLinks({ parse: { title: 'A' } })).toEqual([]);
+    expect(parseLeadLinks({ parse: { title: 'A', links: [] } })).toEqual([]);
+  });
+
+  it('rend une liste vide pour un article qui n’existe pas', () => {
+    expect(parseLeadLinks({ error: { code: 'missingtitle', info: 'The page you specified doesn’t exist.' } })).toEqual([]);
+  });
+
+  it('lève sur une autre erreur ou une réponse inattendue (pour ne pas la mémoriser comme « sans lien »)', () => {
+    expect(() => parseLeadLinks({ error: { code: 'internal_api_error_DBQueryError', info: 'boom' } })).toThrow('internal_api_error_DBQueryError');
+    expect(() => parseLeadLinks({})).toThrow('Réponse Wikipédia inattendue');
+    expect(() => parseLeadLinks({ parse: { links: [{ ns: 0 }] } })).toThrow();
   });
 });
 
-describe('fetchWikiLinks', () => {
-  it('rend, pour chaque article demandé, les slugs des articles cités, et une liste vide sans lien', async () => {
-    const fetchFn = vi.fn(async (_url: string) =>
-      respond({ query: { pages: [{ title: 'Kamini', links: links('Pop', 'Édith Piaf', 'Pop') }, { title: 'Inconnue', missing: true }] } }),
-    );
+describe('fetchLeadLinks', () => {
+  it('demande l’introduction de l’article, redirections suivies, et rend ses liens', async () => {
+    const fetchFn = vi.fn(async (_url: string) => respond({ parse: { title: 'Édith Piaf', links: [link('Chanson française'), link('Paris')] } }));
 
-    const result = await fetchWikiLinks(fetchFn, ['Kamini', 'Inconnue'], { sleep: noSleep });
+    const links = await fetchLeadLinks(fetchFn, 'edith_piaf');
 
-    expect(result).toEqual({ Kamini: ['Pop', 'Édith_Piaf'], Inconnue: [] });
+    expect(links).toEqual(['Chanson_française', 'Paris']);
     const url = new URL(fetchFn.mock.calls[0]?.[0] as string);
+    expect(url.searchParams.get('action')).toBe('parse');
     expect(url.searchParams.get('prop')).toBe('links');
-    expect(url.searchParams.get('plnamespace')).toBe('0');
-    expect(url.searchParams.get('pllimit')).toBe('max');
+    expect(url.searchParams.get('section')).toBe('0');
     expect(url.searchParams.get('redirects')).toBe('1');
-    expect(url.searchParams.get('titles')).toBe('Kamini|Inconnue');
+    expect(url.searchParams.get('page')).toBe('edith piaf');
   });
 
-  it('suit la pagination en renvoyant plcontinue, et réunit les liens des différentes pages', async () => {
-    const fetchFn = vi
-      .fn<(url: string) => Promise<Response>>()
-      .mockResolvedValueOnce(respond({ continue: { plcontinue: 'abc', continue: '||' }, query: { pages: [{ title: 'A', links: links('Pop') }] } }))
-      .mockResolvedValueOnce(respond({ query: { pages: [{ title: 'A', links: links('Rock', 'Pop') }] } }));
-    const sleep = vi.fn(noSleep);
-
-    const result = await fetchWikiLinks(fetchFn, ['A'], { sleep, gapMs: 150 });
-
-    expect(result).toEqual({ A: ['Pop', 'Rock'] });
-    expect(fetchFn).toHaveBeenCalledTimes(2);
-    const second = new URL(fetchFn.mock.calls[1]?.[0] as string);
-    expect(second.searchParams.get('plcontinue')).toBe('abc');
-    expect(second.searchParams.get('continue')).toBe('||');
-    expect(sleep).toHaveBeenCalledTimes(1);
-    expect(sleep).toHaveBeenCalledWith(150);
+  it('n’envoie que le titre de l’article', async () => {
+    const fetchFn = vi.fn(async (_url: string) => respond({ parse: { title: 'A', links: [] } }));
+    await fetchLeadLinks(fetchFn, 'Kamini');
+    const url = new URL(fetchFn.mock.calls[0]?.[0] as string);
+    expect([...url.searchParams.keys()].sort()).toEqual(['action', 'disablelimitreport', 'format', 'formatversion', 'origin', 'page', 'prop', 'redirects', 'section']);
   });
 
-  it('rattache les liens à l’article demandé malgré normalisation et redirection', async () => {
-    const fetchFn = vi.fn(async () =>
-      respond({
-        query: {
-          normalized: [{ from: 'edith piaf', to: 'Edith piaf' }],
-          redirects: [{ from: 'Edith piaf', to: 'Édith Piaf' }],
-          pages: [{ title: 'Édith Piaf', links: links('Pop') }],
-        },
-      }),
-    );
-    expect(await fetchWikiLinks(fetchFn, ['edith_piaf'], { sleep: noSleep })).toEqual({ edith_piaf: ['Pop'] });
-  });
-
-  it('lève sur une erreur HTTP et sur une réponse inattendue', async () => {
-    await expect(fetchWikiLinks(vi.fn(async () => ({ ok: false, status: 429 }) as Response), ['A'], { sleep: noSleep })).rejects.toThrow('429');
-    await expect(fetchWikiLinks(vi.fn(async () => respond({})), ['A'], { sleep: noSleep })).rejects.toThrow('inattendue');
-  });
-
-  it('abandonne si la pagination ne se termine jamais', async () => {
-    const fetchFn = vi.fn(async () => respond({ continue: { plcontinue: 'x', continue: '||' }, query: { pages: [{ title: 'A', links: links('Pop') }] } }));
-    await expect(fetchWikiLinks(fetchFn, ['A'], { sleep: noSleep })).rejects.toThrow('trop de pages');
+  it('lève sur une erreur HTTP', async () => {
+    await expect(fetchLeadLinks(vi.fn(async () => ({ ok: false, status: 429 }) as Response), 'A')).rejects.toThrow('429');
   });
 });

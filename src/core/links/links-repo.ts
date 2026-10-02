@@ -1,12 +1,14 @@
-import { BATCH_SIZE } from '../birth/wikidata-birth';
 import type { KeyValueStore } from '../cache/store';
 import { EMPTY_LINKS, needsLinksLookup, setLinks, type LinksState } from './links-book';
 
 const KEY = 'links-v1';
 // Après un échec (429, hors ligne, stockage plein), on laisse Wikipédia respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
+// Les articles lus sont enregistrés par groupes : une écriture par article réécrirait tout le stockage à chaque fois.
+export const WRITE_EVERY = 10;
 
-export type LinksFetcher = (slugs: string[]) => Promise<Record<string, string[]>>;
+// Les liens de l'introduction d'un article (slugs), un article par requête.
+export type LinksFetcher = (slug: string) => Promise<string[]>;
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -50,20 +52,35 @@ export function createLinksRepo(
       let first = true;
       for (;;) {
         const state = await load();
-        const batch = [...pending].filter((candidate) => needsLinksLookup(state, candidate, now())).slice(0, BATCH_SIZE);
-        if (batch.length === 0) {
+        const group = [...pending].filter((candidate) => needsLinksLookup(state, candidate, now())).slice(0, WRITE_EVERY);
+        if (group.length === 0) {
           pending.clear();
           return;
         }
-        for (const slug of batch) pending.delete(slug);
-        if (!first) await sleep(gapMs);
-        first = false;
-        try {
-          const fetched = await fetchLinks(batch);
-          await update((latest) => setLinks(latest, fetched, now()));
-        } catch (error) {
+        for (const slug of group) pending.delete(slug);
+        const fetched: Record<string, string[]> = {};
+        let failure: unknown;
+        for (const slug of group) {
+          if (!first) await sleep(gapMs);
+          first = false;
+          try {
+            fetched[slug] = await fetchLinks(slug);
+          } catch (error) {
+            failure = error;
+            break;
+          }
+        }
+        // Ce qui a été lu avant un échec est gardé : la lecture reprendra où elle s'est arrêtée.
+        if (Object.keys(fetched).length > 0) {
+          try {
+            await update((latest) => setLinks(latest, fetched, now()));
+          } catch (error) {
+            failure ??= error;
+          }
+        }
+        if (failure !== undefined) {
           // Hors ligne, 429, stockage plein… : on s'arrête, le reste sera réessayé après le délai de repos.
-          console.warn('[wikimasters-tools]', 'liens Wikipédia indisponibles :', error);
+          console.warn('[wikimasters-tools]', 'liens Wikipédia indisponibles :', failure);
           failedAt = now();
           pending.clear();
           notify();

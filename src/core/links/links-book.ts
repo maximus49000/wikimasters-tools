@@ -8,8 +8,9 @@ export type LinksState = {
 export const EMPTY_LINKS: LinksState = { titles: [], cards: {} };
 
 export const LINKS_MAX_AGE_MS = 30 * 24 * 3_600_000;
-// Garde-fou : le stockage de l'appli Android (localStorage) est borné, un article très long ne doit pas le remplir.
-export const MAX_LINKS_PER_CARD = 600;
+// Garde-fou : le stockage de l'appli Android (localStorage) est borné. Une introduction compte en moyenne 85 liens (250 pour
+// les plus longues) : la limite ne joue presque jamais.
+export const MAX_LINKS_PER_CARD = 400;
 
 // `in` ou l'accès direct verraient « constructor » : on ne regarde que les clés propres.
 function entryOf(state: LinksState, slug: string): LinksState['cards'][string] | undefined {
