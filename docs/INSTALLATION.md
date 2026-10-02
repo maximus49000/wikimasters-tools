@@ -48,6 +48,7 @@ Autorisez l'accès à `www.wiki-masters.com` si Firefox le demande (Menu → Mod
 - Pour corriger un point, touchez **« Déplacer des points »** (au-dessus de la carte). Les points ne sont déplaçables que dans ce mode, pour ne pas les faire glisser en faisant défiler la carte. Dans ce mode, toucher un point le sélectionne : *Ouvrir la carte* ou *Retirer mon placement* (points à bordure orange). Touchez **« Terminer le déplacement »** pour revenir au mode normal.
 - Les cibles tactiles sont élargies (zone de 40 px autour des points et boutons).
 - Pour placer une carte de la liste « À placer » : touchez son nom, puis touchez la carte.
+- La vue Toile : glissez pour déplacer, pincez (ou touchez + et −) pour zoomer, ⤢ recadre toute la toile. Les cartes gardent leur taille quand vous zoomez : ce sont les distances qui grandissent. Toucher une carte pose les boutons 📈 (marché) et 🃏 (carte) au-dessus d'elle ; toucher un point met en avant ses cartes. La lecture des liens Wikipédia se fait en arrière plan (environ une seconde par carte) : la toile se complète au fil de l'eau.
 
 ## Signature (Firefox)
 

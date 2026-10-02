@@ -6,6 +6,7 @@ import type { CollectionScanner } from '../core/collection/collection-scan';
 import type { BirthRepo } from '../core/birth/birth-repo';
 import type { GeoRepo } from '../core/geo/geo-repo';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
+import type { LinksRepo } from '../core/links/links-repo';
 import type { PriceBook } from '../core/pricing/price-book';
 import {
   findCardGrid,
@@ -30,6 +31,7 @@ import type { MarketSource } from './market-source';
 import { TimelinePanel } from './TimelinePanel';
 import { syncPriceSort } from './price-sort-menu';
 import type { SortSource } from './sort-source';
+import { WebPanel } from './WebPanel';
 import { PANEL_CSS, WorldPanel } from './WorldPanel';
 import { ensureViewSwitch } from './world-toggle';
 
@@ -41,7 +43,9 @@ export type CollectionUiDeps = {
   geo: GeoRepo;
   birth: BirthRepo;
   kinds: KindsRepo;
-  // Filtre nature / occupation choisi dans la rangée de listes (Homemade, Monde, Chronologique).
+  // Liens Wikipédia des cartes (vue Toile).
+  links: LinksRepo;
+  // Filtre nature / occupation choisi dans la rangée de listes (Homemade, Monde, Chronologique, Toile).
   kindFilterSource: KindFilterSource;
   scanner: CollectionScanner;
   // Prix connus (null si indisponibles) : l'aperçu d'une carte s'en passe.
@@ -63,7 +67,7 @@ export type CollectionUiDeps = {
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, birth, kinds, links, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
@@ -103,6 +107,8 @@ export function createCollectionUi({ collection, geo, birth, kinds, kindFilterSo
           <TimelinePanel {...common} birth={birth} kinds={kinds} kindFilterSource={kindFilterSource} />
         ) : view === 'world' ? (
           <WorldPanel {...common} geo={geo} kinds={kinds} kindFilterSource={kindFilterSource} />
+        ) : view === 'web' ? (
+          <WebPanel {...common} links={links} kinds={kinds} kindFilterSource={kindFilterSource} />
         ) : (
           <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} />
         )}
