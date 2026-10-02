@@ -64,13 +64,16 @@ export const PANEL_CSS = `
 .wmt-card-stats{margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid rgba(0,0,0,.2);font-size:14px;line-height:20px}
 .wmt-card-stat{display:flex;align-items:center;gap:4px}.wmt-card-stat b{color:rgba(0,0,0,.9)}
 .wmt-card-ico{width:1em;height:1em;flex-shrink:0}.wmt-card-atk{color:#991b1b}.wmt-card-def{color:#1e40af}
-.wmt-card-copies{position:absolute;right:12px;bottom:46px;z-index:35;padding:1px 9px;border-radius:9999px;background:rgba(13,17,23,.55);color:#fff;border:1px solid rgba(255,255,255,.25);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);font:800 15px/22px system-ui,sans-serif;letter-spacing:.02em;pointer-events:none}
+.wmt-card-marks{position:absolute;right:12px;bottom:46px;z-index:35;display:flex;align-items:center;gap:6px;pointer-events:none}
+.wmt-card-link{width:26px;height:26px;display:flex;align-items:center;justify-content:center;color:#0d1117;opacity:.75}
+.wmt-card-link svg{width:22px;height:22px}
+.wmt-card-copies{padding:1px 9px;border-radius:9999px;background:rgba(13,17,23,.55);color:#fff;border:1px solid rgba(255,255,255,.25);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);font:800 15px/22px system-ui,sans-serif;letter-spacing:.02em;pointer-events:none}
 .wmt-card-playing{position:absolute;left:12px;bottom:46px;z-index:35;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:9999px;background:var(--color-accent,#34d399);color:#0d1117;opacity:.8;pointer-events:none}
 .wmt-card-playing svg{width:18px;height:18px}
 .wmt-eq{transform-box:fill-box;transform-origin:50% 100%;animation:wmt-eq 1s ease-in-out infinite}.wmt-eq-1{animation-delay:-.4s}.wmt-eq-2{animation-delay:-.7s}
 @keyframes wmt-eq{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
 @media (prefers-reduced-motion:reduce){.wmt-eq{animation:none}}
-.wmt-card-multi .wmt-card-loading{right:56px}
+.wmt-card-multi .wmt-card-loading{right:56px}.wmt-card-linked .wmt-card-loading{right:44px}.wmt-card-linked.wmt-card-multi .wmt-card-loading{right:92px}
 .wmt-card-sheen{position:absolute;inset:0;z-index:40;overflow:hidden;pointer-events:none}
 .wmt-placing.leaflet-grab,.wmt-placing .leaflet-interactive{cursor:crosshair !important}
 `;
