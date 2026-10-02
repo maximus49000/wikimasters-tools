@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
     private static final String START_URL = "https://" + HOST + "/";
     private static final String OVERLAY_ASSET = "wikimasters-overlay.js";
     private static final String SPOTIFY_AUTH_PREFIX = "https://accounts.spotify.com/authorize?";
+    private static final String TIDAL_AUTH_PREFIX = "https://login.tidal.com/authorize?";
     private static final String SPOTIFY_REDIRECT_SCHEME = "wikimasterstools";
 
     private WebView webView;
@@ -92,12 +93,12 @@ public class MainActivity extends Activity {
         else webView.loadUrl(START_URL);
     }
 
-    // Pont vers la surcouche : ouvre l'autorisation Spotify dans le navigateur du téléphone (jamais dans la WebView).
-    // Seule l'adresse d'autorisation de Spotify est acceptée.
+    // Pont vers la surcouche : ouvre l'autorisation Spotify ou Tidal dans le navigateur du téléphone (jamais dans la WebView).
+    // Seules les adresses d'autorisation de Spotify et de Tidal sont acceptées.
     private final class SpotifyBridge {
         @JavascriptInterface
         public void openAuth(String url) {
-            if (url == null || !url.startsWith(SPOTIFY_AUTH_PREFIX)) return;
+            if (url == null || !(url.startsWith(SPOTIFY_AUTH_PREFIX) || url.startsWith(TIDAL_AUTH_PREFIX))) return;
             runOnUiThread(() -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))));
         }
 
@@ -116,7 +117,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    // Retour de l'autorisation (wikimasterstools://spotify?code=…) : transmis à la surcouche, qui termine la liaison.
+    // Retour de l'autorisation (wikimasterstools://spotify?code=… ou wikimasterstools://tidal?code=…) : transmis à la surcouche, qui termine la liaison.
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);

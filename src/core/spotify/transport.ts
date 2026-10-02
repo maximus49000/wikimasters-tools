@@ -9,6 +9,8 @@ export type SpotifyEnv = {
   launchApp?: () => void;
   // Types d'appareil Spotify où lancer la lecture, par ordre de préférence (l'appareil sur lequel on joue à Wikimasters).
   deviceTypes?: readonly string[];
+  // Adresse de retour propre à un autre service (l'APK en a une par service) ; absente : `redirectUri` vaut pour tous.
+  redirectUriFor?: (service: 'tidal') => Promise<string>;
 };
 
 type FetchInit = { method?: string; headers?: Record<string, string>; body?: string };
@@ -26,9 +28,15 @@ export type BackgroundDeps = {
   fetch: (url: string, init?: FetchInit) => Promise<Response>;
 };
 
-const AUTH_PREFIX = 'https://accounts.spotify.com/authorize?';
-// Le service worker relaie aussi TMDB (films et séries) : même contournement de la CSP du site.
-const FETCH_PREFIXES = ['https://api.spotify.com/', 'https://accounts.spotify.com/api/token', 'https://api.themoviedb.org/3/'];
+const AUTH_PREFIXES = ['https://accounts.spotify.com/authorize?', 'https://login.tidal.com/authorize?'];
+// Le service worker relaie aussi Tidal (catalogue, jeton) et TMDB (films et séries) : même contournement de la CSP du site.
+const FETCH_PREFIXES = [
+  'https://api.spotify.com/',
+  'https://accounts.spotify.com/api/token',
+  'https://openapi.tidal.com/v2/',
+  'https://auth.tidal.com/v1/oauth2/token',
+  'https://api.themoviedb.org/3/',
+];
 
 // Côté service worker : ne répond qu'aux messages Spotify, et seulement vers les adresses de Spotify.
 export function handleSpotifyMessage(message: unknown, deps: BackgroundDeps): Promise<SpotifyReply> | null {
@@ -38,8 +46,9 @@ export function handleSpotifyMessage(message: unknown, deps: BackgroundDeps): Pr
     try {
       if (request.op === 'redirect-uri') return { ok: true, value: deps.getRedirectUrl() };
       if (request.op === 'auth') {
-        if (typeof request.url !== 'string' || !request.url.startsWith(AUTH_PREFIX)) return { ok: false, error: 'adresse refusée' };
-        return { ok: true, value: await deps.launchWebAuthFlow(request.url) };
+        const authUrl = request.url;
+        if (typeof authUrl !== 'string' || !AUTH_PREFIXES.some((prefix) => authUrl.startsWith(prefix))) return { ok: false, error: 'adresse refusée' };
+        return { ok: true, value: await deps.launchWebAuthFlow(authUrl) };
       }
       if (request.op === 'fetch') {
         const url = request.url;

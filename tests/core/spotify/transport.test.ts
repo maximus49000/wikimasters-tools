@@ -78,3 +78,23 @@ describe('handleSpotifyMessage — TMDB', () => {
     expect(d.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('handleSpotifyMessage — Tidal', () => {
+  it("lance l'autorisation vers login.tidal.com seulement", async () => {
+    const d = deps();
+    const url = 'https://login.tidal.com/authorize?client_id=x';
+    expect(await handleSpotifyMessage({ type: 'wmt:spotify', op: 'auth', url }, d)).toMatchObject({ ok: true });
+    expect(d.launchWebAuthFlow).toHaveBeenCalledWith(url);
+    expect(await handleSpotifyMessage({ type: 'wmt:spotify', op: 'auth', url: 'https://login.tidal.com.evil.example/authorize?x=1' }, d)).toMatchObject({ ok: false });
+  });
+
+  it('relaie le catalogue et le jeton de Tidal, rien d’autre chez lui', async () => {
+    const d = deps();
+    const base: SpotifyRequest = { type: 'wmt:spotify', op: 'fetch', url: 'https://openapi.tidal.com/v2/searchResults?countryCode=FR' };
+    expect(await handleSpotifyMessage(base, d)).toMatchObject({ ok: true });
+    expect(await handleSpotifyMessage({ ...base, url: 'https://auth.tidal.com/v1/oauth2/token' }, d)).toMatchObject({ ok: true });
+    expect(await handleSpotifyMessage({ ...base, url: 'https://auth.tidal.com/v1/oauth2/revoke' }, d)).toMatchObject({ ok: false });
+    expect(await handleSpotifyMessage({ ...base, url: 'https://openapi.tidal.com/v1/x' }, d)).toMatchObject({ ok: false });
+    expect(d.fetch).toHaveBeenCalledTimes(2);
+  });
+});

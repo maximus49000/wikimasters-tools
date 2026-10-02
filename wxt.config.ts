@@ -7,13 +7,16 @@ export default defineConfig({
     name: 'Wikimasters Tools (non officiel)',
     description:
       'Outils en lecture seule pour WikiMasters : prix estimés à partir de vos propres transactions.',
-    // `identity` : liaison du compte Spotify (écoute des cartes musique).
+    // `identity` : liaison des comptes Spotify et Tidal (écoute des cartes musique).
     // `unlimitedStorage` : lève le plafond de 10 Mo de `chrome.storage.local` (historique du marché, listes d'écoute, pochettes).
     permissions: ['storage', 'unlimitedStorage', 'identity'],
-    // Le service worker appelle Spotify (jamais le site du jeu).
+    // Le service worker appelle Spotify et Tidal (jamais le site du jeu).
     host_permissions: [
       'https://api.spotify.com/*',
       'https://accounts.spotify.com/*',
+      'https://openapi.tidal.com/*',
+      'https://auth.tidal.com/*',
+      'https://login.tidal.com/*',
       'https://api.themoviedb.org/*',
       // Firefox MV3 : l'accès au site est une permission d'hôte à accorder (demandée à l'installation).
       ...(browser === 'firefox' ? ['https://www.wiki-masters.com/*'] : []),
