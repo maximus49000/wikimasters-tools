@@ -1,6 +1,6 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Glyph } from './Glyphs';
-import { PLATFORM_LABEL } from '../core/music/platform';
+import { PLATFORM_LABEL, type Platform } from '../core/music/platform';
 import { getMusicService, getPlatformChoice } from './music-registry';
 import type { PlayerSource } from './player-source';
 import { usePlatform } from './usePlatform';
@@ -42,15 +42,26 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
   }, [platform, service]);
   const linked = platform === 'tidal' ? tidalLinked : spotifyLinked;
   // Liaison en cours (la fenêtre d'autorisation est ouverte) et cause d'un échec.
-  const [linking, setLinking] = useState(false);
+  // Le bouton n'est jamais bloqué : une autorisation restée sans réponse (fenêtre fermée, adresse de retour refusée)
+  // ne doit pas empêcher de délier ni de recommencer. Seule la tentative la plus récente, sur la plateforme affichée, compte.
+  const [linking, setLinking] = useState<Platform | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const attempt = useRef(0);
+  useEffect(() => {
+    attempt.current += 1;
+    setLinking(null);
+    setMessage(null);
+  }, [platform]);
 
   const link = async () => {
-    if (!service || linking) return;
-    setLinking(true);
+    if (!service) return;
+    const mine = ++attempt.current;
+    setLinking(platform);
     setMessage(null);
-    setMessage(await service.link());
-    setLinking(false);
+    const result = await service.link();
+    if (mine !== attempt.current) return;
+    setMessage(result);
+    setLinking(null);
   };
   const accountLabel = `${linked ? 'Délier' : 'Lier'} ${name}`;
 
@@ -96,12 +107,11 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
             <button
               type="button"
               onClick={() => (linked ? void service.unlink() : void link())}
-              disabled={linking}
               aria-label={accountLabel}
               title={accountLabel}
-              style={{ ...choice(false), flex: 'none', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, ...(linking ? { opacity: 0.5, cursor: 'default' } : {}) }}
+              style={{ ...choice(false), flex: 'none', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, }}
             >
-              <Glyph name={linked ? 'unlink' : 'link'} /> {accountLabel}
+              <Glyph name={linked ? 'unlink' : 'link'} /> {linking === platform && !linked ? `${accountLabel} …` : accountLabel}
             </button>
             {message && (
               <p role="status" style={{ margin: '8px 0 0', fontSize: 12 }}>
