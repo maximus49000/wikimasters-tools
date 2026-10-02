@@ -5,6 +5,7 @@ import type { ListenRepo } from '../core/music/listen-repo';
 import type { MusicRepo } from '../core/music/music-repo';
 import { TidalError, tidalMessage } from '../core/tidal/errors';
 import { resolveTidalListen, type TidalSearch } from '../core/tidal/tidal-listen';
+import { resolveTidalSoundtrack } from '../core/tidal/tidal-soundtrack';
 import type { TidalSession } from '../core/tidal/tidal-session';
 import { createListenViewer } from './listen-viewer';
 
@@ -14,13 +15,15 @@ export type TidalServiceDeps = {
   music: Pick<MusicRepo, 'resolve'>;
   // Les listes déjà trouvées sur Tidal (leur propre dépôt) : Tidal n'est interrogé qu'une fois par carte.
   listens: Pick<ListenRepo, 'load' | 'save'>;
+  // Les bandes originales déjà trouvées (clé `movie:<id TMDB>`) : leur propre dépôt, Tidal n'est interrogé qu'une fois par film.
+  soundtracks: Pick<ListenRepo, 'load' | 'save'>;
   session: Pick<TidalSession, 'isLinked' | 'link' | 'unlink' | 'subscribe'>;
   api: TidalSearch;
 };
 
 // La fiche « Écouter » d'une carte pour Tidal : les pistes, avec leur lien d'écoute (la lecture dans l'appli viendra ensuite).
 export function createTidalService(deps: TidalServiceDeps) {
-  const { collection, kinds, music, listens, session, api } = deps;
+  const { collection, kinds, music, listens, soundtracks, session, api } = deps;
   const viewer = createListenViewer({
     collection,
     kinds,
@@ -37,8 +40,21 @@ export function createTidalService(deps: TidalServiceDeps) {
   return {
     view: (slug: string, title: string) => viewer.show(slug, title, false),
     refresh: (slug: string, title: string) => viewer.show(slug, title, true),
-    // Pas de lecture dans l'appli pour Tidal, donc pas de bouton « BO » sur la fiche d'un film.
-    soundtrack: async (_key?: string, _titles?: string[]): Promise<Listen | null> => null,
+    // La BO d'un film ou d'une série (`key` : `movie:<id>` / `tv:<id>`) : un lien vers l'album Tidal. Seule une vraie réponse est gardée ;
+    // une erreur (réseau, limite) rend null et sera retentée à la prochaine ouverture de la fiche.
+    async soundtrack(key: string, titles: string[]): Promise<Listen | null> {
+      if (!(await session.isLinked())) return null;
+      const kept = await soundtracks.load();
+      if (kept.has(key)) return kept.get(key) ?? null;
+      let listen: Listen | null;
+      try {
+        listen = await resolveTidalSoundtrack(api, titles);
+      } catch {
+        return null;
+      }
+      await soundtracks.save(key, listen).catch((error: unknown) => console.warn('[wikimasters-tools]', 'bande originale non gardée :', error));
+      return listen;
+    },
     // Rien ne joue dans l'appli pour Tidal : aucune carte n'est « en cours ».
     playingSlugs: async (_cards?: unknown, _track?: unknown): Promise<Set<string>> => new Set<string>(),
     // Pas de lecture dans l'appli pour l'instant : le lien ↗ de chaque piste ouvre Tidal.

@@ -24,11 +24,43 @@ function setup(over: { linked?: boolean; albums?: unknown[] } = {}) {
     kinds: { resolveMissing: async () => undefined, load: async () => ({ cards: { Abbey_Road: { natures: ['Q482994'], occupations: [], genres: [] } }, labels: {} }) as never },
     music: { resolve: async () => ({ Abbey_Road: { performer: 'The Beatles' } }) as never },
     listens: createListenRepo(store, () => Date.now(), 'listens-tidal-v1'),
+    soundtracks: createListenRepo(store, () => Date.now(), 'soundtracks-tidal-v1'),
     session,
     api,
   });
   return { service, api, session, store };
 }
+
+describe('createTidalService.soundtrack', () => {
+  const ost = [{ id: 'OST', title: 'Inception (Original Motion Picture Soundtrack)', artists: ['Hans Zimmer'] }];
+
+  it('trouve la BO sans demander les pistes, la garde dans son propre dépôt et ne redemande rien ensuite', async () => {
+    const { service, api, store } = setup({ albums: ost });
+    const listen = await service.soundtrack('movie:27205', ['Inception']);
+    expect(listen).toMatchObject({ albumUri: 'tidal:album:OST', album: { name: 'Inception (Original Motion Picture Soundtrack)', artist: 'Hans Zimmer' } });
+    expect(await service.soundtrack('movie:27205', ['Inception'])).toEqual(listen);
+    expect(api.searchAlbums).toHaveBeenCalledTimes(1);
+    expect(api.albumTracks).not.toHaveBeenCalled();
+    expect(await store.get('soundtracks-tidal-v1')).toBeTruthy();
+    expect(await store.get('soundtracks-v1')).toBeUndefined();
+  });
+
+  it('garde « pas de BO » ; ne garde pas une erreur ; rien sans compte lié', async () => {
+    const none = setup({ albums: [] });
+    expect(await none.service.soundtrack('movie:1', ['Film sans BO'])).toBeNull();
+    expect(await none.service.soundtrack('movie:1', ['Film sans BO'])).toBeNull();
+    expect(none.api.searchAlbums).toHaveBeenCalledTimes(1);
+
+    const failing = setup({ albums: ost });
+    failing.api.searchAlbums.mockRejectedValueOnce(new TidalError('rate-limited', 'x', 4_000));
+    expect(await failing.service.soundtrack('movie:27205', ['Inception'])).toBeNull();
+    expect(await failing.service.soundtrack('movie:27205', ['Inception'])).not.toBeNull();
+
+    const unlinked = setup({ linked: false, albums: ost });
+    expect(await unlinked.service.soundtrack('movie:27205', ['Inception'])).toBeNull();
+    expect(unlinked.api.searchAlbums).not.toHaveBeenCalled();
+  });
+});
 
 describe('createTidalService', () => {
   it("rend les pistes de l'album et les garde dans le dépôt Tidal, jamais dans celui de Spotify", async () => {
