@@ -104,15 +104,17 @@ describe('PlayerSettings, compte Spotify', () => {
     expect(byLabel('Lier Spotify')?.disabled).toBe(false);
   });
 
-  it("n'envoie qu'une liaison à la fois : le bouton est inactif pendant l'autorisation", async () => {
-    let finish: (message: string | null) => void = () => undefined;
-    const { link } = serve({ link: () => new Promise<string | null>((resolve) => (finish = resolve)) });
+  it("ne bloque jamais le bouton : une autorisation sans réponse peut être relancée, la dernière tentative l'emporte", async () => {
+    const finishes: ((message: string | null) => void)[] = [];
+    const { link } = serve({ link: () => new Promise<string | null>((resolve) => finishes.push(resolve)) });
     await render(makeSource(false).source);
     await press(byLabel('Lier Spotify'));
-    expect(byLabel('Lier Spotify')?.disabled).toBe(true);
+    expect(byLabel('Lier Spotify')?.disabled).toBe(false);
     await press(byLabel('Lier Spotify'));
-    expect(link).toHaveBeenCalledTimes(1);
-    await act(async () => finish(null));
+    expect(link).toHaveBeenCalledTimes(2);
+    await act(async () => finishes[0]?.('ancienne'));
+    expect(text()).not.toContain('ancienne');
+    await act(async () => finishes[1]?.(null));
     expect(byLabel('Lier Spotify')?.disabled).toBe(false);
   });
 
