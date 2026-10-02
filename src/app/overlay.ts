@@ -185,9 +185,21 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   // Cartes de la Collection : elles affichent leur case de prix (« ??? » tant que rien n'est observé).
   let owned: ReadonlySet<string> = new Set();
   let timer: number | undefined;
+  let sortMenuFrame = 0;
   const observer = new MutationObserver(() => {
     window.clearTimeout(timer);
     timer = window.setTimeout(run, DEBOUNCE_MS);
+    // La liste de tri se complète tout de suite (image suivante), pas après le délai des autres vues.
+    if (sortMenuFrame === 0) {
+      sortMenuFrame = window.requestAnimationFrame(() => {
+        sortMenuFrame = 0;
+        try {
+          collectionUi.syncSortMenu();
+        } catch (error) {
+          console.warn(LOG, 'liste de tri indisponible :', error);
+        }
+      });
+    }
   });
 
   function run() {
