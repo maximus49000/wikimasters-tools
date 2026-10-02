@@ -8,9 +8,11 @@ import type { SpotifyFetch, SpotifySession } from './spotify-session';
 
 export type Track = { uri: string; title: string; artist: string };
 export type FoundAlbum = { id: string; name: string; artist: string };
+export type FoundPlaylist = { id: string; name: string; owner: string };
 export type FoundTrack =Track & { artistIds: string[]; artists: string[] };
 // `null` : reprendre la lecture en cours.
-export type PlayTarget = { uris: string[] } | { contextUri: string; offsetUri: string } | null;
+// `offsetUri` : le titre du contexte (album, playlist) où commencer ; absent, le contexte se lit depuis le début.
+export type PlayTarget = { uris: string[] } | { contextUri: string; offsetUri?: string } | null;
 export type PlayerState = { playing: boolean; uri: string; title: string; artist: string; imageUrl: string | null } | null;
 
 // Maximum accepté par Spotify pour les applications en mode développement (février 2026).
@@ -29,6 +31,10 @@ const trackSchema = z.object({ uri: z.string(), name: z.string(), artists: z.arr
 const searchTracksSchema = z.object({ tracks: z.object({ items: z.array(trackSchema) }) });
 const searchAlbumsSchema = z.object({ albums: z.object({ items: z.array(z.object({ id: z.string() })) }) });
 const searchAlbumListSchema = z.object({ albums: z.object({ items: z.array(z.object({ id: z.string(), name: z.string(), artists: z.array(artistSchema) })) }) });
+// Spotify peut renvoyer des `null` parmi les playlists trouvées.
+const searchPlaylistListSchema = z.object({
+  playlists: z.object({ items: z.array(z.object({ id: z.string(), name: z.string(), owner: z.object({ display_name: z.string().nullish() }).nullish() }).nullable()) }),
+});
 const coverImages = z.array(z.object({ url: z.string() }));
 const coverAlbumsSchema = z.object({ albums: z.object({ items: z.array(z.object({ images: coverImages })) }) });
 const coverTracksSchema = z.object({ tracks: z.object({ items: z.array(z.object({ album: z.object({ images: coverImages }).optional() })) }) });
@@ -178,6 +184,12 @@ export function createSpotifyApi(deps: {
       return parse(searchAlbumListSchema, await response.json()).albums.items.map((item) => ({ id: item.id, name: item.name, artist: joinArtists(item.artists) }));
     },
 
+    // Les playlists que Spotify propose pour une recherche libre (nom et créateur), du plus pertinent au moins pertinent.
+    async searchPlaylists(query: string, limit = SEARCH_MAX): Promise<FoundPlaylist[]> {
+      const response = await send('page', 'GET', '/search', { query: { q: query, type: 'playlist', limit: String(Math.min(limit, SEARCH_MAX)) } });
+      return parse(searchPlaylistListSchema, await response.json()).playlists.items.flatMap((item) => (item ? [{ id: item.id, name: item.name, owner: item.owner?.display_name ?? '' }] : []));
+    },
+
     // Pochette d'un album (ou du disque d'un morceau) ; Spotify classe les images de la plus grande à la plus petite.
     async findCover(kind: 'album' | 'track', title: string, performer?: string): Promise<string | null> {
       const artist = performer ? ` artist:"${performer}"` : '';
@@ -205,7 +217,7 @@ export function createSpotifyApi(deps: {
     },
 
     async play(target: PlayTarget): Promise<void> {
-      const body = !target ? undefined : 'uris' in target ? { uris: target.uris } : { context_uri: target.contextUri, offset: { uri: target.offsetUri } };
+      const body = !target ? undefined : 'uris' in target ? { uris: target.uris } : { context_uri: target.contextUri, ...(target.offsetUri ? { offset: { uri: target.offsetUri } } : {}) };
       // Reprise (sans titre) : on laisse l'appareil courant ; un nouveau titre se lance sur cet appareil-ci.
       const here = target ? await preferredDeviceId() : null;
       if (here) {

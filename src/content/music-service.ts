@@ -4,7 +4,7 @@ import { resolveListen, sameTrack, type Listen } from '../core/music/listen';
 import type { ListenRepo } from '../core/music/listen-repo';
 import { musicKindOf } from '../core/music/music-kinds';
 import type { MusicRepo } from '../core/music/music-repo';
-import { resolveSoundtrack } from '../core/music/soundtrack';
+import { listenOfChoice, resolveSoundtrack, searchSoundtracks, type SoundtrackChoice } from '../core/music/soundtrack';
 import { SpotifyError, userMessage } from '../core/spotify/errors';
 import type { SpotifyApi, Track } from '../core/spotify/spotify-api';
 import type { SpotifySession } from '../core/spotify/spotify-session';
@@ -12,6 +12,10 @@ import { createListenViewer } from './listen-viewer';
 import type { PlayerCard } from './player-source';
 
 export type { ListenView } from './listen-viewer';
+
+// Le résultat d'une demande du pop-up BO : `message` quand Spotify a répondu par une erreur (rien n'est alors changé).
+export type SoundtrackOutcome = { listen: Listen | null; message?: string };
+export type SoundtrackSearch = { choices: SoundtrackChoice[]; message?: string };
 
 export type MusicServiceDeps = {
   collection: { list(): Promise<KnownCard[]> };
@@ -22,7 +26,7 @@ export type MusicServiceDeps = {
   // Les bandes originales déjà trouvées (clé `movie:<id TMDB>`) : mêmes règles que les listes, Spotify n'est interrogé qu'une fois par film.
   soundtracks: Pick<ListenRepo, 'load' | 'save'>;
   session: Pick<SpotifySession, 'isLinked' | 'link' | 'unlink' | 'subscribe'>;
-  api: Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'searchAlbums' | 'albumTracks' | 'play'>;
+  api: Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'searchAlbums' | 'searchPlaylists' | 'albumTracks' | 'play'>;
   // Après un lancement : le mini-lecteur relit l'état tout de suite, et retient la carte qui l'a demandé.
   onPlayed: (card?: PlayerCard) => void;
   // Ouvre l'application Spotify quand aucun appareil n'est actif ; absent sur les plateformes qui ne savent pas le faire.
@@ -110,14 +114,53 @@ export function createMusicService(deps: MusicServiceDeps) {
       return listen;
     },
 
+    // Le pop-up BO (onglet Auto) : relance la recherche et remplace ce qui était gardé, même un choix manuel.
+    async refreshSoundtrack(key: string, titles: string[]): Promise<SoundtrackOutcome> {
+      if (!(await session.isLinked())) return { listen: null };
+      let listen: Listen | null;
+      try {
+        listen = await resolveSoundtrack(api, titles);
+      } catch (error) {
+        return { listen: null, message: userMessage(error) };
+      }
+      await soundtracks.save(key, listen).catch((error: unknown) => console.warn('[wikimasters-tools]', 'bande originale non gardée :', error));
+      return { listen };
+    },
+
+    // Le pop-up BO (onglet Manuel) : ce que Spotify propose (albums, playlists) pour le texte saisi.
+    async searchSoundtracks(query: string): Promise<SoundtrackSearch> {
+      try {
+        return { choices: await searchSoundtracks(api, query) };
+      } catch (error) {
+        return { choices: [], message: userMessage(error) };
+      }
+    },
+
+    // Garde le résultat choisi comme BO de ce film (il remplace la recherche automatique).
+    async chooseSoundtrack(key: string, choice: SoundtrackChoice): Promise<SoundtrackOutcome> {
+      let listen: Listen | null;
+      try {
+        listen = await listenOfChoice(api, choice);
+      } catch (error) {
+        return { listen: null, message: userMessage(error) };
+      }
+      if (!listen) return { listen: null, message: 'Cet album est vide.' };
+      await soundtracks.save(key, listen).catch((error: unknown) => console.warn('[wikimasters-tools]', 'bande originale non gardée :', error));
+      return { listen };
+    },
+
+    // Spotify sait chercher à la main (onglet Manuel du pop-up BO).
+    manualSoundtrack: true as boolean,
+
     // Lance une piste ; rend null si tout va bien, sinon le message à afficher.
     // `card` : la carte dont la fiche propose cette lecture (le lecteur en offre ensuite la fiche).
-    async play(item: Track, listen: Listen, card?: PlayerCard): Promise<string | null> {
+    async play(item: Track | null, listen: Listen, card?: PlayerCard): Promise<string | null> {
       // Hors album : on envoie la suite de la liste pour que Spotify enchaîne les titres.
-      const from = Math.max(0, listen.items.findIndex((candidate) => candidate.uri === item.uri));
-      const target = listen.albumUri
-        ? { contextUri: listen.albumUri, offsetUri: item.uri }
-        : { uris: listen.items.length > 0 ? listen.items.slice(from).map((candidate) => candidate.uri) : [item.uri] };
+      // `item` null : le contexte (playlist sans liste de pistes) se lit depuis le début.
+      const from = Math.max(0, listen.items.findIndex((candidate) => candidate.uri === item?.uri));
+      const target: Parameters<typeof api.play>[0] = listen.albumUri
+        ? { contextUri: listen.albumUri, ...(item ? { offsetUri: item.uri } : {}) }
+        : { uris: listen.items.length > 0 ? listen.items.slice(from).map((candidate) => candidate.uri) : item ? [item.uri] : [] };
       try {
         try {
           await api.play(target);

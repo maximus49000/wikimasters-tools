@@ -26,6 +26,7 @@ function setup(over: Over = {}) {
     searchTracks: vi.fn(async () => []),
     searchAlbum: vi.fn(async () => null),
     searchAlbums: vi.fn(async () => [{ id: 'OST', name: 'Inception (Original Motion Picture Soundtrack)', artist: 'Hans Zimmer' }]),
+    searchPlaylists: vi.fn(async () => [] as { id: string; name: string; owner: string }[]),
     albumTracks: vi.fn(async () => [{ uri: 'spotify:track:1', title: 'Come Together', artist: 'The Beatles' }]),
     play: vi.fn(async () => undefined),
     pause: vi.fn(async () => undefined),
@@ -93,6 +94,52 @@ describe('createMusicService.soundtrack', () => {
     const { service, api } = setup({ linked: false });
     expect(await service.soundtrack('movie:27205', ['Inception'])).toBeNull();
     expect(api.searchAlbums).not.toHaveBeenCalled();
+  });
+});
+
+describe('createMusicService : réglage de la BO (pop-up)', () => {
+  it('refreshSoundtrack relance la recherche malgré ce qui était gardé, et remplace', async () => {
+    const { service, api } = setup();
+    api.searchAlbums.mockResolvedValueOnce([]);
+    expect(await service.soundtrack('movie:1', ['Inception'])).toBeNull();
+    const outcome = await service.refreshSoundtrack('movie:1', ['Inception']);
+    expect(outcome.listen).toMatchObject({ albumUri: 'spotify:album:OST' });
+    expect(await service.soundtrack('movie:1', ['Inception'])).toEqual(outcome.listen);
+  });
+
+  it('refreshSoundtrack : une erreur rend un message et ne touche pas à ce qui était gardé', async () => {
+    const { service, api } = setup();
+    const kept = await service.soundtrack('movie:1', ['Inception']);
+    api.searchAlbums.mockRejectedValueOnce(new SpotifyError('rate-limited', 'limite', 5000, Date.now() + 5000));
+    const outcome = await service.refreshSoundtrack('movie:1', ['Inception']);
+    expect(outcome.listen).toBeNull();
+    expect(outcome.message).toBeTruthy();
+    expect(await service.soundtrack('movie:1', ['Inception'])).toEqual(kept);
+  });
+
+  it('searchSoundtracks rend albums et playlists, ou un message en cas d’erreur', async () => {
+    const { service, api } = setup();
+    api.searchPlaylists.mockResolvedValueOnce([{ id: 'P', name: 'BO Nos jours Heureux', owner: 'Léa' }]);
+    const found = await service.searchSoundtracks('nos jours heureux');
+    expect(found.choices.map((choice) => choice.kind)).toEqual(['album', 'playlist']);
+    api.searchAlbums.mockRejectedValueOnce(new SpotifyError('http', 'oups'));
+    expect(await service.searchSoundtracks('x')).toMatchObject({ choices: [], message: expect.any(String) });
+  });
+
+  it('chooseSoundtrack garde le choix (playlist sans appel de pistes) et play la lance par son contexte', async () => {
+    const { service, api } = setup();
+    const outcome = await service.chooseSoundtrack('movie:1', { kind: 'playlist', id: 'P', name: 'BO Nos jours Heureux', by: 'Léa' });
+    expect(outcome.listen).toMatchObject({ albumUri: 'spotify:playlist:P', items: [] });
+    expect(api.albumTracks).not.toHaveBeenCalled();
+    expect(await service.soundtrack('movie:1', ['Autre titre'])).toEqual(outcome.listen);
+    expect(await service.play(null, outcome.listen!)).toBeNull();
+    expect(api.play).toHaveBeenCalledWith({ contextUri: 'spotify:playlist:P' });
+  });
+
+  it('chooseSoundtrack : un album vide n’est pas gardé', async () => {
+    const { service, api } = setup();
+    api.albumTracks.mockResolvedValueOnce([]);
+    expect(await service.chooseSoundtrack('movie:1', { kind: 'album', id: 'A', name: 'Vide', by: 'X' })).toMatchObject({ listen: null, message: expect.any(String) });
   });
 });
 

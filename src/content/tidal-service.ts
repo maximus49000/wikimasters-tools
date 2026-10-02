@@ -8,6 +8,7 @@ import { resolveTidalListen, type TidalSearch } from '../core/tidal/tidal-listen
 import { resolveTidalSoundtrack } from '../core/tidal/tidal-soundtrack';
 import type { TidalSession } from '../core/tidal/tidal-session';
 import { createListenViewer } from './listen-viewer';
+import type { SoundtrackOutcome, SoundtrackSearch } from './music-service';
 
 export type TidalServiceDeps = {
   collection: { list(): Promise<KnownCard[]> };
@@ -55,10 +56,26 @@ export function createTidalService(deps: TidalServiceDeps) {
       await soundtracks.save(key, listen).catch((error: unknown) => console.warn('[wikimasters-tools]', 'bande originale non gardée :', error));
       return listen;
     },
+    // Le pop-up BO (onglet Auto) : relance la recherche et remplace ce qui était gardé.
+    async refreshSoundtrack(key: string, titles: string[]): Promise<SoundtrackOutcome> {
+      if (!(await session.isLinked())) return { listen: null };
+      let listen: Listen | null;
+      try {
+        listen = await resolveTidalSoundtrack(api, titles);
+      } catch (error) {
+        return { listen: null, message: tidalMessage(error) };
+      }
+      await soundtracks.save(key, listen).catch((error: unknown) => console.warn('[wikimasters-tools]', 'bande originale non gardée :', error));
+      return { listen };
+    },
+    // Pas de recherche à la main pour Tidal : le pop-up n'affiche que l'onglet Auto.
+    manualSoundtrack: false as boolean,
+    searchSoundtracks: async (_query?: string): Promise<SoundtrackSearch> => ({ choices: [] }),
+    chooseSoundtrack: async (_key?: string, _choice?: unknown): Promise<SoundtrackOutcome> => ({ listen: null }),
     // Rien ne joue dans l'appli pour Tidal : aucune carte n'est « en cours ».
     playingSlugs: async (_cards?: unknown, _track?: unknown): Promise<Set<string>> => new Set<string>(),
     // Pas de lecture dans l'appli pour l'instant : le lien ↗ de chaque piste ouvre Tidal.
-    play: async (): Promise<string | null> => 'Utilise le lien pour écouter sur Tidal.',
+    play: async (_item?: unknown, _listen?: unknown, _card?: unknown): Promise<string | null> => 'Utilise le lien pour écouter sur Tidal.',
     async link(): Promise<string | null> {
       try {
         await session.link();

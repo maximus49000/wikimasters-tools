@@ -79,3 +79,14 @@ describe('sortModeOf', () => {
     expect(sortModeOf("Date d'ajout")).toBe('added');
   });
 });
+
+describe('clic sur « Prix de vente décroissant »', () => {
+  it('pose le tri par prix même après le clic de rareté', async () => {
+    mount();
+    const source = createSortSource();
+    syncPriceSort(document, true, source);
+    priceButton()?.click();
+    await Promise.resolve();
+    expect(source.current()).toBe('price');
+  });
+});
