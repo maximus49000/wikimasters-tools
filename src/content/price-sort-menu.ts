@@ -82,10 +82,22 @@ export function syncPriceSort(root: ParentNode, enabled: boolean, source: SortSo
     null;
   const text = lastText(trigger);
 
-  if (!enabled || !list) {
+  if (!enabled) {
     list?.querySelector(`[${PRICE_SORT_ATTRIBUTE}]`)?.remove();
     if (source.current() === 'price') source.set('rarity');
     if (text?.nodeValue === PRICE_LABEL) text.nodeValue = trigger.getAttribute(REMEMBERED) ?? 'Rareté';
+    return;
+  }
+
+  // Liste refermée (le site la retire du DOM dès qu'une entrée est choisie) : le tri choisi reste, seul le libellé du
+  // bouton est tenu à jour. Remettre « rareté » ici défaisait le choix du prix aussitôt posé.
+  if (!list) {
+    if (text && source.current() === 'price' && text.nodeValue !== PRICE_LABEL) {
+      trigger.setAttribute(REMEMBERED, text.nodeValue?.trim() || 'Rareté');
+      text.nodeValue = PRICE_LABEL;
+    } else if (text && source.current() !== 'price' && text.nodeValue === PRICE_LABEL) {
+      text.nodeValue = trigger.getAttribute(REMEMBERED) ?? 'Rareté';
+    }
     return;
   }
 
