@@ -1,3 +1,4 @@
+import type { Platform, PlatformSetting } from '../core/music/platform';
 import type { MusicService } from './music-service';
 import type { PlayerSource } from './player-source';
 
@@ -16,3 +17,12 @@ export const setPlayerSource = (next: PlayerSource | null): void => {
   player = next;
 };
 export const getPlayerSource = (): PlayerSource | null => player;
+
+// Les plateformes d'écoute fournies par cette installation et celle qui est choisie : le réglage « Lecteur » en fait un sélecteur dès qu'il y en a deux.
+export type PlatformChoice = { available: readonly Platform[]; setting: PlatformSetting };
+let platformChoice: PlatformChoice | null = null;
+
+export const setPlatformChoice = (next: PlatformChoice | null): void => {
+  platformChoice = next;
+};
+export const getPlatformChoice = (): PlatformChoice | null => platformChoice;

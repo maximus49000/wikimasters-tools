@@ -42,7 +42,8 @@ import { createSpotifyApi } from '../core/spotify/spotify-api';
 import { createSpotifySession } from '../core/spotify/spotify-session';
 import type { SpotifyEnv } from '../core/spotify/transport';
 import { createMusicService } from '../content/music-service';
-import { getMusicService, getPlayerSource, setMusicService, setPlayerSource } from '../content/music-registry';
+import { getMusicService, getPlayerSource, setMusicService, setPlatformChoice, setPlayerSource } from '../content/music-registry';
+import { createPlatformSetting } from '../core/music/platform';
 import { createPlayerSource } from '../content/player-source';
 import { mountSpotifyPlayer } from '../content/mount-player';
 import { openCardInPage } from '../content/open-card';
@@ -328,6 +329,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         }),
       );
       setPlayerSource(player);
+      // Une seule plateforme pour l'instant : le sélecteur reste caché ; Tidal l'ajoutera à `available`.
+      setPlatformChoice({ available: ['spotify'], setting: createPlatformSetting(window.localStorage) });
       mountSpotifyPlayer(player, openPlayerCard);
       player.start();
     } catch (error) {

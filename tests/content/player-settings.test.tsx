@@ -3,7 +3,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlayerSettings } from '../../src/content/PlayerSettings';
-import { setMusicService } from '../../src/content/music-registry';
+import { setMusicService, setPlatformChoice } from '../../src/content/music-registry';
+import { createPlatformSetting } from '../../src/core/music/platform';
 import type { MusicService } from '../../src/content/music-service';
 import type { PlayerSource, PlayerView } from '../../src/content/player-source';
 
@@ -62,6 +63,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   setMusicService(null);
+  setPlatformChoice(null);
 });
 
 describe('PlayerSettings, compte Spotify', () => {
@@ -139,5 +141,34 @@ describe('PlayerSettings, compte Spotify', () => {
     expect(byLabel('Lier Spotify')).toBeNull();
     expect(byLabel('Délier Spotify')).toBeNull();
     expect(text()).not.toContain('Compte Spotify');
+  });
+});
+
+describe('PlayerSettings, plateforme', () => {
+  const memory = () => {
+    const data = new Map<string, string>();
+    return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value) };
+  };
+  const group = () => container.querySelector('[aria-label="Plateforme d’écoute"]');
+
+  it("n'affiche aucun sélecteur quand une seule plateforme existe", async () => {
+    serve();
+    setPlatformChoice({ available: ['spotify'], setting: createPlatformSetting(memory()) });
+    await render(makeSource(false).source);
+    expect(group()).toBeNull();
+    expect(byLabel('Lier Spotify')).not.toBeNull();
+  });
+
+  it('propose les plateformes disponibles, mémorise le choix et en suit le nom', async () => {
+    serve();
+    const setting = createPlatformSetting(memory());
+    setPlatformChoice({ available: ['spotify', 'tidal'], setting });
+    await render(makeSource(false).source);
+    expect(group()).not.toBeNull();
+    const tidal = [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Plateforme d’écoute"] button')].find((button) => button.textContent === 'Tidal');
+    await press(tidal ?? null);
+    expect(setting.current()).toBe('tidal');
+    expect(text()).toContain('Compte Tidal : non lié');
+    expect(byLabel('Lier Tidal')).not.toBeNull();
   });
 });
