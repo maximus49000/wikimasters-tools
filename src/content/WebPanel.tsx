@@ -7,6 +7,7 @@ import { EMPTY_LINKS, needsLinksLookup, type LinksState } from '../core/links/li
 import type { LinksRepo } from '../core/links/links-repo';
 import { CARD_SIZE, buildWeb, cardId, hubId, hubRadius, neighborhood, webEdges, webNodes, type Focus, type WebGraph } from '../core/links/web-graph';
 import { chooseLabels, shortTitle } from '../core/links/web-labels';
+import { withPath } from '../core/links/web-path-graph';
 import { createLayout, samePositions, type Point } from '../core/links/web-layout';
 import { ZOOM_STEP, boundsOf, fitTransform, pinch, placeActions, zoomAt, type Transform } from '../core/links/web-view';
 import type { CollectionFilterSource } from './collection-filter';
@@ -14,6 +15,7 @@ import { getImageService } from './image-registry';
 import type { KindFilterSource } from './kind-filter';
 import { createThrottledLoader } from './throttle';
 import { useFilteredCards } from './useFilteredCards';
+import { WebPathBar } from './WebPathBar';
 
 type Props = {
   collection: CollectionRepo;
@@ -34,6 +36,8 @@ const RETRY_MS = 30_000;
 const SLICE_MS = 12;
 // Pendant le calcul, la toile est redessinée au plus toutes les 300 ms.
 const PUBLISH_MS = 300;
+// Les articles que la recherche d'une liaison a ajoutés à la toile.
+const ADDED_COLOR = '#f59e0b';
 // Au-delà de cette distance (px), un doigt ou une souris qui bouge déplace la toile au lieu de toucher un nœud.
 const DRAG_SLOP = 5;
 const FADED = 0.2;
@@ -104,10 +108,11 @@ type GraphProps = {
 const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit, images, labelled, imageOf, onCard, onHub }: GraphProps) {
   const opacityOf = (id: string) => (lit && !lit.has(id) ? FADED : 1);
   const edge = (key: string, a: string, b: string, dashed: boolean) => {
+    const route = graph.path?.edges.has(`${a}\u0000${b}`) ?? false;
     const from = positions[a];
     const to = positions[b];
     if (!from || !to) return null;
-    const on = focusId === a || focusId === b;
+    const on = route || focusId === a || focusId === b;
     return (
       <line
         key={key}
@@ -117,7 +122,7 @@ const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit
         y2={to.y}
         strokeDasharray={dashed ? '4 3' : undefined}
         stroke={on ? 'var(--color-accent, #34d399)' : 'rgba(148,163,184,0.45)'}
-        strokeWidth={1}
+        strokeWidth={route ? 3 : 1}
         style={{ ...hairline, opacity: lit ? (on ? 1 : 0.06) : 1 }}
       />
     );
@@ -126,6 +131,7 @@ const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit
     <>
       {graph.hubs.flatMap((hub) => hub.cards.map((slug) => edge(`${hub.slug}\u0000${slug}`, hubId(hub.slug), cardId(slug), false)))}
       {graph.cardLinks.map(([first, second]) => edge(`${first}\u0000${second}`, cardId(first), cardId(second), true))}
+      {(graph.hubLinks ?? []).map(([first, second]) => edge(`h${first}\u0000${second}`, hubId(first), hubId(second), true))}
       {graph.hubs.map((hub) => {
         const point = positions[hubId(hub.slug)];
         if (!point) return null;
@@ -145,7 +151,7 @@ const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit
             <title>{`${hub.title} · ${hub.cards.length} cartes`}</title>
             <g style={nodeScale}>
               <circle r={Math.max(radius + 6, 12)} fill="transparent" />
-              <circle r={radius} fill="var(--color-hub, #8b949e)" stroke="var(--color-surface, #0d1117)" strokeWidth={1.5} style={hairline} />
+              <circle r={radius} fill={graph.path?.added.has(hubId(hub.slug)) ? ADDED_COLOR : 'var(--color-hub, #8b949e)'} stroke="var(--color-surface, #0d1117)" strokeWidth={1.5} style={hairline} />
             </g>
             {named && (
               <g style={labelAt(-radius)}>
@@ -208,6 +214,8 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   const [focus, setFocus] = useState<Focus | null>(null);
   // La carte touchée : ses boutons d'ouverture sont posés au-dessus d'elle, la toile reste entièrement visible.
   const [picked, setPicked] = useState<string | null>(null);
+  // La liaison cherchée entre deux cartes (slugs, de A à B) : ses articles s'ajoutent à la toile.
+  const [path, setPath] = useState<string[] | null>(null);
   // null : la toile est cadrée toute seule (elle grandit pendant la lecture) ; sinon, le zoom et le glissement de l'utilisateur.
   const [view, setView] = useState<Transform | null>(null);
   const [size, setSize] = useState({ width: 1000, height: 700 });
@@ -251,7 +259,14 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
     return () => window.clearInterval(timer);
   }, [missing, links]);
 
-  const graph = useMemo(() => buildWeb(cards, linksState, visible), [cards, linksState, visible]);
+  const graph = useMemo(() => {
+    const web = buildWeb(cards, linksState, visible);
+    return path ? withPath(web, cards, linksState, path) : web;
+  }, [cards, linksState, visible, path]);
+  // Une liaison trouvée : la toile est recadrée pour la montrer en entier.
+  useEffect(() => {
+    if (path) setView(null);
+  }, [path]);
 
   // Le placement se calcule par petites tranches (la page reste fluide) et repart du précédent : la toile se complète sans tout rebattre.
   const previous = useRef<Record<string, Point>>({});
@@ -369,7 +384,8 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
 
   const lighting = useMemo(() => {
     const active: Focus | null = picked ? { kind: 'card', slug: picked } : focus;
-    return active ? neighborhood(graph, active) : null;
+    if (active) return neighborhood(graph, active);
+    return graph.path ? { focusId: null, lit: graph.path.ids } : null;
   }, [graph, focus, picked]);
 
   // Échap referme la barre d'actions.
@@ -403,6 +419,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
 
   return (
     <div data-wmt-web="" style={{ ...box, padding: 12, margin: '12px 0' }}>
+      <WebPathBar cards={cards} links={links} onPath={setPath} />
       <div style={{ position: 'relative', height: '70vh', minHeight: 420, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--color-border, rgba(148,163,184,0.25))' }}>
         <svg
           ref={svgRef}

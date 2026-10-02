@@ -33,7 +33,7 @@ const IGNORED = new Set(
     'Rolling Stone',
   ].map(titleToSlug),
 );
-const isIgnored = (slug: string): boolean => IGNORED.has(slug) || /^API_.{1,2}$/.test(slug);
+export const isIgnored = (slug: string): boolean => IGNORED.has(slug) || /^API_.{1,2}$/.test(slug);
 
 export type WebHub = { slug: string; title: string; cards: string[] };
 export type WebGraph = {
@@ -44,6 +44,10 @@ export type WebGraph = {
   cardLinks: [string, string][];
   // Points partagés non affichés à cause de la limite.
   hiddenHubs: number;
+  // Deux points qui se citent (articles d'un chemin cherché entre deux cartes) : paires de slugs triées.
+  hubLinks?: [string, string][];
+  // Le chemin cherché entre deux cartes : identifiants des nœuds, des traits (dans les deux sens) et des articles que la recherche a ajoutés.
+  path?: { ids: Set<string>; edges: Set<string>; added: Set<string> };
 };
 
 export const cardId = (slug: string): string => `c:${slug}`;
@@ -126,6 +130,7 @@ export function webEdges(graph: WebGraph): [string, string][] {
   return [
     ...graph.hubs.flatMap((hub) => hub.cards.map((slug): [string, string] => [hubId(hub.slug), cardId(slug)])),
     ...graph.cardLinks.map(([a, b]): [string, string] => [cardId(a), cardId(b)]),
+    ...(graph.hubLinks ?? []).map(([a, b]): [string, string] => [hubId(a), hubId(b)]),
   ];
 }
 

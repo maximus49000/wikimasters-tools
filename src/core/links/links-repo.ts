@@ -11,6 +11,12 @@ const COOLDOWN_MS = 60_000;
 export const BATCH_SIZE = 50;
 // Requêtes en même temps. Peu importe : 45 requêtes tiennent en dix secondes à un seul lecteur.
 export const CONCURRENCY = 2;
+// Marge sous le quota de Wikipédia (200 requêtes par minute d'horloge et par IP) : la lecture de fond et les recherches de liaison
+// partagent ce budget, glissant sur une minute. Une requête de plus aurait un 429 pour réponse, et tout serait refusé jusqu'à la minute suivante.
+export const MAX_REQUESTS_PER_MINUTE = 120;
+const WINDOW_MS = 60_000;
+// Poids, en requêtes, d'une lecture des articles qui en citent d'autres (jusqu'à 3 requêtes pour un lot).
+const BACKLINK_WEIGHT = 3;
 
 // Les liens de l'introduction de plusieurs articles (slugs, au plus BATCH_SIZE), par article.
 export type LinksFetcher = (slugs: string[]) => Promise<Record<string, string[]>>;
@@ -23,6 +29,7 @@ export function createLinksRepo(
   sleep: (ms: number) => Promise<void> = realSleep,
   gapMs = 150,
   now: () => number = () => Date.now(),
+  fetchBacklinks?: LinksFetcher,
 ) {
   // Écritures sérialisées ; lectures Wikipédia regroupées en un seul parcours à la fois.
   let writeTail: Promise<unknown> = Promise.resolve();
@@ -33,6 +40,19 @@ export function createLinksRepo(
   const notify = () => {
     for (const listener of listeners) listener();
   };
+
+  // Dates des requêtes de la dernière minute ; `paced` attend qu'il y ait de la place avant d'en lancer une.
+  const sent: number[] = [];
+  async function paced(weight = 1): Promise<void> {
+    for (;;) {
+      const t = now();
+      while (sent.length > 0 && (sent[0] as number) <= t - WINDOW_MS) sent.shift();
+      if (sent.length + weight <= MAX_REQUESTS_PER_MINUTE) break;
+      await sleep(Math.max(50, (sent[0] ?? t) + WINDOW_MS - t));
+    }
+    const t = now();
+    for (let i = 0; i < weight; i++) sent.push(t);
+  }
 
   async function read(): Promise<LinksState> {
     return (await store.get<LinksState>(KEY)) ?? EMPTY_LINKS;
@@ -84,6 +104,7 @@ export function createLinksRepo(
           if (!first) await sleep(gapMs);
           first = false;
           try {
+            await paced();
             const fetched = await fetchLinks(batch);
             // Chaque lot est écrit dès qu'il est lu, sans attendre l'autre lecteur.
             writes.push(
@@ -127,6 +148,25 @@ export function createLinksRepo(
     load,
     // Vrai pendant la pause qui suit un échec : la vue le signale.
     failed: (): boolean => failedAt !== undefined && now() - failedAt < COOLDOWN_MS,
+    // Lit tout de suite et dans l'ordre les articles qu'on n'a pas encore (recherche de liaison) : un lot de 50 par requête, au rythme du
+    // budget partagé. Lève si Wikipédia échoue ; les lots déjà lus restent enregistrés.
+    async readNow(slugs: string[], cancelled: () => boolean = () => false): Promise<LinksState> {
+      const known = await load();
+      const wanted = [...new Set(slugs)].filter((slug) => needsLinksLookup(known, slug, now()));
+      for (let from = 0; from < wanted.length && !cancelled(); from += BATCH_SIZE) {
+        await paced();
+        if (cancelled()) break;
+        const fetched = await fetchLinks(wanted.slice(from, from + BATCH_SIZE));
+        await update((latest) => setLinks(latest, fetched, now()));
+      }
+      return load();
+    },
+    // Les articles qui citent chacun des articles donnés, pour chercher une liaison depuis l'arrivée. Non mémorisé.
+    async citers(slugs: string[]): Promise<Record<string, string[]>> {
+      if (!fetchBacklinks) return {};
+      await paced(BACKLINK_WEIGHT);
+      return fetchBacklinks(slugs);
+    },
     resolveMissing(slugs: string[]): Promise<void> {
       if (failedAt !== undefined && now() - failedAt < COOLDOWN_MS) return current ?? Promise.resolve();
       for (const slug of slugs) pending.add(slug);
