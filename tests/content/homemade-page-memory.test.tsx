@@ -71,6 +71,7 @@ async function mount() {
         pages={pages}
         selection={createSelectionSource()}
         onToggleCard={vi.fn()}
+        onLongPressCard={vi.fn()}
       />,
     );
   });

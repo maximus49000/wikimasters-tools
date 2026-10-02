@@ -26,13 +26,14 @@ import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
 import { createPageMemory } from './page-memory';
 import { createPathRequestSource, createSelectionSource, type SelectedCard } from './selection-source';
-import { ensureWebAction, isSelecting, quitSelection, readNativeCards, removeWebAction, type NativeCard } from './selection-dom';
+import { ensureTradeAction, ensureWebAction, isSelecting, quitSelection, readNativeCards, removeWebAction, type NativeCard } from './selection-dom';
 import { RecountGate } from './RecountGate';
 import { createRecountSource } from './recount-source';
 import type { MarketSource } from './market-source';
 import { TimelinePanel } from './TimelinePanel';
 import { syncPriceSort } from './price-sort-menu';
 import type { SortSource } from './sort-source';
+import { startTradeFlow } from './trade-flow';
 import { WebPanel } from './WebPanel';
 import { PANEL_CSS, WorldPanel } from './WorldPanel';
 import { ensureViewSwitch } from './world-toggle';
@@ -98,7 +99,22 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
     readNative();
   };
 
-  // Le bouton Toile de la barre du site : actif avec exactement deux cartes cochées, en vue Homemade seulement.
+  // Appui long sur une carte : le mode « Sélectionner » du site s'ouvre (sa case ne se coche qu'une fois le mode actif) puis la carte est cochée.
+  const startSelectionWith = (card: SelectedCard): void => {
+    if (selection.snapshot().selecting) return toggleCard(card);
+    findSelectButton(document)?.click();
+    let tries = 0;
+    const wait = (): void => {
+      if (isSelecting(document)) {
+        selection.setSelecting(true);
+        readNative();
+        if (!selection.snapshot().cards.has(card.slug)) toggleCard(card);
+      } else if (++tries < 20) window.setTimeout(wait, 50);
+    };
+    wait();
+  };
+
+  // Les boutons Toile (exactement deux cartes cochées) et Échanger avec un ami (au moins une) de la barre du site, en vue Homemade seulement.
   function syncWebAction(): void {
     const { selecting, cards } = selection.snapshot();
     if (!selecting || readView(window.localStorage) !== 'homemade') return removeWebAction(document);
@@ -109,6 +125,12 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
       quitSelection(document);
       writeView(window.localStorage, 'web');
       sync();
+    });
+    ensureTradeAction(document, cards.size >= 1, () => {
+      const titles = [...selection.snapshot().cards.values()];
+      if (titles.length === 0) return;
+      quitSelection(document);
+      startTradeFlow(titles);
     });
   }
   selection.subscribe(syncWebAction);
@@ -145,7 +167,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
         ) : view === 'web' ? (
           <WebPanel {...common} links={links} kinds={kinds} kindFilterSource={kindFilterSource} request={pathRequest.take()} />
         ) : (
-          <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} selection={selection} onToggleCard={toggleCard} />
+          <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} selection={selection} onToggleCard={toggleCard} onLongPressCard={startSelectionWith} />
         )}
       </RecountGate>,
     );
