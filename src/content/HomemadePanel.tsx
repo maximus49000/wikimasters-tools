@@ -13,6 +13,7 @@ import type { CollectionFilterSource } from './collection-filter';
 import type { KindFilterSource } from './kind-filter';
 import type { MarketSource } from './market-source';
 import type { PageMemory } from './page-memory';
+import type { SelectedCard, SelectionSource } from './selection-source';
 import type { SortSource } from './sort-source';
 import { createThrottledLoader } from './throttle';
 import { useKindState } from './useKindState';
@@ -41,6 +42,9 @@ type Props = {
   onWantCards: (cards: KnownCard[]) => void;
   // Page affichée pour chaque sélection de filtres, gardée d'une montée de la vue à la suivante.
   pages: PageMemory;
+  // Cartes cochées dans le mode « Sélectionner » du site, et la façon de cocher ou décocher une carte.
+  selection: SelectionSource;
+  onToggleCard: (card: SelectedCard) => void;
 };
 
 // Taille de la carte construite par `buildCardPreview` (voir `.wmt-card` dans PANEL_CSS).
@@ -76,7 +80,37 @@ function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (
 }
 
 // La carte du jeu, réduite pour remplir sa colonne (la largeur est mesurée : 2 colonnes sur écran étroit).
-function CardTile({ preview, onPick }: { preview: CardPreview; onPick: () => void }) {
+// Case de sélection, au coin de la carte comme celle du site.
+function Checkbox({ checked }: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        zIndex: 1,
+        width: 24,
+        height: 24,
+        boxSizing: 'border-box',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 6,
+        border: `2px solid ${checked ? 'var(--color-accent, #34d399)' : 'rgba(255,255,255,0.7)'}`,
+        background: checked ? 'var(--color-accent, #34d399)' : 'rgba(0,0,0,0.6)',
+        color: '#fff',
+        font: '700 15px/1 system-ui, sans-serif',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.5)',
+        pointerEvents: 'none',
+      }}
+    >
+      {checked ? '✓' : ''}
+    </span>
+  );
+}
+
+function CardTile({ preview, selecting, checked, onPick }: { preview: CardPreview; selecting: boolean; checked: boolean; onPick: () => void }) {
   const wrapRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
@@ -100,6 +134,7 @@ function CardTile({ preview, onPick }: { preview: CardPreview; onPick: () => voi
       ref={wrapRef}
       type="button"
       aria-label={preview.title}
+      {...(selecting ? { role: 'checkbox', 'aria-checked': checked } : {})}
       onClick={onPick}
       style={{
         position: 'relative',
@@ -112,12 +147,14 @@ function CardTile({ preview, onPick }: { preview: CardPreview; onPick: () => voi
         cursor: 'pointer',
         overflow: 'hidden',
         borderRadius: 16,
+        ...(checked ? { outline: '3px solid var(--color-accent, #34d399)', outlineOffset: -3 } : {}),
       }}
     >
       <div
         ref={cardRef}
         style={{ position: 'absolute', left: 0, top: 0, width: CARD_WIDTH, height: CARD_HEIGHT, transformOrigin: '0 0', transform: `scale(${scale})`, pointerEvents: 'none' }}
       />
+      {selecting && <Checkbox checked={checked} />}
     </button>
   );
 }
@@ -136,6 +173,8 @@ export function HomemadePanel({
   onOpenCard,
   onWantCards,
   pages,
+  selection,
+  onToggleCard,
 }: Props) {
   // Remontée de la vue (le jeu remplace sa grille à la fermeture d'une fiche) : cartes et scan sont repris tels quels.
   const [cards, setCards] = useState<KnownCard[]>(() => collection.snapshot() ?? []);
@@ -165,6 +204,7 @@ export function HomemadePanel({
   const sort = useSyncExternalStore(sortSource.subscribe, sortSource.current);
   // Tri choisi dans la liste du site, hors rareté (Nom, Favoris, Date d'ajout).
   const siteSort = useSyncExternalStore(filterSource.subscribe, filterSource.sort);
+  const { selecting, cards: checkedCards } = useSyncExternalStore(selection.subscribe, selection.snapshot);
   const marketNow = useSyncExternalStore(market.subscribe, market.snapshot);
   const list = useMemo(
     () =>
@@ -206,7 +246,15 @@ export function HomemadePanel({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
         {current.items.map((card, index) => {
           const preview = previews[index];
-          return preview ? <CardTile key={card.slug} preview={preview} onPick={() => onOpenCard(card.slug)} /> : null;
+          return preview ? (
+            <CardTile
+              key={card.slug}
+              preview={preview}
+              selecting={selecting}
+              checked={selecting && checkedCards.has(card.slug)}
+              onPick={() => (selecting ? onToggleCard({ slug: card.slug, title: card.title }) : onOpenCard(card.slug))}
+            />
+          ) : null;
         })}
       </div>
       {current.items.length === 0 && (

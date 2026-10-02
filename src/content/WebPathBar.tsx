@@ -5,12 +5,15 @@ import type { LinksRepo } from '../core/links/links-repo';
 import { matchCards } from '../core/links/card-match';
 import { MAX_LEVELS, MAX_READS, findPath, type PathProgress } from '../core/links/web-path';
 import { slugToTitle } from '../core/market/market-book';
+import type { PathRequest } from './selection-source';
 
 type Props = {
   cards: KnownCard[];
   links: LinksRepo;
   // Le chemin trouvé (slugs, de A à B), ou null quand on l'efface.
   onPath: (path: string[] | null) => void;
+  // Deux cartes déjà choisies (bouton Toile de la sélection) : les champs en sont remplis et la recherche part aussitôt.
+  initial?: PathRequest | null;
 };
 
 type Choice = { text: string; slug: string | null };
@@ -119,15 +122,21 @@ function CardPicker({ label, cards, value, onChange, onSubmit }: { label: string
 }
 
 // Les deux champs, le bouton qui lance la recherche et son avancement. La recherche tourne tant qu'on ne l'annule pas.
-export function WebPathBar({ cards, links, onPath }: Props) {
-  const [from, setFrom] = useState<Choice>(EMPTY);
-  const [to, setTo] = useState<Choice>(EMPTY);
+export function WebPathBar({ cards, links, onPath, initial = null }: Props) {
+  const [from, setFrom] = useState<Choice>(initial ? { text: initial.from.title, slug: initial.from.slug } : EMPTY);
+  const [to, setTo] = useState<Choice>(initial ? { text: initial.to.title, slug: initial.to.slug } : EMPTY);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<PathProgress | null>(null);
   const [message, setMessage] = useState('');
   // Numéro de la recherche en cours : lancer, annuler ou quitter la vue rend les précédentes caduques.
   const run = useRef(0);
   useEffect(() => () => void (run.current += 1), []);
+
+  // Une seule fois, à l'ouverture de la vue : les champs viennent d'être remplis, la recherche peut partir.
+  useEffect(() => {
+    if (initial) void start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const titleOf = (slug: string) => cards.find((card) => card.slug === slug)?.title ?? slugToTitle(slug);
   const ready = from.slug !== null && to.slug !== null && from.slug !== to.slug;

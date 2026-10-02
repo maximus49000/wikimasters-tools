@@ -16,6 +16,7 @@ import type { KindFilterSource } from './kind-filter';
 import { createThrottledLoader } from './throttle';
 import { useFilteredCards } from './useFilteredCards';
 import { WebPathBar } from './WebPathBar';
+import type { PathRequest } from './selection-source';
 
 type Props = {
   collection: CollectionRepo;
@@ -29,6 +30,8 @@ type Props = {
   onOpen: (slug: string) => void;
   // La carte elle-même, dans la Collection du jeu.
   onOpenCard: (slug: string) => void;
+  // Deux cartes cochées dans Homemade : leur liaison est cherchée dès l'ouverture.
+  request?: PathRequest | null;
 };
 
 const RETRY_MS = 30_000;
@@ -208,7 +211,7 @@ const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit
   );
 });
 
-export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, filterSource, loadFiltered, onOpen, onOpenCard }: Props) {
+export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, filterSource, loadFiltered, onOpen, onOpenCard, request = null }: Props) {
   const { cards, visible, filtering, filterError } = useFilteredCards({ collection, scanner, kinds, kindFilterSource, filterSource, loadFiltered });
   const [linksState, setLinksState] = useState<LinksState>(EMPTY_LINKS);
   const [focus, setFocus] = useState<Focus | null>(null);
@@ -471,7 +474,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
 
   return (
     <div data-wmt-web="" style={{ ...box, padding: 12, margin: '12px 0' }}>
-      <WebPathBar cards={cards} links={links} onPath={setPath} />
+      <WebPathBar cards={cards} links={links} onPath={setPath} initial={request} />
       <div style={{ position: 'relative', height: '70vh', minHeight: 420, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--color-border, rgba(148,163,184,0.25))' }}>
         <svg
           ref={svgRef}
