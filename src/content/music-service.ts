@@ -4,6 +4,7 @@ import { resolveListen, sameTrack, type Listen } from '../core/music/listen';
 import type { ListenRepo } from '../core/music/listen-repo';
 import { musicKindOf } from '../core/music/music-kinds';
 import type { MusicRepo } from '../core/music/music-repo';
+import { resolveSoundtrack } from '../core/music/soundtrack';
 import { SpotifyError, userMessage } from '../core/spotify/errors';
 import type { SpotifyApi, Track } from '../core/spotify/spotify-api';
 import type { SpotifySession } from '../core/spotify/spotify-session';
@@ -18,8 +19,10 @@ export type MusicServiceDeps = {
   music: Pick<MusicRepo, 'resolve'>;
   // Les listes d'écoute déjà trouvées : Spotify n'est interrogé qu'une fois par carte.
   listens: Pick<ListenRepo, 'load' | 'save'>;
+  // Les bandes originales déjà trouvées (clé `movie:<id TMDB>`) : mêmes règles que les listes, Spotify n'est interrogé qu'une fois par film.
+  soundtracks: Pick<ListenRepo, 'load' | 'save'>;
   session: Pick<SpotifySession, 'isLinked' | 'link' | 'unlink' | 'subscribe'>;
-  api: Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'albumTracks' | 'play'>;
+  api: Pick<SpotifyApi, 'searchTracks' | 'searchAlbum' | 'searchAlbums' | 'albumTracks' | 'play'>;
   // Après un lancement : le mini-lecteur relit l'état tout de suite, et retient la carte qui l'a demandé.
   onPlayed: (card?: PlayerCard) => void;
   // Ouvre l'application Spotify quand aucun appareil n'est actif ; absent sur les plateformes qui ne savent pas le faire.
@@ -33,7 +36,7 @@ const LAUNCH_RETRIES = 8;
 const LAUNCH_RETRY_MS = 1500;
 
 export function createMusicService(deps: MusicServiceDeps) {
-  const { collection, kinds, music, listens, session, api, onPlayed, launchApp } = deps;
+  const { collection, kinds, music, listens, soundtracks, session, api, onPlayed, launchApp } = deps;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
   async function retryWhileStarting(target: Parameters<typeof api.play>[0]): Promise<void> {
@@ -90,6 +93,22 @@ export function createMusicService(deps: MusicServiceDeps) {
 
     // Redemande la liste à Spotify (bouton d'actualisation des meilleurs titres d'un artiste) ; une panne laisse la liste gardée.
     refresh: (slug: string, title: string) => viewer.show(slug, title, true),
+
+    // La bande originale d'un film ou d'une série (`key` : `movie:<id>` / `tv:<id>`), `null` si le compte n'est pas lié, si Spotify n'en a pas ou en cas d'erreur.
+    // Seule une vraie réponse de Spotify est gardée ; une erreur (réseau, limite) sera retentée à la prochaine ouverture de la fiche.
+    async soundtrack(key: string, titles: string[]): Promise<Listen | null> {
+      if (!(await session.isLinked())) return null;
+      const kept = await soundtracks.load();
+      if (kept.has(key)) return kept.get(key) ?? null;
+      let listen: Listen | null;
+      try {
+        listen = await resolveSoundtrack(api, titles);
+      } catch {
+        return null;
+      }
+      await soundtracks.save(key, listen).catch((error: unknown) => console.warn('[wikimasters-tools]', 'bande originale non gardée :', error));
+      return listen;
+    },
 
     // Lance une piste ; rend null si tout va bien, sinon le message à afficher.
     // `card` : la carte dont la fiche propose cette lecture (le lecteur en offre ensuite la fiche).

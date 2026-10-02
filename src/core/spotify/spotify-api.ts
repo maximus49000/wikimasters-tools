@@ -7,7 +7,8 @@ import { createLimitGate, type Family } from './limit-gate';
 import type { SpotifyFetch, SpotifySession } from './spotify-session';
 
 export type Track = { uri: string; title: string; artist: string };
-export type FoundTrack = Track & { artistIds: string[]; artists: string[] };
+export type FoundAlbum = { id: string; name: string; artist: string };
+export type FoundTrack =Track & { artistIds: string[]; artists: string[] };
 // `null` : reprendre la lecture en cours.
 export type PlayTarget = { uris: string[] } | { contextUri: string; offsetUri: string } | null;
 export type PlayerState = { playing: boolean; uri: string; title: string; artist: string; imageUrl: string | null } | null;
@@ -27,6 +28,7 @@ const artistSchema = z.object({ id: z.string().optional(), name: z.string() });
 const trackSchema = z.object({ uri: z.string(), name: z.string(), artists: z.array(artistSchema) });
 const searchTracksSchema = z.object({ tracks: z.object({ items: z.array(trackSchema) }) });
 const searchAlbumsSchema = z.object({ albums: z.object({ items: z.array(z.object({ id: z.string() })) }) });
+const searchAlbumListSchema = z.object({ albums: z.object({ items: z.array(z.object({ id: z.string(), name: z.string(), artists: z.array(artistSchema) })) }) });
 const coverImages = z.array(z.object({ url: z.string() }));
 const coverAlbumsSchema = z.object({ albums: z.object({ items: z.array(z.object({ images: coverImages })) }) });
 const coverTracksSchema = z.object({ tracks: z.object({ items: z.array(z.object({ album: z.object({ images: coverImages }).optional() })) }) });
@@ -168,6 +170,12 @@ export function createSpotifyApi(deps: {
       const q = `album:"${title}"${performer ? ` artist:"${performer}"` : ''}`;
       const response = await send('page', 'GET', '/search', { query: { q, type: 'album', limit: '1' } });
       return parse(searchAlbumsSchema, await response.json()).albums.items[0]?.id ?? null;
+    },
+
+    // Les albums que Spotify propose pour une recherche libre (nom et artistes compris), du plus pertinent au moins pertinent.
+    async searchAlbums(query: string, limit = SEARCH_MAX): Promise<FoundAlbum[]> {
+      const response = await send('page', 'GET', '/search', { query: { q: query, type: 'album', limit: String(Math.min(limit, SEARCH_MAX)) } });
+      return parse(searchAlbumListSchema, await response.json()).albums.items.map((item) => ({ id: item.id, name: item.name, artist: joinArtists(item.artists) }));
     },
 
     // Pochette d'un album (ou du disque d'un morceau) ; Spotify classe les images de la plus grande à la plus petite.

@@ -4,6 +4,7 @@ import type { FilmographyItem, ScreenDetail } from '../core/screen/tmdb-api';
 import { Glyph } from './Glyphs';
 import { getScreenService } from './screen-registry';
 import type { ScreenDetailResult, ScreenView } from './screen-service';
+import { SoundtrackButton } from './SoundtrackButton';
 import { TrailerPlayer } from './TrailerPlayer';
 
 const SIZE = 44; // cible tactile
@@ -43,6 +44,7 @@ function Detail({ detail }: { detail: ScreenDetail }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {detail.trailerKey && <TrailerPlayer trailerKey={detail.trailerKey} />}
+      <SoundtrackButton detail={detail} />
       <Rating detail={detail} />
       {detail.overview && <p style={{ margin: 0, fontSize: 12, lineHeight: 1.4, maxHeight: 'min(96px, 15vh)', overflowY: 'auto' }}>{detail.overview}</p>}
     </div>

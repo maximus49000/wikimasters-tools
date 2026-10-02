@@ -30,6 +30,7 @@ function setup(retryAfter: string | null) {
     kinds: { resolveMissing: async () => undefined, load: async () => ({ cards: { Abbey_Road: { natures: ['Q482994'], occupations: [], genres: [] } }, labels: {} }) as never },
     music: { resolve: async () => ({ Abbey_Road: { performer: 'The Beatles' } }) as never },
     listens: createListenRepo(createMemoryStore()),
+    soundtracks: createListenRepo(createMemoryStore()),
     session: { isLinked: async () => true, link: async () => undefined, unlink: async () => undefined, subscribe: () => () => undefined },
     api,
     onPlayed: () => undefined,

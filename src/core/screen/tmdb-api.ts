@@ -9,6 +9,8 @@ export type ScreenDetail = {
   mediaType: MediaType;
   id: number;
   title: string;
+  // Titre d'origine, seulement quand il diffère du titre français : la BO sur Spotify porte souvent ce nom-là.
+  originalTitle?: string;
   year?: number;
   overview: string;
   rating?: { average: number; votes: number };
@@ -45,6 +47,8 @@ const detailSchema = z.object({
   id: z.number(),
   title: z.string().optional(),
   name: z.string().optional(),
+  original_title: z.string().optional(),
+  original_name: z.string().optional(),
   release_date: z.string().optional(),
   first_air_date: z.string().optional(),
   overview: z.string().optional(),
@@ -121,10 +125,13 @@ export function createTmdbApi(deps: { fetch: TmdbFetch; apiKey: string }) {
       const data = await get(`/${mediaType}/${id}`, { append_to_response: 'videos', include_video_language: 'fr,en,null' }, detailSchema);
       const year = yearOf(data.release_date ?? data.first_air_date);
       const trailerKey = pickTrailer(data.videos?.results ?? []);
+      const title = data.title ?? data.name ?? '';
+      const original = data.original_title ?? data.original_name;
       return {
         mediaType,
         id,
-        title: data.title ?? data.name ?? '',
+        title,
+        ...(original && normalize(original) !== normalize(title) ? { originalTitle: original } : {}),
         ...(year !== undefined ? { year } : {}),
         overview: data.overview ?? '',
         ...(data.vote_count && data.vote_count > 0 ? { rating: { average: roundRating(data.vote_average ?? 0), votes: data.vote_count } } : {}),
