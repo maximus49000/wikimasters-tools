@@ -1,8 +1,9 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Glyph } from './Glyphs';
-import { PLATFORM_LABEL, type Platform } from '../core/music/platform';
+import { PLATFORM_LABEL } from '../core/music/platform';
 import { getMusicService, getPlatformChoice } from './music-registry';
 import type { PlayerSource } from './player-source';
+import { usePlatform } from './usePlatform';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -18,17 +19,29 @@ const choice = (selected: boolean) =>
     borderRadius: 8,
   }) as const;
 
-const noSubscribe = () => () => undefined;
-const spotifyOnly = (): Platform => 'spotify';
-
-// « Lecteur » : afficher ou masquer le mini-lecteur Spotify (affiché par défaut, dès que Spotify est lié), et lier ou délier le compte.
+// « Lecteur » : la plateforme d'écoute (dès qu'il y en a deux), le mini-lecteur Spotify (affiché par défaut, dès que Spotify est lié),
+// et lier ou délier le compte de la plateforme choisie : c'est le seul endroit où l'on délie.
 export function PlayerSettings({ source, onClose }: { source: PlayerSource; onClose: () => void }) {
-  const { enabled, linked } = useSyncExternalStore(source.subscribe, source.current);
+  const { enabled, linked: spotifyLinked } = useSyncExternalStore(source.subscribe, source.current);
   const service = getMusicService();
   const platformChoice = getPlatformChoice();
-  const platform = useSyncExternalStore(platformChoice?.setting.subscribe ?? noSubscribe, platformChoice?.setting.current ?? spotifyOnly);
+  const platform = usePlatform();
   const name = PLATFORM_LABEL[platform];
-  // Liaison en cours (la fenêtre d'autorisation de Spotify est ouverte) et cause d'un échec.
+  // Tidal : l'état de liaison vient du service (le lecteur Spotify ne connaît que Spotify).
+  const [tidalLinked, setTidalLinked] = useState(false);
+  useEffect(() => {
+    if (platform !== 'tidal' || !service) return;
+    let cancelled = false;
+    const load = () => void service.isLinked().then((value) => !cancelled && setTidalLinked(value));
+    load();
+    const off = service.subscribe(load);
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [platform, service]);
+  const linked = platform === 'tidal' ? tidalLinked : spotifyLinked;
+  // Liaison en cours (la fenêtre d'autorisation est ouverte) et cause d'un échec.
   const [linking, setLinking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -55,23 +68,27 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
             ✕
           </button>
         </div>
-        <p style={{ margin: '0 0 12px', opacity: 0.8 }}>Afficher le mini-lecteur en haut à gauche. Affiché, il reste visible tant que {name} est lié, même sans lecture.</p>
-        <div role="group" aria-label="Affichage du lecteur" style={{ display: 'flex', gap: 8 }}>
-          <button type="button" aria-pressed={enabled} onClick={() => source.setEnabled(true)} style={choice(enabled)}>
-            Affiché
-          </button>
-          <button type="button" aria-pressed={!enabled} onClick={() => source.setEnabled(false)} style={choice(!enabled)}>
-            Masqué
-          </button>
-        </div>
         {platformChoice && platformChoice.available.length > 1 && (
-          <div role="group" aria-label="Plateforme d’écoute" style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <div role="group" aria-label="Plateforme d’écoute" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             {platformChoice.available.map((candidate) => (
               <button key={candidate} type="button" aria-pressed={candidate === platform} onClick={() => platformChoice.setting.set(candidate)} style={choice(candidate === platform)}>
                 {PLATFORM_LABEL[candidate]}
               </button>
             ))}
           </div>
+        )}
+        {platform === 'spotify' && (
+          <>
+            <p style={{ margin: '0 0 12px', opacity: 0.8 }}>Afficher le mini-lecteur en haut à gauche. Affiché, il reste visible tant que {name} est lié, même sans lecture.</p>
+            <div role="group" aria-label="Affichage du lecteur" style={{ display: 'flex', gap: 8 }}>
+              <button type="button" aria-pressed={enabled} onClick={() => source.setEnabled(true)} style={choice(enabled)}>
+                Affiché
+              </button>
+              <button type="button" aria-pressed={!enabled} onClick={() => source.setEnabled(false)} style={choice(!enabled)}>
+                Masqué
+              </button>
+            </div>
+          </>
         )}
         {service && (
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: border }}>

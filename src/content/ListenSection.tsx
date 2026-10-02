@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Track } from '../core/spotify/spotify-api';
 import type { Listen } from '../core/music/listen';
+import { PLATFORM_LABEL } from '../core/music/platform';
+import { TIDAL_HOME_URL } from '../core/tidal/config';
+import { tidalUrl } from '../core/tidal/tidal-listen';
 import { Glyph } from './Glyphs';
 import { getMusicService, getPlayerSource } from './music-registry';
 import type { ListenView } from './music-service';
 import { isPlayingUri, type PlayerView } from './player-source';
+import { usePlatform } from './usePlatform';
 
 // Après une limite de Spotify (429) : on recharge d'elle-même la section une fois le délai demandé passé,
 // avec une marge (la pause du client se termine à la milliseconde près) et au plus 5 fois d'affilée.
@@ -43,6 +47,10 @@ type Props = { slug: string; title: string };
 export function ListenSection({ slug, title }: Props) {
   const service = getMusicService();
   const source = getPlayerSource();
+  const platform = usePlatform();
+  const name = PLATFORM_LABEL[platform];
+  // Une autre plateforme : la fiche affichée est celle de l'autre, elle est remplacée sans attendre.
+  const cardKey = `${platform}\n${slug}\n${title}`;
   const player = useSyncExternalStore(source?.subscribe ?? noSubscribe, source?.current ?? noPlayer);
   const [view, setView] = useState<ListenView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -59,9 +67,8 @@ export function ListenSection({ slug, title }: Props) {
     if (!service) return;
     let cancelled = false;
     // Vue et message de la carte précédente : périmés dès que la fiche change. Pas à chaque rechargement : la fiche clignoterait.
-    const card = `${slug}\n${title}`;
-    if (shownFor.current !== card) {
-      shownFor.current = card;
+    if (shownFor.current !== cardKey) {
+      shownFor.current = cardKey;
       setView(null);
       setMessage(null);
       setRefreshing(false);
@@ -73,7 +80,7 @@ export function ListenSection({ slug, title }: Props) {
       cancelled = true;
       off();
     };
-  }, [service, slug, title, version]);
+  }, [service, slug, title, cardKey, version]);
 
   useEffect(() => setAutoRetries(0), [slug, title]);
 
@@ -100,7 +107,7 @@ export function ListenSection({ slug, title }: Props) {
   // Les meilleurs titres d'un artiste viennent d'une recherche gardée : ce bouton la refait. Une panne laisse la liste affichée.
   const refresh = async () => {
     if (refreshing) return;
-    const card = `${slug}\n${title}`;
+    const card = cardKey;
     setRefreshing(true);
     setMessage(null);
     const next = await service.refresh(slug, title);
@@ -114,11 +121,11 @@ export function ListenSection({ slug, title }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {view.status === 'unlinked' && (
-        <button type="button" onClick={link} aria-label="Lier Spotify pour écouter" title="Lier Spotify pour écouter" style={{ ...iconButton, width: '100%', gap: 8, font: '600 13px system-ui, sans-serif' }}>
-          <Glyph name="link" /> Spotify
+        <button type="button" onClick={link} aria-label={`Lier ${name} pour écouter`} title={`Lier ${name} pour écouter`} style={{ ...iconButton, width: '100%', gap: 8, font: '600 13px system-ui, sans-serif' }}>
+          <Glyph name="link" /> {name}
         </button>
       )}
-      {view.status === 'notfound' && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>Introuvable sur Spotify.</p>}
+      {view.status === 'notfound' && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>Introuvable sur {name}.</p>}
       {view.status === 'error' && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>{view.message}</p>}
       {view.status === 'ready' && (
         <>
@@ -132,19 +139,39 @@ export function ListenSection({ slug, title }: Props) {
                   {item.title}
                   {view.listen.kind === 'artist' && item.artist && <span style={{ opacity: 0.6 }}> · {item.artist}</span>}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => (nowPlaying && source ? void source.toggle() : void play(item, view.listen))}
-                  aria-label={`${nowPlaying ? 'Mettre en pause' : 'Lire'} ${item.title}`}
-                  title={`${nowPlaying ? 'Mettre en pause' : 'Lire'} ${item.title}`}
-                  style={{ ...iconButton, borderRadius: '50%', ...(nowPlaying ? { background: 'var(--color-accent, #34d399)', color: '#0d1117', borderColor: 'transparent' } : {}) }}
-                >
-                  <Glyph name={nowPlaying ? 'pause' : 'play'} size={16} />
-                </button>
+                {platform === 'tidal' ? (
+                  // Tidal : pas de lecture dans l'appli pour l'instant, la page d'écoute de la piste s'ouvre dans Tidal.
+                  <a
+                    href={tidalUrl(item.uri) ?? TIDAL_HOME_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Ouvrir ${item.title} dans Tidal`}
+                    title={`Ouvrir ${item.title} dans Tidal`}
+                    style={{ ...iconButton, borderRadius: '50%', textDecoration: 'none' }}
+                  >
+                    <Glyph name="external" size={16} />
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => (nowPlaying && source ? void source.toggle() : void play(item, view.listen))}
+                    aria-label={`${nowPlaying ? 'Mettre en pause' : 'Lire'} ${item.title}`}
+                    title={`${nowPlaying ? 'Mettre en pause' : 'Lire'} ${item.title}`}
+                    style={{ ...iconButton, borderRadius: '50%', ...(nowPlaying ? { background: 'var(--color-accent, #34d399)', color: '#0d1117', borderColor: 'transparent' } : {}) }}
+                  >
+                    <Glyph name={nowPlaying ? 'pause' : 'play'} size={16} />
+                  </button>
+                )}
               </li>
               );
             })}
           </ul>
+          {platform === 'tidal' && (
+            // Les règles de Tidal : sa marque et un lien vers son service accompagnent son contenu.
+            <a href={TIDAL_HOME_URL} target="_blank" rel="noopener noreferrer" style={{ alignSelf: 'flex-end', fontSize: 11, opacity: 0.7, color: 'inherit' }}>
+              Écoute sur TIDAL
+            </a>
+          )}
           {view.listen.kind === 'artist' && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button

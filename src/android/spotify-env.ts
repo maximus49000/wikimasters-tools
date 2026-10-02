@@ -1,4 +1,5 @@
 import { ANDROID_REDIRECT_URI } from '../core/spotify/config';
+import { TIDAL_ANDROID_REDIRECT_URI } from '../core/tidal/config';
 import type { SpotifyEnv } from '../core/spotify/transport';
 
 // Ce que MainActivity.java expose à la page : `WmtSpotify.openAuth(url)` ouvre le navigateur du téléphone ;
@@ -19,6 +20,7 @@ export function createAndroidSpotifyEnv(win: AndroidWindow, timeoutMs: number = 
     fetch: (url, init) => win.fetch(url, init),
     deviceTypes: ['Smartphone', 'Tablet'],
     redirectUri: async () => ANDROID_REDIRECT_URI,
+    redirectUriFor: async () => TIDAL_ANDROID_REDIRECT_URI,
     launchApp: () => win.WmtSpotify?.openApp?.(),
     authorize: (authUrl) => {
       abandon?.();

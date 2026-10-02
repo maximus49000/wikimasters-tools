@@ -1,0 +1,166 @@
+{
+ "data": [
+  {
+   "id": "5psn4y2zy23wwohM1j2BVujc00s3LUupUHzV3L",
+   "type": "searchResults",
+   "attributes": {
+    "query": "The Beatles",
+    "trackingId": "4107287f-2b72-44f3-ba5e-7baffa0165be"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "3634161",
+       "type": "artists"
+      },
+      {
+       "id": "6596",
+       "type": "artists"
+      },
+      {
+       "id": "3514310",
+       "type": "artists"
+      },
+      {
+       "id": "13735",
+       "type": "artists"
+      },
+      {
+       "id": "27494",
+       "type": "artists"
+      },
+      {
+       "id": "3723239",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/searchResults/5psn4y2zy23wwohM1j2BVujc00s3LUupUHzV3L/relationships/artists?countryCode=FR",
+      "next": "/searchResults/5psn4y2zy23wwohM1j2BVujc00s3LUupUHzV3L/relationships/artists?countryCode=FR&page%5Bcursor%5D=3nI1Esi",
+      "meta": {
+       "nextCursor": "3nI1Esi"
+      }
+     }
+    }
+   }
+  }
+ ],
+ "links": {},
+ "included": [
+  {
+   "id": "13735",
+   "type": "artists",
+   "attributes": {
+    "name": "Love",
+    "popularity": 0.6939168572425842,
+    "numberOfFollowers": 14387,
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/artist/13735",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  },
+  {
+   "id": "27494",
+   "type": "artists",
+   "attributes": {
+    "name": "The Mamas & The Papas",
+    "popularity": 0.803282117805028,
+    "numberOfFollowers": 83063,
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/artist/27494",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  },
+  {
+   "id": "3514310",
+   "type": "artists",
+   "attributes": {
+    "name": "The Turtles",
+    "popularity": 0.7296033228830267,
+    "numberOfFollowers": 23455,
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/artist/3514310",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  },
+  {
+   "id": "3634161",
+   "type": "artists",
+   "attributes": {
+    "name": "The Beatles",
+    "popularity": 0.9447451829910278,
+    "numberOfFollowers": 1645187,
+    "externalLinks": [
+     {
+      "href": "https://www.thebeatles.com/",
+      "meta": {
+       "type": "OFFICIAL_HOMEPAGE"
+      }
+     },
+     {
+      "href": "https://tidal.com/browse/artist/3634161",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  },
+  {
+   "id": "3723239",
+   "type": "artists",
+   "attributes": {
+    "name": "Electric Light Orchestra",
+    "popularity": 0.8431253142555757,
+    "numberOfFollowers": 195637,
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/artist/3723239",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  },
+  {
+   "id": "6596",
+   "type": "artists",
+   "attributes": {
+    "name": "The Monkees",
+    "popularity": 0.7666576504707336,
+    "numberOfFollowers": 46371,
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/artist/6596",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  }
+ ]
+}

@@ -10,7 +10,7 @@ export const cleanTitle = (title: string): string =>
 
 // Les guillemets casseraient la requête de recherche.
 const quoted = (text: string): string => text.replaceAll('"', '').trim();
-const normalize = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+export const normalize = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 // Le titre joué est-il celui de la liste ? Même URI, ou à défaut même titre et même artiste (Spotify propose parfois
 // plusieurs versions du même morceau) ; un artiste qui en contient un autre (« A, B » et « A ») compte comme le même.

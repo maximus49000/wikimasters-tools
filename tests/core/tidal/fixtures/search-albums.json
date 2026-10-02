@@ -1,0 +1,411 @@
+{
+ "data": [
+  {
+   "id": "2Lem3lJgkxSYGMj8yse2dlkP23Gz8GvwYu2B1qJfdJiMXtsVKBIwN",
+   "type": "searchResults",
+   "attributes": {
+    "query": "Abbey Road The Beatles",
+    "trackingId": "df1d2a02-557f-47b0-bdec-05eeefa2ef69"
+   },
+   "relationships": {
+    "albums": {
+     "data": [
+      {
+       "id": "55130630",
+       "type": "albums"
+      },
+      {
+       "id": "118390427",
+       "type": "albums"
+      },
+      {
+       "id": "391373690",
+       "type": "albums"
+      },
+      {
+       "id": "55163302",
+       "type": "albums"
+      },
+      {
+       "id": "55130733",
+       "type": "albums"
+      },
+      {
+       "id": "93842327",
+       "type": "albums"
+      }
+     ],
+     "links": {
+      "self": "/searchResults/2Lem3lJgkxSYGMj8yse2dlkP23Gz8GvwYu2B1qJfdJiMXtsVKBIwN/relationships/albums?countryCode=FR",
+      "next": "/searchResults/2Lem3lJgkxSYGMj8yse2dlkP23Gz8GvwYu2B1qJfdJiMXtsVKBIwN/relationships/albums?countryCode=FR&page%5Bcursor%5D=3nI1Esi",
+      "meta": {
+       "nextCursor": "3nI1Esi"
+      }
+     }
+    }
+   }
+  }
+ ],
+ "links": {},
+ "included": [
+  {
+   "id": "118390427",
+   "type": "albums",
+   "attributes": {
+    "title": "Abbey Road (Super Deluxe Edition)",
+    "barcodeId": "00602508146107",
+    "numberOfVolumes": 3,
+    "numberOfItems": 40,
+    "duration": "PT2H13M26S",
+    "explicit": false,
+    "releaseDate": "1969-09-26",
+    "copyright": {
+     "text": "© 2019 Calderstone Productions Limited (a Division of Universal Music Group) / Apple Corps Limited"
+    },
+    "popularity": 0.8364905066145862,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "HIRES_LOSSLESS",
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/album/118390427",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "type": "ALBUM",
+    "albumType": "ALBUM",
+    "version": "Super Deluxe Edition",
+    "createdAt": "2019-09-20T00:32:24Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "3634161",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/albums/118390427/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "391373690",
+   "type": "albums",
+   "attributes": {
+    "title": "Lucinda Williams Sings The Beatles From Abbey Road",
+    "barcodeId": "198588025130",
+    "numberOfVolumes": 1,
+    "numberOfItems": 12,
+    "duration": "PT40M11S",
+    "explicit": false,
+    "releaseDate": "2024-12-06",
+    "copyright": {
+     "text": "(C) 2024 Highway 20 Records marketed and distributed by Thirty Tigers"
+    },
+    "popularity": 0.45091189791554187,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "HIRES_LOSSLESS",
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/album/391373690",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "type": "ALBUM",
+    "albumType": "ALBUM"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "13022",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/albums/391373690/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "55130630",
+   "type": "albums",
+   "attributes": {
+    "title": "Abbey Road (Remastered)",
+    "barcodeId": "00602547670342",
+    "numberOfVolumes": 1,
+    "numberOfItems": 17,
+    "duration": "PT47M19S",
+    "explicit": false,
+    "releaseDate": "1969-09-26",
+    "copyright": {
+     "text": "© 2015 Apple Corps Ltd"
+    },
+    "popularity": 0.9103878701621965,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/album/55130630",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "type": "ALBUM",
+    "albumType": "ALBUM",
+    "version": "Remastered",
+    "createdAt": "2015-12-11T00:00:18Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "3634161",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/albums/55130630/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "55130733",
+   "type": "albums",
+   "attributes": {
+    "title": "Let It Be (Remastered)",
+    "barcodeId": "00602547670069",
+    "numberOfVolumes": 1,
+    "numberOfItems": 12,
+    "duration": "PT35M6S",
+    "explicit": false,
+    "releaseDate": "1970-05-08",
+    "copyright": {
+     "text": "© 2015 Apple Corps Ltd"
+    },
+    "popularity": 0.8212432016851283,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/album/55130733",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "type": "ALBUM",
+    "albumType": "ALBUM",
+    "version": "Remastered",
+    "createdAt": "2015-12-11T00:01:27Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "3634161",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/albums/55130733/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "55163302",
+   "type": "albums",
+   "attributes": {
+    "title": "The Beatles (Remastered)",
+    "barcodeId": "00602547670175",
+    "numberOfVolumes": 2,
+    "numberOfItems": 30,
+    "duration": "PT1H33M28S",
+    "explicit": false,
+    "releaseDate": "1968-11-22",
+    "copyright": {
+     "text": "© 2015 Apple Corps Ltd"
+    },
+    "popularity": 0.8689190525207309,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/album/55163302",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "type": "ALBUM",
+    "albumType": "ALBUM",
+    "version": "Remastered",
+    "createdAt": "2015-12-11T12:35:53Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "3634161",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/albums/55163302/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "93842327",
+   "type": "albums",
+   "attributes": {
+    "title": "Bob Baldwin Presents: Abbey Road and The Beatles",
+    "barcodeId": "192562759547",
+    "numberOfVolumes": 1,
+    "numberOfItems": 12,
+    "duration": "PT1H3M46S",
+    "explicit": false,
+    "releaseDate": "2018-09-21",
+    "copyright": {
+     "text": "(C) 2018 City Sketches Records"
+    },
+    "popularity": 0.18456774518400842,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "HIRES_LOSSLESS",
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/album/93842327",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "type": "ALBUM",
+    "albumType": "ALBUM"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "3813384",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/albums/93842327/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "13022",
+   "type": "artists",
+   "attributes": {
+    "name": "Lucinda Williams",
+    "popularity": 0.7643169164657593,
+    "numberOfFollowers": 47842,
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/artist/13022",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  },
+  {
+   "id": "3634161",
+   "type": "artists",
+   "attributes": {
+    "name": "The Beatles",
+    "popularity": 0.9447451829910278,
+    "numberOfFollowers": 1645187,
+    "externalLinks": [
+     {
+      "href": "https://www.thebeatles.com/",
+      "meta": {
+       "type": "OFFICIAL_HOMEPAGE"
+      }
+     },
+     {
+      "href": "https://tidal.com/browse/artist/3634161",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  },
+  {
+   "id": "3813384",
+   "type": "artists",
+   "attributes": {
+    "name": "Bob Baldwin",
+    "popularity": 0.559743344783783,
+    "numberOfFollowers": 2417,
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/artist/3813384",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  }
+ ]
+}

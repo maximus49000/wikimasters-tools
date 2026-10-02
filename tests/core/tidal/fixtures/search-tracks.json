@@ -1,0 +1,368 @@
+{
+ "data": [
+  {
+   "id": "9hQMRXNIXtVtTZqP5NdKuD9cKyinDF53yIMDEbpgsxCtUjLjUzAggV",
+   "type": "searchResults",
+   "attributes": {
+    "query": "Ghost Town The Specials",
+    "trackingId": "cb077a1a-86b1-4423-9191-0dc9dee08d7d"
+   },
+   "relationships": {
+    "tracks": {
+     "data": [
+      {
+       "id": "233194655",
+       "type": "tracks"
+      },
+      {
+       "id": "233165577",
+       "type": "tracks"
+      },
+      {
+       "id": "102996167",
+       "type": "tracks"
+      },
+      {
+       "id": "234637241",
+       "type": "tracks"
+      },
+      {
+       "id": "12857532",
+       "type": "tracks"
+      },
+      {
+       "id": "6041915",
+       "type": "tracks"
+      }
+     ],
+     "links": {
+      "self": "/searchResults/9hQMRXNIXtVtTZqP5NdKuD9cKyinDF53yIMDEbpgsxCtUjLjUzAggV/relationships/tracks?countryCode=FR",
+      "next": "/searchResults/9hQMRXNIXtVtTZqP5NdKuD9cKyinDF53yIMDEbpgsxCtUjLjUzAggV/relationships/tracks?countryCode=FR&page%5Bcursor%5D=3nI1Esi",
+      "meta": {
+       "nextCursor": "3nI1Esi"
+      }
+     }
+    }
+   }
+  }
+ ],
+ "links": {},
+ "included": [
+  {
+   "id": "102996167",
+   "type": "tracks",
+   "attributes": {
+    "title": "Ghost Town",
+    "version": "Live At Le Bataclan",
+    "isrc": "GBUM71807711",
+    "duration": "PT5M40S",
+    "copyright": {
+     "text": "℗ 2019 Windrush 3 LLP, under exclusive licence to Universal Music Operations Limited"
+    },
+    "explicit": false,
+    "popularity": 0.22218362423080315,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/102996167",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2019-01-25T00:16:04Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "9200",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/tracks/102996167/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "12857532",
+   "type": "tracks",
+   "attributes": {
+    "title": "Ghost Town (Chemical Submission Remix)",
+    "version": null,
+    "isrc": "USA370581245",
+    "duration": "PT4M55S",
+    "copyright": {
+     "text": "2001 Cleopatra Records"
+    },
+    "explicit": false,
+    "popularity": 0.05964854690626868,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/12857532",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2012-01-10T16:25:06Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "9200",
+       "type": "artists"
+      },
+      {
+       "id": "3514004",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/tracks/12857532/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "233165577",
+   "type": "tracks",
+   "attributes": {
+    "title": "Ghost Town",
+    "version": "Extended Version",
+    "isrc": "GBAYK8100019",
+    "duration": "PT5M59S",
+    "copyright": {
+     "text": "Chrysalis Records Limited"
+    },
+    "explicit": false,
+    "popularity": 0.5650826306047493,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/233165577",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2022-06-10T17:25:39Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "9200",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/tracks/233165577/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "233194655",
+   "type": "tracks",
+   "attributes": {
+    "title": "Ghost Town",
+    "version": null,
+    "isrc": "GBAYK8100051",
+    "duration": "PT3M39S",
+    "copyright": {
+     "text": "Chrysalis Records Ltd"
+    },
+    "explicit": false,
+    "popularity": 0.6123659936665894,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/233194655",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2022-06-10T19:33:11Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "9200",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/tracks/233194655/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "234637241",
+   "type": "tracks",
+   "attributes": {
+    "title": "Ghost Town",
+    "version": "Live",
+    "isrc": "GBAYK1200034",
+    "duration": "PT6M8S",
+    "copyright": {
+     "text": "Chrysalis Records Limited"
+    },
+    "explicit": false,
+    "popularity": 0.08869108506173122,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/234637241",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2022-06-21T15:22:13Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "9200",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/tracks/234637241/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "6041915",
+   "type": "tracks",
+   "attributes": {
+    "title": "Ghost Town",
+    "version": null,
+    "isrc": "USA371141226",
+    "duration": "PT3M20S",
+    "copyright": {
+     "text": "(P) 2010 Goldenlane Records"
+    },
+    "explicit": false,
+    "popularity": 0.15672724931474685,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/6041915",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2011-03-19T01:15:51Z"
+   },
+   "relationships": {
+    "artists": {
+     "data": [
+      {
+       "id": "9200",
+       "type": "artists"
+      }
+     ],
+     "links": {
+      "self": "/tracks/6041915/relationships/artists?countryCode=FR"
+     }
+    }
+   }
+  },
+  {
+   "id": "3514004",
+   "type": "artists",
+   "attributes": {
+    "name": "Fun Boy Three",
+    "popularity": 0.6121704578399658,
+    "numberOfFollowers": 6514,
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/artist/3514004",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  },
+  {
+   "id": "9200",
+   "type": "artists",
+   "attributes": {
+    "name": "The Specials",
+    "popularity": 0.7073677778244019,
+    "numberOfFollowers": 28753,
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/artist/9200",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "ownerType": "LABEL"
+   }
+  }
+ ]
+}

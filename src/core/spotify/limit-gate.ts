@@ -6,14 +6,15 @@ export type Family = 'search' | 'player' | 'catalog';
 // `until` : heure (ms) de fin de la pause ; `strikes` : limites d'affilée sans `Retry-After` lisible.
 type State = { until: number; strikes: number };
 
-const keyOf = (family: Family): string => `spotify-limit:${family}`;
+const DEFAULT_PREFIX = 'spotify-limit';
 // Attente quand Spotify limite sans que `Retry-After` soit lisible : 5 s, ×3 à chaque limite d'affilée, plafonnée à 5 min.
 const UNREADABLE_BASE_MS = 5_000;
 const UNREADABLE_MAX_MS = 300_000;
 
 // La pause demandée par Spotify, gardée dans le stockage : toutes les pages, tous les onglets, l'extension comme l'APK la respectent.
-export function createLimitGate(deps: { store: KeyValueStore; now?: () => number }) {
-  const { store, now = () => Date.now() } = deps;
+export function createLimitGate(deps: { store: KeyValueStore; now?: () => number; prefix?: string }) {
+  const { store, now = () => Date.now(), prefix = DEFAULT_PREFIX } = deps;
+  const keyOf = (family: Family): string => `${prefix}:${family}`;
   // Lectures-modifications-écritures sérialisées dans cette page.
   let tail: Promise<unknown> = Promise.resolve();
   const serialized = <T>(job: () => Promise<T>): Promise<T> => {

@@ -63,4 +63,10 @@ describe('createAndroidSpotifyEnv', () => {
     await createAndroidSpotifyEnv(win).fetch('https://api.spotify.com/v1/x', { method: 'GET' });
     expect(win.fetch).toHaveBeenCalledWith('https://api.spotify.com/v1/x', { method: 'GET' });
   });
+
+  it("fournit l'adresse de retour de Tidal, distincte de celle de Spotify", async () => {
+    const env = createAndroidSpotifyEnv(fakeWindow());
+    expect(await env.redirectUri()).toBe('wikimasterstools://spotify');
+    expect(await env.redirectUriFor?.('tidal')).toBe('wikimasterstools://tidal');
+  });
 });

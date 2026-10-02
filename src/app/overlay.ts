@@ -44,6 +44,11 @@ import type { SpotifyEnv } from '../core/spotify/transport';
 import { createMusicService } from '../content/music-service';
 import { getMusicService, getPlayerSource, setMusicService, setPlatformChoice, setPlayerSource } from '../content/music-registry';
 import { createPlatformSetting } from '../core/music/platform';
+import { createPlatformMusicService } from '../content/platform-service';
+import { createTidalService } from '../content/tidal-service';
+import { countryOf } from '../core/tidal/config';
+import { createTidalApi } from '../core/tidal/tidal-api';
+import { createTidalSession } from '../core/tidal/tidal-session';
 import { createPlayerSource } from '../content/player-source';
 import { mountSpotifyPlayer } from '../content/mount-player';
 import { openCardInPage } from '../content/open-card';
@@ -313,8 +318,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       const musicRepo = createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs));
       artSources.spotify = { api: spotifyApi, session, music: musicRepo };
       const player = createPlayerSource({ api: spotifyApi, session, storage: window.localStorage });
-      setMusicService(
-        createMusicService({
+      const spotifyService = createMusicService({
           collection: collectionRepo,
           kinds: kindsRepo,
           music: musicRepo,
@@ -326,13 +330,36 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
             void player.refresh();
           },
           ...(spotify.launchApp ? { launchApp: spotify.launchApp } : {}),
-        }),
-      );
+        });
+      const platformSetting = createPlatformSetting(window.localStorage);
+      setMusicService(spotifyService);
       setPlayerSource(player);
-      // Une seule plateforme pour l'instant : le sélecteur reste caché ; Tidal l'ajoutera à `available`.
-      setPlatformChoice({ available: ['spotify'], setting: createPlatformSetting(window.localStorage) });
+      setPlatformChoice({ available: ['spotify'], setting: platformSetting });
       mountSpotifyPlayer(player, openPlayerCard);
       player.start();
+
+      // Tidal : seconde plateforme d'écoute, au choix (jamais mélangée à Spotify). Une panne ici laisse Spotify intact.
+      try {
+        const tidalSession = createTidalSession({
+          store,
+          fetch: spotify.fetch,
+          authorize: spotify.authorize,
+          redirectUri: spotify.redirectUriFor ? () => spotify.redirectUriFor!('tidal') : spotify.redirectUri,
+        });
+        const tidalApi = createTidalApi({ session: tidalSession, fetch: spotify.fetch, store, countryCode: countryOf(navigator.language) });
+        const tidalService = createTidalService({
+          collection: collectionRepo,
+          kinds: kindsRepo,
+          music: musicRepo,
+          listens: createListenRepo(store, undefined, 'listens-tidal-v1'),
+          session: tidalSession,
+          api: tidalApi,
+        });
+        setMusicService(createPlatformMusicService(platformSetting, { spotify: spotifyService, tidal: tidalService }));
+        setPlatformChoice({ available: ['spotify', 'tidal'], setting: platformSetting });
+      } catch (error) {
+        console.warn(LOG, 'Tidal indisponible :', error);
+      }
     } catch (error) {
       console.warn(LOG, 'Spotify indisponible :', error);
     }

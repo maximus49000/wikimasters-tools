@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { Glyph } from './Glyphs';
 import type { PlayerSource } from './player-source';
+import { usePlatform } from './usePlatform';
 import { usePlayerCard } from './usePlayerCard';
 
 const BTN = 44; // cible tactile
@@ -20,8 +21,9 @@ const base = {
 export function SpotifyPlayer({ source, openCard }: { source: PlayerSource; openCard: (slug: string) => void }) {
   const view = useSyncExternalStore(source.subscribe, source.current);
   const card = usePlayerCard(view);
+  const platform = usePlatform();
   // Visible dès que Spotify est lié, sauf si le réglage « Lecteur » le masque ; sans lecture, il reste là, au repos.
-  if (!view.linked || !view.enabled) return null;
+  if (platform !== 'spotify' || !view.linked || !view.enabled) return null;
   const { track } = view;
   const playing = track?.playing ?? false;
   // La fiche de la carte dont vient la lecture ; absent quand la lecture ne vient d'aucune carte.

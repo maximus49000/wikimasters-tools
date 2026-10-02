@@ -1,0 +1,239 @@
+{
+ "data": [
+  {
+   "id": "37667986",
+   "type": "tracks"
+  },
+  {
+   "id": "650231",
+   "type": "tracks"
+  },
+  {
+   "id": "12748794",
+   "type": "tracks"
+  },
+  {
+   "id": "37667952",
+   "type": "tracks"
+  },
+  {
+   "id": "650233",
+   "type": "tracks"
+  },
+  {
+   "id": "37667960",
+   "type": "tracks"
+  }
+ ],
+ "links": {
+  "meta": {
+   "nextCursor": "3nI1Esi"
+  }
+ },
+ "included": [
+  {
+   "id": "12748794",
+   "type": "tracks",
+   "attributes": {
+    "title": "The Boxer",
+    "version": null,
+    "isrc": "USSM16900831",
+    "duration": "PT5M13S",
+    "copyright": {
+     "text": "Originally released 1969. All rights reserved by Columbia Records, a division of Sony Music Entertainment"
+    },
+    "explicit": false,
+    "popularity": 0.7828164634804993,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "HIRES_LOSSLESS",
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/12748794",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2012-01-09T15:29:49Z"
+   }
+  },
+  {
+   "id": "37667952",
+   "type": "tracks",
+   "attributes": {
+    "title": "The Sound of Silence",
+    "version": "Electric Version",
+    "isrc": "USSM16401131",
+    "duration": "PT3M10S",
+    "copyright": {
+     "text": "Originally released 1964. All rights reserved by Columbia Records, a division of Sony Music Entertainment"
+    },
+    "explicit": false,
+    "popularity": 0.8287711193192034,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "HIRES_LOSSLESS",
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/37667952",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2014-11-06T02:43:33Z"
+   }
+  },
+  {
+   "id": "37667960",
+   "type": "tracks",
+   "attributes": {
+    "title": "April Come She Will",
+    "version": null,
+    "isrc": "USSM16501152",
+    "duration": "PT1M53S",
+    "copyright": {
+     "text": "Originally released 1966. All rights reserved by Columbia Records, a division of Sony Music Entertainment"
+    },
+    "explicit": false,
+    "popularity": 0.6697371078838433,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "HIRES_LOSSLESS",
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/37667960",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2014-11-06T02:43:33Z"
+   }
+  },
+  {
+   "id": "37667986",
+   "type": "tracks",
+   "attributes": {
+    "title": "Mrs. Robinson",
+    "version": "From \"The Graduate\" Soundtrack",
+    "isrc": "USSM16800379",
+    "duration": "PT4M7S",
+    "copyright": {
+     "text": "Originally released 1968. All rights reserved by Columbia Records, a division of Sony Music Entertainment"
+    },
+    "explicit": false,
+    "popularity": 0.8407485710828717,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "HIRES_LOSSLESS",
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/37667986",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2014-11-06T02:43:44Z"
+   }
+  },
+  {
+   "id": "650231",
+   "type": "tracks",
+   "attributes": {
+    "title": "Bridge Over Troubled Water",
+    "version": null,
+    "isrc": "USSM16900808",
+    "duration": "PT4M56S",
+    "copyright": {
+     "text": "Originally released 1970. All rights reserved by Columbia Records, a division of Sony Music Entertainment"
+    },
+    "explicit": false,
+    "popularity": 0.7849993929498472,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "HIRES_LOSSLESS",
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/650231",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2007-07-13T18:02:30Z"
+   }
+  },
+  {
+   "id": "650233",
+   "type": "tracks",
+   "attributes": {
+    "title": "Cecilia",
+    "version": null,
+    "isrc": "USSM16900181",
+    "duration": "PT2M55S",
+    "copyright": {
+     "text": "Originally released 1970. All rights reserved by Columbia Records, a division of Sony Music Entertainment"
+    },
+    "explicit": false,
+    "popularity": 0.7408235657939521,
+    "accessType": "PUBLIC",
+    "availability": [
+     "STREAM",
+     "DJ"
+    ],
+    "mediaTags": [
+     "HIRES_LOSSLESS",
+     "LOSSLESS"
+    ],
+    "externalLinks": [
+     {
+      "href": "https://tidal.com/browse/track/650233",
+      "meta": {
+       "type": "TIDAL_SHARING"
+      }
+     }
+    ],
+    "spotlighted": false,
+    "createdAt": "2007-07-13T18:02:31Z"
+   }
+  }
+ ]
+}

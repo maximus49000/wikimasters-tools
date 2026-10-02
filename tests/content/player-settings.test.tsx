@@ -36,7 +36,7 @@ function makeSource(linked: boolean) {
 function serve(over: { link?: () => Promise<string | null>; unlink?: () => Promise<void> } = {}) {
   const link = vi.fn(over.link ?? (async () => null));
   const unlink = vi.fn(over.unlink ?? (async () => undefined));
-  setMusicService({ link, unlink, view: vi.fn(), play: vi.fn(), subscribe: () => () => undefined } as unknown as MusicService);
+  setMusicService({ link, unlink, isLinked: vi.fn(async () => false), view: vi.fn(), play: vi.fn(), subscribe: () => () => undefined } as unknown as MusicService);
   return { link, unlink };
 }
 
@@ -170,5 +170,30 @@ describe('PlayerSettings, plateforme', () => {
     expect(setting.current()).toBe('tidal');
     expect(text()).toContain('Compte Tidal : non lié');
     expect(byLabel('Lier Tidal')).not.toBeNull();
+  });
+});
+
+describe('PlayerSettings, Tidal', () => {
+  it('suit Tidal : le compte et le bouton sont ceux de Tidal, et le réglage du mini-lecteur Spotify disparaît', async () => {
+    const link = vi.fn(async () => null);
+    const isLinked = vi.fn(async () => false);
+    setMusicService({ link, unlink: vi.fn(), isLinked, view: vi.fn(), play: vi.fn(), subscribe: () => () => undefined } as unknown as MusicService);
+    setPlatformChoice({ available: ['spotify', 'tidal'], setting: createPlatformSetting({ getItem: () => 'tidal', setItem: () => undefined }) });
+    await render(makeSource(true).source);
+    expect(text()).toContain('Compte Tidal : non lié');
+    expect(byLabel('Lier Tidal')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Affichage du lecteur"]')).toBeNull();
+    await press(byLabel('Lier Tidal'));
+    expect(link).toHaveBeenCalledTimes(1);
+  });
+
+  it('un compte Tidal lié propose de le délier', async () => {
+    const unlink = vi.fn(async () => undefined);
+    setMusicService({ link: vi.fn(), unlink, isLinked: vi.fn(async () => true), view: vi.fn(), play: vi.fn(), subscribe: () => () => undefined } as unknown as MusicService);
+    setPlatformChoice({ available: ['spotify', 'tidal'], setting: createPlatformSetting({ getItem: () => 'tidal', setItem: () => undefined }) });
+    await render(makeSource(false).source);
+    expect(text()).toContain('Compte Tidal : lié');
+    await press(byLabel('Délier Tidal'));
+    expect(unlink).toHaveBeenCalledTimes(1);
   });
 });
