@@ -26,7 +26,7 @@ import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
 import { createPageMemory } from './page-memory';
 import { createPathRequestSource, createSelectionSource, type SelectedCard } from './selection-source';
-import { ensureWebAction, isSelecting, readNativeCards, removeWebAction, type NativeCard } from './selection-dom';
+import { ensureWebAction, isSelecting, quitSelection, readNativeCards, removeWebAction, type NativeCard } from './selection-dom';
 import { RecountGate } from './RecountGate';
 import { createRecountSource } from './recount-source';
 import type { MarketSource } from './market-source';
@@ -106,6 +106,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
       const [from, to] = [...selection.snapshot().cards].map(([slug, title]) => ({ slug, title }));
       if (!from || !to || selection.snapshot().cards.size !== 2) return;
       pathRequest.set({ from, to });
+      quitSelection(document);
       writeView(window.localStorage, 'web');
       sync();
     });

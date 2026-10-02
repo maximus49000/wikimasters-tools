@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureWebAction, isSelecting, readNativeCards, removeWebAction } from '../../src/content/selection-dom';
+import { ensureWebAction, isSelecting, quitSelection, readNativeCards, removeWebAction } from '../../src/content/selection-dom';
 
 const CHECK_OFF = '<span aria-hidden="true"><svg class="lucide lucide-square opacity-0"></svg></span>';
 const CHECK_ON = '<span aria-hidden="true"><svg class="lucide lucide-check"></svg></span>';
@@ -16,6 +16,16 @@ describe('isSelecting', () => {
     expect(isSelecting(document)).toBe(false);
     document.body.innerHTML = '<button>Quitter la sélection</button>';
     expect(isSelecting(document)).toBe(true);
+  });
+});
+
+describe('quitSelection', () => {
+  it('clique sur « Quitter la sélection » du site', () => {
+    document.body.innerHTML = '<button id="a">Sélectionner</button><button id="q">Quitter la sélection</button>';
+    const quit = vi.fn();
+    document.getElementById('q')?.addEventListener('click', quit);
+    quitSelection(document);
+    expect(quit).toHaveBeenCalledOnce();
   });
 });
 
