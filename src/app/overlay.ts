@@ -353,6 +353,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           kinds: kindsRepo,
           music: musicRepo,
           listens: createListenRepo(store, undefined, 'listens-tidal-v1'),
+          soundtracks: createListenRepo(store, undefined, 'soundtracks-tidal-v1'),
           session: tidalSession,
           api: tidalApi,
         });
