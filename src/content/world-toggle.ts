@@ -14,7 +14,7 @@ const HOUSE = ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8', 'M3 10a2 2 0 0 1 .7
 const GLOBE = ['M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z', 'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20', 'M2 12h20'];
 const GANTT = ['M8 6h10', 'M6 12h9', 'M11 18h7'];
 // « network » : trois nœuds reliés (ses rectangles sont tracés en chemins, comme ceux de GRID).
-const NETWORK = [
+export const NETWORK = [
   'M17 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
   'M3 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
   'M10 2h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z',
@@ -37,7 +37,7 @@ const VIEWS: { view: CollectionView; label: string; glyph: string[] }[] = [
   { view: 'list', label: 'Grille du site', glyph: GRID },
 ];
 
-function glyphElement(paths: string[]): SVGElement {
+export function glyphElement(paths: string[]): SVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('width', '18');

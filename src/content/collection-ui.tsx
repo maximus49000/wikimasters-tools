@@ -25,6 +25,8 @@ import { HomemadePanel } from './HomemadePanel';
 import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
 import { createPageMemory } from './page-memory';
+import { createPathRequestSource, createSelectionSource, type SelectedCard } from './selection-source';
+import { ensureWebAction, isSelecting, readNativeCards, removeWebAction, type NativeCard } from './selection-dom';
 import { RecountGate } from './RecountGate';
 import { createRecountSource } from './recount-source';
 import type { MarketSource } from './market-source';
@@ -78,6 +80,38 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
   const pages = createPageMemory();
   // Plus grand nombre de cartes vues dans la grille native : la taille de page du site, avant que le scan la connaisse.
   let nativeCount = 0;
+  // Cases à cocher de la vue Homemade (le mode « Sélectionner » du site, dont la grille est masquée) et bouton Toile.
+  const selection = createSelectionSource();
+  const pathRequest = createPathRequestSource();
+  let nativeCards = new Map<string, NativeCard>();
+  let nativeScope: ParentNode = document;
+
+  const readNative = (): void => {
+    nativeCards = readNativeCards(nativeScope);
+    selection.syncNative(new Map([...nativeCards].map(([slug, { title, selected }]) => [slug, { title, selected }])));
+  };
+
+  // Une carte de la grille du site se coche par le site même ; les autres, ici seulement.
+  const toggleCard = (card: SelectedCard): void => {
+    const native = nativeCards.get(card.slug);
+    if (!native) return selection.toggle(card);
+    native.toggle();
+    readNative();
+  };
+
+  // Le bouton Toile de la barre du site : actif avec exactement deux cartes cochées, en vue Homemade seulement.
+  function syncWebAction(): void {
+    const { selecting, cards } = selection.snapshot();
+    if (!selecting || readView(window.localStorage) !== 'homemade') return removeWebAction(document);
+    ensureWebAction(document, cards.size === 2, () => {
+      const [from, to] = [...selection.snapshot().cards].map(([slug, title]) => ({ slug, title }));
+      if (!from || !to || selection.snapshot().cards.size !== 2) return;
+      pathRequest.set({ from, to });
+      writeView(window.localStorage, 'web');
+      sync();
+    });
+  }
+  selection.subscribe(syncWebAction);
 
   function unmountPanel(): void {
     if (!panel) return;
@@ -109,9 +143,9 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
         ) : view === 'world' ? (
           <WorldPanel {...common} geo={geo} kinds={kinds} kindFilterSource={kindFilterSource} />
         ) : view === 'web' ? (
-          <WebPanel {...common} links={links} kinds={kinds} kindFilterSource={kindFilterSource} />
+          <WebPanel {...common} links={links} kinds={kinds} kindFilterSource={kindFilterSource} request={pathRequest.take()} />
         ) : (
-          <HomemadePanel {...common} sortSource={sortSource} loadOrdered={loadOrdered} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} />
+          <HomemadePanel {...common} sortSource={sortSource} loadOrdered={loadOrdered} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} selection={selection} onToggleCard={toggleCard} />
         )}
       </RecountGate>,
     );
@@ -144,6 +178,9 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
     }
 
     const scope = findCollectionRoot(button);
+    nativeScope = scope ?? document;
+    selection.setSelecting(isSelecting(document));
+    if (selection.snapshot().selecting) readNative();
     if (scope) {
       const cards = scanCollectionCards(scope);
       if (cards.length > 0) {
@@ -171,6 +208,8 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
         sync();
       },
     });
+
+    syncWebAction();
 
     if (view === 'list') {
       showList();

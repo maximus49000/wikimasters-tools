@@ -12,6 +12,7 @@ import { HomemadePanel } from '../../src/content/HomemadePanel';
 import { createKindFilterSource } from '../../src/content/kind-filter';
 import { createMarketSource } from '../../src/content/market-source';
 import { createPageMemory } from '../../src/content/page-memory';
+import { createSelectionSource } from '../../src/content/selection-source';
 import { createSortSource } from '../../src/content/sort-source';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -69,6 +70,8 @@ async function mount() {
         onOpenCard={vi.fn()}
         onWantCards={vi.fn()}
         pages={pages}
+        selection={createSelectionSource()}
+        onToggleCard={vi.fn()}
       />,
     );
   });
