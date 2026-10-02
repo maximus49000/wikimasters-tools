@@ -335,3 +335,15 @@ describe('createMusicService.playingSlugs', () => {
     expect(api.albumTracks).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('createMusicService.musicSlugs', () => {
+  it('rend les cartes de nature musicale, sans compte lié', async () => {
+    const { service } = setup({ linked: false });
+    expect([...(await service.musicSlugs([card('Abbey_Road'), card('Paris')]))]).toEqual(['Abbey_Road']);
+  });
+
+  it('ignore une carte non musicale', async () => {
+    const { service } = setup({ natures: ['Q11424'] });
+    expect((await service.musicSlugs([card('Abbey_Road')])).size).toBe(0);
+  });
+});

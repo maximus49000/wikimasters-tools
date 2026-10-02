@@ -30,7 +30,7 @@ describe('createPlatformMusicService', () => {
     const spotify = fake('spotify');
     const tidal = fake('tidal');
     const setting = createPlatformSetting(memory());
-    const service = createPlatformMusicService(setting, { spotify: spotify.service, tidal: tidal.service });
+    const service = createPlatformMusicService(setting, { spotify: spotify.service, tidal: tidal.service }, { musicSlugs: async () => new Set() });
     expect(await service.view('S', 'T')).toEqual({ status: 'error', message: 'spotify' });
     expect(await service.isLinked()).toBe(false);
     setting.set('tidal');
@@ -48,14 +48,14 @@ describe('createPlatformMusicService', () => {
     const spotify = fake('spotify');
     const setting = createPlatformSetting(memory());
     setting.set('tidal');
-    expect(await createPlatformMusicService(setting, { spotify: spotify.service }).view('S', 'T')).toEqual({ status: 'error', message: 'spotify' });
+    expect(await createPlatformMusicService(setting, { spotify: spotify.service }, { musicSlugs: async () => new Set() }).view('S', 'T')).toEqual({ status: 'error', message: 'spotify' });
   });
 
   it("prévient les abonnés quand le réglage change ou qu'un compte est lié, et se désabonne de tout", () => {
     const spotify = fake('spotify');
     const tidal = fake('tidal');
     const setting = createPlatformSetting(memory());
-    const service = createPlatformMusicService(setting, { spotify: spotify.service, tidal: tidal.service });
+    const service = createPlatformMusicService(setting, { spotify: spotify.service, tidal: tidal.service }, { musicSlugs: async () => new Set() });
     const listener = vi.fn();
     const off = service.subscribe(listener);
     setting.set('tidal');

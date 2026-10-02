@@ -50,3 +50,21 @@ describe('buildCardPreview : exemplaires', () => {
     expect(buildCardPreview(base).querySelector('.wmt-card-copies')).toBeNull();
   });
 });
+
+describe('buildCardPreview : note de musique', () => {
+  it('marque une carte liée à la musique, à la place du glyphe de lecture', () => {
+    const note = buildCardPreview({ ...base, music: true }).querySelector<HTMLElement>('.wmt-card-music');
+    expect(note?.title).toBe('Lien avec la musique');
+    expect(note?.classList.contains('wmt-card-playing')).toBe(true);
+  });
+
+  it('laisse l’égaliseur seul quand un titre joue', () => {
+    const card = buildCardPreview({ ...base, music: true, playing: true });
+    expect(card.querySelector('.wmt-card-music')).toBeNull();
+    expect(card.querySelectorAll('.wmt-card-playing')).toHaveLength(1);
+  });
+
+  it('n’ajoute rien aux autres cartes', () => {
+    expect(buildCardPreview(base).querySelector('.wmt-card-playing')).toBeNull();
+  });
+});

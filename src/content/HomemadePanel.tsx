@@ -16,6 +16,7 @@ import type { PageMemory } from './page-memory';
 import type { SortSource } from './sort-source';
 import { createThrottledLoader } from './throttle';
 import { useKindState } from './useKindState';
+import { useMusicSlugs } from './useMusicSlugs';
 import { useNowPlayingSlugs } from './useNowPlayingSlugs';
 import { useNativeFilter } from './useNativeFilter';
 import { useWantPrices } from './useWantPrices';
@@ -178,12 +179,13 @@ export function HomemadePanel({
   const current = useMemo(() => pageSlice(list, page, size), [list, page, size]);
 
   const nowPlaying = useNowPlayingSlugs(current.items);
+  const musicSlugs = useMusicSlugs(current.items);
   const previews = useMemo(
     () =>
       current.items.map((card) =>
-        toCardPreview(card, book?.byTitle(card.title) ?? null, cardMarket(marketNow.history, marketNow.pending, card.slug, Date.now()), nowPlaying.has(card.slug)),
+        toCardPreview(card, book?.byTitle(card.title) ?? null, cardMarket(marketNow.history, marketNow.pending, card.slug, Date.now()), nowPlaying.has(card.slug), musicSlugs.has(card.slug)),
       ),
-    [current.items, book, marketNow, nowPlaying],
+    [current.items, book, marketNow, nowPlaying, musicSlugs],
   );
   // Seules les cartes de la page affichée ont leurs prix relevés, comme sur la liste du site.
   useWantPrices(current.items, onWantCards);
