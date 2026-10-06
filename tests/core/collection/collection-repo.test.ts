@@ -74,13 +74,6 @@ describe('exemplaires', () => {
     expect(second['Paris']?.copies).toBe(3);
     expect(mergeCards(second, [PARIS])['Paris']?.copies).toBe(3);
   });
-
-  it('remet les comptes à zéro au début d’un parcours complet', async () => {
-    const repo = createCollectionRepo(createMemoryStore());
-    await repo.observe([{ ...PARIS, copies: 2 }], true);
-    await repo.resetCopies();
-    expect((await repo.list())[0]).toEqual(PARIS);
-  });
 });
 
 describe('mouvements de la collection', () => {
@@ -100,10 +93,17 @@ describe('mouvements de la collection', () => {
     expect(await repo.list()).toHaveLength(1);
   });
 
-  it('en fin de parcours complet, retire les cartes non recomptées', async () => {
+  it('en fin de parcours complet, remplace les nombres et retire les cartes non recomptées', async () => {
     const repo = createCollectionRepo(createMemoryStore());
-    await repo.observe([{ ...PARIS, copies: 1 }, EIFFEL], true);
-    await repo.dropUncounted();
-    expect((await repo.list()).map((c) => c.slug)).toEqual([PARIS.slug]);
+    await repo.observe([{ ...PARIS, copies: 1 }, { ...EIFFEL, copies: 4 }], true);
+    await repo.replaceCopies({ [PARIS.slug]: 3 });
+    expect(await repo.list()).toEqual([{ ...PARIS, copies: 3 }]);
+  });
+
+  it('sans aucun nombre compté, ne vide pas la collection', async () => {
+    const repo = createCollectionRepo(createMemoryStore());
+    await repo.observe([{ ...PARIS, copies: 1 }], true);
+    await repo.replaceCopies({});
+    expect(await repo.list()).toHaveLength(1);
   });
 });

@@ -3,6 +3,8 @@ import type { KeyValueStore } from '../cache/store';
 import type { CollectionRepo } from './collection-repo';
 
 const KEY = 'collectionScan';
+// Exemplaires comptés par le parcours complet en cours : la Collection garde ses anciens nombres jusqu'à la fin du parcours.
+const COUNTS_KEY = 'collectionScanCounts';
 // Un autre onglet qui a écrit son état il y a moins longtemps est considéré comme toujours en cours.
 export const LOCK_MS = 60_000;
 // À incrémenter quand le scan lit de nouveaux champs : un parcours terminé avant repart de zéro.
@@ -33,11 +35,13 @@ export type ScanState = {
   fullAt?: number;
 };
 
+type StagedCounts = { nextPage: number; counts: Record<string, number> };
+
 export const IDLE_SCAN: ScanState = { status: 'idle', nextPage: 0, entries: 0, updatedAt: 0 };
 
 export type ScannerDeps = {
   api: { getCollectionPage(page: number, filter?: string, sort?: 'rarity' | 'added'): Promise<CollectionPage> };
-  collection: Pick<CollectionRepo, 'observe' | 'resetCopies' | 'dropUncounted'>;
+  collection: Pick<CollectionRepo, 'observe' | 'replaceCopies'>;
   store: KeyValueStore;
   now?: () => number;
   maxPages?: number;
@@ -168,22 +172,34 @@ export function createCollectionScanner({
         return;
       }
 
-      // Un parcours qui repart de la première page recompte les exemplaires depuis zéro.
-      if (page === 0) await collection.resetCopies();
+      // Le parcours compte à part : la Collection garde ses nombres (et reste filtrable par « ×2 ») jusqu'à la fin.
+      let counts: Record<string, number> = {};
+      if (page > 0) {
+        const staged = await store.get<StagedCounts>(COUNTS_KEY);
+        if (staged?.nextPage === page) counts = staged.counts;
+        else {
+          page = 0;
+          entries = 0;
+          pending = undefined;
+        }
+      }
       while (page < maxPages) {
         await write(snapshot('running'));
         const result = await api.getCollectionPage(page, undefined, 'added');
         pageSize = Math.max(pageSize, result.entries);
         if (result.entries === 0) {
           // Les cartes que ce parcours n'a pas recomptées ont été vendues ou échangées.
-          await collection.dropUncounted();
+          await collection.replaceCopies(counts);
+          await store.set(COUNTS_KEY, null);
           await write(snapshot('done', { fullAt: now(), ...(pending !== undefined ? { lastObtainedAt: pending } : {}) }));
           return;
         }
-        await collection.observe(result.cards, true);
+        await collection.observe(result.cards.map(({ copies: _copies, ...rest }) => rest), false);
+        for (const { slug, copies } of result.cards) counts[slug] = (counts[slug] ?? 0) + (copies ?? 1);
         for (const row of result.obtained ?? []) pending = newest(pending, row.at);
         entries += result.entries;
         page += 1;
+        await store.set(COUNTS_KEY, { nextPage: page, counts } satisfies StagedCounts);
       }
       await write(snapshot('error', { error: 'limite de pages atteinte' }));
     } catch (error) {
