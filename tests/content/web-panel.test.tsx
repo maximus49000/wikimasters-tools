@@ -14,6 +14,13 @@ import { createKindFilterSource } from '../../src/content/kind-filter';
 import { setImageService } from '../../src/content/image-registry';
 import type { ImageService } from '../../src/core/images/image-service';
 import { WebPanel } from '../../src/content/WebPanel';
+import { createLayout } from '../../src/core/links/web-layout';
+
+// Le placement SVG est espionné (sans changer son calcul) : on vérifie de quelles anciennes positions il repart.
+vi.mock('../../src/core/links/web-layout', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/core/links/web-layout')>();
+  return { ...actual, createLayout: vi.fn(actual.createLayout) };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -347,4 +354,56 @@ describe('WebPanel en mode grand, Collection relue pendant la lecture', () => {
     expect(changes.length).toBeLessThanOrEqual(5);
     for (let i = 1; i < changes.length; i++) expect(changes[i]! - changes[i - 1]!).toBeGreaterThanOrEqual(2000);
   });
+});
+
+describe('WebPanel, passage du mode grand au SVG', () => {
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContext;
+    vi.useRealTimers();
+  });
+
+  it('ne reprend pas les positions du mode grand (cartes serrées à 7 unités) pour le placement SVG, et recadre la toile', async () => {
+    const all: KnownCard[] = Array.from({ length: 1600 }, (_, i) => ({ slug: `Carte_${i}`, title: `Carte ${i}` }));
+    const state = setLinks(EMPTY_LINKS, Object.fromEntries(all.map((c) => [c.slug, ['Pop', 'Rock']])), Date.now());
+    let listed = all;
+    const collectionListeners = new Set<() => void>();
+    const noSubscribe = () => () => undefined;
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <WebPanel
+          collection={{ snapshot: () => listed, list: async () => listed, subscribe: (l: () => void) => (collectionListeners.add(l), () => collectionListeners.delete(l)) } as unknown as CollectionRepo}
+          links={{ load: async () => state, subscribe: noSubscribe, resolveMissing, failed: () => false } as unknown as LinksRepo}
+          scanner={{ snapshot: () => IDLE_SCAN, state: async () => IDLE_SCAN, subscribe: noSubscribe } as unknown as CollectionScanner}
+          kinds={{ load: async () => EMPTY_KINDS, subscribe: noSubscribe } as unknown as KindsRepo}
+          kindFilterSource={createKindFilterSource({ getItem: () => null, setItem: () => undefined })}
+          filterSource={{ current: () => '', subscribe: noSubscribe } as unknown as CollectionFilterSource}
+          loadFiltered={async () => new Set()}
+          onOpen={onOpen}
+          onOpenCard={onOpenCard}
+        />,
+      );
+    });
+    expect(container.querySelector('canvas')).not.toBeNull();
+    // Un zoom de l'utilisateur en mode grand (jusqu'à 64 : sans sens en SVG).
+    for (let i = 0; i < 3; i++) await click(container.querySelector('button[aria-label="Zoomer"]'));
+    vi.mocked(createLayout).mockClear();
+    // La Collection perd 110 cartes : 1 490 cartes reliées, le SVG revient (93 % des nœuds déjà placés).
+    listed = all.slice(0, 1490);
+    for (const listener of collectionListeners) listener();
+    for (let step = 0; step < 60 && !container.querySelector('svg [data-card]'); step++) await act(async () => vi.advanceTimersByTime(250));
+    expect(container.querySelector('svg [data-card]')).not.toBeNull();
+    const calls = vi.mocked(createLayout).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    // Le placement SVG repart de zéro : aucune position du mode grand n'est reprise.
+    expect(Object.keys(calls[0]![2] ?? {})).toHaveLength(0);
+    // Le cadrage du mode grand n'est pas gardé : la toile est recadrée automatiquement (zoom ≤ 1 en SVG pour 1 490 cartes).
+    const scale = /scale\(([\d.]+)\)/.exec(container.querySelector('svg > g')?.getAttribute('transform') ?? '')?.[1];
+    expect(Number(scale)).toBeLessThanOrEqual(1);
+  }, 30_000);
 });

@@ -341,14 +341,28 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
 
   // Le placement se calcule par petites tranches (la page reste fluide) et repart du précédent : la toile se complète sans tout rebattre.
   const previous = useRef<Record<string, Point>>({});
+  // Le mode (grand ou SVG) dans lequel `previous` a été calculé : les deux placements n'ont pas la même échelle (7 unités entre deux
+  // cartes en mode grand, 34 de large en SVG). En changeant de mode, on repart de zéro et on recadre (un zoom de 40 n'a pas de sens en SVG).
+  const previousMode = useRef<'big' | 'svg' | null>(null);
   useEffect(() => {
+    const mode = bigModel ? 'big' : 'svg';
+    if (previousMode.current !== null && previousMode.current !== mode) {
+      previous.current = {};
+      setView(null);
+    }
+    previousMode.current = mode;
     if (bigModel) {
       // Mode grand : peu d'articles à placer par forces, les cartes suivent ; un seul passage, pas de tranches.
       const started = performance.now();
       const next = layoutBig(graph, previous.current, bigModel);
       rebuildMs.current += performance.now() - started;
       previous.current = next;
-      setPositions((current) => (samePositions(current, next) ? current : next));
+      setPositions((current) => {
+        // Rien n'a bougé : on garde l'objet affiché, et `previous` le désigne aussi (pas deux tables de 200 000 positions en mémoire).
+        if (!samePositions(current, next)) return next;
+        previous.current = current;
+        return current;
+      });
       return;
     }
     const layout = createLayout(webNodes(graph), webEdges(graph), previous.current);
