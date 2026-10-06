@@ -15,11 +15,16 @@ export type DrawOptions = {
   paper: string;
   // L'image d'une carte (indice), ou null tant qu'elle n'est pas là.
   image: (card: number) => CanvasImageSource | null;
+  // Les cartes mises en avant (voir litMask) : 1 = en plein, 0 = estompée. Absent ou null : d'après focusHub / pickedCard.
+  lit?: Uint8Array | null;
 };
 export type DrawResult = { level: Level; visible: number };
 
 // Au plus ce nombre de traits cartes → articles en même temps (sinon on n'en trace qu'un échantillon) ; une carte en a jusqu'à deux.
 const EDGE_CAP = 5000;
+// Traits des cartes mises en avant : tous jusqu'à ce nombre (un article de 7 500 cartes à l'écran), échantillonnés au-delà
+// (20 000 cartes allumées à l'écran donneraient 40 000 traits : plus de 12 ms par image).
+const LIT_EDGE_CAP = 15000;
 const CARD_PX = 30;
 // En dessous de ce rayon (px), un point est dessiné en carré.
 const SQUARE_DOT = 2;
@@ -55,8 +60,10 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, t: Transf
   const visible = level === 'clusters' ? approx : seen.length;
 
   const { focusHub, pickedCard } = o;
-  const emphasis = focusHub >= 0 || pickedCard >= 0 || o.route.length > 0;
-  const lit = (i: number): boolean => (focusHub >= 0 ? scene.hub1[i] === focusHub || scene.hub2[i] === focusHub : pickedCard >= 0 && i === pickedCard);
+  const mask = o.lit ?? null;
+  const emphasis = focusHub >= 0 || pickedCard >= 0 || o.route.length > 0 || mask !== null;
+  const lit = (i: number): boolean =>
+    mask ? mask[i] === 1 : focusHub >= 0 ? scene.hub1[i] === focusHub || scene.hub2[i] === focusHub : pickedCard >= 0 && i === pickedCard;
   const none = scene.themes.length;
   const slotOf = (theme: number): number => (theme < 0 ? none : theme);
   const colorOf = (slot: number): string => scene.themes[slot]?.color ?? FALLBACK;
@@ -81,6 +88,8 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, t: Transf
     ctx.fillText(value, x, y);
   };
 
+  const litByTheme: number[][] = Array.from({ length: none + 1 }, () => []);
+  const dimByTheme: number[][] = Array.from({ length: none + 1 }, () => []);
   if (level === 'clusters') {
     const { items, max } = clustersFor(scene, clusterCell(k));
     for (const item of items) {
@@ -96,30 +105,39 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, t: Transf
     }
     ctx.globalAlpha = 1;
   } else {
-    // Traits cartes → articles, par thème (un seul tracé par couleur).
-    const byTheme: number[][] = Array.from({ length: none + 1 }, () => []);
-    const stride = emphasis || level !== 'dots' ? 1 : Math.max(1, Math.ceil((seen.length * 2) / EDGE_CAP));
-    for (let n = 0; n < seen.length; n += stride) {
-      const i = seen[n]!;
-      if (emphasis && !lit(i)) continue;
-      byTheme[slotOf(scene.theme[i]!)]!.push(i);
-    }
-    ctx.lineWidth = 0.7;
-    ctx.globalAlpha = emphasis ? 0.5 : 0.16;
-    byTheme.forEach((list, slot) => {
-      if (list.length === 0) return;
-      ctx.strokeStyle = colorOf(slot);
-      ctx.beginPath();
-      for (const i of list) {
-        for (const h of [scene.hub1[i]!, scene.hub2[i]!]) {
-          if (h < 0) continue;
-          const hub = scene.hubs[h]!;
-          ctx.moveTo(sx(scene.xs[i]!), sy(scene.ys[i]!));
-          ctx.lineTo(sx(hub.x), sy(hub.y));
+    // Les cartes de l'écran, par thème, en deux groupes : mises en avant (ou toutes, sans mise en avant) et estompées.
+    // Une seule répartition sert aux traits puis aux points.
+    for (const i of seen) (emphasis && !lit(i) ? dimByTheme : litByTheme)[slotOf(scene.theme[i]!)]!.push(i);
+    let dimCount = 0;
+    for (const list of dimByTheme) dimCount += list.length;
+    // Traits cartes → articles, un tracé par couleur et par opacité. Au niveau points, au plus EDGE_CAP traits (échantillon) pour
+    // les cartes ordinaires ou estompées, et au plus LIT_EDGE_CAP pour celles mises en avant.
+    const sampled = (count: number, cap = EDGE_CAP) => (level === 'dots' ? Math.max(1, Math.ceil((count * 2) / cap)) : 1);
+    const strokeEdges = (groups: number[][], stride: number, alpha: number) => {
+      ctx.lineWidth = 0.7;
+      ctx.globalAlpha = alpha;
+      groups.forEach((list, slot) => {
+        if (list.length === 0) return;
+        ctx.strokeStyle = colorOf(slot);
+        ctx.beginPath();
+        for (let n = 0; n < list.length; n += stride) {
+          const i = list[n]!;
+          for (const h of [scene.hub1[i]!, scene.hub2[i]!]) {
+            if (h < 0) continue;
+            const hub = scene.hubs[h]!;
+            ctx.moveTo(sx(scene.xs[i]!), sy(scene.ys[i]!));
+            ctx.lineTo(sx(hub.x), sy(hub.y));
+          }
         }
-      }
-      ctx.stroke();
-    });
+        ctx.stroke();
+      });
+    };
+    if (emphasis) {
+      strokeEdges(dimByTheme, sampled(dimCount), 0.16 * DIMMED);
+      strokeEdges(litByTheme, sampled(seen.length - dimCount, LIT_EDGE_CAP), 0.5);
+    } else {
+      strokeEdges(litByTheme, sampled(seen.length), 0.16);
+    }
     ctx.globalAlpha = 1;
   }
 
@@ -141,46 +159,55 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, t: Transf
     const radius = Math.max(1.3, Math.min(3, k * 0.45));
     // Petits points (moins de 4 px) : des carrés, quatre fois moins chers qu'un cercle pour le canvas (20 000 points : ~2,5 ms au lieu de ~10).
     const square = radius < SQUARE_DOT;
-    const byTheme: number[][] = Array.from({ length: none + 1 }, () => []);
-    for (const i of seen) byTheme[slotOf(scene.theme[i]!)]!.push(i);
-    byTheme.forEach((list, slot) => {
-      ctx.fillStyle = colorOf(slot);
-      ctx.beginPath();
-      for (const i of list) {
-        if (emphasis && !lit(i)) continue;
-        const x = sx(scene.xs[i]!);
-        const y = sy(scene.ys[i]!);
-        if (square) {
-          ctx.rect(x - radius, y - radius, radius * 2, radius * 2);
-        } else {
-          ctx.moveTo(x + radius, y);
-          ctx.arc(x, y, radius, 0, TAU);
+    // Les points estompés d'abord, puis ceux mis en avant par-dessus : un tracé par couleur et par opacité.
+    const fillDots = (groups: number[][], alpha: number) => {
+      ctx.globalAlpha = alpha;
+      groups.forEach((list, slot) => {
+        if (list.length === 0) return;
+        ctx.fillStyle = colorOf(slot);
+        ctx.beginPath();
+        for (const i of list) {
+          const x = sx(scene.xs[i]!);
+          const y = sy(scene.ys[i]!);
+          if (square) {
+            ctx.rect(x - radius, y - radius, radius * 2, radius * 2);
+          } else {
+            ctx.moveTo(x + radius, y);
+            ctx.arc(x, y, radius, 0, TAU);
+          }
         }
-      }
-      ctx.fill();
-    });
+        ctx.fill();
+      });
+    };
+    fillDots(dimByTheme, DIMMED);
+    fillDots(litByTheme, 1);
+    ctx.globalAlpha = 1;
   } else if (level === 'cards') {
     const half = CARD_PX / 2;
-    for (const i of seen) {
-      if (emphasis && !lit(i)) continue;
+    // Les cartes estompées d'abord (même dessin, en transparence), puis celles mises en avant par-dessus.
+    const ordered = emphasis ? [...seen.filter((i) => !lit(i)), ...seen.filter((i) => lit(i))] : seen;
+    for (const i of ordered) {
+      const alpha = emphasis && !lit(i) ? DIMMED : 1;
       const x = sx(scene.xs[i]!);
       const y = sy(scene.ys[i]!);
       const color = colorOf(slotOf(scene.theme[i]!));
+      ctx.globalAlpha = alpha;
       ctx.fillStyle = o.paper;
       ctx.fillRect(x - half, y - half, CARD_PX, CARD_PX);
       const art = o.image(i);
       if (art) {
         ctx.drawImage(art, x - half, y - half, CARD_PX, CARD_PX);
       } else {
-        ctx.globalAlpha = 0.3;
+        ctx.globalAlpha = 0.3 * alpha;
         ctx.fillStyle = color;
         ctx.fillRect(x - half, y - half, CARD_PX, CARD_PX);
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = alpha;
       }
       ctx.strokeStyle = color;
       ctx.lineWidth = i === pickedCard ? 3 : 2;
       ctx.strokeRect(x - half, y - half, CARD_PX, CARD_PX);
     }
+    ctx.globalAlpha = 1;
   }
 
   // Le chemin cherché entre deux cartes, par-dessus tout.
@@ -245,7 +272,10 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, t: Transf
     }
   }
 
+  // Sous une mise en avant, les noms de thèmes s'estompent comme le reste.
+  ctx.globalAlpha = emphasis ? DIMMED : 1;
   for (const label of themeNames) text(label.name, label.x, label.y, 15, label.color, true);
+  ctx.globalAlpha = 1;
 
   return { level, visible };
 }

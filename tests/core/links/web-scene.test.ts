@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { KnownCard } from '../../../src/core/collection/collection-book';
 import type { WebGraph } from '../../../src/core/links/web-graph';
-import { BIG_GRAPH, CARDS_MAX, DOTS_MAX, buildScene, clusterCell, clustersFor, levelFor, pickAt } from '../../../src/core/links/web-scene';
+import { BIG_GRAPH, CARDS_MAX, DOTS_MAX, buildScene, clusterCell, clustersFor, levelFor, litMask, pickAt } from '../../../src/core/links/web-scene';
 import { layoutBig } from '../../../src/core/links/web-place';
 import { buildBigModel } from '../../../src/core/links/web-themes';
 
@@ -153,5 +153,27 @@ describe('pickAt', () => {
 
   it('ne trouve rien dans le vide', () => {
     expect(pickAt(scene, t, 'dots', -5000, -5000)).toBeNull();
+  });
+});
+
+describe('litMask', () => {
+  // S est le 3e article de ses cartes : ni hub1 ni hub2, mais toutes ses cartes doivent s'allumer.
+  const { g, scene } = build({ H1: many('c', 60), H2: many('c', 60), S: many('c', 20) });
+  const lit = (mask: Uint8Array | null) => (mask ? scene.slugs.filter((_, i) => mask[i] === 1).sort() : null);
+
+  it('rien de mis en avant : pas de masque', () => {
+    expect(litMask(scene, g, null, null)).toBeNull();
+  });
+
+  it("allume toutes les cartes de l'article touché, même quand il n'est pas parmi leurs deux premiers", () => {
+    expect(scene.hub1[scene.cardIndex.get('c3')!]).not.toBe(scene.hubIndex.get('S'));
+    expect(scene.hub2[scene.cardIndex.get('c3')!]).not.toBe(scene.hubIndex.get('S'));
+    expect(lit(litMask(scene, g, 'S', null))).toEqual(many('c', 20).sort());
+  });
+
+  it('allume la carte touchée, et les cartes du chemin cherché', () => {
+    expect(lit(litMask(scene, g, null, 'c42'))).toEqual(['c42']);
+    const withPath = { ...g, path: { ids: new Set(['c:c1', 'h:H1', 'c:c7']), edges: new Set<string>(), added: new Set<string>() } };
+    expect(lit(litMask(scene, withPath, null, null))).toEqual(['c1', 'c7']);
   });
 });

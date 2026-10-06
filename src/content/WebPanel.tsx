@@ -10,7 +10,7 @@ import { chooseLabels, shortTitle } from '../core/links/web-labels';
 import { withPath } from '../core/links/web-path-graph';
 import { createLayout, samePositions, type Point } from '../core/links/web-layout';
 import { layoutBig } from '../core/links/web-place';
-import { BIG_GRAPH, buildScene } from '../core/links/web-scene';
+import { BIG_GRAPH, buildScene, litMask } from '../core/links/web-scene';
 import { buildBigModel } from '../core/links/web-themes';
 import { BIG_LIMITS, DEFAULT_LIMITS, ZOOM_STEP, boundsOf, fitTransform, pinch, placeActions, zoomAt, type Transform } from '../core/links/web-view';
 import type { CollectionFilterSource } from './collection-filter';
@@ -561,6 +561,12 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
     rebuildMs.current += performance.now() - started;
     return built;
   }, [bigModel, graph, positions]);
+  // Les cartes mises en avant sur le canvas : toutes celles de l'article touché, la carte touchée, celles du chemin cherché.
+  // Calculé une fois par changement de mise en avant, pas à chaque image.
+  const lit = useMemo(
+    () => (scene ? litMask(scene, graph, focus?.kind === 'hub' ? focus.slug : null, picked) : null),
+    [scene, graph, focus, picked],
+  );
   // Les traits du chemin cherché entre deux cartes, pour le canvas.
   const route = useMemo(
     () =>
@@ -605,6 +611,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
               focus={focus}
               picked={picked}
               route={route}
+              lit={lit}
               imageOf={canvasImageOf}
               size={size}
               transform={transform}

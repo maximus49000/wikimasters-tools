@@ -234,6 +234,23 @@ export function clustersFor(scene: Scene, cell: number): Clusters {
   return result;
 }
 
+// Les cartes mises en avant (indexées comme la scène) : TOUTES les cartes de l'article touché (pas seulement celles dont il est l'un
+// des deux premiers articles), la carte touchée et celles du chemin cherché. Calculé une fois par changement (coût : la taille de
+// l'article), puis lu en temps constant pour chaque carte à chaque image. null : rien n'est mis en avant.
+export function litMask(scene: Scene, graph: WebGraph, focusHub: string | null, pickedCard: string | null): Uint8Array | null {
+  const pathIds = graph.path?.ids;
+  if (!focusHub && !pickedCard && !pathIds) return null;
+  const mask = new Uint8Array(scene.slugs.length);
+  const light = (slug: string) => {
+    const i = scene.cardIndex.get(slug);
+    if (i !== undefined) mask[i] = 1;
+  };
+  if (focusHub) for (const slug of graph.hubs.find((hub) => hub.slug === focusHub)?.cards ?? []) light(slug);
+  if (pickedCard) light(pickedCard);
+  if (pathIds) for (const id of pathIds) if (id.startsWith('c:')) light(id.slice(2));
+  return mask;
+}
+
 export type Hit = { kind: 'hub' | 'card'; slug: string };
 
 // Ce que touche le doigt en (px, py) (pixels de la zone) : un article d'abord, puis une carte (jamais en regroupements : elles n'y sont pas dessinées).

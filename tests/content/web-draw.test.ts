@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { KnownCard } from '../../src/core/collection/collection-book';
 import type { WebGraph } from '../../src/core/links/web-graph';
 import { layoutBig } from '../../src/core/links/web-place';
-import { buildScene } from '../../src/core/links/web-scene';
+import { buildScene, litMask } from '../../src/core/links/web-scene';
 import { buildBigModel } from '../../src/core/links/web-themes';
 import { drawScene, type DrawOptions } from '../../src/content/web-draw';
 
@@ -78,6 +78,12 @@ describe('drawScene', () => {
     const segments = calls.filter((call) => call === 'lineTo:2').length - big.hubLinks.length;
     expect(segments).toBeGreaterThan(2500);
     expect(segments).toBeLessThanOrEqual(5000);
+    // Toutes les cartes mises en avant (18 000 traits) : échantillonnées à 15 000 traits au plus pour tenir le budget d'une image.
+    const all = fakeContext();
+    drawScene(all.ctx, big, { k, x: size.width / 2 - c.x * k, y: size.height / 2 - c.y * k }, size, { ...options, lit: new Uint8Array(9000).fill(1) });
+    const litSegments = all.calls.filter((call) => call === 'lineTo:2').length - big.hubLinks.length;
+    expect(litSegments).toBeGreaterThan(7500);
+    expect(litSegments).toBeLessThanOrEqual(15000);
   });
 
   it("écrit le nom des thèmes par-dessus les articles en vue d'ensemble", () => {
@@ -98,6 +104,72 @@ describe('drawScene', () => {
     expect(theme).toBeGreaterThan(lastArc);
     // 44 000 cartes placées : délai large.
   }, 20_000);
+
+  // Un contexte qui compte les points (rect) et les cartes (strokeRect) dessinés à chaque opacité.
+  const alphaContext = () => {
+    let alpha = 1;
+    const counts: Record<string, number> = {};
+    const ctx = new Proxy({}, {
+      get: (_, name: string) => (...args: unknown[]) => {
+        void args;
+        const key = `${name}@${alpha}`;
+        counts[key] = (counts[key] ?? 0) + 1;
+      },
+      set: (_, name: string, value: unknown) => {
+        if (name === 'globalAlpha') alpha = value as number;
+        return true;
+      },
+    }) as unknown as CanvasRenderingContext2D;
+    return { ctx, counts };
+  };
+  const third = (() => {
+    const hubs = { H1: many('c', 400), H2: many('c', 400), S: many('c', 100) };
+    const g: WebGraph = {
+      cards: many('c', 400).map(card),
+      hubs: Object.entries(hubs).map(([slug, cards]) => ({ slug, title: slug, cards })),
+      cardLinks: [],
+      hiddenHubs: 0,
+    };
+    const model = buildBigModel(g);
+    const sc = buildScene(g, layoutBig(g, {}, model), model);
+    const b = sc.bounds!;
+    const fit = (k: number) => ({ k, x: size.width / 2 - ((b.minX + b.maxX) / 2) * k, y: size.height / 2 - ((b.minY + b.maxY) / 2) * k });
+    const k = Math.min(size.width / (b.maxX - b.minX), size.height / (b.maxY - b.minY)) * 0.9;
+    return { g, sc, view: fit(k), zoomed: fit(k * 40) };
+  })();
+
+  it("article mis en avant (3e article de ses cartes) : ses 100 cartes en plein, les 300 autres estompées, aucune cachée", () => {
+    const { ctx, counts } = alphaContext();
+    const focusHub = third.sc.hubIndex.get('S')!;
+    const lit = litMask(third.sc, third.g, 'S', null);
+    const result = drawScene(ctx, third.sc, third.view, size, { ...options, focusHub, lit });
+    expect(result.level).toBe('dots');
+    expect(result.visible).toBe(400);
+    expect(counts['rect@1']).toBe(100);
+    expect(counts['rect@0.25']).toBe(300);
+  });
+
+  it('chemin cherché : ses cartes en plein, les autres estompées (pas effacées)', () => {
+    const { ctx, counts } = alphaContext();
+    const g = { ...third.g, path: { ids: new Set(['c:c1', 'c:c2']), edges: new Set<string>(), added: new Set<string>() } };
+    const lit = litMask(third.sc, g, null, null);
+    const route = [[{ x: third.sc.xs[1]!, y: third.sc.ys[1]! }, { x: third.sc.xs[2]!, y: third.sc.ys[2]! }]] as const;
+    drawScene(ctx, third.sc, third.view, size, { ...options, route, lit });
+    expect(counts['rect@1']).toBe(2);
+    expect(counts['rect@0.25']).toBe(398);
+  });
+
+  it('carte touchée au niveau cartes : les autres cartes restent dessinées, estompées', () => {
+    const { ctx, counts } = alphaContext();
+    const picked = third.sc.cardIndex.get('c5')!;
+    const at = { x: third.sc.xs[picked]!, y: third.sc.ys[picked]! };
+    const view = { k: 8, x: size.width / 2 - at.x * 8, y: size.height / 2 - at.y * 8 };
+    const lit = litMask(third.sc, third.g, null, 'c5');
+    const result = drawScene(ctx, third.sc, view, size, { ...options, pickedCard: picked, lit });
+    expect(result.level).toBe('cards');
+    expect(counts['strokeRect@1']).toBe(1);
+    expect(counts['strokeRect@0.25']).toBe(result.visible - 1);
+  });
 
   it('met un article en avant sans planter, route comprise', () => {
     const { ctx } = fakeContext();

@@ -13,6 +13,8 @@ type Props = {
   focus: Focus | null;
   picked: string | null;
   route: readonly (readonly [Point, Point])[];
+  // Les cartes mises en avant (voir litMask), null si rien ne l'est.
+  lit: Uint8Array | null;
   // L'image d'une carte (celle du jeu, sinon l'image de remplacement déjà trouvée) ; chargée seulement quand la carte est dessinée en grand.
   imageOf: (slug: string) => string | undefined;
   size: { width: number; height: number };
@@ -28,14 +30,14 @@ type Props = {
   surface: Pick<HTMLAttributes<HTMLCanvasElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onPointerLeave'>;
 };
 
-export function WebCanvas({ scene, focus, picked, route, imageOf, size, transform, drawRef, liveTransform, dragged, onCard, onHub, onBackground, surface }: Props) {
+export function WebCanvas({ scene, focus, picked, route, lit, imageOf, size, transform, drawRef, liveTransform, dragged, onCard, onHub, onBackground, surface }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Le niveau de détail du dernier dessin : toucher la toile cherche dans ce que l'on voit.
   const level = useRef<Level>('clusters');
   const images = useRef(new Map<string, HTMLImageElement>());
   const colors = useRef({ ink: '#e6edf3', paper: '#0d1117' });
-  const latest = useRef({ scene, focus, picked, route, imageOf, size });
-  latest.current = { scene, focus, picked, route, imageOf, size };
+  const latest = useRef({ scene, focus, picked, route, lit, imageOf, size });
+  latest.current = { scene, focus, picked, route, lit, imageOf, size };
   // Redessiner quand une image arrive (avec le cadrage du moment, même pendant un geste).
   const again = useRef<() => void>(() => undefined);
 
@@ -44,7 +46,7 @@ export function WebCanvas({ scene, focus, picked, route, imageOf, size, transfor
     const ctx = canvas?.getContext('2d');
     // Pas de contexte 2D (jsdom, ou navigateur à court de mémoire) : rien à dessiner.
     if (!canvas || !ctx) return;
-    const { scene: s, focus: f, picked: p, route: r, imageOf: art, size: area } = latest.current;
+    const { scene: s, focus: f, picked: p, route: r, lit: mask, imageOf: art, size: area } = latest.current;
     const ratio = window.devicePixelRatio || 1;
     const w = Math.round(area.width * ratio);
     const h = Math.round(area.height * ratio);
@@ -61,6 +63,7 @@ export function WebCanvas({ scene, focus, picked, route, imageOf, size, transfor
       focusHub: f?.kind === 'hub' ? (s.hubIndex.get(f.slug) ?? -1) : -1,
       pickedCard: p ? (s.cardIndex.get(p) ?? -1) : -1,
       route: r,
+      lit: mask,
       ink: colors.current.ink,
       paper: colors.current.paper,
       image: (card) => {
@@ -101,7 +104,7 @@ export function WebCanvas({ scene, focus, picked, route, imageOf, size, transfor
     paint(liveTransform(), true);
     // `liveTransform` lit une référence : seul `transform` (ou les autres données) doit relancer le dessin.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paint, scene, focus, picked, route, imageOf, size, transform]);
+  }, [paint, scene, focus, picked, route, lit, imageOf, size, transform]);
 
   const onClick = (event: { clientX: number; clientY: number }) => {
     if (dragged()) return;
