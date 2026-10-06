@@ -143,11 +143,15 @@ export function layoutBig(graph: WebGraph, previous: Record<string, Point>, mode
     ...model.edges.map((edge): [string, string] => [hubId(edge.a), hubId(edge.b)]),
     ...(graph.hubLinks ?? []).map(([a, b]): [string, string] => [hubId(a), hubId(b)]),
   ];
+  // Tous les anciens articles, y compris ceux qui ont disparu : layoutWeb juge ainsi si la toile grandit ou change.
   const hubPrevious: Record<string, Point> = {};
-  for (const hub of graph.hubs) {
-    const before = previous[hubId(hub.slug)];
-    if (before) hubPrevious[hubId(hub.slug)] = before;
-  }
+  for (const [id, point] of Object.entries(previous)) if (id.startsWith('h:')) hubPrevious[id] = point;
   const hubs = nodes.length === 0 ? {} : layoutWeb(nodes, edges, hubPrevious);
-  return { ...hubs, ...placeCards(graph, hubs, model.hubsOf, previous) };
+  // Si la toile des articles a redémarré de zéro (filtre, beaucoup d'articles en moins ou en plus), certains articles ont bougé :
+  // les anciennes places des cartes ne valent plus rien, on les recalcule autour des nouveaux articles.
+  const restarted = Object.entries(hubPrevious).some(([id, before]) => {
+    const now = hubs[id];
+    return now !== undefined && (now.x !== before.x || now.y !== before.y);
+  });
+  return { ...hubs, ...placeCards(graph, hubs, model.hubsOf, restarted ? {} : previous) };
 }

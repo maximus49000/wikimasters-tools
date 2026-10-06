@@ -88,4 +88,33 @@ describe('layoutBig', () => {
     const next = layoutBig(grown, first, buildBigModel(grown));
     for (const [id, p] of Object.entries(first)) expect(next[id]).toEqual(p);
   });
+
+  const hubsGraph = (count: number) => graph(Object.fromEntries(many('H', count).map((h) => [h, many(`${h}_`, 20)])));
+  const expectNearHubs = (positions: Record<string, Point>, count: number) => {
+    for (let h = 0; h < count; h++) {
+      const hub = positions[`h:H${h}`]!;
+      for (let i = 0; i < 20; i++) {
+        const p = positions[`c:H${h}_${i}`]!;
+        expect(Math.hypot(p.x - hub.x, p.y - hub.y)).toBeLessThan(400);
+      }
+    }
+  };
+
+  // Anciennes positions décalées loin du centre : une carte restée à son ancienne place serait aussitôt repérée.
+  const shifted = (positions: Record<string, Point>) =>
+    Object.fromEntries(Object.entries(positions).map(([id, p]) => [id, { x: p.x + 5000, y: p.y + 5000 }]));
+
+  it('recalcule les cartes autour des articles quand de nombreux articles arrivent', () => {
+    const small = hubsGraph(2);
+    const first = layoutBig(small, {}, buildBigModel(small));
+    const wide = hubsGraph(12);
+    expectNearHubs(layoutBig(wide, shifted(first), buildBigModel(wide)), 12);
+  });
+
+  it('recalcule les cartes autour des articles quand un filtre en retire beaucoup', () => {
+    const wide = hubsGraph(10);
+    const first = layoutBig(wide, {}, buildBigModel(wide));
+    const narrow = hubsGraph(2);
+    expectNearHubs(layoutBig(narrow, shifted(first), buildBigModel(narrow)), 2);
+  });
 });
