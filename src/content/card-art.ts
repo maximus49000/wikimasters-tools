@@ -71,57 +71,32 @@ export function syncCardArt(root: ParentNode, source: ArtSource): number {
     for (const overlay of root.querySelectorAll(`[${ART_ATTRIBUTE}]`)) overlay.remove();
     return 0;
   }
-  const gameZones = new Set<Element>();
+  const seen = new Set<Element>();
   for (const img of root.querySelectorAll<HTMLImageElement>('img')) {
     const zone = img.closest(ART_ZONE);
-    if (!zone) continue;
-    if (!isPlaceholder(img)) {
-      // Carte qui a déjà une image : si c'est un jeu vidéo, l'affiche officielle (Steam, IGDB) passe devant celle de Wikipédia.
-      if (img.closest(`[${ART_ATTRIBUTE}]`) || gameZones.has(zone) || [...zone.querySelectorAll<HTMLImageElement>('img')].some(isPlaceholder)) continue;
-      gameZones.add(zone);
-      const gameTitle = readTitle(zone);
-      const gameSlug = gameTitle ? titleToSlug(gameTitle) : null;
-      if (!gameTitle || !gameSlug) continue;
-      const gameUrl = source.peekGameArt(gameSlug);
-      const current = overlayOf(zone);
-      if (gameUrl === undefined) {
-        source.requestGameArt(gameSlug, gameTitle);
-        continue;
-      }
-      if (gameUrl === null || broken.has(gameUrl)) {
-        current?.remove();
-        continue;
-      }
-      if (current?.getAttribute(ART_ATTRIBUTE) === gameUrl) {
-        placed += 1;
-        continue;
-      }
-      current?.remove();
-      zone.append(buildOverlay(gameUrl));
-      placed += 1;
-      continue;
-    }
+    if (!zone || img.closest(`[${ART_ATTRIBUTE}]`) || seen.has(zone)) continue;
+    seen.add(zone);
     const title = readTitle(zone);
-    if (!title) continue;
-    const slug = titleToSlug(title);
-    if (!slug) continue;
-    const url = source.peek(slug);
+    const slug = title ? titleToSlug(title) : null;
+    if (!title || !slug) continue;
+    const logo = [...zone.querySelectorAll<HTMLImageElement>('img')].some(isPlaceholder);
+    // Jeu vidéo : l'affiche officielle (Steam, IGDB) passe devant la photo Wikipédia, et devant l'image de remplacement d'une carte au logo.
+    const game = source.peekGameArt(slug);
+    if (game === undefined) source.requestGameArt(slug, title);
+    // Carte au logo : l'image de remplacement (recherche faite une seule fois par le service).
+    const replacement = logo ? source.peek(slug) : null;
+    if (logo && replacement === undefined) source.request(slug, title);
     const existing = overlayOf(zone);
-    if (url === undefined) {
-      source.request(slug, title);
-      continue;
-    }
-    if (url === null || broken.has(url)) {
+    if (logo && replacement === undefined && !game) continue;
+    const url = [game, replacement].find((candidate): candidate is string => typeof candidate === 'string' && !broken.has(candidate));
+    if (!url) {
       existing?.remove();
       continue;
     }
-    if (existing?.getAttribute(ART_ATTRIBUTE) === url) {
-      placed += 1;
-      continue;
-    }
+    placed += 1;
+    if (existing?.getAttribute(ART_ATTRIBUTE) === url) continue;
     existing?.remove();
     zone.append(buildOverlay(url));
-    placed += 1;
   }
   return placed;
 }

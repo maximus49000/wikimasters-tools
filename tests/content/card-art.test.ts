@@ -65,6 +65,13 @@ describe('syncCardArt', () => {
     expect(document.querySelectorAll(`[${ART_ATTRIBUTE}]`)).toHaveLength(1);
     expect(art.requestGameArt).not.toHaveBeenCalled();
   });
+  it('carte au logo d’un jeu : l’affiche du jeu remplace l’image de remplacement déjà trouvée', () => {
+    syncCardArt(document, source('https://upload.wikimedia.org/faux.jpg', true, undefined));
+    expect(document.querySelector(`[${ART_ATTRIBUTE}] img`)?.getAttribute('src')).toBe('https://upload.wikimedia.org/faux.jpg');
+    syncCardArt(document, source('https://upload.wikimedia.org/faux.jpg', true, 'https://steam/a.jpg'));
+    expect(document.querySelectorAll(`[${ART_ATTRIBUTE}]`)).toHaveLength(1);
+    expect(document.querySelector(`[${ART_ATTRIBUTE}] img`)?.getAttribute('src')).toBe('https://steam/a.jpg');
+  });
   it('option coupée : retire les images posées et ne cherche rien', () => {
     syncCardArt(document, source('https://upload.wikimedia.org/m.jpg'));
     const off = source(undefined, false);
