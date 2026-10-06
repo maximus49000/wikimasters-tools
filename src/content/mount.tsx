@@ -3,6 +3,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { PurchaseModel } from '../core/pricing/badge';
 import type { MarketRepo } from '../core/market/market-repo';
 import { PURCHASE_HOST_ATTRIBUTE } from './decorate';
+import { AuctionLink } from './AuctionLink';
+import { AUCTION_HOST_ATTRIBUTE, type MountAuctionLink } from './auction-link';
+import { setPendingAuctionSearch } from './auction-search';
 import { MarketLink } from './MarketLink';
 import { MARKET_HOST_ATTRIBUTE, type MountMarketLink } from './market-link';
 import { MarketPopup } from './MarketPopup';
@@ -310,8 +313,30 @@ export function createMarketUi(repo: MarketRepo, history: HistoryRepo) {
     );
   };
 
+  // Fiche d'une enchère : le lien liste toutes les enchères de la carte, par fin imminente (la recherche reprend sur la page Marché).
+  const mountAuctionLink: MountAuctionLink = (box, title) => {
+    const host = document.createElement('div');
+    host.setAttribute(AUCTION_HOST_ATTRIBUTE, '');
+    host.style.display = 'block';
+
+    const shadow = host.attachShadow({ mode: 'open' });
+    const mountPoint = document.createElement('div');
+    shadow.appendChild(mountPoint);
+
+    box.insertAdjacentElement('afterend', host);
+    createRoot(mountPoint).render(
+      <AuctionLink
+        onOpen={() => {
+          setPendingAuctionSearch(window.sessionStorage, title, Date.now());
+          window.location.assign('/marketplace');
+        }}
+      />,
+    );
+  };
+
   return {
     mountLink,
+    mountAuctionLink,
     // Fiche de marché d'une carte (Map, Chronologique) : la même popup que le lien de la liste.
     openMarket: (slug: string) => openPopup(slug, false),
     // Reprise après la navigation vers la page Marché : le popup lance lui-même la recherche.
