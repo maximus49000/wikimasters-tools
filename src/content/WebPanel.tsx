@@ -248,7 +248,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   const [imagesVersion, setImagesVersion] = useState(0);
   useEffect(() => imageService?.subscribe(() => setImagesVersion((version) => version + 1)), [imageService]);
   const imageOf = useCallback(
-    (card: KnownCard): string | undefined => card.imageUrl ?? (imageService?.enabled() ? (imageService.peek(card.slug) ?? undefined) : undefined),
+    (card: KnownCard): string | undefined => imageService ? imageService.displayUrl(card.slug, card.imageUrl) : card.imageUrl,
     // `imagesVersion` change quand une image est trouvée : la fonction change, les cartes se redessinent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [imageService, imagesVersion],

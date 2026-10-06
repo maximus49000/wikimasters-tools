@@ -111,7 +111,7 @@ describe('WebPanel', () => {
 
 describe('WebPanel, images', () => {
   const withImages = (found: Record<string, string | null>, enabled = true) =>
-    setImageService({ enabled: () => enabled, peek: (slug: string) => found[slug], subscribe: () => () => undefined } as unknown as ImageService);
+    setImageService({ enabled: () => enabled, peek: (slug: string) => found[slug], displayUrl: (slug: string, own?: string) => (enabled ? (own ?? found[slug] ?? undefined) : own), subscribe: () => () => undefined } as unknown as ImageService);
   const art = (slug: string) => card(slug)?.querySelector('image')?.getAttribute('href') ?? null;
 
   afterEach(() => setImageService(null));

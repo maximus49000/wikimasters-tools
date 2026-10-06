@@ -113,6 +113,15 @@ export function createImageService(deps: {
     peek: (slug: string): string | null | undefined => state[slug]?.url,
     // Affiche d'un jeu vidéo pour une carte qui a déjà une image : `undefined` pas encore cherchée, `null` pas un jeu / rien trouvé.
     peekGameArt: (slug: string): string | null | undefined => gameArtOf.get(slug),
+    // Image à montrer pour une carte dans les vues de l'extension : l'affiche du jeu vidéo d'abord, puis l'image propre de la carte,
+    // puis l'image de remplacement. Une carte qui a une image et dont l'affiche est inconnue la fait chercher (réponse via `subscribe`).
+    displayUrl(slug: string, own: string | undefined): string | undefined {
+      if (!enabled) return own;
+      const game = gameArtOf.get(slug);
+      if (game) return game;
+      if (game === undefined && own) void this.requestGameArt(slug, slug.replaceAll('_', ' '));
+      return own ?? state[slug]?.url ?? undefined;
+    },
     requestGameArt(slug: string, title: string): Promise<void> {
       const failed = gameArtFailedAt.get(slug);
       if (!enabled || !deps.gameArt || gameArtOf.has(slug) || gameArtRunning.has(slug) || (failed !== undefined && now() - failed < COOLDOWN_MS)) return Promise.resolve();
