@@ -58,6 +58,20 @@ describe('drawScene', () => {
     expect(result.visible).toBeGreaterThan(350);
   });
 
+  it('trace au plus 5 000 traits cartes → articles en points, même quand chaque carte en a deux', () => {
+    const big = scene({ A1: many('a', 4500), A2: many('a', 4500), B1: many('b', 4500), B2: many('b', 4500) });
+    const { ctx, calls } = fakeContext();
+    const b = big.bounds!;
+    const k = Math.min(size.width / (b.maxX - b.minX), size.height / (b.maxY - b.minY));
+    const c = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 };
+    const result = drawScene(ctx, big, { k, x: size.width / 2 - c.x * k, y: size.height / 2 - c.y * k }, size, options);
+    expect(result.level).toBe('dots');
+    expect(result.visible).toBe(9000);
+    const segments = calls.filter((call) => call === 'lineTo:2').length - big.hubLinks.length;
+    expect(segments).toBeGreaterThan(2500);
+    expect(segments).toBeLessThanOrEqual(5000);
+  });
+
   it('met un article en avant sans planter, route comprise', () => {
     const { ctx } = fakeContext();
     const route = [[{ x: 0, y: 0 }, { x: 50, y: 50 }]] as const;

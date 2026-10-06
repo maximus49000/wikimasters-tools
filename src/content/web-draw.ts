@@ -18,7 +18,7 @@ export type DrawOptions = {
 };
 export type DrawResult = { level: Level; visible: number };
 
-// Au plus ce nombre de traits cartes → articles en même temps (sinon on n'en trace qu'un échantillon).
+// Au plus ce nombre de traits cartes → articles en même temps (sinon on n'en trace qu'un échantillon) ; une carte en a jusqu'à deux.
 const EDGE_CAP = 5000;
 const CARD_PX = 30;
 const FALLBACK = '#888780';
@@ -96,7 +96,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, t: Transf
   } else {
     // Traits cartes → articles, par thème (un seul tracé par couleur).
     const byTheme: number[][] = Array.from({ length: none + 1 }, () => []);
-    const stride = emphasis ? 1 : Math.max(1, Math.floor(seen.length / (level === 'dots' ? EDGE_CAP : Infinity)));
+    const stride = emphasis || level !== 'dots' ? 1 : Math.max(1, Math.ceil((seen.length * 2) / EDGE_CAP));
     for (let n = 0; n < seen.length; n += stride) {
       const i = seen[n]!;
       if (emphasis && !lit(i)) continue;
