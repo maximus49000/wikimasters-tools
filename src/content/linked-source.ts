@@ -1,7 +1,7 @@
 import type { KnownCard } from '../core/collection/collection-book';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import { EMPTY_LINKS, needsLinksLookup, type LinksState } from '../core/links/links-book';
-import { linkedCards } from '../core/links/linked-cards';
+import { linkedCards, linkedCardsViaArticle, type ViaCard } from '../core/links/linked-cards';
 import type { LinksRepo } from '../core/links/links-repo';
 import { createThrottledLoader } from './throttle';
 
@@ -12,6 +12,8 @@ export type LinkedSource = {
   subscribe(listener: () => void): () => void;
   // Les cartes liées à cette carte (plus consultées d'abord) : même tableau tant que rien ne change, pour un rendu stable.
   linked(slug: string): KnownCard[];
+  // Les cartes à deux sauts, avec leurs articles intermédiaires (même tableau tant que rien ne change).
+  linkedVia(slug: string): ViaCard[];
   // Demande la lecture des liens manquants (cette carte d'abord, puis le reste de la Collection) : les liens sont mémorisés.
   ensure(slug: string): void;
 };
@@ -26,11 +28,13 @@ export function createLinkedSource(deps: {
   let cards: KnownCard[] = [];
   let state: LinksState = EMPTY_LINKS;
   const cache = new Map<string, KnownCard[]>();
+  const viaCache = new Map<string, ViaCard[]>();
   const listeners = new Set<() => void>();
   let started = false;
 
   const changed = (): void => {
     cache.clear();
+    viaCache.clear();
     for (const listener of listeners) listener();
   };
   const loadCards = (): void =>
@@ -73,6 +77,14 @@ export function createLinkedSource(deps: {
       if (!list) {
         list = linkedCards(cards, state, slug);
         cache.set(slug, list);
+      }
+      return list;
+    },
+    linkedVia(slug) {
+      let list = viaCache.get(slug);
+      if (!list) {
+        list = linkedCardsViaArticle(cards, state, slug);
+        viaCache.set(slug, list);
       }
       return list;
     },
