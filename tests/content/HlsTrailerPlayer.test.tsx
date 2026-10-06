@@ -6,20 +6,22 @@ import { HlsTrailerPlayer } from '../../src/content/HlsTrailerPlayer';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const instances: { handlers: Record<string, (event: string, data: { fatal: boolean }) => void>; loadSource: ReturnType<typeof vi.fn>; attachMedia: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[] = [];
+const instances: { handlers: Record<string, (event: string, data: { fatal: boolean; type?: string }) => void>; loadSource: ReturnType<typeof vi.fn>; attachMedia: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; recoverMediaError: ReturnType<typeof vi.fn> }[] = [];
 
-vi.mock('hls.js/light', () => {
+vi.mock('hls.js', () => {
   class FakeHls {
     static Events = { ERROR: 'error' };
+    static ErrorTypes = { MEDIA_ERROR: 'mediaError', NETWORK_ERROR: 'networkError' };
     static isSupported = () => true;
-    handlers: Record<string, (event: string, data: { fatal: boolean }) => void> = {};
+    handlers: Record<string, (event: string, data: { fatal: boolean; type?: string }) => void> = {};
     loadSource = vi.fn();
     attachMedia = vi.fn();
     destroy = vi.fn();
+    recoverMediaError = vi.fn();
     constructor() {
       instances.push(this);
     }
-    on(name: string, handler: (event: string, data: { fatal: boolean }) => void) {
+    on(name: string, handler: (event: string, data: { fatal: boolean; type?: string }) => void) {
       this.handlers[name] = handler;
     }
   }
@@ -64,5 +66,16 @@ describe('HlsTrailerPlayer', () => {
     expect(instances).toHaveLength(2);
     expect(instances[1]!.attachMedia).toHaveBeenCalled();
     expect(container.querySelector('video')).not.toBeNull();
+  });
+
+  it('erreur média fatale : une seule tentative de rattrapage avant de rendre le ▶', async () => {
+    await act(async () => root.render(<HlsTrailerPlayer url="https://x/a.m3u8" pageUrl="https://x/page" />));
+    await click(play()!);
+    await act(async () => instances[0]!.handlers['error']!('error', { fatal: true, type: 'mediaError' }));
+    expect(instances[0]!.recoverMediaError).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('video')).not.toBeNull();
+    await act(async () => instances[0]!.handlers['error']!('error', { fatal: true, type: 'mediaError' }));
+    expect(instances[0]!.destroy).toHaveBeenCalled();
+    expect(container.querySelector('video')).toBeNull();
   });
 });
