@@ -31,15 +31,15 @@ Sur la fiche native d'une carte de jeu vidéo, afficher une section avec la band
 
 ## Correction « Ce n'est pas le bon jeu »
 
-Quand la fiche vient d'IGDB, un bouton « Ce n'est pas le bon jeu » (glyphe + libellé, zone tactile de 44 px) ouvre une fenêtre de propositions, sur le modèle de la recherche de BO (`SoundtrackDialog`) :
-- Candidats : résultats de la recherche IGDB sur le titre de la carte, hors le jeu actuel (nom, plateformes, année, jaquette), du plus connu au moins connu ; champ de recherche libre pour taper un autre titre.
+Sur toute fiche, qu'elle vienne de Steam ou d'IGDB, un bouton « Ce n'est pas le bon jeu » (glyphe + libellé, zone tactile de 44 px) ouvre une fenêtre de propositions, sur le modèle de la recherche de BO (`SoundtrackDialog`) :
+- Candidats : résultats des deux recherches (Steam `storesearch` puis IGDB) sur le titre de la carte, hors le jeu actuel (nom, source, plateformes, année, jaquette) ; Steam d'abord, puis IGDB, chaque groupe du plus connu au moins connu ; champ de recherche libre pour taper un autre titre.
 - Choisir un candidat : il remplace le jeu de cette carte. Le choix est mémorisé par carte (`game-choice-v1`, clé = slug) et prime sur la résolution automatique, y compris sur les identifiants Wikidata.
 - Aucune autre proposition : la fenêtre l'indique (« Aucune autre proposition ») et propose « Ne rien afficher » : la section de cette carte reste vide (aucune section), choix mémorisé lui aussi. Comme la section n'est plus visible, un réglage permet de revenir au choix automatique (« Jeux vidéo : oublier mes corrections », dans les réglages de la collection, où figurent déjà les autres réglages).
-- La même correction est proposée sur une fiche Steam trouvée par recherche de titre (pas par identifiant Wikidata), avec les résultats de `storesearch` comme candidats ; sans objet quand l'identifiant vient de Wikidata.
+- Une correction manuelle est toujours possible, même quand l'identifiant vient de Wikidata (il peut être faux).
 
 ### Saisie et sélection manuelles
 
-Un second bouton, « Choisir moi-même » (toujours disponible, y compris sur une fiche Steam venue de Wikidata, et aussi quand aucune section n'est affichée grâce au réglage ci-dessus), ouvre la même fenêtre en mode manuel :
+Un second bouton, « Choisir moi-même » (toujours disponible, sur les fiches Steam comme IGDB, et aussi quand aucune section n'est affichée grâce au réglage ci-dessus), ouvre la même fenêtre en mode manuel :
 - Champ de recherche libre : l'utilisateur tape un titre ; les résultats viennent des deux sources, Steam d'abord puis IGDB, chaque ligne indiquant sa source (nom, année, plateformes, jaquette). Il sélectionne la bonne fiche.
 - Champ « lien » : coller l'adresse d'une page `store.steampowered.com/app/<id>/…` ou `igdb.com/games/<slug>` ; l'identifiant est lu (le slug IGDB est converti en identifiant par une requête) et la fiche s'affiche en aperçu avant validation. Une adresse non reconnue affiche « Adresse non reconnue ».
 - Valider : le jeu choisi remplace celui de la carte, mémorisé comme toute correction (`game-choice-v1`, avec sa source).
