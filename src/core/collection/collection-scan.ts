@@ -1,5 +1,6 @@
 import type { CollectionPage } from '../api/collection-schemas';
 import type { KeyValueStore } from '../cache/store';
+import type { KnownCard } from './collection-book';
 import type { CollectionRepo } from './collection-repo';
 
 const KEY = 'collectionScan';
@@ -8,7 +9,7 @@ const COUNTS_KEY = 'collectionScanCounts';
 // Un autre onglet qui a écrit son état il y a moins longtemps est considéré comme toujours en cours.
 export const LOCK_MS = 60_000;
 // À incrémenter quand le scan lit de nouveaux champs : un parcours terminé avant repart de zéro.
-const SCAN_VERSION = 8;
+const SCAN_VERSION = 9;
 // La mise à jour incrémentale n'ajoute que les cartes récentes : une carte vendue ou échangée n'est jamais décomptée.
 // Les exemplaires sont donc recomptés sur toute la Collection au plus tard à cette échéance.
 export const FULL_REFRESH_MS = 3_600_000;
@@ -138,6 +139,9 @@ export function createCollectionScanner({
       if (mode === 'incremental') {
         let reached = false;
         let seenNewest = last;
+        // Les cartes nouvelles ne sont ajoutées qu'au bout du parcours, avec la nouvelle date de reprise : un parcours interrompu
+        // (429, rechargement) n'a rien ajouté, sa reprise ne compte donc pas deux fois les mêmes exemplaires.
+        const gathered = new Map<string, KnownCard>();
         while (page < maxPages && !reached) {
           await write(snapshot('running'));
           const result = await api.getCollectionPage(page, undefined, 'added');
@@ -161,12 +165,16 @@ export function createCollectionScanner({
           else {
             // Seules les copies nouvelles s'ajoutent au compte déjà connu.
             const added = rows.length > 0 ? result.cards.filter((c) => fresh.has(c.slug)).map((c) => ({ ...c, copies: fresh.get(c.slug) ?? 0 })) : result.cards;
-            await collection.observe(added, true);
+            for (const card of added) {
+              const known = gathered.get(card.slug);
+              gathered.set(card.slug, known ? { ...card, copies: (known.copies ?? 0) + (card.copies ?? 0) } : card);
+            }
           }
           entries += rows.filter((row) => fresh.has(row.slug)).length;
           page += 1;
         }
         if (!reached) throw new Error('limite de pages atteinte');
+        await collection.observe([...gathered.values()], true);
         page = 0;
         await write(snapshot('done', { ...(seenNewest !== undefined ? { lastObtainedAt: seenNewest } : {}) }));
         return;
