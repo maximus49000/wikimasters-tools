@@ -36,6 +36,32 @@ describe('buildGrid', () => {
     expect(found).toHaveLength(3000);
   });
 
+  it('compte exactement les points d\'un rectangle aligné sur les cases', () => {
+    const g = buildGrid(new Float32Array([0, 1, 17, 40, 40]), new Float32Array([0, 30, 3, 40, 41]), 16);
+    expect(g.count(0, 0, 15.9, 15.9)).toBe(1);
+    expect(g.count(0, 0, 31.9, 31.9)).toBe(3);
+    expect(g.count(32, 32, 100, 100)).toBe(2);
+    expect(g.count(500, 500, 600, 600)).toBe(0);
+  });
+
+  it('reste juste avec un point perdu très loin (cases agrandies)', () => {
+    const far = new Float32Array([...xs, 1e6]);
+    const farY = new Float32Array([...ys, -1e6]);
+    const g = buildGrid(far, farY, 16);
+    const found: number[] = [];
+    g.forEach(-100, -50, 300, 220, (i) => found.push(i));
+    const expected = [...xs].map((_, i) => i).filter((i) => xs[i]! >= -100 && xs[i]! <= 300 && ys[i]! >= -50 && ys[i]! <= 220);
+    expect(found.sort((a, b) => a - b)).toEqual(expected);
+    expect(g.nearest(1e6 + 1, -1e6, 5)).toBe(3000);
+    expect(g.count(-1e7, -1e7, 1e7, 1e7)).toBe(3001);
+  });
+
+  it('une grille vide ne trouve rien', () => {
+    const g = buildGrid(new Float32Array(0), new Float32Array(0), 16);
+    expect(g.count(-1e6, -1e6, 1e6, 1e6)).toBe(0);
+    expect(g.nearest(0, 0, 10)).toBe(-1);
+  });
+
   it('trouve le point le plus proche dans un rayon, sinon -1', () => {
     const target = 1234;
     expect(grid.nearest(xs[target]! + 0.2, ys[target]! - 0.2, 5)).toBe(target);
