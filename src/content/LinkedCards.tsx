@@ -26,7 +26,8 @@ const NONE_VIA: ViaCard[] = [];
 // Miniature : couleur de rareté en cadre et en fond, image en haut (celle du jeu, sinon l'image de remplacement déjà trouvée).
 function Thumb({ card }: { card: KnownCard }) {
   const images = getImageService();
-  const url = card.imageUrl ?? (images?.enabled() ? (images.peek(card.slug) ?? undefined) : undefined);
+  // S'abonne aux images qui arrivent (affiche du jeu vidéo, image de remplacement).
+  const url = useSyncExternalStore(images?.subscribe ?? noSubscribe, () => (images ? images.displayUrl(card.slug, card.imageUrl) : card.imageUrl));
   const color = card.rarity ? `var(--color-rarity-${rarityKey(card.rarity)}, #94a3b8)` : '#94a3b8';
   return (
     <span

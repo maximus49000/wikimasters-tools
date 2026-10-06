@@ -42,6 +42,16 @@ describe('createImageService', () => {
     await off.requestGameArt('Jeu', 'Jeu');
     expect(gameArt).toHaveBeenCalledTimes(1);
   });
+  it('displayUrl : l’affiche du jeu passe devant l’image propre de la carte, une fois trouvée', async () => {
+    const gameArt = vi.fn(async () => ['https://steam/a.jpg']);
+    const service = createImageService({ store: createMemoryStore(), search: vi.fn(async () => []), gameArt, settings: settings('on') });
+    expect(service.displayUrl('The_Secret_World', 'https://wiki/x.jpg')).toBe('https://wiki/x.jpg');
+    await vi.waitFor(() => expect(service.peekGameArt('The_Secret_World')).toBeDefined());
+    expect(gameArt).toHaveBeenCalledWith('The Secret World', 'The_Secret_World');
+    expect(service.displayUrl('The_Secret_World', 'https://wiki/x.jpg')).toBe('https://steam/a.jpg');
+    const off = createImageService({ store: createMemoryStore(), search: vi.fn(async () => []), gameArt, settings: settings() });
+    expect(off.displayUrl('The_Secret_World', 'https://wiki/x.jpg')).toBe('https://wiki/x.jpg');
+  });
   it('inactif par défaut : aucune recherche ni image', async () => {
     const { service, search } = make(undefined, null);
     expect(service.enabled()).toBe(false);
