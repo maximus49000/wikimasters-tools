@@ -82,7 +82,7 @@ IGDB : `P5794` contient le *slug* du jeu (ex. `elden-ring`), pas un identifiant 
 
 `src/content/`
 - `game-service.ts` : `view(slug, title)` suivant l'ordre de résolution ; `TtlCache` pour les détails (Steam : détail complet (avec note et joueurs en ligne) 6 h ; IGDB : 7 jours).
-- `GameSection.tsx` + montage via `createNativeSections` (`mount.tsx`), `decorateGame` comme `decorateScreen`, `game-registry.ts` ; posé sous « Mauvaise image », avant ATK/DEF.
+- `GameSection.tsx` + montage via `createNativeSections` (`mount.tsx`), `decorateGame` comme `decorateScreen`, `game-registry.ts` ; posée avec les autres sections de l'extension, comme film / série (ordre : écouter, écran, jeu, image), avant le bouton « Mauvaise image ».
 - `GameChoiceDialog.tsx` : fenêtre « Changer de jeu » (recherche sur les deux sources, lien collé, aperçu, « Aucun jeu », retour au choix automatique).
 - `HlsTrailerPlayer.tsx` : lecteur `<video>` + hls.js (chargé à la demande) ; `TrailerPlayer` existant pour YouTube.
 - `SoundtrackButton.tsx` : prend un type plus large (`{ key, title, originalTitle }`) au lieu de `ScreenDetail` ; clé `game:<source>:<id>` ; mêmes règles (rien sans compte lié, mémorisation `soundtracks-v1`).
@@ -116,5 +116,5 @@ Pied de section : « Données : Steam » ou « Données : IGDB.com » (condition
 
 - `appdetails` non documenté : un changement de format est détecté par `zod` et affiché comme erreur, pas comme absence.
 - Secret IGDB embarqué dans le build (même risque que Tidal) ; régénérable à tout moment.
-- Poids de hls.js (chargé à la demande pour ne pas alourdir les pages sans jeu).
+- Poids de hls.js : le build light est embarqué dans le content script et dans l'overlay Android (≈ +380 Ko) au lieu d'être chargé à la demande ; décision prise à la relecture. Alternative possible plus tard : ressource web-accessible ou fichier séparé, chargé au premier clic.
 - Barrière d'âge Steam : certains jeux n'ont pas de données sans cookie ; ils retombent sur IGDB.

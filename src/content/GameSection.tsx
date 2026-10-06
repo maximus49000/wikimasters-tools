@@ -29,7 +29,7 @@ function Rating({ detail }: { detail: GameDetail }) {
         </>
       )}
       {metascore && (
-        <span title="Metascore" style={{ marginLeft: 'auto', minWidth: 34, height: 26, padding: '0 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, fontWeight: 700, fontSize: 13, background: '#66cc33', color: '#0b1b00' }}>
+        <span title="Metascore" aria-label={`Metascore ${metascore.score}`} style={{ marginLeft: 'auto', minWidth: 34, height: 26, padding: '0 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, fontWeight: 700, fontSize: 13, background: '#66cc33', color: '#0b1b00' }}>
           {metascore.score}
         </span>
       )}

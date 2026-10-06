@@ -37,4 +37,14 @@ describe('game-format', () => {
     expect(parseGameLink('https://exemple.test/app/12')).toBeNull();
     expect(parseGameLink('super metroid')).toBeNull();
   });
+
+  it('accepte une adresse sans https://, un hôte en majuscules, le lien de contrôle d’âge', () => {
+    expect(parseGameLink('store.steampowered.com/app/1245620')).toEqual({ source: 'steam', id: 1245620 });
+    expect(parseGameLink('igdb.com/games/super-metroid')).toEqual({ source: 'igdb', slug: 'super-metroid' });
+    expect(parseGameLink('HTTPS://STORE.STEAMPOWERED.COM/app/42/')).toEqual({ source: 'steam', id: 42 });
+    expect(parseGameLink('https://store.steampowered.com/agecheck/app/1245620/')).toEqual({ source: 'steam', id: 1245620 });
+    expect(parseGameLink('https://store.steampowered.com/app/1245620?l=french')).toEqual({ source: 'steam', id: 1245620 });
+    expect(parseGameLink('https://store.steampowered.com/app/123abc')).toBeNull();
+    expect(parseGameLink('igdb.com/games/Super-Metroid/')).toEqual({ source: 'igdb', slug: 'super-metroid' });
+  });
 });

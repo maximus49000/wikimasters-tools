@@ -4,7 +4,7 @@ import { Glyph } from './Glyphs';
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const HEIGHT = 'min(130px, 20vh)';
 
-// Bande-annonce Steam (flux HLS) : miniature + ▶ ; hls.js est un import dynamique : exécuté au premier clic dans le module,
+// Bande-annonce Steam (flux HLS) : miniature + ▶ ; hls.js (build light, sans sous-titres ni audio alternatif) est un import dynamique : exécuté au premier clic dans le module,
 // mais inclus dans le bundle du script (Chrome ne lit pas le HLS seul).
 // Si la lecture échoue (site qui bloque le flux), le bouton ▶ revient (un clic relance le chargement) et le lien vers la page du jeu reste là.
 export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster?: string; pageUrl: string }) {
@@ -24,7 +24,7 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
     let cancelled = false;
     void (async () => {
       try {
-        const { default: Hls } = await import('hls.js');
+        const { default: Hls } = await import('hls.js/light');
         if (cancelled) return;
         if (Hls.isSupported()) {
           const hls = new Hls();
@@ -70,7 +70,7 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
             border: 0,
             padding: 0,
             color: '#fff',
-            background: poster ? `center / cover no-repeat url(${poster})` : '#1b2330',
+            background: poster ? `center / cover no-repeat url("${poster}")` : '#1b2330',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

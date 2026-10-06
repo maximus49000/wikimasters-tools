@@ -27,7 +27,7 @@ export const yearOfText = (text: string | undefined): number | undefined => {
 export const normalizeTitle = (text: string): string =>
   text
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
@@ -39,9 +39,9 @@ export type GameLink = { source: 'steam'; id: number } | { source: 'igdb'; slug:
 // Une adresse collée par l'utilisateur : page Steam (`/app/<id>`) ou page IGDB (`/games/<slug>`).
 export function parseGameLink(text: string): GameLink | null {
   const value = text.trim();
-  const steam = value.match(/^https?:\/\/store\.steampowered\.com\/app\/(\d+)/);
+  const steam = value.match(/^(?:https?:\/\/)?store\.steampowered\.com\/(?:agecheck\/)?app\/(\d+)(?:[/?#]|$)/i);
   if (steam?.[1]) return { source: 'steam', id: Number(steam[1]) };
-  const igdb = value.match(/^https?:\/\/(?:www\.)?igdb\.com\/games\/([a-z0-9][a-z0-9-]*)/);
-  if (igdb?.[1]) return { source: 'igdb', slug: igdb[1] };
+  const igdb = value.match(/^(?:https?:\/\/)?(?:www\.)?igdb\.com\/games\/([a-z0-9][a-z0-9-]*)(?:[/?#]|$)/i);
+  if (igdb?.[1]) return { source: 'igdb', slug: igdb[1].toLowerCase() };
   return null;
 }

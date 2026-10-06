@@ -8,7 +8,7 @@ import { HlsTrailerPlayer } from '../../src/content/HlsTrailerPlayer';
 
 const instances: { handlers: Record<string, (event: string, data: { fatal: boolean }) => void>; loadSource: ReturnType<typeof vi.fn>; attachMedia: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[] = [];
 
-vi.mock('hls.js', () => {
+vi.mock('hls.js/light', () => {
   class FakeHls {
     static Events = { ERROR: 'error' };
     static isSupported = () => true;

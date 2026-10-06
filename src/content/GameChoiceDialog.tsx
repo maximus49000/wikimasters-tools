@@ -116,7 +116,7 @@ export function GameChoiceDialog({ service, slug, title, current, onChanged, onC
           aria-label={`Choisir ${candidate.title} (${NAMES[candidate.source]})`}
           style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 56, padding: '4px 8px', cursor: 'pointer', color: 'inherit', background: 'none', border: 0, textAlign: 'left', font: '13px system-ui, sans-serif' }}
         >
-          <span style={{ flex: 'none', width: 36, height: 48, borderRadius: 5, background: candidate.imageUrl ? `center / cover no-repeat url(${candidate.imageUrl})` : 'rgba(148,163,184,0.25)' }} />
+          <span style={{ flex: 'none', width: 36, height: 48, borderRadius: 5, background: candidate.imageUrl ? `center / cover no-repeat url("${candidate.imageUrl}")` : 'rgba(148,163,184,0.25)' }} />
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{candidate.title}</span>
             <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11, opacity: 0.7 }}>

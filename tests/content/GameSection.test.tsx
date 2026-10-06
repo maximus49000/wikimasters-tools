@@ -65,6 +65,7 @@ describe('GameSection', () => {
     expect(text).toContain('Données : Steam');
     expect(container.querySelector<HTMLAnchorElement>('a[aria-label="Ouvrir la page Steam"]')?.href).toBe('https://store.steampowered.com/app/1245620');
     expect(container.querySelector('[aria-label="Changer de jeu"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Metascore 94"]')?.textContent).toBe('94');
   });
 
   it('une fiche IGDB : note sur 100 et lien IGDB', async () => {
