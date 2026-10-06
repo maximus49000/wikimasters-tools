@@ -1,4 +1,5 @@
 // Construit l'APK Android : bundle de la surcouche (Vite), puis assemblage Gradle.
+// Canal : `--channel=production` (défaut) ou `--channel=preprod` (autre identifiant, installable à côté).
 // versionCode = nombre de commits (il ne fait qu'augmenter), condition pour qu'Android accepte la mise à jour automatique.
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
@@ -11,6 +12,8 @@ const run = (cmd, args, options = {}) => {
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
+const channel = process.argv.includes('--channel=preprod') ? 'preprod' : 'production';
+const flavor = channel === 'preprod' ? 'Preprod' : 'Production';
 const versionName = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 const commits = spawnSync('git', ['rev-list', '--count', 'HEAD'], { cwd: root, encoding: 'utf8' });
 const versionCode = Number.parseInt(commits.stdout, 10);
@@ -26,11 +29,11 @@ const studioJdk = 'C:/Program Files/Android/Android Studio/jbr';
 const env = { ...process.env };
 if (existsSync(studioJdk)) env.JAVA_HOME = studioJdk;
 const gradlew = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew';
-run(gradlew, ['assembleRelease', `-PversionCode=${versionCode}`, `-PversionName=${versionName}`], { cwd: join(root, 'android'), env });
+run(gradlew, [`assemble${flavor}Release`, `-PversionCode=${versionCode}`, `-PversionName=${versionName}`], { cwd: join(root, 'android'), env });
 
 mkdirSync(join(root, 'livrables'), { recursive: true });
-const apk = join(root, 'android/app/build/outputs/apk/release/app-release.apk');
-const target = `livrables/wikimasters-tools-${versionName}-android.apk`;
+const apk = join(root, `android/app/build/outputs/apk/${channel}/release/app-${channel}-release.apk`);
+const target = `livrables/wikimasters-tools-${channel === 'preprod' ? 'preprod-' : ''}${versionName}-android.apk`;
 copyFileSync(apk, join(root, target));
 console.log(`APK : ${target} (versionCode ${versionCode})`);
 // Lu par scripts/promote.mjs.

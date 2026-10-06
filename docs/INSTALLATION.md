@@ -86,3 +86,10 @@ Une application qui affiche WikiMasters en plein écran (WebView) et applique la
 - `versionCode` = nombre de commits (calculé par `npm run apk`) : il ne fait qu'augmenter, condition pour qu'Android accepte la mise à jour. L'APK doit toujours être construit avec la même clé (`~/.android/debug.keystore`), sinon la mise à jour est refusée.
 - Bouton « Vérifier la mise à jour » dans le menu « Plus » : répond « à jour », propose la nouvelle version, ou signale un échec de connexion.
 - Le premier APK doté de cette fonction doit être installé à la main ; les suivants se mettent à jour seuls.
+
+### APK de pré-production (testeurs)
+
+- Deuxième application, « Wikimasters Tools (pré-prod) » (`io.github.maximus49000.wikimasterstools.preprod`) : elle s'installe **à côté** de la production, avec sa propre session WikiMasters et ses propres liaisons Spotify/Tidal.
+- Elle suit `main` : `npm run preprod` (depuis `main` propre et synchronisé) construit l'APK de pré-production et le publie en **pre-release** GitHub `preprod-<versionCode>` (les 3 dernières sont conservées). Les pre-releases n'entrent jamais dans `/releases/latest` : la production ne les voit pas. À lancer après chaque fusion dans `main`.
+- Retour d'autorisation : schéma `wikimasterstools-preprod://` (déclaré chez Spotify : `wikimasterstools-preprod://spotify`, chez Tidal : `wikimasterstools-preprod://tidal`). Le Client ID est le même que celui de la production.
+- `npm run apk:preprod` construit l'APK localement (`livrables/wikimasters-tools-preprod-<version>-android.apk`) sans rien publier ; `npm run apk` construit celui de production.

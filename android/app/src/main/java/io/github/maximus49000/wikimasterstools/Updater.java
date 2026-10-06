@@ -30,13 +30,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Mise à jour automatique : cherche la dernière release GitHub (canal de PRODUCTION uniquement : la pré-production,
-// c'est-à-dire main, ne publie aucune release), télécharge l'APK puis propose de l'installer.
+// Mise à jour automatique : cherche la dernière release GitHub de son canal (production : release stable ; pré-production : pre-release
+// publiée à chaque fusion dans main), télécharge l'APK puis propose de l'installer.
 // Android interdit l'installation silencieuse hors Play Store : l'utilisateur confirme une fois.
 final class Updater {
-    private static final String LATEST_RELEASE =
-            "https://api.github.com/repos/maximus49000/wikimasters-tools/releases/latest";
-    private static final Pattern TAG = Pattern.compile("^android-(\\d+)$");
+    private static final Pattern NUMBER = Pattern.compile("^\\d+$");
     private static final long CHECK_INTERVAL_MS = 60L * 60 * 1000;
     private static final long MAX_APK_BYTES = 100L * 1024 * 1024;
     private static final String PREFS = "updater";
@@ -108,32 +106,49 @@ final class Updater {
         String apkUrl;
     }
 
+    // Production : /releases/latest (un objet). Pré-production : liste des releases (un tableau), la plus récente `preprod-N`.
     private Release fetchLatest() throws IOException, JSONException {
-        HttpURLConnection connection = open(LATEST_RELEASE);
+        HttpURLConnection connection = open(BuildConfig.UPDATE_URL);
         connection.setRequestProperty("Accept", "application/vnd.github+json");
-        JSONObject json;
+        String body;
         try {
             int status = connection.getResponseCode();
             if (status == 404) return null; // aucune release publiée : rien à installer
             if (status != 200) throw new IOException("GitHub : HTTP " + status);
             try (InputStream in = connection.getInputStream()) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                copy(in, out, 1024 * 1024);
-                json = new JSONObject(out.toString(StandardCharsets.UTF_8.name()));
+                copy(in, out, 4 * 1024 * 1024);
+                body = out.toString(StandardCharsets.UTF_8.name());
             }
         } finally {
             connection.disconnect();
         }
-        Matcher tag = TAG.matcher(json.optString("tag_name"));
+        Release best = null;
+        if (body.trim().startsWith("[")) {
+            JSONArray list = new JSONArray(body);
+            for (int i = 0; i < list.length(); i++) {
+                Release release = parse(list.getJSONObject(i));
+                if (release != null && (best == null || release.versionCode > best.versionCode)) best = release;
+            }
+            return best;
+        }
+        return parse(new JSONObject(body));
+    }
+
+    private Release parse(JSONObject json) throws JSONException {
+        if (json.optBoolean("draft")) return null;
+        String tag = json.optString("tag_name");
         JSONArray assets = json.optJSONArray("assets");
-        if (!tag.matches() || assets == null) return null;
+        if (!tag.startsWith(BuildConfig.UPDATE_TAG_PREFIX) || assets == null) return null;
+        Matcher number = NUMBER.matcher(tag.substring(BuildConfig.UPDATE_TAG_PREFIX.length()));
+        if (!number.matches()) return null;
         for (int i = 0; i < assets.length(); i++) {
             JSONObject asset = assets.getJSONObject(i);
             String url = asset.optString("browser_download_url");
             if (asset.optString("name").endsWith("-android.apk") && url.startsWith("https://")) {
                 Release release = new Release();
-                release.versionCode = Long.parseLong(tag.group(1));
-                release.name = json.optString("name", tag.group(1));
+                release.versionCode = Long.parseLong(number.group());
+                release.name = json.optString("name", tag);
                 release.apkUrl = url;
                 return release;
             }

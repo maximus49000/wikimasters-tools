@@ -33,6 +33,13 @@ describe('createAndroidSpotifyEnv', () => {
     expect(await createAndroidSpotifyEnv(fakeWindow()).redirectUri()).toBe('wikimasterstools://spotify');
   });
 
+  it("prend le schéma de retour du canal installé (pré-production)", async () => {
+    const win = { ...fakeWindow(), WmtSpotify: { openAuth: vi.fn(), scheme: () => 'wikimasterstools-preprod' } };
+    const env = createAndroidSpotifyEnv(win);
+    expect(await env.redirectUri()).toBe('wikimasterstools-preprod://spotify');
+    expect(await env.redirectUriFor?.('tidal')).toBe('wikimasterstools-preprod://tidal');
+  });
+
   it("ouvre l'autorisation dans le navigateur et attend l'URL de retour", async () => {
     const win = fakeWindow();
     const env = createAndroidSpotifyEnv(win);
