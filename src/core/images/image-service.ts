@@ -137,6 +137,21 @@ export function createImageService(deps: {
         })
         .finally(() => gameArtRunning.delete(slug));
     },
+    // Le jeu d'une carte a changé (autre lien, « aucun jeu », choix automatique) : l'affiche retenue et l'image mémorisée
+    // qui en venait sont oubliées, la prochaine synchronisation les cherche à nouveau.
+    async forgetGameArt(slug: string): Promise<void> {
+      await ready;
+      gameArtOf.delete(slug);
+      gameArtFailedAt.delete(slug);
+      artTriedAt.delete(slug);
+      failedAt.delete(slug);
+      const known = state[slug];
+      if (known && (known.art || known.artCheckedAt !== undefined)) {
+        const { [slug]: _forgotten, ...rest } = state;
+        commit(rest);
+      }
+      notify();
+    },
     // Lance la recherche d'une carte jamais cherchée (sans effet si l'option est coupée).
     request(slug: string, title: string): Promise<void> {
       if (!enabled || !loaded || coolingDown(slug)) return Promise.resolve();

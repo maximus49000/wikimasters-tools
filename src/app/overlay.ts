@@ -500,6 +500,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       igdb: IGDB_ENABLED ? createIgdbApi({ fetch: gameFetch, clientId: IGDB_CLIENT_ID, clientSecret: IGDB_CLIENT_SECRET, store }) : null,
       steamCache: createTtlCache(store, { ttlMs: 6 * 3_600_000 }),
       igdbCache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
+      // Autre jeu choisi pour une carte : son affiche mémorisée n'est plus la bonne.
+      onChoice: (slug) => void images.forgetGameArt(slug),
     });
     setGameService(gameService);
     // Affiches des jeux vidéo : même mécanisme que les pochettes d'albums et les affiches de films.

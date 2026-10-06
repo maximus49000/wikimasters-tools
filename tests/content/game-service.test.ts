@@ -9,7 +9,7 @@ const steamDetail: GameDetail = { source: 'steam', id: 1245620, title: 'ELDEN RI
 const igdbDetail: GameDetail = { source: 'igdb', id: 1000, title: 'Super Metroid', genres: [], platforms: [], developers: [], coverUrl: 'https://img.test/igdb.jpg', pageUrl: 'https://www.igdb.com/games/super-metroid' };
 const cand = (source: 'steam' | 'igdb', id: number, title: string, popularity = 0): GameCandidate => ({ source, id, title, platforms: [], popularity });
 
-type Setup = { unreachable?: boolean; natures?: string[]; ids?: object; collection?: string[]; steamSearch?: GameCandidate[]; igdbSearch?: GameCandidate[]; igdb?: boolean; steamDetail?: GameDetail | null };
+type Setup = { unreachable?: boolean; natures?: string[]; ids?: object; collection?: string[]; steamSearch?: GameCandidate[]; igdbSearch?: GameCandidate[]; igdb?: boolean; steamDetail?: GameDetail | null; onChoice?: (slug: string) => void };
 
 function setup(over: Setup = {}) {
   const steam = {
@@ -30,9 +30,23 @@ function setup(over: Setup = {}) {
     igdb: over.igdb === false ? null : igdb,
     steamCache: { getOrLoad: (_key, loader) => loader() },
     igdbCache: { getOrLoad: (_key, loader) => loader() },
+    ...(over.onChoice ? { onChoice: over.onChoice } : {}),
   });
   return { service, steam, igdb, choices };
 }
+
+describe('createGameService : changement de choix', () => {
+  it('prévient (après l’enregistrement) quand le jeu d’une carte change, devient « aucun » ou revient à l’automatique', async () => {
+    const onChoice = vi.fn();
+    const { service, choices } = setup({ onChoice });
+    await service.choose('Jeu', { source: 'igdb', id: 42 });
+    expect(onChoice).toHaveBeenLastCalledWith('Jeu');
+    await service.chooseNone('Jeu');
+    await service.reset('Jeu');
+    expect(onChoice).toHaveBeenCalledTimes(3);
+    expect(await choices.load()).toEqual({});
+  });
+});
 
 describe('createGameService.view', () => {
   it("rien quand la carte n'est pas dans la collection ou n'est pas un jeu", async () => {
