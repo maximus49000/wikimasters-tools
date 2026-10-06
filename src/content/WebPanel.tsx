@@ -505,7 +505,13 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   // Accès direct au titre et à la carte : un article peut relier des milliers de cartes, parmi des centaines de milliers.
   const bySlug = useMemo(() => new Map(cards.map((card) => [card.slug, card])), [cards]);
   const titleOf = (slug: string) => bySlug.get(slug)?.title ?? slug;
-  const read = cards.length - cards.filter((card) => needsLinksLookup(linksState, card.slug, Date.now())).length;
+  // Recompté seulement quand les cartes ou les liens changent : à 200 000 cartes, pas à chaque pas de zoom.
+  const read = useMemo(() => {
+    const now = Date.now();
+    let missingCount = 0;
+    for (const card of cards) if (needsLinksLookup(linksState, card.slug, now)) missingCount += 1;
+    return cards.length - missingCount;
+  }, [cards, linksState]);
   const zoomStep = Math.round(Math.log2(transform.k) * LABEL_STEPS_PER_OCTAVE);
   const labelled = useMemo(
     () => (bigModel ? new Set<string>() : chooseLabels(graph, positions, lighting?.lit ?? null, 2 ** (zoomStep / LABEL_STEPS_PER_OCTAVE))),
