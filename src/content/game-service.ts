@@ -25,12 +25,20 @@ export type GameServiceDeps = {
   // Steam : 6 h ; IGDB : 7 jours.
   steamCache: Pick<TtlCache, 'getOrLoad'>;
   igdbCache: Pick<TtlCache, 'getOrLoad'>;
+  // Le jeu d'une carte vient de changer : les affiches déjà retenues pour elle sont à oublier.
+  onChoice?: (slug: string) => void;
 };
 
 const SOURCE_NAMES = { steam: 'Steam', igdb: 'IGDB' } as const;
 
 export function createGameService(deps: GameServiceDeps) {
-  const { collection, kinds, games, choices, steam, igdb, steamCache, igdbCache } = deps;
+  const { collection, kinds, games, choices, steam, igdb, steamCache, igdbCache, onChoice } = deps;
+
+  // Le choix est enregistré, puis les affiches mémorisées de la carte sont oubliées.
+  const changed = async (slug: string, saved: Promise<void>): Promise<void> => {
+    await saved;
+    onChoice?.(slug);
+  };
 
   const steamDetail = (id: number) => steamCache.getOrLoad(`game-steam-${id}`, () => steam.detail(id));
   const igdbDetail = (by: { id: number } | { slug: string }) =>
@@ -183,9 +191,9 @@ export function createGameService(deps: GameServiceDeps) {
       }
     },
 
-    choose: (slug: string, ref: GameRef): Promise<void> => choices.save(slug, ref),
-    chooseNone: (slug: string): Promise<void> => choices.save(slug, { none: true }),
-    reset: (slug: string): Promise<void> => choices.clear(slug),
+    choose: (slug: string, ref: GameRef): Promise<void> => changed(slug, choices.save(slug, ref)),
+    chooseNone: (slug: string): Promise<void> => changed(slug, choices.save(slug, { none: true })),
+    reset: (slug: string): Promise<void> => changed(slug, choices.clear(slug)),
   };
 }
 

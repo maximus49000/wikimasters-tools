@@ -52,6 +52,25 @@ describe('createImageService', () => {
     const off = createImageService({ store: createMemoryStore(), search: vi.fn(async () => []), gameArt, settings: settings() });
     expect(off.displayUrl('The_Secret_World', 'https://wiki/x.jpg')).toBe('https://wiki/x.jpg');
   });
+  it('forgetGameArt : le jeu a changé, l’affiche est redemandée (en mémoire, et l’image mémorisée d’une carte au logo)', async () => {
+    let cover = 'https://steam/a.jpg';
+    const gameArt = vi.fn(async () => [cover]);
+    const art = vi.fn(async () => [cover]);
+    const service = createImageService({ store: createMemoryStore(), search: vi.fn(async () => []), art, gameArt, settings: settings('on') });
+    await service.resolve('Jeu', 'Jeu');
+    await service.requestGameArt('Jeu', 'Jeu');
+    expect(service.peek('Jeu')).toBe('https://steam/a.jpg');
+    expect(service.peekGameArt('Jeu')).toBe('https://steam/a.jpg');
+
+    cover = 'https://steam/b.jpg';
+    await service.forgetGameArt('Jeu');
+    expect(service.peekGameArt('Jeu')).toBeUndefined();
+    expect(service.peek('Jeu')).toBeUndefined();
+    await service.requestGameArt('Jeu', 'Jeu');
+    await service.resolve('Jeu', 'Jeu');
+    expect(service.peekGameArt('Jeu')).toBe('https://steam/b.jpg');
+    expect(service.peek('Jeu')).toBe('https://steam/b.jpg');
+  });
   it('inactif par défaut : aucune recherche ni image', async () => {
     const { service, search } = make(undefined, null);
     expect(service.enabled()).toBe(false);
