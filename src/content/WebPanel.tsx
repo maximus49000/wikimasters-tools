@@ -548,53 +548,56 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   return (
     <div data-wmt-web="" style={{ ...box, padding: 12, margin: '12px 0' }}>
       <WebPathBar cards={cards} links={links} onPath={setPath} initial={request} />
-      <div ref={areaRef} style={{ position: 'relative', height: '70vh', minHeight: 420, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--color-border, rgba(148,163,184,0.25))' }}>
-        {scene ? (
-          <WebCanvas
-            scene={scene}
-            focus={focus}
-            picked={picked}
-            route={route}
-            imageOf={canvasImageOf}
-            size={size}
-            transform={transform}
-            drawRef={drawRef}
-            liveTransform={() => transformRef.current}
-            dragged={() => dragged.current}
-            onCard={onCard}
-            onHub={onHub}
-            onBackground={background}
-            surface={surface}
-          />
-        ) : (
-          <svg
-            viewBox={`0 0 ${size.width} ${size.height}`}
-            width="100%"
-            height="100%"
-            role="group"
-            aria-label="Toile des cartes de la Collection"
-            style={{ display: 'block', touchAction: 'none', userSelect: 'none', cursor: 'grab' }}
-            {...surface}
-            onClick={() => {
-              if (dragged.current) return;
-              background();
-            }}
-          >
-            <g ref={groupRef} transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`} style={{ '--k': transform.k } as CSSProperties}>
-              <WebGraphView
-                graph={graph}
-                positions={positions}
-                focusId={lighting?.focusId ?? null}
-                lit={lighting?.lit ?? null}
-                images={transform.k >= IMAGE_ZOOM}
-                labelled={labelled}
-                imageOf={imageOf}
-                onCard={onCard}
-                onHub={onHub}
-              />
-            </g>
-          </svg>
-        )}
+      <div style={{ position: 'relative', height: '70vh', minHeight: 420, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--color-border, rgba(148,163,184,0.25))' }}>
+        {/* Sans bordure : sa taille est exactement celle du dessin (SVG ou canvas), et la molette n'agit que sur lui. */}
+        <div ref={areaRef} style={{ width: '100%', height: '100%' }}>
+          {scene ? (
+            <WebCanvas
+              scene={scene}
+              focus={focus}
+              picked={picked}
+              route={route}
+              imageOf={canvasImageOf}
+              size={size}
+              transform={transform}
+              drawRef={drawRef}
+              liveTransform={() => transformRef.current}
+              dragged={() => dragged.current}
+              onCard={onCard}
+              onHub={onHub}
+              onBackground={background}
+              surface={surface}
+            />
+          ) : (
+            <svg
+              viewBox={`0 0 ${size.width} ${size.height}`}
+              width="100%"
+              height="100%"
+              role="group"
+              aria-label="Toile des cartes de la Collection"
+              style={{ display: 'block', touchAction: 'none', userSelect: 'none', cursor: 'grab' }}
+              {...surface}
+              onClick={() => {
+                if (dragged.current) return;
+                background();
+              }}
+            >
+              <g ref={groupRef} transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`} style={{ '--k': transform.k } as CSSProperties}>
+                <WebGraphView
+                  graph={graph}
+                  positions={positions}
+                  focusId={lighting?.focusId ?? null}
+                  lit={lighting?.lit ?? null}
+                  images={transform.k >= IMAGE_ZOOM}
+                  labelled={labelled}
+                  imageOf={imageOf}
+                  onCard={onCard}
+                  onHub={onHub}
+                />
+              </g>
+            </svg>
+          )}
+        </div>
         <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button type="button" aria-label="Zoomer" title="Zoomer (Ctrl + molette)" onClick={() => zoomBy(ZOOM_STEP)} style={glyphButton}>
             +

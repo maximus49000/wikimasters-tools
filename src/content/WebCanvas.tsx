@@ -79,7 +79,16 @@ export function WebCanvas({ scene, focus, picked, route, imageOf, size, transfor
     });
     level.current = result.level;
   }, []);
-  again.current = () => paint(liveTransform());
+  // Des centaines d'images peuvent arriver d'un coup : un seul nouveau dessin par image d'écran.
+  const pending = useRef(0);
+  again.current = () => {
+    if (pending.current) return;
+    pending.current = requestAnimationFrame(() => {
+      pending.current = 0;
+      paint(liveTransform());
+    });
+  };
+  useEffect(() => () => cancelAnimationFrame(pending.current), []);
 
   useEffect(() => {
     drawRef.current = (t) => paint(t);
@@ -87,8 +96,11 @@ export function WebCanvas({ scene, focus, picked, route, imageOf, size, transfor
       drawRef.current = null;
     };
   }, [paint, drawRef]);
+  // Le cadrage « vivant » (égal à `transform` hors geste) : des liens ou des images qui arrivent pendant un geste ne ramènent pas la toile en arrière.
   useEffect(() => {
-    paint(transform, true);
+    paint(liveTransform(), true);
+    // `liveTransform` lit une référence : seul `transform` (ou les autres données) doit relancer le dessin.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paint, scene, focus, picked, route, imageOf, size, transform]);
 
   const onClick = (event: { clientX: number; clientY: number }) => {
