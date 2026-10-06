@@ -25,7 +25,7 @@ const fail = (message) => {
 
 if (out('git', ['branch', '--show-current']) !== 'main') fail('Lancer depuis la branche main.');
 if (out('git', ['status', '--porcelain'])) fail('Arbre de travail non propre : valider ou écarter les changements.');
-must('git', ['fetch', 'origin', 'main', 'production'], { stdio: 'ignore' });
+must('git', ['fetch', '--prune', 'origin'], { stdio: 'ignore' });
 const head = out('git', ['rev-parse', 'HEAD']);
 if (head !== out('git', ['rev-parse', 'origin/main'])) fail('main local différent de origin/main : synchroniser d’abord.');
 
