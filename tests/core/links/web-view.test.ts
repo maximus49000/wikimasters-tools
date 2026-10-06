@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIONS_BAR, MAX_ZOOM, MIN_ZOOM, boundsOf, clampZoom, fitTransform, pinch, placeActions, zoomAt } from '../../../src/core/links/web-view';
+import { ACTIONS_BAR, BIG_LIMITS, MAX_ZOOM, MIN_ZOOM, boundsOf, clampZoom, fitTransform, pinch, placeActions, zoomAt } from '../../../src/core/links/web-view';
 
 describe('zoomAt', () => {
   it('garde sous le point visé le point du graphe qui s’y trouvait', () => {
@@ -85,5 +85,24 @@ describe('placeActions', () => {
   it('reste dans la zone en bas quand la carte en sort', () => {
     const { y } = placeActions({ x: 300, y: 5000 }, 17, area);
     expect(y + ACTIONS_BAR.height).toBeLessThanOrEqual(area.height);
+  });
+});
+
+describe('limites de zoom', () => {
+  it('laisse zoomer jusqu\'à 64 avec les limites du mode grand, 8 sinon', () => {
+    const start = { x: 0, y: 0, k: 4 };
+    expect(zoomAt(start, 100, 0, 0).k).toBe(8);
+    expect(zoomAt(start, 100, 0, 0, BIG_LIMITS).k).toBe(64);
+  });
+
+  it('dézoome jusqu\'à 0,02 avec les limites du mode grand', () => {
+    expect(zoomAt({ x: 0, y: 0, k: 1 }, 0.0001, 0, 0, BIG_LIMITS).k).toBe(0.02);
+    expect(zoomAt({ x: 0, y: 0, k: 1 }, 0.0001, 0, 0).k).toBe(0.1);
+  });
+
+  it('cadre une toile très large avec le zoom du mode grand', () => {
+    const fit = fitTransform({ minX: -5000, minY: -3000, maxX: 5000, maxY: 3000 }, 1000, 600, 48, BIG_LIMITS);
+    expect(fit.k).toBeCloseTo(0.084, 3);
+    expect(fitTransform({ minX: -5000, minY: -3000, maxX: 5000, maxY: 3000 }, 1000, 600).k).toBe(0.1);
   });
 });
