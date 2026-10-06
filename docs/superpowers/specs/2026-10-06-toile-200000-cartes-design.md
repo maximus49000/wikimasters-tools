@@ -19,10 +19,19 @@ Avec 200 000 cartes, glisser et zoomer restent fluides (budget : moins de 16 ms 
 ## Décisions prises avec l'utilisateur
 
 - Vue d'ensemble : des **regroupements**, le détail apparaît au zoom (comme une carte géographique). La toile ne montre pas chaque carte d'un coup d'œil.
-- Dessin : des **points de couleur** (la rareté de la carte). Les **images ne se chargent que lorsque le zoom montre assez peu de cartes pour les gérer** ; avant, jamais.
+- Dessin : des **points de couleur, la couleur étant celle du thème de la carte** (pas sa rareté : la maquette validée montrait que la rareté ne dit rien du sujet). Les **images ne se chargent que lorsque le zoom montre assez peu de cartes pour les gérer** ; avant, jamais.
 - Cartes non placées par forces : un aspect un peu différent d'aujourd'hui est accepté.
 
+- Maquette validée (v2, 2026-10-06) : territoires nommés par thème en vue d'ensemble, points colorés par thème avec leurs **liens visibles** (carte → articles, article → article voisin), clic sur un article = isoler ses cartes et ses liens (comme aujourd'hui).
+
 ## Conception
+
+### 0. Thèmes (`web-themes.ts`, nouveau)
+
+- Les articles partagés (≤ 300) sont regroupés en **thèmes** par détection de communautés (propagation d'étiquettes, déterministe) sur le graphe article ↔ article construit par les cartes qu'ils ont en commun. 8 thèmes au plus ; les plus petits sont fondus dans le voisin le plus lié.
+- Chaque thème a une couleur (palette fixe de 8 teintes lisibles en clair et en sombre) et un **nom** : celui de son article le plus partagé.
+- Une carte prend le thème de son article principal (le plus partagé parmi les siens) ; une carte de deux thèmes est posée entre eux.
+- Les thèmes servent à : la couleur des points et des traits, les cellules des regroupements (couleur du thème dominant), les noms écrits en grand sur les territoires en vue d'ensemble, la légende.
 
 ### 1. Placement en deux niveaux (`web-layout.ts`, nouveau `web-place.ts`)
 
@@ -38,8 +47,8 @@ Grille de cellules sur les positions des cartes : retrouver les cartes d'un rect
 ### 3. Rendu `<canvas>` à niveaux de détail (`WebCanvas.tsx`, remplace `WebGraphView`)
 
 - Le canvas redessine à chaque image pendant un geste (`requestAnimationFrame`), à budget borné.
-- **Dézoomé** : une pastille par cellule de la grille, taille et couleur selon le nombre de cartes (regroupements) ; les articles partagés restent visibles.
-- **Zoomé** : seules les cartes de l'écran sont dessinées, en points de couleur ; leurs traits aussi, plafonnés (au-delà du plafond, on ne dessine que les traits des nœuds mis en avant).
+- **Dézoomé** : une pastille par cellule de la grille (taille : nombre de cartes ; couleur : thème dominant), le nom des thèmes sur leurs territoires, les principaux articles et les liens entre articles voisins.
+- **Zoomé** : seules les cartes de l'écran sont dessinées, en points de la couleur de leur thème, avec leurs traits vers leurs articles (échantillonnés au-delà de 5 000 traits ; quand un article est mis en avant, tous ses traits sont tracés et le reste est estompé).
 - **Images** : seulement quand le nombre de cartes à l'écran passe sous `IMAGE_MAX_VISIBLE` (~300) ; chargées à ce moment-là, pas avant (le service d'images actuel et `peek` sont réutilisés).
 - Noms : `chooseLabels` sur les seuls nœuds visibles.
 
