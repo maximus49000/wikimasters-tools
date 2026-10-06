@@ -152,7 +152,8 @@ export function buildScene(graph: WebGraph, positions: Record<string, Point>, mo
 
 export type Cluster = { x: number; y: number; n: number; theme: number };
 type Clusters = { cell: number; items: Cluster[]; max: number };
-const clusterCache = new WeakMap<Scene, Clusters>();
+// Un calcul par taille de cellule et par scène (une douzaine de tailles au plus, en puissances de deux) : zoomer puis revenir ne recalcule rien.
+const clusterCache = new WeakMap<Scene, Map<number, Clusters>>();
 
 // Taille d'une cellule de regroupement (unités du dessin) : entre 32 et 64 px à l'écran, par puissances de 2 (peu de recalculs en zoomant).
 export const clusterCell = (k: number): number => 2 ** Math.ceil(Math.log2(32 / k));
@@ -161,8 +162,10 @@ export const clusterCell = (k: number): number => 2 ** Math.ceil(Math.log2(32 / 
 // Comptes dans des tableaux pleins couvrant l'étendue de la toile (pas de Map ni d'objet par cellule : à 200 000 cartes, un changement
 // de cellule coûtait 15 à 75 ms, une saccade à chaque octave de zoom).
 export function clustersFor(scene: Scene, cell: number): Clusters {
-  const cached = clusterCache.get(scene);
-  if (cached && cached.cell === cell) return cached;
+  let cache = clusterCache.get(scene);
+  if (!cache) clusterCache.set(scene, (cache = new Map()));
+  const cached = cache.get(cell);
+  if (cached) return cached;
   const slots = scene.themes.length + 1;
   const n = scene.xs.length;
   const items: Cluster[] = [];
@@ -228,7 +231,7 @@ export function clustersFor(scene: Scene, cell: number): Clusters {
     }
   }
   const result = { cell, items, max };
-  clusterCache.set(scene, result);
+  cache.set(cell, result);
   return result;
 }
 

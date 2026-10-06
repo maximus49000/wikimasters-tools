@@ -105,6 +105,12 @@ describe('clustersFor', () => {
   it('réutilise le calcul tant que la cellule ne change pas', () => {
     expect(clustersFor(scene, 64)).toBe(clustersFor(scene, 64));
   });
+
+  it("garde le calcul de chaque cellule : zoomer puis revenir ne recalcule rien", () => {
+    const first = clustersFor(scene, 64);
+    clustersFor(scene, 128);
+    expect(clustersFor(scene, 64)).toBe(first);
+  });
 });
 
 describe('pickAt', () => {
