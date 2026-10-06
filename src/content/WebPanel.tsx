@@ -552,7 +552,10 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   }, [picked]);
 
   // La barre suit la carte au zoom et au glissement : sa place se déduit de celle de la carte à l'écran.
-  const pickedCard = picked ? cards.find((card) => card.slug === picked) : undefined;
+  // Accès direct au titre et à la carte : un article peut relier des milliers de cartes, parmi des centaines de milliers.
+  const bySlug = useMemo(() => new Map(cards.map((card) => [card.slug, card])), [cards]);
+  // Accès direct (pas de recherche parmi 200 000 cartes à chaque rendu).
+  const pickedCard = picked ? bySlug.get(picked) : undefined;
   const pickedPoint = picked ? positions[cardId(picked)] : undefined;
   pickedPointRef.current = pickedPoint;
   const actionsAt =
@@ -565,8 +568,6 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
       : null;
 
   const focusedHub = focus?.kind === 'hub' ? graph.hubs.find((hub) => hub.slug === focus.slug) : undefined;
-  // Accès direct au titre et à la carte : un article peut relier des milliers de cartes, parmi des centaines de milliers.
-  const bySlug = useMemo(() => new Map(cards.map((card) => [card.slug, card])), [cards]);
   const titleOf = (slug: string) => bySlug.get(slug)?.title ?? slug;
   const zoomStep = Math.round(Math.log2(transform.k) * LABEL_STEPS_PER_OCTAVE);
   const labelled = useMemo(
