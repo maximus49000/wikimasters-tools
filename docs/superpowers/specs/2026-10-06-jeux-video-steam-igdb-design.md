@@ -78,8 +78,10 @@ Calquée sur les films (`src/core/screen/`, `src/content/ScreenSection.tsx`).
 - `game-format.ts` : mise en forme (pourcentage, nombre d'avis, prix, joueurs, date).
 - `game-repo.ts` : mémorisation des identifiants résolus, comme `screen-repo.ts`, et des corrections de l'utilisateur (`game-choice-v1`).
 
+IGDB : `P5794` contient le *slug* du jeu (ex. `elden-ring`), pas un identifiant numérique ; `igdb-api` sait lire un jeu par slug. L'APK reçoit un pont HTTP natif (`WmtHttp`) pour Steam et IGDB, qui n'envoient pas d'en-têtes CORS.
+
 `src/content/`
-- `game-service.ts` : `view(slug, title)` suivant l'ordre de résolution ; `TtlCache` pour les détails (Steam : détail 24 h, note et joueurs en ligne 1 h ; IGDB : 7 jours).
+- `game-service.ts` : `view(slug, title)` suivant l'ordre de résolution ; `TtlCache` pour les détails (Steam : détail complet (avec note et joueurs en ligne) 6 h ; IGDB : 7 jours).
 - `GameSection.tsx` + montage via `createNativeSections` (`mount.tsx`), `decorateGame` comme `decorateScreen`, `game-registry.ts` ; posé sous « Mauvaise image », avant ATK/DEF.
 - `GameChoiceDialog.tsx` : fenêtre « Changer de jeu » (recherche sur les deux sources, lien collé, aperçu, « Aucun jeu », retour au choix automatique).
 - `HlsTrailerPlayer.tsx` : lecteur `<video>` + hls.js (chargé à la demande) ; `TrailerPlayer` existant pour YouTube.

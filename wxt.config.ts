@@ -18,6 +18,10 @@ export default defineConfig({
       'https://auth.tidal.com/*',
       'https://login.tidal.com/*',
       'https://api.themoviedb.org/*',
+      'https://store.steampowered.com/*',
+      'https://api.steampowered.com/*',
+      'https://id.twitch.tv/*',
+      'https://api.igdb.com/*',
       'https://api.github.com/*',
       // Firefox MV3 : l'accès au site est une permission d'hôte à accorder (demandée à l'installation).
       ...(browser === 'firefox' ? ['https://www.wiki-masters.com/*'] : []),
