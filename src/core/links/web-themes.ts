@@ -52,14 +52,13 @@ export function hubEdges(graph: WebGraph, hubsOf: Map<string, string[]> = cardHu
       else byHub.set(slug, [edge]);
     }
   }
-  // Un lien n'est gardé que s'il fait partie des plus forts de ses DEUX articles : aucun article ne dépasse ainsi PER_HUB_EDGES liens.
-  const votes = new Map<HubEdge, number>();
+  // Chaque article garde ses liens les plus forts : un lien survit s'il fait partie des plus forts de l'un de ses deux articles.
+  const kept = new Set<HubEdge>();
   for (const list of byHub.values()) {
     list.sort((x, y) => y.weight - x.weight || (pairKey(x.a, x.b) < pairKey(y.a, y.b) ? -1 : 1));
-    for (const edge of list.slice(0, PER_HUB_EDGES)) votes.set(edge, (votes.get(edge) ?? 0) + 1);
+    for (const edge of list.slice(0, PER_HUB_EDGES)) kept.add(edge);
   }
-  const kept = [...votes].filter(([, count]) => count === 2).map(([edge]) => edge);
-  return kept.sort((x, y) => (pairKey(x.a, x.b) < pairKey(y.a, y.b) ? -1 : 1));
+  return [...kept].sort((x, y) => (pairKey(x.a, x.b) < pairKey(y.a, y.b) ? -1 : 1));
 }
 
 // Thèmes = communautés d'articles (propagation d'étiquettes, sans hasard : mêmes données, mêmes thèmes).

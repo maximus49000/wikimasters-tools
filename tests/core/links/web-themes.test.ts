@@ -28,11 +28,32 @@ describe('hubEdges', () => {
     ]);
   });
 
-  it('ne garde que les quatre liens les plus forts de chaque article', () => {
+  it('garde pour chaque article son lien le plus fort, sans garder toutes les paires', () => {
+    const n = 10;
+    const names = Array.from({ length: n }, (_, i) => `H${i}`);
+    const g = graph(Object.fromEntries(names.map((h) => [h, ['x']])));
+    // Chaque paire partage i + j + 1 cartes : le lien le plus fort d'un article va vers l'indice le plus grand.
+    const hubsOf = new Map<string, string[]>();
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        for (let k = 0; k < i + j + 1; k++) hubsOf.set(`c${i}-${j}-${k}`, [names[i]!, names[j]!]);
+      }
+    }
+    const edges = hubEdges(g, hubsOf);
+    expect(edges.length).toBeLessThanOrEqual(n * 4);
+    expect(edges.length).toBeLessThan((n * (n - 1)) / 2);
+    for (let i = 0; i < n; i++) {
+      const best = i === n - 1 ? n - 2 : n - 1;
+      const [a, b] = [Math.min(i, best), Math.max(i, best)];
+      expect(edges.some((e) => e.a === names[a] && e.b === names[b])).toBe(true);
+    }
+  });
+
+  it('un article peu lié garde son lien vers un article très lié', () => {
     const hubs: Record<string, string[]> = { H: ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'] };
     for (let i = 0; i < 6; i++) hubs[`S${i}`] = [`c${i + 1}`];
     const edges = hubEdges(graph(hubs));
-    expect(edges.filter((e) => e.a === 'H' || e.b === 'H').length).toBeLessThanOrEqual(4);
+    for (let i = 0; i < 6; i++) expect(edges.some((e) => e.a === 'H' && e.b === `S${i}`)).toBe(true);
   });
 });
 
