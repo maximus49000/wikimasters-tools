@@ -173,6 +173,14 @@ describe('createGameService.cover', () => {
     expect(await service.cover('Jeu', 'Jeu')).toEqual([]);
   });
 
+  it('le choix de l’utilisateur n’attend pas Wikidata : affiche donnée même si les identifiants de la carte ne répondent pas', async () => {
+    const { service } = setup({ unreachable: true });
+    await service.choose('Jeu', { source: 'igdb', id: 42 });
+    expect(await service.cover('Jeu', 'Jeu')).toEqual(['https://img.test/igdb.jpg']);
+    await service.chooseNone('Jeu');
+    expect(await service.cover('Jeu', 'Jeu')).toEqual([]);
+  });
+
   it("rien pour une carte qui n'est pas un jeu ; pas de réponse (null) quand Wikidata ou une source ne répond pas", async () => {
     expect(await setup({ natures: ['Q11424'] }).service.cover('Jeu', 'Inception')).toEqual([]);
     expect(await setup({ unreachable: true }).service.cover('Jeu', 'Jeu')).toBeNull();

@@ -55,6 +55,12 @@ describe('createMediaArt', () => {
     expect(await setup(['Q7889']).art.primary('x', 'Elden Ring')).toBeNull();
   });
 
+  it("l'affiche d'un jeu (carte qui a déjà une image) est demandée à la source de jeux même quand Wikidata n'a pas répondu : la source tranche (choix de l'utilisateur compris)", async () => {
+    const { art, cover } = setup(['Q7889'], { game: true, unknownKinds: true, spotify: false, tmdb: false });
+    expect(await art.game('x', 'Elden Ring')).toEqual(['https://steam.test/library.jpg']);
+    expect(cover).toHaveBeenCalledWith('x', 'Elden Ring');
+  });
+
   it("ne cherche pas de pochette de jeu pour une carte qui n'est pas un jeu vidéo (jeu de société compris)", async () => {
     const { art, cover } = setup(['Q131436'], { game: true });
     expect(await art.primary('x', 'Catan')).toEqual([]);

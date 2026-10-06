@@ -74,9 +74,8 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
     async game(slug, title) {
       const { game: gameArt } = deps.sources;
       if (!gameArt) return null;
-      const { known, game } = await kindsOf(slug);
-      if (!known) return null;
-      return game ? gameArt.cover(slug, title) : [];
+      // La source de jeux tranche elle-même (nature de la carte, choix de l'utilisateur) : liste vide si ce n'est pas un jeu.
+      return gameArt.cover(slug, title);
     },
 
     async fallback(slug, title) {

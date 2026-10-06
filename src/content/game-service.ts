@@ -146,13 +146,14 @@ export function createGameService(deps: GameServiceDeps) {
     // `null` si une source n'a pas pu répondre (Wikidata, Steam, IGDB) : à redemander plus tard, sans rien mémoriser.
     async cover(slug: string, title: string): Promise<string[] | null> {
       try {
+        // Le jeu choisi par l'utilisateur ne dépend pas de Wikidata : sans réponse de Wikidata, il reste affiché.
+        const choice = (await choices.load())[slug];
+        if (choice) return 'none' in choice ? [] : await coverOf(choice);
         await kinds.resolveMissing([slug]);
         const cardKinds = (await kinds.load()).cards[slug];
         const ids = (await games.resolve([slug]))[slug];
         if (cardKinds === undefined || ids === undefined) return null;
         if (!isVideoGame(cardKinds) && ids.steamId === undefined) return [];
-        const choice = (await choices.load())[slug];
-        if (choice) return 'none' in choice ? [] : await coverOf(choice);
         return await automaticCover(ids, title);
       } catch {
         return null;
