@@ -58,6 +58,14 @@ describe('drawScene', () => {
     expect(result.visible).toBeGreaterThan(350);
   });
 
+  it('dessine les petits points en carrés (un cercle coûte quatre fois plus cher au canvas)', () => {
+    const big = scene({ A1: many('a', 600), A2: many('a', 600), B1: many('b', 600), B2: many('b', 600) });
+    const { ctx, calls } = fakeContext();
+    const c = { x: (big.bounds!.minX + big.bounds!.maxX) / 2, y: (big.bounds!.minY + big.bounds!.maxY) / 2 };
+    const result = drawScene(ctx, big, { k: 0.5, x: size.width / 2 - c.x * 0.5, y: size.height / 2 - c.y * 0.5 }, size, options);
+    expect(calls.filter((call) => call === 'rect:4')).toHaveLength(result.visible);
+  });
+
   it('trace au plus 5 000 traits cartes → articles en points, même quand chaque carte en a deux', () => {
     const big = scene({ A1: many('a', 4500), A2: many('a', 4500), B1: many('b', 4500), B2: many('b', 4500) });
     const { ctx, calls } = fakeContext();
