@@ -15,10 +15,10 @@ function setup(states: ScanState[]) {
 }
 
 describe('recountCopies', () => {
-  it('lance un parcours complet (force) et rend l’état final', async () => {
+  it('lance le scan (qui choisit son parcours) et rend l’état final', async () => {
     const { scanner, deps } = setup([state('done', { entries: 12 })]);
     await expect(recountCopies(scanner, deps)).resolves.toMatchObject({ status: 'done', entries: 12 });
-    expect(scanner.run).toHaveBeenCalledWith({ force: true });
+    expect(scanner.run).toHaveBeenCalledWith();
   });
 
   it('rend l’erreur du scan telle quelle', async () => {

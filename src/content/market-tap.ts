@@ -1,4 +1,4 @@
-import { CARDS_MESSAGE, COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from './market-messages';
+import { CARDS_MESSAGE, COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from './market-messages';
 
 export type TapWindow = {
   location: { href: string; origin: string };
@@ -15,6 +15,8 @@ const COLLECTION_PATH = '/api/my-collection';
 const REPLAY_LIMIT = 10;
 // Actions du jeu qui donnent une carte (ouverture d'un pack, achat) : une requête d'écriture vers l'une de ces routes.
 const OBTAIN_PATH = /^\/api\/.*(pack|booster|open|buy|purchase|claim|reveal|draw)/i;
+// Écritures d'échange : la Collection change (carte donnée ou reçue).
+const MOVEMENT_PATH = /^\/api\/.*(trade|exchange|swap)/i;
 // Paramètres de la requête qui ne sont pas des filtres.
 const NON_FILTER_PARAMS = ['page', 'stats', 'sort'];
 
@@ -71,8 +73,12 @@ export function installMarketTap(win: TapWindow): void {
     try {
       if (!response.ok) return;
       if (new URL(requestUrl(input), win.location.href).pathname !== MARKETPLACE_PATH) return;
-      const body = (await response.clone().json()) as { auctions?: unknown } | null;
+      const body = (await response.clone().json()) as { auctions?: unknown; selling?: unknown; history?: unknown; won?: unknown } | null;
       if (Array.isArray(body?.auctions)) relay(body.auctions);
+      // Mes enchères (ventes en cours ou conclues, gagnées) : la Collection en tient compte sans nouveau parcours.
+      if (Array.isArray(body?.won) || Array.isArray(body?.selling) || Array.isArray(body?.history)) {
+        win.postMessage({ type: MINE_MESSAGE, selling: body?.selling, history: body?.history, won: body?.won }, win.location.origin);
+      }
     } catch {
       // réponse illisible : on ne dit rien, la page ne doit jamais en pâtir
     }
@@ -88,7 +94,9 @@ export function installMarketTap(win: TapWindow): void {
       if (!response.ok) return;
       const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
       if (method === 'GET' || method === 'HEAD') return;
-      if (!OBTAIN_PATH.test(new URL(requestUrl(input), win.location.href).pathname)) return;
+      const path = new URL(requestUrl(input), win.location.href).pathname;
+      if (MOVEMENT_PATH.test(path)) win.postMessage({ type: MOVEMENT_MESSAGE }, win.location.origin);
+      if (!OBTAIN_PATH.test(path)) return;
       win.postMessage({ type: CARDS_MESSAGE, payload: await response.clone().json() }, win.location.origin);
     } catch {
       // réponse illisible : la page ne doit jamais en pâtir

@@ -5,3 +5,7 @@ export const HELLO_MESSAGE = 'wmt:hello';
 export const COLLECTION_FILTER_MESSAGE = 'wmt:collection-filter';
 // Cartes obtenues (ouverture d'un pack, achat) : la réponse du jeu, relayée telle quelle.
 export const CARDS_MESSAGE = 'wmt:cards';
+// Mes enchères (vente, mises, gagnées) : la réponse de `/api/marketplace?mine=1`, relayée telle quelle.
+export const MINE_MESSAGE = 'wmt:mine';
+// Une action d'échange ou de vente réussie (écriture vers /api/trades…) : la Collection va changer.
+export const MOVEMENT_MESSAGE = 'wmt:movement';

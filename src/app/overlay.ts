@@ -30,8 +30,9 @@ import { parseMarketAuctions } from '../core/market/schemas';
 import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
 import { decorateMarketLinks } from '../content/market-link';
-import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from '../content/market-messages';
+import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
+import { EMPTY_LEDGER, planMineEvents, type MineLedger } from '../core/collection/mine-events';
 import { createMarketUi, mountHistoryBadge, mountImageSection, mountListenSection, openImageSettings, openPlayerSettings, pruneImageSections, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
 import { decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
@@ -116,6 +117,29 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     console.info(LOG, `${cards.length} carte(s) obtenue(s) enregistrée(s)`);
     collectionRepo.observe(cards).catch((error) => console.warn(LOG, 'cartes obtenues non enregistrées :', error));
   });
+  // Ventes, échanges et gains aux enchères : la Collection suit au fil de l'eau, sans nouveau parcours.
+  const scanner = createCollectionScanner({ api, collection: collectionRepo, store });
+  const LEDGER_KEY = 'collection-mine-ledger:v1';
+  let ledgerTail: Promise<unknown> = Promise.resolve();
+  window.addEventListener('message', (event) => {
+    const data = event.data as { type?: unknown; selling?: unknown; history?: unknown; won?: unknown } | null;
+    if (event.source !== window || data?.type !== MINE_MESSAGE) return;
+    const mine = { selling: data.selling, history: data.history, won: data.won };
+    ledgerTail = ledgerTail
+      .then(async () => {
+        const plan = planMineEvents((await store.get<MineLedger>(LEDGER_KEY)) ?? EMPTY_LEDGER, mine);
+        if (plan.gained.length > 0) await collectionRepo.observe(plan.gained);
+        if (Object.keys(plan.deltas).length > 0) await collectionRepo.adjustCopies(plan.deltas);
+        await store.set(LEDGER_KEY, plan.ledger);
+      })
+      .catch((error) => console.warn(LOG, 'mouvements de la collection non appliqués :', error));
+  });
+  // Un échange conclu : on ne sait pas encore quelles cartes ont bougé, le parcours complet (en fond) le dira.
+  window.addEventListener('message', (event) => {
+    const data = event.data as { type?: unknown } | null;
+    if (event.source !== window || data?.type !== MOVEMENT_MESSAGE) return;
+    void scanner.run({ force: true });
+  });
   const filterSource = createCollectionFilterSource(window);
   window.postMessage({ type: HELLO_MESSAGE }, window.location.origin);
 
@@ -164,7 +188,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       (slugs) => fetchBacklinks((url) => fetch(url, { signal: AbortSignal.timeout(20_000) }), slugs),
     ),
     kindFilterSource: createKindFilterSource(window.localStorage),
-    scanner: createCollectionScanner({ api, collection: collectionRepo, store }),
+    scanner,
     book,
     filterSource,
     sortSource: createSortSource(),

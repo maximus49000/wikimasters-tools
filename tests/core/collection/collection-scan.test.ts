@@ -35,6 +35,13 @@ function setup(pages: (CollectionPage | Error)[], options: { maxPages?: number; 
 }
 
 describe('createCollectionScanner', () => {
+  it('un parcours complet retire les cartes vendues ou échangées depuis le dernier', async () => {
+    const { scanner, collection } = setup([page('A')]);
+    await collection.observe([{ slug: 'Vendue', title: 'Vendue', copies: 1 }], true);
+    await scanner.run({ force: true });
+    expect((await collection.list()).map((c) => c.slug)).toEqual(['A']);
+  });
+
   it('parcourt les pages jusqu’à une page vide et alimente la collection page par page', async () => {
     const { scanner, collection, getCollectionPage } = setup([page('A', 'B'), page('C')]);
 

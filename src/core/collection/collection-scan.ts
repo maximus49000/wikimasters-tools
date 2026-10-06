@@ -37,7 +37,7 @@ export const IDLE_SCAN: ScanState = { status: 'idle', nextPage: 0, entries: 0, u
 
 export type ScannerDeps = {
   api: { getCollectionPage(page: number, filter?: string, sort?: 'rarity' | 'added'): Promise<CollectionPage> };
-  collection: Pick<CollectionRepo, 'observe' | 'resetCopies'>;
+  collection: Pick<CollectionRepo, 'observe' | 'resetCopies' | 'dropUncounted'>;
   store: KeyValueStore;
   now?: () => number;
   maxPages?: number;
@@ -175,6 +175,8 @@ export function createCollectionScanner({
         const result = await api.getCollectionPage(page, undefined, 'added');
         pageSize = Math.max(pageSize, result.entries);
         if (result.entries === 0) {
+          // Les cartes que ce parcours n'a pas recomptées ont été vendues ou échangées.
+          await collection.dropUncounted();
           await write(snapshot('done', { fullAt: now(), ...(pending !== undefined ? { lastObtainedAt: pending } : {}) }));
           return;
         }
