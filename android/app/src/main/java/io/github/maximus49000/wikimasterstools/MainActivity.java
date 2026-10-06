@@ -36,7 +36,7 @@ public class MainActivity extends Activity {
     private static final String OVERLAY_ASSET = "wikimasters-overlay.js";
     private static final String SPOTIFY_AUTH_PREFIX = "https://accounts.spotify.com/authorize?";
     private static final String TIDAL_AUTH_PREFIX = "https://login.tidal.com/authorize?";
-    private static final String SPOTIFY_REDIRECT_SCHEME = "wikimasterstools";
+    private static final String SPOTIFY_REDIRECT_SCHEME = BuildConfig.REDIRECT_SCHEME;
 
     private WebView webView;
     private final Updater updater = new Updater(this);
@@ -118,6 +118,12 @@ public class MainActivity extends Activity {
         public void openAuth(String url) {
             if (url == null || !(url.startsWith(SPOTIFY_AUTH_PREFIX) || url.startsWith(TIDAL_AUTH_PREFIX))) return;
             runOnUiThread(() -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))));
+        }
+
+        // Schéma de retour de ce canal : la surcouche en déduit l'adresse déclarée chez Spotify et Tidal.
+        @JavascriptInterface
+        public String scheme() {
+            return SPOTIFY_REDIRECT_SCHEME;
         }
 
         @JavascriptInterface

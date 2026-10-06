@@ -20,7 +20,9 @@
     "package": "npm run zip && npm run zip:firefox",
     "build:overlay": "vite build -c vite.android.config.ts",
     "apk": "node scripts/build-apk.mjs",
-    "promouvoir": "node scripts/promote.mjs"
+    "apk:preprod": "node scripts/build-apk.mjs --channel=preprod",
+    "promouvoir": "node scripts/promote.mjs",
+    "preprod": "node scripts/publish-preprod.mjs"
   },
   "dependencies": {
     "leaflet": "^1.9.4",
