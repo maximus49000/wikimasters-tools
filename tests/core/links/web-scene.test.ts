@@ -142,6 +142,15 @@ describe('pickAt', () => {
     expect(pickAt(scene, t, 'clusters', px, py)).toBeNull();
   });
 
+  it('touche une carte dans une zone de 44 px (22 px autour de son centre)', () => {
+    const far = { x: 300, y: 200, k: 40 };
+    const i = scene.cardIndex.get('a5')!;
+    const px = far.x + scene.xs[i]! * far.k;
+    const py = far.y + scene.ys[i]! * far.k;
+    expect(pickAt(scene, far, 'cards', px + 20, py)).toEqual({ kind: 'card', slug: 'a5' });
+    expect(pickAt(scene, far, 'cards', px, py - 20)).toEqual({ kind: 'card', slug: 'a5' });
+  });
+
   it('ne trouve rien dans le vide', () => {
     expect(pickAt(scene, t, 'dots', -5000, -5000)).toBeNull();
   });

@@ -12,7 +12,8 @@ export const DOTS_MAX = 20000;
 // En regroupements, seuls les plus gros articles sont dessinés.
 export const CLUSTER_HUBS = 40;
 export const GRID_CELL = 16;
-const HIT_PX = 16;
+// Rayon de toucher (px) : une zone de 44 px de large, la taille tactile recommandée.
+const HIT_PX = 22;
 const OFFSET = 32768;
 
 export type Level = 'clusters' | 'dots' | 'cards';
