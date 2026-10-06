@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Wikimasters Tools</string>
+    <string name="update_title">Mise à jour disponible</string>
+    <string name="update_message">Une nouvelle version de Wikimasters Tools est prête (%1$s). L\'installer maintenant ?</string>
+    <string name="update_install">Installer</string>
+    <string name="update_later">Plus tard</string>
 </resources>

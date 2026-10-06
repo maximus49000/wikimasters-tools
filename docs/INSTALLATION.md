@@ -77,3 +77,11 @@ Une application qui affiche WikiMasters en plein écran (WebView) et applique la
 **Fonctionnement** : la surcouche est le même code que l'extension, empaqueté en un script (`vite.android.config.ts`) injecté dès le début de chaque page de `www.wiki-masters.com`. Les appels vers Wikipédia, Wikidata et OpenStreetMap passent par les en-têtes CORS ouverts de ces services. Les autres liens s'ouvrent dans le navigateur du téléphone. Le bouton retour remonte l'historique de la page.
 
 **Reconstruire** : `npm run apk` (Android Studio installé : SDK Android et son JDK 17+ ; Gradle est téléchargé au premier lancement). Le fichier est copié dans `livrables/`. L'APK est signé avec la clé de debug du poste : conservez le même poste (ou `~/.android/debug.keystore`) pour pouvoir mettre l'application à jour sans la désinstaller. Le Play Store exigerait une clé de publication dédiée.
+
+### Canaux pré-production et production (mise à jour automatique)
+
+- **Pré-production = `main`.** Tout ce qui est fusionné y arrive ; aucune release n'est publiée, les téléphones ne le voient pas.
+- **Production = branche `production` + dernière release GitHub** (étiquette `android-<versionCode>`, APK en pièce jointe). Elle ne change que sur ordre explicite : `npm run promouvoir` (depuis `main` propre et synchronisé) lance typecheck, tests, build, construit l'APK, avance `production` sur `main` (avance rapide, jamais de `--force`) puis crée la release.
+- **L'application** consulte la dernière release au plus une fois par jour au démarrage, télécharge l'APK s'il est plus récent, vérifie le paquet puis propose de l'installer. Android interdit l'installation silencieuse hors Play Store : il faut toucher « Installer », et autoriser une fois « installer des applications inconnues » pour Wikimasters Tools.
+- `versionCode` = nombre de commits (calculé par `npm run apk`) : il ne fait qu'augmenter, condition pour qu'Android accepte la mise à jour. L'APK doit toujours être construit avec la même clé (`~/.android/debug.keystore`), sinon la mise à jour est refusée.
+- Le premier APK doté de cette fonction doit être installé à la main ; les suivants se mettent à jour seuls.
