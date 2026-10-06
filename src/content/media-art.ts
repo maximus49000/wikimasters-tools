@@ -20,7 +20,8 @@ export type MediaArtSources = {
 // (compte non lié, source ou natures de la carte pas prêtes) : à redemander plus tard, sans rien mémoriser.
 type Art = (slug: string, title: string) => Promise<string[] | null>;
 // `primary` : pochette / affiche exacte ; `fallback` : à défaut de toute image, la photo de l'artiste ou l'affiche la plus proche du nom.
-export type MediaArt = { primary: Art; fallback: Art };
+// `game` : l'affiche officielle d'un jeu vidéo, même quand la carte a déjà une image Wikipédia (liste vide pour toute autre carte).
+export type MediaArt = { primary: Art; fallback: Art; game: Art };
 
 // Les guillemets casseraient la requête de recherche Spotify.
 const quoted = (text: string): string => text.replaceAll('"', '').trim();
@@ -68,6 +69,14 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
       if (screen === 'film' || screen === 'series') return tmdb ? one(await tmdb.posterUrl(screen, cleanTitle(title))) : null;
       if (game) return gameArt ? gameArt.cover(slug, title) : null;
       return [];
+    },
+
+    async game(slug, title) {
+      const { game: gameArt } = deps.sources;
+      if (!gameArt) return null;
+      const { known, game } = await kindsOf(slug);
+      if (!known) return null;
+      return game ? gameArt.cover(slug, title) : [];
     },
 
     async fallback(slug, title) {

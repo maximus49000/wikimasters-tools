@@ -195,6 +195,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     search: (title, skip) => searchCardImages((url) => fetch(url), title, skip),
     art: (title, slug) => mediaArt.primary(slug, title),
     fallback: (title, slug) => mediaArt.fallback(slug, title),
+    gameArt: (title, slug) => mediaArt.game(slug, title),
     settings: window.localStorage,
   });
   setImageService(images);

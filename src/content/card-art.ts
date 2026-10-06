@@ -7,6 +7,9 @@ export type ArtSource = {
   enabled: () => boolean;
   peek: (slug: string) => string | null | undefined;
   request: (slug: string, title: string) => unknown;
+  // Affiche d'un jeu vidéo pour une carte qui a déjà une image.
+  peekGameArt: (slug: string) => string | null | undefined;
+  requestGameArt: (slug: string, title: string) => unknown;
 };
 
 // Images qui n'ont pas pu se charger : on ne les repose pas (le retrait relancerait la synchronisation à l'infini).
@@ -68,10 +71,36 @@ export function syncCardArt(root: ParentNode, source: ArtSource): number {
     for (const overlay of root.querySelectorAll(`[${ART_ATTRIBUTE}]`)) overlay.remove();
     return 0;
   }
+  const gameZones = new Set<Element>();
   for (const img of root.querySelectorAll<HTMLImageElement>('img')) {
-    if (!isPlaceholder(img)) continue;
     const zone = img.closest(ART_ZONE);
     if (!zone) continue;
+    if (!isPlaceholder(img)) {
+      // Carte qui a déjà une image : si c'est un jeu vidéo, l'affiche officielle (Steam, IGDB) passe devant celle de Wikipédia.
+      if (img.closest(`[${ART_ATTRIBUTE}]`) || gameZones.has(zone) || [...zone.querySelectorAll<HTMLImageElement>('img')].some(isPlaceholder)) continue;
+      gameZones.add(zone);
+      const gameTitle = readTitle(zone);
+      const gameSlug = gameTitle ? titleToSlug(gameTitle) : null;
+      if (!gameTitle || !gameSlug) continue;
+      const gameUrl = source.peekGameArt(gameSlug);
+      const current = overlayOf(zone);
+      if (gameUrl === undefined) {
+        source.requestGameArt(gameSlug, gameTitle);
+        continue;
+      }
+      if (gameUrl === null || broken.has(gameUrl)) {
+        current?.remove();
+        continue;
+      }
+      if (current?.getAttribute(ART_ATTRIBUTE) === gameUrl) {
+        placed += 1;
+        continue;
+      }
+      current?.remove();
+      zone.append(buildOverlay(gameUrl));
+      placed += 1;
+      continue;
+    }
     const title = readTitle(zone);
     if (!title) continue;
     const slug = titleToSlug(title);

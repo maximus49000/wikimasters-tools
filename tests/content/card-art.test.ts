@@ -10,10 +10,12 @@ const CARD = (title: string, logo = true) => `
   <div class="absolute"><h3>${title}</h3></div>
 </div>`;
 
-const source = (url: string | null | undefined, enabled = true) => ({
+const source = (url: string | null | undefined, enabled = true, gameUrl?: string | null) => ({
   enabled: () => enabled,
   peek: () => url,
   request: vi.fn<(slug: string, title: string) => void>(),
+  peekGameArt: () => gameUrl,
+  requestGameArt: vi.fn<(slug: string, title: string) => void>(),
 }) satisfies ArtSource;
 
 describe('syncCardArt', () => {
@@ -39,6 +41,29 @@ describe('syncCardArt', () => {
     const art = source('https://upload.wikimedia.org/m.jpg');
     expect(syncCardArt(document, art)).toBe(0);
     expect(art.request).not.toHaveBeenCalled();
+  });
+  it('jeu vidéo : l’affiche Steam passe devant la photo Wikipédia de la carte', () => {
+    document.body.innerHTML = CARD('The Secret World', false);
+    const art = source(undefined, true, 'https://steam/215280.jpg');
+    expect(syncCardArt(document, art)).toBe(1);
+    expect(syncCardArt(document, art)).toBe(1);
+    expect(document.querySelectorAll(`[${ART_ATTRIBUTE}]`)).toHaveLength(1);
+    expect(document.querySelector(`[${ART_ATTRIBUTE}] img`)?.getAttribute('src')).toBe('https://steam/215280.jpg');
+  });
+  it('carte avec photo : demande l’affiche du jeu quand elle est inconnue, rien si ce n’est pas un jeu', () => {
+    document.body.innerHTML = CARD('The Secret World', false);
+    const unknown = source(undefined, true, undefined);
+    syncCardArt(document, unknown);
+    expect(unknown.requestGameArt).toHaveBeenCalledWith('The_Secret_World', 'The Secret World');
+    expect(syncCardArt(document, source(undefined, true, null))).toBe(0);
+    expect(document.querySelector(`[${ART_ATTRIBUTE}]`)).toBeNull();
+  });
+  it('carte au logo sans affiche de jeu : l’image de remplacement n’est pas retirée', () => {
+    const art = source('https://upload.wikimedia.org/m.jpg', true, null);
+    syncCardArt(document, art);
+    syncCardArt(document, art);
+    expect(document.querySelectorAll(`[${ART_ATTRIBUTE}]`)).toHaveLength(1);
+    expect(art.requestGameArt).not.toHaveBeenCalled();
   });
   it('option coupée : retire les images posées et ne cherche rien', () => {
     syncCardArt(document, source('https://upload.wikimedia.org/m.jpg'));

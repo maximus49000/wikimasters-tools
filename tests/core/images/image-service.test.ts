@@ -20,6 +20,28 @@ describe('createImageService', () => {
     expect(search).toHaveBeenCalledTimes(2);
     expect(service.peek('A')).toBe('u1');
   });
+  it('affiche de jeu vidéo : cherchée une fois pour une carte qui a déjà une image, null si ce n’est pas un jeu', async () => {
+    const gameArt = vi.fn(async (_title: string, slug: string) => (slug === 'Jeu' ? ['https://steam/a.jpg'] : []));
+    const service = createImageService({ store: createMemoryStore(), search: vi.fn(async () => []), gameArt, settings: settings('on') });
+    const listener = vi.fn();
+    service.subscribe(listener);
+    expect(service.peekGameArt('Jeu')).toBeUndefined();
+    await Promise.all([service.requestGameArt('Jeu', 'Jeu'), service.requestGameArt('Jeu', 'Jeu')]);
+    await service.requestGameArt('Autre', 'Autre');
+    expect(service.peekGameArt('Jeu')).toBe('https://steam/a.jpg');
+    expect(service.peekGameArt('Autre')).toBeNull();
+    expect(gameArt).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalled();
+  });
+  it('affiche de jeu vidéo : source pas prête (null) → rien de mémorisé, option coupée → aucune recherche', async () => {
+    const gameArt = vi.fn(async () => null);
+    const service = createImageService({ store: createMemoryStore(), search: vi.fn(async () => []), gameArt, settings: settings('on') });
+    await service.requestGameArt('Jeu', 'Jeu');
+    expect(service.peekGameArt('Jeu')).toBeUndefined();
+    const off = createImageService({ store: createMemoryStore(), search: vi.fn(async () => []), gameArt, settings: settings() });
+    await off.requestGameArt('Jeu', 'Jeu');
+    expect(gameArt).toHaveBeenCalledTimes(1);
+  });
   it('inactif par défaut : aucune recherche ni image', async () => {
     const { service, search } = make(undefined, null);
     expect(service.enabled()).toBe(false);

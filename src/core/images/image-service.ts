@@ -22,6 +22,8 @@ export function createImageService(deps: {
   art?: ArtSource;
   // À défaut de toute image : photo de l'artiste, affiche la plus proche.
   fallback?: ArtSource;
+  // Affiche officielle d'un jeu vidéo, posée aussi sur les cartes qui ont déjà une image (Wikipédia) ; liste vide pour toute autre carte.
+  gameArt?: ArtSource;
   settings: Pick<Storage, 'getItem' | 'setItem'>;
   now?: () => number;
 }) {
@@ -32,6 +34,10 @@ export function createImageService(deps: {
   const inFlight = new Map<string, Promise<void>>();
   const failedAt = new Map<string, number>();
   const artTriedAt = new Map<string, number>();
+  // Affiches de jeux vidéo des cartes qui ont déjà une image : en mémoire seulement (les sources en gardent déjà les réponses).
+  const gameArtOf = new Map<string, string | null>();
+  const gameArtFailedAt = new Map<string, number>();
+  const gameArtRunning = new Set<string>();
   // Une source d'images en échec ou absente n'empêche pas les autres : elle compte comme « pas de réponse » (null).
   const safe = async (source: ArtSource | undefined, title: string, slug: string): Promise<string[] | null> =>
     source ? await source(title, slug).catch(() => null) : null;
@@ -105,6 +111,23 @@ export function createImageService(deps: {
     },
     // `undefined` : pas encore cherchée ; `null` : recherche faite, rien de trouvé.
     peek: (slug: string): string | null | undefined => state[slug]?.url,
+    // Affiche d'un jeu vidéo pour une carte qui a déjà une image : `undefined` pas encore cherchée, `null` pas un jeu / rien trouvé.
+    peekGameArt: (slug: string): string | null | undefined => gameArtOf.get(slug),
+    requestGameArt(slug: string, title: string): Promise<void> {
+      const failed = gameArtFailedAt.get(slug);
+      if (!enabled || !deps.gameArt || gameArtOf.has(slug) || gameArtRunning.has(slug) || (failed !== undefined && now() - failed < COOLDOWN_MS)) return Promise.resolve();
+      gameArtRunning.add(slug);
+      return safe(deps.gameArt, title, slug)
+        .then((answer) => {
+          if (answer === null) {
+            gameArtFailedAt.set(slug, now());
+            return;
+          }
+          gameArtOf.set(slug, answer[0] ?? null);
+          notify();
+        })
+        .finally(() => gameArtRunning.delete(slug));
+    },
     // Lance la recherche d'une carte jamais cherchée (sans effet si l'option est coupée).
     request(slug: string, title: string): Promise<void> {
       if (!enabled || !loaded || coolingDown(slug)) return Promise.resolve();
