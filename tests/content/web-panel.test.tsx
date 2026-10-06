@@ -14,6 +14,13 @@ import { createKindFilterSource } from '../../src/content/kind-filter';
 import { setImageService } from '../../src/content/image-registry';
 import type { ImageService } from '../../src/core/images/image-service';
 import { WebPanel } from '../../src/content/WebPanel';
+import { createLayout } from '../../src/core/links/web-layout';
+
+// Le placement SVG est espionné (sans changer son calcul) : on vérifie de quelles anciennes positions il repart.
+vi.mock('../../src/core/links/web-layout', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/core/links/web-layout')>();
+  return { ...actual, createLayout: vi.fn(actual.createLayout) };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -205,4 +212,198 @@ describe('WebPanel, toucher un point', () => {
     await click(container.querySelector('svg'));
     expect(opacity(card('Air'))).toBe('1');
   });
+});
+
+describe('WebPanel en mode grand', () => {
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  // jsdom ne dessine pas : sans contexte 2D, le canvas ne dessine rien (sans planter).
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContext;
+  });
+
+  it('dessine un canvas (et plus de SVG de nœuds) au-delà de 1500 cartes reliées', async () => {
+    const many: KnownCard[] = Array.from({ length: 1600 }, (_, i) => ({ slug: `Carte_${i}`, title: `Carte ${i}` }));
+    const state = setLinks(EMPTY_LINKS, Object.fromEntries(many.map((c) => [c.slug, ['Pop', 'Rock']])), Date.now());
+    await mount(state, false, many);
+    expect(container.querySelector('canvas')).not.toBeNull();
+    expect(container.querySelectorAll('[data-card]')).toHaveLength(0);
+    expect(container.textContent).toContain('1600 cartes reliées');
+  });
+});
+
+describe('WebPanel en mode grand, pendant la lecture des liens', () => {
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContext;
+    vi.useRealTimers();
+  });
+
+  it('ne reconstruit la toile qu’une fois par fenêtre pendant la lecture, et tout de suite à la fin', async () => {
+    const many: KnownCard[] = Array.from({ length: 1700 }, (_, i) => ({ slug: `Carte_${i}`, title: `Carte ${i}` }));
+    const linksOf = (from: number, to: number) => Object.fromEntries(many.slice(from, to).map((c) => [c.slug, ['Pop', 'Rock']]));
+    let current = setLinks(EMPTY_LINKS, linksOf(0, 1600), Date.now());
+    const listeners = new Set<() => void>();
+    const noSubscribe = () => () => undefined;
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <WebPanel
+          collection={{ snapshot: () => many, list: async () => many, subscribe: noSubscribe } as unknown as CollectionRepo}
+          links={{ load: async () => current, subscribe: (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener)), resolveMissing, failed: () => false } as unknown as LinksRepo}
+          scanner={{ snapshot: () => IDLE_SCAN, state: async () => IDLE_SCAN, subscribe: noSubscribe } as unknown as CollectionScanner}
+          kinds={{ load: async () => EMPTY_KINDS, subscribe: noSubscribe } as unknown as KindsRepo}
+          kindFilterSource={createKindFilterSource({ getItem: () => null, setItem: () => undefined })}
+          filterSource={{ current: () => '', subscribe: noSubscribe } as unknown as CollectionFilterSource}
+          loadFiltered={async () => new Set()}
+          onOpen={onOpen}
+          onOpenCard={onOpenCard}
+        />,
+      );
+    });
+    expect(container.textContent).toContain('1600 cartes reliées');
+    const relies = () => /(\d+) cartes reliées/.exec(container.textContent ?? '')?.[1];
+    // Une vague de liens par seconde pendant 9 s (le chargement des liens est regroupé par seconde) ; on regarde la toile tous les 250 ms.
+    const changes: { at: number; count: string | undefined }[] = [];
+    let last = relies();
+    let now = 0;
+    for (let from = 1600; from < 1690; from += 10) {
+      current = setLinks(current, linksOf(from, from + 10), Date.now());
+      for (const listener of listeners) listener();
+      for (let step = 0; step < 4; step++) {
+        await act(async () => vi.advanceTimersByTime(250));
+        now += 250;
+        if (relies() !== last) changes.push({ at: now, count: (last = relies()) });
+      }
+    }
+    expect(container.textContent).toContain('Liens lus : 1690 / 1700');
+    // La toile a suivi la lecture, mais par paliers : bien moins de reconstructions que de vagues, espacées d'au moins 2 s.
+    expect(changes.length).toBeGreaterThanOrEqual(2);
+    expect(changes.length).toBeLessThanOrEqual(5);
+    for (let i = 1; i < changes.length; i++) expect(changes[i]!.at - changes[i - 1]!.at).toBeGreaterThanOrEqual(2000);
+    // Dernière vague : la lecture est finie, la toile suit sans attendre (le temps du seul chargement des liens).
+    current = setLinks(current, linksOf(1690, 1700), Date.now());
+    for (const listener of listeners) listener();
+    await act(async () => vi.advanceTimersByTime(1000));
+    expect(container.textContent).toContain('Liens lus : 1700 / 1700');
+    expect(container.textContent).toContain('1700 cartes reliées');
+  });
+});
+
+describe('WebPanel en mode grand, Collection relue pendant la lecture', () => {
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContext;
+    vi.useRealTimers();
+  });
+
+  it('une nouvelle liste de cartes passe par le même frein : au plus une reconstruction par fenêtre', async () => {
+    // 1 600 cartes reliées, 100 cartes pas encore lues (la lecture est en cours) ; chaque relecture de la Collection ajoute 10 cartes
+    // dont les liens sont déjà connus.
+    const all: KnownCard[] = Array.from({ length: 1700 }, (_, i) => ({ slug: `Carte_${i}`, title: `Carte ${i}` }));
+    const unread: KnownCard[] = Array.from({ length: 100 }, (_, i) => ({ slug: `Inconnue_${i}`, title: `Inconnue ${i}` }));
+    const state = setLinks(EMPTY_LINKS, Object.fromEntries(all.map((c) => [c.slug, ['Pop', 'Rock']])), Date.now());
+    let listed = [...all.slice(0, 1600), ...unread];
+    const collectionListeners = new Set<() => void>();
+    const noSubscribe = () => () => undefined;
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <WebPanel
+          collection={{ snapshot: () => listed, list: async () => listed, subscribe: (l: () => void) => (collectionListeners.add(l), () => collectionListeners.delete(l)) } as unknown as CollectionRepo}
+          links={{ load: async () => state, subscribe: noSubscribe, resolveMissing, failed: () => false } as unknown as LinksRepo}
+          scanner={{ snapshot: () => IDLE_SCAN, state: async () => IDLE_SCAN, subscribe: noSubscribe } as unknown as CollectionScanner}
+          kinds={{ load: async () => EMPTY_KINDS, subscribe: noSubscribe } as unknown as KindsRepo}
+          kindFilterSource={createKindFilterSource({ getItem: () => null, setItem: () => undefined })}
+          filterSource={{ current: () => '', subscribe: noSubscribe } as unknown as CollectionFilterSource}
+          loadFiltered={async () => new Set()}
+          onOpen={onOpen}
+          onOpenCard={onOpenCard}
+        />,
+      );
+    });
+    expect(container.textContent).toContain('1600 cartes reliées');
+    const relies = () => /(\d+) cartes reliées/.exec(container.textContent ?? '')?.[1];
+    const changes: number[] = [];
+    let last = relies();
+    let now = 0;
+    for (let n = 1610; n <= 1690; n += 10) {
+      listed = [...all.slice(0, n), ...unread];
+      for (const listener of collectionListeners) listener();
+      for (let step = 0; step < 4; step++) {
+        await act(async () => vi.advanceTimersByTime(250));
+        now += 250;
+        if (relies() !== last) {
+          last = relies();
+          changes.push(now);
+        }
+      }
+    }
+    expect(container.textContent).toContain('Liens lus : 1690 / 1790');
+    expect(changes.length).toBeGreaterThanOrEqual(1);
+    expect(changes.length).toBeLessThanOrEqual(5);
+    for (let i = 1; i < changes.length; i++) expect(changes[i]! - changes[i - 1]!).toBeGreaterThanOrEqual(2000);
+  });
+});
+
+describe('WebPanel, passage du mode grand au SVG', () => {
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContext;
+    vi.useRealTimers();
+  });
+
+  it('ne reprend pas les positions du mode grand (cartes serrées à 7 unités) pour le placement SVG, et recadre la toile', async () => {
+    const all: KnownCard[] = Array.from({ length: 1600 }, (_, i) => ({ slug: `Carte_${i}`, title: `Carte ${i}` }));
+    const state = setLinks(EMPTY_LINKS, Object.fromEntries(all.map((c) => [c.slug, ['Pop', 'Rock']])), Date.now());
+    let listed = all;
+    const collectionListeners = new Set<() => void>();
+    const noSubscribe = () => () => undefined;
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <WebPanel
+          collection={{ snapshot: () => listed, list: async () => listed, subscribe: (l: () => void) => (collectionListeners.add(l), () => collectionListeners.delete(l)) } as unknown as CollectionRepo}
+          links={{ load: async () => state, subscribe: noSubscribe, resolveMissing, failed: () => false } as unknown as LinksRepo}
+          scanner={{ snapshot: () => IDLE_SCAN, state: async () => IDLE_SCAN, subscribe: noSubscribe } as unknown as CollectionScanner}
+          kinds={{ load: async () => EMPTY_KINDS, subscribe: noSubscribe } as unknown as KindsRepo}
+          kindFilterSource={createKindFilterSource({ getItem: () => null, setItem: () => undefined })}
+          filterSource={{ current: () => '', subscribe: noSubscribe } as unknown as CollectionFilterSource}
+          loadFiltered={async () => new Set()}
+          onOpen={onOpen}
+          onOpenCard={onOpenCard}
+        />,
+      );
+    });
+    expect(container.querySelector('canvas')).not.toBeNull();
+    // Un zoom de l'utilisateur en mode grand (jusqu'à 64 : sans sens en SVG).
+    for (let i = 0; i < 3; i++) await click(container.querySelector('button[aria-label="Zoomer"]'));
+    vi.mocked(createLayout).mockClear();
+    // La Collection perd 110 cartes : 1 490 cartes reliées, le SVG revient (93 % des nœuds déjà placés).
+    listed = all.slice(0, 1490);
+    for (const listener of collectionListeners) listener();
+    for (let step = 0; step < 60 && !container.querySelector('svg [data-card]'); step++) await act(async () => vi.advanceTimersByTime(250));
+    expect(container.querySelector('svg [data-card]')).not.toBeNull();
+    const calls = vi.mocked(createLayout).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    // Le placement SVG repart de zéro : aucune position du mode grand n'est reprise.
+    expect(Object.keys(calls[0]![2] ?? {})).toHaveLength(0);
+    // Le cadrage du mode grand n'est pas gardé : la toile est recadrée automatiquement (zoom ≤ 1 en SVG pour 1 490 cartes).
+    const scale = /scale\(([\d.]+)\)/.exec(container.querySelector('svg > g')?.getAttribute('transform') ?? '')?.[1];
+    expect(Number(scale)).toBeLessThanOrEqual(1);
+  }, 30_000);
 });

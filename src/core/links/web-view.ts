@@ -11,7 +11,12 @@ export const ZOOM_STEP = 1.4;
 // Un petit graphe n'est pas agrandi au-delà : il resterait énorme et creux.
 const MAX_FIT_ZOOM = 1.5;
 
-export const clampZoom = (k: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, k));
+export type ZoomLimits = { min: number; max: number };
+export const DEFAULT_LIMITS: ZoomLimits = { min: MIN_ZOOM, max: MAX_ZOOM };
+// Mode grand (des milliers de cartes) : la toile est très étendue, et il faut pouvoir descendre jusqu'à une carte.
+export const BIG_LIMITS: ZoomLimits = { min: 0.02, max: 64 };
+
+export const clampZoom = (k: number, limits: ZoomLimits = DEFAULT_LIMITS): number => Math.min(limits.max, Math.max(limits.min, k));
 
 export function boundsOf(points: Point[]): Bounds | null {
   if (points.length === 0) return null;
@@ -29,17 +34,17 @@ export function boundsOf(points: Point[]): Bounds | null {
 }
 
 // Zoom autour d'un point de l'écran : le point du graphe qui s'y trouve y reste.
-export function zoomAt(t: Transform, factor: number, cx: number, cy: number): Transform {
-  const k = clampZoom(t.k * factor);
+export function zoomAt(t: Transform, factor: number, cx: number, cy: number, limits: ZoomLimits = DEFAULT_LIMITS): Transform {
+  const k = clampZoom(t.k * factor, limits);
   const ratio = k / t.k;
   return { k, x: cx - (cx - t.x) * ratio, y: cy - (cy - t.y) * ratio };
 }
 
 // Deux doigts : l'écart règle le zoom, le déplacement de leur milieu règle le glissement.
-export function pinch(start: Transform, from: [Point, Point], to: [Point, Point]): Transform {
+export function pinch(start: Transform, from: [Point, Point], to: [Point, Point], limits: ZoomLimits = DEFAULT_LIMITS): Transform {
   const before = Math.hypot(from[1].x - from[0].x, from[1].y - from[0].y);
   const after = Math.hypot(to[1].x - to[0].x, to[1].y - to[0].y);
-  const k = clampZoom(start.k * (before < 1 ? 1 : after / before));
+  const k = clampZoom(start.k * (before < 1 ? 1 : after / before), limits);
   const ratio = k / start.k;
   const fromMid = { x: (from[0].x + from[1].x) / 2, y: (from[0].y + from[1].y) / 2 };
   const toMid = { x: (to[0].x + to[1].x) / 2, y: (to[0].y + to[1].y) / 2 };
@@ -47,11 +52,11 @@ export function pinch(start: Transform, from: [Point, Point], to: [Point, Point]
 }
 
 // Tout le graphe visible, centré dans la zone.
-export function fitTransform(bounds: Bounds | null, width: number, height: number, margin = 48): Transform {
+export function fitTransform(bounds: Bounds | null, width: number, height: number, margin = 48, limits: ZoomLimits = DEFAULT_LIMITS): Transform {
   if (!bounds) return { x: width / 2, y: height / 2, k: 1 };
   const w = Math.max(bounds.maxX - bounds.minX, 1);
   const h = Math.max(bounds.maxY - bounds.minY, 1);
-  const k = clampZoom(Math.min((width - 2 * margin) / w, (height - 2 * margin) / h, MAX_FIT_ZOOM));
+  const k = clampZoom(Math.min((width - 2 * margin) / w, (height - 2 * margin) / h, MAX_FIT_ZOOM), limits);
   return { k, x: width / 2 - (bounds.minX + w / 2) * k, y: height / 2 - (bounds.minY + h / 2) * k };
 }
 

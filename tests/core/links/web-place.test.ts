@@ -1,0 +1,189 @@
+import { describe, expect, it } from 'vitest';
+import type { KnownCard } from '../../../src/core/collection/collection-book';
+import type { WebGraph } from '../../../src/core/links/web-graph';
+import type { Point } from '../../../src/core/links/web-layout';
+import { MIN_DIST, layoutBig, placeCards, separate } from '../../../src/core/links/web-place';
+import { buildBigModel } from '../../../src/core/links/web-themes';
+
+const card = (slug: string) => ({ slug, title: slug }) as KnownCard;
+const many = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`);
+const graph = (hubs: Record<string, string[]>): WebGraph => ({
+  cards: [...new Set(Object.values(hubs).flat())].map(card),
+  hubs: Object.entries(hubs).map(([slug, cards]) => ({ slug, title: slug, cards })),
+  cardLinks: [],
+  hiddenHubs: 0,
+});
+const minDistance = (positions: Record<string, Point>, prefix: string) => {
+  const list = Object.entries(positions).filter(([id]) => id.startsWith(prefix)).map(([, p]) => p);
+  let min = Infinity;
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) min = Math.min(min, Math.hypot(list[i]!.x - list[j]!.x, list[i]!.y - list[j]!.y));
+  return min;
+};
+
+// Distance minimale entre cartes, par balayage (tri sur x) : utilisable sur des dizaines de milliers de cartes.
+const sweepMin = (positions: Record<string, Point>, prefix: string) => {
+  const list = Object.entries(positions).filter(([id]) => id.startsWith(prefix)).map(([, p]) => p).sort((a, b) => a.x - b.x);
+  let min = Infinity;
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length && list[j]!.x - list[i]!.x < min; j++) min = Math.min(min, Math.hypot(list[i]!.x - list[j]!.x, list[i]!.y - list[j]!.y));
+  }
+  return min;
+};
+
+describe('separate', () => {
+  it('écarte des points superposés sans bouger les points figés', () => {
+    const xs = new Float64Array([0, 0, 0.5, 100]);
+    const ys = new Float64Array([0, 0, 0, 100]);
+    const pinned = new Uint8Array([1, 0, 0, 0]);
+    separate(xs, ys, pinned, 10, 20);
+    expect([xs[0], ys[0]]).toEqual([0, 0]);
+    expect(Math.hypot(xs[1]! - xs[0]!, ys[1]! - ys[0]!)).toBeGreaterThanOrEqual(9.9);
+    expect(Math.hypot(xs[2]! - xs[1]!, ys[2]! - ys[1]!)).toBeGreaterThanOrEqual(9.9);
+    expect([xs[3], ys[3]]).toEqual([100, 100]);
+  });
+
+  it('écarte aussi des points perdus dans une très grande étendue (cases agrandies)', () => {
+    const xs = new Float64Array([0, 1, 2, 1e6]);
+    const ys = new Float64Array([0, 0, 1, -1e6]);
+    separate(xs, ys, new Uint8Array(4), 10, 20);
+    for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) expect(Math.hypot(xs[i]! - xs[j]!, ys[i]! - ys[j]!)).toBeGreaterThanOrEqual(9.9);
+    expect([xs[3], ys[3]]).toEqual([1e6, -1e6]);
+  });
+
+  it('ne bouge rien quand tous les points sont figés', () => {
+    const xs = new Float64Array([0, 0]);
+    const ys = new Float64Array([0, 1]);
+    separate(xs, ys, new Uint8Array([1, 1]), 10, 4);
+    expect([...xs, ...ys]).toEqual([0, 0, 0, 1]);
+  });
+});
+
+describe('placeCards', () => {
+  const g = graph({ A: many('a', 60), B: many('b', 60) });
+  const hubs = { 'h:A': { x: 0, y: 0 }, 'h:B': { x: 2000, y: 0 } };
+  const hubsOf = buildBigModel(g).hubsOf;
+
+  it('place chaque carte près de son article, sans chevauchement', () => {
+    const placed = placeCards(g, hubs, hubsOf);
+    expect(Object.keys(placed)).toHaveLength(120);
+    for (let i = 0; i < 60; i++) {
+      const p = placed[`c:a${i}`]!;
+      expect(Math.hypot(p.x, p.y)).toBeLessThan(250);
+    }
+    expect(minDistance(placed, 'c:')).toBeGreaterThanOrEqual(MIN_DIST * 0.9);
+  });
+
+  it('pose une carte reliée à deux articles entre eux', () => {
+    const shared = graph({ A: [...many('a', 5), 'x'], B: [...many('b', 5), 'x'] });
+    const placed = placeCards(shared, hubs, buildBigModel(shared).hubsOf);
+    expect(placed['c:x']!.x).toBeGreaterThan(500);
+    expect(placed['c:x']!.x).toBeLessThan(1500);
+  });
+
+  it('est déterministe', () => {
+    expect(placeCards(g, hubs, hubsOf)).toEqual(placeCards(g, hubs, hubsOf));
+  });
+
+  it('ne déplace aucune carte déjà placée quand une carte s\'ajoute', () => {
+    const before = placeCards(g, hubs, hubsOf);
+    const grown = graph({ A: [...many('a', 60), 'nouvelle'], B: many('b', 60) });
+    const after = placeCards(grown, hubs, buildBigModel(grown).hubsOf, before);
+    for (const [id, p] of Object.entries(before)) expect(after[id]).toEqual(p);
+    expect(after['c:nouvelle']).toBeDefined();
+  });
+});
+
+describe('layoutBig', () => {
+  const g = graph({ A: many('a', 80), B: many('b', 80), C: many('c', 30) });
+  const model = buildBigModel(g);
+
+  it('place les articles et toutes les cartes, avec des nombres finis', () => {
+    const positions = layoutBig(g, {}, model);
+    expect(Object.keys(positions)).toHaveLength(3 + 190);
+    for (const p of Object.values(positions)) {
+      expect(Number.isFinite(p.x)).toBe(true);
+      expect(Number.isFinite(p.y)).toBe(true);
+    }
+  });
+
+  it('est déterministe et stable quand la toile grandit', () => {
+    const first = layoutBig(g, {}, model);
+    expect(layoutBig(g, {}, model)).toEqual(first);
+    const grown = graph({ A: [...many('a', 80), 'n1', 'n2'], B: many('b', 80), C: many('c', 30) });
+    const next = layoutBig(grown, first, buildBigModel(grown));
+    for (const [id, p] of Object.entries(first)) expect(next[id]).toEqual(p);
+  });
+
+  const hubsGraph = (count: number) => graph(Object.fromEntries(many('H', count).map((h) => [h, many(`${h}_`, 20)])));
+  const expectNearHubs = (positions: Record<string, Point>, count: number) => {
+    for (let h = 0; h < count; h++) {
+      const hub = positions[`h:H${h}`]!;
+      for (let i = 0; i < 20; i++) {
+        const p = positions[`c:H${h}_${i}`]!;
+        expect(Math.hypot(p.x - hub.x, p.y - hub.y)).toBeLessThan(400);
+      }
+    }
+  };
+
+  // Anciennes positions décalées loin du centre : une carte restée à son ancienne place serait aussitôt repérée.
+  const shifted = (positions: Record<string, Point>) =>
+    Object.fromEntries(Object.entries(positions).map(([id, p]) => [id, { x: p.x + 5000, y: p.y + 5000 }]));
+
+  it('recalcule les cartes autour des articles quand de nombreux articles arrivent', () => {
+    const small = hubsGraph(2);
+    const first = layoutBig(small, {}, buildBigModel(small));
+    const wide = hubsGraph(12);
+    expectNearHubs(layoutBig(wide, shifted(first), buildBigModel(wide)), 12);
+  });
+
+  it('un article géant laisse la place à ses voisins : aucune carte superposée', () => {
+    const hubs: Record<string, string[]> = { G: many('g', 12000) };
+    for (let h = 0; h < 12; h++) hubs[`S${h}`] = [...many(`s${h}_`, 400), ...many('g', 12000).slice(h * 500, h * 500 + 300)];
+    const giant = graph(hubs);
+    const positions = layoutBig(giant, {}, buildBigModel(giant));
+    expect(sweepMin(positions, 'c:')).toBeGreaterThanOrEqual(MIN_DIST * 0.9);
+    // Placement de dizaines de milliers de cartes : délai large, loin des 5 s par défaut sur une machine chargée.
+  }, 20_000);
+
+  it("regroupe les articles d'un même thème même quand ils sont très gros (territoires)", () => {
+    // 6 familles de 20 articles, 30 000 cartes : chaque carte cite trois articles de sa famille, une sur quatre un article d'une autre.
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const hubs: Record<string, Set<string>> = {};
+    const cite = (hub: string, slug: string) => (hubs[hub] ??= new Set()).add(slug);
+    for (let i = 0; i < 30000; i++) {
+      const family = i % 6;
+      for (let n = 0; n < 3; n++) cite(`F${family}-${Math.floor(rnd() * rnd() * 20)}`, `c${i}`);
+      if (rnd() < 0.25) cite(`F${(family + 1 + Math.floor(rnd() * 5)) % 6}-${Math.floor(rnd() * rnd() * 20)}`, `c${i}`);
+    }
+    const g = graph(Object.fromEntries(Object.entries(hubs).sort(([, a], [, b]) => b.size - a.size).map(([slug, set]) => [slug, [...set]])));
+    const positions = layoutBig(g, {}, buildBigModel(g));
+    const spread = (ids: string[]) => {
+      const list = ids.map((id) => positions[id]!);
+      const x = list.reduce((a, p) => a + p.x, 0) / list.length;
+      const y = list.reduce((a, p) => a + p.y, 0) / list.length;
+      return Math.sqrt(list.reduce((a, p) => a + (p.x - x) ** 2 + (p.y - y) ** 2, 0) / list.length);
+    };
+    const all = spread(g.hubs.map((hub) => `h:${hub.slug}`));
+    const families = Array.from({ length: 6 }, (_, f) => spread(g.hubs.filter((hub) => hub.slug.startsWith(`F${f}-`)).map((hub) => `h:${hub.slug}`)));
+    // Chaque famille occupe son territoire : nettement moins étalée que l'ensemble des articles.
+    expect(families.reduce((a, b) => a + b, 0) / families.length / all).toBeLessThan(0.6);
+    // Placement de dizaines de milliers de cartes : délai large, loin des 5 s par défaut sur une machine chargée.
+  }, 20_000);
+
+  it('relancé sur son propre placement, donne la même chose que sur une copie (articles retrouvés sans parcourir les cartes)', () => {
+    const wide = hubsGraph(10);
+    const first = layoutBig(wide, {}, buildBigModel(wide));
+    for (const next of [hubsGraph(2), hubsGraph(11)]) {
+      const model = buildBigModel(next);
+      expect(layoutBig(next, first, model)).toEqual(layoutBig(next, { ...first }, model));
+    }
+  });
+
+  it('recalcule les cartes autour des articles quand un filtre en retire beaucoup', () => {
+    const wide = hubsGraph(10);
+    const first = layoutBig(wide, {}, buildBigModel(wide));
+    const narrow = hubsGraph(2);
+    expectNearHubs(layoutBig(narrow, shifted(first), buildBigModel(narrow)), 2);
+  });
+});
