@@ -19,6 +19,9 @@ import { ListenSection } from './ListenSection';
 import { IMAGE_HOST_ATTRIBUTE, LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, type MountListen } from './decorate-listen';
 import { ScreenSection } from './ScreenSection';
 import { ImageSection } from './ImageSection';
+import { LINKED_HOST_ATTRIBUTE, type MountLinked } from './decorate-linked';
+import { LinkedCards, LinkedCardsWindow } from './LinkedCards';
+import { getLinkedService } from './linked-registry';
 import { ImageSettings } from './ImageSettings';
 import { PlayerSettings } from './PlayerSettings';
 import type { PlayerSource } from './player-source';
@@ -123,7 +126,7 @@ export function syncRefreshButton(
 }
 
 // Sections posées dans les fiches natives (« Écouter », film / série) : démontées dès que le jeu referme la fiche.
-function createNativeSections(attribute: string, marginTop: string, render: (slug: string, title: string) => ReactElement) {
+function createNativeSections(attribute: string, marginTop: string, render: (slug: string, title: string, host: HTMLElement) => ReactElement, position: InsertPosition = 'afterend') {
   const roots = new Map<HTMLElement, Root>();
   const mount: MountListen = (anchor, slug, title) => {
     const host = document.createElement('div');
@@ -134,10 +137,10 @@ function createNativeSections(attribute: string, marginTop: string, render: (slu
     const mountPoint = document.createElement('div');
     mountPoint.style.cssText = 'color:inherit; font:inherit';
     shadow.appendChild(mountPoint);
-    anchor.insertAdjacentElement('afterend', host);
+    anchor.insertAdjacentElement(position, host);
     const root = createRoot(mountPoint);
     roots.set(host, root);
-    root.render(render(slug, title));
+    root.render(render(slug, title, host));
   };
   const prune = (): void => {
     for (const [host, root] of roots) {
@@ -160,6 +163,35 @@ export const pruneScreenSections = screenSections.prune;
 const imageSections = createNativeSections(IMAGE_HOST_ATTRIBUTE, '0', (slug, title) => <ImageSection slug={slug} title={title} />);
 export const mountImageSection: MountListen = imageSections.mount;
 export const pruneImageSections = imageSections.prune;
+
+// Bloc « Cartes liées » : devant les tuiles ATK / DEF ; « Voir plus » ouvre toutes les cartes liées dans une fenêtre.
+const LINKED_WINDOW_HOST_ATTRIBUTE = 'data-wmt-linked-window';
+const linkedSections = createNativeSections(
+  LINKED_HOST_ATTRIBUTE,
+  '0',
+  (slug, title, host) => (
+    <LinkedCards
+      slug={slug}
+      onOpenCard={(target) => getLinkedService()?.open(host, target)}
+      onSeeAll={() =>
+        openSettingsWindow(LINKED_WINDOW_HOST_ATTRIBUTE, (close) => (
+          <LinkedCardsWindow
+            slug={slug}
+            title={title}
+            onClose={close}
+            onPick={(target) => {
+              close();
+              getLinkedService()?.open(host, target);
+            }}
+          />
+        ))
+      }
+    />
+  ),
+  'beforebegin',
+);
+export const mountLinkedCards: MountLinked = linkedSections.mount;
+export const pruneLinkedCards = linkedSections.prune;
 
 const IMAGE_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-image-settings';
 const PLAYER_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-player-settings';

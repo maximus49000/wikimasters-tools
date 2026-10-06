@@ -33,7 +33,7 @@ import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
 import { EMPTY_LEDGER, planMineEvents, type MineLedger } from '../core/collection/mine-events';
-import { createMarketUi, mountHistoryBadge, mountImageSection, mountListenSection, openImageSettings, openPlayerSettings, pruneImageSections, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openImageSettings, openPlayerSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
 import { decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
@@ -54,6 +54,10 @@ import { createTidalSession } from '../core/tidal/tidal-session';
 import { createPlayerSource } from '../content/player-source';
 import { mountSpotifyPlayer } from '../content/mount-player';
 import { openCardInPage } from '../content/open-card';
+import { decorateLinked } from '../content/decorate-linked';
+import { createLinkedSource } from '../content/linked-source';
+import { setLinkedService } from '../content/linked-registry';
+import { openLinkedCard } from '../content/open-linked-card';
 import { TMDB_API_KEY } from '../core/screen/config';
 import { createScreenRepo } from '../core/screen/screen-repo';
 import { createTmdbApi } from '../core/screen/tmdb-api';
@@ -172,21 +176,27 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     settings: window.localStorage,
   });
   setImageService(images);
+  // Liens des articles Wikipédia entre cartes (introduction de chaque article, 50 articles par requête) : requêtes sans identifiants,
+  // seuls les titres partent. Une réponse qui n'arrive pas ne doit pas arrêter toute la lecture : au bout de 20 s, la requête est abandonnée.
+  const linksRepo = createLinksRepo(
+    store,
+    (slugs) => fetchLeadLinks((url) => fetch(url, { signal: AbortSignal.timeout(20_000) }), slugs),
+    undefined,
+    undefined,
+    undefined,
+    (slugs) => fetchBacklinks((url) => fetch(url, { signal: AbortSignal.timeout(20_000) }), slugs),
+  );
+  // Bloc « Cartes liées » de la fiche d'une carte : les cartes de la Collection à un saut, les plus consultées d'abord.
+  setLinkedService({
+    source: createLinkedSource({ collection: collectionRepo, links: linksRepo }),
+    open: (from, slug) => void openLinkedCard(from, slug, (target) => openCardInPage(target, (reopen) => void marketUi.reopenCard(reopen))),
+  });
   const collectionUi = createCollectionUi({
     collection: collectionRepo,
     geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
     birth: createBirthRepo(store, (slugs) => fetchWikidataDates((url) => fetch(url), slugs)),
     kinds: kindsRepo,
-    // Liens des articles Wikipédia entre cartes (introduction de chaque article, 50 articles par requête) : requêtes sans identifiants,
-    // seuls les titres partent. Une réponse qui n'arrive pas ne doit pas arrêter toute la lecture : au bout de 20 s, la requête est abandonnée.
-    links: createLinksRepo(
-      store,
-      (slugs) => fetchLeadLinks((url) => fetch(url, { signal: AbortSignal.timeout(20_000) }), slugs),
-      undefined,
-      undefined,
-      undefined,
-      (slugs) => fetchBacklinks((url) => fetch(url, { signal: AbortSignal.timeout(20_000) }), slugs),
-    ),
+    links: linksRepo,
     kindFilterSource: createKindFilterSource(window.localStorage),
     scanner,
     book,
@@ -258,6 +268,12 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         if (getScreenService()) decorateScreen(document, mountScreenSection);
       } catch (error) {
         console.warn(LOG, 'section film / série indisponible :', error);
+      }
+      try {
+        pruneLinkedCards();
+        decorateLinked(document, mountLinkedCards);
+      } catch (error) {
+        console.warn(LOG, 'cartes liées indisponibles :', error);
       }
       try {
         syncCardArt(document, images);

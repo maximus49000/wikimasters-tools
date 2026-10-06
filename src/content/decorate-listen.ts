@@ -25,7 +25,7 @@ function findTagsBlock(input: HTMLInputElement): HTMLElement | null {
 }
 
 // Fiche de la carte : le plus petit ancêtre qui contient le lien de l'article, d'où l'on tire le slug et le titre.
-function readCard(block: HTMLElement): { slug: string; title: string } | null {
+export function readCard(block: HTMLElement): { slug: string; title: string } | null {
   for (let node = block.parentElement; node && !['MAIN', 'BODY', 'HTML'].includes(node.tagName); node = node.parentElement) {
     const link = findWikipediaLinks(node)[0];
     if (!link) continue;

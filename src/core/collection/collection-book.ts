@@ -11,6 +11,8 @@ export type KnownCard = {
   extract?: string;
   attack?: number;
   defense?: number;
+  // Consultations de l'article Wikipédia (champ `pageviews` de l'API) : trie les cartes liées, les plus consultées d'abord.
+  pageviews?: number;
   // Absent tant que l'API ne l'a pas donné ; `[]` = carte sans étiquette (efface d'anciennes étiquettes).
   tags?: CardTag[];
   // Nombre d'exemplaires possédés, compté par le scan de la Collection (absent tant qu'il ne l'a pas fait).
@@ -41,6 +43,7 @@ export function mergeCards(state: CollectionState, cards: KnownCard[], addCopies
       ...(card.extract ?? known?.extract ? { extract: card.extract ?? known?.extract } : {}),
       ...(card.attack ?? known?.attack ? { attack: card.attack ?? known?.attack } : {}),
       ...(card.defense ?? known?.defense ? { defense: card.defense ?? known?.defense } : {}),
+      ...(card.pageviews ?? known?.pageviews ? { pageviews: card.pageviews ?? known?.pageviews } : {}),
       ...((card.tags ?? known?.tags) ? { tags: card.tags ?? known?.tags } : {}),
       ...(copies !== undefined ? { copies } : {}),
       ...(starred !== undefined ? { starred } : {}),
@@ -53,6 +56,7 @@ export function mergeCards(state: CollectionState, cards: KnownCard[], addCopies
       known.extract === merged.extract &&
       known.attack === merged.attack &&
       known.defense === merged.defense &&
+      known.pageviews === merged.pageviews &&
       known.copies === merged.copies &&
       known.starred === merged.starred &&
       known.obtainedAt === merged.obtainedAt &&

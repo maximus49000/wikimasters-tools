@@ -49,3 +49,10 @@ export function linksOf(state: LinksState, slug: string): string[] {
   const entry = entryOf(state, slug);
   return entry ? entry.links.flatMap((id) => state.titles[id] ?? []) : [];
 }
+
+// Les cartes lues dont l'introduction cite cet article (slugs).
+export function citersOf(state: LinksState, slug: string): string[] {
+  const id = state.titles.indexOf(slug);
+  if (id < 0) return [];
+  return Object.entries(state.cards).flatMap(([citer, entry]) => (citer !== slug && entry.links.includes(id) ? [citer] : []));
+}

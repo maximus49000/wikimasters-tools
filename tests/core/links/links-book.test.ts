@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_LINKS, LINKS_MAX_AGE_MS, MAX_LINKS_PER_CARD, linksOf, needsLinksLookup, setLinks } from '../../../src/core/links/links-book';
+import { EMPTY_LINKS, LINKS_MAX_AGE_MS, MAX_LINKS_PER_CARD, citersOf, linksOf, needsLinksLookup, setLinks } from '../../../src/core/links/links-book';
 
 describe('setLinks / linksOf', () => {
   it('partage les titres entre les cartes et rend les liens dans l’ordre reçu, sans doublon', () => {
@@ -49,5 +49,13 @@ describe('needsLinksLookup', () => {
 
   it('ne confond pas une carte nommée « constructor » avec une propriété d’objet', () => {
     expect(needsLinksLookup(EMPTY_LINKS, 'constructor', 0)).toBe(true);
+  });
+});
+
+describe('citersOf', () => {
+  it('rend les cartes lues qui citent l’article, sans l’article lui-même', () => {
+    const state = setLinks(EMPTY_LINKS, { A: ['Cible', 'Autre'], B: ['Cible'], Cible: ['Cible', 'A'], C: ['Autre'] }, 1);
+    expect(citersOf(state, 'Cible').sort()).toEqual(['A', 'B']);
+    expect(citersOf(state, 'Inconnu')).toEqual([]);
   });
 });
