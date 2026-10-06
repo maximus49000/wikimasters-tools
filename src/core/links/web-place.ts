@@ -14,49 +14,94 @@ const OFFSET = 32768;
 const keyOf = (cx: number, cy: number): number => (cx + OFFSET) * 65536 + (cy + OFFSET);
 
 // Écarte à la main les points plus proches que `minDist` (comme la dernière passe du placement par forces) ; les points figés ne bougent pas.
+// À chaque passe, les points sont triés par case (tri par comptage, ligne après ligne) : les voisins d'une case sont alors rangés côte à côte
+// en mémoire, ce qui compte à 200 000 points. Seuls les points libres cherchent leurs voisins : relancé sur une toile déjà posée
+// (tout est figé), le calcul ne coûte presque rien.
 export function separate(xs: Float64Array, ys: Float64Array, pinned: Uint8Array, minDist: number, passes: number): void {
   const n = xs.length;
-  const heads = new Map<number, number>();
-  const next = new Int32Array(n);
+  let free = 0;
+  for (let i = 0; i < n; i++) if (!pinned[i]) free += 1;
+  if (free === 0) return;
+  const order = new Int32Array(n);
+  const cellOf = new Int32Array(n);
+  const px = new Float64Array(n);
+  const py = new Float64Array(n);
+  const pin = new Uint8Array(n);
   const min2 = minDist * minDist;
   for (let pass = 0; pass < passes; pass++) {
-    heads.clear();
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
     for (let i = 0; i < n; i++) {
-      const key = keyOf(Math.floor(xs[i]! / minDist), Math.floor(ys[i]! / minDist));
-      next[i] = heads.get(key) ?? -1;
-      heads.set(key, i);
+      if (xs[i]! < minX) minX = xs[i]!;
+      if (xs[i]! > maxX) maxX = xs[i]!;
+      if (ys[i]! < minY) minY = ys[i]!;
+      if (ys[i]! > maxY) maxY = ys[i]!;
     }
-    let moved = false;
+    // Des cases d'au moins `minDist` (deux points trop proches sont toujours dans des cases voisines), pas plus de 4 cases par point.
+    let cell = minDist;
+    let width = Math.floor((maxX - minX) / cell) + 1;
+    let height = Math.floor((maxY - minY) / cell) + 1;
+    while (width * height > 4 * n + 16) {
+      cell *= 2;
+      width = Math.floor((maxX - minX) / cell) + 1;
+      height = Math.floor((maxY - minY) / cell) + 1;
+    }
+    const start = new Int32Array(width * height + 1);
     for (let i = 0; i < n; i++) {
-      const cx = Math.floor(xs[i]! / minDist);
-      const cy = Math.floor(ys[i]! / minDist);
-      for (let gx = cx - 1; gx <= cx + 1; gx++) {
-        for (let gy = cy - 1; gy <= cy + 1; gy++) {
-          for (let j = heads.get(keyOf(gx, gy)) ?? -1; j !== -1; j = next[j]!) {
-            if (j <= i || (pinned[i] && pinned[j])) continue;
-            let ddx = xs[i]! - xs[j]!;
-            let ddy = ys[i]! - ys[j]!;
-            let squared = ddx * ddx + ddy * ddy;
-            if (squared >= min2) continue;
-            if (squared < 1e-9) {
-              ddx = 0.01 + ((i - j) % 7) * 0.001;
-              ddy = 0.01;
-              squared = ddx * ddx + ddy * ddy;
-            }
-            const distance = Math.sqrt(squared);
-            const push = pinned[i] || pinned[j] ? minDist - distance + 0.01 : (minDist - distance) / 2 + 0.01;
-            if (!pinned[i]) {
-              xs[i]! += (ddx / distance) * push;
-              ys[i]! += (ddy / distance) * push;
-            }
-            if (!pinned[j]) {
-              xs[j]! -= (ddx / distance) * push;
-              ys[j]! -= (ddy / distance) * push;
-            }
-            moved = true;
+      const c = Math.floor((xs[i]! - minX) / cell) + Math.floor((ys[i]! - minY) / cell) * width;
+      cellOf[i] = c;
+      start[c + 1]! += 1;
+    }
+    for (let c = 0; c < width * height; c++) start[c + 1]! += start[c]!;
+    const fill = start.slice(0, width * height);
+    for (let i = 0; i < n; i++) order[fill[cellOf[i]!]!++] = i;
+    for (let s = 0; s < n; s++) {
+      const i = order[s]!;
+      px[s] = xs[i]!;
+      py[s] = ys[i]!;
+      pin[s] = pinned[i]!;
+    }
+
+    let moved = false;
+    for (let s = 0; s < n; s++) {
+      if (pin[s]) continue;
+      const c = cellOf[order[s]!]!;
+      const cx = c % width;
+      const cy = (c - cx) / width;
+      const x0 = Math.max(0, cx - 1);
+      const x1 = Math.min(width - 1, cx + 1);
+      for (let gy = Math.max(0, cy - 1); gy <= Math.min(height - 1, cy + 1); gy++) {
+        const to = start[gy * width + x1 + 1]!;
+        for (let t = start[gy * width + x0]!; t < to; t++) {
+          // Deux points libres ne se comparent qu'une fois (depuis le premier dans l'ordre).
+          if (t === s || (!pin[t] && t < s)) continue;
+          let ddx = px[s]! - px[t]!;
+          let ddy = py[s]! - py[t]!;
+          let squared = ddx * ddx + ddy * ddy;
+          if (squared >= min2) continue;
+          if (squared < 1e-9) {
+            ddx = 0.01 + ((s - t) % 7) * 0.001;
+            ddy = 0.01;
+            squared = ddx * ddx + ddy * ddy;
           }
+          const distance = Math.sqrt(squared);
+          const push = pin[t] ? minDist - distance + 0.01 : (minDist - distance) / 2 + 0.01;
+          px[s]! += (ddx / distance) * push;
+          py[s]! += (ddy / distance) * push;
+          if (!pin[t]) {
+            px[t]! -= (ddx / distance) * push;
+            py[t]! -= (ddy / distance) * push;
+          }
+          moved = true;
         }
       }
+    }
+    for (let s = 0; s < n; s++) {
+      if (pin[s]) continue;
+      xs[order[s]!] = px[s]!;
+      ys[order[s]!] = py[s]!;
     }
     if (!moved) break;
   }
@@ -81,17 +126,28 @@ export function placeCards(
   const pinned = new Uint8Array(n);
   const crowd = new Map<number, number>();
   const placed = new Map<string, number>();
+  // Les articles par nom (pas de clé `h:…` fabriquée pour chacune des 200 000 cartes).
+  const hubAt = new Map<string, Point>();
+  for (const hub of graph.hubs) {
+    const at = hubs[hubId(hub.slug)];
+    if (at) hubAt.set(hub.slug, at);
+  }
+  const before: (Point | undefined)[] = new Array(n);
 
-  graph.cards.forEach((card, i) => {
+  for (let i = 0; i < n; i++) {
+    const card = graph.cards[i]!;
     let ax = 0;
     let ay = 0;
     let known = 0;
-    for (const slug of (hubsOf.get(card.slug) ?? []).slice(0, 2)) {
-      const hub = hubs[hubId(slug)];
-      if (!hub) continue;
-      ax += hub.x;
-      ay += hub.y;
-      known += 1;
+    const list = hubsOf.get(card.slug);
+    if (list) {
+      for (let h = 0; h < list.length && h < 2; h++) {
+        const hub = hubAt.get(list[h]!);
+        if (!hub) continue;
+        ax += hub.x;
+        ay += hub.y;
+        known += 1;
+      }
     }
     if (known === 0) {
       // Sans article : au milieu des cartes qu'elle cite et qui sont déjà posées.
@@ -110,10 +166,11 @@ export function placeCards(
     const key = keyOf(Math.floor(ax / ANCHOR_CELL), Math.floor(ay / ANCHOR_CELL));
     const slot = crowd.get(key) ?? 0;
     crowd.set(key, slot + 1);
-    const before = previous[cardId(card.slug)];
-    if (before) {
-      xs[i] = before.x;
-      ys[i] = before.y;
+    const was = previous[cardId(card.slug)];
+    before[i] = was;
+    if (was) {
+      xs[i] = was.x;
+      ys[i] = was.y;
       pinned[i] = 1;
     } else {
       const angle = slot * GOLDEN_ANGLE;
@@ -121,15 +178,13 @@ export function placeCards(
       xs[i] = ax + radius * Math.cos(angle);
       ys[i] = ay + radius * Math.sin(angle);
     }
-    placed.set(card.slug, i);
-  });
+    if (linked.size > 0) placed.set(card.slug, i);
+  }
 
   separate(xs, ys, pinned, MIN_DIST, SEPARATE_PASSES);
 
   const out: Record<string, Point> = {};
-  graph.cards.forEach((card, i) => {
-    out[cardId(card.slug)] = pinned[i] ? (previous[cardId(card.slug)] as Point) : { x: xs[i]!, y: ys[i]! };
-  });
+  for (let i = 0; i < n; i++) out[cardId(graph.cards[i]!.slug)] = before[i] ?? { x: xs[i]!, y: ys[i]! };
   return out;
 }
 

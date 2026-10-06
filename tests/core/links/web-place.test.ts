@@ -31,6 +31,21 @@ describe('separate', () => {
     expect(Math.hypot(xs[2]! - xs[1]!, ys[2]! - ys[1]!)).toBeGreaterThanOrEqual(9.9);
     expect([xs[3], ys[3]]).toEqual([100, 100]);
   });
+
+  it('écarte aussi des points perdus dans une très grande étendue (cases agrandies)', () => {
+    const xs = new Float64Array([0, 1, 2, 1e6]);
+    const ys = new Float64Array([0, 0, 1, -1e6]);
+    separate(xs, ys, new Uint8Array(4), 10, 20);
+    for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) expect(Math.hypot(xs[i]! - xs[j]!, ys[i]! - ys[j]!)).toBeGreaterThanOrEqual(9.9);
+    expect([xs[3], ys[3]]).toEqual([1e6, -1e6]);
+  });
+
+  it('ne bouge rien quand tous les points sont figés', () => {
+    const xs = new Float64Array([0, 0]);
+    const ys = new Float64Array([0, 1]);
+    separate(xs, ys, new Uint8Array([1, 1]), 10, 4);
+    expect([...xs, ...ys]).toEqual([0, 0, 0, 1]);
+  });
 });
 
 describe('placeCards', () => {
