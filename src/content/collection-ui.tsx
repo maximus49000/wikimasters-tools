@@ -74,7 +74,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
   let panel: Panel | null = null;
   let scanStarted = false;
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
-  // « ×2 » : les exemplaires sont recomptés sur toute la Collection avant d'afficher les cartes en double.
+  // « ×2 » : les exemplaires sont remis à jour en arrière-plan ; les cartes en double s'affichent aussitôt avec les nombres connus.
   const recount = createRecountSource(() => recountCopies(scanner));
   // Page de la vue Homemade pour chaque sélection de filtres : la vue est remontée à la fermeture d'une fiche.
   const pages = createPageMemory();
@@ -224,7 +224,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
       onToggle: () => {
         const current = kindFilterSource.current();
         const next = !current.duplicates;
-        // Activer : le recomptage démarre avant le filtre, pour ne jamais montrer une liste aux nombres périmés.
+        // Activer : la mise à jour démarre en coulisses, sans retarder le filtre.
         if (next) recount.start();
         kindFilterSource.set({ ...current, duplicates: next });
         sync();
