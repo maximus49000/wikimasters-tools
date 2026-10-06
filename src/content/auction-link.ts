@@ -6,9 +6,12 @@ const REMAINING_LABEL = /^temps restant$/i;
 // Ce que la boîte « Temps restant » ne contient jamais : le titre, le formulaire de mise.
 const OUTSIDE_BOX = 'h1, h2, h3, input, button, textarea, select';
 
+// Le libellé peut porter une icône (le jeu y a mis un marteau) : on tolère les enfants graphiques, pas les autres éléments.
+const isIconOnly = (element: Element): boolean => [...element.children].every((child) => child.matches('svg, img'));
+
 function findRemainingLabel(root: ParentNode): HTMLElement | null {
   for (const element of root.querySelectorAll<HTMLElement>('span, p, div')) {
-    if (element.children.length === 0 && REMAINING_LABEL.test((element.textContent ?? '').trim())) return element;
+    if (isIconOnly(element) && REMAINING_LABEL.test((element.textContent ?? '').trim())) return element;
   }
   return null;
 }

@@ -19,6 +19,11 @@ describe('findAuctionBox', () => {
     expect(found?.title).toBe('Élorn');
   });
 
+  it('trouve la boîte quand le libellé porte une icône', () => {
+    document.body.innerHTML = PAGE.replace('<span>Temps restant</span>', '<span><svg width="16"></svg>Temps restant</span>');
+    expect(findAuctionBox(document)?.box.id).toBe('box');
+  });
+
   it('ne trouve rien hors d’une fiche d’enchère', () => {
     document.body.innerHTML = '<main><h1>Marché</h1></main>';
     expect(findAuctionBox(document)).toBeNull();
