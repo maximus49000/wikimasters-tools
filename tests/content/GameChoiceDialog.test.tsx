@@ -93,4 +93,50 @@ describe('GameChoiceDialog', () => {
     await click(byLabel('Vérifier le lien'));
     expect(dialog().textContent).toContain('Adresse non reconnue.');
   });
+
+  it('échec de « Utiliser ce jeu » : message discret, fenêtre ouverte, rien de fermé', async () => {
+    const svc = service({ choose: vi.fn(async () => Promise.reject(new Error('boom'))) });
+    const { onChanged, onClose } = await show(svc);
+    await click(byLabel('Choisir ELDEN RING (Steam)'));
+    await click(byLabel('Utiliser ce jeu'));
+    expect(dialog().textContent).toContain('Le changement a échoué');
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(byLabel('Utiliser ce jeu').hasAttribute('disabled')).toBe(false);
+  });
+
+  it('sans IGDB : pas de groupe IGDB', async () => {
+    await show(service({ igdbEnabled: false }));
+    const text = dialog().textContent ?? '';
+    expect(text).toContain('Steam');
+    expect(text).not.toContain('IGDB');
+  });
+
+  it('le jeu actuel est grisé et désactivé', async () => {
+    const svc = service();
+    await act(async () =>
+      root.render(<GameChoiceDialog service={svc as unknown as GameService} slug="Elden_Ring" title="Elden Ring" current={detail} onChanged={vi.fn()} onClose={vi.fn()} />),
+    );
+    expect(byLabel('Choisir ELDEN RING (Steam)').hasAttribute('disabled')).toBe(true);
+    expect(byLabel('Choisir Elden Ring (IGDB)').hasAttribute('disabled')).toBe(false);
+    expect(dialog().textContent).toContain('jeu actuel');
+  });
+
+  it('une réponse périmée n’écrase pas la plus récente', async () => {
+    let releaseFirst: (value: { steam: GameCandidate[]; igdb: GameCandidate[] }) => void = () => undefined;
+    const candidates = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((resolve) => (releaseFirst = resolve)))
+      .mockImplementation(async () => ({ steam: [cand('steam', 2, 'NOUVEAU')], igdb: [] }));
+    const svc = service({ candidates });
+    await show(svc);
+    // La recherche automatique est encore en cours : on relance à la main (bouton désactivé, on soumet le formulaire).
+    await act(async () => {
+      dialog().querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(dialog().textContent).toContain('NOUVEAU');
+    await act(async () => releaseFirst({ steam: [cand('steam', 1, 'ANCIEN')], igdb: [] }));
+    expect(dialog().textContent).toContain('NOUVEAU');
+    expect(dialog().textContent).not.toContain('ANCIEN');
+  });
 });

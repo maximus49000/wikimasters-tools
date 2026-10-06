@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import { decorateListen, decorateScreen, LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, type MountListen } from '../../src/content/decorate-listen';
+import { decorateGame, decorateListen, decorateScreen, GAME_HOST_ATTRIBUTE, LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, type MountListen } from '../../src/content/decorate-listen';
 
 const SHEET = `
 <div class="card-frame">
@@ -96,5 +96,32 @@ describe('decorateScreen', () => {
   it('ignore une page sans champ d’étiquette', () => {
     document.body.innerHTML = '<input placeholder="Rechercher" />';
     expect(decorateScreen(document, mountWith(SCREEN_HOST_ATTRIBUTE).mount)).toBe(0);
+  });
+});
+
+describe('decorateGame', () => {
+  beforeEach(() => {
+    document.body.innerHTML = SHEET;
+  });
+
+  function mountWith(attribute: string): MountListen {
+    return (anchor) => {
+      const host = document.createElement('div');
+      host.setAttribute(attribute, '');
+      anchor.insertAdjacentElement('afterend', host);
+    };
+  }
+  const order = () => [...document.querySelector('.space-y-2')!.parentElement!.children].map((el) => (el.hasAttribute(LISTEN_HOST_ATTRIBUTE) ? 'listen' : el.hasAttribute(SCREEN_HOST_ATTRIBUTE) ? 'screen' : el.hasAttribute(GAME_HOST_ATTRIBUTE) ? 'game' : el.tagName));
+
+  it('se place après « Écouter » et film / série, une seule fois par fiche', () => {
+    const listen = mountWith(LISTEN_HOST_ATTRIBUTE);
+    const screen = mountWith(SCREEN_HOST_ATTRIBUTE);
+    const game = mountWith(GAME_HOST_ATTRIBUTE);
+    decorateListen(document, listen);
+    decorateScreen(document, screen);
+    decorateGame(document, game);
+    expect(order().slice(1, 5)).toEqual(['DIV', 'listen', 'screen', 'game']);
+    expect(decorateGame(document, game)).toBe(0);
+    expect(document.querySelectorAll(`[${GAME_HOST_ATTRIBUTE}]`)).toHaveLength(1);
   });
 });

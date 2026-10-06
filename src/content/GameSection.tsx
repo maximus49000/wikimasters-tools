@@ -105,7 +105,10 @@ export function GameSection({ slug, title }: Props) {
   useEffect(() => {
     if (!service) return;
     let cancelled = false;
-    void service.view(slug, title).then((next) => !cancelled && setView(next));
+    service
+      .view(slug, title)
+      .catch((): GameView => ({ status: 'error', message: 'Le jeu vidéo est indisponible pour le moment.' }))
+      .then((next) => !cancelled && setView(next));
     return () => {
       cancelled = true;
     };

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameCandidate, GameDetail } from '../core/game/game-detail';
 import type { GameCandidates, GameService } from './game-service';
@@ -41,13 +41,17 @@ export function GameChoiceDialog({ service, slug, title, current, onChanged, onC
   const [selected, setSelected] = useState<GameDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Numéro de la dernière requête lancée : une réponse plus ancienne est ignorée.
+  const latest = useRef(0);
 
   const search = async (text: string) => {
     if (text.trim() === '') return setMessage('Saisis un titre à chercher.');
+    const request = ++latest.current;
     setBusy(true);
     setMessage(null);
     setSelected(null);
-    const result = await service.candidates(text);
+    const result = await service.candidates(text).catch((): GameCandidates => ({ steam: [], igdb: [], message: 'La recherche a échoué.' }));
+    if (request !== latest.current) return;
     setBusy(false);
     setFound(result);
     const total = result.steam.length + result.igdb.length;
@@ -61,9 +65,11 @@ export function GameChoiceDialog({ service, slug, title, current, onChanged, onC
   }, []);
 
   const preview = async (candidate: GameCandidate) => {
+    const request = ++latest.current;
     setBusy(true);
     setMessage(null);
-    const result = await service.preview({ source: candidate.source, id: candidate.id });
+    const result = await service.preview({ source: candidate.source, id: candidate.id }).catch(() => ({ message: 'Ce jeu est introuvable.' }) as { detail?: GameDetail; message?: string });
+    if (request !== latest.current) return;
     setBusy(false);
     setSelected(result.detail ?? null);
     if (!result.detail) setMessage(result.message ?? 'Ce jeu est introuvable.');
@@ -71,17 +77,26 @@ export function GameChoiceDialog({ service, slug, title, current, onChanged, onC
 
   const checkLink = async (event: FormEvent) => {
     event.preventDefault();
+    const request = ++latest.current;
     setBusy(true);
     setMessage(null);
-    const result = await service.fromLink(link);
+    const result = await service.fromLink(link).catch(() => ({ message: 'Ce jeu est introuvable.' }) as { detail?: GameDetail; message?: string });
+    if (request !== latest.current) return;
     setBusy(false);
     setSelected(result.detail ?? null);
     if (!result.detail) setMessage(result.message ?? 'Ce jeu est introuvable.');
   };
 
   const done = async (action: () => Promise<void>) => {
+    latest.current++;
     setBusy(true);
-    await action();
+    try {
+      await action();
+    } catch {
+      setBusy(false);
+      setMessage('Le changement a échoué, réessaie.');
+      return;
+    }
     setBusy(false);
     onChanged();
     onClose();
@@ -162,7 +177,7 @@ export function GameChoiceDialog({ service, slug, title, current, onChanged, onC
               style={{ display: 'flex', gap: 8, marginBottom: 4 }}
             >
               <input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Titre à chercher" style={field} />
-              <button type="submit" aria-label="Chercher" title="Chercher" style={iconButton}>
+              <button type="submit" disabled={busy} aria-label="Chercher" title="Chercher" style={iconButton}>
                 <Glyph name="search" />
               </button>
             </form>
@@ -176,7 +191,7 @@ export function GameChoiceDialog({ service, slug, title, current, onChanged, onC
         ) : (
           <form onSubmit={(event) => void checkLink(event)} style={{ display: 'flex', gap: 8 }}>
             <input value={link} onChange={(event) => setLink(event.target.value)} aria-label="Adresse du jeu" placeholder="store.steampowered.com/app/… ou igdb.com/games/…" style={field} />
-            <button type="submit" aria-label="Vérifier le lien" title="Vérifier le lien" style={iconButton}>
+            <button type="submit" disabled={busy} aria-label="Vérifier le lien" title="Vérifier le lien" style={iconButton}>
               <Glyph name="link" />
             </button>
           </form>

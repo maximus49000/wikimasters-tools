@@ -4,11 +4,11 @@ import { Glyph } from './Glyphs';
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const HEIGHT = 'min(130px, 20vh)';
 
-// Bande-annonce Steam (flux HLS) : miniature + ▶ ; hls.js n'est chargé qu'au clic (Chrome ne lit pas le HLS seul).
-// Si la lecture échoue (site qui bloque le flux), le lien vers la page du jeu reste là.
+// Bande-annonce Steam (flux HLS) : miniature + ▶ ; hls.js est un import dynamique : exécuté au premier clic dans le module,
+// mais inclus dans le bundle du script (Chrome ne lit pas le HLS seul).
+// Si la lecture échoue (site qui bloque le flux), le bouton ▶ revient (un clic relance le chargement) et le lien vers la page du jeu reste là.
 export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster?: string; pageUrl: string }) {
   const [playing, setPlaying] = useState(false);
-  const [failed, setFailed] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -16,6 +16,11 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
     const element = video.current;
     if (!element) return;
     let destroy: (() => void) | undefined;
+    const fail = () => {
+      destroy?.();
+      destroy = undefined;
+      setPlaying(false);
+    };
     let cancelled = false;
     void (async () => {
       try {
@@ -23,17 +28,21 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
         if (cancelled) return;
         if (Hls.isSupported()) {
           const hls = new Hls();
-          hls.on(Hls.Events.ERROR, (_event, data) => data.fatal && setFailed(true));
+          hls.on(Hls.Events.ERROR, (_event, data) => data.fatal && fail());
           hls.loadSource(url);
           hls.attachMedia(element);
           destroy = () => hls.destroy();
         } else if (element.canPlayType('application/vnd.apple.mpegurl')) {
           element.src = url;
+          destroy = () => {
+            element.removeAttribute('src');
+            element.load();
+          };
         } else {
-          setFailed(true);
+          fail();
         }
       } catch {
-        setFailed(true);
+        fail();
       }
     })();
     return () => {
@@ -44,13 +53,12 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
 
   return (
     <div style={{ position: 'relative', width: '100%', height: HEIGHT, borderRadius: 8, overflow: 'hidden', background: '#000', border }}>
-      {playing && !failed ? (
+      {playing ? (
         <video ref={video} controls autoPlay playsInline poster={poster} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
       ) : (
         <button
           type="button"
           onClick={() => {
-            setFailed(false);
             setPlaying(true);
           }}
           aria-label="Lire la bande-annonce"

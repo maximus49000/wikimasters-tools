@@ -87,4 +87,11 @@ describe('GameSection', () => {
     expect(container.querySelector('[role="status"]')?.textContent).toBe('Steam est indisponible pour le moment.');
     expect(container.querySelector('[aria-label="Changer de jeu"]')).not.toBeNull();
   });
+
+  it('si le service rejette : état erreur, glyphe conservé', async () => {
+    setGameService({ view: vi.fn(async () => Promise.reject(new Error('boom'))), igdbEnabled: true } as unknown as GameService);
+    await act(async () => root.render(<GameSection slug="Elden_Ring" title="Elden Ring" />));
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Changer de jeu"]')).not.toBeNull();
+  });
 });
