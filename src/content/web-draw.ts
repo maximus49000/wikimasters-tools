@@ -204,12 +204,14 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, t: Transf
   }
 
   // Noms : les thèmes d'abord (en vue d'ensemble), puis les articles du plus au moins gros, puis les cartes.
+  // La place des noms de thèmes est retenue en premier, mais ils sont écrits en dernier : les pastilles des articles ne les cachent pas.
+  const themeNames: { name: string; x: number; y: number; color: string }[] = [];
   if (level === 'clusters') {
     for (const centre of scene.themeCentres) {
       const x = sx(centre.x);
       const y = sy(centre.y);
       if (x < -60 || x > width + 60 || y < -20 || y > height + 20) continue;
-      if (free(x, y, centre.name.length * 8.6, 18)) text(centre.name, x, y, 15, centre.color, true);
+      if (free(x, y, centre.name.length * 8.6, 18)) themeNames.push({ name: centre.name, x, y, color: centre.color });
     }
   }
   const hubPool = level === 'clusters' ? scene.hubOrder.slice(0, CLUSTER_HUBS) : scene.hubOrder;
@@ -242,6 +244,8 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, t: Transf
       if (free(x, y, name.length * 6.4, 13)) text(name, x, y, 11, o.ink);
     }
   }
+
+  for (const label of themeNames) text(label.name, label.x, label.y, 15, label.color, true);
 
   return { level, visible };
 }

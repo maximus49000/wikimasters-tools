@@ -80,6 +80,24 @@ describe('drawScene', () => {
     expect(segments).toBeLessThanOrEqual(5000);
   });
 
+  it("écrit le nom des thèmes par-dessus les articles en vue d'ensemble", () => {
+    const calls: string[] = [];
+    const ctx = new Proxy({}, {
+      get: (_, name: string) => (...args: unknown[]) => void calls.push(name === 'fillText' ? `fillText:${String(args[0])}` : name),
+      set: () => true,
+    }) as unknown as CanvasRenderingContext2D;
+    const big = scene({ A1: many('a', 11000), A2: many('a', 11000), B1: many('b', 11000), B2: many('b', 11000) });
+    const b = big.bounds!;
+    const k = Math.min(size.width / (b.maxX - b.minX), size.height / (b.maxY - b.minY));
+    const c = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 };
+    const result = drawScene(ctx, big, { k, x: size.width / 2 - c.x * k, y: size.height / 2 - c.y * k }, size, options);
+    expect(result.level).toBe('clusters');
+    const lastArc = calls.lastIndexOf('arc');
+    // Le thème porte le nom de son plus gros article : son nom est écrit deux fois, le dernier est celui du thème.
+    const theme = calls.lastIndexOf(`fillText:${big.themeCentres[0]!.name}`);
+    expect(theme).toBeGreaterThan(lastArc);
+  });
+
   it('met un article en avant sans planter, route comprise', () => {
     const { ctx } = fakeContext();
     const route = [[{ x: 0, y: 0 }, { x: 50, y: 50 }]] as const;
