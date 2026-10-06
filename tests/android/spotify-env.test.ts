@@ -8,6 +8,14 @@ function fakeWindow(): AndroidWindow & { WmtSpotify: { openAuth: ReturnType<type
 describe('createAndroidSpotifyEnv', () => {
   afterEach(() => vi.useRealTimers());
 
+  it('sans pont HTTP natif, fetch passe toujours par win.fetch', async () => {
+    const win = fakeWindow();
+    (win.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(new Response('ok'));
+    const env = createAndroidSpotifyEnv(win);
+    await env.fetch('https://store.steampowered.com/api/appdetails?appids=1');
+    expect(win.fetch).toHaveBeenCalledWith('https://store.steampowered.com/api/appdetails?appids=1', undefined);
+  });
+
   it('un second authorize rejette la tentative précédente ; la seconde se résout', async () => {
     const win = fakeWindow();
     const env = createAndroidSpotifyEnv(win);

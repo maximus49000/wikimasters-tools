@@ -25,6 +25,7 @@
     "preprod": "node scripts/publish-preprod.mjs"
   },
   "dependencies": {
+    "hls.js": "^1.7.3",
     "leaflet": "^1.9.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

@@ -12,7 +12,7 @@ import type { Listen } from '../../src/core/music/listen';
 let container: HTMLDivElement;
 let root: Root;
 
-const detail = { mediaType: 'movie', id: 27205, title: 'Inception' } as const;
+const props = { soundtrackKey: 'movie:27205', title: 'Inception' };
 const album = { name: 'Inception (Original Motion Picture Soundtrack)', artist: 'Hans Zimmer' };
 const spotify: Listen = { kind: 'album', items: [{ uri: 'spotify:track:1', title: 'Dream', artist: 'Hans Zimmer' }], albumUri: 'spotify:album:OST', album };
 const tidal: Listen = { kind: 'album', items: [], albumUri: 'tidal:album:123', album };
@@ -23,7 +23,7 @@ async function show(listen: Listen | null, play = vi.fn(async () => null as stri
   const soundtrack = vi.fn(async () => listen);
   const service = { soundtrack, play, isLinked: async () => linked, manualSoundtrack: true, subscribe: () => () => undefined, ...extra };
   setMusicService(service as unknown as MusicService);
-  await act(async () => root.render(<SoundtrackButton detail={detail} />));
+  await act(async () => root.render(<SoundtrackButton {...props} />));
   return { soundtrack, play };
 }
 
@@ -57,6 +57,13 @@ describe('SoundtrackButton', () => {
     expect(container.textContent).toContain('Hans Zimmer');
     await click(container.querySelector<HTMLElement>('button[aria-label^="Écouter"]')!);
     expect(play).toHaveBeenCalledWith(spotify.items[0], spotify);
+  });
+
+  it('un jeu : la BO est gardée sous la clé du jeu', async () => {
+    const soundtrack = vi.fn(async () => spotify);
+    setMusicService({ soundtrack, play: vi.fn(), isLinked: async () => true, manualSoundtrack: true, subscribe: () => () => undefined } as unknown as MusicService);
+    await act(async () => root.render(<SoundtrackButton soundtrackKey="game:steam:1245620" title="Elden Ring" />));
+    expect(soundtrack).toHaveBeenCalledWith('game:steam:1245620', ['Elden Ring']);
   });
 
   it('Tidal : un lien vers la page Tidal de l’album, sans lecture', async () => {

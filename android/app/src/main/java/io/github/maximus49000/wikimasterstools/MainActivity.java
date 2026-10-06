@@ -29,8 +29,11 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.Iterator;
 
 // Wikimasters en plein écran, avec la surcouche « Wikimasters Tools » injectée à chaque page.
 public class MainActivity extends Activity {
@@ -39,6 +42,13 @@ public class MainActivity extends Activity {
     private static final String OVERLAY_ASSET = "wikimasters-overlay.js";
     private static final String SPOTIFY_AUTH_PREFIX = "https://accounts.spotify.com/authorize?";
     private static final String TIDAL_AUTH_PREFIX = "https://login.tidal.com/authorize?";
+    // Hôtes de jeux vidéo (Steam, Twitch, IGDB) sans CORS : requêtes faites ici, jamais d'autre adresse.
+    private static final String[] HTTP_ALLOWED = {
+        "https://store.steampowered.com/",
+        "https://api.steampowered.com/",
+        "https://id.twitch.tv/oauth2/token",
+        "https://api.igdb.com/v4/"
+    };
     private static final String SPOTIFY_REDIRECT_SCHEME = BuildConfig.REDIRECT_SCHEME;
 
     private WebView webView;
@@ -67,6 +77,7 @@ public class MainActivity extends Activity {
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, true);
         webView.addJavascriptInterface(new SpotifyBridge(), "WmtSpotify");
+        webView.addJavascriptInterface(new HttpBridge(), "WmtHttp");
 
         overlayScript = readAsset(OVERLAY_ASSET);
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -121,6 +132,65 @@ public class MainActivity extends Activity {
         else webView.loadUrl(START_URL);
 
         webView.addJavascriptInterface(new UpdateBridge(), "WmtUpdate");
+    }
+
+    // Pont HTTP : `WmtHttp.request(id, url, method, headersJson, body)` ; la réponse revient par window.__wmtHttpDone.
+    private final class HttpBridge {
+        @JavascriptInterface
+        public void request(String id, String url, String method, String headersJson, String body) {
+            boolean allowed = false;
+            for (String prefix : HTTP_ALLOWED) if (url != null && url.startsWith(prefix)) allowed = true;
+            final String callId = id == null ? "" : id.replaceAll("[^A-Za-z0-9-]", "");
+            if (!allowed) {
+                deliver(callId, 0, "", "");
+                return;
+            }
+            new Thread(() -> {
+                int status = 0;
+                String retryAfter = "";
+                String text = "";
+                HttpURLConnection connection = null;
+                try {
+                    connection = (HttpURLConnection) new URL(url).openConnection();
+                    connection.setConnectTimeout(15000);
+                    connection.setReadTimeout(15000);
+                    // Une 3xx revient telle quelle au JS : pas de renvoi des en-têtes d'authentification vers un autre hôte.
+                    connection.setInstanceFollowRedirects(false);
+                    connection.setRequestMethod("POST".equals(method) ? "POST" : "GET");
+                    JSONObject headers = new JSONObject(headersJson == null ? "{}" : headersJson);
+                    for (Iterator<String> names = headers.keys(); names.hasNext(); ) {
+                        String name = names.next();
+                        connection.setRequestProperty(name, headers.getString(name));
+                    }
+                    if ("POST".equals(method)) {
+                        connection.setDoOutput(true);
+                        if (body != null && !body.isEmpty()) connection.getOutputStream().write(body.getBytes(StandardCharsets.UTF_8));
+                    }
+                    status = connection.getResponseCode();
+                    String after = connection.getHeaderField("Retry-After");
+                    retryAfter = after == null ? "" : after;
+                    InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+                    if (stream != null) {
+                        ByteArrayOutputStream out = new ByteArrayOutputStream();
+                        byte[] chunk = new byte[8192];
+                        int read;
+                        while ((read = stream.read(chunk)) != -1) out.write(chunk, 0, read);
+                        text = out.toString("UTF-8");
+                    }
+                } catch (Exception | OutOfMemoryError error) {
+                    // Jamais de journal ici (en-têtes et corps peuvent porter des secrets) ; deliver est toujours appelé.
+                    status = 0;
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+                deliver(callId, status, retryAfter, text);
+            }).start();
+        }
+
+        private void deliver(String id, int status, String retryAfter, String text) {
+            String script = "window.__wmtHttpDone && window.__wmtHttpDone(" + JSONObject.quote(id) + "," + status + "," + JSONObject.quote(retryAfter) + "," + JSONObject.quote(text) + ")";
+            runOnUiThread(() -> webView.evaluateJavascript(script, null));
+        }
     }
 
     // Pont « Vérifier la mise à jour » du menu Plus de la surcouche.

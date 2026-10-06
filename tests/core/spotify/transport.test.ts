@@ -79,6 +79,24 @@ describe('handleSpotifyMessage — TMDB', () => {
   });
 });
 
+describe('handleSpotifyMessage — Jeux vidéo', () => {
+  it.each([
+    'https://store.steampowered.com/api/appdetails?appids=1',
+    'https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=1',
+    'https://id.twitch.tv/oauth2/token?client_id=x',
+    'https://api.igdb.com/v4/games',
+  ])('relaie les jeux vidéo : %s', async (url) => {
+    const d = deps();
+    const reply = await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url }, d);
+    expect(reply).toMatchObject({ ok: true });
+  });
+
+  it("refuse un faux hôte de jeux vidéo", async () => {
+    const reply = await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url: 'https://store.steampowered.com.evil.test/x' }, deps());
+    expect(reply).toEqual({ ok: false, error: 'adresse refusée' });
+  });
+});
+
 describe('handleSpotifyMessage — Tidal', () => {
   it("lance l'autorisation vers login.tidal.com seulement", async () => {
     const d = deps();

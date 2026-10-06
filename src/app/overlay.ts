@@ -35,8 +35,8 @@ import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
 import { EMPTY_LEDGER, planMineEvents, type MineLedger } from '../core/collection/mine-events';
-import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, openImageSettings, openPlayerSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
-import { decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
+import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, openImageSettings, openPlayerSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
 import { createListenRepo } from '../core/music/listen-repo';
@@ -65,6 +65,14 @@ import { createScreenRepo } from '../core/screen/screen-repo';
 import { createTmdbApi } from '../core/screen/tmdb-api';
 import { fetchWikidataScreen } from '../core/screen/wikidata-screen';
 import { createScreenService } from '../content/screen-service';
+import { createGameService } from '../content/game-service';
+import { getGameService, setGameService } from '../content/game-registry';
+import { IGDB_CLIENT_ID, IGDB_CLIENT_SECRET, IGDB_ENABLED } from '../core/game/config';
+import type { GameFetch } from '../core/game/game-detail';
+import { createGameChoiceRepo, createGameRepo } from '../core/game/game-repo';
+import { createIgdbApi } from '../core/game/igdb-api';
+import { createSteamApi } from '../core/game/steam-api';
+import { fetchWikidataGame } from '../core/game/wikidata-game';
 import { getScreenService, setScreenService } from '../content/screen-registry';
 import { createMediaArt, type MediaArt, type MediaArtSources } from '../content/media-art';
 import { createImageService } from '../core/images/image-service';
@@ -289,6 +297,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         console.warn(LOG, 'section film / série indisponible :', error);
       }
       try {
+        pruneGameSections();
+        // La section jeu vidéo se pose dès que son service est créé (Steam n'a besoin d'aucune clé).
+        if (getGameService()) decorateGame(document, mountGameSection);
+      } catch (error) {
+        console.warn(LOG, 'section jeu vidéo indisponible :', error);
+      }
+      try {
         pruneLinkedCards();
         decorateLinked(document, mountLinkedCards);
       } catch (error) {
@@ -469,6 +484,26 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     } catch (error) {
       console.warn(LOG, 'films et séries indisponibles :', error);
     }
+  }
+
+  // Jeux vidéo : Steam sans clé, IGDB seulement avec les identifiants Twitch de la compilation. Même `fetch` que TMDB
+  // (service worker dans l'extension, pont natif dans l'APK). Une panne ici ne doit jamais empêcher la surcouche.
+  try {
+    const gameFetch: GameFetch = (url, init) => (spotify ? spotify.fetch(url, init) : fetch(url, init));
+    setGameService(
+      createGameService({
+        collection: collectionRepo,
+        kinds: kindsRepo,
+        games: createGameRepo(store, (slugs) => fetchWikidataGame((url) => fetch(url), slugs)),
+        choices: createGameChoiceRepo(store),
+        steam: createSteamApi({ fetch: gameFetch }),
+        igdb: IGDB_ENABLED ? createIgdbApi({ fetch: gameFetch, clientId: IGDB_CLIENT_ID, clientSecret: IGDB_CLIENT_SECRET, store }) : null,
+        steamCache: createTtlCache(store, { ttlMs: 6 * 3_600_000 }),
+        igdbCache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
+      }),
+    );
+  } catch (error) {
+    console.warn(LOG, 'jeux vidéo indisponibles :', error);
   }
 
   // Relevé du marché : les cartes de la Collection affichées à l'écran d'abord, puis en fond le reste de la

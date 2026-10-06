@@ -100,6 +100,23 @@ const PATHS = {
       <circle cx="12" cy="12" r="2.5" />
     </>
   ),
+  swap: (
+    <>
+      <polyline points="16,3 20,7 16,11" />
+      <line x1="4" y1="7" x2="20" y2="7" />
+      <polyline points="8,21 4,17 8,13" />
+      <line x1="20" y1="17" x2="4" y2="17" />
+    </>
+  ),
+  gamepad: (
+    <>
+      <rect x="2" y="7" width="20" height="11" rx="5" />
+      <line x1="7" y1="10.5" x2="7" y2="14.5" />
+      <line x1="5" y1="12.5" x2="9" y2="12.5" />
+      <circle cx="15.5" cy="11.5" r="1" />
+      <circle cx="18" cy="13.5" r="1" />
+    </>
+  ),
 } as const;
 
 export type GlyphName = keyof typeof PATHS;

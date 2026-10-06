@@ -1,6 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { Listen } from '../core/music/listen';
-import type { ScreenDetail } from '../core/screen/tmdb-api';
 import { tidalUrl } from '../core/tidal/tidal-listen';
 import { Glyph } from './Glyphs';
 import { getMusicService } from './music-registry';
@@ -12,17 +11,16 @@ const row: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flex
 const ellipsis: CSSProperties = { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 const settings: CSSProperties = { position: 'relative', width: SIZE, height: SIZE, flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'inherit', background: 'none', border, borderRadius: 8 };
 
-// « Bande originale » du film ou de la série, au-dessus de la bande-annonce : trouvée à l'ouverture de la fiche (et gardée) sur la plateforme choisie.
+// « Bande originale » du film, de la série ou du jeu, au-dessus de la bande-annonce : trouvée à l'ouverture de la fiche (et gardée) sur la plateforme choisie.
 // Une ligne « lecture » quand une BO est connue (Spotify : un clic la lance, album ou playlist ; Tidal : un lien ↗ ouvre l'album),
 // et toujours le bouton musique, qui ouvre le réglage (recherche automatique relancée, ou recherche manuelle). Rien d'affiché sans compte lié.
-export function SoundtrackButton({ detail }: { detail: Pick<ScreenDetail, 'mediaType' | 'id' | 'title' | 'originalTitle'> }) {
+export function SoundtrackButton({ soundtrackKey, title, originalTitle }: { soundtrackKey: string; title: string; originalTitle?: string }) {
   const service = getMusicService();
   const [linked, setLinked] = useState(false);
   const [listen, setListen] = useState<Listen | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [setting, setSetting] = useState(false);
-  const { mediaType, id, title, originalTitle } = detail;
-  const key = `${mediaType}:${id}`;
+  const key = soundtrackKey;
   const titles = originalTitle ? [title, originalTitle] : [title];
 
   useEffect(() => {

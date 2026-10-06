@@ -166,7 +166,7 @@ export function SoundtrackDialog({ service, soundtrackKey, titles, current, init
 }
 
 // Un hôte posé sur le <body>, dans un shadow DOM : la fenêtre sort de la fiche (ni défilement, ni empilement du site) et passe au premier plan.
-function useOverlayHost(): HTMLElement | null {
+export function useOverlayHost(): HTMLElement | null {
   const [mountPoint, setMountPoint] = useState<HTMLElement | null>(null);
   useEffect(() => {
     const host = document.createElement('div');
