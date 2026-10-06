@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { notesSince } from './release-notes.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const sh = (cmd, args, options = {}) =>
@@ -25,7 +26,7 @@ const fail = (message) => {
 
 if (out('git', ['branch', '--show-current']) !== 'main') fail('Lancer depuis la branche main.');
 if (out('git', ['status', '--porcelain'])) fail('Arbre de travail non propre : valider ou écarter les changements.');
-must('git', ['fetch', '--prune', 'origin'], { stdio: 'ignore' });
+must('git', ['fetch', '--prune', '--tags', 'origin'], { stdio: 'ignore' });
 const head = out('git', ['rev-parse', 'HEAD']);
 if (head !== out('git', ['rev-parse', 'origin/main'])) fail('main local différent de origin/main : synchroniser d’abord.');
 
@@ -57,7 +58,7 @@ must('gh', [
   'release', 'create', tag, apk,
   '--target', 'production',
   '--title', `${versionName} (${versionCode})`,
-  '--notes', `Production : ${out('git', ['rev-parse', '--short', 'HEAD'])}. Les téléphones se mettent à jour d’eux-mêmes.`,
+  '--notes', notesSince(root, 'android-', 'Améliorations et corrections diverses.'),
   '--latest',
 ]);
 console.log(`Production à jour : release ${tag}.`);

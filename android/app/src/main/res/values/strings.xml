@@ -2,6 +2,7 @@
     <string name="app_name">Wikimasters Tools</string>
     <string name="update_title">Mise à jour disponible</string>
     <string name="update_message">Une nouvelle version de Wikimasters Tools est prête (%1$s). L\'installer maintenant ?</string>
+    <string name="update_message_notes">Une nouvelle version de Wikimasters Tools est prête (%1$s).\n\n%2$s\n\nL\'installer maintenant ?</string>
     <string name="update_title_check">Mise à jour</string>
     <string name="update_checking">Vérification de la mise à jour…</string>
     <string name="update_current">Wikimasters Tools est à jour (version %1$s, build %2$d).</string>

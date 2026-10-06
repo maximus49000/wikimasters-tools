@@ -103,6 +103,7 @@ final class Updater {
     private static final class Release {
         long versionCode;
         String name;
+        String notes;
         String apkUrl;
     }
 
@@ -149,6 +150,7 @@ final class Updater {
                 Release release = new Release();
                 release.versionCode = Long.parseLong(number.group());
                 release.name = json.optString("name", tag);
+                release.notes = json.optString("body", "").trim();
                 release.apkUrl = url;
                 return release;
             }
@@ -184,7 +186,9 @@ final class Updater {
         if (activity.isFinishing() || activity.isDestroyed()) return;
         new AlertDialog.Builder(activity)
                 .setTitle(R.string.update_title)
-                .setMessage(activity.getString(R.string.update_message, release.name))
+                .setMessage(release.notes.isEmpty()
+                        ? activity.getString(R.string.update_message, release.name)
+                        : activity.getString(R.string.update_message_notes, release.name, release.notes))
                 .setPositiveButton(R.string.update_install, (dialog, which) -> install(apk))
                 .setNegativeButton(R.string.update_later, (dialog, which) -> declinedVersion = release.versionCode)
                 .show();
