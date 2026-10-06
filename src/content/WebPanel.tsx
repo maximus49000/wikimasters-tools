@@ -110,31 +110,39 @@ type GraphProps = {
 // Les nœuds ne se redessinent que si le graphe, le placement, la mise en avant ou le niveau de détail changent : glisser ne les touche pas.
 const WebGraphView = memo(function WebGraphView({ graph, positions, focusId, lit, images, labelled, imageOf, onCard, onHub }: GraphProps) {
   const opacityOf = (id: string) => (lit && !lit.has(id) ? FADED : 1);
-  const edge = (key: string, a: string, b: string, dashed: boolean) => {
-    const route = graph.path?.edges.has(`${a}\u0000${b}`) ?? false;
-    const from = positions[a];
-    const to = positions[b];
-    if (!from || !to) return null;
-    const on = route || focusId === a || focusId === b;
-    return (
-      <line
+  // Les traits d'un même style forment UN seul chemin : des dizaines de milliers de <line> rendraient la toile inutilisable.
+  const edgePaths = useMemo(() => {
+    const groups = new Map<string, { route: boolean; on: boolean; dashed: boolean; d: string[] }>();
+    const edge = (a: string, b: string, dashed: boolean) => {
+      const route = graph.path?.edges.has(`${a}\u0000${b}`) ?? false;
+      const from = positions[a];
+      const to = positions[b];
+      if (!from || !to) return;
+      const on = route || focusId === a || focusId === b;
+      const dash = dashed && !route;
+      const key = `${route}${on}${dash}`;
+      let group = groups.get(key);
+      if (!group) groups.set(key, (group = { route, on, dashed: dash, d: [] }));
+      group.d.push(`M${from.x} ${from.y}L${to.x} ${to.y}`);
+    };
+    for (const hub of graph.hubs) for (const slug of hub.cards) edge(hubId(hub.slug), cardId(slug), false);
+    for (const [first, second] of graph.cardLinks) edge(cardId(first), cardId(second), true);
+    for (const [first, second] of graph.hubLinks ?? []) edge(hubId(first), hubId(second), true);
+    return [...groups].map(([key, group]) => (
+      <path
         key={key}
-        x1={from.x}
-        y1={from.y}
-        x2={to.x}
-        y2={to.y}
-        strokeDasharray={dashed && !route ? '4 3' : undefined}
-        stroke={on ? 'var(--color-accent, #34d399)' : 'rgba(148,163,184,0.45)'}
-        strokeWidth={route ? 3 : 1}
-        style={{ ...hairline, opacity: lit ? (on ? 1 : 0.06) : 1 }}
+        d={group.d.join('')}
+        fill="none"
+        strokeDasharray={group.dashed ? '4 3' : undefined}
+        stroke={group.on ? 'var(--color-accent, #34d399)' : 'rgba(148,163,184,0.45)'}
+        strokeWidth={group.route ? 3 : 1}
+        style={{ ...hairline, opacity: lit ? (group.on ? 1 : 0.06) : 1 }}
       />
-    );
-  };
+    ));
+  }, [graph, positions, focusId, lit]);
   return (
     <>
-      {graph.hubs.flatMap((hub) => hub.cards.map((slug) => edge(`${hub.slug}\u0000${slug}`, hubId(hub.slug), cardId(slug), false)))}
-      {graph.cardLinks.map(([first, second]) => edge(`${first}\u0000${second}`, cardId(first), cardId(second), true))}
-      {(graph.hubLinks ?? []).map(([first, second]) => edge(`h${first}\u0000${second}`, hubId(first), hubId(second), true))}
+      {edgePaths}
       {graph.hubs.map((hub) => {
         const point = positions[hubId(hub.slug)];
         if (!point) return null;

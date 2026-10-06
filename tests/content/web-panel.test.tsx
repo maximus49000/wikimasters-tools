@@ -75,7 +75,10 @@ describe('WebPanel', () => {
     await mount();
     expect([...container.querySelectorAll('[data-card]')].map((el) => el.getAttribute('data-card')).sort()).toEqual(['Air', 'ChansonB', 'Daft_Punk', 'Kamini']);
     expect([...container.querySelectorAll('[data-hub]')].map((el) => el.getAttribute('data-hub')).sort()).toEqual(['Musique_électronique', 'Pop']);
-    expect(container.querySelectorAll('line')).toHaveLength(4);
+    // Les traits sont regroupés par style en un seul chemin : un segment (« M… L… ») par trait.
+    const segments = [...container.querySelectorAll('svg > g > path')].reduce((sum, path) => sum + (path.getAttribute('d')?.match(/M/g)?.length ?? 0), 0);
+    expect(segments).toBe(4);
+    expect(container.querySelectorAll('line')).toHaveLength(0);
   });
 
   it('demande la lecture des liens des cartes pas encore lues', async () => {
