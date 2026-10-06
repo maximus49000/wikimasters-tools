@@ -20,6 +20,16 @@ const minDistance = (positions: Record<string, Point>, prefix: string) => {
   return min;
 };
 
+// Distance minimale entre cartes, par balayage (tri sur x) : utilisable sur des dizaines de milliers de cartes.
+const sweepMin = (positions: Record<string, Point>, prefix: string) => {
+  const list = Object.entries(positions).filter(([id]) => id.startsWith(prefix)).map(([, p]) => p).sort((a, b) => a.x - b.x);
+  let min = Infinity;
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length && list[j]!.x - list[i]!.x < min; j++) min = Math.min(min, Math.hypot(list[i]!.x - list[j]!.x, list[i]!.y - list[j]!.y));
+  }
+  return min;
+};
+
 describe('separate', () => {
   it('écarte des points superposés sans bouger les points figés', () => {
     const xs = new Float64Array([0, 0, 0.5, 100]);
@@ -124,6 +134,14 @@ describe('layoutBig', () => {
     const first = layoutBig(small, {}, buildBigModel(small));
     const wide = hubsGraph(12);
     expectNearHubs(layoutBig(wide, shifted(first), buildBigModel(wide)), 12);
+  });
+
+  it('un article géant laisse la place à ses voisins : aucune carte superposée', () => {
+    const hubs: Record<string, string[]> = { G: many('g', 12000) };
+    for (let h = 0; h < 12; h++) hubs[`S${h}`] = [...many(`s${h}_`, 400), ...many('g', 12000).slice(h * 500, h * 500 + 300)];
+    const giant = graph(hubs);
+    const positions = layoutBig(giant, {}, buildBigModel(giant));
+    expect(sweepMin(positions, 'c:')).toBeGreaterThanOrEqual(MIN_DIST * 0.9);
   });
 
   it('relancé sur son propre placement, donne la même chose que sur une copie (articles retrouvés sans parcourir les cartes)', () => {

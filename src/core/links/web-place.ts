@@ -8,7 +8,7 @@ export const SPACING = 7;
 export const MIN_DIST = 5;
 const GOLDEN_ANGLE = 2.399963229728653;
 const ANCHOR_CELL = 24;
-const SEPARATE_PASSES = 4;
+const SEPARATE_PASSES = 12;
 const OFFSET = 32768;
 
 const keyOf = (cx: number, cy: number): number => (cx + OFFSET) * 65536 + (cy + OFFSET);
@@ -16,7 +16,8 @@ const keyOf = (cx: number, cy: number): number => (cx + OFFSET) * 65536 + (cy + 
 // Écarte à la main les points plus proches que `minDist` (comme la dernière passe du placement par forces) ; les points figés ne bougent pas.
 // À chaque passe, les points sont triés par case (tri par comptage, ligne après ligne) : les voisins d'une case sont alors rangés côte à côte
 // en mémoire, ce qui compte à 200 000 points. Seuls les points libres cherchent leurs voisins : relancé sur une toile déjà posée
-// (tout est figé), le calcul ne coûte presque rien.
+// (tout est figé), le calcul ne coûte presque rien. Après la première passe, seuls les points qui ont bougé (et ceux qu'ils ont poussés)
+// cherchent encore : les dernières passes ne coûtent presque plus rien, on peut en faire beaucoup.
 export function separate(xs: Float64Array, ys: Float64Array, pinned: Uint8Array, minDist: number, passes: number): void {
   const n = xs.length;
   let free = 0;
@@ -27,6 +28,10 @@ export function separate(xs: Float64Array, ys: Float64Array, pinned: Uint8Array,
   const px = new Float64Array(n);
   const py = new Float64Array(n);
   const pin = new Uint8Array(n);
+  // Les points à revoir à cette passe (indices d'origine), et ceux de la passe suivante.
+  let active = new Uint8Array(n).fill(1);
+  let touched = new Uint8Array(n);
+  const act = new Uint8Array(n);
   const min2 = minDist * minDist;
   for (let pass = 0; pass < passes; pass++) {
     let minX = Infinity;
@@ -62,11 +67,13 @@ export function separate(xs: Float64Array, ys: Float64Array, pinned: Uint8Array,
       px[s] = xs[i]!;
       py[s] = ys[i]!;
       pin[s] = pinned[i]!;
+      act[s] = active[i]!;
     }
+    touched.fill(0);
 
     let moved = false;
     for (let s = 0; s < n; s++) {
-      if (pin[s]) continue;
+      if (pin[s] || !act[s]) continue;
       const c = cellOf[order[s]!]!;
       const cx = c % width;
       const cy = (c - cx) / width;
@@ -75,8 +82,8 @@ export function separate(xs: Float64Array, ys: Float64Array, pinned: Uint8Array,
       for (let gy = Math.max(0, cy - 1); gy <= Math.min(height - 1, cy + 1); gy++) {
         const to = start[gy * width + x1 + 1]!;
         for (let t = start[gy * width + x0]!; t < to; t++) {
-          // Deux points libres ne se comparent qu'une fois (depuis le premier dans l'ordre).
-          if (t === s || (!pin[t] && t < s)) continue;
+          // Deux points libres à revoir ne se comparent qu'une fois (depuis le premier dans l'ordre).
+          if (t === s || (!pin[t] && act[t] && t < s)) continue;
           let ddx = px[s]! - px[t]!;
           let ddy = py[s]! - py[t]!;
           let squared = ddx * ddx + ddy * ddy;
@@ -95,6 +102,8 @@ export function separate(xs: Float64Array, ys: Float64Array, pinned: Uint8Array,
             py[t]! -= (ddy / distance) * push;
           }
           moved = true;
+          touched[order[s]!] = 1;
+          if (!pin[t]) touched[order[t]!] = 1;
         }
       }
     }
@@ -104,6 +113,7 @@ export function separate(xs: Float64Array, ys: Float64Array, pinned: Uint8Array,
       ys[order[s]!] = py[s]!;
     }
     if (!moved) break;
+    [active, touched] = [touched, active];
   }
 }
 
@@ -192,7 +202,10 @@ export function placeCards(
 }
 
 // Un article a besoin de place pour son nuage de cartes : sa taille dans le placement croît avec la racine de son nombre de cartes.
-const hubRoom = (cards: number): number => Math.min(300, 0.5 * SPACING * Math.sqrt(cards)) + 8;
+// Sans plafond : un article de 40 000 cartes a un nuage de ~1 400 de rayon ; plafonnée à 300, sa place laissait les nuages voisins
+// s'y empiler (des dizaines de milliers de cartes superposées à 200 000 cartes). Le facteur 0,75 laisse les nuages se toucher un peu
+// (les cartes partagées vivent entre deux articles) sans tasser les cartes au-delà de ce que l'écartement sait défaire.
+const hubRoom = (cards: number): number => 0.75 * SPACING * Math.sqrt(cards) + 8;
 
 // Les articles de chaque placement rendu par layoutBig : relancé sur ce placement, on ne parcourt pas ses 200 000 cartes pour les retrouver.
 const hubsOfLayout = new WeakMap<Record<string, Point>, Record<string, Point>>();
