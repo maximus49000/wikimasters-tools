@@ -36,7 +36,7 @@ function setup(pages: (CollectionPage | Error)[], options: { maxPages?: number; 
 
 describe('createCollectionScanner', () => {
   it('un parcours complet retire les cartes vendues ou échangées depuis le dernier', async () => {
-    const { scanner, collection } = setup([page('A')]);
+    const { scanner, collection } = setup([{ cards: [{ slug: 'A', title: 'A', copies: 1 }], entries: 1, skipped: 0 }]);
     await collection.observe([{ slug: 'Vendue', title: 'Vendue', copies: 1 }], true);
     await scanner.run({ force: true });
     expect((await collection.list()).map((c) => c.slug)).toEqual(['A']);
