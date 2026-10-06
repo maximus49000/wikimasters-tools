@@ -45,6 +45,17 @@ describe('buildScene', () => {
     expect(scene.themeCentres.map((c) => c.name).sort()).toEqual(['A1', 'B1']);
   });
 
+  it("ne nomme pas un thème dont aucun article n'est placé (pas de nom égaré à l'origine)", () => {
+    const g = graph({ A1: [...many('a', 30), 'x'], A2: many('a', 30), B1: [...many('b', 20), 'x'], B2: many('b', 20) });
+    const model = buildBigModel(g);
+    // Placement en retard d'un rendu sur le graphe : les articles de B n'y sont pas encore.
+    const positions = layoutBig(g, {}, model);
+    delete positions['h:B1'];
+    delete positions['h:B2'];
+    const partial = buildScene(g, positions, model);
+    expect(partial.themeCentres.map((c) => c.name)).toEqual(['A1']);
+  });
+
   it('ordonne les articles du plus au moins gros', () => {
     const sizes = scene.hubOrder.map((i) => scene.hubs[i]!.cards);
     expect(sizes).toEqual([...sizes].sort((a, b) => b - a));

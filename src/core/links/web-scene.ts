@@ -102,12 +102,10 @@ export function buildScene(graph: WebGraph, positions: Record<string, Point>, mo
     sum.y += hub.y * hub.cards;
     sum.weight += hub.cards;
   }
-  const themeCentres = model.themes.list.map((entry, t) => ({
-    x: sums[t]!.x / Math.max(sums[t]!.weight, 1),
-    y: sums[t]!.y / Math.max(sums[t]!.weight, 1),
-    name: entry.name,
-    color: entry.color,
-  }));
+  // Un thème sans article placé (placement en retard d'un rendu sur le graphe) n'a pas de territoire : pas de nom égaré en (0, 0).
+  const themeCentres = model.themes.list.flatMap((entry, t) =>
+    sums[t]!.weight > 0 ? [{ x: sums[t]!.x / sums[t]!.weight, y: sums[t]!.y / sums[t]!.weight, name: entry.name, color: entry.color }] : [],
+  );
 
   // Étendue calculée avec des nombres seuls : pas d'objet par carte (jusqu'à 200 000).
   let minX = Infinity;
