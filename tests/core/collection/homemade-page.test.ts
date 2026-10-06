@@ -10,6 +10,11 @@ describe('sortCards', () => {
     expect(sorted.map((c) => c.title)).toEqual(['M', 'K', 'A', 'B', 'Z']);
   });
 
+  it("départage une même rareté par date d'obtention, la plus récente d'abord (comme le site)", () => {
+    const cards = [{ ...card('A', 'C'), obtainedAt: 1 }, { ...card('Z', 'C'), obtainedAt: 9 }, card('B', 'C'), { ...card('M', 'C'), obtainedAt: 5 }];
+    expect(sortCards(cards).map((c) => c.title)).toEqual(['Z', 'M', 'A', 'B']);
+  });
+
   it('ne modifie pas la liste reçue', () => {
     const input = [card('B', 'C'), card('A', 'L')];
     sortCards(input);
@@ -30,9 +35,19 @@ describe('sortCards selon le tri du site', () => {
     expect(sortCards([card('b', 'L'), card('A', 'C'), card('C', 'UR')], undefined, 'name').map((c) => c.title)).toEqual(['A', 'b', 'C']);
   });
 
-  it('met les favoris en tête (puis rareté)', () => {
-    const cards = [card('A', 'C'), { ...card('B', 'C'), starred: true }, { ...card('C', 'L'), starred: false }];
-    expect(sortCards(cards, undefined, 'starred').map((c) => c.title)).toEqual(['B', 'C', 'A']);
+  it('ne tient pas compte de la rareté ni des nombres dans le tri par nom (comme le site)', () => {
+    const titles = ['(13345) B', '(129881) A', 'Zèbre', 'abc'].map((t) => card(t, t === 'Zèbre' ? 'L' : 'C'));
+    expect(sortCards(titles, undefined, 'name').map((c) => c.title)).toEqual(['(129881) A', '(13345) B', 'abc', 'Zèbre']);
+  });
+
+  it("met les favoris en tête, puis par date d'obtention la plus récente (sans rareté)", () => {
+    const cards = [
+      { ...card('A', 'L'), obtainedAt: 9 },
+      { ...card('B', 'C'), starred: true, obtainedAt: 1 },
+      { ...card('C', 'C'), starred: true, obtainedAt: 5 },
+      { ...card('D', 'UR'), starred: false, obtainedAt: 7 },
+    ];
+    expect(sortCards(cards, undefined, 'starred').map((c) => c.title)).toEqual(['C', 'B', 'A', 'D']);
   });
 
   it("trie par date d'ajout, la plus récente d'abord, les cartes sans date à la fin", () => {

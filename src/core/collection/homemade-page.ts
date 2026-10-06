@@ -9,20 +9,23 @@ const rank = (rarity: string | undefined): number => {
   return index === -1 ? RARITY_ORDER.length : index;
 };
 
-// Comme le tri par défaut du site : rareté décroissante, puis titre.
-// `priceOf` : tri par dernier prix de vente connu, décroissant ; les cartes sans prix viennent en dernier.
-// `siteSort` : autre tri du site, lu sur les données de la Collection : « name » (titre), « starred » (favoris d'abord),
-// « added » (date d'obtention, la plus récente d'abord). Les cartes sans la donnée viennent après.
+// Mêmes ordres que la liste « Trier la collection » du site (vérifiés sur /api/my-collection) :
+// - rareté : rareté décroissante, puis date d'obtention la plus récente d'abord ;
+// - « name » : titre, sans tenir compte de la rareté ni des nombres (« (129881) » avant « (13345) ») ;
+// - « starred » : favoris d'abord, puis date d'obtention la plus récente d'abord ;
+// - « added » : date d'obtention la plus récente d'abord.
+// Les cartes sans date viennent après celles qui en ont ; le titre départage les égalités.
+// `priceOf` : tri propre à l'extension, par dernier prix de vente connu décroissant ; les cartes sans prix viennent en dernier.
 export function sortCards(cards: KnownCard[], priceOf?: (slug: string) => number | null, siteSort = ''): KnownCard[] {
-  const byRarity = (a: KnownCard, b: KnownCard) => rank(a.rarity) - rank(b.rarity) || a.title.localeCompare(b.title, 'fr');
-  if (siteSort === 'name') return [...cards].sort((a, b) => a.title.localeCompare(b.title, 'fr', { sensitivity: 'base', numeric: true }));
-  if (siteSort === 'starred') return [...cards].sort((a, b) => Number(Boolean(b.starred)) - Number(Boolean(a.starred)) || byRarity(a, b));
-  if (siteSort === 'added') {
-    return [...cards].sort((a, b) => {
-      if (a.obtainedAt === undefined || b.obtainedAt === undefined) return a.obtainedAt === b.obtainedAt ? byRarity(a, b) : a.obtainedAt === undefined ? 1 : -1;
-      return b.obtainedAt - a.obtainedAt || byRarity(a, b);
-    });
-  }
+  const byTitle = (a: KnownCard, b: KnownCard) => a.title.localeCompare(b.title, 'fr');
+  const byDate = (a: KnownCard, b: KnownCard) => {
+    if (a.obtainedAt === undefined || b.obtainedAt === undefined) return a.obtainedAt === b.obtainedAt ? 0 : a.obtainedAt === undefined ? 1 : -1;
+    return b.obtainedAt - a.obtainedAt;
+  };
+  const byRarity = (a: KnownCard, b: KnownCard) => rank(a.rarity) - rank(b.rarity) || byDate(a, b) || byTitle(a, b);
+  if (siteSort === 'name') return [...cards].sort(byTitle);
+  if (siteSort === 'starred') return [...cards].sort((a, b) => Number(Boolean(b.starred)) - Number(Boolean(a.starred)) || byDate(a, b) || byTitle(a, b));
+  if (siteSort === 'added') return [...cards].sort((a, b) => byDate(a, b) || byRarity(a, b));
   if (!priceOf) return [...cards].sort(byRarity);
   const prices = new Map(cards.map((card) => [card.slug, priceOf(card.slug)]));
   return [...cards].sort((a, b) => {
