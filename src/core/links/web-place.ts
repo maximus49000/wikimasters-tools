@@ -133,6 +133,8 @@ export function placeCards(
     if (at) hubAt.set(hub.slug, at);
   }
   const before: (Point | undefined)[] = new Array(n);
+  // L'identifiant `c:…` de chaque carte, fabriqué une seule fois (une chaîne neuve coûte à chaque recherche dans un objet de 200 000 clés).
+  const ids: string[] = new Array(n);
 
   for (let i = 0; i < n; i++) {
     const card = graph.cards[i]!;
@@ -166,7 +168,8 @@ export function placeCards(
     const key = keyOf(Math.floor(ax / ANCHOR_CELL), Math.floor(ay / ANCHOR_CELL));
     const slot = crowd.get(key) ?? 0;
     crowd.set(key, slot + 1);
-    const was = previous[cardId(card.slug)];
+    ids[i] = cardId(card.slug);
+    const was = previous[ids[i]!];
     before[i] = was;
     if (was) {
       xs[i] = was.x;
@@ -184,12 +187,15 @@ export function placeCards(
   separate(xs, ys, pinned, MIN_DIST, SEPARATE_PASSES);
 
   const out: Record<string, Point> = {};
-  for (let i = 0; i < n; i++) out[cardId(graph.cards[i]!.slug)] = before[i] ?? { x: xs[i]!, y: ys[i]! };
+  for (let i = 0; i < n; i++) out[ids[i]!] = before[i] ?? { x: xs[i]!, y: ys[i]! };
   return out;
 }
 
 // Un article a besoin de place pour son nuage de cartes : sa taille dans le placement croît avec la racine de son nombre de cartes.
 const hubRoom = (cards: number): number => Math.min(300, 0.5 * SPACING * Math.sqrt(cards)) + 8;
+
+// Les articles de chaque placement rendu par layoutBig : relancé sur ce placement, on ne parcourt pas ses 200 000 cartes pour les retrouver.
+const hubsOfLayout = new WeakMap<Record<string, Point>, Record<string, Point>>();
 
 // Placement du mode grand : les articles par forces (≤ 300 nœuds : coût borné, quel que soit le nombre de cartes), les cartes autour.
 export function layoutBig(graph: WebGraph, previous: Record<string, Point>, model: BigModel): Record<string, Point> {
@@ -199,8 +205,11 @@ export function layoutBig(graph: WebGraph, previous: Record<string, Point>, mode
     ...(graph.hubLinks ?? []).map(([a, b]): [string, string] => [hubId(a), hubId(b)]),
   ];
   // Tous les anciens articles, y compris ceux qui ont disparu : layoutWeb juge ainsi si la toile grandit ou change.
-  const hubPrevious: Record<string, Point> = {};
-  for (const [id, point] of Object.entries(previous)) if (id.startsWith('h:')) hubPrevious[id] = point;
+  let hubPrevious = hubsOfLayout.get(previous);
+  if (!hubPrevious) {
+    hubPrevious = {};
+    for (const id in previous) if (id.startsWith('h:')) hubPrevious[id] = previous[id]!;
+  }
   const hubs = nodes.length === 0 ? {} : layoutWeb(nodes, edges, hubPrevious);
   // Si la toile des articles a redémarré de zéro (filtre, beaucoup d'articles en moins ou en plus), certains articles ont bougé :
   // les anciennes places des cartes ne valent plus rien, on les recalcule autour des nouveaux articles.
@@ -208,5 +217,9 @@ export function layoutBig(graph: WebGraph, previous: Record<string, Point>, mode
     const now = hubs[id];
     return now !== undefined && (now.x !== before.x || now.y !== before.y);
   });
-  return { ...hubs, ...placeCards(graph, hubs, model.hubsOf, restarted ? {} : previous) };
+  // Les articles s'ajoutent aux cartes, sans recopier les 200 000 cartes dans un nouvel objet.
+  const out = placeCards(graph, hubs, model.hubsOf, restarted ? {} : previous);
+  for (const id in hubs) out[id] = hubs[id]!;
+  hubsOfLayout.set(out, hubs);
+  return out;
 }

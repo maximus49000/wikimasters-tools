@@ -126,6 +126,15 @@ describe('layoutBig', () => {
     expectNearHubs(layoutBig(wide, shifted(first), buildBigModel(wide)), 12);
   });
 
+  it('relancé sur son propre placement, donne la même chose que sur une copie (articles retrouvés sans parcourir les cartes)', () => {
+    const wide = hubsGraph(10);
+    const first = layoutBig(wide, {}, buildBigModel(wide));
+    for (const next of [hubsGraph(2), hubsGraph(11)]) {
+      const model = buildBigModel(next);
+      expect(layoutBig(next, first, model)).toEqual(layoutBig(next, { ...first }, model));
+    }
+  });
+
   it('recalcule les cartes autour des articles quand un filtre en retire beaucoup', () => {
     const wide = hubsGraph(10);
     const first = layoutBig(wide, {}, buildBigModel(wide));
