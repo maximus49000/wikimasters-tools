@@ -24,7 +24,15 @@ export function createNativeFetch(win: NativeHttpWindow, fallback: typeof fetch)
     if (!bridge || !GAME_NATIVE_PREFIXES.some((prefix) => url.startsWith(prefix))) return fallback(input, init);
     install();
     const id = `http-${(counter += 1)}`;
-    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const request = typeof input === 'object' && !(input instanceof URL) ? input : null;
+    const headers: Record<string, string> = {};
+    const source = init?.headers ?? request?.headers;
+    if (source instanceof Headers || Array.isArray(source)) {
+      new Headers(source).forEach((value, name) => {
+        headers[name] = value;
+      });
+    } else Object.assign(headers, source ?? {});
+    const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
     return new Promise<Response>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
@@ -33,11 +41,15 @@ export function createNativeFetch(win: NativeHttpWindow, fallback: typeof fetch)
       pending.set(id, (status, retryAfter, body) => {
         clearTimeout(timer);
         pending.delete(id);
-        if (status === 0) return reject(new TypeError('pont HTTP : réseau indisponible'));
-        resolve(new Response(NO_BODY.has(status) ? null : body, { status, ...(retryAfter ? { headers: { 'Retry-After': retryAfter } } : {}) }));
+        if (status <= 0) return reject(new TypeError('pont HTTP : réseau indisponible'));
+        try {
+          resolve(new Response(NO_BODY.has(status) ? null : body, { status, ...(retryAfter ? { headers: { 'Retry-After': retryAfter } } : {}) }));
+        } catch {
+          reject(new TypeError('pont HTTP : réponse invalide'));
+        }
       });
       try {
-        bridge.request(id, url, init?.method ?? 'GET', JSON.stringify(headers), typeof init?.body === 'string' ? init.body : '');
+        bridge.request(id, url, method, JSON.stringify(headers), typeof init?.body === 'string' ? init.body : '');
       } catch (error) {
         clearTimeout(timer);
         pending.delete(id);

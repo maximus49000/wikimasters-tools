@@ -24,7 +24,6 @@ import android.webkit.WebViewClient;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -155,6 +154,8 @@ public class MainActivity extends Activity {
                     connection = (HttpURLConnection) new URL(url).openConnection();
                     connection.setConnectTimeout(15000);
                     connection.setReadTimeout(15000);
+                    // Une 3xx revient telle quelle au JS : pas de renvoi des en-têtes d'authentification vers un autre hôte.
+                    connection.setInstanceFollowRedirects(false);
                     connection.setRequestMethod("POST".equals(method) ? "POST" : "GET");
                     JSONObject headers = new JSONObject(headersJson == null ? "{}" : headersJson);
                     for (Iterator<String> names = headers.keys(); names.hasNext(); ) {
@@ -176,7 +177,8 @@ public class MainActivity extends Activity {
                         while ((read = stream.read(chunk)) != -1) out.write(chunk, 0, read);
                         text = out.toString("UTF-8");
                     }
-                } catch (IOException | JSONException error) {
+                } catch (Exception | OutOfMemoryError error) {
+                    // Jamais de journal ici (en-têtes et corps peuvent porter des secrets) ; deliver est toujours appelé.
                     status = 0;
                 } finally {
                     if (connection != null) connection.disconnect();

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createNativeFetch, type NativeHttpWindow } from '../../src/android/native-http';
 
 function setup(hasBridge = true) {
@@ -45,5 +45,58 @@ describe('createNativeFetch', () => {
     const response = await createNativeFetch(win, vi.fn() as unknown as typeof fetch)('https://api.igdb.com/v4/games');
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('30');
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  const answering = (status: number, retryAfter = '', body = 'x') => {
+    const win: NativeHttpWindow = {};
+    win.WmtHttp = { request: vi.fn((id: string) => queueMicrotask(() => win.__wmtHttpDone?.(id, status, retryAfter, body))) };
+    return { win, nativeFetch: createNativeFetch(win, vi.fn() as unknown as typeof fetch) };
+  };
+
+  it('rejette après le délai, et un rappel tardif est sans effet', async () => {
+    vi.useFakeTimers();
+    const win: NativeHttpWindow = {};
+    let lastId = '';
+    win.WmtHttp = { request: (id: string) => void (lastId = id) };
+    const promise = createNativeFetch(win, vi.fn() as unknown as typeof fetch)('https://api.igdb.com/v4/games');
+    const rejected = expect(promise).rejects.toThrow('délai dépassé');
+    await vi.advanceTimersByTimeAsync(20_001);
+    await rejected;
+    expect(() => win.__wmtHttpDone?.(lastId, 200, '', 'tard')).not.toThrow();
+  });
+
+  it('statut 0 ou négatif : rejet', async () => {
+    await expect(answering(0).nativeFetch('https://api.igdb.com/v4/games')).rejects.toThrow('réseau indisponible');
+    await expect(answering(-1).nativeFetch('https://api.igdb.com/v4/games')).rejects.toThrow('réseau indisponible');
+  });
+
+  it('statut invalide pour Response : rejet au lieu de pendre', async () => {
+    await expect(answering(1000).nativeFetch('https://api.igdb.com/v4/games')).rejects.toThrow('réponse invalide');
+  });
+
+  it('204 : Response sans corps', async () => {
+    const response = await answering(204, '', 'ignoré').nativeFetch('https://api.igdb.com/v4/games');
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+  });
+
+  it('la méthode est passée en majuscules', async () => {
+    const { win, nativeFetch } = setup();
+    await nativeFetch('https://api.igdb.com/v4/games', { method: 'post', body: 'a' });
+    expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), expect.any(String), 'POST', '{}', 'a');
+  });
+
+  it("les en-têtes d'un Headers sont transmis", async () => {
+    const { win, nativeFetch } = setup();
+    await nativeFetch('https://api.igdb.com/v4/games', { headers: new Headers({ 'Client-ID': 'x' }) });
+    expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), expect.any(String), 'GET', '{"client-id":"x"}', '');
+  });
+
+  it('un Request fournit méthode et en-têtes quand init est absent', async () => {
+    const { win, nativeFetch } = setup();
+    await nativeFetch(new Request('https://api.igdb.com/v4/games', { method: 'POST', headers: { 'Client-ID': 'y' } }));
+    expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), 'https://api.igdb.com/v4/games', 'POST', '{"client-id":"y"}', '');
   });
 });
