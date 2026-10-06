@@ -66,5 +66,19 @@ export function mergeCards(state: CollectionState, cards: KnownCard[], addCopies
   return next;
 }
 
+// Renvoie `state` lui-même quand rien ne change. Un nombre d'exemplaires inconnu reste inconnu ; à zéro (ou moins) la carte disparaît.
+export function applyCopyDeltas(state: CollectionState, deltas: Record<string, number>): CollectionState {
+  let next = state;
+  for (const [slug, delta] of Object.entries(deltas)) {
+    const known = next[slug];
+    if (!known || known.copies === undefined || delta === 0) continue;
+    if (next === state) next = { ...state };
+    const copies = known.copies + delta;
+    if (copies <= 0) delete next[slug];
+    else next[slug] = { ...known, copies };
+  }
+  return next;
+}
+
 const sameTags = (a: CardTag[] | undefined, b: CardTag[] | undefined): boolean =>
   a === b || (a !== undefined && b !== undefined && a.length === b.length && a.every((tag, i) => tag.id === b[i]?.id && tag.name === b[i]?.name && tag.color === b[i]?.color));

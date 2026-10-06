@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE } from '../../src/content/market-messages';
+import { COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../../src/content/market-messages';
 import { asOwnRequest, installMarketTap, type TapWindow } from '../../src/content/market-tap';
 
 function json(body: unknown, init?: ResponseInit): Response {
@@ -39,7 +39,8 @@ describe('installMarketTap', () => {
     const { win, posted } = setup(() => json({ ...PAGE, selling: [] }));
     await win.fetch('/api/marketplace?page=1&limit=50&mine=1');
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(posted).toHaveLength(1);
+    expect(posted[0]).toEqual({ type: MARKET_MESSAGE, auctions: PAGE.auctions });
+    expect(posted[1]).toMatchObject({ type: MINE_MESSAGE, selling: [] });
   });
 
   it('ignore les autres routes, dont l’historique des ventes (fonction PRO)', async () => {
@@ -116,5 +117,13 @@ describe('cartes obtenues', () => {
     await win.fetch('/api/wikibidous', { method: 'POST' });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(posted).toEqual([]);
+  });
+
+  it('signale une écriture d’échange réussie, et pas une simple lecture', async () => {
+    const { win, posted } = setup(() => json({ ok: true }));
+    await win.fetch('/api/trades');
+    await win.fetch('/api/trades/abc/accept', { method: 'POST' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(posted).toEqual([{ type: MOVEMENT_MESSAGE }]);
   });
 });

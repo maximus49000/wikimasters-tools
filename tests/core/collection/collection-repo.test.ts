@@ -82,3 +82,28 @@ describe('exemplaires', () => {
     expect((await repo.list())[0]).toEqual(PARIS);
   });
 });
+
+describe('mouvements de la collection', () => {
+  it('une carte vendue perd un exemplaire puis quitte la collection à zéro', async () => {
+    const repo = createCollectionRepo(createMemoryStore());
+    await repo.observe([{ ...PARIS, copies: 2 }, { ...EIFFEL, copies: 1 }], true);
+    await repo.adjustCopies({ [PARIS.slug]: -1, [EIFFEL.slug]: -1 });
+    const list = await repo.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ slug: PARIS.slug, copies: 1 });
+  });
+
+  it('ne touche pas une carte dont le nombre d’exemplaires est inconnu', async () => {
+    const repo = createCollectionRepo(createMemoryStore());
+    await repo.observe([PARIS]);
+    await repo.adjustCopies({ [PARIS.slug]: -1 });
+    expect(await repo.list()).toHaveLength(1);
+  });
+
+  it('en fin de parcours complet, retire les cartes non recomptées', async () => {
+    const repo = createCollectionRepo(createMemoryStore());
+    await repo.observe([{ ...PARIS, copies: 1 }, EIFFEL], true);
+    await repo.dropUncounted();
+    expect((await repo.list()).map((c) => c.slug)).toEqual([PARIS.slug]);
+  });
+});
