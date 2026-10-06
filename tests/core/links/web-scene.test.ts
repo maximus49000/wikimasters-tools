@@ -71,6 +71,37 @@ describe('clustersFor', () => {
     }
   });
 
+  it("donne pour chaque cellule le nombre de cartes, leur centre et le thème le plus présent", () => {
+    const { scene: two } = build({ A1: many('a', 300), A2: many('a', 300), B1: many('b', 300), B2: many('b', 300) });
+    for (const cell of [16, 64, 256]) {
+      // Calcul de référence, cellule par cellule.
+      const cells = new Map<string, { n: number; x: number; y: number; votes: Map<number, number> }>();
+      for (let i = 0; i < two.xs.length; i++) {
+        const key = `${Math.floor(two.xs[i]! / cell)}:${Math.floor(two.ys[i]! / cell)}`;
+        const c = cells.get(key) ?? { n: 0, x: 0, y: 0, votes: new Map<number, number>() };
+        c.n += 1;
+        c.x += two.xs[i]!;
+        c.y += two.ys[i]!;
+        c.votes.set(two.theme[i]!, (c.votes.get(two.theme[i]!) ?? 0) + 1);
+        cells.set(key, c);
+      }
+      const expected = [...cells.values()].map((c) => ({ n: c.n, x: c.x / c.n, y: c.y / c.n, votes: c.votes }));
+      const { items, max } = clustersFor(two, cell);
+      expect(items).toHaveLength(expected.length);
+      expect(max).toBe(Math.max(...expected.map((c) => c.n)));
+      const sortKey = (c: { x: number; y: number }) => c.x * 1e6 + c.y;
+      const got = [...items].sort((p, q) => sortKey(p) - sortKey(q));
+      const want = expected.sort((p, q) => sortKey(p) - sortKey(q));
+      got.forEach((item, i) => {
+        expect(item.n).toBe(want[i]!.n);
+        expect(item.x).toBeCloseTo(want[i]!.x, 3);
+        expect(item.y).toBeCloseTo(want[i]!.y, 3);
+        const best = Math.max(...want[i]!.votes.values());
+        expect(want[i]!.votes.get(item.theme)).toBe(best);
+      });
+    }
+  });
+
   it('réutilise le calcul tant que la cellule ne change pas', () => {
     expect(clustersFor(scene, 64)).toBe(clustersFor(scene, 64));
   });

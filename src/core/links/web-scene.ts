@@ -158,30 +158,74 @@ const clusterCache = new WeakMap<Scene, Clusters>();
 export const clusterCell = (k: number): number => 2 ** Math.ceil(Math.log2(32 / k));
 
 // Les paquets de cartes par cellule, sur TOUTE la toile (le glissement ne les recalcule pas, seul un changement de cellule le fait).
+// Comptes dans des tableaux pleins couvrant l'étendue de la toile (pas de Map ni d'objet par cellule : à 200 000 cartes, un changement
+// de cellule coûtait 15 à 75 ms, une saccade à chaque octave de zoom).
 export function clustersFor(scene: Scene, cell: number): Clusters {
   const cached = clusterCache.get(scene);
   if (cached && cached.cell === cell) return cached;
   const slots = scene.themes.length + 1;
-  const groups = new Map<number, { n: number; x: number; y: number; votes: number[] }>();
-  for (let i = 0; i < scene.xs.length; i++) {
-    const key = (Math.floor(scene.xs[i]! / cell) + OFFSET) * 65536 + (Math.floor(scene.ys[i]! / cell) + OFFSET);
-    let group = groups.get(key);
-    if (!group) {
-      group = { n: 0, x: 0, y: 0, votes: new Array(slots).fill(0) };
-      groups.set(key, group);
-    }
-    group.n += 1;
-    group.x += scene.xs[i]!;
-    group.y += scene.ys[i]!;
-    group.votes[scene.theme[i]! < 0 ? slots - 1 : scene.theme[i]!]! += 1;
-  }
+  const n = scene.xs.length;
   const items: Cluster[] = [];
   let max = 1;
-  for (const group of groups.values()) {
-    let best = 0;
-    for (let s = 1; s < slots; s++) if (group.votes[s]! > group.votes[best]!) best = s;
-    items.push({ x: group.x / group.n, y: group.y / group.n, n: group.n, theme: best === slots - 1 ? NO_THEME : best });
-    max = Math.max(max, group.n);
+  if (n > 0) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (let i = 0; i < n; i++) {
+      if (scene.xs[i]! < minX) minX = scene.xs[i]!;
+      if (scene.xs[i]! > maxX) maxX = scene.xs[i]!;
+      if (scene.ys[i]! < minY) minY = scene.ys[i]!;
+      if (scene.ys[i]! > maxY) maxY = scene.ys[i]!;
+    }
+    // Cellules comptées depuis l'origine du dessin (comme avant) : seules celles de l'étendue existent dans les tableaux.
+    const gx0 = Math.floor(minX / cell);
+    const gy0 = Math.floor(minY / cell);
+    const width = Math.floor(maxX / cell) - gx0 + 1;
+    const height = Math.floor(maxY / cell) - gy0 + 1;
+    if (width * height <= 4 * n + 1024) {
+      const cells = width * height;
+      const count = new Int32Array(cells);
+      const sumX = new Float64Array(cells);
+      const sumY = new Float64Array(cells);
+      const votes = new Int32Array(cells * slots);
+      for (let i = 0; i < n; i++) {
+        const c = Math.floor(scene.xs[i]! / cell) - gx0 + (Math.floor(scene.ys[i]! / cell) - gy0) * width;
+        count[c]! += 1;
+        sumX[c]! += scene.xs[i]!;
+        sumY[c]! += scene.ys[i]!;
+        votes[c * slots + (scene.theme[i]! < 0 ? slots - 1 : scene.theme[i]!)]! += 1;
+      }
+      for (let c = 0; c < cells; c++) {
+        const size = count[c]!;
+        if (size === 0) continue;
+        let best = 0;
+        for (let t = 1; t < slots; t++) if (votes[c * slots + t]! > votes[c * slots + best]!) best = t;
+        items.push({ x: sumX[c]! / size, y: sumY[c]! / size, n: size, theme: best === slots - 1 ? NO_THEME : best });
+        if (size > max) max = size;
+      }
+    } else {
+      // Toile très étendue pour la cellule (cas rare) : une Map des seules cellules occupées.
+      const groups = new Map<number, { n: number; x: number; y: number; votes: number[] }>();
+      for (let i = 0; i < n; i++) {
+        const key = (Math.floor(scene.xs[i]! / cell) + OFFSET) * 65536 + (Math.floor(scene.ys[i]! / cell) + OFFSET);
+        let group = groups.get(key);
+        if (!group) {
+          group = { n: 0, x: 0, y: 0, votes: new Array(slots).fill(0) };
+          groups.set(key, group);
+        }
+        group.n += 1;
+        group.x += scene.xs[i]!;
+        group.y += scene.ys[i]!;
+        group.votes[scene.theme[i]! < 0 ? slots - 1 : scene.theme[i]!]! += 1;
+      }
+      for (const group of groups.values()) {
+        let best = 0;
+        for (let t = 1; t < slots; t++) if (group.votes[t]! > group.votes[best]!) best = t;
+        items.push({ x: group.x / group.n, y: group.y / group.n, n: group.n, theme: best === slots - 1 ? NO_THEME : best });
+        max = Math.max(max, group.n);
+      }
+    }
   }
   const result = { cell, items, max };
   clusterCache.set(scene, result);
