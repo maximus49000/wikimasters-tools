@@ -42,6 +42,16 @@ describe('parseCollectionPage', () => {
     expect(page.cards[0]).toMatchObject({ attack: 9751, defense: 7972, extract: 'Un extrait.' });
   });
 
+  it('garde le nombre de consultations (pageviews) de la carte, et l’omet quand il manque', () => {
+    const entry = fixture.collection[0]!;
+    const page = parseCollectionPage(
+      { collection: [{ ...entry, card: { ...entry.card, pageviews: 37756 } }, { ...entry, card: { ...entry.card, pageviews: 'beaucoup' } }, fixture.collection[1]] },
+      ENDPOINT,
+    );
+    expect(page.cards[0]).toMatchObject({ pageviews: 37756 });
+    expect(page.cards[1]).not.toHaveProperty('pageviews');
+  });
+
   it('dédoublonne une carte présente en normal et en shiny, mais compte les deux entrées', () => {
     const entry = fixture.collection[0]!;
     const page = parseCollectionPage({ collection: [entry, { ...entry, id: 'shiny', is_shiny: true }] }, ENDPOINT);

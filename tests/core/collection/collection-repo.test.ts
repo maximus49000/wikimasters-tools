@@ -38,6 +38,15 @@ describe('mergeCards (rareté et image)', () => {
   });
 });
 
+describe('mergeCards (consultations)', () => {
+  it('complète une carte avec ses consultations, les met à jour, et les garde quand une observation n’en a pas', () => {
+    const state = mergeCards({}, [{ ...PARIS, pageviews: 100 }]);
+    expect(state['Paris']?.pageviews).toBe(100);
+    expect(mergeCards(state, [PARIS])).toBe(state);
+    expect(mergeCards(state, [{ ...PARIS, pageviews: 250 }])['Paris']?.pageviews).toBe(250);
+  });
+});
+
 describe('createCollectionRepo', () => {
   it('persiste les cartes et les relit', async () => {
     const store = createMemoryStore();
