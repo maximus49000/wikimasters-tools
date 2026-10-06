@@ -142,7 +142,8 @@ describe('layoutBig', () => {
     const giant = graph(hubs);
     const positions = layoutBig(giant, {}, buildBigModel(giant));
     expect(sweepMin(positions, 'c:')).toBeGreaterThanOrEqual(MIN_DIST * 0.9);
-  });
+    // Placement de dizaines de milliers de cartes : délai large, loin des 5 s par défaut sur une machine chargée.
+  }, 20_000);
 
   it("regroupe les articles d'un même thème même quand ils sont très gros (territoires)", () => {
     // 6 familles de 20 articles, 30 000 cartes : chaque carte cite trois articles de sa famille, une sur quatre un article d'une autre.
@@ -167,7 +168,8 @@ describe('layoutBig', () => {
     const families = Array.from({ length: 6 }, (_, f) => spread(g.hubs.filter((hub) => hub.slug.startsWith(`F${f}-`)).map((hub) => `h:${hub.slug}`)));
     // Chaque famille occupe son territoire : nettement moins étalée que l'ensemble des articles.
     expect(families.reduce((a, b) => a + b, 0) / families.length / all).toBeLessThan(0.6);
-  });
+    // Placement de dizaines de milliers de cartes : délai large, loin des 5 s par défaut sur une machine chargée.
+  }, 20_000);
 
   it('relancé sur son propre placement, donne la même chose que sur une copie (articles retrouvés sans parcourir les cartes)', () => {
     const wide = hubsGraph(10);

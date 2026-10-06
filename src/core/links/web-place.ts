@@ -211,6 +211,8 @@ const hubRoom = (cards: number): number => 0.75 * SPACING * Math.sqrt(cards) + 8
 const ROOM_REF = 100;
 
 // Les articles de chaque placement rendu par layoutBig : relancé sur ce placement, on ne parcourt pas ses 200 000 cartes pour les retrouver.
+// L'objet rendu par layoutBig ne doit donc jamais être modifié (ajout, retrait ou déplacement d'un article) : ses articles retenus ici
+// ne correspondraient plus. Pour changer un placement, en faire une copie (la copie, inconnue de cette table, est relue entièrement).
 const hubsOfLayout = new WeakMap<Record<string, Point>, Record<string, Point>>();
 
 // Placement du mode grand : les articles par forces (≤ 300 nœuds : coût borné, quel que soit le nombre de cartes), les cartes autour.

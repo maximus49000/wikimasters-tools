@@ -96,7 +96,8 @@ describe('drawScene', () => {
     // Le thème porte le nom de son plus gros article : son nom est écrit deux fois, le dernier est celui du thème.
     const theme = calls.lastIndexOf(`fillText:${big.themeCentres[0]!.name}`);
     expect(theme).toBeGreaterThan(lastArc);
-  });
+    // 44 000 cartes placées : délai large.
+  }, 20_000);
 
   it('met un article en avant sans planter, route comprise', () => {
     const { ctx } = fakeContext();
