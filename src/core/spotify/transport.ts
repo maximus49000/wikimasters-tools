@@ -1,4 +1,5 @@
 import type { SpotifyFetch } from './spotify-session';
+import { ANOMALY_API_PREFIX } from '../anomalies/config';
 
 // Ce dont la surcouche a besoin pour parler à Spotify ; l'extension et l'APK le fournissent chacun à leur façon.
 export type SpotifyEnv = {
@@ -29,13 +30,15 @@ export type BackgroundDeps = {
 };
 
 const AUTH_PREFIXES = ['https://accounts.spotify.com/authorize?', 'https://login.tidal.com/authorize?'];
-// Le service worker relaie aussi Tidal (catalogue, jeton) et TMDB (films et séries) : même contournement de la CSP du site.
+// Le service worker relaie aussi Tidal (catalogue, jeton), TMDB (films et séries) et GitHub (anomalies) : même contournement de la CSP du site.
 const FETCH_PREFIXES = [
   'https://api.spotify.com/',
   'https://accounts.spotify.com/api/token',
   'https://openapi.tidal.com/v2/',
   'https://auth.tidal.com/v1/oauth2/token',
   'https://api.themoviedb.org/3/',
+  // Anomalies remontées par l'utilisateur : issues de ce dépôt seulement.
+  ANOMALY_API_PREFIX,
 ];
 
 // Côté service worker : ne répond qu'aux messages Spotify, et seulement vers les adresses de Spotify.

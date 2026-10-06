@@ -62,6 +62,8 @@ Identifiant d'extension : `wikimasters-tools-unofficial@maximus49000.github.io` 
 
 Films et séries (TMDB) : créer un fichier `.env.local` à la racine avec `WXT_TMDB_API_KEY=<votre clé TMDB v3>` avant de compiler (extension et APK) ; sans lui, la section n'apparaît pas. Le fichier n'est jamais commité.
 
+Anomalies (menu « Plus » → « Remonter une anomalie ») : ajouter dans `.env.local` `WXT_GITHUB_ISSUES_TOKEN=<jeton GitHub fine-grained limité au dépôt, permission Issues en lecture/écriture>` ; sans lui, l'entrée n'apparaît pas. Chaque anomalie devient une issue du dépôt avec l'étiquette d'état `Nouveau` ; `Analysée`, `Corrigé` et `Livrée <N>` se posent à la main. Le jeton est embarqué dans l'extension (il ne permet que de créer des issues) : à renouveler avant son expiration.
+
 Commandes séparées : `npm run build` (Chrome, dossier `.output/chrome-mv3`), `npm run build:firefox` (`.output/firefox-mv3`), `npm run dev:firefox`. Une nouvelle version = changer `version` dans `package.json` avant `npm run package`.
 
 ## Non vérifié

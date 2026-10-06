@@ -27,6 +27,7 @@ import { LinkedCards, LinkedCardsWindow } from './LinkedCards';
 import { getLinkedService } from './linked-registry';
 import { ImageSettings } from './ImageSettings';
 import { PlayerSettings } from './PlayerSettings';
+import { AnomalyDialog, type AnomalyDialogProps } from './AnomalyDialog';
 import type { PlayerSource } from './player-source';
 import type { ImageService } from '../core/images/image-service';
 import { LoadingGlyph } from './LoadingGlyph';
@@ -198,6 +199,7 @@ export const pruneLinkedCards = linkedSections.prune;
 
 const IMAGE_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-image-settings';
 const PLAYER_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-player-settings';
+const ANOMALY_HOST_ATTRIBUTE = 'data-wmt-anomaly';
 
 // Fenêtre de réglage ouverte depuis le menu « Plus » : hors du DOM du jeu (shadow DOM).
 function openSettingsWindow(hostAttribute: string, render: (close: () => void) => ReactElement): void {
@@ -233,6 +235,9 @@ export const openImageSettings = (images: ImageService): void =>
 
 export const openPlayerSettings = (source: PlayerSource): void =>
   openSettingsWindow(PLAYER_SETTINGS_HOST_ATTRIBUTE, (close) => <PlayerSettings source={source} onClose={close} />);
+
+export const openAnomalyDialog = (props: Omit<AnomalyDialogProps, 'onClose'>): void =>
+  openSettingsWindow(ANOMALY_HOST_ATTRIBUTE, (close) => <AnomalyDialog {...props} onClose={close} />);
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
 
