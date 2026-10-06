@@ -207,12 +207,23 @@ export function placeCards(
 // (les cartes partagées vivent entre deux articles) sans tasser les cartes au-delà de ce que l'écartement sait défaire.
 const hubRoom = (cards: number): number => 0.75 * SPACING * Math.sqrt(cards) + 8;
 
+// Place du plus gros article dans le placement par forces (ordre de grandeur d'une Collection de quelques milliers de cartes).
+const ROOM_REF = 100;
+
 // Les articles de chaque placement rendu par layoutBig : relancé sur ce placement, on ne parcourt pas ses 200 000 cartes pour les retrouver.
 const hubsOfLayout = new WeakMap<Record<string, Point>, Record<string, Point>>();
 
 // Placement du mode grand : les articles par forces (≤ 300 nœuds : coût borné, quel que soit le nombre de cartes), les cartes autour.
 export function layoutBig(graph: WebGraph, previous: Record<string, Point>, model: BigModel): Record<string, Point> {
-  const nodes: LayoutNode[] = graph.hubs.map((hub) => ({ id: hubId(hub.slug), radius: hubRoom(hub.cards.length) }));
+  // Les places des articles sont ramenées à l'échelle d'une Collection moyenne (le plus gros article : au plus ROOM_REF) avant le placement
+  // par forces, puis le résultat est agrandi d'autant. Sans cela, à 200 000 cartes, les places (des centaines d'unités) écrasent les
+  // ressorts et la répulsion (réglés en dizaines d'unités) : le placement devient un empilement de billes et les thèmes se mélangent.
+  // Échelle en puissance de deux : diviser puis multiplier est exact (une toile relancée retrouve ses articles au bit près), et elle ne
+  // change que lorsque le plus gros article a quadruplé.
+  let biggest = 0;
+  for (const hub of graph.hubs) biggest = Math.max(biggest, hubRoom(hub.cards.length));
+  const scale = 2 ** Math.max(0, Math.ceil(Math.log2(biggest / ROOM_REF)));
+  const nodes: LayoutNode[] = graph.hubs.map((hub) => ({ id: hubId(hub.slug), radius: hubRoom(hub.cards.length) / scale }));
   const edges: [string, string][] = [
     ...model.edges.map((edge): [string, string] => [hubId(edge.a), hubId(edge.b)]),
     ...(graph.hubLinks ?? []).map(([a, b]): [string, string] => [hubId(a), hubId(b)]),
@@ -223,7 +234,13 @@ export function layoutBig(graph: WebGraph, previous: Record<string, Point>, mode
     hubPrevious = {};
     for (const id in previous) if (id.startsWith('h:')) hubPrevious[id] = previous[id]!;
   }
-  const hubs = nodes.length === 0 ? {} : layoutWeb(nodes, edges, hubPrevious);
+  const scaledPrevious: Record<string, Point> = {};
+  for (const id in hubPrevious) scaledPrevious[id] = { x: hubPrevious[id]!.x / scale, y: hubPrevious[id]!.y / scale };
+  const hubs: Record<string, Point> = {};
+  if (nodes.length > 0) {
+    const placed = layoutWeb(nodes, edges, scaledPrevious);
+    for (const id in placed) hubs[id] = { x: placed[id]!.x * scale, y: placed[id]!.y * scale };
+  }
   // Si la toile des articles a redémarré de zéro (filtre, beaucoup d'articles en moins ou en plus), certains articles ont bougé :
   // les anciennes places des cartes ne valent plus rien, on les recalcule autour des nouveaux articles.
   const restarted = Object.entries(hubPrevious).some(([id, before]) => {

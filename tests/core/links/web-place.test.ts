@@ -144,6 +144,31 @@ describe('layoutBig', () => {
     expect(sweepMin(positions, 'c:')).toBeGreaterThanOrEqual(MIN_DIST * 0.9);
   });
 
+  it("regroupe les articles d'un même thème même quand ils sont très gros (territoires)", () => {
+    // 6 familles de 20 articles, 30 000 cartes : chaque carte cite trois articles de sa famille, une sur quatre un article d'une autre.
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const hubs: Record<string, Set<string>> = {};
+    const cite = (hub: string, slug: string) => (hubs[hub] ??= new Set()).add(slug);
+    for (let i = 0; i < 30000; i++) {
+      const family = i % 6;
+      for (let n = 0; n < 3; n++) cite(`F${family}-${Math.floor(rnd() * rnd() * 20)}`, `c${i}`);
+      if (rnd() < 0.25) cite(`F${(family + 1 + Math.floor(rnd() * 5)) % 6}-${Math.floor(rnd() * rnd() * 20)}`, `c${i}`);
+    }
+    const g = graph(Object.fromEntries(Object.entries(hubs).sort(([, a], [, b]) => b.size - a.size).map(([slug, set]) => [slug, [...set]])));
+    const positions = layoutBig(g, {}, buildBigModel(g));
+    const spread = (ids: string[]) => {
+      const list = ids.map((id) => positions[id]!);
+      const x = list.reduce((a, p) => a + p.x, 0) / list.length;
+      const y = list.reduce((a, p) => a + p.y, 0) / list.length;
+      return Math.sqrt(list.reduce((a, p) => a + (p.x - x) ** 2 + (p.y - y) ** 2, 0) / list.length);
+    };
+    const all = spread(g.hubs.map((hub) => `h:${hub.slug}`));
+    const families = Array.from({ length: 6 }, (_, f) => spread(g.hubs.filter((hub) => hub.slug.startsWith(`F${f}-`)).map((hub) => `h:${hub.slug}`)));
+    // Chaque famille occupe son territoire : nettement moins étalée que l'ensemble des articles.
+    expect(families.reduce((a, b) => a + b, 0) / families.length / all).toBeLessThan(0.6);
+  });
+
   it('relancé sur son propre placement, donne la même chose que sur une copie (articles retrouvés sans parcourir les cartes)', () => {
     const wide = hubsGraph(10);
     const first = layoutBig(wide, {}, buildBigModel(wide));
