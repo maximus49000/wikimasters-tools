@@ -2,7 +2,12 @@
 // `candidates` les autres images proposées par la recherche, `rejected` celles écartées par « Mauvaise image »,
 // `art` : la pochette / l'affiche officielle (Spotify, TMDB) a été trouvée et placée en tête : on ne la redemande plus.
 // `artCheckedAt` : (ms) la source officielle a répondu qu'elle n'avait rien ; on ne la redemande qu'au bout de 30 jours.
-export type CardImage = { url: string | null; candidates: string[]; rejected: string[]; art?: true; artCheckedAt?: number };
+// `artV` : version des sources officielles qui ont répondu « rien » ; une source ajoutée depuis (jeux vidéo…) relance la vérification,
+// car les images des API passent toujours devant les images de remplacement.
+export type CardImage = { url: string | null; candidates: string[]; rejected: string[]; art?: true; artCheckedAt?: number; artV?: number };
+
+// À augmenter quand une source officielle est ajoutée (1 : Spotify, TMDB ; 2 : jeux vidéo).
+export const ART_VERSION = 2;
 
 // Clé : slug de l'article Wikipédia.
 export type ImageState = Record<string, CardImage>;
@@ -14,14 +19,14 @@ export const pickImage = (candidates: string[], rejected: string[]): string | nu
   candidates.find((url) => !rejected.includes(url)) ?? null;
 
 export function setFound(state: ImageState, slug: string, candidates: string[], art = false, artCheckedAt?: number): ImageState {
-  const checked = !art && artCheckedAt !== undefined ? { artCheckedAt } : {};
+  const checked = !art && artCheckedAt !== undefined ? { artCheckedAt, artV: ART_VERSION } : {};
   return { ...state, [slug]: { url: pickImage(candidates, []), candidates, rejected: [], ...(art ? { art: true as const } : {}), ...checked } };
 }
 
 // La source officielle a répondu « rien » (ou sa pochette a été écartée) : on date la recherche sans toucher à l'image.
 export function markArtChecked(state: ImageState, slug: string, at: number): ImageState {
   const known = state[slug];
-  return known ? { ...state, [slug]: { ...known, artCheckedAt: at } } : state;
+  return known ? { ...state, [slug]: { ...known, artCheckedAt: at, artV: ART_VERSION } } : state;
 }
 
 // Pochette officielle trouvée après coup : elle passe en tête, sauf si elle a déjà été écartée par « Mauvaise image ».

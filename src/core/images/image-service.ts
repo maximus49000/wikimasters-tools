@@ -1,6 +1,6 @@
 import type { KeyValueStore } from '../cache/store';
 import { MAX_CANDIDATES } from './card-image-search';
-import { addCandidates, EMPTY_IMAGES, markArtChecked, promoteArt, rejectCurrent, setFound, type ImageState } from './image-book';
+import { ART_VERSION, addCandidates, EMPTY_IMAGES, markArtChecked, promoteArt, rejectCurrent, setFound, type ImageState } from './image-book';
 
 const KEY = 'card-images';
 const SETTING_KEY = 'wmt:imageReplace';
@@ -147,7 +147,7 @@ export function createImageService(deps: {
         // n'a jamais répondu ou si sa réponse « rien » date de plus de 30 jours ; après un échec, une fois par minute au plus.
         const at = artTriedAt.get(slug);
         const checkedAt = known.artCheckedAt;
-        if (!deps.art || (at !== undefined && now() - at < COOLDOWN_MS) || (checkedAt !== undefined && now() - checkedAt < ART_RECHECK_MS)) {
+        if (!deps.art || (at !== undefined && now() - at < COOLDOWN_MS) || (checkedAt !== undefined && known.artV === ART_VERSION && now() - checkedAt < ART_RECHECK_MS)) {
           return Promise.resolve();
         }
         artTriedAt.set(slug, now());

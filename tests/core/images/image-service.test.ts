@@ -181,6 +181,14 @@ describe('mémorisation de la recherche de pochette', () => {
     expect(art).toHaveBeenCalledTimes(2);
   });
 
+  it("une réponse « rien » d'une ancienne version des sources (sans jeux vidéo…) est revérifiée tout de suite : les images des API passent d'abord", async () => {
+    const art = vi.fn<ArtFn>(async () => ['steam']);
+    const { build, store } = setupArt({ art });
+    await store.set('card-images', { A: { url: 'faux', candidates: ['faux'], rejected: [], artCheckedAt: 1_000_000 } });
+    expect(await build().resolve('A', 'A')).toBe('steam');
+    expect(art).toHaveBeenCalledTimes(1);
+  });
+
   it("une revérification qui ne trouve toujours rien est mémorisée pour 30 jours de plus", async () => {
     const art = vi.fn<ArtFn>(async () => []);
     const { build, clock } = setupArt({ art });

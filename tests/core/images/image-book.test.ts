@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { addCandidates, markArtChecked, rejectCurrent, setFound } from '../../../src/core/images/image-book';
+import { ART_VERSION, addCandidates, markArtChecked, rejectCurrent, setFound } from '../../../src/core/images/image-book';
 
 describe('image-book', () => {
   it('mémorise le moment où la pochette officielle a été cherchée sans rien trouver', () => {
-    expect(setFound({}, 'A', ['u1'], false, 5_000).A).toEqual({ url: 'u1', candidates: ['u1'], rejected: [], artCheckedAt: 5_000 });
+    expect(setFound({}, 'A', ['u1'], false, 5_000).A).toEqual({ url: 'u1', candidates: ['u1'], rejected: [], artCheckedAt: 5_000, artV: ART_VERSION });
     // Pochette trouvée : elle est gardée pour toujours, inutile de dater une recherche.
     expect(setFound({}, 'A', ['u1'], true, 5_000).A).toEqual({ url: 'u1', candidates: ['u1'], rejected: [], art: true });
   });
   it("date une recherche de pochette sans toucher à l'image de la carte", () => {
-    expect(markArtChecked(setFound({}, 'A', ['u1']), 'A', 7_000).A).toEqual({ url: 'u1', candidates: ['u1'], rejected: [], artCheckedAt: 7_000 });
+    expect(markArtChecked(setFound({}, 'A', ['u1']), 'A', 7_000).A).toEqual({ url: 'u1', candidates: ['u1'], rejected: [], artCheckedAt: 7_000, artV: ART_VERSION });
     expect(markArtChecked({}, 'B', 1)).toEqual({});
   });
   it('affiche le premier candidat', () => {
