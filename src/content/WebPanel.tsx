@@ -9,13 +9,17 @@ import { CARD_SIZE, buildWeb, cardId, hubId, hubRadius, neighborhood, webEdges, 
 import { chooseLabels, shortTitle } from '../core/links/web-labels';
 import { withPath } from '../core/links/web-path-graph';
 import { createLayout, samePositions, type Point } from '../core/links/web-layout';
-import { ZOOM_STEP, boundsOf, fitTransform, pinch, placeActions, zoomAt, type Transform } from '../core/links/web-view';
+import { layoutBig } from '../core/links/web-place';
+import { BIG_GRAPH, buildScene } from '../core/links/web-scene';
+import { buildBigModel } from '../core/links/web-themes';
+import { BIG_LIMITS, DEFAULT_LIMITS, ZOOM_STEP, boundsOf, fitTransform, pinch, placeActions, zoomAt, type Transform } from '../core/links/web-view';
 import type { CollectionFilterSource } from './collection-filter';
 import { getImageService } from './image-registry';
 import type { KindFilterSource } from './kind-filter';
 import { createThrottledLoader } from './throttle';
 import { useFilteredCards } from './useFilteredCards';
 import { WebPathBar } from './WebPathBar';
+import { WebCanvas } from './WebCanvas';
 import type { PathRequest } from './selection-source';
 
 type Props = {
@@ -231,7 +235,8 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   const [view, setView] = useState<Transform | null>(null);
   const [size, setSize] = useState({ width: 1000, height: 700 });
   const [positions, setPositions] = useState<Record<string, Point>>({});
-  const svgRef = useRef<SVGSVGElement>(null);
+  // La zone de la toile (SVG ou canvas) : sa taille et l'origine des gestes.
+  const areaRef = useRef<HTMLDivElement>(null);
 
   // Les images de remplacement (option « Images de remplacement ») qui arrivent pendant qu'on regarde la toile.
   const imageService = getImageService();
@@ -274,6 +279,14 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
     const web = buildWeb(cards, linksState, visible);
     return path ? withPath(web, cards, linksState, path) : web;
   }, [cards, linksState, visible, path]);
+  // Au-delà de BIG_GRAPH cartes reliées, la toile est un canvas : thèmes, placement en deux niveaux, niveaux de détail.
+  const bigModel = useMemo(() => (graph.cards.length > BIG_GRAPH ? buildBigModel(graph) : null), [graph]);
+  const limits = bigModel ? BIG_LIMITS : DEFAULT_LIMITS;
+  // L'effet de la molette est posé une seule fois : il lit les limites du moment dans cette référence.
+  const limitsRef = useRef(limits);
+  limitsRef.current = limits;
+  // Posé par le canvas (mode grand) : redessine la toile avec un cadrage donné, pendant un geste.
+  const drawRef = useRef<((t: Transform) => void) | null>(null);
   // Une liaison trouvée : la toile est recadrée pour la montrer en entier.
   useEffect(() => {
     if (path) setView(null);
@@ -282,6 +295,13 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   // Le placement se calcule par petites tranches (la page reste fluide) et repart du précédent : la toile se complète sans tout rebattre.
   const previous = useRef<Record<string, Point>>({});
   useEffect(() => {
+    if (bigModel) {
+      // Mode grand : peu d'articles à placer par forces, les cartes suivent ; un seul passage, pas de tranches.
+      const next = layoutBig(graph, previous.current, bigModel);
+      previous.current = next;
+      setPositions((current) => (samePositions(current, next) ? current : next));
+      return;
+    }
     const layout = createLayout(webNodes(graph), webEdges(graph), previous.current);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let published = 0;
@@ -304,16 +324,16 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [graph]);
+  }, [graph, bigModel]);
 
   const transform = useMemo(
     () => {
       if (view) return view;
       // Une liaison cherchée : la toile est cadrée sur elle, pas sur les milliers de cartes autour.
       const route = graph.path ? [...graph.path.ids].flatMap((id) => positions[id] ?? []) : [];
-      return fitTransform(boundsOf(route.length > 0 ? route : Object.values(positions)), size.width, size.height);
+      return fitTransform(boundsOf(route.length > 0 ? route : Object.values(positions)), size.width, size.height, 48, limits);
     },
-    [view, positions, size, graph.path],
+    [view, positions, size, graph.path, limits],
   );
   // Pendant un geste, le cadrage « vivant » est posé directement sur le DOM (une fois par image) ; React ne le reçoit qu'à la fin du geste.
   const live = useRef<Transform | null>(null);
@@ -326,11 +346,16 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   const sizeRef = useRef(size);
   sizeRef.current = size;
   const applyLive = (next: Transform) => {
-    const group = groupRef.current;
-    group?.setAttribute('transform', `translate(${next.x} ${next.y}) scale(${next.k})`);
-    // Écrire `--k` refait le style de chaque nœud (des milliers) : seulement quand le zoom change, pas en glissant.
-    const zoom = String(next.k);
-    if (group && group.style.getPropertyValue('--k') !== zoom) group.style.setProperty('--k', zoom);
+    if (drawRef.current) {
+      // Mode grand : le canvas se redessine d'après le cadrage vivant.
+      drawRef.current(next);
+    } else {
+      const group = groupRef.current;
+      group?.setAttribute('transform', `translate(${next.x} ${next.y}) scale(${next.k})`);
+      // Écrire `--k` refait le style de chaque nœud (des milliers) : seulement quand le zoom change, pas en glissant.
+      const zoom = String(next.k);
+      if (group && group.style.getPropertyValue('--k') !== zoom) group.style.setProperty('--k', zoom);
+    }
     const point = pickedPointRef.current;
     if (toolbarRef.current && point) {
       const at = placeActions({ x: next.x + point.x * next.k, y: next.y + point.y * next.k }, (CARD_SIZE / 2) * Math.min(next.k, 1), sizeRef.current);
@@ -361,7 +386,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   // Taille réelle de la zone (pixels écran) : le dessin et les gestes se calculent dans la même unité.
   useLayoutEffect(() => {
     const measure = () => {
-      const rect = svgRef.current?.getBoundingClientRect();
+      const rect = areaRef.current?.getBoundingClientRect();
       if (rect && rect.width > 0 && rect.height > 0) setSize({ width: rect.width, height: rect.height });
     };
     measure();
@@ -371,16 +396,16 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
 
   // Ctrl + molette (ou pincer du pavé tactile) : zoom ; la molette seule fait défiler la page.
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
+    const area = areaRef.current;
+    if (!area) return;
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      const rect = svg.getBoundingClientRect();
-      setView(zoomAt(transformRef.current, event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, event.clientX - rect.left, event.clientY - rect.top));
+      const rect = area.getBoundingClientRect();
+      setView(zoomAt(transformRef.current, event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, event.clientX - rect.left, event.clientY - rect.top, limitsRef.current));
     };
-    svg.addEventListener('wheel', onWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', onWheel);
+    area.addEventListener('wheel', onWheel, { passive: false });
+    return () => area.removeEventListener('wheel', onWheel);
   }, []);
 
   // Glisser (un doigt ou la souris) et pincer (deux doigts) ; un geste qui a bougé ne compte pas comme un toucher.
@@ -388,19 +413,19 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   const gesture = useRef<{ start: Transform; from: Point[]; moved: boolean } | null>(null);
   const dragged = useRef(false);
   const local = (event: { clientX: number; clientY: number }): Point => {
-    const rect = svgRef.current?.getBoundingClientRect();
+    const rect = areaRef.current?.getBoundingClientRect();
     return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
   };
   const restart = () => {
     gesture.current = pointers.current.size > 0 ? { start: transformRef.current, from: [...pointers.current.values()], moved: false } : null;
   };
-  const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const onPointerDown = (event: ReactPointerEvent<Element>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     if (pointers.current.size === 0) dragged.current = false;
     pointers.current.set(event.pointerId, local(event));
     restart();
   };
-  const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const onPointerMove = (event: ReactPointerEvent<Element>) => {
     const current = gesture.current;
     if (!current || !pointers.current.has(event.pointerId)) return;
     pointers.current.set(event.pointerId, local(event));
@@ -412,7 +437,7 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
     if (now.length >= 2 && current.from.length >= 2) {
       dragged.current = true;
       freeze();
-      moveLive(pinch(current.start, [current.from[0] as Point, current.from[1] as Point], [now[0] as Point, now[1] as Point]));
+      moveLive(pinch(current.start, [current.from[0] as Point, current.from[1] as Point], [now[0] as Point, now[1] as Point], limitsRef.current));
     } else if (now.length === 1 && current.from.length === 1) {
       const dx = (now[0] as Point).x - (current.from[0] as Point).x;
       const dy = (now[0] as Point).y - (current.from[0] as Point).y;
@@ -423,14 +448,14 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
       moveLive({ ...current.start, x: current.start.x + dx, y: current.start.y + dy });
     }
   };
-  const onPointerEnd = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const onPointerEnd = (event: ReactPointerEvent<Element>) => {
     if (!pointers.current.has(event.pointerId)) return;
     commitLive();
     pointers.current.delete(event.pointerId);
     restart();
   };
 
-  const zoomBy = (factor: number) => setView(zoomAt(transform, factor, size.width / 2, size.height / 2));
+  const zoomBy = (factor: number) => setView(zoomAt(transform, factor, size.width / 2, size.height / 2, limits));
 
   // Identité stable : sinon `WebGraphView` (mémoïsée) se redessinerait à chaque glissement.
   // Toucher un nœud fige le cadrage : la lecture des liens continue, la toile ne doit pas glisser sous le doigt.
@@ -448,10 +473,12 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   }, []);
 
   const lighting = useMemo(() => {
+    // Mode grand : le canvas met lui-même en avant l'article ou la carte touchés.
+    if (bigModel) return graph.path ? { focusId: null, lit: graph.path.ids } : null;
     const active: Focus | null = picked ? { kind: 'card', slug: picked } : focus;
     if (active) return neighborhood(graph, active);
     return graph.path ? { focusId: null, lit: graph.path.ids } : null;
-  }, [graph, focus, picked]);
+  }, [graph, focus, picked, bigModel]);
 
   // Échap referme la barre d'actions.
   useEffect(() => {
@@ -475,51 +502,99 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
       : null;
 
   const focusedHub = focus?.kind === 'hub' ? graph.hubs.find((hub) => hub.slug === focus.slug) : undefined;
-  const titleOf = (slug: string) => cards.find((card) => card.slug === slug)?.title ?? slug;
+  // Accès direct au titre et à la carte : un article peut relier des milliers de cartes, parmi des centaines de milliers.
+  const bySlug = useMemo(() => new Map(cards.map((card) => [card.slug, card])), [cards]);
+  const titleOf = (slug: string) => bySlug.get(slug)?.title ?? slug;
   const read = cards.length - cards.filter((card) => needsLinksLookup(linksState, card.slug, Date.now())).length;
   const zoomStep = Math.round(Math.log2(transform.k) * LABEL_STEPS_PER_OCTAVE);
   const labelled = useMemo(
-    () => chooseLabels(graph, positions, lighting?.lit ?? null, 2 ** (zoomStep / LABEL_STEPS_PER_OCTAVE)),
-    [graph, positions, lighting, zoomStep],
+    () => (bigModel ? new Set<string>() : chooseLabels(graph, positions, lighting?.lit ?? null, 2 ** (zoomStep / LABEL_STEPS_PER_OCTAVE))),
+    [graph, positions, lighting, zoomStep, bigModel],
   );
+
+  const scene = useMemo(() => (bigModel ? buildScene(graph, positions, bigModel) : null), [bigModel, graph, positions]);
+  // Les traits du chemin cherché entre deux cartes, pour le canvas.
+  const route = useMemo(
+    () =>
+      [...(graph.path?.edges ?? [])].flatMap((key) => {
+        const [a, b] = key.split('\u0000');
+        const from = a ? positions[a] : undefined;
+        const to = b ? positions[b] : undefined;
+        return from && to ? [[from, to] as const] : [];
+      }),
+    [graph.path, positions],
+  );
+  // Identité stable : le canvas ne se redessine pas à chaque rendu du panneau.
+  const canvasImageOf = useCallback(
+    (slug: string) => {
+      const card = bySlug.get(slug);
+      return card ? imageOf(card) : undefined;
+    },
+    [bySlug, imageOf],
+  );
+  // Les gestes, communs au SVG et au canvas.
+  const surface = {
+    onPointerDown,
+    onPointerMove,
+    onPointerUp: onPointerEnd,
+    onPointerCancel: onPointerEnd,
+    onPointerLeave: onPointerEnd,
+  };
+  const background = () => {
+    setFocus(null);
+    setPicked(null);
+  };
 
   return (
     <div data-wmt-web="" style={{ ...box, padding: 12, margin: '12px 0' }}>
       <WebPathBar cards={cards} links={links} onPath={setPath} initial={request} />
-      <div style={{ position: 'relative', height: '70vh', minHeight: 420, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--color-border, rgba(148,163,184,0.25))' }}>
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${size.width} ${size.height}`}
-          width="100%"
-          height="100%"
-          role="group"
-          aria-label="Toile des cartes de la Collection"
-          style={{ display: 'block', touchAction: 'none', userSelect: 'none', cursor: 'grab' }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerEnd}
-          onPointerCancel={onPointerEnd}
-          onPointerLeave={onPointerEnd}
-          onClick={() => {
-            if (dragged.current) return;
-            setFocus(null);
-            setPicked(null);
-          }}
-        >
-          <g ref={groupRef} transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`} style={{ '--k': transform.k } as CSSProperties}>
-            <WebGraphView
-              graph={graph}
-              positions={positions}
-              focusId={lighting?.focusId ?? null}
-              lit={lighting?.lit ?? null}
-              images={transform.k >= IMAGE_ZOOM}
-              labelled={labelled}
-              imageOf={imageOf}
-              onCard={onCard}
-              onHub={onHub}
-            />
-          </g>
-        </svg>
+      <div ref={areaRef} style={{ position: 'relative', height: '70vh', minHeight: 420, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--color-border, rgba(148,163,184,0.25))' }}>
+        {scene ? (
+          <WebCanvas
+            scene={scene}
+            focus={focus}
+            picked={picked}
+            route={route}
+            imageOf={canvasImageOf}
+            size={size}
+            transform={transform}
+            drawRef={drawRef}
+            liveTransform={() => transformRef.current}
+            dragged={() => dragged.current}
+            onCard={onCard}
+            onHub={onHub}
+            onBackground={background}
+            surface={surface}
+          />
+        ) : (
+          <svg
+            viewBox={`0 0 ${size.width} ${size.height}`}
+            width="100%"
+            height="100%"
+            role="group"
+            aria-label="Toile des cartes de la Collection"
+            style={{ display: 'block', touchAction: 'none', userSelect: 'none', cursor: 'grab' }}
+            {...surface}
+            onClick={() => {
+              if (dragged.current) return;
+              background();
+            }}
+          >
+            <g ref={groupRef} transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`} style={{ '--k': transform.k } as CSSProperties}>
+              <WebGraphView
+                graph={graph}
+                positions={positions}
+                focusId={lighting?.focusId ?? null}
+                lit={lighting?.lit ?? null}
+                images={transform.k >= IMAGE_ZOOM}
+                labelled={labelled}
+                imageOf={imageOf}
+                onCard={onCard}
+                onHub={onHub}
+              />
+            </g>
+          </svg>
+        )}
         <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button type="button" aria-label="Zoomer" title="Zoomer (Ctrl + molette)" onClick={() => zoomBy(ZOOM_STEP)} style={glyphButton}>
             +
@@ -579,7 +654,8 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
       </div>
       {focusedHub && (
         <p style={{ margin: '8px 0 0', fontSize: 13 }}>
-          <strong>{focusedHub.title}</strong> relie {focusedHub.cards.length} cartes : {focusedHub.cards.map(titleOf).join(', ')}.
+          <strong>{focusedHub.title}</strong> relie {focusedHub.cards.length} cartes : {focusedHub.cards.slice(0, 30).map(titleOf).join(', ')}
+          {focusedHub.cards.length > 30 ? ` et ${focusedHub.cards.length - 30} autres` : ''}.
         </p>
       )}
       <p style={{ margin: '8px 0 0', opacity: 0.7, fontSize: 12 }}>

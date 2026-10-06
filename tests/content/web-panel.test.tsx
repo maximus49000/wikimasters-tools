@@ -206,3 +206,23 @@ describe('WebPanel, toucher un point', () => {
     expect(opacity(card('Air'))).toBe('1');
   });
 });
+
+describe('WebPanel en mode grand', () => {
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  // jsdom ne dessine pas : sans contexte 2D, le canvas ne dessine rien (sans planter).
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContext;
+  });
+
+  it('dessine un canvas (et plus de SVG de nœuds) au-delà de 1500 cartes reliées', async () => {
+    const many: KnownCard[] = Array.from({ length: 1600 }, (_, i) => ({ slug: `Carte_${i}`, title: `Carte ${i}` }));
+    const state = setLinks(EMPTY_LINKS, Object.fromEntries(many.map((c) => [c.slug, ['Pop', 'Rock']])), Date.now());
+    await mount(state, false, many);
+    expect(container.querySelector('canvas')).not.toBeNull();
+    expect(container.querySelectorAll('[data-card]')).toHaveLength(0);
+    expect(container.textContent).toContain('1600 cartes reliées');
+  });
+});
