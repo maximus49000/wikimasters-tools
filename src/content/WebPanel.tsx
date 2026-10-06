@@ -318,8 +318,11 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   const sizeRef = useRef(size);
   sizeRef.current = size;
   const applyLive = (next: Transform) => {
-    groupRef.current?.setAttribute('transform', `translate(${next.x} ${next.y}) scale(${next.k})`);
-    groupRef.current?.style.setProperty('--k', String(next.k));
+    const group = groupRef.current;
+    group?.setAttribute('transform', `translate(${next.x} ${next.y}) scale(${next.k})`);
+    // Écrire `--k` refait le style de chaque nœud (des milliers) : seulement quand le zoom change, pas en glissant.
+    const zoom = String(next.k);
+    if (group && group.style.getPropertyValue('--k') !== zoom) group.style.setProperty('--k', zoom);
     const point = pickedPointRef.current;
     if (toolbarRef.current && point) {
       const at = placeActions({ x: next.x + point.x * next.k, y: next.y + point.y * next.k }, (CARD_SIZE / 2) * Math.min(next.k, 1), sizeRef.current);
