@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { notesSince } from './release-notes.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const sh = (cmd, args, options = {}) =>
@@ -21,7 +22,7 @@ const out = (cmd, args) => {
 
 if (out('git', ['branch', '--show-current']) !== 'main') fail('Lancer depuis la branche main.');
 if (out('git', ['status', '--porcelain'])) fail('Arbre de travail non propre : valider ou écarter les changements.');
-if (sh('git', ['fetch', '--prune', 'origin'], { stdio: 'ignore' }).status !== 0) fail('git fetch a échoué.');
+if (sh('git', ['fetch', '--prune', '--tags', 'origin'], { stdio: 'ignore' }).status !== 0) fail('git fetch a échoué.');
 if (out('git', ['rev-parse', 'HEAD']) !== out('git', ['rev-parse', 'origin/main'])) fail('main local différent de origin/main : synchroniser d’abord.');
 
 const build = sh(process.execPath, ['scripts/build-apk.mjs', '--channel=preprod'], { shell: false });
@@ -39,7 +40,7 @@ const created = sh('gh', [
   '--prerelease',
   '--latest=false',
   '--title', `Pré-production ${versionName} (${versionCode})`,
-  '--notes', `Pré-production : ${out('git', ['rev-parse', '--short', 'HEAD'])}. Réservée aux testeurs.`,
+  '--notes', notesSince(root, 'preprod-', 'Améliorations et corrections diverses.'),
 ], { stdio: 'inherit' });
 if (created.status !== 0) fail('Création de la pre-release échouée.');
 
