@@ -19,7 +19,8 @@ import {
 import { PurchaseBadge } from './PurchaseBadge';
 import { HistoryBadge } from './HistoryBadge';
 import { ListenSection } from './ListenSection';
-import { IMAGE_HOST_ATTRIBUTE, LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, type MountListen } from './decorate-listen';
+import { GAME_HOST_ATTRIBUTE, IMAGE_HOST_ATTRIBUTE, LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, type MountListen } from './decorate-listen';
+import { GameSection } from './GameSection';
 import { ScreenSection } from './ScreenSection';
 import { ImageSection } from './ImageSection';
 import { LINKED_HOST_ATTRIBUTE, type MountLinked } from './decorate-linked';
@@ -163,6 +164,10 @@ export const pruneListenSections = listenSections.prune;
 const screenSections = createNativeSections(SCREEN_HOST_ATTRIBUTE, '0', (slug, title) => <ScreenSection slug={slug} title={title} />);
 export const mountScreenSection: MountListen = screenSections.mount;
 export const pruneScreenSections = screenSections.prune;
+
+const gameSections = createNativeSections(GAME_HOST_ATTRIBUTE, '0', (slug, title) => <GameSection slug={slug} title={title} />);
+export const mountGameSection: MountListen = gameSections.mount;
+export const pruneGameSections = gameSections.prune;
 
 const imageSections = createNativeSections(IMAGE_HOST_ATTRIBUTE, '0', (slug, title) => <ImageSection slug={slug} title={title} />);
 export const mountImageSection: MountListen = imageSections.mount;
