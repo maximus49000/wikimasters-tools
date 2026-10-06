@@ -184,8 +184,18 @@ export function createCollectionScanner({
       let counts: Record<string, number> = {};
       if (page > 0) {
         const staged = await store.get<StagedCounts>(COUNTS_KEY);
-        if (staged?.nextPage === page) counts = staged.counts;
-        else {
+        if (staged?.nextPage === page) {
+          counts = staged.counts;
+          // Les cartes obtenues depuis le début de ce parcours sont en page 0, que la reprise ne relit pas : on la relit d'abord
+          // pour qu'une carte achetée pendant l'interruption ait sa rareté, ses stats et sa date. Les nombres restent ceux du parcours.
+          await write(snapshot('running'));
+          const head = await api.getCollectionPage(0, undefined, 'added');
+          pageSize = Math.max(pageSize, head.entries);
+          await collection.observe(head.cards.map(({ copies: _copies, ...rest }) => rest), false);
+          // Une carte absente des nombres déjà comptés est nouvelle : sans cela, la fin du parcours la retirerait comme « vendue ».
+          for (const { slug, copies } of head.cards) if (!(slug in counts)) counts[slug] = copies ?? 1;
+          for (const row of head.obtained ?? []) pending = newest(pending, row.at);
+        } else {
           page = 0;
           entries = 0;
           pending = undefined;

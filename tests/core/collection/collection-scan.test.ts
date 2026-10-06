@@ -207,7 +207,7 @@ describe('createCollectionScanner', () => {
       getCollectionPage.mockImplementation(async (index: number) => (index === 1 ? dated(['B', 10]) : EMPTY));
       await scanner.run();
 
-      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([1, 2]);
+      expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1, 2]);
       expect(await scanner.state()).toMatchObject({ status: 'done', lastObtainedAt: 30 });
     });
 
@@ -304,9 +304,28 @@ describe('createCollectionScanner', () => {
     getCollectionPage.mockImplementation(async (index: number) => (index === 1 ? page('B') : EMPTY));
     await scanner.run();
 
-    expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([1, 2]);
+    expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1, 2]);
     expect((await collection.list()).map((c) => c.slug).sort()).toEqual(['A', 'B']);
     expect(await scanner.state()).toMatchObject({ status: 'done' });
+  });
+
+  it('une reprise relit d’abord la page 0 : une carte obtenue pendant l’interruption reçoit sa rareté, sa date et garde ses nombres', async () => {
+    const { scanner, collection, getCollectionPage } = setup([]);
+    const old: CollectionPage = { cards: [{ slug: 'A', title: 'A', copies: 1 }], obtained: [{ slug: 'A', at: 10 }], entries: 1, skipped: 0 };
+    getCollectionPage.mockImplementation(async (index: number) => {
+      if (index === 0) return old;
+      throw new Error('réseau');
+    });
+    await scanner.run({ force: true });
+    getCollectionPage.mockImplementation(async (index: number) =>
+      index === 0
+        ? { cards: [{ slug: 'N', title: 'N', rarity: 'SR', copies: 1, obtainedAt: 50 }, ...old.cards], obtained: [{ slug: 'N', at: 50 }, { slug: 'A', at: 10 }], entries: 2, skipped: 0 }
+        : EMPTY,
+    );
+    await scanner.run();
+    const neuve = (await collection.list()).find((c) => c.slug === 'N');
+    expect(neuve).toMatchObject({ rarity: 'SR', obtainedAt: 50 });
+    expect(await scanner.state()).toMatchObject({ status: 'done', lastObtainedAt: 50 });
   });
 
   it('laisse un scan récent d’un autre onglet tranquille, mais reprend un scan périmé', async () => {
@@ -322,7 +341,7 @@ describe('createCollectionScanner', () => {
     await b.store.set('collectionScan', stale);
     await b.store.set('collectionScanCounts', { nextPage: 4, counts: {} });
     await b.scanner.run();
-    expect(b.getCollectionPage.mock.calls[0]?.[0]).toBe(4);
+    expect(b.getCollectionPage.mock.calls.map(([index]) => index).slice(0, 2)).toEqual([0, 4]);
   });
 
   it('ne lance pas deux parcours en même temps dans le même onglet', async () => {
@@ -420,7 +439,7 @@ describe('createCollectionScanner', () => {
       t.setClock(1_000_000 + 51_000);
       t.scheduled[0]?.fn();
       await vi.waitFor(async () => expect(await t.scanner.state()).toMatchObject({ status: 'done' }));
-      expect(t.getCollectionPage.mock.calls[0]?.[0]).toBe(4);
+      expect(t.getCollectionPage.mock.calls.map(([index]) => index).slice(0, 2)).toEqual([0, 4]);
     });
   });
 });
