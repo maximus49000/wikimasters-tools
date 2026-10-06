@@ -18,6 +18,7 @@ import { getImageService } from './image-registry';
 import type { KindFilterSource } from './kind-filter';
 import { createThrottledLoader } from './throttle';
 import { useFilteredCards } from './useFilteredCards';
+import { useThrottledValue } from './useThrottledValue';
 import { WebPathBar } from './WebPathBar';
 import { WebCanvas } from './WebCanvas';
 import type { PathRequest } from './selection-source';
@@ -52,6 +53,10 @@ const FADED = 0.2;
 const IMAGE_ZOOM = 0.45;
 // Les noms se choisissent par paliers de zoom (6 par octave) : zoomer en continu ne les recalcule pas à chaque pas.
 const LABEL_STEPS_PER_OCTAVE = 6;
+// Mode grand : la toile suit les liens qui arrivent au plus une fois par fenêtre, d'au moins 2 s et d'au moins 4 fois la durée de la
+// dernière reconstruction (graphe, thèmes, placement, scène) : la page reste utilisable pendant la lecture (des minutes à 200 000 cartes).
+const GRAPH_MIN_WINDOW_MS = 2000;
+const GRAPH_WINDOW_FACTOR = 4;
 
 const box = {
   border: '1px solid var(--color-border, rgba(148,163,184,0.35))',
@@ -263,11 +268,25 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   }, [links]);
 
   // Lecture des liens : les cartes affichées d'abord, puis le reste de la Collection ; nouvel essai régulier après un échec.
+  // Un seul passage sur les cartes (pas de copie de la Collection) ; la liste garde son identité tant qu'elle ne change pas,
+  // pour ne pas relancer l'essai régulier pour rien.
+  const lastMissing = useRef<string[]>([]);
   const missing = useMemo(() => {
     const now = Date.now();
-    const ordered = visible ? [...cards.filter((card) => visible.has(card.slug)), ...cards.filter((card) => !visible.has(card.slug))] : cards;
-    return ordered.filter((card) => needsLinksLookup(linksState, card.slug, now)).map((card) => card.slug);
+    const shown: string[] = [];
+    const others: string[] = [];
+    for (const card of cards) {
+      if (!needsLinksLookup(linksState, card.slug, now)) continue;
+      if (visible && !visible.has(card.slug)) others.push(card.slug);
+      else shown.push(card.slug);
+    }
+    const next = others.length > 0 ? shown.concat(others) : shown;
+    const before = lastMissing.current;
+    if (before.length === next.length && next.every((slug, i) => slug === before[i])) return before;
+    lastMissing.current = next;
+    return next;
   }, [cards, visible, linksState]);
+  const read = cards.length - missing.length;
   useEffect(() => {
     if (missing.length === 0) return;
     void links.resolveMissing(missing);
@@ -275,12 +294,34 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
     return () => window.clearInterval(timer);
   }, [missing, links]);
 
+  // Mode grand : les liens de la toile ne suivent la lecture que par paliers (voir GRAPH_MIN_WINDOW_MS) ; tout de suite quand la lecture
+  // est finie, quand les cartes ou le filtre changent, et toujours en mode SVG (petites Collections : rien ne change).
+  const bigRef = useRef(false);
+  const rebuildMs = useRef(0);
+  const inputs = useRef({ cards, visible });
+  const inputsChanged = inputs.current.cards !== cards || inputs.current.visible !== visible;
+  inputs.current = { cards, visible };
+  const graphLinks = useThrottledValue(
+    linksState,
+    bigRef.current,
+    () => Math.max(GRAPH_MIN_WINDOW_MS, GRAPH_WINDOW_FACTOR * rebuildMs.current),
+    missing.length === 0 || inputsChanged,
+  );
   const graph = useMemo(() => {
-    const web = buildWeb(cards, linksState, visible);
-    return path ? withPath(web, cards, linksState, path) : web;
-  }, [cards, linksState, visible, path]);
+    const started = performance.now();
+    const web = buildWeb(cards, graphLinks, visible);
+    const result = path ? withPath(web, cards, graphLinks, path) : web;
+    rebuildMs.current = performance.now() - started;
+    return result;
+  }, [cards, graphLinks, visible, path]);
   // Au-delà de BIG_GRAPH cartes reliées, la toile est un canvas : thèmes, placement en deux niveaux, niveaux de détail.
-  const bigModel = useMemo(() => (graph.cards.length > BIG_GRAPH ? buildBigModel(graph) : null), [graph]);
+  const bigModel = useMemo(() => {
+    const started = performance.now();
+    const model = graph.cards.length > BIG_GRAPH ? buildBigModel(graph) : null;
+    rebuildMs.current += performance.now() - started;
+    return model;
+  }, [graph]);
+  bigRef.current = bigModel !== null;
   const limits = bigModel ? BIG_LIMITS : DEFAULT_LIMITS;
   // L'effet de la molette est posé une seule fois : il lit les limites du moment dans cette référence.
   const limitsRef = useRef(limits);
@@ -297,7 +338,9 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   useEffect(() => {
     if (bigModel) {
       // Mode grand : peu d'articles à placer par forces, les cartes suivent ; un seul passage, pas de tranches.
+      const started = performance.now();
       const next = layoutBig(graph, previous.current, bigModel);
+      rebuildMs.current += performance.now() - started;
       previous.current = next;
       setPositions((current) => (samePositions(current, next) ? current : next));
       return;
@@ -505,20 +548,19 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
   // Accès direct au titre et à la carte : un article peut relier des milliers de cartes, parmi des centaines de milliers.
   const bySlug = useMemo(() => new Map(cards.map((card) => [card.slug, card])), [cards]);
   const titleOf = (slug: string) => bySlug.get(slug)?.title ?? slug;
-  // Recompté seulement quand les cartes ou les liens changent : à 200 000 cartes, pas à chaque pas de zoom.
-  const read = useMemo(() => {
-    const now = Date.now();
-    let missingCount = 0;
-    for (const card of cards) if (needsLinksLookup(linksState, card.slug, now)) missingCount += 1;
-    return cards.length - missingCount;
-  }, [cards, linksState]);
   const zoomStep = Math.round(Math.log2(transform.k) * LABEL_STEPS_PER_OCTAVE);
   const labelled = useMemo(
     () => (bigModel ? new Set<string>() : chooseLabels(graph, positions, lighting?.lit ?? null, 2 ** (zoomStep / LABEL_STEPS_PER_OCTAVE))),
     [graph, positions, lighting, zoomStep, bigModel],
   );
 
-  const scene = useMemo(() => (bigModel ? buildScene(graph, positions, bigModel) : null), [bigModel, graph, positions]);
+  const scene = useMemo(() => {
+    if (!bigModel) return null;
+    const started = performance.now();
+    const built = buildScene(graph, positions, bigModel);
+    rebuildMs.current += performance.now() - started;
+    return built;
+  }, [bigModel, graph, positions]);
   // Les traits du chemin cherché entre deux cartes, pour le canvas.
   const route = useMemo(
     () =>

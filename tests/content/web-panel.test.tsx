@@ -226,3 +226,65 @@ describe('WebPanel en mode grand', () => {
     expect(container.textContent).toContain('1600 cartes reliées');
   });
 });
+
+describe('WebPanel en mode grand, pendant la lecture des liens', () => {
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContext;
+    vi.useRealTimers();
+  });
+
+  it('ne reconstruit la toile qu’une fois par fenêtre pendant la lecture, et tout de suite à la fin', async () => {
+    const many: KnownCard[] = Array.from({ length: 1700 }, (_, i) => ({ slug: `Carte_${i}`, title: `Carte ${i}` }));
+    const linksOf = (from: number, to: number) => Object.fromEntries(many.slice(from, to).map((c) => [c.slug, ['Pop', 'Rock']]));
+    let current = setLinks(EMPTY_LINKS, linksOf(0, 1600), Date.now());
+    const listeners = new Set<() => void>();
+    const noSubscribe = () => () => undefined;
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <WebPanel
+          collection={{ snapshot: () => many, list: async () => many, subscribe: noSubscribe } as unknown as CollectionRepo}
+          links={{ load: async () => current, subscribe: (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener)), resolveMissing, failed: () => false } as unknown as LinksRepo}
+          scanner={{ snapshot: () => IDLE_SCAN, state: async () => IDLE_SCAN, subscribe: noSubscribe } as unknown as CollectionScanner}
+          kinds={{ load: async () => EMPTY_KINDS, subscribe: noSubscribe } as unknown as KindsRepo}
+          kindFilterSource={createKindFilterSource({ getItem: () => null, setItem: () => undefined })}
+          filterSource={{ current: () => '', subscribe: noSubscribe } as unknown as CollectionFilterSource}
+          loadFiltered={async () => new Set()}
+          onOpen={onOpen}
+          onOpenCard={onOpenCard}
+        />,
+      );
+    });
+    expect(container.textContent).toContain('1600 cartes reliées');
+    const relies = () => /(\d+) cartes reliées/.exec(container.textContent ?? '')?.[1];
+    // Une vague de liens par seconde pendant 9 s (le chargement des liens est regroupé par seconde) ; on regarde la toile tous les 250 ms.
+    const changes: { at: number; count: string | undefined }[] = [];
+    let last = relies();
+    let now = 0;
+    for (let from = 1600; from < 1690; from += 10) {
+      current = setLinks(current, linksOf(from, from + 10), Date.now());
+      for (const listener of listeners) listener();
+      for (let step = 0; step < 4; step++) {
+        await act(async () => vi.advanceTimersByTime(250));
+        now += 250;
+        if (relies() !== last) changes.push({ at: now, count: (last = relies()) });
+      }
+    }
+    expect(container.textContent).toContain('Liens lus : 1690 / 1700');
+    // La toile a suivi la lecture, mais par paliers : bien moins de reconstructions que de vagues, espacées d'au moins 2 s.
+    expect(changes.length).toBeGreaterThanOrEqual(2);
+    expect(changes.length).toBeLessThanOrEqual(5);
+    for (let i = 1; i < changes.length; i++) expect(changes[i]!.at - changes[i - 1]!.at).toBeGreaterThanOrEqual(2000);
+    // Dernière vague : la lecture est finie, la toile suit sans attendre (le temps du seul chargement des liens).
+    current = setLinks(current, linksOf(1690, 1700), Date.now());
+    for (const listener of listeners) listener();
+    await act(async () => vi.advanceTimersByTime(1000));
+    expect(container.textContent).toContain('Liens lus : 1700 / 1700');
+    expect(container.textContent).toContain('1700 cartes reliées');
+  });
+});
