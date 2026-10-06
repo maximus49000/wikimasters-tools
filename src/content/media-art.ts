@@ -1,4 +1,5 @@
 import type { KindsRepo } from '../core/kinds/kinds-repo';
+import { isVideoGame } from '../core/game/game-kinds';
 import { cleanTitle } from '../core/music/listen';
 import { musicKindOf } from '../core/music/music-kinds';
 import type { MusicRepo } from '../core/music/music-repo';
@@ -11,6 +12,8 @@ import type { TmdbApi } from '../core/screen/tmdb-api';
 export type MediaArtSources = {
   spotify?: { api: Pick<SpotifyApi, 'findCover' | 'findArtistImage'>; session: Pick<SpotifySession, 'isLinked'>; music: Pick<MusicRepo, 'resolve'> };
   tmdb?: Pick<TmdbApi, 'posterUrl' | 'closestPosterUrl'>;
+  // Affiches de jeux vidéo (Steam, IGDB) : même contrat que les autres sources (liste, ou `null` si pas prête).
+  game?: { cover(slug: string, title: string): Promise<string[] | null> };
 };
 
 // Liste (éventuellement vide) : la source a répondu, la réponse est définitive. `null` : elle n'a pas pu répondre
@@ -29,7 +32,7 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
     await deps.kinds.resolveMissing([slug]);
     const cardKinds = (await deps.kinds.load()).cards[slug];
     // `known` : Wikidata a répondu pour cette carte ; sinon on ignore son type, ce n'est pas « rien à chercher ».
-    return { known: cardKinds !== undefined, music: musicKindOf(cardKinds), screen: screenKindOf(cardKinds) };
+    return { known: cardKinds !== undefined, music: musicKindOf(cardKinds), screen: screenKindOf(cardKinds), game: isVideoGame(cardKinds) };
   }
 
   // `undefined` : Wikidata n'a pas répondu (hors ligne, limite…) ; `null` : réponse sans interprète. Chercher sans l'interprète donnerait une réponse peu fiable, qu'on mémoriserait.
@@ -51,9 +54,9 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
 
   return {
     async primary(slug, title) {
-      const { spotify, tmdb } = deps.sources;
-      if (!spotify && !tmdb) return null;
-      const { known, music, screen } = await kindsOf(slug);
+      const { spotify, tmdb, game: gameArt } = deps.sources;
+      if (!spotify && !tmdb && !gameArt) return null;
+      const { known, music, screen, game } = await kindsOf(slug);
       if (!known) return null;
       const query = quoted(cleanTitle(title));
       if (music === 'album' || music === 'track') {
@@ -63,6 +66,7 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
         return one(await oneAtATime(() => spotify.api.findCover(music, query, performer ? quoted(performer) : undefined)));
       }
       if (screen === 'film' || screen === 'series') return tmdb ? one(await tmdb.posterUrl(screen, cleanTitle(title))) : null;
+      if (game) return gameArt ? gameArt.cover(slug, title) : null;
       return [];
     },
 

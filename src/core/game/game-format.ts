@@ -32,6 +32,12 @@ export const normalizeTitle = (text: string): string =>
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 
+// Affiches de la boutique Steam : portrait (celle d'une carte), puis bandeau ; construites sur l'identifiant, sans appel à l'API.
+export const steamArtUrls = (appid: number): string[] => [
+  `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`,
+  `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`,
+];
+
 export const steamPageUrl = (appid: number): string => `${STEAM_STORE_BASE}/app/${appid}`;
 
 export type GameLink = { source: 'steam'; id: number } | { source: 'igdb'; slug: string };

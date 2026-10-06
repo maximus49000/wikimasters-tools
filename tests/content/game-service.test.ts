@@ -6,10 +6,10 @@ import type { GameCandidate, GameDetail } from '../../src/core/game/game-detail'
 import { GameError } from '../../src/core/game/errors';
 
 const steamDetail: GameDetail = { source: 'steam', id: 1245620, title: 'ELDEN RING', genres: [], platforms: [], developers: [], pageUrl: 'https://store.steampowered.com/app/1245620' };
-const igdbDetail: GameDetail = { source: 'igdb', id: 1000, title: 'Super Metroid', genres: [], platforms: [], developers: [], pageUrl: 'https://www.igdb.com/games/super-metroid' };
+const igdbDetail: GameDetail = { source: 'igdb', id: 1000, title: 'Super Metroid', genres: [], platforms: [], developers: [], coverUrl: 'https://img.test/igdb.jpg', pageUrl: 'https://www.igdb.com/games/super-metroid' };
 const cand = (source: 'steam' | 'igdb', id: number, title: string, popularity = 0): GameCandidate => ({ source, id, title, platforms: [], popularity });
 
-type Setup = { natures?: string[]; ids?: object; collection?: string[]; steamSearch?: GameCandidate[]; igdbSearch?: GameCandidate[]; igdb?: boolean; steamDetail?: GameDetail | null };
+type Setup = { unreachable?: boolean; natures?: string[]; ids?: object; collection?: string[]; steamSearch?: GameCandidate[]; igdbSearch?: GameCandidate[]; igdb?: boolean; steamDetail?: GameDetail | null };
 
 function setup(over: Setup = {}) {
   const steam = {
@@ -24,7 +24,7 @@ function setup(over: Setup = {}) {
   const service = createGameService({
     collection: { list: async () => (over.collection ?? ['Jeu']).map((slug) => ({ slug, title: slug })) },
     kinds: { resolveMissing: vi.fn(async () => undefined), load: async () => ({ cards: { Jeu: { natures: over.natures ?? ['Q7889'], occupations: [], genres: [] } }, labels: {} }) },
-    games: { resolve: async () => ({ Jeu: over.ids ?? {} }) },
+    games: { resolve: async () => (over.unreachable ? {} : { Jeu: over.ids ?? {} }) as never },
     choices,
     steam,
     igdb: over.igdb === false ? null : igdb,
@@ -111,5 +111,52 @@ describe('createGameService : fenêtre « Changer de jeu »', () => {
     expect((await service.fromLink('https://www.igdb.com/games/super-metroid')).detail?.source).toBe('igdb');
     expect(await service.fromLink('pas un lien')).toEqual({ message: 'Adresse non reconnue.' });
     expect(await setup({ steamDetail: null }).service.preview({ source: 'steam', id: 1 })).toEqual({ message: 'Ce jeu est introuvable.' });
+  });
+});
+
+const STEAM_ART = (id: number) => [`https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${id}/library_600x900.jpg`, `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${id}/header.jpg`];
+
+describe('createGameService.cover', () => {
+  it("un identifiant Steam suffit : affiche portrait puis bandeau, sans aucun appel à Steam", async () => {
+    const { service, steam, igdb } = setup({ ids: { steamId: 1245620, igdbSlug: 'elden-ring' } });
+    expect(await service.cover('Jeu', 'Elden Ring')).toEqual(STEAM_ART(1245620));
+    expect(steam.detail).not.toHaveBeenCalled();
+    expect(steam.search).not.toHaveBeenCalled();
+    expect(igdb.detail).not.toHaveBeenCalled();
+  });
+
+  it('sans identifiant Steam : la jaquette IGDB du slug', async () => {
+    const { service, igdb } = setup({ ids: { igdbSlug: 'super-metroid' } });
+    expect(await service.cover('Jeu', 'Super Metroid')).toEqual(['https://img.test/igdb.jpg']);
+    expect(igdb.detail).toHaveBeenCalledWith({ slug: 'super-metroid' });
+  });
+
+  it('sans aucun identifiant : recherche par titre égal, Steam puis IGDB', async () => {
+    const steamHit = setup({ steamSearch: [cand('steam', 3, 'Elden Ring')] });
+    expect(await steamHit.service.cover('Jeu', 'Elden_Ring_(jeu_vidéo)')).toEqual(STEAM_ART(3));
+    const igdbHit = setup({ steamSearch: [cand('steam', 2, 'Autre')], igdbSearch: [cand('igdb', 10, 'Super Metroid', 50)] });
+    expect(await igdbHit.service.cover('Jeu', 'Super Metroid')).toEqual(['https://img.test/igdb.jpg']);
+    expect(igdbHit.igdb.detail).toHaveBeenCalledWith({ id: 10 });
+    expect(await setup().service.cover('Jeu', 'Inconnu')).toEqual([]);
+  });
+
+  it('le choix de l’utilisateur prime ; « aucun jeu » ne donne rien', async () => {
+    const { service } = setup({ ids: { steamId: 1245620 } });
+    await service.choose('Jeu', { source: 'igdb', id: 42 });
+    expect(await service.cover('Jeu', 'Jeu')).toEqual(['https://img.test/igdb.jpg']);
+    await service.chooseNone('Jeu');
+    expect(await service.cover('Jeu', 'Jeu')).toEqual([]);
+  });
+
+  it("rien pour une carte qui n'est pas un jeu ; pas de réponse (null) quand Wikidata ou une source ne répond pas", async () => {
+    expect(await setup({ natures: ['Q11424'] }).service.cover('Jeu', 'Inception')).toEqual([]);
+    expect(await setup({ unreachable: true }).service.cover('Jeu', 'Jeu')).toBeNull();
+    const failing = setup({ steamSearch: [] });
+    failing.steam.search.mockRejectedValueOnce(new GameError('steam', 'rate-limited', 'x'));
+    expect(await failing.service.cover('Jeu', 'Jeu')).toBeNull();
+  });
+
+  it('sans identifiants IGDB, seule la partie Steam répond', async () => {
+    expect(await setup({ igdb: false, ids: { igdbSlug: 'super-metroid' } }).service.cover('Jeu', 'Super Metroid')).toEqual([]);
   });
 });
