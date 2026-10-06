@@ -27,23 +27,19 @@ Sur la fiche native d'une carte de jeu vidéo, afficher une section avec la band
 3. P1733 présent → détail Steam.
 4. Sinon P5794 présent → détail IGDB.
 5. Sinon recherche par titre nettoyé : Steam (`storesearch`) d'abord, puis IGDB. Un résultat n'est retenu que si son titre normalisé est égal au titre cherché ; à égalité, le plus connu (nombre d'avis) ; au moindre doute, aucune section. Le résultat (y compris « rien ») est mémorisé.
-6. Rien trouvé → aucune section, sans message.
+6. Rien trouvé → section vide (titre et glyphe « changer de jeu » seulement).
 
-## Correction « Ce n'est pas le bon jeu »
+## Changer de jeu (glyphe ⇄) — maquette `.superpowers/maquette-jeux-video-correction.html` (v2, validée)
 
-Sur toute fiche, qu'elle vienne de Steam ou d'IGDB, un bouton « Ce n'est pas le bon jeu » (glyphe + libellé, zone tactile de 44 px) ouvre une fenêtre de propositions, sur le modèle de la recherche de BO (`SoundtrackDialog`) :
-- Candidats : résultats des deux recherches (Steam `storesearch` puis IGDB) sur le titre de la carte, hors le jeu actuel (nom, source, plateformes, année, jaquette) ; Steam d'abord, puis IGDB, chaque groupe du plus connu au moins connu ; champ de recherche libre pour taper un autre titre.
-- Choisir un candidat : il remplace le jeu de cette carte. Le choix est mémorisé par carte (`game-choice-v1`, clé = slug) et prime sur la résolution automatique, y compris sur les identifiants Wikidata.
-- Aucune autre proposition : la fenêtre l'indique (« Aucune autre proposition ») et propose « Ne rien afficher » : la section de cette carte reste vide (aucune section), choix mémorisé lui aussi. Comme la section n'est plus visible, un réglage permet de revenir au choix automatique (« Jeux vidéo : oublier mes corrections », dans les réglages de la collection, où figurent déjà les autres réglages).
-- Une correction manuelle est toujours possible, même quand l'identifiant vient de Wikidata (il peut être faux).
-
-### Saisie et sélection manuelles
-
-Un second bouton, « Choisir moi-même » (toujours disponible, sur les fiches Steam comme IGDB, et aussi quand aucune section n'est affichée grâce au réglage ci-dessus), ouvre la même fenêtre en mode manuel :
-- Champ de recherche libre : l'utilisateur tape un titre ; les résultats viennent des deux sources, Steam d'abord puis IGDB, chaque ligne indiquant sa source (nom, année, plateformes, jaquette). Il sélectionne la bonne fiche.
-- Champ « lien » : coller l'adresse d'une page `store.steampowered.com/app/<id>/…` ou `igdb.com/games/<slug>` ; l'identifiant est lu (le slug IGDB est converti en identifiant par une requête) et la fiche s'affiche en aperçu avant validation. Une adresse non reconnue affiche « Adresse non reconnue ».
-- Valider : le jeu choisi remplace celui de la carte, mémorisé comme toute correction (`game-choice-v1`, avec sa source).
-- La fenêtre a un bouton de fermeture et un retour au choix automatique ; zones tactiles de 44 px, mêmes réglages que la fenêtre de BO.
+Un seul glyphe « changer de jeu » (⇄, zone tactile de 44 px, `aria-label` « Changer de jeu ») dans l'en-tête de la section réunit « Ce n'est pas le bon jeu » et « Choisir moi-même ». Il ouvre une fenêtre de recherche, sur le modèle de `SoundtrackDialog` :
+- La recherche est préremplie avec le titre de la carte ; champ libre pour taper un autre titre.
+- Résultats des deux sources : Steam (`storesearch`) d'abord, puis IGDB, chaque groupe du plus connu au moins connu ; chaque ligne montre la jaquette, le nom, l'année, les plateformes et une pastille de source ; le jeu actuel est grisé.
+- Onglet « Coller un lien » : adresse `store.steampowered.com/app/<id>/…` ou `igdb.com/games/<slug>` (le slug IGDB est converti en identifiant par une requête) ; une adresse non reconnue affiche « Adresse non reconnue ».
+- Sélectionner un résultat (ou un lien valide) affiche un aperçu (nom, source, note) ; « Utiliser ce jeu » valide. Le choix est mémorisé par carte (`game-choice-v1`, avec la source) et prime sur la résolution automatique, y compris sur les identifiants Wikidata.
+- « ∅ Aucun jeu » : la carte n'a pas de jeu (choix mémorisé). La section reste affichée sans jeu, avec seulement son titre « Jeu vidéo » et le glyphe, pour pouvoir rechoisir plus tard.
+- « Revenir au choix automatique » : efface le choix mémorisé.
+- Même section vide (titre + glyphe) quand la résolution automatique ne trouve rien pour une carte de jeu vidéo : c'est le seul moyen de corriger un jeu non reconnu. (Cela remplace « aucune section » de l'étape 6 de la résolution pour les cartes de jeu vidéo ; sans identifiants IGDB ni Steam joignable, un message discret remplace la fenêtre.)
+- Zones tactiles de 44 px, bouton de fermeture, glyphes de l'application.
 
 ## Modèle commun
 
@@ -85,7 +81,7 @@ Calquée sur les films (`src/core/screen/`, `src/content/ScreenSection.tsx`).
 `src/content/`
 - `game-service.ts` : `view(slug, title)` suivant l'ordre de résolution ; `TtlCache` pour les détails (Steam : détail 24 h, note et joueurs en ligne 1 h ; IGDB : 7 jours).
 - `GameSection.tsx` + montage via `createNativeSections` (`mount.tsx`), `decorateGame` comme `decorateScreen`, `game-registry.ts` ; posé sous « Mauvaise image », avant ATK/DEF.
-- `GameChoiceDialog.tsx` : fenêtre « Ce n'est pas le bon jeu » (propositions, recherche libre, « Ne rien afficher »).
+- `GameChoiceDialog.tsx` : fenêtre « Changer de jeu » (recherche sur les deux sources, lien collé, aperçu, « Aucun jeu », retour au choix automatique).
 - `HlsTrailerPlayer.tsx` : lecteur `<video>` + hls.js (chargé à la demande) ; `TrailerPlayer` existant pour YouTube.
 - `SoundtrackButton.tsx` : prend un type plus large (`{ key, title, originalTitle }`) au lieu de `ScreenDetail` ; clé `game:<source>:<id>` ; mêmes règles (rien sans compte lié, mémorisation `soundtracks-v1`).
 
@@ -110,7 +106,7 @@ Pied de section : « Données : Steam » ou « Données : IGDB.com » (condition
 - `core` : réponses réelles enregistrées (fixtures, comme `tidal-fixtures`) pour Steam (Elden Ring), IGDB (jeu ancien), Wikidata ; cas d'erreur (429, 401, `success: false`, format inattendu).
 - `game-service` avec API simulées : Steam prioritaire sur IGDB, repli IGDB, recherche par titre stricte (rejet des homonymes), cache, absence d'identifiants IGDB.
 - Saisie manuelle : recherche sur les deux sources, lecture d'une adresse Steam ou IGDB (valide, invalide, slug IGDB), aperçu avant validation.
-- Correction : choix mémorisé prioritaire sur Wikidata, aucune proposition → « Ne rien afficher », retour au choix automatique.
+- Changer de jeu : choix mémorisé prioritaire sur Wikidata, « Aucun jeu » → section vide avec glyphe, retour au choix automatique.
 - Composants : rendu de la section (avec/sans bande-annonce, avec/sans Metascore), bouton BO pour un jeu.
 - Vérification manuelle : recharger l'extension dans Chrome, ouvrir un jeu Steam et un jeu ancien ; Android : appels réseau et lecteur HLS ; `npm run build` à chaque étape.
 
