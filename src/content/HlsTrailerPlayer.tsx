@@ -4,7 +4,7 @@ import { Glyph } from './Glyphs';
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const HEIGHT = 'min(130px, 20vh)';
 
-// Bande-annonce Steam (flux HLS) : miniature + ▶ ; hls.js (build light, sans sous-titres ni audio alternatif) est un import dynamique : exécuté au premier clic dans le module,
+// Bande-annonce Steam (flux HLS) : miniature + ▶ ; hls.js (build complet : le flux Steam sépare l'audio dans une piste alternative, que le build light ne charge pas, d'où une lecture muette ou en échec sur Android) est un import dynamique : exécuté au premier clic dans le module,
 // mais inclus dans le bundle du script (Chrome ne lit pas le HLS seul).
 // Si la lecture échoue (site qui bloque le flux), le bouton ▶ revient (un clic relance le chargement) et le lien vers la page du jeu reste là.
 export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster?: string; pageUrl: string }) {
@@ -24,11 +24,21 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
     let cancelled = false;
     void (async () => {
       try {
-        const { default: Hls } = await import('hls.js/light');
+        const { default: Hls } = await import('hls.js');
         if (cancelled) return;
         if (Hls.isSupported()) {
           const hls = new Hls();
-          hls.on(Hls.Events.ERROR, (_event, data) => data.fatal && fail());
+          let recovered = false;
+          hls.on(Hls.Events.ERROR, (_event, data) => {
+            if (!data.fatal) return;
+            // Une erreur média fatale se rattrape souvent une fois (décodeur Android) ; au-delà, retour au ▶.
+            if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !recovered) {
+              recovered = true;
+              hls.recoverMediaError();
+              return;
+            }
+            fail();
+          });
           hls.loadSource(url);
           hls.attachMedia(element);
           destroy = () => hls.destroy();
