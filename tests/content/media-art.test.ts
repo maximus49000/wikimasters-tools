@@ -1,20 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMediaArt } from '../../src/content/media-art';
 
-const setup = (natures: string[], overrides: { linked?: boolean; spotify?: boolean; tmdb?: boolean; slow?: () => Promise<null>; unknownKinds?: boolean; unknownMusic?: boolean } = {}) => {
+const setup = (natures: string[], overrides: { game?: boolean; gameCovers?: string[] | null; linked?: boolean; spotify?: boolean; tmdb?: boolean; slow?: () => Promise<null>; unknownKinds?: boolean; unknownMusic?: boolean } = {}) => {
   const findCover = vi.fn(overrides.slow ?? (async () => 'https://i.scdn.co/cover'));
   const findArtistImage = vi.fn(overrides.slow ?? (async () => 'https://i.scdn.co/artist'));
   const closestPosterUrl = vi.fn(async () => 'https://image.tmdb.org/closest');
   const posterUrl = vi.fn(async () => 'https://image.tmdb.org/poster');
   // `unknownKinds` : Wikidata n'a pas (encore) répondu pour cette carte.
   const kinds = { resolveMissing: vi.fn(async () => undefined), load: vi.fn(async () => ({ cards: overrides.unknownKinds ? {} : { x: { natures, occupations: [] } } })) };
+  const cover = vi.fn(async () => (overrides.gameCovers === undefined ? ['https://steam.test/library.jpg'] : overrides.gameCovers));
   const sources = {
+    ...(overrides.game ? { game: { cover } } : {}),
     ...(overrides.spotify === false
       ? {}
       : { spotify: { api: { findCover, findArtistImage }, session: { isLinked: async () => overrides.linked ?? true }, music: { resolve: async () => (overrides.unknownMusic ? {} : { x: { performer: 'The Beatles' } }) } } }),
     ...(overrides.tmdb === false ? {} : { tmdb: { posterUrl, closestPosterUrl } }),
   };
-  return { art: createMediaArt({ kinds: kinds as never, sources: sources as never }), findCover, posterUrl, findArtistImage, closestPosterUrl };
+  return { art: createMediaArt({ kinds: kinds as never, sources: sources as never }), cover, findCover, posterUrl, findArtistImage, closestPosterUrl };
 };
 
 describe('createMediaArt', () => {
@@ -43,6 +45,20 @@ describe('createMediaArt', () => {
     const series = setup(['Q5398426']);
     await series.art.primary('x', 'Dark');
     expect(series.posterUrl).toHaveBeenCalledWith('series', 'Dark');
+  });
+
+  it("prend la pochette d'un jeu vidéo auprès de Steam / IGDB, et rend `null` tant que cette source n'est pas prête", async () => {
+    const { art, cover } = setup(['Q7889'], { game: true, spotify: false, tmdb: false });
+    expect(await art.primary('x', 'Elden Ring (jeu vidéo)')).toEqual(['https://steam.test/library.jpg']);
+    expect(cover).toHaveBeenCalledWith('x', 'Elden Ring (jeu vidéo)');
+    expect(await setup(['Q7889'], { game: true, gameCovers: null }).art.primary('x', 'Elden Ring')).toBeNull();
+    expect(await setup(['Q7889']).art.primary('x', 'Elden Ring')).toBeNull();
+  });
+
+  it("ne cherche pas de pochette de jeu pour une carte qui n'est pas un jeu vidéo (jeu de société compris)", async () => {
+    const { art, cover } = setup(['Q131436'], { game: true });
+    expect(await art.primary('x', 'Catan')).toEqual([]);
+    expect(cover).not.toHaveBeenCalled();
   });
 
   it('ne fait rien sans source (indisponible), ni pour un autre type de carte (réponse : rien à chercher)', async () => {

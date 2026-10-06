@@ -490,18 +490,19 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   // (service worker dans l'extension, pont natif dans l'APK). Une panne ici ne doit jamais empêcher la surcouche.
   try {
     const gameFetch: GameFetch = (url, init) => (spotify ? spotify.fetch(url, init) : fetch(url, init));
-    setGameService(
-      createGameService({
-        collection: collectionRepo,
-        kinds: kindsRepo,
-        games: createGameRepo(store, (slugs) => fetchWikidataGame((url) => fetch(url), slugs)),
-        choices: createGameChoiceRepo(store),
-        steam: createSteamApi({ fetch: gameFetch }),
-        igdb: IGDB_ENABLED ? createIgdbApi({ fetch: gameFetch, clientId: IGDB_CLIENT_ID, clientSecret: IGDB_CLIENT_SECRET, store }) : null,
-        steamCache: createTtlCache(store, { ttlMs: 6 * 3_600_000 }),
-        igdbCache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
-      }),
-    );
+    const gameService = createGameService({
+      collection: collectionRepo,
+      kinds: kindsRepo,
+      games: createGameRepo(store, (slugs) => fetchWikidataGame((url) => fetch(url), slugs)),
+      choices: createGameChoiceRepo(store),
+      steam: createSteamApi({ fetch: gameFetch }),
+      igdb: IGDB_ENABLED ? createIgdbApi({ fetch: gameFetch, clientId: IGDB_CLIENT_ID, clientSecret: IGDB_CLIENT_SECRET, store }) : null,
+      steamCache: createTtlCache(store, { ttlMs: 6 * 3_600_000 }),
+      igdbCache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
+    });
+    setGameService(gameService);
+    // Affiches des jeux vidéo : même mécanisme que les pochettes d'albums et les affiches de films.
+    artSources.game = gameService;
   } catch (error) {
     console.warn(LOG, 'jeux vidéo indisponibles :', error);
   }

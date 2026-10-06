@@ -2,7 +2,7 @@ import type { TtlCache } from '../core/cache/ttl-cache';
 import type { KnownCard } from '../core/collection/collection-book';
 import { gameErrorMessage } from '../core/game/errors';
 import type { GameCandidate, GameDetail, GameRef } from '../core/game/game-detail';
-import { normalizeTitle, parseGameLink } from '../core/game/game-format';
+import { normalizeTitle, parseGameLink, steamArtUrls } from '../core/game/game-format';
 import { isVideoGame } from '../core/game/game-kinds';
 import type { GameChoiceRepo, GameRepo } from '../core/game/game-repo';
 import type { IgdbApi } from '../core/game/igdb-api';
@@ -51,18 +51,24 @@ export function createGameService(deps: GameServiceDeps) {
       if (found) return found;
     }
     const query = cleanTitle(title);
-    const wanted = normalizeTitle(query);
-    if (wanted === '') return null;
-    const steamHit = exact(await steamCache.getOrLoad(`game-search-steam-${wanted}`, () => steam.search(query)), wanted);
-    if (steamHit) {
-      const found = await steamDetail(steamHit.id);
+    const steamFound = await steamHit(query);
+    if (steamFound) {
+      const found = await steamDetail(steamFound.id);
       if (found) return found;
     }
-    if (igdb) {
-      const igdbHit = exact(await igdbCache.getOrLoad(`game-search-igdb-${wanted}`, () => igdb.search(query)), wanted);
-      if (igdbHit) return igdbDetail({ id: igdbHit.id });
-    }
-    return null;
+    const igdbFound = await igdbHit(query);
+    return igdbFound ? igdbDetail({ id: igdbFound.id }) : null;
+  }
+
+  // Le jeu de Steam, puis d'IGDB, dont le titre est égal à celui de la carte (recherches gardées en cache).
+  async function steamHit(query: string): Promise<GameCandidate | undefined> {
+    const wanted = normalizeTitle(query);
+    return wanted === '' ? undefined : exact(await steamCache.getOrLoad(`game-search-steam-${wanted}`, () => steam.search(query)), wanted);
+  }
+  async function igdbHit(query: string): Promise<GameCandidate | undefined> {
+    const wanted = normalizeTitle(query);
+    if (!igdb || wanted === '') return undefined;
+    return exact(await igdbCache.getOrLoad(`game-search-igdb-${wanted}`, () => igdb.search(query)), wanted);
   }
 
   // Aperçu d'un jeu proposé ou collé, avant validation.
@@ -73,6 +79,26 @@ export function createGameService(deps: GameServiceDeps) {
     } catch (error) {
       return { message: gameErrorMessage(error) };
     }
+  }
+
+  // Affiches d'un jeu : Steam se déduit de l'identifiant (aucun appel), IGDB donne sa jaquette.
+  async function coverOf(ref: GameRef): Promise<string[]> {
+    if (ref.source === 'steam') return steamArtUrls(ref.id);
+    const found = await igdbDetail({ id: ref.id });
+    return found?.coverUrl ? [found.coverUrl] : [];
+  }
+
+  async function automaticCover(ids: { steamId?: number; igdbSlug?: string }, title: string): Promise<string[]> {
+    if (ids.steamId !== undefined) return steamArtUrls(ids.steamId);
+    if (ids.igdbSlug !== undefined && igdb) {
+      const found = await igdbDetail({ slug: ids.igdbSlug });
+      if (found) return found.coverUrl ? [found.coverUrl] : [];
+    }
+    const query = cleanTitle(title);
+    const steamFound = await steamHit(query);
+    if (steamFound) return steamArtUrls(steamFound.id);
+    const igdbFound = await igdbHit(query);
+    return igdbFound ? coverOf({ source: 'igdb', id: igdbFound.id }) : [];
   }
 
   return {
@@ -97,6 +123,23 @@ export function createGameService(deps: GameServiceDeps) {
         return found ? { status: 'detail', detail: found } : { status: 'empty' };
       } catch (error) {
         return { status: 'error', message: gameErrorMessage(error) };
+      }
+    },
+
+    // Affiches possibles de la carte (la meilleure d'abord) : liste vide si ce n'est pas un jeu ou si rien n'existe ;
+    // `null` si une source n'a pas pu répondre (Wikidata, Steam, IGDB) : à redemander plus tard, sans rien mémoriser.
+    async cover(slug: string, title: string): Promise<string[] | null> {
+      try {
+        await kinds.resolveMissing([slug]);
+        const cardKinds = (await kinds.load()).cards[slug];
+        const ids = (await games.resolve([slug]))[slug];
+        if (cardKinds === undefined || ids === undefined) return null;
+        if (!isVideoGame(cardKinds) && ids.steamId === undefined) return [];
+        const choice = (await choices.load())[slug];
+        if (choice) return 'none' in choice ? [] : await coverOf(choice);
+        return await automaticCover(ids, title);
+      } catch {
+        return null;
       }
     },
 
