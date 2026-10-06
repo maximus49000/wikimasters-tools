@@ -29,6 +29,8 @@ import { decorateLoading } from '../content/decorate-loading';
 import { parseMarketAuctions } from '../core/market/schemas';
 import type { PriceBook } from '../core/pricing/price-book';
 import { decorate } from '../content/decorate';
+import { decorateAuctionLink } from '../content/auction-link';
+import { showAuctionsEndingSoon, takePendingAuctionSearch } from '../content/auction-search';
 import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
@@ -232,6 +234,11 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     observer.disconnect();
     try {
       const links = decorateMarketLinks(document, marketUi.mountLink);
+      try {
+        decorateAuctionLink(document, marketUi.mountAuctionLink);
+      } catch (error) {
+        console.warn(LOG, 'lien des enchères de la carte indisponible :', error);
+      }
       try {
         collectionUi.sync();
       } catch (error) {
@@ -452,6 +459,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   if (window.location.pathname.startsWith('/marketplace')) {
     const pending = takePendingSearch(window.sessionStorage, Date.now());
     if (pending) marketUi.resumeSearch(pending);
+    const auctions = takePendingAuctionSearch(window.sessionStorage, Date.now());
+    if (auctions) void showAuctionsEndingSoon(document, auctions);
   } else {
     // Retour depuis le marché : la fiche de la carte se rouvre ici.
     const reopen = takePendingReopen(window.sessionStorage, Date.now());
