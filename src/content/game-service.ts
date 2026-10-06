@@ -104,6 +104,14 @@ export function createGameService(deps: GameServiceDeps) {
   return {
     igdbEnabled: igdb !== null,
 
+    // Les cartes (parmi `cards`) dont la nature est « jeu vidéo » : elles portent la manette. Nature seule, aucun appel à Steam ni à IGDB.
+    async gameSlugs(cards: Pick<KnownCard, 'slug'>[]): Promise<Set<string>> {
+      if (cards.length === 0) return new Set();
+      await kinds.resolveMissing(cards.map((card) => card.slug));
+      const loaded = await kinds.load();
+      return new Set(cards.filter((card) => isVideoGame(loaded.cards[card.slug])).map((card) => card.slug));
+    },
+
     // Ce que la fiche d'une carte montre : rien (pas un jeu), une section vide, un jeu, ou une erreur.
     async view(slug: string, title: string): Promise<GameView> {
       try {

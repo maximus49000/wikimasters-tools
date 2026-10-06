@@ -116,6 +116,17 @@ describe('createGameService : fenêtre « Changer de jeu »', () => {
 
 const STEAM_ART = (id: number) => [`https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${id}/library_600x900.jpg`, `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${id}/header.jpg`];
 
+describe('createGameService.gameSlugs', () => {
+  it('ne garde que les cartes de nature « jeu vidéo », sans appeler Steam ni IGDB', async () => {
+    const yes = setup();
+    expect([...(await yes.service.gameSlugs([{ slug: 'Jeu' }, { slug: 'Autre' }]))]).toEqual(['Jeu']);
+    expect(yes.steam.search).not.toHaveBeenCalled();
+    expect(yes.igdb.search).not.toHaveBeenCalled();
+    expect((await setup({ natures: ['Q11424'] }).service.gameSlugs([{ slug: 'Jeu' }])).size).toBe(0);
+    expect((await yes.service.gameSlugs([])).size).toBe(0);
+  });
+});
+
 describe('createGameService.cover', () => {
   it("un identifiant Steam suffit : affiche portrait puis bandeau, sans aucun appel à Steam", async () => {
     const { service, steam, igdb } = setup({ ids: { steamId: 1245620, igdbSlug: 'elden-ring' } });

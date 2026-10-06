@@ -133,12 +133,12 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
   // Un titre de cette carte joue sur Spotify : égaliseur vert, au-dessus de l'attaque.
   if (preview.playing) card.append(playingGlyph());
 
-  // Au-dessus de la défense : le lien avec le cinéma ou la musique (bobine ou note, sans fond), puis la marque d'exemplaires.
-  // Les deux sont dans un même conteneur aligné à droite : seul, chacun garde le bord droit. La bobine l'emporte sur la note.
+  // Au-dessus de la défense : le lien avec le cinéma, les jeux vidéo ou la musique (bobine, manette ou note, sans fond), puis la marque d'exemplaires.
+  // Les deux sont dans un même conteneur aligné à droite : seul, chacun garde le bord droit. La bobine l'emporte sur la manette, puis sur la note.
   const marks = div('wmt-card-marks');
-  if (preview.film || preview.music) {
+  if (preview.film || preview.game || preview.music) {
     card.classList.add('wmt-card-linked');
-    marks.append(preview.film ? filmGlyph() : musicGlyph());
+    marks.append(preview.film ? filmGlyph() : preview.game ? gameGlyph() : musicGlyph());
   }
   if (preview.copies !== null) {
     card.classList.add('wmt-card-multi');
@@ -202,6 +202,26 @@ function filmGlyph(): HTMLElement {
     const circle = document.createElementNS(SVG_NS, 'circle');
     for (const [name, value] of Object.entries({ cx: String(cx), cy: String(cy), r: String(r) })) circle.setAttribute(name, value);
     svg.append(circle);
+  }
+  glyph.append(svg);
+  return glyph;
+}
+
+// Manette de jeu (même dessin que le glyphe « gamepad » des fiches), sans fond ni animation.
+function gameGlyph(): HTMLElement {
+  const glyph = div('wmt-card-link wmt-card-game');
+  glyph.setAttribute('role', 'img');
+  glyph.title = 'Jeu vidéo';
+  glyph.setAttribute('aria-label', glyph.title);
+  const svg = icon('', ['M7 10.5v4', 'M5 12.5h4']);
+  svg.setAttribute('class', 'wmt-card-game-pad');
+  const body = document.createElementNS(SVG_NS, 'rect');
+  for (const [name, value] of Object.entries({ x: '2', y: '7', width: '20', height: '11', rx: '5' })) body.setAttribute(name, value);
+  svg.prepend(body);
+  for (const [cx, cy] of [[15.5, 11.5], [18, 13.5]]) {
+    const button = document.createElementNS(SVG_NS, 'circle');
+    for (const [name, value] of Object.entries({ cx: String(cx), cy: String(cy), r: '1' })) button.setAttribute(name, value);
+    svg.append(button);
   }
   glyph.append(svg);
   return glyph;

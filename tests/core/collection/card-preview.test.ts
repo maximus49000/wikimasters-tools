@@ -74,5 +74,7 @@ describe('toCardPreview : musique', () => {
     expect(toCardPreview(CARD, null)).not.toHaveProperty('music');
     expect(toCardPreview(CARD, null, undefined, false, false, true).film).toBe(true);
     expect(toCardPreview(CARD, null)).not.toHaveProperty('film');
+    expect(toCardPreview(CARD, null, undefined, false, false, false, true).game).toBe(true);
+    expect(toCardPreview(CARD, null)).not.toHaveProperty('game');
   });
 });

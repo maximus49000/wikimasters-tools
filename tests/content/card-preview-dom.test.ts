@@ -72,6 +72,22 @@ describe('buildCardPreview : bobine de cinéma', () => {
   });
 });
 
+describe('buildCardPreview : manette de jeu vidéo', () => {
+  it('marque une carte de jeu vidéo', () => {
+    const pad = buildCardPreview({ ...base, game: true }).querySelector<HTMLElement>('.wmt-card-game');
+    expect(pad?.title).toBe('Jeu vidéo');
+    expect(pad?.classList.contains('wmt-card-link')).toBe(true);
+    expect(pad?.closest('.wmt-card-marks')).not.toBeNull();
+  });
+
+  it('l’emporte sur la note de musique (bande originale d’un jeu), mais pas sur la bobine', () => {
+    const withMusic = buildCardPreview({ ...base, game: true, music: true });
+    expect(withMusic.querySelector('.wmt-card-music')).toBeNull();
+    expect(withMusic.querySelectorAll('.wmt-card-link')).toHaveLength(1);
+    expect(buildCardPreview({ ...base, game: true, film: true }).querySelector('.wmt-card-game')).toBeNull();
+  });
+});
+
 describe('buildCardPreview : note de musique', () => {
   it('marque une carte liée à la musique, à la place du glyphe de lecture', () => {
     const note = buildCardPreview({ ...base, music: true }).querySelector<HTMLElement>('.wmt-card-music');
