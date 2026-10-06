@@ -37,6 +37,14 @@ Quand la fiche vient d'IGDB, un bouton « Ce n'est pas le bon jeu » (glyphe + l
 - Aucune autre proposition : la fenêtre l'indique (« Aucune autre proposition ») et propose « Ne rien afficher » : la section de cette carte reste vide (aucune section), choix mémorisé lui aussi. Comme la section n'est plus visible, un réglage permet de revenir au choix automatique (« Jeux vidéo : oublier mes corrections », dans les réglages de la collection, où figurent déjà les autres réglages).
 - La même correction est proposée sur une fiche Steam trouvée par recherche de titre (pas par identifiant Wikidata), avec les résultats de `storesearch` comme candidats ; sans objet quand l'identifiant vient de Wikidata.
 
+### Saisie et sélection manuelles
+
+Un second bouton, « Choisir moi-même » (toujours disponible, y compris sur une fiche Steam venue de Wikidata, et aussi quand aucune section n'est affichée grâce au réglage ci-dessus), ouvre la même fenêtre en mode manuel :
+- Champ de recherche libre : l'utilisateur tape un titre ; les résultats viennent des deux sources, Steam d'abord puis IGDB, chaque ligne indiquant sa source (nom, année, plateformes, jaquette). Il sélectionne la bonne fiche.
+- Champ « lien » : coller l'adresse d'une page `store.steampowered.com/app/<id>/…` ou `igdb.com/games/<slug>` ; l'identifiant est lu (le slug IGDB est converti en identifiant par une requête) et la fiche s'affiche en aperçu avant validation. Une adresse non reconnue affiche « Adresse non reconnue ».
+- Valider : le jeu choisi remplace celui de la carte, mémorisé comme toute correction (`game-choice-v1`, avec sa source).
+- La fenêtre a un bouton de fermeture et un retour au choix automatique ; zones tactiles de 44 px, mêmes réglages que la fenêtre de BO.
+
 ## Modèle commun
 
 ```ts
@@ -101,6 +109,7 @@ Pied de section : « Données : Steam » ou « Données : IGDB.com » (condition
 
 - `core` : réponses réelles enregistrées (fixtures, comme `tidal-fixtures`) pour Steam (Elden Ring), IGDB (jeu ancien), Wikidata ; cas d'erreur (429, 401, `success: false`, format inattendu).
 - `game-service` avec API simulées : Steam prioritaire sur IGDB, repli IGDB, recherche par titre stricte (rejet des homonymes), cache, absence d'identifiants IGDB.
+- Saisie manuelle : recherche sur les deux sources, lecture d'une adresse Steam ou IGDB (valide, invalide, slug IGDB), aperçu avant validation.
 - Correction : choix mémorisé prioritaire sur Wikidata, aucune proposition → « Ne rien afficher », retour au choix automatique.
 - Composants : rendu de la section (avec/sans bande-annonce, avec/sans Metascore), bouton BO pour un jeu.
 - Vérification manuelle : recharger l'extension dans Chrome, ouvrir un jeu Steam et un jeu ancien ; Android : appels réseau et lecteur HLS ; `npm run build` à chaque étape.
