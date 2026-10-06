@@ -25,6 +25,8 @@ export type CardPreview = {
   music?: boolean;
   // Carte ayant un lien avec le cinéma (film, série, personne) : une bobine marque la carte ; absent sinon.
   film?: boolean;
+  // Carte « jeu vidéo » : une manette marque la carte ; absent sinon.
+  game?: boolean;
 };
 
 const NO_MARKET: CardMarket = { history: null, loading: false };
@@ -42,6 +44,7 @@ export function toCardPreview(
   playing = false,
   music = false,
   film = false,
+  game = false,
 ): CardPreview {
   return {
     title: card.title,
@@ -57,5 +60,6 @@ export function toCardPreview(
     ...(playing ? { playing: true } : {}),
     ...(music ? { music: true } : {}),
     ...(film ? { film: true } : {}),
+    ...(game ? { game: true } : {}),
   };
 }

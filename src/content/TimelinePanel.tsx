@@ -28,6 +28,7 @@ import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { KindFilterSource } from './kind-filter';
 import { useKindState } from './useKindState';
 import { useMusicSlugs } from './useMusicSlugs';
+import { useGameSlugs } from './useGameSlugs';
 import { useScreenSlugs } from './useScreenSlugs';
 import { useNowPlayingSlugs } from './useNowPlayingSlugs';
 
@@ -194,6 +195,7 @@ export function TimelinePanel({ collection, birth, kinds, kindFilterSource, scan
   const nowPlaying = useNowPlayingSlugs(tipCards);
   const musicSlugs = useMusicSlugs(tipCards);
   const screenSlugs = useScreenSlugs(tipCards);
+  const gameSlugs = useGameSlugs(tipCards);
   const tipPreview = useMemo(
     () =>
       tipCard
@@ -204,9 +206,10 @@ export function TimelinePanel({ collection, birth, kinds, kindFilterSource, scan
             nowPlaying.has(tipCard.slug),
             musicSlugs.has(tipCard.slug),
             screenSlugs.has(tipCard.slug),
+            gameSlugs.has(tipCard.slug),
           )
         : null,
-    [tipCard, book, marketNow, nowPlaying, musicSlugs, screenSlugs],
+    [tipCard, book, marketNow, nowPlaying, musicSlugs, screenSlugs, gameSlugs],
   );
   // Toutes les cartes affichées (filtre compris) ont leurs prix relevés, sans parcourir les pages à la main.
   const shown = useMemo(() => (visible ? cards.filter((card) => visible.has(card.slug)) : cards), [cards, visible]);
