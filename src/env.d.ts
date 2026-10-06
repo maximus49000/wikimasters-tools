@@ -5,4 +5,5 @@ declare module '*.css?inline' {
 
 interface ImportMetaEnv {
   readonly WXT_TMDB_API_KEY?: string;
+  readonly WXT_GITHUB_ISSUES_TOKEN?: string;
 }

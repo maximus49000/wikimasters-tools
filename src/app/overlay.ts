@@ -35,7 +35,7 @@ import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
 import { EMPTY_LEDGER, planMineEvents, type MineLedger } from '../core/collection/mine-events';
-import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openImageSettings, openPlayerSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, openImageSettings, openPlayerSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountScreenSection, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
 import { decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
@@ -74,6 +74,10 @@ import { syncCardArt } from '../content/card-art';
 import { decorateImageSetting } from '../content/image-setting-menu';
 import { decoratePlayerSetting } from '../content/player-setting-menu';
 import { decorateUpdateSetting } from '../content/update-setting-menu';
+import { decorateAnomalySetting } from '../content/anomaly-setting-menu';
+import { createAnomalyReporter } from '../core/anomalies/anomaly';
+import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
+import { getProfileName, rememberProfileName } from '../core/anomalies/profile-name';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
@@ -105,6 +109,14 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   });
 
   console.info(LOG, 'démarré');
+
+  // Les anomalies passent par le même `fetch` que Spotify (service worker dans l'extension, `window.fetch` dans l'APK).
+  const anomalies = GITHUB_ISSUES_TOKEN ? createAnomalyReporter({ fetch: (url, init) => (spotify ? spotify.fetch(url, init) : fetch(url, init)), token: GITHUB_ISSUES_TOKEN }) : null;
+  const anomalyPlatform = (): string => {
+    const bridge = (window as unknown as { WmtSpotify?: { scheme?(): string } }).WmtSpotify;
+    if (!bridge) return 'extension du navigateur';
+    return bridge.scheme?.()?.includes('preprod') ? 'application Android (pré-production)' : 'application Android';
+  };
 
   // Observation passive du marché : on n'écoute qu'après l'écouteur, avant tout `await`.
   window.addEventListener('message', (event) => {
@@ -301,6 +313,9 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         // Application Android seulement : le pont natif expose la vérification de la mise à jour.
         const updateBridge = (window as unknown as { WmtUpdate?: { check(): void } }).WmtUpdate;
         if (updateBridge) decorateUpdateSetting(document, () => updateBridge.check());
+        // « Remonter une anomalie » : absent sans jeton GitHub (compilation sans `.env.local`).
+        if (anomalies) decorateAnomalySetting(document, () => openAnomalyDialog({ profileName: getProfileName(window.localStorage), send: (description, name) => anomalies.report({ description, name, platform: anomalyPlatform() }) }));
+        rememberProfileName(document, window.localStorage);
       } catch (error) {
         console.warn(LOG, 'réglage des images indisponible :', error);
       }
