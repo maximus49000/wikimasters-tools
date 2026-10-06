@@ -135,7 +135,7 @@ describe('filtre des doubles', () => {
 });
 
 describe('catégories', () => {
-  const mixed = ['Piaf', 'Thriller', 'Film', 'Serie', 'Nouvelle'].map(card);
+  const mixed = ['Piaf', 'Thriller', 'Film', 'Serie', 'Jeu', 'Plateau', 'Nouvelle'].map(card);
   const kinds = setKinds(
     EMPTY_KINDS,
     {
@@ -143,6 +143,8 @@ describe('catégories', () => {
       Thriller: k(['Q482994'], [], ['pop']),
       Film: k(['Q11424'], [], ['drame']),
       Serie: k(['Q5398426'], [], ['comédie']),
+      Jeu: k(['Q7889'], [], ['rpg']),
+      Plateau: k(['Q131436']),
     },
     {},
   );
@@ -152,6 +154,7 @@ describe('catégories', () => {
     expect(categories.map((o) => [o.id, o.count])).toEqual([
       ['music', 2],
       ['film', 2],
+      ['games', 2],
       ['other', 1],
     ]);
   });
@@ -167,6 +170,13 @@ describe('catégories', () => {
     expect(isKindFilterActive(filter)).toBe(true);
     expect(applyKindFilter(mixed, kinds, filter).map((c) => c.slug)).toEqual(['Piaf', 'Thriller']);
     expect(applyKindFilter(mixed, kinds, { nature: '', facet: '', category: 'other' }).map((c) => c.slug)).toEqual(['Nouvelle']);
+  });
+
+  it('la catégorie « Jeux » réunit jeux vidéo et jeux de société, regroupés par nature', () => {
+    const filter = { nature: '', facet: '', category: 'games' };
+    expect(applyKindFilter(mixed, kinds, filter).map((c) => c.slug)).toEqual(['Jeu', 'Plateau']);
+    const { natures } = buildKindOptions(mixed, kinds, filter);
+    expect(ids(natures).sort()).toEqual(['group:Jeu de société', 'group:Jeu vidéo']);
   });
 
   it('changer de catégorie garde la nature seulement si elle y existe', () => {
