@@ -294,26 +294,30 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
     return () => window.clearInterval(timer);
   }, [missing, links]);
 
-  // Mode grand : les liens de la toile ne suivent la lecture que par paliers (voir GRAPH_MIN_WINDOW_MS) ; tout de suite quand la lecture
-  // est finie, quand les cartes ou le filtre changent, et toujours en mode SVG (petites Collections : rien ne change).
+  // Mode grand : les cartes et les liens de la toile ne suivent la lecture et les relectures de la Collection (une nouvelle liste à
+  // chaque écriture, jusqu'à une par seconde) que par paliers (voir GRAPH_MIN_WINDOW_MS). Tout de suite : quand le filtre change, quand
+  // la lecture vient de finir, et toujours en mode SVG (petites Collections : rien ne change).
+  // Les deux conditions de purge se comparent à un état posé par un effet (pas de référence modifiée pendant le rendu).
   const bigRef = useRef(false);
   const rebuildMs = useRef(0);
-  const inputs = useRef({ cards, visible });
-  const inputsChanged = inputs.current.cards !== cards || inputs.current.visible !== visible;
-  inputs.current = { cards, visible };
-  const graphLinks = useThrottledValue(
-    linksState,
+  const [settledVisible, setSettledVisible] = useState(visible);
+  useEffect(() => setSettledVisible(visible), [visible]);
+  const [wasReading, setWasReading] = useState(false);
+  useEffect(() => setWasReading(missing.length > 0), [missing.length]);
+  const graphInput = useMemo(() => ({ cards, links: linksState }), [cards, linksState]);
+  const throttled = useThrottledValue(
+    graphInput,
     bigRef.current,
     () => Math.max(GRAPH_MIN_WINDOW_MS, GRAPH_WINDOW_FACTOR * rebuildMs.current),
-    missing.length === 0 || inputsChanged,
+    visible !== settledVisible || (missing.length === 0 && wasReading),
   );
   const graph = useMemo(() => {
     const started = performance.now();
-    const web = buildWeb(cards, graphLinks, visible);
-    const result = path ? withPath(web, cards, graphLinks, path) : web;
+    const web = buildWeb(throttled.cards, throttled.links, visible);
+    const result = path ? withPath(web, throttled.cards, throttled.links, path) : web;
     rebuildMs.current = performance.now() - started;
     return result;
-  }, [cards, graphLinks, visible, path]);
+  }, [throttled, visible, path]);
   // Au-delà de BIG_GRAPH cartes reliées, la toile est un canvas : thèmes, placement en deux niveaux, niveaux de détail.
   const bigModel = useMemo(() => {
     const started = performance.now();
@@ -321,7 +325,9 @@ export function WebPanel({ collection, links, kinds, kindFilterSource, scanner, 
     rebuildMs.current += performance.now() - started;
     return model;
   }, [graph]);
-  bigRef.current = bigModel !== null;
+  useEffect(() => {
+    bigRef.current = bigModel !== null;
+  }, [bigModel]);
   const limits = bigModel ? BIG_LIMITS : DEFAULT_LIMITS;
   // L'effet de la molette est posé une seule fois : il lit les limites du moment dans cette référence.
   const limitsRef = useRef(limits);

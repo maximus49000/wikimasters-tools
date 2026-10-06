@@ -288,3 +288,63 @@ describe('WebPanel en mode grand, pendant la lecture des liens', () => {
     expect(container.textContent).toContain('1700 cartes reliées');
   });
 });
+
+describe('WebPanel en mode grand, Collection relue pendant la lecture', () => {
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContext;
+    vi.useRealTimers();
+  });
+
+  it('une nouvelle liste de cartes passe par le même frein : au plus une reconstruction par fenêtre', async () => {
+    // 1 600 cartes reliées, 100 cartes pas encore lues (la lecture est en cours) ; chaque relecture de la Collection ajoute 10 cartes
+    // dont les liens sont déjà connus.
+    const all: KnownCard[] = Array.from({ length: 1700 }, (_, i) => ({ slug: `Carte_${i}`, title: `Carte ${i}` }));
+    const unread: KnownCard[] = Array.from({ length: 100 }, (_, i) => ({ slug: `Inconnue_${i}`, title: `Inconnue ${i}` }));
+    const state = setLinks(EMPTY_LINKS, Object.fromEntries(all.map((c) => [c.slug, ['Pop', 'Rock']])), Date.now());
+    let listed = [...all.slice(0, 1600), ...unread];
+    const collectionListeners = new Set<() => void>();
+    const noSubscribe = () => () => undefined;
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <WebPanel
+          collection={{ snapshot: () => listed, list: async () => listed, subscribe: (l: () => void) => (collectionListeners.add(l), () => collectionListeners.delete(l)) } as unknown as CollectionRepo}
+          links={{ load: async () => state, subscribe: noSubscribe, resolveMissing, failed: () => false } as unknown as LinksRepo}
+          scanner={{ snapshot: () => IDLE_SCAN, state: async () => IDLE_SCAN, subscribe: noSubscribe } as unknown as CollectionScanner}
+          kinds={{ load: async () => EMPTY_KINDS, subscribe: noSubscribe } as unknown as KindsRepo}
+          kindFilterSource={createKindFilterSource({ getItem: () => null, setItem: () => undefined })}
+          filterSource={{ current: () => '', subscribe: noSubscribe } as unknown as CollectionFilterSource}
+          loadFiltered={async () => new Set()}
+          onOpen={onOpen}
+          onOpenCard={onOpenCard}
+        />,
+      );
+    });
+    expect(container.textContent).toContain('1600 cartes reliées');
+    const relies = () => /(\d+) cartes reliées/.exec(container.textContent ?? '')?.[1];
+    const changes: number[] = [];
+    let last = relies();
+    let now = 0;
+    for (let n = 1610; n <= 1690; n += 10) {
+      listed = [...all.slice(0, n), ...unread];
+      for (const listener of collectionListeners) listener();
+      for (let step = 0; step < 4; step++) {
+        await act(async () => vi.advanceTimersByTime(250));
+        now += 250;
+        if (relies() !== last) {
+          last = relies();
+          changes.push(now);
+        }
+      }
+    }
+    expect(container.textContent).toContain('Liens lus : 1690 / 1790');
+    expect(changes.length).toBeGreaterThanOrEqual(1);
+    expect(changes.length).toBeLessThanOrEqual(5);
+    for (let i = 1; i < changes.length; i++) expect(changes[i]! - changes[i - 1]!).toBeGreaterThanOrEqual(2000);
+  });
+});
