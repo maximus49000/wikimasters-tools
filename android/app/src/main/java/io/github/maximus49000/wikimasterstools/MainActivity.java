@@ -91,6 +91,8 @@ public class MainActivity extends Activity {
 
         if (savedInstanceState != null) webView.restoreState(savedInstanceState);
         else webView.loadUrl(START_URL);
+
+        new Updater(this).checkInBackground();
     }
 
     // Pont vers la surcouche : ouvre l'autorisation Spotify ou Tidal dans le navigateur du téléphone (jamais dans la WebView).
