@@ -9,6 +9,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.provider.Settings;
+import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
 
@@ -25,6 +26,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,37 +37,69 @@ final class Updater {
     private static final String LATEST_RELEASE =
             "https://api.github.com/repos/maximus49000/wikimasters-tools/releases/latest";
     private static final Pattern TAG = Pattern.compile("^android-(\\d+)$");
-    private static final long CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000;
+    private static final long CHECK_INTERVAL_MS = 60L * 60 * 1000;
     private static final long MAX_APK_BYTES = 100L * 1024 * 1024;
     private static final String PREFS = "updater";
     private static final String LAST_CHECK = "lastCheck";
 
+    // Une version déjà refusée (« Plus tard ») n'est pas reproposée automatiquement avant le prochain lancement.
+    private static long declinedVersion;
+
     private final Activity activity;
+    private final AtomicBoolean busy = new AtomicBoolean();
 
     Updater(Activity activity) {
         this.activity = activity;
     }
 
-    // Au plus une vérification par jour ; tout échec (réseau, JSON, paquet) est silencieux : on retentera plus tard.
+    // Vérification automatique : au plus une par heure ; tout échec (réseau, JSON, paquet) est silencieux, on retentera.
     void checkInBackground() {
         SharedPreferences prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (System.currentTimeMillis() - prefs.getLong(LAST_CHECK, 0) < CHECK_INTERVAL_MS) return;
+        start(false);
+    }
+
+    // Bouton « Vérifier la mise à jour » : toujours une fenêtre de réponse (à jour, nouvelle version, ou échec).
+    void checkNow() {
+        start(true);
+    }
+
+    private void start(boolean manual) {
+        if (!busy.compareAndSet(false, true)) return;
+        if (manual) Toast.makeText(activity, R.string.update_checking, Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
                 Release release = fetchLatest();
-                prefs.edit().putLong(LAST_CHECK, System.currentTimeMillis()).apply();
-                if (release == null || release.versionCode <= currentVersionCode()) return;
+                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                        .putLong(LAST_CHECK, System.currentTimeMillis()).apply();
+                PackageInfo current = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
+                if (release == null || release.versionCode <= current.getLongVersionCode()) {
+                    if (manual) {
+                        activity.runOnUiThread(() -> showMessage(
+                                activity.getString(R.string.update_current, current.versionName, current.getLongVersionCode())));
+                    }
+                    return;
+                }
+                if (!manual && release.versionCode == declinedVersion) return;
                 File apk = download(release);
-                if (apk == null) return;
+                if (apk == null) throw new IOException("Paquet invalide");
                 activity.runOnUiThread(() -> promptInstall(apk, release));
-            } catch (Exception ignored) {
-                // Hors ligne ou GitHub injoignable : rien à signaler.
+            } catch (Exception e) {
+                // Hors ligne ou GitHub injoignable : silencieux en automatique, signalé quand c'est l'utilisateur qui demande.
+                if (manual) activity.runOnUiThread(() -> showMessage(activity.getString(R.string.update_failed)));
+            } finally {
+                busy.set(false);
             }
         }, "wmt-updater").start();
     }
 
-    private long currentVersionCode() throws PackageManager.NameNotFoundException {
-        return activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0).getLongVersionCode();
+    private void showMessage(String message) {
+        if (activity.isFinishing() || activity.isDestroyed()) return;
+        new AlertDialog.Builder(activity)
+                .setTitle(R.string.update_title_check)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private static final class Release {
@@ -79,7 +113,9 @@ final class Updater {
         connection.setRequestProperty("Accept", "application/vnd.github+json");
         JSONObject json;
         try {
-            if (connection.getResponseCode() != 200) return null;
+            int status = connection.getResponseCode();
+            if (status == 404) return null; // aucune release publiée : rien à installer
+            if (status != 200) throw new IOException("GitHub : HTTP " + status);
             try (InputStream in = connection.getInputStream()) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 copy(in, out, 1024 * 1024);
@@ -135,7 +171,7 @@ final class Updater {
                 .setTitle(R.string.update_title)
                 .setMessage(activity.getString(R.string.update_message, release.name))
                 .setPositiveButton(R.string.update_install, (dialog, which) -> install(apk))
-                .setNegativeButton(R.string.update_later, null)
+                .setNegativeButton(R.string.update_later, (dialog, which) -> declinedVersion = release.versionCode)
                 .show();
     }
 

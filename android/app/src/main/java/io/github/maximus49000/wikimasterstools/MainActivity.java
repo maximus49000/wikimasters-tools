@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     private static final String SPOTIFY_REDIRECT_SCHEME = "wikimasterstools";
 
     private WebView webView;
+    private final Updater updater = new Updater(this);
     private String overlayScript;
     // Repli quand la WebView ne sait pas injecter au début du document : injection au démarrage de chaque page.
     private boolean injectOnPageStarted;
@@ -92,7 +93,22 @@ public class MainActivity extends Activity {
         if (savedInstanceState != null) webView.restoreState(savedInstanceState);
         else webView.loadUrl(START_URL);
 
-        new Updater(this).checkInBackground();
+        webView.addJavascriptInterface(new UpdateBridge(), "WmtUpdate");
+    }
+
+    // Pont « Vérifier la mise à jour » du menu Plus de la surcouche.
+    private final class UpdateBridge {
+        @JavascriptInterface
+        public void check() {
+            runOnUiThread(updater::checkNow);
+        }
+    }
+
+    // Vérification automatique à chaque ouverture ou reprise de l'application (au plus une par heure).
+    @Override
+    protected void onResume() {
+        super.onResume();
+        updater.checkInBackground();
     }
 
     // Pont vers la surcouche : ouvre l'autorisation Spotify ou Tidal dans le navigateur du téléphone (jamais dans la WebView).
