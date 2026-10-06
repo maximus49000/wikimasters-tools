@@ -29,6 +29,14 @@ Sur la fiche native d'une carte de jeu vidéo, afficher une section avec la band
 5. Sinon recherche par titre nettoyé : Steam (`storesearch`) d'abord, puis IGDB. Un résultat n'est retenu que si son titre normalisé est égal au titre cherché ; à égalité, le plus connu (nombre d'avis) ; au moindre doute, aucune section. Le résultat (y compris « rien ») est mémorisé.
 6. Rien trouvé → aucune section, sans message.
 
+## Correction « Ce n'est pas le bon jeu »
+
+Quand la fiche vient d'IGDB, un bouton « Ce n'est pas le bon jeu » (glyphe + libellé, zone tactile de 44 px) ouvre une fenêtre de propositions, sur le modèle de la recherche de BO (`SoundtrackDialog`) :
+- Candidats : résultats de la recherche IGDB sur le titre de la carte, hors le jeu actuel (nom, plateformes, année, jaquette), du plus connu au moins connu ; champ de recherche libre pour taper un autre titre.
+- Choisir un candidat : il remplace le jeu de cette carte. Le choix est mémorisé par carte (`game-choice-v1`, clé = slug) et prime sur la résolution automatique, y compris sur les identifiants Wikidata.
+- Aucune autre proposition : la fenêtre l'indique (« Aucune autre proposition ») et propose « Ne rien afficher » : la section de cette carte reste vide (aucune section), choix mémorisé lui aussi. Comme la section n'est plus visible, un réglage permet de revenir au choix automatique (« Jeux vidéo : oublier mes corrections », dans les réglages de la collection, où figurent déjà les autres réglages).
+- La même correction est proposée sur une fiche Steam trouvée par recherche de titre (pas par identifiant Wikidata), avec les résultats de `storesearch` comme candidats ; sans objet quand l'identifiant vient de Wikidata.
+
 ## Modèle commun
 
 ```ts
@@ -64,11 +72,12 @@ Calquée sur les films (`src/core/screen/`, `src/content/ScreenSection.tsx`).
 - `game-kinds.ts` : `isGameCard(kinds)`.
 - `game-detail.ts` : le type `GameDetail` et les conversions Steam → `GameDetail`, IGDB → `GameDetail`.
 - `game-format.ts` : mise en forme (pourcentage, nombre d'avis, prix, joueurs, date).
-- `game-repo.ts` : mémorisation des identifiants résolus, comme `screen-repo.ts`.
+- `game-repo.ts` : mémorisation des identifiants résolus, comme `screen-repo.ts`, et des corrections de l'utilisateur (`game-choice-v1`).
 
 `src/content/`
 - `game-service.ts` : `view(slug, title)` suivant l'ordre de résolution ; `TtlCache` pour les détails (Steam : détail 24 h, note et joueurs en ligne 1 h ; IGDB : 7 jours).
 - `GameSection.tsx` + montage via `createNativeSections` (`mount.tsx`), `decorateGame` comme `decorateScreen`, `game-registry.ts` ; posé sous « Mauvaise image », avant ATK/DEF.
+- `GameChoiceDialog.tsx` : fenêtre « Ce n'est pas le bon jeu » (propositions, recherche libre, « Ne rien afficher »).
 - `HlsTrailerPlayer.tsx` : lecteur `<video>` + hls.js (chargé à la demande) ; `TrailerPlayer` existant pour YouTube.
 - `SoundtrackButton.tsx` : prend un type plus large (`{ key, title, originalTitle }`) au lieu de `ScreenDetail` ; clé `game:<source>:<id>` ; mêmes règles (rien sans compte lié, mémorisation `soundtracks-v1`).
 
@@ -92,6 +101,7 @@ Pied de section : « Données : Steam » ou « Données : IGDB.com » (condition
 
 - `core` : réponses réelles enregistrées (fixtures, comme `tidal-fixtures`) pour Steam (Elden Ring), IGDB (jeu ancien), Wikidata ; cas d'erreur (429, 401, `success: false`, format inattendu).
 - `game-service` avec API simulées : Steam prioritaire sur IGDB, repli IGDB, recherche par titre stricte (rejet des homonymes), cache, absence d'identifiants IGDB.
+- Correction : choix mémorisé prioritaire sur Wikidata, aucune proposition → « Ne rien afficher », retour au choix automatique.
 - Composants : rendu de la section (avec/sans bande-annonce, avec/sans Metascore), bouton BO pour un jeu.
 - Vérification manuelle : recharger l'extension dans Chrome, ouvrir un jeu Steam et un jeu ancien ; Android : appels réseau et lecteur HLS ; `npm run build` à chaque étape.
 
