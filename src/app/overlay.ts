@@ -66,6 +66,7 @@ import { setImageService } from '../content/image-registry';
 import { syncCardArt } from '../content/card-art';
 import { decorateImageSetting } from '../content/image-setting-menu';
 import { decoratePlayerSetting } from '../content/player-setting-menu';
+import { decorateUpdateSetting } from '../content/update-setting-menu';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
@@ -250,6 +251,9 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           // Le site a pu vider <body> depuis le montage : le lecteur y est remis.
           mountSpotifyPlayer(player, openPlayerCard);
         }
+        // Application Android seulement : le pont natif expose la vérification de la mise à jour.
+        const updateBridge = (window as unknown as { WmtUpdate?: { check(): void } }).WmtUpdate;
+        if (updateBridge) decorateUpdateSetting(document, () => updateBridge.check());
       } catch (error) {
         console.warn(LOG, 'réglage des images indisponible :', error);
       }

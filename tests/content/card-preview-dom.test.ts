@@ -87,8 +87,8 @@ describe('buildCardPreview : note de musique', () => {
 
   it('place le glyphe avant « X2 » dans le même conteneur', () => {
     const marks = buildCardPreview({ ...base, music: true, copies: 2 }).querySelector('.wmt-card-marks');
-    expect(marks?.children[0].classList.contains('wmt-card-music')).toBe(true);
-    expect(marks?.children[1].classList.contains('wmt-card-copies')).toBe(true);
+    expect(marks?.children[0]?.classList.contains('wmt-card-music')).toBe(true);
+    expect(marks?.children[1]?.classList.contains('wmt-card-copies')).toBe(true);
   });
 
   it('n’ajoute rien aux autres cartes', () => {
