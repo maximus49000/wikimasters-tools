@@ -56,4 +56,25 @@ describe('catalogue des fiches', () => {
     expect(scenes.some((x) => x.reveal?.some((r) => typeof r !== 'string' && r.text === 'Plus'))).toBe(true);
     for (const kind of ['any', 'music', 'screen', 'game']) expect(scenes.some((x) => x.card === kind), kind).toBe(true);
   });
+
+  it('montre chaque geste : un clic fait seul par la visite (reveal) est précédé d’une étape qui le montre avec un geste', () => {
+    for (const e of ENTRIES) {
+      e.steps.forEach((step, i) => {
+        for (const item of step.scene?.reveal ?? []) {
+          const wanted = typeof item === 'string' ? item : `text=${item.text}`;
+          const shown = e.steps.slice(0, i).some((earlier) => earlier.target === wanted && earlier.gesture !== undefined);
+          expect(shown, `${e.id} / ${step.title} : aucun geste montré pour « ${wanted} »`).toBe(true);
+        }
+      });
+    }
+  });
+
+  it('une étape facultative a une cible, et une étape à geste explique la consigne dans ses paragraphes', () => {
+    for (const e of ENTRIES) {
+      for (const step of e.steps) {
+        if (step.optional) expect(step.target, `${e.id} / ${step.title}`).not.toBeNull();
+        if (step.gesture) expect(step.details?.some((d) => d.label === 'Comment faire'), `${e.id} / ${step.title}`).toBe(true);
+      }
+    }
+  });
 });

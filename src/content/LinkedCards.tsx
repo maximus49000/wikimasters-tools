@@ -107,6 +107,7 @@ function LinkedBlock({ slug, source, onSeeAll, onOpenCard }: Props & { source: L
       {more && (
         <button
           type="button"
+          data-wmt-linked-more=""
           onClick={onSeeAll}
           style={{ display: 'inline-flex', minHeight: 44, alignItems: 'center', padding: 4, border: 0, background: 'none', cursor: 'pointer', font: '500 14px/20px system-ui, sans-serif', fontFamily: 'inherit', color: 'var(--color-accent, #34d399)' }}
         >

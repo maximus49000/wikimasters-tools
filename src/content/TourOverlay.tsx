@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { GESTURES, type Gesture } from '../core/whats-new/gestures';
 import { pagesOf } from '../core/whats-new/pages';
 import type { CardKind, TourStep } from '../core/whats-new/types';
 import { bubbleTop, clampBubble, scaleToFit, spotlightBox, type Box } from './tour-geometry';
@@ -33,8 +34,50 @@ export type TourOverlayProps = {
   onDone: () => void;
 };
 
-// Encart « Dans l'interface » : une copie réduite de l'élément visé, en surbrillance, pour savoir de quoi on parle.
-// Sans élément à l'écran (ou s'il ne se copie pas), il montre le glyphe de la fonction.
+const GESTURE_STYLE = `
+@keyframes wmt-press{0%,100%{transform:translate(-50%,-50%) scale(1)}15%,85%{transform:translate(-50%,-50%) scale(.8)}}
+@keyframes wmt-fill{0%{transform:translate(-50%,-50%) scale(.4);opacity:.15}85%{transform:translate(-50%,-50%) scale(1.5);opacity:.9}100%{transform:translate(-50%,-50%) scale(1.5);opacity:0}}
+@keyframes wmt-tap{0%,100%{transform:translate(-50%,-50%) scale(1)}30%{transform:translate(-50%,-50%) scale(.8)}}
+@keyframes wmt-pulse{0%{transform:translate(-50%,-50%) scale(.6);opacity:.9}100%{transform:translate(-50%,-50%) scale(1.8);opacity:0}}
+@keyframes wmt-apart-a{from{transform:translate(-50%,-50%) translate(-4px,4px)}to{transform:translate(-50%,-50%) translate(-18px,18px)}}
+@keyframes wmt-apart-b{from{transform:translate(-50%,-50%) translate(4px,-4px)}to{transform:translate(-50%,-50%) translate(18px,-18px)}}
+@keyframes wmt-slide{from{transform:translate(-50%,-50%) translateX(-22px)}to{transform:translate(-50%,-50%) translateX(22px)}}
+`;
+const dot = { position: 'absolute', left: 0, top: 0, width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,255,255,0.92)', border: `2px solid ${ACCENT}`, boxSizing: 'border-box' } as const;
+const ring = { position: 'absolute', left: 0, top: 0, width: 44, height: 44, borderRadius: '50%', border: `3px solid ${ACCENT}`, boxSizing: 'border-box' } as const;
+
+// Le geste animé (doigt, cercle qui se remplit…), centré sur le point d'ancrage de son parent (un point, de taille nulle).
+function GestureFigure({ gesture }: { gesture: Gesture }) {
+  switch (gesture) {
+    case 'longpress':
+      return (
+        <>
+          <span style={{ ...ring, animation: 'wmt-fill 2s ease-out infinite' }} />
+          <span style={{ ...dot, animation: 'wmt-press 2s ease-in-out infinite' }} />
+        </>
+      );
+    case 'tap':
+      return (
+        <>
+          <span style={{ ...ring, animation: 'wmt-pulse 1.2s ease-out infinite' }} />
+          <span style={{ ...dot, animation: 'wmt-tap 1.2s ease-in-out infinite' }} />
+        </>
+      );
+    case 'pinch':
+      return (
+        <>
+          <span style={{ ...dot, width: 18, height: 18, animation: 'wmt-apart-a 1.4s ease-in-out infinite alternate' }} />
+          <span style={{ ...dot, width: 18, height: 18, animation: 'wmt-apart-b 1.4s ease-in-out infinite alternate' }} />
+        </>
+      );
+    case 'drag':
+      return <span style={{ ...dot, animation: 'wmt-slide 1.4s ease-in-out infinite alternate' }} />;
+  }
+}
+
+// Encart « Dans l'interface » : une copie réduite de l'élément visé, en surbrillance, pour savoir de quoi on parle ;
+// et, quand l'étape demande un geste, ce geste en pictogramme animé avec sa consigne.
+// Sans élément à l'écran ni geste, il montre le glyphe de la fonction.
 function Encart({ step }: { step: TourStep }) {
   const holder = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
@@ -69,11 +112,26 @@ function Encart({ step }: { step: TourStep }) {
     return () => window.clearInterval(timer);
   }, [step]);
 
+  const gesture = step.gesture ? GESTURES[step.gesture] : null;
   return (
     <div data-wmt-encart="" style={{ margin: '6px 0 8px', padding: 6, borderRadius: 10, border: `2px solid ${ACCENT}`, background: 'rgba(52,211,153,0.10)', boxShadow: '0 0 0 4px rgba(52,211,153,0.15)' }}>
-      <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 600, color: ACCENT }}>Dans l’interface</div>
+      <style>{GESTURE_STYLE}</style>
+      <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 600, color: ACCENT }}>{step.target ? 'Dans l’interface' : 'Le geste'}</div>
       <div ref={holder} style={{ overflow: 'hidden', display: copied ? 'block' : 'none' }} />
-      {!copied && (
+      {gesture && step.gesture && (
+        <div data-wmt-gesture-figure={step.gesture} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: copied ? 6 : 0 }}>
+          <div style={{ position: 'relative', width: 64, height: 48, flex: 'none', borderRadius: 8, border, background: 'rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', left: '50%', top: '50%', width: 0, height: 0 }}>
+              <GestureFigure gesture={step.gesture} />
+            </div>
+          </div>
+          <div style={{ fontSize: 12, lineHeight: '16px' }}>
+            <strong style={{ display: 'block' }}>Geste : {gesture.label}</strong>
+            <span style={{ opacity: 0.85 }}>{gesture.caption}</span>
+          </div>
+        </div>
+      )}
+      {!copied && !gesture && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 2px' }}>
           <span aria-hidden="true" style={{ fontSize: 28 }}>{step.glyph ?? '◎'}</span>
           <span style={{ fontSize: 12, opacity: 0.85 }}>{step.title}</span>
@@ -90,28 +148,31 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   const [page, setPage] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
   const [prep, setPrep] = useState<ScenePrep>({});
-  const [preparing, setPreparing] = useState(prepare !== undefined);
+  // Étape dont l'écran est prêt : « Préparation… » dure tant qu'elle diffère de l'étape affichée.
+  const [readyIndex, setReadyIndex] = useState(-1);
   const [size, setSize] = useState({ width: 280, height: 170 });
   const [screen, setScreen] = useState({ width: window.innerWidth, height: window.innerHeight });
   // Position choisie par l'utilisateur (poignée) : gardée d'une étape à l'autre pendant la visite.
   const [moved, setMoved] = useState<{ left: number; top: number } | null>(null);
   const bubble = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  // Sens de la navigation : une étape facultative absente est sautée dans le même sens.
+  const direction = useRef<'forward' | 'back'>('forward');
   const step = steps[index];
+  const preparing = prepare !== undefined && readyIndex !== index;
 
   // Nouvelle étape : on retient l'index puis on prépare l'écran (navigation, carte, démonstration).
   useEffect(() => {
     onIndex?.(index);
     if (!prepare || !step) return;
     let cancelled = false;
-    setPreparing(true);
     setPrep({});
     prepare(step, index)
       .catch((): ScenePrep => ({}))
       .then((next) => {
         if (cancelled) return;
         setPrep(next);
-        setPreparing(false);
+        setReadyIndex(index);
       });
     return () => {
       cancelled = true;
@@ -119,6 +180,24 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
     // `prepare` et `onIndex` sont stables ; seule l'étape compte.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
+
+  // Étape facultative dont l'élément n'est pas à l'écran (ex. « Plus » sur ordinateur) : on la saute.
+  useEffect(() => {
+    if (preparing || !step?.optional || prep.navigating) return;
+    if (step.target && findTarget(step.target)) return;
+    if (direction.current === 'back') {
+      const previous = steps[index - 1];
+      if (!previous) return;
+      setIndex(index - 1);
+      setPage(pagesOf(previous).length - 1);
+      return;
+    }
+    if (index >= steps.length - 1) return onDone();
+    setIndex(index + 1);
+    setPage(0);
+    // La décision ne se prend qu'une fois l'écran de l'étape prêt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preparing, index]);
 
   useEffect(() => {
     let scrolled = false;
@@ -161,12 +240,14 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   const missing = prepare === undefined && step.target !== null && box === null;
 
   const next = () => {
+    direction.current = 'forward';
     if (!lastPage) return setPage(page + 1);
     if (last) return onDone();
     setIndex(index + 1);
     setPage(0);
   };
   const back = () => {
+    direction.current = 'back';
     if (page > 0) return setPage(page - 1);
     const previous = steps[index - 1];
     if (!previous) return;
@@ -193,6 +274,7 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
 
   return (
     <div style={{ position: 'fixed', inset: 0 }} role="dialog" aria-label="Visite guidée">
+      <style>{GESTURE_STYLE}</style>
       {prep.demo && renderDemo?.(prep.demo)}
       {prep.note?.tone === 'real' && (
         <div style={{ position: 'fixed', left: 0, right: 0, top: 0, zIndex: 1, padding: '8px 12px', background: '#14532d', color: '#dcfce7', font: '600 12px system-ui, sans-serif' }}>{prep.note.text}</div>
@@ -201,6 +283,11 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
         <div style={{ position: 'fixed', left: box.left, top: box.top, width: box.width, height: box.height, borderRadius: 10, boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)', border: `2px solid ${ACCENT}`, pointerEvents: 'none' }} />
       ) : (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)' }} />
+      )}
+      {box && step.gesture && (
+        <div data-wmt-gesture={step.gesture} style={{ position: 'fixed', left: box.left + box.width / 2, top: box.top + box.height / 2, width: 0, height: 0, pointerEvents: 'none' }}>
+          <GestureFigure gesture={step.gesture} />
+        </div>
       )}
       <div
         ref={bubble}

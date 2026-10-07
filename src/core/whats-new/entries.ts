@@ -1,10 +1,23 @@
-import type { Entry } from './types';
+import type { Entry, TourStep } from './types';
 
 // Catalogue des fonctions expliquées (ordre = ordre d'apparition dans WikiHow). Une fiche par fonction majeure, écrite à la main.
 // `target` = attribut posé par l'extension sur l'élément réel ; `scene` dit où et comment le faire apparaître (page, éléments à toucher,
 // nature de carte à ouvrir). Une étape sans cible visible s'affiche en texte seul.
 // Règles de rédaction : `text` dit à quoi sert l'élément ; `details` dit d'où viennent les données, comment s'en servir et ce qu'il faut savoir.
 // À chaque fonction ajoutée ou modifiée : une fiche ici, dans la même PR (une fiche modifiée prend un nouvel `id`).
+// Étape « Touchez Plus » : la visite ouvre le menu Plus à votre place, mais le geste doit se voir. Sautée sur ordinateur (menu déjà affiché).
+const openPlus = (why: string): TourStep => ({
+  target: 'text=Plus',
+  title: 'Ouvrir le menu Plus',
+  text: `Les réglages de l’extension se trouvent dans le menu Plus du site. Touchez « Plus » pour l’ouvrir : ${why}`,
+  gesture: 'tap',
+  optional: true,
+  details: [
+    { label: 'Comment faire', text: 'Touchez « Plus » dans la barre de navigation du site : le menu s’ouvre et liste, sous « Paramètres », les lignes ajoutées par l’extension.' },
+    { label: 'À savoir', text: 'Sur ordinateur, ce menu est déjà affiché dans la barre latérale : cette étape est alors sautée toute seule. À l’étape suivante, la visite touche « Plus » pour vous si le menu est fermé.' },
+  ],
+});
+
 export const ENTRIES: Entry[] = [
   {
     id: 'wikihow',
@@ -14,6 +27,7 @@ export const ENTRIES: Entry[] = [
     summary: 'Revoir toutes les fonctions, réglages regroupés',
     fresh: true,
     steps: [
+      openPlus('vous y trouverez « Paramètre d’extension » et « WikiHow ».'),
       {
         target: '[data-wmt-extension-setting]',
         title: 'Paramètre d’extension',
@@ -38,11 +52,11 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'visite-guidee',
+    id: 'visite-guidee-v2',
     theme: 'app',
     glyph: '🧭',
     title: 'La visite guidée',
-    summary: 'Pages courtes, encart, bulle déplaçable',
+    summary: 'Pages courtes, gestes animés, bulle déplaçable',
     steps: [
       {
         target: null,
@@ -51,8 +65,19 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Des pages courtes', text: 'Chaque étape se lit en plusieurs pages : d’abord à quoi ça sert, puis, une page par sujet, d’où viennent les données, comment s’en servir et ce qu’il faut savoir. Touchez Suivant pour avancer, Précédent pour revenir ; le compteur « page 2/4 » et les points indiquent où vous en êtes.' },
           { label: 'L’encart « Dans l’interface »', text: 'Sur la première page de chaque étape, un encart en surbrillance montre une copie réduite de l’élément dont on parle, pour le reconnaître d’un coup d’œil. Si l’élément n’est pas à l’écran, l’encart affiche le symbole de la fonction.' },
+          { label: 'Les gestes sont montrés', text: 'Quand l’étape demande un geste (toucher, appui long, pincer, glisser), un doigt animé le joue sur l’élément éclairé et le même geste est dessiné dans l’encart, avec sa consigne. Quand la visite touche un bouton à votre place (comme « Plus »), une étape vous le montre d’abord.' },
           { label: 'Déplacer la bulle', text: 'Maintenez et glissez la poignée ⠿ en haut de la bulle pour la placer à côté de l’élément éclairé. Elle reste toujours entièrement dans l’écran, même si vous la tirez vers un bord ou tournez l’appareil, et garde sa place pendant toute la visite.' },
           { label: 'Quitter', text: '« Quitter la visite » ou « Terminer » vous ramène à la page où vous étiez au départ, après avoir fermé la fiche éventuellement ouverte pour l’occasion.' },
+        ],
+      },
+      {
+        target: null,
+        title: 'Déplacer la bulle',
+        text: 'La bulle peut gêner la vue de l’élément éclairé : vous pouvez la déplacer avec la poignée ⠿ qui se trouve tout en haut de la bulle.',
+        gesture: 'drag',
+        details: [
+          { label: 'Comment faire', text: 'Posez le doigt (ou le bouton de la souris) sur la poignée ⠿, déplacez sans lever, puis relâchez à côté de l’élément visé. La bulle suit votre doigt.' },
+          { label: 'Elle reste dans l’écran', text: 'Où que vous la lâchiez, la bulle est ramenée à l’intérieur de l’écran : elle ne peut jamais sortir par un bord, même si vous tournez l’appareil.' },
         ],
       },
     ],
@@ -65,13 +90,28 @@ export const ENTRIES: Entry[] = [
     summary: 'Cocher des cartes, échanger avec un ami',
     steps: [
       {
-        target: null,
-        title: 'Cocher une carte',
+        target: '[data-wmt-card]',
+        title: 'Cocher une carte : l’appui long',
         text: 'Un appui long sur une carte de la Collection active le mode Sélectionner du site avec cette carte déjà cochée : plus besoin de passer par le bouton du site avant de choisir.',
+        gesture: 'longpress',
         details: [
-          { label: 'Comment s’en servir', text: 'Maintenez le doigt (ou le clic) sur une carte, puis touchez les autres cartes pour les cocher ou décocher. Les cases sont celles du site : tout ce que le site propose sur la sélection (étiqueter, tout sélectionner…) continue de marcher.' },
-          { label: 'À savoir', text: 'Pour quitter, utilisez « Quitter la sélection » du site.' },
+          { label: 'Comment faire', text: 'Posez le doigt (ou le bouton de la souris) sur une carte et laissez-le environ une demi-seconde, sans bouger : la sélection s’ouvre avec cette carte cochée. Touchez ensuite les autres cartes pour les cocher ou décocher.' },
+          { label: 'Où ça marche', text: 'Sur les cartes de la vue Homemade, la vue par défaut de la Collection. Si vous avez choisi une autre vue, repassez sur Homemade pour voir cette carte éclairée.' },
+          { label: 'À savoir', text: 'Les cases sont celles du site : tout ce qu’il propose sur la sélection (tout sélectionner, étiqueter…) continue de marcher. Pour quitter, utilisez « Quitter la sélection » du site.' },
         ],
+        scene: { page: '/collection' },
+      },
+      {
+        target: 'text=Sélectionner',
+        title: 'Ou : le bouton Sélectionner',
+        text: 'Sans appui long, le bouton « Sélectionner » du site ouvre le même mode : à vous ensuite de cocher les cartes voulues, une par une.',
+        gesture: 'tap',
+        optional: true,
+        details: [
+          { label: 'Comment faire', text: 'Touchez « Sélectionner » en haut de la Collection : des cases apparaissent sur les cartes et une barre d’actions s’affiche, où l’extension ajoute ses boutons Échanger et Toile.' },
+          { label: 'À savoir', text: 'Cette étape est sautée si le mode Sélectionner est déjà actif. À l’étape suivante, la visite l’active pour vous, afin d’éclairer la barre d’actions.' },
+        ],
+        scene: { page: '/collection' },
       },
       {
         target: '[data-wmt-selection-trade]',
@@ -115,6 +155,36 @@ export const ENTRIES: Entry[] = [
         ],
         scene: { page: '/collection' },
       },
+      {
+        target: null,
+        title: 'Zoomer sur la Toile',
+        text: 'Sur la Toile, on zoome pour passer de la vue d’ensemble (les regroupements) aux cartes elles-mêmes.',
+        gesture: 'pinch',
+        details: [
+          { label: 'Comment faire', text: 'Écartez deux doigts pour zoomer, rapprochez-les pour dézoomer. Avec une souris, utilisez la molette.' },
+          { label: 'Pourquoi ce pictogramme', text: 'La visite n’affiche pas la Toile (elle changerait la vue mémorisée de la Collection) : ce geste vous est montré en dessin, à refaire une fois la vue Toile ouverte.' },
+        ],
+      },
+      {
+        target: null,
+        title: 'Se déplacer sur la Toile',
+        text: 'Une fois zoomé, on se déplace sur la Toile en la faisant glisser pour atteindre les cartes qui ne sont pas à l’écran.',
+        gesture: 'drag',
+        details: [
+          { label: 'Comment faire', text: 'Posez le doigt (ou maintenez le bouton de la souris) sur un espace vide de la Toile, puis glissez sans lever.' },
+          { label: 'À savoir', text: 'Au-delà de 1 500 cartes la Toile passe en dessin simplifié ; zoomez pour voir les cartes apparaître au fur et à mesure.' },
+        ],
+      },
+      {
+        target: null,
+        title: 'Ouvrir une carte de la Toile',
+        text: 'Toucher une carte de la Toile affiche, au-dessus d’elle, une barre de boutons pour agir sur cette carte sans quitter la Toile.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez une carte : une barre apparaît avec le graphique des prix (📈) et la fiche de la carte (🃏). Touchez ailleurs pour la refermer.' },
+          { label: 'À savoir', text: 'La barre remplace l’agrandissement de la carte : l’idée est de garder la Toile visible pendant que vous consultez les prix.' },
+        ],
+      },
     ],
   },
   {
@@ -124,6 +194,17 @@ export const ENTRIES: Entry[] = [
     title: 'Prix en fond et tri par prix',
     summary: 'Relevé des prix de toute la Collection',
     steps: [
+      {
+        target: 'button[aria-label="Trier la collection"]',
+        title: 'Ouvrir la liste de tri',
+        text: 'Le tri par prix se choisit dans la liste de tri du site : touchez d’abord le bouton « Trier la collection » pour l’ouvrir.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le bouton « Trier la collection », au-dessus des cartes : la liste des tris du site s’affiche (Rareté, Nom, Favoris, Date d’ajout…) avec, en plus, le tri de l’extension.' },
+          { label: 'À savoir', text: 'Ce bouton est celui du site ; l’extension y ajoute seulement une entrée. À l’étape suivante, la visite l’ouvre pour vous et éclaire cette entrée.' },
+        ],
+        scene: { page: '/collection' },
+      },
       {
         target: '[data-wmt-price-sort]',
         title: 'Trier par prix de vente',
@@ -158,8 +239,20 @@ export const ENTRIES: Entry[] = [
         text: 'Sous la fiche d’une carte, ce bloc montre les cartes de votre Collection qui lui sont reliées sur Wikipédia : un moyen rapide de rebondir de carte en carte.',
         details: [
           { label: 'D’où viennent les liens', text: 'Wikipédia : les articles cités dans l’introduction de l’article de la carte, et ceux qui le citent. Les liens sont mémorisés 30 jours.' },
-          { label: 'Ce qui est affiché', text: 'Les 6 cartes les plus consultées sur Wikipédia (nombre de visites de l’article) ; « Voir plus » ouvre la liste complète. Des cartes à deux sauts, reliées par un article intermédiaire, peuvent aussi apparaître (4 au plus), avec l’article qui fait le lien.' },
+          { label: 'Ce qui est affiché', text: 'Les 6 cartes les plus consultées sur Wikipédia (nombre de visites de l’article) ; le bouton « Voir les N cartes liées » ouvre la liste complète. Des cartes à deux sauts, reliées par un article intermédiaire, peuvent aussi apparaître (4 au plus), avec l’article qui fait le lien.' },
           { label: 'Comment s’en servir', text: 'Touchez une carte liée pour ouvrir sa fiche.' },
+        ],
+        scene: { card: 'any' },
+      },
+      {
+        target: '[data-wmt-linked-more]',
+        title: 'Voir toutes les cartes liées',
+        text: 'Quand une carte a plus de cartes liées que le bloc n’en montre, ce bouton ouvre la liste complète, des plus consultées aux moins consultées.',
+        gesture: 'tap',
+        optional: true,
+        details: [
+          { label: 'Comment faire', text: 'Touchez « Voir les N cartes liées » sous le bloc : une fenêtre liste toutes les cartes liées. Touchez-en une pour ouvrir sa fiche.' },
+          { label: 'À savoir', text: 'Le bouton n’existe que si la carte a plus de 6 cartes liées (ou plus de 4 cartes à deux sauts) ; sinon cette étape est sautée.' },
         ],
         scene: { card: 'any' },
       },
@@ -202,6 +295,7 @@ export const ENTRIES: Entry[] = [
         ],
         scene: { card: 'music' },
       },
+      openPlus('puis « Paramètre d’extension » pour lier votre compte.'),
       {
         target: '[data-wmt-extension-setting]',
         title: 'Lier votre compte, choisir la plateforme',
@@ -252,6 +346,17 @@ export const ENTRIES: Entry[] = [
         ],
         scene: { card: 'game' },
       },
+      {
+        target: '[aria-label="Changer de jeu"]',
+        title: 'Changer de jeu',
+        text: 'Si l’extension a associé le mauvais jeu à la carte, ce bouton (⇄) vous laisse choisir le bon.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez ⇄ à côté de « Jeu vidéo » : choisissez parmi les propositions de Steam et d’IGDB, collez l’adresse d’une page Steam ou IGDB, ou indiquez « aucun jeu ».' },
+          { label: 'Ce qui est mémorisé', text: 'Votre choix est gardé pour cette carte et prime sur le choix automatique ; il peut être modifié à tout moment de la même façon.' },
+        ],
+        scene: { card: 'game' },
+      },
     ],
   },
   {
@@ -261,6 +366,7 @@ export const ENTRIES: Entry[] = [
     title: 'Remonter une anomalie',
     summary: 'Signaler un problème en quelques mots',
     steps: [
+      openPlus('puis « Remonter une anomalie ».'),
       {
         target: '[data-wmt-anomaly-setting]',
         title: 'Remonter une anomalie',
