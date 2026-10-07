@@ -324,4 +324,46 @@ describe('TourOverlay', () => {
       expect(scroller.scrollTop).toBe(0);
     });
   });
+
+  describe('visite qui explique la bulle : les éléments de la bulle sont éclairés', () => {
+    const render = (steps: Parameters<typeof TourOverlay>[0]['steps']) => act(() => root.render(<TourOverlay steps={steps} onDone={() => undefined} />));
+    const bubbleOf = () => container.querySelector<HTMLElement>('[data-wmt-grip]')!.parentElement as HTMLElement;
+
+    it('les éléments de la bulle portent des repères visables', () => {
+      render([{ target: null, title: 'T', text: 'Texte.', details: [{ label: 'Détail', text: 'Détail du texte.' }] }]);
+      for (const attribute of ['data-wmt-tour-counter', 'data-wmt-tour-next', 'data-wmt-tour-quit', 'data-wmt-grip']) {
+        expect(container.querySelector(`[${attribute}]`), attribute).not.toBeNull();
+      }
+      act(() => container.querySelector<HTMLElement>('[data-wmt-tour-next]')!.click());
+      expect(container.querySelector('[data-wmt-tour-back]')).not.toBeNull();
+    });
+
+    it('éclaire un élément de la bulle : l’anneau et le geste sont dessinés au-dessus de la bulle', () => {
+      render([{ target: '[data-wmt-tour-next]', title: 'Suivant', text: 'Touchez Suivant pour avancer.', gesture: 'tap' }]);
+      const marker = container.querySelector('[data-wmt-gesture="tap"]')!;
+      expect(marker).not.toBeNull();
+      expect(bubbleOf().compareDocumentPosition(marker) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('la bulle ne bouge pas pour sa propre cible (elle suivrait sans fin), et la page ne défile pas', () => {
+      const scrolled = vi.fn();
+      (Element.prototype as unknown as { scrollBy: unknown }).scrollBy = scrolled;
+      render([{ target: '[data-wmt-tour-next]', title: 'Suivant', text: 'Touchez Suivant pour avancer.', gesture: 'tap' }]);
+      const first = bubbleOf().style.top;
+      act(() => void window.dispatchEvent(new Event('resize')));
+      expect(bubbleOf().style.top).toBe(first);
+      expect(scrolled).not.toHaveBeenCalled();
+      delete (Element.prototype as unknown as { scrollBy?: unknown }).scrollBy;
+    });
+
+    it('l’encart d’une étape qui vise la bulle ne se copie pas lui-même : il montre le geste', () => {
+      render([{ target: '[data-wmt-encart]', title: 'Encart', text: 'Voici l’encart de la bulle.', gesture: 'tap', details: [{ label: 'À savoir', text: 'Détail du texte.' }] }]);
+      const encart = container.querySelector('[data-wmt-encart]')!;
+      expect(encart.querySelectorAll('[data-wmt-encart]')).toHaveLength(0);
+      expect(encart.textContent).toContain('Geste : Toucher');
+      // L'encart reste affiché sur les pages suivantes de cette étape, pour qu'il reste éclairé.
+      act(() => container.querySelector<HTMLElement>('[data-wmt-tour-next]')!.click());
+      expect(container.querySelector('[data-wmt-encart]')).not.toBeNull();
+    });
+  });
 });

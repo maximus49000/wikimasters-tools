@@ -21,6 +21,7 @@ function setup(overrides: Partial<SceneDeps> = {}, present: Record<string, Eleme
     pick: async () => null,
     openCard: vi.fn(),
     save: vi.fn(),
+    closeWindows: vi.fn(),
     ...overrides,
   };
   return { deps, screen, resolver: createSceneResolver(deps) };
@@ -53,12 +54,13 @@ describe('createSceneResolver', () => {
     expect(deps.assign).toHaveBeenCalledWith('/collection');
   });
 
-  it('révèle par un sélecteur puis par un libellé', async () => {
+  it('révèle par un sélecteur puis par un libellé (le second n’apparaît qu’après le premier clic)', async () => {
     const { resolver, deps, screen } = setup();
     screen['#mode'] = el('mode');
-    screen['text:Sélectionner'] = el('texte');
     (deps.click as ReturnType<typeof vi.fn>).mockImplementation((element: Element) => {
-      if ((element as unknown as { name: string }).name === 'texte') screen['#cible'] = el('c');
+      const name = (element as unknown as { name: string }).name;
+      if (name === 'mode') screen['text:Sélectionner'] = el('texte');
+      if (name === 'texte') screen['#cible'] = el('c');
     });
     expect(await resolver.ensure(step({ page: '/collection', reveal: ['#mode', { text: 'Sélectionner' }] }), session())).toEqual({ kind: 'ready' });
     expect(deps.click).toHaveBeenCalledTimes(2);
@@ -105,9 +107,56 @@ describe('createSceneResolver', () => {
       pick,
       openCard: vi.fn(),
       save: vi.fn(),
+      closeWindows: vi.fn(),
     });
     expect(await waiting.ensure(step({ card: 'game' }), session({ cardSlug: 'Hades' }))).toEqual({ kind: 'card', slug: 'Hades', title: 'Hades' });
     expect(pick).not.toHaveBeenCalled();
     void resolver;
+  });
+
+  it('ferme d’abord les fenêtres de réglage quand la scène le demande, même si l’élément est déjà à l’écran', async () => {
+    const { resolver, deps } = setup({}, { '#cible': el('c') });
+    expect(await resolver.ensure(step({ closeWindows: true }), session())).toEqual({ kind: 'ready' });
+    expect(deps.closeWindows).toHaveBeenCalledOnce();
+  });
+
+  it('ne ferme rien sans cette option', async () => {
+    const { resolver, deps } = setup({}, { '#cible': el('c') });
+    await resolver.ensure(step({ page: '/collection' }), session());
+    expect(deps.closeWindows).not.toHaveBeenCalled();
+  });
+
+  it('ferme puis rouvre : après la fermeture l’élément manque, la révélation rouvre le chemin', async () => {
+    const { resolver, deps, screen } = setup({}, { '#cible': el('ancienne vue'), '#entree': el('entrée') });
+    (deps.closeWindows as ReturnType<typeof vi.fn>).mockImplementation(() => void delete screen['#cible']);
+    (deps.click as ReturnType<typeof vi.fn>).mockImplementation(() => void (screen['#cible'] = el('rouverte')));
+    expect(await resolver.ensure(step({ closeWindows: true, reveal: ['#entree'] }), session())).toEqual({ kind: 'ready' });
+    expect(deps.click).toHaveBeenCalledTimes(1);
+  });
+
+  it('ne touche pas une étape de la révélation quand une étape plus loin est déjà à l’écran (menu déjà ouvert)', async () => {
+    const { resolver, deps, screen } = setup();
+    screen['text:Plus'] = el('Plus');
+    screen['#entree'] = el('entrée');
+    (deps.click as ReturnType<typeof vi.fn>).mockImplementation((element: Element) => {
+      if ((element as unknown as { name: string }).name === 'entrée') screen['#cible'] = el('c');
+    });
+    expect(await resolver.ensure(step({ reveal: [{ text: 'Plus' }, '#entree'] }), session())).toEqual({ kind: 'ready' });
+    expect(deps.click).toHaveBeenCalledTimes(1);
+    expect((deps.click as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toBe(screen['#entree']);
+  });
+
+  it('touche chaque étape de la révélation, dans l’ordre, quand rien n’est encore à l’écran', async () => {
+    const { resolver, deps, screen } = setup();
+    screen['text:Plus'] = el('Plus');
+    const clicked: string[] = [];
+    (deps.click as ReturnType<typeof vi.fn>).mockImplementation((element: Element) => {
+      const name = (element as unknown as { name: string }).name;
+      clicked.push(name);
+      if (name === 'Plus') screen['#entree'] = el('entrée');
+      if (name === 'entrée') screen['#cible'] = el('c');
+    });
+    expect(await resolver.ensure(step({ reveal: [{ text: 'Plus' }, '#entree'] }), session())).toEqual({ kind: 'ready' });
+    expect(clicked).toEqual(['Plus', 'entrée']);
   });
 });

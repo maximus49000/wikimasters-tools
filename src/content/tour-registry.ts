@@ -8,6 +8,8 @@ export type TourEnv = {
   pick(kind: CardKind, cards: KnownCard[]): Promise<KnownCard | null>;
   openCard(slug: string): void;
   closeCard(): void;
+  // Ferme les fenêtres de réglage ouvertes pendant la visite (Paramètre d'extension, Publicité d'achat…).
+  closeWindows(): void;
   // Rouvre l'interface qui a lancé la visite (WikiHow ou la liste « Quoi de neuf »).
   reopen(from: TourOrigin): void;
 };

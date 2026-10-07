@@ -12,7 +12,8 @@ export const THEMES: { id: Theme; label: string }[] = [
 export type CardKind = 'game' | 'music' | 'screen' | 'any';
 export type RevealItem = string | { text: string };
 // Où et comment l'élément visé apparaît : page du site, éléments à toucher pour le faire apparaître, nature de carte dont il faut ouvrir la fiche.
-export type Scene = { page?: string; card?: CardKind; reveal?: RevealItem[] };
+// `closeWindows` : ferme d'abord les fenêtres de réglage ouvertes (elles recouvriraient l'élément visé, ou gardent une vue précédente).
+export type Scene = { page?: string; card?: CardKind; reveal?: RevealItem[]; closeWindows?: boolean };
 
 // `target` : sélecteur CSS de l'élément à éclairer (cherché aussi dans les shadow DOM ouverts) ; null = étape de texte seul.
 // `text` : à quoi sert l'élément. `details` : tout ce qui aide à le comprendre et à s'en servir, en paragraphes titrés

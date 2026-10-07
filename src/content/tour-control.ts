@@ -44,6 +44,7 @@ export function createTourController(deps: TourControllerDeps) {
     pick: async (kind, cards) => deps.env()?.pick(kind, cards) ?? null,
     openCard: (slug) => deps.env()?.openCard(slug),
     save: (session) => saveTourSession(deps.storage, session, deps.now()),
+    closeWindows: () => deps.env()?.closeWindows(),
   });
 
   const translate = (result: SceneResult): ScenePrep => {
@@ -94,6 +95,7 @@ export function createTourController(deps: TourControllerDeps) {
       const session = loadTourSession(deps.storage, deps.now());
       clearTourSession(deps.storage);
       if (!session) return;
+      deps.env()?.closeWindows();
       if (session.cardSlug !== undefined) deps.env()?.closeCard();
       if (session.origin !== here()) {
         if (session.from) saveTourReturn(deps.storage, session.from, deps.now());

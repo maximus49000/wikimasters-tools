@@ -29,6 +29,7 @@ import { getLinkedService } from './linked-registry';
 import { PlayerSettings } from './PlayerSettings';
 import { AnomalyDialog, type AnomalyDialogProps } from './AnomalyDialog';
 import { TourOverlay } from './TourOverlay';
+import { closeSettingsWindows, registerSettingsWindow, unregisterSettingsWindow } from './settings-windows';
 import { DemoCard } from './DemoCard';
 import { setTourWindowOpener, startTour, tourController } from './tour-instance';
 import type { TourSession } from './tour-session';
@@ -212,13 +213,15 @@ export const pruneLinkedCards = linkedSections.prune;
 const EXTENSION_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-extension-settings';
 const ANOMALY_HOST_ATTRIBUTE = 'data-wmt-anomaly';
 const TOUR_HOST_ATTRIBUTE = 'data-wmt-tour-host';
+// La visite reste au-dessus des fenêtres de réglage qu'elle ouvre pour les éclairer.
+const TOUR_Z_INDEX = 2147483001;
 
 // Fenêtre de réglage ouverte depuis le menu « Plus » : hors du DOM du jeu (shadow DOM).
-function openSettingsWindow(hostAttribute: string, render: (close: () => void) => ReactElement): void {
+function openSettingsWindow(hostAttribute: string, render: (close: () => void) => ReactElement, zIndex = 2147483000): void {
   if (document.querySelector(`[${hostAttribute}]`)) return;
   const host = document.createElement('div');
   host.setAttribute(hostAttribute, '');
-  host.style.cssText = 'position:fixed; inset:0; z-index:2147483000';
+  host.style.cssText = `position:fixed; inset:0; z-index:${zIndex}`;
   // Le menu du jeu se ferme sur un appui « à l'extérieur » : on garde ces événements chez nous.
   for (const type of ['pointerdown', 'mousedown', 'touchstart']) {
     host.addEventListener(type, (event) => event.stopPropagation());
@@ -229,6 +232,7 @@ function openSettingsWindow(hostAttribute: string, render: (close: () => void) =
   document.body.appendChild(host);
   const root = createRoot(mountPoint);
   function close() {
+    unregisterSettingsWindow(hostAttribute);
     document.removeEventListener('keydown', onKey, true);
     root.unmount();
     host.remove();
@@ -239,6 +243,7 @@ function openSettingsWindow(hostAttribute: string, render: (close: () => void) =
     close();
   }
   document.addEventListener('keydown', onKey, true);
+  registerSettingsWindow(hostAttribute, close);
   root.render(render(close));
 }
 
@@ -262,8 +267,11 @@ export const openTour = (session: TourSession): void =>
         tourController.finish();
       }}
     />
-  ));
+  ), TOUR_Z_INDEX);
 setTourWindowOpener(openTour);
+
+// Ferme les fenêtres de réglage ouvertes, sauf la visite elle-même.
+export const closeOpenWindows = (): void => closeSettingsWindows([TOUR_HOST_ATTRIBUTE]);
 
 const WHATS_NEW_HOST_ATTRIBUTE = 'data-wmt-whats-new';
 const WIKIHOW_HOST_ATTRIBUTE = 'data-wmt-wikihow';
