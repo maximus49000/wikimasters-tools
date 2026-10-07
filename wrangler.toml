@@ -8,7 +8,7 @@ compatibility_date = "2026-10-01"
 [triggers]
 crons = ["*/30 * * * *"]
 
-# À ajouter dès que l'espace KV `wikimasters-doc-cache` existe (son ID se lit dans le tableau de bord Cloudflare) :
-# [[kv_namespaces]]
-# binding = "DOC_CACHE"
-# id = "<ID de l'espace KV>"
+# Cache des réponses et index des chaînes de confiance.
+[[kv_namespaces]]
+binding = "DOC_CACHE"
+id = "ceca2f2545544593ab878b40fa43e572"
