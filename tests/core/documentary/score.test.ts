@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest';
+import { COMMONS_RULES, normalize, passes, scoreCandidate, subjectNames, YOUTUBE_RULES } from '../../../src/core/documentary/score';
+import type { DocCandidate, DocSubject } from '../../../src/core/documentary/types';
+
+const verdun: DocSubject = { qid: 'Q2280', kind: 'event', names: ['Bataille de Verdun', 'Verdun'], startYear: 1916, endYear: 1916 };
+const base: DocCandidate = { source: 'youtube', id: 'abc123', title: '', channel: 'Une chaîne', durationSec: 3120, language: 'fr', description: '', url: 'https://www.youtube.com/watch?v=abc123' };
+const make = (change: Partial<DocCandidate>): DocCandidate => ({ ...base, ...change });
+
+describe('normalize', () => {
+  it('retire accents, casse et ponctuation', () => {
+    expect(normalize("L'Été d'Éloïse !")).toBe('l ete d eloise');
+  });
+});
+
+describe('subjectNames', () => {
+  it('retire les parenthèses, les doublons et les noms trop courts', () => {
+    expect(subjectNames(['Napoléon Ier', 'Napoleon', 'Bataille de Verdun (1916)', 'Ab', 'napoléon ier'])).toEqual(['Napoléon Ier', 'Napoleon', 'Bataille de Verdun']);
+  });
+});
+
+describe('scoreCandidate', () => {
+  it('retient un documentaire dont le titre porte le nom et le genre', () => {
+    const result = scoreCandidate(verdun, make({ title: "Verdun, la bataille de l'impossible - documentaire" }), YOUTUBE_RULES);
+    expect(result.score).toBe(75);
+    expect(passes(result)).toBe(true);
+  });
+
+  it('rejette un titre sans le nom du sujet', () => {
+    const result = scoreCandidate(verdun, make({ title: 'Les grandes batailles - documentaire' }), YOUTUBE_RULES);
+    expect(result.reason).toBe('titre sans le nom du sujet');
+    expect(passes(result)).toBe(false);
+  });
+
+  it('rejette un extrait trop court et un film trop long', () => {
+    expect(scoreCandidate(verdun, make({ title: 'Verdun documentaire', durationSec: 120 }), YOUTUBE_RULES).reason).toBe('trop court');
+    expect(scoreCandidate(verdun, make({ title: 'Verdun documentaire', durationSec: 9000 }), YOUTUBE_RULES).reason).toBe('trop long');
+  });
+
+  it('rejette une durée inconnue', () => {
+    expect(scoreCandidate(verdun, make({ title: 'Verdun documentaire', durationSec: null }), YOUTUBE_RULES).reason).toBe('durée inconnue');
+  });
+
+  it('rejette les mots parasites', () => {
+    expect(scoreCandidate(verdun, make({ title: 'Verdun documentaire REACTION' }), YOUTUBE_RULES).reason).toBe('mot parasite');
+    expect(scoreCandidate(verdun, make({ title: 'Verdun - bande annonce' }), YOUTUBE_RULES).reason).toBe('mot parasite');
+  });
+
+  it('exige mieux qu’un titre nu : 55 points ne passent pas', () => {
+    const result = scoreCandidate(verdun, make({ title: 'Verdun 1916', durationSec: 3000 }), YOUTUBE_RULES);
+    expect(result.score).toBe(55);
+    expect(passes(result)).toBe(false);
+  });
+
+  it('une chaîne reconnue suffit à passer', () => {
+    const result = scoreCandidate(verdun, make({ title: 'Verdun 14-18', channel: 'ARTE', durationSec: 2600 }), YOUTUBE_RULES);
+    expect(result.score).toBe(75);
+    expect(passes(result)).toBe(true);
+  });
+
+  it('pénalise une année du titre éloignée de la période (homonyme)', () => {
+    const result = scoreCandidate(verdun, make({ title: 'Verdun 1250 documentaire' }), YOUTUBE_RULES);
+    expect(result.score).toBe(45);
+    expect(passes(result)).toBe(false);
+  });
+
+  it('ne pénalise pas l’année de réalisation (après 1990)', () => {
+    const result = scoreCandidate(verdun, make({ title: 'Verdun documentaire 2016' }), YOUTUBE_RULES);
+    expect(passes(result)).toBe(true);
+  });
+
+  it('accepte une archive libre de Commons plus courte', () => {
+    const napoleon: DocSubject = { qid: 'Q517', kind: 'person', names: ['Napoléon Ier', 'Napoleon'], startYear: 1769, endYear: 1821 };
+    const archive = make({ source: 'commons', title: 'La Révolution française et Napoléon - Planet Wissen', durationSec: 100, language: null });
+    expect(passes(scoreCandidate(napoleon, archive, COMMONS_RULES))).toBe(true);
+    expect(scoreCandidate(napoleon, { ...archive, durationSec: 30 }, COMMONS_RULES).reason).toBe('trop court');
+  });
+});
