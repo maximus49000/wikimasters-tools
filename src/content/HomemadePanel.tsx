@@ -19,6 +19,7 @@ import type { SortSource } from './sort-source';
 import { createThrottledLoader } from './throttle';
 import { useKindState } from './useKindState';
 import { useMusicSlugs } from './useMusicSlugs';
+import { useBookSlugs } from './useBookSlugs';
 import { useGameSlugs } from './useGameSlugs';
 import { useScreenSlugs } from './useScreenSlugs';
 import { useNowPlayingSlugs } from './useNowPlayingSlugs';
@@ -250,12 +251,13 @@ export function HomemadePanel({
   const musicSlugs = useMusicSlugs(current.items);
   const screenSlugs = useScreenSlugs(current.items);
   const gameSlugs = useGameSlugs(current.items);
+  const bookSlugs = useBookSlugs(current.items);
   const previews = useMemo(
     () =>
       current.items.map((card) =>
-        toCardPreview(card, book?.byTitle(card.title) ?? null, cardMarket(marketNow.history, marketNow.pending, card.slug, Date.now()), nowPlaying.has(card.slug), musicSlugs.has(card.slug), screenSlugs.has(card.slug), gameSlugs.has(card.slug)),
+        toCardPreview(card, book?.byTitle(card.title) ?? null, cardMarket(marketNow.history, marketNow.pending, card.slug, Date.now()), nowPlaying.has(card.slug), musicSlugs.has(card.slug), screenSlugs.has(card.slug), gameSlugs.has(card.slug), bookSlugs.has(card.slug)),
       ),
-    [current.items, book, marketNow, nowPlaying, musicSlugs, screenSlugs, gameSlugs],
+    [current.items, book, marketNow, nowPlaying, musicSlugs, screenSlugs, gameSlugs, bookSlugs],
   );
   // Seules les cartes de la page affichée ont leurs prix relevés, comme sur la liste du site.
   useWantPrices(current.items, onWantCards);

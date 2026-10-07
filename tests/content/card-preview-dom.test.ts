@@ -88,6 +88,18 @@ describe('buildCardPreview : manette de jeu vidéo', () => {
   });
 });
 
+describe('buildCardPreview : livre', () => {
+  it('un livre porte un glyphe livre, titré « Livre » ; la bobine, la manette et la note l’emportent', () => {
+    const glyph = buildCardPreview({ ...base, book: true }).querySelector<HTMLElement>('.wmt-card-book');
+    expect(glyph?.getAttribute('aria-label')).toBe('Livre');
+    expect(glyph?.title).toBe('Livre');
+    for (const other of [{ film: true }, { game: true }, { music: true }]) {
+      expect(buildCardPreview({ ...base, book: true, ...other }).querySelector('.wmt-card-book')).toBeNull();
+    }
+    expect(buildCardPreview({ ...base, book: true }).classList.contains('wmt-card-linked')).toBe(true);
+  });
+});
+
 describe('buildCardPreview : note de musique', () => {
   it('marque une carte liée à la musique, à la place du glyphe de lecture', () => {
     const note = buildCardPreview({ ...base, music: true }).querySelector<HTMLElement>('.wmt-card-music');

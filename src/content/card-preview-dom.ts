@@ -134,11 +134,11 @@ export function buildCardPreview(preview: CardPreview): HTMLElement {
   if (preview.playing) card.append(playingGlyph());
 
   // Au-dessus de la défense : le lien avec le cinéma, les jeux vidéo ou la musique (bobine, manette ou note, sans fond), puis la marque d'exemplaires.
-  // Les deux sont dans un même conteneur aligné à droite : seul, chacun garde le bord droit. La bobine l'emporte sur la manette, puis sur la note.
+  // Les deux sont dans un même conteneur aligné à droite : seul, chacun garde le bord droit. La bobine l'emporte sur la manette, puis sur la note, puis sur le livre.
   const marks = div('wmt-card-marks');
-  if (preview.film || preview.game || preview.music) {
+  if (preview.film || preview.game || preview.music || preview.book) {
     card.classList.add('wmt-card-linked');
-    marks.append(preview.film ? filmGlyph() : preview.game ? gameGlyph() : musicGlyph());
+    marks.append(preview.film ? filmGlyph() : preview.game ? gameGlyph() : preview.music ? musicGlyph() : bookGlyph());
   }
   if (preview.copies !== null) {
     card.classList.add('wmt-card-multi');
@@ -223,6 +223,18 @@ function gameGlyph(): HTMLElement {
     for (const [name, value] of Object.entries({ cx: String(cx), cy: String(cy), r: '1' })) button.setAttribute(name, value);
     svg.append(button);
   }
+  glyph.append(svg);
+  return glyph;
+}
+
+// Livre ouvert (même dessin que le glyphe « book » des fiches), sans fond ni animation.
+function bookGlyph(): HTMLElement {
+  const glyph = div('wmt-card-link wmt-card-book');
+  glyph.setAttribute('role', 'img');
+  glyph.title = 'Livre';
+  glyph.setAttribute('aria-label', glyph.title);
+  const svg = icon('', ['M12 7c-1.7-1.3-4-2-7-2v13c3 0 5.3.7 7 2', 'M12 7c1.7-1.3 4-2 7-2v13c-3 0-5.3.7-7 2', 'M12 7v13']);
+  svg.setAttribute('class', 'wmt-card-book-pages');
   glyph.append(svg);
   return glyph;
 }
