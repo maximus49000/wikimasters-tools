@@ -490,18 +490,19 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'documentaire',
+    id: 'documentaire-v2',
     theme: 'fiche',
     glyph: '🎞',
     title: 'Documentaire d’histoire',
-    summary: 'Un documentaire sur les événements et personnages historiques',
+    summary: 'Un documentaire sur un événement, un personnage, une œuvre ou une civilisation',
     steps: [
       {
         target: '[data-wmt-documentary-card]',
         title: 'Documentaire',
-        text: 'Sur la fiche d’une bataille, d’une guerre, d’une révolution ou d’un personnage historique, un lecteur propose un documentaire. Appuyez sur ▶ pour le regarder.',
+        text: 'Sur la fiche d’un événement historique, d’un personnage, d’une œuvre d’art, d’un monument, d’une civilisation ou d’un culte ancien, un lecteur propose un documentaire. Appuyez sur ▶ pour le regarder.',
         details: [
           { label: 'D’où viennent les vidéos', text: 'D’abord les documentaires choisis à la main, puis les archives libres de Wikimedia Commons, puis les vidéos récentes de quelques chaînes (ARTE, INA, Nota Bene, Lumni, Hérodote), puis une recherche YouTube. Chaque vidéo est notée : le titre doit contenir le nom du sujet et la durée doit être celle d’un documentaire.' },
+          { label: 'Quelles cartes', text: 'Les événements (batailles, guerres, révolutions, traités), les personnes mortes en 1950 ou avant, les œuvres d’art, les monuments, les civilisations, les périodes et les religions. Une carte dont Wikidata ne donne pas la nature compte si elle date de 1950 ou avant. Les films, séries, jeux, livres et morceaux ont leur propre fiche.' },
           { label: 'Si rien ne convient', text: 'Aucune vidéo n’est affichée plutôt qu’une mauvaise : des boutons ouvrent la recherche chez YouTube, Arte et l’INA. Si plusieurs vidéos sont trouvées, le glyphe ⇄ passe à la suivante ; la croix signale une vidéo hors sujet et la masque chez vous.' },
           { label: 'À savoir', text: 'Rien n’est chargé chez YouTube avant d’appuyer sur ▶. Certaines chaînes interdisent l’intégration : le bouton ↗ ouvre alors la vidéo à la source. Les archives de Commons sont sous licence libre, avec l’auteur indiqué.' },
         ],

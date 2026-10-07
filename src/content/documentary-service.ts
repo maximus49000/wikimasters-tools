@@ -71,7 +71,7 @@ export function createDocumentaryService(deps: DocumentaryServiceDeps) {
         if (screen === 'film' || screen === 'series' || !mayBeHistory(cardKinds)) return { status: 'none' };
         const info = await cached(`doc-subject-v1-${slug}`, () => subjectOf(slug));
         if (!info) return { status: 'none' };
-        const kind = historyKindOf(cardKinds, info.death);
+        const kind = historyKindOf(cardKinds, info.death, info.start ?? info.birth);
         if (!kind) return { status: 'none' };
         const subject: DocSubject = { qid: info.qid, kind, names: info.names, startYear: kind === 'person' ? info.birth : info.start, endYear: kind === 'person' ? info.death : info.end };
         const hidden = new Set(await repo.flagged(slug));

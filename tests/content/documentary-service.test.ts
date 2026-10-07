@@ -122,3 +122,24 @@ describe('flag', () => {
     expect(sent).toHaveLength(1);
   });
 });
+
+describe('view : périmètre élargi', () => {
+  it('une œuvre d’art ancienne a sa section', async () => {
+    const { service } = setup({ subject: async () => ({ qid: 'Q618856', names: ['Tenture de l’Apocalypse'], birth: null, death: null, start: 1377, end: null }) }, ['Q18609875']);
+    expect(await service.view('Bataille_de_Verdun', 'x')).toMatchObject({ status: 'detail', subject: { kind: 'event', startYear: 1377 } });
+  });
+  it('une carte sans nature renseignée mais datée de 1794 a sa section', async () => {
+    const { service } = setup({ subject: async () => ({ qid: 'Q1277069', names: ['Culte de l’Être suprême'], birth: null, death: null, start: 1794, end: null }) }, []);
+    expect((await service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
+  });
+  it('une carte sans nature et sans date, ou récente, n’en a pas', async () => {
+    const undated = setup({ subject: async () => ({ qid: 'Q9', names: ['Quelque chose'], birth: null, death: null, start: null, end: null }) }, []);
+    expect((await undated.service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
+    const recent = setup({ subject: async () => ({ qid: 'Q9', names: ['Quelque chose'], birth: null, death: null, start: 2005, end: null }) }, []);
+    expect((await recent.service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
+  });
+  it('un taxon (Hominina) n’en a pas', async () => {
+    const taxon = setup({ subject: async () => ({ qid: 'Q605457', names: ['Hominina'], birth: null, death: null, start: null, end: null }) }, ['Q16521']);
+    expect((await taxon.service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
+  });
+});
