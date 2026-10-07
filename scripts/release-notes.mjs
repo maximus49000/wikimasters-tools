@@ -32,12 +32,15 @@ export function subjectsBetween(cwd, from, to = 'HEAD') {
   return result.stdout.split(/\r?\n/).filter(Boolean);
 }
 
+// Le tag le plus récent `<préfixe><numéro>` parmi `tags` (le livrable précédent du canal), ou undefined.
+export function latestTag(tags, tagPrefix) {
+  const numbered = tags.filter((tag) => tag.startsWith(tagPrefix) && /^\d+$/.test(tag.slice(tagPrefix.length)));
+  return numbered.sort((a, b) => Number(b.slice(tagPrefix.length)) - Number(a.slice(tagPrefix.length)))[0];
+}
+
 // Les notes du livrable à publier, par rapport au dernier livrable du même canal (tag `<préfixe><numéro>`).
 export function notesSince(cwd, tagPrefix, fallback) {
-  const tags = spawnSync('git', ['tag', '--list', `${tagPrefix}*`], { cwd, encoding: 'utf8' }).stdout
-    .split(/\r?\n/)
-    .filter((tag) => new RegExp(`^${tagPrefix}\d+$`).test(tag))
-    .sort((a, b) => Number(b.slice(tagPrefix.length)) - Number(a.slice(tagPrefix.length)));
-  const notes = formatNotes(subjectsBetween(cwd, tags[0]));
+  const tags = spawnSync('git', ['tag', '--list', `${tagPrefix}*`], { cwd, encoding: 'utf8' }).stdout.split(/\r?\n/);
+  const notes = formatNotes(subjectsBetween(cwd, latestTag(tags, tagPrefix)));
   return notes || fallback;
 }
