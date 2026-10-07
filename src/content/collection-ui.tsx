@@ -1,5 +1,7 @@
 import type { KnownCard } from '../core/collection/collection-book';
 import leafletCss from 'leaflet/dist/leaflet.css?inline';
+import clusterCss from 'leaflet.markercluster/dist/MarkerCluster.css?inline';
+import clusterDefaultCss from 'leaflet.markercluster/dist/MarkerCluster.Default.css?inline';
 import { createRoot, type Root } from 'react-dom/client';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { CollectionScanner } from '../core/collection/collection-scan';
@@ -151,7 +153,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
     host.style.display = 'block';
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = leafletCss + PANEL_CSS;
+    style.textContent = leafletCss + clusterCss + clusterDefaultCss + PANEL_CSS;
     const mountPoint = document.createElement('div');
     shadow.append(style, mountPoint);
     grid.insertAdjacentElement('beforebegin', host);
