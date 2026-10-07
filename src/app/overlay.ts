@@ -34,7 +34,7 @@ import { showAuctionsEndingSoon, takePendingAuctionSearch } from '../content/auc
 import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
-import { EMPTY_LEDGER, planMineEvents, type MineLedger } from '../core/collection/mine-events';
+import { createMineApplier } from '../core/collection/mine-apply';
 import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, openImageSettings, openPlayerSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
 import { decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
@@ -145,21 +145,33 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   });
   // Ventes, échanges et gains aux enchères : la Collection suit au fil de l'eau, sans nouveau parcours.
   const scanner = createCollectionScanner({ api, collection: collectionRepo, store });
-  const LEDGER_KEY = 'collection-mine-ledger:v1';
-  let ledgerTail: Promise<unknown> = Promise.resolve();
+  const mineApplier = createMineApplier({ store, collection: collectionRepo });
   window.addEventListener('message', (event) => {
     const data = event.data as { type?: unknown; selling?: unknown; history?: unknown; won?: unknown } | null;
     if (event.source !== window || data?.type !== MINE_MESSAGE) return;
-    const mine = { selling: data.selling, history: data.history, won: data.won };
-    ledgerTail = ledgerTail
-      .then(async () => {
-        const plan = planMineEvents((await store.get<MineLedger>(LEDGER_KEY)) ?? EMPTY_LEDGER, mine);
-        if (plan.gained.length > 0) await collectionRepo.observe(plan.gained);
-        if (Object.keys(plan.deltas).length > 0) await collectionRepo.adjustCopies(plan.deltas);
-        await store.set(LEDGER_KEY, plan.ledger);
-      })
+    mineApplier
+      .apply({ selling: data.selling, history: data.history, won: data.won })
       .catch((error) => console.warn(LOG, 'mouvements de la collection non appliqués :', error));
   });
+  // Une vente conclue, ou revenue sans acheteur, hors de la page Marché (autre appareil, application fermée) ne passe par aucune réponse du site :
+  // on relit « mes enchères » nous-mêmes à l'ouverture et au retour dans l'application (au plus une fois par minute).
+  const MINE_REFRESH_MS = 60_000;
+  let mineReadAt = 0;
+  const refreshMine = (): void => {
+    if (Date.now() - mineReadAt < MINE_REFRESH_MS) return;
+    mineReadAt = Date.now();
+    api
+      .getMineRaw()
+      .then((json) => {
+        const mine = json as { selling?: unknown; history?: unknown; won?: unknown } | null;
+        return mineApplier.apply({ selling: mine?.selling, history: mine?.history, won: mine?.won });
+      })
+      .catch((error) => console.warn(LOG, 'mes enchères non relues :', error));
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshMine();
+  });
+  refreshMine();
   // Un échange conclu : on ne sait pas encore quelles cartes ont bougé, le parcours complet (en fond) le dira.
   window.addEventListener('message', (event) => {
     const data = event.data as { type?: unknown } | null;

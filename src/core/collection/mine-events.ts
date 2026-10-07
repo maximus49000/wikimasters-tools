@@ -24,19 +24,25 @@ export type MinePlan = {
   deltas: Record<string, number>;
   // Cartes gagnées aux enchères, avec toutes les données de la carte (rareté, image…).
   gained: KnownCard[];
+  // Cartes d'une vente sans acheteur, avec leurs données : de quoi les remettre si la Collection ne les connaît plus (dernier exemplaire parti).
+  returned: KnownCard[];
 };
 
 // La première lecture ne fait que mémoriser l'existant : la Collection scannée en tient déjà compte.
 export function planMineEvents(ledger: MineLedger, mine: { selling?: unknown; history?: unknown; won?: unknown }): MinePlan {
   const deltas: Record<string, number> = {};
   const sold = { ...ledger.sold };
+  const returned: KnownCard[] = [];
   for (const row of [...rows(mine.selling), ...rows(mine.history)]) {
     const id = row.id as string;
     const slug = slugOf(row);
     if (slug === null) continue;
     const removed = hasLeft(row);
     const known = sold[id];
-    if (ledger.ready && (known ? known.removed !== removed : removed)) deltas[slug] = (deltas[slug] ?? 0) + (removed ? -1 : 1);
+    if (ledger.ready && (known ? known.removed !== removed : removed)) {
+      deltas[slug] = (deltas[slug] ?? 0) + (removed ? -1 : 1);
+      if (!removed) returned.push(...extractCards(row));
+    }
     sold[id] = { slug, removed };
   }
 
@@ -48,5 +54,5 @@ export function planMineEvents(ledger: MineLedger, mine: { selling?: unknown; hi
 
   const soldIds = Object.keys(sold);
   const trimmed = soldIds.length > MAX_TRACKED ? Object.fromEntries(soldIds.slice(-MAX_TRACKED).map((id) => [id, sold[id]!])) : sold;
-  return { ledger: { ready: true, sold: trimmed, won }, deltas, gained };
+  return { ledger: { ready: true, sold: trimmed, won }, deltas, gained, returned };
 }

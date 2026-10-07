@@ -70,6 +70,8 @@ export function createGameApi(options: GameApiOptions) {
   return {
     getMine: (): Promise<MineResponse> =>
       enqueue(async () => parseMineResponse(await requestJson(MINE_ENDPOINT))),
+    // Réponse brute (champs que le schéma ignore, comme `owned`) : sert à tenir la Collection à jour.
+    getMineRaw: (): Promise<unknown> => enqueue(() => requestJson(MINE_ENDPOINT)),
     searchMarket: (title: string): Promise<{ auctions: MarketAuction[] }> =>
       enqueue(async () => {
         const path = marketSearchEndpoint(title);
