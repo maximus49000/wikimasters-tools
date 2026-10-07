@@ -1,9 +1,8 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { KnownCard } from '../core/collection/collection-book';
 import { formatViews, LINKED_PREVIEW_MAX, VIA_PREVIEW_MAX, type ViaCard } from '../core/links/linked-cards';
-import { rarityKey } from './card-rarity';
+import { CardThumb } from './CardThumb';
 import { Glyph } from './Glyphs';
-import { getImageService } from './image-registry';
 import { getLinkedService } from './linked-registry';
 import type { LinkedSource } from './linked-source';
 
@@ -23,38 +22,12 @@ const noSubscribe = () => () => undefined;
 const NONE: KnownCard[] = [];
 const NONE_VIA: ViaCard[] = [];
 
-// Miniature : couleur de rareté en cadre et en fond, image en haut (celle du jeu, sinon l'image de remplacement déjà trouvée).
-function Thumb({ card }: { card: KnownCard }) {
-  const images = getImageService();
-  // S'abonne aux images qui arrivent (affiche du jeu vidéo, image de remplacement).
-  const url = useSyncExternalStore(images?.subscribe ?? noSubscribe, () => (images ? images.displayUrl(card.slug, card.imageUrl) : card.imageUrl));
-  const color = card.rarity ? `var(--color-rarity-${rarityKey(card.rarity)}, #94a3b8)` : '#94a3b8';
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        flex: 'none',
-        width: 34,
-        height: 48,
-        position: 'relative',
-        overflow: 'hidden',
-        borderRadius: 5,
-        border: `1.5px solid ${color}`,
-        boxShadow: `0 0 6px color-mix(in srgb, ${color} 60%, transparent)`,
-        background: `linear-gradient(160deg, ${color}, #0d1117 140%)`,
-      }}
-    >
-      {url ? <img src={url} alt="" referrerPolicy="no-referrer" style={{ position: 'absolute', inset: '0 0 50% 0', width: '100%', height: '50%', objectFit: 'cover' }} /> : null}
-    </span>
-  );
-}
-
 function Row({ card, rank, via, onPick }: { card: KnownCard; rank?: number; via?: string[]; onPick: (slug: string) => void }) {
   const viaText = via && via.length > 0 ? `via ${via[0]}${via.length > 1 ? ` +${via.length - 1}` : ''}` : undefined;
   return (
     <button type="button" className="wmt-linked-row" onClick={() => onPick(card.slug)} title={card.title}>
       {rank !== undefined && <span style={{ flex: 'none', width: 18, textAlign: 'right', fontSize: 12, ...muted }}>{rank}</span>}
-      <Thumb card={card} />
+      <CardThumb card={card} />
       {viaText ? (
         <span style={{ flex: 1, minWidth: 0 }} title={`via ${via?.join(', ')}`}>
           <span className="wmt-linked-title" style={{ display: '-webkit-box' }}>{card.title}</span>
