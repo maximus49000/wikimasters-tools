@@ -271,4 +271,57 @@ describe('TourOverlay', () => {
       expect(container.textContent).toContain('Obligatoire');
     });
   });
+
+  describe('mise en page : la zone visée reste entièrement visible', () => {
+    const rectOf = (top: number, height: number) => ({ left: 10, top, width: 80, height, right: 90, bottom: top + height, x: 10, y: top, toJSON: () => ({}) });
+    let offsetHeight: PropertyDescriptor | undefined;
+    beforeEach(() => {
+      offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 300 });
+    });
+    afterEach(() => {
+      if (offsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offsetHeight);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
+    });
+
+    const setup = (top: number, height: number) => {
+      document.body.innerHTML = '<div id="scroller" style="overflow-y: auto"><button id="cible">x</button></div>';
+      const scroller = document.getElementById('scroller')!;
+      Object.defineProperty(scroller, 'scrollHeight', { value: 3000, configurable: true });
+      Object.defineProperty(scroller, 'clientHeight', { value: 700, configurable: true });
+      scroller.scrollTop = 0;
+      const target = document.getElementById('cible')!;
+      target.getBoundingClientRect = () => rectOf(top, height) as DOMRect;
+      container = document.createElement('div');
+      document.body.appendChild(container);
+      root = createRoot(container);
+      return { scroller };
+    };
+    const bubbleOf = () => container.querySelector<HTMLElement>('[data-wmt-grip]')!.parentElement as HTMLElement;
+
+    it('zone dans la partie haute : bulle en bas, la page ne bouge pas', () => {
+      const { scroller } = setup(100, 120);
+      act(() => root.render(<TourOverlay steps={[{ target: '#cible', title: 'T', text: 'Texte assez long pour la bulle.' }]} onDone={() => undefined} />));
+      expect(parseFloat(bubbleOf().style.top)).toBe(window.innerHeight - 300 - 12);
+      expect(scroller.scrollTop).toBe(0);
+    });
+
+    it('zone dans la partie basse : bulle calée en haut, et la page ajuste de quelques pixels seulement', () => {
+      const { scroller } = setup(700, 60);
+      act(() => root.render(<TourOverlay steps={[{ target: '#cible', title: 'T', text: 'Texte assez long pour la bulle.' }]} onDone={() => undefined} />));
+      expect(parseFloat(bubbleOf().style.top)).toBe(12);
+      expect(scroller.scrollTop).toBe(10);
+    });
+
+    it('bulle déplacée à la main : plus aucun défilement automatique', () => {
+      const { scroller } = setup(700, 60);
+      act(() => root.render(<TourOverlay steps={[{ target: '#cible', title: 'T', text: 'Texte assez long pour la bulle.' }]} onDone={() => undefined} />));
+      scroller.scrollTop = 0;
+      const grip = container.querySelector<HTMLElement>('[data-wmt-grip]')!;
+      act(() => void grip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 50 })));
+      act(() => void grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 60, clientY: 80 })));
+      expect(container.querySelector('[data-wmt-grip]')).not.toBeNull();
+      expect(scroller.scrollTop).toBe(0);
+    });
+  });
 });
