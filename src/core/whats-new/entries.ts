@@ -366,6 +366,28 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'collection-filmographie',
+    theme: 'fiche',
+    glyph: '🃏',
+    title: 'Mes cartes dans la filmographie',
+    summary: 'Repérer les films et séries que vous possédez',
+    steps: [
+      {
+        target: '[data-wmt-work-list]',
+        title: 'Filmographie et ma collection',
+        text: 'Dans la filmographie d’un acteur ou d’un réalisateur, les films et séries dont vous possédez la carte sont repérés : miniature à la couleur de la rareté, nombre d’exemplaires, ligne en surbrillance.',
+        details: [
+          { label: 'D’où viennent les données', text: 'La liste vient de TMDB. Votre Collection est celle que l’extension a lue pendant ses parcours ; un film est reconnu quand l’identifiant TMDB de sa carte est connu (lu sur Wikidata, en arrière-plan).' },
+          { label: 'Comment s’en servir', text: 'Le résumé en haut indique « N / M dans ma collection ». « Seulement ma collection » ne garde que vos cartes. Le bouton carte à droite d’une ligne ouvre votre carte ; toucher le reste de la ligne ouvre la fiche du film.' },
+          { label: 'À savoir', text: 'Seules les cartes déjà connues de la Collection sont repérées : lancez un parcours complet de la Collection pour toutes les voir. Un film dont l’identifiant n’est pas encore lu apparaît un peu plus tard.' },
+        ],
+        scene: { card: 'screen' },
+        glyph: '🃏',
+        optional: true,
+      },
+    ],
+  },
+  {
     id: 'jeux-video',
     theme: 'ecoute',
     glyph: '🎮',
