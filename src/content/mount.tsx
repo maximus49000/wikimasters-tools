@@ -22,6 +22,7 @@ import { ListenSection } from './ListenSection';
 import { BOOK_HOST_ATTRIBUTE, GAME_HOST_ATTRIBUTE, IMAGE_HOST_ATTRIBUTE, LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, type MountListen } from './decorate-listen';
 import { GameSection } from './GameSection';
 import { BookSection } from './BookSection';
+import { WriterSection } from './WriterSection';
 import { ScreenSection } from './ScreenSection';
 import { ImageSection } from './ImageSection';
 import { LINKED_HOST_ATTRIBUTE, type MountLinked } from './decorate-linked';
@@ -180,7 +181,13 @@ const gameSections = createNativeSections(GAME_HOST_ATTRIBUTE, '0', (slug, title
 export const mountGameSection: MountListen = gameSections.mount;
 export const pruneGameSections = gameSections.prune;
 
-const bookSections = createNativeSections(BOOK_HOST_ATTRIBUTE, '0', (slug, title) => <BookSection slug={slug} title={title} />);
+// Un même hôte porte la section d'un livre et la bibliographie d'un écrivain : chacune ne s'affiche que pour sa nature de carte.
+const bookSections = createNativeSections(BOOK_HOST_ATTRIBUTE, '0', (slug, title, host) => (
+  <>
+    <BookSection slug={slug} title={title} />
+    <WriterSection slug={slug} title={title} onOpenCard={(target) => getLinkedService()?.open(host, target)} />
+  </>
+));
 export const mountBookSection: MountListen = bookSections.mount;
 export const pruneBookSections = bookSections.prune;
 

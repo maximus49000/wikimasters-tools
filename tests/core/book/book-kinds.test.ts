@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOOK_NATURES, isBookCard } from '../../../src/core/book/book-kinds';
+import { BOOK_NATURES, isBookCard, isWriterCard } from '../../../src/core/book/book-kinds';
 
 const kinds = (natures: string[]) => ({ natures, occupations: [], genres: [] });
 
@@ -15,5 +15,17 @@ describe('isBookCard', () => {
   });
   it('liste quinze natures sans doublon', () => {
     expect(new Set(BOOK_NATURES).size).toBe(15);
+  });
+});
+
+describe('isWriterCard', () => {
+  const person = (occupations: string[]) => ({ natures: ['Q5'], occupations, genres: [] });
+  it('reconnaît un écrivain, un poète, un dramaturge', () => {
+    for (const job of ['Q36180', 'Q49757', 'Q214917']) expect(isWriterCard(person([job])), job).toBe(true);
+  });
+  it('ni un acteur, ni une œuvre, ni une carte sans nature', () => {
+    expect(isWriterCard(person(['Q33999']))).toBe(false);
+    expect(isWriterCard({ natures: ['Q8261'], occupations: ['Q36180'], genres: [] })).toBe(false);
+    expect(isWriterCard(undefined)).toBe(false);
   });
 });

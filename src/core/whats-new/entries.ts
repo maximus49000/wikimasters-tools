@@ -419,11 +419,11 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'livres-v4',
+    id: 'livres-v5',
     theme: 'fiche',
     glyph: '📖',
     title: 'Livres',
-    summary: 'Synopsis, couverture, prix et achat, lecture gratuite, et changer de livre',
+    summary: 'Synopsis, couverture, prix et achat, lecture gratuite, bibliographie des écrivains, et changer de livre',
     steps: [
       {
         target: '[data-wmt-book]',
@@ -460,6 +460,19 @@ export const ENTRIES: Entry[] = [
         ],
         scene: { card: 'book' },
         glyph: '📚',
+      },
+      {
+        target: '[data-wmt-writer]',
+        title: 'Bibliographie d’un écrivain',
+        text: 'Sur la carte d’un écrivain, d’un poète ou d’un dramaturge, la section « Bibliographie » liste ses œuvres les plus connues, de la plus récente à la plus ancienne, comme la filmographie d’un acteur. Les livres dont vous possédez la carte sont repérés.',
+        details: [
+          { label: 'D’où viennent les données', text: 'Wikidata : les œuvres dont la personne est l’auteur, les plus répandues dans les langues de Wikipédia d’abord (40 au plus, titres regroupés). La couverture vient d’Open Library ; la liste est gardée 7 jours.' },
+          { label: 'Comment s’en servir', text: 'Touchez une ligne pour ouvrir le livre dans la section (synopsis, prix, lecture gratuite) ; la flèche ← revient à la liste. Une miniature à la couleur de la rareté, ×N et le bouton carte marquent vos cartes ; « Seulement ma collection » ne garde que celles-ci.' },
+          { label: 'À savoir', text: 'Seuls les livres d’un auteur très connu apparaissent tous ; pour un auteur peu connu, la liste est élargie aux œuvres plus discrètes. Un livre est repéré dans votre Collection quand le titre de son article Wikipédia est celui de la carte, et seulement parmi les cartes déjà connues de la Collection.' },
+        ],
+        scene: { card: 'book' },
+        glyph: '📚',
+        optional: true,
       },
       {
         target: '[data-wmt-book-switch]',

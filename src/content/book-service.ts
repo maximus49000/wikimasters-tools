@@ -2,12 +2,13 @@
 import { articleUrl, coverUrl, isWorkId, normalizeTitle, workPageUrl } from '../core/book/book-format';
 import type { AmazonPrice } from '../core/book/amazon-price';
 import type { BookDetail } from '../core/book/book-detail';
-import { isBookCard } from '../core/book/book-kinds';
+import { isBookCard, isWriterCard } from '../core/book/book-kinds';
 import type { ArchiveApi } from '../core/book/archive-api';
 import type { BookChoiceRepo, BookRepo } from '../core/book/book-repo';
 import { BookError, bookErrorMessage } from '../core/book/errors';
 import type { GoogleBooksApi } from '../core/book/google-books-api';
 import type { OlWork, OpenLibraryApi } from '../core/book/openlibrary-api';
+import type { WriterWork } from '../core/book/writer-works';
 import { archiveUrl, gutenbergUrl, protectedUntil, readingLinks, wikisourceUrl, type ReadingLink } from '../core/book/reading';
 import type { WikisourceApi } from '../core/book/wikisource-api';
 import { paperShopLinks, type PriceLine, type ShopLink } from '../core/book/shops';
@@ -26,6 +27,9 @@ export type BookPreview = { work?: OlWork; message?: string };
 export type BookOffers = { shops: ShopLink[]; paperPrice?: PriceLine };
 // La lecture gratuite d'un livre : les sources libres trouvées ; sans source, l'année jusqu'à laquelle il est protégé quand elle est connue.
 // `complete: false` : une source n'a pas répondu (« rien trouvé » ne serait pas la vérité) ; rien n'est alors mémorisé pour elle.
+// Une œuvre de la bibliographie d'un écrivain ; `owned` : la carte de la Collection qui la représente (article de l'œuvre = slug de la carte).
+export type BibliographyItem = WriterWork & { owned?: KnownCard };
+export type BibliographyView = { status: 'none' } | { status: 'list'; items: BibliographyItem[] } | { status: 'error'; message: string };
 export type BookReading = { links: ReadingLink[]; protectedUntil?: number; complete: boolean };
 
 export type BookServiceDeps = {
@@ -43,6 +47,8 @@ export type BookServiceDeps = {
   amazon?: Pick<AmazonPrice, 'read'> | null;
   googleBooks?: Pick<GoogleBooksApi, 'findEbook'> | null;
   // Lecture gratuite : Wikisource FR (recherche stricte) et Internet Archive (scans libres) ; absents, seules les données de Wikidata comptent.
+  // Les œuvres d'un écrivain (Wikidata, SPARQL) ; absent : pas de bibliographie.
+  writerWorks?: ((slug: string) => Promise<WriterWork[]>) | null;
   wikisource?: Pick<WikisourceApi, 'find'> | null;
   archive?: Pick<ArchiveApi, 'firstFree'> | null;
   now?: () => number;
@@ -51,7 +57,7 @@ export type BookServiceDeps = {
 const MAX_GENRES = 5;
 
 export function createBookService(deps: BookServiceDeps) {
-  const { collection, kinds, books, choices, openLibrary, intro, cache, onChoice, amazon = null, googleBooks = null, wikisource = null, archive = null, now = () => Date.now() } = deps;
+  const { collection, kinds, books, choices, openLibrary, intro, cache, onChoice, amazon = null, googleBooks = null, wikisource = null, archive = null, writerWorks = null, now = () => Date.now() } = deps;
 
   // Le choix est enregistré, puis l'image mémorisée de la carte est oubliée.
   const changed = async (slug: string, saved: Promise<void>): Promise<void> => {
@@ -88,15 +94,14 @@ export function createBookService(deps: BookServiceDeps) {
   }
 
   // Synopsis : introduction de l'article Wikipédia de la carte, sinon description d'Open Library.
-  async function synopsisOf(slug: string, work: OlWork): Promise<BookDetail['synopsis']> {
-    const wiki = await optional(() => cache.getOrLoad(`book-intro-v1-${slug}`, () => intro(slug)));
-    if (wiki) return { text: wiki, url: articleUrl(slug), source: 'wikipedia' };
+  async function synopsisOf(slug: string | undefined, work: OlWork): Promise<BookDetail['synopsis']> {
+    const wiki = slug === undefined ? null : await optional(() => cache.getOrLoad(`book-intro-v1-${slug}`, () => intro(slug)));
+    if (wiki && slug !== undefined) return { text: wiki, url: articleUrl(slug), source: 'wikipedia' };
     const description = await optional(() => cache.getOrLoad(`book-description-v1-${work.id}`, () => openLibrary.description(work.id)));
     return description ? { text: description, url: workPageUrl(work.id), source: 'openlibrary' } : undefined;
   }
 
-  async function detailOf(slug: string, work: OlWork, state: KindsState, cardKinds: CardKinds | undefined): Promise<BookDetail> {
-    const genres = (cardKinds?.genres ?? []).slice(0, MAX_GENRES).map((id) => facetLabel(state, id));
+  async function detailOf(slug: string | undefined, work: OlWork, genres: string[]): Promise<BookDetail> {
     const synopsis = await synopsisOf(slug, work);
     return {
       id: work.id,
@@ -112,6 +117,8 @@ export function createBookService(deps: BookServiceDeps) {
       pageUrl: workPageUrl(work.id),
     };
   }
+
+  const genresOf = (state: KindsState, cardKinds: CardKinds | undefined): string[] => (cardKinds?.genres ?? []).slice(0, MAX_GENRES).map((id) => facetLabel(state, id));
 
   return {
     // Les cartes (parmi `cards`) dont la nature est une œuvre écrite : elles portent le glyphe livre. Nature seule, aucun appel à Open Library.
@@ -134,11 +141,11 @@ export function createBookService(deps: BookServiceDeps) {
         if (choice) {
           if ('none' in choice) return { status: 'empty', none: true };
           const chosen = await workById(choice.workId);
-          return chosen ? { status: 'detail', detail: await detailOf(slug, chosen, state, cardKinds) } : { status: 'empty' };
+          return chosen ? { status: 'detail', detail: await detailOf(slug, chosen, genresOf(state, cardKinds)) } : { status: 'empty' };
         }
         const ids = (await books.resolve([slug]))[slug] ?? {};
         const work = await workOf(ids.workId, title, { byTitle: true });
-        return work ? { status: 'detail', detail: await detailOf(slug, work, state, cardKinds) } : { status: 'empty' };
+        return work ? { status: 'detail', detail: await detailOf(slug, work, genresOf(state, cardKinds)) } : { status: 'empty' };
       } catch (error) {
         return { status: 'error', message: bookErrorMessage(error) };
       }
@@ -212,10 +219,47 @@ export function createBookService(deps: BookServiceDeps) {
       return { shops: all, ...(paperPrice ? { paperPrice } : {}) };
     },
 
+    // La bibliographie de l'écrivain d'une carte : rien (pas un écrivain, hors Collection), ses œuvres les plus connues (7 jours) avec les cartes
+    // possédées repérées par le titre de leur article, ou une erreur. Les cartes sans exemplaire (vendues) ne comptent pas comme possédées.
+    async bibliography(slug: string): Promise<BibliographyView> {
+      if (!writerWorks) return { status: 'none' };
+      try {
+        const cards = await collection.list();
+        if (!cards.some((card) => card.slug === slug)) return { status: 'none' };
+        await kinds.resolveMissing([slug]);
+        if (!isWriterCard((await kinds.load()).cards[slug])) return { status: 'none' };
+        const works = await cache.getOrLoad(`book-writer-v1-${slug}`, () => writerWorks(slug));
+        const mine = new Map(cards.filter((card) => card.copies === undefined || card.copies > 0).map((card) => [card.slug, card]));
+        return { status: 'list', items: works.map((work) => ({ ...work, ...(work.slug && mine.has(work.slug) ? { owned: mine.get(work.slug)! } : {}) })) };
+      } catch (error) {
+        return { status: 'error', message: bookErrorMessage(error) };
+      }
+    },
+
+    // La fiche d'une œuvre ouverte depuis une bibliographie : l'œuvre Open Library de Wikidata ; sinon recherche par titre exact, retenue
+    // seulement si l'auteur concorde (nom de famille), car ici l'auteur est connu.
+    async workDetail(item: WriterWork, author: string): Promise<BookView> {
+      try {
+        let work = item.workId !== undefined ? await workById(item.workId) : null;
+        if (!work) {
+          const query = cleanTitle(item.title);
+          const wanted = normalizeTitle(query);
+          const surname = normalizeTitle(author.split(/\s+/).pop() ?? '');
+          if (wanted !== '' && surname !== '') {
+            const found = await searchTitle(query, wanted);
+            work = found.filter((candidate) => normalizeTitle(candidate.title) === wanted && normalizeTitle(candidate.author ?? '').includes(surname)).sort((a, b) => b.popularity - a.popularity)[0] ?? null;
+          }
+        }
+        return work ? { status: 'detail', detail: await detailOf(item.slug, work, []) } : { status: 'empty' };
+      } catch (error) {
+        return { status: 'error', message: bookErrorMessage(error) };
+      }
+    },
+
     // Les sources de lecture gratuite d'un livre. Wikidata (Wikisource, Gutenberg, décès de l'auteur) ne vaut que pour le livre trouvé
     // automatiquement : avec un livre choisi à la main, seules la recherche Wikisource et les scans d'Open Library comptent.
     // Ne lève jamais ; une source qui échoue n'est pas mémorisée comme « rien ».
-    async reading(slug: string, book: Pick<BookDetail, 'id' | 'title' | 'author'>): Promise<BookReading> {
+    async reading(slug: string | undefined, book: Pick<BookDetail, 'id' | 'title' | 'author'>): Promise<BookReading> {
       let complete = true;
       const attempt = async <T>(job: () => Promise<T | null>): Promise<T | null> => {
         try {
@@ -225,8 +269,9 @@ export function createBookService(deps: BookServiceDeps) {
           return null;
         }
       };
-      const manual = (await attempt(async () => (await choices.load())[slug] ?? null)) !== null;
-      const ids = manual ? {} : (await attempt(async () => (await books.resolve([slug]))[slug] ?? null)) ?? {};
+      // Sans carte (livre ouvert depuis une bibliographie, sans article), Wikidata n'a rien à dire du livre : même traitement qu'un choix manuel.
+      const manual = slug === undefined || (await attempt(async () => (await choices.load())[slug] ?? null)) !== null;
+      const ids = manual || slug === undefined ? {} : (await attempt(async () => (await books.resolve([slug]))[slug] ?? null)) ?? {};
       const wikisourceTitle =
         ids.wikisource ??
         (wikisource ? await attempt(() => cache.getOrLoad(`book-wikisource-v1-${normalizeTitle(book.title)}-${normalizeTitle(book.author ?? '')}`, () => wikisource.find(book.title, book.author))) : null);
