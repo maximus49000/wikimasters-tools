@@ -15,8 +15,12 @@ const GENRE = ['documentaire', 'documentary', 'docu', 'reportage'];
 // Émissions d'histoire (« Au cœur de l'Histoire », « Secrets d'Histoire », « L'histoire de… ») : un indice plus faible qu'« documentaire ».
 const HISTORY = ['histoire', 'history'];
 const NOISE = ['reaction', 'react', 'clip', 'remix', 'gameplay', 'let s play', 'trailer', 'bande annonce', 'shorts', 'asmr', 'meme', 'parodie', 'karaoke', 'lyrics', 'amv', 'tiktok'];
+// Contenus pour enfants : pas exclus, mais jamais en tête (malus).
+const KIDS = ['kids', 'enfant', 'enfants', 'junior', 'cartoon', 'dessin anime', 'quelle aventure', 'quelle histoire'];
+// Titres complotistes : malus fort.
+const CONSPIRACY = ['mensonge', 'mensonges', 'complot', 'complots', 'complotiste', 'on vous cache', 'censure', 'verite cachee', 'verite interdite', 'illuminati'];
 // Chaînes d'histoire / de service public, comparées sur des mots entiers.
-const TRUSTED = ['arte', 'ina', 'france tv', 'francetv', 'france 2', 'france 5', 'histoire tv', 'nota bene', 'herodote', 'lumni', 'public senat', 'bbc', 'national geographic'];
+const TRUSTED = ['arte', 'ina', 'france tv', 'francetv', 'france 2', 'france 5', 'histoire tv', 'nota bene', 'herodote', 'lumni', 'secrets d histoire', 'public senat', 'bbc', 'national geographic'];
 
 // Minuscules, sans accents ni ponctuation : « L'Été » → « l ete ».
 export function normalize(text: string): string {
@@ -75,6 +79,9 @@ export function scoreCandidate(subject: DocSubject, candidate: DocCandidate, rul
   const language = (candidate.language ?? '').toLowerCase();
   if (language.startsWith('fr')) score += 5;
   else if (language.startsWith('en')) score += 3;
+
+  if (KIDS.some((word) => hasPhrase(title, word) || hasPhrase(normalize(candidate.channel), word))) score -= 15;
+  if (CONSPIRACY.some((word) => hasPhrase(title, word))) score -= 25;
 
   if (subject.startYear !== null) {
     const low = subject.startYear - 50;
