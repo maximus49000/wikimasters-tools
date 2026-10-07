@@ -52,11 +52,11 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'visite-guidee-v2',
+    id: 'visite-guidee-v3',
     theme: 'app',
     glyph: '🧭',
     title: 'La visite guidée',
-    summary: 'Pages courtes, gestes animés, bulle déplaçable',
+    summary: 'Pages courtes, gestes animés, zone toujours visible',
     steps: [
       {
         target: null,
@@ -65,6 +65,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Des pages courtes', text: 'Chaque étape se lit en plusieurs pages : d’abord à quoi ça sert, puis, une page par sujet, d’où viennent les données, comment s’en servir et ce qu’il faut savoir. Touchez Suivant pour avancer, Précédent pour revenir ; le compteur « page 2/4 » et les points indiquent où vous en êtes.' },
           { label: 'L’encart « Dans l’interface »', text: 'Sur la première page de chaque étape, un encart en surbrillance montre une copie réduite de l’élément dont on parle, pour le reconnaître d’un coup d’œil. Si l’élément n’est pas à l’écran, l’encart affiche le symbole de la fonction.' },
+          { label: 'La zone visée reste visible', text: 'La bulle se cale en haut ou en bas de l’écran, et la page défile toute seule pour que la zone éclairée tienne en entier dans l’espace laissé libre : la bulle ne la recouvre jamais. Si vous déplacez la bulle vous-même, la page ne défile plus automatiquement.' },
           { label: 'Les gestes sont montrés', text: 'Quand l’étape demande un geste (toucher, appui long, pincer, glisser), un doigt animé le joue sur l’élément éclairé et le même geste est dessiné dans l’encart, avec sa consigne. Quand la visite touche un bouton à votre place (comme « Plus »), une étape vous le montre d’abord.' },
           { label: 'Déplacer la bulle', text: 'Maintenez et glissez la poignée ⠿ en haut de la bulle pour la placer à côté de l’élément éclairé. Elle reste toujours entièrement dans l’écran, même si vous la tirez vers un bord ou tournez l’appareil, et garde sa place pendant toute la visite.' },
           { label: 'Quitter', text: '« Quitter la visite » ou « Terminer » vous ramène à la page où vous étiez au départ, après avoir fermé la fiche éventuellement ouverte pour l’occasion.' },

@@ -29,3 +29,27 @@ export function scaleToFit(width: number, height: number, maxWidth: number, maxH
   if (width <= 0 || height <= 0) return 1;
   return Math.min(1, maxWidth / width, maxHeight / height);
 }
+
+export type Dock = 'top' | 'bottom';
+
+// Position de la bulle calée contre le haut ou le bas de l'écran.
+export const dockTop = (dock: Dock, bubbleHeight: number, viewportHeight: number, margin = MARGIN): number =>
+  dock === 'top' ? margin : Math.max(margin, viewportHeight - bubbleHeight - margin);
+
+// Cale la bulle en haut ou en bas, du côté qui demande le moins de défilement, et dit de combien faire défiler la page
+// pour que la zone visée (bordure comprise) tienne entièrement dans l'espace laissé libre par la bulle.
+// `scrollBy` positif : la page monte ; négatif : elle descend. Zone plus haute que l'espace libre : on garde son haut visible.
+export function planLayout(box: Box, bubbleHeight: number, viewportHeight: number, margin = MARGIN): { dock: Dock; top: number; scrollBy: number } {
+  const bottomEdge = viewportHeight - bubbleHeight - margin;
+  const options = [
+    { dock: 'bottom' as const, freeTop: margin, freeBottom: bottomEdge - margin },
+    { dock: 'top' as const, freeTop: margin + bubbleHeight + margin, freeBottom: viewportHeight - margin },
+  ];
+  const needed = (o: (typeof options)[number]) => (box.top < o.freeTop ? box.top - o.freeTop : box.top + box.height > o.freeBottom ? box.top + box.height - o.freeBottom : 0);
+  const fitting = options.filter((o) => o.freeBottom - o.freeTop >= box.height);
+  const best = fitting.length > 0
+    ? fitting.reduce((a, o) => (Math.abs(needed(o)) < Math.abs(needed(a)) ? o : a))
+    : options.reduce((a, o) => (o.freeBottom - o.freeTop > a.freeBottom - a.freeTop ? o : a));
+  const scrollBy = fitting.length > 0 ? needed(best) : box.top - best.freeTop;
+  return { dock: best.dock, top: dockTop(best.dock, bubbleHeight, viewportHeight, margin), scrollBy };
+}

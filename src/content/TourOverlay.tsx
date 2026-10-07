@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as Reac
 import { GESTURES, type Gesture } from '../core/whats-new/gestures';
 import { pagesOf } from '../core/whats-new/pages';
 import type { CardKind, TourStep } from '../core/whats-new/types';
-import { bubbleTop, clampBubble, scaleToFit, spotlightBox, type Box } from './tour-geometry';
+import { bubbleTop, clampBubble, dockTop, planLayout, scaleToFit, spotlightBox, type Box, type Dock } from './tour-geometry';
 import type { ScenePrep } from './tour-control';
+import { scrollTargetBy } from './tour-scroll';
 import { snapshot } from './tour-snapshot';
 import { findTarget } from './tour-target';
 
@@ -147,6 +148,8 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   const [index, setIndex] = useState(Math.min(Math.max(startIndex, 0), Math.max(steps.length - 1, 0)));
   const [page, setPage] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
+  // Côté de l'écran où la bulle est calée (haut ou bas) pour laisser toute la zone visée visible.
+  const [dock, setDock] = useState<Dock | null>(null);
   const [prep, setPrep] = useState<ScenePrep>({});
   // Étape dont l'écran est prêt : « Préparation… » dure tant qu'elle diffère de l'étape affichée.
   const [readyIndex, setReadyIndex] = useState(-1);
@@ -200,14 +203,9 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   }, [preparing, index]);
 
   useEffect(() => {
-    let scrolled = false;
     const update = () => {
       const element = step?.target ? findTarget(step.target) : null;
       if (!element) return setBox(null);
-      if (!scrolled) {
-        scrolled = true;
-        element.scrollIntoView({ block: 'center', inline: 'nearest' });
-      }
       const r = element.getBoundingClientRect();
       setBox((prev) => {
         const next = spotlightBox({ left: r.left, top: r.top, width: r.width, height: r.height });
@@ -219,6 +217,24 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
     const timer = window.setInterval(update, 300);
     return () => window.clearInterval(timer);
   }, [step]);
+
+  // Mise en page : la bulle se cale en haut ou en bas, et la page défile pour que la zone visée tienne entière dans l'espace libre.
+  // Elle se refait à chaque étape, page ou changement de taille de la bulle ; jamais quand l'utilisateur a déplacé la bulle lui-même.
+  const hasBox = box !== null;
+  useEffect(() => {
+    setDock(null);
+  }, [step]);
+  useEffect(() => {
+    if (moved || !hasBox || !step?.target) return;
+    const element = findTarget(step.target);
+    if (!element) return;
+    const rect = element.getBoundingClientRect();
+    const plan = planLayout(spotlightBox({ left: rect.left, top: rect.top, width: rect.width, height: rect.height }), size.height, screen.height);
+    setDock(plan.dock);
+    if (Math.abs(plan.scrollBy) >= 1) scrollTargetBy(element, plan.scrollBy);
+    // Seul un changement d'étape, de page, de taille ou l'apparition de la zone relance la mise en page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, page, size.height, hasBox, moved, screen.height]);
 
   // Rotation ou redimensionnement : la bulle est replacée dans le nouvel écran.
   useEffect(() => {
@@ -256,7 +272,7 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   };
 
   const width = Math.min(MAX_WIDTH, screen.width - 24);
-  const automatic = { left: (screen.width - width) / 2, top: bubbleTop(box, screen.height, size.height) };
+  const automatic = { left: (screen.width - width) / 2, top: box && dock ? dockTop(dock, size.height, screen.height) : bubbleTop(box, screen.height, size.height) };
   const position = clampBubble(moved ?? automatic, { width, height: size.height }, screen);
 
   const onGripDown = (event: ReactPointerEvent<HTMLDivElement>) => {
