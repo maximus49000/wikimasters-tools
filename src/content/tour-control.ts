@@ -1,6 +1,6 @@
 import type { CardKind, TourStep } from '../core/whats-new/types';
 import { createSceneResolver, type SceneResult } from './scene';
-import { clearTourSession, loadTourSession, saveTourSession, type TourSession } from './tour-session';
+import { clearTourSession, loadTourSession, saveTourReturn, saveTourSession, takeTourReturn, type TourOrigin, type TourSession } from './tour-session';
 import type { SlotStorage } from './session-slot';
 import type { TourEnv } from './tour-registry';
 
@@ -62,8 +62,8 @@ export function createTourController(deps: TourControllerDeps) {
   };
 
   return {
-    start(steps: TourStep[]): void {
-      const session: TourSession = { steps, index: 0, origin: here() };
+    start(steps: TourStep[], from?: TourOrigin): void {
+      const session: TourSession = { steps, index: 0, origin: here(), ...(from ? { from } : {}) };
       saveTourSession(deps.storage, session, deps.now());
       deps.openWindow(session);
     },
@@ -80,7 +80,7 @@ export function createTourController(deps: TourControllerDeps) {
     persistIndex(index: number): void {
       const session = loadTourSession(deps.storage, deps.now());
       if (!session || session.index === index) return;
-      saveTourSession(deps.storage, { steps: session.steps, index, origin: session.origin }, deps.now());
+      saveTourSession(deps.storage, { steps: session.steps, index, origin: session.origin, ...(session.from ? { from: session.from } : {}) }, deps.now());
     },
 
     async prepare(step: TourStep, index: number): Promise<ScenePrep> {
@@ -88,13 +88,27 @@ export function createTourController(deps: TourControllerDeps) {
       return translate(await resolver.ensure(step, session));
     },
 
-    // Fin ou abandon : on ferme la fiche ouverte pour la visite, puis on revient là où l'on était.
+    // Fin ou abandon : on ferme la fiche ouverte pour la visite, on revient à la page de départ, puis on rouvre l'interface
+    // qui a lancé la visite (WikiHow ou « Quoi de neuf »). Si la page doit se recharger, le retour attend le rechargement.
     finish(): void {
       const session = loadTourSession(deps.storage, deps.now());
       clearTourSession(deps.storage);
       if (!session) return;
       if (session.cardSlug !== undefined) deps.env()?.closeCard();
-      if (session.origin !== here()) deps.assign(session.origin);
+      if (session.origin !== here()) {
+        if (session.from) saveTourReturn(deps.storage, session.from, deps.now());
+        deps.assign(session.origin);
+        return;
+      }
+      if (session.from) deps.env()?.reopen(session.from);
+    },
+
+    // Au chargement d'une page : si la visite a dû quitter la page, on rouvre ici l'interface de départ.
+    resumeReturn(): boolean {
+      const from = takeTourReturn(deps.storage, deps.now());
+      if (!from) return false;
+      deps.env()?.reopen(from);
+      return true;
     },
   };
 }

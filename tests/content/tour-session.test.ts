@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clearTourSession, loadTourSession, saveTourSession, type TourSession } from '../../src/content/tour-session';
+import { clearTourSession, loadTourSession, saveTourReturn, saveTourSession, takeTourReturn, type TourSession } from '../../src/content/tour-session';
 
 const memory = () => {
   const data = new Map<string, string>();
@@ -43,5 +43,26 @@ describe('session de visite', () => {
   it('absorbe un stockage qui refuse d’écrire', () => {
     const storage = { getItem: () => null, setItem: () => { throw new Error('bloqué'); }, removeItem: () => undefined };
     expect(() => saveTourSession(storage, session, 0)).not.toThrow();
+  });
+
+  it('garde l’interface de départ (WikiHow ou « Quoi de neuf »), et ignore une valeur invalide', () => {
+    const storage = memory();
+    saveTourSession(storage, { ...session, from: { kind: 'whatsnew', entries: ['a'], fixes: ['f'] } }, 0);
+    expect(loadTourSession(storage, 1)?.from).toEqual({ kind: 'whatsnew', entries: ['a'], fixes: ['f'] });
+    saveTourSession(storage, { ...session, from: { kind: 'wikihow' } }, 0);
+    expect(loadTourSession(storage, 1)?.from).toEqual({ kind: 'wikihow' });
+    storage.setItem('wmt:tour', JSON.stringify({ steps: [], index: 0, origin: '/', from: { kind: 'whatsnew', entries: [1], fixes: [] }, at: 0 }));
+    expect(loadTourSession(storage, 1)?.from).toBeUndefined();
+    storage.setItem('wmt:tour', JSON.stringify({ steps: [], index: 0, origin: '/', from: { kind: 'autre' }, at: 0 }));
+    expect(loadTourSession(storage, 1)?.from).toBeUndefined();
+  });
+
+  it('le retour à l’interface de départ se lit une seule fois et expire au bout de 10 minutes', () => {
+    const storage = memory();
+    saveTourReturn(storage, { kind: 'wikihow' }, 0);
+    expect(takeTourReturn(storage, 1)).toEqual({ kind: 'wikihow' });
+    expect(takeTourReturn(storage, 2)).toBeNull();
+    saveTourReturn(storage, { kind: 'wikihow' }, 0);
+    expect(takeTourReturn(storage, 600_001)).toBeNull();
   });
 });

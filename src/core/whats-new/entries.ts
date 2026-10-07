@@ -52,7 +52,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'visite-guidee-v3',
+    id: 'visite-guidee-v4',
     theme: 'app',
     glyph: '🧭',
     title: 'La visite guidée',
@@ -68,7 +68,7 @@ export const ENTRIES: Entry[] = [
           { label: 'La zone visée reste visible', text: 'La bulle se cale en haut ou en bas de l’écran, et la page défile toute seule pour que la zone éclairée tienne en entier dans l’espace laissé libre : la bulle ne la recouvre jamais. Si vous déplacez la bulle vous-même, la page ne défile plus automatiquement.' },
           { label: 'Les gestes sont montrés', text: 'Quand l’étape demande un geste (toucher, appui long, pincer, glisser), un doigt animé le joue sur l’élément éclairé et le même geste est dessiné dans l’encart, avec sa consigne. Quand la visite touche un bouton à votre place (comme « Plus »), une étape vous le montre d’abord.' },
           { label: 'Déplacer la bulle', text: 'Maintenez et glissez la poignée ⠿ en haut de la bulle pour la placer à côté de l’élément éclairé. Elle reste toujours entièrement dans l’écran, même si vous la tirez vers un bord ou tournez l’appareil, et garde sa place pendant toute la visite.' },
-          { label: 'Quitter', text: '« Quitter la visite » ou « Terminer » vous ramène à la page où vous étiez au départ, après avoir fermé la fiche éventuellement ouverte pour l’occasion.' },
+          { label: 'Quitter ou terminer', text: '« Quitter la visite » comme « Terminer » ferment la fiche éventuellement ouverte pour l’occasion, vous ramènent à la page où vous étiez au départ, puis rouvrent l’écran qui avait lancé la visite : WikiHow, ou la liste « Quoi de neuf » de la version. Vous pouvez ainsi enchaîner avec la fonction suivante.' },
         ],
       },
       {

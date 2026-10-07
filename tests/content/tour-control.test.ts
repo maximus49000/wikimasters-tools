@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { KnownCard } from '../../src/core/collection/collection-book';
 import { createTourController, type TourControllerDeps } from '../../src/content/tour-control';
-import { loadTourSession, saveTourSession, type TourSession } from '../../src/content/tour-session';
+import { loadTourSession, saveTourSession, takeTourReturn, type TourSession } from '../../src/content/tour-session';
 import type { TourStep } from '../../src/core/whats-new/types';
 
 const memory = () => {
@@ -23,13 +23,14 @@ function setup(overrides: Partial<TourControllerDeps> = {}, path = { pathname: '
   const assign = vi.fn();
   const openWindow = vi.fn();
   const closeCard = vi.fn();
+  const reopen = vi.fn();
   const screen = new Map<string, Element>();
   const deps: TourControllerDeps = {
     storage,
     now: () => 1_000,
     location: () => path,
     assign,
-    env: () => ({ cards: async () => [], pick: async () => null, openCard: vi.fn(), closeCard }),
+    env: () => ({ cards: async () => [], pick: async () => null, openCard: vi.fn(), closeCard, reopen }),
     openWindow,
     find: (selector) => screen.get(selector) ?? null,
     findText: () => null,
@@ -37,7 +38,7 @@ function setup(overrides: Partial<TourControllerDeps> = {}, path = { pathname: '
     wait: async (read) => read(),
     ...overrides,
   };
-  return { controller: createTourController(deps), storage, assign, openWindow, closeCard, screen };
+  return { controller: createTourController(deps), storage, assign, openWindow, closeCard, reopen, screen };
 }
 
 describe('contrôleur de visite', () => {
@@ -83,12 +84,58 @@ describe('contrôleur de visite', () => {
     expect(closeCard).not.toHaveBeenCalled();
   });
 
+  describe('retour à l’interface de départ', () => {
+    it('start retient l’interface qui a lancé la visite, et persistIndex la conserve', () => {
+      const { controller, storage } = setup();
+      controller.start(steps, { kind: 'whatsnew', entries: ['a', 'b'], fixes: ['f1'] });
+      controller.persistIndex(1);
+      expect(loadTourSession(storage, 1_000)?.from).toEqual({ kind: 'whatsnew', entries: ['a', 'b'], fixes: ['f1'] });
+    });
+
+    it('à la fin, sur la même page, rouvre WikiHow tout de suite', () => {
+      const { controller, storage, reopen, assign } = setup({}, { pathname: '/collection', search: '' });
+      saveTourSession(storage, { steps, index: 1, origin: '/collection', from: { kind: 'wikihow' } }, 1_000);
+      controller.finish();
+      expect(reopen).toHaveBeenCalledWith({ kind: 'wikihow' });
+      expect(assign).not.toHaveBeenCalled();
+    });
+
+    it('à la fin, sur la même page, rouvre la liste « Quoi de neuf » avec les mêmes éléments', () => {
+      const { controller, storage, reopen } = setup({}, { pathname: '/marketplace', search: '' });
+      const from = { kind: 'whatsnew' as const, entries: ['jeux-video'], fixes: ['abc1234'] };
+      saveTourSession(storage, { steps, index: 0, origin: '/marketplace', from }, 1_000);
+      controller.finish();
+      expect(reopen).toHaveBeenCalledWith(from);
+    });
+
+    it('si la page doit changer, retourne d’abord à la page de départ puis rouvre l’interface après le rechargement (une seule fois)', () => {
+      const { controller, storage, reopen, assign } = setup({}, { pathname: '/collection', search: '' });
+      saveTourSession(storage, { steps, index: 1, origin: '/marketplace?q=1', from: { kind: 'wikihow' } }, 1_000);
+      controller.finish();
+      expect(assign).toHaveBeenCalledWith('/marketplace?q=1');
+      expect(reopen).not.toHaveBeenCalled();
+      // Après le rechargement de la page de départ :
+      expect(controller.resumeReturn()).toBe(true);
+      expect(reopen).toHaveBeenCalledWith({ kind: 'wikihow' });
+      expect(controller.resumeReturn()).toBe(false);
+      expect(takeTourReturn(storage, 1_000)).toBeNull();
+    });
+
+    it('une visite lancée sans interface de départ ne rouvre rien', () => {
+      const { controller, storage, reopen } = setup({}, { pathname: '/collection', search: '' });
+      saveTourSession(storage, { steps, index: 0, origin: '/collection' }, 1_000);
+      controller.finish();
+      expect(reopen).not.toHaveBeenCalled();
+      expect(controller.resumeReturn()).toBe(false);
+    });
+  });
+
   describe('prepare', () => {
     const card: KnownCard = { slug: 'Hades', title: 'Hades' };
 
     it('une carte réelle donne une note verte', async () => {
       const { controller, storage, screen } = setup({
-        env: () => ({ cards: async () => [card], pick: async () => card, openCard: () => void screen.set('#a', {} as Element), closeCard: vi.fn() }),
+        env: () => ({ cards: async () => [card], pick: async () => card, openCard: () => void screen.set('#a', {} as Element), closeCard: vi.fn(), reopen: vi.fn() }),
       });
       saveTourSession(storage, { steps, index: 0, origin: '/' }, 1_000);
       expect(await controller.prepare(steps[0]!, 0)).toEqual({ note: { tone: 'real', text: 'Carte de votre Collection : Hades' } });

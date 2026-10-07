@@ -1,7 +1,7 @@
 import type { TourStep } from '../core/whats-new/types';
 import { createTourController } from './tour-control';
 import { getTourEnv } from './tour-registry';
-import type { TourSession } from './tour-session';
+import type { TourOrigin, TourSession } from './tour-session';
 import { findByText, findTarget } from './tour-target';
 
 // Interroge toutes les 100 ms jusqu'au délai ; rend la première valeur non nulle.
@@ -40,5 +40,6 @@ export const tourController = createTourController({
   wait,
 });
 
-export const startTour = (steps: TourStep[]): void => tourController.start(steps);
+export const startTour = (steps: TourStep[], from?: TourOrigin): void => tourController.start(steps, from);
 export const resumeTour = (): boolean => tourController.resume();
+export const resumeTourReturn = (): boolean => tourController.resumeReturn();
