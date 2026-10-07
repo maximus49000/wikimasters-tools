@@ -73,6 +73,8 @@ import { createGameChoiceRepo, createGameRepo } from '../core/game/game-repo';
 import { createIgdbApi } from '../core/game/igdb-api';
 import { createSteamApi } from '../core/game/steam-api';
 import { fetchWikidataGame } from '../core/game/wikidata-game';
+import { createCollectionMarks } from '../content/collection-marks';
+import { setCollectionMarks } from '../content/collection-marks-registry';
 import { getScreenService, setScreenService } from '../content/screen-registry';
 import { createMediaArt, type MediaArt, type MediaArtSources } from '../content/media-art';
 import { createImageService } from '../core/images/image-service';
@@ -530,16 +532,17 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     try {
       const tmdbApi = createTmdbApi({ fetch: (url) => (spotify ? spotify.fetch(url) : fetch(url)), apiKey: TMDB_API_KEY });
       artSources.tmdb = tmdbApi;
-      setScreenService(
-        createScreenService({
-          hasKey: true,
-          collection: collectionRepo,
-          kinds: kindsRepo,
-          screen: screenRepo,
-          api: tmdbApi,
-          cache: createTtlCache(store, { ttlMs: 24 * 3_600_000 }),
-        }),
-      );
+      const screenService = createScreenService({
+        hasKey: true,
+        collection: collectionRepo,
+        kinds: kindsRepo,
+        screen: screenRepo,
+        api: tmdbApi,
+        cache: createTtlCache(store, { ttlMs: 24 * 3_600_000 }),
+      });
+      setScreenService(screenService);
+      // Repère, dans les filmographies, les films et séries dont on possède la carte.
+      setCollectionMarks(createCollectionMarks({ collection: collectionRepo, screen: screenRepo, screenSlugs: (cards) => screenService.screenSlugs(cards) }));
     } catch (error) {
       console.warn(LOG, 'films et séries indisponibles :', error);
     }
