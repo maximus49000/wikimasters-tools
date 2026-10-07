@@ -28,6 +28,14 @@ describe('createOpenLibraryApi', () => {
     expect(url.searchParams.get('q')).toBe('key:/works/OL1230613W');
   });
 
+  it('garde les scans Internet Archive (30 au plus) seulement quand l’œuvre est lisible en ligne', async () => {
+    const ia = Array.from({ length: 40 }, (_, index) => `scan${index}`);
+    const open = await createOpenLibraryApi({ fetch: json({ docs: [{ ...etranger, ebook_access: 'public', ia }] }) }).byWork('OL1230613W');
+    expect(open?.scans).toEqual(ia.slice(0, 30));
+    const lending = await createOpenLibraryApi({ fetch: json({ docs: [{ ...etranger, ebook_access: 'borrowable', ia }] }) }).byWork('OL1230613W');
+    expect(lending).not.toHaveProperty('scans');
+  });
+
   it('byWork rend null sans résultat et refuse un identifiant mal formé sans appel réseau', async () => {
     expect(await createOpenLibraryApi({ fetch: json({ docs: [] }) }).byWork('OL1W')).toBeNull();
     const fetchFn = json({ docs: [] });

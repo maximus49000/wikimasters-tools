@@ -6,7 +6,9 @@ import { OPENLIBRARY_BASE } from './config';
 import { BookError } from './errors';
 import { requestJson } from './http';
 
-const FIELDS = 'key,title,author_name,first_publish_year,cover_i,isbn,publisher,number_of_pages_median,edition_count';
+const FIELDS = 'key,title,author_name,first_publish_year,cover_i,isbn,publisher,number_of_pages_median,edition_count,ebook_access,ia';
+
+const MAX_SCANS = 30;
 
 const docSchema = z.object({
   key: z.string(),
@@ -18,12 +20,15 @@ const docSchema = z.object({
   publisher: z.array(z.string()).optional(),
   number_of_pages_median: z.number().optional(),
   edition_count: z.number().optional(),
+  ebook_access: z.string().optional(),
+  ia: z.array(z.string()).optional(),
 });
 const searchSchema = z.object({ docs: z.array(docSchema) });
 const workSchema = z.object({ description: z.union([z.string(), z.object({ value: z.string() })]).optional() });
 
-// Une œuvre d'Open Library ; `popularity` (nombre d'éditions) départage des titres identiques.
-export type OlWork = { id: string; title: string; author?: string; year?: number; publisher?: string; pages?: number; isbn?: string; coverId?: number; popularity: number };
+// Une œuvre d'Open Library ; `popularity` (nombre d'éditions) départage des titres identiques ; `scans` : identifiants Internet Archive
+// (les 30 premiers) quand Open Library dit l'œuvre lisible en ligne (`ebook_access = public`), à filtrer encore (certains sont en prêt).
+export type OlWork = { id: string; title: string; author?: string; year?: number; publisher?: string; pages?: number; isbn?: string; coverId?: number; popularity: number; scans?: string[] };
 
 function toWork(row: z.infer<typeof docSchema>): OlWork {
   const isbn = firstIsbn13(row.isbn);
@@ -37,6 +42,7 @@ function toWork(row: z.infer<typeof docSchema>): OlWork {
     ...(isbn ? { isbn } : {}),
     ...(row.cover_i !== undefined ? { coverId: row.cover_i } : {}),
     popularity: row.edition_count ?? 0,
+    ...(row.ebook_access === 'public' && row.ia?.length ? { scans: row.ia.slice(0, MAX_SCANS) } : {}),
   };
 }
 

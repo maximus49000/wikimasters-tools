@@ -34,7 +34,7 @@ const dialogService = () => ({
 });
 
 async function show(view: BookView, extra: Record<string, unknown> = {}) {
-  const service = { view: vi.fn(async () => view), ...dialogService(), offers: vi.fn(async () => ({ shops: [] })), ...extra };
+  const service = { view: vi.fn(async () => view), ...dialogService(), offers: vi.fn(async () => ({ shops: [] })), reading: vi.fn(async () => ({ links: [], complete: true })), ...extra };
   setBookService(service as unknown as BookService);
   await act(async () => root.render(<BookSection slug="L'Étranger" title="L'Étranger" />));
   return service;
@@ -209,3 +209,40 @@ describe('BookSection — changer de livre', () => {
     expect(container.textContent).toContain('Aucune fiche trouvée pour ce livre.');
   });
 });
+
+describe('lecture gratuite', () => {
+  const detailView: BookView = { status: 'detail', detail: etranger };
+  const links = [
+    { source: 'wikisource', label: 'Wikisource', url: 'https://fr.wikisource.org/wiki/X' },
+    { source: 'archive', label: 'Internet Archive', url: 'https://archive.org/details/x' },
+  ];
+
+  it('bouton « Lire gratuitement » vers la meilleure source, les autres en lignes secondaires', async () => {
+    const service = await show(detailView, { reading: vi.fn(async () => ({ links, complete: true })) });
+    const block = container.querySelector('[data-wmt-book-reading]')!;
+    const main = block.querySelector<HTMLAnchorElement>('a[aria-label="Lire gratuitement sur Wikisource"]')!;
+    expect(main.href).toBe('https://fr.wikisource.org/wiki/X');
+    expect(main.target).toBe('_blank');
+    expect(block.textContent).toContain('Aussi sur Internet Archive');
+    expect(service.reading).toHaveBeenCalledWith("L'Étranger", { id: 'OL1230613W', title: 'L’étranger', author: 'Albert Camus' });
+  });
+
+  it('« Pas de texte libre », avec l’année de protection quand elle est connue', async () => {
+    await show(detailView, { reading: vi.fn(async () => ({ links: [], protectedUntil: 2030, complete: true })) });
+    expect(container.querySelector('[data-wmt-book-reading]')!.textContent).toContain('Pas de texte libre · protégé jusqu’en 2030');
+  });
+
+  it('sans année : « Pas de texte libre » seul ; source en panne : message d’indisponibilité', async () => {
+    await show(detailView);
+    expect(container.querySelector('[data-wmt-book-reading]')!.textContent).toContain('Pas de texte libre');
+    expect(container.querySelector('[data-wmt-book-reading]')!.textContent).not.toContain('protégé');
+    await show(detailView, { reading: vi.fn(async () => ({ links: [], complete: false })) });
+    expect(container.querySelector('[data-wmt-book-reading]')!.textContent).toContain('indisponibles pour le moment');
+  });
+
+  it('pas de bloc quand la lecture échoue', async () => {
+    await show(detailView, { reading: vi.fn(async () => { throw new Error('x'); }) });
+    expect(container.querySelector('[data-wmt-book-reading]')).toBeNull();
+  });
+});
+
