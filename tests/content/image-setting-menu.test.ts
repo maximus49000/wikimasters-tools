@@ -26,6 +26,14 @@ describe('decorateImageSetting', () => {
     expect(open).toHaveBeenCalledTimes(1);
     expect(click.defaultPrevented).toBe(true);
   });
+  it('ne reprend pas la surbrillance de « Paramètres » quand il est ouvert', () => {
+    document.body.innerHTML =
+      '<div><a class="row" href="/profile">Profil</a><a class="row active" aria-current="page" href="/settings"><svg></svg>Paramètres</a></div>';
+    decorateImageSetting(document, () => undefined);
+    const entry = document.querySelector(`[${IMAGE_SETTING_ATTRIBUTE}]`);
+    expect(entry?.className).toBe('row');
+    expect(entry?.hasAttribute('aria-current')).toBe(false);
+  });
   it('ne fait rien sans lien « Paramètres »', () => {
     document.body.innerHTML = '<div></div>';
     expect(decorateImageSetting(document, () => undefined)).toBe(0);

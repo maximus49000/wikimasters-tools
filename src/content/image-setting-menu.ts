@@ -15,6 +15,14 @@ export function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void, 
   entry.setAttribute(spec.attribute, '');
   entry.removeAttribute('href');
   entry.removeAttribute('aria-current');
+  // Sur la page des paramètres le lien est en surbrillance : la ligne reprend le style d'un lien voisin au repos,
+  // pour rester indépendante de « Paramètres ».
+  if (settingsLink.hasAttribute('aria-current')) {
+    const resting = Array.from(settingsLink.parentElement?.querySelectorAll('a') ?? []).find(
+      (a) => a !== settingsLink && !a.hasAttribute('aria-current') && !a.hasAttribute('data-wmt-image-setting') && !a.getAttributeNames().some((n) => /^data-wmt-.+-setting$/.test(n)),
+    );
+    if (resting) entry.className = resting.className;
+  }
   entry.setAttribute('role', 'button');
   entry.setAttribute('tabindex', '0');
   entry.style.cursor = 'pointer';
