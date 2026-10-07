@@ -23,13 +23,15 @@ android {
     // Chacun a son identifiant, son nom, son schéma de retour Spotify/Tidal et sa source de mises à jour GitHub.
     flavorDimensions += "channel"
     productFlavors {
+        // On lit la liste des releases (et non /releases/latest) : la plus récente du canal (préfixe de tag) est installée, et les notes de
+        // toutes les releases publiées depuis la version installée sont affichées.
         val releases = "https://api.github.com/repos/maximus49000/wikimasters-tools/releases"
         create("production") {
             dimension = "channel"
             manifestPlaceholders["appLabel"] = "Wikimasters Tools"
             manifestPlaceholders["redirectScheme"] = "wikimasterstools"
             buildConfigField("String", "REDIRECT_SCHEME", "\"wikimasterstools\"")
-            buildConfigField("String", "UPDATE_URL", "\"$releases/latest\"")
+            buildConfigField("String", "UPDATE_URL", "\"$releases?per_page=30\"")
             buildConfigField("String", "UPDATE_TAG_PREFIX", "\"android-\"")
         }
         create("preprod") {
@@ -38,7 +40,6 @@ android {
             manifestPlaceholders["appLabel"] = "Wikimasters Tools (pré-prod)"
             manifestPlaceholders["redirectScheme"] = "wikimasterstools-preprod"
             buildConfigField("String", "REDIRECT_SCHEME", "\"wikimasterstools-preprod\"")
-            // Les pre-releases sont absentes de /releases/latest : on lit la liste et on garde la plus récente `preprod-N`.
             buildConfigField("String", "UPDATE_URL", "\"$releases?per_page=30\"")
             buildConfigField("String", "UPDATE_TAG_PREFIX", "\"preprod-\"")
         }
