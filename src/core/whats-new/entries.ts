@@ -335,20 +335,31 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'films',
+    id: 'films-v2',
     theme: 'ecoute',
     glyph: '🎬',
     title: 'Films et séries',
-    summary: 'Bande-annonce, notes et bande originale',
+    summary: 'Où le voir, bande-annonce, notes et bande originale',
     steps: [
       {
         target: '[data-wmt-screen]',
         title: 'Film ou série',
-        text: 'Sur une carte de film ou de série, la fiche affiche l’affiche, la note, la bande-annonce et un bouton pour écouter la bande originale.',
+        text: 'Sur une carte de film ou de série, la fiche affiche la bande-annonce (plus grande qu’avant), où le voir, la note, un synopsis plus lisible et un bouton pour écouter la bande originale.',
         details: [
           { label: 'D’où viennent les données', text: 'TMDB (The Movie Database) pour la fiche, la note et la bande-annonce ; Wikidata pour reconnaître qu’une carte est un film ou une série ; Spotify ou Tidal pour la bande originale.' },
           { label: 'Comment s’en servir', text: 'Touchez la bande-annonce pour la lire dans la fiche. Le bouton de bande originale ouvre la liste des titres (réglage Auto ou Manuel selon que vous voulez choisir la playlist).' },
           { label: 'À savoir', text: 'Une petite bobine de cinéma marque, dans les listes, les cartes liées aux films.' },
+        ],
+        scene: { card: 'screen' },
+      },
+      {
+        target: '[data-wmt-watch]',
+        title: 'Où le voir',
+        text: 'Sous la bande-annonce, les logos montrent les services où le film ou la série est disponible en France : abonnement ou gratuit en grand, location et achat en plus petit.',
+        details: [
+          { label: 'D’où viennent les données', text: 'TMDB, qui reprend les données de JustWatch (source citée sous la fiche). Elles concernent la France et sont gardées 24 heures.' },
+          { label: 'Comment s’en servir', text: 'Passez sur un logo (ou touchez-le) pour lire le nom du service. Le bouton à droite ouvre la page « où regarder » de TMDB, qui renvoie vers JustWatch.' },
+          { label: 'À savoir', text: 'L’extension n’ouvre pas encore directement le film dans le service : le lien mène à une page de choix. « Aucune offre en France connue » s’affiche quand aucun service ne le propose.' },
         ],
         scene: { card: 'screen' },
       },

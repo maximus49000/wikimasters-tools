@@ -28,7 +28,7 @@ const normalize = (text: string): string => text.normalize('NFD').replace(/[̀-�
 export function createScreenService(deps: ScreenServiceDeps) {
   const { hasKey, collection, kinds, screen, api, cache } = deps;
 
-  const detailOf = (mediaType: MediaType, id: number) => cache.getOrLoad(`screen-detail-${mediaType}-${id}`, () => api.detail(mediaType, id));
+  const detailOf = (mediaType: MediaType, id: number) => cache.getOrLoad(`screen-detail-v2-${mediaType}-${id}`, () => api.detail(mediaType, id));
 
   return {
     // Les cartes (parmi `cards`) liées au cinéma (film, série, personne de cinéma) : le chargement TMDB les prend en charge. Sans clé TMDB, aucune.

@@ -40,13 +40,54 @@ describe('detail', () => {
     expect(url.pathname).toBe('/3/movie/27205');
     expect(url.searchParams.get('api_key')).toBe('KEY');
     expect(url.searchParams.get('language')).toBe('fr-FR');
-    expect(url.searchParams.get('append_to_response')).toBe('videos');
+    expect(url.searchParams.get('append_to_response')).toBe('videos,watch/providers');
     expect(url.searchParams.get('include_video_language')).toBe('fr,en,null');
   });
 
   it('lit une série (name, first_air_date) ; sans vote, sans bande-annonce : rien de ces champs', async () => {
     const { api: tmdb } = api(() => Response.json({ id: 1396, name: 'Breaking Bad', first_air_date: '2008-01-20', overview: '', vote_average: 0, vote_count: 0 }));
     expect(await tmdb.detail('tv', 1396)).toEqual({ mediaType: 'tv', id: 1396, title: 'Breaking Bad', year: 2008, overview: '' });
+  });
+});
+
+describe('detail : où le voir', () => {
+  const fr = {
+    link: 'https://www.themoviedb.org/movie/27205/watch?locale=FR',
+    flatrate: [
+      { provider_id: 119, provider_name: 'Amazon Prime Video', logo_path: '/prime.jpg', display_priority: 5 },
+      { provider_id: 8, provider_name: 'Netflix', logo_path: '/netflix.jpg', display_priority: 1 },
+    ],
+    ads: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/netflix.jpg', display_priority: 1 }, { provider_id: 300, provider_name: 'Pluto TV', display_priority: 9 }],
+    rent: [{ provider_id: 2, provider_name: 'Apple TV', logo_path: '/apple.jpg', display_priority: 2 }],
+    buy: [{ provider_id: 2, provider_name: 'Apple TV', logo_path: '/apple.jpg', display_priority: 2 }, { provider_id: 3, provider_name: 'Orange VOD', display_priority: 7 }],
+  };
+  const withProviders = (results: unknown) => api(() => Response.json({ id: 1, title: 'T', overview: '', 'watch/providers': { results } })).api.detail('movie', 1);
+
+  it('France : abonnement + gratuit regroupés, location + achat regroupés, sans doublon, par priorité', async () => {
+    const detail = await withProviders({ FR: fr, US: { flatrate: [{ provider_id: 1, provider_name: 'Hulu' }] } });
+    expect(detail.watch).toEqual({
+      link: 'https://www.themoviedb.org/movie/27205/watch?locale=FR',
+      stream: [
+        { id: 8, name: 'Netflix', logoPath: '/netflix.jpg' },
+        { id: 119, name: 'Amazon Prime Video', logoPath: '/prime.jpg' },
+        { id: 300, name: 'Pluto TV' },
+      ],
+      rentBuy: [{ id: 2, name: 'Apple TV', logoPath: '/apple.jpg' }, { id: 3, name: 'Orange VOD' }],
+    });
+  });
+
+  it('aucune offre en France (pays absent) : listes vides, pas de lien', async () => {
+    expect((await withProviders({ US: fr })).watch).toEqual({ stream: [], rentBuy: [] });
+  });
+
+  it('refuse un lien qui ne mène pas à TMDB', async () => {
+    const detail = await withProviders({ FR: { ...fr, link: 'https://evil.example/x' } });
+    expect(detail.watch?.link).toBeUndefined();
+  });
+
+  it('réponse sans bloc watch/providers : pas de champ watch (rien à afficher)', async () => {
+    const { api: tmdb } = api(() => Response.json({ id: 1, title: 'T', overview: '' }));
+    expect((await tmdb.detail('movie', 1)).watch).toBeUndefined();
   });
 });
 

@@ -5,6 +5,12 @@ import type { ScreenKind } from './screen-kinds';
 export type MediaType = 'movie' | 'tv';
 export type TmdbFetch = (url: string) => Promise<Response>;
 
+// Un service où voir le titre (JustWatch via TMDB) ; le logo est un chemin d'image TMDB.
+export type WatchProvider = { id: number; name: string; logoPath?: string };
+// Où le voir en France : abonnement + gratuit (avec ou sans publicité) d'un côté, location + achat de l'autre. TMDB ne donne pas de lien direct :
+// `link` est la page « où regarder » de TMDB (qui renvoie vers JustWatch).
+export type WatchInfo = { link?: string; stream: WatchProvider[]; rentBuy: WatchProvider[] };
+
 export type ScreenDetail = {
   mediaType: MediaType;
   id: number;
@@ -15,6 +21,8 @@ export type ScreenDetail = {
   overview: string;
   rating?: { average: number; votes: number };
   trailerKey?: string;
+  // Absent quand TMDB n'a rien renvoyé sur les offres (rien à afficher) ; listes vides : aucune offre connue en France.
+  watch?: WatchInfo;
 };
 export type FilmographyItem = { mediaType: MediaType; id: number; title: string; year?: number; rating?: number; posterPath?: string };
 
@@ -43,6 +51,15 @@ const MESSAGES: Record<TmdbErrorCode, string> = {
 export const userMessage = (error: unknown): string => (error instanceof TmdbError ? MESSAGES[error.code] : MESSAGES.http);
 
 const video = z.object({ site: z.string(), type: z.string(), key: z.string(), official: z.boolean().optional(), iso_639_1: z.string().nullish() });
+const providerEntry = z.object({ provider_id: z.number(), provider_name: z.string(), logo_path: z.string().nullish(), display_priority: z.number().optional() });
+const countryOffers = z.object({
+  link: z.string().optional(),
+  flatrate: z.array(providerEntry).optional(),
+  free: z.array(providerEntry).optional(),
+  ads: z.array(providerEntry).optional(),
+  rent: z.array(providerEntry).optional(),
+  buy: z.array(providerEntry).optional(),
+});
 const detailSchema = z.object({
   id: z.number(),
   title: z.string().optional(),
@@ -55,6 +72,7 @@ const detailSchema = z.object({
   vote_average: z.number().optional(),
   vote_count: z.number().optional(),
   videos: z.object({ results: z.array(video) }).optional(),
+  'watch/providers': z.object({ results: z.record(z.string(), countryOffers) }).optional(),
 });
 const credit = z.object({
   id: z.number(),
@@ -94,6 +112,25 @@ function pickTrailer(videos: z.infer<typeof video>[]): string | undefined {
   return [...candidates].sort((a, b) => score(b) - score(a))[0]?.key;
 }
 
+const COUNTRY = 'FR';
+const TMDB_PAGE = /^https:\/\/www\.themoviedb\.org\//;
+
+// Réunit des listes de services sans doublon, du plus en vue au moins en vue (priorité d'affichage de TMDB).
+function mergeProviders(...lists: (z.infer<typeof providerEntry>[] | undefined)[]): WatchProvider[] {
+  const seen = new Map<number, z.infer<typeof providerEntry>>();
+  for (const entry of lists.flatMap((list) => list ?? [])) if (!seen.has(entry.provider_id)) seen.set(entry.provider_id, entry);
+  return [...seen.values()]
+    .sort((a, b) => (a.display_priority ?? 999) - (b.display_priority ?? 999))
+    .map((entry) => ({ id: entry.provider_id, name: entry.provider_name, ...(entry.logo_path ? { logoPath: entry.logo_path } : {}) }));
+}
+
+function pickWatch(providers: z.infer<typeof detailSchema>['watch/providers']): WatchInfo | undefined {
+  if (!providers) return undefined;
+  const offers = providers.results[COUNTRY];
+  const link = offers?.link && TMDB_PAGE.test(offers.link) ? offers.link : undefined;
+  return { ...(link ? { link } : {}), stream: mergeProviders(offers?.flatrate, offers?.free, offers?.ads), rentBuy: mergeProviders(offers?.rent, offers?.buy) };
+}
+
 export function createTmdbApi(deps: { fetch: TmdbFetch; apiKey: string }) {
   async function get<S extends z.ZodType>(path: string, params: Record<string, string>, schema: S): Promise<z.infer<S>> {
     const query = new URLSearchParams({ api_key: deps.apiKey, language: LANGUAGE, ...params });
@@ -122,9 +159,10 @@ export function createTmdbApi(deps: { fetch: TmdbFetch; apiKey: string }) {
 
   return {
     async detail(mediaType: MediaType, id: number): Promise<ScreenDetail> {
-      const data = await get(`/${mediaType}/${id}`, { append_to_response: 'videos', include_video_language: 'fr,en,null' }, detailSchema);
+      const data = await get(`/${mediaType}/${id}`, { append_to_response: 'videos,watch/providers', include_video_language: 'fr,en,null' }, detailSchema);
       const year = yearOf(data.release_date ?? data.first_air_date);
       const trailerKey = pickTrailer(data.videos?.results ?? []);
+      const watch = pickWatch(data['watch/providers']);
       const title = data.title ?? data.name ?? '';
       const original = data.original_title ?? data.original_name;
       return {
@@ -136,6 +174,7 @@ export function createTmdbApi(deps: { fetch: TmdbFetch; apiKey: string }) {
         overview: data.overview ?? '',
         ...(data.vote_count && data.vote_count > 0 ? { rating: { average: roundRating(data.vote_average ?? 0), votes: data.vote_count } } : {}),
         ...(trailerKey ? { trailerKey } : {}),
+        ...(watch ? { watch } : {}),
       };
     },
 
