@@ -3,8 +3,8 @@ import type { CardKinds } from '../kinds/wikidata-kinds';
 export type ScreenKind = 'film' | 'series' | 'person';
 
 // Natures Wikidata : film, court métrage, film d'animation, film d'animation japonais, long métrage, film muet, documentaire, téléfilm ; série télévisée, série d'animation, mini-série.
-const FILM = new Set(['Q11424', 'Q24862', 'Q202866', 'Q506240', 'Q20650540', 'Q29168811', 'Q24869', 'Q226730', 'Q93204']);
-const SERIES = new Set(['Q5398426', 'Q581714', 'Q1259759']);
+const FILM = new Set(['Q11424', 'Q24862', 'Q202866', 'Q506240', 'Q20650540', 'Q29168811', 'Q24869', 'Q226730', 'Q93204', 'Q17517379', 'Q20667187', 'Q98701476', 'Q98807719', 'Q7751682', 'Q117209498', 'Q112158242', 'Q104840802', 'Q20442589', 'Q220898', 'Q1261214', 'Q18011172', 'Q113687694', 'Q123126551', 'Q104775758']);
+const SERIES = new Set(['Q5398426', 'Q581714', 'Q1259759', 'Q117467246', 'Q63952888', 'Q526877', 'Q113671041', 'Q117467240', 'Q23745', 'Q170238', 'Q2388283', 'Q9335576', 'Q23739', 'Q1366112', 'Q7724161']);
 const HUMAN = 'Q5';
 // Métiers : acteur, acteur de cinéma, de télévision, de voix-off ; réalisateur de cinéma, de télévision.
 const ACTING = new Set(['Q33999', 'Q10800557', 'Q10798782', 'Q2405480']);

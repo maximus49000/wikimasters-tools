@@ -8,8 +8,10 @@ describe('screenKindOf', () => {
     expect(screenKindOf(kinds(['Q11424']))).toBe('film');
     expect(screenKindOf(kinds(['Q24862']))).toBe('film');
     expect(screenKindOf(kinds(['Q20650540']))).toBe('film');
+    expect(screenKindOf(kinds(['Q17517379']))).toBe('film');
     expect(screenKindOf(kinds(['Q29168811']))).toBe('film');
     expect(screenKindOf(kinds(['Q5398426']))).toBe('series');
+    expect(screenKindOf(kinds(['Q117467246']))).toBe('series');
   });
 
   it('reconnaît un acteur et un réalisateur (humain) mais pas un autre métier', () => {

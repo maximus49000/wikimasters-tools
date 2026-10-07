@@ -6,7 +6,7 @@ export type MusicKind = 'track' | 'album' | 'artist';
 const TRACK = new Set(['Q7366', 'Q134556', 'Q105543609']);
 const ALBUM = new Set(['Q482994', 'Q208569', 'Q209939', 'Q222910']);
 // Groupe musical (dont duo, trio, groupe de rock ou de métal, ensemble) ; ou personne dont un métier est musical (chanteur, musicien, compositeur, rappeur, DJ, guitariste…).
-const BAND = new Set(['Q215380', 'Q9212979', 'Q281643', 'Q5741069', 'Q56816954', 'Q2088357']);
+const BAND = new Set(['Q215380', 'Q9212979', 'Q281643', 'Q5741069', 'Q56816954', 'Q2088357', 'Q641066', 'Q216337', 'Q131186', 'Q25391823', 'Q11446438', 'Q215048', 'Q19464263', 'Q7558495', 'Q11578153', 'Q108424578', 'Q2707384', 'Q7229089', 'Q2491498', 'Q814344', 'Q113292621', 'Q20819922', 'Q1776834', 'Q1753063', 'Q1078286', 'Q1684352', 'Q12765911', 'Q3736859', 'Q11664239', 'Q18444336', 'Q78425721', 'Q10269077']);
 const HUMAN = 'Q5';
 const MUSIC_OCCUPATIONS = new Set(['Q177220', 'Q639669', 'Q36834', 'Q488205', 'Q2252262', 'Q130857', 'Q855091', 'Q386854', 'Q158852']);
 
