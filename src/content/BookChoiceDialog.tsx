@@ -169,7 +169,7 @@ export function BookChoiceDialog({ service, slug, title, currentId, onChanged, o
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-          <button type="button" disabled={busy} onClick={() => void done(() => service.chooseNone(slug))} aria-label="Aucun livre" title="Cette carte n'a pas de livre" style={wide}>
+          <button type="button" disabled={busy} onClick={() => void done(() => service.chooseNone(slug))} aria-label="Aucun livre" title="Cette carte n’a pas de livre" style={wide}>
             ∅ Aucun livre
           </button>
           <button type="button" disabled={busy} onClick={() => void done(() => service.reset(slug))} aria-label="Revenir au choix automatique" style={{ ...wide, border: 'none', fontWeight: 400, opacity: 0.8 }}>

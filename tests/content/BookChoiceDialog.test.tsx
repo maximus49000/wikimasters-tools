@@ -112,6 +112,13 @@ describe('BookChoiceDialog', () => {
     const failing = service({ candidates: vi.fn(async () => ({ works: [], message: 'Open Library est indisponible pour le moment.' })), preview: vi.fn(async () => ({ message: 'Ce livre est introuvable.' })) });
     await show(failing);
     expect(dialog().querySelector('[role="status"]')?.textContent).toContain('indisponible');
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    const noPreview = service({ candidates: vi.fn(async () => ({ works: [etranger] })), preview: vi.fn(async () => ({ message: 'Ce livre est introuvable.' })) });
+    await show(noPreview);
+    await click(byLabel('Choisir L’étranger (Albert Camus)'));
+    expect(dialog().querySelector('[role="status"]')?.textContent).toContain('Ce livre est introuvable.');
+    expect(byLabel('Utiliser ce livre')).toBeNull();
   });
 
   it('un changement qui échoue garde la fenêtre ouverte avec un message', async () => {

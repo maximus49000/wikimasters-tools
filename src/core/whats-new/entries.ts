@@ -441,9 +441,10 @@ export const ENTRIES: Entry[] = [
         target: '[data-wmt-book-switch]',
         title: 'Changer de livre',
         text: 'Le bouton à double flèche, à droite de « Livre », permet de corriger le livre d’une carte : recherchez-le par son titre, choisissez-le, ou dites que la carte n’a pas de livre.',
+        gesture: 'tap',
         details: [
           { label: 'D’où viennent les données', text: 'La recherche interroge Open Library avec le titre de la carte (modifiable). Le livre que vous choisissez est gardé sur votre appareil, carte par carte.' },
-          { label: 'Comment s’en servir', text: 'Touchez le bouton, relisez les résultats (couverture, titre, auteur, année), touchez un livre pour le voir en aperçu, puis « Utiliser ce livre ». « Aucun livre » vide la section ; « Revenir au choix automatique » efface votre choix.' },
+          { label: 'Comment faire', text: 'Touchez le bouton, relisez les résultats (couverture, titre, auteur, année), touchez un livre pour le voir en aperçu, puis « Utiliser ce livre ». « Aucun livre » vide la section ; « Revenir au choix automatique » efface votre choix.' },
           { label: 'À savoir', text: 'Votre choix passe avant la reconnaissance automatique, et sa couverture devient l’image de la carte : c’est le meilleur moyen de remplacer un mauvais livre ou d’obtenir une couverture quand l’identifiant Wikidata manque. Coller l’adresse d’une page Open Library n’est pas encore possible.' },
         ],
         scene: { card: 'book' },

@@ -131,6 +131,7 @@ export function createBookService(deps: BookServiceDeps) {
     async cover(slug: string, title: string): Promise<string[] | null> {
       try {
         // Le livre choisi par l'utilisateur ne dépend ni de Wikidata ni des natures : il reste affiché, et sa couverture compte.
+        // Choix d’abord, voulu : un choix manuel est respecté même si la carte n’est plus classée « livre » (la section et son bouton ⇄ disparaissent alors ; cas rare).
         const choice = (await choices.load())[slug];
         if (choice) return 'none' in choice ? [] : coverOf(await workById(choice.workId));
         await kinds.resolveMissing([slug]);
