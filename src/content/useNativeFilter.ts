@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KnownCard } from '../core/collection/collection-book';
 import type { ScanState } from '../core/collection/collection-scan';
-import { filterLocally } from '../core/collection/local-filter';
+import { filterLocally, filterProvisionally } from '../core/collection/local-filter';
 import type { CollectionFilterSource } from './collection-filter';
 
 type Args = {
@@ -48,6 +48,8 @@ export function useNativeFilter({ filterSource, loadFiltered, cards, scan }: Arg
     };
   }, [filter, loadFiltered, localSlugs]);
 
-  const visible = localSlugs ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
-  return { filter, visible, filtering: Boolean(filter) && visible === null && !error, error };
+  const read = localSlugs ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
+  // En attendant la lecture complète du site : les cartes déjà connues qui passent, jamais toute la Collection.
+  const provisional = useMemo(() => (filter && read === null ? filterProvisionally(cards, filter) : null), [filter, read, cards]);
+  return { filter, visible: read ?? provisional, filtering: Boolean(filter) && read === null && !error, error };
 }

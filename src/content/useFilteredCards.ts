@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KnownCard } from '../core/collection/collection-book';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import { IDLE_SCAN, type CollectionScanner, type ScanState } from '../core/collection/collection-scan';
-import { filterLocally } from '../core/collection/local-filter';
+import { filterLocally, filterProvisionally } from '../core/collection/local-filter';
 import { intersectSlugs, kindSlugs } from '../core/kinds/kinds-filter';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { CollectionFilterSource } from './collection-filter';
@@ -76,11 +76,14 @@ export function useFilteredCards({ collection, scanner, kinds, kindFilterSource,
     };
   }, [filter, loadFiltered, localSlugs]);
 
-  const nativeVisible = localSlugs ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
+  const nativeRead = localSlugs ?? (filter && allowed?.filter === filter ? allowed.slugs : null);
+  // En attendant la lecture complète du site : les cartes déjà connues qui passent, jamais toute la Collection.
+  const provisional = useMemo(() => (filter && nativeRead === null ? filterProvisionally(cards, filter) : null), [filter, nativeRead, cards]);
+  const nativeVisible = nativeRead ?? provisional;
   const { kindsState, kindFilter } = useKindState(kinds, kindFilterSource);
   const kindVisible = useMemo(() => kindSlugs(cards, kindsState, kindFilter), [cards, kindsState, kindFilter]);
   // Filtre du site (étiquette, rareté) et filtre nature / occupation : une carte doit passer les deux.
   const visible = useMemo(() => intersectSlugs(nativeVisible, kindVisible), [nativeVisible, kindVisible]);
-  const filtering = Boolean(filter) && nativeVisible === null && !filterError;
+  const filtering = Boolean(filter) && nativeRead === null && !filterError;
   return { cards, visible, filtering, filterError };
 }
