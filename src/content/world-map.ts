@@ -1,4 +1,6 @@
 import * as L from 'leaflet';
+import './leaflet-global';
+import 'leaflet.markercluster';
 import type { CardPreview } from '../core/collection/card-preview';
 import type { Rect } from './card-popup-position';
 import { rarityKey } from './card-rarity';
@@ -65,7 +67,8 @@ export function createWorldMap(
   }).addTo(map);
   container.classList.toggle('wmt-dark', dark);
 
-  const markers = L.layerGroup().addTo(map);
+  // Des cartes voisines (plusieurs points dans une même ville) se superposeraient en un seul point : on les regroupe.
+  const markers = L.markerClusterGroup({ maxClusterRadius: 40, showCoverageOnHover: false }).addTo(map);
   let placing = false;
   const coarse = isCoarsePointer();
   let moveMode = !coarse;
