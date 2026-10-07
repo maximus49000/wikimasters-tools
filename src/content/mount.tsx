@@ -29,10 +29,12 @@ import { getLinkedService } from './linked-registry';
 import { PlayerSettings } from './PlayerSettings';
 import { AnomalyDialog, type AnomalyDialogProps } from './AnomalyDialog';
 import { TourOverlay } from './TourOverlay';
+import { DemoCard } from './DemoCard';
+import { setTourWindowOpener, startTour, tourController } from './tour-instance';
+import type { TourSession } from './tour-session';
 import { ExtensionSettings } from './ExtensionSettings';
 import { WhatsNewDialog, type WhatsNewDialogProps } from './WhatsNewDialog';
 import { WikiHowDialog, type WikiHowDialogProps } from './WikiHowDialog';
-import type { TourStep } from '../core/whats-new/types';
 import type { PlayerSource } from './player-source';
 import type { ImageService } from '../core/images/image-service';
 import { LoadingGlyph } from './LoadingGlyph';
@@ -245,8 +247,22 @@ export const openExtensionSettings = (images: ImageService, player: PlayerSource
 export const openAnomalyDialog = (props: Omit<AnomalyDialogProps, 'onClose'>): void =>
   openSettingsWindow(ANOMALY_HOST_ATTRIBUTE, (close) => <AnomalyDialog {...props} onClose={close} />);
 
-export const openTour = (steps: TourStep[]): void =>
-  openSettingsWindow(TOUR_HOST_ATTRIBUTE, (close) => <TourOverlay steps={steps} onDone={close} />);
+// La visite est reprise telle quelle après un changement de page : la fenêtre se monte à partir de la session enregistrée.
+export const openTour = (session: TourSession): void =>
+  openSettingsWindow(TOUR_HOST_ATTRIBUTE, (close) => (
+    <TourOverlay
+      steps={session.steps}
+      startIndex={session.index}
+      prepare={tourController.prepare}
+      onIndex={tourController.persistIndex}
+      renderDemo={(card) => <DemoCard card={card} />}
+      onDone={() => {
+        close();
+        tourController.finish();
+      }}
+    />
+  ));
+setTourWindowOpener(openTour);
 
 const WHATS_NEW_HOST_ATTRIBUTE = 'data-wmt-whats-new';
 const WIKIHOW_HOST_ATTRIBUTE = 'data-wmt-wikihow';
@@ -258,7 +274,7 @@ export const openWhatsNew = (props: Omit<WhatsNewDialogProps, 'onTour' | 'onClos
       {...props}
       onTour={(steps) => {
         close();
-        openTour(steps);
+        startTour(steps);
       }}
       onClose={close}
     />
@@ -270,7 +286,7 @@ export const openWikiHow = (props: Omit<WikiHowDialogProps, 'onTour' | 'onClose'
       {...props}
       onTour={(steps) => {
         close();
-        openTour(steps);
+        startTour(steps);
       }}
       onClose={close}
     />

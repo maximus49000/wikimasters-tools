@@ -87,6 +87,9 @@ import { createWhatsNewRepo } from '../core/whats-new/seen';
 import { ENTRIES } from '../core/whats-new/entries';
 import { FIXES } from '../core/whats-new/fixes';
 import { showPendingWhatsNew } from '../content/whats-new-flow';
+import { pickCard } from '../core/whats-new/pick-card';
+import { setTourEnv } from '../content/tour-registry';
+import { resumeTour } from '../content/tour-instance';
 import { createAnomalyReporter } from '../core/anomalies/anomaly';
 import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
 import { getProfileName, rememberProfileName } from '../core/anomalies/profile-name';
@@ -200,6 +203,19 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   const marketUi = createMarketUi(marketRepo, historyRepo);
   // Bouton « Carte » du lecteur : la fiche de la carte dont vient la lecture, depuis n'importe quelle page.
   const openPlayerCard = (slug: string) => openCardInPage(slug, (target) => void marketUi.reopenCard(target));
+  // Visite guidée : elle cherche une vraie carte de la Collection (jeu, musique, film), l'ouvre, puis la referme à la fin.
+  setTourEnv({
+    cards: () => collectionRepo.list(),
+    pick: (kind, cards) =>
+      pickCard(
+        kind,
+        cards,
+        async (nature, candidates) =>
+          (nature === 'game' ? await getGameService()?.gameSlugs(candidates) : nature === 'music' ? await getMusicService()?.musicSlugs(candidates) : await getScreenService()?.screenSlugs(candidates)) ?? new Set<string>(),
+      ),
+    openCard: openPlayerCard,
+    closeCard: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+  });
   // Prix du marché partagés avec la Map et la Chronologique (mis à jour avec la liste).
   const market = createMarketSource();
   // Requête Wikipédia sans identifiants : rien du compte ni du jeu n'y est joint.
@@ -557,5 +573,6 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   }
 
   // Après une mise à jour : nouveautés et corrections jamais annoncées (rien au premier lancement).
-  void showPendingWhatsNew(whatsNew, ENTRIES, FIXES, openWhatsNew).catch((error) => console.warn(LOG, 'nouveautés indisponibles :', error));
+  // Une visite guidée en cours (changement de page) reprend d'abord ; sinon, les nouveautés jamais annoncées.
+  if (!resumeTour()) void showPendingWhatsNew(whatsNew, ENTRIES, FIXES, openWhatsNew).catch((error) => console.warn(LOG, 'nouveautés indisponibles :', error));
 }
