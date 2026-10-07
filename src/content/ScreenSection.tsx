@@ -6,6 +6,7 @@ import { getScreenService } from './screen-registry';
 import type { ScreenDetailResult, ScreenView } from './screen-service';
 import { SoundtrackButton } from './SoundtrackButton';
 import { TrailerPlayer } from './TrailerPlayer';
+import { WatchProviders } from './WatchProviders';
 
 const SIZE = 44; // cible tactile
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -45,8 +46,9 @@ function Detail({ detail }: { detail: ScreenDetail }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <SoundtrackButton soundtrackKey={`${detail.mediaType}:${detail.id}`} title={detail.title} {...(detail.originalTitle ? { originalTitle: detail.originalTitle } : {})} />
       {detail.trailerKey && <TrailerPlayer trailerKey={detail.trailerKey} />}
+      {detail.watch && <WatchProviders watch={detail.watch} />}
       <Rating detail={detail} />
-      {detail.overview && <p style={{ margin: 0, fontSize: 12, lineHeight: 1.4, maxHeight: 'min(96px, 15vh)', overflowY: 'auto' }}>{detail.overview}</p>}
+      {detail.overview && <p style={{ margin: 0, fontSize: 13, lineHeight: 1.4, maxHeight: 'min(180px, 26vh)', overflowY: 'auto' }}>{detail.overview}</p>}
     </div>
   );
 }
@@ -69,6 +71,10 @@ export function ScreenSection({ slug, title }: Props) {
   }, [service, slug, title]);
 
   if (!service || !view || view.status === 'none') return null;
+
+  // La mention JustWatch n'est due que lorsque des offres sont affichées (fiche d'un titre, ouverte ou non depuis une filmographie).
+  const shown = opened?.result ?? view;
+  const showsWatch = shown.status === 'detail' && shown.detail.watch !== undefined;
 
   const open = (item: FilmographyItem) => {
     const mine = ++token.current;
@@ -151,7 +157,9 @@ export function ScreenSection({ slug, title }: Props) {
           </div>
         </>
       )}
-      <p style={{ margin: 0, fontSize: 10, opacity: 0.6 }}>Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.</p>
+      <p style={{ margin: 0, fontSize: 10, opacity: 0.6 }}>
+        {showsWatch && 'Disponibilités : JustWatch · '}Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.
+      </p>
     </div>
   );
 }

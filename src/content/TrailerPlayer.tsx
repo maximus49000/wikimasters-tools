@@ -3,7 +3,6 @@ import { embedUrl, thumbnailUrl, watchUrl } from '../core/screen/screen-format';
 import { Glyph } from './Glyphs';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
-const HEIGHT = 'min(130px, 20vh)';
 
 // Miniature + ▶ ; l'iframe YouTube (sans cookies) n'est chargée qu'au clic. Le lien externe reste là si le site la bloque.
 export function TrailerPlayer({ trailerKey }: { trailerKey: string }) {
@@ -14,7 +13,7 @@ export function TrailerPlayer({ trailerKey }: { trailerKey: string }) {
   if (!embed || !watch) return null;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: HEIGHT, borderRadius: 8, overflow: 'hidden', background: '#000', border }}>
+    <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', maxHeight: 'min(220px, 32vh)', borderRadius: 8, overflow: 'hidden', background: '#000', border }}>
       {playing ? (
         <iframe
           src={embed}
