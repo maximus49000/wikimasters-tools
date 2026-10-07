@@ -32,27 +32,34 @@ export function buildIssue(input: AnomalyInput): { title: string; body: string; 
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
+export type IssueDraft = { title: string; body: string; labels: string[] };
+
+// Crée une issue GitHub ; partagé par « Remonter une anomalie » et les propositions de documentaire.
+export async function postIssue(doFetch: Fetch, token: string, draft: IssueDraft): Promise<AnomalyResult> {
+  try {
+    const response = await doFetch(`${ANOMALY_API_PREFIX}issues`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(draft),
+    });
+    if (!response.ok) return { ok: false, error: `GitHub a refusé l’envoi (code ${response.status}).` };
+    const created = (await response.json()) as { number?: unknown; html_url?: unknown };
+    if (typeof created.number !== 'number') return { ok: false, error: 'Réponse inattendue de GitHub.' };
+    return { ok: true, number: created.number, url: typeof created.html_url === 'string' ? created.html_url : '' };
+  } catch {
+    return { ok: false, error: 'Envoi impossible : vérifiez la connexion.' };
+  }
+}
+
 export function createAnomalyReporter({ fetch: doFetch, token }: { fetch: Fetch; token: string }) {
   return {
     async report(input: AnomalyInput): Promise<AnomalyResult> {
       if (input.description.trim().length === 0) return { ok: false, error: 'Décrivez l’anomalie avant d’envoyer.' };
-      try {
-        const response = await doFetch(`${ANOMALY_API_PREFIX}issues`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(buildIssue(input)),
-        });
-        if (!response.ok) return { ok: false, error: `GitHub a refusé l’envoi (code ${response.status}).` };
-        const created = (await response.json()) as { number?: unknown; html_url?: unknown };
-        if (typeof created.number !== 'number') return { ok: false, error: 'Réponse inattendue de GitHub.' };
-        return { ok: true, number: created.number, url: typeof created.html_url === 'string' ? created.html_url : '' };
-      } catch {
-        return { ok: false, error: 'Envoi impossible : vérifiez la connexion.' };
-      }
+      return postIssue(doFetch, token, buildIssue(input));
     },
   };
 }
