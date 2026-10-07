@@ -9,7 +9,7 @@ export const THEMES: { id: Theme; label: string }[] = [
   { id: 'ecoute', label: 'Écoute et médias' },
 ];
 
-export type CardKind = 'game' | 'music' | 'screen' | 'any';
+export type CardKind = 'game' | 'music' | 'screen' | 'book' | 'any';
 export type RevealItem = string | { text: string };
 // Où et comment l'élément visé apparaît : page du site, éléments à toucher pour le faire apparaître, nature de carte dont il faut ouvrir la fiche.
 // `closeWindows` : ferme d'abord les fenêtres de réglage ouvertes (elles recouvriraient l'élément visé, ou gardent une vue précédente).

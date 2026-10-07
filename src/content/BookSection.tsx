@@ -2,10 +2,13 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import type { BookDetail } from '../core/book/book-detail';
 import { getBookService } from './book-registry';
 import type { BookView } from './book-service';
+import { BookChoiceDialog } from './BookChoiceDialog';
 import { Glyph } from './Glyphs';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const link: CSSProperties = { color: 'inherit', fontWeight: 600 };
+const SIZE = 44; // cible tactile
+const iconButton: CSSProperties = { width: SIZE, height: SIZE, flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'inherit', background: 'none', border, borderRadius: 8 };
 
 function Facts({ detail }: { detail: BookDetail }) {
   const published = [detail.year, detail.publisher].filter((value) => value !== undefined && value !== '').join(' · ');
@@ -76,10 +79,12 @@ function Detail({ detail }: { detail: BookDetail }) {
 
 type Props = { slug: string; title: string };
 
-// Section « livre » de la fiche native d'une carte : un livre (Open Library), ou une fiche vide ; rien pour les autres cartes.
+// Section « livre » de la fiche native d'une carte : un livre (Open Library), ou une fiche vide avec le glyphe pour en choisir un ; rien pour les autres cartes.
 export function BookSection({ slug, title }: Props) {
   const service = getBookService();
   const [view, setView] = useState<BookView | null>(null);
+  const [version, setVersion] = useState(0);
+  const [choosing, setChoosing] = useState(false);
 
   useEffect(() => {
     if (!service) return;
@@ -91,25 +96,30 @@ export function BookSection({ slug, title }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [service, slug, title]);
+  }, [service, slug, title, version]);
 
   if (!service || !view || view.status === 'none') return null;
+  const current = view.status === 'detail' ? view.detail : null;
 
   return (
     <div data-wmt-book-card="" style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600 }}>
         <Glyph name="book" size={16} />
         <span style={{ flex: 1, minWidth: 0 }}>Livre</span>
+        <button type="button" data-wmt-book-switch="" onClick={() => setChoosing(true)} aria-label="Changer de livre" title="Changer de livre" style={iconButton}>
+          <Glyph name="swap" />
+        </button>
       </div>
       {view.status === 'error' && (
         <p role="status" style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>
           {view.message}
         </p>
       )}
-      {view.status === 'empty' && (
-        <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>Aucune fiche trouvée pour ce livre.</p>
+      {view.status === 'empty' && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>{view.none ? 'Aucun livre pour cette carte.' : 'Aucune fiche trouvée pour ce livre.'}</p>}
+      {current && <Detail detail={current} />}
+      {choosing && (
+        <BookChoiceDialog service={service} slug={slug} title={title} currentId={current?.id ?? null} onChanged={() => setVersion((value) => value + 1)} onClose={() => setChoosing(false)} />
       )}
-      {view.status === 'detail' && <Detail detail={view.detail} />}
     </div>
   );
 }

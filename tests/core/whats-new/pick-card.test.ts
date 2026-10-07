@@ -22,6 +22,13 @@ describe('pickCard', () => {
     expect(await pickCard('any', [], async () => new Set())).toBeNull();
   });
 
+  it('choisit la première carte de la nature « book »', async () => {
+    const cards = [card('A'), card('B'), card('C')];
+    const slugsOf = vi.fn(async (kind: string, _cards: KnownCard[]) => (kind === 'book' ? new Set(['B', 'C']) : new Set<string>()));
+    expect((await pickCard('book', cards, slugsOf))?.slug).toBe('B');
+    expect(slugsOf).toHaveBeenCalledWith('book', cards);
+  });
+
   it('ne propose que les premières cartes (plafond)', async () => {
     const cards = Array.from({ length: PICK_LIMIT + 50 }, (_, i) => card(`c${i}`));
     const slugsOf = vi.fn(async (_kind: string, _cards: KnownCard[]) => new Set<string>());

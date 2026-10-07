@@ -1,5 +1,6 @@
 // src/core/book/book-repo.ts
 import type { KeyValueStore } from '../cache/store';
+import type { BookChoice } from './book-detail';
 import type { CardBook } from './wikidata-book';
 
 export type BookState = Record<string, CardBook>;
@@ -72,3 +73,26 @@ export function createBookRepo(store: KeyValueStore, fetchBook: BookFetcher, now
   };
 }
 export type BookRepo = ReturnType<typeof createBookRepo>;
+
+const CHOICE_KEY = 'book-choice-v1';
+
+// Le livre choisi à la main pour chaque carte (ou « aucun livre ») : il prime sur la résolution automatique.
+export function createBookChoiceRepo(store: KeyValueStore) {
+  let tail: Promise<unknown> = Promise.resolve();
+  const read = async (): Promise<Record<string, BookChoice>> => (await store.get<Record<string, BookChoice>>(CHOICE_KEY)) ?? {};
+  const update = (change: (state: Record<string, BookChoice>) => Record<string, BookChoice>): Promise<void> => {
+    const run = tail.then(async () => store.set(CHOICE_KEY, change(await read())));
+    tail = run.catch(() => undefined);
+    return run;
+  };
+  return {
+    load: read,
+    save: (slug: string, choice: BookChoice): Promise<void> => update((state) => ({ ...state, [slug]: choice })),
+    clear: (slug: string): Promise<void> =>
+      update((state) => {
+        const { [slug]: _removed, ...rest } = state;
+        return rest;
+      }),
+  };
+}
+export type BookChoiceRepo = ReturnType<typeof createBookChoiceRepo>;

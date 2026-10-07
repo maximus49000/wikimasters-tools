@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { articleUrl, coverUrl, firstIsbn13, isWorkId, normalizeTitle, workPageUrl } from '../../../src/core/book/book-format';
+import { articleUrl, coverThumbUrl, coverUrl, firstIsbn13, isWorkId, normalizeTitle, workPageUrl } from '../../../src/core/book/book-format';
 
 describe('book-format', () => {
   it('construit les adresses Open Library et Wikipédia', () => {
@@ -16,6 +16,9 @@ describe('book-format', () => {
     expect(isWorkId('OL1230613W')).toBe(true);
     expect(isWorkId('OL1230613A')).toBe(false);
     expect(isWorkId('../etc')).toBe(false);
+  });
+  it('construit l’adresse de la miniature de couverture', () => {
+    expect(coverThumbUrl(13151269)).toBe('https://covers.openlibrary.org/b/id/13151269-S.jpg');
   });
   it('compare les titres sans accents, casse ni ponctuation', () => {
     expect(normalizeTitle('L’étranger')).toBe(normalizeTitle("L'Étranger"));

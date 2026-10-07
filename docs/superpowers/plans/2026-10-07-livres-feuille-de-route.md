@@ -6,8 +6,8 @@ Spec : `docs/superpowers/specs/2026-10-07-livres-design.md` (validée le 2026-10
 |---|---|---|---|---|
 | 1 | **Ma collection dans la filmographie** (`2026-10-07-collection-filmographie.md`) | composant `WorkList` partagé, repérage des cartes possédées, `CardThumb`, `collection-marks` | rien | **fusionné** (PR #165, pré-prod 522) |
 | 2 | **Carte livre : section, couverture, glyphe** (`2026-10-07-livres-carte.md`) | natures « Livre » (filtre), Wikidata P648, Open Library, synopsis agrandi (Wikipédia), `BookSection`, glyphe livre sur la carte et en-tête, couverture prioritaire, fiche WikiHow | 1 | **fusionné** (pré-prod) |
-| 3 | **Changer de livre ⇄** | glyphe ⇄ dans l'en-tête, fenêtre de recherche Open Library, « Aucun livre », retour au choix automatique, choix mémorisé (`book-choice-v1`) ; lien collé reporté | 2 | à écrire |
-| 4 | **Prix et achat** | clé Google Books (ebook), liens libraires par ISBN, prix Amazon.fr en direct (`retail-price.ts`, désactivable), prix de référence | 2 | à écrire |
+| 3 | **Changer de livre ⇄** | glyphe ⇄ dans l'en-tête, fenêtre de recherche Open Library, « Aucun livre », retour au choix automatique, choix mémorisé (`book-choice-v1`) ; lien collé reporté | 2 | **fusionné** (pré-prod) |
+| 4 | **Prix et achat** | clé Google Books (ebook) — la fenêtre « Changer de livre » devra aussi chercher dans Google Books (la spec le prévoit ; le plan 3 ne cherche que dans Open Library), liens libraires par ISBN, prix Amazon.fr en direct (`retail-price.ts`, désactivable), prix de référence | 2 | à écrire |
 | 5 | **Lecture gratuite** | Wikisource FR, Internet Archive, Gutenberg, date de passage au domaine public | 2 | à écrire |
 | 6 | **Bibliographie de l'écrivain** | `WriterSection` sur `WorkList`, requête Wikidata filtrée, repérage des livres possédés par slug (étendre `CollectionMarks`), ouverture d'un livre dans la section | 1, 2 | à écrire |
 

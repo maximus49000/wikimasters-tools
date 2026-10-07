@@ -39,7 +39,7 @@ import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards,
 import { decorateBook, decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { getBookService, setBookService } from '../content/book-registry';
 import { createBookService } from '../content/book-service';
-import { createBookRepo } from '../core/book/book-repo';
+import { createBookChoiceRepo, createBookRepo } from '../core/book/book-repo';
 import { createOpenLibraryApi } from '../core/book/openlibrary-api';
 import { fetchWikidataBook } from '../core/book/wikidata-book';
 import { fetchWikipediaIntro } from '../core/book/wikipedia-intro';
@@ -236,7 +236,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         kind,
         cards,
         async (nature, candidates) =>
-          (nature === 'game' ? await getGameService()?.gameSlugs(candidates) : nature === 'music' ? await getMusicService()?.musicSlugs(candidates) : await getScreenService()?.screenSlugs(candidates)) ?? new Set<string>(),
+          (nature === 'game'
+            ? await getGameService()?.gameSlugs(candidates)
+            : nature === 'book'
+              ? await getBookService()?.bookSlugs(candidates)
+              : nature === 'music'
+                ? await getMusicService()?.musicSlugs(candidates)
+                : await getScreenService()?.screenSlugs(candidates)) ?? new Set<string>(),
       ),
     openCard: openPlayerCard,
     closeCard: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
@@ -590,9 +596,12 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       collection: collectionRepo,
       kinds: kindsRepo,
       books: createBookRepo(store, (slugs) => fetchWikidataBook((url) => fetch(url), slugs)),
+      choices: createBookChoiceRepo(store),
       openLibrary: createOpenLibraryApi({ fetch: (url) => fetch(url) }),
       intro: (slug) => fetchWikipediaIntro((url) => fetch(url), slug),
       cache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
+      // Autre livre choisi pour une carte : son image mémorisée (canal d'image « officiel » des jeux) n'est plus la bonne.
+      onChoice: (slug) => void images.forgetGameArt(slug),
     });
     setBookService(bookService);
     artSources.book = bookService;
