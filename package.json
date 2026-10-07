@@ -22,7 +22,8 @@
     "apk": "node scripts/build-apk.mjs",
     "apk:preprod": "node scripts/build-apk.mjs --channel=preprod",
     "promouvoir": "node scripts/promote.mjs",
-    "preprod": "node scripts/publish-preprod.mjs"
+    "preprod": "node scripts/publish-preprod.mjs",
+    "documentaire:reglage": "vite-node scripts/documentary-tuning.ts"
   },
   "dependencies": {
     "@types/leaflet.markercluster": "^1.5.6",
