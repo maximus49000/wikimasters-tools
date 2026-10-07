@@ -200,6 +200,14 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       .getMineRaw()
       .then((json) => {
         const mine = json as { selling?: unknown; history?: unknown; won?: unknown } | null;
+        // Prix d'achat : un achat de la dernière heure n'est pas dans le cache de 12 h, on l'ajoute puis on redécore.
+        dataSource
+          .ingestMine(json)
+          .then((next) => {
+            current = next;
+            run();
+          })
+          .catch((error) => console.warn(LOG, 'prix non mis à jour :', error));
         return mineApplier.apply({ selling: mine?.selling, history: mine?.history, won: mine?.won });
       })
       .catch((error) => console.warn(LOG, 'mes enchères non relues :', error));
@@ -224,13 +232,16 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   window.postMessage({ type: HELLO_MESSAGE }, window.location.origin);
 
   // Le lien du marché ne dépend pas de vos prix : on ne l'abandonne pas si ceux-ci échouent.
-  let book: PriceBook | null = null;
+  let current: PriceBook | null = null;
   try {
-    book = await dataSource.getMyPriceBook();
+    current = await dataSource.getMyPriceBook();
   } catch (error) {
     // Déconnecté, 429, format modifié… : pas de badge de prix plutôt que casser la page.
     console.warn(LOG, 'prix indisponibles :', error);
   }
+
+  // Le carnet change quand « mes enchères » est relu (un achat tout récent) : les écrans lisent toujours le dernier.
+  const book: PriceBook = { byTitle: (title) => current?.byTitle(title) ?? null };
 
   const marketUi = createMarketUi(marketRepo, historyRepo);
   // Bouton « Carte » du lecteur : la fiche de la carte dont vient la lecture, depuis n'importe quelle page.
@@ -436,7 +447,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       } catch (error) {
         console.warn(LOG, 'moyennes du marché indisponibles :', error);
       }
-      if (book) {
+      if (current) {
         const mounted = decorate(document, book, mountPurchaseBadge);
         const titles = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(
           (heading) => heading.textContent?.trim() ?? '',

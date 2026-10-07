@@ -68,3 +68,21 @@ describe('createDataSource.getMyPriceBook', () => {
     expect(book.byTitle('Exemple Trois')?.stats.count).toBe(2);
   });
 });
+
+describe('createDataSource.ingestMine', () => {
+  it('ajoute au carnet les achats d’une relecture récente, sans attendre la fin du cache', async () => {
+    const { dataSource, calls } = setup();
+    const before = await dataSource.getMyPriceBook();
+    expect(before.byTitle('Exemple Deux')).toBeNull();
+    const recent = structuredClone(fixture) as typeof fixture;
+    const won = structuredClone(recent.won[0]) as (typeof recent.won)[number];
+    won.id = 'a0000000-0000-4000-8000-0000000000ff';
+    won.card_id = 'c0000000-0000-4000-8000-0000000000ff';
+    won.card.wikipedia_title = 'Achat tout récent';
+    recent.won = [won];
+    const book = await dataSource.ingestMine(recent);
+    expect(book.byTitle('Achat tout récent')?.purchase).not.toBeNull();
+    expect(book.byTitle('Exemple Un')).not.toBeNull();
+    expect(calls()).toBe(1);
+  });
+});
