@@ -35,7 +35,7 @@ import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
 import { createMineApplier } from '../core/collection/mine-apply';
-import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, openImageSettings, openPlayerSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, openWhatsNew, openImageSettings, openPlayerSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
 import { decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
@@ -83,6 +83,10 @@ import { decorateImageSetting } from '../content/image-setting-menu';
 import { decoratePlayerSetting } from '../content/player-setting-menu';
 import { decorateUpdateSetting } from '../content/update-setting-menu';
 import { decorateAnomalySetting } from '../content/anomaly-setting-menu';
+import { createWhatsNewRepo } from '../core/whats-new/seen';
+import { ENTRIES } from '../core/whats-new/entries';
+import { FIXES } from '../core/whats-new/fixes';
+import { showPendingWhatsNew } from '../content/whats-new-flow';
 import { createAnomalyReporter } from '../core/anomalies/anomaly';
 import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
 import { getProfileName, rememberProfileName } from '../core/anomalies/profile-name';
@@ -92,6 +96,7 @@ const DEBOUNCE_MS = 300;
 
 // Surcouche Wikimasters : partagée par l'extension (content script) et l'application Android (WebView).
 export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): Promise<void> {
+  const whatsNew = createWhatsNewRepo(store);
   const api = createGameApi({
     fetch: (input, init) => asOwnRequest(() => fetch(input, { credentials: 'same-origin', ...init })),
     minIntervalMs: 1500,
@@ -548,4 +553,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     const reopen = takePendingReopen(window.sessionStorage, Date.now());
     if (reopen) void marketUi.reopenCard(reopen);
   }
+
+  // Après une mise à jour : nouveautés et corrections jamais annoncées (rien au premier lancement).
+  void showPendingWhatsNew(whatsNew, ENTRIES, FIXES, openWhatsNew).catch((error) => console.warn(LOG, 'nouveautés indisponibles :', error));
 }

@@ -30,6 +30,8 @@ import { ImageSettings } from './ImageSettings';
 import { PlayerSettings } from './PlayerSettings';
 import { AnomalyDialog, type AnomalyDialogProps } from './AnomalyDialog';
 import { TourOverlay } from './TourOverlay';
+import { WhatsNewDialog, type WhatsNewDialogProps } from './WhatsNewDialog';
+import { WikiHowDialog, type WikiHowDialogProps } from './WikiHowDialog';
 import type { TourStep } from '../core/whats-new/types';
 import type { PlayerSource } from './player-source';
 import type { ImageService } from '../core/images/image-service';
@@ -249,6 +251,34 @@ export const openAnomalyDialog = (props: Omit<AnomalyDialogProps, 'onClose'>): v
 
 export const openTour = (steps: TourStep[]): void =>
   openSettingsWindow(TOUR_HOST_ATTRIBUTE, (close) => <TourOverlay steps={steps} onDone={close} />);
+
+const WHATS_NEW_HOST_ATTRIBUTE = 'data-wmt-whats-new';
+const WIKIHOW_HOST_ATTRIBUTE = 'data-wmt-wikihow';
+
+// La visite remplace la fenêtre : on ferme la grille avant d'éclairer l'interface.
+export const openWhatsNew = (props: Omit<WhatsNewDialogProps, 'onTour' | 'onClose'>): void =>
+  openSettingsWindow(WHATS_NEW_HOST_ATTRIBUTE, (close) => (
+    <WhatsNewDialog
+      {...props}
+      onTour={(steps) => {
+        close();
+        openTour(steps);
+      }}
+      onClose={close}
+    />
+  ));
+
+export const openWikiHow = (props: Omit<WikiHowDialogProps, 'onTour' | 'onClose'>): void =>
+  openSettingsWindow(WIKIHOW_HOST_ATTRIBUTE, (close) => (
+    <WikiHowDialog
+      {...props}
+      onTour={(steps) => {
+        close();
+        openTour(steps);
+      }}
+      onClose={close}
+    />
+  ));
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
 
