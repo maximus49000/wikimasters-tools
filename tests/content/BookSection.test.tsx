@@ -34,7 +34,7 @@ const dialogService = () => ({
 });
 
 async function show(view: BookView, extra: Record<string, unknown> = {}) {
-  const service = { view: vi.fn(async () => view), ...dialogService(), ...extra };
+  const service = { view: vi.fn(async () => view), ...dialogService(), offers: vi.fn(async () => ({ shops: [] })), ...extra };
   setBookService(service as unknown as BookService);
   await act(async () => root.render(<BookSection slug="L'Étranger" title="L'Étranger" />));
   return service;
@@ -71,7 +71,7 @@ describe('BookSection', () => {
     expect(text).toContain('Roman philosophique');
     expect(text).toContain('Synopsis');
     expect(text).toContain('Meursault enterre sa mère sans verser une larme.');
-    expect(text).toContain('Données : Open Library, Wikipédia, Wikidata');
+    expect(text).toContain('Données : Open Library, Wikipédia, Wikidata, Google Books');
     const synopsis = [...container.querySelectorAll('p')].find((p) => p.textContent?.includes('Meursault')) as HTMLElement;
     expect(synopsis.style.fontSize).toBe('clamp(15px, 4vw, 16px)');
     expect(synopsis.style.maxHeight).toBe('300px');
@@ -99,6 +99,82 @@ describe('BookSection', () => {
   it('l’hôte de la section porte l’attribut utilisé par la visite guidée', async () => {
     await show({ status: 'detail', detail: etranger });
     expect(container.querySelector('[data-wmt-book-card]')).not.toBeNull();
+  });
+});
+
+const READ_AT = new Date(2026, 9, 7, 12).getTime();
+const price = (amount: number, source: string) => ({ amount, currency: 'EUR', source, readAt: READ_AT });
+const shop = (shop: string, label: string, kind: string, url: string, extra: object = {}) => ({ shop, label, kind, url, ...extra });
+const withPrices = {
+  shops: [
+    shop('amazon', 'Amazon.fr', 'paper', 'https://www.amazon.fr/dp/2070360024', { price: price(7.6, 'Amazon.fr') }),
+    shop('fnac', 'Fnac', 'paper', 'https://www.fnac.com/x'),
+    shop('decitre', 'Decitre', 'paper', 'https://www.decitre.fr/x'),
+    shop('libraire', 'Librairie indépendante', 'paper', 'https://www.placedeslibraires.fr/x'),
+    shop('google-play', 'Google Play Livres', 'ebook', 'https://play.google.com/store/books/details?id=x', { price: price(7.49, 'Google Play Livres') }),
+  ],
+  paperPrice: price(7.6, 'Amazon.fr'),
+};
+const withIsbn = { ...etranger, isbn: '9782070360024' };
+
+describe('BookSection — prix et achat', () => {
+  it('affiche le prix de référence, une ligne par vendeur avec son prix ou « voir le prix », et la date de lecture', async () => {
+    await show({ status: 'detail', detail: withIsbn }, { offers: vi.fn(async () => withPrices) });
+    const block = container.querySelector('[data-wmt-book-prices]') as HTMLElement;
+    expect(block).not.toBeNull();
+    const text = block.textContent ?? '';
+    expect(text).toContain('Prix en France');
+    expect(text).toContain('7,60 €');
+    expect(text).toContain('prix du livre unique en France');
+    expect(text).toContain('7,49 €');
+    expect(text).toContain('Google Play Livres');
+    expect(text).toContain('voir le prix');
+    expect(text).toContain('chercher');
+    expect(text).toContain('Prix lus le 07/10');
+    const rows = [...block.querySelectorAll('a')];
+    expect(rows.map((row) => row.getAttribute('href'))).toEqual(withPrices.shops.map((s) => s.url));
+    for (const row of rows) {
+      expect(row.getAttribute('target')).toBe('_blank');
+      expect(row.getAttribute('rel')).toBe('noopener noreferrer');
+      expect(parseInt((row as HTMLElement).style.minHeight, 10)).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it('les liens du papier s’affichent tout de suite, avant la réponse des prix, sans prix de référence', async () => {
+    await show({ status: 'detail', detail: withIsbn }, { offers: vi.fn(() => new Promise(() => undefined)) });
+    const block = container.querySelector('[data-wmt-book-prices]') as HTMLElement;
+    const hrefs = [...block.querySelectorAll('a')].map((row) => row.getAttribute('href'));
+    expect(hrefs[0]).toBe('https://www.amazon.fr/dp/2070360024');
+    expect(hrefs).toHaveLength(4);
+    expect(block.textContent).not.toContain('prix du livre unique');
+    expect(block.textContent).not.toContain('Prix lus le');
+  });
+
+  it('un échec de la lecture des prix laisse les liens, sans message d’erreur', async () => {
+    await show({ status: 'detail', detail: withIsbn }, { offers: vi.fn(async () => Promise.reject(new Error('x'))) });
+    const block = container.querySelector('[data-wmt-book-prices]') as HTMLElement;
+    expect(block.querySelectorAll('a')).toHaveLength(4);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('sans prix lu, la zone de référence est omise ; le pied cite les sources', async () => {
+    await show({ status: 'detail', detail: withIsbn }, { offers: vi.fn(async () => ({ shops: withPrices.shops.map((s) => ({ ...s, price: undefined })).map(({ price: _p, ...rest }) => rest) })) });
+    const block = container.querySelector('[data-wmt-book-prices]') as HTMLElement;
+    expect(block.textContent).not.toContain('prix du livre unique');
+    expect(container.textContent).toContain('Données : Open Library, Wikipédia, Wikidata, Google Books');
+  });
+
+  it('pas de bloc de prix pour une fiche vide ou en erreur', async () => {
+    await show({ status: 'empty' });
+    expect(container.querySelector('[data-wmt-book-prices]')).toBeNull();
+    await show({ status: 'error', message: 'x' });
+    expect(container.querySelector('[data-wmt-book-prices]')).toBeNull();
+  });
+
+  it('interroge les offres avec le titre, l’auteur et l’ISBN du livre', async () => {
+    const offers = vi.fn(async () => withPrices);
+    await show({ status: 'detail', detail: withIsbn }, { offers });
+    expect(offers).toHaveBeenCalledWith({ title: 'L’étranger', author: 'Albert Camus', isbn: '9782070360024' });
   });
 });
 
