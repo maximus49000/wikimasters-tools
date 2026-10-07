@@ -68,3 +68,12 @@ describe('facetsOf', () => {
     expect(facetsOf(undefined)).toEqual([]);
   });
 });
+
+describe('natures « Livre »', () => {
+  it('regroupe œuvre littéraire, roman, nouvelle, théâtre et bande dessinée sous un même nom', () => {
+    expect(natureKeys(kinds(['Q7725634']))).toEqual(['group:Livre']);
+    expect(natureKeys(kinds(['Q8261', 'Q7725634']))).toEqual(['group:Livre']);
+    expect(natureKeys(kinds(['Q25379']))).toEqual(['group:Livre']);
+    expect(natureKeys(kinds(['Q1004']))).toEqual(['group:Livre']);
+  });
+});

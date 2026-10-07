@@ -1,3 +1,4 @@
+import { BOOK_NATURES } from '../book/book-kinds';
 import type { CardKinds } from './wikidata-kinds';
 
 export type KindsState = {
@@ -23,6 +24,7 @@ export const UNKNOWN_NATURE = 'unknown';
 // Natures voisines réunies sous un même nom à l'affichage et au filtre. Les valeurs stockées restent brutes :
 // changer ce tableau ne demande aucun nouveau téléchargement.
 const NATURE_GROUPS: Record<string, string> = {
+  ...Object.fromEntries(BOOK_NATURES.map((id) => [id, 'Livre'])),
   Q5: 'Personne',
   Q482994: 'Album',
   Q208569: 'Album',
@@ -31,8 +33,6 @@ const NATURE_GROUPS: Record<string, string> = {
   Q134556: 'Single',
   Q7366: 'Chanson',
   Q11424: 'Film',
-  Q571: 'Livre',
-  Q8261: 'Livre',
   Q5398426: 'Série télévisée',
   Q7889: 'Jeu vidéo',
   Q131436: 'Jeu de société',
