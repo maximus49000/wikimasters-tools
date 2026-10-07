@@ -1,16 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { historyKindOf, mayBeHistory } from '../../../src/core/documentary/history-kinds';
+import { hasOwnSection, historyKindOf, mayBeHistory } from '../../../src/core/documentary/history-kinds';
 
 const kinds = (natures: string[]) => ({ natures, occupations: [], genres: [] });
+const FILM = 'Q11424';
+const VIDEO_GAME = 'Q7889';
+const NOVEL = 'Q8261';
+const SONG = 'Q7366';
+
+describe('hasOwnSection', () => {
+  it('reconnaît film, série, jeu vidéo, livre et morceau', () => {
+    for (const nature of [FILM, 'Q5398426', VIDEO_GAME, NOVEL, SONG]) expect(hasOwnSection(kinds([nature])), nature).toBe(true);
+    expect(hasOwnSection(kinds(['Q178561']))).toBe(false);
+    expect(hasOwnSection(kinds([]))).toBe(false);
+  });
+});
 
 describe('mayBeHistory', () => {
-  it('retient un événement, une œuvre, un humain ou une carte sans nature, pas le reste', () => {
+  it('retient tout sauf les cartes qui ont leur propre fiche', () => {
     expect(mayBeHistory(kinds(['Q178561']))).toBe(true);
-    expect(mayBeHistory(kinds(['Q18609875']))).toBe(true);
     expect(mayBeHistory(kinds(['Q5']))).toBe(true);
     expect(mayBeHistory(kinds([]))).toBe(true);
-    expect(mayBeHistory(kinds(['Q515']))).toBe(false);
-    expect(mayBeHistory(kinds(['Q16521']))).toBe(false);
+    expect(mayBeHistory(kinds(['Q515']))).toBe(true);
+    expect(mayBeHistory(kinds([FILM]))).toBe(false);
+    expect(mayBeHistory(kinds([VIDEO_GAME]))).toBe(false);
     expect(mayBeHistory(undefined)).toBe(false);
   });
 });
@@ -27,23 +39,30 @@ describe('historyKindOf', () => {
     expect(historyKindOf(kinds(['Q8432']), null)).toBe('event');
     expect(historyKindOf(kinds(['Q9174']), null)).toBe('event');
   });
-  it('reconnaît un humain décédé en 1950 ou avant, jamais un vivant ni un décès récent', () => {
+  it('reconnaît un humain décédé avant 1970, jamais un vivant ni un décès plus récent', () => {
     expect(historyKindOf(kinds(['Q5']), 1821)).toBe('person');
     expect(historyKindOf(kinds(['Q5']), 1950)).toBe('person');
-    expect(historyKindOf(kinds(['Q5']), 1951)).toBeNull();
+    expect(historyKindOf(kinds(['Q5']), 1969)).toBe('person');
+    expect(historyKindOf(kinds(['Q5']), 1970)).toBeNull();
     expect(historyKindOf(kinds(['Q5']), null)).toBeNull();
     expect(historyKindOf(kinds(['Q5']), null, 1800)).toBeNull();
   });
-  it('une carte sans nature renseignée compte si elle date de 1950 ou avant', () => {
+  it('tout autre sujet compte s’il date de 1950 ou avant (cathédrale, épidémie, broderie, culte sans nature)', () => {
+    expect(historyKindOf(kinds(['Q56242215']), null, 1163)).toBe('event');
+    expect(historyKindOf(kinds(['Q3241045', 'Q12184']), null, 1347)).toBe('event');
+    expect(historyKindOf(kinds(['Q44740228', 'Q28966302']), null, 1070)).toBe('event');
     expect(historyKindOf(kinds([]), null, 1794)).toBe('event');
     expect(historyKindOf(kinds([]), null, 1950)).toBe('event');
+    expect(historyKindOf(kinds(['Q515']), null, 1794)).toBe('event');
+  });
+  it('mais pas s’il est récent, sans date, ou s’il a déjà sa propre fiche', () => {
     expect(historyKindOf(kinds([]), null, 1990)).toBeNull();
     expect(historyKindOf(kinds([]), null, null)).toBeNull();
-    expect(historyKindOf(kinds(['Q515']), null, 1794)).toBeNull();
-  });
-  it('rend null pour une carte sans rapport (ville, taxon)', () => {
-    expect(historyKindOf(kinds(['Q515']), 1800)).toBeNull();
-    expect(historyKindOf(kinds(['Q16521']), null)).toBeNull();
+    expect(historyKindOf(kinds(['Q16521']), null, null)).toBeNull();
+    expect(historyKindOf(kinds([FILM]), null, 1930)).toBeNull();
+    expect(historyKindOf(kinds([NOVEL]), null, 1862)).toBeNull();
+    expect(historyKindOf(kinds([SONG]), null, 1900)).toBeNull();
+    expect(historyKindOf(kinds([VIDEO_GAME]), null, 1940)).toBeNull();
     expect(historyKindOf(undefined, 1800)).toBeNull();
   });
 });
