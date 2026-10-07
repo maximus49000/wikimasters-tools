@@ -4,7 +4,7 @@
 
 **Goal:** Afficher dans la fiche d'une carte « événement historique » ou « personnage historique » un documentaire pertinent (sélection validée, Commons, puis YouTube via un relais Cloudflare), avec proposition par l'utilisateur et sans jamais afficher une vidéo peu pertinente.
 
-**Architecture:** Un module pur de notation (`src/core/documentary/score.ts`) est partagé par l'extension et par le relais (Worker déjà déployé : `wikimasters-tools.maxime-protais-baumer.workers.dev`). Le relais cherche sur YouTube (clé en secret), note, met en cache (KV) et plafonne les recherches neuves. L'extension ajoute un service (`documentary-service.ts`) qui enchaîne propositions de l'utilisateur → sélection (`documentaires.json`) → Commons → relais, et une section de fiche posée comme `BookSection`.
+**Architecture:** Un module pur de notation (`src/core/documentary/score.ts`) est partagé par l'extension et par le relais (Worker déjà déployé : `wikimasters-tools.maxime-protais-baumer.workers.dev`). Le relais indexe chaque semaine les vidéos de cinq chaînes de confiance (1 unité de quota pour 50 vidéos), cherche d'abord dans cet index (gratuit), puis seulement sur YouTube (100 unités), note chaque candidat, met en cache (KV) et plafonne les unités du jour. L'extension ajoute un service (`documentary-service.ts`) qui enchaîne propositions de l'utilisateur → sélection (`documentaires.json`) → Commons → relais, et une section de fiche posée comme `BookSection`.
 
 **Tech Stack:** TypeScript strict, React, WXT, Vitest, zod, Cloudflare Workers (KV), API YouTube Data v3, API Commons/Wikidata.
 
@@ -17,6 +17,7 @@
 - Aucune requête tierce avant le clic sur ▶ (miniature seule) ; YouTube via `youtube-nocookie.com` (`embedUrl` existant).
 - La clé YouTube n'existe que chez Cloudflare (secret `YOUTUBE_API_KEY`) : jamais dans le dépôt, ni dans `.env.local`, ni dans l'extension.
 - « Aucune vidéo plutôt qu'une mauvaise » : seuil `THRESHOLD = 60` ; durée YouTube 8–120 min.
+- Quota YouTube en unités : plafond de 9 000 par jour (sur 10 000), partagé entre l'index (2 par page de 50 vidéos) et la recherche (101) ; l'index est consulté avant toute recherche.
 - Une carte film/série (`screenKindOf` = `film` ou `series`) n'a jamais de section Documentaire.
 - Chaque PR : `npm run typecheck`, `npm test`, `npm run build` verts ; PR ouverte puis fusionnée sans attendre (routine du projet) ; travail dans un worktree hors dépôt créé depuis `origin/main`.
 - Fiche WikiHow dans la même PR que la fonction (Task 8) ; pré-production après fusion ; production seulement sur ordre explicite.
@@ -27,6 +28,7 @@
 2. **Commons** : plancher de durée 45 s (au lieu de 8 min) et bonus de 20 points, car les archives libres sont courtes ; elles passent par le même seuil de 60.
 3. **Limite de débit par IP** : non faite (le plafond journalier global suffit à protéger le quota). À ajouter si quelqu'un vide le quota.
 4. Le bouton « Pas pertinent » masque la vidéo **localement** et ouvre une issue ; il ne retire rien aux autres utilisateurs avant votre décision.
+5. **Index des chaînes** (choisi par l'utilisateur pour la première version) : les 3 000 vidéos les plus récentes de ARTE, INA Officiel, Nota Bene, Lumni et Hérodote, lues par la tâche planifiée du relais (toutes les 30 minutes, puis mise à jour hebdomadaire) et consultées avant la recherche YouTube. France Télévisions est écartée (journaux télévisés). Les vidéos plus anciennes ou d'autres chaînes passent par la recherche (une centaine de recherches neuves par jour).
 
 ## File Structure
 
@@ -44,9 +46,11 @@
 | `src/core/documentary/proposal.ts` | Lien YouTube → clé ; issues « proposition » et « pas pertinent » |
 | `src/core/documentary/documentary-repo.ts` | Propositions et masquages de l'utilisateur (stockage local) |
 | `src/core/anomalies/anomaly.ts` | (modifié) `postIssue` extrait pour être réutilisé |
-| `relay/src/youtube.ts` | Recherche YouTube + durées |
-| `relay/src/search.ts` | Cache KV, budget, notation côté relais, validation des paramètres |
-| `relay/src/index.ts` | Routes `/ping`, `/search`, `/oembed` (remplace `index.js`) |
+| `relay/src/kv.ts`, `channels.ts`, `budget.ts` | Type KV, cinq chaînes de confiance, budget du jour en unités de quota |
+| `relay/src/youtube.ts` | Pages de vidéos d'une chaîne, recherche YouTube, durées |
+| `relay/src/indexer.ts` | Index des chaînes (écriture hebdomadaire, recherche d'un nom, avancement) |
+| `relay/src/search.ts` | Cache KV, index puis recherche, notation côté relais, validation des paramètres |
+| `relay/src/index.ts` | Routes `/ping`, `/search`, `/oembed`, `/status` et tâche planifiée (remplace `index.js`) |
 | `documentaires.json` | Sélection validée à la main (racine du dépôt) |
 | `src/content/documentary-service.ts` + `documentary-registry.ts` | Service et registre |
 | `src/content/DocumentaryPlayer.tsx`, `DocumentarySection.tsx`, `DocumentaryProposeDialog.tsx` | Interface |
@@ -55,7 +59,7 @@
 
 ## Découpage en PR
 
-PR 1 = Tasks 1-2 · PR 2 = Task 3 (relais, déploiement par Cloudflare) · PR 3 = Tasks 4-6 · PR 4 = Tasks 7-8 · PR 5 = Task 9 (réglage du seuil).
+PR 1 = Tasks 1-2 · PR 2 = Tasks 3A-3B (relais, déploiement par Cloudflare) · PR 3 = Tasks 4-6 · PR 4 = Tasks 7-8 · PR 5 = Task 9 (réglage du seuil).
 
 ---
 
@@ -462,24 +466,172 @@ Puis `npm test && npm run build`, pousser, ouvrir et fusionner la PR (routine du
 
 ---
 
-### Task 3: Relais — recherche YouTube, notation, cache, budget
+### Task 3A: Relais — index des chaînes de confiance et budget en unités
+
+**Pourquoi :** une recherche YouTube coûte 100 unités (quota : 10 000 par jour) ; lister les vidéos d'une chaîne coûte 1 unité pour 50 vidéos. On indexe donc les vidéos récentes de quelques chaînes d'histoire et de service public, et on cherche d'abord dedans, gratuitement.
 
 **Files:**
-- Create: `relay/src/youtube.ts`, `relay/src/search.ts`, `relay/src/index.ts`
-- Delete: `relay/src/index.js`
-- Modify: `wrangler.toml`, `relay/wrangler.toml`, `relay/README.md`
-- Test: `tests/relay/youtube.test.ts`, `tests/relay/search.test.ts`
+- Create: `relay/src/kv.ts`, `relay/src/channels.ts`, `relay/src/budget.ts`, `relay/src/indexer.ts`
+- Create: `relay/src/youtube.ts` (durée et pages de vidéos ; 3B y ajoute la recherche)
+- Test: `tests/relay/memory-kv.ts` (faux KV partagé par les tests), `tests/relay/budget.test.ts`, `tests/relay/indexer.test.ts`, `tests/relay/youtube.test.ts`
 
 **Interfaces:**
-- Consumes: `scoreCandidate`, `passes`, `YOUTUBE_RULES` (Task 1), `DocCandidate`, `DocSubject`.
-- Produces: `parseDuration`, `searchYoutube(fetchFn, key, query)`, `searchDocumentaries(deps, request)`, `parseSearchRequest(params)`, `KvLike`, `Env`. Réponses HTTP : `/search` → `{ok:true,candidates,cached}` ou `{ok:false,reason:'budget'|'upstream'|'bad-request'}` ; `/oembed?id=` → `{ok:true,title,channel}` ou `{ok:false,reason:'not-found'|'not-embeddable'|'upstream'}`.
+- Produces: `KvLike` (`relay/src/kv.ts`) ; `ChannelDef`, `CHANNELS`, `uploadsPlaylist(channelId)` ; `UNIT_CEILING = 9000`, `SEARCH_COST = 101`, `INDEX_PAGE_COST = 2`, `reserveUnits(kv, now, units, ceiling?)` ; `toLine(video)`, `lookupIndex(kv, names, channels?, limit?)`, `indexStep(deps)`, `indexStatus(kv, channels?)`, `MAX_PER_CHANNEL`, `REFRESH_MS`, `MAX_PAGES_PER_RUN` ; `fetchUploadsPage(fetchFn, key, playlistId, pageToken?)` → `{ videos: UploadedVideo[]; next: string | null }`, `UploadedVideo = { id; title; durationSec: number | null }`, `parseDuration`, `FetchLike`.
+
+Chaînes retenues (identifiants vérifiés sur youtube.com le 2026-10-07) : ARTE `UCHGMBrXUzClgjEzBMei-Jdw`, INA Officiel `UCNBD4uZG6nWH2MMdgGESisw`, Nota Bene `UCN4yRCI5-4gCJOiwdz96dFw`, Lumni `UCB9Ryofh48sG51db-Y7kY6g`, Hérodote `UCojuxfxE_XvL1DgNdcHF7Jg`. France Télévisions est écartée (trop de journaux télévisés qui citent un nom sans être un documentaire).
 
 - [ ] **Step 1: Écrire les tests qui échouent**
 
 ```ts
-// tests/relay/youtube.test.ts
+// tests/relay/budget.test.ts
 import { describe, expect, it } from 'vitest';
-import { parseDuration, searchYoutube } from '../../relay/src/youtube';
+import { INDEX_PAGE_COST, reserveUnits, SEARCH_COST, UNIT_CEILING } from '../../relay/src/budget';
+import { memoryKv } from './memory-kv';
+
+const day = new Date('2026-10-07T10:00:00Z');
+
+describe('reserveUnits', () => {
+  it('compte les unités réservées dans la journée', async () => {
+    const kv = memoryKv();
+    expect(await reserveUnits(kv, day, SEARCH_COST)).toBe(true);
+    expect(await reserveUnits(kv, day, INDEX_PAGE_COST * 20)).toBe(true);
+    expect(kv.data.get('units-2026-10-07')).toBe(String(SEARCH_COST + INDEX_PAGE_COST * 20));
+  });
+  it('refuse ce qui dépasserait le plafond, sans rien écrire', async () => {
+    const kv = memoryKv();
+    kv.data.set('units-2026-10-07', String(UNIT_CEILING - 50));
+    expect(await reserveUnits(kv, day, SEARCH_COST)).toBe(false);
+    expect(kv.data.get('units-2026-10-07')).toBe(String(UNIT_CEILING - 50));
+  });
+  it('repart de zéro le lendemain', async () => {
+    const kv = memoryKv();
+    kv.data.set('units-2026-10-07', String(UNIT_CEILING));
+    expect(await reserveUnits(kv, new Date('2026-10-08T00:30:00Z'), SEARCH_COST)).toBe(true);
+  });
+});
+```
+
+```ts
+// tests/relay/indexer.test.ts
+import { describe, expect, it } from 'vitest';
+import { indexStatus, indexStep, lookupIndex, toLine } from '../../relay/src/indexer';
+import type { ChannelDef } from '../../relay/src/channels';
+import { memoryKv } from './memory-kv';
+
+const channel: ChannelDef = { id: 'UCchaine00000000000000A', name: 'ARTE', language: 'fr' };
+const now = () => new Date('2026-10-07T10:00:00Z');
+
+// Fausse API : `pages` associe un jeton de page (« » pour la première) à ses vidéos et à la page suivante.
+const fakeApi = (pages: Record<string, { ids: string[]; next?: string }>, calls: string[] = []) => async (url: string) => {
+  calls.push(url);
+  const parsed = new URL(url);
+  if (parsed.pathname.endsWith('/playlistItems')) {
+    const page = pages[parsed.searchParams.get('pageToken') ?? ''];
+    return new Response(JSON.stringify({ nextPageToken: page?.next, items: (page?.ids ?? []).map((id) => ({ snippet: { title: `Titre ${id}` }, contentDetails: { videoId: id } })) }));
+  }
+  const ids = (parsed.searchParams.get('id') ?? '').split(',');
+  return new Response(JSON.stringify({ items: ids.map((id) => ({ id, contentDetails: { duration: 'PT10M' } })) }));
+};
+
+describe('toLine / lookupIndex', () => {
+  const blob = [
+    toLine({ id: 'A', title: 'Verdun, la bataille de l’impossible', durationSec: 3120 }),
+    toLine({ id: 'B', title: 'Verdunois en fête', durationSec: 600 }),
+    toLine({ id: 'C', title: 'Un autre sujet', durationSec: 900 }),
+  ].join('\n');
+  const kv = memoryKv();
+  kv.data.set('chan-v1-UCchaine00000000000000A', blob);
+
+  it('trouve un nom en mots entiers, sans tenir compte des accents ni de la casse', async () => {
+    const found = await lookupIndex(kv, ['Bataille de Verdun', 'VERDUN'], [channel]);
+    expect(found).toEqual([
+      { source: 'youtube', id: 'A', title: 'Verdun, la bataille de l’impossible', channel: 'ARTE', durationSec: 3120, language: 'fr', description: '', url: 'https://www.youtube.com/watch?v=A', thumbUrl: 'https://img.youtube.com/vi/A/hqdefault.jpg' },
+    ]);
+  });
+  it('rend une liste vide sans index ou sans correspondance', async () => {
+    expect(await lookupIndex(memoryKv(), ['Verdun'], [channel])).toEqual([]);
+    expect(await lookupIndex(kv, ['Cléopâtre'], [channel])).toEqual([]);
+  });
+});
+
+describe('indexStep', () => {
+  it('parcourt la chaîne page par page, puis la déclare complète', async () => {
+    const kv = memoryKv();
+    const api = fakeApi({ '': { ids: ['v1', 'v2'], next: 'P2' }, P2: { ids: ['v3'] } });
+    expect(await indexStep({ fetch: api, kv, apiKey: 'K', now, channels: [channel] })).toEqual({ pages: 2 });
+    const lines = (kv.data.get('chan-v1-UCchaine00000000000000A') ?? '').split('\n');
+    expect(lines).toEqual(['v1\t600\t titre v1 \tTitre v1', 'v2\t600\t titre v2 \tTitre v2', 'v3\t600\t titre v3 \tTitre v3']);
+    expect(JSON.parse(kv.data.get('chan-state-v1-UCchaine00000000000000A') ?? '{}')).toMatchObject({ complete: true, count: 3, cursor: null });
+    expect(kv.data.get('units-2026-10-07')).toBe(String(20 * 2));
+  });
+
+  it('ne refait rien tant que la chaîne est complète et récente', async () => {
+    const kv = memoryKv();
+    const calls: string[] = [];
+    const api = fakeApi({ '': { ids: ['v1'] } }, calls);
+    await indexStep({ fetch: api, kv, apiKey: 'K', now, channels: [channel] });
+    const before = calls.length;
+    expect(await indexStep({ fetch: api, kv, apiKey: 'K', now, channels: [channel] })).toEqual({ pages: 0 });
+    expect(calls).toHaveLength(before);
+  });
+
+  it('respecte le plafond de pages par passage et reprend où il s’est arrêté', async () => {
+    const kv = memoryKv();
+    const api = fakeApi({ '': { ids: ['v1'], next: 'P2' }, P2: { ids: ['v2'] } });
+    expect(await indexStep({ fetch: api, kv, apiKey: 'K', now, channels: [channel], maxPages: 1 })).toEqual({ pages: 1 });
+    expect(JSON.parse(kv.data.get('chan-state-v1-UCchaine00000000000000A') ?? '{}')).toMatchObject({ complete: false, cursor: 'P2', count: 1 });
+    expect(await indexStep({ fetch: api, kv, apiKey: 'K', now, channels: [channel], maxPages: 1 })).toEqual({ pages: 1 });
+    expect((kv.data.get('chan-v1-UCchaine00000000000000A') ?? '').split('\n')).toHaveLength(2);
+    expect(JSON.parse(kv.data.get('chan-state-v1-UCchaine00000000000000A') ?? '{}')).toMatchObject({ complete: true, count: 2 });
+  });
+
+  it('une semaine plus tard, ajoute seulement les vidéos nouvelles, en tête', async () => {
+    const kv = memoryKv();
+    kv.data.set('chan-v1-UCchaine00000000000000A', toLine({ id: 'v1', title: 'Titre v1', durationSec: 600 }));
+    kv.data.set('chan-state-v1-UCchaine00000000000000A', JSON.stringify({ cursor: null, complete: true, refreshing: false, count: 1, updatedAt: new Date('2026-09-20T00:00:00Z').getTime() }));
+    const api = fakeApi({ '': { ids: ['v0', 'v1'], next: 'P2' } });
+    expect(await indexStep({ fetch: api, kv, apiKey: 'K', now, channels: [channel] })).toEqual({ pages: 1 });
+    expect((kv.data.get('chan-v1-UCchaine00000000000000A') ?? '').split('\n').map((line) => line.split('\t')[0])).toEqual(['v0', 'v1']);
+    expect(JSON.parse(kv.data.get('chan-state-v1-UCchaine00000000000000A') ?? '{}')).toMatchObject({ complete: true });
+  });
+
+  it('s’arrête sans appeler YouTube quand le plafond du jour est atteint', async () => {
+    const kv = memoryKv();
+    kv.data.set('units-2026-10-07', '9000');
+    const calls: string[] = [];
+    expect(await indexStep({ fetch: fakeApi({ '': { ids: ['v1'] } }, calls), kv, apiKey: 'K', now, channels: [channel] })).toEqual({ pages: 0 });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('garde ce qui a été lu quand YouTube échoue en cours de route', async () => {
+    const kv = memoryKv();
+    let call = 0;
+    const flaky = async (url: string) => {
+      call += 1;
+      if (call > 2) return new Response('', { status: 403 });
+      return fakeApi({ '': { ids: ['v1'], next: 'P2' } })(url);
+    };
+    expect(await indexStep({ fetch: flaky, kv, apiKey: 'K', now, channels: [channel] })).toEqual({ pages: 1 });
+    expect(JSON.parse(kv.data.get('chan-state-v1-UCchaine00000000000000A') ?? '{}')).toMatchObject({ complete: false, cursor: 'P2', count: 1 });
+  });
+});
+
+describe('indexStatus', () => {
+  it('résume l’avancement de chaque chaîne', async () => {
+    const kv = memoryKv();
+    kv.data.set('chan-state-v1-UCchaine00000000000000A', JSON.stringify({ cursor: null, complete: true, refreshing: false, count: 42, updatedAt: 1000 }));
+    expect(await indexStatus(kv, [channel, { id: 'UCautre', name: 'INA Officiel', language: 'fr' }])).toEqual([
+      { name: 'ARTE', count: 42, complete: true, updatedAt: 1000 },
+      { name: 'INA Officiel', count: 0, complete: false, updatedAt: 0 },
+    ]);
+  });
+});
+```
+
+```ts
+// tests/relay/youtube.test.ts  (3A : durée, page de vidéos ; 3B ajoute searchYoutube)
+import { describe, expect, it } from 'vitest';
+import { fetchUploadsPage, parseDuration } from '../../relay/src/youtube';
 
 describe('parseDuration', () => {
   it('lit les durées ISO 8601', () => {
@@ -490,6 +642,309 @@ describe('parseDuration', () => {
     expect(parseDuration('n’importe quoi')).toBeNull();
   });
 });
+
+describe('fetchUploadsPage', () => {
+  it('rend les vidéos d’une page avec leur durée, sans les vidéos supprimées ou privées', async () => {
+    const urls: string[] = [];
+    const fetchFn = async (url: string) => {
+      urls.push(url);
+      if (url.includes('/playlistItems?')) {
+        return new Response(
+          JSON.stringify({
+            nextPageToken: 'P2',
+            items: [
+              { snippet: { title: 'Verdun' }, contentDetails: { videoId: 'AAA' } },
+              { snippet: { title: 'Private video' }, contentDetails: { videoId: 'BBB' } },
+              { snippet: { title: 'Deleted video' }, contentDetails: { videoId: 'CCC' } },
+            ],
+          }),
+        );
+      }
+      return new Response(JSON.stringify({ items: [{ id: 'AAA', contentDetails: { duration: 'PT52M' } }] }));
+    };
+    const page = await fetchUploadsPage(fetchFn, 'CLE', 'UUplaylist', 'P1');
+    expect(page).toEqual({ videos: [{ id: 'AAA', title: 'Verdun', durationSec: 3120 }], next: 'P2' });
+    expect(urls[0]).toContain('playlistId=UUplaylist');
+    expect(urls[0]).toContain('pageToken=P1');
+    expect(urls[1]).toContain('id=AAA%2CBBB%2CCCC');
+  });
+  it('ne demande pas les durées d’une page vide, et rend next = null en fin de liste', async () => {
+    let calls = 0;
+    const fetchFn = async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ items: [] }));
+    };
+    expect(await fetchUploadsPage(fetchFn, 'CLE', 'UUplaylist')).toEqual({ videos: [], next: null });
+    expect(calls).toBe(1);
+  });
+  it('lève sur une réponse en erreur (quota)', async () => {
+    await expect(fetchUploadsPage(async () => new Response('', { status: 403 }), 'CLE', 'UUplaylist')).rejects.toThrow('YouTube : HTTP 403');
+  });
+});
+```
+
+- [ ] **Step 2: Vérifier l'échec** — `npx vitest run tests/relay` → FAIL (modules introuvables).
+
+- [ ] **Step 3: Implémenter**
+
+```ts
+// tests/relay/memory-kv.ts
+import type { KvLike } from '../../relay/src/kv';
+
+// Faux KV en mémoire : `data` permet de préparer et de contrôler son contenu.
+export function memoryKv(): KvLike & { data: Map<string, string> } {
+  const data = new Map<string, string>();
+  return { data, get: async (key) => data.get(key) ?? null, put: async (key, value) => void data.set(key, value) };
+}
+```
+
+```ts
+// relay/src/kv.ts
+export type KvLike = { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> };
+```
+
+```ts
+// relay/src/channels.ts
+export type ChannelDef = { id: string; name: string; language: string };
+
+// Chaînes d'histoire et de service public dont on indexe les vidéos (identifiants vérifiés sur youtube.com le 2026-10-07).
+export const CHANNELS: ChannelDef[] = [
+  { id: 'UCHGMBrXUzClgjEzBMei-Jdw', name: 'ARTE', language: 'fr' },
+  { id: 'UCNBD4uZG6nWH2MMdgGESisw', name: 'INA Officiel', language: 'fr' },
+  { id: 'UCN4yRCI5-4gCJOiwdz96dFw', name: 'Nota Bene', language: 'fr' },
+  { id: 'UCB9Ryofh48sG51db-Y7kY6g', name: 'Lumni', language: 'fr' },
+  { id: 'UCojuxfxE_XvL1DgNdcHF7Jg', name: 'Hérodote', language: 'fr' },
+];
+
+// La liste de toutes les vidéos d'une chaîne : même identifiant, préfixe « UU » au lieu de « UC ».
+export const uploadsPlaylist = (channelId: string): string => `UU${channelId.slice(2)}`;
+```
+
+```ts
+// relay/src/budget.ts
+import type { KvLike } from './kv';
+
+// Quota YouTube : 10 000 unités par jour. On en utilise 9 000 au plus (marge pour le décalage d'horloge : Google remet à zéro à minuit, heure du Pacifique).
+export const UNIT_CEILING = 9000;
+// Une recherche (100) + les durées des résultats (1).
+export const SEARCH_COST = 101;
+// Une page d'une liste de vidéos (1) + leurs durées (1).
+export const INDEX_PAGE_COST = 2;
+
+// Réserve des unités sur la journée (UTC) ; false si cela dépasserait le plafond (rien n'est alors écrit).
+export async function reserveUnits(kv: KvLike, now: Date, units: number, ceiling: number = UNIT_CEILING): Promise<boolean> {
+  const key = `units-${now.toISOString().slice(0, 10)}`;
+  const used = Number((await kv.get(key)) ?? '0');
+  if (used + units > ceiling) return false;
+  await kv.put(key, String(used + units), { expirationTtl: 2 * 86_400 });
+  return true;
+}
+```
+
+Créer `relay/src/youtube.ts` (la Task 3B le complète avec `searchYoutube`) :
+
+```ts
+// relay/src/youtube.ts
+import { z } from 'zod';
+
+export type FetchLike = (url: string) => Promise<Response>;
+
+const API = 'https://www.googleapis.com/youtube/v3';
+
+const playlistSchema = z.object({
+  nextPageToken: z.string().optional(),
+  items: z.array(z.object({ snippet: z.object({ title: z.string() }), contentDetails: z.object({ videoId: z.string() }) })).default([]),
+});
+const durationsSchema = z.object({ items: z.array(z.object({ id: z.string(), contentDetails: z.object({ duration: z.string() }) })).default([]) });
+
+// « PT1H2M3S » → secondes ; null si le format est inconnu.
+export function parseDuration(iso: string): number | null {
+  const match = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso);
+  if (!match) return null;
+  const [, days, hours, minutes, seconds] = match;
+  return Number(days ?? 0) * 86400 + Number(hours ?? 0) * 3600 + Number(minutes ?? 0) * 60 + Number(seconds ?? 0);
+}
+
+async function getJson(fetchFn: FetchLike, path: string, params: Record<string, string>): Promise<unknown> {
+  const response = await fetchFn(`${API}/${path}?${new URLSearchParams(params).toString()}`);
+  if (!response.ok) throw new Error(`YouTube : HTTP ${response.status}`);
+  return response.json();
+}
+
+export type UploadedVideo = { id: string; title: string; durationSec: number | null };
+
+// Une page (50 vidéos) de la liste des vidéos d'une chaîne, avec leurs durées : 2 unités de quota.
+export async function fetchUploadsPage(fetchFn: FetchLike, key: string, playlistId: string, pageToken?: string): Promise<{ videos: UploadedVideo[]; next: string | null }> {
+  const page = playlistSchema.parse(await getJson(fetchFn, 'playlistItems', { part: 'snippet,contentDetails', playlistId, maxResults: '50', key, ...(pageToken ? { pageToken } : {}) }));
+  const ids = page.items.map((item) => item.contentDetails.videoId);
+  const durations = new Map<string, number | null>();
+  if (ids.length > 0) {
+    const details = durationsSchema.parse(await getJson(fetchFn, 'videos', { part: 'contentDetails', id: ids.join(','), key }));
+    for (const item of details.items) durations.set(item.id, parseDuration(item.contentDetails.duration));
+  }
+  const videos = page.items
+    .filter((item) => item.snippet.title !== 'Private video' && item.snippet.title !== 'Deleted video')
+    .map((item) => ({ id: item.contentDetails.videoId, title: item.snippet.title, durationSec: durations.get(item.contentDetails.videoId) ?? null }));
+  return { videos, next: page.nextPageToken ?? null };
+}
+```
+
+```ts
+// relay/src/indexer.ts
+import { normalize } from '../../src/core/documentary/score';
+import type { DocCandidate } from '../../src/core/documentary/types';
+import { INDEX_PAGE_COST, reserveUnits } from './budget';
+import { CHANNELS, uploadsPlaylist, type ChannelDef } from './channels';
+import type { KvLike } from './kv';
+import { fetchUploadsPage, type FetchLike } from './youtube';
+
+// Les 3 000 vidéos les plus récentes de chaque chaîne (60 pages, 120 unités par chaîne la première fois), remises à jour chaque semaine.
+export const MAX_PER_CHANNEL = 3000;
+export const REFRESH_MS = 7 * 86_400_000;
+// 20 pages = 40 appels à YouTube : sous la limite de 50 appels par passage de l'offre gratuite de Cloudflare.
+export const MAX_PAGES_PER_RUN = 20;
+
+type IndexState = { cursor: string | null; complete: boolean; refreshing: boolean; count: number; updatedAt: number };
+const NEW_STATE: IndexState = { cursor: null, complete: false, refreshing: false, count: 0, updatedAt: 0 };
+const stateKey = (id: string): string => `chan-state-v1-${id}`;
+const blobKey = (id: string): string => `chan-v1-${id}`;
+
+function readState(raw: string | null): IndexState {
+  if (raw === null) return NEW_STATE;
+  try {
+    return { ...NEW_STATE, ...(JSON.parse(raw) as Partial<IndexState>) };
+  } catch {
+    return NEW_STATE;
+  }
+}
+
+// Une vidéo = une ligne : « clé ⇥ durée ⇥ titre normalisé entre espaces ⇥ titre d'origine ». Le titre normalisé permet de chercher un nom
+// en mots entiers par simple recherche de texte, sans analyser le fichier (le temps de calcul d'un passage est limité à 10 ms).
+export function toLine(video: { id: string; title: string; durationSec: number | null }): string {
+  const clean = video.title.replace(/\s+/g, ' ').trim();
+  return `${video.id}\t${video.durationSec ?? ''}\t ${normalize(clean)} \t${clean}`;
+}
+
+// Les vidéos indexées dont le titre contient un des noms (mots entiers, sans accents ni casse).
+export async function lookupIndex(kv: KvLike, names: string[], channels: ChannelDef[] = CHANNELS, limit = 30): Promise<DocCandidate[]> {
+  const phrases = names.map((name) => ` ${normalize(name)} `).filter((phrase) => phrase.trim().length >= 4);
+  const found = new Map<string, DocCandidate>();
+  for (const channel of channels) {
+    const blob = await kv.get(blobKey(channel.id));
+    if (!blob) continue;
+    for (const phrase of phrases) {
+      let from = 0;
+      for (;;) {
+        const hit = blob.indexOf(phrase, from);
+        if (hit === -1) break;
+        const start = blob.lastIndexOf('\n', hit) + 1;
+        const end = blob.indexOf('\n', hit);
+        from = end === -1 ? blob.length : end + 1;
+        const [id, duration, , title] = blob.slice(start, end === -1 ? blob.length : end).split('\t');
+        if (!id || title === undefined || found.has(id)) continue;
+        found.set(id, {
+          source: 'youtube',
+          id,
+          title,
+          channel: channel.name,
+          durationSec: duration ? Number(duration) : null,
+          language: channel.language,
+          description: '',
+          url: `https://www.youtube.com/watch?v=${id}`,
+          thumbUrl: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+        });
+        if (found.size >= limit) return [...found.values()];
+      }
+    }
+  }
+  return [...found.values()];
+}
+
+const isKnown = (blob: string, id: string): boolean => blob.startsWith(`${id}\t`) || blob.includes(`\n${id}\t`);
+const join = (...parts: string[]): string => parts.filter((part) => part !== '').join('\n');
+
+export type IndexDeps = { fetch: FetchLike; kv: KvLike; apiKey: string; now: () => Date; channels?: ChannelDef[]; maxPages?: number };
+
+// Un passage planifié : avance l'index des chaînes (première lecture, puis mise à jour hebdomadaire) dans la limite de `maxPages` pages
+// et du budget du jour. Chaque chaîne est écrite une fois par passage ; une panne de YouTube garde ce qui a été lu.
+export async function indexStep(deps: IndexDeps): Promise<{ pages: number }> {
+  const maxPages = deps.maxPages ?? MAX_PAGES_PER_RUN;
+  const channels = deps.channels ?? CHANNELS;
+  const due: { channel: ChannelDef; state: IndexState }[] = [];
+  for (const channel of channels) {
+    const state = readState(await deps.kv.get(stateKey(channel.id)));
+    if (!state.complete || deps.now().getTime() - state.updatedAt >= REFRESH_MS) due.push({ channel, state });
+  }
+  if (due.length === 0 || !(await reserveUnits(deps.kv, deps.now(), maxPages * INDEX_PAGE_COST))) return { pages: 0 };
+
+  let pages = 0;
+  for (const { channel, state: initial } of due) {
+    if (pages >= maxPages) break;
+    const refreshing = initial.complete || initial.refreshing;
+    let state: IndexState = initial.complete ? { ...initial, complete: false, refreshing: true, cursor: null } : initial;
+    const blob = (await deps.kv.get(blobKey(channel.id))) ?? '';
+    const added: string[] = [];
+    try {
+      while (pages < maxPages && !state.complete) {
+        const page = await fetchUploadsPage(deps.fetch, deps.apiKey, uploadsPlaylist(channel.id), state.cursor ?? undefined);
+        pages += 1;
+        let reachedKnown = false;
+        for (const video of page.videos) {
+          if (refreshing && isKnown(blob, video.id)) {
+            reachedKnown = true;
+            break;
+          }
+          added.push(toLine(video));
+        }
+        const count = refreshing ? state.count + (reachedKnown ? 0 : page.videos.length) : state.count + page.videos.length;
+        const finished = page.next === null || (refreshing ? reachedKnown : count >= MAX_PER_CHANNEL);
+        state = finished ? { cursor: null, complete: true, refreshing: false, count, updatedAt: deps.now().getTime() } : { ...state, cursor: page.next, count };
+      }
+    } catch {
+      // Quota ou réseau : on garde ce qui a été lu et on reprendra au prochain passage.
+    }
+    if (added.length > 0) await deps.kv.put(blobKey(channel.id), refreshing ? join(added.join('\n'), blob) : join(blob, added.join('\n')));
+    await deps.kv.put(stateKey(channel.id), JSON.stringify(state));
+  }
+  return { pages };
+}
+
+// Avancement de l'index, pour la route de contrôle.
+export async function indexStatus(kv: KvLike, channels: ChannelDef[] = CHANNELS): Promise<{ name: string; count: number; complete: boolean; updatedAt: number }[]> {
+  const result = [];
+  for (const channel of channels) {
+    const state = readState(await kv.get(stateKey(channel.id)));
+    result.push({ name: channel.name, count: state.count, complete: state.complete, updatedAt: state.updatedAt });
+  }
+  return result;
+}
+```
+
+- [ ] **Step 4: Vérifier** — `npx vitest run tests/relay && npm run typecheck` → PASS. Le test « garde ce qui a été lu » dépend de l'ordre des appels (2 appels par page : liste puis durées) ; s'il échoue, vérifier d'abord que la fausse API compte bien deux appels par page avant de toucher au code.
+- [ ] **Step 5: Commit** — `git add relay tests/relay && git commit -m "feat(relais): index des chaînes de confiance et budget en unités"`
+
+---
+
+### Task 3B: Relais — recherche notée (index puis YouTube), cache, routes, déploiement
+
+**Files:**
+- Modify: `relay/src/youtube.ts` (ajouter `searchYoutube`), `wrangler.toml`, `relay/wrangler.toml`, `relay/README.md`
+- Create: `relay/src/search.ts`, `relay/src/index.ts`
+- Delete: `relay/src/index.js`
+- Test: `tests/relay/search.test.ts` ; ajouter `searchYoutube` à `tests/relay/youtube.test.ts`
+
+**Interfaces:**
+- Consumes: `lookupIndex`, `indexStep`, `indexStatus`, `reserveUnits`, `SEARCH_COST`, `CHANNELS`, `KvLike`, `fetchUploadsPage` (3A) ; `scoreCandidate`, `passes`, `YOUTUBE_RULES` (Task 1) ; `DocCandidate`, `DocSubject`.
+- Produces: `searchYoutube(fetchFn, key, query)`, `searchDocumentaries(deps, request)`, `parseSearchRequest(params)`, `Env`. Routes : `/ping`, `/search`, `/oembed?id=`, `/status` ; tâche planifiée toutes les 30 minutes. Réponses : `/search` → `{ok:true,candidates,cached}` ou `{ok:false,reason:'budget'|'upstream'}` ; `/oembed` → `{ok:true,title,channel}` ou `{ok:false,reason:'not-found'|'not-embeddable'|'upstream'}` ; `/status` → `{ok:true,channels:[{name,count,complete,updatedAt}]}`.
+
+Ordre de `searchDocumentaries` : cache KV → index des chaînes (gratuit) → recherche YouTube (101 unités, soumise au plafond du jour). Une réponse issue de l'index est mémorisée 7 jours (l'index progresse), une réponse issue de la recherche 30 jours (7 si vide).
+
+- [ ] **Step 1: Écrire les tests qui échouent**
+
+Ajouter à `tests/relay/youtube.test.ts` :
+
+```ts
+import { searchYoutube } from '../../relay/src/youtube';
 
 describe('searchYoutube', () => {
   it('recherche puis complète avec les durées', async () => {
@@ -514,7 +969,6 @@ describe('searchYoutube', () => {
     expect(urls[0]).toContain('key=CLE');
     expect(urls[1]).toContain('id=AAA%2CBBB');
   });
-
   it('ne fait pas de seconde requête sans résultat', async () => {
     let calls = 0;
     const fetchFn = async () => {
@@ -524,24 +978,19 @@ describe('searchYoutube', () => {
     expect(await searchYoutube(fetchFn, 'CLE', 'x')).toEqual([]);
     expect(calls).toBe(1);
   });
-
-  it('lève sur une réponse en erreur (quota)', async () => {
-    await expect(searchYoutube(async () => new Response('', { status: 403 }), 'CLE', 'x')).rejects.toThrow('YouTube : HTTP 403');
-  });
 });
 ```
 
 ```ts
 // tests/relay/search.test.ts
 import { describe, expect, it } from 'vitest';
-import { parseSearchRequest, searchDocumentaries, type KvLike, type SearchRequest } from '../../relay/src/search';
-
-function memoryKv(): KvLike & { data: Map<string, string> } {
-  const data = new Map<string, string>();
-  return { data, get: async (key) => data.get(key) ?? null, put: async (key, value) => void data.set(key, value) };
-}
+import type { ChannelDef } from '../../relay/src/channels';
+import { toLine } from '../../relay/src/indexer';
+import { parseSearchRequest, searchDocumentaries, type SearchRequest } from '../../relay/src/search';
+import { memoryKv } from './memory-kv';
 
 const request: SearchRequest = { qid: 'Q2280', kind: 'event', names: ['Bataille de Verdun', 'Verdun'], startYear: 1916, endYear: 1916 };
+const arte: ChannelDef = { id: 'UCarte0000000000000000A', name: 'ARTE', language: 'fr' };
 
 const youtubeFetch = (calls: string[]) => async (url: string) => {
   calls.push(url);
@@ -556,7 +1005,8 @@ const youtubeFetch = (calls: string[]) => async (url: string) => {
   );
 };
 
-const deps = (kv: KvLike, calls: string[], day = '2026-10-07') => ({ fetch: youtubeFetch(calls), kv, apiKey: 'CLE', now: () => new Date(`${day}T10:00:00Z`) });
+// `channels: []` : pas d'index, sauf dans les tests qui en veulent un.
+const deps = (kv: ReturnType<typeof memoryKv>, calls: string[], channels: ChannelDef[] = []) => ({ fetch: youtubeFetch(calls), kv, apiKey: 'CLE', now: () => new Date('2026-10-07T10:00:00Z'), channels });
 
 describe('searchDocumentaries', () => {
   it('cherche, note, ne garde que les pertinents et met en cache', async () => {
@@ -570,27 +1020,46 @@ describe('searchDocumentaries', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('répond depuis l’index des chaînes sans appeler YouTube ni dépenser d’unités', async () => {
+    const kv = memoryKv();
+    kv.data.set('chan-v1-UCarte0000000000000000A', toLine({ id: 'IDX', title: 'Verdun, la bataille de l’impossible', durationSec: 3120 }));
+    const calls: string[] = [];
+    const result = await searchDocumentaries(deps(kv, calls, [arte]), request);
+    expect(result.ok && result.candidates.map((c) => c.id)).toEqual(['IDX']);
+    expect(calls).toHaveLength(0);
+    expect(kv.data.has('units-2026-10-07')).toBe(false);
+  });
+
+  it('passe à la recherche YouTube quand l’index ne donne rien de pertinent', async () => {
+    const kv = memoryKv();
+    kv.data.set('chan-v1-UCarte0000000000000000A', toLine({ id: 'COURT', title: 'Verdun', durationSec: 90 }));
+    const calls: string[] = [];
+    const result = await searchDocumentaries(deps(kv, calls, [arte]), request);
+    expect(result.ok && result.candidates.map((c) => c.id)).toEqual(['GOOD']);
+    expect(calls).toHaveLength(2);
+  });
+
   it('mémorise aussi « rien de pertinent »', async () => {
     const kv = memoryKv();
-    const only = async () => new Response(JSON.stringify({ items: [] }));
-    const result = await searchDocumentaries({ ...deps(kv, []), fetch: only }, request);
+    const empty = async () => new Response(JSON.stringify({ items: [] }));
+    const result = await searchDocumentaries({ ...deps(kv, []), fetch: empty }, request);
     expect(result).toEqual({ ok: true, candidates: [], cached: false });
     expect(kv.data.get('doc-v1-Q2280')).toBe('[]');
   });
 
-  it('s’arrête au plafond journalier sans appeler YouTube ni mémoriser', async () => {
+  it('s’arrête au plafond du jour sans appeler YouTube ni mémoriser', async () => {
     const kv = memoryKv();
-    kv.data.set('budget-2026-10-07', '90');
+    kv.data.set('units-2026-10-07', '9000');
     const calls: string[] = [];
     expect(await searchDocumentaries(deps(kv, calls), request)).toEqual({ ok: false, reason: 'budget' });
     expect(calls).toHaveLength(0);
     expect(kv.data.has('doc-v1-Q2280')).toBe(false);
   });
 
-  it('compte les recherches neuves par jour', async () => {
+  it('compte 101 unités par recherche neuve', async () => {
     const kv = memoryKv();
     await searchDocumentaries(deps(kv, []), request);
-    expect(kv.data.get('budget-2026-10-07')).toBe('1');
+    expect(kv.data.get('units-2026-10-07')).toBe('101');
   });
 
   it('signale une panne de YouTube sans mémoriser', async () => {
@@ -600,10 +1069,11 @@ describe('searchDocumentaries', () => {
     expect(kv.data.has('doc-v1-Q2280')).toBe(false);
   });
 
-  it('en mode debug rend tous les candidats notés, sans cache', async () => {
+  it('en mode debug rend tous les candidats notés (index et recherche), sans cache', async () => {
     const kv = memoryKv();
-    const result = await searchDocumentaries(deps(kv, []), { ...request, debug: true });
-    expect(result.ok && result.debug?.map((entry) => [entry.candidate.id, entry.result.reason ?? 'ok'])).toEqual([['GOOD', 'ok'], ['BAD', 'mot parasite']]);
+    kv.data.set('chan-v1-UCarte0000000000000000A', toLine({ id: 'IDX', title: 'Verdun, la bataille de l’impossible', durationSec: 3120 }));
+    const result = await searchDocumentaries(deps(kv, [], [arte]), { ...request, debug: true });
+    expect(result.ok && result.debug?.map((entry) => [entry.candidate.id, entry.result.reason ?? 'ok'])).toEqual([['IDX', 'ok'], ['GOOD', 'ok'], ['BAD', 'mot parasite']]);
     expect(kv.data.has('doc-v1-Q2280')).toBe(false);
   });
 });
@@ -620,60 +1090,29 @@ describe('parseSearchRequest', () => {
     expect(parseSearchRequest(new URLSearchParams({ qid: 'Q1', kind: 'event', names: 'x'.repeat(121) }))).toBeNull();
   });
   it('année absente ou illisible : null', () => {
-    const request2 = parseSearchRequest(new URLSearchParams({ qid: 'Q1', kind: 'person', names: 'Cléopâtre', start: 'abc' }));
-    expect(request2).toMatchObject({ startYear: null, endYear: null });
+    const parsed = parseSearchRequest(new URLSearchParams({ qid: 'Q1', kind: 'person', names: 'Cléopâtre', start: 'abc' }));
+    expect(parsed).toMatchObject({ startYear: null, endYear: null });
   });
 });
 ```
 
-- [ ] **Step 2: Vérifier l'échec**
+- [ ] **Step 2: Vérifier l'échec** — `npx vitest run tests/relay` → FAIL (`search.ts` et `searchYoutube` absents).
 
-Run: `npx vitest run tests/relay`
-Expected: FAIL (modules introuvables).
-
-- [ ] **Step 3: Implémenter le client YouTube**
+- [ ] **Step 3: Compléter `relay/src/youtube.ts`** — ajouter `import type { DocCandidate } from '../../src/core/documentary/types';` en tête du fichier, puis ceci à la suite du contenu de 3A :
 
 ```ts
-// relay/src/youtube.ts
-import { z } from 'zod';
-import type { DocCandidate } from '../../src/core/documentary/types';
-
-export type FetchLike = (url: string) => Promise<Response>;
-
-const API = 'https://www.googleapis.com/youtube/v3';
-
 const searchSchema = z.object({ items: z.array(z.object({ id: z.object({ videoId: z.string().optional() }) })).default([]) });
 const videosSchema = z.object({
   items: z
     .array(
       z.object({
         id: z.string(),
-        snippet: z.object({
-          title: z.string(),
-          channelTitle: z.string(),
-          description: z.string().default(''),
-          defaultAudioLanguage: z.string().optional(),
-          defaultLanguage: z.string().optional(),
-        }),
+        snippet: z.object({ title: z.string(), channelTitle: z.string(), description: z.string().default(''), defaultAudioLanguage: z.string().optional(), defaultLanguage: z.string().optional() }),
         contentDetails: z.object({ duration: z.string() }),
       }),
     )
     .default([]),
 });
-
-// « PT1H2M3S » → secondes ; null si le format est inconnu.
-export function parseDuration(iso: string): number | null {
-  const match = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso);
-  if (!match) return null;
-  const [, days, hours, minutes, seconds] = match;
-  return Number(days ?? 0) * 86400 + Number(hours ?? 0) * 3600 + Number(minutes ?? 0) * 60 + Number(seconds ?? 0);
-}
-
-async function getJson(fetchFn: FetchLike, path: string, params: Record<string, string>): Promise<unknown> {
-  const response = await fetchFn(`${API}/${path}?${new URLSearchParams(params).toString()}`);
-  if (!response.ok) throw new Error(`YouTube : HTTP ${response.status}`);
-  return response.json();
-}
 
 // Une recherche (100 unités de quota), puis les durées et langues des résultats (1 unité). Seules les vidéos intégrables ailleurs sont demandées.
 export async function searchYoutube(fetchFn: FetchLike, key: string, query: string): Promise<DocCandidate[]> {
@@ -703,19 +1142,19 @@ export async function searchYoutube(fetchFn: FetchLike, key: string, query: stri
 // relay/src/search.ts
 import { passes, scoreCandidate, YOUTUBE_RULES, type ScoreResult } from '../../src/core/documentary/score';
 import type { DocCandidate, DocSubject } from '../../src/core/documentary/types';
+import { reserveUnits, SEARCH_COST } from './budget';
+import { CHANNELS, type ChannelDef } from './channels';
+import { lookupIndex } from './indexer';
+import type { KvLike } from './kv';
 import { searchYoutube, type FetchLike } from './youtube';
-
-export type KvLike = { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> };
 
 export type SearchRequest = { qid: string; kind: 'event' | 'person'; names: string[]; startYear: number | null; endYear: number | null; debug?: boolean };
 export type SearchResponse =
   | { ok: true; candidates: DocCandidate[]; cached: boolean; debug?: { candidate: DocCandidate; result: ScoreResult }[] }
   | { ok: false; reason: 'budget' | 'upstream' };
-export type SearchDeps = { fetch: FetchLike; kv: KvLike; apiKey: string; now: () => Date; dailyBudget?: number };
+export type SearchDeps = { fetch: FetchLike; kv: KvLike; apiKey: string; now: () => Date; channels?: ChannelDef[] };
 
-// Une recherche YouTube coûte 100 unités sur 10 000 par jour : 90 recherches neuves laissent de la marge.
-export const DAILY_BUDGET = 90;
-const DAY = 86400;
+const DAY = 86_400;
 
 export function parseSearchRequest(params: URLSearchParams): SearchRequest | null {
   const qid = params.get('qid') ?? '';
@@ -731,45 +1170,60 @@ export function parseSearchRequest(params: URLSearchParams): SearchRequest | nul
   return { qid, kind, names, startYear: year('start'), endYear: year('end') };
 }
 
+type Scored = { candidate: DocCandidate; result: ScoreResult };
+const best = (scored: Scored[]): DocCandidate[] =>
+  scored
+    .filter((entry) => passes(entry.result))
+    .sort((a, b) => b.result.score - a.result.score)
+    .slice(0, 3)
+    .map((entry) => entry.candidate);
+
 export async function searchDocumentaries(deps: SearchDeps, request: SearchRequest): Promise<SearchResponse> {
   const cacheKey = `doc-v1-${request.qid}`;
   if (!request.debug) {
     const hit = await deps.kv.get(cacheKey);
     if (hit !== null) return { ok: true, candidates: JSON.parse(hit) as DocCandidate[], cached: true };
   }
-  const budgetKey = `budget-${deps.now().toISOString().slice(0, 10)}`;
-  const used = Number((await deps.kv.get(budgetKey)) ?? '0');
-  if (used >= (deps.dailyBudget ?? DAILY_BUDGET)) return { ok: false, reason: 'budget' };
-  await deps.kv.put(budgetKey, String(used + 1), { expirationTtl: 2 * DAY });
+  const subject: DocSubject = { qid: request.qid, kind: request.kind, names: request.names, startYear: request.startYear, endYear: request.endYear };
+  const score = (candidate: DocCandidate): Scored => ({ candidate, result: scoreCandidate(subject, candidate, YOUTUBE_RULES) });
 
+  // 1. L'index des chaînes de confiance : gratuit. Mémorisé 7 jours seulement (l'index grossit).
+  const indexed = (await lookupIndex(deps.kv, request.names, deps.channels ?? CHANNELS)).map(score);
+  if (!request.debug) {
+    const fromIndex = best(indexed);
+    if (fromIndex.length > 0) {
+      await deps.kv.put(cacheKey, JSON.stringify(fromIndex), { expirationTtl: 7 * DAY });
+      return { ok: true, candidates: fromIndex, cached: false };
+    }
+  }
+
+  // 2. La recherche YouTube : 101 unités, dans la limite du jour.
+  if (!(await reserveUnits(deps.kv, deps.now(), SEARCH_COST))) return { ok: false, reason: 'budget' };
   let found: DocCandidate[];
   try {
     found = await searchYoutube(deps.fetch, deps.apiKey, `${request.names[0] ?? ''} documentaire`);
   } catch {
     return { ok: false, reason: 'upstream' };
   }
-  const subject: DocSubject = { qid: request.qid, kind: request.kind, names: request.names, startYear: request.startYear, endYear: request.endYear };
-  const scored = found.map((candidate) => ({ candidate, result: scoreCandidate(subject, candidate, YOUTUBE_RULES) }));
-  if (request.debug) return { ok: true, candidates: [], cached: false, debug: scored };
+  const searched = found.map(score);
+  if (request.debug) return { ok: true, candidates: [], cached: false, debug: [...indexed, ...searched] };
 
-  const candidates = scored
-    .filter((entry) => passes(entry.result))
-    .sort((a, b) => b.result.score - a.result.score)
-    .slice(0, 3)
-    .map((entry) => entry.candidate);
+  const candidates = best(searched);
   // Succès : 30 jours ; « rien de pertinent » : 7 jours (un nouveau documentaire peut sortir).
   await deps.kv.put(cacheKey, JSON.stringify(candidates), { expirationTtl: (candidates.length > 0 ? 30 : 7) * DAY });
   return { ok: true, candidates, cached: false };
 }
 ```
 
-- [ ] **Step 5: Implémenter les routes**
+- [ ] **Step 5: Implémenter les routes et la tâche planifiée**
 
 ```ts
 // relay/src/index.ts
-import { parseSearchRequest, searchDocumentaries, type KvLike } from './search';
+import { indexStatus, indexStep } from './indexer';
+import type { KvLike } from './kv';
+import { parseSearchRequest, searchDocumentaries } from './search';
 
-// Squelette → relais de recherche de documentaires (voir docs/superpowers/specs/2026-10-07-documentaire-histoire-design.md).
+// Relais de recherche de documentaires (voir docs/superpowers/specs/2026-10-07-documentaire-histoire-design.md).
 export type Env = { YOUTUBE_API_KEY?: string; DOC_CACHE?: KvLike; DEBUG_TOKEN?: string };
 
 const HEADERS = {
@@ -799,6 +1253,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/' || url.pathname === '/ping') return json({ ok: true, service: 'wikimasters-tools' });
     if (url.pathname === '/oembed') return oembed(url.searchParams.get('id') ?? '');
+    if (url.pathname === '/status') return env.DOC_CACHE ? json({ ok: true, channels: await indexStatus(env.DOC_CACHE) }) : json({ ok: false, reason: 'upstream' }, 503);
     if (url.pathname === '/search') {
       const parsed = parseSearchRequest(url.searchParams);
       if (!parsed) return json({ ok: false, reason: 'bad-request' }, 400);
@@ -809,19 +1264,22 @@ export default {
     }
     return json({ ok: false, error: 'Route inconnue' }, 404);
   },
+
+  // Toutes les 30 minutes : avance l'index des chaînes de confiance (voir `wrangler.toml`, `crons`).
+  async scheduled(_event: unknown, env: Env): Promise<void> {
+    if (!env.YOUTUBE_API_KEY || !env.DOC_CACHE) return;
+    await indexStep({ fetch: (target) => fetch(target), kv: env.DOC_CACHE, apiKey: env.YOUTUBE_API_KEY, now: () => new Date() });
+  },
 };
 ```
 
-- [ ] **Step 6: Lancer les tests et le typage**
-
-Run: `npx vitest run tests/relay && npm run typecheck`
-Expected: PASS. (`Request`, `Response`, `fetch` viennent de la bibliothèque DOM déjà utilisée par WXT : aucun paquet à ajouter.)
+- [ ] **Step 6: Lancer les tests et le typage** — `npx vitest run tests/relay && npm run typecheck` → PASS. (`Request`, `Response`, `fetch` viennent de la bibliothèque DOM déjà utilisée par WXT : aucun paquet à ajouter.)
 
 - [ ] **Step 7: Étape manuelle (utilisateur) — créer le cache KV**
 
-Demander à l'utilisateur : Cloudflare → **Stockage et bases de données** → **KV** → **Créer un espace de noms** → nom `wikimasters-doc-cache` → copier son **ID** (ce n'est pas un secret) et le donner dans la conversation.
+Cloudflare → **Stockage et bases de données** → **KV** → **Créer un espace de noms** → nom `wikimasters-doc-cache` → copier son **ID** (ce n'est pas un secret) et le donner dans la conversation.
 
-- [ ] **Step 8: Brancher le KV et le nouveau point d'entrée**
+- [ ] **Step 8: Brancher le KV, la tâche planifiée et le nouveau point d'entrée**
 
 Remplacer le contenu de `wrangler.toml` (racine) par (en mettant l'ID reçu) :
 
@@ -835,28 +1293,31 @@ compatibility_date = "2026-10-01"
 [[kv_namespaces]]
 binding = "DOC_CACHE"
 id = "<ID reçu>"
+
+# Avance l'index des chaînes de confiance (première lecture en quelques heures, puis mise à jour hebdomadaire).
+[triggers]
+crons = ["*/30 * * * *"]
 ```
 
-Même contenu pour `relay/wrangler.toml` avec `main = "src/index.ts"`. Supprimer `relay/src/index.js` (`git rm relay/src/index.js`). Mettre à jour `relay/README.md` : routes `/ping`, `/search`, `/oembed`, binding `DOC_CACHE`, secrets `YOUTUBE_API_KEY` et `DEBUG_TOKEN` (facultatif, Task 9).
+Même contenu pour `relay/wrangler.toml` avec `main = "src/index.ts"`. `git rm relay/src/index.js`. Mettre à jour `relay/README.md` : routes `/ping`, `/search`, `/oembed`, `/status`, binding `DOC_CACHE`, tâche planifiée, secrets `YOUTUBE_API_KEY` et `DEBUG_TOKEN` (facultatif, Task 9), budget en unités.
 
-- [ ] **Step 9: Valider le déploiement à blanc**
-
-Run: `npx --yes wrangler@4 deploy --dry-run`
-Expected: `Total Upload` sans erreur, binding `DOC_CACHE` listé.
+- [ ] **Step 9: Valider le déploiement à blanc** — `npx --yes wrangler@4 deploy --dry-run` → `Total Upload` sans erreur, binding `DOC_CACHE` et déclencheur `*/30 * * * *` listés.
 
 - [ ] **Step 10: Commit, PR 2, vérification en ligne**
 
 ```bash
 git add wrangler.toml relay tests/relay
-git commit -m "feat(relais): recherche YouTube notée, cache KV, plafond journalier, oEmbed"
+git commit -m "feat(relais): recherche notée (index des chaînes puis YouTube), cache KV, routes et tâche planifiée"
 ```
-Pousser, fusionner (Cloudflare redéploie). Puis vérifier avec le secret en place :
+
+Pousser, fusionner (Cloudflare redéploie). Puis, avec le secret en place :
 
 ```bash
+curl "https://wikimasters-tools.maxime-protais-baumer.workers.dev/status"
 curl "https://wikimasters-tools.maxime-protais-baumer.workers.dev/search?qid=Q2280&kind=event&names=Bataille%20de%20Verdun%7CVerdun&start=1916&end=1916"
 curl "https://wikimasters-tools.maxime-protais-baumer.workers.dev/oembed?id=dQw4w9WgXcQ"
 ```
-Expected: `{"ok":true,"candidates":[…],"cached":false}` (ou liste vide) puis, au second appel, `"cached":true` ; l'oEmbed rend `ok:true` et un titre. Une réponse `{"ok":false,"reason":"upstream","…"}` avec 503 = secret ou KV mal reliés (revoir Settings → Bindings / Variables et secrets).
+Expected : `/status` liste les 5 chaînes (`count` qui augmente toutes les 30 minutes, `complete: true` au bout de quelques heures) ; `/search` rend `{"ok":true,"candidates":[…],"cached":false}` puis `"cached":true` ; l'oEmbed rend `ok:true` et un titre. `{"ok":false,"reason":"upstream"}` avec 503 = secret ou KV mal reliés (Settings → Bindings / Variables et secrets). Si les passages planifiés échouent pour dépassement de temps de calcul (journaux du Worker, « exceeded CPU »), passer à l'offre payante (5 $ par mois, 30 s de calcul) ou réduire `MAX_PAGES_PER_RUN`.
 
 ---
 
@@ -2033,7 +2494,7 @@ for (const card of cards) {
 }
 ```
 
-- [ ] **Step 3:** Lancer `DEBUG_TOKEN=… node scripts/documentary-tuning.mjs` (30 cartes ≈ 30 recherches du budget du jour ; faire en deux fois si le plafond est atteint). Présenter le tableau à l'utilisateur, qui juge pour chaque ligne « bon / mauvais ».
+- [ ] **Step 3:** Vérifier d'abord `curl …/status` : les cinq chaînes doivent être `complete: true`. Lancer ensuite `DEBUG_TOKEN=… node scripts/documentary-tuning.mjs` (le mode debug refait toujours la recherche YouTube : 30 cartes ≈ 3 000 unités ; faire en deux fois si le plafond du jour est atteint). Le tableau montre les candidats venus de l'index et ceux de la recherche ; relever aussi le temps de calcul d'un passage planifié dans les journaux du Worker (limite de 10 ms sur l'offre gratuite). Présenter le tableau à l'utilisateur, qui juge pour chaque ligne « bon / mauvais ».
 - [ ] **Step 4:** Ajuster `THRESHOLD`, `TRUSTED`, `NOISE`, `GENRE` dans `score.ts` uniquement d'après ces jugements ; ajouter à `score.test.ts` un cas par erreur corrigée (titre réel rejeté à tort ou retenu à tort) ; `npx vitest run tests/core/documentary` → PASS.
 - [ ] **Step 5:** Commit `fix(documentaire): réglage du seuil sur 30 cartes`, PR 5, fusion (le relais se redéploie seul), pré-production.
 
@@ -2041,7 +2502,7 @@ for (const card of cards) {
 
 ## Self-Review
 
-**Spec coverage:** sélection → Task 4 (`selection.ts`) et 6 ; Commons → Tasks 4, 6 ; YouTube/relais, cache, budget → Task 3 ; notation → Task 1 ; détection → Task 2 ; propositions et « pas pertinent » → Tasks 5, 6, 7 ; affichage extension/mobile et ↗ → Task 7 ; boutons de recherche → Tasks 4, 7 ; WikiHow/Quoi de neuf/APK/pré-prod → Task 8 ; réglage sur 30 cartes → Task 9 ; limite par IP → écart n° 3 (déclaré). Rien d'autre n'est laissé sans tâche.
+**Spec coverage:** sélection → Task 4 (`selection.ts`) et 6 ; Commons → Tasks 4, 6 ; YouTube/relais, cache, budget, index des chaînes → Tasks 3A-3B ; notation → Task 1 ; détection → Task 2 ; propositions et « pas pertinent » → Tasks 5, 6, 7 ; affichage extension/mobile et ↗ → Task 7 ; boutons de recherche → Tasks 4, 7 ; WikiHow/Quoi de neuf/APK/pré-prod → Task 8 ; réglage sur 30 cartes → Task 9 ; limite par IP → écart n° 3 (déclaré). Rien d'autre n'est laissé sans tâche.
 
 **Cohérence des types:** `DocCandidate`/`DocSubject` (Task 1) sont utilisés tels quels dans les Tasks 3-7 ; `RelayResult`/`OembedResult` (Task 4) correspondent aux dépendances du service (Task 6) ; `IssueDraft`/`postIssue` (Task 5) sont ceux du câblage (Task 7) ; `SubjectInfo` (Task 2) alimente `subject` du service ; `searchCommons(fetch, names, subject)` a la même signature dans Tasks 4, 6, 7.
 
