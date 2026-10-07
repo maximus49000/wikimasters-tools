@@ -1,0 +1,5 @@
+# Configuration lue par `npx wrangler deploy` lancé à la racine (Cloudflare Workers Builds).
+# Même Worker que relay/wrangler.toml, utilisé en local depuis le dossier relay.
+name = "wikimasters-tools"
+main = "relay/src/index.js"
+compatibility_date = "2026-10-01"
