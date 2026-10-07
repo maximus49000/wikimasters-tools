@@ -490,6 +490,35 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'documentaire',
+    theme: 'fiche',
+    glyph: '🎞',
+    title: 'Documentaire d’histoire',
+    summary: 'Un documentaire sur les événements et personnages historiques',
+    steps: [
+      {
+        target: '[data-wmt-documentary-card]',
+        title: 'Documentaire',
+        text: 'Sur la fiche d’une bataille, d’une guerre, d’une révolution ou d’un personnage historique, un lecteur propose un documentaire. Appuyez sur ▶ pour le regarder.',
+        details: [
+          { label: 'D’où viennent les vidéos', text: 'D’abord les documentaires choisis à la main, puis les archives libres de Wikimedia Commons, puis les vidéos récentes de quelques chaînes (ARTE, INA, Nota Bene, Lumni, Hérodote), puis une recherche YouTube. Chaque vidéo est notée : le titre doit contenir le nom du sujet et la durée doit être celle d’un documentaire.' },
+          { label: 'Si rien ne convient', text: 'Aucune vidéo n’est affichée plutôt qu’une mauvaise : des boutons ouvrent la recherche chez YouTube, Arte et l’INA. Si plusieurs vidéos sont trouvées, le glyphe ⇄ passe à la suivante ; la croix signale une vidéo hors sujet et la masque chez vous.' },
+          { label: 'À savoir', text: 'Rien n’est chargé chez YouTube avant d’appuyer sur ▶. Certaines chaînes interdisent l’intégration : le bouton ↗ ouvre alors la vidéo à la source. Les archives de Commons sont sous licence libre, avec l’auteur indiqué.' },
+        ],
+      },
+      {
+        target: '[aria-label="Proposer un documentaire"]',
+        title: 'Proposer un documentaire',
+        text: 'Vous connaissez un bon documentaire sur ce sujet ? Le glyphe lien permet de coller son adresse YouTube.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le glyphe lien, collez l’adresse de la vidéo, puis « Proposer » : l’extension vérifie que la vidéo existe et qu’elle peut être intégrée.' },
+          { label: 'Ce qui se passe ensuite', text: 'La vidéo s’affiche tout de suite chez vous, marquée « en attente de relecture ». Elle est signalée au créateur du projet, qui décide de la proposer aux autres joueurs.' },
+        ],
+      },
+    ],
+  },
+  {
     id: 'anomalie',
     theme: 'app',
     glyph: '⚠',

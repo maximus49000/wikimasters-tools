@@ -35,9 +35,17 @@ import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MARKET_WRITE_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
 import { createMineApplier } from '../core/collection/mine-apply';
-import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, closeOpenWindows, openWhatsNew, openWikiHow, openExtensionSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountBookSection, pruneBookSections, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
-import { decorateBook, decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
+import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, closeOpenWindows, openWhatsNew, openWikiHow, openExtensionSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountBookSection, pruneBookSections, mountDocumentarySection, pruneDocumentarySections, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { decorateBook, decorateDocumentary, decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { getBookService, setBookService } from '../content/book-registry';
+import { getDocumentaryService, setDocumentaryService } from '../content/documentary-registry';
+import { createDocumentaryService } from '../content/documentary-service';
+import { createRelayApi } from '../core/documentary/relay-api';
+import { searchCommons } from '../core/documentary/commons-api';
+import { parseSelection } from '../core/documentary/selection';
+import { SELECTION_URL } from '../core/documentary/config';
+import { fetchSubject } from '../core/documentary/subject';
+import { createDocumentaryRepo } from '../core/documentary/documentary-repo';
 import { createBookService } from '../content/book-service';
 import { createAmazonPrice } from '../core/book/amazon-price';
 import { createBookChoiceRepo, createBookRepo } from '../core/book/book-repo';
@@ -108,7 +116,7 @@ import { pickCard } from '../core/whats-new/pick-card';
 import { setTourEnv } from '../content/tour-registry';
 import { resumeTour, resumeTourReturn } from '../content/tour-instance';
 import type { TourOrigin } from '../content/tour-session';
-import { createAnomalyReporter } from '../core/anomalies/anomaly';
+import { createAnomalyReporter, postIssue } from '../core/anomalies/anomaly';
 import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
 import { getProfileName, rememberProfileName } from '../core/anomalies/profile-name';
 
@@ -400,6 +408,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         console.warn(LOG, 'section livre indisponible :', error);
       }
       try {
+        pruneDocumentarySections();
+        // La section documentaire se pose dès que son service est créé (relais, Commons et Wikidata n'ont besoin d'aucune clé dans l'extension).
+        if (getDocumentaryService()) decorateDocumentary(document, mountDocumentarySection);
+      } catch (error) {
+        console.warn(LOG, 'section documentaire indisponible :', error);
+      }
+      try {
         pruneLinkedCards();
         decorateLinked(document, mountLinkedCards);
       } catch (error) {
@@ -648,6 +663,34 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     };
   } catch (error) {
     console.warn(LOG, 'livres indisponibles :', error);
+  }
+
+  // Documentaires (événements et personnages historiques) : relais Cloudflare, Commons et sélection du dépôt, avec le `fetch` de la page (CORS ouvert).
+  try {
+    const issueFetch = (url: string, init?: RequestInit) => (spotify ? spotify.fetch(url, init) : fetch(url, init));
+    setDocumentaryService(
+      createDocumentaryService({
+        collection: collectionRepo,
+        kinds: kindsRepo,
+        subject: (slug) => fetchSubject((url) => fetch(url), slug),
+        selection: {
+          forQid: async (qid) => {
+            const response = await fetch(SELECTION_URL);
+            if (!response.ok) throw new Error(`Sélection : HTTP ${response.status}`);
+            return parseSelection(await response.json(), qid);
+          },
+        },
+        commons: { search: (names, subject) => searchCommons((url) => fetch(url), names, subject) },
+        relay: createRelayApi({ fetch: (url) => fetch(url) }),
+        repo: createDocumentaryRepo(store),
+        issues: GITHUB_ISSUES_TOKEN ? { send: (draft) => postIssue(issueFetch, GITHUB_ISSUES_TOKEN, draft) } : null,
+        cache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
+        platform: anomalyPlatform,
+        profileName: () => getProfileName(window.localStorage),
+      }),
+    );
+  } catch (error) {
+    console.warn(LOG, 'documentaires indisponibles :', error);
   }
 
   // Relevé du marché : les cartes de la Collection affichées à l'écran d'abord, puis en fond le reste de la
