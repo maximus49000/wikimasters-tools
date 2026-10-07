@@ -33,7 +33,11 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/' || url.pathname === '/ping') return json({ ok: true, service: 'wikimasters-tools' });
     if (url.pathname === '/oembed') return oembed(url.searchParams.get('id') ?? '');
-    if (url.pathname === '/status') return env.DOC_CACHE ? json({ ok: true, channels: await indexStatus(env.DOC_CACHE) }) : json({ ok: false, reason: 'upstream' }, 503);
+    // Contrôle : avancement de l'index et présence (jamais la valeur) des réglages du Worker.
+    if (url.pathname === '/status') {
+      const config = { youtubeKey: Boolean(env.YOUTUBE_API_KEY), kv: Boolean(env.DOC_CACHE), debugToken: Boolean(env.DEBUG_TOKEN) };
+      return json({ ok: true, config, channels: env.DOC_CACHE ? await indexStatus(env.DOC_CACHE) : [] });
+    }
     if (url.pathname === '/search') {
       const parsed = parseSearchRequest(url.searchParams);
       if (!parsed) return json({ ok: false, reason: 'bad-request' }, 400);
