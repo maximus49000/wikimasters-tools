@@ -5,7 +5,7 @@ import { EMPTY_OWNERSHIP, ownedCardOf, ownershipSignature, rarityName, screenOwn
 const card = (slug: string, extra: Partial<KnownCard> = {}): KnownCard => ({ slug, title: slug, ...extra });
 
 describe('screenOwnership', () => {
-  it('associe chaque identifiant TMDB a la carte qui le porte', () => {
+  it('associe chaque identifiant TMDB à la carte qui le porte', () => {
     const cards = [card('Inception', { rarity: 'L', copies: 2 }), card('Breaking_Bad', { rarity: 'SR', copies: 1 }), card('Paris')];
     const screen = { Inception: { movieId: 27205 }, Breaking_Bad: { tvId: 1396 }, Paris: {} };
     const ownership = screenOwnership(cards, screen);
@@ -19,21 +19,21 @@ describe('screenOwnership', () => {
     expect(ownership.movie.size + ownership.tv.size).toBe(0);
   });
 
-  it('ignore une carte dont le nombre d\'exemplaires est nul, garde celle dont il est inconnu', () => {
+  it("ignore une carte dont le nombre d'exemplaires est nul, garde celle dont il est inconnu", () => {
     const cards = [card('Vendue', { copies: 0 }), card('Sans_compte')];
     const ownership = screenOwnership(cards, { Vendue: { movieId: 1 }, Sans_compte: { movieId: 2 } });
     expect(ownedCardOf(ownership, 'movie', 1)).toBeUndefined();
     expect(ownedCardOf(ownership, 'movie', 2)?.slug).toBe('Sans_compte');
   });
 
-  it('garde la premiere carte quand deux cartes portent le meme identifiant', () => {
+  it('garde la première carte quand deux cartes portent le même identifiant', () => {
     const ownership = screenOwnership([card('A'), card('B')], { A: { movieId: 7 }, B: { movieId: 7 } });
     expect(ownedCardOf(ownership, 'movie', 7)?.slug).toBe('A');
   });
 });
 
 describe('ownershipSignature', () => {
-  it('change quand une rarete ou un nombre d\'exemplaires change, pas autrement', () => {
+  it("change quand une rareté ou un nombre d'exemplaires change, pas autrement", () => {
     const base = screenOwnership([card('A', { rarity: 'R', copies: 1 })], { A: { movieId: 1 } });
     const same = screenOwnership([card('A', { rarity: 'R', copies: 1 })], { A: { movieId: 1 } });
     const more = screenOwnership([card('A', { rarity: 'R', copies: 2 })], { A: { movieId: 1 } });
@@ -44,8 +44,8 @@ describe('ownershipSignature', () => {
 });
 
 describe('rarityName', () => {
-  it('donne le nom francais d\'une rarete, renvoie le code inconnu tel quel, rien sans rarete', () => {
-    expect(rarityName('L')).toBe('Legendaire');
+  it("donne le nom français d'une rareté, renvoie le code inconnu tel quel, rien sans rareté", () => {
+    expect(rarityName('L')).toBe('Légendaire');
     expect(rarityName('PC')).toBe('Peu commune');
     expect(rarityName('XX')).toBe('XX');
     expect(rarityName(undefined)).toBeUndefined();
