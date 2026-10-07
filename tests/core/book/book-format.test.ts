@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { articleUrl, coverThumbUrl, coverUrl, firstIsbn13, isWorkId, normalizeTitle, workPageUrl } from '../../../src/core/book/book-format';
+import { articleUrl, coverThumbUrl, coverUrl, firstIsbn13, formatDay, formatEuro, isWorkId, normalizeTitle, workPageUrl } from '../../../src/core/book/book-format';
 
 describe('book-format', () => {
   it('construit les adresses Open Library et Wikipédia', () => {
@@ -22,5 +22,13 @@ describe('book-format', () => {
   });
   it('compare les titres sans accents, casse ni ponctuation', () => {
     expect(normalizeTitle('L’étranger')).toBe(normalizeTitle("L'Étranger"));
+  });
+  it('met un prix en euros à la française avec une espace ordinaire', () => {
+    expect(formatEuro(7.6)).toBe('7,60 €');
+    expect(formatEuro(126.55)).toBe('126,55 €');
+    expect(formatEuro(0.99)).toBe('0,99 €');
+  });
+  it('met un jour au format jj/mm', () => {
+    expect(formatDay(new Date(2026, 9, 7, 12).getTime())).toBe('07/10');
   });
 });

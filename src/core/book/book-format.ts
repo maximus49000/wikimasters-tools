@@ -15,3 +15,13 @@ export const isWorkId = (id: string): boolean => /^OL\d+W$/.test(id);
 export function firstIsbn13(isbns: readonly string[] | undefined): string | undefined {
   return isbns?.find((isbn) => /^\d{13}$/.test(isbn));
 }
+
+// Prix en euros à la française, avec une espace ordinaire (l'espace insécable de Intl complique les comparaisons et les césures).
+export const formatEuro = (amount: number): string =>
+  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount).replace(/[  ]/g, ' ');
+
+// Jour de lecture d'un prix : « 07/10 ».
+export const formatDay = (ms: number): string => {
+  const date = new Date(ms);
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
