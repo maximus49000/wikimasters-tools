@@ -1,5 +1,14 @@
 # Configuration lue par `npx wrangler deploy` lancé à la racine (Cloudflare Workers Builds).
 # Même Worker que relay/wrangler.toml, utilisé en local depuis le dossier relay.
 name = "wikimasters-tools"
-main = "relay/src/index.js"
+main = "relay/src/index.ts"
 compatibility_date = "2026-10-01"
+
+# Avance l'index des chaînes de confiance (première lecture en quelques heures, puis mise à jour hebdomadaire).
+[triggers]
+crons = ["*/30 * * * *"]
+
+# À ajouter dès que l'espace KV `wikimasters-doc-cache` existe (son ID se lit dans le tableau de bord Cloudflare) :
+# [[kv_namespaces]]
+# binding = "DOC_CACHE"
+# id = "<ID de l'espace KV>"
