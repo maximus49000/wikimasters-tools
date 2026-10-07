@@ -37,13 +37,14 @@ export function createBookService(deps: BookServiceDeps) {
     }
   };
 
-  // L'œuvre de la carte : identifiant Wikidata d'abord ; sinon recherche par titre, retenue seulement si le titre est égal
+  // L'œuvre de la carte : identifiant Wikidata d'abord ; sinon (si `byTitle`) recherche par titre, retenue seulement si le titre est égal
   // (accents, casse, ponctuation) ; à égalité, la plus connue (nombre d'éditions).
-  async function workOf(workId: string | undefined, title: string): Promise<OlWork | null> {
+  async function workOf(workId: string | undefined, title: string, { byTitle }: { byTitle: boolean }): Promise<OlWork | null> {
     if (workId !== undefined) {
       const found = await cache.getOrLoad(`book-work-v1-${workId}`, () => openLibrary.byWork(workId));
       if (found) return found;
     }
+    if (!byTitle) return null;
     const query = cleanTitle(title);
     const wanted = normalizeTitle(query);
     if (wanted === '') return null;
@@ -77,7 +78,7 @@ export function createBookService(deps: BookServiceDeps) {
         const cardKinds = state.cards[slug];
         if (!isBookCard(cardKinds)) return { status: 'none' };
         const ids = (await books.resolve([slug]))[slug] ?? {};
-        const work = await workOf(ids.workId, title);
+        const work = await workOf(ids.workId, title, { byTitle: true });
         if (!work) return { status: 'empty' };
         const genres = (cardKinds?.genres ?? []).slice(0, MAX_GENRES).map((id) => facetLabel(state, id));
         const synopsis = await synopsisOf(slug, work);
@@ -112,7 +113,9 @@ export function createBookService(deps: BookServiceDeps) {
         if (!isBookCard(cardKinds)) return [];
         const ids = (await books.resolve([slug]))[slug];
         if (ids === undefined) return null;
-        const work = await workOf(ids.workId, title);
+        // Jamais par titre : tant que l'auteur n'est pas vérifié, un homonyme ou un titre générique donnerait une mauvaise couverture par défaut,
+        // pire que pas de couverture (la fiche, elle, garde le repli par titre et montre ce qu'elle a trouvé).
+        const work = await workOf(ids.workId, title, { byTitle: false });
         return work?.coverId !== undefined ? [coverUrl(work.coverId)] : [];
       } catch {
         return null;

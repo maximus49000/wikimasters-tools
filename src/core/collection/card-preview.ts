@@ -48,7 +48,7 @@ export function toCardPreview(
   film = false,
   game = false,
   book = false,
-):CardPreview {
+): CardPreview {
   return {
     title: card.title,
     rarity: card.rarity ?? entry?.rarity ?? null,

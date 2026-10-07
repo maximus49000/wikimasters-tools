@@ -426,7 +426,7 @@ export const ENTRIES: Entry[] = [
     summary: 'Synopsis, informations et couverture des romans, poèmes et essais',
     steps: [
       {
-        target: '[data-wmt-book]',
+        target: null,
         title: 'Fiche d’un livre',
         text: 'Sur une carte de roman, de poème, d’essai, de pièce de théâtre ou de bande dessinée, la fiche affiche l’auteur, l’année, l’éditeur, le nombre de pages, les genres et un synopsis en grand. La couverture du livre devient l’image de la carte quand elle existe.',
         details: [
@@ -435,7 +435,6 @@ export const ENTRIES: Entry[] = [
           { label: 'À savoir', text: 'Quand Wikidata ne donne pas l’identifiant, le livre est cherché par son titre exact : un homonyme peut se glisser. Prix, achat et lecture gratuite arriveront dans une prochaine version.' },
         ],
         glyph: '📖',
-        optional: true,
       },
     ],
   },

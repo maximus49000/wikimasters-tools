@@ -595,6 +595,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       cache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
     });
     setBookService(bookService);
+    artSources.book = bookService;
     // Couverture des livres : même canal d'image « officiel » que les affiches de jeux (elle passe devant l'image Wikipédia).
     // Le jeu répond d'abord (liste vide pour une carte qui n'est pas un jeu) ; `null` = pas prêt, on redemandera.
     const gameArt = artSources.game;

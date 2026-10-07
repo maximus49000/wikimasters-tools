@@ -135,7 +135,7 @@ describe('filtre des doubles', () => {
 });
 
 describe('catégories', () => {
-  const mixed = ['Piaf', 'Thriller', 'Film', 'Serie', 'Jeu', 'Plateau', 'Nouvelle'].map(card);
+  const mixed = ['Piaf', 'Thriller', 'Film', 'Serie', 'Jeu', 'Plateau', 'Roman', 'Nouvelle'].map(card);
   const kinds = setKinds(
     EMPTY_KINDS,
     {
@@ -145,6 +145,7 @@ describe('catégories', () => {
       Serie: k(['Q5398426'], [], ['comédie']),
       Jeu: k(['Q7889'], [], ['rpg']),
       Plateau: k(['Q131436']),
+      Roman: k(['Q8261']),
     },
     {},
   );
@@ -155,6 +156,7 @@ describe('catégories', () => {
       ['music', 2],
       ['film', 2],
       ['games', 2],
+      ['books', 1],
       ['other', 1],
     ]);
   });
@@ -177,6 +179,10 @@ describe('catégories', () => {
     expect(applyKindFilter(mixed, kinds, filter).map((c) => c.slug)).toEqual(['Jeu', 'Plateau']);
     const { natures } = buildKindOptions(mixed, kinds, filter);
     expect(ids(natures).sort()).toEqual(['group:Jeu de société', 'group:Jeu vidéo']);
+  });
+
+  it('la catégorie « Livres » réunit les œuvres écrites', () => {
+    expect(applyKindFilter(mixed, kinds, { nature: '', facet: '', category: 'books' }).map((c) => c.slug)).toEqual(['Roman']);
   });
 
   it('changer de catégorie garde la nature seulement si elle y existe', () => {

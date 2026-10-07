@@ -7,7 +7,7 @@
 export type CardImage = { url: string | null; candidates: string[]; rejected: string[]; art?: true; artCheckedAt?: number; artV?: number };
 
 // À augmenter quand une source officielle est ajoutée (1 : Spotify, TMDB ; 2 : jeux vidéo).
-export const ART_VERSION = 2;
+export const ART_VERSION = 3;
 
 // Clé : slug de l'article Wikipédia.
 export type ImageState = Record<string, CardImage>;

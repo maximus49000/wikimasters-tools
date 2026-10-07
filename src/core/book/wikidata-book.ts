@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { getJson, parseWikibaseItems, usableClaims, type FetchLike } from '../birth/wikidata-birth';
+import { WIKIPEDIA_API } from './config';
 import { slugToTitle } from '../market/market-book';
 
 // Identifiant lu sur Wikidata : Open Library, œuvre (P648, `OL…W`) ; champ absent = inconnu.
 export type CardBook = { workId?: string };
 
-const WIKIPEDIA = 'https://fr.wikipedia.org/w/api.php';
 const WIKIDATA = 'https://www.wikidata.org/w/api.php';
 
 const claimsResponse = z.object({
@@ -38,7 +38,7 @@ export async function fetchWikidataBook(fetchFn: FetchLike, slugs: string[]): Pr
   const titles = slugs.map(slugToTitle);
   const pagesJson = await getJson(
     fetchFn,
-    WIKIPEDIA,
+    WIKIPEDIA_API,
     { action: 'query', prop: 'pageprops', ppprop: 'wikibase_item', redirects: '1', formatversion: '2', titles: titles.join('|') },
     'Wikipédia',
   );

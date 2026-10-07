@@ -35,6 +35,12 @@ describe('createOpenLibraryApi', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  it('ignore les lignes dont la clé n’est pas une œuvre', async () => {
+    const api = createOpenLibraryApi({ fetch: json({ docs: [{ key: '/books/OL1M', title: 'Édition' }, etranger] }) });
+    expect((await api.searchByTitle('x')).map((work) => work.id)).toEqual(['OL1230613W']);
+    expect(await createOpenLibraryApi({ fetch: json({ docs: [{ key: '/books/OL1M', title: 'Édition' }] }) }).byWork('OL1W')).toBeNull();
+  });
+
   it('une œuvre sans auteur, sans couverture ni ISBN reste valide', async () => {
     const work = await createOpenLibraryApi({ fetch: json({ docs: [{ key: '/works/OL9W', title: 'Anonyme' }] }) }).byWork('OL9W');
     expect(work).toEqual({ id: 'OL9W', title: 'Anonyme', popularity: 0 });

@@ -40,6 +40,9 @@ function toWork(row: z.infer<typeof docSchema>): OlWork {
   };
 }
 
+// Seules les œuvres (`/works/OL…W`) comptent : toute autre clé est ignorée.
+const works = (rows: z.infer<typeof docSchema>[]): OlWork[] => rows.filter((row) => isWorkId(row.key.replace(/^\/works\//, ''))).map(toWork);
+
 export function createOpenLibraryApi(deps: { fetch: BookFetch }) {
   const search = (params: Record<string, string>) => requestJson(deps.fetch, `${OPENLIBRARY_BASE}/search.json?${new URLSearchParams({ ...params, fields: FIELDS })}`, searchSchema);
   const checked = (workId: string): string => {
@@ -51,12 +54,12 @@ export function createOpenLibraryApi(deps: { fetch: BookFetch }) {
     // L'œuvre d'un identifiant connu (lu sur Wikidata) ; null si Open Library ne la connaît pas.
     async byWork(workId: string): Promise<OlWork | null> {
       const data = await search({ q: `key:/works/${checked(workId)}`, limit: '1' });
-      return data.docs[0] ? toWork(data.docs[0]) : null;
+      return works(data.docs)[0] ?? null;
     },
 
     // Recherche par titre : le choix (titre exact, le plus connu) est fait par le service.
     async searchByTitle(title: string): Promise<OlWork[]> {
-      return (await search({ title, limit: '10' })).docs.map(toWork);
+      return works((await search({ title, limit: '10' })).docs);
     },
 
     // Description d'une œuvre (repli du synopsis) ; null si elle n'en a pas.

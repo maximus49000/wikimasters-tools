@@ -6,7 +6,8 @@ const kinds = (natures: string[]) => ({ natures, occupations: [], genres: [] });
 
 describe('catégorie « Jeux »', () => {
   it('est proposée entre « Films / Série » et « Autre »', () => {
-    expect(CATEGORIES.map((category) => category.id)).toEqual(['music', 'film', 'games', 'other']);
+    expect(CATEGORIES.map((category) => category.id)).toEqual(['music', 'film', 'games', 'books', 'other']);
+    expect(CATEGORIES.find((category) => category.id === 'books')?.label).toBe('Livres');
     expect(CATEGORIES.find((category) => category.id === 'games')?.label).toBe('Jeux');
   });
 
@@ -25,6 +26,20 @@ describe('catégorie « Jeux »', () => {
     ['jeu de fête', 'Q839864'],
   ])('classe %s dans « Jeux »', (_label, nature) => {
     expect(categoryOf(kinds([nature]))).toBe('games');
+  });
+
+  it.each([
+    ['roman', 'Q8261'],
+    ['œuvre littéraire', 'Q7725634'],
+  ])('classe %s dans « Livres »', (_label, nature) => {
+    expect(categoryOf(kinds([nature]))).toBe('books');
+  });
+
+  it('un jeu reste dans « Jeux », un film dans « Films / Série », la musique l’emporte sur les livres', () => {
+    expect(categoryOf(kinds(['Q7889']))).toBe('games');
+    expect(categoryOf(kinds(['Q11424']))).toBe('film');
+    expect(categoryOf(kinds(['Q7725634', 'Q7889']))).toBe('games');
+    expect(categoryOf(kinds(['Q482994', 'Q7725634']))).toBe('music');
   });
 
   it("la musique et le cinéma l'emportent ; le reste tombe dans « Autre »", () => {

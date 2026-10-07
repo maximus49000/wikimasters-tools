@@ -31,6 +31,7 @@ function setup(over: Setup = {}) {
     if (over.intro instanceof Error) throw over.intro;
     return over.intro === undefined ? 'Meursault enterre sa mère.' : over.intro;
   });
+  const resolve = vi.fn(async () => (over.unreachable ? {} : { Livre: over.ids ?? { workId: 'OL1230613W' } }) as never);
   const service = createBookService({
     collection: { list: async () => (over.collection ?? ['Livre']).map((slug) => ({ slug, title: slug })) },
     kinds: {
@@ -40,12 +41,12 @@ function setup(over: Setup = {}) {
         labels: { Q1: 'roman philosophique', Q2: 'roman policier' },
       }),
     },
-    books: { resolve: async () => (over.unreachable ? {} : { Livre: over.ids ?? { workId: 'OL1230613W' } }) as never },
+    books: { resolve },
     openLibrary,
     intro,
     cache: createTtlCache(createMemoryStore()),
   });
-  return { service, openLibrary, intro };
+  return { service, openLibrary, intro, resolve };
 }
 
 describe('bookSlugs', () => {
@@ -115,6 +116,19 @@ describe('view', () => {
     expect(view.status === 'error' && view.message).toContain('patienter');
   });
 
+  it('identifiant Wikidata inconnu d’Open Library : repli par titre exact', async () => {
+    const { service, openLibrary } = setup({ byWork: null, ids: { workId: 'OL9W' }, search: [etranger] });
+    const view = await service.view('Livre', 'L’Étranger');
+    expect(view.status).toBe('detail');
+    expect(openLibrary.searchByTitle).toHaveBeenCalledTimes(1);
+  });
+
+  it('un titre sans lettre ni chiffre ne déclenche aucune recherche', async () => {
+    const { service, openLibrary } = setup({ ids: {}, search: [etranger] });
+    expect(await service.view('Livre', '???')).toEqual({ status: 'empty' });
+    expect(openLibrary.searchByTitle).not.toHaveBeenCalled();
+  });
+
   it('Wikidata injoignable : on cherche quand même par titre', async () => {
     const { service } = setup({ unreachable: true, search: [etranger] });
     expect((await service.view('Livre', 'L’Étranger')).status).toBe('detail');
@@ -136,9 +150,19 @@ describe('cover', () => {
     expect(await failing.service.cover('Livre', 'X')).toBeNull();
   });
 
+  it('sans identifiant Wikidata, aucune couverture par titre (auteur non vérifié) : liste vide, aucune recherche', async () => {
+    const { service, openLibrary } = setup({ ids: {}, search: [etranger] });
+    expect(await service.cover('Livre', 'L’Étranger')).toEqual([]);
+    expect(openLibrary.searchByTitle).not.toHaveBeenCalled();
+    const unknown = setup({ byWork: null, ids: { workId: 'OL9W' }, search: [etranger] });
+    expect(await unknown.service.cover('Livre', 'L’Étranger')).toEqual([]);
+    expect(unknown.openLibrary.searchByTitle).not.toHaveBeenCalled();
+  });
+
   it('ne fait aucun appel réseau pour une carte qui n’est pas un livre', async () => {
-    const { service, openLibrary } = setup({ natures: ['Q11424'] });
+    const { service, openLibrary, resolve } = setup({ natures: ['Q11424'] });
     await service.cover('Livre', 'Un film');
+    expect(resolve).not.toHaveBeenCalled();
     expect(openLibrary.byWork).not.toHaveBeenCalled();
     expect(openLibrary.searchByTitle).not.toHaveBeenCalled();
   });
