@@ -35,8 +35,14 @@ import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MARKET_WRITE_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
 import { createMineApplier } from '../core/collection/mine-apply';
-import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, closeOpenWindows, openWhatsNew, openWikiHow, openExtensionSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
-import { decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
+import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, closeOpenWindows, openWhatsNew, openWikiHow, openExtensionSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountBookSection, pruneBookSections, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { decorateBook, decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
+import { getBookService, setBookService } from '../content/book-registry';
+import { createBookService } from '../content/book-service';
+import { createBookRepo } from '../core/book/book-repo';
+import { createOpenLibraryApi } from '../core/book/openlibrary-api';
+import { fetchWikidataBook } from '../core/book/wikidata-book';
+import { fetchWikipediaIntro } from '../core/book/wikipedia-intro';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
 import { createListenRepo } from '../core/music/listen-repo';
@@ -363,6 +369,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         console.warn(LOG, 'section jeu vidéo indisponible :', error);
       }
       try {
+        pruneBookSections();
+        // La section livre se pose dès que son service est créé (Open Library et Wikipédia n'ont besoin d'aucune clé).
+        if (getBookService()) decorateBook(document, mountBookSection);
+      } catch (error) {
+        console.warn(LOG, 'section livre indisponible :', error);
+      }
+      try {
         pruneLinkedCards();
         decorateLinked(document, mountLinkedCards);
       } catch (error) {
@@ -569,6 +582,31 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     artSources.game = gameService;
   } catch (error) {
     console.warn(LOG, 'jeux vidéo indisponibles :', error);
+  }
+
+  // Livres : Open Library et Wikipédia, sans clé, avec le `fetch` de la page (CORS ouvert). Une panne ici ne doit jamais empêcher la surcouche.
+  try {
+    const bookService = createBookService({
+      collection: collectionRepo,
+      kinds: kindsRepo,
+      books: createBookRepo(store, (slugs) => fetchWikidataBook((url) => fetch(url), slugs)),
+      openLibrary: createOpenLibraryApi({ fetch: (url) => fetch(url) }),
+      intro: (slug) => fetchWikipediaIntro((url) => fetch(url), slug),
+      cache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
+    });
+    setBookService(bookService);
+    // Couverture des livres : même canal d'image « officiel » que les affiches de jeux (elle passe devant l'image Wikipédia).
+    // Le jeu répond d'abord (liste vide pour une carte qui n'est pas un jeu) ; `null` = pas prêt, on redemandera.
+    const gameArt = artSources.game;
+    artSources.game = {
+      async cover(slug, title) {
+        const games = gameArt ? await gameArt.cover(slug, title) : [];
+        if (games === null || games.length > 0) return games;
+        return bookService.cover(slug, title);
+      },
+    };
+  } catch (error) {
+    console.warn(LOG, 'livres indisponibles :', error);
   }
 
   // Relevé du marché : les cartes de la Collection affichées à l'écran d'abord, puis en fond le reste de la
