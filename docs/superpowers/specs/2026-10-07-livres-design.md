@@ -4,7 +4,7 @@ Date : 2026-10-07. Maquette (non versionnée, `.superpowers/` est ignoré) : `.s
 
 ## But
 
-Sur la fiche native d'une carte de livre : synopsis, informations, prix et liens d'achat (papier et ebook), lecture gratuite du texte intégral quand il est libre de droits. Sur la fiche d'un écrivain : sa bibliographie, présentée comme la filmographie d'un acteur. Une catégorie « Livres » dans le filtre de la Collection réunit toutes ces œuvres.
+Sur la fiche native d'une carte de livre : synopsis, informations, prix et liens d'achat (papier et ebook), lecture gratuite du texte intégral quand il est libre de droits. Sur la fiche d'un écrivain : sa bibliographie, avec la même structure et le même rendu que la filmographie d'un acteur. Une catégorie « Livres » dans le filtre de la Collection réunit toutes ces œuvres.
 
 ## Décisions de l'utilisateur
 
@@ -80,9 +80,10 @@ type ShopLink = { shop: string; url: string; price?: PriceLine; kind: 'paper' | 
 
 ## Fiche écrivain
 
-- Une carte « Personne » dont l'occupation est écrivain / poète / romancier / dramaturge / scénariste de bande dessinée reçoit une section « Livres » (glyphe livre, nombre d'œuvres).
-- Œuvres : Wikidata `P50`, `sitelinks >= 8`, tri décroissant (notoriété), repli à `>= 3` si moins de 6 œuvres ; une seule requête par auteur, mémorisée 7 jours.
-- Grille de couvertures (4 colonnes bureau, 3 mobile), onglets de nature (Tout, Romans, Théâtre, Essais, Poésie…) construits d'après les natures présentes ; ★ « dans ma collection » quand la carte du livre existe ; toucher une œuvre ouvre sa fiche (ou la carte si elle existe).
+- Une carte « Personne » dont l'occupation est écrivain / poète / romancier / dramaturge / scénariste de bande dessinée reçoit une section « Bibliographie » ; **même structure et même rendu graphique que la filmographie** de `ScreenSection.tsx` (`FilmographyItem` → `BookshelfItem`).
+- Liste verticale compacte : en-tête (glyphe livre, « Bibliographie », `· N`), puis une ligne par œuvre de 44 px minimum, séparée par un trait : petite couverture 26×38, titre (une ligne, ellipse), année, et à droite ★ + note (Open Library, sur 5, omise si absente). Liste défilante (`maxHeight: min(180px, 28vh)`), « Aucun livre connu. » si vide. Pas de grille, pas d'onglets.
+- Œuvres : Wikidata `P50` avec `sitelinks >= 8` (repli à `>= 3` si moins de 6 œuvres) pour choisir les plus connues ; maximum 40, **affichées du plus récent au plus ancien**, sans doublon (éditions regroupées) ; une seule requête par auteur, mémorisée 7 jours.
+- Un appui sur une ligne ouvre, dans la section, la fiche du livre (même contenu que `BookSection` : synopsis, prix, vendeurs, lecture) avec une flèche ← « Retour à la bibliographie » et le titre + année ; la liste est masquée (non retirée), donc son défilement est conservé au retour. Pas de navigation vers une autre carte.
 
 ## Image de la carte
 
@@ -109,7 +110,7 @@ Calquée sur les jeux vidéo (`src/core/game/`, `src/content/GameSection.tsx`).
 
 `src/content/`
 - `book-service.ts` : `view(slug, title)` suivant l'ordre de résolution ; `TtlCache` (détail 7 jours, prix 7 jours, bibliographie 7 jours).
-- `BookSection.tsx` : en-tête (glyphe `book` + ⇄), faits, synopsis, prix, vendeurs, lecture ; `WriterSection.tsx` : grille de couvertures.
+- `BookSection.tsx` : en-tête (glyphe `book` + ⇄), faits, synopsis, prix, vendeurs, lecture ; `WriterSection.tsx` : bibliographie en liste (calquée sur la filmographie de `ScreenSection.tsx`), avec ouverture d'un livre dans la section et retour ←. Le détail d'un livre est un composant partagé par les deux.
 - `BookChoiceDialog.tsx` : « Changer de livre » (recherche Open Library + Google Books, lien collé, aperçu, « Aucun livre », retour au choix automatique) sur le modèle de `GameChoiceDialog`.
 - `Glyphs.tsx` : nouveau glyphe `book` ; `mount.tsx`, `book-registry.ts`, `decorateBook`.
 
@@ -134,7 +135,7 @@ Maquette de référence. Section « Livre » : titre + glyphe ⇄ ; auteur (lien
 - `core` : réponses réelles enregistrées (fixtures) pour Open Library (*L'Étranger*), Wikidata (œuvres de Camus / Hugo), Wikisource, Google Books (ebook en vente, non en vente, bruit), page Amazon ; erreurs (429, 403, format inattendu).
 - `book-service` avec API simulées : résolution P648 prioritaire, repli par titre + auteur strict (rejet des homonymes), cache, absence de clé Google, prix de référence, lecture gratuite vs protégé (calcul de la date).
 - `media-art` : couverture prioritaire, réglage Inactif, `ART_VERSION`.
-- Composants : rendu de la section (avec / sans prix, avec / sans lecture libre), grille de bibliographie, glyphe ⇄ et fenêtre de choix.
+- Composants : rendu de la section (avec / sans prix, avec / sans lecture libre), liste de bibliographie (ouverture d'un livre, retour ←), glyphe ⇄ et fenêtre de choix.
 - Filtre : natures « Livre » regroupées.
 - Vérification manuelle : recharger l'extension, ouvrir *L'Étranger*, *Les Fleurs du mal*, un écrivain ; Android (APK à la demande) ; `npm run build` à chaque étape.
 - Guide : fiche WikiHow (`entries.ts`) dans la même PR.
