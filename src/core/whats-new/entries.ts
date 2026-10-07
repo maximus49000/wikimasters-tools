@@ -419,7 +419,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'livres-v2',
+    id: 'livres-v3',
     theme: 'fiche',
     glyph: '📖',
     title: 'Livres',
@@ -432,10 +432,22 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'D’où viennent les données', text: 'Wikidata pour reconnaître qu’une carte est un livre et retrouver son identifiant Open Library ; Open Library pour l’auteur, l’édition et la couverture ; l’introduction de l’article Wikipédia pour le synopsis (à défaut, la description d’Open Library).' },
           { label: 'Comment s’en servir', text: 'Faites défiler le synopsis dans son cadre ; « Lire l’article complet » ouvre Wikipédia. « Fiche Open Library » ouvre la page de l’œuvre. Un petit livre ouvert marque, dans les listes, les cartes de livres.' },
-          { label: 'À savoir', text: 'Quand Wikidata ne donne pas l’identifiant, le livre est cherché par son titre exact : un homonyme peut se glisser, et la couverture automatique n’est alors pas posée. Prix, achat et lecture gratuite arriveront dans une prochaine version.' },
+          { label: 'À savoir', text: 'Quand Wikidata ne donne pas l’identifiant, le livre est cherché par son titre exact : un homonyme peut se glisser, et la couverture automatique n’est alors pas posée. Prix et achat sont décrits à l’étape suivante ; la lecture gratuite arrivera dans une prochaine version.' },
         ],
         scene: { card: 'book' },
         glyph: '📖',
+      },
+      {
+        target: '[data-wmt-book-prices]',
+        title: 'Prix et achat',
+        text: 'Sous le synopsis, « Prix en France » montre le prix du livre neuf (papier) et une ligne par vendeur : Amazon.fr, Fnac, Decitre, une librairie indépendante, et l’ebook sur Google Play Livres. Chaque ligne ouvre la page du livre chez le vendeur.',
+        details: [
+          { label: 'D’où viennent les données', text: 'Le prix papier est lu sur la page du livre d’Amazon.fr quand c’est possible (extension seulement) ; l’ebook vient de Google Books. Les liens se construisent avec l’ISBN du livre, ou avec son titre et son auteur à défaut.' },
+          { label: 'Comment s’en servir', text: 'Touchez une ligne pour ouvrir le vendeur. Un prix affiché est celui lu le jour indiqué en bas ; « voir le prix » ou « chercher » signifie que le prix n’a pas pu être lu et que le bouton mène à la page du livre.' },
+          { label: 'À savoir', text: 'En France, le prix du livre neuf est le même chez tous les vendeurs (remise de 5 % au plus) : un seul prix de référence suffit. Les prix lus sont gardés 7 jours. Fnac et Decitre ne se laissent pas lire : liens seulement. Sur l’application Android, seuls les liens et l’ebook sont proposés.' },
+        ],
+        scene: { card: 'book' },
+        glyph: '💶',
       },
       {
         target: '[data-wmt-book-switch]',

@@ -97,6 +97,19 @@ describe('handleSpotifyMessage — Jeux vidéo', () => {
   });
 });
 
+describe('handleSpotifyMessage — Livres', () => {
+  it('relaie Amazon.fr (pages produit) et Google Books (API v1), et refuse le reste de ces hôtes', async () => {
+    const d = deps();
+    for (const url of ['https://www.amazon.fr/dp/2070360024', 'https://www.googleapis.com/books/v1/volumes?q=x&key=k']) {
+      expect(await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url }, d)).toMatchObject({ ok: true });
+    }
+    for (const url of ['https://www.amazon.fr/gp/css/homepage.html', 'https://www.amazon.fr.evil.example/dp/2070360024', 'https://www.googleapis.com/drive/v3/files', 'https://evil.example/https://www.amazon.fr/dp/1']) {
+      expect(await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url }, d)).toEqual({ ok: false, error: 'adresse refusée' });
+    }
+    expect(d.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('handleSpotifyMessage — Tidal', () => {
   it("lance l'autorisation vers login.tidal.com seulement", async () => {
     const d = deps();
