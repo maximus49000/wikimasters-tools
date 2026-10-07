@@ -32,7 +32,7 @@ import { decorate } from '../content/decorate';
 import { decorateAuctionLink } from '../content/auction-link';
 import { showAuctionsEndingSoon, takePendingAuctionSearch } from '../content/auction-search';
 import { decorateMarketLinks } from '../content/market-link';
-import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
+import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MARKET_WRITE_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
 import { createMineApplier } from '../core/collection/mine-apply';
 import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, closeOpenWindows, openWhatsNew, openWikiHow, openExtensionSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
@@ -178,8 +178,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   // on relit « mes enchères » nous-mêmes à l'ouverture et au retour dans l'application (au plus une fois par minute).
   const MINE_REFRESH_MS = 60_000;
   let mineReadAt = 0;
-  const refreshMine = (): void => {
-    if (Date.now() - mineReadAt < MINE_REFRESH_MS) return;
+  const refreshMine = (immediate = false): void => {
+    if (!immediate && Date.now() - mineReadAt < MINE_REFRESH_MS) return;
     mineReadAt = Date.now();
     api
       .getMineRaw()
@@ -193,6 +193,12 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     if (document.visibilityState === 'visible') refreshMine();
   });
   refreshMine();
+  // Mise en vente (ou autre écriture sur le marché) : la carte quitte la Collection tout de suite, sans attendre un retour dans l'application.
+  window.addEventListener('message', (event) => {
+    const data = event.data as { type?: unknown } | null;
+    if (event.source !== window || data?.type !== MARKET_WRITE_MESSAGE) return;
+    refreshMine(true);
+  });
   // Un échange conclu : on ne sait pas encore quelles cartes ont bougé, le parcours complet (en fond) le dira.
   window.addEventListener('message', (event) => {
     const data = event.data as { type?: unknown } | null;

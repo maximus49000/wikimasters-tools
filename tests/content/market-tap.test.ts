@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../../src/content/market-messages';
+import { COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MARKET_WRITE_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../../src/content/market-messages';
 import { asOwnRequest, installMarketTap, type TapWindow } from '../../src/content/market-tap';
 
 function json(body: unknown, init?: ResponseInit): Response {
@@ -125,5 +125,13 @@ describe('cartes obtenues', () => {
     await win.fetch('/api/trades/abc/accept', { method: 'POST' });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(posted).toEqual([{ type: MOVEMENT_MESSAGE }]);
+  });
+
+  it('signale une écriture sur le marché (mise en vente), pas une lecture', async () => {
+    const { win, posted } = setup(() => json({ ok: true }));
+    await win.fetch('/api/marketplace?page=1&limit=1&mine=1');
+    await win.fetch('/api/marketplace', { method: 'POST' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(posted.filter((m) => (m as { type: string }).type === MARKET_WRITE_MESSAGE)).toEqual([{ type: MARKET_WRITE_MESSAGE }]);
   });
 });

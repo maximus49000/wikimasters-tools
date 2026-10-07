@@ -1,4 +1,4 @@
-import { CARDS_MESSAGE, COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from './market-messages';
+import { CARDS_MESSAGE, COLLECTION_FILTER_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MARKET_WRITE_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from './market-messages';
 
 export type TapWindow = {
   location: { href: string; origin: string };
@@ -95,6 +95,7 @@ export function installMarketTap(win: TapWindow): void {
       const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
       if (method === 'GET' || method === 'HEAD') return;
       const path = new URL(requestUrl(input), win.location.href).pathname;
+      if (path === MARKETPLACE_PATH || path.startsWith(`${MARKETPLACE_PATH}/`)) win.postMessage({ type: MARKET_WRITE_MESSAGE }, win.location.origin);
       if (MOVEMENT_PATH.test(path)) win.postMessage({ type: MOVEMENT_MESSAGE }, win.location.origin);
       if (!OBTAIN_PATH.test(path)) return;
       win.postMessage({ type: CARDS_MESSAGE, payload: await response.clone().json() }, win.location.origin);

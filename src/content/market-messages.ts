@@ -9,3 +9,5 @@ export const CARDS_MESSAGE = 'wmt:cards';
 export const MINE_MESSAGE = 'wmt:mine';
 // Une action d'échange ou de vente réussie (écriture vers /api/trades…) : la Collection va changer.
 export const MOVEMENT_MESSAGE = 'wmt:movement';
+// Une écriture réussie vers /api/marketplace (mise en vente, mise, retrait) : « mes enchères » a changé, à relire tout de suite.
+export const MARKET_WRITE_MESSAGE = 'wmt:market-write';
