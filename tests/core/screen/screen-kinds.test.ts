@@ -7,6 +7,8 @@ describe('screenKindOf', () => {
   it('reconnaît un film et une série', () => {
     expect(screenKindOf(kinds(['Q11424']))).toBe('film');
     expect(screenKindOf(kinds(['Q24862']))).toBe('film');
+    expect(screenKindOf(kinds(['Q20650540']))).toBe('film');
+    expect(screenKindOf(kinds(['Q29168811']))).toBe('film');
     expect(screenKindOf(kinds(['Q5398426']))).toBe('series');
   });
 

@@ -13,6 +13,8 @@ describe('musicKindOf', () => {
 
   it('reconnaît un groupe, et une personne musicienne ou chanteuse', () => {
     expect(musicKindOf(kinds(['Q215380']))).toBe('artist');
+    expect(musicKindOf(kinds(['Q9212979', 'Q109288825']))).toBe('artist');
+    expect(musicKindOf(kinds(['Q5741069']))).toBe('artist');
     expect(musicKindOf(kinds(['Q5'], ['Q177220']))).toBe('artist');
     expect(musicKindOf(kinds(['Q5'], ['Q33999', 'Q639669']))).toBe('artist');
   });

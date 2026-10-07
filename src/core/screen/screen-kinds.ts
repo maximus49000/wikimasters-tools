@@ -2,8 +2,8 @@ import type { CardKinds } from '../kinds/wikidata-kinds';
 
 export type ScreenKind = 'film' | 'series' | 'person';
 
-// Natures Wikidata : film, court métrage, film d'animation, téléfilm ; série télévisée, série d'animation, mini-série.
-const FILM = new Set(['Q11424', 'Q24862', 'Q202866', 'Q506240']);
+// Natures Wikidata : film, court métrage, film d'animation, film d'animation japonais, long métrage, film muet, documentaire, téléfilm ; série télévisée, série d'animation, mini-série.
+const FILM = new Set(['Q11424', 'Q24862', 'Q202866', 'Q506240', 'Q20650540', 'Q29168811', 'Q24869', 'Q226730', 'Q93204']);
 const SERIES = new Set(['Q5398426', 'Q581714', 'Q1259759']);
 const HUMAN = 'Q5';
 // Métiers : acteur, acteur de cinéma, de télévision, de voix-off ; réalisateur de cinéma, de télévision.
