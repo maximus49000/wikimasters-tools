@@ -12,3 +12,6 @@ android/local.properties
 android/app/src/main/assets
 
 .env.local
+
+# Liste personnelle des cartes de réglage du documentaire
+scripts/documentary-cards.txt
