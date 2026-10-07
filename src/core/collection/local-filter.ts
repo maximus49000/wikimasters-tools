@@ -16,7 +16,7 @@ export function filterLocally(cards: KnownCard[], filter: string): Set<string> |
   if (tagId && !cards.some((card) => card.tags?.some((tag) => tag.id === tagId))) return null;
   return new Set(
     cards
-      .filter((card) => (rarities.length === 0 || rarities.includes(card.rarity)) && (!tagId || card.tags?.some((tag) => tag.id === tagId)))
+      .filter((card) => (rarities.length === 0 || (card.rarity !== undefined && rarities.includes(card.rarity))) && (!tagId || card.tags?.some((tag) => tag.id === tagId)))
       .map((card) => card.slug),
   );
 }
