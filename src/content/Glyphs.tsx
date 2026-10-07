@@ -132,6 +132,13 @@ const PATHS = {
       <circle cx="18" cy="13.5" r="1" />
     </>
   ),
+  book: (
+    <>
+      <path d="M12 7c-1.7-1.3-4-2-7-2v13c3 0 5.3.7 7 2" />
+      <path d="M12 7c1.7-1.3 4-2 7-2v13c-3 0-5.3.7-7 2" />
+      <line x1="12" y1="7" x2="12" y2="20" />
+    </>
+  ),
 } as const;
 
 export type GlyphName = keyof typeof PATHS;

@@ -17,6 +17,7 @@ import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { KindFilterSource } from './kind-filter';
 import { useKindState } from './useKindState';
 import { useMusicSlugs } from './useMusicSlugs';
+import { useBookSlugs } from './useBookSlugs';
 import { useGameSlugs } from './useGameSlugs';
 import { useScreenSlugs } from './useScreenSlugs';
 import { useNowPlayingSlugs } from './useNowPlayingSlugs';
@@ -259,6 +260,7 @@ export function WorldPanel({ collection, geo, kinds, kindFilterSource, scanner, 
   const pickedMusic = useMusicSlugs(pickedCards);
   const pickedScreen = useScreenSlugs(pickedCards);
   const pickedGame = useGameSlugs(pickedCards);
+  const pickedBook = useBookSlugs(pickedCards);
   const pickedPreview = useMemo(
     () =>
       pickedCard
@@ -270,9 +272,10 @@ export function WorldPanel({ collection, geo, kinds, kindFilterSource, scanner, 
             pickedMusic.has(pickedCard.slug),
             pickedScreen.has(pickedCard.slug),
             pickedGame.has(pickedCard.slug),
+            pickedBook.has(pickedCard.slug),
           )
         : null,
-    [pickedCard, book, marketNow, nowPlaying, pickedMusic, pickedScreen, pickedGame],
+    [pickedCard, book, marketNow, nowPlaying, pickedMusic, pickedScreen, pickedGame, pickedBook],
   );
   // Toutes les cartes affichées (filtre compris) ont leurs prix relevés, sans parcourir les pages à la main.
   const shown = useMemo(() => (visible ? cards.filter((card) => visible.has(card.slug)) : cards), [cards, visible]);

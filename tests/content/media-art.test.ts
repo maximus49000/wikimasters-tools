@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMediaArt } from '../../src/content/media-art';
 
-const setup = (natures: string[], overrides: { game?: boolean; gameCovers?: string[] | null; linked?: boolean; spotify?: boolean; tmdb?: boolean; slow?: () => Promise<null>; unknownKinds?: boolean; unknownMusic?: boolean } = {}) => {
+const setup = (natures: string[], overrides: { book?: boolean; bookCovers?: string[] | null; game?: boolean; gameCovers?: string[] | null; linked?: boolean; spotify?: boolean; tmdb?: boolean; slow?: () => Promise<null>; unknownKinds?: boolean; unknownMusic?: boolean } = {}) => {
   const findCover = vi.fn(overrides.slow ?? (async () => 'https://i.scdn.co/cover'));
   const findArtistImage = vi.fn(overrides.slow ?? (async () => 'https://i.scdn.co/artist'));
   const closestPosterUrl = vi.fn(async () => 'https://image.tmdb.org/closest');
@@ -9,14 +9,16 @@ const setup = (natures: string[], overrides: { game?: boolean; gameCovers?: stri
   // `unknownKinds` : Wikidata n'a pas (encore) répondu pour cette carte.
   const kinds = { resolveMissing: vi.fn(async () => undefined), load: vi.fn(async () => ({ cards: overrides.unknownKinds ? {} : { x: { natures, occupations: [] } } })) };
   const cover = vi.fn(async () => (overrides.gameCovers === undefined ? ['https://steam.test/library.jpg'] : overrides.gameCovers));
+  const bookCover = vi.fn(async () => (overrides.bookCovers === undefined ? ['https://covers.test/livre.jpg'] : overrides.bookCovers));
   const sources = {
     ...(overrides.game ? { game: { cover } } : {}),
+    ...(overrides.book ? { book: { cover: bookCover } } : {}),
     ...(overrides.spotify === false
       ? {}
       : { spotify: { api: { findCover, findArtistImage }, session: { isLinked: async () => overrides.linked ?? true }, music: { resolve: async () => (overrides.unknownMusic ? {} : { x: { performer: 'The Beatles' } }) } } }),
     ...(overrides.tmdb === false ? {} : { tmdb: { posterUrl, closestPosterUrl } }),
   };
-  return { art: createMediaArt({ kinds: kinds as never, sources: sources as never }), cover, findCover, posterUrl, findArtistImage, closestPosterUrl };
+  return { art: createMediaArt({ kinds: kinds as never, sources: sources as never }), cover, bookCover, findCover, posterUrl, findArtistImage, closestPosterUrl };
 };
 
 describe('createMediaArt', () => {
@@ -65,6 +67,21 @@ describe('createMediaArt', () => {
     const { art, cover } = setup(['Q131436'], { game: true });
     expect(await art.primary('x', 'Catan')).toEqual([]);
     expect(cover).not.toHaveBeenCalled();
+  });
+
+  it("prend la couverture d'un livre auprès de la source de livres, `null` si elle est absente ou n'a pas répondu, liste vide pour une autre carte", async () => {
+    const { art, bookCover } = setup(['Q7725634'], { book: true, spotify: false, tmdb: false });
+    expect(await art.primary('x', 'L’Étranger')).toEqual(['https://covers.test/livre.jpg']);
+    expect(bookCover).toHaveBeenCalledWith('x', 'L’Étranger');
+    expect(await setup(['Q7725634']).art.primary('x', 'L’Étranger')).toBeNull();
+    expect(await setup(['Q8261'], { book: true, bookCovers: null }).art.primary('x', 'L’Étranger')).toBeNull();
+    expect(await setup(['Q8261'], { book: true, bookCovers: [] }).art.primary('x', 'L’Étranger')).toEqual([]);
+    const notBook = setup(['Q7889'], { book: true, game: true });
+    await notBook.art.primary('x', 'Elden Ring');
+    expect(notBook.bookCover).not.toHaveBeenCalled();
+    const film = setup(['Q11424'], { book: true });
+    await film.art.primary('x', 'Inception');
+    expect(film.bookCover).not.toHaveBeenCalled();
   });
 
   it('ne fait rien sans source (indisponible), ni pour un autre type de carte (réponse : rien à chercher)', async () => {

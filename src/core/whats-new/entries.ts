@@ -419,6 +419,26 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'livres',
+    theme: 'fiche',
+    glyph: '📖',
+    title: 'Livres',
+    summary: 'Synopsis, informations et couverture des romans, poèmes et essais',
+    steps: [
+      {
+        target: null,
+        title: 'Fiche d’un livre',
+        text: 'Sur une carte de roman, de poème, d’essai, de pièce de théâtre ou de bande dessinée, la fiche affiche l’auteur, l’année, l’éditeur, le nombre de pages, les genres et un synopsis en grand. La couverture du livre devient l’image de la carte quand elle existe.',
+        details: [
+          { label: 'D’où viennent les données', text: 'Wikidata pour reconnaître qu’une carte est un livre et retrouver son identifiant Open Library ; Open Library pour l’auteur, l’édition et la couverture ; l’introduction de l’article Wikipédia pour le synopsis (à défaut, la description d’Open Library).' },
+          { label: 'Comment s’en servir', text: 'Faites défiler le synopsis dans son cadre ; « Lire l’article complet » ouvre Wikipédia. « Fiche Open Library » ouvre la page de l’œuvre. Un petit livre ouvert marque, dans les listes, les cartes de livres.' },
+          { label: 'À savoir', text: 'Quand Wikidata ne donne pas l’identifiant, le livre est cherché par son titre exact : un homonyme peut se glisser. Prix, achat et lecture gratuite arriveront dans une prochaine version.' },
+        ],
+        glyph: '📖',
+      },
+    ],
+  },
+  {
     id: 'anomalie',
     theme: 'app',
     glyph: '⚠',

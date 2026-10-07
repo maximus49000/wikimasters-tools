@@ -27,6 +27,8 @@ export type CardPreview = {
   film?: boolean;
   // Carte « jeu vidéo » : une manette marque la carte ; absent sinon.
   game?: boolean;
+  // Carte « livre » (roman, poème, essai, théâtre, BD) : un livre ouvert marque la carte ; absent sinon.
+  book?: boolean;
 };
 
 const NO_MARKET: CardMarket = { history: null, loading: false };
@@ -45,6 +47,7 @@ export function toCardPreview(
   music = false,
   film = false,
   game = false,
+  book = false,
 ): CardPreview {
   return {
     title: card.title,
@@ -61,5 +64,6 @@ export function toCardPreview(
     ...(music ? { music: true } : {}),
     ...(film ? { film: true } : {}),
     ...(game ? { game: true } : {}),
+    ...(book ? { book: true } : {}),
   };
 }

@@ -1,4 +1,5 @@
 import type { KindsRepo } from '../core/kinds/kinds-repo';
+import { isBookCard } from '../core/book/book-kinds';
 import { isVideoGame } from '../core/game/game-kinds';
 import { cleanTitle } from '../core/music/listen';
 import { musicKindOf } from '../core/music/music-kinds';
@@ -14,6 +15,8 @@ export type MediaArtSources = {
   tmdb?: Pick<TmdbApi, 'posterUrl' | 'closestPosterUrl'>;
   // Affiches de jeux vidéo (Steam, IGDB) : même contrat que les autres sources (liste, ou `null` si pas prête).
   game?: { cover(slug: string, title: string): Promise<string[] | null> };
+  // Couvertures de livres (Open Library) : même contrat que `game`.
+  book?: { cover(slug: string, title: string): Promise<string[] | null> };
 };
 
 // Liste (éventuellement vide) : la source a répondu, la réponse est définitive. `null` : elle n'a pas pu répondre
@@ -33,7 +36,7 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
     await deps.kinds.resolveMissing([slug]);
     const cardKinds = (await deps.kinds.load()).cards[slug];
     // `known` : Wikidata a répondu pour cette carte ; sinon on ignore son type, ce n'est pas « rien à chercher ».
-    return { known: cardKinds !== undefined, music: musicKindOf(cardKinds), screen: screenKindOf(cardKinds), game: isVideoGame(cardKinds) };
+    return { known: cardKinds !== undefined, music: musicKindOf(cardKinds), screen: screenKindOf(cardKinds), game: isVideoGame(cardKinds), book: isBookCard(cardKinds) };
   }
 
   // `undefined` : Wikidata n'a pas répondu (hors ligne, limite…) ; `null` : réponse sans interprète. Chercher sans l'interprète donnerait une réponse peu fiable, qu'on mémoriserait.
@@ -55,9 +58,9 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
 
   return {
     async primary(slug, title) {
-      const { spotify, tmdb, game: gameArt } = deps.sources;
-      if (!spotify && !tmdb && !gameArt) return null;
-      const { known, music, screen, game } = await kindsOf(slug);
+      const { spotify, tmdb, game: gameArt, book: bookArt } = deps.sources;
+      if (!spotify && !tmdb && !gameArt && !bookArt) return null;
+      const { known, music, screen, game, book } = await kindsOf(slug);
       if (!known) return null;
       const query = quoted(cleanTitle(title));
       if (music === 'album' || music === 'track') {
@@ -68,6 +71,7 @@ export function createMediaArt(deps: { kinds: Pick<KindsRepo, 'resolveMissing' |
       }
       if (screen === 'film' || screen === 'series') return tmdb ? one(await tmdb.posterUrl(screen, cleanTitle(title))) : null;
       if (game) return gameArt ? gameArt.cover(slug, title) : null;
+      if (book) return bookArt ? bookArt.cover(slug, title) : null;
       return [];
     },
 

@@ -1,13 +1,15 @@
+import { isBookCard } from '../book/book-kinds';
 import { musicKindOf } from '../music/music-kinds';
 import type { CardKinds } from './wikidata-kinds';
 
-export type Category = 'music' | 'film' | 'games' | 'other';
+export type Category = 'music' | 'film' | 'games' | 'books' | 'other';
 
 // Ordre d'affichage de la liste « Catégorie ».
 export const CATEGORIES: readonly { id: Category; label: string }[] = [
   { id: 'music', label: 'Musique' },
   { id: 'film', label: 'Films / Série' },
   { id: 'games', label: 'Jeux' },
+  { id: 'books', label: 'Livres' },
   { id: 'other', label: 'Autre' },
 ];
 
@@ -20,10 +22,11 @@ const GAMES = new Set(['Q7889', 'Q131436', 'Q3244175', 'Q573573', 'Q676977', 'Q8
 
 export const isCategory = (value: unknown): value is Category => CATEGORIES.some((category) => category.id === value);
 
-// La musique l'emporte (une bande originale reste de la musique), puis le cinéma, puis les jeux ; une carte pas encore classée tombe dans « Autre ».
+// La musique l'emporte (une bande originale reste de la musique), puis le cinéma, puis les jeux, puis les livres ; une carte pas encore classée tombe dans « Autre ».
 export function categoryOf(kinds: CardKinds | undefined): Category {
   if (musicKindOf(kinds)) return 'music';
   if (kinds?.natures.some((id) => SCREEN.has(id))) return 'film';
   if (kinds?.natures.some((id) => GAMES.has(id))) return 'games';
+  if (isBookCard(kinds)) return 'books';
   return 'other';
 }

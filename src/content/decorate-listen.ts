@@ -5,12 +5,13 @@ export const LISTEN_HOST_ATTRIBUTE = 'data-wmt-listen';
 export const SCREEN_HOST_ATTRIBUTE = 'data-wmt-screen';
 export const IMAGE_HOST_ATTRIBUTE = 'data-wmt-image';
 export const GAME_HOST_ATTRIBUTE = 'data-wmt-game';
+export const BOOK_HOST_ATTRIBUTE = 'data-wmt-book';
 
 export type MountListen = (anchor: HTMLElement, slug: string, title: string) => void;
 
 const HEADING_SELECTOR = 'h1,h2,h3,h4,h5,h6,[role="heading"]';
 // Sections de l'extension posées les unes sous les autres, juste sous le bloc d'étiquettes.
-const NATIVE_HOSTS = [LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, IMAGE_HOST_ATTRIBUTE, GAME_HOST_ATTRIBUTE];
+const NATIVE_HOSTS = [LISTEN_HOST_ATTRIBUTE, SCREEN_HOST_ATTRIBUTE, IMAGE_HOST_ATTRIBUTE, GAME_HOST_ATTRIBUTE, BOOK_HOST_ATTRIBUTE];
 
 function normalize(text: string | null): string {
   return (text ?? '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -75,3 +76,6 @@ export const decorateImage = (root: ParentNode, mount: MountListen): number => d
 
 // Section « jeu vidéo » (Steam / IGDB) : après les autres sections de l'extension, comme film / série.
 export const decorateGame = (root: ParentNode, mount: MountListen): number => decorateNative(root, GAME_HOST_ATTRIBUTE, true, mount);
+
+// Section « livre » (Open Library) : après les autres sections de l'extension, comme film / série et jeu vidéo.
+export const decorateBook = (root: ParentNode, mount: MountListen): number => decorateNative(root, BOOK_HOST_ATTRIBUTE, true, mount);
