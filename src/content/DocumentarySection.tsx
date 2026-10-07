@@ -1,6 +1,7 @@
 // src/content/DocumentarySection.tsx
 import { useEffect, useState, type CSSProperties } from 'react';
 import { formatDuration, searchLinks } from '../core/documentary/format';
+import { isPossible, shownList } from './documentary-list';
 import { getDocumentaryService } from './documentary-registry';
 import type { DocView } from './documentary-service';
 import { DocumentaryPlayer } from './DocumentaryPlayer';
@@ -20,6 +21,8 @@ export function DocumentarySection({ slug, title }: Props) {
   const [view, setView] = useState<DocView | null>(null);
   const [version, setVersion] = useState(0);
   const [index, setIndex] = useState(0);
+  // Lien ≡▶ ouvert : les vidéos de pertinence moins sûre rejoignent le lecteur.
+  const [showPossible, setShowPossible] = useState(false);
   const [proposing, setProposing] = useState(false);
 
   useEffect(() => {
@@ -32,6 +35,7 @@ export function DocumentarySection({ slug, title }: Props) {
         if (cancelled) return;
         setView(next);
         setIndex(0);
+        setShowPossible(false);
       });
     return () => {
       cancelled = true;
@@ -39,7 +43,11 @@ export function DocumentarySection({ slug, title }: Props) {
   }, [service, slug, title, version]);
 
   if (!service || !view || view.status === 'none') return null;
-  const current = view.status === 'detail' ? view.candidates[index % view.candidates.length] : undefined;
+  const good = view.status === 'detail' ? view.candidates : [];
+  const possible = view.status === 'detail' || view.status === 'empty' ? view.possible : [];
+  const list = shownList(good, possible, showPossible);
+  const current = list.length > 0 ? list[index % list.length] : undefined;
+  const uncertain = current !== undefined && isPossible(current, good, possible);
   const subject = view.status === 'detail' || view.status === 'empty' ? view.subject : null;
   const name = subject?.names[0] ?? title;
 
@@ -47,10 +55,26 @@ export function DocumentarySection({ slug, title }: Props) {
     <div data-wmt-documentary-card="" style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600 }}>
         <Glyph name="film" size={16} />
-        <span style={{ flex: 1, minWidth: 0 }}>Documentaire</span>
-        {view.status === 'detail' && view.candidates.length > 1 && (
+        <span style={{ flex: 1, minWidth: 0 }}>Documentaire{showPossible && list.length > 1 ? ` · ${(index % list.length) + 1} / ${list.length}` : ''}</span>
+        {list.length > 1 && (
           <button type="button" onClick={() => setIndex((value) => value + 1)} aria-label="Autre documentaire" title="Autre documentaire" style={iconButton}>
             <Glyph name="swap" />
+          </button>
+        )}
+        {possible.length > 0 && (
+          <button
+            type="button"
+            data-wmt-documentary-possible=""
+            onClick={() => {
+              setShowPossible((value) => !value);
+              setIndex(0);
+            }}
+            aria-label={showPossible ? 'Masquer les vidéos possibles' : 'Voir les autres vidéos possibles (pertinence moins sûre)'}
+            title={showPossible ? 'Masquer les vidéos possibles' : 'Voir les autres vidéos possibles (pertinence moins sûre)'}
+            style={{ ...iconButton, position: 'relative', ...(showPossible ? { borderColor: 'var(--color-accent, #e0b04a)' } : {}) }}
+          >
+            <Glyph name="playlist" />
+            <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9, background: 'var(--color-accent, #e0b04a)', color: '#0d1117', font: '700 11px/18px system-ui, sans-serif', textAlign: 'center' }}>{possible.length}</span>
           </button>
         )}
         {subject && (
@@ -64,13 +88,17 @@ export function DocumentarySection({ slug, title }: Props) {
 
       {current && subject && (
         <>
-          <DocumentaryPlayer key={current.id} candidate={current} />
+          <div style={{ position: 'relative' }}>
+            <DocumentaryPlayer key={current.id} candidate={current} />
+            {uncertain && <span style={{ position: 'absolute', left: 8, top: 8, padding: '2px 7px', borderRadius: 4, background: 'rgba(224,176,74,0.92)', color: '#0d1117', font: '700 11px system-ui, sans-serif' }}>Pertinence moins sûre</span>}
+          </div>
           <div style={{ fontSize: 13 }}>
             <div style={{ fontWeight: 600 }}>{current.title}</div>
             <div style={{ opacity: 0.7 }}>
               {[current.channel, formatDuration(current.durationSec), current.license, current.source === 'commons' ? 'Wikimedia Commons' : current.source === 'proposal' ? 'Votre proposition (en attente de relecture)' : 'YouTube'].filter((part) => part).join(' · ')}
             </div>
           </div>
+          {uncertain && <div style={{ fontSize: 12, color: '#e0b04a' }}>⚠ Cette vidéo peut ne pas traiter exactement ce sujet.</div>}
           <button
             type="button"
             onClick={() => void service.flag(slug, subject, title, current).then(() => setVersion((value) => value + 1))}
@@ -83,10 +111,10 @@ export function DocumentarySection({ slug, title }: Props) {
         </>
       )}
 
-      {view.status === 'empty' && (
+      {view.status === 'empty' && !current && (
         <>
           <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>
-            {view.busy ? 'Recherche indisponible pour le moment, réessayez plus tard.' : 'Aucun documentaire assez pertinent trouvé.'} Chercher « {name} » :
+            {view.busy ? 'Recherche indisponible pour le moment, réessayez plus tard.' : 'Aucun documentaire assez pertinent trouvé.'}{possible.length > 0 ? ` ${possible.length} vidéo${possible.length > 1 ? 's' : ''} possible${possible.length > 1 ? 's' : ''} derrière le lien ci-dessus, ou chercher` : ' Chercher'} « {name} » :
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {searchLinks(name).map((link) => (

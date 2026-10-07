@@ -13,9 +13,10 @@ import { screenKindOf } from '../core/screen/screen-kinds';
 
 export type DocView =
   | { status: 'none' }
-  | { status: 'detail'; subject: DocSubject; candidates: DocCandidate[] }
+  // `possible` : vidéos de pertinence moins sûre, montrées seulement derrière un lien.
+  | { status: 'detail'; subject: DocSubject; candidates: DocCandidate[]; possible: DocCandidate[] }
   // `busy` : le relais n'a pas pu chercher (plafond du jour, panne) ; on redemandera plus tard.
-  | { status: 'empty'; subject: DocSubject; busy: boolean }
+  | { status: 'empty'; subject: DocSubject; busy: boolean; possible: DocCandidate[] }
   | { status: 'error'; message: string };
 
 export type DocumentaryServiceDeps = {
@@ -39,20 +40,20 @@ export function createDocumentaryService(deps: DocumentaryServiceDeps) {
   // Un « jamais cherché » ne doit pas être confondu avec une panne : seule une réponse est mémorisée (le cache ne garde pas les exceptions).
   const cached = <T>(key: string, loader: () => Promise<T>): Promise<T> => cache.getOrLoad(key, loader);
 
-  async function find(slug: string, subject: DocSubject): Promise<{ candidates: DocCandidate[]; busy: boolean }> {
+  async function find(slug: string, subject: DocSubject): Promise<{ candidates: DocCandidate[]; possible: DocCandidate[]; busy: boolean }> {
     const curated = [...(await repo.proposals(slug)), ...(await cached(`doc-selection-v1-${subject.qid}`, () => selection.forQid(subject.qid)).catch(() => []))];
-    if (curated.length > 0) return { candidates: curated, busy: false };
+    if (curated.length > 0) return { candidates: curated, possible: [], busy: false };
     const archives = await cached(`doc-commons-v1-${subject.qid}`, () => commons.search(subject.names, subject)).catch((): DocCandidate[] => []);
-    if (archives.length > 0) return { candidates: archives, busy: false };
+    if (archives.length > 0) return { candidates: archives, possible: [], busy: false };
     try {
-      const found = await cached(`doc-relay-v1-${subject.qid}`, async () => {
+      const found = await cached(`doc-relay-v2-${subject.qid}`, async () => {
         const result = await relay.search(subject);
         if (result.status === 'busy') throw new Error('relais occupé');
-        return result.candidates;
+        return { candidates: result.candidates, possible: result.possible };
       });
-      return { candidates: found, busy: false };
+      return { ...found, busy: false };
     } catch {
-      return { candidates: [], busy: true };
+      return { candidates: [], possible: [], busy: true };
     }
   }
 
@@ -75,9 +76,10 @@ export function createDocumentaryService(deps: DocumentaryServiceDeps) {
         if (!kind) return { status: 'none' };
         const subject: DocSubject = { qid: info.qid, kind, names: info.names, startYear: kind === 'person' ? info.birth : info.start, endYear: kind === 'person' ? info.death : info.end };
         const hidden = new Set(await repo.flagged(slug));
-        const { candidates, busy } = await find(slug, subject);
+        const { candidates, possible, busy } = await find(slug, subject);
         const shown = candidates.filter((candidate) => !hidden.has(candidate.id));
-        return shown.length > 0 ? { status: 'detail', subject, candidates: shown } : { status: 'empty', subject, busy };
+        const others = possible.filter((candidate) => !hidden.has(candidate.id));
+        return shown.length > 0 ? { status: 'detail', subject, candidates: shown, possible: others } : { status: 'empty', subject, busy, possible: others };
       } catch {
         return { status: 'error', message: 'Le documentaire est indisponible pour le moment.' };
       }
