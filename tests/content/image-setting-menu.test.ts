@@ -26,6 +26,21 @@ describe('decorateImageSetting', () => {
     expect(open).toHaveBeenCalledTimes(1);
     expect(click.defaultPrevented).toBe(true);
   });
+  it('suit la surbrillance de « Paramètres » quand le site la change', async () => {
+    decorateImageSetting(document, () => undefined);
+    const link = document.querySelector('a[href="/settings"]') as HTMLElement;
+    const entry = document.querySelector(`[${IMAGE_SETTING_ATTRIBUTE}]`) as HTMLElement;
+    link.className = 'row active';
+    link.setAttribute('aria-current', 'page');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(entry.className).toBe('row active');
+    expect(entry.getAttribute('aria-current')).toBe('page');
+    link.className = 'row';
+    link.removeAttribute('aria-current');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(entry.className).toBe('row');
+    expect(entry.hasAttribute('aria-current')).toBe(false);
+  });
   it('ne fait rien sans lien « Paramètres »', () => {
     document.body.innerHTML = '<div></div>';
     expect(decorateImageSetting(document, () => undefined)).toBe(0);
