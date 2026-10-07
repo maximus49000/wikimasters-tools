@@ -25,10 +25,21 @@ const etranger: BookDetail = {
   pageUrl: 'https://openlibrary.org/works/OL1230613W',
 };
 
-async function show(view: BookView) {
-  setBookService({ view: vi.fn(async () => view) } as unknown as BookService);
+const dialogService = () => ({
+  candidates: vi.fn(async () => ({ works: [] })),
+  preview: vi.fn(async () => ({})),
+  choose: vi.fn(async () => undefined),
+  chooseNone: vi.fn(async () => undefined),
+  reset: vi.fn(async () => undefined),
+});
+
+async function show(view: BookView, extra: Record<string, unknown> = {}) {
+  const service = { view: vi.fn(async () => view), ...dialogService(), ...extra };
+  setBookService(service as unknown as BookService);
   await act(async () => root.render(<BookSection slug="L'Étranger" title="L'Étranger" />));
+  return service;
 }
+const dialog = (): ParentNode => Array.from(document.body.children).find((child) => child.shadowRoot)?.shadowRoot ?? document.createDocumentFragment();
 
 beforeEach(() => {
   container = document.createElement('div');
@@ -88,5 +99,37 @@ describe('BookSection', () => {
   it('l’hôte de la section porte l’attribut utilisé par la visite guidée', async () => {
     await show({ status: 'detail', detail: etranger });
     expect(container.querySelector('[data-wmt-book-card]')).not.toBeNull();
+  });
+});
+
+describe('BookSection — changer de livre', () => {
+  it('le glyphe ⇄ est dans l’en-tête, pour un livre, une fiche vide et une erreur, mais pas pour une carte qui n’est pas un livre', async () => {
+    for (const view of [{ status: 'detail', detail: etranger }, { status: 'empty' }, { status: 'error', message: 'x' }] as BookView[]) {
+      await show(view);
+      const button = container.querySelector<HTMLButtonElement>('[aria-label="Changer de livre"]');
+      expect(button, view.status).not.toBeNull();
+      expect(button?.hasAttribute('data-wmt-book-switch')).toBe(true);
+    }
+    await show({ status: 'none' });
+    expect(container.querySelector('[aria-label="Changer de livre"]')).toBeNull();
+  });
+
+  it('le bouton ouvre la fenêtre ; un changement recharge la fiche', async () => {
+    const service = await show({ status: 'detail', detail: etranger });
+    expect(service.view).toHaveBeenCalledTimes(1);
+    await act(async () => container.querySelector<HTMLElement>('[aria-label="Changer de livre"]')!.click());
+    const open = dialog().querySelector('[role="dialog"][aria-label="Changer de livre"]');
+    expect(open).not.toBeNull();
+    await act(async () => dialog().querySelector<HTMLElement>('[aria-label="Aucun livre"]')!.click());
+    expect(service.chooseNone).toHaveBeenCalledWith("L'Étranger");
+    expect(service.view).toHaveBeenCalledTimes(2);
+    expect(dialog().querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('« aucun livre » se lit autrement qu’un livre introuvable', async () => {
+    await show({ status: 'empty', none: true });
+    expect(container.textContent).toContain('Aucun livre pour cette carte.');
+    await show({ status: 'empty' });
+    expect(container.textContent).toContain('Aucune fiche trouvée pour ce livre.');
   });
 });
