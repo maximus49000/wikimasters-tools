@@ -79,6 +79,11 @@ describe('WorkList', () => {
     expect(rows()).toHaveLength(3);
   });
 
+  it('l’interrupteur respecte la cible tactile de 44 px', async () => {
+    await show();
+    expect(toggle()?.style.minHeight).toBe('44px');
+  });
+
   it('une liste vide affiche le texte prévu', async () => {
     await show([]);
     expect(container.textContent).toContain('Aucun titre connu.');

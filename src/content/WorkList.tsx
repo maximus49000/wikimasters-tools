@@ -58,7 +58,7 @@ export function WorkList({ glyph, label, items, emptyText, hidden = false, onOpe
           type="button"
           aria-pressed={filtering}
           onClick={() => setMineOnly((value) => !value)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, margin: '6px 0', padding: '0 12px', cursor: 'pointer', color: filtering ? GOLD : 'inherit', background: filtering ? 'rgba(250,204,21,0.14)' : 'none', border: `1px solid ${filtering ? GOLD : 'var(--color-border, rgba(148,163,184,0.5))'}`, borderRadius: 999, font: '600 12px system-ui, sans-serif' }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 44, margin: '6px 0', padding: '0 12px', cursor: 'pointer', color: filtering ? GOLD : 'inherit', background: filtering ? 'rgba(250,204,21,0.14)' : 'none', border: `1px solid ${filtering ? GOLD : 'var(--color-border, rgba(148,163,184,0.5))'}`, borderRadius: 999, font: '600 12px system-ui, sans-serif' }}
         >
           <Glyph name="card" size={15} /> Seulement ma collection
         </button>
