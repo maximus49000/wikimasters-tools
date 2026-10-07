@@ -1,8 +1,11 @@
 import { defineConfig } from 'wxt';
+import { recentFixes } from './scripts/build-info.mjs';
 
 export default defineConfig({
   srcDir: 'src',
   modules: ['@wxt-dev/module-react'],
+  // Les corrections récentes (commits `fix:`) alimentent la fenêtre « Quoi de neuf ».
+  vite: () => ({ define: { __WMT_FIXES__: JSON.stringify(recentFixes(process.cwd())) } }),
   manifest: ({ browser }) => ({
     name: 'Wikimasters Tools (non officiel)',
     description:

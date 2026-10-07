@@ -26,9 +26,13 @@ import { ImageSection } from './ImageSection';
 import { LINKED_HOST_ATTRIBUTE, type MountLinked } from './decorate-linked';
 import { LinkedCards, LinkedCardsWindow } from './LinkedCards';
 import { getLinkedService } from './linked-registry';
-import { ImageSettings } from './ImageSettings';
 import { PlayerSettings } from './PlayerSettings';
 import { AnomalyDialog, type AnomalyDialogProps } from './AnomalyDialog';
+import { TourOverlay } from './TourOverlay';
+import { ExtensionSettings } from './ExtensionSettings';
+import { WhatsNewDialog, type WhatsNewDialogProps } from './WhatsNewDialog';
+import { WikiHowDialog, type WikiHowDialogProps } from './WikiHowDialog';
+import type { TourStep } from '../core/whats-new/types';
 import type { PlayerSource } from './player-source';
 import type { ImageService } from '../core/images/image-service';
 import { LoadingGlyph } from './LoadingGlyph';
@@ -202,9 +206,9 @@ const linkedSections = createNativeSections(
 export const mountLinkedCards: MountLinked = linkedSections.mount;
 export const pruneLinkedCards = linkedSections.prune;
 
-const IMAGE_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-image-settings';
-const PLAYER_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-player-settings';
+const EXTENSION_SETTINGS_HOST_ATTRIBUTE = 'data-wmt-extension-settings';
 const ANOMALY_HOST_ATTRIBUTE = 'data-wmt-anomaly';
+const TOUR_HOST_ATTRIBUTE = 'data-wmt-tour-host';
 
 // Fenêtre de réglage ouverte depuis le menu « Plus » : hors du DOM du jeu (shadow DOM).
 function openSettingsWindow(hostAttribute: string, render: (close: () => void) => ReactElement): void {
@@ -235,14 +239,42 @@ function openSettingsWindow(hostAttribute: string, render: (close: () => void) =
   root.render(render(close));
 }
 
-export const openImageSettings = (images: ImageService): void =>
-  openSettingsWindow(IMAGE_SETTINGS_HOST_ATTRIBUTE, (close) => <ImageSettings images={images} onClose={close} />);
-
-export const openPlayerSettings = (source: PlayerSource): void =>
-  openSettingsWindow(PLAYER_SETTINGS_HOST_ATTRIBUTE, (close) => <PlayerSettings source={source} onClose={close} />);
+export const openExtensionSettings = (images: ImageService, player: PlayerSource | null): void =>
+  openSettingsWindow(EXTENSION_SETTINGS_HOST_ATTRIBUTE, (close) => <ExtensionSettings images={images} player={player} onClose={close} />);
 
 export const openAnomalyDialog = (props: Omit<AnomalyDialogProps, 'onClose'>): void =>
   openSettingsWindow(ANOMALY_HOST_ATTRIBUTE, (close) => <AnomalyDialog {...props} onClose={close} />);
+
+export const openTour = (steps: TourStep[]): void =>
+  openSettingsWindow(TOUR_HOST_ATTRIBUTE, (close) => <TourOverlay steps={steps} onDone={close} />);
+
+const WHATS_NEW_HOST_ATTRIBUTE = 'data-wmt-whats-new';
+const WIKIHOW_HOST_ATTRIBUTE = 'data-wmt-wikihow';
+
+// La visite remplace la fenêtre : on ferme la grille avant d'éclairer l'interface.
+export const openWhatsNew = (props: Omit<WhatsNewDialogProps, 'onTour' | 'onClose'>): void =>
+  openSettingsWindow(WHATS_NEW_HOST_ATTRIBUTE, (close) => (
+    <WhatsNewDialog
+      {...props}
+      onTour={(steps) => {
+        close();
+        openTour(steps);
+      }}
+      onClose={close}
+    />
+  ));
+
+export const openWikiHow = (props: Omit<WikiHowDialogProps, 'onTour' | 'onClose'>): void =>
+  openSettingsWindow(WIKIHOW_HOST_ATTRIBUTE, (close) => (
+    <WikiHowDialog
+      {...props}
+      onTour={(steps) => {
+        close();
+        openTour(steps);
+      }}
+      onClose={close}
+    />
+  ));
 
 const POPUP_HOST_ATTRIBUTE = 'data-wmt-market-popup';
 

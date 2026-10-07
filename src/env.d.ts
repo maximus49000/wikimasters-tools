@@ -9,3 +9,5 @@ interface ImportMetaEnv {
   readonly WXT_IGDB_CLIENT_ID?: string;
   readonly WXT_IGDB_CLIENT_SECRET?: string;
 }
+
+declare const __WMT_FIXES__: { id: string; title: string }[];
