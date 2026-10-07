@@ -1,13 +1,7 @@
-export const IMAGE_SETTING_ATTRIBUTE = 'data-wmt-image-setting';
-
-const LABEL = 'Paramètre d’image';
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const ICON_PATHS = ['M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M9 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'm21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21'];
-
-const IMAGE_ENTRY: EntrySpec = { attribute: IMAGE_SETTING_ATTRIBUTE, label: LABEL, iconPaths: ICON_PATHS };
-
 // Même ligne que « Paramètres » (menu « Plus » du mobile, barre latérale du bureau), posée juste dessous : le lien est
 // copié pour garder le style du site, puis son libellé, son icône et son action sont remplacés.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
 export type EntrySpec = { attribute: string; label: string; iconPaths: string[] };
 
 // Le site met « Paramètres » en surbrillance (classes, aria-current) quand on l'ouvre : les lignes copiées en font autant.
@@ -26,7 +20,7 @@ function mirrorHighlight(link: HTMLElement, entry: HTMLElement): void {
   sync();
 }
 
-export function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void, spec: EntrySpec = IMAGE_ENTRY): HTMLElement {
+export function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void, spec: EntrySpec): HTMLElement {
   const entry = settingsLink.cloneNode(true) as HTMLElement;
   entry.setAttribute(spec.attribute, '');
   entry.removeAttribute('href');
@@ -62,16 +56,4 @@ export function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void, 
     onOpen();
   });
   return entry;
-}
-
-// Ajoute « Paramètre d'image » sous chaque lien « Paramètres » de la page. Renvoie le nombre d'entrées posées.
-export function decorateImageSetting(root: ParentNode, onOpen: () => void): number {
-  let added = 0;
-  for (const link of root.querySelectorAll<HTMLAnchorElement>('a[href="/settings"]')) {
-    const next = link.nextElementSibling;
-    if (next?.hasAttribute(IMAGE_SETTING_ATTRIBUTE)) continue;
-    link.insertAdjacentElement('afterend', buildEntry(link, onOpen));
-    added += 1;
-  }
-  return added;
 }

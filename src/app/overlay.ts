@@ -35,7 +35,7 @@ import { decorateMarketLinks } from '../content/market-link';
 import { CARDS_MESSAGE, HELLO_MESSAGE, MARKET_MESSAGE, MINE_MESSAGE, MOVEMENT_MESSAGE } from '../content/market-messages';
 import { extractCards } from '../core/api/collection-schemas';
 import { createMineApplier } from '../core/collection/mine-apply';
-import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, openWhatsNew, openImageSettings, openPlayerSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
+import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards, mountListenSection, openAnomalyDialog, openWhatsNew, openWikiHow, openExtensionSettings, pruneImageSections, pruneLinkedCards, mountLoadingGlyph, mountPurchaseBadge, mountGameSection, mountScreenSection, pruneGameSections, pruneListenSections, pruneScreenSections, syncRefreshButton } from '../content/mount';
 import { decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { takePendingSearch } from '../content/pending-search';
 import { takePendingReopen } from '../content/return-target';
@@ -79,8 +79,8 @@ import { createImageService } from '../core/images/image-service';
 import { searchCardImages } from '../core/images/card-image-search';
 import { setImageService } from '../content/image-registry';
 import { syncCardArt } from '../content/card-art';
-import { decorateImageSetting } from '../content/image-setting-menu';
-import { decoratePlayerSetting } from '../content/player-setting-menu';
+import { decorateExtensionSetting } from '../content/extension-setting-menu';
+import { decorateWikiHowSetting } from '../content/wikihow-menu';
 import { decorateUpdateSetting } from '../content/update-setting-menu';
 import { decorateAnomalySetting } from '../content/anomaly-setting-menu';
 import { createWhatsNewRepo } from '../core/whats-new/seen';
@@ -97,6 +97,8 @@ const DEBOUNCE_MS = 300;
 // Surcouche Wikimasters : partagée par l'extension (content script) et l'application Android (WebView).
 export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): Promise<void> {
   const whatsNew = createWhatsNewRepo(store);
+  const openWikiHowFromStore = async () =>
+    openWikiHow({ entries: ENTRIES, consulted: [...(await whatsNew.consulted())], onConsult: (id) => void whatsNew.markConsulted(id) });
   const api = createGameApi({
     fetch: (input, init) => asOwnRequest(() => fetch(input, { credentials: 'same-origin', ...init })),
     minIntervalMs: 1500,
@@ -335,11 +337,11 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       try {
         pruneImageSections();
         decorateImage(document, mountImageSection);
-        decorateImageSetting(document, () => openImageSettings(images));
-        // Le réglage « Lecteur » n'existe que si Spotify est fourni par la plateforme.
+        // « Paramètre d'extension » regroupe Images et Lecteur (le lecteur n'existe que si Spotify est fourni par la plateforme).
+        decorateExtensionSetting(document, () => openExtensionSettings(images, getPlayerSource() ?? null));
+        decorateWikiHowSetting(document, () => void openWikiHowFromStore());
         const player = getPlayerSource();
         if (player) {
-          decoratePlayerSetting(document, () => openPlayerSettings(player));
           // Le site a pu vider <body> depuis le montage : le lecteur y est remis.
           mountSpotifyPlayer(player, openPlayerCard);
         }
