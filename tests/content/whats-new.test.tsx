@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../src/core/cache/store';
 import { createWhatsNewRepo } from '../../src/core/whats-new/seen';
+import { stepsOf } from '../../src/core/whats-new/pages';
 import type { Entry } from '../../src/core/whats-new/types';
 import { WhatsNewDialog } from '../../src/content/WhatsNewDialog';
 import { WikiHowDialog } from '../../src/content/WikiHowDialog';
@@ -41,7 +42,7 @@ describe('composants', () => {
     expect(container.querySelector('[data-consulted]')?.textContent).toContain('Titre b');
     act(() => button(/Titre a/).click());
     expect(onConsult).toHaveBeenCalledWith('a');
-    expect(onTour).toHaveBeenCalledWith(entry('a').steps);
+    expect(onTour).toHaveBeenCalledWith(stepsOf(entry('a')));
     expect(button(/Nouveautés/).textContent).toContain('0');
     act(() => button(/Corrections/).click());
     expect(container.textContent).toContain('Correction un');
@@ -69,7 +70,7 @@ describe('composants', () => {
     expect(container.textContent).toContain('Collection');
     expect(container.textContent).toContain('Revoir');
     act(() => button(/Titre b/).click());
-    expect(onTour).toHaveBeenCalledWith(entry('b').steps);
+    expect(onTour).toHaveBeenCalledWith(stepsOf(entry('b')));
   });
 });
 

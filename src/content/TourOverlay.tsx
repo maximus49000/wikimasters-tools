@@ -1,10 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { pagesOf } from '../core/whats-new/pages';
 import type { CardKind, TourStep } from '../core/whats-new/types';
-import { bubbleTop, spotlightBox, type Box } from './tour-geometry';
+import { bubbleTop, clampBubble, scaleToFit, spotlightBox, type Box } from './tour-geometry';
 import type { ScenePrep } from './tour-control';
+import { snapshot } from './tour-snapshot';
 import { findTarget } from './tour-target';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
+const ACCENT = 'var(--color-accent, #34d399)';
+const MAX_WIDTH = 420;
+const ENCART_MAX_HEIGHT = 90;
 const button = (primary: boolean) =>
   ({
     flex: 1,
@@ -12,7 +17,7 @@ const button = (primary: boolean) =>
     cursor: 'pointer',
     font: '600 14px system-ui, sans-serif',
     color: primary ? '#0d1117' : 'inherit',
-    background: primary ? 'var(--color-accent, #34d399)' : 'none',
+    background: primary ? ACCENT : 'none',
     border: primary ? '1px solid transparent' : border,
     borderRadius: 8,
   }) as const;
@@ -28,15 +33,70 @@ export type TourOverlayProps = {
   onDone: () => void;
 };
 
+// Encart « Dans l'interface » : une copie réduite de l'élément visé, en surbrillance, pour savoir de quoi on parle.
+// Sans élément à l'écran (ou s'il ne se copie pas), il montre le glyphe de la fonction.
+function Encart({ step }: { step: TourStep }) {
+  const holder = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setCopied(false);
+    const target = step.target;
+    if (!target) return;
+    let done = false;
+    const copy = () => {
+      const element = findTarget(target);
+      const slot = holder.current;
+      if (!element || !slot) return;
+      const clone = snapshot(element);
+      done = true;
+      if (!clone) return;
+      const rect = element.getBoundingClientRect();
+      const scale = scaleToFit(rect.width, rect.height, Math.max(slot.clientWidth, 160), ENCART_MAX_HEIGHT);
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = `width:${rect.width}px; transform:scale(${scale}); transform-origin:top left;`;
+      wrapper.appendChild(clone);
+      slot.style.height = `${Math.ceil(rect.height * scale)}px`;
+      slot.replaceChildren(wrapper);
+      setCopied(true);
+    };
+    copy();
+    // L'élément peut n'apparaître qu'après la préparation de l'écran : on réessaie jusqu'à l'avoir copié.
+    const timer = window.setInterval(() => {
+      if (done) return window.clearInterval(timer);
+      copy();
+    }, 300);
+    return () => window.clearInterval(timer);
+  }, [step]);
+
+  return (
+    <div data-wmt-encart="" style={{ margin: '6px 0 8px', padding: 6, borderRadius: 10, border: `2px solid ${ACCENT}`, background: 'rgba(52,211,153,0.10)', boxShadow: '0 0 0 4px rgba(52,211,153,0.15)' }}>
+      <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 600, color: ACCENT }}>Dans l’interface</div>
+      <div ref={holder} style={{ overflow: 'hidden', display: copied ? 'block' : 'none' }} />
+      {!copied && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 2px' }}>
+          <span aria-hidden="true" style={{ fontSize: 28 }}>{step.glyph ?? '◎'}</span>
+          <span style={{ fontSize: 12, opacity: 0.85 }}>{step.title}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Visite guidée : un projecteur sur l'élément réel (cherché jusque dans les shadow DOM) et une bulle Précédent / Suivant.
-// Si l'élément n'est pas à l'écran, l'étape s'affiche en texte seul avec une indication.
+// Chaque étape se lit en pages courtes ; la bulle se déplace par sa poignée et reste toujours dans l'écran.
 export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDemo, onDone }: TourOverlayProps) {
   const [index, setIndex] = useState(Math.min(Math.max(startIndex, 0), Math.max(steps.length - 1, 0)));
+  const [page, setPage] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
   const [prep, setPrep] = useState<ScenePrep>({});
   const [preparing, setPreparing] = useState(prepare !== undefined);
-  const [bubbleHeight, setBubbleHeight] = useState(170);
+  const [size, setSize] = useState({ width: 280, height: 170 });
+  const [screen, setScreen] = useState({ width: window.innerWidth, height: window.innerHeight });
+  // Position choisie par l'utilisateur (poignée) : gardée d'une étape à l'autre pendant la visite.
+  const [moved, setMoved] = useState<{ left: number; top: number } | null>(null);
   const bubble = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const step = steps[index];
 
   // Nouvelle étape : on retient l'index puis on prépare l'écran (navigation, carte, démonstration).
@@ -81,13 +141,55 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
     return () => window.clearInterval(timer);
   }, [step]);
 
+  // Rotation ou redimensionnement : la bulle est replacée dans le nouvel écran.
+  useEffect(() => {
+    const onResize = () => setScreen({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   useLayoutEffect(() => {
-    if (bubble.current) setBubbleHeight(bubble.current.offsetHeight);
-  }, [index, box, prep, preparing]);
+    const element = bubble.current;
+    if (element) setSize({ width: element.offsetWidth, height: element.offsetHeight });
+  }, [index, page, box, prep, preparing, screen]);
 
   if (!step) return null;
+  const pages = pagesOf(step);
+  const current = pages[Math.min(page, pages.length - 1)]!;
   const last = index === steps.length - 1;
+  const lastPage = page >= pages.length - 1;
   const missing = prepare === undefined && step.target !== null && box === null;
+
+  const next = () => {
+    if (!lastPage) return setPage(page + 1);
+    if (last) return onDone();
+    setIndex(index + 1);
+    setPage(0);
+  };
+  const back = () => {
+    if (page > 0) return setPage(page - 1);
+    const previous = steps[index - 1];
+    if (!previous) return;
+    setIndex(index - 1);
+    setPage(pagesOf(previous).length - 1);
+  };
+
+  const width = Math.min(MAX_WIDTH, screen.width - 24);
+  const automatic = { left: (screen.width - width) / 2, top: bubbleTop(box, screen.height, size.height) };
+  const position = clampBubble(moved ?? automatic, { width, height: size.height }, screen);
+
+  const onGripDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    drag.current = { x: event.clientX, y: event.clientY, left: position.left, top: position.top };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const onGripMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = drag.current;
+    if (!start) return;
+    setMoved(clampBubble({ left: start.left + event.clientX - start.x, top: start.top + event.clientY - start.y }, { width, height: size.height }, screen));
+  };
+  const onGripUp = () => {
+    drag.current = null;
+  };
 
   return (
     <div style={{ position: 'fixed', inset: 0 }} role="dialog" aria-label="Visite guidée">
@@ -96,36 +198,53 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
         <div style={{ position: 'fixed', left: 0, right: 0, top: 0, zIndex: 1, padding: '8px 12px', background: '#14532d', color: '#dcfce7', font: '600 12px system-ui, sans-serif' }}>{prep.note.text}</div>
       )}
       {box ? (
-        <div style={{ position: 'fixed', left: box.left, top: box.top, width: box.width, height: box.height, borderRadius: 10, boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)', border: '2px solid var(--color-accent, #34d399)', pointerEvents: 'none' }} />
+        <div style={{ position: 'fixed', left: box.left, top: box.top, width: box.width, height: box.height, borderRadius: 10, boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)', border: `2px solid ${ACCENT}`, pointerEvents: 'none' }} />
       ) : (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)' }} />
       )}
       <div
         ref={bubble}
-        style={{ position: 'fixed', left: 12, right: 12, top: bubbleTop(box, window.innerHeight, bubbleHeight), maxWidth: 420, maxHeight: '70vh', overflowY: 'auto', margin: '0 auto', boxSizing: 'border-box', padding: 14, borderRadius: 12, border, background: 'var(--color-surface, #0d1117)', color: 'var(--color-foreground, #e6edf3)', font: '14px/20px system-ui, sans-serif' }}
+        style={{ position: 'fixed', left: position.left, top: position.top, width, maxHeight: screen.height - 16, overflowY: 'auto', boxSizing: 'border-box', padding: '0 14px 14px', borderRadius: 12, border, background: 'var(--color-surface, #0d1117)', color: 'var(--color-foreground, #e6edf3)', font: '14px/20px system-ui, sans-serif' }}
       >
+        <div
+          data-wmt-grip=""
+          role="separator"
+          aria-label="Déplacer la bulle"
+          title="Maintenir et glisser pour déplacer la bulle"
+          onPointerDown={onGripDown}
+          onPointerMove={onGripMove}
+          onPointerUp={onGripUp}
+          onPointerCancel={onGripUp}
+          style={{ height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab', touchAction: 'none', userSelect: 'none', opacity: 0.55, fontSize: 16 }}
+        >
+          ⠿⠿⠿
+        </div>
         <div style={{ fontSize: 12, opacity: 0.7 }}>
           Étape {index + 1}/{steps.length}
+          {pages.length > 1 ? ` · page ${page + 1}/${pages.length}` : ''}
         </div>
         <strong style={{ display: 'block', fontSize: 16, margin: '2px 0' }}>{step.title}</strong>
-        <p style={{ margin: '0 0 8px', opacity: 0.9 }}>{step.text}</p>
-        {step.details?.map((detail) => (
-          <section key={detail.label} style={{ margin: '0 0 8px' }}>
-            <h4 style={{ margin: '0 0 2px', fontSize: 12, fontWeight: 600, opacity: 0.65 }}>{detail.label}</h4>
-            <p style={{ margin: 0, opacity: 0.85 }}>{detail.text}</p>
-          </section>
-        ))}
+        {current.encart && <Encart step={step} />}
+        <h4 style={{ margin: '4px 0 2px', fontSize: 12, fontWeight: 600, opacity: 0.65 }}>{current.label}</h4>
+        <p style={{ margin: '0 0 8px', opacity: 0.92 }}>{current.text}</p>
+        {pages.length > 1 && (
+          <div aria-hidden="true" style={{ display: 'flex', gap: 5, justifyContent: 'center', margin: '4px 0 8px' }}>
+            {pages.map((_, i) => (
+              <i key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: i === page ? ACCENT : 'rgba(148,163,184,0.5)' }} />
+            ))}
+          </div>
+        )}
         {preparing && <p style={{ margin: '0 0 8px', fontSize: 12, opacity: 0.7 }}>Préparation…</p>}
         {prep.navigating && <p style={{ margin: '0 0 8px', fontSize: 12, opacity: 0.7 }}>Changement de page…</p>}
         {(missing || prep.note?.tone === 'info') && <p style={{ margin: '0 0 8px', fontSize: 12, opacity: 0.7 }}>{prep.note?.text ?? 'Ouvrez la page concernée pour voir l’élément éclairé.'}</p>}
         <div style={{ display: 'flex', gap: 8 }}>
-          {index > 0 && (
-            <button type="button" onClick={() => setIndex(index - 1)} style={button(false)}>
+          {(page > 0 || index > 0) && (
+            <button type="button" onClick={back} style={button(false)}>
               Précédent
             </button>
           )}
-          <button type="button" onClick={() => (last ? onDone() : setIndex(index + 1))} style={button(true)}>
-            {last ? 'Terminer' : 'Suivant'}
+          <button type="button" onClick={next} style={button(true)}>
+            {last && lastPage ? 'Terminer' : 'Suivant'}
           </button>
         </div>
         <button type="button" onClick={onDone} style={{ display: 'block', width: '100%', minHeight: 36, marginTop: 6, cursor: 'pointer', color: 'inherit', opacity: 0.7, background: 'none', border: 'none', font: '12px system-ui, sans-serif' }}>

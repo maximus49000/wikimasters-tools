@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { THEMES, type Entry, type TourStep } from '../core/whats-new/types';
+import { stepsOf } from '../core/whats-new/pages';
 import { EntryCard } from './EntryCard';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -18,7 +19,7 @@ export function WikiHowDialog({ entries, consulted, onConsult, onTour, onClose }
   const open = (entry: Entry) => {
     onConsult(entry.id);
     setSeen((prev) => new Set(prev).add(entry.id));
-    if (entry.steps.length > 0) onTour(entry.steps);
+    if (entry.steps.length > 0) onTour(stepsOf(entry));
   };
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>

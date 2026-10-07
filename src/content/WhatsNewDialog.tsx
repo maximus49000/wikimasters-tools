@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Entry, Fix, TourStep } from '../core/whats-new/types';
+import { stepsOf } from '../core/whats-new/pages';
 import { EntryCard } from './EntryCard';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -26,12 +27,12 @@ export function WhatsNewDialog({ entries, fixes, consulted, onConsult, onTour, o
   };
   const open = (entry: Entry) => {
     consult(entry.id);
-    if (entry.steps.length > 0) onTour(entry.steps);
+    if (entry.steps.length > 0) onTour(stepsOf(entry));
   };
   const visitAll = () => {
     const todo = entries.filter((e) => !seen.has(e.id));
     todo.forEach((e) => consult(e.id));
-    const steps = todo.flatMap((e) => e.steps.map((s) => ({ ...s, title: `${e.title} · ${s.title}` })));
+    const steps = todo.flatMap((e) => stepsOf(e).map((s) => ({ ...s, title: `${e.title} · ${s.title}` })));
     if (steps.length > 0) onTour(steps);
   };
   const unseenNews = entries.filter((e) => !seen.has(e.id)).length;
