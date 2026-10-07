@@ -87,4 +87,37 @@ describe('TourOverlay', () => {
     expect(container.textContent).toContain('Seul');
     expect(container.textContent).not.toContain('Ouvrez la page concernée');
   });
+
+  it('prépare chaque étape, affiche la note et la démonstration, et signale l’index', async () => {
+    const prepare = vi.fn(async (step: { title: string }) =>
+      step.title === 'Première' ? { note: { tone: 'real' as const, text: 'Carte de votre Collection : Hades' } } : { demo: 'game' as const },
+    );
+    const onIndex = vi.fn();
+    await act(async () => root.render(<TourOverlay steps={steps} prepare={prepare} onIndex={onIndex} renderDemo={(card) => <div>démo {card}</div>} onDone={() => undefined} />));
+    expect(prepare).toHaveBeenCalledWith(steps[0], 0);
+    expect(onIndex).toHaveBeenCalledWith(0);
+    expect(container.textContent).toContain('Carte de votre Collection : Hades');
+    await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Suivant')!.click());
+    expect(onIndex).toHaveBeenCalledWith(1);
+    expect(container.textContent).toContain('démo game');
+  });
+
+  it('reprend à l’étape demandée et montre « Préparation… » tant que l’écran se prépare', async () => {
+    let finish: (value: object) => void = () => undefined;
+    const prepare = () => new Promise<object>((resolve) => (finish = resolve));
+    await act(async () => root.render(<TourOverlay steps={steps} startIndex={1} prepare={prepare} onDone={() => undefined} />));
+    expect(container.textContent).toContain('Seconde');
+    expect(container.textContent).toContain('Préparation…');
+    await act(async () => finish({ navigating: true }));
+    expect(container.textContent).not.toContain('Préparation…');
+    expect(container.textContent).toContain('Changement de page…');
+  });
+
+  it('affiche les paragraphes titrés d’une étape', () => {
+    const detailed = [{ target: null, title: 'Prix', text: 'Sert à trier.', details: [{ label: 'D’où viennent les données', text: 'Du marché.' }, { label: 'À savoir', text: 'Délai de 30 min.' }] }];
+    act(() => root.render(<TourOverlay steps={detailed} onDone={() => undefined} />));
+    expect(container.textContent).toContain('D’où viennent les données');
+    expect(container.textContent).toContain('Du marché.');
+    expect(container.textContent).toContain('Délai de 30 min.');
+  });
 });

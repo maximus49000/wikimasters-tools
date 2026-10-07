@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { TourStep } from '../core/whats-new/types';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import type { CardKind, TourStep } from '../core/whats-new/types';
 import { bubbleTop, spotlightBox, type Box } from './tour-geometry';
+import type { ScenePrep } from './tour-control';
 import { findTarget } from './tour-target';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -16,14 +17,48 @@ const button = (primary: boolean) =>
     borderRadius: 8,
   }) as const;
 
+export type TourOverlayProps = {
+  steps: TourStep[];
+  startIndex?: number;
+  // Prépare l'écran de l'étape (page, mode, carte réelle ou démonstration) et dit ce qu'il faut montrer en plus.
+  prepare?: (step: TourStep, index: number) => Promise<ScenePrep>;
+  onIndex?: (index: number) => void;
+  // Fiche de démonstration d'une nature de carte, montrée sous le projecteur.
+  renderDemo?: (card: CardKind) => ReactNode;
+  onDone: () => void;
+};
+
 // Visite guidée : un projecteur sur l'élément réel (cherché jusque dans les shadow DOM) et une bulle Précédent / Suivant.
 // Si l'élément n'est pas à l'écran, l'étape s'affiche en texte seul avec une indication.
-export function TourOverlay({ steps, onDone }: { steps: TourStep[]; onDone: () => void }) {
-  const [index, setIndex] = useState(0);
+export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDemo, onDone }: TourOverlayProps) {
+  const [index, setIndex] = useState(Math.min(Math.max(startIndex, 0), Math.max(steps.length - 1, 0)));
   const [box, setBox] = useState<Box | null>(null);
+  const [prep, setPrep] = useState<ScenePrep>({});
+  const [preparing, setPreparing] = useState(prepare !== undefined);
   const [bubbleHeight, setBubbleHeight] = useState(170);
   const bubble = useRef<HTMLDivElement>(null);
   const step = steps[index];
+
+  // Nouvelle étape : on retient l'index puis on prépare l'écran (navigation, carte, démonstration).
+  useEffect(() => {
+    onIndex?.(index);
+    if (!prepare || !step) return;
+    let cancelled = false;
+    setPreparing(true);
+    setPrep({});
+    prepare(step, index)
+      .catch((): ScenePrep => ({}))
+      .then((next) => {
+        if (cancelled) return;
+        setPrep(next);
+        setPreparing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `prepare` et `onIndex` sont stables ; seule l'étape compte.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
 
   useEffect(() => {
     let scrolled = false;
@@ -48,14 +83,18 @@ export function TourOverlay({ steps, onDone }: { steps: TourStep[]; onDone: () =
 
   useLayoutEffect(() => {
     if (bubble.current) setBubbleHeight(bubble.current.offsetHeight);
-  }, [index, box]);
+  }, [index, box, prep, preparing]);
 
   if (!step) return null;
   const last = index === steps.length - 1;
-  const missing = step.target !== null && box === null;
+  const missing = prepare === undefined && step.target !== null && box === null;
 
   return (
     <div style={{ position: 'fixed', inset: 0 }} role="dialog" aria-label="Visite guidée">
+      {prep.demo && renderDemo?.(prep.demo)}
+      {prep.note?.tone === 'real' && (
+        <div style={{ position: 'fixed', left: 0, right: 0, top: 0, zIndex: 1, padding: '8px 12px', background: '#14532d', color: '#dcfce7', font: '600 12px system-ui, sans-serif' }}>{prep.note.text}</div>
+      )}
       {box ? (
         <div style={{ position: 'fixed', left: box.left, top: box.top, width: box.width, height: box.height, borderRadius: 10, boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)', border: '2px solid var(--color-accent, #34d399)', pointerEvents: 'none' }} />
       ) : (
@@ -63,14 +102,22 @@ export function TourOverlay({ steps, onDone }: { steps: TourStep[]; onDone: () =
       )}
       <div
         ref={bubble}
-        style={{ position: 'fixed', left: 12, right: 12, top: bubbleTop(box, window.innerHeight, bubbleHeight), maxWidth: 400, margin: '0 auto', boxSizing: 'border-box', padding: 14, borderRadius: 12, border, background: 'var(--color-surface, #0d1117)', color: 'var(--color-foreground, #e6edf3)', font: '14px/20px system-ui, sans-serif' }}
+        style={{ position: 'fixed', left: 12, right: 12, top: bubbleTop(box, window.innerHeight, bubbleHeight), maxWidth: 420, maxHeight: '70vh', overflowY: 'auto', margin: '0 auto', boxSizing: 'border-box', padding: 14, borderRadius: 12, border, background: 'var(--color-surface, #0d1117)', color: 'var(--color-foreground, #e6edf3)', font: '14px/20px system-ui, sans-serif' }}
       >
         <div style={{ fontSize: 12, opacity: 0.7 }}>
           Étape {index + 1}/{steps.length}
         </div>
         <strong style={{ display: 'block', fontSize: 16, margin: '2px 0' }}>{step.title}</strong>
-        <p style={{ margin: '0 0 8px', opacity: 0.85 }}>{step.text}</p>
-        {missing && <p style={{ margin: '0 0 8px', fontSize: 12, opacity: 0.7 }}>Ouvrez la page concernée pour voir l’élément éclairé.</p>}
+        <p style={{ margin: '0 0 8px', opacity: 0.9 }}>{step.text}</p>
+        {step.details?.map((detail) => (
+          <section key={detail.label} style={{ margin: '0 0 8px' }}>
+            <h4 style={{ margin: '0 0 2px', fontSize: 12, fontWeight: 600, opacity: 0.65 }}>{detail.label}</h4>
+            <p style={{ margin: 0, opacity: 0.85 }}>{detail.text}</p>
+          </section>
+        ))}
+        {preparing && <p style={{ margin: '0 0 8px', fontSize: 12, opacity: 0.7 }}>Préparation…</p>}
+        {prep.navigating && <p style={{ margin: '0 0 8px', fontSize: 12, opacity: 0.7 }}>Changement de page…</p>}
+        {(missing || prep.note?.tone === 'info') && <p style={{ margin: '0 0 8px', fontSize: 12, opacity: 0.7 }}>{prep.note?.text ?? 'Ouvrez la page concernée pour voir l’élément éclairé.'}</p>}
         <div style={{ display: 'flex', gap: 8 }}>
           {index > 0 && (
             <button type="button" onClick={() => setIndex(index - 1)} style={button(false)}>
