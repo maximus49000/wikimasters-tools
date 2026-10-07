@@ -1,4 +1,5 @@
 import type { GameApi } from './api/game-api';
+import { parseMineResponse } from './api/schemas';
 import type { KeyValueStore } from './cache/store';
 import type { TtlCache } from './cache/ttl-cache';
 import { extractObservations, type PriceObservation } from './pricing/observations';
@@ -18,6 +19,8 @@ export type DataSourceDeps = {
 
 export interface DataSource {
   getMyPriceBook(): Promise<PriceBook>;
+  // Relecture récente de « mes enchères » : ses achats et ventes entrent au carnet sans attendre la fin du cache.
+  ingestMine(json: unknown): Promise<PriceBook>;
 }
 
 export function createDataSource(deps: DataSourceDeps): DataSource {
@@ -35,14 +38,21 @@ export function createDataSource(deps: DataSourceDeps): DataSource {
     return merged;
   }
 
+  const bookOf = async (fresh: PriceObservation[]): Promise<PriceBook> => {
+    const run = tail.then(() => remember(fresh));
+    tail = run.catch(() => undefined);
+    return buildPriceBook(await run, { now: now() });
+  };
+
   return {
+    async ingestMine(json) {
+      return bookOf(extractObservations(parseMineResponse(json)));
+    },
     async getMyPriceBook() {
       const fresh = await cache.getOrLoad<PriceObservation[]>(OBSERVATIONS_KEY, async () =>
         extractObservations(await api.getMine()),
       );
-      const run = tail.then(() => remember(fresh));
-      tail = run.catch(() => undefined);
-      return buildPriceBook(await run, { now: now() });
+      return bookOf(fresh);
     },
   };
 }
