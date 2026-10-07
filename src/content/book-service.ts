@@ -1,10 +1,13 @@
 // src/content/book-service.ts
 import { articleUrl, coverUrl, isWorkId, normalizeTitle, workPageUrl } from '../core/book/book-format';
+import type { AmazonPrice } from '../core/book/amazon-price';
 import type { BookDetail } from '../core/book/book-detail';
 import { isBookCard } from '../core/book/book-kinds';
 import type { BookChoiceRepo, BookRepo } from '../core/book/book-repo';
 import { BookError, bookErrorMessage } from '../core/book/errors';
+import type { GoogleBooksApi } from '../core/book/google-books-api';
 import type { OlWork, OpenLibraryApi } from '../core/book/openlibrary-api';
+import { paperShopLinks, type PriceLine, type ShopLink } from '../core/book/shops';
 import type { TtlCache } from '../core/cache/ttl-cache';
 import type { KnownCard } from '../core/collection/collection-book';
 import { facetLabel, type KindsState } from '../core/kinds/kinds-book';
@@ -16,6 +19,8 @@ import { cleanTitle } from '../core/music/listen';
 export type BookView = { status: 'none' } | { status: 'empty'; none?: true } | { status: 'detail'; detail: BookDetail } | { status: 'error'; message: string };
 export type BookCandidates = { works: OlWork[]; message?: string };
 export type BookPreview = { work?: OlWork; message?: string };
+// Les offres d'un livre : les liens du papier (toujours là), l'ebook s'il existe, et le prix papier de référence quand il a été lu.
+export type BookOffers = { shops: ShopLink[]; paperPrice?: PriceLine };
 
 export type BookServiceDeps = {
   collection: { list(): Promise<KnownCard[]> };
@@ -28,12 +33,16 @@ export type BookServiceDeps = {
   cache: Pick<TtlCache, 'getOrLoad'>;
   // Le livre d'une carte vient de changer : l'image retenue pour elle est à oublier.
   onChoice?: (slug: string) => void;
+  // Lecture du prix papier (Amazon.fr) et prix de l'ebook (Google Books) : absents (null / non fournis), seuls les liens restent.
+  amazon?: Pick<AmazonPrice, 'read'> | null;
+  googleBooks?: Pick<GoogleBooksApi, 'findEbook'> | null;
+  now?: () => number;
 };
 
 const MAX_GENRES = 5;
 
 export function createBookService(deps: BookServiceDeps) {
-  const { collection, kinds, books, choices, openLibrary, intro, cache, onChoice } = deps;
+  const { collection, kinds, books, choices, openLibrary, intro, cache, onChoice, amazon = null, googleBooks = null, now = () => Date.now() } = deps;
 
   // Le choix est enregistré, puis l'image mémorisée de la carte est oubliée.
   const changed = async (slug: string, saved: Promise<void>): Promise<void> => {
@@ -168,6 +177,30 @@ export function createBookService(deps: BookServiceDeps) {
       } catch (error) {
         return { message: bookErrorMessage(error) };
       }
+    },
+
+    // Les liens d'achat du livre, puis les prix quand ils se lisent : l'ebook (Google Books) et le prix papier (Amazon.fr, qui devient le prix de référence).
+    // Ne lève jamais ; un prix lu est mémorisé (7 jours), un échec ne l'est pas (la ligne reste sur « voir le prix »).
+    async offers(book: { title: string; author?: string; isbn?: string }): Promise<BookOffers> {
+      const shops = paperShopLinks(book);
+      const isbn = book.isbn;
+      const [paper, ebook] = await Promise.all([
+        amazon && isbn ? optional(() => cache.getOrLoad(`book-amazon-v1-${isbn}`, async () => ({ amount: await amazon.read(isbn), readAt: now() }))) : null,
+        googleBooks
+          ? optional(() =>
+              cache.getOrLoad(`book-ebook-v1-${normalizeTitle(book.title)}-${normalizeTitle(book.author ?? '')}`, async () => {
+                const found = await googleBooks.findEbook({ title: book.title, ...(book.author ? { author: book.author } : {}) });
+                return found ? { ...found, readAt: now() } : null;
+              }),
+            )
+          : null,
+      ]);
+      const paperPrice: PriceLine | undefined = paper ? { amount: paper.amount, currency: 'EUR', source: 'Amazon.fr', readAt: paper.readAt } : undefined;
+      const all: ShopLink[] = shops.map((shop) => (shop.shop === 'amazon' && paperPrice ? { ...shop, price: paperPrice } : shop));
+      if (ebook) {
+        all.push({ shop: 'google-play', label: 'Google Play Livres', kind: 'ebook', url: ebook.url, price: { amount: ebook.amount, currency: 'EUR', source: 'Google Play Livres', readAt: ebook.readAt } });
+      }
+      return { shops: all, ...(paperPrice ? { paperPrice } : {}) };
     },
 
     choose(slug: string, workId: string): Promise<void> {

@@ -39,7 +39,11 @@ import { createMarketUi, mountHistoryBadge, mountImageSection, mountLinkedCards,
 import { decorateBook, decorateGame, decorateImage, decorateListen, decorateScreen } from '../content/decorate-listen';
 import { getBookService, setBookService } from '../content/book-registry';
 import { createBookService } from '../content/book-service';
+import { createAmazonPrice } from '../core/book/amazon-price';
 import { createBookChoiceRepo, createBookRepo } from '../core/book/book-repo';
+import { AMAZON_PRICE_ENABLED, GOOGLE_BOOKS_API_KEY } from '../core/book/config';
+import { createGoogleBooksApi } from '../core/book/google-books-api';
+import type { NativeHttpWindow } from '../android/native-http';
 import { createOpenLibraryApi } from '../core/book/openlibrary-api';
 import { fetchWikidataBook } from '../core/book/wikidata-book';
 import { fetchWikipediaIntro } from '../core/book/wikipedia-intro';
@@ -592,7 +596,15 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
 
   // Livres : Open Library et Wikipédia, sans clé, avec le `fetch` de la page (CORS ouvert). Une panne ici ne doit jamais empêcher la surcouche.
   try {
+    // Prix : Google Books (ebook, avec la clé de la compilation) et Amazon.fr (papier) passent par le relais de la plateforme (service worker,
+    // hors CSP du site). Amazon : extension seulement, jamais dans l'APK (pas de pont HTTP éprouvé pour une page HTML : liens seulement).
+    const platformFetch = (url: string) => (spotify ? spotify.fetch(url) : fetch(url));
+    const isApk = Boolean((window as unknown as NativeHttpWindow).WmtHttp);
+    const googleBooks = GOOGLE_BOOKS_API_KEY ? createGoogleBooksApi({ fetch: platformFetch, key: GOOGLE_BOOKS_API_KEY }) : null;
+    const amazon = AMAZON_PRICE_ENABLED && spotify && !isApk ? createAmazonPrice({ fetch: platformFetch }) : null;
     const bookService = createBookService({
+      googleBooks,
+      amazon,
       collection: collectionRepo,
       kinds: kindsRepo,
       books: createBookRepo(store, (slugs) => fetchWikidataBook((url) => fetch(url), slugs)),

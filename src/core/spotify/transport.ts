@@ -30,7 +30,7 @@ export type BackgroundDeps = {
 };
 
 const AUTH_PREFIXES = ['https://accounts.spotify.com/authorize?', 'https://login.tidal.com/authorize?'];
-// Le service worker relaie aussi Tidal (catalogue, jeton), TMDB (films et séries), les jeux vidéo (Steam, IGDB) et GitHub (anomalies) : même contournement de la CSP du site.
+// Le service worker relaie aussi Tidal (catalogue, jeton), TMDB (films et séries), les jeux vidéo (Steam, IGDB), les livres (Amazon.fr, Google Books) et GitHub (anomalies) : même contournement de la CSP du site.
 const FETCH_PREFIXES = [
   'https://api.spotify.com/',
   'https://accounts.spotify.com/api/token',
@@ -42,6 +42,9 @@ const FETCH_PREFIXES = [
   'https://api.steampowered.com/',
   'https://id.twitch.tv/oauth2/token',
   'https://api.igdb.com/v4/',
+  // Livres : prix papier (page produit d'Amazon.fr) et prix de l'ebook (Google Books) ; même contournement de la CSP du site.
+  'https://www.amazon.fr/dp/',
+  'https://www.googleapis.com/books/v1/',
   // Anomalies remontées par l'utilisateur : issues de ce dépôt seulement.
   ANOMALY_API_PREFIX,
 ];
@@ -60,7 +63,16 @@ export function handleSpotifyMessage(message: unknown, deps: BackgroundDeps): Pr
       }
       if (request.op === 'fetch') {
         const url = request.url;
-        if (typeof url !== 'string' || !FETCH_PREFIXES.some((prefix) => url.startsWith(prefix))) {
+        // L'adresse normalisée (« /dp/../gp/x » devient « /gp/x ») doit rester sous le même préfixe que l'adresse reçue.
+        let normalized = '';
+        if (typeof url === 'string') {
+          try {
+            normalized = new URL(url).href;
+          } catch {
+            normalized = '';
+          }
+        }
+        if (typeof url !== 'string' || !FETCH_PREFIXES.some((prefix) => url.startsWith(prefix) && normalized.startsWith(prefix))) {
           return { ok: false, error: 'adresse refusée' };
         }
         const response = await deps.fetch(url, request.init);

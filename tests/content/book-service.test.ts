@@ -7,6 +7,8 @@ import type { OlWork } from '../../src/core/book/openlibrary-api';
 import { createMemoryStore } from '../../src/core/cache/store';
 import { createTtlCache } from '../../src/core/cache/ttl-cache';
 
+const NOW = 1_760_000_000_000;
+
 const etranger: OlWork = { id: 'OL1230613W', title: 'L’étranger', author: 'Albert Camus', year: 1942, publisher: 'Gallimard', pages: 186, isbn: '9782070360024', coverId: 13151269, popularity: 468 };
 
 type Setup = {
@@ -20,6 +22,8 @@ type Setup = {
   intro?: string | null | Error;
   description?: string | null;
   kindsUnknown?: boolean;
+  amazon?: { read: (isbn: string) => Promise<number> } | null;
+  googleBooks?: { findEbook: (book: { title: string; author?: string }) => Promise<{ amount: number; url: string } | null> } | null;
 };
 
 function setup(over: Setup = {}) {
@@ -35,6 +39,8 @@ function setup(over: Setup = {}) {
   const resolve = vi.fn(async () => (over.unreachable ? {} : { Livre: over.ids ?? { workId: 'OL1230613W' } }) as never);
   const choices = createBookChoiceRepo(createMemoryStore());
   const onChoice = vi.fn();
+  const amazon = over.amazon === undefined ? null : over.amazon;
+  const googleBooks = over.googleBooks === undefined ? null : over.googleBooks;
   const service = createBookService({
     collection: { list: async () => (over.collection ?? ['Livre']).map((slug) => ({ slug, title: slug })) },
     kinds: {
@@ -50,6 +56,9 @@ function setup(over: Setup = {}) {
     intro,
     cache: createTtlCache(createMemoryStore()),
     onChoice,
+    amazon,
+    googleBooks,
+    now: () => NOW,
   });
   return { service, openLibrary, intro, resolve, choices, onChoice };
 }
@@ -264,5 +273,75 @@ describe('choix manuel', () => {
     const { service } = setup({ natures: ['Q5'] });
     await service.chooseNone('Livre');
     expect(await service.view('Livre', 'Camus')).toEqual({ status: 'none' });
+  });
+});
+
+describe('offers', () => {
+  const book = { title: 'L’étranger', author: 'Albert Camus', isbn: '9782070360024' };
+  const labels = (offers: { shops: { shop: string }[] }) => offers.shops.map((shop) => shop.shop);
+
+  it('sans source de prix : les quatre liens du papier, aucun prix', async () => {
+    const offers = await setup().service.offers(book);
+    expect(labels(offers)).toEqual(['amazon', 'fnac', 'decitre', 'libraire']);
+    expect(offers.paperPrice).toBeUndefined();
+    expect(offers.shops[0]?.url).toBe('https://www.amazon.fr/dp/2070360024');
+  });
+
+  it('le prix lu sur Amazon devient le prix de référence et celui de la ligne Amazon', async () => {
+    const read = vi.fn(async (_isbn: string) => 7.6);
+    const offers = await setup({ amazon: { read } }).service.offers(book);
+    const price = { amount: 7.6, currency: 'EUR', source: 'Amazon.fr', readAt: NOW };
+    expect(offers.paperPrice).toEqual(price);
+    expect(offers.shops[0]?.price).toEqual(price);
+    expect(offers.shops[1]?.price).toBeUndefined();
+    expect(read).toHaveBeenCalledWith('9782070360024');
+  });
+
+  it('l’ebook de Google Books s’ajoute après les libraires, avec son prix et son lien', async () => {
+    const findEbook = vi.fn(async () => ({ amount: 7.49, url: 'https://play.google.com/store/books/details?id=x' }));
+    const offers = await setup({ googleBooks: { findEbook } }).service.offers(book);
+    expect(labels(offers)).toEqual(['amazon', 'fnac', 'decitre', 'libraire', 'google-play']);
+    expect(offers.shops[4]).toMatchObject({ label: 'Google Play Livres', kind: 'ebook', url: 'https://play.google.com/store/books/details?id=x', price: { amount: 7.49, currency: 'EUR', source: 'Google Play Livres', readAt: NOW } });
+    expect(findEbook).toHaveBeenCalledWith({ title: 'L’étranger', author: 'Albert Camus' });
+  });
+
+  it('sans ISBN, Amazon n’est pas interrogé (liens seulement) ; l’ebook se cherche quand même', async () => {
+    const read = vi.fn(async () => 7.6);
+    const findEbook = vi.fn(async () => null);
+    const offers = await setup({ amazon: { read }, googleBooks: { findEbook } }).service.offers({ title: 'Poèmes' });
+    expect(read).not.toHaveBeenCalled();
+    expect(findEbook).toHaveBeenCalled();
+    expect(offers.paperPrice).toBeUndefined();
+    expect(labels(offers)).toEqual(['amazon', 'fnac', 'decitre', 'libraire']);
+  });
+
+  it('un échec d’Amazon ou de Google ne fait rien perdre : les liens restent, le prix manque', async () => {
+    const amazon = { read: vi.fn(async () => Promise.reject(new Error('503'))) };
+    const googleBooks = { findEbook: vi.fn(async () => Promise.reject(new Error('503'))) };
+    const offers = await setup({ amazon, googleBooks }).service.offers(book);
+    expect(labels(offers)).toEqual(['amazon', 'fnac', 'decitre', 'libraire']);
+    expect(offers.paperPrice).toBeUndefined();
+  });
+
+  it('un prix lu est mémorisé (une seule lecture) ; un échec ne l’est pas (nouvelle tentative)', async () => {
+    const read = vi.fn(async () => 7.6);
+    const ok = setup({ amazon: { read } });
+    await ok.service.offers(book);
+    await ok.service.offers(book);
+    expect(read).toHaveBeenCalledTimes(1);
+
+    let calls = 0;
+    const flaky = { read: vi.fn(async () => (++calls === 1 ? Promise.reject(new Error('503')) : 7.6)) };
+    const retry = setup({ amazon: flaky });
+    expect((await retry.service.offers(book)).paperPrice).toBeUndefined();
+    expect(flaky.read).toHaveBeenCalledTimes(1);
+  });
+
+  it('une absence d’ebook est mémorisée (pas de nouvelle requête à chaque ouverture)', async () => {
+    const findEbook = vi.fn(async () => null);
+    const { service } = setup({ googleBooks: { findEbook } });
+    await service.offers(book);
+    await service.offers(book);
+    expect(findEbook).toHaveBeenCalledTimes(1);
   });
 });

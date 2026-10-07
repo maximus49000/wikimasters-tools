@@ -25,6 +25,8 @@ export default defineConfig({
       'https://api.steampowered.com/*',
       'https://id.twitch.tv/*',
       'https://api.igdb.com/*',
+      'https://www.amazon.fr/*',
+      'https://www.googleapis.com/*',
       'https://api.github.com/*',
       // Firefox MV3 : l'accès au site est une permission d'hôte à accorder (demandée à l'installation).
       ...(browser === 'firefox' ? ['https://www.wiki-masters.com/*'] : []),
