@@ -10,6 +10,22 @@ const IMAGE_ENTRY: EntrySpec = { attribute: IMAGE_SETTING_ATTRIBUTE, label: LABE
 // copié pour garder le style du site, puis son libellé, son icône et son action sont remplacés.
 export type EntrySpec = { attribute: string; label: string; iconPaths: string[] };
 
+// Le site met « Paramètres » en surbrillance (classes, aria-current) quand on l'ouvre : les lignes copiées en font autant.
+function mirrorHighlight(link: HTMLElement, entry: HTMLElement): void {
+  const sync = () => {
+    entry.className = link.className;
+    const current = link.getAttribute('aria-current');
+    if (current === null) entry.removeAttribute('aria-current');
+    else entry.setAttribute('aria-current', current);
+  };
+  const observer = new MutationObserver(() => {
+    if (!link.isConnected) observer.disconnect();
+    else sync();
+  });
+  observer.observe(link, { attributes: true, attributeFilter: ['class', 'aria-current'] });
+  sync();
+}
+
 export function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void, spec: EntrySpec = IMAGE_ENTRY): HTMLElement {
   const entry = settingsLink.cloneNode(true) as HTMLElement;
   entry.setAttribute(spec.attribute, '');
@@ -34,6 +50,7 @@ export function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void, 
   for (let node = walker.nextNode(); node; node = walker.nextNode()) if (node.textContent?.trim()) label = node;
   if (label) label.textContent = spec.label;
   else entry.append(spec.label);
+  mirrorHighlight(settingsLink, entry);
   entry.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
