@@ -83,6 +83,23 @@ describe('scoreCandidate', () => {
     expect(tierOf(result)).toBe('good');
   });
 
+  it('un contenu pour enfants reste proposé mais perd 15 points', () => {
+    expect(scoreCandidate(verdun, make({ title: 'Verdun documentaire pour enfants' }), YOUTUBE_RULES).score).toBe(60);
+    expect(scoreCandidate(verdun, make({ title: 'Verdun documentaire', channel: 'Univers Kids' }), YOUTUBE_RULES).score).toBe(60);
+  });
+
+  it('un titre complotiste perd 25 points et tombe sous le seuil des vidéos possibles', () => {
+    const result = scoreCandidate(verdun, make({ title: 'Verdun : les mensonges de l’histoire officielle' }), YOUTUBE_RULES);
+    expect(result.score).toBe(40);
+    expect(tierOf(result)).toBeNull();
+    expect(scoreCandidate(verdun, make({ title: 'Verdun : ce qu’on vous cache documentaire' }), YOUTUBE_RULES).score).toBe(50);
+  });
+
+  it('l’émission Secrets d’Histoire est une référence', () => {
+    const result = scoreCandidate(verdun, make({ title: 'Verdun, au nom de la patrie - Secrets d’Histoire', channel: 'Secrets d’Histoire - France Télévisions', durationSec: 6660 }), YOUTUBE_RULES);
+    expect(result.score).toBe(80);
+  });
+
   it('accepte une archive libre de Commons plus courte', () => {
     const napoleon: DocSubject = { qid: 'Q517', kind: 'person', names: ['Napoléon Ier', 'Napoleon'], startYear: 1769, endYear: 1821 };
     const archive = make({ source: 'commons', title: 'La Révolution française et Napoléon - Planet Wissen', durationSec: 100, language: null });
