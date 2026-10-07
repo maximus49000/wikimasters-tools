@@ -26,12 +26,17 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Mise à jour automatique : cherche la dernière release GitHub de son canal (production : release stable ; pré-production : pre-release
-// publiée à chaque fusion dans main), télécharge l'APK puis propose de l'installer.
+// Mise à jour automatique : cherche la dernière release GitHub de son canal (production : tags android-N ; pré-production : pre-releases
+// preprod-N publiées à chaque fusion dans main), télécharge l'APK puis propose de l'installer.
 // Android interdit l'installation silencieuse hors Play Store : l'utilisateur confirme une fois.
 final class Updater {
     private static final Pattern NUMBER = Pattern.compile("^\\d+$");
@@ -67,10 +72,10 @@ final class Updater {
         if (manual) Toast.makeText(activity, R.string.update_checking, Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
-                Release release = fetchLatest();
+                PackageInfo current = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
+                Release release = fetchLatest(current.getLongVersionCode());
                 activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                         .putLong(LAST_CHECK, System.currentTimeMillis()).apply();
-                PackageInfo current = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
                 if (release == null || release.versionCode <= current.getLongVersionCode()) {
                     if (manual) {
                         activity.runOnUiThread(() -> showMessage(
@@ -100,15 +105,16 @@ final class Updater {
                 .show();
     }
 
-    private static final class Release {
+    static final class Release {
         long versionCode;
         String name;
         String notes;
         String apkUrl;
     }
 
-    // Production : /releases/latest (un objet). Pré-production : liste des releases (un tableau), la plus récente `preprod-N`.
-    private Release fetchLatest() throws IOException, JSONException {
+    // Liste des releases : la plus récente du canal est celle à installer ; ses notes sont celles de toutes les releases publiées
+    // depuis la version `installed` (le client en 2 qui passe en 4 voit les notes de 3 et de 4).
+    private Release fetchLatest(long installed) throws IOException, JSONException {
         HttpURLConnection connection = open(BuildConfig.UPDATE_URL);
         connection.setRequestProperty("Accept", "application/vnd.github+json");
         String body;
@@ -124,16 +130,58 @@ final class Updater {
         } finally {
             connection.disconnect();
         }
-        Release best = null;
+        List<Release> releases = new ArrayList<>();
         if (body.trim().startsWith("[")) {
             JSONArray list = new JSONArray(body);
             for (int i = 0; i < list.length(); i++) {
                 Release release = parse(list.getJSONObject(i));
-                if (release != null && (best == null || release.versionCode > best.versionCode)) best = release;
+                if (release != null) releases.add(release);
             }
-            return best;
+        } else {
+            Release release = parse(new JSONObject(body));
+            if (release != null) releases.add(release);
         }
-        return parse(new JSONObject(body));
+        Release best = null;
+        for (Release release : releases) {
+            if (best == null || release.versionCode > best.versionCode) best = release;
+        }
+        if (best != null) best.notes = mergeNotes(releases, installed);
+        return best;
+    }
+
+    // Les notes des releases plus récentes que `installed`, de la plus récente à la plus ancienne, regroupées par rubrique
+    // (« Nouveautés », « Corrections ») sans doublon.
+    static String mergeNotes(List<Release> releases, long installed) {
+        List<Release> newer = new ArrayList<>();
+        for (Release release : releases) {
+            if (release.versionCode > installed) newer.add(release);
+        }
+        Collections.sort(newer, (a, b) -> Long.compare(b.versionCode, a.versionCode));
+        Map<String, List<String>> sections = new LinkedHashMap<>();
+        for (Release release : newer) {
+            String title = "";
+            for (String raw : release.notes.split("\\r?\\n")) {
+                String line = raw.trim();
+                if (line.isEmpty()) continue;
+                if (!line.startsWith("•")) {
+                    title = line;
+                    continue;
+                }
+                List<String> items = sections.get(title);
+                if (items == null) {
+                    items = new ArrayList<>();
+                    sections.put(title, items);
+                }
+                if (!items.contains(line)) items.add(line);
+            }
+        }
+        StringBuilder text = new StringBuilder();
+        for (Map.Entry<String, List<String>> section : sections.entrySet()) {
+            if (text.length() > 0) text.append("\n\n");
+            if (!section.getKey().isEmpty()) text.append(section.getKey()).append('\n');
+            text.append(String.join("\n", section.getValue()));
+        }
+        return text.toString();
     }
 
     private Release parse(JSONObject json) throws JSONException {
