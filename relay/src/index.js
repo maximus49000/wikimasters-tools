@@ -10,7 +10,7 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: HEADERS });
     const { pathname } = new URL(request.url);
     if (pathname === '/' || pathname === '/ping') {
-      return new Response(JSON.stringify({ ok: true, service: 'wikimasters-relais' }), { headers: HEADERS });
+      return new Response(JSON.stringify({ ok: true, service: 'wikimasters-tools' }), { headers: HEADERS });
     }
     return new Response(JSON.stringify({ ok: false, error: 'Route inconnue' }), { status: 404, headers: HEADERS });
   },
