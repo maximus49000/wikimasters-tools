@@ -28,10 +28,9 @@ export function findRarityFilterAnchor(root: ParentNode): HTMLButtonElement | nu
   for (const button of root.querySelectorAll<HTMLButtonElement>('button')) {
     const parent = button.parentElement;
     if (!parent || button !== parent.firstElementChild) continue;
-    const pills = [...parent.children].filter((child) => !child.hasAttribute(TOGGLE_ATTRIBUTE));
-    if (pills.length >= 2 && pills.every((child) => child instanceof HTMLButtonElement && RARITY_LABELS.has((child.textContent ?? '').trim()))) {
-      return pills[pills.length - 1] as HTMLButtonElement;
-    }
+    // Le site peut ajouter d'autres éléments dans la rangée (« Réinitialiser rareté » une fois une rareté choisie) : seuls les boutons de rareté comptent.
+    const pills = [...parent.children].filter((child): child is HTMLButtonElement => child instanceof HTMLButtonElement && RARITY_LABELS.has((child.textContent ?? '').trim()));
+    if (pills.length >= 2 && pills[0] === button) return pills[pills.length - 1] as HTMLButtonElement;
   }
   return null;
 }

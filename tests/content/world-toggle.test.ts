@@ -137,6 +137,17 @@ describe('filtre ×2', () => {
   });
 });
 
+describe('ensureViewSwitch : un seul sélecteur', () => {
+  it("retire un ancien sélecteur resté ailleurs quand l'ancre change", () => {
+    document.body.innerHTML = '<div id="a"><button id="x">C</button></div><div id="b"><button id="s">Sélectionner</button></div>';
+    const x = document.getElementById('x') as HTMLButtonElement;
+    const s = document.getElementById('s') as HTMLButtonElement;
+    ensureViewSwitch(x, s, 'homemade', () => undefined);
+    ensureViewSwitch(s, s, 'homemade', () => undefined);
+    expect(document.querySelectorAll('[data-wmt-view-switch]').length).toBe(1);
+  });
+});
+
 describe('findRarityFilterAnchor', () => {
   const pills = '<button>L</button><button>UR</button><button>SR</button><button>R</button><button>PC</button><button>C</button>';
 
@@ -150,6 +161,13 @@ describe('findRarityFilterAnchor', () => {
     const anchor = findRarityFilterAnchor(document) as HTMLButtonElement;
     ensureViewSwitch(anchor, anchor, 'list', () => undefined);
     expect(findRarityFilterAnchor(document)).toBe(anchor);
+  });
+
+  it("trouve encore la dernière pastille quand le site ajoute « Réinitialiser rareté » dans la rangée", () => {
+    document.body.innerHTML = `<div id="g">${pills}<button>Réinitialiser rareté</button></div>`;
+    expect(findRarityFilterAnchor(document)?.textContent).toBe('C');
+    document.body.innerHTML = `<div id="g">${pills}<div><span>×</span> Réinitialiser rareté</div></div>`;
+    expect(findRarityFilterAnchor(document)?.textContent).toBe('C');
   });
 
   it("renvoie null sans groupe de rareté", () => {
