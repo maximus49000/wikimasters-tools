@@ -93,6 +93,8 @@ export function ensureViewSwitch(
     }
     anchor.insertAdjacentElement('afterend', group);
   }
+  // Jamais deux sélecteurs : un ancien, resté à une autre place (l'ancre a changé), est retiré.
+  for (const other of document.querySelectorAll(`[${TOGGLE_ATTRIBUTE}]`)) if (other !== group) other.remove();
 
   const root = group as HTMLElement;
   for (const button of root.querySelectorAll<HTMLButtonElement>(`[${VIEW_ATTRIBUTE}]`)) {
