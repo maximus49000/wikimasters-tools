@@ -37,7 +37,8 @@ describe('view', () => {
   });
 
   it('ne dit rien d’une carte sans rapport, d’un film ou d’une carte hors collection', async () => {
-    expect((await setup({}, ['Q515']).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
+    const recent = { subject: async () => ({ qid: 'Q9', names: ['Un centre commercial'], birth: null, death: null, start: 2005, end: null }) };
+    expect((await setup(recent, ['Q515']).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
     expect((await setup({}, ['Q11424', 'Q178561']).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
     expect((await setup({ collection: { list: async () => [] } }).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
   });
@@ -137,6 +138,12 @@ describe('view : périmètre élargi', () => {
     expect((await undated.service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
     const recent = setup({ subject: async () => ({ qid: 'Q9', names: ['Quelque chose'], birth: null, death: null, start: 2005, end: null }) }, []);
     expect((await recent.service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
+  });
+  it('une cathédrale ancienne, une épidémie et une broderie ont leur section, grâce à leur date', async () => {
+    const dated = (start: number) => ({ subject: async () => ({ qid: 'Q9', names: ['Un sujet ancien'], birth: null, death: null, start, end: null }) });
+    expect((await setup(dated(1163), ['Q56242215']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
+    expect((await setup(dated(1347), ['Q3241045', 'Q12184']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
+    expect((await setup(dated(1070), ['Q44740228', 'Q28966302']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
   });
   it('un taxon (Hominina) n’en a pas', async () => {
     const taxon = setup({ subject: async () => ({ qid: 'Q605457', names: ['Hominina'], birth: null, death: null, start: null, end: null }) }, ['Q16521']);

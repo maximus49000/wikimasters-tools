@@ -66,14 +66,13 @@ Décision du 2026-10-07 (maquette validée : `.superpowers/mockups/documentaire-
 
 ## Détection
 
-Décision du 2026-10-07 (test sur trois cartes rares : tenture de l'Apocalypse, Hominina, culte de l'Être suprême) : le périmètre « histoire élargie » remplace « événements et personnages » seuls.
+Décisions du 2026-10-07 (essai sur 14 cartes : la peste noire, Notre-Dame de Paris et la tapisserie de Bayeux n'étaient pas reconnues par une liste de natures) : « histoire élargie ».
 
 `historyKindOf(kinds, deathYear, datedYear)` (`src/core/documentary/history-kinds.ts`) :
-- **Événements** : événement historique, bataille, guerre, conflit armé, opération militaire, siège, révolution, traité, bataille navale, guerre civile, rébellion, guerre de libération.
-- **Autres sujets** : œuvres d'art (peinture, sculpture, tapisserie, série de tapisseries, dessin, statue), monuments et sites (monument, palais, château fort, temple, église, bien culturel, patrimoine mondial, site archéologique), civilisations et périodes (civilisation, civilisation antique, État historique, empire, période historique, région historique), religions (religion, mouvement religieux).
-- **Personnes** : humain décédé en 1950 ou avant, quel que soit le métier.
-- **Carte sans nature renseignée** sur Wikidata : retenue si sa première date connue est de 1950 ou avant.
-- **Exclus** : vivants, taxons (Hominina reste hors périmètre), villes, et toute carte film ou série (elles ont leur section).
+- **Natures reconnues d'office** : événements (bataille, guerre, révolution, traité…), œuvres d'art, monuments et sites, civilisations et périodes, religions.
+- **Personnes** : humain décédé avant 1970 (décision de l'utilisateur), quel que soit le métier.
+- **Tout autre sujet** (cathédrale, épidémie, broderie, culte sans nature renseignée, ville…) : retenu si sa première date connue (début, création) est de 1950 ou avant.
+- **Exclus** : vivants, sujets récents ou sans date (taxons comme Hominina), et les cartes qui ont déjà leur propre fiche : film, série, jeu vidéo, livre, morceau.
 
 ## Affichage (extension et mobile)
 
