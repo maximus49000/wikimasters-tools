@@ -236,7 +236,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         kind,
         cards,
         async (nature, candidates) =>
-          (nature === 'game' ? await getGameService()?.gameSlugs(candidates) : nature === 'music' ? await getMusicService()?.musicSlugs(candidates) : await getScreenService()?.screenSlugs(candidates)) ?? new Set<string>(),
+          (nature === 'game'
+            ? await getGameService()?.gameSlugs(candidates)
+            : nature === 'book'
+              ? await getBookService()?.bookSlugs(candidates)
+              : nature === 'music'
+                ? await getMusicService()?.musicSlugs(candidates)
+                : await getScreenService()?.screenSlugs(candidates)) ?? new Set<string>(),
       ),
     openCard: openPlayerCard,
     closeCard: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
