@@ -24,13 +24,14 @@ function setup(overrides: Partial<TourControllerDeps> = {}, path = { pathname: '
   const openWindow = vi.fn();
   const closeCard = vi.fn();
   const reopen = vi.fn();
+  const closeWindows = vi.fn();
   const screen = new Map<string, Element>();
   const deps: TourControllerDeps = {
     storage,
     now: () => 1_000,
     location: () => path,
     assign,
-    env: () => ({ cards: async () => [], pick: async () => null, openCard: vi.fn(), closeCard, reopen }),
+    env: () => ({ cards: async () => [], pick: async () => null, openCard: vi.fn(), closeCard, closeWindows, reopen }),
     openWindow,
     find: (selector) => screen.get(selector) ?? null,
     findText: () => null,
@@ -38,7 +39,7 @@ function setup(overrides: Partial<TourControllerDeps> = {}, path = { pathname: '
     wait: async (read) => read(),
     ...overrides,
   };
-  return { controller: createTourController(deps), storage, assign, openWindow, closeCard, reopen, screen };
+  return { controller: createTourController(deps), storage, assign, openWindow, closeCard, closeWindows, reopen, screen };
 }
 
 describe('contrôleur de visite', () => {
@@ -82,6 +83,16 @@ describe('contrôleur de visite', () => {
     controller.finish();
     expect(assign).not.toHaveBeenCalled();
     expect(closeCard).not.toHaveBeenCalled();
+  });
+
+  it('finish ferme aussi les fenêtres de réglage ouvertes pendant la visite, avant de rouvrir l’interface de départ', () => {
+    const order: string[] = [];
+    const { controller, storage, closeWindows, reopen } = setup({}, { pathname: '/collection', search: '' });
+    closeWindows.mockImplementation(() => order.push('fermer'));
+    reopen.mockImplementation(() => order.push('rouvrir'));
+    saveTourSession(storage, { steps, index: 0, origin: '/collection', from: { kind: 'wikihow' } }, 1_000);
+    controller.finish();
+    expect(order).toEqual(['fermer', 'rouvrir']);
   });
 
   describe('retour à l’interface de départ', () => {
@@ -135,7 +146,7 @@ describe('contrôleur de visite', () => {
 
     it('une carte réelle donne une note verte', async () => {
       const { controller, storage, screen } = setup({
-        env: () => ({ cards: async () => [card], pick: async () => card, openCard: () => void screen.set('#a', {} as Element), closeCard: vi.fn(), reopen: vi.fn() }),
+        env: () => ({ cards: async () => [card], pick: async () => card, openCard: () => void screen.set('#a', {} as Element), closeCard: vi.fn(), closeWindows: vi.fn(), reopen: vi.fn() }),
       });
       saveTourSession(storage, { steps, index: 0, origin: '/' }, 1_000);
       expect(await controller.prepare(steps[0]!, 0)).toEqual({ note: { tone: 'real', text: 'Carte de votre Collection : Hades' } });

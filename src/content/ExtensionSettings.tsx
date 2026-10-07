@@ -29,18 +29,18 @@ export function ExtensionSettings({ images, player, ads, onClose }: { images: Im
             ✕
           </button>
         </div>
-        <button type="button" onClick={() => setView('images')} style={row}>
+        <button type="button" data-wmt-ext-row="images" onClick={() => setView('images')} style={row}>
           <span aria-hidden="true">🖼</span>
           <span>Images</span>
           <span aria-hidden="true" style={{ marginLeft: 'auto', opacity: 0.5 }}>›</span>
         </button>
-        <button type="button" onClick={() => setView('ads')} style={row}>
+        <button type="button" data-wmt-ext-row="ads" onClick={() => setView('ads')} style={row}>
           <span aria-hidden="true">🛒</span>
           <span>Publicité d’achat</span>
           <span aria-hidden="true" style={{ marginLeft: 'auto', opacity: 0.5 }}>›</span>
         </button>
         {player && (
-          <button type="button" onClick={() => setView('player')} style={row}>
+          <button type="button" data-wmt-ext-row="player" onClick={() => setView('player')} style={row}>
             <span aria-hidden="true">▶</span>
             <span>Lecteur</span>
             <span aria-hidden="true" style={{ marginLeft: 'auto', opacity: 0.5 }}>›</span>

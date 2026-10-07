@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
 import { ENTRIES } from '../../../src/core/whats-new/entries';
 import { THEMES } from '../../../src/core/whats-new/types';
@@ -75,6 +76,26 @@ describe('catalogue des fiches', () => {
         if (step.optional) expect(step.target, `${e.id} / ${step.title}`).not.toBeNull();
         if (step.gesture) expect(step.details?.some((d) => d.label === 'Comment faire'), `${e.id} / ${step.title}`).toBe(true);
       }
+    }
+  });
+
+  it('chaque repère data-wmt-* visé par une étape existe dans le code (pas de cible morte)', () => {
+    // Toutes les sources de l'extension, lues en texte, sauf le catalogue lui-même (il cite les repères qu'il vise).
+    const sources = import.meta.glob('../../../src/**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+    const source = Object.entries(sources)
+      .filter(([path]) => !path.endsWith('whats-new/entries.ts'))
+      .map(([, text]) => text)
+      .join(' ');
+    const selectors = ENTRIES.flatMap((e) => e.steps.flatMap((step) => [step.target, ...(step.scene?.reveal ?? []).filter((r): r is string => typeof r === 'string')])).filter((t): t is string => t !== null);
+    expect(Object.keys(sources).length).toBeGreaterThan(50);
+    for (const selector of selectors) {
+      for (const match of selector.matchAll(/data-wmt-[a-z-]+/g)) expect(source.includes(match[0]), `repère introuvable : ${match[0]} (cible ${selector})`).toBe(true);
+    }
+  });
+
+  it('les fiches qui montrent un chemin d’interface éclairent chacune de leurs étapes : Publicité d’achat et La visite guidée', () => {
+    for (const e of ENTRIES.filter((x) => x.id.startsWith('publicite-achat') || x.id.startsWith('visite-guidee'))) {
+      for (const step of e.steps) expect(step.target, `${e.id} / ${step.title}`).not.toBeNull();
     }
   });
 });

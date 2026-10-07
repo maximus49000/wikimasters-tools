@@ -92,6 +92,11 @@ function Encart({ step }: { step: TourStep }) {
       const element = findTarget(target);
       const slot = holder.current;
       if (!element || !slot) return;
+      // L'élément visé fait partie de la bulle (visite qui explique la bulle) : pas de copie, le geste ou le glyphe suffit.
+      if (slot.getRootNode() === element.getRootNode()) {
+        done = true;
+        return;
+      }
       const clone = snapshot(element);
       done = true;
       if (!clone) return;
@@ -150,6 +155,8 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   const [box, setBox] = useState<Box | null>(null);
   // Côté de l'écran où la bulle est calée (haut ou bas) pour laisser toute la zone visée visible.
   const [dock, setDock] = useState<Dock | null>(null);
+  // L'élément visé fait partie de la bulle : on ne la déplace pas pour lui (elle bougerait avec sa cible, sans fin).
+  const [selfTarget, setSelfTarget] = useState(false);
   const [prep, setPrep] = useState<ScenePrep>({});
   // Étape dont l'écran est prêt : « Préparation… » dure tant qu'elle diffère de l'étape affichée.
   const [readyIndex, setReadyIndex] = useState(-1);
@@ -205,7 +212,11 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   useEffect(() => {
     const update = () => {
       const element = step?.target ? findTarget(step.target) : null;
-      if (!element) return setBox(null);
+      if (!element) {
+        setSelfTarget(false);
+        return setBox(null);
+      }
+      setSelfTarget(bubble.current?.contains(element) ?? false);
       const r = element.getBoundingClientRect();
       setBox((prev) => {
         const next = spotlightBox({ left: r.left, top: r.top, width: r.width, height: r.height });
@@ -227,7 +238,7 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   useEffect(() => {
     if (moved || !hasBox || !step?.target) return;
     const element = findTarget(step.target);
-    if (!element) return;
+    if (!element || bubble.current?.contains(element)) return;
     const rect = element.getBoundingClientRect();
     const plan = planLayout(spotlightBox({ left: rect.left, top: rect.top, width: rect.width, height: rect.height }), size.height, screen.height);
     setDock(plan.dock);
@@ -272,7 +283,7 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   };
 
   const width = Math.min(MAX_WIDTH, screen.width - 24);
-  const automatic = { left: (screen.width - width) / 2, top: box && dock ? dockTop(dock, size.height, screen.height) : bubbleTop(box, screen.height, size.height) };
+  const automatic = { left: (screen.width - width) / 2, top: selfTarget ? dockTop('bottom', size.height, screen.height) : box && dock ? dockTop(dock, size.height, screen.height) : bubbleTop(box, screen.height, size.height) };
   const position = clampBubble(moved ?? automatic, { width, height: size.height }, screen);
 
   const onGripDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -300,11 +311,6 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
       ) : (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)' }} />
       )}
-      {box && step.gesture && (
-        <div data-wmt-gesture={step.gesture} style={{ position: 'fixed', left: box.left + box.width / 2, top: box.top + box.height / 2, width: 0, height: 0, pointerEvents: 'none' }}>
-          <GestureFigure gesture={step.gesture} />
-        </div>
-      )}
       <div
         ref={bubble}
         style={{ position: 'fixed', left: position.left, top: position.top, width, maxHeight: screen.height - 16, overflowY: 'auto', boxSizing: 'border-box', padding: '0 14px 14px', borderRadius: 12, border, background: 'var(--color-surface, #0d1117)', color: 'var(--color-foreground, #e6edf3)', font: '14px/20px system-ui, sans-serif' }}
@@ -322,12 +328,12 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
         >
           ⠿⠿⠿
         </div>
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
+        <div data-wmt-tour-counter="" style={{ fontSize: 12, opacity: 0.7 }}>
           Étape {index + 1}/{steps.length}
           {pages.length > 1 ? ` · page ${page + 1}/${pages.length}` : ''}
         </div>
         <strong style={{ display: 'block', fontSize: 16, margin: '2px 0' }}>{step.title}</strong>
-        {current.encart && <Encart step={step} />}
+        {(current.encart || step.target === '[data-wmt-encart]') && <Encart step={step} />}
         <h4 style={{ margin: '4px 0 2px', fontSize: 12, fontWeight: 600, opacity: 0.65 }}>{current.label}</h4>
         <p style={{ margin: '0 0 8px', opacity: 0.92 }}>{current.text}</p>
         {pages.length > 1 && (
@@ -342,18 +348,26 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
         {(missing || prep.note?.tone === 'info') && <p style={{ margin: '0 0 8px', fontSize: 12, opacity: 0.7 }}>{prep.note?.text ?? 'Ouvrez la page concernée pour voir l’élément éclairé.'}</p>}
         <div style={{ display: 'flex', gap: 8 }}>
           {(page > 0 || index > 0) && (
-            <button type="button" onClick={back} style={button(false)}>
+            <button type="button" data-wmt-tour-back="" onClick={back} style={button(false)}>
               Précédent
             </button>
           )}
-          <button type="button" onClick={next} style={button(true)}>
+          <button type="button" data-wmt-tour-next="" onClick={next} style={button(true)}>
             {last && lastPage ? 'Terminer' : 'Suivant'}
           </button>
         </div>
-        <button type="button" onClick={onDone} style={{ display: 'block', width: '100%', minHeight: 36, marginTop: 6, cursor: 'pointer', color: 'inherit', opacity: 0.7, background: 'none', border: 'none', font: '12px system-ui, sans-serif' }}>
+        <button type="button" data-wmt-tour-quit="" onClick={onDone} style={{ display: 'block', width: '100%', minHeight: 36, marginTop: 6, cursor: 'pointer', color: 'inherit', opacity: 0.7, background: 'none', border: 'none', font: '12px system-ui, sans-serif' }}>
           Quitter la visite
         </button>
       </div>
+      {box && (
+        <div style={{ position: 'fixed', left: box.left, top: box.top, width: box.width, height: box.height, borderRadius: 10, border: `2px solid ${ACCENT}`, pointerEvents: 'none' }} />
+      )}
+      {box && step.gesture && (
+        <div data-wmt-gesture={step.gesture} style={{ position: 'fixed', left: box.left + box.width / 2, top: box.top + box.height / 2, width: 0, height: 0, pointerEvents: 'none' }}>
+          <GestureFigure gesture={step.gesture} />
+        </div>
+      )}
     </div>
   );
 }

@@ -20,6 +20,7 @@ export type SceneDeps = {
   pick(kind: CardKind, cards: KnownCard[]): Promise<KnownCard | null>;
   openCard(slug: string): void;
   save(session: TourSession): void;
+  closeWindows(): void;
 };
 
 const REVEAL_MS = 2_000;
@@ -35,8 +36,9 @@ export function createSceneResolver(deps: SceneDeps) {
   return {
     async ensure(step: TourStep, session: TourSession): Promise<SceneResult> {
       if (!step.target) return { kind: 'ready' };
-      if (target(step)) return { kind: 'ready' };
       const scene = step.scene;
+      if (scene?.closeWindows) deps.closeWindows();
+      if (target(step)) return { kind: 'ready' };
       if (!scene) return { kind: 'text', missing: true };
 
       if (scene.page && !deps.pathname().startsWith(scene.page)) {
@@ -45,8 +47,13 @@ export function createSceneResolver(deps: SceneDeps) {
         return { kind: 'navigating' };
       }
 
-      for (const item of scene.reveal ?? []) {
+      const items = scene.reveal ?? [];
+      for (const [i, item] of items.entries()) {
         if (target(step)) break;
+        // Un élément plus loin dans le chemin est déjà à l'écran (menu déjà ouvert, ordinateur) : on ne touche pas celui-ci,
+        // sinon on refermerait ce que l'étape précédente a ouvert.
+        const later = items.slice(i + 1).some((next) => reveal(next));
+        if (later) continue;
         const element = await deps.wait(() => reveal(item), REVEAL_MS);
         if (element) deps.click(element);
       }
