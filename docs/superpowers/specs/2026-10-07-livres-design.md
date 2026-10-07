@@ -83,7 +83,21 @@ type ShopLink = { shop: string; url: string; price?: PriceLine; kind: 'paper' | 
 - Une carte « Personne » dont l'occupation est écrivain / poète / romancier / dramaturge / scénariste de bande dessinée reçoit une section « Bibliographie » ; **même structure et même rendu graphique que la filmographie** de `ScreenSection.tsx` (`FilmographyItem` → `BookshelfItem`).
 - Liste verticale compacte : en-tête (glyphe livre, « Bibliographie », `· N`), puis une ligne par œuvre de 44 px minimum, séparée par un trait : petite couverture 26×38, titre (une ligne, ellipse), année, et à droite ★ + note (Open Library, sur 5, omise si absente). Liste défilante (`maxHeight: min(180px, 28vh)`), « Aucun livre connu. » si vide. Pas de grille, pas d'onglets.
 - Œuvres : Wikidata `P50` avec `sitelinks >= 8` (repli à `>= 3` si moins de 6 œuvres) pour choisir les plus connues ; maximum 40, **affichées du plus récent au plus ancien**, sans doublon (éditions regroupées) ; une seule requête par auteur, mémorisée 7 jours.
+- Les livres possédés sont repérés comme décrit dans « Ma collection dans les listes ».
 - Un appui sur une ligne ouvre, dans la section, la fiche du livre (même contenu que `BookSection` : synopsis, prix, vendeurs, lecture) avec une flèche ← « Retour à la bibliographie » et le titre + année ; la liste est masquée (non retirée), donc son défilement est conservé au retour. Pas de navigation vers une autre carte.
+
+## Ma collection dans les listes (bibliographie **et** filmographie)
+
+Décision de l'utilisateur : on repère, dans la liste d'un écrivain, les livres dont on possède la carte ; la **même chose est réalisée pour la filmographie** (`ScreenSection.tsx`). Maquette : section 3.
+
+- **Ligne d'une œuvre possédée** : miniature plus grande (30×42) **en cadre de rareté**, comme les cartes liées (`Thumb` de `LinkedCards.tsx` : couleur `--color-rarity-*`, image via `ImageService.displayUrl` — donc la couverture du livre en priorité), pastille **×N** (`KnownCard.copies`, omise si inconnu), ligne en surbrillance, titre en gras, rareté dans la ligne d'état (« 1942 · Légendaire »), et bouton **carte** (glyphe `card`, 44 px) qui ouvre la carte (même action que le choix d'une carte liée). Un appui ailleurs sur la ligne ouvre toujours la fiche du livre / du film dans la section ; sa fiche rappelle « Tu possèdes cette carte · Rareté · ×N » avec un lien vers la carte.
+- **En-tête** : « 3 / 14 dans ma collection » (glyphe `card`, couleur or) et un interrupteur « Seulement ma collection » qui ne garde que les cartes possédées (compteur « 3 sur 14 », nouvel appui = liste complète). État local à la fiche, non mémorisé. Sans aucune carte possédée : ni résumé ni interrupteur.
+- **Correspondance œuvre → carte (livres)** : la requête Wikidata de bibliographie renvoie aussi le titre de l'article Wikipédia FR de chaque œuvre (lien de site) = le slug de la carte ; recherche directe dans la Collection, aucune résolution supplémentaire.
+- **Correspondance œuvre → carte (films et séries)** : identifiant TMDB → slug en inversant `screen-v1` (`CardScreen.movieId` / `tvId`). Les cartes de la Collection de nature film / série encore jamais résolues sont résolues en arrière-plan par lots de 50 (`screenRepo.resolve`, même file que les autres chargeurs, en respectant la limite de 200 requêtes par minute et par IP de l'API Wikipédia) ; l'affichage se complète à mesure (abonnement `subscribe`), et la liste n'attend pas.
+- **Source de vérité** : `CollectionRepo` (`list` + `subscribe`), comme `LinkedSource` ; un nouveau `CollectionMarks` (`src/content/collection-marks.ts`) expose `cardOf(key)` et `count(keys)` pour les deux sections.
+- **Composant commun** `WorkList.tsx` : liste (ligne, miniature, année, note, repère de collection, bouton carte, interrupteur, ouverture d'un titre avec retour ←) utilisée par `WriterSection` et `ScreenSection` ; la filmographie existante est portée sur ce composant sans changer son rendu pour les cartes non possédées.
+- **Limite connue** : seules les cartes connues de la Collection (scan) sont repérées ; sans scan complet, une carte possédée mais jamais vue n'apparaît pas encore.
+- Découpage : la filmographie et la bibliographie partagent ce composant ; la filmographie peut être livrée la première (sans dépendre des livres).
 
 ## Image de la carte
 
@@ -136,6 +150,7 @@ Maquette de référence. Section « Livre » : titre + glyphe ⇄ ; auteur (lien
 - `book-service` avec API simulées : résolution P648 prioritaire, repli par titre + auteur strict (rejet des homonymes), cache, absence de clé Google, prix de référence, lecture gratuite vs protégé (calcul de la date).
 - `media-art` : couverture prioritaire, réglage Inactif, `ART_VERSION`.
 - Composants : rendu de la section (avec / sans prix, avec / sans lecture libre), liste de bibliographie (ouverture d'un livre, retour ←), glyphe ⇄ et fenêtre de choix.
+- Ma collection : `collection-marks` (slug d'un livre, identifiant TMDB inversé, copies, rareté, mise à jour à l'arrivée d'une carte) ; `WorkList` (ligne possédée / non possédée, résumé « N / M », interrupteur, absence de résumé sans carte possédée, bouton carte, ouverture + retour) ; non-régression de la filmographie existante.
 - Filtre : natures « Livre » regroupées.
 - Vérification manuelle : recharger l'extension, ouvrir *L'Étranger*, *Les Fleurs du mal*, un écrivain ; Android (APK à la demande) ; `npm run build` à chaque étape.
 - Guide : fiche WikiHow (`entries.ts`) dans la même PR.
