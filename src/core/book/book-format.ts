@@ -18,7 +18,7 @@ export function firstIsbn13(isbns: readonly string[] | undefined): string | unde
 
 // Prix en euros à la française, avec une espace ordinaire (l'espace insécable de Intl complique les comparaisons et les césures).
 export const formatEuro = (amount: number): string =>
-  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount).replace(/[  ]/g, ' ');
+  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount).replace(/[\u00a0\u202f]/g, ' ');
 
 // Jour de lecture d'un prix : « 07/10 ».
 export const formatDay = (ms: number): string => {
