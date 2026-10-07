@@ -16,7 +16,8 @@ export type Scene = { page?: string; card?: CardKind; reveal?: RevealItem[] };
 // `text` : à quoi sert l'élément. `details` : tout ce qui aide à le comprendre et à s'en servir, en paragraphes titrés
 // (d'où viennent les données, comment s'en servir, limites…).
 export type StepDetail = { label: string; text: string };
-export type TourStep = { target: string | null; title: string; text: string; details?: StepDetail[]; scene?: Scene };
+// `glyph` : celui de la fiche, posé au lancement de la visite ; l'encart de l'interface le montre quand l'élément n'est pas à l'écran.
+export type TourStep = { target: string | null; title: string; text: string; details?: StepDetail[]; scene?: Scene; glyph?: string };
 
 // `fresh` : annoncée même au tout premier lancement (réservé à la fiche qui présente WikiHow).
 export type Entry = { id: string; theme: Theme; glyph: string; title: string; summary: string; steps: TourStep[]; fresh?: boolean };
