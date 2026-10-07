@@ -1,5 +1,6 @@
 // relay/src/youtube.ts
 import { z } from 'zod';
+import type { DocCandidate } from '../../src/core/documentary/types';
 
 export type FetchLike = (url: string) => Promise<Response>;
 
@@ -40,4 +41,38 @@ export async function fetchUploadsPage(fetchFn: FetchLike, key: string, playlist
     .filter((item) => item.snippet.title !== 'Private video' && item.snippet.title !== 'Deleted video')
     .map((item) => ({ id: item.contentDetails.videoId, title: item.snippet.title, durationSec: durations.get(item.contentDetails.videoId) ?? null }));
   return { videos, next: page.nextPageToken ?? null };
+}
+
+const searchSchema = z.object({ items: z.array(z.object({ id: z.object({ videoId: z.string().optional() }) })).default([]) });
+const videosSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string(),
+        snippet: z.object({ title: z.string(), channelTitle: z.string(), description: z.string().default(''), defaultAudioLanguage: z.string().optional(), defaultLanguage: z.string().optional() }),
+        contentDetails: z.object({ duration: z.string() }),
+      }),
+    )
+    .default([]),
+});
+
+// Une recherche (100 unités de quota), puis les durées et langues des résultats (1 unité). Seules les vidéos intégrables ailleurs sont demandées.
+export async function searchYoutube(fetchFn: FetchLike, key: string, query: string): Promise<DocCandidate[]> {
+  const found = searchSchema.parse(
+    await getJson(fetchFn, 'search', { part: 'snippet', type: 'video', maxResults: '10', q: query, relevanceLanguage: 'fr', videoEmbeddable: 'true', videoSyndicated: 'true', safeSearch: 'moderate', key }),
+  );
+  const ids = found.items.map((item) => item.id.videoId).filter((id): id is string => id !== undefined);
+  if (ids.length === 0) return [];
+  const details = videosSchema.parse(await getJson(fetchFn, 'videos', { part: 'snippet,contentDetails', id: ids.join(','), key }));
+  return details.items.map((video) => ({
+    source: 'youtube' as const,
+    id: video.id,
+    title: video.snippet.title,
+    channel: video.snippet.channelTitle,
+    durationSec: parseDuration(video.contentDetails.duration),
+    language: video.snippet.defaultAudioLanguage ?? video.snippet.defaultLanguage ?? null,
+    description: video.snippet.description,
+    url: `https://www.youtube.com/watch?v=${video.id}`,
+    thumbUrl: `https://img.youtube.com/vi/${video.id}/hqdefault.jpg`,
+  }));
 }
