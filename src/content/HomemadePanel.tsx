@@ -143,6 +143,7 @@ function CardTile({ preview, selecting, checked, onPick, onLongPress }: { previe
       ref={wrapRef}
       type="button"
       aria-label={preview.title}
+      data-wmt-card=""
       {...(selecting ? { role: 'checkbox', 'aria-checked': checked } : {})}
       onClick={(event) => {
         if (press.consumeClick()) return event.preventDefault();

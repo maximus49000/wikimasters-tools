@@ -23,6 +23,16 @@ describe('findTarget', () => {
   it('rend null si rien ne correspond', () => {
     expect(findTarget('[data-wmt-absent]')).toBeNull();
   });
+  it('« text=Libellé » vise un bouton ou un lien par son libellé exact, sans tenir compte de la casse ni des espaces', () => {
+    document.body.innerHTML = '<a href="/x"> Autre </a><button id="plus">  Plus </button><div>Plus</div>';
+    expect(findTarget('text=plus')?.id).toBe('plus');
+    expect(findTarget('text=Pl')).toBeNull();
+  });
+  it('« text=Libellé » cherche aussi dans les shadow DOM ouverts', () => {
+    document.body.innerHTML = '<div id="host"></div>';
+    document.getElementById('host')!.attachShadow({ mode: 'open' }).innerHTML = '<button>Sélectionner</button>';
+    expect(findTarget('text=Sélectionner')?.textContent).toBe('Sélectionner');
+  });
 });
 
 describe('géométrie', () => {
@@ -193,5 +203,72 @@ describe('TourOverlay', () => {
     expect(parseFloat(bubble.style.left)).toBeLessThanOrEqual(window.innerWidth);
     expect(parseFloat(bubble.style.top)).toBeLessThanOrEqual(window.innerHeight);
     fire('pointerup', 9000, 9000);
+  });
+
+  describe('gestes', () => {
+    const click = (label: string) => act(() => [...container.querySelectorAll('button')].find((b) => b.textContent === label)!.click());
+
+    it('anime le geste sur l’élément éclairé et le montre en pictogramme avec sa consigne dans l’encart', () => {
+      document.body.innerHTML = '<button id="cible">Plus</button>';
+      const gestural = [{ target: '#cible', title: 'Ouvrir le menu', text: 'Touchez Plus.', gesture: 'tap' as const }];
+      act(() => root.render(<TourOverlay steps={gestural} onDone={() => undefined} />));
+      expect(container.querySelector('[data-wmt-gesture="tap"]')).not.toBeNull();
+      const figure = container.querySelector('[data-wmt-gesture-figure="tap"]');
+      expect(figure?.textContent).toContain('Geste : Toucher');
+      expect(figure?.textContent).toContain('Un appui bref');
+    });
+
+    it('un geste sans élément (Toile, bulle) montre seulement le pictogramme, sans marqueur à l’écran ni glyphe', () => {
+      const pinch = [{ target: null, title: 'Zoomer', text: 'Pincez pour zoomer.', gesture: 'pinch' as const, glyph: '🕸' }];
+      act(() => root.render(<TourOverlay steps={pinch} onDone={() => undefined} />));
+      expect(container.querySelector('[data-wmt-gesture]')).toBeNull();
+      expect(container.querySelector('[data-wmt-gesture-figure="pinch"]')?.textContent).toContain('Pincer');
+      expect(container.querySelector('[data-wmt-encart]')?.textContent).not.toContain('🕸');
+    });
+
+    it('l’appui long donne sa consigne de durée', () => {
+      const long = [{ target: null, title: 'Cocher', text: 'Appui long.', gesture: 'longpress' as const }];
+      act(() => root.render(<TourOverlay steps={long} onDone={() => undefined} />));
+      expect(container.textContent).toContain('demi-seconde');
+    });
+
+    it('saute une étape facultative absente (« Plus » sur ordinateur) en avançant', async () => {
+      document.body.innerHTML = '<button id="suite">suite</button>';
+      const three = [
+        { target: null, title: 'Début', text: 'Début.' },
+        { target: 'text=Plus', title: 'Touchez Plus', text: 'Menu.', optional: true, gesture: 'tap' as const },
+        { target: '#suite', title: 'Suite', text: 'Suite.' },
+      ];
+      await act(async () => root.render(<TourOverlay steps={three} onDone={() => undefined} />));
+      click('Suivant');
+      expect(container.textContent).toContain('Étape 3/3');
+      expect(container.textContent).toContain('Suite.');
+    });
+
+    it('la saute aussi en revenant en arrière, sans rebondir vers l’avant', async () => {
+      document.body.innerHTML = '<button id="suite">suite</button>';
+      const three = [
+        { target: null, title: 'Début', text: 'Début.' },
+        { target: 'text=Plus', title: 'Touchez Plus', text: 'Menu.', optional: true },
+        { target: '#suite', title: 'Suite', text: 'Suite.' },
+      ];
+      await act(async () => root.render(<TourOverlay steps={three} startIndex={2} onDone={() => undefined} />));
+      click('Précédent');
+      expect(container.textContent).toContain('Étape 1/3');
+      expect(container.textContent).toContain('Début.');
+    });
+
+    it('ne saute pas une étape facultative dont l’élément est à l’écran, ni une étape obligatoire absente', async () => {
+      document.body.innerHTML = '<button>Plus</button>';
+      const two = [
+        { target: 'text=Plus', title: 'Touchez Plus', text: 'Menu.', optional: true },
+        { target: '#absent', title: 'Obligatoire', text: 'Texte.' },
+      ];
+      await act(async () => root.render(<TourOverlay steps={two} onDone={() => undefined} />));
+      expect(container.textContent).toContain('Étape 1/2');
+      click('Suivant');
+      expect(container.textContent).toContain('Étape 2/2');
+      expect(container.textContent).toContain('Obligatoire');
+    });
   });
 });

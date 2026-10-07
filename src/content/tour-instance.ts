@@ -2,21 +2,7 @@ import type { TourStep } from '../core/whats-new/types';
 import { createTourController } from './tour-control';
 import { getTourEnv } from './tour-registry';
 import type { TourSession } from './tour-session';
-import { findTarget } from './tour-target';
-
-// Recherche d'un bouton ou lien par son libellé exact, jusque dans les shadow DOM ouverts.
-function findByText(text: string, root: ParentNode = document): Element | null {
-  const wanted = text.replace(/\s+/g, ' ').trim().toLowerCase();
-  for (const element of root.querySelectorAll('button, a, [role="button"]')) {
-    if ((element.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase() === wanted) return element;
-  }
-  for (const element of root.querySelectorAll('*')) {
-    const shadow = element.shadowRoot;
-    const found = shadow ? findByText(text, shadow) : null;
-    if (found) return found;
-  }
-  return null;
-}
+import { findByText, findTarget } from './tour-target';
 
 // Interroge toutes les 100 ms jusqu'au délai ; rend la première valeur non nulle.
 function wait<T>(read: () => T | null, ms: number): Promise<T | null> {

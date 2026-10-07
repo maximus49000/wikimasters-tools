@@ -1,3 +1,5 @@
+import type { Gesture } from './gestures';
+
 export type Theme = 'app' | 'collection' | 'fiche' | 'ecoute';
 
 export const THEMES: { id: Theme; label: string }[] = [
@@ -17,7 +19,9 @@ export type Scene = { page?: string; card?: CardKind; reveal?: RevealItem[] };
 // (d'où viennent les données, comment s'en servir, limites…).
 export type StepDetail = { label: string; text: string };
 // `glyph` : celui de la fiche, posé au lancement de la visite ; l'encart de l'interface le montre quand l'élément n'est pas à l'écran.
-export type TourStep = { target: string | null; title: string; text: string; details?: StepDetail[]; scene?: Scene; glyph?: string };
+// `gesture` : le geste à faire, animé sur l'élément éclairé et en pictogramme dans l'encart.
+// `optional` : étape sautée quand son élément n'est pas à l'écran (ex. le bouton « Plus » sur ordinateur, où le menu est déjà affiché).
+export type TourStep = { target: string | null; title: string; text: string; details?: StepDetail[]; scene?: Scene; glyph?: string; gesture?: Gesture; optional?: boolean };
 
 // `fresh` : annoncée même au tout premier lancement (réservé à la fiche qui présente WikiHow).
 export type Entry = { id: string; theme: Theme; glyph: string; title: string; summary: string; steps: TourStep[]; fresh?: boolean };
