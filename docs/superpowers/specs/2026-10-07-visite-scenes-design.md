@@ -48,3 +48,9 @@ Chaque fiche du catalogue reçoit la scène qui convient : sélection (`/collect
 ## Tests
 
 Unitaires : choix de la carte (nature trouvée, absente, ordre, plafond), persistance et reprise de la session (expiration, forme invalide), résolveur de scène avec dépendances simulées (cible présente, mauvaise page, reveal, carte réelle, repli démo, repli texte), nettoyage de fin (fiche fermée, retour à la page de départ, services restaurés), fiche de démonstration (aucune requête réseau, aucune écriture). Vérification manuelle dans Chrome et sur mobile.
+
+## Contenu didactique (demande du 2026-10-07)
+
+Une étape ne se limite pas à nommer l'élément : `text` dit à quoi il sert exactement, et `details` (au moins deux paragraphes titrés) donne tout ce qui aide à le comprendre et à s'en servir : d'où viennent les données (source, fréquence, ce qui est mémorisé), comment s'en servir pas à pas, limites et pièges. La bulle défile quand le contenu est long. Les faits sont vérifiés dans le code avant d'être écrits. Un test du catalogue refuse une étape qui n'a pas ces paragraphes.
+
+Choix de conception : la visite n'active jamais une vue mémorisée (Toile, Monde…) pour ne pas modifier les préférences de l'utilisateur ; elle éclaire le sélecteur et explique la vue.
