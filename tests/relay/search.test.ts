@@ -7,6 +7,7 @@ import { memoryKv } from './memory-kv';
 
 const request: SearchRequest = { qid: 'Q2280', kind: 'event', names: ['Bataille de Verdun', 'Verdun'], startYear: 1916, endYear: 1916 };
 const arte: ChannelDef = { id: 'UCarte0000000000000000A', name: 'ARTE', language: 'fr' };
+const other: ChannelDef = { id: 'UCautre0000000000000000B', name: 'Un ministère', language: 'fr' };
 
 const youtubeFetch = (calls: string[]) => async (url: string) => {
   calls.push(url);
@@ -55,12 +56,38 @@ describe('searchDocumentaries', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('range une vidéo de pertinence moins sûre dans « possible », sans la proposer d’office', async () => {
+    const kv = memoryKv();
+    const maybe = async (url: string) =>
+      new Response(
+        JSON.stringify(
+          url.includes('/search?')
+            ? { items: [{ id: { videoId: 'MAYBE' } }] }
+            : { items: [{ id: 'MAYBE', snippet: { title: 'Verdun, les fragments retrouvés', channelTitle: 'Un ministère', description: '', defaultAudioLanguage: 'fr' }, contentDetails: { duration: 'PT14M' } }] },
+        ),
+      );
+    const result = await searchDocumentaries({ ...deps(kv, []), fetch: maybe }, request);
+    expect(result.ok && result.candidates).toEqual([]);
+    expect(result.ok && result.possible.map((c) => c.id)).toEqual(['MAYBE']);
+    expect(JSON.parse(kv.data.get('doc-v2-Q2280') ?? '{}').possible).toHaveLength(1);
+  });
+
+  it('l’index rend les vidéos proposées d’abord et les possibles à part, sans doublon', async () => {
+    const kv = memoryKv();
+    kv.data.set('chan-v1-UCarte0000000000000000A', toLine({ id: 'IDX', title: 'Verdun, la bataille de l’impossible', durationSec: 3120 }));
+    // Une chaîne non reconnue : 14 minutes, sans mot de genre, notent 50 (« possible »).
+    kv.data.set('chan-v1-UCautre0000000000000000B', toLine({ id: 'PEU', title: 'Verdun, les fragments retrouvés', durationSec: 840 }));
+    const result = await searchDocumentaries(deps(kv, [], [arte, other]), request);
+    expect(result.ok && result.candidates.map((c) => c.id)).toEqual(['IDX']);
+    expect(result.ok && result.possible.map((c) => c.id)).toEqual(['PEU']);
+  });
+
   it('mémorise aussi « rien de pertinent »', async () => {
     const kv = memoryKv();
     const empty = async () => new Response(JSON.stringify({ items: [] }));
     const result = await searchDocumentaries({ ...deps(kv, []), fetch: empty }, request);
-    expect(result).toEqual({ ok: true, candidates: [], cached: false });
-    expect(kv.data.get('doc-v1-Q2280')).toBe('[]');
+    expect(result).toEqual({ ok: true, candidates: [], possible: [], cached: false });
+    expect(kv.data.get('doc-v2-Q2280')).toBe('{"candidates":[],"possible":[]}');
   });
 
   it('s’arrête au plafond du jour sans appeler YouTube ni mémoriser', async () => {
@@ -69,7 +96,7 @@ describe('searchDocumentaries', () => {
     const calls: string[] = [];
     expect(await searchDocumentaries(deps(kv, calls), request)).toEqual({ ok: false, reason: 'budget' });
     expect(calls).toHaveLength(0);
-    expect(kv.data.has('doc-v1-Q2280')).toBe(false);
+    expect(kv.data.has('doc-v2-Q2280')).toBe(false);
   });
 
   it('compte 101 unités par recherche neuve', async () => {
@@ -82,7 +109,7 @@ describe('searchDocumentaries', () => {
     const kv = memoryKv();
     const result = await searchDocumentaries({ ...deps(kv, []), fetch: async () => new Response('', { status: 403 }) }, request);
     expect(result).toEqual({ ok: false, reason: 'upstream' });
-    expect(kv.data.has('doc-v1-Q2280')).toBe(false);
+    expect(kv.data.has('doc-v2-Q2280')).toBe(false);
   });
 
   it('en mode debug rend tous les candidats notés (index et recherche), sans cache', async () => {
@@ -90,7 +117,7 @@ describe('searchDocumentaries', () => {
     kv.data.set('chan-v1-UCarte0000000000000000A', toLine({ id: 'IDX', title: 'Verdun, la bataille de l’impossible', durationSec: 3120 }));
     const result = await searchDocumentaries(deps(kv, [], [arte]), { ...request, debug: true });
     expect(result.ok && result.debug?.map((entry) => [entry.candidate.id, entry.result.reason ?? 'ok'])).toEqual([['IDX', 'ok'], ['GOOD', 'ok'], ['BAD', 'mot parasite']]);
-    expect(kv.data.has('doc-v1-Q2280')).toBe(false);
+    expect(kv.data.has('doc-v2-Q2280')).toBe(false);
   });
 });
 

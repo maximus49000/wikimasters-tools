@@ -11,8 +11,12 @@ describe('createRelayApi.search', () => {
     let seen = '';
     const api = createRelayApi({ fetch: async (url) => ((seen = url), new Response(JSON.stringify({ ok: true, candidates: [candidate], cached: false }))), base: 'https://relais.test' });
     const result = await api.search(subject);
-    expect(result).toEqual({ status: 'ok', candidates: [candidate] });
+    expect(result).toEqual({ status: 'ok', candidates: [candidate], possible: [] });
     expect(seen).toBe('https://relais.test/search?qid=Q2280&kind=event&names=Bataille+de+Verdun%7CVerdun&start=1916&end=1916');
+  });
+  it('rend aussi les vidéos possibles', async () => {
+    const api = createRelayApi({ fetch: reply({ ok: true, candidates: [], possible: [candidate], cached: false }) });
+    expect(await api.search(subject)).toEqual({ status: 'ok', candidates: [], possible: [candidate] });
   });
   it('omet les années inconnues', async () => {
     let seen = '';

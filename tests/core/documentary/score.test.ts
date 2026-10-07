@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COMMONS_RULES, normalize, passes, scoreCandidate, subjectNames, YOUTUBE_RULES } from '../../../src/core/documentary/score';
+import { COMMONS_RULES, normalize, passes, scoreCandidate, subjectNames, tierOf, YOUTUBE_RULES } from '../../../src/core/documentary/score';
 import type { DocCandidate, DocSubject } from '../../../src/core/documentary/types';
 
 const verdun: DocSubject = { qid: 'Q2280', kind: 'event', names: ['Bataille de Verdun', 'Verdun'], startYear: 1916, endYear: 1916 };
@@ -68,10 +68,36 @@ describe('scoreCandidate', () => {
     expect(passes(result)).toBe(true);
   });
 
+  it('reconnaît un nom dont tous les mots sont dans le titre, dans un autre ordre', () => {
+    const tenture: DocSubject = { qid: 'Q618856', kind: 'event', names: ['Tenture de l’Apocalypse'], startYear: 1377, endYear: null };
+    expect(scoreCandidate(tenture, make({ title: 'Apocalypse, la Tenture du Château d’Angers' }), YOUTUBE_RULES).reason).toBeUndefined();
+    expect(scoreCandidate(tenture, make({ title: 'Apocalypse : la guerre des mondes' }), YOUTUBE_RULES).reason).toBe('titre sans le nom du sujet');
+    // Un nom d'un seul mot reste exigé en entier.
+    expect(scoreCandidate(verdun, make({ title: 'Verdunois en fête documentaire' }), YOUTUBE_RULES).reason).toBe('titre sans le nom du sujet');
+  });
+
+  it('un titre d’émission d’histoire gagne 10 points', () => {
+    const tenture: DocSubject = { qid: 'Q618856', kind: 'event', names: ['Tenture de l’Apocalypse'], startYear: 1377, endYear: null };
+    const result = scoreCandidate(tenture, make({ title: 'Au cœur de l’Histoire : La tenture de l’Apocalypse', durationSec: 3180 }), YOUTUBE_RULES);
+    expect(result.score).toBe(65);
+    expect(tierOf(result)).toBe('good');
+  });
+
   it('accepte une archive libre de Commons plus courte', () => {
     const napoleon: DocSubject = { qid: 'Q517', kind: 'person', names: ['Napoléon Ier', 'Napoleon'], startYear: 1769, endYear: 1821 };
     const archive = make({ source: 'commons', title: 'La Révolution française et Napoléon - Planet Wissen', durationSec: 100, language: null });
     expect(passes(scoreCandidate(napoleon, archive, COMMONS_RULES))).toBe(true);
     expect(scoreCandidate(napoleon, { ...archive, durationSec: 30 }, COMMONS_RULES).reason).toBe('trop court');
+  });
+});
+
+describe('tierOf', () => {
+  it('sépare vidéos proposées, possibles et écartées', () => {
+    expect(tierOf({ score: 75 })).toBe('good');
+    expect(tierOf({ score: 60 })).toBe('good');
+    expect(tierOf({ score: 59 })).toBe('possible');
+    expect(tierOf({ score: 45 })).toBe('possible');
+    expect(tierOf({ score: 44 })).toBeNull();
+    expect(tierOf({ score: 0, reason: 'trop court' })).toBeNull();
   });
 });

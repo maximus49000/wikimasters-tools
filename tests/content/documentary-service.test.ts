@@ -17,7 +17,7 @@ function setup(overrides: Partial<DocumentaryServiceDeps> = {}, natures = ['Q178
     subject: async () => ({ qid: 'Q2280', names: ['Bataille de Verdun'], birth: null, death: null, start: 1916, end: 1916 }),
     selection: { forQid: async () => [] },
     commons: { search: async () => [] },
-    relay: { search: async () => ({ status: 'ok', candidates: [cand('REL')] }), oembed: async () => ({ ok: true, title: 'Titre', channel: 'Chaîne' }) },
+    relay: { search: async () => ({ status: 'ok', candidates: [cand('REL')], possible: [] }), oembed: async () => ({ ok: true, title: 'Titre', channel: 'Chaîne' }) },
     repo: createDocumentaryRepo(createMemoryStore()),
     issues: { send: async (draft) => (sent.push(draft), { ok: true, number: 7, url: '' }) },
     cache: noCache,
@@ -54,7 +54,7 @@ describe('view', () => {
   });
 
   it('les propositions de l’utilisateur et la sélection passent avant tout, et arrêtent la recherche', async () => {
-    const relay = vi.fn(async () => ({ status: 'ok' as const, candidates: [cand('REL')] }));
+    const relay = vi.fn(async () => ({ status: 'ok' as const, candidates: [cand('REL')], possible: [] }));
     const { service, deps } = setup({ selection: { forQid: async () => [cand('SEL', 'selection')] }, relay: { search: relay, oembed: async () => ({ ok: false, reason: 'busy' }) } });
     await deps.repo.addProposal('Bataille_de_Verdun', cand('MINE', 'proposal'));
     const view = await service.view('Bataille_de_Verdun', 'x');
@@ -63,7 +63,7 @@ describe('view', () => {
   });
 
   it('Commons passe avant le relais', async () => {
-    const relay = vi.fn(async () => ({ status: 'ok' as const, candidates: [cand('REL')] }));
+    const relay = vi.fn(async () => ({ status: 'ok' as const, candidates: [cand('REL')], possible: [] }));
     const { service } = setup({ commons: { search: async () => [cand('COM', 'commons')] }, relay: { search: relay, oembed: async () => ({ ok: false, reason: 'busy' }) } });
     const view = await service.view('Bataille_de_Verdun', 'x');
     expect(view.status === 'detail' && view.candidates.map((c) => c.id)).toEqual(['COM']);
@@ -76,15 +76,15 @@ describe('view', () => {
   });
 
   it('retire les vidéos que l’utilisateur a jugées hors sujet', async () => {
-    const { service, deps } = setup({ relay: { search: async () => ({ status: 'ok', candidates: [cand('REL'), cand('AUT')] }), oembed: async () => ({ ok: false, reason: 'busy' }) } });
+    const { service, deps } = setup({ relay: { search: async () => ({ status: 'ok', candidates: [cand('REL'), cand('AUT')], possible: [] }), oembed: async () => ({ ok: false, reason: 'busy' }) } });
     await deps.repo.addFlag('Bataille_de_Verdun', 'REL');
     const view = await service.view('Bataille_de_Verdun', 'x');
     expect(view.status === 'detail' && view.candidates.map((c) => c.id)).toEqual(['AUT']);
   });
 
   it('rien de pertinent : fiche vide ; relais occupé : fiche vide « busy » ; panne : erreur', async () => {
-    const none = setup({ relay: { search: async () => ({ status: 'ok', candidates: [] }), oembed: async () => ({ ok: false, reason: 'busy' }) } });
-    expect(await none.service.view('Bataille_de_Verdun', 'x')).toMatchObject({ status: 'empty', busy: false });
+    const none = setup({ relay: { search: async () => ({ status: 'ok', candidates: [], possible: [] }), oembed: async () => ({ ok: false, reason: 'busy' }) } });
+    expect(await none.service.view('Bataille_de_Verdun', 'x')).toMatchObject({ status: 'empty', busy: false, possible: [] });
     const busy = setup({ relay: { search: async () => ({ status: 'busy' }), oembed: async () => ({ ok: false, reason: 'busy' }) } });
     expect(await busy.service.view('Bataille_de_Verdun', 'x')).toMatchObject({ status: 'empty', busy: true });
     const broken = setup({ subject: async () => { throw new Error('HTTP 429'); } });
@@ -141,5 +141,25 @@ describe('view : périmètre élargi', () => {
   it('un taxon (Hominina) n’en a pas', async () => {
     const taxon = setup({ subject: async () => ({ qid: 'Q605457', names: ['Hominina'], birth: null, death: null, start: null, end: null }) }, ['Q16521']);
     expect((await taxon.service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
+  });
+});
+
+describe('view : vidéos possibles', () => {
+  const withPossible = (candidates: DocCandidate[], possible: DocCandidate[]) => ({
+    relay: { search: async () => ({ status: 'ok' as const, candidates, possible }), oembed: async () => ({ ok: false as const, reason: 'busy' as const }) },
+  });
+  it('rend les vidéos possibles à part des vidéos proposées', async () => {
+    const { service } = setup(withPossible([cand('BON')], [cand('PEUT')]));
+    expect(await service.view('Bataille_de_Verdun', 'x')).toMatchObject({ status: 'detail', candidates: [{ id: 'BON' }], possible: [{ id: 'PEUT' }] });
+  });
+  it('sans vidéo proposée mais avec des possibles : fiche vide, possibles gardées', async () => {
+    const { service } = setup(withPossible([], [cand('PEUT')]));
+    expect(await service.view('Bataille_de_Verdun', 'x')).toMatchObject({ status: 'empty', busy: false, possible: [{ id: 'PEUT' }] });
+  });
+  it('une vidéo possible signalée « pas pertinente » disparaît aussi', async () => {
+    const { service, deps } = setup(withPossible([cand('BON')], [cand('PEUT')]));
+    await deps.repo.addFlag('Bataille_de_Verdun', 'PEUT');
+    const view = await service.view('Bataille_de_Verdun', 'x');
+    expect(view.status === 'detail' && view.possible).toEqual([]);
   });
 });

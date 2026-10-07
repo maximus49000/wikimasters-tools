@@ -31,6 +31,14 @@ Note sur 100, calculée sur le titre, la description, la durée, la chaîne et l
 - Seuil : fixé après essais sur 30 cartes choisies par l'utilisateur, avec un tableau retenu/rejeté et motifs, avant la mise en pré-production.
 - Si rien ne dépasse le seuil : aucune vidéo ; boutons de recherche (YouTube, Arte, INA) et « Proposer un documentaire ».
 
+## Vidéos proposées et vidéos possibles
+
+Décision du 2026-10-07 (maquette validée : `.superpowers/mockups/documentaire-possibles.html`) :
+- Note ≥ 60 : vidéo **proposée** d'office (3 au plus, la mieux notée d'abord). Note de 45 à 59 : vidéo **possible** (5 au plus), visible seulement derrière le glyphe ≡▶ (avec compteur), dans le même lecteur, avec la pastille « Pertinence moins sûre » et un avertissement. Au-dessous de 45 : rien.
+- Notation : un nom de deux mots ou plus est reconnu si tous ses mots (4 lettres ou plus) sont dans le titre, dans n'importe quel ordre ; +10 si le titre contient « histoire ».
+- Le relais renvoie `candidates` et `possible` ; cache `doc-v2-<qid>` (30 jours si au moins une vidéo proposée, 7 jours sinon). L'extension garde la réponse 7 jours (`doc-relay-v2-<qid>`).
+- Idée mise de côté : bouton « mettre en sûr » et vidéo prioritaire choisie par l'utilisateur.
+
 ## Index des chaînes de confiance (dans le relais)
 
 - Chaînes : ARTE, INA Officiel, Nota Bene, Lumni, Hérodote (identifiants vérifiés ; France Télévisions écartée : journaux télévisés).

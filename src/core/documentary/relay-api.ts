@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { RELAY_BASE } from './config';
 import { candidateSchema, type DocCandidate, type DocSubject } from './types';
 
-export type RelayResult = { status: 'ok'; candidates: DocCandidate[] } | { status: 'busy' };
+// `candidates` : vidéos proposées d'office ; `possible` : pertinence moins sûre, derrière un lien.
+export type RelayResult = { status: 'ok'; candidates: DocCandidate[]; possible: DocCandidate[] } | { status: 'busy' };
 export type OembedResult = { ok: true; title: string; channel: string } | { ok: false; reason: 'not-found' | 'not-embeddable' | 'busy' };
 
 const searchSchema = z.discriminatedUnion('ok', [
-  z.object({ ok: z.literal(true), candidates: z.array(candidateSchema) }),
+  z.object({ ok: z.literal(true), candidates: z.array(candidateSchema), possible: z.array(candidateSchema).default([]) }),
   z.object({ ok: z.literal(false), reason: z.string() }),
 ]);
 const oembedSchema = z.discriminatedUnion('ok', [
@@ -26,7 +27,7 @@ export function createRelayApi({ fetch: doFetch, base = RELAY_BASE }: Options) {
       if (subject.endYear !== null) params.set('end', String(subject.endYear));
       const response = await doFetch(`${base}/search?${params.toString()}`);
       const body = searchSchema.parse(await response.json());
-      if (body.ok) return { status: 'ok', candidates: body.candidates };
+      if (body.ok) return { status: 'ok', candidates: body.candidates, possible: body.possible };
       // Plafond du jour atteint ou YouTube en panne : on réessaiera plus tard, ce n'est pas une absence de documentaire.
       if (body.reason === 'budget' || body.reason === 'upstream') return { status: 'busy' };
       throw new Error(`Relais : ${body.reason}`);
