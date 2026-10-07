@@ -51,7 +51,7 @@ function Synopsis({ synopsis }: { synopsis: NonNullable<BookDetail['synopsis']> 
   );
 }
 
-const REFERENCE_NOTE = 'prix neuf papier · le prix du livre unique en France : identique chez tous les vendeurs (remise max. 5 %)';
+const REFERENCE_NOTE = 'prix neuf papier · le prix du livre est unique en France : identique chez tous les vendeurs (remise max. 5 %)';
 
 function ShopRow({ shop }: { shop: BookOffers['shops'][number] }) {
   const fallback = shop.shop === 'libraire' ? 'chercher' : 'voir le prix';

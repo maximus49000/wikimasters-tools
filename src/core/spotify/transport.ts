@@ -63,7 +63,16 @@ export function handleSpotifyMessage(message: unknown, deps: BackgroundDeps): Pr
       }
       if (request.op === 'fetch') {
         const url = request.url;
-        if (typeof url !== 'string' || !FETCH_PREFIXES.some((prefix) => url.startsWith(prefix))) {
+        // L'adresse normalisée (« /dp/../gp/x » devient « /gp/x ») doit rester sous le même préfixe que l'adresse reçue.
+        let normalized = '';
+        if (typeof url === 'string') {
+          try {
+            normalized = new URL(url).href;
+          } catch {
+            normalized = '';
+          }
+        }
+        if (typeof url !== 'string' || !FETCH_PREFIXES.some((prefix) => url.startsWith(prefix) && normalized.startsWith(prefix))) {
           return { ok: false, error: 'adresse refusée' };
         }
         const response = await deps.fetch(url, request.init);

@@ -423,7 +423,7 @@ export const ENTRIES: Entry[] = [
     theme: 'fiche',
     glyph: '📖',
     title: 'Livres',
-    summary: 'Synopsis, informations, couverture, et changer de livre',
+    summary: 'Synopsis, couverture, prix et achat, et changer de livre',
     steps: [
       {
         target: '[data-wmt-book]',
@@ -440,10 +440,10 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-book-prices]',
         title: 'Prix et achat',
-        text: 'Sous le synopsis, « Prix en France » montre le prix du livre neuf (papier) et une ligne par vendeur : Amazon.fr, Fnac, Decitre, une librairie indépendante, et l’ebook sur Google Play Livres. Chaque ligne ouvre la page du livre chez le vendeur.',
+        text: 'Sous le synopsis, « Prix en France » montre le prix du livre neuf (papier) et une ligne par vendeur : Amazon.fr, Fnac, Decitre, une librairie indépendante, et l’ebook sur Google Play Livres. Chaque ligne ouvre la page du livre chez le vendeur, ou une recherche de ce livre quand la page exacte n’est pas connue.',
         details: [
           { label: 'D’où viennent les données', text: 'Le prix papier est lu sur la page du livre d’Amazon.fr quand c’est possible (extension seulement) ; l’ebook vient de Google Books. Les liens se construisent avec l’ISBN du livre, ou avec son titre et son auteur à défaut.' },
-          { label: 'Comment s’en servir', text: 'Touchez une ligne pour ouvrir le vendeur. Un prix affiché est celui lu le jour indiqué en bas ; « voir le prix » ou « chercher » signifie que le prix n’a pas pu être lu et que le bouton mène à la page du livre.' },
+          { label: 'Comment s’en servir', text: 'Touchez une ligne pour ouvrir le vendeur. Un prix affiché est celui lu le jour indiqué en bas ; « voir le prix » ou « chercher » signifie que le prix n’a pas pu être lu et que le bouton mène à la page du livre ou à sa recherche chez le vendeur.' },
           { label: 'À savoir', text: 'En France, le prix du livre neuf est le même chez tous les vendeurs (remise de 5 % au plus) : un seul prix de référence suffit. Les prix lus sont gardés 7 jours. Fnac et Decitre ne se laissent pas lire : liens seulement. Sur l’application Android, seuls les liens et l’ebook sont proposés.' },
         ],
         scene: { card: 'book' },

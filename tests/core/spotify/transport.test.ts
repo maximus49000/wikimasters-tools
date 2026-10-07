@@ -108,6 +108,14 @@ describe('handleSpotifyMessage — Livres', () => {
     }
     expect(d.fetch).toHaveBeenCalledTimes(2);
   });
+
+  it('refuse une adresse dont la forme normalisée sort du préfixe autorisé', async () => {
+    const d = deps();
+    for (const url of ['https://www.amazon.fr/dp/../gp/css/homepage.html', 'https://www.googleapis.com/books/v1/../../drive/v3/files']) {
+      expect(await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url }, d)).toEqual({ ok: false, error: 'adresse refusée' });
+    }
+    expect(d.fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe('handleSpotifyMessage — Tidal', () => {

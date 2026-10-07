@@ -45,6 +45,12 @@ describe('createGoogleBooksApi', () => {
     expect((await api(json(MISERABLES)).findEbook({ title: 'Les misérables' }))?.amount).toBe(1.99);
   });
 
+  it('ne lance aucune requête pour un titre sans caractère exploitable', async () => {
+    const fetchFn = json(MISERABLES);
+    expect(await api(fetchFn).findEbook({ title: '???' })).toBeNull();
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
   it('rend null sans résultat, sans ebook en vente, ou pour un prix hors euros ou sans lien https', async () => {
     expect(await api(json({})).findEbook({ title: 'Inconnu' })).toBeNull();
     expect(await api(json({ items: [volume('Inconnu', [], sale('NOT_FOR_SALE'))] })).findEbook({ title: 'Inconnu' })).toBeNull();

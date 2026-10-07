@@ -10,11 +10,16 @@ const ROBOT_CHECK = /validateCaptcha|api-services-support@amazon/i;
 
 // Le prix de l'édition sur la page produit d'Amazon.fr : le premier prix structuré de la page, à défaut le premier prix affiché.
 // La page doit mentionner l'ISBN-13 demandé (sinon c'est une autre édition) et ne pas être une vérification anti-robot ;
-// un prix nul ou absurde est refusé. undefined : page illisible.
+// un prix nul ou absurde est refusé. Garde-fou de concordance : quand le premier prix structuré ET le premier prix affiché existent,
+// ils doivent être égaux au centime près (sinon l'un est peut-être celui d'un autre format ou d'un vendeur tiers) : la page est alors illisible.
+// Un prix structuré nul ne retombe pas sur le prix affiché. undefined : page illisible.
 export function parseAmazonPrice(html: string, isbn13: string): number | undefined {
   if (ROBOT_CHECK.test(html)) return undefined;
   if (!html.includes(isbn13) && !html.includes(`${isbn13.slice(0, 3)}-${isbn13.slice(3)}`)) return undefined;
-  const raw = PRICE_AMOUNT.exec(html)?.[1] ?? OFFSCREEN_PRICE.exec(html)?.[1]?.replace(',', '.');
+  const structured = PRICE_AMOUNT.exec(html)?.[1];
+  const displayed = OFFSCREEN_PRICE.exec(html)?.[1]?.replace(',', '.');
+  if (structured !== undefined && displayed !== undefined && !(Math.abs(Number(structured) - Number(displayed)) < 0.005)) return undefined;
+  const raw = structured ?? displayed;
   const amount = raw === undefined ? Number.NaN : Number(raw);
   return Number.isFinite(amount) && amount > 0 && amount < 1000 ? amount : undefined;
 }
@@ -35,7 +40,13 @@ export function createAmazonPrice(deps: { fetch: BookFetch }) {
       if (response.status === 404) throw new BookError('not-found', 'introuvable');
       if (response.status === 429 || response.status === 503) throw new BookError('rate-limited', 'limite atteinte');
       if (!response.ok) throw new BookError('http', `HTTP ${response.status}`);
-      const amount = parseAmazonPrice(await response.text(), isbn13);
+      let body: string;
+      try {
+        body = await response.text();
+      } catch {
+        throw new BookError('http', 'réponse illisible');
+      }
+      const amount = parseAmazonPrice(body, isbn13);
       if (amount === undefined) throw new BookError('http', 'page illisible');
       return amount;
     },

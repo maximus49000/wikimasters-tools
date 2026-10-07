@@ -21,10 +21,11 @@ export type EbookOffer = { amount: number; url: string };
 export function createGoogleBooksApi(deps: { fetch: BookFetch; key: string }) {
   return {
     async findEbook(book: { title: string; author?: string }): Promise<EbookOffer | null> {
+      const wantedTitle = normalizeTitle(book.title);
+      if (wantedTitle === '') return null;
       const query = [book.title, book.author].filter(Boolean).join(' ');
       const params = new URLSearchParams({ q: query, country: 'FR', maxResults: '10', key: deps.key });
       const data = await requestJson(deps.fetch, `${GOOGLE_BOOKS_BASE}/volumes?${params}`, responseSchema);
-      const wantedTitle = normalizeTitle(book.title);
       const wantedAuthor = book.author ? normalizeTitle(book.author) : '';
       const offers: EbookOffer[] = [];
       for (const item of data.items ?? []) {

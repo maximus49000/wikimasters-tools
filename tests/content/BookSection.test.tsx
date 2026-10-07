@@ -125,7 +125,7 @@ describe('BookSection — prix et achat', () => {
     const text = block.textContent ?? '';
     expect(text).toContain('Prix en France');
     expect(text).toContain('7,60 €');
-    expect(text).toContain('prix du livre unique en France');
+    expect(text).toContain('prix du livre est unique en France');
     expect(text).toContain('7,49 €');
     expect(text).toContain('Google Play Livres');
     expect(text).toContain('voir le prix');
@@ -146,7 +146,7 @@ describe('BookSection — prix et achat', () => {
     const hrefs = [...block.querySelectorAll('a')].map((row) => row.getAttribute('href'));
     expect(hrefs[0]).toBe('https://www.amazon.fr/dp/2070360024');
     expect(hrefs).toHaveLength(4);
-    expect(block.textContent).not.toContain('prix du livre unique');
+    expect(block.textContent).not.toContain('prix du livre est unique');
     expect(block.textContent).not.toContain('Prix lus le');
   });
 
@@ -160,7 +160,7 @@ describe('BookSection — prix et achat', () => {
   it('sans prix lu, la zone de référence est omise ; le pied cite les sources', async () => {
     await show({ status: 'detail', detail: withIsbn }, { offers: vi.fn(async () => ({ shops: withPrices.shops.map((s) => ({ ...s, price: undefined })).map(({ price: _p, ...rest }) => rest) })) });
     const block = container.querySelector('[data-wmt-book-prices]') as HTMLElement;
-    expect(block.textContent).not.toContain('prix du livre unique');
+    expect(block.textContent).not.toContain('prix du livre est unique');
     expect(container.textContent).toContain('Données : Open Library, Wikipédia, Wikidata, Google Books');
   });
 

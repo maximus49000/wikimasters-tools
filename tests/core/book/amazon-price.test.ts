@@ -29,6 +29,16 @@ describe('parseAmazonPrice', () => {
     expect(parseAmazonPrice(PAGE.replace('"priceAmount":7.60', '"priceAmount":99999'), '9782070360024')).toBeUndefined();
     expect(parseAmazonPrice('<p>978-2070360024</p>', '9782070360024')).toBeUndefined();
   });
+  it('refuse une page dont le premier prix structuré et le premier prix affiché diffèrent', () => {
+    expect(parseAmazonPrice(PAGE.replace('"priceAmount":7.60', '"priceAmount":12.90'), '9782070360024')).toBeUndefined();
+  });
+  it('un prix structuré nul ne retombe pas sur le prix affiché', () => {
+    expect(parseAmazonPrice(PAGE.replace('"priceAmount":7.60', '"priceAmount":0'), '9782070360024')).toBeUndefined();
+  });
+  it('garde le prix structuré seul quand aucun prix n’est affiché', () => {
+    const page = PAGE.replace('<span class="a-offscreen">7,60€</span>', '');
+    expect(parseAmazonPrice(page, '9782070360024')).toBe(7.6);
+  });
 });
 
 const respond = (status: number, body = '') => vi.fn(async (_url: string) => new Response(body, { status }));
@@ -49,6 +59,11 @@ describe('createAmazonPrice', () => {
       throw new TypeError('Failed to fetch');
     });
     await expect(createAmazonPrice({ fetch: down }).read('9782070360024')).rejects.toMatchObject({ code: 'http' });
+  });
+
+  it('lève une BookError « http » quand le corps de la réponse est illisible', async () => {
+    const broken = vi.fn(async (_url: string) => ({ ok: true, status: 200, text: async () => { throw new TypeError('x'); } }) as unknown as Response);
+    await expect(createAmazonPrice({ fetch: broken }).read('9782070360024')).rejects.toMatchObject({ name: 'BookError', code: 'http' });
   });
 
   it('refuse un ISBN sans équivalent ISBN-10, sans appel réseau', async () => {
