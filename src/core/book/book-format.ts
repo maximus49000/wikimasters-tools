@@ -4,6 +4,8 @@ export { normalizeTitle } from '../game/game-format';
 
 // Couverture Open Library (grand format) : adresse construite sur l'identifiant de couverture, sans appel à l'API.
 export const coverUrl = (coverId: number): string => `${OPENLIBRARY_COVER_BASE}/${coverId}-L.jpg`;
+// Miniature (résultats de la fenêtre « Changer de livre »).
+export const coverThumbUrl = (coverId: number): string => `${OPENLIBRARY_COVER_BASE}/${coverId}-S.jpg`;
 export const workPageUrl = (workId: string): string => `${OPENLIBRARY_BASE}/works/${workId}`;
 export const articleUrl = (slug: string): string => `${WIKIPEDIA_ARTICLE_BASE}/${encodeURIComponent(slug)}`;
 

@@ -1,6 +1,6 @@
 // tests/core/book/book-repo.test.ts
 import { describe, expect, it, vi } from 'vitest';
-import { createBookRepo } from '../../../src/core/book/book-repo';
+import { createBookChoiceRepo, createBookRepo } from '../../../src/core/book/book-repo';
 import { createMemoryStore } from '../../../src/core/cache/store';
 
 describe('createBookRepo', () => {
@@ -68,5 +68,26 @@ describe('createBookRepo', () => {
     await Promise.all([repo.resolve(['A']), repo.resolve(['C'])]);
     expect(fetchBook).toHaveBeenCalledTimes(1);
     expect(await repo.load()).toEqual({});
+  });
+});
+
+describe('createBookChoiceRepo', () => {
+  it('mémorise le livre choisi ou « aucun livre » par carte, et l’efface', async () => {
+    const repo = createBookChoiceRepo(createMemoryStore());
+    await repo.save('A', { workId: 'OL1W' });
+    await repo.save('B', { none: true });
+    expect(await repo.load()).toEqual({ A: { workId: 'OL1W' }, B: { none: true } });
+    await repo.clear('A');
+    expect(await repo.load()).toEqual({ B: { none: true } });
+  });
+
+  it('sérialise les écritures simultanées sans en perdre', async () => {
+    const repo = createBookChoiceRepo(createMemoryStore());
+    await Promise.all([repo.save('A', { workId: 'OL1W' }), repo.save('B', { workId: 'OL2W' }), repo.save('C', { none: true })]);
+    expect(Object.keys(await repo.load()).sort()).toEqual(['A', 'B', 'C']);
+  });
+
+  it('un dépôt vide se lit comme un objet vide', async () => {
+    expect(await createBookChoiceRepo(createMemoryStore()).load()).toEqual({});
   });
 });
