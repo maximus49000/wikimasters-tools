@@ -275,7 +275,7 @@ export const openWhatsNew = (props: Omit<WhatsNewDialogProps, 'onTour' | 'onClos
       {...props}
       onTour={(steps) => {
         close();
-        startTour(steps);
+        startTour(steps, { kind: 'whatsnew', entries: props.entries.map((entry) => entry.id), fixes: props.fixes.map((fix) => fix.id) });
       }}
       onClose={close}
     />
@@ -287,7 +287,7 @@ export const openWikiHow = (props: Omit<WikiHowDialogProps, 'onTour' | 'onClose'
       {...props}
       onTour={(steps) => {
         close();
-        startTour(steps);
+        startTour(steps, { kind: 'wikihow' });
       }}
       onClose={close}
     />

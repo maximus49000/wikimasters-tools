@@ -91,7 +91,8 @@ import { FIXES } from '../core/whats-new/fixes';
 import { showPendingWhatsNew } from '../content/whats-new-flow';
 import { pickCard } from '../core/whats-new/pick-card';
 import { setTourEnv } from '../content/tour-registry';
-import { resumeTour } from '../content/tour-instance';
+import { resumeTour, resumeTourReturn } from '../content/tour-instance';
+import type { TourOrigin } from '../content/tour-session';
 import { createAnomalyReporter } from '../core/anomalies/anomaly';
 import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
 import { getProfileName, rememberProfileName } from '../core/anomalies/profile-name';
@@ -102,6 +103,14 @@ const DEBOUNCE_MS = 300;
 // Surcouche Wikimasters : partagée par l'extension (content script) et l'application Android (WebView).
 export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): Promise<void> {
   const whatsNew = createWhatsNewRepo(store);
+  // Fin de visite : on rouvre l'interface qui l'avait lancée (WikiHow, ou la liste « Quoi de neuf » avec les mêmes éléments).
+  const reopenStart = async (from: TourOrigin): Promise<void> => {
+    if (from.kind === 'wikihow') return openWikiHowFromStore();
+    const entries = ENTRIES.filter((entry) => from.entries.includes(entry.id));
+    const fixes = FIXES.filter((fix) => from.fixes.includes(fix.id));
+    if (entries.length === 0 && fixes.length === 0) return;
+    openWhatsNew({ entries, fixes, consulted: [...(await whatsNew.consulted())], onConsult: (id) => void whatsNew.markConsulted(id) });
+  };
   const openWikiHowFromStore = async () =>
     openWikiHow({ entries: ENTRIES, consulted: [...(await whatsNew.consulted())], onConsult: (id) => void whatsNew.markConsulted(id) });
   const api = createGameApi({
@@ -217,6 +226,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       ),
     openCard: openPlayerCard,
     closeCard: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+    reopen: (from) => void reopenStart(from),
   });
   // Prix du marché partagés avec la Map et la Chronologique (mis à jour avec la liste).
   const market = createMarketSource();
@@ -579,6 +589,6 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   }
 
   // Après une mise à jour : nouveautés et corrections jamais annoncées (rien au premier lancement).
-  // Une visite guidée en cours (changement de page) reprend d'abord ; sinon, les nouveautés jamais annoncées.
-  if (!resumeTour()) void showPendingWhatsNew(whatsNew, ENTRIES, FIXES, openWhatsNew).catch((error) => console.warn(LOG, 'nouveautés indisponibles :', error));
+  // Une visite guidée en cours (changement de page) reprend d'abord, puis le retour à l'interface de départ ; sinon, les nouveautés jamais annoncées.
+  if (!resumeTour() && !resumeTourReturn()) void showPendingWhatsNew(whatsNew, ENTRIES, FIXES, openWhatsNew).catch((error) => console.warn(LOG, 'nouveautés indisponibles :', error));
 }
