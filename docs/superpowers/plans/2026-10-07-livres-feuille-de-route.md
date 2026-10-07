@@ -2,12 +2,15 @@
 
 Spec : `docs/superpowers/specs/2026-10-07-livres-design.md` (validée le 2026-10-07). La spec couvre plusieurs sous-systèmes indépendants : elle est livrée en plans successifs, chacun produisant un logiciel testable et fusionnable seul (une PR par plan, pré-prod après chaque fusion). Chaque plan est écrit juste avant son exécution, avec le code réel du moment.
 
-| # | Plan | Livre | Dépend de |
-|---|---|---|---|
-| 1 | **Ma collection dans la filmographie** (`2026-10-07-collection-filmographie.md`) | composant `WorkList` partagé, repérage des cartes possédées (cadre de rareté, ×N, bouton carte, « N / M dans ma collection », interrupteur), `CardThumb`, `collection-marks` | rien |
-| 2 | **Carte livre : section « Livre » et couverture** | catégorie « Livre » (natures, filtre), Wikidata P648/P50, Open Library, synopsis Wikipédia, `BookSection`, glyphe `book` + ⇄ « Changer de livre », couverture prioritaire (`createMediaArt`, `ART_VERSION`), fiche WikiHow | 1 (glyphes, `CardThumb`) |
-| 3 | **Prix et achat** | clé Google Books (ebook), liens libraires par ISBN, prix Amazon.fr en direct (`retail-price.ts`, désactivable), prix de référence | 2 |
-| 4 | **Lecture gratuite** | Wikisource FR, Internet Archive, Gutenberg, date de passage au domaine public | 2 |
-| 5 | **Bibliographie de l'écrivain** | `WriterSection` sur `WorkList`, requête Wikidata filtrée, repérage des livres possédés par slug, ouverture d'un livre dans la section | 1, 2 |
+| # | Plan | Livre | Dépend de | Statut |
+|---|---|---|---|---|
+| 1 | **Ma collection dans la filmographie** (`2026-10-07-collection-filmographie.md`) | composant `WorkList` partagé, repérage des cartes possédées, `CardThumb`, `collection-marks` | rien | **fusionné** (PR #165, pré-prod 522) |
+| 2 | **Carte livre : section, couverture, glyphe** (`2026-10-07-livres-carte.md`) | natures « Livre » (filtre), Wikidata P648, Open Library, synopsis agrandi (Wikipédia), `BookSection`, glyphe livre sur la carte et en-tête, couverture prioritaire, fiche WikiHow | 1 | en cours |
+| 3 | **Changer de livre ⇄** | glyphe ⇄ dans l'en-tête, fenêtre de recherche Open Library, « Aucun livre », retour au choix automatique, choix mémorisé (`book-choice-v1`) ; lien collé reporté | 2 | à écrire |
+| 4 | **Prix et achat** | clé Google Books (ebook), liens libraires par ISBN, prix Amazon.fr en direct (`retail-price.ts`, désactivable), prix de référence | 2 | à écrire |
+| 5 | **Lecture gratuite** | Wikisource FR, Internet Archive, Gutenberg, date de passage au domaine public | 2 | à écrire |
+| 6 | **Bibliographie de l'écrivain** | `WriterSection` sur `WorkList`, requête Wikidata filtrée, repérage des livres possédés par slug (étendre `CollectionMarks`), ouverture d'un livre dans la section | 1, 2 | à écrire |
+
+À reprendre au plan 6 (revue finale du plan 1) : `CollectionMarks` expose `ownership()` (cinéma) alors que la spec parle de `cardOf/count` ; aria-label des lignes `WorkList` sans info de possession ; pastille ×N qui déborde de 6 px ; `resolveAll` pourrait pré-filtrer par `screen-v1`.
 
 Règles de livraison communes (mémoire du projet) : branche dédiée, `npm run typecheck`, `npm test`, `npm run build` ; PR ouverte puis fusionnée sans demander ; livraison en pré-prod (`npm run preprod`) ; production seulement sur ordre explicite ; APK sur demande ; fiche WikiHow dans la même PR que chaque fonctionnalité.
