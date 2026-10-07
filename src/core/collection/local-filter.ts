@@ -11,12 +11,12 @@ export function filterLocally(cards: KnownCard[], filter: string): Set<string> |
   const keys = [...params.keys()];
   if (keys.length === 0 || !keys.every((key) => LOCAL_PARAMS.includes(key))) return null;
   if (cards.some((card) => card.tags === undefined)) return null;
-  const rarity = params.get('rarity');
+  const rarities = params.getAll('rarity');
   const tagId = params.get('tag_id');
   if (tagId && !cards.some((card) => card.tags?.some((tag) => tag.id === tagId))) return null;
   return new Set(
     cards
-      .filter((card) => (!rarity || card.rarity === rarity) && (!tagId || card.tags?.some((tag) => tag.id === tagId)))
+      .filter((card) => (rarities.length === 0 || rarities.includes(card.rarity)) && (!tagId || card.tags?.some((tag) => tag.id === tagId)))
       .map((card) => card.slug),
   );
 }

@@ -15,6 +15,11 @@ describe('filterLocally', () => {
     expect([...filterLocally(cards, 'rarity=UR&tag_id=t1')!]).toEqual(['A']);
   });
 
+  it('garde les cartes de chacune des raretés choisies (paramètre répété)', () => {
+    expect([...filterLocally(cards, 'rarity=SR&rarity=UR')!]).toEqual(['A', 'B', 'C']);
+    expect([...filterLocally(cards, 'rarity=SR&rarity=UR&tag_id=t1')!]).toEqual(['A', 'B']);
+  });
+
   it('rend null quand il faut interroger le site', () => {
     expect(filterLocally(cards, '')).toBeNull();
     expect(filterLocally(cards, 'q=paris')).toBeNull();
