@@ -3,6 +3,8 @@ const OPEN_SHOP = 'button[aria-label="Ouvrir la boutique WikiBidous"]';
 // Fenêtre « Boutique » (WikiBidous + WikiMasters PRO) et sections des Paramètres qui proposent un achat en argent réel.
 const OFFER_TITLE = /^(Acheter des WikiBidous|WikiMasters PRO)$/;
 const SHOP_DIALOG = '[role="dialog"][aria-label="Boutique"]';
+// Bouton « Vue du marché » (graphique + pastille PRO) : fonction réservée aux abonnés PRO.
+const PRO_MARKET_VIEW = 'button[aria-label="Vue du marché"]';
 
 let guardInstalled = false;
 
@@ -29,12 +31,12 @@ function hide(element: HTMLElement, on: boolean): void {
   }
 }
 
-// Masque (hidden = true) ou remet les propositions d'achat en argent réel du site : sections des Paramètres, fenêtre Boutique.
+// Masque (hidden = true) ou remet les propositions d'achat en argent réel du site : sections des Paramètres, fenêtre Boutique, bouton PRO « Vue du marché ».
 export function syncPurchaseOffers(root: ParentNode, hidden: () => boolean): number {
   installShopGuard(hidden);
   const on = hidden();
   let touched = 0;
-  for (const dialog of root.querySelectorAll<HTMLElement>(SHOP_DIALOG)) {
+  for (const dialog of root.querySelectorAll<HTMLElement>(`${SHOP_DIALOG}, ${PRO_MARKET_VIEW}`)) {
     hide(dialog, on);
     touched += 1;
   }
