@@ -33,7 +33,7 @@ export function PurchaseAdsSettings({ ads, onClose }: { ads: PurchaseAds; onClos
           </button>
         </div>
         <p style={{ margin: '0 0 12px', opacity: 0.8 }}>
-          Activé : les propositions d’achat en argent réel du site (boutique WikiBidous, abonnement WikiMasters PRO, bouton PRO « Vue du marché ») sont affichées. Désactivé : elles sont masquées partout, et la pastille du solde n’ouvre plus la boutique.
+          Activé : les propositions d’achat en argent réel du site (boutique WikiBidous, abonnement WikiMasters PRO, bouton et onglet PRO « Marché ») sont affichées. Désactivé : elles sont masquées partout, et la pastille du solde n’ouvre plus la boutique.
         </p>
         <div role="group" aria-label="Publicité d’achat" style={{ display: 'flex', gap: 8 }}>
           <button type="button" aria-pressed={enabled} onClick={() => ads.setEnabled(true)} style={choice(enabled)}>

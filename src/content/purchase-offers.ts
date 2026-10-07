@@ -6,6 +6,8 @@ const SHOP_DIALOG = '[role="dialog"][aria-label="Boutique"]';
 // Bouton « Vue du marché » (graphique + pastille PRO) : fonction réservée aux abonnés PRO.
 const PRO_MARKET_VIEW = 'button[aria-label="Vue du marché"]';
 
+const PRO_MARKET_TAB = /^Marché PRO$/;
+
 let guardInstalled = false;
 
 // La pastille du solde ouvre la boutique : tant que les offres sont masquées, l'appui ne l'ouvre pas (le solde reste affiché).
@@ -31,13 +33,19 @@ function hide(element: HTMLElement, on: boolean): void {
   }
 }
 
-// Masque (hidden = true) ou remet les propositions d'achat en argent réel du site : sections des Paramètres, fenêtre Boutique, bouton PRO « Vue du marché ».
+// Masque (hidden = true) ou remet les propositions d'achat en argent réel du site : sections des Paramètres, fenêtre Boutique, bouton et onglet PRO « Marché ».
 export function syncPurchaseOffers(root: ParentNode, hidden: () => boolean): number {
   installShopGuard(hidden);
   const on = hidden();
   let touched = 0;
   for (const dialog of root.querySelectorAll<HTMLElement>(`${SHOP_DIALOG}, ${PRO_MARKET_VIEW}`)) {
     hide(dialog, on);
+    touched += 1;
+  }
+  // Onglet « Marché PRO » de la fiche d'une carte : sans lui, « Détails » reste seul, donc toute la barre d'onglets est masquée.
+  for (const tab of root.querySelectorAll<HTMLElement>('[role="tab"]')) {
+    if (!PRO_MARKET_TAB.test(tab.textContent?.replace(/\s+/g, ' ').trim() ?? '')) continue;
+    hide(tab.closest<HTMLElement>('[role="tablist"]') ?? tab, on);
     touched += 1;
   }
   for (const section of root.querySelectorAll<HTMLElement>('main section')) {
