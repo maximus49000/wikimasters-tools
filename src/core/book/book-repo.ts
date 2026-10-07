@@ -6,7 +6,8 @@ import type { CardBook } from './wikidata-book';
 export type BookState = Record<string, CardBook>;
 export type BookFetcher = (slugs: string[]) => Promise<Record<string, CardBook>>;
 
-const KEY = 'book-v1';
+// v2 : les entrées portent aussi Wikisource, Gutenberg et le décès de l'auteur (celles de v1 sont relues).
+const KEY = 'book-v2';
 // Après un échec (429, hors ligne), on laisse Wikidata respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
 

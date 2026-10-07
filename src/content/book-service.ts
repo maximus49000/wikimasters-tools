@@ -3,10 +3,13 @@ import { articleUrl, coverUrl, isWorkId, normalizeTitle, workPageUrl } from '../
 import type { AmazonPrice } from '../core/book/amazon-price';
 import type { BookDetail } from '../core/book/book-detail';
 import { isBookCard } from '../core/book/book-kinds';
+import type { ArchiveApi } from '../core/book/archive-api';
 import type { BookChoiceRepo, BookRepo } from '../core/book/book-repo';
 import { BookError, bookErrorMessage } from '../core/book/errors';
 import type { GoogleBooksApi } from '../core/book/google-books-api';
 import type { OlWork, OpenLibraryApi } from '../core/book/openlibrary-api';
+import { archiveUrl, gutenbergUrl, protectedUntil, readingLinks, wikisourceUrl, type ReadingLink } from '../core/book/reading';
+import type { WikisourceApi } from '../core/book/wikisource-api';
 import { paperShopLinks, type PriceLine, type ShopLink } from '../core/book/shops';
 import type { TtlCache } from '../core/cache/ttl-cache';
 import type { KnownCard } from '../core/collection/collection-book';
@@ -21,6 +24,9 @@ export type BookCandidates = { works: OlWork[]; message?: string };
 export type BookPreview = { work?: OlWork; message?: string };
 // Les offres d'un livre : les liens du papier (toujours là), l'ebook s'il existe, et le prix papier de référence quand il a été lu.
 export type BookOffers = { shops: ShopLink[]; paperPrice?: PriceLine };
+// La lecture gratuite d'un livre : les sources libres trouvées ; sans source, l'année jusqu'à laquelle il est protégé quand elle est connue.
+// `complete: false` : une source n'a pas répondu (« rien trouvé » ne serait pas la vérité) ; rien n'est alors mémorisé pour elle.
+export type BookReading = { links: ReadingLink[]; protectedUntil?: number; complete: boolean };
 
 export type BookServiceDeps = {
   collection: { list(): Promise<KnownCard[]> };
@@ -36,13 +42,16 @@ export type BookServiceDeps = {
   // Lecture du prix papier (Amazon.fr) et prix de l'ebook (Google Books) : absents (null / non fournis), seuls les liens restent.
   amazon?: Pick<AmazonPrice, 'read'> | null;
   googleBooks?: Pick<GoogleBooksApi, 'findEbook'> | null;
+  // Lecture gratuite : Wikisource FR (recherche stricte) et Internet Archive (scans libres) ; absents, seules les données de Wikidata comptent.
+  wikisource?: Pick<WikisourceApi, 'find'> | null;
+  archive?: Pick<ArchiveApi, 'firstFree'> | null;
   now?: () => number;
 };
 
 const MAX_GENRES = 5;
 
 export function createBookService(deps: BookServiceDeps) {
-  const { collection, kinds, books, choices, openLibrary, intro, cache, onChoice, amazon = null, googleBooks = null, now = () => Date.now() } = deps;
+  const { collection, kinds, books, choices, openLibrary, intro, cache, onChoice, amazon = null, googleBooks = null, wikisource = null, archive = null, now = () => Date.now() } = deps;
 
   // Le choix est enregistré, puis l'image mémorisée de la carte est oubliée.
   const changed = async (slug: string, saved: Promise<void>): Promise<void> => {
@@ -201,6 +210,35 @@ export function createBookService(deps: BookServiceDeps) {
         all.push({ shop: 'google-play', label: 'Google Play Livres', kind: 'ebook', url: ebook.url, price: { amount: ebook.amount, currency: 'EUR', source: 'Google Play Livres', readAt: ebook.readAt } });
       }
       return { shops: all, ...(paperPrice ? { paperPrice } : {}) };
+    },
+
+    // Les sources de lecture gratuite d'un livre. Wikidata (Wikisource, Gutenberg, décès de l'auteur) ne vaut que pour le livre trouvé
+    // automatiquement : avec un livre choisi à la main, seules la recherche Wikisource et les scans d'Open Library comptent.
+    // Ne lève jamais ; une source qui échoue n'est pas mémorisée comme « rien ».
+    async reading(slug: string, book: Pick<BookDetail, 'id' | 'title' | 'author'>): Promise<BookReading> {
+      let complete = true;
+      const attempt = async <T>(job: () => Promise<T | null>): Promise<T | null> => {
+        try {
+          return await job();
+        } catch {
+          complete = false;
+          return null;
+        }
+      };
+      const manual = (await attempt(async () => (await choices.load())[slug] ?? null)) !== null;
+      const ids = manual ? {} : (await attempt(async () => (await books.resolve([slug]))[slug] ?? null)) ?? {};
+      const wikisourceTitle =
+        ids.wikisource ??
+        (wikisource ? await attempt(() => cache.getOrLoad(`book-wikisource-v1-${normalizeTitle(book.title)}-${normalizeTitle(book.author ?? '')}`, () => wikisource.find(book.title, book.author))) : null);
+      const work = isWorkId(book.id) ? await attempt(() => workById(book.id)) : null;
+      const archiveId = archive && work?.scans?.length ? await attempt(() => cache.getOrLoad(`book-archive-v1-${work.id}`, () => archive.firstFree(work.scans ?? []))) : null;
+      const links = readingLinks({
+        ...(wikisourceTitle ? { wikisource: wikisourceUrl(wikisourceTitle) } : {}),
+        ...(ids.gutenberg ? { gutenberg: gutenbergUrl(ids.gutenberg) } : {}),
+        ...(archiveId ? { archive: archiveUrl(archiveId) } : {}),
+      });
+      const death = ids.authorDeath;
+      return { links, ...(links.length === 0 && death !== undefined ? { protectedUntil: protectedUntil(death) } : {}), complete };
     },
 
     choose(slug: string, workId: string): Promise<void> {

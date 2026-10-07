@@ -45,6 +45,8 @@ import { AMAZON_PRICE_ENABLED, GOOGLE_BOOKS_API_KEY } from '../core/book/config'
 import { createGoogleBooksApi } from '../core/book/google-books-api';
 import type { NativeHttpWindow } from '../android/native-http';
 import { createOpenLibraryApi } from '../core/book/openlibrary-api';
+import { createArchiveApi } from '../core/book/archive-api';
+import { createWikisourceApi } from '../core/book/wikisource-api';
 import { fetchWikidataBook } from '../core/book/wikidata-book';
 import { fetchWikipediaIntro } from '../core/book/wikipedia-intro';
 import { takePendingSearch } from '../content/pending-search';
@@ -610,6 +612,9 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       books: createBookRepo(store, (slugs) => fetchWikidataBook((url) => fetch(url), slugs)),
       choices: createBookChoiceRepo(store),
       openLibrary: createOpenLibraryApi({ fetch: (url) => fetch(url) }),
+      // Lecture gratuite : Wikisource FR et Internet Archive, avec le `fetch` de la page (CORS ouvert), comme Open Library.
+      wikisource: createWikisourceApi({ fetch: (url) => fetch(url) }),
+      archive: createArchiveApi({ fetch: (url) => fetch(url) }),
       intro: (slug) => fetchWikipediaIntro((url) => fetch(url), slug),
       cache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
       // Autre livre choisi pour une carte : son image mémorisée (canal d'image « officiel » des jeux) n'est plus la bonne.

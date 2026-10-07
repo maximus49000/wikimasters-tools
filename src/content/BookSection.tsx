@@ -3,7 +3,7 @@ import type { BookDetail } from '../core/book/book-detail';
 import { getBookService } from './book-registry';
 import { formatDay, formatEuro } from '../core/book/book-format';
 import { paperShopLinks, type PriceLine } from '../core/book/shops';
-import type { BookOffers, BookView } from './book-service';
+import type { BookOffers, BookReading, BookView } from './book-service';
 import { BookChoiceDialog } from './BookChoiceDialog';
 import { Glyph } from './Glyphs';
 
@@ -111,7 +111,61 @@ function Prices({ detail }: { detail: BookDetail }) {
   );
 }
 
-function Detail({ detail }: { detail: BookDetail }) {
+// « Lecture gratuite » : le texte intégral quand une source libre existe (Wikisource, Gutenberg, Internet Archive), sinon la date de passage au domaine public.
+function Reading({ slug, detail }: { slug: string; detail: BookDetail }) {
+  const service = getBookService();
+  const [reading, setReading] = useState<BookReading | null>(null);
+
+  useEffect(() => {
+    setReading(null);
+    if (!service) return;
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => service.reading(slug, { id: detail.id, title: detail.title, ...(detail.author ? { author: detail.author } : {}) }))
+      .then((next) => !cancelled && setReading(next))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [service, slug, detail.id, detail.title, detail.author]);
+
+  if (!reading) return null;
+  const [main, ...others] = reading.links;
+  return (
+    <div data-wmt-book-reading="" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 11, opacity: 0.65, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lecture gratuite</div>
+      {main ? (
+        <>
+          <a
+            href={main.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Lire gratuitement sur ${main.label}`}
+            style={{ minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border, borderRadius: 10, color: 'inherit', textDecoration: 'none', fontWeight: 700, fontSize: 14, background: 'rgba(74,222,128,0.12)' }}
+          >
+            Lire gratuitement <small style={{ fontWeight: 400, opacity: 0.75 }}>· {main.label}</small> <Glyph name="external" size={16} />
+          </a>
+          {others.map((other) => (
+            <a key={other.source} href={other.url} target="_blank" rel="noopener noreferrer" style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', border, borderRadius: 8, color: 'inherit', textDecoration: 'none', fontSize: 13 }}>
+              <span style={{ flex: 1 }}>Aussi sur {other.label}</span>
+              <Glyph name="external" size={14} />
+            </a>
+          ))}
+        </>
+      ) : (
+        <p style={{ margin: 0, minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', border, borderRadius: 8, fontSize: 13, opacity: 0.75 }}>
+          {reading.complete
+            ? reading.protectedUntil !== undefined
+              ? `Pas de texte libre · protégé jusqu’en ${reading.protectedUntil}`
+              : 'Pas de texte libre'
+            : 'Les sources de lecture libre sont indisponibles pour le moment.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Detail({ slug, detail }: { slug: string; detail: BookDetail }) {
   return (
     <>
       <Facts detail={detail} />
@@ -126,6 +180,7 @@ function Detail({ detail }: { detail: BookDetail }) {
       )}
       {detail.synopsis && <Synopsis synopsis={detail.synopsis} />}
       <Prices detail={detail} />
+      <Reading slug={slug} detail={detail} />
       <a
         href={detail.pageUrl}
         target="_blank"
@@ -135,7 +190,7 @@ function Detail({ detail }: { detail: BookDetail }) {
       >
         Fiche Open Library <Glyph name="external" size={16} />
       </a>
-      <p style={{ margin: 0, fontSize: 10, opacity: 0.6 }}>Données : Open Library, Wikipédia, Wikidata, Google Books</p>
+      <p style={{ margin: 0, fontSize: 10, opacity: 0.6 }}>Données : Open Library, Wikipédia, Wikidata, Google Books, Wikisource, Internet Archive, Projet Gutenberg</p>
     </>
   );
 }
@@ -179,7 +234,7 @@ export function BookSection({ slug, title }: Props) {
         </p>
       )}
       {view.status === 'empty' && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>{view.none ? 'Aucun livre pour cette carte.' : 'Aucune fiche trouvée pour ce livre.'}</p>}
-      {current && <Detail detail={current} />}
+      {current && <Detail slug={slug} detail={current} />}
       {choosing && (
         <BookChoiceDialog service={service} slug={slug} title={title} currentId={current?.id ?? null} onChanged={() => setVersion((value) => value + 1)} onClose={() => setChoosing(false)} />
       )}

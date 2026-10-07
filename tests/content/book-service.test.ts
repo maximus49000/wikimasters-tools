@@ -23,6 +23,8 @@ type Setup = {
   description?: string | null;
   kindsUnknown?: boolean;
   amazon?: { read: (isbn: string) => Promise<number> } | null;
+  wikisource?: { find: (title: string, author?: string) => Promise<string | null> } | null;
+  archive?: { firstFree: (ids: string[]) => Promise<string | null> } | null;
   googleBooks?: { findEbook: (book: { title: string; author?: string }) => Promise<{ amount: number; url: string } | null> } | null;
 };
 
@@ -58,6 +60,8 @@ function setup(over: Setup = {}) {
     onChoice,
     amazon,
     googleBooks,
+    wikisource: over.wikisource ?? null,
+    archive: over.archive ?? null,
     now: () => NOW,
   });
   return { service, openLibrary, intro, resolve, choices, onChoice };
@@ -343,5 +347,59 @@ describe('offers', () => {
     await service.offers(book);
     await service.offers(book);
     expect(findEbook).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('reading', () => {
+  const book = { id: 'OL1230613W', title: 'L’étranger', author: 'Albert Camus' };
+
+  it('Wikidata d’abord : Wikisource, Gutenberg ; Internet Archive après le tri des scans libres ; ordre Wikisource, Gutenberg, Archive', async () => {
+    const archive = { firstFree: vi.fn(async (_ids: string[]) => 'scan2') };
+    const wikisource = { find: vi.fn(async () => 'Autre') };
+    const { service } = setup({ ids: { workId: 'OL1230613W', wikisource: 'L’Étranger', gutenberg: '135' }, byWork: { ...etranger, scans: ['scan1', 'scan2'] }, archive, wikisource });
+    const reading = await service.reading('Livre', book);
+    expect(reading.links).toEqual([
+      { source: 'wikisource', label: 'Wikisource', url: 'https://fr.wikisource.org/wiki/L%E2%80%99%C3%89tranger' },
+      { source: 'gutenberg', label: 'Projet Gutenberg', url: 'https://www.gutenberg.org/ebooks/135' },
+      { source: 'archive', label: 'Internet Archive', url: 'https://archive.org/details/scan2' },
+    ]);
+    expect(reading).toMatchObject({ complete: true });
+    expect(reading).not.toHaveProperty('protectedUntil');
+    expect(archive.firstFree).toHaveBeenCalledWith(['scan1', 'scan2']);
+    expect(wikisource.find).not.toHaveBeenCalled();
+  });
+
+  it('sans lien Wikidata, cherche le texte sur Wikisource avec le titre et l’auteur', async () => {
+    const wikisource = { find: vi.fn(async (_title: string, _author?: string) => 'Le Dormeur du val (Rimbaud)') };
+    const reading = await setup({ wikisource }).service.reading('Livre', book);
+    expect(wikisource.find).toHaveBeenCalledWith('L’étranger', 'Albert Camus');
+    expect(reading.links.map((link) => link.source)).toEqual(['wikisource']);
+  });
+
+  it('protégé : aucune source, décès connu → protégé jusqu’à décès + 70 ans', async () => {
+    const reading = await setup({ ids: { workId: 'OL1230613W', authorDeath: 1960 } }).service.reading('Livre', book);
+    expect(reading).toEqual({ links: [], protectedUntil: 2030, complete: true });
+  });
+
+  it('protégé sans date de décès connue : ni liens ni année', async () => {
+    expect(await setup().service.reading('Livre', book)).toEqual({ links: [], complete: true });
+  });
+
+  it('livre choisi à la main : les identifiants Wikidata de la carte sont ignorés', async () => {
+    const wikisource = { find: vi.fn(async () => null) };
+    const { service } = setup({ ids: { workId: 'OL1W', wikisource: 'Faux', gutenberg: '1', authorDeath: 1900 }, wikisource });
+    await service.choose('Livre', 'OL1230613W');
+    expect(await service.reading('Livre', book)).toEqual({ links: [], complete: true });
+    expect(wikisource.find).toHaveBeenCalled();
+  });
+
+  it('une source en panne : fiche utilisable, résultat marqué incomplet et non mémorisé', async () => {
+    let up = false;
+    const wikisource = { find: vi.fn(async () => { if (!up) throw new BookError('http', 'panne'); return 'Titre'; }) };
+    const { service } = setup({ wikisource });
+    expect(await service.reading('Livre', book)).toEqual({ links: [], complete: false });
+    up = true;
+    // Un échec récent est mis de côté par le cache (5 min) : le service ne lève pas et reste « incomplet ».
+    expect((await service.reading('Livre', book)).complete).toBe(false);
   });
 });

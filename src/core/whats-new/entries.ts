@@ -419,11 +419,11 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'livres-v3',
+    id: 'livres-v4',
     theme: 'fiche',
     glyph: '📖',
     title: 'Livres',
-    summary: 'Synopsis, couverture, prix et achat, et changer de livre',
+    summary: 'Synopsis, couverture, prix et achat, lecture gratuite, et changer de livre',
     steps: [
       {
         target: '[data-wmt-book]',
@@ -432,7 +432,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'D’où viennent les données', text: 'Wikidata pour reconnaître qu’une carte est un livre et retrouver son identifiant Open Library ; Open Library pour l’auteur, l’édition et la couverture ; l’introduction de l’article Wikipédia pour le synopsis (à défaut, la description d’Open Library).' },
           { label: 'Comment s’en servir', text: 'Faites défiler le synopsis dans son cadre ; « Lire l’article complet » ouvre Wikipédia. « Fiche Open Library » ouvre la page de l’œuvre. Un petit livre ouvert marque, dans les listes, les cartes de livres.' },
-          { label: 'À savoir', text: 'Quand Wikidata ne donne pas l’identifiant, le livre est cherché par son titre exact : un homonyme peut se glisser, et la couverture automatique n’est alors pas posée. Prix et achat sont décrits à l’étape suivante ; la lecture gratuite arrivera dans une prochaine version.' },
+          { label: 'À savoir', text: 'Quand Wikidata ne donne pas l’identifiant, le livre est cherché par son titre exact : un homonyme peut se glisser, et la couverture automatique n’est alors pas posée. Prix, achat et lecture gratuite sont décrits aux étapes suivantes.' },
         ],
         scene: { card: 'book' },
         glyph: '📖',
@@ -448,6 +448,18 @@ export const ENTRIES: Entry[] = [
         ],
         scene: { card: 'book' },
         glyph: '💶',
+      },
+      {
+        target: '[data-wmt-book-reading]',
+        title: 'Lecture gratuite',
+        text: 'Sous les prix, le bouton « Lire gratuitement » ouvre le texte intégral du livre quand il est libre de droits ; sinon une ligne indique « Pas de texte libre » et, quand on la connaît, l’année jusqu’à laquelle il est protégé.',
+        details: [
+          { label: 'D’où viennent les données', text: 'Wikisource en français (texte mis en forme), le Projet Gutenberg et Internet Archive (scans lisibles sans compte). Wikidata donne la page Wikisource, l’identifiant Gutenberg et la date de décès de l’auteur ; Open Library liste les scans d’Internet Archive.' },
+          { label: 'Comment s’en servir', text: 'Touchez « Lire gratuitement » : la meilleure source s’ouvre dans un onglet (Wikisource d’abord, puis Gutenberg, puis Internet Archive) ; les autres sont proposées en dessous.' },
+          { label: 'À savoir', text: 'En France, une œuvre est protégée jusqu’à la fin de la 70ᵉ année après la mort de l’auteur : l’année affichée est ce décès plus 70 ans. Sans date de décès connue, seule la mention « Pas de texte libre » apparaît. Si une source ne répond pas, un message le dit ; rien n’est retenu à tort.' },
+        ],
+        scene: { card: 'book' },
+        glyph: '📚',
       },
       {
         target: '[data-wmt-book-switch]',
