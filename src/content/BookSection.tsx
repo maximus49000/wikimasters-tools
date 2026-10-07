@@ -112,7 +112,7 @@ function Prices({ detail }: { detail: BookDetail }) {
 }
 
 // « Lecture gratuite » : le texte intégral quand une source libre existe (Wikisource, Gutenberg, Internet Archive), sinon la date de passage au domaine public.
-function Reading({ slug, detail }: { slug: string; detail: BookDetail }) {
+function Reading({ slug, detail }: { slug: string | undefined; detail: BookDetail }) {
   const service = getBookService();
   const [reading, setReading] = useState<BookReading | null>(null);
 
@@ -165,7 +165,8 @@ function Reading({ slug, detail }: { slug: string; detail: BookDetail }) {
   );
 }
 
-function Detail({ slug, detail }: { slug: string; detail: BookDetail }) {
+// Le contenu d'un livre (faits, synopsis, prix, lecture gratuite) : partagé avec la bibliographie d'un écrivain. `slug` : la carte du livre, s'il y en a une.
+export function Detail({ slug, detail }: { slug?: string | undefined; detail: BookDetail }) {
   return (
     <>
       <Facts detail={detail} />

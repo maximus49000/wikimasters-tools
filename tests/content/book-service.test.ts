@@ -13,6 +13,9 @@ const etranger: OlWork = { id: 'OL1230613W', title: 'L’étranger', author: 'Al
 
 type Setup = {
   natures?: string[];
+  occupations?: string[];
+  cards?: { slug: string; title: string; copies?: number }[];
+  writerWorks?: ((slug: string) => Promise<import('../../src/core/book/writer-works').WriterWork[]>) | null;
   genres?: string[];
   ids?: object;
   unreachable?: boolean;
@@ -44,11 +47,11 @@ function setup(over: Setup = {}) {
   const amazon = over.amazon === undefined ? null : over.amazon;
   const googleBooks = over.googleBooks === undefined ? null : over.googleBooks;
   const service = createBookService({
-    collection: { list: async () => (over.collection ?? ['Livre']).map((slug) => ({ slug, title: slug })) },
+    collection: { list: async () => over.cards ?? (over.collection ?? ['Livre']).map((slug) => ({ slug, title: slug })) },
     kinds: {
       resolveMissing: vi.fn(async () => undefined),
       load: async () => ({
-        cards: (over.kindsUnknown ? {} : { Livre: { natures: over.natures ?? ['Q7725634'], occupations: [], genres: over.genres ?? [] } }) as Record<string, { natures: string[]; occupations: string[]; genres: string[] }>,
+        cards: (over.kindsUnknown ? {} : { Livre: { natures: over.natures ?? ['Q7725634'], occupations: over.occupations ?? [], genres: over.genres ?? [] } }) as Record<string, { natures: string[]; occupations: string[]; genres: string[] }>,
         labels: { Q1: 'roman philosophique', Q2: 'roman policier' },
       }),
     },
@@ -62,6 +65,7 @@ function setup(over: Setup = {}) {
     googleBooks,
     wikisource: over.wikisource ?? null,
     archive: over.archive ?? null,
+    writerWorks: over.writerWorks ?? null,
     now: () => NOW,
   });
   return { service, openLibrary, intro, resolve, choices, onChoice };
@@ -401,5 +405,79 @@ describe('reading', () => {
     up = true;
     // Un échec récent est mis de côté par le cache (5 min) : le service ne lève pas et reste « incomplet ».
     expect((await service.reading('Livre', book)).complete).toBe(false);
+  });
+});
+
+describe('bibliography', () => {
+  const works = [
+    { id: 'Q1', title: 'Les Misérables', year: 1862, slug: 'Les_Misérables', workId: 'OL1063588W' },
+    { id: 'Q2', title: 'Bug-Jargal', year: 1826, slug: 'Bug-Jargal' },
+  ];
+  const writer = { natures: ['Q5'], occupations: ['Q36180'] };
+
+  it('rien sans service, hors Collection, ou pour une carte qui n’est pas un écrivain', async () => {
+    expect(await setup({ ...writer }).service.bibliography('Livre')).toEqual({ status: 'none' });
+    expect(await setup({ ...writer, writerWorks: async () => works, collection: [] }).service.bibliography('Livre')).toEqual({ status: 'none' });
+    expect(await setup({ natures: ['Q5'], occupations: ['Q33999'], writerWorks: async () => works }).service.bibliography('Livre')).toEqual({ status: 'none' });
+  });
+
+  it('les œuvres de l’écrivain, avec la carte possédée repérée par le titre de l’article (sans exemplaire = non possédée)', async () => {
+    const cards = [
+      { slug: 'Livre', title: 'Victor Hugo' },
+      { slug: 'Les_Misérables', title: 'Les Misérables', copies: 2 },
+      { slug: 'Bug-Jargal', title: 'Bug-Jargal', copies: 0 },
+    ];
+    const view = await setup({ ...writer, cards, writerWorks: async () => works }).service.bibliography('Livre');
+    expect(view).toEqual({ status: 'list', items: [{ ...works[0], owned: cards[1] }, works[1]] });
+  });
+
+  it('mémorise la liste 7 jours ; un échec donne une erreur sans rien retenir', async () => {
+    const writerWorks = vi.fn(async (_slug: string) => works);
+    const { service } = setup({ ...writer, writerWorks });
+    await service.bibliography('Livre');
+    await service.bibliography('Livre');
+    expect(writerWorks).toHaveBeenCalledTimes(1);
+    const failing = setup({ ...writer, writerWorks: async () => { throw new BookError('rate-limited', 'x'); } });
+    expect((await failing.service.bibliography('Livre')).status).toBe('error');
+  });
+});
+
+describe('workDetail', () => {
+  const hugo = { ...etranger, id: 'OL1063588W', title: 'Les Misérables', author: 'Victor Hugo', popularity: 900 };
+
+  it('l’œuvre Open Library de Wikidata, synopsis de l’article de l’œuvre', async () => {
+    const { service, openLibrary, intro } = setup({ byWork: hugo });
+    const view = await service.workDetail({ id: 'Q1', title: 'Les Misérables', slug: 'Les_Misérables', workId: 'OL1063588W' }, 'Victor Hugo');
+    expect(view).toMatchObject({ status: 'detail', detail: { id: 'OL1063588W', title: 'Les Misérables', genres: [], synopsis: { source: 'wikipedia', url: 'https://fr.wikipedia.org/wiki/Les_Mis%C3%A9rables' } } });
+    expect(openLibrary.byWork).toHaveBeenCalledWith('OL1063588W');
+    expect(intro).toHaveBeenCalledWith('Les_Misérables');
+  });
+
+  it('sans identifiant : recherche par titre exact, auteur concordant exigé (un homonyme est refusé)', async () => {
+    const homonym = { ...hugo, id: 'OL2W', author: 'Quelqu’un d’autre', popularity: 5000 };
+    const { service } = setup({ search: [homonym, hugo] });
+    const view = await service.workDetail({ id: 'Q1', title: 'Les Misérables' }, 'Victor Hugo');
+    expect(view).toMatchObject({ status: 'detail', detail: { id: 'OL1063588W' } });
+    expect(await setup({ search: [homonym] }).service.workDetail({ id: 'Q1', title: 'Les Misérables' }, 'Victor Hugo')).toEqual({ status: 'empty' });
+  });
+
+  it('sans article, le synopsis vient d’Open Library ; une panne rend une erreur', async () => {
+    const { service, intro } = setup({ byWork: hugo, description: 'Un roman.' });
+    const view = await service.workDetail({ id: 'Q1', title: 'Les Misérables', workId: 'OL1063588W' }, 'Victor Hugo');
+    expect(view).toMatchObject({ status: 'detail', detail: { synopsis: { source: 'openlibrary' } } });
+    expect(intro).not.toHaveBeenCalled();
+    const down = setup({ byWork: null, search: [] });
+    down.openLibrary.byWork.mockRejectedValue(new BookError('http', 'x'));
+    expect((await down.service.workDetail({ id: 'Q1', title: 'X', workId: 'OL1W' }, 'A B')).status).toBe('error');
+  });
+});
+
+describe('reading sans carte', () => {
+  it('un livre ouvert depuis une bibliographie sans article n’utilise pas Wikidata', async () => {
+    const wikisource = { find: vi.fn(async () => 'Texte') };
+    const { service, resolve } = setup({ ids: { wikisource: 'Faux', gutenberg: '1' }, wikisource });
+    const reading = await service.reading(undefined, { id: 'OL1230613W', title: 'T', author: 'A B' });
+    expect(reading.links.map((link) => link.source)).toEqual(['wikisource']);
+    expect(resolve).not.toHaveBeenCalled();
   });
 });
