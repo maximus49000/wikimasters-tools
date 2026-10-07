@@ -20,3 +20,19 @@ export function filterLocally(cards: KnownCard[], filter: string): Set<string> |
       .map((card) => card.slug),
   );
 }
+
+// Les cartes déjà connues qui passent `filter` (rareté, étiquette), même si la Collection n'est pas entièrement lue :
+// montrées en attendant la réponse du site, pour ne jamais afficher des cartes d'une autre rareté. `null` si le filtre
+// ne peut pas se lire sans le site.
+export function filterProvisionally(cards: KnownCard[], filter: string): Set<string> | null {
+  const params = new URLSearchParams(filter);
+  const keys = [...params.keys()];
+  if (keys.length === 0 || !keys.every((key) => LOCAL_PARAMS.includes(key))) return null;
+  const rarities = params.getAll('rarity');
+  const tagId = params.get('tag_id');
+  return new Set(
+    cards
+      .filter((card) => (rarities.length === 0 || (card.rarity !== undefined && rarities.includes(card.rarity))) && (!tagId || card.tags?.some((tag) => tag.id === tagId)))
+      .map((card) => card.slug),
+  );
+}
