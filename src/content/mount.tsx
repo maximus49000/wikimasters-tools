@@ -169,7 +169,9 @@ const listenSections = createNativeSections(LISTEN_HOST_ATTRIBUTE, '8px', (slug,
 export const mountListenSection: MountListen = listenSections.mount;
 export const pruneListenSections = listenSections.prune;
 
-const screenSections = createNativeSections(SCREEN_HOST_ATTRIBUTE, '0', (slug, title) => <ScreenSection slug={slug} title={title} />);
+const screenSections = createNativeSections(SCREEN_HOST_ATTRIBUTE, '0', (slug, title, host) => (
+  <ScreenSection slug={slug} title={title} onOpenCard={(target) => getLinkedService()?.open(host, target)} />
+));
 export const mountScreenSection: MountListen = screenSections.mount;
 export const pruneScreenSections = screenSections.prune;
 
