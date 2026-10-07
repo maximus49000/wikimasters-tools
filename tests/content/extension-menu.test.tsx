@@ -7,7 +7,14 @@ import { EXTENSION_SETTING_ATTRIBUTE, decorateExtensionSetting } from '../../src
 import { WIKIHOW_SETTING_ATTRIBUTE, decorateWikiHowSetting } from '../../src/content/wikihow-menu';
 import { ExtensionSettings } from '../../src/content/ExtensionSettings';
 
+import { createPurchaseAds } from '../../src/core/ads/purchase-ads';
+
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const memoryStorage = () => {
+  const data = new Map<string, string>();
+  return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value) };
+};
 
 describe('entrées de Plus', () => {
   beforeEach(() => {
@@ -39,10 +46,11 @@ describe('ExtensionSettings', () => {
   afterEach(() => act(() => root.unmount()));
 
   it('liste Images et n’affiche pas WikiHow ; sans lecteur, pas de ligne Lecteur', () => {
-    act(() => root.render(<ExtensionSettings images={null as never} player={null} onClose={() => undefined} />));
+    act(() => root.render(<ExtensionSettings images={null as never} player={null} ads={createPurchaseAds(memoryStorage())} onClose={() => undefined} />));
     const text = container.textContent ?? '';
     expect(text).toContain('Paramètre d’extension');
     expect(text).toContain('Images');
+    expect(text).toContain('Publicité d’achat');
     expect(text).not.toContain('Lecteur');
     expect(text).not.toContain('WikiHow');
   });

@@ -381,4 +381,25 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'publicite-achat',
+    theme: 'app',
+    glyph: '🛒',
+    title: 'Publicité d’achat',
+    summary: 'Masquer les offres payantes du site',
+    steps: [
+      openPlus('puis « Paramètre d’extension ».'),
+      {
+        target: '[data-wmt-extension-setting]',
+        title: 'Publicité d’achat',
+        text: 'Le site propose d’acheter des WikiBidous et de s’abonner à WikiMasters PRO contre de l’argent réel. Ce réglage permet de ne plus voir ces propositions.',
+        details: [
+          { label: 'Comment s’en servir', text: 'Menu Plus, « Paramètre d’extension », ligne « Publicité d’achat » : choisissez Activé (offres affichées) ou Désactivé (offres masquées). Le réglage est gardé sur cet appareil.' },
+          { label: 'Ce qui est masqué', text: 'Par défaut (Désactivé), la section « Acheter des WikiBidous » et l’abonnement « WikiMasters PRO » des Paramètres sont cachés, et la pastille du solde n’ouvre plus la boutique. Le solde reste affiché.' },
+          { label: 'À savoir', text: 'Rien n’est supprimé ni acheté : l’extension ne fait que cacher l’affichage du site. Si le site change la forme de ses offres, une proposition peut réapparaître : signalez-la avec « Remonter une anomalie ».' },
+        ],
+        scene: { reveal: [{ text: 'Plus' }] },
+      },
+    ],
+  },
 ];

@@ -80,6 +80,8 @@ import { searchCardImages } from '../core/images/card-image-search';
 import { setImageService } from '../content/image-registry';
 import { syncCardArt } from '../content/card-art';
 import { decorateExtensionSetting } from '../content/extension-setting-menu';
+import { syncPurchaseOffers } from '../content/purchase-offers';
+import { createPurchaseAds } from '../core/ads/purchase-ads';
 import { decorateWikiHowSetting } from '../content/wikihow-menu';
 import { decorateUpdateSetting } from '../content/update-setting-menu';
 import { decorateAnomalySetting } from '../content/anomaly-setting-menu';
@@ -234,6 +236,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     settings: window.localStorage,
   });
   setImageService(images);
+  // « Publicité d'achat » : désactivée par défaut, les offres en argent réel du site sont masquées.
+  const purchaseAds = createPurchaseAds(window.localStorage);
   // Liens des articles Wikipédia entre cartes (introduction de chaque article, 50 articles par requête) : requêtes sans identifiants,
   // seuls les titres partent. Une réponse qui n'arrive pas ne doit pas arrêter toute la lecture : au bout de 20 s, la requête est abandonnée.
   const linksRepo = createLinksRepo(
@@ -354,7 +358,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         pruneImageSections();
         decorateImage(document, mountImageSection);
         // « Paramètre d'extension » regroupe Images et Lecteur (le lecteur n'existe que si Spotify est fourni par la plateforme).
-        decorateExtensionSetting(document, () => openExtensionSettings(images, getPlayerSource() ?? null));
+        decorateExtensionSetting(document, () => openExtensionSettings(images, getPlayerSource() ?? null, purchaseAds));
+        syncPurchaseOffers(document, () => !purchaseAds.enabled());
         decorateWikiHowSetting(document, () => void openWikiHowFromStore());
         const player = getPlayerSource();
         if (player) {
@@ -425,6 +430,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   collectionRepo.subscribe(() => void refreshOwned());
   // Image trouvée, écartée ou option changée : la page se redécore.
   images.subscribe(run);
+  purchaseAds.subscribe(run);
   const refreshPending = () =>
     collector.pendingSlugs().then(
       (slugs) => {
