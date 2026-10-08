@@ -7,7 +7,24 @@ export const MAX_NAME = 30;
 
 const placedSchema = z.union([
   z.object({ id: z.string(), kind: z.enum(['shelf', 'desk']), col: z.number().int(), row: z.number().int() }),
-  z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string() }),
+  z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string(), slug: z.string().optional() }),
+  z.object({
+    id: z.string(),
+    kind: z.literal('wall'),
+    shape: z.enum(['poster', 'vinyl', 'sleeve-square', 'sleeve-round', 'sleeve-frame']),
+    col: z.number().int(),
+    row: z.number().int(),
+    slug: z.string(),
+    color: z.enum(['black', 'red', 'blue', 'green', 'gold']).optional(),
+  }),
+  z.object({
+    id: z.string(),
+    kind: z.literal('stored'),
+    shape: z.enum(['cd', 'dvd', 'game', 'book']),
+    shelfId: z.string(),
+    slot: z.number().int().min(0).max(14),
+    slug: z.string(),
+  }),
 ]);
 const roomSchema = z.object({
   id: z.string(),
@@ -47,19 +64,38 @@ export function activeRoom(state: LibraryState): Room {
   return state.rooms.find((room) => room.id === state.activeRoomId) ?? state.rooms[0]!;
 }
 
+// Nettoie un aménagement lu : un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau, un objet rangé sans étagère
+// ou sur un emplacement déjà pris, et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi.
+function cleanLayout(layout: Layout): Layout {
+  const ids = new Set<string>();
+  const unique = layout.filter((p) => !ids.has(p.id) && Boolean(ids.add(p.id)));
+  const deskIds = new Set(unique.filter((p) => p.kind === 'desk').map((p) => p.id));
+  const shelfIds = new Set(unique.filter((p) => p.kind === 'shelf').map((p) => p.id));
+  const slots = new Set<string>();
+  const slugs = new Set<string>();
+  return unique.filter((p) => {
+    if (p.kind === 'computer' && !deskIds.has(p.deskId)) return false;
+    if (p.kind === 'stored') {
+      if (!shelfIds.has(p.shelfId)) return false;
+      const key = `${p.shelfId}:${p.slot}`;
+      if (slots.has(key)) return false;
+      slots.add(key);
+    }
+    if ((p.kind === 'wall' || p.kind === 'stored' || p.kind === 'computer') && p.slug !== undefined) {
+      if (slugs.has(p.slug)) return false;
+      slugs.add(p.slug);
+    }
+    return true;
+  });
+}
+
 // Une lecture sûre : un contenu absent, d'une autre version ou abîmé redonne une pièce vide (comme `readView`).
 export function parseLibraryState(raw: unknown): LibraryState {
   const parsed = stateSchema.safeParse(raw);
   if (!parsed.success) return createInitialState();
   const state = parsed.data;
   const ids = state.rooms.map((room) => room.id);
-  // Un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau (dans la même pièce) l'est aussi.
-  const rooms = state.rooms.map((room) => {
-    const seen = new Set<string>();
-    const unique = room.layout.filter((p) => !seen.has(p.id) && Boolean(seen.add(p.id)));
-    const deskIds = new Set(unique.filter((p) => p.kind === 'desk').map((p) => p.id));
-    return { ...room, layout: unique.filter((p) => p.kind !== 'computer' || deskIds.has(p.deskId)) };
-  });
+  const rooms = state.rooms.map((room) => ({ ...room, layout: cleanLayout(room.layout) }));
   return {
     ...state,
     rooms,
