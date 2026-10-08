@@ -1,4 +1,4 @@
-import { layerOf, sizeOf, wallSizeOf } from './furniture-catalog';
+import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, layerOf, sizeOf, wallSizeOf } from './furniture-catalog';
 import { STANDING_KINDS } from './library-types';
 import type { Layout, Orientation, Placed, ShelfShape, SmallItem, StandingKind, VinylColor, WallShape } from './library-types';
 
@@ -36,6 +36,7 @@ export function rectOf(p: Placed): Rect | null {
     const { w, h } = wallSizeOf(p.shape);
     return { col: p.col, row: p.row, w, h };
   }
+  if (p.kind === 'window') return { col: p.col, row: p.row, w: p.w, h: p.h };
   return null;
 }
 
@@ -77,8 +78,7 @@ export function canPlace(layout: Layout, cols: number, kind: StandingKind, col: 
 }
 
 // Un objet accroché doit tenir entièrement sur le mur et sur des cases libres (derrière une étagère, c'est pris).
-export function canHang(layout: Layout, cols: number, shape: WallShape, col: number, row: number, ignoreId?: string): PlaceResult {
-  const { w, h } = wallSizeOf(shape);
+export function canHangRect(layout: Layout, cols: number, w: number, h: number, col: number, row: number, ignoreId?: string): PlaceResult {
   const cells = cellsOf({ col, row, w, h });
   const inRoom = inRoomCell(cols);
   if (cells.some((c) => !inRoom(c))) return { ok: false, reason: 'bounds', cells: cells.filter(inRoom) };
@@ -86,6 +86,11 @@ export function canHang(layout: Layout, cols: number, shape: WallShape, col: num
   const taken = takenKeys(layout, ignoreId);
   const clash = cells.filter((c) => taken.has(`${c.col}-${c.row}`));
   return clash.length > 0 ? { ok: false, reason: 'taken', cells: clash } : { ok: true };
+}
+
+export function canHang(layout: Layout, cols: number, shape: WallShape, col: number, row: number, ignoreId?: string): PlaceResult {
+  const { w, h } = wallSizeOf(shape);
+  return canHangRect(layout, cols, w, h, col, row, ignoreId);
 }
 
 export function hang(layout: Layout, cols: number, shape: WallShape, col: number, row: number, slug: string, id: string, color?: VinylColor): Layout | null {
@@ -97,6 +102,33 @@ export function moveHung(layout: Layout, cols: number, id: string, col: number, 
   const item = layout.find((p) => p.id === id);
   if (!item || item.kind !== 'wall' || !canHang(layout, cols, item.shape, col, row, id).ok) return null;
   return layout.map((p) => (p.id === id ? { ...item, col, row } : p));
+}
+
+export function placeWindow(layout: Layout, cols: number, col: number, row: number, id: string): Layout | null {
+  const { w, h } = WINDOW_DEFAULT;
+  if (!canHangRect(layout, cols, w, h, col, row).ok) return null;
+  return [...layout, { id, kind: 'window', col, row, w, h }];
+}
+
+export function moveWindow(layout: Layout, cols: number, id: string, col: number, row: number): Layout | null {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'window' || !canHangRect(layout, cols, item.w, item.h, col, row, id).ok) return null;
+  return layout.map((p) => (p.id === id ? { ...item, col, row } : p));
+}
+
+// La fenêtre garde son coin haut-gauche ; la taille doit rester dans les bornes, sur le mur et sur des cases libres.
+export function windowFit(layout: Layout, cols: number, id: string, w: number, h: number): PlaceResult {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'window') return { ok: false, reason: 'bounds', cells: [] };
+  const inRange = Number.isInteger(w) && Number.isInteger(h) && w >= WINDOW_MIN.w && w <= WINDOW_MAX.w && h >= WINDOW_MIN.h && h <= WINDOW_MAX.h;
+  if (!inRange) return { ok: false, reason: 'bounds', cells: [] };
+  return canHangRect(layout, cols, w, h, item.col, item.row, id);
+}
+
+export function resizeWindow(layout: Layout, cols: number, id: string, w: number, h: number): Layout | null {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'window' || !windowFit(layout, cols, id, w, h).ok) return null;
+  return layout.map((p) => (p.id === id ? { ...item, w, h } : p));
 }
 
 export function placeStanding(layout: Layout, cols: number, kind: StandingKind, col: number, row: number, id: string): Layout | null {
@@ -187,7 +219,7 @@ export function surfaceSlotRect(host: PxRect, slotCount: number, slot: number): 
 
 // Ajouter une zone à gauche décale les colonnes de tous les meubles ; l'ordinateur suit son bureau.
 export function shiftLayout(layout: Layout, delta: number): Layout {
-  return layout.map((p) => (isStanding(p) ? { id: p.id, kind: p.kind, col: p.col + delta, row: p.row } : p.kind === 'wall' ? { ...p, col: p.col + delta } : p));
+  return layout.map((p) => (isStanding(p) ? { id: p.id, kind: p.kind, col: p.col + delta, row: p.row } : p.kind === 'wall' || p.kind === 'window' ? { ...p, col: p.col + delta } : p));
 }
 
 // La zone de 12 colonnes au bord est vide quand aucun meuble ne la touche (même à cheval sur sa frontière).

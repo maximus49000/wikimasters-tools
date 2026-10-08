@@ -1,4 +1,4 @@
-import { useCallback, useRef, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
+import { useCallback, useId, useMemo, useRef, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
 import { sizeOf } from '../core/library/furniture-catalog';
@@ -10,6 +10,13 @@ import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 import { HomeArt, SmallArt } from './furniture-art-home';
 import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
+import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
+import { WindowArt, glassRect } from './window-art';
+import { hashString } from '../core/library/scene-world';
+import { skyAt, type Sky } from '../core/library/sky';
+
+// Ciel d'après-midi quand aucune heure n'est fournie (test, premier rendu) ; calculé une fois : le décor est mémoïsé.
+const DEFAULT_VIEW: { sky: Sky; minutes: number } = { sky: skyAt(15 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 }), minutes: 15 * 60 };
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
 
@@ -32,6 +39,8 @@ type Props = {
   cards?: Record<string, { title: string; imageUrl?: string }>;
   // Toucher sur un objet accroché, rangé ou sur l'écran de l'ordinateur.
   onCardTap?: (id: string) => void;
+  // Ciel et heure vus à travers les fenêtres ; sans eux, un ciel d'après-midi.
+  sceneView?: { sky: Sky; minutes: number };
 };
 
 export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect };
@@ -41,7 +50,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -55,6 +64,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   useSyncExternalStore(subscribeImages, () => imageVersion.current);
   const width = room.cols * CELL_W;
   const wallH = WALL_ROWS * CELL_H;
+  const worldId = `${useId()}-world`.replace(/:/g, '');
+  const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
+  const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
 
   const deskRects = new Map<string, PxRect>();
@@ -111,6 +123,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       if (!hostRect || (host?.kind !== 'desk' && host?.kind !== 'shelf')) return null;
       rect = surfaceSlotRect(hostRect, SURFACE_SLOTS[host.kind], placed.slot);
       art = <SmallArt item={placed.item} rect={rect} palette={palette} />;
+    } else if (placed.kind === 'window') {
+      rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
+      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} clipId={`${worldId}-clip-${placed.id}`} />;
     } else {
       const cells = rectOf(placed);
       if (!cells || !isStanding(placed)) return null;
@@ -163,6 +178,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const standing = room.layout.filter(isStanding);
   const bottomRow = (p: (typeof standing)[number]): number => p.row + sizeOf(p.kind).h;
   const ordered = [
+    ...windows,
     ...standing.filter((p) => p.kind === 'rug'),
     ...standing.filter((p) => p.kind !== 'rug').sort((a, b) => bottomRow(a) - bottomRow(b)),
     ...room.layout.filter((p) => p.kind === 'computer'),
@@ -281,6 +297,26 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {decor.glow && <NeonDefs />}
       <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
       {room.style === 'steampunk' && <SteampunkDecor cols={room.cols} wallH={wallH} />}
+      {windows.length > 0 && (
+        <defs>
+          {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que
+              le second, si bien que les copies du décor fixe de chaque fenêtre ne sont pas recalculées à chaque image. */}
+          <g id={worldId}>
+            <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} />
+          </g>
+          <g id={`${worldId}-actors`}>
+            <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} />
+          </g>
+          {windows.map((w) => {
+            const glass = glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }));
+            return (
+              <clipPath key={w.id} id={`${worldId}-clip-${w.id}`}>
+                <rect x={glass.x} y={glass.y} width={glass.w} height={glass.h} rx={steampunk ? 10 : 0} />
+              </clipPath>
+            );
+          })}
+        </defs>
+      )}
       {ordered.map(renderPlaced)}
       {wallLayer}
       {smalls.map(renderPlaced)}

@@ -12,11 +12,13 @@ import {
   setActive,
   setHome,
   setOrientation,
+  setRoomScene,
+  setTimeSetting,
   shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
-import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, type Category } from '../core/library/furniture-catalog';
-import { STYLE_IDS, type FurnitureKind, type Layout, type LibraryState, type Orientation, type StandingKind, type StyleId } from '../core/library/library-types';
+import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
+import { SCENE_IDS, STYLE_IDS, type SceneId, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
@@ -26,6 +28,11 @@ import {
   SECTION,
   VISIBLE_COLS,
   canHang,
+  canHangRect,
+  moveWindow,
+  placeWindow,
+  resizeWindow,
+  windowFit,
   canPlace,
   canPlaceComputer,
   firstFreeSlot,
@@ -50,6 +57,9 @@ import {
   type Cell,
 } from '../core/library/room-grid';
 import { STYLE_LABELS, paletteOf } from '../core/library/styles';
+import { formatMinutes } from '../core/library/time-setting';
+import { useSceneTime } from './use-scene-time';
+import { requestPosition } from './scene-position';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
 import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
 import { createLongPress } from './long-press';
@@ -116,7 +126,25 @@ const ICONS = {
   shrinkLeft: ['M4 4v16', 'M9 12h10'],
   shrinkRight: ['M20 4v16', 'M5 12h10'],
   fullscreen: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
+  sun: ['M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8z', 'M12 2v2', 'M12 20v2', 'M4.9 4.9l1.4 1.4', 'M17.7 17.7l1.4 1.4', 'M2 12h2', 'M20 12h2', 'M4.9 19.1l1.4-1.4', 'M17.7 6.3l1.4-1.4'],
+  moon: ['M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z'],
+  clock: ['M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z', 'M12 7v5l3 2'],
+  sliders: ['M4 6h10', 'M18 6h2', 'M4 12h2', 'M10 12h10', 'M4 18h12', 'M20 18h0', 'M14 4v4', 'M6 10v4', 'M16 16v4'],
+  widthMinus: ['M3 12h6', 'M21 12h-6', 'M9 8l-4 4 4 4', 'M15 8l4 4-4 4'],
+  widthPlus: ['M9 12H3', 'M15 12h6', 'M5 8l4 4-4 4', 'M19 8l-4 4 4 4'],
+  heightMinus: ['M12 3v6', 'M12 21v-6', 'M8 9l4-4 4 4', 'M8 15l4 4 4-4'],
+  heightPlus: ['M12 9V3', 'M12 15v6', 'M8 5l4 4 4-4', 'M8 19l4-4 4 4'],
 } as const;
+
+const SCENE_ICON: Record<SceneId, readonly string[]> = {
+  city: ['M4 21V9h6v12', 'M10 21V4h6v17', 'M16 21v-8h4v8', 'M3 21h18'],
+  countryside: ['M2 18c4-6 8-6 10-2 2-4 6-4 10 2', 'M3 21h18', 'M12 6v4', 'M10 8h4'],
+  mountain: ['M2 20l7-12 4 6 3-4 6 10z', 'M9 8l2 3'],
+  sea: ['M2 14c3-3 5 3 8 0s5 3 8 0 3-1 4 0', 'M2 19c3-3 5 3 8 0s5 3 8 0 3-1 4 0', 'M16 5a3 3 0 1 0 0 0.1'],
+  space: ['M12 3l2 5 5 .5-4 3.5 1.5 5L12 14l-4.5 3 1.5-5L5 8.5 10 8z'],
+  earth: ['M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z', 'M3 12h18', 'M12 3c3 3 3 15 0 18', 'M12 3c-3 3-3 15 0 18'],
+};
+const SCENE_LABEL: Record<SceneId, string> = { city: 'Ville', countryside: 'Campagne', mountain: 'Montagne', sea: 'Mer', space: 'Espace', earth: 'Terre vue d’en haut' };
 
 function Btn({ label, pressed, onClick, data, children }: { label: string; pressed?: boolean; onClick: () => void; data?: Record<string, string>; children: ReactNode }) {
   const attrs = Object.fromEntries(Object.entries(data ?? {}).map(([key, value]) => [`data-${key}`, value]));
@@ -161,6 +189,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const startDragRef = useRef<(id: string) => void>(() => undefined);
   const press = useMemo(() => createLongPress(() => { if (pressedId.current) startDragRef.current(pressedId.current); }), []);
   useEffect(() => press.cancel, [press]);
+  const sceneTime = useSceneTime(lib?.time ?? { mode: 'real' });
 
   // Position du doigt → case, cible de dépôt et position dans le dessin (null si la pièce n'est pas affichée).
   const locate = (id: string, clientX: number, clientY: number): Drag | null => {
@@ -270,6 +299,26 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     return () => unlockOrientation();
   }, [stage.active, orientationNow]);
 
+  // Heure réelle au chargement : la position n'est relue que si le joueur l'a déjà accordée (jamais de nouvelle demande ici).
+  const timeMode = lib?.time.mode;
+  useEffect(() => {
+    if (timeMode !== 'real') return;
+    let alive = true;
+    try {
+      navigator.permissions
+        ?.query({ name: 'geolocation' as PermissionName })
+        .then((status) => {
+          if (alive && status.state === 'granted') void requestPosition();
+        })
+        .catch(() => undefined);
+    } catch {
+      // Navigateur sans API des autorisations : le fuseau horaire sert de repli.
+    }
+    return () => {
+      alive = false;
+    };
+  }, [timeMode]);
+
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
   const room = activeRoom(lib);
@@ -322,6 +371,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       } else if (item?.kind === 'stored' && target.shelfId !== undefined && target.slot !== undefined) {
         const { shelfId, slot } = target;
         void editLayout((l) => moveStored(l, id, shelfId, slot));
+      } else if (item?.kind === 'window' && target.col !== undefined && target.top !== undefined) {
+        const { col, top } = target;
+        void editLayout((l, cols) => moveWindow(l, cols, id, col, top));
       } else if (item?.kind === 'wall' && target.col !== undefined && target.top !== undefined) {
         const { col, top } = target;
         void editLayout((l, cols) => moveHung(l, cols, id, col, top));
@@ -360,6 +412,19 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const cellsActive = tool !== null && !targetsHost && (tool.type !== 'card' || placing?.target === 'wall');
 
   // Objet mural, posé (carte choisie) ou déplacé (« Déplacer ») : la case touchée est son coin bas-gauche.
+  // Fenêtre posée (outil « new ») ou déplacée : la case touchée est son coin bas-gauche.
+  async function placeWindowAt(col: number, row: number): Promise<void> {
+    if (!tool) return;
+    const moving = tool.type === 'move' && movingItem?.kind === 'window' ? movingItem : null;
+    const { w, h } = moving ?? WINDOW_DEFAULT;
+    const top = row - h + 1;
+    const check = canHangRect(layout, room.cols, w, h, col, top, moving?.id);
+    if (!check.ok) return refuse(REASONS[check.reason], check.cells);
+    if (moving) await editLayout((l, cols) => moveWindow(l, cols, moving.id, col, top));
+    else await editLayout((l, cols) => placeWindow(l, cols, col, top, nextFurnitureId(l)));
+    reset();
+  }
+
   async function placeWall(col: number, row: number): Promise<void> {
     if (!tool) return;
     const shape = tool.type === 'card' ? (pending?.target === 'wall' ? pending.shape : null) : movingItem?.kind === 'wall' ? movingItem.shape : null;
@@ -413,6 +478,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 
   async function onCell(col: number, row: number): Promise<void> {
     if (!tool) return;
+    if ((tool.type === 'new' && tool.kind === 'window') || movingItem?.kind === 'window') return placeWindowAt(col, row);
     if (tool.type === 'card' || movingItem?.kind === 'wall') return placeWall(col, row);
     const kind: StandingKind | null = tool.type === 'new' ? (isStandingKind(tool.kind) ? tool.kind : null) : movingItem && isStanding(movingItem) ? movingItem.kind : null;
     if (!kind) return;
@@ -474,7 +540,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         ? 'Touchez un bureau pour y poser l’ordinateur.'
         : isSmallKind(kind)
           ? `Touchez un bureau ou une étagère pour y poser : ${labelOf(kind).toLowerCase()}.`
-          : `Touchez une case du sol pour poser : ${labelOf(kind).toLowerCase()}.`,
+          : kind === 'window'
+            ? 'Touchez la case du mur où poser la fenêtre (son coin bas gauche).'
+            : `Touchez une case du sol pour poser : ${labelOf(kind).toLowerCase()}.`,
     );
   };
   const startMove = (): void => {
@@ -482,7 +550,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const item = layout.find((p) => p.id === selectedId);
     if (item?.kind === 'stored') return refuse('Appui long pour la déplacer.');
     setTool({ type: 'move', id: selectedId });
-    setMessage(item?.kind === 'small' ? 'Touchez le bureau ou l’étagère où le poser.' : item?.kind === 'computer' ? 'Touchez le bureau où le poser.' : item?.kind === 'wall' ? 'Touchez la case du mur où l’accrocher.' : 'Touchez la case du sol où le poser.');
+    setMessage(item?.kind === 'small' ? 'Touchez le bureau ou l’étagère où le poser.' : item?.kind === 'computer' ? 'Touchez le bureau où le poser.' : item?.kind === 'wall' || item?.kind === 'window' ? 'Touchez la case du mur où l’accrocher.' : 'Touchez la case du sol où le poser.');
   };
   const removeSelected = async (): Promise<void> => {
     if (!selectedId) return;
@@ -496,6 +564,19 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (item?.kind === 'wall' || item?.kind === 'stored' || (item?.kind === 'computer' && item.slug)) await editLayout((l) => unplaceCard(l, selectedId));
     else await editLayout((l) => removeFurniture(l, selectedId));
     reset();
+  };
+  const selectedWindow = editing ? layout.find((p) => p.id === selectedId && p.kind === 'window') : undefined;
+  const resizeSelected = (dw: number, dh: number): void => {
+    if (!selectedWindow || selectedWindow.kind !== 'window') return;
+    const w = selectedWindow.w + dw;
+    const h = selectedWindow.h + dh;
+    const check = windowFit(layout, room.cols, selectedWindow.id, w, h);
+    if (!check.ok) {
+      const limit = w < WINDOW_MIN.w || h < WINDOW_MIN.h ? 'La fenêtre ne peut pas être plus petite.' : w > WINDOW_MAX.w || h > WINDOW_MAX.h ? 'La fenêtre ne peut pas être plus grande.' : REASONS[check.reason];
+      return refuse(limit, check.cells);
+    }
+    setMessage('');
+    void editLayout((l, cols) => resizeWindow(l, cols, selectedWindow.id, w, h));
   };
   // « + Carte » : rappuyer annule ; sinon le sélecteur s'ouvre et le choix devient l'outil de pose.
   const startCard = (): void => {
@@ -544,6 +625,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const chooseOrientation = (orientation: Orientation): void => {
     reset();
     void library.update((state) => setOrientation(state, room.id, orientation));
+  };
+  const chooseTime = (mode: TimeSetting['mode']): void => {
+    reset();
+    const next: TimeSetting = mode === 'manual' ? { mode, minutes: sceneTime.minutes } : { mode };
+    // « Heure réelle » : le navigateur demande alors l'accord de position (sans accord, le fuseau horaire suffit).
+    if (mode === 'real') void requestPosition();
+    void library.update((state) => setTimeSetting(state, next));
   };
   const onDeleteRoom = (): void => {
     const question = lib.rooms.length > 1 ? `Supprimer « ${room.name} » ?` : 'Vider cette pièce ?';
@@ -631,6 +719,45 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       )}
 
       {editing && (
+        <div className="wmt-lib-row" role="group" aria-label="Ciel">
+          {SCENE_IDS.map((id) => (
+            <Btn key={id} label={SCENE_LABEL[id]} pressed={room.scene === id} data={{ scene: id }} onClick={() => void library.update((state) => setRoomScene(state, room.id, id))}>
+              <Icon paths={SCENE_ICON[id]} />
+            </Btn>
+          ))}
+          <span className="wmt-lib-sep" />
+          {(
+            [
+              ['real', 'Heure réelle', ICONS.clock],
+              ['day', 'Toujours le jour', ICONS.sun],
+              ['night', 'Toujours la nuit', ICONS.moon],
+              ['manual', 'Choisir l’heure', ICONS.sliders],
+            ] as const
+          ).map(([mode, label, icon]) => (
+            <Btn key={mode} label={label} pressed={lib.time.mode === mode} data={{ time: mode }} onClick={() => chooseTime(mode)}>
+              <Icon paths={icon} />
+            </Btn>
+          ))}
+          {lib.time.mode === 'manual' && (
+            <input
+              type="range"
+              data-time-slider=""
+              aria-label="Heure"
+              min={0}
+              max={1439}
+              step={5}
+              value={lib.time.minutes}
+              onChange={(event) => { const minutes = Number(event.currentTarget.value); void library.update((state) => setTimeSetting(state, { mode: 'manual', minutes })); }}
+            />
+          )}
+          <span className="wmt-lib-msg" data-sun-times="">
+            {sceneTime.times.kind === 'normal' ? `☀ ${formatMinutes(sceneTime.times.sunrise)} → ${formatMinutes(sceneTime.times.sunset)}` : sceneTime.times.polar === 'day' ? '☀ jour permanent' : '☾ nuit permanente'}
+            {` · ${formatMinutes(sceneTime.minutes)}`}
+          </span>
+        </div>
+      )}
+
+      {editing && (
         <div className="wmt-lib-row" role="group" aria-label="Catégories de meubles">
           {cats.map((c) => (
             <Btn key={c.id} label={c.label} pressed={shownCategory === c.id} data={{ category: c.id }} onClick={() => { reset(); setCategory(c.id); }}>
@@ -661,6 +788,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
                 <Icon paths={ICONS.trash} />
               </Btn>
+              {selectedWindow && (
+                <>
+                  <Btn label="Fenêtre plus étroite" data={{ action: 'win-w-' }} onClick={() => resizeSelected(-1, 0)}><Icon paths={ICONS.widthMinus} /></Btn>
+                  <Btn label="Fenêtre plus large" data={{ action: 'win-w+' }} onClick={() => resizeSelected(1, 0)}><Icon paths={ICONS.widthPlus} /></Btn>
+                  <Btn label="Fenêtre moins haute" data={{ action: 'win-h-' }} onClick={() => resizeSelected(0, -1)}><Icon paths={ICONS.heightMinus} /></Btn>
+                  <Btn label="Fenêtre plus haute" data={{ action: 'win-h+' }} onClick={() => resizeSelected(0, 1)}><Icon paths={ICONS.heightPlus} /></Btn>
+                </>
+              )}
             </>
           )}
           {collection && (
@@ -705,6 +840,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             cellsActive={cellsActive}
             selectedId={selectedId}
             blink={blink}
+            sceneView={{ sky: sceneTime.sky, minutes: sceneTime.minutes }}
             onCell={(col, row) => void onCell(col, row)}
             onPick={(id) => void onPick(id)}
             cards={roomCards.cards}

@@ -103,10 +103,11 @@ describe('surfaceSlotRect', () => {
 
 describe('lecture : nettoyage des petits objets', () => {
   const state = (layout: unknown[]) => ({
-    version: 2,
+    version: 3,
+    time: { mode: 'real' },
     activeRoomId: 'r1',
     homeRoomId: null,
-    rooms: [{ id: 'r1', name: 'Salon', style: 'scandinave', orientation: 'landscape', cols: 24, layout }],
+    rooms: [{ id: 'r1', name: 'Salon', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, layout }],
   });
   const read = (layout: unknown[]) => parseLibraryState(state(layout)).rooms[0]!.layout.map((p) => p.id);
   const host = [{ id: 'f1', kind: 'desk', col: 2, row: 14 }, { id: 'f2', kind: 'shelf', col: 12, row: 10 }];

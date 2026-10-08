@@ -3,6 +3,7 @@ import type { FurnitureKind } from '../core/library/library-types';
 
 // Glyphes (viewBox 24) de chaque type de meuble et de chaque catégorie.
 export const KIND_ICON: Record<FurnitureKind, readonly string[]> = {
+  window: ['M4 3h16v18H4z', 'M12 3v18', 'M4 12h16'],
   shelf: ['M5 3v18', 'M19 3v18', 'M5 8h14', 'M5 14h14'],
   desk: ['M3 8h18', 'M5 8v12', 'M19 8v12'],
   computer: ['M3 4h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M8 20h8', 'M12 16v4'],

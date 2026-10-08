@@ -13,7 +13,7 @@ export const SMALL_ITEMS = ['plant', 'lamp'] as const;
 export type SmallItem = (typeof SMALL_ITEMS)[number];
 export type SmallKind = 'small-plant' | 'small-lamp';
 
-export type FurnitureKind = StandingKind | 'computer' | SmallKind;
+export type FurnitureKind = StandingKind | 'computer' | 'window' | SmallKind;
 
 export type WallShape = 'poster' | 'vinyl' | 'sleeve-square' | 'sleeve-round' | 'sleeve-frame';
 export type ShelfShape = 'cd' | 'dvd' | 'game' | 'book';
@@ -27,23 +27,33 @@ export type Placed =
   | { id: string; kind: 'computer'; deskId: string; slug?: string }
   | { id: string; kind: 'small'; item: SmallItem; hostId: string; slot: number }
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
+  | { id: string; kind: 'window'; col: number; row: number; w: number; h: number }
   | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; slot: number; slug: string };
 
 export type Layout = Placed[];
+
+// Décors vus par les fenêtres d'une pièce.
+export const SCENE_IDS = ['city', 'countryside', 'mountain', 'sea', 'space', 'earth'] as const;
+export type SceneId = (typeof SCENE_IDS)[number];
+
+export type TimeSetting = { mode: 'real' } | { mode: 'day' } | { mode: 'night' } | { mode: 'manual'; minutes: number };
 
 // `cols` : largeur de la pièce en colonnes (multiple de 12, de 24 à 96). Un seul aménagement, quelle que soit l'orientation.
 export type Room = {
   id: string;
   name: string;
   style: StyleId;
+  scene: SceneId;
   orientation: Orientation;
   cols: number;
   layout: Layout;
 };
 
 export type LibraryState = {
-  version: 2;
+  version: 3;
   activeRoomId: string;
   homeRoomId: string | null;
+  // Heure globale de la Bibliothèque (toutes les pièces).
+  time: TimeSetting;
   rooms: Room[];
 };
