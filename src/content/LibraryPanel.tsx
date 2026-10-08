@@ -288,6 +288,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     blinkTimer.current = window.setTimeout(() => setBlink([]), 700);
   };
 
+  // Refus d'un ordinateur : soit le bureau en porte déjà un, soit des petits objets occupent son milieu.
+  const computerRefusal = (deskId: string, ignoreId?: string): string =>
+    layout.some((p) => p.kind === 'computer' && p.deskId === deskId && p.id !== ignoreId) ? 'Ce bureau a déjà un ordinateur.' : 'Libérez le milieu du bureau pour y poser l’ordinateur.';
+
   const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'slot-busy': 'Cet emplacement est déjà pris.', 'not-slot': 'Déposez l’objet dans un emplacement de l’étagère.', 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.' } as const;
   // Lâcher d'un meuble soulevé : valide → déplacé par les mêmes fonctions que « Déplacer » ; sinon il reste en place.
   const dropLifted = (id: string, target: DropTarget): void => {
@@ -412,13 +416,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     if (placing) return placeOnFurniture(placing, item);
     if (tool?.type === 'new' && tool.kind === 'computer') {
       if (item.kind !== 'desk') return refuse('Un ordinateur se pose sur un bureau.');
-      if (!canPlaceComputer(layout, id)) return refuse('Ce bureau a déjà un ordinateur.');
+      if (!canPlaceComputer(layout, id)) return refuse(computerRefusal(id));
       await editLayout((l) => placeComputer(l, id, nextFurnitureId(l)));
       return reset();
     }
     if (tool?.type === 'move' && movingItem?.kind === 'computer') {
       if (item.kind !== 'desk') return refuse('Un ordinateur se pose sur un bureau.');
-      if (!canPlaceComputer(layout, id, movingItem.id)) return refuse('Ce bureau a déjà un ordinateur.');
+      if (!canPlaceComputer(layout, id, movingItem.id)) return refuse(computerRefusal(id, movingItem.id));
       await editLayout((l) => moveComputer(l, movingItem.id, id));
       return reset();
     }

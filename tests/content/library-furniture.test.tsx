@@ -106,4 +106,20 @@ describe('mobilier dans le panneau', () => {
     expect(q('[data-furniture="desk"]')).not.toBeNull();
     expect(q('[data-furniture="small"]')).not.toBeNull();
   });
+
+  it('explique qu’il faut libérer le milieu du bureau pour l’ordinateur', async () => {
+    await click('[data-kind="desk"]');
+    await click('[data-cell="2-17"]');
+    await click('[data-category="deco"]');
+    // Deux petits objets : ils prennent les emplacements 0 et 1, le milieu du bureau est donc occupé.
+    for (let i = 0; i < 2; i += 1) {
+      await click('[data-kind="small-plant"]');
+      await click('[data-furniture="desk"]');
+    }
+    await click('[data-category="storage"]');
+    await click('[data-kind="computer"]');
+    await click('[data-furniture="desk"]');
+    expect(q('[role="status"]')?.textContent).toContain('Libérez le milieu du bureau');
+    expect(q('[data-furniture="computer"]')).toBeNull();
+  });
 });
