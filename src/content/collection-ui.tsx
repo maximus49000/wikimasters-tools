@@ -83,6 +83,10 @@ type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: Collectio
 export function createCollectionUi({ collection, geo, library, birth, kinds, links, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
+  // Pièces de la Bibliothèque : lues au premier passage sur la Collection, pas au démarrage de chaque page du site.
+  let libraryRequested = false;
+  // Vrai tant que la vue Bibliothèque a masqué des éléments : évite de parcourir toute la page à chaque changement du DOM.
+  let navigationIsolated = false;
   // Pièce d'accueil : appliquée une fois, à la première ouverture de la Collection après le démarrage.
   const launch = createLaunchGate();
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
@@ -194,6 +198,12 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     unmountPanel();
     kindRow.unmount();
     restoreHiddenGrids(document);
+    releaseNavigation();
+  }
+
+  function releaseNavigation(): void {
+    if (!navigationIsolated) return;
+    navigationIsolated = false;
     restoreNavigation(document);
   }
 
@@ -202,6 +212,11 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     if (!window.location.pathname.startsWith('/collection')) {
       showList();
       return;
+    }
+    if (!libraryRequested) {
+      libraryRequested = true;
+      // Une fois prêtes, on rejoue sync (pièce d'accueil, vue Bibliothèque).
+      library.load().then(() => sync()).catch((error) => console.warn(LOG, 'pièces de la Bibliothèque non chargées :', error));
     }
     // Premier chargement : le scan tourne en arrière plan (une fois par chargement de page ;
     // il ne refait rien s'il est déjà terminé, et reprend où il s'était arrêté sinon).
@@ -285,9 +300,12 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     // Vue Bibliothèque épurée : seuls le sélecteur de vues et le panneau restent affichés (le reste de la zone est masqué).
     if (view === 'library' && panel) {
       const boundary = switchGroup.closest('main') ?? scope?.parentElement;
-      if (boundary instanceof HTMLElement && boundary !== document.body && boundary !== document.documentElement) isolateNavigation([switchGroup, panel.host], boundary);
+      if (boundary instanceof HTMLElement && boundary !== document.body && boundary !== document.documentElement) {
+        navigationIsolated = true;
+        isolateNavigation([switchGroup, panel.host], boundary);
+      }
     } else {
-      restoreNavigation(document);
+      releaseNavigation();
     }
   }
 
@@ -296,9 +314,6 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     if (!window.location.pathname.startsWith('/collection')) return;
     syncPriceSort(document, readView(window.localStorage) === 'homemade', sortSource);
   }
-
-  // Les pièces se chargent en arrière-plan ; une fois prêtes, on rejoue sync (pièce d'accueil, vue Bibliothèque).
-  library.load().then(() => sync()).catch((error) => console.warn(LOG, 'pièces de la Bibliothèque non chargées :', error));
 
   return { sync, syncSortMenu };
 }
