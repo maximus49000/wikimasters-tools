@@ -39,6 +39,11 @@ describe('deskAtCell', () => {
 });
 
 describe('dropTargetFor', () => {
+  it("un objet accroché n'a pas encore de cible de dépôt", () => {
+    const layout: Layout = [{ id: 'w1', kind: 'wall', shape: 'poster', col: 2, row: 1, slug: 'A' }];
+    expect(dropTargetFor(layout, COLS, 'w1', 3, 3)).toEqual({ ok: false, cells: [], ghost: null });
+  });
+
   it('meuble debout : la case visée est le bas à gauche', () => {
     const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 4 }];
     const t = dropTargetFor(layout, COLS, 'f1', 5, 11);

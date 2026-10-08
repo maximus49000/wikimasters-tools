@@ -25,6 +25,7 @@ import {
   VISIBLE_COLS,
   canPlace,
   canPlaceComputer,
+  isStanding,
   moveComputer,
   moveStanding,
   placeComputer,
@@ -105,6 +106,7 @@ const REFUSALS = {
   bounds: 'Ça ne rentre pas dans la pièce.',
   floor: 'Un meuble se pose au sol : touchez une case du sol.',
   taken: 'Cet emplacement est déjà occupé.',
+  wall: 'Un objet accroché doit tenir sur le mur.',
 } as const;
 
 export function LibraryPanel({ library }: { library: LibraryRepo }) {
@@ -299,7 +301,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
 
   async function onCell(col: number, row: number): Promise<void> {
     if (!tool) return;
-    const kind: StandingKind | null = tool.type === 'new' ? (tool.kind === 'computer' ? null : tool.kind) : movingItem && movingItem.kind !== 'computer' ? movingItem.kind : null;
+    const kind: StandingKind | null = tool.type === 'new' ? (tool.kind === 'computer' ? null : tool.kind) : movingItem && isStanding(movingItem) ? movingItem.kind : null;
     if (!kind) return;
     // La case touchée est la case en bas à gauche du meuble.
     const top = row - sizeOf(kind).h + 1;

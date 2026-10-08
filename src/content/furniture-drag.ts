@@ -21,7 +21,7 @@ export function deskAtCell(layout: Layout, col: number, row: number): string | n
   return null;
 }
 
-export type DropReason = 'bounds' | 'floor' | 'taken' | 'not-desk' | 'desk-busy';
+export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy';
 
 export type DropTarget = {
   ok: boolean;
@@ -42,7 +42,9 @@ export type DropTarget = {
 export function dropTargetFor(layout: Layout, cols: number, id: string, col: number, row: number): DropTarget {
   const item = layout.find((p) => p.id === id);
   if (!item) return { ok: false, cells: [], ghost: null };
-  if (!isStanding(item)) {
+  // Les objets accrochés ou rangés ne se déplacent pas encore ici (tâche 8).
+  if (!isStanding(item) && item.kind !== 'computer') return { ok: false, cells: [], ghost: null };
+  if (item.kind === 'computer') {
     const deskId = deskAtCell(layout, col, row);
     if (!deskId) return { ok: false, reason: 'not-desk', cells: [{ col, row }], ghost: { col, row, w: 1, h: 1 } };
     const desk = layout.find((p) => p.id === deskId);
