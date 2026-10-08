@@ -6,6 +6,7 @@ import { matchCards } from '../core/links/card-match';
 import { MAX_LEVELS, MAX_READS, findPath, type PathProgress } from '../core/links/web-path';
 import { slugToTitle } from '../core/market/market-book';
 import type { PathRequest } from './selection-source';
+import { track } from '../core/telemetry/registry';
 
 type Props = {
   cards: KnownCard[];
@@ -165,6 +166,7 @@ export function WebPathBar({ cards, links, onPath, initial = null }: Props) {
       );
       if (cancelled()) return;
       if (result.status === 'found') {
+        track('toile-generee');
         onPath(result.path);
         setMessage(`Liaison en ${result.path.length - 1} étape${result.path.length > 2 ? 's' : ''} : ${result.path.map(titleOf).join(' → ')}.`);
       } else if (result.status === 'none') {

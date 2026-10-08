@@ -3,6 +3,7 @@ import { useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Glyph } from './Glyphs';
 import { useOverlayHost } from './SoundtrackDialog';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const button = (primary: boolean, disabled: boolean): CSSProperties => ({
@@ -33,6 +34,7 @@ export function DocumentaryProposeDialog({ onPropose, onClose, onDone }: Props) 
     const result = await onPropose(link);
     setBusy(false);
     if (result.ok) {
+      track('documentaire-propose');
       setDone({ sent: result.sent });
       onDone();
     } else setError(result.error);

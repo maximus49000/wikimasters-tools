@@ -4,6 +4,7 @@ import type { GameCandidate, GameDetail } from '../core/game/game-detail';
 import type { GameCandidates, GameService } from './game-service';
 import { Glyph } from './Glyphs';
 import { useOverlayHost } from './SoundtrackDialog';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const iconButton: CSSProperties = { width: 44, height: 44, flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'inherit', background: 'none', border, borderRadius: 8 };
@@ -209,7 +210,12 @@ export function GameChoiceDialog({ service, slug, title, current, onChanged, onC
             <button
               type="button"
               disabled={busy}
-              onClick={() => void done(() => service.choose(slug, { source: selected.source, id: selected.id }))}
+              onClick={() =>
+                void done(async () => {
+                  await service.choose(slug, { source: selected.source, id: selected.id });
+                  track('jeu-change');
+                })
+              }
               aria-label="Utiliser ce jeu"
               style={{ ...wide, color: '#04130c', background: 'var(--color-accent, #34d399)', border: 0 }}
             >

@@ -9,6 +9,7 @@ import { musicKindOf } from '../core/music/music-kinds';
 import type { MusicRepo } from '../core/music/music-repo';
 import { listenOfChoice, resolveSoundtrack, searchSoundtracks, type SoundtrackChoice } from '../core/music/soundtrack';
 import { SpotifyError, userMessage } from '../core/spotify/errors';
+import { reportError, track } from '../core/telemetry/registry';
 import type { SpotifyApi, Track } from '../core/spotify/spotify-api';
 import type { SpotifySession } from '../core/spotify/spotify-session';
 import { createListenViewer } from './listen-viewer';
@@ -192,8 +193,10 @@ export function createMusicService(deps: MusicServiceDeps) {
           await retryWhileStarting(target);
         }
         onPlayed(card);
+        track('lecture-musique', 'spotify');
         return null;
       } catch (error) {
+        reportError('lecture-echec', 'spotify');
         return userMessage(error);
       }
     },
@@ -201,6 +204,7 @@ export function createMusicService(deps: MusicServiceDeps) {
     async link(): Promise<string | null> {
       try {
         await session.link();
+        track('liaison-compte', 'spotify');
         return null;
       } catch (error) {
         // Une erreur hors Spotify (fenêtre d'autorisation refusée, adresse de retour non déclarée…) : on en montre la cause.

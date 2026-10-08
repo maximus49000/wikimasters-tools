@@ -7,6 +7,7 @@ import type { ScenePrep } from './tour-control';
 import { scrollTargetBy } from './tour-scroll';
 import { snapshot } from './tour-snapshot';
 import { findTarget } from './tour-target';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const ACCENT = 'var(--color-accent, #34d399)';
@@ -269,7 +270,10 @@ export function TourOverlay({ steps, startIndex = 0, prepare, onIndex, renderDem
   const next = () => {
     direction.current = 'forward';
     if (!lastPage) return setPage(page + 1);
-    if (last) return onDone();
+    if (last) {
+      track('visite-terminee');
+      return onDone();
+    }
     setIndex(index + 1);
     setPage(0);
   };

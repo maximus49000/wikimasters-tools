@@ -10,7 +10,6 @@ export const ACTIONS = {
   'bo-lue': [],
   'bande-annonce-lue': [],
   'streaming-lien-ouvert': [],
-  'film-change': [],
   'jeu-video-lu': [],
   'jeu-change': [],
   'livre-lecture-ouverte': ['wikisource', 'gutenberg', 'internet-archive'],

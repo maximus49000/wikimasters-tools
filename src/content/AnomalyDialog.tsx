@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DESCRIPTION_MAX, type AnomalyResult } from '../core/anomalies/anomaly';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -37,7 +38,10 @@ export function AnomalyDialog({ profileName, send, onClose }: AnomalyDialogProps
     setError(null);
     const result = await send(description, withName ? profileName : null);
     setSending(false);
-    if (result.ok) setSentNumber(result.number);
+    if (result.ok) {
+      track('anomalie-signalee');
+      setSentNumber(result.number);
+    }
     else setError(result.error);
   };
 

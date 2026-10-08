@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { embedUrl, thumbnailUrl, watchUrl } from '../core/screen/screen-format';
 import { FullscreenButton, fullscreenFrame, useFullscreen } from './fullscreen';
 import { Glyph } from './Glyphs';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -28,7 +29,10 @@ export function TrailerPlayer({ trailerKey }: { trailerKey: string }) {
       ) : (
         <button
           type="button"
-          onClick={() => setPlaying(true)}
+          onClick={() => {
+            setPlaying(true);
+            track('bande-annonce-lue');
+          }}
           aria-label="Lire la bande-annonce"
           title="Lire la bande-annonce"
           style={{

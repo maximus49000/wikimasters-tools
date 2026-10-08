@@ -6,6 +6,7 @@ import type { MusicRepo } from '../core/music/music-repo';
 import { TidalError, tidalMessage } from '../core/tidal/errors';
 import { resolveTidalListen, type TidalSearch } from '../core/tidal/tidal-listen';
 import { resolveTidalSoundtrack } from '../core/tidal/tidal-soundtrack';
+import { track } from '../core/telemetry/registry';
 import type { TidalSession } from '../core/tidal/tidal-session';
 import { createListenViewer } from './listen-viewer';
 import type { SoundtrackOutcome, SoundtrackSearch } from './music-service';
@@ -79,6 +80,7 @@ export function createTidalService(deps: TidalServiceDeps) {
     async link(): Promise<string | null> {
       try {
         await session.link();
+        track('liaison-compte', 'tidal');
         return null;
       } catch (error) {
         // Une erreur hors Tidal (fenêtre d'autorisation refusée, adresse de retour non déclarée…) : on en montre la cause.

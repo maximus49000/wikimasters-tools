@@ -4,6 +4,7 @@ import type { Listen } from '../core/music/listen';
 import type { SoundtrackChoice } from '../core/music/soundtrack';
 import { Glyph } from './Glyphs';
 import type { MusicService } from './music-service';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const iconButton: CSSProperties = { width: 44, height: 44, flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'inherit', background: 'none', border, borderRadius: 8 };
@@ -80,7 +81,10 @@ export function SoundtrackDialog({ service, soundtrackKey, titles, current, init
     const failure = await service.play(outcome.listen.items[0] ?? null, outcome.listen);
     setBusy(false);
     if (failure) setMessage(failure);
-    else onClose();
+    else {
+      track('bo-lue');
+      onClose();
+    }
   };
 
   const mountPoint = useOverlayHost();

@@ -6,6 +6,7 @@ import { paperShopLinks, type PriceLine } from '../core/book/shops';
 import type { BookOffers, BookReading, BookView } from './book-service';
 import { BookChoiceDialog } from './BookChoiceDialog';
 import { Glyph } from './Glyphs';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const link: CSSProperties = { color: 'inherit', fontWeight: 600 };
@@ -51,6 +52,9 @@ function Synopsis({ synopsis }: { synopsis: NonNullable<BookDetail['synopsis']> 
   );
 }
 
+// Valeur du catalogue de mesure pour chaque source de lecture libre.
+const READING_DETAIL = { wikisource: 'wikisource', gutenberg: 'gutenberg', archive: 'internet-archive' } as const;
+
 const REFERENCE_NOTE = 'prix neuf papier · le prix du livre est unique en France : identique chez tous les vendeurs (remise max. 5 %)';
 
 function ShopRow({ shop }: { shop: BookOffers['shops'][number] }) {
@@ -58,6 +62,7 @@ function ShopRow({ shop }: { shop: BookOffers['shops'][number] }) {
   return (
     <a
       href={shop.url}
+      onClick={() => track('livre-achat-ouvert', shop.kind === 'ebook' ? 'ebook' : 'papier')}
       target="_blank"
       rel="noopener noreferrer"
       style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', border, borderRadius: 8, color: 'inherit', textDecoration: 'none', fontSize: 13 }}
@@ -138,6 +143,7 @@ function Reading({ slug, detail }: { slug: string | undefined; detail: BookDetai
         <>
           <a
             href={main.url}
+            onClick={() => track('livre-lecture-ouverte', READING_DETAIL[main.source])}
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`Lire gratuitement sur ${main.label}`}
@@ -146,7 +152,7 @@ function Reading({ slug, detail }: { slug: string | undefined; detail: BookDetai
             Lire gratuitement <small style={{ fontWeight: 400, opacity: 0.75 }}>· {main.label}</small> <Glyph name="external" size={16} />
           </a>
           {others.map((other) => (
-            <a key={other.source} href={other.url} target="_blank" rel="noopener noreferrer" style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', border, borderRadius: 8, color: 'inherit', textDecoration: 'none', fontSize: 13 }}>
+            <a key={other.source} href={other.url} target="_blank" rel="noopener noreferrer" onClick={() => track('livre-lecture-ouverte', READING_DETAIL[other.source])} style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', border, borderRadius: 8, color: 'inherit', textDecoration: 'none', fontSize: 13 }}>
               <span style={{ flex: 1 }}>Aussi sur {other.label}</span>
               <Glyph name="external" size={14} />
             </a>
