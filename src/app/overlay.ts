@@ -49,7 +49,7 @@ import { createDocumentaryRepo } from '../core/documentary/documentary-repo';
 import { createBookService } from '../content/book-service';
 import { createAmazonPrice } from '../core/book/amazon-price';
 import { createBookChoiceRepo, createBookRepo } from '../core/book/book-repo';
-import { AMAZON_PRICE_ENABLED, GOOGLE_BOOKS_API_KEY } from '../core/book/config';
+import { AMAZON_PRICE_ENABLED } from '../core/book/config';
 import { createGoogleBooksApi } from '../core/book/google-books-api';
 import type { NativeHttpWindow } from '../android/native-http';
 import { createOpenLibraryApi } from '../core/book/openlibrary-api';
@@ -82,7 +82,6 @@ import { decorateLinked } from '../content/decorate-linked';
 import { createLinkedSource } from '../content/linked-source';
 import { setLinkedService } from '../content/linked-registry';
 import { openLinkedCard } from '../content/open-linked-card';
-import { TMDB_API_KEY } from '../core/screen/config';
 import { createScreenRepo } from '../core/screen/screen-repo';
 import { createTmdbApi } from '../core/screen/tmdb-api';
 import { fetchWikidataScreen } from '../core/screen/wikidata-screen';
@@ -617,26 +616,24 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     }
   }
 
-  // Films, séries, acteurs et réalisateurs (TMDB) : absent sans clé. TMDB passe par le même `fetch` que Spotify
-  // (service worker dans l'extension, `window.fetch` dans l'APK). Une panne ici ne doit jamais empêcher la surcouche.
-  if (TMDB_API_KEY) {
-    try {
-      const tmdbApi = createTmdbApi({ fetch: (url) => (spotify ? spotify.fetch(url) : fetch(url)), apiKey: TMDB_API_KEY });
-      artSources.tmdb = tmdbApi;
-      const screenService = createScreenService({
-        hasKey: true,
-        collection: collectionRepo,
-        kinds: kindsRepo,
-        screen: screenRepo,
-        api: tmdbApi,
-        cache: createTtlCache(store, { ttlMs: 24 * 3_600_000 }),
-      });
-      setScreenService(screenService);
-      // Repère, dans les filmographies, les films et séries dont on possède la carte.
-      setCollectionMarks(createCollectionMarks({ collection: collectionRepo, screen: screenRepo, screenSlugs: (cards) => screenService.screenSlugs(cards) }));
-    } catch (error) {
-      console.warn(LOG, 'films et séries indisponibles :', error);
-    }
+  // Films, séries, acteurs et réalisateurs (TMDB) via le relais (la clé est côté serveur, CORS ouvert : `fetch` de la page).
+  // Une panne ici ne doit jamais empêcher la surcouche.
+  try {
+    const tmdbApi = createTmdbApi({ fetch: (url) => fetch(url) });
+    artSources.tmdb = tmdbApi;
+    const screenService = createScreenService({
+      hasKey: true,
+      collection: collectionRepo,
+      kinds: kindsRepo,
+      screen: screenRepo,
+      api: tmdbApi,
+      cache: createTtlCache(store, { ttlMs: 24 * 3_600_000 }),
+    });
+    setScreenService(screenService);
+    // Repère, dans les filmographies, les films et séries dont on possède la carte.
+    setCollectionMarks(createCollectionMarks({ collection: collectionRepo, screen: screenRepo, screenSlugs: (cards) => screenService.screenSlugs(cards) }));
+  } catch (error) {
+    console.warn(LOG, 'films et séries indisponibles :', error);
   }
 
   // Jeux vidéo : Steam sans clé, IGDB seulement avec les identifiants Twitch de la compilation. Même `fetch` que TMDB
@@ -664,11 +661,11 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
 
   // Livres : Open Library et Wikipédia, sans clé, avec le `fetch` de la page (CORS ouvert). Une panne ici ne doit jamais empêcher la surcouche.
   try {
-    // Prix : Google Books (ebook, avec la clé de la compilation) et Amazon.fr (papier) passent par le relais de la plateforme (service worker,
+    // Prix : Amazon.fr (papier) passe par le relais de la plateforme (service worker,
     // hors CSP du site). Amazon : extension seulement, jamais dans l'APK (pas de pont HTTP éprouvé pour une page HTML : liens seulement).
     const platformFetch = (url: string) => (spotify ? spotify.fetch(url) : fetch(url));
     const isApk = Boolean((window as unknown as NativeHttpWindow).WmtHttp);
-    const googleBooks = GOOGLE_BOOKS_API_KEY ? createGoogleBooksApi({ fetch: platformFetch, key: GOOGLE_BOOKS_API_KEY }) : null;
+    const googleBooks = createGoogleBooksApi({ fetch: (url) => fetch(url) });
     const amazon = AMAZON_PRICE_ENABLED && spotify && !isApk ? createAmazonPrice({ fetch: platformFetch }) : null;
     const bookService = createBookService({
       googleBooks,

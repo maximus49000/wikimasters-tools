@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import { RELAY_BASE } from '../../../src/core/documentary/config';
 import { createTmdbApi, TmdbError, userMessage } from '../../../src/core/screen/tmdb-api';
 
 const api = (handler: (url: URL) => Response | Promise<Response>) => {
   const fetchFn = vi.fn(async (url: string) => handler(new URL(url)));
-  return { api: createTmdbApi({ fetch: fetchFn, apiKey: 'KEY' }), fetchFn };
+  return { api: createTmdbApi({ fetch: fetchFn }), fetchFn };
 };
 
 describe('detail', () => {
@@ -37,8 +38,8 @@ describe('detail', () => {
       trailerKey: 'FR',
     });
     const url = new URL(fetchFn.mock.calls[0]![0]);
-    expect(url.pathname).toBe('/3/movie/27205');
-    expect(url.searchParams.get('api_key')).toBe('KEY');
+    expect(`${url.origin}${url.pathname}`).toBe(`${RELAY_BASE}/tmdb/movie/27205`);
+    expect(url.searchParams.has('api_key')).toBe(false);
     expect(url.searchParams.get('language')).toBe('fr-FR');
     expect(url.searchParams.get('append_to_response')).toBe('videos,watch/providers');
     expect(url.searchParams.get('include_video_language')).toBe('fr,en,null');
@@ -134,7 +135,7 @@ describe('search', () => {
   it("n'accepte que le résultat dont le titre est identique (accents et casse ignorés)", async () => {
     const { api: tmdb, fetchFn } = api(() => Response.json({ results: [{ id: 5, title: 'Autre' }, { id: 6, title: 'Amélie' }] }));
     expect(await tmdb.search('film', 'amelie')).toBe(6);
-    expect(new URL(fetchFn.mock.calls[0]![0]).pathname).toBe('/3/search/movie');
+    expect(new URL(fetchFn.mock.calls[0]![0]).pathname).toBe('/tmdb/search/movie');
     expect(await tmdb.search('film', 'Inconnu')).toBeNull();
   });
 
@@ -142,7 +143,7 @@ describe('search', () => {
     const { api: tmdb, fetchFn } = api(() => Response.json({ results: [{ id: 1, name: 'Marion Cotillard' }] }));
     expect(await tmdb.search('person', 'Marion Cotillard')).toBe(1);
     expect(await tmdb.search('series', 'Marion Cotillard')).toBe(1);
-    expect(fetchFn.mock.calls.map(([url]) => new URL(url).pathname)).toEqual(['/3/search/person', '/3/search/tv']);
+    expect(fetchFn.mock.calls.map(([url]) => new URL(url).pathname)).toEqual(['/tmdb/search/person', '/tmdb/search/tv']);
   });
 });
 
@@ -157,7 +158,7 @@ describe('erreurs', () => {
   });
 
   it('un échec réseau devient une erreur http, et userMessage rend toujours une phrase', async () => {
-    const tmdb = createTmdbApi({ fetch: async () => Promise.reject(new TypeError('offline')), apiKey: 'K' });
+    const tmdb = createTmdbApi({ fetch: async () => Promise.reject(new TypeError('offline')) });
     await expect(tmdb.detail('movie', 1)).rejects.toMatchObject({ code: 'http' });
     expect(userMessage(new TmdbError('rate-limited', 'x'))).toMatch(/patienter/);
     expect(userMessage(new Error('?'))).toMatch(/indisponible/);
@@ -170,9 +171,9 @@ describe('posterUrl', () => {
       Response.json({ results: [{ id: 1, title: 'Amélie 2', poster_path: '/autre.jpg' }, { id: 6, title: 'Amélie', poster_path: '/ok.jpg' }, { id: 7, title: 'Sans', poster_path: null }] }),
     );
     expect(await tmdb.posterUrl('film', 'amelie')).toBe('https://image.tmdb.org/t/p/w500/ok.jpg');
-    expect(new URL(fetchFn.mock.calls[0]![0]).pathname).toBe('/3/search/movie');
+    expect(new URL(fetchFn.mock.calls[0]![0]).pathname).toBe('/tmdb/search/movie');
     expect(await tmdb.posterUrl('series', 'Sans')).toBeNull();
-    expect(new URL(fetchFn.mock.calls[1]![0]).pathname).toBe('/3/search/tv');
+    expect(new URL(fetchFn.mock.calls[1]![0]).pathname).toBe('/tmdb/search/tv');
     expect(await tmdb.posterUrl('film', 'Inconnu')).toBeNull();
   });
 });
@@ -183,6 +184,17 @@ describe('closestPosterUrl', () => {
       Response.json({ results: [{ id: 1, name: 'Une actrice', media_type: 'person', poster_path: '/p.jpg' }, { id: 2, title: 'Inception 2', media_type: 'movie', poster_path: '/ok.jpg' }] }),
     );
     expect(await tmdb.closestPosterUrl('Inception')).toBe('https://image.tmdb.org/t/p/w500/ok.jpg');
-    expect(new URL(fetchFn.mock.calls[0]![0]).pathname).toBe('/3/search/multi');
+    expect(new URL(fetchFn.mock.calls[0]![0]).pathname).toBe('/tmdb/search/multi');
+  });
+});
+
+describe('relais', () => {
+  it('appelle le relais, sans jamais envoyer de clé', async () => {
+    const { api: tmdb, fetchFn } = api(() => Response.json({ id: 1, title: 'X', overview: '' }));
+    await tmdb.detail('movie', 1);
+    const url = new URL(fetchFn.mock.calls[0]?.[0] ?? '');
+    expect(`${url.origin}${url.pathname}`).toBe(`${RELAY_BASE}/tmdb/movie/1`);
+    expect(url.searchParams.has('api_key')).toBe(false);
+    expect(url.searchParams.get('language')).toBe('fr-FR');
   });
 });
