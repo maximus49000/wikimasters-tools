@@ -8,6 +8,9 @@ const PRO_MARKET_VIEW = 'button[aria-label="Vue du marché"]';
 
 const PRO_MARKET_TAB = /^Marché PRO$/;
 
+// Bouton « Rechargez 10 paquets — 1,99 $ CAD » de la page Paquets.
+const RELOAD_PACKS = /^Rechargez \d+ paquets?\b/;
+
 let guardInstalled = false;
 
 // La pastille du solde ouvre la boutique : tant que les offres sont masquées, l'appui ne l'ouvre pas (le solde reste affiché).
@@ -46,6 +49,11 @@ export function syncPurchaseOffers(root: ParentNode, hidden: () => boolean): num
   for (const tab of root.querySelectorAll<HTMLElement>('[role="tab"]')) {
     if (!PRO_MARKET_TAB.test(tab.textContent?.replace(/\s+/g, ' ').trim() ?? '')) continue;
     hide(tab.closest<HTMLElement>('[role="tablist"]') ?? tab, on);
+    touched += 1;
+  }
+  for (const button of root.querySelectorAll<HTMLElement>('button')) {
+    if (!RELOAD_PACKS.test(button.textContent?.replace(/\s+/g, ' ').trim() ?? '')) continue;
+    hide(button, on);
     touched += 1;
   }
   for (const section of root.querySelectorAll<HTMLElement>('main section')) {
