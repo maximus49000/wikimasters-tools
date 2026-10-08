@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WALL_SHAPES, wallSizeOf } from '../../../src/core/library/furniture-catalog';
-import { WALL_ROWS, canHang, firstFreeSlot, hang, moveHung, moveStored, pxRect, rectOf, shelfSlots, slotAt, placeComputer, placeStanding, placedSlugs, removeFurniture, sectionIsEmpty, setScreenCard, shiftLayout, storeCard, unplaceCard } from '../../../src/core/library/room-grid';
+import { WALL_ROWS, canHang, firstFreeSlot, hang, moveComputer, moveHung, moveStored, pxRect, rectOf, shelfSlots, slotAt, placeComputer, placeStanding, placedSlugs, removeFurniture, sectionIsEmpty, setScreenCard, shiftLayout, storeCard, unplaceCard } from '../../../src/core/library/room-grid';
 
 describe('catalogue des formes', () => {
   it('chaque forme murale tient dans la hauteur du mur', () => {
@@ -138,5 +138,14 @@ describe('déplacer un objet rangé', () => {
     const slot = shelfSlots(pxRect(rectOf(shelf[0]!)!))[4]!;
     expect(slotAt(shelf, slot.x + 2, slot.y + 2)).toEqual({ shelfId: 'f1', slot: 4 });
     expect(slotAt(shelf, 500, 5)).toBeNull();
+  });
+});
+
+describe('déplacer un ordinateur avec sa carte', () => {
+  it('garde la carte affichée en changeant de bureau', () => {
+    const desks = placeStanding(placeStanding([], 24, 'desk', 0, 8, 'd1')!, 24, 'desk', 10, 8, 'd2')!;
+    const shown = setScreenCard(placeComputer(desks, 'd1', 'pc')!, 'pc', 'A')!;
+    const moved = moveComputer(shown, 'pc', 'd2')!;
+    expect(moved.find((p) => p.id === 'pc')).toMatchObject({ deskId: 'd2', slug: 'A' });
   });
 });

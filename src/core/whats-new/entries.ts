@@ -757,4 +757,70 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v4',
+    theme: 'collection',
+    glyph: '🖼️',
+    title: 'Les cartes dans la Bibliothèque',
+    summary: 'Accrocher, ranger et afficher vos cartes dans une pièce',
+    steps: [
+      {
+        target: '[data-wmt-view="library"]',
+        title: 'Ouvrir la Bibliothèque',
+        text: 'Le bouton livre, parmi les vues de la Collection, ouvre vos pièces : c’est là que se placent maintenant vos cartes.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le bouton livre, choisissez une pièce, puis passez en mode Aménager (le crayon) pour y poser des cartes.' },
+          { label: 'À quoi ça sert', text: 'À présenter vos cartes comme dans une vraie pièce, avec des posters, des disques et des étagères. Les cartes viennent de votre Collection déjà chargée : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="add-card"]',
+        title: 'Poser une carte',
+        text: 'En mode Aménager, le bouton « + Carte » vous laisse choisir une carte de votre Collection, puis la forme sous laquelle la présenter : poster, vinyle ou pochette au mur, CD, DVD, jeu vidéo ou livre sur une étagère.',
+        gesture: 'tap',
+        details: [
+          { label: 'À quoi ça sert', text: 'Donner une vraie place à vos cartes préférées : un poster de film au mur, un CD dans une étagère. La forme conseillée dépend du type de la carte (musique : CD ou vinyle, film : DVD, jeu : jeu vidéo, livre : livre).' },
+          { label: 'Comment faire', text: 'Touchez « + Carte », cherchez la carte dans la liste, choisissez la forme (et la couleur du vinyle ou le style de la pochette), puis touchez un mur libre ou une étagère : l’objet se range dans le premier emplacement libre.' },
+          { label: 'D’où viennent les cartes', text: 'De votre Collection, déjà chargée par l’extension : rien n’est envoyé au jeu ni partagé, et le choix est gardé sur cet appareil avec la pièce.' },
+          { label: 'Limites', text: 'Une carte ne peut être posée qu’une seule fois par pièce. Une étagère contient 15 emplacements. Une carte qui a quitté votre Collection reste affichée en grisé et ne s’ouvre plus.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Afficher une carte sur l’écran',
+        text: 'Touchez un ordinateur posé sur un bureau, puis « + Carte » : la carte choisie s’affiche sur son écran. Pour la changer ou l’enlever, touchez de nouveau l’ordinateur.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'En mode Aménager, touchez l’ordinateur : « + Carte » apparaît à côté de Déplacer et Retirer. Si une carte est déjà affichée, « + Carte » la remplace et Retirer l’enlève.' },
+          { label: 'À savoir', text: 'Un ordinateur n’affiche qu’une carte à la fois, et cette carte ne peut pas être posée ailleurs dans la même pièce.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Déplacer une carte d’un appui long',
+        text: 'Un appui long sur un objet mural ou rangé le soulève : glissez-le vers un autre emplacement libre, du mur ou d’une étagère (même une autre), puis relâchez. Un ordinateur emporte sa carte avec lui.',
+        gesture: 'longpress',
+        details: [
+          { label: 'Comment faire', text: 'Appuyez une demi-seconde sur le poster, le disque ou le livre, puis glissez sans lever le doigt : le contour est vert quand la place est bonne, rouge sinon. Relâchez pour déposer ; Échap annule.' },
+          { label: 'Limites', text: 'Il n’y a pas d’échange : un emplacement déjà occupé refuse le dépôt et l’objet revient à sa place. Retirer une étagère ou un bureau qui porte des cartes demande d’abord confirmation.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Ouvrir une carte en mode Visiter',
+        text: 'Passez en mode Visiter (l’œil) et touchez un objet : la fiche de la carte s’ouvre, comme partout ailleurs dans la Collection.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le poster, le disque, la pochette, le dos d’un livre ou l’écran de l’ordinateur. En mode Aménager, un appui simple sélectionne l’objet au lieu de l’ouvrir.' },
+          { label: 'Limites', text: 'L’ouverture est simple pour l’instant : la fiche apparaît directement, sans l’animation de retournement prévue plus tard. Le présentoir de boosters et la carte murale du monde ne sont pas encore disponibles.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+    ],
+  },
 ];
