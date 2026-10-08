@@ -4,6 +4,7 @@ import { PLATFORM_LABEL, type Platform } from '../core/music/platform';
 import { getMusicService, getPlatformChoice } from './music-registry';
 import type { PlayerSource } from './player-source';
 import { usePlatform } from './usePlatform';
+import { SpotifyKeySettings, useSpotifyKey } from './SpotifyKeySettings';
 import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -42,6 +43,9 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
     };
   }, [platform, service]);
   const linked = platform === 'tidal' ? tidalLinked : spotifyLinked;
+  // Spotify sans clé : on n'ouvre pas la fenêtre d'autorisation, on explique quoi faire.
+  const { control: keyControl, key: spotifyKey } = useSpotifyKey();
+  const needsKey = platform === 'spotify' && Boolean(keyControl) && spotifyKey === null && !linked;
   // Liaison en cours (la fenêtre d'autorisation est ouverte) et cause d'un échec.
   // Le bouton n'est jamais bloqué : une autorisation restée sans réponse (fenêtre fermée, adresse de retour refusée)
   // ne doit pas empêcher de délier ni de recommencer. Seule la tentative la plus récente, sur la plateforme affichée, compte.
@@ -56,6 +60,10 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
 
   const link = async () => {
     if (!service) return;
+    if (needsKey) {
+      setMessage('Ajoutez d’abord votre clé Spotify.');
+      return;
+    }
     const mine = ++attempt.current;
     setLinking(platform);
     setMessage(null);
@@ -111,6 +119,7 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
             </div>
           </>
         )}
+        {platform === 'spotify' && <SpotifyKeySettings linked={linked} />}
         {service && (
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: border }}>
             <p style={{ margin: '0 0 8px', opacity: 0.8 }}>Compte {name} : {linked ? 'lié' : 'non lié'}.</p>
@@ -119,7 +128,7 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
               onClick={() => (linked ? void service.unlink() : void link())}
               aria-label={accountLabel}
               title={accountLabel}
-              style={{ ...choice(false), flex: 'none', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, }}
+              style={{ ...choice(false), flex: 'none', width: '100%', opacity: needsKey ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, }}
             >
               <Glyph name={linked ? 'unlink' : 'link'} /> {linking === platform && !linked ? `${accountLabel} …` : accountLabel}
             </button>
