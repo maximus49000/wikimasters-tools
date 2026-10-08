@@ -4,6 +4,7 @@ import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, c
 import { sizeOf } from '../core/library/furniture-catalog';
 import { decorOf, paletteOf } from '../core/library/styles';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
+import { SteampunkDecor } from './room-steampunk-decor';
 import { ShelfItemArt, WallArt } from './library-card-art';
 import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 import { HomeArt, SmallArt } from './furniture-art-home';
@@ -271,6 +272,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     >
       {decor.glow && <NeonDefs />}
       <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
+      {room.style === 'steampunk' && <SteampunkDecor cols={room.cols} wallH={wallH} />}
       {ordered.map(renderPlaced)}
       {wallLayer}
       {smalls.map(renderPlaced)}
