@@ -110,12 +110,12 @@ import { decorateWikiHowSetting } from '../content/wikihow-menu';
 import { decorateUpdateSetting } from '../content/update-setting-menu';
 import { decorateAnomalySetting } from '../content/anomaly-setting-menu';
 import { createWhatsNewRepo } from '../core/whats-new/seen';
-import { ENTRIES } from '../core/whats-new/entries';
+import { ENTRIES, SPOTIFY_KEY_GUIDE } from '../core/whats-new/entries';
 import { FIXES } from '../core/whats-new/fixes';
 import { showPendingWhatsNew } from '../content/whats-new-flow';
 import { pickCard } from '../core/whats-new/pick-card';
 import { setTourEnv } from '../content/tour-registry';
-import { resumeTour, resumeTourReturn } from '../content/tour-instance';
+import { resumeTour, resumeTourReturn, startTour } from '../content/tour-instance';
 import type { TourOrigin } from '../content/tour-session';
 import { createAnomalyReporter, postIssue } from '../core/anomalies/anomaly';
 import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
@@ -583,8 +583,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         setClientId: (value) => session.setClientId(value),
         clearClientId: () => session.clearClientId(),
         redirectUris: async () => [await spotify.redirectUri()],
-        // Branché par la tâche 5 (visite guidée du mode d'emploi).
-        openGuide: () => undefined,
+        openGuide: () => startTour([SPOTIFY_KEY_GUIDE]),
         subscribe: (listener) => session.subscribe(listener),
       });
       mountSpotifyPlayer(player, openPlayerCard);

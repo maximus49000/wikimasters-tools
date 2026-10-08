@@ -18,6 +18,18 @@ const openPlus = (why: string): TourStep => ({
   ],
 });
 
+/** Mode d'emploi de la clé Spotify personnelle : texte seul, lançable seul depuis la fenêtre « Lecteur ». */
+export const SPOTIFY_KEY_GUIDE: TourStep = {
+  target: null,
+  title: 'Utiliser sa propre clé Spotify',
+  text: 'Spotify limite l’application partagée à quelques utilisateurs : chacun crée sa propre application Spotify, gratuite, et colle son Client ID dans Paramètre d’extension, puis Lecteur.',
+  details: [
+    { label: 'Créer sa clé, pas à pas', text: '1. Créez un compte Spotify, puis ouvrez developer.spotify.com/dashboard. 2. « Create app », cochez « Web API ». 3. Dans « Redirect URI », collez les adresses affichées par l’extension dans Lecteur (bouton copier). 4. Enregistrez, puis copiez le « Client ID ». 5. Dans « User Management » de l’application, ajoutez l’adresse e-mail de votre compte Spotify. 6. Collez le Client ID dans Lecteur, puis « Lier Spotify ».' },
+    { label: 'Limites', text: 'Une application Spotify en mode développement accepte 25 utilisateurs au plus, que vous ajoutez à la main. Lancer la lecture demande Spotify Premium. Spotify peut aussi demander de patienter : l’extension affiche alors l’heure de reprise.' },
+    { label: 'Ce que devient votre clé', text: 'La clé reste sur votre appareil et n’est jamais envoyée ailleurs. « Délier » la conserve. En changer ou l’effacer délie votre compte, qu’il faudra lier de nouveau. Si vous étiez déjà lié avant cette mise à jour, votre clé est déjà enregistrée.' },
+  ],
+};
+
 export const ENTRIES: Entry[] = [
   {
     id: 'wikihow',
@@ -304,7 +316,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'ecouter',
+    id: 'ecouter-v2',
     theme: 'ecoute',
     glyph: '🎵',
     title: 'Écouter une carte',
@@ -332,6 +344,7 @@ export const ENTRIES: Entry[] = [
         ],
         scene: { reveal: [{ text: 'Plus' }] },
       },
+      SPOTIFY_KEY_GUIDE,
     ],
   },
   {

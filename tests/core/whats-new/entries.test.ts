@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
-import { ENTRIES } from '../../../src/core/whats-new/entries';
+import { ENTRIES, SPOTIFY_KEY_GUIDE } from '../../../src/core/whats-new/entries';
 import { THEMES } from '../../../src/core/whats-new/types';
 
 describe('catalogue des fiches', () => {
@@ -20,6 +20,17 @@ describe('catalogue des fiches', () => {
         if (s.target !== null) expect(s.target.trim(), e.id).not.toBe('');
       }
     }
+  });
+
+  it('explique comment utiliser sa propre clé Spotify (fiche écoute à jour, ancien id retiré)', () => {
+    expect(ENTRIES.some((e) => e.id === 'ecouter')).toBe(false);
+    const entry = ENTRIES.find((e) => e.id === 'ecouter-v2');
+    const step = entry?.steps.find((s) => s.title === 'Utiliser sa propre clé Spotify');
+    expect(step).toBe(SPOTIFY_KEY_GUIDE);
+    expect(step?.target).toBeNull();
+    expect(step?.scene).toBeUndefined();
+    const all = (step?.details ?? []).map((d) => d.text).join(' ') + ' ' + (step?.text ?? '');
+    for (const word of ['developer.spotify.com', 'Redirect URI', 'Client ID', 'User Management', '25']) expect(all, word).toContain(word);
   });
 
   it('une seule fiche est annoncée au premier lancement (celle de WikiHow)', () => {
