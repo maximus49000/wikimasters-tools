@@ -116,7 +116,6 @@ import { setTourEnv } from '../content/tour-registry';
 import { resumeTour, resumeTourReturn, startTour } from '../content/tour-instance';
 import type { TourOrigin } from '../content/tour-session';
 import { createAnomalyReporter, postIssue } from '../core/anomalies/anomaly';
-import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
 import { getProfileName, rememberProfileName } from '../core/anomalies/profile-name';
 import { createTelemetry } from '../core/telemetry/telemetry';
 import { setTelemetry } from '../core/telemetry/registry';
@@ -190,8 +189,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
 
   console.info(LOG, 'démarré');
 
-  // Les anomalies passent par le même `fetch` que Spotify (service worker dans l'extension, `window.fetch` dans l'APK).
-  const anomalies = GITHUB_ISSUES_TOKEN ? createAnomalyReporter({ fetch: (url, init) => (spotify ? spotify.fetch(url, init) : fetch(url, init)), token: GITHUB_ISSUES_TOKEN }) : null;
+  // Les anomalies passent par le relais Cloudflare, qui détient le jeton GitHub.
+  const anomalies = createAnomalyReporter({ fetch: (url, init) => fetch(url, init) });
   const anomalyPlatform = (): string => {
     const bridge = (window as unknown as { WmtSpotify?: { scheme?(): string } }).WmtSpotify;
     if (!bridge) return 'extension du navigateur';
@@ -702,7 +701,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
 
   // Documentaires (événements et personnages historiques) : relais Cloudflare, Commons et sélection du dépôt, avec le `fetch` de la page (CORS ouvert).
   try {
-    const issueFetch = (url: string, init?: RequestInit) => (spotify ? spotify.fetch(url, init) : fetch(url, init));
+    const issueFetch = (url: string, init?: RequestInit) => fetch(url, init);
     setDocumentaryService(
       createDocumentaryService({
         collection: collectionRepo,
@@ -718,7 +717,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         commons: { search: (names, subject) => searchCommons((url) => fetch(url), names, subject) },
         relay: createRelayApi({ fetch: (url) => fetch(url) }),
         repo: createDocumentaryRepo(store),
-        issues: GITHUB_ISSUES_TOKEN ? { send: (draft) => postIssue(issueFetch, GITHUB_ISSUES_TOKEN, draft) } : null,
+        issues: { send: (draft) => postIssue(issueFetch, draft) },
         cache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
         platform: anomalyPlatform,
         profileName: () => getProfileName(window.localStorage),

@@ -1,5 +1,4 @@
 import type { SpotifyFetch } from './spotify-session';
-import { ANOMALY_API_PREFIX } from '../anomalies/config';
 
 // Ce dont la surcouche a besoin pour parler à Spotify ; l'extension et l'APK le fournissent chacun à leur façon.
 export type SpotifyEnv = {
@@ -45,8 +44,6 @@ const FETCH_PREFIXES = [
   // Livres : prix papier (page produit d'Amazon.fr) et prix de l'ebook (Google Books) ; même contournement de la CSP du site.
   'https://www.amazon.fr/dp/',
   'https://www.googleapis.com/books/v1/',
-  // Anomalies remontées par l'utilisateur : issues de ce dépôt seulement.
-  ANOMALY_API_PREFIX,
 ];
 
 // Côté service worker : ne répond qu'aux messages Spotify, et seulement vers les adresses de Spotify.

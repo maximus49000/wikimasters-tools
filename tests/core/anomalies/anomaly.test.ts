@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { RELAY_BASE } from '../../../src/core/documentary/config';
 import { anomalyTitle, buildIssue, createAnomalyReporter } from '../../../src/core/anomalies/anomaly';
 
 describe('anomalyTitle', () => {
@@ -29,27 +30,28 @@ describe('buildIssue', () => {
 
 describe('createAnomalyReporter', () => {
   const input = { description: 'Bug', name: null, platform: 'x' };
-  it('crée l’issue et rend son numéro', async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ number: 7, html_url: 'https://github.com/o/r/issues/7' }), { status: 201 }));
-    const result = await createAnomalyReporter({ fetch, token: 'tok' }).report(input);
+  it('envoie l’issue au relais, sans jeton, et rend son numéro', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, number: 7, url: 'https://github.com/o/r/issues/7' }), { status: 200 }));
+    const result = await createAnomalyReporter({ fetch }).report(input);
     expect(result).toEqual({ ok: true, number: 7, url: 'https://github.com/o/r/issues/7' });
-    const [url, init] = fetch.mock.calls[0] as [string, { method: string; headers: Record<string, string> }];
-    expect(url).toBe('https://api.github.com/repos/maximus49000/wikimasters-tools/issues');
+    const [url, init] = fetch.mock.calls[0] as [string, { method: string; headers: Record<string, string>; body: string }];
+    expect(url).toBe(`${RELAY_BASE}/issues`);
     expect(init.method).toBe('POST');
-    expect(init.headers.Authorization).toBe('Bearer tok');
+    expect(init.headers).toEqual({ 'Content-Type': 'text/plain' });
+    expect(JSON.parse(init.body)).toMatchObject({ labels: ['Nouveau'] });
+    expect(JSON.stringify(init)).not.toMatch(/Bearer|Authorization/);
   });
   it('refuse une description vide sans appel réseau', async () => {
     const fetch = vi.fn();
-    expect((await createAnomalyReporter({ fetch, token: 't' }).report({ ...input, description: '  ' })).ok).toBe(false);
+    expect((await createAnomalyReporter({ fetch }).report({ ...input, description: '  ' })).ok).toBe(false);
     expect(fetch).not.toHaveBeenCalled();
   });
-  it('signale un refus de GitHub', async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 401 }));
-    const result = await createAnomalyReporter({ fetch, token: 't' }).report(input);
-    expect(result).toEqual({ ok: false, error: expect.stringContaining('401') });
+  it('signale un refus du relais avec son code', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }));
+    expect(await createAnomalyReporter({ fetch }).report(input)).toEqual({ ok: false, error: expect.stringContaining('429') });
   });
   it('signale une panne réseau', async () => {
     const fetch = vi.fn().mockRejectedValue(new Error('offline'));
-    expect((await createAnomalyReporter({ fetch, token: 't' }).report(input)).ok).toBe(false);
+    expect((await createAnomalyReporter({ fetch }).report(input)).ok).toBe(false);
   });
 });
