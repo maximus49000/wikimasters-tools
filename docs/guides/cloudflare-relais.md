@@ -70,3 +70,5 @@ Sans la base ou sans le secret, l'application fonctionne : les envois d'usage é
 Rétention : 90 jours, purge automatique chaque nuit (03:00 UTC) par le cron existant. Contrôle : Cloudflare → Workers → Métriques ; les lignes de la table `events` se lisent dans l'onglet Console de la base.
 
 Jeton d'API Wrangler : si `wrangler d1 …` répond « Authentication error [code: 10000] », se reconnecter (`npx wrangler logout` puis `npx wrangler login`) ou utiliser la Console du site. Un jeton d'API, s'il est créé, doit avoir « Account → D1 → Edit » et être supprimé après usage.
+
+Prévisualisations : le build Cloudflare des branches (mode « Preview ») exige un bloc `[previews]` avec des ressources de test séparées. Elles existent déjà (base `wikimasters-usage-preview`, espace KV `DOC_CACHE_PREVIEW`) et sont déclarées dans `wrangler.toml` ; à recréer de la même façon si l'on ajoute une nouvelle liaison (KV, D1, R2…).

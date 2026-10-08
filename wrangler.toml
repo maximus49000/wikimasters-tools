@@ -20,3 +20,12 @@ binding = "USAGE_DB"
 database_name = "wikimasters-usage"
 database_id = "ebb8d72b-5a66-42da-b26c-7b541f18a838"
 migrations_dir = "relay/migrations"
+
+# Prévisualisations (builds des branches) : ressources de test séparées, jamais les données de production.
+[[previews.kv_namespaces]]
+binding = "DOC_CACHE"
+id = "72e483ff9a0247eaadeb0150ea053c8b"
+
+[[previews.d1_databases]]
+binding = "USAGE_DB"
+database_id = "ad7adf65-1cfd-4696-abdc-1d13b22462f7"
