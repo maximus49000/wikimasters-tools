@@ -4,7 +4,7 @@ Date : 2026-10-08. Statut : conception validée en discussion, à relire avant l
 
 ## Pourquoi
 
-Le dépôt est public et les APK/zips sont téléchargeables : les clés injectées au build (`WXT_TMDB_API_KEY`, `WXT_IGDB_CLIENT_ID/SECRET`, `WXT_GITHUB_ISSUES_TOKEN`) sont lisibles par n'importe qui en décompilant le paquet. Avant d'ouvrir l'APK à 100-200 utilisateurs ou plus, ces secrets passent sur le relais Cloudflare existant (`relay/`, Worker `wikimasters-tools`), qui est le seul à les connaître.
+Le dépôt est public et les APK/zips sont téléchargeables : les clés injectées au build (`WXT_TMDB_API_KEY`, `WXT_IGDB_CLIENT_ID/SECRET`, `WXT_GITHUB_ISSUES_TOKEN`, `WXT_GOOGLE_BOOKS_API_KEY`) sont lisibles par n'importe qui en décompilant le paquet. Avant d'ouvrir l'APK à 100-200 utilisateurs ou plus, ces secrets passent sur le relais Cloudflare existant (`relay/`, Worker `wikimasters-tools`), qui est le seul à les connaître.
 
 ## Décisions
 
@@ -13,7 +13,7 @@ Le dépôt est public et les APK/zips sont téléchargeables : les clés inject�
 - **Cache : API Cache de Cloudflare**, pas KV (KV gratuit : 1 000 écritures par jour, déjà entamées par l'indexeur de documentaires).
 - Limites Cloudflare vérifiées dans la documentation le 2026-10-08 (offre gratuite) : 100 000 requêtes par jour par compte, 10 ms de calcul par requête (l'attente d'un `fetch` n'est pas comptée), 50 appels sortants par requête. Charge ajoutée estimée à ~10 000 requêtes par jour pour 200 utilisateurs. Risque nouveau et accepté : le relais devient le point de passage unique ; le dépassement du plafond quotidien coupe toutes ses fonctions jusqu'à minuit UTC. Au-delà d'environ 1 000 utilisateurs actifs : offre Workers payante.
 
-## Relais : trois nouveaux modules
+## Relais : quatre nouveaux modules
 
 Chaque module est un fichier de `relay/src/` avec une fonction pure testable par un `fetch` factice ; `index.ts` ne fait que router.
 
@@ -37,15 +37,21 @@ Chaque module est un fichier de `relay/src/` avec une fonction pure testable par
 - Corps JSON `{title, body, labels}` : titre ≤ 120 caractères, corps ≤ 8 000, étiquettes ∈ liste blanche (`Nouveau` et celles qu'émettent les propositions de documentaire, relevées dans `src/content/documentary-*` pendant le plan). Sinon 400.
 - Le relais crée l'issue sur `maximus49000/wikimasters-tools` avec le secret `GITHUB_ISSUES_TOKEN` (jeton fine-grained, Issues seulement) et renvoie `{ok:true, number, url}` ; échec GitHub : `{ok:false, error}` avec un message lisible (même texte que `postIssue` aujourd'hui).
 
+### `books.ts` — `GET /books/volumes`
+
+- Une seule route, qui reproduit l’appel de `google-books-api.ts` : paramètres acceptés `q` (≤ 200 caractères), `country` (valeur `FR` seulement), `maxResults` (entier 1 à 10). Tout autre paramètre est ignoré ; `key` fourni par le client est supprimé.
+- Le relais ajoute `key` (secret `GOOGLE_BOOKS_API_KEY`, déjà posé) et transmet la réponse telle quelle vers `https://www.googleapis.com/books/v1/volumes`. Cache 24 h par URL sans clé (les prix d’ebook bougent peu) ; erreurs non mises en cache.
+- Quota de Google Livres : la clé est restreinte à l’API Books, le cache et la limite de débit protègent le quota.
+
 ### Limite de débit
 
-- Par IP (`cf-connecting-ip`) : `/tmdb` 60 par minute, `/igdb` 20 par minute, `/issues` 5 par heure. Dépassement : 429 avec `Retry-After`.
+- Par IP (`cf-connecting-ip`) : `/tmdb` 60 par minute, `/igdb` 20 par minute, `/books` 20 par minute, `/issues` 5 par heure. Dépassement : 429 avec `Retry-After`.
 - Implémentation : liaison native `ratelimits` de Cloudflare si l'offre gratuite l'accepte (la documentation ne le dit pas : à essayer au déploiement), sinon compteurs dans l'API Cache. Les compteurs étant approximatifs et par site géographique, c'est un filtre contre l'usage abusif, pas une garantie.
 
 ### CORS et configuration
 
 - Les en-têtes CORS deviennent : méthodes `GET, POST, OPTIONS`, en-têtes `content-type, x-debug`. Le Worker répond déjà à `OPTIONS` (204).
-- `/status` indique la présence (jamais la valeur) de `tmdbKey`, `igdbId`, `igdbSecret`, `issuesToken`.
+- `/status` indique la présence (jamais la valeur) de `tmdbKey`, `igdbId`, `igdbSecret`, `issuesToken`, `booksKey`.
 - Aucune des routes existantes (`/search`, `/oembed`, `/t`, `/stats`, `/dashboard`) ne change.
 - `wrangler.toml` : aucun nouveau binding de stockage. Si la liaison `ratelimits` est retenue : bloc `[[ratelimits]]` (et son équivalent `previews`).
 - Secrets posés par l'utilisateur depuis son terminal : `npx wrangler secret put TMDB_API_KEY` (et `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `GITHUB_ISSUES_TOKEN`). Jamais dans le chat ni dans le dépôt.
@@ -56,12 +62,13 @@ Les trois clients reçoivent déjà un `fetch` injectable ; ils perdent toute no
 
 - `tmdb-api.ts` : `createTmdbApi({ fetch })` sans `apiKey` ; `get()` appelle `${RELAY_BASE}/tmdb${path}?${params}` (sans `api_key`). Les images (`image.tmdb.org`) restent directes (pas de clé). Erreur `auth` remplacée par `http` pour un 502 du relais (la clé n'est plus l'affaire du client) ; 429 du relais → `rate-limited`.
 - `igdb-api.ts` : plus de `clientId`/`clientSecret`/jeton/`store` : `query(body)` fait un `POST ${RELAY_BASE}/igdb/games` (corps texte `text/plain`) ; le jeton et son renouvellement disparaissent côté client ; l'espacement `paced` reste.
+- `google-books-api.ts` : `createGoogleBooksApi({ fetch })` sans `key` ; appelle `${RELAY_BASE}/books/volumes?q=…&country=FR&maxResults=10`. Google Livres n’est plus appelé directement : on retire `www.googleapis.com` des hôtes et préfixes (`wxt.config.ts`, `FETCH_PREFIXES`) et on classe `/books` sous `googlebooks`.
 - `anomaly.ts` : `postIssue(fetch, draft)` fait un `POST ${RELAY_BASE}/issues` ; `ANOMALY_API_PREFIX`, `Authorization` et `token` disparaissent. Même type de résultat `AnomalyResult`. Les propositions de documentaire utilisent le même `postIssue`.
 - `config.ts` (screen, game, anomalies) : suppression de `TMDB_API_KEY`, `IGDB_CLIENT_*`, `GITHUB_ISSUES_TOKEN`, `TWITCH_TOKEN_URL`, `IGDB_BASE`, `ANOMALY_API_PREFIX` ; `IGDB_ENABLED` et le test `if (TMDB_API_KEY)` / `GITHUB_ISSUES_TOKEN ?` de `overlay.ts` deviennent « toujours actifs » (le relais en panne donne les erreurs habituelles).
-- `env.d.ts` : variables `WXT_TMDB_API_KEY`, `WXT_IGDB_*`, `WXT_GITHUB_ISSUES_TOKEN` supprimées.
+- `env.d.ts` : variables `WXT_TMDB_API_KEY`, `WXT_IGDB_*`, `WXT_GITHUB_ISSUES_TOKEN`, `WXT_GOOGLE_BOOKS_API_KEY` supprimées.
 - Les appels vont à `RELAY_BASE` depuis la page, comme ceux des documentaires (`fetch` simple vers un hôte à CORS ouvert) ; pas besoin du service worker ni du pont Android pour le relais. À vérifier dans Chrome et sur l'APK dès la première tâche du plan (politique de sécurité du site).
 - Nettoyage des listes d'hôtes devenues inutiles : `wxt.config.ts` (`api.themoviedb.org`, `id.twitch.tv`, `api.igdb.com`, `api.github.com`), `FETCH_PREFIXES` de `transport.ts`, `HTTP_ALLOWED` de `MainActivity.java` (IGDB, Twitch ; Steam reste), `GAME_NATIVE_PREFIXES` de `native-http.ts`. L'hôte `api.github.com` n'est retiré que si plus rien d'autre ne l'utilise (à vérifier).
-- Mesure d'usage : `fetch-observer.ts` classe les appels du relais sous `relais`. Il faut un classement par chemin (`/tmdb` → `tmdb`, `/igdb` → `igdb`, `/issues` → `github`) pour que le tableau de bord garde les erreurs d'API par service.
+- Mesure d'usage : `fetch-observer.ts` classe les appels du relais sous `relais`. Il faut un classement par chemin (`/tmdb` → `tmdb`, `/igdb` → `igdb`, `/books` → `googlebooks`, `/issues` → `github`) pour que le tableau de bord garde les erreurs d'API par service.
 - Compatibilité : cache déjà rempli (`screen-detail-v2`, jeux, jetons `igdb-token-v1` inutilisé) inchangé ; le jeton IGDB stocké devient orphelin (inoffensif).
 
 ## Gestion des erreurs
@@ -79,7 +86,7 @@ Les trois clients reçoivent déjà un `fetch` injectable ; ils perdent toute no
 - Relais (`tests/relay/`, `fetch` amont factice) : liste blanche (chemin refusé, paramètre inconnu supprimé, `api_key` du client écrasée), le secret n'apparaît dans aucune réponse ni dans `/status`, cache (2ᵉ appel sans amont), jeton Twitch unique et renouvelé, formes de requêtes IGDB refusées, étiquettes d'issue hors liste, limite de débit, CORS (`OPTIONS` + `POST`).
 - Clients : `tmdb-api`, `igdb-api`, `anomaly`, `fetch-observer` testés contre un faux relais ; les tests actuels sont adaptés (plus de clé, plus de jeton).
 - Vérification : `npm test`, `npm run typecheck`, `npm run build`, puis contrôle que **ni le bundle de l'extension ni l'APK ne contiennent plus les valeurs des secrets** (recherche de chaînes dans `.output/` et dans `wikimasters-overlay.js`).
-- Reste manuel (utilisateur) : poser les quatre secrets, `wrangler deploy` (ou fusion déclenchant Workers Builds), puis ouvrir une carte de film, une de jeu, et envoyer une anomalie, sur Chrome et sur l'APK.
+- Reste manuel (utilisateur) : les cinq secrets sont déjà posés (2026-10-08, par Claude depuis `.env.local`) ; `wrangler deploy` (ou fusion déclenchant Workers Builds), puis ouvrir une carte de film, une de jeu, un livre (prix de l’ebook), et envoyer une anomalie, sur Chrome et sur l'APK.
 
 ## Hors périmètre
 
