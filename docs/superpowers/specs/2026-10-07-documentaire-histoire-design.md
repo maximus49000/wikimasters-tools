@@ -36,6 +36,7 @@ Note sur 100, calculée sur le titre, la description, la durée, la chaîne et l
 Décision du 2026-10-07 (maquette validée : `.superpowers/mockups/documentaire-possibles.html`) :
 - Note ≥ 60 : vidéo **proposée** d'office (3 au plus, la mieux notée d'abord). Note de 45 à 59 : vidéo **possible** (5 au plus), visible seulement derrière le glyphe ≡▶ (avec compteur), dans le même lecteur, avec la pastille « Pertinence moins sûre » et un avertissement. Au-dessous de 45 : rien.
 - Notation : un nom de deux mots ou plus est reconnu si tous ses mots (4 lettres ou plus) sont dans le titre, dans n'importe quel ordre ; +10 si le titre contient « histoire ».
+- Réglages du 2026-10-07 après essai sur 14 cartes, puis du 2026-10-08 : contenu pour enfants −15 (jamais en tête), titre complotiste (« mensonges », « complot », « on vous cache »…) −25, titre racoleur (« terrifiante », « enfin résolu »…) −15, émission « Secrets d'Histoire » reconnue comme chaîne de confiance (+20).
 - Le relais renvoie `candidates` et `possible` ; cache `doc-v2-<qid>` (30 jours si au moins une vidéo proposée, 7 jours sinon). L'extension garde la réponse 7 jours (`doc-relay-v2-<qid>`).
 - Idée mise de côté : bouton « mettre en sûr » et vidéo prioritaire choisie par l'utilisateur.
 
@@ -66,13 +67,13 @@ Décision du 2026-10-07 (maquette validée : `.superpowers/mockups/documentaire-
 
 ## Détection
 
-Décisions du 2026-10-07 (essai sur 14 cartes : la peste noire, Notre-Dame de Paris et la tapisserie de Bayeux n'étaient pas reconnues par une liste de natures) : « histoire élargie ».
+Décision du 2026-10-08 : la recherche est **large**. Une liste de natures ou de dates laissait de côté des monuments (menhir, dolmen, obélisque, Taj Mahal, « Monolithe ») : la pertinence est jugée par la notation des vidéos, pas par la nature de la carte.
 
-`historyKindOf(kinds, deathYear, datedYear)` (`src/core/documentary/history-kinds.ts`) :
-- **Natures reconnues d'office** : événements (bataille, guerre, révolution, traité…), œuvres d'art, monuments et sites, civilisations et périodes, religions.
-- **Personnes** : humain décédé avant 1970 (décision de l'utilisateur), quel que soit le métier.
-- **Tout autre sujet** (cathédrale, épidémie, broderie, culte sans nature renseignée, ville…) : retenu si sa première date connue (début, création) est de 1950 ou avant.
-- **Exclus** : vivants, sujets récents ou sans date (taxons comme Hominina), et les cartes qui ont déjà leur propre fiche : film, série, jeu vidéo, livre, morceau.
+`historyKindOf(kinds, deathYear)` (`src/core/documentary/history-kinds.ts`) :
+- **Tout sujet qui n'est pas une personne** est retenu, sans condition de nature ni de date (événement, œuvre, monument, épidémie, civilisation, culte, espèce, lieu…).
+- **Personnes** : humain mort avant 1970, quel que soit le métier ; les vivants et les décès plus récents sont exclus.
+- **Exclus** : les cartes qui ont déjà leur propre fiche (film, série, jeu vidéo, livre, morceau) et les pages d'homonymie.
+- Quota : chaque nouvelle carte ouverte peut déclencher une recherche (101 unités sur 9 000 par jour) ; le cache partagé et l'index des chaînes limitent la dépense.
 
 ## Affichage (extension et mobile)
 

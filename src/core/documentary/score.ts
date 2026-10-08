@@ -19,6 +19,8 @@ const NOISE = ['reaction', 'react', 'clip', 'remix', 'gameplay', 'let s play', '
 const KIDS = ['kids', 'enfant', 'enfants', 'junior', 'cartoon', 'dessin anime', 'quelle aventure', 'quelle histoire'];
 // Titres complotistes : malus fort.
 const CONSPIRACY = ['mensonge', 'mensonges', 'complot', 'complots', 'complotiste', 'on vous cache', 'censure', 'verite cachee', 'verite interdite', 'illuminati'];
+// Titres racoleurs (« la vérité est terrifiante ») : malus léger.
+const CLICKBAIT = ['terrifiant', 'terrifiante', 'bouleverse', 'choquant', 'choquante', 'stupefiant', 'enfin resolu', 'enfin resolue', 'vous ne croirez pas'];
 // Chaînes d'histoire / de service public, comparées sur des mots entiers.
 const TRUSTED = ['arte', 'ina', 'france tv', 'francetv', 'france 2', 'france 5', 'histoire tv', 'nota bene', 'herodote', 'lumni', 'secrets d histoire', 'public senat', 'bbc', 'national geographic'];
 
@@ -82,6 +84,7 @@ export function scoreCandidate(subject: DocSubject, candidate: DocCandidate, rul
 
   if (KIDS.some((word) => hasPhrase(title, word) || hasPhrase(normalize(candidate.channel), word))) score -= 15;
   if (CONSPIRACY.some((word) => hasPhrase(title, word))) score -= 25;
+  if (CLICKBAIT.some((word) => hasPhrase(title, word))) score -= 15;
 
   if (subject.startYear !== null) {
     const low = subject.startYear - 50;

@@ -95,6 +95,11 @@ describe('scoreCandidate', () => {
     expect(scoreCandidate(verdun, make({ title: 'Verdun : ce qu’on vous cache documentaire' }), YOUTUBE_RULES).score).toBe(50);
   });
 
+  it('un titre racoleur perd 15 points', () => {
+    expect(scoreCandidate(verdun, make({ title: 'Verdun documentaire : la vérité est terrifiante' }), YOUTUBE_RULES).score).toBe(60);
+    expect(scoreCandidate(verdun, make({ title: 'Verdun : le mystère enfin résolu' }), YOUTUBE_RULES).score).toBe(40);
+  });
+
   it('l’émission Secrets d’Histoire est une référence', () => {
     const result = scoreCandidate(verdun, make({ title: 'Verdun, au nom de la patrie - Secrets d’Histoire', channel: 'Secrets d’Histoire - France Télévisions', durationSec: 6660 }), YOUTUBE_RULES);
     expect(result.score).toBe(80);

@@ -37,8 +37,7 @@ describe('view', () => {
   });
 
   it('ne dit rien d’une carte sans rapport, d’un film ou d’une carte hors collection', async () => {
-    const recent = { subject: async () => ({ qid: 'Q9', names: ['Un centre commercial'], birth: null, death: null, start: 2005, end: null }) };
-    expect((await setup(recent, ['Q515']).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
+    expect((await setup({}, ['Q4167410']).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
     expect((await setup({}, ['Q11424', 'Q178561']).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
     expect((await setup({ collection: { list: async () => [] } }).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
   });
@@ -124,30 +123,20 @@ describe('flag', () => {
   });
 });
 
-describe('view : périmètre élargi', () => {
-  it('une œuvre d’art ancienne a sa section', async () => {
-    const { service } = setup({ subject: async () => ({ qid: 'Q618856', names: ['Tenture de l’Apocalypse'], birth: null, death: null, start: 1377, end: null }) }, ['Q18609875']);
-    expect(await service.view('Bataille_de_Verdun', 'x')).toMatchObject({ status: 'detail', subject: { kind: 'event', startYear: 1377 } });
+describe('view : périmètre large', () => {
+  const subjectOf = (extra: Record<string, number | null> = {}) => ({ subject: async () => ({ qid: 'Q9', names: ['Un sujet'], birth: null, death: null, start: null, end: null, ...extra }) });
+  it('une œuvre, un mausolée, un menhir (nature vide) ont leur section, datés ou non', async () => {
+    expect((await setup(subjectOf({ start: 1377 }), ['Q18609875']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
+    expect((await setup(subjectOf(), ['Q381885']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
+    expect((await setup(subjectOf(), []).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
   });
-  it('une carte sans nature renseignée mais datée de 1794 a sa section', async () => {
-    const { service } = setup({ subject: async () => ({ qid: 'Q1277069', names: ['Culte de l’Être suprême'], birth: null, death: null, start: 1794, end: null }) }, []);
-    expect((await service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
+  it('un sujet récent ou un taxon sont aussi retenus (la notation juge les vidéos)', async () => {
+    expect((await setup(subjectOf({ start: 1986 }), ['Q515']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
+    expect((await setup(subjectOf(), ['Q16521']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
   });
-  it('une carte sans nature et sans date, ou récente, n’en a pas', async () => {
-    const undated = setup({ subject: async () => ({ qid: 'Q9', names: ['Quelque chose'], birth: null, death: null, start: null, end: null }) }, []);
-    expect((await undated.service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
-    const recent = setup({ subject: async () => ({ qid: 'Q9', names: ['Quelque chose'], birth: null, death: null, start: 2005, end: null }) }, []);
-    expect((await recent.service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
-  });
-  it('une cathédrale ancienne, une épidémie et une broderie ont leur section, grâce à leur date', async () => {
-    const dated = (start: number) => ({ subject: async () => ({ qid: 'Q9', names: ['Un sujet ancien'], birth: null, death: null, start, end: null }) });
-    expect((await setup(dated(1163), ['Q56242215']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
-    expect((await setup(dated(1347), ['Q3241045', 'Q12184']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
-    expect((await setup(dated(1070), ['Q44740228', 'Q28966302']).service.view('Bataille_de_Verdun', 'x')).status).toBe('detail');
-  });
-  it('un taxon (Hominina) n’en a pas', async () => {
-    const taxon = setup({ subject: async () => ({ qid: 'Q605457', names: ['Hominina'], birth: null, death: null, start: null, end: null }) }, ['Q16521']);
-    expect((await taxon.service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
+  it('mais pas une page d’homonymie, ni une carte qui a sa propre fiche', async () => {
+    expect((await setup(subjectOf(), ['Q4167410']).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
+    expect((await setup(subjectOf(), ['Q8261']).service.view('Bataille_de_Verdun', 'x')).status).toBe('none');
   });
 });
 

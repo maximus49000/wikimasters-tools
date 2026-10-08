@@ -490,19 +490,19 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'documentaire-v4',
+    id: 'documentaire-v5',
     theme: 'fiche',
     glyph: '🎞',
     title: 'Documentaire d’histoire',
-    summary: 'Un documentaire sur un événement, un personnage, une œuvre ou une civilisation',
+    summary: 'Un documentaire sur un événement, un personnage, un monument, une œuvre ou une civilisation',
     steps: [
       {
         target: '[data-wmt-documentary-card]',
         title: 'Documentaire',
-        text: 'Sur la fiche d’un événement historique, d’un personnage, d’une œuvre d’art, d’un monument, d’une civilisation ou d’un culte ancien, un lecteur propose un documentaire. Appuyez sur ▶ pour le regarder.',
+        text: 'Sur la fiche d’un événement, d’un personnage historique, d’un monument, d’une œuvre, d’une civilisation, d’un culte ou de tout autre sujet qui s’y prête, un lecteur propose un documentaire. Appuyez sur ▶ pour le regarder.',
         details: [
           { label: 'D’où viennent les vidéos', text: 'D’abord les documentaires choisis à la main, puis les archives libres de Wikimedia Commons, puis les vidéos récentes de quelques chaînes (ARTE, INA, Nota Bene, Lumni, Hérodote), puis une recherche YouTube. Chaque vidéo est notée : le titre doit contenir le nom du sujet et la durée doit être celle d’un documentaire.' },
-          { label: 'Quelles cartes', text: 'Les événements (batailles, guerres, révolutions, traités), les personnes mortes avant 1970, et tout autre sujet daté de 1950 ou avant (œuvres d’art, monuments, épidémies, civilisations, périodes, religions, cultes). Les films, séries, jeux, livres et morceaux ont leur propre fiche.' },
+          { label: 'Quelles cartes', text: 'Tous les sujets qui ne sont pas des personnes (événements, monuments, menhirs, mausolées, œuvres, épidémies, civilisations, cultes, espèces…), et les personnes mortes avant 1970. Les films, séries, jeux, livres et morceaux ont leur propre fiche, et les pages d’homonymie sont ignorées. Aucun filtre sur la nature ou la date : seule la pertinence des vidéos décide de ce qui s’affiche.' },
           { label: 'Vidéos proposées et vidéos possibles', text: 'La meilleure vidéo est proposée d’office. Quand d’autres vidéos sont un peu moins sûres, un glyphe ≡▶ avec un compteur les ajoute au lecteur : ⇄ passe de l’une à l’autre, et une pastille « Pertinence moins sûre » les distingue. La croix signale une vidéo hors sujet et la masque chez vous.' },
           { label: 'Si rien ne convient', text: 'Aucune vidéo n’est affichée plutôt qu’une mauvaise : des boutons ouvrent la recherche chez YouTube, Arte et l’INA.' },
           { label: 'À savoir', text: 'Rien n’est chargé chez YouTube avant d’appuyer sur ▶. Certaines chaînes interdisent l’intégration : le bouton ↗ ouvre alors la vidéo à la source. Les archives de Commons sont sous licence libre, avec l’auteur indiqué.' },
