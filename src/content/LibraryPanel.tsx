@@ -3,6 +3,8 @@ import {
   activeRoom,
   createInitialState,
   addRoom,
+  countExclusive,
+  setRoomStyle,
   deleteRoom,
   extendRoom,
   nextFurnitureId,
@@ -13,8 +15,8 @@ import {
   shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
-import { CATEGORIES, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, type Category } from '../core/library/furniture-catalog';
-import type { FurnitureKind, Layout, LibraryState, Orientation, StandingKind } from '../core/library/library-types';
+import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, type Category } from '../core/library/furniture-catalog';
+import { STYLE_IDS, type FurnitureKind, type Layout, type LibraryState, type Orientation, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
@@ -47,6 +49,7 @@ import {
   sectionIsEmpty,
   type Cell,
 } from '../core/library/room-grid';
+import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
 import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
 import { createLongPress } from './long-press';
@@ -71,6 +74,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .wmt-lib-btn{min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border-radius:999px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit;cursor:pointer}
 .wmt-lib-btn[aria-pressed="true"],.wmt-lib-btn[aria-selected="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
+.wmt-lib-swatch{display:inline-block;box-sizing:border-box;width:16px;height:16px;border-radius:50%;border:4px solid transparent}
 .wmt-lib-name{min-height:40px;box-sizing:border-box;padding:0 10px;border-radius:8px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit}
 .wmt-lib-scroll{display:flex;overflow-x:auto;width:100%;margin:0 auto;border-radius:12px;-webkit-overflow-scrolling:touch}
 .wmt-lib-stage{position:relative;width:100%;display:flex;justify-content:center}
@@ -273,6 +277,16 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
   const visibleWidth = VISIBLE_COLS[room.orientation] * CELL_W;
   const editLayout = (change: Parameters<typeof updateLayout>[2]) => library.update((state) => updateLayout(state, room.id, change));
 
+  const cats = categoriesFor(room.style);
+  const shownCategory: Category = cats.some((c) => c.id === category) ? category : 'storage';
+  const chooseStyle = (id: StyleId): void => {
+    if (id === room.style) return;
+    if (room.style === 'steampunk' && id !== 'steampunk' && countExclusive(room) > 0
+      && !window.confirm('Retirer les meubles Steampunk (globe, télescope, automate) de cette pièce ?')) return;
+    reset();
+    if (category === 'steampunk' && id !== 'steampunk') setCategory('storage');
+    void library.update((state) => setRoomStyle(state, room.id, id));
+  };
   const reset = (): void => {
     setTool(null);
     setSelectedId(null);
@@ -400,6 +414,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     if (tool.type === 'card' || movingItem?.kind === 'wall') return placeWall(col, row);
     const kind: StandingKind | null = tool.type === 'new' ? (isStandingKind(tool.kind) ? tool.kind : null) : movingItem && isStanding(movingItem) ? movingItem.kind : null;
     if (!kind) return;
+    if (tool.type === 'new' && (STEAMPUNK_ONLY as readonly string[]).includes(kind) && room.style !== 'steampunk') return reset();
     // La case touchée est la case en bas à gauche du meuble.
     const top = row - sizeOf(kind).h + 1;
     const check = canPlace(layout, room.cols, kind, col, top, tool.type === 'move' ? tool.id : undefined);
@@ -604,9 +619,19 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
       </div>
 
       {editing && (
+        <div className="wmt-lib-row" role="group" aria-label="Style de la pièce">
+          {STYLE_IDS.map((id) => (
+            <Btn key={id} label={STYLE_LABELS[id]} pressed={room.style === id} data={{ style: id }} onClick={() => chooseStyle(id)}>
+              <span className="wmt-lib-swatch" style={{ background: paletteOf(id).wall, borderColor: paletteOf(id).floor }} />
+            </Btn>
+          ))}
+        </div>
+      )}
+
+      {editing && (
         <div className="wmt-lib-row" role="group" aria-label="Catégories de meubles">
-          {CATEGORIES.map((c) => (
-            <Btn key={c.id} label={c.label} pressed={category === c.id} data={{ category: c.id }} onClick={() => { reset(); setCategory(c.id); }}>
+          {cats.map((c) => (
+            <Btn key={c.id} label={c.label} pressed={shownCategory === c.id} data={{ category: c.id }} onClick={() => { reset(); setCategory(c.id); }}>
               <Icon paths={CATEGORY_ICON[c.id]} />
             </Btn>
           ))}
@@ -615,7 +640,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
 
       {editing && (
         <div className="wmt-lib-row">
-          {(CATEGORIES.find((c) => c.id === category)?.kinds ?? []).map((kind) => (
+          {(cats.find((c) => c.id === shownCategory)?.kinds ?? []).map((kind) => (
             <Btn
               key={kind}
               label={`Poser : ${labelOf(kind)}`}

@@ -1,11 +1,11 @@
 // L'orientation ne change que la fenêtre visible sur la pièce (large en horizontal, étroite en vertical).
 export type Orientation = 'landscape' | 'portrait';
 
-// Les styles prévus ; seul `scandinave` a une palette dans ce morceau.
+// Les huit styles de pièce ; chacun a sa palette (styles.ts).
 export const STYLE_IDS = ['scandinave', 'moderne', 'industriel', 'boheme', 'retro70', 'japandi', 'neon', 'steampunk'] as const;
 export type StyleId = (typeof STYLE_IDS)[number];
 
-export const STANDING_KINDS = ['shelf', 'desk', 'chair', 'sofa', 'armchair', 'basket', 'bowl', 'kennel', 'plant', 'lamp', 'coffee-table', 'rug'] as const;
+export const STANDING_KINDS = ['shelf', 'desk', 'chair', 'sofa', 'armchair', 'basket', 'bowl', 'kennel', 'plant', 'lamp', 'coffee-table', 'rug', 'globe', 'telescope', 'automaton'] as const;
 export type StandingKind = (typeof STANDING_KINDS)[number];
 
 // Petits objets posés sur la surface d'un bureau ou d'une étagère.

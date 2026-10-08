@@ -2,10 +2,13 @@ import { useCallback, useRef, useSyncExternalStore, type PointerEvent, type Reac
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
 import { sizeOf } from '../core/library/furniture-catalog';
-import { paletteOf } from '../core/library/styles';
+import { decorOf, paletteOf } from '../core/library/styles';
+import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
+import { SteampunkDecor } from './room-steampunk-decor';
 import { ShelfItemArt, WallArt } from './library-card-art';
 import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 import { HomeArt, SmallArt } from './furniture-art-home';
+import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
@@ -40,6 +43,8 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
 
 export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap }: Props) {
   const palette = paletteOf(room.style);
+  const decor = decorOf(room.style);
+  const steampunk = room.style === 'steampunk';
   // Se réabonne aux images qui arrivent après le premier dessin : un compteur change à chaque notification du service.
   const images = getImageService();
   const imageVersion = useRef(0);
@@ -98,7 +103,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       const desk = deskRects.get(placed.deskId);
       if (!desk) return null;
       rect = computerRect(desk);
-      art = <ComputerArt rect={rect} imageUrl={placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined} />;
+      const screenUrl = placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined;
+      art = steampunk ? <AnalyticalEngineArt rect={rect} imageUrl={screenUrl} /> : <ComputerArt rect={rect} imageUrl={screenUrl} />;
     } else if (placed.kind === 'small') {
       const hostRect = hostRects.get(placed.hostId);
       const host = room.layout.find((p) => p.id === placed.hostId);
@@ -109,14 +115,19 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       const cells = rectOf(placed);
       if (!cells || !isStanding(placed)) return null;
       rect = pxRect(cells);
-      art =
-        placed.kind === 'shelf' ? (
-          <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} />
-        ) : placed.kind === 'desk' ? (
-          <DeskArt rect={rect} palette={palette} />
-        ) : (
-          <HomeArt kind={placed.kind} rect={rect} palette={palette} />
-        );
+      if (placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton') {
+        // Meubles exclusifs Steampunk : une donnée abîmée dans une autre pièce n'est pas dessinée.
+        if (!steampunk) return null;
+        art = <SteampunkArt kind={placed.kind} rect={rect} palette={palette} />;
+      } else if (placed.kind === 'shelf') {
+        art = <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} />;
+      } else if (steampunk && (placed.kind === 'desk' || placed.kind === 'armchair' || placed.kind === 'lamp')) {
+        art = <SteampunkArt kind={placed.kind} rect={rect} palette={palette} />;
+      } else if (placed.kind === 'desk') {
+        art = <DeskArt rect={rect} palette={palette} />;
+      } else {
+        art = <HomeArt kind={placed.kind} rect={rect} palette={palette} />;
+      }
     }
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
     // Un ordinateur suit aussi son bureau soulevé.
@@ -138,6 +149,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           style={{ cursor: editing ? 'pointer' : 'default', userSelect: 'none', WebkitTouchCallout: 'none' }}
         >
           {art}
+          {decor.glow && placed.kind !== 'rug' && neonOutline(rect, decor.glow)}
           {editing && selectedId === placed.id && outline(rect)}
           <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="transparent" />
         </g>
@@ -263,11 +275,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       viewBox={`0 0 ${width} ${HEIGHT}`}
       role="img"
       aria-label={room.name}
+      data-style={room.style}
       style={{ aspectRatio: `${width} / ${HEIGHT}`, width: `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block' }}
     >
-      <rect width={width} height={HEIGHT} fill={palette.wall} />
-      <rect y={wallH} width={width} height={HEIGHT - wallH} fill={palette.floor} />
-      <rect y={wallH - 4} width={width} height={5} fill={palette.skirt} opacity={0.6} />
+      {decor.glow && <NeonDefs />}
+      <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
+      {room.style === 'steampunk' && <SteampunkDecor cols={room.cols} wallH={wallH} />}
       {ordered.map(renderPlaced)}
       {wallLayer}
       {smalls.map(renderPlaced)}

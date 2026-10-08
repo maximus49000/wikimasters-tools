@@ -911,4 +911,70 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v6',
+    theme: 'collection',
+    glyph: '🎨',
+    title: 'Changer le style de sa pièce',
+    summary: 'Huit styles, du Scandinave au Steampunk',
+    steps: [
+      {
+        target: '[data-wmt-view="library"]',
+        title: 'Ouvrir une pièce de la Bibliothèque',
+        text: 'Le bouton livre, parmi les vues de la Collection, ouvre vos pièces : c’est là que se choisit le style de chacune.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le bouton livre, puis choisissez la pièce à décorer.' },
+          { label: 'À quoi ça sert', text: 'À personnaliser l’ambiance de chaque pièce. Tout reste sur cet appareil : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Passer en mode Aménager',
+        text: 'Le crayon passe en mode Aménager : c’est là qu’apparaît la rangée de styles, avec les boutons pour meubler la pièce.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
+          { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+      {
+        target: '[data-wmt-library] [role="group"][aria-label="Style de la pièce"]',
+        title: 'Choisir un style',
+        text: 'En mode Aménager, une rangée de pastilles de couleur propose huit styles : Scandinave, Moderne, Industriel, Bohème, Rétro 70s, Japandi, Néon gaming et Steampunk. Chaque pièce a son propre style.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon pour passer en mode Aménager, puis touchez la pastille du style voulu : la pièce change aussitôt de tapisserie, de sol et de plinthe.' },
+          { label: 'À quoi ça sert', text: 'À donner une ambiance et un décor différents à chaque pièce de votre Bibliothèque.' },
+          { label: 'Limites', text: 'Les cartes (posters, dos des livres, écran de l’ordinateur) gardent leurs propres couleurs, quel que soit le style.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] button[data-style="neon"]',
+        title: 'Le style Néon gaming',
+        text: 'Le style Néon gaming habille la pièce de couleurs sombres et ajoute un liseré lumineux autour des meubles.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'En mode Aménager, touchez la pastille Néon gaming : le liseré apparaît autour de chaque meuble.' },
+          { label: 'À quoi ça sert', text: 'À une ambiance de salle de jeu, qui fait ressortir vos meubles dans la pénombre.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] button[data-style="steampunk"]',
+        title: 'Le style Steampunk',
+        text: 'Le style Steampunk anime le décor : tuyaux, vapeur, engrenages, manomètre et une horloge à l’heure réelle. Les meubles sont redessinés, et une catégorie Steampunk apparaît avec trois meubles en plus : globe mécanique, télescope et automate.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'En mode Aménager, touchez la pastille Steampunk, puis la catégorie Steampunk pour poser le globe, le télescope ou l’automate.' },
+          { label: 'À quoi ça sert', text: 'À une pièce vivante, dont l’horloge suit l’heure de votre appareil.' },
+          { label: 'Limites', text: 'En quittant le style Steampunk, ces trois meubles sont retirés de la pièce, après confirmation.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+    ],
+  },
 ];
