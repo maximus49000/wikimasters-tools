@@ -3,6 +3,7 @@ import { indexStatus, indexStep } from './indexer';
 import type { KvLike } from './kv';
 import { parseSearchRequest, searchDocumentaries } from './search';
 import { CHANNELS, PLATFORMS, validateBatch } from '../../src/core/telemetry/catalogue';
+import { DASHBOARD_HTML } from './dashboard';
 import { ingest } from './ingest';
 import { computeStats, purgeOlderThan, RETENTION_DAYS } from './stats';
 import type { D1Like } from './usage-db';
@@ -84,6 +85,15 @@ export default {
     }
     if (url.pathname === '/t' && request.method === 'POST') return collect(request, env);
     if (url.pathname === '/stats') return statistics(request, env, url);
+    if (url.pathname === '/dashboard') {
+      return new Response(DASHBOARD_HTML, {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store',
+          'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+        },
+      });
+    }
     return json({ ok: false, error: 'Route inconnue' }, 404);
   },
 
