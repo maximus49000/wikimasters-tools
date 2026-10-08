@@ -1,5 +1,5 @@
 import { sizeOf, wallSizeOf } from './furniture-catalog';
-import type { Layout, Orientation, Placed, StandingKind, VinylColor, WallShape } from './library-types';
+import type { Layout, Orientation, Placed, ShelfShape, StandingKind, VinylColor, WallShape } from './library-types';
 
 export const ROWS = 12;
 // Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
@@ -84,7 +84,7 @@ export function canHang(layout: Layout, cols: number, shape: WallShape, col: num
 }
 
 export function hang(layout: Layout, cols: number, shape: WallShape, col: number, row: number, slug: string, id: string, color?: VinylColor): Layout | null {
-  if (!canHang(layout, cols, shape, col, row).ok) return null;
+  if (!canHang(layout, cols, shape, col, row).ok || placedSlugs(layout).has(slug)) return null;
   return [...layout, { id, kind: 'wall', shape, col, row, slug, ...(color ? { color } : {}) }];
 }
 
@@ -124,9 +124,9 @@ export function moveComputer(layout: Layout, id: string, deskId: string): Layout
   return layout.map((p) => (p.id === id ? { id, kind: 'computer', deskId } : p));
 }
 
-// Retirer un bureau retire aussi l'ordinateur qui y est posé.
+// Retirer un bureau retire aussi l'ordinateur qui y est posé ; retirer une étagère, les objets rangés dedans.
 export function removeFurniture(layout: Layout, id: string): Layout {
-  return layout.filter((p) => p.id !== id && !(p.kind === 'computer' && p.deskId === id));
+  return layout.filter((p) => p.id !== id && !(p.kind === 'computer' && p.deskId === id) && !(p.kind === 'stored' && p.shelfId === id));
 }
 
 // Ajouter une zone à gauche décale les colonnes de tous les meubles ; l'ordinateur suit son bureau.
@@ -170,4 +170,47 @@ export function shelfSlots(shelf: PxRect): PxRect[] {
     }
   }
   return slots;
+}
+
+export const SHELF_SLOTS = 15;
+
+// Slugs déjà posés dans la pièce (accrochés, rangés ou à l'écran) : une carte n'y figure qu'une fois.
+export function placedSlugs(layout: Layout): Set<string> {
+  const slugs = new Set<string>();
+  for (const p of layout) {
+    if ((p.kind === 'wall' || p.kind === 'stored' || p.kind === 'computer') && p.slug) slugs.add(p.slug);
+  }
+  return slugs;
+}
+
+export function firstFreeSlot(layout: Layout, shelfId: string): number | null {
+  const used = new Set(layout.filter((p) => p.kind === 'stored' && p.shelfId === shelfId).map((p) => (p as Extract<Placed, { kind: 'stored' }>).slot));
+  for (let i = 0; i < SHELF_SLOTS; i++) if (!used.has(i)) return i;
+  return null;
+}
+
+export function storeCard(layout: Layout, shelfId: string, slot: number, shape: ShelfShape, slug: string, id: string): Layout | null {
+  const shelf = layout.find((p) => p.id === shelfId);
+  if (!shelf || shelf.kind !== 'shelf' || !Number.isInteger(slot) || slot < 0 || slot >= SHELF_SLOTS) return null;
+  if (layout.some((p) => p.kind === 'stored' && p.shelfId === shelfId && p.slot === slot)) return null;
+  if (placedSlugs(layout).has(slug)) return null;
+  return [...layout, { id, kind: 'stored', shape, shelfId, slot, slug }];
+}
+
+export function setScreenCard(layout: Layout, computerId: string, slug: string | null): Layout | null {
+  const pc = layout.find((p) => p.id === computerId);
+  if (!pc || pc.kind !== 'computer') return null;
+  if (slug !== null && pc.slug !== slug && placedSlugs(layout).has(slug)) return null;
+  return layout.map((p) => {
+    if (p.id !== computerId || p.kind !== 'computer') return p;
+    return slug === null ? { id: p.id, kind: 'computer', deskId: p.deskId } : { ...p, slug };
+  });
+}
+
+// Ranger : retire un objet accroché ou rangé ; sur l'ordinateur, vide seulement l'écran.
+export function unplaceCard(layout: Layout, id: string): Layout {
+  const item = layout.find((p) => p.id === id);
+  if (item?.kind === 'computer') return setScreenCard(layout, id, null) ?? layout;
+  if (item?.kind === 'wall' || item?.kind === 'stored') return layout.filter((p) => p.id !== id);
+  return layout;
 }

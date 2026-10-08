@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WALL_SHAPES, wallSizeOf } from '../../../src/core/library/furniture-catalog';
-import { WALL_ROWS, canHang, hang, moveHung, placeStanding, sectionIsEmpty, shiftLayout } from '../../../src/core/library/room-grid';
+import { WALL_ROWS, canHang, firstFreeSlot, hang, moveHung, placeComputer, placeStanding, placedSlugs, removeFurniture, sectionIsEmpty, setScreenCard, shiftLayout, storeCard, unplaceCard } from '../../../src/core/library/room-grid';
 
 describe('catalogue des formes', () => {
   it('chaque forme murale tient dans la hauteur du mur', () => {
@@ -52,5 +52,62 @@ describe('objets accrochés', () => {
     const layout = hang([], 24, 'poster', 2, 1, 'A', 'f1')!;
     expect(shiftLayout(layout, 12)[0]).toMatchObject({ col: 14 });
     expect(sectionIsEmpty(layout, 24, 'left')).toBe(false);
+  });
+});
+
+describe('refus de déplacement et couleur', () => {
+  it('moveHung refuse une cible bloquée ou hors du mur', () => {
+    const a = hang([], 24, 'poster', 2, 1, 'A', 'f1')!;
+    const two = hang(a, 24, 'poster', 8, 1, 'B', 'f2')!;
+    expect(moveHung(two, 24, 'f1', 8, 1)).toBeNull();
+    expect(moveHung(two, 24, 'f1', 2, 99)).toBeNull();
+  });
+
+  it('hang conserve la couleur fournie', () => {
+    const layout = hang([], 24, 'poster', 2, 1, 'A', 'f1', 'red')!;
+    expect(layout[0]).toMatchObject({ color: 'red' });
+  });
+
+  it('hang refuse une carte déjà posée', () => {
+    const a = hang([], 24, 'poster', 2, 1, 'A', 'f1')!;
+    expect(hang(a, 24, 'poster', 8, 1, 'A', 'f2')).toBeNull();
+  });
+});
+
+describe('étagère et écran', () => {
+  const shelf = placeStanding([], 24, 'shelf', 0, 4, 'f1')!;
+
+  it('range dans le premier emplacement libre', () => {
+    expect(firstFreeSlot(shelf, 'f1')).toBe(0);
+    const a = storeCard(shelf, 'f1', 0, 'cd', 'A', 'f2')!;
+    expect(firstFreeSlot(a, 'f1')).toBe(1);
+  });
+
+  it('refuse un emplacement occupé, hors étagère ou une carte déjà posée', () => {
+    const a = storeCard(shelf, 'f1', 0, 'cd', 'A', 'f2')!;
+    expect(storeCard(a, 'f1', 0, 'dvd', 'B', 'f3')).toBeNull();
+    expect(storeCard(a, 'f1', 15, 'dvd', 'B', 'f3')).toBeNull();
+    expect(storeCard(a, 'zz', 1, 'dvd', 'B', 'f3')).toBeNull();
+    expect(storeCard(a, 'f1', 1, 'dvd', 'A', 'f3')).toBeNull();
+  });
+
+  it('renvoie null quand l’étagère est pleine', () => {
+    let layout = shelf;
+    for (let i = 0; i < 15; i++) layout = storeCard(layout, 'f1', i, 'book', `C${i}`, `s${i}`)!;
+    expect(firstFreeSlot(layout, 'f1')).toBeNull();
+  });
+
+  it('retirer l’étagère retire ses objets', () => {
+    const a = storeCard(shelf, 'f1', 0, 'cd', 'A', 'f2')!;
+    expect(removeFurniture(a, 'f1')).toEqual([]);
+  });
+
+  it('affiche une carte à l’écran, une seule fois', () => {
+    const desk = placeStanding([], 24, 'desk', 8, 8, 'f1')!;
+    const withPc = placeComputer(desk, 'f1', 'f2')!;
+    const shown = setScreenCard(withPc, 'f2', 'A')!;
+    expect(placedSlugs(shown).has('A')).toBe(true);
+    expect(setScreenCard(shown, 'f2', 'B')).toEqual(expect.arrayContaining([expect.objectContaining({ slug: 'B' })]));
+    expect(unplaceCard(shown, 'f2')[1]).toEqual({ id: 'f2', kind: 'computer', deskId: 'f1' });
   });
 });
