@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WALL_SHAPES, wallSizeOf } from '../../../src/core/library/furniture-catalog';
-import { WALL_ROWS, canHang, firstFreeSlot, hang, moveHung, placeComputer, placeStanding, placedSlugs, removeFurniture, sectionIsEmpty, setScreenCard, shiftLayout, storeCard, unplaceCard } from '../../../src/core/library/room-grid';
+import { WALL_ROWS, canHang, firstFreeSlot, hang, moveHung, moveStored, pxRect, rectOf, shelfSlots, slotAt, placeComputer, placeStanding, placedSlugs, removeFurniture, sectionIsEmpty, setScreenCard, shiftLayout, storeCard, unplaceCard } from '../../../src/core/library/room-grid';
 
 describe('catalogue des formes', () => {
   it('chaque forme murale tient dans la hauteur du mur', () => {
@@ -109,5 +109,34 @@ describe('étagère et écran', () => {
     expect(placedSlugs(shown).has('A')).toBe(true);
     expect(setScreenCard(shown, 'f2', 'B')).toEqual(expect.arrayContaining([expect.objectContaining({ slug: 'B' })]));
     expect(unplaceCard(shown, 'f2')[1]).toEqual({ id: 'f2', kind: 'computer', deskId: 'f1' });
+  });
+});
+
+describe('déplacer un objet rangé', () => {
+  const shelf = placeStanding([], 24, 'shelf', 0, 4, 'f1')!;
+  const a = storeCard(shelf, 'f1', 0, 'cd', 'A', 'f2')!;
+
+  it('change d’emplacement', () => {
+    expect(moveStored(a, 'f2', 'f1', 7)![1]).toMatchObject({ id: 'f2', slot: 7, shelfId: 'f1' });
+  });
+  it('refuse un emplacement occupé, accepte le sien', () => {
+    const b = storeCard(a, 'f1', 1, 'dvd', 'B', 'f3')!;
+    expect(moveStored(b, 'f2', 'f1', 1)).toBeNull();
+    expect(moveStored(b, 'f2', 'f1', 0)).not.toBeNull();
+  });
+  it('refuse un objet non rangé, une étagère inconnue et un emplacement hors limites', () => {
+    expect(moveStored(a, 'f1', 'f1', 3)).toBeNull();
+    expect(moveStored(a, 'f2', 'zz', 3)).toBeNull();
+    expect(moveStored(a, 'f2', 'f1', 15)).toBeNull();
+    expect(moveStored(a, 'f2', 'f1', -1)).toBeNull();
+  });
+  it('passe d’une étagère à l’autre', () => {
+    const two = placeStanding(a, 24, 'shelf', 8, 4, 'f9')!;
+    expect(moveStored(two, 'f2', 'f9', 3)!.find((p) => p.id === 'f2')).toMatchObject({ shelfId: 'f9', slot: 3 });
+  });
+  it('retrouve l’emplacement sous un point', () => {
+    const slot = shelfSlots(pxRect(rectOf(shelf[0]!)!))[4]!;
+    expect(slotAt(shelf, slot.x + 2, slot.y + 2)).toEqual({ shelfId: 'f1', slot: 4 });
+    expect(slotAt(shelf, 500, 5)).toBeNull();
   });
 });

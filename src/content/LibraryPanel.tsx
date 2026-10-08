@@ -29,6 +29,7 @@ import {
   firstFreeSlot,
   hang,
   moveHung,
+  moveStored,
   placedSlugs,
   setScreenCard,
   storeCard,
@@ -160,7 +161,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     const svg = scrollRef.current?.querySelector('svg');
     if (!state || !svg) return null;
     const { col, row, x, y } = pointerToCell(svg.getBoundingClientRect(), state.cols * CELL_W, HEIGHT, clientX, clientY);
-    return { id, x, y, target: dropTargetFor(state.layout, state.cols, id, col, row) };
+    return { id, x, y, target: dropTargetFor(state.layout, state.cols, id, col, row, x, y) };
   };
 
   // Pendant un glissé : le doigt ne fait pas défiler la page, Échap annule, les bords font défiler la pièce.
@@ -286,7 +287,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     blinkTimer.current = window.setTimeout(() => setBlink([]), 700);
   };
 
-  const REASONS = { ...REFUSALS, wall: 'Un objet mural s’accroche au mur.', 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.' } as const;
+  const REASONS = { ...REFUSALS, wall: 'Un objet mural s’accroche au mur.', 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'slot-busy': 'Cet emplacement est déjà pris.', 'not-slot': 'Déposez l’objet dans un emplacement de l’étagère.' } as const;
   // Lâcher d'un meuble soulevé : valide → déplacé par les mêmes fonctions que « Déplacer » ; sinon il reste en place.
   const dropLifted = (id: string, target: DropTarget): void => {
     if (target.ok) {
@@ -294,6 +295,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
       if (item?.kind === 'computer' && target.deskId) {
         const deskId = target.deskId;
         void editLayout((l) => moveComputer(l, id, deskId));
+      } else if (item?.kind === 'stored' && target.shelfId !== undefined && target.slot !== undefined) {
+        const { shelfId, slot } = target;
+        void editLayout((l) => moveStored(l, id, shelfId, slot));
+      } else if (item?.kind === 'wall' && target.col !== undefined && target.top !== undefined) {
+        const { col, top } = target;
+        void editLayout((l, cols) => moveHung(l, cols, id, col, top));
       } else if (target.col !== undefined && target.top !== undefined) {
         const { col, top } = target;
         void editLayout((l, cols) => moveStanding(l, cols, id, col, top));
@@ -634,7 +641,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
             onFurnitureDown={onFurnitureDown}
             onFurnitureMove={onFurnitureMove}
             onFurnitureUp={press.cancel}
-            drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost } satisfies DragView) : null}
+            drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost, ghostPx: drag.target.ghostPx } satisfies DragView) : null}
           />
         </div>
         {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}

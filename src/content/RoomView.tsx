@@ -29,7 +29,7 @@ type Props = {
   onCardTap?: (id: string) => void;
 };
 
-export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null };
+export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect };
 
 function ghostBox(rect: Rect): { x: number; y: number; width: number; height: number } {
   const px = pxRect(rect);
@@ -70,6 +70,20 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     <rect x={rect.x - 3} y={rect.y - 3} width={rect.w + 6} height={rect.h + 6} rx={6} fill="none" stroke="#378ADD" strokeWidth={2.5} strokeDasharray="6 4" />
   );
 
+  // Copie soulevée d'un dessin (un peu plus grande, en transparence) qui suit le doigt ; `anchor` : le rectangle que le doigt tient.
+  function liftedCopyOf(rect: PxRect, art: ReactElement, anchor: PxRect): ReactElement | null {
+    if (!drag) return null;
+    const dx = drag.x - (anchor.x + anchor.w / 2);
+    const dy = drag.y - (anchor.y + anchor.h / 2);
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    return (
+      <g transform={`translate(${cx + dx} ${cy + dy}) scale(1.08) translate(${-cx} ${-cy})`} opacity={0.65} style={{ pointerEvents: 'none' }}>
+        {art}
+      </g>
+    );
+  }
+
   function renderPlaced(placed: Placed): ReactElement | null {
     let rect: PxRect;
     let art: ReactElement;
@@ -87,19 +101,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
     // Un ordinateur suit aussi son bureau soulevé.
     const lifted = drag !== null && (drag.id === placed.id || (placed.kind === 'computer' && drag.id === placed.deskId));
-    let liftedCopy: ReactElement | null = null;
-    if (lifted && drag) {
-      const anchor = drag.id === placed.id ? rect : (deskRects.get(drag.id) ?? rect);
-      const dx = drag.x - (anchor.x + anchor.w / 2);
-      const dy = drag.y - (anchor.y + anchor.h / 2);
-      const cx = rect.x + rect.w / 2;
-      const cy = rect.y + rect.h / 2;
-      liftedCopy = (
-        <g transform={`translate(${cx + dx} ${cy + dy}) scale(1.08) translate(${-cx} ${-cy})`} opacity={0.65} style={{ pointerEvents: 'none' }}>
-          {art}
-        </g>
-      );
-    }
+    const liftedCopy = lifted ? liftedCopyOf(rect, art, drag.id === placed.id ? rect : (deskRects.get(drag.id) ?? rect)) : null;
     return (
       <g key={placed.id}>
         <g
@@ -131,9 +133,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   // Objet touchable (accroché, rangé ou écran) : mêmes gestes que les meubles, pour pouvoir le déplacer.
   function cardGroup(placed: Placed, slug: string, rect: PxRect, art: ReactElement, extra: Record<string, string> = {}): ReactElement {
     const missing = !cards[slug];
+    // L'objet soulevé reste en filigrane à sa place ; sa copie suit le doigt. (L'écran d'un ordinateur suit l'ordinateur, déjà soulevé.)
+    const lifted = drag !== null && drag.id === placed.id && placed.kind !== 'computer';
     return (
+      <g key={`card-${placed.id}`}>
       <g
-        key={`card-${placed.id}`}
         data-card={slug}
         data-id={placed.id}
         data-missing={missing ? 'true' : undefined}
@@ -145,12 +149,14 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         onPointerLeave={onFurnitureUp}
         onPointerCancel={onFurnitureUp}
         onContextMenu={(event) => event.preventDefault()}
-        opacity={missing ? 0.35 : 1}
+        opacity={lifted ? 0.3 : missing ? 0.35 : 1}
         style={{ cursor: 'pointer', userSelect: 'none', WebkitTouchCallout: 'none' }}
       >
         {art}
         {editing && selectedId === placed.id && outline(rect)}
         <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="transparent" />
+      </g>
+      {lifted && liftedCopyOf(rect, art, rect)}
       </g>
     );
   }
@@ -233,6 +239,21 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {ordered.map(renderPlaced)}
       {cardLayer}
       {cells}
+      {drag?.ghostPx && (
+        <rect
+          data-drag-ghost={drag.ok ? 'ok' : 'refused'}
+          x={drag.ghostPx.x}
+          y={drag.ghostPx.y}
+          width={drag.ghostPx.w}
+          height={drag.ghostPx.h}
+          rx={4}
+          fill={drag.ok ? '#3BB273' : '#E24B4A'}
+          fillOpacity={0.25}
+          stroke={drag.ok ? '#3BB273' : '#E24B4A'}
+          strokeWidth={2.5}
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
       {drag?.ghost && (
         <rect
           data-drag-ghost={drag.ok ? 'ok' : 'refused'}

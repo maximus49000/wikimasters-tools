@@ -11,6 +11,7 @@ import { RoomView } from '../../src/content/RoomView';
 import type { ImageService } from '../../src/core/images/image-service';
 import { setImageService } from '../../src/content/image-registry';
 import type { Layout, Room } from '../../src/core/library/library-types';
+import { pxRect, shelfSlots } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -223,5 +224,103 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-action="add-card"]');
     expect(q('[data-card-option="Paris"]')?.hasAttribute('disabled')).toBe(true);
     expect(q('[data-card-option="Daft_Punk"]')?.hasAttribute('disabled')).toBe(false);
+  });
+
+  // Un pixel d'écran = une unité du dessin (24 colonnes de 30, hauteur 340).
+  function stubSvgRect() {
+    const svg = q('svg[role="img"]') as unknown as SVGElement;
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, right: 720, bottom: 340, width: 720, height: 340, x: 0, y: 0, toJSON: () => ({}) });
+  }
+  const pointer = (type: string, target: EventTarget, x: number, y: number) =>
+    act(async () => { target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y })); });
+  async function longPress(selector: string, x: number, y: number) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await pointer('pointerdown', q(selector)!, x, y);
+    await act(async () => { vi.advanceTimersByTime(500); });
+    vi.useRealTimers();
+  }
+  const slotCenter = (i: number) => {
+    const s = shelfSlots(pxRect({ col: 0, row: 4, w: 6, h: 8 }))[i]!;
+    return { x: s.x + s.w / 2, y: s.y + s.h / 2 };
+  };
+  const shelfLayout: Layout = [
+    { id: 'f1', kind: 'shelf', col: 0, row: 4 },
+    { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },
+  ];
+
+  it('un appui long sur un objet accroché le déplace sur le mur', async () => {
+    await seed([{ id: 'f1', kind: 'wall', shape: 'poster', col: 2, row: 1, slug: 'Paris' }]);
+    stubSvgRect();
+    await longPress('[data-card="Paris"]', 105, 85);
+    expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('true');
+    await pointer('pointermove', window, 305, 118);
+    expect(q('[data-drag-ghost="ok"]')).not.toBeNull();
+    await pointer('pointerup', window, 305, 118);
+    await settle();
+    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 10, row: 1, slug: 'Paris' });
+  });
+
+  it('un objet accroché lâché sur le sol reste en place et le dit', async () => {
+    await seed([{ id: 'f1', kind: 'wall', shape: 'poster', col: 2, row: 1, slug: 'Paris' }]);
+    stubSvgRect();
+    await longPress('[data-card="Paris"]', 105, 85);
+    await pointer('pointermove', window, 305, 320);
+    await pointer('pointerup', window, 305, 320);
+    await settle();
+    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 2, row: 1 });
+    expect(q('[role="status"]')?.textContent).toContain('mur');
+  });
+
+  it('un appui long sur un objet rangé le déplace dans un autre emplacement', async () => {
+    await seed(shelfLayout);
+    stubSvgRect();
+    const from = slotCenter(0);
+    const to = slotCenter(4);
+    await longPress('[data-card="Daft_Punk"]', from.x, from.y);
+    await pointer('pointermove', window, to.x, to.y);
+    expect(q('[data-drag-ghost="ok"]')).not.toBeNull();
+    await pointer('pointerup', window, to.x, to.y);
+    await settle();
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ kind: 'stored', shelfId: 'f1', slot: 4 });
+  });
+
+  it('un objet rangé passe sur l’emplacement d’une autre étagère', async () => {
+    await seed([...shelfLayout, { id: 'f9', kind: 'shelf', col: 10, row: 4 }]);
+    stubSvgRect();
+    const from = slotCenter(0);
+    const other = shelfSlots(pxRect({ col: 10, row: 4, w: 6, h: 8 }))[3]!;
+    await longPress('[data-card="Daft_Punk"]', from.x, from.y);
+    await pointer('pointerup', window, other.x + other.w / 2, other.y + other.h / 2);
+    await settle();
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ shelfId: 'f9', slot: 3 });
+  });
+
+  it('lâcher un objet sur un emplacement occupé le laisse en place et affiche un message', async () => {
+    await seed([...shelfLayout, { id: 'f3', kind: 'stored', shape: 'dvd', shelfId: 'f1', slot: 1, slug: 'Paris' }]);
+    stubSvgRect();
+    const from = slotCenter(0);
+    const to = slotCenter(1);
+    await longPress('[data-card="Daft_Punk"]', from.x, from.y);
+    await pointer('pointermove', window, to.x, to.y);
+    expect(q('[data-drag-ghost="refused"]')).not.toBeNull();
+    await pointer('pointerup', window, to.x, to.y);
+    await settle();
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ slot: 0 });
+    expect(layoutNow().find((p) => p.id === 'f3')).toMatchObject({ slot: 1 });
+    expect(q('[role="status"]')?.textContent).toContain('déjà pris');
+  });
+
+  it('un appui long sur un ordinateur qui affiche une carte déplace l’ordinateur et sa carte', async () => {
+    await seed([
+      { id: 'd1', kind: 'desk', col: 2, row: 8 },
+      { id: 'd2', kind: 'desk', col: 12, row: 8 },
+      { id: 'c1', kind: 'computer', deskId: 'd1', slug: 'Paris' },
+    ]);
+    stubSvgRect();
+    await longPress('[data-screen="c1"]', 130, 200);
+    await pointer('pointermove', window, 400, 300);
+    await pointer('pointerup', window, 400, 300);
+    await settle();
+    expect(layoutNow().find((p) => p.id === 'c1')).toMatchObject({ kind: 'computer', deskId: 'd2', slug: 'Paris' });
   });
 });

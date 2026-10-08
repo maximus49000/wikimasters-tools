@@ -121,7 +121,7 @@ export function placeComputer(layout: Layout, deskId: string, id: string): Layou
 export function moveComputer(layout: Layout, id: string, deskId: string): Layout | null {
   const item = layout.find((p) => p.id === id);
   if (!item || item.kind !== 'computer' || !canPlaceComputer(layout, deskId, id)) return null;
-  return layout.map((p) => (p.id === id ? { id, kind: 'computer', deskId } : p));
+  return layout.map((p) => (p.id === id ? { ...item, deskId } : p));
 }
 
 // Retirer un bureau retire aussi l'ordinateur qui y est posé ; retirer une étagère, les objets rangés dedans.
@@ -183,6 +183,18 @@ export function placedSlugs(layout: Layout): Set<string> {
   return slugs;
 }
 
+// Emplacement d'étagère sous le point (x, y) du dessin, en pixels.
+export function slotAt(layout: Layout, x: number, y: number): { shelfId: string; slot: number } | null {
+  for (const p of layout) {
+    if (p.kind !== 'shelf') continue;
+    const rect = rectOf(p);
+    if (!rect) continue;
+    const i = shelfSlots(pxRect(rect)).findIndex((s) => x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h);
+    if (i >= 0) return { shelfId: p.id, slot: i };
+  }
+  return null;
+}
+
 export function firstFreeSlot(layout: Layout, shelfId: string): number | null {
   const used = new Set(layout.filter((p) => p.kind === 'stored' && p.shelfId === shelfId).map((p) => (p as Extract<Placed, { kind: 'stored' }>).slot));
   for (let i = 0; i < SHELF_SLOTS; i++) if (!used.has(i)) return i;
@@ -195,6 +207,16 @@ export function storeCard(layout: Layout, shelfId: string, slot: number, shape: 
   if (layout.some((p) => p.kind === 'stored' && p.shelfId === shelfId && p.slot === slot)) return null;
   if (placedSlugs(layout).has(slug)) return null;
   return [...layout, { id, kind: 'stored', shape, shelfId, slot, slug }];
+}
+
+// Déplace un objet rangé vers un autre emplacement (le sien est permis, un emplacement pris par un autre non).
+export function moveStored(layout: Layout, id: string, shelfId: string, slot: number): Layout | null {
+  const item = layout.find((p) => p.id === id);
+  const shelf = layout.find((p) => p.id === shelfId);
+  if (!item || item.kind !== 'stored' || !shelf || shelf.kind !== 'shelf') return null;
+  if (!Number.isInteger(slot) || slot < 0 || slot >= SHELF_SLOTS) return null;
+  if (layout.some((p) => p.kind === 'stored' && p.id !== id && p.shelfId === shelfId && p.slot === slot)) return null;
+  return layout.map((p) => (p.id === id ? { ...item, shelfId, slot } : p));
 }
 
 export function setScreenCard(layout: Layout, computerId: string, slug: string | null): Layout | null {
