@@ -695,7 +695,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Déplacer ou retirer', text: 'Touchez un meuble déjà posé : les boutons Déplacer et Retirer apparaissent. Retirer un bureau retire aussi l’ordinateur qui est dessus.' },
           { label: 'Si ça ne se pose pas', text: 'Les cases fautives clignotent en rouge et un message explique pourquoi : un meuble se pose au sol, sans en recouvrir un autre ni sortir de la pièce.' },
         ],
-        scene: { page: '/collection', closeWindows: true },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
       },
       {
         target: '[data-wmt-library] [data-orient="portrait"]',
@@ -707,7 +707,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Ce que ça change', text: 'La pièce reste la même, avec les mêmes meubles. Seule la fenêtre change : large en horizontal, plus étroite et plus proche en vertical. Ce qui dépasse se découvre en faisant défiler la pièce vers la droite ou la gauche.' },
           { label: 'À savoir', text: 'Passer de l’un à l’autre ne perd rien et ne déplace rien.' },
         ],
-        scene: { page: '/collection', closeWindows: true },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
       },
       {
         target: '[data-wmt-library] [data-action="extend-right"]',
@@ -718,7 +718,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Chaque zone ajoute 12 colonnes. Une pièce fait de 24 à 96 colonnes. Ajouter à gauche décale vos meubles pour qu’ils restent à leur place dans la pièce.' },
           { label: 'Limites', text: 'On ne retire une zone que si elle est entièrement vide : retirez d’abord ses meubles, ou déplacez-les.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] [data-action="home"]',
@@ -729,7 +729,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez l’étoile pour la définir, touchez-la encore pour la retirer. Une seule pièce à la fois peut être l’accueil.' },
           { label: 'À savoir', text: 'Le réglage ne joue qu’à la première ouverture après le démarrage : vous naviguez ensuite librement.' },
         ],
-        scene: { page: '/collection', closeWindows: true },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
       },
     ],
   },
