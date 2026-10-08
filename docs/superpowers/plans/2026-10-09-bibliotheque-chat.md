@@ -43,7 +43,7 @@
 
 ---
 
-### Tâche 1 : types, état v4 et dépôt
+### Task 1 : types, état v4 et dépôt
 
 **Fichiers :**
 - Modifier : `src/core/library/library-types.ts`, `src/core/library/library-book.ts`, `src/core/library/library-repo.ts`
@@ -322,7 +322,7 @@ git commit -m "feat(bibliotheque): état v4, animaux de pièce et plan mémoris�
 
 ---
 
-### Tâche 2 : carte de marche
+### Task 2 : carte de marche
 
 **Fichiers :**
 - Créer : `src/core/library/pets/walk-map.ts`, `tests/core/library/pets-walk-map.test.ts`
@@ -563,7 +563,7 @@ git commit -m "feat(bibliotheque): carte de marche du chat (sol, plateformes, ch
 
 ---
 
-### Tâche 3 : itinéraires avec sauts et position théorique
+### Task 3 : itinéraires avec sauts et position théorique
 
 **Fichiers :**
 - Créer : `src/core/library/pets/route.ts`, `src/core/library/pets/motion.ts`, `tests/core/library/pets-route.test.ts`, `tests/core/library/pets-motion.test.ts`
@@ -859,7 +859,7 @@ git commit -m "feat(bibliotheque): itinéraires du chat (sauts d un meuble à l 
 
 ---
 
-### Tâche 4 : le cerveau (choix d'action, reprise, caresse)
+### Task 4 : le cerveau (choix d'action, reprise, caresse)
 
 **Fichiers :**
 - Créer : `src/core/library/pets/brain.ts`, `tests/core/library/pets-brain.test.ts`
@@ -1181,7 +1181,7 @@ git commit -m "feat(bibliotheque): cerveau du chat (actions pondérées, reprise
 
 ---
 
-### Tâche 5 : profondeur et exécuteur
+### Task 5 : profondeur et exécuteur
 
 **Fichiers :**
 - Créer : `src/core/library/pets/depth.ts`, `src/core/library/pets/runner.ts`, `tests/core/library/pets-runner.test.ts`
@@ -1406,7 +1406,7 @@ git commit -m "feat(bibliotheque): exécuteur des animaux (pose, profondeur, car
 
 ---
 
-### Tâche 6 : dessin du chat
+### Task 6 : dessin du chat
 
 **Fichiers :**
 - Créer : `src/content/pet-sprite.tsx`, `tests/content/pet-sprite.test.tsx`
@@ -1661,7 +1661,7 @@ git commit -m "feat(bibliotheque): dessin SVG du chat (11 poses, 6 pelages)" -m 
 
 ---
 
-### Tâche 7 : affichage dans la pièce (hook, RoomView, panneau)
+### Task 7 : affichage dans la pièce (hook, RoomView, panneau)
 
 **Fichiers :**
 - Créer : `src/content/pet-sim.ts`
@@ -1934,7 +1934,7 @@ git commit -m "feat(bibliotheque): le chat vit dans la pièce (boucle d animatio
 
 ---
 
-### Tâche 8 : interface « Adopter », renommer, retirer, caresser
+### Task 8 : interface « Adopter », renommer, retirer, caresser
 
 **Fichiers :**
 - Modifier : `src/content/LibraryPanel.tsx`
@@ -2143,7 +2143,7 @@ git commit -m "feat(bibliotheque): adopter, renommer, retirer et caresser le cha
 
 ---
 
-### Tâche 9 : fiche WikiHow, spec, vérification complète et livraison
+### Task 9 : fiche WikiHow, spec, vérification complète et livraison
 
 **Fichiers :**
 - Modifier : `src/core/whats-new/entries.ts`, `docs/superpowers/specs/2026-10-09-bibliotheque-chat-design.md`
