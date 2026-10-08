@@ -14,8 +14,8 @@
 
 Le morceau 2 de la spec est trop gros pour une PR. Il est coupé en trois :
 
-- **2a (ce plan)** : cartes au mur / en étagère / à l'écran + ouverture de la fiche (animation d'ouverture simple : l'objet se soulève).
-- **2b (plan à part)** : présentoir de boosters (10 styles). Prérequis : relever dans le code où l'extension lit le nombre de boosters à ouvrir et comment lancer la fenêtre d'ouverture du jeu ; logo Wikimasters à fournir.
+- **2a (ce plan)** : cartes au mur / en étagère / à l'écran + ouverture de la fiche (animation d'ouverture simple : l'objet se soulève) + déplacement des objets à l'appui long en mode Aménager.
+- **2b : MIS DE CÔTÉ sur décision de l'utilisateur (2026-10-08)** : présentoir de boosters. Ne pas le replanifier tant qu'il ne le redemande pas.
 - **2c (plan à part)** : carte murale (carte du monde, cadrage, points, bulle de pensée) et animation d'ouverture complète (retournement, charnière).
 
 ## Global Constraints
@@ -28,6 +28,7 @@ Le morceau 2 de la spec est trop gros pour une PR. Il est coupé en trois :
 - Le `version` de l'état reste `1` : les champs ajoutés sont des unions/optionnels, un ancien état se lit sans migration.
 - Une carte ne peut être posée qu'**une fois par pièce** (décision de ce plan, pour que « Ranger » reste sans ambiguïté).
 - Dans la même PR : fiche WikiHow (`src/core/whats-new/entries.ts`, nouvel id `bibliotheque-v4`) et annonce « Quoi de neuf ».
+- Déplacement : en mode Aménager, un **appui long** sur un objet (meuble, objet accroché, objet rangé) le soulève et le fait glisser, comme pour les meubles (PR #200) ; un appui long en mode Visiter passe en Aménager et soulève. L'écran d'un ordinateur n'est pas soulevable à part : l'appui long soulève l'ordinateur (et sa carte).
 - Après fusion : `npm run build`, puis livraison en pré-prod (`npm run preprod`) sans demander ; jamais `npm run promouvoir` sans ordre explicite.
 
 ---
@@ -43,6 +44,7 @@ Le morceau 2 de la spec est trop gros pour une PR. Il est coupé en trois :
 - Modifier `src/content/furniture-art.tsx` : `ComputerArt` accepte une image d'écran.
 - Modifier `src/content/RoomView.tsx` : dessine les éléments `wall` et `stored`, l'écran, et les rend touchables.
 - Créer `src/content/CardPickerDialog.tsx` : choix de la carte (recherche) puis de la forme.
+- Modifier `src/content/furniture-drag.ts` : `dropTargetFor` gère les objets accrochés et rangés (cible de dépôt, fantôme).
 - Modifier `src/content/LibraryPanel.tsx` : outil « + Carte », visite = ouverture de la fiche, retrait, props `collection`, `kinds`, `onOpenCard`.
 - Modifier `src/content/collection-ui.tsx` : passe les nouvelles props.
 - Modifier `src/core/whats-new/entries.ts` : fiche et annonce.
@@ -682,7 +684,7 @@ it('filtre par la recherche sans tenir compte des accents', () => {
   - `target: 'shelf'` : toucher une étagère → `storeCard` au `firstFreeSlot` ; refus « Cette étagère est pleine. ».
   - `target: 'wall'` : toucher une case du mur (la case est le coin **bas-gauche** comme pour les meubles) → `hang` ; refus par `canHang` avec clignotement des cases (messages `wall`: « Un objet mural s'accroche au mur. »).
 - Mode **Visiter** : toucher un objet (`onCardTap`) → `onOpenCard(slug)` ; carte inconnue → rien.
-- Mode **Aménager** : toucher un objet le sélectionne (barre d'actions existante : Déplacer, Retirer). « Retirer » sur un objet appelle `unplaceCard` ; « Déplacer » d'un objet accroché pose via `moveHung` sur la case touchée ; un objet rangé ou un écran se déplace en retirant puis en repartant par « + Carte » (pas de déplacement dédié en 2a, noté dans la fiche WikiHow).
+- Mode **Aménager** : toucher un objet le sélectionne (barre d'actions existante : Déplacer, Retirer). « Retirer » sur un objet appelle `unplaceCard` ; « Déplacer » d'un objet accroché pose via `moveHung` sur la case touchée ; le déplacement à l'appui long est traité à la tâche 8. Une carte d'écran se change ou se retire en touchant l'ordinateur (« + Carte » ou « Retirer »).
 - Retirer un bureau qui porte un ordinateur affichant une carte, ou une étagère contenant des cartes : demander confirmation (`window.confirm('Retirer aussi les cartes rangées ?')`, comme la suppression de pièce).
 - `collection-ui.tsx` : `<LibraryPanel library={library} collection={collection} kinds={kinds} onOpenCard={openGameCard} />` — **vérifier d'abord** que `openGameCard(slug)` ouvre la fiche existante comme `onOpenCard` des autres vues (c'est la même prop `onOpenCard: openGameCard` dans `common`).
 - Le panneau charge `collection.list()` (abonné aux changements comme `WorldPanel`) et construit `cards: Record<slug, {title, imageUrl}>` et `categoryOf` via `kinds` (`kinds.current()`/`subscribe` — reprendre le crochet `useKindState` de `WorldPanel`).
@@ -695,21 +697,133 @@ it('filtre par la recherche sans tenir compte des accents', () => {
   5. « Retirer » sur un objet le supprime ; retirer une étagère garnie demande confirmation et supprime ses cartes.
   6. Une carte déjà posée est grisée dans le sélecteur.
 - [ ] **Step 2: Vérifier l'échec.**
-- [ ] **Step 3: Implémenter** en suivant les gabarits existants de `onCell` / `onPick` / `refuse` dans `LibraryPanel.tsx` (aucune nouvelle machinerie de glisser-déposer : l'appui long reste réservé aux meubles ; un objet accroché ou rangé ne se soulève pas en 2a).
+- [ ] **Step 3: Implémenter** en suivant les gabarits existants de `onCell` / `onPick` / `refuse` dans `LibraryPanel.tsx` (le glisser-déposer des objets est la tâche 8).
 - [ ] **Step 4: Vérifier** — `npx vitest run` complet, `npx tsc --noEmit`, `npm run lint` s'il existe.
 - [ ] **Step 5: Commit** — `git commit -am "feat(bibliotheque): poser, ouvrir et ranger des cartes dans la pièce"`
 
 ---
 
-### Task 8: Fiche WikiHow, annonce, vérification, PR
+### Task 8: Déplacer les cartes à l'appui long
+
+**Files:**
+- Modify: `src/core/library/room-grid.ts` (`moveStored`, `slotAt`)
+- Modify: `src/content/furniture-drag.ts` (`dropTargetFor` étendu, `DropTarget.ghostPx`)
+- Modify: `src/content/RoomView.tsx` (objets soulevables, fantôme en pixels)
+- Modify: `src/content/LibraryPanel.tsx` (`dropLifted`, appui long sur un objet)
+- Test: `tests/core/library/room-grid-cards.test.ts`, `tests/content/furniture-drag.test.ts`, `tests/content/library-cards.test.tsx`
+
+**Interfaces:**
+- Consumes: `canHang`, `moveHung`, `shelfSlots`, `pxRect`, `rectOf`, `isStanding` (tâches 2-3), mécanique d'appui long de PR #200 (`createLongPress`, `Drag`, `DragLive`, `onFurnitureDown/Move/Up`).
+- Produces:
+  - `slotAt(layout: Layout, x: number, y: number): { shelfId: string; slot: number } | null` (emplacement d'étagère sous le point `x, y` du dessin, en pixels)
+  - `moveStored(layout: Layout, id: string, shelfId: string, slot: number): Layout | null` (refuse : objet non rangé, étagère inconnue, emplacement hors 0–14 ou occupé par un autre objet ; déposer sur son propre emplacement est permis)
+  - `DropReason` gagne `'slot-busy' | 'not-slot' | 'wall'` ; `DropTarget` gagne `ghostPx?: PxRect`, `shelfId?: string`, `slot?: number`.
+  - `dropTargetFor(layout, cols, id, col, row, x?, y?)` : `x, y` (pixels du dessin) servent à viser un emplacement (par défaut le coin de la case). Objet `wall` : mêmes règles que les meubles (la case touchée est le coin **bas-gauche**, `top = row - h + 1`, contrôle `canHang(..., id)`). Objet `stored` : vise `slotAt(x, y)` ; `ok` si l'emplacement est libre ou le sien, sinon `slot-busy` (pas d'échange), `not-slot` si le doigt n'est sur aucun emplacement ; le fantôme est l'emplacement visé (`ghostPx`).
+
+- [ ] **Step 1: Écrire les tests**
+
+```ts
+// room-grid-cards.test.ts
+import { moveStored, slotAt, shelfSlots, pxRect, rectOf } from '../../../src/core/library/room-grid';
+
+describe('déplacer un objet rangé', () => {
+  const shelf = placeStanding([], 24, 'shelf', 0, 4, 'f1')!;
+  const a = storeCard(shelf, 'f1', 0, 'cd', 'A', 'f2')!;
+
+  it('change d’emplacement', () => {
+    expect(moveStored(a, 'f2', 'f1', 7)![1]).toMatchObject({ id: 'f2', slot: 7, shelfId: 'f1' });
+  });
+  it('refuse un emplacement occupé, accepte le sien', () => {
+    const b = storeCard(a, 'f1', 1, 'dvd', 'B', 'f3')!;
+    expect(moveStored(b, 'f2', 'f1', 1)).toBeNull();
+    expect(moveStored(b, 'f2', 'f1', 0)).not.toBeNull();
+  });
+  it('passe d’une étagère à l’autre', () => {
+    const two = placeStanding(a, 24, 'shelf', 8, 4, 'f9')!;
+    expect(moveStored(two, 'f2', 'f9', 3)!.find((p) => p.id === 'f2')).toMatchObject({ shelfId: 'f9', slot: 3 });
+  });
+  it('retrouve l’emplacement sous un point', () => {
+    const slot = shelfSlots(pxRect(rectOf(shelf[0]!)!))[4]!;
+    expect(slotAt(shelf, slot.x + 2, slot.y + 2)).toEqual({ shelfId: 'f1', slot: 4 });
+    expect(slotAt(shelf, 500, 5)).toBeNull();
+  });
+});
+```
+
+```ts
+// furniture-drag.test.ts : ajouter
+it('un objet accroché se vise comme un meuble (coin bas gauche) et refuse le sol', () => {
+  const layout = hang([], 24, 'poster', 2, 1, 'A', 'f1')!;
+  expect(dropTargetFor(layout, 24, 'f1', 6, 4)).toMatchObject({ ok: true, col: 6, top: 1 });
+  expect(dropTargetFor(layout, 24, 'f1', 6, 10)).toMatchObject({ ok: false, reason: 'wall' });
+});
+it('un objet rangé vise un emplacement libre, pas un emplacement occupé', () => {
+  // étagère f1 en (0,4), objets f2 (slot 0) et f3 (slot 1) ; viser le centre du slot 1 (x, y en pixels)
+  // attendu : { ok: false, reason: 'slot-busy' } ; viser le slot 2 : { ok: true, shelfId: 'f1', slot: 2, ghostPx: <rect> }
+  // viser le vide du mur : { ok: false, reason: 'not-slot' }
+});
+```
+
+```tsx
+// library-cards.test.tsx : ajouter (mise en place copiée de tests/content/library-drag.test.tsx : pointerdown, faux timers pour le délai du createLongPress, pointermove, pointerup)
+it('un appui long sur un objet accroché le déplace sur le mur', async () => { /* poster en (2,1) → lâcher sur une case libre : layout mis à jour dans le repo */ });
+it('un appui long sur un objet rangé le déplace dans un autre emplacement', async () => { /* slot 0 → slot 4 */ });
+it('lâcher un objet sur un emplacement occupé le laisse en place et affiche un message', async () => { /* … */ });
+it('un appui long sur un ordinateur qui affiche une carte déplace l’ordinateur et sa carte', async () => { /* … */ });
+```
+
+(Écrire les corps complets, sans laisser de commentaire à la place du code.)
+
+- [ ] **Step 2: Vérifier l'échec** — `npx vitest run tests/core/library/room-grid-cards.test.ts tests/content/furniture-drag.test.ts tests/content/library-cards.test.tsx`.
+
+- [ ] **Step 3: Implémenter**
+
+`room-grid.ts` :
+
+```ts
+export function slotAt(layout: Layout, x: number, y: number): { shelfId: string; slot: number } | null {
+  for (const p of layout) {
+    if (p.kind !== 'shelf') continue;
+    const rect = rectOf(p);
+    if (!rect) continue;
+    const slots = shelfSlots(pxRect(rect));
+    const i = slots.findIndex((s) => x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h);
+    if (i >= 0) return { shelfId: p.id, slot: i };
+  }
+  return null;
+}
+
+export function moveStored(layout: Layout, id: string, shelfId: string, slot: number): Layout | null {
+  const item = layout.find((p) => p.id === id);
+  const shelf = layout.find((p) => p.id === shelfId);
+  if (!item || item.kind !== 'stored' || !shelf || shelf.kind !== 'shelf') return null;
+  if (!Number.isInteger(slot) || slot < 0 || slot >= SHELF_SLOTS) return null;
+  if (layout.some((p) => p.kind === 'stored' && p.id !== id && p.shelfId === shelfId && p.slot === slot)) return null;
+  return layout.map((p) => (p.id === id ? { ...item, shelfId, slot } : p));
+}
+```
+
+`furniture-drag.ts` : dans `dropTargetFor`, remplacer le test `if (!isStanding(item))` par trois branches : `item.kind === 'computer'` (comportement actuel), `item.kind === 'wall'` (calcul de `top`, `canHang`, fantôme `Rect`), `item.kind === 'stored'` (via `slotAt(layout, x, y)` ; `ghostPx` = rectangle de l'emplacement donné par `shelfSlots`). Dans `LibraryPanel.locate`, passer le `x` et le `y` déjà calculés par `pointerToCell`.
+
+`RoomView.tsx` : extraire de `renderPlaced` la logique « soulevé » (filigrane à 0,3 + copie à 1,08 qui suit `drag.x/y`) dans une fonction `withLift(id, rect, art)` ; l'appliquer aux objets `wall` et `stored`, avec les mêmes gestionnaires que les meubles (`onPointerDown={onFurnitureDown?.(id, e)}`, `onPointerMove`, `onPointerUp`, `onPointerLeave`, `onPointerCancel`, `onContextMenu preventDefault`, `WebkitTouchCallout:'none'`). Dessiner `drag.ghostPx` (même style vert/rouge que `ghost`) quand il existe.
+
+`LibraryPanel.tsx` : `dropLifted` gère `wall` (`moveHung(l, cols, id, target.col, target.top)`) et `stored` (`moveStored(l, id, target.shelfId, target.slot)`). Messages de refus : `slot-busy` « Cet emplacement est déjà pris. », `not-slot` « Déposez l'objet dans un emplacement de l'étagère. », `wall` « Un objet mural s'accroche au mur. ». Le clic qui suit un appui long reste ignoré (`press.consumeClick`) ; le toucher court en mode Visiter garde son rôle (ouvrir la fiche).
+
+- [ ] **Step 4: Vérifier** — les tests ci-dessus, puis `npx vitest run` complet (les tests de glisser des meubles de PR #200 doivent rester verts) et `npx tsc --noEmit`.
+
+- [ ] **Step 5: Commit** — `git commit -am "feat(bibliotheque): déplacer les cartes accrochées ou rangées à l'appui long"`
+
+---
+
+### Task 9: Fiche WikiHow, annonce, vérification, PR
 
 **Files:**
 - Modify: `src/core/whats-new/entries.ts`
 - Modify: `docs/superpowers/specs/2026-10-08-bibliotheque-design.md` (section « Morceau 2 » : découpage 2a/2b/2c et décision « une carte par pièce »)
 
-- [ ] **Step 1:** Ajouter la fiche `bibliotheque-v4` (étapes `text` + `how` + `tip`, ton didactique : à quoi ça sert, d'où viennent les cartes — la Collection déjà chargée, rien n'est envoyé —, comment poser/retirer, limites : une carte une fois par pièce, pas de déplacement des objets rangés, animation d'ouverture simple). Suivre le format des fiches `bibliotheque-v2` et `bibliotheque-v3` de ce fichier. Annonce « Quoi de neuf » avec un id jamais annoncé.
+- [ ] **Step 1:** Ajouter la fiche `bibliotheque-v4` (étapes `text` + `how` + `tip`, ton didactique : à quoi ça sert, d'où viennent les cartes — la Collection déjà chargée, rien n'est envoyé —, comment poser/retirer, limites : une carte une fois par pièce, appui long pour déplacer un objet (l'écran suit son ordinateur), animation d'ouverture simple). Suivre le format des fiches `bibliotheque-v2` et `bibliotheque-v3` de ce fichier. Annonce « Quoi de neuf » avec un id jamais annoncé.
 - [ ] **Step 2:** `npm run build` doit réussir ; `npx vitest run` : tout passe.
-- [ ] **Step 3: Vérification manuelle** (Chrome, recharger l'extension) : poser un poster, un vinyle, une pochette ; ranger 1 CD, 1 DVD, 1 jeu, 1 livre ; afficher une carte sur l'écran ; Visiter → toucher → la fiche s'ouvre ; retirer une étagère garnie ; recharger la page : tout est mémorisé ; carte supprimée de la Collection → grisée. Rapporter honnêtement ce qui n'a pas pu être vérifié.
+- [ ] **Step 3: Vérification manuelle** (Chrome, recharger l'extension) : poser un poster, un vinyle, une pochette ; ranger 1 CD, 1 DVD, 1 jeu, 1 livre ; afficher une carte sur l'écran ; Visiter → toucher → la fiche s'ouvre ; déplacer à l'appui long un poster, un objet rangé (autre emplacement, autre étagère), un ordinateur avec sa carte ; retirer une étagère garnie ; recharger la page : tout est mémorisé ; carte supprimée de la Collection → grisée. Rapporter honnêtement ce qui n'a pas pu être vérifié.
 - [ ] **Step 4:** Commit, push, ouvrir la PR (corps terminé par la ligne d'attribution), la fusionner sans demander, `npm run build`, `npm run preprod`, mettre à jour la mémoire du projet (morceau 2a fait, 2b et 2c restants).
 
 ---
@@ -717,5 +831,5 @@ it('filtre par la recherche sans tenir compte des accents', () => {
 ## Self-review
 
 - **Couverture de la spec (morceau 2)** : mur (poster, vinyle + 5 couleurs, 3 pochettes) → tâches 1, 2, 5, 6, 7 ; étagère (CD, DVD, jeu, livre, forme conseillée) → 1, 3, 4, 5, 6, 7 ; écran → 3, 5, 7 ; ouverture avec la fiche existante → 7 ; carte inconnue grisée → 5 ; liste filtrable → 6. **Reportés** (assumés, détaillés en tête) : présentoir de boosters (2b), carte murale et animation d'ouverture complète (2c).
-- **Écart avec la spec** : l'ouverture se limite à ouvrir la fiche (sans retournement/charnière) ; les objets rangés ne se déplacent pas à l'appui long.
+- **Écart avec la spec** : l'ouverture se limite à ouvrir la fiche (sans retournement/charnière). Déplacement à l'appui long couvert par la tâche 8 (pas d'échange entre deux objets rangés : un emplacement occupé refuse le dépôt).
 - **Cohérence des noms** : `canHang`, `hang`, `moveHung`, `storeCard`, `firstFreeSlot`, `setScreenCard`, `unplaceCard`, `placedSlugs`, `suggestShape`, `CardChoice`, `data-card`, `data-screen` sont utilisés à l'identique dans toutes les tâches.
