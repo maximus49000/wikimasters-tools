@@ -67,11 +67,17 @@ La liste vit dans un seul fichier TypeScript partagé par le client et le relais
 |---|---|---|
 | Écoute | `lecture-musique` (detail : `spotify` / `tidal`) | Une lecture démarre effectivement |
 | Écoute | `liaison-compte` (detail : plateforme) | Le compte est relié avec succès |
-| Film | `bande-annonce-lue` | La vidéo démarre |
-| Film | `bo-lue` | Un titre de la BO démarre |
-| Film | `streaming-lien-ouvert` | Un lien d'offre de visionnage est ouvert |
+| Film / série | `bande-annonce-lue` | La vidéo démarre (pas à l'affichage du lecteur) |
+| Film / série | `bo-lue` | Un titre de la BO démarre |
+| Film / série | `streaming-lien-ouvert` (detail : `abonnement` / `location` / `achat`) | Un lien d'offre de visionnage est ouvert |
+| Film / série | `film-change` | Un autre film ou série est choisi et confirmé via ⇄ |
 | Toile | `toile-generee` | Une toile est construite (pas à l'ouverture du menu) |
-| Documentaire | `documentaire-lu` | La lecture démarre |
+| Documentaire | `documentaire-lu` | La lecture démarre (pas à l'ouverture de la section) |
+| Documentaire | `documentaire-change` | Un autre documentaire est choisi et confirmé |
+| Documentaire | `documentaire-propose` | Une proposition de documentaire est envoyée |
+| Livre | `livre-lecture-ouverte` (detail : `wikisource` / `gutenberg` / `internet-archive`) | « Lire gratuitement » est effectivement ouvert |
+| Livre | `livre-achat-ouvert` (detail : `papier` / `ebook`) | Un lien de vendeur est ouvert |
+| Livre | `livre-change` | Un autre livre est choisi et confirmé via ⇄ |
 | Jeu vidéo | `jeu-video-lu` | Une vidéo ou la BO du jeu démarre |
 | Cartes liées | `carte-liee-ouverte` | Une carte liée est ouverte depuis le bloc |
 | Sélection | `echange-prepare` | Les cartes sont posées dans l'offre via la poignée de main |
@@ -80,6 +86,8 @@ La liste vit dans un seul fichier TypeScript partagé par le client et le relais
 | WikiHow | `wikihow-fiche-lue` | Une fiche est dépliée |
 | Nouveautés | `visite-terminee` | La visite guidée va au bout |
 | Réglage | `reglage-modifie` (detail : nom du réglage) | Un réglage change de valeur |
+
+**Règle de couverture :** chaque module de contenu (musique, film / série, jeu vidéo, livre, documentaire, cartes liées, Toile) compte au moins une action « consommer » (lecture, lecture gratuite, ouverture d'un lien sortant) et, quand il existe, une action « corriger » (⇄ changer). Ouvrir une fiche, déplier une section, afficher une bibliographie ou une filmographie ne sont jamais des événements.
 
 La liste définitive est arrêtée dans le plan, par relecture des modules ; la règle « action, jamais affichage » prime sur ces exemples.
 
