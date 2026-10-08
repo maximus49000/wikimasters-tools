@@ -101,3 +101,36 @@ describe('caresser le chat', () => {
     expect(q('[data-pet-name]')!.textContent).toBe('Pilou');
   });
 });
+
+describe('plusieurs pièces', () => {
+  it('changer de pièce ne mélange pas les noms des chats', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-action="adopt"]');
+    await type('input[aria-label="Nom du chat à adopter"]', 'Alpha');
+    await click('[data-action="adopt-confirm"]');
+    await click('[data-action="add-room"]');
+    await click('[data-action="adopt"]');
+    await type('input[aria-label="Nom du chat à adopter"]', 'Beta');
+    await click('[data-action="adopt-confirm"]');
+    await click('[data-room="r1"]');
+    await act(async () => { q('input[aria-label="Nom du chat"]')!.focus(); });
+    await act(async () => { q('input[aria-label="Nom du chat"]')!.blur(); });
+    await settle();
+    await click('[data-room="r2"]');
+    await act(async () => { q('input[aria-label="Nom du chat"]')!.focus(); });
+    await act(async () => { q('input[aria-label="Nom du chat"]')!.blur(); });
+    await settle();
+    const rooms = repo.current()!.rooms;
+    expect(rooms.map((r) => r.pets[0]!.name)).toEqual(['Alpha', 'Beta']);
+  });
+
+  it('le formulaire d adoption se ferme au changement de pièce', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-action="add-room"]');
+    await click('[data-action="adopt"]');
+    expect(q('input[aria-label="Nom du chat à adopter"]')).not.toBeNull();
+    await click('[data-room="r1"]');
+    expect(q('input[aria-label="Nom du chat à adopter"]')).toBeNull();
+    expect(q('[data-action="adopt"]')).not.toBeNull();
+  });
+});

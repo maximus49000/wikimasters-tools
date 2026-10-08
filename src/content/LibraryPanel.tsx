@@ -362,6 +362,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     setMessage('');
     setPicking(false);
     setPending(null);
+    setAdopting(false);
+    setAdoptName('Minou');
+    setAdoptCoat('orange');
   };
   const refuse = (text: string, cells: Cell[] = []): void => {
     setMessage(text);
@@ -788,13 +791,18 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           {pet ? (
             <>
               <input
-                key={pet.id}
+                key={`${room.id}:${pet.id}`}
                 className="wmt-lib-name"
                 aria-label="Nom du chat"
                 defaultValue={pet.name}
                 maxLength={MAX_PET_NAME}
                 onBlur={(event) => {
                   const name = event.currentTarget.value;
+                  if (!name.trim()) {
+                    event.currentTarget.value = pet.name;
+                    return;
+                  }
+                  if (name === pet.name) return;
                   void library.update((state) => renamePet(state, room.id, pet.id, name));
                 }}
               />
