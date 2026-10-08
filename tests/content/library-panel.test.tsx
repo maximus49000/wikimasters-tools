@@ -112,6 +112,17 @@ describe('LibraryPanel', () => {
     expect(repo.current()?.rooms[0]?.layout[0]).toMatchObject({ kind: 'desk', col: 14 });
   });
 
+  it('agrandit puis réduit à gauche : colonnes et meuble reviennent à leur valeur', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-kind="desk"]');
+    await click('[data-cell="2-11"]');
+    await click('[data-action="extend-left"]');
+    expect(repo.current()?.rooms[0]?.cols).toBe(36);
+    await click('[data-action="shrink-left"]');
+    expect(repo.current()?.rooms[0]?.cols).toBe(24);
+    expect(repo.current()?.rooms[0]?.layout[0]).toMatchObject({ kind: 'desk', col: 2 });
+  });
+
   it('refuse de réduire sous 24 colonnes ou une zone occupée, et le dit', async () => {
     await click('[data-action="edit"]');
     await click('[data-action="shrink-right"]');

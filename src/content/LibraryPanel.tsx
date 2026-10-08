@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   activeRoom,
   addRoom,
@@ -97,6 +97,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
   const [message, setMessage] = useState('');
   const blinkTimer = useRef<number | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pendingScroll = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -113,6 +114,15 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
       window.clearTimeout(blinkTimer.current);
     };
   }, [library]);
+
+  // Le défilement demandé par un agrandissement/réduction à gauche ne s'applique qu'une fois la nouvelle largeur rendue.
+  const colsNow = lib ? activeRoom(lib).cols : 0;
+  useLayoutEffect(() => {
+    const delta = pendingScroll.current;
+    pendingScroll.current = 0;
+    const el = scrollRef.current;
+    if (delta !== 0 && el) el.scrollLeft = Math.max(0, el.scrollLeft + delta);
+  }, [colsNow]);
 
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
@@ -193,17 +203,17 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
   async function extend(side: 'left' | 'right'): Promise<void> {
     if (room.cols + SECTION > MAX_COLS) return refuse('La pièce ne peut pas être plus large.');
     setMessage('');
-    await library.update((state) => extendRoom(state, room.id, side));
     const el = scrollRef.current;
-    if (side === 'left' && el) el.scrollLeft += (el.clientWidth * SECTION) / VISIBLE_COLS[room.orientation];
+    if (side === 'left' && el) pendingScroll.current = (el.clientWidth * SECTION) / VISIBLE_COLS[room.orientation];
+    await library.update((state) => extendRoom(state, room.id, side));
   }
   async function shrink(side: 'left' | 'right'): Promise<void> {
     if (room.cols - SECTION < MIN_COLS) return refuse(`La pièce ne peut pas être plus étroite que ${MIN_COLS} colonnes.`);
     if (!sectionIsEmpty(layout, room.cols, side)) return refuse('Retirez d’abord les meubles de cette zone.');
     setMessage('');
     const el = scrollRef.current;
+    if (side === 'left' && el) pendingScroll.current = -(el.clientWidth * SECTION) / VISIBLE_COLS[room.orientation];
     await library.update((state) => shrinkRoom(state, room.id, side));
-    if (side === 'left' && el) el.scrollLeft = Math.max(0, el.scrollLeft - (el.clientWidth * SECTION) / VISIBLE_COLS[room.orientation]);
   }
 
   const setMode2 = (next: 'visit' | 'edit'): void => {
