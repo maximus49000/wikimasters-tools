@@ -1,5 +1,5 @@
 import type { KeyValueStore } from '../cache/store';
-import { parseLibraryState } from './library-book';
+import { createInitialState, parseLibraryState } from './library-book';
 import type { LibraryState } from './library-types';
 
 const KEY = 'library';
@@ -22,11 +22,20 @@ export function createLibraryRepo(store: KeyValueStore) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
-    async load(): Promise<LibraryState> {
-      await writeTail;
-      latest = await read();
-      notify();
-      return latest;
+    // Lecture mise en file avec les écritures : un changement lancé pendant le chargement n'est pas écrasé par un état plus ancien.
+    // Si le stockage échoue, on affiche une pièce vide SANS l'écrire : les vraies données ne sont jamais remplacées.
+    load(): Promise<LibraryState> {
+      const run = writeTail.then(async () => {
+        try {
+          latest = await read();
+        } catch {
+          latest ??= createInitialState();
+        }
+        notify();
+        return latest;
+      });
+      writeTail = run.catch(() => undefined);
+      return run;
     },
     update(change: (state: LibraryState) => LibraryState): Promise<void> {
       const run = writeTail.then(async () => {

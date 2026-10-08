@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   activeRoom,
+  createInitialState,
   addRoom,
   deleteRoom,
   extendRoom,
@@ -38,7 +39,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-btn{min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border-radius:999px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit;cursor:pointer}
 .wmt-lib-btn[aria-pressed="true"],.wmt-lib-btn[aria-selected="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
 .wmt-lib-name{min-height:40px;box-sizing:border-box;padding:0 10px;border-radius:8px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit}
-.wmt-lib-scroll{display:flex;overflow-x:auto;width:100%;margin:0 auto;border-radius:12px;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+.wmt-lib-scroll{display:flex;overflow-x:auto;width:100%;margin:0 auto;border-radius:12px;-webkit-overflow-scrolling:touch}
 .wmt-lib-msg{min-height:20px;font-size:13px;opacity:.85}
 .wmt-lib-sep{flex:1}
 `;
@@ -105,9 +106,15 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
       const current = library.current();
       if (alive && current) setLib(current);
     });
-    void library.load().then((state) => {
-      if (alive) setLib(state);
-    });
+    void library
+      .load()
+      .then((state) => {
+        if (alive) setLib(state);
+      })
+      .catch(() => {
+        // Stockage illisible : pièce vide affichée, rien n'est écrit.
+        if (alive) setLib((previous) => previous ?? createInitialState());
+      });
     return () => {
       alive = false;
       off();
@@ -220,8 +227,14 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
     reset();
     setMode(next);
   };
+  // Changer de pièce ramène la vue à gauche et annule tout défilement en attente.
+  const resetScroll = (): void => {
+    pendingScroll.current = 0;
+    if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+  };
   const chooseRoom = (id: string): void => {
     reset();
+    resetScroll();
     void library.update((state) => setActive(state, id));
   };
   const chooseOrientation = (orientation: Orientation): void => {
@@ -252,7 +265,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
             {r.name}
           </button>
         ))}
-        <Btn label="Ajouter une pièce" data={{ action: 'add-room' }} onClick={() => { reset(); void library.update(addRoom); }}>
+        <Btn label="Ajouter une pièce" data={{ action: 'add-room' }} onClick={() => { reset(); resetScroll(); void library.update(addRoom); }}>
           <Icon paths={ICONS.plus} />
         </Btn>
       </div>

@@ -53,8 +53,16 @@ export function parseLibraryState(raw: unknown): LibraryState {
   if (!parsed.success) return createInitialState();
   const state = parsed.data;
   const ids = state.rooms.map((room) => room.id);
+  // Un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau (dans la même pièce) l'est aussi.
+  const rooms = state.rooms.map((room) => {
+    const seen = new Set<string>();
+    const unique = room.layout.filter((p) => !seen.has(p.id) && Boolean(seen.add(p.id)));
+    const deskIds = new Set(unique.filter((p) => p.kind === 'desk').map((p) => p.id));
+    return { ...room, layout: unique.filter((p) => p.kind !== 'computer' || deskIds.has(p.deskId)) };
+  });
   return {
     ...state,
+    rooms,
     activeRoomId: ids.includes(state.activeRoomId) ? state.activeRoomId : ids[0]!,
     homeRoomId: state.homeRoomId !== null && ids.includes(state.homeRoomId) ? state.homeRoomId : null,
   };

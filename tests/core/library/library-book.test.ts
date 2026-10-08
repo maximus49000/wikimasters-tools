@@ -163,6 +163,19 @@ describe('parseLibraryState', () => {
     expect(parseLibraryState(broken)).toEqual(createInitialState());
   });
 
+  it('retire un ordinateur sans bureau et les identifiants en double', () => {
+    const base = createInitialState();
+    const layout = [
+      { id: 'f1', kind: 'desk', col: 2, row: 9 },
+      { id: 'f1', kind: 'shelf', col: 8, row: 3 },
+      { id: 'f2', kind: 'computer', deskId: 'f1' },
+      { id: 'f3', kind: 'computer', deskId: 'inconnu' },
+    ];
+    const fixed = parseLibraryState({ ...base, rooms: [{ ...base.rooms[0]!, layout }] });
+    expect(fixed.rooms[0]!.layout.map((p) => p.id)).toEqual(['f1', 'f2']);
+    expect(fixed.rooms[0]!.layout[0]!.kind).toBe('desk');
+  });
+
   it("corrige une pièce active ou d'accueil inconnue", () => {
     const broken = { ...createInitialState(), activeRoomId: 'zzz', homeRoomId: 'yyy' };
     const fixed = parseLibraryState(broken);
