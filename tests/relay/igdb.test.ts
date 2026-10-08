@@ -77,6 +77,12 @@ describe('proxyIgdb', () => {
     expect(refused.status).toBe(502);
     expect(refused.body).not.toContain('SECRET-IGDB');
   });
+  it('répond 502 si Twitch répond 200 avec un corps qui n’est pas du JSON', async () => {
+    const state: TokenState = { current: null };
+    const fetchFn = vi.fn(async () => new Response('<html>', { status: 200 }));
+    const result = await proxyIgdb(detailQuery({ id: 1 }), { fetch: fetchFn, clientId: 'ID', clientSecret: 'S', state, now: () => 0 });
+    expect(result.status).toBe(502);
+  });
   it('transmet un 429 d’IGDB', async () => {
     const { run } = setup({ games: () => new Response('{}', { status: 429, headers: { 'retry-after': '2' } }) });
     expect(await run(detailQuery({ id: 1 }))).toEqual({ status: 429, body: '{}', retryAfter: '2' });

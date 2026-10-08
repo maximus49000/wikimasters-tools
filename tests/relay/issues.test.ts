@@ -38,6 +38,13 @@ describe('createIssue', () => {
       expect(fetchFn).not.toHaveBeenCalled();
     }
   });
+  it('neutralise les @mentions du titre et du corps, sans doubler celles déjà neutralisées', async () => {
+    const fetchFn = vi.fn(async (_url: string, _init?: RequestInit) => created());
+    await createIssue(JSON.stringify({ ...draft, title: 'Merci @octocat', body: '@octocat et @​deja' }), { fetch: fetchFn, token: 't' });
+    const sent = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body));
+    expect(sent.title).toBe('Merci @​octocat');
+    expect(sent.body).toBe('@​octocat et @​deja');
+  });
   it('ne transmet que title, body et labels', async () => {
     const fetchFn = vi.fn(async (_url: string, _init?: RequestInit) => created());
     await createIssue(JSON.stringify({ ...draft, assignees: ['x'], milestone: 1 }), { fetch: fetchFn, token: 't' });

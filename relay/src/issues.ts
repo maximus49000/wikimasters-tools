@@ -9,6 +9,9 @@ const TITLE_MAX = 200;
 const BODY_MAX = 8_000;
 const LABELS_MAX = 3;
 
+// Un « @pseudo » notifierait un compte GitHub : le relais neutralise lui-même, sans doubler ce que le client a déjà fait.
+const defuse = (text: string): string => text.replace(/@(?!​)/g, '@​');
+
 type Draft = { title: string; body: string; labels: string[] };
 
 function parseDraft(raw: string): Draft | null {
@@ -23,7 +26,7 @@ function parseDraft(raw: string): Draft | null {
   if (typeof title !== 'string' || title.length < 1 || title.length > TITLE_MAX) return null;
   if (typeof body !== 'string' || body.length > BODY_MAX) return null;
   if (!Array.isArray(labels) || labels.length < 1 || labels.length > LABELS_MAX || !labels.every((label) => typeof label === 'string' && ALLOWED_LABELS.has(label))) return null;
-  return { title, body, labels: labels as string[] };
+  return { title: defuse(title), body: defuse(body), labels: labels as string[] };
 }
 
 // Crée une issue de ce dépôt avec le jeton du relais (jamais celui d'un client). Seuls title, body et labels sont transmis.

@@ -15,7 +15,7 @@ function setup(hasBridge = true) {
 }
 
 describe('createNativeFetch', () => {
-  it('passe par le pont natif pour Steam et IGDB, et rend une Response', async () => {
+  it('passe par le pont natif pour Steam, et rend une Response', async () => {
     const { win, nativeFetch, fallback } = setup();
     const response = await nativeFetch('https://store.steampowered.com/api/appdetails?appids=1');
     expect(response.status).toBe(200);
@@ -26,8 +26,8 @@ describe('createNativeFetch', () => {
 
   it("transmet la méthode, les en-têtes et le corps d'une requête Steam", async () => {
     const { win, nativeFetch } = setup();
-    await nativeFetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/', { method: 'POST', headers: { 'Client-ID': 'x' }, body: 'fields id;' });
-    expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), 'https://api.steampowered.com/ISteamApps/GetAppList/v2/', 'POST', '{"Client-ID":"x"}', 'fields id;');
+    await nativeFetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/', { method: 'POST', headers: { Accept: 'application/json' }, body: 'appids=1' });
+    expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), 'https://api.steampowered.com/ISteamApps/GetAppList/v2/', 'POST', '{"Accept":"application/json"}', 'appids=1');
   });
 
   it('les autres adresses, ou sans pont, gardent le fetch normal', async () => {

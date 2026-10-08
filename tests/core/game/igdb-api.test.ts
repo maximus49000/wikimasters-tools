@@ -28,6 +28,12 @@ function setup(over: { games?: (body: string) => Response } = {}) {
 }
 
 describe('createIgdbApi', () => {
+  it('rend null sans appeler le relais pour un slug de forme inattendue', async () => {
+    const { api, fetch } = setup();
+    expect(await api.detail({ slug: 'Super Métroid !' })).toBeNull();
+    expect(await api.detail({ slug: '' })).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('lit un jeu par slug et le met au format commun', async () => {
     const { api, calls } = setup();
     const detail = await api.detail({ slug: 'super-metroid' });

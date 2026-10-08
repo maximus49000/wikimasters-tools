@@ -5,7 +5,7 @@ import { buildId, recentFixes } from './scripts/build-info.mjs';
 export default defineConfig({
   define: { 'process.env.NODE_ENV': '"production"', __WMT_FIXES__: JSON.stringify(recentFixes(process.cwd())), __WMT_BUILD__: JSON.stringify(buildId(process.cwd())) },
   // Aucune clé n'est lue : les secrets restent dans le relais (le contrôle `npm run verifier-secrets` le vérifie).
-  envPrefix: ['VITE_', 'WXT_'],
+  envPrefix: ['VITE_'],
   build: {
     lib: { entry: 'src/android/entry.ts', formats: ['iife'], name: 'WikimastersTools', fileName: () => 'wikimasters-overlay.js' },
     outDir: 'android/app/src/main/assets',

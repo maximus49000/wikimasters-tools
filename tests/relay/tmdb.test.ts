@@ -41,6 +41,13 @@ describe('proxyTmdb', () => {
     expect((await result).status).toBe(400);
     expect(fetchFn).not.toHaveBeenCalled();
   });
+  it('n’accepte que les valeurs exactes de append_to_response et include_video_language envoyées par le client', async () => {
+    for (const path of ['/tmdb/movie/1?append_to_response=credits', '/tmdb/movie/1?append_to_response=videos', '/tmdb/movie/1?include_video_language=fr', '/tmdb/movie/1?include_video_language=fr,en,null,de']) {
+      const { fetchFn, result } = run(path);
+      expect((await result).status).toBe(400);
+      expect(fetchFn).not.toHaveBeenCalled();
+    }
+  });
   it('répond 503 sans clé configurée', async () => {
     // Appel direct : la valeur par défaut de `run` remplacerait un `undefined` explicite.
     const fetchFn = vi.fn(async (_url: string) => new Response('{"id":1}', { status: 200 }));

@@ -62,6 +62,34 @@ describe('routes de transmission', () => {
     const response = await call('/issues', { method: 'POST', body: JSON.stringify({ title: 'Bug', body: 'x', labels: ['Nouveau'] }) });
     expect(await response.json()).toEqual({ ok: true, number: 9, url: 'https://github.com/o/r/issues/9' });
   });
+  it('une exception en route donne un 502 neutre qui garde les en-têtes CORS', async () => {
+    const broken = { ok: true, status: 200, headers: new Headers(), text: () => Promise.reject(new Error('coupé')) };
+    vi.stubGlobal('fetch', vi.fn(async () => broken));
+    const rejected = await call('/tmdb/movie/603');
+    expect(rejected.status).toBe(502);
+    expect(rejected.headers.get('access-control-allow-origin')).toBe('*');
+    vi.stubGlobal('fetch', vi.fn(() => { throw new Error('synchrone'); }));
+    const thrown = await call('/oembed?id=abcdefghijk');
+    expect(thrown.status).toBe(502);
+    expect(thrown.headers.get('access-control-allow-origin')).toBe('*');
+    expect(await thrown.json()).toEqual({ ok: false, reason: 'upstream' });
+  });
+  it('un corps sans content-length plus gros que la limite est refusé sans tout lire', async () => {
+    const upstream = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', upstream);
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new TextEncoder().encode('a'.repeat(4_000)));
+        if (pulled >= 100) controller.close();
+      },
+    });
+    const response = await call('/issues', { method: 'POST', body: stream, duplex: 'half' } as RequestInit);
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+    expect(pulled).toBeLessThan(100);
+  });
   it('répond 503 quand le secret manque', async () => {
     expect((await call('/tmdb/movie/1', {}, {})).status).toBe(503);
   });

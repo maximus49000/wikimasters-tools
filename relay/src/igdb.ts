@@ -31,8 +31,13 @@ async function token(deps: Deps, renew: boolean): Promise<string | null> {
     return null;
   }
   if (!response.ok) return null;
-  const data = (await response.json()) as { access_token?: unknown; expires_in?: unknown };
-  if (typeof data.access_token !== 'string' || typeof data.expires_in !== 'number') return null;
+  let data: { access_token?: unknown; expires_in?: unknown } | null;
+  try {
+    data = (await response.json()) as { access_token?: unknown; expires_in?: unknown } | null;
+  } catch {
+    return null;
+  }
+  if (!data || typeof data.access_token !== 'string' || typeof data.expires_in !== 'number') return null;
   deps.state.current = { token: data.access_token, expiresAt: deps.now() + data.expires_in * 1000 };
   return data.access_token;
 }

@@ -100,11 +100,26 @@ function limited(request: Request, route: keyof typeof LIMITS): Response | null 
   return verdict.ok ? null : new Response(JSON.stringify({ ok: false, reason: 'rate-limited' }), { status: 429, headers: { ...HEADERS, 'retry-after': String(verdict.retryAfterSec) } });
 }
 
-// Corps d'un POST : au plus MAX_BODY caractères, sinon null.
+// Corps d'un POST : au plus MAX_BODY octets, sinon null. Le flux est lu par morceaux et abandonné dès que la limite est dépassée
+// (le content-length, absent ou mensonger, ne suffit pas).
 async function readBody(request: Request): Promise<string | null> {
   if (Number(request.headers.get('content-length') ?? '0') > MAX_BODY) return null;
-  const body = await request.text();
-  return body.length > MAX_BODY ? null : body;
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  let bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > MAX_BODY) {
+      await reader.cancel();
+      return null;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
 }
 
 const net = (target: string, init?: RequestInit): Promise<Response> => fetch(target, init);
@@ -125,47 +140,57 @@ async function relay(request: Request, url: URL, env: Env): Promise<Response | n
   return null;
 }
 
+// Routes du Worker (hors préambule CORS).
+async function handle(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const relayedResponse = await relay(request, url, env);
+  if (relayedResponse) return relayedResponse;
+  if (url.pathname === '/' || url.pathname === '/ping') return json({ ok: true, service: 'wikimasters-tools' });
+  if (url.pathname === '/oembed') return oembed(url.searchParams.get('id') ?? '');
+  // Contrôle : avancement de l'index et présence (jamais la valeur) des réglages du Worker.
+  if (url.pathname === '/status') {
+    const config = {
+      youtubeKey: Boolean(env.YOUTUBE_API_KEY),
+      kv: Boolean(env.DOC_CACHE),
+      debugToken: Boolean(env.DEBUG_TOKEN),
+      tmdbKey: Boolean(env.TMDB_API_KEY),
+      igdb: Boolean(env.IGDB_CLIENT_ID) && Boolean(env.IGDB_CLIENT_SECRET),
+      issuesToken: Boolean(env.GITHUB_ISSUES_TOKEN),
+      booksKey: Boolean(env.GOOGLE_BOOKS_API_KEY),
+    };
+    return json({ ok: true, config, channels: env.DOC_CACHE ? await indexStatus(env.DOC_CACHE) : [] });
+  }
+  if (url.pathname === '/search') {
+    const parsed = parseSearchRequest(url.searchParams);
+    if (!parsed) return json({ ok: false, reason: 'bad-request' }, 400);
+    if (!env.YOUTUBE_API_KEY || !env.DOC_CACHE) return json({ ok: false, reason: 'upstream' }, 503);
+    const debug = env.DEBUG_TOKEN !== undefined && env.DEBUG_TOKEN !== '' && request.headers.get('x-debug') === env.DEBUG_TOKEN;
+    const result = await searchDocumentaries({ fetch: (target) => fetch(target), kv: env.DOC_CACHE, apiKey: env.YOUTUBE_API_KEY, now: () => new Date() }, { ...parsed, debug });
+    return json(result);
+  }
+  if (url.pathname === '/t' && request.method === 'POST') return collect(request, env);
+  if (url.pathname === '/stats') return statistics(request, env, url);
+  if (url.pathname === '/dashboard') {
+    return new Response(DASHBOARD_HTML, {
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+        'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+      },
+    });
+  }
+  return json({ ok: false, error: 'Route inconnue' }, 404);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: HEADERS });
-    const url = new URL(request.url);
-    const relayedResponse = await relay(request, url, env);
-    if (relayedResponse) return relayedResponse;
-    if (url.pathname === '/' || url.pathname === '/ping') return json({ ok: true, service: 'wikimasters-tools' });
-    if (url.pathname === '/oembed') return oembed(url.searchParams.get('id') ?? '');
-    // Contrôle : avancement de l'index et présence (jamais la valeur) des réglages du Worker.
-    if (url.pathname === '/status') {
-      const config = {
-        youtubeKey: Boolean(env.YOUTUBE_API_KEY),
-        kv: Boolean(env.DOC_CACHE),
-        debugToken: Boolean(env.DEBUG_TOKEN),
-        tmdbKey: Boolean(env.TMDB_API_KEY),
-        igdb: Boolean(env.IGDB_CLIENT_ID) && Boolean(env.IGDB_CLIENT_SECRET),
-        issuesToken: Boolean(env.GITHUB_ISSUES_TOKEN),
-        booksKey: Boolean(env.GOOGLE_BOOKS_API_KEY),
-      };
-      return json({ ok: true, config, channels: env.DOC_CACHE ? await indexStatus(env.DOC_CACHE) : [] });
+    // Toute exception inattendue devient un 502 neutre qui garde les en-têtes CORS (sans eux, le navigateur la lirait comme une panne réseau).
+    try {
+      return await handle(request, env);
+    } catch {
+      return json({ ok: false, reason: 'upstream' }, 502);
     }
-    if (url.pathname === '/search') {
-      const parsed = parseSearchRequest(url.searchParams);
-      if (!parsed) return json({ ok: false, reason: 'bad-request' }, 400);
-      if (!env.YOUTUBE_API_KEY || !env.DOC_CACHE) return json({ ok: false, reason: 'upstream' }, 503);
-      const debug = env.DEBUG_TOKEN !== undefined && env.DEBUG_TOKEN !== '' && request.headers.get('x-debug') === env.DEBUG_TOKEN;
-      const result = await searchDocumentaries({ fetch: (target) => fetch(target), kv: env.DOC_CACHE, apiKey: env.YOUTUBE_API_KEY, now: () => new Date() }, { ...parsed, debug });
-      return json(result);
-    }
-    if (url.pathname === '/t' && request.method === 'POST') return collect(request, env);
-    if (url.pathname === '/stats') return statistics(request, env, url);
-    if (url.pathname === '/dashboard') {
-      return new Response(DASHBOARD_HTML, {
-        headers: {
-          'content-type': 'text/html; charset=utf-8',
-          'cache-control': 'no-store',
-          'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'",
-        },
-      });
-    }
-    return json({ ok: false, error: 'Route inconnue' }, 404);
   },
 
   // Toutes les 30 minutes : avance l'index des chaînes de confiance (voir `wrangler.toml`, `crons`).

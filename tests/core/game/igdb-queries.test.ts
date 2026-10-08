@@ -15,6 +15,9 @@ describe('requêtes IGDB', () => {
     expect(long).toContain(`search "${'a'.repeat(100)}";`);
     expect(isAllowedQuery(long)).toBe(true);
     expect(isAllowedQuery(searchQuery(`${'a'.repeat(99)} ${'b'.repeat(50)}`))).toBe(true);
-    expect(isAllowedQuery(searchQuery('Super "Metroid"; x\y'))).toBe(true);
+    const withBackslash = searchQuery('Super "Metroid"; x\\y');
+    expect(withBackslash).not.toContain('\\');
+    expect(withBackslash).toContain('search "Super  Metroid   x y";');
+    expect(isAllowedQuery(withBackslash)).toBe(true);
   });
 });

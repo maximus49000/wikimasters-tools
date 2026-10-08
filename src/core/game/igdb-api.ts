@@ -75,6 +75,8 @@ export function createIgdbApi(deps: { fetch: GameFetch; sleep?: (ms: number) => 
 
   return {
     async detail(by: { id: number } | { slug: string }): Promise<GameDetail | null> {
+      // Un slug de forme inattendue serait refusé par le relais (400) et sauterait le repli par recherche de titre.
+      if ('slug' in by && !/^[\w.-]{1,120}$/.test(by.slug)) return null;
       const [game] = await query(detailQuery(by));
       return game ? toDetail(game) : null;
     },

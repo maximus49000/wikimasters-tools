@@ -8,8 +8,9 @@ const PATHS = [/^\/movie\/\d{1,9}$/, /^\/tv\/\d{1,9}$/, /^\/person\/\d{1,9}\/com
 const PARAMS = new Map<string, (value: string) => boolean>([
   ['language', (value) => /^[a-z]{2}(?:-[A-Z]{2})?$/.test(value)],
   ['query', (value) => value.length >= 1 && value.length <= 200],
-  ['append_to_response', (value) => /^[a-z/_,]{1,60}$/.test(value)],
-  ['include_video_language', (value) => /^[a-z,]{1,20}$/.test(value)],
+  // Valeurs exactes envoyées par le client (tmdb-api.ts) : rien d'autre ne passe.
+  ['append_to_response', (value) => value === 'videos,watch/providers'],
+  ['include_video_language', (value) => value === 'fr,en,null'],
 ]);
 
 export async function proxyTmdb(url: URL, deps: { fetch: Fetcher; apiKey: string | undefined }): Promise<ProxyResult> {

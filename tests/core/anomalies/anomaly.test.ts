@@ -48,7 +48,17 @@ describe('createAnomalyReporter', () => {
   });
   it('signale un refus du relais avec son code', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 429 }));
-    expect(await createAnomalyReporter({ fetch }).report(input)).toEqual({ ok: false, error: expect.stringContaining('429') });
+    expect(await createAnomalyReporter({ fetch }).report(input)).toEqual({ ok: false, error: 'Trop d’envois pour le moment, réessayez plus tard.' });
+  });
+  it('signale les autres refus avec leur code', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 400 }));
+    expect(await createAnomalyReporter({ fetch }).report(input)).toEqual({ ok: false, error: 'L’envoi a été refusé (code 400).' });
+  });
+  it('borne le titre à 200 caractères et le corps à 8000 pour rester dans les limites du relais', () => {
+    const issue = buildIssue({ ...input, description: 'a'.repeat(9_000), name: null });
+    expect(issue.title.length).toBeLessThanOrEqual(200);
+    expect(issue.body.length).toBeLessThanOrEqual(8_000);
+    expect(issue.body.endsWith('…')).toBe(true);
   });
   it('signale une panne réseau', async () => {
     const fetch = vi.fn().mockRejectedValue(new Error('offline'));
