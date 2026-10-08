@@ -32,10 +32,10 @@ describe('historyKindOf', () => {
     for (const nature of ['Q178561', 'Q56242215', 'Q3241045', 'Q381885', 'Q21484471', 'Q515', 'Q16521']) expect(historyKindOf(kinds([nature]), null), nature).toBe('event');
     expect(historyKindOf(kinds([]), null)).toBe('event');
   });
-  it('un humain n’est retenu que mort avant 1970', () => {
-    expect(historyKindOf(kinds(['Q5']), 1821)).toBe('person');
-    expect(historyKindOf(kinds(['Q5']), 1969)).toBe('person');
-    expect(historyKindOf(kinds(['Q5']), 1970)).toBeNull();
+  it('une personne n’est retenue qu’une fois décédée, quelle que soit l’année (Goya, Picasso, Miró)', () => {
+    expect(historyKindOf(kinds(['Q5']), 1828)).toBe('person');
+    expect(historyKindOf(kinds(['Q5']), 1973)).toBe('person');
+    expect(historyKindOf(kinds(['Q5']), 2012)).toBe('person');
     expect(historyKindOf(kinds(['Q5']), null)).toBeNull();
   });
   it('jamais une carte qui a déjà sa propre fiche, une page d’homonymie ou une carte inconnue', () => {

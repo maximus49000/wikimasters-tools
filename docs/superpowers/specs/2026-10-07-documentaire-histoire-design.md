@@ -71,7 +71,7 @@ Décision du 2026-10-08 : la recherche est **large**. Une liste de natures ou de
 
 `historyKindOf(kinds, deathYear)` (`src/core/documentary/history-kinds.ts`) :
 - **Tout sujet qui n'est pas une personne** est retenu, sans condition de nature ni de date (événement, œuvre, monument, épidémie, civilisation, culte, espèce, lieu…).
-- **Personnes** : humain mort avant 1970, quel que soit le métier ; les vivants et les décès plus récents sont exclus.
+- **Personnes** : toute personne décédée (décision du 2026-10-08, après constat que Picasso, Dalí et Miró étaient exclus), quel que soit le métier ; les vivants et les personnes sans date de décès sont exclus.
 - **Exclus** : les cartes qui ont déjà leur propre fiche (film, série, jeu vidéo, livre, morceau) et les pages d'homonymie.
 - Quota : chaque nouvelle carte ouverte peut déclencher une recherche (101 unités sur 9 000 par jour) ; le cache partagé et l'index des chaînes limitent la dépense.
 
