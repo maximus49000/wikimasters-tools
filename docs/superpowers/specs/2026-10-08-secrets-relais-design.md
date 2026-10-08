@@ -45,7 +45,7 @@ Chaque module est un fichier de `relay/src/` avec une fonction pure testable par
 
 ### Limite de débit
 
-- Par IP (`cf-connecting-ip`) : `/tmdb` 300 par minute, `/igdb` 120 par minute, `/books` 60 par minute, `/issues` 5 par heure (la grille lance une recherche d’affiche par carte et le client IGDB s’espace déjà à ~230 appels par minute). Dépassement : 429 avec `Retry-After`.
+- Par IP (`cf-connecting-ip`) : `/tmdb` 300 par minute, `/igdb` 240 par minute, `/books` 60 par minute, `/issues` 5 par heure (la grille lance une recherche d’affiche par carte et le client IGDB s’espace déjà à ~230 appels par minute). Dépassement : 429 avec `Retry-After`.
 - Implémentation : compteurs en mémoire du Worker (fenêtre fixe par route et par IP). Ils sont par isolat et se remettent à zéro quand l’isolat est recyclé : c’est un filtre contre l’usage abusif, pas une garantie. La liaison native `ratelimits` (période 10 ou 60 s seulement, disponibilité sur l’offre gratuite non confirmée par la documentation) est écartée pour ne pas risquer un échec de déploiement.
 
 ### CORS et configuration

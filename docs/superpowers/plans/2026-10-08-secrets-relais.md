@@ -14,7 +14,7 @@
 
 - Les secrets Cloudflare sont **déjà posés** (2026-10-08) : `TMDB_API_KEY`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `GITHUB_ISSUES_TOKEN`, `GOOGLE_BOOKS_API_KEY`. Ne jamais afficher, journaliser ni commiter une valeur de secret ; ne jamais lire `.env.local` autrement que pour la vérification de la tâche 9 (qui n'imprime que des noms).
 - Pas de cache côté relais (l'API Cache ne fonctionne pas sur `workers.dev`) ; pas de nouveau binding dans `wrangler.toml`.
-- Limites de débit par IP et par route (compteurs en mémoire) : `/tmdb` 300 par minute, `/igdb` 120 par minute, `/books` 60 par minute, `/issues` 5 par heure. (Relevées par rapport à la spec : la grille lance une recherche d'affiche par carte et le client IGDB s'espace déjà à ~230 appels par minute ; 60/20 aurait bloqué l'usage normal.)
+- Limites de débit par IP et par route (compteurs en mémoire) : `/tmdb` 300 par minute, `/igdb` 240 par minute, `/books` 60 par minute, `/issues` 5 par heure. (Relevées par rapport à la spec : la grille lance une recherche d'affiche par carte et le client IGDB s'espace déjà à ~230 appels par minute ; 60/20 aurait bloqué l'usage normal.)
 - Les anciennes clés ne sont pas révoquées (décision de l'utilisateur) : le relais reste additif, les anciens paquets continuent de marcher.
 - Les textes visibles et les commentaires sont en français, comme le reste du code ; imiter la densité de commentaires existante.
 - Tests : `npx vitest run <fichier>` ; avant chaque commit de fin de tâche, le fichier de test de la tâche passe. Contrôle global en tâche 9 : `npm test`, `npm run typecheck`, `npm run build`.
@@ -870,7 +870,7 @@ const HEADERS = {
 
 ```ts
 // Limites par adresse (compteurs en mémoire, voir limiter.ts) : [nombre d'appels, fenêtre en ms].
-const LIMITS = { tmdb: [300, 60_000], igdb: [120, 60_000], books: [60, 60_000], issues: [5, 3_600_000] } as const;
+const LIMITS = { tmdb: [300, 60_000], igdb: [240, 60_000], books: [60, 60_000], issues: [5, 3_600_000] } as const;
 const limiter = createLimiter(() => Date.now());
 const igdbToken: TokenState = { current: null };
 
