@@ -37,7 +37,7 @@ L'application Spotify partagée est en « mode développement » : 25 utilisateu
 
 ### Interface — `PlayerSettings.tsx` (extension et mobile, même composant)
 Sous Spotify, avant la zone « Compte » :
-- **Sans clé** : champ + « Enregistrer » (glyphe), indication écrite « Menu Plus › WikiHow › Utiliser sa propre clé Spotify » (pas de lien direct), liste des **Redirect URIs à déclarer** avec bouton « copier » (extension : `browser.identity.getRedirectURL()` ; APK : `wikimasterstools://spotify`). « Lier Spotify » désactivé avec la mention « Ajoutez d'abord votre clé ».
+- **Sans clé** : champ + « Enregistrer » (glyphe), lien « Mode d'emploi : créer ma clé » (visite guidée en texte seul, lancée par-dessus la fenêtre), liste des **Redirect URIs à déclarer** avec bouton « copier » (extension : `browser.identity.getRedirectURL()` ; APK : `wikimasterstools://spotify`). « Lier Spotify » désactivé avec la mention « Ajoutez d'abord votre clé ».
 - **Clé enregistrée** : clé affichée tronquée (8 premiers et 9 derniers caractères), « Remplacer » et « Effacer ». « Lier / Délier » comme aujourd'hui.
 - **Remplacer / Effacer avec compte lié** : avertissement + « Annuler » / « Remplacer et délier ». Sans compte lié, application immédiate.
 - Clé invalide : message sous le champ, rien n'est enregistré.

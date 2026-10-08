@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, React 18, Vitest (+ jsdom), WXT (extension), Vite (APK).
 
-**Spec:** `docs/superpowers/specs/2026-10-08-spotify-cle-personnelle-design.md` (écart décidé au plan : le « Mode d'emploi » est une indication écrite « Plus › WikiHow › Utiliser sa propre clé Spotify », pas un lien).
+**Spec:** `docs/superpowers/specs/2026-10-08-spotify-cle-personnelle-design.md` (décision au plan : le lien « Mode d'emploi » est dans la fenêtre de saisie et lance la visite guidée de l'étape `SPOTIFY_KEY_GUIDE`, en texte seul, par-dessus la fenêtre « Lecteur »).
 
 ## Global Constraints
 
@@ -314,13 +314,13 @@ git commit -m "feat(spotify): la session utilise la clé personnelle, la change 
 
 **Files:**
 - Modify: `src/content/music-registry.ts`
-- Modify: `src/app/overlay.ts` (autour des lignes 535-600)
+- Modify: `src/app/overlay.ts` (autour des lignes 535-600 ; import de `startTour` depuis `../content/tour-instance` et de `SPOTIFY_KEY_GUIDE` depuis `../core/whats-new/entries`)
 - Modify: `src/content/Glyphs.tsx` (4 glyphes)
 - Test: `tests/content/music-registry.test.ts` (nouveau)
 
 **Interfaces:**
 - Consumes: session (tâche 2), `migrateClientId` (tâche 1).
-- Produces: type `SpotifyKeyControl = { clientId(): Promise<string | null>; setClientId(value: string): Promise<'saved' | 'invalid' | 'unlinked' | 'same'>; clearClientId(): Promise<void>; redirectUris(): Promise<string[]>; subscribe(listener: () => void): () => void }` ; `setSpotifyKey(next: SpotifyKeyControl | null)`, `getSpotifyKey(): SpotifyKeyControl | null` ; glyphes `copy`, `trash`, `edit`, `save`.
+- Produces: type `SpotifyKeyControl = { clientId(): Promise<string | null>; setClientId(value: string): Promise<'saved' | 'invalid' | 'unlinked' | 'same'>; clearClientId(): Promise<void>; redirectUris(): Promise<string[]>; openGuide(): void; subscribe(listener: () => void): () => void }` ; `setSpotifyKey(next: SpotifyKeyControl | null)`, `getSpotifyKey(): SpotifyKeyControl | null` ; glyphes `copy`, `trash`, `edit`, `save`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -360,6 +360,8 @@ export type SpotifyKeyControl = {
   clearClientId(): Promise<void>;
   // Adresses de retour à déclarer chez Spotify (Redirect URI).
   redirectUris(): Promise<string[]>;
+  // Lance le mode d'emploi (visite guidée en texte seul) ; la fenêtre « Lecteur » reste ouverte dessous.
+  openGuide(): void;
   subscribe(listener: () => void): () => void;
 };
 let spotifyKey: SpotifyKeyControl | null = null;
@@ -381,6 +383,7 @@ export const getSpotifyKey = (): SpotifyKeyControl | null => spotifyKey;
         setClientId: (value) => session.setClientId(value),
         clearClientId: () => session.clearClientId(),
         redirectUris: async () => [await spotify.redirectUri()],
+        openGuide: () => startTour([SPOTIFY_KEY_GUIDE]),
         subscribe: (listener) => session.subscribe(listener),
       });
 ```
@@ -436,7 +439,7 @@ git commit -m "feat(spotify): contrôle de la clé branché sur la surcouche, mi
 - Consumes: `getSpotifyKey`, `SpotifyKeyControl` (tâche 3), `normalizeClientId` (tâche 1), glyphes `copy trash edit save` (tâche 3).
 - Produces: `useSpotifyKey(): { control: SpotifyKeyControl | null; key: string | null | undefined }` (`undefined` = chargement) ; `SpotifyKeySettings({ linked }: { linked: boolean })`.
 
-Libellés d'accessibilité utilisés par les tests (à respecter à l'identique) : `Enregistrer ma clé Spotify`, `Remplacer ma clé Spotify`, `Effacer ma clé Spotify`, `Annuler`, `Remplacer et délier`, `Effacer et délier`, `Copier l’adresse de retour`. Champ : `<input aria-label="Clé Spotify (Client ID)">`.
+Libellés d'accessibilité utilisés par les tests (à respecter à l'identique) : `Ouvrir le mode d’emploi`, `Enregistrer ma clé Spotify`, `Remplacer ma clé Spotify`, `Effacer ma clé Spotify`, `Annuler`, `Remplacer et délier`, `Effacer et délier`, `Copier l’adresse de retour`. Champ : `<input aria-label="Clé Spotify (Client ID)">`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -478,6 +481,7 @@ function serve(initial: string | null) {
       notify();
     }),
     redirectUris: vi.fn(async () => ['https://abc.chromiumapp.org/spotify', 'wikimasterstools://spotify']),
+    openGuide: vi.fn(),
     subscribe: (l: () => void) => (listeners.add(l), () => void listeners.delete(l)),
   };
   setSpotifyKey(control as unknown as SpotifyKeyControl);
@@ -516,12 +520,13 @@ afterEach(async () => {
 });
 
 describe('clé Spotify dans le Lecteur', () => {
-  it('sans clé : champ, adresses à déclarer, mode d’emploi ; Lier explique au lieu de lier', async () => {
-    const { link } = serve(null);
+  it('sans clé : champ, adresses à déclarer, lien vers le mode d’emploi ; Lier explique au lieu de lier', async () => {
+    const { link, control } = serve(null);
     await render(false);
     expect(field()).not.toBeNull();
     expect(text()).toContain('wikimasterstools://spotify');
-    expect(text()).toContain('WikiHow');
+    await press(byLabel('Ouvrir le mode d’emploi'));
+    expect(control.openGuide).toHaveBeenCalledTimes(1);
     await press(byLabel('Lier Spotify'));
     expect(link).not.toHaveBeenCalled();
     expect(text()).toContain('Ajoutez d’abord votre clé');
@@ -547,6 +552,15 @@ describe('clé Spotify dans le Lecteur', () => {
     expect(text()).toContain('30d88341…70849cb');
     await press(byLabel('Lier Spotify'));
     expect(link).toHaveBeenCalledTimes(1);
+  });
+
+  it('le mode d’emploi reste accessible pendant un remplacement de clé', async () => {
+    const { control } = serve(KEY);
+    await render(false);
+    expect(byLabel('Ouvrir le mode d’emploi')).toBeNull();
+    await press(byLabel('Remplacer ma clé Spotify'));
+    await press(byLabel('Ouvrir le mode d’emploi'));
+    expect(control.openGuide).toHaveBeenCalledTimes(1);
   });
 
   it('compte non lié : remplacer et effacer s’appliquent tout de suite', async () => {
@@ -747,11 +761,9 @@ export function SpotifyKeySettings({ linked }: { linked: boolean }) {
               {key && <Btn label="Annuler" onClick={reset} text="Annuler" />}
             </div>
           )}
-          {key === null && (
-            <p style={{ margin: '8px 0 0', fontSize: 12, opacity: 0.8 }}>
-              Pas de clé ? Menu Plus › WikiHow › « Utiliser sa propre clé Spotify » explique comment la créer.
-            </p>
-          )}
+          <div style={{ display: 'flex', marginTop: 8 }}>
+            <Btn label="Ouvrir le mode d’emploi" glyph="book" text="Mode d’emploi : créer ma clé" onClick={() => control.openGuide()} />
+          </div>
           <p style={{ margin: '12px 0 4px', fontSize: 12, opacity: 0.8 }}>À déclarer chez Spotify (Redirect URI) :</p>
           {uris.map((uri) => (
             <div key={uri} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, padding: '4px 4px 4px 10px', border, borderRadius: 8 }}>
@@ -831,22 +843,24 @@ git commit -m "feat(spotify): saisie, remplacement et effacement de la clé dans
 ### Task 5: Mode d'emploi WikiHow
 
 **Files:**
-- Modify: `src/core/whats-new/entries.ts` (fiche `ecouter`, ligne ~307)
+- Modify: `src/core/whats-new/entries.ts` (fiche `ecouter`, ligne ~307 ; nouvelle constante exportée `SPOTIFY_KEY_GUIDE`)
 - Test: `tests/core/whats-new/entries.test.ts` (ajout)
 
 **Interfaces:**
-- Consumes: rien. Produces: fiche `ecouter-v2` (nouvel id : elle est annoncée dans « Quoi de neuf »).
+- Consumes: rien. Produces: fiche `ecouter-v2` (nouvel id : elle est annoncée dans « Quoi de neuf ») et `export const SPOTIFY_KEY_GUIDE: TourStep` (étape en texte seul : `target: null`, sans `scene`, pour pouvoir être lancée seule depuis la fenêtre « Lecteur »).
 
 - [ ] **Step 1: Write the failing test**
 
-Ajouter dans `tests/core/whats-new/entries.test.ts` :
+Ajouter dans `tests/core/whats-new/entries.test.ts` (importer `SPOTIFY_KEY_GUIDE` avec `ENTRIES`) :
 
 ```ts
   it('explique comment utiliser sa propre clé Spotify (fiche écoute à jour, ancien id retiré)', () => {
     expect(ENTRIES.some((e) => e.id === 'ecouter')).toBe(false);
     const entry = ENTRIES.find((e) => e.id === 'ecouter-v2');
     const step = entry?.steps.find((s) => s.title === 'Utiliser sa propre clé Spotify');
-    expect(step).toBeDefined();
+    expect(step).toBe(SPOTIFY_KEY_GUIDE);
+    expect(step?.target).toBeNull();
+    expect(step?.scene).toBeUndefined();
     const all = (step?.details ?? []).map((d) => d.text).join(' ') + ' ' + (step?.text ?? '');
     for (const word of ['developer.spotify.com', 'Redirect URI', 'Client ID', 'User Management', '25']) expect(all, word).toContain(word);
   });
@@ -859,11 +873,11 @@ Expected: FAIL.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Dans `entries.ts`, changer `id: 'ecouter',` en `id: 'ecouter-v2',` et ajouter, à la suite de l'étape « Lier votre compte, choisir la plateforme » (après sa fermeture `},`), l'étape :
+Dans `entries.ts`, avant `export const ENTRIES`, ajouter la constante ci-dessous (importer le type `TourStep` : `import type { Entry, TourStep } from './types';`), puis changer `id: 'ecouter',` en `id: 'ecouter-v2',` et insérer `SPOTIFY_KEY_GUIDE,` à la suite de l'étape « Lier votre compte, choisir la plateforme » (après sa fermeture `},`) :
 
 ```ts
-      {
-        target: '[data-wmt-extension-setting]',
+export const SPOTIFY_KEY_GUIDE: TourStep = {
+        target: null,
         title: 'Utiliser sa propre clé Spotify',
         text: 'Spotify limite l’application partagée à quelques utilisateurs : chacun crée sa propre application Spotify, gratuite, et colle son Client ID dans Paramètre d’extension, puis Lecteur.',
         details: [
@@ -871,8 +885,7 @@ Dans `entries.ts`, changer `id: 'ecouter',` en `id: 'ecouter-v2',` et ajouter, �
           { label: 'Limites', text: 'Une application Spotify en mode développement accepte 25 utilisateurs au plus, que vous ajoutez à la main. Lancer la lecture demande Spotify Premium. Spotify peut aussi demander de patienter : l’extension affiche alors l’heure de reprise.' },
           { label: 'Ce que devient votre clé', text: 'La clé reste sur votre appareil et n’est jamais envoyée ailleurs. « Délier » la conserve. En changer ou l’effacer délie votre compte, qu’il faudra lier de nouveau. Si vous étiez déjà lié avant cette mise à jour, votre clé est déjà enregistrée.' },
         ],
-        scene: { reveal: [{ text: 'Plus' }] },
-      },
+      };
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
