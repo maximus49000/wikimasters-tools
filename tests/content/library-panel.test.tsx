@@ -54,7 +54,7 @@ describe('LibraryPanel', () => {
   it('pose une étagère au sol puis la retire', async () => {
     await click('[data-action="edit"]');
     await click('[data-kind="shelf"]');
-    await click('[data-cell="3-10"]');
+    await click('[data-cell="3-13"]');
     expect(q('[data-furniture="shelf"]')).not.toBeNull();
     await click('[data-furniture="shelf"]');
     await click('[data-action="remove"]');
@@ -64,7 +64,7 @@ describe('LibraryPanel', () => {
   it('refuse un meuble posé sur le mur et le dit', async () => {
     await click('[data-action="edit"]');
     await click('[data-kind="shelf"]');
-    await click('[data-cell="3-8"]');
+    await click('[data-cell="3-11"]');
     expect(q('[data-furniture]')).toBeNull();
     expect(q('[role="status"]')?.textContent).toContain('sol');
   });
@@ -72,7 +72,7 @@ describe('LibraryPanel', () => {
   it("pose un ordinateur sur un bureau, une seule fois", async () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
-    await click('[data-cell="2-11"]');
+    await click('[data-cell="2-14"]');
     await click('[data-kind="computer"]');
     await click('[data-furniture="desk"]');
     expect(q('[data-furniture="computer"]')).not.toBeNull();
@@ -85,12 +85,12 @@ describe('LibraryPanel', () => {
   it("garde le même aménagement dans les deux orientations, avec une fenêtre différente", async () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
-    await click('[data-cell="2-11"]');
+    await click('[data-cell="2-14"]');
     const width = () => (q('svg[role="img"]') as unknown as SVGElement).style.width;
     expect(width()).toBe('100%');
     await click('[data-orient="portrait"]');
     expect(q('[data-furniture="desk"]')).not.toBeNull();
-    expect(width().startsWith('171.4')).toBe(true);
+    expect(width().startsWith('150')).toBe(true);
     await click('[data-orient="landscape"]');
     expect(q('[data-furniture="desk"]')).not.toBeNull();
     expect(width()).toBe('100%');
@@ -98,17 +98,17 @@ describe('LibraryPanel', () => {
 
   it('agrandit la pièce à droite, puis la réduit', async () => {
     await click('[data-action="edit"]');
-    expect(q('[data-cell="30-10"]')).toBeNull();
+    expect(q('[data-cell="30-13"]')).toBeNull();
     await click('[data-action="extend-right"]');
-    expect(q('[data-cell="30-10"]')).not.toBeNull();
+    expect(q('[data-cell="30-13"]')).not.toBeNull();
     await click('[data-action="shrink-right"]');
-    expect(q('[data-cell="30-10"]')).toBeNull();
+    expect(q('[data-cell="30-13"]')).toBeNull();
   });
 
   it('agrandit la pièce à gauche en décalant les meubles', async () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
-    await click('[data-cell="2-11"]');
+    await click('[data-cell="2-14"]');
     await click('[data-action="extend-left"]');
     expect(repo.current()?.rooms[0]?.layout[0]).toMatchObject({ kind: 'desk', col: 14 });
   });
@@ -116,7 +116,7 @@ describe('LibraryPanel', () => {
   it('agrandit puis réduit à gauche : colonnes et meuble reviennent à leur valeur', async () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
-    await click('[data-cell="2-11"]');
+    await click('[data-cell="2-14"]');
     await click('[data-action="extend-left"]');
     expect(repo.current()?.rooms[0]?.cols).toBe(36);
     await click('[data-action="shrink-left"]');
@@ -160,7 +160,7 @@ describe('LibraryPanel', () => {
     await click('[data-action="edit"]');
     await click('[data-action="extend-right"]');
     await click('[data-kind="desk"]');
-    await click('[data-cell="2-11"]');
+    await click('[data-cell="2-14"]');
     await click('[data-action="delete-room"]');
     const room = repo.current()?.rooms[0];
     expect(repo.current()?.rooms).toHaveLength(1);
@@ -172,7 +172,7 @@ describe('LibraryPanel', () => {
     await click('[data-action="edit"]');
     await click('[data-action="extend-right"]');
     await click('[data-kind="desk"]');
-    await click('[data-cell="2-11"]');
+    await click('[data-cell="2-14"]');
     await click('[data-action="shrink-left"]');
     expect(q('[role="status"]')?.textContent).toContain('meubles');
     expect(repo.current()?.rooms[0]?.cols).toBe(36);
@@ -184,7 +184,7 @@ describe('LibraryPanel', () => {
     expect(q('[role="status"]')?.textContent).toContain('24');
     await click('[data-action="extend-right"]');
     await click('[data-kind="shelf"]');
-    await click('[data-cell="30-10"]');
+    await click('[data-cell="30-13"]');
     await click('[data-action="shrink-right"]');
     expect(q('[role="status"]')?.textContent).toContain('meubles');
     expect(repo.current()?.rooms[0]?.cols).toBe(36);

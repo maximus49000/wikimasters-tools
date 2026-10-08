@@ -834,4 +834,81 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v5',
+    theme: 'collection',
+    glyph: '🛋️',
+    title: 'Meubler la Bibliothèque',
+    summary: 'Canapé, plantes, tapis… et une pièce plus grande',
+    steps: [
+      {
+        target: '[data-wmt-view="library"]',
+        title: 'Ouvrir une pièce de la Bibliothèque',
+        text: 'Le bouton livre, parmi les vues de la Collection, ouvre vos pièces : c’est là que se posent les meubles.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le bouton livre, puis choisissez la pièce à meubler.' },
+          { label: 'À quoi ça sert', text: 'À composer une vraie pièce autour de vos cartes. Tout reste sur cet appareil : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Passer en mode Aménager',
+        text: 'Le crayon passe en mode Aménager : c’est lui qui montre les boutons pour poser, déplacer et retirer les meubles.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
+          { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-category="seats"]',
+        title: 'Choisir un meuble par catégorie',
+        text: 'En mode Aménager, quatre boutons (Rangement, Assises, Animaux, Déco) ouvrent chacun la liste de leurs meubles : canapé, fauteuil, panier, plantes, tapis, table basse…',
+        gesture: 'tap',
+        details: [
+          { label: 'À quoi ça sert', text: 'Aménager une vraie pièce, avec de quoi s’asseoir, ranger et décorer, au lieu de simples étagères.' },
+          { label: 'Comment faire', text: 'Touchez la catégorie, puis le meuble, puis une case du sol : la case touchée est le coin bas gauche du meuble. Un appui long sur un meuble, un tapis ou un petit objet le soulève : glissez-le, puis relâchez pour le déplacer.' },
+          { label: 'Limites', text: 'Un meuble au sol ne se chevauche pas avec un autre, et il doit avoir son bas posé sur le sol (pas sur le mur).' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-category="deco"]',
+        title: 'Un tapis sous les meubles',
+        text: 'Le tapis se pose sur le sol et laisse poser n’importe quel meuble par-dessus : canapé, table basse, bureau…',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Déco, puis le tapis, puis une case du sol. Ensuite, posez un meuble sur le tapis comme d’habitude.' },
+          { label: 'À savoir', text: 'Deux tapis ne se chevauchent pas. Un meuble peut être posé sur un tapis, ou un tapis sous un meuble déjà là.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-category="deco"]',
+        title: 'Des petits objets sur un bureau ou une étagère',
+        text: 'La petite plante et la petite lampe se posent sur un bureau ou sur le dessus d’une étagère : on touche l’objet, puis le meuble porteur.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez la petite plante ou la petite lampe, puis le bureau ou l’étagère : l’objet prend le premier emplacement libre. Pour en changer, faites un appui long sur le petit objet et glissez-le vers un autre bureau ou une autre étagère : il prend là aussi le premier emplacement libre.' },
+          { label: 'Limites', text: '4 emplacements sur un bureau (l’ordinateur couvre ceux du milieu), 3 sur le dessus d’une étagère. Retirer le meuble retire ce qui est posé dessus, après confirmation.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Une pièce plus grande',
+        text: 'La pièce a maintenant plus de sol (6 lignes) et plus de hauteur, pour y loger tous ces meubles.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Rien à faire : ouvrez une pièce, elle est déjà plus grande. Le crayon vous laisse ensuite meubler tout ce nouvel espace.' },
+          { label: 'À savoir', text: 'Vos anciennes pièces sont conservées : tout est simplement descendu pour laisser de la place devant.' },
+          { label: 'D’où viennent les données', text: 'Tout reste sur cet appareil avec la pièce : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+    ],
+  },
 ];

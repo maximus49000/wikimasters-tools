@@ -18,10 +18,10 @@ import { pxRect, shelfSlots } from '../../src/core/library/room-grid';
 const room: Room = {
   id: 'r1', name: 'Pièce 1', style: 'scandinave', orientation: 'landscape', cols: 24,
   layout: [
-    { id: 'f1', kind: 'shelf', col: 0, row: 4 },
+    { id: 'f1', kind: 'shelf', col: 0, row: 7 },
     { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },
-    { id: 'f3', kind: 'wall', shape: 'poster', col: 10, row: 1, slug: 'Paris' },
-    { id: 'f4', kind: 'wall', shape: 'vinyl', col: 14, row: 1, slug: 'Inconnue' },
+    { id: 'f3', kind: 'wall', shape: 'poster', col: 10, row: 4, slug: 'Paris' },
+    { id: 'f4', kind: 'wall', shape: 'vinyl', col: 14, row: 4, slug: 'Inconnue' },
   ],
 };
 
@@ -80,10 +80,10 @@ describe('dessin détaillé', () => {
   const full: Room = {
     ...room,
     layout: [
-      { id: 'f1', kind: 'shelf', col: 0, row: 4 },
+      { id: 'f1', kind: 'shelf', col: 0, row: 7 },
       { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },
-      { id: 'f3', kind: 'wall', shape: 'poster', col: 10, row: 1, slug: 'Paris' },
-      { id: 'd1', kind: 'desk', col: 14, row: 8 },
+      { id: 'f3', kind: 'wall', shape: 'poster', col: 10, row: 4, slug: 'Paris' },
+      { id: 'd1', kind: 'desk', col: 14, row: 11 },
       { id: 'c1', kind: 'computer', deskId: 'd1', slug: 'Paris' },
     ],
   };
@@ -176,12 +176,12 @@ describe('LibraryPanel : cartes', () => {
     await pickCard('Paris');
     await click('[data-target="wall"]');
     await click('[data-shape="poster"]');
-    await click('[data-cell="5-6"]');
+    await click('[data-cell="5-9"]');
     expect(layoutNow().find((p) => p.kind === 'wall')).toMatchObject({ slug: 'Paris', shape: 'poster' });
   });
 
   it('range une carte sur une étagère à l’emplacement 0', async () => {
-    await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 4 }]);
+    await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 7 }]);
     await click('[data-action="edit"]');
     await pickCard('Paris');
     await click('[data-target="shelf"]');
@@ -191,7 +191,7 @@ describe('LibraryPanel : cartes', () => {
   });
 
   it('toucher une carte déjà rangée pendant la pose sur une étagère vise son étagère', async () => {
-    await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 4 }, { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' }]);
+    await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 7 }, { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' }]);
     await click('[data-action="edit"]');
     await pickCard('Paris');
     await click('[data-target="shelf"]');
@@ -201,7 +201,7 @@ describe('LibraryPanel : cartes', () => {
   });
 
   it('affiche une carte sur l’écran d’un ordinateur, et refuse un autre meuble', async () => {
-    await seed([{ id: 'd1', kind: 'desk', col: 2, row: 10 }, { id: 'c1', kind: 'computer', deskId: 'd1' }]);
+    await seed([{ id: 'd1', kind: 'desk', col: 2, row: 13 }, { id: 'c1', kind: 'computer', deskId: 'd1' }]);
     await click('[data-action="edit"]');
     await pickCard('Paris');
     await click('[data-target="screen"]');
@@ -217,8 +217,8 @@ describe('LibraryPanel : cartes', () => {
     const onOpenCard = vi.fn();
     await mountPanel(onOpenCard);
     await seed([
-      { id: 'f1', kind: 'wall', shape: 'poster', col: 4, row: 1, slug: 'Paris' },
-      { id: 'f2', kind: 'wall', shape: 'poster', col: 10, row: 1, slug: 'Inconnue' },
+      { id: 'f1', kind: 'wall', shape: 'poster', col: 4, row: 4, slug: 'Paris' },
+      { id: 'f2', kind: 'wall', shape: 'poster', col: 10, row: 4, slug: 'Inconnue' },
     ]);
     await click('[data-card="Paris"]');
     expect(onOpenCard).toHaveBeenCalledWith('Paris');
@@ -228,8 +228,8 @@ describe('LibraryPanel : cartes', () => {
 
   it('retire un objet, et demande confirmation pour une étagère garnie', async () => {
     await seed([
-      { id: 'f1', kind: 'wall', shape: 'poster', col: 4, row: 1, slug: 'Paris' },
-      { id: 'f2', kind: 'shelf', col: 12, row: 4 },
+      { id: 'f1', kind: 'wall', shape: 'poster', col: 4, row: 4, slug: 'Paris' },
+      { id: 'f2', kind: 'shelf', col: 12, row: 7 },
       { id: 'f3', kind: 'stored', shape: 'cd', shelfId: 'f2', slot: 0, slug: 'Daft_Punk' },
     ]);
     await click('[data-action="edit"]');
@@ -240,7 +240,7 @@ describe('LibraryPanel : cartes', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     await click('[data-furniture="shelf"]');
     await click('[data-action="remove"]');
-    expect(confirm).toHaveBeenCalledWith('Retirer aussi les cartes rangées ?');
+    expect(confirm).toHaveBeenCalledWith('Retirer aussi ce qui est posé dessus ?');
     expect(layoutNow().length).toBe(2);
     confirm.mockReturnValue(true);
     await click('[data-action="remove"]');
@@ -248,17 +248,17 @@ describe('LibraryPanel : cartes', () => {
   });
 
   it('grise dans le sélecteur une carte déjà posée', async () => {
-    await seed([{ id: 'f1', kind: 'wall', shape: 'poster', col: 4, row: 1, slug: 'Paris' }]);
+    await seed([{ id: 'f1', kind: 'wall', shape: 'poster', col: 4, row: 4, slug: 'Paris' }]);
     await click('[data-action="edit"]');
     await click('[data-action="add-card"]');
     expect(q('[data-card-option="Paris"]')?.hasAttribute('disabled')).toBe(true);
     expect(q('[data-card-option="Daft_Punk"]')?.hasAttribute('disabled')).toBe(false);
   });
 
-  // Un pixel d'écran = une unité du dessin (24 colonnes de 30, hauteur 340).
+  // Un pixel d'écran = une unité du dessin (24 colonnes de 30, hauteur 510).
   function stubSvgRect() {
     const svg = q('svg[role="img"]') as unknown as SVGElement;
-    svg.getBoundingClientRect = () => ({ left: 0, top: 0, right: 720, bottom: 340, width: 720, height: 340, x: 0, y: 0, toJSON: () => ({}) });
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, right: 720, bottom: 510, width: 720, height: 510, x: 0, y: 0, toJSON: () => ({}) });
   }
   const pointer = (type: string, target: EventTarget, x: number, y: number) =>
     act(async () => { target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y })); });
@@ -269,34 +269,34 @@ describe('LibraryPanel : cartes', () => {
     vi.useRealTimers();
   }
   const slotCenter = (i: number) => {
-    const s = shelfSlots(pxRect({ col: 0, row: 4, w: 6, h: 8 }))[i]!;
+    const s = shelfSlots(pxRect({ col: 0, row: 7, w: 6, h: 8 }))[i]!;
     return { x: s.x + s.w / 2, y: s.y + s.h / 2 };
   };
   const shelfLayout: Layout = [
-    { id: 'f1', kind: 'shelf', col: 0, row: 4 },
+    { id: 'f1', kind: 'shelf', col: 0, row: 7 },
     { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },
   ];
 
   it('un appui long sur un objet accroché le déplace sur le mur', async () => {
-    await seed([{ id: 'f1', kind: 'wall', shape: 'poster', col: 2, row: 1, slug: 'Paris' }]);
+    await seed([{ id: 'f1', kind: 'wall', shape: 'poster', col: 2, row: 4, slug: 'Paris' }]);
     stubSvgRect();
-    await longPress('[data-card="Paris"]', 105, 85);
+    await longPress('[data-card="Paris"]', 105, 170);
     expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('true');
-    await pointer('pointermove', window, 305, 118);
+    await pointer('pointermove', window, 305, 203);
     expect(q('[data-drag-ghost="ok"]')).not.toBeNull();
-    await pointer('pointerup', window, 305, 118);
+    await pointer('pointerup', window, 305, 203);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 10, row: 1, slug: 'Paris' });
+    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 10, row: 4, slug: 'Paris' });
   });
 
   it('un objet accroché lâché sur le sol reste en place et le dit', async () => {
-    await seed([{ id: 'f1', kind: 'wall', shape: 'poster', col: 2, row: 1, slug: 'Paris' }]);
+    await seed([{ id: 'f1', kind: 'wall', shape: 'poster', col: 2, row: 4, slug: 'Paris' }]);
     stubSvgRect();
-    await longPress('[data-card="Paris"]', 105, 85);
-    await pointer('pointermove', window, 305, 320);
-    await pointer('pointerup', window, 305, 320);
+    await longPress('[data-card="Paris"]', 105, 170);
+    await pointer('pointermove', window, 305, 405);
+    await pointer('pointerup', window, 305, 405);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 2, row: 1 });
+    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 2, row: 4 });
     expect(q('[role="status"]')?.textContent).toContain('mur');
   });
 
@@ -314,10 +314,10 @@ describe('LibraryPanel : cartes', () => {
   });
 
   it('un objet rangé passe sur l’emplacement d’une autre étagère', async () => {
-    await seed([...shelfLayout, { id: 'f9', kind: 'shelf', col: 10, row: 4 }]);
+    await seed([...shelfLayout, { id: 'f9', kind: 'shelf', col: 10, row: 7 }]);
     stubSvgRect();
     const from = slotCenter(0);
-    const other = shelfSlots(pxRect({ col: 10, row: 4, w: 6, h: 8 }))[3]!;
+    const other = shelfSlots(pxRect({ col: 10, row: 7, w: 6, h: 8 }))[3]!;
     await longPress('[data-card="Daft_Punk"]', from.x, from.y);
     await pointer('pointerup', window, other.x + other.w / 2, other.y + other.h / 2);
     await settle();
@@ -341,14 +341,14 @@ describe('LibraryPanel : cartes', () => {
 
   it('un appui long sur un ordinateur qui affiche une carte déplace l’ordinateur et sa carte', async () => {
     await seed([
-      { id: 'd1', kind: 'desk', col: 2, row: 8 },
-      { id: 'd2', kind: 'desk', col: 12, row: 8 },
+      { id: 'd1', kind: 'desk', col: 2, row: 11 },
+      { id: 'd2', kind: 'desk', col: 12, row: 11 },
       { id: 'c1', kind: 'computer', deskId: 'd1', slug: 'Paris' },
     ]);
     stubSvgRect();
-    await longPress('[data-screen="c1"]', 130, 200);
-    await pointer('pointermove', window, 400, 300);
-    await pointer('pointerup', window, 400, 300);
+    await longPress('[data-screen="c1"]', 130, 285);
+    await pointer('pointermove', window, 400, 385);
+    await pointer('pointerup', window, 400, 385);
     await settle();
     expect(layoutNow().find((p) => p.id === 'c1')).toMatchObject({ kind: 'computer', deskId: 'd2', slug: 'Paris' });
   });

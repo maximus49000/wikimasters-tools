@@ -1,6 +1,6 @@
 import { sizeOf, wallSizeOf } from '../core/library/furniture-catalog';
 import type { Layout } from '../core/library/library-types';
-import { CELL_H, CELL_W, canHang, canPlace, canPlaceComputer, pxRect, rectOf, shelfSlots, slotAt, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
+import { CELL_H, CELL_W, canHang, canPlace, canPlaceComputer, firstFreeSurfaceSlot, pxRect, rectOf, shelfSlots, slotAt, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -21,7 +21,29 @@ export function deskAtCell(layout: Layout, col: number, row: number): string | n
   return null;
 }
 
-export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'slot-busy' | 'not-slot';
+// Le bureau ou l'étagère dont une case contient (col, row), ou null : ils portent les petits objets.
+export function hostAtCell(layout: Layout, col: number, row: number): string | null {
+  for (const placed of layout) {
+    if (placed.kind !== 'desk' && placed.kind !== 'shelf') continue;
+    const r = rectOf(placed);
+    if (r && col >= r.col && col < r.col + r.w && row >= r.row && row < r.row + r.h) return placed.id;
+  }
+  return null;
+}
+
+// Le bureau ou l'étagère dont la bande des petits objets (44 px au-dessus du dessus, comme `surfaceSlotRect`) contient le point (x, y).
+export function hostAtSurface(layout: Layout, x: number, y: number): string | null {
+  for (const placed of layout) {
+    if (placed.kind !== 'desk' && placed.kind !== 'shelf') continue;
+    const r = rectOf(placed);
+    if (!r) continue;
+    const strip = surfaceSlotRect(pxRect(r), 1, 0);
+    if (x >= strip.x && x < strip.x + strip.w && y >= strip.y && y < strip.y + strip.h) return placed.id;
+  }
+  return null;
+}
+
+export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'slot-busy' | 'not-slot' | 'host-busy' | 'not-host';
 
 export type DropTarget = {
   ok: boolean;
@@ -35,6 +57,8 @@ export type DropTarget = {
   top?: number;
   // Ordinateur : bureau d'arrivée.
   deskId?: string;
+  // Petit objet : porteur d'arrivée.
+  hostId?: string;
   // Objet rangé : emplacement visé (le fantôme est alors en pixels).
   ghostPx?: PxRect;
   shelfId?: string;
@@ -69,8 +93,20 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     if (!deskId) return { ok: false, reason: 'not-desk', cells: [{ col, row }], ghost: { col, row, w: 1, h: 1 } };
     const desk = layout.find((p) => p.id === deskId);
     const ghost = desk ? rectOf(desk) : null;
-    if (!canPlaceComputer(layout, deskId, id)) return { ok: false, reason: 'desk-busy', cells: [], ghost, deskId };
+    if (!canPlaceComputer(layout, deskId, id)) {
+      // Un autre ordinateur occupe déjà le bureau, ou des petits objets en occupent le milieu.
+      const hasComputer = layout.some((p) => p.kind === 'computer' && p.deskId === deskId && p.id !== id);
+      return { ok: false, reason: hasComputer ? 'desk-busy' : 'desk-middle', cells: [], ghost, deskId };
+    }
     return { ok: true, cells: [], ghost, deskId };
+  }
+  if (item.kind === 'small') {
+    const hostId = hostAtCell(layout, col, row) ?? hostAtSurface(layout, x, y);
+    if (!hostId) return { ok: false, reason: 'not-host', cells: [{ col, row }], ghost: { col, row, w: 1, h: 1 } };
+    const host = layout.find((p) => p.id === hostId);
+    const ghost = host ? rectOf(host) : null;
+    const room = hostId === item.hostId || firstFreeSurfaceSlot(layout, hostId, id) !== null;
+    return room ? { ok: true, cells: [], ghost, hostId } : { ok: false, reason: 'host-busy', cells: [], ghost, hostId };
   }
   const { w, h } = sizeOf(item.kind);
   const top = row - h + 1;

@@ -13,7 +13,7 @@ import {
   shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
-import { FURNITURE_KINDS, labelOf, sizeOf, wallSizeOf } from '../core/library/furniture-catalog';
+import { CATEGORIES, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, type Category } from '../core/library/furniture-catalog';
 import type { FurnitureKind, Layout, LibraryState, Orientation, StandingKind } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
@@ -27,6 +27,10 @@ import {
   canPlace,
   canPlaceComputer,
   firstFreeSlot,
+  firstFreeSurfaceSlot,
+  hasFreeHost,
+  moveSmall,
+  placeSmall,
   hang,
   moveHung,
   moveStored,
@@ -44,6 +48,7 @@ import {
   type Cell,
 } from '../core/library/room-grid';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
+import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
 import { createLongPress } from './long-press';
 import { FullscreenButton, useFullscreen } from './fullscreen';
 import { lockOrientation, unlockOrientation } from './orientation-lock';
@@ -101,17 +106,12 @@ const ICONS = {
   landscape: ['M3 7h18a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z'],
   portrait: ['M7 2h10a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z'],
   move: ['M5 9l-3 3 3 3', 'M9 5l3-3 3 3', 'M15 19l-3 3-3-3', 'M19 9l3 3-3 3', 'M2 12h20', 'M12 2v20'],
-  shelf: ['M5 3v18', 'M19 3v18', 'M5 8h14', 'M5 14h14'],
-  desk: ['M3 8h18', 'M5 8v12', 'M19 8v12'],
-  computer: ['M3 4h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M8 20h8', 'M12 16v4'],
   extendLeft: ['M4 4v16', 'M9 12h10', 'M14 7v10'],
   extendRight: ['M20 4v16', 'M5 12h10', 'M10 7v10'],
   shrinkLeft: ['M4 4v16', 'M9 12h10'],
   shrinkRight: ['M20 4v16', 'M5 12h10'],
   fullscreen: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
 } as const;
-
-const KIND_ICON: Record<FurnitureKind, readonly string[]> = { shelf: ICONS.shelf, desk: ICONS.desk, computer: ICONS.computer };
 
 function Btn({ label, pressed, onClick, data, children }: { label: string; pressed?: boolean; onClick: () => void; data?: Record<string, string>; children: ReactNode }) {
   const attrs = Object.fromEntries(Object.entries(data ?? {}).map(([key, value]) => [`data-${key}`, value]));
@@ -137,6 +137,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
   const [pending, setPending] = useState<CardChoice | null>(null);
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
+  const [category, setCategory] = useState<Category>('storage');
   const [tool, setTool] = useState<Tool>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [blink, setBlink] = useState<Cell[]>([]);
@@ -287,7 +288,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     blinkTimer.current = window.setTimeout(() => setBlink([]), 700);
   };
 
-  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'slot-busy': 'Cet emplacement est déjà pris.', 'not-slot': 'Déposez l’objet dans un emplacement de l’étagère.' } as const;
+  // Refus d'un ordinateur : soit le bureau en porte déjà un, soit des petits objets occupent son milieu.
+  const computerRefusal = (deskId: string, ignoreId?: string): string =>
+    layout.some((p) => p.kind === 'computer' && p.deskId === deskId && p.id !== ignoreId) ? 'Ce bureau a déjà un ordinateur.' : 'Libérez le milieu du bureau pour y poser l’ordinateur.';
+
+  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'desk-middle': 'Libérez le milieu du bureau pour y poser l’ordinateur.', 'slot-busy': 'Cet emplacement est déjà pris.', 'not-slot': 'Déposez l’objet dans un emplacement de l’étagère.', 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.' } as const;
   // Lâcher d'un meuble soulevé : valide → déplacé par les mêmes fonctions que « Déplacer » ; sinon il reste en place.
   const dropLifted = (id: string, target: DropTarget): void => {
     if (target.ok) {
@@ -295,6 +300,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
       if (item?.kind === 'computer' && target.deskId) {
         const deskId = target.deskId;
         void editLayout((l) => moveComputer(l, id, deskId));
+      } else if (item?.kind === 'small' && target.hostId) {
+        const { hostId } = target;
+        void editLayout((l) => moveSmall(l, id, hostId));
       } else if (item?.kind === 'stored' && target.shelfId !== undefined && target.slot !== undefined) {
         const { shelfId, slot } = target;
         void editLayout((l) => moveStored(l, id, shelfId, slot));
@@ -329,10 +337,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
   };
 
   const movingItem = tool?.type === 'move' ? layout.find((p) => p.id === tool.id) : undefined;
-  const targetsDesk = (tool?.type === 'new' && tool.kind === 'computer') || movingItem?.kind === 'computer';
+  // Un ordinateur ou un petit objet vise un porteur (bureau, étagère) : les cases ne captent pas le toucher.
+  const targetsHost = (tool?.type === 'new' && (tool.kind === 'computer' || isSmallKind(tool.kind))) || movingItem?.kind === 'computer' || movingItem?.kind === 'small';
   const placing = tool?.type === 'card' ? pending : null;
   // Les cases captent les touchers pour un meuble ou un objet mural ; poser une carte sur une étagère ou un écran vise les meubles.
-  const cellsActive = tool !== null && !targetsDesk && (tool.type !== 'card' || placing?.target === 'wall');
+  const cellsActive = tool !== null && !targetsHost && (tool.type !== 'card' || placing?.target === 'wall');
 
   // Objet mural, posé (carte choisie) ou déplacé (« Déplacer ») : la case touchée est son coin bas-gauche.
   async function placeWall(col: number, row: number): Promise<void> {
@@ -389,7 +398,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
   async function onCell(col: number, row: number): Promise<void> {
     if (!tool) return;
     if (tool.type === 'card' || movingItem?.kind === 'wall') return placeWall(col, row);
-    const kind: StandingKind | null = tool.type === 'new' ? (tool.kind === 'computer' ? null : tool.kind) : movingItem && isStanding(movingItem) ? movingItem.kind : null;
+    const kind: StandingKind | null = tool.type === 'new' ? (isStandingKind(tool.kind) ? tool.kind : null) : movingItem && isStanding(movingItem) ? movingItem.kind : null;
     if (!kind) return;
     // La case touchée est la case en bas à gauche du meuble.
     const top = row - sizeOf(kind).h + 1;
@@ -407,14 +416,27 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     if (placing) return placeOnFurniture(placing, item);
     if (tool?.type === 'new' && tool.kind === 'computer') {
       if (item.kind !== 'desk') return refuse('Un ordinateur se pose sur un bureau.');
-      if (!canPlaceComputer(layout, id)) return refuse('Ce bureau a déjà un ordinateur.');
+      if (!canPlaceComputer(layout, id)) return refuse(computerRefusal(id));
       await editLayout((l) => placeComputer(l, id, nextFurnitureId(l)));
       return reset();
     }
     if (tool?.type === 'move' && movingItem?.kind === 'computer') {
       if (item.kind !== 'desk') return refuse('Un ordinateur se pose sur un bureau.');
-      if (!canPlaceComputer(layout, id, movingItem.id)) return refuse('Ce bureau a déjà un ordinateur.');
+      if (!canPlaceComputer(layout, id, movingItem.id)) return refuse(computerRefusal(id, movingItem.id));
       await editLayout((l) => moveComputer(l, movingItem.id, id));
+      return reset();
+    }
+    if (tool?.type === 'new' && isSmallKind(tool.kind)) {
+      if (item.kind !== 'desk' && item.kind !== 'shelf') return refuse('Un petit objet se pose sur un bureau ou une étagère.');
+      if (firstFreeSurfaceSlot(layout, id) === null) return refuse('Plus de place sur ce meuble.');
+      const small = SMALL_ITEM_OF[tool.kind];
+      await editLayout((l) => placeSmall(l, id, small, nextFurnitureId(l)));
+      return reset();
+    }
+    if (tool?.type === 'move' && movingItem?.kind === 'small') {
+      if (item.kind !== 'desk' && item.kind !== 'shelf') return refuse('Un petit objet se pose sur un bureau ou une étagère.');
+      if (item.id !== movingItem.hostId && firstFreeSurfaceSlot(layout, id, movingItem.id) === null) return refuse('Plus de place sur ce meuble.');
+      await editLayout((l) => moveSmall(l, movingItem.id, id));
       return reset();
     }
     setTool(null);
@@ -425,24 +447,34 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
   const startNew = (kind: FurnitureKind): void => {
     setSelectedId(null);
     setBlink([]);
+    if (isSmallKind(kind) && !hasFreeHost(layout)) {
+      setTool(null);
+      return refuse('Il faut d’abord un bureau ou une étagère avec de la place.');
+    }
     setTool({ type: 'new', kind });
-    setMessage(kind === 'computer' ? 'Touchez un bureau pour y poser l’ordinateur.' : `Touchez une case du sol pour poser : ${labelOf(kind).toLowerCase()}.`);
+    setMessage(
+      kind === 'computer'
+        ? 'Touchez un bureau pour y poser l’ordinateur.'
+        : isSmallKind(kind)
+          ? `Touchez un bureau ou une étagère pour y poser : ${labelOf(kind).toLowerCase()}.`
+          : `Touchez une case du sol pour poser : ${labelOf(kind).toLowerCase()}.`,
+    );
   };
   const startMove = (): void => {
     if (!selectedId) return;
     const item = layout.find((p) => p.id === selectedId);
     if (item?.kind === 'stored') return refuse('Appui long pour la déplacer.');
     setTool({ type: 'move', id: selectedId });
-    setMessage(item?.kind === 'computer' ? 'Touchez le bureau où le poser.' : item?.kind === 'wall' ? 'Touchez la case du mur où l’accrocher.' : 'Touchez la case du sol où le poser.');
+    setMessage(item?.kind === 'small' ? 'Touchez le bureau ou l’étagère où le poser.' : item?.kind === 'computer' ? 'Touchez le bureau où le poser.' : item?.kind === 'wall' ? 'Touchez la case du mur où l’accrocher.' : 'Touchez la case du sol où le poser.');
   };
   const removeSelected = async (): Promise<void> => {
     if (!selectedId) return;
     const item = layout.find((p) => p.id === selectedId);
-    // Une étagère garnie, ou un bureau dont l'ordinateur affiche une carte : confirmation, les cartes partent avec.
-    const holdsCards =
-      (item?.kind === 'shelf' && layout.some((p) => p.kind === 'stored' && p.shelfId === item.id)) ||
-      (item?.kind === 'desk' && layout.some((p) => p.kind === 'computer' && p.deskId === item.id && p.slug));
-    if (holdsCards && !window.confirm('Retirer aussi les cartes rangées ?')) return;
+    // Un meuble qui porte quelque chose (cartes rangées, carte à l'écran, petits objets) demande confirmation : tout part avec lui.
+    const holdsMore =
+      (item?.kind === 'shelf' && layout.some((p) => (p.kind === 'stored' && p.shelfId === item.id) || (p.kind === 'small' && p.hostId === item.id))) ||
+      (item?.kind === 'desk' && layout.some((p) => (p.kind === 'computer' && p.deskId === item.id && p.slug) || (p.kind === 'small' && p.hostId === item.id)));
+    if (holdsMore && !window.confirm('Retirer aussi ce qui est posé dessus ?')) return;
     // Un objet de carte se range ; un ordinateur qui affiche une carte ne vide d'abord que son écran.
     if (item?.kind === 'wall' || item?.kind === 'stored' || (item?.kind === 'computer' && item.slug)) await editLayout((l) => unplaceCard(l, selectedId));
     else await editLayout((l) => removeFurniture(l, selectedId));
@@ -572,8 +604,18 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
       </div>
 
       {editing && (
+        <div className="wmt-lib-row" role="group" aria-label="Catégories de meubles">
+          {CATEGORIES.map((c) => (
+            <Btn key={c.id} label={c.label} pressed={category === c.id} data={{ category: c.id }} onClick={() => { reset(); setCategory(c.id); }}>
+              <Icon paths={CATEGORY_ICON[c.id]} />
+            </Btn>
+          ))}
+        </div>
+      )}
+
+      {editing && (
         <div className="wmt-lib-row">
-          {FURNITURE_KINDS.map((kind) => (
+          {(CATEGORIES.find((c) => c.id === category)?.kinds ?? []).map((kind) => (
             <Btn
               key={kind}
               label={`Poser : ${labelOf(kind)}`}
@@ -625,7 +667,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
           data-scroll
           ref={scrollRef}
           style={{
-            // En plein écran : la fenêtre visible (24 ou 14 colonnes sur 340 de haut) prend la plus grande taille qui tient dans l'écran.
+            // En plein écran : la fenêtre visible (24 ou 16 colonnes sur 510 de haut) prend la plus grande taille qui tient dans l'écran.
             maxWidth: stage.active ? `min(100vw, calc(100vh * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
             ...(dragging ? { overflowX: 'hidden', touchAction: 'none' } : {}),
           }}

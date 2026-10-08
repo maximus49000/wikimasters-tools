@@ -5,18 +5,27 @@ export type Orientation = 'landscape' | 'portrait';
 export const STYLE_IDS = ['scandinave', 'moderne', 'industriel', 'boheme', 'retro70', 'japandi', 'neon', 'steampunk'] as const;
 export type StyleId = (typeof STYLE_IDS)[number];
 
-export type FurnitureKind = 'shelf' | 'desk' | 'computer';
-export type StandingKind = 'shelf' | 'desk';
+export const STANDING_KINDS = ['shelf', 'desk', 'chair', 'sofa', 'armchair', 'basket', 'bowl', 'kennel', 'plant', 'lamp', 'coffee-table', 'rug'] as const;
+export type StandingKind = (typeof STANDING_KINDS)[number];
+
+// Petits objets posés sur la surface d'un bureau ou d'une étagère.
+export const SMALL_ITEMS = ['plant', 'lamp'] as const;
+export type SmallItem = (typeof SMALL_ITEMS)[number];
+export type SmallKind = 'small-plant' | 'small-lamp';
+
+export type FurnitureKind = StandingKind | 'computer' | SmallKind;
 
 export type WallShape = 'poster' | 'vinyl' | 'sleeve-square' | 'sleeve-round' | 'sleeve-frame';
 export type ShelfShape = 'cd' | 'dvd' | 'game' | 'book';
 export type VinylColor = 'black' | 'red' | 'blue' | 'green' | 'gold';
 
 // Un meuble au sol : (col, row) est sa case en haut à gauche. L'ordinateur n'a pas de case : il suit son bureau (et peut afficher une carte).
+// `small` : petit objet posé sur l'emplacement `slot` de la surface du bureau ou de l'étagère `hostId`.
 // `wall` : objet accroché au mur (case en haut à gauche). `stored` : objet rangé dans l'emplacement `slot` (0 à 14) d'une étagère.
 export type Placed =
   | { id: string; kind: StandingKind; col: number; row: number }
   | { id: string; kind: 'computer'; deskId: string; slug?: string }
+  | { id: string; kind: 'small'; item: SmallItem; hostId: string; slot: number }
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
   | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; slot: number; slug: string };
 
@@ -33,7 +42,7 @@ export type Room = {
 };
 
 export type LibraryState = {
-  version: 1;
+  version: 2;
   activeRoomId: string;
   homeRoomId: string | null;
   rooms: Room[];

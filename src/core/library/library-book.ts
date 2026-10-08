@@ -1,13 +1,14 @@
 import { z } from 'zod';
-import { STYLE_IDS, type Layout, type LibraryState, type Orientation, type Room } from './library-types';
-import { MAX_COLS, MIN_COLS, SECTION, sectionIsEmpty, shiftLayout } from './room-grid';
+import { SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Layout, type LibraryState, type Orientation, type Room } from './library-types';
+import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, sectionIsEmpty, shiftLayout } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
 
 const placedSchema = z.union([
-  z.object({ id: z.string(), kind: z.enum(['shelf', 'desk']), col: z.number().int(), row: z.number().int() }),
+  z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: z.number().int(), row: z.number().int() }),
   z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string(), slug: z.string().optional() }),
+  z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3) }),
   z.object({
     id: z.string(),
     kind: z.literal('wall'),
@@ -35,7 +36,7 @@ const roomSchema = z.object({
   layout: z.array(placedSchema),
 });
 const stateSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   activeRoomId: z.string(),
   homeRoomId: z.string().nullable(),
   rooms: z.array(roomSchema).min(1).max(MAX_ROOMS),
@@ -57,7 +58,7 @@ const makeRoom = (id: string, name: string, orientation: Orientation, style: Roo
 });
 
 export function createInitialState(): LibraryState {
-  return { version: 1, activeRoomId: 'r1', homeRoomId: null, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
+  return { version: 2, activeRoomId: 'r1', homeRoomId: null, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
 }
 
 export function activeRoom(state: LibraryState): Room {
@@ -65,7 +66,7 @@ export function activeRoom(state: LibraryState): Room {
 }
 
 // Nettoie un aménagement lu : un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau, un objet rangé sans étagère
-// ou sur un emplacement déjà pris, et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi.
+// ou un petit objet sans porteur, hors emplacements ou sur un emplacement déjà pris, et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi.
 function cleanLayout(layout: Layout): Layout {
   const ids = new Set<string>();
   const unique = layout.filter((p) => !ids.has(p.id) && Boolean(ids.add(p.id)));
@@ -81,6 +82,14 @@ function cleanLayout(layout: Layout): Layout {
       if (slots.has(key)) return false;
       slots.add(key);
     }
+    if (p.kind === 'small') {
+      const host = unique.find((q) => q.id === p.hostId);
+      if (!host || (host.kind !== 'desk' && host.kind !== 'shelf') || p.slot >= SURFACE_SLOTS[host.kind]) return false;
+      const key = `${p.hostId}:small:${p.slot}`;
+      if (slots.has(key)) return false;
+      if (host.kind === 'desk' && (p.slot === 1 || p.slot === 2) && unique.some((q) => q.kind === 'computer' && q.deskId === host.id)) return false;
+      slots.add(key);
+    }
     if ((p.kind === 'wall' || p.kind === 'stored' || p.kind === 'computer') && p.slug !== undefined) {
       if (slugs.has(p.slug)) return false;
       slugs.add(p.slug);
@@ -89,9 +98,26 @@ function cleanLayout(layout: Layout): Layout {
   });
 }
 
+// Une pièce v1 avait 12 lignes (9 de mur, 3 de sol) ; la v2 en a 18 (12 + 6). Tout descend de 3 lignes : le sol d'origine reste contre le mur.
+const V1_ROW_SHIFT = 3;
+function migrate(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 1) return raw;
+  const state = raw as { rooms?: unknown };
+  if (!Array.isArray(state.rooms)) return raw;
+  const rooms = state.rooms.map((room: unknown) => {
+    const layout = typeof room === 'object' && room !== null ? (room as { layout?: unknown }).layout : undefined;
+    if (!Array.isArray(layout)) return room;
+    const shifted = layout.map((p: unknown) =>
+      typeof p === 'object' && p !== null && typeof (p as { row?: unknown }).row === 'number' ? { ...p, row: (p as { row: number }).row + V1_ROW_SHIFT } : p,
+    );
+    return { ...(room as object), layout: shifted };
+  });
+  return { ...state, version: 2, rooms };
+}
+
 // Une lecture sûre : un contenu absent, d'une autre version ou abîmé redonne une pièce vide (comme `readView`).
 export function parseLibraryState(raw: unknown): LibraryState {
-  const parsed = stateSchema.safeParse(raw);
+  const parsed = stateSchema.safeParse(migrate(raw));
   if (!parsed.success) return createInitialState();
   const state = parsed.data;
   const ids = state.rooms.map((room) => room.id);

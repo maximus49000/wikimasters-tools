@@ -1,9 +1,11 @@
 import { useCallback, useRef, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, computerRect, pxRect, rectOf, shelfSlots, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
+import { sizeOf } from '../core/library/furniture-catalog';
 import { paletteOf } from '../core/library/styles';
 import { ShelfItemArt, WallArt } from './library-card-art';
 import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
+import { HomeArt, SmallArt } from './furniture-art-home';
 import { getImageService } from './image-registry';
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
@@ -51,9 +53,13 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
 
   const deskRects = new Map<string, PxRect>();
+  // Bureaux et étagères : ils portent les petits objets.
+  const hostRects = new Map<string, PxRect>();
   for (const placed of room.layout) {
     const rect = rectOf(placed);
-    if (rect && placed.kind === 'desk') deskRects.set(placed.id, pxRect(rect));
+    if (!rect) continue;
+    if (placed.kind === 'desk') deskRects.set(placed.id, pxRect(rect));
+    if (placed.kind === 'desk' || placed.kind === 'shelf') hostRects.set(placed.id, pxRect(rect));
   }
   const imageOf = (slug: string): string | undefined => {
     const url = cards[slug]?.imageUrl;
@@ -93,16 +99,29 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       if (!desk) return null;
       rect = computerRect(desk);
       art = <ComputerArt rect={rect} imageUrl={placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined} />;
+    } else if (placed.kind === 'small') {
+      const hostRect = hostRects.get(placed.hostId);
+      const host = room.layout.find((p) => p.id === placed.hostId);
+      if (!hostRect || (host?.kind !== 'desk' && host?.kind !== 'shelf')) return null;
+      rect = surfaceSlotRect(hostRect, SURFACE_SLOTS[host.kind], placed.slot);
+      art = <SmallArt item={placed.item} rect={rect} palette={palette} />;
     } else {
       const cells = rectOf(placed);
-      if (!cells) return null;
+      if (!cells || !isStanding(placed)) return null;
       rect = pxRect(cells);
-      art = placed.kind === 'shelf' ? <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} /> : <DeskArt rect={rect} palette={palette} />;
+      art =
+        placed.kind === 'shelf' ? (
+          <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} />
+        ) : placed.kind === 'desk' ? (
+          <DeskArt rect={rect} palette={palette} />
+        ) : (
+          <HomeArt kind={placed.kind} rect={rect} palette={palette} />
+        );
     }
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
     // Un ordinateur suit aussi son bureau soulevé.
-    const lifted = drag !== null && (drag.id === placed.id || (placed.kind === 'computer' && drag.id === placed.deskId));
-    const liftedCopy = lifted ? liftedCopyOf(rect, art, drag.id === placed.id ? rect : (deskRects.get(drag.id) ?? rect)) : null;
+    const lifted = drag !== null && (drag.id === placed.id || (placed.kind === 'computer' && drag.id === placed.deskId) || (placed.kind === 'small' && drag.id === placed.hostId));
+    const liftedCopy = lifted ? liftedCopyOf(rect, art, drag.id === placed.id ? rect : (hostRects.get(drag.id) ?? rect)) : null;
     return (
       <g key={placed.id}>
         <g
@@ -127,9 +146,17 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     );
   }
 
-  // Les ordinateurs se dessinent après les bureaux, pour rester dessus.
-  const furniture = room.layout.filter((p) => p.kind === 'shelf' || p.kind === 'desk' || p.kind === 'computer');
-  const ordered = [...furniture.filter((p) => p.kind !== 'computer'), ...furniture.filter((p) => p.kind === 'computer')];
+  // Ordre de dessin : les tapis en dessous, puis les meubles du plus loin au plus proche (bas le plus haut d'abord),
+  // puis les ordinateurs sur les bureaux ; les objets accrochés viennent ensuite, puis les petits objets par-dessus.
+  const standing = room.layout.filter(isStanding);
+  const bottomRow = (p: (typeof standing)[number]): number => p.row + sizeOf(p.kind).h;
+  const ordered = [
+    ...standing.filter((p) => p.kind === 'rug'),
+    ...standing.filter((p) => p.kind !== 'rug').sort((a, b) => bottomRow(a) - bottomRow(b)),
+    ...room.layout.filter((p) => p.kind === 'computer'),
+  ];
+  // Les petits objets (bande de 44 px au-dessus de leur porteur) passent devant les objets accrochés au mur.
+  const smalls = room.layout.filter((p) => p.kind === 'small');
 
   // Objet touchable (accroché, rangé ou écran) : mêmes gestes que les meubles, pour pouvoir le déplacer.
   function cardGroup(placed: Placed, slug: string, rect: PxRect, art: ReactElement, extra: Record<string, string> = {}): ReactElement {
@@ -170,6 +197,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     const rect = rectOf(placed);
     if (rect && placed.kind === 'shelf') shelfRects.set(placed.id, pxRect(rect));
   }
+  const wallLayer: ReactElement[] = [];
   const cardLayer: ReactElement[] = [];
   for (const placed of room.layout) {
     if (placed.kind !== 'wall') continue;
@@ -177,7 +205,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     if (!cells) continue;
     const rect = pxRect(cells);
     const info = cards[placed.slug];
-    cardLayer.push(
+    wallLayer.push(
       cardGroup(placed, placed.slug, rect, <WallArt rect={rect} shape={placed.shape} color={placed.color} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} id={placed.id} />),
     );
   }
@@ -241,6 +269,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       <rect y={wallH} width={width} height={HEIGHT - wallH} fill={palette.floor} />
       <rect y={wallH - 4} width={width} height={5} fill={palette.skirt} opacity={0.6} />
       {ordered.map(renderPlaced)}
+      {wallLayer}
+      {smalls.map(renderPlaced)}
       {cardLayer}
       {cells}
       {drag?.ghostPx && (
