@@ -126,7 +126,7 @@ const REFUSALS = {
   bounds: 'Ça ne rentre pas dans la pièce.',
   floor: 'Un meuble se pose au sol : touchez une case du sol.',
   taken: 'Cet emplacement est déjà occupé.',
-  wall: 'Un objet accroché doit tenir sur le mur.',
+  wall: 'Un objet mural s’accroche au mur.',
 } as const;
 
 type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void };
@@ -287,7 +287,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     blinkTimer.current = window.setTimeout(() => setBlink([]), 700);
   };
 
-  const REASONS = { ...REFUSALS, wall: 'Un objet mural s’accroche au mur.', 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'slot-busy': 'Cet emplacement est déjà pris.', 'not-slot': 'Déposez l’objet dans un emplacement de l’étagère.' } as const;
+  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'slot-busy': 'Cet emplacement est déjà pris.', 'not-slot': 'Déposez l’objet dans un emplacement de l’étagère.' } as const;
   // Lâcher d'un meuble soulevé : valide → déplacé par les mêmes fonctions que « Déplacer » ; sinon il reste en place.
   const dropLifted = (id: string, target: DropTarget): void => {
     if (target.ok) {
@@ -372,6 +372,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     if (press.consumeClick()) return;
     const item = layout.find((p) => p.id === id);
     if (!item) return;
+    // Pendant la pose sur une étagère, toucher une carte rangée revient à toucher son étagère.
+    if (editing && placing?.target === 'shelf' && item.kind === 'stored') return void onPick(item.shelfId);
     if (!editing) {
       const slug = item.kind === 'wall' || item.kind === 'stored' || item.kind === 'computer' ? item.slug : undefined;
       if (slug && roomCards.cards[slug]) onOpenCard?.(slug);
@@ -429,7 +431,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
   const startMove = (): void => {
     if (!selectedId) return;
     const item = layout.find((p) => p.id === selectedId);
-    if (item?.kind === 'stored') return refuse('Retirez cette carte rangée puis posez-la à nouveau.');
+    if (item?.kind === 'stored') return refuse('Appui long pour la déplacer.');
     setTool({ type: 'move', id: selectedId });
     setMessage(item?.kind === 'computer' ? 'Touchez le bureau où le poser.' : item?.kind === 'wall' ? 'Touchez la case du mur où l’accrocher.' : 'Touchez la case du sol où le poser.');
   };

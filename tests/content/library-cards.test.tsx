@@ -57,6 +57,25 @@ describe('cartes dans la pièce', () => {
   });
 });
 
+describe('étagère soulevée', () => {
+  it('les objets rangés suivent leur étagère soulevée', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        <RoomView room={room} editing cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined}
+          drag={{ id: 'f1', x: 300, y: 200, ok: true, ghost: null }} cards={{ Daft_Punk: { title: 'Daft Punk' }, Paris: { title: 'Paris' } }} />,
+      );
+    });
+    const card = container.querySelector('[data-card="Daft_Punk"]')!;
+    expect(card.getAttribute('opacity')).toBe('0.3');
+    expect(card.parentElement!.querySelector('g[transform*="scale(1.08)"]')).not.toBeNull();
+    // un objet mural, lui, ne bouge pas
+    expect(container.querySelector('[data-card="Paris"]')!.getAttribute('opacity')).toBe('1');
+  });
+});
+
 describe('dessin détaillé', () => {
   const full: Room = {
     ...room,
@@ -169,6 +188,16 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-shape="cd"]');
     await click('[data-furniture="shelf"]');
     expect(layoutNow().find((p) => p.kind === 'stored')).toMatchObject({ slug: 'Paris', slot: 0, shelfId: 'f1' });
+  });
+
+  it('toucher une carte déjà rangée pendant la pose sur une étagère vise son étagère', async () => {
+    await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 4 }, { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' }]);
+    await click('[data-action="edit"]');
+    await pickCard('Paris');
+    await click('[data-target="shelf"]');
+    await click('[data-shape="cd"]');
+    await click('[data-card="Daft_Punk"]');
+    expect(layoutNow().find((p) => p.kind === 'stored' && p.slug === 'Paris')).toMatchObject({ shelfId: 'f1', slot: 1 });
   });
 
   it('affiche une carte sur l’écran d’un ordinateur, et refuse un autre meuble', async () => {

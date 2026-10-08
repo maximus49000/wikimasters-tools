@@ -1,4 +1,4 @@
-import { useRef, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
+import { useCallback, useRef, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, computerRect, pxRect, rectOf, shelfSlots, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
 import { paletteOf } from '../core/library/styles';
@@ -41,10 +41,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   // Se réabonne aux images qui arrivent après le premier dessin : un compteur change à chaque notification du service.
   const images = getImageService();
   const imageVersion = useRef(0);
-  useSyncExternalStore(
-    (notify) => images?.subscribe(() => { imageVersion.current++; notify(); }) ?? (() => undefined),
-    () => imageVersion.current,
+  const subscribeImages = useCallback(
+    (notify: () => void) => images?.subscribe(() => { imageVersion.current++; notify(); }) ?? (() => undefined),
+    [images],
   );
+  useSyncExternalStore(subscribeImages, () => imageVersion.current);
   const width = room.cols * CELL_W;
   const wallH = WALL_ROWS * CELL_H;
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
@@ -134,7 +135,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   function cardGroup(placed: Placed, slug: string, rect: PxRect, art: ReactElement, extra: Record<string, string> = {}): ReactElement {
     const missing = !cards[slug];
     // L'objet soulevé reste en filigrane à sa place ; sa copie suit le doigt. (L'écran d'un ordinateur suit l'ordinateur, déjà soulevé.)
-    const lifted = drag !== null && drag.id === placed.id && placed.kind !== 'computer';
+    // Un objet rangé suit son étagère soulevée.
+    const withShelf = drag !== null && placed.kind === 'stored' && drag.id === placed.shelfId;
+    const lifted = drag !== null && ((drag.id === placed.id && placed.kind !== 'computer') || withShelf);
+    const anchor = withShelf ? (shelfRects.get(drag.id) ?? rect) : rect;
     return (
       <g key={`card-${placed.id}`}>
       <g
@@ -156,7 +160,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         {editing && selectedId === placed.id && outline(rect)}
         <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="transparent" />
       </g>
-      {lifted && liftedCopyOf(rect, art, rect)}
+      {lifted && liftedCopyOf(rect, art, anchor)}
       </g>
     );
   }
