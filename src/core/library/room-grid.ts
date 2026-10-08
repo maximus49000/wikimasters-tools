@@ -1,6 +1,6 @@
 import { layerOf, sizeOf, wallSizeOf } from './furniture-catalog';
 import { STANDING_KINDS } from './library-types';
-import type { Layout, Orientation, Placed, ShelfShape, StandingKind, VinylColor, WallShape } from './library-types';
+import type { Layout, Orientation, Placed, ShelfShape, SmallItem, StandingKind, VinylColor, WallShape } from './library-types';
 
 export const ROWS = 18;
 // Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
@@ -115,6 +115,7 @@ export function moveStanding(layout: Layout, cols: number, id: string, col: numb
 export function canPlaceComputer(layout: Layout, deskId: string, ignoreId?: string): boolean {
   const desk = layout.find((p) => p.id === deskId);
   if (!desk || desk.kind !== 'desk') return false;
+  if (layout.some((p) => p.kind === 'small' && p.hostId === deskId && COMPUTER_SLOTS.has(p.slot))) return false;
   return !layout.some((p) => p.kind === 'computer' && p.deskId === deskId && p.id !== ignoreId);
 }
 
@@ -129,9 +130,59 @@ export function moveComputer(layout: Layout, id: string, deskId: string): Layout
   return layout.map((p) => (p.id === id ? { ...item, deskId } : p));
 }
 
-// Retirer un bureau retire aussi l'ordinateur qui y est posé ; retirer une étagère, les objets rangés dedans.
+// Retirer un bureau retire aussi l'ordinateur et les petits objets qui y sont posés ; retirer une étagère, les objets rangés et posés dessus.
 export function removeFurniture(layout: Layout, id: string): Layout {
-  return layout.filter((p) => p.id !== id && !(p.kind === 'computer' && p.deskId === id) && !(p.kind === 'stored' && p.shelfId === id));
+  return layout.filter(
+    (p) => p.id !== id && !(p.kind === 'computer' && p.deskId === id) && !(p.kind === 'stored' && p.shelfId === id) && !(p.kind === 'small' && p.hostId === id),
+  );
+}
+
+type SmallPlaced = Extract<Placed, { kind: 'small' }>;
+
+// Un bureau porte 4 petits objets, une étagère 3 (sur son dessus).
+export const SURFACE_SLOTS = { desk: 4, shelf: 3 } as const;
+type HostKind = keyof typeof SURFACE_SLOTS;
+const isHost = (p: Placed): p is Placed & { kind: HostKind } => p.kind === 'desk' || p.kind === 'shelf';
+
+// L'ordinateur d'un bureau couvre les deux emplacements du milieu.
+const COMPUTER_SLOTS: ReadonlySet<number> = new Set([1, 2]);
+const SMALL_H = 44;
+
+function blockedSlots(layout: Layout, hostId: string): ReadonlySet<number> {
+  return layout.some((p) => p.kind === 'computer' && p.deskId === hostId) ? COMPUTER_SLOTS : new Set<number>();
+}
+
+export function firstFreeSurfaceSlot(layout: Layout, hostId: string, ignoreId?: string): number | null {
+  const host = layout.find((p) => p.id === hostId);
+  if (!host || !isHost(host)) return null;
+  const used = new Set(layout.filter((p): p is SmallPlaced => p.kind === 'small' && p.hostId === hostId && p.id !== ignoreId).map((p) => p.slot));
+  const blocked = blockedSlots(layout, hostId);
+  for (let i = 0; i < SURFACE_SLOTS[host.kind]; i++) if (!used.has(i) && !blocked.has(i)) return i;
+  return null;
+}
+
+// Reste-t-il une place pour un petit objet sur un bureau ou une étagère quelconque ?
+export const hasFreeHost = (layout: Layout): boolean => layout.some((p) => isHost(p) && firstFreeSurfaceSlot(layout, p.id) !== null);
+
+export function placeSmall(layout: Layout, hostId: string, item: SmallItem, id: string): Layout | null {
+  const slot = firstFreeSurfaceSlot(layout, hostId);
+  if (slot === null) return null;
+  return [...layout, { id, kind: 'small', item, hostId, slot }];
+}
+
+// Sur le même porteur, l'objet garde son emplacement ; sur un autre, il prend le premier libre.
+export function moveSmall(layout: Layout, id: string, hostId: string): Layout | null {
+  const small = layout.find((p) => p.id === id);
+  if (!small || small.kind !== 'small') return null;
+  const slot = small.hostId === hostId ? small.slot : firstFreeSurfaceSlot(layout, hostId, id);
+  if (slot === null) return null;
+  return layout.map((p) => (p.id === id ? { ...small, hostId, slot } : p));
+}
+
+// La boîte d'un emplacement de surface : le dessus du porteur, divisé en `slotCount` emplacements de 44 px de haut.
+export function surfaceSlotRect(host: PxRect, slotCount: number, slot: number): PxRect {
+  const w = host.w / slotCount;
+  return { x: host.x + slot * w, y: host.y - SMALL_H + 2, w, h: SMALL_H };
 }
 
 // Ajouter une zone à gauche décale les colonnes de tous les meubles ; l'ordinateur suit son bureau.

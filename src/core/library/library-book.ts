@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Layout, type LibraryState, type Orientation, type Room } from './library-types';
-import { MAX_COLS, MIN_COLS, SECTION, sectionIsEmpty, shiftLayout } from './room-grid';
+import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, sectionIsEmpty, shiftLayout } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
@@ -66,7 +66,7 @@ export function activeRoom(state: LibraryState): Room {
 }
 
 // Nettoie un aménagement lu : un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau, un objet rangé sans étagère
-// ou sur un emplacement déjà pris, et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi.
+// ou un petit objet sans porteur, hors emplacements ou sur un emplacement déjà pris, et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi.
 function cleanLayout(layout: Layout): Layout {
   const ids = new Set<string>();
   const unique = layout.filter((p) => !ids.has(p.id) && Boolean(ids.add(p.id)));
@@ -80,6 +80,14 @@ function cleanLayout(layout: Layout): Layout {
       if (!shelfIds.has(p.shelfId)) return false;
       const key = `${p.shelfId}:${p.slot}`;
       if (slots.has(key)) return false;
+      slots.add(key);
+    }
+    if (p.kind === 'small') {
+      const host = unique.find((q) => q.id === p.hostId);
+      if (!host || (host.kind !== 'desk' && host.kind !== 'shelf') || p.slot >= SURFACE_SLOTS[host.kind]) return false;
+      const key = `${p.hostId}:small:${p.slot}`;
+      if (slots.has(key)) return false;
+      if (host.kind === 'desk' && (p.slot === 1 || p.slot === 2) && unique.some((q) => q.kind === 'computer' && q.deskId === host.id)) return false;
       slots.add(key);
     }
     if ((p.kind === 'wall' || p.kind === 'stored' || p.kind === 'computer') && p.slug !== undefined) {
