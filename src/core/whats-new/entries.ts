@@ -666,7 +666,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'bibliotheque-v1',
+    id: 'bibliotheque-v2',
     theme: 'collection',
     glyph: '📚',
     title: 'La Bibliothèque',
@@ -694,6 +694,18 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez un meuble du catalogue (étagère, bureau, ordinateur), puis une case du sol : la case touchée est le bas du meuble. L’ordinateur se pose en touchant un bureau.' },
           { label: 'Déplacer ou retirer', text: 'Touchez un meuble déjà posé : les boutons Déplacer et Retirer apparaissent. Retirer un bureau retire aussi l’ordinateur qui est dessus.' },
           { label: 'Si ça ne se pose pas', text: 'Les cases fautives clignotent en rouge et un message explique pourquoi : un meuble se pose au sol, sans en recouvrir un autre ni sortir de la pièce.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Déplacer un meuble d’un appui long',
+        text: 'Un appui long sur un meuble déjà posé le soulève : vous le faites glisser jusqu’à sa nouvelle place et le relâchez, sans passer par le bouton Déplacer. Cela marche même en mode Visiter, qui passe alors en mode Aménager.',
+        gesture: 'longpress',
+        details: [
+          { label: 'À quoi ça sert', text: 'C’est le moyen le plus rapide de réaménager une pièce : le meuble suit votre doigt, et un contour vous montre où il atterrirait avant que vous le lâchiez.' },
+          { label: 'Comment faire', text: 'Appuyez environ une demi-seconde sur une étagère, un bureau ou un ordinateur, puis, sans lever le doigt, glissez. Le contour est vert quand la place est bonne, rouge sinon. Relâchez pour déposer ; Échap ou un glissé interrompu annule. La case sous le doigt est le bas à gauche du meuble.' },
+          { label: 'Limites', text: 'Un meuble se pose au sol (jamais sur le mur), sans en recouvrir un autre ni sortir de la pièce ; un ordinateur se dépose sur un bureau qui n’en porte pas déjà un. Si le dépôt est refusé, le meuble revient à sa place et les cases fautives clignotent. Près du bord de l’écran, la pièce défile toute seule.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
       },
