@@ -977,4 +977,26 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v7',
+    theme: 'collection',
+    glyph: '🃏',
+    title: 'Ouvrir la fiche d’une carte de sa pièce',
+    summary: 'La fiche s’ouvre sur place, avec film, jeu, musique ou livre',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Toucher une carte de la pièce',
+        text: 'En mode Visiter, toucher une carte accrochée, rangée ou affichée sur l’ordinateur ouvre sa fiche sur place : image, rareté, étiquettes, attaque, défense et texte, puis, selon la carte, la bande-annonce et où voir un film, l’écoute d’un morceau, le jeu vidéo ou le livre.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Ouvrez Ma Pièce, restez en mode Visiter et touchez une carte. Le graphique ouvre le marché de la carte, les cartes ouvrent la carte dans la Collection, la croix ferme.' },
+          { label: 'À quoi ça sert', text: 'À consulter une carte sans quitter sa pièce, ni attendre une recherche dans la Collection.' },
+          { label: 'D’où viennent les données', text: 'Les cartes posées dans une pièce sont copiées sur cet appareil : la pièce reste dessinée même si la Collection n’a pas été ouverte depuis un moment. Film, jeu, musique et livre viennent des mêmes sources que les fiches du site.' },
+          { label: 'Limites', text: 'La copie d’une carte se fait quand la Collection la connaît : une carte posée avant cette mise à jour peut demander une visite de la Collection pour apparaître. Le bouton cartes ouvre la Collection et peut prendre quelques secondes.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
 ];

@@ -211,7 +211,7 @@ describe('LibraryPanel : cartes', () => {
     expect(layoutNow().find((p) => p.kind === 'computer')).toMatchObject({ slug: 'Paris' });
   });
 
-  it('en Visiter, toucher une carte l’ouvre ; une carte inconnue ne fait rien', async () => {
+  it('en Visiter, toucher une carte ouvre sa fiche ; une carte inconnue ne fait rien', async () => {
     act(() => root.unmount());
     container.remove();
     const onOpenCard = vi.fn();
@@ -221,9 +221,13 @@ describe('LibraryPanel : cartes', () => {
       { id: 'f2', kind: 'wall', shape: 'poster', col: 10, row: 4, slug: 'Inconnue' },
     ]);
     await click('[data-card="Paris"]');
+    expect(document.querySelector('[data-room-card="Paris"]')).not.toBeNull();
+    expect(onOpenCard).not.toHaveBeenCalled();
+    await click('[data-action="card"]');
     expect(onOpenCard).toHaveBeenCalledWith('Paris');
+    await click('[data-action="close"]');
     await click('[data-card="Inconnue"]');
-    expect(onOpenCard).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-room-card]')).toBeNull();
   });
 
   it('retire un objet, et demande confirmation pour une étagère garnie', async () => {
