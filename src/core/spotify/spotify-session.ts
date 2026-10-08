@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { KeyValueStore } from '../cache/store';
-import { ACCOUNTS_URL, SPOTIFY_CLIENT_ID, SPOTIFY_SCOPES } from './config';
+import { normalizeClientId } from './client-id';
+import { ACCOUNTS_URL, CLIENT_ID_KEY, SESSION_KEY, SPOTIFY_SCOPES } from './config';
 import { SpotifyError } from './errors';
 import { buildAuthUrl, challengeOf, parseRedirect, randomString, type CryptoLike } from './pkce';
 
@@ -18,7 +19,6 @@ export type SessionDeps = {
   crypto?: CryptoLike;
 };
 
-const KEY = 'spotify-session';
 // Marge avant l'expiration : on rafraîchit un peu tôt.
 const MARGIN_MS = 60_000;
 
@@ -35,11 +35,14 @@ export function createSpotifySession(deps: SessionDeps) {
 
   const notify = () => listeners.forEach((listener) => listener());
 
-  async function requestTokens(params: Record<string, string>): Promise<Response> {
+  // La clé est relue à chaque opération : un autre onglet peut l'avoir changée.
+  const readClientId = async (): Promise<string | null> => (await store.get<string | null>(CLIENT_ID_KEY)) ?? null;
+
+  async function requestTokens(clientId: string, params: Record<string, string>): Promise<Response> {
     return fetch(`${ACCOUNTS_URL}/api/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, ...params }).toString(),
+      body: new URLSearchParams({ client_id: clientId, ...params }).toString(),
     });
   }
 
@@ -52,17 +55,22 @@ export function createSpotifySession(deps: SessionDeps) {
       refreshToken,
       expiresAt: now() + parsed.data.expires_in * 1000,
     };
-    await store.set(KEY, tokens);
+    await store.set(SESSION_KEY, tokens);
     return tokens;
   }
 
   async function refresh(current: Tokens): Promise<Tokens> {
-    const response = await requestTokens({ grant_type: 'refresh_token', refresh_token: current.refreshToken });
+    const clientId = await readClientId();
+    if (!clientId) {
+      await unlink();
+      throw new SpotifyError('not-linked', 'Clé Spotify absente');
+    }
+    const response = await requestTokens(clientId, { grant_type: 'refresh_token', refresh_token: current.refreshToken });
     if (!response.ok) {
       // Jeton révoqué ou refusé : il faut relier le compte.
       if (response.status === 400 || response.status === 401) {
         // Un autre onglet a peut-être déjà renouvelé le jeton (rotation) : on reprend les siens, sans délier.
-        const stored = await store.get<Tokens | null>(KEY);
+        const stored = await store.get<Tokens | null>(SESSION_KEY);
         if (stored && stored.refreshToken !== current.refreshToken) return stored;
         await unlink();
         throw new SpotifyError('not-linked', 'Jeton de rafraîchissement refusé');
@@ -73,24 +81,26 @@ export function createSpotifySession(deps: SessionDeps) {
   }
 
   async function unlink(): Promise<void> {
-    await store.set<Tokens | null>(KEY, null);
+    await store.set<Tokens | null>(SESSION_KEY, null);
     notify();
   }
 
   return {
     async isLinked(): Promise<boolean> {
-      return Boolean(await store.get<Tokens | null>(KEY));
+      return Boolean(await store.get<Tokens | null>(SESSION_KEY));
     },
 
     async link(): Promise<void> {
       const verifier = randomString(64, crypto);
       const state = randomString(24, crypto);
+      const clientId = await readClientId();
+      if (!clientId) throw new SpotifyError('no-client-id', 'Aucune clé Spotify enregistrée');
       const redirect = await redirectUri();
       const returned = await authorize(
-        buildAuthUrl({ clientId: SPOTIFY_CLIENT_ID, redirectUri: redirect, state, challenge: await challengeOf(verifier, crypto), scopes: SPOTIFY_SCOPES }),
+        buildAuthUrl({ clientId, redirectUri: redirect, state, challenge: await challengeOf(verifier, crypto), scopes: SPOTIFY_SCOPES }),
       );
       const code = parseRedirect(returned, state);
-      const response = await requestTokens({ grant_type: 'authorization_code', code, redirect_uri: redirect, code_verifier: verifier });
+      const response = await requestTokens(clientId, { grant_type: 'authorization_code', code, redirect_uri: redirect, code_verifier: verifier });
       if (!response.ok) throw new SpotifyError('http', `Spotify : HTTP ${response.status}`);
       await save(response);
       notify();
@@ -98,9 +108,29 @@ export function createSpotifySession(deps: SessionDeps) {
 
     unlink,
 
+    clientId: readClientId,
+
+    // Enregistre la clé de l'utilisateur. Les jetons appartiennent à l'ancienne clé : changer de clé délie le compte.
+    async setClientId(value: string): Promise<'saved' | 'invalid' | 'unlinked' | 'same'> {
+      const id = normalizeClientId(value);
+      if (!id) return 'invalid';
+      if ((await readClientId()) === id) return 'same';
+      await store.set(CLIENT_ID_KEY, id);
+      const wasLinked = Boolean(await store.get(SESSION_KEY));
+      if (wasLinked) await store.set<Tokens | null>(SESSION_KEY, null);
+      notify();
+      return wasLinked ? 'unlinked' : 'saved';
+    },
+
+    async clearClientId(): Promise<void> {
+      await store.set<string | null>(CLIENT_ID_KEY, null);
+      await store.set<Tokens | null>(SESSION_KEY, null);
+      notify();
+    },
+
     // Jeton valide ; `force` : rafraîchissement immédiat (après un 401).
     async accessToken(force = false): Promise<string> {
-      const tokens = await store.get<Tokens | null>(KEY);
+      const tokens = await store.get<Tokens | null>(SESSION_KEY);
       if (!tokens) throw new SpotifyError('not-linked', 'Compte Spotify non lié');
       if (!force && tokens.expiresAt - MARGIN_MS > now()) return tokens.accessToken;
       refreshing ??= refresh(tokens).finally(() => {
