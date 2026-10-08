@@ -28,7 +28,7 @@ Un chat vit dans une pièce : il marche, saute, dort, mange, se toilette. Il se 
 2. `now ≥ endsAt` : l'action est finie ; le chat est à sa destination et une **nouvelle action** est tirée.
 3. Snapshot absent, invalide ou visant un meuble disparu : le chat repart d'un point libre du sol.
 
-**Écritures** : à chaque changement d'action, et quand la page se cache ou se ferme (`visibilitychange`, `pagehide`). Jamais à chaque image. Migration v3 → v4 : `pets: []` partout.
+**Écritures** : à chaque NOUVEAU plan (changement d'action, caresse, replanification), via `updateQuiet` (aucun abonné prévenu, donc aucun rendu superflu). Le plan contient des horodatages absolus : sa position à tout instant se déduit sans rien réécrire, donc rien à écrire quand la page se cache ou se ferme. Jamais à chaque image. Migration v3 → v4 : `pets: []` partout.
 
 ## Architecture
 

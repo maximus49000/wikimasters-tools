@@ -1065,4 +1065,70 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v9',
+    theme: 'collection',
+    glyph: '🐱',
+    title: 'Un chat dans la pièce',
+    summary: 'Adoptez un chat qui marche, saute, dort et se laisse caresser',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Ouvrir une pièce de la Bibliothèque',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : c’est là que vit le chat que vous adoptez.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez la pièce où le chat vivra.' },
+          { label: 'À quoi ça sert', text: 'À donner un compagnon à chaque pièce. Tout reste sur cet appareil : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Passer en mode Aménager',
+        text: 'Le crayon passe en mode Aménager : c’est là qu’apparaît la rangée Animaux, avec le chat à adopter.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
+          { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="adopt"]',
+        title: 'Adopter un chat',
+        text: 'En mode Aménager, la rangée Animaux propose le glyphe du chat : touchez-le, choisissez un nom et un pelage, puis validez avec la coche. Le chat apparaît dans la pièce et commence sa vie.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Passez en mode Aménager avec le crayon, touchez le chat dans la rangée Animaux, écrivez son nom, touchez un pelage (roux, noir, gris, blanc, tigré, bicolore) puis la coche.' },
+          { label: 'À quoi ça sert', text: 'À donner de la vie à votre pièce : le chat marche, saute sur le canapé, dort dans son panier, mange à la gamelle ou se cache sous le canapé, selon les meubles que vous avez posés.' },
+          { label: 'Limites', text: 'Un seul chat par pièce. Il se déplace seulement là où il y a de la place : sans meuble, il se promène et se toilette ; sans panier, il dort par terre.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] svg[role="img"]',
+        title: 'Caresser le chat',
+        text: 'En mode Visiter, touchez le chat : il s’arrête, ronronne et son nom s’affiche au-dessus de lui avec des petits cœurs. Au bout de quelques secondes il repart.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Revenez au mode Visiter avec l’œil, puis touchez le chat. Pendant un saut il n’y répond pas : réessayez une seconde plus tard.' },
+          { label: 'À quoi ça sert', text: 'À donner un peu de vie et d’attention à la pièce, sans aucune contrainte : pas de jauge, rien à entretenir.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] svg[role="img"]',
+        title: 'Retrouver le chat comme on l’a laissé',
+        text: 'Quand vous revenez, le chat reprend son action là où elle en serait : s’il dormait pour une minute, il dort encore ; si son action est finie, il en choisit une autre.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Rien à faire : fermez la Bibliothèque ou la page, revenez plus tard. En mode Aménager, le nom du chat se change et le bouton corbeille le retire de la pièce.' },
+          { label: 'D’où viennent les données', text: 'Tout est enregistré sur cet appareil : le nom, le pelage et l’action en cours. Rien n’est envoyé.' },
+          { label: 'Limites', text: 'Le chat ne bouge pas réellement quand la page est fermée : sa position au retour est calculée, pas simulée. Avec le mode « réduire les animations » de l’appareil, il reste assis ou endormi sur place.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];
