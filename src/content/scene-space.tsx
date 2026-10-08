@@ -34,15 +34,26 @@ export function SpaceScene({ width, height, seed }: SceneBodyProps): ReactElemen
   );
 }
 
-// La Terre vue d'en haut : un grand disque au bas du monde. La face éclairée suit la lumière du jour ;
-// côté nuit, des villes lumineuses s'allument et s'éteignent comme les fenêtres d'immeuble.
-export function EarthScene({ width, height, sky, minutes, seed }: SceneBodyProps): ReactElement {
+// La Terre vue d'en haut : un grand disque au bas du monde, dont le sommet reste sous le haut du cadre (horizon visible).
+// La face éclairée suit la lumière du jour ; côté nuit, des villes lumineuses s'allument et s'éteignent comme les fenêtres d'immeuble.
+// Terres et villes ne sont dessinées que sur le disque.
+export function earthGeometry(width: number, height: number): { radius: number; cx: number; cy: number; surfaceY: (x: number) => number } {
   const radius = Math.max(width, 900);
   const cx = width / 2;
-  const cy = height + radius * 0.82;
+  const cy = height * 0.42 + radius;
+  const surfaceY = (x: number): number => cy - Math.sqrt(Math.max(0, radius * radius - (x - cx) ** 2));
+  return { radius, cx, cy, surfaceY };
+}
+
+export function EarthScene({ width, height, sky, minutes, seed }: SceneBodyProps): ReactElement {
+  const { radius, cx, cy, surfaceY } = earthGeometry(width, height);
   const rng = mulberry32(seed ^ 0xea27);
-  const lands = Array.from({ length: Math.round(width / 70) }, (_, i) => ({ i, x: cx + (rng() - 0.5) * width, rx: 20 + rng() * 40, ry: 6 + rng() * 12, dy: 6 + rng() * 60 }));
-  const cities = Array.from({ length: Math.round(width / 26) }, (_, i) => ({ i, x: cx + (rng() - 0.5) * width * 0.98, dy: 8 + rng() * 80, u: rng() }));
+  const lands = Array.from({ length: Math.round(width / 70) }, (_, i) => ({ i, x: cx + (rng() - 0.5) * width, rx: 20 + rng() * 40, ry: 6 + rng() * 12, dy: 6 + rng() * height * 0.45 })).filter(
+    (l) => height - l.dy + 4 - l.ry > surfaceY(l.x) + 2,
+  );
+  const cities = Array.from({ length: Math.round(width / 26) }, (_, i) => ({ i, x: cx + (rng() - 0.5) * width * 0.98, dy: 8 + rng() * height * 0.5, u: rng() })).filter(
+    (c) => height - c.dy > surfaceY(c.x) + 2,
+  );
   const dim = 1 - sky.daylight;
   const surface = mixHex('#0E1A3A', '#2F6FB5', sky.daylight);
   const land = mixHex('#14281F', '#4E9A5A', sky.daylight);
@@ -53,7 +64,7 @@ export function EarthScene({ width, height, sky, minutes, seed }: SceneBodyProps
       <circle cx={cx} cy={cy} r={radius * 1.04} fill="#6FA8FF" opacity={0.18 + 0.2 * sky.daylight} />
       <circle data-earth="" cx={cx} cy={cy} r={radius} fill={surface} />
       {lands.map((l) => (
-        <ellipse key={l.i} cx={l.x} cy={height - l.dy + 4} rx={l.rx} ry={l.ry} fill={land} />
+        <ellipse key={l.i} data-land="" cx={l.x} cy={height - l.dy + 4} rx={l.rx} ry={l.ry} fill={land} />
       ))}
       {cities.map((c) => {
         const lit = lampLit(c.u, minutes);

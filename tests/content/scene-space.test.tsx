@@ -60,3 +60,30 @@ describe('Terre vue d’en haut', () => {
     expect(container.querySelector('[data-earth]')!.getAttribute('fill')).not.toBe(day);
   });
 });
+
+describe('Terre vue d’en haut — géométrie', () => {
+  it('terres et villes sont sur le disque, dont le sommet laisse voir l’horizon', () => {
+    const height = 340;
+    for (const width of [720, 1440, 2880]) {
+      act(() => root.render(<svg><ScenePanorama scene="earth" width={width} height={height} sky={skyAt(21 * 60, times)} minutes={21 * 60} seed={9} /></svg>));
+      const disc = container.querySelector('[data-earth]')!;
+      const [cx, cy, r] = ['cx', 'cy', 'r'].map((a) => Number(disc.getAttribute(a)));
+      const surface = (x: number): number => cy - Math.sqrt(Math.max(0, r * r - (x - cx) ** 2));
+      expect(cy - r, `largeur ${width}`).toBeGreaterThanOrEqual(0);
+      expect(cy - r, `largeur ${width}`).toBeLessThanOrEqual(height * 0.6);
+      const lands = [...container.querySelectorAll('[data-land]')];
+      const cities = [...container.querySelectorAll('[data-lamp]')];
+      expect(lands.length, `largeur ${width}`).toBeGreaterThan(0);
+      expect(cities.length, `largeur ${width}`).toBeGreaterThan(5);
+      for (const l of lands) {
+        const x = Number(l.getAttribute('cx'));
+        const top = Number(l.getAttribute('cy')) - Number(l.getAttribute('ry'));
+        expect(top, `terre à x=${x}, largeur ${width}`).toBeGreaterThan(surface(x));
+      }
+      for (const c of cities) {
+        const x = Number(c.getAttribute('cx'));
+        expect(Number(c.getAttribute('cy')), `ville à x=${x}, largeur ${width}`).toBeGreaterThan(surface(x));
+      }
+    }
+  });
+});
