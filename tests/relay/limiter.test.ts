@@ -27,7 +27,9 @@ describe('createLimiter', () => {
     let now = 0;
     const limiter = createLimiter(() => now);
     for (let i = 0; i < 6_000; i += 1) limiter.check(`k${i}`, 1, 1_000);
+    expect(limiter.size()).toBe(6_000);
     now = 5_000;
-    expect(limiter.check('k0', 1, 1_000).ok).toBe(true);
+    expect(limiter.check('nouvelle', 1, 1_000).ok).toBe(true);
+    expect(limiter.size()).toBe(1);
   });
 });

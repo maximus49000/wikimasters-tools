@@ -9,6 +9,10 @@ const MAX_KEYS = 5_000;
 export function createLimiter(now: () => number) {
   const windows = new Map<string, Window>();
   return {
+    // Nombre de fenêtres suivies (sert aux tests de purge)
+    size(): number {
+      return windows.size;
+    },
     check(key: string, limit: number, windowMs: number): Verdict {
       const at = now();
       if (windows.size > MAX_KEYS) {
