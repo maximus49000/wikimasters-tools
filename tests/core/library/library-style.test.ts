@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { categoriesFor, STEAMPUNK_ONLY, sizeOf, poisOf } from '../../../src/core/library/furniture-catalog';
 import { MIN_COLS, ROWS } from '../../../src/core/library/room-grid';
-import { activeRoom, countExclusive, createInitialState, setRoomStyle, updateLayout } from '../../../src/core/library/library-book';
+import { activeRoom, countExclusive, createInitialState, parseLibraryState, setRoomStyle, updateLayout } from '../../../src/core/library/library-book';
 
 describe('styles de pièce', () => {
   it('la catégorie Steampunk n’existe que dans une pièce Steampunk', () => {
@@ -40,5 +40,13 @@ describe('styles de pièce', () => {
   it('un identifiant de pièce inconnu ne change rien', () => {
     const state = createInitialState();
     expect(setRoomStyle(state, 'zz', 'neon')).toBe(state);
+  });
+
+  it('parseLibraryState écarte un meuble exclusif hors Steampunk et le garde en Steampunk', () => {
+    const base = updateLayout(createInitialState(), 'r1', (l) => [...l, { id: 'f9', kind: 'globe', col: 2, row: 10 } as never]);
+    const neon = JSON.parse(JSON.stringify({ ...base, rooms: base.rooms.map((r) => ({ ...r, style: 'neon' })) }));
+    const steam = JSON.parse(JSON.stringify({ ...base, rooms: base.rooms.map((r) => ({ ...r, style: 'steampunk' })) }));
+    expect(activeRoom(parseLibraryState(neon)).layout.some((p) => p.kind === 'globe')).toBe(false);
+    expect(activeRoom(parseLibraryState(steam)).layout.some((p) => p.kind === 'globe')).toBe(true);
   });
 });

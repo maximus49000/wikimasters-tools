@@ -15,7 +15,7 @@ import {
   shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
-import { categoriesFor, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, type Category } from '../core/library/furniture-catalog';
+import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, type Category } from '../core/library/furniture-catalog';
 import { STYLE_IDS, type FurnitureKind, type Layout, type LibraryState, type Orientation, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
@@ -277,7 +277,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
   const visibleWidth = VISIBLE_COLS[room.orientation] * CELL_W;
   const editLayout = (change: Parameters<typeof updateLayout>[2]) => library.update((state) => updateLayout(state, room.id, change));
 
+  const cats = categoriesFor(room.style);
+  const shownCategory: Category = cats.some((c) => c.id === category) ? category : 'storage';
   const chooseStyle = (id: StyleId): void => {
+    if (id === room.style) return;
     if (room.style === 'steampunk' && id !== 'steampunk' && countExclusive(room) > 0
       && !window.confirm('Retirer les meubles Steampunk (globe, télescope, automate) de cette pièce ?')) return;
     reset();
@@ -411,6 +414,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     if (tool.type === 'card' || movingItem?.kind === 'wall') return placeWall(col, row);
     const kind: StandingKind | null = tool.type === 'new' ? (isStandingKind(tool.kind) ? tool.kind : null) : movingItem && isStanding(movingItem) ? movingItem.kind : null;
     if (!kind) return;
+    if (tool.type === 'new' && (STEAMPUNK_ONLY as readonly string[]).includes(kind) && room.style !== 'steampunk') return reset();
     // La case touchée est la case en bas à gauche du meuble.
     const top = row - sizeOf(kind).h + 1;
     const check = canPlace(layout, room.cols, kind, col, top, tool.type === 'move' ? tool.id : undefined);
@@ -626,8 +630,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
 
       {editing && (
         <div className="wmt-lib-row" role="group" aria-label="Catégories de meubles">
-          {categoriesFor(room.style).map((c) => (
-            <Btn key={c.id} label={c.label} pressed={category === c.id} data={{ category: c.id }} onClick={() => { reset(); setCategory(c.id); }}>
+          {cats.map((c) => (
+            <Btn key={c.id} label={c.label} pressed={shownCategory === c.id} data={{ category: c.id }} onClick={() => { reset(); setCategory(c.id); }}>
               <Icon paths={CATEGORY_ICON[c.id]} />
             </Btn>
           ))}
@@ -636,7 +640,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
 
       {editing && (
         <div className="wmt-lib-row">
-          {(categoriesFor(room.style).find((c) => c.id === category)?.kinds ?? []).map((kind) => (
+          {(cats.find((c) => c.id === shownCategory)?.kinds ?? []).map((kind) => (
             <Btn
               key={kind}
               label={`Poser : ${labelOf(kind)}`}

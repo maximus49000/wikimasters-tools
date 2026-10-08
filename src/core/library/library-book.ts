@@ -122,7 +122,7 @@ export function parseLibraryState(raw: unknown): LibraryState {
   if (!parsed.success) return createInitialState();
   const state = parsed.data;
   const ids = state.rooms.map((room) => room.id);
-  const rooms = state.rooms.map((room) => ({ ...room, layout: cleanLayout(room.layout) }));
+  const rooms = state.rooms.map((room) => ({ ...room, layout: cleanLayout(room.style === 'steampunk' ? room.layout : room.layout.filter((p) => !isExclusive(p))) }));
   return {
     ...state,
     rooms,

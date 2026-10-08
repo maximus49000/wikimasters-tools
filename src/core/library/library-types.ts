@@ -1,7 +1,7 @@
 // L'orientation ne change que la fenêtre visible sur la pièce (large en horizontal, étroite en vertical).
 export type Orientation = 'landscape' | 'portrait';
 
-// Les styles prévus ; seul `scandinave` a une palette dans ce morceau.
+// Les huit styles de pièce ; chacun a sa palette (styles.ts).
 export const STYLE_IDS = ['scandinave', 'moderne', 'industriel', 'boheme', 'retro70', 'japandi', 'neon', 'steampunk'] as const;
 export type StyleId = (typeof STYLE_IDS)[number];
 

@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../src/core/cache/store';
-import { activeRoom } from '../../src/core/library/library-book';
+import { activeRoom, setRoomStyle } from '../../src/core/library/library-book';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 
@@ -95,5 +95,17 @@ describe('sélecteur de style', () => {
     await click('[data-style="moderne"]');
     expect(confirm).not.toHaveBeenCalled();
     expect(room().style).toBe('moderne');
+  });
+
+  it('revient à Rangement quand on change de pièce avec la catégorie Steampunk ouverte', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-style="steampunk"]');
+    await click('[data-category="steampunk"]');
+    // Le style change hors du panneau (autre onglet) : la catégorie ouverte n'existe plus.
+    await act(async () => { await repo.update((state) => setRoomStyle(state, activeRoom(state).id, 'neon')); });
+    await settle();
+    expect(q('[data-category="steampunk"]')).toBeNull();
+    expect(q('[data-category="storage"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-kind="shelf"]')).not.toBeNull();
   });
 });
