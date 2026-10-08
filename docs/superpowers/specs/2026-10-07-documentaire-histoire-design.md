@@ -75,6 +75,14 @@ Décision du 2026-10-08 : la recherche est **large**. Une liste de natures ou de
 - **Exclus** : les cartes qui ont déjà leur propre fiche (film, série, jeu vidéo, livre, morceau) et les pages d'homonymie.
 - Quota : chaque nouvelle carte ouverte peut déclencher une recherche (101 unités sur 9 000 par jour) ; le cache partagé et l'index des chaînes limitent la dépense.
 
+## Choisir sa vidéo (décision du 2026-10-08, maquette `.superpowers/mockups/documentaire-choix.html`)
+
+- Le glyphe ≡▶ (avec le nombre total de vidéos) ouvre une **liste de toutes les vidéos** : rubrique « Proposées » puis « Pertinence moins sûre » ; chaque ligne montre miniature, titre, chaîne et durée. ⇄ passe à la vidéo suivante sans rien retenir.
+- **Toucher une ligne retient la vidéo pour la carte**, chez l'utilisateur seulement (`doc-choice-v1`, la vidéo entière est gardée) : elle est la première à chaque ouverture, même si la recherche ne la renvoie plus. Pastille « ★ Votre choix » et lien « Revenir au choix automatique ». Masquer la vidéo choisie (✕) oublie le choix.
+- Sans vidéo proposée, rien ne se lance d'office ; les possibles ne se choisissent que dans la liste.
+- Les miniatures de la liste ne se chargent qu'à son ouverture.
+- Un choix partagé entre tous les joueurs reste une idée mise de côté.
+
 ## Plein écran (décision du 2026-10-08)
 
 Tous les lecteurs vidéo de l'application (documentaires YouTube et Commons, bandes-annonces des films et séries, bandes-annonces HLS des jeux vidéo) ont un bouton plein écran à quatre coins, à gauche du lien « ouvrir à la source » : le conteneur du lecteur passe en plein écran (`src/content/fullscreen.tsx`). Dans l'APK, `MainActivity` relaie le plein écran des vidéos de la WebView (`onShowCustomView` / `onHideCustomView`, retour arrière pour en sortir).

@@ -490,7 +490,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'documentaire-v7',
+    id: 'documentaire-v8',
     theme: 'fiche',
     glyph: '🎞',
     title: 'Documentaire d’histoire',
@@ -503,7 +503,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'D’où viennent les vidéos', text: 'D’abord les documentaires choisis à la main, puis les archives libres de Wikimedia Commons, puis les vidéos récentes de quelques chaînes (ARTE, INA, Nota Bene, Lumni, Hérodote), puis une recherche YouTube. Chaque vidéo est notée : le titre doit contenir le nom du sujet et la durée doit être celle d’un documentaire.' },
           { label: 'Quelles cartes', text: 'Tous les sujets qui ne sont pas des personnes (événements, monuments, menhirs, mausolées, œuvres, épidémies, civilisations, cultes, espèces…), et les personnes décédées (les vivants sont exclus). Les films, séries, jeux, livres et morceaux ont leur propre fiche, et les pages d’homonymie sont ignorées. Aucun filtre sur la nature ou la date : seule la pertinence des vidéos décide de ce qui s’affiche.' },
-          { label: 'Vidéos proposées et vidéos possibles', text: 'La meilleure vidéo est proposée d’office. Quand d’autres vidéos sont un peu moins sûres, un glyphe ≡▶ avec un compteur les ajoute au lecteur : ⇄ passe de l’une à l’autre, et une pastille « Pertinence moins sûre » les distingue. La croix signale une vidéo hors sujet et la masque chez vous.' },
+          { label: 'Choisir sa vidéo', text: 'La meilleure vidéo est proposée d’office, et ⇄ passe à la suivante. Le glyphe ≡▶ ouvre la liste de toutes les vidéos trouvées, avec leur miniature, leur chaîne et leur durée : les proposées d’abord, puis celles de pertinence moins sûre. Toucher une vidéo l’affiche et la retient pour cette carte : elle revient en premier à chaque ouverture, sur votre appareil seulement. « Revenir au choix automatique » l’oublie. La croix signale une vidéo hors sujet et la masque chez vous.' },
           { label: 'Si rien ne convient', text: 'Aucune vidéo n’est affichée plutôt qu’une mauvaise : des boutons ouvrent la recherche chez YouTube, Arte et l’INA.' },
           { label: 'À savoir', text: 'Rien n’est chargé chez YouTube avant d’appuyer sur ▶. Le bouton à quatre coins met la vidéo en plein écran : il existe sur tous les lecteurs de l’application (documentaires, bandes-annonces des films, séries et jeux vidéo), y compris dans l’application Android. Certaines chaînes interdisent l’intégration : le bouton ↗ ouvre alors la vidéo à la source. Les archives de Commons sont sous licence libre, avec l’auteur indiqué.' },
         ],
