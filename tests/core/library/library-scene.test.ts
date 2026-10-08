@@ -47,6 +47,19 @@ describe('scène et heure', () => {
     expect(activeRoom(parsed).layout.map((p) => p.id)).toEqual(['f1']);
   });
 
+  it('écarte une fenêtre aux dimensions ou position non entières sans perdre la pièce', () => {
+    const base = updateLayout(createInitialState(), 'r1', () => [
+      { id: 'f1', kind: 'chair', col: 1, row: 13 },
+      { id: 'f2', kind: 'window', col: 2, row: 1, w: 6.5, h: 5 },
+      { id: 'f3', kind: 'window', col: 2.5, row: 1, w: 6, h: 5 },
+      { id: 'f4', kind: 'window', col: 12, row: 1, w: 6, h: 5 },
+    ]);
+    const renamed = { ...base, rooms: base.rooms.map((r) => ({ ...r, name: 'Salon' })) };
+    const parsed = parseLibraryState(JSON.parse(JSON.stringify(renamed)));
+    expect(activeRoom(parsed).name).toBe('Salon');
+    expect(activeRoom(parsed).layout.map((p) => p.id)).toEqual(['f1', 'f4']);
+  });
+
   it('une scène inconnue redonne un état initial', () => {
     const bad = { ...createInitialState(), rooms: [{ ...activeRoom(createInitialState()), scene: 'lune' }] };
     expect(parseLibraryState(JSON.parse(JSON.stringify(bad)))).toEqual(createInitialState());

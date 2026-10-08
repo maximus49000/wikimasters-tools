@@ -27,6 +27,22 @@ describe('sunTimes', () => {
   });
 });
 
+describe('skyAt aux hautes latitudes', () => {
+  it('un coucher après minuit laisse le ciel de jour à 0 h 30', () => {
+    expect(skyAt(30, { kind: 'normal', sunrise: 260, sunset: 1540 }).daylight).toBe(1);
+  });
+
+  it('un lever avant minuit (23 h la veille) : nuit à 21 h, aube à 23 h', () => {
+    const times = { kind: 'normal', sunrise: -60, sunset: 900 } as const;
+    const night = skyAt(1260, times);
+    expect(night.daylight).toBe(0);
+    expect(night.phase).toBe('night');
+    const dawn = skyAt(1380, times);
+    expect(dawn.daylight).toBeCloseTo(0.5, 5);
+    expect(dawn.phase).toBe('dawn');
+  });
+});
+
 describe('positionFromTimezone', () => {
   it('déduit la longitude du fuseau, latitude 45', () => {
     expect(positionFromTimezone(120)).toEqual({ lat: 45, lon: 30 });

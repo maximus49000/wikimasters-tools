@@ -6,6 +6,14 @@ import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, sectionIsEmpty, shiftLayout
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
 
+const windowSchema = z.object({
+  id: z.string(),
+  kind: z.literal('window'),
+  col: z.number().int(),
+  row: z.number().int(),
+  w: z.number().int().min(WINDOW_MIN.w).max(WINDOW_MAX.w),
+  h: z.number().int().min(WINDOW_MIN.h).max(WINDOW_MAX.h),
+});
 const placedSchema = z.union([
   z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: z.number().int(), row: z.number().int() }),
   z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string(), slug: z.string().optional() }),
@@ -19,14 +27,7 @@ const placedSchema = z.union([
     slug: z.string(),
     color: z.enum(['black', 'red', 'blue', 'green', 'gold']).optional(),
   }),
-  z.object({
-    id: z.string(),
-    kind: z.literal('window'),
-    col: z.number().int(),
-    row: z.number().int(),
-    w: z.number().int().min(WINDOW_MIN.w).max(WINDOW_MAX.w),
-    h: z.number().int().min(WINDOW_MIN.h).max(WINDOW_MAX.h),
-  }),
+  windowSchema,
   z.object({
     id: z.string(),
     kind: z.literal('stored'),
@@ -142,14 +143,10 @@ function migrateV2(raw: unknown): unknown {
 
 const migrate = (raw: unknown): unknown => migrateV2(migrateV1(raw));
 
-// Une fenêtre aux dimensions impossibles est ignorée sans faire perdre la pièce.
+// Une fenêtre impossible (dimensions hors bornes, valeurs non entières…) est ignorée sans faire perdre la pièce.
 function dropBadWindows(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { rooms?: unknown }).rooms)) return raw;
-  const ok = (p: unknown): boolean => {
-    if (typeof p !== 'object' || p === null || (p as { kind?: unknown }).kind !== 'window') return true;
-    const { w, h } = p as { w?: unknown; h?: unknown };
-    return typeof w === 'number' && typeof h === 'number' && w >= WINDOW_MIN.w && w <= WINDOW_MAX.w && h >= WINDOW_MIN.h && h <= WINDOW_MAX.h;
-  };
+  const ok = (p: unknown): boolean => (p as { kind?: unknown } | null)?.kind !== 'window' || windowSchema.safeParse(p).success;
   const rooms = (raw as { rooms: unknown[] }).rooms.map((room) =>
     typeof room === 'object' && room !== null && Array.isArray((room as { layout?: unknown }).layout) ? { ...room, layout: (room as { layout: unknown[] }).layout.filter(ok) } : room,
   );

@@ -63,6 +63,9 @@ export function skyAt(minutes: number, times: SunTimes): Sky {
   let sunFrac: number | null = null;
   let moonFrac: number | null = null;
   let noon = 720;
+  // Minute ramenée dans la fenêtre de 24 h centrée sur midi solaire : un lever avant minuit ou un coucher après minuit
+  // (hautes latitudes, position réelle) restent alors comparables à l'heure.
+  let t = m;
   if (times.kind === 'polar') {
     daylight = times.polar === 'day' ? 1 : 0;
     if (daylight === 1) sunFrac = m / 1440;
@@ -70,15 +73,16 @@ export function skyAt(minutes: number, times: SunTimes): Sky {
   } else {
     const { sunrise, sunset } = times;
     noon = (sunrise + sunset) / 2;
-    daylight = clamp(Math.min((m - (sunrise - 30)) / 60, (sunset + 30 - m) / 60), 0, 1);
-    if (m >= sunrise - 15 && m <= sunset + 15) sunFrac = clamp((m - sunrise) / (sunset - sunrise), 0, 1);
+    t = m < noon - 720 ? m + 1440 : m >= noon + 720 ? m - 1440 : m;
+    daylight = clamp(Math.min((t - (sunrise - 30)) / 60, (sunset + 30 - t) / 60), 0, 1);
+    if (t >= sunrise - 15 && t <= sunset + 15) sunFrac = clamp((t - sunrise) / (sunset - sunrise), 0, 1);
     else {
       const nightLen = 1440 - (sunset - sunrise);
-      moonFrac = clamp((((m - sunset) % 1440) + 1440) % 1440 / nightLen, 0, 1);
+      moonFrac = clamp((((t - sunset) % 1440) + 1440) % 1440 / nightLen, 0, 1);
     }
   }
   const twilight = times.kind === 'polar' ? 0 : clamp(1 - Math.abs(daylight - 0.5) * 2, 0, 1) * (daylight > 0 && daylight < 1 ? 1 : 0);
-  const phase: Phase = daylight >= 0.95 ? 'day' : daylight <= 0.05 ? 'night' : m < noon ? 'dawn' : 'dusk';
+  const phase: Phase = daylight >= 0.95 ? 'day' : daylight <= 0.05 ? 'night' : t < noon ? 'dawn' : 'dusk';
   const base = { top: mixHex(NIGHT.top, DAY.top, daylight), bottom: mixHex(NIGHT.bottom, DAY.bottom, daylight) };
   return {
     phase,

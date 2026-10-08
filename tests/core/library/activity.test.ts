@@ -20,6 +20,11 @@ describe('activityAt', () => {
     expect(activityAt(h(4))).toBeLessThan(0.1);
   });
 
+  it('accepte des minutes négatives ou au-delà de 24 h', () => {
+    expect(activityAt(-60)).toBeCloseTo(activityAt(1380), 5);
+    expect(activityAt(1440 + 1260)).toBeCloseTo(activityAt(1260), 5);
+  });
+
   it('est faible en journée', () => {
     expect(activityAt(h(13))).toBeLessThan(0.2);
   });
