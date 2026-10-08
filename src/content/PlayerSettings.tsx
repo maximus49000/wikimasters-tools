@@ -9,6 +9,8 @@ import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
+const NEEDS_KEY_MESSAGE = 'Ajoutez d’abord votre clé Spotify.';
+
 const choice = (selected: boolean) =>
   ({
     flex: 1,
@@ -46,6 +48,10 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
   // Spotify sans clé : on n'ouvre pas la fenêtre d'autorisation, on explique quoi faire.
   const { control: keyControl, key: spotifyKey } = useSpotifyKey();
   const needsKey = platform === 'spotify' && Boolean(keyControl) && spotifyKey === null && !linked;
+  // Une fois la clé enregistrée, le rappel « Ajoutez d’abord… » n'a plus lieu d'être (une vraie erreur de liaison, elle, reste).
+  useEffect(() => {
+    if (spotifyKey) setMessage((current) => (current === NEEDS_KEY_MESSAGE ? null : current));
+  }, [spotifyKey]);
   // Liaison en cours (la fenêtre d'autorisation est ouverte) et cause d'un échec.
   // Le bouton n'est jamais bloqué : une autorisation restée sans réponse (fenêtre fermée, adresse de retour refusée)
   // ne doit pas empêcher de délier ni de recommencer. Seule la tentative la plus récente, sur la plateforme affichée, compte.
@@ -61,7 +67,7 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
   const link = async () => {
     if (!service) return;
     if (needsKey) {
-      setMessage('Ajoutez d’abord votre clé Spotify.');
+      setMessage(NEEDS_KEY_MESSAGE);
       return;
     }
     const mine = ++attempt.current;

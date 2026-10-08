@@ -165,3 +165,39 @@ describe('clé Spotify dans le Lecteur', () => {
     expect(link).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('corrections de revue', () => {
+  it('Annuler efface le message « Clé invalide »', async () => {
+    serve(KEY);
+    await render(false);
+    await press(byLabel('Remplacer ma clé Spotify'));
+    await type('trop court');
+    await press(byLabel('Enregistrer ma clé Spotify'));
+    expect(text()).toContain('Clé invalide');
+    await press(byLabel('Annuler'));
+    expect(text()).not.toContain('Clé invalide');
+  });
+
+  it('le rappel « Ajoutez d’abord » disparaît une fois la clé enregistrée, puis Lier lie', async () => {
+    const { link } = serve(null);
+    await render(false);
+    await press(byLabel('Lier Spotify'));
+    expect(text()).toContain('Ajoutez d’abord votre clé');
+    await type(KEY);
+    await press(byLabel('Enregistrer ma clé Spotify'));
+    expect(text()).not.toContain('Ajoutez d’abord votre clé');
+    await press(byLabel('Lier Spotify'));
+    expect(link).toHaveBeenCalledTimes(1);
+  });
+
+  it('la saisie est désactivée pendant la confirmation du remplacement', async () => {
+    serve(KEY);
+    await render(true);
+    await press(byLabel('Remplacer ma clé Spotify'));
+    await type('a'.repeat(32));
+    await press(byLabel('Enregistrer ma clé Spotify'));
+    expect(field()!.disabled).toBe(true);
+    await press(byLabel('Annuler'));
+    expect(field()).toBeNull();
+  });
+});

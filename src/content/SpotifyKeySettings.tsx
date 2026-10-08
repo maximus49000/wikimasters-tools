@@ -77,6 +77,7 @@ export function SpotifyKeySettings({ linked }: { linked: boolean }) {
     setEditing(false);
     setDraft('');
     setPending(null);
+    setMessage(null);
   };
 
   const save = async () => {
@@ -123,6 +124,7 @@ export function SpotifyKeySettings({ linked }: { linked: boolean }) {
           <input
             aria-label="Clé Spotify (Client ID)"
             value={draft}
+            disabled={pending !== null}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="32 caractères, ex. 30d88341…"
             autoCapitalize="off"
