@@ -23,6 +23,7 @@ C'est un projet de plusieurs semaines. Cette spec fixe la **vision d'ensemble et
 | Placement | **Emplacements sur grille** (pas de placement libre au pixel). |
 | Style graphique | Vue de face en SVG/CSS, rendu moderne (aplats doux, coins arrondis). |
 | Pièces | Plusieurs pièces par joueur, chacune avec son style, ses meubles, ses cartes. |
+| Pièce d'accueil | Le joueur peut définir **une pièce comme ouverte au lancement**. Dans ce cas, c'est cette pièce qui s'affiche dès l'ouverture de l'application. |
 | Orientation | Chaque pièce s'affiche en **horizontal ou en vertical**, au choix du joueur. L'orientation est **figée** selon ce choix : elle ne suit pas la rotation de l'appareil. |
 | Styles | Au choix : Scandinave, Moderne, Industriel, Bohème, Rétro 70s, Japandi, Néon gaming. |
 | Placement d'une carte | On choisit **d'abord la carte, puis la forme**. |
@@ -58,6 +59,7 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 
 - Dans le sélecteur de vues de la Collection, un nouveau glyphe **livre** : Bibliothèque. Le choix est mémorisé comme les autres vues (`wmt:collectionView` = `library`).
 - Une bande de **pièces** en haut : un onglet par pièce, un bouton **+** pour en créer. Appui long (ou bouton ✎) sur un onglet : renommer, supprimer (avec confirmation). 12 pièces au maximum.
+- **Pièce d'accueil** : une étoile sur l'onglet (ou dans le menu de la pièce) la définit comme pièce d'accueil ; une seule à la fois, et toucher l'étoile de la pièce d'accueil retire ce réglage. Au lancement (première ouverture de la Collection après le démarrage de l'extension ou de l'appli mobile), si une pièce d'accueil est définie, la vue passe directement en **Bibliothèque** sur cette pièce, avec son orientation. Le joueur navigue ensuite librement ; le réglage ne s'applique qu'à ce premier affichage. Sans pièce d'accueil, la vue mémorisée habituelle est conservée.
 - Une nouvelle pièce est vide : mur et sol Scandinave, rien d'autre.
 - Deux modes, par un interrupteur crayon / œil :
   - **Visiter** : on voit la pièce, rien ne se déplace par erreur.
@@ -82,7 +84,7 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 - `furniture-catalog.ts` : la définition de chaque meuble (id, zone, taille, slots, fonction de dessin SVG). Un meuble ajouté plus tard = une entrée dans ce fichier.
 - `room-grid.ts` : fonctions pures `canPlace`, `place`, `move`, `remove` sur l'aménagement d'une orientation, avec les dimensions de grille de chaque orientation. Aucune dépendance au DOM.
 - `styles.ts` : palettes de style (variables CSS : mur, sol, bois, métal…). Le morceau 1 ne livre que `scandinave` ; le type admet déjà les 7 identifiants.
-- `library-book.ts` : état persistant `{ version: 1, activeRoomId, rooms: Room[] }`, `createRoom`, `renameRoom`, `deleteRoom`, `setActive`. Clé `wmt:library` ; tout accès au stockage est protégé par try/catch et retombe sur « une pièce vide » (comme `readView`). Un champ `version` prévoit les migrations.
+- `library-book.ts` : état persistant `{ version: 1, activeRoomId, homeRoomId: string | null, rooms: Room[] }`, `createRoom`, `renameRoom`, `deleteRoom`, `setActive`. Clé `wmt:library` ; tout accès au stockage est protégé par try/catch et retombe sur « une pièce vide » (comme `readView`). Un champ `version` prévoit les migrations.
 
 ### Interface (`src/content/`)
 
@@ -96,6 +98,7 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 
 - Stockage indisponible ou corrompu : une pièce vide par défaut, sans erreur affichée.
 - Dernière pièce : on ne peut pas la supprimer, seulement la vider.
+- Suppression de la pièce d'accueil : le réglage est retiré.
 - Suppression d'une pièce : confirmation, puis la pièce voisine devient active.
 - Un meuble qui ne rentre pas (bord de la grille, case occupée) : refus et clignotement des cases.
 - Retrait d'un bureau qui porte un ordinateur : l'ordinateur est retiré avec lui (confirmation si des cartes y sont posées, dès le morceau 2).
@@ -106,7 +109,7 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 ## Tests (Vitest)
 
 - `room-grid` : grilles paysage et portrait, aménagements indépendants par orientation, pose valide, hors zone, collision, déplacement, retrait, ordinateur uniquement sur un bureau.
-- `library-book` : création, renommage, suppression de la dernière pièce refusée, limite de 12, sérialisation et lecture d'un état corrompu.
+- `library-book` : pièce d'accueil (définir, retirer, suppression de la pièce d'accueil), création, renommage, suppression de la dernière pièce refusée, limite de 12, sérialisation et lecture d'un état corrompu.
 - `furniture-catalog` : chaque meuble tient dans la grille et ses emplacements sont dans sa surface.
 - `collection-view` et `world-toggle` : la valeur `library` est lue, écrite et proposée dans le sélecteur.
 - `LibraryPanel` : créer / renommer / supprimer une pièce, basculer Visiter / Aménager, poser et retirer un meuble.
