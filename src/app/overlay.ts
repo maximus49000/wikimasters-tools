@@ -458,6 +458,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         pruneImageSections();
         decorateImage(document, mountImageSection);
         // « Paramètre d'extension » regroupe Images et Lecteur (le lecteur n'existe que si Spotify est fourni par la plateforme).
+        collectionUi.decorateMenu(document);
         decorateExtensionSetting(document, () => openExtensionSettings(images, getPlayerSource() ?? null, purchaseAds, telemetry));
         syncPurchaseOffers(document, () => !purchaseAds.enabled());
         decorateWikiHowSetting(document, () => void openWikiHowFromStore());

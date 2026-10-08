@@ -673,13 +673,13 @@ export const ENTRIES: Entry[] = [
     summary: 'Aménager des pièces pour ranger vos cartes',
     steps: [
       {
-        target: '[data-wmt-view="library"]',
+        target: '[data-wmt-library-entry]',
         title: 'Ouvrir la Bibliothèque',
-        text: 'Le bouton livre, dans les vues de la Collection, ouvre la Bibliothèque : des pièces que vous aménagez avec des meubles, vues de face.',
+        text: 'Ma Pièce, juste après Collection dans le menu, ouvre la Bibliothèque : des pièces que vous aménagez avec des meubles, vues de face.',
         gesture: 'tap',
         details: [
           { label: 'À quoi ça sert', text: 'C’est une façon de présenter votre collection comme une vraie pièce. Dans cette première version, vous créez vos pièces et placez les meubles ; les cartes y viendront ensuite.' },
-          { label: 'Comment faire', text: 'Touchez le bouton livre parmi les vues de la Collection, puis créez une pièce et donnez-lui un nom.' },
+          { label: 'Comment faire', text: 'Touchez Ma Pièce dans le menu, puis créez une pièce et donnez-lui un nom.' },
           { label: 'D’où viennent les données', text: 'Les pièces sont créées par vous et gardées sur cet appareil, comme vos autres réglages : rien n’est envoyé au jeu ni partagé.' },
           { label: 'Limites', text: 'Jusqu’à 12 pièces. Elles ne sont pas synchronisées entre vos appareils.' },
         ],
@@ -695,7 +695,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Déplacer ou retirer', text: 'Touchez un meuble déjà posé : les boutons Déplacer et Retirer apparaissent. Retirer un bureau retire aussi l’ordinateur qui est dessus.' },
           { label: 'Si ça ne se pose pas', text: 'Les cases fautives clignotent en rouge et un message explique pourquoi : un meuble se pose au sol, sans en recouvrir un autre ni sortir de la pièce.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
       {
         target: '[data-wmt-library] [data-action="edit"]',
@@ -707,7 +707,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Appuyez environ une demi-seconde sur une étagère, un bureau ou un ordinateur, puis, sans lever le doigt, glissez. Le contour est vert quand la place est bonne, rouge sinon. Relâchez pour déposer ; Échap ou un glissé interrompu annule. La case sous le doigt est le bas à gauche du meuble.' },
           { label: 'Limites', text: 'Un meuble se pose au sol (jamais sur le mur), sans en recouvrir un autre ni sortir de la pièce ; un ordinateur se dépose sur un bureau qui n’en porte pas déjà un. Si le dépôt est refusé, le meuble revient à sa place et les cases fautives clignotent. Près du bord de l’écran, la pièce défile toute seule.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
       {
         target: '[data-wmt-library] [data-orient="portrait"]',
@@ -719,7 +719,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Ce que ça change', text: 'La pièce reste la même, avec les mêmes meubles. Seule la fenêtre change : large en horizontal, plus étroite et plus proche en vertical. Ce qui dépasse se découvre en faisant défiler la pièce vers la droite ou la gauche.' },
           { label: 'À savoir', text: 'Passer de l’un à l’autre ne perd rien et ne déplace rien.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
       {
         target: '[data-wmt-library] [data-action="fullscreen"]',
@@ -731,7 +731,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez le bouton plein écran de la barre. La pièce garde son orientation : horizontale en horizontal, verticale en vertical, et l’écran se tourne dans ce sens quand l’appareil le permet. Un bouton dans le coin permet de quitter. Le glissé pour défiler et l’appui long pour déplacer un meuble fonctionnent toujours.' },
           { label: 'Limites', text: 'Le verrouillage de l’orientation dépend de l’appareil : il marche sur Chrome mobile, pas sur ordinateur ; dans l’application, à confirmer. S’il est refusé, la pièce s’affiche simplement à la taille qui tient dans l’écran.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
       {
         target: '[data-wmt-library] [data-action="extend-right"]',
@@ -742,7 +742,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Chaque zone ajoute 12 colonnes. Une pièce fait de 24 à 96 colonnes. Ajouter à gauche décale vos meubles pour qu’ils restent à leur place dans la pièce.' },
           { label: 'Limites', text: 'On ne retire une zone que si elle est entièrement vide : retirez d’abord ses meubles, ou déplacez-les.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] [data-action="home"]',
@@ -753,7 +753,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez l’étoile pour la définir, touchez-la encore pour la retirer. Une seule pièce à la fois peut être l’accueil.' },
           { label: 'À savoir', text: 'Le réglage ne joue qu’à la première ouverture après le démarrage : vous naviguez ensuite librement.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
     ],
   },
@@ -765,12 +765,12 @@ export const ENTRIES: Entry[] = [
     summary: 'Accrocher, ranger et afficher vos cartes dans une pièce',
     steps: [
       {
-        target: '[data-wmt-view="library"]',
+        target: '[data-wmt-library-entry]',
         title: 'Ouvrir la Bibliothèque',
-        text: 'Le bouton livre, parmi les vues de la Collection, ouvre vos pièces : c’est là que se placent maintenant vos cartes.',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : c’est là que se placent maintenant vos cartes.',
         gesture: 'tap',
         details: [
-          { label: 'Comment faire', text: 'Touchez le bouton livre, choisissez une pièce, puis passez en mode Aménager (le crayon) pour y poser des cartes.' },
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, choisissez une pièce, puis passez en mode Aménager (le crayon) pour y poser des cartes.' },
           { label: 'À quoi ça sert', text: 'À présenter vos cartes comme dans une vraie pièce, avec des posters, des disques et des étagères. Les cartes viennent de votre Collection déjà chargée : rien n’est envoyé.' },
         ],
         scene: { page: '/collection', closeWindows: true },
@@ -784,7 +784,7 @@ export const ENTRIES: Entry[] = [
           { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur ; le mode Aménager montre les boutons pour poser des cartes.' },
           { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce : les boutons d’aménagement, dont Ajouter une carte, apparaissent.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
       {
         target: '[data-wmt-library] [data-action="add-card"]',
@@ -797,7 +797,7 @@ export const ENTRIES: Entry[] = [
           { label: 'D’où viennent les cartes', text: 'De votre Collection, déjà chargée par l’extension : rien n’est envoyé au jeu ni partagé, et le choix est gardé sur cet appareil avec la pièce.' },
           { label: 'Limites', text: 'Une carte ne peut être posée qu’une seule fois par pièce. Une étagère contient 15 emplacements. Une carte qui a quitté votre Collection reste affichée en grisé et ne s’ouvre plus.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] [data-action="add-card"]',
@@ -808,7 +808,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Le bouton Ajouter une carte est toujours présent en mode Aménager. Pour vider un écran, touchez l’ordinateur puis Retirer : la carte disparaît de l’écran ; un second Retirer retire l’ordinateur lui-même.' },
           { label: 'À savoir', text: 'Un ordinateur n’affiche qu’une carte à la fois, et cette carte ne peut pas être posée ailleurs dans la même pièce.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] [data-action="edit"]',
@@ -819,7 +819,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Appuyez une demi-seconde sur le poster, le disque ou le livre, puis glissez sans lever le doigt : le contour est vert quand la place est bonne, rouge sinon. Relâchez pour déposer ; Échap annule.' },
           { label: 'Limites', text: 'Il n’y a pas d’échange : un emplacement déjà occupé refuse le dépôt et l’objet revient à sa place. Retirer une étagère ou un bureau qui porte des cartes demande d’abord confirmation.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] [data-action="visit"]',
@@ -830,7 +830,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez le poster, le disque, la pochette, le dos d’un livre ou l’écran de l’ordinateur. En mode Aménager, un appui simple sélectionne l’objet au lieu de l’ouvrir.' },
           { label: 'Limites', text: 'L’ouverture est simple pour l’instant : la fiche apparaît directement, sans l’animation de retournement prévue plus tard.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
     ],
   },
@@ -842,12 +842,12 @@ export const ENTRIES: Entry[] = [
     summary: 'Canapé, plantes, tapis… et une pièce plus grande',
     steps: [
       {
-        target: '[data-wmt-view="library"]',
+        target: '[data-wmt-library-entry]',
         title: 'Ouvrir une pièce de la Bibliothèque',
-        text: 'Le bouton livre, parmi les vues de la Collection, ouvre vos pièces : c’est là que se posent les meubles.',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : c’est là que se posent les meubles.',
         gesture: 'tap',
         details: [
-          { label: 'Comment faire', text: 'Touchez le bouton livre, puis choisissez la pièce à meubler.' },
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez la pièce à meubler.' },
           { label: 'À quoi ça sert', text: 'À composer une vraie pièce autour de vos cartes. Tout reste sur cet appareil : rien n’est envoyé.' },
         ],
         scene: { page: '/collection', closeWindows: true },
@@ -861,7 +861,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
           { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
       {
         target: '[data-wmt-library] [data-category="seats"]',
@@ -873,7 +873,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez la catégorie, puis le meuble, puis une case du sol : la case touchée est le coin bas gauche du meuble. Un appui long sur un meuble, un tapis ou un petit objet le soulève : glissez-le, puis relâchez pour le déplacer.' },
           { label: 'Limites', text: 'Un meuble au sol ne se chevauche pas avec un autre, et il doit avoir son bas posé sur le sol (pas sur le mur).' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] [data-category="deco"]',
@@ -884,7 +884,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez Déco, puis le tapis, puis une case du sol. Ensuite, posez un meuble sur le tapis comme d’habitude.' },
           { label: 'À savoir', text: 'Deux tapis ne se chevauchent pas. Un meuble peut être posé sur un tapis, ou un tapis sous un meuble déjà là.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] [data-category="deco"]',
@@ -895,7 +895,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez la petite plante ou la petite lampe, puis le bureau ou l’étagère : l’objet prend le premier emplacement libre. Pour en changer, faites un appui long sur le petit objet et glissez-le vers un autre bureau ou une autre étagère : il prend là aussi le premier emplacement libre.' },
           { label: 'Limites', text: '4 emplacements sur un bureau (l’ordinateur couvre ceux du milieu), 3 sur le dessus d’une étagère. Retirer le meuble retire ce qui est posé dessus, après confirmation.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] [data-action="edit"]',
@@ -907,7 +907,7 @@ export const ENTRIES: Entry[] = [
           { label: 'À savoir', text: 'Vos anciennes pièces sont conservées : tout est simplement descendu pour laisser de la place devant.' },
           { label: 'D’où viennent les données', text: 'Tout reste sur cet appareil avec la pièce : rien n’est envoyé.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
     ],
   },
@@ -919,12 +919,12 @@ export const ENTRIES: Entry[] = [
     summary: 'Huit styles, du Scandinave au Steampunk',
     steps: [
       {
-        target: '[data-wmt-view="library"]',
+        target: '[data-wmt-library-entry]',
         title: 'Ouvrir une pièce de la Bibliothèque',
-        text: 'Le bouton livre, parmi les vues de la Collection, ouvre vos pièces : c’est là que se choisit le style de chacune.',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : c’est là que se choisit le style de chacune.',
         gesture: 'tap',
         details: [
-          { label: 'Comment faire', text: 'Touchez le bouton livre, puis choisissez la pièce à décorer.' },
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez la pièce à décorer.' },
           { label: 'À quoi ça sert', text: 'À personnaliser l’ambiance de chaque pièce. Tout reste sur cet appareil : rien n’est envoyé.' },
         ],
         scene: { page: '/collection', closeWindows: true },
@@ -938,7 +938,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
           { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
       {
         target: '[data-wmt-library] [role="group"][aria-label="Style de la pièce"]',
@@ -950,7 +950,7 @@ export const ENTRIES: Entry[] = [
           { label: 'À quoi ça sert', text: 'À donner une ambiance et un décor différents à chaque pièce de votre Bibliothèque.' },
           { label: 'Limites', text: 'Les cartes (posters, dos des livres, écran de l’ordinateur) gardent leurs propres couleurs, quel que soit le style.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] button[data-style="neon"]',
@@ -961,7 +961,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'En mode Aménager, touchez la pastille Néon gaming : le liseré apparaît autour de chaque meuble.' },
           { label: 'À quoi ça sert', text: 'À une ambiance de salle de jeu, qui fait ressortir vos meubles dans la pénombre.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] button[data-style="steampunk"]',
@@ -973,7 +973,7 @@ export const ENTRIES: Entry[] = [
           { label: 'À quoi ça sert', text: 'À une pièce vivante, dont l’horloge suit l’heure de votre appareil.' },
           { label: 'Limites', text: 'En quittant le style Steampunk, ces trois meubles sont retirés de la pièce, après confirmation.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
     ],
   },
