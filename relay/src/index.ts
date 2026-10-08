@@ -43,8 +43,10 @@ async function collect(request: Request, env: Env): Promise<Response> {
 
 // Agrégats du tableau de bord : réservés au porteur du jeton.
 async function statistics(request: Request, env: Env, url: URL): Promise<Response> {
-  if (!env.STATS_TOKEN || !env.USAGE_DB) return json({ ok: false, reason: 'not-configured' }, 503);
-  if (request.headers.get('x-stats') !== env.STATS_TOKEN) return json({ ok: false, reason: 'unauthorized' }, 401);
+  // Espaces et retours à la ligne autour du jeton ignorés des deux côtés (un collage dans `wrangler secret put` en ajoute souvent un).
+  const expected = env.STATS_TOKEN?.trim();
+  if (!expected || !env.USAGE_DB) return json({ ok: false, reason: 'not-configured' }, 503);
+  if ((request.headers.get('x-stats') ?? '').trim() !== expected) return json({ ok: false, reason: 'unauthorized' }, 401);
   const days = Math.min(90, Math.max(1, Number.parseInt(url.searchParams.get('days') ?? '30', 10) || 30));
   const pick = <T extends string>(allowed: readonly T[], value: string | null): T | null => allowed.find((candidate) => candidate === value) ?? null;
   const filters = { platform: pick(PLATFORMS, url.searchParams.get('platform')), channel: pick(CHANNELS, url.searchParams.get('channel')) };

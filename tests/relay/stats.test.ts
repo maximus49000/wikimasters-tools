@@ -103,6 +103,13 @@ describe('GET /stats', () => {
     expect((await call({ 'x-stats': 'faux' }, { USAGE_DB: db, STATS_TOKEN: 'secret' })).status).toBe(401);
     expect((await call({ 'x-stats': 'secret' }, { USAGE_DB: db })).status).toBe(503);
   });
+  it('ignore les espaces et retours à la ligne autour du jeton enregistré', async () => {
+    const db = sqliteD1();
+    expect((await call({ 'x-stats': 'secret' }, { USAGE_DB: db, STATS_TOKEN: 'secret\n' })).status).toBe(200);
+    expect((await call({ 'x-stats': 'secret' }, { USAGE_DB: db, STATS_TOKEN: ' secret ' })).status).toBe(200);
+    expect((await call({ 'x-stats': 'secret' }, { USAGE_DB: db, STATS_TOKEN: '  \n' })).status).toBe(503);
+    expect((await call({ 'x-stats': 'sec ret' }, { USAGE_DB: db, STATS_TOKEN: 'secret\n' })).status).toBe(401);
+  });
   it('rend les agrégats avec le bon jeton et ignore les filtres inconnus', async () => {
     const response = await call({ 'x-stats': 'secret' }, { USAGE_DB: sqliteD1(), STATS_TOKEN: 'secret' }, '?days=7&platform=ios&channel=prod');
     expect(response.status).toBe(200);
