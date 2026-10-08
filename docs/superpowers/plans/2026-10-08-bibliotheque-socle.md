@@ -274,7 +274,7 @@ describe('pose, déplacement, retrait', () => {
   });
 
   it("ne pose pas un ordinateur sur une étagère", () => {
-    const layout = placeStanding([], 24, 'shelf', 2, 6, 'f1')!;
+    const layout = placeStanding([], 24, 'shelf', 2, 4, 'f1')!;
     expect(canPlaceComputer(layout, 'f1')).toBe(false);
   });
 
@@ -307,7 +307,7 @@ describe('décalage et zones de bord', () => {
     const layout = placeStanding([], 24, 'desk', 2, 8, 'f1')!;
     expect(sectionIsEmpty(layout, 24, 'left')).toBe(false);
     expect(sectionIsEmpty(layout, 24, 'right')).toBe(true);
-    const both = placeStanding(layout, 24, 'shelf', 18, 6, 'f2')!;
+    const both = placeStanding(layout, 24, 'shelf', 18, 4, 'f2')!;
     expect(sectionIsEmpty(both, 24, 'right')).toBe(false);
   });
 
