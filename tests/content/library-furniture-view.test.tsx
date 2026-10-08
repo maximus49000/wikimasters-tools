@@ -11,6 +11,7 @@ const room: Room = {
   id: 'r1',
   name: 'Salon',
   style: 'scandinave',
+  scene: 'city',
   orientation: 'landscape',
   cols: 48,
   layout: [

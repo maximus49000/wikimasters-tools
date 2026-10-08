@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Layout, type LibraryState, type Orientation, type Placed, type Room, type StyleId } from './library-types';
-import { STEAMPUNK_ONLY } from './furniture-catalog';
+import { SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Layout, type LibraryState, type Orientation, type Placed, type Room, type SceneId, type StyleId, type TimeSetting } from './library-types';
+import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
 import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, sectionIsEmpty, shiftLayout } from './room-grid';
 
 export const MAX_ROOMS = 12;
@@ -21,6 +21,14 @@ const placedSchema = z.union([
   }),
   z.object({
     id: z.string(),
+    kind: z.literal('window'),
+    col: z.number().int(),
+    row: z.number().int(),
+    w: z.number().int().min(WINDOW_MIN.w).max(WINDOW_MAX.w),
+    h: z.number().int().min(WINDOW_MIN.h).max(WINDOW_MAX.h),
+  }),
+  z.object({
+    id: z.string(),
     kind: z.literal('stored'),
     shape: z.enum(['cd', 'dvd', 'game', 'book']),
     shelfId: z.string(),
@@ -32,14 +40,21 @@ const roomSchema = z.object({
   id: z.string(),
   name: z.string(),
   style: z.enum(STYLE_IDS),
+  scene: z.enum(SCENE_IDS),
   orientation: z.enum(['landscape', 'portrait']),
   cols: z.number().int().min(MIN_COLS).max(MAX_COLS).refine((cols) => cols % SECTION === 0),
   layout: z.array(placedSchema),
 });
 const stateSchema = z.object({
-  version: z.literal(2),
+  version: z.literal(3),
   activeRoomId: z.string(),
   homeRoomId: z.string().nullable(),
+  time: z.union([
+    z.object({ mode: z.literal('real') }),
+    z.object({ mode: z.literal('day') }),
+    z.object({ mode: z.literal('night') }),
+    z.object({ mode: z.literal('manual'), minutes: z.number().int().min(0).max(1439) }),
+  ]),
   rooms: z.array(roomSchema).min(1).max(MAX_ROOMS),
 });
 
@@ -49,17 +64,18 @@ function nextId(prefix: string, taken: string[]): string {
   return `${prefix}${n}`;
 }
 
-const makeRoom = (id: string, name: string, orientation: Orientation, style: Room['style'] = 'scandinave'): Room => ({
+const makeRoom = (id: string, name: string, orientation: Orientation, style: Room['style'] = 'scandinave', scene: SceneId = 'city'): Room => ({
   id,
   name,
   style,
+  scene,
   orientation,
   cols: MIN_COLS,
   layout: [],
 });
 
 export function createInitialState(): LibraryState {
-  return { version: 2, activeRoomId: 'r1', homeRoomId: null, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
+  return { version: 3, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
 }
 
 export function activeRoom(state: LibraryState): Room {
@@ -101,7 +117,7 @@ function cleanLayout(layout: Layout): Layout {
 
 // Une pièce v1 avait 12 lignes (9 de mur, 3 de sol) ; la v2 en a 18 (12 + 6). Tout descend de 3 lignes : le sol d'origine reste contre le mur.
 const V1_ROW_SHIFT = 3;
-function migrate(raw: unknown): unknown {
+function migrateV1(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 1) return raw;
   const state = raw as { rooms?: unknown };
   if (!Array.isArray(state.rooms)) return raw;
@@ -116,9 +132,33 @@ function migrate(raw: unknown): unknown {
   return { ...state, version: 2, rooms };
 }
 
+// La v3 ajoute la scène de chaque pièce (ville) et l'heure globale (réelle).
+function migrateV2(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 2) return raw;
+  const state = raw as { rooms?: unknown };
+  const rooms = Array.isArray(state.rooms) ? state.rooms.map((room: unknown) => (typeof room === 'object' && room !== null ? { ...room, scene: 'city' } : room)) : state.rooms;
+  return { ...state, version: 3, time: { mode: 'real' }, rooms };
+}
+
+const migrate = (raw: unknown): unknown => migrateV2(migrateV1(raw));
+
+// Une fenêtre aux dimensions impossibles est ignorée sans faire perdre la pièce.
+function dropBadWindows(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { rooms?: unknown }).rooms)) return raw;
+  const ok = (p: unknown): boolean => {
+    if (typeof p !== 'object' || p === null || (p as { kind?: unknown }).kind !== 'window') return true;
+    const { w, h } = p as { w?: unknown; h?: unknown };
+    return typeof w === 'number' && typeof h === 'number' && w >= WINDOW_MIN.w && w <= WINDOW_MAX.w && h >= WINDOW_MIN.h && h <= WINDOW_MAX.h;
+  };
+  const rooms = (raw as { rooms: unknown[] }).rooms.map((room) =>
+    typeof room === 'object' && room !== null && Array.isArray((room as { layout?: unknown }).layout) ? { ...room, layout: (room as { layout: unknown[] }).layout.filter(ok) } : room,
+  );
+  return { ...(raw as object), rooms };
+}
+
 // Une lecture sûre : un contenu absent, d'une autre version ou abîmé redonne une pièce vide (comme `readView`).
 export function parseLibraryState(raw: unknown): LibraryState {
-  const parsed = stateSchema.safeParse(migrate(raw));
+  const parsed = stateSchema.safeParse(dropBadWindows(migrate(raw)));
   if (!parsed.success) return createInitialState();
   const state = parsed.data;
   const ids = state.rooms.map((room) => room.id);
@@ -152,7 +192,7 @@ export function addRoom(state: LibraryState): LibraryState {
   if (state.rooms.length >= MAX_ROOMS) return state;
   const current = activeRoom(state);
   const id = nextId('r', state.rooms.map((room) => room.id));
-  const room = makeRoom(id, `Pièce ${state.rooms.length + 1}`, current.orientation, current.style);
+  const room = makeRoom(id, `Pièce ${state.rooms.length + 1}`, current.orientation, current.style, current.scene);
   return { ...state, rooms: [...state.rooms, room], activeRoomId: id };
 }
 
@@ -210,4 +250,15 @@ export function updateLayout(state: LibraryState, roomId: string, change: (layou
 
 export function nextFurnitureId(layout: Layout): string {
   return nextId('f', layout.map((placed) => placed.id));
+}
+
+export function setRoomScene(state: LibraryState, id: string, scene: SceneId): LibraryState {
+  const room = state.rooms.find((candidate) => candidate.id === id);
+  if (!room || room.scene === scene) return state;
+  return mapRoom(state, id, (r) => ({ ...r, scene }));
+}
+
+export function setTimeSetting(state: LibraryState, time: TimeSetting): LibraryState {
+  if (time.mode !== 'manual') return { ...state, time };
+  return { ...state, time: { mode: 'manual', minutes: Math.min(1439, Math.max(0, Math.round(time.minutes))) } };
 }

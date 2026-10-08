@@ -12,6 +12,7 @@ const roomOf = (style: StyleId): Room => ({
   id: 'r1',
   name: 'Atelier',
   style,
+  scene: 'city',
   orientation: 'landscape',
   cols: 48,
   layout: [

@@ -32,19 +32,28 @@ export type Placed =
 
 export type Layout = Placed[];
 
+// Décors vus par les fenêtres d'une pièce.
+export const SCENE_IDS = ['city', 'countryside', 'mountain', 'sea', 'space', 'earth'] as const;
+export type SceneId = (typeof SCENE_IDS)[number];
+
+export type TimeSetting = { mode: 'real' } | { mode: 'day' } | { mode: 'night' } | { mode: 'manual'; minutes: number };
+
 // `cols` : largeur de la pièce en colonnes (multiple de 12, de 24 à 96). Un seul aménagement, quelle que soit l'orientation.
 export type Room = {
   id: string;
   name: string;
   style: StyleId;
+  scene: SceneId;
   orientation: Orientation;
   cols: number;
   layout: Layout;
 };
 
 export type LibraryState = {
-  version: 2;
+  version: 3;
   activeRoomId: string;
   homeRoomId: string | null;
+  // Heure globale de la Bibliothèque (toutes les pièces).
+  time: TimeSetting;
   rooms: Room[];
 };
