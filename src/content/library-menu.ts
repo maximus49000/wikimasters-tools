@@ -8,16 +8,13 @@ const SPEC: EntrySpec = {
   iconPaths: ['M12 7v14', 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z'],
 };
 
-// La barre du mobile ne défile pas : avec une entrée de plus, les entrées se partagent la largeur au lieu de déborder.
+// La barre du mobile ne défile pas : avec une entrée de plus, les entrées se partagent la largeur au lieu de déborder (sans rogner : le menu « Plus » s'ouvre hors de la barre).
 function fitOnOnePage(bar: HTMLElement): void {
   if (getComputedStyle(bar).display !== 'flex') return;
-  bar.style.overflowX = 'hidden';
   for (const child of Array.from(bar.children)) {
     if (!(child instanceof HTMLElement)) continue;
     child.style.flex = '1 1 0';
     child.style.minWidth = '0';
-    child.style.overflow = 'hidden';
-    child.style.textOverflow = 'ellipsis';
   }
 }
 
