@@ -6,7 +6,7 @@ import { ShelfItemArt, WallArt } from './library-card-art';
 import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 import { getImageService } from './image-registry';
 
-export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | null;
+export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
 
 type Props = {
   room: Room;
