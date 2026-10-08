@@ -1,7 +1,9 @@
 import { ANOMALY_API_PREFIX } from './config';
+import { NEW_ANOMALY_LABEL } from './labels';
+
+export { NEW_ANOMALY_LABEL };
 
 // États d'une anomalie = étiquettes de l'issue : Nouveau (posée à l'envoi), Analysée, Corrigé, « Livrée N » (posés à la main).
-export const NEW_ANOMALY_LABEL = 'Nouveau';
 const TITLE_MAX = 80;
 export const DESCRIPTION_MAX = 4000;
 

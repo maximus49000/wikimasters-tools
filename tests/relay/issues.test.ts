@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { createIssue } from '../../relay/src/issues';
 
@@ -48,5 +49,16 @@ describe('createIssue', () => {
     expect(refused.status).toBe(502);
     expect(refused.body).not.toContain('SECRET-GH');
     expect((await createIssue(JSON.stringify(draft), { fetch: async () => Promise.reject(new Error('x')), token: 't' })).status).toBe(502);
+  });
+  it('répond 502 si GitHub répond 2xx sans JSON exploitable', async () => {
+    for (const body of ['pas du json', 'null']) {
+      const result = await createIssue(JSON.stringify(draft), { fetch: async () => new Response(body, { status: 201 }), token: 't' });
+      expect(result.status).toBe(502);
+    }
+  });
+  it('ne dépend d’aucun module qui lit import.meta.env (sûr dans le Worker)', () => {
+    const source = readFileSync(new URL('../../relay/src/issues.ts', import.meta.url), 'utf8');
+    expect(source).not.toContain('anomalies/anomaly');
+    expect(source).not.toContain('anomalies/config');
   });
 });

@@ -1,5 +1,5 @@
 // relay/src/issues.ts
-import { NEW_ANOMALY_LABEL } from '../../src/core/anomalies/anomaly';
+import { NEW_ANOMALY_LABEL } from '../../src/core/anomalies/labels';
 import { FLAG_LABEL, PROPOSAL_LABEL } from '../../src/core/documentary/proposal';
 import { failure, type Fetcher, type ProxyResult } from './proxy';
 
@@ -42,7 +42,12 @@ export async function createIssue(raw: string, deps: { fetch: Fetcher; token: st
     return failure(502, 'upstream');
   }
   if (!response.ok) return failure(502, 'upstream');
-  const created = (await response.json()) as { number?: unknown; html_url?: unknown };
-  if (typeof created.number !== 'number') return failure(502, 'upstream');
+  let created: { number?: unknown; html_url?: unknown } | null;
+  try {
+    created = (await response.json()) as { number?: unknown; html_url?: unknown } | null;
+  } catch {
+    return failure(502, 'upstream');
+  }
+  if (typeof created?.number !== 'number') return failure(502, 'upstream');
   return { status: 200, body: JSON.stringify({ ok: true, number: created.number, url: typeof created.html_url === 'string' ? created.html_url : '' }) };
 }
