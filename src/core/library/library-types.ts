@@ -8,10 +8,17 @@ export type StyleId = (typeof STYLE_IDS)[number];
 export type FurnitureKind = 'shelf' | 'desk' | 'computer';
 export type StandingKind = 'shelf' | 'desk';
 
-// Un meuble au sol : (col, row) est sa case en haut à gauche. L'ordinateur n'a pas de case : il suit son bureau.
+export type WallShape = 'poster' | 'vinyl' | 'sleeve-square' | 'sleeve-round' | 'sleeve-frame';
+export type ShelfShape = 'cd' | 'dvd' | 'game' | 'book';
+export type VinylColor = 'black' | 'red' | 'blue' | 'green' | 'gold';
+
+// Un meuble au sol : (col, row) est sa case en haut à gauche. L'ordinateur n'a pas de case : il suit son bureau (et peut afficher une carte).
+// `wall` : objet accroché au mur (case en haut à gauche). `stored` : objet rangé dans l'emplacement `slot` (0 à 14) d'une étagère.
 export type Placed =
   | { id: string; kind: StandingKind; col: number; row: number }
-  | { id: string; kind: 'computer'; deskId: string };
+  | { id: string; kind: 'computer'; deskId: string; slug?: string }
+  | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
+  | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; slot: number; slug: string };
 
 export type Layout = Placed[];
 
