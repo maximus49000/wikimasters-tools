@@ -1,4 +1,11 @@
-export type SpotifyErrorCode = 'not-linked' | 'no-device' | 'not-premium' | 'rate-limited' | 'auth-cancelled' | 'http';
+export type SpotifyErrorCode =
+  | 'not-linked'
+  | 'no-client-id'
+  | 'no-device'
+  | 'not-premium'
+  | 'rate-limited'
+  | 'auth-cancelled'
+  | 'http';
 
 export class SpotifyError extends Error {
   constructor(
@@ -18,6 +25,7 @@ const MESSAGES: Record<SpotifyErrorCode, string> = {
   'no-device': 'Ouvre Spotify sur un de tes appareils, puis réessaie.',
   'not-premium': 'Spotify Premium est nécessaire pour lancer la lecture.',
   'not-linked': 'Lie ton compte Spotify pour écouter.',
+  'no-client-id': 'Ajoute ta clé Spotify pour lier ton compte.',
   'rate-limited': 'Spotify demande de patienter un instant. Réessaie dans quelques secondes.',
   'auth-cancelled': 'Liaison Spotify annulée.',
   http: 'Spotify est indisponible pour le moment.',
