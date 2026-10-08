@@ -1,30 +1,22 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import { readView, writeView } from '../../src/content/collection-view';
-import { ensureViewSwitch } from '../../src/content/world-toggle';
+import { readView } from '../../src/content/collection-view';
+import { decorateLibraryEntry } from '../../src/content/library-menu';
 
-describe('vue library', () => {
-  it('est écrite puis relue', () => {
-    const data = new Map<string, string>();
-    const storage = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v) };
-    writeView(storage, 'library');
-    expect(readView(storage)).toBe('library');
+describe('Ma Pièce', () => {
+  it('n’est plus une vue de la Collection : l’ancien choix retombe sur homemade', () => {
+    expect(readView({ getItem: () => 'library' })).toBe('homemade');
   });
 
-  it('retombe sur homemade quand le stockage est bloqué', () => {
-    expect(readView({ getItem: () => { throw new Error('bloqué'); } })).toBe('homemade');
-  });
-
-  it('apparaît dans le sélecteur et se choisit', () => {
-    document.body.innerHTML = '<div><button id="anchor">Sélectionner</button></div>';
-    const anchor = document.getElementById('anchor') as HTMLButtonElement;
-    const onSelect = vi.fn();
-    const group = ensureViewSwitch(anchor, anchor, 'library', onSelect);
-    const button = group.querySelector<HTMLButtonElement>('[data-wmt-view="library"]');
-    expect(button).not.toBeNull();
-    expect(button?.getAttribute('aria-pressed')).toBe('true');
-    expect(button?.getAttribute('aria-label')).toContain('Bibliothèque');
-    button?.click();
-    expect(onSelect).toHaveBeenCalledWith('library');
+  it('s’ajoute juste après « Collection », une seule fois, et ouvre la fenêtre', () => {
+    document.body.innerHTML = '<nav style="display:flex"><a href="/home">Accueil</a><a href="/collection"><svg></svg>Collection</a><a href="/shop">Boutique</a></nav>';
+    const onOpen = vi.fn();
+    expect(decorateLibraryEntry(document, onOpen)).toBe(1);
+    expect(decorateLibraryEntry(document, onOpen)).toBe(0);
+    const entry = document.querySelector<HTMLElement>('[data-wmt-library-entry]');
+    expect(entry?.previousElementSibling?.getAttribute('href')).toBe('/collection');
+    expect(entry?.textContent).toContain('Ma Pièce');
+    entry?.click();
+    expect(onOpen).toHaveBeenCalledOnce();
   });
 });

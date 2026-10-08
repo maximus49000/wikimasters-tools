@@ -10,7 +10,6 @@ import type { GeoRepo } from '../core/geo/geo-repo';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { LinksRepo } from '../core/links/links-repo';
 import type { LibraryRepo } from '../core/library/library-repo';
-import { setActive } from '../core/library/library-book';
 import type { PriceBook } from '../core/pricing/price-book';
 import {
   findCardGrid,
@@ -26,11 +25,10 @@ import type { CollectionFilterSource } from './collection-filter';
 import { recountCopies } from '../core/collection/recount';
 import { readView, writeView, type CollectionView } from './collection-view';
 import { HomemadePanel } from './HomemadePanel';
-import { LIBRARY_CSS, LibraryPanel } from './LibraryPanel';
-import { createLaunchGate } from './library-launch';
+import { createLibraryWindow } from './library-window';
+import { decorateLibraryEntry } from './library-menu';
 import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
-import { isolateNavigation, restoreNavigation } from './isolate-navigation';
 import { createPageMemory } from './page-memory';
 import { createPathRequestSource, createSelectionSource, type SelectedCard } from './selection-source';
 import { track } from '../core/telemetry/registry';
@@ -83,12 +81,7 @@ type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: Collectio
 export function createCollectionUi({ collection, geo, library, birth, kinds, links, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
-  // Pièces de la Bibliothèque : lues au premier passage sur la Collection, pas au démarrage de chaque page du site.
-  let libraryRequested = false;
-  // Vrai tant que la vue Bibliothèque a masqué des éléments : évite de parcourir toute la page à chaque changement du DOM.
-  let navigationIsolated = false;
-  // Pièce d'accueil : appliquée une fois, à la première ouverture de la Collection après le démarrage.
-  const launch = createLaunchGate();
+  const libraryWindow = createLibraryWindow({ library, collection, kinds, onOpenCard: openGameCard });
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
   // « ×2 » : les exemplaires sont remis à jour en arrière-plan ; les cartes en double s'affichent aussitôt avec les nombres connus.
   const recount = createRecountSource(() => recountCopies(scanner));
@@ -168,7 +161,7 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     host.style.display = 'block';
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = leafletCss + clusterCss + clusterDefaultCss + PANEL_CSS + LIBRARY_CSS;
+    style.textContent = leafletCss + clusterCss + clusterDefaultCss + PANEL_CSS;
     const mountPoint = document.createElement('div');
     shadow.append(style, mountPoint);
     grid.insertAdjacentElement('beforebegin', host);
@@ -183,8 +176,6 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
           <WorldPanel {...common} geo={geo} kinds={kinds} kindFilterSource={kindFilterSource} />
         ) : view === 'web' ? (
           <WebPanel {...common} links={links} kinds={kinds} kindFilterSource={kindFilterSource} request={pathRequest.take()} />
-        ) : view === 'library' ? (
-          <LibraryPanel library={library} collection={collection} kinds={kinds} onOpenCard={openGameCard} />
         ) : (
           <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} selection={selection} onToggleCard={toggleCard} onLongPressCard={startSelectionWith} />
         )}
@@ -198,13 +189,6 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     unmountPanel();
     kindRow.unmount();
     restoreHiddenGrids(document);
-    releaseNavigation();
-  }
-
-  function releaseNavigation(): void {
-    if (!navigationIsolated) return;
-    navigationIsolated = false;
-    restoreNavigation(document);
   }
 
   // Idempotent : appelé à chaque changement du DOM, il ne touche à rien quand tout est déjà en place.
@@ -212,11 +196,6 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     if (!window.location.pathname.startsWith('/collection')) {
       showList();
       return;
-    }
-    if (!libraryRequested) {
-      libraryRequested = true;
-      // Une fois prêtes, on rejoue sync (pièce d'accueil, vue Bibliothèque).
-      library.load().then(() => sync()).catch((error) => console.warn(LOG, 'pièces de la Bibliothèque non chargées :', error));
     }
     // Premier chargement : le scan tourne en arrière plan (une fois par chargement de page ;
     // il ne refait rien s'il est déjà terminé, et reprend où il s'était arrêté sinon).
@@ -243,11 +222,6 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
       }
     }
 
-    const home = launch.take(library.current());
-    if (home !== null) {
-      void library.update((state) => setActive(state, home));
-      writeView(window.localStorage, 'library');
-    }
     const view = readView(window.localStorage);
     syncPriceSort(document, view === 'homemade', sortSource);
     // Le sélecteur se place à côté des pastilles de rareté ; à défaut, à côté de « Sélectionner ».
@@ -255,7 +229,7 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     const switchGroup = ensureViewSwitch(rarityAnchor ?? button, button, view, (next) => {
       writeView(window.localStorage, next);
       sync();
-    }, view === 'list' || view === 'library' ? null : {
+    }, view === 'list' ? null : {
       on: kindFilterSource.current().duplicates === true,
       onToggle: () => {
         const current = kindFilterSource.current();
@@ -287,25 +261,13 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     }
     // Les filtres nature / occupation sont posés avant les pastilles de rareté, sinon avant « Sélectionner » :
     // jamais entre ce bouton et le sélecteur de vues (ensureViewSwitch créerait alors un second sélecteur).
-    // Vue Bibliothèque : ni filtres nature / occupation, ni titre ni filtres du site (voir plus bas).
-    if (view === 'library') kindRow.unmount();
-    else kindRow.mount(rarityAnchor?.parentElement ?? button);
+    kindRow.mount(rarityAnchor?.parentElement ?? button);
     setGridHidden(grid, true);
     // Les panneaux montrent toutes les cartes : la navigation entre les pages de la liste n'a plus de sens.
     for (const pagination of findPagination(document, button)) setGridHidden(pagination, true);
     if (!panel || panel.grid !== grid || panel.view !== view || !panel.host.isConnected) {
       unmountPanel();
       mountPanel(grid, view);
-    }
-    // Vue Bibliothèque épurée : seuls le sélecteur de vues et le panneau restent affichés (le reste de la zone est masqué).
-    if (view === 'library' && panel) {
-      const boundary = switchGroup.closest('main') ?? scope?.parentElement;
-      if (boundary instanceof HTMLElement && boundary !== document.body && boundary !== document.documentElement) {
-        navigationIsolated = true;
-        isolateNavigation([switchGroup, panel.host], boundary);
-      }
-    } else {
-      releaseNavigation();
     }
   }
 
@@ -315,5 +277,9 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     syncPriceSort(document, readView(window.localStorage) === 'homemade', sortSource);
   }
 
-  return { sync, syncSortMenu };
+  // « Ma Pièce » s'ouvre depuis le menu du site, juste après « Collection » ; les pièces se lisent à la première ouverture.
+  const decorateMenu = (root: ParentNode): number =>
+    decorateLibraryEntry(root, () => void library.load().then(libraryWindow.open).catch((error) => console.warn(LOG, 'pièces de Ma Pièce non chargées :', error)));
+
+  return { sync, syncSortMenu, decorateMenu };
 }

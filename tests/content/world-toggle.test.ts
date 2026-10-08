@@ -57,20 +57,20 @@ describe('readView / writeView', () => {
 });
 
 describe('ensureViewSwitch', () => {
-  const NAMES = ['Homemade', 'Monde', 'Chronologique', 'Toile', 'Bibliothèque', 'Grille'];
+  const NAMES = ['Homemade', 'Monde', 'Chronologique', 'Toile', 'Grille'];
 
-  it("insère six boutons en glyphes juste après l'ancre, Homemade en tête et la Grille à droite", () => {
+  it("insère cinq boutons en glyphes juste après l'ancre, Homemade en tête et la Grille à droite", () => {
     const select = makeSelect();
     const group = ensureViewSwitch(select, select, 'homemade', () => undefined);
 
     expect(select.nextElementSibling).toBe(group);
     const buttons = [...group.querySelectorAll('button[data-wmt-view]')];
-    expect(buttons.map((b) => b.getAttribute('data-wmt-view'))).toEqual(['homemade', 'world', 'timeline', 'web', 'library', 'list']);
+    expect(buttons.map((b) => b.getAttribute('data-wmt-view'))).toEqual(['homemade', 'world', 'timeline', 'web', 'list']);
     expect(buttons.map((b) => b.getAttribute('aria-label')?.split(' ')[0])).toEqual(NAMES.map((name) => name.split(' ')[0]));
     expect(buttons.every((b) => b.textContent === '')).toBe(true);
     expect(buttons.every((b) => b.querySelector('svg') !== null)).toBe(true);
     expect(buttons.every((b) => b.className === select.className)).toBe(true);
-    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false', 'false', 'false']);
+    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false', 'false']);
   });
 
   it("est idempotent et met à jour la vue active", () => {
@@ -80,7 +80,7 @@ describe('ensureViewSwitch', () => {
 
     expect(second).toBe(first);
     expect(document.querySelectorAll('[data-wmt-view-switch]')).toHaveLength(1);
-    expect([...second.querySelectorAll('button[data-wmt-view]')].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true', 'false', 'false', 'false']);
+    expect([...second.querySelectorAll('button[data-wmt-view]')].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true', 'false', 'false']);
   });
 
   it('un clic sur le bouton Toile choisit la vue web', () => {
