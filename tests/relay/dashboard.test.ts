@@ -15,4 +15,10 @@ describe('GET /dashboard', () => {
     const html = await (await worker.fetch(new Request('https://relais.test/dashboard'), {})).text();
     expect(html).not.toMatch(/innerHTML|insertAdjacentHTML|document\.write/);
   });
+  it('propose une actualisation automatique à durée réglable', async () => {
+    const html = await (await worker.fetch(new Request('https://relais.test/dashboard'), {})).text();
+    expect(html).toContain('id="refresh"');
+    expect(html).toContain('id="refreshCustom"');
+    expect(html).toContain('setInterval');
+  });
 });
