@@ -13,7 +13,7 @@ import {
   shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
-import { FURNITURE_KINDS, labelOf, sizeOf, wallSizeOf } from '../core/library/furniture-catalog';
+import { FURNITURE_KINDS, isStandingKind, labelOf, sizeOf, wallSizeOf } from '../core/library/furniture-catalog';
 import type { FurnitureKind, Layout, LibraryState, Orientation, StandingKind } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
@@ -111,7 +111,10 @@ const ICONS = {
   fullscreen: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
 } as const;
 
-const KIND_ICON: Record<FurnitureKind, readonly string[]> = { shelf: ICONS.shelf, desk: ICONS.desk, computer: ICONS.computer };
+// PROVISOIRE (jusqu'à la tâche 6) : les nouveaux types de meubles n'ont pas encore d'icône propre, ils prennent celle de l'étagère.
+const KIND_ICON = new Proxy({ shelf: ICONS.shelf, desk: ICONS.desk, computer: ICONS.computer } as Partial<Record<FurnitureKind, readonly string[]>>, {
+  get: (icons, kind: FurnitureKind) => icons[kind] ?? ICONS.shelf,
+}) as Record<FurnitureKind, readonly string[]>;
 
 function Btn({ label, pressed, onClick, data, children }: { label: string; pressed?: boolean; onClick: () => void; data?: Record<string, string>; children: ReactNode }) {
   const attrs = Object.fromEntries(Object.entries(data ?? {}).map(([key, value]) => [`data-${key}`, value]));
@@ -389,7 +392,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
   async function onCell(col: number, row: number): Promise<void> {
     if (!tool) return;
     if (tool.type === 'card' || movingItem?.kind === 'wall') return placeWall(col, row);
-    const kind: StandingKind | null = tool.type === 'new' ? (tool.kind === 'computer' ? null : tool.kind) : movingItem && isStanding(movingItem) ? movingItem.kind : null;
+    const kind: StandingKind | null = tool.type === 'new' ? (isStandingKind(tool.kind) ? tool.kind : null) : movingItem && isStanding(movingItem) ? movingItem.kind : null;
     if (!kind) return;
     // La case touchée est la case en bas à gauche du meuble.
     const top = row - sizeOf(kind).h + 1;

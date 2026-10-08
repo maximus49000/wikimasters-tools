@@ -1,13 +1,14 @@
 import { z } from 'zod';
-import { STYLE_IDS, type Layout, type LibraryState, type Orientation, type Room } from './library-types';
+import { SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Layout, type LibraryState, type Orientation, type Room } from './library-types';
 import { MAX_COLS, MIN_COLS, SECTION, sectionIsEmpty, shiftLayout } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
 
 const placedSchema = z.union([
-  z.object({ id: z.string(), kind: z.enum(['shelf', 'desk']), col: z.number().int(), row: z.number().int() }),
+  z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: z.number().int(), row: z.number().int() }),
   z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string(), slug: z.string().optional() }),
+  z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3) }),
   z.object({
     id: z.string(),
     kind: z.literal('wall'),

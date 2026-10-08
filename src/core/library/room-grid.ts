@@ -1,4 +1,5 @@
-import { sizeOf, wallSizeOf } from './furniture-catalog';
+import { layerOf, sizeOf, wallSizeOf } from './furniture-catalog';
+import { STANDING_KINDS } from './library-types';
 import type { Layout, Orientation, Placed, ShelfShape, StandingKind, VinylColor, WallShape } from './library-types';
 
 export const ROWS = 18;
@@ -24,7 +25,7 @@ export type PlaceResult =
 
 type Standing = Extract<Placed, { kind: StandingKind }>;
 
-export const isStanding = (p: Placed): p is Standing => p.kind === 'shelf' || p.kind === 'desk';
+export const isStanding = (p: Placed): p is Standing => (STANDING_KINDS as readonly string[]).includes(p.kind);
 
 export function rectOf(p: Placed): Rect | null {
   if (isStanding(p)) {
@@ -48,11 +49,13 @@ function cellsOf(rect: Rect): Cell[] {
 
 const inRoomCell = (cols: number) => (c: Cell): boolean => c.col >= 0 && c.row >= 0 && c.col < cols && c.row < ROWS;
 
-// Les cases occupées (meubles debout et objets accrochés), sauf celles de `ignoreId`.
-function takenKeys(layout: Layout, ignoreId?: string): Set<string> {
+const layerOfPlaced = (p: Placed): 'floor' | 'rug' => (isStanding(p) ? layerOf(p.kind) : 'floor');
+
+// Les cases occupées d'une couche (meubles debout et objets accrochés pour `floor`, tapis pour `rug`), sauf celles de `ignoreId`.
+function takenKeys(layout: Layout, ignoreId?: string, layer: 'floor' | 'rug' = 'floor'): Set<string> {
   const taken = new Set<string>();
   for (const other of layout) {
-    if (other.id === ignoreId) continue;
+    if (other.id === ignoreId || layerOfPlaced(other) !== layer) continue;
     const otherRect = rectOf(other);
     if (!otherRect) continue;
     for (const c of cellsOf(otherRect)) taken.add(`${c.col}-${c.row}`);
@@ -66,7 +69,9 @@ export function canPlace(layout: Layout, cols: number, kind: StandingKind, col: 
   const inRoom = inRoomCell(cols);
   if (cells.some((c) => !inRoom(c))) return { ok: false, reason: 'bounds', cells: cells.filter(inRoom) };
   if (row + h - 1 < WALL_ROWS) return { ok: false, reason: 'floor', cells: cells.filter((c) => c.row === row + h - 1) };
-  const taken = takenKeys(layout, ignoreId);
+  const layer = layerOf(kind);
+  if (layer === 'rug' && row < WALL_ROWS) return { ok: false, reason: 'floor', cells: cells.filter((c) => c.row < WALL_ROWS) };
+  const taken = takenKeys(layout, ignoreId, layer);
   const clash = cells.filter((c) => taken.has(`${c.col}-${c.row}`));
   return clash.length > 0 ? { ok: false, reason: 'taken', cells: clash } : { ok: true };
 }

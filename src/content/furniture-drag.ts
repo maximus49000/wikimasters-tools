@@ -72,6 +72,8 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     if (!canPlaceComputer(layout, deskId, id)) return { ok: false, reason: 'desk-busy', cells: [], ghost, deskId };
     return { ok: true, cells: [], ghost, deskId };
   }
+  // PROVISOIRE (tâche 5) : les petits objets n'ont pas encore de cible de dépôt.
+  if (item.kind === 'small') return { ok: false, cells: [], ghost: null };
   const { w, h } = sizeOf(item.kind);
   const top = row - h + 1;
   const ghost: Rect = { col, row: top, w, h };
