@@ -29,7 +29,6 @@ import { createLibraryWindow } from './library-window';
 import { decorateLibraryEntry } from './library-menu';
 import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
-import { restoreNavigation } from './isolate-navigation';
 import { createPageMemory } from './page-memory';
 import { createPathRequestSource, createSelectionSource, type SelectedCard } from './selection-source';
 import { track } from '../core/telemetry/registry';
@@ -190,7 +189,6 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     unmountPanel();
     kindRow.unmount();
     restoreHiddenGrids(document);
-    restoreNavigation(document);
   }
 
   // Idempotent : appelé à chaque changement du DOM, il ne touche à rien quand tout est déjà en place.
@@ -271,7 +269,6 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
       unmountPanel();
       mountPanel(grid, view);
     }
-    restoreNavigation(document);
   }
 
   // Sans attendre la mise à jour des vues : « Prix de vente décroissant » doit apparaître dès que la liste de tri s'ouvre.
@@ -280,11 +277,9 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     syncPriceSort(document, readView(window.localStorage) === 'homemade', sortSource);
   }
 
-  // Les pièces se chargent en arrière-plan : « Ma Pièce » les attend si elle est ouverte trop tôt.
-  library.load().catch((error) => console.warn(LOG, 'pièces de Ma Pièce non chargées :', error));
-
-  // « Ma Pièce » s'ouvre depuis le menu du site, juste après « Collection ».
-  const decorateMenu = (root: ParentNode): number => decorateLibraryEntry(root, libraryWindow.open);
+  // « Ma Pièce » s'ouvre depuis le menu du site, juste après « Collection » ; les pièces se lisent à la première ouverture.
+  const decorateMenu = (root: ParentNode): number =>
+    decorateLibraryEntry(root, () => void library.load().then(libraryWindow.open).catch((error) => console.warn(LOG, 'pièces de Ma Pièce non chargées :', error)));
 
   return { sync, syncSortMenu, decorateMenu };
 }
