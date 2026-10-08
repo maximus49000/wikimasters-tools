@@ -33,7 +33,7 @@ export type Room = {
 };
 
 export type LibraryState = {
-  version: 1;
+  version: 2;
   activeRoomId: string;
   homeRoomId: string | null;
   rooms: Room[];

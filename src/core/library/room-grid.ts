@@ -1,18 +1,18 @@
 import { sizeOf, wallSizeOf } from './furniture-catalog';
 import type { Layout, Orientation, Placed, ShelfShape, StandingKind, VinylColor, WallShape } from './library-types';
 
-export const ROWS = 12;
+export const ROWS = 18;
 // Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
-export const WALL_ROWS = 9;
+export const WALL_ROWS = 12;
 export const CELL_W = 30;
-export const HEIGHT = 340;
+export const HEIGHT = 510;
 export const CELL_H = HEIGHT / ROWS;
 // La pièce grandit et rétrécit par zones de 12 colonnes, de 24 à 96 colonnes.
 export const SECTION = 12;
 export const MIN_COLS = 24;
 export const MAX_COLS = 96;
 // Colonnes visibles d'un coup : l'orientation règle seulement cette fenêtre, le reste se fait défiler.
-export const VISIBLE_COLS: Record<Orientation, number> = { landscape: 24, portrait: 14 };
+export const VISIBLE_COLS: Record<Orientation, number> = { landscape: 24, portrait: 16 };
 
 export type Cell = { col: number; row: number };
 export type Rect = { col: number; row: number; w: number; h: number };

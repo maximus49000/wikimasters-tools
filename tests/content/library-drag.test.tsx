@@ -22,10 +22,10 @@ async function click(selector: string) {
 }
 const layoutNow = () => repo.current()?.rooms[0]?.layout ?? [];
 
-// Un pixel d'écran = une unité du dessin (24 colonnes de 30, hauteur 340).
+// Un pixel d'écran = une unité du dessin (24 colonnes de 30, hauteur 510).
 function stubSvgRect() {
   const svg = q('svg[role="img"]') as unknown as SVGElement;
-  svg.getBoundingClientRect = () => ({ left: 0, top: 0, right: 720, bottom: 340, width: 720, height: 340, x: 0, y: 0, toJSON: () => ({}) });
+  svg.getBoundingClientRect = () => ({ left: 0, top: 0, right: 720, bottom: 510, width: 720, height: 510, x: 0, y: 0, toJSON: () => ({}) });
 }
 const pointer = (type: string, target: EventTarget, x: number, y: number) =>
   act(async () => { target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y })); });
@@ -57,25 +57,25 @@ afterEach(() => {
 async function withDesk() {
   await click('[data-action="edit"]');
   await click('[data-kind="desk"]');
-  await click('[data-cell="2-11"]');
+  await click('[data-cell="2-14"]');
 }
 
 describe('déplacement par appui long', () => {
   it('déplace un bureau : appui long, glisser, relâcher sur une case valide', async () => {
     await withDesk();
-    await longPress('[data-furniture="desk"]', 95, 300);
-    await pointer('pointermove', window, 365, 320);
-    await pointer('pointerup', window, 365, 320);
+    await longPress('[data-furniture="desk"]', 95, 385);
+    await pointer('pointermove', window, 365, 405);
+    await pointer('pointerup', window, 365, 405);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ kind: 'desk', col: 12, row: 8 });
+    expect(layoutNow()[0]).toMatchObject({ kind: 'desk', col: 12, row: 11 });
   });
 
   it('un bureau déplacé emmène son ordinateur', async () => {
     await withDesk();
     await click('[data-kind="computer"]');
     await click('[data-furniture="desk"]');
-    await longPress('[data-furniture="desk"]', 95, 300);
-    await pointer('pointerup', window, 365, 320);
+    await longPress('[data-furniture="desk"]', 95, 385);
+    await pointer('pointerup', window, 365, 405);
     await settle();
     expect(layoutNow().find((p) => p.kind === 'computer')).toMatchObject({ deskId: layoutNow()[0]!.id });
     expect(layoutNow()[0]).toMatchObject({ col: 12 });
@@ -83,42 +83,42 @@ describe('déplacement par appui long', () => {
 
   it('un lâcher invalide laisse le meuble en place et le dit', async () => {
     await withDesk();
-    await longPress('[data-furniture="desk"]', 95, 300);
-    await pointer('pointermove', window, 365, 180);
-    await pointer('pointerup', window, 365, 180);
+    await longPress('[data-furniture="desk"]', 95, 385);
+    await pointer('pointermove', window, 365, 265);
+    await pointer('pointerup', window, 365, 265);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ kind: 'desk', col: 2, row: 8 });
+    expect(layoutNow()[0]).toMatchObject({ kind: 'desk', col: 2, row: 11 });
     expect(q('[role="status"]')?.textContent).toContain('sol');
   });
 
   it('Échap annule le déplacement', async () => {
     await withDesk();
-    await longPress('[data-furniture="desk"]', 95, 300);
-    await pointer('pointermove', window, 365, 320);
+    await longPress('[data-furniture="desk"]', 95, 385);
+    await pointer('pointermove', window, 365, 405);
     await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
-    await pointer('pointerup', window, 365, 320);
+    await pointer('pointerup', window, 365, 405);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ col: 2, row: 8 });
+    expect(layoutNow()[0]).toMatchObject({ col: 2, row: 11 });
   });
 
   it('pointercancel annule le déplacement', async () => {
     await withDesk();
-    await longPress('[data-furniture="desk"]', 95, 300);
-    await pointer('pointercancel', window, 365, 320);
-    await pointer('pointerup', window, 365, 320);
+    await longPress('[data-furniture="desk"]', 95, 385);
+    await pointer('pointercancel', window, 365, 405);
+    await pointer('pointerup', window, 365, 405);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ col: 2, row: 8 });
+    expect(layoutNow()[0]).toMatchObject({ col: 2, row: 11 });
   });
 
   it('en mode Visiter, l’appui long passe en Aménager et commence le déplacement', async () => {
     await withDesk();
     await click('[data-action="visit"]');
     expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('false');
-    await longPress('[data-furniture="desk"]', 95, 300);
+    await longPress('[data-furniture="desk"]', 95, 385);
     expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('true');
-    await pointer('pointerup', window, 365, 320);
+    await pointer('pointerup', window, 365, 405);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ col: 12, row: 8 });
+    expect(layoutNow()[0]).toMatchObject({ col: 12, row: 11 });
   });
 
   it('en mode Visiter, un simple toucher ne fait rien', async () => {
@@ -131,7 +131,7 @@ describe('déplacement par appui long', () => {
 
   it('un toucher après un appui long n’est pas pris pour un clic', async () => {
     await withDesk();
-    await longPress('[data-furniture="desk"]', 95, 300);
+    await longPress('[data-furniture="desk"]', 95, 385);
     // Le relâchement puis le clic que le navigateur envoie juste après.
     await act(async () => {
       window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 95, clientY: 300 }));
@@ -146,21 +146,21 @@ describe('déplacement par appui long', () => {
   it('l’ordinateur change de bureau ; un bureau déjà occupé est refusé', async () => {
     await withDesk();
     await click('[data-kind="desk"]');
-    await click('[data-cell="12-11"]');
+    await click('[data-cell="12-14"]');
     const [first, second] = layoutNow().filter((p) => p.kind === 'desk');
     await click('[data-kind="computer"]');
     await click(`[data-id="${first!.id}"]`);
     const computer = layoutNow().find((p) => p.kind === 'computer')!;
-    await longPress(`[data-id="${computer.id}"]`, 100, 250);
-    await pointer('pointerup', window, 365, 320);
+    await longPress(`[data-id="${computer.id}"]`, 100, 335);
+    await pointer('pointerup', window, 365, 405);
     await settle();
     expect(layoutNow().find((p) => p.id === computer.id)).toMatchObject({ deskId: second!.id });
     // Un 2e ordinateur sur le premier bureau, glissé vers le bureau déjà occupé : refusé.
     await click('[data-kind="computer"]');
     await click(`[data-id="${first!.id}"]`);
     const other = layoutNow().find((p) => p.kind === 'computer' && p.deskId === first!.id)!;
-    await longPress(`[data-id="${other.id}"]`, 100, 250);
-    await pointer('pointerup', window, 365, 320);
+    await longPress(`[data-id="${other.id}"]`, 100, 335);
+    await pointer('pointerup', window, 365, 405);
     await settle();
     expect(layoutNow().find((p) => p.id === other.id)).toMatchObject({ deskId: first!.id });
     expect(q('[role="status"]')?.textContent).toContain('déjà');

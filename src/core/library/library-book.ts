@@ -35,7 +35,7 @@ const roomSchema = z.object({
   layout: z.array(placedSchema),
 });
 const stateSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   activeRoomId: z.string(),
   homeRoomId: z.string().nullable(),
   rooms: z.array(roomSchema).min(1).max(MAX_ROOMS),
@@ -57,7 +57,7 @@ const makeRoom = (id: string, name: string, orientation: Orientation, style: Roo
 });
 
 export function createInitialState(): LibraryState {
-  return { version: 1, activeRoomId: 'r1', homeRoomId: null, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
+  return { version: 2, activeRoomId: 'r1', homeRoomId: null, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
 }
 
 export function activeRoom(state: LibraryState): Room {
@@ -89,9 +89,26 @@ function cleanLayout(layout: Layout): Layout {
   });
 }
 
+// Une pièce v1 avait 12 lignes (9 de mur, 3 de sol) ; la v2 en a 18 (12 + 6). Tout descend de 3 lignes : le sol d'origine reste contre le mur.
+const V1_ROW_SHIFT = 3;
+function migrate(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 1) return raw;
+  const state = raw as { rooms?: unknown };
+  if (!Array.isArray(state.rooms)) return raw;
+  const rooms = state.rooms.map((room: unknown) => {
+    const layout = typeof room === 'object' && room !== null ? (room as { layout?: unknown }).layout : undefined;
+    if (!Array.isArray(layout)) return room;
+    const shifted = layout.map((p: unknown) =>
+      typeof p === 'object' && p !== null && typeof (p as { row?: unknown }).row === 'number' ? { ...p, row: (p as { row: number }).row + V1_ROW_SHIFT } : p,
+    );
+    return { ...(room as object), layout: shifted };
+  });
+  return { ...state, version: 2, rooms };
+}
+
 // Une lecture sûre : un contenu absent, d'une autre version ou abîmé redonne une pièce vide (comme `readView`).
 export function parseLibraryState(raw: unknown): LibraryState {
-  const parsed = stateSchema.safeParse(raw);
+  const parsed = stateSchema.safeParse(migrate(raw));
   if (!parsed.success) return createInitialState();
   const state = parsed.data;
   const ids = state.rooms.map((room) => room.id);
