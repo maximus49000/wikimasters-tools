@@ -159,3 +159,50 @@ describe('view : vidéos possibles', () => {
     expect(view.status === 'detail' && view.possible).toEqual([]);
   });
 });
+
+describe('view : vidéo choisie par l’utilisateur', () => {
+  const relayWith = (candidates: DocCandidate[], possible: DocCandidate[]) => ({
+    relay: { search: async () => ({ status: 'ok' as const, candidates, possible }), oembed: async () => ({ ok: false as const, reason: 'busy' as const }) },
+  });
+  it('la vidéo choisie passe en tête, même si elle n’était que « possible », et sort des possibles', async () => {
+    const { service } = setup(relayWith([cand('BON1'), cand('BON2')], [cand('PEUT')]));
+    await service.choose('Bataille_de_Verdun', cand('PEUT'));
+    const view = await service.view('Bataille_de_Verdun', 'x');
+    expect(view).toMatchObject({ status: 'detail', chosenId: 'PEUT' });
+    expect(view.status === 'detail' && view.candidates.map((c) => c.id)).toEqual(['PEUT', 'BON1', 'BON2']);
+    expect(view.status === 'detail' && view.possible).toEqual([]);
+  });
+  it('sans choix, chosenId est null', async () => {
+    const { service } = setup(relayWith([cand('BON1')], []));
+    expect(await service.view('Bataille_de_Verdun', 'x')).toMatchObject({ status: 'detail', chosenId: null });
+  });
+  it('le choix revient même si la recherche ne renvoie plus rien, et ne se dédouble pas', async () => {
+    const { service } = setup(relayWith([], []));
+    await service.choose('Bataille_de_Verdun', cand('MA'));
+    const view = await service.view('Bataille_de_Verdun', 'x');
+    expect(view).toMatchObject({ status: 'detail', chosenId: 'MA' });
+    expect(view.status === 'detail' && view.candidates.map((c) => c.id)).toEqual(['MA']);
+    const again = setup(relayWith([cand('MA'), cand('AUTRE')], []));
+    await again.service.choose('Bataille_de_Verdun', cand('MA'));
+    const twice = await again.service.view('Bataille_de_Verdun', 'x');
+    expect(twice.status === 'detail' && twice.candidates.map((c) => c.id)).toEqual(['MA', 'AUTRE']);
+  });
+  it('« revenir au choix automatique » oublie le choix', async () => {
+    const { service } = setup(relayWith([cand('BON1')], [cand('PEUT')]));
+    await service.choose('Bataille_de_Verdun', cand('PEUT'));
+    await service.clearChoice('Bataille_de_Verdun');
+    const view = await service.view('Bataille_de_Verdun', 'x');
+    expect(view).toMatchObject({ status: 'detail', chosenId: null });
+    expect(view.status === 'detail' && view.candidates.map((c) => c.id)).toEqual(['BON1']);
+  });
+  it('masquer la vidéo choisie oublie aussi le choix', async () => {
+    const { service } = setup(relayWith([cand('BON1')], [cand('PEUT')]));
+    const subject = { qid: 'Q2280', kind: 'event' as const, names: ['Bataille de Verdun'], startYear: 1916, endYear: 1916 };
+    await service.choose('Bataille_de_Verdun', cand('PEUT'));
+    await service.flag('Bataille_de_Verdun', subject, 'Bataille de Verdun', cand('PEUT'));
+    const view = await service.view('Bataille_de_Verdun', 'x');
+    expect(view).toMatchObject({ status: 'detail', chosenId: null });
+    expect(view.status === 'detail' && view.candidates.map((c) => c.id)).toEqual(['BON1']);
+    expect(view.status === 'detail' && view.possible).toEqual([]);
+  });
+});

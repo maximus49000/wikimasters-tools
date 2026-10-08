@@ -23,3 +23,24 @@ describe('createDocumentaryRepo', () => {
     expect(await repo.flagged('Autre')).toEqual([]);
   });
 });
+
+describe('choix de la vidéo d’une carte', () => {
+  it('mémorise la vidéo choisie pour une carte, la remplace et l’oublie', async () => {
+    const repo = createDocumentaryRepo(createMemoryStore());
+    expect(await repo.choice('Goya')).toBeNull();
+    await repo.setChoice('Goya', proposal);
+    expect(await repo.choice('Goya')).toEqual(proposal);
+    expect(await repo.choice('Autre')).toBeNull();
+    await repo.setChoice('Goya', { ...proposal, id: 'BBB', title: 'Autre vidéo' });
+    expect((await repo.choice('Goya'))?.id).toBe('BBB');
+    await repo.clearChoice('Goya');
+    expect(await repo.choice('Goya')).toBeNull();
+  });
+  it('oublier le choix d’une carte garde ceux des autres', async () => {
+    const repo = createDocumentaryRepo(createMemoryStore());
+    await repo.setChoice('Goya', proposal);
+    await repo.setChoice('Dali', { ...proposal, id: 'CCC' });
+    await repo.clearChoice('Goya');
+    expect((await repo.choice('Dali'))?.id).toBe('CCC');
+  });
+});

@@ -1,8 +1,9 @@
 import type { DocCandidate } from '../core/documentary/types';
 
-// Les vidéos montrées dans le lecteur : les proposées ; avec le lien ouvert, les possibles (pertinence moins sûre) à la suite.
-export function shownList(good: DocCandidate[], possible: DocCandidate[], showPossible: boolean): DocCandidate[] {
-  return showPossible ? [...good, ...possible] : good;
+// Toutes les vidéos de la liste : les proposées d'abord (la vidéo choisie en tête), puis celles de pertinence moins sûre, sans doublon.
+export function allVideos(good: DocCandidate[], possible: DocCandidate[]): DocCandidate[] {
+  const seen = new Set<string>();
+  return [...good, ...possible].filter((candidate) => !seen.has(candidate.id) && seen.add(candidate.id));
 }
 
 // Une vidéo « possible » : dans la liste des possibles et pas dans celle des proposées.

@@ -14,7 +14,8 @@ import { screenKindOf } from '../core/screen/screen-kinds';
 export type DocView =
   | { status: 'none' }
   // `possible` : vidéos de pertinence moins sûre, montrées seulement derrière un lien.
-  | { status: 'detail'; subject: DocSubject; candidates: DocCandidate[]; possible: DocCandidate[] }
+  // `chosenId` : la vidéo que l'utilisateur a choisie pour cette carte (elle est alors la première de `candidates`).
+  | { status: 'detail'; subject: DocSubject; candidates: DocCandidate[]; possible: DocCandidate[]; chosenId: string | null }
   // `busy` : le relais n'a pas pu chercher (plafond du jour, panne) ; on redemandera plus tard.
   | { status: 'empty'; subject: DocSubject; busy: boolean; possible: DocCandidate[] }
   | { status: 'error'; message: string };
@@ -26,7 +27,7 @@ export type DocumentaryServiceDeps = {
   selection: { forQid(qid: string): Promise<DocCandidate[]> };
   commons: { search(names: string[], subject: Pick<DocSubject, 'qid' | 'kind' | 'startYear' | 'endYear'>): Promise<DocCandidate[]> };
   relay: { search(subject: DocSubject): Promise<RelayResult>; oembed(key: string): Promise<OembedResult> };
-  repo: Pick<DocumentaryRepo, 'proposals' | 'addProposal' | 'flagged' | 'addFlag'>;
+  repo: Pick<DocumentaryRepo, 'proposals' | 'addProposal' | 'flagged' | 'addFlag' | 'choice' | 'setChoice' | 'clearChoice'>;
   // null : pas de jeton GitHub (propositions gardées chez l'utilisateur seulement).
   issues: { send(draft: IssueDraft): Promise<AnomalyResult> } | null;
   cache: Pick<TtlCache, 'getOrLoad'>;
@@ -77,9 +78,17 @@ export function createDocumentaryService(deps: DocumentaryServiceDeps) {
         const subject: DocSubject = { qid: info.qid, kind, names: info.names, startYear: kind === 'person' ? info.birth : info.start, endYear: kind === 'person' ? info.death : info.end };
         const hidden = new Set(await repo.flagged(slug));
         const { candidates, possible, busy } = await find(slug, subject);
-        const shown = candidates.filter((candidate) => !hidden.has(candidate.id));
-        const others = possible.filter((candidate) => !hidden.has(candidate.id));
-        return shown.length > 0 ? { status: 'detail', subject, candidates: shown, possible: others } : { status: 'empty', subject, busy, possible: others };
+        let shown = candidates.filter((candidate) => !hidden.has(candidate.id));
+        let others = possible.filter((candidate) => !hidden.has(candidate.id));
+        // Le choix de l'utilisateur passe avant tout, même s'il n'était qu'une vidéo « possible » ou si la recherche ne le renvoie plus.
+        const chosen = await repo.choice(slug);
+        if (chosen && !hidden.has(chosen.id)) {
+          shown = [chosen, ...shown.filter((candidate) => candidate.id !== chosen.id)];
+          others = others.filter((candidate) => candidate.id !== chosen.id);
+        }
+        return shown.length > 0
+          ? { status: 'detail', subject, candidates: shown, possible: others, chosenId: chosen && !hidden.has(chosen.id) ? chosen.id : null }
+          : { status: 'empty', subject, busy, possible: others };
       } catch {
         return { status: 'error', message: 'Le documentaire est indisponible pour le moment.' };
       }
@@ -99,9 +108,20 @@ export function createDocumentaryService(deps: DocumentaryServiceDeps) {
       return { ok: true, sent };
     },
 
+    // « Choisir cette vidéo » : retenue pour la carte, chez l'utilisateur seulement ; elle sera la première à chaque ouverture.
+    async choose(slug: string, candidate: DocCandidate): Promise<void> {
+      await repo.setChoice(slug, candidate);
+    },
+
+    // « Revenir au choix automatique ».
+    async clearChoice(slug: string): Promise<void> {
+      await repo.clearChoice(slug);
+    },
+
     // « Pas pertinent » : la vidéo disparaît de cette fiche chez l'utilisateur ; l'issue permet à l'auteur du projet de la retirer pour tous.
     async flag(slug: string, subject: DocSubject, cardTitle: string, candidate: DocCandidate): Promise<void> {
       await repo.addFlag(slug, candidate.id);
+      if ((await repo.choice(slug))?.id === candidate.id) await repo.clearChoice(slug);
       if (issues) await issues.send(buildFlagIssue(draftInput(slug, subject, cardTitle, candidate.id, candidate.title, candidate.channel)));
     },
   };
