@@ -81,6 +81,14 @@ const PATHS = {
       <path d="M3 4h2l2.4 11h11l2-8H6.2" />
     </>
   ),
+  fullscreen: (
+    <>
+      <path d="M4 9V4h5" />
+      <path d="M20 9V4h-5" />
+      <path d="M4 15v5h5" />
+      <path d="M20 15v5h-5" />
+    </>
+  ),
   external: (
     <>
       <path d="M14 4h6v6" />

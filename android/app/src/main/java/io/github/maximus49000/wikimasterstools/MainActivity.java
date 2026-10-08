@@ -9,6 +9,7 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -20,6 +21,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
@@ -52,6 +54,9 @@ public class MainActivity extends Activity {
     private static final String SPOTIFY_REDIRECT_SCHEME = BuildConfig.REDIRECT_SCHEME;
 
     private WebView webView;
+    // Vidéo en plein écran (bouton plein écran des lecteurs de la surcouche, ou celui de YouTube) : la WebView la confie à l'activité.
+    private View customView;
+    private WebChromeClient.CustomViewCallback customViewCallback;
     private final Updater updater = new Updater(this);
     private String overlayScript;
     // Repli quand la WebView ne sait pas injecter au début du document : injection au démarrage de chaque page.
@@ -106,6 +111,23 @@ public class MainActivity extends Activity {
 
         // Sans WebChromeClient, la WebView refuse seule les boîtes natives du site (« Annuler et récupérer ma carte » demande confirmation).
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onShowCustomView(View view, CustomViewCallback callback) {
+                if (customView != null) {
+                    callback.onCustomViewHidden();
+                    return;
+                }
+                customView = view;
+                customViewCallback = callback;
+                ((FrameLayout) getWindow().getDecorView()).addView(view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                webView.setVisibility(View.INVISIBLE);
+            }
+
+            @Override
+            public void onHideCustomView() {
+                exitCustomView();
+            }
+
             @Override
             public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
                 new AlertDialog.Builder(MainActivity.this)
@@ -288,10 +310,21 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().flush();
     }
 
+    // Sort du plein écran d'une vidéo : la page réapparaît, la WebView est prévenue.
+    private void exitCustomView() {
+        if (customView == null) return;
+        ((FrameLayout) getWindow().getDecorView()).removeView(customView);
+        customView = null;
+        webView.setVisibility(View.VISIBLE);
+        if (customViewCallback != null) customViewCallback.onCustomViewHidden();
+        customViewCallback = null;
+    }
+
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (webView.canGoBack()) webView.goBack();
+        if (customView != null) exitCustomView();
+        else if (webView.canGoBack()) webView.goBack();
         else super.onBackPressed();
     }
 
