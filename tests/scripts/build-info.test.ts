@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseFix } from '../../scripts/build-info.mjs';
+import { buildId, parseFix } from '../../scripts/build-info.mjs';
 
 describe('parseFix', () => {
   it('lit « hash<TAB>fix(portée): texte » et met la première lettre en majuscule', () => {
@@ -14,5 +14,14 @@ describe('parseFix', () => {
     expect(long.title.length).toBeLessThanOrEqual(160);
     expect(long.title.endsWith('…')).toBe(true);
     expect(parseFix('abc1234\tfix: x Co-Authored-By: Y')?.title).toBe('X');
+  });
+});
+
+describe('buildId', () => {
+  it('version du paquet + nombre de commits (même nombre que le versionCode Android)', () => {
+    expect(buildId('.')).toMatch(/^\d+\.\d+\.\d+\+\d+$/);
+  });
+  it('dossier sans package.json ni git : retombe sur 0.0.0+0 sans lever d’exception', () => {
+    expect(buildId('/dossier/inexistant')).toBe('0.0.0+0');
   });
 });
