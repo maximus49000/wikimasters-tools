@@ -841,7 +841,7 @@ describe('dropTargetFor : petit objet', () => {
 
 describe('dropTargetFor : meubles et tapis', () => {
   it('un canapé se dépose avec le bas sur la case visée', () => {
-    expect(dropTargetFor(layout, 48, 's', 10, 16)).toMatchObject({ ok: true, col: 10, top: 14 });
+    expect(dropTargetFor(layout, 48, 's', 30, 16)).toMatchObject({ ok: true, col: 30, top: 14 });
   });
 
   it('un tapis refuse le mur', () => {
@@ -849,12 +849,14 @@ describe('dropTargetFor : meubles et tapis', () => {
   });
 
   it('un meuble peut être déposé sur un tapis', () => {
-    expect(dropTargetFor(layout, 48, 's', 3, 17)).toMatchObject({ ok: true });
+    const onRug: Layout = [
+      { id: 'r', kind: 'rug', col: 0, row: 15 },
+      { id: 's', kind: 'sofa', col: 20, row: 14 },
+    ];
+    expect(dropTargetFor(onRug, 48, 's', 0, 17)).toMatchObject({ ok: true, col: 0, top: 15 });
   });
 });
 ```
-
-Note : le dernier test dépose le canapé (bas en ligne 17, haut en 15) sur le tapis (lignes 15 à 17, colonnes 0 à 5) à la colonne 3 : les cases du bureau (`col 2 à 6, lignes 14 à 17`) le chevauchent. Remplacer alors `3, 17` par `8, 17` (colonnes 8 à 13, ligne 15 à 17, libres) si le test échoue pour `taken` ; le but est seulement de vérifier que le tapis ne bloque pas.
 
 - [ ] **Step 2: Lancer, vérifier l'échec**
 
@@ -933,7 +935,7 @@ const room: Room = {
   orientation: 'landscape',
   cols: 48,
   layout: [
-    { id: 'a', kind: 'sofa', col: 2, row: 14 },
+    { id: 'a', kind: 'sofa', col: 2, row: 12 },
     { id: 'b', kind: 'rug', col: 2, row: 15 },
     { id: 'c', kind: 'desk', col: 12, row: 14 },
     { id: 'd', kind: 'small', item: 'plant', hostId: 'c', slot: 0 },
@@ -944,9 +946,9 @@ const room: Room = {
     { id: 'i', kind: 'bowl', col: 32, row: 17 },
     { id: 'j', kind: 'kennel', col: 34, row: 14 },
     { id: 'k', kind: 'plant', col: 40, row: 14 },
-    { id: 'l', kind: 'lamp', col: 43, row: 13 },
-    { id: 'm', kind: 'coffee-table', col: 3, row: 17 },
-    { id: 'n', kind: 'shelf', col: 44, row: 10 },
+    { id: 'l', kind: 'lamp', col: 38, row: 13 },
+    { id: 'm', kind: 'coffee-table', col: 3, row: 15 },
+    { id: 'n', kind: 'shelf', col: 42, row: 10 },
     { id: 'o', kind: 'small', item: 'lamp', hostId: 'n', slot: 2 },
   ],
 };
@@ -981,7 +983,7 @@ describe('RoomView : mobilier', () => {
 
   it('dessine le meuble le plus proche du spectateur en dernier', () => {
     const order = [...mount().querySelectorAll('[data-furniture]')].map((el) => el.getAttribute('data-id'));
-    // la table basse (bas en ligne 18) passe devant le canapé (bas en ligne 17)
+    // la table basse (bas en ligne 17) passe devant le canapé (bas en ligne 15)
     expect(order.indexOf('a')).toBeLessThan(order.indexOf('m'));
   });
 });
@@ -1378,7 +1380,7 @@ describe('mobilier dans le panneau', () => {
 });
 ```
 
-Note : après la pose d'un petit objet, l'outil est remis à zéro (`reset`) ; le premier clic sur `[data-furniture="desk"]` des deux derniers tests sélectionne le bureau (le même que celui où la lampe vient d'être posée n'est donc pas déjà sélectionné) et le second **désélectionne** : si le test échoue pour cette raison, ne cliquer qu'une fois (après `reset`, rien n'est sélectionné). Adapter selon le comportement constaté, le but est « bureau sélectionné, puis Retirer ».
+Note : dans les deux derniers tests, le premier clic sur le bureau pose la petite lampe (l'outil est alors remis à zéro), le second sélectionne le bureau ; `Retirer` s'applique ensuite au bureau.
 
 - [ ] **Step 2: Lancer, vérifier l'échec**
 
