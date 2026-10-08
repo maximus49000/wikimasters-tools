@@ -666,7 +666,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'bibliotheque-v2',
+    id: 'bibliotheque-v3',
     theme: 'collection',
     glyph: '📚',
     title: 'La Bibliothèque',
@@ -718,6 +718,18 @@ export const ENTRIES: Entry[] = [
           { label: 'Comment faire', text: 'Touchez le bouton horizontal ou vertical de la barre : la pièce s’affiche aussitôt dans l’orientation choisie.' },
           { label: 'Ce que ça change', text: 'La pièce reste la même, avec les mêmes meubles. Seule la fenêtre change : large en horizontal, plus étroite et plus proche en vertical. Ce qui dépasse se découvre en faisant défiler la pièce vers la droite ou la gauche.' },
           { label: 'À savoir', text: 'Passer de l’un à l’autre ne perd rien et ne déplace rien.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="fullscreen"]',
+        title: 'Voir la pièce en plein écran',
+        text: 'Le bouton plein écran n’affiche que la pièce, sur tout l’écran, dans son orientation. Dans la Bibliothèque, le titre et les filtres de la page sont d’ailleurs masqués : il ne reste que la navigation entre les vues.',
+        gesture: 'tap',
+        details: [
+          { label: 'À quoi ça sert', text: 'Admirer ou montrer une pièce sans rien d’autre autour : la pièce prend la plus grande taille possible sur l’écran, sur fond noir.' },
+          { label: 'Comment faire', text: 'Touchez le bouton plein écran de la barre. La pièce garde son orientation : horizontale en horizontal, verticale en vertical, et l’écran se tourne dans ce sens quand l’appareil le permet. Un bouton dans le coin permet de quitter. Le glissé pour défiler et l’appui long pour déplacer un meuble fonctionnent toujours.' },
+          { label: 'Limites', text: 'Le verrouillage de l’orientation dépend de l’appareil : il marche sur Chrome mobile, pas sur ordinateur ; dans l’application, à confirmer. S’il est refusé, la pièce s’affiche simplement à la taille qui tient dans l’écran.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
       },
