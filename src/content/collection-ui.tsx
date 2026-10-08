@@ -30,6 +30,7 @@ import { LIBRARY_CSS, LibraryPanel } from './LibraryPanel';
 import { createLaunchGate } from './library-launch';
 import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
+import { isolateNavigation, restoreNavigation } from './isolate-navigation';
 import { createPageMemory } from './page-memory';
 import { createPathRequestSource, createSelectionSource, type SelectedCard } from './selection-source';
 import { track } from '../core/telemetry/registry';
@@ -193,6 +194,7 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     unmountPanel();
     kindRow.unmount();
     restoreHiddenGrids(document);
+    restoreNavigation(document);
   }
 
   // Idempotent : appelé à chaque changement du DOM, il ne touche à rien quand tout est déjà en place.
@@ -235,10 +237,10 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     syncPriceSort(document, view === 'homemade', sortSource);
     // Le sélecteur se place à côté des pastilles de rareté ; à défaut, à côté de « Sélectionner ».
     const rarityAnchor = findRarityFilterAnchor(document);
-    ensureViewSwitch(rarityAnchor ?? button, button, view, (next) => {
+    const switchGroup = ensureViewSwitch(rarityAnchor ?? button, button, view, (next) => {
       writeView(window.localStorage, next);
       sync();
-    }, view === 'list' ? null : {
+    }, view === 'list' || view === 'library' ? null : {
       on: kindFilterSource.current().duplicates === true,
       onToggle: () => {
         const current = kindFilterSource.current();
@@ -270,13 +272,22 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
     }
     // Les filtres nature / occupation sont posés avant les pastilles de rareté, sinon avant « Sélectionner » :
     // jamais entre ce bouton et le sélecteur de vues (ensureViewSwitch créerait alors un second sélecteur).
-    kindRow.mount(rarityAnchor?.parentElement ?? button);
+    // Vue Bibliothèque : ni filtres nature / occupation, ni titre ni filtres du site (voir plus bas).
+    if (view === 'library') kindRow.unmount();
+    else kindRow.mount(rarityAnchor?.parentElement ?? button);
     setGridHidden(grid, true);
     // Les panneaux montrent toutes les cartes : la navigation entre les pages de la liste n'a plus de sens.
     for (const pagination of findPagination(document, button)) setGridHidden(pagination, true);
     if (!panel || panel.grid !== grid || panel.view !== view || !panel.host.isConnected) {
       unmountPanel();
       mountPanel(grid, view);
+    }
+    // Vue Bibliothèque épurée : seuls le sélecteur de vues et le panneau restent affichés (le reste de la zone est masqué).
+    if (view === 'library' && panel) {
+      const boundary = switchGroup.closest('main') ?? scope?.parentElement;
+      if (boundary instanceof HTMLElement && boundary !== document.body && boundary !== document.documentElement) isolateNavigation([switchGroup, panel.host], boundary);
+    } else {
+      restoreNavigation(document);
     }
   }
 

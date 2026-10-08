@@ -35,6 +35,8 @@ import {
 } from '../core/library/room-grid';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
 import { createLongPress } from './long-press';
+import { FullscreenButton, useFullscreen } from './fullscreen';
+import { lockOrientation, unlockOrientation } from './orientation-lock';
 import { RoomView, type DragView, type Tool } from './RoomView';
 
 // Près du bord de la pièce visible, le glissé la fait défiler : zone sensible et vitesse (pixels par image).
@@ -52,6 +54,9 @@ export const LIBRARY_CSS = `
 .wmt-lib-btn[aria-pressed="true"],.wmt-lib-btn[aria-selected="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
 .wmt-lib-name{min-height:40px;box-sizing:border-box;padding:0 10px;border-radius:8px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit}
 .wmt-lib-scroll{display:flex;overflow-x:auto;width:100%;margin:0 auto;border-radius:12px;-webkit-overflow-scrolling:touch}
+.wmt-lib-stage{position:relative;width:100%;display:flex;justify-content:center}
+.wmt-lib-stage:fullscreen{background:#000;width:100vw;height:100vh;align-items:center}
+.wmt-lib-stage:fullscreen .wmt-lib-scroll{border-radius:0}
 .wmt-lib-msg{min-height:20px;font-size:13px;opacity:.85}
 .wmt-lib-sep{flex:1}
 `;
@@ -82,6 +87,7 @@ const ICONS = {
   extendRight: ['M20 4v16', 'M5 12h10', 'M10 7v10'],
   shrinkLeft: ['M4 4v16', 'M9 12h10'],
   shrinkRight: ['M20 4v16', 'M5 12h10'],
+  fullscreen: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
 } as const;
 
 const KIND_ICON: Record<FurnitureKind, readonly string[]> = { shelf: ICONS.shelf, desk: ICONS.desk, computer: ICONS.computer };
@@ -110,6 +116,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
   const [message, setMessage] = useState('');
   const blinkTimer = useRef<number | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const stage = useFullscreen<HTMLDivElement>();
   const pendingScroll = useRef(0);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragging = drag !== null;
@@ -221,12 +228,21 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
     if (delta !== 0 && el) el.scrollLeft = Math.max(0, el.scrollLeft + delta);
   }, [colsNow]);
 
+  // Plein écran : l'écran prend l'orientation de la pièce ; le verrou est levé à la sortie et au démontage.
+  const orientationNow = lib ? activeRoom(lib).orientation : 'landscape';
+  useEffect(() => {
+    if (!stage.active) return;
+    lockOrientation(orientationNow);
+    return () => unlockOrientation();
+  }, [stage.active, orientationNow]);
+
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
   const room = activeRoom(lib);
   const layout = room.layout;
   const editing = mode === 'edit';
   const portrait = room.orientation === 'portrait';
+  const visibleWidth = VISIBLE_COLS[room.orientation] * CELL_W;
   const editLayout = (change: Parameters<typeof updateLayout>[2]) => library.update((state) => updateLayout(state, room.id, change));
 
   const reset = (): void => {
@@ -418,6 +434,9 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
         >
           <Icon paths={ICONS.star} />
         </Btn>
+        <Btn label={stage.active ? 'Quitter le plein écran' : 'Plein écran'} data={{ action: 'fullscreen' }} onClick={stage.toggle}>
+          <Icon paths={ICONS.fullscreen} />
+        </Btn>
         <span className="wmt-lib-sep" />
         {editing && (
           <input
@@ -483,25 +502,32 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
         {message}
       </div>
 
-      <div
-        className="wmt-lib-scroll"
-        data-scroll
-        ref={scrollRef}
-        style={{ maxWidth: portrait ? 480 : 960, ...(dragging ? { overflowX: 'hidden', touchAction: 'none' } : {}) }}
-      >
-        <RoomView
-          room={room}
-          editing={editing}
-          cellsActive={cellsActive}
-          selectedId={selectedId}
-          blink={blink}
-          onCell={(col, row) => void onCell(col, row)}
-          onPick={(id) => void onPick(id)}
-          onFurnitureDown={onFurnitureDown}
-          onFurnitureMove={onFurnitureMove}
-          onFurnitureUp={press.cancel}
-          drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost } satisfies DragView) : null}
-        />
+      <div className="wmt-lib-stage" ref={stage.ref} data-stage>
+        <div
+          className="wmt-lib-scroll"
+          data-scroll
+          ref={scrollRef}
+          style={{
+            // En plein écran : la fenêtre visible (24 ou 14 colonnes sur 340 de haut) prend la plus grande taille qui tient dans l'écran.
+            maxWidth: stage.active ? `min(100vw, calc(100vh * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
+            ...(dragging ? { overflowX: 'hidden', touchAction: 'none' } : {}),
+          }}
+        >
+          <RoomView
+            room={room}
+            editing={editing}
+            cellsActive={cellsActive}
+            selectedId={selectedId}
+            blink={blink}
+            onCell={(col, row) => void onCell(col, row)}
+            onPick={(id) => void onPick(id)}
+            onFurnitureDown={onFurnitureDown}
+            onFurnitureMove={onFurnitureMove}
+            onFurnitureUp={press.cancel}
+            drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost } satisfies DragView) : null}
+          />
+        </div>
+        {stage.active && <FullscreenButton active onClick={stage.toggle} right={8} />}
       </div>
     </div>
   );
