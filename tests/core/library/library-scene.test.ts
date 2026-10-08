@@ -4,7 +4,7 @@ import { activeRoom, createInitialState, parseLibraryState, setRoomScene, setTim
 describe('scène et heure', () => {
   it('démarre en ville, heure réelle, version 3', () => {
     const state = createInitialState();
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.time).toEqual({ mode: 'real' });
     expect(activeRoom(state).scene).toBe('city');
   });
@@ -24,7 +24,7 @@ describe('scène et heure', () => {
   it('migre un état v2 : ville et heure réelle', () => {
     const v2 = { version: 2, activeRoomId: 'r1', homeRoomId: null, rooms: [{ id: 'r1', name: 'Salon', style: 'neon', orientation: 'landscape', cols: 24, layout: [{ id: 'f1', kind: 'chair', col: 3, row: 15 }] }] };
     const state = parseLibraryState(v2);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.time).toEqual({ mode: 'real' });
     expect(activeRoom(state).scene).toBe('city');
     expect(activeRoom(state).name).toBe('Salon');
@@ -34,7 +34,7 @@ describe('scène et heure', () => {
   it('migre un état v1 jusqu’à la v3', () => {
     const v1 = { version: 1, activeRoomId: 'r1', homeRoomId: null, rooms: [{ id: 'r1', name: 'P', style: 'scandinave', orientation: 'landscape', cols: 24, layout: [{ id: 'f1', kind: 'chair', col: 1, row: 8 }] }] };
     const state = parseLibraryState(v1);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(activeRoom(state).layout[0]).toMatchObject({ row: 11 });
   });
 

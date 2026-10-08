@@ -76,6 +76,16 @@ export function createLibraryRepo(store: KeyValueStore) {
       writeTail = run.catch(() => undefined);
       return run;
     },
+    // Comme `update`, mais sans prévenir les abonnés : le plan du chat change toutes les quelques secondes sans qu'il y ait rien à redessiner.
+    updateQuiet(change: (state: LibraryState) => LibraryState): Promise<void> {
+      const run = writeTail.then(async () => {
+        const next = change(await read());
+        await store.set(KEY, next);
+        latest = next;
+      });
+      writeTail = run.catch(() => undefined);
+      return run;
+    },
   };
 }
 

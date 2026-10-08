@@ -1,10 +1,12 @@
 import { z } from 'zod';
-import { SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Layout, type LibraryState, type Orientation, type Placed, type Room, type SceneId, type StyleId, type TimeSetting } from './library-types';
+import { COATS, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type StyleId, type TimeSetting } from './library-types';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
 import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, sectionIsEmpty, shiftLayout } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
+export const MAX_PET_NAME = 20;
+const DEFAULT_PET_NAME = 'Minou';
 
 const windowSchema = z.object({
   id: z.string(),
@@ -37,6 +39,34 @@ const placedSchema = z.union([
     slug: z.string(),
   }),
 ]);
+const ptSchema = z.object({ x: z.number(), y: z.number() });
+const segmentSchema = z.object({
+  kind: z.enum(['walk', 'jump']),
+  from: ptSchema,
+  to: ptSchema,
+  ms: z.number().min(0).max(60000),
+  fromOn: z.string().nullable(),
+  on: z.string().nullable(),
+});
+const planSchema = z.object({
+  action: z.enum(PET_ACTIONS),
+  hostId: z.string().nullable(),
+  at: ptSchema,
+  on: z.string().nullable(),
+  route: z.array(segmentSchema).max(60),
+  startedAt: z.number(),
+  actMs: z.number().min(0).max(600000),
+  facing: z.enum(['l', 'r']),
+  sig: z.string(),
+});
+// Un plan abîmé est simplement oublié : le chat en choisira un autre.
+const petSchema = z.object({
+  id: z.string(),
+  species: z.literal('cat'),
+  name: z.string().min(1).max(MAX_PET_NAME),
+  coat: z.enum(COATS),
+  plan: planSchema.optional().catch(undefined),
+});
 const roomSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -45,9 +75,10 @@ const roomSchema = z.object({
   orientation: z.enum(['landscape', 'portrait']),
   cols: z.number().int().min(MIN_COLS).max(MAX_COLS).refine((cols) => cols % SECTION === 0),
   layout: z.array(placedSchema),
+  pets: z.array(petSchema).max(1),
 });
 const stateSchema = z.object({
-  version: z.literal(3),
+  version: z.literal(4),
   activeRoomId: z.string(),
   homeRoomId: z.string().nullable(),
   time: z.union([
@@ -73,10 +104,11 @@ const makeRoom = (id: string, name: string, orientation: Orientation, style: Roo
   orientation,
   cols: MIN_COLS,
   layout: [],
+  pets: [],
 });
 
 export function createInitialState(): LibraryState {
-  return { version: 3, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
+  return { version: 4, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
 }
 
 export function activeRoom(state: LibraryState): Room {
@@ -141,7 +173,26 @@ function migrateV2(raw: unknown): unknown {
   return { ...state, version: 3, time: { mode: 'real' }, rooms };
 }
 
-const migrate = (raw: unknown): unknown => migrateV2(migrateV1(raw));
+// La v4 ajoute les animaux de chaque pièce (aucun).
+function migrateV3(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 3) return raw;
+  const state = raw as { rooms?: unknown };
+  const rooms = Array.isArray(state.rooms) ? state.rooms.map((room: unknown) => (typeof room === 'object' && room !== null ? { ...room, pets: [] } : room)) : state.rooms;
+  return { ...state, version: 4, rooms };
+}
+
+const migrate = (raw: unknown): unknown => migrateV3(migrateV2(migrateV1(raw)));
+
+// Un animal impossible (espèce ou pelage inconnus…) est ignoré sans faire perdre la pièce ; un seul par pièce.
+function cleanPets(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { rooms?: unknown }).rooms)) return raw;
+  const rooms = (raw as { rooms: unknown[] }).rooms.map((room) => {
+    if (typeof room !== 'object' || room === null) return room;
+    const pets = (room as { pets?: unknown }).pets;
+    return { ...room, pets: Array.isArray(pets) ? pets.filter((p) => petSchema.safeParse(p).success).slice(0, 1) : [] };
+  });
+  return { ...(raw as object), rooms };
+}
 
 // Une fenêtre impossible (dimensions hors bornes, valeurs non entières…) est ignorée sans faire perdre la pièce.
 function dropBadWindows(raw: unknown): unknown {
@@ -155,7 +206,7 @@ function dropBadWindows(raw: unknown): unknown {
 
 // Une lecture sûre : un contenu absent, d'une autre version ou abîmé redonne une pièce vide (comme `readView`).
 export function parseLibraryState(raw: unknown): LibraryState {
-  const parsed = stateSchema.safeParse(dropBadWindows(migrate(raw)));
+  const parsed = stateSchema.safeParse(cleanPets(dropBadWindows(migrate(raw))));
   if (!parsed.success) return createInitialState();
   const state = parsed.data;
   const ids = state.rooms.map((room) => room.id);
@@ -258,4 +309,30 @@ export function setRoomScene(state: LibraryState, id: string, scene: SceneId): L
 export function setTimeSetting(state: LibraryState, time: TimeSetting): LibraryState {
   if (time.mode !== 'manual') return { ...state, time };
   return { ...state, time: { mode: 'manual', minutes: Math.min(1439, Math.max(0, Math.round(time.minutes))) } };
+}
+
+export function adoptPet(state: LibraryState, roomId: string, name: string, coat: Coat): LibraryState {
+  const room = state.rooms.find((candidate) => candidate.id === roomId);
+  if (!room || room.pets.length >= 1) return state;
+  const pet: Pet = { id: 'p1', species: 'cat', name: name.trim().slice(0, MAX_PET_NAME) || DEFAULT_PET_NAME, coat };
+  return mapRoom(state, roomId, (r) => ({ ...r, pets: [pet] }));
+}
+
+export function renamePet(state: LibraryState, roomId: string, petId: string, name: string): LibraryState {
+  const clean = name.trim().slice(0, MAX_PET_NAME);
+  const room = state.rooms.find((candidate) => candidate.id === roomId);
+  if (clean === '' || !room?.pets.some((p) => p.id === petId)) return state;
+  return mapRoom(state, roomId, (r) => ({ ...r, pets: r.pets.map((p) => (p.id === petId ? { ...p, name: clean } : p)) }));
+}
+
+export function removePet(state: LibraryState, roomId: string, petId: string): LibraryState {
+  const room = state.rooms.find((candidate) => candidate.id === roomId);
+  if (!room?.pets.some((p) => p.id === petId)) return state;
+  return mapRoom(state, roomId, (r) => ({ ...r, pets: r.pets.filter((p) => p.id !== petId) }));
+}
+
+export function setPetPlan(state: LibraryState, roomId: string, petId: string, plan: PetPlan): LibraryState {
+  const room = state.rooms.find((candidate) => candidate.id === roomId);
+  if (!room?.pets.some((p) => p.id === petId)) return state;
+  return mapRoom(state, roomId, (r) => ({ ...r, pets: r.pets.map((p) => (p.id === petId ? { ...p, plan } : p)) }));
 }

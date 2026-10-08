@@ -17,6 +17,7 @@ import { pxRect, shelfSlots } from '../../src/core/library/room-grid';
 
 const room: Room = {
   id: 'r1', name: 'Pièce 1', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24,
+  pets: [],
   layout: [
     { id: 'f1', kind: 'shelf', col: 0, row: 7 },
     { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },

@@ -32,6 +32,26 @@ export type Placed =
 
 export type Layout = Placed[];
 
+// Pelages du chat ; chacun a sa palette (pet-sprite.tsx).
+export const COATS = ['orange', 'black', 'gray', 'white', 'tabby', 'bicolor'] as const;
+export type Coat = (typeof COATS)[number];
+
+// Un point du dessin de la pièce, en pixels (les pieds de l'animal).
+export type Pt = { x: number; y: number };
+
+// Un déplacement : marche sur son support, ou saut en arc. `fromOn` / `on` : le meuble (dessus) qui porte l'animal au départ / à l'arrivée, null = le sol.
+export type Segment = { kind: 'walk' | 'jump'; from: Pt; to: Pt; ms: number; fromOn: string | null; on: string | null };
+
+export const PET_ACTIONS = ['sit', 'groom', 'stretch', 'yawn', 'sleep', 'eat', 'drink', 'scratch', 'perch', 'hide', 'purr'] as const;
+export type PetAction = (typeof PET_ACTIONS)[number];
+
+// Le plan en cours : un trajet (peut être vide) puis une action sur place. Tout est en horodatages absolus (`startedAt`, durées) :
+// la position à n'importe quel instant se déduit du plan, sans rien simuler. `hostId` : le meuble contre/dans lequel il agit (ordre de dessin) ;
+// `on` : le dessus de meuble qui le porte (null = sol) ; `sig` : signature des meubles au moment où le plan a été fait.
+export type PetPlan = { action: PetAction; hostId: string | null; at: Pt; on: string | null; route: Segment[]; startedAt: number; actMs: number; facing: 'l' | 'r'; sig: string };
+
+export type Pet = { id: string; species: 'cat'; name: string; coat: Coat; plan?: PetPlan };
+
 // Décors vus par les fenêtres d'une pièce.
 export const SCENE_IDS = ['city', 'countryside', 'mountain', 'sea', 'space', 'earth'] as const;
 export type SceneId = (typeof SCENE_IDS)[number];
@@ -47,10 +67,11 @@ export type Room = {
   orientation: Orientation;
   cols: number;
   layout: Layout;
+  pets: Pet[];
 };
 
 export type LibraryState = {
-  version: 3;
+  version: 4;
   activeRoomId: string;
   homeRoomId: string | null;
   // Heure globale de la Bibliothèque (toutes les pièces).
