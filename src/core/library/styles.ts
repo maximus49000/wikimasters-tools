@@ -10,6 +10,18 @@ export type Palette = {
   leg: string;
   edge: string;
   text: string;
+  fabric: string;
+  fabricLight: string;
+  fabricDark: string;
+  warm: string;
+  warmLight: string;
+  warmDark: string;
+  leaf: string;
+  leafDark: string;
+  rug: string;
+  shade: string;
+  metal: string;
+  door: string;
 };
 
 const SCANDINAVE: Palette = {
@@ -22,6 +34,18 @@ const SCANDINAVE: Palette = {
   leg: '#FFFFFF',
   edge: '#C9B48E',
   text: '#8A8A8A',
+  fabric: '#8FA3A8',
+  fabricLight: '#A3B6BA',
+  fabricDark: '#7F9398',
+  warm: '#C9A98C',
+  warmLight: '#D8BDA2',
+  warmDark: '#B8977A',
+  leaf: '#7DA57A',
+  leafDark: '#6A9568',
+  rug: '#B9C9C2',
+  shade: '#F4E3B5',
+  metal: '#8A8A8A',
+  door: '#6B5B45',
 };
 
 // Les autres styles arrivent avec le morceau « Styles et décor » : en attendant, ils retombent sur Scandinave.
