@@ -59,7 +59,7 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 ## Ce que voit le joueur
 
 - Dans le sélecteur de vues de la Collection, un nouveau glyphe **livre** : Bibliothèque. Le choix est mémorisé comme les autres vues (`wmt:collectionView` = `library`).
-- Une bande de **pièces** en haut : un onglet par pièce, un bouton **+** pour en créer. Appui long (ou bouton ✎) sur un onglet : renommer, supprimer (avec confirmation). 12 pièces au maximum.
+- Une bande de **pièces** en haut : un onglet par pièce, un bouton **+** pour en créer. En mode Aménager, un champ de nom permet de renommer la pièce et un bouton corbeille de la supprimer (avec confirmation) ou, pour la dernière pièce, de la vider. 12 pièces au maximum.
 - **Pièce d'accueil** : une étoile sur l'onglet (ou dans le menu de la pièce) la définit comme pièce d'accueil ; une seule à la fois, et toucher l'étoile de la pièce d'accueil retire ce réglage. Au lancement (première ouverture de la Collection après le démarrage de l'extension ou de l'appli mobile), si une pièce d'accueil est définie, la vue passe directement en **Bibliothèque** sur cette pièce, avec son orientation et son défilement d'origine. Le joueur navigue ensuite librement ; le réglage ne s'applique qu'à ce premier affichage. Sans pièce d'accueil, la vue mémorisée habituelle est conservée.
 - Une nouvelle pièce est vide : mur et sol Scandinave, rien d'autre.
 - Deux modes, par un interrupteur crayon / œil :
@@ -76,7 +76,7 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 - Une pièce a **un seul aménagement**. Changer d'orientation ne le modifie pas : seule la fenêtre visible change (24 ou 14 colonnes). Rien n'est perdu en passant de l'un à l'autre.
 - Un meuble déclare sa **zone** (`wall` ou `floor`), sa **taille** en cases, et ses **emplacements** (voir plus bas). Il se pose si toutes ses cases sont libres dans la bonne zone ; sinon la pose est refusée et les cases fautives clignotent.
 - L'ordinateur a pour zone `desk` : il ne se pose que sur un bureau, sur la case d'emplacement prévue.
-- Les emplacements (slots) servent au morceau 2 : une étagère déclare 3 niveaux de 8 emplacements, un bureau 1 emplacement d'écran via l'ordinateur. Dans le morceau 1 ils sont définis et affichés en pointillés en mode Aménager, sans accepter de carte.
+- Les emplacements (slots) servent au morceau 2 : une étagère déclare 3 niveaux de 5 emplacements (15), un bureau 1 emplacement d'écran via l'ordinateur. Dans le morceau 1 ils sont définis et affichés en pointillés en mode Aménager, sans accepter de carte.
 
 ## Composants
 
