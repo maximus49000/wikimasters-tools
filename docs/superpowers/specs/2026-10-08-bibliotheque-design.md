@@ -36,7 +36,7 @@ C'est un projet de plusieurs semaines. Cette spec fixe la **vision d'ensemble et
 | Fenêtre | Scènes : ville, campagne, montagne, mer, espace, Terre. Météo aléatoire ou forcée, sur les scènes terrestres seulement. Au moins 15 événements par scène. |
 | Météo | Valeurs continues avec transitions de 20 à 60 s, jamais de bascule brute. |
 | Heure | Réelle, jour forcé, nuit forcée ou manuelle. Lever et coucher du soleil calculés pour la position de l'appareil. |
-| Animaux | Chat, chien et **robot** (compagnon mécanique), environ 15 comportements chacun, qui dépendent des meubles posés. Déplacements continus (marche, saut en arc), jamais de téléportation. |
+| Animaux | Chat, chien et **robot** (compagnon mécanique), **ensemble dans la même pièce** (un de chaque espèce au plus) et capables d'**interagir entre eux**, environ 15 comportements chacun, qui dépendent des meubles posés. Déplacements continus (marche, saut en arc), jamais de téléportation. |
 
 ## Découpage
 
@@ -115,6 +115,7 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 - `room-grid` : grille de 12 lignes et largeur variable, pose valide, hors zone, collision, déplacement, retrait, ordinateur uniquement sur un bureau.
 - `library-book` : agrandir et réduire une pièce (décalage à gauche, refus si zone occupée, bornes 24 et 96), pièce d'accueil (définir, retirer, suppression de la pièce d'accueil), création, renommage, suppression de la dernière pièce refusée, limite de 12, sérialisation et lecture d'un état corrompu.
 - `furniture-catalog` : chaque meuble tient dans la grille et ses emplacements sont dans sa surface.
+- (morceau 6) coordinateur de compagnons : une place réservée n'est jamais occupée par deux compagnons, une interaction refusée n'a aucun effet, les déplacements restent continus pendant une interaction.
 - `collection-view` et `world-toggle` : la valeur `library` est lue, écrite et proposée dans le sélecteur.
 - `LibraryPanel` : créer / renommer / supprimer une pièce, basculer Visiter / Aménager, poser et retirer un meuble.
 - Vérification manuelle dans Chrome (recharger l'extension) et dans l'appli mobile (tactile, rotation).
@@ -166,6 +167,13 @@ Comportements (environ 15 par espèce) :
 - Chat : griffer un fauteuil, pétrir un coussin, bondir sur son ombre, jouer avec une pelote, chasser une mouche, se lover sur le bureau, grimper sur l'étagère, se cacher sous le canapé, suivre les oiseaux à la fenêtre, « zoomies » la nuit.
 - Chien : rapporter une balle, creuser le tapis, se gratter, gratter la porte, enterrer un os, remuer la queue ou aboyer à la fenêtre, lécher la vitre, hurler à la lune, se secouer après la pluie.
 - Contexte : dormir la nuit, se coucher dans la tache de soleil le jour, se cacher pendant l'orage, regarder les événements de la fenêtre.
+
+**Cohabitation** : les trois compagnons peuvent être dans la même pièce (un de chaque espèce au plus). Chacun garde sa propre machine à états ; un **coordinateur** de la pièce gère ce qui se partage :
+- **Places réservées** : un emplacement (panier, niche, station de charge, gamelle, assise du canapé) n'accueille qu'un compagnon à la fois ; le canapé a deux places. Un compagnon qui trouve la place prise choisit autre chose ou attend.
+- **Interactions à deux** : un compagnon peut en inviter un autre (tirage pondéré selon les affinités et la situation). L'invité accepte ou esquive ; si les deux sont d'accord, ils jouent un petit scénario commun en deux temps : approche (chacun marche vers un point de rencontre, jamais de téléportation), puis animation conjointe, puis séparation.
+- Un compagnon occupé (il dort, il mange, il est en court-circuit) ne peut être invité qu'à certaines interactions (par exemple dormir à côté de lui).
+
+Interactions entre compagnons (au moins 12) : le chat et le chien dorment côte à côte sur le canapé ; le chien poursuit le chat, qui s'enfuit en sautant sur l'étagère ou sous le canapé, puis le regarde de haut ; le chat chasse le chien, qui se couche ; les deux jouent à la balle, que le robot leur lance ; le chat et le chien mangent côte à côte à la gamelle ; le chien aboie après le robot, le chat l'observe, curieux ; le chat monte sur le dos du robot et se fait promener ; le robot distribue des croquettes dans la gamelle ; le robot recharge ou répare l'autre compagnon qui a un souci (fatigue, collier cassé) ; le chien flaire le robot qui le scanne ; cache-cache autour des meubles ; le robot ramène la balle au chien qui la lui reprend ; chat, chien et robot se serrent tous les trois pendant l'orage ; le chat s'endort sur le chien couché ; le robot fait danser le chien.
 
 **Robot** (compagnon mécanique, même exigence : une quinzaine de comportements, mêmes règles de déplacement continu, mêmes réactions au contexte). Il roule ou marche selon le style (chenilles ou roulettes, laiton à engrenages en Steampunk, chrome en Moderne…). Comportements : se recharger sur sa station (à la place de dormir : le panier ou la niche servent de station de charge) ; veille la nuit, yeux éteints ; faire le plein d'huile à la gamelle ; se faire cliqueter les articulations (étirement) ; se polir ; sauter à ressort sur le canapé et en redescendre ; danser et courir en rond ; scanner la pièce (antenne qui tourne) ; taper sur l'ordinateur du bureau ; ranger un objet sur l'étagère ; arroser la plante ; balayer le sol ; chasser une mouche au laser ; jouer à la balle ; réparer un engrenage ; regarder par la fenêtre et suivre les événements ; se mettre à l'abri sous un parapluie par temps de pluie et s'arrêter net pendant l'orage (court-circuit : étincelles, puis redémarrage).
 
