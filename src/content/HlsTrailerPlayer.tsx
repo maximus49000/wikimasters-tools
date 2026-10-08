@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { FullscreenButton, fullscreenFrame, useFullscreen } from './fullscreen';
 import { Glyph } from './Glyphs';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -10,6 +11,7 @@ const HEIGHT = 'min(130px, 20vh)';
 export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster?: string; pageUrl: string }) {
   const [playing, setPlaying] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
+  const fullscreen = useFullscreen<HTMLDivElement>();
 
   useEffect(() => {
     if (!playing) return;
@@ -62,7 +64,7 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
   }, [playing, url]);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: HEIGHT, borderRadius: 8, overflow: 'hidden', background: '#000', border }}>
+    <div ref={fullscreen.ref} style={{ position: 'relative', width: '100%', height: HEIGHT, borderRadius: 8, overflow: 'hidden', background: '#000', border, ...fullscreenFrame(fullscreen.active) }}>
       {playing ? (
         <video ref={video} controls autoPlay playsInline poster={poster} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
       ) : (
@@ -91,6 +93,7 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
           </span>
         </button>
       )}
+      <FullscreenButton active={fullscreen.active} onClick={fullscreen.toggle} />
       <a
         href={pageUrl}
         target="_blank"

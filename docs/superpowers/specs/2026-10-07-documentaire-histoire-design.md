@@ -75,6 +75,10 @@ Décision du 2026-10-08 : la recherche est **large**. Une liste de natures ou de
 - **Exclus** : les cartes qui ont déjà leur propre fiche (film, série, jeu vidéo, livre, morceau) et les pages d'homonymie.
 - Quota : chaque nouvelle carte ouverte peut déclencher une recherche (101 unités sur 9 000 par jour) ; le cache partagé et l'index des chaînes limitent la dépense.
 
+## Plein écran (décision du 2026-10-08)
+
+Tous les lecteurs vidéo de l'application (documentaires YouTube et Commons, bandes-annonces des films et séries, bandes-annonces HLS des jeux vidéo) ont un bouton plein écran à quatre coins, à gauche du lien « ouvrir à la source » : le conteneur du lecteur passe en plein écran (`src/content/fullscreen.tsx`). Dans l'APK, `MainActivity` relaie le plein écran des vidéos de la WebView (`onShowCustomView` / `onHideCustomView`, retour arrière pour en sortir).
+
 ## Affichage (extension et mobile)
 
 Section « Documentaire » sous l'introduction : lecteur miniature + ▶ (aucune requête tierce avant le clic, réutilise `TrailerPlayer.tsx` rendu générique), titre, chaîne, durée, source, ↗, vignettes des autres candidats, glyphes plutôt que texte. Intégration bloquée par le diffuseur : le lien ↗ reste disponible.

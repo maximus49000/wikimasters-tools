@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { embedUrl, thumbnailUrl, watchUrl } from '../core/screen/screen-format';
+import { FullscreenButton, fullscreenFrame, useFullscreen } from './fullscreen';
 import { Glyph } from './Glyphs';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -7,13 +8,14 @@ const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 // Miniature + ▶ ; l'iframe YouTube (sans cookies) n'est chargée qu'au clic. Le lien externe reste là si le site la bloque.
 export function TrailerPlayer({ trailerKey }: { trailerKey: string }) {
   const [playing, setPlaying] = useState(false);
+  const fullscreen = useFullscreen<HTMLDivElement>();
   const embed = embedUrl(trailerKey);
   const thumb = thumbnailUrl(trailerKey);
   const watch = watchUrl(trailerKey);
   if (!embed || !watch) return null;
 
   return (
-    <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', maxHeight: 'min(220px, 32vh)', borderRadius: 8, overflow: 'hidden', background: '#000', border }}>
+    <div ref={fullscreen.ref} style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', maxHeight: 'min(220px, 32vh)', borderRadius: 8, overflow: 'hidden', background: '#000', border, ...fullscreenFrame(fullscreen.active) }}>
       {playing ? (
         <iframe
           src={embed}
@@ -47,6 +49,7 @@ export function TrailerPlayer({ trailerKey }: { trailerKey: string }) {
           </span>
         </button>
       )}
+      <FullscreenButton active={fullscreen.active} onClick={fullscreen.toggle} />
       <a
         href={watch}
         target="_blank"
