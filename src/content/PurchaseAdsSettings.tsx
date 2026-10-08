@@ -34,7 +34,7 @@ export function PurchaseAdsSettings({ ads, onClose }: { ads: PurchaseAds; onClos
           </button>
         </div>
         <p data-wmt-ads-explain="" style={{ margin: '0 0 12px', opacity: 0.8 }}>
-          Activé : les propositions d’achat en argent réel du site (boutique WikiBidous, abonnement WikiMasters PRO, bouton et onglet PRO « Marché ») sont affichées. Désactivé : elles sont masquées partout, et la pastille du solde n’ouvre plus la boutique.
+          Activé : les propositions d’achat en argent réel du site (boutique WikiBidous, abonnement WikiMasters PRO, bouton « Rechargez 10 paquets », bouton et onglet PRO « Marché ») sont affichées. Désactivé : elles sont masquées partout, et la pastille du solde n’ouvre plus la boutique.
         </p>
         <div role="group" data-wmt-ads-choice="" aria-label="Publicité d’achat" style={{ display: 'flex', gap: 8 }}>
           <button type="button" aria-pressed={enabled} onClick={() => {

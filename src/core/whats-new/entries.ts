@@ -555,7 +555,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'publicite-achat-v5',
+    id: 'publicite-achat-v6',
     theme: 'app',
     glyph: '🛒',
     title: 'Publicité d’achat',
@@ -598,9 +598,10 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-ads-explain]',
         title: 'Ce qui est masqué',
-        text: 'Le texte de la fenêtre résume l’effet du réglage : Désactivé, l’extension cache tout ce qui propose d’acheter avec de l’argent réel (boutique, abonnement, bouton et onglet PRO « Marché »).',
+        text: 'Le texte de la fenêtre résume l’effet du réglage : Désactivé, l’extension cache tout ce qui propose d’acheter avec de l’argent réel (boutique, abonnement, bouton et onglet PRO « Marché », bouton « Rechargez 10 paquets »).',
         details: [
           { label: 'Dans les Paramètres', text: 'Les sections « Acheter des WikiBidous » et « WikiMasters PRO » (l’abonnement) disparaissent de la page des Paramètres du site.' },
+          { label: 'Page Paquets', text: 'Le bouton « Rechargez 10 paquets — 1,99 $ CAD » de la page Paquets est caché : le compteur de paquets disponibles et le délai du prochain paquet restent affichés.' },
           { label: 'Boutique et solde', text: 'La fenêtre « Boutique » est cachée, et la pastille de votre solde de WikiBidous n’ouvre plus la boutique quand vous la touchez : le solde reste affiché.' },
           { label: 'Vue du marché (PRO)', text: 'Le bouton « Vue du marché » (graphique et pastille PRO) des enchères et l’onglet « Marché PRO » de la fiche d’une carte, fonction réservée aux abonnés PRO, sont cachés eux aussi. Sans cet onglet, la barre d’onglets disparaît : la fiche s’ouvre directement sur « Détails ».' },
           { label: 'À savoir', text: 'Rien n’est supprimé ni acheté : l’extension ne fait que cacher l’affichage du site. Si le site change la forme de ses offres, une proposition peut réapparaître : signalez-la avec « Remonter une anomalie ».' },
