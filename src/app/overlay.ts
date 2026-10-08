@@ -353,6 +353,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     loadFiltered: (filter, isCancelled) => loadFilteredSlugs(filterApi, filter, isCancelled),
     openCard: (slug) => marketUi.openMarket(slug),
     openGameCard: (slug) => void marketUi.reopenCard(slug),
+    openRoomCard: openPlayerCard,
     market: market.source,
     onVisibleCards: (cards) =>
       void collector

@@ -59,6 +59,7 @@ import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import { CardPickerDialog, type CardChoice } from './CardPickerDialog';
 import { useRoomCards } from './library-cards-data';
+import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView, type DragView, type Tool } from './RoomView';
 
 // Près du bord de la pièce visible, le glissé la fait défiler : zone sensible et vitesse (pixels par image).
@@ -133,11 +134,12 @@ const REFUSALS = {
   wall: 'Un objet mural s’accroche au mur.',
 } as const;
 
-type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void };
+type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void; onOpenMarket?: (slug: string) => void };
 
-export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) {
-  const roomCards = useRoomCards(collection, kinds);
+export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMarket }: Props) {
+  const roomCards = useRoomCards(collection, kinds, library);
   const [picking, setPicking] = useState(false);
+  const [viewing, setViewing] = useState<string | null>(null);
   const [pending, setPending] = useState<CardChoice | null>(null);
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
@@ -399,7 +401,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     if (editing && placing?.target === 'shelf' && item.kind === 'stored') return void onPick(item.shelfId);
     if (!editing) {
       const slug = item.kind === 'wall' || item.kind === 'stored' || item.kind === 'computer' ? item.slug : undefined;
-      if (slug && roomCards.cards[slug]) onOpenCard?.(slug);
+      if (slug && roomCards.cards[slug]) setViewing(slug);
       return;
     }
     // L'écran d'un ordinateur se manie comme l'ordinateur.
@@ -714,6 +716,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
           />
         </div>
         {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}
+        {viewing && roomCards.cards[viewing] && (
+          <RoomCardDialog
+            slug={viewing}
+            card={roomCards.cards[viewing]}
+            onOpenMarket={(slug) => onOpenMarket?.(slug)}
+            onOpenCard={(slug) => onOpenCard?.(slug)}
+            onClose={() => setViewing(null)}
+          />
+        )}
         {stage.active && <FullscreenButton active onClick={stage.toggle} right={8} />}
       </div>
     </div>

@@ -74,14 +74,16 @@ export type CollectionUiDeps = {
   market: MarketSource;
   // Cartes affichées dans la Collection (à relever sur le marché).
   onVisibleCards?: (cards: KnownCard[]) => void;
+  // Fiche d'une carte ouverte depuis « Ma Pièce », qui s'ouvre de n'importe quelle page du site (défaut : `openGameCard`).
+  openRoomCard?: (slug: string) => void;
 };
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, library, birth, kinds, links, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, library, birth, kinds, links, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards, openRoomCard }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
-  const libraryWindow = createLibraryWindow({ library, collection, kinds, onOpenCard: openGameCard });
+  const libraryWindow = createLibraryWindow({ library, collection, kinds, onOpenCard: openRoomCard ?? openGameCard, onOpenMarket: openCard });
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
   // « ×2 » : les exemplaires sont remis à jour en arrière-plan ; les cartes en double s'affichent aussitôt avec les nombres connus.
   const recount = createRecountSource(() => recountCopies(scanner));

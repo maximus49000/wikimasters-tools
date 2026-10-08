@@ -75,4 +75,14 @@ describe('createLibraryRepo', () => {
     await Promise.all([loading, updating]);
     expect(repo.current()?.rooms).toHaveLength(2);
   });
+
+  it('garde la copie des cartes posées, fusionnée sans rien perdre', async () => {
+    const store = createMemoryStore();
+    const repo = createLibraryRepo(store);
+    expect(await repo.loadCards()).toEqual({});
+    expect(await repo.saveCards({ Paris: { title: 'Paris', imageUrl: 'p.png' } })).toBe(true);
+    expect(await repo.saveCards({ Paris: { title: 'Paris', rarity: 'Rare' } })).toBe(true);
+    expect(await repo.saveCards({ Paris: { title: 'Paris', rarity: 'Rare' } })).toBe(false);
+    expect(await createLibraryRepo(store).loadCards()).toEqual({ Paris: { title: 'Paris', imageUrl: 'p.png', rarity: 'Rare' } });
+  });
 });
