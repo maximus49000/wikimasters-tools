@@ -147,15 +147,16 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   }
 
   // Ordre de dessin : les tapis en dessous, puis les meubles du plus loin au plus proche (bas le plus haut d'abord),
-  // puis les petits objets sur leur porteur, puis les ordinateurs sur les bureaux.
+  // puis les ordinateurs sur les bureaux ; les objets accrochés viennent ensuite, puis les petits objets par-dessus.
   const standing = room.layout.filter(isStanding);
   const bottomRow = (p: (typeof standing)[number]): number => p.row + sizeOf(p.kind).h;
   const ordered = [
     ...standing.filter((p) => p.kind === 'rug'),
     ...standing.filter((p) => p.kind !== 'rug').sort((a, b) => bottomRow(a) - bottomRow(b)),
-    ...room.layout.filter((p) => p.kind === 'small'),
     ...room.layout.filter((p) => p.kind === 'computer'),
   ];
+  // Les petits objets (bande de 44 px au-dessus de leur porteur) passent devant les objets accrochés au mur.
+  const smalls = room.layout.filter((p) => p.kind === 'small');
 
   // Objet touchable (accroché, rangé ou écran) : mêmes gestes que les meubles, pour pouvoir le déplacer.
   function cardGroup(placed: Placed, slug: string, rect: PxRect, art: ReactElement, extra: Record<string, string> = {}): ReactElement {
@@ -196,6 +197,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     const rect = rectOf(placed);
     if (rect && placed.kind === 'shelf') shelfRects.set(placed.id, pxRect(rect));
   }
+  const wallLayer: ReactElement[] = [];
   const cardLayer: ReactElement[] = [];
   for (const placed of room.layout) {
     if (placed.kind !== 'wall') continue;
@@ -203,7 +205,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     if (!cells) continue;
     const rect = pxRect(cells);
     const info = cards[placed.slug];
-    cardLayer.push(
+    wallLayer.push(
       cardGroup(placed, placed.slug, rect, <WallArt rect={rect} shape={placed.shape} color={placed.color} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} id={placed.id} />),
     );
   }
@@ -267,6 +269,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       <rect y={wallH} width={width} height={HEIGHT - wallH} fill={palette.floor} />
       <rect y={wallH - 4} width={width} height={5} fill={palette.skirt} opacity={0.6} />
       {ordered.map(renderPlaced)}
+      {wallLayer}
+      {smalls.map(renderPlaced)}
       {cardLayer}
       {cells}
       {drag?.ghostPx && (

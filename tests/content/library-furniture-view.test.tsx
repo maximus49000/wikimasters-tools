@@ -29,6 +29,7 @@ const room: Room = {
     { id: 'm', kind: 'coffee-table', col: 3, row: 15 },
     { id: 'n', kind: 'shelf', col: 42, row: 10 },
     { id: 'o', kind: 'small', item: 'lamp', hostId: 'n', slot: 2 },
+    { id: 'w', kind: 'wall', shape: 'poster', col: 42, row: 5, slug: 'Paris' },
   ],
 };
 
@@ -56,8 +57,16 @@ describe('RoomView : mobilier', () => {
     const at = (id: string) => order.findIndex((entry) => entry.endsWith(`:${id}`));
     expect(at('b')).toBeLessThan(at('a'));
     expect(at('c')).toBeLessThan(at('d'));
-    expect(at('d')).toBeLessThan(at('e'));
+    expect(at('e')).toBeLessThan(at('d'));
     expect(at('n')).toBeLessThan(at('o'));
+  });
+
+  it('dessine les petits objets devant un objet accroché au mur', () => {
+    const container = mount();
+    const order = [...container.querySelectorAll('[data-furniture],[data-card]')].map((el) => el.getAttribute('data-id'));
+    expect(order.indexOf('w')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('w')).toBeLessThan(order.indexOf('o'));
+    expect(order.indexOf('w')).toBeLessThan(order.indexOf('d'));
   });
 
   it('dessine le meuble le plus proche du spectateur en dernier', () => {

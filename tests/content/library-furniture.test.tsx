@@ -122,4 +122,12 @@ describe('mobilier dans le panneau', () => {
     expect(q('[role="status"]')?.textContent).toContain('Libérez le milieu du bureau');
     expect(q('[data-furniture="computer"]')).toBeNull();
   });
+
+  it('change de catégorie : l’outil armé est désarmé', async () => {
+    await click('[data-category="seats"]');
+    await click('[data-kind="chair"]');
+    await click('[data-category="deco"]');
+    await click('[data-cell="5-17"]');
+    expect(q('[data-furniture]')).toBeNull();
+  });
 });

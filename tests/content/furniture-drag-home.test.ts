@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dropTargetFor, hostAtCell } from '../../src/content/furniture-drag';
 import type { Layout } from '../../src/core/library/library-types';
+import { pxRect, rectOf, surfaceSlotRect } from '../../src/core/library/room-grid';
 
 const layout: Layout = [
   { id: 'f1', kind: 'desk', col: 2, row: 14 },
@@ -54,5 +55,40 @@ describe('dropTargetFor : meubles et tapis', () => {
       { id: 's', kind: 'sofa', col: 20, row: 14 },
     ];
     expect(dropTargetFor(onRug, 48, 's', 0, 17)).toMatchObject({ ok: true, col: 0, top: 15 });
+  });
+});
+
+describe('dropTargetFor : petit objet lâché sur la bande des objets', () => {
+  const px = (id: string, slot: number, count: number) => {
+    const host = layout.find((p) => p.id === id)!;
+    const r = surfaceSlotRect(pxRect(rectOf(host)!), count, slot);
+    return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+  };
+
+  it('accepte le pixel de son propre emplacement', () => {
+    const { x, y } = px('f1', 0, 4);
+    const target = dropTargetFor(layout, 48, 'f2', Math.floor(x / 36), Math.floor(y / 36), x, y);
+    expect(target).toMatchObject({ ok: true, hostId: 'f1' });
+  });
+
+  it('accepte la bande au-dessus d’un autre porteur', () => {
+    const { x, y } = px('f3', 0, 3);
+    const target = dropTargetFor(layout, 48, 'f2', Math.floor(x / 36), Math.floor(y / 36), x, y);
+    expect(target).toMatchObject({ ok: true, hostId: 'f3' });
+  });
+});
+
+describe('dropTargetFor : ordinateur', () => {
+  it('distingue un bureau déjà équipé d’un bureau au milieu occupé', () => {
+    const base: Layout = [
+      { id: 'd1', kind: 'desk', col: 2, row: 14 },
+      { id: 'd2', kind: 'desk', col: 12, row: 14 },
+      { id: 'c1', kind: 'computer', deskId: 'd2' },
+      { id: 'c2', kind: 'computer', deskId: 'd1' },
+      { id: 'o', kind: 'small', item: 'plant', hostId: 'd1', slot: 1 },
+    ];
+    const withoutC2 = base.filter((p) => p.id !== 'c2');
+    expect(dropTargetFor(withoutC2, 48, 'c1', 3, 15)).toMatchObject({ ok: false, reason: 'desk-middle' });
+    expect(dropTargetFor(base, 48, 'c1', 3, 15)).toMatchObject({ ok: false, reason: 'desk-busy' });
   });
 });
