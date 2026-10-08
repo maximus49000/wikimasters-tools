@@ -9,7 +9,13 @@ export function useFullscreen<T extends HTMLElement>() {
   const [active, setActive] = useState(false);
 
   useEffect(() => {
-    const sync = () => setActive(document.fullscreenElement !== null && document.fullscreenElement === ref.current);
+    // Dans un shadow root (panneaux de la Collection), document.fullscreenElement est l'hôte : on interroge la racine de l'élément.
+    const sync = () => {
+      const element = ref.current;
+      const owner = (element?.getRootNode?.() ?? document) as Document | ShadowRoot;
+      const current = owner.fullscreenElement ?? document.fullscreenElement;
+      setActive(current !== null && current !== undefined && current === element);
+    };
     document.addEventListener('fullscreenchange', sync);
     return () => document.removeEventListener('fullscreenchange', sync);
   }, []);

@@ -206,3 +206,50 @@ describe('LibraryPanel', () => {
     expect(q('[data-room="r2"]')).not.toBeNull();
   });
 });
+
+describe('LibraryPanel : plein écran', () => {
+  function stub() {
+    let current: Element | null = null;
+    const request = vi.fn(function (this: HTMLElement) {
+      current = this;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', { configurable: true, value: request });
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => current });
+    Object.defineProperty(document, 'exitFullscreen', {
+      configurable: true,
+      value: () => {
+        current = null;
+        document.dispatchEvent(new Event('fullscreenchange'));
+        return Promise.resolve();
+      },
+    });
+    return request;
+  }
+
+  it('a un bouton Plein écran qui met la scène de la pièce en plein écran', async () => {
+    const request = stub();
+    expect(q('[data-action="fullscreen"]')?.getAttribute('aria-label')).toBe('Plein écran');
+    await click('[data-action="fullscreen"]');
+    expect(request).toHaveBeenCalledTimes(1);
+    const stage = request.mock.contexts[0] as HTMLElement;
+    expect(stage.querySelector('svg[role="img"]')).not.toBeNull();
+    expect(q('[data-action="fullscreen"]')?.getAttribute('aria-label')).toBe('Quitter le plein écran');
+    // Le bouton de sortie est posé sur la scène.
+    expect(stage.querySelector('button[aria-label="Quitter le plein écran"]')).not.toBeNull();
+    await click('[data-action="fullscreen"]');
+    expect(q('[data-action="fullscreen"]')?.getAttribute('aria-label')).toBe('Plein écran');
+  });
+
+  it('verrouille l’orientation de la pièce en plein écran puis la libère', async () => {
+    stub();
+    const lock = vi.fn(() => Promise.resolve());
+    const unlock = vi.fn();
+    Object.defineProperty(screen, 'orientation', { configurable: true, value: { lock, unlock } });
+    await click('[data-action="fullscreen"]');
+    expect(lock).toHaveBeenCalledWith('landscape');
+    await click('[data-action="fullscreen"]');
+    expect(unlock).toHaveBeenCalled();
+  });
+});
