@@ -6,6 +6,7 @@ import type { Sky } from '../core/library/sky';
 import { CityScene } from './scene-city';
 import { CountrysideScene, MountainScene, SeaScene } from './scene-nature';
 import { ActorSprite } from './scene-sprites';
+import { EarthScene, SpaceScene } from './scene-space';
 
 export type SceneBodyProps = { width: number; height: number; sky: Sky; minutes: number; seed: number };
 export type PanoramaProps = SceneBodyProps & { scene: SceneId };
@@ -93,15 +94,18 @@ function ScenePanoramaView({ scene, width, height, sky, minutes, seed }: Panoram
   const actors = useMemo(() => actorsFor(scene, width, height, seed), [scene, width, height, seed]);
   useActorLoop(root, actors, width);
   const props = { width, height, sky, minutes, seed };
+  const terrestrial = scene !== 'space' && scene !== 'earth';
   const t0 = Date.now() / 1000;
   return (
     <g data-panorama="" data-scene={scene} ref={root}>
-      <SkyAndStars {...props} />
-      <Celestial {...props} />
+      {terrestrial && <SkyAndStars {...props} />}
+      {terrestrial && <Celestial {...props} />}
       {scene === 'city' && <CityScene {...props} />}
       {scene === 'countryside' && <CountrysideScene {...props} />}
       {scene === 'mountain' && <MountainScene {...props} />}
       {scene === 'sea' && <SeaScene {...props} />}
+      {scene === 'space' && <SpaceScene {...props} />}
+      {scene === 'earth' && <EarthScene {...props} />}
       <g data-actors>
         {actors.map((actor) => {
           const active = actorActive(actor.u, minutes);
