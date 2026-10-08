@@ -297,6 +297,26 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) 
     return () => unlockOrientation();
   }, [stage.active, orientationNow]);
 
+  // Heure réelle au chargement : la position n'est relue que si le joueur l'a déjà accordée (jamais de nouvelle demande ici).
+  const timeMode = lib?.time.mode;
+  useEffect(() => {
+    if (timeMode !== 'real') return;
+    let alive = true;
+    try {
+      navigator.permissions
+        ?.query({ name: 'geolocation' as PermissionName })
+        .then((status) => {
+          if (alive && status.state === 'granted') void requestPosition();
+        })
+        .catch(() => undefined);
+    } catch {
+      // Navigateur sans API des autorisations : le fuseau horaire sert de repli.
+    }
+    return () => {
+      alive = false;
+    };
+  }, [timeMode]);
+
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
   const room = activeRoom(lib);

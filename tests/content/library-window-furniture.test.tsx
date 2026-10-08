@@ -133,3 +133,31 @@ describe('panneau Ciel', () => {
     expect(q('[role="group"][aria-label="Ciel"]')).toBeNull();
   });
 });
+
+describe('heure réelle — position déjà accordée', () => {
+  async function mountWith(state: PermissionState) {
+    const getCurrentPosition = vi.fn();
+    Object.defineProperty(navigator, 'geolocation', { value: { getCurrentPosition }, configurable: true });
+    Object.defineProperty(navigator, 'permissions', { value: { query: vi.fn(async () => ({ state })) }, configurable: true });
+    const other = document.createElement('div');
+    document.body.append(other);
+    const otherRoot = createRoot(other);
+    await act(async () => { otherRoot.render(<LibraryPanel library={createLibraryRepo(createMemoryStore())} />); });
+    await settle();
+    act(() => otherRoot.unmount());
+    other.remove();
+    return getCurrentPosition;
+  }
+  afterEach(() => {
+    delete (navigator as { permissions?: unknown }).permissions;
+    delete (navigator as { geolocation?: unknown }).geolocation;
+  });
+
+  it('relit la position au chargement si l’accord est déjà donné', async () => {
+    expect(await mountWith('granted')).toHaveBeenCalledTimes(1);
+  });
+
+  it('ne demande jamais rien au chargement sans accord', async () => {
+    expect(await mountWith('prompt')).not.toHaveBeenCalled();
+  });
+});
