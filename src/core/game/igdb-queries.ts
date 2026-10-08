@@ -12,4 +12,7 @@ export function detailQuery(by: { id: number } | { slug: string }): string {
   return `fields ${DETAIL_FIELDS}; where ${where}; limit 1;`;
 }
 
-export const searchQuery = (title: string): string => `search "${clean(title)}"; fields ${SEARCH_FIELDS}; limit 10;`;
+// Le relais refuse un titre de plus de 100 caractères : on tronque, puis on retire l'espace laissé en fin.
+const MAX_TITLE = 100;
+
+export const searchQuery = (title: string): string => `search "${clean(title).slice(0, MAX_TITLE).trimEnd()}"; fields ${SEARCH_FIELDS}; limit 10;`;
