@@ -46,11 +46,12 @@ describe('ExtensionSettings', () => {
   afterEach(() => act(() => root.unmount()));
 
   it('liste Images et n’affiche pas WikiHow ; sans lecteur, pas de ligne Lecteur', () => {
-    act(() => root.render(<ExtensionSettings images={null as never} player={null} ads={createPurchaseAds(memoryStorage())} onClose={() => undefined} />));
+    act(() => root.render(<ExtensionSettings images={null as never} player={null} ads={createPurchaseAds(memoryStorage())} telemetry={null as never} onClose={() => undefined} />));
     const text = container.textContent ?? '';
     expect(text).toContain('Paramètre d’extension');
     expect(text).toContain('Images');
     expect(text).toContain('Publicité d’achat');
+    expect(text).toContain('Statistiques d’usage');
     expect(text).not.toContain('Lecteur');
     expect(text).not.toContain('WikiHow');
   });
