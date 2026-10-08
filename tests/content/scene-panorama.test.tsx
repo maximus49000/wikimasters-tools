@@ -75,6 +75,6 @@ describe('ScenePanorama (ville)', () => {
     render(13 * 60);
     const first = container.querySelector<SVGElement>('[data-actor]')!;
     expect(first.getAttribute('transform')).toMatch(/translate\(/);
-    expect(first.getAttribute('data-u')).toMatch(/^\d*\.?\d+/);
+    expect(first.getAttribute('data-u')).toMatch(/^-?\d*\.?\d+$/);
   });
 });
