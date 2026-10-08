@@ -8,14 +8,17 @@ const HOSTS: Record<string, Service> = {
   'api.spotify.com': 'spotify',
   'accounts.spotify.com': 'spotify',
   'openapi.tidal.com': 'tidal',
-  'api.themoviedb.org': 'tmdb',
   'store.steampowered.com': 'steam',
   'api.steampowered.com': 'steam',
-  'api.igdb.com': 'igdb',
   'openlibrary.org': 'openlibrary',
-  'www.googleapis.com': 'googlebooks',
-  'api.github.com': 'github',
 };
+// Routes du relais qui transmettent à un service tiers : on compte les erreurs sous le nom du service, pas sous « relais ».
+const RELAY_ROUTES: [string, Service][] = [
+  ['/tmdb', 'tmdb'],
+  ['/igdb', 'igdb'],
+  ['/books', 'googlebooks'],
+  ['/issues', 'github'],
+];
 const RELAY_HOST = new URL(RELAY_BASE).host;
 
 // Service concerné par une adresse (liste fermée) ; null pour tout le reste, y compris le site du jeu et l'envoi des statistiques.
@@ -26,7 +29,10 @@ export function serviceOf(url: string): Service | null {
   } catch {
     return null;
   }
-  if (parsed.host === RELAY_HOST) return parsed.pathname === '/t' ? null : 'relais';
+  if (parsed.host === RELAY_HOST) {
+    if (parsed.pathname === '/t') return null;
+    return RELAY_ROUTES.find(([route]) => parsed.pathname === route || parsed.pathname.startsWith(`${route}/`))?.[1] ?? 'relais';
+  }
   if (parsed.host.endsWith('.wikipedia.org')) return 'wikipedia';
   return HOSTS[parsed.host] ?? null;
 }

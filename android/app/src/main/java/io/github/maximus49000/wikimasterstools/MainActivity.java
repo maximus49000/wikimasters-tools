@@ -44,12 +44,10 @@ public class MainActivity extends Activity {
     private static final String OVERLAY_ASSET = "wikimasters-overlay.js";
     private static final String SPOTIFY_AUTH_PREFIX = "https://accounts.spotify.com/authorize?";
     private static final String TIDAL_AUTH_PREFIX = "https://login.tidal.com/authorize?";
-    // Hôtes de jeux vidéo (Steam, Twitch, IGDB) sans CORS : requêtes faites ici, jamais d'autre adresse.
+    // Hôtes Steam sans CORS : requêtes faites ici, jamais d'autre adresse.
     private static final String[] HTTP_ALLOWED = {
         "https://store.steampowered.com/",
-        "https://api.steampowered.com/",
-        "https://id.twitch.tv/oauth2/token",
-        "https://api.igdb.com/v4/"
+        "https://api.steampowered.com/"
     };
     private static final String SPOTIFY_REDIRECT_SCHEME = BuildConfig.REDIRECT_SCHEME;
 

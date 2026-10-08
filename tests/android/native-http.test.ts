@@ -24,10 +24,10 @@ describe('createNativeFetch', () => {
     expect(fallback).not.toHaveBeenCalled();
   });
 
-  it("transmet la méthode, les en-têtes et le corps d'une requête IGDB", async () => {
+  it("transmet la méthode, les en-têtes et le corps d'une requête Steam", async () => {
     const { win, nativeFetch } = setup();
-    await nativeFetch('https://api.igdb.com/v4/games', { method: 'POST', headers: { 'Client-ID': 'x' }, body: 'fields id;' });
-    expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), 'https://api.igdb.com/v4/games', 'POST', '{"Client-ID":"x"}', 'fields id;');
+    await nativeFetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/', { method: 'POST', headers: { 'Client-ID': 'x' }, body: 'fields id;' });
+    expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), 'https://api.steampowered.com/ISteamApps/GetAppList/v2/', 'POST', '{"Client-ID":"x"}', 'fields id;');
   });
 
   it('les autres adresses, ou sans pont, gardent le fetch normal', async () => {
@@ -42,7 +42,7 @@ describe('createNativeFetch', () => {
   it('une réponse 429 garde son délai Retry-After', async () => {
     const win: NativeHttpWindow = {};
     win.WmtHttp = { request: (id: string) => queueMicrotask(() => win.__wmtHttpDone?.(id, 429, '30', '')) };
-    const response = await createNativeFetch(win, vi.fn() as unknown as typeof fetch)('https://api.igdb.com/v4/games');
+    const response = await createNativeFetch(win, vi.fn() as unknown as typeof fetch)('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('30');
   });
@@ -60,7 +60,7 @@ describe('createNativeFetch', () => {
     const win: NativeHttpWindow = {};
     let lastId = '';
     win.WmtHttp = { request: (id: string) => void (lastId = id) };
-    const promise = createNativeFetch(win, vi.fn() as unknown as typeof fetch)('https://api.igdb.com/v4/games');
+    const promise = createNativeFetch(win, vi.fn() as unknown as typeof fetch)('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
     const rejected = expect(promise).rejects.toThrow('délai dépassé');
     await vi.advanceTimersByTimeAsync(20_001);
     await rejected;
@@ -68,35 +68,35 @@ describe('createNativeFetch', () => {
   });
 
   it('statut 0 ou négatif : rejet', async () => {
-    await expect(answering(0).nativeFetch('https://api.igdb.com/v4/games')).rejects.toThrow('réseau indisponible');
-    await expect(answering(-1).nativeFetch('https://api.igdb.com/v4/games')).rejects.toThrow('réseau indisponible');
+    await expect(answering(0).nativeFetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/')).rejects.toThrow('réseau indisponible');
+    await expect(answering(-1).nativeFetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/')).rejects.toThrow('réseau indisponible');
   });
 
   it('statut invalide pour Response : rejet au lieu de pendre', async () => {
-    await expect(answering(1000).nativeFetch('https://api.igdb.com/v4/games')).rejects.toThrow('réponse invalide');
+    await expect(answering(1000).nativeFetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/')).rejects.toThrow('réponse invalide');
   });
 
   it('204 : Response sans corps', async () => {
-    const response = await answering(204, '', 'ignoré').nativeFetch('https://api.igdb.com/v4/games');
+    const response = await answering(204, '', 'ignoré').nativeFetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
     expect(response.status).toBe(204);
     expect(await response.text()).toBe('');
   });
 
   it('la méthode est passée en majuscules', async () => {
     const { win, nativeFetch } = setup();
-    await nativeFetch('https://api.igdb.com/v4/games', { method: 'post', body: 'a' });
+    await nativeFetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/', { method: 'post', body: 'a' });
     expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), expect.any(String), 'POST', '{}', 'a');
   });
 
   it("les en-têtes d'un Headers sont transmis", async () => {
     const { win, nativeFetch } = setup();
-    await nativeFetch('https://api.igdb.com/v4/games', { headers: new Headers({ 'Client-ID': 'x' }) });
+    await nativeFetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/', { headers: new Headers({ 'Client-ID': 'x' }) });
     expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), expect.any(String), 'GET', '{"client-id":"x"}', '');
   });
 
   it('un Request fournit méthode et en-têtes quand init est absent', async () => {
     const { win, nativeFetch } = setup();
-    await nativeFetch(new Request('https://api.igdb.com/v4/games', { method: 'POST', headers: { 'Client-ID': 'y' } }));
-    expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), 'https://api.igdb.com/v4/games', 'POST', '{"client-id":"y"}', '');
+    await nativeFetch(new Request('https://api.steampowered.com/ISteamApps/GetAppList/v2/', { method: 'POST', headers: { 'Client-ID': 'y' } }));
+    expect(win.WmtHttp?.request).toHaveBeenCalledWith(expect.any(String), 'https://api.steampowered.com/ISteamApps/GetAppList/v2/', 'POST', '{"client-id":"y"}', '');
   });
 });

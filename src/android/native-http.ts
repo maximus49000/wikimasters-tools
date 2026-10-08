@@ -6,7 +6,7 @@ export type NativeHttpWindow = {
 };
 
 // Hôtes sans en-têtes CORS : seuls ceux-là passent par le pont (le reste garde le fetch de la page).
-export const GAME_NATIVE_PREFIXES: readonly string[] = ['https://store.steampowered.com/', 'https://api.steampowered.com/', 'https://id.twitch.tv/oauth2/token', 'https://api.igdb.com/v4/'];
+export const GAME_NATIVE_PREFIXES: readonly string[] = ['https://store.steampowered.com/', 'https://api.steampowered.com/'];
 
 const NO_BODY = new Set([101, 204, 205, 304]);
 const TIMEOUT_MS = 20_000;

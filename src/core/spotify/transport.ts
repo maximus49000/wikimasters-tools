@@ -29,21 +29,17 @@ export type BackgroundDeps = {
 };
 
 const AUTH_PREFIXES = ['https://accounts.spotify.com/authorize?', 'https://login.tidal.com/authorize?'];
-// Le service worker relaie aussi Tidal (catalogue, jeton), TMDB (films et séries), les jeux vidéo (Steam, IGDB), les livres (Amazon.fr, Google Books) et GitHub (anomalies) : même contournement de la CSP du site.
+// Le service worker relaie aussi Tidal (catalogue, jeton), les jeux vidéo (Steam) et les prix de livres (Amazon.fr) : même contournement de la CSP du site.
 const FETCH_PREFIXES = [
   'https://api.spotify.com/',
   'https://accounts.spotify.com/api/token',
   'https://openapi.tidal.com/v2/',
   'https://auth.tidal.com/v1/oauth2/token',
-  'https://api.themoviedb.org/3/',
-  // Jeux vidéo : Steam (boutique, joueurs en ligne), Twitch (jeton) et IGDB (catalogue).
+  // Jeux vidéo : Steam (boutique, joueurs en ligne).
   'https://store.steampowered.com/',
   'https://api.steampowered.com/',
-  'https://id.twitch.tv/oauth2/token',
-  'https://api.igdb.com/v4/',
-  // Livres : prix papier (page produit d'Amazon.fr) et prix de l'ebook (Google Books) ; même contournement de la CSP du site.
+  // Livres : prix papier (page produit d'Amazon.fr) ; même contournement de la CSP du site.
   'https://www.amazon.fr/dp/',
-  'https://www.googleapis.com/books/v1/',
 ];
 
 // Côté service worker : ne répond qu'aux messages Spotify, et seulement vers les adresses de Spotify.
