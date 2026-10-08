@@ -28,6 +28,7 @@ import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
 import { createPageMemory } from './page-memory';
 import { createPathRequestSource, createSelectionSource, type SelectedCard } from './selection-source';
+import { track } from '../core/telemetry/registry';
 import { ensureTradeAction, ensureWebAction, isSelecting, quitSelection, readNativeCards, removeWebAction, type NativeCard } from './selection-dom';
 import { RecountGate } from './RecountGate';
 import { createRecountSource } from './recount-source';
@@ -133,6 +134,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
       if (titles.length === 0) return;
       quitSelection(document);
       startTradeFlow(titles);
+      track('echange-prepare');
     });
   }
   selection.subscribe(syncWebAction);

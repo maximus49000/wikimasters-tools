@@ -4,6 +4,7 @@ import type { Listen } from '../core/music/listen';
 import { PLATFORM_LABEL } from '../core/music/platform';
 import { TIDAL_HOME_URL } from '../core/tidal/config';
 import { tidalUrl } from '../core/tidal/tidal-listen';
+import { track } from '../core/telemetry/registry';
 import { Glyph } from './Glyphs';
 import { getMusicService, getPlayerSource } from './music-registry';
 import type { ListenView } from './music-service';
@@ -145,6 +146,7 @@ export function ListenSection({ slug, title }: Props) {
                     href={tidalUrl(item.uri) ?? TIDAL_HOME_URL}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => track('lecture-musique', 'tidal')}
                     aria-label={`Ouvrir ${item.title} dans Tidal`}
                     title={`Ouvrir ${item.title} dans Tidal`}
                     style={{ ...iconButton, borderRadius: '50%', textDecoration: 'none' }}

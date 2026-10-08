@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FullscreenButton, fullscreenFrame, useFullscreen } from './fullscreen';
 import { Glyph } from './Glyphs';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const HEIGHT = 'min(130px, 20vh)';
@@ -72,6 +73,7 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
           type="button"
           onClick={() => {
             setPlaying(true);
+            track('jeu-video-lu');
           }}
           aria-label="Lire la bande-annonce"
           title="Lire la bande-annonce"

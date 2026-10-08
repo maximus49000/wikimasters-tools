@@ -1,11 +1,11 @@
 import { defineConfig } from 'wxt';
-import { recentFixes } from './scripts/build-info.mjs';
+import { buildId, recentFixes } from './scripts/build-info.mjs';
 
 export default defineConfig({
   srcDir: 'src',
   modules: ['@wxt-dev/module-react'],
   // Les corrections récentes (commits `fix:`) alimentent la fenêtre « Quoi de neuf ».
-  vite: () => ({ define: { __WMT_FIXES__: JSON.stringify(recentFixes(process.cwd())) } }),
+  vite: () => ({ define: { __WMT_FIXES__: JSON.stringify(recentFixes(process.cwd())), __WMT_BUILD__: JSON.stringify(buildId(process.cwd())) } }),
   manifest: ({ browser }) => ({
     name: 'Wikimasters Tools (non officiel)',
     description:
@@ -37,8 +37,9 @@ export default defineConfig({
           id: 'wikimasters-tools-unofficial@maximus49000.github.io',
           // data_collection_permissions n'est reconnu qu'à partir de Firefox 140 (142 sur Android).
           strict_min_version: '140.0',
-          // Champ exigé par addons.mozilla.org : l'extension ne collecte ni n'envoie de données personnelles.
-          data_collection_permissions: { required: ['none'] },
+          // Champ exigé par addons.mozilla.org : aucune donnée personnelle ; les erreurs techniques anonymes sont toujours envoyées
+          // (catégorie « technicalAndInteraction »), l'usage est désactivable dans l'application.
+          data_collection_permissions: { required: ['technicalAndInteraction'] },
         },
         gecko_android: { strict_min_version: '142.0' },
       },

@@ -8,6 +8,7 @@ import type { DocView } from './documentary-service';
 import { DocumentaryPlayer } from './DocumentaryPlayer';
 import { DocumentaryProposeDialog } from './DocumentaryProposeDialog';
 import { Glyph } from './Glyphs';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const SIZE = 44; // cible tactile
@@ -163,7 +164,12 @@ export function DocumentarySection({ slug, title }: Props) {
                         role="option"
                         aria-selected={shown}
                         data-wmt-documentary-item=""
-                        onClick={() => void service.choose(slug, candidate).then(reload)}
+                        onClick={() =>
+                          void service
+                            .choose(slug, candidate)
+                            .then(() => track('documentaire-change'))
+                            .then(reload)
+                        }
                         style={{ width: '100%', minHeight: 56, display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', textAlign: 'left', cursor: 'pointer', color: 'inherit', border: 0, borderTop: border, background: shown ? 'rgba(224,176,74,0.12)' : 'none' }}
                       >
                         <span style={{ width: 72, aspectRatio: '16 / 9', flex: 'none', borderRadius: 4, border, background: thumb ? `center / cover no-repeat url("${thumb}")` : '#2b2b2b' }} />

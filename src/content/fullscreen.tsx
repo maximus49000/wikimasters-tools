@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Glyph } from './Glyphs';
+import { track } from '../core/telemetry/registry';
 
 // Plein écran d'un lecteur vidéo (YouTube intégré, fichier de Commons, flux HLS de Steam) : c'est le conteneur du lecteur qui passe en plein
 // écran, donc le même bouton sert à toutes les vidéos de l'application. Dans l'APK, la WebView relaie la demande à l'activité (MainActivity).
@@ -21,7 +22,11 @@ export function useFullscreen<T extends HTMLElement>() {
       return;
     }
     // Un site ou une WebView qui refuse le plein écran ne doit pas casser le lecteur : le refus est ignoré.
-    void Promise.resolve(element.requestFullscreen?.()).catch(() => undefined);
+    if (!element.requestFullscreen) return;
+    void Promise.resolve(element.requestFullscreen()).then(
+      () => track('plein-ecran'),
+      () => undefined,
+    );
   };
 
   return { ref, active, toggle };

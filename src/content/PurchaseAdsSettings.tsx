@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { PurchaseAds } from '../core/ads/purchase-ads';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -36,10 +37,16 @@ export function PurchaseAdsSettings({ ads, onClose }: { ads: PurchaseAds; onClos
           Activé : les propositions d’achat en argent réel du site (boutique WikiBidous, abonnement WikiMasters PRO, bouton et onglet PRO « Marché ») sont affichées. Désactivé : elles sont masquées partout, et la pastille du solde n’ouvre plus la boutique.
         </p>
         <div role="group" data-wmt-ads-choice="" aria-label="Publicité d’achat" style={{ display: 'flex', gap: 8 }}>
-          <button type="button" aria-pressed={enabled} onClick={() => ads.setEnabled(true)} style={choice(enabled)}>
+          <button type="button" aria-pressed={enabled} onClick={() => {
+              ads.setEnabled(true);
+              track('reglage-modifie', 'publicite-achat');
+            }} style={choice(enabled)}>
             Activé
           </button>
-          <button type="button" aria-pressed={!enabled} onClick={() => ads.setEnabled(false)} style={choice(!enabled)}>
+          <button type="button" aria-pressed={!enabled} onClick={() => {
+              ads.setEnabled(false);
+              track('reglage-modifie', 'publicite-achat');
+            }} style={choice(!enabled)}>
             Désactivé
           </button>
         </div>

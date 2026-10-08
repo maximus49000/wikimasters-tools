@@ -1,6 +1,7 @@
 import { posterUrl } from '../core/screen/screen-format';
 import type { WatchInfo, WatchProvider } from '../core/screen/tmdb-api';
 import { Glyph, type GlyphName } from './Glyphs';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -48,6 +49,7 @@ export function WatchProviders({ watch }: { watch: WatchInfo }) {
       {watch.link && (
         <a
           href={watch.link}
+          onClick={() => track('streaming-lien-ouvert')}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Voir où regarder (JustWatch)"

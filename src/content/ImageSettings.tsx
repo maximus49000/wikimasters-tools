@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { ImageService } from '../core/images/image-service';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -36,10 +37,16 @@ export function ImageSettings({ images, onClose }: { images: ImageService; onClo
           Remplacer l’image des cartes qui n’en ont pas par une image trouvée sur Wikipédia et Wikimedia Commons. Inactif : l’image vide du site reste affichée.
         </p>
         <div role="group" aria-label="Remplacement des images" style={{ display: 'flex', gap: 8 }}>
-          <button type="button" aria-pressed={enabled} onClick={() => images.setEnabled(true)} style={choice(enabled)}>
+          <button type="button" aria-pressed={enabled} onClick={() => {
+              images.setEnabled(true);
+              track('reglage-modifie', 'images');
+            }} style={choice(enabled)}>
             Actif
           </button>
-          <button type="button" aria-pressed={!enabled} onClick={() => images.setEnabled(false)} style={choice(!enabled)}>
+          <button type="button" aria-pressed={!enabled} onClick={() => {
+              images.setEnabled(false);
+              track('reglage-modifie', 'images');
+            }} style={choice(!enabled)}>
             Inactif
           </button>
         </div>

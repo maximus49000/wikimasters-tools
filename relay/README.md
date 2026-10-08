@@ -10,3 +10,9 @@ Liaison KV : `DOC_CACHE` (espace `wikimasters-doc-cache`, voir `wrangler.toml`).
 Secrets (jamais dans le dépôt), depuis le tableau de bord Cloudflare ou `npx wrangler secret put <NOM>` : `YOUTUBE_API_KEY`, et `DEBUG_TOKEN` (facultatif, ouvre le mode de réglage de `/search`).
 Budget du jour : 9 000 unités de quota YouTube, partagées entre l'index (2 par page) et la recherche (101).
 Mode opératoire complet : `docs/guides/cloudflare-relais.md`.
+
+## Mesure d'usage anonyme
+
+Routes : `POST /t` (lot d'événements, validé contre `src/core/telemetry/catalogue.ts`), `GET /stats` (agrégats JSON, en-tête `x-stats` = secret `STATS_TOKEN`), `GET /dashboard` (page HTML, jeton demandé à l'ouverture).
+Liaison D1 : `USAGE_DB` (base `wikimasters-usage`, table `events` créée par `migrations/0001_events.sql`). Secret : `STATS_TOKEN`. Purge à 90 jours chaque nuit (03:00 UTC, cron existant).
+Mise en place : partie E de `docs/guides/cloudflare-relais.md`. Aucune adresse IP ni contenu de page n'est stocké.

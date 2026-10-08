@@ -55,3 +55,20 @@ Pour que chaque fusion sur `main` redéploie le relais :
 - Quota YouTube : Google Cloud → API et services → YouTube Data API v3 → Quotas (10 000 unités par jour, 100 par recherche).
 - Si la clé fuite : Identifiants → supprimer la clé, en créer une autre, relancer `wrangler secret put`.
 - Cloudflare gratuit : surveiller Workers → Métriques (limite d'environ 100 000 requêtes par jour).
+
+## Partie E — Mesure d'usage (base D1 et tableau de bord)
+
+À faire une seule fois. Voir `docs/superpowers/specs/2026-10-08-monitoring-usage-design.md`.
+
+1. **Base D1** : `npx wrangler d1 create wikimasters-usage` (ou Cloudflare → Storage & Databases → D1 → Create). Reporter l'identifiant dans `wrangler.toml` et `relay/wrangler.toml` (déjà fait pour la base actuelle).
+2. **Table** : appliquer `relay/migrations/0001_events.sql` — soit `npx wrangler d1 migrations apply wikimasters-usage --remote`, soit coller le fichier dans l'onglet **Console** de la base sur le site Cloudflare (même résultat).
+3. **Jeton du tableau de bord** : générer une valeur aléatoire (`node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`) puis la poser comme secret `STATS_TOKEN` (`npx wrangler secret put STATS_TOKEN`, ou Workers → wikimasters-tools → Settings → Variables and Secrets → type Secret). Ne jamais la coller dans le dépôt ni dans un message.
+4. **Tableau de bord** : `https://<adresse-du-relais>/dashboard` ; le jeton est demandé une fois puis gardé dans le navigateur.
+
+Sans la base ou sans le secret, l'application fonctionne : les envois d'usage échouent sans bruit (réponse 503) et `/stats` répond « non configuré ».
+
+Rétention : 90 jours, purge automatique chaque nuit (03:00 UTC) par le cron existant. Contrôle : Cloudflare → Workers → Métriques ; les lignes de la table `events` se lisent dans l'onglet Console de la base.
+
+Jeton d'API Wrangler : si `wrangler d1 …` répond « Authentication error [code: 10000] », se reconnecter (`npx wrangler logout` puis `npx wrangler login`) ou utiliser la Console du site. Un jeton d'API, s'il est créé, doit avoir « Account → D1 → Edit » et être supprimé après usage.
+
+Prévisualisations : le build Cloudflare des branches (mode « Preview ») exige un bloc `[previews]` avec des ressources de test séparées. Elles existent déjà (base `wikimasters-usage-preview`, espace KV `DOC_CACHE_PREVIEW`) et sont déclarées dans `wrangler.toml` ; à recréer de la même façon si l'on ajoute une nouvelle liaison (KV, D1, R2…).

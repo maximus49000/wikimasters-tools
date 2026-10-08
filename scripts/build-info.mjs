@@ -1,5 +1,7 @@
 // Informations de build injectées dans le bundle : les corrections récentes, lues dans les commits `fix:`.
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const MAX_LENGTH = 160;
 
@@ -22,4 +24,18 @@ export function recentFixes(cwd, limit = 60) {
     .map(parseFix)
     .filter(Boolean)
     .slice(0, limit);
+}
+
+// Identifiant de build injecté dans le bundle : « version du paquet + nombre de commits » (le nombre de commits est aussi le versionCode Android).
+// La version du paquet ne change pas, le nombre de commits distingue donc deux livraisons ; « +0 » si git est indisponible (archive de sources).
+export function buildId(cwd) {
+  let version = '0.0.0';
+  try {
+    version = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8')).version ?? version;
+  } catch {
+    // package.json illisible : on garde 0.0.0
+  }
+  const result = spawnSync('git', ['rev-list', '--count', 'HEAD'], { cwd, encoding: 'utf8' });
+  const commits = result.status === 0 ? Number.parseInt(result.stdout, 10) : 0;
+  return `${version}+${Number.isInteger(commits) ? commits : 0}`;
 }

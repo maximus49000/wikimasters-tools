@@ -4,6 +4,7 @@ import type { DocCandidate } from '../core/documentary/types';
 import { embedUrl, thumbnailUrl } from '../core/screen/screen-format';
 import { FullscreenButton, fullscreenFrame, useFullscreen } from './fullscreen';
 import { Glyph } from './Glyphs';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const frame = { position: 'relative', width: '100%', aspectRatio: '16 / 9', maxHeight: 'min(240px, 34vh)', borderRadius: 8, overflow: 'hidden', background: '#000', border } as const;
@@ -26,7 +27,10 @@ export function DocumentaryPlayer({ candidate }: { candidate: DocCandidate }) {
       {!playing && (
         <button
           type="button"
-          onClick={() => setPlaying(true)}
+          onClick={() => {
+            setPlaying(true);
+            track('documentaire-lu');
+          }}
           aria-label="Lire le documentaire"
           title="Lire le documentaire"
           style={{ width: '100%', height: '100%', cursor: 'pointer', border: 0, padding: 0, color: '#fff', background: thumb ? `center / cover no-repeat url(${thumb})` : '#1b2330', display: 'flex', alignItems: 'center', justifyContent: 'center' }}

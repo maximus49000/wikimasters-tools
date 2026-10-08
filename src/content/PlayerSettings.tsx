@@ -4,6 +4,7 @@ import { PLATFORM_LABEL, type Platform } from '../core/music/platform';
 import { getMusicService, getPlatformChoice } from './music-registry';
 import type { PlayerSource } from './player-source';
 import { usePlatform } from './usePlatform';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -82,7 +83,10 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
         {platformChoice && platformChoice.available.length > 1 && (
           <div role="group" aria-label="Plateforme d’écoute" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             {platformChoice.available.map((candidate) => (
-              <button key={candidate} type="button" aria-pressed={candidate === platform} onClick={() => platformChoice.setting.set(candidate)} style={choice(candidate === platform)}>
+              <button key={candidate} type="button" aria-pressed={candidate === platform} onClick={() => {
+                platformChoice.setting.set(candidate);
+                track('reglage-modifie', 'lecteur');
+              }} style={choice(candidate === platform)}>
                 {PLATFORM_LABEL[candidate]}
               </button>
             ))}
@@ -92,10 +96,16 @@ export function PlayerSettings({ source, onClose }: { source: PlayerSource; onCl
           <>
             <p style={{ margin: '0 0 12px', opacity: 0.8 }}>Afficher le mini-lecteur en haut à gauche. Affiché, il reste visible tant que {name} est lié, même sans lecture.</p>
             <div role="group" aria-label="Affichage du lecteur" style={{ display: 'flex', gap: 8 }}>
-              <button type="button" aria-pressed={enabled} onClick={() => source.setEnabled(true)} style={choice(enabled)}>
+              <button type="button" aria-pressed={enabled} onClick={() => {
+                source.setEnabled(true);
+                track('reglage-modifie', 'lecteur');
+              }} style={choice(enabled)}>
                 Affiché
               </button>
-              <button type="button" aria-pressed={!enabled} onClick={() => source.setEnabled(false)} style={choice(!enabled)}>
+              <button type="button" aria-pressed={!enabled} onClick={() => {
+                source.setEnabled(false);
+                track('reglage-modifie', 'lecteur');
+              }} style={choice(!enabled)}>
                 Masqué
               </button>
             </div>

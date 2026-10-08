@@ -596,4 +596,59 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'statistiques-usage-v1',
+    theme: 'app',
+    glyph: '📊',
+    title: 'Statistiques d’usage anonymes',
+    summary: 'Savoir ce qui est mesuré, et le couper',
+    steps: [
+      openPlus('puis « Paramètre d’extension », où se trouve le réglage « Statistiques d’usage ».'),
+      {
+        target: '[data-wmt-extension-setting]',
+        title: 'Ouvrir Paramètre d’extension',
+        text: 'Le réglage « Statistiques d’usage » se trouve dans Paramètre d’extension, avec Images, Publicité d’achat et Lecteur : c’est lui qui décide si l’application envoie des informations anonymes sur son utilisation.',
+        gesture: 'tap',
+        details: [
+          { label: 'À quoi ça sert', text: 'À savoir combien de personnes utilisent l’application, quelles fonctions servent vraiment et quand une panne survient, pour améliorer ce qui compte.' },
+          { label: 'Comment faire', text: 'Touchez « Paramètre d’extension » dans le menu Plus : une liste s’ouvre avec la ligne « Statistiques d’usage ». À l’étape suivante, la visite ouvre cette liste pour vous.' },
+        ],
+        scene: { closeWindows: true, reveal: [{ text: 'Plus' }] },
+      },
+      {
+        target: '[data-wmt-ext-row="stats"]',
+        title: 'Choisir « Statistiques d’usage »',
+        text: 'La visite a ouvert Paramètre d’extension : la ligne « Statistiques d’usage » ouvre le réglage. C’est cette ligne qu’il faut toucher.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez la ligne « Statistiques d’usage » : la fenêtre du réglage s’affiche avec son explication et ses deux boutons. À l’étape suivante, la visite l’ouvre pour vous.' },
+          { label: 'À savoir', text: 'La croix de la fenêtre vous ramène à la liste de Paramètre d’extension.' },
+        ],
+        scene: { closeWindows: true, reveal: [{ text: 'Plus' }, '[data-wmt-extension-setting]'] },
+      },
+      {
+        target: '[data-wmt-stats-choice]',
+        title: 'Choisir Activé ou Désactivé',
+        text: 'Activé : des informations anonymes sont envoyées. Désactivé : plus aucune information d’usage n’est envoyée.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Activé ou Désactivé : le bouton choisi est en couleur, et le changement s’applique tout de suite. Le réglage de départ est Activé.' },
+          { label: 'Ce qui est envoyé', text: 'Le nom d’une action réalisée (par exemple « lecture d’un morceau » : jamais le simple affichage d’une fiche), un identifiant aléatoire propre à l’appareil, la version de l’application et la date. Les mises à jour installées sont comptées avec la version de départ et la version d’arrivée.' },
+          { label: 'Ce qui n’est jamais envoyé', text: 'Titres de cartes, pseudo, adresse, contenu des pages, recherches, identifiants de vos comptes.' },
+          { label: 'Limites', text: 'Les erreurs techniques (par exemple une limite de Wikipédia atteinte) sont comptées même si le réglage est désactivé, mais sans aucun identifiant. Les chiffres restent des estimations : réinstaller l’application crée un nouvel identifiant. Votre choix est gardé sur cet appareil, pas sur votre compte.' },
+        ],
+        scene: { reveal: [{ text: 'Plus' }, '[data-wmt-extension-setting]', '[data-wmt-ext-row="stats"]'] },
+      },
+      {
+        target: '[data-wmt-stats-explain]',
+        title: 'Lire le texte du réglage',
+        text: 'Le texte de la fenêtre résume ce qui est envoyé et ce qui ne l’est jamais : c’est la référence à relire si vous hésitez à laisser le réglage activé.',
+        details: [
+          { label: 'D’où viennent les chiffres', text: 'Chaque appareil envoie de petits messages anonymes à un service hébergé par le projet ; ils sont regroupés pour compter les utilisateurs, les actions les plus utilisées et les erreurs. Rien n’est revendu ni partagé.' },
+          { label: 'Durée de conservation', text: 'Les messages sont supprimés automatiquement au bout de 90 jours. Désactiver le réglage arrête les envois d’usage immédiatement ; ce qui a déjà été envoyé ne peut pas être rattaché à vous, faute de compte associé.' },
+        ],
+        scene: { reveal: [{ text: 'Plus' }, '[data-wmt-extension-setting]', '[data-wmt-ext-row="stats"]'] },
+      },
+    ],
+  },
 ];

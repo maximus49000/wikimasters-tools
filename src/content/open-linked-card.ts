@@ -1,5 +1,6 @@
 import { findFicheClose } from './decorate-linked';
 import { waitFor } from './market-search';
+import { track } from '../core/telemetry/registry';
 
 const CLOSE_TIMEOUT_MS = 2_000;
 
@@ -8,4 +9,5 @@ export async function openLinkedCard(from: Element, slug: string, open: (slug: s
   findFicheClose(from)?.click();
   await waitFor(() => !from.isConnected, CLOSE_TIMEOUT_MS);
   open(slug);
+  track('carte-liee-ouverte');
 }

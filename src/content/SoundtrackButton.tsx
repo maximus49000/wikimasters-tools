@@ -4,6 +4,7 @@ import { tidalUrl } from '../core/tidal/tidal-listen';
 import { Glyph } from './Glyphs';
 import { getMusicService } from './music-registry';
 import { SoundtrackDialog } from './SoundtrackDialog';
+import { track } from '../core/telemetry/registry';
 
 const SIZE = 44; // cible tactile
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
@@ -73,11 +74,22 @@ export function SoundtrackButton({ soundtrackKey, title, originalTitle }: { soun
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {listen && playable ? (
           link ? (
-            <a href={link} target="_blank" rel="noopener noreferrer" aria-label={label} title="Ouvrir la bande originale sur Tidal" style={row}>
+            <a href={link} target="_blank" rel="noopener noreferrer" onClick={() => track('bo-lue')} aria-label={label} title="Ouvrir la bande originale sur Tidal" style={row}>
               {body}
             </a>
           ) : (
-            <button type="button" onClick={() => void service.play(first, listen).then(setMessage)} aria-label={label} title="Écouter la bande originale" style={row}>
+            <button
+              type="button"
+              onClick={() =>
+                void service.play(first, listen).then((message) => {
+                  if (message === null) track('bo-lue');
+                  setMessage(message);
+                })
+              }
+              aria-label={label}
+              title="Écouter la bande originale"
+              style={row}
+            >
               {body}
             </button>
           )

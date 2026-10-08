@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { THEMES, type Entry, type TourStep } from '../core/whats-new/types';
 import { stepsOf } from '../core/whats-new/pages';
 import { EntryCard } from './EntryCard';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -18,6 +19,7 @@ export function WikiHowDialog({ entries, consulted, onConsult, onTour, onClose }
   const [seen, setSeen] = useState(() => new Set(consulted));
   const open = (entry: Entry) => {
     onConsult(entry.id);
+    track('wikihow-fiche-lue');
     setSeen((prev) => new Set(prev).add(entry.id));
     if (entry.steps.length > 0) onTour(stepsOf(entry));
   };

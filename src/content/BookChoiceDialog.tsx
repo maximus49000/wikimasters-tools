@@ -5,6 +5,7 @@ import type { OlWork } from '../core/book/openlibrary-api';
 import type { BookCandidates, BookPreview, BookService } from './book-service';
 import { Glyph } from './Glyphs';
 import { useOverlayHost } from './SoundtrackDialog';
+import { track } from '../core/telemetry/registry';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 const iconButton: CSSProperties = { width: 44, height: 44, flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'inherit', background: 'none', border, borderRadius: 8 };
@@ -153,7 +154,12 @@ export function BookChoiceDialog({ service, slug, title, currentId, onChanged, o
             <button
               type="button"
               disabled={busy}
-              onClick={() => void done(() => service.choose(slug, selected.id))}
+              onClick={() =>
+                void done(async () => {
+                  await service.choose(slug, selected.id);
+                  track('livre-change');
+                })
+              }
               aria-label="Utiliser ce livre"
               style={{ ...wide, color: '#04130c', background: 'var(--color-accent, #34d399)', border: 0 }}
             >

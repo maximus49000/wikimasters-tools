@@ -37,6 +37,7 @@ import { DemoCard } from './DemoCard';
 import { setTourWindowOpener, startTour, tourController } from './tour-instance';
 import type { TourSession } from './tour-session';
 import type { PurchaseAds } from '../core/ads/purchase-ads';
+import type { Telemetry } from '../core/telemetry/telemetry';
 import { ExtensionSettings } from './ExtensionSettings';
 import { WhatsNewDialog, type WhatsNewDialogProps } from './WhatsNewDialog';
 import { WikiHowDialog, type WikiHowDialogProps } from './WikiHowDialog';
@@ -266,8 +267,8 @@ function openSettingsWindow(hostAttribute: string, render: (close: () => void) =
   root.render(render(close));
 }
 
-export const openExtensionSettings = (images: ImageService, player: PlayerSource | null, ads: PurchaseAds): void =>
-  openSettingsWindow(EXTENSION_SETTINGS_HOST_ATTRIBUTE, (close) => <ExtensionSettings images={images} player={player} ads={ads} onClose={close} />);
+export const openExtensionSettings = (images: ImageService, player: PlayerSource | null, ads: PurchaseAds, telemetry: Telemetry): void =>
+  openSettingsWindow(EXTENSION_SETTINGS_HOST_ATTRIBUTE, (close) => <ExtensionSettings images={images} player={player} ads={ads} telemetry={telemetry} onClose={close} />);
 
 export const openAnomalyDialog = (props: Omit<AnomalyDialogProps, 'onClose'>): void =>
   openSettingsWindow(ANOMALY_HOST_ATTRIBUTE, (close) => <AnomalyDialog {...props} onClose={close} />);

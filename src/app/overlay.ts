@@ -119,12 +119,41 @@ import type { TourOrigin } from '../content/tour-session';
 import { createAnomalyReporter, postIssue } from '../core/anomalies/anomaly';
 import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
 import { getProfileName, rememberProfileName } from '../core/anomalies/profile-name';
+import { createTelemetry } from '../core/telemetry/telemetry';
+import { setTelemetry } from '../core/telemetry/registry';
+import { telemetryEnvironment } from '../core/telemetry/environment';
+import { observeFetch } from '../core/telemetry/fetch-observer';
+import { TELEMETRY_ENDPOINT, USAGE_STATS_DEFAULT } from '../core/telemetry/config';
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
 
 // Surcouche Wikimasters : partagée par l'extension (content script) et l'application Android (WebView).
 export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): Promise<void> {
+  // Mesure d'usage anonyme (voir docs/superpowers/specs/2026-10-08-monitoring-usage-design.md).
+  const rawFetch = window.fetch.bind(window);
+  const { platform, channel } = telemetryEnvironment(window as unknown as { WmtSpotify?: { scheme?(): string } });
+  const telemetry = createTelemetry({
+    storage: window.localStorage,
+    send: (body) => void rawFetch(TELEMETRY_ENDPOINT, { method: 'POST', body, headers: { 'content-type': 'text/plain' }, keepalive: true }).catch(() => undefined),
+    now: () => Date.now(),
+    newId: () => crypto.randomUUID(),
+    platform,
+    channel,
+    version: __WMT_BUILD__,
+    defaultEnabled: USAGE_STATS_DEFAULT,
+  });
+  setTelemetry(telemetry);
+  window.fetch = observeFetch(rawFetch, (name, service) => telemetry.reportError(name, service));
+  window.addEventListener('error', () => telemetry.reportError('js-erreur'));
+  window.addEventListener('unhandledrejection', () => telemetry.reportError('js-erreur'));
+  telemetry.start({
+    every: (run, ms) => void window.setInterval(run, ms),
+    onHide: (run) => {
+      window.addEventListener('pagehide', run);
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && run());
+    },
+  });
   const whatsNew = createWhatsNewRepo(store);
   // Fin de visite : on rouvre l'interface qui l'avait lancée (WikiHow, ou la liste « Quoi de neuf » avec les mêmes éléments).
   const reopenStart = async (from: TourOrigin): Promise<void> => {
@@ -429,7 +458,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         pruneImageSections();
         decorateImage(document, mountImageSection);
         // « Paramètre d'extension » regroupe Images et Lecteur (le lecteur n'existe que si Spotify est fourni par la plateforme).
-        decorateExtensionSetting(document, () => openExtensionSettings(images, getPlayerSource() ?? null, purchaseAds));
+        decorateExtensionSetting(document, () => openExtensionSettings(images, getPlayerSource() ?? null, purchaseAds, telemetry));
         syncPurchaseOffers(document, () => !purchaseAds.enabled());
         decorateWikiHowSetting(document, () => void openWikiHowFromStore());
         const player = getPlayerSource();
