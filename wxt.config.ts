@@ -37,8 +37,9 @@ export default defineConfig({
           id: 'wikimasters-tools-unofficial@maximus49000.github.io',
           // data_collection_permissions n'est reconnu qu'à partir de Firefox 140 (142 sur Android).
           strict_min_version: '140.0',
-          // Champ exigé par addons.mozilla.org : l'extension ne collecte ni n'envoie de données personnelles.
-          data_collection_permissions: { required: ['none'] },
+          // Champ exigé par addons.mozilla.org : aucune donnée personnelle ; les erreurs techniques anonymes sont toujours envoyées
+          // (catégorie « technicalAndInteraction »), l'usage est désactivable dans l'application.
+          data_collection_permissions: { required: ['technicalAndInteraction'] },
         },
         gecko_android: { strict_min_version: '142.0' },
       },

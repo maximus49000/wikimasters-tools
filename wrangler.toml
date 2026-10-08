@@ -12,3 +12,11 @@ crons = ["*/30 * * * *"]
 [[kv_namespaces]]
 binding = "DOC_CACHE"
 id = "ceca2f2545544593ab878b40fa43e572"
+
+# Mesure d'usage anonyme (voir docs/superpowers/specs/2026-10-08-monitoring-usage-design.md).
+# Le secret STATS_TOKEN (jeton du tableau de bord) se pose hors dépôt : `npx wrangler secret put STATS_TOKEN`.
+[[d1_databases]]
+binding = "USAGE_DB"
+database_name = "wikimasters-usage"
+database_id = "ebb8d72b-5a66-42da-b26c-7b541f18a838"
+migrations_dir = "relay/migrations"
