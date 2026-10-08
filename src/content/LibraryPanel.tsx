@@ -60,6 +60,12 @@ export const LIBRARY_CSS = `
 .wmt-lib-stage:fullscreen .wmt-lib-scroll{border-radius:0}
 .wmt-lib-msg{min-height:20px;font-size:13px;opacity:.85}
 .wmt-lib-sep{flex:1}
+.wmt-lib-dialog{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
+.wmt-lib-dialog-panel{box-sizing:border-box;width:100%;max-width:min(92vw,480px);max-height:80vh;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:var(--color-surface,#0d1117);color:var(--color-foreground,#e6edf3);font:14px/20px system-ui,sans-serif}
+.wmt-lib-picklist{display:flex;flex-direction:column;gap:6px}
+.wmt-lib-pick{justify-content:flex-start;border-radius:10px;text-align:left}
+.wmt-lib-pick:disabled{opacity:.4;cursor:not-allowed}
+.wmt-lib-btn[data-suggested="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
 `;
 
 function Icon({ paths }: { paths: readonly string[] }) {
