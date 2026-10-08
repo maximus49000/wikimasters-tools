@@ -116,8 +116,12 @@ export function SteampunkDecor({ cols, wallH, now = () => new Date() }: { cols: 
     const sync = () => {
       if (document.hidden) {
         if (typeof svg.pauseAnimations === 'function') svg.pauseAnimations();
-      } else if (typeof svg.unpauseAnimations === 'function') svg.unpauseAnimations();
+      } else {
+        if (typeof svg.unpauseAnimations === 'function') svg.unpauseAnimations();
+        setTick((n) => n + 1); // l'horloge n'est plus périmée au retour sur l'onglet
+      }
     };
+    sync();
     document.addEventListener('visibilitychange', sync);
     return () => document.removeEventListener('visibilitychange', sync);
   }, []);
@@ -150,7 +154,7 @@ export function SteampunkDecor({ cols, wallH, now = () => new Date() }: { cols: 
         <Gear cx={x0 + 96} cy={70} r={18} dur={20} reverse={false} motion={motion} />
         <Gear cx={x0 + 96 + 27} cy={96} r={11} dur={13} reverse motion={motion} />
         {(sections === 1 ? i === 0 : i % 2 === 1) && <Gauge cx={x0 + 250} cy={80} motion={motion} />}
-        {i === clockSection && <Clock cx={x0 + 60} cy={62} now={date} />}
+        {i === clockSection && <Clock cx={x0 + 170} cy={62} now={date} />}
       </g>,
     );
   }
