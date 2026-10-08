@@ -13,7 +13,7 @@ export const SMALL_ITEMS = ['plant', 'lamp'] as const;
 export type SmallItem = (typeof SMALL_ITEMS)[number];
 export type SmallKind = 'small-plant' | 'small-lamp';
 
-export type FurnitureKind = StandingKind | 'computer' | SmallKind;
+export type FurnitureKind = StandingKind | 'computer' | 'window' | SmallKind;
 
 export type WallShape = 'poster' | 'vinyl' | 'sleeve-square' | 'sleeve-round' | 'sleeve-frame';
 export type ShelfShape = 'cd' | 'dvd' | 'game' | 'book';
@@ -27,6 +27,7 @@ export type Placed =
   | { id: string; kind: 'computer'; deskId: string; slug?: string }
   | { id: string; kind: 'small'; item: SmallItem; hostId: string; slot: number }
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
+  | { id: string; kind: 'window'; col: number; row: number; w: number; h: number }
   | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; slot: number; slug: string };
 
 export type Layout = Placed[];

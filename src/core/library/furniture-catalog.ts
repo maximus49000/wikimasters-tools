@@ -46,6 +46,7 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
 };
 
 const LABELS: Record<FurnitureKind, string> = {
+  window: 'Fenêtre',
   shelf: 'Étagère',
   desk: 'Bureau',
   computer: 'Ordinateur',
@@ -70,7 +71,7 @@ export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }
   { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer'] },
   { id: 'seats', label: 'Assises', kinds: ['chair', 'sofa', 'armchair'] },
   { id: 'pets', label: 'Animaux', kinds: ['basket', 'bowl', 'kennel'] },
-  { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug'] },
+  { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug', 'window'] },
   { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
 ];
 
@@ -100,6 +101,10 @@ const WALL_SIZES: Record<WallShape, { w: number; h: number }> = {
   'sleeve-frame': { w: 4, h: 4 },
 };
 export const wallSizeOf = (shape: WallShape): { w: number; h: number } => WALL_SIZES[shape];
+
+export const WINDOW_MIN = { w: 3, h: 3 } as const;
+export const WINDOW_MAX = { w: 12, h: 10 } as const;
+export const WINDOW_DEFAULT = { w: 6, h: 5 } as const;
 
 export const labelOf = (kind: FurnitureKind): string => LABELS[kind];
 
