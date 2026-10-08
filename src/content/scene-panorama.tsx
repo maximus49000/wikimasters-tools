@@ -4,6 +4,7 @@ import type { SceneId } from '../core/library/library-types';
 import { actorX, actorsFor, mulberry32, type Actor } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { CityScene } from './scene-city';
+import { CountrysideScene, MountainScene, SeaScene } from './scene-nature';
 import { ActorSprite } from './scene-sprites';
 
 export type SceneBodyProps = { width: number; height: number; sky: Sky; minutes: number; seed: number };
@@ -98,6 +99,9 @@ function ScenePanoramaView({ scene, width, height, sky, minutes, seed }: Panoram
       <SkyAndStars {...props} />
       <Celestial {...props} />
       {scene === 'city' && <CityScene {...props} />}
+      {scene === 'countryside' && <CountrysideScene {...props} />}
+      {scene === 'mountain' && <MountainScene {...props} />}
+      {scene === 'sea' && <SeaScene {...props} />}
       <g data-actors>
         {actors.map((actor) => {
           const active = actorActive(actor.u, minutes);
