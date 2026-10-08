@@ -23,6 +23,7 @@ C'est un projet de plusieurs semaines. Cette spec fixe la **vision d'ensemble et
 | Placement | **Emplacements sur grille** (pas de placement libre au pixel). |
 | Style graphique | Vue de face en SVG/CSS, rendu moderne (aplats doux, coins arrondis). |
 | Pièces | Plusieurs pièces par joueur, chacune avec son style, ses meubles, ses cartes. |
+| Orientation | Chaque pièce s'affiche en **horizontal ou en vertical**, au choix du joueur. L'orientation est **figée** selon ce choix : elle ne suit pas la rotation de l'appareil. |
 | Styles | Au choix : Scandinave, Moderne, Industriel, Bohème, Rétro 70s, Japandi, Néon gaming. |
 | Placement d'une carte | On choisit **d'abord la carte, puis la forme**. |
 | Formes au mur | Poster (image de la carte) ; vinyle (étiquette ronde avec image rognée et texte, couleur du disque au choix) ; pochette (carrée, ronde, cadre). |
@@ -62,11 +63,13 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
   - **Visiter** : on voit la pièce, rien ne se déplace par erreur.
   - **Aménager** : la grille apparaît en filigrane. Un bouton **+ Meuble** ouvre le catalogue ; on touche un meuble, puis une case libre pour le poser ; toucher un meuble posé permet de le **déplacer** (puis toucher la nouvelle case) ou de le **retirer** (poubelle).
 - Catalogue du morceau 1 : **Étagère** (3 niveaux), **Bureau**, **Ordinateur** (posé sur un bureau).
-- La pièce est entièrement dessinée en SVG et s'adapte à la largeur de l'écran (ratio fixe 720 × 340), y compris sur téléphone.
+- Un sélecteur **horizontal / vertical** (glyphes) règle l'orientation de la pièce active. Une nouvelle pièce prend l'orientation de la pièce précédente (horizontale la première fois).
+- La pièce est entièrement dessinée en SVG et s'adapte à l'espace disponible : paysage 720 × 340, portrait 420 × 600. Quand l'appareil est tourné dans l'autre sens, la pièce **garde son orientation** et se réduit pour tenir (bandes vides de part et d'autre), sans pivoter ni se redessiner.
 
 ## Grille
 
-- La pièce fait **24 colonnes × 12 lignes**. Les lignes 0 à 8 sont le **mur** ; les lignes 9 à 11 sont le **sol**.
+- En paysage, la pièce fait **24 colonnes × 12 lignes** : lignes 0 à 8 de **mur**, 9 à 11 de **sol**. En portrait, **14 colonnes × 20 lignes** : lignes 0 à 14 de mur, 15 à 19 de sol.
+- Chaque pièce garde **deux aménagements indépendants**, un par orientation (`layouts.landscape` et `layouts.portrait`). Changer d'orientation affiche l'autre aménagement (vide au début) ; rien n'est perdu ni déformé, et on retrouve le premier en revenant. Le style, le nom et la fenêtre sont communs aux deux.
 - Un meuble déclare sa **zone** (`wall` ou `floor`), sa **taille** en cases, et ses **emplacements** (voir plus bas). Il se pose si toutes ses cases sont libres dans la bonne zone ; sinon la pose est refusée et les cases fautives clignotent.
 - L'ordinateur a pour zone `desk` : il ne se pose que sur un bureau, sur la case d'emplacement prévue.
 - Les emplacements (slots) servent au morceau 2 : une étagère déclare 3 niveaux de 8 emplacements, un bureau 1 emplacement d'écran via l'ordinateur. Dans le morceau 1 ils sont définis et affichés en pointillés en mode Aménager, sans accepter de carte.
@@ -75,9 +78,9 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 
 ### Cœur (`src/core/library/`)
 
-- `library-types.ts` : types `Room`, `Placed`, `FurnitureKind`, `StyleId`, `LibraryState`.
+- `library-types.ts` : types `Room` (nom, style, `orientation`, `layouts`), `Placed`, `FurnitureKind`, `StyleId`, `Orientation`, `LibraryState`.
 - `furniture-catalog.ts` : la définition de chaque meuble (id, zone, taille, slots, fonction de dessin SVG). Un meuble ajouté plus tard = une entrée dans ce fichier.
-- `room-grid.ts` : fonctions pures `canPlace`, `place`, `move`, `remove` sur une pièce. Aucune dépendance au DOM.
+- `room-grid.ts` : fonctions pures `canPlace`, `place`, `move`, `remove` sur l'aménagement d'une orientation, avec les dimensions de grille de chaque orientation. Aucune dépendance au DOM.
 - `styles.ts` : palettes de style (variables CSS : mur, sol, bois, métal…). Le morceau 1 ne livre que `scandinave` ; le type admet déjà les 7 identifiants.
 - `library-book.ts` : état persistant `{ version: 1, activeRoomId, rooms: Room[] }`, `createRoom`, `renameRoom`, `deleteRoom`, `setActive`. Clé `wmt:library` ; tout accès au stockage est protégé par try/catch et retombe sur « une pièce vide » (comme `readView`). Un champ `version` prévoit les migrations.
 
@@ -96,12 +99,13 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 - Suppression d'une pièce : confirmation, puis la pièce voisine devient active.
 - Un meuble qui ne rentre pas (bord de la grille, case occupée) : refus et clignotement des cases.
 - Retrait d'un bureau qui porte un ordinateur : l'ordinateur est retiré avec lui (confirmation si des cartes y sont posées, dès le morceau 2).
+- Rotation de l'appareil : sans effet sur l'orientation de la pièce ; seule la taille d'affichage change.
 - Très petit écran : la pièce se réduit (ratio fixe) ; les cibles tactiles de la barre font au moins 40 px.
 - Thème sombre du site : la pièce garde son propre style ; seuls les contrôles (barre, boutons) suivent les variables du site.
 
 ## Tests (Vitest)
 
-- `room-grid` : pose valide, hors zone, collision, déplacement, retrait, ordinateur uniquement sur un bureau.
+- `room-grid` : grilles paysage et portrait, aménagements indépendants par orientation, pose valide, hors zone, collision, déplacement, retrait, ordinateur uniquement sur un bureau.
 - `library-book` : création, renommage, suppression de la dernière pièce refusée, limite de 12, sérialisation et lecture d'un état corrompu.
 - `furniture-catalog` : chaque meuble tient dans la grille et ses emplacements sont dans sa surface.
 - `collection-view` et `world-toggle` : la valeur `library` est lue, écrite et proposée dans le sélecteur.
