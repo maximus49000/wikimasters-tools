@@ -1,10 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
-const SCRIPT = resolve(__dirname, '../../scripts/check-no-secrets.mjs');
+const SCRIPT = fileURLToPath(new URL('../../scripts/check-no-secrets.mjs', import.meta.url));
 const SECRET = 'valeur-secrete-1234567890';
 const dirs: string[] = [];
 
