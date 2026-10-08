@@ -9,10 +9,14 @@ export type DuplicatesToggle = { on: boolean; onToggle: () => void } | null;
 const VIEW_ATTRIBUTE = 'data-wmt-view';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-// Icônes Lucide (« house », « globe », « chart-no-axes-gantt », « network », « layout-grid »), comme celles du site.
+// Icônes Lucide (« house », « globe », « chart-no-axes-gantt », « network », « book-open », « layout-grid »), comme celles du site.
 const HOUSE = ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8', 'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'];
 const GLOBE = ['M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z', 'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20', 'M2 12h20'];
 const GANTT = ['M8 6h10', 'M6 12h9', 'M11 18h7'];
+const BOOK = [
+  'M12 7v14',
+  'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z',
+];
 // « network » : trois nœuds reliés (ses rectangles sont tracés en chemins, comme ceux de GRID).
 export const NETWORK = [
   'M17 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
@@ -34,6 +38,7 @@ const VIEWS: { view: CollectionView; label: string; glyph: string[] }[] = [
   { view: 'world', label: 'Monde : la Collection sur une carte du monde', glyph: GLOBE },
   { view: 'timeline', label: 'Chronologique : la Collection sur une frise', glyph: GANTT },
   { view: 'web', label: 'Toile : les cartes reliées par les articles Wikipédia qu’elles citent', glyph: NETWORK },
+  { view: 'library', label: 'Bibliothèque : ranger ses cartes dans des pièces', glyph: BOOK },
   { view: 'list', label: 'Grille du site', glyph: GRID },
 ];
 

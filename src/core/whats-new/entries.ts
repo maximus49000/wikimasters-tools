@@ -665,4 +665,72 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v1',
+    theme: 'collection',
+    glyph: '📚',
+    title: 'La Bibliothèque',
+    summary: 'Aménager des pièces pour ranger vos cartes',
+    steps: [
+      {
+        target: '[data-wmt-view="library"]',
+        title: 'Ouvrir la Bibliothèque',
+        text: 'Le bouton livre, dans les vues de la Collection, ouvre la Bibliothèque : des pièces que vous aménagez avec des meubles, vues de face.',
+        gesture: 'tap',
+        details: [
+          { label: 'À quoi ça sert', text: 'C’est une façon de présenter votre collection comme une vraie pièce. Dans cette première version, vous créez vos pièces et placez les meubles ; les cartes y viendront ensuite.' },
+          { label: 'Comment faire', text: 'Touchez le bouton livre parmi les vues de la Collection, puis créez une pièce et donnez-lui un nom.' },
+          { label: 'D’où viennent les données', text: 'Les pièces sont créées par vous et gardées sur cet appareil, comme vos autres réglages : rien n’est envoyé au jeu ni partagé.' },
+          { label: 'Limites', text: 'Jusqu’à 12 pièces. Elles ne sont pas synchronisées entre vos appareils.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Aménager une pièce',
+        text: 'Le crayon passe en mode Aménager : une grille apparaît et le catalogue de meubles s’affiche. L’œil revient au mode Visiter, où rien ne bouge par erreur.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez un meuble du catalogue (étagère, bureau, ordinateur), puis une case du sol : la case touchée est le bas du meuble. L’ordinateur se pose en touchant un bureau.' },
+          { label: 'Déplacer ou retirer', text: 'Touchez un meuble déjà posé : les boutons Déplacer et Retirer apparaissent. Retirer un bureau retire aussi l’ordinateur qui est dessus.' },
+          { label: 'Si ça ne se pose pas', text: 'Les cases fautives clignotent en rouge et un message explique pourquoi : un meuble se pose au sol, sans en recouvrir un autre ni sortir de la pièce.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-orient="portrait"]',
+        title: 'Horizontal ou vertical',
+        text: 'Chaque pièce s’affiche en horizontal ou en vertical, selon votre choix : elle ne tourne pas quand vous tournez l’appareil.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le bouton horizontal ou vertical de la barre : la pièce s’affiche aussitôt dans l’orientation choisie.' },
+          { label: 'Ce que ça change', text: 'La pièce reste la même, avec les mêmes meubles. Seule la fenêtre change : large en horizontal, plus étroite et plus proche en vertical. Ce qui dépasse se découvre en faisant défiler la pièce vers la droite ou la gauche.' },
+          { label: 'À savoir', text: 'Passer de l’un à l’autre ne perd rien et ne déplace rien.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="extend-right"]',
+        title: 'Agrandir la pièce',
+        text: 'En mode Aménager, les boutons aux extrémités de la barre ajoutent une zone vide à gauche ou à droite de la pièce, que vous remplissez ensuite de meubles. Les boutons moins retirent la zone du bord.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Chaque zone ajoute 12 colonnes. Une pièce fait de 24 à 96 colonnes. Ajouter à gauche décale vos meubles pour qu’ils restent à leur place dans la pièce.' },
+          { label: 'Limites', text: 'On ne retire une zone que si elle est entièrement vide : retirez d’abord ses meubles, ou déplacez-les.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="home"]',
+        title: 'Choisir la pièce d’accueil',
+        text: 'L’étoile fait de la pièce affichée votre pièce d’accueil : c’est elle qui s’ouvre dès l’ouverture de la Collection, après le lancement de l’application.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez l’étoile pour la définir, touchez-la encore pour la retirer. Une seule pièce à la fois peut être l’accueil.' },
+          { label: 'À savoir', text: 'Le réglage ne joue qu’à la première ouverture après le démarrage : vous naviguez ensuite librement.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-view="library"]'] },
+      },
+    ],
+  },
 ];

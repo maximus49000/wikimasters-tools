@@ -9,6 +9,8 @@ import type { BirthRepo } from '../core/birth/birth-repo';
 import type { GeoRepo } from '../core/geo/geo-repo';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { LinksRepo } from '../core/links/links-repo';
+import type { LibraryRepo } from '../core/library/library-repo';
+import { setActive } from '../core/library/library-book';
 import type { PriceBook } from '../core/pricing/price-book';
 import {
   findCardGrid,
@@ -24,6 +26,8 @@ import type { CollectionFilterSource } from './collection-filter';
 import { recountCopies } from '../core/collection/recount';
 import { readView, writeView, type CollectionView } from './collection-view';
 import { HomemadePanel } from './HomemadePanel';
+import { LIBRARY_CSS, LibraryPanel } from './LibraryPanel';
+import { createLaunchGate } from './library-launch';
 import type { KindFilterSource } from './kind-filter';
 import { createKindRowController } from './kind-row-controller';
 import { createPageMemory } from './page-memory';
@@ -47,6 +51,8 @@ const PANEL_ATTRIBUTE = 'data-wmt-world-panel';
 export type CollectionUiDeps = {
   collection: CollectionRepo;
   geo: GeoRepo;
+  // Pièces de la vue Bibliothèque.
+  library: LibraryRepo;
   birth: BirthRepo;
   kinds: KindsRepo;
   // Liens Wikipédia des cartes (vue Toile).
@@ -73,9 +79,11 @@ export type CollectionUiDeps = {
 
 type Panel = { host: HTMLElement; root: Root; grid: HTMLElement; view: CollectionView };
 
-export function createCollectionUi({ collection, geo, birth, kinds, links, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
+export function createCollectionUi({ collection, geo, library, birth, kinds, links, kindFilterSource, scanner, book, filterSource, sortSource, loadFiltered, openCard, openGameCard, market, onVisibleCards }: CollectionUiDeps) {
   let panel: Panel | null = null;
   let scanStarted = false;
+  // Pièce d'accueil : appliquée une fois, à la première ouverture de la Collection après le démarrage.
+  const launch = createLaunchGate();
   const kindRow = createKindRowController({ collection, kinds, filterSource, kindFilterSource });
   // « ×2 » : les exemplaires sont remis à jour en arrière-plan ; les cartes en double s'affichent aussitôt avec les nombres connus.
   const recount = createRecountSource(() => recountCopies(scanner));
@@ -155,7 +163,7 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
     host.style.display = 'block';
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = leafletCss + clusterCss + clusterDefaultCss + PANEL_CSS;
+    style.textContent = leafletCss + clusterCss + clusterDefaultCss + PANEL_CSS + LIBRARY_CSS;
     const mountPoint = document.createElement('div');
     shadow.append(style, mountPoint);
     grid.insertAdjacentElement('beforebegin', host);
@@ -170,6 +178,8 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
           <WorldPanel {...common} geo={geo} kinds={kinds} kindFilterSource={kindFilterSource} />
         ) : view === 'web' ? (
           <WebPanel {...common} links={links} kinds={kinds} kindFilterSource={kindFilterSource} request={pathRequest.take()} />
+        ) : view === 'library' ? (
+          <LibraryPanel library={library} />
         ) : (
           <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} selection={selection} onToggleCard={toggleCard} onLongPressCard={startSelectionWith} />
         )}
@@ -216,6 +226,11 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
       }
     }
 
+    const home = launch.take(library.current());
+    if (home !== null) {
+      void library.update((state) => setActive(state, home));
+      writeView(window.localStorage, 'library');
+    }
     const view = readView(window.localStorage);
     syncPriceSort(document, view === 'homemade', sortSource);
     // Le sélecteur se place à côté des pastilles de rareté ; à défaut, à côté de « Sélectionner ».
@@ -270,6 +285,9 @@ export function createCollectionUi({ collection, geo, birth, kinds, links, kindF
     if (!window.location.pathname.startsWith('/collection')) return;
     syncPriceSort(document, readView(window.localStorage) === 'homemade', sortSource);
   }
+
+  // Les pièces se chargent en arrière-plan ; une fois prêtes, on rejoue sync (pièce d'accueil, vue Bibliothèque).
+  library.load().then(() => sync()).catch((error) => console.warn(LOG, 'pièces de la Bibliothèque non chargées :', error));
 
   return { sync, syncSortMenu };
 }
