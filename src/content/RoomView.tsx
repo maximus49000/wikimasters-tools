@@ -8,6 +8,7 @@ import { SteampunkDecor } from './room-steampunk-decor';
 import { ShelfItemArt, WallArt } from './library-card-art';
 import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 import { HomeArt, SmallArt } from './furniture-art-home';
+import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
@@ -43,6 +44,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
 export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
+  const steampunk = room.style === 'steampunk';
   // Se réabonne aux images qui arrivent après le premier dessin : un compteur change à chaque notification du service.
   const images = getImageService();
   const imageVersion = useRef(0);
@@ -101,7 +103,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       const desk = deskRects.get(placed.deskId);
       if (!desk) return null;
       rect = computerRect(desk);
-      art = <ComputerArt rect={rect} imageUrl={placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined} />;
+      const screenUrl = placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined;
+      art = steampunk ? <AnalyticalEngineArt rect={rect} imageUrl={screenUrl} /> : <ComputerArt rect={rect} imageUrl={screenUrl} />;
     } else if (placed.kind === 'small') {
       const hostRect = hostRects.get(placed.hostId);
       const host = room.layout.find((p) => p.id === placed.hostId);
@@ -112,14 +115,19 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       const cells = rectOf(placed);
       if (!cells || !isStanding(placed)) return null;
       rect = pxRect(cells);
-      art =
-        placed.kind === 'shelf' ? (
-          <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} />
-        ) : placed.kind === 'desk' ? (
-          <DeskArt rect={rect} palette={palette} />
-        ) : placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton' ? <g /> : ( // dessin des meubles Steampunk : tâche 6
-          <HomeArt kind={placed.kind} rect={rect} palette={palette} />
-        );
+      if (placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton') {
+        // Meubles exclusifs Steampunk : une donnée abîmée dans une autre pièce n'est pas dessinée.
+        if (!steampunk) return null;
+        art = <SteampunkArt kind={placed.kind} rect={rect} palette={palette} />;
+      } else if (placed.kind === 'shelf') {
+        art = <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} />;
+      } else if (steampunk && (placed.kind === 'desk' || placed.kind === 'armchair' || placed.kind === 'lamp')) {
+        art = <SteampunkArt kind={placed.kind} rect={rect} palette={palette} />;
+      } else if (placed.kind === 'desk') {
+        art = <DeskArt rect={rect} palette={palette} />;
+      } else {
+        art = <HomeArt kind={placed.kind} rect={rect} palette={palette} />;
+      }
     }
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
     // Un ordinateur suit aussi son bureau soulevé.
