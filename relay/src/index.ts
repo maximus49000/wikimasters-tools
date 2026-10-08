@@ -1,4 +1,10 @@
 // relay/src/index.ts
+import { proxyBooks } from './books';
+import { proxyIgdb, type TokenState } from './igdb';
+import { createIssue } from './issues';
+import { createLimiter } from './limiter';
+import type { ProxyResult } from './proxy';
+import { proxyTmdb } from './tmdb';
 import { indexStatus, indexStep } from './indexer';
 import type { KvLike } from './kv';
 import { parseSearchRequest, searchDocumentaries } from './search';
@@ -10,12 +16,26 @@ import type { D1Like } from './usage-db';
 
 // Relais de recherche de documentaires (voir docs/superpowers/specs/2026-10-07-documentaire-histoire-design.md)
 // et collecte de la mesure d'usage anonyme (voir docs/superpowers/specs/2026-10-08-monitoring-usage-design.md).
-export type Env = { YOUTUBE_API_KEY?: string; DOC_CACHE?: KvLike; DEBUG_TOKEN?: string; USAGE_DB?: D1Like; STATS_TOKEN?: string };
+export type Env = {
+  YOUTUBE_API_KEY?: string;
+  DOC_CACHE?: KvLike;
+  DEBUG_TOKEN?: string;
+  USAGE_DB?: D1Like;
+  STATS_TOKEN?: string;
+  TMDB_API_KEY?: string;
+  IGDB_CLIENT_ID?: string;
+  IGDB_CLIENT_SECRET?: string;
+  GITHUB_ISSUES_TOKEN?: string;
+  GOOGLE_BOOKS_API_KEY?: string;
+};
 
 const HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'x-debug',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'x-debug, content-type',
+  // Retry-After lisible depuis une page web (l'APK n'a pas d'autre moyen de connaître l'attente).
+  'access-control-expose-headers': 'retry-after',
   'cache-control': 'no-store',
 };
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: HEADERS });
@@ -66,15 +86,64 @@ async function oembed(id: string): Promise<Response> {
   return json({ ok: false, reason: 'upstream' }, 502);
 }
 
+// Limites par adresse (compteurs en mémoire, voir limiter.ts) : [nombre d'appels, fenêtre en ms].
+const LIMITS = { tmdb: [300, 60_000], igdb: [240, 60_000], books: [60, 60_000], issues: [5, 3_600_000] } as const;
+const limiter = createLimiter(() => Date.now());
+const igdbToken: TokenState = { current: null };
+
+const relayed = (result: ProxyResult): Response =>
+  new Response(result.body, { status: result.status, headers: { ...HEADERS, ...(result.retryAfter ? { 'retry-after': result.retryAfter } : {}) } });
+
+function limited(request: Request, route: keyof typeof LIMITS): Response | null {
+  const [limit, windowMs] = LIMITS[route];
+  const verdict = limiter.check(`${route}:${request.headers.get('cf-connecting-ip') ?? 'inconnue'}`, limit, windowMs);
+  return verdict.ok ? null : new Response(JSON.stringify({ ok: false, reason: 'rate-limited' }), { status: 429, headers: { ...HEADERS, 'retry-after': String(verdict.retryAfterSec) } });
+}
+
+// Corps d'un POST : au plus MAX_BODY caractères, sinon null.
+async function readBody(request: Request): Promise<string | null> {
+  if (Number(request.headers.get('content-length') ?? '0') > MAX_BODY) return null;
+  const body = await request.text();
+  return body.length > MAX_BODY ? null : body;
+}
+
+const net = (target: string, init?: RequestInit): Promise<Response> => fetch(target, init);
+
+// Routes qui transmettent un appel à un service tiers avec les secrets du relais ; null si l'adresse n'en fait pas partie.
+async function relay(request: Request, url: URL, env: Env): Promise<Response | null> {
+  const get = request.method === 'GET';
+  const post = request.method === 'POST';
+  if (get && url.pathname.startsWith('/tmdb/')) return limited(request, 'tmdb') ?? relayed(await proxyTmdb(url, { fetch: net, apiKey: env.TMDB_API_KEY }));
+  if (get && url.pathname.startsWith('/books/')) return limited(request, 'books') ?? relayed(await proxyBooks(url, { fetch: net, apiKey: env.GOOGLE_BOOKS_API_KEY }));
+  if (post && url.pathname === '/igdb/games') {
+    return (
+      limited(request, 'igdb') ??
+      relayed(await proxyIgdb((await readBody(request)) ?? '', { fetch: net, clientId: env.IGDB_CLIENT_ID, clientSecret: env.IGDB_CLIENT_SECRET, state: igdbToken, now: () => Date.now() }))
+    );
+  }
+  if (post && url.pathname === '/issues') return limited(request, 'issues') ?? relayed(await createIssue((await readBody(request)) ?? '', { fetch: net, token: env.GITHUB_ISSUES_TOKEN }));
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: HEADERS });
     const url = new URL(request.url);
+    const relayedResponse = await relay(request, url, env);
+    if (relayedResponse) return relayedResponse;
     if (url.pathname === '/' || url.pathname === '/ping') return json({ ok: true, service: 'wikimasters-tools' });
     if (url.pathname === '/oembed') return oembed(url.searchParams.get('id') ?? '');
     // Contrôle : avancement de l'index et présence (jamais la valeur) des réglages du Worker.
     if (url.pathname === '/status') {
-      const config = { youtubeKey: Boolean(env.YOUTUBE_API_KEY), kv: Boolean(env.DOC_CACHE), debugToken: Boolean(env.DEBUG_TOKEN) };
+      const config = {
+        youtubeKey: Boolean(env.YOUTUBE_API_KEY),
+        kv: Boolean(env.DOC_CACHE),
+        debugToken: Boolean(env.DEBUG_TOKEN),
+        tmdbKey: Boolean(env.TMDB_API_KEY),
+        igdb: Boolean(env.IGDB_CLIENT_ID) && Boolean(env.IGDB_CLIENT_SECRET),
+        issuesToken: Boolean(env.GITHUB_ISSUES_TOKEN),
+        booksKey: Boolean(env.GOOGLE_BOOKS_API_KEY),
+      };
       return json({ ok: true, config, channels: env.DOC_CACHE ? await indexStatus(env.DOC_CACHE) : [] });
     }
     if (url.pathname === '/search') {

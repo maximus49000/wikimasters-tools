@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker from '../../relay/src/index';
 import { memoryKv } from './memory-kv';
 
@@ -24,5 +24,68 @@ describe('/search sans réglages', () => {
   it('répond 503 quand la clé manque', async () => {
     const response = await get('/search?qid=Q1&kind=event&names=Verdun', { DOC_CACHE: memoryKv() });
     expect(response.status).toBe(503);
+  });
+});
+
+const env = { TMDB_API_KEY: 'SECRET-TMDB', IGDB_CLIENT_ID: 'ID', IGDB_CLIENT_SECRET: 'SECRET-IGDB', GITHUB_ISSUES_TOKEN: 'SECRET-GH', GOOGLE_BOOKS_API_KEY: 'SECRET-BOOKS' };
+let ipCounter = 0;
+// Chaque test prend sa propre adresse : le limiteur du Worker garde son état d'un test à l'autre.
+const call = (path: string, init: RequestInit = {}, withEnv: Parameters<typeof worker.fetch>[1] = env) => {
+  ipCounter += 1;
+  return worker.fetch(new Request(`https://relais.test${path}`, { ...init, headers: { 'cf-connecting-ip': `10.0.0.${ipCounter}`, ...(init.headers as Record<string, string>) } }), withEnv);
+};
+afterEach(() => vi.unstubAllGlobals());
+
+describe('routes de transmission', () => {
+  it('/tmdb transmet avec la clé et ajoute les en-têtes CORS', async () => {
+    const upstream = vi.fn(async (_url: string) => new Response('{"id":603}', { status: 200 }));
+    vi.stubGlobal('fetch', upstream);
+    const response = await call('/tmdb/movie/603?language=fr-FR');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ id: 603 });
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(String(upstream.mock.calls[0]?.[0])).toContain('api_key=SECRET-TMDB');
+  });
+  it('/books transmet avec la clé', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"items":[]}', { status: 200 })));
+    expect((await call('/books/volumes?q=Dune&country=FR&maxResults=10')).status).toBe(200);
+  });
+  it('/igdb accepte un POST texte valide et refuse le reste', async () => {
+    const { detailQuery } = await import('../../src/core/game/igdb-queries');
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.startsWith('https://id.twitch.tv/') ? Response.json({ access_token: 't', expires_in: 5_000_000 }) : new Response('[]', { status: 200 }))));
+    expect((await call('/igdb/games', { method: 'POST', body: detailQuery({ id: 1 }), headers: { 'content-type': 'text/plain' } })).status).toBe(200);
+    expect((await call('/igdb/games', { method: 'POST', body: 'fields *;' })).status).toBe(400);
+    expect((await call('/igdb/games')).status).toBe(404);
+  });
+  it('/issues crée une issue depuis un POST', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ number: 9, html_url: 'https://github.com/o/r/issues/9' }), { status: 201 })));
+    const response = await call('/issues', { method: 'POST', body: JSON.stringify({ title: 'Bug', body: 'x', labels: ['Nouveau'] }) });
+    expect(await response.json()).toEqual({ ok: true, number: 9, url: 'https://github.com/o/r/issues/9' });
+  });
+  it('répond 503 quand le secret manque', async () => {
+    expect((await call('/tmdb/movie/1', {}, {})).status).toBe(503);
+  });
+  it('limite le débit par adresse et annonce le délai', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+    const same = { headers: { 'cf-connecting-ip': '192.0.2.99' } };
+    const send = () => worker.fetch(new Request('https://relais.test/issues', { method: 'POST', body: JSON.stringify({ title: 'a', body: 'b', labels: ['Nouveau'] }), ...same }), env);
+    for (let i = 0; i < 5; i += 1) expect((await send()).status).not.toBe(429);
+    const blocked = await send();
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(await blocked.json()).toEqual({ ok: false, reason: 'rate-limited' });
+  });
+  it('répond au préambule CORS pour POST avec content-type', async () => {
+    const response = await call('/issues', { method: 'OPTIONS' });
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-methods')).toContain('POST');
+    expect(response.headers.get('access-control-allow-headers')).toContain('content-type');
+    expect(response.headers.get('access-control-expose-headers')).toContain('retry-after');
+  });
+  it('/status montre la présence des secrets sans jamais leur valeur', async () => {
+    const response = await call('/status');
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({ config: { tmdbKey: true, igdb: true, issuesToken: true, booksKey: true } });
+    for (const secret of ['SECRET-TMDB', 'SECRET-IGDB', 'SECRET-GH', 'SECRET-BOOKS']) expect(text).not.toContain(secret);
   });
 });
