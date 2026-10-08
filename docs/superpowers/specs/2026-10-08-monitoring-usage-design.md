@@ -41,11 +41,12 @@ Table `events` :
 | Colonne | Contenu |
 |---|---|
 | `ts` | Horodatage serveur (secondes) |
-| `type` | `active`, `action` ou `error` |
+| `type` | `active`, `action`, `update` ou `error` |
 | `name` | Nom tiré de la liste fermée |
 | `client_id` | UUID aléatoire d'installation ; **NULL pour `error`** |
 | `platform` | `extension` ou `android` |
-| `version` | Version de l'application |
+| `version` | Version de l'application au moment de l'événement (pour `update` : la version **ciblée**, celle qui vient d'être installée) |
+| `from_version` | Uniquement pour `update` : la version **génératrice**, celle d'où part la mise à jour ; NULL sinon |
 | `channel` | `preprod` ou `prod` |
 | `detail` | Optionnel, valeur d'une courte liste fermée par événement (ex. `spotify` / `tidal`) ; jamais de texte libre |
 
@@ -91,6 +92,8 @@ La liste vit dans un seul fichier TypeScript partagé par le client et le relais
 
 La liste définitive est arrêtée dans le plan, par relecture des modules ; la règle « action, jamais affichage » prime sur ces exemples.
 
+**`update`** (nom `maj-appliquee`) — une mise à jour a été réalisée. Détection côté client : la dernière version lancée est gardée en local ; au démarrage, si la version courante est différente, un événement part avec `from_version` = version gardée (génératrice) et `version` = version courante (ciblée), puis la version gardée est mise à jour. Le premier lancement (aucune version gardée) n'est pas une mise à jour. Un saut de plusieurs versions (application restée fermée) produit un seul événement `from → to`. Même consentement que l'usage (porte `client_id`, coupé avec l'interrupteur) ; la version gardée en local est tenue à jour même si la mesure est coupée, pour ne pas émettre de fausse mise à jour en la réactivant.
+
 **`error`** — catégories fixes, sans identifiant : `api-429` (detail : `wikipedia`, `spotify`, `tidal`, `tmdb`, `steam`, `igdb`, `relais`), `api-5xx` (idem), `api-reseau`, `js-erreur`, `lecture-echec` (detail : `spotify` / `tidal` / `video`).
 
 ## Client (`src/core/telemetry/`)
@@ -101,7 +104,7 @@ Module partagé par l'extension et l'app Android.
 - File en mémoire vidée par lots toutes les 60 s et à la fermeture de la page (`sendBeacon`, repli `fetch keepalive`). Échec d'envoi : lot abandonné, jamais rejoué en boucle. Aucune exception ne remonte à l'application.
 - `clientId` : UUID aléatoire créé au premier lancement, stocké en local, sans lien avec un compte. Réinstaller = nouvel identifiant.
 - `version`, `channel`, `platform` lus depuis le build existant.
-- Réglage `usageStats` : si désactivé, `active` et `action` ne sont ni mis en file ni envoyés ; les `error` partent quand même, sans identifiant.
+- Réglage `usageStats` : si désactivé, `active`, `action` et `update` ne sont ni mis en file ni envoyés ; les `error` partent quand même, sans identifiant.
 - Constante `USAGE_STATS_DEFAULT = true`, à passer à `false` au passage en diffusion publique.
 - Réglage visible dans Paramètres : « Statistiques d'usage anonymes », interrupteur, courte explication de ce qui est envoyé (mêmes glyphes et visibilité à l'écran que les autres réglages, extension **et** mobile).
 
@@ -118,13 +121,14 @@ Page HTML unique, lisible sur téléphone, thème clair/sombre. Contenu :
 3. Classement des actions les plus utilisées sur la période.
 4. Erreurs par catégorie, avec courbe pour repérer les pics.
 5. Répartition par version (adoption des mises à jour).
+6. Journal des mises à jour réalisées : tableau `version génératrice → version ciblée` avec le nombre d'installations et la date, par plateforme et canal, pour voir qui a migré, d'où, et les retards.
 
 Filtres : plateforme (extension / Android), canal (pré-prod / prod), période (7 / 30 / 90 jours).
 
 ## Tests
 
 - Relais (Vitest, D1 simulé) : validation contre la liste fermée, rejet des lots trop gros, `error` sans `client_id`, jeton sur `/stats`, agrégats, purge à 90 jours.
-- Client : file et envoi par lots avec faux `fetch`, abandon silencieux sur échec, opt-out (aucun `active`/`action`, `error` conservées), un seul `active` par jour, noms hors liste refusés au typage.
+- Client : file et envoi par lots avec faux `fetch`, abandon silencieux sur échec, opt-out (aucun `active`/`action`, `error` conservées), un seul `active` par jour, `update` émis une fois avec `from_version` et `version` corrects (pas au premier lancement, un seul événement pour un saut de plusieurs versions, version gardée mise à jour même mesure coupée), noms hors liste refusés au typage.
 - Vérification manuelle : tableau de bord avec données d'exemple, réglage dans Paramètres sur extension et mobile.
 
 ## Livraison
