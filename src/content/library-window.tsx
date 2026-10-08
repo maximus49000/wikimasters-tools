@@ -26,11 +26,12 @@ type Deps = {
   collection: CollectionRepo;
   kinds: KindsRepo;
   onOpenCard: (slug: string) => void;
+  onOpenMarket: (slug: string) => void;
 };
 
 // « Ma Pièce » : la Bibliothèque vit dans sa propre fenêtre, ouverte depuis le menu du site (juste après « Collection »),
 // et non plus dans la Collection (qu'elle alourdissait).
-export function createLibraryWindow({ library, collection, kinds, onOpenCard }: Deps) {
+export function createLibraryWindow({ library, collection, kinds, onOpenCard, onOpenMarket }: Deps) {
   // Pièce d'accueil : appliquée une seule fois, à la première ouverture après le démarrage.
   const launch = createLaunchGate();
   let opened: { host: HTMLElement; root: Root; onKey: (event: KeyboardEvent) => void } | null = null;
@@ -72,7 +73,7 @@ export function createLibraryWindow({ library, collection, kinds, onOpenCard }: 
             <span>{LIBRARY_TITLE}</span>
             <button type="button" className="wmt-libwin-close" aria-label="Fermer" title="Fermer" onClick={close}>✕</button>
           </div>
-          <LibraryPanel library={library} collection={collection} kinds={kinds} onOpenCard={onOpenCard} />
+          <LibraryPanel library={library} collection={collection} kinds={kinds} onOpenCard={onOpenCard} onOpenMarket={onOpenMarket} />
         </div>
       </div>,
     );
