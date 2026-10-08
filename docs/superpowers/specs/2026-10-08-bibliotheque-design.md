@@ -26,7 +26,7 @@ C'est un projet de plusieurs semaines. Cette spec fixe la **vision d'ensemble et
 | Boosters | Un **présentoir de boosters** se pose sur une surface (table, étagère, commode…). Il contient **exactement le nombre de boosters à ouvrir** dans l'application. Toucher un booster l'ouvre : il sort du présentoir, tremble, se déchire, puis la fenêtre d'ouverture existante s'affiche. Dix styles de présentoir au choix (voir morceau 2). |
 | Pièce d'accueil | Le joueur peut définir **une pièce comme ouverte au lancement**. Dans ce cas, c'est cette pièce qui s'affiche dès l'ouverture de l'application. |
 | Orientation | Chaque pièce s'affiche en **horizontal ou en vertical**, au choix du joueur ; l'orientation est **figée** (elle ne suit pas la rotation de l'appareil). Une pièce n'a **qu'un seul aménagement**, sur une bande de **même hauteur** dont la largeur peut grandir : l'orientation ne change que la **fenêtre visible** (large en horizontal, étroite en vertical). Ce qui dépasse de la fenêtre s'atteint en **faisant défiler** à droite ou à gauche. |
-| Styles | Au choix : Scandinave, Moderne, Industriel, Bohème, Rétro 70s, Japandi, Néon gaming. |
+| Styles | Au choix : Scandinave, Moderne, Industriel, Bohème, Rétro 70s, Japandi, Néon gaming, **Steampunk** (laiton, cuivre, cuir et rivets ; mobilier et fenêtre dédiés, voir morceaux 4, 5 et 7). |
 | Placement d'une carte | On choisit **d'abord la carte, puis la forme**. |
 | Formes au mur | Poster (image de la carte) ; vinyle (étiquette ronde avec image rognée et texte, couleur du disque au choix) ; pochette (carrée, ronde, cadre). |
 | Formes en étagère | CD, DVD, jeu vidéo, livre : dos avec petite image et titre. |
@@ -36,7 +36,7 @@ C'est un projet de plusieurs semaines. Cette spec fixe la **vision d'ensemble et
 | Fenêtre | Scènes : ville, campagne, montagne, mer, espace, Terre. Météo aléatoire ou forcée, sur les scènes terrestres seulement. Au moins 15 événements par scène. |
 | Météo | Valeurs continues avec transitions de 20 à 60 s, jamais de bascule brute. |
 | Heure | Réelle, jour forcé, nuit forcée ou manuelle. Lever et coucher du soleil calculés pour la position de l'appareil. |
-| Animaux | Chat et chien, environ 15 comportements chacun, qui dépendent des meubles posés. Déplacements continus (marche, saut en arc), jamais de téléportation. |
+| Animaux | Chat, chien et **robot** (compagnon mécanique), environ 15 comportements chacun, qui dépendent des meubles posés. Déplacements continus (marche, saut en arc), jamais de téléportation. |
 
 ## Découpage
 
@@ -145,11 +145,13 @@ Chaises, canapé, fauteuil, panier, gamelle, niche, plantes, tapis, lampe… Cha
 
 ## Morceau 4 : styles et décor
 
-Sept styles (palette, bois, métal, cadres, éclairage), tapisserie, sol. Le style Néon gaming ajoute un liseré lumineux aux meubles.
+Huit styles (palette, bois, métal, cadres, éclairage), tapisserie, sol. Le style Néon gaming ajoute un liseré lumineux aux meubles.
+
+**Steampunk** : mur vert sombre à bandeaux de laiton, tuyaux de cuivre au plafond et le long du mur avec vannes qui laissent échapper de la vapeur, sol en plaques rivetées. Engrenages qui tournent, manomètre à aiguille, horloge à l'heure réelle. Mobilier dédié : l'**ordinateur** devient une machine analytique (écran à tube dans un coffre de cuivre, cadrans, clavier à touches rondes) ; le bureau est un établi de laiton ; fauteuil club en cuir, globe terrestre mécanique, lampe à gaz qui vacille, télescope, automate de bureau, tube pneumatique (pour les boosters). Le présentoir de boosters prend l'aspect d'un coffret de laiton.
 
 ## Morceau 5 : fenêtre, ciel, météo
 
-- Scènes : ville, campagne, montagne, mer, espace, Terre.
+- Scènes : ville, campagne, montagne, mer, espace, Terre, et **Cité de dirigeables** (propre au style Steampunk : fenêtre arrondie à cadre de laiton, cheminées qui fument ; jour ambré, crépuscule orangé, nuit étoilée aux fenêtres allumées ; clair, smog, pluie, orage avec éclairs de tours Tesla).
 - **Météo** : états aléatoires ou forcés (soleil, nuageux, bruine, pluie, orage, neige, brume), modélisés par des valeurs continues (couverture nuageuse, précipitation, humidité du sol, vent, brume, luminosité). Les transitions passent par des états logiques (soleil, nuageux, bruine, pluie, orage ; au retour, éclaircie, arc-en-ciel). Les flaques se forment et sèchent ; la neige s'accumule et fond.
 - **Pluie vivante** : nuages sombres qui défilent, deux profondeurs de gouttes, gouttes qui glissent sur la vitre, ondulations, éclairs, phares et fenêtres allumées.
 - **Heure** : réelle, jour, nuit ou manuelle. Le lever et le coucher du soleil sont calculés **localement** (formule astronomique, sans service externe) pour la position de l'appareil. La position vient de la géolocalisation du navigateur (avec accord du joueur) ; à défaut, du fuseau horaire.
@@ -165,6 +167,8 @@ Comportements (environ 15 par espèce) :
 - Chien : rapporter une balle, creuser le tapis, se gratter, gratter la porte, enterrer un os, remuer la queue ou aboyer à la fenêtre, lécher la vitre, hurler à la lune, se secouer après la pluie.
 - Contexte : dormir la nuit, se coucher dans la tache de soleil le jour, se cacher pendant l'orage, regarder les événements de la fenêtre.
 
+**Robot** (compagnon mécanique, même exigence : une quinzaine de comportements, mêmes règles de déplacement continu, mêmes réactions au contexte). Il roule ou marche selon le style (chenilles ou roulettes, laiton à engrenages en Steampunk, chrome en Moderne…). Comportements : se recharger sur sa station (à la place de dormir : le panier ou la niche servent de station de charge) ; veille la nuit, yeux éteints ; faire le plein d'huile à la gamelle ; se faire cliqueter les articulations (étirement) ; se polir ; sauter à ressort sur le canapé et en redescendre ; danser et courir en rond ; scanner la pièce (antenne qui tourne) ; taper sur l'ordinateur du bureau ; ranger un objet sur l'étagère ; arroser la plante ; balayer le sol ; chasser une mouche au laser ; jouer à la balle ; réparer un engrenage ; regarder par la fenêtre et suivre les événements ; se mettre à l'abri sous un parapluie par temps de pluie et s'arrêter net pendant l'orage (court-circuit : étincelles, puis redémarrage).
+
 ## Morceau 7 : événements (au moins 15 par scène)
 
 - **Ville** : avion, hélicoptère, drone, ballon, cerf-volant, avion à banderole, bus, tram, ambulance, camion-poubelle, livreur à vélo, passants sous parapluie (pluie), promeneur de chien, grue, enseigne néon, appartement qui s'allume, feu d'artifice (nuit).
@@ -172,6 +176,7 @@ Comportements (environ 15 par espèce) :
 - **Montagne** : aigle, parapente, télécabine, skieur, randonneur, bouquetins, chamois, marmotte, hélicoptère de secours, avalanche lointaine, cascade, nuage accroché au sommet, train à crémaillère, dameuse (nuit), loup qui hurle à la lune, refuge qui s'allume, aurore boréale, étoile filante.
 - **Mer** : voilier, ferry, cargo, bateau de pêche, kayak, surfeur, ski nautique, hydravion, mouettes, dauphins, baleine qui souffle, banc de poissons, tortue, périscope de sous-marin, bateau fantôme dans la brume, faisceau du phare (nuit), feu d'artifice sur la plage, tempête avec grosses vagues.
 - **Espace** : station Mir, ISS, satellite, fusée, capsule, astronaute à la dérive, astéroïde, comète, pluie de météores, supernova, OVNI, sonde Voyager, éclipse, nébuleuse, planète avec lune qui passe, aurore, trou noir qui déforme les étoiles.
+- **Cité de dirigeables** (Steampunk) : dirigeable, flotte de dirigeables, ornithoptère, train à vapeur sur le viaduc, tour Tesla qui crépite, montgolfière à vapeur, volée d'oiseaux mécaniques, horloge géante qui sonne, automate géant en marche, cargo volant, bateau à aubes volant, pigeon voyageur mécanique, lampadaires à gaz qui s'allument, pluie d'étincelles de l'usine, comète de laiton, sous-marin dans le canal, fanfare à vapeur.
 - **Terre vue d'en haut** : station orbitale, train de satellites, navette ou Soyouz, fusée au décollage, astronaute en sortie, étoile filante, lune qui passe, lever de soleil orbital, ouragan, orage vu d'en haut, aurore polaire, villes lumineuses la nuit, éruption de volcan, débris spatiaux, capsule cargo, ballon-sonde.
 
 Chaque événement est une petite description (apparition, trajet, durée, conditions météo et heure). Un tirage pondéré choisit parmi ceux qui sont possibles dans la situation (pas de feu d'artifice en plein jour ni de parapluies sans pluie).
