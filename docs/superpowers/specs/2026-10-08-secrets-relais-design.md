@@ -10,7 +10,7 @@ Le dépôt est public et les APK/zips sont téléchargeables : les clés inject�
 
 - **Anciennes clés non révoquées** (décision de l'utilisateur, 2026-10-08) : la diffusion n'a pas commencé, le risque est jugé faible. Les anciens paquets continuent donc de fonctionner. Les nouveaux secrets du relais peuvent être les mêmes valeurs ou des valeurs neuves, au choix de l'utilisateur (le plus propre : des valeurs neuves, sans effet sur les anciens paquets tant que les anciennes ne sont pas révoquées).
 - **Pas de jeton d'application** entre les clients et le relais : il serait lisible dans le paquet comme les clés actuelles. La protection repose sur une liste blanche stricte de routes, de paramètres et de corps, un cache et une limite de débit par IP.
-- **Cache : API Cache de Cloudflare**, pas KV (KV gratuit : 1 000 écritures par jour, déjà entamées par l'indexeur de documentaires).
+- **Pas de cache côté relais** : l’API Cache de Cloudflare n’est fonctionnelle que sur un domaine personnalisé (documentation : « Workers deployed to custom domains have access to functional cache operations »), or le relais est sur `workers.dev` ; KV n’offre que 1 000 écritures par jour, déjà entamées par l’indexeur. Les caches locaux des clients (24 h à 7 jours) suffisent à cette échelle.
 - Limites Cloudflare vérifiées dans la documentation le 2026-10-08 (offre gratuite) : 100 000 requêtes par jour par compte, 10 ms de calcul par requête (l'attente d'un `fetch` n'est pas comptée), 50 appels sortants par requête. Charge ajoutée estimée à ~10 000 requêtes par jour pour 200 utilisateurs. Risque nouveau et accepté : le relais devient le point de passage unique ; le dépassement du plafond quotidien coupe toutes ses fonctions jusqu'à minuit UTC. Au-delà d'environ 1 000 utilisateurs actifs : offre Workers payante.
 
 ## Relais : quatre nouveaux modules
@@ -21,15 +21,15 @@ Chaque module est un fichier de `relay/src/` avec une fonction pure testable par
 
 - Chemins acceptés (expressions fermées) : `/movie/{id}`, `/tv/{id}`, `/person/{id}/combined_credits`, `/search/movie`, `/search/tv`, `/search/person`, `/search/multi`. `{id}` = entier. Tout autre chemin : 404.
 - Paramètres acceptés : `language`, `query`, `append_to_response` (valeurs `videos`, `watch/providers`, combinaisons), `include_video_language`. Tout autre paramètre est ignoré (jamais transmis) ; `api_key` fourni par le client est supprimé.
-- Le relais ajoute `api_key` (secret `TMDB_API_KEY`) et transmet la réponse telle quelle (corps et statut, sans retraitement : pas de coût CPU). Cache 6 h pour les réponses 200 (clé de cache = URL sans clé) ; les erreurs ne sont pas mises en cache, sauf 404 (1 h).
+- Le relais ajoute `api_key` (secret `TMDB_API_KEY`) et transmet la réponse telle quelle (corps et statut, sans retraitement : pas de coût CPU).
 - 401/403 de TMDB : le relais répond 502 `{ok:false, reason:'upstream'}` (le client ne doit pas croire que sa propre clé est refusée).
 
 ### `igdb.ts` — `POST /igdb/games`
 
 - Corps texte : une requête IGDB. Acceptée seulement si elle correspond à l'une des trois formes émises par le client (`fields …; where id = N; limit 1;`, `fields …; where slug = "…"; limit 1;`, `search "…"; fields …; limit N;`), avec liste blanche de champs, `limit` ≤ 10 et longueur ≤ 600 caractères. Sinon 400.
 - Jeton Twitch (client credentials) obtenu et gardé par le relais : en mémoire de l'isolat (pas de KV), renouvelé une heure avant l'expiration et une fois sur 401. Secrets `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`.
-- Cache 24 h par corps de requête (clé de cache synthétique construite sur un hash du corps).
-- Espacement des appels sortants vers IGDB (≈ 4 par seconde maximum pour l'application) assuré par le relais ; le client garde son propre espacement de confort.
+- Aucun cache côté relais (les clients mémorisent déjà les jeux 7 jours).
+- Pas d’espacement des appels côté relais : le client espace déjà les siens (260 ms) ; une réponse 429 d’IGDB est transmise telle quelle et le client affiche son message habituel.
 - Statuts renvoyés : 200 (réponse IGDB), 400 (forme refusée), 429 (limite), 502 (amont).
 
 ### `issues.ts` — `POST /issues`
@@ -40,20 +40,20 @@ Chaque module est un fichier de `relay/src/` avec une fonction pure testable par
 ### `books.ts` — `GET /books/volumes`
 
 - Une seule route, qui reproduit l’appel de `google-books-api.ts` : paramètres acceptés `q` (≤ 200 caractères), `country` (valeur `FR` seulement), `maxResults` (entier 1 à 10). Tout autre paramètre est ignoré ; `key` fourni par le client est supprimé.
-- Le relais ajoute `key` (secret `GOOGLE_BOOKS_API_KEY`, déjà posé) et transmet la réponse telle quelle vers `https://www.googleapis.com/books/v1/volumes`. Cache 24 h par URL sans clé (les prix d’ebook bougent peu) ; erreurs non mises en cache.
-- Quota de Google Livres : la clé est restreinte à l’API Books, le cache et la limite de débit protègent le quota.
+- Le relais ajoute `key` (secret `GOOGLE_BOOKS_API_KEY`, déjà posé) et transmet la réponse telle quelle vers `https://www.googleapis.com/books/v1/volumes`.
+- Quota de Google Livres : la clé est restreinte à l’API Books ; les clients mémorisent déjà les prix et la limite de débit protège le quota.
 
 ### Limite de débit
 
 - Par IP (`cf-connecting-ip`) : `/tmdb` 60 par minute, `/igdb` 20 par minute, `/books` 20 par minute, `/issues` 5 par heure. Dépassement : 429 avec `Retry-After`.
-- Implémentation : liaison native `ratelimits` de Cloudflare si l'offre gratuite l'accepte (la documentation ne le dit pas : à essayer au déploiement), sinon compteurs dans l'API Cache. Les compteurs étant approximatifs et par site géographique, c'est un filtre contre l'usage abusif, pas une garantie.
+- Implémentation : compteurs en mémoire du Worker (fenêtre fixe par route et par IP). Ils sont par isolat et se remettent à zéro quand l’isolat est recyclé : c’est un filtre contre l’usage abusif, pas une garantie. La liaison native `ratelimits` (période 10 ou 60 s seulement, disponibilité sur l’offre gratuite non confirmée par la documentation) est écartée pour ne pas risquer un échec de déploiement.
 
 ### CORS et configuration
 
 - Les en-têtes CORS deviennent : méthodes `GET, POST, OPTIONS`, en-têtes `content-type, x-debug`. Le Worker répond déjà à `OPTIONS` (204).
 - `/status` indique la présence (jamais la valeur) de `tmdbKey`, `igdbId`, `igdbSecret`, `issuesToken`, `booksKey`.
 - Aucune des routes existantes (`/search`, `/oembed`, `/t`, `/stats`, `/dashboard`) ne change.
-- `wrangler.toml` : aucun nouveau binding de stockage. Si la liaison `ratelimits` est retenue : bloc `[[ratelimits]]` (et son équivalent `previews`).
+- `wrangler.toml` : aucun nouveau binding.
 - Secrets posés par l'utilisateur depuis son terminal : `npx wrangler secret put TMDB_API_KEY` (et `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `GITHUB_ISSUES_TOKEN`). Jamais dans le chat ni dans le dépôt.
 
 ## Clients
@@ -83,7 +83,7 @@ Les trois clients reçoivent déjà un `fetch` injectable ; ils perdent toute no
 
 ## Tests
 
-- Relais (`tests/relay/`, `fetch` amont factice) : liste blanche (chemin refusé, paramètre inconnu supprimé, `api_key` du client écrasée), le secret n'apparaît dans aucune réponse ni dans `/status`, cache (2ᵉ appel sans amont), jeton Twitch unique et renouvelé, formes de requêtes IGDB refusées, étiquettes d'issue hors liste, limite de débit, CORS (`OPTIONS` + `POST`).
+- Relais (`tests/relay/`, `fetch` amont factice) : liste blanche (chemin refusé, paramètre inconnu supprimé, `api_key` du client écrasée), le secret n'apparaît dans aucune réponse ni dans `/status`, jeton Twitch unique et renouvelé, formes de requêtes IGDB refusées, étiquettes d'issue hors liste, limite de débit, CORS (`OPTIONS` + `POST`).
 - Clients : `tmdb-api`, `igdb-api`, `anomaly`, `fetch-observer` testés contre un faux relais ; les tests actuels sont adaptés (plus de clé, plus de jeton).
 - Vérification : `npm test`, `npm run typecheck`, `npm run build`, puis contrôle que **ni le bundle de l'extension ni l'APK ne contiennent plus les valeurs des secrets** (recherche de chaînes dans `.output/` et dans `wikimasters-overlay.js`).
 - Reste manuel (utilisateur) : les cinq secrets sont déjà posés (2026-10-08, par Claude depuis `.env.local`) ; `wrangler deploy` (ou fusion déclenchant Workers Builds), puis ouvrir une carte de film, une de jeu, un livre (prix de l’ebook), et envoyer une anomalie, sur Chrome et sur l'APK.
