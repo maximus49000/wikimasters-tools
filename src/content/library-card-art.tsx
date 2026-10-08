@@ -15,10 +15,10 @@ function Img({ url, x, y, w, h, clip }: { url: string; x: number; y: number; w: 
   return <image href={url} x={x} y={y} width={w} height={h} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" clipPath={clip ? `url(#${clip})` : undefined} />;
 }
 
-type WallProps = { rect: PxRect; shape: WallShape; color?: VinylColor; title: string; imageUrl?: string; missing: boolean; id?: string };
+type WallProps = { rect: PxRect; shape: WallShape; color?: VinylColor; title: string; imageUrl?: string; missing: boolean; id: string };
 
 // Objet accroché au mur. `id` sert à nommer les clipPath (un par objet).
-export function WallArt({ rect, shape, color = 'black', title, imageUrl, missing, id = 'x' }: WallProps) {
+export function WallArt({ rect, shape, color = 'black', title, imageUrl, missing, id }: WallProps) {
   const { x, y, w, h } = rect;
   const url = missing ? undefined : imageUrl;
   const label = missing ? '' : title;

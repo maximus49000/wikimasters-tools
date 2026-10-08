@@ -1,4 +1,4 @@
-import type { PointerEvent, ReactElement } from 'react';
+import { useRef, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, computerRect, pxRect, rectOf, shelfSlots, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
 import { paletteOf } from '../core/library/styles';
@@ -38,6 +38,13 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
 
 export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap }: Props) {
   const palette = paletteOf(room.style);
+  // Se réabonne aux images qui arrivent après le premier dessin : un compteur change à chaque notification du service.
+  const images = getImageService();
+  const imageVersion = useRef(0);
+  useSyncExternalStore(
+    (notify) => images?.subscribe(() => { imageVersion.current++; notify(); }) ?? (() => undefined),
+    () => imageVersion.current,
+  );
   const width = room.cols * CELL_W;
   const wallH = WALL_ROWS * CELL_H;
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
@@ -49,7 +56,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   }
   const imageOf = (slug: string): string | undefined => {
     const url = cards[slug]?.imageUrl;
-    return getImageService()?.displayUrl(slug, url) ?? url;
+    return images?.displayUrl(slug, url) ?? url;
   };
   // Emplacements d'étagère déjà pris : leurs pointillés ne se dessinent pas.
   const occupiedSlots = new Map<string, Set<number>>();
