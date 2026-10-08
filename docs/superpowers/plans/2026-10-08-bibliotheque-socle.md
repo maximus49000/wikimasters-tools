@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ajouter la vue « Bibliothèque » à la Collection : plusieurs pièces, orientation horizontale ou verticale figée, mode Visiter / Aménager, grille, étagère / bureau / ordinateur à poser, style Scandinave, pièce d'accueil ouverte au lancement, mémorisation locale.
+**Goal:** Ajouter la vue « Bibliothèque » à la Collection : plusieurs pièces extensibles à gauche et à droite, orientation horizontale ou verticale figée (fenêtre visible plus ou moins large, défilement), mode Visiter / Aménager, grille, étagère / bureau / ordinateur à poser, style Scandinave, pièce d'accueil ouverte au lancement, mémorisation locale.
 
 **Architecture:** Un cœur pur et testé (`src/core/library/` : types, catalogue, grille, état, dépôt de stockage) et une interface React (`LibraryPanel` + `RoomView` SVG) montée par `collection-ui.tsx` comme les panneaux Monde / Toile. L'état est un seul document `wmt:library` lu et écrit par un dépôt à écritures sérialisées (modèle `geo-repo`).
 
@@ -15,9 +15,9 @@
 - Extension en lecture seule : aucune requête vers l'API du jeu ; tout est local (`KeyValueStore`, clé `library`, préfixe `wmt:` ajouté par le store).
 - Même code pour l'extension et l'appli mobile : tout se fait au doigt (cibles d'au moins 40 px), pas de survol ni de clic droit.
 - Commandes en glyphes (SVG) avec `aria-label` et `title` en français ; pas de texte seul.
-- Dessin en SVG, aucune image à télécharger. Paysage `720 × 340` (24 colonnes × 12 lignes, mur = lignes 0-8, sol = 9-11) ; portrait `420 × 600` (14 colonnes × 20 lignes, mur = lignes 0-14, sol = 15-19).
+- Dessin en SVG, aucune image à télécharger. Pièce de 12 lignes (mur = lignes 0-8, sol = 9-11), hauteur fixe 340, cases de 30 de large ; largeur = multiple de 12 colonnes, de 24 (départ) à 96. Fenêtre visible : 24 colonnes en horizontal (720 × 340), 14 en vertical (420 × 340) ; le reste se fait défiler.
 - 12 pièces au maximum ; nom de 1 à 30 caractères ; la dernière pièce ne se supprime pas, elle se vide.
-- Orientation figée par pièce, deux aménagements indépendants (`layouts.landscape`, `layouts.portrait`).
+- Orientation figée par pièce ; **un seul aménagement** par pièce, l'orientation ne change que la fenêtre visible. Ajouter une zone à gauche décale les meubles de 12 colonnes ; retirer une zone du bord n'est permis que si elle est vide.
 - Une seule pièce d'accueil (`homeRoomId`), appliquée une seule fois, à la première ouverture de la Collection après le démarrage.
 - Messages et libellés en français, phrases courtes.
 - Une fiche WikiHow (`src/core/whats-new/entries.ts`) est ajoutée dans la même PR (nouvel id, jamais annoncé).
@@ -30,8 +30,8 @@
 | `src/core/library/library-types.ts` (créer) | Types `Orientation`, `StyleId`, `FurnitureKind`, `Placed`, `Layout`, `Room`, `LibraryState`. |
 | `src/core/library/furniture-catalog.ts` (créer) | Tailles et libellés des meubles. |
 | `src/core/library/styles.ts` (créer) | Palettes de style (seul Scandinave est livré). |
-| `src/core/library/room-grid.ts` (créer) | Grilles, règles de pose, déplacement, retrait, rectangles en pixels, emplacements d'étagère. Pur. |
-| `src/core/library/library-book.ts` (créer) | Opérations pures sur l'état (pièces, accueil, orientation) et lecture sûre (`parseLibraryState`). |
+| `src/core/library/room-grid.ts` (créer) | Constantes de la grille, règles de pose, déplacement, retrait, décalage, zones de bord, rectangles en pixels, emplacements d'étagère. Pur. |
+| `src/core/library/library-book.ts` (créer) | Opérations pures sur l'état (pièces, accueil, orientation, agrandir / réduire) et lecture sûre (`parseLibraryState`). |
 | `src/core/library/library-repo.ts` (créer) | Dépôt : `load`, `current`, `subscribe`, `update` sérialisé. |
 | `src/content/collection-view.ts` (modifier) | Ajoute la vue `library`. |
 | `src/content/world-toggle.ts` (modifier) | Ajoute le bouton Bibliothèque au sélecteur de vues. |
@@ -74,22 +74,24 @@ git checkout -b feat/bibliotheque-socle
   - `type FurnitureKind = 'shelf' | 'desk' | 'computer'` ; `type StandingKind = 'shelf' | 'desk'`
   - `type Placed = { id: string; kind: 'shelf' | 'desk'; col: number; row: number } | { id: string; kind: 'computer'; deskId: string }`
   - `type Layout = Placed[]`
-  - `type Room = { id: string; name: string; style: StyleId; orientation: Orientation; layouts: Record<Orientation, Layout> }`
+  - `type Room = { id: string; name: string; style: StyleId; orientation: Orientation; cols: number; layout: Layout }`
   - `type LibraryState = { version: 1; activeRoomId: string; homeRoomId: string | null; rooms: Room[] }`
-  - `CATALOG`, `sizeOf(kind: StandingKind): { w: number; h: number }`
+  - `CATALOG`, `FURNITURE_KINDS`, `labelOf(kind)`, `sizeOf(kind: StandingKind): { w: number; h: number }`
   - `type Palette`, `paletteOf(id: StyleId): Palette`
-  - `GRIDS: Record<Orientation, GridSpec>`, `type Cell`, `type Rect`, `type PxRect`, `type PlaceResult`
-  - `isStanding(p: Placed)`, `rectOf(p)`, `canPlace(layout, o, kind, col, row, ignoreId?)`, `placeStanding(layout, o, kind, col, row, id)`, `moveStanding(layout, o, id, col, row)`, `canPlaceComputer(layout, deskId, ignoreId?)`, `placeComputer(layout, deskId, id)`, `moveComputer(layout, id, deskId)`, `removeFurniture(layout, id)`, `pxRect(o, rect)`, `computerRect(desk)`, `shelfSlots(shelf)`
+  - Constantes : `ROWS = 12`, `WALL_ROWS = 9`, `CELL_W = 30`, `HEIGHT = 340`, `CELL_H = HEIGHT / ROWS`, `SECTION = 12`, `MIN_COLS = 24`, `MAX_COLS = 96`, `VISIBLE_COLS: Record<Orientation, number>` (`landscape: 24`, `portrait: 14`)
+  - `type Cell`, `type Rect`, `type PxRect`, `type PlaceResult`
+  - `isStanding(p)`, `rectOf(p)`, `canPlace(layout, cols, kind, col, row, ignoreId?)`, `placeStanding(layout, cols, kind, col, row, id)`, `moveStanding(layout, cols, id, col, row)`, `canPlaceComputer(layout, deskId, ignoreId?)`, `placeComputer(layout, deskId, id)`, `moveComputer(layout, id, deskId)`, `removeFurniture(layout, id)`, `shiftLayout(layout, delta)`, `sectionIsEmpty(layout, cols, side)`, `pxRect(rect)`, `computerRect(desk)`, `shelfSlots(shelf)`
 
 - [ ] **Step 1: Créer les types**
 
 `src/core/library/library-types.ts` :
 
 ```ts
+// L'orientation ne change que la fenêtre visible sur la pièce (large en horizontal, étroite en vertical).
 export type Orientation = 'landscape' | 'portrait';
 
-// Les sept styles prévus ; seul `scandinave` a une palette dans ce morceau.
-export const STYLE_IDS = ['scandinave', 'moderne', 'industriel', 'boheme', 'retro70', 'japandi', 'neon'] as const;
+// Les styles prévus ; seul `scandinave` a une palette dans ce morceau.
+export const STYLE_IDS = ['scandinave', 'moderne', 'industriel', 'boheme', 'retro70', 'japandi', 'neon', 'steampunk'] as const;
 export type StyleId = (typeof STYLE_IDS)[number];
 
 export type FurnitureKind = 'shelf' | 'desk' | 'computer';
@@ -102,12 +104,14 @@ export type Placed =
 
 export type Layout = Placed[];
 
+// `cols` : largeur de la pièce en colonnes (multiple de 12, de 24 à 96). Un seul aménagement, quelle que soit l'orientation.
 export type Room = {
   id: string;
   name: string;
   style: StyleId;
   orientation: Orientation;
-  layouts: Record<Orientation, Layout>;
+  cols: number;
+  layout: Layout;
 };
 
 export type LibraryState = {
@@ -184,7 +188,12 @@ export const paletteOf = (id: StyleId): Palette => PALETTES[id] ?? SCANDINAVE;
 ```ts
 import { describe, expect, it } from 'vitest';
 import {
-  GRIDS,
+  MAX_COLS,
+  MIN_COLS,
+  ROWS,
+  SECTION,
+  VISIBLE_COLS,
+  WALL_ROWS,
   canPlace,
   canPlaceComputer,
   computerRect,
@@ -195,37 +204,40 @@ import {
   pxRect,
   rectOf,
   removeFurniture,
+  sectionIsEmpty,
   shelfSlots,
+  shiftLayout,
 } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
 
-describe('GRIDS', () => {
-  it('décrit les deux orientations', () => {
-    expect(GRIDS.landscape).toMatchObject({ cols: 24, rows: 12, wallRows: 9, width: 720, height: 340 });
-    expect(GRIDS.portrait).toMatchObject({ cols: 14, rows: 20, wallRows: 15, width: 420, height: 600 });
+describe('constantes', () => {
+  it('décrit la pièce et les fenêtres visibles', () => {
+    expect([ROWS, WALL_ROWS, SECTION, MIN_COLS, MAX_COLS]).toEqual([12, 9, 12, 24, 96]);
+    expect(VISIBLE_COLS).toEqual({ landscape: 24, portrait: 14 });
   });
 });
 
 describe('canPlace', () => {
   it('accepte un meuble dont le bas est au sol', () => {
-    expect(canPlace([], 'landscape', 'shelf', 0, 4).ok).toBe(true);
+    expect(canPlace([], 24, 'shelf', 0, 4).ok).toBe(true);
   });
 
   it('refuse un meuble dont le bas est sur le mur', () => {
-    const res = canPlace([], 'landscape', 'shelf', 0, 0);
+    const res = canPlace([], 24, 'shelf', 0, 0);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('floor');
   });
 
-  it('refuse un meuble qui dépasse de la grille', () => {
-    const res = canPlace([], 'landscape', 'shelf', 20, 4);
+  it('refuse un meuble qui dépasse de la pièce, selon sa largeur', () => {
+    const res = canPlace([], 24, 'shelf', 20, 4);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('bounds');
+    expect(canPlace([], 36, 'shelf', 20, 4).ok).toBe(true);
   });
 
   it('refuse un chevauchement et donne les cases en conflit', () => {
     const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 4 }];
-    const res = canPlace(layout, 'landscape', 'desk', 3, 8);
+    const res = canPlace(layout, 24, 'desk', 3, 8);
     expect(res.ok).toBe(false);
     if (!res.ok) {
       expect(res.reason).toBe('taken');
@@ -235,30 +247,25 @@ describe('canPlace', () => {
 
   it('ignore le meuble déplacé', () => {
     const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 4 }];
-    expect(canPlace(layout, 'landscape', 'shelf', 1, 4, 'f1').ok).toBe(true);
-  });
-
-  it('applique la grille portrait', () => {
-    expect(canPlace([], 'portrait', 'shelf', 0, 12).ok).toBe(true);
-    expect(canPlace([], 'portrait', 'shelf', 0, 5).ok).toBe(false);
+    expect(canPlace(layout, 24, 'shelf', 1, 4, 'f1').ok).toBe(true);
   });
 });
 
 describe('pose, déplacement, retrait', () => {
   it('pose puis déplace un meuble', () => {
-    const placed = placeStanding([], 'landscape', 'desk', 2, 8, 'f1');
+    const placed = placeStanding([], 24, 'desk', 2, 8, 'f1');
     expect(placed).toEqual([{ id: 'f1', kind: 'desk', col: 2, row: 8 }]);
-    const moved = moveStanding(placed!, 'landscape', 'f1', 10, 8);
+    const moved = moveStanding(placed!, 24, 'f1', 10, 8);
     expect(moved).toEqual([{ id: 'f1', kind: 'desk', col: 10, row: 8 }]);
   });
 
   it('refuse un déplacement invalide', () => {
-    const layout = placeStanding([], 'landscape', 'desk', 2, 8, 'f1')!;
-    expect(moveStanding(layout, 'landscape', 'f1', 2, 2)).toBeNull();
+    const layout = placeStanding([], 24, 'desk', 2, 8, 'f1')!;
+    expect(moveStanding(layout, 24, 'f1', 2, 2)).toBeNull();
   });
 
   it('ne pose un ordinateur que sur un bureau libre', () => {
-    const layout = placeStanding([], 'landscape', 'desk', 2, 8, 'f1')!;
+    const layout = placeStanding([], 24, 'desk', 2, 8, 'f1')!;
     expect(canPlaceComputer(layout, 'inconnu')).toBe(false);
     const withPc = placeComputer(layout, 'f1', 'f2')!;
     expect(withPc).toHaveLength(2);
@@ -267,22 +274,46 @@ describe('pose, déplacement, retrait', () => {
   });
 
   it("ne pose pas un ordinateur sur une étagère", () => {
-    const layout = placeStanding([], 'landscape', 'shelf', 2, 6, 'f1')!;
+    const layout = placeStanding([], 24, 'shelf', 2, 6, 'f1')!;
     expect(canPlaceComputer(layout, 'f1')).toBe(false);
   });
 
   it('déplace un ordinateur vers un autre bureau', () => {
-    let layout = placeStanding([], 'landscape', 'desk', 0, 8, 'f1')!;
-    layout = placeStanding(layout, 'landscape', 'desk', 10, 8, 'f2')!;
+    let layout = placeStanding([], 24, 'desk', 0, 8, 'f1')!;
+    layout = placeStanding(layout, 24, 'desk', 10, 8, 'f2')!;
     layout = placeComputer(layout, 'f1', 'f3')!;
     const moved = moveComputer(layout, 'f3', 'f2');
     expect(moved?.find((p) => p.id === 'f3')).toEqual({ id: 'f3', kind: 'computer', deskId: 'f2' });
   });
 
   it("retire un bureau avec l'ordinateur qui y est posé", () => {
-    let layout = placeStanding([], 'landscape', 'desk', 0, 8, 'f1')!;
+    let layout = placeStanding([], 24, 'desk', 0, 8, 'f1')!;
     layout = placeComputer(layout, 'f1', 'f2')!;
     expect(removeFurniture(layout, 'f1')).toEqual([]);
+  });
+});
+
+describe('décalage et zones de bord', () => {
+  it("décale les meubles au sol et laisse l'ordinateur suivre son bureau", () => {
+    let layout = placeStanding([], 24, 'desk', 2, 8, 'f1')!;
+    layout = placeComputer(layout, 'f1', 'f2')!;
+    expect(shiftLayout(layout, 12)).toEqual([
+      { id: 'f1', kind: 'desk', col: 14, row: 8 },
+      { id: 'f2', kind: 'computer', deskId: 'f1' },
+    ]);
+  });
+
+  it('dit si la zone du bord est vide', () => {
+    const layout = placeStanding([], 24, 'desk', 2, 8, 'f1')!;
+    expect(sectionIsEmpty(layout, 24, 'left')).toBe(false);
+    expect(sectionIsEmpty(layout, 24, 'right')).toBe(true);
+    const both = placeStanding(layout, 24, 'shelf', 18, 6, 'f2')!;
+    expect(sectionIsEmpty(both, 24, 'right')).toBe(false);
+  });
+
+  it('compte un meuble à cheval sur la frontière comme occupant la zone', () => {
+    const layout = placeStanding([], 36, 'desk', 10, 8, 'f1')!;
+    expect(sectionIsEmpty(layout, 36, 'left')).toBe(false);
   });
 });
 
@@ -290,11 +321,11 @@ describe('rectangles en pixels', () => {
   it('convertit un meuble en pixels', () => {
     const rect = rectOf({ id: 'f1', kind: 'desk', col: 2, row: 8 })!;
     expect(rect).toEqual({ col: 2, row: 8, w: 5, h: 4 });
-    expect(pxRect('landscape', rect)).toMatchObject({ x: 60, w: 150 });
+    expect(pxRect(rect)).toMatchObject({ x: 60, w: 150 });
   });
 
   it("pose l'ordinateur sur le dessus du bureau", () => {
-    const desk = pxRect('landscape', { col: 0, row: 8, w: 5, h: 4 });
+    const desk = pxRect({ col: 0, row: 8, w: 5, h: 4 });
     const pc = computerRect(desk);
     expect(pc.y + pc.h).toBeLessThanOrEqual(desk.y + 4);
     expect(pc.x).toBeGreaterThanOrEqual(desk.x);
@@ -302,7 +333,7 @@ describe('rectangles en pixels', () => {
   });
 
   it("donne 15 emplacements dans l'étagère", () => {
-    const shelf = pxRect('landscape', { col: 0, row: 4, w: 6, h: 8 });
+    const shelf = pxRect({ col: 0, row: 4, w: 6, h: 8 });
     const slots = shelfSlots(shelf);
     expect(slots).toHaveLength(15);
     for (const s of slots) {
@@ -328,21 +359,18 @@ Expected: FAIL (module `room-grid` introuvable).
 import { sizeOf } from './furniture-catalog';
 import type { Layout, Orientation, Placed, StandingKind } from './library-types';
 
-export type GridSpec = {
-  cols: number;
-  rows: number;
-  // Les lignes 0 à wallRows - 1 sont le mur, les suivantes le sol.
-  wallRows: number;
-  width: number;
-  height: number;
-  cellW: number;
-  cellH: number;
-};
-
-export const GRIDS: Record<Orientation, GridSpec> = {
-  landscape: { cols: 24, rows: 12, wallRows: 9, width: 720, height: 340, cellW: 30, cellH: 340 / 12 },
-  portrait: { cols: 14, rows: 20, wallRows: 15, width: 420, height: 600, cellW: 30, cellH: 30 },
-};
+export const ROWS = 12;
+// Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
+export const WALL_ROWS = 9;
+export const CELL_W = 30;
+export const HEIGHT = 340;
+export const CELL_H = HEIGHT / ROWS;
+// La pièce grandit et rétrécit par zones de 12 colonnes, de 24 à 96 colonnes.
+export const SECTION = 12;
+export const MIN_COLS = 24;
+export const MAX_COLS = 96;
+// Colonnes visibles d'un coup : l'orientation règle seulement cette fenêtre, le reste se fait défiler.
+export const VISIBLE_COLS: Record<Orientation, number> = { landscape: 24, portrait: 14 };
 
 export type Cell = { col: number; row: number };
 export type Rect = { col: number; row: number; w: number; h: number };
@@ -370,15 +398,12 @@ function cellsOf(rect: Rect): Cell[] {
   return cells;
 }
 
-const inGrid = (g: { cols: number; rows: number }, c: Cell): boolean => c.col >= 0 && c.row >= 0 && c.col < g.cols && c.row < g.rows;
-
-export function canPlace(layout: Layout, orientation: Orientation, kind: StandingKind, col: number, row: number, ignoreId?: string): PlaceResult {
-  const g = GRIDS[orientation];
+export function canPlace(layout: Layout, cols: number, kind: StandingKind, col: number, row: number, ignoreId?: string): PlaceResult {
   const { w, h } = sizeOf(kind);
-  const rect: Rect = { col, row, w, h };
-  const cells = cellsOf(rect);
-  if (cells.some((c) => !inGrid(g, c))) return { ok: false, reason: 'bounds', cells: cells.filter((c) => inGrid(g, c)) };
-  if (row + h - 1 < g.wallRows) return { ok: false, reason: 'floor', cells: cells.filter((c) => c.row === row + h - 1) };
+  const cells = cellsOf({ col, row, w, h });
+  const inRoom = (c: Cell): boolean => c.col >= 0 && c.row >= 0 && c.col < cols && c.row < ROWS;
+  if (cells.some((c) => !inRoom(c))) return { ok: false, reason: 'bounds', cells: cells.filter(inRoom) };
+  if (row + h - 1 < WALL_ROWS) return { ok: false, reason: 'floor', cells: cells.filter((c) => c.row === row + h - 1) };
   const taken = new Set<string>();
   for (const other of layout) {
     if (other.id === ignoreId) continue;
@@ -390,15 +415,15 @@ export function canPlace(layout: Layout, orientation: Orientation, kind: Standin
   return clash.length > 0 ? { ok: false, reason: 'taken', cells: clash } : { ok: true };
 }
 
-export function placeStanding(layout: Layout, orientation: Orientation, kind: StandingKind, col: number, row: number, id: string): Layout | null {
-  if (!canPlace(layout, orientation, kind, col, row).ok) return null;
+export function placeStanding(layout: Layout, cols: number, kind: StandingKind, col: number, row: number, id: string): Layout | null {
+  if (!canPlace(layout, cols, kind, col, row).ok) return null;
   return [...layout, { id, kind, col, row }];
 }
 
-export function moveStanding(layout: Layout, orientation: Orientation, id: string, col: number, row: number): Layout | null {
+export function moveStanding(layout: Layout, cols: number, id: string, col: number, row: number): Layout | null {
   const item = layout.find((p) => p.id === id);
   if (!item || !isStanding(item)) return null;
-  if (!canPlace(layout, orientation, item.kind, col, row, id).ok) return null;
+  if (!canPlace(layout, cols, item.kind, col, row, id).ok) return null;
   return layout.map((p) => (p.id === id ? { id, kind: item.kind, col, row } : p));
 }
 
@@ -425,9 +450,22 @@ export function removeFurniture(layout: Layout, id: string): Layout {
   return layout.filter((p) => p.id !== id && !(p.kind === 'computer' && p.deskId === id));
 }
 
-export function pxRect(orientation: Orientation, rect: Rect): PxRect {
-  const g = GRIDS[orientation];
-  return { x: rect.col * g.cellW, y: rect.row * g.cellH, w: rect.w * g.cellW, h: rect.h * g.cellH };
+// Ajouter une zone à gauche décale les colonnes de tous les meubles ; l'ordinateur suit son bureau.
+export function shiftLayout(layout: Layout, delta: number): Layout {
+  return layout.map((p) => (isStanding(p) ? { id: p.id, kind: p.kind, col: p.col + delta, row: p.row } : p));
+}
+
+// La zone de 12 colonnes au bord est vide quand aucun meuble ne la touche (même à cheval sur sa frontière).
+export function sectionIsEmpty(layout: Layout, cols: number, side: 'left' | 'right'): boolean {
+  return layout.every((p) => {
+    const rect = rectOf(p);
+    if (!rect) return true;
+    return side === 'left' ? rect.col >= SECTION : rect.col + rect.w <= cols - SECTION;
+  });
+}
+
+export function pxRect(rect: Rect): PxRect {
+  return { x: rect.col * CELL_W, y: rect.row * CELL_H, w: rect.w * CELL_W, h: rect.h * CELL_H };
 }
 
 const COMPUTER_W = 84;
@@ -478,13 +516,14 @@ git commit -m "feat(bibliotheque): types, catalogue, styles et règles de la gri
 - Test: `tests/core/library/library-book.test.ts`
 
 **Interfaces:**
-- Consumes: `Room`, `LibraryState`, `Layout`, `Orientation`, `StyleId`, `STYLE_IDS` (Task 1).
+- Consumes: `Room`, `LibraryState`, `Layout`, `Orientation`, `STYLE_IDS` (Task 1) ; `MIN_COLS`, `MAX_COLS`, `SECTION`, `shiftLayout`, `sectionIsEmpty` (Task 1, `room-grid`).
 - Produces :
   - `MAX_ROOMS = 12`, `MAX_NAME = 30`
   - `createInitialState(): LibraryState`
   - `activeRoom(state): Room`
-  - `addRoom(state): LibraryState`, `renameRoom(state, id, name)`, `deleteRoom(state, id)`, `setActive(state, id)`, `setHome(state, id | null)`, `setOrientation(state, id, o)`
-  - `updateLayout(state, roomId, change: (layout: Layout, o: Orientation) => Layout | null): LibraryState`
+  - `addRoom(state)`, `renameRoom(state, id, name)`, `deleteRoom(state, id)`, `setActive(state, id)`, `setHome(state, id | null)`, `setOrientation(state, id, o)`
+  - `extendRoom(state, id, side: 'left' | 'right')`, `shrinkRoom(state, id, side)`
+  - `updateLayout(state, roomId, change: (layout: Layout, cols: number) => Layout | null): LibraryState`
   - `nextFurnitureId(layout): string`
   - `parseLibraryState(raw: unknown): LibraryState`
 
@@ -500,20 +539,22 @@ import {
   addRoom,
   createInitialState,
   deleteRoom,
+  extendRoom,
   nextFurnitureId,
   parseLibraryState,
   renameRoom,
   setActive,
   setHome,
   setOrientation,
+  shrinkRoom,
   updateLayout,
 } from '../../../src/core/library/library-book';
 
 describe('état initial', () => {
-  it('a une pièce horizontale vide', () => {
+  it('a une pièce horizontale vide de 24 colonnes', () => {
     const state = createInitialState();
     expect(state.rooms).toHaveLength(1);
-    expect(activeRoom(state)).toMatchObject({ name: 'Pièce 1', orientation: 'landscape', style: 'scandinave' });
+    expect(activeRoom(state)).toMatchObject({ name: 'Pièce 1', orientation: 'landscape', style: 'scandinave', cols: 24, layout: [] });
     expect(state.homeRoomId).toBeNull();
   });
 });
@@ -525,6 +566,7 @@ describe('pièces', () => {
     expect(state.rooms).toHaveLength(2);
     expect(state.activeRoomId).toBe('r2');
     expect(activeRoom(state).orientation).toBe('portrait');
+    expect(activeRoom(state).cols).toBe(24);
   });
 
   it('limite à 12 pièces', () => {
@@ -550,11 +592,11 @@ describe('pièces', () => {
   });
 
   it('vide la dernière pièce au lieu de la supprimer', () => {
-    let state = createInitialState();
+    let state = extendRoom(createInitialState(), 'r1', 'right');
     state = updateLayout(state, 'r1', () => [{ id: 'f1', kind: 'desk', col: 0, row: 8 }]);
     state = deleteRoom(state, 'r1');
     expect(state.rooms).toHaveLength(1);
-    expect(activeRoom(state).layouts.landscape).toEqual([]);
+    expect(activeRoom(state)).toMatchObject({ layout: [], cols: 24 });
   });
 
   it("n'accepte comme pièce d'accueil qu'une pièce qui existe", () => {
@@ -570,17 +612,63 @@ describe('pièces', () => {
   });
 });
 
-describe('aménagements par orientation', () => {
-  it('garde un aménagement par orientation', () => {
-    let state = updateLayout(createInitialState(), 'r1', () => [{ id: 'f1', kind: 'desk', col: 0, row: 8 }]);
-    state = setOrientation(state, 'r1', 'portrait');
-    expect(activeRoom(state).layouts.portrait).toEqual([]);
-    state = setOrientation(state, 'r1', 'landscape');
-    expect(activeRoom(state).layouts.landscape).toHaveLength(1);
+describe('agrandir et réduire', () => {
+  it('ajoute une zone à droite sans toucher aux meubles', () => {
+    let state = updateLayout(createInitialState(), 'r1', () => [{ id: 'f1', kind: 'desk', col: 2, row: 8 }]);
+    state = extendRoom(state, 'r1', 'right');
+    expect(activeRoom(state).cols).toBe(36);
+    expect(activeRoom(state).layout).toEqual([{ id: 'f1', kind: 'desk', col: 2, row: 8 }]);
   });
 
-  it('ignore un changement refusé (null)', () => {
+  it('ajoute une zone à gauche en décalant les meubles de 12 colonnes', () => {
+    let state = updateLayout(createInitialState(), 'r1', () => [{ id: 'f1', kind: 'desk', col: 2, row: 8 }]);
+    state = extendRoom(state, 'r1', 'left');
+    expect(activeRoom(state).cols).toBe(36);
+    expect(activeRoom(state).layout).toEqual([{ id: 'f1', kind: 'desk', col: 14, row: 8 }]);
+  });
+
+  it('ne dépasse pas 96 colonnes', () => {
+    let state = createInitialState();
+    for (let i = 0; i < 12; i++) state = extendRoom(state, 'r1', 'right');
+    expect(activeRoom(state).cols).toBe(96);
+  });
+
+  it('réduit une zone vide, à droite comme à gauche', () => {
+    let state = extendRoom(createInitialState(), 'r1', 'right');
+    state = shrinkRoom(state, 'r1', 'right');
+    expect(activeRoom(state).cols).toBe(24);
+
+    state = updateLayout(extendRoom(createInitialState(), 'r1', 'left'), 'r1', () => [{ id: 'f1', kind: 'desk', col: 20, row: 8 }]);
+    state = shrinkRoom(state, 'r1', 'left');
+    expect(activeRoom(state)).toMatchObject({ cols: 24, layout: [{ id: 'f1', kind: 'desk', col: 8, row: 8 }] });
+  });
+
+  it('refuse de réduire une zone occupée ou sous 24 colonnes', () => {
+    const base = createInitialState();
+    expect(shrinkRoom(base, 'r1', 'right')).toBe(base);
+    let state = extendRoom(base, 'r1', 'right');
+    state = updateLayout(state, 'r1', () => [{ id: 'f1', kind: 'shelf', col: 30, row: 4 }]);
+    expect(shrinkRoom(state, 'r1', 'right')).toBe(state);
+  });
+});
+
+describe('aménagement unique', () => {
+  it("garde l'aménagement quand l'orientation change", () => {
+    let state = updateLayout(createInitialState(), 'r1', () => [{ id: 'f1', kind: 'desk', col: 0, row: 8 }]);
+    state = setOrientation(state, 'r1', 'portrait');
+    expect(activeRoom(state).layout).toHaveLength(1);
+    state = setOrientation(state, 'r1', 'landscape');
+    expect(activeRoom(state).layout).toHaveLength(1);
+  });
+
+  it('transmet la largeur au changement et ignore un refus (null)', () => {
     const state = createInitialState();
+    let seen = 0;
+    updateLayout(state, 'r1', (_layout, cols) => {
+      seen = cols;
+      return null;
+    });
+    expect(seen).toBe(24);
     expect(updateLayout(state, 'r1', () => null)).toBe(state);
   });
 
@@ -598,15 +686,19 @@ describe('parseLibraryState', () => {
   });
 
   it('relit un état valide', () => {
-    let state = addRoom(createInitialState());
+    let state = extendRoom(addRoom(createInitialState()), 'r2', 'left');
     state = setHome(state, 'r1');
-    const again = parseLibraryState(JSON.parse(JSON.stringify(state)));
-    expect(again).toEqual(state);
+    expect(parseLibraryState(JSON.parse(JSON.stringify(state)))).toEqual(state);
+  });
+
+  it('refuse une largeur qui n est pas un multiple de 12', () => {
+    const state = createInitialState();
+    const broken = { ...state, rooms: [{ ...state.rooms[0]!, cols: 30 }] };
+    expect(parseLibraryState(broken)).toEqual(createInitialState());
   });
 
   it("corrige une pièce active ou d'accueil inconnue", () => {
-    const state = createInitialState();
-    const broken = { ...state, activeRoomId: 'zzz', homeRoomId: 'yyy' };
+    const broken = { ...createInitialState(), activeRoomId: 'zzz', homeRoomId: 'yyy' };
     const fixed = parseLibraryState(broken);
     expect(fixed.activeRoomId).toBe('r1');
     expect(fixed.homeRoomId).toBeNull();
@@ -626,6 +718,7 @@ Expected: FAIL (module introuvable).
 ```ts
 import { z } from 'zod';
 import { STYLE_IDS, type Layout, type LibraryState, type Orientation, type Room } from './library-types';
+import { MAX_COLS, MIN_COLS, SECTION, sectionIsEmpty, shiftLayout } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
@@ -634,13 +727,13 @@ const placedSchema = z.union([
   z.object({ id: z.string(), kind: z.enum(['shelf', 'desk']), col: z.number().int(), row: z.number().int() }),
   z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string() }),
 ]);
-const layoutSchema = z.array(placedSchema);
 const roomSchema = z.object({
   id: z.string(),
   name: z.string(),
   style: z.enum(STYLE_IDS),
   orientation: z.enum(['landscape', 'portrait']),
-  layouts: z.object({ landscape: layoutSchema, portrait: layoutSchema }),
+  cols: z.number().int().min(MIN_COLS).max(MAX_COLS).refine((cols) => cols % SECTION === 0),
+  layout: z.array(placedSchema),
 });
 const stateSchema = z.object({
   version: z.literal(1),
@@ -660,7 +753,8 @@ const makeRoom = (id: string, name: string, orientation: Orientation, style: Roo
   name,
   style,
   orientation,
-  layouts: { landscape: [], portrait: [] },
+  cols: MIN_COLS,
+  layout: [],
 });
 
 export function createInitialState(): LibraryState {
@@ -684,6 +778,11 @@ export function parseLibraryState(raw: unknown): LibraryState {
   };
 }
 
+const mapRoom = (state: LibraryState, id: string, change: (room: Room) => Room): LibraryState => ({
+  ...state,
+  rooms: state.rooms.map((room) => (room.id === id ? change(room) : room)),
+});
+
 export function addRoom(state: LibraryState): LibraryState {
   if (state.rooms.length >= MAX_ROOMS) return state;
   const current = activeRoom(state);
@@ -695,14 +794,12 @@ export function addRoom(state: LibraryState): LibraryState {
 export function renameRoom(state: LibraryState, id: string, name: string): LibraryState {
   const clean = name.trim().slice(0, MAX_NAME);
   if (clean === '' || !state.rooms.some((room) => room.id === id)) return state;
-  return { ...state, rooms: state.rooms.map((room) => (room.id === id ? { ...room, name: clean } : room)) };
+  return mapRoom(state, id, (room) => ({ ...room, name: clean }));
 }
 
 export function deleteRoom(state: LibraryState, id: string): LibraryState {
   if (!state.rooms.some((room) => room.id === id)) return state;
-  if (state.rooms.length === 1) {
-    return { ...state, rooms: state.rooms.map((room) => ({ ...room, layouts: { landscape: [], portrait: [] } })) };
-  }
+  if (state.rooms.length === 1) return mapRoom(state, id, (room) => ({ ...room, cols: MIN_COLS, layout: [] }));
   const index = state.rooms.findIndex((room) => room.id === id);
   const rooms = state.rooms.filter((room) => room.id !== id);
   const activeRoomId = state.activeRoomId === id ? rooms[Math.min(index, rooms.length - 1)]!.id : state.activeRoomId;
@@ -720,19 +817,30 @@ export function setHome(state: LibraryState, id: string | null): LibraryState {
 }
 
 export function setOrientation(state: LibraryState, id: string, orientation: Orientation): LibraryState {
-  return { ...state, rooms: state.rooms.map((room) => (room.id === id ? { ...room, orientation } : room)) };
+  return mapRoom(state, id, (room) => ({ ...room, orientation }));
 }
 
-// Applique un changement à l'aménagement de l'orientation courante de la pièce ; `null` = changement refusé, rien ne bouge.
-export function updateLayout(state: LibraryState, roomId: string, change: (layout: Layout, orientation: Orientation) => Layout | null): LibraryState {
+// Une zone de 12 colonnes de plus ; à gauche, les meubles se décalent pour rester où ils sont dans la pièce.
+export function extendRoom(state: LibraryState, id: string, side: 'left' | 'right'): LibraryState {
+  const room = state.rooms.find((candidate) => candidate.id === id);
+  if (!room || room.cols + SECTION > MAX_COLS) return state;
+  return mapRoom(state, id, (r) => ({ ...r, cols: r.cols + SECTION, layout: side === 'left' ? shiftLayout(r.layout, SECTION) : r.layout }));
+}
+
+// Retire la zone du bord si elle est entièrement vide et si la pièce reste d'au moins 24 colonnes.
+export function shrinkRoom(state: LibraryState, id: string, side: 'left' | 'right'): LibraryState {
+  const room = state.rooms.find((candidate) => candidate.id === id);
+  if (!room || room.cols - SECTION < MIN_COLS || !sectionIsEmpty(room.layout, room.cols, side)) return state;
+  return mapRoom(state, id, (r) => ({ ...r, cols: r.cols - SECTION, layout: side === 'left' ? shiftLayout(r.layout, -SECTION) : r.layout }));
+}
+
+// Applique un changement à l'aménagement de la pièce ; `null` = changement refusé, rien ne bouge.
+export function updateLayout(state: LibraryState, roomId: string, change: (layout: Layout, cols: number) => Layout | null): LibraryState {
   const room = state.rooms.find((candidate) => candidate.id === roomId);
   if (!room) return state;
-  const next = change(room.layouts[room.orientation], room.orientation);
+  const next = change(room.layout, room.cols);
   if (next === null) return state;
-  const rooms = state.rooms.map((candidate) =>
-    candidate.id === roomId ? { ...candidate, layouts: { ...candidate.layouts, [room.orientation]: next } } : candidate,
-  );
-  return { ...state, rooms };
+  return mapRoom(state, roomId, (r) => ({ ...r, layout: next }));
 }
 
 export function nextFurnitureId(layout: Layout): string {
@@ -750,7 +858,7 @@ Expected: PASS.
 ```bash
 npm run typecheck
 git add src/core/library/library-book.ts tests/core/library/library-book.test.ts
-git commit -m "feat(bibliotheque): état des pièces (création, accueil, orientation, lecture sûre)"
+git commit -m "feat(bibliotheque): état des pièces (création, accueil, orientation, agrandir et réduire, lecture sûre)"
 ```
 
 ---
@@ -1001,10 +1109,11 @@ git commit -m "feat(bibliotheque): vue library et bouton dans le sélecteur de v
 - Create: `src/content/RoomView.tsx`
 
 **Interfaces:**
-- Consumes: `Room`, `Placed`, `paletteOf`, `GRIDS`, `pxRect`, `rectOf`, `computerRect`, `shelfSlots`, `Cell`, `PxRect`.
+- Consumes: `Room`, `Placed`, `paletteOf`, `CELL_W`, `CELL_H`, `HEIGHT`, `ROWS`, `WALL_ROWS`, `VISIBLE_COLS`, `pxRect`, `rectOf`, `computerRect`, `shelfSlots`, `Cell`, `PxRect`.
 - Produces:
   - `export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | null` (dans `RoomView.tsx`)
   - `RoomView` props : `{ room: Room; editing: boolean; cellsActive: boolean; selectedId: string | null; blink: Cell[]; onCell: (col: number, row: number) => void; onPick: (id: string) => void }`
+  - Le SVG dessine toute la pièce (`cols × 30` de large, 340 de haut) ; sa largeur CSS vaut `cols / colonnes visibles` fois celle du conteneur, ce qui fait apparaître la fenêtre voulue (24 ou 14 colonnes). Le conteneur qui défile est fourni par `LibraryPanel` (Task 6).
   - Attributs de test : `[data-cell="col-row"]`, `[data-furniture="shelf|desk|computer"]` (avec `data-id`).
 
 Ce composant n'a pas de test unitaire propre : il est exercé par les tests de `LibraryPanel` (Task 6).
@@ -1071,8 +1180,9 @@ export function ComputerArt({ rect }: { rect: PxRect }) {
 `src/content/RoomView.tsx` :
 
 ```tsx
+import type { ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
-import { GRIDS, computerRect, pxRect, rectOf, type Cell, type PxRect } from '../core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, computerRect, pxRect, rectOf, type Cell, type PxRect } from '../core/library/room-grid';
 import { paletteOf } from '../core/library/styles';
 import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 
@@ -1090,24 +1200,23 @@ type Props = {
 };
 
 export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick }: Props) {
-  const grid = GRIDS[room.orientation];
   const palette = paletteOf(room.style);
-  const layout = room.layouts[room.orientation];
-  const wallH = grid.wallRows * grid.cellH;
+  const width = room.cols * CELL_W;
+  const wallH = WALL_ROWS * CELL_H;
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
 
   const deskRects = new Map<string, PxRect>();
-  for (const placed of layout) {
+  for (const placed of room.layout) {
     const rect = rectOf(placed);
-    if (rect && placed.kind === 'desk') deskRects.set(placed.id, pxRect(room.orientation, rect));
+    if (rect && placed.kind === 'desk') deskRects.set(placed.id, pxRect(rect));
   }
   const outline = (rect: PxRect) => (
     <rect x={rect.x - 3} y={rect.y - 3} width={rect.w + 6} height={rect.h + 6} rx={6} fill="none" stroke="#378ADD" strokeWidth={2.5} strokeDasharray="6 4" />
   );
 
-  function renderPlaced(placed: Placed) {
-    let rect: PxRect | undefined;
-    let art = null;
+  function renderPlaced(placed: Placed): ReactElement | null {
+    let rect: PxRect;
+    let art: ReactElement;
     if (placed.kind === 'computer') {
       const desk = deskRects.get(placed.deskId);
       if (!desk) return null;
@@ -1116,7 +1225,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     } else {
       const cells = rectOf(placed);
       if (!cells) return null;
-      rect = pxRect(room.orientation, cells);
+      rect = pxRect(cells);
       art = placed.kind === 'shelf' ? <ShelfArt rect={rect} palette={palette} showSlots={editing} /> : <DeskArt rect={rect} palette={palette} />;
     }
     return (
@@ -1135,21 +1244,21 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   }
 
   // Les ordinateurs se dessinent après les bureaux, pour rester dessus.
-  const ordered = [...layout.filter((p) => p.kind !== 'computer'), ...layout.filter((p) => p.kind === 'computer')];
+  const ordered = [...room.layout.filter((p) => p.kind !== 'computer'), ...room.layout.filter((p) => p.kind === 'computer')];
 
-  const cells: JSX.Element[] = [];
+  const cells: ReactElement[] = [];
   if (editing) {
-    for (let row = 0; row < grid.rows; row++) {
-      for (let col = 0; col < grid.cols; col++) {
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < room.cols; col++) {
         const key = `${col}-${row}`;
         cells.push(
           <rect
             key={key}
             data-cell={key}
-            x={col * grid.cellW}
-            y={row * grid.cellH}
-            width={grid.cellW}
-            height={grid.cellH}
+            x={col * CELL_W}
+            y={row * CELL_H}
+            width={CELL_W}
+            height={CELL_H}
             fill={blinking.has(key) ? '#E24B4A' : 'transparent'}
             fillOpacity={blinking.has(key) ? 0.45 : 1}
             stroke={palette.text}
@@ -1165,14 +1274,14 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
 
   return (
     <svg
-      viewBox={`0 0 ${grid.width} ${grid.height}`}
+      viewBox={`0 0 ${width} ${HEIGHT}`}
       role="img"
       aria-label={room.name}
-      style={{ aspectRatio: `${grid.width} / ${grid.height}`, width: '100%', maxHeight: '75vh', display: 'block' }}
+      style={{ aspectRatio: `${width} / ${HEIGHT}`, width: `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block' }}
     >
-      <rect width={grid.width} height={grid.height} fill={palette.wall} />
-      <rect y={wallH} width={grid.width} height={grid.height - wallH} fill={palette.floor} />
-      <rect y={wallH - 4} width={grid.width} height={5} fill={palette.skirt} opacity={0.6} />
+      <rect width={width} height={HEIGHT} fill={palette.wall} />
+      <rect y={wallH} width={width} height={HEIGHT - wallH} fill={palette.floor} />
+      <rect y={wallH - 4} width={width} height={5} fill={palette.skirt} opacity={0.6} />
       {ordered.map(renderPlaced)}
       {cells}
     </svg>
@@ -1183,7 +1292,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
 - [ ] **Step 3: Typecheck**
 
 Run: `npm run typecheck`
-Expected: aucune erreur. (Si `JSX.Element` n'est pas résolu avec React 19, importer `type ReactElement` de `react` et l'utiliser à la place.)
+Expected: aucune erreur.
 
 - [ ] **Step 4: Commit**
 
@@ -1203,7 +1312,7 @@ git commit -m "feat(bibliotheque): dessin SVG de la pièce et des meubles"
 **Interfaces:**
 - Consumes: `LibraryRepo`, toutes les fonctions de `library-book` et `room-grid`, `RoomView`, `Tool`.
 - Produces: `LibraryPanel({ library }: { library: LibraryRepo })`, `LIBRARY_CSS: string`.
-- Attributs de test : `[data-wmt-library]`, `[data-room="rN"]`, `[data-action="add-room|visit|edit|home|delete-room|remove|move"]`, `[data-orient="landscape|portrait"]`, `[data-kind="shelf|desk|computer"]`, `[role="status"]`.
+- Attributs de test : `[data-wmt-library]`, `[data-room="rN"]`, `[data-action="add-room|visit|edit|home|delete-room|remove|move|extend-left|extend-right|shrink-left|shrink-right"]`, `[data-orient="landscape|portrait"]`, `[data-kind="shelf|desk|computer"]`, `[role="status"]`, `[data-scroll]` (conteneur qui défile).
 
 - [ ] **Step 1: Écrire le test (échoue)**
 
@@ -1214,7 +1323,7 @@ git commit -m "feat(bibliotheque): dessin SVG de la pièce et des meubles"
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createMemoryStore } from '../../src/core/cache/store';
+import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 
@@ -1222,6 +1331,7 @@ import { LibraryPanel } from '../../src/content/LibraryPanel';
 
 let container: HTMLDivElement;
 let root: Root;
+let store: KeyValueStore;
 let repo: LibraryRepo;
 
 const settle = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
@@ -1237,7 +1347,8 @@ beforeEach(async () => {
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
-  repo = createLibraryRepo(createMemoryStore());
+  store = createMemoryStore();
+  repo = createLibraryRepo(store);
   await act(async () => { root.render(<LibraryPanel library={repo} />); });
   await settle();
 });
@@ -1291,15 +1402,47 @@ describe('LibraryPanel', () => {
     expect(q('[role="status"]')?.textContent).toContain('déjà');
   });
 
-  it("garde un aménagement par orientation", async () => {
+  it("garde le même aménagement dans les deux orientations, avec une fenêtre différente", async () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-11"]');
-    expect(q('[data-furniture="desk"]')).not.toBeNull();
+    const width = () => (q('svg[role="img"]') as unknown as SVGElement).style.width;
+    expect(width()).toBe('100%');
     await click('[data-orient="portrait"]');
-    expect(q('[data-furniture="desk"]')).toBeNull();
+    expect(q('[data-furniture="desk"]')).not.toBeNull();
+    expect(width().startsWith('171.4')).toBe(true);
     await click('[data-orient="landscape"]');
     expect(q('[data-furniture="desk"]')).not.toBeNull();
+    expect(width()).toBe('100%');
+  });
+
+  it('agrandit la pièce à droite, puis la réduit', async () => {
+    await click('[data-action="edit"]');
+    expect(q('[data-cell="30-10"]')).toBeNull();
+    await click('[data-action="extend-right"]');
+    expect(q('[data-cell="30-10"]')).not.toBeNull();
+    await click('[data-action="shrink-right"]');
+    expect(q('[data-cell="30-10"]')).toBeNull();
+  });
+
+  it('agrandit la pièce à gauche en décalant les meubles', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-kind="desk"]');
+    await click('[data-cell="2-11"]');
+    await click('[data-action="extend-left"]');
+    expect(repo.current()?.rooms[0]?.layout[0]).toMatchObject({ kind: 'desk', col: 14 });
+  });
+
+  it('refuse de réduire sous 24 colonnes ou une zone occupée, et le dit', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-action="shrink-right"]');
+    expect(q('[role="status"]')?.textContent).toContain('24');
+    await click('[data-action="extend-right"]');
+    await click('[data-kind="shelf"]');
+    await click('[data-cell="30-10"]');
+    await click('[data-action="shrink-right"]');
+    expect(q('[role="status"]')?.textContent).toContain('meubles');
+    expect(repo.current()?.rooms[0]?.cols).toBe(36);
   });
 
   it("définit puis retire la pièce d'accueil", async () => {
@@ -1310,11 +1453,12 @@ describe('LibraryPanel', () => {
     expect(repo.current()?.homeRoomId).toBeNull();
   });
 
-  it('mémorise la pièce et la relit au remontage', async () => {
+  it('mémorise les pièces et les relit au remontage', async () => {
     await click('[data-action="add-room"]');
-    await act(async () => { root.render(<LibraryPanel library={createLibraryRepo(repo ? createMemoryStore() : createMemoryStore())} />); });
+    const again = createLibraryRepo(store);
+    await act(async () => { root.render(<LibraryPanel library={again} />); });
     await settle();
-    expect(q('[data-room="r1"]')).not.toBeNull();
+    expect(q('[data-room="r2"]')).not.toBeNull();
   });
 });
 ```
@@ -1334,17 +1478,23 @@ import {
   activeRoom,
   addRoom,
   deleteRoom,
+  extendRoom,
   nextFurnitureId,
   renameRoom,
   setActive,
   setHome,
   setOrientation,
+  shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
 import { FURNITURE_KINDS, labelOf, sizeOf } from '../core/library/furniture-catalog';
 import type { FurnitureKind, LibraryState, Orientation, StandingKind } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
+  MAX_COLS,
+  MIN_COLS,
+  SECTION,
+  VISIBLE_COLS,
   canPlace,
   canPlaceComputer,
   moveComputer,
@@ -1352,6 +1502,7 @@ import {
   placeComputer,
   placeStanding,
   removeFurniture,
+  sectionIsEmpty,
   type Cell,
 } from '../core/library/room-grid';
 import { RoomView, type Tool } from './RoomView';
@@ -1362,13 +1513,12 @@ export const LIBRARY_CSS = `
 .wmt-lib-btn{min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border-radius:999px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit;cursor:pointer}
 .wmt-lib-btn[aria-pressed="true"],.wmt-lib-btn[aria-selected="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
 .wmt-lib-name{min-height:40px;box-sizing:border-box;padding:0 10px;border-radius:8px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit}
-.wmt-lib-stage{display:flex;justify-content:center}
-.wmt-lib-stage svg{border-radius:12px}
+.wmt-lib-scroll{display:flex;overflow-x:auto;width:100%;margin:0 auto;border-radius:12px;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
 .wmt-lib-msg{min-height:20px;font-size:13px;opacity:.85}
 .wmt-lib-sep{flex:1}
 `;
 
-function Icon({ paths }: { paths: string[] }) {
+function Icon({ paths }: { paths: readonly string[] }) {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {paths.map((d) => (
@@ -1390,6 +1540,10 @@ const ICONS = {
   shelf: ['M5 3v18', 'M19 3v18', 'M5 8h14', 'M5 14h14'],
   desk: ['M3 8h18', 'M5 8v12', 'M19 8v12'],
   computer: ['M3 4h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M8 20h8', 'M12 16v4'],
+  extendLeft: ['M4 4v16', 'M9 12h10', 'M14 7v10'],
+  extendRight: ['M20 4v16', 'M5 12h10', 'M10 7v10'],
+  shrinkLeft: ['M4 4v16', 'M9 12h10'],
+  shrinkRight: ['M20 4v16', 'M5 12h10'],
 } as const;
 
 const KIND_ICON: Record<FurnitureKind, readonly string[]> = { shelf: ICONS.shelf, desk: ICONS.desk, computer: ICONS.computer };
@@ -1417,6 +1571,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
   const [blink, setBlink] = useState<Cell[]>([]);
   const [message, setMessage] = useState('');
   const blinkTimer = useRef<number | undefined>(undefined);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -1437,8 +1592,9 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
   const room = activeRoom(lib);
-  const layout = room.layouts[room.orientation];
+  const layout = room.layout;
   const editing = mode === 'edit';
+  const portrait = room.orientation === 'portrait';
   const editLayout = (change: Parameters<typeof updateLayout>[2]) => library.update((state) => updateLayout(state, room.id, change));
 
   const reset = (): void => {
@@ -1464,9 +1620,9 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
     if (!kind) return;
     // La case touchée est la case en bas à gauche du meuble.
     const top = row - sizeOf(kind).h + 1;
-    const check = canPlace(layout, room.orientation, kind, col, top, tool.type === 'move' ? tool.id : undefined);
+    const check = canPlace(layout, room.cols, kind, col, top, tool.type === 'move' ? tool.id : undefined);
     if (!check.ok) return refuse(REFUSALS[check.reason], check.cells);
-    await editLayout((l, o) => (tool.type === 'new' ? placeStanding(l, o, kind, col, top, nextFurnitureId(l)) : moveStanding(l, o, tool.id, col, top)));
+    await editLayout((l, cols) => (tool.type === 'new' ? placeStanding(l, cols, kind, col, top, nextFurnitureId(l)) : moveStanding(l, cols, tool.id, col, top)));
     reset();
   }
 
@@ -1508,6 +1664,23 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
     reset();
   };
 
+  // Agrandir à gauche décale les meubles : le défilement suit pour garder la même vue.
+  async function extend(side: 'left' | 'right'): Promise<void> {
+    if (room.cols + SECTION > MAX_COLS) return refuse('La pièce ne peut pas être plus large.');
+    setMessage('');
+    await library.update((state) => extendRoom(state, room.id, side));
+    const el = scrollRef.current;
+    if (side === 'left' && el) el.scrollLeft += (el.clientWidth * SECTION) / VISIBLE_COLS[room.orientation];
+  }
+  async function shrink(side: 'left' | 'right'): Promise<void> {
+    if (room.cols - SECTION < MIN_COLS) return refuse(`La pièce ne peut pas être plus étroite que ${MIN_COLS} colonnes.`);
+    if (!sectionIsEmpty(layout, room.cols, side)) return refuse('Retirez d’abord les meubles de cette zone.');
+    setMessage('');
+    const el = scrollRef.current;
+    await library.update((state) => shrinkRoom(state, room.id, side));
+    if (side === 'left' && el) el.scrollLeft = Math.max(0, el.scrollLeft - (el.clientWidth * SECTION) / VISIBLE_COLS[room.orientation]);
+  }
+
   const setMode2 = (next: 'visit' | 'edit'): void => {
     reset();
     setMode(next);
@@ -1540,27 +1713,27 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
             data-room={r.id}
             onClick={() => chooseRoom(r.id)}
           >
-            {r.id === lib.homeRoomId && <Icon paths={[...ICONS.star]} />}
+            {r.id === lib.homeRoomId && <Icon paths={ICONS.star} />}
             {r.name}
           </button>
         ))}
         <Btn label="Ajouter une pièce" data={{ action: 'add-room' }} onClick={() => { reset(); void library.update(addRoom); }}>
-          <Icon paths={[...ICONS.plus]} />
+          <Icon paths={ICONS.plus} />
         </Btn>
       </div>
 
       <div className="wmt-lib-row">
         <Btn label="Visiter" pressed={!editing} data={{ action: 'visit' }} onClick={() => setMode2('visit')}>
-          <Icon paths={[...ICONS.eye]} />
+          <Icon paths={ICONS.eye} />
         </Btn>
         <Btn label="Aménager" pressed={editing} data={{ action: 'edit' }} onClick={() => setMode2('edit')}>
-          <Icon paths={[...ICONS.pencil]} />
+          <Icon paths={ICONS.pencil} />
         </Btn>
         <Btn label="Pièce horizontale" pressed={room.orientation === 'landscape'} data={{ orient: 'landscape' }} onClick={() => chooseOrientation('landscape')}>
-          <Icon paths={[...ICONS.landscape]} />
+          <Icon paths={ICONS.landscape} />
         </Btn>
-        <Btn label="Pièce verticale" pressed={room.orientation === 'portrait'} data={{ orient: 'portrait' }} onClick={() => chooseOrientation('portrait')}>
-          <Icon paths={[...ICONS.portrait]} />
+        <Btn label="Pièce verticale" pressed={portrait} data={{ orient: 'portrait' }} onClick={() => chooseOrientation('portrait')}>
+          <Icon paths={ICONS.portrait} />
         </Btn>
         <Btn
           label="Pièce d’accueil : s’ouvre au lancement"
@@ -1568,7 +1741,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
           data={{ action: 'home' }}
           onClick={() => void library.update((state) => setHome(state, state.homeRoomId === room.id ? null : room.id))}
         >
-          <Icon paths={[...ICONS.star]} />
+          <Icon paths={ICONS.star} />
         </Btn>
         <span className="wmt-lib-sep" />
         {editing && (
@@ -1583,7 +1756,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
         )}
         {editing && (
           <Btn label={lib.rooms.length > 1 ? 'Supprimer la pièce' : 'Vider la pièce'} data={{ action: 'delete-room' }} onClick={onDeleteRoom}>
-            <Icon paths={[...ICONS.trash]} />
+            <Icon paths={ICONS.trash} />
           </Btn>
         )}
       </div>
@@ -1598,19 +1771,32 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
               data={{ kind }}
               onClick={() => startNew(kind)}
             >
-              <Icon paths={[...KIND_ICON[kind]]} />
+              <Icon paths={KIND_ICON[kind]} />
             </Btn>
           ))}
           {selectedId && (
             <>
               <Btn label="Déplacer" pressed={tool?.type === 'move'} data={{ action: 'move' }} onClick={startMove}>
-                <Icon paths={[...ICONS.move]} />
+                <Icon paths={ICONS.move} />
               </Btn>
               <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
-                <Icon paths={[...ICONS.trash]} />
+                <Icon paths={ICONS.trash} />
               </Btn>
             </>
           )}
+          <span className="wmt-lib-sep" />
+          <Btn label="Agrandir la pièce à gauche" data={{ action: 'extend-left' }} onClick={() => void extend('left')}>
+            <Icon paths={ICONS.extendLeft} />
+          </Btn>
+          <Btn label="Réduire la pièce à gauche" data={{ action: 'shrink-left' }} onClick={() => void shrink('left')}>
+            <Icon paths={ICONS.shrinkLeft} />
+          </Btn>
+          <Btn label="Réduire la pièce à droite" data={{ action: 'shrink-right' }} onClick={() => void shrink('right')}>
+            <Icon paths={ICONS.shrinkRight} />
+          </Btn>
+          <Btn label="Agrandir la pièce à droite" data={{ action: 'extend-right' }} onClick={() => void extend('right')}>
+            <Icon paths={ICONS.extendRight} />
+          </Btn>
         </div>
       )}
 
@@ -1618,7 +1804,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
         {message}
       </div>
 
-      <div className="wmt-lib-stage">
+      <div className="wmt-lib-scroll" data-scroll ref={scrollRef} style={{ maxWidth: portrait ? 480 : 960 }}>
         <RoomView
           room={room}
           editing={editing}
@@ -1634,35 +1820,17 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
 }
 ```
 
-- [ ] **Step 4: Corriger le dernier test du fichier de test**
-
-Le test « mémorise la pièce et la relit au remontage » écrit plus haut utilise un dépôt neuf sans rapport. Le remplacer par un vrai remontage sur le même stockage :
-
-```tsx
-  it('mémorise les pièces et les relit au remontage', async () => {
-    const store = createMemoryStore();
-    const first = createLibraryRepo(store);
-    await act(async () => { root.render(<LibraryPanel library={first} />); });
-    await settle();
-    await click('[data-action="add-room"]');
-    const second = createLibraryRepo(store);
-    await act(async () => { root.render(<LibraryPanel library={second} />); });
-    await settle();
-    expect(q('[data-room="r2"]')).not.toBeNull();
-  });
-```
-
-- [ ] **Step 5: Lancer, vérifier le succès**
+- [ ] **Step 4: Lancer, vérifier le succès**
 
 Run: `npx vitest run tests/content/library-panel.test.tsx`
 Expected: PASS. Si un test d'interaction échoue parce que `dispatchEvent` sur un élément SVG ne déclenche pas le gestionnaire React, vérifier que l'événement a `bubbles: true` (déjà le cas) et que le conteneur est bien rattaché à `document.body`.
 
-- [ ] **Step 6: Typecheck et commit**
+- [ ] **Step 5: Typecheck et commit**
 
 ```bash
 npm run typecheck
 git add src/content/LibraryPanel.tsx tests/content/library-panel.test.tsx
-git commit -m "feat(bibliotheque): panneau des pièces (modes, orientation, pose et retrait de meubles)"
+git commit -m "feat(bibliotheque): panneau des pièces (modes, orientation, agrandissement, pose et retrait de meubles)"
 ```
 
 ---
@@ -1881,9 +2049,21 @@ Dans `ENTRIES` de `src/core/whats-new/entries.ts`, avant le `];` final :
         text: 'Chaque pièce s’affiche en horizontal ou en vertical, selon votre choix : elle ne tourne pas quand vous tournez l’appareil.',
         gesture: 'tap',
         details: [
-          { label: 'À savoir', text: 'Une pièce garde deux aménagements indépendants, un par orientation : changer d’orientation affiche l’autre, vide au début, et rien n’est perdu en revenant.' },
+          { label: 'Ce que ça change', text: 'La pièce reste la même, avec les mêmes meubles. Seule la fenêtre change : large en horizontal, plus étroite et plus proche en vertical. Ce qui dépasse se découvre en faisant défiler la pièce vers la droite ou la gauche.' },
+          { label: 'À savoir', text: 'Passer de l’un à l’autre ne perd rien et ne déplace rien.' },
         ],
         scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="extend-right"]',
+        title: 'Agrandir la pièce',
+        text: 'En mode Aménager, les boutons aux extrémités de la barre ajoutent une zone vide à gauche ou à droite de la pièce, que vous remplissez ensuite de meubles. Les boutons moins retirent la zone du bord.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Chaque zone ajoute 12 colonnes. Une pièce fait de 24 à 96 colonnes. Ajouter à gauche décale vos meubles pour qu’ils restent à leur place dans la pièce.' },
+          { label: 'Limites', text: 'On ne retire une zone que si elle est entièrement vide : retirez d’abord ses meubles, ou déplacez-les.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library] [data-action="edit"]'] },
       },
       {
         target: '[data-wmt-library] [data-action="home"]',
@@ -1934,6 +2114,6 @@ Recharger l'extension dans Chrome, ouvrir la Collection, choisir le bouton livre
 
 ## Self-review
 
-- **Spec (morceau 1)** : vue et bouton (Task 4) ; pièces multiples, nom, suppression, vidage de la dernière, limite 12 (Tasks 2, 6) ; modes Visiter / Aménager (Task 6) ; catalogue étagère / bureau / ordinateur (Tasks 1, 5, 6) ; grille et règles de pose (Task 1) ; emplacements d'étagère définis et affichés en pointillés (Tasks 1, 5) ; orientation figée, deux aménagements, réduction sans pivot (Tasks 2, 5, 6) ; style Scandinave (Task 1) ; pièce d'accueil, une seule fois (Tasks 2, 6, 7) ; mémorisation et lecture sûre (Tasks 2, 3) ; fiche WikiHow (Task 8). La retenue « retrait d'un bureau retire l'ordinateur » est couverte (Task 1). La confirmation « si des cartes y sont posées » dépend du morceau 2 : non applicable ici.
+- **Spec (morceau 1)** : vue et bouton (Task 4) ; pièces multiples, nom, suppression, vidage de la dernière, limite 12 (Tasks 2, 6) ; modes Visiter / Aménager (Task 6) ; catalogue étagère / bureau / ordinateur (Tasks 1, 5, 6) ; grille et règles de pose (Task 1) ; emplacements d'étagère définis et affichés en pointillés (Tasks 1, 5) ; orientation figée, un seul aménagement, fenêtre visible 24 / 14 colonnes, pièce extensible par zones de 12 colonnes avec défilement (Tasks 1, 2, 5, 6) ; style Scandinave (Task 1) ; pièce d'accueil, une seule fois (Tasks 2, 6, 7) ; mémorisation et lecture sûre (Tasks 2, 3) ; fiche WikiHow (Task 8). La retenue « retrait d'un bureau retire l'ordinateur » est couverte (Task 1). La confirmation « si des cartes y sont posées » dépend du morceau 2 : non applicable ici.
 - **Écart connu avec la spec** : l'ordinateur n'a pas de case propre (il suit son bureau) ; la spec le prévoit sur « la case d'emplacement prévue ». Le comportement vu par le joueur est identique.
-- **Cohérence des noms** : `placeStanding`, `moveStanding`, `placeComputer`, `moveComputer`, `removeFurniture`, `canPlace`, `canPlaceComputer`, `nextFurnitureId`, `updateLayout`, `setHome`, `setActive`, `setOrientation`, `createLaunchGate` sont les mêmes dans les tâches qui les définissent et celles qui les utilisent.
+- **Cohérence des noms** : `placeStanding`, `moveStanding`, `placeComputer`, `moveComputer`, `removeFurniture`, `canPlace`, `canPlaceComputer`, `shiftLayout`, `sectionIsEmpty`, `extendRoom`, `shrinkRoom`, `nextFurnitureId`, `updateLayout`, `setHome`, `setActive`, `setOrientation`, `createLaunchGate` sont les mêmes dans les tâches qui les définissent et celles qui les utilisent.
