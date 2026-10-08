@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   activeRoom,
   createInitialState,
@@ -12,13 +12,14 @@ import {
   setActive,
   setHome,
   setOrientation,
+  setPetPlan,
   setRoomScene,
   setTimeSetting,
   shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
 import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
-import { SCENE_IDS, STYLE_IDS, type SceneId, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type StandingKind, type StyleId } from '../core/library/library-types';
+import { SCENE_IDS, STYLE_IDS, type SceneId, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
@@ -59,6 +60,7 @@ import {
 import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
+import { usePetSim } from './pet-sim';
 import { requestPosition } from './scene-position';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
 import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
@@ -318,6 +320,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       alive = false;
     };
   }, [timeMode]);
+
+  // Le chat : son plan est mémorisé sans prévenir les abonnés (il change toutes les quelques secondes, rien à redessiner).
+  const savePlan = useCallback((roomId: string, petId: string, plan: PetPlan) => { void library.updateQuiet((state) => setPetPlan(state, roomId, petId, plan)); }, [library]);
+  const sim = usePetSim(lib ? activeRoom(lib) : null, savePlan);
 
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
@@ -845,6 +851,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onPick={(id) => void onPick(id)}
             cards={roomCards.cards}
             onCardTap={onCardTap}
+            pets={sim.views}
+            petAttach={sim.attach}
+            onPetTap={(id) => sim.touch(id)}
             onFurnitureDown={onFurnitureDown}
             onFurnitureMove={onFurnitureMove}
             onFurnitureUp={press.cancel}
