@@ -1007,9 +1007,9 @@ export const ENTRIES: Entry[] = [
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
       {
-        target: '[data-wmt-library] button[data-kind="window"]',
+        target: '[data-wmt-library] button[data-category="deco"]',
         title: 'Poser une fenêtre',
-        text: 'La catégorie Déco propose une fenêtre. Elle s’accroche au mur comme un poster, en 6 cases sur 5 ; touchez la case du mur qui sera son coin bas gauche.',
+        text: 'Ouvrez la catégorie Déco, puis touchez la fenêtre. Elle s’accroche au mur comme un poster, en 6 cases sur 5 ; touchez ensuite la case du mur qui sera son coin bas gauche.',
         gesture: 'tap',
         details: [
           { label: 'Comment faire', text: 'Passez en mode Aménager, ouvrez la catégorie Déco, touchez la fenêtre puis une case du mur. Touchez ensuite la fenêtre posée : quatre boutons la rendent plus large, plus étroite, plus haute ou moins haute (de 3×3 à 12×10 cases).' },
@@ -1026,7 +1026,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Comment faire', text: 'Touchez un paysage pour la pièce affichée ; l’heure, elle, est la même pour toute la Bibliothèque. En heure réelle, le navigateur peut demander votre position pour calculer le lever et le coucher du soleil.' },
           { label: 'À quoi ça sert', text: 'Le soleil et la lune traversent le ciel, et le lever et le coucher du jour sont affichés. Les calculs se font sur votre appareil, rien n’est envoyé ; sans position, le fuseau horaire sert de repli.' },
-          { label: 'Limites', text: 'Pas encore de météo ni d’événements : ils arrivent plus tard. L’espace et la Terre ne suivent pas le soleil.' },
+          { label: 'Limites', text: 'Pas encore de météo ni d’événements : ils arrivent plus tard. L’espace ne suit pas l’heure.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
