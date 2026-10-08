@@ -60,9 +60,9 @@ Identifiant d'extension : `wikimasters-tools-unofficial@maximus49000.github.io` 
     npm test
     npm run package          # zip Chrome + zip Firefox (MV3) + zip des sources, dans .output/
 
-Films et séries (TMDB) : créer un fichier `.env.local` à la racine avec `WXT_TMDB_API_KEY=<votre clé TMDB v3>` avant de compiler (extension et APK) ; sans lui, la section n'apparaît pas. Le fichier n'est jamais commité.
+Films et séries (TMDB), jeux (IGDB), prix des ebooks (Google Livres) et anomalies : ces services passent par le relais Cloudflare (`relay/`), qui détient les clés. **Aucune clé n’est à fournir pour compiler** : `.env.local` n’est plus lu par les builds. Les secrets du relais (`TMDB_API_KEY`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `GITHUB_ISSUES_TOKEN`, `GOOGLE_BOOKS_API_KEY`) se posent avec `npx wrangler secret put <NOM>` (voir `docs/guides/cloudflare-relais.md`, partie F). Après un build, `npm run verifier-secrets` contrôle qu’aucune clé de `.env.local` n’est restée dans les paquets.
 
-Anomalies (menu « Plus » → « Remonter une anomalie ») : ajouter dans `.env.local` `WXT_GITHUB_ISSUES_TOKEN=<jeton GitHub fine-grained limité au dépôt, permission Issues en lecture/écriture>` ; sans lui, l'entrée n'apparaît pas. Chaque anomalie devient une issue du dépôt avec l'étiquette d'état `Nouveau` ; `Analysée`, `Corrigé` et `Livrée <N>` se posent à la main. Le jeton est embarqué dans l'extension (il ne permet que de créer des issues) : à renouveler avant son expiration.
+Anomalies (menu « Plus » → « Remonter une anomalie ») : chaque anomalie devient une issue du dépôt, créée par le relais avec l’étiquette d’état `Nouveau` ; `Analysée`, `Corrigé` et `Livrée <N>` se posent à la main. Le jeton GitHub (fine-grained, limité au dépôt, permission Issues) est un secret du relais ; à renouveler avant son expiration (2027-10).
 
 Commandes séparées : `npm run build` (Chrome, dossier `.output/chrome-mv3`), `npm run build:firefox` (`.output/firefox-mv3`), `npm run dev:firefox`. Une nouvelle version = changer `version` dans `package.json` avant `npm run package`.
 

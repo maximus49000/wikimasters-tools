@@ -80,8 +80,7 @@ nombre de votes, et la description. Pour un acteur ou un réalisateur, elle affi
 plus, du plus récent au plus ancien) ; un clic sur un titre ouvre sa fiche, ← revient à la liste.
 
 La carte est reconnue grâce à Wikidata (nature, métier, identifiant TMDB), puis le contenu vient de [TMDB](https://www.themoviedb.org).
-Seuls des titres et des identifiants partent vers TMDB, jamais de donnée du jeu ni de votre compte. La clé API TMDB (v3)
-est lue à la compilation dans `.env.local` (`WXT_TMDB_API_KEY=…`, fichier ignoré par git) ; sans clé, la section n'apparaît pas.
+Seuls des titres et des identifiants partent vers TMDB, jamais de donnée du jeu ni de votre compte. Les appels passent par le relais Cloudflare du projet, qui détient la clé API TMDB (v3) : aucune clé n’est embarquée dans l’extension ni dans l’APK.
 
 Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.
 

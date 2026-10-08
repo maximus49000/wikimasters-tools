@@ -72,3 +72,22 @@ Rétention : 90 jours, purge automatique chaque nuit (03:00 UTC) par le cron exi
 Jeton d'API Wrangler : si `wrangler d1 …` répond « Authentication error [code: 10000] », se reconnecter (`npx wrangler logout` puis `npx wrangler login`) ou utiliser la Console du site. Un jeton d'API, s'il est créé, doit avoir « Account → D1 → Edit » et être supprimé après usage.
 
 Prévisualisations : le build Cloudflare des branches (mode « Preview ») exige un bloc `[previews]` avec des ressources de test séparées. Elles existent déjà (base `wikimasters-usage-preview`, espace KV `DOC_CACHE_PREVIEW`) et sont déclarées dans `wrangler.toml` ; à recréer de la même façon si l'on ajoute une nouvelle liaison (KV, D1, R2…).
+
+## Partie F — Secrets des services tiers (TMDB, IGDB, GitHub, Google Livres)
+
+Le relais détient les clés des services tiers : l’extension et l’APK n’en contiennent aucune. Routes : `GET /tmdb/*` (films, séries, personnes), `GET /books/volumes` (prix des ebooks), `POST /igdb/games` (jeux vidéo), `POST /issues` (anomalies et propositions de documentaire). Chacune n’accepte qu’une liste blanche de chemins, de paramètres et de formes de requête.
+
+1. **Secrets** (à poser une fois, valeur saisie à l’invite, jamais dans le dépôt ni dans un message) :
+   ```bash
+   npx wrangler secret put TMDB_API_KEY
+   npx wrangler secret put IGDB_CLIENT_ID
+   npx wrangler secret put IGDB_CLIENT_SECRET
+   npx wrangler secret put GITHUB_ISSUES_TOKEN
+   npx wrangler secret put GOOGLE_BOOKS_API_KEY
+   ```
+2. **Contrôle** : `https://<adresse-du-relais>/status` indique, par des booléens, la présence de `tmdbKey`, `igdb`, `issuesToken` et `booksKey` (jamais leur valeur).
+3. **Limites de débit** par adresse IP : TMDB 300 par minute, IGDB 240 par minute, Livres 60 par minute, issues 5 par heure. Les compteurs sont en mémoire du Worker : approximatifs, remis à zéro quand il est recyclé. Au-delà : réponse 429 avec `Retry-After`.
+4. **Pas de cache côté relais** : l’API Cache de Cloudflare ne fonctionne que sur un domaine personnalisé et le relais est sur `workers.dev` ; les clients mémorisent déjà les réponses.
+5. **Jeton GitHub** : fine-grained, limité au dépôt, permission Issues ; expire en octobre 2027, à renouveler (`npx wrangler secret put GITHUB_ISSUES_TOKEN`).
+6. **Contrôle anti-fuite** : `npm run build && npm run build:overlay && npm run verifier-secrets` vérifie qu’aucune valeur de `.env.local` ne se trouve dans les paquets (code 1 = fuite, 2 = rien à chercher).
+7. **Quota** : l’offre gratuite de Workers coupe tout le relais au-delà de 100 000 requêtes par jour ; l’offre payante (5 $ par mois, 10 millions par mois) lève cette limite.
