@@ -2,9 +2,13 @@
 import { indexStatus, indexStep } from './indexer';
 import type { KvLike } from './kv';
 import { parseSearchRequest, searchDocumentaries } from './search';
+import { validateBatch } from '../../src/core/telemetry/catalogue';
+import { ingest } from './ingest';
+import type { D1Like } from './usage-db';
 
-// Relais de recherche de documentaires (voir docs/superpowers/specs/2026-10-07-documentaire-histoire-design.md).
-export type Env = { YOUTUBE_API_KEY?: string; DOC_CACHE?: KvLike; DEBUG_TOKEN?: string };
+// Relais de recherche de documentaires (voir docs/superpowers/specs/2026-10-07-documentaire-histoire-design.md)
+// et collecte de la mesure d'usage anonyme (voir docs/superpowers/specs/2026-10-08-monitoring-usage-design.md).
+export type Env = { YOUTUBE_API_KEY?: string; DOC_CACHE?: KvLike; DEBUG_TOKEN?: string; USAGE_DB?: D1Like; STATS_TOKEN?: string };
 
 const HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -13,6 +17,27 @@ const HEADERS = {
   'cache-control': 'no-store',
 };
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: HEADERS });
+
+const MAX_BODY = 16_000;
+const empty = (status: number): Response => new Response(null, { status, headers: HEADERS });
+
+// Réception d'un lot d'événements : 204 si écrit, 400 lot invalide, 413 trop gros, 503 base non configurée.
+async function collect(request: Request, env: Env): Promise<Response> {
+  if (!env.USAGE_DB) return empty(503);
+  if (Number(request.headers.get('content-length') ?? '0') > MAX_BODY) return empty(413);
+  const body = await request.text();
+  if (body.length > MAX_BODY) return empty(413);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(body);
+  } catch {
+    return empty(400);
+  }
+  const batch = validateBatch(raw);
+  if (!batch) return empty(400);
+  await ingest(env.USAGE_DB, batch, Math.floor(Date.now() / 1000));
+  return empty(204);
+}
 
 // Une vidéo existe et peut être intégrée ailleurs : l'oEmbed de YouTube répond 200 ; 401/403 = intégration interdite ; 400/404 = introuvable.
 async function oembed(id: string): Promise<Response> {
@@ -46,6 +71,7 @@ export default {
       const result = await searchDocumentaries({ fetch: (target) => fetch(target), kv: env.DOC_CACHE, apiKey: env.YOUTUBE_API_KEY, now: () => new Date() }, { ...parsed, debug });
       return json(result);
     }
+    if (url.pathname === '/t' && request.method === 'POST') return collect(request, env);
     return json({ ok: false, error: 'Route inconnue' }, 404);
   },
 
