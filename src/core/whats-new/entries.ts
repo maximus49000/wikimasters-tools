@@ -977,4 +977,70 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v7',
+    theme: 'collection',
+    glyph: '🪟',
+    title: 'Une fenêtre sur le monde',
+    summary: 'Fenêtre réglable, six décors, heure et vie de la ville',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Ouvrir une pièce de la Bibliothèque',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : c’est là que se règlent la fenêtre, le paysage et l’heure.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez la pièce à décorer.' },
+          { label: 'À quoi ça sert', text: 'À personnaliser chaque pièce. Tout reste sur cet appareil : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Passer en mode Aménager',
+        text: 'Le crayon passe en mode Aménager : c’est là qu’apparaissent la catégorie Déco et la rangée Ciel.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
+          { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] button[data-kind="window"]',
+        title: 'Poser une fenêtre',
+        text: 'La catégorie Déco propose une fenêtre. Elle s’accroche au mur comme un poster, en 6 cases sur 5 ; touchez la case du mur qui sera son coin bas gauche.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Passez en mode Aménager, ouvrez la catégorie Déco, touchez la fenêtre puis une case du mur. Touchez ensuite la fenêtre posée : quatre boutons la rendent plus large, plus étroite, plus haute ou moins haute (de 3×3 à 12×10 cases).' },
+          { label: 'À quoi ça sert', text: 'À ouvrir votre pièce sur un paysage. Plusieurs fenêtres donnent sur un seul et même décor : un passant qui sort par l’une apparaît dans l’autre après le délai que prend la distance.' },
+          { label: 'Limites', text: 'Une fenêtre ne peut pas chevaucher un autre objet mural ni un meuble. Agrandir la pièce à gauche décale les fenêtres, mais pas le paysage.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] [role="group"][aria-label="Ciel"]',
+        title: 'Choisir le paysage et l’heure',
+        text: 'En mode Aménager, la rangée Ciel propose six paysages (ville, campagne, montagne, mer, espace, Terre vue d’en haut) et l’heure : réelle, toujours le jour, toujours la nuit, ou choisie au curseur.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez un paysage pour la pièce affichée ; l’heure, elle, est la même pour toute la Bibliothèque. En heure réelle, le navigateur peut demander votre position pour calculer le lever et le coucher du soleil.' },
+          { label: 'À quoi ça sert', text: 'Le soleil et la lune traversent le ciel, et le lever et le coucher du jour sont affichés. Les calculs se font sur votre appareil, rien n’est envoyé ; sans position, le fuseau horaire sert de repli.' },
+          { label: 'Limites', text: 'Pas encore de météo ni d’événements : ils arrivent plus tard. L’espace et la Terre ne suivent pas le soleil.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] button[data-time="manual"]',
+        title: 'La ville vit selon l’heure',
+        text: 'En ville, les fenêtres des immeubles s’allument et s’éteignent selon l’heure : beaucoup de lumières en début de soirée, presque plus vers trois heures du matin. Les passants et les voitures suivent la même courbe.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le curseur d’heure (le glyphe à curseurs) puis faites-le glisser pour voir les lumières s’allumer en cascade au crépuscule et s’éteindre dans la nuit.' },
+          { label: 'À quoi ça sert', text: 'À une pièce qui change vraiment au fil de la journée, sans rien à faire.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+    ],
+  },
 ];
