@@ -114,7 +114,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} />
         ) : placed.kind === 'desk' ? (
           <DeskArt rect={rect} palette={palette} />
-        ) : (
+        ) : placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton' ? <g /> : ( // dessin des meubles Steampunk : tâche 6
           <HomeArt kind={placed.kind} rect={rect} palette={palette} />
         );
     }

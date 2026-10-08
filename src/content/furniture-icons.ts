@@ -18,6 +18,9 @@ export const KIND_ICON: Record<FurnitureKind, readonly string[]> = {
   'small-plant': ['M12 18v-5', 'M12 13c-3 0-4.5-2.5-4.5-5 3 0 4.5 2.5 4.5 5z', 'M12 14c3 0 4.5-2.5 4.5-5-3 0-4.5 2.5-4.5 5z', 'M9 18h6', 'M5 21h14'],
   'small-lamp': ['M12 17v-6', 'M9 17h6', 'M9 11l1-4h4l1 4z', 'M5 21h14'],
   rug: ['M3 8h18v8H3z', 'M6 11h12'],
+  globe: ['M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z', 'M3 12h18', 'M12 3c3 3 3 15 0 18', 'M12 3c-3 3-3 15 0 18'],
+  telescope: ['M4 14l12-6 2 4-12 6z', 'M12 15l-3 6', 'M12 15l3 6'],
+  automaton: ['M8 5h8v6H8z', 'M10 8h.01', 'M14 8h.01', 'M7 11h10v7H7z', 'M9 18v3', 'M15 18v3'],
 };
 
 export const CATEGORY_ICON: Record<Category, readonly string[]> = {
@@ -25,4 +28,5 @@ export const CATEGORY_ICON: Record<Category, readonly string[]> = {
   seats: KIND_ICON.sofa,
   pets: KIND_ICON.kennel,
   deco: KIND_ICON.plant,
+  steampunk: ['M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8z', 'M12 2v3', 'M12 19v3', 'M2 12h3', 'M19 12h3', 'M5 5l2 2', 'M17 17l2 2', 'M19 5l-2 2', 'M7 17l-2 2'],
 };

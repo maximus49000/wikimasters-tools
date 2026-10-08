@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Layout, type LibraryState, type Orientation, type Room } from './library-types';
+import { SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Layout, type LibraryState, type Orientation, type Placed, type Room, type StyleId } from './library-types';
+import { STEAMPUNK_ONLY } from './furniture-catalog';
 import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, sectionIsEmpty, shiftLayout } from './room-grid';
 
 export const MAX_ROOMS = 12;
@@ -134,6 +135,18 @@ const mapRoom = (state: LibraryState, id: string, change: (room: Room) => Room):
   ...state,
   rooms: state.rooms.map((room) => (room.id === id ? change(room) : room)),
 });
+
+export function setRoomStyle(state: LibraryState, id: string, style: StyleId): LibraryState {
+  const room = state.rooms.find((candidate) => candidate.id === id);
+  if (!room || room.style === style) return state;
+  // Les meubles exclusifs n'ont de sens qu'en Steampunk : ils partent avec le style.
+  const layout = style === 'steampunk' ? room.layout : room.layout.filter((p) => !isExclusive(p));
+  return mapRoom(state, id, (r) => ({ ...r, style, layout }));
+}
+
+const isExclusive = (placed: Placed): boolean => (STEAMPUNK_ONLY as readonly string[]).includes(placed.kind);
+// Nombre de meubles exclusifs posés (pour la confirmation avant de quitter Steampunk).
+export const countExclusive = (room: Room): number => room.layout.filter(isExclusive).length;
 
 export function addRoom(state: LibraryState): LibraryState {
   if (state.rooms.length >= MAX_ROOMS) return state;

@@ -1,6 +1,6 @@
-import type { FurnitureKind, ShelfShape, SmallItem, SmallKind, StandingKind, VinylColor, WallShape } from './library-types';
+import type { FurnitureKind, ShelfShape, SmallItem, SmallKind, StandingKind, StyleId, VinylColor, WallShape } from './library-types';
 
-export type Category = 'storage' | 'seats' | 'pets' | 'deco';
+export type Category = 'storage' | 'seats' | 'pets' | 'deco' | 'steampunk';
 export type PoiType = 'seat' | 'curl' | 'eat' | 'sleep' | 'enter';
 // Point d'intérêt d'un meuble pour les animaux : une case relative au coin haut-gauche du meuble.
 export type Poi = { type: PoiType; dx: number; dy: number };
@@ -39,6 +39,10 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
   lamp: { w: 1, h: 5, layer: 'floor', pois: [] },
   'coffee-table': { w: 4, h: 2, layer: 'floor', pois: [] },
   rug: { w: 6, h: 3, layer: 'rug', pois: [] },
+  // Meubles exclusifs Steampunk : les points d'intérêt viendront avec leurs comportements.
+  globe: { w: 3, h: 4, layer: 'floor', pois: [] },
+  telescope: { w: 3, h: 5, layer: 'floor', pois: [] },
+  automaton: { w: 2, h: 3, layer: 'floor', pois: [] },
 };
 
 const LABELS: Record<FurnitureKind, string> = {
@@ -57,6 +61,9 @@ const LABELS: Record<FurnitureKind, string> = {
   'small-plant': 'Petite plante',
   'small-lamp': 'Petite lampe',
   rug: 'Tapis',
+  globe: 'Globe mécanique',
+  telescope: 'Télescope',
+  automaton: 'Automate',
 };
 
 export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }[] = [
@@ -64,7 +71,14 @@ export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }
   { id: 'seats', label: 'Assises', kinds: ['chair', 'sofa', 'armchair'] },
   { id: 'pets', label: 'Animaux', kinds: ['basket', 'bowl', 'kennel'] },
   { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug'] },
+  { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
 ];
+
+// Meubles réservés aux pièces Steampunk (retirés quand la pièce change de style).
+export const STEAMPUNK_ONLY: readonly StandingKind[] = ['globe', 'telescope', 'automaton'];
+
+// Catégories proposées au catalogue : « Steampunk » seulement dans une pièce Steampunk.
+export const categoriesFor = (style: StyleId): typeof CATEGORIES => CATEGORIES.filter((c) => c.id !== 'steampunk' || style === 'steampunk');
 
 export const FURNITURE_KINDS: FurnitureKind[] = CATEGORIES.flatMap((category) => category.kinds);
 

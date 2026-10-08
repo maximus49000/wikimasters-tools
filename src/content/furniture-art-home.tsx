@@ -120,7 +120,7 @@ function Rug({ rect: { x, y, w, h }, palette: p }: Props) {
   );
 }
 
-type HomeKind = Exclude<StandingKind, 'shelf' | 'desk'>;
+type HomeKind = Exclude<StandingKind, 'shelf' | 'desk' | 'globe' | 'telescope' | 'automaton'>;
 const ARTS: Record<HomeKind, (props: Props) => ReactElement> = {
   chair: Chair,
   sofa: Sofa,

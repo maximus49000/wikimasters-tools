@@ -38,7 +38,7 @@ describe('catalogue', () => {
   it('les catégories couvrent chaque type une seule fois', () => {
     const all = [...STANDING_KINDS, 'computer', 'small-plant', 'small-lamp'].sort();
     expect([...FURNITURE_KINDS].sort()).toEqual(all);
-    expect(CATEGORIES.map((c) => c.id)).toEqual(['storage', 'seats', 'pets', 'deco']);
+    expect(CATEGORIES.map((c) => c.id)).toEqual(['storage', 'seats', 'pets', 'deco', 'steampunk']);
   });
 
   it('chaque type a un libellé et les aides de type répondent', () => {
