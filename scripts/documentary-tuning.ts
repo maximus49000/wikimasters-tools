@@ -54,9 +54,9 @@ for (const title of titles.slice(0, MAX_CARDS)) {
     say(`\n## ${title}\n  pas d’élément Wikidata`);
     continue;
   }
-  const kind = historyKindOf({ natures: await natures(subject.qid), occupations: [], genres: [] }, subject.death, subject.start ?? subject.birth);
+  const kind = historyKindOf({ natures: await natures(subject.qid), occupations: [], genres: [] }, subject.death);
   if (!kind) {
-    say(`\n## ${title} (${subject.qid})\n  hors périmètre (ni événement, œuvre, civilisation, culte, ni personne morte avant 1951)`);
+    say(`\n## ${title} (${subject.qid})\n  hors périmètre (personne vivante ou morte depuis 1970, page d’homonymie, ou carte qui a déjà sa fiche : film, série, jeu, livre, morceau)`);
     continue;
   }
   const params = new URLSearchParams({ qid: subject.qid, kind, names: subject.names.slice(0, 6).join('|') });
