@@ -2,8 +2,9 @@
 import { indexStatus, indexStep } from './indexer';
 import type { KvLike } from './kv';
 import { parseSearchRequest, searchDocumentaries } from './search';
-import { validateBatch } from '../../src/core/telemetry/catalogue';
+import { CHANNELS, PLATFORMS, validateBatch } from '../../src/core/telemetry/catalogue';
 import { ingest } from './ingest';
+import { computeStats, purgeOlderThan, RETENTION_DAYS } from './stats';
 import type { D1Like } from './usage-db';
 
 // Relais de recherche de documentaires (voir docs/superpowers/specs/2026-10-07-documentaire-histoire-design.md)
@@ -39,6 +40,16 @@ async function collect(request: Request, env: Env): Promise<Response> {
   return empty(204);
 }
 
+// Agrégats du tableau de bord : réservés au porteur du jeton.
+async function statistics(request: Request, env: Env, url: URL): Promise<Response> {
+  if (!env.STATS_TOKEN || !env.USAGE_DB) return json({ ok: false, reason: 'not-configured' }, 503);
+  if (request.headers.get('x-stats') !== env.STATS_TOKEN) return json({ ok: false, reason: 'unauthorized' }, 401);
+  const days = Math.min(90, Math.max(1, Number.parseInt(url.searchParams.get('days') ?? '30', 10) || 30));
+  const pick = <T extends string>(allowed: readonly T[], value: string | null): T | null => allowed.find((candidate) => candidate === value) ?? null;
+  const filters = { platform: pick(PLATFORMS, url.searchParams.get('platform')), channel: pick(CHANNELS, url.searchParams.get('channel')) };
+  return json({ ok: true, stats: await computeStats(env.USAGE_DB, filters, days, Math.floor(Date.now() / 1000)) });
+}
+
 // Une vidéo existe et peut être intégrée ailleurs : l'oEmbed de YouTube répond 200 ; 401/403 = intégration interdite ; 400/404 = introuvable.
 async function oembed(id: string): Promise<Response> {
   if (!/^[\w-]{3,32}$/.test(id)) return json({ ok: false, reason: 'not-found' }, 400);
@@ -72,11 +83,17 @@ export default {
       return json(result);
     }
     if (url.pathname === '/t' && request.method === 'POST') return collect(request, env);
+    if (url.pathname === '/stats') return statistics(request, env, url);
     return json({ ok: false, error: 'Route inconnue' }, 404);
   },
 
   // Toutes les 30 minutes : avance l'index des chaînes de confiance (voir `wrangler.toml`, `crons`).
-  async scheduled(_event: unknown, env: Env): Promise<void> {
+  async scheduled(event: { scheduledTime: number }, env: Env): Promise<void> {
+    // Purge quotidienne (03:00 UTC, première exécution de l'heure) : rétention de 90 jours de la mesure d'usage.
+    const at = new Date(event.scheduledTime);
+    if (env.USAGE_DB && at.getUTCHours() === 3 && at.getUTCMinutes() < 30) {
+      await purgeOlderThan(env.USAGE_DB, Math.floor(event.scheduledTime / 1000) - RETENTION_DAYS * 86400);
+    }
     if (!env.YOUTUBE_API_KEY || !env.DOC_CACHE) return;
     await indexStep({ fetch: (target) => fetch(target), kv: env.DOC_CACHE, apiKey: env.YOUTUBE_API_KEY, now: () => new Date() });
   },
