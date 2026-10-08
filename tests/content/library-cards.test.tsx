@@ -240,7 +240,7 @@ describe('LibraryPanel : cartes', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     await click('[data-furniture="shelf"]');
     await click('[data-action="remove"]');
-    expect(confirm).toHaveBeenCalledWith('Retirer aussi les cartes rangées ?');
+    expect(confirm).toHaveBeenCalledWith('Retirer aussi ce qui est posé dessus ?');
     expect(layoutNow().length).toBe(2);
     confirm.mockReturnValue(true);
     await click('[data-action="remove"]');

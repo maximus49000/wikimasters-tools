@@ -53,7 +53,7 @@ afterEach(() => {
   container.remove();
 });
 
-// Un bureau en colonnes 2 à 6, lignes 8 à 11 (créé en mode Aménager).
+// Un bureau en colonnes 2 à 6, lignes 11 à 14 (créé en mode Aménager).
 async function withDesk() {
   await click('[data-action="edit"]');
   await click('[data-kind="desk"]');
@@ -79,6 +79,22 @@ describe('déplacement par appui long', () => {
     await settle();
     expect(layoutNow().find((p) => p.kind === 'computer')).toMatchObject({ deskId: layoutNow()[0]!.id });
     expect(layoutNow()[0]).toMatchObject({ col: 12 });
+  });
+
+  it('déplace un petit objet d’un bureau à un autre : appui long, glisser, relâcher sur le bureau', async () => {
+    await withDesk();
+    await click('[data-kind="desk"]');
+    await click('[data-cell="12-14"]');
+    await click('[data-category="deco"]');
+    await click('[data-kind="small-plant"]');
+    await click('[data-furniture="desk"]');
+    const [premier, second] = layoutNow().filter((p) => p.kind === 'desk');
+    expect(layoutNow().find((p) => p.kind === 'small')).toMatchObject({ hostId: premier!.id });
+    await longPress('[data-furniture="small"]', 95, 385);
+    await pointer('pointermove', window, 365, 405);
+    await pointer('pointerup', window, 365, 405);
+    await settle();
+    expect(layoutNow().find((p) => p.kind === 'small')).toMatchObject({ hostId: second!.id });
   });
 
   it('un lâcher invalide laisse le meuble en place et le dit', async () => {
@@ -134,7 +150,7 @@ describe('déplacement par appui long', () => {
     await longPress('[data-furniture="desk"]', 95, 385);
     // Le relâchement puis le clic que le navigateur envoie juste après.
     await act(async () => {
-      window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 95, clientY: 300 }));
+      window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 95, clientY: 385 }));
       q('[data-furniture="desk"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     await settle();
