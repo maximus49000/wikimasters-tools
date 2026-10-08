@@ -25,7 +25,7 @@ C'est un projet de plusieurs semaines. Cette spec fixe la **vision d'ensemble et
 | Pièces | Plusieurs pièces par joueur, chacune avec son style, ses meubles, ses cartes. |
 | Boosters | Un **présentoir de boosters** se pose sur une surface (table, étagère, commode…). Il contient **exactement le nombre de boosters à ouvrir** dans l'application. Toucher un booster l'ouvre : il sort du présentoir, tremble, se déchire, puis la fenêtre d'ouverture existante s'affiche. Dix styles de présentoir au choix (voir morceau 2). |
 | Pièce d'accueil | Le joueur peut définir **une pièce comme ouverte au lancement**. Dans ce cas, c'est cette pièce qui s'affiche dès l'ouverture de l'application. |
-| Orientation | Chaque pièce s'affiche en **horizontal ou en vertical**, au choix du joueur. L'orientation est **figée** selon ce choix : elle ne suit pas la rotation de l'appareil. |
+| Orientation | Chaque pièce s'affiche en **horizontal ou en vertical**, au choix du joueur ; l'orientation est **figée** (elle ne suit pas la rotation de l'appareil). Une pièce n'a **qu'un seul aménagement**, sur une bande de **même hauteur** dont la largeur peut grandir : l'orientation ne change que la **fenêtre visible** (large en horizontal, étroite en vertical). Ce qui dépasse de la fenêtre s'atteint en **faisant défiler** à droite ou à gauche. |
 | Styles | Au choix : Scandinave, Moderne, Industriel, Bohème, Rétro 70s, Japandi, Néon gaming. |
 | Placement d'une carte | On choisit **d'abord la carte, puis la forme**. |
 | Formes au mur | Poster (image de la carte) ; vinyle (étiquette ronde avec image rognée et texte, couleur du disque au choix) ; pochette (carrée, ronde, cadre). |
@@ -60,19 +60,20 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 
 - Dans le sélecteur de vues de la Collection, un nouveau glyphe **livre** : Bibliothèque. Le choix est mémorisé comme les autres vues (`wmt:collectionView` = `library`).
 - Une bande de **pièces** en haut : un onglet par pièce, un bouton **+** pour en créer. Appui long (ou bouton ✎) sur un onglet : renommer, supprimer (avec confirmation). 12 pièces au maximum.
-- **Pièce d'accueil** : une étoile sur l'onglet (ou dans le menu de la pièce) la définit comme pièce d'accueil ; une seule à la fois, et toucher l'étoile de la pièce d'accueil retire ce réglage. Au lancement (première ouverture de la Collection après le démarrage de l'extension ou de l'appli mobile), si une pièce d'accueil est définie, la vue passe directement en **Bibliothèque** sur cette pièce, avec son orientation. Le joueur navigue ensuite librement ; le réglage ne s'applique qu'à ce premier affichage. Sans pièce d'accueil, la vue mémorisée habituelle est conservée.
+- **Pièce d'accueil** : une étoile sur l'onglet (ou dans le menu de la pièce) la définit comme pièce d'accueil ; une seule à la fois, et toucher l'étoile de la pièce d'accueil retire ce réglage. Au lancement (première ouverture de la Collection après le démarrage de l'extension ou de l'appli mobile), si une pièce d'accueil est définie, la vue passe directement en **Bibliothèque** sur cette pièce, avec son orientation et son défilement d'origine. Le joueur navigue ensuite librement ; le réglage ne s'applique qu'à ce premier affichage. Sans pièce d'accueil, la vue mémorisée habituelle est conservée.
 - Une nouvelle pièce est vide : mur et sol Scandinave, rien d'autre.
 - Deux modes, par un interrupteur crayon / œil :
   - **Visiter** : on voit la pièce, rien ne se déplace par erreur.
   - **Aménager** : la grille apparaît en filigrane. Un bouton **+ Meuble** ouvre le catalogue ; on touche un meuble, puis une case libre pour le poser ; toucher un meuble posé permet de le **déplacer** (puis toucher la nouvelle case) ou de le **retirer** (poubelle).
 - Catalogue du morceau 1 : **Étagère** (3 niveaux), **Bureau**, **Ordinateur** (posé sur un bureau).
 - Un sélecteur **horizontal / vertical** (glyphes) règle l'orientation de la pièce active. Une nouvelle pièce prend l'orientation de la pièce précédente (horizontale la première fois).
-- La pièce est entièrement dessinée en SVG et s'adapte à l'espace disponible : paysage 720 × 340, portrait 420 × 600. Quand l'appareil est tourné dans l'autre sens, la pièce **garde son orientation** et se réduit pour tenir (bandes vides de part et d'autre), sans pivoter ni se redessiner.
+- La pièce est entièrement dessinée en SVG, de hauteur fixe (340). La **fenêtre visible** fait 24 colonnes en horizontal (720 × 340) et 14 colonnes en vertical (420 × 340) : la même pièce, vue de plus près en vertical. Quand l'appareil est tourné dans l'autre sens, la fenêtre **garde son orientation** et se réduit pour tenir, sans pivoter.
+- Une pièce plus large que la fenêtre se **fait défiler** horizontalement (glissement du doigt ou barre de défilement). Aux deux extrémités, un bouton **+** ajoute une **zone vide de 12 colonnes** (mur et sol prolongés), qu'on remplit ensuite de meubles. Un bouton **−** retire la zone du bord quand elle est entièrement vide. Une pièce fait de 24 à 96 colonnes.
 
 ## Grille
 
-- En paysage, la pièce fait **24 colonnes × 12 lignes** : lignes 0 à 8 de **mur**, 9 à 11 de **sol**. En portrait, **14 colonnes × 20 lignes** : lignes 0 à 14 de mur, 15 à 19 de sol.
-- Chaque pièce garde **deux aménagements indépendants**, un par orientation (`layouts.landscape` et `layouts.portrait`). Changer d'orientation affiche l'autre aménagement (vide au début) ; rien n'est perdu ni déformé, et on retrouve le premier en revenant. Le style, le nom et la fenêtre sont communs aux deux.
+- La pièce fait **12 lignes** de haut : lignes 0 à 8 de **mur**, 9 à 11 de **sol** ; sa largeur est un multiple de 12 colonnes (**24 au départ**, 96 au plus). Les colonnes se comptent depuis le bord gauche ; ajouter une zone à gauche décale tous les meubles de 12 colonnes.
+- Une pièce a **un seul aménagement**. Changer d'orientation ne le modifie pas : seule la fenêtre visible change (24 ou 14 colonnes). Rien n'est perdu en passant de l'un à l'autre.
 - Un meuble déclare sa **zone** (`wall` ou `floor`), sa **taille** en cases, et ses **emplacements** (voir plus bas). Il se pose si toutes ses cases sont libres dans la bonne zone ; sinon la pose est refusée et les cases fautives clignotent.
 - L'ordinateur a pour zone `desk` : il ne se pose que sur un bureau, sur la case d'emplacement prévue.
 - Les emplacements (slots) servent au morceau 2 : une étagère déclare 3 niveaux de 8 emplacements, un bureau 1 emplacement d'écran via l'ordinateur. Dans le morceau 1 ils sont définis et affichés en pointillés en mode Aménager, sans accepter de carte.
@@ -81,9 +82,9 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 
 ### Cœur (`src/core/library/`)
 
-- `library-types.ts` : types `Room` (nom, style, `orientation`, `layouts`), `Placed`, `FurnitureKind`, `StyleId`, `Orientation`, `LibraryState`.
+- `library-types.ts` : types `Room` (nom, style, `orientation`, `cols`, `layout`), `Placed`, `FurnitureKind`, `StyleId`, `Orientation`, `LibraryState`.
 - `furniture-catalog.ts` : la définition de chaque meuble (id, zone, taille, slots, fonction de dessin SVG). Un meuble ajouté plus tard = une entrée dans ce fichier.
-- `room-grid.ts` : fonctions pures `canPlace`, `place`, `move`, `remove` sur l'aménagement d'une orientation, avec les dimensions de grille de chaque orientation. Aucune dépendance au DOM.
+- `room-grid.ts` : fonctions pures `canPlace`, `place`, `move`, `remove` sur l'aménagement d'une pièce, selon sa largeur en colonnes. Aucune dépendance au DOM.
 - `styles.ts` : palettes de style (variables CSS : mur, sol, bois, métal…). Le morceau 1 ne livre que `scandinave` ; le type admet déjà les 7 identifiants.
 - `library-book.ts` : état persistant `{ version: 1, activeRoomId, homeRoomId: string | null, rooms: Room[] }`, `createRoom`, `renameRoom`, `deleteRoom`, `setActive`. Clé `wmt:library` ; tout accès au stockage est protégé par try/catch et retombe sur « une pièce vide » (comme `readView`). Un champ `version` prévoit les migrations.
 
@@ -104,13 +105,15 @@ Ordre conseillé : 1, 2, 3, 4, puis 5 (qui sert à 6 et 7).
 - Un meuble qui ne rentre pas (bord de la grille, case occupée) : refus et clignotement des cases.
 - Retrait d'un bureau qui porte un ordinateur : l'ordinateur est retiré avec lui (confirmation si des cartes y sont posées, dès le morceau 2).
 - Rotation de l'appareil : sans effet sur l'orientation de la pièce ; seule la taille d'affichage change.
+- Retrait d'une zone du bord : refusé tant qu'un meuble s'y trouve (ou le recouvre) ; la largeur ne descend pas sous 24 colonnes. Un meuble posé à cheval sur la frontière de deux zones est permis.
+- Ajout à gauche : les meubles se décalent de 12 colonnes et la vue reste sur les mêmes meubles.
 - Très petit écran : la pièce se réduit (ratio fixe) ; les cibles tactiles de la barre font au moins 40 px.
 - Thème sombre du site : la pièce garde son propre style ; seuls les contrôles (barre, boutons) suivent les variables du site.
 
 ## Tests (Vitest)
 
-- `room-grid` : grilles paysage et portrait, aménagements indépendants par orientation, pose valide, hors zone, collision, déplacement, retrait, ordinateur uniquement sur un bureau.
-- `library-book` : pièce d'accueil (définir, retirer, suppression de la pièce d'accueil), création, renommage, suppression de la dernière pièce refusée, limite de 12, sérialisation et lecture d'un état corrompu.
+- `room-grid` : grille de 12 lignes et largeur variable, pose valide, hors zone, collision, déplacement, retrait, ordinateur uniquement sur un bureau.
+- `library-book` : agrandir et réduire une pièce (décalage à gauche, refus si zone occupée, bornes 24 et 96), pièce d'accueil (définir, retirer, suppression de la pièce d'accueil), création, renommage, suppression de la dernière pièce refusée, limite de 12, sérialisation et lecture d'un état corrompu.
 - `furniture-catalog` : chaque meuble tient dans la grille et ses emplacements sont dans sa surface.
 - `collection-view` et `world-toggle` : la valeur `library` est lue, écrite et proposée dans le sélecteur.
 - `LibraryPanel` : créer / renommer / supprimer une pièce, basculer Visiter / Aménager, poser et retirer un meuble.
