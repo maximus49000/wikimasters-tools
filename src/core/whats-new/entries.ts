@@ -597,11 +597,11 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'statistiques-usage-v1',
+    id: 'statistiques-usage-v2',
     theme: 'app',
     glyph: '📊',
     title: 'Statistiques d’usage anonymes',
-    summary: 'Savoir ce qui est mesuré, et le couper',
+    summary: 'Pour améliorer l’application, pas pour vous suivre',
     steps: [
       openPlus('puis « Paramètre d’extension », où se trouve le réglage « Statistiques d’usage ».'),
       {
@@ -610,7 +610,7 @@ export const ENTRIES: Entry[] = [
         text: 'Le réglage « Statistiques d’usage » se trouve dans Paramètre d’extension, avec Images, Publicité d’achat et Lecteur : c’est lui qui décide si l’application envoie des informations anonymes sur son utilisation.',
         gesture: 'tap',
         details: [
-          { label: 'À quoi ça sert', text: 'À savoir combien de personnes utilisent l’application, quelles fonctions servent vraiment et quand une panne survient, pour améliorer ce qui compte.' },
+          { label: 'À quoi ça sert', text: 'À améliorer l’application, pas à vous suivre : savoir quelles fonctions servent vraiment pour les perfectionner, repérer celles que personne n’utilise, et détecter une panne avant que vous ne la signaliez. Il n’y a aucun suivi de ce que vous faites en tant que personne : les chiffres sont anonymes et regroupés.' },
           { label: 'Comment faire', text: 'Touchez « Paramètre d’extension » dans le menu Plus : une liste s’ouvre avec la ligne « Statistiques d’usage ». À l’étape suivante, la visite ouvre cette liste pour vous.' },
         ],
         scene: { closeWindows: true, reveal: [{ text: 'Plus' }] },
@@ -644,7 +644,7 @@ export const ENTRIES: Entry[] = [
         title: 'Lire le texte du réglage',
         text: 'Le texte de la fenêtre résume ce qui est envoyé et ce qui ne l’est jamais : c’est la référence à relire si vous hésitez à laisser le réglage activé.',
         details: [
-          { label: 'D’où viennent les chiffres', text: 'Chaque appareil envoie de petits messages anonymes à un service hébergé par le projet ; ils sont regroupés pour compter les utilisateurs, les actions les plus utilisées et les erreurs. Rien n’est revendu ni partagé.' },
+          { label: 'D’où viennent les chiffres', text: 'Chaque appareil envoie de petits messages anonymes à un service hébergé par le projet ; ils sont regroupés pour compter les utilisateurs, les actions les plus utilisées et les erreurs. Rien n’est revendu ni partagé, et ces chiffres ne servent qu’à décider quoi améliorer : le projet n’a ni publicité ni intérêt à vous suivre.' },
           { label: 'Durée de conservation', text: 'Les messages sont supprimés automatiquement au bout de 90 jours. Désactiver le réglage arrête les envois d’usage immédiatement ; ce qui a déjà été envoyé ne peut pas être rattaché à vous, faute de compte associé.' },
         ],
         scene: { reveal: [{ text: 'Plus' }, '[data-wmt-extension-setting]', '[data-wmt-ext-row="stats"]'] },
