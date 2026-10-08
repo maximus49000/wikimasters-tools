@@ -10,6 +10,14 @@ describe('serviceOf', () => {
     expect(serviceOf('https://www.wiki-masters.com/api/cards')).toBeNull();
     expect(serviceOf('pas une url')).toBeNull();
   });
+  it('classe les routes du relais par service', () => {
+    const R = 'https://wikimasters-tools.maxime-protais-baumer.workers.dev';
+    expect(serviceOf(`${R}/tmdb/movie/603?language=fr-FR`)).toBe('tmdb');
+    expect(serviceOf(`${R}/igdb/games`)).toBe('igdb');
+    expect(serviceOf(`${R}/books/volumes?q=x`)).toBe('googlebooks');
+    expect(serviceOf(`${R}/issues`)).toBe('github');
+    expect(serviceOf(`${R}/search?q=1`)).toBe('relais');
+  });
   it('n’observe jamais l’envoi des statistiques lui-même', () => {
     expect(serviceOf('https://wikimasters-tools.maxime-protais-baumer.workers.dev/t')).toBeNull();
   });
@@ -30,18 +38,18 @@ describe('observeFetch', () => {
     const a = await run(async () => r429, 'https://fr.wikipedia.org/x');
     expect(a.report).toHaveBeenCalledWith('api-429', 'wikipedia');
     expect(a.outcome).toBe(r429);
-    const b = await run(async () => new Response('', { status: 503 }), 'https://api.themoviedb.org/3/x');
+    const b = await run(async () => new Response('', { status: 503 }), 'https://wikimasters-tools.maxime-protais-baumer.workers.dev/tmdb/movie/1');
     expect(b.report).toHaveBeenCalledWith('api-5xx', 'tmdb');
   });
   it('signale une panne réseau et relance l’erreur ; ignore une requête annulée', async () => {
     const down = await run(async () => {
       throw new TypeError('Failed to fetch');
-    }, 'https://api.igdb.com/v4/games');
+    }, 'https://wikimasters-tools.maxime-protais-baumer.workers.dev/igdb/games');
     expect(down.report).toHaveBeenCalledWith('api-reseau', 'igdb');
     expect(down.outcome).toBeInstanceOf(TypeError);
     const aborted = await run(async () => {
       throw new DOMException('x', 'AbortError');
-    }, 'https://api.igdb.com/v4/games');
+    }, 'https://wikimasters-tools.maxime-protais-baumer.workers.dev/igdb/games');
     expect(aborted.report).not.toHaveBeenCalled();
   });
   it('laisse passer sans rien signaler les autres adresses et les réponses 200/404', async () => {

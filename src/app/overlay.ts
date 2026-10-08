@@ -49,7 +49,7 @@ import { createDocumentaryRepo } from '../core/documentary/documentary-repo';
 import { createBookService } from '../content/book-service';
 import { createAmazonPrice } from '../core/book/amazon-price';
 import { createBookChoiceRepo, createBookRepo } from '../core/book/book-repo';
-import { AMAZON_PRICE_ENABLED, GOOGLE_BOOKS_API_KEY } from '../core/book/config';
+import { AMAZON_PRICE_ENABLED } from '../core/book/config';
 import { createGoogleBooksApi } from '../core/book/google-books-api';
 import type { NativeHttpWindow } from '../android/native-http';
 import { createOpenLibraryApi } from '../core/book/openlibrary-api';
@@ -82,14 +82,12 @@ import { decorateLinked } from '../content/decorate-linked';
 import { createLinkedSource } from '../content/linked-source';
 import { setLinkedService } from '../content/linked-registry';
 import { openLinkedCard } from '../content/open-linked-card';
-import { TMDB_API_KEY } from '../core/screen/config';
 import { createScreenRepo } from '../core/screen/screen-repo';
 import { createTmdbApi } from '../core/screen/tmdb-api';
 import { fetchWikidataScreen } from '../core/screen/wikidata-screen';
 import { createScreenService } from '../content/screen-service';
 import { createGameService } from '../content/game-service';
 import { getGameService, setGameService } from '../content/game-registry';
-import { IGDB_CLIENT_ID, IGDB_CLIENT_SECRET, IGDB_ENABLED } from '../core/game/config';
 import type { GameFetch } from '../core/game/game-detail';
 import { createGameChoiceRepo, createGameRepo } from '../core/game/game-repo';
 import { createIgdbApi } from '../core/game/igdb-api';
@@ -118,7 +116,6 @@ import { setTourEnv } from '../content/tour-registry';
 import { resumeTour, resumeTourReturn, startTour } from '../content/tour-instance';
 import type { TourOrigin } from '../content/tour-session';
 import { createAnomalyReporter, postIssue } from '../core/anomalies/anomaly';
-import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
 import { getProfileName, rememberProfileName } from '../core/anomalies/profile-name';
 import { createTelemetry } from '../core/telemetry/telemetry';
 import { setTelemetry } from '../core/telemetry/registry';
@@ -192,8 +189,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
 
   console.info(LOG, 'démarré');
 
-  // Les anomalies passent par le même `fetch` que Spotify (service worker dans l'extension, `window.fetch` dans l'APK).
-  const anomalies = GITHUB_ISSUES_TOKEN ? createAnomalyReporter({ fetch: (url, init) => (spotify ? spotify.fetch(url, init) : fetch(url, init)), token: GITHUB_ISSUES_TOKEN }) : null;
+  // Les anomalies passent par le relais Cloudflare, qui détient le jeton GitHub.
+  const anomalies = createAnomalyReporter({ fetch: (url, init) => fetch(url, init) });
   const anomalyPlatform = (): string => {
     const bridge = (window as unknown as { WmtSpotify?: { scheme?(): string } }).WmtSpotify;
     if (!bridge) return 'extension du navigateur';
@@ -617,29 +614,27 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     }
   }
 
-  // Films, séries, acteurs et réalisateurs (TMDB) : absent sans clé. TMDB passe par le même `fetch` que Spotify
-  // (service worker dans l'extension, `window.fetch` dans l'APK). Une panne ici ne doit jamais empêcher la surcouche.
-  if (TMDB_API_KEY) {
-    try {
-      const tmdbApi = createTmdbApi({ fetch: (url) => (spotify ? spotify.fetch(url) : fetch(url)), apiKey: TMDB_API_KEY });
-      artSources.tmdb = tmdbApi;
-      const screenService = createScreenService({
-        hasKey: true,
-        collection: collectionRepo,
-        kinds: kindsRepo,
-        screen: screenRepo,
-        api: tmdbApi,
-        cache: createTtlCache(store, { ttlMs: 24 * 3_600_000 }),
-      });
-      setScreenService(screenService);
-      // Repère, dans les filmographies, les films et séries dont on possède la carte.
-      setCollectionMarks(createCollectionMarks({ collection: collectionRepo, screen: screenRepo, screenSlugs: (cards) => screenService.screenSlugs(cards) }));
-    } catch (error) {
-      console.warn(LOG, 'films et séries indisponibles :', error);
-    }
+  // Films, séries, acteurs et réalisateurs (TMDB) via le relais (la clé est côté serveur, CORS ouvert : `fetch` de la page).
+  // Une panne ici ne doit jamais empêcher la surcouche.
+  try {
+    const tmdbApi = createTmdbApi({ fetch: (url) => fetch(url) });
+    artSources.tmdb = tmdbApi;
+    const screenService = createScreenService({
+      hasKey: true,
+      collection: collectionRepo,
+      kinds: kindsRepo,
+      screen: screenRepo,
+      api: tmdbApi,
+      cache: createTtlCache(store, { ttlMs: 24 * 3_600_000 }),
+    });
+    setScreenService(screenService);
+    // Repère, dans les filmographies, les films et séries dont on possède la carte.
+    setCollectionMarks(createCollectionMarks({ collection: collectionRepo, screen: screenRepo, screenSlugs: (cards) => screenService.screenSlugs(cards) }));
+  } catch (error) {
+    console.warn(LOG, 'films et séries indisponibles :', error);
   }
 
-  // Jeux vidéo : Steam sans clé, IGDB seulement avec les identifiants Twitch de la compilation. Même `fetch` que TMDB
+  // Jeux vidéo : Steam sans clé, IGDB via le relais (aucun identifiant dans le client). Même `fetch` que TMDB
   // (service worker dans l'extension, pont natif dans l'APK). Une panne ici ne doit jamais empêcher la surcouche.
   try {
     const gameFetch: GameFetch = (url, init) => (spotify ? spotify.fetch(url, init) : fetch(url, init));
@@ -649,7 +644,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       games: createGameRepo(store, (slugs) => fetchWikidataGame((url) => fetch(url), slugs)),
       choices: createGameChoiceRepo(store),
       steam: createSteamApi({ fetch: gameFetch }),
-      igdb: IGDB_ENABLED ? createIgdbApi({ fetch: gameFetch, clientId: IGDB_CLIENT_ID, clientSecret: IGDB_CLIENT_SECRET, store }) : null,
+      igdb: createIgdbApi({ fetch: (url, init) => fetch(url, init) }),
       steamCache: createTtlCache(store, { ttlMs: 6 * 3_600_000 }),
       igdbCache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
       // Autre jeu choisi pour une carte : son affiche mémorisée n'est plus la bonne.
@@ -664,11 +659,11 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
 
   // Livres : Open Library et Wikipédia, sans clé, avec le `fetch` de la page (CORS ouvert). Une panne ici ne doit jamais empêcher la surcouche.
   try {
-    // Prix : Google Books (ebook, avec la clé de la compilation) et Amazon.fr (papier) passent par le relais de la plateforme (service worker,
+    // Prix : Amazon.fr (papier) passe par le relais de la plateforme (service worker,
     // hors CSP du site). Amazon : extension seulement, jamais dans l'APK (pas de pont HTTP éprouvé pour une page HTML : liens seulement).
     const platformFetch = (url: string) => (spotify ? spotify.fetch(url) : fetch(url));
     const isApk = Boolean((window as unknown as NativeHttpWindow).WmtHttp);
-    const googleBooks = GOOGLE_BOOKS_API_KEY ? createGoogleBooksApi({ fetch: platformFetch, key: GOOGLE_BOOKS_API_KEY }) : null;
+    const googleBooks = createGoogleBooksApi({ fetch: (url) => fetch(url) });
     const amazon = AMAZON_PRICE_ENABLED && spotify && !isApk ? createAmazonPrice({ fetch: platformFetch }) : null;
     const bookService = createBookService({
       googleBooks,
@@ -706,7 +701,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
 
   // Documentaires (événements et personnages historiques) : relais Cloudflare, Commons et sélection du dépôt, avec le `fetch` de la page (CORS ouvert).
   try {
-    const issueFetch = (url: string, init?: RequestInit) => (spotify ? spotify.fetch(url, init) : fetch(url, init));
+    const issueFetch = (url: string, init?: RequestInit) => fetch(url, init);
     setDocumentaryService(
       createDocumentaryService({
         collection: collectionRepo,
@@ -722,7 +717,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         commons: { search: (names, subject) => searchCommons((url) => fetch(url), names, subject) },
         relay: createRelayApi({ fetch: (url) => fetch(url) }),
         repo: createDocumentaryRepo(store),
-        issues: GITHUB_ISSUES_TOKEN ? { send: (draft) => postIssue(issueFetch, GITHUB_ISSUES_TOKEN, draft) } : null,
+        issues: { send: (draft) => postIssue(issueFetch, draft) },
         cache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
         platform: anomalyPlatform,
         profileName: () => getProfileName(window.localStorage),

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TMDB_BASE, TMDB_POSTER_BASE } from './config';
+import { TMDB_RELAY, TMDB_POSTER_BASE } from './config';
 import type { ScreenKind } from './screen-kinds';
 
 export type MediaType = 'movie' | 'tv';
@@ -131,12 +131,12 @@ function pickWatch(providers: z.infer<typeof detailSchema>['watch/providers']): 
   return { ...(link ? { link } : {}), stream: mergeProviders(offers?.flatrate, offers?.free, offers?.ads), rentBuy: mergeProviders(offers?.rent, offers?.buy) };
 }
 
-export function createTmdbApi(deps: { fetch: TmdbFetch; apiKey: string }) {
+export function createTmdbApi(deps: { fetch: TmdbFetch }) {
   async function get<S extends z.ZodType>(path: string, params: Record<string, string>, schema: S): Promise<z.infer<S>> {
-    const query = new URLSearchParams({ api_key: deps.apiKey, language: LANGUAGE, ...params });
+    const query = new URLSearchParams({ language: LANGUAGE, ...params });
     let response: Response;
     try {
-      response = await deps.fetch(`${TMDB_BASE}${path}?${query.toString()}`);
+      response = await deps.fetch(`${TMDB_RELAY}${path}?${query.toString()}`);
     } catch {
       throw new TmdbError('http', 'TMDB injoignable');
     }

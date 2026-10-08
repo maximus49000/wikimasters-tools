@@ -1,7 +1,9 @@
-import { ANOMALY_API_PREFIX } from './config';
+import { ISSUES_ENDPOINT } from './config';
+import { NEW_ANOMALY_LABEL } from './labels';
+
+export { NEW_ANOMALY_LABEL };
 
 // États d'une anomalie = étiquettes de l'issue : Nouveau (posée à l'envoi), Analysée, Corrigé, « Livrée N » (posés à la main).
-export const NEW_ANOMALY_LABEL = 'Nouveau';
 const TITLE_MAX = 80;
 export const DESCRIPTION_MAX = 4000;
 
@@ -24,42 +26,41 @@ export function anomalyTitle(description: string): string {
   return defuse(title);
 }
 
+// Limites du relais (relay/src/issues.ts) : au-delà, il refuserait le brouillon.
+const ISSUE_TITLE_MAX = 200;
+const ISSUE_BODY_MAX = 8000;
+const clamp = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
+
 export function buildIssue(input: AnomalyInput): { title: string; body: string; labels: string[] } {
   const details = [`Plateforme : ${input.platform}`, `Signalée par : ${input.name ? defuse(input.name) : 'anonyme'}`];
   const body = `${defuse(input.description.trim())}\n\n---\n${details.map((line) => `- ${line}`).join('\n')}`;
-  return { title: anomalyTitle(input.description), body, labels: [NEW_ANOMALY_LABEL] };
+  return { title: clamp(anomalyTitle(input.description), ISSUE_TITLE_MAX), body: clamp(body, ISSUE_BODY_MAX), labels: [NEW_ANOMALY_LABEL] };
 }
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export type IssueDraft = { title: string; body: string; labels: string[] };
 
-// Crée une issue GitHub ; partagé par « Remonter une anomalie » et les propositions de documentaire.
-export async function postIssue(doFetch: Fetch, token: string, draft: IssueDraft): Promise<AnomalyResult> {
+// Envoie une issue au relais, qui la crée sur GitHub ; partagé par « Remonter une anomalie » et les propositions de documentaire.
+// Corps JSON envoyé en texte simple : pas de préambule CORS.
+export async function postIssue(doFetch: Fetch, draft: IssueDraft): Promise<AnomalyResult> {
   try {
-    const response = await doFetch(`${ANOMALY_API_PREFIX}issues`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(draft),
-    });
-    if (!response.ok) return { ok: false, error: `GitHub a refusé l’envoi (code ${response.status}).` };
-    const created = (await response.json()) as { number?: unknown; html_url?: unknown };
-    if (typeof created.number !== 'number') return { ok: false, error: 'Réponse inattendue de GitHub.' };
-    return { ok: true, number: created.number, url: typeof created.html_url === 'string' ? created.html_url : '' };
+    const response = await doFetch(ISSUES_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(draft) });
+    if (response.status === 429) return { ok: false, error: 'Trop d’envois pour le moment, réessayez plus tard.' };
+    if (!response.ok) return { ok: false, error: `L’envoi a été refusé (code ${response.status}).` };
+    const created = (await response.json()) as { number?: unknown; url?: unknown };
+    if (typeof created.number !== 'number') return { ok: false, error: 'Réponse inattendue du serveur.' };
+    return { ok: true, number: created.number, url: typeof created.url === 'string' ? created.url : '' };
   } catch {
     return { ok: false, error: 'Envoi impossible : vérifiez la connexion.' };
   }
 }
 
-export function createAnomalyReporter({ fetch: doFetch, token }: { fetch: Fetch; token: string }) {
+export function createAnomalyReporter({ fetch: doFetch }: { fetch: Fetch }) {
   return {
     async report(input: AnomalyInput): Promise<AnomalyResult> {
       if (input.description.trim().length === 0) return { ok: false, error: 'Décrivez l’anomalie avant d’envoyer.' };
-      return postIssue(doFetch, token, buildIssue(input));
+      return postIssue(doFetch, buildIssue(input));
     },
   };
 }

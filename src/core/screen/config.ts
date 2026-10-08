@@ -1,5 +1,6 @@
-// Clé API TMDB (v3, lecture seule) injectée à la compilation depuis `.env.local` ; vide : la fonction est désactivée.
-export const TMDB_API_KEY: string = import.meta.env.WXT_TMDB_API_KEY ?? '';
-export const TMDB_BASE = 'https://api.themoviedb.org/3';
+import { RELAY_BASE } from '../documentary/config';
+
+// TMDB (films et séries) passe par le relais Cloudflare, qui détient la clé API : l'extension et l'APK n'en contiennent aucune.
+export const TMDB_RELAY = `${RELAY_BASE}/tmdb`;
 export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w92';
 export const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w500';

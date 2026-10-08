@@ -36,4 +36,14 @@ describe('issues', () => {
     expect(issue.title).toBe('Documentaire non pertinent : Bataille de Verdun');
     expect(issue.body).toContain('anonyme');
   });
+
+  it('borne titre et corps aux limites du relais (200 et 8000 caractères)', () => {
+    const long = { ...input, cardTitle: 'T'.repeat(500), videoTitle: 'V'.repeat(9_000) };
+    for (const issue of [buildProposalIssue(long), buildFlagIssue(long)]) {
+      expect(issue.title.length).toBeLessThanOrEqual(200);
+      expect(issue.title.endsWith('…')).toBe(true);
+      expect(issue.body.length).toBeLessThanOrEqual(8_000);
+      expect(issue.body.endsWith('…')).toBe(true);
+    }
+  });
 });

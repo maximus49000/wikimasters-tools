@@ -1,18 +1,11 @@
 import { z } from 'zod';
-import type { KeyValueStore } from '../cache/store';
-import { IGDB_BASE, IGDB_COVER_BASE, IGDB_THUMB_BASE, TWITCH_TOKEN_URL } from './config';
-import { GameError } from './errors';
+import { IGDB_COVER_BASE, IGDB_RELAY, IGDB_THUMB_BASE } from './config';
 import type { GameCandidate, GameDetail, GameFetch } from './game-detail';
 import { requestJson } from './http';
+import { detailQuery, searchQuery } from './igdb-queries';
 
-const TOKEN_KEY = 'igdb-token-v1';
-// Un jeton est renouvelé une heure avant son expiration.
-const TOKEN_MARGIN_MS = 3_600_000;
 // IGDB tolère environ 4 requêtes par seconde.
 const GAP_MS = 260;
-
-const tokenSchema = z.object({ access_token: z.string(), expires_in: z.number() });
-type StoredToken = { token: string; expiresAt: number };
 
 const row = z.object({
   id: z.number(),
@@ -33,12 +26,6 @@ const row = z.object({
 const rows = z.array(row);
 type Row = z.infer<typeof row>;
 
-const DETAIL_FIELDS =
-  'id,name,summary,first_release_date,url,genres.name,platforms.name,involved_companies.developer,involved_companies.company.name,aggregated_rating,aggregated_rating_count,total_rating,total_rating_count,videos.video_id,cover.image_id';
-const SEARCH_FIELDS = 'id,name,first_release_date,platforms.name,cover.image_id,total_rating_count';
-
-// Les guillemets et les barres obliques inverses casseraient la requête.
-const clean = (text: string): string => text.replace(/[\\"]/g, ' ').trim();
 const yearOf = (seconds: number | undefined): number | undefined => (seconds === undefined ? undefined : new Date(seconds * 1000).getUTCFullYear());
 const dateText = (seconds: number): string => new Date(seconds * 1000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
@@ -66,28 +53,9 @@ function toDetail(game: Row): GameDetail {
   };
 }
 
-export function createIgdbApi(deps: {
-  fetch: GameFetch;
-  clientId: string;
-  clientSecret: string;
-  store: KeyValueStore;
-  now?: () => number;
-  sleep?: (ms: number) => Promise<void>;
-}) {
-  const { fetch: fetchFn, clientId, clientSecret, store } = deps;
-  const now = deps.now ?? (() => Date.now());
+export function createIgdbApi(deps: { fetch: GameFetch; sleep?: (ms: number) => Promise<void> }) {
+  const { fetch: fetchFn } = deps;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-
-  async function token(renew: boolean): Promise<string> {
-    if (!renew) {
-      const kept = await store.get<StoredToken>(TOKEN_KEY);
-      if (kept && kept.expiresAt - now() > TOKEN_MARGIN_MS) return kept.token;
-    }
-    const url = `${TWITCH_TOKEN_URL}?client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&grant_type=client_credentials`;
-    const data = await requestJson('igdb', fetchFn, url, tokenSchema, { method: 'POST' });
-    await store.set<StoredToken>(TOKEN_KEY, { token: data.access_token, expiresAt: now() + data.expires_in * 1000 });
-    return data.access_token;
-  }
 
   // Les requêtes se suivent, séparées de GAP_MS.
   let tail: Promise<unknown> = Promise.resolve();
@@ -100,34 +68,21 @@ export function createIgdbApi(deps: {
     return run;
   }
 
+  // Le relais ajoute les identifiants et le jeton : le client n'envoie que la requête, en texte simple (pas de préambule CORS).
   function query(body: string): Promise<Row[]> {
-    return paced(async () => {
-      for (let attempt = 0; ; attempt += 1) {
-        const bearer = await token(attempt > 0);
-        try {
-          return await requestJson('igdb', fetchFn, `${IGDB_BASE}/games`, rows, {
-            method: 'POST',
-            headers: { 'Client-ID': clientId, Authorization: `Bearer ${bearer}`, Accept: 'application/json' },
-            body,
-          });
-        } catch (error) {
-          // Un jeton refusé est renouvelé une fois.
-          if (attempt === 0 && error instanceof GameError && error.code === 'auth') continue;
-          throw error;
-        }
-      }
-    });
+    return paced(() => requestJson('igdb', fetchFn, IGDB_RELAY, rows, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body }));
   }
 
   return {
     async detail(by: { id: number } | { slug: string }): Promise<GameDetail | null> {
-      const where = 'id' in by ? `id = ${by.id}` : `slug = "${clean(by.slug)}"`;
-      const [game] = await query(`fields ${DETAIL_FIELDS}; where ${where}; limit 1;`);
+      // Un slug de forme inattendue serait refusé par le relais (400) et sauterait le repli par recherche de titre.
+      if ('slug' in by && !/^[\w.-]{1,120}$/.test(by.slug)) return null;
+      const [game] = await query(detailQuery(by));
       return game ? toDetail(game) : null;
     },
 
     async search(title: string): Promise<GameCandidate[]> {
-      const found = await query(`search "${clean(title)}"; fields ${SEARCH_FIELDS}; limit 10;`);
+      const found = await query(searchQuery(title));
       return found
         .map((game): GameCandidate => {
           const year = yearOf(game.first_release_date);

@@ -41,5 +41,10 @@ function body(input: ProposalInput): string {
   return details.map((line) => `- ${line}`).join('\n');
 }
 
-export const buildProposalIssue = (input: ProposalInput) => ({ title: `Documentaire proposé : ${defuse(input.cardTitle)}`, body: body(input), labels: [PROPOSAL_LABEL] });
-export const buildFlagIssue = (input: ProposalInput) => ({ title: `Documentaire non pertinent : ${defuse(input.cardTitle)}`, body: body(input), labels: [FLAG_LABEL] });
+// Limites du relais (relay/src/issues.ts) : au-delà, il refuserait le brouillon.
+const clamp = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
+const TITLE_MAX = 200;
+const BODY_MAX = 8000;
+
+export const buildProposalIssue = (input: ProposalInput) => ({ title: clamp(`Documentaire proposé : ${defuse(input.cardTitle)}`, TITLE_MAX), body: clamp(body(input), BODY_MAX), labels: [PROPOSAL_LABEL] });
+export const buildFlagIssue = (input: ProposalInput) => ({ title: clamp(`Documentaire non pertinent : ${defuse(input.cardTitle)}`, TITLE_MAX), body: clamp(body(input), BODY_MAX), labels: [FLAG_LABEL] });

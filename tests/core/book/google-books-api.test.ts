@@ -1,5 +1,6 @@
 // tests/core/book/google-books-api.test.ts
 import { describe, expect, it, vi } from 'vitest';
+import { RELAY_BASE } from '../../../src/core/documentary/config';
 import { createGoogleBooksApi } from '../../../src/core/book/google-books-api';
 
 const sale = (saleability: string, amount?: number, over: Record<string, unknown> = {}) => ({
@@ -22,7 +23,7 @@ const MISERABLES = {
 };
 
 const json = (body: unknown, status = 200) => vi.fn(async (_url: string) => new Response(JSON.stringify(body), { status }));
-const api = (fetchFn: ReturnType<typeof json>) => createGoogleBooksApi({ fetch: fetchFn, key: 'CLE-TEST' });
+const api = (fetchFn: ReturnType<typeof json>) => createGoogleBooksApi({ fetch: fetchFn });
 
 describe('createGoogleBooksApi', () => {
   it('retient, parmi les ebooks en vente au titre égal et de l’auteur, le moins cher, avec son lien d’achat', async () => {
@@ -30,14 +31,15 @@ describe('createGoogleBooksApi', () => {
     expect(await api(fetchFn).findEbook({ title: 'Les Misérables', author: 'Victor Hugo' })).toEqual({ amount: 2.99, url: 'https://play.google.com/store/books/details?id=2.99' });
   });
 
-  it('cherche en simple « titre auteur », pour la France, avec la clé', async () => {
+  it('cherche en simple « titre auteur », pour la France, par le relais et sans clé', async () => {
     const fetchFn = json(MISERABLES);
     await api(fetchFn).findEbook({ title: 'Les Misérables', author: 'Victor Hugo' });
     const url = new URL(fetchFn.mock.calls[0]![0]);
-    expect(url.origin + url.pathname).toBe('https://www.googleapis.com/books/v1/volumes');
+    expect(url.origin + url.pathname).toBe(`${RELAY_BASE}/books/volumes`);
     expect(url.searchParams.get('q')).toBe('Les Misérables Victor Hugo');
     expect(url.searchParams.get('country')).toBe('FR');
-    expect(url.searchParams.get('key')).toBe('CLE-TEST');
+    expect(url.searchParams.has('key')).toBe(false);
+    expect(url.searchParams.get('maxResults')).toBe('10');
     expect(url.searchParams.get('q')).not.toContain('intitle');
   });
 

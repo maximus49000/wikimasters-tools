@@ -13,6 +13,7 @@
     "postinstall": "wxt prepare",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "verifier-secrets": "node scripts/check-no-secrets.mjs",
     "build:firefox": "wxt build -b firefox --mv3",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox --mv3",

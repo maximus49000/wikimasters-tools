@@ -64,11 +64,11 @@ describe('createExtensionEnv', () => {
 });
 
 describe('handleSpotifyMessage — TMDB', () => {
-  it("relaie une requête vers l'API TMDB", async () => {
+  it("refuse l'API TMDB : elle passe désormais par le relais", async () => {
     const d = deps();
-    const reply = await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url: 'https://api.themoviedb.org/3/movie/1?api_key=x' }, d);
-    expect(reply).toMatchObject({ ok: true, value: { status: 200, body: '{"ok":true}' } });
-    expect(d.fetch).toHaveBeenCalledOnce();
+    const reply = await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url: 'https://api.themoviedb.org/3/movie/1' }, d);
+    expect(reply).toEqual({ ok: false, error: 'adresse refusée' });
+    expect(d.fetch).not.toHaveBeenCalled();
   });
 
   it("refuse une autre adresse que l'API TMDB v3", async () => {
@@ -83,12 +83,16 @@ describe('handleSpotifyMessage — Jeux vidéo', () => {
   it.each([
     'https://store.steampowered.com/api/appdetails?appids=1',
     'https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=1',
-    'https://id.twitch.tv/oauth2/token?client_id=x',
-    'https://api.igdb.com/v4/games',
   ])('relaie les jeux vidéo : %s', async (url) => {
     const d = deps();
     const reply = await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url }, d);
     expect(reply).toMatchObject({ ok: true });
+  });
+
+  it.each(['https://id.twitch.tv/oauth2/token?client_id=x', 'https://api.igdb.com/v4/games', 'https://api.github.com/repos/x/y/issues'])('refuse les hôtes passés par le relais : %s', async (url) => {
+    const d = deps();
+    expect(await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url }, d)).toEqual({ ok: false, error: 'adresse refusée' });
+    expect(d.fetch).not.toHaveBeenCalled();
   });
 
   it("refuse un faux hôte de jeux vidéo", async () => {
@@ -98,20 +102,20 @@ describe('handleSpotifyMessage — Jeux vidéo', () => {
 });
 
 describe('handleSpotifyMessage — Livres', () => {
-  it('relaie Amazon.fr (pages produit) et Google Books (API v1), et refuse le reste de ces hôtes', async () => {
+  it('relaie Amazon.fr (pages produit) et refuse le reste, Google Books compris (passé par le relais)', async () => {
     const d = deps();
-    for (const url of ['https://www.amazon.fr/dp/2070360024', 'https://www.googleapis.com/books/v1/volumes?q=x&key=k']) {
+    for (const url of ['https://www.amazon.fr/dp/2070360024']) {
       expect(await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url }, d)).toMatchObject({ ok: true });
     }
-    for (const url of ['https://www.amazon.fr/gp/css/homepage.html', 'https://www.amazon.fr.evil.example/dp/2070360024', 'https://www.googleapis.com/drive/v3/files', 'https://evil.example/https://www.amazon.fr/dp/1']) {
+    for (const url of ['https://www.amazon.fr/gp/css/homepage.html', 'https://www.amazon.fr.evil.example/dp/2070360024', 'https://www.googleapis.com/books/v1/volumes?q=x', 'https://evil.example/https://www.amazon.fr/dp/1']) {
       expect(await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url }, d)).toEqual({ ok: false, error: 'adresse refusée' });
     }
-    expect(d.fetch).toHaveBeenCalledTimes(2);
+    expect(d.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('refuse une adresse dont la forme normalisée sort du préfixe autorisé', async () => {
     const d = deps();
-    for (const url of ['https://www.amazon.fr/dp/../gp/css/homepage.html', 'https://www.googleapis.com/books/v1/../../drive/v3/files']) {
+    for (const url of ['https://www.amazon.fr/dp/../gp/css/homepage.html', 'https://www.amazon.fr/dp/%2e%2e/gp/css/homepage.html']) {
       expect(await handleSpotifyMessage({ type: 'wmt:spotify', op: 'fetch', url }, d)).toEqual({ ok: false, error: 'adresse refusée' });
     }
     expect(d.fetch).not.toHaveBeenCalled();
