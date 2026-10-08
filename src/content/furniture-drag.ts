@@ -44,7 +44,7 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
   if (!item) return { ok: false, cells: [], ghost: null };
   if (!isStanding(item)) {
     const deskId = deskAtCell(layout, col, row);
-    if (!deskId) return { ok: false, reason: 'not-desk', cells: [{ col, row }], ghost: null };
+    if (!deskId) return { ok: false, reason: 'not-desk', cells: [{ col, row }], ghost: { col, row, w: 1, h: 1 } };
     const desk = layout.find((p) => p.id === deskId);
     const ghost = desk ? rectOf(desk) : null;
     if (!canPlaceComputer(layout, deskId, id)) return { ok: false, reason: 'desk-busy', cells: [], ghost, deskId };

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   activeRoom,
   createInitialState,
@@ -14,11 +14,13 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { FURNITURE_KINDS, labelOf, sizeOf } from '../core/library/furniture-catalog';
-import type { FurnitureKind, LibraryState, Orientation, StandingKind } from '../core/library/library-types';
+import type { FurnitureKind, Layout, LibraryState, Orientation, StandingKind } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
   MIN_COLS,
+  CELL_W,
+  HEIGHT,
   SECTION,
   VISIBLE_COLS,
   canPlace,
@@ -31,7 +33,17 @@ import {
   sectionIsEmpty,
   type Cell,
 } from '../core/library/room-grid';
-import { RoomView, type Tool } from './RoomView';
+import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
+import { createLongPress } from './long-press';
+import { RoomView, type DragView, type Tool } from './RoomView';
+
+// Près du bord de la pièce visible, le glissé la fait défiler : zone sensible et vitesse (pixels par image).
+const EDGE_ZONE = 48;
+const EDGE_SPEED = 8;
+
+type Drag = { id: string; x: number; y: number; target: DropTarget };
+// Ce que les écouteurs de la fenêtre doivent connaître de l'état courant (relu à chaque événement).
+type DragLive = { layout: Layout; cols: number; drop: (id: string, target: DropTarget) => void };
 
 export const LIBRARY_CSS = `
 .wmt-lib{display:flex;flex-direction:column;gap:10px;padding:12px;margin:12px 0;border:1px solid var(--color-border,rgba(148,163,184,.35));border-radius:12px;background:var(--color-surface,#0d1117);color:var(--color-foreground,#e6edf3);font:14px/20px system-ui,sans-serif}
@@ -99,6 +111,84 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
   const blinkTimer = useRef<number | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pendingScroll = useRef(0);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragging = drag !== null;
+  const dragId = drag?.id ?? null;
+  const live = useRef<DragLive | null>(null);
+  const lastPointer = useRef({ x: 0, y: 0 });
+  const pressedId = useRef<string | null>(null);
+  const startDragRef = useRef<(id: string) => void>(() => undefined);
+  const press = useMemo(() => createLongPress(() => { if (pressedId.current) startDragRef.current(pressedId.current); }), []);
+  useEffect(() => press.cancel, [press]);
+
+  // Position du doigt → case, cible de dépôt et position dans le dessin (null si la pièce n'est pas affichée).
+  const locate = (id: string, clientX: number, clientY: number): Drag | null => {
+    const state = live.current;
+    const svg = scrollRef.current?.querySelector('svg');
+    if (!state || !svg) return null;
+    const { col, row, x, y } = pointerToCell(svg.getBoundingClientRect(), state.cols * CELL_W, HEIGHT, clientX, clientY);
+    return { id, x, y, target: dropTargetFor(state.layout, state.cols, id, col, row) };
+  };
+
+  // Pendant un glissé : le doigt ne fait pas défiler la page, Échap annule, les bords font défiler la pièce.
+  useEffect(() => {
+    if (dragId === null) return;
+    const id = dragId;
+    const follow = (clientX: number, clientY: number): void => {
+      lastPointer.current = { x: clientX, y: clientY };
+      const next = locate(id, clientX, clientY);
+      if (next) setDrag(next);
+    };
+    const onMove = (event: PointerEvent): void => follow(event.clientX, event.clientY);
+    const onUp = (event: PointerEvent): void => {
+      const final = locate(id, event.clientX, event.clientY);
+      end();
+      if (final) live.current?.drop(id, final.target);
+    };
+    // Le clic qui suit le relâchement est ignoré ; s'il n'arrive pas, l'oubli évite d'avaler le prochain vrai toucher.
+    const end = (): void => {
+      setDrag(null);
+      window.setTimeout(press.consumeClick, 0);
+    };
+    const cancel = end;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') cancel();
+    };
+    const onTouchMove = (event: TouchEvent): void => {
+      if (event.cancelable) event.preventDefault();
+    };
+    let frame = 0;
+    const tick = (): void => {
+      const el = scrollRef.current;
+      if (el) {
+        const box = el.getBoundingClientRect();
+        const { x } = lastPointer.current;
+        const step = x < box.left + EDGE_ZONE ? -EDGE_SPEED : x > box.right - EDGE_ZONE ? EDGE_SPEED : 0;
+        if (step !== 0) {
+          const before = el.scrollLeft;
+          el.scrollLeft = before + step;
+          if (el.scrollLeft !== before) follow(lastPointer.current.x, lastPointer.current.y);
+        }
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('touchmove', onTouchMove);
+    };
+    // locate ne lit que des refs : la version du premier rendu du glissé suffit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragId]);
 
   useEffect(() => {
     let alive = true;
@@ -152,6 +242,41 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
     blinkTimer.current = window.setTimeout(() => setBlink([]), 700);
   };
 
+  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.' } as const;
+  // Lâcher d'un meuble soulevé : valide → déplacé par les mêmes fonctions que « Déplacer » ; sinon il reste en place.
+  const dropLifted = (id: string, target: DropTarget): void => {
+    if (target.ok) {
+      const item = layout.find((p) => p.id === id);
+      if (item?.kind === 'computer' && target.deskId) {
+        const deskId = target.deskId;
+        void editLayout((l) => moveComputer(l, id, deskId));
+      } else if (target.col !== undefined && target.top !== undefined) {
+        const { col, top } = target;
+        void editLayout((l, cols) => moveStanding(l, cols, id, col, top));
+      }
+      return reset();
+    }
+    setTool(null);
+    setSelectedId(null);
+    refuse(target.reason ? REASONS[target.reason] : '', target.cells);
+  };
+  live.current = { layout, cols: room.cols, drop: dropLifted };
+  startDragRef.current = (id: string): void => {
+    const first = locate(id, lastPointer.current.x, lastPointer.current.y);
+    reset();
+    setMode('edit');
+    if (first) setDrag(first);
+  };
+  const onFurnitureDown = (id: string, event: ReactPointerEvent): void => {
+    pressedId.current = id;
+    lastPointer.current = { x: event.clientX, y: event.clientY };
+    press.start(event.clientX, event.clientY);
+  };
+  const onFurnitureMove = (event: ReactPointerEvent): void => {
+    lastPointer.current = { x: event.clientX, y: event.clientY };
+    press.move(event.clientX, event.clientY);
+  };
+
   const movingItem = tool?.type === 'move' ? layout.find((p) => p.id === tool.id) : undefined;
   const targetsDesk = (tool?.type === 'new' && tool.kind === 'computer') || movingItem?.kind === 'computer';
   const cellsActive = tool !== null && !targetsDesk;
@@ -169,6 +294,8 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
   }
 
   async function onPick(id: string): Promise<void> {
+    // Le clic qui suit un appui long n'est pas un vrai clic ; en mode Visiter, toucher un meuble ne fait rien.
+    if (press.consumeClick() || !editing) return;
     const item = layout.find((p) => p.id === id);
     if (!item) return;
     if (tool?.type === 'new' && tool.kind === 'computer') {
@@ -356,7 +483,12 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
         {message}
       </div>
 
-      <div className="wmt-lib-scroll" data-scroll ref={scrollRef} style={{ maxWidth: portrait ? 480 : 960 }}>
+      <div
+        className="wmt-lib-scroll"
+        data-scroll
+        ref={scrollRef}
+        style={{ maxWidth: portrait ? 480 : 960, ...(dragging ? { overflowX: 'hidden', touchAction: 'none' } : {}) }}
+      >
         <RoomView
           room={room}
           editing={editing}
@@ -365,6 +497,10 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
           blink={blink}
           onCell={(col, row) => void onCell(col, row)}
           onPick={(id) => void onPick(id)}
+          onFurnitureDown={onFurnitureDown}
+          onFurnitureMove={onFurnitureMove}
+          onFurnitureUp={press.cancel}
+          drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost } satisfies DragView) : null}
         />
       </div>
     </div>
