@@ -64,10 +64,11 @@ import { createListenRepo } from '../core/music/listen-repo';
 import { createMusicRepo } from '../core/music/music-repo';
 import { fetchWikidataMusic } from '../core/music/wikidata-music';
 import { createSpotifyApi } from '../core/spotify/spotify-api';
+import { migrateClientId } from '../core/spotify/client-id';
 import { createSpotifySession } from '../core/spotify/spotify-session';
 import type { SpotifyEnv } from '../core/spotify/transport';
 import { createMusicService } from '../content/music-service';
-import { getMusicService, getPlayerSource, setMusicService, setPlatformChoice, setPlayerSource } from '../content/music-registry';
+import { getMusicService, getPlayerSource, setMusicService, setPlatformChoice, setPlayerSource, setSpotifyKey } from '../content/music-registry';
 import { createPlatformSetting } from '../core/music/platform';
 import { createPlatformMusicService } from '../content/platform-service';
 import { createTidalService } from '../content/tidal-service';
@@ -109,12 +110,12 @@ import { decorateWikiHowSetting } from '../content/wikihow-menu';
 import { decorateUpdateSetting } from '../content/update-setting-menu';
 import { decorateAnomalySetting } from '../content/anomaly-setting-menu';
 import { createWhatsNewRepo } from '../core/whats-new/seen';
-import { ENTRIES } from '../core/whats-new/entries';
+import { ENTRIES, SPOTIFY_KEY_GUIDE } from '../core/whats-new/entries';
 import { FIXES } from '../core/whats-new/fixes';
 import { showPendingWhatsNew } from '../content/whats-new-flow';
 import { pickCard } from '../core/whats-new/pick-card';
 import { setTourEnv } from '../content/tour-registry';
-import { resumeTour, resumeTourReturn } from '../content/tour-instance';
+import { resumeTour, resumeTourReturn, startTour } from '../content/tour-instance';
 import type { TourOrigin } from '../content/tour-session';
 import { createAnomalyReporter, postIssue } from '../core/anomalies/anomaly';
 import { GITHUB_ISSUES_TOKEN } from '../core/anomalies/config';
@@ -552,6 +553,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   // Après le démarrage de la surcouche : une panne ici ne doit jamais l'empêcher.
   if (spotify) {
     try {
+      await migrateClientId(store);
       const session = createSpotifySession({ store, ...spotify });
       const spotifyApi = createSpotifyApi({ session, fetch: spotify.fetch, store, ...(spotify.deviceTypes ? { deviceTypes: spotify.deviceTypes } : {}) });
       const musicRepo = createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs));
@@ -576,6 +578,14 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       setMusicService(spotifyService);
       setPlayerSource(player);
       setPlatformChoice({ available: ['spotify'], setting: platformSetting });
+      setSpotifyKey({
+        clientId: () => session.clientId(),
+        setClientId: (value) => session.setClientId(value),
+        clearClientId: () => session.clearClientId(),
+        redirectUris: async () => [await spotify.redirectUri()],
+        openGuide: () => startTour([SPOTIFY_KEY_GUIDE]),
+        subscribe: (listener) => session.subscribe(listener),
+      });
       mountSpotifyPlayer(player, openPlayerCard);
       player.start();
 

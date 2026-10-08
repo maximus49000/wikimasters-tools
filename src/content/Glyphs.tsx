@@ -140,6 +140,27 @@ const PATHS = {
       <circle cx="18" cy="13.5" r="1" />
     </>
   ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4 7h16" />
+      <path d="M9 7V4h6v3" />
+      <path d="M6 7l1 13h10l1-13" />
+    </>
+  ),
+  edit: <path d="M4 20l1-4L16 5l3 3L8 19z" />,
+  save: (
+    <>
+      <path d="M5 4h11l3 3v13H5z" />
+      <path d="M8 4v5h7V4" />
+      <rect x="8" y="14" width="8" height="6" />
+    </>
+  ),
   book: (
     <>
       <path d="M12 7c-1.7-1.3-4-2-7-2v13c3 0 5.3.7 7 2" />

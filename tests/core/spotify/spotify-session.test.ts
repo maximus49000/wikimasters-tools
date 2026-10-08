@@ -5,7 +5,9 @@ import { createSpotifySession, type SpotifyFetch } from '../../../src/core/spoti
 
 const tokenResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
-function setup(overrides: { fetch?: ReturnType<typeof vi.fn<SpotifyFetch>>; authorize?: ReturnType<typeof vi.fn<(authUrl: string) => Promise<string>>> } = {}) {
+const KEY = '30d88341188741668651e8ab170849cb';
+
+function setup(overrides: { key?: string | null; fetch?: ReturnType<typeof vi.fn<SpotifyFetch>>; authorize?: ReturnType<typeof vi.fn<(authUrl: string) => Promise<string>>> } = {}) {
   let time = 1_000_000;
   const fetch =
     overrides.fetch ??
@@ -13,14 +15,17 @@ function setup(overrides: { fetch?: ReturnType<typeof vi.fn<SpotifyFetch>>; auth
   const authorize =
     overrides.authorize ??
     vi.fn<(authUrl: string) => Promise<string>>(async (authUrl: string) => `wikimasterstools://spotify?code=CODE&state=${new URL(authUrl).searchParams.get('state')}`);
+  const store = createMemoryStore();
+  // Le `set` du store mémoire s'exécute de façon synchrone : la clé est en place avant la première opération.
+  if (overrides.key !== null) void store.set('spotify-client-id', overrides.key ?? KEY);
   const session = createSpotifySession({
-    store: createMemoryStore(),
+    store,
     fetch,
     authorize,
     redirectUri: async () => 'wikimasterstools://spotify',
     now: () => time,
   });
-  return { session, fetch, authorize, advance: (ms: number) => (time += ms) };
+  return { session, store, fetch, authorize, advance: (ms: number) => (time += ms) };
 }
 
 describe('createSpotifySession', () => {
@@ -111,6 +116,7 @@ describe('createSpotifySession', () => {
 
   it("reprend les jetons renouvelés par un autre onglet au lieu de délier (400 après rotation)", async () => {
     const store = createMemoryStore();
+    void store.set('spotify-client-id', KEY);
     const responses = [
       tokenResponse({ access_token: 'A1', refresh_token: 'R1', expires_in: 3600 }),
       tokenResponse({ error: 'invalid_grant' }, 400),
@@ -128,5 +134,60 @@ describe('createSpotifySession', () => {
     });
     expect(await tabB.accessToken()).toBe('A2');
     expect(await tabB.isLinked()).toBe(true);
+  });
+
+  it('utilise la clé personnelle dans l’autorisation et dans l’échange des jetons', async () => {
+    const mine = 'a'.repeat(32);
+    const { session, fetch, authorize } = setup({ key: mine });
+    await session.link();
+    expect(new URL(authorize.mock.calls[0]![0] as string).searchParams.get('client_id')).toBe(mine);
+    expect(new URLSearchParams((fetch.mock.calls[0]![1] as RequestInit).body as string).get('client_id')).toBe(mine);
+  });
+
+  it('sans clé : refuse de lier, sans aucun appel réseau', async () => {
+    const { session, fetch, authorize } = setup({ key: null });
+    await expect(session.link()).rejects.toMatchObject({ code: 'no-client-id' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('délier garde la clé', async () => {
+    const { session } = setup();
+    await session.link();
+    await session.unlink();
+    expect(await session.isLinked()).toBe(false);
+    expect(await session.clientId()).toBe(KEY);
+  });
+
+  it('première clé : enregistrée sans rien délier ; clé invalide : refusée', async () => {
+    const { session } = setup({ key: null });
+    expect(await session.setClientId('pas une clé')).toBe('invalid');
+    expect(await session.clientId()).toBeNull();
+    expect(await session.setClientId(` ${'B'.repeat(32)} `)).toBe('saved');
+    expect(await session.clientId()).toBe('b'.repeat(32));
+  });
+
+  it('même clé : aucun effet, le compte reste lié', async () => {
+    const { session } = setup();
+    await session.link();
+    expect(await session.setClientId(KEY)).toBe('same');
+    expect(await session.isLinked()).toBe(true);
+  });
+
+  it('autre clé ou clé effacée : le compte lié est délié, les abonnés sont prévenus', async () => {
+    const { session } = setup();
+    const heard = vi.fn();
+    session.subscribe(heard);
+    await session.link();
+    heard.mockClear();
+    expect(await session.setClientId('c'.repeat(32))).toBe('unlinked');
+    expect(await session.isLinked()).toBe(false);
+    expect(await session.clientId()).toBe('c'.repeat(32));
+    expect(heard).toHaveBeenCalled();
+
+    await session.link();
+    await session.clearClientId();
+    expect(await session.isLinked()).toBe(false);
+    expect(await session.clientId()).toBeNull();
   });
 });

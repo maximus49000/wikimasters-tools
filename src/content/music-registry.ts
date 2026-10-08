@@ -26,3 +26,23 @@ export const setPlatformChoice = (next: PlatformChoice | null): void => {
   platformChoice = next;
 };
 export const getPlatformChoice = (): PlatformChoice | null => platformChoice;
+
+// La clé Spotify de l'utilisateur (son propre Client ID) : la fenêtre « Lecteur » la lit et la modifie ici.
+// Absent quand la plateforme ne fournit pas Spotify.
+export type SpotifyKeyControl = {
+  clientId(): Promise<string | null>;
+  // `unlinked` : le compte lié a été délié parce que la clé a changé ; `same` : rien à faire.
+  setClientId(value: string): Promise<'saved' | 'invalid' | 'unlinked' | 'same'>;
+  clearClientId(): Promise<void>;
+  // Adresses de retour à déclarer chez Spotify (Redirect URI).
+  redirectUris(): Promise<string[]>;
+  // Lance le mode d'emploi (visite guidée en texte seul) ; la fenêtre « Lecteur » reste ouverte dessous.
+  openGuide(): void;
+  subscribe(listener: () => void): () => void;
+};
+let spotifyKey: SpotifyKeyControl | null = null;
+
+export const setSpotifyKey = (next: SpotifyKeyControl | null): void => {
+  spotifyKey = next;
+};
+export const getSpotifyKey = (): SpotifyKeyControl | null => spotifyKey;
