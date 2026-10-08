@@ -10,7 +10,7 @@ import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 import { HomeArt, SmallArt } from './furniture-art-home';
 import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
-import { ScenePanorama } from './scene-panorama';
+import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, glassRect } from './window-art';
 import { hashString } from '../core/library/scene-world';
 import { skyAt, type Sky } from '../core/library/sky';
@@ -125,7 +125,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       art = <SmallArt item={placed.item} rect={rect} palette={palette} />;
     } else if (placed.kind === 'window') {
       rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
-      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} clipId={`${worldId}-clip-${placed.id}`} />;
+      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} clipId={`${worldId}-clip-${placed.id}`} />;
     } else {
       const cells = rectOf(placed);
       if (!cells || !isStanding(placed)) return null;
@@ -299,8 +299,13 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {room.style === 'steampunk' && <SteampunkDecor cols={room.cols} wallH={wallH} />}
       {windows.length > 0 && (
         <defs>
+          {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que
+              le second, si bien que les copies du décor fixe de chaque fenêtre ne sont pas recalculées à chaque image. */}
           <g id={worldId}>
-            <ScenePanorama scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} />
+            <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} />
+          </g>
+          <g id={`${worldId}-actors`}>
+            <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} />
           </g>
           {windows.map((w) => {
             const glass = glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }));

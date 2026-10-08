@@ -7,11 +7,11 @@ const GLASS_INSET = 7;
 // Zone de la vitre (là où le décor se voit), en pixels de la pièce.
 export const glassRect = (rect: PxRect): PxRect => ({ x: rect.x + GLASS_INSET, y: rect.y + GLASS_INSET, w: rect.w - 2 * GLASS_INSET, h: rect.h - 2 * GLASS_INSET });
 
-type Props = { rect: PxRect; palette: Palette; steampunk: boolean; worldHref: string; clipId: string };
+type Props = { rect: PxRect; palette: Palette; steampunk: boolean; worldHref: string; actorsHref: string; clipId: string };
 
-// Une fenêtre : le décor commun vu à travers un cadre. Le décor est le MÊME `<g>` pour toutes les fenêtres (`<use>`) :
-// ce qu'on voit à gauche et à droite se raccorde, et un passant traverse l'une puis l'autre.
-export function WindowArt({ rect, palette, steampunk, worldHref, clipId }: Props): ReactElement {
+// Une fenêtre : le décor commun vu à travers un cadre. Le décor (fixe, puis acteurs animés) est le MÊME pour toutes
+// les fenêtres (`<use>`) : ce qu'on voit à gauche et à droite se raccorde, et un passant traverse l'une puis l'autre.
+export function WindowArt({ rect, palette, steampunk, worldHref, actorsHref, clipId }: Props): ReactElement {
   const glass = glassRect(rect);
   const frame = steampunk ? '#B5833A' : palette.skirt;
   const edge = steampunk ? '#6E4A1E' : palette.edge;
@@ -31,6 +31,7 @@ export function WindowArt({ rect, palette, steampunk, worldHref, clipId }: Props
       <rect x={glass.x} y={glass.y} width={glass.w} height={glass.h} fill="#9CC4E8" />
       <g clipPath={`url(#${clipId})`}>
         <use data-window-view="" href={worldHref} />
+        <use data-window-actors="" href={actorsHref} />
       </g>
       {bars}
       <rect x={rect.x + 3} y={rect.y + 3} width={rect.w - 6} height={rect.h - 6} rx={steampunk ? 14 : 3} fill="none" stroke={frame} strokeWidth={GLASS_INSET - 1} />

@@ -67,7 +67,9 @@ describe('Terre vue d’en haut — géométrie', () => {
     for (const width of [720, 1440, 2880]) {
       act(() => root.render(<svg><ScenePanorama scene="earth" width={width} height={height} sky={skyAt(21 * 60, times)} minutes={21 * 60} seed={9} /></svg>));
       const disc = container.querySelector('[data-earth]')!;
-      const [cx, cy, r] = ['cx', 'cy', 'r'].map((a) => Number(disc.getAttribute(a)));
+      const cx = Number(disc.getAttribute('cx'));
+      const cy = Number(disc.getAttribute('cy'));
+      const r = Number(disc.getAttribute('r'));
       const surface = (x: number): number => cy - Math.sqrt(Math.max(0, r * r - (x - cx) ** 2));
       expect(cy - r, `largeur ${width}`).toBeGreaterThanOrEqual(0);
       expect(cy - r, `largeur ${width}`).toBeLessThanOrEqual(height * 0.6);

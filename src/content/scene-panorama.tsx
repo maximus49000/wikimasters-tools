@@ -89,15 +89,13 @@ function useActorLoop(root: RefObject<SVGGElement | null>, actors: Actor[], widt
   }, [actors, width, root]);
 }
 
-function ScenePanoramaView({ scene, width, height, sky, minutes, seed }: PanoramaProps): ReactElement {
-  const root = useRef<SVGGElement | null>(null);
-  const actors = useMemo(() => actorsFor(scene, width, height, seed), [scene, width, height, seed]);
-  useActorLoop(root, actors, width);
+// Décor fixe : ciel, étoiles, soleil, lune et paysage. Il ne change qu'à la minute ; aucune animation n'y touche,
+// si bien que les copies `<use>` de chaque fenêtre ne sont pas recalculées à chaque image.
+function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed }: PanoramaProps): ReactElement {
   const props = { width, height, sky, minutes, seed };
   const terrestrial = scene !== 'space' && scene !== 'earth';
-  const t0 = Date.now() / 1000;
   return (
-    <g data-panorama="" data-scene={scene} ref={root}>
+    <g data-panorama="" data-scene={scene}>
       {terrestrial && <SkyAndStars {...props} />}
       {terrestrial && <Celestial {...props} />}
       {scene === 'city' && <CityScene {...props} />}
@@ -106,29 +104,51 @@ function ScenePanoramaView({ scene, width, height, sky, minutes, seed }: Panoram
       {scene === 'sea' && <SeaScene {...props} />}
       {scene === 'space' && <SpaceScene {...props} />}
       {scene === 'earth' && <EarthScene {...props} />}
-      <g data-actors>
-        {actors.map((actor) => {
-          const active = actorActive(actor.u, minutes);
-          return (
-            <g
-              key={actor.id}
-              data-actor={actor.id}
-              data-kind={actor.kind}
-              data-u={actor.u}
-              data-active={active ? 'true' : 'false'}
-              transform={`translate(${actorX(actor, width, t0).toFixed(1)} ${actor.y}) scale(${actor.speed < 0 ? -actor.scale : actor.scale} ${actor.scale})`}
-              opacity={active ? 1 : 0}
-              style={{ transition: 'opacity 3s ease' }}
-            >
-              <ActorSprite kind={actor.kind} sky={sky} />
-            </g>
-          );
-        })}
-      </g>
+    </g>
+  );
+}
+
+// Acteurs animés (passants, voitures, bateaux…), dans le même repère et sur la même horloge murale que le décor fixe :
+// la boucle d'animation ne modifie que ce groupe.
+function SceneActorsView({ scene, width, height, sky, minutes, seed }: PanoramaProps): ReactElement {
+  const root = useRef<SVGGElement | null>(null);
+  const actors = useMemo(() => actorsFor(scene, width, height, seed), [scene, width, height, seed]);
+  useActorLoop(root, actors, width);
+  const t0 = Date.now() / 1000;
+  return (
+    <g data-actors="" data-scene={scene} ref={root}>
+      {actors.map((actor) => {
+        const active = actorActive(actor.u, minutes);
+        return (
+          <g
+            key={actor.id}
+            data-actor={actor.id}
+            data-kind={actor.kind}
+            data-u={actor.u}
+            data-active={active ? 'true' : 'false'}
+            transform={`translate(${actorX(actor, width, t0).toFixed(1)} ${actor.y}) scale(${actor.speed < 0 ? -actor.scale : actor.scale} ${actor.scale})`}
+            opacity={active ? 1 : 0}
+            style={{ transition: 'opacity 3s ease' }}
+          >
+            <ActorSprite kind={actor.kind} sky={sky} />
+          </g>
+        );
+      })}
     </g>
   );
 }
 
 // Le décor ne se redessine que si la scène, la taille ou la minute changent.
 // Les appelants doivent passer un objet `sky` mémoïsé (issu de useSceneTime), sinon le memo est inopérant.
-export const ScenePanorama = memo(ScenePanoramaView);
+export const ScenePanoramaStatic = memo(ScenePanoramaStaticView);
+export const SceneActors = memo(SceneActorsView);
+
+// Décor complet (fixe puis acteurs) dans un même groupe, pour un affichage sans fenêtres `<use>`.
+export function ScenePanorama(props: PanoramaProps): ReactElement {
+  return (
+    <g data-panorama-full="">
+      <ScenePanoramaStatic {...props} />
+      <SceneActors {...props} />
+    </g>
+  );
+}

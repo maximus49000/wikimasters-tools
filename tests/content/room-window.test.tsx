@@ -48,6 +48,31 @@ describe('RoomView — fenêtres', () => {
     expect(uses[0]!.getAttribute('href')).toBe(uses[1]!.getAttribute('href'));
   });
 
+  it('décor fixe et acteurs animés sont deux groupes distincts, partagés par toutes les fenêtres', () => {
+    show(2);
+    // Un seul décor fixe, un seul groupe d’acteurs, et les acteurs ne sont PAS dans le décor fixe
+    // (la boucle d’animation ne touche que le groupe des acteurs : les copies du décor fixe ne sont pas recalculées).
+    expect(container.querySelectorAll('defs [data-panorama]')).toHaveLength(1);
+    expect(container.querySelectorAll('defs [data-actors]')).toHaveLength(1);
+    expect(container.querySelector('[data-panorama] [data-actor]')).toBeNull();
+    expect(container.querySelector('[data-actors] [data-actor]')).not.toBeNull();
+    const staticId = container.querySelector('defs [data-panorama]')!.closest('g[id]')!.id;
+    const actorsId = container.querySelector('defs [data-actors]')!.closest('g[id]')!.id;
+    expect(staticId).not.toBe(actorsId);
+    const windows = container.querySelectorAll('[data-window-art]');
+    expect(windows).toHaveLength(2);
+    for (const w of windows) {
+      const uses = w.querySelectorAll('use');
+      expect(uses).toHaveLength(2);
+      // Les deux copies sont dans le MÊME groupe découpé, le décor fixe d’abord.
+      expect(uses[0]!.parentElement).toBe(uses[1]!.parentElement);
+      expect(uses[0]!.getAttribute('href')).toBe(`#${staticId}`);
+      expect(uses[0]!.hasAttribute('data-window-view')).toBe(true);
+      expect(uses[1]!.getAttribute('href')).toBe(`#${actorsId}`);
+      expect(uses[1]!.hasAttribute('data-window-actors')).toBe(true);
+    }
+  });
+
   it('chaque vitre est découpée à la taille de sa fenêtre', () => {
     show(2);
     const clips = Array.from(container.querySelectorAll('clipPath rect'));
