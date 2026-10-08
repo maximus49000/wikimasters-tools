@@ -2,9 +2,11 @@ import type { PxRect } from '../core/library/room-grid';
 import { shelfSlots } from '../core/library/room-grid';
 import type { Palette } from '../core/library/styles';
 
+const NO_REFERRER = { referrerPolicy: 'no-referrer' } as object;
+
 type ArtProps = { rect: PxRect; palette: Palette };
 
-export function ShelfArt({ rect, palette, showSlots }: ArtProps & { showSlots: boolean }) {
+export function ShelfArt({ rect, palette, showSlots, occupied }: ArtProps & { showSlots: boolean; occupied?: ReadonlySet<number> }) {
   const { x, y, w, h } = rect;
   const boardH = 5;
   const inner = 6;
@@ -17,7 +19,7 @@ export function ShelfArt({ rect, palette, showSlots }: ArtProps & { showSlots: b
         <rect key={i} x={x + inner} y={y + inner + i * levelH - boardH / 2} width={w - 2 * inner} height={boardH} fill={palette.wood} />
       ))}
       {showSlots &&
-        shelfSlots(rect).map((slot, i) => (
+        shelfSlots(rect).map((slot, i) => occupied?.has(i) ? null : (
           <rect key={i} x={slot.x} y={slot.y} width={slot.w} height={slot.h} rx={2} fill="none" stroke={palette.text} strokeWidth={1} strokeDasharray="3 3" />
         ))}
     </g>
@@ -35,14 +37,15 @@ export function DeskArt({ rect, palette }: ArtProps) {
   );
 }
 
-// Écran vide pour l'instant : le morceau « Cartes » y affichera une carte.
-export function ComputerArt({ rect }: { rect: PxRect }) {
+// Écran : affiche l'image d'une carte quand il y en a une.
+export function ComputerArt({ rect, imageUrl }: { rect: PxRect; imageUrl?: string }) {
   const { x, y, w, h } = rect;
   const screenH = h - 12;
   return (
     <g>
       <rect x={x} y={y} width={w} height={screenH} rx={5} fill="#1D1D22" />
       <rect x={x + 5} y={y + 5} width={w - 10} height={screenH - 10} rx={2} fill="#A8C5E6" />
+      {imageUrl && <image href={imageUrl} x={x + 5} y={y + 5} width={w - 10} height={screenH - 10} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" />}
       <rect x={x + w / 2 - 4} y={y + screenH} width={8} height={h - screenH - 4} fill="#555555" />
       <rect x={x + w / 2 - 17} y={y + h - 4} width={34} height={4} rx={2} fill="#555555" />
     </g>

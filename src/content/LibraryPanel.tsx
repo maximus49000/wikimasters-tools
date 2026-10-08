@@ -13,7 +13,7 @@ import {
   shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
-import { FURNITURE_KINDS, labelOf, sizeOf } from '../core/library/furniture-catalog';
+import { FURNITURE_KINDS, labelOf, sizeOf, wallSizeOf } from '../core/library/furniture-catalog';
 import type { FurnitureKind, Layout, LibraryState, Orientation, StandingKind } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
@@ -23,8 +23,18 @@ import {
   HEIGHT,
   SECTION,
   VISIBLE_COLS,
+  canHang,
   canPlace,
   canPlaceComputer,
+  firstFreeSlot,
+  hang,
+  moveHung,
+  moveStored,
+  placedSlugs,
+  setScreenCard,
+  storeCard,
+  unplaceCard,
+  isStanding,
   moveComputer,
   moveStanding,
   placeComputer,
@@ -37,6 +47,10 @@ import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag'
 import { createLongPress } from './long-press';
 import { FullscreenButton, useFullscreen } from './fullscreen';
 import { lockOrientation, unlockOrientation } from './orientation-lock';
+import type { CollectionRepo } from '../core/collection/collection-repo';
+import type { KindsRepo } from '../core/kinds/kinds-repo';
+import { CardPickerDialog, type CardChoice } from './CardPickerDialog';
+import { useRoomCards } from './library-cards-data';
 import { RoomView, type DragView, type Tool } from './RoomView';
 
 // Près du bord de la pièce visible, le glissé la fait défiler : zone sensible et vitesse (pixels par image).
@@ -59,6 +73,12 @@ export const LIBRARY_CSS = `
 .wmt-lib-stage:fullscreen .wmt-lib-scroll{border-radius:0}
 .wmt-lib-msg{min-height:20px;font-size:13px;opacity:.85}
 .wmt-lib-sep{flex:1}
+.wmt-lib-dialog{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
+.wmt-lib-dialog-panel{box-sizing:border-box;width:100%;max-width:min(92vw,480px);max-height:80vh;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:var(--color-surface,#0d1117);color:var(--color-foreground,#e6edf3);font:14px/20px system-ui,sans-serif}
+.wmt-lib-picklist{display:flex;flex-direction:column;gap:6px}
+.wmt-lib-pick{justify-content:flex-start;border-radius:10px;text-align:left}
+.wmt-lib-pick:disabled{opacity:.4;cursor:not-allowed}
+.wmt-lib-btn[data-suggested="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
 `;
 
 function Icon({ paths }: { paths: readonly string[] }) {
@@ -73,6 +93,7 @@ function Icon({ paths }: { paths: readonly string[] }) {
 
 const ICONS = {
   plus: ['M5 12h14', 'M12 5v14'],
+  card: ['M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', 'M12 9v6', 'M9 12h6'],
   eye: ['M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z', 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'],
   pencil: ['M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z', 'm15 5 4 4'],
   star: ['M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z'],
@@ -105,9 +126,15 @@ const REFUSALS = {
   bounds: 'Ça ne rentre pas dans la pièce.',
   floor: 'Un meuble se pose au sol : touchez une case du sol.',
   taken: 'Cet emplacement est déjà occupé.',
+  wall: 'Un objet mural s’accroche au mur.',
 } as const;
 
-export function LibraryPanel({ library }: { library: LibraryRepo }) {
+type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void };
+
+export function LibraryPanel({ library, collection, kinds, onOpenCard }: Props) {
+  const roomCards = useRoomCards(collection, kinds);
+  const [picking, setPicking] = useState(false);
+  const [pending, setPending] = useState<CardChoice | null>(null);
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
   const [tool, setTool] = useState<Tool>(null);
@@ -134,7 +161,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
     const svg = scrollRef.current?.querySelector('svg');
     if (!state || !svg) return null;
     const { col, row, x, y } = pointerToCell(svg.getBoundingClientRect(), state.cols * CELL_W, HEIGHT, clientX, clientY);
-    return { id, x, y, target: dropTargetFor(state.layout, state.cols, id, col, row) };
+    return { id, x, y, target: dropTargetFor(state.layout, state.cols, id, col, row, x, y) };
   };
 
   // Pendant un glissé : le doigt ne fait pas défiler la page, Échap annule, les bords font défiler la pièce.
@@ -250,6 +277,8 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
     setSelectedId(null);
     setBlink([]);
     setMessage('');
+    setPicking(false);
+    setPending(null);
   };
   const refuse = (text: string, cells: Cell[] = []): void => {
     setMessage(text);
@@ -258,7 +287,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
     blinkTimer.current = window.setTimeout(() => setBlink([]), 700);
   };
 
-  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.' } as const;
+  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'slot-busy': 'Cet emplacement est déjà pris.', 'not-slot': 'Déposez l’objet dans un emplacement de l’étagère.' } as const;
   // Lâcher d'un meuble soulevé : valide → déplacé par les mêmes fonctions que « Déplacer » ; sinon il reste en place.
   const dropLifted = (id: string, target: DropTarget): void => {
     if (target.ok) {
@@ -266,6 +295,12 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
       if (item?.kind === 'computer' && target.deskId) {
         const deskId = target.deskId;
         void editLayout((l) => moveComputer(l, id, deskId));
+      } else if (item?.kind === 'stored' && target.shelfId !== undefined && target.slot !== undefined) {
+        const { shelfId, slot } = target;
+        void editLayout((l) => moveStored(l, id, shelfId, slot));
+      } else if (item?.kind === 'wall' && target.col !== undefined && target.top !== undefined) {
+        const { col, top } = target;
+        void editLayout((l, cols) => moveHung(l, cols, id, col, top));
       } else if (target.col !== undefined && target.top !== undefined) {
         const { col, top } = target;
         void editLayout((l, cols) => moveStanding(l, cols, id, col, top));
@@ -295,11 +330,66 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
 
   const movingItem = tool?.type === 'move' ? layout.find((p) => p.id === tool.id) : undefined;
   const targetsDesk = (tool?.type === 'new' && tool.kind === 'computer') || movingItem?.kind === 'computer';
-  const cellsActive = tool !== null && !targetsDesk;
+  const placing = tool?.type === 'card' ? pending : null;
+  // Les cases captent les touchers pour un meuble ou un objet mural ; poser une carte sur une étagère ou un écran vise les meubles.
+  const cellsActive = tool !== null && !targetsDesk && (tool.type !== 'card' || placing?.target === 'wall');
+
+  // Objet mural, posé (carte choisie) ou déplacé (« Déplacer ») : la case touchée est son coin bas-gauche.
+  async function placeWall(col: number, row: number): Promise<void> {
+    if (!tool) return;
+    const shape = tool.type === 'card' ? (pending?.target === 'wall' ? pending.shape : null) : movingItem?.kind === 'wall' ? movingItem.shape : null;
+    if (!shape) return;
+    const top = row - wallSizeOf(shape).h + 1;
+    const check = canHang(layout, room.cols, shape, col, top, tool.type === 'move' ? tool.id : undefined);
+    if (!check.ok) return refuse(REASONS[check.reason], check.cells);
+    if (tool.type === 'card' && pending?.target === 'wall') {
+      const { slug, color } = pending;
+      await editLayout((l, cols) => hang(l, cols, shape, col, top, slug, nextFurnitureId(l), color));
+    } else if (tool.type === 'move') {
+      await editLayout((l, cols) => moveHung(l, cols, tool.id, col, top));
+    }
+    reset();
+  }
+
+  // Carte choisie pour un écran ou une étagère : posée sur le meuble touché.
+  async function placeOnFurniture(choice: CardChoice, item: Layout[number]): Promise<void> {
+    if (choice.target === 'screen') {
+      if (item.kind !== 'computer') return refuse('Choisissez un ordinateur.');
+      await editLayout((l) => setScreenCard(l, item.id, choice.slug));
+    } else if (choice.target === 'shelf') {
+      if (item.kind !== 'shelf') return refuse('Touchez une étagère.');
+      const slot = firstFreeSlot(layout, item.id);
+      if (slot === null) return refuse('Cette étagère est pleine.');
+      await editLayout((l) => storeCard(l, item.id, slot, choice.shape, choice.slug, nextFurnitureId(l)));
+    } else {
+      return;
+    }
+    reset();
+  }
+
+  // Toucher un objet (accroché, rangé ou écran) : l'ouvre en mode Visiter, le sélectionne en mode Aménager.
+  function onCardTap(id: string): void {
+    if (press.consumeClick()) return;
+    const item = layout.find((p) => p.id === id);
+    if (!item) return;
+    // Pendant la pose sur une étagère, toucher une carte rangée revient à toucher son étagère.
+    if (editing && placing?.target === 'shelf' && item.kind === 'stored') return void onPick(item.shelfId);
+    if (!editing) {
+      const slug = item.kind === 'wall' || item.kind === 'stored' || item.kind === 'computer' ? item.slug : undefined;
+      if (slug && roomCards.cards[slug]) onOpenCard?.(slug);
+      return;
+    }
+    // L'écran d'un ordinateur se manie comme l'ordinateur.
+    if (item.kind === 'computer') return void onPick(id);
+    if (tool) return;
+    setSelectedId(id === selectedId ? null : id);
+    setMessage('');
+  }
 
   async function onCell(col: number, row: number): Promise<void> {
     if (!tool) return;
-    const kind: StandingKind | null = tool.type === 'new' ? (tool.kind === 'computer' ? null : tool.kind) : movingItem && movingItem.kind !== 'computer' ? movingItem.kind : null;
+    if (tool.type === 'card' || movingItem?.kind === 'wall') return placeWall(col, row);
+    const kind: StandingKind | null = tool.type === 'new' ? (tool.kind === 'computer' ? null : tool.kind) : movingItem && isStanding(movingItem) ? movingItem.kind : null;
     if (!kind) return;
     // La case touchée est la case en bas à gauche du meuble.
     const top = row - sizeOf(kind).h + 1;
@@ -314,6 +404,7 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
     if (press.consumeClick() || !editing) return;
     const item = layout.find((p) => p.id === id);
     if (!item) return;
+    if (placing) return placeOnFurniture(placing, item);
     if (tool?.type === 'new' && tool.kind === 'computer') {
       if (item.kind !== 'desk') return refuse('Un ordinateur se pose sur un bureau.');
       if (!canPlaceComputer(layout, id)) return refuse('Ce bureau a déjà un ordinateur.');
@@ -340,13 +431,34 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
   const startMove = (): void => {
     if (!selectedId) return;
     const item = layout.find((p) => p.id === selectedId);
+    if (item?.kind === 'stored') return refuse('Appui long pour la déplacer.');
     setTool({ type: 'move', id: selectedId });
-    setMessage(item?.kind === 'computer' ? 'Touchez le bureau où le poser.' : 'Touchez la case du sol où le poser.');
+    setMessage(item?.kind === 'computer' ? 'Touchez le bureau où le poser.' : item?.kind === 'wall' ? 'Touchez la case du mur où l’accrocher.' : 'Touchez la case du sol où le poser.');
   };
   const removeSelected = async (): Promise<void> => {
     if (!selectedId) return;
-    await editLayout((l) => removeFurniture(l, selectedId));
+    const item = layout.find((p) => p.id === selectedId);
+    // Une étagère garnie, ou un bureau dont l'ordinateur affiche une carte : confirmation, les cartes partent avec.
+    const holdsCards =
+      (item?.kind === 'shelf' && layout.some((p) => p.kind === 'stored' && p.shelfId === item.id)) ||
+      (item?.kind === 'desk' && layout.some((p) => p.kind === 'computer' && p.deskId === item.id && p.slug));
+    if (holdsCards && !window.confirm('Retirer aussi les cartes rangées ?')) return;
+    // Un objet de carte se range ; un ordinateur qui affiche une carte ne vide d'abord que son écran.
+    if (item?.kind === 'wall' || item?.kind === 'stored' || (item?.kind === 'computer' && item.slug)) await editLayout((l) => unplaceCard(l, selectedId));
+    else await editLayout((l) => removeFurniture(l, selectedId));
     reset();
+  };
+  // « + Carte » : rappuyer annule ; sinon le sélecteur s'ouvre et le choix devient l'outil de pose.
+  const startCard = (): void => {
+    if (tool?.type === 'card') return reset();
+    reset();
+    setPicking(true);
+  };
+  const chooseCard = (choice: CardChoice): void => {
+    setPicking(false);
+    setPending(choice);
+    setTool({ type: 'card' });
+    setMessage(choice.target === 'screen' ? 'Touchez un ordinateur.' : choice.target === 'shelf' ? 'Touchez une étagère.' : 'Touchez la case du mur où l’accrocher.');
   };
 
   // Agrandir à gauche décale les meubles : le défilement suit pour garder la même vue.
@@ -482,6 +594,11 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
               </Btn>
             </>
           )}
+          {collection && (
+            <Btn label="Ajouter une carte" pressed={tool?.type === 'card'} data={{ action: 'add-card' }} onClick={startCard}>
+              <Icon paths={ICONS.card} />
+            </Btn>
+          )}
           <span className="wmt-lib-sep" />
           <Btn label="Agrandir la pièce à gauche" data={{ action: 'extend-left' }} onClick={() => void extend('left')}>
             <Icon paths={ICONS.extendLeft} />
@@ -521,12 +638,15 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
             blink={blink}
             onCell={(col, row) => void onCell(col, row)}
             onPick={(id) => void onPick(id)}
+            cards={roomCards.cards}
+            onCardTap={onCardTap}
             onFurnitureDown={onFurnitureDown}
             onFurnitureMove={onFurnitureMove}
             onFurnitureUp={press.cancel}
-            drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost } satisfies DragView) : null}
+            drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost, ghostPx: drag.target.ghostPx } satisfies DragView) : null}
           />
         </div>
+        {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}
         {stage.active && <FullscreenButton active onClick={stage.toggle} right={8} />}
       </div>
     </div>

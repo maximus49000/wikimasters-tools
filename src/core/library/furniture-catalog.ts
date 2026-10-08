@@ -1,4 +1,4 @@
-import type { FurnitureKind, StandingKind } from './library-types';
+import type { FurnitureKind, ShelfShape, StandingKind, VinylColor, WallShape } from './library-types';
 
 // Tailles en cases (largeur × hauteur). L'étagère a 3 niveaux de 5 emplacements (utilisés par le morceau « Cartes »).
 export const CATALOG = {
@@ -8,6 +8,20 @@ export const CATALOG = {
 } as const;
 
 export const FURNITURE_KINDS: FurnitureKind[] = ['shelf', 'desk', 'computer'];
+
+export const WALL_SHAPES: WallShape[] = ['poster', 'vinyl', 'sleeve-square', 'sleeve-round', 'sleeve-frame'];
+export const SHELF_SHAPES: ShelfShape[] = ['cd', 'dvd', 'game', 'book'];
+export const VINYL_COLORS: VinylColor[] = ['black', 'red', 'blue', 'green', 'gold'];
+
+// Tailles en cases (largeur × hauteur) des objets accrochés.
+const WALL_SIZES: Record<WallShape, { w: number; h: number }> = {
+  poster: { w: 3, h: 4 },
+  vinyl: { w: 3, h: 3 },
+  'sleeve-square': { w: 3, h: 3 },
+  'sleeve-round': { w: 3, h: 3 },
+  'sleeve-frame': { w: 4, h: 4 },
+};
+export const wallSizeOf = (shape: WallShape): { w: number; h: number } => WALL_SIZES[shape];
 
 export const labelOf = (kind: FurnitureKind): string => CATALOG[kind].label;
 

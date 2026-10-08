@@ -180,7 +180,7 @@ export function createCollectionUi({ collection, geo, library, birth, kinds, lin
         ) : view === 'web' ? (
           <WebPanel {...common} links={links} kinds={kinds} kindFilterSource={kindFilterSource} request={pathRequest.take()} />
         ) : view === 'library' ? (
-          <LibraryPanel library={library} />
+          <LibraryPanel library={library} collection={collection} kinds={kinds} onOpenCard={openGameCard} />
         ) : (
           <HomemadePanel {...common} sortSource={sortSource} kinds={kinds} kindFilterSource={kindFilterSource} nativePageSize={() => nativeCount} pages={pages} selection={selection} onToggleCard={toggleCard} onLongPressCard={startSelectionWith} />
         )}

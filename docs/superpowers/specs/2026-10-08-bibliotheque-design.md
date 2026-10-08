@@ -132,6 +132,16 @@ Cartes dans la pièce, autres meubles, autres styles, fenêtre, météo, animaux
 
 ## Morceau 2 : les cartes
 
+**Découpage du morceau 2.**
+- **2a, les cartes** (livré dans la PR « cartes ») : mur (poster, vinyle, pochette), étagère (CD, DVD, jeu vidéo, livre), écran de l'ordinateur, ouverture simple de la fiche existante (sans animation de retournement), carte inconnue grisée.
+- **2b, le présentoir de boosters** : MIS DE CÔTÉ par l'utilisateur ; à ne pas reprendre sans sa demande.
+- **2c, la carte murale et l'animation d'ouverture complète** : à faire plus tard.
+
+**Décisions prises en 2a.**
+- Une carte ne peut être posée qu'une seule fois par pièce (mur, étagère ou écran) ; la retirer la libère.
+- Un appui long sur un objet le soulève et le déplace : objet mural vers un autre emplacement mural libre, objet rangé vers un emplacement libre (même étagère ou une autre, sans échange), ordinateur déplacé avec sa carte sur un autre bureau libre. Une carte d'écran se change ou se retire en touchant l'ordinateur (« + Carte » / Retirer).
+- Retirer une étagère ou un bureau qui porte des cartes demande confirmation.
+
 Choix de la carte (liste filtrable de la Collection), puis de la forme.
 - Mur : poster, vinyle (couleurs : noir, rouge, bleu, vert, or), pochette (carrée, ronde, cadre).
 - Étagère : CD, DVD, jeu vidéo, livre. Le dos affiche une petite image et le titre ; la forme conseillée dépend du type de la carte (musique → CD ou vinyle, film → DVD, jeu → jeu vidéo, livre → livre).
