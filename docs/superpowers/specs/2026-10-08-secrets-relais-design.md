@@ -9,7 +9,7 @@ Le dépôt est public et les APK/zips sont téléchargeables : les clés inject�
 ## Décisions
 
 - **Anciennes clés non révoquées** (décision de l'utilisateur, 2026-10-08) : la diffusion n'a pas commencé, le risque est jugé faible. Les anciens paquets continuent donc de fonctionner. Les nouveaux secrets du relais peuvent être les mêmes valeurs ou des valeurs neuves, au choix de l'utilisateur (le plus propre : des valeurs neuves, sans effet sur les anciens paquets tant que les anciennes ne sont pas révoquées).
-- **Pas de jeton d'application** entre les clients et le relais : il serait lisible dans le paquet comme les clés actuelles. La protection repose sur une liste blanche stricte de routes, de paramètres et de corps, un cache et une limite de débit par IP.
+- **Pas de jeton d'application** entre les clients et le relais : il serait lisible dans le paquet comme les clés actuelles. La protection repose sur une liste blanche stricte de routes, de paramètres et de corps, une limite de débit par IP.
 - **Pas de cache côté relais** : l’API Cache de Cloudflare n’est fonctionnelle que sur un domaine personnalisé (documentation : « Workers deployed to custom domains have access to functional cache operations »), or le relais est sur `workers.dev` ; KV n’offre que 1 000 écritures par jour, déjà entamées par l’indexeur. Les caches locaux des clients (24 h à 7 jours) suffisent à cette échelle.
 - Limites Cloudflare vérifiées dans la documentation le 2026-10-08 (offre gratuite) : 100 000 requêtes par jour par compte, 10 ms de calcul par requête (l'attente d'un `fetch` n'est pas comptée), 50 appels sortants par requête. Charge ajoutée estimée à ~10 000 requêtes par jour pour 200 utilisateurs. Risque nouveau et accepté : le relais devient le point de passage unique ; le dépassement du plafond quotidien coupe toutes ses fonctions jusqu'à minuit UTC. Au-delà d'environ 1 000 utilisateurs actifs : offre Workers payante.
 
@@ -45,7 +45,7 @@ Chaque module est un fichier de `relay/src/` avec une fonction pure testable par
 
 ### Limite de débit
 
-- Par IP (`cf-connecting-ip`) : `/tmdb` 60 par minute, `/igdb` 20 par minute, `/books` 20 par minute, `/issues` 5 par heure. Dépassement : 429 avec `Retry-After`.
+- Par IP (`cf-connecting-ip`) : `/tmdb` 300 par minute, `/igdb` 120 par minute, `/books` 60 par minute, `/issues` 5 par heure (la grille lance une recherche d’affiche par carte et le client IGDB s’espace déjà à ~230 appels par minute). Dépassement : 429 avec `Retry-After`.
 - Implémentation : compteurs en mémoire du Worker (fenêtre fixe par route et par IP). Ils sont par isolat et se remettent à zéro quand l’isolat est recyclé : c’est un filtre contre l’usage abusif, pas une garantie. La liaison native `ratelimits` (période 10 ou 60 s seulement, disponibilité sur l’offre gratuite non confirmée par la documentation) est écartée pour ne pas risquer un échec de déploiement.
 
 ### CORS et configuration
