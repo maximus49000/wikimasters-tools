@@ -70,7 +70,7 @@ La liste vit dans un seul fichier TypeScript partagé par le client et le relais
 | Écoute | `liaison-compte` (detail : plateforme) | Le compte est relié avec succès |
 | Film / série | `bande-annonce-lue` | La vidéo démarre (pas à l'affichage du lecteur) |
 | Film / série | `bo-lue` | Un titre de la BO démarre |
-| Film / série | `streaming-lien-ouvert` (detail : `abonnement` / `location` / `achat`) | Un lien d'offre de visionnage est ouvert |
+| Film / série | `streaming-lien-ouvert` | Le lien « Voir où regarder » (JustWatch) est ouvert (un seul lien, donc pas de détail) |
 | Film / série | `film-change` | Un autre film ou série est choisi et confirmé via ⇄ |
 | Toile | `toile-generee` | Une toile est construite (pas à l'ouverture du menu) |
 | Documentaire | `documentaire-lu` | La lecture démarre (pas à l'ouverture de la section) |
