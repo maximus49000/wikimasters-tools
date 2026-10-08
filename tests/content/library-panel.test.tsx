@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
@@ -33,6 +33,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   act(() => root.unmount());
   container.remove();
 });
@@ -121,6 +122,60 @@ describe('LibraryPanel', () => {
     await click('[data-action="shrink-left"]');
     expect(repo.current()?.rooms[0]?.cols).toBe(24);
     expect(repo.current()?.rooms[0]?.layout[0]).toMatchObject({ kind: 'desk', col: 2 });
+  });
+
+  it('renomme une pièce en mode Aménager', async () => {
+    await click('[data-action="edit"]');
+    const input = q('input[aria-label="Nom de la pièce"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => { input.focus(); });
+    await act(async () => {
+      setter.call(input, 'Salon');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.blur();
+    });
+    await settle();
+    expect(q('[data-room="r1"]')?.textContent).toContain('Salon');
+  });
+
+  it('supprime une pièce après confirmation et active sa voisine', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await click('[data-action="add-room"]');
+    await click('[data-action="edit"]');
+    await click('[data-action="delete-room"]');
+    expect(q('[data-room="r2"]')).toBeNull();
+    expect(q('[data-room="r1"]')?.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('ne supprime rien quand la confirmation est refusée', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await click('[data-action="add-room"]');
+    await click('[data-action="edit"]');
+    await click('[data-action="delete-room"]');
+    expect(repo.current()?.rooms).toHaveLength(2);
+  });
+
+  it('vide la dernière pièce : meubles retirés, 24 colonnes, une seule pièce', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await click('[data-action="edit"]');
+    await click('[data-action="extend-right"]');
+    await click('[data-kind="desk"]');
+    await click('[data-cell="2-11"]');
+    await click('[data-action="delete-room"]');
+    const room = repo.current()?.rooms[0];
+    expect(repo.current()?.rooms).toHaveLength(1);
+    expect(room?.layout).toHaveLength(0);
+    expect(room?.cols).toBe(24);
+  });
+
+  it('refuse de réduire à gauche une zone occupée', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-action="extend-right"]');
+    await click('[data-kind="desk"]');
+    await click('[data-cell="2-11"]');
+    await click('[data-action="shrink-left"]');
+    expect(q('[role="status"]')?.textContent).toContain('meubles');
+    expect(repo.current()?.rooms[0]?.cols).toBe(36);
   });
 
   it('refuse de réduire sous 24 colonnes ou une zone occupée, et le dit', async () => {

@@ -299,7 +299,11 @@ export function LibraryPanel({ library }: { library: LibraryRepo }) {
             aria-label="Nom de la pièce"
             defaultValue={room.name}
             maxLength={30}
-            onBlur={(event) => void library.update((state) => renameRoom(state, room.id, event.currentTarget.value))}
+            onBlur={(event) => {
+              // La valeur est lue tout de suite : currentTarget n'existe plus quand l'écriture s'exécute.
+              const name = event.currentTarget.value;
+              void library.update((state) => renameRoom(state, room.id, name));
+            }}
           />
         )}
         {editing && (
