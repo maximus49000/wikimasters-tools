@@ -36,6 +36,8 @@ svg{width:100%;height:120px;display:block}
 <select id="platform" aria-label="Plateforme"><option value="">Toutes plateformes</option><option value="extension">Extension</option><option value="android">Android</option></select>
 <select id="channel" aria-label="Canal"><option value="">Tous canaux</option><option value="prod">Production</option><option value="preprod">Pré-production</option></select>
 <select id="days" aria-label="Période"><option value="7">7 jours</option><option value="30" selected>30 jours</option><option value="90">90 jours</option></select>
+<select id="refresh" aria-label="Actualisation automatique"><option value="0">Actualisation : désactivée</option><option value="30">Toutes les 30 s</option><option value="60">Toutes les minutes</option><option value="300">Toutes les 5 minutes</option><option value="900">Toutes les 15 minutes</option><option value="custom">Personnalisée…</option></select>
+<input id="refreshCustom" type="number" min="10" step="1" inputmode="numeric" placeholder="Secondes (min. 10)" aria-label="Durée personnalisée en secondes" hidden>
 <button id="logout" type="button">Changer de jeton</button>
 </div>
 <div class="tiles"><div class="card tile"><b id="t-today">–</b><span>actifs aujourd’hui</span></div><div class="card tile"><b id="t-week">–</b><span>actifs 7 jours</span></div><div class="card tile"><b id="t-month">–</b><span>actifs 30 jours</span></div></div>
@@ -51,6 +53,7 @@ svg{width:100%;height:120px;display:block}
 (function () {
   var KEY = 'wmt-stats-token';
   var $ = function (id) { return document.getElementById(id); };
+  var RKEY = 'wmt-stats-refresh', MIN = 10, timer = null, busy = false;
   var token = ''; try { token = localStorage.getItem(KEY) || ''; } catch (e) {}
   function el(tag, text, cls) { var n = document.createElement(tag); if (text !== undefined) n.textContent = String(text); if (cls) n.className = cls; return n; }
   function table(target, head, rows) {
@@ -86,6 +89,8 @@ svg{width:100%;height:120px;display:block}
   }
   function show(loggedIn) { $('login').style.display = loggedIn ? 'none' : 'block'; $('app').hidden = !loggedIn; }
   function load() {
+    if (busy) return;
+    busy = true;
     var q = '?days=' + $('days').value + '&platform=' + $('platform').value + '&channel=' + $('channel').value;
     $('status').textContent = 'Chargement…';
     fetch('/stats' + q, { headers: { 'x-stats': token } }).then(function (r) {
@@ -95,8 +100,32 @@ svg{width:100%;height:120px;display:block}
       if (!body) return;
       if (!body.ok) { $('status').textContent = 'Service non configuré (' + body.reason + ').'; return; }
       show(true); render(body.stats); $('status').textContent = 'Mis à jour à ' + new Date().toLocaleTimeString('fr-FR') + '.';
-    }).catch(function () { $('status').textContent = 'Impossible de joindre le relais.'; });
+    }).catch(function () { $('status').textContent = 'Impossible de joindre le relais.'; }).then(function () { busy = false; });
   }
+  // Actualisation automatique : durée en secondes (0 = désactivée), mémorisée dans le navigateur, suspendue quand l’onglet est caché.
+  function seconds() {
+    if ($('refresh').value !== 'custom') return Number($('refresh').value) || 0;
+    var n = Math.floor(Number($('refreshCustom').value));
+    return n >= MIN ? n : 0;
+  }
+  function schedule() {
+    if (timer) clearInterval(timer);
+    timer = null;
+    $('refreshCustom').hidden = $('refresh').value !== 'custom';
+    var s = seconds();
+    try { localStorage.setItem(RKEY, String(s)); } catch (e) {}
+    if (s) timer = setInterval(function () { if (!document.hidden && !$('app').hidden) load(); }, s * 1000);
+  }
+  (function restore() {
+    var saved = 0; try { saved = Number(localStorage.getItem(RKEY)) || 0; } catch (e) {}
+    var preset = Array.prototype.some.call($('refresh').options, function (o) { return o.value === String(saved); });
+    if (preset) $('refresh').value = String(saved);
+    else if (saved >= MIN) { $('refresh').value = 'custom'; $('refreshCustom').value = saved; }
+    schedule();
+  })();
+  $('refresh').addEventListener('change', schedule);
+  $('refreshCustom').addEventListener('input', schedule);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && timer && !$('app').hidden) load(); });
   $('login').addEventListener('submit', function (e) { e.preventDefault(); token = $('token').value.trim(); if (!token) return; try { localStorage.setItem(KEY, token); } catch (err) {} $('token').value = ''; $('loginError').textContent = ''; load(); });
   $('logout').addEventListener('click', function () { token = ''; try { localStorage.removeItem(KEY); } catch (e) {} show(false); });
   ['platform', 'channel', 'days'].forEach(function (id) { $(id).addEventListener('change', load); });
