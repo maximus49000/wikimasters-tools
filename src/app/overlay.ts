@@ -17,6 +17,7 @@ import { createSortSource } from '../content/sort-source';
 import { asOwnRequest } from '../content/market-tap';
 import { createKindFilterSource } from '../content/kind-filter';
 import { createCollectionFilterSource } from '../content/collection-filter';
+import { createLibraryRepo } from '../core/library/library-repo';
 import { createCollectionUi } from '../content/collection-ui';
 import { createMarketSource } from '../content/market-source';
 import { loadFilteredSlugs } from '../core/collection/filtered-slugs';
@@ -341,6 +342,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     collection: collectionRepo,
     geo: createGeoRepo(store, (slug) => fetchWikiCoords((url) => fetch(url), slug)),
     birth: createBirthRepo(store, (slugs) => fetchWikidataDates((url) => fetch(url), slugs)),
+    library: createLibraryRepo(store),
     kinds: kindsRepo,
     links: linksRepo,
     kindFilterSource: createKindFilterSource(window.localStorage),
