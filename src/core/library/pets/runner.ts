@@ -1,16 +1,29 @@
 import type { Coat, PetPlan, Pt, Room, Species } from '../library-types';
-import { layoutSig, nextPlan, resume, touchPlan, type BrainEnv, type Rng } from './brain';
+import { layoutSig, nextPlan, resume, standingFrom, touchPlan, type BrainEnv, type Rng } from './brain';
 import { depthIndex, depthKey } from './depth';
 import { planEndsAt, stateAt, type PetState } from './motion';
+import { buildWalkMap } from './walk-map';
 import { proposeScene, sceneIsValid } from './scenes';
 import type { Standing } from './route';
 
 export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower';
-export type PetFrame = { id: string; species: Species; coat: Coat; name: string; pose: Pose; facing: 'l' | 'r'; behind: number; top: boolean; pos: Pt };
+export type PetFrame = { id: string; species: Species; coat: Coat; name: string; pose: Pose; facing: 'l' | 'r'; behind: number; top: boolean; pos: Pt; /* ordonnée des pieds : départage deux animaux au même rang de dessin */ depthY: number };
 
 const PERCH_KINDS: ReadonlySet<string> = new Set(['desk', 'shelf']);
 const isTop = (room: Room, on: string | null): boolean => on !== null && PERCH_KINDS.has(room.layout.find((p) => p.id === on)?.kind ?? '');
 const FUTURE_SLACK_MS = 60_000;
+
+// Si l'animal est en plein saut, son état « d'abandon » est le point d'atterrissage du saut (jamais en l'air).
+function settledState(plan: PetPlan, now: number): PetState {
+  const state = stateAt(plan, now);
+  if (state.phase !== 'jump') return state;
+  let t = Math.max(0, now - plan.startedAt - (plan.lag ?? 0));
+  for (const s of plan.route) {
+    if (t < s.ms) return { ...state, pos: s.to, on: s.on, phase: 'walk' };
+    t -= s.ms;
+  }
+  return state;
+}
 // Chance qu'un animal qui a fini son action propose une scène à un autre (jamais en continu).
 const SCENE_CHANCE = 0.3;
 
@@ -78,10 +91,18 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
         if (plan?.with !== undefined && now < planEndsAt(plan)) {
           const partnerPlan = planOf(room, plan.with.petId);
           const jumelle = partnerPlan?.with?.petId === pet.id;
-          if (!sceneIsValid(plan, jumelle ? partnerPlan : undefined, room.pets.some((p) => p.id === plan!.with!.petId))) {
-            const s = stateAt(plan, now);
-            plan = nextPlan(env, { pt: s.pos, on: s.on, hostId: s.on, facing: s.facing }, now, plan.action);
-            record(pet.id, plan);
+          // La sieste n'a pas de jumeau : on lui donne le plan du dormeur tel quel.
+          const given = plan.with.scene === 'nap' || jumelle ? partnerPlan : undefined;
+          if (!sceneIsValid(plan, given, room.pets.some((p) => p.id === plan!.with!.petId))) {
+            if (plan.sig === sig) {
+              const standing = standingFrom(buildWalkMap(room.layout, room.cols), settledState(plan, now));
+              plan = nextPlan(env, standing, now, plan.action);
+              record(pet.id, plan);
+            } else {
+              // Meubles changés : la position théorique n'est plus fiable, `resume` repart d'une case libre.
+              const { with: _with, ...rest } = plan;
+              plan = rest;
+            }
           }
         }
         if (plan === undefined || plan.sig !== sig || now >= planEndsAt(plan)) {
@@ -116,7 +137,7 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
           state = stateAt(plan, now);
         }
         plans.set(pet.id, plan);
-        return { id: pet.id, species: pet.species, coat: pet.coat, name: pet.name, pose: poseOf(state, plan), facing: state.facing, behind: depthIndex(room.layout, depthKey(room.layout, state)), top: isTop(room, state.on), pos: state.pos };
+        return { id: pet.id, species: pet.species, coat: pet.coat, name: pet.name, pose: poseOf(state, plan), facing: state.facing, behind: depthIndex(room.layout, depthKey(room.layout, state)), top: isTop(room, state.on), pos: state.pos, depthY: state.pos.y };
       });
     },
     // Une caresse : vrai si l'animal s'est arrêté pour ronronner (ou remuer la queue).

@@ -178,3 +178,19 @@ describe('chien', () => {
     expect(plan.key).toBe('b:curl');
   });
 });
+
+describe('chien : itinéraires', () => {
+  const dogEnv = (layout: Layout, seed: number) => env(layout, seed, { species: 'dog' });
+  const stepping: Layout = [
+    { id: 'a', kind: 'armchair', col: 5, row: 14 },
+    { id: 'd', kind: 'desk', col: 9, row: 13 },
+    { id: 'f', kind: 'sofa', col: 14, row: 14 },
+  ];
+
+  it('aucun segment ne le pose sur un autre meuble que son canapé (garde-fou : aucune disposition réaliste ne le provoquait avant)', () => {
+    for (const s of seeds) {
+      const p = nextPlan(dogEnv(stepping, s), from, 0);
+      for (const seg of p.route) expect([null, 'f']).toContain(seg.on);
+    }
+  });
+});

@@ -98,6 +98,14 @@ describe('RoomView : couches du chat', () => {
     expect(order.indexOf('p1')).toBeGreaterThan(order.indexOf('small'));
   });
 
+  it('à rang égal sur le sol, le plus loin (pieds les plus hauts) est dessiné en premier, quel que soit l ordre de la liste', () => {
+    const far = { ...cat, id: 'far', behind: 1, depthY: 200 };
+    const near = { ...cat, id: 'near', behind: 1, depthY: 400 };
+    const names = (order: (string | null)[]) => order.filter((x) => x === 'far' || x === 'near');
+    expect(names(orderOf([near, far]))).toEqual(['far', 'near']);
+    expect(names(orderOf([far, near]))).toEqual(['far', 'near']);
+  });
+
   it('la bulle n existe que quand il ronronne, dans la couche du dessus', () => {
     expect(orderOf([cat]).some((x) => String(x).startsWith('bubble:'))).toBe(false);
     const order = orderOf([{ ...cat, pose: 'purr' }]);

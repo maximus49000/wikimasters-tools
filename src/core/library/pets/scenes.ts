@@ -11,8 +11,12 @@ const CAT_SPEED = 0.8;
 const DOG_SPEED = 0.6;
 const RUN = 0.6;
 // Actions sur place d'un partenaire qui accepte d'être abordé.
-const SOCIABLE: ReadonlySet<PetAction> = new Set(['sit', 'groom', 'stretch', 'yawn', 'sniff', 'pant', 'purr']);
+const SOCIABLE: ReadonlySet<PetAction> = new Set(['sit', 'groom', 'stretch', 'yawn', 'sniff', 'pant']);
 const APPROACH_MAX_MS = 4000;
+// Plafond de l'approche du meneur pour toute scène (poursuite, recul, sieste comprises).
+const MAX_APPROACH_MS = 6000;
+const MIN_NAP_ACT_MS = 5000;
+const MAX_ACT_MS = 8000;
 const MIN_NAP_LEFT_MS = 10_000;
 const NAP_MS: readonly [number, number] = [18_000, 30_000];
 
@@ -92,6 +96,7 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
   const leadK = scene === 'chase' ? Math.max(speedOf(lead.pet), speedOf(partner)) * RUN : speedOf(lead.pet);
   const leadRoute = scaleRoute(approach, leadK);
   const leadWait = routeMs(leadRoute);
+  if (leadWait > MAX_APPROACH_MS) return null;
   const facingPartner = sideOf(meetPt, at);
   const facingLead = sideOf(at, meetPt);
   const leadWith = { petId: partner.id, role: 'lead' as const, scene };
@@ -99,8 +104,11 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
   const base = (facing: 'l' | 'r') => planBase(env, now, facing);
 
   if (scene === 'nap') {
-    const actMs = Math.min(between(env.rng, NAP_MS), planEndsAt(target.plan) - now - leadWait);
-    return { scene, partnerId: partner.id, partner: null, lead: { ...base(facingPartner), action: 'sleep', at: meetPt, route: leadRoute, actMs: Math.max(5000, actMs), with: leadWith } };
+    // Le meneur ne dort jamais à côté d'un dormeur déjà parti : il faut qu'il reste au moins 5 s de sommeil à l'arrivée.
+    const left = planEndsAt(target.plan) - now - leadWait;
+    if (left < MIN_NAP_ACT_MS) return null;
+    const actMs = Math.min(between(env.rng, NAP_MS), left);
+    return { scene, partnerId: partner.id, partner: null, lead: { ...base(facingPartner), action: 'sleep', at: meetPt, route: leadRoute, actMs, with: leadWith } };
   }
 
   if ((scene === 'greet' || scene === 'groom') && leadWait > APPROACH_MAX_MS) return null;
@@ -120,7 +128,7 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
     let recoilAt = at;
     for (const step of [2, 1]) {
       const col = cellOf(at).col + away * step;
-      if (!isFree(map, col, cellOf(at).row)) continue;
+      if (!isFree(map, col, cellOf(at).row) || !isFree(map, col - away, cellOf(at).row)) continue;
       const route = planRoute(map, { pt: at, on: null }, { pt: standPoint(col, cellOf(at).row), on: null });
       if (route) {
         recoil = scaleRoute(route, speedOf(partner));
@@ -144,19 +152,26 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
   const behind = standPoint(flee.col + (flee.col >= cellOf(at).col ? -1 : 1), flee.row);
   const chaseRoute = planRoute(map, { pt: meetPt, on: null }, { pt: behind, on: null });
   if (!fleeRoute || !chaseRoute) return null;
-  const actMs = 2500;
+  const leadFull = [...leadRoute, ...scaleRoute(chaseRoute, leadK)];
+  const partnerRoute = scaleRoute(fleeRoute, speedOf(partner) * RUN);
+  // Les deux plans finissent au même instant : le plus rapide attend l'autre en jouant.
+  const leadRun = routeMs(leadFull);
+  const partnerRun = leadWait + routeMs(partnerRoute);
+  const leadAct = 2500 + Math.max(0, partnerRun - leadRun);
+  const partnerAct = 2500 + Math.max(0, leadRun - partnerRun);
+  if (leadAct > MAX_ACT_MS || partnerAct > MAX_ACT_MS) return null;
   return {
     scene, partnerId: partner.id,
-    lead: { ...base(sideOf(meetPt, fleePt)), action: 'play', at: behind, route: [...leadRoute, ...scaleRoute(chaseRoute, leadK)], actMs, with: leadWith },
-    partner: { ...base(sideOf(at, fleePt)), action: 'play', at: fleePt, route: scaleRoute(fleeRoute, speedOf(partner) * RUN), lag: leadWait, actMs, with: partnerWith },
+    lead: { ...base(sideOf(meetPt, fleePt)), action: 'play', at: behind, route: leadFull, actMs: leadAct, with: leadWith },
+    partner: { ...base(sideOf(at, fleePt)), action: 'play', at: fleePt, route: partnerRoute, lag: leadWait, actMs: partnerAct, with: partnerWith },
   };
 }
 
 // Le plan tient-il encore ? Une scène à deux n'a de sens que si le partenaire est toujours là avec le plan jumeau
-// (même départ, références croisées) ; le sommeil côte à côte ne demande que la présence du dormeur.
+// (même départ, références croisées) ; le sommeil côte à côte demande que le dormeur soit toujours là et endormi (plan 'sleep').
 export function sceneIsValid(plan: PetPlan, partnerPlan: PetPlan | undefined, partnerExists: boolean): boolean {
   if (plan.with === undefined) return true;
   if (!partnerExists) return false;
-  if (plan.with.scene === 'nap') return true;
+  if (plan.with.scene === 'nap') return partnerPlan?.action === 'sleep';
   return partnerPlan?.with?.petId !== undefined && partnerPlan.startedAt === plan.startedAt && partnerPlan.with.scene === plan.with.scene && partnerPlan.with.role !== plan.with.role;
 }

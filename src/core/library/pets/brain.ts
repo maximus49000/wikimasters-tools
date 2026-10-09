@@ -51,6 +51,8 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     if (key !== undefined && env.occupied.has(key)) return;
     const raw = planRoute(map, from, dest);
     if (!raw) return;
+    // Un chien ne grimpe que sur son canapé : aucun segment ne le pose sur un autre meuble (fauteuil, bureau…).
+    if (dog && raw.some((s) => s.on !== null && s.on !== dest.on && s.on !== from.on)) return;
     const route = speed === 1 ? raw : scaleRoute(raw, speed);
     cands.push({ weight, action, route, at: dest.pt, on: dest.on, hostId: dest.hostId, facing: facing ?? facingOf(route, from.facing), ms, key });
   };
@@ -163,7 +165,7 @@ export function spawnPlan(env: BrainEnv, now: number): PetPlan {
 }
 
 // Où poser le chat quand les meubles ont changé : là où il était si c'est encore valable, sinon sur la case libre la plus proche.
-function standingFrom(map: WalkMap, state: PetState): Standing {
+export function standingFrom(map: WalkMap, state: PetState): Standing {
   const { pos, on } = state;
   if (on !== null) {
     const plat = map.platforms.find((p) => p.id === on);

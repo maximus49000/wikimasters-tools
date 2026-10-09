@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { PetPlan, Room } from '../core/library/library-types';
 import { createPetRunner, type PetFrame } from '../core/library/pets/runner';
 
-export type PetView = Omit<PetFrame, 'pos'> & { still?: boolean };
+export type PetView = Omit<PetFrame, 'pos' | 'depthY'> & { depthY?: number; still?: boolean };
+// Seuil (px) en dessous duquel un changement d'ordonnée ne justifie pas un nouveau rendu.
+const DEPTH_STEP = 12;
 
 const FRAME_MS = 33;
 // Clé du nœud de la bulle (nom, cœurs), dessinée dans une couche à part mais placée comme le chat.
@@ -11,7 +13,7 @@ export const BUBBLE = ':bubble';
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const toView = ({ pos: _pos, ...view }: PetFrame, still: boolean): PetView => ({ ...view, still });
 const sameViews = (a: PetView[], b: PetFrame[]): boolean =>
-  a.length === b.length && a.every((v, i) => v.id === b[i]!.id && v.pose === b[i]!.pose && v.facing === b[i]!.facing && v.behind === b[i]!.behind && v.top === b[i]!.top && v.name === b[i]!.name && v.coat === b[i]!.coat && v.species === b[i]!.species);
+  a.length === b.length && a.every((v, i) => v.id === b[i]!.id && v.pose === b[i]!.pose && v.facing === b[i]!.facing && v.behind === b[i]!.behind && Math.floor((v.depthY ?? 0) / DEPTH_STEP) === Math.floor(b[i]!.depthY / DEPTH_STEP) && v.top === b[i]!.top && v.name === b[i]!.name && v.coat === b[i]!.coat && v.species === b[i]!.species);
 
 const place = (el: SVGGElement, pos: { x: number; y: number }): void => el.setAttribute('transform', `translate(${pos.x.toFixed(1)} ${pos.y.toFixed(1)})`);
 

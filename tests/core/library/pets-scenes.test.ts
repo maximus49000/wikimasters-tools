@@ -3,7 +3,7 @@ import type { Layout, Pet, PetPlan } from '../../../src/core/library/library-typ
 import { layoutSig, type BrainEnv } from '../../../src/core/library/pets/brain';
 import { planEndsAt, routeMs, stateAt } from '../../../src/core/library/pets/motion';
 import { proposeScene, sceneIsValid } from '../../../src/core/library/pets/scenes';
-import { standPoint } from '../../../src/core/library/pets/walk-map';
+import { buildWalkMap, cellOf, isFree, standPoint } from '../../../src/core/library/pets/walk-map';
 
 const seeded = (seed: number) => () => {
   seed = (seed + 0x6d2b79f5) >>> 0;
@@ -154,5 +154,93 @@ describe('correctifs des scènes', () => {
   it('pas de sieste près d un dormeur sur un meuble', () => {
     const sleeper = resting('sleep', standPoint(12, 16), { hostId: 'f', on: 'f' });
     for (const s of seeds) expect(propose(cat('a'), dog('b'), sleeper, s)).toBeNull();
+  });
+});
+
+describe('correctifs de la passe finale', () => {
+  const props = (lead: Pet, other: Pet, plan: PetPlan) => seeds.map((s) => propose(lead, other, plan, s)).filter((r): r is NonNullable<typeof r> => r !== null);
+
+  it('un animal en train d être caressé (ronronnement) n est jamais abordé', () => {
+    expect(props(cat('a'), cat('b'), resting('purr', standPoint(12, 16)))).toHaveLength(0);
+  });
+
+  it('l approche du meneur ne dépasse jamais 6 s, quelle que soit la scène', () => {
+    for (const col of [6, 10, 14, 18, 22, 26, 30, 34]) {
+      for (const [lead, other, plan] of [[cat('a'), dog('b'), awake], [dog('a'), cat('b'), awake], [dog('a'), dog('b'), awake], [cat('a'), cat('b'), resting('sleep', standPoint(col, 16))]] as const) {
+        const target = plan.action === 'sleep' ? plan : resting('sit', standPoint(col, 16));
+        for (const r of props(lead, other, target)) {
+          const wait = r.scene === 'chase' ? r.partner!.lag! : routeMs(r.lead.route);
+          expect(wait).toBeLessThanOrEqual(6000);
+        }
+      }
+    }
+    expect(props(cat('a'), cat('b'), resting('sleep', standPoint(34, 16)))).toHaveLength(0);
+  });
+
+  it('sieste : jamais auprès d un dormeur déjà parti, durée limitée à son sommeil restant', () => {
+    expect(props(cat('a'), cat('b'), resting('sleep', standPoint(18, 16), { actMs: 11_000 }))).toHaveLength(0);
+    const rs = props(cat('a'), cat('b'), resting('sleep', standPoint(18, 16), { actMs: 13_000 }));
+    expect(rs.length).toBeGreaterThan(0);
+    for (const r of rs) {
+      expect(r.lead.actMs).toBeGreaterThanOrEqual(5000);
+      expect(planEndsAt(r.lead)).toBeLessThanOrEqual(13_000);
+    }
+  });
+
+  it('sceneIsValid : une sieste exige que le partenaire dorme encore', () => {
+    const nap: PetPlan = resting('sleep', standPoint(3, 16), { with: { petId: 'b', role: 'lead', scene: 'nap' } });
+    expect(sceneIsValid(nap, undefined, true)).toBe(false);
+    expect(sceneIsValid(nap, resting('sleep', standPoint(4, 16)), true)).toBe(true);
+    expect(sceneIsValid(nap, resting('purr', standPoint(4, 16)), true)).toBe(false);
+  });
+
+  it('poursuite : les deux plans finissent au même instant, actions <= 8 s', () => {
+    let seen = 0;
+    for (const [lead, other] of [[dog('a'), cat('b')], [dog('a'), dog('b')], [cat('a'), cat('b')]] as const) {
+      for (const r of props(lead, other, awake)) {
+        if (r.scene !== 'chase') continue;
+        seen++;
+        expect(planEndsAt(r.lead)).toBe(planEndsAt(r.partner!));
+        expect(r.lead.actMs).toBeLessThanOrEqual(8000);
+        expect(r.partner!.actMs).toBeLessThanOrEqual(8000);
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('remise à sa place : le recul de deux cases exige aussi la case intermédiaire libre', () => {
+    const blocked: Layout = [{ id: 'k', kind: 'basket', col: 13, row: 16 }];
+    const e = (s: number): BrainEnv => ({ ...env(s), layout: blocked });
+    const at = standPoint(12, 16);
+    const map = buildWalkMap(blocked, 36);
+    let shoo = 0;
+    for (const s of seeds) {
+      const r = proposeScene(e(s), { pet: cat('a'), from }, [{ pet: dog('b'), plan: { ...awake, at, sig: layoutSig(blocked, 36) } }], 1000);
+      if (r?.scene !== 'shoo') continue;
+      shoo++;
+      for (const seg of r.partner!.route) {
+        const c = Math.floor(seg.to.x / 30);
+        expect(isFree(map, c, 16)).toBe(true);
+      }
+      expect(Math.abs(cellOf(r.partner!.at).col - 12)).toBeLessThanOrEqual(1);
+    }
+    expect(shoo).toBeGreaterThan(0);
+  });
+});
+
+describe('recul de la remise à sa place', () => {
+  it('ne saute pas par-dessus une case intermédiaire occupée pour atteindre la case à deux pas', () => {
+    // Le chien est posé sur une gamelle (cases 11-12) : la case 10 est libre mais la case 11, entre les deux, ne l'est pas.
+    const bowl: Layout = [{ id: 'g', kind: 'bowl', col: 11, row: 16 }];
+    const right = { pt: standPoint(20, 16), on: null, hostId: null, facing: 'l' as const };
+    const sitting = resting('sit', standPoint(12, 16), { sig: layoutSig(bowl, 36) });
+    let shoo = 0;
+    for (const s of seeds) {
+      const r = proposeScene({ ...env(s), layout: bowl }, { pet: cat('a'), from: right }, [{ pet: dog('b'), plan: sitting }], 1000);
+      if (r?.scene !== 'shoo') continue;
+      shoo++;
+      expect(cellOf(r.partner!.at).col).not.toBe(10);
+    }
+    expect(shoo).toBeGreaterThan(0);
   });
 });

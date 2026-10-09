@@ -1102,7 +1102,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Comment faire', text: 'Passez en mode Aménager avec le crayon, touchez le chat dans la rangée Animaux, écrivez son nom, touchez un pelage (roux, noir, gris, blanc, tigré, bicolore) puis la coche.' },
           { label: 'À quoi ça sert', text: 'À donner de la vie à votre pièce : le chat marche, saute sur le canapé, dort dans son panier, mange à la gamelle ou se cache sous le canapé, selon les meubles que vous avez posés.' },
-          { label: 'Limites', text: 'Un seul chat par pièce. Il se déplace seulement là où il y a de la place : sans meuble, il se promène et se toilette ; sans panier, il dort par terre. Le dessus d’une étagère ne s’atteint qu’en sautant depuis un bureau voisin. Agrandir la pièce à gauche peut faire sauter le chat.' },
+          { label: 'Limites', text: 'Trois animaux au plus par pièce (chats et chiens mélangés). Chacun se déplace seulement là où il y a de la place : sans meuble, il se promène et se toilette ; sans panier, il dort par terre. Le dessus d’une étagère ne s’atteint qu’en sautant depuis un bureau voisin. Agrandir la pièce à gauche peut faire sauter le chat.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
@@ -1192,7 +1192,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Comment faire', text: 'En mode Aménager, changez le nom dans la rangée Animaux, ou touchez la corbeille à côté du nom pour retirer l’animal.' },
           { label: 'À quoi ça sert', text: 'À faire de la place ou à recommencer avec un autre compagnon, sans toucher aux autres animaux de la pièce.' },
-          { label: 'Limites', text: 'Retirer un animal est définitif : il faut l’adopter de nouveau pour le retrouver, avec un nouveau nom et un nouveau pelage.' },
+          { label: 'Limites', text: 'Retirer un animal est définitif : il faut l’adopter de nouveau pour le retrouver, en choisissant de nouveau son nom et son pelage.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },

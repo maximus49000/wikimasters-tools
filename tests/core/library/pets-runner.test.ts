@@ -3,7 +3,7 @@ import { createInitialState } from '../../../src/core/library/library-book';
 import type { Layout, PetPlan, Room } from '../../../src/core/library/library-types';
 import { layoutSig } from '../../../src/core/library/pets/brain';
 import { createPetRunner } from '../../../src/core/library/pets/runner';
-import { standPoint } from '../../../src/core/library/pets/walk-map';
+import { buildWalkMap, standPoint } from '../../../src/core/library/pets/walk-map';
 
 const sofa: Layout = [{ id: 'a', kind: 'sofa', col: 2, row: 12 }];
 const roomWith = (layout: Layout, plan?: PetPlan): Room => ({
@@ -235,5 +235,66 @@ describe('trois animaux', () => {
       scenes += paired.length / 2;
     }
     expect(scenes).toBeGreaterThan(0);
+  });
+});
+
+describe('abandon d une scène', () => {
+  const lastPlanOf = (onPlan: ReturnType<typeof vi.fn>, id: string): PetPlan => onPlan.mock.calls.filter((c) => c[0] === id).at(-1)![1] as PetPlan;
+  const startOf = (plan: PetPlan) => ({ pt: plan.route[0]?.from ?? plan.at, on: plan.route[0] ? plan.route[0].fromOn : plan.on });
+
+  it('meubles retirés pendant une scène, partenaire traité en premier : le meneur repart d une case libre, pas du canapé disparu', () => {
+    const onSofa = { x: 100, y: 200 };
+    const lead: PetPlan = {
+      ...resting(sofa, onSofa), action: 'greet', on: 'a', hostId: 'a', at: { x: 140, y: 200 }, startedAt: 0,
+      route: [{ kind: 'walk', from: onSofa, to: { x: 140, y: 200 }, ms: 10_000, fromOn: 'a', on: 'a' }],
+      with: { petId: 'p1', role: 'lead', scene: 'greet' },
+    };
+    const partner: PetPlan = { ...resting(sofa, standPoint(8, 16)), action: 'greet', actMs: 20_000, with: { petId: 'p2', role: 'follow', scene: 'greet' } };
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan });
+    runner.step(twoPets([], partner, lead), 5000);
+    const next = lastPlanOf(onPlan, 'p2');
+    expect(next.with).toBeUndefined();
+    expect(next.startedAt).toBe(5000);
+    expect(startOf(next).on).toBeNull();
+    expect(startOf(next).pt).not.toEqual(onSofa);
+  });
+
+  it('abandon en plein saut : le nouveau plan part du point d atterrissage', () => {
+    const plat = buildWalkMap(sofa, 24).platforms[0]!;
+    const to = { x: plat.x0 + 20, y: plat.y };
+    const lead: PetPlan = {
+      ...resting(sofa, to), action: 'greet', on: 'a', hostId: 'a', startedAt: 0,
+      route: [{ kind: 'jump', from: standPoint(1, 16), to, ms: 1000, fromOn: null, on: 'a' }],
+      with: { petId: 'ghost', role: 'lead', scene: 'greet' },
+    };
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan });
+    runner.step(roomWith(sofa, lead), 500);
+    const next = lastPlanOf(onPlan, 'p1');
+    expect(next.with).toBeUndefined();
+    expect(startOf(next)).toEqual({ pt: to, on: 'a' });
+  });
+
+  it('toucher le dormeur annule la sieste du meneur', () => {
+    const nap: PetPlan = { ...resting(sofa, standPoint(9, 16)), action: 'sleep', with: { petId: 'p2', role: 'lead', scene: 'nap' } };
+    const sleeper: PetPlan = { ...resting(sofa, standPoint(10, 16)), action: 'sleep' };
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan });
+    const room = twoPets(sofa, nap, sleeper);
+    runner.step(room, 500);
+    expect(onPlan).not.toHaveBeenCalled();
+    expect(runner.touch(room, 'p2', 600)).toBe(true);
+    runner.step(room, 700);
+    const next = onPlan.mock.calls.find((c) => c[0] === 'p1')![1] as PetPlan;
+    expect(next.with).toBeUndefined();
+    expect(next.startedAt).toBe(700);
+  });
+
+  it('partenaire disparu avec les meubles inchangés : le plan est remplacé sur place', () => {
+    const lead: PetPlan = { ...resting(sofa, standPoint(9, 16)), action: 'greet', with: { petId: 'ghost', role: 'lead', scene: 'greet' } };
+    const onPlan = vi.fn();
+    createPetRunner({ onPlan }).step(roomWith(sofa, lead), 500);
+    expect(lastPlanOf(onPlan, 'p1').with).toBeUndefined();
   });
 });
