@@ -20,11 +20,12 @@ import {
   setPetPlan,
   setRoomScene,
   setTimeSetting,
+  setWeatherSetting,
   shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
 import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
-import { SCENE_IDS, STYLE_IDS, coatsOf, type Coat, type Pet, type SceneId, type Species, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
+import { SCENE_IDS, STYLE_IDS, coatsOf, type Coat, type Pet, type SceneId, type Species, type TimeSetting, type WeatherSetting, type WeatherState, WEATHER_STATES, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import { COAT_LABELS, paletteOf as coatPaletteOf } from './pet-sprite';
 import { DOG_COAT_LABELS } from './dog-sprite';
@@ -69,6 +70,8 @@ import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
 import { useWeather } from './use-weather';
+import { WEATHER_SCENES } from './scene-weather';
+import { WEATHER_LABEL } from '../core/library/weather/weather-types';
 import { usePetSim } from './pet-sim';
 import { requestPosition } from './scene-position';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
@@ -160,8 +163,18 @@ const ICONS = {
   widthMinus: ['M3 12h6', 'M21 12h-6', 'M9 8l-4 4 4 4', 'M15 8l4 4-4 4'],
   widthPlus: ['M9 12H3', 'M15 12h6', 'M5 8l4 4-4 4', 'M19 8l-4 4 4 4'],
   heightMinus: ['M12 3v6', 'M12 21v-6', 'M8 9l4-4 4 4', 'M8 15l4 4 4-4'],
+  dice: ['M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M8.5 8.5h.01', 'M15.5 8.5h.01', 'M12 12h.01', 'M8.5 15.5h.01', 'M15.5 15.5h.01'],
+  globe: ['M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z', 'M3 12h18', 'M12 3c3.5 3.2 3.5 14.8 0 18', 'M12 3c-3.5 3.2-3.5 14.8 0 18'],
+  wxCloudy: ['M7 18a4 4 0 0 1 0-8a5.5 5.5 0 0 1 10.5 1.5a3.3 3.3 0 0 1-.5 6.5z'],
+  wxDrizzle: ['M7 14a4 4 0 0 1 0-8a5.5 5.5 0 0 1 10.5 1.5a3.3 3.3 0 0 1-.5 6.5z', 'M9 18l-.7 1.6', 'M14 18l-.7 1.6'],
+  wxRain: ['M7 14a4 4 0 0 1 0-8a5.5 5.5 0 0 1 10.5 1.5a3.3 3.3 0 0 1-.5 6.5z', 'M8 17l-1 3', 'M12 17l-1 3', 'M16 17l-1 3'],
+  wxStorm: ['M7 13a4 4 0 0 1 0-8a5.5 5.5 0 0 1 10.5 1.5a3.3 3.3 0 0 1-.5 6.5z', 'M12.5 12l-3 5h4l-2 4'],
+  wxSnow: ['M12 3v18', 'M4.2 7.5l15.6 9', 'M19.8 7.5l-15.6 9', 'M9.5 4.5L12 7l2.5-2.5', 'M9.5 19.5L12 17l2.5 2.5'],
+  wxFog: ['M4 9h16', 'M6 13h12', 'M4 17h16'],
   heightPlus: ['M12 9V3', 'M12 15v6', 'M8 5l4 4 4-4', 'M8 19l4-4 4 4'],
 } as const;
+
+const WEATHER_ICON: Record<WeatherState, readonly string[]> = { sun: ICONS.sun, cloudy: ICONS.wxCloudy, drizzle: ICONS.wxDrizzle, rain: ICONS.wxRain, storm: ICONS.wxStorm, snow: ICONS.wxSnow, fog: ICONS.wxFog };
 
 const SCENE_ICON: Record<SceneId, readonly string[]> = {
   city: ['M4 21V9h6v12', 'M10 21V4h6v17', 'M16 21v-8h4v8', 'M3 21h18'],
@@ -676,6 +689,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (mode === 'real') void requestPosition();
     void library.update((state) => setTimeSetting(state, next));
   };
+  const chooseWeather = (next: WeatherSetting): void => {
+    reset();
+    // « Météo réelle » : le navigateur demande l'accord de position (sans accord, la météo reste simulée).
+    if (next.mode === 'real') void requestPosition();
+    void library.update((state) => setWeatherSetting(state, next));
+  };
   const onDeleteRoom = (): void => {
     const question = lib.rooms.length > 1 ? `Supprimer « ${room.name} » ?` : 'Vider cette pièce ?';
     if (!window.confirm(question)) return;
@@ -811,6 +830,32 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             {sceneTime.times.kind === 'normal' ? `☀ ${formatMinutes(sceneTime.times.sunrise)} → ${formatMinutes(sceneTime.times.sunset)}` : sceneTime.times.polar === 'day' ? '☀ jour permanent' : '☾ nuit permanente'}
             {` · ${formatMinutes(sceneTime.minutes)}`}
           </span>
+        </div>
+      )}
+
+      {editing && WEATHER_SCENES.includes(room.scene) && (
+        <div className="wmt-lib-row" role="group" aria-label="Météo">
+          <Btn label="Météo aléatoire" pressed={lib.weather.mode === 'random'} data={{ 'weather-mode': 'random' }} onClick={() => chooseWeather({ mode: 'random' })}>
+            <Icon paths={ICONS.dice} />
+          </Btn>
+          <Btn label="Météo réelle" pressed={lib.weather.mode === 'real'} data={{ 'weather-mode': 'real' }} onClick={() => chooseWeather({ mode: 'real' })}>
+            <Icon paths={ICONS.globe} />
+          </Btn>
+          <span className="wmt-lib-sep" />
+          {WEATHER_STATES.map((state) => (
+            <Btn key={state} label={WEATHER_LABEL[state]} pressed={lib.weather.mode === 'forced' && lib.weather.state === state} data={{ 'weather-state': state }} onClick={() => chooseWeather({ mode: 'forced', state })}>
+              <Icon paths={WEATHER_ICON[state]} />
+            </Btn>
+          ))}
+          <span className="wmt-lib-msg" data-weather-label="">
+            {weather.label}
+            {weather.tempC !== null ? ` · ${Math.round(weather.tempC)} °C` : ''}
+          </span>
+          {weather.real === 'fallback' && (
+            <span className="wmt-lib-msg" data-weather-note="" title="Position inconnue ou réseau indisponible : la météo reste simulée.">
+              (simulée)
+            </span>
+          )}
         </div>
       )}
 
