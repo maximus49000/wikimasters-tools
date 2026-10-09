@@ -76,6 +76,7 @@ import { useWeather } from './use-weather';
 import { useLightEnabled } from './light-setting';
 import { WEATHER_SCENES } from './scene-weather';
 import { WEATHER_LABEL } from '../core/library/weather/weather-types';
+import { usePetContext } from './pet-context';
 import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
@@ -368,7 +369,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 
   // Le chat : son plan est mémorisé sans prévenir les abonnés (il change toutes les quelques secondes, rien à redessiner).
   const savePlan = useCallback((roomId: string, petId: string, plan: PetPlan) => { void library.updateQuiet((state) => setPetPlan(state, roomId, petId, plan)); }, [library]);
-  const sim = usePetSim(lib ? activeRoom(lib) : null, savePlan);
+  // Contexte des animaux (nuit, lune, météo, taches de soleil), relu à chaque image de la simulation.
+  const petRoom = lib ? activeRoom(lib) : null;
+  const getPetContext = usePetContext({ room: petRoom, sceneView, lightOn });
+  const sim = usePetSim(petRoom, savePlan, getPetContext);
 
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 

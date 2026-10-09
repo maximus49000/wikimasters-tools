@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Layout, PetPlan } from '../../../src/core/library/library-types';
-import { layoutSig, nextPlan, resume, spawnPlan, touchPlan, type BrainEnv } from '../../../src/core/library/pets/brain';
+import { NO_CONTEXT, type PetContext } from '../../../src/core/library/pets/context';
+import { STORM_HOLD_MS, layoutSig, nextPlan, resume, spawnPlan, touchPlan, type BrainEnv } from '../../../src/core/library/pets/brain';
 import { buildWalkMap, cellOf, isFree, standPoint } from '../../../src/core/library/pets/walk-map';
 
 // mulberry32 : un LCG simple donne des suites corrélées pour des graines consécutives (seuls 3 tirages différents sur 200 graines).
@@ -259,5 +260,83 @@ describe('robot', () => {
     expect(next?.action).toBe('beep');
     expect(next?.actMs).toBe(3000);
     expect(touchPlan({ ...plan, action: 'sit', route: [], actMs: 8000 }, env([], 3), 1000)?.action).toBe('purr');
+  });
+});
+
+describe('contexte (6d)', () => {
+  const layout = [{ id: 'b', kind: 'basket', col: 6, row: 14 }] as never;
+  const start = { pt: standPoint(10, 16), on: null, hostId: null, facing: 'r' as const };
+  const envOf = (species: 'cat' | 'dog' | 'robot', ctx: Partial<PetContext>, rng: () => number = () => 0.5, extra = {}) => ({ layout, cols: 24, rng, still: false, occupied: new Set<string>(), species, ctx: { ...NO_CONTEXT, ...ctx }, ...extra }) as BrainEnv;
+  const tally = (e: BrainEnv) => {
+    const rng = seeded(7);
+    const counts: Record<string, number> = {};
+    for (let i = 0; i < 200; i++) {
+      const p = nextPlan({ ...e, rng }, start, 1000 + i);
+      counts[p.action] = (counts[p.action] ?? 0) + 1;
+    }
+    return counts;
+  };
+
+  it('sans ctx le comportement est inchangé', () => {
+    const a = nextPlan({ ...envOf('cat', {}), ctx: undefined, rng: seeded(3) }, start, 0);
+    const b = nextPlan({ ...envOf('cat', {}), rng: seeded(3) }, start, 0);
+    expect(a.action).toBe(b.action);
+  });
+  it('la nuit les animaux dorment bien plus', () => {
+    expect(tally(envOf('cat', { night: true })).sleep ?? 0).toBeGreaterThan((tally(envOf('cat', {})).sleep ?? 0) * 2);
+  });
+  it('le robot préfère la veille la nuit', () => {
+    expect(tally(envOf('robot', { night: true })).standby ?? 0).toBeGreaterThan(tally(envOf('robot', {})).standby ?? 0);
+  });
+  it('le chien hurle à la lune seulement la nuit avec la lune', () => {
+    expect(tally(envOf('dog', { night: true, moon: true })).howl ?? 0).toBeGreaterThan(0);
+    expect(tally(envOf('dog', { night: true, moon: false })).howl ?? 0).toBe(0);
+    expect(tally(envOf('cat', { night: true, moon: true })).howl ?? 0).toBe(0);
+  });
+  it('chat et chien se couchent dans la tache de soleil le jour', () => {
+    const sunCells = [{ col: 12, row: 16 }, { col: 13, row: 16 }];
+    expect(tally(envOf('cat', { sunCells })).sunbathe ?? 0).toBeGreaterThan(0);
+    expect(tally(envOf('dog', { sunCells })).sunbathe ?? 0).toBeGreaterThan(0);
+    expect(tally(envOf('robot', { sunCells })).sunbathe ?? 0).toBe(0);
+    expect(tally(envOf('cat', { sunCells, night: true })).sunbathe ?? 0).toBe(0);
+    const xs = sunCells.map((c) => standPoint(c.col, c.row).x);
+    const plans = Array.from({ length: 200 }, (_, i) => nextPlan(envOf('cat', { sunCells }, seeded(i + 1)), start, 0)).filter((p) => p.action === 'sunbathe');
+    expect(plans.length).toBeGreaterThan(0);
+    for (const p of plans) expect(xs).toContain(p.at.x);
+  });
+  it('le robot ouvre son parapluie sous la pluie, pas par temps clair', () => {
+    expect(tally(envOf('robot', { weather: 'rain' })).umbrella ?? 0).toBeGreaterThan(0);
+    expect(tally(envOf('robot', {})).umbrella ?? 0).toBe(0);
+  });
+  it('après le maintien, un orage qui dure donne le parapluie au robot et le biais de pluie', () => {
+    expect(tally(envOf('robot', { weather: 'storm' })).umbrella ?? 0).toBeGreaterThan(0);
+    const lively = (w: 'clear' | 'storm') => {
+      const t = tally(envOf('dog', { weather: w }));
+      return (t.sniff ?? 0) + (t.play ?? 0) + (t.perch ?? 0) + (t.scratch ?? 0);
+    };
+    expect(lively('storm')).toBeLessThan(lively('clear'));
+  });
+  it('le chien se secoue après la pluie, une fois', () => {
+    const ended = { rainEndedAt: 1000 };
+    expect(tally(envOf('dog', ended, undefined, { canShake: true })).shake ?? 0).toBeGreaterThan(0);
+    expect(tally(envOf('dog', ended, undefined, { canShake: false })).shake ?? 0).toBe(0);
+    expect(tally(envOf('dog', { rainEndedAt: null }, undefined, { canShake: true })).shake ?? 0).toBe(0);
+    expect(tally(envOf('dog', { rainEndedAt: -10_000_000 }, undefined, { canShake: true })).shake ?? 0).toBe(0);
+  });
+  it('pendant l’orage (60 s) chat et chien restent blottis sur place, puis repartent', () => {
+    const ctx = { storm: { id: 1, since: 1000 }, weather: 'storm' as const };
+    const p = nextPlan(envOf('cat', ctx), start, 5000, 'cower');
+    expect(p.action).toBe('cower');
+    expect(p.route).toEqual([]);
+    expect(p.actMs).toBeGreaterThanOrEqual(8000);
+    expect(p.actMs).toBeLessThanOrEqual(15000);
+    const after = Array.from({ length: 50 }, (_, i) => nextPlan(envOf('cat', ctx, seeded(i + 1)), start, 1000 + STORM_HOLD_MS + 1, 'cower'));
+    expect(after.some((q) => q.route.length > 0)).toBe(true);
+    expect(after.some((q) => q.action !== 'cower')).toBe(true);
+  });
+  it('le robot redémarre après son court-circuit', () => {
+    const p = nextPlan(envOf('robot', {}), start, 0, 'shortcircuit');
+    expect(p.action).toBe('reboot');
+    expect(p.actMs).toBe(1500);
   });
 });

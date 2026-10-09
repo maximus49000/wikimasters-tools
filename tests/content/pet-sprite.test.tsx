@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ROBOT_COAT_LABELS } from '../../src/content/robot-sprite';
 import { COAT_COLORS, PetBubble, PetSprite, paletteOf } from '../../src/content/pet-sprite';
@@ -107,5 +108,35 @@ describe('PetSprite', () => {
   it('le dos du robot reste plat à y = -26 (hauteur de la sieste du chat)', () => {
     const svg = draw({ species: 'robot', coat: 'white', pose: 'standby', facing: 'r', name: 'x' });
     expect(svg.querySelector('[data-robot-back]')!.getAttribute('y')).toBe('-26');
+  });
+});
+
+describe('poses de contexte (6d)', () => {
+  const html = (species: 'dog' | 'robot', pose: Pose, still = false) =>
+    renderToStaticMarkup(<svg><PetSprite species={species} coat={species === 'dog' ? 'brown' : 'blue'} pose={pose} facing="r" name="X" still={still} /></svg>);
+  it.each([
+    ['dog', 'howl'], ['dog', 'shake'], ['robot', 'umbrella'], ['robot', 'shortcircuit'], ['robot', 'reboot'],
+  ] as const)('dessine la pose %s/%s distincte de la pose assise', (species, pose) => {
+    expect(html(species, pose)).not.toBe(html(species, 'sit'));
+  });
+  it('les étincelles du court-circuit sont coupées en mouvement réduit', () => {
+    expect(html('robot', 'shortcircuit', false)).toContain('<animate');
+    const still = html('robot', 'shortcircuit', true);
+    expect(still).not.toContain('<animate');
+    expect(still).toContain('#ffd23a');
+    expect(still).toContain('#d33');
+  });
+  it('hurlement, secouement, parapluie et redémarrage : animés seulement hors mouvement réduit', () => {
+    expect(html('dog', 'howl', false)).toContain('<animate');
+    expect(html('dog', 'howl', true)).not.toContain('<animate');
+    expect(html('dog', 'shake', false)).toContain('<animateTransform');
+    expect(html('dog', 'shake', false)).toContain('values="-6 0 -16');
+    expect(html('dog', 'shake', true)).not.toContain('<animate');
+    expect(html('robot', 'umbrella', false)).toContain('data-robot-umbrella');
+    expect(html('robot', 'umbrella', true)).not.toContain('<animate');
+    expect(html('robot', 'reboot', false)).toContain('<animate');
+    expect(html('robot', 'reboot', false)).toContain('data-robot-reboot');
+    expect(html('robot', 'reboot', true)).not.toContain('<animate');
+    expect(html('robot', 'reboot', true)).not.toContain('data-robot-reboot');
   });
 });

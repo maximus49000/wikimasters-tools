@@ -100,3 +100,7 @@ describe('petBoxesOf', () => {
     expect(Math.min(...boxes.map((b) => b.z0))).toBe(0);
   });
 });
+
+it('donne une silhouette aux poses du contexte', () => {
+  for (const p of ['howl', 'shake', 'umbrella', 'shortcircuit', 'reboot'] as const) expect(shapeOf(p)).toBe('sit');
+});

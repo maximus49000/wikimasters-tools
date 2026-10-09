@@ -29,7 +29,7 @@ const sideOf = (from: Pt, to: Pt): 'l' | 'r' => (to.x >= from.x ? 'r' : 'l');
 const between = (rng: () => number, [lo, hi]: readonly [number, number]): number => Math.round(lo + rng() * (hi - lo));
 
 // Une case libre contiguë au partenaire (gauche ou droite d'abord, côté tiré au hasard), ou null.
-function meetCell(map: WalkMap, at: Pt, rng: () => number, preferred?: 'l' | 'r'): { col: number; row: number; side: 'l' | 'r' } | null {
+export function meetCell(map: WalkMap, at: Pt, rng: () => number, preferred?: 'l' | 'r'): { col: number; row: number; side: 'l' | 'r' } | null {
   const c = cellOf(at);
   const order = preferred ? (preferred === 'l' ? [-1, 1] : [1, -1]) : rng() < 0.5 ? [-1, 1] : [1, -1];
   for (const dx of order) if (isFree(map, c.col + dx, c.row)) return { col: c.col + dx, row: c.row, side: dx < 0 ? 'l' : 'r' };

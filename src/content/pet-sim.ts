@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PetPlan, Room } from '../core/library/library-types';
+import type { PetContext } from '../core/library/pets/context';
 import { createPetRunner, type PetFrame } from '../core/library/pets/runner';
 
 export type PetView = Omit<PetFrame, 'pos' | 'depthY'> & { depthY?: number; still?: boolean };
@@ -18,16 +19,18 @@ const sameViews = (a: PetView[], b: PetFrame[]): boolean =>
 const place = (el: SVGGElement, pos: { x: number; y: number }): void => el.setAttribute('transform', `translate(${pos.x.toFixed(1)} ${pos.y.toFixed(1)})`);
 
 // Anime les animaux de la pièce affichée. La position passe directement dans l'attribut `transform` (aucun rendu React par image) ;
-// React ne re-rend que lorsque la pose, le sens ou le rang de dessin changent.
-export function usePetSim(room: Room | null, onPlan: (roomId: string, petId: string, plan: PetPlan) => void) {
+// React ne re-rend que lorsque la pose, le sens ou le rang de dessin changent. `getContext` (ciel, météo, soleil) est relu à chaque image.
+export function usePetSim(room: Room | null, onPlan: (roomId: string, petId: string, plan: PetPlan) => void, getContext?: () => PetContext) {
   const [views, setViews] = useState<PetView[]>([]);
   const nodes = useRef(new Map<string, SVGGElement>());
   const frames = useRef<PetFrame[]>([]);
   const roomRef = useRef(room);
   const onPlanRef = useRef(onPlan);
+  const ctxRef = useRef(getContext);
   useLayoutEffect(() => {
     roomRef.current = room;
     onPlanRef.current = onPlan;
+    ctxRef.current = getContext;
   });
   const still = useMemo(reducedMotion, []);
   const runner = useMemo(
@@ -37,7 +40,7 @@ export function usePetSim(room: Room | null, onPlan: (roomId: string, petId: str
 
   const tick = useCallback(() => {
     const r = roomRef.current;
-    const list = r ? runner.step(r, Date.now()) : [];
+    const list = r ? runner.step(r, Date.now(), ctxRef.current?.()) : [];
     frames.current = list;
     for (const f of list) {
       const el = nodes.current.get(f.id);

@@ -2,13 +2,14 @@ import { poisOf, sizeOf } from '../furniture-catalog';
 import type { Layout, PetAction, PetPlan, Pt, Segment, Species } from '../library-types';
 import { CELL_W, ROWS, WALL_ROWS, isStanding, type Cell } from '../room-grid';
 import { hashString } from '../scene-world';
+import type { PetContext } from './context';
 import { planEndsAt, stateAt, type PetState } from './motion';
 import { planRoute, scaleRoute, type Standing } from './route';
 import { buildWalkMap, cellOf, isFree, nearestFreeCell, standPoint, type WalkMap } from './walk-map';
 
 export type Rng = () => number;
 // `occupied` : les places réservées (clés `<meuble>:<point>`) que le chat doit éviter ; vide tant qu'il vit seul.
-export type BrainEnv = { layout: Layout; cols: number; rng: Rng; still: boolean; occupied: ReadonlySet<string>; species?: Species /* défaut : chat */ };
+export type BrainEnv = { layout: Layout; cols: number; rng: Rng; still: boolean; occupied: ReadonlySet<string>; species?: Species /* défaut : chat */; ctx?: PetContext; canShake?: boolean };
 
 type Ms = readonly [number, number];
 type Candidate = { weight: number; action: PetAction; route: Segment[]; at: Pt; on: string | null; hostId: string | null; facing: 'l' | 'r'; ms: Ms; key?: string };
@@ -22,6 +23,12 @@ export function layoutSig(layout: Layout, cols: number): string {
 
 const DOG_SPEED = 0.7;
 const ROBOT_SPEED = 0.9;
+// Orage : chat et chien restent blottis sur place pendant cette durée.
+export const STORM_HOLD_MS = 60_000;
+// Actions dont le poids est multiplié (nuit) ou réduit (nuit, pluie) par le contexte.
+const SLEEPY: ReadonlySet<PetAction> = new Set(['sleep', 'standby', 'charge']);
+const LIVELY: ReadonlySet<PetAction> = new Set(['sniff', 'scan', 'play', 'perch', 'scratch']);
+const SHAKE_WINDOW_MS = 120_000;
 
 const between = (rng: Rng, [lo, hi]: Ms): number => Math.round(lo + rng() * (hi - lo));
 
@@ -44,6 +51,16 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
   const dog = env.species === 'dog';
   const robot = env.species === 'robot';
   const speed = dog ? DOG_SPEED : robot ? ROBOT_SPEED : 1;
+  const ctx = env.ctx;
+  // Le robot redémarre après un court-circuit.
+  if (robot && last === 'shortcircuit') {
+    return { action: 'reboot', hostId: from.hostId, at: from.pt, on: from.on, route: [], startedAt: now, actMs: 1500, facing: from.facing, sig: layoutSig(env.layout, env.cols) };
+  }
+  // Orage récent : chat et chien restent blottis sur place (ou cachés s'ils le sont déjà).
+  if (!robot && ctx?.storm && now - ctx.storm.since < STORM_HOLD_MS) {
+    const held: PetAction = last === 'hide' && from.hostId !== null ? 'hide' : 'cower';
+    return { action: held, hostId: from.hostId, at: from.pt, on: from.on, route: [], startedAt: now, actMs: between(env.rng, [8000, 15000]), facing: from.facing, sig: layoutSig(env.layout, env.cols) };
+  }
   const map = buildWalkMap(env.layout, env.cols);
   const cands: Candidate[] = [];
   const stay = (action: PetAction, weight: number, ms: Ms): void => {
@@ -150,7 +167,26 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     }
   }
 
-  const weights = cands.map((c) => c.weight * (c.action === last ? 0.2 : 1));
+  // Candidats du contexte (hors animal immobilisé).
+  if (ctx && !env.still) {
+    if (dog && ctx.night && ctx.moon) stay('howl', 1.5, [4000, 6000]);
+    if (robot && (ctx.weather === 'drizzle' || ctx.weather === 'rain' || ctx.weather === 'storm')) stay('umbrella', 2, [8000, 15000]);
+    if (dog && env.canShake && ctx.rainEndedAt !== null && now - ctx.rainEndedAt < SHAKE_WINDOW_MS) stay('shake', 3, [2000, 3000]);
+    if (!robot && !ctx.night && ctx.sunCells.length > 0) {
+      const free = ctx.sunCells.filter((c) => isFree(map, c.col, c.row));
+      free.sort((a, b) => Math.abs(standPoint(a.col, a.row).x - from.pt.x) - Math.abs(standPoint(b.col, b.row).x - from.pt.x));
+      for (const c of free.slice(0, 2)) go('sunbathe', 2.5, { pt: standPoint(c.col, c.row), on: null, hostId: null }, [20000, 45000]);
+    }
+  }
+
+  const rainy = ctx?.weather === 'drizzle' || ctx?.weather === 'rain' || ctx?.weather === 'storm';
+  const ctxFactor = (a: PetAction): number => {
+    if (!ctx) return 1;
+    if (ctx.night && SLEEPY.has(a)) return 4;
+    if ((ctx.night || rainy) && LIVELY.has(a)) return 0.5;
+    return 1;
+  };
+  const weights = cands.map((c) => c.weight * (c.action === last ? 0.2 : 1) * ctxFactor(c.action));
   const total = weights.reduce((a, b) => a + b, 0);
   let roll = env.rng() * total;
   let chosen = cands[cands.length - 1]!;

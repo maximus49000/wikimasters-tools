@@ -106,6 +106,16 @@ describe('sceneIsValid', () => {
     expect(sceneIsValid(lead, resting('sit', standPoint(4, 16)), true)).toBe(false);
     expect(sceneIsValid(lead, { ...partner, startedAt: 600 }, true)).toBe(false);
   });
+  it('huddle (orage) : plans jumeaux valides, invalides sans partenaire ou avec un autre départ', () => {
+    const cat = resting('cower', standPoint(3, 16), { startedAt: 500, with: { petId: 'b', role: 'lead', scene: 'huddle' } });
+    const dog = resting('cower', standPoint(4, 16), { startedAt: 500, with: { petId: 'a', role: 'follow', scene: 'huddle' } });
+    expect(sceneIsValid(cat, dog, true)).toBe(true);
+    expect(sceneIsValid(dog, cat, true)).toBe(true);
+    expect(sceneIsValid(cat, undefined, true)).toBe(false);
+    expect(sceneIsValid(cat, dog, false)).toBe(false);
+    expect(sceneIsValid(cat, { ...dog, startedAt: 600 }, true)).toBe(false);
+    expect(sceneIsValid(cat, { ...dog, with: { petId: 'a', role: 'lead', scene: 'huddle' } }, true)).toBe(false);
+  });
   it('le sommeil côte à côte ne demande que la présence du dormeur', () => {
     const nap: PetPlan = { ...lead, with: { petId: 'b', role: 'lead', scene: 'nap' } };
     expect(sceneIsValid(nap, resting('sleep', standPoint(4, 16)), true)).toBe(true);
