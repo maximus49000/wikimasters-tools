@@ -109,4 +109,13 @@ describe('catalogue des fiches', () => {
       for (const step of e.steps) expect(step.target, `${e.id} / ${step.title}`).not.toBeNull();
     }
   });
+
+  it('la fiche bibliotheque-v11 présente le robot, sa station et ses limites', () => {
+    const entry = ENTRIES.find((e) => e.id === 'bibliotheque-v11');
+    expect(entry).toBeDefined();
+    const text = entry!.steps.map((s) => `${s.title} ${s.text} ${(s.details ?? []).map((d) => `${d.label} ${d.text}`).join(' ')}`).join(' ');
+    for (const word of ['robot', 'Station de recharge', 'veille', 'Limites', 'Trois animaux']) expect(text, word).toContain(word);
+    expect(entry!.steps.some((s) => s.target === '[data-wmt-library] [data-action="adopt-robot"]')).toBe(true);
+    expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v11')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v10'));
+  });
 });
