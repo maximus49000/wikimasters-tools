@@ -8,7 +8,7 @@ Suite de `2026-10-09-bibliotheque-meteo-design.md`. Le lot « lumière intérieu
 
 ## Hors périmètre (8b, 8c)
 
-Lampes cliquables, ombres des meubles et des animaux. Dans 8a les meubles ne reçoivent que la lumière ambiante, et le rayon se pose sur le sol et le mur sans être occulté.
+Lampes cliquables, ombres des meubles et des animaux. Dans 8a les meubles ne reçoivent que la lumière ambiante, et le rayon se pose sur le sol (pas de tache sur le mur en 8a) sans être occulté.
 
 ## Données
 
@@ -25,8 +25,7 @@ Lampes cliquables, ombres des meubles et des animaux. Dans 8a les meubles ne re�
 
 ## Rendu
 
-- Un canvas hors écran basse résolution est redessiné **3 à 4 fois par seconde** puis injecté dans le SVG de `RoomView` comme `<image>` (`toDataURL`) en fusion : `multiply` pour l'ombrage ambiant, `screen` pour les rayons. Placé **au-dessus des meubles et des animaux, sous les bulles et les cases**.
-- Nuages assombris la nuit (couleur dérivée de la lumière du jour) dans `scene-weather.tsx`.
+- Un canvas hors écran basse résolution est redessiné **3 à 4 fois par seconde** puis injecté dans le SVG de `RoomView` comme `<image>` (`toDataURL`) en un seul calque RGBA en fusion normale (l'ombrage est une teinte translucide, le rayon une lueur chaude translucide). Placé **au-dessus des meubles et des animaux, sous les bulles et les cases**.
 - Arrêt de la recomputation : onglet caché, mouvement réduit (une seule image figée), réglage Inactif, scène sans ciel terrestre.
 - Nouveau hook `useLightMap(room, view)` dans `src/content/` ; `RoomView` ne reçoit qu'une URL d'image et ses dimensions.
 
@@ -34,7 +33,7 @@ Lampes cliquables, ombres des meubles et des animaux. Dans 8a les meubles ne re�
 
 - Unitaires du moteur : géométrie du parallélogramme (positions et surface), azimut par fenêtre, atténuation (nuages, soleil masqué, trouée), décroissance de l'ambiant avec la distance, courbe d'adaptation, déterminisme.
 - Composant : montage avec fausse horloge ; pas d'`<image>` de lumière si réglage Inactif, mouvement réduit après la première image, ou scène spatiale.
-- Pas de test de rendu canvas en jsdom : **vérification manuelle Chrome** à prévoir (rendu des rayons, fusion multiply/screen, coût sur pièce de 96 colonnes) puis APK à la demande.
+- Pas de test de rendu canvas en jsdom : **vérification manuelle Chrome** à prévoir (rendu des rayons, fusion normale du calque, coût sur pièce de 96 colonnes) puis APK à la demande.
 
 ## Livraison
 
@@ -43,4 +42,3 @@ Fiche WikiHow `bibliotheque-v13` (à quoi sert la lumière, d'où viennent les d
 ## Risques
 
 - `toDataURL` 3-4 fois par seconde sur de larges pièces : résolution plafonnée (≈ 400 × 90 px) et chronométrage à mesurer en vérification manuelle ; repli = fréquence réduite à 1 par seconde.
-- `mix-blend-mode` sur un `<image>` SVG : à valider dans Chrome et dans l'APK (WebView ancien) ; repli = opacité simple sans fusion.
