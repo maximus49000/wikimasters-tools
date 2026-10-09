@@ -115,6 +115,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     const cloudOpacity = cloudNodes.map(() => -1);
     let colorKey = '';
     let lastPrecip = '';
+    let lastHidden = '';
     // null : pas encore signalé — le premier placement signale toujours l'état (une relance de la boucle ne laisse pas d'état périmé).
     let wet: boolean | null = null;
     let lastMs = Date.now();
@@ -210,6 +211,12 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         const cov = sunCoverage(sun.x, sun.y, pool.filter((_, i) => (cloudOpacity[i] ?? 0) >= 0.5), drift, width);
         hidden = 1 - (1 - cov) * (1 - clamp01(overcast));
       }
+      // Part du soleil masquée, lue par le calque de lumière sur le <svg> de la pièce.
+      const hiddenText = hidden.toFixed(2);
+      if (hiddenText !== lastHidden) {
+        lastHidden = hiddenText;
+        svg?.style.setProperty('--wmt-sun-hidden', hiddenText);
+      }
       const target = godRayTarget(hidden, w, daylight, sunFrac !== null, rayWindow(now, seed));
       // Fondu doux : les filets apparaissent et s'effacent, ils ne s'allument jamais d'un coup.
       rayStrength = rayStrength < 0 || still ? target : rayStrength + (target - rayStrength) * 0.08;
@@ -243,6 +250,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       return () => {
         placeRef.current = null;
         svg?.style.removeProperty('--wmt-precip');
+        svg?.style.removeProperty('--wmt-sun-hidden');
       };
     }
     let frame = 0;
@@ -258,6 +266,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       window.cancelAnimationFrame(frame);
       placeRef.current = null;
       svg?.style.removeProperty('--wmt-precip');
+      svg?.style.removeProperty('--wmt-sun-hidden');
     };
   }, [sky, ground, clock, seed, width, height, pool, skyRef]);
   return placeRef;

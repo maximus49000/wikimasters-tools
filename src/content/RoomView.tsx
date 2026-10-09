@@ -13,6 +13,7 @@ import { getImageService } from './image-registry';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, glassRect } from './window-art';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
+import { LightLayer } from './light-layer';
 import type { Weather } from '../core/library/weather/weather-types';
 import { hashString } from '../core/library/scene-world';
 import { skyAt, type Sky } from '../core/library/sky';
@@ -52,6 +53,8 @@ type Props = {
   pets?: PetView[];
   petAttach?: (id: string, el: SVGGElement | null) => void;
   onPetTap?: (id: string) => void;
+  // Calque de lumière (ombre et rayons de soleil) par-dessus la pièce ; seulement avec une météo et une fenêtre.
+  light?: boolean;
 };
 
 export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect };
@@ -61,7 +64,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, light = false }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -85,6 +88,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   // Gouttes sur la vitre (et leur animation SMIL) seulement quand il pleut assez : signalé par la boucle de météo, rarement.
   const [wet, setWet] = useState(false);
   const drops = weatherOn && wet;
+  const glasses = useMemo(() => windows.map((w) => glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }))), [room.layout]); // eslint-disable-line react-hooks/exhaustive-deps
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
 
   const deskRects = new Map<string, PxRect>();
@@ -360,6 +364,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {smalls.map(renderPlaced)}
       {topPets}
       {cardLayer}
+      {light && weatherOn && view.weather && windows.length > 0 && (
+        <LightLayer windows={glasses} width={width} height={HEIGHT} wallH={wallH} sky={view.sky} clock={view.weather.clock} />
+      )}
       {bubbles}
       {cells}
       {drag?.ghostPx && (
