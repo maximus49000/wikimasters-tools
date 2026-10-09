@@ -57,7 +57,10 @@ import {
   setScreenCard,
   storeCard,
   unplaceCard,
+  isLamp,
+  isLit,
   isStanding,
+  toggleLamp,
   moveComputer,
   moveStanding,
   placeComputer,
@@ -446,6 +449,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (first) setDrag(first);
   };
   const onFurnitureDown = (id: string, event: ReactPointerEvent): void => {
+    // En mode Visiter, l'appui long ne fait rien (seul le bouton « Aménager » ouvre l'aménagement), mais il est suivi pour
+    // que le clic qui le termine n'allume pas ou n'éteigne pas une lampe.
+    if (!editing) {
+      pressedId.current = null;
+      press.start(event.clientX, event.clientY);
+      return;
+    }
     pressedId.current = id;
     lastPointer.current = { x: event.clientX, y: event.clientY };
     press.start(event.clientX, event.clientY);
@@ -543,8 +553,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   }
 
   async function onPick(id: string): Promise<void> {
-    // Le clic qui suit un appui long n'est pas un vrai clic ; en mode Visiter, toucher un meuble ne fait rien.
-    if (press.consumeClick() || !editing) return;
+    // Le clic qui suit un appui long n'est pas un vrai clic ; en mode Visiter, toucher un meuble ne fait rien, sauf une lampe : elle s'allume ou s'éteint.
+    if (!editing) {
+      if (!press.consumeClick() && layout.some((p) => p.id === id && isLamp(p))) void editLayout((l) => toggleLamp(l, id));
+      return;
+    }
+    if (press.consumeClick()) return;
     const item = layout.find((p) => p.id === id);
     if (!item) return;
     if (placing) return placeOnFurniture(placing, item);
@@ -616,6 +630,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     else await editLayout((l) => removeFurniture(l, selectedId));
     reset();
   };
+  const selectedItem = editing ? layout.find((p) => p.id === selectedId) : undefined;
+  const selectedLamp = selectedItem && isLamp(selectedItem) ? { id: selectedItem.id, on: isLit(selectedItem) } : null;
   const selectedWindow = editing ? layout.find((p) => p.id === selectedId && p.kind === 'window') : undefined;
   const resizeSelected = (dw: number, dh: number): void => {
     if (!selectedWindow || selectedWindow.kind !== 'window') return;
@@ -947,6 +963,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
                 <Icon paths={ICONS.trash} />
               </Btn>
+              {selectedLamp && (
+                <Btn label={selectedLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={selectedLamp.on} data={{ action: 'lamp' }} onClick={() => void editLayout((l) => toggleLamp(l, selectedLamp.id))}>
+                  <Icon paths={ICONS.bulb} />
+                </Btn>
+              )}
               {selectedWindow && (
                 <>
                   <Btn label="Fenêtre plus étroite" data={{ action: 'win-w-' }} onClick={() => resizeSelected(-1, 0)}><Icon paths={ICONS.widthMinus} /></Btn>

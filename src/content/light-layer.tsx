@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactElement } from 'react';
 import { buildLightMap, type Glass, type LightInput, type LightMap } from '../core/library/light';
+import type { Box, LampSource } from '../core/library/light/occluders';
 import type { Sky } from '../core/library/sky';
 import type { Weather } from '../core/library/weather/weather-types';
 import { celestialPlace } from './scene-panorama';
@@ -11,6 +12,10 @@ export type LightLayerProps = {
   wallH: number;
   sky: Sky;
   clock: { read(nowMs: number): Weather };
+  // Occulteurs et lampes allumées ; `signature` change dès que l'un d'eux bouge ou s'allume (repeinture immédiate).
+  boxes?: readonly Box[];
+  lamps?: readonly LampSource[];
+  signature?: string;
   toUrl?: (map: LightMap) => string | null;
 };
 
@@ -33,7 +38,7 @@ function canvasUrl(map: LightMap): string | null {
 }
 
 // Calque de lumière : ombre translucide + rayons chauds, repeint 4 fois par seconde sans re-rendu React (href posé à la main).
-export function LightLayer({ windows, width, height, wallH, sky, clock, toUrl = canvasUrl }: LightLayerProps): ReactElement {
+export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, lamps, signature = '', toUrl = canvasUrl }: LightLayerProps): ReactElement {
   const imageRef = useRef<SVGImageElement | null>(null);
   const skyRef = useRef(sky);
   skyRef.current = sky;
@@ -49,13 +54,17 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, toUrl = 
       const w = clock.read(Date.now());
       const hidden = Number(svg?.style.getPropertyValue('--wmt-sun-hidden')) || 0;
       const r = (v: number, q: number): number => Math.round(v / q);
-      const key = [r(s.sunFrac ?? -1, 0.005), r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01)].join('|');
+      const key = [r(s.sunFrac ?? -1, 0.005), r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01), signature].join('|');
       if (key === lastKey && image.hasAttribute('href')) return;
       lastKey = key;
-      const input: LightInput = {
+      // Sans fenêtre : pas de ciel, donc une pièce sans ombre ambiante et une nuit neutre pour que les lampes se voient.
+      const noSky = windows.length === 0;
+      const input: LightInput = noSky ? {
+        width, height, wallH, windows, sunX: null, sunFrac: null, daylight: 0, twilight: 0, cloud: 0, precip: 0, hidden: 0, boxes, lamps, noSky,
+      } : {
         width, height, wallH, windows,
         sunX: s.sunFrac === null ? null : celestialPlace(s.sunFrac, width, wallH).x,
-        sunFrac: s.sunFrac, daylight: s.daylight, twilight: s.twilight, cloud: w.cloud, precip: w.precip, hidden,
+        sunFrac: s.sunFrac, daylight: s.daylight, twilight: s.twilight, cloud: w.cloud, precip: w.precip, hidden, boxes, lamps,
       };
       const url = toUrl(buildLightMap(input));
       if (url !== null && image.getAttribute('href') !== url) image.setAttribute('href', url);
@@ -70,7 +79,7 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, toUrl = 
       window.clearInterval(timer);
       draw.current = null;
     };
-  }, [windows, width, height, wallH, clock, toUrl]);
+  }, [windows, width, height, wallH, clock, toUrl, signature, boxes, lamps]);
 
   // Mouvement réduit : pas d'intervalle, mais le ciel (chaque minute) relance un calcul.
   const first = useRef(true);

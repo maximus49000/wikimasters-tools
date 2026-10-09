@@ -1,7 +1,8 @@
-import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
+import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
 import { sizeOf } from '../core/library/furniture-catalog';
+import { boxesOf, lampsOf, layoutSignature } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
 import { SteampunkDecor } from './room-steampunk-decor';
@@ -19,6 +20,10 @@ import { hashString } from '../core/library/scene-world';
 import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
+
+// Horloge immobile (ciel dégagé) pour le calque de lumière d'une pièce sans météo : les lampes y restent efficaces.
+const NO_GLASS: readonly never[] = [];
+const STILL_CLOCK = { read: (): Weather => ({ cloud: 0, precip: 0 } as Weather) };
 
 // Ciel d'après-midi quand aucune heure n'est fournie (test, premier rendu) ; calculé une fois : le décor est mémoïsé.
 const DEFAULT_VIEW: SceneView = { sky: skyAt(15 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 }), minutes: 15 * 60 };
@@ -89,6 +94,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const [wet, setWet] = useState(false);
   const drops = weatherOn && wet;
   const glasses = useMemo(() => windows.map((w) => glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }))), [room.layout]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Occulteurs et lampes allumées du calque de lumière ; la signature change quand l'un d'eux bouge ou s'allume.
+  // HEIGHT est une constante : seuls le layout et wallH font varier la géométrie.
+  const lightGeom = { wallH, floorH: HEIGHT - wallH };
+  const lightBoxes = useMemo(() => boxesOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lightLamps = useMemo(() => lampsOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lightSignature = useMemo(() => layoutSignature(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
 
   const deskRects = new Map<string, PxRect>();
@@ -144,7 +155,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       const host = room.layout.find((p) => p.id === placed.hostId);
       if (!hostRect || (host?.kind !== 'desk' && host?.kind !== 'shelf')) return null;
       rect = surfaceSlotRect(hostRect, SURFACE_SLOTS[host.kind], placed.slot);
-      art = <SmallArt item={placed.item} rect={rect} palette={palette} />;
+      art = <SmallArt item={placed.item} rect={rect} palette={palette} lit={isLit(placed)} />;
     } else if (placed.kind === 'window') {
       rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
       art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />;
@@ -159,11 +170,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       } else if (placed.kind === 'shelf') {
         art = <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} />;
       } else if (steampunk && (placed.kind === 'desk' || placed.kind === 'armchair' || placed.kind === 'lamp')) {
-        art = <SteampunkArt kind={placed.kind} rect={rect} palette={palette} />;
+        art = <SteampunkArt kind={placed.kind} rect={rect} palette={palette} lit={isLit(placed)} />;
       } else if (placed.kind === 'desk') {
         art = <DeskArt rect={rect} palette={palette} />;
       } else {
-        art = <HomeArt kind={placed.kind} rect={rect} palette={palette} />;
+        art = <HomeArt kind={placed.kind} rect={rect} palette={palette} lit={isLit(placed)} />;
       }
     }
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
@@ -175,6 +186,15 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         <g
           data-furniture={placed.kind}
           data-id={placed.id}
+          {...(isLamp(placed) && !editing ? {
+            role: 'button', tabIndex: 0, 'aria-pressed': isLit(placed), 'aria-label': isLit(placed) ? 'Lampe allumée' : 'Lampe éteinte',
+            // Au clavier : Entrée ou Espace bascule la lampe, comme un clic.
+            onKeyDown: (event: KeyboardEvent<SVGGElement>) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              onPick(placed.id);
+            },
+          } : {})}
           onClick={() => onPick(placed.id)}
           onPointerDown={onFurnitureDown ? (event) => onFurnitureDown(placed.id, event) : undefined}
           onPointerMove={onFurnitureMove}
@@ -183,7 +203,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           onPointerCancel={onFurnitureUp}
           onContextMenu={(event) => event.preventDefault()}
           opacity={lifted ? 0.3 : 1}
-          style={{ cursor: editing ? 'pointer' : 'default', userSelect: 'none', WebkitTouchCallout: 'none' }}
+          style={{ cursor: editing || isLamp(placed) ? 'pointer' : 'default', userSelect: 'none', WebkitTouchCallout: 'none' }}
         >
           {art}
           {decor.glow && placed.kind !== 'rug' && neonOutline(rect, decor.glow)}
@@ -364,8 +384,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {smalls.map(renderPlaced)}
       {topPets}
       {cardLayer}
-      {light && weatherOn && view.weather && windows.length > 0 && (
-        <LightLayer windows={glasses} width={width} height={HEIGHT} wallH={wallH} sky={view.sky} clock={view.weather.clock} />
+      {/* Sans fenêtre à ciel (calque « sans ciel ») il n'y a rien à montrer tant qu'aucune lampe n'est allumée : pas de calque à 4 Hz. */}
+      {light && ((weatherOn && windows.length > 0) || lightLamps.length > 0) && (
+        <LightLayer windows={weatherOn ? glasses : NO_GLASS} width={width} height={HEIGHT} wallH={wallH} sky={view.sky} clock={view.weather?.clock ?? STILL_CLOCK} boxes={lightBoxes} lamps={lightLamps} signature={lightSignature} />
       )}
       {bubbles}
       {cells}

@@ -140,7 +140,7 @@ export function moveStanding(layout: Layout, cols: number, id: string, col: numb
   const item = layout.find((p) => p.id === id);
   if (!item || !isStanding(item)) return null;
   if (!canPlace(layout, cols, item.kind, col, row, id).ok) return null;
-  return layout.map((p) => (p.id === id ? { id, kind: item.kind, col, row } : p));
+  return layout.map((p) => (p.id === id ? { ...item, col, row } : p));
 }
 
 // Un ordinateur se pose sur un bureau qui n'en porte pas déjà un (le sien, en cas de déplacement, ne compte pas).
@@ -211,6 +211,16 @@ export function moveSmall(layout: Layout, id: string, hostId: string): Layout | 
   return layout.map((p) => (p.id === id ? { ...small, hostId, slot } : p));
 }
 
+export const isLamp = (p: Placed): boolean => p.kind === 'lamp' || (p.kind === 'small' && p.item === 'lamp');
+export const isLit = (p: Placed): boolean => !isLamp(p) || (p as { lit?: boolean }).lit !== false;
+
+// Allume ou éteint une lampe (debout ou posée) ; sans effet sur un autre meuble.
+export function toggleLamp(layout: Layout, id: string): Layout {
+  const target = layout.find((p) => p.id === id);
+  if (!target || !isLamp(target)) return layout;
+  return layout.map((p) => (p.id === id ? ({ ...p, lit: !isLit(p) } as Placed) : p));
+}
+
 // La boîte d'un emplacement de surface : le dessus du porteur, divisé en `slotCount` emplacements de 44 px de haut.
 export function surfaceSlotRect(host: PxRect, slotCount: number, slot: number): PxRect {
   const w = host.w / slotCount;
@@ -219,7 +229,7 @@ export function surfaceSlotRect(host: PxRect, slotCount: number, slot: number): 
 
 // Ajouter une zone à gauche décale les colonnes de tous les meubles ; l'ordinateur suit son bureau.
 export function shiftLayout(layout: Layout, delta: number): Layout {
-  return layout.map((p) => (isStanding(p) ? { id: p.id, kind: p.kind, col: p.col + delta, row: p.row } : p.kind === 'wall' || p.kind === 'window' ? { ...p, col: p.col + delta } : p));
+  return layout.map((p) => (isStanding(p) ? { ...p, col: p.col + delta } : p.kind === 'wall' || p.kind === 'window' ? { ...p, col: p.col + delta } : p));
 }
 
 // La zone de 12 colonnes au bord est vide quand aucun meuble ne la touche (même à cheval sur sa frontière).

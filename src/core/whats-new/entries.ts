@@ -720,7 +720,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'bibliotheque-v3',
+    id: 'bibliotheque-v16',
     theme: 'collection',
     glyph: '📚',
     title: 'La Bibliothèque',
@@ -754,7 +754,7 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-library] [data-action="edit"]',
         title: 'Déplacer un meuble d’un appui long',
-        text: 'Un appui long sur un meuble déjà posé le soulève : vous le faites glisser jusqu’à sa nouvelle place et le relâchez, sans passer par le bouton Déplacer. Cela marche même en mode Visiter, qui passe alors en mode Aménager.',
+        text: 'Un appui long sur un meuble déjà posé le soulève : vous le faites glisser jusqu’à sa nouvelle place et le relâchez, sans passer par le bouton Déplacer. Cela se fait en mode Aménager : en mode Visiter, un appui long ne déplace rien et ne change pas de mode.',
         gesture: 'longpress',
         details: [
           { label: 'À quoi ça sert', text: 'C’est le moyen le plus rapide de réaménager une pièce : le meuble suit votre doigt, et un contour vous montre où il atterrirait avant que vous le lâchiez.' },
@@ -1375,7 +1375,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'bibliotheque-v13',
+    id: 'bibliotheque-v14',
     theme: 'collection',
     glyph: '💡',
     title: 'La lumière du soleil dans la pièce',
@@ -1412,9 +1412,75 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Comment faire', text: 'En mode Aménager, touchez l’ampoule « Lumière » dans la rangée Ciel. Le réglage est propre à cet appareil.' },
           { label: 'Comment ça marche', text: 'La direction du rayon suit la place du soleil devant chaque fenêtre ; les nuages l’atténuent ; la nuit, seule la lumière ambiante reste ; la clarté baisse avec la distance aux fenêtres.' },
-          { label: 'Limites', text: 'Pas encore d’ombres ni de lampes. Sans effet dans l’espace et sur la Terre vue d’en haut, et fixe en mode animations réduites. Si l’appareil ralentit, coupez la lumière avec le bouton Lumière.' },
+          { label: 'Limites', text: 'Les meubles et les lampes ajoutent leurs propres ombres et lumières (voir la fiche suivante). Ce rayon de soleil n’existe que devant une fenêtre : dans l’espace et sur la Terre vue d’en haut, il n’y en a pas, et il reste fixe en mode animations réduites. Si l’appareil ralentit, coupez la lumière avec le bouton Lumière.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+    ],
+  },
+  {
+    id: 'bibliotheque-v15',
+    theme: 'collection',
+    glyph: '💡',
+    title: 'Lampes et ombres des meubles',
+    summary: 'Allumez une lampe d’un toucher, et les meubles font de l’ombre au soleil comme aux lampes',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Ouvrir une pièce de la Bibliothèque',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : lampes et ombres s’y voient dès le mode Visiter.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez une pièce où vous avez posé au moins une lampe.' },
+          { label: 'À quoi ça sert', text: 'À retrouver votre pièce et ses lumières, que vous n’avez plus qu’à toucher.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-furniture="lamp"]',
+        title: 'Allumer une lampe en Visiter',
+        text: 'En mode Visiter, touchez une lampe de la pièce : elle s’allume ou s’éteint, sans quitter le mode.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez la lampe. Un second toucher l’éteint. Seul le crayon ouvre le mode Aménager : toucher une lampe ne vous y envoie jamais par erreur.' },
+          { label: 'À quoi ça sert', text: 'À ambiancer votre pièce sans l’aménager : la lampe éclaire les meubles et le sol autour d’elle.' },
+          { label: 'Limites', text: 'Il faut avoir posé une lampe dans la pièce. L’état allumé ou éteint est mémorisé ; une ancienne version de l’extension l’ignore. Les lampes marchent aussi dans l’espace et sur la Terre vue d’en haut. En mode animations réduites, l’image n’est rafraîchie qu’à un toucher ou quand l’heure change. Si l’appareil ralentit, coupez la Lumière avec le bouton Lumière.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Aménager : choisir la lampe',
+        text: 'En mode Aménager (le crayon), sélectionnez une lampe : un bouton ampoule apparaît pour l’allumer ou l’éteindre.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon, puis la lampe à régler. Le bouton ampoule de la barre bascule son état.' },
+          { label: 'À quoi ça sert', text: 'À choisir l’état d’une lampe pendant l’aménagement, sans changer de mode.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="lamp"]',
+        title: 'Le bouton ampoule',
+        text: 'Le bouton ampoule de la barre allume ou éteint la lampe que vous avez sélectionnée.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Sélectionnez une lampe en mode Aménager, puis touchez l’ampoule.' },
+          { label: 'Comment ça marche', text: 'Une lampe allumée éclaire d’autant moins qu’on s’en éloigne, plus fort sur ce qui lui fait face, et sa portée est limitée.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Les ombres des meubles',
+        text: 'Les meubles projettent maintenant une ombre aux bords doux, du soleil comme des lampes allumées.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À donner du relief : un meuble qui cache la lumière assombrit ce qui est derrière lui.' },
+          { label: 'Comment ça marche', text: 'Une lampe compte surtout la nuit ou par temps couvert ou pluvieux, car l’œil s’adapte : en plein jour clair, elle se remarque à peine.' },
+          { label: 'D’où viennent les données', text: 'Tout est calculé sur votre appareil à partir des meubles posés, de l’heure et de la météo : rien n’est envoyé.' },
+          { label: 'Limites', text: 'Les ombres des meubles sont des boîtes simplifiées ; les animaux n’en projettent pas encore. Le réglage « Lumière » coupe l’ensemble.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
     ],
   },
