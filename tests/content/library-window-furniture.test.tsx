@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../src/core/cache/store';
-import { activeRoom } from '../../src/core/library/library-book';
+import { activeRoom, setTimeSetting, setWeatherSetting } from '../../src/core/library/library-book';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 
@@ -135,14 +135,16 @@ describe('panneau Ciel', () => {
 });
 
 describe('heure réelle — position déjà accordée', () => {
-  async function mountWith(state: PermissionState) {
+  async function mountWith(state: PermissionState, prepare?: (repo: LibraryRepo) => Promise<void>) {
     const getCurrentPosition = vi.fn();
     Object.defineProperty(navigator, 'geolocation', { value: { getCurrentPosition }, configurable: true });
     Object.defineProperty(navigator, 'permissions', { value: { query: vi.fn(async () => ({ state })) }, configurable: true });
     const other = document.createElement('div');
     document.body.append(other);
     const otherRoot = createRoot(other);
-    await act(async () => { otherRoot.render(<LibraryPanel library={createLibraryRepo(createMemoryStore())} />); });
+    const library = createLibraryRepo(createMemoryStore());
+    await prepare?.(library);
+    await act(async () => { otherRoot.render(<LibraryPanel library={library} />); });
     await settle();
     act(() => otherRoot.unmount());
     other.remove();
@@ -155,6 +157,16 @@ describe('heure réelle — position déjà accordée', () => {
 
   it('relit la position au chargement si l’accord est déjà donné', async () => {
     expect(await mountWith('granted')).toHaveBeenCalledTimes(1);
+  });
+
+  it('relit aussi la position pour la vraie météo, même avec une heure fixe', async () => {
+    const prepare = (library: LibraryRepo) => library.update((s) => setWeatherSetting(setTimeSetting(s, { mode: 'day' }), { mode: 'real' }));
+    expect(await mountWith('granted', prepare)).toHaveBeenCalledTimes(1);
+  });
+
+  it('heure fixe et météo simulée : rien n’est relu', async () => {
+    const prepare = (library: LibraryRepo) => library.update((s) => setTimeSetting(s, { mode: 'day' }));
+    expect(await mountWith('granted', prepare)).not.toHaveBeenCalled();
   });
 
   it('ne demande jamais rien au chargement sans accord', async () => {

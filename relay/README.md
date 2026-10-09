@@ -2,7 +2,7 @@
 
 Relais de recherche de documentaires (voir `docs/superpowers/specs/2026-10-07-documentaire-histoire-design.md`).
 
-Routes : `/ping`, `/search` (documentaires notés), `/oembed?id=` (vérifie qu'une vidéo YouTube existe et s'intègre), `/status` (avancement de l'index des chaînes).
+Routes : `/ping`, `/weather?lat&lon` (météo actuelle Open-Meteo, coordonnées arrondies à 0,1°, cache 10 min, sans secret ; limite 60 appels par minute et par adresse), `/search` (documentaires notés), `/oembed?id=` (vérifie qu'une vidéo YouTube existe et s'intègre), `/status` (avancement de l'index des chaînes).
 Tâche planifiée : toutes les 30 minutes, avance l'index des chaînes de confiance (ARTE, INA Officiel, Nota Bene, Lumni, Hérodote).
 
 Réglages Cloudflare (Workers Builds) : répertoire racine vide, commande de déploiement `npx wrangler deploy`.

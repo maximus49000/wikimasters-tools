@@ -19,7 +19,7 @@ describe('migration v1 → v2', () => {
         { id: 'f5', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },
       ]),
     );
-    expect(state.version).toBe(4);
+    expect(state.version).toBe(5);
     const byId = (id: string) => state.rooms[0]!.layout.find((p) => p.id === id);
     expect(byId('f1')).toMatchObject({ row: 7, col: 2 });
     expect(byId('f2')).toMatchObject({ row: 11, col: 10 });
@@ -34,7 +34,7 @@ describe('migration v1 → v2', () => {
   });
 
   it('une pièce vide commence en v4', () => {
-    expect(createInitialState().version).toBe(4);
+    expect(createInitialState().version).toBe(5);
   });
 
   it('un état inconnu ou abîmé donne une pièce vide', () => {

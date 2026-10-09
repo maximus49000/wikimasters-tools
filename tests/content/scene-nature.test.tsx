@@ -52,3 +52,16 @@ describe('lumières nocturnes', () => {
     expect(lit(21 * 60)).toBeGreaterThan(lit(4 * 60));
   });
 });
+
+describe('ciel sombre (météo)', () => {
+  it('fermes, refuge et port allument plus de lumières en plein jour sous un ciel sombre, bien visibles', () => {
+    const lit = (gloom: boolean): SVGElement[] =>
+      (['countryside', 'mountain', 'sea'] as const).flatMap((scene) => {
+        act(() => root.render(<svg><ScenePanorama scene={scene} width={1080} height={340} sky={skyAt(12 * 60, times)} minutes={12 * 60} seed={9} gloom={gloom} /></svg>));
+        return Array.from(container.querySelectorAll<SVGElement>('[data-lamp][data-lit="true"]'));
+      });
+    const bright = lit(true);
+    expect(bright.length).toBeGreaterThan(lit(false).length);
+    for (const lamp of bright) expect(Number(lamp.getAttribute('opacity'))).toBeGreaterThanOrEqual(0.7);
+  });
+});

@@ -3,10 +3,11 @@ import type { ActorKind } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { mixHex } from '../core/library/sky';
 
-type Props = { kind: ActorKind; sky: Sky };
+// `rainy` : les passants ouvrent un parapluie.
+type Props = { kind: ActorKind; sky: Sky; rainy?: boolean };
 
 // Silhouettes simples : plus sombres la nuit, pour rester lisibles sur le ciel.
-export function ActorSprite({ kind, sky }: Props): ReactElement {
+export function ActorSprite({ kind, sky, rainy = false }: Props): ReactElement {
   const dark = (day: string, night: string): string => mixHex(night, day, sky.daylight);
   switch (kind) {
     case 'cloud':
@@ -24,6 +25,13 @@ export function ActorSprite({ kind, sky }: Props): ReactElement {
           <rect x={-4.5} y={-21} width={9} height={14} rx={2} fill={dark('#C0463A', '#6C7AB8')} />
           <rect x={-4} y={-7} width={3} height={8} fill={dark('#2F3340', '#1A1D33')} />
           <rect x={1} y={-7} width={3} height={8} fill={dark('#2F3340', '#1A1D33')} />
+          {rainy && (
+            <g data-umbrella="">
+              {/* Au-dessus de la tête (sommet à -30,5) ; le manche descend jusqu'à la main. */}
+              <path d="M-11 -34 Q0 -47 11 -34 Z" fill={dark('#C0392B', '#5A2A3A')} />
+              <line x1={0} y1={-34} x2={0} y2={-16} stroke="#4A3B2A" strokeWidth={1} />
+            </g>
+          )}
         </g>
       );
     case 'car':

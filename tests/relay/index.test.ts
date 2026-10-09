@@ -50,6 +50,18 @@ describe('routes de transmission', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"items":[]}', { status: 200 })));
     expect((await call('/books/volumes?q=Dune&country=FR&maxResults=10')).status).toBe(200);
   });
+  it('/weather exige des coordonnées, garde le CORS et limite le débit', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ current: { weather_code: 1, temperature_2m: 10 } }), { status: 200 })));
+    const missing = await call('/weather');
+    expect(missing.status).toBe(400);
+    expect(missing.headers.get('access-control-allow-origin')).toBe('*');
+    const same = { headers: { 'cf-connecting-ip': '192.0.2.77' } };
+    const send = () => worker.fetch(new Request('https://relais.test/weather?lat=1&lon=2', same), env);
+    for (let i = 0; i < 60; i += 1) expect((await send()).status).not.toBe(429);
+    const blocked = await send();
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('access-control-allow-origin')).toBe('*');
+  });
   it('/igdb accepte un POST texte valide et refuse le reste', async () => {
     const { detailQuery } = await import('../../src/core/game/igdb-queries');
     vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.startsWith('https://id.twitch.tv/') ? Response.json({ access_token: 't', expires_in: 5_000_000 }) : new Response('[]', { status: 200 }))));

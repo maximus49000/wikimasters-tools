@@ -103,7 +103,8 @@ describe('surfaceSlotRect', () => {
 
 describe('lecture : nettoyage des petits objets', () => {
   const state = (layout: unknown[]) => ({
-    version: 4,
+    version: 5,
+    weather: { mode: 'random' },
     time: { mode: 'real' },
     activeRoomId: 'r1',
     homeRoomId: null,
