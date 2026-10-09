@@ -60,22 +60,27 @@ export function requestPosition(): Promise<Position> {
       return resolve(currentPosition());
     }
     // Premier relevé parfois long (accord du joueur, puis réseau ou satellites) : un délai court donnait toujours « simulée » sur téléphone.
-    const timer = window.setTimeout(() => resolve(currentPosition()), 30000);
-    geo.getCurrentPosition(
-      (p) => {
-        window.clearTimeout(timer);
-        known = { lat: p.coords.latitude, lon: p.coords.longitude };
-        failure = null;
-        for (const listener of listeners) listener();
-        resolve(known);
-      },
-      (e) => {
-        window.clearTimeout(timer);
-        fail(e.code === 1 ? 'denied' : e.code === 3 ? 'timeout' : 'unavailable');
-        resolve(currentPosition());
-      },
-      { maximumAge: 3600000, timeout: 25000 },
-    );
+    const timer = window.setTimeout(() => resolve(currentPosition()), 60000);
+    const done = (): void => window.clearTimeout(timer);
+    const attempt = (highAccuracy: boolean): void =>
+      geo.getCurrentPosition(
+        (p) => {
+          done();
+          known = { lat: p.coords.latitude, lon: p.coords.longitude };
+          failure = null;
+          for (const listener of listeners) listener();
+          resolve(known);
+        },
+        (e) => {
+          // Sans relevé « réseau » (téléphone sans position par le réseau), le GPS prend le relais avant d'abandonner.
+          if (!highAccuracy && e.code !== 1) return attempt(true);
+          done();
+          fail(e.code === 1 ? 'denied' : e.code === 3 ? 'timeout' : 'unavailable');
+          resolve(currentPosition());
+        },
+        { maximumAge: 3600000, timeout: highAccuracy ? 30000 : 12000, enableHighAccuracy: highAccuracy },
+      );
+    attempt(false);
   });
 }
 
