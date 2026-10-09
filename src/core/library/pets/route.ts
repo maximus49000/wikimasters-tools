@@ -106,3 +106,6 @@ export function planRoute(map: WalkMap, from: { pt: Pt; on: Support }, to: { pt:
   const last = leg(map, to.on, cur, to.pt);
   return last ? [...route, ...last] : null;
 }
+
+// Même trajet, parcouru k fois plus vite (k < 1) ou plus lentement (k > 1).
+export const scaleRoute = (route: Segment[], k: number): Segment[] => route.map((s) => ({ ...s, ms: Math.round(s.ms * k) }));

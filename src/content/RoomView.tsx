@@ -184,15 +184,16 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const standing = room.layout.filter(isStanding);
   const bottomRow = (p: (typeof standing)[number]): number => p.row + sizeOf(p.kind).h;
   const sortedStanding = standing.filter((p) => p.kind !== 'rug').sort((a, b) => bottomRow(a) - bottomRow(b));
+  // À rang égal, l'animal le plus loin (pieds les plus hauts) est inséré en dernier au même indice, donc dessiné en premier.
   // Les chats s'insèrent au rang `behind` parmi les meubles triés : derrière ceux dont le bas est plus bas que ses pieds, devant les autres.
   // Un chat perché sur un bureau ou une étagère (`top`) se dessine après les ordinateurs et les petits objets.
   const petNode = (v: PetView): ReactElement => (
     <g key={`pet-${v.id}`} data-pet={v.id} ref={(el) => petAttach?.(v.id, el)} onClick={() => onPetTap?.(v.id)} style={{ cursor: 'pointer', pointerEvents: editing ? 'none' : 'auto' }}>
-      <PetSprite coat={v.coat} pose={v.pose} facing={v.facing} name={v.name} still={v.still} />
+      <PetSprite species={v.species} coat={v.coat} pose={v.pose} facing={v.facing} name={v.name} still={v.still} />
     </g>
   );
   const middle: (ReactElement | null)[] = sortedStanding.map(renderPlaced);
-  for (const v of [...pets].filter((p) => !p.top).sort((a, b) => b.behind - a.behind)) middle.splice(Math.min(v.behind, middle.length), 0, petNode(v));
+  for (const v of [...pets].filter((p) => !p.top).sort((a, b) => b.behind - a.behind || (b.depthY ?? 0) - (a.depthY ?? 0))) middle.splice(Math.min(v.behind, middle.length), 0, petNode(v));
   const topPets = pets.filter((p) => p.top).map(petNode);
   // Le nom et les cœurs : tout en haut, au-dessus de tout le reste de la pièce.
   const bubbles = pets.filter((p) => p.pose === 'purr').map((v) => (

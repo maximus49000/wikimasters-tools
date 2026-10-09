@@ -3,6 +3,7 @@ import {
   activeRoom,
   adoptPet,
   MAX_PET_NAME,
+  MAX_PETS,
   removePet,
   renamePet,
   createInitialState,
@@ -23,9 +24,10 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
-import { COATS, SCENE_IDS, STYLE_IDS, type Coat, type SceneId, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
+import { COATS, DOG_COATS, SCENE_IDS, STYLE_IDS, type Coat, type Pet, type SceneId, type Species, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
-import { COAT_COLORS, COAT_LABELS } from './pet-sprite';
+import { COAT_LABELS, paletteOf as coatPaletteOf } from './pet-sprite';
+import { DOG_COAT_LABELS } from './dog-sprite';
 import {
   MAX_COLS,
   MIN_COLS,
@@ -93,6 +95,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-btn{min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border-radius:999px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit;cursor:pointer}
 .wmt-lib-btn[aria-pressed="true"],.wmt-lib-btn[aria-selected="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
 .wmt-lib-swatch{display:inline-block;box-sizing:border-box;width:16px;height:16px;border-radius:50%;border:4px solid transparent}
+.wmt-lib-pet{display:inline-flex;gap:4px;align-items:center}
 .wmt-lib-name{min-height:40px;box-sizing:border-box;padding:0 10px;border-radius:8px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit}
 .wmt-lib-scroll{display:flex;overflow-x:auto;width:100%;margin:0 auto;border-radius:12px;-webkit-overflow-scrolling:touch}
 .wmt-lib-stage{position:relative;width:100%;display:flex;justify-content:center}
@@ -118,8 +121,12 @@ function Icon({ paths }: { paths: readonly string[] }) {
   );
 }
 
+const coatLabel = (species: Species, coat: Coat): string =>
+  (species === 'dog' ? (DOG_COAT_LABELS as Record<string, string>) : (COAT_LABELS as Record<string, string>))[coat] ?? coat;
+
 const ICONS = {
   cat: ['M5 9L4 3l5 3', 'M19 9l1-6-5 3', 'M5 9c0 6 2 11 7 11s7-5 7-11c-2-2-5-3-7-3S7 7 5 9z', 'M9 12h.01', 'M15 12h.01', 'M11 15l1 1 1-1'],
+  dog: ['M4 8l2-4 4 3', 'M20 8l-2-4-4 3', 'M5 8c0 7 2 12 7 12s7-5 7-12c-2-2-4-3-7-3S7 6 5 8z', 'M9 11h.01', 'M15 11h.01', 'M10 15h4l-2 2z'],
   check: ['M5 12l5 5L20 7'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
   plus: ['M5 12h14', 'M12 5v14'],
@@ -186,7 +193,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [blink, setBlink] = useState<Cell[]>([]);
   const [message, setMessage] = useState('');
-  const [adopting, setAdopting] = useState(false);
+  const [adopting, setAdopting] = useState<Species | null>(null);
   const [adoptName, setAdoptName] = useState('Minou');
   const [adoptCoat, setAdoptCoat] = useState<Coat>('orange');
   const blinkTimer = useRef<number | undefined>(undefined);
@@ -362,7 +369,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     setMessage('');
     setPicking(false);
     setPending(null);
-    setAdopting(false);
+    setAdopting(null);
     setAdoptName('Minou');
     setAdoptCoat('orange');
   };
@@ -659,13 +666,18 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     reset();
     void library.update((state) => deleteRoom(state, room.id));
   };
-  const pet = room.pets[0];
-  const confirmAdopt = (): void => {
-    setAdopting(false);
-    void library.update((state) => adoptPet(state, room.id, adoptName, adoptCoat));
+  const startAdopt = (species: Species): void => {
+    setAdoptName(species === 'dog' ? 'Rex' : 'Minou');
+    setAdoptCoat(species === 'dog' ? 'brown' : 'orange');
+    setAdopting(species);
   };
-  const onRemovePet = (): void => {
-    if (!pet || !window.confirm(`Retirer ${pet.name} de cette pièce ?`)) return;
+  const confirmAdopt = (): void => {
+    const species = adopting;
+    setAdopting(null);
+    if (species) void library.update((state) => adoptPet(state, room.id, adoptName, adoptCoat, species));
+  };
+  const onRemovePet = (pet: Pet): void => {
+    if (!window.confirm(`Retirer ${pet.name} de cette pièce ?`)) return;
     void library.update((state) => removePet(state, room.id, pet.id));
   };
 
@@ -788,12 +800,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 
       {editing && (
         <div className="wmt-lib-row" role="group" aria-label="Animaux">
-          {pet ? (
-            <>
+          {room.pets.map((pet) => (
+            <span key={`${room.id}:${pet.id}`} className="wmt-lib-pet" data-pet-edit={pet.id}>
               <input
-                key={`${room.id}:${pet.id}`}
                 className="wmt-lib-name"
-                aria-label="Nom du chat"
+                aria-label={pet.species === 'dog' ? 'Nom du chien' : 'Nom du chat'}
                 defaultValue={pet.name}
                 maxLength={MAX_PET_NAME}
                 onBlur={(event) => {
@@ -806,29 +817,37 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                   void library.update((state) => renamePet(state, room.id, pet.id, name));
                 }}
               />
-              <Btn label="Retirer le chat" data={{ action: 'remove-pet' }} onClick={onRemovePet}>
+              <Btn label={`Retirer ${pet.name}`} data={{ action: 'remove-pet', pet: pet.id }} onClick={() => onRemovePet(pet)}>
                 <Icon paths={ICONS.trash} />
               </Btn>
-            </>
-          ) : adopting ? (
+            </span>
+          ))}
+          {adopting !== null ? (
             <>
-              <input className="wmt-lib-name" aria-label="Nom du chat à adopter" value={adoptName} maxLength={MAX_PET_NAME} onChange={(event) => setAdoptName(event.currentTarget.value)} />
-              {COATS.map((coat) => (
-                <Btn key={coat} label={COAT_LABELS[coat]} pressed={adoptCoat === coat} data={{ coat }} onClick={() => setAdoptCoat(coat)}>
-                  <span className="wmt-lib-swatch" style={{ background: COAT_COLORS[coat].body, borderColor: COAT_COLORS[coat].belly }} />
+              <input className="wmt-lib-name" aria-label={adopting === 'dog' ? 'Nom du chien à adopter' : 'Nom du chat à adopter'} value={adoptName} maxLength={MAX_PET_NAME} onChange={(event) => setAdoptName(event.currentTarget.value)} />
+              {(adopting === 'dog' ? DOG_COATS : COATS).map((coat) => (
+                <Btn key={coat} label={coatLabel(adopting, coat)} pressed={adoptCoat === coat} data={{ coat }} onClick={() => setAdoptCoat(coat)}>
+                  <span className="wmt-lib-swatch" style={{ background: coatPaletteOf(adopting, coat).body, borderColor: coatPaletteOf(adopting, coat).belly }} />
                 </Btn>
               ))}
-              <Btn label="Adopter ce chat" data={{ action: 'adopt-confirm' }} onClick={confirmAdopt}>
+              <Btn label={adopting === 'dog' ? 'Adopter ce chien' : 'Adopter ce chat'} data={{ action: 'adopt-confirm' }} onClick={confirmAdopt}>
                 <Icon paths={ICONS.check} />
               </Btn>
-              <Btn label="Annuler" data={{ action: 'adopt-cancel' }} onClick={() => setAdopting(false)}>
+              <Btn label="Annuler" data={{ action: 'adopt-cancel' }} onClick={() => setAdopting(null)}>
                 <Icon paths={ICONS.close} />
               </Btn>
             </>
           ) : (
-            <Btn label="Adopter un chat" data={{ action: 'adopt' }} onClick={() => setAdopting(true)}>
-              <Icon paths={ICONS.cat} />
-            </Btn>
+            room.pets.length < MAX_PETS && (
+              <>
+                <Btn label="Adopter un chat" data={{ action: 'adopt' }} onClick={() => startAdopt('cat')}>
+                  <Icon paths={ICONS.cat} />
+                </Btn>
+                <Btn label="Adopter un chien" data={{ action: 'adopt-dog' }} onClick={() => startAdopt('dog')}>
+                  <Icon paths={ICONS.dog} />
+                </Btn>
+              </>
+            )
           )}
         </div>
       )}

@@ -1,17 +1,17 @@
 import { poisOf } from '../furniture-catalog';
-import type { Layout, PetAction, PetPlan, Pt, Segment } from '../library-types';
+import type { Layout, PetAction, PetPlan, Pt, Segment, Species } from '../library-types';
 import { CELL_W, ROWS, WALL_ROWS, isStanding, type Cell } from '../room-grid';
 import { hashString } from '../scene-world';
 import { planEndsAt, stateAt, type PetState } from './motion';
-import { planRoute, type Standing } from './route';
+import { planRoute, scaleRoute, type Standing } from './route';
 import { buildWalkMap, cellOf, isFree, nearestFreeCell, standPoint, type WalkMap } from './walk-map';
 
 export type Rng = () => number;
 // `occupied` : les places réservées (clés `<meuble>:<point>`) que le chat doit éviter ; vide tant qu'il vit seul.
-export type BrainEnv = { layout: Layout; cols: number; rng: Rng; still: boolean; occupied: ReadonlySet<string> };
+export type BrainEnv = { layout: Layout; cols: number; rng: Rng; still: boolean; occupied: ReadonlySet<string>; species?: Species /* défaut : chat */ };
 
 type Ms = readonly [number, number];
-type Candidate = { weight: number; action: PetAction; route: Segment[]; at: Pt; on: string | null; hostId: string | null; facing: 'l' | 'r'; ms: Ms };
+type Candidate = { weight: number; action: PetAction; route: Segment[]; at: Pt; on: string | null; hostId: string | null; facing: 'l' | 'r'; ms: Ms; key?: string };
 type Dest = { pt: Pt; on: string | null; hostId: string | null };
 
 // Signature des meubles debout : quand elle change, les itinéraires mémorisés ne sont plus fiables.
@@ -19,6 +19,8 @@ export function layoutSig(layout: Layout, cols: number): string {
   const parts = layout.filter(isStanding).map((p) => `${p.id}:${p.kind}:${p.col}:${p.row}`).sort();
   return `${cols}|${hashString(parts.join(','))}`;
 }
+
+const DOG_SPEED = 0.7;
 
 const between = (rng: Rng, [lo, hi]: Ms): number => Math.round(lo + rng() * (hi - lo));
 
@@ -38,6 +40,8 @@ function facingOf(route: Segment[], fallback: 'l' | 'r'): 'l' | 'r' {
 
 // Choisit la prochaine action selon les meubles posés (tirage pondéré), planifie le trajet et renvoie le plan qui démarre à `now`.
 export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetAction): PetPlan {
+  const dog = env.species === 'dog';
+  const speed = dog ? DOG_SPEED : 1;
   const map = buildWalkMap(env.layout, env.cols);
   const cands: Candidate[] = [];
   const stay = (action: PetAction, weight: number, ms: Ms): void => {
@@ -45,14 +49,47 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
   };
   const go = (action: PetAction, weight: number, dest: Dest, ms: Ms, key?: string, facing?: 'l' | 'r'): void => {
     if (key !== undefined && env.occupied.has(key)) return;
-    const route = planRoute(map, from, dest);
-    if (!route) return;
-    cands.push({ weight, action, route, at: dest.pt, on: dest.on, hostId: dest.hostId, facing: facing ?? facingOf(route, from.facing), ms });
+    const raw = planRoute(map, from, dest);
+    if (!raw) return;
+    // Un chien ne grimpe que sur son canapé : aucun segment ne le pose sur un autre meuble (fauteuil, bureau…).
+    if (dog && raw.some((s) => s.on !== null && s.on !== dest.on && s.on !== from.on)) return;
+    const route = speed === 1 ? raw : scaleRoute(raw, speed);
+    cands.push({ weight, action, route, at: dest.pt, on: dest.on, hostId: dest.hostId, facing: facing ?? facingOf(route, from.facing), ms, key });
   };
 
   if (env.still) {
     stay('sit', 2, [8000, 16000]);
     stay('sleep', 1, [20000, 40000]);
+  } else if (dog) {
+    stay('sit', 1.2, [4000, 9000]);
+    stay('pant', 1, [3000, 6000]);
+    stay('stretch', 0.8, [2500, 3500]);
+    stay('yawn', 0.5, [2000, 3000]);
+    stay('groom', 0.6, [4000, 7000]);
+    if (from.hostId === null) stay('sleep', 0.4, [15000, 30000]);
+    const cells = freeCells(map);
+    for (let i = 0; i < 4 && cells.length > 0; i++) {
+      const c = cells[Math.floor(env.rng() * cells.length)]!;
+      go('sniff', 0.7, { pt: standPoint(c.col, c.row), on: null, hostId: null }, [3000, 5000]);
+    }
+    for (const p of env.layout) {
+      if (!isStanding(p)) continue;
+      const poi = (type: string) => poisOf(p.kind).filter((q) => q.type === type);
+      const cellPt = (dx: number, dy: number): Pt => standPoint(p.col + dx, p.row + dy);
+      const plat = map.platforms.find((q) => q.id === p.id);
+      if (p.kind === 'basket') for (const q of poi('curl')) go('sleep', 2, { pt: cellPt(q.dx, q.dy), on: null, hostId: p.id }, [25000, 60000], `${p.id}:curl`);
+      if (p.kind === 'kennel') for (const q of poi('sleep')) go('sleep', 2.4, { pt: cellPt(q.dx, q.dy), on: null, hostId: p.id }, [25000, 60000], `${p.id}:sleep`);
+      if (p.kind === 'bowl') {
+        for (const q of poi('eat')) {
+          go('eat', 1.4, { pt: cellPt(q.dx, q.dy), on: null, hostId: p.id }, [5000, 8000], `${p.id}:eat`);
+          go('drink', 1, { pt: cellPt(q.dx, q.dy), on: null, hostId: p.id }, [3000, 5000], `${p.id}:eat`);
+        }
+      }
+      if (plat && p.kind === 'sofa') {
+        for (const q of poi('sleep')) go('sleep', 1.2, { pt: { x: (p.col + q.dx + 0.5) * CELL_W, y: plat.y }, on: p.id, hostId: p.id }, [25000, 60000], `${p.id}:sleep`);
+        poi('seat').forEach((q, i) => go('perch', 0.6, { pt: { x: (p.col + q.dx + 0.5) * CELL_W, y: plat.y }, on: p.id, hostId: p.id }, [10000, 25000], `${p.id}:seat${i}`));
+      }
+    }
   } else {
     stay('sit', 1, [4000, 9000]);
     stay('groom', 1.2, [5000, 8000]);
@@ -116,6 +153,7 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     actMs: between(env.rng, chosen.ms),
     facing: chosen.facing,
     sig: layoutSig(env.layout, env.cols),
+    ...(chosen.key !== undefined ? { key: chosen.key } : {}),
   };
 }
 
@@ -127,7 +165,7 @@ export function spawnPlan(env: BrainEnv, now: number): PetPlan {
 }
 
 // Où poser le chat quand les meubles ont changé : là où il était si c'est encore valable, sinon sur la case libre la plus proche.
-function standingFrom(map: WalkMap, state: PetState): Standing {
+export function standingFrom(map: WalkMap, state: PetState): Standing {
   const { pos, on } = state;
   if (on !== null) {
     const plat = map.platforms.find((p) => p.id === on);
