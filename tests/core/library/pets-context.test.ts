@@ -47,11 +47,13 @@ describe('createContextTracker', () => {
 
 describe('sunCellsOf', () => {
   const geom = { wallH: 360, floorH: 150, cols: 24 };
-  const glass = { x: 120, y: 0, w: 120, h: 150 }; // verre haut : le patch (y 383–400) couvre la rangée 13
+  const glass = { x: 120, y: 60, w: 120, h: 150 };
   it('donne des cases du sol quand le soleil est levé', () => {
-    const cells = sunCellsOf({ glasses: [glass], ...geom, sunFrac: 0.5, sunX: 180, blocked: false });
-    expect(cells.length).toBeGreaterThan(0);
-    for (const c of cells) expect(c.row).toBeGreaterThanOrEqual(12);
+    for (const sunFrac of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+      const cells = sunCellsOf({ glasses: [glass], ...geom, sunFrac, sunX: 180, blocked: false });
+      expect(cells.length, `sunFrac ${sunFrac}`).toBeGreaterThan(0);
+      for (const c of cells) expect(c.row).toBeGreaterThanOrEqual(12);
+    }
   });
   it('est vide si le soleil est couché, masqué ou sans fenêtre', () => {
     expect(sunCellsOf({ glasses: [glass], ...geom, sunFrac: null, sunX: null, blocked: false })).toEqual([]);

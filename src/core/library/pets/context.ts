@@ -1,8 +1,7 @@
-import { ROWS, WALL_ROWS, type Cell } from '../room-grid';
+import { CELL_H, CELL_W, ROWS, WALL_ROWS, type Cell } from '../room-grid';
 import { beamPatch, type Glass, type Point } from '../light/beam';
 import { beamSlope, sunElevation } from '../light/sun-dir';
 import type { Weather } from '../weather/weather-types';
-import { standPoint } from './walk-map';
 
 export type PetWeather = 'clear' | 'drizzle' | 'rain' | 'storm';
 export type PetContext = {
@@ -28,16 +27,31 @@ export function isNight(daylight: number, minutes: number, hasSky: boolean): boo
   return hasSky ? daylight < 0.15 : minutes < 6 * 60 || minutes >= 22 * 60;
 }
 
-const inside = (poly: readonly Point[], x: number, y: number): boolean => {
-  let in_ = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+// Recouvrement exact (SAT) d'un quadrilatère convexe et d'un rectangle aligné sur les axes.
+const overlaps = (poly: readonly Point[], x0: number, y0: number, x1: number, y1: number): boolean => {
+  const sep = (nx: number, ny: number, rmin: number, rmax: number): boolean => {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const p of poly) {
+      const d = p.x * nx + p.y * ny;
+      if (d < min) min = d;
+      if (d > max) max = d;
+    }
+    return max < rmin || min > rmax;
+  };
+  if (sep(1, 0, x0, x1) || sep(0, 1, y0, y1)) return false;
+  for (let i = 0; i < poly.length; i++) {
     const a = poly[i]!;
-    const b = poly[j]!;
-    if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) in_ = !in_;
+    const b = poly[(i + 1) % poly.length]!;
+    const nx = b.y - a.y;
+    const ny = a.x - b.x;
+    const c = [x0 * nx + y0 * ny, x1 * nx + y0 * ny, x0 * nx + y1 * ny, x1 * nx + y1 * ny];
+    if (sep(nx, ny, Math.min(...c), Math.max(...c))) return false;
   }
-  return in_;
+  return true;
 };
 
+// Cases du sol dont le rectangle est touché par la projection du verre (la bande peut être plus fine qu'une rangée).
 export function sunCellsOf(i: { glasses: readonly Glass[]; wallH: number; floorH: number; cols: number; sunFrac: number | null; sunX: number | null; blocked: boolean }): Cell[] {
   if (i.blocked || i.sunFrac === null || i.sunX === null || i.glasses.length === 0) return [];
   const elev = sunElevation(i.sunFrac);
@@ -48,8 +62,7 @@ export function sunCellsOf(i: { glasses: readonly Glass[]; wallH: number; floorH
   const cells: Cell[] = [];
   for (let row = WALL_ROWS; row < ROWS; row++) {
     for (let col = 0; col < i.cols; col++) {
-      const p = standPoint(col, row);
-      if (patches.some((poly) => inside(poly, p.x, p.y))) cells.push({ col, row });
+      if (patches.some((poly) => overlaps(poly, col * CELL_W, row * CELL_H, (col + 1) * CELL_W, (row + 1) * CELL_H))) cells.push({ col, row });
     }
   }
   return cells;
