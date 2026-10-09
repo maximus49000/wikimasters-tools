@@ -18,10 +18,12 @@ export function parseSchoolReply(raw: unknown): { zone: Zone; periods: HolidayPe
     if (!ISO.test(p.start) || !ISO.test(p.end) || p.end <= p.start) return null;
     periods.push({ name: p.name, start: p.start, end: p.end });
   }
+  // Une réponse sans aucune période n'est pas un calendrier : elle est refusée.
+  if (periods.length === 0) return null;
   return { zone: r.zone, periods };
 }
 
-// Repli approché (dates indicatives, sans zone) : jamais présenté comme officiel. Pour l'année civile `year` et la précédente.
+// Repli approché (dates indicatives, sans zone) : jamais présenté comme officiel. Pour les années civiles `year - 1` et `year`.
 export function approximatePeriods(year: number): HolidayPeriod[] {
   const out: HolidayPeriod[] = [];
   for (const y of [year - 1, year]) {
@@ -38,17 +40,37 @@ type Deps = {
   storage: { get(key: string): string | null; set(key: string, value: string): void };
 };
 type Saved = { at: number; periods: HolidayPeriod[] };
+// Dernier essai auprès du relais, réussi ou non : persisté pour que le délai survive à un rechargement.
+type Attempt = { at: number; failed: boolean };
 
+const DAY_MS = 86_400_000;
 const KEY = (zone: Zone): string => `wmt:school-calendar:${zone}`;
-const FRESH_MS = 7 * 86_400_000;
-const BACKOFF_MS = 15 * 60_000;
+const ATTEMPT_KEY = (zone: Zone): string => `wmt:school-calendar-attempt:${zone}`;
+const FRESH_MS = 7 * DAY_MS;
+const RETRY_MS = DAY_MS;
+const TIMEOUT_MS = 10_000;
 
-// Calendrier officiel par le relais, cache de 7 jours (une requête au plus par jour même en échec), repli approché. Ne lève jamais.
+// Un appel qui ne répond pas dans le délai vaut échec. Le minuteur est nettoyé dans tous les cas.
+function withTimeout<T>(pending: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('délai dépassé')), ms);
+  });
+  return Promise.race([pending, expired]).finally(() => clearTimeout(timer));
+}
+
+// Calendrier officiel par le relais. Cache de 7 jours ; après un échec, aucun nouvel essai pendant 24 h (heure du dernier essai
+// persistée). Pendant ce délai ou après un échec, on sert le dernier cache (même périmé), puis le relevé approché. Ne lève jamais.
 export function createSchoolCalendar(deps: Deps): { latest(zone: Zone): HolidayPeriod[]; refresh(zone: Zone): Promise<HolidayPeriod[]> } {
   const memory = new Map<Zone, Saved>();
-  const retryAt = new Map<Zone, number>();
+  const attempts = new Map<Zone, Attempt>();
   const inFlight = new Map<Zone, Promise<HolidayPeriod[]>>();
   const fallback = (): HolidayPeriod[] => approximatePeriods(new Date(deps.now()).getUTCFullYear());
+  // Une date dans le futur (horloge reculée) n'est jamais « récente » : elle ne vaut ni fraîcheur ni délai.
+  const within = (at: number, ms: number): boolean => {
+    const age = deps.now() - at;
+    return age >= 0 && age < ms;
+  };
 
   const load = (zone: Zone): Saved | null => {
     const cached = memory.get(zone);
@@ -68,11 +90,42 @@ export function createSchoolCalendar(deps: Deps): { latest(zone: Zone): HolidayP
     }
   };
 
+  const loadAttempt = (zone: Zone): Attempt | null => {
+    const cached = attempts.get(zone);
+    if (cached) return cached;
+    try {
+      const text = deps.storage.get(ATTEMPT_KEY(zone));
+      if (!text) return null;
+      const a = JSON.parse(text) as Partial<Attempt>;
+      if (typeof a.at !== 'number' || typeof a.failed !== 'boolean') return null;
+      const attempt = { at: a.at, failed: a.failed };
+      attempts.set(zone, attempt);
+      return attempt;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveAttempt = (zone: Zone, attempt: Attempt): void => {
+    attempts.set(zone, attempt);
+    try {
+      deps.storage.set(ATTEMPT_KEY(zone), JSON.stringify(attempt));
+    } catch {
+      // Stockage refusé : la mémoire suffit pour cette session.
+    }
+  };
+
   const fetchOnce = async (zone: Zone): Promise<HolidayPeriod[]> => {
     try {
-      const response = await deps.fetch(`${SCHOOL_RELAY}?zone=${zone}`);
-      if (!response.ok) throw new Error('status');
-      const parsed = parseSchoolReply(await response.json());
+      const body = await withTimeout(
+        (async () => {
+          const response = await deps.fetch(`${SCHOOL_RELAY}?zone=${zone}`);
+          if (!response.ok) throw new Error('status');
+          return (await response.json()) as unknown;
+        })(),
+        TIMEOUT_MS,
+      );
+      const parsed = parseSchoolReply(body);
       if (!parsed || parsed.zone !== zone) throw new Error('shape');
       const saved = { at: deps.now(), periods: parsed.periods };
       memory.set(zone, saved);
@@ -81,9 +134,10 @@ export function createSchoolCalendar(deps: Deps): { latest(zone: Zone): HolidayP
       } catch {
         // Stockage refusé : le cache mémoire suffit.
       }
+      saveAttempt(zone, { at: deps.now(), failed: false });
       return saved.periods;
     } catch {
-      retryAt.set(zone, deps.now() + BACKOFF_MS);
+      saveAttempt(zone, { at: deps.now(), failed: true });
       return load(zone)?.periods ?? fallback();
     }
   };
@@ -92,8 +146,9 @@ export function createSchoolCalendar(deps: Deps): { latest(zone: Zone): HolidayP
     latest: (zone) => load(zone)?.periods ?? fallback(),
     refresh(zone) {
       const saved = load(zone);
-      if (saved && deps.now() - saved.at < FRESH_MS) return Promise.resolve(saved.periods);
-      if (deps.now() < (retryAt.get(zone) ?? 0)) return Promise.resolve(saved?.periods ?? fallback());
+      if (saved && within(saved.at, FRESH_MS)) return Promise.resolve(saved.periods);
+      const attempt = loadAttempt(zone);
+      if (attempt?.failed && within(attempt.at, RETRY_MS)) return Promise.resolve(saved?.periods ?? fallback());
       let pending = inFlight.get(zone);
       if (!pending) {
         pending = fetchOnce(zone).finally(() => inFlight.delete(zone));
