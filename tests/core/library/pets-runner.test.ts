@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createInitialState } from '../../../src/core/library/library-book';
 import type { Layout, PetPlan, Room } from '../../../src/core/library/library-types';
 import { layoutSig } from '../../../src/core/library/pets/brain';
+import { NO_CONTEXT } from '../../../src/core/library/pets/context';
 import { planEndsAt, routeMs } from '../../../src/core/library/pets/motion';
 import { createPetRunner } from '../../../src/core/library/pets/runner';
 import { proposeScene } from '../../../src/core/library/pets/scenes';
@@ -434,8 +435,119 @@ describe('sieste du chat sur le robot (ride)', () => {
     expect(cat!.pos.y).toBeGreaterThan(top.y);
   });
 
+  it('orage pendant la sieste : le chat saute d abord à terre, le robot court-circuite', () => {
+    const onPlan = vi.fn();
+    const ctx = { ...NO_CONTEXT, weather: 'storm' as const, storm: { id: 1, since: asleepAt - 100 } };
+    const [cat] = createPetRunner({ onPlan }).step(roomOf(ride.lead, ride.partner!), asleepAt, ctx);
+    dismounted(lastPlanOf(onPlan, 'p1'));
+    expect(lastPlanOf(onPlan, 'p2').action).toBe('shortcircuit');
+    expect(cat!.pos).toEqual(top);
+  });
+
   it('au sol : le point de saut est une case libre voisine du robot', () => {
     const from = landingOf(ride.lead);
     expect(Math.abs(from.x - at.x)).toBeLessThanOrEqual(30);
+  });
+});
+
+describe('orage (6d)', () => {
+  const stormCtx = (id = 1, since = 1000) => ({ ...NO_CONTEXT, weather: 'storm' as const, storm: { id, since } });
+  const trio = (layout: Layout, startedAt = 0): Room => ({
+    ...createInitialState().rooms[0]!, layout,
+    pets: [
+      { id: 'p1', species: 'cat', name: 'Minou', coat: 'orange', plan: { ...resting(layout, standPoint(4, 16)), startedAt } },
+      { id: 'p2', species: 'dog', name: 'Rex', coat: 'brown', plan: { ...resting(layout, standPoint(18, 16)), startedAt } },
+      { id: 'p3', species: 'robot', name: 'R2', coat: 'blue', plan: { ...resting(layout, standPoint(10, 16)), startedAt } },
+    ],
+  });
+  const startOf = (plan: PetPlan) => plan.route[0]?.from ?? plan.at;
+
+  it('interrompt les plans au premier orage, une seule fois par orage', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan, rng: () => 0.5 });
+    const room = trio(sofa);
+    runner.step(room, 2000, stormCtx());
+    const first = onPlan.mock.calls.length;
+    expect(first).toBeGreaterThanOrEqual(3);
+    const robotPlan = onPlan.mock.calls.find((c) => c[0] === 'p3')![1] as PetPlan;
+    expect(robotPlan.action).toBe('shortcircuit');
+    runner.step(room, 2100, stormCtx());
+    expect(onPlan.mock.calls.length).toBe(first);
+    runner.step(room, 3000, stormCtx(2, 2900));
+    expect(onPlan.mock.calls.length).toBeGreaterThan(first);
+  });
+
+  it('sans téléportation : chaque plan d orage part de là où se trouve l animal', () => {
+    const onPlan = vi.fn();
+    createPetRunner({ onPlan, rng: () => 0.5 }).step(trio(sofa), 2000, stormCtx());
+    const where: Record<string, { x: number; y: number }> = { p1: standPoint(4, 16), p2: standPoint(18, 16), p3: standPoint(10, 16) };
+    for (const [id, plan] of onPlan.mock.calls as [string, PetPlan][]) expect(startOf(plan)).toEqual(where[id]);
+  });
+
+  it('à trois, le chat et le chien se serrent (scène huddle)', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan, rng: () => 0.5 });
+    const frames = runner.step(trio(sofa), 2000, stormCtx());
+    const cat = onPlan.mock.calls.filter((c) => c[0] === 'p1').pop()![1] as PetPlan;
+    const dog = onPlan.mock.calls.filter((c) => c[0] === 'p2').pop()![1] as PetPlan;
+    expect(cat.with).toMatchObject({ scene: 'huddle', petId: 'p2' });
+    expect(dog.with).toMatchObject({ scene: 'huddle', petId: 'p1' });
+    expect(cat.startedAt).toBe(dog.startedAt);
+    expect(frames).toHaveLength(3);
+    // La boucle ne défait pas la scène tout juste posée.
+    expect(onPlan.mock.calls.filter((c) => c[0] === 'p1')).toHaveLength(1);
+  });
+
+  it('sans le robot, chacun réagit seul', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan, rng: () => 0.5 });
+    const room = trio(sofa);
+    room.pets = room.pets.slice(0, 2);
+    runner.step(room, 2000, stormCtx());
+    expect(onPlan).toHaveBeenCalledTimes(2);
+    for (const c of onPlan.mock.calls) expect((c[1] as PetPlan).with).toBeUndefined();
+  });
+
+  it('ignore un orage déjà ancien (plus de 60 s)', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan, rng: () => 0.5 });
+    runner.step(trio(sofa, 150_000), 200_000, stormCtx(1, 1000));
+    expect(onPlan).not.toHaveBeenCalled();
+  });
+
+  it('un animal déjà caché (plan hide hors scène) est laissé tel quel', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan, rng: () => 0.5 });
+    const room = trio(sofa);
+    room.pets = room.pets.slice(0, 2);
+    room.pets[0] = { ...room.pets[0]!, plan: { ...resting(sofa, standPoint(4, 14)), action: 'hide', hostId: 'a', key: 'a:hide' } };
+    runner.step(room, 2000, stormCtx());
+    expect(onPlan.mock.calls.map((c) => c[0])).toEqual(['p2']);
+  });
+
+  it('mouvement réduit : cower sur place, sans scène', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan, still: true, rng: () => 0.5 });
+    runner.step(trio(sofa), 2000, stormCtx());
+    const cat = onPlan.mock.calls.find((c) => c[0] === 'p1')![1] as PetPlan;
+    expect(cat.action).toBe('cower');
+    expect(cat.route).toEqual([]);
+    for (const c of onPlan.mock.calls) expect((c[1] as PetPlan).route).toEqual([]);
+  });
+
+  it('après le court-circuit, le robot redémarre', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan, rng: () => 0.5 });
+    const room = trio(sofa);
+    runner.step(room, 2000, stormCtx());
+    runner.step(room, 5100, stormCtx());
+    const robot = onPlan.mock.calls.filter((c) => c[0] === 'p3').pop()![1] as PetPlan;
+    expect(robot.action).toBe('reboot');
+  });
+
+  it('sans contexte : rien ne change', () => {
+    const onPlan = vi.fn();
+    createPetRunner({ onPlan, rng: () => 0.5 }).step(trio(sofa), 2000);
+    expect(onPlan).not.toHaveBeenCalled();
   });
 });
