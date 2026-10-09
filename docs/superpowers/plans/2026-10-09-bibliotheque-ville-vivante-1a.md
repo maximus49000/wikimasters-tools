@@ -519,16 +519,19 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
   - `proxySchoolCalendar(url: URL, deps: { fetch: Fetcher; now: () => number }): Promise<ProxyResult>` — `GET /school-calendar?zone=A|B|C|Corse` → `{ ok: true, zone, periods: [{ name, start, end }] }` (dates `YYYY-MM-DD` en heure de Paris, `end` = jour de reprise)
   - `proxyDepartment(url: URL, deps: { fetch: Fetcher; now: () => number }): Promise<ProxyResult>` — `GET /department?lat&lon` → `{ ok: true, dept: '75' }`
 
-- [ ] **Step 1: Vérifier la source réelle (étape de découverte, avant d'écrire du code)**
+- [x] **Step 1: Vérifier la source réelle (FAIT le 2026-10-09, résultats à respecter)**
 
-Le jeu de données ouvert est « Le calendrier scolaire » de data.education.gouv.fr. Relever sa forme réelle et enregistrer une réponse de référence :
+Le jeu `fr-en-calendrier-scolaire` (data.education.gouv.fr, API Explore v2.1) a été interrogé en direct ; `geo.api.gouv.fr/communes?lat=48.9&lon=2.4&fields=codeDepartement&format=json` aussi (réponse `[{"codeDepartement":"93","nom":"Pantin","code":"93055"}]`, compatible avec `/department`). Constats qui structurent le code :
 
-```bash
-curl -s "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-calendrier-scolaire/records?limit=3&where=zones%3D%22Zone%20C%22&order_by=start_date%20desc" -o tests/relay/fixtures-school-calendar.json
-curl -s "https://geo.api.gouv.fr/communes?lat=48.85&lon=2.35&fields=codeDepartement&format=json"
-```
+- Champs : `description`, `population`, `start_date`, `end_date`, `location` (académie), `zones` (`Zone A`, `Zone B`, `Zone C`, `Corse`, plus l'outre-mer), `annee_scolaire`.
+- **Une ligne par académie** : sans regroupement, la zone A compte 56 lignes pour une année et la limite de 100 est vite dépassée. La requête doit utiliser `select=description,population,start_date,end_date&group_by=description,population,start_date,end_date` (testé : renvoie 14 lignes pour la zone C de 2026 à 2027).
+- Dates en **UTC** : `2026-10-16T22:00:00+00:00` est le 17 octobre à Paris ; `end_date` du jour de reprise (`2026-11-01T23:00:00+00:00` = lundi 2 novembre à Paris) : `start` inclus, `end` exclu, comme dans `calendar.ts`.
+- `population` : `-` pour Toussaint, Noël, hiver, printemps et ponts ; **`Élèves` et `Enseignants` pour l'été** (donc ne pas filtrer sur `population="-"`) : garder tout sauf les lignes contenant « Enseignants » (insensible à la casse).
+- Lignes parasites : `Début des Vacances d'Été` (début = fin, description ne commençant pas par « Vacances »/« Pont » : ignorée).
+- **`Pont de l'Ascension` peut durer un seul instant** (`start_date` = `end_date`, ex. `2027-05-06T22:00:00+00:00`, soit le vendredi 7 mai à Paris) : le traiter comme **un jour** (`end = start + 1 jour`), jamais l'ignorer.
+- Corse présente et exploitable (`zones="Corse"`).
 
-Noter dans le test : le nom des champs (`description`, `start_date`, `end_date`, `zones`, `population`, `annee_scolaire`, `location`) et le format des dates (heure UTC : `2025-10-17T22:00:00+00:00` signifie le 18 octobre à Paris). **Si les champs diffèrent de ceux utilisés ci-dessous, adapter le code ET la fixture du test, pas l'inverse.** Si l'API est injoignable, arrêter et signaler (BLOCKED) plutôt que d'inventer un format.
+Si l'API a changé au moment de l'implémentation, rejouer ces deux `curl`, adapter le code ET la fixture du test, et signaler tout écart.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -537,11 +540,15 @@ Noter dans le test : le nom des champs (`description`, `start_date`, `end_date`,
 import { describe, expect, it, vi } from 'vitest';
 import { proxySchoolCalendar } from '../../relay/src/school-calendar';
 
+// Forme réelle de la réponse regroupée (voir l'étape de découverte) : dates en UTC, une ligne par période et population.
 const records = {
   results: [
-    { description: 'Vacances de la Toussaint', population: '-', start_date: '2026-10-16T22:00:00+00:00', end_date: '2026-11-01T23:00:00+00:00', zones: 'Zone C', annee_scolaire: '2026-2027' },
-    { description: 'Vacances de Noël', population: '-', start_date: '2026-12-18T23:00:00+00:00', end_date: '2027-01-03T23:00:00+00:00', zones: 'Zone C', annee_scolaire: '2026-2027' },
-    { description: 'Rentrée scolaire des enseignants', population: 'Enseignants', start_date: '2026-08-31T22:00:00+00:00', end_date: '2026-08-31T22:00:00+00:00', zones: 'Zone C', annee_scolaire: '2026-2027' },
+    { description: 'Vacances de la Toussaint', population: '-', start_date: '2026-10-16T22:00:00+00:00', end_date: '2026-11-01T23:00:00+00:00' },
+    { description: 'Vacances de Noël', population: '-', start_date: '2026-12-18T23:00:00+00:00', end_date: '2027-01-03T23:00:00+00:00' },
+    { description: 'Pont de l’Ascension', population: '-', start_date: '2027-05-06T22:00:00+00:00', end_date: '2027-05-06T22:00:00+00:00' },
+    { description: 'Vacances d’été', population: 'Enseignants', start_date: '2027-07-02T22:00:00+00:00', end_date: '2027-08-31T22:00:00+00:00' },
+    { description: 'Vacances d’été', population: 'Élèves', start_date: '2027-07-02T22:00:00+00:00', end_date: '2027-09-01T22:00:00+00:00' },
+    { description: 'Début des Vacances d’Été', population: '-', start_date: '2028-07-03T22:00:00+00:00', end_date: '2028-07-03T22:00:00+00:00' },
   ],
 };
 const run = (path: string, status = 200, body: unknown = records) => {
@@ -550,7 +557,7 @@ const run = (path: string, status = 200, body: unknown = records) => {
 };
 
 describe('proxySchoolCalendar', () => {
-  it('réduit la réponse aux vacances des élèves, en dates de Paris', async () => {
+  it('réduit la réponse aux vacances des élèves, en dates de Paris (pont d’un instant = un jour)', async () => {
     const { fetchFn, result } = run('/school-calendar?zone=C');
     const out = await result;
     expect(out.status).toBe(200);
@@ -560,9 +567,13 @@ describe('proxySchoolCalendar', () => {
       periods: [
         { name: 'Vacances de la Toussaint', start: '2026-10-17', end: '2026-11-02' },
         { name: 'Vacances de Noël', start: '2026-12-19', end: '2027-01-04' },
+        { name: 'Pont de l’Ascension', start: '2027-05-07', end: '2027-05-08' },
+        { name: 'Vacances d’été', start: '2027-07-03', end: '2027-09-02' },
       ],
     });
-    expect(decodeURIComponent(fetchFn.mock.calls[0]?.[0] ?? '')).toContain('Zone C');
+    const upstream = decodeURIComponent(fetchFn.mock.calls[0]?.[0] ?? '');
+    expect(upstream).toContain('Zone C');
+    expect(upstream).toContain('group_by=description,population,start_date,end_date');
   });
   it('refuse une zone inconnue sans appeler l’amont', async () => {
     const { fetchFn, result } = run('/school-calendar?zone=Z');
@@ -648,8 +659,12 @@ export async function proxySchoolCalendar(url: URL, deps: { fetch: Fetcher; now:
   if (!zone) return failure(400, 'bad-request');
   const hit = cache.get(zone);
   if (hit && deps.now() - hit.at < CACHE_MS) return { status: 200, body: hit.body };
+  // Une ligne par académie dans le jeu : on regroupe côté source pour ne recevoir qu'une ligne par période et population.
+  const since = new Date(deps.now() - 400 * 86_400_000).toISOString().slice(0, 10);
   const query = new URLSearchParams({
-    where: `zones="${zoneLabel(zone)}" and population="-" and start_date>=date'${new Date(deps.now() - 400 * 86_400_000).toISOString().slice(0, 10)}'`,
+    select: 'description,population,start_date,end_date',
+    group_by: 'description,population,start_date,end_date',
+    where: `zones="${zoneLabel(zone)}" and start_date>=date'${since}'`,
     order_by: 'start_date',
     limit: '100',
   });
@@ -664,12 +679,16 @@ export async function proxySchoolCalendar(url: URL, deps: { fetch: Fetcher; now:
   if (!Array.isArray(rows)) return failure(502, 'upstream');
   const periods: { name: string; start: string; end: string }[] = [];
   for (const row of rows as Record<string, unknown>[]) {
-    // Seules les vacances des élèves (population « - » ou « Élèves ») nous concernent ; la rentrée et les pré-rentrées sont ignorées.
+    // Seules les vacances des élèves comptent : ni les lignes des enseignants, ni « Début des vacances » (début = fin, hors description).
     if (typeof row.description !== 'string' || !/^(vacances|pont)/i.test(row.description)) continue;
+    if (typeof row.population === 'string' && /enseignant/i.test(row.population)) continue;
     if (typeof row.start_date !== 'string' || typeof row.end_date !== 'string') continue;
     const start = parisDate(row.start_date);
-    const end = parisDate(row.end_date);
-    if (!start || !end || end <= start) continue;
+    let end = parisDate(row.end_date);
+    if (!start || !end || end < start) continue;
+    // Un pont d'un seul instant (début = fin) dure un jour.
+    if (end === start) end = parisDate(new Date(Date.parse(row.start_date) + 86_400_000).toISOString());
+    if (!end) continue;
     periods.push({ name: row.description, start, end });
   }
   if (periods.length === 0) return failure(502, 'upstream');
