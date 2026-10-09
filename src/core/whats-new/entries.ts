@@ -1623,4 +1623,63 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v20',
+    theme: 'collection',
+    glyph: '🏙️',
+    title: 'La ville qui vit',
+    summary: 'Passants, circulation, école et lampadaires selon l’heure, la météo et le calendrier',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'La rue vit avec l’heure',
+        text: 'Dans une pièce dont la scène est « Ville », la rue se remplit selon l’heure : pointes de 8 h et 17 h en semaine, passants en costume, circulation sur deux files, la nuit presque vide.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À donner à la ville l’air d’un vrai quartier : on voit qu’il est l’heure d’aller au travail, ou que tout dort.' },
+          { label: 'Comment faire', text: 'Touchez Ma Pièce dans le menu, ouvrez une pièce dont la scène est « Ville » : la rue s’anime d’elle-même, sans réglage. Piétons, cyclistes et voitures y circulent ; on roule à droite, donc la file du premier plan va vers la droite.' },
+          { label: 'D’où viennent les données', text: 'De l’heure de votre appareil, de la météo déjà réglée et du calendrier (voir les étapes suivantes). Rien n’est envoyé pour animer la rue.' },
+          { label: 'Limites', text: 'C’est un décor, pas une simulation exacte : les passants ne représentent personne en particulier et la circulation n’est qu’une ambiance.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Semaine, week-end et vacances',
+        text: 'L’école ouvre à 8 h 30 et sort à 16 h 45 (le mercredi jusqu’à midi). Le week-end, il y a plus de promeneurs et d’enfants ; jours fériés et vacances scolaires changent aussi l’affluence.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À ce que la rue ne soit pas la même un mardi de classe, un mercredi, un dimanche ou en plein congé.' },
+          { label: 'Comment faire', text: 'Rien à régler : l’affluence suit le jour et l’heure. Regardez la rue à la sortie de l’école ou un samedi après-midi.' },
+          { label: 'D’où viennent les données', text: 'Les jours fériés sont calculés sur votre appareil. Les vacances scolaires viennent du calendrier officiel (data.education.gouv.fr), récupéré par le relais du projet, au plus une requête par jour.' },
+          { label: 'Limites', text: 'Calendrier français uniquement. Si le relais ne répond pas, un calendrier approché prend le relais, donc les dates peuvent être décalées de quelques jours.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'La zone des vacances',
+        text: 'Dans la rangée « Ciel » (scène « Ville », mode Aménager), le bouton de zone passe de 📍 (Auto, d’après votre position) à A, B, C puis Corse (Co), puis revient à 📍.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À caler les vacances scolaires sur votre zone, car les dates diffèrent entre les zones A, B et C.' },
+          { label: 'Comment faire', text: 'Dans Ma Pièce, en mode Aménager, touchez le bouton de zone dans la rangée Ciel pour faire défiler les choix. Le réglage est mémorisé sur cet appareil ; il est sur 📍 (Auto) par défaut.' },
+          { label: 'D’où viennent les données', text: 'En Auto, le département est déduit de votre position arrondie à 0,1° par le relais du projet, et gardé seulement tant que la page est ouverte (rien n’est écrit sur l’appareil). La position n’est jamais enregistrée. Sans pièce « Ville », rien n’est demandé. Sans position, la zone C est utilisée. En Auto seulement, l’Alsace-Moselle (57, 67, 68) reçoit ses jours fériés en plus.' },
+          { label: 'Limites', text: 'L’outre-mer n’est pas géré : choisissez la zone à la main, ou la zone C est prise par défaut sans position.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Lampadaires et entrées',
+        text: 'Les lampadaires s’allument quand la lumière baisse et s’éteignent un à un vers minuit ; les habitants entrent et sortent par les entrées d’immeuble.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À rendre la nuit lisible : on voit la rue s’éclairer le soir, puis s’endormir.' },
+          { label: 'Comment faire', text: 'Rien à régler. Les lampadaires s’éteignent entre 23 h 45 et 0 h 15 et restent éteints jusqu’à l’aube. En mode « Toujours la nuit », ils restent allumés.' },
+          { label: 'D’où viennent les données', text: 'De l’heure de l’appareil et de la lumière du jour déjà calculée pour la pièce ; rien n’est envoyé.' },
+          { label: 'Limites', text: 'Les décors de fête (illuminations, déguisements) arrivent plus tard.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];

@@ -1,15 +1,19 @@
 import { memo, useEffect, useId, useMemo, useRef, type ReactElement, type RefObject } from 'react';
 import { actorActive } from '../core/library/activity';
+import type { CityContext } from '../core/library/city/intensity';
 import type { SceneId } from '../core/library/library-types';
 import { actorX, actorsFor, mulberry32, type Actor } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
+import { CityLifeLayer, StreetLamps } from './city-life';
 import { CityScene } from './scene-city';
 import { CountrysideScene, MountainScene, SeaScene } from './scene-nature';
 import { ActorSprite } from './scene-sprites';
 import { EarthScene, SpaceScene } from './scene-space';
 
 // `gloom` : ciel sombre (lumières allumées en plein jour) ; `rainy` : il pleut (parapluies). Toujours faux hors scènes terrestres.
-export type SceneBodyProps = { width: number; height: number; sky: Sky; minutes: number; seed: number; gloom?: boolean; rainy?: boolean };
+// `city` : contexte de la ville (jour, heure, météo) qui règle sa population ; sans lui, la Ville n'a pas de passants.
+// `forcedNight` : mode d'heure « Toujours la nuit » (les lampadaires restent allumés).
+export type SceneBodyProps = { width: number; height: number; sky: Sky; minutes: number; seed: number; gloom?: boolean; rainy?: boolean; city?: CityContext; forcedNight?: boolean };
 export type PanoramaProps = SceneBodyProps & { scene: SceneId };
 
 const FRAME_MS = 30;
@@ -100,8 +104,8 @@ function useActorLoop(root: RefObject<SVGGElement | null>, actors: Actor[], widt
 
 // Décor fixe : ciel, étoiles, soleil, lune et paysage. Il ne change qu'à la minute ; aucune animation n'y touche,
 // si bien que les copies `<use>` de chaque fenêtre ne sont pas recalculées à chaque image.
-function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, gloom = false, rainy = false }: PanoramaProps): ReactElement {
-  const props = { width, height, sky, minutes, seed, gloom, rainy };
+function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, gloom = false, rainy = false, city, forcedNight = false }: PanoramaProps): ReactElement {
+  const props = { width, height, sky, minutes, seed, gloom, rainy, city, forcedNight };
   const terrestrial = scene !== 'space' && scene !== 'earth';
   return (
     <g data-panorama="" data-scene={scene}>
@@ -119,7 +123,7 @@ function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, glo
 
 // Acteurs animés (passants, voitures, bateaux…), dans le même repère et sur la même horloge murale que le décor fixe :
 // la boucle d'animation ne modifie que ce groupe.
-function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = false }: PanoramaProps): ReactElement {
+function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = false, city, forcedNight = false }: PanoramaProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
   const actors = useMemo(() => actorsFor(scene, width, height, seed), [scene, width, height, seed]);
   useActorLoop(root, actors, width);
@@ -143,12 +147,16 @@ function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = fal
           </g>
         );
       })}
+      {/* Ville : la population (passants, habitants, circulation) a sa propre couche et sa propre boucle. */}
+      {scene === 'city' && city && <CityLifeLayer width={width} height={height} sky={sky} seed={seed} city={city} rainy={rainy} forcedNight={forcedNight} />}
+      {/* Sans contexte de ville (pas de population), les lampadaires restent : ils sont dans ce calque pour passer devant les passants. */}
+      {scene === 'city' && !city && <StreetLamps width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} forcedNight={forcedNight} />}
     </g>
   );
 }
 
 // Le décor ne se redessine que si la scène, la taille ou la minute changent.
-// Les appelants doivent passer un objet `sky` mémoïsé (issu de useSceneTime), sinon le memo est inopérant.
+// Les appelants doivent passer des objets `sky` et `city` mémoïsés (issus de useSceneTime / RoomView), sinon le memo est inopérant.
 export const ScenePanoramaStatic = memo(ScenePanoramaStaticView);
 export const SceneActors = memo(SceneActorsView);
 

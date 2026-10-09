@@ -19,6 +19,8 @@ import { petBoxesOf } from '../core/library/light/pet-boxes';
 import type { PetFrame } from '../core/library/pets/runner';
 import type { Weather } from '../core/library/weather/weather-types';
 import { hashString } from '../core/library/scene-world';
+import type { DayContext } from '../core/library/city/calendar';
+import type { CityContext } from '../core/library/city/intensity';
 import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
@@ -31,7 +33,13 @@ const STILL_CLOCK = { read: (): Weather => ({ cloud: 0, precip: 0 } as Weather) 
 const DEFAULT_VIEW: SceneView = { sky: skyAt(15 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 }), minutes: 15 * 60 };
 
 // Météo vue par les fenêtres : l'horloge est relue à chaque image par le calque ; les drapeaux (ciel sombre, pluie) touchent le décor fixe.
-export type SceneView = { sky: Sky; minutes: number; weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } } };
+// `city` : jour de la ville et mode « Toujours la nuit » ; sans lui, la scène Ville reste sans population.
+export type SceneView = {
+  sky: Sky;
+  minutes: number;
+  weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } };
+  city?: { day: DayContext; forcedNight: boolean };
+};
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
 
@@ -94,6 +102,17 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const weatherOn = view.weather !== undefined && WEATHER_SCENES.includes(room.scene);
   const gloom = weatherOn && (view.weather?.flags.gloom ?? false);
   const rainy = weatherOn && (view.weather?.flags.rainy ?? false);
+  // Ciel couvert sans pluie : précipitation 0,1, sous le seuil des parapluies (0,2) : ils ne sortent que sous la pluie.
+  // Contexte de la ville (mémoïsé : SceneActors compare ses props par identité). La météo n'expose que pluie et ciel sombre :
+  // neige et orage restent faux (limite connue de la vague 1a).
+  const city = useMemo<CityContext | undefined>(
+    () =>
+      view.city && room.scene === 'city'
+        ? { minutes: view.minutes, day: view.city.day, precip: rainy ? 0.7 : gloom ? 0.1 : 0, snow: false, storm: false, daylight: view.sky.daylight }
+        : undefined,
+    [view.city, room.scene, view.minutes, view.sky.daylight, rainy, gloom],
+  );
+  const forcedNight = view.city?.forcedNight ?? false;
   // Gouttes sur la vitre (et leur animation SMIL) seulement quand il pleut assez : signalé par la boucle de météo, rarement.
   const [wet, setWet] = useState(false);
   const drops = weatherOn && wet;
@@ -369,10 +388,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que
               le second, si bien que les copies du décor fixe de chaque fenêtre ne sont pas recalculées à chaque image. */}
           <g id={worldId}>
-            <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} />
+            <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
           </g>
           <g id={`${worldId}-actors`}>
-            <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} />
+            <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
           </g>
           {/* Météo : deux groupes à part (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. */}
           {weatherOn && view.weather && (

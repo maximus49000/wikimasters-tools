@@ -7,6 +7,7 @@ import { createInitialState, activeRoom, setRoomScene, updateLayout } from '../.
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { createWeatherClock, steadySource } from '../../src/core/library/weather/weather-clock';
 import type { SceneId } from '../../src/core/library/library-types';
+import { dayContext } from '../../src/core/library/city/calendar';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -34,11 +35,14 @@ const rainyWeather = (): WeatherProp => {
   return { clock, flags: { gloom: true, rainy: true } };
 };
 
+// Jour de la ville (vendredi 21 juin 2024) : fourni par le panneau, il donne sa population à la scène Ville.
+const cityDay = dayContext({ y: 2024, m: 6, d: 21 }, []);
+
 function show(windows: number, scene: SceneId = 'city', weather?: WeatherProp) {
   let state = setRoomScene(createInitialState(), 'r1', scene);
   state = updateLayout(state, 'r1', () => Array.from({ length: windows }, (_, i) => ({ id: `w${i}`, kind: 'window' as const, col: 2 + i * 10, row: 1, w: 6 + i * 2, h: 5 })));
   act(() =>
-    root.render(<RoomView room={activeRoom(state)} editing={false} cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined} sceneView={{ sky: skyAt(13 * 60, times), minutes: 13 * 60, weather }} />),
+    root.render(<RoomView room={activeRoom(state)} editing={false} cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined} sceneView={{ sky: skyAt(13 * 60, times), minutes: 13 * 60, weather, city: { day: cityDay, forcedNight: false } }} />),
   );
 }
 
@@ -117,7 +121,16 @@ describe('RoomView — météo dans les fenêtres', () => {
 
   it('les drapeaux de la météo atteignent le décor : parapluies sous la pluie', () => {
     show(1, 'city', rainyWeather());
-    expect(container.querySelector('[data-actors] [data-umbrella]')).not.toBeNull();
+    // Le parapluie est dessiné dès qu'il pleut (même chez un passant absent à cette minute) : il prouve que le drapeau arrive.
+    expect(container.querySelector('[data-actors] [data-city-life] [data-ped] [data-umbrella]')).not.toBeNull();
+  });
+
+  it('par temps sec, la couche de vie de la ville est là mais sans parapluie', () => {
+    const clock = createWeatherClock();
+    clock.setSource(steadySource('sun'), Date.now());
+    show(1, 'city', { clock, flags: { gloom: false, rainy: false } });
+    expect(container.querySelector('[data-actors] [data-city-life]')).not.toBeNull();
+    expect(container.querySelector('[data-umbrella]')).toBeNull();
   });
 
   it('par temps sec, pas de gouttes sur la vitre (ni leur animation)', () => {

@@ -62,11 +62,10 @@ describe('actorsFor', () => {
     }
   });
 
-  it('la ville a des passants et des voitures liés à l’activité, des nuages toujours présents', () => {
+  it('la ville n’a plus que des nuages toujours présents (la population est dans city/)', () => {
     const actors = actorsFor('city', 1440, HEIGHT, 3);
-    expect(actors.some((a) => a.kind === 'walker' && a.u >= 0)).toBe(true);
-    expect(actors.some((a) => a.kind === 'car' && a.u >= 0)).toBe(true);
-    expect(actors.filter((a) => a.kind === 'cloud').every((a) => a.u < 0)).toBe(true);
+    expect(actors.length).toBeGreaterThan(0);
+    expect(actors.every((a) => a.kind === 'cloud' && a.u < 0)).toBe(true);
   });
 
   it('l’espace n’a ni nuage ni passant', () => {
