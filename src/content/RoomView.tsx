@@ -188,7 +188,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   // Un chat perché sur un bureau ou une étagère (`top`) se dessine après les ordinateurs et les petits objets.
   const petNode = (v: PetView): ReactElement => (
     <g key={`pet-${v.id}`} data-pet={v.id} ref={(el) => petAttach?.(v.id, el)} onClick={() => onPetTap?.(v.id)} style={{ cursor: 'pointer', pointerEvents: editing ? 'none' : 'auto' }}>
-      <PetSprite coat={v.coat} pose={v.pose} facing={v.facing} name={v.name} still={v.still} />
+      <PetSprite species={v.species} coat={v.coat} pose={v.pose} facing={v.facing} name={v.name} still={v.still} />
     </g>
   );
   const middle: (ReactElement | null)[] = sortedStanding.map(renderPlaced);

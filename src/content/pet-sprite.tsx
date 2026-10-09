@@ -1,10 +1,11 @@
 import type { ReactElement } from 'react';
-import type { Coat } from '../core/library/library-types';
+import type { CatCoat, Coat, DogCoat, Species } from '../core/library/library-types';
+import { DOG_COAT_COLORS, DOG_COAT_LABELS, dogBody } from './dog-sprite';
 import type { Pose } from '../core/library/pets/runner';
 
 type Colors = { body: string; belly: string; dark: string; stripes?: boolean };
 
-export const COAT_COLORS: Record<Coat, Colors> = {
+export const COAT_COLORS: Record<CatCoat, Colors> = {
   orange: { body: '#E8913A', belly: '#F6C98B', dark: '#B96A1E' },
   black: { body: '#2B2B31', belly: '#3A3A42', dark: '#15151A' },
   gray: { body: '#8A8F99', belly: '#B5B9C1', dark: '#5F636C' },
@@ -12,9 +13,14 @@ export const COAT_COLORS: Record<Coat, Colors> = {
   tabby: { body: '#B58A5B', belly: '#D9BC93', dark: '#6F4E2E', stripes: true },
   bicolor: { body: '#2B2B31', belly: '#FFFFFF', dark: '#15151A' },
 };
-export const COAT_LABELS: Record<Coat, string> = { orange: 'Roux', black: 'Noir', gray: 'Gris', white: 'Blanc', tabby: 'Tigré', bicolor: 'Bicolore' };
+export const COAT_LABELS: Record<CatCoat, string> = { orange: 'Roux', black: 'Noir', gray: 'Gris', white: 'Blanc', tabby: 'Tigré', bicolor: 'Bicolore' };
 
-type Props = { coat: Coat; pose: Pose; facing: 'l' | 'r'; name: string; still?: boolean };
+export { DOG_COAT_LABELS };
+
+export const paletteOf = (species: Species, coat: Coat): { body: string; belly: string } =>
+  species === 'dog' ? DOG_COAT_COLORS[coat as DogCoat] : COAT_COLORS[coat as CatCoat];
+
+type Props = { species?: Species; coat: Coat; pose: Pose; facing: 'l' | 'r'; name: string; still?: boolean };
 
 function Head({ x, y, c, tilt = 0, mouth = false, closed = false }: { x: number; y: number; c: Colors; tilt?: number; mouth?: boolean; closed?: boolean }) {
   return (
@@ -85,6 +91,33 @@ function body(pose: Pose, c: Colors, still: boolean): ReactElement {
       return standing(c, !still);
     case 'eat':
       return standing(c, false, -9, 23, 38);
+    case 'sniff':
+      return standing(c, false, -9, 23, 38);
+    case 'pant':
+      return sitting(c, <Head x={4} y={-33} c={c} mouth />);
+    case 'greet':
+      return sitting(c, <Head x={7} y={-31} c={c} tilt={12} />);
+    case 'cower':
+      return sitting(c, <Head x={5} y={-24} c={c} tilt={26} />);
+    case 'hiss':
+      return sitting(
+        c,
+        <Head x={5} y={-33} c={c} tilt={-6} mouth />,
+        <rect x="8" y="-36" width="4.4" height="16" rx="2.2" fill={c.body}>
+          {!still && <animateTransform attributeName="transform" type="rotate" values="-10 10 -34;20 10 -34;-10 10 -34" dur="0.35s" repeatCount="indefinite" />}
+        </rect>,
+      );
+    case 'play':
+      return (
+        <g>
+          {!still && <animateTransform attributeName="transform" type="translate" values="0 0;0 -5;0 0" dur="0.5s" repeatCount="indefinite" />}
+          <Tail d="M-16 -16 C-26 -18 -26 -28 -22 -34" c={c} />
+          <rect x="-15" y="-12" width="4.4" height="12" rx="2.2" fill={c.dark} />
+          <ellipse cx="2" cy="-14" rx="18" ry="7" fill={c.body} transform="rotate(14 2 -14)" />
+          <rect x="8" y="-5" width="17" height="4.4" rx="2.2" fill={c.dark} />
+          <Head x={25} y={-10} c={c} tilt={20} mouth />
+        </g>
+      );
     case 'jump':
       return (
         <g transform="rotate(-14 0 -16)">
@@ -164,8 +197,18 @@ export function PetBubble({ name, still = false }: { name: string; still?: boole
   );
 }
 
-export function PetSprite({ coat, pose, facing, still = false }: Props) {
-  const c = COAT_COLORS[coat];
+export function PetSprite({ species = 'cat', coat, pose, facing, still = false }: Props) {
+  if (species === 'dog') {
+    return (
+      <g data-pet-pose={pose} data-coat={coat}>
+        {pose !== 'jump' && <ellipse cx="0" cy="0" rx="21" ry="3" fill="#000" opacity="0.18" />}
+        <g data-dog-body="" transform={facing === 'l' ? 'scale(-1 1)' : undefined}>
+          {dogBody(pose, DOG_COAT_COLORS[coat as DogCoat], still)}
+        </g>
+      </g>
+    );
+  }
+  const c = COAT_COLORS[coat as CatCoat];
   return (
     <g data-pet-pose={pose} data-coat={coat}>
       {pose !== 'hide' && pose !== 'jump' && <ellipse cx="0" cy="0" rx="19" ry="3" fill="#000" opacity="0.18" />}

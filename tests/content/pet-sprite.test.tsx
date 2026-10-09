@@ -2,8 +2,8 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { COAT_COLORS, PetBubble, PetSprite } from '../../src/content/pet-sprite';
-import { COATS } from '../../src/core/library/library-types';
+import { COAT_COLORS, PetBubble, PetSprite, paletteOf } from '../../src/content/pet-sprite';
+import { COATS, DOG_COATS } from '../../src/core/library/library-types';
 import type { Pose } from '../../src/core/library/pets/runner';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -15,7 +15,8 @@ function draw(props: Parameters<typeof PetSprite>[0]): SVGElement {
   return container.querySelector('svg') as SVGElement;
 }
 
-const POSES: Pose[] = ['walk', 'jump', 'sit', 'groom', 'stretch', 'yawn', 'sleep', 'eat', 'scratch', 'hide', 'purr'];
+const POSES: Pose[] = ['walk', 'jump', 'sit', 'groom', 'stretch', 'yawn', 'sleep', 'eat', 'scratch', 'hide', 'purr', 'pant', 'sniff', 'greet', 'play', 'hiss', 'cower'];
+const DOG_POSES: Pose[] = [...POSES];
 
 describe('PetSprite', () => {
   it.each(POSES)('dessine la pose %s', (pose) => {
@@ -47,5 +48,23 @@ describe('PetSprite', () => {
   it.each(COATS)('le pelage %s a sa couleur', (coat) => {
     const svg = draw({ coat, pose: 'sit', facing: 'r', name: 'x' });
     expect(svg.innerHTML.toLowerCase()).toContain(COAT_COLORS[coat].body.toLowerCase());
+  });
+
+  it.each(DOG_POSES)('dessine le chien en pose %s', (pose) => {
+    const svg = draw({ species: 'dog', coat: 'brown', pose, facing: 'r', name: 'Rex' });
+    expect(svg.querySelector(`[data-pet-pose="${pose}"]`)).not.toBeNull();
+    expect(svg.querySelector('[data-dog-body]')!.children.length).toBeGreaterThan(0);
+    expect(svg.querySelector('[data-cat-body]')).toBeNull();
+  });
+
+  it('chaque pelage de chien a sa palette, et le chien tacheté a des taches', () => {
+    for (const coat of DOG_COATS) expect(paletteOf('dog', coat).body).toMatch(/^#/);
+    const svg = draw({ species: 'dog', coat: 'spotted', pose: 'sit', facing: 'r', name: 'Rex' });
+    expect(svg.querySelector('[data-dog-spots]')).not.toBeNull();
+  });
+
+  it('le chien se retourne vers la gauche', () => {
+    const svg = draw({ species: 'dog', coat: 'red', pose: 'walk', facing: 'l', name: 'Rex' });
+    expect(svg.querySelector('[data-dog-body]')!.getAttribute('transform')).toBe('scale(-1 1)');
   });
 });
