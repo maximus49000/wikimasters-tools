@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoomView } from '../../src/content/RoomView';
 import { createInitialState, activeRoom, setRoomScene, updateLayout } from '../../src/core/library/library-book';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
+import { createWeatherClock, steadySource } from '../../src/core/library/weather/weather-clock';
+import type { SceneId } from '../../src/core/library/library-types';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,11 +27,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function show(windows: number, scene: 'city' | 'sea' = 'city') {
+type WeatherProp = { clock: ReturnType<typeof createWeatherClock>; flags: { gloom: boolean; rainy: boolean } };
+const rainyWeather = (): WeatherProp => {
+  const clock = createWeatherClock();
+  clock.setSource(steadySource('rain'), Date.now());
+  return { clock, flags: { gloom: true, rainy: true } };
+};
+
+function show(windows: number, scene: SceneId = 'city', weather?: WeatherProp) {
   let state = setRoomScene(createInitialState(), 'r1', scene);
   state = updateLayout(state, 'r1', () => Array.from({ length: windows }, (_, i) => ({ id: `w${i}`, kind: 'window' as const, col: 2 + i * 10, row: 1, w: 6 + i * 2, h: 5 })));
   act(() =>
-    root.render(<RoomView room={activeRoom(state)} editing={false} cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined} sceneView={{ sky: skyAt(13 * 60, times), minutes: 13 * 60 }} />),
+    root.render(<RoomView room={activeRoom(state)} editing={false} cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined} sceneView={{ sky: skyAt(13 * 60, times), minutes: 13 * 60, weather }} />),
   );
 }
 
@@ -84,5 +93,46 @@ describe('RoomView — fenêtres', () => {
   it('le décor suit la scène de la pièce', () => {
     show(1, 'sea');
     expect(container.querySelector('[data-panorama][data-scene="sea"]')).not.toBeNull();
+  });
+});
+
+describe('RoomView — météo dans les fenêtres', () => {
+  it('avec la météo, chaque fenêtre montre le sol mouillé, la pluie et des gouttes sur la vitre', () => {
+    show(2, 'city', rainyWeather());
+    expect(container.querySelectorAll('defs [data-weather]')).toHaveLength(1);
+    expect(container.querySelectorAll('defs [data-weather-ground]')).toHaveLength(1);
+    const skyId = container.querySelector('defs [data-weather]')!.id;
+    const groundId = container.querySelector('defs [data-weather-ground]')!.id;
+    expect(skyId).not.toBe('');
+    expect(groundId).not.toBe(skyId);
+    for (const w of container.querySelectorAll('[data-window-art]')) {
+      expect(w.querySelector('[data-window-weather]')?.getAttribute('href')).toBe(`#${skyId}`);
+      expect(w.querySelector('[data-window-weather-ground]')?.getAttribute('href')).toBe(`#${groundId}`);
+      expect(w.querySelectorAll('[data-glass-drops] [data-glass-drop]').length).toBeGreaterThanOrEqual(3);
+      // Ordre : décor fixe, sol (flaques, neige), acteurs, puis ciel et précipitations par-dessus.
+      const order = Array.from(w.querySelectorAll('use')).map((u) => Array.from(u.attributes).find((a) => a.name.startsWith('data-window-'))!.name);
+      expect(order).toEqual(['data-window-view', 'data-window-weather-ground', 'data-window-actors', 'data-window-weather']);
+    }
+  });
+
+  it('les drapeaux de la météo atteignent le décor : parapluies sous la pluie', () => {
+    show(1, 'city', rainyWeather());
+    expect(container.querySelector('[data-actors] [data-umbrella]')).not.toBeNull();
+  });
+
+  it('sans météo, ni calque ni gouttes', () => {
+    show(2);
+    expect(container.querySelector('[data-weather]')).toBeNull();
+    expect(container.querySelector('[data-window-weather]')).toBeNull();
+    expect(container.querySelector('[data-glass-drops]')).toBeNull();
+  });
+
+  it.each(['space', 'earth'] as const)('scène %s : pas de météo même si le panneau en fournit une', (scene) => {
+    show(2, scene, rainyWeather());
+    expect(container.querySelector('[data-weather]')).toBeNull();
+    expect(container.querySelector('[data-window-weather]')).toBeNull();
+    expect(container.querySelector('[data-window-weather-ground]')).toBeNull();
+    expect(container.querySelector('[data-glass-drops]')).toBeNull();
+    expect(container.querySelector('[data-umbrella]')).toBeNull();
   });
 });

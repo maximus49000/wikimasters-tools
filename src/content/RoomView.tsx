@@ -12,13 +12,18 @@ import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, glassRect } from './window-art';
+import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
+import type { Weather } from '../core/library/weather/weather-types';
 import { hashString } from '../core/library/scene-world';
 import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
 
 // Ciel d'après-midi quand aucune heure n'est fournie (test, premier rendu) ; calculé une fois : le décor est mémoïsé.
-const DEFAULT_VIEW: { sky: Sky; minutes: number } = { sky: skyAt(15 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 }), minutes: 15 * 60 };
+const DEFAULT_VIEW: SceneView = { sky: skyAt(15 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 }), minutes: 15 * 60 };
+
+// Météo vue par les fenêtres : l'horloge est relue à chaque image par le calque ; les drapeaux (ciel sombre, pluie) touchent le décor fixe.
+export type SceneView = { sky: Sky; minutes: number; weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } } };
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
 
@@ -42,7 +47,7 @@ type Props = {
   // Toucher sur un objet accroché, rangé ou sur l'écran de l'ordinateur.
   onCardTap?: (id: string) => void;
   // Ciel et heure vus à travers les fenêtres ; sans eux, un ciel d'après-midi.
-  sceneView?: { sky: Sky; minutes: number };
+  sceneView?: SceneView;
   // Chats de la pièce : `behind` = nombre de meubles debout dessinés avant lui. Leur position est posée par la boucle d'animation (attribut transform).
   pets?: PetView[];
   petAttach?: (id: string, el: SVGGElement | null) => void;
@@ -73,6 +78,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const worldId = `${useId()}-world`.replace(/:/g, '');
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
+  // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
+  const weatherOn = view.weather !== undefined && WEATHER_SCENES.includes(room.scene);
+  const gloom = weatherOn && (view.weather?.flags.gloom ?? false);
+  const rainy = weatherOn && (view.weather?.flags.rainy ?? false);
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
 
   const deskRects = new Map<string, PxRect>();
@@ -131,7 +140,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       art = <SmallArt item={placed.item} rect={rect} palette={palette} />;
     } else if (placed.kind === 'window') {
       rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
-      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} clipId={`${worldId}-clip-${placed.id}`} />;
+      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} clipId={`${worldId}-clip-${placed.id}`} />;
     } else {
       const cells = rectOf(placed);
       if (!cells || !isStanding(placed)) return null;
@@ -322,11 +331,15 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que
               le second, si bien que les copies du décor fixe de chaque fenêtre ne sont pas recalculées à chaque image. */}
           <g id={worldId}>
-            <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} />
+            <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} />
           </g>
           <g id={`${worldId}-actors`}>
-            <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} />
+            <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} />
           </g>
+          {/* Météo : deux groupes à part (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. */}
+          {weatherOn && view.weather && (
+            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} />
+          )}
           {windows.map((w) => {
             const glass = glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }));
             return (
