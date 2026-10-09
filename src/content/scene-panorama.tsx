@@ -8,7 +8,8 @@ import { CountrysideScene, MountainScene, SeaScene } from './scene-nature';
 import { ActorSprite } from './scene-sprites';
 import { EarthScene, SpaceScene } from './scene-space';
 
-export type SceneBodyProps = { width: number; height: number; sky: Sky; minutes: number; seed: number };
+// `gloom` : ciel sombre (lumières allumées en plein jour) ; `rainy` : il pleut (parapluies). Toujours faux hors scènes terrestres.
+export type SceneBodyProps = { width: number; height: number; sky: Sky; minutes: number; seed: number; gloom?: boolean; rainy?: boolean };
 export type PanoramaProps = SceneBodyProps & { scene: SceneId };
 
 const FRAME_MS = 30;
@@ -35,9 +36,15 @@ function SkyAndStars({ width, height, sky, seed }: SceneBodyProps): ReactElement
   );
 }
 
+// Position d'un astre (soleil ou lune) selon sa fraction de course (0 = lever, 1 = coucher), dans le repère du monde.
+export const celestialPlace = (frac: number, width: number, height: number): { x: number; y: number } => ({
+  x: width * (0.04 + 0.92 * frac),
+  y: height * 0.7 - Math.sin(Math.PI * frac) * height * 0.55,
+});
+
 // Soleil et lune traversent toute la largeur du monde : ils passent d'une fenêtre à l'autre au fil de la journée.
 function Celestial({ width, height, sky }: SceneBodyProps): ReactElement {
-  const place = (frac: number): { x: number; y: number } => ({ x: width * (0.04 + 0.92 * frac), y: height * 0.7 - Math.sin(Math.PI * frac) * height * 0.55 });
+  const place = (frac: number): { x: number; y: number } => celestialPlace(frac, width, height);
   const sun = sky.sunFrac === null ? null : place(sky.sunFrac);
   const moon = sky.moonFrac === null ? null : place(sky.moonFrac);
   return (
@@ -91,8 +98,8 @@ function useActorLoop(root: RefObject<SVGGElement | null>, actors: Actor[], widt
 
 // Décor fixe : ciel, étoiles, soleil, lune et paysage. Il ne change qu'à la minute ; aucune animation n'y touche,
 // si bien que les copies `<use>` de chaque fenêtre ne sont pas recalculées à chaque image.
-function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed }: PanoramaProps): ReactElement {
-  const props = { width, height, sky, minutes, seed };
+function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, gloom = false, rainy = false }: PanoramaProps): ReactElement {
+  const props = { width, height, sky, minutes, seed, gloom, rainy };
   const terrestrial = scene !== 'space' && scene !== 'earth';
   return (
     <g data-panorama="" data-scene={scene}>
@@ -110,7 +117,7 @@ function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed }: P
 
 // Acteurs animés (passants, voitures, bateaux…), dans le même repère et sur la même horloge murale que le décor fixe :
 // la boucle d'animation ne modifie que ce groupe.
-function SceneActorsView({ scene, width, height, sky, minutes, seed }: PanoramaProps): ReactElement {
+function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = false }: PanoramaProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
   const actors = useMemo(() => actorsFor(scene, width, height, seed), [scene, width, height, seed]);
   useActorLoop(root, actors, width);
@@ -130,7 +137,7 @@ function SceneActorsView({ scene, width, height, sky, minutes, seed }: PanoramaP
             opacity={active ? 1 : 0}
             style={{ transition: 'opacity 3s ease' }}
           >
-            <ActorSprite kind={actor.kind} sky={sky} />
+            <ActorSprite kind={actor.kind} sky={sky} rainy={rainy} />
           </g>
         );
       })}

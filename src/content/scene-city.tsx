@@ -4,13 +4,14 @@ import { citySkyline } from '../core/library/scene-world';
 import { mixHex } from '../core/library/sky';
 import type { SceneBodyProps } from './scene-panorama';
 
-export function CityScene({ width, height, sky, minutes, seed }: SceneBodyProps): ReactElement {
+export function CityScene({ width, height, sky, minutes, seed, gloom = false }: SceneBodyProps): ReactElement {
   const ground = height * 0.78;
   const far = mixHex('#232B5C', '#9FB4C8', sky.daylight);
   const near = mixHex('#141A3E', '#7C8FA3', sky.daylight);
   const street = mixHex('#2A2D4A', '#B7B2A6', sky.daylight);
   const walk = mixHex('#3A3D5E', '#CFC9BB', sky.daylight);
-  const dim = 1 - sky.daylight;
+  // Ciel sombre (gros nuages) : on allume en plein jour, et les lumières se voient.
+  const dim = Math.max(1 - sky.daylight, gloom ? 0.7 : 0);
   const buildings = citySkyline(width, height, seed);
   return (
     <g data-scene-body>
@@ -21,7 +22,7 @@ export function CityScene({ width, height, sky, minutes, seed }: SceneBodyProps)
         <g key={`n${i}`}>
           <rect x={b.x} y={ground - b.h} width={b.w} height={b.h} fill={near} />
           {b.lamps.map((lamp, j) => {
-            const lit = lampLit(lamp.u, minutes);
+            const lit = lampLit(lamp.u, minutes) || (gloom && lamp.u < 0.55);
             return (
               <rect
                 key={j}

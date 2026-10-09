@@ -10,11 +10,11 @@ import { skyAt, sunTimes } from '../../src/core/library/sky';
 let container: HTMLDivElement;
 let root: Root;
 const times = sunTimes({ y: 2024, m: 6, d: 21 }, { lat: 48.85, lon: 2.35 }, 120);
-const render = (minutes: number, scene: 'city' = 'city') =>
+const render = (minutes: number, scene: 'city' = 'city', weather: { gloom?: boolean; rainy?: boolean } = {}) =>
   act(() =>
     root.render(
       <svg>
-        <ScenePanorama scene={scene} width={720} height={340} sky={skyAt(minutes, times)} minutes={minutes} seed={5} />
+        <ScenePanorama scene={scene} width={720} height={340} sky={skyAt(minutes, times)} minutes={minutes} seed={5} {...weather} />
       </svg>,
     ),
   );
@@ -69,6 +69,31 @@ describe('ScenePanorama (ville)', () => {
       return Array.from(container.querySelectorAll<SVGElement>('[data-actor][data-kind="walker"]')).filter((el) => el.getAttribute('data-active') === 'true').length;
     };
     expect(present(21 * 60)).toBeGreaterThan(present(4 * 60));
+  });
+
+  it('ciel sombre (gloom) : des fenêtres s’allument en plein jour, et se voient', () => {
+    // À midi quelques lampes sont « allumées » (insomniaques) mais invisibles en plein jour (opacité ≈ 0).
+    const litAtNoon = (gloom: boolean): SVGElement[] => {
+      render(12 * 60, 'city', { gloom });
+      return Array.from(container.querySelectorAll<SVGElement>('[data-lamp][data-lit="true"]'));
+    };
+    const visible = (lamps: SVGElement[]): number => lamps.filter((lamp) => Number(lamp.getAttribute('opacity')) >= 0.5).length;
+    const plain = litAtNoon(false);
+    expect(visible(plain)).toBe(0);
+    const lit = litAtNoon(true);
+    expect(lit.length).toBeGreaterThan(plain.length);
+    expect(visible(lit)).toBe(lit.length);
+    for (const lamp of lit) expect(Number(lamp.getAttribute('opacity'))).toBeGreaterThanOrEqual(0.7);
+  });
+
+  it('pluie (rainy) : les passants ouvrent un parapluie, rien sans pluie', () => {
+    render(21 * 60, 'city', { rainy: true });
+    const walkers = Array.from(container.querySelectorAll('[data-actor][data-kind="walker"][data-active="true"]'));
+    expect(walkers.length).toBeGreaterThan(0);
+    for (const w of walkers) expect(w.querySelector('[data-umbrella]')).not.toBeNull();
+    expect(container.querySelector('[data-actor][data-kind="car"] [data-umbrella]')).toBeNull();
+    render(21 * 60, 'city', { rainy: false });
+    expect(container.querySelector('[data-umbrella]')).toBeNull();
   });
 
   it('place les acteurs au montage (transform) même sans animation', () => {

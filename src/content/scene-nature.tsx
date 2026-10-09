@@ -7,10 +7,14 @@ import type { SceneBodyProps } from './scene-panorama';
 const tone = (day: string, night: string, daylight: number): string => mixHex(night, day, daylight);
 
 // Une lampe (fenêtre de ferme, refuge, feu de port) : allumée selon l'activité, visible seulement quand il fait sombre.
-function Lamp({ x, y, w = 5, h = 6, u, minutes, dim, color = '#FFD27A' }: { x: number; y: number; w?: number; h?: number; u: number; minutes: number; dim: number; color?: string }): ReactElement {
-  const lit = lampLit(u, minutes);
+// Sous un ciel sombre (`gloom`), on allume aussi en plein jour.
+function Lamp({ x, y, w = 5, h = 6, u, minutes, dim, gloom, color = '#FFD27A' }: { x: number; y: number; w?: number; h?: number; u: number; minutes: number; dim: number; gloom: boolean; color?: string }): ReactElement {
+  const lit = lampLit(u, minutes) || (gloom && u < 0.55);
   return <rect data-lamp="" data-lit={lit ? 'true' : 'false'} x={x} y={y} width={w} height={h} fill={color} opacity={lit ? dim : 0} style={{ transition: 'opacity 4s ease' }} />;
 }
+
+// Visibilité des lampes : la nuit, ou au moins 0,7 sous un ciel sombre.
+const lampDim = (daylight: number, gloom: boolean): number => Math.max(1 - daylight, gloom ? 0.7 : 0);
 
 // Collines ondulées : une courbe par bande de 360 px, déterministe.
 function hills(width: number, base: number, amp: number, seed: number): string {
@@ -23,9 +27,9 @@ function hills(width: number, base: number, amp: number, seed: number): string {
   return `${d} L${(Math.ceil(width / CHUNK) + 1) * CHUNK} 340 L0 340z`;
 }
 
-export function CountrysideScene({ width, height, sky, minutes, seed }: SceneBodyProps): ReactElement {
+export function CountrysideScene({ width, height, sky, minutes, seed, gloom = false }: SceneBodyProps): ReactElement {
   const ground = height * 0.78;
-  const dim = 1 - sky.daylight;
+  const dim = lampDim(sky.daylight, gloom);
   const farHills = tone('#8DB88B', '#1F3B3A', sky.daylight);
   const nearHills = tone('#6FA463', '#17332F', sky.daylight);
   const field = tone('#9CC46E', '#1E3A2C', sky.daylight);
@@ -50,17 +54,17 @@ export function CountrysideScene({ width, height, sky, minutes, seed }: SceneBod
         <g key={f.i}>
           <rect x={f.x} y={ground - 22} width={34} height={22} fill={tone('#C9553E', '#4A2A33', sky.daylight)} />
           <path d={`M${f.x - 3} ${ground - 22} L${f.x + 17} ${ground - 36} L${f.x + 37} ${ground - 22}z`} fill={tone('#7A3B2A', '#2F1B20', sky.daylight)} />
-          <Lamp x={f.x + 8} y={ground - 15} u={f.u} minutes={minutes} dim={dim} />
-          <Lamp x={f.x + 21} y={ground - 15} u={f.u + 0.05} minutes={minutes} dim={dim} />
+          <Lamp x={f.x + 8} y={ground - 15} u={f.u} minutes={minutes} dim={dim} gloom={gloom} />
+          <Lamp x={f.x + 21} y={ground - 15} u={f.u + 0.05} minutes={minutes} dim={dim} gloom={gloom} />
         </g>
       ))}
     </g>
   );
 }
 
-export function MountainScene({ width, height, sky, minutes, seed }: SceneBodyProps): ReactElement {
+export function MountainScene({ width, height, sky, minutes, seed, gloom = false }: SceneBodyProps): ReactElement {
   const ground = height * 0.82;
-  const dim = 1 - sky.daylight;
+  const dim = lampDim(sky.daylight, gloom);
   const peaks = (base: number, hMin: number, hMax: number, salt: number): { x: number; w: number; h: number }[] => {
     const out: { x: number; w: number; h: number }[] = [];
     for (let chunk = 0; chunk * CHUNK <= width; chunk++) {
@@ -99,16 +103,16 @@ export function MountainScene({ width, height, sky, minutes, seed }: SceneBodyPr
         <g key={r.i}>
           <rect x={r.x} y={ground - 16} width={26} height={16} fill={rock('#8A5A3A', '#2E2018')} />
           <path d={`M${r.x - 3} ${ground - 16} L${r.x + 13} ${ground - 28} L${r.x + 29} ${ground - 16}z`} fill={rock('#5E3B26', '#20150F')} />
-          <Lamp x={r.x + 9} y={ground - 11} u={r.u} minutes={minutes} dim={dim} />
+          <Lamp x={r.x + 9} y={ground - 11} u={r.u} minutes={minutes} dim={dim} gloom={gloom} />
         </g>
       ))}
     </g>
   );
 }
 
-export function SeaScene({ width, height, sky, minutes, seed }: SceneBodyProps): ReactElement {
+export function SeaScene({ width, height, sky, minutes, seed, gloom = false }: SceneBodyProps): ReactElement {
   const horizon = height * 0.5;
-  const dim = 1 - sky.daylight;
+  const dim = lampDim(sky.daylight, gloom);
   const water = tone('#3F8CC4', '#16224A', sky.daylight);
   const deep = tone('#2F78B0', '#0F1838', sky.daylight);
   const rng = mulberry32(seed ^ 0x5ea);
@@ -131,7 +135,7 @@ export function SeaScene({ width, height, sky, minutes, seed }: SceneBodyProps):
       {quay.map((q) => (
         <g key={q.i}>
           <rect x={q.x} y={horizon - 10} width={6} height={10} fill={tone('#6B5B45', '#241D18', sky.daylight)} />
-          <Lamp x={q.x + 1} y={horizon - 9} w={4} h={4} u={q.u} minutes={minutes} dim={dim} color="#FFE08A" />
+          <Lamp x={q.x + 1} y={horizon - 9} w={4} h={4} u={q.u} minutes={minutes} dim={dim} gloom={gloom} color="#FFE08A" />
           <rect x={q.x + 12} y={horizon - 6} width={22} height={6} fill={tone('#8B7355', '#2A2118', sky.daylight)} />
         </g>
       ))}
