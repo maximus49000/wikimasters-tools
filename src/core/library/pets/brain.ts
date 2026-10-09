@@ -1,4 +1,4 @@
-import { poisOf } from '../furniture-catalog';
+import { poisOf, sizeOf } from '../furniture-catalog';
 import type { Layout, PetAction, PetPlan, Pt, Segment, Species } from '../library-types';
 import { CELL_W, ROWS, WALL_ROWS, isStanding, type Cell } from '../room-grid';
 import { hashString } from '../scene-world';
@@ -21,6 +21,7 @@ export function layoutSig(layout: Layout, cols: number): string {
 }
 
 const DOG_SPEED = 0.7;
+const ROBOT_SPEED = 0.9;
 
 const between = (rng: Rng, [lo, hi]: Ms): number => Math.round(lo + rng() * (hi - lo));
 
@@ -41,7 +42,8 @@ function facingOf(route: Segment[], fallback: 'l' | 'r'): 'l' | 'r' {
 // Choisit la prochaine action selon les meubles posés (tirage pondéré), planifie le trajet et renvoie le plan qui démarre à `now`.
 export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetAction): PetPlan {
   const dog = env.species === 'dog';
-  const speed = dog ? DOG_SPEED : 1;
+  const robot = env.species === 'robot';
+  const speed = dog ? DOG_SPEED : robot ? ROBOT_SPEED : 1;
   const map = buildWalkMap(env.layout, env.cols);
   const cands: Candidate[] = [];
   const stay = (action: PetAction, weight: number, ms: Ms): void => {
@@ -52,6 +54,8 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     const raw = planRoute(map, from, dest);
     if (!raw) return;
     // Un chien ne grimpe que sur son canapé : aucun segment ne le pose sur un autre meuble (fauteuil, bureau…).
+    // Un robot roule au sol : aucun segment ne le pose sur un meuble.
+    if (robot && raw.some((s) => s.on !== null || s.fromOn !== null)) return;
     if (dog && raw.some((s) => s.on !== null && s.on !== dest.on && s.on !== from.on)) return;
     const route = speed === 1 ? raw : scaleRoute(raw, speed);
     cands.push({ weight, action, route, at: dest.pt, on: dest.on, hostId: dest.hostId, facing: facing ?? facingOf(route, from.facing), ms, key });
@@ -59,7 +63,21 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
 
   if (env.still) {
     stay('sit', 2, [8000, 16000]);
-    stay('sleep', 1, [20000, 40000]);
+    stay(robot ? 'standby' : 'sleep', 1, [20000, 40000]);
+  } else if (robot) {
+    stay('sit', 1, [3000, 6000]);
+    stay('scan', 1.4, [3000, 5000]);
+    stay('standby', 0.8, [15000, 30000]);
+    const cells = freeCells(map);
+    for (let i = 0; i < 4 && cells.length > 0; i++) {
+      const c = cells[Math.floor(env.rng() * cells.length)]!;
+      go('scan', 0.8, { pt: standPoint(c.col, c.row), on: null, hostId: null }, [3000, 5000]);
+    }
+    for (const p of env.layout) {
+      if (!isStanding(p)) continue;
+      if (p.kind === 'charger') for (const q of poisOf(p.kind).filter((x) => x.type === 'charge')) go('charge', 2, { pt: standPoint(p.col + q.dx, p.row + q.dy), on: null, hostId: p.id }, [25000, 60000], `${p.id}:charge`);
+      if (p.kind === 'rug') go('standby', 0.6, { pt: standPoint(p.col + Math.floor(sizeOf(p.kind).w / 2), p.row + 1), on: null, hostId: null }, [15000, 30000]);
+    }
   } else if (dog) {
     stay('sit', 1.2, [4000, 9000]);
     stay('pant', 1, [3000, 6000]);
@@ -191,10 +209,11 @@ export function resume(plan: PetPlan | undefined, env: BrainEnv, now: number): {
   return { plan: nextPlan(env, standing, now, plan.action), fresh: true };
 }
 
-// Une caresse : le chat s'arrête là où il est et ronronne 3,5 s. Pas en plein saut ; un plan fini sera remplacé par la boucle.
+// Une caresse : l animal s arrête là où il est ; le chat ronronne 3,5 s, le robot bipe 3 s. Pas en plein saut ; un plan fini sera remplacé par la boucle.
 export function touchPlan(plan: PetPlan, env: BrainEnv, now: number): PetPlan | null {
   const state = stateAt(plan, now);
   if (state.phase === 'jump' || state.phase === 'done' || plan.action === 'hide') return null;
   const hostId = state.phase === 'act' ? plan.hostId : state.on;
-  return { action: 'purr', hostId, at: state.pos, on: state.on, route: [], startedAt: now, actMs: 3500, facing: state.facing, sig: layoutSig(env.layout, env.cols) };
+  const robot = env.species === 'robot';
+  return { action: robot ? 'beep' : 'purr', hostId, at: state.pos, on: state.on, route: [], startedAt: now, actMs: robot ? 3000 : 3500, facing: state.facing, sig: layoutSig(env.layout, env.cols) };
 }
