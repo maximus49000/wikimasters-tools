@@ -164,7 +164,7 @@ export function dogBody(pose: Pose, c: DogColors, still: boolean): ReactElement 
       return sitting(
         c,
         still,
-        <DogHead x={7} y={-33} c={c} tilt={-35} mouth />,
+        <DogHead x={7} y={-36} c={c} tilt={-35} mouth />,
         <g data-dog-howl="" fill="none" stroke={c.dark} strokeWidth="1.2" strokeLinecap="round">
           {[0, 1, 2].map((i) => (
             <path key={i} d={`M${21 + i * 4} ${-47 - i * 3} q4 -3 3 -8`} opacity={still ? 0.7 : 0}>

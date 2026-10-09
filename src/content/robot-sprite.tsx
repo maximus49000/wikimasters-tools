@@ -18,6 +18,7 @@ type Eyes = 'normal' | 'heart' | 'warn' | 'dash' | 'scan';
 type Led = 'orange' | 'green' | null;
 
 const EYE = '#7FF0FF';
+const SCREEN = '#14202B';
 const HEART = 'M0 2 C-3.4 -0.6 -2.6 -3.4 0 -1.8 C2.6 -3.4 3.4 -0.6 0 2Z';
 
 function eyesOf(kind: Eyes, still: boolean): ReactElement {
@@ -113,7 +114,7 @@ function robot(c: RobotColors, still: boolean, opts: { eyes: Eyes; antenna: 'res
         {/* Le dos reste plat à y = -26 : le chat s'y couche (RIDE_LIFT = 26). */}
         <rect data-robot-back="" x="-14" y="-26" width="28" height="18" rx="5" fill={c.body} />
         <rect x="-12" y="-11" width="24" height="2.6" rx="1.3" fill={c.belly} />
-        <rect x="-10.6" y="-23.4" width="21.2" height="12.6" rx="3.6" fill="#14202B" stroke={c.dark} strokeWidth="1" />
+        <rect x="-10.6" y="-23.4" width="21.2" height="12.6" rx="3.6" fill={SCREEN} stroke={c.dark} strokeWidth="1" />
         {eyesOf(eyes, still)}
         {led && <Led kind={led} still={still} />}
         {sway && !still && <animateTransform attributeName="transform" type="translate" values="0 0;0 -0.8;0 0" dur="0.5s" repeatCount="indefinite" />}
@@ -156,7 +157,7 @@ export function robotBody(pose: Pose, c: RobotColors, still: boolean): ReactElem
         <g data-robot-shortcircuit="">
           {!still && <animateTransform attributeName="transform" type="translate" values="-0.8 0;0.8 0.4;-0.8 0" dur="0.12s" repeatCount="indefinite" />}
           {robot(c, still, { eyes: 'normal', antenna: 'bent' })}
-          <rect x="-10.6" y="-23.4" width="21.2" height="12.6" rx="3.6" fill="#14202B" />
+          <rect x="-10.6" y="-23.4" width="21.2" height="12.6" rx="3.6" fill={SCREEN} />
           <path d="M-6 -21 L6 -13 M6 -21 L-6 -13" stroke="#d33" strokeWidth="2" strokeLinecap="round" />
           {sparks.map((points, i) => (
             <polyline key={points} points={points} fill="none" stroke="#ffd23a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -167,13 +168,13 @@ export function robotBody(pose: Pose, c: RobotColors, still: boolean): ReactElem
       );
     }
     case 'reboot':
-      // Redémarrage : l'écran se rallume (voile sombre qui se dissipe), figé allumé en mouvement réduit.
+      // Redémarrage : voile sombre qui se dissipe, en boucle (un SMIL à usage unique partirait de l'origine du document, pas de l'apparition de la pose) ; sans voile en mouvement réduit.
       return (
         <>
           {robot(c, still, { eyes: 'normal', antenna: 'rest' })}
           {!still && (
-            <rect data-robot-reboot="" x="-10.6" y="-23.4" width="21.2" height="12.6" rx="3.6" fill="#14202B" opacity="0.8">
-              <animate attributeName="opacity" values="0.8;0" dur="1.5s" fill="freeze" />
+            <rect data-robot-reboot="" x="-10.6" y="-23.4" width="21.2" height="12.6" rx="3.6" fill={SCREEN} opacity="0.8">
+              <animate attributeName="opacity" values="0.8;0" dur="1.5s" repeatCount="indefinite" />
             </rect>
           )}
         </>

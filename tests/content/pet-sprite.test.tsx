@@ -126,11 +126,17 @@ describe('poses de contexte (6d)', () => {
     expect(still).toContain('#ffd23a');
     expect(still).toContain('#d33');
   });
-  it('le hurlement et le secouement n\'animent rien en mouvement réduit', () => {
+  it('hurlement, secouement, parapluie et redémarrage : animés seulement hors mouvement réduit', () => {
+    expect(html('dog', 'howl', false)).toContain('<animate');
     expect(html('dog', 'howl', true)).not.toContain('<animate');
-    expect(html('dog', 'shake', false)).toContain('rotate');
-    expect(html('dog', 'shake', true)).not.toMatch(/<animate/);
+    expect(html('dog', 'shake', false)).toContain('<animateTransform');
+    expect(html('dog', 'shake', false)).toContain('values="-6 0 -16');
+    expect(html('dog', 'shake', true)).not.toContain('<animate');
+    expect(html('robot', 'umbrella', false)).toContain('data-robot-umbrella');
+    expect(html('robot', 'umbrella', true)).not.toContain('<animate');
     expect(html('robot', 'reboot', false)).toContain('<animate');
+    expect(html('robot', 'reboot', false)).toContain('data-robot-reboot');
     expect(html('robot', 'reboot', true)).not.toContain('<animate');
+    expect(html('robot', 'reboot', true)).not.toContain('data-robot-reboot');
   });
 });
