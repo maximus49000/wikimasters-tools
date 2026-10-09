@@ -32,7 +32,7 @@ describe('époque', () => {
   it('est déterministe', () => {
     expect(epochStates(WEATHER_SEED, 4242, 48)).toEqual(epochStates(WEATHER_SEED, 4242, 48));
   });
-  it('varie : sur 200 époques on voit les sept états', () => {
+  it('varie : sur 400 époques on voit les sept états', () => {
     const seen = new Set<string>();
     // Latitude 60 : froid une partie de l'année → la neige est possible ; le reste vient de l'été et de l'hiver tirés par l'époque.
     for (let epoch = 1; epoch <= 400; epoch++) for (const s of epochStates(WEATHER_SEED, epoch * 37, 60)) seen.add(s);
@@ -81,5 +81,27 @@ describe('weatherAtRandom', () => {
     expect(sawRain).toBe(true);
     expect(wettest).toBeGreaterThan(0.4);
     expect(afterRain).toBeLessThan(0.05);
+  });
+  it('ne dépend pas de l’ordre des appels pour deux latitudes du même degré', () => {
+    const t = 7000 * EPOCH_MS + 12 * TICK_MS + 30_000;
+    const a = { seed: WEATHER_SEED, lat: 47.6 };
+    const b = { seed: WEATHER_SEED, lat: 48.4 };
+    const first = [weatherAtRandom(a, t), weatherAtRandom(b, t)];
+    const t2 = 7001 * EPOCH_MS + 12 * TICK_MS + 30_000;
+    const second = [weatherAtRandom(b, t2), weatherAtRandom(a, t2)];
+    expect(first[0]).toEqual(first[1]);
+    expect(second[0]).toEqual(second[1]);
+  });
+  it('reste continu à la frontière d’une époque qui finit sur un sol encore mouillé', () => {
+    let found = false;
+    for (let epoch = 3720; epoch < 3900 && !found; epoch++) {
+      const edge = (epoch + 1) * EPOCH_MS;
+      const before = weatherAtRandom(ctx, edge - 50);
+      if (before.wet <= 0.05) continue;
+      found = true;
+      const after = weatherAtRandom(ctx, edge + 50);
+      expect(Math.abs(before.wet - after.wet)).toBeLessThan(0.02);
+    }
+    expect(found).toBe(true);
   });
 });

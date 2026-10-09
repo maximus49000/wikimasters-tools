@@ -15,7 +15,8 @@ const DAY_MS = 86_400_000;
 
 // Température plausible à la latitude et à la date (sans service externe) : ~32 °C à l'équateur, -0,5 °C par degré, ±11 °C de saison.
 export function plausibleTempC(lat: number, date: Date): number {
-  const doy = Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / DAY_MS);
+  // Jour de l'année en UTC : tous les appareils voient la même saison au même instant, quel que soit leur fuseau.
+  const doy = Math.floor((date.getTime() - Date.UTC(date.getUTCFullYear(), 0, 0)) / DAY_MS);
   const season = Math.cos((2 * Math.PI * (doy - 200)) / 365) * (lat >= 0 ? 1 : -1);
   return 32 - 0.5 * Math.abs(lat) + 11 * season * Math.min(1, Math.abs(lat) / 45);
 }
@@ -62,10 +63,12 @@ const MELT = 0.78;
 const PILE = 0.5;
 
 function epochData(seed: number, epoch: number, lat: number): EpochData {
-  const key = `${seed}:${epoch}:${Math.round(lat)}`;
+  // Latitude arrondie au degré, utilisée à la fois pour la clé et pour le calcul : le résultat ne dépend pas de l'ordre des appels.
+  const latKey = Math.round(lat);
+  const key = `${seed}:${epoch}:${latKey}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  const tempC = plausibleTempC(lat, new Date(epoch * EPOCH_TICKS * TICK_MS));
+  const tempC = plausibleTempC(latKey, new Date(epoch * EPOCH_TICKS * TICK_MS));
   const rng = mulberry32(seed ^ Math.imul(epoch + 1, 2654435761));
   const states: WeatherState[] = ['cloudy'];
   for (let i = 1; i < EPOCH_TICKS; i++) {
