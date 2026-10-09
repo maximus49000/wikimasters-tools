@@ -4,8 +4,9 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EntranceSprite, LampSprite, PersonSprite, VehicleSprite } from '../../src/content/city-sprites';
+import type { Accessory, Bottom, Hair, Outfit, Top } from '../../src/core/library/city/people';
 import { outfitFor } from '../../src/core/library/city/people';
-import { LANE_DIR, vehiclesFor } from '../../src/core/library/city/vehicles';
+import { LANE_DIR, vehiclesFor, type Vehicle } from '../../src/core/library/city/vehicles';
 import { mulberry32 } from '../../src/core/library/scene-world';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
@@ -59,5 +60,118 @@ describe('sprites de la ville', () => {
     }
     expect(svg(<EntranceSprite variant={0} hallLit sky={night} />).querySelector('[data-hall-lit]')).not.toBeNull();
     expect(svg(<EntranceSprite variant={0} hallLit={false} sky={night} />).querySelector('[data-hall-lit]')).toBeNull();
+  });
+});
+
+// ---------- Contrôles détaillés ----------
+const lum = (hex: string): number => {
+  const n = parseInt(hex.slice(1), 16);
+  return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+};
+const html = (el: Element): string => el.innerHTML.toLowerCase();
+const base: Outfit = { skin: '#F2C9A5', hair: 'short', hairColor: '#123456', hatColor: '#654321', top: 'tee', topColor: '#C0463A', bottom: 'pants', bottomColor: '#2F4A7A', accessory: 'none', accessoryColor: '#ABCDEF' };
+const person = (o: Partial<Outfit>, s = sky, rainy = false): SVGSVGElement => svg(<PersonSprite outfit={{ ...base, ...o }} sky={s} rainy={rainy} umbrella={false} />);
+const topRect = (el: Element): Element => el.querySelector('rect[x="-5"][y="-28"]')!;
+
+describe('sprites de la ville : détails', () => {
+  it('assombrit la tenue la nuit (couleur du haut absente, plus sombre)', () => {
+    const day = person({});
+    const dark = person({}, night);
+    expect(html(day)).toContain('#c0463a');
+    expect(html(dark)).not.toContain('#c0463a');
+    expect(lum(topRect(dark).getAttribute('fill')!)).toBeLessThan(lum(topRect(day).getAttribute('fill')!));
+  });
+  it('garde phares, halo du lampadaire et vitrage du hall éclairé non assombris la nuit', () => {
+    const v = vehiclesFor(720, 4).find((x) => x.kind === 'car')!;
+    expect(html(svg(<VehicleSprite vehicle={v} sky={night} lights />).querySelector('[data-headlight]')!)).toContain('#ffe9a0');
+    expect(html(svg(<LampSprite lit />).querySelector('[data-lamp-glow]')!)).toContain('#ffe9a0');
+    expect(html(svg(<EntranceSprite variant={0} hallLit sky={night} />))).toContain('#ffd27a');
+  });
+  it('dessine chaque haut, bas, coiffure et accessoire avec sa signature', () => {
+    const tops: Top[] = ['tee', 'sweater', 'jacket', 'coat', 'shirt', 'suit', 'jersey'];
+    for (const top of tops) {
+      const el = person({ top });
+      const r = topRect(el);
+      expect(r.getAttribute('fill')!.toLowerCase()).toBe('#c0463a');
+      expect(r.getAttribute('height')).toBe(top === 'coat' ? '19' : '14');
+      expect(html(el).includes('#b03030')).toBe(top === 'suit');
+      expect(el.querySelector('rect[opacity="0.8"]') !== null).toBe(top === 'jersey');
+    }
+    const bottoms: Bottom[] = ['pants', 'jeans', 'skirt', 'shorts', 'dress', 'jogging'];
+    for (const bottom of bottoms) {
+      const el = person({ bottom });
+      expect(html(el)).toContain('#2f4a7a');
+      const legs = el.querySelectorAll('rect[fill="#F2C9A5" i]').length;
+      const trapeze = el.querySelector('path[d^="M-5.5"]') !== null;
+      if (bottom === 'skirt' || bottom === 'dress') {
+        expect(trapeze).toBe(true);
+        expect(legs).toBe(2);
+      } else if (bottom === 'shorts') {
+        expect(trapeze).toBe(false);
+        expect(legs).toBe(2);
+      } else {
+        expect(trapeze).toBe(false);
+        expect(legs).toBe(0);
+        expect(el.querySelectorAll('rect[height="15"]').length).toBe(2);
+      }
+    }
+    const hairs: Hair[] = ['short', 'long', 'bun', 'cap', 'beanie', 'bald'];
+    for (const hair of hairs) {
+      const el = person({ hair });
+      expect(el.querySelector('circle[r="4.6"]')).not.toBeNull();
+      const h = html(el);
+      expect(h.includes('#123456')).toBe(hair === 'short' || hair === 'long' || hair === 'bun');
+      expect(h.includes('#654321')).toBe(hair === 'cap' || hair === 'beanie');
+      if (hair === 'long') {
+        expect(el.querySelector('rect[x="-5.2"][y="-37"][width="10.4"][height="4"][rx="3"]')).not.toBeNull();
+        expect(el.querySelector('rect[x="-5.4"][y="-35"][width="3"][height="11"]')).not.toBeNull();
+      }
+    }
+    const accs: Accessory[] = ['none', 'backpack', 'bag', 'case', 'ball', 'scarf'];
+    for (const accessory of accs) {
+      const el = person({ accessory });
+      expect(html(el).includes('#abcdef')).toBe(accessory === 'backpack' || accessory === 'bag' || accessory === 'scarf');
+      expect(el.querySelector('circle[r="3.2"]') !== null).toBe(accessory === 'ball');
+      expect(el.querySelector('rect[fill="#4A3B2A" i]') !== null).toBe(accessory === 'case');
+      if (accessory === 'backpack') expect(el.querySelector('rect[x="-9"]')).not.toBeNull();
+    }
+  });
+  it('met un imperméable sous la pluie pour les hauts légers seulement', () => {
+    expect(html(person({ top: 'tee' }, sky, true))).toContain('#2e5e8a');
+    expect(html(person({ top: 'coat' }, sky, true))).not.toContain('#2e5e8a');
+  });
+  it('dessine les quatre véhicules, phares seulement avec lights', () => {
+    const mk = (kind: Vehicle['kind']): Vehicle => ({ id: 'x', lane: 'near', kind, color: '#3B6FD6', speed: 1, phase: 0, u: 0, scale: 1 });
+    for (const kind of ['car', 'bus', 'van', 'bike'] as const) {
+      const off = svg(<VehicleSprite vehicle={mk(kind)} sky={sky} lights={false} />);
+      const on = svg(<VehicleSprite vehicle={mk(kind)} sky={night} lights />);
+      expect(off.querySelector('[data-headlight]')).toBeNull();
+      expect(on.querySelector('[data-headlight]')).not.toBeNull();
+      expect(off.querySelector('g')!.children.length).toBeGreaterThan(1);
+    }
+    const bus = svg(<VehicleSprite vehicle={mk('bus')} sky={sky} lights={false} />);
+    expect(bus.querySelectorAll('rect[width="7"][height="8"]').length).toBe(6);
+    const bike = svg(<VehicleSprite vehicle={mk('bike')} sky={sky} lights={false} />);
+    expect(bike.querySelectorAll('circle[r="5"]').length).toBe(2);
+    expect(svg(<VehicleSprite vehicle={mk('van')} sky={sky} lights={false} />).querySelector('rect[width="46"][height="18"]')).not.toBeNull();
+  });
+  it('les trois entrées diffèrent, cadre de x = 0 sur 22 de large', () => {
+    const outs = ([0, 1, 2] as const).map((variant) => svg(<EntranceSprite variant={variant} hallLit={false} sky={sky} />));
+    expect(new Set(outs.map((o) => o.innerHTML)).size).toBe(3);
+    for (const o of outs) {
+      const frame = o.querySelector('rect[width="22"][height="27"]')!;
+      expect(frame.getAttribute('x')).toBe('0');
+      expect(frame.getAttribute('width')).toBe('22');
+    }
+  });
+  it('n’emploie aucun id SVG fixe', () => {
+    const nodes = [
+      person({ accessory: 'bag' }, sky, true),
+      svg(<PersonSprite outfit={base} sky={sky} rainy umbrella />),
+      ...vehiclesFor(720, 4).map((x) => svg(<VehicleSprite vehicle={x} sky={night} lights />)),
+      svg(<LampSprite lit />),
+      ...([0, 1, 2] as const).map((variant) => svg(<EntranceSprite variant={variant} hallLit sky={night} />)),
+    ];
+    for (const n of nodes) expect(n.querySelector('[id]')).toBeNull();
   });
 });

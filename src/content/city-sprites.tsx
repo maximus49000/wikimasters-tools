@@ -38,7 +38,8 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella }: { outfit: Outf
           <rect x={-4} y={-15} width={8} height={8} fill={pants} />
         </>
       )}
-      {(o.bottom === 'pants' || o.bottom === 'jeans' || o.bottom === 'jogging') && (
+      {o.bottom !== 'skirt' && o.bottom !== 'dress' && o.bottom !== 'shorts' && (
+        // pants | jeans | jogging, et toute valeur future : jambes pleines
         <>
           <rect x={-4} y={-15} width={3.4} height={15} fill={pants} />
           <rect x={0.6} y={-15} width={3.4} height={15} fill={pants} />
@@ -62,7 +63,7 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella }: { outfit: Outf
       {o.hair === 'short' && <path d="M-4.8 -33 A4.8 4.8 0 0 1 4.8 -33 Z" fill={hair} />}
       {o.hair === 'long' && (
         <>
-          <path d="M-4.8 -33 A4.8 4.8 0 0 1 4.8 -33 Z" fill={hair} />
+          <rect x={-5.2} y={-37} width={10.4} height={4} rx={3} fill={hair} />
           <rect x={-5.4} y={-35} width={3} height={11} rx={1.5} fill={hair} />
         </>
       )}
@@ -154,7 +155,7 @@ export function VehicleSprite({ vehicle, sky, lights }: { vehicle: Vehicle; sky:
           )}
         </g>
       );
-    default:
+    case 'car':
       return (
         <g>
           <rect x={-20} y={-13} width={40} height={9} rx={3} fill={body} />
@@ -171,6 +172,11 @@ export function VehicleSprite({ vehicle, sky, lights }: { vehicle: Vehicle; sky:
           )}
         </g>
       );
+    default: {
+      // Exhaustivité : une nouvelle sorte de véhicule doit être dessinée ici.
+      const never: never = vehicle.kind;
+      return never;
+    }
   }
 }
 
