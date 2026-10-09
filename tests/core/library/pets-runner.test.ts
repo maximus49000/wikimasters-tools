@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { createInitialState } from '../../../src/core/library/library-book';
 import type { Layout, PetPlan, Room } from '../../../src/core/library/library-types';
 import { layoutSig } from '../../../src/core/library/pets/brain';
+import { planEndsAt, routeMs } from '../../../src/core/library/pets/motion';
 import { createPetRunner } from '../../../src/core/library/pets/runner';
+import { proposeScene } from '../../../src/core/library/pets/scenes';
 import { buildWalkMap, standPoint } from '../../../src/core/library/pets/walk-map';
 
 const sofa: Layout = [{ id: 'a', kind: 'sofa', col: 2, row: 12 }];
@@ -296,5 +298,137 @@ describe('abandon d une scène', () => {
     const onPlan = vi.fn();
     createPetRunner({ onPlan }).step(roomWith(sofa, lead), 500);
     expect(lastPlanOf(onPlan, 'p1').with).toBeUndefined();
+  });
+});
+
+describe('sieste du chat sur le robot (ride)', () => {
+  const at = standPoint(12, 16);
+  const robotPlan: PetPlan = { ...resting([], at), action: 'standby', actMs: 60_000 };
+  const seeded = (seed: number) => () => {
+    seed = (seed + 0x6d2b79f5) >>> 0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32;
+  };
+  const start = 1000;
+  const ride = (() => {
+    for (let s = 1; s < 200; s++) {
+      const r = proposeScene({ layout: [], cols: 24, rng: seeded(s), still: false, occupied: new Set() }, { pet: { id: 'p1', species: 'cat', name: 'Minou', coat: 'orange' }, from: { pt: standPoint(2, 16), on: null, hostId: null, facing: 'r' } }, [{ pet: { id: 'p2', species: 'robot', name: 'Robi', coat: 'blue' }, plan: robotPlan }], start);
+      if (r?.scene === 'ride') return r;
+    }
+    throw new Error('pas de ride');
+  })();
+  const top = ride.lead.at;
+  const landingOf = (plan: PetPlan) => plan.route[plan.route.length - 1]!.from;
+  const roomOf = (cat?: PetPlan, robot?: PetPlan, layout: Layout = []): Room => ({
+    ...createInitialState().rooms[0]!,
+    layout,
+    pets: [
+      { id: 'p1', species: 'cat', name: 'Minou', coat: 'orange', ...(cat ? { plan: cat } : {}) },
+      { id: 'p2', species: 'robot', name: 'Robi', coat: 'blue', ...(robot ? { plan: robot } : {}) },
+    ],
+  });
+  const asleepAt = planEndsAt(ride.lead) - 3000;
+  const lastPlanOf = (onPlan: ReturnType<typeof vi.fn>, id: string): PetPlan => onPlan.mock.calls.filter((c) => c[0] === id).at(-1)![1] as PetPlan;
+  const dismounted = (plan: PetPlan) => {
+    expect(plan.with).toBeUndefined();
+    expect(plan.route[0]!.kind).toBe('jump');
+    expect(plan.route[0]!.from).toEqual(top);
+    expect(plan.route[0]!.to.y).toBeGreaterThan(top.y);
+    expect(plan.route[0]!.on).toBeNull();
+  };
+
+  it('en pleine sieste : le chat dort sur le dos, devant le robot (même rang, +0,1), sans rien réécrire', () => {
+    const onPlan = vi.fn();
+    const [cat, robot] = createPetRunner({ onPlan }).step(roomOf(ride.lead, ride.partner!), asleepAt);
+    expect(onPlan).not.toHaveBeenCalled();
+    expect(cat!.pose).toBe('sleep');
+    expect(cat!.pos).toEqual(top);
+    expect(robot!.pose).toBe('standby');
+    expect(cat!.behind).toBe(robot!.behind);
+    expect(cat!.depthY).toBeCloseTo(robot!.depthY + 0.1);
+  });
+
+  it('fin normale : le plan suivant du chat commence par un saut de descente depuis son dos', () => {
+    const onPlan = vi.fn();
+    const end = planEndsAt(ride.lead);
+    const [cat] = createPetRunner({ onPlan }).step(roomOf(ride.lead, ride.partner!), end + 5);
+    dismounted(lastPlanOf(onPlan, 'p1'));
+    expect(lastPlanOf(onPlan, 'p1').startedAt).toBe(end + 5);
+    expect(cat!.pose).toBe('jump');
+    expect(Math.abs(cat!.pos.y - top.y)).toBeLessThan(5);
+    expect(lastPlanOf(onPlan, 'p2').with).toBeUndefined();
+  });
+
+  it('robot retiré : le chat saute à terre sans téléportation', () => {
+    const onPlan = vi.fn();
+    const solo = { ...roomOf(ride.lead), pets: roomOf(ride.lead).pets.slice(0, 1) };
+    const [cat] = createPetRunner({ onPlan }).step(solo, asleepAt);
+    dismounted(lastPlanOf(onPlan, 'p1'));
+    expect(cat!.pos).toEqual(top);
+  });
+
+  it('robot touché : il bipe et le chat saute à terre', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan });
+    const room = roomOf(ride.lead, ride.partner!);
+    runner.step(room, asleepAt);
+    expect(runner.touch(room, 'p2', asleepAt + 100)).toBe(true);
+    expect(lastPlanOf(onPlan, 'p2').action).toBe('beep');
+    runner.step(room, asleepAt + 200);
+    dismounted(lastPlanOf(onPlan, 'p1'));
+    expect(lastPlanOf(onPlan, 'p1').startedAt).toBe(asleepAt + 200);
+  });
+
+  it('chat touché : il saute à terre puis ronronne, le robot reprend sa route', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan });
+    const room = roomOf(ride.lead, ride.partner!);
+    runner.step(room, asleepAt);
+    expect(runner.touch(room, 'p1', asleepAt + 100)).toBe(true);
+    const purr = lastPlanOf(onPlan, 'p1');
+    expect(purr.action).toBe('purr');
+    dismounted(purr);
+    expect(purr.at).toEqual(purr.route[0]!.to);
+    runner.step(room, asleepAt + 200);
+    expect(lastPlanOf(onPlan, 'p2').with).toBeUndefined();
+  });
+
+  it('meubles changés pendant la sieste : le chat saute à terre sur une case libre, pas en l air', () => {
+    const onPlan = vi.fn();
+    const layout: Layout = [{ id: 'k', kind: 'basket', col: 20, row: 16 }];
+    const [cat] = createPetRunner({ onPlan }).step(roomOf(ride.lead, ride.partner!, layout), asleepAt);
+    dismounted(lastPlanOf(onPlan, 'p1'));
+    expect(cat!.pos).toEqual(top);
+  });
+
+  it('au rechargement en pleine sieste : le plan continue, interpolé, jusqu à la descente', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan });
+    const room = roomOf(ride.lead, ride.partner!);
+    const mid = start + routeMs(ride.lead.route) + 1000;
+    expect(runner.step(room, mid)[0]!.pose).toBe('sleep');
+    expect(onPlan).not.toHaveBeenCalled();
+    const jumping = start + routeMs(ride.lead.route) - 100;
+    const frame = runner.step(room, jumping)[0]!;
+    expect(frame.pose).toBe('jump');
+    expect(onPlan).not.toHaveBeenCalled();
+  });
+
+  it('un chat qui n est pas encore monté (approche) est repris au sol', () => {
+    const onPlan = vi.fn();
+    const solo = { ...roomOf(ride.lead), pets: roomOf(ride.lead).pets.slice(0, 1) };
+    const early = start + 50;
+    const [cat] = createPetRunner({ onPlan }).step(solo, early);
+    const next = lastPlanOf(onPlan, 'p1');
+    expect(next.with).toBeUndefined();
+    expect(next.route.every((s) => s.kind === 'walk')).toBe(true);
+    expect(cat!.pos.y).toBeGreaterThan(top.y);
+  });
+
+  it('au sol : le point de saut est une case libre voisine du robot', () => {
+    const from = landingOf(ride.lead);
+    expect(Math.abs(from.x - at.x)).toBeLessThanOrEqual(30);
   });
 });
