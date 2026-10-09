@@ -2,7 +2,7 @@ import { useMemo, useRef, type ReactElement } from 'react';
 import { doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { cityIntensity, type CityContext } from '../core/library/city/intensity';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
-import { STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
+import { FAR_SHRINK, STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
 import { loopX } from '../core/library/scene-world';
@@ -17,8 +17,6 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // `forcedNight` : mode « Toujours la nuit » (les lampadaires restent allumés).
 export type CityLifeProps = { width: number; height: number; sky: Sky; seed: number; city: CityContext; rainy: boolean; forcedNight?: boolean };
 
-// Les véhicules de la file du fond paraissent un peu plus petits.
-const FAR_SHRINK = 0.9;
 // Écart entre un parent et chaque enfant qu'il accompagne (repère du sprite, avant l'échelle).
 const COMPANION_GAP = 16;
 // Durée du fondu d'apparition/disparition (CSS) ; un absent continue d'avancer tant qu'il s'efface (avec une petite marge).
@@ -42,7 +40,7 @@ type StreetLampsProps = { width: number; height: number; seed: number; minutes: 
 export function StreetLamps({ width, height, seed, minutes, daylight, forcedNight = false }: StreetLampsProps): ReactElement {
   const lamps = useMemo(() => lampsFor(width, seed), [width, seed]);
   const m = cityMetrics(height);
-  const curb = m.ground + height * 0.07;
+  const curb = m.curb;
   return (
     <g data-street-lamps="">
       {lamps.map((lamp) => {

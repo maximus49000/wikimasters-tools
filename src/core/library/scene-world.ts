@@ -96,9 +96,12 @@ export type Building = { x: number; w: number; h: number; far: boolean; lamps: L
 
 export const CHUNK = 360;
 
+// Sol sur lequel `citySkyline` pose ses fenêtres (son tirage n'en dépend pas) ; la rue dessinée a son propre sol (city/metrics.ts).
+export const SKYLINE_GROUND = 0.78;
+
 // Immeubles de la ville, tirés par bandes de 360 px (une zone de pièce) : agrandir la pièce à droite ne change pas ce qui existe déjà.
 export function citySkyline(width: number, height: number, seed: number): Building[] {
-  const ground = height * 0.78;
+  const ground = height * SKYLINE_GROUND;
   const out: Building[] = [];
   for (let chunk = 0; chunk * CHUNK < width + CHUNK; chunk++) {
     const rng = mulberry32(seed ^ Math.imul(chunk + 1, 2654435761));

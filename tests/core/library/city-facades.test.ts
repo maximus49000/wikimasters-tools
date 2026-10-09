@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BUILDING_STRETCH, FAR_WINDOW, FAR_WINDOWS_MAX, GROUND_FLOOR, cityFacades, extraFloorWindows, farWindows } from '../../../src/core/library/city/facades';
-import { citySkyline } from '../../../src/core/library/scene-world';
+import { CITY_GROUND, cityMetrics } from '../../../src/core/library/city/metrics';
+import { SKYLINE_GROUND, citySkyline } from '../../../src/core/library/scene-world';
 
-const ground = 340 * 0.78;
+const ground = 340 * CITY_GROUND;
 
 describe('cityFacades', () => {
   it('ne change pas le tirage de citySkyline (mêmes immeubles avant et après)', () => {
@@ -20,11 +21,11 @@ describe('cityFacades', () => {
       expect(f.w).toBe(b.w);
       expect(f.h).toBeCloseTo(b.h * BUILDING_STRETCH, 6);
       if (b.far) return;
-      // Fenêtres d'origine : mêmes x, même seuil, remontées de la hauteur ajoutée.
+      // Fenêtres d'origine : mêmes x, même seuil, remontées de la hauteur ajoutée et recalées sur le sol de la rue.
       b.lamps.forEach((l, j) => {
         expect(f.lamps[j]!.x).toBe(l.x);
         expect(f.lamps[j]!.u).toBe(l.u);
-        expect(f.lamps[j]!.y).toBeCloseTo(l.y - b.h * (BUILDING_STRETCH - 1), 6);
+        expect(f.lamps[j]!.y).toBeCloseTo(l.y - b.h * (BUILDING_STRETCH - 1) - (340 * SKYLINE_GROUND - ground), 6);
       });
       for (const l of f.lamps) {
         expect(l.y).toBeGreaterThanOrEqual(ground - f.h);
@@ -68,6 +69,19 @@ describe('farWindows', () => {
     for (const f of cityFacades(720, 340, 5)) {
       if (f.far) expect(f.farWindows.length).toBeGreaterThan(0);
       else expect(f.farWindows).toHaveLength(0);
+    }
+  });
+});
+
+describe('fenêtres recalées sur le sol de la rue', () => {
+  it('toutes les fenêtres d’un immeuble du premier plan sont sur sa façade, au-dessus du rez-de-chaussée', () => {
+    const height = 340;
+    const { ground } = cityMetrics(height);
+    for (const b of cityFacades(1440, height, 42).filter((f) => !f.far)) {
+      for (const lamp of b.lamps) {
+        expect(lamp.y).toBeGreaterThanOrEqual(ground - b.h - 0.001);
+        expect(lamp.y + 7).toBeLessThanOrEqual(ground - GROUND_FLOOR + 0.001);
+      }
     }
   });
 });
