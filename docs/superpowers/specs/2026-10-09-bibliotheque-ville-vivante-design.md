@@ -31,9 +31,24 @@ Module pur `src/core/library/city/calendar.ts`, calculé sur la date locale de l
     - **Passage avec livraison** (environ un passage sur trois, au tirage) : le traîneau descend, **se pose sur le toit d'un immeuble** de la rangée proche (position et hauteur lues sur les immeubles de `citySkyline`, donc il se pose réellement sur un toit visible dans une fenêtre), le père Noël en descend avec sa hotte, disparaît dans la cheminée ou derrière le rebord quelques secondes, revient, remonte à bord et repart. Une fenêtre d'immeuble proche s'allume brièvement pendant la livraison.
     - Sans fenêtre dans la pièce, rien ne se voit ; ni passage ni animal n'ont de coût caché.
     - Le 24 de jour il n'y a rien, le 25 il reste les passages de l'aube. Un animal éveillé peut le regarder (réaction à un événement, hors périmètre ici).
-  - Proposés, à valider : 31 décembre (feux d'artifice à minuit), 14 juillet (feux d'artifice en soirée), 1er janvier, Halloween (passants déguisés, enfants le soir du 31 octobre), Pâques (enfants en chasse aux œufs), 1er mai (passants avec du muguet).
-  - Les fêtes ajoutent aussi des décors discrets : lumières de Noël aux fenêtres des immeubles de la mi-décembre au 6 janvier.
-- La fiche WikiHow indique que le calendrier suit la date de l'appareil et que les fêtes ont lieu à leurs dates réelles.
+  - **Autres fêtes retenues**, toutes en données (date ou règle, heures, poids) :
+
+| Fête | Date | Ce qu'on voit |
+| --- | --- | --- |
+| Nouvel An | 31 décembre soir, 1er janvier | feux d'artifice à minuit, passants qui fêtent la nuit, rue calme le 1er |
+| Épiphanie | premier dimanche de janvier | couronnes dorées sur quelques enfants (discret) |
+| Saint-Valentin | 14 février | couples qui se promènent, ballons en cœur dans le ciel |
+| Pâques | dimanche de Pâques (calculé) | enfants en chasse aux œufs, cloches discrètes, ballons-lapins |
+| 1er mai | 1er mai | passants avec du muguet, peu de costumes, circulation de férié |
+| Fête de la musique | 21 juin soir | musiciens et petits groupes dans la rue, lumières colorées, foule le soir |
+| Fête nationale | 14 juillet | défilé de véhicules le matin, feux d'artifice en soirée, foule à pied |
+| Halloween | 31 octobre | enfants déguisés et citrouilles aux fenêtres, plus de monde à la tombée de la nuit |
+| Armistice | 11 novembre | drapeaux, peu de circulation (férié) |
+| Noël | du 1er décembre au 6 janvier | guirlandes et lumières de Noël aux fenêtres des immeubles ; 24 au soir : le père Noël (ci-dessus) ; 25 : rue très calme |
+
+  - Une fête peut cumuler avec la météo et le calendrier (pas de feu d'artifice sous la pluie, report à la nuit suivante : non, simplement absent), et ne remplace jamais les règles de la vie ambiante : elle les module (poids des enfants, des couples, des costumes) et ajoute ses événements au moteur de la vague 1b.
+  - Tout est dans une table de données : ajouter ou retirer une fête ne demande pas de code.
+  - Les décors de fête (guirlandes, citrouilles, drapeaux) sont de petits sprites ajoutés au décor fixe, sans surcoût d'animation.
 
 ## Vague 1a : vie ambiante
 
@@ -134,8 +149,7 @@ S'appuie sur `pets/context.ts`, `brain.ts` et le moteur de scènes à deux.
 
 ## Points ouverts
 
-- **Zone scolaire** : réglage local (A, B, C) dans le panneau Ciel, ou valeur unique par défaut ? Les vacances de Toussaint, Noël et d'été sont les mêmes pour toutes les zones ; seuls l'hiver et le printemps diffèrent.
-- **Fêtes à retenir** en plus du père Noël (liste proposée ci-dessus).
+- **Zone scolaire** (proposition retenue) : réglage local A / B / C dans le panneau Ciel, zone par défaut à choisir à l'implémentation ; Les vacances de Toussaint, Noël et d'été sont les mêmes pour toutes les zones ; seuls l'hiver et le printemps diffèrent.
 - **Vague du calendrier** : en 1a (jours et vacances) ; le père Noël et les fêtes arrivent en 1b avec le moteur d'événements.
 
 ## Livraison
