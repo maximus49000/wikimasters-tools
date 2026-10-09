@@ -21,6 +21,8 @@ import type { Weather } from '../core/library/weather/weather-types';
 import { hashString } from '../core/library/scene-world';
 import type { DayContext } from '../core/library/city/calendar';
 import type { CityContext } from '../core/library/city/intensity';
+import { dayNumber } from '../core/library/city/shops/hours';
+import type { NamePool } from '../core/library/city/shops/lifecycle';
 import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
@@ -30,6 +32,8 @@ const NO_GLASS: readonly never[] = [];
 const STILL_CLOCK = { read: (): Weather => ({ cloud: 0, precip: 0 } as Weather) };
 
 // Ciel d'après-midi quand aucune heure n'est fournie (test, premier rendu) ; calculé une fois : le décor est mémoïsé.
+// Noms locaux absents : identité stable pour ne pas invalider le contexte de la ville.
+const EMPTY_NAMES: NamePool = {};
 const DEFAULT_VIEW: SceneView = { sky: skyAt(15 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 }), minutes: 15 * 60 };
 
 // Météo vue par les fenêtres : l'horloge est relue à chaque image par le calque ; les drapeaux (ciel sombre, pluie) touchent le décor fixe.
@@ -38,7 +42,7 @@ export type SceneView = {
   sky: Sky;
   minutes: number;
   weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } };
-  city?: { day: DayContext; forcedNight: boolean };
+  city?: { day: DayContext; forcedNight: boolean; shopNames?: NamePool };
 };
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
@@ -108,9 +112,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const city = useMemo<CityContext | undefined>(
     () =>
       view.city && room.scene === 'city'
-        ? { minutes: view.minutes, day: view.city.day, precip: rainy ? 0.7 : gloom ? 0.1 : 0, snow: false, storm: false, daylight: view.sky.daylight }
+        ? { minutes: view.minutes, day: view.city.day, precip: rainy ? 0.7 : gloom ? 0.1 : 0, snow: false, storm: false, daylight: view.sky.daylight, shops: { epochDay: room.cityEpoch ?? dayNumber(view.city.day.date), names: view.city.shopNames ?? EMPTY_NAMES } }
         : undefined,
-    [view.city, room.scene, view.minutes, view.sky.daylight, rainy, gloom],
+    [view.city, room.scene, room.cityEpoch, view.minutes, view.sky.daylight, rainy, gloom],
   );
   const forcedNight = view.city?.forcedNight ?? false;
   // Gouttes sur la vitre (et leur animation SMIL) seulement quand il pleut assez : signalé par la boucle de météo, rarement.

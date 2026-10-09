@@ -15,6 +15,7 @@ import {
   nextFurnitureId,
   renameRoom,
   setActive,
+  setCityEpoch,
   setHome,
   setOrientation,
   setPetPlan,
@@ -73,6 +74,8 @@ import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
 import { useCityDay } from './use-city-calendar';
+import { useShopNames } from './use-shop-names';
+import { dayNumber } from '../core/library/city/shops/hours';
 import { useWeather } from './use-weather';
 import { useLightEnabled } from './light-setting';
 import { useZoneChoice, type ZoneChoice } from './zone-setting';
@@ -255,16 +258,24 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const sceneTime = useSceneTime(lib?.time ?? { mode: 'real' });
   const weather = useWeather(lib?.weather ?? { mode: 'random' });
   // Jour de la ville (week-end, férié, école…) : stable tant que la date ne change pas.
-  const cityDay = useCityDay(sceneTime.date, lib?.rooms.some((r) => r.scene === 'city') ?? false);
+  const hasCity = lib?.rooms.some((r) => r.scene === 'city') ?? false;
+  const cityDay = useCityDay(sceneTime.date, hasCity);
+  const shopNames = useShopNames(hasCity);
+  // Rue commerçante : chaque pièce Ville reçoit une fois son jour de départ (tous les locaux occupés ce jour-là) ; écriture notifiée, pour que la pièce affichée le porte aussitôt.
+  const today = dayNumber(sceneTime.date);
+  useEffect(() => {
+    const ids = lib?.rooms.filter((r) => r.scene === 'city' && r.cityEpoch === undefined).map((r) => r.id) ?? [];
+    if (ids.length > 0) void library.update((state) => setCityEpoch(state, ids, today));
+  }, [lib, library, today]);
   // Vue des fenêtres mémoïsée : ciel et heure changent à la minute, les drapeaux de la météo rarement ; l'horloge est stable.
   const sceneView = useMemo(
     () => ({
       sky: sceneTime.sky,
       minutes: sceneTime.minutes,
       weather: { clock: weather.clock, flags: weather.flags },
-      city: { day: cityDay, forcedNight: lib?.time.mode === 'night' },
+      city: { day: cityDay, forcedNight: lib?.time.mode === 'night', shopNames },
     }),
-    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags, cityDay, lib?.time.mode],
+    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags, cityDay, shopNames, lib?.time.mode],
   );
 
   // Position du doigt → case, cible de dépôt et position dans le dessin (null si la pièce n'est pas affichée).

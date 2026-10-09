@@ -2,7 +2,7 @@ import { hashString, mulberry32 } from '../scene-world';
 import type { CityIntensity } from './intensity';
 import { WALK_PACE } from './metrics';
 
-export type Profile = 'stroller' | 'suit' | 'jogger' | 'ordinary' | 'child';
+export type Profile = 'stroller' | 'suit' | 'jogger' | 'ordinary' | 'child' | 'worker';
 export type Hair = 'short' | 'long' | 'bun' | 'cap' | 'beanie' | 'bald';
 export type Top = 'tee' | 'sweater' | 'jacket' | 'coat' | 'shirt' | 'suit' | 'jersey';
 export type Bottom = 'pants' | 'jeans' | 'skirt' | 'shorts' | 'dress' | 'jogging';
@@ -37,6 +37,10 @@ export function outfitFor(profile: Profile, rng: () => number): Outfit {
     case 'suit': {
       const c = pick(SUITS, rng);
       return { ...base, hair: pick(['short', 'short', 'bun', 'bald', 'long'] as const, rng), top: 'suit', topColor: c, bottom: rng() < 0.25 ? 'skirt' : 'pants', bottomColor: c, accessory: pick(['case', 'bag', 'none'] as const, rng) };
+    }
+    case 'worker': {
+      const c = pick(['#2F4A7A', '#24406A', '#3A5A8A'] as const, rng);
+      return { ...base, hair: 'cap', top: 'jacket', topColor: c, bottom: 'pants', bottomColor: c, accessory: 'none' };
     }
     case 'jogger':
       return { ...base, hair: pick(['cap', 'bun', 'short', 'beanie'] as const, rng), top: 'jersey', topColor: pick(BRIGHT, rng), bottom: pick(['shorts', 'jogging'] as const, rng), bottomColor: pick(SUITS, rng), accessory: 'none' };

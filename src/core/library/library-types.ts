@@ -89,6 +89,8 @@ export type Room = {
   cols: number;
   layout: Layout;
   pets: Pet[];
+  // Jour local (dayNumber) où la rue commerçante de la scène Ville a démarré ; absent = pas encore posé.
+  cityEpoch?: number;
 };
 
 export type LibraryState = {

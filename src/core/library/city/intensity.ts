@@ -1,6 +1,16 @@
 import type { DayContext } from './calendar';
+import type { NamePool } from './shops/lifecycle';
 
-export type CityContext = { minutes: number; day: DayContext; precip: number; snow: boolean; storm: boolean; daylight: number };
+export type CityContext = {
+  minutes: number;
+  day: DayContext;
+  precip: number;
+  snow: boolean;
+  storm: boolean;
+  daylight: number;
+  // Rue commerçante (vague 1b-iv-a) : jour de départ de la pièce et noms locaux ; absent = pas de commerces.
+  shops?: { epochDay: number; names: NamePool };
+};
 export type CityIntensity = {
   traffic: number;
   walkers: number;

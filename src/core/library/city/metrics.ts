@@ -14,6 +14,11 @@ export const STREET_SCALE = { person: 0.55, entranceX: 12 / 22, entranceY: 0.85,
 // Pas de marche : les vitesses tirées (px/s) sont ralenties pour des passants plus petits.
 export const WALK_PACE = 0.7;
 
+// Largeur du cadre de l'entrée telle que dessinée : sprite de 22 px × STREET_SCALE.entranceX = 12 px.
+export const DOOR_WIDTH = 12;
+// Marge entre l'entrée et les bords de son immeuble (auvent, interphone et plaque débordent un peu du cadre).
+export const DOOR_MARGIN = 4;
+
 export function cityMetrics(height: number): CityMetrics {
   const ground = height * CITY_GROUND;
   const sidewalk = height * 0.06;

@@ -7,19 +7,23 @@ import { cityIntensity, type CityContext } from '../core/library/city/intensity'
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { FAR_SHRINK, STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
+import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/customers';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
 import { loopX } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
+import { ShopCustomers, ShopWorks, placeCustomers, setIfChanged } from './city-shops-life';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
 import { useCityEvents } from './use-city-events';
+import { useStreetShops } from './use-street-shops';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Vie de la scène Ville : passants, habitants qui sortent de leur immeuble ou y rentrent, deux files de circulation,
-// et les événements de la ville (vague 1b-i). La présence (data-active, opacité) ne change qu'à la minute (re-rendu React)
-// ou quand l'ensemble des événements change ; les positions sont posées par la boucle d'animation directement sur
-// `transform`, sans re-rendu. Seuls les habitants voient aussi leur présence décidée par la boucle
-// (un tirage par tour de cycle de trajet).
+// les événements de la ville (vague 1b-i), les clients des commerces et l'équipe d'un chantier (vague 1b-iv-a,
+// city-shops-life.tsx). La présence (data-active, opacité) ne change qu'à la minute (re-rendu React) ou quand l'ensemble
+// des événements change ; les positions sont posées par la boucle d'animation directement sur `transform`, sans re-rendu.
+// Seuls les habitants et les clients voient aussi leur présence décidée par la boucle (un tirage par tour de cycle de
+// trajet ou de visite).
 // `forcedNight` : mode « Toujours la nuit » (les lampadaires restent allumés).
 export type CityLifeProps = { width: number; height: number; sky: Sky; seed: number; city: CityContext; rainy: boolean; forcedNight?: boolean };
 
@@ -40,6 +44,8 @@ const vehicleTransform = (v: Vehicle, m: CityMetrics, width: number, t: number, 
   const y = m.laneY[v.lane] + (v.kind === 'bike' ? BIKE_TRACK_DY * m.unit : 0) + dy;
   return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(LANE_DIR[v.lane] * k).toFixed(3)} ${k.toFixed(3)})`;
 };
+
+const NO_VISITS: Visit[] = [];
 
 const placementTransform = (p: EventPlacement): string => `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) scale(${p.sx.toFixed(3)} ${p.sy.toFixed(3)})`;
 
@@ -96,10 +102,6 @@ const residentState = (trip: Trip, gate: number, width: number, t: number): { ac
 // Opacité d'un événement : fondu des événements fixes, aucun fondu en mouvement réduit (opacité 1).
 const eventOpacity = (e: CityEvent, t: number, still: boolean): string => (still ? '1' : fixedFade(e, t).toFixed(2));
 
-const setIfChanged = (node: Element, name: string, value: string): void => {
-  if (node.getAttribute(name) !== value) node.setAttribute(name, value);
-};
-
 export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNight = false }: CityLifeProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
   // Passants et véhicules présents au dernier placement : ceux qui disparaissent continuent d'avancer pendant leur fondu.
@@ -123,6 +125,16 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const frozen = useRef<number | null>(null);
   const still = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (frozen.current === null) frozen.current = Date.now() / 1000;
+
+  // Commerces : deux visites par local (seulement si la rue a des commerces) ; probabilité d'une visite recalculée à la minute,
+  // nulle si le local n'est pas ouvert, et en mouvement réduit (aucun client ne bouge).
+  const shops = useStreetShops(width, height, seed, city);
+  const allVisits = useMemo(() => visitsFor(shops.slots, shops.frames, seed), [shops.slots, shops.frames, seed]);
+  const visits = shops.views.length > 0 ? allVisits : NO_VISITS;
+  const gates = useMemo(
+    () => new Map(shops.views.map((v) => [v.slot.id, still ? 0 : customerGate(v, city.minutes, intensity)])),
+    [shops.views, city.minutes, intensity, still],
+  );
 
   // Événements de la ville : programme du grand créneau, événements actifs, voitures effacées, ambulances.
   const events = useCityEvents({ seed, width, city, intensity, vehicles, still, frozenT: frozen.current });
@@ -172,11 +184,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         setIfChanged(node, 'opacity', s.fade.toFixed(2));
         if (s.active || first) node.setAttribute('transform', residentTransform(trip, s.x, metrics));
       }
+      placeCustomers(nodes, visits, gates, width, metrics, t, first);
       first = false;
       // En dernier : peut demander un re-rendu (nouvel ensemble d'événements), qui recrée cette fonction.
       events.check(t);
     };
-  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame]);
+  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
@@ -253,6 +266,25 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
           lampadaires (bord du trottoir), la file du fond, puis celle du premier plan. */}
       <g data-city-sidewalk="">
+        {/* Contre les devantures : l'équipe d'un chantier, puis les clients (derrière les vitrines et sur le trottoir). */}
+        {shops.views.map((view, i) =>
+          view.phase === 'works' ? (
+            <ShopWorks key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} change={shops.street[i]?.change ?? null} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} seed={seed} />
+          ) : null,
+        )}
+        <ShopCustomers
+          visits={visits}
+          frames={shops.frames}
+          views={shops.views}
+          gates={gates}
+          width={width}
+          metrics={metrics}
+          t0={t0}
+          sky={sky}
+          rainy={rainy}
+          umbrella={intensity.umbrellas}
+          fade={still ? undefined : `${RESIDENT_FADE_S}s`}
+        />
         {trips.map((trip) => {
           const s = residentState(trip, gateOf(trip), width, t0);
           return (
