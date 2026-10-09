@@ -56,3 +56,22 @@ describe('stateAt', () => {
     expect(planEndsAt(walkPlan)).toBe(11_500);
   });
 });
+
+describe('lag', () => {
+  const walk = { kind: 'walk' as const, from: { x: 100, y: 450 }, to: { x: 300, y: 450 }, ms: 2000, fromOn: null, on: null };
+  const base: PetPlan = { action: 'cower', hostId: null, at: { x: 300, y: 450 }, on: null, route: [walk], startedAt: 1000, actMs: 500, facing: 'r', sig: 's', lag: 700 };
+
+  it('reste sur place pendant l attente, puis marche', () => {
+    expect(stateAt(base, 1300)).toMatchObject({ phase: 'wait', pos: { x: 100, y: 450 }, on: null });
+    expect(stateAt(base, 1700 + 1000)).toMatchObject({ phase: 'walk', pos: { x: 200, y: 450 } });
+  });
+
+  it('la fin du plan compte l attente', () => {
+    expect(planEndsAt(base)).toBe(1000 + 700 + 2000 + 500);
+  });
+
+  it('sans trajet, l attente est une action sur place', () => {
+    const still: PetPlan = { ...base, route: [], at: { x: 100, y: 450 } };
+    expect(stateAt(still, 1300).phase).toBe('act');
+  });
+});

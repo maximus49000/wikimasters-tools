@@ -1,11 +1,11 @@
 import type { PetPlan, Pt, Segment } from '../library-types';
 
-export type PetPhase = 'walk' | 'jump' | 'act' | 'done';
+export type PetPhase = 'walk' | 'jump' | 'act' | 'done' | 'wait';
 // `on` : le support à cet instant (sol = null) ; `depthHosts` : les meubles qui décident de l'ordre de dessin (deux pendant un saut).
 export type PetState = { pos: Pt; phase: PetPhase; facing: 'l' | 'r'; on: string | null; depthHosts: (string | null)[] };
 
 export const routeMs = (route: Segment[]): number => route.reduce((total, s) => total + s.ms, 0);
-export const planEndsAt = (plan: PetPlan): number => plan.startedAt + routeMs(plan.route) + plan.actMs;
+export const planEndsAt = (plan: PetPlan): number => plan.startedAt + (plan.lag ?? 0) + routeMs(plan.route) + plan.actMs;
 
 const arcHeight = (s: Segment): number => Math.min(60, 20 + Math.max(0, s.from.y - s.to.y) * 0.3);
 
@@ -13,6 +13,10 @@ const arcHeight = (s: Segment): number => Math.min(60, 20 + Math.max(0, s.from.y
 export function stateAt(plan: PetPlan, now: number): PetState {
   let t = Math.max(0, now - plan.startedAt);
   let facing = plan.facing;
+  const lag = plan.lag ?? 0;
+  const first = plan.route[0];
+  if (first && t < lag) return { pos: first.from, phase: 'wait', facing, on: first.fromOn, depthHosts: [first.fromOn] };
+  t = Math.max(0, t - lag);
   for (const s of plan.route) {
     const dx = s.to.x - s.from.x;
     if (Math.abs(dx) >= 1) facing = dx > 0 ? 'r' : 'l';
