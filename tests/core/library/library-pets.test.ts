@@ -114,3 +114,41 @@ describe('updateQuiet', () => {
     expect((await createLibraryRepo(store).load()).rooms[0]!.pets).toHaveLength(1);
   });
 });
+
+describe('robot', () => {
+  const withPets = (pets: unknown[]) => {
+    const base = createInitialState();
+    return parseLibraryState({ ...base, rooms: [{ ...base.rooms[0]!, pets }] }).rooms[0]!.pets;
+  };
+
+  it('lit un robot de coloris valable et refuse un coloris d une autre espèce', () => {
+    const pets = withPets([
+      { id: 'p1', species: 'robot', name: 'Robi', coat: 'blue' },
+      { id: 'p2', species: 'robot', name: 'Bad', coat: 'orange' },
+      { id: 'p3', species: 'cat', name: 'Bad2', coat: 'mint' },
+    ]);
+    expect(pets).toEqual([{ id: 'p1', species: 'robot', name: 'Robi', coat: 'blue' }]);
+  });
+
+  it('accepte un mélange chat, chien, robot et plafonne à trois', () => {
+    const pets = withPets([
+      { id: 'p1', species: 'cat', name: 'A', coat: 'white' },
+      { id: 'p2', species: 'dog', name: 'B', coat: 'red' },
+      { id: 'p3', species: 'robot', name: 'C', coat: 'red' },
+      { id: 'p4', species: 'robot', name: 'D', coat: 'white' },
+    ]);
+    expect(pets.map((p) => p.species)).toEqual(['cat', 'dog', 'robot']);
+  });
+
+  it('relit un plan de sieste sur le robot (ride)', () => {
+    const ride: PetPlan = { ...plan, action: 'sleep', with: { petId: 'p2', role: 'lead', scene: 'ride' } };
+    const saved = setPetPlan(adoptPet(createInitialState(), 'r1', 'A', 'white'), 'r1', 'p1', ride);
+    expect(parseLibraryState(JSON.parse(JSON.stringify(saved))).rooms[0]!.pets[0]!.plan).toEqual(ride);
+  });
+
+  it('adopte un robot : id libre, coloris gardé ou premier coloris', () => {
+    const state = adoptPet(createInitialState(), 'r1', 'Robi', 'blue', 'robot');
+    expect(state.rooms[0]!.pets[0]).toEqual({ id: 'p1', species: 'robot', name: 'Robi', coat: 'blue' });
+    expect(adoptPet(createInitialState(), 'r1', '', 'tabby', 'robot').rooms[0]!.pets[0]).toMatchObject({ name: 'Robi', coat: 'white' });
+  });
+});

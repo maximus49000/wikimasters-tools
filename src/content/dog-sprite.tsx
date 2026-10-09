@@ -159,5 +159,7 @@ export function dogBody(pose: Pose, c: DogColors, still: boolean): ReactElement 
           <DogHead x={15} y={-8} c={c} tilt={66} closed />
         </>
       );
+    default:
+      return sitting(c, still, <DogHead x={5} y={-31} c={c} />);
   }
 }
