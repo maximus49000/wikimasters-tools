@@ -31,6 +31,8 @@ export function lampField(
   if (sources.length === 0) return out;
   const P: V3 = { x: 0, d: 0, z: 0 };
   for (const s of sources) {
+    // Une seule fois par lampe : les meubles qui peuvent gêner (hors son propre corps, à portée en x).
+    const gene = boxes.filter((b) => b.owner !== s.box && b.x1 > s.x - LAMP_RMAX && b.x0 < s.x + LAMP_RMAX);
     const i0 = Math.max(0, Math.floor((s.x - LAMP_RMAX) / scale - 0.5));
     const i1 = Math.min(surf.w - 1, Math.ceil((s.x + LAMP_RMAX) / scale - 0.5));
     for (let j = 0; j < surf.h; j++) {
@@ -57,7 +59,7 @@ export function lampField(
         P.x = x;
         P.d = d;
         P.z = z;
-        const lit = litFraction(P, s, LAMP_SPREAD, boxes, s.box);
+        const lit = litFraction(P, s, LAMP_SPREAD, gene);
         out[n] = (out[n] ?? 0) + irr * lit;
       }
     }
