@@ -22,8 +22,8 @@ let scratch: HTMLCanvasElement | null = null;
 function canvasUrl(map: LightMap): string | null {
   if (typeof document === 'undefined' || (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom'))) return null;
   scratch ??= document.createElement('canvas');
-  scratch.width = map.w;
-  scratch.height = map.h;
+  if (scratch.width !== map.w) scratch.width = map.w;
+  if (scratch.height !== map.h) scratch.height = map.h;
   const ctx = scratch.getContext('2d');
   if (!ctx) return null;
   const data = ctx.createImageData(map.w, map.h);
@@ -43,10 +43,15 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, toUrl = 
     const image = imageRef.current;
     if (!image) return;
     const svg = image.ownerSVGElement;
+    let lastKey = '';
     const paint = (): void => {
       const s = skyRef.current;
       const w = clock.read(Date.now());
       const hidden = Number(svg?.style.getPropertyValue('--wmt-sun-hidden')) || 0;
+      const r = (v: number, q: number): number => Math.round(v / q);
+      const key = [r(s.sunFrac ?? -1, 0.005), r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01)].join('|');
+      if (key === lastKey && image.hasAttribute('href')) return;
+      lastKey = key;
       const input: LightInput = {
         width, height, wallH, windows,
         sunX: s.sunFrac === null ? null : celestialPlace(s.sunFrac, width, wallH).x,

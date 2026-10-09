@@ -42,3 +42,13 @@ Fiche WikiHow `bibliotheque-v13` (à quoi sert la lumière, d'où viennent les d
 ## Risques
 
 - `toDataURL` 3-4 fois par seconde sur de larges pièces : résolution plafonnée (≈ 400 × 90 px) et chronométrage à mesurer en vérification manuelle ; repli = fréquence réduite à 1 par seconde.
+
+## Écarts assumés en 8a
+
+- Pas de trouée en pluie fine (godRay) en 8a : les rais de `scene-weather` existants restent, le rayon ne suit que `hidden`.
+- Pas de hook `useLightMap` : `LightLayer` possède la boucle de repeinture.
+- La sortie est un unique tableau RGBA, pas `{shade, beam, tint}`.
+- L'élévation est une courbe sinusoïdale de `sunFrac` (6° à 62°), non dérivée de `celestialPlace`.
+- L'atténuation rasante sin(e)^0.6 vit dans `attenuation.ts`, pas dans `beam.ts`.
+- Le couvert nuageux est volontairement compté deux fois (`hidden` l'inclut déjà et `beamGain` applique 1 − 0,85·smooth(cloud)) : réglage à revoir à la vérification manuelle Chrome.
+- La lumière ignore les rectangles de verre : aucune ombre sur la vue extérieure.

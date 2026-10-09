@@ -1353,10 +1353,10 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-library] [data-light-toggle]',
         title: 'Allumer ou éteindre la lumière',
-        text: 'Le glyphe 💡 de la rangée Ciel allume ou éteint la lumière du soleil dans la pièce.',
+        text: 'Le bouton Lumière (l’icône d’ampoule) de la rangée Ciel allume ou éteint la lumière du soleil dans la pièce.',
         gesture: 'tap',
         details: [
-          { label: 'Comment faire', text: 'En mode Aménager, touchez 💡 dans la rangée Ciel. Le réglage est propre à cet appareil.' },
+          { label: 'Comment faire', text: 'En mode Aménager, touchez l’ampoule « Lumière » dans la rangée Ciel. Le réglage est propre à cet appareil.' },
           { label: 'Comment ça marche', text: 'La direction du rayon suit la place du soleil devant chaque fenêtre ; les nuages l’atténuent ; la nuit, seule la lumière ambiante reste ; la clarté baisse avec la distance aux fenêtres.' },
           { label: 'Limites', text: 'Pas encore d’ombres ni de lampes. Sans effet dans l’espace et sur la Terre vue d’en haut, et fixe en mode animations réduites. Si l’appareil ralentit, coupez la lumière avec 💡.' },
         ],

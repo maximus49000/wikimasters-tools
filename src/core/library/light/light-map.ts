@@ -35,6 +35,17 @@ function inQuad(q: readonly Point[], x: number, y: number): boolean {
   return true;
 }
 
+// Lumière du ciel par pixel : indépendante de l'heure, donc gardée d'un appel à l'autre tant que fenêtres et dimensions ne changent pas.
+let fieldMemo: { sig: string; field: Float32Array } | null = null;
+function skyField(windows: readonly Glass[], width: number, height: number, w: number, h: number): Float32Array {
+  const sig = `${width}x${height}|${windows.map((g) => `${g.x},${g.y},${g.w},${g.h}`).join(';')}`;
+  if (fieldMemo?.sig === sig) return fieldMemo.field;
+  const field = new Float32Array(w * h);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) field[j * w + i] = skylightAt((i + 0.5) * LIGHT_SCALE, (j + 0.5) * LIGHT_SCALE, windows);
+  fieldMemo = { sig, field };
+  return field;
+}
+
 // Image RGBA (non prémultipliée) posée par-dessus la pièce : une ombre translucide teintée, éclaircie sous les rayons,
 // plus une lueur chaude sous chaque rayon. Déterministe pour une entrée donnée.
 export function buildLightMap(input: LightInput): LightMap {
@@ -42,6 +53,7 @@ export function buildLightMap(input: LightInput): LightMap {
   const w = Math.ceil(width / LIGHT_SCALE);
   const h = Math.ceil(height / LIGHT_SCALE);
   const rgba = new Uint8ClampedArray(w * h * 4);
+  const field = skyField(windows, width, height, w, h);
   const sky = skyLevel(input.daylight, input.cloud);
   const need = lampNeed(input.daylight, input.cloud, input.precip);
   const shadeGain = 0.6 * (0.45 + 0.55 * need);
@@ -61,7 +73,9 @@ export function buildLightMap(input: LightInput): LightMap {
     const y = (j + 0.5) * LIGHT_SCALE;
     for (let i = 0; i < w; i++) {
       const x = (i + 0.5) * LIGHT_SCALE;
-      const light = clamp01(0.2 + 0.8 * sky * skylightAt(x, y, windows));
+      // La vue à travers le verre n'est jamais assombrie.
+      if (windows.some((g) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h)) continue;
+      const light = clamp01(0.2 + 0.8 * sky * field[j * w + i]!);
       const shade = (1 - light) * shadeGain;
       let b = 0;
       if (y >= wallH) {

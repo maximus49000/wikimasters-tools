@@ -12,6 +12,16 @@ const at = (m: { w: number; rgba: Uint8ClampedArray }, x: number, y: number): nu
 };
 
 describe('buildLightMap', () => {
+  it('ne grise pas la vue à travers le verre, même la nuit', () => {
+    const m = buildLightMap({ ...base, daylight: 0, sunFrac: null, sunX: null });
+    expect(at(m, 130, 110)[3]).toBe(0);
+    expect(at(m, 130, 200)[3]!).toBeGreaterThan(0);
+  });
+  it('donne le même résultat avec le cache de lumière du ciel', () => {
+    const a = buildLightMap(base);
+    const b = buildLightMap({ ...base, windows: [...base.windows] });
+    expect(Array.from(b.rgba)).toEqual(Array.from(a.rgba));
+  });
   it('a la taille de la pièce réduite et 4 octets par pixel', () => {
     const m = buildLightMap(base);
     expect(m.w).toBe(Math.ceil(600 / LIGHT_SCALE));
