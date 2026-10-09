@@ -9,9 +9,10 @@ export type SceneProposal = { scene: PairScene; partnerId: string; lead: PetPlan
 
 const CAT_SPEED = 0.8;
 const DOG_SPEED = 0.6;
+const ROBOT_SPEED = 0.7;
 const RUN = 0.6;
 // Actions sur place d'un partenaire qui accepte d'être abordé.
-const SOCIABLE: ReadonlySet<PetAction> = new Set(['sit', 'groom', 'stretch', 'yawn', 'sniff', 'pant']);
+const SOCIABLE: ReadonlySet<PetAction> = new Set(['sit', 'groom', 'stretch', 'yawn', 'sniff', 'pant', 'scan']);
 const APPROACH_MAX_MS = 4000;
 // Plafond de l'approche du meneur pour toute scène (poursuite, recul, sieste comprises).
 const MAX_APPROACH_MS = 6000;
@@ -20,7 +21,7 @@ const MAX_ACT_MS = 8000;
 const MIN_NAP_LEFT_MS = 10_000;
 const NAP_MS: readonly [number, number] = [18_000, 30_000];
 
-const speedOf = (pet: Pet): number => (pet.species === 'dog' ? DOG_SPEED : CAT_SPEED);
+const speedOf = (pet: Pet): number => (pet.species === 'dog' ? DOG_SPEED : pet.species === 'robot' ? ROBOT_SPEED : CAT_SPEED);
 const sideOf = (from: Pt, to: Pt): 'l' | 'r' => (to.x >= from.x ? 'r' : 'l');
 const between = (rng: () => number, [lo, hi]: readonly [number, number]): number => Math.round(lo + rng() * (hi - lo));
 
@@ -49,9 +50,15 @@ const planBase = (env: BrainEnv, now: number, facing: 'l' | 'r'): Pick<PetPlan, 
   hostId: null, on: null, startedAt: now, facing, sig: layoutSig(env.layout, env.cols),
 });
 
+// Le robot ne dort pas, ne se fait pas toiletter et ne joue pas à la poursuite : avec lui, salut, suite (chien) ou remise à sa place (chat).
 function scenesFor(lead: Pet, partner: Pet, sleeping: boolean): [PairScene, number][] {
-  if (sleeping) return [['nap', 1]];
+  if (sleeping) return lead.species === 'robot' ? [] : [['nap', 1]];
   const out: [PairScene, number][] = [['greet', 1]];
+  if (lead.species === 'robot') return out;
+  if (partner.species === 'robot') {
+    out.push(lead.species === 'dog' ? ['follow', 0.8] : ['shoo', 1.2]);
+    return out;
+  }
   if (lead.species === partner.species) out.push(['groom', 0.6]);
   if (lead.species === 'cat' && partner.species === 'dog') out.push(['shoo', 1.2]);
   else if (lead.species === 'dog' || partner.species === 'cat') out.push(['chase', 0.8]);
@@ -75,6 +82,7 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
   const sleeping = target.plan.action === 'sleep';
 
   const choices = scenesFor(lead.pet, partner, sleeping);
+  if (choices.length === 0) return null;
   const total = choices.reduce((a, [, w]) => a + w, 0);
   let roll = env.rng() * total;
   let scene = choices[choices.length - 1]![0];
@@ -87,13 +95,16 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
   }
 
   const map = buildWalkMap(env.layout, env.cols);
-  const meet = meetCell(map, at, env.rng, scene === 'chase' ? (lead.from.pt.x < at.x ? 'l' : 'r') : undefined);
+  // Poursuite et suite : le meneur arrive du côté d'où il vient, pour ne jamais traverser le partenaire.
+  const running = scene === 'chase' || scene === 'follow';
+  const meet = meetCell(map, at, env.rng, running ? (lead.from.pt.x < at.x ? 'l' : 'r') : undefined);
   if (!meet) return null;
-  if (scene === 'chase' && meet.side !== (lead.from.pt.x < at.x ? 'l' : 'r')) return null;
+  if (running && meet.side !== (lead.from.pt.x < at.x ? 'l' : 'r')) return null;
   const meetPt = standPoint(meet.col, meet.row);
   const approach = planRoute(map, lead.from, { pt: meetPt, on: null });
   if (!approach) return null;
-  const leadK = scene === 'chase' ? Math.max(speedOf(lead.pet), speedOf(partner)) * RUN : speedOf(lead.pet);
+  // Suite : le chien se règle sur le robot (pas d'accélération) ; poursuite : les deux filent.
+  const leadK = scene === 'chase' ? Math.max(speedOf(lead.pet), speedOf(partner)) * RUN : scene === 'follow' ? Math.max(speedOf(lead.pet), speedOf(partner)) : speedOf(lead.pet);
   const leadRoute = scaleRoute(approach, leadK);
   const leadWait = routeMs(leadRoute);
   if (leadWait > MAX_APPROACH_MS) return null;
@@ -144,7 +155,7 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
     };
   }
 
-  // chase : le poursuivi file, le poursuivant le rattrape ; les deux jouent à l'arrivée.
+  // chase / follow : le poursuivi file (ou roule), le poursuivant le rattrape ; les deux jouent à l'arrivée.
   const flee = fleeCell(map, at, meet.side, env.rng);
   if (!flee) return null;
   const fleePt = standPoint(flee.col, flee.row);
@@ -153,7 +164,7 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
   const chaseRoute = planRoute(map, { pt: meetPt, on: null }, { pt: behind, on: null });
   if (!fleeRoute || !chaseRoute) return null;
   const leadFull = [...leadRoute, ...scaleRoute(chaseRoute, leadK)];
-  const partnerRoute = scaleRoute(fleeRoute, speedOf(partner) * RUN);
+  const partnerRoute = scaleRoute(fleeRoute, scene === 'follow' ? speedOf(partner) : speedOf(partner) * RUN);
   // Les deux plans finissent au même instant : le plus rapide attend l'autre en jouant.
   const leadRun = routeMs(leadFull);
   const partnerRun = leadWait + routeMs(partnerRoute);
@@ -162,8 +173,8 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
   if (leadAct > MAX_ACT_MS || partnerAct > MAX_ACT_MS) return null;
   return {
     scene, partnerId: partner.id,
-    lead: { ...base(sideOf(meetPt, fleePt)), action: 'play', at: behind, route: leadFull, actMs: leadAct, with: leadWith },
-    partner: { ...base(sideOf(at, fleePt)), action: 'play', at: fleePt, route: partnerRoute, lag: leadWait, actMs: partnerAct, with: partnerWith },
+    lead: { ...base(sideOf(meetPt, fleePt)), action: scene === 'follow' ? 'greet' : 'play', at: behind, route: leadFull, actMs: leadAct, with: leadWith },
+    partner: { ...base(sideOf(at, fleePt)), action: scene === 'follow' ? 'scan' : 'play', at: fleePt, route: partnerRoute, lag: leadWait, actMs: partnerAct, with: partnerWith },
   };
 }
 
