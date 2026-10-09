@@ -42,6 +42,25 @@ describe('lampPetTransmission', () => {
   });
 });
 
+describe('lampPetTransmission, deux lampes', () => {
+  // A (x 560) projette l'ombre de l'animal sur le pixel ; B (x −120) n'a aucun animal dans sa fenêtre en x
+  // (b.x0 < B.x + 420 est faux) mais éclaire quand même le pixel.
+  const A: LampSource = { id: 'a', x: 560, d: 250, z: 60, box: 'a' };
+  const B: LampSource = { id: 'b', x: -120, d: 290, z: 60, box: 'b' };
+  const pet: Box = { owner: 'p1', x0: 300, x1: 330, d0: 270, d1: 300, z0: 0, z1: 40 };
+  const n = pixelAt(250, 290);
+  it('une lampe sans animal à portée garde son poids dans la moyenne', () => {
+    const field = new Float32Array(surf.w * surf.h).fill(1);
+    const aSeul = lampPetTransmission([A], [pet], surf, field, SCALE)[n]!;
+    const bSeul = lampPetTransmission([B], [pet], surf, field, SCALE)[n]!;
+    const deux = lampPetTransmission([A, B], [pet], surf, field, SCALE)[n]!;
+    expect(aSeul).toBeLessThan(1);
+    expect(bSeul).toBe(1);
+    expect(deux).toBeGreaterThan(aSeul);
+    expect(deux).toBeLessThan(1);
+  });
+});
+
 describe('sunPetTransmission', () => {
   const glass = { x: 280, y: 40, w: 60, h: 80, zBottom: 80, zTop: 160 };
   const tanElev = Math.tan(0.7);

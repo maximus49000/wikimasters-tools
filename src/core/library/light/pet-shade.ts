@@ -24,8 +24,8 @@ export function lampPetTransmission(
   const den = new Float32Array(surf.w * surf.h);
   const P: V3 = { x: 0, d: 0, z: 0 };
   for (const s of sources) {
+    // Sans animal à portée, la lampe compte quand même (transmission 1) dans la moyenne pondérée.
     const gene = pets.filter((b) => b.x1 > s.x - LAMP_RMAX && b.x0 < s.x + LAMP_RMAX);
-    if (gene.length === 0) continue;
     const i0 = Math.max(0, Math.floor((s.x - LAMP_RMAX) / scale - 0.5));
     const i1 = Math.min(surf.w - 1, Math.ceil((s.x + LAMP_RMAX) / scale - 0.5));
     for (let j = 0; j < surf.h; j++) {
