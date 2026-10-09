@@ -23,8 +23,10 @@ Une seule spec, trois PR, chacune avec sa fiche WikiHow et sa pré-prod.
 Module pur `src/core/library/city/calendar.ts`, calculé sur la date locale de l'appareil, sans service externe. Il fournit à tous les moteurs un `DayContext` : `kind` (`school`, `weekend`, `holiday`, `public-holiday`), `festivity` éventuelle et `progress` dans la fête.
 
 - **Jours fériés** (France) : dates fixes (1er janvier, 1er et 8 mai, 14 juillet, 15 août, 1er novembre, 11 novembre, 25 décembre) et dates mobiles déduites de Pâques par calcul (lundi de Pâques, Ascension, lundi de Pentecôte). Un jour férié se comporte comme un dimanche : peu de circulation, pas d'école, plus de marcheurs et d'enfants dehors, aucun costume.
-- **Vacances scolaires** : table de données (Toussaint, Noël, hiver, printemps, été) pour le calendrier officiel français, dates à relever à la source officielle (education.gouv.fr) au moment de l'implémentation. Pendant les vacances : **plus aucun groupe d'école**, circulation un peu réduite et sans vraie pointe du matin, plus d'enfants dehors, moins de costumes. **Mise à jour annuelle** : la table est mise à jour à la main chaque année (nouvelle année scolaire publiée par l'Éducation nationale), dans une nouvelle version de l'extension. Pour ne pas l'oublier : un fichier de données unique `school-holidays.ts` (une entrée par année scolaire et par zone, avec la source et la date de relevé), un test qui **échoue quand la table ne couvre plus l'année scolaire en cours ou la suivante** (avertissement dès le printemps), et une ligne dans la routine de livraison. Si malgré tout la table est dépassée, le calendrier retombe sur « semaine normale » sans erreur, et la fiche WikiHow le mentionne.
-- **Zone scolaire** : l'hiver et le printemps sont décalés selon trois zones (A, B, C). Zone : à trancher (voir « Points ouverts »).
+- **Vacances scolaires, récupérées automatiquement** : l'extension ne porte plus de table à mettre à jour à la main. Le relais Cloudflare existant gagne une route `/school-calendar?zone=…` qui lit le calendrier officiel (jeu de données ouvert « calendrier scolaire » de data.education.gouv.fr, nom exact et format à vérifier à l'implémentation), le réduit à `{zone, année scolaire, périodes[{nom, début, fin}]}` et le met en cache côté relais (24 h). L'extension le garde en cache local (7 jours, une requête au plus par jour) et en tire les périodes de l'année scolaire en cours et de la suivante. **Repli** si le relais est injoignable ou que la réponse est invalide : dernier calendrier mis en cache, puis un petit relevé embarqué (une année scolaire, dates fixes de Toussaint, Noël, été) ; au pire, semaine normale. Aucune donnée personnelle ne part : seule la zone est envoyée.
+  Effet pendant les vacances : **plus aucun groupe d'école**, circulation un peu réduite et sans vraie pointe du matin, plus d'enfants dehors, moins de costumes.
+- **Zone scolaire** : les vacances **diffèrent selon la zone** (A, B, C en métropole, Corse et chaque territoire d'outre-mer ont leur propre calendrier). La zone est **déduite automatiquement de la position** quand le joueur a accordé la géolocalisation (la même que pour le soleil) : le relais convertit la position arrondie à 0,1° en département (service ouvert de l'État, sans clé), puis une petite table embarquée département → académie → zone donne la zone. La position n'est jamais enregistrée. Sans position, ou hors de France, on utilise le réglage manuel de la zone dans le panneau Ciel (choix « Automatique », A, B, C, Corse ou outre-mer), « Automatique » étant le réglage par défaut avec repli sur une zone par défaut (à choisir à l'implémentation).
+- **Fêtes selon la région** : les jours fériés et les fêtes sont **calculés localement** (dates fixes et Pâques), sans récupération, car leurs règles ne changent pas. Ils suivent aussi la région quand elle compte : en Alsace-Moselle s'ajoutent le Vendredi saint et le 26 décembre (déduit du département), et les territoires d'outre-mer ont leurs fêtes locales, proposées plus tard si besoin.
 - **Fêtes et événements du calendrier** : liste de données (date ou plage, heures, poids, événement), jouée en plus des événements ordinaires :
   - **24 décembre** : le **père Noël** repasse **toutes les 15 minutes** dans le ciel, **à partir de la nuit tombée** (crépuscule du soir, d'après l'heure du ciel) **jusqu'à l'aube**. Un passage par quart d'heure d'horloge murale, tiré de la graine : même passage dans toutes les fenêtres et après un rechargement. Le décalage dans le quart d'heure, la hauteur et le sens varient d'un passage à l'autre.
     - **Passage simple** : le traîneau et ses rennes traversent le ciel (clochettes de lumière, traînée scintillante).
@@ -42,11 +44,19 @@ Module pur `src/core/library/city/calendar.ts`, calculé sur la date locale de l
 | 1er mai | 1er mai | passants avec du muguet, peu de costumes, circulation de férié |
 | Fête de la musique | 21 juin soir | musiciens et petits groupes dans la rue, lumières colorées, foule le soir |
 | Fête nationale | 14 juillet | défilé de véhicules le matin, feux d'artifice en soirée, foule à pied |
-| Halloween | 31 octobre | enfants déguisés et citrouilles aux fenêtres, plus de monde à la tombée de la nuit |
+| Halloween | 31 octobre (décor du 24 octobre à environ une semaine après) | enfants déguisés, plus de monde à la tombée de la nuit, décor monté puis retiré par les habitants (voir plus bas) |
 | Armistice | 11 novembre | drapeaux, peu de circulation (férié) |
 | Noël | du 1er décembre au 6 janvier | guirlandes et lumières de Noël aux fenêtres des immeubles ; 24 au soir : le père Noël (ci-dessus) ; 25 : rue très calme |
 
   - Une fête peut cumuler avec la météo et le calendrier (pas de feu d'artifice sous la pluie : il est simplement absent, sans report), et ne remplace jamais les règles de la vie ambiante : elle les module (poids des enfants, des couples, des costumes) et ajoute ses événements au moteur de la vague 1b.
+  - **Décors de longue durée** (les lumières de Noël du 1er décembre au 6 janvier, le décor d'Halloween, et de même toute fête qui s'étale sur plusieurs jours) suivent un cycle calculé depuis la date et l'heure, sans état, avec **montage, présence puis démontage**. Chaque décor est une donnée : période, éléments (guirlandes, citrouilles, toiles, drapeaux), emplacements sur les immeubles, durées de montage et de démontage.
+    - **Premier jour, montage** : dans la journée (de 9 h à 17 h environ), des installateurs sur des échelles et une nacelle posent les éléments un à un, façade après façade ; l'avancement dépend de l'heure (rien à 9 h, tout est posé à 17 h). Tout le monde voit la même progression, un rechargement la retrouve.
+    - **Pendant la période, en place** : les lumières de Noël sont **éteintes le jour** et **allumées la nuit** dehors (guirlandes entre les immeubles, façades, arbres), avec un allumage progressif au crépuscule et une extinction progressive à l'aube, selon la lumière du jour de la scène. Elles restent visibles la nuit même quand les fenêtres s'éteignent.
+    - **Dernier jour, démontage** : la séquence inverse, de 9 h à 17 h ; les éléments disparaissent façade après façade, retirés par des installateurs visibles. La nuit du dernier jour, ce qui reste n'est plus allumé.
+    - **Noël** : du 1er décembre au 6 janvier ; montage le 1er, démontage le 6.
+    - **Halloween** : le décor se **monte une semaine avant** (à partir du 24 octobre), de façon étalée : citrouilles, toiles d'araignée, guirlandes orange et chauves-souris apparaissent façade par façade au fil de la semaine, posées par des habitants (pas de nacelle). Après le 31 octobre, il est **retiré petit à petit, naturellement** : les habitants enlèvent eux-mêmes leurs décorations les jours suivants (environ une semaine), chaque façade à son propre rythme, sans jour unique de démontage. Les habitants qui décorent ou démontent sont visibles à leur fenêtre, sur le pas de leur porte ou sur un balcon. Les citrouilles et guirlandes d'Halloween brillent un peu la nuit.
+    - Le moteur dérive l'état de chaque élément d'un seuil `u` tiré de sa graine (comme `lampLit`) : un élément est posé si `u` est inférieur à l'avancement du montage, et retiré si `u` est inférieur à l'avancement du démontage. La cascade est donc naturelle et sans état, et le décor apparaît en désordre plutôt qu'en bloc.
+    - Sous la pluie, les installateurs de Noël ne sont pas visibles ; l'avancement reste calculé à l'heure pour rester déterministe.
   - Tout est dans une table de données : ajouter ou retirer une fête ne demande pas de code.
   - Les décors de fête (guirlandes, citrouilles, drapeaux) sont de petits sprites ajoutés au décor fixe, sans surcoût d'animation.
 
@@ -142,15 +152,17 @@ S'appuie sur `pets/context.ts`, `brain.ts` et le moteur de scènes à deux.
 ## Tests
 
 - **Moteur (1a)** : déterminisme (même minute et même graine donnent le même résultat), courbes des pointes semaine et week-end, école (présence de 7 h 50 à 8 h 30 et de 16 h 45 à 17 h 15 du lundi au vendredi sauf le mercredi, où la sortie a lieu vers 12 h et rien à 16 h 45 ; absence le week-end, les vacances et les jours fériés), pluie (moins de piétons, parapluies), nuit, plafonds de densité, diversité (deux tirages voisins diffèrent de tenue), cohérence des profils (costume le week-end rare, cartable seulement un jour d'école).
-- **Calendrier** : Pâques et fériés mobiles sur plusieurs années, bornes des vacances, repli hors table, le 24 décembre donne un passage par quart d'heure à la nuit tombée, aucun de jour ni en été, la livraison se pose sur un toit existant.
+- **Calendrier** : Pâques et fériés mobiles sur plusieurs années, lecture du format officiel (fixture), cache de 7 jours, repli en cascade, zone déduite d'un département, bornes des vacances, cycles de décor (Noël : montage, en place, démontage, lumières éteintes le jour et allumées la nuit ; Halloween : montage sur une semaine puis retrait étalé, éléments posés selon leur seuil), le 24 décembre donne un passage par quart d'heure à la nuit tombée, aucun de jour ni en été, la livraison se pose sur un toit existant.
 - **Événements (1b)** : conditions (aucun feu d'artifice de jour, aucun cerf-volant sous la pluie), plafond d'événements simultanés, progression continue au chevauchement de créneaux.
 - **Animaux (1c)** : pas de réaction si le chien dort ou sans fenêtre, plan écrit une seule fois par passage, reprise après rechargement.
 - **Rendu (jsdom)** : un groupe d'acteurs urbains par fenêtre, aucune erreur en mouvement réduit.
 
 ## Points ouverts
 
-- **Zone scolaire** (proposition retenue) : réglage local A / B / C dans le panneau Ciel, zone par défaut à choisir à l'implémentation ; Les vacances de Toussaint, Noël et d'été sont les mêmes pour toutes les zones ; seuls l'hiver et le printemps diffèrent.
-- **Vague du calendrier** : en 1a (jours et vacances) ; le père Noël et les fêtes arrivent en 1b avec le moteur d'événements.
+- **Source des vacances** : nom exact du jeu de données et format à confirmer à l'implémentation ; si la source change ou disparaît, seul le relais est à adapter.
+- **Zone par défaut** quand la position est refusée et qu'aucun réglage n'existe : à choisir à l'implémentation.
+- **Relais** : la route `/school-calendar` est à déployer (comme `/weather`) ; cela demande une action de ta part (déploiement Cloudflare), à planifier dans la vague 1a.
+- **Vague du calendrier** : jours, vacances et zone en 1a ; le père Noël, les fêtes et les décors de longue durée arrivent en 1b avec le moteur d'événements.
 
 ## Livraison
 
@@ -159,7 +171,7 @@ Pour chaque vague : PR fusionnée, fiche WikiHow (`bibliotheque-v19` pour 1a, `v
 ## Limites assumées
 
 - Calendrier français uniquement (jours fériés, vacances scolaires, fêtes) ; pas de calendrier dans les autres pays.
-- Table des vacances limitée aux années relevées et mise à jour chaque année à la main ; au-delà, repli sur une semaine normale.
+- Vacances : si le relais et le cache sont indisponibles, repli sur le relevé embarqué puis semaine normale.
 - Pas de réaction du robot ni des animaux à d'autres événements que le promeneur de chien (par exemple l'ambulance), à envisager plus tard.
 - Pas de son.
 - Les autres scènes viennent dans des lots ultérieurs avec le même moteur d'événements.
