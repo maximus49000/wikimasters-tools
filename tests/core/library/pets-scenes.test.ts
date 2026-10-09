@@ -112,3 +112,47 @@ describe('sceneIsValid', () => {
     expect(sceneIsValid(nap, undefined, false)).toBe(false);
   });
 });
+
+describe('correctifs des scènes', () => {
+  it('poursuite près du mur : jamais à travers le meneur', () => {
+    const wall = resting('sit', standPoint(34, 16));
+    const lead = { pt: standPoint(30, 16), on: null, hostId: null, facing: 'r' as const };
+    for (const s of seeds) {
+      const r = proposeScene(env(s), { pet: dog('a'), from: lead }, [{ pet: cat('b'), plan: wall }], 1000);
+      if (r?.scene === 'chase') {
+        const meetX = r.lead.route[0]!.to.x;
+        const fleeEnd = r.partner!.route.at(-1)!.to.x;
+        expect(Math.sign(fleeEnd - wall.at.x)).not.toBe(Math.sign(meetX - wall.at.x));
+      }
+    }
+  });
+
+  it('chien qui poursuit un chat : ne le dépasse jamais', () => {
+    let n = 0;
+    for (const s of seeds) {
+      const r = propose(dog('a'), cat('b'), awake, s);
+      if (r?.scene !== 'chase') continue;
+      n++;
+      const end = Math.max(planEndsAt(r.lead), planEndsAt(r.partner!));
+      for (let t = 1000; t <= end; t += 100) {
+        const a = stateAt(r.lead, t).pos, b = stateAt(r.partner!, t).pos;
+        const dir = Math.sign(r.partner!.at.x - r.lead.at.x) || 1;
+        expect((b.x - a.x) * dir, `seed ${s} t ${t} a ${a.x} b ${b.x} at ${r.partner!.at.x} lead ${r.lead.at.x} meet ${r.lead.route[0]!.to.x}`).toBeGreaterThanOrEqual(-1);
+      }
+    }
+    expect(n).toBeGreaterThan(0);
+  });
+
+  it('pas de salut / toilette / remise à sa place sans recul quand le partenaire est loin', () => {
+    const far = resting('sit', standPoint(30, 16));
+    for (const s of seeds) {
+      const r = proposeScene(env(s), { pet: cat('a'), from }, [{ pet: cat('b'), plan: far }], 1000);
+      expect(r === null || r.scene === 'nap' || r.scene === 'chase').toBe(true);
+    }
+  });
+
+  it('pas de sieste près d un dormeur sur un meuble', () => {
+    const sleeper = resting('sleep', standPoint(12, 16), { hostId: 'f', on: 'f' });
+    for (const s of seeds) expect(propose(cat('a'), dog('b'), sleeper, s)).toBeNull();
+  });
+});

@@ -12,6 +12,7 @@ const DOG_SPEED = 0.6;
 const RUN = 0.6;
 // Actions sur place d'un partenaire qui accepte d'être abordé.
 const SOCIABLE: ReadonlySet<PetAction> = new Set(['sit', 'groom', 'stretch', 'yawn', 'sniff', 'pant', 'purr']);
+const APPROACH_MAX_MS = 4000;
 const MIN_NAP_LEFT_MS = 10_000;
 const NAP_MS: readonly [number, number] = [18_000, 30_000];
 
@@ -20,9 +21,9 @@ const sideOf = (from: Pt, to: Pt): 'l' | 'r' => (to.x >= from.x ? 'r' : 'l');
 const between = (rng: () => number, [lo, hi]: readonly [number, number]): number => Math.round(lo + rng() * (hi - lo));
 
 // Une case libre contiguë au partenaire (gauche ou droite d'abord, côté tiré au hasard), ou null.
-function meetCell(map: WalkMap, at: Pt, rng: () => number): { col: number; row: number; side: 'l' | 'r' } | null {
+function meetCell(map: WalkMap, at: Pt, rng: () => number, preferred?: 'l' | 'r'): { col: number; row: number; side: 'l' | 'r' } | null {
   const c = cellOf(at);
-  const order = rng() < 0.5 ? [-1, 1, -2, 2] : [1, -1, 2, -2];
+  const order = preferred ? (preferred === 'l' ? [-1, 1] : [1, -1]) : rng() < 0.5 ? [-1, 1] : [1, -1];
   for (const dx of order) if (isFree(map, c.col + dx, c.row)) return { col: c.col + dx, row: c.row, side: dx < 0 ? 'l' : 'r' };
   return null;
 }
@@ -31,7 +32,7 @@ function meetCell(map: WalkMap, at: Pt, rng: () => number): { col: number; row: 
 function fleeCell(map: WalkMap, at: Pt, awayFrom: 'l' | 'r', rng: () => number): { col: number; row: number } | null {
   const c = cellOf(at);
   const dir = awayFrom === 'l' ? 1 : -1;
-  for (const d of [dir, -dir]) {
+  for (const d of [dir]) {
     for (let step = 4 + Math.floor(rng() * 4); step >= 2; step--) {
       const col = c.col + d * step;
       if (col >= 0 && col < map.cols && isFree(map, col, c.row) && isFree(map, col - d, c.row)) return { col, row: c.row };
@@ -60,7 +61,7 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
     if (plan.with !== undefined || now >= planEndsAt(plan)) return false;
     const state = stateAt(plan, now);
     if (state.phase !== 'act' || state.on !== null || plan.on !== null) return false;
-    if (plan.action === 'sleep') return planEndsAt(plan) - now >= MIN_NAP_LEFT_MS;
+    if (plan.action === 'sleep') return plan.hostId === null && planEndsAt(plan) - now >= MIN_NAP_LEFT_MS;
     return plan.hostId === null && SOCIABLE.has(plan.action);
   });
   if (eligible.length === 0) return null;
@@ -82,13 +83,14 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
   }
 
   const map = buildWalkMap(env.layout, env.cols);
-  const meet = meetCell(map, at, env.rng);
+  const meet = meetCell(map, at, env.rng, scene === 'chase' ? (lead.from.pt.x < at.x ? 'l' : 'r') : undefined);
   if (!meet) return null;
+  if (scene === 'chase' && meet.side !== (lead.from.pt.x < at.x ? 'l' : 'r')) return null;
   const meetPt = standPoint(meet.col, meet.row);
   const approach = planRoute(map, lead.from, { pt: meetPt, on: null });
   if (!approach) return null;
-  const run = scene === 'chase' ? RUN : 1;
-  const leadRoute = scaleRoute(approach, speedOf(lead.pet) * run);
+  const leadK = scene === 'chase' ? Math.max(speedOf(lead.pet), speedOf(partner)) * RUN : speedOf(lead.pet);
+  const leadRoute = scaleRoute(approach, leadK);
   const leadWait = routeMs(leadRoute);
   const facingPartner = sideOf(meetPt, at);
   const facingLead = sideOf(at, meetPt);
@@ -101,6 +103,7 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
     return { scene, partnerId: partner.id, partner: null, lead: { ...base(facingPartner), action: 'sleep', at: meetPt, route: leadRoute, actMs: Math.max(5000, actMs), with: leadWith } };
   }
 
+  if ((scene === 'greet' || scene === 'groom') && leadWait > APPROACH_MAX_MS) return null;
   if (scene === 'greet' || scene === 'groom') {
     const actMs = scene === 'greet' ? 3000 : 5000;
     return {
@@ -125,6 +128,7 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
         break;
       }
     }
+    if (recoil.length === 0 && leadWait > APPROACH_MAX_MS) return null;
     return {
       scene, partnerId: partner.id,
       lead: { ...base(facingPartner), action: 'hiss', at: meetPt, route: leadRoute, actMs, with: leadWith },
@@ -143,7 +147,7 @@ export function proposeScene(env: BrainEnv, lead: { pet: Pet; from: Standing }, 
   const actMs = 2500;
   return {
     scene, partnerId: partner.id,
-    lead: { ...base(sideOf(meetPt, fleePt)), action: 'play', at: behind, route: [...leadRoute, ...scaleRoute(chaseRoute, speedOf(lead.pet) * RUN)], actMs, with: leadWith },
+    lead: { ...base(sideOf(meetPt, fleePt)), action: 'play', at: behind, route: [...leadRoute, ...scaleRoute(chaseRoute, leadK)], actMs, with: leadWith },
     partner: { ...base(sideOf(at, fleePt)), action: 'play', at: fleePt, route: scaleRoute(fleeRoute, speedOf(partner) * RUN), lag: leadWait, actMs, with: partnerWith },
   };
 }
