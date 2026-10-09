@@ -3,3 +3,4 @@ export * from './beam';
 export * from './attenuation';
 export * from './ambient';
 export * from './light-map';
+export * from './occluders';
