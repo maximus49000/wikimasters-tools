@@ -1320,4 +1320,48 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v13',
+    theme: 'collection',
+    glyph: '💡',
+    title: 'La lumière du soleil dans la pièce',
+    summary: 'Un rayon de soleil par fenêtre, plus sombre loin du verre, qui suit l’heure et la météo',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Ouvrir une pièce de la Bibliothèque',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : la lumière du soleil entre par leurs fenêtres et se voit en mode Visiter.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez une pièce qui a au moins une fenêtre : un rayon de lumière en part, sans rien d’autre à faire.' },
+          { label: 'À quoi ça sert', text: 'À donner du volume à la pièce : un rayon par fenêtre, et une pièce plus sombre à mesure qu’on s’éloigne du verre.' },
+          { label: 'D’où viennent les données', text: 'L’heure, la place du soleil et la météo sont déjà calculées sur votre appareil pour le ciel de la pièce : la lumière les réutilise et rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Passer en mode Aménager',
+        text: 'Le crayon passe en mode Aménager : c’est là que se trouve le réglage de la lumière, dans la rangée Ciel.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
+          { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur : les réglages ne sont proposés qu’en mode Aménager.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-light-toggle]',
+        title: 'Allumer ou éteindre la lumière',
+        text: 'Le glyphe 💡 de la rangée Ciel allume ou éteint la lumière du soleil dans la pièce.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'En mode Aménager, touchez 💡 dans la rangée Ciel. Le réglage est propre à cet appareil.' },
+          { label: 'Comment ça marche', text: 'La direction du rayon suit la place du soleil devant chaque fenêtre ; les nuages l’atténuent ; la nuit, seule la lumière ambiante reste ; la clarté baisse avec la distance aux fenêtres.' },
+          { label: 'Limites', text: 'Pas encore d’ombres ni de lampes. Sans effet dans l’espace et sur la Terre vue d’en haut, et fixe en mode animations réduites. Si l’appareil ralentit, coupez la lumière avec 💡.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+    ],
+  },
 ];
