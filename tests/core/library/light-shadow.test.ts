@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { JITTER, litFraction, segmentHitsBox, sunReaches } from '../../../src/core/library/light/shadow';
+import { ROOM_DEPTH_FACTOR, beamPatch } from '../../../src/core/library/light/beam';
 import type { Box } from '../../../src/core/library/light/occluders';
 
 const box = (o: Partial<Box> = {}): Box => ({ owner: 'b', x0: 0, x1: 100, d0: 0, d1: 100, z0: 0, z1: 50, ...o });
@@ -65,4 +66,40 @@ describe('sunReaches', () => {
     const table = box({ x0: 298, x1: 302, d0: 40, d1: 60, z0: 0, z1: 100 });
     expect(sunReaches(p, glass, 0.5, 0, [table])).toBe(sunReaches(p, glass, 0.5, 0, [table]));
   });
+});
+
+// La tache de soleil au sol (sunReaches, sans meuble) doit coïncider avec la projection exacte beamPatch : même signe de pente.
+describe('sunReaches et beamPatch : même empreinte au sol', () => {
+  const wallH = 340;
+  const floorH = 170;
+  const g = { x: 100, y: 60, w: 60, h: 100 };
+  const glass = { ...g, zBottom: wallH - (g.y + g.h), zTop: wallH - g.y };
+  const elev = 0.6;
+  const depthMax = wallH * ROOM_DEPTH_FACTOR;
+  for (const slope of [0.8, -0.8, 0]) {
+    it(`pente ${slope} : mêmes coins à un pixel près`, () => {
+      const patch = beamPatch(g, wallH, floorH, elev, slope)!;
+      const k = floorH / depthMax;
+      let dMin = Infinity; let dMax = -Infinity;
+      const rows = new Map<number, [number, number]>();
+      for (let d = 0; d <= depthMax; d++) {
+        for (let x = -300; x <= 900; x++) {
+          if (sunReaches({ x, d, z: 0 }, glass, Math.tan(elev), slope, []) <= 0) continue;
+          dMin = Math.min(dMin, d); dMax = Math.max(dMax, d);
+          const r = rows.get(d);
+          rows.set(d, r ? [Math.min(r[0], x), Math.max(r[1], x)] : [x, x]);
+        }
+      }
+      // Profondeurs des bords proche et lointain d'après les coins (y = wallH + d·k).
+      expect(Math.abs(dMin - (patch[0]!.y - wallH) / k)).toBeLessThanOrEqual(1);
+      expect(Math.abs(dMax - (patch[2]!.y - wallH) / k)).toBeLessThanOrEqual(1);
+      const near = rows.get(dMin)!;
+      const far = rows.get(dMax)!;
+      const tol = 1 + Math.abs(slope);
+      expect(Math.abs(near[0] - patch[0]!.x)).toBeLessThanOrEqual(tol);
+      expect(Math.abs(near[1] - patch[1]!.x)).toBeLessThanOrEqual(tol);
+      expect(Math.abs(far[1] - patch[2]!.x)).toBeLessThanOrEqual(tol);
+      expect(Math.abs(far[0] - patch[3]!.x)).toBeLessThanOrEqual(tol);
+    });
+  }
 });

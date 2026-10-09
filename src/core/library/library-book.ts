@@ -131,8 +131,6 @@ export function activeRoom(state: LibraryState): Room {
   return state.rooms.find((room) => room.id === state.activeRoomId) ?? state.rooms[0]!;
 }
 
-// Nettoie un aménagement lu : un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau, un objet rangé sans étagère
-// ou un petit objet sans porteur, hors emplacements ou sur un emplacement déjà pris, et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi.
 // Le champ `lit` n'a de sens que sur une lampe : ailleurs il est écarté.
 function stripLit(p: Placed): Placed {
   if ((p as { lit?: boolean }).lit === undefined || isLamp(p)) return p;
@@ -140,6 +138,8 @@ function stripLit(p: Placed): Placed {
   return rest as Placed;
 }
 
+// Nettoie un aménagement lu : un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau, un objet rangé sans étagère
+// ou un petit objet sans porteur, hors emplacements ou sur un emplacement déjà pris, et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi.
 function cleanLayout(layout: Layout): Layout {
   const ids = new Set<string>();
   const unique = layout.filter((p) => !ids.has(p.id) && Boolean(ids.add(p.id)));

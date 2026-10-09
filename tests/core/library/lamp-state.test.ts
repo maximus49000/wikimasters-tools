@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseLibraryState } from '../../../src/core/library/library-book';
-import { isLamp, isLit, toggleLamp } from '../../../src/core/library/room-grid';
+import { isLamp, isLit, moveStanding, shiftLayout, toggleLamp } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
 
 const layout: Layout = [
@@ -36,5 +36,16 @@ describe('lampes', () => {
     const room = parseLibraryState(state).rooms[0]!;
     expect((room.layout[0] as { lit?: boolean }).lit).toBe(false);
     expect('lit' in room.layout[1]!).toBe(false);
+  });
+  it('lit survit au déplacement d’une lampe et au décalage de zone', () => {
+    const eteinte = toggleLamp(layout, 'f1');
+    const deplacee = moveStanding(eteinte, 48, 'f1', 20, 12);
+    expect(deplacee).not.toBeNull();
+    const lampe = deplacee!.find((p) => p.id === 'f1') as { col: number; lit?: boolean };
+    expect(lampe.col).toBe(20);
+    expect(lampe.lit).toBe(false);
+    const decalee = shiftLayout(eteinte, 12).find((p) => p.id === 'f1') as { col: number; lit?: boolean };
+    expect(decalee.col).toBe(14);
+    expect(decalee.lit).toBe(false);
   });
 });
