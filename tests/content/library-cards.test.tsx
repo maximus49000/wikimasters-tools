@@ -268,6 +268,8 @@ describe('LibraryPanel : cartes', () => {
   const pointer = (type: string, target: EventTarget, x: number, y: number) =>
     act(async () => { target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y })); });
   async function longPress(selector: string, x: number, y: number) {
+    // L'appui long ne déplace qu'en mode Aménager.
+    await click('[data-action="edit"]');
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     await pointer('pointerdown', q(selector)!, x, y);
     await act(async () => { vi.advanceTimersByTime(500); });

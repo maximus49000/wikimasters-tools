@@ -443,6 +443,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (first) setDrag(first);
   };
   const onFurnitureDown = (id: string, event: ReactPointerEvent): void => {
+    // En mode Visiter, l'appui long ne fait rien : seul le bouton « Aménager » ouvre l'aménagement.
+    if (!editing) return;
     pressedId.current = id;
     lastPointer.current = { x: event.clientX, y: event.clientY };
     press.start(event.clientX, event.clientY);

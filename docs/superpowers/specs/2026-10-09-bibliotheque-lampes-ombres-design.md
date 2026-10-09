@@ -20,7 +20,7 @@ Ombres des animaux (8c) ; lampes de la scène Steampunk avec lueur animée ; omb
 
 ## Interaction
 
-- **Visiter** : un clic (ou toucher) sur une lampe la bascule. L'appui long sur un meuble reste réservé à Aménager.
+- **Visiter** : un clic (ou toucher) sur une lampe la bascule. **L'appui long ne fait plus rien en Visiter** (il ne bascule plus vers Aménager, correctif livré avec ce morceau) : seul le bouton « Aménager » ouvre l'aménagement, et l'appui long pour déplacer ne marche qu'en Aménager.
 - **Aménager** : un clic sélectionne comme pour tout meuble ; la bascule se fait aussi par un petit bouton ampoule dans la barre de la sélection (même glyphe que le réglage Lumière).
 - Dessin : abat-jour clair et halo quand allumée, abat-jour sombre sans halo quand éteinte (`furniture-art-home.tsx`, version Steampunk incluse). Libellé accessible « Lampe allumée / éteinte », `aria-pressed`.
 

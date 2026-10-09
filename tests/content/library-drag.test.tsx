@@ -126,15 +126,14 @@ describe('déplacement par appui long', () => {
     expect(layoutNow()[0]).toMatchObject({ col: 2, row: 11 });
   });
 
-  it('en mode Visiter, l’appui long passe en Aménager et commence le déplacement', async () => {
+  it('en mode Visiter, l’appui long ne passe pas en Aménager et ne déplace rien', async () => {
     await withDesk();
     await click('[data-action="visit"]');
-    expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('false');
     await longPress('[data-furniture="desk"]', 95, 385);
-    expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('false');
     await pointer('pointerup', window, 365, 405);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ col: 12, row: 11 });
+    expect(layoutNow()[0]).toMatchObject({ col: 2, row: 11 });
   });
 
   it('en mode Visiter, un simple toucher ne fait rien', async () => {
