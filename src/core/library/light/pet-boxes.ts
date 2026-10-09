@@ -7,7 +7,7 @@ export type Shape = 'stand' | 'sit' | 'lie' | 'none';
 // Silhouette de chaque pose. « cachée » = dans le panier ou la niche, qui sont déjà des meubles.
 const SHAPE: Record<Pose, Shape> = {
   walk: 'stand', jump: 'stand', greet: 'stand', play: 'stand', sniff: 'stand', eat: 'stand', hiss: 'stand', scan: 'stand', beep: 'stand',
-  sit: 'sit', groom: 'sit', yawn: 'sit', scratch: 'sit', purr: 'sit', pant: 'sit',
+  sit: 'sit', groom: 'sit', yawn: 'sit', scratch: 'sit', purr: 'sit', pant: 'sit', howl: 'sit', shake: 'sit', umbrella: 'sit', shortcircuit: 'sit', reboot: 'sit',
   sleep: 'lie', stretch: 'lie', cower: 'lie', standby: 'lie', charge: 'lie',
   hide: 'none',
 };

@@ -7,7 +7,7 @@ import { buildWalkMap } from './walk-map';
 import { proposeScene, sceneIsValid } from './scenes';
 import type { Standing } from './route';
 
-export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower' | 'scan' | 'standby' | 'charge' | 'beep';
+export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower' | 'scan' | 'standby' | 'charge' | 'beep' | 'howl' | 'shake' | 'umbrella' | 'shortcircuit' | 'reboot';
 export type PetFrame = { id: string; species: Species; coat: Coat; name: string; pose: Pose; facing: 'l' | 'r'; behind: number; top: boolean; /* id du meuble qui porte l'animal, null au sol */ on: string | null; pos: Pt; /* ordonnée des pieds : départage deux animaux au même rang de dessin */ depthY: number };
 
 const PERCH_KINDS: ReadonlySet<string> = new Set(['desk', 'shelf']);
@@ -53,6 +53,8 @@ export function poseOf(state: PetState, plan: PetPlan): Pose {
       return 'sit';
     case 'drink':
       return 'eat';
+    case 'sunbathe':
+      return 'sleep';
     default:
       return plan.action;
   }

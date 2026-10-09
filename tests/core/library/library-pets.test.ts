@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../../src/core/cache/store';
 import { adoptPet, createInitialState, parseLibraryState, removePet, renamePet, setPetPlan } from '../../../src/core/library/library-book';
 import { createLibraryRepo } from '../../../src/core/library/library-repo';
-import type { PetPlan } from '../../../src/core/library/library-types';
+import { PAIR_SCENES, PET_ACTIONS, type PetPlan } from '../../../src/core/library/library-types';
+import { poseOf } from '../../../src/core/library/pets/runner';
 
 const plan: PetPlan = {
   action: 'sit',
@@ -150,5 +151,19 @@ describe('robot', () => {
     const state = adoptPet(createInitialState(), 'r1', 'Robi', 'blue', 'robot');
     expect(state.rooms[0]!.pets[0]).toEqual({ id: 'p1', species: 'robot', name: 'Robi', coat: 'blue' });
     expect(adoptPet(createInitialState(), 'r1', '', 'tabby', 'robot').rooms[0]!.pets[0]).toMatchObject({ name: 'Robi', coat: 'white' });
+  });
+});
+
+describe('actions du contexte (6d)', () => {
+  it('connaît les nouvelles actions et la scène huddle', () => {
+    for (const a of ['sunbathe', 'howl', 'shake', 'umbrella', 'shortcircuit', 'reboot']) expect(PET_ACTIONS).toContain(a);
+    expect(PAIR_SCENES).toContain('huddle');
+  });
+  it('sunbathe se dessine comme sleep, les autres gardent leur pose', () => {
+    const plan = (action: string) => ({ action, hostId: null, at: { x: 0, y: 0 }, on: null, route: [], startedAt: 0, actMs: 1000, facing: 'r', sig: 's' }) as never;
+    const act = { pos: { x: 0, y: 0 }, phase: 'act', facing: 'r', on: null, depthHosts: [null] } as never;
+    expect(poseOf(act, plan('sunbathe'))).toBe('sleep');
+    expect(poseOf(act, plan('howl'))).toBe('howl');
+    expect(poseOf(act, plan('shortcircuit'))).toBe('shortcircuit');
   });
 });

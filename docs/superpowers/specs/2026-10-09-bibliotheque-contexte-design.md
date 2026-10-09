@@ -15,9 +15,9 @@ type PetContext = {
   night: boolean;              // soleil couché (ciel) ; sinon heure d'horloge 22 h–6 h si la pièce n'a pas de ciel
   moon: boolean;               // lune visible depuis une fenêtre (nuit + scène à ciel + fenêtre)
   weather: 'clear' | 'drizzle' | 'rain' | 'storm';  // 'clear' si pas de fenêtre ou scène sans météo (espace, Terre)
-  stormId: number;             // identifiant de l'orage en cours (0 = aucun) : change à chaque nouvel orage
-  rainEndedAt: number | null;  // horodatage de la fin de la dernière pluie ; sert au secouement
-  sunCells: readonly Cell[];   // cases du sol atteintes par le soleil (vide si pas de rayon)
+  storm: { id: number; since: number } | null; // orage en cours : id change à chaque nouvel orage, since = début (ms)
+  rainEndedAt: number | null;
+  sunCells: readonly Cell[];   // projection exacte du verre (`beamPatch`), sans ombre de meuble ; vide si le soleil est masqué ou s'il pleut
 };
 ```
 
