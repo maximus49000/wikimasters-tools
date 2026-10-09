@@ -720,7 +720,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'bibliotheque-v3',
+    id: 'bibliotheque-v16',
     theme: 'collection',
     glyph: '📚',
     title: 'La Bibliothèque',
@@ -754,7 +754,7 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-library] [data-action="edit"]',
         title: 'Déplacer un meuble d’un appui long',
-        text: 'Un appui long sur un meuble déjà posé le soulève : vous le faites glisser jusqu’à sa nouvelle place et le relâchez, sans passer par le bouton Déplacer. Cela marche même en mode Visiter, qui passe alors en mode Aménager.',
+        text: 'Un appui long sur un meuble déjà posé le soulève : vous le faites glisser jusqu’à sa nouvelle place et le relâchez, sans passer par le bouton Déplacer. Cela se fait en mode Aménager : en mode Visiter, un appui long ne déplace rien et ne change pas de mode.',
         gesture: 'longpress',
         details: [
           { label: 'À quoi ça sert', text: 'C’est le moyen le plus rapide de réaménager une pièce : le meuble suit votre doigt, et un contour vous montre où il atterrirait avant que vous le lâchiez.' },
@@ -1412,7 +1412,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Comment faire', text: 'En mode Aménager, touchez l’ampoule « Lumière » dans la rangée Ciel. Le réglage est propre à cet appareil.' },
           { label: 'Comment ça marche', text: 'La direction du rayon suit la place du soleil devant chaque fenêtre ; les nuages l’atténuent ; la nuit, seule la lumière ambiante reste ; la clarté baisse avec la distance aux fenêtres.' },
-          { label: 'Limites', text: 'Pas encore d’ombres ni de lampes. Sans effet dans l’espace et sur la Terre vue d’en haut, et fixe en mode animations réduites. Si l’appareil ralentit, coupez la lumière avec le bouton Lumière.' },
+          { label: 'Limites', text: 'Les meubles et les lampes ajoutent leurs propres ombres et lumières (voir la fiche suivante). Ce rayon de soleil n’existe que devant une fenêtre : dans l’espace et sur la Terre vue d’en haut, il n’y en a pas, et il reste fixe en mode animations réduites. Si l’appareil ralentit, coupez la lumière avec le bouton Lumière.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
@@ -1444,7 +1444,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Comment faire', text: 'Touchez la lampe. Un second toucher l’éteint. Seul le crayon ouvre le mode Aménager : toucher une lampe ne vous y envoie jamais par erreur.' },
           { label: 'À quoi ça sert', text: 'À ambiancer votre pièce sans l’aménager : la lampe éclaire les meubles et le sol autour d’elle.' },
-          { label: 'Limites', text: 'Il faut avoir posé une lampe dans la pièce. L’état allumé ou éteint est mémorisé ; une ancienne version de l’extension l’ignore.' },
+          { label: 'Limites', text: 'Il faut avoir posé une lampe dans la pièce. L’état allumé ou éteint est mémorisé ; une ancienne version de l’extension l’ignore. Les lampes marchent aussi dans l’espace et sur la Terre vue d’en haut. En mode animations réduites, l’image n’est rafraîchie qu’à un toucher ou quand l’heure change. Si l’appareil ralentit, coupez la Lumière avec le bouton Lumière.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
@@ -1455,7 +1455,7 @@ export const ENTRIES: Entry[] = [
         gesture: 'tap',
         details: [
           { label: 'Comment faire', text: 'Touchez le crayon, puis la lampe à régler. Le bouton ampoule de la barre bascule son état.' },
-          { label: 'À quoi ça sert', text: 'À choisir l’état d’une lampe en la déplaçant, sans changer de mode.' },
+          { label: 'À quoi ça sert', text: 'À choisir l’état d’une lampe pendant l’aménagement, sans changer de mode.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
