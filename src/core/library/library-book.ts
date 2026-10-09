@@ -95,11 +95,14 @@ const stateSchema = z.object({
     z.object({ mode: z.literal('night') }),
     z.object({ mode: z.literal('manual'), minutes: z.number().int().min(0).max(1439) }),
   ]),
-  weather: z.union([
-    z.object({ mode: z.literal('random') }),
-    z.object({ mode: z.literal('forced'), state: z.enum(WEATHER_STATES) }),
-    z.object({ mode: z.literal('real') }),
-  ]),
+  // Réglage inconnu (version plus récente, corruption) : retour à l'aléatoire plutôt qu'à une bibliothèque vide.
+  weather: z
+    .union([
+      z.object({ mode: z.literal('random') }),
+      z.object({ mode: z.literal('forced'), state: z.enum(WEATHER_STATES) }),
+      z.object({ mode: z.literal('real') }),
+    ])
+    .catch({ mode: 'random' }),
   rooms: z.array(roomSchema).min(1).max(MAX_ROOMS),
 });
 

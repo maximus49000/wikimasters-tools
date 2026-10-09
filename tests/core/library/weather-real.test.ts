@@ -98,11 +98,36 @@ describe('createRealWeather', () => {
     const partial = createRealWeather({ fetch: async () => new Response('{"ok":true,"code":"x"}', { status: 200 }), now: () => 0, storage: memory() });
     expect(await partial.refresh(paris)).toBeNull();
   });
-  it('relit le cache mémorisé au démarrage', async () => {
+  it('relit la dernière observation au démarrage, puis relit le relais une fois (la case n’est pas mémorisée)', async () => {
     const storage = memory();
     const first = createRealWeather({ fetch: async () => ok(), now: () => 0, storage });
     await first.refresh(paris);
-    const second = createRealWeather({ fetch: async () => { throw new Error('offline'); }, now: () => 60_000, storage });
+    const fetchFn = vi.fn(async (_url: string) => ok());
+    const second = createRealWeather({ fetch: fetchFn, now: () => 60_000, storage });
     expect(second.latest()?.code).toBe(61);
+    await second.refresh(paris);
+    await second.refresh(paris);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+  it('n’enregistre jamais la position (ni case, ni coordonnées) dans le stockage de la page', async () => {
+    const values = new Map<string, string>();
+    const storage = { get: (k: string) => values.get(k) ?? null, set: (k: string, v: string) => void values.set(k, v) };
+    const real = createRealWeather({ fetch: async () => ok(), now: () => 0, storage });
+    await real.refresh({ lat: 43.6047, lon: 1.4442 });
+    const written = [...values.values()].join(' ');
+    expect(written).not.toBe('');
+    expect(written).not.toMatch(/cell|lat|lon/);
+    expect(written).not.toMatch(/43\.6|1\.4/);
+  });
+  it('un fetch qui lève de façon synchrone ne bloque pas les relectures suivantes', async () => {
+    let now = 0;
+    const fetchFn = vi.fn((_url: string): Promise<Response> => {
+      throw new Error('sync');
+    });
+    const real = createRealWeather({ fetch: fetchFn, now: () => now, storage: memory() });
+    expect(await real.refresh(paris)).toBeNull();
+    now += 61_000;
+    await real.refresh(paris);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 });

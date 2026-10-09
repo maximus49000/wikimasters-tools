@@ -348,10 +348,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     return () => unlockOrientation();
   }, [stage.active, orientationNow]);
 
-  // Heure réelle au chargement : la position n'est relue que si le joueur l'a déjà accordée (jamais de nouvelle demande ici).
+  // Heure ou météo réelles au chargement : la position n'est relue que si le joueur l'a déjà accordée (jamais de nouvelle demande ici).
+  // Elle n'est gardée qu'en mémoire : sans cette relecture, la vraie météo resterait « simulée » après chaque rechargement.
   const timeMode = lib?.time.mode;
+  const weatherMode = lib?.weather.mode;
   useEffect(() => {
-    if (timeMode !== 'real') return;
+    if (timeMode !== 'real' && weatherMode !== 'real') return;
     let alive = true;
     try {
       navigator.permissions
@@ -366,7 +368,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     return () => {
       alive = false;
     };
-  }, [timeMode]);
+  }, [timeMode, weatherMode]);
 
   // Le chat : son plan est mémorisé sans prévenir les abonnés (il change toutes les quelques secondes, rien à redessiner).
   const savePlan = useCallback((roomId: string, petId: string, plan: PetPlan) => { void library.updateQuiet((state) => setPetPlan(state, roomId, petId, plan)); }, [library]);

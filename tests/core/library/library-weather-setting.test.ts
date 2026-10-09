@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialState, parseLibraryState, setWeatherSetting } from '../../../src/core/library/library-book';
+import { addRoom, createInitialState, parseLibraryState, renameRoom, setWeatherSetting } from '../../../src/core/library/library-book';
 
 describe('réglage météo', () => {
   it('démarre en aléatoire, version 5', () => {
@@ -23,8 +23,13 @@ describe('réglage météo', () => {
     const ok = setWeatherSetting(createInitialState(), { mode: 'forced', state: 'snow' });
     expect(parseLibraryState(ok).weather).toEqual({ mode: 'forced', state: 'snow' });
   });
-  it('refuse un état forcé sur un état inconnu (retour à l état initial)', () => {
-    const bad = { ...createInitialState(), weather: { mode: 'forced', state: 'tornado' } };
-    expect(parseLibraryState(bad)).toEqual(createInitialState());
+  it('un réglage météo inconnu (version plus récente, corruption) retombe en aléatoire sans perdre la bibliothèque', () => {
+    const rich = renameRoom(addRoom(createInitialState()), 'r1', 'Salon');
+    for (const weather of [{ mode: 'forced', state: 'hail' }, { mode: 'forced', state: 'tornado' }, { mode: 'satellite' }, null]) {
+      const parsed = parseLibraryState({ ...rich, weather });
+      expect(parsed.weather).toEqual({ mode: 'random' });
+      expect(parsed.rooms).toEqual(rich.rooms);
+      expect(parsed.activeRoomId).toBe(rich.activeRoomId);
+    }
   });
 });
