@@ -43,17 +43,19 @@ export function cityIntensity(ctx: CityContext): CityIntensity {
   const hour = (((ctx.minutes % 1440) + 1440) % 1440) / 60;
   const kind = ctx.day.kind;
   const weekendLike = kind === 'weekend' || kind === 'public-holiday';
-  // `b` : 0 = jour de travail, 1 = week-end. Vacances : entre les deux ; mercredi : l'après-midi glisse vers le week-end.
-  const b = weekendLike ? 1 : kind === 'holiday' ? 0.6 : kind === 'wednesday' ? smooth(12, 14, hour) * 0.5 : 0;
+  // `b` : 0 = jour de travail, 1 = week-end. Vacances : entre les deux ; mercredi : l'après-midi glisse vers le week-end entre 12 h et 14 h, puis redescend à 0 pour la sortie de 17 h.
+  const b = weekendLike ? 1 : kind === 'holiday' ? 0.6 : kind === 'wednesday' ? smooth(12, 14, hour) * 0.5 * (1 - smooth(16, 17.5, hour)) : 0;
 
-  const wet = ctx.precip;
+  // Précipitations ramenées à [0, 1] : une valeur hors bornes ne doit ni produire de NaN ni inverser une correction.
+  const wet = clamp01(ctx.precip);
   const weatherWalk = (1 - 0.65 * wet) * (ctx.storm ? 0.5 : 1) * (ctx.snow ? 0.6 : 1);
   const traffic = clamp01(lerp(curve(TRAFFIC_WEEK, hour), curve(TRAFFIC_WEEKEND, hour), b) * (1 + 0.25 * wet) * (ctx.snow ? 0.7 : 1));
   const walkers = clamp01(lerp(curve(WALK_WEEK, hour), curve(WALK_WEEKEND, hour), b) * weatherWalk);
   const suits = clamp01(curve(SUITS, hour) * (1 - b) * (1 - b) * weatherWalk);
 
-  const schoolTo = ctx.day.schoolOn ? bump(hour, 7.6, 8.0, 8.3, 8.5) : 0;
-  const schoolFrom = kind === 'school' ? bump(hour, 16.5, 16.75, 17.1, 17.4) : kind === 'wednesday' ? bump(hour, 11.5, 11.75, 12.1, 12.4) : 0;
+  // Fenêtres resserrées sur la spec : aller à partir de 7 h 50 (pic à 8 h 15), sorties à 16 h 45 et à midi le mercredi.
+  const schoolTo = ctx.day.schoolOn ? bump(hour, 7.83, 8.0, 8.3, 8.5) : 0;
+  const schoolFrom = kind === 'school' ? bump(hour, 16.6, 16.75, 17.1, 17.25) : kind === 'wednesday' ? bump(hour, 11.6, 11.75, 12.1, 12.25) : 0;
 
   const light = smooth(0.1, 0.4, ctx.daylight);
   let kidsBase = 0;
@@ -61,9 +63,9 @@ export function cityIntensity(ctx: CityContext): CityIntensity {
   else if (kind === 'holiday') kidsBase = bump(hour, 9.5, 11, 17.5, 19) * 0.65;
   else if (kind === 'wednesday') kidsBase = bump(hour, 13.5, 14.5, 17.5, 18.5) * 0.6;
   else kidsBase = bump(hour, 16.8, 17.3, 18, 18.5) * 0.08;
-  const kids = clamp01(kidsBase * light * (1 - wet) * (1 - wet));
+  const kids = clamp01(kidsBase * light * (1 - wet) * (1 - wet) * (ctx.storm ? 0.5 : 1) * (ctx.snow ? 0.6 : 1));
 
-  const sport = clamp01((bump(hour, 6, 7, 9, 10) + bump(hour, 17, 18, 19.5, 21)) * 0.12 * (weekendLike ? 1.4 : 1) * (1 - wet));
+  const sport = clamp01((bump(hour, 6, 7, 9, 10) + bump(hour, 17, 18, 19.5, 21)) * 0.12 * (weekendLike ? 1.4 : 1) * (1 - wet) * light * (ctx.storm ? 0.3 : 1) * (ctx.snow ? 0.5 : 1));
 
   return { traffic, walkers, suits, schoolTo, schoolFrom, kids, sport, umbrellas: wet >= 0.2, weekendLike };
 }
