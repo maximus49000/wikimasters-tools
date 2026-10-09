@@ -1,12 +1,14 @@
 import { z } from 'zod';
-import { COATS, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type StyleId, type TimeSetting } from './library-types';
+import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type Species, type StyleId, type TimeSetting } from './library-types';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
 import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, sectionIsEmpty, shiftLayout } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
 export const MAX_PET_NAME = 20;
+export const MAX_PETS = 3;
 const DEFAULT_PET_NAME = 'Minou';
+const DEFAULT_DOG_NAME = 'Rex';
 
 const windowSchema = z.object({
   id: z.string(),
@@ -58,15 +60,20 @@ const planSchema = z.object({
   actMs: z.number().min(0).max(600000),
   facing: z.enum(['l', 'r']),
   sig: z.string(),
+  lag: z.number().min(0).max(600000).optional(),
+  key: z.string().max(80).optional(),
+  with: z.object({ petId: z.string(), role: z.enum(['lead', 'follow']), scene: z.enum(PAIR_SCENES) }).optional(),
 });
 // Un plan abîmé est simplement oublié : le chat en choisira un autre.
-const petSchema = z.object({
-  id: z.string(),
-  species: z.literal('cat'),
-  name: z.string().min(1).max(MAX_PET_NAME),
-  coat: z.enum(COATS),
-  plan: planSchema.optional().catch(undefined),
-});
+const petSchema = z
+  .object({
+    id: z.string(),
+    species: z.enum(['cat', 'dog']),
+    name: z.string().min(1).max(MAX_PET_NAME),
+    coat: z.enum(ALL_COATS),
+    plan: planSchema.optional().catch(undefined),
+  })
+  .refine((pet) => coatsOf(pet.species).includes(pet.coat));
 const roomSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -75,7 +82,7 @@ const roomSchema = z.object({
   orientation: z.enum(['landscape', 'portrait']),
   cols: z.number().int().min(MIN_COLS).max(MAX_COLS).refine((cols) => cols % SECTION === 0),
   layout: z.array(placedSchema),
-  pets: z.array(petSchema).max(1),
+  pets: z.array(petSchema).max(MAX_PETS),
 });
 const stateSchema = z.object({
   version: z.literal(4),
@@ -183,13 +190,13 @@ function migrateV3(raw: unknown): unknown {
 
 const migrate = (raw: unknown): unknown => migrateV3(migrateV2(migrateV1(raw)));
 
-// Un animal impossible (espèce ou pelage inconnus…) est ignoré sans faire perdre la pièce ; un seul par pièce.
+// Un animal impossible (espèce ou pelage inconnus…) est ignoré sans faire perdre la pièce ; trois au plus.
 function cleanPets(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { rooms?: unknown }).rooms)) return raw;
   const rooms = (raw as { rooms: unknown[] }).rooms.map((room) => {
     if (typeof room !== 'object' || room === null) return room;
     const pets = (room as { pets?: unknown }).pets;
-    return { ...room, pets: Array.isArray(pets) ? pets.filter((p) => petSchema.safeParse(p).success).slice(0, 1) : [] };
+    return { ...room, pets: Array.isArray(pets) ? pets.filter((p) => petSchema.safeParse(p).success).slice(0, MAX_PETS) : [] };
   });
   return { ...(raw as object), rooms };
 }
@@ -311,11 +318,13 @@ export function setTimeSetting(state: LibraryState, time: TimeSetting): LibraryS
   return { ...state, time: { mode: 'manual', minutes: Math.min(1439, Math.max(0, Math.round(time.minutes))) } };
 }
 
-export function adoptPet(state: LibraryState, roomId: string, name: string, coat: Coat): LibraryState {
+export function adoptPet(state: LibraryState, roomId: string, name: string, coat: Coat, species: Species = 'cat'): LibraryState {
   const room = state.rooms.find((candidate) => candidate.id === roomId);
-  if (!room || room.pets.length >= 1) return state;
-  const pet: Pet = { id: 'p1', species: 'cat', name: name.trim().slice(0, MAX_PET_NAME) || DEFAULT_PET_NAME, coat };
-  return mapRoom(state, roomId, (r) => ({ ...r, pets: [pet] }));
+  if (!room || room.pets.length >= MAX_PETS) return state;
+  const kept: Coat = coatsOf(species).includes(coat) ? coat : coatsOf(species)[0]!;
+  const fallback = species === 'dog' ? DEFAULT_DOG_NAME : DEFAULT_PET_NAME;
+  const pet: Pet = { id: nextId('p', room.pets.map((p) => p.id)), species, name: name.trim().slice(0, MAX_PET_NAME) || fallback, coat: kept };
+  return mapRoom(state, roomId, (r) => ({ ...r, pets: [...r.pets, pet] }));
 }
 
 export function renamePet(state: LibraryState, roomId: string, petId: string, name: string): LibraryState {

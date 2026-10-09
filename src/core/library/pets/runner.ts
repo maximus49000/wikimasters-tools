@@ -3,7 +3,7 @@ import { layoutSig, nextPlan, resume, touchPlan, type BrainEnv, type Rng } from 
 import { depthIndex, depthKey } from './depth';
 import { planEndsAt, stateAt, type PetState } from './motion';
 
-export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr';
+export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower';
 export type PetFrame = { id: string; coat: Coat; name: string; pose: Pose; facing: 'l' | 'r'; behind: number; top: boolean; pos: Pt };
 
 // Un chat perché sur un bureau ou une étagère se dessine au-dessus des ordinateurs et des petits objets posés dessus.

@@ -14,9 +14,9 @@ Une pièce accueille de 1 à 3 animaux (chat ou chien, n'importe quel mélange, 
 - **Chien** : reste au sol, aucun perchoir en hauteur (étagère, bureau). Monte sur le canapé par un petit saut. Dort dans la niche, le panier, sinon sur le tapis (pose roulée). Mange et boit à la gamelle. Court, s'assoit, se gratte, halète (queue qui remue), flaire (truffe au sol). Caresse en Visiter : queue qui remue, nom en bulle.
 - **Hors périmètre** : balle (objet à rouler), robot, réactions nuit/soleil/orage, simulation en arrière-plan.
 
-## Données (état v4 → v5)
+## Données (l'état reste v4, migration inutile)
 
-`Pet.species: 'cat' | 'dog'`, `pets` plafonné à 3. Les états v4 restent valides (migration = relever le plafond, version 5). `coat` reste partagé, la palette dépend de l'espèce.
+`Pet.species: 'cat' | 'dog'`, `pets` plafonné à 3. Les états v4 restent valides (migration inutile : l'état reste v4). `coat` reste partagé, la palette dépend de l'espèce.
 
 `PetPlan` gagne un champ optionnel `with?: { petId: string; role: 'lead' | 'follow'; scene: SceneKind }`. Les deux plans d'une scène ont les mêmes `startedAt` et `actMs`.
 
@@ -25,9 +25,9 @@ Une pièce accueille de 1 à 3 animaux (chat ou chien, n'importe quel mélange, 
 | Scène | Couples | Déroulé |
 |---|---|---|
 | `greet` | tous | face à face, le chien renifle, le chat tend le museau, ~3 s |
-| `chase` | chien→chat, chien↔chien, chat↔chat | l'un court derrière l'autre au sol ~6 s, puis les rôles s'inversent |
+| `chase` | chien→chat, chien↔chien, chat↔chat | le poursuivi file, le poursuivant le rattrape, les deux jouent (pas d'inversion des rôles) |
 | `shoo` | chat→chien | le chat souffle ou donne un coup de patte, le chien recule de deux cases, oreilles basses |
-| `nap` | tous | dormir côte à côte (mêmes lieux de sommeil, sinon deux cases voisines) |
+| `nap` | tous | à côté d'un partenaire déjà endormi au sol |
 | `groom` | chat↔chat, chien↔chien | assis l'un contre l'autre, ~5 s |
 
 Le résultat dépend du couple : chat→chien = dédain ou `shoo` ; chien→chat = curiosité puis `chase` ; même espèce = jeu et toilette.
@@ -38,7 +38,7 @@ Le résultat dépend du couple : chat→chien = dédain ou `shoo` ; chien→chat
 
 - `src/core/library/pets/` (pur, horloge injectée) : `brain.ts` choisit les actions selon l'espèce (profil de poids par espèce) ; nouveau `scenes.ts` : choix du couple et de la scène, plans appariés, annulation ; `runner.ts` calcule `occupied` à partir des plans des autres animaux et fait avancer l'ensemble ; les règles de reprise valident `with` (partenaire présent, plan jumeau cohérent) sinon le plan est abandonné.
 - `src/content/` : sprite du chien (poses marche, course, assis, couché roulé, truffe au sol, halètement, saut) et poses de scène (souffle, coup de patte, recul) ; z-ordre à trois via le tri existant de `RoomView`.
-- Interface : sélecteur d'espèce dans « Adopter » ; bulle de nom par animal.
+- Interface : deux boutons d'adoption (chat, chien) ; bulle de nom par animal.
 - Fiche WikiHow `bibliotheque-v10`.
 
 ## Tests

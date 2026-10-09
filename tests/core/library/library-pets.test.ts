@@ -37,10 +37,27 @@ describe('état v4', () => {
     expect(state.rooms[0]!.pets).toEqual([{ id: 'p1', species: 'cat', name: 'Minou', coat: 'orange' }]);
   });
 
-  it('garde au plus un animal par pièce', () => {
+  it('garde au plus trois animaux par pièce', () => {
     const base = createInitialState();
-    const pets = [1, 2].map((n) => ({ id: `p${n}`, species: 'cat', name: `C${n}`, coat: 'black' }));
-    expect(parseLibraryState({ ...base, rooms: [{ ...base.rooms[0]!, pets }] }).rooms[0]!.pets).toHaveLength(1);
+    const pets = [1, 2, 3, 4].map((n) => ({ id: `p${n}`, species: 'cat', name: `C${n}`, coat: 'black' }));
+    expect(parseLibraryState({ ...base, rooms: [{ ...base.rooms[0]!, pets }] }).rooms[0]!.pets).toHaveLength(3);
+  });
+
+  it('lit un chien et refuse un pelage qui n est pas de son espèce', () => {
+    const base = createInitialState();
+    const pets = [
+      { id: 'p1', species: 'dog', name: 'Rex', coat: 'spotted' },
+      { id: 'p2', species: 'dog', name: 'Bad', coat: 'tabby' },
+      { id: 'p3', species: 'cat', name: 'Bad2', coat: 'brown' },
+    ];
+    expect(parseLibraryState({ ...base, rooms: [{ ...base.rooms[0]!, pets }] }).rooms[0]!.pets).toEqual([{ id: 'p1', species: 'dog', name: 'Rex', coat: 'spotted' }]);
+  });
+
+  it('relit un plan de scène (lag, key, with)', () => {
+    const scene: PetPlan = { ...plan, lag: 1200, key: 'b:curl', with: { petId: 'p2', role: 'follow', scene: 'shoo' } };
+    const once = adoptPet(createInitialState(), 'r1', 'A', 'white');
+    const saved = setPetPlan(once, 'r1', 'p1', scene);
+    expect(parseLibraryState(JSON.parse(JSON.stringify(saved))).rooms[0]!.pets[0]!.plan).toEqual(scene);
   });
 });
 
@@ -55,9 +72,18 @@ describe('adoption', () => {
     expect(adoptPet(createInitialState(), 'r1', 'x'.repeat(40), 'gray').rooms[0]!.pets[0]!.name).toHaveLength(20);
   });
 
-  it('refuse un second chat dans la même pièce', () => {
-    const once = adoptPet(createInitialState(), 'r1', 'A', 'white');
-    expect(adoptPet(once, 'r1', 'B', 'black')).toBe(once);
+  it('adopte un chien, avec des identifiants libres, et refuse un quatrième animal', () => {
+    let state = adoptPet(createInitialState(), 'r1', 'Rex', 'brown', 'dog');
+    state = adoptPet(state, 'r1', 'Minou', 'white');
+    state = adoptPet(state, 'r1', '', 'red', 'dog');
+    expect(state.rooms[0]!.pets.map((p) => [p.id, p.species, p.name])).toEqual([['p1', 'dog', 'Rex'], ['p2', 'cat', 'Minou'], ['p3', 'dog', 'Rex']]);
+    expect(adoptPet(state, 'r1', 'Z', 'black')).toBe(state);
+    const freed = removePet(state, 'r1', 'p2');
+    expect(adoptPet(freed, 'r1', 'N', 'gray').rooms[0]!.pets.map((p) => p.id)).toEqual(['p1', 'p3', 'p2']);
+  });
+
+  it('un pelage qui n est pas de l espèce devient le premier de l espèce', () => {
+    expect(adoptPet(createInitialState(), 'r1', 'R', 'tabby', 'dog').rooms[0]!.pets[0]!.coat).toBe('brown');
   });
 
   it('renomme, retire, et ignore une pièce ou un animal inconnu', () => {

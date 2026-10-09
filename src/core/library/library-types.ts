@@ -32,9 +32,15 @@ export type Placed =
 
 export type Layout = Placed[];
 
-// Pelages du chat ; chacun a sa palette (pet-sprite.tsx).
+// Pelages du chat ; chacun a sa palette (pet-sprite.tsx). Le chien a les siens.
 export const COATS = ['orange', 'black', 'gray', 'white', 'tabby', 'bicolor'] as const;
-export type Coat = (typeof COATS)[number];
+export const DOG_COATS = ['brown', 'black', 'cream', 'spotted', 'gray', 'red'] as const;
+export const ALL_COATS = ['orange', 'black', 'gray', 'white', 'tabby', 'bicolor', 'brown', 'cream', 'spotted', 'red'] as const;
+export type Coat = (typeof ALL_COATS)[number];
+export type CatCoat = (typeof COATS)[number];
+export type DogCoat = (typeof DOG_COATS)[number];
+export type Species = 'cat' | 'dog';
+export const coatsOf = (species: Species): readonly Coat[] => (species === 'cat' ? COATS : DOG_COATS);
 
 // Un point du dessin de la pièce, en pixels (les pieds de l'animal).
 export type Pt = { x: number; y: number };
@@ -42,15 +48,22 @@ export type Pt = { x: number; y: number };
 // Un déplacement : marche sur son support, ou saut en arc. `fromOn` / `on` : le meuble (dessus) qui porte l'animal au départ / à l'arrivée, null = le sol.
 export type Segment = { kind: 'walk' | 'jump'; from: Pt; to: Pt; ms: number; fromOn: string | null; on: string | null };
 
-export const PET_ACTIONS = ['sit', 'groom', 'stretch', 'yawn', 'sleep', 'eat', 'drink', 'scratch', 'perch', 'hide', 'purr'] as const;
+export const PET_ACTIONS = ['sit', 'groom', 'stretch', 'yawn', 'sleep', 'eat', 'drink', 'scratch', 'perch', 'hide', 'purr', 'pant', 'sniff', 'greet', 'play', 'hiss', 'cower'] as const;
 export type PetAction = (typeof PET_ACTIONS)[number];
+
+// Les scènes à deux : se saluer, toilette mutuelle, poursuite, le chat remet le chien à sa place, dormir côte à côte.
+export const PAIR_SCENES = ['greet', 'groom', 'chase', 'shoo', 'nap'] as const;
+export type PairScene = (typeof PAIR_SCENES)[number];
+export type PetWith = { petId: string; role: 'lead' | 'follow'; scene: PairScene };
 
 // Le plan en cours : un trajet (peut être vide) puis une action sur place. Tout est en horodatages absolus (`startedAt`, durées) :
 // la position à n'importe quel instant se déduit du plan, sans rien simuler. `hostId` : le meuble contre/dans lequel il agit (ordre de dessin) ;
 // `on` : le dessus de meuble qui le porte (null = sol) ; `sig` : signature des meubles au moment où le plan a été fait.
-export type PetPlan = { action: PetAction; hostId: string | null; at: Pt; on: string | null; route: Segment[]; startedAt: number; actMs: number; facing: 'l' | 'r'; sig: string };
+// `lag` : attente sur place (en ms) avant le trajet ; `key` : la place réservée visée (`<meuble>:<point>`) ;
+// `with` : la scène à deux dont ce plan fait partie (les deux plans ont le même `startedAt`).
+export type PetPlan = { action: PetAction; hostId: string | null; at: Pt; on: string | null; route: Segment[]; startedAt: number; actMs: number; facing: 'l' | 'r'; sig: string; lag?: number; key?: string; with?: PetWith };
 
-export type Pet = { id: string; species: 'cat'; name: string; coat: Coat; plan?: PetPlan };
+export type Pet = { id: string; species: Species; name: string; coat: Coat; plan?: PetPlan };
 
 // Décors vus par les fenêtres d'une pièce.
 export const SCENE_IDS = ['city', 'countryside', 'mountain', 'sea', 'space', 'earth'] as const;
