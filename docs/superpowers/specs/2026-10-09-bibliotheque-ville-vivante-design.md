@@ -187,7 +187,7 @@ S'appuie sur `pets/context.ts`, `brain.ts` et le moteur de scènes à deux.
 
 ## Livraison
 
-Pour chaque vague : PR fusionnée, fiche WikiHow (`bibliotheque-v19` pour 1a, `v20` pour 1b, `v21` pour 1c, étapes : texte, comment, astuce), pré-prod, puis vérification manuelle dans Chrome (rendu jamais vu hors jsdom) et APK à la demande.
+Pour chaque vague : PR fusionnée, fiche WikiHow (`bibliotheque-v20` pour 1a, `v21` pour 1b-i, numéros suivants pour 1b-ii, 1b-iii, commerces et 1c, étapes : texte, comment, astuce), pré-prod, puis vérification manuelle dans Chrome (rendu jamais vu hors jsdom) et APK à la demande.
 
 ## Limites assumées
 

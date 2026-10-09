@@ -1682,4 +1682,38 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v21',
+    theme: 'collection',
+    glyph: '🚁',
+    title: 'Il se passe des choses en ville',
+    summary: 'Avions, bus, ambulance, grue, promeneur de chien, feu d’artifice : de petits événements traversent la vue',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Des événements dans le ciel et dans la rue',
+        text: 'Dans une pièce dont la scène est « Ville », de temps en temps, quelque chose passe : avion, hélicoptère, drone, montgolfière, avion à banderole, bus articulé, tramway, ambulance, camion-poubelle, livreur à vélo, promeneur de chien.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À rendre la vue plus vivante : on ne sait jamais ce qu’on va voir passer par la fenêtre.' },
+          { label: 'Comment faire', text: 'Rien à régler : ouvrez Ma Pièce, choisissez une pièce dont la scène est « Ville » et regardez par la fenêtre. Un événement traverse tout le paysage, d’une fenêtre à l’autre.' },
+          { label: 'D’où viennent les données', text: 'Tout est calculé sur votre appareil à partir de l’heure et de la pièce : la même pièce montre les mêmes événements au même moment, même après un rechargement. Rien n’est envoyé.' },
+          { label: 'Limites', text: 'Environ un créneau de 25 secondes sur cinq lance un événement, et jamais plus de deux à la fois : il faut parfois attendre un peu.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'L’heure et la météo comptent',
+        text: 'Chaque événement a ses heures : camion-poubelle le matin, grue en semaine de jour, appartement qui s’allume le soir, feu d’artifice la nuit derrière les immeubles. Sous la pluie, les cerfs-volants restent au sol et des groupes pressés passent sous leurs parapluies.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À ce que la ville ressemble à une vraie ville : pas de feu d’artifice à midi, pas de cerf-volant sous l’averse.' },
+          { label: 'Comment faire', text: 'Changez l’heure (rangée Ciel, mode Aménager) ou la météo pour voir d’autres événements. Quand une ambulance arrive, les voitures de sa file se rangent pour la laisser passer.' },
+          { label: 'D’où viennent les données', text: 'De l’heure du ciel, de la météo déjà réglée et du jour (semaine, week-end, vacances) calculé par la vague précédente.' },
+          { label: 'Limites', text: 'Si vous réduisez les animations sur votre appareil, rien ne traverse : seuls la grue, le cerf-volant et l’appartement allumé restent, immobiles. Un appartement ou une grue n’est visible que si une fenêtre donne sur cet endroit.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];
