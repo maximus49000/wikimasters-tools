@@ -1,7 +1,7 @@
 import type { FurnitureKind, ShelfShape, SmallItem, SmallKind, StandingKind, StyleId, VinylColor, WallShape } from './library-types';
 
 export type Category = 'storage' | 'seats' | 'pets' | 'deco' | 'steampunk';
-export type PoiType = 'seat' | 'curl' | 'eat' | 'sleep' | 'enter';
+export type PoiType = 'seat' | 'curl' | 'eat' | 'sleep' | 'enter' | 'charge';
 // Point d'intérêt d'un meuble pour les animaux : une case relative au coin haut-gauche du meuble.
 export type Poi = { type: PoiType; dx: number; dy: number };
 
@@ -35,6 +35,8 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
       { type: 'sleep', dx: 2, dy: 1 },
     ],
   },
+  // Station de recharge du robot : une dalle au sol, le robot s'y place (dx 0, dy 0).
+  charger: { w: 2, h: 1, layer: 'floor', pois: [{ type: 'charge', dx: 0, dy: 0 }] },
   plant: { w: 2, h: 4, layer: 'floor', pois: [] },
   lamp: { w: 1, h: 5, layer: 'floor', pois: [] },
   'coffee-table': { w: 4, h: 2, layer: 'floor', pois: [] },
@@ -56,6 +58,7 @@ const LABELS: Record<FurnitureKind, string> = {
   basket: 'Panier',
   bowl: 'Gamelle',
   kennel: 'Niche',
+  charger: 'Station de recharge',
   'coffee-table': 'Table basse',
   plant: 'Plante',
   lamp: 'Lampe',
@@ -70,7 +73,7 @@ const LABELS: Record<FurnitureKind, string> = {
 export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }[] = [
   { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer'] },
   { id: 'seats', label: 'Assises', kinds: ['chair', 'sofa', 'armchair'] },
-  { id: 'pets', label: 'Animaux', kinds: ['basket', 'bowl', 'kennel'] },
+  { id: 'pets', label: 'Animaux', kinds: ['basket', 'bowl', 'kennel', 'charger'] },
   { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug', 'window'] },
   { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
 ];

@@ -5,7 +5,7 @@ export type Orientation = 'landscape' | 'portrait';
 export const STYLE_IDS = ['scandinave', 'moderne', 'industriel', 'boheme', 'retro70', 'japandi', 'neon', 'steampunk'] as const;
 export type StyleId = (typeof STYLE_IDS)[number];
 
-export const STANDING_KINDS = ['shelf', 'desk', 'chair', 'sofa', 'armchair', 'basket', 'bowl', 'kennel', 'plant', 'lamp', 'coffee-table', 'rug', 'globe', 'telescope', 'automaton'] as const;
+export const STANDING_KINDS = ['shelf', 'desk', 'chair', 'sofa', 'armchair', 'basket', 'bowl', 'kennel', 'plant', 'lamp', 'coffee-table', 'rug', 'globe', 'telescope', 'automaton', 'charger'] as const;
 export type StandingKind = (typeof STANDING_KINDS)[number];
 
 // Petits objets posés sur la surface d'un bureau ou d'une étagère.
