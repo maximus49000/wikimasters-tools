@@ -75,6 +75,7 @@ import { useSceneTime } from './use-scene-time';
 import { useCityDay } from './use-city-calendar';
 import { useWeather } from './use-weather';
 import { useLightEnabled } from './light-setting';
+import { useZoneChoice, type ZoneChoice } from './zone-setting';
 import { WEATHER_SCENES } from './scene-weather';
 import { WEATHER_LABEL } from '../core/library/weather/weather-types';
 import { usePetContext } from './pet-context';
@@ -117,6 +118,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-stage:fullscreen .wmt-lib-scroll{border-radius:0}
 .wmt-lib-msg{min-height:20px;font-size:13px;opacity:.85}
 .wmt-lib-sep{flex:1}
+.wmt-lib-zone-glyph{font-size:11px;font-weight:600}
 .wmt-lib-dialog{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
 .wmt-lib-dialog-panel{box-sizing:border-box;width:100%;max-width:min(92vw,480px);max-height:80vh;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:var(--color-surface,#0d1117);color:var(--color-foreground,#e6edf3);font:14px/20px system-ui,sans-serif}
 .wmt-lib-picklist{display:flex;flex-direction:column;gap:6px}
@@ -213,11 +215,17 @@ const REFUSALS = {
   wall: 'Un objet mural s’accroche au mur.',
 } as const;
 
+// Réglage cyclique de la zone des vacances : Auto → A → B → C → Corse → Auto.
+const NEXT_ZONE: Record<ZoneChoice, ZoneChoice> = { auto: 'A', A: 'B', B: 'C', C: 'Corse', Corse: 'auto' };
+const ZONE_GLYPH: Record<ZoneChoice, string> = { auto: 'Auto', A: 'A', B: 'B', C: 'C', Corse: 'Co' };
+
 type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void; onOpenMarket?: (slug: string) => void };
 
 export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMarket }: Props) {
   const roomCards = useRoomCards(collection, kinds, library);
   const [lightOn, setLightOn] = useLightEnabled();
+  const [zoneChoice, setZoneChoice] = useZoneChoice();
+  const zoneLabel = zoneChoice === 'auto' ? 'automatique' : `zone ${zoneChoice}`;
   const [picking, setPicking] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
   const [pending, setPending] = useState<CardChoice | null>(null);
@@ -840,6 +848,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           {WEATHER_SCENES.includes(room.scene) && (
             <Btn label="Lumière" pressed={lightOn} data={{ 'light-toggle': '' }} onClick={() => setLightOn(!lightOn)}>
               <Icon paths={ICONS.bulb} />
+            </Btn>
+          )}
+          {room.scene === 'city' && (
+            <Btn label={`Zone des vacances : ${zoneLabel}`} pressed={zoneChoice !== 'auto'} data={{ 'zone-toggle': '' }} onClick={() => setZoneChoice(NEXT_ZONE[zoneChoice])}>
+              <span className="wmt-lib-zone-glyph" aria-hidden="true">
+                {ZONE_GLYPH[zoneChoice]}
+              </span>
             </Btn>
           )}
           {lib.time.mode === 'manual' && (
