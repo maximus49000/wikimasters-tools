@@ -6,7 +6,7 @@ let known: Position | null = null;
 let cachedFallback: Position | null = null;
 const listeners = new Set<() => void>();
 // Dernière raison d'échec, affichée à côté de « (simulée) » : sans elle, impossible de savoir pourquoi la météo reste simulée.
-export type PositionFailure = 'denied' | 'unavailable' | 'timeout' | 'absent';
+export type PositionFailure = 'denied' | 'unavailable' | 'timeout' | 'absent' | 'off';
 let failure: PositionFailure | null = null;
 export function positionFailure(): PositionFailure | null {
   return failure;
@@ -51,9 +51,42 @@ export function ensurePosition(): void {
 }
 
 // Le navigateur demande alors l'accord du joueur ; sans lui (ou réglage « Position » désactivé), le repli par fuseau sert.
+// Application Android : la position vient d'Android lui-même (`WmtLocation`), la géolocalisation de la WebView n'aboutissait pas sur certains téléphones.
+type NativeLocationWindow = Window & {
+  WmtLocation?: { request(id: string): void };
+  __wmtLocationDone?: (id: string, lat: number, lon: number, error: string) => void;
+};
+let nativeCounter = 0;
+function requestNativePosition(win: NativeLocationWindow, bridge: NonNullable<NativeLocationWindow['WmtLocation']>): Promise<Position> {
+  return new Promise((resolve) => {
+    const id = `loc-${(nativeCounter += 1)}`;
+    const timer = window.setTimeout(() => {
+      fail('timeout');
+      resolve(currentPosition());
+    }, 70000);
+    const previous = win.__wmtLocationDone;
+    win.__wmtLocationDone = (doneId, lat, lon, error) => {
+      if (doneId !== id) return previous?.(doneId, lat, lon, error);
+      window.clearTimeout(timer);
+      win.__wmtLocationDone = previous;
+      if (error) {
+        fail(error === 'denied' || error === 'off' || error === 'timeout' ? error : 'unavailable');
+        return resolve(currentPosition());
+      }
+      known = { lat, lon };
+      failure = null;
+      for (const listener of listeners) listener();
+      resolve(known);
+    };
+    bridge.request(id);
+  });
+}
+
 export function requestPosition(): Promise<Position> {
   return new Promise((resolve) => {
     if (!positionSetting.enabled()) return resolve(currentPosition());
+    const nativeWindow = typeof window === 'undefined' ? undefined : (window as NativeLocationWindow);
+    if (nativeWindow?.WmtLocation) return void requestNativePosition(nativeWindow, nativeWindow.WmtLocation).then(resolve);
     const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation;
     if (!geo) {
       fail('absent');
