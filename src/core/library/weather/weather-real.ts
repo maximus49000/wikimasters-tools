@@ -1,5 +1,5 @@
 import { RELAY_BASE } from '../../documentary/config';
-import type { Weather } from './weather-types';
+import { minCloudFor, type Weather } from './weather-types';
 
 export const WEATHER_RELAY = `${RELAY_BASE}/weather`;
 
@@ -20,7 +20,7 @@ export function realToWeather(obs: RealObservation): Weather {
   const kind: Weather['kind'] = snowy ? 'snow' : 'rain';
   const wetting = !snowy && (rainy || drizzly);
   return {
-    cloud: clamp01(Math.max(obs.cloud / 100, precip > 0 ? 0.8 : 0)),
+    cloud: clamp01(Math.max(obs.cloud / 100, precip > 0 ? minCloudFor(precip) : 0)),
     precip,
     kind,
     fog: foggy ? 0.85 : clamp01(((10000 - obs.visibilityM) / 10000) * 0.6),

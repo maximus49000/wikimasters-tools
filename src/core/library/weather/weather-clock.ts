@@ -1,6 +1,6 @@
 import type { WeatherState } from '../library-types';
 import { mulberry32 } from '../scene-world';
-import { blend, smooth, targetOf, type Weather } from './weather-types';
+import { blend, coherent, smooth, targetOf, type Weather } from './weather-types';
 
 export type WeatherSource = (nowMs: number) => Weather;
 
@@ -17,15 +17,15 @@ export function createWeatherClock(): { setSource(next: WeatherSource, nowMs: nu
   let from: Weather | null = null;
   let startedAt = 0;
   const read = (nowMs: number): Weather => {
-    if (!source) return targetOf('cloudy');
+    if (!source) return coherent(targetOf('cloudy'));
     const target = source(nowMs);
-    if (!from) return target;
+    if (!from) return coherent(target);
     const k = (nowMs - startedAt) / FADE_MS;
     if (k >= 1) {
       from = null;
-      return target;
+      return coherent(target);
     }
-    return blend(from, target, smooth(k));
+    return coherent(blend(from, target, smooth(k)));
   };
   return {
     read,

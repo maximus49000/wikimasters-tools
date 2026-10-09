@@ -40,6 +40,14 @@ export const smooth = (k: number): number => {
   return x * x * (3 - 2 * x);
 };
 
+// Pluie et nuages sont liés : un ciel très couvert peut rester sans pluie, mais une forte pluie exige beaucoup de nuages.
+export const maxPrecipFor = (cloud: number): number => clamp01((cloud - 0.35) / 0.6) ** 1.5;
+export const minCloudFor = (precip: number): number => Math.min(1, 0.35 + 0.6 * clamp01(precip) ** (2 / 3));
+export const coherent = (w: Weather): Weather => {
+  const cap = maxPrecipFor(w.cloud);
+  return w.precip <= cap ? w : { ...w, precip: cap };
+};
+
 // Sol à l'équilibre sous cet état (utilisé en mode forcé et pour les cibles).
 export const steadyWet = (t: Target): number => (t.kind === 'rain' ? clamp01(t.precip * 1.4) : 0);
 export const steadySnow = (t: Target): number => (t.kind === 'snow' ? clamp01(t.precip * 1.6) : 0);
