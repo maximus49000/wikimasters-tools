@@ -136,7 +136,9 @@ public class MainActivity extends Activity {
             // Sans cette méthode la WebView refuse toute position : la météo réelle resterait toujours simulée.
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                if (!origin.equals("https://" + HOST)) {
+                // La WebView transmet l'origine avec une barre finale (« https://hôte/ ») : on compare le schéma et l'hôte, pas la chaîne.
+                Uri originUri = Uri.parse(origin);
+                if (!"https".equals(originUri.getScheme()) || !HOST.equals(originUri.getHost())) {
                     callback.invoke(origin, false, false);
                     return;
                 }
