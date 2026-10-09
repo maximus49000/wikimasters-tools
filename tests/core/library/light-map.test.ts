@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LIGHT_SCALE, buildLightMap, type LightInput } from '../../../src/core/library/light/light-map';
+import { buildSurfaceMap, SURF } from '../../../src/core/library/light/surfaces';
+import type { Box, LampSource } from '../../../src/core/library/light/occluders';
 
 const base: LightInput = {
   width: 600, height: 510, wallH: 340,
@@ -69,5 +71,63 @@ describe('buildLightMap', () => {
   });
   it('est déterministe', () => {
     expect(Array.from(buildLightMap(base).rgba)).toEqual(Array.from(buildLightMap(base).rgba));
+  });
+
+  describe('ombres et lampes (8b)', () => {
+    const warm = (m: { rgba: Uint8ClampedArray }, i: number): boolean => m.rgba[i * 4 + 3]! > 0 && m.rgba[i * 4]! - m.rgba[i * 4 + 2]! > 20;
+    const geom = { wallH: 340, floorH: 170 };
+    const sun = { ...base, sunFrac: 0.3 };
+    // Une table large devant la tache de soleil (profondeur 144..224) : son ombre tombe dans la tache.
+            const table: Box = { owner: 't', x0: 0, x1: 600, d0: 120, d1: 140, z0: 0, z1: 100 };
+    const lamp: LampSource = { id: 'l', x: 560, d: 200, z: 80, box: 'l' };
+    const yLamp = 340 + 200 * (170 / 680);
+
+    it('sans boîtes ni lampes, la sortie est identique à 8a', () => {
+      const a = buildLightMap(sun);
+      const b = buildLightMap({ ...sun, boxes: [], lamps: [] });
+      expect(Array.from(b.rgba)).toEqual(Array.from(a.rgba));
+    });
+    it('une table creuse la tache au sol derrière elle, son dessus est chaud, sa face avant non', () => {
+      const free = buildLightMap(sun);
+      const withTable = buildLightMap({ ...sun, boxes: [table] });
+      const surf = buildSurfaceMap([table], 600, 510, geom, LIGHT_SCALE);
+      let groundLost = 0; let topWarm = 0; let topN = 0; let frontWarm = 0;
+      for (let n = 0; n < surf.w * surf.h; n++) {
+        const k = surf.kind[n];
+        if (k === SURF.ground && warm(free, n) && !warm(withTable, n)) groundLost++;
+        if (k === SURF.top) { topN++; if (warm(withTable, n)) topWarm++; }
+        if (k === SURF.front && warm(withTable, n)) frontWarm++;
+      }
+      expect(groundLost).toBeGreaterThan(0);
+      expect(topN).toBeGreaterThan(0);
+      expect(topWarm).toBeGreaterThan(0);
+      expect(frontWarm).toBe(0);
+    });
+    it('est déterministe et stable avec des boîtes et des lampes', () => {
+      const a = buildLightMap({ ...sun, boxes: [table], lamps: [lamp] });
+      const b = buildLightMap({ ...sun, boxes: [{ ...table }], lamps: [{ ...lamp }] });
+      expect(Array.from(b.rgba)).toEqual(Array.from(a.rgba));
+    });
+    it('une lampe la nuit éclaire et réchauffe près d’elle, pas loin', () => {
+      const night = { ...base, daylight: 0, sunFrac: null, sunX: null };
+      const off = buildLightMap(night);
+      const on = buildLightMap({ ...night, lamps: [lamp] });
+      const near = at(on, 560, yLamp); const nearOff = at(off, 560, yLamp);
+      const far = at(on, 20, yLamp); const farOff = at(off, 20, yLamp);
+      expect(near[3]!).toBeLessThan(nearOff[3]! - 20);
+      expect(near[0]! - near[2]!).toBeGreaterThan(nearOff[0]! - nearOff[2]!);
+      expect(far[3]!).toBe(farOff[3]);
+    });
+    it('en plein jour clair la même lampe ne change presque rien', () => {
+      const off = buildLightMap(base);
+      const on = buildLightMap({ ...base, lamps: [lamp] });
+      expect(Math.abs(at(on, 440, yLamp)[3]! - at(off, 440, yLamp)[3]!) / 255).toBeLessThan(0.05);
+    });
+    it('sans soleil, les lampes éclairent quand même', () => {
+      const nosun = { ...base, daylight: 0.5, sunFrac: null, sunX: null, cloud: 0.5 };
+      const off = buildLightMap(nosun);
+      const on = buildLightMap({ ...nosun, lamps: [lamp] });
+      expect(at(on, 560, yLamp)[3]!).toBeLessThan(at(off, 560, yLamp)[3]!);
+    });
   });
 });
