@@ -38,4 +38,16 @@ describe('empreintes de référence (sortie identique après optimisation)', () 
     lampField(lamps, boxes, surf, 6);
     expect(performance.now() - t).toBeLessThan(250);
   });
+  it('repeint à chaud (gain différent, mêmes meubles) : même image que à froid, et vite', () => {
+    const { boxes, lamps } = scene(72, 0);
+    const a = { ...sun, boxes, lamps, hidden: 0 };
+    const froid = buildLightMap({ ...a, hidden: 0.5 });
+    buildLightMap(a);
+    const t = performance.now();
+    const chaud = buildLightMap({ ...a, hidden: 0.5 });
+    const ms = performance.now() - t;
+    expect(hash(chaud.rgba)).toBe(hash(froid.rgba));
+    expect(ms).toBeLessThan(40);
+    console.info('repaint chaud (ms)', ms.toFixed(1));
+  });
 });

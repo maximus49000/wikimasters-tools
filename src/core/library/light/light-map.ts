@@ -78,6 +78,38 @@ function lampLightOf(lamps: readonly LampSource[], boxes: readonly Box[], surf: 
   return field;
 }
 
+// Part du soleil qui atteint chaque pixel de sol ou de dessus, déjà multipliée par l'affaiblissement avec la profondeur
+// (max sur les fenêtres de reach × fade), sans le gain : elle ne dépend que de l'élévation, des fenêtres, des pentes et
+// des meubles. Le gain (nuages, soleil caché) change toutes les 250 ms et se multiplie au tracé.
+type SunGlass = { g: Glass & { zBottom: number; zTop: number }; slope: number };
+let sunMemo: { sig: string; field: Float64Array } | null = null;
+function sunReachField(glasses: readonly SunGlass[], boxes: readonly Box[], surf: SurfaceMap, width: number, height: number, wallH: number, tanElev: number, depthMax: number): Float64Array {
+  const verres = glasses.map(({ g, slope }) => `${g.x},${g.y},${g.w},${g.h}:${slope}`).join(';');
+  const sig = `${width}x${height}|${wallH}|${tanElev}|${verres}|${boxesSig(boxes)}`;
+  if (sunMemo?.sig === sig) return sunMemo.field;
+  const field = new Float64Array(surf.w * surf.h);
+  const P: V3 = { x: 0, d: 0, z: 0 };
+  for (let j = 0; j < surf.h; j++) {
+    for (let i = 0; i < surf.w; i++) {
+      const n = j * surf.w + i;
+      const kind = surf.kind[n]!;
+      // Face avant et mur : pas de soleil direct ; sol et dessus : max des fenêtres, occultation par les meubles.
+      if (kind !== SURF.ground && kind !== SURF.top) continue;
+      const d = surf.d[n]!;
+      P.x = (i + 0.5) * LIGHT_SCALE; P.d = d; P.z = kind === SURF.top ? surf.z[n]! + 0.5 : 0;
+      const fade = 1 - 0.4 * (d / depthMax);
+      let best = 0;
+      for (const { g, slope } of glasses) {
+        const reach = sunReaches(P, g, tanElev, slope, boxes);
+        if (reach > 0) best = Math.max(best, fade * reach);
+      }
+      field[n] = best;
+    }
+  }
+  sunMemo = { sig, field };
+  return field;
+}
+
 // Image RGBA (non prémultipliée) posée par-dessus la pièce : une ombre translucide teintée, éclaircie sous les rayons,
 // plus une lueur chaude sous chaque rayon. Déterministe pour une entrée donnée.
 export function buildLightMap(input: LightInput): LightMap {
@@ -112,7 +144,7 @@ export function buildLightMap(input: LightInput): LightMap {
   const tanElev = Math.tan(elev);
   const surf = surfaceOf(boxes, width, height, wallH);
   const lampLight = lampLightOf(lamps, boxes, surf, width, height, wallH);
-  const P: V3 = { x: 0, d: 0, z: 0 };
+  const sunField = glasses.length > 0 ? sunReachField(glasses, boxes, surf, width, height, wallH, tanElev, depthMax) : null;
   for (let j = 0; j < h; j++) {
     const y = (j + 0.5) * LIGHT_SCALE;
     for (let i = 0; i < w; i++) {
@@ -126,16 +158,8 @@ export function buildLightMap(input: LightInput): LightMap {
       const kind = surf.kind[n]!;
       let b = 0;
       if (boxes.length > 0) {
-        // Face avant et mur : pas de soleil direct ; sol et dessus : max des fenêtres, occultation par les meubles.
-        if (kind === SURF.ground || kind === SURF.top) {
-          const d = surf.d[n]!;
-          P.x = x; P.d = d; P.z = kind === SURF.top ? surf.z[n]! + 0.5 : 0;
-          const fade = 1 - 0.4 * (d / depthMax);
-          for (const { g, slope } of glasses) {
-            const reach = sunReaches(P, g, tanElev, slope, boxes);
-            if (reach > 0) b = Math.max(b, gain * fade * reach);
-          }
-        }
+        // Avec des meubles : part du soleil mémorisée (reach × fade), multipliée par le gain du moment.
+        if (sunField) b = gain * sunField[n]!;
       } else if (y >= wallH) {
         for (const q of patches) {
           if (!inQuad(q, x, y)) continue;
