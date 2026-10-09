@@ -14,7 +14,7 @@ export const COAT_COLORS: Record<Coat, Colors> = {
 };
 export const COAT_LABELS: Record<Coat, string> = { orange: 'Roux', black: 'Noir', gray: 'Gris', white: 'Blanc', tabby: 'Tigré', bicolor: 'Bicolore' };
 
-type Props = { coat: Coat; pose: Pose; facing: 'l' | 'r'; name: string };
+type Props = { coat: Coat; pose: Pose; facing: 'l' | 'r'; name: string; still?: boolean };
 
 function Head({ x, y, c, tilt = 0, mouth = false, closed = false }: { x: number; y: number; c: Colors; tilt?: number; mouth?: boolean; closed?: boolean }) {
   return (
@@ -79,10 +79,10 @@ function sitting(c: Colors, head: ReactElement, extras?: ReactElement): ReactEle
   );
 }
 
-function body(pose: Pose, c: Colors): ReactElement {
+function body(pose: Pose, c: Colors, still: boolean): ReactElement {
   switch (pose) {
     case 'walk':
-      return standing(c, true);
+      return standing(c, !still);
     case 'eat':
       return standing(c, false, -9, 23, 38);
     case 'jump':
@@ -105,7 +105,7 @@ function body(pose: Pose, c: Colors): ReactElement {
         c,
         <Head x={4} y={-33} c={c} tilt={12} />,
         <rect x="7" y="-32" width="4.2" height="12" rx="2.1" fill={c.body} transform="rotate(-25 9 -20)">
-          <animateTransform attributeName="transform" type="rotate" values="-25 9 -20;-5 9 -20;-25 9 -20" dur="0.7s" repeatCount="indefinite" />
+          {!still && <animateTransform attributeName="transform" type="rotate" values="-25 9 -20;-5 9 -20;-25 9 -20" dur="0.7s" repeatCount="indefinite" />}
         </rect>,
       );
     case 'scratch':
@@ -113,7 +113,7 @@ function body(pose: Pose, c: Colors): ReactElement {
         c,
         <Head x={5} y={-34} c={c} tilt={-8} />,
         <rect x="8" y="-36" width="4.4" height="16" rx="2.2" fill={c.body}>
-          <animateTransform attributeName="transform" type="translate" values="0 0;0 5;0 0" dur="0.5s" repeatCount="indefinite" />
+          {!still && <animateTransform attributeName="transform" type="translate" values="0 0;0 5;0 0" dur="0.5s" repeatCount="indefinite" />}
         </rect>,
       );
     case 'stretch':
@@ -147,14 +147,14 @@ function body(pose: Pose, c: Colors): ReactElement {
   }
 }
 
-// Le nom, au-dessus du chat, quand on le caresse (hors du groupe retourné : le texte ne s'inverse pas).
-function Bubble({ name }: { name: string }) {
+// Le nom et les cœurs, au-dessus du chat quand on le caresse : dessinés dans une couche à part, tout au-dessus de la pièce, et jamais dans le groupe retourné.
+export function PetBubble({ name, still = false }: { name: string; still?: boolean }) {
   const w = Math.max(44, name.length * 6.6 + 18);
   return (
     <g style={{ pointerEvents: 'none' }}>
       <text x="0" y="-62" textAnchor="middle" fontSize="12" fill="#E24B6A">
         ♥ ♥
-        <animate attributeName="opacity" values="1;0.35;1" dur="1.2s" repeatCount="indefinite" />
+        {!still && <animate attributeName="opacity" values="1;0.35;1" dur="1.2s" repeatCount="indefinite" />}
       </text>
       <rect x={-w / 2} y="-86" width={w} height="18" rx="9" fill="#FFFFFF" stroke="#9AA0A6" />
       <text data-pet-name="" x="0" y="-73" textAnchor="middle" fontSize="11" fill="#222" fontFamily="system-ui, sans-serif">
@@ -164,15 +164,14 @@ function Bubble({ name }: { name: string }) {
   );
 }
 
-export function PetSprite({ coat, pose, facing, name }: Props) {
+export function PetSprite({ coat, pose, facing, still = false }: Props) {
   const c = COAT_COLORS[coat];
   return (
     <g data-pet-pose={pose} data-coat={coat}>
       {pose !== 'hide' && pose !== 'jump' && <ellipse cx="0" cy="0" rx="19" ry="3" fill="#000" opacity="0.18" />}
       <g data-cat-body="" transform={facing === 'l' ? 'scale(-1 1)' : undefined}>
-        {body(pose, c)}
+        {body(pose, c, still)}
       </g>
-      {pose === 'purr' && <Bubble name={name} />}
     </g>
   );
 }

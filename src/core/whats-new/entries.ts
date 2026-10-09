@@ -1102,7 +1102,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Comment faire', text: 'Passez en mode Aménager avec le crayon, touchez le chat dans la rangée Animaux, écrivez son nom, touchez un pelage (roux, noir, gris, blanc, tigré, bicolore) puis la coche.' },
           { label: 'À quoi ça sert', text: 'À donner de la vie à votre pièce : le chat marche, saute sur le canapé, dort dans son panier, mange à la gamelle ou se cache sous le canapé, selon les meubles que vous avez posés.' },
-          { label: 'Limites', text: 'Un seul chat par pièce. Il se déplace seulement là où il y a de la place : sans meuble, il se promène et se toilette ; sans panier, il dort par terre.' },
+          { label: 'Limites', text: 'Un seul chat par pièce. Il se déplace seulement là où il y a de la place : sans meuble, il se promène et se toilette ; sans panier, il dort par terre. Le dessus d’une étagère ne s’atteint qu’en sautant depuis un bureau voisin. Agrandir la pièce à gauche peut faire sauter le chat.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },

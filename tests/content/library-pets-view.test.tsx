@@ -57,7 +57,7 @@ describe('RoomView avec un chat', () => {
           blink={[]}
           onCell={() => undefined}
           onPick={() => undefined}
-          pets={[{ id: 'p1', coat: 'orange', name: 'Minou', pose: 'sit', facing: 'r', behind: 1 }]}
+          pets={[{ id: 'p1', coat: 'orange', name: 'Minou', pose: 'sit', facing: 'r', behind: 1, top: false }]}
         />,
       );
     });
@@ -66,12 +66,56 @@ describe('RoomView avec un chat', () => {
   });
 });
 
+describe('RoomView : couches du chat', () => {
+  const base: Room = {
+    ...createInitialState().rooms[0]!,
+    cols: 48,
+    layout: [
+      { id: 'a', kind: 'sofa', col: 2, row: 12 },
+      { id: 'c', kind: 'desk', col: 12, row: 14 },
+      { id: 'd', kind: 'small', item: 'plant', hostId: 'c', slot: 0 },
+      { id: 'e', kind: 'computer', deskId: 'c' },
+      { id: 'w', kind: 'wall', shape: 'poster', col: 30, row: 5, slug: 'Paris' },
+    ],
+  };
+  const orderOf = (pets: React.ComponentProps<typeof RoomView>['pets']) => {
+    act(() => {
+      root.render(<RoomView room={base} editing={false} cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined} pets={pets} />);
+    });
+    return Array.from(container.querySelectorAll('[data-furniture],[data-pet],[data-card],[data-pet-bubble]')).map((el) => el.getAttribute('data-furniture') ?? el.getAttribute('data-card') ?? (el.hasAttribute('data-pet-bubble') ? `bubble:${el.getAttribute('data-pet-bubble')}` : el.getAttribute('data-pet')));
+  };
+  const cat = { id: 'p1', coat: 'orange' as const, name: 'Minou', pose: 'sit' as const, facing: 'r' as const, behind: 1, top: false };
+
+  it('les posters sont dessinés avant les meubles et le chat', () => {
+    const order = orderOf([cat]);
+    expect(order.indexOf('Paris')).toBeLessThan(order.indexOf('p1'));
+    expect(order.indexOf('Paris')).toBeLessThan(order.indexOf('sofa'));
+  });
+
+  it('un chat perché sur le bureau passe après l ordinateur et les petits objets', () => {
+    const order = orderOf([{ ...cat, behind: 2, top: true }]);
+    expect(order.indexOf('p1')).toBeGreaterThan(order.indexOf('computer'));
+    expect(order.indexOf('p1')).toBeGreaterThan(order.indexOf('small'));
+  });
+
+  it('la bulle n existe que quand il ronronne, dans la couche du dessus', () => {
+    expect(orderOf([cat]).some((x) => String(x).startsWith('bubble:'))).toBe(false);
+    const order = orderOf([{ ...cat, pose: 'purr' }]);
+    expect(order[order.length - 1]).toBe('bubble:p1');
+    expect(container.querySelector('[data-pet-bubble] [data-pet-name]')!.textContent).toBe('Minou');
+    expect(container.querySelector('[data-pet] [data-pet-name]')).toBeNull();
+  });
+});
+
 describe('LibraryPanel avec un chat', () => {
   it('affiche le chat adopté et mémorise son plan sans prévenir les abonnés', async () => {
     await createLibraryRepo(store).update((s) => adoptPet(s, 'r1', 'Minou', 'orange'));
     await mountPanel();
+    const subscriber = vi.fn();
+    repo.subscribe(subscriber);
     expect(q('[data-pet="p1"]')).not.toBeNull();
     await settle();
+    expect(subscriber).not.toHaveBeenCalled();
     expect(repo.current()!.rooms[0]!.pets[0]!.plan).toBeDefined();
   });
 

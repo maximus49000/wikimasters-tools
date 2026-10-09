@@ -124,4 +124,12 @@ describe('touchPlan', () => {
     const jumping: PetPlan = { ...sitting, route: [{ kind: 'jump', from: { x: 0, y: 450 }, to: { x: 40, y: 380 }, ms: 1000, fromOn: null, on: null }] };
     expect(touchPlan(jumping, env([]), 500)).toBeNull();
   });
+
+  it('pas de caresse pendant qu il se cache', () => {
+    expect(touchPlan({ ...sitting, action: 'hide' }, env([]), 1000)).toBeNull();
+  });
+
+  it('pas de caresse sur un plan terminé', () => {
+    expect(touchPlan(sitting, env([]), 9000)).toBeNull();
+  });
 });

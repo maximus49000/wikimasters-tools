@@ -156,7 +156,7 @@ export function resume(plan: PetPlan | undefined, env: BrainEnv, now: number): {
 // Une caresse : le chat s'arrête là où il est et ronronne 3,5 s. Pas en plein saut ; un plan fini sera remplacé par la boucle.
 export function touchPlan(plan: PetPlan, env: BrainEnv, now: number): PetPlan | null {
   const state = stateAt(plan, now);
-  if (state.phase === 'jump' || state.phase === 'done') return null;
+  if (state.phase === 'jump' || state.phase === 'done' || plan.action === 'hide') return null;
   const hostId = state.phase === 'act' ? plan.hostId : state.on;
   return { action: 'purr', hostId, at: state.pos, on: state.on, route: [], startedAt: now, actMs: 3500, facing: state.facing, sig: layoutSig(env.layout, env.cols) };
 }

@@ -2,14 +2,16 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { PetPlan, Room } from '../core/library/library-types';
 import { createPetRunner, type PetFrame } from '../core/library/pets/runner';
 
-export type PetView = Omit<PetFrame, 'pos'>;
+export type PetView = Omit<PetFrame, 'pos'> & { still?: boolean };
 
 const FRAME_MS = 33;
+// Clé du nœud de la bulle (nom, cœurs), dessinée dans une couche à part mais placée comme le chat.
+export const BUBBLE = ':bubble';
 
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const toView = ({ pos: _pos, ...view }: PetFrame): PetView => view;
+const toView = ({ pos: _pos, ...view }: PetFrame, still: boolean): PetView => ({ ...view, still });
 const sameViews = (a: PetView[], b: PetFrame[]): boolean =>
-  a.length === b.length && a.every((v, i) => v.id === b[i]!.id && v.pose === b[i]!.pose && v.facing === b[i]!.facing && v.behind === b[i]!.behind && v.name === b[i]!.name && v.coat === b[i]!.coat);
+  a.length === b.length && a.every((v, i) => v.id === b[i]!.id && v.pose === b[i]!.pose && v.facing === b[i]!.facing && v.behind === b[i]!.behind && v.top === b[i]!.top && v.name === b[i]!.name && v.coat === b[i]!.coat);
 
 const place = (el: SVGGElement, pos: { x: number; y: number }): void => el.setAttribute('transform', `translate(${pos.x.toFixed(1)} ${pos.y.toFixed(1)})`);
 
@@ -38,9 +40,17 @@ export function usePetSim(room: Room | null, onPlan: (roomId: string, petId: str
     for (const f of list) {
       const el = nodes.current.get(f.id);
       if (el) place(el, f.pos);
+      const bubble = nodes.current.get(`${f.id}${BUBBLE}`);
+      if (bubble) place(bubble, f.pos);
     }
-    setViews((prev) => (sameViews(prev, list) ? prev : list.map(toView)));
-  }, [runner]);
+    setViews((prev) => (sameViews(prev, list) ? prev : list.map((f) => toView(f, still))));
+  }, [runner, still]);
+
+  // Changement de pièce : on repeint tout de suite avec les chats de la nouvelle, jamais un instant avec ceux de l'ancienne.
+  const roomIdNow = room?.id;
+  useLayoutEffect(() => {
+    tick();
+  }, [roomIdNow, tick]);
 
   const petCount = room?.pets.length ?? 0;
   const roomId = room?.id;
@@ -48,7 +58,7 @@ export function usePetSim(room: Room | null, onPlan: (roomId: string, petId: str
     tick();
     if (petCount === 0) return;
     if (still) {
-      const timer = window.setInterval(tick, 1000);
+      const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') tick(); }, 1000);
       return () => window.clearInterval(timer);
     }
     let frame = 0;
@@ -70,7 +80,7 @@ export function usePetSim(room: Room | null, onPlan: (roomId: string, petId: str
       return;
     }
     nodes.current.set(id, el);
-    const frame = frames.current.find((f) => f.id === id);
+    const frame = frames.current.find((f) => f.id === (id.endsWith(BUBBLE) ? id.slice(0, -BUBBLE.length) : id));
     if (frame) place(el, frame.pos);
   }, []);
 

@@ -77,4 +77,35 @@ describe('createPetRunner', () => {
     expect(runner.step({ ...room, pets: [] }, 10)).toEqual([]);
     expect(runner.touch(room, 'p1', 20)).toBe(false);
   });
+
+  it('un plan venu du futur est remplacé', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan });
+    const future: PetPlan = { ...resting(sofa, standPoint(10, 16)), startedAt: 10_000_000 };
+    runner.step(roomWith(sofa, future), 1000);
+    expect(onPlan).toHaveBeenCalledTimes(1);
+    expect(onPlan.mock.calls[0]![1].startedAt).toBe(1000);
+  });
+
+  it('animations réduites : un trajet en cours devient un plan sur place', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan, still: true, rng: () => 0.3 });
+    const walking: PetPlan = {
+      ...resting(sofa, standPoint(10, 16)),
+      route: [{ kind: 'walk', from: standPoint(2, 16), to: standPoint(10, 16), ms: 5000, fromOn: null, on: null }],
+    };
+    const [frame] = runner.step(roomWith(sofa, walking), 2500);
+    expect(onPlan).toHaveBeenCalledTimes(1);
+    expect(onPlan.mock.calls[0]![1].route).toEqual([]);
+    expect(['sit', 'sleep']).toContain(frame!.pose);
+  });
+
+  it('top : vrai seulement perché sur un bureau ou une étagère', () => {
+    const desk: Layout = [{ id: 'd', kind: 'desk', col: 2, row: 12 }];
+    const perched = (layout: Layout, on: string | null): PetPlan => ({ ...resting(layout, { x: 100, y: 300 }), on, hostId: on });
+    const runner = createPetRunner({ onPlan: vi.fn() });
+    expect(runner.step(roomWith(desk, perched(desk, 'd')), 500)[0]!.top).toBe(true);
+    expect(runner.step(roomWith(sofa, perched(sofa, 'a')), 500)[0]!.top).toBe(false);
+    expect(runner.step(roomWith(sofa, perched(sofa, null)), 500)[0]!.top).toBe(false);
+  });
 });
