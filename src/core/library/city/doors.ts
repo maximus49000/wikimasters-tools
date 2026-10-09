@@ -1,0 +1,79 @@
+import { WORLD_MARGIN, citySkyline, hashString, mulberry32 } from '../scene-world';
+import type { CityIntensity } from './intensity';
+import { outfitFor, type Outfit, type Profile } from './people';
+
+export type Door = { id: string; x: number; variant: 0 | 1 | 2; hallU: number };
+export const DOOR_WIDTH = 22;
+export const TRIP_CYCLE = 160;
+
+// Une entrée d'immeuble sur un immeuble sur deux du premier plan, assez large pour la porter.
+export function doorsFor(width: number, height: number, seed: number): Door[] {
+  const rng = mulberry32(seed ^ hashString('doors'));
+  return citySkyline(width, height, seed)
+    .filter((b) => !b.far && b.w >= DOOR_WIDTH + 12)
+    .filter((_, i) => i % 2 === 0)
+    .map((b, i) => ({ id: `door-${i}`, x: Math.round(b.x + 6 + rng() * (b.w - DOOR_WIDTH - 12)), variant: Math.floor(rng() * 3) as 0 | 1 | 2, hallU: rng() }));
+}
+
+export type Trip = { id: string; kind: 'out' | 'in'; doorX: number; dir: 1 | -1; speed: number; phase: number; outfit: Outfit; profile: Profile; scale: number };
+
+const FADE_S = 0.8;
+const smooth = (x: number): number => {
+  const t = Math.min(1, Math.max(0, x));
+  return t * t * (3 - 2 * t);
+};
+
+export function tripsFor(doors: Door[], seed: number): Trip[] {
+  const rng = mulberry32(seed ^ hashString('trips'));
+  const out: Trip[] = [];
+  for (const door of doors) {
+    for (const kind of ['out', 'in'] as const) {
+      const profile: Profile = rng() < 0.3 ? 'suit' : rng() < 0.5 ? 'stroller' : 'ordinary';
+      out.push({
+        id: `${door.id}-${kind}`,
+        kind,
+        doorX: door.x + DOOR_WIDTH / 2,
+        dir: rng() < 0.5 ? 1 : -1,
+        speed: 18 + rng() * 8,
+        phase: rng() * TRIP_CYCLE,
+        outfit: outfitFor(profile, rng),
+        profile,
+        scale: 0.95 + rng() * 0.15,
+      });
+    }
+  }
+  return out;
+}
+
+// Distance à parcourir entre la porte et le bord du monde : vers l'avant pour un habitant qui sort, depuis l'arrière pour celui qui rentre.
+const reachOf = (trip: Trip, width: number): number => {
+  const forward = trip.dir > 0 ? width + WORLD_MARGIN - trip.doorX : trip.doorX + WORLD_MARGIN;
+  const backward = trip.dir > 0 ? trip.doorX + WORLD_MARGIN : width + WORLD_MARGIN - trip.doorX;
+  return trip.kind === 'out' ? forward : backward;
+};
+
+// Position d'un habitant `t` secondes après la date d'origine, ou null s'il n'est pas en route. `fade` : 0 = invisible (à la porte), 1 = plein.
+export function tripAt(trip: Trip, width: number, t: number): { x: number; fade: number } | null {
+  const c = (((t + trip.phase) % TRIP_CYCLE) + TRIP_CYCLE) % TRIP_CYCLE;
+  const reach = reachOf(trip, width);
+  const duration = reach / trip.speed;
+  if (c >= duration) return null;
+  if (trip.kind === 'out') return { x: trip.doorX + trip.dir * trip.speed * c, fade: smooth(c / FADE_S) };
+  const startX = trip.doorX - trip.dir * reach;
+  return { x: startX + trip.dir * trip.speed * c, fade: 1 - smooth((c - (duration - FADE_S)) / FADE_S) };
+}
+
+// Le trajet a lieu dans ce tour de cycle si le tirage de (trajet, tour) passe sous le seuil.
+export function tripHappens(trip: Trip, t: number, gate: number): boolean {
+  const turn = Math.floor((t + trip.phase) / TRIP_CYCLE);
+  return mulberry32(hashString(trip.id) ^ Math.imul(turn, 2654435761))() < gate;
+}
+
+// On sort le matin (6 h 30 à 9 h) et on rentre le soir (17 h à 20 h) ; le reste du temps, un peu des deux.
+export function residentFlow(i: CityIntensity, minutes: number): { out: number; in: number } {
+  const h = (((minutes % 1440) + 1440) % 1440) / 60;
+  const morning = h >= 6.5 && h < 9;
+  const evening = h >= 17 && h < 20;
+  const base = Math.min(1, i.walkers * 0.9);
+  return { out: base * (morning ? 1 : evening ? 0.3 : 0.5), in: base * (evening ? 1 : morning ? 0.3 : 0.5) };
+}

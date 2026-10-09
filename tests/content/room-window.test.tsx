@@ -115,7 +115,8 @@ describe('RoomView — météo dans les fenêtres', () => {
     }
   });
 
-  it('les drapeaux de la météo atteignent le décor : parapluies sous la pluie', () => {
+  // Ville vivante 1a : les passants de la ville ne sont plus des acteurs (voir city/people.ts) ; à réactiver quand le rendu de la population sera branché.
+  it.skip('les drapeaux de la météo atteignent le décor : parapluies sous la pluie', () => {
     show(1, 'city', rainyWeather());
     expect(container.querySelector('[data-actors] [data-umbrella]')).not.toBeNull();
   });

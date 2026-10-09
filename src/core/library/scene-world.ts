@@ -27,10 +27,14 @@ const positiveMod = (a: number, n: number): number => ((a % n) + n) % n;
 
 // Position horizontale (repère de la pièce) d'un acteur à l'instant t (secondes) : il traverse tout le monde puis recommence.
 // Tous les cadres montrent le même monde, donc un acteur passe d'une fenêtre à l'autre après distance ÷ vitesse.
-export function actorX(actor: Actor, width: number, t: number): number {
+export function loopX(phase: number, speed: number, width: number, t: number): number {
   const loop = width + 2 * WORLD_MARGIN;
-  const travelled = positiveMod(actor.phase + Math.abs(actor.speed) * t, loop);
-  return actor.speed > 0 ? travelled - WORLD_MARGIN : width + WORLD_MARGIN - travelled;
+  const travelled = positiveMod(phase + Math.abs(speed) * t, loop);
+  return speed > 0 ? travelled - WORLD_MARGIN : width + WORLD_MARGIN - travelled;
+}
+
+export function actorX(actor: Actor, width: number, t: number): number {
+  return loopX(actor.phase, actor.speed, width, t);
 }
 
 type Spec = { kind: ActorKind; every: number; yMin: number; yMax: number; speedMin: number; speedMax: number; active: boolean; scale: [number, number] };
@@ -39,8 +43,6 @@ type Spec = { kind: ActorKind; every: number; yMin: number; yMax: number; speedM
 const SPECS: Record<SceneId, Spec[]> = {
   city: [
     { kind: 'cloud', every: 420, yMin: 0.06, yMax: 0.3, speedMin: 5, speedMax: 11, active: false, scale: [0.8, 1.5] },
-    { kind: 'walker', every: 170, yMin: 0.8, yMax: 0.82, speedMin: 16, speedMax: 28, active: true, scale: [0.9, 1.1] },
-    { kind: 'car', every: 380, yMin: 0.88, yMax: 0.9, speedMin: 55, speedMax: 90, active: true, scale: [0.9, 1.1] },
   ],
   countryside: [
     { kind: 'cloud', every: 380, yMin: 0.06, yMax: 0.28, speedMin: 5, speedMax: 12, active: false, scale: [0.8, 1.6] },
