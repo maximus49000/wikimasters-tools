@@ -45,7 +45,7 @@ function canvasUrl(map: LightMap): string | null {
   return scratch.toDataURL('image/png');
 }
 
-// Calque de lumière : ombre translucide + rayons chauds, repeint 4 fois par seconde sans re-rendu React (href posé à la main).
+// Calque de lumière : ombre translucide + rayons chauds, repeint 4 fois par seconde (≈12 si un animal bouge, moins sur un appareil lent) sans re-rendu React (href posé à la main).
 export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, lamps, signature = '', toUrl = canvasUrl, getPetBoxes }: LightLayerProps): ReactElement {
   const imageRef = useRef<SVGImageElement | null>(null);
   const skyRef = useRef(sky);
@@ -59,6 +59,8 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
     let lastKey = '';
     let lastPetKey = '';
     let lastSlow = 0;
+    // Durée de la dernière repeinture qui a vraiment construit une carte : garde adaptative de la cadence rapide.
+    let lastPaintMs = 0;
     const paint = (): void => {
       const s = skyRef.current;
       const w = clock.read(Date.now());
@@ -70,6 +72,7 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
       if (key === lastKey && image.hasAttribute('href')) return;
       lastKey = key;
       lastPetKey = pk;
+      const t0 = performance.now();
       // Sans fenêtre : pas de ciel, donc une pièce sans ombre ambiante et une nuit neutre pour que les lampes se voient.
       const noSky = windows.length === 0;
       const input: LightInput = noSky ? {
@@ -81,6 +84,7 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
       };
       const url = toUrl(buildLightMap(input));
       if (url !== null && image.getAttribute('href') !== url) image.setAttribute('href', url);
+      lastPaintMs = performance.now() - t0;
     };
     draw.current = paint;
     const petsMoved = (): boolean => (getPetBoxes ? petKey(getPetBoxes()) !== lastPetKey : false);
@@ -97,8 +101,10 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'hidden') return;
       const now = Date.now();
-      // Rapide (≈12 Hz) seulement quand un animal a bougé ; sinon le rythme habituel (4 Hz) du ciel.
-      if (!petsMoved() && now - lastSlow < TICK_MS) return;
+      // Rapide (≈12 Hz) seulement quand un animal a bougé, et au plus 1 repeinture pour 4 de temps de calcul
+      // (un appareil lent retombe vers 4 Hz au lieu de saturer le fil principal) ; sinon le rythme habituel (4 Hz) du ciel.
+      const gap = petsMoved() ? Math.max(FAST_MS, 4 * lastPaintMs) : TICK_MS;
+      if (now - lastSlow < gap) return;
       lastSlow = now;
       paint();
     }, getPetBoxes ? FAST_MS : TICK_MS);
@@ -108,7 +114,7 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
     };
   }, [windows, width, height, wallH, clock, toUrl, signature, boxes, lamps, getPetBoxes]);
 
-  // Mouvement réduit : pas d'intervalle, mais le ciel (chaque minute) relance un calcul.
+  // Mouvement réduit : pas d'intervalle rapide (au plus un contrôle par seconde des animaux), mais le ciel (chaque minute) relance un calcul.
   const first = useRef(true);
   useEffect(() => {
     if (first.current) { first.current = false; return; }

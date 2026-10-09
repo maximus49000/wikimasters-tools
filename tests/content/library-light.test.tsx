@@ -101,6 +101,25 @@ describe('LightLayer et animaux', () => {
     }
     expect(toUrl.mock.calls.length - before).toBeGreaterThanOrEqual(10);
   });
+  it('après une repeinture lente, saute les cycles rapides suivants (garde adaptative)', async () => {
+    let x = 100;
+    let perf = 0;
+    const spy = vi.spyOn(performance, 'now').mockImplementation(() => perf);
+    try {
+      const toUrl = vi.fn(() => { perf += 400; return `data:image/png;base64,${x}`; }); // chaque repeinture « dure » 400 ms
+      await mountPets(toUrl, () => [box(x)]);
+      const before = toUrl.mock.calls.length;
+      for (let k = 0; k < 12; k++) {
+        x += 10;
+        await act(async () => { vi.advanceTimersByTime(84); });
+      }
+      expect(toUrl.mock.calls.length - before).toBe(0); // 4 × 400 ms = 1,6 s entre deux repeintures
+      await act(async () => { vi.advanceTimersByTime(1000); });
+      expect(toUrl.mock.calls.length - before).toBeGreaterThanOrEqual(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
   it('ne repeint pas quand l’animal est immobile et que le ciel ne change pas', async () => {
     const toUrl = vi.fn(() => 'data:image/png;base64,AAAA');
     await mountPets(toUrl, () => [box(100)]);
