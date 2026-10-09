@@ -54,7 +54,7 @@ function skyField(windows: readonly Glass[], width: number, height: number, w: n
   return field;
 }
 
-const round = Math.round;
+const round = (v: number): string => v.toFixed(1);
 const boxesSig = (boxes: readonly Box[]): string => boxes.map((b) => `${b.owner}:${round(b.x0)},${round(b.x1)},${round(b.d0)},${round(b.d1)},${round(b.z0)},${round(b.z1)}`).join(';');
 const lampsSig = (lamps: readonly LampSource[]): string => lamps.map((l) => `${l.id}:${round(l.x)},${round(l.d)},${round(l.z)}:${l.box}`).join(';');
 
@@ -143,14 +143,14 @@ export function buildLightMap(input: LightInput): LightMap {
       }
       const a1 = shade * (1 - b);
       const sunA = Math.min(0.38 * b, 0.9 * shade * b);
-      const glow = lampL > 0 ? Math.min(0.34, 0.34 * lampL * (0.35 + 0.65 * need)) : 0;
+      const glow = lampL > 0 ? Math.min(0.34, 0.34 * lampL * (0.08 + 0.92 * need)) : 0;
       const a2 = sunA + glow * (1 - sunA);
       const a = a2 + a1 * (1 - a2);
       if (a <= 0.001) continue;
       const o = n * 4;
       // Teinte chaude = mélange du soleil et de la lampe pondéré par leur alpha.
       for (let c = 0; c < 3; c++) {
-        const warmC = a2 > 0 ? (WARM[c]! * sunA + LAMP_WARM[c]! * glow * (1 - sunA)) / a2 : WARM[c]!;
+        const warmC = glow > 0 ? (WARM[c]! * sunA + LAMP_WARM[c]! * glow * (1 - sunA)) / a2 : WARM[c]!;
         rgba[o + c] = (warmC * a2 + dark[c]! * a1 * (1 - a2)) / a;
       }
       rgba[o + 3] = a * 255;

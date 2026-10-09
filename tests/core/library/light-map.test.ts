@@ -78,7 +78,7 @@ describe('buildLightMap', () => {
     const geom = { wallH: 340, floorH: 170 };
     const sun = { ...base, sunFrac: 0.3 };
     // Une table large devant la tache de soleil (profondeur 144..224) : son ombre tombe dans la tache.
-            const table: Box = { owner: 't', x0: 0, x1: 600, d0: 120, d1: 140, z0: 0, z1: 100 };
+    const table: Box = { owner: 't', x0: 0, x1: 600, d0: 120, d1: 140, z0: 0, z1: 100 };
     const lamp: LampSource = { id: 'l', x: 560, d: 200, z: 80, box: 'l' };
     const yLamp = 340 + 200 * (170 / 680);
 
@@ -121,7 +121,7 @@ describe('buildLightMap', () => {
     it('en plein jour clair la même lampe ne change presque rien', () => {
       const off = buildLightMap(base);
       const on = buildLightMap({ ...base, lamps: [lamp] });
-      expect(Math.abs(at(on, 440, yLamp)[3]! - at(off, 440, yLamp)[3]!) / 255).toBeLessThan(0.05);
+      for (const x of [560, 520]) expect(Math.abs(at(on, x, yLamp)[3]! - at(off, x, yLamp)[3]!) / 255).toBeLessThan(0.05);
     });
     it('sans soleil, les lampes éclairent quand même', () => {
       const nosun = { ...base, daylight: 0.5, sunFrac: null, sunX: null, cloud: 0.5 };
