@@ -1,13 +1,11 @@
 import { WORLD_MARGIN, citySkyline, hashString, mulberry32 } from '../scene-world';
 import type { CityIntensity } from './intensity';
-import { WALK_PACE } from './metrics';
+import { DOOR_MARGIN, DOOR_WIDTH, WALK_PACE } from './metrics';
 import { outfitFor, type Outfit, type Profile } from './people';
+import { SHOP_MIN_WIDTH, shopSlotsFor } from './shops/slots';
 
 export type Door = { id: string; x: number; variant: 0 | 1 | 2; hallU: number };
-// Largeur du cadre de l'entrée telle que dessinée : sprite de 22 px × STREET_SCALE.entranceX (metrics.ts) = 12 px.
-export const DOOR_WIDTH = 12;
-// Marge entre l'entrée et les bords de son immeuble (auvent, interphone et plaque débordent un peu du cadre).
-export const DOOR_MARGIN = 4;
+export { DOOR_MARGIN, DOOR_WIDTH } from './metrics';
 export const TRIP_CYCLE = 160;
 
 // Une entrée par immeuble du premier plan visible (les plus étroits font 28 px : l'entrée de 12 px y tient avec ses marges).
@@ -16,14 +14,23 @@ export const TRIP_CYCLE = 160;
 export function doorsFor(width: number, height: number, seed: number): Door[] {
   const rng = mulberry32(seed ^ hashString('doors'));
   const out: Door[] = [];
+  const slots = shopSlotsFor(width, height, seed);
+  let shop = 0;
   for (const b of citySkyline(width, height, seed)) {
     if (b.far || b.x + b.w <= 0 || b.x >= width) continue;
     // Trois tirages par immeuble visible, même s'il n'a pas d'entrée : les suivantes ne changent pas.
     const at = rng();
     const variant = Math.floor(rng() * 3) as 0 | 1 | 2;
     const hallU = rng();
-    const lo = Math.max(b.x, 0) + DOOR_MARGIN;
-    const hi = Math.min(b.x + b.w, width) - DOOR_MARGIN - DOOR_WIDTH;
+    const lo0 = Math.max(b.x, 0);
+    const hi0 = Math.min(b.x + b.w, width);
+    // Immeuble à local : l'entrée est poussée au bord (shops/slots.ts), le local prend le reste du rez-de-chaussée.
+    if (hi0 - lo0 >= SHOP_MIN_WIDTH) {
+      out.push({ id: `door-${out.length}`, x: slots[shop++]!.residentDoorX, variant, hallU });
+      continue;
+    }
+    const lo = lo0 + DOOR_MARGIN;
+    const hi = hi0 - DOOR_MARGIN - DOOR_WIDTH;
     if (hi < lo) continue;
     out.push({ id: `door-${out.length}`, x: Math.floor((lo + at * (hi - lo)) * 10) / 10, variant, hallU });
   }
