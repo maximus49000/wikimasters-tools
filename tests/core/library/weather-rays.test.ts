@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CLOUD_BLOBS, godRayStrength, sunCoverage } from '../../../src/core/library/weather/weather-rays';
+import { CLOUD_BLOBS, RAY_WINDOW_MS, godRayStrength, godRayTarget, rayWindow, sunCoverage } from '../../../src/core/library/weather/weather-rays';
+import { targetOf } from '../../../src/core/library/weather/weather-types';
 
 describe('godRayStrength', () => {
   it('nul quand le soleil est entièrement dégagé ou entièrement caché', () => {
@@ -61,5 +62,57 @@ describe('sunCoverage', () => {
   });
   it('les lobes dessinés sont ceux de la couverture', () => {
     expect(CLOUD_BLOBS.length).toBe(3);
+  });
+});
+
+describe('godRayStrength — bande étroite (filets occasionnels)', () => {
+  it('rien sous la neige, rien en vraie pluie', () => {
+    expect(godRayStrength(0.5, 0.85, 0.3, 'snow')).toBe(0);
+    expect(godRayStrength(0.5, 0.9, 0.65, 'rain')).toBe(0);
+  });
+  it('rien pour un soleil à peine voilé ou presque caché', () => {
+    expect(godRayStrength(0.25, 0.8, 0.1)).toBe(0);
+    expect(godRayStrength(0.9, 0.8, 0.1)).toBe(0);
+  });
+});
+
+describe('godRayTarget', () => {
+  const drizzle = targetOf('drizzle');
+  it('trouée au-dessus du soleil en bruine, de jour : des filets', () => {
+    expect(godRayTarget(0.5, drizzle, 1, true)).toBeGreaterThan(0.3);
+  });
+  it('rien à l’orage, sous la neige, la nuit, ou soleil couché', () => {
+    expect(godRayTarget(0.5, targetOf('storm'), 1, true)).toBe(0);
+    expect(godRayTarget(0.5, targetOf('snow'), 1, true)).toBe(0);
+    expect(godRayTarget(0.5, drizzle, 0, true)).toBe(0);
+    expect(godRayTarget(0.5, drizzle, 1, false)).toBe(0);
+  });
+});
+
+describe('rayWindow (épisodes de trouées, occasionnels)', () => {
+  const T0 = Date.UTC(2026, 5, 21, 12);
+  it('déterministe, borné, ouvert de temps en temps seulement', () => {
+    let sum = 0;
+    let open = 0;
+    const n = 6 * 3600;
+    for (let i = 0; i < n; i++) {
+      const v = rayWindow(T0 + i * 1000, 1);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+      sum += v;
+      if (v > 0.2) open++;
+    }
+    expect(rayWindow(T0 + 5000, 1)).toBe(rayWindow(T0 + 5000, 1));
+    expect(open / n).toBeGreaterThan(0.03);
+    expect(open / n).toBeLessThan(0.3);
+    expect(sum / n).toBeLessThan(0.2);
+  });
+  it('varie en douceur (fondu, jamais d’allumage brusque)', () => {
+    for (let i = 0; i < 4 * RAY_WINDOW_MS; i += 250) expect(Math.abs(rayWindow(T0 + i + 250, 3) - rayWindow(T0 + i, 3))).toBeLessThan(0.05);
+  });
+  it('fermé, il éteint la cible', () => {
+    const drizzle = targetOf('drizzle');
+    expect(godRayTarget(0.5, drizzle, 1, true, 0)).toBe(0);
+    expect(godRayTarget(0.5, drizzle, 1, true, 1)).toBe(godRayTarget(0.5, drizzle, 1, true));
   });
 });
