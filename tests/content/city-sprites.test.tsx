@@ -122,6 +122,10 @@ describe('sprites de la ville : détails', () => {
       const h = html(el);
       expect(h.includes('#123456')).toBe(hair === 'short' || hair === 'long' || hair === 'bun');
       expect(h.includes('#654321')).toBe(hair === 'cap' || hair === 'beanie');
+      // Signatures de forme : chaque élément n'existe que pour sa coiffure.
+      expect(el.querySelector('circle[r="2.4"]') !== null).toBe(hair === 'bun');
+      expect(el.querySelector('rect[x="2"][y="-35"]') !== null).toBe(hair === 'cap');
+      expect(el.querySelector('circle[r="1.4"]') !== null).toBe(hair === 'beanie');
       if (hair === 'long') {
         expect(el.querySelector('rect[x="-5.2"][y="-37"][width="10.4"][height="4"][rx="3"]')).not.toBeNull();
         expect(el.querySelector('rect[x="-5.4"][y="-35"][width="3"][height="11"]')).not.toBeNull();
@@ -133,7 +137,9 @@ describe('sprites de la ville : détails', () => {
       expect(html(el).includes('#abcdef')).toBe(accessory === 'backpack' || accessory === 'bag' || accessory === 'scarf');
       expect(el.querySelector('circle[r="3.2"]') !== null).toBe(accessory === 'ball');
       expect(el.querySelector('rect[fill="#4A3B2A" i]') !== null).toBe(accessory === 'case');
-      if (accessory === 'backpack') expect(el.querySelector('rect[x="-9"]')).not.toBeNull();
+      expect(el.querySelector('rect[x="5"][y="-17"]') !== null).toBe(accessory === 'bag');
+      expect(el.querySelector('rect[x="-5"][y="-29"]') !== null).toBe(accessory === 'scarf');
+      expect(el.querySelector('rect[x="-9"]') !== null).toBe(accessory === 'backpack');
     }
   });
   it('met un imperméable sous la pluie pour les hauts légers seulement', () => {
@@ -147,8 +153,11 @@ describe('sprites de la ville : détails', () => {
       const on = svg(<VehicleSprite vehicle={mk(kind)} sky={night} lights />);
       expect(off.querySelector('[data-headlight]')).toBeNull();
       expect(on.querySelector('[data-headlight]')).not.toBeNull();
-      expect(off.querySelector('g')!.children.length).toBeGreaterThan(1);
     }
+    const car = svg(<VehicleSprite vehicle={mk('car')} sky={sky} lights={false} />);
+    expect(car.querySelectorAll('rect[width="40"][height="9"]').length).toBe(1);
+    expect(car.querySelectorAll('rect[width="22"][height="9"]').length).toBe(1);
+    expect(car.querySelectorAll('circle[r="4"]').length).toBe(2);
     const bus = svg(<VehicleSprite vehicle={mk('bus')} sky={sky} lights={false} />);
     expect(bus.querySelectorAll('rect[width="7"][height="8"]').length).toBe(6);
     const bike = svg(<VehicleSprite vehicle={mk('bike')} sky={sky} lights={false} />);
