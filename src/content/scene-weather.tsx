@@ -144,17 +144,24 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       const rainDark = clamp01(w.precip * (w.kind === 'rain' ? 1.15 : 0.7));
       const dark = clamp01(rainDark + 0.35 * smoothstep(0.85, 1, w.cloud));
       // Ciel couvert sans pluie : des nuages nettement plus sombres que le voile gris du fond (le voile ne couvre que le ciel).
-      const cloudDark = Math.max(dark, 0.75 * smoothstep(0.7, 1, w.cloud));
+      const cloudDark = Math.max(dark, 0.5 * smoothstep(0.7, 1, w.cloud));
       // Le voile par-dessus le décor ne dépend que de la pluie : les immeubles restent bien visibles quand il ne pleut pas.
       const thick = w.cloud * (0.3 + 0.7 * rainDark);
       // Couleurs recalculées seulement quand l'obscurité ou le jour bougent d'un cran (1/64) : pas de chaînes neuves à chaque image.
-      const key = `${Math.round(dark * 64)}|${Math.round(cloudDark * 64)}|${Math.round(daylight * 64)}`;
+      const key = `${Math.round(dark * 64)}|${Math.round(rainDark * 64)}|${Math.round(cloudDark * 64)}|${Math.round(daylight * 64)}`;
       if (key !== colorKey) {
         colorKey = key;
         const tintColor = mixHex('#1A1E2B', mixHex('#9AA4B2', '#4E5663', dark), daylight);
         for (const stop of tintStops) put(stop, 'stop-color', tintColor);
-        put(nodes.clouds, 'fill', mixHex(mixHex('#262C46', '#FFFFFF', daylight), mixHex('#2F3542', '#6A7280', daylight), cloudDark));
-        const overcastColor = mixHex('#1A1E2B', mixHex('#B9C0CA', '#454C58', dark), daylight);
+        const cloudColor = mixHex(mixHex('#262C46', '#FFFFFF', daylight), mixHex('#2F3542', '#6A7280', daylight), cloudDark);
+        put(nodes.clouds, 'fill', cloudColor);
+        // Chaque nuage a sa nuance de gris (plus claire ou plus sombre que la teinte de base) : on voit le ciel bouger.
+        cloudNodes.forEach((node, i) => {
+          const tone = ((i * 0.618034) % 1) * 2 - 1;
+          put(node, 'fill', mixHex(cloudColor, tone > 0 ? '#FFFFFF' : '#1E2430', Math.abs(tone) * 0.3));
+        });
+        // Gris clair sans pluie (comme un vrai ciel couvert), de plus en plus foncé avec l'intensité de la pluie.
+        const overcastColor = mixHex('#1A1E2B', mixHex('#D4D8DD', '#2E3440', rainDark), daylight);
         for (const stop of overcastStops) put(stop, 'stop-color', overcastColor);
         svg?.style.setProperty('--wmt-overcast-color', overcastColor);
       }
