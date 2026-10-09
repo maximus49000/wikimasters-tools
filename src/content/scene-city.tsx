@@ -3,15 +3,21 @@ import { lampLit } from '../core/library/activity';
 import { doorsFor } from '../core/library/city/doors';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
+import { hashString } from '../core/library/scene-world';
 import { mixHex } from '../core/library/sky';
 import { EntranceSprite, entranceLeft } from './city-sprites';
 import type { SceneBodyProps } from './scene-panorama';
+import { ShopFront } from './shop-sprites';
+import { ShopInterior } from './shop-interiors';
+import { useStreetShops } from './use-street-shops';
 
 // Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
 const FAR_LIGHT = 0.5;
 
 // Les lampadaires ne sont pas ici : ils sont dans le calque animé, devant les passants (StreetLamps, city-life.tsx).
-export function CityScene({ width, height, sky, minutes, seed, gloom = false }: SceneBodyProps): ReactElement {
+// Locaux commerciaux (vague 1b-iv-a) : devanture et intérieur dans le décor fixe ; clients et équipe du chantier dans le
+// calque animé (city-shops-life.tsx). Sans `city.shops`, aucun commerce n'est dessiné.
+export function CityScene({ width, height, sky, minutes, seed, gloom = false, city }: SceneBodyProps): ReactElement {
   const metrics = cityMetrics(height);
   const { ground, unit } = metrics;
   const far = mixHex('#232B5C', '#9FB4C8', sky.daylight);
@@ -26,6 +32,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false }: 
   // Hall d'entrée éclairé la nuit (un peu plus d'une entrée sur deux).
   const dark = sky.daylight < 0.45;
   const lane = mixHex('#8A8C9E', '#F2EEE2', sky.daylight);
+  const { frames, views } = useStreetShops(width, height, seed, city);
   return (
     <g data-scene-body>
       {buildings.filter((b) => b.far).map((b, i) => (
@@ -73,6 +80,19 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false }: 
           })}
         </g>
       ))}
+      {/* Locaux : la vitrine montre l'intérieur (rogné par le <svg> imbriqué de ShopFront) ; la nuit, seuls les commerces
+          ouverts sont éclairés. Le vendeur n'est là que si la boutique est ouverte (chantier : intérieur vide). */}
+      {views.map((view) => {
+        const frame = frames.get(view.slot.id)!;
+        const open = view.phase === 'open';
+        return (
+          <ShopFront key={view.slot.id} frame={frame} view={view} sky={sky} lit={dark && open}>
+            {view.interior && (
+              <ShopInterior type={view.interior} w={frame.window.w} h={frame.window.h} sky={sky} lit={dark && open} staffed={open} seed={hashString(view.slot.id) ^ seed} />
+            )}
+          </ShopFront>
+        );
+      })}
       {/* Trottoir contre les immeubles, chaussée à deux files (fond vers la gauche, premier plan vers la droite), trottoir d'en face. */}
       <rect x={0} y={ground} width={width} height={height - ground} fill={street} />
       <rect x={0} y={ground} width={width} height={metrics.curb - ground} fill={walk} />
