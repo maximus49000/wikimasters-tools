@@ -9,7 +9,7 @@ import { mixHex } from '../core/library/sky';
 // base à y = 0, la silhouette regarde vers +x. Aucun id SVG fixe. Pas de décor de fête (vague 1b).
 
 // Plus sombre la nuit, pour rester lisible sur le ciel.
-const tone = (c: string, sky: Sky): string => mixHex(mixHex(c, '#0B1030', 0.55), c, sky.daylight);
+export const tone = (c: string, sky: Sky): string => mixHex(mixHex(c, '#0B1030', 0.55), c, sky.daylight);
 
 // ---------- Passant (hauteur ≈ 40, tête centrée à y = -33) ----------
 export function PersonSprite({ outfit: o, sky, rainy, umbrella }: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean }): ReactElement {
