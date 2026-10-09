@@ -33,21 +33,31 @@ describe('éclairs', () => {
   it('seulement par orage, brefs, et jamais plus d’un par fenêtre de 3 s', () => {
     expect(lightningAt(targetOf('rain'), 12_345, 1)).toBeNull();
     const storm = targetOf('storm');
-    let flashes = 0;
-    let lastWindow = -1;
-    for (let t = 0; t < 600_000; t += 20) {
-      const f = lightningAt(storm, t, 7);
-      if (!f) continue;
-      expect(f.strength).toBeGreaterThan(0);
-      expect(f.strength).toBeLessThanOrEqual(1);
-      expect(f.x).toBeGreaterThanOrEqual(0);
-      expect(f.x).toBeLessThan(1);
-      const win = Math.floor(t / 3000);
-      if (win !== lastWindow) flashes++;
-      lastWindow = win;
+    const STEP = 10;
+    const WINDOW = 3000;
+    let windowsWithFlash = 0;
+    for (let win = 0; win < 200; win++) {
+      const hits: { i: number; x: number; strength: number }[] = [];
+      for (let t = win * WINDOW; t < (win + 1) * WINDOW; t += STEP) {
+        const f = lightningAt(storm, t, 7);
+        if (!f) continue;
+        expect(f.strength).toBeGreaterThan(0);
+        expect(f.strength).toBeLessThanOrEqual(1);
+        expect(f.x).toBeGreaterThanOrEqual(0);
+        expect(f.x).toBeLessThan(1);
+        hits.push({ i: (t - win * WINDOW) / STEP, x: f.x, strength: f.strength });
+      }
+      if (hits.length === 0) continue;
+      windowsWithFlash++;
+      // un seul éclair : échantillons consécutifs, même abscisse, durée <= 150 ms
+      for (let k = 1; k < hits.length; k++) {
+        expect(hits[k]!.i).toBe(hits[k - 1]!.i + 1);
+        expect(hits[k]!.x).toBe(hits[0]!.x);
+      }
+      expect((hits[hits.length - 1]!.i - hits[0]!.i) * STEP).toBeLessThanOrEqual(150);
     }
-    expect(flashes).toBeGreaterThan(20);
-    expect(flashes).toBeLessThan(200);
+    expect(windowsWithFlash).toBeGreaterThanOrEqual(60);
+    expect(windowsWithFlash).toBeLessThanOrEqual(120);
   });
   it('est déterministe', () => {
     const storm = targetOf('storm');
