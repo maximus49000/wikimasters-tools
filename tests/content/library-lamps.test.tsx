@@ -152,3 +152,17 @@ describe('calque de lumière et dessin des lampes', () => {
     expect(q('[data-steampunk-art="lamp"] [data-lamp-halo]')).toBeNull();
   });
 });
+
+describe('lampe sans ciel terrestre', () => {
+  for (const scene of ['space', 'earth']) {
+    it(`le calque existe en scène ${scene} avec une lampe`, async () => {
+      await click('[data-action="edit"]');
+      await click(`[data-scene="${scene}"]`);
+      await click('[data-category="deco"]');
+      await click('[data-kind="lamp"]');
+      await click('[data-cell="4-14"]');
+      expect(layoutNow().some((p) => p.kind === 'lamp')).toBe(true);
+      expect(q('image[data-light]')).not.toBeNull();
+    });
+  }
+});

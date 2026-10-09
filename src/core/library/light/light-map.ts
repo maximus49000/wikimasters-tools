@@ -16,6 +16,8 @@ export type LightInput = {
   daylight: number; twilight: number; cloud: number; precip: number; hidden: number;
   // Meubles (occulteurs) et lampes allumées ; absents = pièce vide, sortie identique à 8a.
   boxes?: readonly Box[]; lamps?: readonly LampSource[];
+  // Pièce sans ciel terrestre (ni fenêtre, ni météo) : pas d'ombre ambiante, seules les lampes et les meubles agissent.
+  noSky?: boolean;
 };
 export type LightMap = { w: number; h: number; rgba: Uint8ClampedArray };
 
@@ -119,7 +121,7 @@ export function buildLightMap(input: LightInput): LightMap {
       if (windows.some((g) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h)) continue;
       const n = j * w + i;
       const lampL = lampLight[n]!;
-      const light = clamp01(clamp01(0.2 + 0.8 * sky * field[n]!) + lampL * need);
+      const light = input.noSky ? 1 : clamp01(clamp01(0.2 + 0.8 * sky * field[n]!) + lampL * need);
       const shade = (1 - light) * shadeGain;
       const kind = surf.kind[n]!;
       let b = 0;

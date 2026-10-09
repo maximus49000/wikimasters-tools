@@ -57,7 +57,11 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
       const key = [r(s.sunFrac ?? -1, 0.005), r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01), signature].join('|');
       if (key === lastKey && image.hasAttribute('href')) return;
       lastKey = key;
-      const input: LightInput = {
+      // Sans fenêtre : pas de ciel, donc une pièce sans ombre ambiante et une nuit neutre pour que les lampes se voient.
+      const noSky = windows.length === 0;
+      const input: LightInput = noSky ? {
+        width, height, wallH, windows, sunX: null, sunFrac: null, daylight: 0, twilight: 0, cloud: 0, precip: 0, hidden: 0, boxes, lamps, noSky,
+      } : {
         width, height, wallH, windows,
         sunX: s.sunFrac === null ? null : celestialPlace(s.sunFrac, width, wallH).x,
         sunFrac: s.sunFrac, daylight: s.daylight, twilight: s.twilight, cloud: w.cloud, precip: w.precip, hidden, boxes, lamps,

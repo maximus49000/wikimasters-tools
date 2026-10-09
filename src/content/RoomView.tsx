@@ -95,6 +95,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const drops = weatherOn && wet;
   const glasses = useMemo(() => windows.map((w) => glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }))), [room.layout]); // eslint-disable-line react-hooks/exhaustive-deps
   // Occulteurs et lampes allumées du calque de lumière ; la signature change quand l'un d'eux bouge ou s'allume.
+  // HEIGHT est une constante : seuls le layout et wallH font varier la géométrie.
   const lightGeom = { wallH, floorH: HEIGHT - wallH };
   const lightBoxes = useMemo(() => boxesOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
   const lightLamps = useMemo(() => lampsOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -185,7 +186,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         <g
           data-furniture={placed.kind}
           data-id={placed.id}
-          {...(isLamp(placed) ? { role: 'button', 'aria-pressed': isLit(placed), 'aria-label': isLit(placed) ? 'Lampe allumée' : 'Lampe éteinte' } : {})}
+          {...(isLamp(placed) && !editing ? { role: 'button', 'aria-pressed': isLit(placed), 'aria-label': isLit(placed) ? 'Lampe allumée' : 'Lampe éteinte' } : {})}
           onClick={() => onPick(placed.id)}
           onPointerDown={onFurnitureDown ? (event) => onFurnitureDown(placed.id, event) : undefined}
           onPointerMove={onFurnitureMove}
@@ -375,7 +376,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {smalls.map(renderPlaced)}
       {topPets}
       {cardLayer}
-      {light && WEATHER_SCENES.includes(room.scene) && ((weatherOn && windows.length > 0) || lightBoxes.length > 0 || lightLamps.length > 0) && (
+      {light && ((weatherOn && windows.length > 0) || lightBoxes.length > 0 || lightLamps.length > 0) && (
         <LightLayer windows={weatherOn ? glasses : NO_GLASS} width={width} height={HEIGHT} wallH={wallH} sky={view.sky} clock={view.weather?.clock ?? STILL_CLOCK} boxes={lightBoxes} lamps={lightLamps} signature={lightSignature} />
       )}
       {bubbles}
