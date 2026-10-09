@@ -565,6 +565,22 @@ describe('orage (6d)', () => {
     for (const c of onPlan.mock.calls) expect((c[1] as PetPlan).route).toEqual([]);
   });
 
+  it('pas de scène à deux pendant les 60 s d orage, même quand un plan blotti se termine', () => {
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan, rng: () => 0.01 });
+    const room = trio(sofa);
+    runner.step(room, 2000, stormCtx());
+    for (let t = 20_000; t <= 50_000; t += 500) runner.step(room, t, stormCtx());
+    for (const id of ['p1', 'p2']) {
+      const plans = onPlan.mock.calls.filter((c) => c[0] === id && (c[1] as PetPlan).startedAt > 2000).map((c) => c[1] as PetPlan);
+      expect(plans.length).toBeGreaterThan(0);
+      for (const pl of plans) {
+        expect(['cower', 'hide']).toContain(pl.action);
+        expect(pl.with).toBeUndefined();
+      }
+    }
+  });
+
   it('après le court-circuit, le robot redémarre', () => {
     const onPlan = vi.fn();
     const runner = createPetRunner({ onPlan, rng: () => 0.5 });

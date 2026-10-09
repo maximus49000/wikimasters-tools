@@ -84,7 +84,9 @@ export function createContextTracker() {
         stormId += 1;
         stormSince = now;
       } else if (inStorm && lightning < 0.2) inStorm = false;
-      const wet = kind === 'drizzle' || kind === 'rain' || kind === 'storm';
+      // Hystérésis de la bruine : elle commence au-dessus de 0,1 (weatherKindOf) mais ne se termine qu'en dessous de 0,05.
+      const precip = i.weather?.kind === 'rain' ? i.weather.precip : 0;
+      const wet = kind !== 'clear' || (raining && precip >= 0.05);
       if (raining && !wet) rainEndedAt = now;
       else if (!raining && wet) rainEndedAt = null;
       raining = wet;

@@ -39,6 +39,17 @@ describe('createContextTracker', () => {
     expect(t.update(5000, { ...base, weather: targetOf('sun') }).rainEndedAt).toBe(5000);
     expect(t.update(9000, { ...base, weather: targetOf('sun') }).rainEndedAt).toBe(5000);
   });
+  it('la bruine ne se termine qu’en dessous de 0,05 (hystérésis)', () => {
+    const t = createContextTracker();
+    const at = (precip: number) => ({ ...base, weather: { ...targetOf('drizzle'), precip } });
+    expect(t.update(0, at(0.25)).rainEndedAt).toBeNull();
+    expect(t.update(1000, at(0.08)).rainEndedAt).toBeNull();
+    expect(t.update(2000, at(0.12)).weather).toBe('drizzle');
+    expect(t.update(3000, at(0.07)).rainEndedAt).toBeNull();
+    expect(t.update(4000, at(0.04)).rainEndedAt).toBe(4000);
+    expect(t.update(5000, at(0.08)).rainEndedAt).toBe(4000);
+    expect(t.update(6000, at(0.12)).rainEndedAt).toBeNull();
+  });
   it('sans météo : ciel clair', () => {
     expect(createContextTracker().update(0, { ...base, weather: null }).weather).toBe('clear');
     expect(NO_CONTEXT.storm).toBeNull();

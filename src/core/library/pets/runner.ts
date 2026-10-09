@@ -205,7 +205,9 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
         if (plan === undefined || plan.sig !== sig || now >= planEndsAt(plan)) {
           const finished = plan !== undefined && plan.sig === sig;
           let started = false;
-          if (finished && !still && room.pets.length > 1 && rng() < SCENE_CHANCE) {
+          // Pas de scène à deux pendant le maintien d'orage (chat/chien blottis, robot en panne).
+          const stormHold = ctx?.storm !== undefined && ctx.storm !== null && now - ctx.storm.since < STORM_HOLD_MS;
+          if (finished && !still && !stormHold && room.pets.length > 1 && rng() < SCENE_CHANCE) {
             const others = room.pets.filter((p) => p.id !== pet.id).flatMap((p) => {
               const pp = planOf(room, p.id);
               return pp ? [{ pet: p, plan: pp }] : [];

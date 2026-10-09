@@ -170,7 +170,7 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
   // Candidats du contexte (hors animal immobilisé).
   if (ctx && !env.still) {
     if (dog && ctx.night && ctx.moon) stay('howl', 1.5, [4000, 6000]);
-    if (robot && (ctx.weather === 'drizzle' || ctx.weather === 'rain')) stay('umbrella', 2, [8000, 15000]);
+    if (robot && (ctx.weather === 'drizzle' || ctx.weather === 'rain' || ctx.weather === 'storm')) stay('umbrella', 2, [8000, 15000]);
     if (dog && env.canShake && ctx.rainEndedAt !== null && now - ctx.rainEndedAt < SHAKE_WINDOW_MS) stay('shake', 3, [2000, 3000]);
     if (!robot && !ctx.night && ctx.sunCells.length > 0) {
       const free = ctx.sunCells.filter((c) => isFree(map, c.col, c.row));
@@ -179,7 +179,7 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     }
   }
 
-  const rainy = ctx?.weather === 'drizzle' || ctx?.weather === 'rain';
+  const rainy = ctx?.weather === 'drizzle' || ctx?.weather === 'rain' || ctx?.weather === 'storm';
   const ctxFactor = (a: PetAction): number => {
     if (!ctx) return 1;
     if (ctx.night && SLEEPY.has(a)) return 4;

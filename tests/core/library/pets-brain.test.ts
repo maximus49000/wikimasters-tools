@@ -308,6 +308,14 @@ describe('contexte (6d)', () => {
     expect(tally(envOf('robot', { weather: 'rain' })).umbrella ?? 0).toBeGreaterThan(0);
     expect(tally(envOf('robot', {})).umbrella ?? 0).toBe(0);
   });
+  it('après le maintien, un orage qui dure donne le parapluie au robot et le biais de pluie', () => {
+    expect(tally(envOf('robot', { weather: 'storm' })).umbrella ?? 0).toBeGreaterThan(0);
+    const lively = (w: 'clear' | 'storm') => {
+      const t = tally(envOf('dog', { weather: w }));
+      return (t.sniff ?? 0) + (t.play ?? 0) + (t.perch ?? 0) + (t.scratch ?? 0);
+    };
+    expect(lively('storm')).toBeLessThan(lively('clear'));
+  });
   it('le chien se secoue après la pluie, une fois', () => {
     const ended = { rainEndedAt: 1000 };
     expect(tally(envOf('dog', ended, undefined, { canShake: true })).shake ?? 0).toBeGreaterThan(0);

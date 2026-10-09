@@ -1550,9 +1550,9 @@ export const ENTRIES: Entry[] = [
         text: 'La nuit, les animaux dorment davantage, le robot se met en veille et le chien peut hurler à la lune.',
         details: [
           { label: 'À quoi ça sert', text: 'À donner à la pièce un rythme : elle ne se comporte pas pareil de jour et de nuit.' },
-          { label: 'Comment faire', text: 'Touchez Ma Pièce, ouvrez une pièce où vit un animal, puis observez-le le soir : l’heure de l’appareil règle le jour et la nuit.' },
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, ouvrez une pièce où vit un animal, puis observez-le le soir : le réglage Heure de la pièce (heure réelle par défaut, jour, nuit ou manuelle) décide s’il fait jour ou nuit.' },
           { label: 'Comment ça marche', text: 'Quand il fait nuit dans la pièce, chat, chien et robot choisissent plus souvent de dormir. Si la pièce a une fenêtre sur une scène avec un ciel, le chien peut s’asseoir et hurler à la lune.' },
-          { label: 'Limites', text: 'Sans fenêtre, la nuit suit l’horloge de l’appareil (de 22 h à 6 h) et le chien ne hurle pas : il lui faut la lune.' },
+          { label: 'Limites', text: 'Sans ciel (pas de fenêtre sur une scène terrestre), la nuit suit tout de même le réglage Heure de la pièce (de 22 h à 6 h) et le chien ne hurle pas : il lui faut la lune.' },
         ],
         scene: { page: '/collection', closeWindows: true },
       },
@@ -1573,7 +1573,7 @@ export const ENTRIES: Entry[] = [
         text: 'Quand il pleut, le robot ouvre un parapluie ; le chien se secoue une fois la pluie finie.',
         details: [
           { label: 'À quoi ça sert', text: 'À montrer le temps qu’il fait dans la pièce, sans regarder la fenêtre.' },
-          { label: 'Comment ça marche', text: 'Sous la pluie, les animaux bougent moins ; le robot déploie son parapluie, et le chien se secoue une seule fois quand la pluie s’arrête.' },
+          { label: 'Comment ça marche', text: 'Sous la pluie, les animaux bougent moins ; le robot déploie son parapluie, et le chien peut se secouer, une fois au plus par pluie, dans les deux minutes qui suivent la fin de la pluie, sauf en mouvement réduit.' },
           { label: 'D’où viennent les données', text: 'Le temps vient du réglage Météo déjà présent (aléatoire, forcé ou réel) : rien n’est envoyé.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
@@ -1584,8 +1584,8 @@ export const ENTRIES: Entry[] = [
         text: 'Au premier éclair, le chat file sous le canapé, le chien se blottit et le robot fait un court-circuit avant de redémarrer.',
         details: [
           { label: 'À quoi ça sert', text: 'À donner de la vie à l’orage : chacun réagit à sa façon, avec un petit délai différent.' },
-          { label: 'Comment ça marche', text: 'À trois animaux, le chat et le chien se serrent l’un contre l’autre. Quand l’orage se calme, tout le monde reprend ses activités.' },
-          { label: 'Limites', text: 'Les animaux ne réagissent pas encore aux événements de la fenêtre (à venir). Le temps vient de la Météo déjà réglée, et rien n’est envoyé.' },
+          { label: 'Comment ça marche', text: 'À trois animaux, le chat et le chien se serrent l’un contre l’autre. La réaction dure une minute au plus, même si l’orage continue : ensuite chacun reprend ses activités.' },
+          { label: 'Limites', text: 'La pluie et l’orage demandent une fenêtre sur une scène avec un ciel (scène terrestre). Quitter la pièce puis y revenir, ou recharger, pendant un orage rejoue la réaction. En mouvement réduit, personne ne bouge et il n’y a pas de blottissement. Les animaux ne réagissent pas encore aux événements de la fenêtre (à venir). Le temps vient de la Météo déjà réglée, et rien n’est envoyé.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },

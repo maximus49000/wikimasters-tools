@@ -59,11 +59,17 @@ export function buildPetContext(tracker: Tracker, now: number, { room, sceneView
 
 // Fonction d'identité stable qui relit la dernière entrée (pièce, vue de la scène, lumière) à chaque appel.
 export function usePetContext(input: PetContextInput): () => PetContext {
-  const tracker = useMemo(() => createContextTracker(), []);
+  // Un suivi par pièce : l'horloge météo est commune, mais le ciel visible dépend de la pièce.
+  const trackers = useMemo(() => new Map<string, Tracker>(), []);
   const cache = useRef<SunCache>(newSunCache());
   const latest = useRef(input);
   useLayoutEffect(() => {
     latest.current = input;
   });
-  return useCallback(() => buildPetContext(tracker, Date.now(), latest.current, cache.current), [tracker]);
+  return useCallback(() => {
+    const id = latest.current.room?.id ?? '';
+    let tracker = trackers.get(id);
+    if (!tracker) trackers.set(id, (tracker = createContextTracker()));
+    return buildPetContext(tracker, Date.now(), latest.current, cache.current);
+  }, [trackers]);
 }
