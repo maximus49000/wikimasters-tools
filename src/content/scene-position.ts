@@ -5,6 +5,12 @@ import { positionSetting } from './position-setting';
 let known: Position | null = null;
 let cachedFallback: Position | null = null;
 const listeners = new Set<() => void>();
+// Dernière raison d'échec, affichée à côté de « (simulée) » : sans elle, impossible de savoir pourquoi la météo reste simulée.
+export type PositionFailure = 'denied' | 'unavailable' | 'timeout' | 'absent' | 'off';
+let failure: PositionFailure | null = null;
+export function positionFailure(): PositionFailure | null {
+  return failure;
+}
 
 // Repli mémorisé : useSyncExternalStore exige un snapshot stable entre deux lectures.
 const fallback = (): Position => (cachedFallback ??= positionFromTimezone(-new Date().getTimezoneOffset()));
@@ -28,6 +34,7 @@ export function resetPositionForTests(): void {
   known = null;
   cachedFallback = null;
   askedThisPage = false;
+  failure = null;
 }
 
 // Les abonnés (heure, météo) se redessinent quand le joueur active ou désactive le réglage.
@@ -44,24 +51,73 @@ export function ensurePosition(): void {
 }
 
 // Le navigateur demande alors l'accord du joueur ; sans lui (ou réglage « Position » désactivé), le repli par fuseau sert.
+// Application Android : la position vient d'Android lui-même (`WmtLocation`), la géolocalisation de la WebView n'aboutissait pas sur certains téléphones.
+type NativeLocationWindow = Window & {
+  WmtLocation?: { request(id: string): void };
+  __wmtLocationDone?: (id: string, lat: number, lon: number, error: string) => void;
+};
+let nativeCounter = 0;
+function requestNativePosition(win: NativeLocationWindow, bridge: NonNullable<NativeLocationWindow['WmtLocation']>): Promise<Position> {
+  return new Promise((resolve) => {
+    const id = `loc-${(nativeCounter += 1)}`;
+    const timer = window.setTimeout(() => {
+      fail('timeout');
+      resolve(currentPosition());
+    }, 70000);
+    const previous = win.__wmtLocationDone;
+    win.__wmtLocationDone = (doneId, lat, lon, error) => {
+      if (doneId !== id) return previous?.(doneId, lat, lon, error);
+      window.clearTimeout(timer);
+      win.__wmtLocationDone = previous;
+      if (error) {
+        fail(error === 'denied' || error === 'off' || error === 'timeout' ? error : 'unavailable');
+        return resolve(currentPosition());
+      }
+      known = { lat, lon };
+      failure = null;
+      for (const listener of listeners) listener();
+      resolve(known);
+    };
+    bridge.request(id);
+  });
+}
+
 export function requestPosition(): Promise<Position> {
   return new Promise((resolve) => {
     if (!positionSetting.enabled()) return resolve(currentPosition());
+    const nativeWindow = typeof window === 'undefined' ? undefined : (window as NativeLocationWindow);
+    if (nativeWindow?.WmtLocation) return void requestNativePosition(nativeWindow, nativeWindow.WmtLocation).then(resolve);
     const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation;
-    if (!geo) return resolve(currentPosition());
-    const timer = window.setTimeout(() => resolve(currentPosition()), 8000);
-    geo.getCurrentPosition(
-      (p) => {
-        window.clearTimeout(timer);
-        known = { lat: p.coords.latitude, lon: p.coords.longitude };
-        for (const listener of listeners) listener();
-        resolve(known);
-      },
-      () => {
-        window.clearTimeout(timer);
-        resolve(currentPosition());
-      },
-      { maximumAge: 3600000, timeout: 7000 },
-    );
+    if (!geo) {
+      fail('absent');
+      return resolve(currentPosition());
+    }
+    // Premier relevé parfois long (accord du joueur, puis réseau ou satellites) : un délai court donnait toujours « simulée » sur téléphone.
+    const timer = window.setTimeout(() => resolve(currentPosition()), 60000);
+    const done = (): void => window.clearTimeout(timer);
+    const attempt = (highAccuracy: boolean): void =>
+      geo.getCurrentPosition(
+        (p) => {
+          done();
+          known = { lat: p.coords.latitude, lon: p.coords.longitude };
+          failure = null;
+          for (const listener of listeners) listener();
+          resolve(known);
+        },
+        (e) => {
+          // Sans relevé « réseau » (téléphone sans position par le réseau), le GPS prend le relais avant d'abandonner.
+          if (!highAccuracy && e.code !== 1) return attempt(true);
+          done();
+          fail(e.code === 1 ? 'denied' : e.code === 3 ? 'timeout' : 'unavailable');
+          resolve(currentPosition());
+        },
+        { maximumAge: 3600000, timeout: highAccuracy ? 30000 : 12000, enableHighAccuracy: highAccuracy },
+      );
+    attempt(false);
   });
+}
+
+function fail(reason: PositionFailure): void {
+  failure = reason;
+  for (const listener of listeners) listener();
 }

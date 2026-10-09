@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PositionSettings } from '../../src/content/PositionSettings';
 import { positionSetting } from '../../src/content/position-setting';
-import { currentPosition, ensurePosition, isPositionKnown, requestPosition, resetPositionForTests } from '../../src/content/scene-position';
+import { currentPosition, ensurePosition, isPositionKnown, positionFailure, requestPosition, resetPositionForTests } from '../../src/content/scene-position';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -52,6 +52,53 @@ describe('réglage Position', () => {
     expect(isPositionKnown()).toBe(false);
     expect(currentPosition().lat).not.toBeCloseTo(47.45);
     stop();
+  });
+});
+
+describe('raison d’échec', () => {
+  it('refus, indisponible et délai sont distingués ; un succès efface la raison', async () => {
+    for (const [code, reason] of [[1, 'denied'], [2, 'unavailable'], [3, 'timeout']] as const) {
+      getCurrentPosition.mockImplementation((_ok: unknown, ko: (e: { code: number }) => void) => ko({ code }));
+      await requestPosition();
+      expect(positionFailure()).toBe(reason);
+      expect(isPositionKnown()).toBe(false);
+    }
+    getCurrentPosition.mockImplementation((ok: (p: { coords: { latitude: number; longitude: number } }) => void) => ok({ coords: { latitude: 1, longitude: 2 } }));
+    await requestPosition();
+    expect(positionFailure()).toBeNull();
+  });
+
+  it('un échec du relevé réseau déclenche un second essai en haute précision', async () => {
+    getCurrentPosition.mockImplementationOnce((_ok: unknown, ko: (e: { code: number }) => void) => ko({ code: 3 }));
+    await requestPosition();
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+    expect(getCurrentPosition.mock.calls[1]![2]).toMatchObject({ enableHighAccuracy: true });
+    expect(isPositionKnown()).toBe(true);
+  });
+});
+
+describe('position native Android', () => {
+  type Win = { WmtLocation?: unknown; __wmtLocationDone?: (...a: unknown[]) => void };
+  const answer = (lat: number, lon: number, error: string) =>
+    vi.fn((id: string) => queueMicrotask(() => (window as unknown as Win).__wmtLocationDone?.(id, lat, lon, error)));
+  afterEach(() => {
+    delete (window as unknown as Win).WmtLocation;
+    delete (window as unknown as Win).__wmtLocationDone;
+  });
+
+  it('passe par le pont Android et reçoit la position', async () => {
+    (window as unknown as Win).WmtLocation = { request: answer(48.1, 2.2, '') };
+    await requestPosition();
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    expect(isPositionKnown()).toBe(true);
+    expect(currentPosition().lat).toBeCloseTo(48.1);
+  });
+
+  it('transmet la raison de l’échec (localisation du téléphone désactivée)', async () => {
+    (window as unknown as Win).WmtLocation = { request: answer(0, 0, 'off') };
+    await requestPosition();
+    expect(positionFailure()).toBe('off');
+    expect(isPositionKnown()).toBe(false);
   });
 });
 
