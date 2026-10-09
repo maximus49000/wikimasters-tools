@@ -21,7 +21,7 @@ describe('proxyWeather', () => {
     expect(sent.searchParams.get('longitude')).toBe('2.4');
   });
   it('refuse des coordonnées absentes ou hors bornes', async () => {
-    for (const path of ['/weather', '/weather?lat=abc&lon=1', '/weather?lat=91&lon=0', '/weather?lat=0&lon=181']) {
+    for (const path of ['/weather', '/weather?lat=abc&lon=1', '/weather?lat=91&lon=0', '/weather?lat=0&lon=181', '/weather?lat=&lon=', '/weather?lat=1e1&lon=0', '/weather?lat=0x10&lon=0', '/weather?lat=0&lon=%201', '/weather?lat=1.&lon=0', '/weather?lat=1234&lon=0']) {
       const { fetchFn, result } = run(path);
       expect((await result).status).toBe(400);
       expect(fetchFn).not.toHaveBeenCalled();
@@ -43,5 +43,13 @@ describe('proxyWeather', () => {
     expect(down.status).toBe(502);
     const junk = await proxyWeather(new URL('https://r.test/weather?lat=3&lon=4'), { fetch: async () => new Response('{"nope":1}', { status: 200 }), now: () => 0 });
     expect(junk.status).toBe(502);
+  });
+});
+
+describe('proxyWeather — coordonnées acceptées', () => {
+  it('accepte entiers, décimaux et négatifs', async () => {
+    for (const path of ['/weather?lat=48&lon=2', '/weather?lat=-33.92&lon=18.42', '/weather?lat=0&lon=-179.9']) {
+      expect((await run(path).result).status).toBe(200);
+    }
   });
 });

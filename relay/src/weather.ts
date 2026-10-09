@@ -9,10 +9,15 @@ const cache = new Map<string, { at: number; body: string }>();
 
 const rounded = (v: number): number => Math.round(v * 10) / 10;
 
+// Coordonnée décimale simple : ni vide (« » vaudrait 0), ni notation 1e1, ni hexadécimal 0x10, ni espaces.
+const COORD = /^-?\d{1,3}(\.\d+)?$/;
+
 export async function proxyWeather(url: URL, deps: { fetch: Fetcher; now: () => number }): Promise<ProxyResult> {
-  const lat = Number(url.searchParams.get('lat'));
-  const lon = Number(url.searchParams.get('lon'));
-  if (!url.searchParams.has('lat') || !url.searchParams.has('lon') || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+  const rawLat = url.searchParams.get('lat') ?? '';
+  const rawLon = url.searchParams.get('lon') ?? '';
+  const lat = Number(rawLat);
+  const lon = Number(rawLon);
+  if (!COORD.test(rawLat) || !COORD.test(rawLon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     return failure(400, 'bad-request');
   }
   const key = `${rounded(lat).toFixed(1)},${rounded(lon).toFixed(1)}`;
