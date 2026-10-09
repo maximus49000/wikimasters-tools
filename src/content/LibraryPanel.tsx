@@ -1027,6 +1027,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             cards={roomCards.cards}
             onCardTap={onCardTap}
             pets={sim.views}
+            petFrames={sim.frames}
             petAttach={sim.attach}
             onPetTap={(id) => sim.touch(id)}
             onFurnitureDown={onFurnitureDown}

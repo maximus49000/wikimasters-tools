@@ -91,5 +91,8 @@ export function usePetSim(room: Room | null, onPlan: (roomId: string, petId: str
     if (r && runner.touch(r, id, Date.now())) tick();
   }, [runner, tick]);
 
-  return { views, attach, touch };
+  // Images courantes (position à l'image), relues par le calque de lumière ; identité stable.
+  const frameList = useCallback((): readonly PetFrame[] => frames.current, []);
+
+  return { views, attach, touch, frames: frameList };
 }
