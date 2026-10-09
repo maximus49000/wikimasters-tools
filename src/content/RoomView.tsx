@@ -14,6 +14,8 @@ import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, glassRect } from './window-art';
 import { hashString } from '../core/library/scene-world';
 import { skyAt, type Sky } from '../core/library/sky';
+import { PetBubble, PetSprite } from './pet-sprite';
+import { BUBBLE, type PetView } from './pet-sim';
 
 // Ciel d'après-midi quand aucune heure n'est fournie (test, premier rendu) ; calculé une fois : le décor est mémoïsé.
 const DEFAULT_VIEW: { sky: Sky; minutes: number } = { sky: skyAt(15 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 }), minutes: 15 * 60 };
@@ -41,6 +43,10 @@ type Props = {
   onCardTap?: (id: string) => void;
   // Ciel et heure vus à travers les fenêtres ; sans eux, un ciel d'après-midi.
   sceneView?: { sky: Sky; minutes: number };
+  // Chats de la pièce : `behind` = nombre de meubles debout dessinés avant lui. Leur position est posée par la boucle d'animation (attribut transform).
+  pets?: PetView[];
+  petAttach?: (id: string, el: SVGGElement | null) => void;
+  onPetTap?: (id: string) => void;
 };
 
 export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect };
@@ -50,7 +56,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -177,12 +183,25 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   // puis les ordinateurs sur les bureaux ; les objets accrochés viennent ensuite, puis les petits objets par-dessus.
   const standing = room.layout.filter(isStanding);
   const bottomRow = (p: (typeof standing)[number]): number => p.row + sizeOf(p.kind).h;
-  const ordered = [
-    ...windows,
-    ...standing.filter((p) => p.kind === 'rug'),
-    ...standing.filter((p) => p.kind !== 'rug').sort((a, b) => bottomRow(a) - bottomRow(b)),
-    ...room.layout.filter((p) => p.kind === 'computer'),
-  ];
+  const sortedStanding = standing.filter((p) => p.kind !== 'rug').sort((a, b) => bottomRow(a) - bottomRow(b));
+  // Les chats s'insèrent au rang `behind` parmi les meubles triés : derrière ceux dont le bas est plus bas que ses pieds, devant les autres.
+  // Un chat perché sur un bureau ou une étagère (`top`) se dessine après les ordinateurs et les petits objets.
+  const petNode = (v: PetView): ReactElement => (
+    <g key={`pet-${v.id}`} data-pet={v.id} ref={(el) => petAttach?.(v.id, el)} onClick={() => onPetTap?.(v.id)} style={{ cursor: 'pointer', pointerEvents: editing ? 'none' : 'auto' }}>
+      <PetSprite coat={v.coat} pose={v.pose} facing={v.facing} name={v.name} still={v.still} />
+    </g>
+  );
+  const middle: (ReactElement | null)[] = sortedStanding.map(renderPlaced);
+  for (const v of [...pets].filter((p) => !p.top).sort((a, b) => b.behind - a.behind)) middle.splice(Math.min(v.behind, middle.length), 0, petNode(v));
+  const topPets = pets.filter((p) => p.top).map(petNode);
+  // Le nom et les cœurs : tout en haut, au-dessus de tout le reste de la pièce.
+  const bubbles = pets.filter((p) => p.pose === 'purr').map((v) => (
+    <g key={`bubble-${v.id}`} data-pet-bubble={v.id} ref={(el) => petAttach?.(`${v.id}${BUBBLE}`, el)}>
+      <PetBubble name={v.name} still={v.still} />
+    </g>
+  ));
+  const backLayer = [...windows, ...standing.filter((p) => p.kind === 'rug')];
+  const computers = room.layout.filter((p) => p.kind === 'computer');
   // Les petits objets (bande de 44 px au-dessus de leur porteur) passent devant les objets accrochés au mur.
   const smalls = room.layout.filter((p) => p.kind === 'small');
 
@@ -317,10 +336,14 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           })}
         </defs>
       )}
-      {ordered.map(renderPlaced)}
+      {backLayer.map(renderPlaced)}
       {wallLayer}
+      {middle}
+      {computers.map(renderPlaced)}
       {smalls.map(renderPlaced)}
+      {topPets}
       {cardLayer}
+      {bubbles}
       {cells}
       {drag?.ghostPx && (
         <rect

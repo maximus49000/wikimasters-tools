@@ -1,0 +1,90 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createMemoryStore } from '../../../src/core/cache/store';
+import { adoptPet, createInitialState, parseLibraryState, removePet, renamePet, setPetPlan } from '../../../src/core/library/library-book';
+import { createLibraryRepo } from '../../../src/core/library/library-repo';
+import type { PetPlan } from '../../../src/core/library/library-types';
+
+const plan: PetPlan = {
+  action: 'sit',
+  hostId: null,
+  at: { x: 100, y: 450 },
+  on: null,
+  route: [{ kind: 'walk', from: { x: 10, y: 450 }, to: { x: 100, y: 450 }, ms: 1000, fromOn: null, on: null }],
+  startedAt: 5000,
+  actMs: 4000,
+  facing: 'r',
+  sig: '24|1',
+};
+
+describe('état v4', () => {
+  it('une pièce vide commence en v4 sans animal', () => {
+    const state = createInitialState();
+    expect(state.version).toBe(4);
+    expect(state.rooms[0]!.pets).toEqual([]);
+  });
+
+  it('migre un état v3 : les pièces reçoivent une liste d animaux vide', () => {
+    const v3 = { version: 3, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, rooms: [{ id: 'r1', name: 'Salon', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, layout: [] }] };
+    const state = parseLibraryState(v3);
+    expect(state.version).toBe(4);
+    expect(state.rooms[0]!.pets).toEqual([]);
+  });
+
+  it('un animal abîmé est ignoré sans perdre la pièce, un plan abîmé est oublié', () => {
+    const base = createInitialState();
+    const room = { ...base.rooms[0]!, pets: [{ id: 'p1', species: 'cat', name: 'Minou', coat: 'orange', plan: { action: 'bogus' } }, { id: 'p2', species: 'dog', name: 'X', coat: 'orange' }] };
+    const state = parseLibraryState({ ...base, rooms: [room] });
+    expect(state.rooms[0]!.pets).toEqual([{ id: 'p1', species: 'cat', name: 'Minou', coat: 'orange' }]);
+  });
+
+  it('garde au plus un animal par pièce', () => {
+    const base = createInitialState();
+    const pets = [1, 2].map((n) => ({ id: `p${n}`, species: 'cat', name: `C${n}`, coat: 'black' }));
+    expect(parseLibraryState({ ...base, rooms: [{ ...base.rooms[0]!, pets }] }).rooms[0]!.pets).toHaveLength(1);
+  });
+});
+
+describe('adoption', () => {
+  it('adopte un chat avec son nom nettoyé', () => {
+    const state = adoptPet(createInitialState(), 'r1', '  Moustache  ', 'tabby');
+    expect(state.rooms[0]!.pets).toEqual([{ id: 'p1', species: 'cat', name: 'Moustache', coat: 'tabby' }]);
+  });
+
+  it('nom vide : Minou ; nom trop long : coupé à 20 caractères', () => {
+    expect(adoptPet(createInitialState(), 'r1', '   ', 'gray').rooms[0]!.pets[0]!.name).toBe('Minou');
+    expect(adoptPet(createInitialState(), 'r1', 'x'.repeat(40), 'gray').rooms[0]!.pets[0]!.name).toHaveLength(20);
+  });
+
+  it('refuse un second chat dans la même pièce', () => {
+    const once = adoptPet(createInitialState(), 'r1', 'A', 'white');
+    expect(adoptPet(once, 'r1', 'B', 'black')).toBe(once);
+  });
+
+  it('renomme, retire, et ignore une pièce ou un animal inconnu', () => {
+    const once = adoptPet(createInitialState(), 'r1', 'A', 'white');
+    expect(renamePet(once, 'r1', 'p1', 'Bob').rooms[0]!.pets[0]!.name).toBe('Bob');
+    expect(renamePet(once, 'r1', 'p1', '   ')).toBe(once);
+    expect(renamePet(once, 'r9', 'p1', 'Bob')).toBe(once);
+    expect(removePet(once, 'r1', 'p1').rooms[0]!.pets).toEqual([]);
+  });
+
+  it('mémorise le plan d un animal et le relit', () => {
+    const once = adoptPet(createInitialState(), 'r1', 'A', 'white');
+    const withPlan = setPetPlan(once, 'r1', 'p1', plan);
+    expect(parseLibraryState(JSON.parse(JSON.stringify(withPlan))).rooms[0]!.pets[0]!.plan).toEqual(plan);
+  });
+});
+
+describe('updateQuiet', () => {
+  it('écrit sans prévenir les abonnés', async () => {
+    const store = createMemoryStore();
+    const repo = createLibraryRepo(store);
+    await repo.load();
+    const listener = vi.fn();
+    repo.subscribe(listener);
+    await repo.updateQuiet((s) => adoptPet(s, 'r1', 'A', 'white'));
+    expect(listener).not.toHaveBeenCalled();
+    expect(repo.current()!.rooms[0]!.pets).toHaveLength(1);
+    expect((await createLibraryRepo(store).load()).rooms[0]!.pets).toHaveLength(1);
+  });
+});

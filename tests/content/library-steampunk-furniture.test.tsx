@@ -15,6 +15,7 @@ const roomOf = (style: StyleId): Room => ({
   scene: 'city',
   orientation: 'landscape',
   cols: 48,
+  pets: [],
   layout: [
     { id: 'd', kind: 'desk', col: 2, row: 14 },
     { id: 'c', kind: 'computer', deskId: 'd', slug: 'Paris' },

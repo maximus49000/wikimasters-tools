@@ -14,6 +14,7 @@ const room: Room = {
   scene: 'city',
   orientation: 'landscape',
   cols: 48,
+  pets: [],
   layout: [
     { id: 'a', kind: 'sofa', col: 2, row: 12 },
     { id: 'b', kind: 'rug', col: 2, row: 15 },

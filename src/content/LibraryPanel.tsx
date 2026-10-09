@@ -1,6 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   activeRoom,
+  adoptPet,
+  MAX_PET_NAME,
+  removePet,
+  renamePet,
   createInitialState,
   addRoom,
   countExclusive,
@@ -12,14 +16,16 @@ import {
   setActive,
   setHome,
   setOrientation,
+  setPetPlan,
   setRoomScene,
   setTimeSetting,
   shrinkRoom,
   updateLayout,
 } from '../core/library/library-book';
 import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
-import { SCENE_IDS, STYLE_IDS, type SceneId, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type StandingKind, type StyleId } from '../core/library/library-types';
+import { COATS, SCENE_IDS, STYLE_IDS, type Coat, type SceneId, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
+import { COAT_COLORS, COAT_LABELS } from './pet-sprite';
 import {
   MAX_COLS,
   MIN_COLS,
@@ -59,6 +65,7 @@ import {
 import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
+import { usePetSim } from './pet-sim';
 import { requestPosition } from './scene-position';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
 import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
@@ -112,6 +119,9 @@ function Icon({ paths }: { paths: readonly string[] }) {
 }
 
 const ICONS = {
+  cat: ['M5 9L4 3l5 3', 'M19 9l1-6-5 3', 'M5 9c0 6 2 11 7 11s7-5 7-11c-2-2-5-3-7-3S7 7 5 9z', 'M9 12h.01', 'M15 12h.01', 'M11 15l1 1 1-1'],
+  check: ['M5 12l5 5L20 7'],
+  close: ['M6 6l12 12', 'M18 6L6 18'],
   plus: ['M5 12h14', 'M12 5v14'],
   card: ['M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', 'M12 9v6', 'M9 12h6'],
   eye: ['M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z', 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'],
@@ -176,6 +186,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [blink, setBlink] = useState<Cell[]>([]);
   const [message, setMessage] = useState('');
+  const [adopting, setAdopting] = useState(false);
+  const [adoptName, setAdoptName] = useState('Minou');
+  const [adoptCoat, setAdoptCoat] = useState<Coat>('orange');
   const blinkTimer = useRef<number | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stage = useFullscreen<HTMLDivElement>();
@@ -319,6 +332,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     };
   }, [timeMode]);
 
+  // Le chat : son plan est mémorisé sans prévenir les abonnés (il change toutes les quelques secondes, rien à redessiner).
+  const savePlan = useCallback((roomId: string, petId: string, plan: PetPlan) => { void library.updateQuiet((state) => setPetPlan(state, roomId, petId, plan)); }, [library]);
+  const sim = usePetSim(lib ? activeRoom(lib) : null, savePlan);
+
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
   const room = activeRoom(lib);
@@ -345,6 +362,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     setMessage('');
     setPicking(false);
     setPending(null);
+    setAdopting(false);
+    setAdoptName('Minou');
+    setAdoptCoat('orange');
   };
   const refuse = (text: string, cells: Cell[] = []): void => {
     setMessage(text);
@@ -639,6 +659,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     reset();
     void library.update((state) => deleteRoom(state, room.id));
   };
+  const pet = room.pets[0];
+  const confirmAdopt = (): void => {
+    setAdopting(false);
+    void library.update((state) => adoptPet(state, room.id, adoptName, adoptCoat));
+  };
+  const onRemovePet = (): void => {
+    if (!pet || !window.confirm(`Retirer ${pet.name} de cette pièce ?`)) return;
+    void library.update((state) => removePet(state, room.id, pet.id));
+  };
 
   return (
     <div className="wmt-lib" data-wmt-library>
@@ -758,6 +787,53 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       )}
 
       {editing && (
+        <div className="wmt-lib-row" role="group" aria-label="Animaux">
+          {pet ? (
+            <>
+              <input
+                key={`${room.id}:${pet.id}`}
+                className="wmt-lib-name"
+                aria-label="Nom du chat"
+                defaultValue={pet.name}
+                maxLength={MAX_PET_NAME}
+                onBlur={(event) => {
+                  const name = event.currentTarget.value;
+                  if (!name.trim()) {
+                    event.currentTarget.value = pet.name;
+                    return;
+                  }
+                  if (name === pet.name) return;
+                  void library.update((state) => renamePet(state, room.id, pet.id, name));
+                }}
+              />
+              <Btn label="Retirer le chat" data={{ action: 'remove-pet' }} onClick={onRemovePet}>
+                <Icon paths={ICONS.trash} />
+              </Btn>
+            </>
+          ) : adopting ? (
+            <>
+              <input className="wmt-lib-name" aria-label="Nom du chat à adopter" value={adoptName} maxLength={MAX_PET_NAME} onChange={(event) => setAdoptName(event.currentTarget.value)} />
+              {COATS.map((coat) => (
+                <Btn key={coat} label={COAT_LABELS[coat]} pressed={adoptCoat === coat} data={{ coat }} onClick={() => setAdoptCoat(coat)}>
+                  <span className="wmt-lib-swatch" style={{ background: COAT_COLORS[coat].body, borderColor: COAT_COLORS[coat].belly }} />
+                </Btn>
+              ))}
+              <Btn label="Adopter ce chat" data={{ action: 'adopt-confirm' }} onClick={confirmAdopt}>
+                <Icon paths={ICONS.check} />
+              </Btn>
+              <Btn label="Annuler" data={{ action: 'adopt-cancel' }} onClick={() => setAdopting(false)}>
+                <Icon paths={ICONS.close} />
+              </Btn>
+            </>
+          ) : (
+            <Btn label="Adopter un chat" data={{ action: 'adopt' }} onClick={() => setAdopting(true)}>
+              <Icon paths={ICONS.cat} />
+            </Btn>
+          )}
+        </div>
+      )}
+
+      {editing && (
         <div className="wmt-lib-row" role="group" aria-label="Catégories de meubles">
           {cats.map((c) => (
             <Btn key={c.id} label={c.label} pressed={shownCategory === c.id} data={{ category: c.id }} onClick={() => { reset(); setCategory(c.id); }}>
@@ -845,6 +921,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onPick={(id) => void onPick(id)}
             cards={roomCards.cards}
             onCardTap={onCardTap}
+            pets={sim.views}
+            petAttach={sim.attach}
+            onPetTap={(id) => sim.touch(id)}
             onFurnitureDown={onFurnitureDown}
             onFurnitureMove={onFurnitureMove}
             onFurnitureUp={press.cancel}
