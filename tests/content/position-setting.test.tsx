@@ -77,6 +77,31 @@ describe('raison d’échec', () => {
   });
 });
 
+describe('position native Android', () => {
+  type Win = { WmtLocation?: unknown; __wmtLocationDone?: (...a: unknown[]) => void };
+  const answer = (lat: number, lon: number, error: string) =>
+    vi.fn((id: string) => queueMicrotask(() => (window as unknown as Win).__wmtLocationDone?.(id, lat, lon, error)));
+  afterEach(() => {
+    delete (window as unknown as Win).WmtLocation;
+    delete (window as unknown as Win).__wmtLocationDone;
+  });
+
+  it('passe par le pont Android et reçoit la position', async () => {
+    (window as unknown as Win).WmtLocation = { request: answer(48.1, 2.2, '') };
+    await requestPosition();
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    expect(isPositionKnown()).toBe(true);
+    expect(currentPosition().lat).toBeCloseTo(48.1);
+  });
+
+  it('transmet la raison de l’échec (localisation du téléphone désactivée)', async () => {
+    (window as unknown as Win).WmtLocation = { request: answer(0, 0, 'off') };
+    await requestPosition();
+    expect(positionFailure()).toBe('off');
+    expect(isPositionKnown()).toBe(false);
+  });
+});
+
 describe('fenêtre Position', () => {
   let container: HTMLDivElement;
   let root: Root;

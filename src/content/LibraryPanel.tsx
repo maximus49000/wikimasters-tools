@@ -96,7 +96,7 @@ type Drag = { id: string; x: number; y: number; target: DropTarget };
 // Ce que les écouteurs de la fenêtre doivent connaître de l'état courant (relu à chaque événement).
 type DragLive = { layout: Layout; cols: number; drop: (id: string, target: DropTarget) => void };
 
-const FAILURE_LABEL = { denied: 'position refusée', unavailable: 'position indisponible', timeout: 'position trop longue à obtenir', absent: 'position non gérée' } as const;
+const FAILURE_LABEL = { denied: 'position refusée', unavailable: 'position indisponible', timeout: 'position trop longue à obtenir', absent: 'position non gérée', off: 'localisation du téléphone désactivée' } as const;
 
 export const LIBRARY_CSS = `
 .wmt-lib{display:flex;flex-direction:column;gap:10px;padding:12px;margin:12px 0;border:1px solid var(--color-border,rgba(148,163,184,.35));border-radius:12px;background:var(--color-surface,#0d1117);color:var(--color-foreground,#e6edf3);font:14px/20px system-ui,sans-serif}

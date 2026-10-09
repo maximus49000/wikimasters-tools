@@ -8,8 +8,11 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.location.Location;
+import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.CancellationSignal;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -39,6 +42,9 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 // Wikimasters en plein écran, avec la surcouche « Wikimasters Tools » injectée à chaque page.
 public class MainActivity extends Activity {
@@ -62,6 +68,7 @@ public class MainActivity extends Activity {
     private static final int LOCATION_REQUEST = 41;
     private GeolocationPermissions.Callback pendingLocationCallback;
     private String pendingLocationOrigin;
+    private String pendingNativeLocationId;
     private final Updater updater = new Updater(this);
     private String overlayScript;
     // Repli quand la WebView ne sait pas injecter au début du document : injection au démarrage de chaque page.
@@ -88,6 +95,7 @@ public class MainActivity extends Activity {
         cookies.setAcceptThirdPartyCookies(webView, true);
         webView.addJavascriptInterface(new SpotifyBridge(), "WmtSpotify");
         webView.addJavascriptInterface(new HttpBridge(), "WmtHttp");
+        webView.addJavascriptInterface(new LocationBridge(), "WmtLocation");
 
         overlayScript = readAsset(OVERLAY_ASSET);
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -239,6 +247,75 @@ public class MainActivity extends Activity {
         }
     }
 
+    // Position lue par Android lui-même (la géolocalisation de la WebView n'aboutissait pas sur certains téléphones) :
+    // `WmtLocation.request(id)` appelle ensuite `window.__wmtLocationDone(id, lat, lon, erreur)` (erreur : "" | denied | off | unavailable | timeout).
+    private final class LocationBridge {
+        @JavascriptInterface
+        public void request(String id) {
+            final String callId = id == null ? "" : id.replaceAll("[^A-Za-z0-9-]", "");
+            runOnUiThread(() -> {
+                if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    locate(callId);
+                    return;
+                }
+                if (pendingNativeLocationId != null) deliverLocation(pendingNativeLocationId, 0, 0, "denied");
+                pendingNativeLocationId = callId;
+                requestPermissions(new String[] {Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_REQUEST);
+            });
+        }
+    }
+
+    private void locate(String id) {
+        LocationManager manager = getSystemService(LocationManager.class);
+        if (manager == null || !manager.isLocationEnabled()) {
+            deliverLocation(id, 0, 0, "off");
+            return;
+        }
+        List<String> providers = manager.getProviders(true);
+        providers.remove(LocationManager.PASSIVE_PROVIDER);
+        Location best = null;
+        try {
+            for (String provider : providers) {
+                Location last = manager.getLastKnownLocation(provider);
+                if (last != null && (best == null || last.getTime() > best.getTime())) best = last;
+            }
+        } catch (SecurityException ignored) {
+            deliverLocation(id, 0, 0, "denied");
+            return;
+        }
+        // Un relevé de moins de six heures suffit : la météo et le soleil n'ont pas besoin de plus.
+        if (best != null && System.currentTimeMillis() - best.getTime() < 6L * 3600 * 1000) {
+            deliverLocation(id, best.getLatitude(), best.getLongitude(), "");
+            return;
+        }
+        if (providers.isEmpty()) {
+            deliverLocation(id, 0, 0, "unavailable");
+            return;
+        }
+        final AtomicBoolean done = new AtomicBoolean(false);
+        final AtomicInteger remaining = new AtomicInteger(providers.size());
+        final CancellationSignal signal = new CancellationSignal();
+        try {
+            for (String provider : providers) {
+                manager.getCurrentLocation(provider, signal, getMainExecutor(), location -> {
+                    if (location != null && done.compareAndSet(false, true)) {
+                        signal.cancel();
+                        deliverLocation(id, location.getLatitude(), location.getLongitude(), "");
+                    } else if (remaining.decrementAndGet() == 0 && done.compareAndSet(false, true)) {
+                        deliverLocation(id, 0, 0, "timeout");
+                    }
+                });
+            }
+        } catch (SecurityException ignored) {
+            if (done.compareAndSet(false, true)) deliverLocation(id, 0, 0, "denied");
+        }
+    }
+
+    private void deliverLocation(String id, double lat, double lon, String error) {
+        String script = "window.__wmtLocationDone && window.__wmtLocationDone(" + JSONObject.quote(id) + "," + lat + "," + lon + "," + JSONObject.quote(error) + ")";
+        runOnUiThread(() -> webView.evaluateJavascript(script, null));
+    }
+
     // Pont « Vérifier la mise à jour » du menu Plus de la surcouche.
     private final class UpdateBridge {
         @JavascriptInterface
@@ -347,12 +424,20 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode != LOCATION_REQUEST || pendingLocationCallback == null) return;
+        if (requestCode != LOCATION_REQUEST) return;
         boolean granted = false;
         for (int result : grantResults) if (result == PackageManager.PERMISSION_GRANTED) granted = true;
-        pendingLocationCallback.invoke(pendingLocationOrigin, granted, false);
-        pendingLocationCallback = null;
-        pendingLocationOrigin = null;
+        if (pendingLocationCallback != null) {
+            pendingLocationCallback.invoke(pendingLocationOrigin, granted, false);
+            pendingLocationCallback = null;
+            pendingLocationOrigin = null;
+        }
+        if (pendingNativeLocationId != null) {
+            String id = pendingNativeLocationId;
+            pendingNativeLocationId = null;
+            if (granted) locate(id);
+            else deliverLocation(id, 0, 0, "denied");
+        }
     }
 
     @Override
