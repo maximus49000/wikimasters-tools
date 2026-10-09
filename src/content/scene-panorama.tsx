@@ -29,6 +29,8 @@ function SkyAndStars({ width, height, sky, seed }: SceneBodyProps): ReactElement
         </linearGradient>
       </defs>
       <rect data-sky x={0} y={0} width={width} height={height} fill={`url(#${gradientId})`} />
+      {/* Ciel couvert : gris plein, sous les immeubles (variables posées par la couche météo sur le <svg> de la pièce). */}
+      <rect data-sky-veil x={0} y={0} width={width} height={height} style={{ fill: 'var(--wmt-overcast-color, #B9C0CA)', opacity: 'var(--wmt-overcast, 0)' }} />
       <g opacity={sky.stars} style={{ transition: 'opacity 4s ease' }}>
         {sky.stars > 0 && stars.map((s) => <circle key={s.i} data-star="" cx={s.x} cy={s.y} r={s.r} fill="#FFFFFF" />)}
       </g>
@@ -48,7 +50,7 @@ function Celestial({ width, height, sky }: SceneBodyProps): ReactElement {
   const sun = sky.sunFrac === null ? null : place(sky.sunFrac);
   const moon = sky.moonFrac === null ? null : place(sky.moonFrac);
   return (
-    <g data-celestial>
+    <g data-celestial style={{ opacity: 'calc(1 - var(--wmt-overcast, 0))' }}>
       {sun && (
         <g data-sun="" transform={`translate(${sun.x} ${sun.y})`}>
           <circle r={34} fill="#FFE27A" opacity={0.25} />
