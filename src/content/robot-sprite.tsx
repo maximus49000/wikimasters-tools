@@ -138,6 +138,46 @@ export function robotBody(pose: Pose, c: RobotColors, still: boolean): ReactElem
       return robot(c, still, { eyes: 'normal', antenna: 'up' });
     case 'cower':
       return robot(c, still, { eyes: 'warn', antenna: 'bent', tilt: -5, dx: -2 });
+    case 'umbrella':
+      // Parapluie : manche fin jusqu'à l'antenne, calotte en demi-disque aux couleurs du robot.
+      return (
+        <>
+          {robot(c, still, { eyes: 'normal', antenna: 'rest' })}
+          <g data-robot-umbrella="">
+            <rect x="-9.6" y="-50" width="1.2" height="17" rx="0.6" fill={c.dark} />
+            <path d="M-22 -50 A22 22 0 0 1 22 -50 Z" fill={c.belly} stroke={c.dark} strokeWidth="1" strokeLinejoin="round" />
+          </g>
+        </>
+      );
+    case 'shortcircuit': {
+      // Écran barré d'une croix rouge, étincelles jaunes qui clignotent, léger tremblement.
+      const sparks = ['-12,-30 -9,-34 -11,-35 -8,-39', '12,-28 9,-32 11,-33 8,-37', '0,-34 3,-38 1,-39 4,-43'];
+      return (
+        <g data-robot-shortcircuit="">
+          {!still && <animateTransform attributeName="transform" type="translate" values="-0.8 0;0.8 0.4;-0.8 0" dur="0.12s" repeatCount="indefinite" />}
+          {robot(c, still, { eyes: 'normal', antenna: 'bent' })}
+          <rect x="-10.6" y="-23.4" width="21.2" height="12.6" rx="3.6" fill="#14202B" />
+          <path d="M-6 -21 L6 -13 M6 -21 L-6 -13" stroke="#d33" strokeWidth="2" strokeLinecap="round" />
+          {sparks.map((points, i) => (
+            <polyline key={points} points={points} fill="none" stroke="#ffd23a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              {!still && <animate attributeName="opacity" values="1;0;1" dur="0.25s" begin={`${i * 0.08}s`} repeatCount="indefinite" />}
+            </polyline>
+          ))}
+        </g>
+      );
+    }
+    case 'reboot':
+      // Redémarrage : l'écran se rallume (voile sombre qui se dissipe), figé allumé en mouvement réduit.
+      return (
+        <>
+          {robot(c, still, { eyes: 'normal', antenna: 'rest' })}
+          {!still && (
+            <rect data-robot-reboot="" x="-10.6" y="-23.4" width="21.2" height="12.6" rx="3.6" fill="#14202B" opacity="0.8">
+              <animate attributeName="opacity" values="0.8;0" dur="1.5s" fill="freeze" />
+            </rect>
+          )}
+        </>
+      );
     default:
       return robot(c, still, { eyes: 'normal', antenna: 'rest' });
   }

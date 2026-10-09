@@ -159,6 +159,28 @@ export function dogBody(pose: Pose, c: DogColors, still: boolean): ReactElement 
           <DogHead x={15} y={-8} c={c} tilt={66} closed />
         </>
       );
+    case 'howl':
+      // Chien assis, museau levé, bouche ouverte ; trois arcs « ou-ou » qui s'allument tour à tour.
+      return sitting(
+        c,
+        still,
+        <DogHead x={7} y={-33} c={c} tilt={-35} mouth />,
+        <g data-dog-howl="" fill="none" stroke={c.dark} strokeWidth="1.2" strokeLinecap="round">
+          {[0, 1, 2].map((i) => (
+            <path key={i} d={`M${21 + i * 4} ${-47 - i * 3} q4 -3 3 -8`} opacity={still ? 0.7 : 0}>
+              {!still && <animate attributeName="opacity" values="0;1;0" dur="1.5s" begin={`${i * 0.35}s`} repeatCount="indefinite" />}
+            </path>
+          ))}
+        </g>,
+      );
+    case 'shake':
+      // Chien debout dont le corps tremble (rotation rapide), figé en mouvement réduit.
+      return (
+        <g data-dog-shake="">
+          {!still && <animateTransform attributeName="transform" type="rotate" values="-6 0 -16;6 0 -16;-6 0 -16" dur="0.18s" repeatCount="indefinite" />}
+          {standing(c, true, false, <DogHead x={21} y={-26} c={c} />)}
+        </g>
+      );
     default:
       return sitting(c, still, <DogHead x={5} y={-31} c={c} />);
   }
