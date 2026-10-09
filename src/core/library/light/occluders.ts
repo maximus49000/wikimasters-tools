@@ -44,7 +44,7 @@ const SMALL_HALF_W = 10;
 const SMALL_LAMP_Z = 30;
 const LAMP_TOP_Z = 0.92;
 
-const kOf = (g: Geom): number => g.floorH / (g.wallH * ROOM_DEPTH_FACTOR);
+export const kOf = (g: Geom): number => g.floorH / (g.wallH * ROOM_DEPTH_FACTOR);
 // Profondeur du bord avant du meuble (le bas de son rectangle écran).
 const dFrontOf = (r: PxRect, g: Geom): number => Math.max(0, (r.y + r.h - g.wallH) / kOf(g));
 
@@ -58,9 +58,9 @@ function primBoxes(owner: string, kind: Kind, r: PxRect, dFront: number): Box[] 
   }));
 }
 
-type Host = { kind: 'desk' | 'shelf'; r: PxRect; dFront: number; D: number };
+export type Host = { kind: 'desk' | 'shelf'; r: PxRect; dFront: number; D: number };
 
-function hostOf(layout: Layout, id: string, g: Geom): Host | null {
+export function hostOf(layout: Layout, id: string, g: Geom): Host | null {
   const h = layout.find((p) => p.id === id);
   if (!h || (h.kind !== 'desk' && h.kind !== 'shelf')) return null;
   const rect = rectOf(h);
