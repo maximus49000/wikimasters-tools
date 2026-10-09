@@ -45,22 +45,27 @@ export function tripsFor(doors: Door[], seed: number): Trip[] {
   return out;
 }
 
-// Distance à parcourir entre la porte et le bord du monde : vers l'avant pour un habitant qui sort, depuis l'arrière pour celui qui rentre.
+// Un trajet ne dépasse jamais cette distance depuis la porte : au-delà, l'habitant s'efface (rue latérale) ou apparaît.
+// Durée max = 520 / vitesse min (18) ≈ 29 s, très en deçà de TRIP_CYCLE : le cycle ne coupe jamais un trajet.
+export const MAX_TRIP_PX = 520;
+
+// Distance à parcourir entre la porte et le bord du monde (vers l'avant pour qui sort, depuis l'arrière pour qui rentre), plafonnée.
 const reachOf = (trip: Trip, width: number): number => {
   const forward = trip.dir > 0 ? width + WORLD_MARGIN - trip.doorX : trip.doorX + WORLD_MARGIN;
   const backward = trip.dir > 0 ? trip.doorX + WORLD_MARGIN : width + WORLD_MARGIN - trip.doorX;
-  return trip.kind === 'out' ? forward : backward;
+  return Math.min(trip.kind === 'out' ? forward : backward, MAX_TRIP_PX);
 };
 
-// Position d'un habitant `t` secondes après la date d'origine, ou null s'il n'est pas en route. `fade` : 0 = invisible (à la porte), 1 = plein.
+// Position d'un habitant `t` secondes après la date d'origine, ou null s'il n'est pas en route.
+// `fade` : 0 = invisible, 1 = plein ; fondu de 0,8 s aux deux extrémités (porte, bord du monde ou plafond de distance).
 export function tripAt(trip: Trip, width: number, t: number): { x: number; fade: number } | null {
   const c = (((t + trip.phase) % TRIP_CYCLE) + TRIP_CYCLE) % TRIP_CYCLE;
   const reach = reachOf(trip, width);
   const duration = reach / trip.speed;
   if (c >= duration) return null;
-  if (trip.kind === 'out') return { x: trip.doorX + trip.dir * trip.speed * c, fade: smooth(c / FADE_S) };
-  const startX = trip.doorX - trip.dir * reach;
-  return { x: startX + trip.dir * trip.speed * c, fade: 1 - smooth((c - (duration - FADE_S)) / FADE_S) };
+  const fade = Math.min(smooth(c / FADE_S), 1 - smooth((c - (duration - FADE_S)) / FADE_S));
+  const startX = trip.kind === 'out' ? trip.doorX : trip.doorX - trip.dir * reach;
+  return { x: startX + trip.dir * trip.speed * c, fade };
 }
 
 // Le trajet a lieu dans ce tour de cycle si le tirage de (trajet, tour) passe sous le seuil.

@@ -8,6 +8,11 @@ describe('lampsFor', () => {
     const lamps = lampsFor(1440, 3);
     expect(lamps).toEqual(lampsFor(1440, 3));
     expect(lamps.length).toBeGreaterThanOrEqual(6);
+    for (let i = 1; i < lamps.length; i++) {
+      const gap = lamps[i]!.x - lamps[i - 1]!.x;
+      expect(gap).toBeGreaterThanOrEqual(120);
+      expect(gap).toBeLessThanOrEqual(220);
+    }
     for (const lamp of lamps) {
       expect(lamp.offJitter).toBeGreaterThanOrEqual(-15);
       expect(lamp.offJitter).toBeLessThanOrEqual(15);

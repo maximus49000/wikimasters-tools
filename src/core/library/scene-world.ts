@@ -25,14 +25,15 @@ export const WORLD_MARGIN = 80;
 
 const positiveMod = (a: number, n: number): number => ((a % n) + n) % n;
 
-// Position horizontale (repère de la pièce) d'un acteur à l'instant t (secondes) : il traverse tout le monde puis recommence.
-// Tous les cadres montrent le même monde, donc un acteur passe d'une fenêtre à l'autre après distance ÷ vitesse.
+// Position horizontale d'un objet qui traverse tout le monde puis recommence (`speed` signé, `phase` en px).
 export function loopX(phase: number, speed: number, width: number, t: number): number {
   const loop = width + 2 * WORLD_MARGIN;
   const travelled = positiveMod(phase + Math.abs(speed) * t, loop);
   return speed > 0 ? travelled - WORLD_MARGIN : width + WORLD_MARGIN - travelled;
 }
 
+// Position horizontale (repère de la pièce) d'un acteur à l'instant t (secondes) : il traverse tout le monde puis recommence.
+// Tous les cadres montrent le même monde, donc un acteur passe d'une fenêtre à l'autre après distance ÷ vitesse.
 export function actorX(actor: Actor, width: number, t: number): number {
   return loopX(actor.phase, actor.speed, width, t);
 }

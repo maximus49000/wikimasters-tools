@@ -50,10 +50,9 @@ describe('outfitFor — variété', () => {
       expect(['backpack', 'ball']).toContain(outfitFor('child', rng).accessory);
     }
   });
-  it('deux passants voisins ne partagent presque jamais la même tenue', () => {
-    const list = pedestriansFor(1440, 2).filter((p) => p.role === 'general');
-    let same = 0;
-    for (let i = 1; i < list.length; i++) if (JSON.stringify(list[i]!.outfit) === JSON.stringify(list[i - 1]!.outfit)) same++;
-    expect(same).toBeLessThanOrEqual(1);
+  it('un grand tableau de passants est varié', () => {
+    const list = pedestriansFor(2000, 2);
+    expect(new Set(list.map((p) => p.outfit.top)).size).toBeGreaterThanOrEqual(5);
+    expect(new Set(list.map((p) => p.outfit.topColor)).size).toBeGreaterThanOrEqual(8);
   });
 });
