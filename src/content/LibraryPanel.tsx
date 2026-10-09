@@ -68,6 +68,7 @@ import {
 import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
+import { useWeather } from './use-weather';
 import { usePetSim } from './pet-sim';
 import { requestPosition } from './scene-position';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
@@ -219,6 +220,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const press = useMemo(() => createLongPress(() => { if (pressedId.current) startDragRef.current(pressedId.current); }), []);
   useEffect(() => press.cancel, [press]);
   const sceneTime = useSceneTime(lib?.time ?? { mode: 'real' });
+  const weather = useWeather(lib?.weather ?? { mode: 'random' });
+  // Vue des fenêtres mémoïsée : ciel et heure changent à la minute, les drapeaux de la météo rarement ; l'horloge est stable.
+  const sceneView = useMemo(
+    () => ({ sky: sceneTime.sky, minutes: sceneTime.minutes, weather: { clock: weather.clock, flags: weather.flags } }),
+    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags],
+  );
 
   // Position du doigt → case, cible de dépôt et position dans le dessin (null si la pièce n'est pas affichée).
   const locate = (id: string, clientX: number, clientY: number): Drag | null => {
@@ -947,7 +954,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             cellsActive={cellsActive}
             selectedId={selectedId}
             blink={blink}
-            sceneView={{ sky: sceneTime.sky, minutes: sceneTime.minutes }}
+            sceneView={sceneView}
             onCell={(col, row) => void onCell(col, row)}
             onPick={(id) => void onPick(id)}
             cards={roomCards.cards}
