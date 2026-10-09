@@ -100,3 +100,16 @@ describe('rangée Météo', () => {
     expect(row()).toBeNull();
   });
 });
+
+describe('bouton de zone des vacances', () => {
+  it('fait défiler Auto → A → B → C → Corse → Auto (📍 pour Auto)', async () => {
+    const btn = () => q('[data-zone-toggle]')!;
+    expect(btn().textContent).toContain('📍');
+    expect(btn().getAttribute('aria-label')).toContain('automatique');
+    for (const [glyph, label] of [['A', 'zone A'], ['B', 'zone B'], ['C', 'zone C'], ['Co', 'zone Corse'], ['📍', 'automatique']]) {
+      await click('[data-zone-toggle]');
+      expect(btn().textContent).toContain(glyph);
+      expect(btn().getAttribute('aria-label')).toContain(label);
+    }
+  });
+});

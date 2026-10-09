@@ -152,3 +152,25 @@ describe('CityLifeLayer : boucle d’animation', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('CityLifeLayer : mouvement réduit', () => {
+  it('les positions restent figées quand le rendu est recalculé (pas de saut à la minute)', () => {
+    let now = 1_760_000_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    const sky = skyAt(12 * 60, times);
+    const ctx = (minutes: number): CityContext => ({ minutes, day: dayContext({ y: 2026, m: 10, d: 10 }, []), precip: 0, snow: false, storm: false, daylight: sky.daylight });
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const draw = (minutes: number) => act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={ctx(minutes)} rainy={false} /></svg>));
+    // Les transforms posés au rendu React (le placement de la boucle n'a pas lieu en mouvement réduit).
+    const transforms = () => [...host.querySelectorAll('[data-ped]')].map((n) => n.getAttribute('transform'));
+    draw(720);
+    const before = transforms();
+    now += 60_000;
+    draw(721);
+    expect(transforms()).toEqual(before);
+  });
+});

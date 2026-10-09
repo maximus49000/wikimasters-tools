@@ -217,7 +217,7 @@ const REFUSALS = {
 
 // Réglage cyclique de la zone des vacances : Auto → A → B → C → Corse → Auto.
 const NEXT_ZONE: Record<ZoneChoice, ZoneChoice> = { auto: 'A', A: 'B', B: 'C', C: 'Corse', Corse: 'auto' };
-const ZONE_GLYPH: Record<ZoneChoice, string> = { auto: 'Auto', A: 'A', B: 'B', C: 'C', Corse: 'Co' };
+const ZONE_GLYPH: Record<ZoneChoice, string> = { auto: '📍', A: 'A', B: 'B', C: 'C', Corse: 'Co' };
 
 type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void; onOpenMarket?: (slug: string) => void };
 
@@ -255,7 +255,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const sceneTime = useSceneTime(lib?.time ?? { mode: 'real' });
   const weather = useWeather(lib?.weather ?? { mode: 'random' });
   // Jour de la ville (week-end, férié, école…) : stable tant que la date ne change pas.
-  const cityDay = useCityDay(sceneTime.date);
+  const cityDay = useCityDay(sceneTime.date, lib?.rooms.some((r) => r.scene === 'city') ?? false);
   // Vue des fenêtres mémoïsée : ciel et heure changent à la minute, les drapeaux de la météo rarement ; l'horloge est stable.
   const sceneView = useMemo(
     () => ({

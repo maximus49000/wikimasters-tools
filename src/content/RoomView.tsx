@@ -102,12 +102,13 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const weatherOn = view.weather !== undefined && WEATHER_SCENES.includes(room.scene);
   const gloom = weatherOn && (view.weather?.flags.gloom ?? false);
   const rainy = weatherOn && (view.weather?.flags.rainy ?? false);
+  // Ciel couvert sans pluie : précipitation 0,1, sous le seuil des parapluies (0,2) : ils ne sortent que sous la pluie.
   // Contexte de la ville (mémoïsé : SceneActors compare ses props par identité). La météo n'expose que pluie et ciel sombre :
   // neige et orage restent faux (limite connue de la vague 1a).
   const city = useMemo<CityContext | undefined>(
     () =>
       view.city && room.scene === 'city'
-        ? { minutes: view.minutes, day: view.city.day, precip: rainy ? 0.7 : gloom ? 0.2 : 0, snow: false, storm: false, daylight: view.sky.daylight }
+        ? { minutes: view.minutes, day: view.city.day, precip: rainy ? 0.7 : gloom ? 0.1 : 0, snow: false, storm: false, daylight: view.sky.daylight }
         : undefined,
     [view.city, room.scene, view.minutes, view.sky.daylight, rainy, gloom],
   );

@@ -23,6 +23,8 @@ const FAR_SHRINK = 0.9;
 const COMPANION_GAP = 16;
 // Durée du fondu d'apparition/disparition (CSS) ; un absent continue d'avancer tant qu'il s'efface (avec une petite marge).
 const FADE_S = 3;
+// Fondu court des habitants (leur présence est réécrite par la boucle) : ils n'apparaissent ni ne disparaissent d'un coup en pleine rue. Aucun fondu en mouvement réduit.
+const RESIDENT_FADE_S = 0.4;
 // Les vélos roulent sur une piste au bord de la file du premier plan (côté droit du sens de marche, vers le spectateur).
 const BIKE_TRACK_DY = 2;
 
@@ -98,6 +100,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const pedActive = useMemo(() => new Set(peds.filter((p) => p.u < pedestrianGate(p, intensity)).map((p) => p.id)), [peds, intensity]);
   const vehActive = useMemo(() => new Set(vehicles.filter((v) => v.u < vehicleGate(v, intensity)).map((v) => v.id)), [vehicles, intensity]);
 
+  // Mouvement réduit : la boucle ne tourne pas, les positions restent celles du premier calcul (pas de saut à chaque minute).
+  const frozen = useRef<number | null>(null);
+  const still = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (frozen.current === null) frozen.current = Date.now() / 1000;
   // Placement à chaque image. La table des nœuds est remplie au premier appel (après le montage) ;
   // tout est placé une fois, puis bougent les présents et, pendant leur fondu, ceux qui viennent de disparaître.
   const place = useMemo(() => {
@@ -106,7 +112,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let leaving = new Set<string>();
     let leaveUntil = 0;
     const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
-    return (t: number): void => {
+    return (now: number): void => {
+      // Mouvement réduit : toujours le même instant, y compris quand le placement est refait après un changement de minute.
+      const t = still ? frozen.current! : now;
       const el = root.current;
       if (!el) return;
       if (!nodes) {
@@ -129,11 +137,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       }
       first = false;
     };
-  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width]);
+  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
-  const t0 = Date.now() / 1000;
+  const t0 = still ? frozen.current : Date.now() / 1000;
   const lane = (which: 'far' | 'near'): ReactElement => (
     <g data-city-lane={which}>
       {/* Vélos après les voitures : leur piste est au bord de la file, plus près du spectateur. */}
@@ -175,6 +183,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-active={s.active ? 'true' : 'false'}
               transform={residentTransform(trip, s.x, metrics)}
               opacity={s.fade.toFixed(2)}
+              style={still ? undefined : { transition: `opacity ${RESIDENT_FADE_S}s ease` }}
             >
               <PersonSprite outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} />
             </g>

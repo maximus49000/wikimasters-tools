@@ -67,6 +67,8 @@ export function pedestrianGate(p: Pedestrian, i: CityIntensity): number {
   return i.walkers;
 }
 
+// Population : au plus ~14 passants visibles à la fois par 720 px. Ce plafond compte des GROUPES : un parent et les enfants qui
+// l'accompagnent (`companions`) valent un seul passant, et ne sont donc pas comptés en plus.
 export function pedestriansFor(width: number, seed: number): Pedestrian[] {
   const rng = mulberry32(seed ^ hashString('pedestrians'));
   const out: Pedestrian[] = [];

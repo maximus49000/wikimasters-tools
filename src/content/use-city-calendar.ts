@@ -5,16 +5,15 @@ import { DEFAULT_ZONE, isAlsaceMoselle, zoneOfDepartment, type Zone } from '../c
 import { currentPosition, isPositionKnown, subscribePosition } from './scene-position';
 import { useZoneChoice } from './zone-setting';
 
-// Zone → vacances → contexte du jour. La position n'est jamais enregistrée : seul le département déduit est mis en cache (par case de 0,1°).
+// Zone → vacances → contexte du jour. La position n'est jamais enregistrée ; le département déduit n'est pas non plus écrit :
+// il reste en mémoire le temps de la page (cache du module, par case de 0,1°, succès comme échec), jamais dans le stockage.
 // 1. Réglage manuel (A, B, C, Corse) : sans position ni relais de département.
-// 2. Automatique + position connue : GET DEPARTMENT_RELAY?lat&lon (position arrondie à 0,1°), département → zone via zoneOfDepartment ; cache `wmt:city-department:<lat,lon>` valable 30 jours.
+// 2. Automatique + position connue : GET DEPARTMENT_RELAY?lat&lon (position arrondie à 0,1°), département → zone via zoneOfDepartment ; une seule requête par case et par page.
 // 3. Sinon DEFAULT_ZONE.
 // Le calendrier : un `createSchoolCalendar` par page (useMemo), `latest(zone)` en premier rendu, `refresh(zone)` ensuite (setState des périodes).
+// Sans pièce Ville (`enabled` faux) : ni département ni calendrier scolaire ne sont demandés (jours fériés seuls).
 
-const DEPARTMENT_CACHE_MS = 30 * 86_400_000;
-// Un échec du relais est mémorisé 24 h (même clé) : au plus une requête par jour et par case après un échec.
-const DEPARTMENT_RETRY_MS = 86_400_000;
-const DEPARTMENT_KEY = (cell: string): string => `wmt:city-department:${cell}`;
+const DEPARTMENT_TIMEOUT_MS = 10_000;
 
 const storage = {
   get: (key: string): string | null => {
@@ -36,38 +35,39 @@ const storage = {
 // `+ 0` : -0 devient 0 (clé de case « -0.0 » évitée).
 const rounded = (v: number): number => Math.round(v * 10) / 10 + 0;
 
-// undefined : rien en cache ; null : échec récent (pas de nouvel essai avant 24 h) ; texte : département.
-function cachedDepartment(cell: string): string | null | undefined {
-  try {
-    const raw = storage.get(DEPARTMENT_KEY(cell));
-    if (!raw) return undefined;
-    const saved = JSON.parse(raw) as { at?: unknown; dept?: unknown };
-    if (typeof saved.at !== 'number' || (saved.dept !== null && typeof saved.dept !== 'string')) return undefined;
-    const age = Date.now() - saved.at;
-    if (age < 0 || age >= (saved.dept === null ? DEPARTMENT_RETRY_MS : DEPARTMENT_CACHE_MS)) return undefined;
-    return saved.dept;
-  } catch {
-    return undefined;
-  }
+// Case de 0,1° → réponse du relais (promesse partagée : un seul appel, même pendant qu'il est en cours). null : échec.
+const departments = new Map<string, Promise<string | null>>();
+
+// Remise à zéro du cache mémoire (tests uniquement).
+export function resetDepartmentCacheForTests(): void {
+  departments.clear();
 }
 
-// Département de la case de 0,1° (cache local 30 jours, puis relais). Renvoie null en cas d'échec : la zone par défaut s'applique.
-async function fetchDepartment(lat: number, lon: number): Promise<string | null> {
-  const cell = `${lat.toFixed(1)},${lon.toFixed(1)}`;
-  const cached = cachedDepartment(cell);
-  if (cached !== undefined) return cached;
-  const remember = (dept: string | null): void => storage.set(DEPARTMENT_KEY(cell), JSON.stringify({ at: Date.now(), dept }));
+async function requestDepartment(lat: number, lon: number): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DEPARTMENT_TIMEOUT_MS);
   try {
-    const response = await fetch(`${DEPARTMENT_RELAY}?lat=${lat.toFixed(1)}&lon=${lon.toFixed(1)}`);
+    const response = await fetch(`${DEPARTMENT_RELAY}?lat=${lat.toFixed(1)}&lon=${lon.toFixed(1)}`, { signal: controller.signal });
     if (!response.ok) throw new Error('status');
     const body = (await response.json()) as { ok?: unknown; dept?: unknown };
     if (body.ok !== true || typeof body.dept !== 'string') throw new Error('shape');
-    remember(body.dept);
     return body.dept;
   } catch {
-    remember(null);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+// Département de la case de 0,1° (mémoire de la page, puis relais). Renvoie null en cas d'échec : la zone par défaut s'applique.
+function fetchDepartment(lat: number, lon: number): Promise<string | null> {
+  const cell = `${lat.toFixed(1)},${lon.toFixed(1)}`;
+  let pending = departments.get(cell);
+  if (!pending) {
+    pending = requestDepartment(lat, lon);
+    departments.set(cell, pending);
+  }
+  return pending;
 }
 
 // Département déduit de la position connue (null tant qu'inconnu ou en réglage manuel).
@@ -91,9 +91,10 @@ function useDepartment(enabled: boolean): string | null {
   return enabled && known && found?.cell === cell ? found.dept : null;
 }
 
-export function useCityDay(date: YMD): DayContext {
+// `enabled` : au moins une pièce Ville ; sinon aucune requête (département, calendrier scolaire).
+export function useCityDay(date: YMD, enabled = true): DayContext {
   const [choice] = useZoneChoice();
-  const dept = useDepartment(choice === 'auto');
+  const dept = useDepartment(enabled && choice === 'auto');
   const zone: Zone = choice !== 'auto' ? choice : ((dept ? zoneOfDepartment(dept) : null) ?? DEFAULT_ZONE);
   // Un réglage manuel ignore l'Alsace-Moselle (aucun département déduit).
   const alsace = choice === 'auto' && dept !== null && isAlsaceMoselle(dept);
@@ -102,6 +103,7 @@ export function useCityDay(date: YMD): DayContext {
   // Changement de zone : les périodes connues de la nouvelle zone s'affichent tout de suite, avant le rafraîchissement.
   const periods = loaded.zone === zone ? loaded.periods : calendar.latest(zone);
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     void calendar.refresh(zone).then((fresh) => {
       if (alive) setLoaded({ zone, periods: fresh });
@@ -109,7 +111,7 @@ export function useCityDay(date: YMD): DayContext {
     return () => {
       alive = false;
     };
-  }, [calendar, zone]);
+  }, [calendar, zone, enabled]);
   const { y, m, d } = date;
   return useMemo(() => dayContext({ y, m, d }, periods, alsace), [y, m, d, periods, alsace]);
 }

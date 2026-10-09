@@ -10,7 +10,7 @@ vi.mock('../../src/content/scene-position', () => ({
   subscribePosition: () => () => undefined,
 }));
 
-import { useCityDay } from '../../src/content/use-city-calendar';
+import { resetDepartmentCacheForTests, useCityDay } from '../../src/content/use-city-calendar';
 import { writeZone } from '../../src/content/zone-setting';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -18,10 +18,10 @@ import { writeZone } from '../../src/content/zone-setting';
 let unmount: (() => void) | null = null;
 
 // @testing-library/react n'est pas installé : petit banc maison (même résultat : `current` suit le dernier rendu).
-function renderCityDay(date: YMD): { current: DayContext } {
+function renderCityDay(date: YMD, enabled = true): { current: DayContext } {
   const out = { current: undefined as unknown as DayContext };
   function Probe() {
-    out.current = useCityDay(date);
+    out.current = useCityDay(date, enabled);
     return null;
   }
   const host = document.createElement('div');
@@ -49,6 +49,7 @@ async function waitFor(check: () => void): Promise<void> {
 
 beforeEach(() => {
   pos.known = false;
+  resetDepartmentCacheForTests();
   window.localStorage.clear();
   vi.restoreAllMocks();
 });
@@ -108,7 +109,7 @@ describe('useCityDay', () => {
     await waitFor(() => expect(calls(f, 'school-calendar').some((u) => u.includes('zone=A'))).toBe(true));
     expect(calls(f, 'department')).toHaveLength(0);
   });
-  it('le département est mis en cache 30 jours : pas de seconde requête', async () => {
+  it('le département reste en mémoire pour la page : pas de seconde requête, rien d’écrit dans le stockage', async () => {
     pos.known = true;
     const f = relay('67');
     vi.stubGlobal('fetch', f);
@@ -118,8 +119,9 @@ describe('useCityDay', () => {
     renderCityDay({ y: 2026, m: 3, d: 3 });
     await settle();
     expect(calls(f, 'department')).toHaveLength(1);
+    expect(Object.keys(window.localStorage).some((k) => k.includes('city-department'))).toBe(false);
   });
-  it('un échec du relais de département est mémorisé : pas de nouvel essai le jour même', async () => {
+  it('un échec du relais de département est gardé en mémoire : pas de nouvel essai dans la page', async () => {
     pos.known = true;
     const f = relay(null);
     vi.stubGlobal('fetch', f);
@@ -129,6 +131,15 @@ describe('useCityDay', () => {
     renderCityDay({ y: 2026, m: 3, d: 3 });
     await settle();
     expect(calls(f, 'department')).toHaveLength(1);
+  });
+  it('sans pièce Ville (enabled faux) : ni département ni calendrier scolaire, mais les jours fériés', async () => {
+    pos.known = true;
+    const f = relay('67');
+    vi.stubGlobal('fetch', f);
+    const result = renderCityDay({ y: 2026, m: 5, d: 14 }, false);
+    await settle();
+    expect(result.current.kind).toBe('public-holiday');
+    expect(f).not.toHaveBeenCalled();
   });
   it('sans position connue : zone par défaut C, aucune requête de département', async () => {
     const f = relay('67');
