@@ -61,19 +61,20 @@ function Armchair({ rect: { x, y, w, h }, palette: p }: Props): ReactElement {
 }
 
 // Lampe à gaz : pied et tige de cuivre, globe de verre qui vacille, petit halo.
-function Lamp({ rect: { x, y, w, h }, palette: p }: Props): ReactElement {
+function Lamp({ rect: { x, y, w, h }, palette: p, lit = true }: Props & { lit?: boolean }): ReactElement {
   const cx = x + w / 2;
   const motion = !reducedMotion();
   return (
     <g data-steampunk-art="lamp">
-      <circle cx={cx} cy={y + h * 0.17} r={Math.min(w, h) * 0.5} fill={p.shade} opacity={0.25} />
+      {lit && <circle data-lamp-halo="" cx={cx} cy={y + h * 0.17} r={Math.min(w, h) * 0.5} fill="#FFD38A" opacity={0.3} />}
       <ellipse cx={cx} cy={y + h - 4} rx={w * 0.4} ry={4} fill={p.metal} stroke={p.woodDark} strokeWidth={1} />
       <rect x={cx - 2} y={y + h * 0.3} width={4} height={h * 0.7 - 6} fill={p.metal} />
       <rect x={cx - 4} y={y + h * 0.55} width={8} height={3} fill={p.edge} />
       <rect x={cx - w * 0.2} y={y + h * 0.27} width={w * 0.4} height={4} fill={p.edge} stroke={p.woodDark} strokeWidth={1} />
       <circle cx={cx} cy={y + h * 0.17} r={Math.min(w * 0.3, h * 0.1)} fill={p.shade} stroke={p.edge} strokeWidth={1}>
-        {motion && <animate attributeName="opacity" values="1;0.8;0.95;0.75;1" dur="2.4s" repeatCount="indefinite" />}
+        {motion && lit && <animate attributeName="opacity" values="1;0.8;0.95;0.75;1" dur="2.4s" repeatCount="indefinite" />}
       </circle>
+      {!lit && <circle cx={cx} cy={y + h * 0.17} r={Math.min(w * 0.3, h * 0.1)} fill="#1B1B24" opacity={0.55} />}
     </g>
   );
 }
@@ -153,11 +154,11 @@ function Automaton({ rect: { x, y, w, h }, palette: p }: Props): ReactElement {
   );
 }
 
-export function SteampunkArt({ kind, rect, palette }: { kind: 'desk' | 'armchair' | 'lamp' | 'globe' | 'telescope' | 'automaton'; rect: PxRect; palette: Palette }): ReactElement {
+export function SteampunkArt({ kind, rect, palette, lit }: { lit?: boolean; kind: 'desk' | 'armchair' | 'lamp' | 'globe' | 'telescope' | 'automaton'; rect: PxRect; palette: Palette }): ReactElement {
   switch (kind) {
     case 'desk': return <Desk rect={rect} palette={palette} />;
     case 'armchair': return <Armchair rect={rect} palette={palette} />;
-    case 'lamp': return <Lamp rect={rect} palette={palette} />;
+    case 'lamp': return <Lamp rect={rect} palette={palette} lit={lit} />;
     case 'globe': return <Globe rect={rect} palette={palette} />;
     case 'telescope': return <Telescope rect={rect} palette={palette} />;
     case 'automaton': return <Automaton rect={rect} palette={palette} />;

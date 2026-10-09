@@ -4,6 +4,7 @@ import type { PxRect } from '../core/library/room-grid';
 import type { Palette } from '../core/library/styles';
 
 type Props = { rect: PxRect; palette: Palette };
+type LampProps = Props & { lit?: boolean };
 
 function Chair({ rect: { x, y, w, h }, palette: p }: Props) {
   return (
@@ -104,12 +105,16 @@ function Plant({ rect: { x, y, w, h }, palette: p }: Props) {
   );
 }
 
-function Lamp({ rect: { x, y, w, h }, palette: p }: Props) {
+// Halo chaud d'une lampe allumée (translucide) ; éteinte, l'abat-jour est assombri par un voile.
+function Lamp({ rect: { x, y, w, h }, palette: p, lit = true }: LampProps) {
+  const shade = `M${x} ${y + h * 0.17} L${x + w} ${y + h * 0.17} L${x + w * 0.8} ${y} L${x + w * 0.2} ${y} Z`;
   return (
     <g>
+      {lit && <ellipse data-lamp-halo="" cx={x + w / 2} cy={y + h * 0.1} rx={w * 1.1} ry={h * 0.2} fill="#FFD38A" opacity={0.35} />}
       <rect x={x + w * 0.1} y={y + h - 7} width={w * 0.8} height={7} rx={3} fill={p.metal} />
       <rect x={x + w / 2 - 1.5} y={y + h * 0.17} width={3} height={h * 0.83 - 6} fill={p.metal} />
-      <path d={`M${x} ${y + h * 0.17} L${x + w} ${y + h * 0.17} L${x + w * 0.8} ${y} L${x + w * 0.2} ${y} Z`} fill={p.shade} stroke={p.edge} />
+      <path d={shade} fill={p.shade} stroke={p.edge} />
+      {!lit && <path d={shade} fill="#1B1B24" opacity={0.55} />}
     </g>
   );
 }
@@ -134,7 +139,7 @@ function Rug({ rect: { x, y, w, h }, palette: p }: Props) {
 }
 
 type HomeKind = Exclude<StandingKind, 'shelf' | 'desk' | 'globe' | 'telescope' | 'automaton'>;
-const ARTS: Record<HomeKind, (props: Props) => ReactElement> = {
+const ARTS: Record<HomeKind, (props: LampProps) => ReactElement> = {
   chair: Chair,
   sofa: Sofa,
   armchair: Armchair,
@@ -148,13 +153,13 @@ const ARTS: Record<HomeKind, (props: Props) => ReactElement> = {
   rug: Rug,
 };
 
-export function HomeArt({ kind, rect, palette }: Props & { kind: HomeKind }) {
+export function HomeArt({ kind, rect, palette, lit }: LampProps & { kind: HomeKind }) {
   const Art = ARTS[kind];
-  return <Art rect={rect} palette={palette} />;
+  return <Art rect={rect} palette={palette} lit={lit} />;
 }
 
 // Petit objet posé sur une surface : centré dans sa boîte, le pied appuyé sur le dessus du porteur.
-export function SmallArt({ item, rect, palette: p }: Props & { item: SmallItem }) {
+export function SmallArt({ item, rect, palette: p, lit = true }: LampProps & { item: SmallItem }) {
   const cx = rect.x + rect.w / 2;
   const base = rect.y + rect.h - 2;
   if (item === 'plant') {
@@ -167,11 +172,14 @@ export function SmallArt({ item, rect, palette: p }: Props & { item: SmallItem }
       </g>
     );
   }
+  const shade = `M${cx - 12} ${base - 22} L${cx + 12} ${base - 22} L${cx + 8} ${base - 38} L${cx - 8} ${base - 38} Z`;
   return (
     <g>
+      {lit && <ellipse data-lamp-halo="" cx={cx} cy={base - 32} rx={22} ry={14} fill="#FFD38A" opacity={0.35} />}
       <rect x={cx - 8} y={base - 3} width={16} height={3} rx={1.5} fill={p.metal} />
       <rect x={cx - 1.5} y={base - 22} width={3} height={20} fill={p.metal} />
-      <path d={`M${cx - 12} ${base - 22} L${cx + 12} ${base - 22} L${cx + 8} ${base - 38} L${cx - 8} ${base - 38} Z`} fill={p.shade} stroke={p.edge} />
+      <path d={shade} fill={p.shade} stroke={p.edge} />
+      {!lit && <path d={shade} fill="#1B1B24" opacity={0.55} />}
     </g>
   );
 }
