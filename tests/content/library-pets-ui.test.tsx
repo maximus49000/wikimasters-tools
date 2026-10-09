@@ -61,7 +61,7 @@ describe('adoption du chat', () => {
     await click('[data-action="adopt-confirm"]');
     expect(repo.current()!.rooms[0]!.pets[0]).toMatchObject({ name: 'Moustache', coat: 'black' });
     expect(q('[data-pet="p1"]')).not.toBeNull();
-    expect(q('[data-action="adopt"]')).toBeNull();
+    expect(q('[data-action="adopt"]')).not.toBeNull();
   });
 
   it('annuler l adoption ne crée rien', async () => {
@@ -86,6 +86,33 @@ describe('adoption du chat', () => {
     await click('[data-action="remove-pet"]');
     expect(repo.current()!.rooms[0]!.pets).toEqual([]);
     expect(q('[data-pet]')).toBeNull();
+  });
+
+  it('adopte un chien avec son propre jeu de pelages', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-action="adopt-dog"]');
+    expect(q('[data-coat="tabby"]')).toBeNull();
+    await type('input[aria-label="Nom du chien à adopter"]', 'Rex');
+    await click('[data-coat="spotted"]');
+    await click('[data-action="adopt-confirm"]');
+    expect(repo.current()!.rooms[0]!.pets[0]).toMatchObject({ species: 'dog', name: 'Rex', coat: 'spotted' });
+    expect(q('input[aria-label="Nom du chien"]')).not.toBeNull();
+  });
+
+  it('jusqu à trois animaux, puis les boutons d adoption disparaissent ; chacun se retire à part', async () => {
+    await click('[data-action="edit"]');
+    for (const [action, name] of [['adopt', 'A'], ['adopt-dog', 'B'], ['adopt', 'C']] as const) {
+      await click(`[data-action="${action}"]`);
+      await type(`input[aria-label="Nom du ${action === 'adopt' ? 'chat' : 'chien'} à adopter"]`, name);
+      await click('[data-action="adopt-confirm"]');
+    }
+    expect(repo.current()!.rooms[0]!.pets.map((p) => p.id)).toEqual(['p1', 'p2', 'p3']);
+    expect(q('[data-action="adopt"]')).toBeNull();
+    expect(q('[data-action="adopt-dog"]')).toBeNull();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await click('[data-action="remove-pet"][data-pet="p2"]');
+    expect(repo.current()!.rooms[0]!.pets.map((p) => p.id)).toEqual(['p1', 'p3']);
+    expect(q('[data-action="adopt-dog"]')).not.toBeNull();
   });
 });
 
