@@ -5,7 +5,7 @@ import type { ShopSlot } from './slots';
 
 // Cycle de vie des locaux, calculé (rien n'est enregistré sauf le jour de départ de la pièce, `epochDay`).
 // Tous les locaux sont simulés ENSEMBLE, dans l'ordre des jours de changement (à égalité, dans l'ordre des locaux) :
-// un nouveau commerce n'a jamais le type de l'ancien, ni celui d'un autre local occupé de la pièce (s'il reste du choix),
+// un nouveau commerce n'a jamais le type de l'ancien (y compris après « À vendre » : on retient le type parti), ni celui d'un autre local occupé de la pièce (s'il reste du choix),
 // et jamais le nom d'un autre local. Chaque local a son propre générateur ; le choix du nom consomme toujours UN tirage,
 // si bien que types et dates ne dépendent pas des noms disponibles (position connue ou non).
 export const OPEN_DAYS = [21, 84] as const;
@@ -17,7 +17,7 @@ export type Tenant = { type: ShopTypeId; name: string; from: number };
 export type Change = { day: number; kind: 'relet' | 'to-sale' | 'from-sale'; before: Tenant | null; after: Tenant | null };
 export type SlotDay = { slot: ShopSlot; tenant: Tenant | null; change: Change | null };
 
-type Track = { slot: ShopSlot; rng: () => number; tenant: Tenant | null; next: number; last: Change | null };
+type Track = { slot: ShopSlot; rng: () => number; tenant: Tenant | null; next: number; last: Change | null; lastType: ShopTypeId | null };
 
 const between = (rng: () => number, [lo, hi]: readonly [number, number]): number => lo + Math.floor(rng() * (hi - lo + 1));
 
@@ -46,7 +46,7 @@ export function streetOn(slots: ShopSlot[], seed: number, epochDay: number, day:
   };
   // Départ : chaque local est ouvert depuis un « âge » tiré dans sa première période (changements étalés).
   for (const slot of slots) {
-    const t: Track = { slot, rng: mulberry32(seed ^ hashString('shops') ^ Math.imul(slot.index + 1, 2654435761)), tenant: null, next: 0, last: null };
+    const t: Track = { slot, rng: mulberry32(seed ^ hashString('shops') ^ Math.imul(slot.index + 1, 2654435761)), tenant: null, next: 0, last: null, lastType: null };
     tracks.push(t);
     const length = between(t.rng, OPEN_DAYS);
     const age = Math.floor(t.rng() * length);
@@ -61,7 +61,7 @@ export function streetOn(slots: ShopSlot[], seed: number, epochDay: number, day:
     const at = due.next;
     const before = due.tenant;
     if (before === null) {
-      const after = newTenant(due, null, at);
+      const after = newTenant(due, due.lastType, at);
       due.last = { day: at, kind: 'from-sale', before: null, after };
       due.tenant = after;
       due.next = nextWorkday(at + between(due.rng, OPEN_DAYS));
@@ -72,6 +72,7 @@ export function streetOn(slots: ShopSlot[], seed: number, epochDay: number, day:
       due.next = nextWorkday(at + between(due.rng, OPEN_DAYS));
     } else {
       due.last = { day: at, kind: 'to-sale', before, after: null };
+      due.lastType = before.type;
       due.tenant = null;
       due.next = nextWorkday(at + between(due.rng, SALE_DAYS));
     }

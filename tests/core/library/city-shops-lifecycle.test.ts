@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SHOP_DEFS } from '../../../src/core/library/city/shops/catalog';
+import { SHOP_DEFS, SHOP_TYPE_IDS } from '../../../src/core/library/city/shops/catalog';
 import { isWorkday } from '../../../src/core/library/city/shops/hours';
 import { streetOn, type SlotDay } from '../../../src/core/library/city/shops/lifecycle';
 import { shopSlotsFor } from '../../../src/core/library/city/shops/slots';
@@ -20,9 +20,12 @@ describe('cycle de vie des commerces', () => {
     expect(new Set(firstChange).size).toBeGreaterThan(Math.min(slots.length, 5) - 1);
   });
   it('ne change jamais un dimanche ni un jour férié, et jamais vers le même type', () => {
+    const left = new Map<string, string>();
     for (const street of days(EPOCH, EPOCH + 400)) {
       for (const s of street) {
         if (!s.change) continue;
+        if (s.change.kind === 'to-sale') left.set(s.slot.id, s.change.before!.type);
+        if (s.change.kind === 'from-sale' && left.has(s.slot.id)) expect(s.change.after!.type).not.toBe(left.get(s.slot.id));
         expect(isWorkday(s.change.day)).toBe(true);
         if (s.change.before && s.change.after) expect(s.change.after.type).not.toBe(s.change.before.type);
       }
@@ -55,9 +58,8 @@ describe('cycle de vie des commerces', () => {
     expect(relet / (relet + toSale)).toBeLessThan(0.65);
   });
   it('prend un nom local s’il y en a, sinon un nom écrit, sans doublon dans la rue', () => {
-    const local = streetOn(slots, 11, EPOCH, EPOCH, { bar: ['Le Welsh'] });
-    const bar = local.find((s) => s.tenant?.type === 'bar');
-    if (bar) expect(bar.tenant!.name).toBe('Le Welsh');
+    const all = Object.fromEntries(SHOP_TYPE_IDS.map((id) => [id, [`Local ${id}`]]));
+    for (const s of streetOn(slots, 11, EPOCH, EPOCH, all)) expect(s.tenant!.name).toBe(`Local ${s.tenant!.type}`);
     const names = streetOn(slots, 11, EPOCH, EPOCH + 200, {}).flatMap((s) => (s.tenant ? [s.tenant.name] : []));
     expect(new Set(names).size).toBe(names.length);
     for (const s of streetOn(slots, 11, EPOCH, EPOCH, {})) expect(SHOP_DEFS[s.tenant!.type].names).toContain(s.tenant!.name);
