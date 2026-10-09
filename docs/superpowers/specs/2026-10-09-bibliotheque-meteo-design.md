@@ -32,15 +32,16 @@ Espace et Terre vue d'en haut n'ont pas de météo (ils ignorent le réglage).
 ### Cibles et transitions
 
 - Chaque `WeatherState` définit des **cibles** (ex. `storm` : cloud 1, precip 0.9, wind 0.8, lightning 1, fog 0.1). `blend(from, to, k)` interpole toutes les valeurs ; `k` suit un lissage (smoothstep) sur une durée de **20 à 60 s** tirée de la graine.
-- `wet` et `snowCover` sont des **intégrales** : elles montent pendant la précipitation et redescendent après (séchage en ≈ 4 min, fonte en ≈ 6 min). Pour rester déterministes sans simulation, on les calcule à la demande par un **rappel borné** : la fonction relit les segments des 10 dernières minutes et cumule (voir ci-dessous).
-- `rainbow` : après une transition `rain|drizzle → sun|cloudy` avec soleil assez haut (`sky.daylight > 0.6`), monte à 0.8 pendant la transition puis s'éteint en ≈ 90 s.
+- `wet` et `snowCover` sont des **accumulateurs** recalculés à chaque tick de l'époque (mouillage et accumulation sous précipitation, séchage et fonte sinon, ≈ 15 min pour sécher) puis interpolés dans le tick ; ils repartent de 0 au début d'une époque (cet instant est toujours « nuageux », donc peu visible).
+- `rainbow` n'est pas stocké : `rainbowOf(weather, daylight)` le dérive (sol encore mouillé, plus de précipitation, ciel dégagé, soleil assez haut), si bien qu'il apparaît à l'éclaircie après la pluie et s'éteint quand le sol sèche.
 
 ### Mode aléatoire : plan déterministe
 
 - Le temps est découpé en **segments** de durée tirée de la graine (3 à 10 min). Le segment *n* est `{ state, start, dur, blendDur }` ; sa graine est `hash(roomsSeed, n)` ; l'état suivant est tiré d'une **matrice de transitions logiques** (soleil → nuageux ; nuageux → soleil | bruine | brume ; bruine → pluie | nuageux ; pluie → orage | bruine | éclaircie (nuageux→soleil) ; orage → pluie ; neige → nuageux | brume ; brume → nuageux | soleil). Les états passent donc par des intermédiaires (jamais soleil → orage direct).
 - Poids selon la **saison et la latitude** déjà connues (position de `sky`) : la neige n'est possible que si la température plausible est basse (hiver aux latitudes moyennes, toute l'année en haute latitude ; en été sous 35° ou au niveau de la mer tropicale : jamais). La brume est plus probable à l'aube.
 - Pour trouver le segment courant sans partir de l'origine, les segments sont indexés par **créneau absolu de 2 h** (chaque créneau repart d'un état tiré de sa graine, avec une transition douce depuis la fin du créneau précédent) : coût borné, pas de dérive, tous les cadres et tous les rechargements voient le même temps.
-- La scène **montagne** déplace les poids vers neige et nuageux ; la **mer** vers brume et orage ; la **campagne** et la **ville** restent neutres. Le plan est identique pour tous (global) ; seul le dessin diffère par scène.
+- Le plan est identique pour toutes les pièces et tous les appareils à un instant donné (graine constante) ; seul le dessin diffère par scène.
+- **Découpage retenu pour rester déterministe sans dérive** : ticks de 4 min, époques de 6 h (90 ticks). Chaque époque repart de « nuageux » et ses 4 derniers ticks suivent une matrice d'apaisement (tempête → pluie → bruine → nuageux), si bien que l'état à la fin d'une époque est toujours « nuageux » : aucune discontinuité à la frontière. Le coût d'évaluation est borné (≤ 90 pas), mémoïsé par époque. Le créneau de 2 h évoqué plus haut est remplacé par cette époque de 6 h.
 
 ### Mode forcé
 
