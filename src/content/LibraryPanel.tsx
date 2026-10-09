@@ -72,6 +72,7 @@ import {
 import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
+import { useCityDay } from './use-city-calendar';
 import { useWeather } from './use-weather';
 import { useLightEnabled } from './light-setting';
 import { WEATHER_SCENES } from './scene-weather';
@@ -245,10 +246,17 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   useEffect(() => press.cancel, [press]);
   const sceneTime = useSceneTime(lib?.time ?? { mode: 'real' });
   const weather = useWeather(lib?.weather ?? { mode: 'random' });
+  // Jour de la ville (week-end, férié, école…) : stable tant que la date ne change pas.
+  const cityDay = useCityDay(sceneTime.date);
   // Vue des fenêtres mémoïsée : ciel et heure changent à la minute, les drapeaux de la météo rarement ; l'horloge est stable.
   const sceneView = useMemo(
-    () => ({ sky: sceneTime.sky, minutes: sceneTime.minutes, weather: { clock: weather.clock, flags: weather.flags } }),
-    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags],
+    () => ({
+      sky: sceneTime.sky,
+      minutes: sceneTime.minutes,
+      weather: { clock: weather.clock, flags: weather.flags },
+      city: { day: cityDay, forcedNight: lib?.time.mode === 'night' },
+    }),
+    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags, cityDay, lib?.time.mode],
   );
 
   // Position du doigt → case, cible de dépôt et position dans le dessin (null si la pièce n'est pas affichée).

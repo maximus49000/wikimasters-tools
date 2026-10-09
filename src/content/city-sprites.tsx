@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { DOOR_WIDTH } from '../core/library/city/doors';
 import type { Outfit } from '../core/library/city/people';
 import type { Vehicle } from '../core/library/city/vehicles';
 import type { Sky } from '../core/library/sky';
@@ -197,6 +198,9 @@ export function LampSprite({ lit }: { lit: boolean }): ReactElement {
     </g>
   );
 }
+
+// Bord gauche d'une entrée dessinée à l'échelle `unit`, pour que son centre reste à door.x + 11 (là où partent les habitants).
+export const entranceLeft = (doorX: number, unit: number): number => doorX + (DOOR_WIDTH / 2) * (1 - unit);
 
 // ---------- Entrée d'immeuble : cadre 22×27 de x = 0 à 22 (DOOR_WIDTH), auvent un peu plus large, base à y = 0 ----------
 export function EntranceSprite({ variant, hallLit, sky }: { variant: 0 | 1 | 2; hallLit: boolean; sky: Sky }): ReactElement {
