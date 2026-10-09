@@ -42,6 +42,17 @@ describe('lampPetTransmission', () => {
   });
 });
 
+describe('lampPetTransmission, animal au pied de la lampe', () => {
+  it('une boîte qui contient le point de la lampe est ignorée ; une autre, entre lampe et pixel, ombre toujours', () => {
+    const field = lampField([lamp], [], surf, SCALE);
+    const around: Box = { owner: 'p1', x0: 285, x1: 315, d0: 85, d1: 115, z0: 40, z1: 80 };
+    const t = lampPetTransmission([lamp], [around], surf, field, SCALE);
+    expect(Array.from(t).every((v) => v === 1)).toBe(true);
+    const t2 = lampPetTransmission([lamp], [around, between], surf, field, SCALE);
+    expect(t2[pixelAt(315, 290)]!).toBeLessThan(1);
+  });
+});
+
 describe('lampPetTransmission, deux lampes', () => {
   // A (x 560) projette l'ombre de l'animal sur le pixel ; B (x −120) n'a aucun animal dans sa fenêtre en x
   // (b.x0 < B.x + 420 est faux) mais éclaire quand même le pixel.

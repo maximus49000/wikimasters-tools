@@ -69,6 +69,18 @@ export function hostOf(layout: Layout, id: string, g: Geom): Host | null {
   return { kind: h.kind, r, dFront: dFrontOf(r, g), D: DEPTH[h.kind] };
 }
 
+// Support quelconque (canapé, fauteuil, chaise, table basse…) : même empreinte que ses boîtes, sans exiger bureau ou étagère.
+export type Support = { r: PxRect; dFront: number; D: number };
+
+export function supportOf(layout: Layout, id: string, g: Geom): Support | null {
+  const h = layout.find((p) => p.id === id);
+  if (!h || !isStanding(h) || h.kind === 'rug') return null;
+  const rect = rectOf(h);
+  if (!rect) return null;
+  const r = pxRect(rect);
+  return { r, dFront: dFrontOf(r, g), D: DEPTH[h.kind] };
+}
+
 // Centre en x du petit objet sur son emplacement.
 function smallCx(p: Extract<Placed, { kind: 'small' }>, host: Host): number {
   const s = surfaceSlotRect(host.r, SURFACE_SLOTS[host.kind], p.slot);

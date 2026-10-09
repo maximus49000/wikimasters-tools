@@ -9,6 +9,10 @@ const LAMP_SPREAD = 6;
 
 export type SunGlassLike = { g: Glass & { zBottom: number; zTop: number }; slope: number };
 
+const touches = (b: Box, s: LampSource): boolean =>
+  s.x >= b.x0 - LAMP_SPREAD && s.x <= b.x1 + LAMP_SPREAD && s.d >= b.d0 - LAMP_SPREAD && s.d <= b.d1 + LAMP_SPREAD &&
+  s.z >= b.z0 - LAMP_SPREAD && s.z <= b.z1 + LAMP_SPREAD;
+
 // Part (0..1) de la lumière des lampes qui reste après les animaux : moyenne des transmissions de chaque lampe,
 // pondérée par l'éclairement. 1 partout où la carte des lampes est nulle, et sur le mur du fond.
 export function lampPetTransmission(
@@ -25,7 +29,8 @@ export function lampPetTransmission(
   const P: V3 = { x: 0, d: 0, z: 0 };
   for (const s of sources) {
     // Sans animal à portée, la lampe compte quand même (transmission 1) dans la moyenne pondérée.
-    const gene = pets.filter((b) => b.x1 > s.x - LAMP_RMAX && b.x0 < s.x + LAMP_RMAX);
+    // Une boîte qui contient la lampe (chat sur le même bureau) ou la frôle ne l'occulte pas : on l'écarte.
+    const gene = pets.filter((b) => b.x1 > s.x - LAMP_RMAX && b.x0 < s.x + LAMP_RMAX && !touches(b, s));
     const i0 = Math.max(0, Math.floor((s.x - LAMP_RMAX) / scale - 0.5));
     const i1 = Math.min(surf.w - 1, Math.ceil((s.x + LAMP_RMAX) / scale - 0.5));
     for (let j = 0; j < surf.h; j++) {

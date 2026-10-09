@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { petBoxesOf, shapeOf } from '../../../src/core/library/light/pet-boxes';
+import { kOf } from '../../../src/core/library/light/occluders';
+import { pxRect, rectOf } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
 import type { PetFrame } from '../../../src/core/library/pets/runner';
 
@@ -51,7 +53,7 @@ describe('petBoxesOf', () => {
     expect(tailBack('dog')).toBeGreaterThan(20);
     expect(tailBack('robot')).toBeLessThanOrEqual(14);
   });
-  it('le robot est plus bas que le chat debout avec la tête, sans queue ni tête', () => {
+  it('le robot : châssis de 26 px au moins, plus large que haut, sans queue ni tête', () => {
     const robot = petBoxesOf([frame({ species: 'robot', pose: 'standby' })], [], geom);
     expect(height(robot)).toBeGreaterThanOrEqual(26); // le dos porte le chat (RIDE_LIFT = 26)
     const [a, b] = span(robot);
@@ -74,6 +76,24 @@ describe('petBoxesOf', () => {
     const deskH = (510 / 18) * 4;
     const boxes = petBoxesOf([frame({ top: true, on: 'd', pose: 'sit', pos: { x: 100, y: 400 }, depthY: 400 })], layout, geom);
     expect(Math.min(...boxes.map((b) => b.z0))).toBeCloseTo(deskH, 1);
+  });
+  it('assis sur un canapé (top=false) : au milieu du canapé, à hauteur d’assise', () => {
+    const layout: Layout = [{ id: 's', kind: 'sofa', col: 2, row: 12 }];
+    const r = pxRect(rectOf(layout[0] as never)!);
+    const k = kOf(geom);
+    const dFront = (r.y + r.h - geom.wallH) / k;
+    const seatY = r.y + r.h * 0.45;
+    const f = frame({ top: false, on: 's', pose: 'sit', pos: { x: r.x + r.w / 2, y: seatY }, depthY: seatY });
+    const boxes = petBoxesOf([f], layout, geom);
+    // profondeur du sofa = 80 : milieu = dFront − 40
+    for (const b of boxes) {
+      expect(b.d0).toBeGreaterThan(dFront - 40 - 12);
+      expect(b.d1).toBeLessThan(dFront - 40 + 12);
+    }
+    // les pieds sont à la hauteur de l'assise : z = wallH + dC·k − pos.y
+    const z0 = Math.min(...boxes.map((b) => b.z0));
+    expect(z0).toBeGreaterThan(0);
+    expect(z0).toBeCloseTo(geom.wallH + (dFront - 40) * k - seatY, 1);
   });
   it('un support introuvable retombe au sol', () => {
     const boxes = petBoxesOf([frame({ top: true, on: 'absent', pose: 'sit' })], [], geom);

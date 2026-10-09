@@ -158,8 +158,9 @@ describe('buildLightMap avec des animaux', () => {
     expect(Array.from(a.rgba)).not.toEqual(Array.from(b.rgba));
   });
   it('fonctionne sans meuble (animaux seuls) et avec une lampe seule', () => {
-    const solo = buildLightMap({ ...base, sunFrac: 0.3, pets: pet });
-    expect(solo.rgba.some((v) => v !== 0)).toBe(true);
+    const soloBase = { ...base, sunFrac: 0.3 };
+    const solo = buildLightMap({ ...soloBase, pets: pet });
+    expect(Array.from(solo.rgba)).not.toEqual(Array.from(buildLightMap(soloBase).rgba));
     const lampOnly = buildLightMap({ ...base, sunFrac: null, sunX: null, lamps: [lamp], pets: pet });
     expect(Array.from(lampOnly.rgba)).not.toEqual(Array.from(buildLightMap({ ...base, sunFrac: null, sunX: null, lamps: [lamp] }).rgba));
   });

@@ -1,6 +1,6 @@
 import type { Layout, Species } from '../library-types';
 import type { PetFrame, Pose } from '../pets/runner';
-import { hostOf, kOf, type Box, type Geom } from './occluders';
+import { hostOf, kOf, supportOf, type Box, type Geom } from './occluders';
 
 export type Shape = 'stand' | 'sit' | 'lie' | 'none';
 
@@ -40,10 +40,14 @@ export function petBoxesOf(frames: readonly PetFrame[], layout: Layout, geom: Ge
   for (const f of frames) {
     const shape = shapeOf(f.pose);
     if (shape === 'none') continue;
-    // Sur un bureau ou une étagère : posé sur le dessus, au milieu du support. Sinon au sol, levé de depthY − pos.y.
+    // Sur un bureau ou une étagère : posé sur le dessus, au milieu du support.
+    // Sur un autre meuble (assise, table basse) : au milieu du support, à la hauteur d'assise (y écran = wallH + d·k − z).
+    // Sinon au sol, levé de depthY − pos.y.
     const host = f.top && f.on ? hostOf(layout, f.on, geom) : null;
-    const dC = host ? host.dFront - 0.5 * host.D : dOf(f.depthY, geom);
-    const lift = host ? host.r.h : Math.max(0, f.depthY - f.pos.y);
+    const seat = !host && f.on ? supportOf(layout, f.on, geom) : null;
+    const dSeat = seat ? seat.dFront - 0.5 * seat.D : 0;
+    const dC = host ? host.dFront - 0.5 * host.D : seat ? dSeat : dOf(f.depthY, geom);
+    const lift = host ? host.r.h : seat ? Math.max(0, geom.wallH + dSeat * kOf(geom) - f.pos.y) : Math.max(0, f.depthY - f.pos.y);
     const sign = f.facing === 'r' ? 1 : -1;
     for (const [x0, x1, z0, z1, hd] of PARTS[f.species][shape]) {
       const a = f.pos.x + sign * x0;
