@@ -73,6 +73,11 @@ export type SceneId = (typeof SCENE_IDS)[number];
 
 export type TimeSetting = { mode: 'real' } | { mode: 'day' } | { mode: 'night' } | { mode: 'manual'; minutes: number };
 
+// Météo derrière les fenêtres des scènes terrestres.
+export const WEATHER_STATES = ['sun', 'cloudy', 'drizzle', 'rain', 'storm', 'snow', 'fog'] as const;
+export type WeatherState = (typeof WEATHER_STATES)[number];
+export type WeatherSetting = { mode: 'random' } | { mode: 'forced'; state: WeatherState } | { mode: 'real' };
+
 // `cols` : largeur de la pièce en colonnes (multiple de 12, de 24 à 96). Un seul aménagement, quelle que soit l'orientation.
 export type Room = {
   id: string;
@@ -86,10 +91,12 @@ export type Room = {
 };
 
 export type LibraryState = {
-  version: 4;
+  version: 5;
   activeRoomId: string;
   homeRoomId: string | null;
   // Heure globale de la Bibliothèque (toutes les pièces).
   time: TimeSetting;
+  // Météo globale de la Bibliothèque (toutes les pièces terrestres).
+  weather: WeatherSetting;
   rooms: Room[];
 };

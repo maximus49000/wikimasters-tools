@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type Species, type StyleId, type TimeSetting } from './library-types';
+import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type Species, type StyleId, type TimeSetting, WEATHER_STATES, type WeatherSetting } from './library-types';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
 import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, sectionIsEmpty, shiftLayout } from './room-grid';
 
@@ -86,7 +86,7 @@ const roomSchema = z.object({
   pets: z.array(petSchema).max(MAX_PETS),
 });
 const stateSchema = z.object({
-  version: z.literal(4),
+  version: z.literal(5),
   activeRoomId: z.string(),
   homeRoomId: z.string().nullable(),
   time: z.union([
@@ -94,6 +94,11 @@ const stateSchema = z.object({
     z.object({ mode: z.literal('day') }),
     z.object({ mode: z.literal('night') }),
     z.object({ mode: z.literal('manual'), minutes: z.number().int().min(0).max(1439) }),
+  ]),
+  weather: z.union([
+    z.object({ mode: z.literal('random') }),
+    z.object({ mode: z.literal('forced'), state: z.enum(WEATHER_STATES) }),
+    z.object({ mode: z.literal('real') }),
   ]),
   rooms: z.array(roomSchema).min(1).max(MAX_ROOMS),
 });
@@ -116,7 +121,7 @@ const makeRoom = (id: string, name: string, orientation: Orientation, style: Roo
 });
 
 export function createInitialState(): LibraryState {
-  return { version: 4, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
+  return { version: 5, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
 }
 
 export function activeRoom(state: LibraryState): Room {
@@ -189,7 +194,13 @@ function migrateV3(raw: unknown): unknown {
   return { ...state, version: 4, rooms };
 }
 
-const migrate = (raw: unknown): unknown => migrateV3(migrateV2(migrateV1(raw)));
+// La v5 ajoute la météo globale (aléatoire).
+function migrateV4(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 4) return raw;
+  return { ...(raw as object), version: 5, weather: { mode: 'random' } };
+}
+
+const migrate = (raw: unknown): unknown => migrateV4(migrateV3(migrateV2(migrateV1(raw))));
 
 // Un animal impossible (espèce ou pelage inconnus…) est ignoré sans faire perdre la pièce ; trois au plus.
 function cleanPets(raw: unknown): unknown {
@@ -317,6 +328,10 @@ export function setRoomScene(state: LibraryState, id: string, scene: SceneId): L
 export function setTimeSetting(state: LibraryState, time: TimeSetting): LibraryState {
   if (time.mode !== 'manual') return { ...state, time };
   return { ...state, time: { mode: 'manual', minutes: Math.min(1439, Math.max(0, Math.round(time.minutes))) } };
+}
+
+export function setWeatherSetting(state: LibraryState, weather: WeatherSetting): LibraryState {
+  return { ...state, weather };
 }
 
 export function adoptPet(state: LibraryState, roomId: string, name: string, coat: Coat, species: Species = 'cat'): LibraryState {

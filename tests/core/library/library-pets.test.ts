@@ -19,14 +19,14 @@ const plan: PetPlan = {
 describe('état v4', () => {
   it('une pièce vide commence en v4 sans animal', () => {
     const state = createInitialState();
-    expect(state.version).toBe(4);
+    expect(state.version).toBe(5);
     expect(state.rooms[0]!.pets).toEqual([]);
   });
 
   it('migre un état v3 : les pièces reçoivent une liste d animaux vide', () => {
     const v3 = { version: 3, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, rooms: [{ id: 'r1', name: 'Salon', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, layout: [] }] };
     const state = parseLibraryState(v3);
-    expect(state.version).toBe(4);
+    expect(state.version).toBe(5);
     expect(state.rooms[0]!.pets).toEqual([]);
   });
 
