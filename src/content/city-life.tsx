@@ -46,6 +46,10 @@ const residentState = (trip: Trip, gate: number, width: number, t: number): { ac
   return { active, x: pos?.x ?? trip.doorX, fade: active && pos ? pos.fade : 0 };
 };
 
+const setIfChanged = (node: Element, name: string, value: string): void => {
+  if (node.getAttribute(name) !== value) node.setAttribute(name, value);
+};
+
 export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLifeProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
   // Calculs mémoïsés par (width, height, seed) : populations, entrées, trajets. Recalculés par minute : intensités.
@@ -80,8 +84,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLif
         const node = nodes.get(trip.id);
         if (!node) continue;
         const s = residentState(trip, trip.kind === 'out' ? flow.out : flow.in, width, t);
-        node.setAttribute('data-active', s.active ? 'true' : 'false');
-        node.setAttribute('opacity', s.fade.toFixed(2));
+        // N'écrire que ce qui change : la plupart des habitants restent chez eux, inutile de toucher leur nœud à chaque image.
+        setIfChanged(node, 'data-active', s.active ? 'true' : 'false');
+        setIfChanged(node, 'opacity', s.fade.toFixed(2));
         if (s.active || first) node.setAttribute('transform', residentTransform(trip, s.x, metrics));
       }
       first = false;
