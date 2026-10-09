@@ -1265,4 +1265,59 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v12',
+    theme: 'collection',
+    glyph: '🌦',
+    title: 'La météo derrière la fenêtre',
+    summary: 'Pluie, orage, neige ou brume derrière vos fenêtres : au hasard, forcée ou réelle',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Ouvrir une pièce de la Bibliothèque',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : c’est derrière leurs fenêtres que passe la météo.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez une pièce qui a au moins une fenêtre.' },
+          { label: 'À quoi ça sert', text: 'À donner de la vie au décor : le ciel derrière les fenêtres change au fil du temps. Tout reste sur cet appareil.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Passer en mode Aménager',
+        text: 'Le crayon passe en mode Aménager : c’est là qu’apparaît la rangée Météo, à côté des autres réglages de la pièce.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
+          { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Choisir la météo',
+        text: 'Dans la rangée Météo, le dé 🎲 laisse le ciel changer tout seul, avec des fondus ; les glyphes ☀ ⛅ 🌦 🌧 ⛈ ❄ 🌫 en forcent une.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'En mode Aménager, touchez le dé pour une météo au hasard, ou un glyphe (soleil, éclaircies, averses, pluie, orage, neige, brume) pour la forcer.' },
+          { label: 'À quoi ça sert', text: 'À donner de la vie au décor : sous un ciel d’orage les lumières de la pièce s’allument et les passants sortent leur parapluie. Les nuages dérivent toujours, et des rayons de lumière percent parfois sous une petite bruine.' },
+          { label: 'Limites', text: 'L’espace et la Terre vue d’en haut n’ont pas de météo : la rangée y est masquée.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'La vraie météo',
+        text: 'Le globe 🌍 règle le ciel sur la météo réelle de l’endroit où vous êtes.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'En mode Aménager, touchez le globe dans la rangée Météo, puis acceptez de partager votre position si le navigateur le demande.' },
+          { label: 'D’où viennent les données', text: 'D’Open-Meteo, via le relais de l’extension : seule votre position arrondie à 0,1° est envoyée, et elle n’est jamais enregistrée.' },
+          { label: 'Limites', text: 'L’accord de position et le réseau sont nécessaires. Sans eux, la météo est simulée et la rangée l’indique par « (simulée) ».' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+    ],
+  },
 ];
