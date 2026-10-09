@@ -15,6 +15,17 @@ describe('température plausible', () => {
   });
 });
 
+describe('saison en UTC', () => {
+  it('même jour UTC, même température, quelle que soit l’heure', () => {
+    expect(plausibleTempC(48, new Date(Date.UTC(2026, 0, 1, 0, 30)))).toBe(plausibleTempC(48, new Date(Date.UTC(2026, 0, 1, 23, 30))));
+  });
+  it('au passage d’une année UTC, le jour de l’année est continu (pas de saut d’un an)', () => {
+    const a = plausibleTempC(48, new Date(Date.UTC(2025, 11, 31, 23, 30)));
+    const b = plausibleTempC(48, new Date(Date.UTC(2026, 0, 1, 0, 30)));
+    expect(Math.abs(a - b)).toBeLessThan(0.1);
+  });
+});
+
 describe('époque', () => {
   it('commence et finit par « nuageux » et ne saute jamais un palier', () => {
     for (let epoch = 1000; epoch < 1060; epoch++) {
@@ -83,14 +94,30 @@ describe('weatherAtRandom', () => {
     expect(afterRain).toBeLessThan(0.05);
   });
   it('ne dépend pas de l’ordre des appels pour deux latitudes du même degré', () => {
-    const t = 7000 * EPOCH_MS + 12 * TICK_MS + 30_000;
-    const a = { seed: WEATHER_SEED, lat: 47.6 };
-    const b = { seed: WEATHER_SEED, lat: 48.4 };
-    const first = [weatherAtRandom(a, t), weatherAtRandom(b, t)];
-    const t2 = 7001 * EPOCH_MS + 12 * TICK_MS + 30_000;
-    const second = [weatherAtRandom(b, t2), weatherAtRandom(a, t2)];
-    expect(first[0]).toEqual(first[1]);
-    expect(second[0]).toEqual(second[1]);
+    // Époques d'hiver où 47,6° et 48,4° n'ont pas la même température par rapport aux seuils (-1, 0, 2 °C) de byTemperature.
+    const straddle = (epoch: number): boolean => {
+      const date = new Date(epoch * EPOCH_MS);
+      const lo = plausibleTempC(47.6, date);
+      const hi = plausibleTempC(48.4, date);
+      return [-1, 0, 2].some((threshold) => Math.min(lo, hi) < threshold && threshold <= Math.max(lo, hi));
+    };
+    const epochs: number[] = [];
+    for (let epoch = 10_000; epochs.length < 12 && epoch < 14_000; epoch++) if (straddle(epoch)) epochs.push(epoch);
+    expect(epochs.length).toBe(12);
+    const evict = (): void => {
+      for (let k = 0; k < 80; k++) epochStates(WEATHER_SEED, 500_000 + k, 48);
+    };
+    for (const epoch of epochs) {
+      evict();
+      const lowFirst = epochStates(WEATHER_SEED, epoch, 47.6);
+      const highSecond = epochStates(WEATHER_SEED, epoch, 48.4);
+      evict();
+      const highFirst = epochStates(WEATHER_SEED, epoch, 48.4);
+      const lowSecond = epochStates(WEATHER_SEED, epoch, 47.6);
+      expect(highSecond).toEqual(lowFirst);
+      expect(highFirst).toEqual(lowFirst);
+      expect(lowSecond).toEqual(lowFirst);
+    }
   });
   it('reste continu à la frontière d’une époque qui finit sur un sol encore mouillé', () => {
     let found = false;
