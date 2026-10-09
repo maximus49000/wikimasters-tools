@@ -1436,6 +1436,112 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
+### Task 6b: Cohérence pluie / couverture dans le moteur
+
+**Décision validée (maquette) :** l'intensité de la pluie est corrélée à la couverture nuageuse. Un ciel très nuageux peut rester sans pluie ; en revanche il ne peut pas y avoir de forte pluie sous un ciel bleu : la précipitation est plafonnée par la couverture, à chaque instant, y compris pendant les fondus.
+
+**Files:**
+- Modify: `src/core/library/weather/weather-types.ts` (ajouter `maxPrecipFor`, `minCloudFor`, `coherent`)
+- Modify: `src/core/library/weather/weather-clock.ts` (`createWeatherClock().read` renvoie `coherent(...)`)
+- Modify: `src/core/library/weather/weather-real.ts` (`realToWeather` relève la couverture si besoin)
+- Test: `tests/core/library/weather-coherence.test.ts` ; compléter `tests/core/library/weather-clock.test.ts` si un test de fondu attend un `precip` non plafonné.
+
+**Interfaces:**
+- Produces (dans `weather-types.ts`) :
+  - `maxPrecipFor(cloud: number): number` = `clamp01((cloud − 0.35) / 0.6) ** 1.5` (0 sous 35 % de couverture ; ≈ 0,13 à 50 % ; ≈ 0,65 à 80 % ; ≈ 0,93 à 92 % ; 1 à 95 % et plus)
+  - `minCloudFor(precip: number): number` = `min(1, 0.35 + 0.6 × precip ** (2/3))` (inverse : la couverture minimale compatible avec cette pluie)
+  - `coherent(w: Weather): Weather` = `{ ...w, precip: min(w.precip, maxPrecipFor(w.cloud)) }` (idempotente ; ne touche à rien d'autre)
+- Le dessin et le hook lisent la météo uniquement via `clock.read` : la cohérence y est donc garantie partout. `weatherAtRandom` n'est pas modifiée (les cibles par état sont déjà cohérentes ; seul le mélange peut ne pas l'être, et `clock.read` s'en charge).
+
+- [ ] **Step 1: Écrire le test qui échoue**
+
+```ts
+// tests/core/library/weather-coherence.test.ts
+import { describe, expect, it } from 'vitest';
+import { WEATHER_STATES } from '../../../src/core/library/library-types';
+import { createWeatherClock, steadySource } from '../../../src/core/library/weather/weather-clock';
+import { coherent, maxPrecipFor, minCloudFor, targetOf } from '../../../src/core/library/weather/weather-types';
+import { realToWeather } from '../../../src/core/library/weather/weather-real';
+
+describe('cohérence pluie / couverture', () => {
+  it('pas de pluie sous un ciel dégagé, pluie pleine sous un ciel très couvert', () => {
+    expect(maxPrecipFor(0)).toBe(0);
+    expect(maxPrecipFor(0.35)).toBe(0);
+    expect(maxPrecipFor(0.5)).toBeGreaterThan(0.1);
+    expect(maxPrecipFor(0.5)).toBeLessThan(0.2);
+    expect(maxPrecipFor(0.8)).toBeGreaterThan(0.5);
+    expect(maxPrecipFor(0.95)).toBeCloseTo(1);
+    expect(maxPrecipFor(1)).toBe(1);
+  });
+  it('est croissante', () => {
+    let last = -1;
+    for (let c = 0; c <= 1.0001; c += 0.05) {
+      const v = maxPrecipFor(c);
+      expect(v).toBeGreaterThanOrEqual(last);
+      last = v;
+    }
+  });
+  it('minCloudFor est l’inverse de maxPrecipFor', () => {
+    for (const p of [0.1, 0.25, 0.5, 0.65, 0.9]) expect(maxPrecipFor(minCloudFor(p))).toBeGreaterThanOrEqual(p - 1e-6);
+    expect(minCloudFor(0)).toBeCloseTo(0.35);
+    expect(minCloudFor(1)).toBe(1);
+  });
+  it('les cibles de chaque état sont déjà cohérentes', () => {
+    for (const state of WEATHER_STATES) {
+      const w = targetOf(state);
+      expect(w.precip).toBeLessThanOrEqual(maxPrecipFor(w.cloud) + 1e-9);
+      expect(coherent(w)).toEqual(w);
+    }
+  });
+  it('coherent plafonne et reste idempotente', () => {
+    const odd = { ...targetOf('sun'), precip: 0.8 };
+    const fixed = coherent(odd);
+    expect(fixed.precip).toBe(0);
+    expect(coherent(fixed)).toEqual(fixed);
+  });
+  it('pendant un fondu soleil → orage, la pluie ne devance jamais les nuages', () => {
+    const clock = createWeatherClock();
+    clock.setSource(steadySource('sun'), 0);
+    clock.setSource(steadySource('storm'), 0);
+    for (let t = 0; t <= 40_000; t += 500) {
+      const w = clock.read(t);
+      expect(w.precip).toBeLessThanOrEqual(maxPrecipFor(w.cloud) + 1e-9);
+    }
+    expect(clock.read(5_000).precip).toBeLessThan(0.05);
+    expect(clock.read(40_000)).toEqual(targetOf('storm'));
+  });
+  it('la météo réelle est cohérente : forte pluie → ciel très couvert', () => {
+    const w = realToWeather({ code: 65, tempC: 10, cloud: 20, precipMm: 6, windKmh: 10, visibilityM: 10000 });
+    expect(w.precip).toBeGreaterThan(0.7);
+    expect(w.precip).toBeLessThanOrEqual(maxPrecipFor(w.cloud) + 1e-9);
+    expect(w.cloud).toBeGreaterThanOrEqual(minCloudFor(w.precip) - 1e-9);
+  });
+});
+```
+
+- [ ] **Step 2: Lancer, vérifier l'échec** — `npx vitest run tests/core/library/weather-coherence.test.ts --maxWorkers=4` → FAIL (exports absents).
+
+- [ ] **Step 3: Implémenter**
+
+Dans `weather-types.ts` (après `smooth`) :
+
+```ts
+// Pluie et nuages sont liés : un ciel très couvert peut rester sans pluie, mais une forte pluie exige beaucoup de nuages.
+export const maxPrecipFor = (cloud: number): number => clamp01((cloud - 0.35) / 0.6) ** 1.5;
+export const minCloudFor = (precip: number): number => Math.min(1, 0.35 + 0.6 * clamp01(precip) ** (2 / 3));
+export const coherent = (w: Weather): Weather => {
+  const cap = maxPrecipFor(w.cloud);
+  return w.precip <= cap ? w : { ...w, precip: cap };
+};
+```
+(`clamp01` existe déjà dans ce fichier.) Dans `weather-clock.ts`, `createWeatherClock().read` : toutes les sorties passent par `coherent` (`return coherent(blend(...))`, `return coherent(target)`, y compris le cas « aucune source »). Dans `realToWeather` : remplacer le plancher `precip > 0 ? 0.8 : 0` de la couverture par `Math.max(obs.cloud / 100, minCloudFor(precip))`.
+
+- [ ] **Step 4: Lancer** — `npx vitest run tests/core/library --maxWorkers=4` puis `npx tsc --noEmit`. Si un test existant de fondu ou de `realToWeather` (tâches 4 et 5) attend un `precip` non plafonné, le corriger en gardant son sens (la valeur finale reste celle de la cible).
+
+- [ ] **Step 5: Commit** — `git add` des fichiers modifiés ; message `feat(bibliotheque): la pluie ne dépasse jamais ce que la couverture permet (cohérence pluie/nuages)` + `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
+
+---
+
 ### Task 7: Dessin de la météo dans les fenêtres
 
 **Files:**
@@ -1447,7 +1553,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Consumes: `WeatherView` (Task 6), `lightningAt`, `rainbowOf` (Task 4), `mulberry32` ; `Sky` ; `SceneId`.
 - Produces:
   - `WEATHER_SCENES: readonly SceneId[] = ['city', 'countryside', 'mountain', 'sea']`
-  - `<WeatherLayer scene width height seed sky clock />` : groupe `data-weather` ; éléments `data-wx="dark|fog|rain-far|rain-near|snow-far|snow-near|puddles|snow-cover|flash|bolt|rainbow"` mis à jour par la boucle.
+  - `<WeatherLayer scene width height seed sky clock />` : groupe `data-weather` ; éléments `data-wx="tint|overcast|clouds|fog|rain-far|rain-near|snow-far|snow-near|puddles|snow-cover|flash|bolt|rainbow"` mis à jour par la boucle. **Ciel (décision validée sur maquette)** : « couverture » = un NOMBRE de vrais nuages (`data-wx-cloud`, réserve de `round(34 × largeur/680)` nuages tirés de la graine, bornée à 140 ; `round(cloud × réserve)` sont visibles, les autres ont `display="none"`, mis à jour seulement quand ce nombre change), jamais un voile gris sur fond bleu ; la COULEUR des nuages et l'obscurité du ciel suivent l'intensité de précipitation : `D = clamp01(precip × (kind==='rain' ? 1.15 : 0.7) + 0.35 × smooth(0.85, 1, cloud))` ; épaisseur `th = cloud × (0.3 + 0.7 D)` ; `tint` (rect plein sur le ciel) : couleur `mixHex('#1A1E2B', mixHex('#9AA4B2','#4E5663', D), daylight)` d'opacité `0.92 × th` ; `clouds` : `fill` = `mixHex(mixHex('#262C46','#FFFFFF',daylight), mixHex('#2F3542','#6A7280',daylight), D)` (blancs en pluie fine, gris sombres en pluie forte, presque noirs à l'orage) ; `overcast` (couche continue) : opacité `(cloud − 0.8)/0.2 × (0.45 + 0.5 D)` si `cloud > 0.8`, couleur `mixHex('#1A1E2B', mixHex('#B9C0CA','#454C58', D), daylight)`. Les nuages dérivent d'un bloc (un `<g data-wx="clouds-drift">` translaté de `t × (4 + 14 × wind) mod largeur`, avec deux `<use>` du même groupe décalés d'une largeur pour boucler). La cohérence pluie/nuages vient du moteur (tâche 6b : `precip ≤ maxPrecipFor(cloud)`), le dessin ne la recalcule pas.
   - `RoomView` : `sceneView?: { sky; minutes; weather?: { clock; flags } }`.
   - `WindowArt` : nouvelle prop `weatherHref?: string` ; `<use data-window-weather>` après les acteurs ; gouttes sur la vitre `data-glass-drop` dont l'opacité suit la variable CSS `--wmt-precip` posée sur le `<svg>` racine par la boucle.
   - `SceneBodyProps` gagne `gloom?: boolean; rainy?: boolean` : sous ciel sombre les fenêtres d'immeuble/fermes/refuge s'allument (seuil `u < 0.55`) et `dim` ≥ 0.7 ; les passants (`walker`) ouvrent un parapluie quand `rainy`.
@@ -1496,6 +1602,17 @@ const mount = (state: Parameters<typeof steadySource>[0], scene = 'city' as cons
 };
 const wx = (name: string): Element | null => container.querySelector(`[data-wx="${name}"]`);
 const opacity = (name: string): number => Number(wx(name)?.getAttribute('opacity') ?? 'NaN');
+const visibleClouds = (): number => container.querySelectorAll('[data-wx-cloud]:not([display="none"])').length;
+const cloudLuma = (): number => {
+  const hex = (wx('clouds')?.getAttribute('fill') ?? '#000000').slice(1);
+  return parseInt(hex.slice(0, 2), 16) * 0.3 + parseInt(hex.slice(2, 4), 16) * 0.59 + parseInt(hex.slice(4, 6), 16) * 0.11;
+};
+const remount = (state: Parameters<typeof steadySource>[0]): number => {
+  act(() => root.unmount());
+  root = createRoot(container);
+  mount(state);
+  return cloudLuma();
+};
 
 describe('WeatherLayer', () => {
   it('quatre scènes terrestres', () => {
@@ -1506,7 +1623,8 @@ describe('WeatherLayer', () => {
     expect(opacity('rain-near')).toBeGreaterThan(0.3);
     expect(opacity('snow-near')).toBe(0);
     expect(opacity('puddles')).toBeGreaterThan(0.5);
-    expect(opacity('dark')).toBeGreaterThan(0.2);
+    expect(opacity('tint')).toBeGreaterThan(0.2);
+    expect(visibleClouds()).toBeGreaterThan(20);
     expect(opacity('snow-cover')).toBe(0);
   });
   it('neige : flocons et sol blanc, pas de gouttes', () => {
@@ -1518,7 +1636,9 @@ describe('WeatherLayer', () => {
   it('soleil : tout est éteint', () => {
     mount('sun');
     for (const name of ['rain-far', 'rain-near', 'snow-far', 'snow-near', 'puddles', 'snow-cover', 'fog']) expect(opacity(name)).toBe(0);
-    expect(opacity('dark')).toBeLessThan(0.05);
+    expect(opacity('tint')).toBeLessThan(0.05);
+    expect(visibleClouds()).toBeLessThan(8);
+    expect(opacity('overcast')).toBe(0);
   });
   it('brume : voile', () => {
     mount('fog');
@@ -1540,9 +1660,25 @@ describe('WeatherLayer', () => {
     expect(opacity('rain-near')).toBeGreaterThan(0.3);
     expect(raf).not.toHaveBeenCalled();
   });
-  it('plafonne les éléments : motifs, pas un nœud par goutte', () => {
+  it('ciel : la couverture fait des nuages, la pluie les assombrit (blancs en pluie fine, presque noirs à l’orage)', () => {
+    mount('cloudy');
+    const cloudyCount = visibleClouds();
+    const cloudyLuma = cloudLuma();
+    expect(cloudyCount).toBeGreaterThan(10);
+    expect(opacity('overcast')).toBe(0);
+    const drizzleLuma = remount('drizzle');
+    const rainLuma = remount('rain');
+    const stormLuma = remount('storm');
+    expect(visibleClouds()).toBeGreaterThanOrEqual(cloudyCount);
+    expect(opacity('overcast')).toBeGreaterThan(0.4);
+    expect(cloudyLuma).toBeGreaterThanOrEqual(drizzleLuma - 1);
+    expect(drizzleLuma).toBeGreaterThan(rainLuma);
+    expect(rainLuma).toBeGreaterThan(stormLuma);
+  });
+  it('plafonne les éléments : motifs et réserve de nuages bornée, pas un nœud par goutte', () => {
     mount('storm');
-    expect(container.querySelectorAll('*').length).toBeLessThan(120);
+    expect(container.querySelectorAll('[data-wx-cloud]').length).toBeLessThanOrEqual(140);
+    expect(container.querySelectorAll('*').length).toBeLessThan(500);
   });
 });
 ```
@@ -1559,8 +1695,9 @@ import { useEffect, useId, useMemo, useRef, type ReactElement, type RefObject } 
 import type { SceneId } from '../core/library/library-types';
 import { mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
+import { mixHex } from '../core/library/sky';
 import { lightningAt, rainbowOf } from '../core/library/weather/weather-clock';
-import type { Weather } from '../core/library/weather/weather-types';
+import { smooth, type Weather } from '../core/library/weather/weather-types';
 
 export const WEATHER_SCENES: readonly SceneId[] = ['city', 'countryside', 'mountain', 'sea'];
 
@@ -1602,11 +1739,14 @@ function useWeatherLoop(root: RefObject<SVGGElement | null>, clock: Props['clock
     const q = (name: string): SVGElement | null => el.querySelector<SVGElement>(`[data-wx="${name}"]`);
     const pat = (name: string): SVGElement | null => el.querySelector<SVGElement>(`[data-wx-pattern="${name}"]`);
     const nodes = {
-      dark: q('dark'), fog: q('fog'), rainFar: q('rain-far'), rainNear: q('rain-near'), snowFar: q('snow-far'), snowNear: q('snow-near'),
+      tint: q('tint'), overcast: q('overcast'), clouds: q('clouds'), drift: q('clouds-drift'), fog: q('fog'), rainFar: q('rain-far'), rainNear: q('rain-near'), snowFar: q('snow-far'), snowNear: q('snow-near'),
       puddles: q('puddles'), snowCover: q('snow-cover'), flash: q('flash'), bolt: q('bolt'), rainbow: q('rainbow'),
     };
     const patterns = { rainFar: pat('rain-far'), rainNear: pat('rain-near'), snowFar: pat('snow-far'), snowNear: pat('snow-near') };
     const set = (node: SVGElement | null, value: number): void => node?.setAttribute('opacity', value.toFixed(3));
+    const cloudNodes = Array.from(el.querySelectorAll<SVGElement>('[data-wx-cloud]'));
+    const cloudCount = cloudNodes.length;
+    let lastShown = -1;
     const place = (): void => {
       const now = Date.now();
       const t = now / 1000;
@@ -1614,7 +1754,20 @@ function useWeatherLoop(root: RefObject<SVGGElement | null>, clock: Props['clock
       const rain = w.kind === 'rain' ? w.precip : 0;
       const snow = w.kind === 'snow' ? w.precip : 0;
       const lean = -12 - w.wind * 22; // inclinaison des gouttes
-      set(nodes.dark, Math.max(0, (w.cloud - 0.3) / 0.7) * 0.5 * (0.5 + 0.5 * daylight));
+      // Ciel : de vrais nuages (nombre = couverture), teinte et obscurité = intensité de la pluie.
+      const dark = clamp01(w.precip * (w.kind === 'rain' ? 1.15 : 0.7) + 0.35 * smoothstep(0.85, 1, w.cloud));
+      const thick = w.cloud * (0.3 + 0.7 * dark);
+      nodes.tint?.setAttribute('fill', mixHex('#1A1E2B', mixHex('#9AA4B2', '#4E5663', dark), daylight));
+      set(nodes.tint, 0.92 * thick);
+      nodes.clouds?.setAttribute('fill', mixHex(mixHex('#262C46', '#FFFFFF', daylight), mixHex('#2F3542', '#6A7280', daylight), dark));
+      nodes.overcast?.setAttribute('fill', mixHex('#1A1E2B', mixHex('#B9C0CA', '#454C58', dark), daylight));
+      set(nodes.overcast, w.cloud > 0.8 ? ((w.cloud - 0.8) / 0.2) * (0.45 + 0.5 * dark) : 0);
+      const shown = Math.round(w.cloud * cloudCount);
+      if (shown !== lastShown) {
+        lastShown = shown;
+        cloudNodes.forEach((node, i) => (i < shown ? node.removeAttribute('display') : node.setAttribute('display', 'none')));
+      }
+      nodes.drift?.setAttribute('transform', `translate(${((t * (4 + 14 * w.wind)) % width).toFixed(1)} 0)`);
       set(nodes.fog, w.fog * 0.8);
       set(nodes.rainFar, rain * 0.7);
       set(nodes.rainNear, rain);
@@ -1655,8 +1808,17 @@ function useWeatherLoop(root: RefObject<SVGGElement | null>, clock: Props['clock
   }, [root, clock, seed, daylight, width, height]);
 }
 
+// Réserve de nuages tirée de la graine : `cloud × réserve` sont visibles (jamais plus de 140).
+const cloudPoolSize = (width: number): number => Math.min(140, Math.round((34 * width) / 680));
+const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+const smoothstep = (a: number, b: number, v: number): number => smooth(clamp01((v - a) / (b - a)));
+
 export function WeatherLayer({ scene, width, height, seed, sky, clock }: Props): ReactElement {
   const id = useId().replace(/:/g, '');
+  const cloudPool = useMemo(() => {
+    const rng = mulberry32(seed ^ 0xc10d5);
+    return Array.from({ length: cloudPoolSize(width) }, () => ({ x: rng() * width, y: height * (0.07 + rng() * 0.68), s: 0.8 + rng() * 1.1 }));
+  }, [seed, width, height]);
   const root = useRef<SVGGElement | null>(null);
   useWeatherLoop(root, clock, seed, sky.daylight, width, height);
   const ground = height * (GROUND[scene] ?? 0.8);
@@ -1674,7 +1836,23 @@ export function WeatherLayer({ scene, width, height, seed, sky, clock }: Props):
           <stop offset="1" stopColor="#E7ECF1" stopOpacity={0.95} />
         </linearGradient>
       </defs>
-      <rect data-wx="dark" x={0} y={0} width={width} height={height} fill="#1B2233" opacity={0} />
+      <rect data-wx="tint" x={0} y={0} width={width} height={height} fill="#6FB1E8" opacity={0} />
+      <defs>
+        <g id={`${id}-strip`} data-wx="clouds" fill="#FFFFFF">
+          {cloudPool.map((c, i) => (
+            <g key={i} data-wx-cloud="" display="none" transform={`translate(${c.x.toFixed(1)} ${c.y.toFixed(1)}) scale(${c.s.toFixed(2)})`}>
+              <ellipse cx={0} cy={0} rx={34} ry={12} />
+              <ellipse cx={-18} cy={-8} rx={20} ry={11} />
+              <ellipse cx={14} cy={-10} rx={22} ry={12} />
+            </g>
+          ))}
+        </g>
+      </defs>
+      <g data-wx="clouds-drift">
+        <use href={`#${id}-strip`} />
+        <use href={`#${id}-strip`} x={-width} />
+      </g>
+      <rect data-wx="overcast" x={0} y={0} width={width} height={height} fill="#B9C0CA" opacity={0} />
       <path data-wx="rainbow" d={`M${width * 0.5 - arc} ${ground} A${arc} ${arc} 0 0 1 ${width * 0.5 + arc} ${ground}`} fill="none" stroke="#FF9AA2" strokeWidth={6} opacity={0} strokeOpacity={0.55} />
       <g data-wx="puddles" opacity={0}>
         {puddles.map((p, i) => <ellipse key={i} cx={p.x} cy={p.y} rx={p.rx} ry={p.rx * 0.18} fill="#9FB4C8" opacity={0.6} />)}
