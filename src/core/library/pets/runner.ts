@@ -1,12 +1,13 @@
-import type { Coat, PetPlan, Pt, Room, Species } from '../library-types';
+import type { Coat, PetPlan, Pt, Room, Segment, Species } from '../library-types';
 import { layoutSig, nextPlan, resume, standingFrom, touchPlan, type BrainEnv, type Rng } from './brain';
 import { depthIndex, depthKey } from './depth';
 import { planEndsAt, stateAt, type PetState } from './motion';
+import { jumpMs } from './route';
 import { buildWalkMap } from './walk-map';
 import { proposeScene, sceneIsValid } from './scenes';
 import type { Standing } from './route';
 
-export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower';
+export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower' | 'scan' | 'standby' | 'charge' | 'beep';
 export type PetFrame = { id: string; species: Species; coat: Coat; name: string; pose: Pose; facing: 'l' | 'r'; behind: number; top: boolean; pos: Pt; /* ordonnée des pieds : départage deux animaux au même rang de dessin */ depthY: number };
 
 const PERCH_KINDS: ReadonlySet<string> = new Set(['desk', 'shelf']);
@@ -24,6 +25,23 @@ function settledState(plan: PetPlan, now: number): PetState {
   }
   return state;
 }
+// Le chat qui dort sur un robot (meneur d'une scène `ride`) : sur son dos ou en plein saut pour y monter.
+const isRide = (plan: PetPlan | undefined): plan is PetPlan & { with: NonNullable<PetPlan['with']> } => plan?.with?.scene === 'ride' && plan.with.role === 'lead';
+const isRiding = (plan: PetPlan | undefined, now: number): boolean => {
+  if (!isRide(plan)) return false;
+  const phase = stateAt(plan, now).phase;
+  return phase === 'act' || phase === 'done' || phase === 'jump';
+};
+
+// La descente : le chat repart de sa position (sur le dos du robot ou en l'air) par un saut vers une case libre du sol,
+// là d'où il a sauté si elle est encore libre, sinon la plus proche. Jamais de téléportation.
+function descent(room: Room, plan: PetPlan, now: number): { landing: Standing; jump: Segment } {
+  const state = stateAt(plan, now);
+  const takeoff = [...plan.route].reverse().find((s) => s.kind === 'jump')?.from ?? state.pos;
+  const landing = standingFrom(buildWalkMap(room.layout, room.cols), { pos: takeoff, phase: 'walk', facing: state.facing, on: null, depthHosts: [null] });
+  return { landing, jump: { kind: 'jump', from: state.pos, to: landing.pt, ms: jumpMs(state.pos, landing.pt), fromOn: null, on: null } };
+}
+
 // Chance qu'un animal qui a fini son action propose une scène à un autre (jamais en continu).
 const SCENE_CHANCE = 0.3;
 
@@ -75,6 +93,13 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
     opts.onPlan(id, plan);
   };
 
+  // Le plan qui suit une sieste sur le robot : un saut de descente, puis le choix habituel depuis le sol (en mouvement réduit : posé directement).
+  const dismount = (env: BrainEnv, room: Room, plan: PetPlan, now: number): PetPlan => {
+    const { landing, jump } = descent(room, plan, now);
+    const next = nextPlan(env, landing, now, plan.action);
+    return still ? next : { ...next, route: [jump, ...next.route] };
+  };
+
   return {
     step(room: Room, now: number): PetFrame[] {
       enter(room);
@@ -94,7 +119,11 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
           // La sieste n'a pas de jumeau : on lui donne le plan du dormeur tel quel.
           const given = plan.with.scene === 'nap' || jumelle ? partnerPlan : undefined;
           if (!sceneIsValid(plan, given, room.pets.some((p) => p.id === plan!.with!.petId))) {
-            if (plan.sig === sig) {
+            if (isRiding(plan, now)) {
+              // Le robot est parti, touché ou remplacé : le chat saute de son dos.
+              plan = dismount(env, room, plan, now);
+              record(pet.id, plan);
+            } else if (plan.sig === sig) {
               const standing = standingFrom(buildWalkMap(room.layout, room.cols), settledState(plan, now));
               plan = nextPlan(env, standing, now, plan.action);
               record(pet.id, plan);
@@ -104,6 +133,11 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
               plan = rest;
             }
           }
+        }
+        // Sieste finie, ou meubles changés pendant qu'il dort sur le robot : descente par un saut, sans nouvelle scène.
+        if (plan !== undefined && isRiding(plan, now) && (plan.sig !== sig || now >= planEndsAt(plan))) {
+          plan = dismount(env, room, plan, now);
+          record(pet.id, plan);
         }
         if (plan === undefined || plan.sig !== sig || now >= planEndsAt(plan)) {
           const finished = plan !== undefined && plan.sig === sig;
@@ -137,7 +171,18 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
           state = stateAt(plan, now);
         }
         plans.set(pet.id, plan);
-        return { id: pet.id, species: pet.species, coat: pet.coat, name: pet.name, pose: poseOf(state, plan), facing: state.facing, behind: depthIndex(room.layout, depthKey(room.layout, state)), top: isTop(room, state.on), pos: state.pos, depthY: state.pos.y };
+        let behind = depthIndex(room.layout, depthKey(room.layout, state));
+        let depthY = state.pos.y;
+        // Sur le dos du robot : même rang de dessin que lui, juste devant.
+        if (isRide(plan) && state.phase !== 'walk' && state.phase !== 'wait') {
+          const robotPlan = planOf(room, plan.with.petId);
+          if (robotPlan) {
+            const robotState = stateAt(robotPlan, now);
+            behind = depthIndex(room.layout, depthKey(room.layout, robotState));
+            depthY = robotState.pos.y + 0.1;
+          }
+        }
+        return { id: pet.id, species: pet.species, coat: pet.coat, name: pet.name, pose: poseOf(state, plan), facing: state.facing, behind, top: isTop(room, state.on), pos: state.pos, depthY };
       });
     },
     // Une caresse : vrai si l'animal s'est arrêté pour ronronner (ou remuer la queue).
@@ -145,6 +190,14 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
       enter(room);
       const plan = plans.get(petId);
       const pet = room.pets.find((p) => p.id === petId);
+      // Un chat endormi sur le robot saute d'abord à terre, puis ronronne.
+      if (plan && pet && isRide(plan) && stateAt(plan, now).phase === 'act') {
+        const { landing, jump } = descent(room, plan, now);
+        const purr: PetPlan = { action: 'purr', hostId: null, at: landing.pt, on: null, route: still ? [] : [jump], startedAt: now, actMs: 3500, facing: landing.facing, sig: layoutSig(room.layout, room.cols) };
+        plans.set(petId, purr);
+        opts.onPlan(petId, purr);
+        return true;
+      }
       const next = plan && pet && touchPlan(plan, envFor(room, pet.species, takenBy(room, petId, now)), now);
       if (!next) return false;
       plans.set(petId, next);

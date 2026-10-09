@@ -31,6 +31,14 @@ describe('catalogue', () => {
     expect(poisOf('kennel').map((p) => p.type).sort()).toEqual(['enter', 'sleep']);
   });
 
+  it('la station de recharge : catégorie Animaux, un point charge, 2×1 au sol', () => {
+    expect(CATEGORIES.find((c) => c.id === 'pets')!.kinds).toContain('charger');
+    expect(poisOf('charger')).toEqual([{ type: 'charge', dx: 0, dy: 0 }]);
+    expect(sizeOf('charger')).toEqual({ w: 2, h: 1 });
+    expect(layerOf('charger')).toBe('floor');
+    expect(labelOf('charger')).toBe('Station de recharge');
+  });
+
   it('seul le tapis est sur la couche tapis', () => {
     expect(STANDING_KINDS.filter((k) => layerOf(k) === 'rug')).toEqual(['rug']);
   });

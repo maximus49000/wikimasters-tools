@@ -194,3 +194,70 @@ describe('chien : itinéraires', () => {
     }
   });
 });
+
+describe('robot', () => {
+  const robot = (layout: Layout, seed: number, extra: Partial<BrainEnv> = {}) => env(layout, seed, { species: 'robot', ...extra });
+  const furnished: Layout = [
+    { id: 's', kind: 'shelf', col: 2, row: 6 },
+    { id: 'd', kind: 'desk', col: 8, row: 12 },
+    { id: 'f', kind: 'sofa', col: 20, row: 14 },
+    { id: 'k', kind: 'kennel', col: 28, row: 15 },
+    { id: 'w', kind: 'bowl', col: 14, row: 18 },
+    { id: 'b', kind: 'basket', col: 6, row: 16 },
+  ];
+
+  it('reste au sol : ni perchoir, ni sommeil, ni gamelle, ni aucune action de chat ou de chien', () => {
+    const banned = ['perch', 'sleep', 'eat', 'drink', 'groom', 'scratch', 'hide', 'pant', 'sniff'];
+    for (const s of seeds) {
+      const p = nextPlan(robot(furnished, s), from, 0);
+      expect(banned).not.toContain(p.action);
+      expect(p.on).toBeNull();
+      expect(p.route.every((seg) => seg.on === null && seg.fromOn === null)).toBe(true);
+    }
+  });
+
+  it('peut rouler, scanner et se mettre en veille dans une pièce vide', () => {
+    const actions = new Set(seeds.map((s) => nextPlan(robot([], s), from, 0).action));
+    expect(actions.has('scan')).toBe(true);
+    expect(actions.has('standby')).toBe(true);
+    expect(actions.has('sit')).toBe(true);
+  });
+
+  it('se recharge sur la station, sauf si la place est réservée', () => {
+    const layout: Layout = [{ id: 'c', kind: 'charger', col: 12, row: 17 }];
+    const plans = seeds.map((s) => nextPlan(robot(layout, s), from, 0)).filter((p) => p.action === 'charge');
+    expect(plans.length).toBeGreaterThan(0);
+    expect(plans.every((p) => p.key === 'c:charge' && p.hostId === 'c')).toBe(true);
+    expect(plans[0]!.at).toEqual(standPoint(12, 17));
+    const occupied = new Set(['c:charge']);
+    expect(seeds.some((s) => nextPlan(robot(layout, s, { occupied }), from, 0).action === 'charge')).toBe(false);
+  });
+
+  it('sans station, ne se recharge jamais ; il peut dormir en veille sur place', () => {
+    expect(seeds.some((s) => nextPlan(robot([], s), from, 0).action === 'charge')).toBe(false);
+    expect(seeds.some((s) => nextPlan(robot([], s), from, 0).action === 'standby')).toBe(true);
+  });
+
+  it('s arrête en veille sur un tapis', () => {
+    const layout: Layout = [{ id: 'r', kind: 'rug', col: 10, row: 15 }];
+    const plans = seeds.map((s) => nextPlan(robot(layout, s), from, 0)).filter((p) => p.action === 'standby' && p.route.length > 0);
+    expect(plans.length).toBeGreaterThan(0);
+  });
+
+  it('un chat ou un chien n utilisent jamais la station', () => {
+    const layout: Layout = [{ id: 'c', kind: 'charger', col: 12, row: 17 }];
+    for (const species of ['cat', 'dog'] as const) for (const s of seeds) expect(nextPlan(env(layout, s, { species }), from, 0).hostId).not.toBe('c');
+  });
+
+  it('en mouvement réduit : assis ou en veille seulement', () => {
+    for (const s of seeds) expect(['sit', 'standby']).toContain(nextPlan(robot(furnished, s, { still: true }), from, 0).action);
+  });
+
+  it('une caresse le fait bipper 3 s à la place de ronronner', () => {
+    const plan = nextPlan(robot([], 3), from, 0);
+    const next = touchPlan({ ...plan, action: 'sit', route: [], actMs: 8000 }, robot([], 3), 1000);
+    expect(next?.action).toBe('beep');
+    expect(next?.actMs).toBe(3000);
+    expect(touchPlan({ ...plan, action: 'sit', route: [], actMs: 8000 }, env([], 3), 1000)?.action).toBe('purr');
+  });
+});

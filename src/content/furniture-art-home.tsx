@@ -66,6 +66,19 @@ function Bowl({ rect: { x, y, w, h }, palette: p }: Props) {
   );
 }
 
+// Station de recharge : un socle plat sur le sol, deux contacts et un voyant vert.
+function Charger({ rect: { x, y, w, h }, palette: p }: Props) {
+  return (
+    <g>
+      <rect x={x + w * 0.04} y={y + h * 0.35} width={w * 0.92} height={h * 0.65} rx={4} fill={p.metal} stroke={p.edge} />
+      <rect x={x + w * 0.12} y={y + h * 0.42} width={w * 0.76} height={h * 0.2} rx={2} fill={p.woodDark} />
+      <rect x={x + w * 0.3} y={y + h * 0.3} width={w * 0.1} height={h * 0.16} fill={p.edge} />
+      <rect x={x + w * 0.6} y={y + h * 0.3} width={w * 0.1} height={h * 0.16} fill={p.edge} />
+      <circle cx={x + w * 0.5} cy={y + h * 0.75} r={Math.max(2, h * 0.07)} fill="#4CD08A" />
+    </g>
+  );
+}
+
 function Kennel({ rect: { x, y, w, h }, palette: p }: Props) {
   return (
     <g>
@@ -128,6 +141,7 @@ const ARTS: Record<HomeKind, (props: Props) => ReactElement> = {
   basket: Basket,
   bowl: Bowl,
   kennel: Kennel,
+  charger: Charger,
   plant: Plant,
   lamp: Lamp,
   'coffee-table': CoffeeTable,

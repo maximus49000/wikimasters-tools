@@ -1198,4 +1198,71 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v11',
+    theme: 'collection',
+    glyph: '🤖',
+    title: 'Un robot de compagnie',
+    summary: 'Adoptez un robot qui roule, scanne, se met en veille et se recharge, et que le chat prend pour un lit',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Ouvrir une pièce de la Bibliothèque',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : c’est là que vivent vos animaux, robot compris.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez la pièce où le robot vivra.' },
+          { label: 'À quoi ça sert', text: 'À donner un compagnon d’un genre nouveau à chaque pièce. Tout reste sur cet appareil : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Passer en mode Aménager',
+        text: 'Le crayon passe en mode Aménager : c’est là qu’apparaît la rangée Animaux, avec le chat, le chien et maintenant le robot à adopter.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
+          { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="adopt-robot"]',
+        title: 'Adopter un robot',
+        text: 'Dans la rangée Animaux, touchez le glyphe du robot : il se nomme « Robi » par défaut. Choisissez un nom et un coloris (blanc, bleu, jaune, rouge, graphite, menthe), puis validez avec la coche.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'En mode Aménager, touchez le robot dans la rangée Animaux, écrivez son nom, touchez un coloris puis la coche. En mode Visiter, touchez le robot : il bipe, ses yeux deviennent des cœurs et son nom s’affiche.' },
+          { label: 'À quoi ça sert', text: 'À une pièce plus vivante : le robot roule sur ses chenilles, scanne la pièce, se met en veille ou se recharge, sans jauge ni entretien.' },
+          { label: 'Limites', text: 'Trois animaux au maximum par pièce, chats, chiens et robots mélangés. Le robot reste au sol : il ne monte ni sur le canapé ni sur une étagère, ne mange pas et ne dort pas.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] [aria-label="Catégories de meubles"]',
+        title: 'Poser une station de recharge',
+        text: 'Dans la catégorie Animaux des meubles, la Station de recharge est un socle plat au sol : le robot vient s’y poser, voyant vert allumé, les yeux en tirets.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'En mode Aménager, ouvrez la catégorie Animaux dans la rangée des meubles, touchez la Station de recharge puis une case libre au sol (2 cases de large).' },
+          { label: 'À quoi ça sert', text: 'À donner un coin au robot. Sans station, il se met simplement en veille sur place, voyant orange ; une station libre l’attire de temps en temps.' },
+          { label: 'Limites', text: 'Un seul robot se recharge à la fois sur une station. Ajouter ce meuble rend la pièce illisible pour un ancien build de l’extension.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] svg[role="img"]',
+        title: 'Salut, suite et sieste sur le robot',
+        text: 'Le robot salue chacun, antenne dressée ; le chien le suit quand il roule ; le chat lui souffle dessus et il recule, yeux en avertissement. Et quand le robot est en veille ou en recharge, le chat saute sur son dos et y fait la sieste.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Rien à faire : adoptez un robot avec un autre animal et regardez la pièce en mode Visiter. Toucher le robot ou le chat interrompt la scène : le chat saute à terre.' },
+          { label: 'À quoi ça sert', text: 'À des petites histoires entre vos animaux, sans aucune contrainte : les scènes arrivent d’elles-mêmes.' },
+          { label: 'Limites', text: 'Les scènes n’ont lieu qu’au sol et jamais en mode animations réduites. Le robot et le chat qui dort dessus restent sur place pendant la sieste (20 à 40 secondes). Un build antérieur de l’extension ne lit pas les robots : ne revenez pas en arrière une fois un robot adopté.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];

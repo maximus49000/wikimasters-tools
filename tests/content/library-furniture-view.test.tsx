@@ -26,6 +26,7 @@ const room: Room = {
     { id: 'h', kind: 'basket', col: 28, row: 16 },
     { id: 'i', kind: 'bowl', col: 32, row: 17 },
     { id: 'j', kind: 'kennel', col: 34, row: 14 },
+    { id: 'p', kind: 'charger', col: 30, row: 18 },
     { id: 'k', kind: 'plant', col: 40, row: 14 },
     { id: 'l', kind: 'lamp', col: 38, row: 13 },
     { id: 'm', kind: 'coffee-table', col: 3, row: 15 },
@@ -48,7 +49,7 @@ function mount() {
 describe('RoomView : mobilier', () => {
   it('dessine chaque type de meuble', () => {
     const container = mount();
-    for (const kind of ['sofa', 'rug', 'desk', 'small', 'computer', 'chair', 'armchair', 'basket', 'bowl', 'kennel', 'plant', 'lamp', 'coffee-table', 'shelf']) {
+    for (const kind of ['sofa', 'rug', 'desk', 'small', 'computer', 'chair', 'armchair', 'basket', 'bowl', 'kennel', 'charger', 'plant', 'lamp', 'coffee-table', 'shelf']) {
       expect(container.querySelector(`[data-furniture="${kind}"]`), kind).not.toBeNull();
     }
     expect(container.querySelectorAll('[data-furniture="small"]')).toHaveLength(2);

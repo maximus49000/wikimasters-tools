@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Layout, Pet, PetPlan } from '../../../src/core/library/library-types';
 import { layoutSig, type BrainEnv } from '../../../src/core/library/pets/brain';
 import { planEndsAt, routeMs, stateAt } from '../../../src/core/library/pets/motion';
-import { proposeScene, sceneIsValid } from '../../../src/core/library/pets/scenes';
+import { RIDE_LIFT, proposeScene, sceneIsValid } from '../../../src/core/library/pets/scenes';
 import { buildWalkMap, cellOf, isFree, standPoint } from '../../../src/core/library/pets/walk-map';
 
 const seeded = (seed: number) => () => {
@@ -242,5 +242,137 @@ describe('recul de la remise à sa place', () => {
       expect(cellOf(r.partner!.at).col).not.toBe(10);
     }
     expect(shoo).toBeGreaterThan(0);
+  });
+});
+
+describe('scènes avec un robot', () => {
+  const robot = (id: string): Pet => ({ id, species: 'robot', name: id, coat: 'blue' });
+  const scenesOf = (lead: Pet, other: Pet, plan: PetPlan = awake) => new Set(seeds.map((s) => propose(lead, other, plan, s)?.scene).filter(Boolean));
+
+  it('chaque couple avec un robot a les bonnes scènes, et aucune toilette, poursuite ni sieste', () => {
+    expect([...scenesOf(cat('a'), robot('b'))].sort()).toEqual(['greet', 'shoo']);
+    expect([...scenesOf(dog('a'), robot('b'))].sort()).toEqual(['follow', 'greet']);
+    expect([...scenesOf(robot('a'), cat('b'))]).toEqual(['greet']);
+    expect([...scenesOf(robot('a'), dog('b'))]).toEqual(['greet']);
+    expect([...scenesOf(robot('a'), robot('b'))]).toEqual(['greet']);
+  });
+
+  it('un robot ne s allonge pas près d un dormeur', () => {
+    expect(scenesOf(robot('a'), cat('b'), resting('sleep', standPoint(12, 16))).size).toBe(0);
+  });
+
+  it('salut : plans au même départ, références croisées, antenne levée des deux côtés', () => {
+    let seen = 0;
+    for (const [lead, other] of [[cat('a'), robot('b')], [dog('a'), robot('b')], [robot('a'), cat('b')], [robot('a'), robot('b')]] as const) {
+      for (const s of seeds) {
+        const r = propose(lead, other, awake, s);
+        if (r?.scene !== 'greet') continue;
+        seen++;
+        expect(r.lead.startedAt).toBe(r.partner!.startedAt);
+        expect(r.lead.with).toEqual({ petId: other.id, role: 'lead', scene: 'greet' });
+        expect(r.partner!.with).toEqual({ petId: lead.id, role: 'follow', scene: 'greet' });
+        expect(r.lead.action).toBe('greet');
+        expect(r.partner!.action).toBe('greet');
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('suite : le robot roule, le chien le suit, sans jeu ni accélération, finissent ensemble', () => {
+    const rs = seeds.map((s) => propose(dog('a'), robot('b'), awake, s)).filter((r) => r?.scene === 'follow');
+    expect(rs.length).toBeGreaterThan(0);
+    for (const r of rs) {
+      expect(r!.partner!.route.length).toBeGreaterThan(0);
+      expect(['play']).not.toContain(r!.lead.action);
+      expect(['play']).not.toContain(r!.partner!.action);
+      expect(r!.partner!.action).toBe('scan');
+      expect(planEndsAt(r!.lead)).toBe(planEndsAt(r!.partner!));
+      expect(r!.lead.actMs).toBeLessThanOrEqual(8000);
+      expect(r!.partner!.actMs).toBeLessThanOrEqual(8000);
+    }
+  });
+
+  it('suite : un seul rythme (pas de course) : le robot parcourt sa route à sa vitesse de scène', () => {
+    const chase = seeds.map((s) => propose(dog('a'), cat('b'), awake, s)).find((r) => r?.scene === 'chase')!;
+    const follow = seeds.map((s) => propose(dog('a'), robot('b'), awake, s)).find((r) => r?.scene === 'follow')!;
+    const perPx = (route: PetPlan['route']) => routeMs(route) / route.reduce((t, x) => t + Math.hypot(x.to.x - x.from.x, x.to.y - x.from.y), 0);
+    expect(perPx(follow.partner!.route)).toBeGreaterThan(perPx(chase.partner!.route));
+  });
+
+  it('shoo : le chat souffle, le robot attend, recule en cower de deux cases au plus', () => {
+    const r = seeds.map((s) => propose(cat('a'), robot('b'), awake, s)).find((x) => x?.scene === 'shoo')!;
+    expect(r.lead.action).toBe('hiss');
+    expect(r.partner!.action).toBe('cower');
+    expect(r.partner!.lag).toBe(routeMs(r.lead.route));
+    expect(r.partner!.route.length).toBeGreaterThan(0);
+    expect(Math.abs(cellOf(r.partner!.at).col - 12)).toBeLessThanOrEqual(2);
+  });
+
+  it('un robot qui scanne peut être abordé ; en veille ou en recharge, seul un chat s en approche (pour dormir dessus)', () => {
+    expect(scenesOf(cat('a'), robot('b'), resting('scan', standPoint(12, 16))).size).toBeGreaterThan(0);
+    for (const action of ['standby', 'charge'] as const) {
+      for (const lead of [dog('a'), robot('a')]) expect(scenesOf(lead, robot('b'), resting(action, standPoint(12, 16))).size).toBe(0);
+      expect([...scenesOf(cat('a'), robot('b'), resting(action, standPoint(12, 16)))]).toEqual(['ride']);
+    }
+  });
+});
+
+describe('ride : sieste du chat sur un robot', () => {
+  const robot = (id: string): Pet => ({ id, species: 'robot', name: id, coat: 'blue' });
+  const at = standPoint(12, 16);
+  const robotPlan = (action: PetPlan['action'], extra: Partial<PetPlan> = {}) => resting(action, at, { actMs: 60_000, ...extra });
+  const rides = (plan: PetPlan, lead: Pet = cat('a')) => seeds.map((s) => propose(lead, robot('b'), plan, s)).filter((r) => r?.scene === 'ride');
+
+  it('éligibilité : robot en veille ou en recharge, au sol, sans scène, au moins 10 s restantes, chat meneur seulement', () => {
+    expect(rides(robotPlan('standby')).length).toBeGreaterThan(0);
+    expect(rides(robotPlan('charge', { hostId: 'c', key: 'c:charge' })).length).toBeGreaterThan(0);
+    expect(rides(robotPlan('standby', { actMs: 5000 })).length).toBe(0);
+    expect(rides(robotPlan('standby', { with: { petId: 'x', role: 'follow', scene: 'greet' } })).length).toBe(0);
+    expect(rides(robotPlan('standby'), dog('a')).length).toBe(0);
+    expect(rides(robotPlan('standby'), robot('a')).length).toBe(0);
+    expect(rides(robotPlan('scan')).length).toBe(0);
+  });
+
+  it('plan du chat : approche à pied, saut sur le dos (RIDE_LIFT), puis sommeil de 18 à 30 s plafonné par la veille', () => {
+    for (const r of rides(robotPlan('standby'))) {
+      const route = r!.lead.route;
+      const last = route[route.length - 1]!;
+      expect(last.kind).toBe('jump');
+      expect(route.slice(0, -1).every((s) => s.kind === 'walk')).toBe(true);
+      expect(r!.lead.at).toEqual({ x: at.x, y: at.y - RIDE_LIFT });
+      expect(last.to).toEqual(r!.lead.at);
+      expect(cellOf(last.from).row).toBe(16);
+      expect(Math.abs(cellOf(last.from).col - 12)).toBe(1);
+      expect(r!.lead.action).toBe('sleep');
+      expect(r!.lead.actMs).toBeGreaterThanOrEqual(5000);
+      expect(r!.lead.actMs).toBeLessThanOrEqual(30_000);
+      expect(r!.lead.with).toEqual({ petId: 'b', role: 'lead', scene: 'ride' });
+      expect(planEndsAt(r!.lead)).toBeLessThanOrEqual(1000 + 60_000 - (1000 - 0));
+    }
+    expect(rides(robotPlan('standby')).some((r) => r!.lead.actMs >= 18_000)).toBe(true);
+    const short = rides(robotPlan('standby', { actMs: 14_000 }));
+    for (const r of short) expect(planEndsAt(r!.lead)).toBeLessThanOrEqual(14_000);
+  });
+
+  it('plan du robot : veille sur place, même départ, durée = approche + saut + sieste, route vide, rôle follow', () => {
+    for (const r of rides(robotPlan('charge', { hostId: 'c', key: 'c:charge' }))) {
+      expect(r!.partner!.action).toBe('standby');
+      expect(r!.partner!.at).toEqual(at);
+      expect(r!.partner!.route).toEqual([]);
+      expect(r!.partner!.hostId).toBe('c');
+      expect(r!.partner!.key).toBe('c:charge');
+      expect(r!.partner!.startedAt).toBe(r!.lead.startedAt);
+      expect(planEndsAt(r!.partner!)).toBe(planEndsAt(r!.lead));
+      expect(r!.partner!.with).toEqual({ petId: 'a', role: 'follow', scene: 'ride' });
+    }
+  });
+
+  it('sceneIsValid : le chat sur le robot exige un robot en veille avec le plan jumeau croisé', () => {
+    const r = rides(robotPlan('standby'))[0]!;
+    expect(sceneIsValid(r.lead, r.partner!, true)).toBe(true);
+    expect(sceneIsValid(r.lead, r.partner!, false)).toBe(false);
+    expect(sceneIsValid(r.lead, { ...r.partner!, action: 'beep' }, true)).toBe(false);
+    expect(sceneIsValid(r.lead, { ...r.partner!, with: undefined }, true)).toBe(false);
+    expect(sceneIsValid(r.partner!, r.lead, true)).toBe(true);
   });
 });

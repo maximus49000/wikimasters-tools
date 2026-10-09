@@ -9,6 +9,7 @@ export const MAX_PET_NAME = 20;
 export const MAX_PETS = 3;
 const DEFAULT_PET_NAME = 'Minou';
 const DEFAULT_DOG_NAME = 'Rex';
+const DEFAULT_ROBOT_NAME = 'Robi';
 
 const windowSchema = z.object({
   id: z.string(),
@@ -68,7 +69,7 @@ const planSchema = z.object({
 const petSchema = z
   .object({
     id: z.string(),
-    species: z.enum(['cat', 'dog']),
+    species: z.enum(['cat', 'dog', 'robot']),
     name: z.string().min(1).max(MAX_PET_NAME),
     coat: z.enum(ALL_COATS),
     plan: planSchema.optional().catch(undefined),
@@ -322,7 +323,7 @@ export function adoptPet(state: LibraryState, roomId: string, name: string, coat
   const room = state.rooms.find((candidate) => candidate.id === roomId);
   if (!room || room.pets.length >= MAX_PETS) return state;
   const kept: Coat = coatsOf(species).includes(coat) ? coat : coatsOf(species)[0]!;
-  const fallback = species === 'dog' ? DEFAULT_DOG_NAME : DEFAULT_PET_NAME;
+  const fallback = species === 'dog' ? DEFAULT_DOG_NAME : species === 'robot' ? DEFAULT_ROBOT_NAME : DEFAULT_PET_NAME;
   const pet: Pet = { id: nextId('p', room.pets.map((p) => p.id)), species, name: name.trim().slice(0, MAX_PET_NAME) || fallback, coat: kept };
   return mapRoom(state, roomId, (r) => ({ ...r, pets: [...r.pets, pet] }));
 }

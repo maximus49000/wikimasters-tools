@@ -13,6 +13,7 @@ export const KIND_ICON: Record<FurnitureKind, readonly string[]> = {
   basket: ['M3 11h18', 'M5 11l1.5 9h11L19 11'],
   bowl: ['M3 12h18', 'M5 12a7 7 0 0 0 14 0'],
   kennel: ['M3 11l9-7 9 7', 'M5 10v10h14V10', 'M10 20v-5a2 2 0 0 1 4 0v5'],
+  charger: ['M3 17h18', 'M5 17v2h14v-2', 'M13 4l-4 6h3l-1 5 4-6h-3z'],
   'coffee-table': ['M4 9h16', 'M6 9l-2 10', 'M18 9l2 10'],
   plant: ['M12 21v-8', 'M12 13c-4 0-6-3-6-7 4 0 6 3 6 7z', 'M12 15c4 0 6-3 6-7-4 0-6 3-6 7z', 'M8 21h8'],
   lamp: ['M12 21V9', 'M8 21h8', 'M8 9l1.5-6h5L16 9z'],

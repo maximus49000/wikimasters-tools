@@ -7,7 +7,7 @@ export type Standing = { pt: Pt; on: Support; hostId: string | null; facing: 'l'
 
 type Hop = { leave: Pt; land: Pt };
 
-const jumpMs = (a: Pt, b: Pt): number => Math.round(380 + Math.hypot(b.x - a.x, b.y - a.y) * 1.8);
+export const jumpMs = (a: Pt, b: Pt): number => Math.round(380 + Math.hypot(b.x - a.x, b.y - a.y) * 1.8);
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 const platformOf = (map: WalkMap, id: string): Platform | undefined => map.platforms.find((p) => p.id === id);
 

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
-import type { CatCoat, Coat, DogCoat, Species } from '../core/library/library-types';
+import type { CatCoat, Coat, DogCoat, RobotCoat, Species } from '../core/library/library-types';
 import { DOG_COAT_COLORS, DOG_COAT_LABELS, dogBody } from './dog-sprite';
+import { ROBOT_COAT_COLORS, robotBody } from './robot-sprite';
 import type { Pose } from '../core/library/pets/runner';
 
 type Colors = { body: string; belly: string; dark: string; stripes?: boolean };
@@ -18,7 +19,7 @@ export const COAT_LABELS: Record<CatCoat, string> = { orange: 'Roux', black: 'No
 export { DOG_COAT_LABELS };
 
 export const paletteOf = (species: Species, coat: Coat): { body: string; belly: string } =>
-  species === 'dog' ? DOG_COAT_COLORS[coat as DogCoat] : COAT_COLORS[coat as CatCoat];
+  species === 'dog' ? DOG_COAT_COLORS[coat as DogCoat] : species === 'robot' ? ROBOT_COAT_COLORS[coat as RobotCoat] : COAT_COLORS[coat as CatCoat];
 
 type Props = { species?: Species; coat: Coat; pose: Pose; facing: 'l' | 'r'; name: string; still?: boolean };
 
@@ -177,6 +178,8 @@ function body(pose: Pose, c: Colors, still: boolean): ReactElement {
           <ellipse cx="5" cy="-6" rx="2.3" ry="3" fill="#F5D44A" />
         </>
       );
+    default:
+      return sitting(c, <Head x={4} y={-33} c={c} />);
   }
 }
 
@@ -204,6 +207,16 @@ export function PetSprite({ species = 'cat', coat, pose, facing, still = false }
         {pose !== 'jump' && <ellipse cx="0" cy="0" rx="21" ry="3" fill="#000" opacity="0.18" />}
         <g data-dog-body="" transform={facing === 'l' ? 'scale(-1 1)' : undefined}>
           {dogBody(pose, DOG_COAT_COLORS[coat as DogCoat], still)}
+        </g>
+      </g>
+    );
+  }
+  if (species === 'robot') {
+    return (
+      <g data-pet-pose={pose} data-coat={coat}>
+        <ellipse cx="0" cy="0" rx="19" ry="3" fill="#000" opacity="0.18" />
+        <g data-robot-body="" transform={facing === 'l' ? 'scale(-1 1)' : undefined}>
+          {robotBody(pose, ROBOT_COAT_COLORS[coat as RobotCoat], still)}
         </g>
       </g>
     );
