@@ -31,6 +31,13 @@ describe('stormPlan', () => {
     expect(r.route).toEqual([]);
     expect(r.actMs).toBe(3000);
   });
+  it('le chien va au pied du canapé, même si le chat s y cache déjà', () => {
+    const p = stormPlan({ ...envOf(), occupied: new Set(['s:hide']) }, 'dog', from, 0);
+    expect(p.action).toBe('cower');
+    expect(p.hostId).toBe('s');
+    expect(p.at).toEqual(standPoint(8, 15));
+    expect(p.key).toBeUndefined();
+  });
   it('mouvement réduit : sur place', () => {
     const p = stormPlan(envOf(sofa, true), 'cat', from, 0);
     expect(p.action).toBe('cower');

@@ -1,10 +1,11 @@
+import { sizeOf } from '../furniture-catalog';
 import type { PetPlan, Pt, Segment, Species } from '../library-types';
 import { CELL_W, isStanding } from '../room-grid';
 import { layoutSig, type BrainEnv } from './brain';
 import { routeMs } from './motion';
 import { planRoute, scaleRoute, type Standing } from './route';
 import { meetCell } from './scenes';
-import { buildWalkMap, cellOf, isFree, nearestFreeCell, standPoint, type WalkMap } from './walk-map';
+import { buildWalkMap, nearestFreeCell, standPoint, type WalkMap } from './walk-map';
 
 const between = (rng: () => number, lo: number, hi: number): number => Math.round(lo + rng() * (hi - lo));
 // L'orage presse le pas : trajets parcourus plus vite que d'habitude.
@@ -38,17 +39,20 @@ export function stormPlan(env: BrainEnv, species: Species, from: Standing, now: 
   const speed = speedOf(species);
   const sig = layoutSig(env.layout, env.cols);
   const dog = species === 'dog';
-  const sofa = env.layout.filter(isStanding).find((p) => p.kind === 'sofa' && !env.occupied.has(`${p.id}:hide`));
+  const sofas = env.layout.filter(isStanding).filter((p) => p.kind === 'sofa');
+  // Seul le chat se glisse dessous (place réservée `:hide`) ; le chien se blottit devant, que le chat y soit ou non.
+  const sofa = species === 'cat' ? sofas.find((p) => !env.occupied.has(`${p.id}:hide`)) : sofas[0];
   if (species === 'cat' && sofa) {
     const at = standPoint(sofa.col + 2, sofa.row + 2);
     const raw = planRoute(map, from, { pt: at, on: null });
     if (raw) return { action: 'hide', hostId: sofa.id, at, on: null, route: scaleRoute(raw, speed), startedAt: now, lag, actMs: hold, facing: from.facing, sig, key: `${sofa.id}:hide` };
   }
   if (dog && sofa) {
-    const at = standPoint(sofa.col, sofa.row + 2);
-    const c = cellOf(at);
-    const raw = isFree(map, c.col, c.row) ? planRoute(map, from, { pt: at, on: null }) : null;
-    if (raw && !dogBlocked(raw, from.on)) return { action: 'cower', hostId: sofa.id, at, on: null, route: scaleRoute(raw, speed), startedAt: now, lag, actMs: hold, facing: from.facing, sig };
+    // Au pied du canapé : la case libre la plus proche de son coin avant gauche, juste devant lui.
+    const foot = nearestFreeCell(map, standPoint(sofa.col, sofa.row + sizeOf(sofa.kind).h), 2);
+    const at = foot ? standPoint(foot.col, foot.row) : null;
+    const raw = at ? planRoute(map, from, { pt: at, on: null }) : null;
+    if (at && raw && !dogBlocked(raw, from.on)) return { action: 'cower', hostId: sofa.id, at, on: null, route: scaleRoute(raw, speed), startedAt: now, lag, actMs: hold, facing: from.facing, sig };
   }
   const wall = wallCell(map, from.pt);
   if (wall) {
@@ -62,7 +66,8 @@ type Who = Standing & { id: string };
 
 // Chat et chien se serrent l'un contre l'autre : le chien va au mur le plus proche, le chat vient juste à côté, chacun tourné
 // vers l'autre. Deux plans jumeaux (même `startedAt`, références croisées) qui finissent au même instant ; null si impossible.
-export function huddlePlans(env: BrainEnv, cat: Who, dog: Who, now: number): { cat: PetPlan; dog: PetPlan } | null {
+// `catJump` : saut de descente du chat (depuis le dos du robot), placé en tête de son trajet et compté dans l'équilibre.
+export function huddlePlans(env: BrainEnv, cat: Who, dog: Who, now: number, catJump: Segment | null = null): { cat: PetPlan; dog: PetPlan } | null {
   if (env.still) return null;
   const map = buildWalkMap(env.layout, env.cols);
   const spot = wallCell(map, dog.pt);
@@ -75,7 +80,7 @@ export function huddlePlans(env: BrainEnv, cat: Who, dog: Who, now: number): { c
   const catRaw = planRoute(map, cat, { pt: meetPt, on: null });
   if (!catRaw) return null;
   const dogRoute = scaleRoute(dogRaw, speedOf('dog'));
-  const catRoute = scaleRoute(catRaw, speedOf('cat'));
+  const catRoute = [...(catJump ? [catJump] : []), ...scaleRoute(catRaw, speedOf('cat'))];
   const hold = between(env.rng, ...HOLD);
   const lag = between(env.rng, ...LAG);
   // Le premier arrivé attend l'autre blotti : même fin pour les deux.

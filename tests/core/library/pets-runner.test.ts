@@ -444,6 +444,21 @@ describe('sieste du chat sur le robot (ride)', () => {
     expect(cat!.pos).toEqual(top);
   });
 
+  it('orage à trois pendant la sieste : le chat descend d un saut et les deux plans huddle finissent ensemble', () => {
+    const onPlan = vi.fn();
+    const ctx = { ...NO_CONTEXT, weather: 'storm' as const, storm: { id: 1, since: asleepAt - 100 } };
+    const room = roomOf(ride.lead, ride.partner!);
+    room.pets.push({ id: 'p3', species: 'dog', name: 'Rex', coat: 'brown', plan: { ...resting([], standPoint(20, 16)), actMs: 1_000_000 } });
+    createPetRunner({ onPlan, rng: () => 0.5 }).step(room, asleepAt, ctx);
+    const cat = lastPlanOf(onPlan, 'p1');
+    const dog = lastPlanOf(onPlan, 'p3');
+    expect(cat.with?.scene).toBe('huddle');
+    expect(cat.route[0]!.kind).toBe('jump');
+    expect(cat.route[0]!.from).toEqual(top);
+    expect(planEndsAt(cat)).toBe(planEndsAt(dog));
+    expect(onPlan.mock.calls.filter((c) => c[0] === 'p1')).toHaveLength(1);
+  });
+
   it('au sol : le point de saut est une case libre voisine du robot', () => {
     const from = landingOf(ride.lead);
     expect(Math.abs(from.x - at.x)).toBeLessThanOrEqual(30);
@@ -513,6 +528,21 @@ describe('orage (6d)', () => {
     const runner = createPetRunner({ onPlan, rng: () => 0.5 });
     runner.step(trio(sofa, 150_000), 200_000, stormCtx(1, 1000));
     expect(onPlan).not.toHaveBeenCalled();
+  });
+
+  it('sans robot : le chat se cache sous le canapé et le chien se blottit à son pied, pas contre un mur', () => {
+    const onPlan = vi.fn();
+    const room = trio(sofa);
+    room.pets = room.pets.slice(0, 2);
+    createPetRunner({ onPlan, rng: () => 0.5 }).step(room, 2000, stormCtx());
+    const cat = onPlan.mock.calls.find((c) => c[0] === 'p1')![1] as PetPlan;
+    const dog = onPlan.mock.calls.find((c) => c[0] === 'p2')![1] as PetPlan;
+    expect(cat.action).toBe('hide');
+    expect(cat.key).toBe('a:hide');
+    expect(dog.action).toBe('cower');
+    expect(dog.hostId).toBe('a');
+    // Devant le canapé (colonnes 2 à 7, rangées 12 à 14), loin des murs.
+    expect(dog.at).toEqual(standPoint(2, 15));
   });
 
   it('un animal déjà caché (plan hide hors scène) est laissé tel quel', () => {

@@ -135,9 +135,9 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
     if (cat && dog && robot && !still && !sheltered(cat.id) && !sheltered(dog.id)) {
       const c = standingOf(room, cat.id, now);
       const d = standingOf(room, dog.id, now);
-      const pair = c && d ? huddlePlans(envFor(room, 'cat', new Set(), cat.id), { ...c.standing, id: cat.id }, { ...d.standing, id: dog.id }, now) : null;
+      const pair = c && d ? huddlePlans(envFor(room, 'cat', new Set(), cat.id), { ...c.standing, id: cat.id }, { ...d.standing, id: dog.id }, now, c?.jump ?? null) : null;
       if (pair && c && d) {
-        record(cat.id, withJump(pair.cat, c.jump));
+        record(cat.id, pair.cat);
         record(dog.id, withJump(pair.dog, d.jump));
         handled.add(cat.id).add(dog.id);
       }
