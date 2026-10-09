@@ -38,7 +38,17 @@ describe('buildLightMap', () => {
       if (r! - b! > r0! - b0! + 15) { warm = true; break; }
     }
     expect(warm).toBe(true);
-    expect(Array.from(buildLightMap({ ...base, sunFrac: null, sunX: null }).rgba)).toEqual(Array.from(noSun.rgba));
+    const warmCount = (m: { rgba: Uint8ClampedArray }) => { let n = 0; for (let i = 0; i < m.rgba.length; i += 4) if (m.rgba[i]! - m.rgba[i + 2]! > 0) n++; return n; };
+    const noSunFrac = buildLightMap({ ...base, sunFrac: null });
+    const noSunX = buildLightMap({ ...base, sunX: null, sunFrac: 0.3 });
+    expect(warmCount(noSun)).toBe(0);
+    expect(Array.from(noSunFrac.rgba)).toEqual(Array.from(noSun.rgba));
+    expect(Array.from(noSunX.rgba)).toEqual(Array.from(noSun.rgba));
+  });
+  it('le rayon n’assombrit jamais', () => {
+    const withSun = buildLightMap({ ...base, sunFrac: 0.3 });
+    const noSun = buildLightMap({ ...base, sunFrac: null, sunX: null });
+    for (let i = 3; i < withSun.rgba.length; i += 4) expect(withSun.rgba[i]!).toBeLessThanOrEqual(noSun.rgba[i]!);
   });
   it('un soleil masqué supprime le rayon', () => {
     const warmCount = (m: { rgba: Uint8ClampedArray }) => { let n = 0; for (let i = 0; i < m.rgba.length; i += 4) if (m.rgba[i]! - m.rgba[i + 2]! > 20) n++; return n; };
