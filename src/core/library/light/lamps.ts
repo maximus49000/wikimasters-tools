@@ -19,6 +19,33 @@ export function lampIrradiance(r: number, cosTheta: number): number {
   return (cosTheta * fade) / (1 + (r / LAMP_R0) ** 2);
 }
 
+// Éclairement d'une surface (pixel i, j) par une lampe, avant occultation ; 0 hors portée ou de dos.
+// Écrit dans `P` le point éclairé (dessus et face avant décalés de 0,5).
+export function irradianceAt(s: LampSource, surf: SurfaceMap, i: number, j: number, scale: number, P: V3): number {
+  const n = j * surf.w + i;
+  const kind = surf.kind[n] ?? SURF.ground;
+  const x = (i + 0.5) * scale;
+  let d = surf.d[n] ?? 0;
+  let z = surf.z[n] ?? 0;
+  // Normale : sol/dessus vers le haut (+z), mur/face avant vers le spectateur (+d).
+  const vertical = kind === SURF.wall || kind === SURF.front;
+  if (kind === SURF.top) z += 0.5;
+  else if (kind === SURF.front) d += 0.5;
+  const vx = s.x - x;
+  const vd = s.d - d;
+  const vz = s.z - z;
+  const r2 = vx * vx + vd * vd + vz * vz;
+  if (r2 >= LAMP_RMAX * LAMP_RMAX) return 0;
+  const r = Math.sqrt(r2);
+  if (r === 0) return 0;
+  const irr = lampIrradiance(r, (vertical ? vd : vz) / r);
+  if (irr <= 0) return 0;
+  P.x = x;
+  P.d = d;
+  P.z = z;
+  return irr;
+}
+
 // Une valeur 0..1 par pixel : somme des lampes (occultation incluse), clampée.
 // `scale` = taille d'un pixel de la carte en px de la pièce (sert au centre x du pixel).
 export function lampField(
@@ -37,30 +64,10 @@ export function lampField(
     const i1 = Math.min(surf.w - 1, Math.ceil((s.x + LAMP_RMAX) / scale - 0.5));
     for (let j = 0; j < surf.h; j++) {
       for (let i = i0; i <= i1; i++) {
-        const n = j * surf.w + i;
-        const kind = surf.kind[n] ?? SURF.ground;
-        const x = (i + 0.5) * scale;
-        let d = surf.d[n] ?? 0;
-        let z = surf.z[n] ?? 0;
-        // Normale : sol/dessus vers le haut (+z), mur/face avant vers le spectateur (+d).
-        const vertical = kind === SURF.wall || kind === SURF.front;
-        if (kind === SURF.top) z += 0.5;
-        else if (kind === SURF.front) d += 0.5;
-        const vx = s.x - x;
-        const vd = s.d - d;
-        const vz = s.z - z;
-        const r2 = vx * vx + vd * vd + vz * vz;
-        if (r2 >= LAMP_RMAX * LAMP_RMAX) continue;
-        const r = Math.sqrt(r2);
-        if (r === 0) continue;
-        const cos = (vertical ? vd : vz) / r;
-        const irr = lampIrradiance(r, cos);
+        const irr = irradianceAt(s, surf, i, j, scale, P);
         if (irr <= 0) continue;
-        P.x = x;
-        P.d = d;
-        P.z = z;
-        const lit = litFraction(P, s, LAMP_SPREAD, gene);
-        out[n] = (out[n] ?? 0) + irr * lit;
+        const n = j * surf.w + i;
+        out[n] = (out[n] ?? 0) + irr * litFraction(P, s, LAMP_SPREAD, gene);
       }
     }
   }
