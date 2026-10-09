@@ -53,6 +53,18 @@ describe('bouton Lumière', () => {
     expect(q('[data-light-toggle]')?.getAttribute('aria-pressed')).toBe('false');
     expect(localStorage.getItem(LIGHT_KEY)).toBe('off');
   });
+  it('allume et éteint réellement la couche de lumière de la pièce', async () => {
+    await click('[data-category="deco"]');
+    await click('[data-kind="window"]');
+    await click('[data-cell="6-4"]');
+    expect(repo.current()!.rooms[0]!.layout.some((f) => f.kind === 'window')).toBe(true);
+    expect(q('[data-light-toggle]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(container.querySelector('image[data-light]')).not.toBeNull();
+    await click('[data-light-toggle]');
+    expect(container.querySelector('image[data-light]')).toBeNull();
+    await click('[data-light-toggle]');
+    expect(container.querySelector('image[data-light]')).not.toBeNull();
+  });
   it('n’existe pas en scène Espace', async () => {
     await click('[data-scene="space"]');
     expect(q('[data-light-toggle]')).toBeNull();
