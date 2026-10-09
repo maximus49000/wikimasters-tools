@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PositionSettings } from '../../src/content/PositionSettings';
 import { positionSetting } from '../../src/content/position-setting';
-import { currentPosition, ensurePosition, isPositionKnown, requestPosition, resetPositionForTests } from '../../src/content/scene-position';
+import { currentPosition, ensurePosition, isPositionKnown, positionFailure, requestPosition, resetPositionForTests } from '../../src/content/scene-position';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -52,6 +52,19 @@ describe('réglage Position', () => {
     expect(isPositionKnown()).toBe(false);
     expect(currentPosition().lat).not.toBeCloseTo(47.45);
     stop();
+  });
+});
+
+describe('raison d’échec', () => {
+  it('refus, indisponible et délai sont distingués ; un succès efface la raison', async () => {
+    for (const [code, reason] of [[1, 'denied'], [2, 'unavailable'], [3, 'timeout']] as const) {
+      getCurrentPosition.mockImplementationOnce((_ok: unknown, ko: (e: { code: number }) => void) => ko({ code }));
+      await requestPosition();
+      expect(positionFailure()).toBe(reason);
+      expect(isPositionKnown()).toBe(false);
+    }
+    await requestPosition();
+    expect(positionFailure()).toBeNull();
   });
 });
 
