@@ -50,7 +50,11 @@ export function useWeather(setting: WeatherSetting): WeatherView {
   useEffect(() => {
     if (mode !== 'real' || !known) return;
     let alive = true;
-    const poll = (): void => void real.refresh({ lat, lon }).then((obs) => alive && setObservation(obs));
+    const poll = (): void =>
+      void real
+        .refresh({ lat, lon })
+        .then((obs) => alive && setObservation(obs))
+        .catch(() => undefined);
     poll();
     const timer = window.setInterval(poll, REAL_POLL_MS);
     return () => {
@@ -59,18 +63,21 @@ export function useWeather(setting: WeatherSetting): WeatherView {
     };
   }, [mode, known, lat, lon, real]);
 
-  const code = observation?.code;
+  // Clé des VALEURS de l'observation : un même code météo avec d'autres mesures relance le fondu, une lecture identique (cache) non.
+  const obsKey = observation ? [observation.code, observation.tempC, observation.cloud, observation.precipMm, observation.windKmh, observation.visibilityM].join('|') : '';
+  // La latitude n'intervient que pour la météo aléatoire : un changement de position ne relance pas le fondu en réel ou forcé.
+  const randomLat = useObservation || forcedState ? null : lat;
   useEffect(() => {
     let source: WeatherSource;
     if (forcedState) source = steadySource(forcedState);
     else if (useObservation && observation) {
       const w = realToWeather(observation);
       source = () => w;
-    } else source = (now) => weatherAtRandom({ seed: WEATHER_SEED, lat }, now);
+    } else source = (now) => weatherAtRandom({ seed: WEATHER_SEED, lat: randomLat ?? lat }, now);
     clock.setSource(source, Date.now());
-    // L'observation entre par son code et sa position : la même lecture ne relance pas le fondu.
+    // L'observation entre par ses valeurs (`obsKey`) : la même lecture ne relance pas le fondu.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clock, forcedState, useObservation, code, lat]);
+  }, [clock, forcedState, useObservation, obsKey, randomLat]);
 
   // Libellé et drapeaux relus à intervalle : le dessin, lui, lit l'horloge à chaque image sans passer par React.
   useEffect(() => {
@@ -86,7 +93,7 @@ export function useWeather(setting: WeatherSetting): WeatherView {
     sync();
     const timer = window.setInterval(sync, 5000);
     return () => window.clearInterval(timer);
-  }, [clock, forcedState, useObservation, code]);
+  }, [clock, forcedState, useObservation, obsKey]);
 
   return {
     clock,
