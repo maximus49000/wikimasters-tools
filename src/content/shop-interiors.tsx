@@ -2,19 +2,19 @@ import type { ReactElement } from 'react';
 import { outfitFor } from '../core/library/city/people';
 import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import { mulberry32 } from '../core/library/scene-world';
-import type { Sky } from '../core/library/sky';
+import { mixHex, type Sky, skyAt } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
-import * as food from './shop-interiors-alimentation';
-import * as shops from './shop-interiors-boutiques';
+import { bakery, butcher, cheese, chocolatier, fishmonger, greengrocer, grocery, minimarket, pastry, wine } from './shop-interiors-alimentation';
+import { antiques, bikes, bookshop, florist, games, optician, petshop, records, thrift } from './shop-interiors-boutiques';
 import { counter, group, type Kit, makeKit, poly, shelf } from './shop-interiors-kit';
-import * as meals from './shop-interiors-restauration';
+import { cafe, kebab, pizzeria, restaurant, sushi, tearoom } from './shop-interiors-restauration';
 
 // Intérieurs des 32 commerces, vus par la vitrine (dessinés dans le <svg> imbriqué de ShopFront, qui rogne). Repère LOCAL :
 // x de 0 à w (8 à 40), y de 0 (plafond) à h (≈ 21, sol). Mur et bande de sol (3 px) aux couleurs du catalogue, mobilier en
 // formes simples placé en fractions de w, éléments répétés tant qu'ils tiennent. Le vendeur (passant à l'échelle 0,5, ≈ 20 de
 // haut) est glissé entre le fond et le premier plan : derrière le comptoir il n'en dépasse que le buste. Seul le vendeur porte un
-// `transform`. `lit` (boutique éclairée) allume écrans, frigos, aquariums, croix verte, bougies, bornes et spots ; le reste suit
-// tone(c, sky). Aucun id, aucune animation (gestes = 1b-iv-b). Familles : alimentation, boutiques et restauration dans leurs
+// `transform`. `lit` (boutique éclairée) allume écrans, frigos, aquariums, croix verte, bougies, bornes et spots, et garde au
+// reste ses couleurs de jour réchauffées ; éteinte, tout suit tone(c, sky). Aucun id, aucune animation (gestes = 1b-iv-b). Familles : alimentation, boutiques et restauration dans leurs
 // fichiers ; services et nuit ci-dessous.
 
 // ---------- Services ----------
@@ -196,9 +196,31 @@ function nightclub(k: Kit): number {
 }
 
 const DRAW: Readonly<Record<ShopTypeId, (k: Kit) => number>> = {
-  ...food,
-  ...shops,
-  ...meals,
+  bakery,
+  pastry,
+  chocolatier,
+  butcher,
+  fishmonger,
+  cheese,
+  greengrocer,
+  wine,
+  grocery,
+  minimarket,
+  florist,
+  bookshop,
+  records,
+  games,
+  optician,
+  thrift,
+  antiques,
+  petshop,
+  bikes,
+  cafe,
+  restaurant,
+  pizzeria,
+  kebab,
+  sushi,
+  tearoom,
   pharmacy,
   hairdresser,
   tattoo,
@@ -208,9 +230,14 @@ const DRAW: Readonly<Record<ShopTypeId, (k: Kit) => number>> = {
   nightclub,
 };
 
+// Boutique ouverte et éclairée (`lit`) : l'intérieur garde ses couleurs de jour, légèrement réchauffées par la lumière des
+// plafonniers, quelle que soit l'heure ; éteinte, il suit le ciel (tone). Les sources de lumière (`on`) restent vives.
+const LIT_SKY = skyAt(13 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 });
+const WARM = '#FFE2A8';
+
 export function ShopInterior({ type, w, h, sky, lit, staffed, seed }: { type: ShopTypeId; w: number; h: number; sky: Sky; lit: boolean; staffed: boolean; seed: number }): ReactElement {
   const def = SHOP_DEFS[type];
-  const t = (c: string): string => tone(c, sky);
+  const t = lit ? (c: string): string => mixHex(tone(c, LIT_SKY), WARM, 0.12) : (c: string): string => tone(c, sky);
   const k = makeKit(w, h, t, lit);
   const vx = Math.min(w - 2.5, Math.max(2.5, DRAW[type](k)));
   // Tenue tirée de la graine du local ; un commerçant au travail ne porte ni sac ni cartable.
@@ -222,7 +249,7 @@ export function ShopInterior({ type, w, h, sky, lit, staffed, seed }: { type: Sh
       {group(k.back)}
       {staffed && (
         <g data-staff="" transform={`translate(${vx.toFixed(2)} ${h - 1}) scale(0.5)`}>
-          <PersonSprite outfit={outfit} sky={sky} rainy={false} umbrella={false} />
+          <PersonSprite outfit={outfit} sky={lit ? LIT_SKY : sky} rainy={false} umbrella={false} />
         </g>
       )}
       {group(k.front)}
