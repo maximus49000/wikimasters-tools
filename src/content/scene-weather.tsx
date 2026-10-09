@@ -116,6 +116,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     let colorKey = '';
     let lastPrecip = '';
     let lastHidden = '';
+    let lastOvercast = '';
     // null : pas encore signalé — le premier placement signale toujours l'état (une relance de la boucle ne laisse pas d'état périmé).
     let wet: boolean | null = null;
     let lastMs = Date.now();
@@ -140,22 +141,33 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       const lean = -12 - w.wind * 22; // inclinaison des gouttes (degrés)
 
       // Ciel : de vrais nuages (leur NOMBRE = la couverture) ; leur teinte et l'obscurité du ciel suivent l'intensité de la pluie.
-      const dark = clamp01(w.precip * (w.kind === 'rain' ? 1.15 : 0.7) + 0.35 * smoothstep(0.85, 1, w.cloud));
-      const thick = w.cloud * (0.3 + 0.7 * dark);
+      const rainDark = clamp01(w.precip * (w.kind === 'rain' ? 1.15 : 0.7));
+      const dark = clamp01(rainDark + 0.35 * smoothstep(0.85, 1, w.cloud));
+      // Ciel couvert sans pluie : des nuages nettement plus sombres que le voile gris du fond (le voile ne couvre que le ciel).
+      const cloudDark = Math.max(dark, 0.75 * smoothstep(0.7, 1, w.cloud));
+      // Le voile par-dessus le décor ne dépend que de la pluie : les immeubles restent bien visibles quand il ne pleut pas.
+      const thick = w.cloud * (0.3 + 0.7 * rainDark);
       // Couleurs recalculées seulement quand l'obscurité ou le jour bougent d'un cran (1/64) : pas de chaînes neuves à chaque image.
-      const key = `${Math.round(dark * 64)}|${Math.round(daylight * 64)}`;
+      const key = `${Math.round(dark * 64)}|${Math.round(cloudDark * 64)}|${Math.round(daylight * 64)}`;
       if (key !== colorKey) {
         colorKey = key;
         const tintColor = mixHex('#1A1E2B', mixHex('#9AA4B2', '#4E5663', dark), daylight);
         for (const stop of tintStops) put(stop, 'stop-color', tintColor);
-        put(nodes.clouds, 'fill', mixHex(mixHex('#262C46', '#FFFFFF', daylight), mixHex('#2F3542', '#6A7280', daylight), dark));
+        put(nodes.clouds, 'fill', mixHex(mixHex('#262C46', '#FFFFFF', daylight), mixHex('#2F3542', '#6A7280', daylight), cloudDark));
         const overcastColor = mixHex('#1A1E2B', mixHex('#B9C0CA', '#454C58', dark), daylight);
         for (const stop of overcastStops) put(stop, 'stop-color', overcastColor);
+        svg?.style.setProperty('--wmt-overcast-color', overcastColor);
       }
       set(nodes.tint, 0.92 * thick);
       // Ciel entièrement couvert : le voile gris doit cacher le bleu (même sans pluie), pas seulement le tamiser.
       const overcast = w.cloud > 0.8 ? clamp01((w.cloud - 0.8) / 0.15) * (0.95 + 0.05 * dark) : 0;
-      set(nodes.overcast, overcast);
+      // Le gris du ciel couvert est dessiné DANS le décor, sous les immeubles (voir SkyAndStars) ; ici il ne reste qu'un léger voile.
+      set(nodes.overcast, overcast * 0.15);
+      const overcastText = overcast.toFixed(2);
+      if (overcastText !== lastOvercast) {
+        lastOvercast = overcastText;
+        svg?.style.setProperty('--wmt-overcast', overcastText);
+      }
       // Nombre de nuages = couverture × réserve ; le nuage « à la frontière » est partiellement visible, et chacun suit sa cible en fondu.
       const wanted = w.cloud * cloudNodes.length;
       const maxStep = dt / CLOUD_FADE_S;

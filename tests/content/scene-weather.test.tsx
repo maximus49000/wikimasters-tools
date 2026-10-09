@@ -117,7 +117,7 @@ describe('WeatherLayer', () => {
     const rainLuma = remount('rain');
     const stormLuma = remount('storm');
     expect(visibleClouds()).toBeGreaterThanOrEqual(cloudyCount);
-    expect(opacity('overcast')).toBeGreaterThan(0.4);
+    expect(opacity('overcast')).toBeGreaterThan(0.1);
     expect(cloudyLuma).toBeGreaterThanOrEqual(drizzleLuma - 1);
     expect(drizzleLuma).toBeGreaterThan(rainLuma);
     expect(rainLuma).toBeGreaterThan(stormLuma);
