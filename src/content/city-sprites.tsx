@@ -101,6 +101,26 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella }: { outfit: Outf
   );
 }
 
+// ---------- Cycliste assis (repère du vélo : il est dessiné à l'échelle des véhicules, ≈ 0,65 de celle d'un passant) ----------
+const DEFAULT_RIDER: Outfit = { skin: '#E0A97F', hair: 'short', hairColor: '#3B2A1E', hatColor: '#3B6FD6', top: 'jacket', topColor: '#3B6FD6', bottom: 'jeans', bottomColor: '#243044', accessory: 'none', accessoryColor: '#5A6B7A' };
+
+function Cyclist({ outfit: o, sky }: { outfit: Outfit; sky: Sky }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
+  const covered = o.hair === 'cap' || o.hair === 'beanie';
+  return (
+    <g data-rider="" stroke="none">
+      {/* Jambe : hanche sur la selle, genou levé, pied sur la pédale */}
+      <path data-rider-leg="" d="M-3 -16 L2.5 -12 L0.5 -6" stroke={t(o.bottomColor)} strokeWidth={2.2} strokeLinecap="round" fill="none" />
+      {/* Buste penché vers le guidon, bras tendu */}
+      <path data-rider-torso="" d="M-4.6 -16.5 L-2 -24 L1.6 -23 L-0.6 -15.5Z" fill={t(o.topColor)} />
+      <path d="M0.4 -22 L2.6 -15.4" stroke={t(o.topColor)} strokeWidth={1.4} strokeLinecap="round" fill="none" />
+      {/* Tête */}
+      <circle data-rider-head="" cx={0} cy={-26.6} r={2.6} fill={t(o.skin)} />
+      {o.hair !== 'bald' && <path d="M-2.7 -26.6 A2.7 2.7 0 0 1 2.7 -26.6 Z" fill={t(covered ? o.hatColor : o.hairColor)} />}
+    </g>
+  );
+}
+
 // ---------- Véhicules (roues à y = 0, regardent vers +x ; la file du fond est retournée par l'appelant) ----------
 const GLASS = '#CFE4F2';
 
@@ -142,12 +162,13 @@ export function VehicleSprite({ vehicle, sky, lights }: { vehicle: Vehicle; sky:
         </g>
       );
     case 'bike':
-      // Vélo sans cycliste : deux roues (cercles vides) + cadre en V.
+      // Vélo : deux roues (cercles vides) + cadre en V, et son cycliste assis (selle en (-3, -15), guidon en (2, -15)).
       return (
         <g fill="none" stroke={tone('#3B3F4A', sky)} strokeWidth={1.2}>
           <circle cx={-7} cy={-5} r={5} />
           <circle cx={7} cy={-5} r={5} />
           <path d="M-7 -5 L0 -12 L7 -5 M0 -12 L2 -15 M0 -12 L-3 -15" stroke={body} strokeWidth={1.4} />
+          <Cyclist outfit={vehicle.rider ?? DEFAULT_RIDER} sky={sky} />
           {lights && (
             <g data-headlight="">
               <circle cx={9} cy={-14} r={1.6} fill="#FFE9A0" stroke="none" />
@@ -202,7 +223,8 @@ export function LampSprite({ lit }: { lit: boolean }): ReactElement {
 // Bord gauche d'une entrée dessinée à l'échelle `unit`, pour que son centre reste à door.x + 11 (là où partent les habitants).
 export const entranceLeft = (doorX: number, unit: number): number => doorX + (DOOR_WIDTH / 2) * (1 - unit);
 
-// ---------- Entrée d'immeuble : cadre 22×27 de x = 0 à 22 (DOOR_WIDTH), auvent un peu plus large, base à y = 0 ----------
+// ---------- Entrée d'immeuble : sprite 22 × 27 de x = 0 à 22, auvent un peu plus large, base à y = 0 ----------
+// Dessinée à l'échelle STREET_SCALE.entranceX × entranceY (metrics.ts) : cadre de DOOR_WIDTH = 12 px de large à l'écran.
 export function EntranceSprite({ variant, hallLit, sky }: { variant: 0 | 1 | 2; hallLit: boolean; sky: Sky }): ReactElement {
   const glass = hallLit ? '#FFD27A' : sky.daylight < 0.4 ? '#232A4A' : '#9FB8C6';
   return (

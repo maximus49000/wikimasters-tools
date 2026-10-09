@@ -1,17 +1,17 @@
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { lampLit } from '../core/library/activity';
 import { doorsFor } from '../core/library/city/doors';
-import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
 import { mixHex } from '../core/library/sky';
-import { EntranceSprite, LampSprite, entranceLeft } from './city-sprites';
+import { EntranceSprite, entranceLeft } from './city-sprites';
 import type { SceneBodyProps } from './scene-panorama';
 
 // Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
 const FAR_LIGHT = 0.5;
 
-export function CityScene({ width, height, sky, minutes, seed, gloom = false, forcedNight = false }: SceneBodyProps): ReactElement {
+// Les lampadaires ne sont pas ici : ils sont dans le calque animé, devant les passants (StreetLamps, city-life.tsx).
+export function CityScene({ width, height, sky, minutes, seed, gloom = false }: SceneBodyProps): ReactElement {
   const metrics = cityMetrics(height);
   const { ground, unit } = metrics;
   const sidewalk = height * 0.07;
@@ -22,9 +22,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, fo
   // Ciel sombre (gros nuages) : on allume en plein jour, et les lumières se voient.
   const dim = Math.max(1 - sky.daylight, gloom ? 0.7 : 0);
   // Immeubles étirés (proportions avec les passants), fenêtres d'origine en haut et étages ajoutés : voir facades.ts.
-  const buildings = cityFacades(width, height, seed);
-  const doors = doorsFor(width, height, seed);
-  const lamps = lampsFor(width, seed);
+  const buildings = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
+  const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
   // Hall d'entrée éclairé la nuit (un peu plus d'une entrée sur deux).
   const dark = sky.daylight < 0.45;
   const lane = mixHex('#8A8C9E', '#F2EEE2', sky.daylight);
@@ -100,14 +99,6 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, fo
           <EntranceSprite variant={door.variant} hallLit={dark && door.hallU < 0.6} sky={sky} />
         </g>
       ))}
-      {lamps.map((lamp) => {
-        const lit = streetLampLit(lamp, minutes, sky.daylight, forcedNight);
-        return (
-          <g key={lamp.id} data-street-lamp={lamp.id} data-lit={lit ? 'true' : 'false'} transform={`translate(${lamp.x} ${(ground + sidewalk).toFixed(1)}) scale(${(unit * STREET_SCALE.lamp).toFixed(3)})`}>
-            <LampSprite lit={lit} />
-          </g>
-        );
-      })}
     </g>
   );
 }

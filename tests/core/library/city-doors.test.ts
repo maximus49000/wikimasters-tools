@@ -6,17 +6,22 @@ import { WORLD_MARGIN, citySkyline } from '../../../src/core/library/scene-world
 
 describe('doorsFor', () => {
   it('une entrée par immeuble visible du premier plan, à l’intérieur avec une marge, de façon déterministe', () => {
-    for (const seed of [1, 5, 12345]) {
-      const doors = doorsFor(720, 340, seed);
-      expect(doors).toEqual(doorsFor(720, 340, seed));
-      const near = citySkyline(720, 340, seed).filter((b) => !b.far && b.x < 720);
-      expect(doors).toHaveLength(near.length);
-      near.forEach((b, i) => {
-        const d = doors[i]!;
-        expect(d.x).toBeGreaterThanOrEqual(b.x + DOOR_MARGIN - 0.05);
-        expect(d.x + DOOR_WIDTH).toBeLessThanOrEqual(b.x + b.w - DOOR_MARGIN + 0.05);
-        expect([0, 1, 2]).toContain(d.variant);
-      });
+    for (const width of [360, 720, 1000, 2880]) {
+      for (const seed of [1, 5, 12345]) {
+        const doors = doorsFor(width, 340, seed);
+        expect(doors).toEqual(doorsFor(width, 340, seed));
+        // Immeubles dont la partie visible ([0, width)) peut porter une entrée avec ses marges.
+        const near = citySkyline(width, 340, seed).filter((b) => !b.far && Math.min(b.x + b.w, width) - Math.max(b.x, 0) >= DOOR_WIDTH + 2 * DOOR_MARGIN);
+        expect(doors).toHaveLength(near.length);
+        near.forEach((b, i) => {
+          const d = doors[i]!;
+          expect(d.x).toBeGreaterThanOrEqual(b.x + DOOR_MARGIN - 0.1);
+          expect(d.x + DOOR_WIDTH).toBeLessThanOrEqual(b.x + b.w - DOOR_MARGIN);
+          expect(d.x).toBeGreaterThanOrEqual(0);
+          expect(d.x + DOOR_WIDTH).toBeLessThanOrEqual(width);
+          expect([0, 1, 2]).toContain(d.variant);
+        });
+      }
     }
   });
   it('aucune entrée sur les immeubles du fond', () => {

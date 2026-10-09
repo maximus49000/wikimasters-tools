@@ -4,7 +4,7 @@ import type { CityContext } from '../core/library/city/intensity';
 import type { SceneId } from '../core/library/library-types';
 import { actorX, actorsFor, mulberry32, type Actor } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
-import { CityLifeLayer } from './city-life';
+import { CityLifeLayer, StreetLamps } from './city-life';
 import { CityScene } from './scene-city';
 import { CountrysideScene, MountainScene, SeaScene } from './scene-nature';
 import { ActorSprite } from './scene-sprites';
@@ -123,7 +123,7 @@ function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, glo
 
 // Acteurs animés (passants, voitures, bateaux…), dans le même repère et sur la même horloge murale que le décor fixe :
 // la boucle d'animation ne modifie que ce groupe.
-function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = false, city }: PanoramaProps): ReactElement {
+function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = false, city, forcedNight = false }: PanoramaProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
   const actors = useMemo(() => actorsFor(scene, width, height, seed), [scene, width, height, seed]);
   useActorLoop(root, actors, width);
@@ -148,7 +148,9 @@ function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = fal
         );
       })}
       {/* Ville : la population (passants, habitants, circulation) a sa propre couche et sa propre boucle. */}
-      {scene === 'city' && city && <CityLifeLayer width={width} height={height} sky={sky} seed={seed} city={city} rainy={rainy} />}
+      {scene === 'city' && city && <CityLifeLayer width={width} height={height} sky={sky} seed={seed} city={city} rainy={rainy} forcedNight={forcedNight} />}
+      {/* Sans contexte de ville (pas de population), les lampadaires restent : ils sont dans ce calque pour passer devant les passants. */}
+      {scene === 'city' && !city && <StreetLamps width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} forcedNight={forcedNight} />}
     </g>
   );
 }

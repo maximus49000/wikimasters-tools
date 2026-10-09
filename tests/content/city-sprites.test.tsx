@@ -164,6 +164,25 @@ describe('sprites de la ville : détails', () => {
     expect(bike.querySelectorAll('circle[r="5"]').length).toBe(2);
     expect(svg(<VehicleSprite vehicle={mk('van')} sky={sky} lights={false} />).querySelector('rect[width="46"][height="18"]')).not.toBeNull();
   });
+  it('le vélo porte un cycliste assis : jambe vers la pédale, buste vers le guidon, tête au-dessus de la selle, aux couleurs de sa tenue', () => {
+    const rider: Outfit = { ...outfitFor('ordinary', mulberry32(9)), hair: 'short', topColor: '#C0463A', bottomColor: '#243044' };
+    const bike: Vehicle = { id: 'b', lane: 'near', kind: 'bike', color: '#3B6FD6', speed: 1, phase: 0, u: 0, scale: 1, rider };
+    const el = svg(<VehicleSprite vehicle={bike} sky={sky} lights={false} />);
+    const r = el.querySelector('[data-rider]')!;
+    expect(r).not.toBeNull();
+    // Jambe : hanche sur la selle (-3, -16), pied sur le pédalier (0,5 ; -6).
+    expect(r.querySelector('[data-rider-leg]')!.getAttribute('d')).toBe('M-3 -16 L2.5 -12 L0.5 -6');
+    expect(r.querySelector('[data-rider-torso]')!.getAttribute('d')).toBe('M-4.6 -16.5 L-2 -24 L1.6 -23 L-0.6 -15.5Z');
+    const head = r.querySelector('circle[data-rider-head]')!;
+    expect(head.getAttribute('cy')).toBe('-26.6');
+    expect(head.getAttribute('r')).toBe('2.6');
+    // Plein jour : couleurs de la tenue telles quelles.
+    expect(r.querySelector('[data-rider-torso]')!.getAttribute('fill')!.toLowerCase()).toBe('#c0463a');
+    expect(r.querySelector('[data-rider-leg]')!.getAttribute('stroke')!.toLowerCase()).toBe('#243044');
+    // Sans tenue fournie, un cycliste par défaut ; une voiture n'en a pas.
+    expect(svg(<VehicleSprite vehicle={{ ...bike, rider: undefined }} sky={sky} lights={false} />).querySelector('[data-rider]')).not.toBeNull();
+    expect(svg(<VehicleSprite vehicle={{ ...bike, kind: 'car' }} sky={sky} lights={false} />).querySelector('[data-rider]')).toBeNull();
+  });
   it('les trois entrées diffèrent, cadre de x = 0 sur 22 de large', () => {
     const outs = ([0, 1, 2] as const).map((variant) => svg(<EntranceSprite variant={variant} hallLit={false} sky={sky} />));
     expect(new Set(outs.map((o) => o.innerHTML)).size).toBe(3);

@@ -4,21 +4,30 @@ import { WALK_PACE } from './metrics';
 import { outfitFor, type Outfit, type Profile } from './people';
 
 export type Door = { id: string; x: number; variant: 0 | 1 | 2; hallU: number };
-// Largeur du cadre de l'entrée telle que dessinée (sprite de 22 px réduit, voir ENTRANCE_SCALE dans city-sprites).
+// Largeur du cadre de l'entrée telle que dessinée : sprite de 22 px × STREET_SCALE.entranceX (metrics.ts) = 12 px.
 export const DOOR_WIDTH = 12;
 // Marge entre l'entrée et les bords de son immeuble (auvent, interphone et plaque débordent un peu du cadre).
 export const DOOR_MARGIN = 4;
 export const TRIP_CYCLE = 160;
 
 // Une entrée par immeuble du premier plan visible (les plus étroits font 28 px : l'entrée de 12 px y tient avec ses marges).
+// L'entrée est placée dans la partie visible de l'immeuble ([0, width)) ; un immeuble dont la partie visible est trop étroite
+// pour une entrée (coupé au bord du monde) n'en a pas.
 export function doorsFor(width: number, height: number, seed: number): Door[] {
   const rng = mulberry32(seed ^ hashString('doors'));
-  return citySkyline(width, height, seed)
-    .filter((b) => !b.far && b.x < width)
-    .map((b, i) => {
-      const room = Math.max(0, b.w - DOOR_WIDTH - 2 * DOOR_MARGIN);
-      return { id: `door-${i}`, x: Math.round((b.x + DOOR_MARGIN + rng() * room) * 10) / 10, variant: Math.floor(rng() * 3) as 0 | 1 | 2, hallU: rng() };
-    });
+  const out: Door[] = [];
+  for (const b of citySkyline(width, height, seed)) {
+    if (b.far || b.x + b.w <= 0 || b.x >= width) continue;
+    // Trois tirages par immeuble visible, même s'il n'a pas d'entrée : les suivantes ne changent pas.
+    const at = rng();
+    const variant = Math.floor(rng() * 3) as 0 | 1 | 2;
+    const hallU = rng();
+    const lo = Math.max(b.x, 0) + DOOR_MARGIN;
+    const hi = Math.min(b.x + b.w, width) - DOOR_MARGIN - DOOR_WIDTH;
+    if (hi < lo) continue;
+    out.push({ id: `door-${out.length}`, x: Math.floor((lo + at * (hi - lo)) * 10) / 10, variant, hallU });
+  }
+  return out;
 }
 
 export type Trip = { id: string; kind: 'out' | 'in'; doorX: number; dir: 1 | -1; speed: number; phase: number; outfit: Outfit; profile: Profile; scale: number };

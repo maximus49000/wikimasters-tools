@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScenePanorama } from '../../src/content/scene-panorama';
 import { dayContext } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
+import { doorsFor } from '../../src/core/library/city/doors';
 import { citySkyline } from '../../src/core/library/scene-world';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
@@ -94,7 +95,8 @@ describe('ScenePanorama (ville)', () => {
     const lit = (): number => container.querySelectorAll('[data-street-lamp][data-lit="true"]').length;
     render(23 * 60);
     // Une entrée par immeuble visible du premier plan.
-    expect(container.querySelectorAll('[data-door] [data-entrance]')).toHaveLength(citySkyline(720, 340, 5).filter((b) => !b.far && b.x < 720).length);
+    expect(container.querySelectorAll('[data-door] [data-entrance]')).toHaveLength(doorsFor(720, 340, 5).length);
+    expect(doorsFor(720, 340, 5).length).toBeGreaterThanOrEqual(citySkyline(720, 340, 5).filter((b) => !b.far && b.x + b.w <= 720).length);
     const lamps = container.querySelectorAll('[data-street-lamp]').length;
     expect(lamps).toBeGreaterThan(2);
     expect(lit()).toBe(lamps);

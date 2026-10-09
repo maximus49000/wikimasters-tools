@@ -93,4 +93,62 @@ describe('CityLifeLayer', () => {
     }
     expect(active(c, '[data-resident]')).toBe(expected);
   });
+  it('les lampadaires sont dessinés après les passants (devant eux) et avant les voitures', () => {
+    const c = make(21, { y: 2026, m: 10, d: 5 });
+    const layer = c.querySelector('[data-city-life]')!;
+    const order = Array.from(layer.children).map((el) => (el.hasAttribute('data-city-sidewalk') ? 'sidewalk' : el.hasAttribute('data-street-lamps') ? 'lamps' : el.getAttribute('data-city-lane')));
+    expect(order).toEqual(['sidewalk', 'lamps', 'far', 'near']);
+    expect(layer.querySelectorAll('[data-street-lamp][data-lit="true"]').length).toBeGreaterThan(0);
+  });
+  it('les vélos roulent sur leur piste, dessinés après les voitures de la file du premier plan', () => {
+    const c = make(12, { y: 2026, m: 10, d: 10 });
+    const near = Array.from(c.querySelectorAll('[data-city-lane="near"] [data-vehicle]'));
+    const kinds = near.map((n) => n.getAttribute('data-kind'));
+    const firstBike = kinds.indexOf('bike');
+    if (firstBike >= 0) expect(kinds.slice(firstBike).every((k) => k === 'bike')).toBe(true);
+  });
+});
+
+describe('CityLifeLayer : boucle d’animation', () => {
+  it('un passant ou un véhicule qui devient absent continue d’avancer pendant son fondu, puis s’arrête', () => {
+    let now = 1_760_000_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    let tick: ((ms: number) => void) | null = null;
+    vi.stubGlobal('requestAnimationFrame', (cb: (ms: number) => void) => {
+      tick = cb;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    const ymd = { y: 2026, m: 10, d: 5 };
+    const ctx = (hours: number): CityContext => {
+      const minutes = Math.round(hours * 60);
+      return { minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight: skyAt(minutes, times).daylight };
+    };
+    const sky = skyAt(495, times);
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={ctx(8.25)} rainy={false} /></svg>));
+    const before = new Set(Array.from(host.querySelectorAll('[data-vehicle][data-active="true"], [data-ped][data-active="true"]')).map((n) => n.getAttribute('data-life-id')));
+    // 3 h 30 : presque tout le monde disparaît.
+    act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={ctx(3.5)} rainy={false} /></svg>));
+    const leaving = Array.from(host.querySelectorAll<SVGGElement>('[data-vehicle][data-active="false"], [data-ped][data-active="false"]')).filter((n) => before.has(n.getAttribute('data-life-id')));
+    expect(leaving.length).toBeGreaterThan(0);
+    const node = leaving[0]!;
+    const at = (): string | null => node.getAttribute('transform');
+    const frame = (dtMs: number, rafMs: number): void => {
+      now += dtMs;
+      act(() => tick!(rafMs));
+    };
+    const t1 = at();
+    frame(1000, 1000);
+    const t2 = at();
+    expect(t2).not.toBe(t1); // pendant le fondu : il avance encore
+    frame(3000, 4000);
+    const t3 = at();
+    frame(1000, 5000);
+    expect(at()).toBe(t3); // fondu fini : il ne bouge plus (opacité 0, aucune écriture)
+    vi.unstubAllGlobals();
+  });
 });

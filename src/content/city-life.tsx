@@ -1,30 +1,59 @@
 import { useMemo, useRef, type ReactElement } from 'react';
 import { doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { cityIntensity, type CityContext } from '../core/library/city/intensity';
+import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
 import { loopX } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
-import { PersonSprite, VehicleSprite } from './city-sprites';
+import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Vie de la scène Ville : passants, habitants qui sortent de leur immeuble ou y rentrent, deux files de circulation.
 // La présence (data-active, opacité) ne change qu'à la minute (re-rendu React) ; les positions sont posées par la boucle
 // d'animation directement sur `transform`, sans re-rendu. Seuls les habitants voient aussi leur présence décidée par la
 // boucle (un tirage par tour de cycle de trajet).
-export type CityLifeProps = { width: number; height: number; sky: Sky; seed: number; city: CityContext; rainy: boolean };
+// `forcedNight` : mode « Toujours la nuit » (les lampadaires restent allumés).
+export type CityLifeProps = { width: number; height: number; sky: Sky; seed: number; city: CityContext; rainy: boolean; forcedNight?: boolean };
 
 // Les véhicules de la file du fond paraissent un peu plus petits.
 const FAR_SHRINK = 0.9;
 // Écart entre un parent et chaque enfant qu'il accompagne (repère du sprite, avant l'échelle).
 const COMPANION_GAP = 16;
+// Durée du fondu d'apparition/disparition (CSS) ; un absent continue d'avancer tant qu'il s'efface (avec une petite marge).
+const FADE_S = 3;
+// Les vélos roulent sur une piste au bord de la file du premier plan (côté droit du sens de marche, vers le spectateur).
+const BIKE_TRACK_DY = 2;
 
 const vehicleTransform = (v: Vehicle, m: CityMetrics, width: number, t: number): string => {
   const x = loopX(v.phase, LANE_DIR[v.lane] * v.speed, width, t);
   const k = m.unit * STREET_SCALE.vehicle * v.scale * (v.lane === 'far' ? FAR_SHRINK : 1);
-  return `translate(${x.toFixed(1)} ${m.laneY[v.lane].toFixed(1)}) scale(${(LANE_DIR[v.lane] * k).toFixed(3)} ${k.toFixed(3)})`;
+  const y = m.laneY[v.lane] + (v.kind === 'bike' ? BIKE_TRACK_DY * m.unit : 0);
+  return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(LANE_DIR[v.lane] * k).toFixed(3)} ${k.toFixed(3)})`;
 };
+
+type StreetLampsProps = { width: number; height: number; seed: number; minutes: number; daylight: number; forcedNight?: boolean };
+
+// Lampadaires au bord du trottoir : dessinés devant les passants (leur pied est plus près de la rue) et derrière les voitures.
+// Ils sont dans le calque animé (la boucle n'y touche pas) ; sans contexte de ville, SceneActors les dessine seuls.
+export function StreetLamps({ width, height, seed, minutes, daylight, forcedNight = false }: StreetLampsProps): ReactElement {
+  const lamps = useMemo(() => lampsFor(width, seed), [width, seed]);
+  const m = cityMetrics(height);
+  const curb = m.ground + height * 0.07;
+  return (
+    <g data-street-lamps="">
+      {lamps.map((lamp) => {
+        const lit = streetLampLit(lamp, minutes, daylight, forcedNight);
+        return (
+          <g key={lamp.id} data-street-lamp={lamp.id} data-lit={lit ? 'true' : 'false'} transform={`translate(${lamp.x} ${curb.toFixed(1)}) scale(${(m.unit * STREET_SCALE.lamp).toFixed(3)})`}>
+            <LampSprite lit={lit} />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
 
 const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number): string => {
   const x = loopX(p.phase, p.dir * p.speed, width, t);
@@ -50,8 +79,10 @@ const setIfChanged = (node: Element, name: string, value: string): void => {
   if (node.getAttribute(name) !== value) node.setAttribute(name, value);
 };
 
-export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLifeProps): ReactElement {
+export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNight = false }: CityLifeProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
+  // Passants et véhicules présents au dernier placement : ceux qui disparaissent continuent d'avancer pendant leur fondu.
+  const moving = useRef<Set<string>>(new Set());
   // Calculs mémoïsés par (width, height, seed) : populations, entrées, trajets. Recalculés par minute : intensités.
   const metrics = useMemo(() => cityMetrics(height), [height]);
   const peds = useMemo(() => pedestriansFor(width, seed), [width, seed]);
@@ -68,19 +99,25 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLif
   const vehActive = useMemo(() => new Set(vehicles.filter((v) => v.u < vehicleGate(v, intensity)).map((v) => v.id)), [vehicles, intensity]);
 
   // Placement à chaque image. La table des nœuds est remplie au premier appel (après le montage) ;
-  // tout est placé une fois, puis seuls les présents bougent (les absents sont à opacité 0).
+  // tout est placé une fois, puis bougent les présents et, pendant leur fondu, ceux qui viennent de disparaître.
   const place = useMemo(() => {
     let nodes: Map<string, SVGGElement> | null = null;
     let first = true;
+    let leaving = new Set<string>();
+    let leaveUntil = 0;
+    const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
     return (t: number): void => {
       const el = root.current;
       if (!el) return;
       if (!nodes) {
         nodes = new Map();
         for (const node of el.querySelectorAll<SVGGElement>('[data-life-id]')) nodes.set(node.getAttribute('data-life-id')!, node);
+        leaving = new Set([...moving.current].filter((id) => !vehActive.has(id) && !pedActive.has(id)));
+        leaveUntil = t + FADE_S + 0.2;
+        moving.current = new Set([...vehActive, ...pedActive]);
       }
-      for (const v of vehicles) if (first || vehActive.has(v.id)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t));
-      for (const p of peds) if (first || pedActive.has(p.id)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
+      for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t));
+      for (const p of peds) if (moves(p.id, t)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
       for (const trip of trips) {
         const node = nodes.get(trip.id);
         if (!node) continue;
@@ -99,8 +136,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLif
   const t0 = Date.now() / 1000;
   const lane = (which: 'far' | 'near'): ReactElement => (
     <g data-city-lane={which}>
-      {vehicles
-        .filter((v) => v.lane === which)
+      {/* Vélos après les voitures : leur piste est au bord de la file, plus près du spectateur. */}
+      {[...vehicles.filter((v) => v.lane === which && v.kind !== 'bike'), ...vehicles.filter((v) => v.lane === which && v.kind === 'bike')]
         .map((v) => {
           const active = vehActive.has(v.id);
           return (
@@ -113,7 +150,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLif
               data-active={active ? 'true' : 'false'}
               transform={vehicleTransform(v, metrics, width, t0)}
               opacity={active ? 1 : 0}
-              style={{ transition: 'opacity 3s ease' }}
+              style={{ transition: `opacity ${FADE_S}s ease` }}
             >
               <VehicleSprite vehicle={v} sky={sky} lights={lights} />
             </g>
@@ -124,7 +161,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLif
 
   return (
     <g data-city-life="" ref={root}>
-      {/* Ordre de dessin : trottoir (passants, habitants) au fond, contre les immeubles, puis la file du fond, puis celle du premier plan. */}
+      {/* Ordre de dessin : trottoir (passants, habitants) au fond, contre les immeubles, puis les lampadaires (bord du trottoir),
+          la file du fond, puis celle du premier plan. */}
       <g data-city-sidewalk="">
         {trips.map((trip) => {
           const s = residentState(trip, gateOf(trip), width, t0);
@@ -154,7 +192,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLif
               data-active={active ? 'true' : 'false'}
               transform={pedTransform(p, metrics, width, t0)}
               opacity={active ? 1 : 0}
-              style={{ transition: 'opacity 3s ease' }}
+              style={{ transition: `opacity ${FADE_S}s ease` }}
             >
               {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7. */}
               {p.companions.map((outfit, k) => (
@@ -167,6 +205,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLif
           );
         })}
       </g>
+      <StreetLamps width={width} height={height} seed={seed} minutes={city.minutes} daylight={sky.daylight} forcedNight={forcedNight} />
       {lane('far')}
       {lane('near')}
     </g>
