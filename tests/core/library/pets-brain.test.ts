@@ -133,3 +133,48 @@ describe('touchPlan', () => {
     expect(touchPlan(sitting, env([]), 9000)).toBeNull();
   });
 });
+
+describe('chien', () => {
+  const dog = (layout: Layout, seed: number, extra: Partial<BrainEnv> = {}) => env(layout, seed, { species: 'dog', ...extra });
+  const furnished: Layout = [
+    { id: 's', kind: 'shelf', col: 2, row: 6 },
+    { id: 'd', kind: 'desk', col: 8, row: 12 },
+    { id: 'a', kind: 'armchair', col: 14, row: 14 },
+    { id: 'f', kind: 'sofa', col: 20, row: 14 },
+    { id: 'k', kind: 'kennel', col: 28, row: 15 },
+  ];
+
+  it('ne monte jamais sur l étagère, le bureau ou le fauteuil, ne se cache ni ne griffe', () => {
+    for (const s of seeds) {
+      const p = nextPlan(dog(furnished, s), from, 0);
+      expect(['s', 'd', 'a']).not.toContain(p.on);
+      expect(['hide', 'scratch']).not.toContain(p.action);
+    }
+  });
+
+  it('dort dans la niche et monte sur le canapé', () => {
+    const plans = seeds.map((s) => nextPlan(dog(furnished, s), from, 0));
+    expect(plans.some((p) => p.action === 'sleep' && p.hostId === 'k')).toBe(true);
+    expect(plans.some((p) => p.on === 'f')).toBe(true);
+  });
+
+  it('renifle et halète (actions du chien seulement)', () => {
+    const dogActions = new Set(seeds.map((s) => nextPlan(dog([], s), from, 0).action));
+    expect(dogActions.has('sniff') || dogActions.has('pant')).toBe(true);
+    const catActions = new Set(seeds.map((s) => nextPlan(env([], s), from, 0).action));
+    expect(catActions.has('sniff')).toBe(false);
+    expect(catActions.has('pant')).toBe(false);
+  });
+
+  it('va plus vite qu un chat sur le même trajet', () => {
+    const layout: Layout = [{ id: 'b', kind: 'basket', col: 30, row: 16 }];
+    const ms = (e: BrainEnv) => seeds.map((s) => nextPlan({ ...e, rng: seeded(s) }, from, 0)).find((p) => p.hostId === 'b')!.route.reduce((t, x) => t + x.ms, 0);
+    expect(ms(dog(layout, 1))).toBeLessThan(ms(env(layout, 1)));
+  });
+
+  it('note la place réservée visée dans le plan', () => {
+    const layout: Layout = [{ id: 'b', kind: 'basket', col: 10, row: 16 }];
+    const plan = seeds.map((s) => nextPlan(env(layout, s), from, 0)).find((p) => p.hostId === 'b')!;
+    expect(plan.key).toBe('b:curl');
+  });
+});
