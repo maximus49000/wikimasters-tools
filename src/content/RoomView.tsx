@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
+import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
 import { sizeOf } from '../core/library/furniture-catalog';
@@ -186,7 +186,15 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         <g
           data-furniture={placed.kind}
           data-id={placed.id}
-          {...(isLamp(placed) && !editing ? { role: 'button', 'aria-pressed': isLit(placed), 'aria-label': isLit(placed) ? 'Lampe allumée' : 'Lampe éteinte' } : {})}
+          {...(isLamp(placed) && !editing ? {
+            role: 'button', tabIndex: 0, 'aria-pressed': isLit(placed), 'aria-label': isLit(placed) ? 'Lampe allumée' : 'Lampe éteinte',
+            // Au clavier : Entrée ou Espace bascule la lampe, comme un clic.
+            onKeyDown: (event: KeyboardEvent<SVGGElement>) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              onPick(placed.id);
+            },
+          } : {})}
           onClick={() => onPick(placed.id)}
           onPointerDown={onFurnitureDown ? (event) => onFurnitureDown(placed.id, event) : undefined}
           onPointerMove={onFurnitureMove}
@@ -195,7 +203,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           onPointerCancel={onFurnitureUp}
           onContextMenu={(event) => event.preventDefault()}
           opacity={lifted ? 0.3 : 1}
-          style={{ cursor: editing ? 'pointer' : 'default', userSelect: 'none', WebkitTouchCallout: 'none' }}
+          style={{ cursor: editing || isLamp(placed) ? 'pointer' : 'default', userSelect: 'none', WebkitTouchCallout: 'none' }}
         >
           {art}
           {decor.glow && placed.kind !== 'rug' && neonOutline(rect, decor.glow)}
@@ -376,7 +384,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {smalls.map(renderPlaced)}
       {topPets}
       {cardLayer}
-      {light && ((weatherOn && windows.length > 0) || lightBoxes.length > 0 || lightLamps.length > 0) && (
+      {/* Sans fenêtre à ciel (calque « sans ciel ») il n'y a rien à montrer tant qu'aucune lampe n'est allumée : pas de calque à 4 Hz. */}
+      {light && ((weatherOn && windows.length > 0) || lightLamps.length > 0) && (
         <LightLayer windows={weatherOn ? glasses : NO_GLASS} width={width} height={HEIGHT} wallH={wallH} sky={view.sky} clock={view.weather?.clock ?? STILL_CLOCK} boxes={lightBoxes} lamps={lightLamps} signature={lightSignature} />
       )}
       {bubbles}

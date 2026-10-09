@@ -121,6 +121,35 @@ describe('lampes cliquables', () => {
   });
 });
 
+const key = (selector: string, k: string) =>
+  act(async () => { q(selector)!.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })); });
+
+describe('lampes au clavier (Visiter)', () => {
+  it('la lampe est atteignable (tabIndex 0), a un curseur main, et Entrée puis Espace la basculent', async () => {
+    await withLamp('visit');
+    const lamp = q('[data-furniture="lamp"]')!;
+    expect(lamp.getAttribute('tabindex')).toBe('0');
+    expect((lamp as unknown as SVGElement).style.cursor).toBe('pointer');
+    await key('[data-furniture="lamp"]', 'Enter');
+    expect(lampNow()?.lit).toBe(false);
+    await key('[data-furniture="lamp"]', ' ');
+    expect(lampNow()?.lit).toBe(true);
+    await key('[data-furniture="lamp"]', 'a');
+    expect(lampNow()?.lit).toBe(true);
+  });
+  it('en Aménager, la lampe n’est pas un bouton au clavier', async () => {
+    await withLamp('edit');
+    expect(q('[data-furniture="lamp"]')!.hasAttribute('tabindex')).toBe(false);
+  });
+  it('un meuble qui n’est pas une lampe n’a pas de curseur main en Visiter', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-kind="desk"]');
+    await click('[data-cell="2-14"]');
+    await click('[data-action="visit"]');
+    expect((q('[data-furniture="desk"]') as unknown as SVGElement).style.cursor).toBe('default');
+  });
+});
+
 describe('calque de lumière et dessin des lampes', () => {
   it('le calque existe pour une pièce avec lampe sans fenêtre, et disparaît avec la lumière inactive', async () => {
     await withLamp('edit');
@@ -140,6 +169,15 @@ describe('calque de lumière et dessin des lampes', () => {
     expect(q('[data-furniture="lamp"] [data-lamp-halo]')).toBeNull();
   });
 
+  it('les halos des lampes ne captent jamais le pointeur (zone de clic = le meuble)', async () => {
+    await withLamp('visit');
+    expect(q('[data-furniture="lamp"] [data-lamp-halo]')!.getAttribute('pointer-events')).toBe('none');
+    await click('[data-action="edit"]');
+    await click('[data-style="steampunk"]');
+    await click('[data-action="visit"]');
+    expect(q('[data-steampunk-art="lamp"] [data-lamp-halo]')!.getAttribute('pointer-events')).toBe('none');
+  });
+
   it('la lampe Steampunk suit aussi son état', async () => {
     await click('[data-action="edit"]');
     await click('[data-style="steampunk"]');
@@ -154,6 +192,24 @@ describe('calque de lumière et dessin des lampes', () => {
 });
 
 describe('lampe sans ciel terrestre', () => {
+  it('une pièce meublée dans l’espace sans lampe allumée ne monte pas le calque', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-scene="space"]');
+    await click('[data-kind="desk"]');
+    await click('[data-cell="2-14"]');
+    expect(q('[data-furniture="desk"]')).not.toBeNull();
+    expect(q('image[data-light]')).toBeNull();
+    // Une lampe éteinte ne le monte pas non plus.
+    await click('[data-category="deco"]');
+    await click('[data-kind="lamp"]');
+    await click('[data-cell="10-14"]');
+    expect(q('image[data-light]')).not.toBeNull();
+    await click('[data-furniture="lamp"]');
+    await click('[data-action="lamp"]');
+    expect(lampNow()?.lit).toBe(false);
+    expect(q('image[data-light]')).toBeNull();
+  });
+
   for (const scene of ['space', 'earth']) {
     it(`le calque existe en scène ${scene} avec une lampe`, async () => {
       await click('[data-action="edit"]');

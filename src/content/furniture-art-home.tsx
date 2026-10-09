@@ -110,7 +110,7 @@ function Lamp({ rect: { x, y, w, h }, palette: p, lit = true }: LampProps) {
   const shade = `M${x} ${y + h * 0.17} L${x + w} ${y + h * 0.17} L${x + w * 0.8} ${y} L${x + w * 0.2} ${y} Z`;
   return (
     <g>
-      {lit && <ellipse data-lamp-halo="" cx={x + w / 2} cy={y + h * 0.1} rx={w * 1.1} ry={h * 0.2} fill="#FFD38A" opacity={0.35} />}
+      {lit && <ellipse data-lamp-halo="" pointerEvents="none" cx={x + w / 2} cy={y + h * 0.1} rx={w * 1.1} ry={h * 0.2} fill="#FFD38A" opacity={0.35} />}
       <rect x={x + w * 0.1} y={y + h - 7} width={w * 0.8} height={7} rx={3} fill={p.metal} />
       <rect x={x + w / 2 - 1.5} y={y + h * 0.17} width={3} height={h * 0.83 - 6} fill={p.metal} />
       <path d={shade} fill={p.shade} stroke={p.edge} />
@@ -175,7 +175,7 @@ export function SmallArt({ item, rect, palette: p, lit = true }: LampProps & { i
   const shade = `M${cx - 12} ${base - 22} L${cx + 12} ${base - 22} L${cx + 8} ${base - 38} L${cx - 8} ${base - 38} Z`;
   return (
     <g>
-      {lit && <ellipse data-lamp-halo="" cx={cx} cy={base - 32} rx={22} ry={14} fill="#FFD38A" opacity={0.35} />}
+      {lit && <ellipse data-lamp-halo="" pointerEvents="none" cx={cx} cy={base - 32} rx={22} ry={14} fill="#FFD38A" opacity={0.35} />}
       <rect x={cx - 8} y={base - 3} width={16} height={3} rx={1.5} fill={p.metal} />
       <rect x={cx - 1.5} y={base - 22} width={3} height={20} fill={p.metal} />
       <path d={shade} fill={p.shade} stroke={p.edge} />

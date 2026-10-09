@@ -66,7 +66,7 @@ function Lamp({ rect: { x, y, w, h }, palette: p, lit = true }: Props & { lit?: 
   const motion = !reducedMotion();
   return (
     <g data-steampunk-art="lamp">
-      {lit && <circle data-lamp-halo="" cx={cx} cy={y + h * 0.17} r={Math.min(w, h) * 0.5} fill="#FFD38A" opacity={0.3} />}
+      {lit && <circle data-lamp-halo="" pointerEvents="none" cx={cx} cy={y + h * 0.17} r={Math.min(w, h) * 0.5} fill="#FFD38A" opacity={0.3} />}
       <ellipse cx={cx} cy={y + h - 4} rx={w * 0.4} ry={4} fill={p.metal} stroke={p.woodDark} strokeWidth={1} />
       <rect x={cx - 2} y={y + h * 0.3} width={4} height={h * 0.7 - 6} fill={p.metal} />
       <rect x={cx - 4} y={y + h * 0.55} width={8} height={3} fill={p.edge} />
