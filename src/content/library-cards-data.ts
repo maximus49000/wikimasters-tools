@@ -7,7 +7,7 @@ import type { KindsRepo } from '../core/kinds/kinds-repo';
 import type { LibraryRepo, RoomCardData, RoomCardsData } from '../core/library/library-repo';
 import { placedSlugs } from '../core/library/room-grid';
 
-export type RoomCards = { list: KnownCard[]; cards: RoomCardsData; categoryOf: (slug: string) => Category };
+export type RoomCards = { list: KnownCard[]; cards: RoomCardsData; categoryOf: (slug: string) => Category; kinds: KindsState };
 
 // Ce que la fiche de « Ma Pièce » affiche d'une carte : copié pour ne plus dépendre de la Collection.
 function dataOf(card: KnownCard): RoomCardData {
@@ -80,5 +80,5 @@ export function useRoomCards(collection?: CollectionRepo, kinds?: KindsRepo, lib
 
   const cards = useMemo(() => ({ ...saved, ...Object.fromEntries(list.map((card) => [card.slug, { ...saved[card.slug], ...dataOf(card) }])) }), [list, saved]);
   const category = useMemo(() => (slug: string): Category => categoryOf(kindsState.cards[slug]), [kindsState]);
-  return { list, cards, categoryOf: category };
+  return { list, cards, categoryOf: category, kinds: kindsState };
 }

@@ -1,8 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import type { KnownCard } from '../core/collection/collection-book';
+import { EMPTY_KINDS, type KindsState } from '../core/kinds/kinds-book';
 import type { Category } from '../core/kinds/kinds-category';
+import { buildKindOptions, selectCategory, selectNature, type KindOption } from '../core/kinds/kinds-filter';
 import { SHELF_SHAPES, VINYL_COLORS, WALL_SHAPES } from '../core/library/furniture-catalog';
 import type { ShelfShape, VinylColor, WallShape } from '../core/library/library-types';
+import { NO_PICKER_FILTER, applyPickerFilter, isPickerFilterActive, rarityOptions, tagOptions, type PickerFilter } from '../core/library/picker-filter';
 import { suggestShape } from '../core/library/shape-suggest';
 import { CardThumb } from './CardThumb';
 
@@ -18,6 +21,7 @@ const MAX_SHOWN = 60;
 // Glyphes (tracés SVG 24x24) : cibles et formes.
 const GLYPHS: Record<string, readonly string[]> = {
   close: ['M18 6 6 18', 'M6 6l12 12'],
+  filter: ['M3 4h18l-7 8v6l-4 2v-8z'],
   check: ['M20 6 9 17l-5-5'],
   wall: ['M3 4h18v16H3z', 'M3 12h18', 'M12 4v8', 'M8 12v8'],
   shelf: ['M5 3v18', 'M19 3v18', 'M5 8h14', 'M5 14h14'],
@@ -46,6 +50,7 @@ const LABELS: Record<string, string> = {
   dvd: 'DVD',
   game: 'Jeu vidéo',
   book: 'Livre',
+  filters: 'Filtres de la Collection',
 };
 
 const COLOR_LABELS: Record<VinylColor, string> = { black: 'Noir', red: 'Rouge', blue: 'Bleu', green: 'Vert', gold: 'Or' };
@@ -70,6 +75,18 @@ function GlyphBtn({ name, label, data, suggested, onClick }: { name: string; lab
   );
 }
 
+// Liste déroulante native : la première entrée (`all`) retire le filtre.
+function FilterSelect({ name, all, options, value, onChange }: { name: string; all: string; options: KindOption[]; value: string; onChange: (value: string) => void }) {
+  return (
+    <select className="wmt-lib-name" aria-label={all} data-filter={name} value={value} onChange={(e) => onChange(e.target.value)} disabled={options.length === 0 && value === ''}>
+      <option value="">{all}</option>
+      {options.map((o) => (
+        <option key={o.id} value={o.id}>{`${o.label} (${o.count})`}</option>
+      ))}
+    </select>
+  );
+}
+
 // Sans accents ni majuscules, pour comparer la recherche au titre.
 const fold = (text: string) => text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
@@ -77,6 +94,7 @@ export function CardPickerDialog({
   cards,
   taken,
   categoryOf,
+  kinds = EMPTY_KINDS,
   allowed,
   onChoose,
   onClose,
@@ -84,6 +102,7 @@ export function CardPickerDialog({
   cards: KnownCard[];
   taken: Set<string>; // cartes déjà posées dans la pièce (grisées, non choisissables)
   categoryOf: (slug: string) => Category;
+  kinds?: KindsState; // nature / occupation de chaque carte, pour les filtres
   allowed: Target[]; // cibles possibles selon l'outil
   onChoose: (choice: CardChoice) => void;
   onClose: () => void;
@@ -93,7 +112,15 @@ export function CardPickerDialog({
   const [target, setTarget] = useState<Target | null>(allowed.length === 1 ? (allowed[0] ?? null) : null);
   const [vinyl, setVinyl] = useState<VinylColor | null>(null);
 
-  const sorted = useMemo(() => [...cards].sort((a, b) => a.title.localeCompare(b.title, 'fr')), [cards]);
+  const [filter, setFilter] = useState<PickerFilter>(NO_PICKER_FILTER);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterActive = isPickerFilterActive(filter);
+  const kindOptions = useMemo(() => buildKindOptions(cards, kinds, filter.kind), [cards, kinds, filter.kind]);
+  const rarities = useMemo(() => rarityOptions(cards), [cards]);
+  const tags = useMemo(() => tagOptions(cards), [cards]);
+  const filtered = useMemo(() => applyPickerFilter(cards, kinds, filter), [cards, kinds, filter]);
+
+  const sorted = useMemo(() => [...filtered].sort((a, b) => a.title.localeCompare(b.title, 'fr')), [filtered]);
   const matches = useMemo(() => {
     const needle = fold(query.trim());
     return sorted.filter((card) => !needle || fold(card.title).includes(needle));
@@ -122,7 +149,26 @@ export function CardPickerDialog({
   if (!card) {
     body = (
       <>
-        <input type="search" className="wmt-lib-name" placeholder="Chercher une carte" aria-label="Chercher une carte" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+        <div className="wmt-lib-row">
+          <input type="search" className="wmt-lib-name" style={{ flex: 1, minWidth: 0 }} placeholder="Chercher une carte" aria-label="Chercher une carte" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+          <button type="button" className="wmt-lib-btn" aria-label={LABELS.filters} title={LABELS.filters} aria-pressed={filtersOpen || filterActive} data-action="filters" onClick={() => setFiltersOpen((open) => !open)}>
+            <Glyph name="filter" />
+          </button>
+        </div>
+        {filtersOpen ? (
+          <div className="wmt-lib-picklist" data-filters>
+            <FilterSelect name="category" all="Catégorie" options={kindOptions.categories} value={filter.kind.category ?? ''} onChange={(v) => setFilter({ ...filter, kind: selectCategory(cards, kinds, filter.kind, v) })} />
+            <FilterSelect name="nature" all="Nature" options={kindOptions.natures} value={filter.kind.nature} onChange={(v) => setFilter({ ...filter, kind: selectNature(cards, kinds, filter.kind, v) })} />
+            <FilterSelect name="facet" all={kindOptions.facetPlaceholder} options={kindOptions.facets} value={filter.kind.facet} onChange={(v) => setFilter({ ...filter, kind: { ...filter.kind, facet: v } })} />
+            <FilterSelect name="rarity" all="Rareté" options={rarities} value={filter.rarity} onChange={(v) => setFilter({ ...filter, rarity: v })} />
+            <FilterSelect name="tag" all="Étiquette" options={tags} value={filter.tag} onChange={(v) => setFilter({ ...filter, tag: v })} />
+            {filterActive ? (
+              <button type="button" className="wmt-lib-btn" aria-label="Effacer les filtres" title="Effacer les filtres" data-action="clear-filters" onClick={() => setFilter(NO_PICKER_FILTER)}>
+                <Glyph name="close" />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <div className="wmt-lib-picklist">
           {shown.map((c) => (
             <button key={c.slug} type="button" className="wmt-lib-btn wmt-lib-pick" data-card-option={c.slug} disabled={taken.has(c.slug)} onClick={() => pickCard(c.slug)}>

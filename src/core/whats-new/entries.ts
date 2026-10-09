@@ -1591,4 +1591,36 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v19',
+    theme: 'collection',
+    glyph: '🔎',
+    title: 'Filtres pour choisir une carte',
+    summary: 'Dans Ma Pièce, le choix d’une carte se restreint par catégorie, nature, rareté ou étiquette',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Ouvrir Ma Pièce',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces ; c’est là que se choisissent les cartes à poser.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À aménager vos pièces avec des meubles et des cartes ; les filtres décrits ensuite servent au moment de poser une carte.' },
+          { label: 'Comment faire', text: 'Touchez Ma Pièce dans le menu du site.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Retrouver une carte plus vite',
+        text: 'Quand vous posez une carte dans Ma Pièce, un glyphe entonnoir à côté de la recherche ouvre les filtres de la Collection.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À trouver une carte dans une grande Collection sans taper son titre : seulement les films, les cartes ultra rares, une étiquette…' },
+          { label: 'Comment faire', text: 'Dans Ma Pièce, en mode Aménager, touchez le crayon puis choisissez une carte à poser. Touchez l’entonnoir à droite de la recherche, puis réglez les listes. La croix efface les filtres.' },
+          { label: 'Comment ça marche', text: 'Catégorie, nature, occupation ou genre, rareté et étiquette se combinent entre eux et avec la recherche par titre. Les listes ne proposent que des valeurs présentes dans vos cartes.' },
+          { label: 'Limites', text: 'Ces filtres sont propres à ce choix : ils n’ont aucun effet sur la page Collection, et ne sont pas mémorisés. Le filtre ×2 n’existe pas ici.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];

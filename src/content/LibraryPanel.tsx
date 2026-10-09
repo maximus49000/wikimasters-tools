@@ -1040,7 +1040,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost, ghostPx: drag.target.ghostPx } satisfies DragView) : null}
           />
         </div>
-        {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}
+        {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} kinds={roomCards.kinds} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}
         {viewing && roomCards.cards[viewing] && (
           <RoomCardDialog
             slug={viewing}

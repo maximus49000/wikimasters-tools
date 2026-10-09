@@ -129,4 +129,21 @@ describe('CardPickerDialog', () => {
     await click('.wmt-lib-dialog');
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('filtres : s’ouvrent par le glyphe, restreignent la liste et s’effacent', async () => {
+    const rare: KnownCard = { slug: 'Rare', title: 'Rare', rarity: 'UR' };
+    const common: KnownCard = { slug: 'Common', title: 'Common', rarity: 'C' };
+    await mount({ cards: [rare, common] });
+    expect(q('[data-filters]')).toBeNull();
+    await click('[data-action="filters"]');
+    const select = q('[data-filter="rarity"]') as HTMLSelectElement;
+    await act(async () => {
+      select.value = 'UR';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(qa('[data-card-option]').map((e) => e.getAttribute('data-card-option'))).toEqual(['Rare']);
+    expect(q('[data-filter="duplicates"]')).toBeNull();
+    await click('[data-action="clear-filters"]');
+    expect(qa('[data-card-option]')).toHaveLength(2);
+  });
 });
