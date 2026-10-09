@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { currentPosition, requestPosition, resetPositionForTests } from '../../src/content/scene-position';
+import { currentPosition, isPositionKnown, requestPosition, resetPositionForTests } from '../../src/content/scene-position';
 
 const setGeo = (value: unknown) => Object.defineProperty(navigator, 'geolocation', { value, configurable: true });
 
@@ -29,5 +29,12 @@ describe('position de l’appareil', () => {
     setGeo(undefined);
     const tz = -new Date().getTimezoneOffset();
     await expect(requestPosition()).resolves.toEqual({ lat: 45, lon: tz / 4 });
+  });
+
+  it('isPositionKnown est faux au départ et vrai après une géolocalisation accordée', async () => {
+    expect(isPositionKnown()).toBe(false);
+    setGeo({ getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 48.85, longitude: 2.35 } }) });
+    await requestPosition();
+    expect(isPositionKnown()).toBe(true);
   });
 });

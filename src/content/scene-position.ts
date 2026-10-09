@@ -12,6 +12,11 @@ export function currentPosition(): Position {
   return known ?? fallback();
 }
 
+// Vrai seulement si l'appareil a donné sa vraie position (le repli par fuseau ne suffit pas à interroger la météo réelle).
+export function isPositionKnown(): boolean {
+  return known !== null;
+}
+
 export function subscribePosition(listener: () => void): () => void {
   listeners.add(listener);
   return () => void listeners.delete(listener);
