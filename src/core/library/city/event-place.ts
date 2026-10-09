@@ -20,10 +20,22 @@ const smooth = (x: number): number => {
 };
 
 // `ahead` > 0 : la voiture est devant l'ambulance. Elle commence à se ranger à 150 px, l'est tout à fait à 60 px,
-// le reste pendant que l'ambulance passe (jusqu'à 20 px après), puis reprend sa place en 40 px.
+// le reste pendant que l'ambulance passe (jusqu'à 20 px après), puis reprend sa place en 40 px. Au départ de l'ambulance,
+// le rangement suit aussi la distance qu'elle a parcourue (90 px) : les voitures déjà proches du point d'entrée ne sautent
+// pas de côté dès la première image.
 export function pullOver(amb: CityEvent, xv: number, width: number, t: number): number {
   const ahead = (xv - eventX(amb, width, t)) * amb.dir;
-  return smooth((150 - ahead) / 90) * (1 - smooth((-20 - ahead) / 40));
+  return smooth((150 - ahead) / 90) * (1 - smooth((-20 - ahead) / 40)) * smooth(((t - amb.start) * amb.speed) / 90);
+}
+
+// Fondu (s) d'apparition et de disparition des événements fixes (grue, cerf-volant, appartement).
+export const FIXED_FADE_S = 2;
+
+// Opacité d'un événement fixe à l'instant t : monte en FIXED_FADE_S au début, descend autant à la fin. Le feu d'artifice
+// (qui a ses propres fusées) et les traversées (qui entrent et sortent hors champ) restent à 1.
+export function fixedFade(e: CityEvent, t: number): number {
+  if (e.layer !== 'fixed' || e.id === 'fireworks') return 1;
+  return Math.min(1, Math.max(0, Math.min(t - e.start, e.end - t) / FIXED_FADE_S));
 }
 
 export const nearFacades = (f: EventFrame): Facade[] => f.facades.filter((b) => !b.far && b.x + b.w > 0 && b.x < f.width);

@@ -1,6 +1,6 @@
 // tests/core/library/city-event-place.test.ts
 import { describe, expect, it } from 'vitest';
-import { AMB_DY, BIKE_TRACK_DY, apartmentLamp, nearFacades, placeEvent, pullOver, type EventFrame } from '../../../src/core/library/city/event-place';
+import { AMB_DY, BIKE_TRACK_DY, apartmentLamp, fixedFade, nearFacades, placeEvent, pullOver, type EventFrame } from '../../../src/core/library/city/event-place';
 import { eventX, type CityEvent } from '../../../src/core/library/city/events';
 import { cityFacades } from '../../../src/core/library/city/facades';
 import { FAR_SHRINK, STREET_SCALE, cityMetrics } from '../../../src/core/library/city/metrics';
@@ -63,5 +63,37 @@ describe('pullOver', () => {
     const xa = eventX(back, 720, 2);
     expect(pullOver(back, xa - 30, 720, 2)).toBe(1);
     expect(pullOver(back, xa + 200, 720, 2)).toBe(0);
+  });
+});
+
+describe('pullOver au départ de l’ambulance', () => {
+  const amb = ev({ id: 'ambulance', layer: 'street', track: 'near', speed: 130, start: 0, end: 10 });
+  it('les voitures déjà devant le point d’entrée ne sont pas rangées dès la première image', () => {
+    const x0 = eventX(amb, 720, 0);
+    expect(pullOver(amb, x0 + 100, 720, 0)).toBe(0);
+    expect(pullOver(amb, x0 + 30, 720, 0)).toBe(0);
+  });
+  it('elles se rangent peu à peu pendant les premiers 90 px de l’ambulance', () => {
+    const at = (t: number): number => pullOver(amb, eventX(amb, 720, t) + 30, 720, t);
+    expect(at(0.2)).toBeGreaterThan(0);
+    expect(at(0.2)).toBeLessThan(at(0.5));
+    expect(at(0.5)).toBeLessThan(1);
+    expect(at(90 / 130)).toBe(1);
+  });
+});
+
+describe('fixedFade', () => {
+  const crane = ev({ id: 'crane', layer: 'fixed', speed: 0, start: 1000, end: 1360 });
+  it('apparaît et disparaît en 2 s', () => {
+    expect(fixedFade(crane, 1000)).toBe(0);
+    expect(fixedFade(crane, 1001)).toBeCloseTo(0.5, 6);
+    expect(fixedFade(crane, 1002)).toBe(1);
+    expect(fixedFade(crane, 1200)).toBe(1);
+    expect(fixedFade(crane, 1359)).toBeCloseTo(0.5, 6);
+    expect(fixedFade(crane, 1360)).toBe(0);
+  });
+  it('le feu d’artifice et les traversées ne passent pas par ce fondu', () => {
+    expect(fixedFade(ev({ id: 'fireworks', layer: 'fixed', speed: 0, start: 1000, end: 1030 }), 1000)).toBe(1);
+    expect(fixedFade(ev({ start: 1000, end: 1012 }), 1000)).toBe(1);
   });
 });

@@ -4,8 +4,9 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
+import { FIXED_FADE_S, fixedFade } from '../../src/core/library/city/event-place';
 import { dayContext } from '../../src/core/library/city/calendar';
-import { HYPER_S, MAX_EVENTS, STILL_EVENTS, activeEvents, cityEventSchedule, eventConditions } from '../../src/core/library/city/events';
+import { HYPER_S, MAX_EVENTS, STILL_EVENTS, activeEvents, cityEventSchedule, eventConditions, hyperStartMinute, type CityEvent } from '../../src/core/library/city/events';
 import { cityIntensity, type CityContext } from '../../src/core/library/city/intensity';
 import { laneSpeeds, vehiclesFor } from '../../src/core/library/city/vehicles';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
@@ -35,17 +36,29 @@ const contextAt = (hours: number): { city: CityContext; sky: ReturnType<typeof s
   const sky = skyAt(minutes, times);
   return { sky, city: { minutes, day: dayContext({ y: 2026, m: 10, d: 5 }, []), precip: 0, snow: false, storm: false, daylight: sky.daylight } };
 };
-// Même calcul que le hook : programme du grand créneau, minutes ramenées au début du grand créneau.
-const expected = (T: number, city: CityContext) => {
+// Même calcul que le hook : programme du grand créneau, minute de la scène ramenée au début du grand créneau.
+// Programmes mis en cache (par ville, grand créneau et minute de début) : les recherches parcourent des milliers d'instants.
+const cache = new WeakMap<CityContext, Map<string, CityEvent[]>>();
+const expected = (T: number, city: CityContext): CityEvent[] => {
   const hyper = Math.floor(T / HYPER_S);
-  const schedule = cityEventSchedule({
-    seed: 1, width: 720, hyper, minutesAtHyperStart: city.minutes - (T - hyper * HYPER_S) / 60,
-    cond: eventConditions(city, cityIntensity(city)), vehicles: vehiclesFor(720, 1), speeds: laneSpeeds(1),
-  });
+  const anchor = hyperStartMinute(city.minutes, T, hyper);
+  let byKey = cache.get(city);
+  if (!byKey) cache.set(city, (byKey = new Map()));
+  const k = `${hyper}:${anchor}`;
+  let schedule = byKey.get(k);
+  if (!schedule) {
+    schedule = cityEventSchedule({
+      seed: 1, width: 720, hyper, minutesAtHyperStart: anchor,
+      cond: eventConditions(city, cityIntensity(city)), vehicles: VEHICLES, speeds: laneSpeeds(1),
+    });
+    byKey.set(k, schedule);
+  }
   return activeEvents(schedule, T);
 };
-const findTime = (city: CityContext, ok: (ids: string[]) => boolean): number => {
-  for (let T = 1_790_000_000; T < 1_790_000_000 + 40 * HYPER_S; T += 5) if (ok(expected(T, city).map((e) => e.id))) return T;
+const VEHICLES = vehiclesFor(720, 1);
+const findTime = (city: CityContext, ok: (ids: string[]) => boolean): number => findWhen(city, (evs) => ok(evs.map((e) => e.id)));
+const findWhen = (city: CityContext, ok: (evs: CityEvent[], T: number) => boolean, span = 40): number => {
+  for (let T = 1_790_000_000; T < 1_790_000_000 + span * HYPER_S; T += 1) if (ok(expected(T, city), T)) return T;
   throw new Error('aucun instant trouvé');
 };
 const mount = (T: number, hours: number, still = false): HTMLDivElement => {
@@ -67,8 +80,10 @@ describe('événements dans la couche de la ville', () => {
   });
   it('un bus ou un tram efface les voitures collées à lui', () => {
     const { city } = contextAt(8.25);
-    const T = findTime(city, (ids) => ids.includes('bus') || ids.includes('tram'));
-    const ev = expected(T, city).find((e) => e.id === 'bus' || e.id === 'tram')!;
+    const withYields = (e: CityEvent): boolean => (e.id === 'bus' || e.id === 'tram') && e.yields.length > 0;
+    const T = findWhen(city, (evs) => evs.some(withYields), 400);
+    const ev = expected(T, city).find(withYields)!;
+    expect(ev.yields.length).toBeGreaterThan(0);
     const c = mount(T, 8.25);
     for (const id of ev.yields) {
       const node = c.querySelector(`[data-life-id="${id}"]`)!;
@@ -88,9 +103,48 @@ describe('événements dans la couche de la ville', () => {
   });
   it('en mouvement réduit, seuls les événements fixes autorisés restent', () => {
     const { city } = contextAt(10);
-    const T = findTime(city, (ids) => ids.length > 0);
+    // Un événement figé (grue, cerf-volant…) et un autre qui, lui, ne doit pas être dessiné.
+    const T = findTime(city, (ids) => ids.some((id) => STILL_EVENTS.has(id as never)) && ids.some((id) => !STILL_EVENTS.has(id as never)));
     const c = mount(T, 10, true);
-    for (const n of c.querySelectorAll('[data-event]')) expect(STILL_EVENTS.has(n.getAttribute('data-event') as never)).toBe(true);
+    const drawn = c.querySelectorAll('[data-event]');
+    expect(drawn.length).toBeGreaterThan(0);
+    for (const n of drawn) {
+      expect(STILL_EVENTS.has(n.getAttribute('data-event') as never)).toBe(true);
+      expect(n.getAttribute('opacity')).toBe('1');
+    }
+    expect(drawn.length).toBe(expected(T, city).filter((e) => STILL_EVENTS.has(e.id)).length);
     expect(c.querySelectorAll('animate, animateTransform')).toHaveLength(0);
+  });
+  it('file du premier plan : l’ambulance est dessinée sous les voitures qui se rangent', () => {
+    const { city } = contextAt(10);
+    const T = findWhen(city, (evs) => evs.some((e) => e.id === 'ambulance' && e.track === 'near'), 400);
+    const c = mount(T, 10);
+    const lane = c.querySelector('[data-city-lane="near"]')!;
+    const children = [...lane.children];
+    const amb = children.findIndex((n) => n.getAttribute('data-event') === 'ambulance');
+    const firstCar = children.findIndex((n) => n.hasAttribute('data-vehicle'));
+    expect(amb).toBeGreaterThanOrEqual(0);
+    expect(amb).toBeLessThan(firstCar);
+  });
+  it('file du fond : l’ambulance reste dessinée après les voitures', () => {
+    const { city } = contextAt(10);
+    const T = findWhen(city, (evs) => evs.some((e) => e.id === 'ambulance' && e.track === 'far'), 400);
+    const c = mount(T, 10);
+    const children = [...c.querySelector('[data-city-lane="far"]')!.children];
+    const amb = children.findIndex((n) => n.getAttribute('data-event') === 'ambulance');
+    const lastCar = children.map((n) => n.hasAttribute('data-vehicle')).lastIndexOf(true);
+    expect(amb).toBeGreaterThan(lastCar);
+  });
+  it('un événement fixe apparaît en fondu (2 s), sans fondu en mouvement réduit', () => {
+    const { city } = contextAt(10);
+    const isFixed = (e: CityEvent): boolean => e.id === 'crane' || e.id === 'kite';
+    const T = findWhen(city, (evs, t) => evs.some((e) => isFixed(e) && t - e.start < FIXED_FADE_S), 400);
+    const e = expected(T, city).find(isFixed)!;
+    const fade = fixedFade(e, T);
+    expect(fade).toBeLessThan(1);
+    const moving = mount(T, 10).querySelector(`[data-event="${e.id}"]`)!;
+    expect(moving.getAttribute('opacity')).toBe(fade.toFixed(2));
+    const still = mount(T, 10, true).querySelector(`[data-event="${e.id}"]`)!;
+    expect(still.getAttribute('opacity')).toBe('1');
   });
 });

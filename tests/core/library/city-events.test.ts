@@ -1,7 +1,8 @@
 // tests/core/library/city-events.test.ts
 import { describe, expect, it } from 'vitest';
 import {
-  EVENT_DEFS, HYPER_S, MAX_EVENTS, SLOT_S, activeEvents, cityEventSchedule, conditionsKey, defOf, eligible, eventX, travelSpan,
+  EVENT_DEFS, HYPER_S, MAX_EVENTS, SLOT_S, activeEvents, cityEventSchedule, conditionsKey, defOf, eligible, eventX, hyperStartMinute, mergeSchedules, travelSpan,
+  type CityEvent,
   type EventConditions, type ScheduleInput,
 } from '../../../src/core/library/city/events';
 import { STREET_SCALE, FAR_SHRINK } from '../../../src/core/library/city/metrics';
@@ -20,6 +21,9 @@ describe('catalogue', () => {
     expect(EVENT_DEFS).toHaveLength(16);
     expect(EVENT_DEFS.map((d) => d.id)).not.toContain('neon');
     expect(new Set(EVENT_DEFS.map((d) => d.id)).size).toBe(16);
+  });
+  it('le feu d’artifice n’a pas de bande de hauteur (il part toujours du haut de la scène)', () => {
+    expect(defOf('fireworks').y).toBeUndefined();
   });
   it('vitesse de laneSpeeds identique à celle des véhicules de la file', () => {
     const s = laneSpeeds(7);
@@ -112,5 +116,60 @@ describe('trajets', () => {
   });
   it('l’ambulance n’efface personne (les voitures se rangent)', () => {
     for (const e of many(DAY_DRY, 600, 300).filter((x) => x.id === 'ambulance')) expect(e.yields).toEqual([]);
+  });
+});
+
+describe('minute du début du grand créneau', () => {
+  // La minute de la scène est la minute entière (arrondie vers le bas) de l'horloge : le résultat ne dépend pas de la seconde.
+  it('ne dépend pas de la seconde du chargement', () => {
+    const hyper = 1_491_000;
+    const t0 = hyper * HYPER_S;
+    // 7 min 5 s puis 7 min 55 s après le début du grand créneau, scène à 8 h 07.
+    expect(hyperStartMinute(487, t0 + 7 * 60 + 5, hyper)).toBe(480);
+    expect(hyperStartMinute(487, t0 + 7 * 60 + 55, hyper)).toBe(480);
+    expect(hyperStartMinute(487, t0 + 7 * 60, hyper)).toBe(480);
+  });
+  it('reste dans la journée (0 à 1439)', () => {
+    const hyper = 1_491_000;
+    expect(hyperStartMinute(3, hyper * HYPER_S + 10 * 60 + 30, hyper)).toBe(1433);
+  });
+});
+
+describe('fusion des programmes', () => {
+  const ev = (key: string, id: CityEvent['id'], start: number, end: number, track: CityEvent['track'] = null): CityEvent => ({
+    key, id, layer: track ? 'street' : 'sky', start, end, dir: 1, track, speed: 10, x0: 0, y: 0, pick: 0, variant: 0, yields: [],
+  });
+  it('garde intacts les événements déjà partis, ne prend du nouveau programme que ceux qui partent après maintenant', () => {
+    const kept = ev('a', 'plane', 100, 200);
+    const previous = [kept, ev('b', 'drone', 300, 400)];
+    const next = [ev('c', 'helicopter', 120, 220), ev('d', 'balloon', 260, 380)];
+    const merged = mergeSchedules(previous, next, 150);
+    expect(merged[0]).toBe(kept);
+    expect(merged.map((e) => e.key)).toEqual(['a', 'd']);
+    expect(merged.filter((e) => e !== kept).every((e) => e.start > 150)).toBe(true);
+  });
+  it('respecte le plafond simultané, jamais deux fois le même événement ni la même file', () => {
+    const previous = [ev('a', 'plane', 100, 300), ev('b', 'bus', 110, 290, 'near')];
+    const next = [
+      ev('c', 'helicopter', 200, 250), // troisième en même temps : refusé
+      ev('d', 'plane', 310, 400), // après la fin de « a » : accepté
+      ev('e', 'tram', 320, 500, 'near'), // en même temps que « d » seulement : accepté
+      ev('f', 'ambulance', 330, 360, 'near'), // même file que « e » (et déjà deux) : refusé
+      ev('g', 'plane', 350, 420), // même événement que « d » : refusé
+    ];
+    const merged = mergeSchedules(previous, next, 150);
+    expect(merged.map((e) => e.key)).toEqual(['a', 'b', 'd', 'e']);
+    for (let t = 100; t < 500; t++) {
+      const a = activeEvents(merged, t);
+      expect(a.length).toBeLessThanOrEqual(MAX_EVENTS);
+      expect(new Set(a.map((e) => e.id)).size).toBe(a.length);
+      const tracks = a.map((e) => e.track).filter((x) => x !== null);
+      expect(new Set(tracks).size).toBe(tracks.length);
+    }
+  });
+  it('sans changement, la fusion rend le même programme', () => {
+    const s = cityEventSchedule(input(1_440_123, DAY_DRY, 600));
+    const now = 1_440_123 * HYPER_S + 600;
+    expect(mergeSchedules(s, s, now)).toEqual(s);
   });
 });

@@ -1,6 +1,6 @@
 import { useId, useMemo, useRef, type ReactElement } from 'react';
 import { doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
-import { PULL_DY, placeEvent, pullOver, type EventFrame, type EventPlacement } from '../core/library/city/event-place';
+import { PULL_DY, fixedFade, placeEvent, pullOver, type EventFrame, type EventPlacement } from '../core/library/city/event-place';
 import type { CityEvent } from '../core/library/city/events';
 import { cityFacades } from '../core/library/city/facades';
 import { cityIntensity, type CityContext } from '../core/library/city/intensity';
@@ -93,6 +93,9 @@ const residentState = (trip: Trip, gate: number, width: number, t: number): { ac
   return { active, x: pos?.x ?? trip.doorX, fade: active && pos ? pos.fade : 0 };
 };
 
+// Opacité d'un événement : fondu des événements fixes, aucun fondu en mouvement réduit (opacité 1).
+const eventOpacity = (e: CityEvent, t: number, still: boolean): string => (still ? '1' : fixedFade(e, t).toFixed(2));
+
 const setIfChanged = (node: Element, name: string, value: string): void => {
   if (node.getAttribute(name) !== value) node.setAttribute(name, value);
 };
@@ -153,7 +156,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       }
       for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
       for (const p of peds) if (moves(p.id, t)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
-      for (const e of events.active) nodes.get(e.key)?.setAttribute('transform', placementTransform(placeEvent(e, t, frame)));
+      for (const e of events.active) {
+        const node = nodes.get(e.key);
+        if (!node) continue;
+        node.setAttribute('transform', placementTransform(placeEvent(e, t, frame)));
+        // Fondu des événements fixes (2 s à l'arrivée et au départ) ; n'écrire l'opacité que lorsqu'elle change.
+        if (e.layer === 'fixed') setIfChanged(node, 'opacity', eventOpacity(e, t, still));
+      }
       for (const trip of trips) {
         const node = nodes.get(trip.id);
         if (!node) continue;
@@ -173,7 +182,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
   const t0 = still ? frozen.current : Date.now() / 1000;
   const eventNode = (e: CityEvent): ReactElement => (
-    <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))}>
+    <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)}>
       <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} />
     </g>
   );
@@ -181,8 +190,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const fireworks = of((e) => e.id === 'fireworks');
   const cranes = of((e) => e.id === 'crane');
   const near = facades.filter((b) => !b.far);
+  const laneEvents = (which: 'far' | 'near'): CityEvent[] => of((e) => e.layer === 'street' && (e.track === which || (which === 'near' && e.track === 'bike')));
+  // Profondeur : au premier plan, l'ambulance roule plus haut (vers le marquage central) que les voitures qui se rangent
+  // vers le spectateur ; elle est donc dessinée avant elles. Au fond, c'est elle qui est la plus proche : dessinée après.
+  const isNearAmbulance = (e: CityEvent): boolean => e.id === 'ambulance' && e.track === 'near';
   const lane = (which: 'far' | 'near'): ReactElement => (
     <g data-city-lane={which}>
+      {laneEvents(which).filter(isNearAmbulance).map(eventNode)}
       {/* Vélos après les voitures : leur piste est au bord de la file, plus près du spectateur. */}
       {[...vehicles.filter((v) => v.lane === which && v.kind !== 'bike'), ...vehicles.filter((v) => v.lane === which && v.kind === 'bike')]
         .map((v) => {
@@ -205,8 +219,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             </g>
           );
         })}
-      {/* Véhicules d'événement de cette file (et de la piste cyclable pour le premier plan). */}
-      {of((e) => e.layer === 'street' && (e.track === which || (which === 'near' && e.track === 'bike'))).map(eventNode)}
+      {/* Autres véhicules d'événement de cette file (et de la piste cyclable pour le premier plan). */}
+      {laneEvents(which).filter((e) => !isNearAmbulance(e)).map(eventNode)}
     </g>
   );
   const silhouette = (list: typeof facades): ReactElement[] =>

@@ -68,7 +68,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
   { id: 'kite', layer: 'fixed', weight: 0.8, hours: [[600, 1140]], half: 10, duration: 90, light: 'day', rain: 'dry', y: [0.2, 0.32] },
   { id: 'crane', layer: 'fixed', weight: 1, hours: [[480, 1020]], half: 60, duration: 360, light: 'day', workday: true },
   { id: 'apartment', layer: 'fixed', weight: 2, hours: [[1050, 1410]], half: 4, duration: 180, light: 'dark' },
-  { id: 'fireworks', layer: 'fixed', weight: 0.25, hours: [[1290, 1440], [0, 30]], half: 140, duration: 30, light: 'dark', rain: 'dry', y: [0.1, 0.3] },
+  { id: 'fireworks', layer: 'fixed', weight: 0.25, hours: [[1290, 1440], [0, 30]], half: 140, duration: 30, light: 'dark', rain: 'dry' },
 ];
 
 // En mouvement réduit, seuls ces événements fixes restent (figés) ; rien ne traverse, aucun feu d'artifice.
@@ -212,6 +212,31 @@ export function cityEventSchedule(input: ScheduleInput): CityEvent[] {
     };
     if (track !== null && def.speed === undefined) ev.yields = yieldsFor(ev, def.half, vehicles, width);
     out.push(ev);
+  }
+  return out;
+}
+
+// Minute de la scène (0 à 1439) au début du grand créneau `hyper`. `minutes` est la minute entière (arrondie vers le bas)
+// de la scène à l'instant `nowS` : `minutes - écoulé` tombe dans (début - 1, début], d'où l'arrondi au-dessus (avec une
+// marge pour les erreurs d'arrondi). Le résultat ne dépend donc pas de la seconde du chargement : les grands créneaux sont
+// alignés sur des multiples de 20 min de l'horloge, donc sur des minutes entières.
+export function hyperStartMinute(minutes: number, nowS: number, hyper: number): number {
+  const m = Math.ceil(minutes - (nowS - hyper * HYPER_S) / 60 - 1e-6);
+  return ((m % 1440) + 1440) % 1440;
+}
+
+// Programme recalculé en cours de grand créneau (changement de condition ou d'heure) : les événements déjà partis
+// (`start <= now`) de l'ancien programme finissent leur course, intacts ; du nouveau programme ne viennent que les
+// événements qui partent après `now`, retenus dans l'ordre s'ils respectent encore le plafond simultané, et jamais deux
+// fois le même événement ni deux véhicules sur la même file en même temps. Rien n'apparaît donc en pleine traversée.
+export function mergeSchedules(previous: CityEvent[], next: CityEvent[], now: number): CityEvent[] {
+  const out = previous.filter((e) => e.start <= now);
+  for (const e of next) {
+    if (e.start <= now) continue;
+    const overlapping = out.filter((o) => o.start < e.end && e.start < o.end);
+    if (overlapping.length >= MAX_EVENTS) continue;
+    if (overlapping.some((o) => o.id === e.id || (e.track !== null && o.track === e.track))) continue;
+    out.push(e);
   }
   return out;
 }

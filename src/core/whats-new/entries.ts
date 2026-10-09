@@ -1697,7 +1697,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'À quoi ça sert', text: 'À rendre la vue plus vivante : on ne sait jamais ce qu’on va voir passer par la fenêtre.' },
           { label: 'Comment faire', text: 'Rien à régler : ouvrez Ma Pièce, choisissez une pièce dont la scène est « Ville » et regardez par la fenêtre. Un événement traverse tout le paysage, d’une fenêtre à l’autre.' },
-          { label: 'D’où viennent les données', text: 'Tout est calculé sur votre appareil à partir de l’heure et de la pièce : la même pièce montre les mêmes événements au même moment, même après un rechargement. Rien n’est envoyé.' },
+          { label: 'D’où viennent les données', text: 'Tout est calculé sur votre appareil à partir de l’heure et de la pièce : la même pièce montre les mêmes événements au même moment, même après un rechargement (à l’heure réelle, sans changement de météo entre-temps). Rien n’est envoyé.' },
           { label: 'Limites', text: 'Environ un créneau de 25 secondes sur cinq lance un événement, et jamais plus de deux à la fois : il faut parfois attendre un peu.' },
         ],
         scene: { page: '/collection', closeWindows: true },
@@ -1710,7 +1710,7 @@ export const ENTRIES: Entry[] = [
           { label: 'À quoi ça sert', text: 'À ce que la ville ressemble à une vraie ville : pas de feu d’artifice à midi, pas de cerf-volant sous l’averse.' },
           { label: 'Comment faire', text: 'Changez l’heure (rangée Ciel, mode Aménager) ou la météo pour voir d’autres événements. Quand une ambulance arrive, les voitures de sa file se rangent pour la laisser passer.' },
           { label: 'D’où viennent les données', text: 'De l’heure du ciel, de la météo déjà réglée et du jour (semaine, week-end, vacances) calculé par la vague précédente.' },
-          { label: 'Limites', text: 'Si vous réduisez les animations sur votre appareil, rien ne traverse : seuls la grue, le cerf-volant et l’appartement allumé restent, immobiles. Un appartement ou une grue n’est visible que si une fenêtre donne sur cet endroit.' },
+          { label: 'Limites', text: 'Si vous réduisez les animations sur votre appareil, rien ne traverse : seuls la grue, le cerf-volant et l’appartement allumé restent, immobiles. Un appartement ou une grue n’est visible que si une fenêtre donne sur cet endroit. Quand l’heure ou la météo change, ce qui est déjà en route finit son passage : seuls les événements suivants changent.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
