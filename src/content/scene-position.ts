@@ -5,6 +5,12 @@ import { positionSetting } from './position-setting';
 let known: Position | null = null;
 let cachedFallback: Position | null = null;
 const listeners = new Set<() => void>();
+// Dernière raison d'échec, affichée à côté de « (simulée) » : sans elle, impossible de savoir pourquoi la météo reste simulée.
+export type PositionFailure = 'denied' | 'unavailable' | 'timeout' | 'absent';
+let failure: PositionFailure | null = null;
+export function positionFailure(): PositionFailure | null {
+  return failure;
+}
 
 // Repli mémorisé : useSyncExternalStore exige un snapshot stable entre deux lectures.
 const fallback = (): Position => (cachedFallback ??= positionFromTimezone(-new Date().getTimezoneOffset()));
@@ -28,6 +34,7 @@ export function resetPositionForTests(): void {
   known = null;
   cachedFallback = null;
   askedThisPage = false;
+  failure = null;
 }
 
 // Les abonnés (heure, météo) se redessinent quand le joueur active ou désactive le réglage.
@@ -48,20 +55,31 @@ export function requestPosition(): Promise<Position> {
   return new Promise((resolve) => {
     if (!positionSetting.enabled()) return resolve(currentPosition());
     const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation;
-    if (!geo) return resolve(currentPosition());
-    const timer = window.setTimeout(() => resolve(currentPosition()), 8000);
+    if (!geo) {
+      fail('absent');
+      return resolve(currentPosition());
+    }
+    // Premier relevé parfois long (accord du joueur, puis réseau ou satellites) : un délai court donnait toujours « simulée » sur téléphone.
+    const timer = window.setTimeout(() => resolve(currentPosition()), 30000);
     geo.getCurrentPosition(
       (p) => {
         window.clearTimeout(timer);
         known = { lat: p.coords.latitude, lon: p.coords.longitude };
+        failure = null;
         for (const listener of listeners) listener();
         resolve(known);
       },
-      () => {
+      (e) => {
         window.clearTimeout(timer);
+        fail(e.code === 1 ? 'denied' : e.code === 3 ? 'timeout' : 'unavailable');
         resolve(currentPosition());
       },
-      { maximumAge: 3600000, timeout: 7000 },
+      { maximumAge: 3600000, timeout: 25000 },
     );
   });
+}
+
+function fail(reason: PositionFailure): void {
+  failure = reason;
+  for (const listener of listeners) listener();
 }

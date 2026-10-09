@@ -74,7 +74,7 @@ import { useLightEnabled } from './light-setting';
 import { WEATHER_SCENES } from './scene-weather';
 import { WEATHER_LABEL } from '../core/library/weather/weather-types';
 import { usePetSim } from './pet-sim';
-import { ensurePosition, requestPosition } from './scene-position';
+import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
 import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
@@ -95,6 +95,8 @@ const EDGE_SPEED = 8;
 type Drag = { id: string; x: number; y: number; target: DropTarget };
 // Ce que les écouteurs de la fenêtre doivent connaître de l'état courant (relu à chaque événement).
 type DragLive = { layout: Layout; cols: number; drop: (id: string, target: DropTarget) => void };
+
+const FAILURE_LABEL = { denied: 'position refusée', unavailable: 'position indisponible', timeout: 'position trop longue à obtenir', absent: 'position non gérée' } as const;
 
 export const LIBRARY_CSS = `
 .wmt-lib{display:flex;flex-direction:column;gap:10px;padding:12px;margin:12px 0;border:1px solid var(--color-border,rgba(148,163,184,.35));border-radius:12px;background:var(--color-surface,#0d1117);color:var(--color-foreground,#e6edf3);font:14px/20px system-ui,sans-serif}
@@ -356,6 +358,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // Réglage « Position » (actif par défaut) : la position est demandée une fois par chargement de page, à l'ouverture de la Bibliothèque.
   // Elle n'est gardée qu'en mémoire : sans cette relecture, la vraie météo resterait « simulée » après chaque rechargement.
   const positionOn = useSyncExternalStore(positionSetting.subscribe, positionSetting.enabled, positionSetting.enabled);
+  const failure = useSyncExternalStore(subscribePosition, positionFailure, positionFailure);
   useEffect(() => {
     if (positionOn) ensurePosition();
   }, [positionOn]);
@@ -850,7 +853,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           </span>
           {weather.real === 'fallback' && (
             <span className="wmt-lib-msg" data-weather-note="" title={positionOn ? 'Position inconnue ou réseau indisponible : la météo reste simulée.' : 'Position désactivée dans Paramètre d’extension : la météo reste simulée.'}>
-              (simulée)
+              (simulée{positionOn && failure ? ` : ${FAILURE_LABEL[failure]}` : ''})
             </span>
           )}
         </div>
