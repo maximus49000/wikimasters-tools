@@ -57,7 +57,7 @@ describe('RoomView avec un chat', () => {
           blink={[]}
           onCell={() => undefined}
           onPick={() => undefined}
-          pets={[{ id: 'p1', species: 'cat' as const, coat: 'orange', name: 'Minou', pose: 'sit', facing: 'r', behind: 1, top: false }]}
+          pets={[{ id: 'p1', species: 'cat' as const, coat: 'orange', name: 'Minou', pose: 'sit', facing: 'r', behind: 1, top: false, on: null }]}
         />,
       );
     });
@@ -84,7 +84,7 @@ describe('RoomView : couches du chat', () => {
     });
     return Array.from(container.querySelectorAll('[data-furniture],[data-pet],[data-card],[data-pet-bubble]')).map((el) => el.getAttribute('data-furniture') ?? el.getAttribute('data-card') ?? (el.hasAttribute('data-pet-bubble') ? `bubble:${el.getAttribute('data-pet-bubble')}` : el.getAttribute('data-pet')));
   };
-  const cat = { id: 'p1', species: 'cat' as const, coat: 'orange' as const, name: 'Minou', pose: 'sit' as const, facing: 'r' as const, behind: 1, top: false };
+  const cat = { id: 'p1', species: 'cat' as const, coat: 'orange' as const, name: 'Minou', pose: 'sit' as const, facing: 'r' as const, behind: 1, top: false, on: null as string | null };
 
   it('les posters sont dessinés avant les meubles et le chat', () => {
     const order = orderOf([cat]);

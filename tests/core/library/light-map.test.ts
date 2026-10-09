@@ -131,3 +131,68 @@ describe('buildLightMap', () => {
     });
   });
 });
+
+describe('buildLightMap avec des animaux', () => {
+  const furniture: Box[] = [{ owner: 'f', x0: 400, x1: 440, d0: 40, d1: 70, z0: 0, z1: 20 }];
+  const lamp: LampSource = { id: 'l', x: 300, d: 120, z: 60, box: 'l' };
+  const wide = { ...base, sunFrac: 0.3, boxes: furniture, lamps: [lamp] };
+  // Un animal sur la trajectoire du rayon (tache de soleil vers x 100-160, y 378-390), au sol, devant la fenêtre.
+  const pet: Box[] = [{ owner: 'p1', x0: 110, x1: 150, d0: 120, d1: 160, z0: 0, z1: 36 }];
+
+  it('est identique bit à bit sans animal, liste vide comprise', () => {
+    const ref = buildLightMap(wide);
+    expect(Array.from(buildLightMap({ ...wide, pets: [] }).rgba)).toEqual(Array.from(ref.rgba));
+    expect(Array.from(buildLightMap({ ...wide, pets: undefined }).rgba)).toEqual(Array.from(ref.rgba));
+  });
+  it('ne change que des pixels : jamais ceux loin de l’animal et de son ombre', () => {
+    const ref = buildLightMap(wide);
+    const withPet = buildLightMap({ ...wide, pets: pet });
+    expect(Array.from(withPet.rgba)).not.toEqual(Array.from(ref.rgba));
+    // Le coin droit de la pièce, loin de la fenêtre et de l'animal, reste identique.
+    expect(at(withPet, 580, 480)).toEqual(at(ref, 580, 480));
+  });
+  it('déplace l’ombre quand l’animal bouge', () => {
+    const a = buildLightMap({ ...wide, pets: pet });
+    const moved = pet.map((b) => ({ ...b, x0: b.x0 + 60, x1: b.x1 + 60 }));
+    const b = buildLightMap({ ...wide, pets: moved });
+    expect(Array.from(a.rgba)).not.toEqual(Array.from(b.rgba));
+  });
+  it('fonctionne sans meuble (animaux seuls) et avec une lampe seule', () => {
+    const soloBase = { ...base, sunFrac: 0.3 };
+    const solo = buildLightMap({ ...soloBase, pets: pet });
+    expect(Array.from(solo.rgba)).not.toEqual(Array.from(buildLightMap(soloBase).rgba));
+    const lampOnly = buildLightMap({ ...base, sunFrac: null, sunX: null, lamps: [lamp], pets: pet });
+    expect(Array.from(lampOnly.rgba)).not.toEqual(Array.from(buildLightMap({ ...base, sunFrac: null, sunX: null, lamps: [lamp] }).rgba));
+  });
+  it('assombrit derrière l’animal : l’alpha d’un pixel dans son ombre augmente', () => {
+    const ref = buildLightMap({ ...wide, pets: undefined });
+    const withPet = buildLightMap({ ...wide, pets: pet });
+    let darker = 0;
+    for (let y = 345; y < 510; y += LIGHT_SCALE) for (let x = 90; x < 200; x += LIGHT_SCALE) {
+      if (at(withPet, x, y)[3]! > at(ref, x, y)[3]!) darker++;
+    }
+    expect(darker).toBeGreaterThan(0);
+  });
+  it('reste rapide : pièce de 96 colonnes, 3 meubles, 1 lampe, 3 animaux (< 60 ms à chaud)', () => {
+    const big: LightInput = {
+      ...base, width: 2880, sunFrac: 0.3,
+      windows: [{ x: 400, y: 60, w: 60, h: 100 }, { x: 1400, y: 60, w: 60, h: 100 }],
+      boxes: [
+        { owner: 'a', x0: 400, x1: 440, d0: 40, d1: 70, z0: 0, z1: 20 },
+        { owner: 'b', x0: 1000, x1: 1060, d0: 30, d1: 80, z0: 0, z1: 40 },
+        { owner: 'c', x0: 2000, x1: 2050, d0: 50, d1: 90, z0: 0, z1: 30 },
+      ],
+      lamps: [{ id: 'l', x: 1200, d: 120, z: 60, box: 'l' }],
+      pets: [
+        { owner: 'p1', x0: 420, x1: 460, d0: 40, d1: 70, z0: 0, z1: 36 },
+        { owner: 'p2', x0: 1420, x1: 1460, d0: 40, d1: 70, z0: 0, z1: 36 },
+        { owner: 'p3', x0: 2200, x1: 2240, d0: 40, d1: 70, z0: 0, z1: 36 },
+      ],
+    };
+    buildLightMap(big); // chauffe les caches mémorisés
+    const t0 = performance.now();
+    buildLightMap(big);
+    const dt = performance.now() - t0;
+    expect(dt).toBeLessThan(60);
+  });
+});

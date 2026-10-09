@@ -8,7 +8,7 @@ import { proposeScene, sceneIsValid } from './scenes';
 import type { Standing } from './route';
 
 export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower' | 'scan' | 'standby' | 'charge' | 'beep';
-export type PetFrame = { id: string; species: Species; coat: Coat; name: string; pose: Pose; facing: 'l' | 'r'; behind: number; top: boolean; pos: Pt; /* ordonnée des pieds : départage deux animaux au même rang de dessin */ depthY: number };
+export type PetFrame = { id: string; species: Species; coat: Coat; name: string; pose: Pose; facing: 'l' | 'r'; behind: number; top: boolean; /* id du meuble qui porte l'animal, null au sol */ on: string | null; pos: Pt; /* ordonnée des pieds : départage deux animaux au même rang de dessin */ depthY: number };
 
 const PERCH_KINDS: ReadonlySet<string> = new Set(['desk', 'shelf']);
 const isTop = (room: Room, on: string | null): boolean => on !== null && PERCH_KINDS.has(room.layout.find((p) => p.id === on)?.kind ?? '');
@@ -182,7 +182,7 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
             depthY = robotState.pos.y + 0.1;
           }
         }
-        return { id: pet.id, species: pet.species, coat: pet.coat, name: pet.name, pose: poseOf(state, plan), facing: state.facing, behind, top: isTop(room, state.on), pos: state.pos, depthY };
+        return { id: pet.id, species: pet.species, coat: pet.coat, name: pet.name, pose: poseOf(state, plan), facing: state.facing, behind, top: isTop(room, state.on), on: state.on, pos: state.pos, depthY };
       });
     },
     // Une caresse : vrai si l'animal s'est arrêté pour ronronner (ou remuer la queue).

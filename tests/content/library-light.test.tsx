@@ -7,6 +7,7 @@ import { LIGHT_KEY, readLight, writeLight } from '../../src/content/light-settin
 import { LightLayer } from '../../src/content/light-layer';
 import { RoomView, type SceneView } from '../../src/content/RoomView';
 import type { Room } from '../../src/core/library/library-types';
+import type { Box } from '../../src/core/library/light/occluders';
 import { skyAt } from '../../src/core/library/sky';
 import { targetOf } from '../../src/core/library/weather/weather-types';
 
@@ -74,6 +75,78 @@ describe('LightLayer', () => {
     expect(first).toBe(1);
     await act(async () => { vi.advanceTimersByTime(2000); });
     expect(toUrl.mock.calls.length).toBe(first);
+  });
+});
+
+describe('LightLayer et animaux', () => {
+  const still = { read: () => targetOf('sun') };
+  const mountPets = (toUrl: ReturnType<typeof vi.fn>, getPetBoxes: () => readonly Box[]) =>
+    act(async () => {
+      root.render(
+        <svg viewBox="0 0 600 510">
+          <LightLayer windows={windows} width={600} height={510} wallH={340} sky={sky} clock={still} toUrl={toUrl as never} getPetBoxes={getPetBoxes} />
+        </svg>,
+      );
+    });
+  const box = (x: number): Box => ({ owner: 'p1', x0: x, x1: x + 30, d0: 40, d1: 70, z0: 0, z1: 30 });
+
+  it('repeint environ 12 fois par seconde tant que l’animal bouge', async () => {
+    let x = 100;
+    const toUrl = vi.fn(() => `data:image/png;base64,${x}`);
+    await mountPets(toUrl, () => [box(x)]);
+    const before = toUrl.mock.calls.length;
+    for (let k = 0; k < 12; k++) {
+      x += 10;
+      await act(async () => { vi.advanceTimersByTime(84); });
+    }
+    expect(toUrl.mock.calls.length - before).toBeGreaterThanOrEqual(10);
+  });
+  it('après une repeinture lente, saute les cycles rapides suivants (garde adaptative)', async () => {
+    let x = 100;
+    let perf = 0;
+    const spy = vi.spyOn(performance, 'now').mockImplementation(() => perf);
+    try {
+      const toUrl = vi.fn(() => { perf += 400; return `data:image/png;base64,${x}`; }); // chaque repeinture « dure » 400 ms
+      await mountPets(toUrl, () => [box(x)]);
+      const before = toUrl.mock.calls.length;
+      for (let k = 0; k < 12; k++) {
+        x += 10;
+        await act(async () => { vi.advanceTimersByTime(84); });
+      }
+      expect(toUrl.mock.calls.length - before).toBe(0); // 4 × 400 ms = 1,6 s entre deux repeintures
+      await act(async () => { vi.advanceTimersByTime(1000); });
+      expect(toUrl.mock.calls.length - before).toBeGreaterThanOrEqual(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it('ne repeint pas quand l’animal est immobile et que le ciel ne change pas', async () => {
+    const toUrl = vi.fn(() => 'data:image/png;base64,AAAA');
+    await mountPets(toUrl, () => [box(100)]);
+    const before = toUrl.mock.calls.length;
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(toUrl.mock.calls.length).toBe(before);
+  });
+  it('ignore un mouvement de moins de 2 px', async () => {
+    let x = 100;
+    const toUrl = vi.fn(() => 'data:image/png;base64,AAAA');
+    await mountPets(toUrl, () => [box(x)]);
+    const before = toUrl.mock.calls.length;
+    x += 0.4;
+    await act(async () => { vi.advanceTimersByTime(500); });
+    expect(toUrl.mock.calls.length).toBe(before);
+  });
+  it('en mouvement réduit : pas de cadence rapide, un contrôle à la seconde', async () => {
+    window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as never;
+    let x = 100;
+    const toUrl = vi.fn(() => 'data:image/png;base64,AAAA');
+    await mountPets(toUrl, () => [box(x)]);
+    const before = toUrl.mock.calls.length;
+    x += 50;
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(toUrl.mock.calls.length).toBe(before);
+    await act(async () => { vi.advanceTimersByTime(800); });
+    expect(toUrl.mock.calls.length).toBe(before + 1);
   });
 });
 

@@ -4,6 +4,7 @@ import { lampNeed, skyLevel, skylightAt } from './ambient';
 import { ROOM_DEPTH_FACTOR, beamPatch, type Glass, type Point } from './beam';
 import { lampField } from './lamps';
 import type { Box, LampSource } from './occluders';
+import { lampPetTransmission, sunPetTransmission } from './pet-shade';
 import { sunReaches, type V3 } from './shadow';
 import { beamSlope, sunElevation } from './sun-dir';
 import { SURF, buildSurfaceMap, type SurfaceMap } from './surfaces';
@@ -16,6 +17,8 @@ export type LightInput = {
   daylight: number; twilight: number; cloud: number; precip: number; hidden: number;
   // Meubles (occulteurs) et lampes allumées ; absents = pièce vide, sortie identique à 8a.
   boxes?: readonly Box[]; lamps?: readonly LampSource[];
+  // Animaux (occulteurs mobiles) : atténuent soleil et lampes sans toucher aux champs mémorisés des meubles.
+  pets?: readonly Box[];
   // Pièce sans ciel terrestre (ni fenêtre, ni météo) : pas d'ombre ambiante, seules les lampes et les meubles agissent.
   noSky?: boolean;
 };
@@ -116,6 +119,8 @@ export function buildLightMap(input: LightInput): LightMap {
   const { width, height, wallH, windows } = input;
   const boxes = input.boxes ?? [];
   const lamps = input.lamps ?? [];
+  const pets = input.pets ?? [];
+  const exact = boxes.length > 0 || pets.length > 0;
   const w = Math.ceil(width / LIGHT_SCALE);
   const h = Math.ceil(height / LIGHT_SCALE);
   const rgba = new Uint8ClampedArray(w * h * 4);
@@ -131,20 +136,23 @@ export function buildLightMap(input: LightInput): LightMap {
   const patches: Point[][] = [];
   const sunX = input.sunX;
   const sunny = sunX !== null && gain > 0;
-  if (sunny && boxes.length === 0) {
+  if (sunny && !exact) {
     for (const g of windows) {
       const patch = beamPatch(g, wallH, floorH, elev, beamSlope(sunX!, g.x + g.w / 2, wallH));
       if (patch) patches.push(patch);
     }
   }
   // Avec des meubles : le rayon est testé par projection exacte du verre, avec ombres portées (bord doux).
-  const glasses = sunny && boxes.length > 0 && elev > MIN_ELEV
+  const glasses = sunny && exact && elev > MIN_ELEV
     ? windows.map((g) => ({ g: { ...g, zBottom: wallH - (g.y + g.h), zTop: wallH - g.y }, slope: beamSlope(sunX!, g.x + g.w / 2, wallH) }))
     : [];
   const tanElev = Math.tan(elev);
   const surf = surfaceOf(boxes, width, height, wallH);
   const lampLight = lampLightOf(lamps, boxes, surf, width, height, wallH);
   const sunField = glasses.length > 0 ? sunReachField(glasses, boxes, surf, width, height, wallH, tanElev, depthMax) : null;
+  // Les animaux bougent : leur transmission est calculée à part, jamais mémorisée avec les champs des meubles.
+  const petSun = sunField && pets.length > 0 ? sunPetTransmission(glasses, pets, surf, sunField, tanElev, LIGHT_SCALE) : null;
+  const petLamp = pets.length > 0 && lamps.length > 0 ? lampPetTransmission(lamps, pets, surf, lampLight, LIGHT_SCALE) : null;
   for (let j = 0; j < h; j++) {
     const y = (j + 0.5) * LIGHT_SCALE;
     for (let i = 0; i < w; i++) {
@@ -152,14 +160,14 @@ export function buildLightMap(input: LightInput): LightMap {
       // La vue à travers le verre n'est jamais assombrie.
       if (windows.some((g) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h)) continue;
       const n = j * w + i;
-      const lampL = lampLight[n]!;
+      const lampL = lampLight[n]! * (petLamp ? petLamp[n]! : 1);
       const light = input.noSky ? 1 : clamp01(clamp01(0.2 + 0.8 * sky * field[n]!) + lampL * need);
       const shade = (1 - light) * shadeGain;
       const kind = surf.kind[n]!;
       let b = 0;
-      if (boxes.length > 0) {
-        // Avec des meubles : part du soleil mémorisée (reach × fade), multipliée par le gain du moment.
-        if (sunField) b = gain * sunField[n]!;
+      if (exact) {
+        // Avec des meubles ou des animaux : part du soleil mémorisée (reach × fade), multipliée par le gain du moment et par l'ombre des animaux.
+        if (sunField) b = gain * sunField[n]! * (petSun ? petSun[n]! : 1);
       } else if (y >= wallH) {
         for (const q of patches) {
           if (!inQuad(q, x, y)) continue;

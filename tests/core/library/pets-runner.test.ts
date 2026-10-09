@@ -28,6 +28,13 @@ describe('createPetRunner', () => {
     expect(onPlan).toHaveBeenCalledTimes(1);
   });
 
+  it('expose le support de l’animal dans l’image (null au sol)', () => {
+    const runner = createPetRunner({ onPlan: vi.fn(), rng: () => 0.3 });
+    const [frame] = runner.step(roomWith(sofa), 1000);
+    expect(frame).toHaveProperty('on');
+    expect(frame!.on === null || typeof frame!.on === 'string').toBe(true);
+  });
+
   it('reprend un plan mémorisé sans le réécrire', () => {
     const onPlan = vi.fn();
     const runner = createPetRunner({ onPlan });

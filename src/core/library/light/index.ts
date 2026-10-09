@@ -7,3 +7,5 @@ export * from './occluders';
 export * from './shadow';
 export * from './surfaces';
 export * from './lamps';
+export * from './pet-boxes';
+export * from './pet-shade';

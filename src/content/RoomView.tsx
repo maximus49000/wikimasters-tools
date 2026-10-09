@@ -15,6 +15,8 @@ import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, glassRect } from './window-art';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
 import { LightLayer } from './light-layer';
+import { petBoxesOf } from '../core/library/light/pet-boxes';
+import type { PetFrame } from '../core/library/pets/runner';
 import type { Weather } from '../core/library/weather/weather-types';
 import { hashString } from '../core/library/scene-world';
 import { skyAt, type Sky } from '../core/library/sky';
@@ -58,6 +60,8 @@ type Props = {
   pets?: PetView[];
   petAttach?: (id: string, el: SVGGElement | null) => void;
   onPetTap?: (id: string) => void;
+  // Images courantes des animaux (position à l'image), pour leurs ombres ; relues à chaque repeinture du calque.
+  petFrames?: () => readonly PetFrame[];
   // Calque de lumière (ombre et rayons de soleil) par-dessus la pièce ; seulement avec une météo et une fenêtre.
   light?: boolean;
 };
@@ -69,7 +73,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, light = false }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -100,6 +104,13 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const lightBoxes = useMemo(() => boxesOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
   const lightLamps = useMemo(() => lampsOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
   const lightSignature = useMemo(() => layoutSignature(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Identité stable (sinon le calque serait relancé à chaque rendu) : la disposition est lue par référence.
+  const layoutRef = useRef(room.layout);
+  layoutRef.current = room.layout;
+  const getPetBoxes = useMemo(
+    () => (petFrames ? () => petBoxesOf(petFrames(), layoutRef.current, lightGeom) : undefined),
+    [petFrames, wallH], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
 
   const deskRects = new Map<string, PxRect>();
@@ -386,7 +397,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {cardLayer}
       {/* Sans fenêtre à ciel (calque « sans ciel ») il n'y a rien à montrer tant qu'aucune lampe n'est allumée : pas de calque à 4 Hz. */}
       {light && ((weatherOn && windows.length > 0) || lightLamps.length > 0) && (
-        <LightLayer windows={weatherOn ? glasses : NO_GLASS} width={width} height={HEIGHT} wallH={wallH} sky={view.sky} clock={view.weather?.clock ?? STILL_CLOCK} boxes={lightBoxes} lamps={lightLamps} signature={lightSignature} />
+        <LightLayer windows={weatherOn ? glasses : NO_GLASS} width={width} height={HEIGHT} wallH={wallH} sky={view.sky} clock={view.weather?.clock ?? STILL_CLOCK} boxes={lightBoxes} lamps={lightLamps} signature={lightSignature} getPetBoxes={getPetBoxes} />
       )}
       {bubbles}
       {cells}
