@@ -109,3 +109,131 @@ describe('createPetRunner', () => {
     expect(runner.step(roomWith(sofa, perched(sofa, null)), 500)[0]!.top).toBe(false);
   });
 });
+
+const twoPets = (layout: Layout, a: PetPlan, b: PetPlan): Room => ({
+  ...createInitialState().rooms[0]!,
+  layout,
+  pets: [
+    { id: 'p1', species: 'cat', name: 'Minou', coat: 'orange', plan: a },
+    { id: 'p2', species: 'dog', name: 'Rex', coat: 'brown', plan: b },
+  ],
+});
+
+describe('plusieurs animaux', () => {
+  it('renvoie une image par animal, avec l espèce', () => {
+    const runner = createPetRunner({ onPlan: vi.fn() });
+    const room = twoPets(sofa, resting(sofa, standPoint(10, 16)), resting(sofa, standPoint(20, 16)));
+    const frames = runner.step(room, 100);
+    expect(frames.map((f) => [f.id, f.species])).toEqual([['p1', 'cat'], ['p2', 'dog']]);
+  });
+
+  it('un animal évite la place réservée par l autre', () => {
+    const layout: Layout = [{ id: 'b', kind: 'basket', col: 10, row: 16 }];
+    const taken: PetPlan = { ...resting(layout, standPoint(11, 17)), action: 'sleep', hostId: 'b', key: 'b:curl' };
+    let hits = 0;
+    for (let i = 0; i < 80; i++) {
+      const onPlan = vi.fn();
+      const runner = createPetRunner({ onPlan, rng: Math.random });
+      const room = twoPets(layout, { ...resting(layout, standPoint(2, 16)), actMs: 10 }, taken);
+      runner.step(room, 5000);
+      const plan = onPlan.mock.calls.find((c) => c[0] === 'p1')?.[1] as PetPlan | undefined;
+      if (plan && plan.key === 'b:curl') hits++;
+    }
+    expect(hits).toBe(0);
+  });
+});
+
+describe('scènes à deux', () => {
+  const lead: PetPlan = { ...resting([], standPoint(3, 16)), startedAt: 0, actMs: 1000 };
+  const idle: PetPlan = { ...resting([], standPoint(12, 16)), startedAt: 0, actMs: 1_000_000 };
+
+  it('une scène démarre pour les deux animaux, avec les mêmes horodatages, et chacun est signalé une fois', () => {
+    let started = 0;
+    for (let seed = 1; seed <= 60 && started === 0; seed++) {
+      const onPlan = vi.fn();
+      let n = seed;
+      const rng = () => ((n = (n * 16807) % 2147483647) / 2147483647);
+      const runner = createPetRunner({ onPlan, rng });
+      runner.step(twoPets([], lead, idle), 5000);
+      const plans = new Map(onPlan.mock.calls.map((c) => [c[0] as string, c[1] as PetPlan]));
+      if (plans.get('p1')?.with && plans.get('p2')?.with) {
+        started++;
+        expect(plans.get('p1')!.startedAt).toBe(plans.get('p2')!.startedAt);
+        expect(plans.get('p1')!.with!.petId).toBe('p2');
+        expect(plans.get('p2')!.with!.petId).toBe('p1');
+      }
+    }
+    expect(started).toBe(1);
+  });
+
+  it('jamais de scène en animations réduites', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const onPlan = vi.fn();
+      let n = seed;
+      const rng = () => ((n = (n * 16807) % 2147483647) / 2147483647);
+      createPetRunner({ onPlan, rng, still: true }).step(twoPets([], lead, idle), 5000);
+      expect(onPlan.mock.calls.every((c) => (c[1] as PetPlan).with === undefined)).toBe(true);
+    }
+  });
+
+  it('une scène dont le partenaire a été retiré est abandonnée sans téléportation', () => {
+    const paired: PetPlan = { ...resting([], standPoint(5, 16)), startedAt: 1000, actMs: 20_000, with: { petId: 'p2', role: 'lead', scene: 'greet' } };
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan });
+    const solo: Room = { ...createInitialState().rooms[0]!, pets: [{ id: 'p1', species: 'cat', name: 'Minou', coat: 'orange', plan: paired }] };
+    const [frame] = runner.step(solo, 2000);
+    expect(onPlan).toHaveBeenCalledTimes(1);
+    expect(onPlan.mock.calls[0]![1].with).toBeUndefined();
+    expect(Math.abs(frame!.pos.x - standPoint(5, 16).x)).toBeLessThan(1);
+  });
+
+  it('la caresse de l un fait abandonner la scène de l autre', () => {
+    const a: PetPlan = { ...resting([], standPoint(3, 16)), startedAt: 1000, actMs: 20_000, with: { petId: 'p2', role: 'lead', scene: 'greet' } };
+    const b: PetPlan = { ...resting([], standPoint(4, 16)), startedAt: 1000, actMs: 20_000, with: { petId: 'p1', role: 'follow', scene: 'greet' } };
+    const onPlan = vi.fn();
+    const runner = createPetRunner({ onPlan });
+    const room = twoPets([], a, b);
+    runner.step(room, 2000);
+    expect(onPlan).not.toHaveBeenCalled();
+    expect(runner.touch(room, 'p1', 2100)).toBe(true);
+    runner.step(room, 2200);
+    const ids = onPlan.mock.calls.map((c) => c[0]);
+    expect(ids).toContain('p2');
+    expect(onPlan.mock.calls.find((c) => c[0] === 'p2')![1].with).toBeUndefined();
+  });
+});
+
+describe('trois animaux', () => {
+  it('aucun partenaire ne se retrouve dans deux scènes', () => {
+    const idle = (x: number): PetPlan => ({ ...resting([], standPoint(x, 16)), startedAt: 0, actMs: 1_000_000 });
+    const lead = (x: number): PetPlan => ({ ...resting([], standPoint(x, 16)), startedAt: 0, actMs: 1000 });
+    let scenes = 0;
+    for (let seed = 1; seed <= 80; seed++) {
+      const last = new Map<string, PetPlan>();
+      let n = seed;
+      const rng = () => ((n = (n * 16807) % 2147483647) / 2147483647);
+      const runner = createPetRunner({ onPlan: (id, plan) => last.set(id, plan), rng });
+      const room: Room = {
+        ...createInitialState().rooms[0]!,
+        layout: [],
+        pets: [
+          { id: 'p1', species: 'cat', name: 'A', coat: 'orange', plan: lead(3) },
+          { id: 'p2', species: 'dog', name: 'B', coat: 'brown', plan: lead(4) },
+          { id: 'p3', species: 'cat', name: 'C', coat: 'orange', plan: idle(12) },
+        ],
+      };
+      runner.step(room, 5000);
+      const partners = [...last.values()].filter((p) => p.with).map((p) => p.with!.petId);
+      const paired = [...last.entries()].filter(([, p]) => p.with).map(([id]) => id);
+      // chaque animal en scène a pour partenaire un animal dont le plan le désigne en retour
+      for (const id of paired) {
+        const w = last.get(id)!.with!;
+        expect(last.get(w.petId)?.with?.petId).toBe(id);
+      }
+      expect(new Set(paired).size).toBe(paired.length);
+      expect(partners.length).toBe(paired.length);
+      scenes += paired.length / 2;
+    }
+    expect(scenes).toBeGreaterThan(0);
+  });
+});
