@@ -1358,7 +1358,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Comment faire', text: 'En mode Aménager, touchez l’ampoule « Lumière » dans la rangée Ciel. Le réglage est propre à cet appareil.' },
           { label: 'Comment ça marche', text: 'La direction du rayon suit la place du soleil devant chaque fenêtre ; les nuages l’atténuent ; la nuit, seule la lumière ambiante reste ; la clarté baisse avec la distance aux fenêtres.' },
-          { label: 'Limites', text: 'Pas encore d’ombres ni de lampes. Sans effet dans l’espace et sur la Terre vue d’en haut, et fixe en mode animations réduites. Si l’appareil ralentit, coupez la lumière avec 💡.' },
+          { label: 'Limites', text: 'Pas encore d’ombres ni de lampes. Sans effet dans l’espace et sur la Terre vue d’en haut, et fixe en mode animations réduites. Si l’appareil ralentit, coupez la lumière avec le bouton Lumière.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },
