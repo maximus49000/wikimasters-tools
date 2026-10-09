@@ -1131,4 +1131,71 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v10',
+    theme: 'collection',
+    glyph: '🐶',
+    title: 'Un chien et plusieurs compagnons',
+    summary: 'Adoptez un chien, jusqu’à trois animaux par pièce, et regardez-les jouer ensemble',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Ouvrir une pièce de la Bibliothèque',
+        text: 'Ma Pièce, dans le menu juste après Collection, ouvre vos pièces : c’est là que vivent vos animaux.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez la pièce où vos animaux vivront.' },
+          { label: 'À quoi ça sert', text: 'À donner des compagnons à chaque pièce. Tout reste sur cet appareil : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-action="edit"]',
+        title: 'Passer en mode Aménager',
+        text: 'Le crayon passe en mode Aménager : c’est là qu’apparaît la rangée Animaux, avec le chat et le chien à adopter.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le crayon dans la barre de la pièce ; l’œil revient au mode Visiter.' },
+          { label: 'À quoi ça sert', text: 'Le mode Visiter ne change rien par erreur.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-action="adopt-dog"]',
+        title: 'Adopter un chien',
+        text: 'En mode Aménager, la rangée Animaux propose le glyphe du chien à côté du chat : touchez-le, choisissez un nom et un pelage (brun, noir, crème, tacheté, gris, roux), puis validez avec la coche.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Passez en mode Aménager avec le crayon, touchez le chien dans la rangée Animaux, écrivez son nom, touchez un pelage puis la coche.' },
+          { label: 'À quoi ça sert', text: 'À donner de la vie à votre pièce : un chien qui court, renifle, halète, dort dans la niche ou le panier et monte sur le canapé, mais ne grimpe pas sur les étagères.' },
+          { label: 'Limites', text: 'Trois animaux au maximum par pièce, chats et chiens mélangés ; le chien ne monte que sur le canapé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+      {
+        target: '[data-wmt-library] svg[role="img"]',
+        title: 'Les voir jouer ensemble',
+        text: 'Avec deux animaux ou plus, ils se saluent, se toilettent, se poursuivent, dorment côte à côte, et le chat remet parfois le chien à sa place.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Rien à faire : il suffit d’adopter plusieurs animaux et de regarder la pièce en mode Visiter. Toucher l’un des deux interrompt la scène.' },
+          { label: 'À quoi ça sert', text: 'À une pièce plus vivante, où les compagnons ne s’ignorent pas, sans aucune contrainte ni entretien.' },
+          { label: 'Limites', text: 'Les scènes n’ont lieu qu’au sol et jamais en mode animations réduites ; la poursuite ne dure que quelques secondes.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [aria-label="Animaux"]',
+        title: 'Retirer un animal',
+        text: 'En mode Aménager, chaque animal a son nom modifiable et sa corbeille : retirer l’un laisse les autres tranquilles.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'En mode Aménager, changez le nom dans la rangée Animaux, ou touchez la corbeille à côté du nom pour retirer l’animal.' },
+          { label: 'À quoi ça sert', text: 'À faire de la place ou à recommencer avec un autre compagnon, sans toucher aux autres animaux de la pièce.' },
+          { label: 'Limites', text: 'Retirer un animal est définitif : il faut l’adopter de nouveau pour le retrouver, avec un nouveau nom et un nouveau pelage.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
+      },
+    ],
+  },
 ];
