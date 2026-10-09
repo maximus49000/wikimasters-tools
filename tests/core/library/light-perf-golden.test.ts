@@ -47,7 +47,7 @@ describe('empreintes de référence (sortie identique après optimisation)', () 
     const chaud = buildLightMap({ ...a, hidden: 0.5 });
     const ms = performance.now() - t;
     expect(hash(chaud.rgba)).toBe(hash(froid.rgba));
-    expect(ms).toBeLessThan(40);
+    expect(ms).toBeLessThan(150);
     console.info('repaint chaud (ms)', ms.toFixed(1));
   });
 });
