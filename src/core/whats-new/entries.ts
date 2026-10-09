@@ -1484,4 +1484,45 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v17',
+    theme: 'collection',
+    glyph: '🐾',
+    title: 'L’ombre des animaux',
+    summary: 'Chat, chien et robot font de l’ombre au soleil comme aux lampes, et elle les suit',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Ouvrir une pièce avec un animal',
+        text: 'Ma Pièce ouvre vos pièces : dans une pièce éclairée où vit un animal, il projette maintenant son ombre.',
+        gesture: 'tap',
+        details: [
+          { label: 'À quoi ça sert', text: 'À donner vie à la pièce : l’ombre de l’animal le suit partout où il va.' },
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, puis choisissez une pièce avec une fenêtre ou une lampe allumée, et un animal adopté.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-pet]',
+        title: 'Regarder l’ombre bouger',
+        text: 'Observez un animal marcher : son ombre se déplace avec lui, au sol comme sur un meuble.',
+        details: [
+          { label: 'Comment ça marche', text: 'La silhouette dépend de l’espèce et de la pose : queue du chat et du chien, robot bas et large. L’ombre tombe aussi sur un bureau, sur une étagère ou sur le dos du robot. Tant qu’un animal bouge, la lumière est repeinte plus souvent.' },
+          { label: 'D’où viennent les données', text: 'Les positions des animaux sont déjà calculées sur votre appareil pour les animer : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-light-toggle]',
+        title: 'Couper la lumière si l’appareil ralentit',
+        text: 'Le bouton Lumière coupe d’un coup toutes les ombres et lumières de la pièce, y compris celles des animaux.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez le bouton Lumière de la barre de la pièce pour couper ou rétablir l’ensemble.' },
+          { label: 'Limites', text: 'Pas d’ombre sur l’animal lui-même ni sur le mur du fond. Les silhouettes sont simplifiées (ni oreilles ni pattes séparées) ; le robot est un châssis bas et large, mais pas plus plat que le corps du chat, avec une fine antenne. Un animal caché dans un panier ou une niche ne fait pas d’ombre. En mode animations réduites, l’ombre n’est rafraîchie qu’à la seconde. Une ancienne version de l’extension ignore les ombres des animaux : rien n’est perdu.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];

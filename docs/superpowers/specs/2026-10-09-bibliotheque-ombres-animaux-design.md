@@ -16,7 +16,7 @@ Nouveau module pur `src/core/library/light/pet-boxes.ts` : `petBoxes(frame, geom
 
 - **Chat** : corps (boîte basse allongée), tête, **queue** (fine, relevée ou couchée selon la pose).
 - **Chien** : corps plus long et plus haut, tête, **queue** (fine, en panache), pattes assez fines pour ne pas faire un bloc plein.
-- **Robot** : boîte **plate et large** (châssis sur chenilles, hauteur bien inférieure à celle d'un chat), plus une **antenne** très fine ; pas de queue. Endormi par un chat (`ride`) : le chat est posé à `RIDE_LIFT` au-dessus de lui, les deux boîtes se cumulent.
+- **Robot** : boîte **basse et large** (châssis sur chenilles de 28 × 26 px, pas plus plat que le corps du chat), plus une **antenne** très fine montant à 40 px ; pas de queue. Endormi par un chat (`ride`) : le chat est posé à `RIDE_LIFT` au-dessus de lui, les deux boîtes se cumulent.
 - Poses : `walk`/`jump`/`greet`/`play`/`pant`/`sniff`/`scan`/`beep` = debout (le saut ajoute la hauteur de l'arc à `z`) ; `sit`/`purr`/`groom`/`yawn`/`eat`/`scratch`/`hiss`/`cower`/`stretch` = assis ou accroupi (plus court, plus haut devant) ; `sleep`/`standby`/`charge` = couché (plat) ; **`hide` = aucune boîte** (l'animal est dans son panier ou sa niche, qui est déjà un meuble).
 - Le sens (`facing`) retourne la queue et la tête en x. La table est en fractions d'une taille de référence par espèce, comme `PRIMS` des meubles.
 - Hauteur de base : `z = 0` au sol ; sur un bureau ou une étagère (`top`), `z0` = hauteur du dessus du support, lue comme pour un petit objet. Position en profondeur `d` déduite de l'ordonnée écran des pieds (`pos.y`) avec la même inversion que `dFrontOf`.
@@ -34,9 +34,12 @@ Les champs mémorisés des meubles (`surfaceOf`, `sunReachField`, `lampLightOf`)
 
 - `usePetSim` expose les images courantes (`frames.current`) via un accesseur stable `getPets()` ; `RoomView` le passe à `LightLayer` (prop `pets?: () => readonly PetFrame[]`). Aucun rendu React par image.
 - `LightLayer` lit `getPets()` à chaque repeinture et compare une **signature quantifiée** (position à 2 px près, pose, sens, support) à la précédente : inchangée = on saute la repeinture, comme pour le ciel.
-- Cadence : **4 Hz au repos** (inchangé) ; **~12 Hz tant qu'au moins un animal a bougé** à la repeinture précédente, puis retour à 4 Hz après 1 s d'immobilité. Mouvement réduit : pas d'intervalle supplémentaire, un recalcul à la minute comme aujourd'hui (les animaux y changent de place rarement).
+- Cadence : **4 Hz au repos** (inchangé) ; **~12 Hz tant qu'au moins un animal a bougé** à la repeinture précédente, puis retour à 4 Hz après 1 s d'immobilité. Mouvement réduit : pas d'intervalle supplémentaire, un contrôle à la seconde, avec repeinture seulement si la signature a changé.
 - Onglet masqué ou pièce changée : même garde que le reste (`document.visibilityState`, rechargement du calque).
-- Le calque doit rester **sous** les animaux ou les ombrer de façon cohérente : à vérifier dans `RoomView` en écrivant le plan (ordre de dessin du `<image data-light>` par rapport aux nœuds `petAttach`) ; si le calque est au-dessus, l'ombre au sol s'étend sans assombrir le sprite lui-même grâce à un masque de silhouette ou en déplaçant le calque sous la couche des animaux.
+- **Ordre du calque (tranché)** : `RoomView` dessine le calque de lumière APRÈS les animaux (`middle`, `topPets`) et avant les bulles. Les sprites sont donc éclairés et assombris comme les meubles ; on ne déplace rien et il n'y a pas de masque de silhouette. L'ombre au sol d'un animal tombe devant ou à côté de lui, elle n'assombrit pas visiblement son propre sprite.
+- **Hauteur d'un animal** : `PetFrame` gagne `on` (support à cet instant). Sur un bureau ou une étagère, `z0` = dessus du support. Au sol, levée = `max(0, depthY − pos.y)` (~26 pour le chat couché sur un robot, ~0 en saut car `depthY` = `pos.y`) : pendant un saut l'ombre suit la position à l'écran sans hauteur dédiée (simplification assumée).
+- **Approximations du passage animaux** : (a) soleil : transmission = meilleure fenêtre, c'est-à-dire le max, sur les fenêtres dont la projection contient le pixel, de la part non occultée par les animaux seuls (exact pour une seule fenêtre) ; (b) lampes : moyenne des transmissions par lampe pondérée par l'éclairement (exact quand les meubles ne gênent pas). Aucune ne s'applique au mur du fond.
+- **Robot, honnêtement** : un châssis de 28 × 26 px (dos à 26 px, car le chat dort dessus) plus une fine antenne montant à 40 px ; il n'est donc pas plus plat que le corps du chat.
 
 ## Tests
 
@@ -46,7 +49,7 @@ Les champs mémorisés des meubles (`surfaceOf`, `sunReachField`, `lampLightOf`)
 
 ## Fiche WikiHow
 
-Mise à jour dans la même PR (`entries.ts`) : la fiche de la lumière indique que les animaux projettent aussi une ombre (nouvel id `bibliotheque-v17`, étapes `text + how + tip`, et les limites : pas d'ombre sur le sprite, pas d'ombre dans un panier ou une niche).
+Mise à jour dans la même PR (`entries.ts`) : nouvelle fiche `bibliotheque-v17` (« L'ombre des animaux », après `bibliotheque-v15`), qui indique que les animaux projettent aussi une ombre (étapes `text + détails`, et les limites : pas d'ombre sur le sprite, pas d'ombre dans un panier ou une niche).
 
 ## Limites connues, à annoncer
 
