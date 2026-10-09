@@ -134,13 +134,45 @@ describe('WeatherLayer', () => {
     expect(container.querySelectorAll('[data-wx-cloud]').length).toBe(140);
   });
 
-  it.each(['storm', 'drizzle', 'cloudy'] as const)('les nuages dérivent toujours (%s)', (state) => {
+  it.each(['storm', 'drizzle', 'cloudy'] as const)('les nuages dérivent toujours, au moins 4 px/s (%s)', (state) => {
     mount(state);
     const a = driftX();
     act(() => vi.advanceTimersByTime(5000));
     const b = driftX();
     expect(Number.isFinite(a)).toBe(true);
-    expect(b).not.toBe(a);
+    const moved = (((b - a) % 720) + 720) % 720;
+    // 4 px/s × 5 s, moins les arrondis d'affichage (0,1 px) ; au plus 18 px/s.
+    expect(moved).toBeGreaterThanOrEqual(4 * 5 - 0.2);
+    expect(moved).toBeLessThanOrEqual(18 * 5 + 0.2);
+  });
+  it('les nuages apparaissent en fondu quand la couverture change (jamais d’un coup)', () => {
+    const clock = createWeatherClock();
+    clock.setSource(steadySource('sun'), Date.now());
+    act(() => root.render(<svg><WeatherLayer scene="city" width={720} height={216} seed={1} sky={SKY} clock={clock} /></svg>));
+    const read = (): number[] => Array.from(container.querySelectorAll('[data-wx-cloud]')).map((el) => Number(el.getAttribute('opacity')));
+    clock.setSource(steadySource('storm'), Date.now());
+    let previous = read();
+    let partial = 0;
+    for (let i = 0; i < 400; i++) {
+      act(() => vi.advanceTimersByTime(100));
+      const next = read();
+      next.forEach((v, j) => {
+        // Pas de 100 ms sur un fondu de 1,5 s (0,067) + arrondi d’affichage (1/50) ; une apparition d’un coup ferait 1.
+        expect(Math.abs(v - previous[j]!)).toBeLessThanOrEqual(0.12);
+        if (v > 0.05 && v < 0.95) partial++;
+      });
+      previous = next;
+    }
+    expect(partial).toBeGreaterThan(0);
+    expect(visibleClouds()).toBe(container.querySelectorAll('[data-wx-cloud]').length);
+  });
+  it('n’écrit --wmt-precip que lorsqu’elle change', () => {
+    mount('rain');
+    const svg = container.querySelector('svg')!;
+    expect(svg.style.getPropertyValue('--wmt-precip')).not.toBe('');
+    const spy = vi.spyOn(svg.style, 'setProperty');
+    act(() => vi.advanceTimersByTime(3000));
+    expect(spy).not.toHaveBeenCalled();
   });
   it('la dérive ne saute pas quand le vent change (vitesse intégrée)', () => {
     const clock = createWeatherClock();
@@ -182,6 +214,30 @@ describe('WeatherLayer', () => {
       mount('drizzle', 'city', NIGHT);
       expect(opacity('godrays')).toBe(0);
     });
+    it('occasionnels : visibles bien moins de 15 % du temps en bruine, nuageux ou pluie (et jamais à l’orage)', () => {
+      // Fenêtre simulée : 3 graines × 10 min (≈ 20 épisodes de 90 s) ; l'orage, sans filets possibles, sur 2 min.
+      const fraction = (state: State, seeds = [1, 2, 77], seconds = 600): number => {
+        let on = 0;
+        let total = 0;
+        for (const seed of seeds) {
+          const clock = createWeatherClock();
+          clock.setSource(steadySource(state), Date.now());
+          act(() => root.render(<svg><WeatherLayer key={seed} scene="city" width={720} height={340} seed={seed} sky={SKY} clock={clock} /></svg>));
+          for (let i = 0; i < seconds; i++) {
+            act(() => vi.advanceTimersByTime(1000));
+            if (opacity('godrays') > 0.1) on++;
+            total++;
+          }
+        }
+        return on / total;
+      };
+      const drizzle = fraction('drizzle');
+      expect(drizzle).toBeLessThan(0.15);
+      expect(drizzle).toBeGreaterThan(0);
+      expect(fraction('cloudy')).toBeLessThan(0.15);
+      expect(fraction('rain')).toBeLessThan(0.15);
+      expect(fraction('storm', [1], 120)).toBe(0);
+    }, 60_000);
     it('au-dessus des nuages et du voile, sous la pluie', () => {
       mount('drizzle');
       const order = Array.from(container.querySelectorAll('[data-weather] > [data-wx]')).map((el) => el.getAttribute('data-wx'));

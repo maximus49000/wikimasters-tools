@@ -3,7 +3,7 @@ import type { SceneId } from '../core/library/library-types';
 import { mulberry32 } from '../core/library/scene-world';
 import { mixHex, type Sky } from '../core/library/sky';
 import { lightningAt, rainbowOf } from '../core/library/weather/weather-clock';
-import { CLOUD_BLOBS, godRayStrength, sunCoverage, type CloudSpot } from '../core/library/weather/weather-rays';
+import { CLOUD_BLOBS, godRayTarget, rayWindow, sunCoverage, type CloudSpot } from '../core/library/weather/weather-rays';
 import { smooth, type Weather } from '../core/library/weather/weather-types';
 import { celestialPlace } from './scene-panorama';
 
@@ -20,11 +20,18 @@ type Props = {
   // Identifiants des deux groupes, pour les copier dans chaque fenêtre (`<use>`) : le ciel (au-dessus des acteurs) et le sol (en dessous).
   id?: string;
   groundId?: string;
+  // Appelé quand la pluie devient (ou cesse d'être) assez forte pour des gouttes sur la vitre (avec hystérésis) : rare, sans boucle React.
+  onWet?: (wet: boolean) => void;
 };
 
 const FRAME_MS = 30;
 const TILE = 80;
 const COVER_MS = 250;
+// Durée (s) du fondu d'un nuage qui apparaît ou disparaît quand la couverture change.
+const CLOUD_FADE_S = 1.5;
+// Gouttes sur la vitre : apparaissent au-delà de 0,12 de pluie, disparaissent sous 0,08.
+const WET_ON = 0.12;
+const WET_OFF = 0.08;
 // Hauteur du sol (fraction de la hauteur du monde) où se posent flaques et neige : celle du décor de chaque scène.
 // En mer, pas de sol sous la fenêtre : ni flaques ni neige sur l'eau.
 const GROUND: Partial<Record<SceneId, number>> = { city: 0.78, countryside: 0.78, mountain: 0.82 };
@@ -72,7 +79,7 @@ function PatternDefs({ id, seed }: { id: string; seed: number }): ReactElement {
   );
 }
 
-type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; sky: RefObject<Sky> };
+type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; sky: RefObject<Sky>; onWet: RefObject<Props['onWet']> };
 
 // Met la météo à l'écran sans re-rendu React : même horloge murale pour toutes les fenêtres, même règle d'économie que les acteurs
 // (~30 images/s, en pause quand la page est cachée, figée si l'utilisateur demande moins de mouvement).
@@ -81,6 +88,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   const placeRef = useRef<(() => void) | null>(null);
   const { clock, seed, width, height, pool } = input;
   const skyRef = input.sky;
+  const onWetRef = input.onWet;
   useLayoutEffect(() => {
     const el = sky.current;
     const floor = ground.current;
@@ -103,7 +111,12 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     const still = reducedMotion();
     const svg = el.ownerSVGElement;
 
-    let lastShown = -1;
+    // Opacité courante de chaque nuage (−1 : pas encore posé) ; un nuage apparaît ou s'efface en fondu, jamais d'un coup.
+    const cloudOpacity = cloudNodes.map(() => -1);
+    let colorKey = '';
+    let lastPrecip = '';
+    // null : pas encore signalé — le premier placement signale toujours l'état (une relance de la boucle ne laisse pas d'état périmé).
+    let wet: boolean | null = null;
     let lastMs = Date.now();
     // Positions intégrées (vitesse × durée) : un changement de vent change la VITESSE, jamais la position d'un coup.
     const w0 = clock.read(lastMs);
@@ -128,19 +141,32 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       // Ciel : de vrais nuages (leur NOMBRE = la couverture) ; leur teinte et l'obscurité du ciel suivent l'intensité de la pluie.
       const dark = clamp01(w.precip * (w.kind === 'rain' ? 1.15 : 0.7) + 0.35 * smoothstep(0.85, 1, w.cloud));
       const thick = w.cloud * (0.3 + 0.7 * dark);
-      const tintColor = mixHex('#1A1E2B', mixHex('#9AA4B2', '#4E5663', dark), daylight);
-      for (const stop of tintStops) put(stop, 'stop-color', tintColor);
+      // Couleurs recalculées seulement quand l'obscurité ou le jour bougent d'un cran (1/64) : pas de chaînes neuves à chaque image.
+      const key = `${Math.round(dark * 64)}|${Math.round(daylight * 64)}`;
+      if (key !== colorKey) {
+        colorKey = key;
+        const tintColor = mixHex('#1A1E2B', mixHex('#9AA4B2', '#4E5663', dark), daylight);
+        for (const stop of tintStops) put(stop, 'stop-color', tintColor);
+        put(nodes.clouds, 'fill', mixHex(mixHex('#262C46', '#FFFFFF', daylight), mixHex('#2F3542', '#6A7280', daylight), dark));
+        const overcastColor = mixHex('#1A1E2B', mixHex('#B9C0CA', '#454C58', dark), daylight);
+        for (const stop of overcastStops) put(stop, 'stop-color', overcastColor);
+      }
       set(nodes.tint, 0.92 * thick);
-      put(nodes.clouds, 'fill', mixHex(mixHex('#262C46', '#FFFFFF', daylight), mixHex('#2F3542', '#6A7280', daylight), dark));
-      const overcastColor = mixHex('#1A1E2B', mixHex('#B9C0CA', '#454C58', dark), daylight);
-      for (const stop of overcastStops) put(stop, 'stop-color', overcastColor);
       const overcast = w.cloud > 0.8 ? ((w.cloud - 0.8) / 0.2) * (0.45 + 0.5 * dark) : 0;
       set(nodes.overcast, overcast);
-      const shown = Math.round(w.cloud * cloudNodes.length);
-      if (shown !== lastShown) {
-        lastShown = shown;
-        cloudNodes.forEach((node, i) => (i < shown ? node.removeAttribute('display') : node.setAttribute('display', 'none')));
-      }
+      // Nombre de nuages = couverture × réserve ; le nuage « à la frontière » est partiellement visible, et chacun suit sa cible en fondu.
+      const wanted = w.cloud * cloudNodes.length;
+      const maxStep = dt / CLOUD_FADE_S;
+      cloudNodes.forEach((node, i) => {
+        const goal = clamp01(wanted - i);
+        const prev = cloudOpacity[i]!;
+        const next = prev < 0 || still ? goal : prev + Math.max(-maxStep, Math.min(maxStep, goal - prev));
+        cloudOpacity[i] = next;
+        const shownOpacity = Math.round(next * 50) / 50;
+        put(node, 'opacity', shownOpacity.toFixed(2));
+        if (shownOpacity <= 0) put(node, 'display', 'none');
+        else if (node.hasAttribute('display')) node.removeAttribute('display');
+      });
       drift = positiveMod(drift + dt * windSpeed(w.wind), width);
       put(nodes.drift, 'transform', `translate(${drift.toFixed(1)} 0)`);
 
@@ -181,10 +207,10 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       else if (now - coveredAt >= COVER_MS || still) {
         coveredAt = now;
         const sun = celestialPlace(sunFrac, width, height);
-        const cov = sunCoverage(sun.x, sun.y, pool.slice(0, shown), drift, width);
+        const cov = sunCoverage(sun.x, sun.y, pool.filter((_, i) => (cloudOpacity[i] ?? 0) >= 0.5), drift, width);
         hidden = 1 - (1 - cov) * (1 - clamp01(overcast));
       }
-      const target = sunFrac === null ? 0 : godRayStrength(hidden, w.cloud, w.precip) * smoothstep(0.35, 0.75, daylight);
+      const target = godRayTarget(hidden, w, daylight, sunFrac !== null, rayWindow(now, seed));
       // Fondu doux : les filets apparaissent et s'effacent, ils ne s'allument jamais d'un coup.
       rayStrength = rayStrength < 0 || still ? target : rayStrength + (target - rayStrength) * 0.08;
       if (rayStrength < 0.01) {
@@ -200,7 +226,16 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       }
 
       // Les gouttes sur la vitre (dans WindowArt) lisent cette variable sur le <svg> de la pièce.
-      svg?.style.setProperty('--wmt-precip', rain.toFixed(3));
+      const precipText = rain.toFixed(2);
+      if (precipText !== lastPrecip) {
+        lastPrecip = precipText;
+        svg?.style.setProperty('--wmt-precip', precipText);
+      }
+      const nextWet = wet ? rain > WET_OFF : rain > WET_ON;
+      if (nextWet !== wet) {
+        wet = nextWet;
+        onWetRef.current?.(wet);
+      }
     };
     placeRef.current = place;
     place();
@@ -228,7 +263,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   return placeRef;
 }
 
-function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId }: Props): ReactElement {
+function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, onWet }: Props): ReactElement {
   // Préfixe des motifs/dégradés, propre à chaque pièce (deux pièces affichées ne partagent pas leurs motifs).
   const uid = `wx${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const floorFrac = CLOUD_FLOOR[scene] ?? 0.45;
@@ -240,7 +275,9 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const groundRoot = useRef<SVGGElement | null>(null);
   const skyRef = useRef<Sky>(sky);
   skyRef.current = sky;
-  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, sky: skyRef });
+  const onWetRef = useRef(onWet);
+  onWetRef.current = onWet;
+  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, sky: skyRef, onWet: onWetRef });
   // Mouvement réduit : pas de boucle, mais le ciel (chaque minute) relance un placement pour suivre la météo.
   useLayoutEffect(() => {
     if (reducedMotion()) placeRef.current?.();
@@ -296,7 +333,7 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
           </linearGradient>
           <g id={`${uid}-strip`} data-wx="clouds" fill="#FFFFFF">
             {pool.map((c, i) => (
-              <g key={i} data-wx-cloud="" display="none" transform={`translate(${c.x.toFixed(1)} ${c.y.toFixed(1)}) scale(${c.s.toFixed(2)})`}>
+              <g key={i} data-wx-cloud="" display="none" opacity={0} transform={`translate(${c.x.toFixed(1)} ${c.y.toFixed(1)}) scale(${c.s.toFixed(2)})`}>
                 {CLOUD_BLOBS.map((b, j) => <ellipse key={j} cx={b.cx} cy={b.cy} rx={b.rx} ry={b.ry} />)}
               </g>
             ))}

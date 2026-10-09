@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useRef, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
+import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
 import { sizeOf } from '../core/library/furniture-catalog';
@@ -82,6 +82,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const weatherOn = view.weather !== undefined && WEATHER_SCENES.includes(room.scene);
   const gloom = weatherOn && (view.weather?.flags.gloom ?? false);
   const rainy = weatherOn && (view.weather?.flags.rainy ?? false);
+  // Gouttes sur la vitre (et leur animation SMIL) seulement quand il pleut assez : signalé par la boucle de météo, rarement.
+  const [wet, setWet] = useState(false);
+  const drops = weatherOn && wet;
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
 
   const deskRects = new Map<string, PxRect>();
@@ -140,7 +143,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       art = <SmallArt item={placed.item} rect={rect} palette={palette} />;
     } else if (placed.kind === 'window') {
       rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
-      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} clipId={`${worldId}-clip-${placed.id}`} />;
+      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />;
     } else {
       const cells = rectOf(placed);
       if (!cells || !isStanding(placed)) return null;
@@ -338,7 +341,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           </g>
           {/* Météo : deux groupes à part (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. */}
           {weatherOn && view.weather && (
-            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} />
+            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} onWet={setWet} />
           )}
           {windows.map((w) => {
             const glass = glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }));

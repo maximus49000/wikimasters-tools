@@ -120,6 +120,15 @@ describe('RoomView — météo dans les fenêtres', () => {
     expect(container.querySelector('[data-actors] [data-umbrella]')).not.toBeNull();
   });
 
+  it('par temps sec, pas de gouttes sur la vitre (ni leur animation)', () => {
+    const clock = createWeatherClock();
+    clock.setSource(steadySource('sun'), Date.now());
+    show(2, 'city', { clock, flags: { gloom: false, rainy: false } });
+    expect(container.querySelectorAll('[data-window-weather]')).toHaveLength(2);
+    expect(container.querySelector('[data-glass-drops]')).toBeNull();
+    expect(container.querySelector('[data-window-art] animate')).toBeNull();
+  });
+
   it('sans météo, ni calque ni gouttes', () => {
     show(2);
     expect(container.querySelector('[data-weather]')).toBeNull();

@@ -9,7 +9,8 @@ const GLASS_INSET = 7;
 export const glassRect = (rect: PxRect): PxRect => ({ x: rect.x + GLASS_INSET, y: rect.y + GLASS_INSET, w: rect.w - 2 * GLASS_INSET, h: rect.h - 2 * GLASS_INSET });
 
 // `weatherHref` / `weatherGroundHref` : groupes de la météo (ciel par-dessus les acteurs, sol en dessous), absents sans météo.
-type Props = { rect: PxRect; palette: Palette; steampunk: boolean; worldHref: string; actorsHref: string; weatherHref?: string; weatherGroundHref?: string; clipId: string };
+// `drops` : il pleut assez pour des gouttes sur la vitre (sinon ni gouttes ni animation).
+type Props = { rect: PxRect; palette: Palette; steampunk: boolean; worldHref: string; actorsHref: string; weatherHref?: string; weatherGroundHref?: string; drops?: boolean; clipId: string };
 
 // Opacité des gouttes sur la vitre : suit `--wmt-precip` (posée sur le <svg> de la pièce par la boucle de météo), nulle en pluie fine.
 const DROPS_STYLE = { opacity: 'clamp(0, calc((var(--wmt-precip, 0) - 0.12) * 3), 1)' } as unknown as CSSProperties;
@@ -38,7 +39,7 @@ function GlassDrops({ glass }: { glass: PxRect }): ReactElement {
 
 // Une fenêtre : le décor commun vu à travers un cadre. Le décor (fixe, puis acteurs animés) est le MÊME pour toutes
 // les fenêtres (`<use>`) : ce qu'on voit à gauche et à droite se raccorde, et un passant traverse l'une puis l'autre.
-export function WindowArt({ rect, palette, steampunk, worldHref, actorsHref, weatherHref, weatherGroundHref, clipId }: Props): ReactElement {
+export function WindowArt({ rect, palette, steampunk, worldHref, actorsHref, weatherHref, weatherGroundHref, drops = false, clipId }: Props): ReactElement {
   const glass = glassRect(rect);
   const frame = steampunk ? '#B5833A' : palette.skirt;
   const edge = steampunk ? '#6E4A1E' : palette.edge;
@@ -61,7 +62,7 @@ export function WindowArt({ rect, palette, steampunk, worldHref, actorsHref, wea
         {weatherGroundHref && <use data-window-weather-ground="" href={weatherGroundHref} />}
         <use data-window-actors="" href={actorsHref} />
         {weatherHref && <use data-window-weather="" href={weatherHref} />}
-        {weatherHref && <GlassDrops glass={glass} />}
+        {weatherHref && drops && <GlassDrops glass={glass} />}
       </g>
       {bars}
       <rect x={rect.x + 3} y={rect.y + 3} width={rect.w - 6} height={rect.h - 6} rx={steampunk ? 14 : 3} fill="none" stroke={frame} strokeWidth={GLASS_INSET - 1} />
