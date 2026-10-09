@@ -10,6 +10,7 @@ import {
   parseLibraryState,
   renameRoom,
   setActive,
+  setCityEpoch,
   setHome,
   setOrientation,
   shrinkRoom,
@@ -181,5 +182,25 @@ describe('parseLibraryState', () => {
     const fixed = parseLibraryState(broken);
     expect(fixed.activeRoomId).toBe('r1');
     expect(fixed.homeRoomId).toBeNull();
+  });
+});
+
+describe('cityEpoch', () => {
+  it('lit et garde cityEpoch, facultatif', () => {
+    const base = createInitialState();
+    const withEpoch = parseLibraryState({ ...base, rooms: [{ ...base.rooms[0]!, cityEpoch: 20_000 }] });
+    expect(withEpoch.rooms[0]!.cityEpoch).toBe(20_000);
+    expect(parseLibraryState(JSON.parse(JSON.stringify(base))).rooms[0]!.cityEpoch).toBeUndefined();
+    expect(parseLibraryState({ ...base, rooms: [{ ...base.rooms[0]!, cityEpoch: 1.5 }] })).toEqual(createInitialState());
+  });
+
+  it('setCityEpoch ne pose la date que sur les pièces listées qui n’en ont pas', () => {
+    let state = addRoom(addRoom(createInitialState()));
+    state = { ...state, rooms: state.rooms.map((r) => (r.id === 'r2' ? { ...r, cityEpoch: 10 } : r)) };
+    const next = setCityEpoch(state, ['r1', 'r2'], 20_000);
+    expect(next.rooms.find((r) => r.id === 'r1')!.cityEpoch).toBe(20_000);
+    expect(next.rooms.find((r) => r.id === 'r2')!.cityEpoch).toBe(10);
+    expect(next.rooms.find((r) => r.id === 'r3')!.cityEpoch).toBeUndefined();
+    expect(setCityEpoch(next, ['r1', 'r2'], 30_000)).toBe(next);
   });
 });

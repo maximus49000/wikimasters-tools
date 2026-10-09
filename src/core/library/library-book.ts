@@ -84,6 +84,7 @@ const roomSchema = z.object({
   cols: z.number().int().min(MIN_COLS).max(MAX_COLS).refine((cols) => cols % SECTION === 0),
   layout: z.array(placedSchema),
   pets: z.array(petSchema).max(MAX_PETS),
+  cityEpoch: z.number().int().optional(),
 });
 const stateSchema = z.object({
   version: z.literal(5),
@@ -327,6 +328,12 @@ export function updateLayout(state: LibraryState, roomId: string, change: (layou
 
 export function nextFurnitureId(layout: Layout): string {
   return nextId('f', layout.map((placed) => placed.id));
+}
+
+// Pose le jour de départ de la rue commerçante sur les pièces listées qui n'en ont pas encore (jamais d'écrasement).
+export function setCityEpoch(state: LibraryState, roomIds: string[], day: number): LibraryState {
+  if (!state.rooms.some((r) => roomIds.includes(r.id) && r.cityEpoch === undefined)) return state;
+  return { ...state, rooms: state.rooms.map((r) => (roomIds.includes(r.id) && r.cityEpoch === undefined ? { ...r, cityEpoch: day } : r)) };
 }
 
 export function setRoomScene(state: LibraryState, id: string, scene: SceneId): LibraryState {
