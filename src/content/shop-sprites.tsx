@@ -28,18 +28,19 @@ function SignText({ name, cx, y, w, ink }: { name: string; cx: number; y: number
   );
 }
 
-export function ForSalePlacard({ x, y, w }: { x: number; y: number; w: number }): ReactElement {
+export function ForSalePlacard({ x, y, w, sky }: { x: number; y: number; w: number; sky: Sky }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
   const pw = Math.min(w - 2, 14);
   const px = x + (w - pw) / 2;
   return (
     <g data-placard="1">
-      <rect x={px} y={y} width={pw} height={9} fill="#FFFFFF" stroke={ORANGE} strokeWidth={0.5} />
-      <rect x={px} y={y} width={pw} height={3.6} fill={ORANGE} />
-      <text x={px + pw / 2} y={y + 2.7} fontSize={2.6} fontFamily="sans-serif" fontWeight="bold" textAnchor="middle" fill="#FFFFFF">
+      <rect x={px} y={y} width={pw} height={9} fill={t('#FFFFFF')} stroke={t(ORANGE)} strokeWidth={0.5} />
+      <rect x={px} y={y} width={pw} height={3.6} fill={t(ORANGE)} />
+      <text x={px + pw / 2} y={y + 2.7} fontSize={2.6} fontFamily="sans-serif" fontWeight="bold" textAnchor="middle" fill={t('#FFFFFF')}>
         À VENDRE
       </text>
-      <rect x={px + 1.5} y={y + 5} width={pw - 3} height={0.7} fill="#9A9A9A" />
-      <rect x={px + 1.5} y={y + 6.6} width={pw - 5} height={0.7} fill="#9A9A9A" />
+      <rect x={px + 1.5} y={y + 5} width={pw - 3} height={0.7} fill={t('#9A9A9A')} />
+      <rect x={px + 1.5} y={y + 6.6} width={pw - 5} height={0.7} fill={t('#9A9A9A')} />
     </g>
   );
 }
@@ -60,21 +61,21 @@ export function LadderSprite({ height }: { height: number }): ReactElement {
 }
 
 // Enseigne portée par un ouvrier : bandeau de la couleur du type, nom dessus.
-export function CarriedSign({ type, name, w }: { type: ShopTypeId; name: string; w: number }): ReactElement {
+export function CarriedSign({ type, name, w, sky }: { type: ShopTypeId; name: string; w: number; sky: Sky }): ReactElement {
   const def = SHOP_DEFS[type];
   return (
     <g data-carried="sign">
-      <rect x={-w / 2} y={-5} width={w} height={5} fill={def.sign} stroke={FRAME} strokeWidth={0.4} />
-      <SignText name={name} cx={0} y={-1.6} w={w} ink={def.ink} />
+      <rect x={-w / 2} y={-5} width={w} height={5} fill={tone(def.sign, sky)} stroke={tone(FRAME, sky)} strokeWidth={0.4} />
+      <SignText name={name} cx={0} y={-1.6} w={w} ink={tone(def.ink, sky)} />
     </g>
   );
 }
 
-export function CarriedPlacard({ w }: { w: number }): ReactElement {
-  return <ForSalePlacard x={-w / 2} y={-9} w={w + 2} />;
+export function CarriedPlacard({ w, sky }: { w: number; sky: Sky }): ReactElement {
+  return <ForSalePlacard x={-w / 2} y={-9} w={w + 2} sky={sky} />;
 }
 
-function Shutter({ frame }: { frame: ShopFrame }): ReactElement {
+function Shutter({ frame, sky }: { frame: ShopFrame; sky: Sky }): ReactElement {
   const { window: win, door } = frame;
   const x = Math.min(win.x, door.x);
   const right = Math.max(win.x + win.w, door.x + door.w);
@@ -84,9 +85,9 @@ function Shutter({ frame }: { frame: ShopFrame }): ReactElement {
   for (let s = y + 1.5; s < bottom; s += 1.5) slats.push(s);
   return (
     <g data-shutter="1">
-      <rect x={x} y={y} width={right - x} height={bottom - y} fill={SHUTTER} />
+      <rect x={x} y={y} width={right - x} height={bottom - y} fill={tone(SHUTTER, sky)} />
       {slats.map((s) => (
-        <line key={s} x1={x} y1={s} x2={right} y2={s} stroke="#6E747C" strokeWidth={0.3} />
+        <line key={s} x1={x} y1={s} x2={right} y2={s} stroke={tone('#6E747C', sky)} strokeWidth={0.3} />
       ))}
     </g>
   );
@@ -135,8 +136,8 @@ export function ShopFront({ frame, view, sky, lit, children }: { frame: ShopFram
       <rect x={door.x - 0.5} y={door.y - 0.5} width={door.w + 1} height={door.h + 1} fill={t(FRAME)} />
       <rect x={door.x} y={door.y} width={door.w} height={door.h} fill={glow ? '#FFE7B0' : t(GLASS)} opacity={glow ? 0.85 : 0.9} />
       <rect x={door.x + (view.slot.doorSide === 'left' ? 0.8 : door.w - 1.4)} y={door.y + door.h / 2} width={0.6} height={2} fill={t(ALU)} />
-      {view.phase === 'closed' && <Shutter frame={frame} />}
-      {view.placard && <ForSalePlacard x={win.x} y={win.y + 4} w={win.w} />}
+      {view.phase === 'closed' && <Shutter frame={frame} sky={sky} />}
+      {view.placard && <ForSalePlacard x={win.x} y={win.y + 4} w={win.w} sky={sky} />}
     </g>
   );
 }

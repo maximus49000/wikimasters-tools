@@ -126,7 +126,7 @@ export const SHOP_DEFS: Readonly<Record<ShopTypeId, ShopDef>> = {
   tattoo: {
     id: 'tattoo', label: 'Tatoueur', days: TUE_SAT, hours: [[H(11), H(20)]], holidays: false,
     sign: '#111111', ink: '#E63B3B', wall: '#2B2B2B', floor: '#4A4A4A', awning: false, crowd: 'regular', level: 0.2,
-    names: ['Encre Noire', 'Peau d’Encre', 'À l’Aiguille', 'Tatoo Rizieux', 'Dragon Rouge Studio', 'L’Ancre Marine', 'Au Motif Éternel', 'Le Dernier Cri', 'Bras d’Honneur', 'Piqûre de Rappel'],
+    names: ['Encre Noire', 'Peau d’Encre', 'À l’Aiguille', 'Tatoo Rizieux', 'Dragon Pourpre', 'L’Ancre Marine', 'Au Motif Éternel', 'Le Dernier Cri', 'Bras d’Honneur', 'Piqûre de Rappel'],
   },
   thrift: {
     id: 'thrift', label: 'Friperie', days: TUE_SAT, hours: [[H(11), H(19)]], holidays: false,
@@ -151,7 +151,7 @@ export const SHOP_DEFS: Readonly<Record<ShopTypeId, ShopDef>> = {
   laundry: {
     id: 'laundry', label: 'Laverie', days: ALL, hours: [[H(7), H(22)]], holidays: true,
     sign: '#3AA9D6', ink: '#FFFFFF', wall: '#E3F3FA', floor: '#B9D6E2', awning: false, crowd: 'allday', level: 0.5,
-    names: ['Lavomatic du Coin', 'Tambour Battant', 'Linge Sale en Famille', 'Chaussette Perdue', 'Mousse Pas Mousse', 'Lessive Express', 'Le Hublot Rond', 'Essorage Express', 'Propre sur Soi', 'Lave-Linge Libre'],
+    names: ['Lave-Tout du Coin', 'Tambour Battant', 'Linge Sale en Famille', 'Chaussette Perdue', 'Mousse Pas Mousse', 'Lessive Express', 'Le Hublot Rond', 'Essorage Express', 'Propre sur Soi', 'Lave-Linge Libre'],
   },
   cafe: {
     id: 'cafe', label: 'Café', days: MON_SAT, hours: [[H(7), H(20)]], holidays: false,
@@ -166,7 +166,7 @@ export const SHOP_DEFS: Readonly<Record<ShopTypeId, ShopDef>> = {
   pizzeria: {
     id: 'pizzeria', label: 'Pizzeria', days: ALL, hours: MEALS, holidays: true,
     sign: '#C8352B', ink: '#FFF4D6', wall: '#F3DCC0', floor: '#9B6B4A', awning: false, crowd: 'meals', level: 0.7,
-    names: ['Chez Luigi', 'La Pizza Margherita', 'Pâte à Modeler', 'Le Four à Bois', 'Mamma Mia', 'La Quatre Saisons', 'Pizza Pazza', 'Au Feu de Naples', 'Le Calzone Rieur', 'Ciao Bella'],
+    names: ['Chez Luigi', 'La Pizza Margherita', 'Pâte à Modeler', 'Le Four à Bois', 'Bella Pizzaiola', 'La Quatre Saisons', 'Pizza Pazza', 'Au Feu de Naples', 'Le Calzone Rieur', 'Ciao Bella'],
   },
   kebab: {
     id: 'kebab', label: 'Kebab', days: ALL, hours: MEALS, holidays: true,

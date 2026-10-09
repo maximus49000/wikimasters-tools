@@ -57,7 +57,8 @@ export async function proxyShops(url: URL, deps: { fetch: Fetcher; now: () => nu
   if (hit && deps.now() - hit.at < CACHE_MS) return { status: 200, body: hit.body };
   const result = await forward(deps.fetch, OVERPASS, {
     method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'WikimastersTools/1.0 (relais)' },
+    signal: AbortSignal.timeout(25_000),
     body: `data=${encodeURIComponent(query(rounded(lat).toFixed(1), rounded(lon).toFixed(1)))}`,
   });
   if (result.status !== 200) return result.status === 429 ? result : failure(502, 'upstream');
@@ -67,6 +68,8 @@ export async function proxyShops(url: URL, deps: { fetch: Fetcher; now: () => nu
   } catch {
     return failure(502, 'upstream');
   }
+  // Overpass répond 200 avec une « remark » quand la requête a été interrompue (délai, mémoire) : résultat partiel, jamais mis en cache.
+  if (typeof (parsed as { remark?: unknown }).remark === 'string') return failure(502, 'upstream');
   const elements = (parsed as { elements?: unknown }).elements;
   if (!Array.isArray(elements)) return failure(502, 'upstream');
   const names: Record<string, string[]> = {};

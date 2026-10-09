@@ -9,6 +9,8 @@ import { WORK_STEPS, type WorkStep } from '../core/library/city/shops/works';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite } from './city-sprites';
+import { SHOP_DEFS } from '../core/library/city/shops/catalog';
+import { LIT_SKY } from './shop-interiors';
 import { CarriedPlacard, CarriedSign, LadderSprite, type WorkerPose } from './shop-sprites';
 
 // Vie des commerces dans le calque animé de la Ville (vague 1b-iv-a) : clients qui entrent, restent derrière la vitrine et
@@ -48,9 +50,9 @@ const sidewalkTransform = (v: Visit, x: number, m: CityMetrics): string => {
   const k = m.unit * STREET_SCALE.person * v.scale;
   return `translate(${x.toFixed(1)} ${m.doorY.toFixed(1)}) scale(${(v.dir * k).toFixed(3)} ${k.toFixed(3)})`;
 };
-const insideTransform = (v: Visit, f: ShopFrame): string => {
+const insideTransform = (v: Visit, f: ShopFrame, shift = 0): string => {
   const k = INSIDE_SCALE * v.scale;
-  return `translate(${(v.innerX - f.window.x).toFixed(1)} ${(f.window.h - INSIDE_DY).toFixed(1)}) scale(${(v.dir * k).toFixed(3)} ${k.toFixed(3)})`;
+  return `translate(${(v.innerX - f.window.x).toFixed(1)} ${(f.window.h - shift - INSIDE_DY).toFixed(1)}) scale(${(v.dir * k).toFixed(3)} ${k.toFixed(3)})`;
 };
 const insideId = (v: Visit): string => `${v.id}-in`;
 
@@ -77,6 +79,7 @@ export function placeCustomers(nodes: Map<string, SVGGElement>, visits: Visit[],
 type CustomersProps = {
   visits: Visit[];
   frames: Map<string, ShopFrame>;
+  views: ShopView[];
   gates: Map<string, number>;
   width: number;
   metrics: CityMetrics;
@@ -88,7 +91,7 @@ type CustomersProps = {
   fade: string | undefined;
 };
 
-export function ShopCustomers({ visits, frames, gates, width, metrics, t0, sky, rainy, umbrella, fade }: CustomersProps): ReactElement {
+export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0, sky, rainy, umbrella, fade }: CustomersProps): ReactElement {
   const style = fade ? { transition: `opacity ${fade} ease` } : undefined;
   const states = visits.map((v) => customerState(v, gates.get(v.slotId) ?? 0, width, t0));
   const slotIds = [...new Set(visits.map((v) => v.slotId))];
@@ -97,15 +100,19 @@ export function ShopCustomers({ visits, frames, gates, width, metrics, t0, sky, 
       {/* Derrière les vitrines : un <svg> par local, à la place de la vitrine (rogne le client qui dépasse). */}
       {slotIds.map((id) => {
         const f = frames.get(id)!;
+        const view = views.find((x) => x.slot.id === id);
+        // Boutique ouverte la nuit : comme le vendeur, le client est éclairé (ciel de jour) ; le store couvre le haut de la vitrine, le client reste dessous.
+        const lit = sky.daylight < 0.45 && view?.phase === 'open';
+        const shift = view?.sign && SHOP_DEFS[view.sign.type].awning ? 3 : 0;
         return (
-          <svg key={id} data-shop-window={id} x={f.window.x} y={f.window.y} width={f.window.w} height={f.window.h} overflow="hidden">
+          <svg key={id} data-shop-window={id} x={f.window.x} y={f.window.y + shift} width={f.window.w} height={f.window.h - shift} overflow="hidden">
             {visits.map((v, i) => {
               if (v.slotId !== id) return null;
               const s = states[i]!;
               const on = s.on && s.inside;
               return (
-                <g key={v.id} data-life-id={insideId(v)} data-customer-inside="" data-active={on ? 'true' : 'false'} transform={insideTransform(v, f)} opacity={(on ? s.fade : 0).toFixed(2)} style={style}>
-                  <PersonSprite outfit={v.outfit} sky={sky} rainy={false} umbrella={false} />
+                <g key={v.id} data-life-id={insideId(v)} data-customer-inside="" data-active={on ? 'true' : 'false'} transform={insideTransform(v, f, shift)} opacity={(on ? s.fade : 0).toFixed(2)} style={style}>
+                  <PersonSprite outfit={v.outfit} sky={lit ? LIT_SKY : sky} rainy={false} umbrella={false} />
                 </g>
               );
             })}
@@ -187,8 +194,8 @@ export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, sti
   const crew = crewAt(step, progress, lx, bx, edge, foot, top);
   const ladder = at(step) >= at('ladder-up') && at(step) <= at('ladder-down');
   // Ce que l'équipe pose (nouvelle enseigne ou écriteau À vendre) et ce qu'elle emporte (ancienne enseigne ou écriteau retiré).
-  const fresh = !change ? null : change.kind === 'to-sale' ? <CarriedPlacard w={win.w} /> : change.after ? <CarriedSign type={change.after.type} name={change.after.name} w={sign.w} /> : null;
-  const old = !change ? null : change.kind === 'from-sale' ? <CarriedPlacard w={win.w} /> : change.before ? <CarriedSign type={change.before.type} name={change.before.name} w={sign.w} /> : null;
+  const fresh = !change ? null : change.kind === 'to-sale' ? <CarriedPlacard w={win.w} sky={sky} /> : change.after ? <CarriedSign type={change.after.type} name={change.after.name} w={sign.w} sky={sky} /> : null;
+  const old = !change ? null : change.kind === 'from-sale' ? <CarriedPlacard w={win.w} sky={sky} /> : change.before ? <CarriedSign type={change.before.type} name={change.before.name} w={sign.w} sky={sky} /> : null;
   // L'ancienne est posée contre la devanture, sous la vitrine, entre la descente et le départ.
   const oldDown = at(step) > at('descend') && at(step) < at('leave');
   const k = metrics.unit * STREET_SCALE.person;

@@ -7,7 +7,7 @@ import { currentPosition, isPositionKnown, subscribePosition } from './scene-pos
 // en mémoire de page (par case, un seul appel partagé) ; seule une date d'échec est écrite, et pendant 24 h on ne redemande pas.
 // Sans nom (position inconnue, échec, pas de pièce Ville) : `{}`, les noms écrits à la main prennent le relais.
 
-const TIMEOUT_MS = 20_000;
+const TIMEOUT_MS = 30_000;
 const FAIL_KEY = 'wmt:city-shops-fail';
 const FAIL_PAUSE_MS = 24 * 3_600_000;
 const EMPTY: NamePool = {};

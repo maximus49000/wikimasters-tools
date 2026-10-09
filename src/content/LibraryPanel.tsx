@@ -261,11 +261,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const hasCity = lib?.rooms.some((r) => r.scene === 'city') ?? false;
   const cityDay = useCityDay(sceneTime.date, hasCity);
   const shopNames = useShopNames(hasCity);
-  // Rue commerçante : chaque pièce Ville reçoit une fois son jour de départ (tous les locaux occupés ce jour-là).
+  // Rue commerçante : chaque pièce Ville reçoit une fois son jour de départ (tous les locaux occupés ce jour-là) ; écriture notifiée, pour que la pièce affichée le porte aussitôt.
   const today = dayNumber(sceneTime.date);
   useEffect(() => {
     const ids = lib?.rooms.filter((r) => r.scene === 'city' && r.cityEpoch === undefined).map((r) => r.id) ?? [];
-    if (ids.length > 0) void library.updateQuiet((state) => setCityEpoch(state, ids, today));
+    if (ids.length > 0) void library.update((state) => setCityEpoch(state, ids, today));
   }, [lib, library, today]);
   // Vue des fenêtres mémoïsée : ciel et heure changent à la minute, les drapeaux de la météo rarement ; l'horloge est stable.
   const sceneView = useMemo(

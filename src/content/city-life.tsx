@@ -275,6 +275,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         <ShopCustomers
           visits={visits}
           frames={shops.frames}
+          views={shops.views}
           gates={gates}
           width={width}
           metrics={metrics}

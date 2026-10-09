@@ -1731,7 +1731,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'À quoi ça sert', text: 'À donner de la vie à la rue : on voit ce qui se passe dans chaque boutique, comme en passant sur le trottoir.' },
           { label: 'Comment faire', text: 'Rien à régler : ouvrez Ma Pièce, choisissez une pièce dont la scène est « Ville » et regardez la rue. Les horaires sont ceux de la vraie vie : la boulangerie est fermée le lundi, le bar reste ouvert jusqu’à 2 h, la boîte de nuit ouvre du jeudi au samedi, et le rideau métallique est baissé la nuit.' },
-          { label: 'D’où viennent les données', text: 'Tout est calculé sur votre appareil à partir de l’heure, du jour de la semaine et de la pièce. Rien n’est envoyé pour dessiner les commerces.' },
+          { label: 'D’où viennent les données', text: 'Tout est calculé sur votre appareil à partir de l’heure, du jour de la semaine et de la pièce. Seuls les noms des enseignes demandent le relais (voir l’étape suivante).' },
           { label: 'Limites', text: 'Environ 6 immeubles sur 10 ont un local : les plus étroits n’ont que leur porte. Le nom du commerce est petit et se lit surtout en grande fenêtre ou en plein écran.' },
         ],
         scene: { page: '/collection', closeWindows: true },
@@ -1743,8 +1743,8 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'À quoi ça sert', text: 'À reconnaître votre coin : la boulangerie ou le bar de votre quartier peut apparaître dans la rue de votre pièce.' },
           { label: 'Comment faire', text: 'Rien à faire si la position est activée dans les réglages de l’extension. Sinon, la vue utilise simplement une liste de noms inventés.' },
-          { label: 'D’où viennent les données', text: 'D’OpenStreetMap, demandé par le relais Wikimasters avec votre position arrondie à environ 10 km. Cette position n’est jamais enregistrée par le relais.' },
-          { label: 'Limites', text: 'Sans position, ou si le service ne répond pas, les noms sont inventés. Deux appareils peuvent afficher des noms différents pour le même commerce.' },
+          { label: 'D’où viennent les données', text: 'D’OpenStreetMap, demandé par le relais Wikimasters avec votre position arrondie à environ 10 km. Cette position est gardée seulement en mémoire du relais, jamais écrite.' },
+          { label: 'Limites', text: 'Sans position, ou si le service ne répond pas, les noms sont inventés. Deux appareils peuvent afficher des noms différents pour le même commerce, et les noms peuvent changer d’un coup quand les noms locaux arrivent.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
@@ -1754,7 +1754,7 @@ export const ENTRIES: Entry[] = [
         text: 'Un commerce reste ouvert de 3 à 12 semaines, puis le local est reloué tout de suite ou affiche « À vendre » pendant 1 à 3 semaines. Le jour du changement, une équipe vient toute la matinée avec une échelle : elle dépose l’ancienne enseigne, pose la nouvelle ou colle l’écriteau.',
         details: [
           { label: 'À quoi ça sert', text: 'À ce que la rue évolue au fil du temps, comme une vraie rue où les commerces ouvrent et ferment.' },
-          { label: 'Comment faire', text: 'Revenez le matin d’un jour de changement pour voir l’équipe au travail. Au premier affichage, tous les locaux sont occupés.' },
+          { label: 'Comment faire', text: 'Revenez le matin d’un jour de changement (jamais un dimanche ni un jour férié) pour voir l’équipe au travail. Au premier affichage, tous les locaux sont occupés.' },
           { label: 'D’où viennent les données', text: 'Du calendrier : chaque local a ses dates, calculées sur votre appareil à partir de la date et de la pièce. Rien n’est envoyé.' },
           { label: 'Limites', text: 'Un changement par local toutes les quelques semaines seulement, et il faut être là le matin pour voir l’équipe. Il n’y a pas encore de gestes à l’intérieur des commerces (prévu plus tard). Si vous réduisez les animations, l’équipe reste figée et aucun client ne circule.' },
         ],

@@ -52,4 +52,14 @@ describe('proxyShops', () => {
     expect((await run('/shops?lat=x&lon=2').result).status).toBe(400);
     expect((await run('/shops?lat=45&lon=3', [], 504).result).status).toBe(502);
   });
+  it('rejette une réponse 200 avec remark sans la mettre en cache, et envoie User-Agent et délai', async () => {
+    const fetchFn = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ elements: [element({ amenity: 'pub', name: 'A' })], remark: 'runtime error: timeout' }), { status: 200 }));
+    const call = () => proxyShops(new URL('https://relais.test/shops?lat=10.01&lon=10.01'), { fetch: fetchFn, now: () => 0 });
+    expect((await call()).status).toBe(502);
+    expect((await call()).status).toBe(502);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    const init = fetchFn.mock.calls[0]?.[1];
+    expect((init?.headers as Record<string, string>)['user-agent']).toBe('WikimastersTools/1.0 (relais)');
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
 });

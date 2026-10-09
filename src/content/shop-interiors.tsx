@@ -232,7 +232,7 @@ const DRAW: Readonly<Record<ShopTypeId, (k: Kit) => number>> = {
 
 // Boutique ouverte et éclairée (`lit`) : l'intérieur garde ses couleurs de jour, légèrement réchauffées par la lumière des
 // plafonniers, quelle que soit l'heure ; éteinte, il suit le ciel (tone). Les sources de lumière (`on`) restent vives.
-const LIT_SKY = skyAt(13 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 });
+export const LIT_SKY = skyAt(13 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 });
 const WARM = '#FFE2A8';
 
 export function ShopInterior({ type, w, h, sky, lit, staffed, seed }: { type: ShopTypeId; w: number; h: number; sky: Sky; lit: boolean; staffed: boolean; seed: number }): ReactElement {
