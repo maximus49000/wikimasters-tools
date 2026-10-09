@@ -153,7 +153,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         for (const stop of overcastStops) put(stop, 'stop-color', overcastColor);
       }
       set(nodes.tint, 0.92 * thick);
-      const overcast = w.cloud > 0.8 ? ((w.cloud - 0.8) / 0.2) * (0.45 + 0.5 * dark) : 0;
+      // Ciel entièrement couvert : le voile gris doit cacher le bleu (même sans pluie), pas seulement le tamiser.
+      const overcast = w.cloud > 0.8 ? clamp01((w.cloud - 0.8) / 0.15) * (0.95 + 0.05 * dark) : 0;
       set(nodes.overcast, overcast);
       // Nombre de nuages = couverture × réserve ; le nuage « à la frontière » est partiellement visible, et chacun suit sa cible en fondu.
       const wanted = w.cloud * cloudNodes.length;
@@ -333,8 +334,8 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
           </linearGradient>
           <linearGradient id={`${uid}-overcast`} x1="0" y1="0" x2="0" y2="1">
             <stop data-wx-stop="overcast" offset="0" stopColor="#B9C0CA" stopOpacity={1} />
-            <stop data-wx-stop="overcast" offset="0.45" stopColor="#B9C0CA" stopOpacity={0.9} />
-            <stop data-wx-stop="overcast" offset="1" stopColor="#B9C0CA" stopOpacity={0.25} />
+            <stop data-wx-stop="overcast" offset="0.6" stopColor="#B9C0CA" stopOpacity={1} />
+            <stop data-wx-stop="overcast" offset="1" stopColor="#B9C0CA" stopOpacity={0.5} />
           </linearGradient>
           <linearGradient id={`${uid}-fog`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#E7ECF1" stopOpacity={0.35} />
