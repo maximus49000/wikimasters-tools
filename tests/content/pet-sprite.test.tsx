@@ -2,8 +2,9 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
+import { ROBOT_COAT_LABELS } from '../../src/content/robot-sprite';
 import { COAT_COLORS, PetBubble, PetSprite, paletteOf } from '../../src/content/pet-sprite';
-import { COATS, DOG_COATS } from '../../src/core/library/library-types';
+import { COATS, DOG_COATS, ROBOT_COATS } from '../../src/core/library/library-types';
 import type { Pose } from '../../src/core/library/pets/runner';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -66,5 +67,45 @@ describe('PetSprite', () => {
   it('le chien se retourne vers la gauche', () => {
     const svg = draw({ species: 'dog', coat: 'red', pose: 'walk', facing: 'l', name: 'Rex' });
     expect(svg.querySelector('[data-dog-body]')!.getAttribute('transform')).toBe('scale(-1 1)');
+  });
+
+  const ROBOT_POSES: Pose[] = [...POSES, 'scan', 'standby', 'charge', 'beep'];
+  it.each(ROBOT_POSES)('dessine le robot en pose %s', (pose) => {
+    const svg = draw({ species: 'robot', coat: 'blue', pose, facing: 'r', name: 'Robi' });
+    expect(svg.querySelector(`[data-pet-pose="${pose}"]`)).not.toBeNull();
+    expect(svg.querySelector('[data-robot-body]')!.children.length).toBeGreaterThan(0);
+    expect(svg.querySelector('[data-cat-body]')).toBeNull();
+  });
+
+  it.each(ROBOT_COATS)('le coloris %s du robot a sa palette et son libellé', (coat) => {
+    expect(paletteOf('robot', coat).body).toMatch(/^#/);
+    expect(paletteOf('robot', coat).belly).toMatch(/^#/);
+    expect(ROBOT_COAT_LABELS[coat].length).toBeGreaterThan(0);
+    const svg = draw({ species: 'robot', coat, pose: 'sit', facing: 'r', name: 'x' });
+    expect(svg.innerHTML.toLowerCase()).toContain(paletteOf('robot', coat).body.toLowerCase());
+  });
+
+  it('le robot roule sur des chenilles animées, figées en mouvement réduit', () => {
+    expect(draw({ species: 'robot', coat: 'white', pose: 'walk', facing: 'r', name: 'x' }).querySelector('animateTransform')).not.toBeNull();
+    for (const pose of ROBOT_POSES) expect(draw({ species: 'robot', coat: 'white', pose, facing: 'r', name: 'x', still: true }).querySelector('animate, animateTransform')).toBeNull();
+  });
+
+  it('les yeux du robot suivent l’état : cœur, avertissement, tirets, voyants', () => {
+    const eyes = (pose: Pose) => draw({ species: 'robot', coat: 'white', pose, facing: 'r', name: 'x' }).querySelector('[data-robot-eyes]')!.getAttribute('data-robot-eyes');
+    expect(eyes('beep')).toBe('heart');
+    expect(eyes('cower')).toBe('warn');
+    expect(eyes('standby')).toBe('dash');
+    expect(eyes('charge')).toBe('dash');
+    expect(eyes('scan')).toBe('scan');
+    expect(eyes('sit')).toBe('normal');
+    const led = (pose: Pose) => draw({ species: 'robot', coat: 'white', pose, facing: 'r', name: 'x' }).querySelector('[data-robot-led]')?.getAttribute('data-robot-led');
+    expect(led('standby')).toBe('orange');
+    expect(led('charge')).toBe('green');
+    expect(led('sit')).toBeUndefined();
+  });
+
+  it('le dos du robot reste plat à y = -26 (hauteur de la sieste du chat)', () => {
+    const svg = draw({ species: 'robot', coat: 'white', pose: 'standby', facing: 'r', name: 'x' });
+    expect(svg.querySelector('[data-robot-back]')!.getAttribute('y')).toBe('-26');
   });
 });
