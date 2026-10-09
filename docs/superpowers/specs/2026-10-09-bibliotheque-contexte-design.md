@@ -23,7 +23,7 @@ type PetContext = {
 
 - `night`, `moon`, `weather` viennent du ciel et de la météo déjà calculés pour la pièce (`skyAt`, `useWeather`) ; `sunCells` vient du moteur de lumière (`light/`, rayon par fenêtre + `sunReaches`), échantillonné à 1 Hz, jamais par image.
 - Pièce sans fenêtre, ou scène espace/Terre : `weather = 'clear'`, `moon = false`, `sunCells = []`, `night` d'après l'horloge.
-- `stormId` : un orage = un passage continu à `storm` ; un nouvel orage a un nouvel id. Il évite de ré-interrompre les animaux qui ont déjà réagi.
+- `storm` : `{ id, since }` quand il y a un orage, sinon `null`. Un orage = un passage continu à `storm` ; un nouvel orage a un nouvel `id` (`since` = son début). L'`id` évite de ré-interrompre les animaux qui ont déjà réagi.
 
 ## Deux mécanismes
 
@@ -44,13 +44,13 @@ La tache de soleil bouge ; l'animal reste là où il s'est posé jusqu'à la fin
 
 ### 2. Interruption à l'orage (`runner`)
 
-Quand `ctx.stormId` change vers un nouvel orage, chaque animal de la pièce reçoit un plan de réaction, avec un délai propre tiré entre 0,5 et 4 s (champ `lag` existant, phase `wait`). Le plan en cours est abandonné à l'endroit où l'animal se trouve en théorie (`settledState`, jamais en l'air).
+Quand `ctx.storm.id` change vers un nouvel orage, chaque animal de la pièce reçoit un plan de réaction, avec un délai propre tiré entre 0,5 et 4 s (champ `lag` existant, phase `wait`). Le plan en cours est abandonné à l'endroit où l'animal se trouve en théorie (`settledState`, jamais en l'air).
 
 - **Chat** : `hide` sous le canapé s'il y en a un (place `${id}:hide`) ; sinon `cower` à la case libre la plus proche d'un mur.
 - **Chien** : `cower` au pied du canapé ; sinon à la case libre la plus proche d'un mur.
 - **Robot** : `shortcircuit` sur place (s'arrête net, étincelles, 3 s), puis `reboot` (redémarrage, 1,5 s) ; il ne se cache pas.
 - **À trois (nouvelle scène `huddle`)** : si chat, chien et robot sont tous présents, le chat et le chien convergent vers le même point (cases voisines, plans jumeaux comme les autres scènes) et se serrent en `cower` ; le robot reste en court-circuit à côté. Si un seul des trois manque, chacun réagit séparément.
-- L'orage maintient la réaction : l'animal reste en `cower`/`hide` tant que `weather = 'storm'`, par tranches de 8-15 s (prolongées sur place, sans déplacement), jusqu'à 60 s au plus après le début ; ensuite l'orage n'empêche plus les choix normaux (biais pluie, pas de nouvelle interruption car `stormId` n'a pas changé).
+- L'orage maintient la réaction : l'animal reste en `cower`/`hide` tant que `weather = 'storm'`, par tranches de 8-15 s (prolongées sur place, sans déplacement), jusqu'à 60 s au plus après le début ; ensuite l'orage n'empêche plus les choix normaux (biais pluie, pas de nouvelle interruption car `storm.id` n'a pas changé).
 - Une scène à deux en cours est abandonnée avec les règles existantes (`sceneIsValid`).
 - **Mouvement réduit** (`still`) : aucun déplacement ; `cower` (ou `shortcircuit` pour le robot) sur place.
 - **Caresse** : une caresse pendant l'orage reste possible (ronron/bip comme d'habitude) ; le plan de réaction reprend au choix suivant.
@@ -79,7 +79,7 @@ Aucun nouveau réglage : le comportement suit les réglages existants (heure, m�
 ## Tests
 
 - `brain` : biais de poids avec `ctx` injecté et RNG fixé (nuit, soleil, pluie, fin de pluie), sans `ctx` = comportement actuel.
-- `runner` : interruption à l'orage (délai, abandon en vol, un seul déclenchement par `stormId`, maintien 8-15 s, plafond 60 s), huddle à trois et repli si un partenaire manque, mouvement réduit, reprise après rechargement pendant l'orage.
+- `runner` : interruption à l'orage (délai, abandon en vol, un seul déclenchement par `storm.id`, maintien 8-15 s, plafond 60 s), huddle à trois et repli si un partenaire manque, mouvement réduit, reprise après rechargement pendant l'orage.
 - `scenes` : validité du plan `huddle` (`sceneIsValid`).
 - `pet-sim` / interface : construction de `PetContext` à partir de la météo et du ciel (pièce sans fenêtre, espace/Terre).
 - Rendu : poses nouvelles présentes pour chaque espèce, étincelles absentes en mouvement réduit.

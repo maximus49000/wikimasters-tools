@@ -126,4 +126,13 @@ describe('catalogue des fiches', () => {
     for (const word of ['ombre', 'chat', 'chien', 'robot', 'Limites']) expect(text, word).toContain(word);
     expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v17')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v15'));
   });
+
+  it('la fiche bibliotheque-v18 présente les réactions au contexte et leurs limites', () => {
+    const entry = ENTRIES.find((e) => e.id === 'bibliotheque-v18');
+    expect(entry).toBeDefined();
+    expect(entry!.steps.length).toBe(4);
+    expect(entry!.steps.map((s) => s.title).join(' ')).toMatch(/nuit/i);
+    expect(entry!.steps.flatMap((s) => s.details ?? []).some((d) => d.label === 'Limites')).toBe(true);
+    expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v18')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v17'));
+  });
 });

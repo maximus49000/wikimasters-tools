@@ -1536,4 +1536,59 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v18',
+    theme: 'collection',
+    glyph: '🌦️',
+    title: 'Les animaux et le temps qu’il fait',
+    summary: 'Nuit, soleil, pluie et orage changent le comportement du chat, du chien et du robot',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'La nuit',
+        text: 'La nuit, les animaux dorment davantage, le robot se met en veille et le chien peut hurler à la lune.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À donner à la pièce un rythme : elle ne se comporte pas pareil de jour et de nuit.' },
+          { label: 'Comment faire', text: 'Touchez Ma Pièce, ouvrez une pièce où vit un animal, puis observez-le le soir : l’heure de l’appareil règle le jour et la nuit.' },
+          { label: 'Comment ça marche', text: 'Quand il fait nuit dans la pièce, chat, chien et robot choisissent plus souvent de dormir. Si la pièce a une fenêtre sur une scène avec un ciel, le chien peut s’asseoir et hurler à la lune.' },
+          { label: 'Limites', text: 'Sans fenêtre, la nuit suit l’horloge de l’appareil (de 22 h à 6 h) et le chien ne hurle pas : il lui faut la lune.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library] [data-pet]',
+        title: 'Le soleil',
+        text: 'Le jour, le chat et le chien aiment se coucher dans la tache de soleil au sol.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À rendre la lumière utile : les animaux vont chercher la chaleur là où elle tombe.' },
+          { label: 'Comment ça marche', text: 'La tache est calculée à partir de la fenêtre et de la position du soleil, sans tenir compte des ombres des meubles. Chat et chien viennent s’y coucher.' },
+          { label: 'Limites', text: 'La tache se déplace avec le soleil, mais l’animal reste là où il s’est posé. Rien ne se passe si le réglage « Lumière » est coupé ou s’il pleut.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-pet]',
+        title: 'La pluie',
+        text: 'Quand il pleut, le robot ouvre un parapluie ; le chien se secoue une fois la pluie finie.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À montrer le temps qu’il fait dans la pièce, sans regarder la fenêtre.' },
+          { label: 'Comment ça marche', text: 'Sous la pluie, les animaux bougent moins ; le robot déploie son parapluie, et le chien se secoue une seule fois quand la pluie s’arrête.' },
+          { label: 'D’où viennent les données', text: 'Le temps vient du réglage Météo déjà présent (aléatoire, forcé ou réel) : rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library] [data-pet]',
+        title: 'L’orage',
+        text: 'Au premier éclair, le chat file sous le canapé, le chien se blottit et le robot fait un court-circuit avant de redémarrer.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À donner de la vie à l’orage : chacun réagit à sa façon, avec un petit délai différent.' },
+          { label: 'Comment ça marche', text: 'À trois animaux, le chat et le chien se serrent l’un contre l’autre. Quand l’orage se calme, tout le monde reprend ses activités.' },
+          { label: 'Limites', text: 'Les animaux ne réagissent pas encore aux événements de la fenêtre (à venir). Le temps vient de la Météo déjà réglée, et rien n’est envoyé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];
