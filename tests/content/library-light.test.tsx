@@ -3,6 +3,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LIGHT_KEY, readLight, writeLight } from '../../src/content/light-setting';
 import { LightLayer } from '../../src/content/light-layer';
 import { RoomView, type SceneView } from '../../src/content/RoomView';
 import type { Room } from '../../src/core/library/library-types';
@@ -23,7 +24,9 @@ beforeEach(() => {
   document.body.append(container);
   root = createRoot(container);
 });
+const realMatchMedia = window.matchMedia;
 afterEach(() => {
+  window.matchMedia = realMatchMedia;
   act(() => root.unmount());
   container.remove();
   vi.useRealTimers();
@@ -86,5 +89,22 @@ describe('RoomView : calque de lumière', () => {
   it('ne le monte pas en scène spatiale', async () => {
     await mountRoom(room('space'), true);
     expect(container.querySelector('image[data-light]')).toBeNull();
+  });
+});
+
+describe('réglage Lumière', () => {
+  afterEach(() => { try { localStorage.removeItem(LIGHT_KEY); } catch { /* */ } });
+  it('est actif par défaut, s’éteint et se rallume', () => {
+    expect(readLight()).toBe(true);
+    writeLight(false);
+    expect(readLight()).toBe(false);
+    expect(localStorage.getItem(LIGHT_KEY)).toBe('off');
+    writeLight(true);
+    expect(readLight()).toBe(true);
+  });
+  it('reste actif si le stockage lève une exception', () => {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    expect(readLight()).toBe(true);
+    spy.mockRestore();
   });
 });

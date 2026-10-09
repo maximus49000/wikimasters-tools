@@ -70,6 +70,7 @@ import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
 import { useWeather } from './use-weather';
+import { useLightEnabled } from './light-setting';
 import { WEATHER_SCENES } from './scene-weather';
 import { WEATHER_LABEL } from '../core/library/weather/weather-types';
 import { usePetSim } from './pet-sim';
@@ -140,6 +141,7 @@ const ICONS = {
   cat: ['M5 9L4 3l5 3', 'M19 9l1-6-5 3', 'M5 9c0 6 2 11 7 11s7-5 7-11c-2-2-5-3-7-3S7 7 5 9z', 'M9 12h.01', 'M15 12h.01', 'M11 15l1 1 1-1'],
   robot: ['M12 3v3', 'M12 3h.01', 'M5 8h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z', 'M9 13h.01', 'M15 13h.01', 'M9.5 16.5h5', 'M2 12v3', 'M22 12v3'],
   dog: ['M4 8l2-4 4 3', 'M20 8l-2-4-4 3', 'M5 8c0 7 2 12 7 12s7-5 7-12c-2-2-4-3-7-3S7 6 5 8z', 'M9 11h.01', 'M15 11h.01', 'M10 15h4l-2 2z'],
+  bulb: ['M9 18h6', 'M10 21h4', 'M12 3a6 6 0 0 0-3.5 10.9c.4.4.5.8.5 1.1V16h6v-1c0-.3.1-.7.5-1.1A6 6 0 0 0 12 3z'],
   check: ['M5 12l5 5L20 7'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
   plus: ['M5 12h14', 'M12 5v14'],
@@ -206,6 +208,7 @@ type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsR
 
 export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMarket }: Props) {
   const roomCards = useRoomCards(collection, kinds, library);
+  const [lightOn, setLightOn] = useLightEnabled();
   const [picking, setPicking] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
   const [pending, setPending] = useState<CardChoice | null>(null);
@@ -816,6 +819,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <Icon paths={icon} />
             </Btn>
           ))}
+          {WEATHER_SCENES.includes(room.scene) && (
+            <Btn label="Lumière" pressed={lightOn} data={{ 'light-toggle': '' }} onClick={() => setLightOn(!lightOn)}>
+              <Icon paths={ICONS.bulb} />
+            </Btn>
+          )}
           {lib.time.mode === 'manual' && (
             <input
               type="range"
@@ -1002,6 +1010,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             selectedId={selectedId}
             blink={blink}
             sceneView={sceneView}
+            light={lightOn}
             onCell={(col, row) => void onCell(col, row)}
             onPick={(id) => void onPick(id)}
             cards={roomCards.cards}
