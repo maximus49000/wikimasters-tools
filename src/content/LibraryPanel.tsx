@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   activeRoom,
   adoptPet,
@@ -73,7 +73,8 @@ import { useWeather } from './use-weather';
 import { WEATHER_SCENES } from './scene-weather';
 import { WEATHER_LABEL } from '../core/library/weather/weather-types';
 import { usePetSim } from './pet-sim';
-import { requestPosition } from './scene-position';
+import { ensurePosition, requestPosition } from './scene-position';
+import { positionSetting } from './position-setting';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
 import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
 import { createLongPress } from './long-press';
@@ -113,6 +114,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-picklist{display:flex;flex-direction:column;gap:6px}
 .wmt-lib-pick{justify-content:flex-start;border-radius:10px;text-align:left}
 .wmt-lib-pick:disabled{opacity:.4;cursor:not-allowed}
+.wmt-lib-btn:disabled{opacity:.4;cursor:not-allowed}
 .wmt-lib-btn[data-suggested="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
 `;
 
@@ -186,10 +188,10 @@ const SCENE_ICON: Record<SceneId, readonly string[]> = {
 };
 const SCENE_LABEL: Record<SceneId, string> = { city: 'Ville', countryside: 'Campagne', mountain: 'Montagne', sea: 'Mer', space: 'Espace', earth: 'Terre vue d’en haut' };
 
-function Btn({ label, pressed, onClick, data, children }: { label: string; pressed?: boolean; onClick: () => void; data?: Record<string, string>; children: ReactNode }) {
+function Btn({ label, pressed, disabled, onClick, data, children }: { label: string; pressed?: boolean; disabled?: boolean; onClick: () => void; data?: Record<string, string>; children: ReactNode }) {
   const attrs = Object.fromEntries(Object.entries(data ?? {}).map(([key, value]) => [`data-${key}`, value]));
   return (
-    <button type="button" className="wmt-lib-btn" aria-label={label} title={label} aria-pressed={pressed} onClick={onClick} {...attrs}>
+    <button type="button" className="wmt-lib-btn" aria-label={label} title={label} aria-pressed={pressed} disabled={disabled} onClick={onClick} {...attrs}>
       {children}
     </button>
   );
@@ -348,27 +350,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     return () => unlockOrientation();
   }, [stage.active, orientationNow]);
 
-  // Heure ou météo réelles au chargement : la position n'est relue que si le joueur l'a déjà accordée (jamais de nouvelle demande ici).
+  // Réglage « Position » (actif par défaut) : la position est demandée une fois par chargement de page, à l'ouverture de la Bibliothèque.
   // Elle n'est gardée qu'en mémoire : sans cette relecture, la vraie météo resterait « simulée » après chaque rechargement.
-  const timeMode = lib?.time.mode;
-  const weatherMode = lib?.weather.mode;
+  const positionOn = useSyncExternalStore(positionSetting.subscribe, positionSetting.enabled, positionSetting.enabled);
   useEffect(() => {
-    if (timeMode !== 'real' && weatherMode !== 'real') return;
-    let alive = true;
-    try {
-      navigator.permissions
-        ?.query({ name: 'geolocation' as PermissionName })
-        .then((status) => {
-          if (alive && status.state === 'granted') void requestPosition();
-        })
-        .catch(() => undefined);
-    } catch {
-      // Navigateur sans API des autorisations : le fuseau horaire sert de repli.
-    }
-    return () => {
-      alive = false;
-    };
-  }, [timeMode, weatherMode]);
+    if (positionOn) ensurePosition();
+  }, [positionOn]);
 
   // Le chat : son plan est mémorisé sans prévenir les abonnés (il change toutes les quelques secondes, rien à redessiner).
   const savePlan = useCallback((roomId: string, petId: string, plan: PetPlan) => { void library.updateQuiet((state) => setPetPlan(state, roomId, petId, plan)); }, [library]);
@@ -840,7 +827,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           <Btn label="Météo aléatoire" pressed={lib.weather.mode === 'random'} data={{ 'weather-mode': 'random' }} onClick={() => chooseWeather({ mode: 'random' })}>
             <Icon paths={ICONS.dice} />
           </Btn>
-          <Btn label="Météo réelle" pressed={lib.weather.mode === 'real'} data={{ 'weather-mode': 'real' }} onClick={() => chooseWeather({ mode: 'real' })}>
+          <Btn label={positionOn ? 'Météo réelle' : 'Météo réelle (position désactivée dans Paramètre d’extension)'} pressed={lib.weather.mode === 'real'} disabled={!positionOn} data={{ 'weather-mode': 'real' }} onClick={() => chooseWeather({ mode: 'real' })}>
             <Icon paths={ICONS.globe} />
           </Btn>
           <span className="wmt-lib-sep" />
@@ -854,7 +841,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             {weather.tempC !== null ? ` · ${Math.round(weather.tempC)} °C` : ''}
           </span>
           {weather.real === 'fallback' && (
-            <span className="wmt-lib-msg" data-weather-note="" title="Position inconnue ou réseau indisponible : la météo reste simulée.">
+            <span className="wmt-lib-msg" data-weather-note="" title={positionOn ? 'Position inconnue ou réseau indisponible : la météo reste simulée.' : 'Position désactivée dans Paramètre d’extension : la météo reste simulée.'}>
               (simulée)
             </span>
           )}

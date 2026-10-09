@@ -25,7 +25,7 @@ export const ACTIONS = {
   'anomalie-signalee': [],
   'wikihow-fiche-lue': [],
   'visite-terminee': [],
-  'reglage-modifie': ['images', 'publicite-achat', 'lecteur'],
+  'reglage-modifie': ['images', 'publicite-achat', 'lecteur', 'position'],
 } as const satisfies Record<string, readonly string[]>;
 
 export const ERRORS = {

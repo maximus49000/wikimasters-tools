@@ -1,10 +1,12 @@
 package io.github.maximus49000.wikimasterstools;
 
 import android.app.Activity;
+import android.Manifest;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
@@ -14,6 +16,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
+import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsResult;
 import android.webkit.WebChromeClient;
@@ -55,6 +58,10 @@ public class MainActivity extends Activity {
     // Vidéo en plein écran (bouton plein écran des lecteurs de la surcouche, ou celui de YouTube) : la WebView la confie à l'activité.
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
+    // Position de l'appareil (réglage « Position » de la surcouche) : demande en attente de la réponse du système.
+    private static final int LOCATION_REQUEST = 41;
+    private GeolocationPermissions.Callback pendingLocationCallback;
+    private String pendingLocationOrigin;
     private final Updater updater = new Updater(this);
     private String overlayScript;
     // Repli quand la WebView ne sait pas injecter au début du document : injection au démarrage de chaque page.
@@ -124,6 +131,23 @@ public class MainActivity extends Activity {
             @Override
             public void onHideCustomView() {
                 exitCustomView();
+            }
+
+            // Sans cette méthode la WebView refuse toute position : la météo réelle resterait toujours simulée.
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                if (!origin.equals("https://" + HOST)) {
+                    callback.invoke(origin, false, false);
+                    return;
+                }
+                if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    callback.invoke(origin, true, false);
+                    return;
+                }
+                if (pendingLocationCallback != null) pendingLocationCallback.invoke(pendingLocationOrigin, false, false);
+                pendingLocationCallback = callback;
+                pendingLocationOrigin = origin;
+                requestPermissions(new String[] {Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_REQUEST);
             }
 
             @Override
@@ -316,6 +340,17 @@ public class MainActivity extends Activity {
         webView.setVisibility(View.VISIBLE);
         if (customViewCallback != null) customViewCallback.onCustomViewHidden();
         customViewCallback = null;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != LOCATION_REQUEST || pendingLocationCallback == null) return;
+        boolean granted = false;
+        for (int result : grantResults) if (result == PackageManager.PERMISSION_GRANTED) granted = true;
+        pendingLocationCallback.invoke(pendingLocationOrigin, granted, false);
+        pendingLocationCallback = null;
+        pendingLocationOrigin = null;
     }
 
     @Override
