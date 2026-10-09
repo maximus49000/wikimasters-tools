@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
+import { positionSetting } from '../../src/content/position-setting';
 import { resetPositionForTests } from '../../src/content/scene-position';
 import { createMemoryStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
@@ -38,6 +39,7 @@ beforeEach(async () => {
   await click('[data-action="edit"]');
 });
 afterEach(() => {
+  window.localStorage.removeItem('wmt:positionEnabled');
   vi.useRealTimers();
   vi.restoreAllMocks();
   act(() => root.unmount());
@@ -74,6 +76,17 @@ describe('rangée Météo', () => {
     expect(repo.current()!.weather).toEqual({ mode: 'real' });
     expect(spy).toHaveBeenCalled();
     expect(q('[data-weather-note]')?.textContent).toContain('simulée');
+  });
+
+  it('🌍 est grisé quand le réglage Position est désactivé, et le choix « réelle » est conservé', async () => {
+    await click('[data-weather-mode="real"]');
+    await act(async () => { positionSetting.setEnabled(false); });
+    const globe = q('[data-weather-mode="real"]') as HTMLButtonElement;
+    expect(globe.disabled).toBe(true);
+    expect(repo.current()!.weather).toEqual({ mode: 'real' });
+    expect(q('[data-weather-note]')?.getAttribute('title')).toContain('Position désactivée');
+    await act(async () => { positionSetting.setEnabled(true); });
+    expect((q('[data-weather-mode="real"]') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('est masquée en scène Espace et Terre, et hors mode Aménager', async () => {

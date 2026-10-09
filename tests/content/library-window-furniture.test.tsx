@@ -3,9 +3,10 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../src/core/cache/store';
-import { activeRoom, setTimeSetting, setWeatherSetting } from '../../src/core/library/library-book';
+import { activeRoom, setTimeSetting } from '../../src/core/library/library-book';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
+import { resetPositionForTests } from '../../src/content/scene-position';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -134,7 +135,7 @@ describe('panneau Ciel', () => {
   });
 });
 
-describe('heure réelle — position déjà accordée', () => {
+describe('réglage Position — demande à l’ouverture', () => {
   async function mountWith(state: PermissionState, prepare?: (repo: LibraryRepo) => Promise<void>) {
     const getCurrentPosition = vi.fn();
     Object.defineProperty(navigator, 'geolocation', { value: { getCurrentPosition }, configurable: true });
@@ -150,26 +151,24 @@ describe('heure réelle — position déjà accordée', () => {
     other.remove();
     return getCurrentPosition;
   }
+  beforeEach(() => resetPositionForTests());
   afterEach(() => {
+    window.localStorage.removeItem('wmt:positionEnabled');
     delete (navigator as { permissions?: unknown }).permissions;
     delete (navigator as { geolocation?: unknown }).geolocation;
   });
 
-  it('relit la position au chargement si l’accord est déjà donné', async () => {
+  it('demande la position à l’ouverture (réglage actif par défaut), même si l’accord est déjà donné', async () => {
     expect(await mountWith('granted')).toHaveBeenCalledTimes(1);
   });
 
-  it('relit aussi la position pour la vraie météo, même avec une heure fixe', async () => {
-    const prepare = (library: LibraryRepo) => library.update((s) => setWeatherSetting(setTimeSetting(s, { mode: 'day' }), { mode: 'real' }));
-    expect(await mountWith('granted', prepare)).toHaveBeenCalledTimes(1);
-  });
-
-  it('heure fixe et météo simulée : rien n’est relu', async () => {
+  it('la demande se fait aussi sans accord préalable, avec une heure fixe et une météo simulée', async () => {
     const prepare = (library: LibraryRepo) => library.update((s) => setTimeSetting(s, { mode: 'day' }));
-    expect(await mountWith('granted', prepare)).not.toHaveBeenCalled();
+    expect(await mountWith('prompt', prepare)).toHaveBeenCalledTimes(1);
   });
 
-  it('ne demande jamais rien au chargement sans accord', async () => {
-    expect(await mountWith('prompt')).not.toHaveBeenCalled();
+  it('réglage Position désactivé : rien n’est demandé', async () => {
+    window.localStorage.setItem('wmt:positionEnabled', 'off');
+    expect(await mountWith('granted')).not.toHaveBeenCalled();
   });
 });

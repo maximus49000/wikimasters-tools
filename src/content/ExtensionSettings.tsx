@@ -3,6 +3,7 @@ import type { ImageService } from '../core/images/image-service';
 import { ImageSettings } from './ImageSettings';
 import type { PurchaseAds } from '../core/ads/purchase-ads';
 import { PlayerSettings } from './PlayerSettings';
+import { PositionSettings } from './PositionSettings';
 import { PurchaseAdsSettings } from './PurchaseAdsSettings';
 import { TelemetrySettings } from './TelemetrySettings';
 import type { Telemetry } from '../core/telemetry/telemetry';
@@ -13,9 +14,10 @@ const row = { display: 'flex', alignItems: 'center', gap: 12, width: '100%', min
 
 // « Paramètre d'extension » : une liste style Paramètres. Chaque ligne ouvre le réglage existant ; sa fermeture ramène à la liste.
 export function ExtensionSettings({ images, player, ads, telemetry, onClose }: { images: ImageService; player: PlayerSource | null; ads: PurchaseAds; telemetry: Telemetry; onClose: () => void }) {
-  const [view, setView] = useState<'list' | 'images' | 'player' | 'ads' | 'stats'>('list');
+  const [view, setView] = useState<'list' | 'images' | 'player' | 'ads' | 'stats' | 'position'>('list');
   if (view === 'images') return <ImageSettings images={images} onClose={() => setView('list')} />;
   if (view === 'ads') return <PurchaseAdsSettings ads={ads} onClose={() => setView('list')} />;
+  if (view === 'position') return <PositionSettings onClose={() => setView('list')} />;
   if (view === 'stats') return <TelemetrySettings telemetry={telemetry} onClose={() => setView('list')} />;
   if (view === 'player' && player) return <PlayerSettings source={player} onClose={() => setView('list')} />;
   return (
@@ -40,6 +42,11 @@ export function ExtensionSettings({ images, player, ads, telemetry, onClose }: {
         <button type="button" data-wmt-ext-row="ads" onClick={() => setView('ads')} style={row}>
           <span aria-hidden="true">🛒</span>
           <span>Publicité d’achat</span>
+          <span aria-hidden="true" style={{ marginLeft: 'auto', opacity: 0.5 }}>›</span>
+        </button>
+        <button type="button" data-wmt-ext-row="position" onClick={() => setView('position')} style={row}>
+          <span aria-hidden="true">📍</span>
+          <span>Position</span>
           <span aria-hidden="true" style={{ marginLeft: 'auto', opacity: 0.5 }}>›</span>
         </button>
         <button type="button" data-wmt-ext-row="stats" onClick={() => setView('stats')} style={row}>

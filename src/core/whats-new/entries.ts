@@ -611,6 +611,60 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'position-v1',
+    theme: 'app',
+    glyph: '📍',
+    title: 'Position de l’appareil',
+    summary: 'Activée par défaut pour la vraie météo ; vous pouvez la désactiver',
+    steps: [
+      openPlus('puis « Paramètre d’extension », où se trouve le réglage « Position ».'),
+      {
+        target: '[data-wmt-extension-setting]',
+        title: 'Ouvrir Paramètre d’extension',
+        text: 'Le réglage « Position » se trouve dans Paramètre d’extension : c’est lui qui décide si l’extension peut demander où vous êtes.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez « Paramètre d’extension » dans le menu Plus : une liste s’ouvre, avec la ligne Position.' },
+          { label: 'À savoir', text: 'La croix de la fenêtre vous ramène à la page où vous étiez. À l’étape suivante, la visite ouvre cette liste pour vous.' },
+        ],
+        scene: { closeWindows: true, reveal: [{ text: 'Plus' }] },
+      },
+      {
+        target: '[data-wmt-ext-row="position"]',
+        title: 'Choisir « Position »',
+        text: 'La ligne « Position » ouvre le réglage, avec son explication et ses deux boutons.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez la ligne « Position » : la fenêtre du réglage s’affiche. À l’étape suivante, la visite l’ouvre pour vous.' },
+          { label: 'À savoir', text: 'Les autres lignes (Images, Publicité d’achat, Statistiques d’usage, Lecteur) ouvrent leurs propres réglages ; chacun a sa croix pour revenir à la liste.' },
+        ],
+        scene: { closeWindows: true, reveal: [{ text: 'Plus' }, '[data-wmt-extension-setting]'] },
+      },
+      {
+        target: '[data-wmt-position-choice]',
+        title: 'Choisir Activé ou Désactivé',
+        text: 'Activé est le réglage de départ : à l’ouverture de la Bibliothèque, l’appareil vous demande l’autorisation de partager votre position. Désactivé coupe toute demande.',
+        gesture: 'tap',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Activé ou Désactivé : le changement s’applique tout de suite, sans recharger la page.' },
+          { label: 'Ce qui est mémorisé', text: 'Votre choix est gardé sur cet appareil, pas sur votre compte. Votre position, elle, n’est jamais enregistrée : elle reste en mémoire le temps de la page.' },
+        ],
+        scene: { reveal: [{ text: 'Plus' }, '[data-wmt-extension-setting]', '[data-wmt-ext-row="position"]'] },
+      },
+      {
+        target: '[data-wmt-position-explain]',
+        title: 'À quoi ça sert, et les limites',
+        text: 'La position règle la vraie météo derrière les fenêtres de la Bibliothèque et l’heure du lever et du coucher du soleil.',
+        details: [
+          { label: 'D’où viennent les données', text: 'La position vient de votre appareil ; seule sa version arrondie à 0,1° (environ 10 km) part vers le relais météo de l’extension, qui interroge Open-Meteo.' },
+          { label: 'Désactivé', text: 'Le globe « Météo réelle » de la Bibliothèque est grisé et le ciel reste simulé ; si la météo réelle était choisie, ce choix revient dès la réactivation. L’heure réelle suit alors votre fuseau horaire.' },
+          { label: 'Limites', text: 'Si vous refusez l’autorisation dans le navigateur ou le téléphone, le résultat est le même que Désactivé. Pour revenir sur un refus, changez l’autorisation du site dans les réglages du navigateur ou de l’application.' },
+        ],
+        scene: { reveal: [{ text: 'Plus' }, '[data-wmt-extension-setting]', '[data-wmt-ext-row="position"]'] },
+      },
+    ],
+  },
+  {
     id: 'statistiques-usage-v2',
     theme: 'app',
     glyph: '📊',
@@ -1266,7 +1320,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'bibliotheque-v12',
+    id: 'bibliotheque-v13',
     theme: 'collection',
     glyph: '🌦',
     title: 'La météo derrière la fenêtre',
@@ -1312,9 +1366,9 @@ export const ENTRIES: Entry[] = [
         text: 'Le globe 🌍 règle le ciel sur la météo réelle de l’endroit où vous êtes.',
         gesture: 'tap',
         details: [
-          { label: 'Comment faire', text: 'En mode Aménager, touchez le globe dans la rangée Météo, puis acceptez de partager votre position si le navigateur le demande.' },
+          { label: 'Comment faire', text: 'En mode Aménager, touchez le globe dans la rangée Météo. À l’ouverture de la Bibliothèque, l’appareil vous demande l’autorisation de partager votre position : acceptez-la.' },
           { label: 'D’où viennent les données', text: 'D’Open-Meteo, via le relais de l’extension : seule votre position arrondie à 0,1° est envoyée, et elle n’est jamais enregistrée.' },
-          { label: 'Limites', text: 'L’accord de position et le réseau sont nécessaires. Sans eux, la météo est simulée et la rangée l’indique par « (simulée) ».' },
+          { label: 'Limites', text: 'L’accord de position et le réseau sont nécessaires. Sans eux, la météo est simulée et la rangée l’indique par « (simulée) ». Si le réglage « Position » de Paramètre d’extension est désactivé, le globe est grisé.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]', '[data-wmt-library] [data-action="edit"]'] },
       },

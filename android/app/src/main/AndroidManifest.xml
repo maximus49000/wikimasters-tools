@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Réglage « Position » de la surcouche : météo réelle et lever/coucher du soleil (position approximative suffisante). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Mise à jour automatique : installe l'APK de la dernière release de production (GitHub). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
