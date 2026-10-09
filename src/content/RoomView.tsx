@@ -196,7 +196,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   for (const v of [...pets].filter((p) => !p.top).sort((a, b) => b.behind - a.behind || (b.depthY ?? 0) - (a.depthY ?? 0))) middle.splice(Math.min(v.behind, middle.length), 0, petNode(v));
   const topPets = pets.filter((p) => p.top).map(petNode);
   // Le nom et les cœurs : tout en haut, au-dessus de tout le reste de la pièce.
-  const bubbles = pets.filter((p) => p.pose === 'purr').map((v) => (
+  const bubbles = pets.filter((p) => p.pose === 'purr' || p.pose === 'beep').map((v) => (
     <g key={`bubble-${v.id}`} data-pet-bubble={v.id} ref={(el) => petAttach?.(`${v.id}${BUBBLE}`, el)}>
       <PetBubble name={v.name} still={v.still} />
     </g>

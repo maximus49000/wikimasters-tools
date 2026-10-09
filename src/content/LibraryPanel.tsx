@@ -24,10 +24,11 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
-import { COATS, DOG_COATS, SCENE_IDS, STYLE_IDS, type Coat, type Pet, type SceneId, type Species, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
+import { SCENE_IDS, STYLE_IDS, coatsOf, type Coat, type Pet, type SceneId, type Species, type TimeSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import { COAT_LABELS, paletteOf as coatPaletteOf } from './pet-sprite';
 import { DOG_COAT_LABELS } from './dog-sprite';
+import { ROBOT_COAT_LABELS } from './robot-sprite';
 import {
   MAX_COLS,
   MIN_COLS,
@@ -121,11 +122,19 @@ function Icon({ paths }: { paths: readonly string[] }) {
   );
 }
 
-const coatLabel = (species: Species, coat: Coat): string =>
-  (species === 'dog' ? (DOG_COAT_LABELS as Record<string, string>) : (COAT_LABELS as Record<string, string>))[coat] ?? coat;
+const COAT_LABELS_OF: Record<Species, Record<string, string>> = { cat: COAT_LABELS, dog: DOG_COAT_LABELS, robot: ROBOT_COAT_LABELS };
+const coatLabel = (species: Species, coat: Coat): string => COAT_LABELS_OF[species][coat] ?? coat;
+
+// Textes propres à chaque espèce.
+const SPECIES_TEXT: Record<Species, { name: string; adoptName: string; confirm: string; adoptLabel: string; defaultName: string; defaultCoat: Coat }> = {
+  cat: { name: 'Nom du chat', adoptName: 'Nom du chat à adopter', confirm: 'Adopter ce chat', adoptLabel: 'Adopter un chat', defaultName: 'Minou', defaultCoat: 'orange' },
+  dog: { name: 'Nom du chien', adoptName: 'Nom du chien à adopter', confirm: 'Adopter ce chien', adoptLabel: 'Adopter un chien', defaultName: 'Rex', defaultCoat: 'brown' },
+  robot: { name: 'Nom du robot', adoptName: 'Nom du robot à adopter', confirm: 'Adopter ce robot', adoptLabel: 'Adopter un robot', defaultName: 'Robi', defaultCoat: 'white' },
+};
 
 const ICONS = {
   cat: ['M5 9L4 3l5 3', 'M19 9l1-6-5 3', 'M5 9c0 6 2 11 7 11s7-5 7-11c-2-2-5-3-7-3S7 7 5 9z', 'M9 12h.01', 'M15 12h.01', 'M11 15l1 1 1-1'],
+  robot: ['M12 3v3', 'M12 3h.01', 'M5 8h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z', 'M9 13h.01', 'M15 13h.01', 'M9.5 16.5h5', 'M2 12v3', 'M22 12v3'],
   dog: ['M4 8l2-4 4 3', 'M20 8l-2-4-4 3', 'M5 8c0 7 2 12 7 12s7-5 7-12c-2-2-4-3-7-3S7 6 5 8z', 'M9 11h.01', 'M15 11h.01', 'M10 15h4l-2 2z'],
   check: ['M5 12l5 5L20 7'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
@@ -667,8 +676,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     void library.update((state) => deleteRoom(state, room.id));
   };
   const startAdopt = (species: Species): void => {
-    setAdoptName(species === 'dog' ? 'Rex' : 'Minou');
-    setAdoptCoat(species === 'dog' ? 'brown' : 'orange');
+    setAdoptName(SPECIES_TEXT[species].defaultName);
+    setAdoptCoat(SPECIES_TEXT[species].defaultCoat);
     setAdopting(species);
   };
   const confirmAdopt = (): void => {
@@ -804,7 +813,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             <span key={`${room.id}:${pet.id}`} className="wmt-lib-pet" data-pet-edit={pet.id}>
               <input
                 className="wmt-lib-name"
-                aria-label={pet.species === 'dog' ? 'Nom du chien' : 'Nom du chat'}
+                aria-label={SPECIES_TEXT[pet.species].name}
                 defaultValue={pet.name}
                 maxLength={MAX_PET_NAME}
                 onBlur={(event) => {
@@ -824,13 +833,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           ))}
           {adopting !== null ? (
             <>
-              <input className="wmt-lib-name" aria-label={adopting === 'dog' ? 'Nom du chien à adopter' : 'Nom du chat à adopter'} value={adoptName} maxLength={MAX_PET_NAME} onChange={(event) => setAdoptName(event.currentTarget.value)} />
-              {(adopting === 'dog' ? DOG_COATS : COATS).map((coat) => (
+              <input className="wmt-lib-name" aria-label={SPECIES_TEXT[adopting].adoptName} value={adoptName} maxLength={MAX_PET_NAME} onChange={(event) => setAdoptName(event.currentTarget.value)} />
+              {coatsOf(adopting).map((coat) => (
                 <Btn key={coat} label={coatLabel(adopting, coat)} pressed={adoptCoat === coat} data={{ coat }} onClick={() => setAdoptCoat(coat)}>
                   <span className="wmt-lib-swatch" style={{ background: coatPaletteOf(adopting, coat).body, borderColor: coatPaletteOf(adopting, coat).belly }} />
                 </Btn>
               ))}
-              <Btn label={adopting === 'dog' ? 'Adopter ce chien' : 'Adopter ce chat'} data={{ action: 'adopt-confirm' }} onClick={confirmAdopt}>
+              <Btn label={SPECIES_TEXT[adopting].confirm} data={{ action: 'adopt-confirm' }} onClick={confirmAdopt}>
                 <Icon paths={ICONS.check} />
               </Btn>
               <Btn label="Annuler" data={{ action: 'adopt-cancel' }} onClick={() => setAdopting(null)}>
@@ -845,6 +854,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 </Btn>
                 <Btn label="Adopter un chien" data={{ action: 'adopt-dog' }} onClick={() => startAdopt('dog')}>
                   <Icon paths={ICONS.dog} />
+                </Btn>
+                <Btn label="Adopter un robot" data={{ action: 'adopt-robot' }} onClick={() => startAdopt('robot')}>
+                  <Icon paths={ICONS.robot} />
                 </Btn>
               </>
             )

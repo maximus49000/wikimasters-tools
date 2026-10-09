@@ -116,6 +116,48 @@ describe('adoption du chat', () => {
   });
 });
 
+describe('robot', () => {
+  it('adopte un robot (nom Robi, 6 coloris, libellés propres), le renomme et le retire', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-action="adopt-robot"]');
+    expect(q('[data-action="adopt-robot"]')).toBeNull();
+    expect((q('input[aria-label="Nom du robot à adopter"]') as HTMLInputElement).value).toBe('Robi');
+    expect(document.querySelectorAll('[data-coat]')).toHaveLength(6);
+    expect(q('[data-coat="orange"]')).toBeNull();
+    expect(q('[data-coat="graphite"]')!.getAttribute('aria-label')).toBe('Graphite');
+    expect(q('[data-action="adopt-confirm"]')!.getAttribute('aria-label')).toBe('Adopter ce robot');
+    await click('[data-coat="mint"]');
+    await click('[data-action="adopt-confirm"]');
+    expect(repo.current()!.rooms[0]!.pets[0]).toMatchObject({ species: 'robot', name: 'Robi', coat: 'mint' });
+    await type('input[aria-label="Nom du robot"]', 'Bolt', true);
+    expect(repo.current()!.rooms[0]!.pets[0]!.name).toBe('Bolt');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await click('[data-action="remove-pet"]');
+    expect(repo.current()!.rooms[0]!.pets).toEqual([]);
+  });
+
+  it('le bouton Adopter un robot disparaît à trois animaux', async () => {
+    await click('[data-action="edit"]');
+    for (const [action, label] of [['adopt', 'chat'], ['adopt-dog', 'chien'], ['adopt-robot', 'robot']] as const) {
+      await click(`[data-action="${action}"]`);
+      await type(`input[aria-label="Nom du ${label} à adopter"]`, 'X');
+      await click('[data-action="adopt-confirm"]');
+    }
+    expect(repo.current()!.rooms[0]!.pets.map((p) => p.species)).toEqual(['cat', 'dog', 'robot']);
+    expect(q('[data-action="adopt-robot"]')).toBeNull();
+  });
+
+  it('toucher le robot en mode Visiter le fait biper et montre son nom', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-action="adopt-robot"]');
+    await click('[data-action="adopt-confirm"]');
+    await click('[data-action="visit"]');
+    await click('[data-pet="p1"]');
+    expect(q('[data-pet-pose="beep"]')).not.toBeNull();
+    expect(q('[data-pet-name]')!.textContent).toBe('Robi');
+  });
+});
+
 describe('caresser le chat', () => {
   it('toucher le chat en mode Visiter le fait ronronner et montre son nom', async () => {
     await click('[data-action="edit"]');
