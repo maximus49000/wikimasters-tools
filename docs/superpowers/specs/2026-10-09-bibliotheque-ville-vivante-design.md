@@ -46,7 +46,7 @@ Module pur `src/core/library/city/calendar.ts`, calculé sur la date locale de l
 | Armistice | 11 novembre | drapeaux, peu de circulation (férié) |
 | Noël | du 1er décembre au 6 janvier | guirlandes et lumières de Noël aux fenêtres des immeubles ; 24 au soir : le père Noël (ci-dessus) ; 25 : rue très calme |
 
-  - Une fête peut cumuler avec la météo et le calendrier (pas de feu d'artifice sous la pluie, report à la nuit suivante : non, simplement absent), et ne remplace jamais les règles de la vie ambiante : elle les module (poids des enfants, des couples, des costumes) et ajoute ses événements au moteur de la vague 1b.
+  - Une fête peut cumuler avec la météo et le calendrier (pas de feu d'artifice sous la pluie : il est simplement absent, sans report), et ne remplace jamais les règles de la vie ambiante : elle les module (poids des enfants, des couples, des costumes) et ajoute ses événements au moteur de la vague 1b.
   - Tout est dans une table de données : ajouter ou retirer une fête ne demande pas de code.
   - Les décors de fête (guirlandes, citrouilles, drapeaux) sont de petits sprites ajoutés au décor fixe, sans surcoût d'animation.
 
