@@ -44,7 +44,7 @@ Deux courbes calculées à la minute, entre 0 et 1 : `pedestrians(t)` et `traffi
 - **Aller à l'école** de 7 h 50 à 8 h 30 : des groupes famille (un adulte et un ou deux enfants avec cartable) qui marchent ensemble, dans un sens. À 8 h 30 plus aucun groupe.
 - **Sortie d'école** de 16 h 45 à 17 h 15 environ : les mêmes groupes, en sens inverse.
 - Le reste de la journée est calme (promeneurs, peu d'enfants).
-- Le mercredi est traité comme un jour d'école normal. Les vacances et les jours fériés sont gérés par le calendrier (section suivante).
+- **Le mercredi**, l'école ne dure que de 8 h 30 à 12 h : même aller le matin (7 h 50 à 8 h 30), **sortie vers 12 h** (environ 11 h 45 à 12 h 15, groupes famille dans l'autre sens), **pas de sortie de 16 h 45**. L'après-midi du mercredi ressemble à un week-end calme : plus d'enfants dehors, la pointe de 17 h reste mais plus légère. Les vacances et les jours fériés sont gérés par le calendrier (section suivante).
 
 ### Week-end (samedi, dimanche)
 
@@ -122,7 +122,7 @@ S'appuie sur `pets/context.ts`, `brain.ts` et le moteur de scènes à deux.
 
 ## Tests
 
-- **Moteur (1a)** : déterminisme (même minute et même graine donnent le même résultat), courbes des pointes semaine et week-end, école (présence de 7 h 50 à 8 h 30 et de 16 h 45 à 17 h 15, absence le week-end), pluie (moins de piétons, parapluies), nuit, plafonds de densité, diversité (deux tirages voisins diffèrent de tenue), cohérence des profils (costume le week-end rare, cartable seulement un jour d'école).
+- **Moteur (1a)** : déterminisme (même minute et même graine donnent le même résultat), courbes des pointes semaine et week-end, école (présence de 7 h 50 à 8 h 30 et de 16 h 45 à 17 h 15 du lundi au vendredi sauf le mercredi, où la sortie a lieu vers 12 h et rien à 16 h 45 ; absence le week-end, les vacances et les jours fériés), pluie (moins de piétons, parapluies), nuit, plafonds de densité, diversité (deux tirages voisins diffèrent de tenue), cohérence des profils (costume le week-end rare, cartable seulement un jour d'école).
 - **Calendrier** : Pâques et fériés mobiles sur plusieurs années, bornes des vacances, repli hors table, le 24 décembre donne plusieurs passages du père Noël et aucun en été.
 - **Événements (1b)** : conditions (aucun feu d'artifice de jour, aucun cerf-volant sous la pluie), plafond d'événements simultanés, progression continue au chevauchement de créneaux.
 - **Animaux (1c)** : pas de réaction si le chien dort ou sans fenêtre, plan écrit une seule fois par passage, reprise après rechargement.
