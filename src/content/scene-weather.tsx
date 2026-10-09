@@ -1,5 +1,6 @@
 import { memo, useId, useLayoutEffect, useMemo, useRef, type ReactElement, type RefObject } from 'react';
 import type { SceneId } from '../core/library/library-types';
+import { CITY_GROUND } from '../core/library/city/metrics';
 import { mulberry32 } from '../core/library/scene-world';
 import { mixHex, type Sky } from '../core/library/sky';
 import { lightningAt, rainbowOf } from '../core/library/weather/weather-clock';
@@ -34,9 +35,9 @@ const WET_ON = 0.12;
 const WET_OFF = 0.08;
 // Hauteur du sol (fraction de la hauteur du monde) où se posent flaques et neige : celle du décor de chaque scène.
 // En mer, pas de sol sous la fenêtre : ni flaques ni neige sur l'eau.
-const GROUND: Partial<Record<SceneId, number>> = { city: 0.78, countryside: 0.78, mountain: 0.82 };
+const GROUND: Partial<Record<SceneId, number>> = { city: CITY_GROUND, countryside: 0.78, mountain: 0.82 };
 // Pied de l'arc-en-ciel (sol ou horizon).
-const ARC_FOOT: Partial<Record<SceneId, number>> = { city: 0.78, countryside: 0.78, mountain: 0.82, sea: 0.5 };
+const ARC_FOOT: Partial<Record<SceneId, number>> = { city: CITY_GROUND, countryside: 0.78, mountain: 0.82, sea: 0.5 };
 // Bas de la bande où flottent les nuages : au-dessus des toits, des collines ou de l'horizon (jamais devant les immeubles).
 const CLOUD_FLOOR: Partial<Record<SceneId, number>> = { city: 0.42, countryside: 0.5, mountain: 0.55, sea: 0.42 };
 const RAINBOW = ['#FF6B6B', '#FFD166', '#7BD389', '#6FA8FF'];

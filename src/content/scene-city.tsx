@@ -14,7 +14,6 @@ const FAR_LIGHT = 0.5;
 export function CityScene({ width, height, sky, minutes, seed, gloom = false }: SceneBodyProps): ReactElement {
   const metrics = cityMetrics(height);
   const { ground, unit } = metrics;
-  const sidewalk = height * 0.07;
   const far = mixHex('#232B5C', '#9FB4C8', sky.daylight);
   const near = mixHex('#141A3E', '#7C8FA3', sky.daylight);
   const street = mixHex('#2A2D4A', '#B7B2A6', sky.daylight);
@@ -74,10 +73,12 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false }: 
           })}
         </g>
       ))}
-      {/* Trottoir contre les immeubles, puis la chaussée à deux files (fond vers la gauche, premier plan vers la droite). */}
+      {/* Trottoir contre les immeubles, chaussée à deux files (fond vers la gauche, premier plan vers la droite), trottoir d'en face. */}
       <rect x={0} y={ground} width={width} height={height - ground} fill={street} />
-      <rect x={0} y={ground} width={width} height={sidewalk} fill={walk} />
-      <rect x={0} y={ground + sidewalk - 1} width={width} height={2} fill="#00000033" />
+      <rect x={0} y={ground} width={width} height={metrics.curb - ground} fill={walk} />
+      <rect x={0} y={metrics.curb - 1} width={width} height={2} fill="#00000033" />
+      <rect data-far-sidewalk="" x={0} y={metrics.farSide} width={width} height={height - metrics.farSide} fill={walk} />
+      <rect x={0} y={metrics.farSide} width={width} height={2} fill="#00000033" />
       <line
         data-lane-mark=""
         x1={0}

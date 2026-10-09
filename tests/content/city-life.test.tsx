@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { dayContext } from '../../src/core/library/city/calendar';
 import { doorsFor, residentFlow, tripAt, tripHappens, tripsFor } from '../../src/core/library/city/doors';
+import { HYPER_S, activeEvents, cityEventSchedule, eventConditions } from '../../src/core/library/city/events';
 import { cityIntensity } from '../../src/core/library/city/intensity';
 import type { CityContext } from '../../src/core/library/city/intensity';
+import { vehiclesFor, laneSpeeds } from '../../src/core/library/city/vehicles';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,16 +44,35 @@ const make = (hours: number, ymd: { y: number; m: number; d: number }, extra: Pa
     </svg>,
   ).container;
 };
+// Un bus ou un tram efface les voitures collées à lui : les tests qui comptent les véhicules fixent l'horloge à un instant
+// où aucun événement n'efface de voiture (même calcul que le hook useCityEvents), pour tous les jours comparés.
+const noYieldNow = (hours: number, days: { y: number; m: number; d: number }[]): number => {
+  const minutes = Math.round(hours * 60);
+  const daylight = skyAt(minutes, times).daylight;
+  const yields = (T: number, ymd: { y: number; m: number; d: number }): boolean => {
+    const city: CityContext = { minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight };
+    const hyper = Math.floor(T / HYPER_S);
+    const schedule = cityEventSchedule({
+      seed: 1, width: 720, hyper, minutesAtHyperStart: minutes - (T - hyper * HYPER_S) / 60,
+      cond: eventConditions(city, cityIntensity(city)), vehicles: vehiclesFor(720, 1), speeds: laneSpeeds(1),
+    });
+    return activeEvents(schedule, T).some((e) => e.yields.length > 0);
+  };
+  for (let T = 1_790_000_000; T < 1_790_000_000 + 40 * HYPER_S; T += 5) if (days.every((ymd) => !yields(T, ymd))) return T * 1000;
+  throw new Error('aucun instant sans voiture effacée');
+};
 const active = (c: HTMLElement, selector: string) => c.querySelectorAll(`${selector}[data-active="true"]`).length;
 
 describe('CityLifeLayer', () => {
   it('le lundi à 8 h : des costumes, des familles et beaucoup de voitures', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(noYieldNow(8.25, [{ y: 2026, m: 10, d: 5 }]));
     const c = make(8.25, { y: 2026, m: 10, d: 5 }); // lundi
     expect(active(c, '[data-ped]')).toBeGreaterThan(3);
     expect(active(c, '[data-vehicle]')).toBeGreaterThan(4);
     expect(c.querySelectorAll('[data-role="schoolTo"][data-active="true"]').length).toBeGreaterThan(0);
   });
   it('le samedi : aucun groupe d’école, moins de véhicules qu’en pointe de semaine', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(noYieldNow(8.25, [{ y: 2026, m: 10, d: 5 }, { y: 2026, m: 10, d: 10 }]));
     const sat = make(8.25, { y: 2026, m: 10, d: 10 });
     expect(sat.querySelectorAll('[data-role="schoolTo"][data-active="true"]')).toHaveLength(0);
     expect(active(sat, '[data-vehicle]')).toBeLessThan(active(make(8.25, { y: 2026, m: 10, d: 5 }), '[data-vehicle]'));
@@ -96,8 +117,11 @@ describe('CityLifeLayer', () => {
   it('les lampadaires sont dessinés après les passants (devant eux) et avant les voitures', () => {
     const c = make(21, { y: 2026, m: 10, d: 5 });
     const layer = c.querySelector('[data-city-life]')!;
-    const order = Array.from(layer.children).map((el) => (el.hasAttribute('data-city-sidewalk') ? 'sidewalk' : el.hasAttribute('data-street-lamps') ? 'lamps' : el.getAttribute('data-city-lane')));
-    expect(order).toEqual(['sidewalk', 'lamps', 'far', 'near']);
+    // Les masques (<defs>) n'apparaissent qu'avec un feu d'artifice ou une grue ; le groupe des événements du fond vient en premier.
+    const order = Array.from(layer.children)
+      .filter((el) => el.tagName.toLowerCase() !== 'defs')
+      .map((el) => (el.hasAttribute('data-city-events-back') ? 'events-back' : el.hasAttribute('data-city-sidewalk') ? 'sidewalk' : el.hasAttribute('data-street-lamps') ? 'lamps' : el.getAttribute('data-city-lane')));
+    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'far', 'near']);
     expect(layer.querySelectorAll('[data-street-lamp][data-lit="true"]').length).toBeGreaterThan(0);
   });
   it('les vélos roulent sur leur piste, dessinés après les voitures de la file du premier plan', () => {

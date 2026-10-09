@@ -20,14 +20,21 @@ export const MIN_VEHICLE_GAP = 2 * VEHICLE_HALF.bus * STREET_SCALE.vehicle * MAX
 const COLORS = ['#3B6FD6', '#C0463A', '#E0A21E', '#2E8B6A', '#444444', '#EEEEEE', '#7A3B8C', '#B3262B', '#4A9CC4'];
 const WORLD_PAD = 160;
 
+export type LaneSpeeds = { near: number; far: number; bike: number };
+
+// Vitesse commune des véhicules motorisés de chaque file, et des vélos entre eux (tirée de la graine de la pièce).
+export function laneSpeeds(seed: number): LaneSpeeds {
+  const laneRng = mulberry32(seed ^ hashString('lane-speed'));
+  return { near: 55 + laneRng() * 30, far: 50 + laneRng() * 30, bike: 18 + laneRng() * 6 };
+}
+
 // Pas de dépassement ni de chevauchement : sur une file, tous les véhicules motorisés roulent à la même vitesse (tirée par
 // file), et les vélos (piste au bord de la file du premier plan) à une même vitesse entre eux. Chaque véhicule occupe une
 // case de la boucle (longueur du monde ÷ nombre de véhicules de la file), avec un décalage tiré dans la case qui laisse
 // toujours au moins MIN_VEHICLE_GAP avec le suivant. Les écarts sont donc constants : la position ne dépend que du temps.
 export function vehiclesFor(width: number, seed: number): Vehicle[] {
   const rng = mulberry32(seed ^ 0x7ee1c);
-  const laneRng = mulberry32(seed ^ hashString('lane-speed'));
-  const speeds = { near: 55 + laneRng() * 30, far: 50 + laneRng() * 30, bike: 18 + laneRng() * 6 };
+  const speeds = laneSpeeds(seed);
   const out: Vehicle[] = [];
   const perLane = Math.max(2, Math.min(8, Math.round(width / 170)));
   const slot = (width + WORLD_PAD) / perLane;

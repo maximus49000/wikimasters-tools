@@ -1,4 +1,4 @@
-import { citySkyline, hashString, mulberry32, type Building, type Lamp } from '../scene-world';
+import { SKYLINE_GROUND, citySkyline, hashString, mulberry32, type Building, type Lamp } from '../scene-world';
 import { cityMetrics } from './metrics';
 
 // Façades de la scène Ville, dérivées de `citySkyline` SANS en changer le tirage (mêmes largeurs, hauteurs et fenêtres) :
@@ -49,13 +49,15 @@ export function farWindows(b: Building, ground: number, seed: number): FarWindow
 }
 
 // Immeubles de la ville tels que dessinés : hauteur étirée, fenêtres d'origine remontées en haut + étages ajoutés.
+// `citySkyline` pose ses fenêtres sur son propre sol (SKYLINE_GROUND) : elles sont recalées sur le sol de la rue.
 export function cityFacades(width: number, height: number, seed: number): Facade[] {
   const { ground } = cityMetrics(height);
+  const shift = height * SKYLINE_GROUND - ground;
   return citySkyline(width, height, seed).map((b) => {
     const lift = b.h * (BUILDING_STRETCH - 1);
     const h = b.h * BUILDING_STRETCH;
     if (b.far) return { ...b, h, farWindows: farWindows(b, ground, seed) };
-    const lamps = [...b.lamps.map((l) => ({ ...l, y: l.y - lift })), ...extraFloorWindows(b, ground, seed)];
+    const lamps = [...b.lamps.map((l) => ({ ...l, y: l.y - lift - shift })), ...extraFloorWindows(b, ground, seed)];
     return { ...b, h, lamps, farWindows: [] };
   });
 }
