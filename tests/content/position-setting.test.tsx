@@ -58,13 +58,22 @@ describe('réglage Position', () => {
 describe('raison d’échec', () => {
   it('refus, indisponible et délai sont distingués ; un succès efface la raison', async () => {
     for (const [code, reason] of [[1, 'denied'], [2, 'unavailable'], [3, 'timeout']] as const) {
-      getCurrentPosition.mockImplementationOnce((_ok: unknown, ko: (e: { code: number }) => void) => ko({ code }));
+      getCurrentPosition.mockImplementation((_ok: unknown, ko: (e: { code: number }) => void) => ko({ code }));
       await requestPosition();
       expect(positionFailure()).toBe(reason);
       expect(isPositionKnown()).toBe(false);
     }
+    getCurrentPosition.mockImplementation((ok: (p: { coords: { latitude: number; longitude: number } }) => void) => ok({ coords: { latitude: 1, longitude: 2 } }));
     await requestPosition();
     expect(positionFailure()).toBeNull();
+  });
+
+  it('un échec du relevé réseau déclenche un second essai en haute précision', async () => {
+    getCurrentPosition.mockImplementationOnce((_ok: unknown, ko: (e: { code: number }) => void) => ko({ code: 3 }));
+    await requestPosition();
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+    expect(getCurrentPosition.mock.calls[1]![2]).toMatchObject({ enableHighAccuracy: true });
+    expect(isPositionKnown()).toBe(true);
   });
 });
 
