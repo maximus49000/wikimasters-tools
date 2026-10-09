@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScenePanorama } from '../../src/content/scene-panorama';
 import { dayContext } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
+import { citySkyline } from '../../src/core/library/scene-world';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -92,7 +93,8 @@ describe('ScenePanorama (ville)', () => {
   it('décor : entrées au pied des immeubles, lampadaires allumés à 23 h (21 juin : il fait encore jour à 21 h), éteints à 0 h 20 (sauf « Toujours la nuit »)', () => {
     const lit = (): number => container.querySelectorAll('[data-street-lamp][data-lit="true"]').length;
     render(23 * 60);
-    expect(container.querySelectorAll('[data-door] [data-entrance]').length).toBeGreaterThan(0);
+    // Une entrée par immeuble visible du premier plan.
+    expect(container.querySelectorAll('[data-door] [data-entrance]')).toHaveLength(citySkyline(720, 340, 5).filter((b) => !b.far && b.x < 720).length);
     const lamps = container.querySelectorAll('[data-street-lamp]').length;
     expect(lamps).toBeGreaterThan(2);
     expect(lit()).toBe(lamps);
@@ -115,6 +117,19 @@ describe('ScenePanorama (ville)', () => {
     expect(lit.length).toBeGreaterThan(plain.length);
     expect(visible(lit)).toBe(lit.length);
     for (const lamp of lit) expect(Number(lamp.getAttribute('opacity'))).toBeGreaterThanOrEqual(0.7);
+  });
+
+  it('immeubles du fond : fenêtres allumées le soir, dissipées (bien moins lumineuses qu’au premier plan)', () => {
+    render(22 * 60);
+    const far = Array.from(container.querySelectorAll<SVGElement>('[data-far-lamp][data-lit="true"]'));
+    expect(far.length).toBeGreaterThan(3);
+    const nearOpacity = Math.max(...Array.from(container.querySelectorAll<SVGElement>('[data-lamp][data-lit="true"]')).map((el) => Number(el.getAttribute('opacity'))));
+    for (const el of far) {
+      expect(Number(el.getAttribute('opacity'))).toBeGreaterThan(0.2);
+      expect(Number(el.getAttribute('opacity'))).toBeLessThanOrEqual(nearOpacity * 0.5);
+    }
+    render(4 * 60);
+    expect(container.querySelectorAll('[data-far-lamp][data-lit="true"]').length).toBeLessThan(far.length);
   });
 
   it('pluie (rainy) : les passants ouvrent un parapluie, rien sans pluie', () => {

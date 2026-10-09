@@ -1,19 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { cityIntensity } from '../../../src/core/library/city/intensity';
 import { dayContext } from '../../../src/core/library/city/calendar';
-import { DOOR_WIDTH, MAX_TRIP_PX, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor } from '../../../src/core/library/city/doors';
+import { DOOR_MARGIN, DOOR_WIDTH, MAX_TRIP_PX, RESIDENT_DOORS_PER_720, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor } from '../../../src/core/library/city/doors';
 import { WORLD_MARGIN, citySkyline } from '../../../src/core/library/scene-world';
 
 describe('doorsFor', () => {
-  it('place les entrées sur des immeubles du premier plan, de façon déterministe', () => {
-    const doors = doorsFor(720, 340, 5);
-    expect(doors).toEqual(doorsFor(720, 340, 5));
-    expect(doors.length).toBeGreaterThanOrEqual(4);
-    const near = citySkyline(720, 340, 5).filter((b) => !b.far);
-    for (const d of doors) {
-      expect(near.some((b) => d.x >= b.x && d.x + DOOR_WIDTH <= b.x + b.w)).toBe(true);
-      expect([0, 1, 2]).toContain(d.variant);
+  it('une entrée par immeuble visible du premier plan, à l’intérieur avec une marge, de façon déterministe', () => {
+    for (const seed of [1, 5, 12345]) {
+      const doors = doorsFor(720, 340, seed);
+      expect(doors).toEqual(doorsFor(720, 340, seed));
+      const near = citySkyline(720, 340, seed).filter((b) => !b.far && b.x < 720);
+      expect(doors).toHaveLength(near.length);
+      near.forEach((b, i) => {
+        const d = doors[i]!;
+        expect(d.x).toBeGreaterThanOrEqual(b.x + DOOR_MARGIN - 0.05);
+        expect(d.x + DOOR_WIDTH).toBeLessThanOrEqual(b.x + b.w - DOOR_MARGIN + 0.05);
+        expect([0, 1, 2]).toContain(d.variant);
+      });
     }
+  });
+  it('aucune entrée sur les immeubles du fond', () => {
+    const far = citySkyline(720, 340, 5).filter((b) => b.far);
+    const near = citySkyline(720, 340, 5).filter((b) => !b.far);
+    for (const d of doorsFor(720, 340, 5)) {
+      // Chaque entrée tombe dans un immeuble du premier plan (même si un immeuble du fond se trouve derrière).
+      expect(near.some((b) => d.x >= b.x && d.x + DOOR_WIDTH <= b.x + b.w)).toBe(true);
+    }
+    expect(far.length).toBeGreaterThan(0);
   });
 });
 
@@ -98,5 +111,38 @@ describe('residentFlow', () => {
   it('on sort le matin, on rentre le soir', () => {
     expect(flow(7.8).out).toBeGreaterThan(flow(7.8).in);
     expect(flow(18.5).in).toBeGreaterThan(flow(18.5).out);
+  });
+});
+
+describe('densité d’habitants (une entrée par immeuble)', () => {
+  const intensity = (minutes: number, d: number) => cityIntensity({ minutes, day: dayContext({ y: 2026, m: 10, d }, []), precip: 0, snow: false, storm: false, daylight: 1 });
+  it('la probabilité par trajet baisse avec le nombre d’entrées, pas en deçà de la densité de référence', () => {
+    const i = intensity(8 * 60, 5);
+    expect(residentFlow(i, 480, RESIDENT_DOORS_PER_720, 720)).toEqual(residentFlow(i, 480));
+    expect(residentFlow(i, 480, RESIDENT_DOORS_PER_720 * 2, 720).out).toBeCloseTo(residentFlow(i, 480).out / 2, 6);
+    expect(residentFlow(i, 480, 2, 720)).toEqual(residentFlow(i, 480));
+    // Monde deux fois plus large, deux fois plus d'entrées : même probabilité.
+    expect(residentFlow(i, 480, 28, 1440).out).toBeCloseTo(residentFlow(i, 480, 14, 720).out, 6);
+  });
+  it('au plus 6 habitants visibles à la fois par 720 px sur une journée de semaine et de week-end', () => {
+    for (const seed of [1, 5]) {
+      const doors = doorsFor(720, 340, seed);
+      const trips = tripsFor(doors, seed);
+      let max = 0;
+      for (const d of [5, 10]) {
+        for (let m = 0; m < 1440; m += 10) {
+          const flow = residentFlow(intensity(m, d), m, doors.length, 720);
+          for (let k = 0; k < 8; k++) {
+            const t = 1.76e9 + d * 1e5 + m * 60 + k * 41.7;
+            const visible = trips.filter((tr) => {
+              const p = tripAt(tr, 720, t);
+              return p !== null && p.x >= 0 && p.x <= 720 && tripHappens(tr, t, tr.kind === 'out' ? flow.out : flow.in);
+            }).length;
+            max = Math.max(max, visible);
+          }
+        }
+      }
+      expect(max).toBeLessThanOrEqual(6);
+    }
   });
 });

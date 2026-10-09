@@ -1,7 +1,7 @@
 import { useMemo, useRef, type ReactElement } from 'react';
 import { doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { cityIntensity, type CityContext } from '../core/library/city/intensity';
-import { cityMetrics, type CityMetrics } from '../core/library/city/metrics';
+import { STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
 import { loopX } from '../core/library/scene-world';
@@ -22,7 +22,7 @@ const COMPANION_GAP = 16;
 
 const vehicleTransform = (v: Vehicle, m: CityMetrics, width: number, t: number): string => {
   const x = loopX(v.phase, LANE_DIR[v.lane] * v.speed, width, t);
-  const k = m.unit * v.scale * (v.lane === 'far' ? FAR_SHRINK : 1);
+  const k = m.unit * STREET_SCALE.vehicle * v.scale * (v.lane === 'far' ? FAR_SHRINK : 1);
   return `translate(${x.toFixed(1)} ${m.laneY[v.lane].toFixed(1)}) scale(${(LANE_DIR[v.lane] * k).toFixed(3)} ${k.toFixed(3)})`;
 };
 
@@ -30,12 +30,12 @@ const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number): 
   const x = loopX(p.phase, p.dir * p.speed, width, t);
   // Légère profondeur sur le trottoir : les passants ne marchent pas tous sur la même ligne.
   const y = m.walkY - (p.depth - 0.5) * m.unit * 6;
-  const k = m.unit * p.scale;
+  const k = m.unit * STREET_SCALE.person * p.scale;
   return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(p.dir * k).toFixed(3)} ${k.toFixed(3)})`;
 };
 
 const residentTransform = (trip: Trip, x: number, m: CityMetrics): string => {
-  const k = m.unit * trip.scale;
+  const k = m.unit * STREET_SCALE.person * trip.scale;
   return `translate(${x.toFixed(1)} ${m.doorY.toFixed(1)}) scale(${(trip.dir * k).toFixed(3)} ${k.toFixed(3)})`;
 };
 
@@ -59,7 +59,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy }: CityLif
   const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
   const trips = useMemo(() => tripsFor(doors, seed), [doors, seed]);
   const intensity = useMemo(() => cityIntensity(city), [city]);
-  const flow = useMemo(() => residentFlow(intensity, city.minutes), [intensity, city.minutes]);
+  // Une entrée par immeuble : la probabilité par trajet est réduite selon le nombre d'entrées (≤ 6 habitants par 720 px).
+  const flow = useMemo(() => residentFlow(intensity, city.minutes, doors.length, width), [intensity, city.minutes, doors.length, width]);
   const lights = sky.daylight < 0.5 || rainy;
   const gateOf = (trip: Trip): number => (trip.kind === 'out' ? flow.out : flow.in);
 

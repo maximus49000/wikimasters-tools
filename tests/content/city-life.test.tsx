@@ -77,8 +77,9 @@ describe('CityLifeLayer', () => {
     vi.spyOn(Date, 'now').mockReturnValue(now);
     const c = make(8.25, { y: 2026, m: 10, d: 5 });
     const sky = skyAt(495, times);
-    const flow = residentFlow(cityIntensity({ minutes: 495, day: dayContext({ y: 2026, m: 10, d: 5 }, []), precip: 0, snow: false, storm: false, daylight: sky.daylight }), 495);
-    const trips = tripsFor(doorsFor(720, 340, 1), 1);
+    const doors = doorsFor(720, 340, 1);
+    const flow = residentFlow(cityIntensity({ minutes: 495, day: dayContext({ y: 2026, m: 10, d: 5 }, []), precip: 0, snow: false, storm: false, daylight: sky.daylight }), 495, doors.length, 720);
+    const trips = tripsFor(doors, 1);
     const nodes = c.querySelectorAll('[data-resident]');
     expect(nodes).toHaveLength(trips.length);
     const t = now / 1000;

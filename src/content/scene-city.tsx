@@ -2,11 +2,14 @@ import type { ReactElement } from 'react';
 import { lampLit } from '../core/library/activity';
 import { doorsFor } from '../core/library/city/doors';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
-import { cityMetrics } from '../core/library/city/metrics';
-import { citySkyline } from '../core/library/scene-world';
+import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
+import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
 import { mixHex } from '../core/library/sky';
 import { EntranceSprite, LampSprite, entranceLeft } from './city-sprites';
 import type { SceneBodyProps } from './scene-panorama';
+
+// Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
+const FAR_LIGHT = 0.5;
 
 export function CityScene({ width, height, sky, minutes, seed, gloom = false, forcedNight = false }: SceneBodyProps): ReactElement {
   const metrics = cityMetrics(height);
@@ -18,7 +21,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, fo
   const walk = mixHex('#3A3D5E', '#CFC9BB', sky.daylight);
   // Ciel sombre (gros nuages) : on allume en plein jour, et les lumières se voient.
   const dim = Math.max(1 - sky.daylight, gloom ? 0.7 : 0);
-  const buildings = citySkyline(width, height, seed);
+  // Immeubles étirés (proportions avec les passants), fenêtres d'origine en haut et étages ajoutés : voir facades.ts.
+  const buildings = cityFacades(width, height, seed);
   const doors = doorsFor(width, height, seed);
   const lamps = lampsFor(width, seed);
   // Hall d'entrée éclairé la nuit (un peu plus d'une entrée sur deux).
@@ -27,7 +31,27 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, fo
   return (
     <g data-scene-body>
       {buildings.filter((b) => b.far).map((b, i) => (
-        <rect key={`f${i}`} x={b.x} y={ground - b.h} width={b.w} height={b.h} fill={far} />
+        <g key={`f${i}`}>
+          <rect x={b.x} y={ground - b.h} width={b.w} height={b.h} fill={far} />
+          {/* Fenêtres du fond : même activité qu'au premier plan, mais petites, froides et dissipées par la distance. */}
+          {b.farWindows.map((win, j) => {
+            const lit = lampLit(win.u, minutes) || (gloom && win.u < 0.55);
+            return (
+              <rect
+                key={j}
+                data-far-lamp=""
+                data-lit={lit ? 'true' : 'false'}
+                x={win.x}
+                y={win.y}
+                width={FAR_WINDOW.w}
+                height={FAR_WINDOW.h}
+                fill={win.blue ? '#B8D0FF' : '#FFE3A0'}
+                opacity={lit ? dim * FAR_LIGHT : 0}
+                style={{ transition: 'opacity 4s ease' }}
+              />
+            );
+          })}
+        </g>
       ))}
       {buildings.filter((b) => !b.far).map((b, i) => (
         <g key={`n${i}`}>
@@ -68,14 +92,18 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, fo
       />
       <rect x={0} y={ground - 2} width={width} height={3} fill="#00000022" />
       {doors.map((door) => (
-        <g key={door.id} data-door={door.id} transform={`translate(${entranceLeft(door.x, unit).toFixed(1)} ${metrics.doorY.toFixed(1)}) scale(${unit})`}>
+        <g
+          key={door.id}
+          data-door={door.id}
+          transform={`translate(${entranceLeft(door.x, unit).toFixed(1)} ${metrics.doorY.toFixed(1)}) scale(${(unit * STREET_SCALE.entranceX).toFixed(3)} ${(unit * STREET_SCALE.entranceY).toFixed(3)})`}
+        >
           <EntranceSprite variant={door.variant} hallLit={dark && door.hallU < 0.6} sky={sky} />
         </g>
       ))}
       {lamps.map((lamp) => {
         const lit = streetLampLit(lamp, minutes, sky.daylight, forcedNight);
         return (
-          <g key={lamp.id} data-street-lamp={lamp.id} data-lit={lit ? 'true' : 'false'} transform={`translate(${lamp.x} ${(ground + sidewalk).toFixed(1)}) scale(${unit})`}>
+          <g key={lamp.id} data-street-lamp={lamp.id} data-lit={lit ? 'true' : 'false'} transform={`translate(${lamp.x} ${(ground + sidewalk).toFixed(1)}) scale(${(unit * STREET_SCALE.lamp).toFixed(3)})`}>
             <LampSprite lit={lit} />
           </g>
         );

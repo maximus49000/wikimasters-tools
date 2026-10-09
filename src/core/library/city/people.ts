@@ -1,5 +1,6 @@
 import { hashString, mulberry32 } from '../scene-world';
 import type { CityIntensity } from './intensity';
+import { WALK_PACE } from './metrics';
 
 export type Profile = 'stroller' | 'suit' | 'jogger' | 'ordinary' | 'child';
 export type Hair = 'short' | 'long' | 'bun' | 'cap' | 'beanie' | 'bald';
@@ -76,7 +77,8 @@ export function pedestriansFor(width: number, seed: number): Pedestrian[] {
     outfit: outfitFor(profile, rng),
     companions: Array.from({ length: companions }, () => outfitFor('child', rng)),
     dir,
-    speed: speedMin + rng() * (speedMax - speedMin),
+    // Vitesses ralenties par WALK_PACE (passants dessinés plus petits) ; le tirage est inchangé.
+    speed: (speedMin + rng() * (speedMax - speedMin)) * WALK_PACE,
     phase: rng() * (width + 160),
     u: rng(),
     scale: role === 'play' ? 0.66 + rng() * 0.1 : 0.95 + rng() * 0.15,
