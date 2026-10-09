@@ -14,9 +14,22 @@ Une seule spec, trois PR, chacune avec sa fiche WikiHow et sa pré-prod.
 
 - **Déterministe et sans état.** Tout se calcule à partir de la graine de la pièce et de l'horloge murale, comme la météo. Toutes les fenêtres montrent la même scène, un rechargement la retrouve, rien n'est enregistré. Un tirage ne dépend jamais de `Math.random`.
 - **Moteur pur** dans `src/core/library/city/` (testable sans DOM), rendu SVG dans `src/content/`. Les passants et les véhicules vivent dans le groupe d'acteurs existant (`SceneActors`) : la même boucle d'animation les place, les copies `<use>` des fenêtres ne coûtent rien de plus.
-- **Entrées du moteur** : minutes de la journée (heure du ciel), jour de la semaine, météo (pluie, orage, brume, neige, couverture), lumière du jour. Heure forcée (jour, nuit, manuelle) : le jour de la semaine reste celui de la date réelle de l'appareil.
+- **Entrées du moteur** : minutes de la journée (heure du ciel), **calendrier** (voir plus bas : type de jour, vacances scolaires, fêtes), météo (pluie, orage, brume, neige, couverture), lumière du jour. Heure forcée (jour, nuit, manuelle) : la date reste celle de l'appareil.
 - **Mouvement réduit** : plus de déplacement, rien ne traverse. Seuls les éléments statiques restent (enseigne, appartement allumé), aucune réaction d'animal.
 - **Densité plafonnée** pour la performance mobile : nombre maximal d'acteurs urbains visibles par fenêtre de 12 colonnes, au plus 2 à 3 événements simultanés.
+
+## Calendrier
+
+Module pur `src/core/library/city/calendar.ts`, calculé sur la date locale de l'appareil, sans service externe. Il fournit à tous les moteurs un `DayContext` : `kind` (`school`, `weekend`, `holiday`, `public-holiday`), `festivity` éventuelle et `progress` dans la fête.
+
+- **Jours fériés** (France) : dates fixes (1er janvier, 1er et 8 mai, 14 juillet, 15 août, 1er novembre, 11 novembre, 25 décembre) et dates mobiles déduites de Pâques par calcul (lundi de Pâques, Ascension, lundi de Pentecôte). Un jour férié se comporte comme un dimanche : peu de circulation, pas d'école, plus de marcheurs et d'enfants dehors, aucun costume.
+- **Vacances scolaires** : table de données (Toussaint, Noël, hiver, printemps, été) pour le calendrier officiel français, dates à relever à la source officielle (education.gouv.fr) au moment de l'implémentation. Pendant les vacances : **plus aucun groupe d'école**, circulation un peu réduite et sans vraie pointe du matin, plus d'enfants dehors, moins de costumes. Au-delà de la dernière année de la table, le calendrier retombe sur « semaine normale » sans erreur, et une note à la fiche WikiHow le dit.
+- **Zone scolaire** : l'hiver et le printemps sont décalés selon trois zones (A, B, C). Zone : à trancher (voir « Points ouverts »).
+- **Fêtes et événements du calendrier** : liste de données (date ou plage, heures, poids, événement), jouée en plus des événements ordinaires :
+  - **24 décembre** : le **père Noël** traverse le ciel **plusieurs fois** dans la soirée et la nuit (traîneau, rennes, tirage de 4 à 6 passages à des heures et des hauteurs différentes ; plus de passage dans la nuit du 24 au 25 que le 25 de jour). Il est visible en scène Ville, et d'autres scènes pourront l'ajouter plus tard.
+  - Proposés, à valider : 31 décembre (feux d'artifice à minuit), 14 juillet (feux d'artifice en soirée), 1er janvier, Halloween (passants déguisés, enfants le soir du 31 octobre), Pâques (enfants en chasse aux œufs), 1er mai (passants avec du muguet).
+  - Les fêtes ajoutent aussi des décors discrets : lumières de Noël aux fenêtres des immeubles de la mi-décembre au 6 janvier.
+- La fiche WikiHow indique que le calendrier suit la date de l'appareil et que les fêtes ont lieu à leurs dates réelles.
 
 ## Vague 1a : vie ambiante
 
@@ -31,7 +44,7 @@ Deux courbes calculées à la minute, entre 0 et 1 : `pedestrians(t)` et `traffi
 - **Aller à l'école** de 7 h 50 à 8 h 30 : des groupes famille (un adulte et un ou deux enfants avec cartable) qui marchent ensemble, dans un sens. À 8 h 30 plus aucun groupe.
 - **Sortie d'école** de 16 h 45 à 17 h 15 environ : les mêmes groupes, en sens inverse.
 - Le reste de la journée est calme (promeneurs, peu d'enfants).
-- Le mercredi est traité comme un jour d'école normal. Vacances scolaires et jours fériés sont ignorés (pas de calendrier à maintenir).
+- Le mercredi est traité comme un jour d'école normal. Les vacances et les jours fériés sont gérés par le calendrier (section suivante).
 
 ### Week-end (samedi, dimanche)
 
@@ -110,9 +123,16 @@ S'appuie sur `pets/context.ts`, `brain.ts` et le moteur de scènes à deux.
 ## Tests
 
 - **Moteur (1a)** : déterminisme (même minute et même graine donnent le même résultat), courbes des pointes semaine et week-end, école (présence de 7 h 50 à 8 h 30 et de 16 h 45 à 17 h 15, absence le week-end), pluie (moins de piétons, parapluies), nuit, plafonds de densité, diversité (deux tirages voisins diffèrent de tenue), cohérence des profils (costume le week-end rare, cartable seulement un jour d'école).
+- **Calendrier** : Pâques et fériés mobiles sur plusieurs années, bornes des vacances, repli hors table, le 24 décembre donne plusieurs passages du père Noël et aucun en été.
 - **Événements (1b)** : conditions (aucun feu d'artifice de jour, aucun cerf-volant sous la pluie), plafond d'événements simultanés, progression continue au chevauchement de créneaux.
 - **Animaux (1c)** : pas de réaction si le chien dort ou sans fenêtre, plan écrit une seule fois par passage, reprise après rechargement.
 - **Rendu (jsdom)** : un groupe d'acteurs urbains par fenêtre, aucune erreur en mouvement réduit.
+
+## Points ouverts
+
+- **Zone scolaire** : réglage local (A, B, C) dans le panneau Ciel, ou valeur unique par défaut ? Les vacances de Toussaint, Noël et d'été sont les mêmes pour toutes les zones ; seuls l'hiver et le printemps diffèrent.
+- **Fêtes à retenir** en plus du père Noël (liste proposée ci-dessus).
+- **Vague du calendrier** : en 1a (jours et vacances) ; le père Noël et les fêtes arrivent en 1b avec le moteur d'événements.
 
 ## Livraison
 
@@ -120,7 +140,8 @@ Pour chaque vague : PR fusionnée, fiche WikiHow (`bibliotheque-v19` pour 1a, `v
 
 ## Limites assumées
 
-- Pas de calendrier scolaire, de vacances ni de jours fériés.
+- Calendrier français uniquement (jours fériés, vacances scolaires, fêtes) ; pas de calendrier dans les autres pays.
+- Table des vacances limitée aux années relevées ; au-delà, repli sur une semaine normale.
 - Pas de réaction du robot ni des animaux à d'autres événements que le promeneur de chien (par exemple l'ambulance), à envisager plus tard.
 - Pas de son.
 - Les autres scènes viennent dans des lots ultérieurs avec le même moteur d'événements.
