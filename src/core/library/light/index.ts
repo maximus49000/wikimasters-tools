@@ -6,3 +6,4 @@ export * from './light-map';
 export * from './occluders';
 export * from './shadow';
 export * from './surfaces';
+export * from './lamps';
