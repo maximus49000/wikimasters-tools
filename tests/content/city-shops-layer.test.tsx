@@ -105,7 +105,7 @@ describe('CityLifeLayer : clients et équipe du matin', () => {
   it('à 8 h un mardi : un nœud de client par visite', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
     const frames = new Map(slots.map((s) => [s.id, shopFrame(s, cityMetrics(H).ground)]));
-    const visits = visitsFor(slots, frames, SEED);
+    const visits = visitsFor(slots, frames, SEED, () => null);
     const c = life(480);
     expect(c.querySelectorAll('[data-customer]')).toHaveLength(visits.length);
     expect(c.querySelectorAll('[data-customer-inside]')).toHaveLength(visits.length);

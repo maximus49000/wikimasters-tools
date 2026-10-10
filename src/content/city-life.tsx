@@ -129,7 +129,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Commerces : deux visites par local (seulement si la rue a des commerces) ; probabilité d'une visite recalculée à la minute,
   // nulle si le local n'est pas ouvert, et en mouvement réduit (aucun client ne bouge).
   const shops = useStreetShops(width, height, seed, city);
-  const allVisits = useMemo(() => visitsFor(shops.slots, shops.frames, seed), [shops.slots, shops.frames, seed]);
+  const allVisits = useMemo(
+    () => visitsFor(shops.slots, shops.frames, seed, (id) => shops.views.find((v) => v.slot.id === id)?.sign?.type ?? null),
+    [shops.slots, shops.frames, shops.views, seed],
+  );
   const visits = shops.views.length > 0 ? allVisits : NO_VISITS;
   const gates = useMemo(
     () => new Map(shops.views.map((v) => [v.slot.id, still ? 0 : customerGate(v, city.minutes, intensity)])),
