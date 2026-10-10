@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SHOP_DEFS, SHOP_TYPE_IDS } from '../../../src/core/library/city/shops/catalog';
-import { terraceAt, terraceGuests, terraceWeatherAt, type TerraceWeather } from '../../../src/core/library/city/shops/terrace';
+import { holdWeather, terraceAt, terraceGuests, terraceWeatherAt, type TerraceWeather } from '../../../src/core/library/city/shops/terrace';
 import { targetOf } from '../../../src/core/library/weather/weather-types';
 
 const FINE: TerraceWeather = { rain: false, snow: false, storm: false, wind: false, sunny: false };
@@ -117,5 +117,18 @@ describe('terrasse : convives', () => {
       high += terraceGuests(4, 9, 's', m, 1).length;
     }
     expect(high).toBeGreaterThan(low);
+  });
+});
+
+describe('terrasse : fenêtre de météo (holdWeather)', () => {
+  it('retient un mauvais temps relevé une fois, le soleil seulement s’il a duré', () => {
+    expect(holdWeather([])).toEqual(FINE);
+    expect(holdWeather([SUN, { ...FINE, rain: true }, SUN])).toMatchObject({ rain: true, sunny: false });
+    expect(holdWeather([SUN, SUN])).toEqual(SUN);
+    expect(holdWeather([FINE, { ...FINE, wind: true }, { ...FINE, snow: true }])).toMatchObject({ wind: true, snow: true, rain: false, storm: false });
+  });
+  it('garde la terrasse rentrée tant que la pluie est dans la fenêtre', () => {
+    expect(terraceAt(CAFE, true, H(12), SUN, OPEN, CLOSE, holdWeather([SUN, { ...FINE, rain: true }])).state).toBe('none');
+    expect(terraceAt(CAFE, true, H(12), SUN, OPEN, CLOSE, holdWeather([SUN, SUN])).state).toBe('umbrellas');
   });
 });

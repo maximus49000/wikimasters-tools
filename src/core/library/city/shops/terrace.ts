@@ -31,6 +31,13 @@ export function terraceWeatherAt(w: Weather): TerraceWeather {
 }
 
 const isBad = (w: TerraceWeather): boolean => w.rain || w.snow || w.storm || w.wind;
+
+// Résumé d'une fenêtre de relevés (les WEATHER_HOLD dernières minutes) pour `weatherBefore` : un mauvais temps est retenu
+// s'il a été relevé une fois, le soleil seulement s'il a duré toute la fenêtre. Fenêtre vide : temps correct, sans soleil.
+export function holdWeather(samples: readonly TerraceWeather[]): TerraceWeather {
+  const any = (k: keyof TerraceWeather): boolean => samples.some((w) => w[k]);
+  return { rain: any('rain'), snow: any('snow'), storm: any('storm'), wind: any('wind'), sunny: samples.length > 0 && samples.every((w) => w.sunny) };
+}
 const NONE = { state: 'none' as TerraceState, progress: 0, tables: 0 };
 
 // `minutes` : minute du jour (0..1439) ; `openedAt` / `closesAt` : ouverture et fermeture de la plage en cours (closesAt peut passer 1440).

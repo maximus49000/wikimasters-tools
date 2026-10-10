@@ -11,10 +11,12 @@ import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/
 import type { StaffShift } from '../core/library/city/shops/staff';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
 import { loopX } from '../core/library/scene-world';
+import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
-import { ShopCustomers, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, type PosedStaff, type Swap } from './city-shops-life';
+import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, type PosedStaff, type Swap } from './city-shops-life';
 import { interiorPost } from './shop-interiors';
+import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
@@ -26,8 +28,9 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // des événements change ; les positions sont posées par la boucle d'animation directement sur `transform`, sans re-rendu.
 // Seuls les habitants et les clients voient aussi leur présence décidée par la boucle (un tirage par tour de cycle de
 // trajet ou de visite).
-// `forcedNight` : mode « Toujours la nuit » (les lampadaires restent allumés).
-export type CityLifeProps = { width: number; height: number; sky: Sky; seed: number; city: CityContext; rainy: boolean; forcedNight?: boolean };
+// `forcedNight` : mode « Toujours la nuit » (les lampadaires restent allumés). `weather` : horloge de la météo de la scène
+// (terrasses : pluie, vent, soleil, avec 10 min d'hystérésis) ; absente, seul `rainy` compte.
+export type CityLifeProps = { width: number; height: number; sky: Sky; seed: number; city: CityContext; rainy: boolean; forcedNight?: boolean; weather?: { read(nowMs: number): Weather } };
 
 // Écart entre un parent et chaque enfant qu'il accompagne (repère du sprite, avant l'échelle).
 const COMPANION_GAP = 16;
@@ -107,7 +110,7 @@ const residentState = (trip: Trip, gate: number, width: number, t: number): { ac
 // Opacité d'un événement : fondu des événements fixes, aucun fondu en mouvement réduit (opacité 1).
 const eventOpacity = (e: CityEvent, t: number, still: boolean): string => (still ? '1' : fixedFade(e, t).toFixed(2));
 
-export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNight = false }: CityLifeProps): ReactElement {
+export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNight = false, weather }: CityLifeProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
   // Passants et véhicules présents au dernier placement : ceux qui disparaissent continuent d'avancer pendant leur fondu.
   const moving = useRef<Set<string>>(new Set());
@@ -160,6 +163,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     [shops.views, shifts, city.minutes, intensity, still],
   );
 
+  // Terrasses : météo de la minute et des 10 précédentes (hystérésis du moteur).
+  const terraceSky = useTerraceWeather(weather, rainy, city.minutes);
+
   // Événements de la ville : programme du grand créneau, événements actifs, voitures effacées, ambulances.
   const events = useCityEvents({ seed, width, city, intensity, vehicles, still, frozenT: frozen.current });
 
@@ -179,6 +185,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let leaveUntil = 0;
     let staff: PosedStaff[] = [];
     let swaps: Swap[] = [];
+    let waiters: Waiter[] = [];
     let posedAt = -Infinity;
     const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
     return (now: number): void => {
@@ -194,6 +201,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         moving.current = new Set([...vehActive, ...pedActive]);
         staff = collectPosedStaff(el);
         swaps = collectSwaps(el);
+        waiters = collectWaiters(el);
       }
       for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
       for (const p of peds) if (moves(p.id, t)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
@@ -215,6 +223,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       }
       placeCustomers(nodes, visits, gates, width, metrics, t, first);
       placeSwaps(swaps, t);
+      if (!still) placeWaiters(waiters, t);
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
       if (!still && Math.abs(t - posedAt) >= STAFF_POSE_S) {
         placeStaff(staff, t);
@@ -365,6 +374,23 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             </g>
           );
         })}
+        {/* Devant les façades, entre la ligne des portes et celle des passants : terrasses, cordon, videurs et file. */}
+        {shops.views.map((view) => (
+          <ShopOutdoors
+            key={view.slot.id}
+            view={view}
+            frame={shops.frames.get(view.slot.id)!}
+            metrics={metrics}
+            minutes={city.minutes}
+            date={date}
+            weather={terraceSky}
+            walkers={intensity.walkers}
+            reduced={still}
+            sky={sky}
+            seed={seed}
+            sessionT0={frozen.current!}
+          />
+        ))}
         {peds.map((p) => {
           const active = pedActive.has(p.id);
           return (

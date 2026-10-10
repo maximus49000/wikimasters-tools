@@ -6,7 +6,7 @@ import { outfitFor, type Outfit, type Profile } from '../core/library/city/peopl
 import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import { visitAt, visitHappens, type Visit } from '../core/library/city/shops/customers';
 import { ACCESSORY, SHOP_FAMILY, gestureAt, takesAway, type Pose } from '../core/library/city/shops/gestures';
-import { dayNumber } from '../core/library/city/shops/hours';
+import { crowdAt, dayNumber } from '../core/library/city/shops/hours';
 import type { Change, SlotDay } from '../core/library/city/shops/lifecycle';
 import type { ShopFrame } from '../core/library/city/shops/slots';
 import { WALK_MIN, shutterAt, staffAt, staffShiftsAt, type StaffShift, type StaffState } from '../core/library/city/shops/staff';
@@ -17,12 +17,15 @@ import type { Sky } from '../core/library/sky';
 import { PersonSprite } from './city-sprites';
 import { AccessorySprite, LIFTING, PosedPerson, STANDING, applyPose, poseHandles, showCarry, type PoseHandles } from './shop-gesture-sprites';
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
+import { NightclubDoor } from './shop-queue';
 import { CarriedPlacard, CarriedSign, LadderSprite, RollingShutter, SHUTTER_S, type ShutterState, type WorkerPose } from './shop-sprites';
+import { ShopTerrace, type TerraceSky } from './shop-terrace';
 
 // Vie des commerces dans le calque animé de la Ville (vague 1b-iv-a) : clients qui entrent, restent derrière la vitrine et
 // ressortent ; équipe du chantier du matin (deux ouvriers, une échelle, l'ancienne et la nouvelle enseigne). Vague 1b-iv-b :
 // le personnel (StaffLayer) arrive à pied, lève le rideau roulant, travaille, se relaie, baisse le rideau et repart ; clients et
-// employés font le geste de la famille du commerce (poses écrites par la boucle, voir shop-gesture-sprites.tsx).
+// employés font le geste de la famille du commerce (poses écrites par la boucle, voir shop-gesture-sprites.tsx) ; devant la
+// façade (ShopOutdoors) : terrasse des bars et restaurants (shop-terrace.tsx), cordon, videurs et file de la boîte (shop-queue.tsx).
 // Clients : DEUX nœuds par visite, l'un sur le trottoir (stades « in » et « out »), l'autre dans un <svg> imbriqué posé sur la
 // vitrine (stade « inside », rogné sans clipPath ni id) ; la boucle d'animation de CityLifeLayer active l'un ou l'autre
 // (placeCustomers). Équipe : rendue à la minute (re-rendu React), déplacée par une transition CSS de 30 s entre deux minutes.
@@ -491,4 +494,43 @@ export function collectSwaps(root: Element): Swap[] {
 }
 export function placeSwaps(swaps: Swap[], t: number): void {
   for (const s of swaps) setIfChanged(s.node, 'opacity', (t >= s.at) !== s.out ? '1' : '0');
+}
+
+// ---------- Devant la façade : terrasse ou porte de la boîte de nuit ----------
+type OutdoorsProps = {
+  view: ShopView;
+  frame: ShopFrame;
+  metrics: CityMetrics;
+  minutes: number;
+  date: YMD;
+  weather: TerraceSky;
+  // Activité des passants (0..1, cityIntensity) : module l'affluence du type pour la terrasse.
+  walkers: number;
+  reduced: boolean;
+  sky: Sky;
+  seed: number;
+  sessionT0: number;
+};
+
+export function ShopOutdoors({ view, frame, metrics, minutes, date, weather, walkers, reduced, sky, seed, sessionT0 }: OutdoorsProps): ReactElement | null {
+  const type = view.sign?.type ?? null;
+  if (type === 'nightclub') return <NightclubDoor view={view} frame={frame} metrics={metrics} minutes={minutes} date={date} reduced={reduced} sky={sky} seed={seed} sessionT0={sessionT0} />;
+  if (type === null || SHOP_DEFS[type].terrace === 0) return null;
+  // Une terrasse sortie attire : un fond de 0,3 s'ajoute à l'affluence du type (sinon les chaises restent presque toujours vides).
+  const crowd = Math.min(1, 0.3 + 0.9 * crowdAt(SHOP_DEFS[type], minutes) * (0.6 + 0.4 * walkers));
+  return (
+    <ShopTerrace
+      view={view}
+      frame={frame}
+      metrics={metrics}
+      minutes={minutes}
+      date={date}
+      weather={weather}
+      crowd={crowd}
+      reduced={reduced}
+      sky={sky}
+      seed={seed}
+      waiterOutfit={staffOutfit(seed, `${view.slot.id}-waiter`)}
+    />
+  );
 }

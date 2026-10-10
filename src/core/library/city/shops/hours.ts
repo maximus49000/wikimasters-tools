@@ -35,6 +35,15 @@ export function isOpenAt(def: ShopDef, date: YMD, minutes: number): boolean {
   return rangesOf(def, addDays(date, -1)).some(([, b]) => b > 1440 && minutes < b - 1440);
 }
 
+// Plage d'ouverture en cours à `minutes` : [ouverture, fermeture] en minutes du jour `date` (une plage de la veille qui passe
+// minuit est ramenée à ce jour : ouverture négative) ; null si le commerce est fermé. Même règle que isOpenAt.
+export function openRangeAt(def: ShopDef, date: YMD, minutes: number): [number, number] | null {
+  const today = rangesOf(def, date).find(([a, b]) => minutes >= a && minutes < b);
+  if (today) return [today[0], today[1]];
+  const carried = rangesOf(def, addDays(date, -1)).find(([, b]) => b > 1440 && minutes < b - 1440);
+  return carried ? [carried[0] - 1440, carried[1] - 1440] : null;
+}
+
 // Affluence (0..1) selon la forme de clientèle, multipliée par `level` ; l'ouverture est vérifiée à part (isOpenAt).
 export function crowdAt(def: ShopDef, minutes: number): number {
   const h = (((minutes % 1440) + 1440) % 1440) / 60;
