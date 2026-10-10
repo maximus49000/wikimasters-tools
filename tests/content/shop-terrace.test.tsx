@@ -116,6 +116,24 @@ describe('terrasse : rendu (ShopTerrace)', () => {
     // Les tables glissent pendant le montage…
     for (const t of tables(host)) expect((t as SVGGElement).style.transition).toContain('60s');
   });
+  it('dernière minute du montage : toutes les tables visent déjà leur place (passage sans saut à la terrasse posée)', () => {
+    const open = openRangeAt(SHOP_DEFS.cafe, SAT, 9 * 60)![0];
+    const { host } = render(terrace('cafe', open + 5, SUN));
+    expect(host.querySelector('[data-shop-terrace]')!.getAttribute('data-terrace-state')).toBe('setting-up');
+    const targets = terraceTables(frame, metrics, tables(host).length);
+    expect(tables(host).length).toBeGreaterThanOrEqual(2);
+    for (const t of tables(host)) {
+      const i = Number(t.getAttribute('data-terrace-table'));
+      expect((t as SVGGElement).style.transform, `table ${i}`).toContain(`${targets[i]!.x.toFixed(1)}px`);
+    }
+    // La minute suivante, terrasse posée : même place, plus de transition.
+    const { host: next } = render(terrace('cafe', open + 6, SUN));
+    for (const t of tables(next)) {
+      const i = Number(t.getAttribute('data-terrace-table'));
+      expect((t as SVGGElement).style.transform).toContain(`${targets[i]!.x.toFixed(1)}px`);
+      expect((t as SVGGElement).style.transition).toBe('');
+    }
+  });
   it('terrasse posée (ouverte ou parasols) : aucune glissade, rien ne peut partir du coin de la scène', () => {
     for (const w of [FINE, SUN]) {
       const { host } = render(terrace('cafe', 12 * 60, w));

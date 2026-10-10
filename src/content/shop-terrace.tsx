@@ -5,7 +5,7 @@ import { outfitFor, type Outfit } from '../core/library/city/people';
 import { SHOP_DEFS } from '../core/library/city/shops/catalog';
 import { openRangeAt } from '../core/library/city/shops/hours';
 import type { ShopFrame } from '../core/library/city/shops/slots';
-import { WEATHER_HOLD, holdWeather, terraceAt, terraceGuests, terraceWeatherAt, type TerraceState, type TerraceWeather } from '../core/library/city/shops/terrace';
+import { SETUP_MIN, WEATHER_HOLD, holdWeather, terraceAt, terraceGuests, terraceWeatherAt, type TerraceState, type TerraceWeather } from '../core/library/city/shops/terrace';
 import type { ShopView } from '../core/library/city/shops/view';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
@@ -230,7 +230,10 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
   // Glissade seulement pendant le montage et le démontage : une terrasse déjà posée (ouverte, parasols) n'a pas de transition,
   // sinon un nœud dont le style est résolu tard (onglet caché au montage) glisserait une minute depuis le coin (0, 0).
   const move = reduced || (t.state !== 'setting-up' && t.state !== 'clearing') ? undefined : SLIDE;
-  const slides = places.map((_, i) => slideOf(t.state, t.progress, n, i, reduced));
+  // Montage : chaque table vise l'avancée de la minute suivante (la transition d'une minute l'y amène), comme le hayon du
+  // camion ; à la dernière minute toutes sont donc à leur place quand la terrasse devient « posée » (sans transition).
+  const ahead = t.state === 'setting-up' ? Math.min(1, t.progress + 1 / SETUP_MIN) : t.progress;
+  const slides = places.map((_, i) => slideOf(t.state, ahead, n, i, reduced));
   const at = (i: number): number => doorX + (places[i]!.x - doorX) * slides[i]!;
   const parasols = t.state === 'umbrellas';
   // Montage / démontage : l'employé accompagne la table en mouvement, du côté de la porte.
