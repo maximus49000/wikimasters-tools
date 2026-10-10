@@ -10,19 +10,21 @@ const DAY0 = 1_000_000 * 86400 / 86400; // instant (s) arbitraire de début de j
 const ctx = (date: YMD, minutes: number): CityContext => ({ minutes, day: dayContext(date, []), precip: 0, snow: false, storm: false, daylight: 1 });
 
 describe('roadClosed', () => {
-  it('bastille uniquement, de 8 h à 12 h 30 (borne haute exclue)', () => {
-    expect(CLOSURE).toEqual([480, 750]);
+  it('bastille uniquement, de 8 h à 13 h 30, fin de la dépose des barrières (borne haute exclue)', () => {
+    expect(CLOSURE).toEqual([480, 810]);
     expect(PARADE).toEqual([600, 720]);
     expect(roadClosed(['bastille'], 479)).toBe(false);
     expect(roadClosed(['bastille'], 480)).toBe(true);
-    expect(roadClosed(['bastille'], 749)).toBe(true);
-    expect(roadClosed(['bastille'], 750)).toBe(false);
+    expect(roadClosed(['bastille'], 809)).toBe(true);
+    expect(roadClosed(['bastille'], 760)).toBe(true);
+    expect(roadClosed(['bastille'], 810)).toBe(false);
     expect(roadClosed(['music'], 600)).toBe(false);
     expect(roadClosed([], 600)).toBe(false);
   });
   it('cityIntensity le calcule le 14/7 et pas un autre jour', () => {
     expect(cityIntensity(ctx({ y: 2026, m: 7, d: 14 }, 600)).closed).toBe(true);
-    expect(cityIntensity(ctx({ y: 2026, m: 7, d: 14 }, 800)).closed).toBe(false);
+    expect(cityIntensity(ctx({ y: 2026, m: 7, d: 14 }, 800)).closed).toBe(true);
+    expect(cityIntensity(ctx({ y: 2026, m: 7, d: 14 }, 820)).closed).toBe(false);
     expect(cityIntensity(ctx({ y: 2026, m: 7, d: 13 }, 600)).closed).toBe(false);
   });
 });
@@ -79,6 +81,15 @@ describe('cortège', () => {
     for (let i = 1; i < units.length; i++) {
       const gap = units[i]!.start - units[i - 1]!.start;
       expect(gap).toBeGreaterThanOrEqual((units[i]!.half + units[i - 1]!.half) / PARADE_SPEED);
+    }
+  });
+  it('varie : jamais deux unités du même type de suite, fanfares rares et espacées', () => {
+    for (const seed of [1, 2, 3, 7, 8, 42, 99]) {
+      const list = paradeUnits(seed, 720, DAY0);
+      for (let i = 1; i < list.length; i++) expect(list[i]!.kind).not.toBe(list[i - 1]!.kind);
+      const bands = list.map((u, i) => (u.kind === 'band' ? i : -1)).filter((i) => i >= 0);
+      for (let i = 1; i < bands.length; i++) expect(bands[i]! - bands[i - 1]!).toBeGreaterThan(4);
+      expect(bands.length / list.length).toBeLessThan(0.1);
     }
   });
   it('paradeX : hors champ = null, avance à PARADE_SPEED', () => {

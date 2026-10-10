@@ -26,6 +26,7 @@ const FORMATION: readonly { dx: number; dy: number; smoke: string }[] = [
 ];
 const SPAN = 30; // demi-largeur de la flèche (hors traînées), unités du dessin
 const TRAIL = 220; // longueur des traînées
+const JET_SCALE = 1.3; // avions (et traînées, et flèche) agrandis par rapport à l'échelle du ciel
 
 function Jet({ sky, smoke }: { sky: Sky; smoke: string }): ReactElement {
   const t = (c: string): string => tone(c, sky);
@@ -80,8 +81,9 @@ export function FlypastLayer({ width, height, sky, still, dayFests, minutes }: P
   // Position des deux groupes à l'instant t (null hors de leur passage).
   const jetsAt = (t: number): string | null => {
     if (t < win.start || t > win.end) return null;
-    const x = -SPAN * k + ((t - win.start) / (win.end - win.start)) * (width + 2 * SPAN * k);
-    return `translate(${x.toFixed(1)} ${(height * 0.13).toFixed(1)}) scale(${k.toFixed(3)})`;
+    const kj = k * JET_SCALE;
+    const x = -SPAN * kj + ((t - win.start) / (win.end - win.start)) * (width + 2 * SPAN * kj);
+    return `translate(${x.toFixed(1)} ${(height * 0.13).toFixed(1)}) scale(${kj.toFixed(3)})`;
   };
   const helisAt = (t: number): string | null => {
     const s = win.end;

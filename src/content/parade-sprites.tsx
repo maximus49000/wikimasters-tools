@@ -35,7 +35,7 @@ const skinsOf = (id: string, n: number): string[] => {
 };
 
 // ---------- Marcheur (repère d'un passant : pieds à y = 0, tête à y = -33) ----------
-type Headwear = 'kepi' | 'beret' | 'shako' | 'bachi' | 'plume';
+type Headwear = 'kepi' | 'beret' | 'shako' | 'bachi' | 'plume' | 'bicorne' | 'crested' | 'calot';
 type Dress = { tunic: string; trousers: string; stripe?: string; head: Headwear; cap: string; capTop?: string; belt: string; skin: string };
 
 function Headgear({ d, t }: { d: Dress; t: Tint }): ReactElement {
@@ -70,6 +70,26 @@ function Headgear({ d, t }: { d: Dress; t: Tint }): ReactElement {
           <circle cx={0} cy={-40} r={1.5} fill={t(RED)} />
         </g>
       );
+    case 'bicorne':
+      // Bicorne des polytechniciens, porté en bataille.
+      return (
+        <g>
+          <path d="M-7 -37 Q0 -45 7 -37 Q0 -39.5 -7 -37Z" fill={t(d.cap)} />
+          <circle cx={0} cy={-40.6} r={0.9} fill={t(d.capTop ?? RED)} />
+        </g>
+      );
+    case 'crested':
+      // Casque chromé à crinière noire et plumet rouge (Garde républicaine).
+      return (
+        <g>
+          <path d="M-4.4 -35.5 A4.6 4.8 0 0 1 4.4 -35.5Z" fill={t(d.cap)} />
+          <path d="M-3 -40 Q2 -42.5 4 -40 Q-1 -39 -6 -33" stroke={t(BLACK)} strokeWidth={1.6} fill="none" />
+          <path d="M-1 -40 Q-2.4 -45 -0.4 -48 Q1 -45 -1 -40Z" fill={t(d.capTop ?? RED)} />
+        </g>
+      );
+    case 'calot':
+      // Calot (bonnet de police) des aviateurs.
+      return <path d="M-4.6 -36.4 L-3.8 -39.6 L4.4 -38.4 L4.6 -36.4Z" fill={t(d.cap)} />;
     case 'plume':
       // Chef de musique : képi et haut plumet tricolore.
       return (
@@ -83,20 +103,27 @@ function Headgear({ d, t }: { d: Dress; t: Tint }): ReactElement {
   }
 }
 
-// Jambes à pas cadencé (pivot à la hanche), en opposition de phase.
+// Jambes à pas cadencé (pivot à la hanche), en opposition de phase : la jambe du fond, plus sombre, est dessinée d'abord.
+// La jambe qui revient plie le genou (le pied se lève) ; immobiles (mouvement réduit), les jambes restent jointes.
 function Legs({ d, t, anim, begin }: { d: Dress; t: Tint; anim: boolean; begin: string }): ReactElement {
+  const dur = `${STEP_S}s`;
   const leg = (sign: 1 | -1): ReactElement => (
-    <g>
-      {anim && <animateTransform attributeName="transform" type="rotate" values={`${-16 * sign} 0 -15;${16 * sign} 0 -15;${-16 * sign} 0 -15`} dur={`${STEP_S}s`} begin={begin} repeatCount="indefinite" />}
-      <rect x={-1.7} y={-15} width={3.4} height={14} fill={t(d.trousers)} />
-      {d.stripe && <rect x={-0.3} y={-15} width={0.8} height={13} fill={t(d.stripe)} />}
-      <rect x={-1.9} y={-2} width={4.6} height={2} rx={0.6} fill={t(BLACK)} />
+    <g opacity={sign === -1 ? 0.8 : 1}>
+      {anim && <animateTransform attributeName="transform" type="rotate" values={`${-20 * sign} 0 -15;${20 * sign} 0 -15;${-20 * sign} 0 -15`} dur={dur} begin={begin} repeatCount="indefinite" />}
+      <rect x={-1.7} y={-15} width={3.4} height={7.5} fill={t(d.trousers)} />
+      {d.stripe && <rect x={-0.3} y={-15} width={0.8} height={7} fill={t(d.stripe)} />}
+      <g>
+        {anim && <animateTransform attributeName="transform" type="rotate" values={sign === 1 ? '0 0 -8;0 0 -8;-30 0 -8;0 0 -8' : '-30 0 -8;0 0 -8;0 0 -8;-30 0 -8'} keyTimes="0;0.5;0.75;1" dur={dur} begin={begin} repeatCount="indefinite" />}
+        <rect x={-1.7} y={-8.5} width={3.4} height={7.5} fill={t(d.trousers)} />
+        {d.stripe && <rect x={-0.3} y={-8.5} width={0.8} height={6.5} fill={t(d.stripe)} />}
+        <rect x={-1.9} y={-2} width={4.6} height={2} rx={0.6} fill={t(BLACK)} />
+      </g>
     </g>
   );
   return (
-    <g>
-      {leg(1)}
+    <g data-legs="">
       {leg(-1)}
+      {leg(1)}
     </g>
   );
 }
@@ -106,6 +133,9 @@ function Marcher({ d, t, anim, begin, children }: { d: Dress; t: Tint; anim: boo
   return (
     <g data-worker="" data-parade-figure="">
       <Legs d={d} t={t} anim={anim} begin={begin} />
+      <g>
+      {/* Le buste monte légèrement à chaque pas. */}
+      {anim && <animateTransform attributeName="transform" type="translate" values="0 0;0 -0.9;0 0;0 -0.9;0 0" dur={`${STEP_S}s`} begin={begin} repeatCount="indefinite" />}
       <rect x={-5} y={-28} width={10} height={14} rx={2} fill={t(d.tunic)} />
       <rect x={-5} y={-18} width={10} height={1.6} fill={t(d.belt)} />
       <circle cx={0} cy={-33} r={4.4} fill={t(d.skin)} />
@@ -117,6 +147,7 @@ function Marcher({ d, t, anim, begin, children }: { d: Dress; t: Tint; anim: boo
           <circle cx={0} cy={-16.4} r={1.3} fill={t(d.skin)} />
         </g>
       )}
+      </g>
     </g>
   );
 }
@@ -235,12 +266,24 @@ const BAND_DRESS: readonly Omit<Dress, 'skin' | 'head'>[] = [
   { tunic: '#B9A57A', trousers: '#B9A57A', cap: WHITE, capTop: WHITE, belt: '#2B4FA0' },
   // Musique de l'Air : bleu, ceinture blanche.
   { tunic: '#2C3E66', trousers: '#2C3E66', cap: '#2C3E66', capTop: '#2C3E66', belt: WHITE },
+  // Musique de la Flotte : vareuse blanche, képi bleu marine.
+  { tunic: '#EDEDED', trousers: '#1A2238', cap: '#1A2238', capTop: WHITE, belt: '#C9A440' },
+  // Musique de la Gendarmerie : tunique noire, pantalon bleu à bande noire, képi à bandeau argent.
+  { tunic: '#20232E', trousers: '#2C3A66', stripe: BLACK, cap: BLACK, capTop: STEEL, belt: WHITE },
+  // Musique de l'Arme blindée : tunique verte, pantalon garance.
+  { tunic: '#3E4A2A', trousers: '#A0302A', cap: '#3E4A2A', capTop: RED, belt: '#C9A440' },
 ];
 const INFANTRY_DRESS: readonly Omit<Dress, 'skin'>[] = [
   { tunic: '#1F2A4A', trousers: '#B02A2A', head: 'shako', cap: BLACK, belt: WHITE }, // Saint-Cyriens
   { tunic: '#B9A57A', trousers: '#B9A57A', head: 'kepi', cap: WHITE, capTop: WHITE, belt: '#2B4FA0' }, // Légion
   { tunic: '#1E2B4C', trousers: '#1E2B4C', head: 'beret', cap: '#1A2440', belt: '#D8D8D8' }, // chasseurs alpins
   { tunic: '#1A2238', trousers: '#1A2238', head: 'bachi', cap: WHITE, belt: WHITE }, // marins
+  { tunic: '#15161C', trousers: '#15161C', stripe: RED, head: 'bicorne', cap: BLACK, capTop: RED, belt: '#C9A440' }, // polytechniciens
+  { tunic: '#1F2A4A', trousers: WHITE, head: 'crested', cap: STEEL, capTop: RED, belt: WHITE }, // Garde républicaine
+  { tunic: '#5E6B3A', trousers: '#4E5A30', head: 'beret', cap: '#B02A3A', belt: '#3A3A2A' }, // parachutistes (béret rouge)
+  { tunic: '#4E6E9E', trousers: '#2E3E5E', head: 'calot', cap: '#2E3E5E', belt: WHITE }, // aviateurs
+  { tunic: '#1E2A50', trousers: '#1E2A50', stripe: BLACK, head: 'kepi', cap: BLACK, capTop: STEEL, belt: WHITE }, // gendarmes
+  { tunic: '#6E7A4A', trousers: '#6E7A4A', head: 'beret', cap: '#2E5A3A', belt: '#3A3A2A' }, // tenue de combat (béret vert)
 ];
 
 // ---------- Unités ----------
@@ -324,41 +367,51 @@ function Motorbike({ t, anim, skin }: { t: Tint; anim: boolean; skin: string }):
 }
 function Motorbikes({ unit, t, anim }: UnitArt): ReactElement {
   const [a, b] = skinsOf(unit.id, 2);
-  // Côte à côte : la moto du fond (un peu plus haut, un peu plus petite) est dessinée d'abord.
+  // En quinconce : la moto du fond (un peu plus haut, un peu plus petite, en retrait) est dessinée d'abord, assez loin
+  // derrière pour que sa roue avant ne touche pas la roue arrière de celle du premier plan.
   return (
     <g>
-      <g transform="translate(-6 -3) scale(0.95)"><Motorbike t={t} anim={anim} skin={a!} /></g>
-      <g transform="translate(6 0)"><Motorbike t={t} anim={anim} skin={b!} /></g>
+      <g transform="translate(-20 -3) scale(0.95)"><Motorbike t={t} anim={anim} skin={a!} /></g>
+      <g transform="translate(16 0)"><Motorbike t={t} anim={anim} skin={b!} /></g>
     </g>
   );
 }
 
-// Cavalier de la Garde : cheval au pas (bipèdes diagonaux), cuirasse, casque à crinière et plumet rouge.
+// Cavalier de la Garde : cheval au pas (quatre jambes d'aplomb, chacune à son temps), cuirasse, casque à crinière et plumet
+// rouge. Le cavalier est assis sur la selle, la jambe tombant le long du flanc, la botte contre le flanc du cheval.
 function Horseman({ t, anim, begin, coat, skin }: { t: Tint; anim: boolean; begin: string; coat: string; skin: string }): ReactElement {
   const c = t(coat);
-  const leg = (x: number, sign: 1 | -1): ReactElement => (
-    <g key={x}>
-      {anim && <animateTransform attributeName="transform" type="rotate" values={`${-18 * sign} ${x} -14;${18 * sign} ${x} -14;${-18 * sign} ${x} -14`} dur="0.9s" begin={begin} repeatCount="indefinite" />}
-      <rect x={x - 1.1} y={-14} width={2.2} height={13} fill={c} />
-      <rect x={x - 1.3} y={-1.6} width={2.8} height={1.6} fill={t(BLACK)} />
-    </g>
-  );
+  // Jambe (pivot à l'épaule ou à la hanche) ; `phase` décale le balancement (pas à quatre temps).
+  const leg = (x: number, phase: number, far: boolean): ReactElement => {
+    const a = [0, 1, 2, 3, 4].map((i) => (10 * Math.sin(2 * Math.PI * (i / 4 + phase))).toFixed(1));
+    return (
+      <g key={`${x}`} data-horse-leg="" opacity={far ? 0.72 : 1}>
+        {anim && <animateTransform attributeName="transform" type="rotate" values={a.map((v) => `${v} ${x} -14`).join(';')} dur="1.2s" begin={begin} repeatCount="indefinite" />}
+        <rect x={x - 1.1} y={-15} width={2.2} height={13.4} fill={c} />
+        <rect x={x - 1.3} y={-1.6} width={2.8} height={1.6} fill={t(BLACK)} />
+      </g>
+    );
+  };
   return (
     <g>
-      {/* Pattes du fond (plus sombres) puis du premier plan. */}
-      <g opacity={0.75}>{[leg(-10, -1), leg(10, 1)]}</g>
+      {/* Jambes du fond (côté opposé, plus sombres) puis du premier plan : postérieures à l'arrière, antérieures à l'avant. */}
+      {leg(-7, 0.5, true)}
+      {leg(8, 0.75, true)}
       <ellipse cx={0} cy={-18} rx={14} ry={6} fill={c} />
       <path d="M-14 -19 Q-21 -15 -19 -6" stroke={t('#2A1A10')} strokeWidth={2.2} fill="none" />
       <path d="M10 -21 L16 -32 L20 -31 L15 -19Z" fill={c} />
       <path d="M15 -33 L24 -29 L23 -26 L15 -28Z" fill={c} />
       <path d="M14 -33 L11 -24" stroke={t('#2A1A10')} strokeWidth={1.4} />
-      {[leg(-8, 1), leg(12, -1)]}
-      {/* Tapis de selle bleu à galon blanc */}
+      {leg(-10.5, 0, false)}
+      {leg(11.5, 0.25, false)}
+      {/* Tapis de selle bleu à galon blanc, selle */}
       <rect x={-6} y={-24} width={10} height={6} fill={t('#1F2A4A')} stroke={t(WHITE)} strokeWidth={0.5} />
+      <path d="M-5 -24 Q-1 -22 3.5 -24.5 L3 -25.5 Q-1 -24 -4.6 -25.5Z" fill={t('#3A2416')} />
       <g data-worker="" data-parade-figure="">
-        <path d="M-1 -23 L2 -17 L1 -11" stroke={t(WHITE)} strokeWidth={2.4} strokeLinecap="round" fill="none" />
-        <rect x={-0.2} y={-13} width={2.6} height={5} fill={t(BLACK)} />
-        <rect x={-4} y={-35} width={7} height={12} rx={1.5} fill={t('#1F2A4A')} />
+        {/* Cuisse vers l'avant sur la selle, jambe le long du flanc, botte contre le flanc (au-dessus du ventre). */}
+        <path d="M-1.5 -24 L2.6 -21.6 L2 -16.5" stroke={t(WHITE)} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <rect data-boot="" x={0.6} y={-17.5} width={2.8} height={4.4} rx={0.6} fill={t(BLACK)} />
+        <rect x={-4} y={-35} width={7} height={11.5} rx={1.5} fill={t('#1F2A4A')} />
         <path d="M-4 -35 H3 L3.5 -27 H-4.5Z" fill={t(STEEL)} />
         <path d="M2 -31 L8 -26" stroke={t('#1F2A4A')} strokeWidth={1.8} strokeLinecap="round" />
         <circle cx={0} cy={-39} r={3} fill={t(skin)} />
@@ -384,7 +437,7 @@ function Cavalry({ unit, t, anim, begin }: UnitArt): ReactElement {
   );
 }
 
-const ARMY = ['#4B5320', '#5B5B3A', '#B49A6A'] as const; // vert armée, kaki, sable
+const ARMY = ['#4B5320', '#5B5B3A', '#B49A6A', '#3F4A3C', '#6B6F4A'] as const; // vert armée, kaki, sable, vert OTAN, olive
 
 // Jeep pavoisée : deux petits drapeaux sur les antennes arrière, un militaire debout.
 function Jeep({ t, anim, paint, skin }: { t: Tint; anim: boolean; paint: string; skin: string }): ReactElement {
@@ -392,7 +445,9 @@ function Jeep({ t, anim, paint, skin }: { t: Tint; anim: boolean; paint: string;
   return (
     <g>
       <rect x={-19} y={-14} width={38} height={9} rx={2} fill={body} />
-      <path d="M4 -14 L8 -22 H10 L7 -14Z" fill={t(GLASS)} opacity={0.8} />
+      {/* Pare-brise posé sur l'auvent de la caisse, dans son cadre peint. */}
+      <rect x={3} y={-16} width={9} height={2.6} fill={body} />
+      <path d="M4.4 -15.6 L8.4 -24 H11 L7.6 -15.6Z" fill={t(GLASS)} fillOpacity={0.8} stroke={body} strokeWidth={1.1} strokeLinejoin="round" />
       <rect x={-19} y={-17} width={10} height={3} fill={body} />
       <circle cx={-11} cy={-4} r={4.4} fill={t(TYRE)} />
       <circle cx={12} cy={-4} r={4.4} fill={t(TYRE)} />

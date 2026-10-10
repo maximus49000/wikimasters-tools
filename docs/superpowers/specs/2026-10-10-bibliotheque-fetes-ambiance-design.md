@@ -93,7 +93,7 @@ Une structure réelle : plancher de scène, deux montants métalliques et une tr
 
 ### 7.4 Route dédiée et grand défilé du 14 juillet (`city/parade.ts`, pur)
 
-- **Route fermée** de 8 h à 12 h 30 le 14 juillet : aucune voiture, aucun vélo, aucun bus, tram, ambulance ni autre événement de rue (seul le cortège roule). Les barrières sont un jeu de décor posé de 7 h à 8 h.
+- **Route fermée** de 8 h à 13 h 30 le 14 juillet (jusqu'à la fin de la dépose des barrières) : aucune voiture, aucun vélo, aucun bus, tram, ambulance ni autre événement de rue (seul le cortège roule). Les barrières sont un jeu de décor posé de 7 h à 8 h.
 - **Cortège** de 10 h à 12 h, flux continu sur la file du premier plan (vers la droite), calculé sans état : une fanfare ouvre la marche, puis une suite tirée de la graine (motards, porte-drapeaux, fanfare militaire, colonne de soldats à pied, cavaliers de la Garde, jeeps pavoisées, camions militaires, chars, sapeurs-pompiers), à vitesse commune pour ne rien faire se chevaucher.
 - **Défilé aérien** à 10 h : passage de la Patrouille de France (traînées bleu-blanc-rouge) puis hélicoptères.
 - Foule dense sur les trottoirs (`festive` bastille, déjà en place), drapeaux de lampadaires et d'entrées (jeux de décor ci-dessus).

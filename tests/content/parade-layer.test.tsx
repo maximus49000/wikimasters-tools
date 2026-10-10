@@ -101,6 +101,17 @@ describe('sprites du cortège', () => {
     expect(node).not.toBeNull();
     expect(node.querySelectorAll('rect, path, circle, ellipse, line, polygon').length).toBeGreaterThan(5);
   });
+  const unitOf = (kind: ParadeKind, still = false): HTMLDivElement =>
+    render(<svg><ParadeUnitSprite unit={{ id: `u-${kind}`, kind, variant: 0.4, half: 80, start: 0 }} sky={sky} still={still} /></svg>);
+  it('cavaliers : quatre jambes par cheval, bottes contre le flanc (au-dessus du ventre)', () => {
+    const c = unitOf('cavalry');
+    expect(count(c, '[data-horse-leg]')).toBe(4 * 3);
+    for (const boot of c.querySelectorAll('[data-boot]')) expect(Number(boot.getAttribute('y')) + Number(boot.getAttribute('height'))).toBeLessThanOrEqual(-12);
+  });
+  it('infanterie : jambes animées au pas, figées en mouvement réduit', () => {
+    expect(count(unitOf('infantry'), '[data-legs] animateTransform')).toBeGreaterThan(0);
+    expect(count(unitOf('infantry', true), '[data-legs] animateTransform')).toBe(0);
+  });
   it('sans animation en mouvement réduit, mêmes dessins à variante égale', () => {
     const draw = (still: boolean): string =>
       render(<svg><ParadeUnitSprite unit={{ id: 'u', kind: 'infantry', variant: 0.7, half: 70, start: 0 }} sky={sky} still={still} /></svg>).innerHTML;
