@@ -1,4 +1,4 @@
-import type { DayContext } from './calendar';
+import { activeFestivities, type DayContext, type FestivityId } from './calendar';
 import type { NamePool } from './shops/lifecycle';
 
 export type CityContext = {
@@ -21,6 +21,17 @@ export type CityIntensity = {
   sport: number;
   umbrellas: boolean;
   weekendLike: boolean;
+  festive: { id: FestivityId; share: number } | null;
+};
+
+// Part des passants qui portent le signe de la fête (0 = pas de signe).
+export const FESTIVE_SHARE: Readonly<Record<FestivityId, number>> = {
+  epiphany: 0.25, valentine: 0.3, easter: 0.35, 'may-day': 0.4, bastille: 0.35, armistice: 0.3, 'new-year': 0.5, music: 0.4, 'christmas-eve': 0,
+};
+// Affluence pendant la fête : `mult` multiplie les marcheurs, `floor` est un plancher (avant météo).
+export const FESTIVE_CROWD: Readonly<Record<FestivityId, { mult: number; floor: number }>> = {
+  epiphany: { mult: 1, floor: 0 }, valentine: { mult: 1.2, floor: 0 }, easter: { mult: 1, floor: 0 }, 'may-day': { mult: 0.8, floor: 0 },
+  bastille: { mult: 1.4, floor: 0.3 }, armistice: { mult: 0.7, floor: 0 }, 'new-year': { mult: 1.4, floor: 0.4 }, music: { mult: 1.5, floor: 0.5 }, 'christmas-eve': { mult: 0.6, floor: 0 },
 };
 
 type Keys = readonly (readonly [number, number])[];
@@ -60,7 +71,9 @@ export function cityIntensity(ctx: CityContext): CityIntensity {
   const wet = clamp01(ctx.precip);
   const weatherWalk = (1 - 0.65 * wet) * (ctx.storm ? 0.5 : 1) * (ctx.snow ? 0.6 : 1);
   const traffic = clamp01(lerp(curve(TRAFFIC_WEEK, hour), curve(TRAFFIC_WEEKEND, hour), b) * (1 + 0.25 * wet) * (ctx.snow ? 0.7 : 1));
-  const walkers = clamp01(lerp(curve(WALK_WEEK, hour), curve(WALK_WEEKEND, hour), b) * weatherWalk);
+  const fest = activeFestivities(ctx.day.festivities, ctx.minutes)[0] ?? null;
+  const crowd = fest ? FESTIVE_CROWD[fest] : { mult: 1, floor: 0 };
+  const walkers = clamp01(Math.max(lerp(curve(WALK_WEEK, hour), curve(WALK_WEEKEND, hour), b) * crowd.mult, crowd.floor) * weatherWalk);
   const suits = clamp01(curve(SUITS, hour) * (1 - b) * (1 - b) * weatherWalk);
 
   // Fenêtres resserrées sur la spec : aller à partir de 7 h 50 (pic à 8 h 15), sorties à 16 h 45 et à midi le mercredi.
@@ -77,5 +90,5 @@ export function cityIntensity(ctx: CityContext): CityIntensity {
 
   const sport = clamp01((bump(hour, 6, 7, 9, 10) + bump(hour, 17, 18, 19.5, 21)) * 0.12 * (weekendLike ? 1.4 : 1) * (1 - wet) * light * (ctx.storm ? 0.3 : 1) * (ctx.snow ? 0.5 : 1));
 
-  return { traffic, walkers, suits, schoolTo, schoolFrom, kids, sport, umbrellas: wet >= 0.2, weekendLike };
+  return { traffic, walkers, suits, schoolTo, schoolFrom, kids, sport, umbrellas: wet >= 0.2, weekendLike, festive: fest && FESTIVE_SHARE[fest] > 0 ? { id: fest, share: FESTIVE_SHARE[fest] } : null };
 }

@@ -1,3 +1,4 @@
+import type { FestivityId } from './calendar';
 import { hashString, mulberry32 } from '../scene-world';
 import type { CityIntensity } from './intensity';
 import { WALK_PACE } from './metrics';
@@ -10,7 +11,7 @@ export type Accessory = 'none' | 'backpack' | 'bag' | 'case' | 'ball' | 'scarf';
 export type Outfit = { skin: string; hair: Hair; hairColor: string; hatColor: string; top: Top; topColor: string; bottom: Bottom; bottomColor: string; accessory: Accessory; accessoryColor: string };
 export type Pedestrian = {
   id: string;
-  role: 'general' | 'schoolTo' | 'schoolFrom' | 'play';
+  role: 'general' | 'schoolTo' | 'schoolFrom' | 'play' | 'festive';
   profile: Profile;
   outfit: Outfit;
   companions: Outfit[];
@@ -20,6 +21,8 @@ export type Pedestrian = {
   u: number;
   scale: number;
   depth: number;
+  fest?: FestivityId;
+  pair?: true;
 };
 
 const SKINS = ['#F2C9A5', '#E0A97F', '#B97A52', '#8A5A3B', '#6B4228'];
@@ -61,8 +64,25 @@ export function outfitFor(profile: Profile, rng: () => number): Outfit {
   }
 }
 
+export type FestiveMark = 'crown' | 'heart-balloon' | 'basket' | 'lily' | 'flag' | 'poppy' | 'streamer' | 'note';
+const MARK_OF: Readonly<Record<FestivityId, FestiveMark | null>> = {
+  epiphany: 'crown', valentine: 'heart-balloon', easter: 'basket', 'may-day': 'lily', bastille: 'flag', armistice: 'poppy', 'new-year': 'streamer', music: 'note', 'christmas-eve': null,
+};
+// Pas de tirage : l'appartenance au partage vient du hachage de l'id.
+const markU = (id: string): number => ((hashString(`mark:${id}`) >>> 0) % 10000) / 10000;
+
+export function festiveMark(p: Pedestrian, i: CityIntensity): FestiveMark | null {
+  const f = i.festive;
+  if (!f) return null;
+  const mark = MARK_OF[f.id];
+  if (!mark) return null;
+  if (p.role === 'festive') return p.fest === f.id ? mark : null;
+  return markU(p.id) < f.share ? mark : null;
+}
+
 // Intensité qui décide de la présence d'un passant selon son rôle.
 export function pedestrianGate(p: Pedestrian, i: CityIntensity): number {
+  if (p.role === 'festive') return i.festive && i.festive.id === p.fest ? Math.min(1, i.festive.share * 2) : 0;
   if (p.role === 'schoolTo') return i.schoolTo;
   if (p.role === 'schoolFrom') return i.schoolFrom;
   if (p.role === 'play') return i.kids;
@@ -105,5 +125,13 @@ export function pedestriansFor(width: number, seed: number): Pedestrian[] {
   }
   const players = Math.max(2, Math.round(width / 200));
   for (let i = 0; i < players; i++) out.push(make(`play-${i}`, 'play', 'child', dirOf(), 8, 22));
+  // Passants propres aux fêtes : EN FIN de liste, pour ne déplacer aucun tirage des passants ordinaires.
+  const couples = Math.max(1, Math.round(width / 300));
+  for (let i = 0; i < couples; i++) {
+    const lead = make(`lov-${i}`, 'festive', 'ordinary', dirOf(), 12, 18);
+    out.push({ ...lead, fest: 'valentine', pair: true, companions: [outfitFor('ordinary', rng)] });
+  }
+  const hunters = Math.max(1, Math.round(width / 260));
+  for (let i = 0; i < hunters; i++) out.push({ ...make(`egg-${i}`, 'festive', 'child', dirOf(), 8, 18, 1), fest: 'easter', scale: 0.7 });
   return out;
 }
