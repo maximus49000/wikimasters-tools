@@ -1,7 +1,7 @@
 // tests/core/library/city-events.test.ts
 import { describe, expect, it } from 'vitest';
 import {
-  EVENT_DEFS, HYPER_S, MAX_EVENTS, SLOT_S, activeEvents, cityEventSchedule, conditionsKey, defOf, eligible, eventX, hyperStartMinute, mergeSchedules, travelSpan,
+  EVENT_DEFS, HYPER_S, MAX_EVENTS, SLOT_S, activeEvents, cityEventSchedule, conditionsKey, defOf, eligible, eventX, hyperStartMinute, mergeSchedules, travelSpan, weightOf,
   type CityEvent,
   type EventConditions, type ScheduleInput,
 } from '../../../src/core/library/city/events';
@@ -9,8 +9,8 @@ import { STREET_SCALE, FAR_SHRINK } from '../../../src/core/library/city/metrics
 import { LANE_DIR, VEHICLE_HALF, laneSpeeds, vehiclesFor } from '../../../src/core/library/city/vehicles';
 import { WORLD_MARGIN, loopX } from '../../../src/core/library/scene-world';
 
-const DAY_DRY: EventConditions = { daylight: 1, wet: false, workday: true, traffic: 0.6, walkers: 0.5 };
-const NIGHT_DRY: EventConditions = { daylight: 0, wet: false, workday: true, traffic: 0.2, walkers: 0.2 };
+const DAY_DRY: EventConditions = { daylight: 1, wet: false, workday: true, traffic: 0.6, walkers: 0.5, fests: [] };
+const NIGHT_DRY: EventConditions = { daylight: 0, wet: false, workday: true, traffic: 0.2, walkers: 0.2, fests: [] };
 const input = (hyper: number, cond: EventConditions, minutes: number, seed = 7, width = 720): ScheduleInput => ({
   seed, width, hyper, minutesAtHyperStart: minutes, cond, vehicles: vehiclesFor(width, seed), speeds: laneSpeeds(seed),
 });
@@ -171,5 +171,29 @@ describe('fusion des programmes', () => {
     const s = cityEventSchedule(input(1_440_123, DAY_DRY, 600));
     const now = 1_440_123 * HYPER_S + 600;
     expect(mergeSchedules(s, s, now)).toEqual(s);
+  });
+});
+
+describe('fêtes', () => {
+  const base = { daylight: 0, wet: false, workday: true, traffic: 0.5, walkers: 0.5 };
+  it('le poids d’un événement monte pendant sa fête', () => {
+    const fw = defOf('fireworks');
+    expect(weightOf(fw, { ...base, fests: [] })).toBe(0.25);
+    expect(weightOf(fw, { ...base, fests: ['new-year'] })).toBe(10);
+    expect(weightOf(fw, { ...base, fests: ['bastille'] })).toBe(5);
+    expect(weightOf(defOf('plane'), { ...base, fests: ['new-year'] })).toBe(3);
+  });
+  it('la clé de conditions change à l’entrée d’une fête', () => {
+    expect(conditionsKey({ ...base, fests: [] })).not.toBe(conditionsKey({ ...base, fests: ['new-year'] }));
+  });
+  const fireworks = (cond: EventConditions, minutes: number, n = 40) => many(cond, minutes, n).filter((e) => e.id === 'fireworks').length;
+  it('le Nouvel An donne beaucoup plus de feux d’artifice qu’un soir ordinaire (même graine, 40 grands créneaux)', () => {
+    const ordinary = fireworks({ ...base, fests: [] }, 22 * 60);
+    const newYear = fireworks({ ...base, fests: ['new-year'] }, 22 * 60);
+    expect(newYear).toBeGreaterThanOrEqual(10);
+    expect(newYear).toBeGreaterThan(3 * ordinary);
+  });
+  it('pas de feu d’artifice sous la pluie, même le soir de fête', () => {
+    expect(fireworks({ ...base, wet: true, fests: ['new-year'] }, 22 * 60, 120)).toBe(0);
   });
 });
