@@ -20,10 +20,10 @@ import { useWallClockLoop } from './use-wallclock-loop';
 const OPEN_MIN = 23 * 60; // ouverture (catalog.ts) : sert à savoir si ce soir est un soir d'ouverture
 const QUEUE_START = 9; // px (à unit = 1) de la porte à la première personne (juste derrière le videur)
 const QUEUE_PITCH = 6.5; // px entre deux personnes de la file, quand la façade le permet…
-const MIN_PITCH = 3.5; // … resserrés jusque-là sinon (en dessous, les silhouettes se confondent)
+export const MIN_PITCH = 4.4; // … resserrés jusque-là sinon (en dessous, les silhouettes se confondent : on en montre moins)
 const MAX_QUEUE = 6;
 const BOUNCER_DX = 5.5; // px de la porte à chaque videur
-const CORDON_FROM = 7; // premier potelet, px de la porte ; le second est au niveau de la 3e personne
+const CORDON_FROM = 7; // premier potelet, px de la porte ; le second au niveau de la 3e personne (au plus à l'entrée des habitants)
 const QUEUE_FRAME_MS = 50;
 const STILL_QUEUE = 3; // mouvement réduit : 3 personnes immobiles
 
@@ -34,9 +34,10 @@ export type QueueFrame = {
   ghost: { id: string; outfitKey: string; p: number } | null;
 };
 
-// `t` : secondes relatives à la session (voir queueAt), jamais une heure Unix.
-export function queueFrame(seed: number, slotId: string, t: number, minutes: number, isOpen: boolean): QueueFrame {
-  const q = queueAt(seed, slotId, t, minutes, isOpen);
+// `t` : secondes relatives à la session (voir queueAt), jamais une heure Unix. `max` : nombre de personnes que la façade peut
+// montrer (queueLayout) ; les suivantes attendent hors de la vue, la dernière visible arrive en fondu.
+export function queueFrame(seed: number, slotId: string, t: number, minutes: number, isOpen: boolean, max = MAX_QUEUE): QueueFrame {
+  const q = queueAt(seed, slotId, t, minutes, isOpen).slice(0, Math.max(0, max));
   const members = q.map((m, i) => ({ id: m.id, outfitKey: m.outfitKey, pos: i + (1 - m.fade), opacity: i === q.length - 1 && m.fade < 1 ? m.fade : 1 }));
   const prev = queueAt(seed, slotId, t - ADVANCE_S, minutes, isOpen)[0];
   const ghost = prev && prev.entersAt <= t && prev.id !== q[0]?.id ? { id: prev.id, outfitKey: prev.outfitKey, p: Math.min(0.999, Math.max(0, (t - prev.entersAt) / ADVANCE_S)) } : null;
@@ -44,13 +45,19 @@ export function queueFrame(seed: number, slotId: string, t: number, minutes: num
 }
 
 // Géométrie de la file : elle s'étire du côté de la vitrine (les gens regardent la porte), jusqu'à l'entrée des habitants de
-// l'immeuble au plus ; l'écart entre deux personnes est resserré (MIN_PITCH au moins) pour que six personnes y tiennent.
-export function queueLayout(slot: ShopSlot, frame: ShopFrame, unit: number): { doorX: number; away: 1 | -1; pitch: number } {
+// l'immeuble au plus (`reach`, en positions de file). Une façade étroite montre moins de monde (`max`, de 1 à 6) plutôt qu'un
+// paquet de silhouettes : jamais moins de MIN_PITCH entre deux personnes, la dernière ne dépasse pas l'entrée des habitants.
+export type QueueLayout = { doorX: number; away: 1 | -1; pitch: number; max: number; reach: number };
+export function queueLayout(slot: ShopSlot, frame: ShopFrame, unit: number): QueueLayout {
   const doorX = frame.door.x + frame.door.w / 2;
   const away: 1 | -1 = frame.window.x + frame.window.w / 2 < doorX ? -1 : 1;
   const run = (away < 0 ? doorX - (slot.residentDoorX + DOOR_WIDTH) : slot.residentDoorX - doorX) / unit;
-  const fit = run > 0 ? (run - QUEUE_START) / (MAX_QUEUE - 1) : QUEUE_PITCH;
-  return { doorX, away, pitch: Math.min(QUEUE_PITCH, Math.max(MIN_PITCH, fit)) };
+  // Entrée des habitants de l'autre côté de la porte (ne se produit pas avec les locaux actuels) : aucune limite.
+  if (run <= 0) return { doorX, away, pitch: QUEUE_PITCH, max: MAX_QUEUE, reach: Infinity };
+  const room = Math.max(0, run - QUEUE_START);
+  const max = Math.min(MAX_QUEUE, Math.floor(room / MIN_PITCH + 1e-9) + 1);
+  const pitch = max > 1 ? Math.min(QUEUE_PITCH, room / (max - 1)) : QUEUE_PITCH;
+  return { doorX, away, pitch, max, reach: room / pitch };
 }
 
 // Cordon et videurs : seulement les soirs d'ouverture (de 22 h 30 à la fermeture), jamais pendant un chantier ou un déménagement.
@@ -61,8 +68,8 @@ export function clubDoorAt(view: ShopView, date: YMD, minutes: number): { open: 
   return nightclubDoor(open, minutes).cordon ? { open } : null;
 }
 
-const STILL_FRAME = (slotId: string): QueueFrame => ({
-  members: Array.from({ length: STILL_QUEUE }, (_, i) => ({ id: `still-${i}`, outfitKey: `queue-${hashString(`${slotId}/still/${i}`) % 12}`, pos: i, opacity: 1 })),
+const STILL_FRAME = (slotId: string, max: number): QueueFrame => ({
+  members: Array.from({ length: Math.min(STILL_QUEUE, max) }, (_, i) => ({ id: `still-${i}`, outfitKey: `queue-${hashString(`${slotId}/still/${i}`) % 12}`, pos: i, opacity: 1 })),
   ghost: null,
 });
 const signature = (f: QueueFrame): string => `${f.members.map((m) => m.id).join(',')}|${f.ghost?.id ?? ''}`;
@@ -123,7 +130,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   const [, refresh] = useReducer((x: number) => x + 1, 0);
   const u = metrics.unit;
   const k = u * STREET_SCALE.person;
-  const { doorX, away, pitch } = queueLayout(view.slot, frame, u);
+  const { doorX, away, pitch, max, reach } = queueLayout(view.slot, frame, u);
   const y = metrics.doorY + (metrics.walkY - metrics.doorY) * 0.3;
   const slotX = (pos: number): number => doorX + away * (QUEUE_START + pos * pitch) * u;
   const memberTransform = (pos: number): string => `translate(${slotX(pos).toFixed(1)} ${y.toFixed(1)}) scale(${(-away * k).toFixed(3)} ${k.toFixed(3)})`;
@@ -138,7 +145,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
     }
     return o;
   };
-  const frameAt = (now: number): QueueFrame => (reduced ? (isOpen ? STILL_FRAME(id) : { members: [], ghost: null }) : queueFrame(seed, id, now - sessionT0, minutes, isOpen));
+  const frameAt = (now: number): QueueFrame => (reduced ? (isOpen ? STILL_FRAME(id, max) : { members: [], ghost: null }) : queueFrame(seed, id, now - sessionT0, minutes, isOpen, max));
   // Boucle : avancée des personnes (transform, opacité) ; un re-rendu seulement quand la file change de composition.
   const place = useMemo(
     () =>
@@ -163,7 +170,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
         }
       },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [reduced, isOpen, seed, id, minutes, sessionT0, doorX, away, pitch, y, k],
+    [reduced, isOpen, seed, id, minutes, sessionT0, doorX, away, pitch, max, y, k],
   );
   useWallClockLoop(place, [place], { frameMs: QUEUE_FRAME_MS });
   if (!door) return null;
@@ -193,7 +200,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
           </g>
         );
       })}
-      <CordonSprite x0={doorX + away * CORDON_FROM * u} x1={slotX(2.3)} y={y + 2 * u} k={k} sky={sky} />
+      <CordonSprite x0={doorX + away * CORDON_FROM * u} x1={slotX(Math.min(2.3, reach))} y={y + 2 * u} k={k} sky={sky} />
     </g>
   );
 }

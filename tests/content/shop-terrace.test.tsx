@@ -4,7 +4,7 @@ import { act, useEffect, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { NightclubDoor, queueFrame, queueLayout } from '../../src/content/shop-queue';
+import { MIN_PITCH, NightclubDoor, queueFrame, queueLayout } from '../../src/content/shop-queue';
 import { ShopTerrace, terraceTables, waiterAt, weatherHistory } from '../../src/content/shop-terrace';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
@@ -225,25 +225,46 @@ describe('boîte de nuit : cordon, videurs et file (NightclubDoor)', () => {
     expect(club(MON, 22 * 60 + 45).querySelector('[data-nightclub]')).toBeNull();
     expect(club(SAT, 14 * 60).querySelector('[data-nightclub]')).toBeNull();
   });
-  it('queueLayout : la file se resserre pour ne pas déborder sur l’entrée des habitants (sauf façade trop étroite)', () => {
-    let fitted = 0;
-    for (const seed of [1, 2, 3, 4, 5, 6]) {
+  it('queueLayout : façade étroite, moins de monde ; jamais moins de MIN_PITCH entre deux personnes ni personne sur l’entrée des habitants', () => {
+    const counts = new Set<number>();
+    let narrowest: { run: number; last: number; edge: number; away: number } | null = null;
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
       for (const slot of shopSlotsFor(W, H, seed)) {
         const f = shopFrame(slot, metrics.ground);
-        const { doorX, away, pitch } = queueLayout(slot, f, metrics.unit);
-        expect(pitch).toBeGreaterThanOrEqual(3.5);
+        const { doorX, away, pitch, max } = queueLayout(slot, f, metrics.unit);
+        counts.add(max);
+        expect(max).toBeGreaterThanOrEqual(1);
+        expect(max).toBeLessThanOrEqual(6);
+        if (max > 1) expect(pitch).toBeGreaterThanOrEqual(MIN_PITCH - 1e-9);
         expect(pitch).toBeLessThanOrEqual(6.5);
         // File du côté de la vitrine.
         expect(Math.sign(f.window.x + f.window.w / 2 - doorX)).toBe(away);
-        const last = doorX + away * (9 + 5 * pitch) * metrics.unit;
-        const residentEdge = away < 0 ? slot.residentDoorX + 12 : slot.residentDoorX;
-        if (pitch > 3.5) {
-          fitted++;
-          expect(away < 0 ? last >= residentEdge - 1e-6 : last <= residentEdge + 1e-6).toBe(true);
-        }
+        // Dernière personne visible : pas au-delà du bord de l'entrée des habitants.
+        const last = doorX + away * (9 + (max - 1) * pitch) * metrics.unit;
+        const edge = away < 0 ? slot.residentDoorX + 12 : slot.residentDoorX;
+        expect(away < 0 ? last >= edge - 1e-6 : last <= edge + 1e-6).toBe(true);
+        const run = Math.abs(edge - doorX);
+        if (!narrowest || run < narrowest.run) narrowest = { run, last, edge, away };
       }
     }
-    expect(fitted).toBeGreaterThan(0);
+    // Les façades étroites montrent moins de monde que les larges.
+    expect(counts.size).toBeGreaterThan(1);
+    expect(Math.min(...counts)).toBeLessThan(6);
+    const n = narrowest!;
+    expect(n.away < 0 ? n.last >= n.edge - 1e-6 : n.last <= n.edge + 1e-6).toBe(true);
+  });
+  it('queueFrame : au plus `max` personnes, la dernière visible arrive en fondu', () => {
+    let fading = 0;
+    for (let t = 0; t < 300; t += 0.25) {
+      const full = queueFrame(SEED, 'shop-0', t, 60, true);
+      const two = queueFrame(SEED, 'shop-0', t, 60, true, 2);
+      expect(two.members.length).toBeLessThanOrEqual(2);
+      expect(two.members.map((m) => m.id)).toEqual(full.members.slice(0, 2).map((m) => m.id));
+      const last = two.members[two.members.length - 1];
+      if (last && last.opacity < 1) fading++;
+      if (two.members.length === 2) expect(two.members[0]!.opacity).toBe(1);
+    }
+    expect(fading).toBeGreaterThan(0);
   });
   it('queueFrame : la tête qui vient d’entrer s’efface dans la porte, les autres avancent', () => {
     let ghosts = 0;
