@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { cityIntensity } from '../../../src/core/library/city/intensity';
 import { dayContext } from '../../../src/core/library/city/calendar';
-import { DOOR_MARGIN, DOOR_WIDTH, MAX_TRIP_PX, RESIDENT_DOORS_PER_720, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor } from '../../../src/core/library/city/doors';
+import type { Door } from '../../../src/core/library/city/doors';
+import { DOOR_MARGIN, DOOR_WIDTH, MAX_TRIP_PX, RESIDENT_DOORS_PER_720, TRIP_CYCLE, doorFlag, doorsFor, residentFlow, tripAt, tripHappens, tripsFor } from '../../../src/core/library/city/doors';
 import { WORLD_MARGIN, citySkyline } from '../../../src/core/library/scene-world';
 
 describe('doorsFor', () => {
@@ -149,5 +150,19 @@ describe('densité d’habitants (une entrée par immeuble)', () => {
       }
       expect(max).toBeLessThanOrEqual(6);
     }
+  });
+});
+
+describe('drapeaux aux entrées', () => {
+  const door = (hallU: number): Door => ({ id: 'd', x: 100, variant: 0, hallU });
+  it('pavoise une partie des entrées les jours de drapeaux', () => {
+    expect(doorFlag(door(0.2), ['bastille'])).toBe(true);
+    expect(doorFlag(door(0.2), ['armistice'])).toBe(true);
+    expect(doorFlag(door(0.2), ['may-day'])).toBe(true);
+    expect(doorFlag(door(0.9), ['bastille'])).toBe(false);
+  });
+  it('ne pavoise pas les autres jours', () => {
+    expect(doorFlag(door(0.2), [])).toBe(false);
+    expect(doorFlag(door(0.2), ['valentine'])).toBe(false);
   });
 });

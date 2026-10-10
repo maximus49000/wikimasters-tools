@@ -106,6 +106,18 @@ describe('ScenePanorama (ville)', () => {
     expect(lit()).toBe(lamps);
   });
 
+  it('entrées : drapeaux le 14 juillet, aucun un jour ordinaire', () => {
+    const at = (date: { y: number; m: number; d: number }): number => {
+      const minutes = 11 * 60;
+      const sky = skyAt(minutes, times);
+      const city: CityContext = { minutes, day: dayContext(date, []), precip: 0, snow: false, storm: false, daylight: sky.daylight };
+      act(() => root.render(<svg><ScenePanorama scene="city" width={720} height={340} sky={sky} minutes={minutes} seed={5} city={city} /></svg>));
+      return container.querySelectorAll('[data-door] [data-door-flag]').length;
+    };
+    expect(at({ y: 2026, m: 7, d: 14 })).toBeGreaterThan(0);
+    expect(at({ y: 2026, m: 10, d: 5 })).toBe(0);
+  });
+
   it('ciel sombre (gloom) : des fenêtres s’allument en plein jour, et se voient', () => {
     // À midi quelques lampes sont « allumées » (insomniaques) mais invisibles en plein jour (opacité ≈ 0).
     const litAtNoon = (gloom: boolean): SVGElement[] => {
