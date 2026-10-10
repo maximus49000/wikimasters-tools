@@ -188,6 +188,34 @@ describe('CityLifeLayer : déménagement', () => {
     expect(c.querySelector(`[data-shop-terrace="${id}"], [data-nightclub="${id}"]`)).toBeNull();
     expect(c.querySelector('[id]')).toBeNull();
   });
+  it('de « carry-out » à « pause » (même calque re-rendu) : aucun carton ni bras chargé laissé par la boucle', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const f = found.relet;
+    const ymd = ymdOfDay(f.day);
+    const node = (minutes: number): ReactNode => {
+      const { sky, city } = contextAt(minutes, ymd);
+      return <svg><CityLifeLayer width={W} height={H} sky={sky} seed={f.seed} city={city} rainy={false} /></svg>;
+    };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const out = stepOf(f, 'carry-out');
+    act(() => root.render(node(Math.floor(out.to - 1))));
+    // La boucle écrit un carton visible sur un porteur (pose « hold »).
+    const crews = collectMovers(host);
+    let t = NOW / 1000;
+    for (; t < NOW / 1000 + 7 * CARRY_CYCLE; t += 0.5) {
+      placeMovers(crews, t);
+      if (host.querySelector('[data-mover-box][visibility="visible"]')) break;
+    }
+    expect(host.querySelector('[data-mover-box][visibility="visible"]')).not.toBeNull();
+    act(() => root.render(node(mid(stepOf(f, 'pause')))));
+    const crew = crewOf(host, f)!;
+    expect(crew.getAttribute('data-moving-step')).toBe('pause');
+    expect(crew.querySelectorAll('[data-mover-box][visibility="visible"]')).toHaveLength(0);
+    for (const p of crew.querySelectorAll('[data-mover="porter"]')) expect(p.getAttribute('opacity')).toBeNull();
+  });
   it('« leave » : le camion repart hors du champ, sans porteurs', () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW);
     const f = found.relet;

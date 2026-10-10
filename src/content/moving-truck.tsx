@@ -329,7 +329,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
     const p = at(0.5);
     const dir = (carryOf(view) === 'out' ? g.b.x - g.a.x : g.a.x - g.b.x) >= 0 ? 1 : -1;
     return (
-      <g data-moving-crew={id} data-moving-step={step} data-still="">
+      <g key={`${id}-${step}`} data-moving-crew={id} data-moving-step={step} data-still="">
         {person(0, p.x, p.y, dir, HOLD, true)}
       </g>
     );
@@ -342,6 +342,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
     const pieceLen = Math.max(7 * metrics.unit, (n - 1) * FILE_GAP * metrics.unit * (Math.abs(g.b.x - g.a.x) / len) + 6 * metrics.unit);
     return (
       <g
+        key={`${id}-${step}`}
         data-moving-crew={id}
         data-moving-step={step}
         data-carry={geom.carry}
@@ -373,7 +374,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
   // Hayon (ouverture, fermeture) et pause : l'équipe attend près de l'arrière du camion ; le premier manœuvre le hayon.
   const toTruck = g.b.x >= g.a.x ? 1 : -1;
   return (
-    <g data-moving-crew={id} data-moving-step={step}>
+    <g key={`${id}-${step}`} data-moving-crew={id} data-moving-step={step}>
       {outfits.map((_, i) => {
         const p = at(0.62 - i * gap * 1.3);
         const facing = step === 'pause' && i > 0 ? -toTruck : toTruck;
