@@ -80,7 +80,7 @@ describe('personnel : qui est visible (staffCast)', () => {
           const view = viewOf(type, date, m);
           const cast = staffCast(view, shifts, date, m, false);
           const atDoor = cast.street.filter((s) => s.visible && s.atDoor).length;
-          if (view.phase === 'open' && cast.shutter !== 'rising') expect(cast.inside.length, `${type} ${m}`).toBeGreaterThanOrEqual(1);
+          if (view.phase === 'open') expect(cast.inside.length, `${type} ${m}`).toBeGreaterThanOrEqual(1);
           expect(cast.inside.length + atDoor, `${type} ${m}`).toBeLessThanOrEqual(3);
           if (cast.shutter === 'down') expect(cast.inside).toHaveLength(0);
           if (view.phase === 'closed' && cast.shutter === 'down') expect(cast.street.filter((s) => s.visible && s.atDoor)).toHaveLength(0);
@@ -101,21 +101,41 @@ describe('personnel : qui est visible (staffCast)', () => {
       }
     }
   });
-  it('jour d’un changement : personne avant la fin du chantier d’enseigne', () => {
-    for (let day = EPOCH + 1; day < EPOCH + 200; day++) {
-      const ymd = ymdOfDay(day);
-      for (const s of streetOn(slots, SEED, EPOCH, day, {})) {
-        if (!s.change) continue;
-        const end = changePlans(SEED, s.slot.id, day, s.change.kind).works.end;
-        for (const sh of dayShifts(s, SEED, ymd)) {
-          expect(sh.arriveAt).toBeGreaterThanOrEqual(end);
-          if (sh.shutterUp !== undefined) expect(sh.shutterUp).toBeGreaterThanOrEqual(sh.arriveAt);
+  it('jour d’un changement : personne avant la fin du chantier, puis jamais de local ouvert vide (plusieurs graines et jours)', () => {
+    let changes = 0;
+    let openMinutes = 0;
+    let opensBeforeEnd = 0; // nouveaux occupants dont les horaires couvrent déjà la fin du chantier (arrivée repoussée)
+    for (const seed of [1, 2, 3]) {
+      const seedSlots = shopSlotsFor(W, H, seed);
+      for (let day = EPOCH + 1; day < EPOCH + 120; day++) {
+        const ymd = ymdOfDay(day);
+        for (const s of streetOn(seedSlots, seed, EPOCH, day, {})) {
+          if (!s.change) continue;
+          changes++;
+          const end = changePlans(seed, s.slot.id, day, s.change.kind).works.end;
+          if (s.tenant && isOpenAt(SHOP_DEFS[s.tenant.type], ymd, Math.ceil(end))) opensBeforeEnd++;
+          const shifts = dayShifts(s, seed, ymd);
+          for (let m = 0; m < 1440; m++) {
+            const view = shopViewAt(s, seed, ymd, m);
+            const cast = staffCast(view, shifts, ymd, m, false);
+            const where = `graine ${seed} jour ${day} ${s.slot.id} ${m}`;
+            if (m < end) {
+              expect(cast.inside, where).toHaveLength(0);
+              expect(cast.street.filter((x) => x.visible), where).toHaveLength(0);
+              expect(cast.shutter === 'up' || cast.shutter === 'rising', where).toBe(false);
+            }
+            if (view.phase === 'open') {
+              openMinutes++;
+              expect(cast.inside.length, where).toBeGreaterThanOrEqual(1);
+            }
+          }
         }
-        return;
       }
     }
-    throw new Error('aucun changement en 200 jours');
-  });
+    expect(changes).toBeGreaterThan(5);
+    expect(openMinutes).toBeGreaterThan(0);
+    expect(opensBeforeEnd).toBeGreaterThan(0);
+  }, 60_000);
 });
 
 describe('personnel : rendu (StaffLayer)', () => {
@@ -147,6 +167,24 @@ describe('personnel : rendu (StaffLayer)', () => {
     expect(c.querySelector('[data-shutter-state]')!.getAttribute('data-shutter-state')).toBe('rising');
     expect(c.querySelector('[data-rolling-shutter="rising"]')).not.toBeNull();
     expect(c.querySelector('[data-staff-where="opening"][data-active="true"] [data-arm]')).not.toBeNull();
+    // Le local est ouvert : quelqu'un est derrière la vitrine (l'ouvreur seul y est relevé au bout du geste).
+    expect(c.querySelectorAll('[data-staff-window] [data-staff-where="inside"]').length).toBeGreaterThanOrEqual(1);
+  });
+  it('ouvreur seul : il est à la porte puis derrière la vitrine (relève posée par la boucle)', () => {
+    const date = { y: 2026, m: 10, d: 10 };
+    for (const type of SHOP_TYPE_IDS) {
+      const shifts = staffShiftsAt(SHOP_DEFS[type], SEED, 'shop-0', date);
+      const opener = shifts.find((x) => x.shutterUp !== undefined && x.shutterUp >= 0);
+      if (!opener) continue;
+      const cast = staffCast(viewOf(type, date, opener.shutterUp!), shifts, date, opener.shutterUp!, false);
+      if (cast.handover === null) continue;
+      expect(cast.handover).toBe(opener.id);
+      const c = draw(type, date, opener.shutterUp!, false);
+      expect(c.querySelector('[data-swap="out"][data-staff-where="opening"]')).not.toBeNull();
+      expect(c.querySelector('[data-swap="in"][data-staff-where="inside"]')).not.toBeNull();
+      return;
+    }
+    throw new Error('aucune ouverture par une personne seule');
   });
   it('à la fermeture, le rideau descend ; une heure après, il est baissé et personne n’est visible', () => {
     const [, close] = rangesOf(SHOP_DEFS.bakery, TUESDAY)[0]!;

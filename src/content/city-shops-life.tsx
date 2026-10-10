@@ -17,7 +17,7 @@ import type { Sky } from '../core/library/sky';
 import { PersonSprite } from './city-sprites';
 import { AccessorySprite, LIFTING, PosedPerson, STANDING, applyPose, poseHandles, showCarry, type PoseHandles } from './shop-gesture-sprites';
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
-import { CarriedPlacard, CarriedSign, LadderSprite, RollingShutter, type ShutterState, type WorkerPose } from './shop-sprites';
+import { CarriedPlacard, CarriedSign, LadderSprite, RollingShutter, SHUTTER_S, type ShutterState, type WorkerPose } from './shop-sprites';
 
 // Vie des commerces dans le calque animé de la Ville (vague 1b-iv-a) : clients qui entrent, restent derrière la vitrine et
 // ressortent ; équipe du chantier du matin (deux ouvriers, une échelle, l'ancienne et la nouvelle enseigne). Vague 1b-iv-b :
@@ -317,17 +317,20 @@ export type StaffCast = {
   inside: StaffShift[];
   // Sur le trottoir : à la porte (rideau), ou en route (visible la dernière minute avant l'entrée, la première après la sortie).
   street: { shift: StaffShift; state: StaffState; visible: boolean; atDoor: boolean }[];
+  // Relève de l'ouvreur : seul à ouvrir, il est à la fois à la porte (geste du rideau) et derrière la vitrine ; la boucle
+  // passe de l'un à l'autre au bout de SHUTTER_S secondes (le rendu est à la minute, le geste du moteur dure 6 s).
+  handover: string | null;
 };
 
 export function staffCast(view: ShopView, shifts: StaffShift[], date: YMD, minutes: number, reduced: boolean): StaffCast {
   const shutter = shopShutter(view, shifts, date, minutes, reduced);
-  if (shutter === null) return { shutter, inside: [], street: [] };
+  if (shutter === null) return { shutter, inside: [], street: [], handover: null };
   const states = staffAt(shifts, minutes);
   const working = shifts.filter((_, i) => states[i]!.where === 'inside' && !states[i]!.onBreak).sort(anchorFirst);
   if (reduced) {
     // Exactement une personne à son poste quand c'est ouvert, aucune sinon ; personne en route.
     const one = working[0] ?? [...shifts].sort(anchorFirst)[0];
-    return { shutter, inside: view.phase === 'open' && one ? [one] : [], street: [] };
+    return { shutter, inside: view.phase === 'open' && one ? [one] : [], street: [], handover: null };
   }
   const street: StaffCast['street'] = [];
   shifts.forEach((shift, i) => {
@@ -353,8 +356,10 @@ export function staffCast(view: ShopView, shifts: StaffShift[], date: YMD, minut
   });
   const atDoor = street.filter((x) => x.visible && x.atDoor).length;
   // Rideau baissé : personne ne se voit derrière (ceux qui attendent l'ouverture ou finissent la fermeture sont cachés).
-  const inside = shutter === 'down' ? [] : working.slice(0, Math.max(1, MAX_VISIBLE - atDoor));
-  return { shutter, inside, street };
+  // Ouverture par une personne seule : sans elle, le local ouvert serait vide toute la minute du geste.
+  const opener = working.length === 0 ? shifts.find((_, i) => states[i]!.where === 'opening') ?? null : null;
+  const inside = shutter === 'down' ? [] : opener ? [opener] : working.slice(0, Math.max(1, MAX_VISIBLE - atDoor));
+  return { shutter, inside, street, handover: opener && shutter !== 'down' ? opener.id : null };
 }
 
 type StaffProps = {
@@ -381,7 +386,11 @@ const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.m
 export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, date, width, sky, rainy, umbrella, seed, seats, post }: StaffProps): ReactElement | null {
   const outfits = useMemo(() => new Map(shifts.map((s) => [s.id, staffOutfit(seed, s.outfitKey)])), [shifts, seed]);
   const cast = staffCast(view, shifts, date, minutes, reduced);
+  // Début de la minute affichée (horloge murale) : repère de la relève de l'ouvreur.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const since = useMemo(() => Date.now() / 1000, [minutes]);
   if (cast.shutter === null) return null;
+  const swapAt = (since + SHUTTER_S).toFixed(2);
   const type = view.sign!.type;
   const { window: win, door } = frame;
   const open = view.phase === 'open';
@@ -415,6 +424,7 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
                   data-posed="staff"
                   data-gesture-type={type}
                   data-gesture-seed={gseed}
+                  {...(cast.handover === s.id ? { 'data-swap': 'in', 'data-swap-at': swapAt, opacity: 0 } : {})}
                   transform={`translate(${x.toFixed(2)} ${win.h - 1}) scale(${dir * STAFF_SCALE} ${STAFF_SCALE})`}
                 >
                   <PosedPerson outfit={outfits.get(s.id)!} sky={inSky} rainy={false} umbrella={false} accessory={ACCESSORY[type]} pose={reduced ? STANDING : gestureAt(type, 'staff', 0, gseed)} />
@@ -442,6 +452,7 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
             data-staff-where={state.where}
             data-active={visible ? 'true' : 'false'}
             opacity={visible ? 1 : 0}
+            {...(cast.handover === s.id && state.where === 'opening' ? { 'data-swap': 'out', 'data-swap-at': swapAt } : {})}
             style={{ transform: `translate(${x.toFixed(1)}px, ${metrics.doorY.toFixed(1)}px)`, transition: reduced ? undefined : STAFF_WALK }}
           >
             <g transform={`scale(${(dir * k).toFixed(3)} ${k.toFixed(3)})`}>
@@ -469,4 +480,15 @@ export function collectPosedStaff(root: Element): PosedStaff[] {
 }
 export function placeStaff(staff: PosedStaff[], t: number): void {
   for (const s of staff) applyPose(s.h, gestureAt(s.type, 'staff', t, s.seed));
+}
+
+// Relève de l'ouvreur (data-swap) : à la porte jusqu'à `data-swap-at`, puis derrière la vitrine.
+export type Swap = { node: Element; out: boolean; at: number };
+export function collectSwaps(root: Element): Swap[] {
+  const out: Swap[] = [];
+  for (const node of root.querySelectorAll('[data-swap]')) out.push({ node, out: node.getAttribute('data-swap') === 'out', at: Number(node.getAttribute('data-swap-at')) });
+  return out;
+}
+export function placeSwaps(swaps: Swap[], t: number): void {
+  for (const s of swaps) setIfChanged(s.node, 'opacity', (t >= s.at) !== s.out ? '1' : '0');
 }

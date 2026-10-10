@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import { mixHex, type Sky, skyAt } from '../core/library/sky';
 import { tone } from './city-sprites';
@@ -271,6 +271,10 @@ export function ShopInterior({ type, w, h, sky, lit, front = true }: { type: Sho
 }
 
 // Premier plan seul (comptoir, fauteuils, cabine…), dessiné par le calque animé DEVANT le personnel.
+// Mémoïsé : le calque animé est re-rendu à la minute, le premier plan ne change qu'avec la lumière (ciel ignoré si éclairé).
 export function ShopInteriorFront({ type, w, h, sky, lit }: { type: ShopTypeId; w: number; h: number; sky: Sky; lit: boolean }): ReactElement {
-  return <g data-interior-front={type}>{group(paint(type, w, h, sky, lit).k.front)}</g>;
+  const daylight = lit ? -1 : sky.daylight;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const front = useMemo(() => group(paint(type, w, h, sky, lit).k.front), [type, w, h, lit, daylight]);
+  return <g data-interior-front={type}>{front}</g>;
 }

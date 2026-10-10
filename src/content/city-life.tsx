@@ -13,7 +13,7 @@ import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/librar
 import { loopX } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
-import { ShopCustomers, ShopWorks, StaffLayer, collectPosedStaff, dayShifts, placeCustomers, placeStaff, setIfChanged, shopShutter, type PosedStaff } from './city-shops-life';
+import { ShopCustomers, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, type PosedStaff, type Swap } from './city-shops-life';
 import { interiorPost } from './shop-interiors';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
 import { useCityEvents } from './use-city-events';
@@ -178,6 +178,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let leaving = new Set<string>();
     let leaveUntil = 0;
     let staff: PosedStaff[] = [];
+    let swaps: Swap[] = [];
     let posedAt = -Infinity;
     const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
     return (now: number): void => {
@@ -192,6 +193,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         leaveUntil = t + FADE_S + 0.2;
         moving.current = new Set([...vehActive, ...pedActive]);
         staff = collectPosedStaff(el);
+        swaps = collectSwaps(el);
       }
       for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
       for (const p of peds) if (moves(p.id, t)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
@@ -212,6 +214,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (s.active || first) node.setAttribute('transform', residentTransform(trip, s.x, metrics));
       }
       placeCustomers(nodes, visits, gates, width, metrics, t, first);
+      placeSwaps(swaps, t);
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
       if (!still && Math.abs(t - posedAt) >= STAFF_POSE_S) {
         placeStaff(staff, t);
@@ -221,7 +224,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       // En dernier : peut demander un re-rendu (nouvel ensemble d'événements), qui recrée cette fonction.
       events.check(t);
     };
-  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates]);
+    // `city.minutes` : le personnel est re-rendu à la minute (nœuds posés, relève de l'ouvreur) ; la table des nœuds doit être
+    // refaite à chaque minute même si rien d'autre ne change (aujourd'hui `gates` et `visits` changent aussi à la minute).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
