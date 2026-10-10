@@ -241,6 +241,12 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy }: Props):
             <rect x={0} y={0} width={5} height={7} fill="#FFD27A" />
           </g>
         );
+      // dessinés en tâche 6
+      case 'fest-balloons':
+      case 'bells':
+      case 'street-band':
+      case 'parade':
+        return <g />;
       case 'fireworks': {
         const colors = ['#FF4F4F', '#F2C94C', '#4FD8FF', '#B04FFF', '#4FFF8A'];
         return (

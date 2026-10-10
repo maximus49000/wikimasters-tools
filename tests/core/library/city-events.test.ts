@@ -2,9 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   EVENT_DEFS, HYPER_S, MAX_EVENTS, SLOT_S, activeEvents, cityEventSchedule, conditionsKey, defOf, eligible, eventX, hyperStartMinute, mergeSchedules, travelSpan, weightOf,
-  type CityEvent,
+  type CityEvent, type CityEventId,
   type EventConditions, type ScheduleInput,
 } from '../../../src/core/library/city/events';
+import type { FestivityId } from '../../../src/core/library/city/calendar';
 import { STREET_SCALE, FAR_SHRINK } from '../../../src/core/library/city/metrics';
 import { LANE_DIR, VEHICLE_HALF, laneSpeeds, vehiclesFor } from '../../../src/core/library/city/vehicles';
 import { santaWindowsIn } from '../../../src/core/library/city/santa';
@@ -18,10 +19,10 @@ const input = (hyper: number, cond: EventConditions, minutes: number, seed = 7, 
 const many = (cond: EventConditions, minutes: number, n = 120) => Array.from({ length: n }, (_, h) => cityEventSchedule(input(1_440_000 + h, cond, minutes))).flat();
 
 describe('catalogue', () => {
-  it('contient 16 événements, sans enseigne néon', () => {
-    expect(EVENT_DEFS).toHaveLength(16);
+  it('contient 20 événements, sans enseigne néon', () => {
+    expect(EVENT_DEFS).toHaveLength(20);
     expect(EVENT_DEFS.map((d) => d.id)).not.toContain('neon');
-    expect(new Set(EVENT_DEFS.map((d) => d.id)).size).toBe(16);
+    expect(new Set(EVENT_DEFS.map((d) => d.id)).size).toBe(20);
   });
   it('le feu d’artifice n’a pas de bande de hauteur (il part toujours du haut de la scène)', () => {
     expect(defOf('fireworks').y).toBeUndefined();
@@ -217,5 +218,38 @@ describe('père Noël et ciel', () => {
     for (let h = 1_440_000; h < 1_440_020; h++) {
       expect(cityEventSchedule(input(h, NIGHT_DRY, 22 * 60))).toEqual(cityEventSchedule(input(h, { ...NIGHT_DRY, fests: [] }, 22 * 60)));
     }
+  });
+});
+
+describe('événements de fête', () => {
+  const fest = (id: FestivityId, c: EventConditions = DAY_DRY): EventConditions => ({ ...c, fests: [id] });
+  const at = (id: CityEventId) => defOf(id);
+  it('compte 20 événements, dont 4 réservés aux fêtes', () => {
+    expect(EVENT_DEFS).toHaveLength(20);
+    for (const id of ['fest-balloons', 'bells', 'street-band', 'parade'] as const) expect(at(id).weight).toBe(0);
+  });
+  it('n’éligible un événement de fête que pendant sa fête', () => {
+    expect(eligible(at('parade'), 660, DAY_DRY)).toBe(false);
+    expect(eligible(at('parade'), 660, fest('bastille'))).toBe(true);
+    expect(eligible(at('parade'), 800, fest('bastille'))).toBe(false);
+    expect(eligible(at('bells'), 600, fest('easter'))).toBe(true);
+    expect(eligible(at('bells'), 600, fest('valentine'))).toBe(false);
+    expect(eligible(at('fest-balloons'), 700, fest('valentine'))).toBe(true);
+    expect(eligible(at('fest-balloons'), 700, fest('valentine', { ...DAY_DRY, wet: true }))).toBe(false);
+    expect(eligible(at('street-band'), 1200, fest('music', NIGHT_DRY))).toBe(true);
+    expect(eligible(at('street-band'), 1200, NIGHT_DRY)).toBe(false);
+  });
+  it('programme un défilé le matin du 14 juillet et jamais un jour ordinaire', () => {
+    const on = many(fest('bastille'), 600).filter((e) => e.id === 'parade');
+    expect(on.length).toBeGreaterThan(0);
+    for (const e of on) expect(e.track).toBe('near');
+    expect(many(DAY_DRY, 600).some((e) => e.id === 'parade')).toBe(false);
+  });
+  it('programme des musiciens à la Fête de la musique', () => {
+    expect(many(fest('music', NIGHT_DRY), 1100).some((e) => e.id === 'street-band')).toBe(true);
+  });
+  it('garde le programme ordinaire identique (sans fête)', () => {
+    const sig = (es: CityEvent[]) => es.map((e) => `${e.id}@${e.key}`).join();
+    expect(sig(many(DAY_DRY, 600, 30)).includes('parade')).toBe(false);
   });
 });

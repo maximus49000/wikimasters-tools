@@ -9,7 +9,7 @@ export const PULL_DY = 7;
 export const AMB_DY = 5;
 export const BIKE_TRACK_DY = 2;
 // Échelle des dessins du ciel (maquette validée).
-export const SKY_SCALE: Partial<Record<CityEventId, number>> = { plane: 0.8, helicopter: 0.9, drone: 1, balloon: 1, 'banner-plane': 0.9 };
+export const SKY_SCALE: Partial<Record<CityEventId, number>> = { plane: 0.8, helicopter: 0.9, drone: 1, balloon: 1, 'banner-plane': 0.9, 'fest-balloons': 1 };
 
 export type EventFrame = { width: number; height: number; metrics: CityMetrics; facades: Facade[] };
 export type EventPlacement = { x: number; y: number; sx: number; sy: number };
@@ -72,6 +72,10 @@ export function placeEvent(e: CityEvent, t: number, f: EventFrame): EventPlaceme
     case 'fixed':
       if (e.id === 'apartment') return { ...apartmentLamp(e, f), sx: 1, sy: 1 };
       if (e.id === 'fireworks') return { x, y: 0, sx: m.unit, sy: m.unit };
+      if (e.id === 'street-band') {
+        const k = m.unit * STREET_SCALE.person;
+        return { x, y: m.walkY, sx: k, sy: k };
+      }
       if (e.id === 'crane') return { x, y: m.ground, sx: m.unit, sy: m.unit };
       return { x, y: e.y * f.height, sx: m.unit, sy: m.unit };
     default: {

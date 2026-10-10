@@ -25,7 +25,8 @@ export type CityEventId =
   | 'plane' | 'helicopter' | 'drone' | 'balloon' | 'kite' | 'banner-plane'
   | 'bus' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike'
   | 'dog-walker' | 'umbrella-group'
-  | 'crane' | 'apartment' | 'fireworks';
+  | 'crane' | 'apartment' | 'fireworks'
+  | 'fest-balloons' | 'bells' | 'street-band' | 'parade';
 export type EventLayer = 'sky' | 'street' | 'sidewalk' | 'fixed';
 export type Track = Lane | 'bike';
 
@@ -73,10 +74,15 @@ export const EVENT_DEFS: readonly EventDef[] = [
   { id: 'crane', layer: 'fixed', weight: 1, hours: [[480, 1020]], half: 60, duration: 360, light: 'day', workday: true },
   { id: 'apartment', layer: 'fixed', weight: 2, hours: [[1050, 1410]], half: 4, duration: 180, light: 'dark' },
   { id: 'fireworks', layer: 'fixed', weight: 0.25, hours: [[1290, 1440], [0, 30]], half: 140, duration: 30, light: 'dark', rain: 'dry', festWeight: { 'new-year': 10, bastille: 5 } },
+  // Fêtes (poids de base nul : ils n'existent que par `festWeight`)
+  { id: 'fest-balloons', layer: 'sky', weight: 0, festWeight: { valentine: 3, easter: 3 }, hours: [[600, 1140]], half: 16, speed: 7, light: 'day', rain: 'dry', y: [0.1, 0.28] },
+  { id: 'bells', layer: 'fixed', weight: 0, festWeight: { easter: 4 }, hours: [[540, 1080]], half: 12, duration: 60, light: 'day', y: [0.14, 0.3] },
+  { id: 'street-band', layer: 'fixed', weight: 0, festWeight: { music: 6 }, hours: [[1020, 1440]], half: 40, duration: 300 },
+  { id: 'parade', layer: 'street', weight: 0, festWeight: { bastille: 8 }, hours: [[600, 720]], half: 120, lanes: ['near'] },
 ];
 
 // En mouvement réduit, seuls ces événements fixes restent (figés) ; rien ne traverse, aucun feu d'artifice.
-export const STILL_EVENTS: ReadonlySet<CityEventId> = new Set<CityEventId>(['kite', 'crane', 'apartment']);
+export const STILL_EVENTS: ReadonlySet<CityEventId> = new Set<CityEventId>(['kite', 'crane', 'apartment', 'bells', 'street-band']);
 
 export const defOf = (id: CityEventId): EventDef => EVENT_DEFS.find((d) => d.id === id)!;
 
@@ -96,6 +102,7 @@ export function conditionsKey(c: EventConditions): string {
 const inHours = (hours: EventDef['hours'], m: number): boolean => hours.some(([a, b]) => (a <= b ? m >= a && m < b : m >= a || m < b));
 
 export function eligible(def: EventDef, minute: number, c: EventConditions): boolean {
+  if (weightOf(def, c) <= 0) return false;
   if (!inHours(def.hours, minute)) return false;
   if (def.light === 'day' && c.daylight < DAY) return false;
   if (def.light === 'dark' && c.daylight >= DARK) return false;
