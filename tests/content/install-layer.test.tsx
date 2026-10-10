@@ -7,15 +7,16 @@ import { CityLifeLayer } from '../../src/content/city-life';
 import { InstallLayer } from '../../src/content/install-layer';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import { doorsFor } from '../../src/core/library/city/doors';
-import { absMinute, decorSetsFor, itemPhase } from '../../src/core/library/city/install';
+import { absMinute, decorSetsFor, footWindow, itemPhase } from '../../src/core/library/city/install';
 import { lampsFor } from '../../src/core/library/city/lamps';
-import { cityMetrics } from '../../src/core/library/city/metrics';
+import { WALK_PACE, cityMetrics } from '../../src/core/library/city/metrics';
 import { dayNumber } from '../../src/core/library/city/shops/hours';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { DARK } from '../../src/core/library/city/events';
 import { BARRIER, STAGE } from '../../src/content/install-sprites';
 import { barrierK } from '../../src/content/install-layer';
 import { MUSICIANS, musicianAt } from '../../src/content/stage-band';
+import { VAN_SPEED } from '../../src/core/library/city/van';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: { root: Root; host: HTMLDivElement }[] = [];
@@ -174,16 +175,21 @@ describe('calque des équipes d’installation', () => {
     const scan = (date: YMD, from: number, to: number, step: number): void => {
       for (let m = from; m < to; m += step) {
         const c = layer(date, m);
-        const trucks = [...c.querySelectorAll('[data-lift-truck]')].map((t) => ({ x: Number(t.getAttribute('data-x')), park: Number(t.getAttribute('data-park')) }));
+        const trucks = [...c.querySelectorAll('[data-lift-truck]')].map((t) => ({ el: t, x: Number(t.getAttribute('data-x')), park: Number(t.getAttribute('data-park')) }));
         for (const v of c.querySelectorAll('[data-install-van]')) {
           vans++;
           const x = Number(v.getAttribute('data-x'));
           const half = Number(v.getAttribute('data-half'));
-          for (const l of lampsFor(W, SEED)) expect(Math.abs(x - l.x), `${date.d}/${date.m} ${m} lampadaire`).toBeGreaterThanOrEqual(half);
+          // Garée : jamais sur le pied d'un lampadaire (en roulant, elle passe devant).
+          if (v.getAttribute('data-van-phase') === 'parked') for (const l of lampsFor(W, SEED)) expect(Math.abs(x - l.x), `${date.d}/${date.m} ${m} lampadaire`).toBeGreaterThanOrEqual(half);
           for (const t of trucks) {
             both++;
             expect(Math.abs(x - t.park), `${date.d}/${date.m} ${m} point de travail`).toBeGreaterThanOrEqual(60);
-            expect(Math.abs(x - t.x), `${date.d}/${date.m} ${m} camion`).toBeGreaterThanOrEqual(half + 27);
+            // Elle ne recouvre jamais le camion dans la même file : quand il passe à sa hauteur le long du trottoir, il est
+            // dessiné devant elle (elle ne passe devant lui que dans la file de circulation).
+            if (Math.abs(x - t.x) < half + 27 && Number(v.getAttribute('data-van-lane')) < 0.5) {
+              expect(v.compareDocumentPosition(t.el) & Node.DOCUMENT_POSITION_FOLLOWING, `${date.d}/${date.m} ${m} camion`).toBeTruthy();
+            }
           }
         }
         for (const { root, host } of mounted.splice(0)) {
@@ -231,6 +237,135 @@ describe('calque des équipes d’installation', () => {
 
   it('aucun id SVG fixe', () => {
     for (const [d, m] of [[D13, 720], [D14, 450], [MUSIC, 700]] as const) expect(layer(d, m).querySelector('[id]')).toBeNull();
+  });
+});
+
+describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur place', () => {
+  type Snap = { van: { x: number; half: number; door: number; phase: string } | null; workers: Map<string, { x: number; y: number }>; opacity: number; step: string | null };
+  const xy = (e: Element): { x: number; y: number } => {
+    const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec((e as HTMLElement).style.transform)!;
+    return { x: Number(m[1]), y: Number(m[2]) };
+  };
+  const snap = (date: YMD, minute: number, setId: string): Snap => {
+    const c = layer(date, minute);
+    const v = c.querySelector(`[data-install-van="${setId}"]`);
+    const crew = c.querySelector(`[data-crew="${setId}"]`);
+    const workers = new Map<string, { x: number; y: number }>();
+    // Équipe à pied (celle du camion élévateur sort de sa cabine : hors de ce relevé).
+    const foot = crew?.getAttribute('data-equipment') !== 'lift';
+    if (foot) for (const w of crew?.querySelectorAll('[data-worker]') ?? []) workers.set(w.getAttribute('data-worker-k') ?? '?', xy(w));
+    // Fondu d'un humain : une opacité sur l'ouvrier lui-même ou sur le groupe de l'équipe (pas le détail du dessin).
+    const faded = (e: Element): boolean => e.hasAttribute('opacity') || /opacity/.test((e as HTMLElement).style?.cssText ?? '');
+    const out: Snap = {
+      van: v ? { x: Number(v.getAttribute('data-x')), half: Number(v.getAttribute('data-half')), door: Number(v.getAttribute('data-door-x')), phase: v.getAttribute('data-van-phase')! } : null,
+      workers,
+      opacity: crew ? [crew, ...crew.querySelectorAll('[data-worker]'), ...[...crew.querySelectorAll('[data-worker]')].map((w) => w.firstElementChild!)].filter(faded).length : 0,
+      step: crew?.getAttribute('data-step') ?? null,
+    };
+    for (const { root, host } of mounted.splice(0)) {
+      act(() => root.unmount());
+      host.remove();
+    }
+    return out;
+  };
+  const u = metrics.unit;
+  const WALK = 24 * WALK_PACE * 60 * u; // px par minute : le passant le plus rapide (hors joggeurs)
+  const check = (date: YMD, setId: string, from: number, to: number, removing: boolean): void => {
+    const set = decorSetsFor(date, W, H, SEED).find((s) => s.id === setId)!;
+    const fw = footWindow(set, removing)!;
+    const day = dayNumber(date);
+    let prev: Snap | null = null;
+    let appeared = 0;
+    let atDoor = false;
+    for (let m = from; m < to; m++) {
+      const s = snap(date, m, setId);
+      const tag = `${setId} ${date.d}/${date.m} ${m}`;
+      expect(s.opacity, `${tag} : opacité`).toBe(0);
+      if (s.van && !prev?.van) {
+        appeared++;
+        expect(s.van.x + s.van.half < 0 || s.van.x - s.van.half > W, `${tag} : la camionnette arrive hors champ (${s.van.x})`).toBe(true);
+      }
+      if (!s.van && prev?.van) expect(prev.van.x + prev.van.half < 0 || prev.van.x - prev.van.half > W, `${tag} : repartie hors champ (${prev.van.x})`).toBe(true);
+      if (s.van && prev?.van) expect(Math.abs(s.van.x - prev.van.x), `${tag} : saut de la camionnette`).toBeLessThanOrEqual(VAN_SPEED * u + 1e-6);
+      for (const [k, w] of s.workers) {
+        const before = prev?.workers.get(k);
+        if (before) expect(Math.abs(w.x - before.x), `${tag} : ouvrier ${k} téléporté`).toBeLessThanOrEqual(WALK);
+        else {
+          // Apparition : derrière la camionnette garée (il en descend).
+          expect(s.van?.phase, `${tag} : ouvrier ${k} sans camionnette`).toBe('parked');
+          expect(Math.abs(w.x - s.van!.x), `${tag} : ouvrier ${k} apparu loin de la camionnette`).toBeLessThanOrEqual(s.van!.half);
+        }
+      }
+      for (const [k, w] of prev?.workers ?? []) {
+        if (s.workers.has(k)) continue;
+        // Disparition : il est remonté (derrière la camionnette garée).
+        expect(prev!.van?.phase, `${tag} : ouvrier ${k} disparu sans camionnette`).toBe('parked');
+        expect(Math.abs(w.x - prev!.van!.x), `${tag} : ouvrier ${k} disparu loin de la camionnette`).toBeLessThanOrEqual(prev!.van!.half);
+      }
+      if (absMinute(day, m) === fw.first) {
+        // Au début du créneau : à la portière.
+        expect(s.workers.size, tag).toBe(2);
+        for (const w of s.workers.values()) expect(Math.abs(w.x - s.van!.door), `${tag} : à la portière`).toBeLessThanOrEqual(s.van!.half);
+        atDoor = true;
+      }
+      prev = s;
+    }
+    expect(appeared, `${setId} : une seule arrivée`).toBe(1);
+    expect(atDoor).toBe(true);
+    expect(prev!.van, `${setId} : repartie à la fin`).toBeNull();
+    expect(prev!.workers.size).toBe(0);
+  };
+  it('barrières du 14/7 : pose de 7 h à 8 h, dépose de 12 h 30 à 13 h 30', () => {
+    check(D14, 'barriers-bastille', 380, 520, false);
+    check(D14, 'barriers-bastille', 710, 850, true);
+  });
+  it('plancher de la scène : montage le 21/6, démontage de nuit le 22/6', () => {
+    check(MUSIC, 'stage-music', 500, 720, false);
+    check(MUSIC_NEXT, 'stage-music', 120, 290, true);
+  });
+  it('drapeaux d entrée à l échelle, 13/7 (début et fin de la journée)', () => {
+    const set = decorSetsFor(D13, W, H, SEED).find((s) => s.id === 'doors-bastille')!;
+    expect(footWindow(set, false)).not.toBeNull();
+    check(D13, 'doors-bastille', 500, 1060, false);
+  });
+  it('camion élévateur : arrive et repart hors champ, ses ouvriers sortent de la cabine et y rentrent', () => {
+    const scan = (date: YMD, setId: string, from: number, to: number, arrives: boolean, leaves: boolean): void => {
+      let prev: { x: number; workers: number[] } | null = null;
+      let trips = 0;
+      for (let m = from; m < to; m++) {
+        const c = layer(date, m);
+        const crew = c.querySelector(`[data-crew="${setId}"][data-equipment="lift"]`);
+        const t = crew?.querySelector('[data-lift-truck]');
+        const now = t ? { x: Number(t.getAttribute('data-x')), workers: [...crew!.querySelectorAll(':scope > [data-worker]')].map((w) => xy(w).x) } : null;
+        const tag = `${setId} ${date.d}/${date.m} ${m}`;
+        const off = (x: number): boolean => x < -30 * u || x > W + 30 * u;
+        if (m === from) expect(now === null, `${tag} : état initial`).toBe(arrives);
+        if (now && !prev && m > from) {
+          trips++;
+          expect(off(now.x), `${tag} : arrive hors champ (${now.x})`).toBe(true);
+        }
+        if (!now && prev && m > from) expect(off(prev.x), `${tag} : repart hors champ (${prev.x})`).toBe(true);
+        if (now && prev) expect(Math.abs(now.x - prev.x), `${tag} : saut du camion`).toBeLessThanOrEqual(W / 2);
+        // Un ouvrier au sol n'apparaît (ne disparaît) qu'à la cabine, caché par elle.
+        if (now && prev && now.workers.length > prev.workers.length) for (const x of now.workers.slice(prev.workers.length)) expect(Math.abs(x - now.x), `${tag} : sort de la cabine`).toBeLessThanOrEqual(32 * u);
+        if (now && prev && now.workers.length < prev.workers.length) for (const x of prev.workers.slice(now.workers.length)) expect(Math.abs(x - prev.x), `${tag} : rentre dans la cabine`).toBeLessThanOrEqual(32 * u);
+        for (const { root, host } of mounted.splice(0)) {
+          act(() => root.unmount());
+          host.remove();
+        }
+        prev = now;
+      }
+      expect(trips).toBe(arrives ? 1 : 0);
+      if (leaves) expect(prev).toBeNull();
+    };
+    // Début et fin de journée (le reste du trajet est continu : d'un lampadaire au milieu du chemin vers le suivant).
+    scan(D13, 'lamps-bastille', 535, 600, true, false);
+    scan(D13, 'lamps-bastille', 950, 1030, false, true);
+    scan(MUSIC, 'stage-music', 670, 740, true, false);
+    scan(MUSIC, 'stage-music', 900, 970, false, true);
+  }, 40000);
+  it('mouvement réduit : ni camionnette ni ouvrier', () => {
+    expect(count(layer(D14, 425, true), '[data-install-van], [data-worker]')).toBe(0);
   });
 });
 

@@ -86,6 +86,7 @@ Tout humain entre en scène et en sort de manière naturelle, jamais d'apparitio
 | Barrières du défilé (tous les 120 px au bord de la chaussée) | 14 juillet | `hand` | 7 h à 8 h | route fermée | 12 h 30 à 13 h 30 |
 
 - Rendu : travailleurs, `LadderSprite` existant (shop-sprites), un camion élévateur à nacelle (nouveau sprite), une camionnette garée au bord de la rue qui range les échelles. Le plafond de figurants existant (`sprite-budget`) compte les équipes.
+- Arrivées et départs (aucun humain n'apparaît ni ne disparaît sur place) : la camionnette de l'équipe à pied (`city/van.ts`, pur) arrive en roulant dans la file de circulation depuis le bord du monde le plus proche, se range contre le trottoir quelques minutes avant le premier créneau à pied de la fenêtre (`footWindow`), ouvre sa portière arrière ; les ouvriers en descendent (cachés par la carrosserie) et sont à la portière au début du créneau, rejoignent leur élément à pied, y reviennent après le dernier créneau et y remontent ; elle repart en marche avant jusqu'au bord opposé. Montage, démontage de nuit de la scène et dépose des barrières suivent le même principe. Le camion élévateur reste hors champ la première minute de son arrivée et a quitté le champ à la dernière de son départ ; ses ouvriers sortent de la cabine au déploiement et y rentrent au repli. Un camion élévateur qui longe le trottoir passe devant la camionnette garée (elle ne s'efface jamais). Mouvement réduit : ni équipe ni véhicule.
 
 ### 7.3 Scène de la Fête de la musique
 

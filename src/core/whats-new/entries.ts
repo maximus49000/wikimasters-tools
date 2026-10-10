@@ -1925,7 +1925,7 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-library-entry]',
         title: 'Décors posés par des équipes',
-        text: 'La veille du 14 juillet, du 11 novembre et du 1er mai, de 9 h à 17 h, des équipes posent des drapeaux : un camion élévateur à nacelle pour les lampadaires, une échelle pour les entrées d’immeuble. Les drapeaux restent toute la fête et sont retirés le lendemain, de 9 h à 17 h. Les barrières du défilé sont aussi posées à la main. Tout élément est posé et retiré par des humains, à l’échelle ou au camion élévateur quand c’est en hauteur.',
+        text: 'La veille du 14 juillet, du 11 novembre et du 1er mai, de 9 h à 17 h, des équipes posent des drapeaux : un camion élévateur à nacelle pour les lampadaires, une échelle pour les entrées d’immeuble. Les drapeaux restent toute la fête et sont retirés le lendemain, de 9 h à 17 h. Les barrières du défilé sont aussi posées à la main. Tout élément est posé et retiré par des humains, à l’échelle ou au camion élévateur quand c’est en hauteur. La camionnette arrive en roulant, les ouvriers en descendent et y remontent en repartant.',
         details: [
           { label: 'À quoi ça sert', text: 'À rendre visible que le décor ne tombe pas du ciel : quelqu’un l’installe, puis le range.' },
           { label: 'Comment ça marche', text: 'Les éléments sont traités un par un par l’équipe, dans un ordre tiré de la date. Selon l’heure, vous voyez l’équipe arriver, monter, fixer, redescendre et repartir, ou le drapeau déjà en place.' },

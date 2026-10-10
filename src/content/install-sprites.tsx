@@ -229,13 +229,22 @@ export function HeldSpot({ sky }: { sky: Sky }): ReactElement {
 }
 
 // ---------- Camionnette de l'équipe (repère des véhicules : roues à y = 0, regard vers +x) ----------
-// Blanche à bande orange, galerie de toit ; `ladder` : l'échelle est rangée sur la galerie (en fin de journée).
-export function Van({ sky, ladder, lights }: { sky: Sky; ladder: boolean; lights: boolean }): ReactElement {
+// Blanche à bande orange, galerie de toit ; `ladder` : l'échelle est rangée sur la galerie (en fin de journée) ; `open` : la
+// portière arrière est ouverte (les ouvriers descendent ou remontent).
+export function Van({ sky, ladder, lights, open = false }: { sky: Sky; ladder: boolean; lights: boolean; open?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (
-    <g data-van="">
+    <g data-van="" data-van-open={open ? 'true' : 'false'}>
       <rect x={-25} y={-24} width={50} height={20} rx={3} fill={t('#ECECEA')} />
       <rect x={-25} y={-13} width={50} height={2.4} fill={t('#E8601C')} />
+      {/* Portière arrière ouverte : l'embrasure sombre et le battant rabattu vers l'arrière. */}
+      {open && (
+        <g data-van-door="">
+          <rect x={-24} y={-22} width={5} height={17} fill={t('#2A2C30')} />
+          <path d="M-25 -23 L-31 -21 L-31 -6 L-25 -5 Z" fill={t('#DCDCD8')} stroke={t('#B8B8B2')} strokeWidth={0.5} />
+          <rect x={-30} y={-14} width={4} height={1.6} fill={t('#E8601C')} />
+        </g>
+      )}
       <rect x={12} y={-21} width={9} height={7} fill={t('#CFE4F2')} opacity={0.85} />
       <line x1={-22} y1={-25.5} x2={10} y2={-25.5} stroke={t(STEEL)} strokeWidth={0.8} />
       {[-20, -6, 8].map((x) => <line key={x} x1={x} y1={-25.5} x2={x} y2={-24} stroke={t(STEEL)} strokeWidth={0.6} />)}

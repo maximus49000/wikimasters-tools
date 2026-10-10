@@ -116,17 +116,17 @@ function slotOf(set: DecorSet, item: DecorItem, festDay: number, removing: boole
   return { from: start + k * len, to: start + (k + 1) * len };
 }
 
-function stepAt(eq: Equipment, slot: Slot, abs: number, removing: boolean): { step: string; progress: number; index: number } {
+function stepAt(eq: Equipment, slot: Slot, abs: number, removing: boolean): { step: string; progress: number; index: number; from: number; to: number } {
   const weights = WEIGHTS[eq];
   const total = weights.reduce((s, x) => s + x, 0);
   const steps = stepsOf(eq, removing);
   let at = slot.from;
   for (let i = 0; i < steps.length; i++) {
     const to = i === steps.length - 1 ? slot.to : at + ((slot.to - slot.from) * weights[i]!) / total;
-    if (abs < to) return { step: steps[i]!, progress: (abs - at) / (to - at), index: i };
+    if (abs < to) return { step: steps[i]!, progress: (abs - at) / (to - at), index: i, from: at, to };
     at = to;
   }
-  return { step: steps[steps.length - 1]!, progress: 0, index: steps.length - 1 };
+  return { step: steps[steps.length - 1]!, progress: 0, index: steps.length - 1, from: slot.to, to: slot.to };
 }
 
 export function itemPhase(set: DecorSet, item: DecorItem, abs: number, festDay: number): ItemPhase {
@@ -163,4 +163,27 @@ export function crewAt(set: DecorSet, abs: number, festDay: number): { itemId: s
     if (p.phase === 'installing' || p.phase === 'removing') return { itemId: item.id, step: p.step, progress: p.progress, removing: p.phase === 'removing' };
   }
   return null;
+}
+
+// Bornes (minutes absolues) de l'étape en cours de l'équipe du jeu, sinon null : le calque en tire la durée d'un trajet
+// (le camion élévateur reste hors champ une minute au début de son arrivée et à la fin de son départ).
+export function crewStepWindow(set: DecorSet, abs: number, festDay: number): { from: number; to: number } | null {
+  for (const item of set.items) {
+    const p = itemPhase(set, item, abs, festDay);
+    if (p.phase !== 'installing' && p.phase !== 'removing') continue;
+    const removing = p.phase === 'removing';
+    const { from, to } = stepAt(itemEquipment(set, item), slotOf(set, item, festDay, removing), abs, removing);
+    return { from, to };
+  }
+  return null;
+}
+
+// Créneaux de l'équipe à pied (échelle, à la main) dans la fenêtre de montage ou de démontage : début du premier, fin du
+// dernier (minutes absolues, jour de la fête `set.day`) ; null si le jeu n'a pas d'équipe à pied. La camionnette se gare
+// avant `first` et repart après `last` (city/van.ts).
+export function footWindow(set: DecorSet, removing: boolean): { first: number; last: number } | null {
+  const key = (i: DecorItem): number => (removing ? i.removeU : i.u);
+  const foot = [...set.items].sort((a, b) => key(a) - key(b) || (a.id < b.id ? -1 : 1)).filter((i) => itemEquipment(set, i) !== 'lift');
+  if (foot.length === 0) return null;
+  return { first: slotOf(set, foot[0]!, set.day, removing).from, last: slotOf(set, foot[foot.length - 1]!, set.day, removing).to };
 }
