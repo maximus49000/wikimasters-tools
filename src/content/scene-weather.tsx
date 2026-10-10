@@ -1,4 +1,4 @@
-import { memo, useId, useLayoutEffect, useMemo, useRef, type ReactElement, type RefObject } from 'react';
+import { memo, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type RefObject } from 'react';
 import type { SceneId } from '../core/library/library-types';
 import { CITY_GROUND } from '../core/library/city/metrics';
 import { mulberry32 } from '../core/library/scene-world';
@@ -6,6 +6,10 @@ import { mixHex, type Sky } from '../core/library/sky';
 import { lightningAt, rainbowOf } from '../core/library/weather/weather-clock';
 import { CLOUD_BLOBS, godRayTarget, rayWindow, sunCoverage, type CloudSpot } from '../core/library/weather/weather-rays';
 import { smooth, type Weather } from '../core/library/weather/weather-types';
+import { CLOUD_KINDS, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
+import { useArtStyle } from './art-setting';
+import { fadeStyle } from './ghibli-sky';
+import { usePaintedClouds } from './painted-sky';
 import { celestialPlace } from './scene-panorama';
 
 // Scènes qui ont une météo : l'espace et la Terre vue de l'orbite n'en ont pas.
@@ -80,7 +84,7 @@ function PatternDefs({ id, seed }: { id: string; seed: number }): ReactElement {
   );
 }
 
-type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; sky: RefObject<Sky>; onWet: RefObject<Props['onWet']> };
+type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; sky: RefObject<Sky>; onWet: RefObject<Props['onWet']>; onStep: RefObject<((s: CloudStep) => void) | undefined> };
 
 // Met la météo à l'écran sans re-rendu React : même horloge murale pour toutes les fenêtres, même règle d'économie que les acteurs
 // (~30 images/s, en pause quand la page est cachée, figée si l'utilisateur demande moins de mouvement).
@@ -90,6 +94,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   const { clock, seed, width, height, pool } = input;
   const skyRef = input.sky;
   const onWetRef = input.onWet;
+  const onStepRef = input.onStep;
   useLayoutEffect(() => {
     const el = sky.current;
     const floor = ground.current;
@@ -116,6 +121,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     const cloudOpacity = cloudNodes.map(() => -1);
     let colorKey = '';
     let lastPrecip = '';
+    let lastStep = '';
     let lastHidden = '';
     let lastOvercast = '';
     // null : pas encore signalé — le premier placement signale toujours l'état (une relance de la boucle ne laisse pas d'état périmé).
@@ -146,6 +152,13 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       const dark = clamp01(rainDark + 0.35 * smoothstep(0.85, 1, w.cloud));
       // Ciel couvert sans pluie : des nuages nettement plus sombres que le voile gris du fond (le voile ne couvre que le ciel).
       const cloudDark = Math.max(dark, 0.5 * smoothstep(0.7, 1, w.cloud));
+      // Cran de couleur des nuages peints : signalé à React seulement quand il change (rare).
+      const step = cloudStep(daylight, skyRef.current.twilight, cloudDark);
+      const stepText = stepKey(step);
+      if (stepText !== lastStep) {
+        lastStep = stepText;
+        onStepRef.current?.(step);
+      }
       // Le voile par-dessus le décor ne dépend que de la pluie : les immeubles restent bien visibles quand il ne pleut pas.
       const thick = w.cloud * (0.3 + 0.7 * rainDark);
       // Couleurs recalculées seulement quand l'obscurité ou le jour bougent d'un cran (1/64) : pas de chaînes neuves à chaque image.
@@ -307,7 +320,13 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   skyRef.current = sky;
   const onWetRef = useRef(onWet);
   onWetRef.current = onWet;
-  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, sky: skyRef, onWet: onWetRef });
+  const [art] = useArtStyle();
+  const ghibli = art === 'ghibli' && scene === 'city';
+  const [step, setStep] = useState<CloudStep | null>(null);
+  const onStepRef = useRef<((s: CloudStep) => void) | undefined>(setStep);
+  const painted = usePaintedClouds(seed, ghibli ? step : null);
+  const showPainted = ghibli && painted.ready;
+  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, sky: skyRef, onWet: onWetRef, onStep: onStepRef });
   // Mouvement réduit : pas de boucle, mais le ciel (chaque minute) relance un placement pour suivre la météo.
   useLayoutEffect(() => {
     if (reducedMotion()) placeRef.current?.();
@@ -361,10 +380,18 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
             <stop offset="0" stopColor="#E7ECF1" stopOpacity={0.35} />
             <stop offset="1" stopColor="#E7ECF1" stopOpacity={0.95} />
           </linearGradient>
+          {painted.urls.map((url, k) => {
+            const shape = painted.shapes[k]!;
+            // Nuage centré en x, ventre à +10 (comme le bas des ellipses actuelles).
+            return <image key={k} id={`${uid}-cloud-${k}`} href={url} x={-shape.w / 2} y={10 - shape.base} width={shape.w} height={shape.h} />;
+          })}
           <g id={`${uid}-strip`} data-wx="clouds" fill="#FFFFFF">
             {pool.map((c, i) => (
               <g key={i} data-wx-cloud="" display="none" opacity={0} transform={`translate(${c.x.toFixed(1)} ${c.y.toFixed(1)}) scale(${c.s.toFixed(2)})`}>
-                {CLOUD_BLOBS.map((b, j) => <ellipse key={j} cx={b.cx} cy={b.cy} rx={b.rx} ry={b.ry} />)}
+                <g data-cloud-classic="" style={fadeStyle(!showPainted)}>
+                  {CLOUD_BLOBS.map((b, j) => <ellipse key={j} cx={b.cx} cy={b.cy} rx={b.rx} ry={b.ry} />)}
+                </g>
+                {painted.ready && <use data-cloud-painted="" href={`#${uid}-cloud-${(((i + seed) % CLOUD_KINDS) + CLOUD_KINDS) % CLOUD_KINDS}`} style={fadeStyle(showPainted)} />}
               </g>
             ))}
           </g>
