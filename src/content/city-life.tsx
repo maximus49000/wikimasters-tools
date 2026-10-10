@@ -18,6 +18,7 @@ import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, shopSpriteBudget, type PosedStaff, type Swap } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
+import { InstallLayer } from './install-layer';
 import { interiorPost } from './shop-interiors';
 import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
@@ -176,6 +177,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Fêtes actives à la minute de la scène (père Noël : 24 décembre de nuit).
   const fests = useMemo(() => activeFestivities(city.day.festivities, city.minutes), [city.day, city.minutes]);
   const events = useCityEvents({ seed, width, city, intensity, vehicles, still, frozenT: frozen.current });
+
+  // Décors de fête posés par des équipes (calendrier : jour de la scène et minute) ; les travailleurs (data-worker) comptent
+  // dans le plafond des figurants (shopSpriteBudget).
+  const install = { width, height, seed, sky, still, date, minutes: city.minutes, metrics, rainy, lights };
 
   const pedActive = useMemo(() => new Set(peds.filter((p) => p.u < pedestrianGate(p, intensity)).map((p) => p.id)), [peds, intensity]);
   const marks = useMemo(() => new Map(peds.map((p) => [p.id, festiveMark(p, intensity)] as const)), [peds, intensity]);
@@ -340,6 +345,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             <ShopWorks key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} change={shops.street[i]?.change ?? null} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} seed={seed} />
           ) : null,
         )}
+        {/* Décors de fête contre les façades (drapeaux d'entrée, scène) et équipes à l'échelle ou à pied (install-layer.tsx). */}
+        <InstallLayer {...install} part="back" />
         {shops.views.map((view) => {
           const frame = shops.frames.get(view.slot.id)!;
           const type = view.sign?.type ?? null;
@@ -440,7 +447,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             </g>
           );
         })}
-        {of((e) => e.layer === 'sidewalk' || e.id === 'street-band').map(eventNode)}
+        {of((e) => e.layer === 'sidewalk').map(eventNode)}
         {/* Camion de déménagement garé au bord du trottoir : devant les passants, derrière les lampadaires et les files. */}
         {shops.views.map((view, i) => (
           <MovingTruck
@@ -460,6 +467,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         ))}
       </g>
       <StreetLamps width={width} height={height} seed={seed} minutes={city.minutes} daylight={sky.daylight} forcedNight={forcedNight} />
+      {/* Drapeaux de lampadaires, barrières, camionnettes et camions élévateurs : devant les lampadaires, derrière les files. */}
+      <InstallLayer {...install} part="front" />
       {lane('far')}
       {lane('near')}
     </g>

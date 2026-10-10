@@ -72,10 +72,6 @@ export function placeEvent(e: CityEvent, t: number, f: EventFrame): EventPlaceme
     case 'fixed':
       if (e.id === 'apartment') return { ...apartmentLamp(e, f), sx: 1, sy: 1 };
       if (e.id === 'fireworks') return { x, y: 0, sx: m.unit, sy: m.unit };
-      if (e.id === 'street-band') {
-        const k = m.unit * STREET_SCALE.person;
-        return { x, y: m.walkY, sx: k, sy: k };
-      }
       if (e.id === 'crane') return { x, y: m.ground, sx: m.unit, sy: m.unit };
       return { x, y: e.y * f.height, sx: m.unit, sy: m.unit };
     default: {

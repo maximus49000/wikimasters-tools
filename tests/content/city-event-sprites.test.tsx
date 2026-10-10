@@ -43,19 +43,4 @@ describe('CityEventSprite', () => {
   it('les ballons et les cloches bougent hors mouvement réduit', () => {
     for (const id of ['fest-balloons', 'bells'] as const) expect(draw(ev(id), false).querySelectorAll('animate, animateTransform').length).toBeGreaterThan(0);
   });
-  it('les musiciens ont des lumières colorées seulement la nuit, figées en mouvement réduit', () => {
-    const night = draw(ev('street-band'), false, { fests: ['music'] });
-    expect(night.querySelectorAll('[data-band-light]').length).toBeGreaterThan(0);
-    expect(night.querySelectorAll('animate, animateTransform').length).toBeGreaterThan(0);
-    expect(night.querySelectorAll('[data-musician]')).toHaveLength(3);
-    expect(draw(ev('street-band'), false, { lights: false, fests: ['music'] }).querySelector('[data-band-light]')).toBeNull();
-    const reduced = draw(ev('street-band'), true, { fests: ['music'] });
-    expect(reduced.querySelector('[data-band-light]')).not.toBeNull();
-    expect(reduced.querySelectorAll('animate, animateTransform')).toHaveLength(0);
-  });
-  it('le défilé aligne quatre véhicules pavoisés', () => {
-    const svg = draw(ev('parade'), false);
-    expect(svg.querySelectorAll('[data-parade-vehicle]')).toHaveLength(4);
-    expect(svg.querySelectorAll('[data-flag]')).toHaveLength(4);
-  });
 });

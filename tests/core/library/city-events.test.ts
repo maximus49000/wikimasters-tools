@@ -19,10 +19,10 @@ const input = (hyper: number, cond: EventConditions, minutes: number, seed = 7, 
 const many = (cond: EventConditions, minutes: number, n = 120) => Array.from({ length: n }, (_, h) => cityEventSchedule(input(1_440_000 + h, cond, minutes))).flat();
 
 describe('catalogue', () => {
-  it('contient 20 événements, sans enseigne néon', () => {
-    expect(EVENT_DEFS).toHaveLength(20);
+  it('contient 18 événements, sans enseigne néon', () => {
+    expect(EVENT_DEFS).toHaveLength(18);
     expect(EVENT_DEFS.map((d) => d.id)).not.toContain('neon');
-    expect(new Set(EVENT_DEFS.map((d) => d.id)).size).toBe(20);
+    expect(new Set(EVENT_DEFS.map((d) => d.id)).size).toBe(18);
   });
   it('le feu d’artifice n’a pas de bande de hauteur (il part toujours du haut de la scène)', () => {
     expect(defOf('fireworks').y).toBeUndefined();
@@ -224,47 +224,17 @@ describe('père Noël et ciel', () => {
 describe('événements de fête', () => {
   const fest = (id: FestivityId, c: EventConditions = DAY_DRY): EventConditions => ({ ...c, fests: [id] });
   const at = (id: CityEventId) => defOf(id);
-  it('compte 20 événements, dont 4 réservés aux fêtes', () => {
-    expect(EVENT_DEFS).toHaveLength(20);
-    for (const id of ['fest-balloons', 'bells', 'street-band', 'parade'] as const) expect(at(id).weight).toBe(0);
+  it('compte 18 événements, dont 2 réservés aux fêtes (musiciens et défilé retirés : scène et cortège à part)', () => {
+    expect(EVENT_DEFS).toHaveLength(18);
+    for (const id of ['fest-balloons', 'bells'] as const) expect(at(id).weight).toBe(0);
+    const ids: string[] = EVENT_DEFS.map((d) => d.id);
+    expect(ids).not.toContain('street-band');
+    expect(ids).not.toContain('parade');
   });
   it('n’éligible un événement de fête que pendant sa fête', () => {
-    expect(eligible(at('parade'), 660, DAY_DRY)).toBe(false);
-    expect(eligible(at('parade'), 660, fest('bastille'))).toBe(true);
-    expect(eligible(at('parade'), 800, fest('bastille'))).toBe(false);
     expect(eligible(at('bells'), 600, fest('easter'))).toBe(true);
     expect(eligible(at('bells'), 600, fest('valentine'))).toBe(false);
     expect(eligible(at('fest-balloons'), 700, fest('valentine'))).toBe(true);
     expect(eligible(at('fest-balloons'), 700, fest('valentine', { ...DAY_DRY, wet: true }))).toBe(false);
-    expect(eligible(at('street-band'), 1200, fest('music', NIGHT_DRY))).toBe(true);
-    expect(eligible(at('street-band'), 1200, NIGHT_DRY)).toBe(false);
-  });
-  it('programme un défilé le matin du 14 juillet et jamais un jour ordinaire', () => {
-    const on = many(fest('bastille'), 600).filter((e) => e.id === 'parade');
-    expect(on.length).toBeGreaterThan(0);
-    for (const e of on) expect(e.track).toBe('near');
-    expect(many(DAY_DRY, 600).some((e) => e.id === 'parade')).toBe(false);
-  });
-  it('programme des musiciens à la Fête de la musique', () => {
-    expect(many(fest('music', NIGHT_DRY), 1100).some((e) => e.id === 'street-band')).toBe(true);
-  });
-  it('garde le programme ordinaire identique (sans fête)', () => {
-    const sig = (es: CityEvent[]) => es.map((e) => `${e.id}@${e.key}`).join();
-    expect(sig(many(DAY_DRY, 600, 30)).includes('parade')).toBe(false);
-  });
-});
-
-describe('défilé : vélos', () => {
-  const car = vehiclesFor(2000, 3).find((v) => v.kind === 'car')!;
-  const bike = { ...car, kind: 'bike' as const, lane: 'near' as const };
-  const base = { key: 'p', layer: 'street' as const, start: 0, end: 60, dir: 1 as const, track: 'near' as const, speed: 30, x0: 0, y: 0, pick: 0, variant: 0, yields: [] as string[] };
-  const xe = eventX({ ...base, id: 'parade' }, 720, 0);
-  // Un vélo placé exactement sur le convoi au départ (le décalage de phase déplace le vélo d'autant).
-  const onConvoy = { ...bike, phase: bike.phase + (xe - loopX(bike.phase, LANE_DIR[bike.lane] * bike.speed, 720, 0)) };
-  it('efface les vélos proches du convoi', () => {
-    expect(yieldsFor({ ...base, id: 'parade' }, defOf('parade').half, [onConvoy], 720)).toContain(bike.id);
-  });
-  it('ne les efface pas pour un autre véhicule de la voie (bus)', () => {
-    expect(yieldsFor({ ...base, id: 'bus' }, defOf('bus').half, [onConvoy], 720)).not.toContain(bike.id);
   });
 });

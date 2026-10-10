@@ -1,7 +1,6 @@
 import { useMemo, type ReactElement } from 'react';
 import { lampLit } from '../core/library/activity';
-import { activeFestivities } from '../core/library/city/calendar';
-import { doorFlag, doorsFor } from '../core/library/city/doors';
+import { doorsFor } from '../core/library/city/doors';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
 import { mixHex } from '../core/library/sky';
@@ -30,7 +29,6 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
   // Immeubles étirés (proportions avec les passants), fenêtres d'origine en haut et étages ajoutés : voir facades.ts.
   const buildings = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
   const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
-  const fests = useMemo(() => (city ? activeFestivities(city.day.festivities, city.minutes) : []), [city]);
   // Hall d'entrée éclairé la nuit (un peu plus d'une entrée sur deux).
   const dark = sky.daylight < 0.45;
   const lane = mixHex('#8A8C9E', '#F2EEE2', sky.daylight);
@@ -127,7 +125,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
           data-door={door.id}
           transform={`translate(${entranceLeft(door.x, unit).toFixed(1)} ${metrics.doorY.toFixed(1)}) scale(${(unit * STREET_SCALE.entranceX).toFixed(3)} ${(unit * STREET_SCALE.entranceY).toFixed(3)})`}
         >
-          <EntranceSprite variant={door.variant} hallLit={dark && door.hallU < 0.6} sky={sky} flag={doorFlag(door, fests)} />
+          <EntranceSprite variant={door.variant} hallLit={dark && door.hallU < 0.6} sky={sky} />
         </g>
       ))}
     </g>

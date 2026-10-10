@@ -36,9 +36,9 @@ describe('route fermée', () => {
     expect(vehiclesFor(2000, 3).some((v) => vehicleGate(v, open) > 0)).toBe(true);
   });
   const cond = (closed: boolean): EventConditions => ({ daylight: 1, wet: false, workday: false, traffic: 0.6, walkers: 0.6, fests: ['bastille'], closed });
-  it('eligible refuse tout événement de rue (parade comprise) quand la route est fermée', () => {
+  it('eligible refuse tout événement de rue quand la route est fermée', () => {
     const streets = EVENT_DEFS.filter((d) => d.layer === 'street');
-    expect(eligible(defOf('parade'), 660, cond(false))).toBe(true);
+    expect(eligible(defOf('bus'), 660, cond(false))).toBe(true);
     for (const d of streets) expect(eligible(d, 660, cond(true))).toBe(false);
   });
   it('les événements du ciel et des trottoirs ne sont pas touchés', () => {

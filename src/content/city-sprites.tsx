@@ -242,7 +242,8 @@ export const entranceLeft = (doorX: number, unit: number): number => doorX + (DO
 
 // ---------- Entrée d'immeuble : sprite 22 × 27 de x = 0 à 22, auvent un peu plus large, base à y = 0 ----------
 // Dessinée à l'échelle STREET_SCALE.entranceX × entranceY (metrics.ts) : cadre de DOOR_WIDTH = 12 px de large à l'écran.
-export function EntranceSprite({ variant, hallLit, sky, flag = false }: { variant: 0 | 1 | 2; hallLit: boolean; sky: Sky; flag?: boolean }): ReactElement {
+// Les jours de drapeaux, le drapeau planté sur l'auvent est un décor posé par une équipe (install-sprites.tsx, DoorFlag).
+export function EntranceSprite({ variant, hallLit, sky }: { variant: 0 | 1 | 2; hallLit: boolean; sky: Sky }): ReactElement {
   const glass = hallLit ? '#FFD27A' : sky.daylight < 0.4 ? '#232A4A' : '#9FB8C6';
   return (
     <g data-entrance="">
@@ -275,15 +276,6 @@ export function EntranceSprite({ variant, hallLit, sky, flag = false }: { varian
       <rect x={23} y={-17} width={4} height={7} fill="#D8D2C0" />
       <rect x={-5} y={-14} width={4} height={5} fill="#E8D08A" />
       {hallLit && <g data-hall-lit="" />}
-      {flag && (
-        // Drapeau tricolore sur hampe, planté sur l'auvent (sans animation), assombri la nuit.
-        <g data-door-flag="">
-          <line x1={7} y1={-31} x2={7} y2={-45} stroke={tone('#6B5B4A', sky)} strokeWidth={0.8} />
-          <rect x={7} y={-45} width={3} height={5} fill={tone('#2B4FA0', sky)} />
-          <rect x={10} y={-45} width={3} height={5} fill={tone('#F2F2F2', sky)} />
-          <rect x={13} y={-45} width={3} height={5} fill={tone('#C0302B', sky)} />
-        </g>
-      )}
     </g>
   );
 }

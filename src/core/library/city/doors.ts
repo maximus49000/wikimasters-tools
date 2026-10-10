@@ -1,5 +1,4 @@
 import { WORLD_MARGIN, citySkyline, hashString, mulberry32 } from '../scene-world';
-import type { FestivityId } from './calendar';
 import type { CityIntensity } from './intensity';
 import { DOOR_MARGIN, DOOR_WIDTH, WALK_PACE } from './metrics';
 import { outfitFor, type Outfit, type Profile } from './people';
@@ -8,10 +7,6 @@ import { SHOP_MIN_WIDTH, shopSlotsFor } from './shops/slots';
 export type Door = { id: string; x: number; variant: 0 | 1 | 2; hallU: number };
 export { DOOR_MARGIN, DOOR_WIDTH } from './metrics';
 export const TRIP_CYCLE = 160;
-
-const FLAG_DAYS: ReadonlySet<FestivityId> = new Set<FestivityId>(['bastille', 'armistice', 'may-day']);
-// Une entrée sur deux environ porte un drapeau les jours de drapeaux (hallU sert de tirage stable).
-export const doorFlag = (door: Door, fests: readonly FestivityId[]): boolean => door.hallU < 0.5 && fests.some((f) => FLAG_DAYS.has(f));
 
 // Une entrée par immeuble du premier plan visible (les plus étroits font 28 px : l'entrée de 12 px y tient avec ses marges).
 // L'entrée est placée dans la partie visible de l'immeuble ([0, width)) ; un immeuble dont la partie visible est trop étroite
