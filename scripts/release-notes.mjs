@@ -44,3 +44,9 @@ export function notesSince(cwd, tagPrefix, fallback) {
   const notes = formatNotes(subjectsBetween(cwd, latestTag(tags, tagPrefix)));
   return notes || fallback;
 }
+
+// Un livrable doit avoir un numéro strictement supérieur au dernier du canal : l'application ne se met à jour que vers un versionCode plus grand.
+export function isNewerRelease(versionCode, tags, tagPrefix) {
+  const latest = latestTag(tags, tagPrefix);
+  return latest === undefined || Number(versionCode) > Number(latest.slice(tagPrefix.length));
+}
