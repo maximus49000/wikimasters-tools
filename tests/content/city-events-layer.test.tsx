@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { FIXED_FADE_S, fixedFade } from '../../src/core/library/city/event-place';
 import { dayContext } from '../../src/core/library/city/calendar';
+import type { YMD } from '../../src/core/library/city/calendar';
 import { HYPER_S, MAX_EVENTS, STILL_EVENTS, activeEvents, cityEventSchedule, eventConditions, hyperStartMinute, type CityEvent } from '../../src/core/library/city/events';
 import { cityIntensity, type CityContext } from '../../src/core/library/city/intensity';
 import { laneSpeeds, vehiclesFor } from '../../src/core/library/city/vehicles';
@@ -31,10 +32,10 @@ afterEach(() => {
 });
 
 const times = sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120);
-const contextAt = (hours: number): { city: CityContext; sky: ReturnType<typeof skyAt> } => {
+const contextAt = (hours: number, date: YMD = { y: 2026, m: 10, d: 5 }): { city: CityContext; sky: ReturnType<typeof skyAt> } => {
   const minutes = Math.round(hours * 60);
   const sky = skyAt(minutes, times);
-  return { sky, city: { minutes, day: dayContext({ y: 2026, m: 10, d: 5 }, []), precip: 0, snow: false, storm: false, daylight: sky.daylight } };
+  return { sky, city: { minutes, day: dayContext(date, []), precip: 0, snow: false, storm: false, daylight: sky.daylight } };
 };
 // Même calcul que le hook : programme du grand créneau, minute de la scène ramenée au début du grand créneau.
 // Programmes mis en cache (par ville, grand créneau et minute de début) : les recherches parcourent des milliers d'instants.
@@ -61,11 +62,11 @@ const findWhen = (city: CityContext, ok: (evs: CityEvent[], T: number) => boolea
   for (let T = 1_790_000_000; T < 1_790_000_000 + span * HYPER_S; T += 1) if (ok(expected(T, city), T)) return T;
   throw new Error('aucun instant trouvé');
 };
-const mount = (T: number, hours: number, still = false): HTMLDivElement => {
+const mount = (T: number, hours: number, still = false, date?: YMD): HTMLDivElement => {
   vi.spyOn(Date, 'now').mockReturnValue(T * 1000);
   // jsdom n'a pas matchMedia : même bouchon que tests/content/city-life.test.tsx.
   if (still) vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
-  const { city, sky } = contextAt(hours);
+  const { city, sky } = contextAt(hours, date);
   return render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={city} rainy={false} /></svg>);
 };
 
@@ -146,5 +147,15 @@ describe('événements dans la couche de la ville', () => {
     expect(moving.getAttribute('opacity')).toBe(fade.toFixed(2));
     const still = mount(T, 10, true).querySelector(`[data-event="${e.id}"]`)!;
     expect(still.getAttribute('opacity')).toBe('1');
+  });
+  describe('événements de fête', () => {
+    const EASTER: YMD = { y: 2026, m: 4, d: 5 };
+    it('les cloches de Pâques passent au fond, avec le ciel', () => {
+      const { city } = contextAt(11, EASTER);
+      const T = findTime(city, (ids) => ids.includes('bells'));
+      const node = mount(T, 11, false, EASTER).querySelector('[data-event="bells"]')!;
+      expect(node).not.toBeNull();
+      expect(node.closest('[data-city-events-back]')).not.toBeNull();
+    });
   });
 });

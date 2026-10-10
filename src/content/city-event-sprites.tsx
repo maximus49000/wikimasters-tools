@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import type { FestivityId } from '../core/library/city/calendar';
 import type { CityEvent } from '../core/library/city/events';
 import { outfitFor, type Outfit } from '../core/library/city/people';
 import { hashString, mulberry32 } from '../core/library/scene-world';
@@ -7,7 +8,8 @@ import { PersonSprite, tone } from './city-sprites';
 
 // Dessins des événements de la ville (maquette validée du 2026-10-09). Petites animations en SMIL, jamais en mouvement
 // réduit ; aucun id SVG fixe. Les tirages de couleurs viennent de la clé de l'événement (déterministes).
-type Props = { event: CityEvent; sky: Sky; still: boolean; lights: boolean; rainy: boolean };
+// `fests` : fêtes en cours (forme des ballons de fête).
+type Props = { event: CityEvent; sky: Sky; still: boolean; lights: boolean; rainy: boolean; fests: readonly FestivityId[] };
 
 const GLASS = '#CFE4F2';
 const pickOf = <T,>(list: readonly T[], u: number): T => list[Math.min(list.length - 1, Math.floor(u * list.length))]!;
@@ -16,7 +18,7 @@ const outfitsOf = (key: string, profile: Parameters<typeof outfitFor>[0], n: num
   return Array.from({ length: n }, () => outfitFor(profile, rng));
 };
 
-export function CityEventSprite({ event: e, sky, still, lights, rainy }: Props): ReactElement {
+export function CityEventSprite({ event: e, sky, still, lights, rainy, fests }: Props): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const anim = !still;
   const body = ((): ReactElement => {
@@ -239,6 +241,62 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy }: Props):
           <g>
             <rect x={-3} y={-3} width={11} height={13} fill="#FFD27A" opacity={0.25} />
             <rect x={0} y={0} width={5} height={7} fill="#FFD27A" />
+          </g>
+        );
+      case 'fest-balloons': {
+        // Grappe de trois ballons noués ensemble : lapins à Pâques, cœurs à la Saint-Valentin (tirage `variant` si les deux).
+        const bunny = fests.includes('easter') && !(fests.includes('valentine') && e.variant < 0.5);
+        const cols = bunny ? ['#F7C6D9', '#CFE8FF', '#FFF2A8'] : ['#E0305A', '#F2708C', '#B01E48'];
+        return (
+          <g data-balloon-kind={bunny ? 'bunny' : 'heart'}>
+            {cols.map((c, k) => {
+              const dx = (k - 1) * 14;
+              const knot = 34 + (k % 2) * 6;
+              return (
+                <g key={k} transform={`translate(${dx} ${-(k % 2) * 6})`}>
+                  {anim && <animateTransform attributeName="transform" additive="sum" type="rotate" values={`-4 ${-dx} ${knot};4 ${-dx} ${knot};-4 ${-dx} ${knot}`} dur={`${3 + k * 0.4}s`} repeatCount="indefinite" />}
+                  <path d={`M0 8 Q${-dx * 0.3} 22 ${-dx} ${knot}`} stroke="#6B5B4A" strokeWidth={0.6} fill="none" />
+                  {bunny ? (
+                    <>
+                      <ellipse cx={-3.5} cy={-14} rx={2.4} ry={6.5} fill={t(c)} />
+                      <ellipse cx={3.5} cy={-14} rx={2.4} ry={6.5} fill={t(c)} />
+                      <ellipse cx={0} cy={-1} rx={8} ry={9} fill={t(c)} />
+                      <circle cx={-2.8} cy={-3} r={0.9} fill="#5A4A4A" />
+                      <circle cx={2.8} cy={-3} r={0.9} fill="#5A4A4A" />
+                      <circle cx={0} cy={0} r={0.9} fill="#E07A8C" />
+                    </>
+                  ) : (
+                    <path d="M0 8 C-14 -2 -8 -14 0 -6 C8 -14 14 -2 0 8Z" fill={t(c)} />
+                  )}
+                  <ellipse cx={-3} cy={-4} rx={1.6} ry={2.4} fill="#FFFFFF" opacity={0.45} />
+                </g>
+              );
+            })}
+            <circle cx={0} cy={34} r={1} fill="#6B5B4A" />
+          </g>
+        );
+      }
+      case 'bells':
+        // Cloches de Pâques : deux cloches dorées qui se balancent sous un ruban noué.
+        return (
+          <g>
+            <path d="M-11 -10 Q0 -16 11 -10" stroke={t('#C0463A')} strokeWidth={1.6} fill="none" />
+            <path d="M0 -14 L-5 -18 L-5 -10Z M0 -14 L5 -18 L5 -10Z M0 -14 L-3 -6 M0 -14 L3 -6" fill={t('#C0463A')} stroke={t('#C0463A')} strokeWidth={0.8} />
+            {[-11, 11].map((x, k) => {
+              const a = k ? 14 : -14;
+              return (
+                <g key={k} transform={`translate(${x} 0)`}>
+                  <g>
+                    {anim && <animateTransform attributeName="transform" type="rotate" values={`${a} 0 -10;${-a} 0 -10;${a} 0 -10`} dur="1.6s" repeatCount="indefinite" />}
+                    <line x1={0} y1={-10} x2={0} y2={-7} stroke={t('#C0463A')} strokeWidth={1.2} />
+                    <path d="M-7 7 Q-7 -6 0 -8 Q7 -6 7 7Z" fill={t('#E8B923')} />
+                    <path d="M-7 7 H7" stroke={t('#B08A16')} strokeWidth={1.4} />
+                    <path d="M-3.5 -4 Q-5 0 -4.5 5" stroke="#FFF4C8" strokeWidth={1} fill="none" opacity={0.7} />
+                    <circle cx={0} cy={9} r={1.8} fill={t('#8A6A12')} />
+                  </g>
+                </g>
+              );
+            })}
           </g>
         );
       case 'fireworks': {

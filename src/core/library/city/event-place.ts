@@ -9,7 +9,7 @@ export const PULL_DY = 7;
 export const AMB_DY = 5;
 export const BIKE_TRACK_DY = 2;
 // Échelle des dessins du ciel (maquette validée).
-export const SKY_SCALE: Partial<Record<CityEventId, number>> = { plane: 0.8, helicopter: 0.9, drone: 1, balloon: 1, 'banner-plane': 0.9 };
+export const SKY_SCALE: Partial<Record<CityEventId, number>> = { plane: 0.8, helicopter: 0.9, drone: 1, balloon: 1, 'banner-plane': 0.9, 'fest-balloons': 1 };
 
 export type EventFrame = { width: number; height: number; metrics: CityMetrics; facades: Facade[] };
 export type EventPlacement = { x: number; y: number; sx: number; sy: number };

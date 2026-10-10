@@ -18,6 +18,10 @@ import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, shopSpriteBudget, type PosedStaff, type Swap } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
+import { FlypastLayer } from './flypast-sprite';
+import { InstallLayer } from './install-layer';
+import { ParadeCrowd } from './parade-crowd';
+import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
 import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
@@ -126,6 +130,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const vehicles = useMemo(() => vehiclesFor(width, seed), [width, seed]);
   const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
   const trips = useMemo(() => tripsFor(doors, seed), [doors, seed]);
+  const doorXs = useMemo(() => doors.map((d) => d.x), [doors]);
   const facades = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
   const frame = useMemo<EventFrame>(() => ({ width, height, metrics, facades }), [width, height, metrics, facades]);
   const intensity = useMemo(() => cityIntensity(city), [city]);
@@ -175,7 +180,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Événements de la ville : programme du grand créneau, événements actifs, voitures effacées, ambulances.
   // Fêtes actives à la minute de la scène (père Noël : 24 décembre de nuit).
   const fests = useMemo(() => activeFestivities(city.day.festivities, city.minutes), [city.day, city.minutes]);
+  // Fêtes du jour (toute la journée) : route fermée et grand défilé du 14 juillet (parade-layer.tsx, flypast-sprite.tsx).
+  const dayFests = useMemo(() => city.day.festivities.map((f) => f.id), [city.day]);
   const events = useCityEvents({ seed, width, city, intensity, vehicles, still, frozenT: frozen.current });
+
+  // Décors de fête posés par des équipes (calendrier : jour de la scène et minute) ; les travailleurs (data-worker) comptent
+  // dans le plafond des figurants (shopSpriteBudget).
+  const install = { width, height, seed, sky, still, date, minutes: city.minutes, metrics, rainy, lights };
 
   const pedActive = useMemo(() => new Set(peds.filter((p) => p.u < pedestrianGate(p, intensity)).map((p) => p.id)), [peds, intensity]);
   const marks = useMemo(() => new Map(peds.map((p) => [p.id, festiveMark(p, intensity)] as const)), [peds, intensity]);
@@ -262,7 +273,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const t0 = still ? frozen.current : Date.now() / 1000;
   const eventNode = (e: CityEvent): ReactElement => (
     <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)}>
-      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} />
+      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} />
     </g>
   );
   const of = (pred: (e: CityEvent) => boolean): CityEvent[] => events.active.filter(pred);
@@ -327,8 +338,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <g data-city-events-back="">
         {fireworks.length > 0 && <g data-event-mask="skyline" mask={`url(#${maskBase}-skyline)`}>{fireworks.map(eventNode)}</g>}
         {cranes.length > 0 && <g data-event-mask="near" mask={`url(#${maskBase}-near)`}>{cranes.map(eventNode)}</g>}
-        {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment').map(eventNode)}
+        {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment' || e.id === 'bells').map(eventNode)}
         <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} />
+        <FlypastLayer width={width} height={height} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} />
       </g>
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
           lampadaires (bord du trottoir), la file du fond, puis celle du premier plan. */}
@@ -340,6 +352,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             <ShopWorks key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} change={shops.street[i]?.change ?? null} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} seed={seed} />
           ) : null,
         )}
+        {/* Décors de fête contre les façades : drapeaux d'entrée (install-layer.tsx). */}
+        <InstallLayer {...install} part="back" />
         {shops.views.map((view) => {
           const frame = shops.frames.get(view.slot.id)!;
           const type = view.sign?.type ?? null;
@@ -441,6 +455,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           );
         })}
         {of((e) => e.layer === 'sidewalk').map(eventNode)}
+        {/* Foule du défilé du 14 juillet : au bord du trottoir, derrière les barrières (posées sur la chaussée) et les équipes. */}
+        <ParadeCrowd width={width} seed={seed} sky={sky} still={still} rainy={rainy} dayFests={dayFests} minutes={city.minutes} metrics={metrics} doorXs={doorXs} />
+        {/* Scène, équipes à l'échelle et porteurs : devant les passants (un passant passe toujours derrière une équipe). */}
+        <InstallLayer {...install} part="crew" />
         {/* Camion de déménagement garé au bord du trottoir : devant les passants, derrière les lampadaires et les files. */}
         {shops.views.map((view, i) => (
           <MovingTruck
@@ -460,8 +478,16 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         ))}
       </g>
       <StreetLamps width={width} height={height} seed={seed} minutes={city.minutes} daylight={sky.daylight} forcedNight={forcedNight} />
+      {/* Drapeaux de lampadaires, barrières, camionnettes et camions élévateurs : devant les lampadaires, derrière les files. */}
+      <InstallLayer {...install} part="front" />
+      {/* Rue privatisée de la Fête de la musique : barrières en travers, stands de bière, serveurs, files et foule, triés par
+          profondeur sur la chaussée (aucune voiture ne roule alors). */}
+      <InstallLayer {...install} part="street" />
       {lane('far')}
+      {/* Grand défilé du 14 juillet (route fermée, aucune voiture) : une file du fond réduite, derrière celle du premier plan. */}
+      <ParadeLayer lane="far" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} />
       {lane('near')}
+      <ParadeLayer lane="near" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} />
     </g>
   );
 }

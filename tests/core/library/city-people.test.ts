@@ -4,7 +4,7 @@ import { type CityIntensity } from '../../../src/core/library/city/intensity';
 import { festiveMark, outfitFor, pedestrianGate, pedestriansFor } from '../../../src/core/library/city/people';
 import { hashString, mulberry32 } from '../../../src/core/library/scene-world';
 
-const zero: CityIntensity = { traffic: 0, walkers: 0, suits: 0, schoolTo: 0, schoolFrom: 0, kids: 0, sport: 0, umbrellas: false, weekendLike: false, festive: null };
+const zero: CityIntensity = { traffic: 0, walkers: 0, suits: 0, schoolTo: 0, schoolFrom: 0, kids: 0, sport: 0, umbrellas: false, weekendLike: false, festive: null, closed: false };
 
 describe('pedestriansFor', () => {
   it('est déterministe et borné pour 720 px', () => {

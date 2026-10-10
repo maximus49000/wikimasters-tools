@@ -1880,4 +1880,82 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v26',
+    theme: 'collection',
+    glyph: '🎉',
+    title: 'Fêtes dans la ville',
+    summary: 'Saint-Valentin, Pâques, 1er mai, Fête de la musique, 14 juillet, Armistice : la rue change d’ambiance',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Un calendrier élargi',
+        text: 'La scène « Ville » connaît désormais neuf fêtes françaises : le Nouvel An, l’Épiphanie (premier dimanche de janvier), la Saint-Valentin (14 février), Pâques (dont la date est calculée chaque année), le 1er mai, la Fête de la musique (21 juin, dès 17 h), la Fête nationale (14 juillet), l’Armistice (11 novembre) et la veille de Noël.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À ce que la rue ait une ambiance propre à chaque grande date, sans rien activer.' },
+          { label: 'Comment faire', text: 'Rien à régler : la date de l’appareil suffit.' },
+          { label: 'D’où viennent les données', text: 'De la date de votre appareil et d’une petite table de fêtes embarquée dans l’extension. Rien n’est envoyé.' },
+          { label: 'Limites', text: 'Calendrier français uniquement. Il n’y a pas de réglage de date : pour voir une fête, il faut l’attendre ou changer la date de l’appareil.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Passants et décors',
+        text: 'Une part des passants porte un signe de fête : couronne dorée, ballon-cœur, panier d’œufs, brin de muguet, drapeau tricolore, coquelicot, serpentin ou note de musique. Le 14 février, des couples se promènent ; à Pâques, des enfants partent à la chasse aux œufs ; la foule est plus dense à la Fête de la musique et le 14 juillet ; la rue est plus calme le 11 novembre.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À reconnaître d’un coup d’œil la fête du jour en regardant la rue.' },
+          { label: 'Comment ça marche', text: 'Tout est calculé à partir de la date et de l’heure : toutes les fenêtres montrent donc la même scène au même moment.' },
+          { label: 'Limites', text: 'Seule une part des passants porte un signe. Rien ne se voit dans une pièce sans fenêtre.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Animations de fête',
+        text: 'Dans le ciel de jour sans pluie, des ballons-cœur (Saint-Valentin) ou des ballons-lapins (Pâques) s’élèvent ; à Pâques, des cloches sonnent.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À donner de la vie à la ville les jours de fête.' },
+          { label: 'Comment ça marche', text: 'Chaque animation est un tirage : elle n’apparaît pas à chaque instant, mais au même moment dans toutes les fenêtres.' },
+          { label: 'Limites', text: 'Rien ne se voit dans une pièce sans fenêtre. Si vous réduisez les animations, les cloches restent mais les ballons ne s’élèvent pas.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Décors posés par des équipes',
+        text: 'La veille du 14 juillet, du 11 novembre et du 1er mai, de 9 h à 17 h, des équipes posent des drapeaux : un camion élévateur à nacelle pour les lampadaires, une échelle pour les entrées d’immeuble. Les drapeaux restent toute la fête et sont retirés le lendemain, de 9 h à 17 h. Les barrières du défilé sont aussi posées à la main. Tout est apporté et emporté par des humains, et entreposé dans un véhicule : rien n’apparaît ni ne disparaît tout seul. Les drapeaux d’entrée arrivent dans la caisse d’un vélo porteur, avec l’échelle sur le porte-bagages ; les drapeaux de lampadaires voyagent dans une caisse sur le plateau du camion élévateur ; la scène (planches, portique, projecteurs) et les stands de bière (comptoirs, fûts, toiles d’auvent) arrivent sur un camion plateau ; les barrières et les échelles, dans la camionnette. Le véhicule arrive en roulant, se gare, les ouvriers en descendent ; pour chaque élément, ils vont à l’arrière, le sortent du véhicule, le portent jusqu’à sa place, puis reviennent ; à la dépose, ils le rapportent et le rangent dedans, et le véhicule ne repart qu’une fois tout rangé. Ce qui est en hauteur se pose à l’échelle ou au camion élévateur.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À rendre visible que le décor ne tombe pas du ciel : quelqu’un l’apporte, l’installe, puis le range.' },
+          { label: 'Comment ça marche', text: 'Les éléments sont traités un par un par l’équipe, dans un ordre tiré de la date. Selon l’heure, vous voyez l’équipe sortir l’objet de la camionnette, le porter, monter, fixer, redescendre et revenir, ou le drapeau déjà en place. Un objet est toujours soit posé, soit tenu par quelqu’un, soit rangé dans son véhicule : on voit la caisse du vélo ou du camion élévateur se vider à la pose et se remplir à la dépose, et le plateau du camion se décharger pièce par pièce.' },
+          { label: 'Limites', text: 'Les drapeaux n’existent que pendant ces trois fêtes, et seulement sur une entrée d’immeuble sur deux. Le chargement d’un véhicule est dessiné de façon simplifiée (une petite pile par sorte de pièce). Dans une fenêtre étroite, un véhicule peut se garer derrière un stand de bière, faute de place. Rien ne se voit dans une pièce sans fenêtre. En mouvement réduit, les décors posés restent mais ni les équipes ni les véhicules ne sont montrés.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Fête de la musique',
+        text: 'Le 21 juin, la rue est privatisée l’après-midi : de 13 h à 14 h, une équipe pose des barrières en travers de la chaussée aux deux bouts de la rue, et plus aucune voiture ne passe jusqu’au lendemain 5 h. Une scène par portion de rue (deux dans une grande fenêtre) est montée de 9 h à 16 h : plancher, portique et 3 projecteurs, avec son trio de musiciens qui arrive à pied peu avant 17 h et joue jusqu’à minuit. Des stands de bière sont montés par des équipes entre 12 h et 15 h 30 : comptoir porté à la main depuis la camionnette, puis auvent posé à l’échelle. De 17 h à 1 h, deux serveurs par stand tirent la bière, les gens font la queue, repartent un gobelet à la main, et une foule danse devant les scènes. L’équipe de nuit démonte tout de 0 h à 5 h.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À faire de la rue une vraie fête pour la nuit la plus courte de l’année.' },
+          { label: 'Comment ça marche', text: 'Tout suit l’heure : montage, démontage, service et foule sont calculés à partir de la date, sans tirage au hasard en direct, donc toutes les fenêtres montrent la même fête. Les serveurs arrivent à pied avant l’ouverture ; les clients viennent d’un bout de la rue ou d’une entrée d’immeuble voisine, attendent dans une file qui avance d’un pas quand la tête est servie, reçoivent leur gobelet au comptoir et repartent en buvant. La foule arrive à pied de 17 h à 20 h, se masse en demi-cercle devant chaque scène et danse tant que les musiciens jouent, puis repart de 23 h 30 à 1 h. Les projecteurs s’allument quand il fait nuit.' },
+          { label: 'D’où viennent les données', text: 'De la date et de l’heure de votre appareil : rien n’est téléchargé, rien n’est envoyé.' },
+          { label: 'Limites', text: 'Seulement le 21 juin (et la nuit qui suit). Personne n’apparaît sur place : chacun arrive et repart à pied, ce qui prend quelques secondes. Rien ne se voit dans une pièce sans fenêtre. En mouvement réduit, décors, foule, serveurs et file restent en place, immobiles : personne ne marche et rien ne bouge.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Le défilé du 14 juillet',
+        text: 'Le 14 juillet, la route est fermée de 8 h à 13 h 30 (jusqu’à la fin de la dépose des barrières) : aucune autre voiture, vélo ou bus. Le cortège passe de 10 h à 12 h sur les deux files de la route (celle du fond est plus petite) : fanfare, motards de la Garde, porte-drapeaux, soldats à pied, cavaliers, jeeps, camions, chars et sapeurs-pompiers. À 10 h, la Patrouille de France ouvre le défilé aérien. Une vraie foule de spectateurs se masse sur le trottoir, derrière les barrières, sur trois rangs : les gens arrivent à pied de 8 h 30 à 10 h, en sortant des immeubles voisins ou depuis les bouts de la rue, gagnent leur place, et repartent à pied de 12 h 15 à 13 h 15 ; drapeaux tricolores et téléphones levés, enfants sur les épaules.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À donner au 14 juillet son grand défilé, comme sur les Champs-Élysées.' },
+          { label: 'Comment ça marche', text: 'Le cortège est un flux continu par file, à vitesse commune, composé à partir de la date et de l’heure : rien ne se chevauche et toutes les fenêtres voient le même défilé. La foule est tirée de la même graine (places fixes, rang du bord le plus serré). Chaque spectateur a son trajet : il part assez tôt pour être à sa place à son heure, marche derrière la foule puis se glisse dans son rang ; personne n’apparaît ni ne disparaît sur place. Pendant la fermeture, les passants ordinaires se font rares : ils sont devenus la foule.' },
+          { label: 'Limites', text: 'Rien sans fenêtre. Les arrivées sont étalées sur une heure et demie : à un instant donné, on ne voit que quelques personnes en route. En mouvement réduit, ni cortège ni défilé aérien (les barrières et drapeaux restent) et la foule déjà en place est là mais immobile (personne ne marche, aucun bras qui s’agite). Calendrier français uniquement.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];

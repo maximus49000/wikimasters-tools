@@ -25,7 +25,8 @@ export type CityEventId =
   | 'plane' | 'helicopter' | 'drone' | 'balloon' | 'kite' | 'banner-plane'
   | 'bus' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike'
   | 'dog-walker' | 'umbrella-group'
-  | 'crane' | 'apartment' | 'fireworks';
+  | 'crane' | 'apartment' | 'fireworks'
+  | 'fest-balloons' | 'bells';
 export type EventLayer = 'sky' | 'street' | 'sidewalk' | 'fixed';
 export type Track = Lane | 'bike';
 
@@ -73,30 +74,37 @@ export const EVENT_DEFS: readonly EventDef[] = [
   { id: 'crane', layer: 'fixed', weight: 1, hours: [[480, 1020]], half: 60, duration: 360, light: 'day', workday: true },
   { id: 'apartment', layer: 'fixed', weight: 2, hours: [[1050, 1410]], half: 4, duration: 180, light: 'dark' },
   { id: 'fireworks', layer: 'fixed', weight: 0.25, hours: [[1290, 1440], [0, 30]], half: 140, duration: 30, light: 'dark', rain: 'dry', festWeight: { 'new-year': 10, bastille: 5 } },
+  // Fêtes (poids de base nul : ils n'existent que par `festWeight`). La scène de la Fête de la musique et le cortège du
+  // 14 juillet ne sont pas des événements : jeu de décor (install.ts) et calque du cortège (parade.ts).
+  { id: 'fest-balloons', layer: 'sky', weight: 0, festWeight: { valentine: 3, easter: 3 }, hours: [[600, 1140]], half: 16, speed: 7, light: 'day', rain: 'dry', y: [0.1, 0.28] },
+  { id: 'bells', layer: 'fixed', weight: 0, festWeight: { easter: 4 }, hours: [[540, 1080]], half: 12, duration: 60, light: 'day', y: [0.14, 0.3] },
 ];
 
 // En mouvement réduit, seuls ces événements fixes restent (figés) ; rien ne traverse, aucun feu d'artifice.
-export const STILL_EVENTS: ReadonlySet<CityEventId> = new Set<CityEventId>(['kite', 'crane', 'apartment']);
+export const STILL_EVENTS: ReadonlySet<CityEventId> = new Set<CityEventId>(['kite', 'crane', 'apartment', 'bells']);
 
 export const defOf = (id: CityEventId): EventDef => EVENT_DEFS.find((d) => d.id === id)!;
 
-export type EventConditions = { daylight: number; wet: boolean; workday: boolean; traffic: number; walkers: number; fests: readonly FestivityId[] };
+export type EventConditions = { daylight: number; wet: boolean; workday: boolean; traffic: number; walkers: number; fests: readonly FestivityId[]; closed: boolean };
 
 export function eventConditions(city: CityContext, i: CityIntensity): EventConditions {
   const k = city.day.kind;
-  return { daylight: city.daylight, wet: city.precip >= 0.2, workday: k === 'school' || k === 'wednesday' || k === 'holiday', traffic: i.traffic, walkers: i.walkers, fests: activeFestivities(city.day.festivities, city.minutes) };
+  return { daylight: city.daylight, wet: city.precip >= 0.2, workday: k === 'school' || k === 'wednesday' || k === 'holiday', traffic: i.traffic, walkers: i.walkers, fests: activeFestivities(city.day.festivities, city.minutes), closed: i.closed };
 }
 
 // Clé grossière : le programme n'est recalculé que si une condition passe un des seuils qu'utilise `eligible`.
 export function conditionsKey(c: EventConditions): string {
   const light = c.daylight < DARK ? 'n' : c.daylight >= DAY ? 'd' : 't';
-  return `${light}${c.wet ? 'w' : 's'}${c.workday ? 'o' : 'f'}${c.traffic >= TRAFFIC_MIN ? 'T' : 't'}${c.walkers >= WALKERS_MIN ? 'W' : 'w'}|${[...c.fests].sort().join('+')}`;
+  return `${light}${c.wet ? 'w' : 's'}${c.workday ? 'o' : 'f'}${c.traffic >= TRAFFIC_MIN ? 'T' : 't'}${c.walkers >= WALKERS_MIN ? 'W' : 'w'}${c.closed ? 'X' : 'x'}|${[...c.fests].sort().join('+')}`;
 }
 
 const inHours = (hours: EventDef['hours'], m: number): boolean => hours.some(([a, b]) => (a <= b ? m >= a && m < b : m >= a || m < b));
 
 export function eligible(def: EventDef, minute: number, c: EventConditions): boolean {
+  if (weightOf(def, c) <= 0) return false;
   if (!inHours(def.hours, minute)) return false;
+  // Route fermée : seul le cortège roule (aucun événement de rue ; le cortège est un calque séparé).
+  if (c.closed && def.layer === 'street') return false;
   if (def.light === 'day' && c.daylight < DAY) return false;
   if (def.light === 'dark' && c.daylight >= DARK) return false;
   if (def.rain === 'dry' && c.wet) return false;

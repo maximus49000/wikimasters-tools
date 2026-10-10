@@ -63,4 +63,4 @@ export function vehiclesFor(width: number, seed: number): Vehicle[] {
 }
 
 // Les voitures, bus et camionnettes suivent la circulation ; les vélos suivent les piétons (donc la pluie les chasse).
-export const vehicleGate = (v: Vehicle, i: CityIntensity): number => (v.kind === 'bike' ? i.walkers * 0.4 : i.traffic);
+export const vehicleGate = (v: Vehicle, i: CityIntensity): number => (i.closed ? 0 : v.kind === 'bike' ? i.walkers * 0.4 : i.traffic);

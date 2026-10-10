@@ -16,7 +16,7 @@ export const tone = (c: string, sky: Sky): string => mixHex(mixHex(c, '#0B1030',
 // Assis (`seated`, vague 1b-iv-b : fauteuil du coiffeur, table du restaurant) : cuisse à l'horizontale, tibia vertical, le haut du
 // corps descend de SEAT_DROP. La tête est dans un groupe `data-head` que la boucle d'animation tourne ou incline (gestes).
 export const SEAT_DROP = 4;
-export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false, mark = null }: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean; seated?: boolean; mark?: FestiveMark | null }): ReactElement {
+export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false, mark = null, stride = null }: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean; seated?: boolean; mark?: FestiveMark | null; stride?: number | null }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const skin = t(o.skin);
   const pants = t(o.bottomColor);
@@ -28,6 +28,27 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false, 
   const topFill = t(raincoat ? '#2E5E8A' : o.topColor);
   const bare = o.bottom === 'skirt' || o.bottom === 'dress' || o.bottom === 'shorts';
   // Jambes : debout (selon le bas) ou assis (cuisse vers l'avant, tibia vertical ; jupe et short laissent le tibia nu).
+  // En marche (`stride`, figurants de fête qui arrivent ou repartent à pied) : chaque jambe pivote à la hanche, en opposition
+  // de phase (SMIL) ; sans `stride`, les jambes restent jointes (passants ordinaires, inchangés).
+  const swing = (sign: 1 | -1, el: ReactElement): ReactElement =>
+    stride === null ? el : (
+      <g>
+        <animateTransform attributeName="transform" type="rotate" values={`${-18 * sign} 0 -15;${18 * sign} 0 -15;${-18 * sign} 0 -15`} dur="0.9s" begin={`-${(stride * 0.9).toFixed(2)}s`} repeatCount="indefinite" />
+        {el}
+      </g>
+    );
+  const pair = (a: ReactElement, b: ReactElement): ReactElement =>
+    stride === null ? (
+      <>
+        {a}
+        {b}
+      </>
+    ) : (
+      <g data-stride="">
+        {swing(-1, a)}
+        {swing(1, b)}
+      </g>
+    );
   const legs = seated ? (
     <g data-seated="">
       <rect x={-4} y={-11} width={10} height={3.4} fill={pants} />
@@ -35,22 +56,17 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false, 
     </g>
   ) : o.bottom === 'skirt' || o.bottom === 'dress' ? (
     <>
-      <rect x={-3} y={-8} width={2.4} height={8} fill={skin} />
-      <rect x={0.6} y={-8} width={2.4} height={8} fill={skin} />
+      {pair(<rect x={-3} y={-8} width={2.4} height={8} fill={skin} />, <rect x={0.6} y={-8} width={2.4} height={8} fill={skin} />)}
       <path d="M-5.5 -15 H5.5 L7 -7 H-7Z" fill={pants} />
     </>
   ) : o.bottom === 'shorts' ? (
     <>
-      <rect x={-3.5} y={-6} width={2.6} height={6} fill={skin} />
-      <rect x={0.9} y={-6} width={2.6} height={6} fill={skin} />
+      {pair(<rect x={-3.5} y={-6} width={2.6} height={6} fill={skin} />, <rect x={0.9} y={-6} width={2.6} height={6} fill={skin} />)}
       <rect x={-4} y={-15} width={8} height={8} fill={pants} />
     </>
   ) : (
     // pants | jeans | jogging, et toute valeur future : jambes pleines
-    <>
-      <rect x={-4} y={-15} width={3.4} height={15} fill={pants} />
-      <rect x={0.6} y={-15} width={3.4} height={15} fill={pants} />
-    </>
+    pair(<rect x={-4} y={-15} width={3.4} height={15} fill={pants} />, <rect x={0.6} y={-15} width={3.4} height={15} fill={pants} />)
   );
   const upper = (
     <>
@@ -121,7 +137,7 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false, 
 // ---------- Cycliste assis (repère du vélo : il est dessiné à l'échelle des véhicules, ≈ 0,65 de celle d'un passant) ----------
 const DEFAULT_RIDER: Outfit = { skin: '#E0A97F', hair: 'short', hairColor: '#3B2A1E', hatColor: '#3B6FD6', top: 'jacket', topColor: '#3B6FD6', bottom: 'jeans', bottomColor: '#243044', accessory: 'none', accessoryColor: '#5A6B7A' };
 
-function Cyclist({ outfit: o, sky }: { outfit: Outfit; sky: Sky }): ReactElement {
+export function Cyclist({ outfit: o, sky }: { outfit: Outfit; sky: Sky }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const covered = o.hair === 'cap' || o.hair === 'beanie';
   return (
@@ -242,6 +258,7 @@ export const entranceLeft = (doorX: number, unit: number): number => doorX + (DO
 
 // ---------- Entrée d'immeuble : sprite 22 × 27 de x = 0 à 22, auvent un peu plus large, base à y = 0 ----------
 // Dessinée à l'échelle STREET_SCALE.entranceX × entranceY (metrics.ts) : cadre de DOOR_WIDTH = 12 px de large à l'écran.
+// Les jours de drapeaux, le drapeau planté sur l'auvent est un décor posé par une équipe (install-sprites.tsx, DoorFlag).
 export function EntranceSprite({ variant, hallLit, sky }: { variant: 0 | 1 | 2; hallLit: boolean; sky: Sky }): ReactElement {
   const glass = hallLit ? '#FFD27A' : sky.daylight < 0.4 ? '#232A4A' : '#9FB8C6';
   return (

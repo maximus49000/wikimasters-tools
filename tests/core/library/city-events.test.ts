@@ -1,27 +1,28 @@
 // tests/core/library/city-events.test.ts
 import { describe, expect, it } from 'vitest';
 import {
-  EVENT_DEFS, HYPER_S, MAX_EVENTS, SLOT_S, activeEvents, cityEventSchedule, conditionsKey, defOf, eligible, eventX, hyperStartMinute, mergeSchedules, travelSpan, weightOf,
-  type CityEvent,
+  EVENT_DEFS, HYPER_S, MAX_EVENTS, SLOT_S, activeEvents, cityEventSchedule, conditionsKey, defOf, eligible, eventX, hyperStartMinute, mergeSchedules, travelSpan, weightOf, yieldsFor,
+  type CityEvent, type CityEventId,
   type EventConditions, type ScheduleInput,
 } from '../../../src/core/library/city/events';
+import type { FestivityId } from '../../../src/core/library/city/calendar';
 import { STREET_SCALE, FAR_SHRINK } from '../../../src/core/library/city/metrics';
 import { LANE_DIR, VEHICLE_HALF, laneSpeeds, vehiclesFor } from '../../../src/core/library/city/vehicles';
 import { santaWindowsIn } from '../../../src/core/library/city/santa';
 import { WORLD_MARGIN, loopX } from '../../../src/core/library/scene-world';
 
-const DAY_DRY: EventConditions = { daylight: 1, wet: false, workday: true, traffic: 0.6, walkers: 0.5, fests: [] };
-const NIGHT_DRY: EventConditions = { daylight: 0, wet: false, workday: true, traffic: 0.2, walkers: 0.2, fests: [] };
+const DAY_DRY: EventConditions = { daylight: 1, wet: false, workday: true, traffic: 0.6, walkers: 0.5, fests: [], closed: false };
+const NIGHT_DRY: EventConditions = { daylight: 0, wet: false, workday: true, traffic: 0.2, walkers: 0.2, fests: [], closed: false };
 const input = (hyper: number, cond: EventConditions, minutes: number, seed = 7, width = 720): ScheduleInput => ({
   seed, width, hyper, minutesAtHyperStart: minutes, cond, vehicles: vehiclesFor(width, seed), speeds: laneSpeeds(seed),
 });
 const many = (cond: EventConditions, minutes: number, n = 120) => Array.from({ length: n }, (_, h) => cityEventSchedule(input(1_440_000 + h, cond, minutes))).flat();
 
 describe('catalogue', () => {
-  it('contient 16 événements, sans enseigne néon', () => {
-    expect(EVENT_DEFS).toHaveLength(16);
+  it('contient 18 événements, sans enseigne néon', () => {
+    expect(EVENT_DEFS).toHaveLength(18);
     expect(EVENT_DEFS.map((d) => d.id)).not.toContain('neon');
-    expect(new Set(EVENT_DEFS.map((d) => d.id)).size).toBe(16);
+    expect(new Set(EVENT_DEFS.map((d) => d.id)).size).toBe(18);
   });
   it('le feu d’artifice n’a pas de bande de hauteur (il part toujours du haut de la scène)', () => {
     expect(defOf('fireworks').y).toBeUndefined();
@@ -176,7 +177,7 @@ describe('fusion des programmes', () => {
 });
 
 describe('fêtes', () => {
-  const base = { daylight: 0, wet: false, workday: true, traffic: 0.5, walkers: 0.5 };
+  const base = { daylight: 0, wet: false, workday: true, traffic: 0.5, walkers: 0.5, closed: false };
   it('le poids d’un événement monte pendant sa fête', () => {
     const fw = defOf('fireworks');
     expect(weightOf(fw, { ...base, fests: [] })).toBe(0.25);
@@ -217,5 +218,23 @@ describe('père Noël et ciel', () => {
     for (let h = 1_440_000; h < 1_440_020; h++) {
       expect(cityEventSchedule(input(h, NIGHT_DRY, 22 * 60))).toEqual(cityEventSchedule(input(h, { ...NIGHT_DRY, fests: [] }, 22 * 60)));
     }
+  });
+});
+
+describe('événements de fête', () => {
+  const fest = (id: FestivityId, c: EventConditions = DAY_DRY): EventConditions => ({ ...c, fests: [id] });
+  const at = (id: CityEventId) => defOf(id);
+  it('compte 18 événements, dont 2 réservés aux fêtes (musiciens et défilé retirés : scène et cortège à part)', () => {
+    expect(EVENT_DEFS).toHaveLength(18);
+    for (const id of ['fest-balloons', 'bells'] as const) expect(at(id).weight).toBe(0);
+    const ids: string[] = EVENT_DEFS.map((d) => d.id);
+    expect(ids).not.toContain('street-band');
+    expect(ids).not.toContain('parade');
+  });
+  it('n’éligible un événement de fête que pendant sa fête', () => {
+    expect(eligible(at('bells'), 600, fest('easter'))).toBe(true);
+    expect(eligible(at('bells'), 600, fest('valentine'))).toBe(false);
+    expect(eligible(at('fest-balloons'), 700, fest('valentine'))).toBe(true);
+    expect(eligible(at('fest-balloons'), 700, fest('valentine', { ...DAY_DRY, wet: true }))).toBe(false);
   });
 });
