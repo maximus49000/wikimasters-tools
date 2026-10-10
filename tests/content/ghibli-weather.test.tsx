@@ -11,6 +11,8 @@ import type { Sky } from '../../src/core/library/sky';
 import { createWeatherClock, lightningAt, steadySource } from '../../src/core/library/weather/weather-clock';
 import { gradeFor, gradeValues } from '../../src/core/library/paint/grade';
 import { tileCount } from '../../src/core/library/paint/city-painter';
+import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
+import { skylinePath } from '../../src/core/library/paint/sky-clip';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const SKY: Sky = { phase: 'day', daylight: 1, twilight: 0, sunFrac: 0.5, moonFrac: null, stars: 0, top: '#6FB1E8', bottom: '#BFE0F5' };
@@ -258,5 +260,42 @@ describe('relecture finale', () => {
     mount(clockOf('cloudy'));
     await flush(30);
     expect(asked).toHaveLength(0);
+  });
+});
+
+describe('captures du banc', () => {
+  it('Ghibli Ville : les nuages défilent derrière les toits (découpe fixe selon la silhouette)', async () => {
+    writeArt('ghibli');
+    mount(clockOf('cloudy'));
+    await flush(5);
+    const drift = container.querySelector('[data-wx="clouds-drift"]')!;
+    const clip = drift.parentElement!;
+    expect(clip.getAttribute('data-wx-clip')).toBe('sky');
+    const ref = /^url\(#(.+)\)$/.exec(clip.getAttribute('clip-path') ?? '')![1]!;
+    const path = container.querySelector(`clipPath[id="${ref}"] path`)!;
+    expect(path.getAttribute('d')).toBe(skylinePath(cityPaintPlan(720, 216, 1)));
+    // La découpe ne bouge pas : seul le groupe intérieur est translaté.
+    expect(clip.getAttribute('transform')).toBeNull();
+  });
+
+  it('classique : pas de découpe des nuages', async () => {
+    mount(clockOf('cloudy'));
+    await flush(5);
+    expect(container.querySelector('[data-wx="clouds-drift"]')!.closest('[clip-path]')).toBeNull();
+    expect(container.querySelector('[data-wx-clip]')).toBeNull();
+  });
+
+  it('Ghibli Ville : réserve de nuages divisée par deux ; classique et autres scènes : réserve entière', async () => {
+    mount(clockOf('cloudy'));
+    await flush(2);
+    const full = container.querySelectorAll('[data-wx-cloud]').length;
+    expect(full).toBe(36);
+    writeArt('ghibli');
+    mount(clockOf('cloudy'), 'countryside');
+    await flush(2);
+    expect(container.querySelectorAll('[data-wx-cloud]').length).toBe(full);
+    mount(clockOf('cloudy'));
+    await flush(2);
+    expect(container.querySelectorAll('[data-wx-cloud]').length).toBe(18);
   });
 });

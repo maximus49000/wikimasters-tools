@@ -23,10 +23,11 @@ export function useShownAfterMount(mounted: boolean, want: boolean, still: boole
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 const uid = (raw: string): string => raw.replace(/[^a-zA-Z0-9_-]/g, '');
 
-export function GhibliSkyTexture({ width, height, url, shown, still }: { width: number; height: number; url: string; shown: boolean; still: boolean }): ReactElement {
+// `daylight` : la nuit, les touches claires ressortent sur le ciel sombre — texture atténuée (0,4 la nuit, 1 en plein jour).
+export function GhibliSkyTexture({ width, height, url, shown, still, daylight }: { width: number; height: number; url: string; shown: boolean; still: boolean; daylight: number }): ReactElement {
   const id = `skytex${uid(useId())}`;
   return (
-    <g>
+    <g opacity={Number((0.4 + 0.6 * clamp01(daylight)).toFixed(2))}>
       <defs>
         <pattern id={id} width={SKY_TEXTURE} height={SKY_TEXTURE} patternUnits="userSpaceOnUse">
           <image href={url} width={SKY_TEXTURE} height={SKY_TEXTURE} />

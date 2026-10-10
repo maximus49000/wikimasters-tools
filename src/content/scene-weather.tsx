@@ -8,6 +8,7 @@ import { CLOUD_BLOBS, godRayTarget, rayWindow, sunCoverage, type CloudSpot } fro
 import { smooth, type Weather } from '../core/library/weather/weather-types';
 import { CLOUD_KINDS, FOG_W, cloudBlobs, cloudShape, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
+import { skylinePath } from '../core/library/paint/sky-clip';
 import { gradeFor, gradeValues } from '../core/library/paint/grade';
 import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
@@ -59,6 +60,8 @@ const smoothstep = (a: number, b: number, v: number): number => smooth(clamp01((
 const positiveMod = (a: number, n: number): number => ((a % n) + n) % n;
 // Réserve de nuages tirée de la graine : `cloud × réserve` sont visibles (jamais plus de 140).
 const cloudPoolSize = (width: number): number => Math.min(140, Math.round((34 * width) / 680));
+// Ghibli Ville : les cumulus peints sont 1,5 à 2 fois plus grands que les ellipses — moitié moins de nuages (au moins un).
+const paintedPoolSize = (width: number): number => Math.max(1, Math.round(cloudPoolSize(width) * 0.5));
 const windSpeed = (wind: number): number => 4 + 14 * Math.max(0, wind); // px/s : les nuages ne s'arrêtent jamais
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -358,18 +361,18 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   // Préfixe des motifs/dégradés, propre à chaque pièce (deux pièces affichées ne partagent pas leurs motifs).
   const uid = `wx${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const floorFrac = CLOUD_FLOOR[scene] ?? 0.45;
+  const [art] = useArtStyle();
+  const ghibli = art === 'ghibli' && scene === 'city';
   const pool = useMemo<CloudSpot[]>(() => {
     const rng = mulberry32(seed ^ 0xc10d5);
-    return Array.from({ length: cloudPoolSize(width) }, () => ({ x: rng() * width, y: height * (0.05 + rng() * (floorFrac - 0.05)), s: 0.8 + rng() * 1.1 }));
-  }, [seed, width, height, floorFrac]);
+    return Array.from({ length: ghibli ? paintedPoolSize(width) : cloudPoolSize(width) }, () => ({ x: rng() * width, y: height * (0.05 + rng() * (floorFrac - 0.05)), s: 0.8 + rng() * 1.1 }));
+  }, [seed, width, height, floorFrac, ghibli]);
   const skyRoot = useRef<SVGGElement | null>(null);
   const groundRoot = useRef<SVGGElement | null>(null);
   const skyRef = useRef<Sky>(sky);
   skyRef.current = sky;
   const onWetRef = useRef(onWet);
   onWetRef.current = onWet;
-  const [art] = useArtStyle();
-  const ghibli = art === 'ghibli' && scene === 'city';
   const [step, setStep] = useState<CloudStep | null>(null);
   // Le cran n'est signalé qu'en Ghibli Ville : en classique et sur les autres scènes, la boucle ne re-rend pas la couche.
   const onStepRef = useRef<((s: CloudStep) => void) | undefined>(undefined);
@@ -398,8 +401,10 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const needSnow = ghibli && need.current.snow;
   const fogH = Math.round(height * 0.7);
   const fogUrl = usePaintedFog(seed, fogH, ghibli && need.current.fog);
-  const plan = useMemo(() => (needSnow ? cityPaintPlan(width, height, seed) : null), [needSnow, width, height, seed]);
-  const snow = usePaintedSnow(plan);
+  const cityPlan = useMemo(() => (ghibli ? cityPaintPlan(width, height, seed) : null), [ghibli, width, height, seed]);
+  const snow = usePaintedSnow(needSnow ? cityPlan : null);
+  // Découpe FIXE des nuages : le ciel au-dessus des toits peints (seul le groupe intérieur défile).
+  const skyline = useMemo(() => (cityPlan ? skylinePath(cityPlan) : ''), [cityPlan]);
   // La boucle met ses nœuds en cache : elle repart quand la neige posée ou la brume changent de nœud.
   const layout = `${ghibli}|${snow.ready}|${fogUrl !== ''}`;
   const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onWet: onWetRef, onStep: onStepRef, layout });
@@ -494,10 +499,22 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
         {/* Voile du ciel : plus fort en haut, il assombrit sans effacer le paysage. */}
         <rect data-wx="tint" x={0} y={0} width={width} height={height} fill={`url(#${uid}-tint)`} opacity={0} />
         {/* Nuages : une bande translatée d'un bloc, avec sa copie une largeur plus à gauche pour boucler. */}
-        <g data-wx="clouds-drift">
-          <use href={`#${uid}-strip`} />
-          <use href={`#${uid}-strip`} x={-width} />
-        </g>
+        {ghibli ? (
+          <g data-wx-clip="sky" clipPath={`url(#${uid}-skyline)`}>
+            <clipPath id={`${uid}-skyline`}>
+              <path d={skyline} />
+            </clipPath>
+            <g data-wx="clouds-drift">
+              <use href={`#${uid}-strip`} />
+              <use href={`#${uid}-strip`} x={-width} />
+            </g>
+          </g>
+        ) : (
+          <g data-wx="clouds-drift">
+            <use href={`#${uid}-strip`} />
+            <use href={`#${uid}-strip`} x={-width} />
+          </g>
+        )}
         <rect data-wx="overcast" x={0} y={0} width={width} height={height} fill={`url(#${uid}-overcast)`} opacity={0} />
         <g data-wx="rainbow" opacity={0} fill="none" strokeOpacity={0.55} strokeWidth={5}>
           {RAINBOW.map((color, i) => {

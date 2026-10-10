@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeArt } from '../../src/content/art-setting';
 import { resetPaintQueueForTests, setJobRunnerForTests } from '../../src/content/paint-queue';
-import { ScenePanoramaStatic } from '../../src/content/scene-panorama';
+import { SceneActors, ScenePanoramaStatic } from '../../src/content/scene-panorama';
 import type { SceneId } from '../../src/core/library/library-types';
 import type { Sky } from '../../src/core/library/sky';
 
@@ -117,5 +117,36 @@ describe('première apparition du ciel peint', () => {
     const sun = q('[data-ghibli-sun]')!;
     expect(seen.some((s) => s.node === sun && /opacity: 0[;\s]/.test(`${s.old ?? ''} `))).toBe(true);
     expect(op('[data-classic-sun]')).toBe('0');
+  });
+});
+
+describe('nuages acteurs', () => {
+  const actors = (scene: SceneId): void =>
+    act(() => root.render(<svg><SceneActors scene={scene} width={720} height={340} sky={DAY} minutes={720} seed={1} /></svg>));
+
+  it('Ghibli Ville : plus de nuages blancs plats ; classique et autres scènes : inchangés', () => {
+    actors('city');
+    const classic = container.querySelectorAll('[data-kind="cloud"]').length;
+    expect(classic).toBeGreaterThan(0);
+    writeArt('ghibli');
+    actors('countryside');
+    expect(container.querySelectorAll('[data-kind="cloud"]').length).toBeGreaterThan(0);
+    actors('city');
+    expect(container.querySelectorAll('[data-kind="cloud"]')).toHaveLength(0);
+    act(() => writeArt('classic'));
+    expect(container.querySelectorAll('[data-kind="cloud"]')).toHaveLength(classic);
+  });
+});
+
+describe('texture du ciel discrète', () => {
+  it('atténuée la nuit (touches claires sur ciel sombre), pleine le jour', async () => {
+    setJobRunnerForTests(async (j) => `data:image/png;base64,${btoa(j.key)}`);
+    writeArt('ghibli');
+    mount('city', NIGHT);
+    await flush();
+    expect(Number(q('[data-sky-texture]')!.parentElement!.getAttribute('opacity'))).toBeLessThanOrEqual(0.4);
+    mount('city', DAY);
+    await flush();
+    expect(Number(q('[data-sky-texture]')!.parentElement!.getAttribute('opacity'))).toBe(1);
   });
 });

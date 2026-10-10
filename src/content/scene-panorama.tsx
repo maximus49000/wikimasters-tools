@@ -46,7 +46,7 @@ function SkyAndStars({ width, height, sky, seed, painted, shown, still }: SceneB
       <rect data-sky x={0} y={0} width={width} height={height} fill={`url(#${gradientId})`} />
       {/* Ciel couvert : gris plein, sous les immeubles (variables posées par la couche météo sur le <svg> de la pièce). */}
       <rect data-sky-veil x={0} y={0} width={width} height={height} style={{ fill: 'var(--wmt-overcast-color, #B9C0CA)', opacity: 'var(--wmt-overcast, 0)' }} />
-      {painted && <GhibliSkyTexture width={width} height={height} url={painted.texture} shown={shown} still={still} />}
+      {painted && <GhibliSkyTexture width={width} height={height} url={painted.texture} shown={shown} still={still} daylight={sky.daylight} />}
       <g opacity={sky.stars} style={{ transition: 'opacity 4s ease' }}>
         {sky.stars > 0 && stars.map((s) => <circle key={s.i} data-star="" cx={s.x} cy={s.y} r={s.r} fill="#FFFFFF" />)}
       </g>
@@ -148,7 +148,13 @@ function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, glo
 // la boucle d'animation ne modifie que ce groupe.
 function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = false, city, forcedNight = false, weather }: PanoramaProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
-  const actors = useMemo(() => actorsFor(scene, width, height, seed), [scene, width, height, seed]);
+  const [art] = useArtStyle();
+  // Ghibli Ville : les cumulus peints de la couche météo remplacent les nuages blancs plats des acteurs.
+  const noClouds = art === 'ghibli' && scene === 'city';
+  const actors = useMemo(() => {
+    const all = actorsFor(scene, width, height, seed);
+    return noClouds ? all.filter((a) => a.kind !== 'cloud') : all;
+  }, [scene, width, height, seed, noClouds]);
   useActorLoop(root, actors, width);
   const t0 = Date.now() / 1000;
   return (
