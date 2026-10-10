@@ -10,6 +10,7 @@ import { crowdAt, dayNumber } from '../core/library/city/shops/hours';
 import type { Change, SlotDay } from '../core/library/city/shops/lifecycle';
 import type { ShopFrame } from '../core/library/city/shops/slots';
 import { WALK_MIN, shutterAt, staffAt, staffShiftsAt, type StaffShift, type StaffState } from '../core/library/city/shops/staff';
+import { capFor, spriteBudget, type BudgetSprite } from '../core/library/city/shops/sprite-budget';
 import { changePlans, type ShopView } from '../core/library/city/shops/view';
 import { WORK_STEPS, type WorkStep } from '../core/library/city/shops/works';
 import { WORLD_MARGIN, hashString, mulberry32 } from '../core/library/scene-world';
@@ -49,6 +50,7 @@ export const setIfChanged = (node: Element | null, name: string, value: string):
 };
 
 // ---------- Clients ----------
+const NO_MUTED: ReadonlySet<string> = new Set();
 export type CustomerState = { on: boolean; inside: boolean; x: number; fade: number; gesture: Pose | null; carry: boolean };
 
 // Présence d'une visite à l'instant t : en route (ou dans le magasin) et tirée pour ce tour de cycle, local ouvert (gate > 0).
@@ -76,9 +78,10 @@ const insideTransform = (v: Visit, f: ShopFrame, shift = 0): string => {
 const insideId = (v: Visit): string => `${v.id}-in`;
 
 // Placement par la boucle : n'écrire que ce qui change (la plupart des clients sont absents la plupart du temps).
-export function placeCustomers(nodes: Map<string, SVGGElement>, visits: Visit[], gates: Map<string, number>, width: number, m: CityMetrics, t: number, first: boolean): void {
+// `muted` : visites retirées par le plafond global (shopSpriteBudget) : elles n'ont pas lieu pendant cette minute.
+export function placeCustomers(nodes: Map<string, SVGGElement>, visits: Visit[], gates: Map<string, number>, width: number, m: CityMetrics, t: number, first: boolean, muted: ReadonlySet<string> = NO_MUTED): void {
   for (const v of visits) {
-    const s = customerState(v, gates.get(v.slotId) ?? 0, width, t);
+    const s = customerState(v, muted.has(v.id) ? 0 : (gates.get(v.slotId) ?? 0), width, t);
     const out = nodes.get(v.id);
     if (out) {
       const on = s.on && !s.inside;
@@ -132,7 +135,18 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
               const s = states[i]!;
               const on = s.on && s.inside;
               return (
-                <g key={v.id} data-life-id={insideId(v)} data-customer-inside="" data-active={on ? 'true' : 'false'} transform={insideTransform(v, f, shift)} opacity={(on ? s.fade : 0).toFixed(2)} style={style}>
+                <g
+                  key={v.id}
+                  data-life-id={insideId(v)}
+                  data-customer-inside=""
+                  data-visit={v.id}
+                  data-x={v.seat.x.toFixed(1)}
+                  data-may={(gates.get(v.slotId) ?? 0) > 0 ? 'true' : 'false'}
+                  data-active={on ? 'true' : 'false'}
+                  transform={insideTransform(v, f, shift)}
+                  opacity={(on ? s.fade : 0).toFixed(2)}
+                  style={style}
+                >
                   <PosedPerson outfit={v.outfit} sky={lit ? LIT_SKY : sky} rainy={false} umbrella={false} accessory={v.type ? ACCESSORY[v.type] : null} pose={s.gesture ?? STANDING} seated={seatedFor(v.type)} />
                 </g>
               );
@@ -535,4 +549,47 @@ export function ShopOutdoors({ view, frame, metrics, minutes, date, weather, wal
       waiterOutfit={staffOutfit(seed, `${view.slot.id}-waiter`)}
     />
   );
+}
+
+// ---------- Plafond global des figurants (spec §6) ----------
+// Toujours comptés, jamais retirés : personnel (derrière la vitrine ; à la porte ou en route, visible), serveur de terrasse et
+// porteur de tables, équipe du chantier, déménageurs et camion, videurs ; la file de la boîte compte pour sa longueur maximale.
+const KEEP_SELECTOR = [
+  '[data-staff-where="inside"]',
+  '[data-staff-member][data-active="true"]',
+  '[data-terrace-waiter]',
+  '[data-terrace-carrier]',
+  '[data-worker]',
+  '[data-mover="porter"]',
+  '[data-mover="truck"]',
+  '[data-bouncer]',
+].join(', ');
+
+export type ShopSpriteCount = { keep: number; customers: number; guests: number };
+
+function budgetSprites(root: Element): { sprites: BudgetSprite[]; guests: Element[] } {
+  const sprites: BudgetSprite[] = [];
+  root.querySelectorAll(KEEP_SELECTOR).forEach((_, i) => sprites.push({ id: `keep-${i}`, kind: 'keep', x: 0 }));
+  root.querySelectorAll('[data-queue-max]').forEach((n, i) => sprites.push({ id: `queue-${i}`, kind: 'keep', x: 0, weight: Number(n.getAttribute('data-queue-max')) }));
+  // Une visite compte pour une silhouette (sur le trottoir OU derrière la vitrine), si son local peut recevoir des clients.
+  for (const n of root.querySelectorAll('[data-customer-inside][data-may="true"]')) sprites.push({ id: n.getAttribute('data-visit')!, kind: 'customer', x: Number(n.getAttribute('data-x')) });
+  const guests = [...root.querySelectorAll('[data-terrace-guest]')];
+  guests.forEach((g, i) => sprites.push({ id: `guest-${i}`, kind: 'terrace', x: Number(g.getAttribute('data-x')) }));
+  return { sprites, guests };
+}
+
+// Combien de figurants de chaque classe la scène peut montrer à cette minute (les clients comptent tous ceux qui peuvent venir).
+export function countShopSprites(root: Element): ShopSpriteCount {
+  const { sprites } = budgetSprites(root);
+  const sum = (kind: BudgetSprite['kind']): number => sprites.filter((s) => s.kind === kind).reduce((n, s) => n + (s.weight ?? 1), 0);
+  return { keep: sum('keep'), customers: sum('customer'), guests: sum('terrace') };
+}
+
+// Appliqué une fois par minute (à chaque nouveau jeu de nœuds) : cache les convives de terrasse en trop (visibility) et rend les
+// visites à suspendre pour la minute (placeCustomers). Stable sur la minute : pas de clignotement quand un client entre ou sort.
+export function shopSpriteBudget(root: Element, width: number, cap = capFor(width)): Set<string> {
+  const { sprites, guests } = budgetSprites(root);
+  const drop = spriteBudget(sprites, width / 2, cap);
+  guests.forEach((g, i) => setIfChanged(g, 'visibility', drop.has(`guest-${i}`) ? 'hidden' : 'visible'));
+  return new Set([...drop].filter((id) => !id.startsWith('guest-')));
 }

@@ -179,7 +179,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   shown.current = signature(f);
   const bouncers = [0, 1].map((i) => bouncerOutfit(seed, id, i));
   return (
-    <g data-nightclub={id} data-club-open={isOpen ? 'true' : 'false'} ref={root}>
+    <g data-nightclub={id} data-club-open={isOpen ? 'true' : 'false'} data-queue-max={isOpen ? (reduced ? Math.min(STILL_QUEUE, max) : max) : 0} ref={root}>
       {f.ghost && (
         <g key={f.ghost.id} data-queue-id={f.ghost.id} data-queue-entering="" transform={ghostTransform(f.ghost.p)} opacity={(1 - f.ghost.p).toFixed(2)}>
           <PersonSprite outfit={outfitOf(f.ghost.outfitKey)} sky={sky} rainy={false} umbrella={false} />

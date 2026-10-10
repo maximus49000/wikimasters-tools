@@ -254,7 +254,7 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
               {guests
                 .filter((g) => g.table === i)
                 .map((g) => (
-                  <g key={`${g.seat}-${g.leavesAt}`} data-terrace-guest="" data-table={i} transform={`translate(${g.seat === 0 ? -9 : 9} 0) scale(${g.seat === 0 ? 1 : -1} 1)`}>
+                  <g key={`${g.seat}-${g.leavesAt}`} data-terrace-guest="" data-table={i} data-x={p.x.toFixed(1)} transform={`translate(${g.seat === 0 ? -9 : 9} 0) scale(${g.seat === 0 ? 1 : -1} 1)`}>
                     <PersonSprite outfit={outfitFor('ordinary', mulberry32(seed ^ hashString(`${id}/terrace/${i}/${g.seat}/${g.leavesAt}`)))} sky={sky} rainy={false} umbrella={false} seated />
                   </g>
                 ))}

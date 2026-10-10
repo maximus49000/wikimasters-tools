@@ -15,7 +15,7 @@ import { loopX } from '../core/library/scene-world';
 import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
-import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, type PosedStaff, type Swap } from './city-shops-life';
+import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, shopSpriteBudget, type PosedStaff, type Swap } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
 import { interiorPost } from './shop-interiors';
 import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
@@ -189,6 +189,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let swaps: Swap[] = [];
     let waiters: Waiter[] = [];
     let crews: Crew[] = [];
+    let muted: Set<string> = new Set();
     let posedAt = -Infinity;
     const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
     return (now: number): void => {
@@ -206,6 +207,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
         crews = collectMovers(el);
+        // Plafond global des figurants des commerces : convives de terrasse cachés, visites suspendues pour la minute.
+        muted = shopSpriteBudget(el, width);
       }
       for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
       for (const p of peds) if (moves(p.id, t)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
@@ -225,7 +228,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         setIfChanged(node, 'opacity', s.fade.toFixed(2));
         if (s.active || first) node.setAttribute('transform', residentTransform(trip, s.x, metrics));
       }
-      placeCustomers(nodes, visits, gates, width, metrics, t, first);
+      placeCustomers(nodes, visits, gates, width, metrics, t, first, muted);
       placeSwaps(swaps, t);
       if (!still) {
         placeWaiters(waiters, t);
@@ -242,8 +245,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     };
     // `city.minutes` : le personnel est re-rendu à la minute (nœuds posés, relève de l'ouvreur) ; la table des nœuds doit être
     // refaite à chaque minute même si rien d'autre ne change (aujourd'hui `gates` et `visits` changent aussi à la minute).
+    // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
+    // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes]);
+  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
