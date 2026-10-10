@@ -11,7 +11,7 @@ import { usePaintJobs, type PaintJob } from './paint-queue';
 
 // Ciel peint (vague Ghibli, G2) : travaux de peinture et hooks qui rendent les images prêtes.
 // À incrémenter à chaque changement du dessin du ciel : invalide le cache.
-export const SKY_VERSION = 1;
+export const SKY_VERSION = 2;
 const CLOUD_RES = 1.5; // les nuages sont agrandis jusqu'à ×1,9 par la réserve
 
 const res = (): number => Math.min(2, typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);

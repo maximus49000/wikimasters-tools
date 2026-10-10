@@ -47,6 +47,35 @@ describe('texture du ciel', () => {
   });
 });
 
+const alphaOf = (fill: string): number => Number(/,([\d.]+)\)$/.exec(fill)![1]);
+
+describe('texture discrète et brume présente', () => {
+  it('texture : touches très légères (0,015 à 0,035), trois quarts claires, sombres en #4A5A80', () => {
+    const ctx = recordingCtx();
+    paintSkyTexture(ctx, SKY_TEXTURE, 2);
+    const alphas = ctx.fills.map(alphaOf);
+    expect(Math.min(...alphas)).toBeGreaterThanOrEqual(0.015);
+    expect(Math.max(...alphas)).toBeLessThanOrEqual(0.035);
+    const light = ctx.fills.filter((f) => f.startsWith('rgba(255,255,255,')).length;
+    const dark = ctx.fills.filter((f) => f.startsWith('rgba(74,90,128,')).length;
+    expect(light + dark).toBe(ctx.fills.length);
+    expect(light / ctx.fills.length).toBeGreaterThan(0.7);
+    expect(light / ctx.fills.length).toBeLessThan(0.8);
+  });
+
+  it('brume : bancs plus denses et plus marqués (alpha jusqu’à 0,06, touches de rayon 10 à 20)', () => {
+    const ctx = recordingCtx();
+    paintFogBand(ctx, FOG_W, 238, 4);
+    const alphas = ctx.fills.map(alphaOf);
+    expect(Math.max(...alphas)).toBeLessThanOrEqual(0.06);
+    expect(Math.max(...alphas)).toBeGreaterThan(0.05);
+    expect(ctx.fills.length).toBeGreaterThanOrEqual(3 * 1050);
+    // Touche la plus large : rayon 20, allongement 2,6 → largeur bien au-delà de celle des anciennes touches (≤ 11 × 2,6 × 2 × 1,2).
+    const widths = paths(ctx).map((q) => Math.max(...q.map(([x]) => x)) - Math.min(...q.map(([x]) => x)));
+    expect(Math.max(...widths)).toBeGreaterThan(70);
+  });
+});
+
 describe('astres et brume', () => {
   it('soleil et lune dans leur cadre', () => {
     for (const dusk of [false, true]) {

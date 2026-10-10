@@ -136,18 +136,19 @@ function wrappedDab(ctx: PaintCtx, dabSeed: number, x: number, y: number, r: num
 
 export const SKY_TEXTURE = 256;
 const TEX_LIGHT = hexRgb('#FFFFFF');
-const TEX_DARK = hexRgb('#2A3550');
+const TEX_DARK = hexRgb('#4A5A80');
 
-// Texture du ciel : touches allongées, claires et sombres, très légères, sur un carré qui se raccorde dans les deux sens.
+// Texture du ciel : touches allongées, surtout claires, à peine visibles (le ciel ne doit pas faire marbre ni eau), sur un
+// carré qui se raccorde dans les deux sens.
 export function paintSkyTexture(ctx: PaintCtx, size: number, seed: number): void {
   const rng = mulberry32(seed ^ hashString('ghibli-sky-texture'));
-  const n = Math.round(size * size * 0.03);
+  const n = Math.round(size * size * 0.015);
   for (let i = 0; i < n; i++) {
     const x = rng() * size;
     const y = rng() * size;
     const r = 2 + rng() * 4;
-    const color = rng() < 0.55 ? TEX_LIGHT : TEX_DARK;
-    const alpha = 0.05 + rng() * 0.05;
+    const color = rng() < 0.75 ? TEX_LIGHT : TEX_DARK;
+    const alpha = 0.015 + rng() * 0.02;
     const rot = (rng() - 0.5) * 0.25;
     const dabSeed = Math.floor(rng() * 4294967296);
     wrappedDab(ctx, dabSeed, x, y, r, color, alpha, 2.8, rot, size, size);
@@ -191,19 +192,19 @@ export function paintMoon(ctx: PaintCtx, seed: number): void {
 
 export const FOG_W = 720;
 const FOG = hexRgb('#E2E7EE');
-// Brume : trois bancs de touches très légères (répartition en cloche autour de leur hauteur), raccord gauche-droite.
+// Brume : trois bancs de larges touches légères (répartition en cloche autour de leur hauteur), raccord gauche-droite.
 export function paintFogBand(ctx: PaintCtx, w: number, h: number, seed: number): void {
   const rng = mulberry32(seed ^ hashString('ghibli-fog'));
   for (let b = 0; b < 3; b++) {
     const y0 = h * (0.25 + b * 0.25);
-    const n = Math.round((w * 700) / FOG_W);
+    const n = Math.round((w * 1050) / FOG_W);
     for (let i = 0; i < n; i++) {
       const g = (rng() + rng() + rng() - 1.5) / 1.5;
-      const r = 5 + rng() * 6;
+      const r = 10 + rng() * 10;
       const reach = r * 2.6 * DAB_SPREAD;
       const y = Math.min(h - reach, Math.max(reach, y0 + g * h * 0.17));
       const dabSeed = Math.floor(rng() * 4294967296);
-      wrappedDab(ctx, dabSeed, rng() * w, y, r, FOG, 0.03 * (1 - Math.abs(g)), 2.6, (rng() - 0.5) * 0.08, w, null);
+      wrappedDab(ctx, dabSeed, rng() * w, y, r, FOG, 0.06 * (1 - Math.abs(g)), 2.6, (rng() - 0.5) * 0.08, w, null);
     }
   }
 }
