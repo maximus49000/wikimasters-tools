@@ -21,23 +21,28 @@ Comme 1b-iv-a : des fonctions pures de (graine de la pièce, local, jour, minute
 - **Équipe par local** : 1 à 3 personnes selon le type et la largeur du local, tirées de la graine du local et du jour
   (profil `ordinary`, `suit` ou `worker`, tenue tirée ; la même personne reste reconnaissable dans la journée).
 - **Plan du jour** `staffPlan(def, seed, slotId, date)` : suite de postes (qui est dans le local entre quelles minutes).
-  - L'employé d'ouverture arrive à pied du bord de scène 20 à 30 min avant l'heure d'ouverture, entre par la porte du
-    magasin, lève le rideau (animation de 4 à 6 s), puis prend son poste. Le rideau est levé seulement quand quelqu'un
-    est là.
-  - **Relais** : si l'amplitude dépasse 9 h (supérette, laverie, bar, café, arcade, pizzeria…), une seconde équipe arrive
-    avant que la première parte ; les deux se croisent à la porte.
+  - L'employé d'ouverture arrive à pied du bord de scène et franchit la porte **13 à 20 min** avant l'heure d'ouverture
+    (amendé : 20 à 30 min au brief ; écart invisible à l'écran), lève le rideau (animation de 4 à 6 s), puis prend son
+    poste. Le rideau est levé seulement quand quelqu'un est là.
+  - **Relais** : défini **par plage** d'ouverture de plus de 9 h (amendé : une plage d'exactement 9 h, comme le bar, n'est
+    pas relayée ; les restaurants à deux services non plus, l'invariant tient par l'ancre de l'équipe) ; une seconde équipe
+    arrive avant que la première parte ; les deux se croisent à la porte.
+  - **Affichage** : au plus **3 personnes visibles** par local (ancre d'abord, puis par arrivée), même quand le relais en met
+    jusqu'à 6 à l'intérieur ; au moins une dès que le local est ouvert.
   - **Invariant : à toute minute où le local est « ouvert » (`isOpenAt`), au moins une personne est à l'intérieur.**
     Pauses : un membre ne part en pause que si un autre reste à l'intérieur ; une équipe d'un seul membre n'a pas de pause.
   - Pause de service (restaurant 14 h 30-19 h, pizzeria/kebab/sushis 14 h-18 h) : l'équipe finit son service, baisse le
-    rideau, sort, revient 20 à 30 min avant la reprise.
+    rideau, sort, revient avant la reprise (comme une ouverture : 13 à 20 min avant).
   - Fermeture : le dernier baisse le rideau, éteint, sort et repart vers le bord (côté tiré).
   - Un jour fermé (dimanche, férié, lundi selon le type) : personne.
 - Fonction pure `staffAt(plan, minutes)` → pour chaque membre : `absent | walking-in | opening | working | switching | closing | walking-out`
   avec position le long du trottoir ou à l'intérieur et avancement. Réutilise le mécanisme de trajets des habitants
   (`doors.ts` : marche à `WALK_PACE`, aller-retour du bord du monde).
-- **Raccord avec le chantier** : le jour de changement, le plan du personnel est vide jusqu'à la fin du chantier ; le
-  nouvel occupant a son équipe qui arrive normalement le lendemain, sauf si l'heure d'ouverture tombe après la fin du
-  chantier le même jour (alors l'équipe arrive avant l'ouverture, comme d'habitude).
+- **Raccord avec le chantier** (amendé, `dayShifts` de `city-shops-life.tsx`) : le jour de changement, personne avant la fin
+  du chantier d'enseigne ; le nouveau locataire **ouvre à la fin des travaux si ses horaires le permettent** : on garde ses
+  postes du jour qui finissent après le chantier, et son équipe est **clampée** (arrivée et lever du rideau repoussés à la fin
+  du chantier s'ils tombaient avant, pauses antérieures retirées). Sinon il ouvre le lendemain. Le chantier suit le décalage
+  du déménagement (§5).
 
 ## 2. Familles de gestes de travail (`shops/gestures.ts` + `shop-gesture-sprites.tsx`)
 
@@ -71,8 +76,13 @@ Huit familles ; chaque type de commerce en a une (`SHOP_GESTURES: Record<ShopTyp
   - **Pluie, neige, orage, vent fort, ou nuit froide** (heure de nuit sans réglage de température : de 22 h à 7 h, ou
     météo « neige ») : terrasse rentrée ; le démontage se joue quand le mauvais temps commence (hystérésis de 10 min
     pour éviter les allers-retours). **Temps sec avec soleil fort** : parasols seulement par-dessus les tables.
+  - Amendé : la règle « nuit froide » **coupe la terrasse du bar (et du restaurant) à 22 h** ; le démontage « 30 min avant la
+    fermeture du bar » ne se joue donc jamais. Après le mauvais temps, la terrasse revient directement `open` (pas de
+    montage animé). Le rendu agrège la météo des 10 dernières minutes pour l'hystérésis.
   - La météo vient de `src/core/library/weather/` (époques déterministes déjà utilisées par la rue).
-- Clients attablés : 0 à 2 par table, tirés selon le type et l'affluence ; un serveur sort servir. Les clients de terrasse
+- Clients attablés : 0 à 2 par table, tirés selon le type et l'affluence ; un serveur sort servir. Amendé : **plancher
+  d'affluence de 0,3** (affluence = min(1, 0,3 + 0,9 × affluence du type × (0,6 + 0,4 × activité de la rue))), sans quoi
+  les chaises restent presque toujours vides. Les clients de terrasse
   sont **en plus** des clients de l'intérieur, mais comptés dans le plafond global (voir Coût).
 - Mouvement réduit : tables posées/rentrées selon l'état, parasols selon l'état, aucun client en route, une personne
   assise par table au plus.
@@ -84,6 +94,9 @@ Huit familles ; chaque type de commerce en a une (`SHOP_GESTURES: Record<ShopTyp
 - **File** de 0 à 6 personnes qui avance : `queueAt(seed, slotId, t)` → positions dans la file, une personne entre
   toutes les 15 à 30 s (disparaît dans la porte), une nouvelle arrive au bout de la file. Longueur selon l'affluence
   (`crowdAt`) : maximum vers 0 h-2 h.
+- Amendé : la file s'aligne du côté de la vitrine et **dépend de la largeur de la façade** : écart de 4,4 à 6,5 px entre deux
+  personnes, au plus autant de personnes visibles que la place jusqu'à l'entrée des habitants le permet (1 à 6 ; ≈ 2 sur
+  les façades les plus étroites, 6 sur les plus larges), la dernière visible arrive en fondu.
 - Pas de file pour la salle d'arcade (hors périmètre).
 - Mouvement réduit : cordon et videurs, 3 personnes immobiles dans la file.
 
@@ -103,14 +116,28 @@ Le jour du changement, avant le chantier d'enseigne existant :
   états (`before | empty | after`) selon l'avancement des portages (mobilier retiré progressivement : l'intérieur de
   l'ancien type s'efface par tranches, puis celui du nouveau apparaît par tranches).
 - Les déménageurs sont des `worker` en tenue différente de l'équipe d'enseigne (casque ou bonnet).
-- Un seul camion à la fois dans la rue : si deux locaux changent le même jour, le second est décalé de 2 h.
-- Mouvement réduit : camion garé et ouvert, un porteur figé, selon l'étape.
+- Un seul camion à la fois dans la rue : si deux locaux changent le même jour, le second est décalé de 2 h. Amendé
+  (`movingOffsets`) : dans l'ordre des locaux, chaque déménagement est décalé par pas de **120 min** jusqu'à commencer après
+  la fin du précédent ; le chantier d'enseigne et l'équipe du nouveau locataire suivent ce décalage. Au-delà de 5 changements
+  le même jour (très rare), le dernier finit en soirée et son commerce n'ouvre souvent que le lendemain.
+- Amendé : **les meubles du nouveau commerce restent** après le déménagement (intérieur `after` pendant le chantier
+  d'enseigne et ensuite).
+- Le camion se gare entièrement dans la scène (près d'un bord, il recule vers la porte) ; il peut couvrir le bas de la façade
+  voisine (limite assumée).
+- Mouvement réduit : camion garé et ouvert ; un porteur figé selon l'étape (chargé d'un carton pendant les portages, mains
+  vides pendant le hayon et la pause, aucun à l'arrivée et au départ du camion).
 
 ## 6. Coût
 
 - Au plus ~10 locaux par 720 px ; chaque local : ≤ 3 employés, ≤ 2 clients intérieurs, ≤ 4 clients de terrasse. **Plafond
   global** d'environ 40 sprites animés pour la scène Ville (au-delà, on supprime d'abord les clients de terrasse puis les
   clients intérieurs les plus éloignés du centre de la fenêtre) pour rester dans le budget de la 1a.
+- Réalisé (`shops/sprite-budget.ts`, appliqué une fois par minute par la boucle de `CityLifeLayer`) : **40 par 720 px** de
+  scène (jamais moins de 40), comme les budgets de la 1a. Comptés et jamais retirés : personnel visible, serveur et porteur
+  de terrasse, équipe du chantier, déménageurs et camion, videurs, file de la boîte (pour sa longueur maximale). Chaque
+  visite compte pour une silhouette dès que son local peut recevoir des clients. Retirés au besoin : convives de terrasse
+  (cachés), puis visites suspendues pour la minute, chaque fois les plus éloignées du centre de la scène. Passants,
+  habitants et véhicules restent dans le budget de la 1a (non comptés ici). Une rue de 720 px ordinaire reste sous 40.
 - Intérieurs et terrasses statiques ; seuls les sprites, le rideau, la file, le camion bougent.
 
 ## 7. Architecture
