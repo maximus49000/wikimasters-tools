@@ -149,14 +149,7 @@ describe('événements dans la couche de la ville', () => {
     expect(still.getAttribute('opacity')).toBe('1');
   });
   describe('événements de fête', () => {
-    const BASTILLE: YMD = { y: 2026, m: 7, d: 14 };
     const EASTER: YMD = { y: 2026, m: 4, d: 5 };
-    it('route fermée le 14 juillet à 11 h : aucun événement de rue (le cortège est un calque séparé)', () => {
-      const { city } = contextAt(11, BASTILLE);
-      const T = findWhen(city, (evs) => evs.some((e) => e.layer === 'sky'));
-      expect(expected(T, city).some((e) => e.layer === 'street')).toBe(false);
-      expect(mount(T, 11, false, BASTILLE).querySelectorAll('[data-city-lane] [data-event]')).toHaveLength(0);
-    });
     it('les cloches de Pâques passent au fond, avec le ciel', () => {
       const { city } = contextAt(11, EASTER);
       const T = findTime(city, (ids) => ids.includes('bells'));

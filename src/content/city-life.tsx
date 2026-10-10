@@ -18,7 +18,9 @@ import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, shopSpriteBudget, type PosedStaff, type Swap } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
+import { FlypastLayer } from './flypast-sprite';
 import { InstallLayer } from './install-layer';
+import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
 import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
@@ -176,6 +178,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Événements de la ville : programme du grand créneau, événements actifs, voitures effacées, ambulances.
   // Fêtes actives à la minute de la scène (père Noël : 24 décembre de nuit).
   const fests = useMemo(() => activeFestivities(city.day.festivities, city.minutes), [city.day, city.minutes]);
+  // Fêtes du jour (toute la journée) : route fermée et grand défilé du 14 juillet (parade-layer.tsx, flypast-sprite.tsx).
+  const dayFests = useMemo(() => city.day.festivities.map((f) => f.id), [city.day]);
   const events = useCityEvents({ seed, width, city, intensity, vehicles, still, frozenT: frozen.current });
 
   // Décors de fête posés par des équipes (calendrier : jour de la scène et minute) ; les travailleurs (data-worker) comptent
@@ -334,6 +338,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         {cranes.length > 0 && <g data-event-mask="near" mask={`url(#${maskBase}-near)`}>{cranes.map(eventNode)}</g>}
         {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment' || e.id === 'bells').map(eventNode)}
         <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} />
+        <FlypastLayer width={width} height={height} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} />
       </g>
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
           lampadaires (bord du trottoir), la file du fond, puis celle du premier plan. */}
@@ -471,6 +476,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <InstallLayer {...install} part="front" />
       {lane('far')}
       {lane('near')}
+      {/* Grand défilé du 14 juillet : sur la file du premier plan (route fermée, aucune voiture), devant elle. */}
+      <ParadeLayer width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} />
     </g>
   );
 }
