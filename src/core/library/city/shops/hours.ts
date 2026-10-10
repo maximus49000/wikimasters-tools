@@ -22,7 +22,7 @@ export function nextWorkday(n: number): number {
 }
 
 // Plages d'un jour donné (dimanche : plages propres s'il y en a) ; aucune si le commerce est fermé ce jour-là.
-function rangesOf(def: ShopDef, date: YMD): readonly (readonly [number, number])[] {
+export function rangesOf(def: ShopDef, date: YMD): readonly (readonly [number, number])[] {
   const weekday = weekdayOf(date);
   if (!def.days.includes(weekday)) return [];
   if (!def.holidays && holidayOf(date)) return [];
@@ -33,6 +33,15 @@ function rangesOf(def: ShopDef, date: YMD): readonly (readonly [number, number])
 export function isOpenAt(def: ShopDef, date: YMD, minutes: number): boolean {
   if (rangesOf(def, date).some(([a, b]) => minutes >= a && minutes < b)) return true;
   return rangesOf(def, addDays(date, -1)).some(([, b]) => b > 1440 && minutes < b - 1440);
+}
+
+// Plage d'ouverture en cours à `minutes` : [ouverture, fermeture] en minutes du jour `date` (une plage de la veille qui passe
+// minuit est ramenée à ce jour : ouverture négative) ; null si le commerce est fermé. Même règle que isOpenAt.
+export function openRangeAt(def: ShopDef, date: YMD, minutes: number): [number, number] | null {
+  const today = rangesOf(def, date).find(([a, b]) => minutes >= a && minutes < b);
+  if (today) return [today[0], today[1]];
+  const carried = rangesOf(def, addDays(date, -1)).find(([, b]) => b > 1440 && minutes < b - 1440);
+  return carried ? [carried[0] - 1440, carried[1] - 1440] : null;
 }
 
 // Affluence (0..1) selon la forme de clientèle, multipliée par `level` ; l'ouverture est vérifiée à part (isOpenAt).

@@ -3,7 +3,8 @@ import { MAX_TRIP_PX } from '../doors';
 import type { CityIntensity } from '../intensity';
 import { WALK_PACE } from '../metrics';
 import { outfitFor, type Outfit, type Profile } from '../people';
-import { SHOP_DEFS } from './catalog';
+import { SHOP_DEFS, type ShopTypeId } from './catalog';
+import { gestureAt, SHOP_FAMILY, takesAway, type Pose } from './gestures';
 import { crowdAt } from './hours';
 import type { ShopFrame, ShopSlot } from './slots';
 import type { ShopView } from './view';
@@ -16,14 +17,25 @@ export const VISIT_CYCLE = 240;
 const CUSTOMER_SCALE = 0.55;
 const FADE_S = 0.6;
 
-export type Visit = { id: string; slotId: string; doorX: number; innerX: number; dir: 1 | -1; speed: number; phase: number; stay: number; outfit: Outfit; scale: number };
+export type Visit = { id: string; slotId: string; doorX: number; innerX: number; dir: 1 | -1; speed: number; phase: number; stay: number; outfit: Outfit; scale: number;
+  // Type du commerce au calcul des visites (null si inconnu) et place du client dans l'intérieur, selon la famille.
+  type: ShopTypeId | null;
+  seat: { x: number; facing: 1 | -1 };
+};
 
-export function visitsFor(slots: ShopSlot[], frames: Map<string, ShopFrame>, seed: number): Visit[] {
+// Places (fractions de la vitrine) des deux clients : au fauteuil, à la table, sinon devant le comptoir/rayon.
+const SEAT_FRACTIONS = { chair: [0.3, 0.68], table: [0.3, 0.72], other: [0.35, 0.7] } as const;
+
+export function visitsFor(slots: ShopSlot[], frames: Map<string, ShopFrame>, seed: number, typeOf: (slotId: string) => ShopTypeId | null): Visit[] {
   const rng = mulberry32(seed ^ hashString('shop-visits'));
   const out: Visit[] = [];
   for (const slot of slots) {
     const f = frames.get(slot.id)!;
+    const type = typeOf(slot.id);
+    const family = type ? SHOP_FAMILY[type] : null;
+    const fractions = family === 'chair' ? SEAT_FRACTIONS.chair : family === 'table' ? SEAT_FRACTIONS.table : SEAT_FRACTIONS.other;
     for (let k = 0; k < 2; k++) {
+      const seatX = f.window.x + f.window.w * fractions[k]!;
       const profile: Profile = rng() < 0.2 ? 'suit' : 'ordinary';
       out.push({
         id: `${slot.id}-v${k}`,
@@ -37,6 +49,9 @@ export function visitsFor(slots: ShopSlot[], frames: Map<string, ShopFrame>, see
         stay: 20 + rng() * 40,
         outfit: outfitFor(profile, rng),
         scale: 0.95 + rng() * 0.15,
+        type,
+        // Le client regarde vers le centre de la vitrine.
+        seat: { x: seatX, facing: seatX <= f.window.x + f.window.w / 2 ? 1 : -1 },
       });
     }
   }
@@ -48,15 +63,17 @@ const smooth = (x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-export function visitAt(v: Visit, width: number, t: number): { stage: 'in' | 'inside' | 'out'; x: number; fade: number } | null {
+export type VisitState = { stage: 'in' | 'inside' | 'out'; x: number; fade: number; gesture: Pose | null; carry: boolean };
+
+export function visitAt(v: Visit, width: number, t: number): VisitState | null {
   const c = (((t + v.phase) % VISIT_CYCLE) + VISIT_CYCLE) % VISIT_CYCLE;
   const toEdge = v.dir > 0 ? v.doorX + WORLD_MARGIN : width + WORLD_MARGIN - v.doorX;
   const reach = Math.min(toEdge, MAX_TRIP_PX);
   const walk = reach / v.speed;
-  if (c < walk) return { stage: 'in', x: v.doorX - v.dir * reach + v.dir * v.speed * c, fade: Math.min(smooth(c / FADE_S), 1 - smooth((c - (walk - FADE_S)) / FADE_S)) };
-  if (c < walk + v.stay) return { stage: 'inside', x: v.innerX, fade: Math.min(smooth((c - walk) / FADE_S), 1 - smooth((c - (walk + v.stay - FADE_S)) / FADE_S)) };
+  if (c < walk) return { stage: 'in', x: v.doorX - v.dir * reach + v.dir * v.speed * c, fade: Math.min(smooth(c / FADE_S), 1 - smooth((c - (walk - FADE_S)) / FADE_S)), gesture: null, carry: false };
+  if (c < walk + v.stay) return { stage: 'inside', x: v.innerX, fade: Math.min(smooth((c - walk) / FADE_S), 1 - smooth((c - (walk + v.stay - FADE_S)) / FADE_S)), gesture: v.type ? gestureAt(v.type, 'customer', t, hashString(v.id)) : null, carry: false };
   const back = c - walk - v.stay;
-  if (back < walk) return { stage: 'out', x: v.doorX + v.dir * v.speed * back, fade: Math.min(smooth(back / FADE_S), 1 - smooth((back - (walk - FADE_S)) / FADE_S)) };
+  if (back < walk) return { stage: 'out', x: v.doorX + v.dir * v.speed * back, fade: Math.min(smooth(back / FADE_S), 1 - smooth((back - (walk - FADE_S)) / FADE_S)), gesture: null, carry: v.type !== null && takesAway(v.type) };
   return null;
 }
 

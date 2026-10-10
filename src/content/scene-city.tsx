@@ -3,12 +3,12 @@ import { lampLit } from '../core/library/activity';
 import { doorsFor } from '../core/library/city/doors';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
-import { hashString } from '../core/library/scene-world';
 import { mixHex } from '../core/library/sky';
 import { EntranceSprite, entranceLeft } from './city-sprites';
 import type { SceneBodyProps } from './scene-panorama';
 import { ShopFront } from './shop-sprites';
-import { ShopInterior } from './shop-interiors';
+import { ShopInterior, sliceCount } from './shop-interiors';
+import { furnitureAt } from '../core/library/city/shops/view';
 import { useStreetShops } from './use-street-shops';
 
 // Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
@@ -32,7 +32,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
   // Hall d'entrée éclairé la nuit (un peu plus d'une entrée sur deux).
   const dark = sky.daylight < 0.45;
   const lane = mixHex('#8A8C9E', '#F2EEE2', sky.daylight);
-  const { frames, views } = useStreetShops(width, height, seed, city);
+  const { frames, views, street: slotDays } = useStreetShops(width, height, seed, city);
   return (
     <g data-scene-body>
       {buildings.filter((b) => b.far).map((b, i) => (
@@ -81,14 +81,22 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
         </g>
       ))}
       {/* Locaux : la vitrine montre l'intérieur (rogné par le <svg> imbriqué de ShopFront) ; la nuit, seuls les commerces
-          ouverts sont éclairés. Le vendeur n'est là que si la boutique est ouverte (chantier : intérieur vide). */}
-      {views.map((view) => {
+          ouverts sont éclairés. Jour de changement : le mobilier de l'ancien commerce sort par tranches, puis celui du nouveau
+          rentre (furnitureAt) ; il reste en place pendant le chantier d'enseigne. Personnel, premier plan de l'intérieur ouvert
+          (devant le personnel) et rideau roulant sont dans le calque animé (StaffLayer, city-shops-life.tsx). */}
+      {views.map((view, i) => {
         const frame = frames.get(view.slot.id)!;
         const open = view.phase === 'open';
+        const w = frame.window.w;
+        const n = sliceCount(w);
+        const change = slotDays[i]?.change ?? null;
+        const moving = view.interior ? null : furnitureAt(view, n);
+        const type = moving ? (moving.from === 'before' ? change?.before?.type : change?.after?.type) ?? null : null;
         return (
-          <ShopFront key={view.slot.id} frame={frame} view={view} sky={sky} lit={dark && open}>
-            {view.interior && (
-              <ShopInterior type={view.interior} w={frame.window.w} h={frame.window.h} sky={sky} lit={dark && open} staffed={open} seed={hashString(view.slot.id) ^ seed} />
+          <ShopFront key={view.slot.id} frame={frame} view={view} sky={sky} lit={dark && open} shutter={false}>
+            {view.interior && <ShopInterior type={view.interior} w={w} h={frame.window.h} sky={sky} lit={dark && open} front={!open} />}
+            {moving && type && (
+              <ShopInterior type={type} w={w} h={frame.window.h} sky={sky} lit={false} slices={{ shown: moving.shown, n, doorRight: view.slot.doorSide === 'left' }} />
             )}
           </ShopFront>
         );

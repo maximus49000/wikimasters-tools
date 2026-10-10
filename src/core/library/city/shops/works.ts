@@ -9,10 +9,16 @@ export type WorksPlan = { start: number; end: number; steps: { step: WorkStep; f
 
 const WEIGHT: Record<WorkStep, number> = { arrive: 4, 'ladder-up': 8, climb: 3, remove: 40, descend: 3, pause: 20, hand: 4, 'climb-again': 3, install: 50, 'descend-again': 3, rest: 20, 'ladder-down': 6, leave: 4 };
 
-export function worksPlan(seed: number, slotId: string, day: number): WorksPlan {
+// `notBefore` (minute du jour) : le chantier d'enseigne ne démarre pas avant elle (+ 0 à 30 min tirées) et dure au moins 2 h ; le jour d'un changement,
+// c'est la fin du déménagement + 15 min. Sans elle, le calendrier d'origine est conservé tel quel.
+export function worksPlan(seed: number, slotId: string, day: number, notBefore = 0): WorksPlan {
   const rng = mulberry32(seed ^ hashString(`works-${slotId}`) ^ Math.imul(day, 2654435761));
-  const start = 510 + Math.floor(rng() * 61);
-  const end = 705 + Math.floor(rng() * 36);
+  let start = 510 + Math.floor(rng() * 61);
+  let end = 705 + Math.floor(rng() * 36);
+  if (notBefore > 0) {
+    start = Math.max(start, notBefore + Math.floor(rng() * 31));
+    end = Math.max(end, start + 120);
+  }
   const total = WORK_STEPS.reduce((s, k) => s + WEIGHT[k], 0);
   const steps: WorksPlan['steps'] = [];
   let at = start;

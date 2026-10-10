@@ -135,4 +135,16 @@ describe('catalogue des fiches', () => {
     expect(entry!.steps.flatMap((s) => s.details ?? []).some((d) => d.label === 'Limites')).toBe(true);
     expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v18')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v17'));
   });
+
+  it('la fiche bibliotheque-v24 présente le personnel, les gestes, les terrasses, la boîte de nuit, le déménagement et leurs limites', () => {
+    const entry = ENTRIES.find((e) => e.id === 'bibliotheque-v24');
+    expect(entry).toBeDefined();
+    expect(entry!.steps).toHaveLength(5);
+    const text = entry!.steps.map((s) => `${s.title} ${s.text} ${(s.details ?? []).map((d) => `${d.label} ${d.text}`).join(' ')}`).join(' ');
+    for (const word of ['rideau', 'relais', 'gestes', 'terrasse', 'parasols', 'videurs', 'file', 'camion', 'déménageurs', '22 h à 7 h', '4 pixels', 'Limites']) expect(text, word).toContain(word);
+    for (const step of entry!.steps) expect(step.details?.some((d) => d.label === 'Limites'), step.title).toBe(true);
+    // La fiche précédente reste telle quelle, la nouvelle vient après.
+    expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v24')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v23'));
+    expect(ENTRIES.find((e) => e.id === 'bibliotheque-v23')!.title).toBe('La rue commerçante');
+  });
 });

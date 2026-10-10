@@ -1,9 +1,8 @@
-import type { ReactElement } from 'react';
-import { outfitFor } from '../core/library/city/people';
+import { useMemo, type ReactElement } from 'react';
 import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
-import { mulberry32 } from '../core/library/scene-world';
 import { mixHex, type Sky, skyAt } from '../core/library/sky';
-import { PersonSprite, tone } from './city-sprites';
+import { tone } from './city-sprites';
+import { EMPTY_WINDOW } from './shop-sprites';
 import { bakery, butcher, cheese, chocolatier, fishmonger, greengrocer, grocery, minimarket, pastry, wine } from './shop-interiors-alimentation';
 import { antiques, bikes, bookshop, florist, games, optician, petshop, records, thrift } from './shop-interiors-boutiques';
 import { counter, group, type Kit, makeKit, poly, shelf } from './shop-interiors-kit';
@@ -11,10 +10,10 @@ import { cafe, kebab, pizzeria, restaurant, sushi, tearoom } from './shop-interi
 
 // Intérieurs des 32 commerces, vus par la vitrine (dessinés dans le <svg> imbriqué de ShopFront, qui rogne). Repère LOCAL :
 // x de 0 à w (8 à 40), y de 0 (plafond) à h (≈ 21, sol). Mur et bande de sol (3 px) aux couleurs du catalogue, mobilier en
-// formes simples placé en fractions de w, éléments répétés tant qu'ils tiennent. Le vendeur (passant à l'échelle 0,5, ≈ 20 de
-// haut) est glissé entre le fond et le premier plan : derrière le comptoir il n'en dépasse que le buste. Seul le vendeur porte un
-// `transform`. `lit` (boutique éclairée) allume écrans, frigos, aquariums, croix verte, bougies, bornes et spots, et garde au
-// reste ses couleurs de jour réchauffées ; éteinte, tout suit tone(c, sky). Aucun id, aucune animation (gestes = 1b-iv-b). Familles : alimentation, boutiques et restauration dans leurs
+// formes simples placé en fractions de w, éléments répétés tant qu'ils tiennent. Chaque dessin rend la place du vendeur (x) :
+// le personnel (passants à l'échelle 0,5, ≈ 20 de haut, calque animé) s'y tient entre le fond et le premier plan, derrière le
+// comptoir il n'en dépasse que le buste. Aucun `transform`. `lit` (boutique éclairée) allume écrans, frigos, aquariums, croix verte, bougies, bornes et spots, et garde au
+// reste ses couleurs de jour réchauffées ; éteinte, tout suit tone(c, sky). Aucun id, aucune animation. Familles : alimentation, boutiques et restauration dans leurs
 // fichiers ; services et nuit ci-dessous.
 
 // ---------- Services ----------
@@ -235,24 +234,57 @@ const DRAW: Readonly<Record<ShopTypeId, (k: Kit) => number>> = {
 export const LIT_SKY = skyAt(13 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 });
 const WARM = '#FFE2A8';
 
-export function ShopInterior({ type, w, h, sky, lit, staffed, seed }: { type: ShopTypeId; w: number; h: number; sky: Sky; lit: boolean; staffed: boolean; seed: number }): ReactElement {
-  const def = SHOP_DEFS[type];
+// Intérieur peint : le mobilier (fond, premier plan) et la place du vendeur (x, repère local), celle où se tient l'employé de service.
+function paint(type: ShopTypeId, w: number, h: number, sky: Sky, lit: boolean): { k: Kit; post: number; t: (c: string) => string } {
   const t = lit ? (c: string): string => mixHex(tone(c, LIT_SKY), WARM, 0.12) : (c: string): string => tone(c, sky);
   const k = makeKit(w, h, t, lit);
-  const vx = Math.min(w - 2.5, Math.max(2.5, DRAW[type](k)));
-  // Tenue tirée de la graine du local ; un commerçant au travail ne porte ni sac ni cartable.
-  const outfit = { ...outfitFor('ordinary', mulberry32(seed)), accessory: 'none' as const };
+  const post = Math.min(w - 2.5, Math.max(2.5, DRAW[type](k)));
+  return { k, post, t };
+}
+
+// Place de l'employé de service (x dans la vitrine, de 0 à w) : derrière le comptoir, la caisse, le fauteuil… (calque animé).
+const posts = new Map<string, number>();
+export function interiorPost(type: ShopTypeId, w: number, h: number): number {
+  const key = `${type}|${w}|${h}`;
+  let x = posts.get(key);
+  if (x === undefined) {
+    x = paint(type, w, h, LIT_SKY, false).post;
+    posts.set(key, x);
+  }
+  return x;
+}
+
+// Le personnel n'est plus peint dans l'intérieur (vague 1b-iv-b) : ce sont des habitants qui arrivent, travaillent et repartent,
+// dessinés par le calque animé (StaffLayer, city-shops-life.tsx) entre le fond et le premier plan. Pour cela, quand le calque
+// animé redessine le premier plan par-dessus le personnel (`front={false}` ici, ShopInteriorFront là-bas), le décor fixe ne
+// dessine que le fond (pas de double opacité des éléments translucides).
+// Jour de déménagement (vague 1b-iv-b) : le mobilier est découpé en `n` tranches verticales ; seules les `shown` tranches les plus
+// éloignées de la porte sont montrées (on sort d'abord ce qui est près de la porte, on rentre d'abord ce qui va au fond), le reste
+// est caché par un rectangle au fond de vitrine vide (un seul rectangle, aucun id ni masque).
+export type InteriorSlices = { shown: number; n: number; doorRight: boolean };
+export const sliceCount = (w: number): number => Math.min(5, Math.max(2, Math.round(w / 7)));
+
+export function ShopInterior({ type, w, h, sky, lit, front = true, slices }: { type: ShopTypeId; w: number; h: number; sky: Sky; lit: boolean; front?: boolean; slices?: InteriorSlices }): ReactElement {
+  const def = SHOP_DEFS[type];
+  const { k, t } = paint(type, w, h, sky, lit);
+  const hidden = slices ? Math.min(slices.n, Math.max(0, slices.n - slices.shown)) : 0;
+  const cut = (hidden * w) / (slices?.n ?? 1);
   return (
-    <g data-interior={type}>
+    <g data-interior={type} {...(slices ? { 'data-slices': `${slices.n - hidden}/${slices.n}` } : {})}>
       <rect x={0} y={0} width={w} height={h} fill={t(def.wall)} />
       <rect x={0} y={h - 3} width={w} height={3} fill={t(def.floor)} />
       {group(k.back)}
-      {staffed && (
-        <g data-staff="" transform={`translate(${vx.toFixed(2)} ${h - 1}) scale(0.5)`}>
-          <PersonSprite outfit={outfit} sky={lit ? LIT_SKY : sky} rainy={false} umbrella={false} />
-        </g>
-      )}
-      {group(k.front)}
+      {front && group(k.front)}
+      {hidden > 0 && <rect data-slices-cover="" x={slices!.doorRight ? w - cut : 0} y={0} width={cut} height={h} fill={tone(EMPTY_WINDOW, sky)} />}
     </g>
   );
+}
+
+// Premier plan seul (comptoir, fauteuils, cabine…), dessiné par le calque animé DEVANT le personnel.
+// Mémoïsé : le calque animé est re-rendu à la minute, le premier plan ne change qu'avec la lumière (ciel ignoré si éclairé).
+export function ShopInteriorFront({ type, w, h, sky, lit }: { type: ShopTypeId; w: number; h: number; sky: Sky; lit: boolean }): ReactElement {
+  const daylight = lit ? -1 : sky.daylight;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const front = useMemo(() => group(paint(type, w, h, sky, lit).k.front), [type, w, h, lit, daylight]);
+  return <g data-interior-front={type}>{front}</g>;
 }

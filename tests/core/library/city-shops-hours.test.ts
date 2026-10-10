@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SHOP_DEFS } from '../../../src/core/library/city/shops/catalog';
-import { crowdAt, dayNumber, isOpenAt, isWorkday, nextWorkday, ymdOfDay } from '../../../src/core/library/city/shops/hours';
+import { crowdAt, dayNumber, isOpenAt, isWorkday, nextWorkday, openRangeAt, ymdOfDay } from '../../../src/core/library/city/shops/hours';
 
 const ymd = (y: number, m: number, d: number) => ({ y, m, d });
 
@@ -43,5 +43,17 @@ describe('horaires', () => {
     expect(crowdAt(SHOP_DEFS.nightclub, 12 * 60)).toBe(0);
     expect(crowdAt(SHOP_DEFS.nightclub, 60)).toBeGreaterThan(0.5);
     expect(crowdAt(SHOP_DEFS.bakery, 8 * 60)).toBeGreaterThan(crowdAt(SHOP_DEFS.bakery, 15 * 60));
+  });
+});
+
+describe('plage en cours', () => {
+  it('rend la plage du jour, celle de la veille passée minuit (ramenée au jour), ou null', () => {
+    const sat = ymd(2026, 10, 10);
+    expect(openRangeAt(SHOP_DEFS.restaurant, sat, 13 * 60)).toEqual([12 * 60, 14 * 60 + 30]);
+    expect(openRangeAt(SHOP_DEFS.restaurant, sat, 15 * 60)).toBeNull();
+    expect(openRangeAt(SHOP_DEFS.bar, sat, 18 * 60)).toEqual([17 * 60, 26 * 60]);
+    expect(openRangeAt(SHOP_DEFS.bar, sat, 60)).toEqual([17 * 60 - 1440, 2 * 60]);
+    // Cohérente avec isOpenAt toute la journée.
+    for (let m = 0; m < 1440; m += 5) expect(openRangeAt(SHOP_DEFS.nightclub, sat, m) !== null).toBe(isOpenAt(SHOP_DEFS.nightclub, sat, m));
   });
 });

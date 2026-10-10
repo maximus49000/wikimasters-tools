@@ -33,7 +33,7 @@ const draw = (view: Partial<ShopView>, children?: React.ReactNode): HTMLElement 
   mount(
     <ShopFront
       frame={frame}
-      view={{ slot, phase: 'open', sign: { type: 'cafe', name: 'Le Zinc' }, placard: false, interior: 'cafe', works: null, ...view }}
+      view={{ slot, phase: 'open', sign: { type: 'cafe', name: 'Le Zinc' }, placard: false, interior: 'cafe', works: null, moving: null, interiorStage: null, ...view }}
       sky={sky}
       lit={false}
     >
@@ -55,7 +55,7 @@ describe('devanture', () => {
   it('teint le rideau et l’écriteau la nuit', () => {
     const night = skyAt(3 * 60, { kind: 'normal', sunrise: 360, sunset: 1200 });
     const fillOf = (c: HTMLElement, sel: string): string => c.querySelector(sel + ' rect')?.getAttribute('fill') ?? '';
-    const view = { slot, phase: 'closed' as const, sign: null, placard: true, interior: null, works: null };
+    const view = { slot, phase: 'closed' as const, sign: null, placard: true, interior: null, works: null, moving: null, interiorStage: null };
     const at = (s: typeof sky): HTMLElement => mount(<ShopFront frame={frame} view={view} sky={s} lit={false} />);
     const day = fillOf(at(sky), '[data-shutter]');
     const dark = fillOf(at(night), '[data-shutter]');

@@ -13,7 +13,7 @@ import { visitsFor } from '../../src/core/library/city/shops/customers';
 import { dayNumber, ymdOfDay } from '../../src/core/library/city/shops/hours';
 import { streetOn } from '../../src/core/library/city/shops/lifecycle';
 import { shopFrame, shopSlotsFor } from '../../src/core/library/city/shops/slots';
-import { worksPlan } from '../../src/core/library/city/shops/works';
+import { changePlans } from '../../src/core/library/city/shops/view';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,7 +67,8 @@ const worksDay = (() => {
   for (let day = EPOCH + 1; day < EPOCH + 200; day++) {
     const k = streetOn(slots, SEED, EPOCH, day, {}).findIndex((s) => s.change !== null);
     if (k < 0) continue;
-    const step = worksPlan(SEED, slots[k]!.id, day).steps.find((s) => s.step === 'install')!;
+    const kind = streetOn(slots, SEED, EPOCH, day, {})[k]!.change!.kind;
+    const step = changePlans(SEED, slots[k]!.id, day, kind).works.steps.find((s) => s.step === 'install')!;
     return { day, k, minutes: Math.round((step.from + step.to) / 2) };
   }
   throw new Error('aucun chantier en 200 jours');
@@ -82,14 +83,15 @@ describe('CityScene : locaux commerciaux', () => {
     for (const shop of shops) expect(shop.querySelector('[data-interior], [data-placard]')).not.toBeNull();
     expect(c.querySelectorAll('[data-shop-phase="for-sale"]')).toHaveLength(0);
   });
-  it('à 3 h du matin : rideau baissé sur tous les commerces qui ne sont pas de nuit', () => {
+  // Le rideau roulant est dans le calque animé (StaffLayer) : voir city-shops-life.test.tsx.
+  it('à 3 h du matin : fermés (hors commerces de nuit), sans rideau peint dans le décor fixe', () => {
     const c = scene(180);
     const types = streetOn(slots, SEED, EPOCH, EPOCH, {}).map((s) => s.tenant!.type);
     slots.forEach((slot, i) => {
       if (SHOP_DEFS[types[i]!].crowd === 'night') return;
       const shop = c.querySelector(`[data-shop="${slot.id}"]`)!;
       expect(shop.getAttribute('data-shop-phase')).toBe('closed');
-      expect(shop.querySelector('[data-shutter]')).not.toBeNull();
+      expect(shop.querySelector('[data-shutter]')).toBeNull();
     });
   });
   it('sans commerces dans le contexte : aucun local dessiné', () => {
@@ -104,7 +106,7 @@ describe('CityLifeLayer : clients et équipe du matin', () => {
   it('à 8 h un mardi : un nœud de client par visite', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
     const frames = new Map(slots.map((s) => [s.id, shopFrame(s, cityMetrics(H).ground)]));
-    const visits = visitsFor(slots, frames, SEED);
+    const visits = visitsFor(slots, frames, SEED, () => null);
     const c = life(480);
     expect(c.querySelectorAll('[data-customer]')).toHaveLength(visits.length);
     expect(c.querySelectorAll('[data-customer-inside]')).toHaveLength(visits.length);
@@ -131,7 +133,7 @@ describe('CityLifeLayer : clients et équipe du matin', () => {
   it('en mouvement réduit, l’équipe est figée en pose « install » (échelle visible) sans transition', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
     reduceMotion();
-    const plan = worksPlan(SEED, slots[worksDay.k]!.id, worksDay.day);
+    const plan = changePlans(SEED, slots[worksDay.k]!.id, worksDay.day, streetOn(slots, SEED, EPOCH, worksDay.day, {})[worksDay.k]!.change!.kind).works;
     const arrive = plan.steps.find((s) => s.step === 'arrive')!;
     const c = life(Math.ceil(arrive.from + 1), ymdOfDay(worksDay.day));
     const works = c.querySelector(`[data-works="shop-${worksDay.k}"]`)!;
