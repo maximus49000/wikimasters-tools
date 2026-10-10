@@ -36,7 +36,23 @@ export type ScanState = {
   fullAt?: number;
 };
 
-type StagedCounts = { nextPage: number; counts: Record<string, number> };
+// `tail` : les lignes (carte + date d'obtention) de la dernière page comptée, pour reconnaître celles qu'un décalage de la liste fait relire.
+type DatedRow = { slug: string; at: number };
+type StagedCounts = { nextPage: number; counts: Record<string, number>; tail?: DatedRow[] };
+
+// Combien de lignes en tête de `rows` sont la fin de la page précédente relue : une carte obtenue entre deux pages décale la liste
+// (triée de la plus récente à la plus ancienne), la page suivante recommence alors par des lignes déjà comptées.
+// Le site ne donne pas d'identifiant d'exemplaire : on compare la carte et sa date d'obtention. Sans date, rien n'est écarté.
+export function overlapWithPrevious(previous: DatedRow[], rows: { slug: string; at?: number }[]): number {
+  for (let k = Math.min(previous.length, rows.length); k > 0; k -= 1) {
+    const offset = previous.length - k;
+    if (rows.slice(0, k).every((row, i) => row.at !== undefined && row.slug === previous[offset + i]?.slug && row.at === previous[offset + i]?.at)) return k;
+  }
+  return 0;
+}
+
+const datedRows = (rows: { slug: string; at?: number }[]): DatedRow[] =>
+  rows.every((row) => row.at !== undefined) ? rows.map((row) => ({ slug: row.slug, at: row.at as number })) : [];
 
 export const IDLE_SCAN: ScanState = { status: 'idle', nextPage: 0, entries: 0, updatedAt: 0 };
 
@@ -182,10 +198,12 @@ export function createCollectionScanner({
 
       // Le parcours compte à part : la Collection garde ses nombres (et reste filtrable par « ×2 ») jusqu'à la fin.
       let counts: Record<string, number> = {};
+      let tail: DatedRow[] = [];
       if (page > 0) {
         const staged = await store.get<StagedCounts>(COUNTS_KEY);
         if (staged?.nextPage === page) {
           counts = staged.counts;
+          tail = staged.tail ?? [];
           // Les cartes obtenues depuis le début de ce parcours sont en page 0, que la reprise ne relit pas : on la relit d'abord
           // pour qu'une carte achetée pendant l'interruption ait sa rareté, ses stats et sa date. Les nombres restent ceux du parcours.
           await write(snapshot('running'));
@@ -213,11 +231,18 @@ export function createCollectionScanner({
           return;
         }
         await collection.observe(result.cards.map(({ copies: _copies, ...rest }) => rest), false);
-        for (const { slug, copies } of result.cards) counts[slug] = (counts[slug] ?? 0) + (copies ?? 1);
-        for (const row of result.obtained ?? []) pending = newest(pending, row.at);
+        const rows = result.obtained ?? [];
+        if (rows.length > 0) {
+          // Les lignes déjà comptées (liste décalée par une carte obtenue entre deux pages) ne le sont pas une seconde fois.
+          for (const row of rows.slice(overlapWithPrevious(tail, rows))) counts[row.slug] = (counts[row.slug] ?? 0) + 1;
+        } else {
+          for (const { slug, copies } of result.cards) counts[slug] = (counts[slug] ?? 0) + (copies ?? 1);
+        }
+        tail = datedRows(rows);
+        for (const row of rows) pending = newest(pending, row.at);
         entries += result.entries;
         page += 1;
-        await store.set(COUNTS_KEY, { nextPage: page, counts } satisfies StagedCounts);
+        await store.set(COUNTS_KEY, { nextPage: page, counts, tail } satisfies StagedCounts);
       }
       await write(snapshot('error', { error: 'limite de pages atteinte' }));
     } catch (error) {

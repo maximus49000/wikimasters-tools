@@ -3,7 +3,7 @@ import type { CollectionPage } from '../../../src/core/api/collection-schemas';
 import { NotAuthenticatedError } from '../../../src/core/api/errors';
 import { createMemoryStore } from '../../../src/core/cache/store';
 import { createCollectionRepo } from '../../../src/core/collection/collection-repo';
-import { createCollectionScanner, type ScanState } from '../../../src/core/collection/collection-scan';
+import { createCollectionScanner, overlapWithPrevious, type ScanState } from '../../../src/core/collection/collection-scan';
 
 const card = (name: string) => ({ slug: name, title: name });
 const page = (...names: string[]): CollectionPage => ({ cards: names.map(card), entries: names.length, skipped: 0 });
@@ -441,5 +441,67 @@ describe('createCollectionScanner', () => {
       await vi.waitFor(async () => expect(await t.scanner.state()).toMatchObject({ status: 'done' }));
       expect(t.getCollectionPage.mock.calls.map(([index]) => index).slice(0, 2)).toEqual([0, 4]);
     });
+  });
+});
+
+describe('parcours complet et liste qui bouge (issue #214)', () => {
+  // La liste est triée de la plus récente à la plus ancienne : une carte obtenue pendant l'interruption décale toutes les pages suivantes.
+  // Chaque carte garde sa date d'obtention, quelle que soit sa place dans la liste.
+  const DATES: Record<string, number> = { N: 1700, A: 1600, B: 1500, C: 1400, D: 1300, E: 1200, F: 1100 };
+  const rows = (names: string[]): [string, number][] => names.map((name) => [name, DATES[name] as number]);
+  const pageOf = (names: string[], index: number, size: number): CollectionPage => {
+    const slice = rows(names).slice(index * size, (index + 1) * size);
+    return slice.length ? dated(...slice) : EMPTY;
+  };
+
+  it('une carte obtenue pendant une interruption ne fait pas compter deux fois une autre carte', async () => {
+    let list = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const { scanner, collection, getCollectionPage } = setup([]);
+    let broken = true;
+    getCollectionPage.mockImplementation(async (index: number) => {
+      if (index === 1 && broken) throw new Error('réseau');
+      return pageOf(list, index, 2);
+    });
+    await scanner.run();
+    expect(await scanner.state()).toMatchObject({ status: 'error', nextPage: 1 });
+    broken = false;
+    list = ['N', ...list];
+    await scanner.run();
+    const copies = Object.fromEntries((await collection.list()).map((c) => [c.slug, c.copies]));
+    expect(copies).toEqual({ N: 1, A: 1, B: 1, C: 1, D: 1, E: 1, F: 1 });
+  });
+
+  it('sans interruption, une carte obtenue entre deux pages ne fait pas non plus compter deux fois une autre carte', async () => {
+    let list = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const { scanner, collection, getCollectionPage } = setup([]);
+    getCollectionPage.mockImplementation(async (index: number) => {
+      const result = pageOf(list, index, 2);
+      if (index === 0) list = ['N', ...list];
+      return result;
+    });
+    await scanner.run();
+    const copies = Object.fromEntries((await collection.list()).map((c) => [c.slug, c.copies]));
+    expect(copies).toMatchObject({ A: 1, B: 1, C: 1, D: 1, E: 1, F: 1 });
+  });
+
+  it('des cartes différentes obtenues à la même date (un pack) sont toutes comptées, même à la frontière de deux pages', async () => {
+    const list: [string, number][] = [['A', 30], ['X', 20], ['Y', 20], ['B', 10]];
+    const { scanner, collection, getCollectionPage } = setup([]);
+    getCollectionPage.mockImplementation(async (index: number) => {
+      const slice = list.slice(index * 2, index * 2 + 2);
+      return slice.length ? dated(...slice) : EMPTY;
+    });
+    await scanner.run();
+    const copies = Object.fromEntries((await collection.list()).map((c) => [c.slug, c.copies]));
+    expect(copies).toEqual({ A: 1, X: 1, Y: 1, B: 1 });
+  });
+
+  it('overlapWithPrevious ne reconnaît que des lignes identiques (carte et date)', () => {
+    const previous = [{ slug: 'A', at: 3 }, { slug: 'B', at: 2 }];
+    expect(overlapWithPrevious(previous, [{ slug: 'B', at: 2 }, { slug: 'C', at: 1 }])).toBe(1);
+    expect(overlapWithPrevious(previous, [{ slug: 'A', at: 3 }, { slug: 'B', at: 2 }])).toBe(2);
+    expect(overlapWithPrevious(previous, [{ slug: 'B', at: 1 }])).toBe(0);
+    expect(overlapWithPrevious(previous, [{ slug: 'B' }])).toBe(0);
+    expect(overlapWithPrevious([], [{ slug: 'B', at: 2 }])).toBe(0);
   });
 });
