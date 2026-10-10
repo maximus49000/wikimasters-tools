@@ -61,3 +61,44 @@ Un spec, un plan, deux PR :
 ## Hors périmètre
 
 Décors de longue durée avec échelles (1b-iii), réaction des animaux (1c), troupes à pied au défilé, événement de rue propre à la Saint-Valentin.
+
+## 7. Extension du 2026-10-10 : équipes d'installation, scène, grand défilé
+
+Demandes de l'utilisateur, intégrées à la PR 2 (une seule PR élargie). Elles remplacent, dans les §3 et §4 ci-dessus, la scène des musiciens, le défilé de 4 véhicules et les drapeaux d'entrée toujours présents.
+
+### 7.1 Règle générale
+
+Tout élément ajouté au décor est posé par un humain et retiré par un humain. Ce qui est hors de portée de la main se pose avec une **échelle** ou un **camion élévateur à nacelle**. Tout est calculé depuis la date et l'heure (aucun état, pas de `Math.random`) ; l'équipe est une fonction de l'heure comme dans `shops/works.ts` et `moving.ts`.
+
+### 7.2 Moteur d'installation (`city/install.ts`, pur)
+
+- Temps absolu : `abs = dayNumber(date) * 1440 + minute`. Le calendrier regarde la veille et le lendemain (un décor déborde sur d'autres jours).
+- Un **jeu de décor** (`DecorSet`) : id, fête, équipement (`ladder` | `lift` | `hand`), fenêtre de montage `{ dayOffset, from, to }`, fenêtre de démontage, éléments. Un élément a un id, une position x, une hauteur (`high`), un seuil `u` (ordre d'intervention tiré de la graine, différent au montage et au démontage).
+- Les éléments d'un jeu sont traités **un par un** par l'équipe du jeu : l'élément k occupe un créneau consécutif de la fenêtre. Pour un élément, `itemPhase(set, item, abs)` rend `absent | { phase: 'installing' | 'removing', step, progress } | present`. Avant son créneau de montage l'élément est absent ; après, présent ; pendant le démontage c'est l'inverse.
+- Étapes par équipement : `ladder` = arrive, ladder-up, climb, fix, descend, ladder-down, leave ; `lift` = arrive (le camion vient se garer sous l'élément), deploy, rise, fix, lower, stow, leave ; `hand` = arrive, place, leave. Le démontage joue les mêmes étapes (le geste « fix » devient « unfix »).
+- Jeux de décor retenus :
+
+| Jeu | Fête | Équipement | Montage | Présent | Démontage |
+| --- | --- | --- | --- | --- | --- |
+| Drapeaux de lampadaires (un par lampadaire) | 14 juillet, 11 novembre, 1er mai | `lift` | veille 9 h à 17 h | jusqu'au lendemain | lendemain 9 h à 17 h |
+| Drapeaux d'entrée (une entrée sur deux, `hallU < 0.5`) | idem | `ladder` | veille 9 h à 17 h | idem | lendemain 9 h à 17 h |
+| Scène de la Fête de la musique : plancher, ossature, projecteurs (3 étapes d'un même ensemble) | 21 juin | plancher `hand`, ossature et projecteurs `lift` | le jour 9 h à 16 h | de 16 h jusqu'à la nuit | nuit du 21 au 22, 0 h à 4 h (équipe de nuit) |
+| Barrières du défilé (tous les 120 px au bord de la chaussée) | 14 juillet | `hand` | 7 h à 8 h | route fermée | 12 h 30 à 13 h 30 |
+
+- Rendu : travailleurs, `LadderSprite` existant (shop-sprites), un camion élévateur à nacelle (nouveau sprite), une camionnette garée au bord de la rue qui range les échelles. Le plafond de figurants existant (`sprite-budget`) compte les équipes.
+
+### 7.3 Scène de la Fête de la musique
+
+Une structure réelle : plancher de scène, deux montants métalliques et une traverse portant **3 projecteurs**. Les cônes de lumière partent de chaque projecteur et visent un musicien (plus de cône flottant). Visible de jour (projecteurs éteints), projecteurs allumés quand il fait nuit. Les musiciens (guitare, micro, tambour) jouent de 17 h à minuit sur la scène. L'événement `street-band` du moteur est supprimé : la scène est un jeu de décor, les musiciens sont calculés depuis l'heure.
+
+### 7.4 Route dédiée et grand défilé du 14 juillet (`city/parade.ts`, pur)
+
+- **Route fermée** de 8 h à 12 h 30 le 14 juillet : aucune voiture, aucun vélo, aucun bus, tram, ambulance ni autre événement de rue (seul le cortège roule). Les barrières sont un jeu de décor posé de 7 h à 8 h.
+- **Cortège** de 10 h à 12 h, flux continu sur la file du premier plan (vers la droite), calculé sans état : une fanfare ouvre la marche, puis une suite tirée de la graine (motards, porte-drapeaux, fanfare militaire, colonne de soldats à pied, cavaliers de la Garde, jeeps pavoisées, camions militaires, chars, sapeurs-pompiers), à vitesse commune pour ne rien faire se chevaucher.
+- **Défilé aérien** à 10 h : passage de la Patrouille de France (traînées bleu-blanc-rouge) puis hélicoptères.
+- Foule dense sur les trottoirs (`festive` bastille, déjà en place), drapeaux de lampadaires et d'entrées (jeux de décor ci-dessus).
+- Mouvement réduit : le cortège et le défilé aérien ne partent pas ; les décors posés restent figés, aucune équipe animée.
+
+### 7.5 Ce que cela change dans la PR 2 déjà commitée
+
+Retirés : événements `street-band` et `parade` (moteur et sprites de la tâche 6), `doorFlag` toujours présent (tâche 7), test du défilé et des vélos de la tâche 7. Conservés : `fest-balloons`, `bells`, fiche WikiHow (à compléter).
