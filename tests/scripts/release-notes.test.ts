@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatNotes, latestTag } from '../../scripts/release-notes.mjs';
+import { formatNotes, isNewerRelease, latestTag } from '../../scripts/release-notes.mjs';
 
 describe('latestTag', () => {
   it('choisit le livrable précédent du canal, le plus grand numéro', () => {
@@ -24,5 +24,17 @@ describe('formatNotes', () => {
 
   it('raccourcit les sujets trop longs', () => {
     expect(formatNotes([`feat: ${'a'.repeat(300)}`]).split('\n')[1]).toHaveLength(162);
+  });
+});
+
+describe('isNewerRelease', () => {
+  it('exige un numéro supérieur au dernier livrable du canal', () => {
+    expect(isNewerRelease(660, ['android-659', 'android-12'], 'android-')).toBe(true);
+    expect(isNewerRelease('659', ['android-659'], 'android-')).toBe(false);
+    expect(isNewerRelease(600, ['android-659'], 'android-')).toBe(false);
+  });
+
+  it('accepte le premier livrable', () => {
+    expect(isNewerRelease(1, [''], 'android-')).toBe(true);
   });
 });

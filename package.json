@@ -23,6 +23,7 @@
     "apk": "node scripts/build-apk.mjs",
     "apk:preprod": "node scripts/build-apk.mjs --channel=preprod",
     "promouvoir": "node scripts/promote.mjs",
+    "corriger": "node scripts/fix-release.mjs",
     "preprod": "node scripts/publish-preprod.mjs",
     "documentaire:reglage": "vite-node scripts/documentary-tuning.ts"
   },
