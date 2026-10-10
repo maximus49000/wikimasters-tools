@@ -1880,4 +1880,48 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v26',
+    theme: 'collection',
+    glyph: '🎉',
+    title: 'Fêtes dans la ville',
+    summary: 'Saint-Valentin, Pâques, 1er mai, Fête de la musique, 14 juillet, Armistice : la rue change d’ambiance',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Un calendrier élargi',
+        text: 'La scène « Ville » connaît désormais neuf fêtes françaises : le Nouvel An, l’Épiphanie (premier dimanche de janvier), la Saint-Valentin (14 février), Pâques (dont la date est calculée chaque année), le 1er mai, la Fête de la musique (21 juin, dès 17 h), la Fête nationale (14 juillet), l’Armistice (11 novembre) et la veille de Noël.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À ce que la rue ait une ambiance propre à chaque grande date, sans rien activer.' },
+          { label: 'Comment faire', text: 'Rien à régler : la date de l’appareil suffit.' },
+          { label: 'D’où viennent les données', text: 'De la date de votre appareil et d’une petite table de fêtes embarquée dans l’extension. Rien n’est envoyé.' },
+          { label: 'Limites', text: 'Calendrier français uniquement. Il n’y a pas de réglage de date : pour voir une fête, il faut l’attendre ou changer la date de l’appareil.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Passants et décors',
+        text: 'Une part des passants porte un signe de fête : couronne dorée, ballon-cœur, panier d’œufs, brin de muguet, drapeau tricolore, coquelicot, serpentin ou note de musique. Le 14 février, des couples se promènent ; à Pâques, des enfants partent à la chasse aux œufs ; la foule est plus dense à la Fête de la musique et le 14 juillet ; la rue est plus calme le 11 novembre. Les 14 juillet, 11 novembre et 1er mai, des drapeaux ornent environ une entrée d’immeuble sur deux.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À reconnaître d’un coup d’œil la fête du jour en regardant la rue.' },
+          { label: 'Comment ça marche', text: 'Tout est calculé à partir de la date et de l’heure : toutes les fenêtres montrent donc la même scène au même moment.' },
+          { label: 'Limites', text: 'Seule une part des passants porte un signe, et seulement une entrée sur deux environ a son drapeau. Rien ne se voit dans une pièce sans fenêtre.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Animations de fête',
+        text: 'Dans le ciel de jour sans pluie, des ballons-cœur (Saint-Valentin) ou des ballons-lapins (Pâques) s’élèvent ; à Pâques, des cloches sonnent. Le soir du 21 juin, des musiciens jouent sous des lumières colorées. Le matin du 14 juillet, de 10 h à 12 h, un défilé de véhicules pavoisés traverse la rue.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À donner de la vie à la ville les jours de fête.' },
+          { label: 'Comment ça marche', text: 'Chaque animation est un tirage : elle n’apparaît pas à chaque instant, mais au même moment dans toutes les fenêtres.' },
+          { label: 'Limites', text: 'Rien ne se voit dans une pièce sans fenêtre. Si vous réduisez les animations, seuls les cloches et les musiciens restent, figés. Le défilé ne compte pas de troupes à pied, seulement des véhicules. Il n’y a toujours pas de feu d’artifice sous la pluie.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];
