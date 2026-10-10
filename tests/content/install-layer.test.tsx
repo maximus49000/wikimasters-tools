@@ -15,6 +15,7 @@ import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { DARK } from '../../src/core/library/city/events';
 import { BARRIER, STAGE } from '../../src/content/install-sprites';
 import { barrierK } from '../../src/content/install-layer';
+import { MUSICIANS, musicianAt } from '../../src/content/stage-band';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: { root: Root; host: HTMLDivElement }[] = [];
@@ -276,6 +277,60 @@ describe('scène de la Fête de la musique : musiciens et faisceaux', () => {
   });
   it('animé hors mouvement réduit', () => {
     expect(count(layer(MUSIC, 23 * 60), '[data-stage-band] animateTransform')).toBeGreaterThan(0);
+  });
+});
+
+describe('musiciens : ils arrivent et repartent à pied', () => {
+  // Horloge murale : début d'une minute + 10 s (la minute de la scène est donnée à part, comme dans la scène).
+  const T = 1_790_000_040 + 10;
+  const at = (date: YMD, minutes: number, still = false): HTMLDivElement => {
+    vi.spyOn(Date, 'now').mockReturnValue(T * 1000);
+    if (still) vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    return layer(date, minutes, still);
+  };
+  const mode = (c: Element, m: string): number => count(c, `[data-stage-band][data-mode="${m}"]`);
+  it('16 h 50 : un musicien marche vers la scène (pas animé), aucun n est apparu d un coup', () => {
+    const c = at(MUSIC, 16 * 60 + 50);
+    expect(mode(c, 'walking')).toBeGreaterThan(0);
+    expect(count(c, '[data-stage-band][data-mode="walking"][data-trip="in"] [data-stride]')).toBeGreaterThan(0);
+    expect(count(c, '[data-stage-band][opacity]')).toBe(0);
+  });
+  it('18 h : les trois en place, aucun en marche', () => {
+    const c = at(MUSIC, 18 * 60);
+    expect(mode(c, 'playing')).toBe(3);
+    expect(mode(c, 'walking')).toBe(0);
+  });
+  it('00 h 05 : en marche vers la sortie ; 00 h 30 : partis', () => {
+    const c = at(MUSIC_NEXT, 5);
+    expect(count(c, '[data-stage-band][data-mode="walking"][data-trip="out"]')).toBeGreaterThan(0);
+    expect(count(at(MUSIC_NEXT, 30), '[data-stage-band]')).toBe(0);
+  });
+  it('16 h 30 : personne encore', () => {
+    expect(count(at(MUSIC, 16 * 60 + 30), '[data-stage-band]')).toBe(0);
+  });
+  it('mouvement réduit à 16 h 50 : seulement ceux déjà en place, aucun marcheur', () => {
+    const c = at(MUSIC, 16 * 60 + 50, true);
+    expect(mode(c, 'walking')).toBe(0);
+  });
+  it('musicianAt : continu (jamais de saut), hors champ avant et après, en place de 17 h à minuit', () => {
+    const D0 = 1_000_000 * 60;
+    const g = { stageX: 300, width: W, unit: 1 };
+    MUSICIANS.forEach((_, i) => {
+      expect(musicianAt(i, D0 + 16.5 * 3600, D0, g).mode).toBe('absent');
+      expect(musicianAt(i, D0 + 17 * 3600, D0, g).mode).toBe('playing');
+      expect(musicianAt(i, D0 + 23.9 * 3600, D0, g).mode).toBe('playing');
+      expect(musicianAt(i, D0 + 24.5 * 3600, D0, g).mode).toBe('absent');
+      for (const [a, b] of [[16.7, 17.05], [23.95, 24.3]] as const) {
+        let prev = musicianAt(i, D0 + a * 3600, D0, g);
+        expect(prev.mode === 'playing' || prev.x < 0 || prev.x > W).toBe(true);
+        for (let t = D0 + a * 3600 + 0.25; t < D0 + b * 3600; t += 0.25) {
+          const p = musicianAt(i, t, D0, g);
+          expect(Math.abs(p.x - prev.x)).toBeLessThanOrEqual(30 * 0.25);
+          prev = p;
+        }
+        expect(prev.x < 0 || prev.x > W || prev.mode === 'playing').toBe(true);
+      }
+    });
   });
 });
 

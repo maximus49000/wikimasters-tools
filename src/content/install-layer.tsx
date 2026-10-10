@@ -147,7 +147,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lamps, lit);
       if (d) drawn.push(d);
     }
-    if (set.id === 'stage-music') drawn.push(...stageShow(set, abs, dark, bandOutfits, metrics, sky, rainy, still));
+    if (set.id === 'stage-music') drawn.push(...stageShow(set, abs, dark, bandOutfits, metrics, sky, rainy, still, width));
     if (still) continue;
     // Camionnette de l'équipe à pied (échelles, barrières, plancher), garée au bord de la rue pendant les fenêtres ; absente
     // tant qu'une équipe (camion élévateur compris) travaille ou passe devant sa place : elle ne cache jamais une équipe.
@@ -219,21 +219,45 @@ function decorNode(set: DecorSet, item: DecorItem, phase: string, door: Door | u
   }
 }
 
-// Musiciens (17 h à minuit, plancher posé) et faisceaux (projecteurs posés et nuit), posés sur la scène. La nuit, les
-// projecteurs éclairent les musiciens (teinte relevée).
+// Musiciens (plancher posé) : ils arrivent à pied de 16 h 46 à 17 h, jouent jusqu'à minuit et repartent à pied de 0 h 01 à
+// 0 h 15 (stage-band.tsx) ; aucun n'apparaît ni ne disparaît sur place. Faisceaux (projecteurs posés, nuit, 17 h à minuit :
+// les trois musiciens sont alors en place, jamais une scène vide éclairée). La nuit, les projecteurs éclairent les musiciens.
 const BAND_FROM = 17 * 60;
-function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[], m: CityMetrics, sky: Sky, rainy: boolean, still: boolean): Drawn[] {
+const BAND_WINDOW: readonly [number, number] = [16 * 60 + 45, 24 * 60 + 20];
+function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[], m: CityMetrics, sky: Sky, rainy: boolean, still: boolean, width: number): Drawn[] {
   const floor = set.items.find((i) => i.kind === 'stage-floor');
   const spots = set.items.find((i) => i.kind === 'stage-spots');
   if (!floor || !spots) return [];
-  if (abs < absMinute(set.day, BAND_FROM) || abs >= absMinute(set.day + 1, 0)) return [];
+  if (abs < absMinute(set.day, BAND_WINDOW[0]) || abs >= absMinute(set.day, BAND_WINDOW[1])) return [];
   const fp = itemPhase(set, floor, abs, set.day);
   const sp = itemPhase(set, spots, abs, set.day);
   const t = `translate(${floor.x.toFixed(1)} ${stageBase(m).toFixed(1)}) scale(${m.unit.toFixed(3)})`;
-  const lit = sp.phase === 'present' && dark;
+  const playing = abs >= absMinute(set.day, BAND_FROM) && abs < absMinute(set.day + 1, 0);
+  const lit = sp.phase === 'present' && dark && playing;
   const out: Drawn[] = [];
   if (lit) out.push({ part: 'crew', node: <g key={`${set.id}-beams`} transform={t}><StageBeams still={still} /></g> });
-  if (still ? fp.phase === 'present' : itemShown(set, floor, fp)) out.push({ part: 'crew', node: <g key={`${set.id}-band`} transform={t}><StageBand outfits={outfits} sky={sky} rainy={rainy} still={still} lit={lit} /></g> });
+  if (still ? fp.phase === 'present' : itemShown(set, floor, fp)) {
+    const day = Math.floor(abs / 1440);
+    out.push({
+      part: 'crew',
+      node: (
+        <StageBand
+          key={`${set.id}-band`}
+          stageX={floor.x}
+          base={stageBase(m)}
+          unit={m.unit}
+          width={width}
+          minutes={abs - day * 1440}
+          dayOffset={day - set.day}
+          outfits={outfits}
+          sky={sky}
+          rainy={rainy}
+          still={still}
+          lit={lit}
+        />
+      ),
+    });
+  }
   return out;
 }
 

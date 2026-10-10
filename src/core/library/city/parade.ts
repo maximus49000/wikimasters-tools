@@ -1,5 +1,6 @@
 import type { FestivityId } from './calendar';
-import { hashString, mulberry32 } from '../scene-world';
+import { WORLD_MARGIN, hashString, mulberry32 } from '../scene-world';
+import { WALK_PACE, cityMetrics } from './metrics';
 import { outfitFor, type Outfit } from './people';
 
 // Route fermée et grand défilé du 14 juillet (moteur pur, sans état). Tout se calcule depuis l'heure et la graine.
@@ -101,14 +102,31 @@ export function crowdLevel(minute: number): number {
 
 export type SpectatorKind = 'adult' | 'child' | 'shoulders';
 export type SpectatorProp = 'flag' | 'phone' | 'wave' | 'none';
-// `row` : 0 = au bord du trottoir, 1 et 2 = rangs de derrière ; `u` : seuil de présence (présent si u < crowdLevel) ;
+// `row` : 0 = au bord du trottoir, 1 et 2 = rangs de derrière ; `u` : seuil de présence (en place si u < crowdLevel) ;
 // `child` : l'enfant porté sur les épaules (kind 'shoulders') ; `dir` : sens du profil (tourné vers l'arrivée ou la suite du cortège).
-export type Spectator = { id: string; x: number; row: 0 | 1 | 2; u: number; kind: SpectatorKind; prop: SpectatorProp; outfit: Outfit; child?: Outfit; dir: 1 | -1; phase: number; jitter: number };
+// Trajet : `from` / `to` = d'où il arrive et où il repart (centre d'une entrée d'immeuble si `fromDoor` / `toDoor`, sinon un
+// bord du monde, hors champ) ; `speed` (px/s, pas de marche) ; `lane` : profondeur de son couloir de marche, derrière la foule.
+export type Spectator = {
+  id: string; x: number; row: 0 | 1 | 2; u: number; kind: SpectatorKind; prop: SpectatorProp; outfit: Outfit; child?: Outfit; dir: 1 | -1; phase: number; jitter: number;
+  from: number; fromDoor: boolean; to: number; toDoor: boolean; speed: number; lane: number;
+};
 
 // Espacement moyen (px) par rang : le premier rang, au bord du trottoir, est le plus serré.
 export const CROWD_SPACING: readonly [number, number, number] = [9, 14, 20];
+// Pied de chaque rang, en unités (1 unité = hauteur de la scène / 340) au-dessus du bord du trottoir.
+export const CROWD_ROW_DEPTH: readonly [number, number, number] = [1.2, 5, 8.8];
+// Couloir de marche (même repère) : derrière le dernier rang, devant les entrées d'immeuble.
+export const CROWD_LANE = 13;
+// Seuil des entrées d'immeuble (même repère), tiré du repère de la rue.
+const REF = cityMetrics(340);
+export const CROWD_DOOR_DEPTH = (REF.curb - REF.doorY) / REF.unit;
+// Une entrée est « proche » à moins de cette distance (px) de la place.
+const NEAR_DOOR = 170;
+// Fondu à l'encadrement de la porte (le même que pour les habitants, doors.ts).
+const DOOR_FADE_S = 0.8;
 
-export function crowdFor(seed: number, width: number): Spectator[] {
+// `doors` : centres des entrées d'immeuble (px). Sans entrée proche, le spectateur arrive par un bord de la rue.
+export function crowdFor(seed: number, width: number, doors: readonly number[] = []): Spectator[] {
   const rng = mulberry32(seed ^ hashString('bastille-crowd'));
   const out: Spectator[] = [];
   CROWD_SPACING.forEach((step, row) => {
@@ -123,6 +141,8 @@ export function crowdFor(seed: number, width: number): Spectator[] {
       const prop: SpectatorProp = pr < 0.22 ? 'flag' : pr < 0.36 ? 'phone' : pr < 0.48 ? 'wave' : 'none';
       // Présence : la famille arrive ensemble (même seuil), sinon un tirage par spectateur.
       const u = rng();
+      // Trajet (tirage à part : places et tenues inchangées) ; la famille marche ensemble (même trajet, même seuil).
+      const trip = tripOf(mulberry32(seed ^ hashString(`bastille-crowd-trip-${row}-${n}`)), x, width, doors);
       // Pas de ballon par terre dans la foule : l'accessoire 'ball' des enfants devient un sac à dos.
       const dress = (o: Outfit): Outfit => (o.accessory === 'ball' ? { ...o, accessory: 'backpack' } : o);
       const push = (k: SpectatorKind, px: number, p: SpectatorProp): void => {
@@ -138,6 +158,7 @@ export function crowdFor(seed: number, width: number): Spectator[] {
           dir: rng() < 0.5 ? 1 : -1,
           phase: rng(),
           jitter: rng() - 0.5,
+          ...trip,
         });
       };
       push(kind, x, kind === 'child' && prop === 'phone' ? 'flag' : prop);
@@ -146,4 +167,91 @@ export function crowdFor(seed: number, width: number): Spectator[] {
     }
   });
   return out;
+}
+
+type Trip = Pick<Spectator, 'from' | 'fromDoor' | 'to' | 'toDoor' | 'speed' | 'lane'>;
+// Moitié par une entrée d'immeuble proche (s'il y en a), moitié par un bord de la rue ; on repart par l'entrée ou le bord le
+// plus proche (même genre qu'à l'arrivée : on rentre chez soi, ou on rejoint une rue latérale).
+function tripOf(rng: () => number, x: number, width: number, doors: readonly number[]): Trip {
+  const near = doors.filter((d) => Math.abs(d - x) < NEAR_DOOR);
+  const byDoor = rng() < 0.5 && near.length > 0;
+  const pick = rng();
+  const edge = rng() < 0.5 ? -WORLD_MARGIN : width + WORLD_MARGIN;
+  const speed = (18 + rng() * 8) * WALK_PACE;
+  const lane = CROWD_LANE + (rng() - 0.5) * 3;
+  if (byDoor) {
+    const nearest = near.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a));
+    return { from: near[Math.floor(pick * near.length)]!, fromDoor: true, to: nearest, toDoor: true, speed, lane };
+  }
+  return { from: edge, fromDoor: false, to: x < width / 2 ? -WORLD_MARGIN : width + WORLD_MARGIN, toDoor: false, speed, lane };
+}
+
+// Inverse de la courbe en S (3x² − 2x³) sur [0, 1].
+const unsmooth = (y: number): number => 0.5 - Math.sin(Math.asin(1 - 2 * Math.min(1, Math.max(0, y))) / 3);
+// Minutes de la scène où le spectateur est en place, puis quitte sa place : u < crowdLevel entre les deux.
+export function spectatorTimes(u: number): { arrive: number; leave: number } {
+  const { arrive, full, leave, gone } = CROWD_TIMES;
+  return { arrive: arrive + (full - arrive) * unsmooth(u), leave: leave + (gone - leave) * unsmooth(1 - u) };
+}
+
+type Pt = { x: number; d: number };
+const placeOf = (s: Spectator): Pt => ({ x: s.x, d: CROWD_ROW_DEPTH[s.row] + s.jitter * 1.2 });
+// Chemin de la porte (ou du bord) à la place : sortie de la porte en biais vers le couloir de marche, le couloir derrière la
+// foule, puis un pas en biais jusqu'au rang ; le départ est le chemin inverse vers `to`. Profondeur en unités, comptée comme des px.
+function pathIn(s: Spectator): Pt[] {
+  const dir = Math.sign(s.x - s.from) || 1;
+  const a = Math.min(8, Math.abs(s.x - s.from) / 3);
+  return [{ x: s.from, d: s.fromDoor ? CROWD_DOOR_DEPTH : s.lane }, { x: s.from + dir * a, d: s.lane }, { x: s.x - dir * a, d: s.lane }, placeOf(s)];
+}
+function pathOut(s: Spectator): Pt[] {
+  const dir = Math.sign(s.to - s.x) || 1;
+  const a = Math.min(8, Math.abs(s.to - s.x) / 3);
+  return [placeOf(s), { x: s.x + dir * a, d: s.lane }, { x: s.to - dir * a, d: s.lane }, { x: s.to, d: s.toDoor ? CROWD_DOOR_DEPTH : s.lane }];
+}
+const seg = (a: Pt, b: Pt): number => Math.hypot(b.x - a.x, b.d - a.d);
+const lengthOf = (p: readonly Pt[]): number => p.slice(1).reduce((acc, q, i) => acc + seg(p[i]!, q), 0);
+function along(p: readonly Pt[], dist: number): Pt {
+  let left = dist;
+  for (let i = 1; i < p.length; i++) {
+    const l = seg(p[i - 1]!, p[i]!);
+    if (left <= l && l > 0) {
+      const k = left / l;
+      return { x: p[i - 1]!.x + (p[i]!.x - p[i - 1]!.x) * k, d: p[i - 1]!.d + (p[i]!.d - p[i - 1]!.d) * k };
+    }
+    left -= l;
+  }
+  return p[p.length - 1]!;
+}
+const sgn = (v: number): 1 | -1 => (v < 0 ? -1 : 1);
+
+export type SpectatorMode = 'absent' | 'walking' | 'standing';
+// `depth` : pied en unités au-dessus du bord du trottoir ; `fade` (0 à 1) : seulement à l'encadrement d'une porte.
+export type SpectatorPos = { x: number; depth: number; dir: 1 | -1; mode: SpectatorMode; fade?: number };
+
+// Position du spectateur à l'instant `t` (s, horloge murale), le jour de la scène commençant à `dayStartS`. Il part en avance
+// (longueur du chemin / vitesse) pour être en place quand u < crowdLevel, et repart à pied dès qu'il quitte sa place.
+export function spectatorAt(s: Spectator, t: number, dayStartS: number): SpectatorPos {
+  const { arrive, leave } = spectatorTimes(s.u);
+  const tIn = dayStartS + arrive * 60;
+  const tOut = dayStartS + leave * 60;
+  const pin = pathIn(s);
+  const pout = pathOut(s);
+  const durIn = lengthOf(pin) / s.speed;
+  const durOut = lengthOf(pout) / s.speed;
+  const dirIn = sgn(s.x - s.from);
+  const dirOut = sgn(s.to - s.x);
+  const doorFade = (c: number): number => smoothstep(0, DOOR_FADE_S, c);
+  if (t < tIn - durIn) return { x: s.from, depth: pin[0]!.d, dir: dirIn, mode: 'absent', ...(s.fromDoor ? { fade: 0 } : {}) };
+  if (t < tIn) {
+    const c = t - (tIn - durIn);
+    const p = along(pin, c * s.speed);
+    return { x: p.x, depth: p.d, dir: dirIn, mode: 'walking', ...(s.fromDoor ? { fade: doorFade(c) } : {}) };
+  }
+  if (t < tOut) return { x: s.x, depth: pin[pin.length - 1]!.d, dir: s.dir, mode: 'standing' };
+  if (t < tOut + durOut) {
+    const c = t - tOut;
+    const p = along(pout, c * s.speed);
+    return { x: p.x, depth: p.d, dir: dirOut, mode: 'walking', ...(s.toDoor ? { fade: doorFade(durOut - c) } : {}) };
+  }
+  return { x: s.to, depth: pout[pout.length - 1]!.d, dir: dirOut, mode: 'absent', ...(s.toDoor ? { fade: 0 } : {}) };
 }

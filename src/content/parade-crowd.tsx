@@ -1,23 +1,27 @@
-import { memo, useMemo, type ReactElement } from 'react';
+import { memo, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { FestivityId } from '../core/library/city/calendar';
 import { DOOR_WIDTH, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
-import { crowdFor, crowdLevel, type Spectator } from '../core/library/city/parade';
+import { CROWD_ROW_DEPTH, CROWD_TIMES, crowdFor, crowdLevel, spectatorAt, type Spectator, type SpectatorPos } from '../core/library/city/parade';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
+import { useSceneDayStart } from './parade-layer';
+import { useWallClockLoop } from './use-wallclock-loop';
 
 // Foule de spectateurs du 14 juillet (spec §7.4) : massée sur le trottoir, derrière les barrières (dessinées plus tard, sur la
-// chaussée), en trois rangs. Positions statiques calculées par crowdFor (aucun placement par image) ; seule la présence change,
-// à la minute (u < crowdLevel), avec un fondu CSS. Les spectateurs dont le seuil est proche du niveau des minutes voisines
-// restent montés à opacité 0 pour que l'arrivée et le départ se fassent en fondu.
+// chaussée), en trois rangs. Personne n'apparaît ni ne disparaît sur place : chaque spectateur arrive à pied (par une entrée
+// d'immeuble proche, avec le fondu court de l'encadrement de la porte, ou depuis un bord de la rue, hors champ) le long d'un
+// couloir de marche derrière la foule, jusqu'à sa place, et repart de même (moteur pur `spectatorAt`, city/parade.ts).
+// Les spectateurs debout sont statiques et mémoïsés ; les marcheurs (peu nombreux à la fois) sont placés à chaque image par la
+// boucle de l'horloge murale, qui ne re-rend que lorsque l'ensemble des marcheurs ou le nombre de spectateurs en place change.
+// Mouvement réduit : seulement les spectateurs en place au niveau courant (u < crowdLevel), immobiles.
 // Hors du plafond des figurants (shopSpriteBudget) : la foule remplace les marcheurs (×0,3 pendant la fermeture) et a sa
 // propre densité bornée ; comptée dans le plafond, elle ferait disparaître clients et équipes.
 
-const FADE_S = 3;
-// Pied de chaque rang (en unités au-dessus du bord du trottoir) et échelle : les rangs de derrière, plus hauts sur le
-// trottoir, sont un peu plus petits.
-const ROW_Y = [1.2, 5, 8.8] as const;
+// Échelle selon la profondeur sur le trottoir : les rangs de derrière, plus hauts, sont un peu plus petits (1 ; 0,96 ; 0,92).
 const ROW_SCALE = [1, 0.96, 0.92] as const;
-const LOOKAROUND = 3; // minutes
+const depthScale = (d: number): number => Math.min(1, Math.max(0.85, 1 - ((d - CROWD_ROW_DEPTH[0]) * 0.08) / (CROWD_ROW_DEPTH[2] - CROWD_ROW_DEPTH[0])));
+// Marge (min) autour de la fenêtre de la foule : les premiers partent en avance, les derniers finissent leur trajet.
+const MARGIN_MIN = 5;
 
 type Props = { width: number; seed: number; sky: Sky; still: boolean; rainy: boolean; dayFests: readonly FestivityId[]; minutes: number; metrics: CityMetrics; doorXs: readonly number[] };
 
@@ -50,8 +54,10 @@ function RaisedArm({ s, sky, still }: { s: Spectator; sky: Sky; still: boolean }
   );
 }
 
-const SpectatorSprite = memo(function SpectatorSprite({ s, sky, still, rainy }: { s: Spectator; sky: Sky; still: boolean; rainy: boolean }): ReactElement {
-  const arm = s.prop !== 'none' ? <RaisedArm s={s} sky={sky} still={still} /> : null;
+// Debout : bras levé (drapeau, téléphone, main). En marche : jambes au pas, le drapeau porté haut sans l'agiter, l'enfant
+// reste sur les épaules.
+const SpectatorSprite = memo(function SpectatorSprite({ s, sky, still, rainy, walking }: { s: Spectator; sky: Sky; still: boolean; rainy: boolean; walking: boolean }): ReactElement {
+  const arm = walking ? (s.prop === 'flag' ? <RaisedArm s={s} sky={sky} still /> : null) : s.prop !== 'none' ? <RaisedArm s={s} sky={sky} still={still} /> : null;
   return (
     <>
       {/* Enfant sur les épaules : dessiné avant l'adulte, dont la tête cache le bas de ses jambes. */}
@@ -60,48 +66,102 @@ const SpectatorSprite = memo(function SpectatorSprite({ s, sky, still, rainy }: 
           <PersonSprite outfit={s.child} sky={sky} rainy={rainy} umbrella={false} />
         </g>
       )}
-      <PersonSprite outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} />
+      <PersonSprite outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} stride={walking ? s.phase : null} />
       {arm}
     </>
   );
 });
 
+const transformOf = (s: Spectator, p: SpectatorPos, m: CityMetrics, standing: boolean): string => {
+  const k = m.unit * STREET_SCALE.person * (standing ? ROW_SCALE[s.row] : depthScale(p.depth)) * (s.kind === 'child' ? 0.7 : 1);
+  const y = m.curb - p.depth * m.unit;
+  return `translate(${p.x.toFixed(1)} ${y.toFixed(1)}) scale(${(p.dir * k).toFixed(3)} ${k.toFixed(3)})`;
+};
+
 export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes, metrics, doorXs }: Props): ReactElement | null {
   const bastille = dayFests.includes('bastille');
-  const all = useMemo(() => (bastille ? crowdFor(seed, width) : []), [bastille, seed, width]);
-  const level = bastille ? crowdLevel(minutes) : 0;
-  const reach = bastille ? Math.max(level, crowdLevel(minutes - LOOKAROUND), crowdLevel(minutes + LOOKAROUND)) : 0;
+  const doorKey = doorXs.join(',');
   // Devant une entrée, le rang du fond s'écarte : on voit encore la porte entre les têtes.
   const doorClear = DOOR_WIDTH / 2 + 2;
-  const list = useMemo(
-    () => all.filter((s) => s.u < reach && !(s.row === 2 && doorXs.some((d) => Math.abs(d + DOOR_WIDTH / 2 - s.x) < doorClear))).sort((a, b) => b.row - a.row),
+  const all = useMemo(
+    () => (bastille ? crowdFor(seed, width, doorXs.map((d) => d + DOOR_WIDTH / 2)) : []).filter((s) => !(s.row === 2 && doorXs.some((d) => Math.abs(d + DOOR_WIDTH / 2 - s.x) < doorClear))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [all, reach, doorXs.join(',')],
+    [bastille, seed, width, doorKey],
   );
-  if (list.length === 0) return null;
-  const u = metrics.unit;
-  const style = still ? undefined : { transition: `opacity ${FADE_S}s ease` };
+  const on = bastille && minutes >= CROWD_TIMES.arrive - MARGIN_MIN && minutes < CROWD_TIMES.gone + MARGIN_MIN;
+  const now = Date.now() / 1000;
+  const dayStart = useSceneDayStart(minutes, now);
+  const statesAt = (t: number): SpectatorPos[] => all.map((s) => spectatorAt(s, t, dayStart));
+  // Signature de ce qui est monté : nombre de spectateurs en place (monotone à l'arrivée comme au départ) et marcheurs.
+  const sigOf = (states: readonly SpectatorPos[]): string => {
+    let n = 0;
+    const w: string[] = [];
+    states.forEach((p, i) => {
+      if (p.mode === 'standing') n++;
+      else if (p.mode === 'walking') w.push(all[i]!.id);
+    });
+    return `${n}|${w.join(',')}`;
+  };
+  const [sig, setSig] = useState('');
+  const root = useRef<SVGGElement | null>(null);
+
+  const place = useMemo(
+    () => (t: number): void => {
+      if (still || !on) return;
+      const states = statesAt(t);
+      const key = sigOf(states);
+      if (key !== sig) setSig(key);
+      const el = root.current;
+      if (!el) return;
+      states.forEach((p, i) => {
+        if (p.mode !== 'walking') return;
+        const node = el.querySelector(`[data-spectator-id="${all[i]!.id}"]`);
+        if (!node) return;
+        node.setAttribute('transform', transformOf(all[i]!, p, metrics, false));
+        node.setAttribute('opacity', (p.fade ?? 1).toFixed(2));
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [all, dayStart, sig, still, on, metrics],
+  );
+  useWallClockLoop(place, [place]);
+
+  // Rendu : l'état à l'instant présent (mouvement réduit : les spectateurs en place au niveau de la minute).
+  const level = crowdLevel(minutes);
+  const states = on && !still ? statesAt(now) : [];
+  const standing = on ? (still ? all.filter((s) => s.u < level) : all.filter((_, i) => states[i]!.mode === 'standing')) : [];
+  const walkers = on && !still ? all.map((s, i) => [s, states[i]!] as const).filter(([, p]) => p.mode === 'walking') : [];
+  const standKey = standing.map((s) => s.id).join(',');
+  const standNodes = useMemo(
+    () =>
+      [...standing].sort((a, b) => b.row - a.row).map((s) => (
+        <g key={s.id} data-spectator="" data-spectator-id={s.id} data-row={s.row} data-kind={s.kind} data-mode="standing" transform={transformOf(s, { x: s.x, depth: CROWD_ROW_DEPTH[s.row] + s.jitter * 1.2, dir: s.dir, mode: 'standing' }, metrics, true)}>
+          <SpectatorSprite s={s} sky={sky} still={still} rainy={rainy} walking={false} />
+        </g>
+      )),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [standKey, sky, still, rainy, metrics],
+  );
+  if (!on || (standing.length === 0 && walkers.length === 0)) return null;
   return (
-    <g data-parade-crowd="" data-level={level.toFixed(2)}>
-      {list.map((s) => {
-        const present = s.u < level;
-        const k = u * STREET_SCALE.person * ROW_SCALE[s.row] * (s.kind === 'child' ? 0.7 : 1);
-        const y = metrics.curb - (ROW_Y[s.row] + s.jitter * 1.2) * u;
-        return (
-          <g
-            key={s.id}
-            data-spectator=""
-            data-row={s.row}
-            data-kind={s.kind}
-            data-present={present ? 'true' : 'false'}
-            transform={`translate(${s.x.toFixed(1)} ${y.toFixed(1)}) scale(${(s.dir * k).toFixed(3)} ${k.toFixed(3)})`}
-            opacity={present ? 1 : 0}
-            style={style}
-          >
-            <SpectatorSprite s={s} sky={sky} still={still} rainy={rainy} />
-          </g>
-        );
-      })}
+    <g data-parade-crowd="" data-level={level.toFixed(2)} ref={root}>
+      {/* Marcheurs : dans le couloir derrière la foule, dessinés avant elle. */}
+      {walkers.map(([s, p]) => (
+        <g
+          key={s.id}
+          data-spectator=""
+          data-spectator-id={s.id}
+          data-row={s.row}
+          data-kind={s.kind}
+          data-mode="walking"
+          data-door={p.fade !== undefined ? 'true' : undefined}
+          transform={transformOf(s, p, metrics, false)}
+          opacity={(p.fade ?? 1).toFixed(2)}
+        >
+          <SpectatorSprite s={s} sky={sky} still={still} rainy={rainy} walking />
+        </g>
+      ))}
+      {standNodes}
     </g>
   );
 }

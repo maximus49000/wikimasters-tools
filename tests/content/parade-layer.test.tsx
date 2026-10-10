@@ -92,7 +92,8 @@ describe('grand défilé du 14 juillet', () => {
 });
 
 describe('foule de spectateurs', () => {
-  const CROWD = '[data-parade-crowd] [data-spectator][data-present="true"]';
+  const CROWD = '[data-parade-crowd] [data-spectator][data-mode="standing"]';
+  const WALKING = '[data-parade-crowd] [data-spectator][data-mode="walking"]';
   it('à 11 h : une vraie foule (au moins 50 spectateurs), derrière les barrières', () => {
     const c = mount(11);
     expect(count(c, CROWD)).toBeGreaterThanOrEqual(50);
@@ -118,10 +119,36 @@ describe('foule de spectateurs', () => {
   it('jour ordinaire : aucun spectateur', () => {
     expect(count(mount(11, ORDINARY), '[data-parade-crowd]')).toBe(0);
   });
-  it('mouvement réduit : la foule est là, immobile', () => {
+  // Opacité intermédiaire : seulement pour qui passe l'encadrement d'une porte d'immeuble.
+  const fadingAwayFromDoor = (c: Element): number =>
+    [...c.querySelectorAll('[data-parade-crowd] [data-spectator]')].filter((e) => {
+      const o = e.getAttribute('opacity');
+      return o !== null && Number(o) > 0 && Number(o) < 1 && e.getAttribute('data-door') !== 'true';
+    }).length;
+  it('à 9 h : des spectateurs arrivent à pied (pas animé), aucun fondu sur place', () => {
+    const c = mount(9);
+    expect(count(c, WALKING)).toBeGreaterThan(0);
+    expect(count(c, `${WALKING} [data-stride]`)).toBeGreaterThan(0);
+    expect(fadingAwayFromDoor(c)).toBe(0);
+    for (const e of c.querySelectorAll('[data-parade-crowd] [data-spectator]')) expect(e.getAttribute('style') ?? '').not.toContain('transition');
+  });
+  it('à 12 h 55 : des spectateurs repartent à pied', () => {
+    const c = mount(775 / 60);
+    expect(count(c, WALKING)).toBeGreaterThan(0);
+    expect(fadingAwayFromDoor(c)).toBe(0);
+  });
+  it('à 11 h : aucun marcheur, au moins 50 debout', () => {
+    const c = mount(11);
+    expect(count(c, WALKING)).toBe(0);
+    expect(count(c, CROWD)).toBeGreaterThanOrEqual(50);
+  });
+  it('mouvement réduit : la foule est là, immobile, seulement des spectateurs debout', () => {
     const c = mount(11, BASTILLE, true);
     expect(count(c, CROWD)).toBeGreaterThanOrEqual(50);
     expect(count(c, '[data-parade-crowd] animate, [data-parade-crowd] animateTransform')).toBe(0);
+    const nine = mount(9, BASTILLE, true);
+    expect(count(nine, WALKING)).toBe(0);
+    expect(count(nine, CROWD)).toBeGreaterThan(0);
   });
   it('les marcheurs ordinaires se font rares pendant la fermeture', () => {
     const peds = (c: Element): number => count(c, '[data-ped][data-role="general"][data-active="true"]');

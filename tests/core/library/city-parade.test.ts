@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLOSURE, PARADE, PARADE_SPEED, crowdFor, crowdLevel, flypastWindow, paradeUnits, paradeX, roadClosed, type ParadeKind } from '../../../src/core/library/city/parade';
+import { CLOSURE, CROWD_LANE, PARADE, PARADE_SPEED, crowdFor, crowdLevel, flypastWindow, spectatorAt, spectatorTimes, paradeUnits, paradeX, roadClosed, type ParadeKind } from '../../../src/core/library/city/parade';
 import { cityEventSchedule, defOf, eligible, EVENT_DEFS, conditionsKey, type EventConditions } from '../../../src/core/library/city/events';
 import { cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
 import { dayContext, type YMD } from '../../../src/core/library/city/calendar';
@@ -177,5 +177,95 @@ describe('foule de spectateurs du défilé', () => {
     expect(closed).toBeLessThan(open);
     // Un autre jour, à la même heure, rien ne change.
     expect(cityIntensity(ctx({ y: 2026, m: 7, d: 13 }, 660)).walkers).toBeGreaterThan(0.3);
+  });
+});
+
+describe('trajets des spectateurs (ils arrivent et repartent à pied)', () => {
+  const W = 720;
+  const DOORS = [40, 150, 260, 420, 530, 660];
+  const D0 = 1_790_000_000; // début du jour de la scène (s)
+  const crowd = crowdFor(1, W, DOORS);
+  const at = (h: number): number => D0 + h * 3600;
+  it('déterministe ; moitié par une entrée d immeuble, moitié par un bord', () => {
+    expect(crowdFor(1, W, DOORS)).toEqual(crowd);
+    const s = crowd[17]!;
+    expect(spectatorAt(s, at(9.2), D0)).toEqual(spectatorAt(s, at(9.2), D0));
+    const doors = crowd.filter((c) => c.fromDoor).length;
+    expect(doors).toBeGreaterThan(crowd.length * 0.3);
+    expect(doors).toBeLessThan(crowd.length * 0.7);
+    for (const c of crowd) {
+      if (c.fromDoor) expect(DOORS).toContain(c.from);
+      else expect(c.from === -80 || c.from === W + 80).toBe(true);
+    }
+  });
+  it('en place (standing, à sa place) exactement quand u < crowdLevel ; marche juste avant et juste après', () => {
+    for (const s of crowd) {
+      for (const h of [9, 9.5, 10.5, 12.5, 13]) {
+        const p = spectatorAt(s, at(h), D0);
+        const present = s.u < crowdLevel(h * 60);
+        if (present) {
+          expect(p.mode).toBe('standing');
+          expect(p.x).toBe(s.x);
+          expect(p.dir).toBe(s.dir);
+        } else expect(p.mode).not.toBe('standing');
+      }
+    }
+    // Avant l arrivée : en marche ; après le départ : en marche.
+    const s = crowd.find((c) => c.u > 0.3 && c.u < 0.7)!;
+    let first = -1;
+    let last = -1;
+    for (let t = at(8.4); t < at(13.4); t += 1) {
+      const m = spectatorAt(s, t, D0).mode;
+      if (m === 'standing') {
+        if (first < 0) first = t;
+        last = t;
+      }
+    }
+    expect(spectatorAt(s, first - 2, D0).mode).toBe('walking');
+    expect(spectatorAt(s, last + 2, D0).mode).toBe('walking');
+  });
+  it('jamais de saut : écart de x au plus vitesse × dt entre deux instants proches', () => {
+    let worst = 0;
+    for (const s of crowd.filter((_, i) => i % 3 === 0)) {
+      const { arrive, leave } = spectatorTimes(s.u);
+      // Autour de l'arrivée et du départ (les trajets durent moins de 2 min).
+      for (const m of [arrive, leave]) {
+        const from = D0 + m * 60 - 150;
+        let prev = spectatorAt(s, from, D0);
+        for (let t = from + 0.25; t < from + 300; t += 0.25) {
+          const p = spectatorAt(s, t, D0);
+          worst = Math.max(worst, Math.abs(p.x - prev.x) - s.speed * 0.25, Math.abs(p.depth - prev.depth) - s.speed * 0.25);
+          prev = p;
+        }
+      }
+    }
+    expect(worst).toBeLessThanOrEqual(1e-6);
+  });
+  it('absent : à sa porte ou hors champ ; fondu seulement à l encadrement d une porte', () => {
+    for (const s of crowd) {
+      for (const h of [8, 14]) {
+        const p = spectatorAt(s, at(h), D0);
+        expect(p.mode).toBe('absent');
+        if (p.x >= 0 && p.x <= W) expect(DOORS).toContain(p.x);
+      }
+      for (let t = at(8.3); t < at(13.5); t += 7) {
+        const p = spectatorAt(s, t, D0);
+        if (p.fade !== undefined && p.fade < 1 && p.mode !== 'absent') {
+          expect(DOORS.some((d) => Math.abs(d - p.x) < 15)).toBe(true);
+        }
+      }
+    }
+  });
+  it('les marcheurs passent derrière la foule (couloir de marche) et sont peu nombreux à la fois', () => {
+    let max = 0;
+    let seen = 0;
+    for (let t = at(8.4); t < at(10); t += 10) {
+      const w = crowd.map((s) => spectatorAt(s, t, D0)).filter((p) => p.mode === 'walking');
+      max = Math.max(max, w.length);
+      seen += w.length;
+      for (const p of w) expect(p.depth).toBeLessThanOrEqual(CROWD_LANE + 6);
+    }
+    expect(seen).toBeGreaterThan(0);
+    expect(max).toBeLessThan(15);
   });
 });

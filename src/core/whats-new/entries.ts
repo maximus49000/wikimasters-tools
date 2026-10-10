@@ -1936,22 +1936,22 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-library-entry]',
         title: 'Fête de la musique',
-        text: 'Le 21 juin, une scène est montée de 9 h à 16 h : plancher, portique et 3 projecteurs. Les musiciens y jouent de 17 h à minuit ; les projecteurs s’allument quand il fait nuit. La scène est démontée de nuit, de 0 h à 4 h.',
+        text: 'Le 21 juin, une scène est montée de 9 h à 16 h : plancher, portique et 3 projecteurs. Les musiciens arrivent à pied sur la scène peu avant 17 h, l’un après l’autre, y jouent jusqu’à minuit, puis en repartent à pied ; les projecteurs s’allument quand il fait nuit. La scène est démontée de nuit, de 0 h à 4 h.',
         details: [
           { label: 'À quoi ça sert', text: 'À faire de la rue un petit concert pour la nuit la plus courte de l’année.' },
-          { label: 'Comment ça marche', text: 'Montage et démontage suivent l’heure comme les autres décors. Les cônes de lumière partent des projecteurs et visent les musiciens.' },
-          { label: 'Limites', text: 'Pas de scène hors du 21 juin. Rien ne se voit dans une pièce sans fenêtre. En mouvement réduit, la scène reste mais ni équipes ni animation.' },
+          { label: 'Comment ça marche', text: 'Montage et démontage suivent l’heure comme les autres décors. Les musiciens viennent du bout de la rue le plus proche, montent sur le plancher par le côté et gagnent leur place (de 16 h 46 à 17 h) ; à minuit, ils redescendent et repartent par le même chemin (de 0 h 01 à 0 h 15). Les cônes de lumière partent des projecteurs et visent les musiciens : ils ne s’allument que lorsque les musiciens sont en place.' },
+          { label: 'Limites', text: 'Pas de scène hors du 21 juin. Rien ne se voit dans une pièce sans fenêtre. En mouvement réduit, la scène reste mais ni équipes ni animation : seuls les musiciens déjà en place sont dessinés, immobiles.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
       {
         target: '[data-wmt-library-entry]',
         title: 'Le défilé du 14 juillet',
-        text: 'Le 14 juillet, la route est fermée de 8 h à 13 h 30 (jusqu’à la fin de la dépose des barrières) : aucune autre voiture, vélo ou bus. Le cortège passe de 10 h à 12 h sur les deux files de la route (celle du fond est plus petite) : fanfare, motards de la Garde, porte-drapeaux, soldats à pied, cavaliers, jeeps, camions, chars et sapeurs-pompiers. À 10 h, la Patrouille de France ouvre le défilé aérien. Une vraie foule de spectateurs se masse sur le trottoir, derrière les barrières, sur trois rangs : elle arrive peu à peu de 8 h 30 à 10 h et repart de 12 h 15 à 13 h 15 ; drapeaux tricolores et téléphones levés, enfants sur les épaules.',
+        text: 'Le 14 juillet, la route est fermée de 8 h à 13 h 30 (jusqu’à la fin de la dépose des barrières) : aucune autre voiture, vélo ou bus. Le cortège passe de 10 h à 12 h sur les deux files de la route (celle du fond est plus petite) : fanfare, motards de la Garde, porte-drapeaux, soldats à pied, cavaliers, jeeps, camions, chars et sapeurs-pompiers. À 10 h, la Patrouille de France ouvre le défilé aérien. Une vraie foule de spectateurs se masse sur le trottoir, derrière les barrières, sur trois rangs : les gens arrivent à pied de 8 h 30 à 10 h, en sortant des immeubles voisins ou depuis les bouts de la rue, gagnent leur place, et repartent à pied de 12 h 15 à 13 h 15 ; drapeaux tricolores et téléphones levés, enfants sur les épaules.',
         details: [
           { label: 'À quoi ça sert', text: 'À donner au 14 juillet son grand défilé, comme sur les Champs-Élysées.' },
-          { label: 'Comment ça marche', text: 'Le cortège est un flux continu par file, à vitesse commune, composé à partir de la date et de l’heure : rien ne se chevauche et toutes les fenêtres voient le même défilé. La foule est tirée de la même graine (places fixes, rang du bord le plus serré) ; pendant la fermeture, les passants ordinaires se font rares : ils sont devenus la foule.' },
-          { label: 'Limites', text: 'Rien sans fenêtre. En mouvement réduit, ni cortège ni défilé aérien (les barrières et drapeaux restent) et la foule est là mais immobile (aucun bras qui s’agite). Calendrier français uniquement.' },
+          { label: 'Comment ça marche', text: 'Le cortège est un flux continu par file, à vitesse commune, composé à partir de la date et de l’heure : rien ne se chevauche et toutes les fenêtres voient le même défilé. La foule est tirée de la même graine (places fixes, rang du bord le plus serré). Chaque spectateur a son trajet : il part assez tôt pour être à sa place à son heure, marche derrière la foule puis se glisse dans son rang ; personne n’apparaît ni ne disparaît sur place. Pendant la fermeture, les passants ordinaires se font rares : ils sont devenus la foule.' },
+          { label: 'Limites', text: 'Rien sans fenêtre. Les arrivées sont étalées sur une heure et demie : à un instant donné, on ne voit que quelques personnes en route. En mouvement réduit, ni cortège ni défilé aérien (les barrières et drapeaux restent) et la foule déjà en place est là mais immobile (personne ne marche, aucun bras qui s’agite). Calendrier français uniquement.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },
