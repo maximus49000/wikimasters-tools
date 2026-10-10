@@ -11,8 +11,8 @@ import { LANE_DIR, VEHICLE_HALF, laneSpeeds, vehiclesFor } from '../../../src/co
 import { santaWindowsIn } from '../../../src/core/library/city/santa';
 import { WORLD_MARGIN, loopX } from '../../../src/core/library/scene-world';
 
-const DAY_DRY: EventConditions = { daylight: 1, wet: false, workday: true, traffic: 0.6, walkers: 0.5, fests: [] };
-const NIGHT_DRY: EventConditions = { daylight: 0, wet: false, workday: true, traffic: 0.2, walkers: 0.2, fests: [] };
+const DAY_DRY: EventConditions = { daylight: 1, wet: false, workday: true, traffic: 0.6, walkers: 0.5, fests: [], closed: false };
+const NIGHT_DRY: EventConditions = { daylight: 0, wet: false, workday: true, traffic: 0.2, walkers: 0.2, fests: [], closed: false };
 const input = (hyper: number, cond: EventConditions, minutes: number, seed = 7, width = 720): ScheduleInput => ({
   seed, width, hyper, minutesAtHyperStart: minutes, cond, vehicles: vehiclesFor(width, seed), speeds: laneSpeeds(seed),
 });
@@ -177,7 +177,7 @@ describe('fusion des programmes', () => {
 });
 
 describe('fêtes', () => {
-  const base = { daylight: 0, wet: false, workday: true, traffic: 0.5, walkers: 0.5 };
+  const base = { daylight: 0, wet: false, workday: true, traffic: 0.5, walkers: 0.5, closed: false };
   it('le poids d’un événement monte pendant sa fête', () => {
     const fw = defOf('fireworks');
     expect(weightOf(fw, { ...base, fests: [] })).toBe(0.25);

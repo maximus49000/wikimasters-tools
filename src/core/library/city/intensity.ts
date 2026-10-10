@@ -1,4 +1,5 @@
 import { activeFestivities, type DayContext, type FestivityId } from './calendar';
+import { roadClosed } from './parade';
 import type { NamePool } from './shops/lifecycle';
 
 export type CityContext = {
@@ -22,6 +23,8 @@ export type CityIntensity = {
   umbrellas: boolean;
   weekendLike: boolean;
   festive: { id: FestivityId; share: number } | null;
+  // Route fermée (défilé du 14 juillet) : aucune voiture ni vélo.
+  closed: boolean;
 };
 
 // Part des passants qui portent le signe de la fête (0 = pas de signe).
@@ -90,5 +93,5 @@ export function cityIntensity(ctx: CityContext): CityIntensity {
 
   const sport = clamp01((bump(hour, 6, 7, 9, 10) + bump(hour, 17, 18, 19.5, 21)) * 0.12 * (weekendLike ? 1.4 : 1) * (1 - wet) * light * (ctx.storm ? 0.3 : 1) * (ctx.snow ? 0.5 : 1));
 
-  return { traffic, walkers, suits, schoolTo, schoolFrom, kids, sport, umbrellas: wet >= 0.2, weekendLike, festive: fest && FESTIVE_SHARE[fest] > 0 ? { id: fest, share: FESTIVE_SHARE[fest] } : null };
+  return { traffic, walkers, suits, schoolTo, schoolFrom, kids, sport, umbrellas: wet >= 0.2, weekendLike, festive: fest && FESTIVE_SHARE[fest] > 0 ? { id: fest, share: FESTIVE_SHARE[fest] } : null, closed: roadClosed(ctx.day.festivities.map((f) => f.id), ((ctx.minutes % 1440) + 1440) % 1440) };
 }

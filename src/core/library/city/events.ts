@@ -86,17 +86,17 @@ export const STILL_EVENTS: ReadonlySet<CityEventId> = new Set<CityEventId>(['kit
 
 export const defOf = (id: CityEventId): EventDef => EVENT_DEFS.find((d) => d.id === id)!;
 
-export type EventConditions = { daylight: number; wet: boolean; workday: boolean; traffic: number; walkers: number; fests: readonly FestivityId[] };
+export type EventConditions = { daylight: number; wet: boolean; workday: boolean; traffic: number; walkers: number; fests: readonly FestivityId[]; closed: boolean };
 
 export function eventConditions(city: CityContext, i: CityIntensity): EventConditions {
   const k = city.day.kind;
-  return { daylight: city.daylight, wet: city.precip >= 0.2, workday: k === 'school' || k === 'wednesday' || k === 'holiday', traffic: i.traffic, walkers: i.walkers, fests: activeFestivities(city.day.festivities, city.minutes) };
+  return { daylight: city.daylight, wet: city.precip >= 0.2, workday: k === 'school' || k === 'wednesday' || k === 'holiday', traffic: i.traffic, walkers: i.walkers, fests: activeFestivities(city.day.festivities, city.minutes), closed: i.closed };
 }
 
 // Clé grossière : le programme n'est recalculé que si une condition passe un des seuils qu'utilise `eligible`.
 export function conditionsKey(c: EventConditions): string {
   const light = c.daylight < DARK ? 'n' : c.daylight >= DAY ? 'd' : 't';
-  return `${light}${c.wet ? 'w' : 's'}${c.workday ? 'o' : 'f'}${c.traffic >= TRAFFIC_MIN ? 'T' : 't'}${c.walkers >= WALKERS_MIN ? 'W' : 'w'}|${[...c.fests].sort().join('+')}`;
+  return `${light}${c.wet ? 'w' : 's'}${c.workday ? 'o' : 'f'}${c.traffic >= TRAFFIC_MIN ? 'T' : 't'}${c.walkers >= WALKERS_MIN ? 'W' : 'w'}${c.closed ? 'X' : 'x'}|${[...c.fests].sort().join('+')}`;
 }
 
 const inHours = (hours: EventDef['hours'], m: number): boolean => hours.some(([a, b]) => (a <= b ? m >= a && m < b : m >= a || m < b));
@@ -104,6 +104,8 @@ const inHours = (hours: EventDef['hours'], m: number): boolean => hours.some(([a
 export function eligible(def: EventDef, minute: number, c: EventConditions): boolean {
   if (weightOf(def, c) <= 0) return false;
   if (!inHours(def.hours, minute)) return false;
+  // Route fermée : seul le cortège roule (aucun événement de rue ; le cortège est un calque séparé).
+  if (c.closed && def.layer === 'street') return false;
   if (def.light === 'day' && c.daylight < DAY) return false;
   if (def.light === 'dark' && c.daylight >= DARK) return false;
   if (def.rain === 'dry' && c.wet) return false;

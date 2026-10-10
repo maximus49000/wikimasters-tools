@@ -152,13 +152,11 @@ describe('événements dans la couche de la ville', () => {
     const BASTILLE: YMD = { y: 2026, m: 7, d: 14 };
     const MUSIC: YMD = { y: 2026, m: 6, d: 21 };
     const EASTER: YMD = { y: 2026, m: 4, d: 5 };
-    it('le défilé du 14 juillet passe dans la file du premier plan', () => {
+    it('route fermée le 14 juillet à 11 h : aucun événement de rue (le cortège est un calque séparé)', () => {
       const { city } = contextAt(11, BASTILLE);
-      const T = findTime(city, (ids) => ids.includes('parade'));
-      const node = mount(T, 11, false, BASTILLE).querySelector('[data-event="parade"]')!;
-      expect(node).not.toBeNull();
-      expect(node.closest('[data-city-lane="near"]')).not.toBeNull();
-      expect(node.querySelectorAll('[data-parade-vehicle]')).toHaveLength(4);
+      const T = findWhen(city, (evs) => evs.some((e) => e.layer === 'sky'));
+      expect(expected(T, city).some((e) => e.layer === 'street')).toBe(false);
+      expect(mount(T, 11, false, BASTILLE).querySelector('[data-event="parade"]')).toBeNull();
     });
     it('les musiciens jouent sur le trottoir à la Fête de la musique, même en mouvement réduit', () => {
       const { city } = contextAt(21, MUSIC);
