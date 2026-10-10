@@ -1,4 +1,5 @@
 import { useId, useMemo, useRef, type ReactElement } from 'react';
+import { activeFestivities } from '../core/library/city/calendar';
 import { doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { PULL_DY, fixedFade, placeEvent, pullOver, type EventFrame, type EventPlacement } from '../core/library/city/event-place';
 import type { CityEvent } from '../core/library/city/events';
@@ -20,6 +21,7 @@ import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from '
 import { interiorPost } from './shop-interiors';
 import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
+import { SantaLayer } from './santa-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -169,6 +171,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const terraceSky = useTerraceWeather(weather, rainy, city.minutes);
 
   // Événements de la ville : programme du grand créneau, événements actifs, voitures effacées, ambulances.
+  // Fêtes actives à la minute de la scène (père Noël : 24 décembre de nuit).
+  const fests = useMemo(() => activeFestivities(city.day.festivities, city.minutes), [city.day, city.minutes]);
   const events = useCityEvents({ seed, width, city, intensity, vehicles, still, frozenT: frozen.current });
 
   const pedActive = useMemo(() => new Set(peds.filter((p) => p.u < pedestrianGate(p, intensity)).map((p) => p.id)), [peds, intensity]);
@@ -321,6 +325,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         {fireworks.length > 0 && <g data-event-mask="skyline" mask={`url(#${maskBase}-skyline)`}>{fireworks.map(eventNode)}</g>}
         {cranes.length > 0 && <g data-event-mask="near" mask={`url(#${maskBase}-near)`}>{cranes.map(eventNode)}</g>}
         {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment').map(eventNode)}
+        <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} />
       </g>
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
           lampadaires (bord du trottoir), la file du fond, puis celle du premier plan. */}
