@@ -12,10 +12,10 @@ export type QueueMember = {
 const OPEN_MIN = 23 * 60; // ouverture (jeu.-sam. 23 h-5 h, voir catalog.ts)
 const PRE_OPEN_MIN = 30; // les videurs arrivent 30 min avant
 const MAX_LEN = 6;
-const CYCLE_SIZE = 64; // nombre d'entrées avant que le motif ne reboucle (évite de remonter à t = 0)
+const CYCLE_SIZE = 64; // nombre d'entrées tirées par cycle (un générateur par cycle : on ne tire pas toutes les entrées depuis t = 0)
 const GAP_MIN = 15;
 const GAP_MAX = 30;
-const ADVANCE_S = 1.2; // durée de l'avancée d'un cran
+export const ADVANCE_S = 1.2; // durée de l'avancée d'un cran (et de l'entrée dans la porte, côté rendu)
 const OUTFITS = 12;
 
 const dayMinutes = (minutes: number): number => ((minutes % 1440) + 1440) % 1440;
@@ -54,13 +54,17 @@ function cycleEntries(base: number, cycle: number): { id: string; at: number; ou
   return out;
 }
 
+// Contrat de `tSeconds` : secondes RELATIVES À LA SESSION (0 = montage de la scène), croissantes d'un appel à l'autre ;
+// jamais une minute du jour ni une heure Unix. La file avance avec t (une entrée toutes les 15 à 30 s) ; `minutes` (minute du
+// jour) ne règle que sa longueur. Coût en O(t) : la recherche du cycle courant part toujours du cycle 0 (≈ 64 entrées et
+// 16 à 32 min par cycle), soit une trentaine de cycles pour une session de dix heures.
 export function queueAt(seed: number, slotId: string, tSeconds: number, minutes: number, isOpen: boolean): QueueMember[] {
   if (!isOpen) return [];
   const length = targetLength(minutes);
   if (length === 0) return [];
   const base = (seed ^ hashString(`queue:${slotId}`)) >>> 0;
-  // Les cycles se suivent : durée d'un cycle = instant de sa dernière entrée (connue en le générant).
-  // On cherche le cycle courant en avançant depuis le motif replié sur t (durée réelle bornée, CYCLE_SIZE × 30 s max).
+  // Les cycles se suivent : durée d'un cycle = instant de sa dernière entrée (connue en le générant). On part du cycle 0
+  // (t = 0) et on avance cycle par cycle jusqu'à celui qui contient t ; un t négatif reste dans le cycle 0.
   let cycle = 0;
   let offset = 0;
   let entries = cycleEntries(base, cycle);

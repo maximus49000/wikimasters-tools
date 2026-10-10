@@ -46,6 +46,46 @@ describe('file de la boîte de nuit', () => {
     }
   });
 
+  it('n’est jamais vide pendant l’ouverture, et compte 6 personnes au plus fort (0 h-2 h)', () => {
+    for (const minutes of [MIN(23), MIN(23, 30), MIN(0), MIN(1), MIN(2, 30), MIN(4, 59)])
+      for (let t = 0; t < 900; t += 13) expect(queueAt(4, 's', t, minutes, true).length, `${minutes} ${t}`).toBeGreaterThan(0);
+    for (const minutes of [MIN(0, 5), MIN(1), MIN(1, 55)])
+      for (let t = 0; t < 900; t += 13) expect(queueAt(4, 's', t, minutes, true)).toHaveLength(6);
+  });
+
+  it('reste continue à travers plusieurs fins de cycle de 64 entrées (ids, slots, instants d’entrée)', () => {
+    const cycles = new Set<string>();
+    let last = queueAt(11, 'club', 0, MIN(1), true);
+    // ≈ 64 × 22,5 s ≈ 24 min par cycle : 6 500 s en traversent au moins trois.
+    for (let t = 0.5; t < 6500; t += 0.5) {
+      const q = queueAt(11, 'club', t, MIN(1), true);
+      expect(q).toHaveLength(6);
+      for (const m of q) cycles.add(m.id.split(':')[0]!);
+      q.forEach((m, i) => {
+        expect(m.slot).toBe(i);
+        if (i > 0) expect(m.entersAt).toBeGreaterThan(q[i - 1]!.entersAt);
+      });
+      if (q[0]!.id === last[0]!.id) {
+        // Personne n'est entré : même file, mêmes instants.
+        expect(q.map((m) => m.id)).toEqual(last.map((m) => m.id));
+        expect(q.map((m) => m.entersAt)).toEqual(last.map((m) => m.entersAt));
+      } else {
+        // Une seule entrée : tout le monde avance d'un cran, la tête est entrée à son instant prévu.
+        expect(q.slice(0, 5).map((m) => m.id)).toEqual(last.slice(1).map((m) => m.id));
+        expect(last[0]!.entersAt).toBeLessThanOrEqual(t);
+        expect(last[0]!.entersAt).toBeGreaterThan(t - 0.5);
+      }
+      last = q;
+    }
+    expect(cycles.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('diffère d’un local à l’autre', () => {
+    const a = queueAt(3, 'shop-1', 300, MIN(1), true);
+    const b = queueAt(3, 'shop-2', 300, MIN(1), true);
+    expect(a.map((m) => m.entersAt)).not.toEqual(b.map((m) => m.entersAt));
+  });
+
   it('est plus longue entre 0 h et 2 h qu’à 23 h 15', () => {
     const maxLen = (minutes: number): number => {
       let best = 0;
