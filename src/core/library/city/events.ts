@@ -1,5 +1,7 @@
+import { activeFestivities, type FestivityId } from './calendar';
 import { WORLD_MARGIN, hashString, loopX, mulberry32 } from '../scene-world';
 import type { CityContext, CityIntensity } from './intensity';
+import { santaOn, santaWindowsIn } from './santa';
 import { FAR_SHRINK, STREET_SCALE } from './metrics';
 import { LANE_DIR, VEHICLE_HALF, type Lane, type LaneSpeeds, type Vehicle } from './vehicles';
 
@@ -34,6 +36,8 @@ export type EventDef = {
   id: CityEventId;
   layer: EventLayer;
   weight: number;
+  // Poids pendant une fête active (le plus fort l'emporte sur le poids de base).
+  festWeight?: Readonly<Partial<Record<FestivityId, number>>>;
   hours: readonly (readonly [number, number])[];
   half: number;
   speed?: number;
@@ -68,7 +72,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
   { id: 'kite', layer: 'fixed', weight: 0.8, hours: [[600, 1140]], half: 10, duration: 90, light: 'day', rain: 'dry', y: [0.2, 0.32] },
   { id: 'crane', layer: 'fixed', weight: 1, hours: [[480, 1020]], half: 60, duration: 360, light: 'day', workday: true },
   { id: 'apartment', layer: 'fixed', weight: 2, hours: [[1050, 1410]], half: 4, duration: 180, light: 'dark' },
-  { id: 'fireworks', layer: 'fixed', weight: 0.25, hours: [[1290, 1440], [0, 30]], half: 140, duration: 30, light: 'dark', rain: 'dry' },
+  { id: 'fireworks', layer: 'fixed', weight: 0.25, hours: [[1290, 1440], [0, 30]], half: 140, duration: 30, light: 'dark', rain: 'dry', festWeight: { 'new-year': 10, bastille: 5 } },
 ];
 
 // En mouvement réduit, seuls ces événements fixes restent (figés) ; rien ne traverse, aucun feu d'artifice.
@@ -76,17 +80,17 @@ export const STILL_EVENTS: ReadonlySet<CityEventId> = new Set<CityEventId>(['kit
 
 export const defOf = (id: CityEventId): EventDef => EVENT_DEFS.find((d) => d.id === id)!;
 
-export type EventConditions = { daylight: number; wet: boolean; workday: boolean; traffic: number; walkers: number };
+export type EventConditions = { daylight: number; wet: boolean; workday: boolean; traffic: number; walkers: number; fests: readonly FestivityId[] };
 
 export function eventConditions(city: CityContext, i: CityIntensity): EventConditions {
   const k = city.day.kind;
-  return { daylight: city.daylight, wet: city.precip >= 0.2, workday: k === 'school' || k === 'wednesday' || k === 'holiday', traffic: i.traffic, walkers: i.walkers };
+  return { daylight: city.daylight, wet: city.precip >= 0.2, workday: k === 'school' || k === 'wednesday' || k === 'holiday', traffic: i.traffic, walkers: i.walkers, fests: activeFestivities(city.day.festivities, city.minutes) };
 }
 
 // Clé grossière : le programme n'est recalculé que si une condition passe un des seuils qu'utilise `eligible`.
 export function conditionsKey(c: EventConditions): string {
   const light = c.daylight < DARK ? 'n' : c.daylight >= DAY ? 'd' : 't';
-  return `${light}${c.wet ? 'w' : 's'}${c.workday ? 'o' : 'f'}${c.traffic >= TRAFFIC_MIN ? 'T' : 't'}${c.walkers >= WALKERS_MIN ? 'W' : 'w'}`;
+  return `${light}${c.wet ? 'w' : 's'}${c.workday ? 'o' : 'f'}${c.traffic >= TRAFFIC_MIN ? 'T' : 't'}${c.walkers >= WALKERS_MIN ? 'W' : 'w'}|${[...c.fests].sort().join('+')}`;
 }
 
 const inHours = (hours: EventDef['hours'], m: number): boolean => hours.some(([a, b]) => (a <= b ? m >= a && m < b : m >= a || m < b));
@@ -131,11 +135,16 @@ const trackFor = (def: EventDef, lean: number): Track | null => {
   return def.lanes[Math.floor(lean * def.lanes.length)]!;
 };
 
-const pickWeighted = (pool: EventDef[], roll: number): EventDef => {
-  const total = pool.reduce((s, d) => s + d.weight, 0);
+// Poids d'un événement : le plus fort entre son poids de base et celui de chacune des fêtes actives.
+export function weightOf(def: EventDef, c: EventConditions): number {
+  return Math.max(def.weight, ...c.fests.map((f) => def.festWeight?.[f] ?? 0));
+}
+
+const pickWeighted = (pool: EventDef[], roll: number, c: EventConditions): EventDef => {
+  const total = pool.reduce((s, d) => s + weightOf(d, c), 0);
   let acc = roll * total;
   for (const d of pool) {
-    acc -= d.weight;
+    acc -= weightOf(d, c);
     if (acc < 0) return d;
   }
   return pool[pool.length - 1]!;
@@ -169,6 +178,8 @@ export function cityEventSchedule(input: ScheduleInput): CityEvent[] {
   const { seed, width, hyper, cond, vehicles, speeds } = input;
   const t0 = hyper * HYPER_S;
   const out: CityEvent[] = [];
+  // Pendant un passage du père Noël, le ciel est à lui : aucun autre événement de ciel ne part (ni ne le croise).
+  const santa = santaOn(cond.fests, cond.daylight) ? santaWindowsIn(t0, t0 + HYPER_S, seed) : [];
   for (let n = 0; n < HYPER_SLOTS; n++) {
     const rng = mulberry32(seed ^ hashString('city-events') ^ Math.imul(hyper * HYPER_SLOTS + n + 1, 2654435761));
     // Toujours le même nombre de tirages par créneau : un changement de condition ne décale pas les créneaux suivants.
@@ -185,12 +196,13 @@ export function cityEventSchedule(input: ScheduleInput): CityEvent[] {
     const minute = (((Math.floor(input.minutesAtHyperStart + (start - t0) / 60)) % 1440) + 1440) % 1440;
     const pool = EVENT_DEFS.filter((d) => eligible(d, minute, cond));
     if (pool.length === 0) continue;
-    const def = pickWeighted(pool, roll);
+    const def = pickWeighted(pool, roll, cond);
     const track = trackFor(def, lean);
     const dir: 1 | -1 = track === 'bike' ? 1 : track ? LANE_DIR[track] : dirRoll < 0.5 ? 1 : -1;
     const speed = def.layer === 'fixed' ? 0 : def.speed ?? (track === 'bike' ? speeds.bike : speeds[track as Lane]);
     const end = start + (def.layer === 'fixed' ? def.duration! : travelSpan(width) / speed);
     if (end > t0 + HYPER_S) continue;
+    if (def.layer === 'sky' && santa.some((w) => w.start < end && start < w.end)) continue;
     const overlapping = out.filter((e) => e.start < end && start < e.end);
     if (overlapping.length >= MAX_EVENTS) continue;
     if (overlapping.some((e) => e.id === def.id || (track !== null && e.track === track))) continue;

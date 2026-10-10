@@ -1,6 +1,6 @@
 // tests/core/library/city-calendar.test.ts
 import { describe, expect, it } from 'vitest';
-import { addDays, dayContext, easterSunday, isoDate, publicHolidays, weekdayOf, type HolidayPeriod } from '../../../src/core/library/city/calendar';
+import { FESTIVITIES, activeFestivities, addDays, dayContext, easterSunday, festivitiesOn, isoDate, publicHolidays, weekdayOf, type HolidayPeriod } from '../../../src/core/library/city/calendar';
 
 describe('Pâques et jours fériés', () => {
   it('calcule le dimanche de Pâques', () => {
@@ -59,5 +59,33 @@ describe('dayContext', () => {
     const ctx = dayContext({ y: 2026, m: 11, d: 1 }, [{ name: 'x', start: '2026-10-01', end: '2026-12-01' }]);
     expect(ctx.publicHoliday).toBeTruthy();
     expect(ctx.kind).toBe('public-holiday');
+  });
+});
+
+describe('fêtes', () => {
+  it('liste les fêtes d’un jour', () => {
+    expect(festivitiesOn({ y: 2026, m: 12, d: 24 }).map((f) => f.id)).toEqual(['christmas-eve']);
+    expect(festivitiesOn({ y: 2026, m: 12, d: 31 }).map((f) => f.id)).toEqual(['new-year']);
+    expect(festivitiesOn({ y: 2027, m: 1, d: 1 }).map((f) => f.id)).toEqual(['new-year']);
+    expect(festivitiesOn({ y: 2026, m: 7, d: 14 }).map((f) => f.id)).toEqual(['bastille']);
+    expect(festivitiesOn({ y: 2026, m: 10, d: 10 })).toEqual([]);
+  });
+  it('active une fête seulement dans ses heures', () => {
+    const eve = festivitiesOn({ y: 2026, m: 12, d: 31 });
+    expect(activeFestivities(eve, 1289)).toEqual([]);
+    expect(activeFestivities(eve, 1290)).toEqual(['new-year']);
+    const jan = festivitiesOn({ y: 2027, m: 1, d: 1 });
+    expect(activeFestivities(jan, 29)).toEqual(['new-year']);
+    expect(activeFestivities(jan, 30)).toEqual([]);
+    const noel25 = festivitiesOn({ y: 2026, m: 12, d: 25 });
+    expect(activeFestivities(noel25, 719)).toEqual(['christmas-eve']);
+    expect(activeFestivities(noel25, 720)).toEqual([]);
+  });
+  it('dayContext porte les fêtes du jour (année bissextile comprise)', () => {
+    expect(dayContext({ y: 2026, m: 12, d: 24 }, []).festivities.map((f) => f.id)).toEqual(['christmas-eve']);
+    expect(dayContext({ y: 2028, m: 2, d: 29 }, []).festivities).toEqual([]);
+  });
+  it('la table ne contient que des dates valides', () => {
+    for (const f of FESTIVITIES) expect(new Date(Date.UTC(2028, f.m - 1, f.d)).getUTCDate()).toBe(f.d);
   });
 });
