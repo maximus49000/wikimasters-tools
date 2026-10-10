@@ -91,6 +91,44 @@ describe('grand défilé du 14 juillet', () => {
   });
 });
 
+describe('foule de spectateurs', () => {
+  const CROWD = '[data-parade-crowd] [data-spectator][data-present="true"]';
+  it('à 11 h : une vraie foule (au moins 50 spectateurs), derrière les barrières', () => {
+    const c = mount(11);
+    expect(count(c, CROWD)).toBeGreaterThanOrEqual(50);
+    // Sur le trottoir, avant les barrières dans l ordre de dessin.
+    const crowd = c.querySelector('[data-parade-crowd]')!;
+    expect(crowd.closest('[data-city-sidewalk]')).not.toBeNull();
+    const barrier = c.querySelector('[data-decor-kind="barrier"]')!;
+    expect(crowd.compareDocumentPosition(barrier) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Drapeaux et téléphones levés, enfants sur les épaules, bras animés.
+    expect(count(c, '[data-parade-crowd] [data-prop="flag"]')).toBeGreaterThan(0);
+    expect(count(c, '[data-parade-crowd] [data-prop="phone"]')).toBeGreaterThan(0);
+    expect(count(c, '[data-parade-crowd] [data-shoulders]')).toBeGreaterThan(0);
+    expect(count(c, '[data-parade-crowd] animateTransform')).toBeGreaterThan(0);
+  });
+  it('à 8 h 15 aucun spectateur, à 9 h quelques-uns (moins qu à 11 h), à 13 h 30 aucun', () => {
+    expect(count(mount(8.25), CROWD)).toBe(0);
+    const nine = count(mount(9), CROWD);
+    expect(nine).toBeGreaterThan(0);
+    expect(nine).toBeLessThan(count(mount(11), CROWD));
+    expect(count(mount(13.5), CROWD)).toBe(0);
+    expect(count(mount(13.5), '[data-parade-crowd]')).toBe(0);
+  });
+  it('jour ordinaire : aucun spectateur', () => {
+    expect(count(mount(11, ORDINARY), '[data-parade-crowd]')).toBe(0);
+  });
+  it('mouvement réduit : la foule est là, immobile', () => {
+    const c = mount(11, BASTILLE, true);
+    expect(count(c, CROWD)).toBeGreaterThanOrEqual(50);
+    expect(count(c, '[data-parade-crowd] animate, [data-parade-crowd] animateTransform')).toBe(0);
+  });
+  it('les marcheurs ordinaires se font rares pendant la fermeture', () => {
+    const peds = (c: Element): number => count(c, '[data-ped][data-role="general"][data-active="true"]');
+    expect(peds(mount(11))).toBeLessThan(peds(mount(14)));
+  });
+});
+
 describe('défilé aérien', () => {
   it('présent à 10 h le 14 juillet, absent à 11 h', () => {
     expect(count(mount(10), '[data-flypast]')).toBe(1);

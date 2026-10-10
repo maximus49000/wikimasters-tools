@@ -20,6 +20,7 @@ import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, 
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
 import { FlypastLayer } from './flypast-sprite';
 import { InstallLayer } from './install-layer';
+import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
 import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
@@ -129,6 +130,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const vehicles = useMemo(() => vehiclesFor(width, seed), [width, seed]);
   const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
   const trips = useMemo(() => tripsFor(doors, seed), [doors, seed]);
+  const doorXs = useMemo(() => doors.map((d) => d.x), [doors]);
   const facades = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
   const frame = useMemo<EventFrame>(() => ({ width, height, metrics, facades }), [width, height, metrics, facades]);
   const intensity = useMemo(() => cityIntensity(city), [city]);
@@ -453,6 +455,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           );
         })}
         {of((e) => e.layer === 'sidewalk').map(eventNode)}
+        {/* Foule du défilé du 14 juillet : au bord du trottoir, derrière les barrières (posées sur la chaussée) et les équipes. */}
+        <ParadeCrowd width={width} seed={seed} sky={sky} still={still} rainy={rainy} dayFests={dayFests} minutes={city.minutes} metrics={metrics} doorXs={doorXs} />
         {/* Scène, équipes à l'échelle et porteurs : devant les passants (un passant passe toujours derrière une équipe). */}
         <InstallLayer {...install} part="crew" />
         {/* Camion de déménagement garé au bord du trottoir : devant les passants, derrière les lampadaires et les files. */}

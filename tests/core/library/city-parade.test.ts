@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLOSURE, PARADE, PARADE_SPEED, flypastWindow, paradeUnits, paradeX, roadClosed, type ParadeKind } from '../../../src/core/library/city/parade';
+import { CLOSURE, PARADE, PARADE_SPEED, crowdFor, crowdLevel, flypastWindow, paradeUnits, paradeX, roadClosed, type ParadeKind } from '../../../src/core/library/city/parade';
 import { cityEventSchedule, defOf, eligible, EVENT_DEFS, conditionsKey, type EventConditions } from '../../../src/core/library/city/events';
 import { cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
 import { dayContext, type YMD } from '../../../src/core/library/city/calendar';
@@ -124,5 +124,58 @@ describe('cortège', () => {
     expect(w.start).toBe(DAY0 + 600 * 60);
     expect(w.end - w.start).toBeGreaterThanOrEqual(30);
     expect(w.end - w.start).toBeLessThanOrEqual(50);
+  });
+});
+
+describe('foule de spectateurs du défilé', () => {
+  it('crowdLevel : 0 avant 8 h 30, 1 de 10 h à 12 h 15, 0 à partir de 13 h 15', () => {
+    expect(crowdLevel(0)).toBe(0);
+    expect(crowdLevel(509)).toBe(0);
+    expect(crowdLevel(510)).toBe(0);
+    expect(crowdLevel(600)).toBe(1);
+    expect(crowdLevel(660)).toBe(1);
+    expect(crowdLevel(735)).toBe(1);
+    expect(crowdLevel(795)).toBe(0);
+    expect(crowdLevel(900)).toBe(0);
+    expect(crowdLevel(540)).toBeGreaterThan(0);
+    expect(crowdLevel(540)).toBeLessThan(1);
+  });
+  it('crowdLevel : croissance monotone à l arrivée, décroissance au départ', () => {
+    for (let m = 500; m < 600; m++) expect(crowdLevel(m + 1)).toBeGreaterThanOrEqual(crowdLevel(m));
+    for (let m = 735; m < 800; m++) expect(crowdLevel(m + 1)).toBeLessThanOrEqual(crowdLevel(m));
+  });
+  it('crowdFor : déterministe, dense, trois rangs (le premier le plus dense)', () => {
+    const a = crowdFor(1, 720);
+    expect(crowdFor(1, 720)).toEqual(a);
+    expect(crowdFor(2, 720)).not.toEqual(a);
+    expect(a.length).toBeGreaterThanOrEqual(60);
+    const rows = [0, 1, 2].map((r) => a.filter((s) => s.row === r).length);
+    expect(rows[0]).toBeGreaterThanOrEqual(70);
+    expect(rows[0]).toBeGreaterThan(rows[1]!);
+    expect(rows[1]).toBeGreaterThan(rows[2]!);
+    expect(rows[2]).toBeGreaterThan(0);
+    expect(a.every((s) => s.u >= 0 && s.u < 1 && s.x >= -10 && s.x <= 730)).toBe(true);
+    expect(new Set(a.map((s) => s.id)).size).toBe(a.length);
+    expect(a.some((s) => s.kind === 'shoulders')).toBe(true);
+    expect(a.some((s) => s.kind === 'child')).toBe(true);
+    expect(a.some((s) => s.prop === 'flag')).toBe(true);
+    expect(a.some((s) => s.prop === 'phone')).toBe(true);
+  });
+  it('apparition échelonnée : la part présente suit crowdLevel', () => {
+    const a = crowdFor(1, 720);
+    const at = (m: number): number => a.filter((s) => s.u < crowdLevel(m)).length;
+    expect(at(505)).toBe(0);
+    expect(at(540)).toBeGreaterThan(0);
+    expect(at(540)).toBeLessThan(at(570));
+    expect(at(570)).toBeLessThan(at(660));
+    expect(at(660)).toBe(a.length);
+  });
+  it('les marcheurs ordinaires sont nettement moins nombreux pendant la fermeture', () => {
+    const open = cityIntensity(ctx({ y: 2026, m: 7, d: 14 }, 840)).walkers;
+    const closed = cityIntensity(ctx({ y: 2026, m: 7, d: 14 }, 660)).walkers;
+    expect(closed).toBeLessThan(0.35);
+    expect(closed).toBeLessThan(open);
+    // Un autre jour, à la même heure, rien ne change.
+    expect(cityIntensity(ctx({ y: 2026, m: 7, d: 13 }, 660)).walkers).toBeGreaterThan(0.3);
   });
 });

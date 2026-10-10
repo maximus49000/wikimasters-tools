@@ -37,6 +37,9 @@ export const FESTIVE_CROWD: Readonly<Record<FestivityId, { mult: number; floor: 
   bastille: { mult: 1.4, floor: 0.3 }, armistice: { mult: 0.7, floor: 0 }, 'new-year': { mult: 1.4, floor: 0.4 }, music: { mult: 1.5, floor: 0.5 }, 'christmas-eve': { mult: 0.6, floor: 0 },
 };
 
+// Part des marcheurs ordinaires qui restent en mouvement pendant la fermeture de la route.
+export const CLOSED_WALKERS = 0.3;
+
 type Keys = readonly (readonly [number, number])[];
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -76,7 +79,9 @@ export function cityIntensity(ctx: CityContext): CityIntensity {
   const traffic = clamp01(lerp(curve(TRAFFIC_WEEK, hour), curve(TRAFFIC_WEEKEND, hour), b) * (1 + 0.25 * wet) * (ctx.snow ? 0.7 : 1));
   const fest = activeFestivities(ctx.day.festivities, ctx.minutes)[0] ?? null;
   const crowd = fest ? FESTIVE_CROWD[fest] : { mult: 1, floor: 0 };
-  const walkers = clamp01(Math.max(lerp(curve(WALK_WEEK, hour), curve(WALK_WEEKEND, hour), b) * crowd.mult, crowd.floor) * weatherWalk);
+  // Route fermée (14 juillet) : la plupart des marcheurs sont devenus la foule massée derrière les barrières (parade-crowd.tsx).
+  const closed = roadClosed(ctx.day.festivities.map((f) => f.id), ((ctx.minutes % 1440) + 1440) % 1440);
+  const walkers = clamp01(Math.max(lerp(curve(WALK_WEEK, hour), curve(WALK_WEEKEND, hour), b) * crowd.mult, crowd.floor) * weatherWalk) * (closed ? CLOSED_WALKERS : 1);
   const suits = clamp01(curve(SUITS, hour) * (1 - b) * (1 - b) * weatherWalk);
 
   // Fenêtres resserrées sur la spec : aller à partir de 7 h 50 (pic à 8 h 15), sorties à 16 h 45 et à midi le mercredi.
@@ -93,5 +98,5 @@ export function cityIntensity(ctx: CityContext): CityIntensity {
 
   const sport = clamp01((bump(hour, 6, 7, 9, 10) + bump(hour, 17, 18, 19.5, 21)) * 0.12 * (weekendLike ? 1.4 : 1) * (1 - wet) * light * (ctx.storm ? 0.3 : 1) * (ctx.snow ? 0.5 : 1));
 
-  return { traffic, walkers, suits, schoolTo, schoolFrom, kids, sport, umbrellas: wet >= 0.2, weekendLike, festive: fest && FESTIVE_SHARE[fest] > 0 ? { id: fest, share: FESTIVE_SHARE[fest] } : null, closed: roadClosed(ctx.day.festivities.map((f) => f.id), ((ctx.minutes % 1440) + 1440) % 1440) };
+  return { traffic, walkers, suits, schoolTo, schoolFrom, kids, sport, umbrellas: wet >= 0.2, weekendLike, festive: fest && FESTIVE_SHARE[fest] > 0 ? { id: fest, share: FESTIVE_SHARE[fest] } : null, closed };
 }

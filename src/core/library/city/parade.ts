@@ -1,5 +1,6 @@
 import type { FestivityId } from './calendar';
 import { hashString, mulberry32 } from '../scene-world';
+import { outfitFor, type Outfit } from './people';
 
 // Route fermée et grand défilé du 14 juillet (moteur pur, sans état). Tout se calcule depuis l'heure et la graine.
 // La route reste fermée jusqu'à la fin de la dépose des barrières (12 h 30 à 13 h 30, voir install.ts) : aucune voiture
@@ -79,4 +80,70 @@ export function paradeX(u: ParadeUnit, width: number, t: number): number | null 
 export function flypastWindow(dayStartS: number): { start: number; end: number } {
   const start = dayStartS + PARADE[0] * 60;
   return { start, end: start + 40 };
+}
+
+// ---------- Foule de spectateurs (spec §7.4) ----------
+// Arrivée de 8 h 30 à 10 h, foule complète jusqu'à 12 h 15, départ jusqu'à 13 h 15 (minutes de la scène).
+export const CROWD_TIMES = { arrive: 510, full: 600, leave: 735, gone: 795 } as const;
+const smoothstep = (a: number, b: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+// Part de la foule présente à la minute (0 à 1), monotone à l'arrivée comme au départ.
+export function crowdLevel(minute: number): number {
+  const m = ((minute % 1440) + 1440) % 1440;
+  const { arrive, full, leave, gone } = CROWD_TIMES;
+  if (m <= arrive || m >= gone) return 0;
+  if (m < full) return smoothstep(arrive, full, m);
+  if (m <= leave) return 1;
+  return 1 - smoothstep(leave, gone, m);
+}
+
+export type SpectatorKind = 'adult' | 'child' | 'shoulders';
+export type SpectatorProp = 'flag' | 'phone' | 'wave' | 'none';
+// `row` : 0 = au bord du trottoir, 1 et 2 = rangs de derrière ; `u` : seuil de présence (présent si u < crowdLevel) ;
+// `child` : l'enfant porté sur les épaules (kind 'shoulders') ; `dir` : sens du profil (tourné vers l'arrivée ou la suite du cortège).
+export type Spectator = { id: string; x: number; row: 0 | 1 | 2; u: number; kind: SpectatorKind; prop: SpectatorProp; outfit: Outfit; child?: Outfit; dir: 1 | -1; phase: number; jitter: number };
+
+// Espacement moyen (px) par rang : le premier rang, au bord du trottoir, est le plus serré.
+export const CROWD_SPACING: readonly [number, number, number] = [9, 14, 20];
+
+export function crowdFor(seed: number, width: number): Spectator[] {
+  const rng = mulberry32(seed ^ hashString('bastille-crowd'));
+  const out: Spectator[] = [];
+  CROWD_SPACING.forEach((step, row) => {
+    let x = -6 + rng() * step;
+    let n = 0;
+    while (x < width + 6) {
+      // Famille : un adulte et un enfant côte à côte au premier rang (l'enfant devant, à la barrière).
+      const family = row === 0 && rng() < 0.12;
+      const roll = rng();
+      const kind: SpectatorKind = family ? 'child' : row > 0 && roll < 0.12 ? 'shoulders' : row === 0 && roll < 0.08 ? 'child' : 'adult';
+      const pr = rng();
+      const prop: SpectatorProp = pr < 0.22 ? 'flag' : pr < 0.36 ? 'phone' : pr < 0.48 ? 'wave' : 'none';
+      // Présence : la famille arrive ensemble (même seuil), sinon un tirage par spectateur.
+      const u = rng();
+      // Pas de ballon par terre dans la foule : l'accessoire 'ball' des enfants devient un sac à dos.
+      const dress = (o: Outfit): Outfit => (o.accessory === 'ball' ? { ...o, accessory: 'backpack' } : o);
+      const push = (k: SpectatorKind, px: number, p: SpectatorProp): void => {
+        out.push({
+          id: `crowd-${row}-${n++}`,
+          x: px,
+          row: row as 0 | 1 | 2,
+          u,
+          kind: k,
+          prop: p,
+          outfit: dress(outfitFor(k === 'child' ? 'child' : 'ordinary', rng)),
+          child: k === 'shoulders' ? dress(outfitFor('child', rng)) : undefined,
+          dir: rng() < 0.5 ? 1 : -1,
+          phase: rng(),
+          jitter: rng() - 0.5,
+        });
+      };
+      push(kind, x, kind === 'child' && prop === 'phone' ? 'flag' : prop);
+      if (family) push('adult', x + step * 0.6, rng() < 0.4 ? 'phone' : 'none');
+      x += step * (family ? 1.6 : 0.7 + rng() * 0.6);
+    }
+  });
+  return out;
 }
