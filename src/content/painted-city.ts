@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer } from 'react';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import { paintCityTile, TILE, tileCount, tileKey } from '../core/library/paint/city-painter';
-import { mulberry32 } from '../core/library/scene-world';
+import { idle, paperGrain } from './paint-queue';
 
 // Peinture des tranches de la ville (vague Ghibli) : canvas hors écran pendant les temps morts, une tranche par créneau,
 // image PNG en data URL, cache mémoire (20 tranches au plus, les plus anciennes libérées).
@@ -40,21 +40,6 @@ export function resetPaintedCacheForTests(): void {
   failed.clear();
 }
 
-// Grain de papier : léger bruit sur les pixels peints (le ciel transparent reste intact).
-function paperGrain(ctx: CanvasRenderingContext2D, w: number, h: number, seed: number): void {
-  const img = ctx.getImageData(0, 0, w, h);
-  const d = img.data;
-  const rng = mulberry32(seed);
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i + 3] === 0) continue;
-    const n = (rng() - 0.5) * 14;
-    d[i] = d[i]! + n;
-    d[i + 1] = d[i + 1]! + n;
-    d[i + 2] = d[i + 2]! + n;
-  }
-  ctx.putImageData(img, 0, 0);
-}
-
 export const canvasTilePainter: TilePainter = async (plan, tile) => {
   if (typeof document === 'undefined' || (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom'))) return null;
   const x0 = tile * TILE;
@@ -71,15 +56,6 @@ export const canvasTilePainter: TilePainter = async (plan, tile) => {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   paperGrain(ctx, canvas.width, canvas.height, plan.seed ^ (tile + 1));
   return canvas.toDataURL('image/png');
-};
-
-const idle = (fn: () => void): (() => void) => {
-  if (typeof window.requestIdleCallback === 'function') {
-    const id = window.requestIdleCallback(fn, { timeout: 1500 });
-    return () => window.cancelIdleCallback?.(id);
-  }
-  const id = window.setTimeout(fn, 16);
-  return () => window.clearTimeout(id);
 };
 
 // Tranches de la ville peinte pour ce plan. `ready` : toutes peintes. Sans plan : rien.
