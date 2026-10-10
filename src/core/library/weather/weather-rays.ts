@@ -35,13 +35,15 @@ export function godRayTarget(hidden: number, w: { cloud: number; precip: number;
 }
 
 // Les trois lobes d'un nuage dessiné (avant mise à l'échelle) : le dessin et le calcul de la couverture partagent cette forme.
-export const CLOUD_BLOBS: readonly { cx: number; cy: number; rx: number; ry: number }[] = [
+export type CloudBlob = { cx: number; cy: number; rx: number; ry: number };
+export const CLOUD_BLOBS: readonly CloudBlob[] = [
   { cx: 0, cy: 0, rx: 34, ry: 12 },
   { cx: -18, cy: -8, rx: 20, ry: 11 },
   { cx: 14, cy: -10, rx: 22, ry: 12 },
 ];
 
-export type CloudSpot = { x: number; y: number; s: number };
+// `blobs` : forme du nuage effectivement dessiné (nuage peint) ; à défaut, les trois lobes classiques.
+export type CloudSpot = { x: number; y: number; s: number; blobs?: readonly CloudBlob[] };
 
 export const SUN_DISC = 12;
 const SAMPLES = 9;
@@ -57,14 +59,21 @@ const DISC: readonly [number, number][] = (() => {
   return out;
 })();
 const REACH = 34 + 14 + 22; // portée maximale d'un lobe depuis le centre d'un nuage, avant échelle
+// Portée maximale (avant échelle) d'une forme donnée depuis le centre du nuage.
+const reachOf = (blobs: readonly CloudBlob[] | undefined): number => {
+  if (!blobs) return REACH;
+  let reach = 0;
+  for (const b of blobs) reach = Math.max(reach, Math.abs(b.cx) + b.rx, Math.abs(b.cy) + b.ry);
+  return reach;
+};
 
 // Part (0..1) du disque solaire masquée par les nuages, posés à `x + drift` et à leur copie bouclée `x + drift − width`.
 export function sunCoverage(sunX: number, sunY: number, clouds: readonly CloudSpot[], drift: number, width: number): number {
-  const near: { x: number; y: number; s: number }[] = [];
+  const near: { x: number; y: number; s: number; blobs: readonly CloudBlob[] }[] = [];
   for (const c of clouds) {
+    const reach = reachOf(c.blobs) * c.s + SUN_DISC;
     for (const x of [c.x + drift, c.x + drift - width]) {
-      const reach = REACH * c.s + SUN_DISC;
-      if (Math.abs(x - sunX) <= reach && Math.abs(c.y - sunY) <= reach) near.push({ x, y: c.y, s: c.s });
+      if (Math.abs(x - sunX) <= reach && Math.abs(c.y - sunY) <= reach) near.push({ x, y: c.y, s: c.s, blobs: c.blobs ?? CLOUD_BLOBS });
     }
   }
   if (near.length === 0) return 0;
@@ -73,7 +82,7 @@ export function sunCoverage(sunX: number, sunY: number, clouds: readonly CloudSp
     const px = sunX + dx;
     const py = sunY + dy;
     const hit = near.some((c) =>
-      CLOUD_BLOBS.some((b) => {
+      c.blobs.some((b) => {
         const u = (px - (c.x + b.cx * c.s)) / (b.rx * c.s);
         const v = (py - (c.y + b.cy * c.s)) / (b.ry * c.s);
         return u * u + v * v <= 1;

@@ -2,6 +2,7 @@ import { hashString, mulberry32 } from '../scene-world';
 import { DAB_SPREAD, dab } from './brush';
 import { hexRgb, jitter, mixRgb, type Rgb } from './color';
 import type { PaintCtx } from './paint-ctx';
+import type { CloudBlob } from '../weather/weather-rays';
 
 // Ciel peint (vague Ghibli, G2) : formes et couleurs des cumulus, peintres de la texture du ciel, des astres et de la brume.
 // Fonctions pures et déterministes (tirages dérivés de la graine), sur l'interface PaintCtx.
@@ -51,6 +52,11 @@ export function cloudShape(seed: number, k: number): CloudShape {
   }
   return { w, h, base, puffs: puffs.sort((p, q) => p.y - q.y) };
 }
+
+// Bulles d'un cumulus dans le repère de son dessin (centré en x, ventre à +10, voir la couche météo) : la couverture du
+// soleil suit la forme peinte et non les trois lobes classiques.
+export const cloudBlobs = (shape: CloudShape): CloudBlob[] =>
+  shape.puffs.map((p) => ({ cx: p.x - shape.w / 2, cy: p.y + 10 - shape.base, rx: p.r, ry: p.r }));
 
 // Lumière, milieu, ombre.
 export type CloudPalette = readonly [Rgb, Rgb, Rgb];

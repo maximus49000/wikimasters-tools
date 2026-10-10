@@ -116,3 +116,30 @@ describe('rayWindow (épisodes de trouées, occasionnels)', () => {
     expect(godRayTarget(0.5, drizzle, 1, true, 1)).toBe(godRayTarget(0.5, drizzle, 1, true));
   });
 });
+
+describe('sunCoverage avec la géométrie d’un nuage peint', () => {
+  it('les bulles du nuage peint masquent le soleil là où les lobes classiques ne masquent rien', () => {
+    // Bulle haute (40 px au-dessus du centre) : hors de portée des trois lobes classiques.
+    const blobs = [{ cx: 0, cy: -40, rx: 20, ry: 20 }];
+    expect(sunCoverage(100, 60, [{ x: 100, y: 100, s: 1 }], 0, 720)).toBe(0);
+    expect(sunCoverage(100, 60, [{ x: 100, y: 100, s: 1, blobs }], 0, 720)).toBeGreaterThan(0.9);
+  });
+});
+
+describe('cloudBlobs', () => {
+  it('bulles du nuage peint dans le repère du nuage : centré en x, ventre à +10', async () => {
+    const { cloudBlobs, cloudShape } = await import('../../../src/core/library/paint/sky-painter');
+    for (let k = 0; k < 12; k++) {
+      const shape = cloudShape(1, k);
+      const blobs = cloudBlobs(shape);
+      expect(blobs).toHaveLength(shape.puffs.length);
+      for (const b of blobs) {
+        expect(b.cx - b.rx).toBeGreaterThanOrEqual(-shape.w / 2);
+        expect(b.cx + b.rx).toBeLessThanOrEqual(shape.w / 2);
+        expect(b.cy).toBeLessThanOrEqual(10);
+        expect(b.rx).toBe(b.ry);
+      }
+      expect(Math.max(...blobs.map((b) => b.cy))).toBeCloseTo(10 - shape.base + Math.max(...shape.puffs.map((p) => p.y)));
+    }
+  });
+});
