@@ -74,8 +74,8 @@ Huit familles ; chaque type de commerce en a une (`SHOP_GESTURES: Record<ShopTyp
   - **Montage** par l'équipe juste après l'ouverture (employé qui sort deux chaises, une table…), **démontage** à la
     fermeture (ou 30 min avant pour les bars).
   - **Pluie, neige, orage, vent fort, ou nuit froide** (heure de nuit sans réglage de température : de 22 h à 7 h, ou
-    météo « neige ») : terrasse rentrée ; le démontage se joue quand le mauvais temps commence (hystérésis de 10 min
-    pour éviter les allers-retours). **Temps sec avec soleil fort** : parasols seulement par-dessus les tables.
+    météo « neige ») : terrasse rentrée. Amendé : par mauvais temps les tables disparaissent aussitôt (`terraceAt` rend
+    `none`, pas de démontage animé) ; seul le retour est retardé : 10 min de temps sec avant de ressortir (hystérésis). **Temps sec avec soleil fort** : parasols seulement par-dessus les tables.
   - Amendé : la règle « nuit froide » **coupe la terrasse du bar (et du restaurant) à 22 h** ; le démontage « 30 min avant la
     fermeture du bar » ne se joue donc jamais. Après le mauvais temps, la terrasse revient directement `open` (pas de
     montage animé). Le rendu agrège la météo des 10 dernières minutes pour l'hystérésis.

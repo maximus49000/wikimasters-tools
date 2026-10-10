@@ -63,7 +63,7 @@ describe('personnel : plan du jour', () => {
     expect(staffPlan(SHOP_DEFS.cafe, 9, 's', WEEK[2]!)).toEqual(a);
     expect(JSON.stringify(staffPlan(SHOP_DEFS.cafe, 10, 's', WEEK[2]!))).not.toBe(JSON.stringify(a));
   });
-  it('fait arriver l’ouvreur 20 à 30 min avant l’ouverture, à l’intérieur 2/3 du temps', () => {
+  it('fait franchir la porte à l’ouvreur 13 à 20 min avant l’ouverture (2/3 de son avance de 20 à 30 min)', () => {
     const plan = staffPlan(SHOP_DEFS.bookshop, 4, 's', WEEK[2]!);
     const opener = plan.find((s) => s.role === 'opener')!;
     const before = 600 - opener.arriveAt;
