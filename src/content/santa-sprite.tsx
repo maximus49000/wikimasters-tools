@@ -42,6 +42,10 @@ export function SantaSprite({ sky, still, santa, lit, landed = false }: Props): 
       {!still && <animate attributeName="opacity" values="0.9;0.15;0.9" dur={`${dur}s`} repeatCount="indefinite" />}
     </circle>
   );
+  // Posé, l'attelage se resserre et l'ensemble se recentre sur le toit (les toits proches font 28 à 54 px de large).
+  const team: readonly (readonly [number, number, boolean])[] = landed
+    ? [[24, -11, false], [35, -11, false], [20, -5, false], [31, -5, false], [46, -7, true]]
+    : [[28, -11, false], [46, -11, false], [22, -5, false], [40, -5, false], [62, -7, true]];
   const trail = [sparkle(-30, -9, 1.6, 0.7), sparkle(-40, -7, 1.2, 0.9), sparkle(-51, -10, 1.4, 0.6), sparkle(-62, -8, 1, 1.1), sparkle(-72, -9.5, 0.8, 0.8)];
   const sack = (
     <g data-santa-sack="">
@@ -50,15 +54,13 @@ export function SantaSprite({ sky, still, santa, lit, landed = false }: Props): 
     </g>
   );
   return (
-    <g data-santa-sprite="">
+    <g data-santa-sprite="" transform={landed ? 'translate(-14 0)' : undefined}>
       {!landed && <g data-santa-trail="">{trail}</g>}
       {/* Traits de harnais : deux rangs de rennes reliés au traîneau. */}
-      <path d="M8 -7 H70 M8 -4 H58" stroke={t(GOLD)} strokeWidth={0.6} fill="none" />
-      <Reindeer x={30} y={-11} lead={false} landed={landed} t={t} />
-      <Reindeer x={46} y={-11} lead={false} landed={landed} t={t} />
-      <Reindeer x={24} y={-5} lead={false} landed={landed} t={t} />
-      <Reindeer x={40} y={-5} lead={false} landed={landed} t={t} />
-      <Reindeer x={58} y={-7} lead landed={landed} t={t} />
+      <path d={landed ? 'M8 -7 H50 M8 -4 H40' : 'M8 -7 H70 M8 -4 H58'} stroke={t(GOLD)} strokeWidth={0.6} fill="none" />
+      {team.map(([x, y, lead]) => (
+        <Reindeer key={`${x}-${y}`} x={x} y={y} lead={lead} landed={landed} t={t} />
+      ))}
       {/* Traîneau : caisse rouge, dossier relevé, patins dorés. */}
       <path d="M-18 -8 Q-19 -14 -14 -14 L-12 -9 L10 -9 Q12 -7 9 -4 L-14 -4 Q-18 -4 -18 -8Z" fill={t(RED)} />
       <path d="M-14 -9 H9" stroke={t(GOLD)} strokeWidth={1} />

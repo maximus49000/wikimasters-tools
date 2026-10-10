@@ -83,8 +83,8 @@ describe('calque du père Noël', () => {
     const c = mount(at(0.5));
     expect(c.querySelector('[data-santa-figure]')).toBeNull();
     const w = c.querySelector('[data-santa-window]')!;
-    expect(w.getAttribute('x')).toBe(String(roof!.lamp!.x));
-    expect(w.getAttribute('y')).toBe(String(roof!.lamp!.y));
+    expect(w.getAttribute('data-x')).toBe(String(roof!.lamp!.x));
+    expect(w.getAttribute('data-y')).toBe(String(roof!.lamp!.y));
   });
   it('en vol, le père Noël est à bord et la fenêtre éteinte', () => {
     const c = mount(at(0.1));
