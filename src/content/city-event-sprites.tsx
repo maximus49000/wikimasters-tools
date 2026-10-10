@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import type { FestivityId } from '../core/library/city/calendar';
 import type { CityEvent } from '../core/library/city/events';
 import { outfitFor, type Outfit } from '../core/library/city/people';
 import { hashString, mulberry32 } from '../core/library/scene-world';
@@ -7,7 +8,8 @@ import { PersonSprite, tone } from './city-sprites';
 
 // Dessins des événements de la ville (maquette validée du 2026-10-09). Petites animations en SMIL, jamais en mouvement
 // réduit ; aucun id SVG fixe. Les tirages de couleurs viennent de la clé de l'événement (déterministes).
-type Props = { event: CityEvent; sky: Sky; still: boolean; lights: boolean; rainy: boolean };
+// `fests` : fêtes en cours (forme des ballons de fête).
+type Props = { event: CityEvent; sky: Sky; still: boolean; lights: boolean; rainy: boolean; fests: readonly FestivityId[] };
 
 const GLASS = '#CFE4F2';
 const pickOf = <T,>(list: readonly T[], u: number): T => list[Math.min(list.length - 1, Math.floor(u * list.length))]!;
@@ -16,7 +18,22 @@ const outfitsOf = (key: string, profile: Parameters<typeof outfitFor>[0], n: num
   return Array.from({ length: n }, () => outfitFor(profile, rng));
 };
 
-export function CityEventSprite({ event: e, sky, still, lights, rainy }: Props): ReactElement {
+// Drapeau tricolore (hampe à x = 0, tissu vers l'arrière, x négatif, bleu à la hampe), ondulant hors mouvement réduit.
+function Tricolor({ t, anim, h = 18 }: { t: (c: string) => string; anim: boolean; h?: number }): ReactElement {
+  return (
+    <g data-flag="">
+      <line x1={0} y1={0} x2={0} y2={-h} stroke="#6B5B4A" strokeWidth={0.8} />
+      <g transform={`translate(0 ${-h})`}>
+        {anim && <animateTransform attributeName="transform" additive="sum" type="skewY" values="0;-8;0;6;0" dur="1.4s" repeatCount="indefinite" />}
+        <rect x={-3} y={0} width={3} height={6} fill={t('#2B4FA0')} />
+        <rect x={-6} y={0} width={3} height={6} fill={t('#F2F2F2')} />
+        <rect x={-9} y={0} width={3} height={6} fill={t('#C0302B')} />
+      </g>
+    </g>
+  );
+}
+
+export function CityEventSprite({ event: e, sky, still, lights, rainy, fests }: Props): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const anim = !still;
   const body = ((): ReactElement => {
@@ -241,12 +258,138 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy }: Props):
             <rect x={0} y={0} width={5} height={7} fill="#FFD27A" />
           </g>
         );
-      // dessinés en tâche 6
-      case 'fest-balloons':
+      case 'fest-balloons': {
+        // Grappe de trois ballons noués ensemble : lapins à Pâques, cœurs à la Saint-Valentin (tirage `variant` si les deux).
+        const bunny = fests.includes('easter') && !(fests.includes('valentine') && e.variant < 0.5);
+        const cols = bunny ? ['#F7C6D9', '#CFE8FF', '#FFF2A8'] : ['#E0305A', '#F2708C', '#B01E48'];
+        return (
+          <g data-balloon-kind={bunny ? 'bunny' : 'heart'}>
+            {cols.map((c, k) => {
+              const dx = (k - 1) * 14;
+              const knot = 34 + (k % 2) * 6;
+              return (
+                <g key={k} transform={`translate(${dx} ${-(k % 2) * 6})`}>
+                  {anim && <animateTransform attributeName="transform" additive="sum" type="rotate" values={`-4 ${-dx} ${knot};4 ${-dx} ${knot};-4 ${-dx} ${knot}`} dur={`${3 + k * 0.4}s`} repeatCount="indefinite" />}
+                  <path d={`M0 8 Q${-dx * 0.3} 22 ${-dx} ${knot}`} stroke="#6B5B4A" strokeWidth={0.6} fill="none" />
+                  {bunny ? (
+                    <>
+                      <ellipse cx={-3.5} cy={-14} rx={2.4} ry={6.5} fill={t(c)} />
+                      <ellipse cx={3.5} cy={-14} rx={2.4} ry={6.5} fill={t(c)} />
+                      <ellipse cx={0} cy={-1} rx={8} ry={9} fill={t(c)} />
+                      <circle cx={-2.8} cy={-3} r={0.9} fill="#5A4A4A" />
+                      <circle cx={2.8} cy={-3} r={0.9} fill="#5A4A4A" />
+                      <circle cx={0} cy={0} r={0.9} fill="#E07A8C" />
+                    </>
+                  ) : (
+                    <path d="M0 8 C-14 -2 -8 -14 0 -6 C8 -14 14 -2 0 8Z" fill={t(c)} />
+                  )}
+                  <ellipse cx={-3} cy={-4} rx={1.6} ry={2.4} fill="#FFFFFF" opacity={0.45} />
+                </g>
+              );
+            })}
+            <circle cx={0} cy={34} r={1} fill="#6B5B4A" />
+          </g>
+        );
+      }
       case 'bells':
-      case 'street-band':
-      case 'parade':
-        return <g />;
+        // Cloches de Pâques : deux cloches dorées qui se balancent sous un ruban noué.
+        return (
+          <g>
+            <path d="M-11 -10 Q0 -16 11 -10" stroke={t('#C0463A')} strokeWidth={1.6} fill="none" />
+            <path d="M0 -14 L-5 -18 L-5 -10Z M0 -14 L5 -18 L5 -10Z M0 -14 L-3 -6 M0 -14 L3 -6" fill={t('#C0463A')} stroke={t('#C0463A')} strokeWidth={0.8} />
+            {[-11, 11].map((x, k) => {
+              const a = k ? 14 : -14;
+              return (
+                <g key={k} transform={`translate(${x} 0)`}>
+                  <g>
+                    {anim && <animateTransform attributeName="transform" type="rotate" values={`${a} 0 -10;${-a} 0 -10;${a} 0 -10`} dur="1.6s" repeatCount="indefinite" />}
+                    <line x1={0} y1={-10} x2={0} y2={-7} stroke={t('#C0463A')} strokeWidth={1.2} />
+                    <path d="M-7 7 Q-7 -6 0 -8 Q7 -6 7 7Z" fill={t('#E8B923')} />
+                    <path d="M-7 7 H7" stroke={t('#B08A16')} strokeWidth={1.4} />
+                    <path d="M-3.5 -4 Q-5 0 -4.5 5" stroke="#FFF4C8" strokeWidth={1} fill="none" opacity={0.7} />
+                    <circle cx={0} cy={9} r={1.8} fill={t('#8A6A12')} />
+                  </g>
+                </g>
+              );
+            })}
+          </g>
+        );
+      case 'street-band': {
+        // Trois musiciens face à la rue : guitare, chant au micro, tambour. Projecteurs colorés la nuit.
+        const people = outfitsOf(e.key, 'ordinary', 3).map((o) => ({ ...o, accessory: 'none' as const }));
+        const spots = ['#FF4F4F', '#4FD8FF', '#B04FFF'];
+        const wood = t('#8A5A2B');
+        return (
+          <g>
+            {lights &&
+              spots.map((col, k) => (
+                <path key={k} data-band-light="" d={`M${-22 + k * 22} -80 L${-36 + k * 22} 0 L${-8 + k * 22} 0Z`} fill={col} opacity={0.16}>
+                  {anim && <animate attributeName="opacity" values="0.05;0.24;0.05" dur={`${2 + k * 0.5}s`} begin={`${k * 0.4}s`} repeatCount="indefinite" />}
+                </path>
+              ))}
+            {/* Micro sur pied devant le chanteur (au centre). */}
+            <path d="M6 0 L4 -1 M6 0 L8 -1 M6 0 V-26 L3 -29" stroke="#3B3F4A" strokeWidth={0.9} fill="none" />
+            <circle cx={2.6} cy={-29.4} r={1.4} fill="#222" />
+            {people.map((o, k) => (
+              <g key={k} data-musician="" transform={`translate(${-22 + k * 22} 0)`}>
+                <PersonSprite outfit={o} sky={sky} rainy={rainy} umbrella={false} />
+                {k === 0 && (
+                  // Guitare portée en travers du buste.
+                  <g transform="rotate(-30 0 -16)">
+                    <ellipse cx={-1} cy={-14} rx={4.2} ry={3.4} fill={wood} />
+                    <circle cx={-1} cy={-14} r={1.1} fill="#2A1A0A" />
+                    <rect x={2} y={-15} width={10} height={1.8} fill={t('#3B2A1A')} />
+                  </g>
+                )}
+                {k === 2 && (
+                  // Tambour à la ceinture, baguette levée.
+                  <g>
+                    <rect x={3} y={-17} width={9} height={8} fill={t('#C0463A')} />
+                    <ellipse cx={7.5} cy={-17} rx={4.5} ry={1.5} fill={t('#F2EDE0')} />
+                    <path d="M3 -13 L12 -11 M3 -11 L12 -13" stroke="#F2EDE0" strokeWidth={0.5} />
+                    <line x1={4} y1={-21} x2={9} y2={-18} stroke={wood} strokeWidth={0.9}>
+                      {anim && <animateTransform attributeName="transform" type="rotate" values="0 4 -21;-20 4 -21;0 4 -21" dur="0.5s" repeatCount="indefinite" />}
+                    </line>
+                  </g>
+                )}
+              </g>
+            ))}
+          </g>
+        );
+      }
+      case 'parade': {
+        // Défilé du 14 juillet : quatre véhicules militaires pavoisés, en convoi vers +x (demi-longueur ≈ 120 px à l'échelle).
+        const bodies = ['#5E6B40', '#3E4A62', '#5E6B40', '#6B5A44'];
+        return (
+          <g>
+            {bodies.map((c, k) => (
+              <g key={k} data-parade-vehicle="" transform={`translate(${-102 + k * 68} 0)`}>
+                <rect x={-26} y={-18} width={52} height={14} rx={2} fill={t(c)} />
+                <path d="M10 -18 L16 -26 H24 L26 -18Z" fill={t(c)} />
+                <path d="M16.5 -25 H23 L24.5 -19 H12Z" fill={t(GLASS)} opacity={0.85} />
+                {/* Équipage debout dans le véhicule, képi. */}
+                {[-14, -2].map((x) => (
+                  <g key={x}>
+                    <rect x={x - 2.5} y={-24} width={5} height={6} fill={t(c)} />
+                    <circle cx={x} cy={-27} r={2.6} fill={t('#E8C4A0')} />
+                    <rect x={x - 2.8} y={-31} width={5.6} height={2.6} fill={t(k === 1 ? '#2B3A6A' : '#4A5A2E')} />
+                  </g>
+                ))}
+                <rect x={-26} y={-11} width={52} height={2} fill={t('#2B4FA0')} />
+                <rect x={-26} y={-9} width={52} height={1.4} fill={t('#F2F2F2')} />
+                <rect x={-26} y={-7.6} width={52} height={1.6} fill={t('#C0302B')} />
+                <circle cx={-15} cy={-3} r={4.5} fill="#222" />
+                <circle cx={15} cy={-3} r={4.5} fill="#222" />
+                <circle cx={-15} cy={-3} r={1.6} fill="#666" />
+                <circle cx={15} cy={-3} r={1.6} fill="#666" />
+                <g transform="translate(-20 -18)">
+                  <Tricolor t={t} anim={anim} h={20} />
+                </g>
+              </g>
+            ))}
+          </g>
+        );
+      }
       case 'fireworks': {
         const colors = ['#FF4F4F', '#F2C94C', '#4FD8FF', '#B04FFF', '#4FFF8A'];
         return (

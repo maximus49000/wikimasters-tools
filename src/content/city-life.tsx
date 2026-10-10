@@ -262,7 +262,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const t0 = still ? frozen.current : Date.now() / 1000;
   const eventNode = (e: CityEvent): ReactElement => (
     <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)}>
-      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} />
+      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} />
     </g>
   );
   const of = (pred: (e: CityEvent) => boolean): CityEvent[] => events.active.filter(pred);
@@ -327,7 +327,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <g data-city-events-back="">
         {fireworks.length > 0 && <g data-event-mask="skyline" mask={`url(#${maskBase}-skyline)`}>{fireworks.map(eventNode)}</g>}
         {cranes.length > 0 && <g data-event-mask="near" mask={`url(#${maskBase}-near)`}>{cranes.map(eventNode)}</g>}
-        {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment').map(eventNode)}
+        {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment' || e.id === 'bells').map(eventNode)}
         <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} />
       </g>
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
@@ -440,7 +440,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             </g>
           );
         })}
-        {of((e) => e.layer === 'sidewalk').map(eventNode)}
+        {of((e) => e.layer === 'sidewalk' || e.id === 'street-band').map(eventNode)}
         {/* Camion de déménagement garé au bord du trottoir : devant les passants, derrière les lampadaires et les files. */}
         {shops.views.map((view, i) => (
           <MovingTruck

@@ -4,14 +4,16 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { CityEventSprite } from '../../src/content/city-event-sprites';
+import type { FestivityId } from '../../src/core/library/city/calendar';
 import { EVENT_DEFS, type CityEvent } from '../../src/core/library/city/events';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const sky = skyAt(12 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
-const draw = (event: CityEvent, still: boolean): SVGSVGElement => {
+const ALL_FESTS: readonly FestivityId[] = ['bastille', 'music', 'easter', 'valentine'];
+const draw = (event: CityEvent, still: boolean, opts: { lights?: boolean; fests?: readonly FestivityId[] } = {}): SVGSVGElement => {
   const host = document.createElement('div');
-  act(() => createRoot(host).render(<svg><CityEventSprite event={event} sky={sky} still={still} lights rainy={false} /></svg>));
+  act(() => createRoot(host).render(<svg><CityEventSprite event={event} sky={sky} still={still} lights={opts.lights ?? true} rainy={false} fests={opts.fests ?? ALL_FESTS} /></svg>));
   return host.querySelector('svg')!;
 };
 const ev = (id: CityEvent['id']): CityEvent => ({ key: `k-${id}`, id, layer: EVENT_DEFS.find((d) => d.id === id)!.layer, start: 0, end: 10, dir: 1, track: null, speed: 1, x0: 0, y: 0.1, pick: 0.4, variant: 0.6, yields: [] });
@@ -32,5 +34,28 @@ describe('CityEventSprite', () => {
   it('le groupe pressé porte des parapluies, le promeneur tient un chien', () => {
     expect(draw(ev('umbrella-group'), false).querySelectorAll('[data-umbrella]').length).toBe(3);
     expect(draw(ev('dog-walker'), false).querySelector('[data-dog]')).not.toBeNull();
+  });
+  it('ballons-lapins à Pâques, en cœur à la Saint-Valentin', () => {
+    expect(draw(ev('fest-balloons'), false, { fests: ['easter'] }).querySelector('[data-balloon-kind="bunny"]')).not.toBeNull();
+    expect(draw(ev('fest-balloons'), false, { fests: ['valentine'] }).querySelector('[data-balloon-kind="heart"]')).not.toBeNull();
+    expect(draw(ev('fest-balloons'), false, { fests: ['valentine'] }).querySelector('[data-balloon-kind="bunny"]')).toBeNull();
+  });
+  it('les ballons et les cloches bougent hors mouvement réduit', () => {
+    for (const id of ['fest-balloons', 'bells'] as const) expect(draw(ev(id), false).querySelectorAll('animate, animateTransform').length).toBeGreaterThan(0);
+  });
+  it('les musiciens ont des lumières colorées seulement la nuit, figées en mouvement réduit', () => {
+    const night = draw(ev('street-band'), false, { fests: ['music'] });
+    expect(night.querySelectorAll('[data-band-light]').length).toBeGreaterThan(0);
+    expect(night.querySelectorAll('animate, animateTransform').length).toBeGreaterThan(0);
+    expect(night.querySelectorAll('[data-musician]')).toHaveLength(3);
+    expect(draw(ev('street-band'), false, { lights: false, fests: ['music'] }).querySelector('[data-band-light]')).toBeNull();
+    const reduced = draw(ev('street-band'), true, { fests: ['music'] });
+    expect(reduced.querySelector('[data-band-light]')).not.toBeNull();
+    expect(reduced.querySelectorAll('animate, animateTransform')).toHaveLength(0);
+  });
+  it('le défilé aligne quatre véhicules pavoisés', () => {
+    const svg = draw(ev('parade'), false);
+    expect(svg.querySelectorAll('[data-parade-vehicle]')).toHaveLength(4);
+    expect(svg.querySelectorAll('[data-flag]')).toHaveLength(4);
   });
 });
