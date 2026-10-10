@@ -28,7 +28,7 @@ beforeEach(async () => {
   resetPositionForTests();
   Object.defineProperty(navigator, 'geolocation', {
     configurable: true,
-    value: { getCurrentPosition: (_ok: unknown, fail: () => void) => fail() },
+    value: { getCurrentPosition: (_ok: unknown, fail: (e: { code: number; message: string }) => void) => fail({ code: 1, message: 'refusé' }) },
   });
   container = document.createElement('div');
   document.body.append(container);

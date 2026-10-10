@@ -4,11 +4,11 @@ import { paintCityTile, TILE, tileCount, tileKey } from '../core/library/paint/c
 import { mulberry32 } from '../core/library/scene-world';
 
 // Peinture des tranches de la ville (vague Ghibli) : canvas hors écran pendant les temps morts, une tranche par créneau,
-// image PNG en data URL, cache mémoire (64 tranches au plus, les plus anciennes libérées).
+// image PNG en data URL, cache mémoire (20 tranches au plus, les plus anciennes libérées).
 export type PaintedTile = { x: number; w: number; url: string };
 export type TilePainter = (plan: CityPaintPlan, tile: number) => Promise<string | null>;
 
-const CACHE_MAX = 64;
+const CACHE_MAX = 20;
 const cache = new Map<string, string>();
 const failed = new Set<string>();
 let override: TilePainter | null = null;
