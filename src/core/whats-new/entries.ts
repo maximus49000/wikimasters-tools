@@ -1947,7 +1947,7 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-library-entry]',
         title: 'Le défilé du 14 juillet',
-        text: 'Le 14 juillet, la route est fermée de 8 h à 12 h 30 : aucune autre voiture, vélo ou bus. Le cortège passe de 10 h à 12 h : fanfare, motards de la Garde, porte-drapeaux, soldats à pied, cavaliers, jeeps, camions, chars et sapeurs-pompiers. À 10 h, la Patrouille de France ouvre le défilé aérien.',
+        text: 'Le 14 juillet, la route est fermée de 8 h à 13 h 30 (jusqu’à la fin de la dépose des barrières) : aucune autre voiture, vélo ou bus. Le cortège passe de 10 h à 12 h : fanfare, motards de la Garde, porte-drapeaux, soldats à pied, cavaliers, jeeps, camions, chars et sapeurs-pompiers. À 10 h, la Patrouille de France ouvre le défilé aérien.',
         details: [
           { label: 'À quoi ça sert', text: 'À donner au 14 juillet son grand défilé, comme sur les Champs-Élysées.' },
           { label: 'Comment ça marche', text: 'Le cortège est un flux continu à vitesse commune, composé à partir de la date et de l’heure : rien ne se chevauche et toutes les fenêtres voient le même défilé.' },
