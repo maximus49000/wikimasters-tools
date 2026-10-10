@@ -399,7 +399,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           </g>
           {/* Météo : deux groupes à part (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. */}
           {weatherOn && view.weather && (
-            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} onWet={setWet} />
+            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} onWet={setWet} gloom={gloom} />
           )}
           {windows.map((w) => {
             const glass = glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }));

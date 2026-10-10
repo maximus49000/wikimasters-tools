@@ -6,10 +6,13 @@ import { mixHex, type Sky } from '../core/library/sky';
 import { lightningAt, rainbowOf } from '../core/library/weather/weather-clock';
 import { CLOUD_BLOBS, godRayTarget, rayWindow, sunCoverage, type CloudSpot } from '../core/library/weather/weather-rays';
 import { smooth, type Weather } from '../core/library/weather/weather-types';
-import { CLOUD_KINDS, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
+import { CLOUD_KINDS, FOG_W, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
+import { cityPaintPlan } from '../core/library/paint/city-plan';
+import { gradeFor, gradeValues } from '../core/library/paint/grade';
+import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
 import { fadeStyle } from './ghibli-sky';
-import { usePaintedClouds } from './painted-sky';
+import { usePaintedClouds, usePaintedFog, usePaintedSnow } from './painted-sky';
 import { celestialPlace } from './scene-panorama';
 
 // Scènes qui ont une météo : l'espace et la Terre vue de l'orbite n'en ont pas.
@@ -27,6 +30,8 @@ type Props = {
   groundId?: string;
   // Appelé quand la pluie devient (ou cesse d'être) assez forte pour des gouttes sur la vitre (avec hystérésis) : rare, sans boucle React.
   onWet?: (wet: boolean) => void;
+  // Ciel sombre : étalonnage de la neige posée peinte, comme la ville.
+  gloom?: boolean;
 };
 
 const FRAME_MS = 30;
@@ -58,14 +63,38 @@ const windSpeed = (wind: number): number => 4 + 14 * Math.max(0, wind); // px/s 
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Motifs de stries (pluie) et de points (neige) : la boucle ne fait que les translater et les incliner — aucun nœud par goutte.
-function PatternDefs({ id, seed }: { id: string; seed: number }): ReactElement {
-  const { marks, flakes } = useMemo(() => {
+function PatternDefs({ id, seed, ghibli }: { id: string; seed: number; ghibli: boolean }): ReactElement {
+  const { marks, flakes, streaks } = useMemo(() => {
     const rng = mulberry32(seed ^ 0x77ea);
     return {
       marks: Array.from({ length: 14 }, () => ({ x: rng() * TILE, y: rng() * TILE, l: 8 + rng() * 10 })),
       flakes: Array.from({ length: 12 }, () => ({ x: rng() * TILE, y: rng() * TILE, r: 0.8 + rng() * 1.4 })),
+      // Stries du dessin Ghibli, tirées APRÈS les flocons : le dessin classique garde ses tirages.
+      streaks: Array.from({ length: 16 }, () => ({ x: rng() * TILE, y: rng() * TILE, l: 10 + rng() * 18, w: rng(), o: 0.3 + rng() * 0.5 })),
     };
   }, [seed]);
+  if (ghibli) {
+    return (
+      <defs>
+        <radialGradient id={`${id}-flake`}>
+          <stop offset="0" stopColor="#FFFFFF" stopOpacity={0.95} />
+          <stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+        </radialGradient>
+        <pattern id={`${id}-rain-far`} data-wx-pattern="rain-far" width={TILE} height={TILE} patternUnits="userSpaceOnUse">
+          {streaks.slice(0, 10).map((m, i) => <line key={i} x1={m.x} y1={m.y} x2={m.x} y2={m.y + m.l * 0.65} stroke="#E6EDF7" strokeOpacity={m.o * 0.7} strokeWidth={0.5 + m.w * 0.4} strokeLinecap="round" />)}
+        </pattern>
+        <pattern id={`${id}-rain-near`} data-wx-pattern="rain-near" width={TILE} height={TILE} patternUnits="userSpaceOnUse">
+          {streaks.map((m, i) => <line key={i} x1={m.x} y1={m.y} x2={m.x} y2={m.y + m.l} stroke="#E6EDF7" strokeOpacity={m.o} strokeWidth={0.6 + m.w * 0.9} strokeLinecap="round" />)}
+        </pattern>
+        <pattern id={`${id}-snow-far`} data-wx-pattern="snow-far" width={TILE} height={TILE} patternUnits="userSpaceOnUse">
+          {flakes.slice(0, 8).map((f, i) => <circle key={i} cx={f.x} cy={f.y} r={f.r * 0.9} fill={`url(#${id}-flake)`} />)}
+        </pattern>
+        <pattern id={`${id}-snow-near`} data-wx-pattern="snow-near" width={TILE} height={TILE} patternUnits="userSpaceOnUse">
+          {flakes.map((f, i) => <circle key={i} cx={f.x} cy={f.y} r={f.r * 1.4} fill={`url(#${id}-flake)`} />)}
+        </pattern>
+      </defs>
+    );
+  }
   return (
     <defs>
       <pattern id={`${id}-rain-far`} data-wx-pattern="rain-far" width={TILE} height={TILE} patternUnits="userSpaceOnUse">
@@ -84,14 +113,14 @@ function PatternDefs({ id, seed }: { id: string; seed: number }): ReactElement {
   );
 }
 
-type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; sky: RefObject<Sky>; onWet: RefObject<Props['onWet']>; onStep: RefObject<((s: CloudStep) => void) | undefined> };
+type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; sky: RefObject<Sky>; onWet: RefObject<Props['onWet']>; onStep: RefObject<((s: CloudStep) => void) | undefined>; layout: string };
 
 // Met la météo à l'écran sans re-rendu React : même horloge murale pour toutes les fenêtres, même règle d'économie que les acteurs
 // (~30 images/s, en pause quand la page est cachée, figée si l'utilisateur demande moins de mouvement).
 // Rend la fonction de placement, pour qu'un changement de ciel (chaque minute) la rejoue quand le mouvement est figé.
 function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SVGGElement | null>, input: LoopInput): RefObject<(() => void) | null> {
   const placeRef = useRef<(() => void) | null>(null);
-  const { clock, seed, width, height, pool } = input;
+  const { clock, seed, width, height, pool, layout } = input;
   const skyRef = input.sky;
   const onWetRef = input.onWet;
   const onStepRef = input.onStep;
@@ -105,7 +134,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       tint: q('tint'), overcast: q('overcast'), clouds: q('clouds'), drift: q('clouds-drift'), fog: q('fog'), rainFar: q('rain-far'), rainNear: q('rain-near'), snowFar: q('snow-far'), snowNear: q('snow-near'),
       puddles: q('puddles'), snowCover: q('snow-cover'), flash: q('flash'), bolt: q('bolt'), rainbow: q('rainbow'), godrays: q('godrays'), rays: el.querySelector<SVGElement>('[data-wx-rays]'),
     };
-    const patterns = { rainFar: pat('rain-far'), rainNear: pat('rain-near'), snowFar: pat('snow-far'), snowNear: pat('snow-near') };
+    const patterns = { rainFar: pat('rain-far'), rainNear: pat('rain-near'), snowFar: pat('snow-far'), snowNear: pat('snow-near'), fog: pat('fog') };
+    const boltLines = Array.from(el.querySelectorAll<SVGElement>('[data-wx-bolt-line]'));
     const tintStops = Array.from(el.querySelectorAll<SVGElement>('[data-wx-stop="tint"]'));
     const overcastStops = Array.from(el.querySelectorAll<SVGElement>('[data-wx-stop="overcast"]'));
     const cloudNodes = Array.from(el.querySelectorAll<SVGElement>('[data-wx-cloud]'));
@@ -132,6 +162,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     let drift = positiveMod((lastMs / 1000) * windSpeed(w0.wind), width);
     let snowFarX = 0;
     let snowNearX = 0;
+    let fogX = 0;
     let rayStrength = -1;
     let hidden = 0;
     let coveredAt = -Infinity;
@@ -214,6 +245,11 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       set(nodes.snowCover, w.snowCover);
       set(nodes.rainbow, rainbowOf(w, daylight));
       // Motifs : seulement s'ils se voient (et figés si moins de mouvement).
+      // Brume peinte : bancs qui dérivent lentement (≈ 12 px/s), figés si moins de mouvement.
+      if (patterns.fog && w.fog > 0) {
+        fogX = (fogX + dt * 12) % FOG_W;
+        put(patterns.fog, 'patternTransform', `translate(${fogX.toFixed(1)} 0)`);
+      }
       const tm = still ? 0 : t;
       if (rain > 0) {
         put(patterns.rainFar, 'patternTransform', `rotate(${(lean * 0.6).toFixed(1)}) translate(0 ${((tm * 220) % TILE).toFixed(1)})`);
@@ -232,7 +268,10 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       if (nodes.bolt) {
         if (flash) {
           const x = flash.x * width;
-          put(nodes.bolt, 'd', `M${x.toFixed(0)} 0 L${(x - 10).toFixed(0)} ${(height * 0.22).toFixed(0)} L${(x + 4).toFixed(0)} ${(height * 0.22).toFixed(0)} L${(x - 14).toFixed(0)} ${(height * 0.5).toFixed(0)}`);
+          if (boltLines.length > 0) {
+            const d = boltPath(x, height, Math.round(flash.x * 1e6));
+            for (const line of boltLines) put(line, 'd', d);
+          } else put(nodes.bolt, 'd', `M${x.toFixed(0)} 0 L${(x - 10).toFixed(0)} ${(height * 0.22).toFixed(0)} L${(x + 4).toFixed(0)} ${(height * 0.22).toFixed(0)} L${(x - 14).toFixed(0)} ${(height * 0.5).toFixed(0)}`);
           set(nodes.bolt, flash.strength);
         } else set(nodes.bolt, 0);
       }
@@ -302,11 +341,11 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       svg?.style.removeProperty('--wmt-precip');
       svg?.style.removeProperty('--wmt-sun-hidden');
     };
-  }, [sky, ground, clock, seed, width, height, pool, skyRef]);
+  }, [sky, ground, clock, seed, width, height, pool, skyRef, layout]);
   return placeRef;
 }
 
-function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, onWet }: Props): ReactElement {
+function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, onWet, gloom = false }: Props): ReactElement {
   // Préfixe des motifs/dégradés, propre à chaque pièce (deux pièces affichées ne partagent pas leurs motifs).
   const uid = `wx${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const floorFrac = CLOUD_FLOOR[scene] ?? 0.45;
@@ -326,7 +365,13 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const onStepRef = useRef<((s: CloudStep) => void) | undefined>(setStep);
   const painted = usePaintedClouds(seed, ghibli ? step : null);
   const showPainted = ghibli && painted.ready;
-  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, sky: skyRef, onWet: onWetRef, onStep: onStepRef });
+  const fogH = Math.round(height * 0.7);
+  const fogUrl = usePaintedFog(seed, fogH, ghibli);
+  const plan = useMemo(() => (ghibli ? cityPaintPlan(width, height, seed) : null), [ghibli, width, height, seed]);
+  const snow = usePaintedSnow(plan);
+  // La boucle met ses nœuds en cache : elle repart quand la neige posée ou la brume changent de nœud.
+  const layout = `${ghibli}|${snow.ready}|${fogUrl !== ''}`;
+  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, sky: skyRef, onWet: onWetRef, onStep: onStepRef, layout });
   // Mouvement réduit : pas de boucle, mais le ciel (chaque minute) relance un placement pour suivre la météo.
   useLayoutEffect(() => {
     if (reducedMotion()) placeRef.current?.();
@@ -361,11 +406,22 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
         <g data-wx="puddles" opacity={0}>
           {puddles.map((p, i) => <ellipse key={i} cx={p.x} cy={p.y} rx={p.rx} ry={p.rx * 0.18} fill="#9FB4C8" opacity={0.6} />)}
         </g>
-        <rect data-wx="snow-cover" x={0} y={ground} width={width} height={height - ground} fill="#F4F8FC" opacity={0} />
+        {ghibli && snow.ready ? (
+          <g data-wx="snow-cover" opacity={0}>
+            <filter id={`${uid}-grade`} colorInterpolationFilters="sRGB">
+              <feColorMatrix type="matrix" values={gradeValues(gradeFor(sky.daylight, sky.twilight, gloom))} />
+            </filter>
+            <g filter={`url(#${uid}-grade)`}>
+              {snow.tiles.map((t) => <image key={t.x} data-snow-tile={t.x} href={t.url} x={t.x} y={0} width={t.w} height={height} preserveAspectRatio="none" />)}
+            </g>
+          </g>
+        ) : (
+          <rect data-wx="snow-cover" x={0} y={ground} width={width} height={height - ground} fill="#F4F8FC" opacity={0} />
+        )}
       </g>
       {/* Ciel et précipitations, par-dessus le décor et les acteurs. */}
       <g data-weather="" data-scene={scene} id={id} ref={skyRoot}>
-        <PatternDefs id={uid} seed={seed} />
+        <PatternDefs id={uid} seed={seed} ghibli={ghibli} />
         <defs>
           <linearGradient id={`${uid}-tint`} x1="0" y1="0" x2="0" y2="1">
             <stop data-wx-stop="tint" offset="0" stopColor="#9AA4B2" stopOpacity={1} />
@@ -380,6 +436,11 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
             <stop offset="0" stopColor="#E7ECF1" stopOpacity={0.35} />
             <stop offset="1" stopColor="#E7ECF1" stopOpacity={0.95} />
           </linearGradient>
+          {ghibli && fogUrl !== '' && (
+            <pattern id={`${uid}-fogp`} data-wx-pattern="fog" x={0} y={height * 0.3} width={FOG_W} height={fogH} patternUnits="userSpaceOnUse">
+              <image href={fogUrl} width={FOG_W} height={fogH} preserveAspectRatio="none" />
+            </pattern>
+          )}
           {painted.urls.map((url, k) => {
             const shape = painted.shapes[k]!;
             // Nuage centré en x, ventre à +10 (comme le bas des ellipses actuelles).
@@ -416,12 +477,20 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
             {rays.map((ray, i) => <polygon key={i} points={ray.points} opacity={ray.opacity} />)}
           </g>
         </g>
-        <rect data-wx="fog" x={0} y={height * 0.3} width={width} height={height * 0.7} fill={`url(#${uid}-fog)`} opacity={0} />
+        <rect data-wx="fog" x={0} y={height * 0.3} width={width} height={height * 0.7} fill={ghibli && fogUrl !== '' ? `url(#${uid}-fogp)` : `url(#${uid}-fog)`} opacity={0} />
         <rect data-wx="rain-far" x={0} y={0} width={width} height={height} fill={`url(#${uid}-rain-far)`} opacity={0} />
         <rect data-wx="snow-far" x={0} y={0} width={width} height={height} fill={`url(#${uid}-snow-far)`} opacity={0} />
         <rect data-wx="rain-near" x={0} y={0} width={width} height={height} fill={`url(#${uid}-rain-near)`} opacity={0} />
         <rect data-wx="snow-near" x={0} y={0} width={width} height={height} fill={`url(#${uid}-snow-near)`} opacity={0} />
-        <path data-wx="bolt" d="M0 0" fill="none" stroke="#FFFFFF" strokeWidth={2.5} opacity={0} />
+        {ghibli ? (
+          <g data-wx="bolt" opacity={0} fill="none" strokeLinecap="round" strokeLinejoin="round">
+            <path data-wx-bolt-line="glow" d="M0 0" stroke="#C8D2FF" strokeOpacity={0.3} strokeWidth={8} />
+            <path data-wx-bolt-line="core" d="M0 0" stroke="#E6EBFF" strokeOpacity={0.7} strokeWidth={3.5} />
+            <path data-wx-bolt-line="filament" d="M0 0" stroke="#FFFFFF" strokeWidth={1.5} />
+          </g>
+        ) : (
+          <path data-wx="bolt" d="M0 0" fill="none" stroke="#FFFFFF" strokeWidth={2.5} opacity={0} />
+        )}
         <rect data-wx="flash" x={0} y={0} width={width} height={height} fill="#F4F6FF" opacity={0} />
       </g>
     </>
