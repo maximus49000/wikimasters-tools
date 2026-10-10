@@ -13,7 +13,8 @@ import { cityMetrics } from '../../src/core/library/city/metrics';
 import { dayNumber } from '../../src/core/library/city/shops/hours';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { DARK } from '../../src/core/library/city/events';
-import { STAGE } from '../../src/content/install-sprites';
+import { BARRIER, STAGE } from '../../src/content/install-sprites';
+import { barrierK } from '../../src/content/install-layer';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: { root: Root; host: HTMLDivElement }[] = [];
@@ -158,6 +159,75 @@ describe('calque des équipes d’installation', () => {
     expect(count(c, '[data-stage-spot]')).toBe(3);
   });
 
+  it('14/7 : barrières sur la chaussée, jamais sur le pied d’un lampadaire', () => {
+    const c = layer(D14, 9 * 60);
+    const xs = [...c.querySelectorAll('[data-decor-kind="barrier"]')].map((e) => Number(e.getAttribute('data-x')));
+    expect(xs.length).toBeGreaterThan(0);
+    const half = BARRIER.half * barrierK(metrics.unit);
+    for (const x of xs) for (const l of lampsFor(W, SEED)) expect(Math.abs(x - l.x), `barrière ${x} / lampadaire ${l.x}`).toBeGreaterThanOrEqual(half);
+  });
+
+  it('la camionnette ne se gare jamais sur le camion élévateur ni sur le pied d’un lampadaire', () => {
+    let vans = 0;
+    let both = 0;
+    const scan = (date: YMD, from: number, to: number, step: number): void => {
+      for (let m = from; m < to; m += step) {
+        const c = layer(date, m);
+        const trucks = [...c.querySelectorAll('[data-lift-truck]')].map((t) => ({ x: Number(t.getAttribute('data-x')), park: Number(t.getAttribute('data-park')) }));
+        for (const v of c.querySelectorAll('[data-install-van]')) {
+          vans++;
+          const x = Number(v.getAttribute('data-x'));
+          const half = Number(v.getAttribute('data-half'));
+          for (const l of lampsFor(W, SEED)) expect(Math.abs(x - l.x), `${date.d}/${date.m} ${m} lampadaire`).toBeGreaterThanOrEqual(half);
+          for (const t of trucks) {
+            both++;
+            expect(Math.abs(x - t.park), `${date.d}/${date.m} ${m} point de travail`).toBeGreaterThanOrEqual(60);
+            expect(Math.abs(x - t.x), `${date.d}/${date.m} ${m} camion`).toBeGreaterThanOrEqual(half + 27);
+          }
+        }
+        for (const { root, host } of mounted.splice(0)) {
+          act(() => root.unmount());
+          host.remove();
+        }
+      }
+    };
+    scan(D13, 520, 1040, 9);
+    scan(MUSIC, 520, 980, 9);
+    expect(vans).toBeGreaterThan(0);
+    expect(both).toBeGreaterThan(0);
+  });
+
+  it('nacelle : l’ouvrier n’y est que levé ; scène montée avec une pièce de treillis ou un projecteur, jamais un drapeau', () => {
+    const seen = { stow: 0, piece: 0 };
+    const scan = (date: YMD, from: number, to: number, step: number): void => {
+      for (let m = from; m < to; m += step) {
+        const c = layer(date, m);
+        for (const crew of c.querySelectorAll('[data-crew][data-equipment="lift"]')) {
+          const step = crew.getAttribute('data-step')!;
+          const inBucket = crew.querySelectorAll('[data-lift-bucket] [data-worker]').length;
+          if (step === 'stow' || step === 'deploy') {
+            seen.stow++;
+            expect(inBucket, `${m} ${step}`).toBe(0);
+            expect(crew.querySelectorAll('[data-worker]').length).toBe(2);
+          }
+          if ((crew.getAttribute('data-crew-item') ?? '').startsWith('stage-')) {
+            expect(crew.querySelector('[data-held-flag]')).toBeNull();
+            if (crew.querySelector('[data-held-piece]')) seen.piece++;
+          }
+        }
+        for (const { root, host } of mounted.splice(0)) {
+          act(() => root.unmount());
+          host.remove();
+        }
+      }
+    };
+    scan(D13, 540, 1020, 7);
+    scan(MUSIC, 540, 960, 5);
+    scan(MUSIC_NEXT, 0, 240, 5);
+    expect(seen.stow).toBeGreaterThan(0);
+    expect(seen.piece).toBeGreaterThan(0);
+  });
+
   it('aucun id SVG fixe', () => {
     for (const [d, m] of [[D13, 720], [D14, 450], [MUSIC, 700]] as const) expect(layer(d, m).querySelector('[id]')).toBeNull();
   });
@@ -223,6 +293,13 @@ describe('branchement dans la vie de la ville', () => {
     const back = c.querySelector('[data-install-part="back"]')!;
     expect(lamps.compareDocumentPosition(front) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(back.closest('[data-city-sidewalk]')).not.toBeNull();
+    // Équipes à pied et scène : après les passants (un passant passe toujours derrière une équipe).
+    const crew = c.querySelector('[data-install-part="crew"]')!;
+    expect(crew.closest('[data-city-sidewalk]')).not.toBeNull();
+    const peds = c.querySelectorAll('[data-ped]');
+    expect(peds.length).toBeGreaterThan(0);
+    expect(peds[peds.length - 1]!.compareDocumentPosition(crew) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(crew.compareDocumentPosition(lamps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
   it('14/7 à midi : drapeaux d’entrée posés', () => {
     expect(count(mount(D14, 720), '[data-decor-item][data-decor-kind="door-flag"]')).toBe(FLAG_DOORS);

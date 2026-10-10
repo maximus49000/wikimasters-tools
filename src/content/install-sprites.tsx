@@ -57,28 +57,37 @@ export function DoorFlag({ sky }: { sky: Sky }): ReactElement {
   );
 }
 
-// Barrière de type Vauban (24 × 11) : cadre galvanisé, barreaux verticaux, deux pieds plats.
+// Barrière de type Vauban (24 × 11) : cadre blanc liseré de sombre, barreaux alternés rouge et blanc (contraste sur le
+// trottoir clair comme sur la chaussée), deux pieds plats.
+const BARRIER_RED = '#D0302A';
 export function Barrier({ sky }: { sky: Sky }): ReactElement {
-  const c = tone(GALVA, sky);
+  const t = (c: string): string => tone(c, sky);
   const bars: number[] = [];
   for (let x = -9.5; x < 10; x += 2.4) bars.push(x);
   return (
-    <g data-barrier-art="" stroke={c} fill="none" strokeLinecap="round">
-      <rect x={-11} y={-11} width={22} height={8.5} rx={1} strokeWidth={0.9} />
-      {bars.map((x) => (
-        <line key={x} x1={x} y1={-10.5} x2={x} y2={-3} strokeWidth={0.45} />
+    <g data-barrier-art="" fill="none" strokeLinecap="round">
+      <rect x={-11} y={-11} width={22} height={8.5} rx={1} stroke={t('#2E323C')} strokeWidth={1.5} />
+      {bars.map((x, i) => (
+        <line key={x} x1={x} y1={-10.5} x2={x} y2={-3} stroke={t(i % 2 === 0 ? BARRIER_RED : '#F4F4F2')} strokeWidth={1} />
       ))}
-      <line x1={-11} y1={-2.5} x2={-11} y2={0} strokeWidth={0.9} />
-      <line x1={11} y1={-2.5} x2={11} y2={0} strokeWidth={0.9} />
-      <line x1={-14} y1={0} x2={-8} y2={0} strokeWidth={1.1} />
-      <line x1={8} y1={0} x2={14} y2={0} strokeWidth={1.1} />
+      <rect x={-11} y={-11} width={22} height={8.5} rx={1} stroke={t('#F4F4F2')} strokeWidth={0.8} />
+      <rect x={-6} y={-8.6} width={12} height={3} fill={t(BARRIER_RED)} stroke={t('#F4F4F2')} strokeWidth={0.4} />
+      <line x1={-11} y1={-2.5} x2={-11} y2={0} stroke={t('#F4F4F2')} strokeWidth={0.9} />
+      <line x1={11} y1={-2.5} x2={11} y2={0} stroke={t('#F4F4F2')} strokeWidth={0.9} />
+      <line x1={-14} y1={0} x2={-8} y2={0} stroke={t('#2E323C')} strokeWidth={1.2} />
+      <line x1={8} y1={0} x2={14} y2={0} stroke={t('#2E323C')} strokeWidth={1.2} />
     </g>
   );
 }
+// Demi-largeur (pieds compris) et demi-écart des montants, unités du sprite.
+export const BARRIER = { half: 14, post: 11, height: 11 } as const;
 
 // ---------- Scène de la Fête de la musique (repère : sol y = 0, centre x = 0, unités du monde à l'échelle 1) ----------
-// Plancher 96 × 8, deux montants en treillis jusqu'à la traverse (y = -60), trois projecteurs accrochés sous la traverse.
-export const STAGE = { half: 48, floor: 8, truss: 60, postX: 44, spotXs: [-28, 0, 28] as const, spotY: -55 } as const;
+// Plancher 96 × 8 vu un peu d'en haut (dessus de `deck` de profondeur au-dessus de la face avant), deux montants en treillis
+// jusqu'à la traverse (y = -60) tendus d'une toile de fond, trois projecteurs accrochés sous la traverse.
+export const STAGE = { half: 48, floor: 8, deck: 3, truss: 60, postX: 44, spotXs: [-28, 0, 28] as const, spotY: -55 } as const;
+// Ligne où se posent les pieds des musiciens : au milieu du dessus du plancher.
+export const STAGE_STAND = -STAGE.floor - STAGE.deck / 2;
 
 // Centre de la lentille du projecteur i dans le repère de la scène (la tête est inclinée de -x/3 degrés autour de son accroche).
 export function spotLens(i: number): { x: number; y: number } {
@@ -91,6 +100,7 @@ export function StageFloor({ sky }: { sky: Sky }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (
     <g data-stage-part="floor">
+      <rect x={-STAGE.half + 1.5} y={-STAGE.floor - STAGE.deck} width={STAGE.half * 2 - 3} height={STAGE.deck} fill={t('#8A7058')} />
       <rect x={-STAGE.half} y={-STAGE.floor} width={STAGE.half * 2} height={STAGE.floor} fill={t('#24262E')} />
       <rect x={-STAGE.half} y={-STAGE.floor} width={STAGE.half * 2} height={1.6} fill={t('#6A5848')} />
       {[-36, -12, 12, 36].map((x) => (
@@ -133,8 +143,13 @@ export function StageFrame({ sky }: { sky: Sky }): ReactElement {
   const c = tone('#9CA3AC', sky);
   return (
     <g data-stage-part="frame">
-      <Truss x1={-STAGE.postX} y1={-STAGE.floor} x2={-STAGE.postX} y2={-STAGE.truss} c={c} />
-      <Truss x1={STAGE.postX} y1={-STAGE.floor} x2={STAGE.postX} y2={-STAGE.truss} c={c} />
+      {/* Toile de fond tendue entre les montants : la scène masque ce qui passe derrière elle. */}
+      <rect data-stage-backdrop="" x={-STAGE.postX - 1.5} y={-STAGE.truss + 1.5} width={STAGE.postX * 2 + 3} height={STAGE.truss - STAGE.floor - STAGE.deck - 1.5} fill={tone('#2C2F3D', sky)} />
+      {[-30, -15, 0, 15, 30].map((x) => (
+        <line key={x} x1={x} y1={-STAGE.truss + 1.5} x2={x} y2={-STAGE.floor - STAGE.deck} stroke={tone('#3A3E4E', sky)} strokeWidth={1.2} />
+      ))}
+      <Truss x1={-STAGE.postX} y1={-STAGE.floor - STAGE.deck} x2={-STAGE.postX} y2={-STAGE.truss} c={c} />
+      <Truss x1={STAGE.postX} y1={-STAGE.floor - STAGE.deck} x2={STAGE.postX} y2={-STAGE.truss} c={c} />
       <Truss x1={-STAGE.postX - 2} y1={-STAGE.truss} x2={STAGE.postX + 2} y2={-STAGE.truss} c={c} />
     </g>
   );
@@ -168,8 +183,12 @@ export function StageStructure({ sky, lit, parts = { floor: true, frame: true, s
 }
 
 // ---------- Travailleur en tenue de chantier (repère du passant, regarde vers +x) ----------
-// Gilet orange à bande réfléchissante par-dessus la veste ; bras levés pour atteindre (`reach`), tendus pour porter (`carry`).
-export function CrewWorker({ outfit, sky, rainy, pose }: { outfit: Outfit; sky: Sky; rainy: boolean; pose: WorkerPose }): ReactElement {
+// Gilet orange à bande réfléchissante par-dessus la veste ; bras levés pour atteindre (`reach`), tendus pour porter (`carry`),
+// vers l'avant et le bas pour tenir une charge par ses montants (`hold`), vers l'arrière et le bas pour la tirer (`tow`).
+export type CrewPose = WorkerPose | 'hold' | 'tow';
+// Main de la pose `hold` (et, en miroir, de `tow`), unités du sprite.
+export const HOLD_HAND = { x: 9, y: -21 } as const;
+export function CrewWorker({ outfit, sky, rainy, pose }: { outfit: Outfit; sky: Sky; rainy: boolean; pose: CrewPose }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const sleeve = t(outfit.topColor);
   return (
@@ -180,6 +199,31 @@ export function CrewWorker({ outfit, sky, rainy, pose }: { outfit: Outfit; sky: 
       {pose === 'reach' && <path d="M1 -26 L4 -33 L5 -39" stroke={sleeve} strokeWidth={2.2} strokeLinecap="round" fill="none" />}
       {pose === 'carry' && <path d="M1 -25 L6 -23 L9 -24" stroke={sleeve} strokeWidth={2.2} strokeLinecap="round" fill="none" />}
       {pose === 'climb' && <path d="M1 -26 L4 -31" stroke={sleeve} strokeWidth={2.2} strokeLinecap="round" fill="none" />}
+      {pose === 'hold' && <path d={`M1 -26 L5 -22 L${HOLD_HAND.x} ${HOLD_HAND.y}`} stroke={sleeve} strokeWidth={2.2} strokeLinecap="round" fill="none" />}
+      {pose === 'tow' && <path d={`M-1 -26 L-5 -22 L${-HOLD_HAND.x} ${HOLD_HAND.y}`} stroke={sleeve} strokeWidth={2.2} strokeLinecap="round" fill="none" />}
+    </g>
+  );
+}
+
+// Pièces tenues par l'ouvrier de la nacelle pendant le montage de la scène (repère : main à y = 0, vers +x) : un tronçon de
+// treillis (ossature) ou un projecteur (projecteurs).
+export function HeldTruss({ sky }: { sky: Sky }): ReactElement {
+  const c = tone('#9CA3AC', sky);
+  return (
+    <g data-held-piece="truss" stroke={c} fill="none">
+      <line x1={-5} y1={-1.5} x2={9} y2={-1.5} strokeWidth={0.8} />
+      <line x1={-5} y1={1.5} x2={9} y2={1.5} strokeWidth={0.8} />
+      <polyline points="-5 -1.5 -2 1.5 1 -1.5 4 1.5 7 -1.5 9 1.5" strokeWidth={0.45} />
+    </g>
+  );
+}
+export function HeldSpot({ sky }: { sky: Sky }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
+  return (
+    <g data-held-piece="spot">
+      <line x1={0} y1={0} x2={0} y2={-2.4} stroke={t(STEEL)} strokeWidth={0.7} />
+      <rect x={-2.4} y={-2.4} width={6} height={4.8} rx={0.9} fill={t('#1E2026')} />
+      <circle cx={3.8} cy={0} r={1.6} fill={t('#5A5F6A')} />
     </g>
   );
 }
@@ -246,7 +290,7 @@ export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, bea
   const l1 = LIFT.boom1 * u;
   const l2 = LIFT.boom2 * u;
   const e = liftElbow(p, bucket, l1, l2);
-  const leg = 8 * clamp(outrigger, 0, 1);
+  const leg = 6 * clamp(outrigger, 0, 1);
   const bw = 10 * u;
   const bh = 7 * u;
   return (

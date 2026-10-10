@@ -2,10 +2,11 @@ import type { ReactElement } from 'react';
 import type { Outfit } from '../core/library/city/people';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
-import { STAGE, spotLens } from './install-sprites';
+import { STAGE, STAGE_STAND, spotLens } from './install-sprites';
 
 // Musiciens de la scène de la Fête de la musique et faisceaux des projecteurs (spec §7.3). Repère de la scène : centre x = 0,
-// dessus du plancher à y = -STAGE.floor. Les faisceaux sont des cônes dont la POINTE est la lentille d'un projecteur de la
+// arête avant du plancher à y = -STAGE.floor ; les musiciens ont les pieds sur le dessus du plancher (STAGE_STAND). La nuit,
+// ils sont éclairés par les projecteurs (`lit`) : leur teinte reste lisible au lieu de prendre celle de la nuit. Les faisceaux sont des cônes dont la POINTE est la lentille d'un projecteur de la
 // traverse (STAGE.spotXs / spotY) et dont la base est sur le plancher sous un musicien : aucun cône flottant.
 // Animation (SMIL) seulement hors mouvement réduit : balancement des musiciens, respiration des faisceaux.
 
@@ -17,7 +18,7 @@ export const MUSICIANS: readonly { x: number; instrument: Instrument }[] = [
   { x: 24, instrument: 'drum' },
 ];
 const SCALE = 0.8;
-const BEAM_HALF = 7;
+const BEAM_HALF = 9;
 
 function Prop({ kind, sky }: { kind: Instrument; sky: Sky }): ReactElement {
   const t = (c: string): string => tone(c, sky);
@@ -39,24 +40,27 @@ function Prop({ kind, sky }: { kind: Instrument; sky: Sky }): ReactElement {
       </g>
     );
   }
+  // Caisse claire sur pied, un peu plus grande que le buste du batteur, baguettes en l'air.
   return (
     <g data-instrument="drum">
-      <rect x={4} y={-13} width={12} height={9} rx={1.2} fill={t('#B02A2A')} />
-      <rect x={4} y={-13} width={12} height={2} rx={1} fill={t('#E8E8E0')} />
-      <line x1={5} y1={-4} x2={5} y2={0} stroke={t('#2A2D34')} strokeWidth={0.8} />
-      <line x1={15} y1={-4} x2={15} y2={0} stroke={t('#2A2D34')} strokeWidth={0.8} />
-      <line x1={0} y1={-24} x2={6} y2={-15} stroke={t('#D8C8A0')} strokeWidth={0.8} strokeLinecap="round" />
-      <line x1={-1} y1={-22} x2={4} y2={-14} stroke={t('#D8C8A0')} strokeWidth={0.8} strokeLinecap="round" />
+      <rect x={4} y={-17} width={16} height={11} rx={1.4} fill={t('#B02A2A')} />
+      <rect x={4} y={-17} width={16} height={2.4} rx={1.1} fill={t('#E8E8E0')} />
+      <rect x={4} y={-8.2} width={16} height={1.4} fill={t('#E8E8E0')} />
+      <line x1={5.5} y1={-6} x2={4.5} y2={0} stroke={t('#2A2D34')} strokeWidth={0.9} />
+      <line x1={18.5} y1={-6} x2={19.5} y2={0} stroke={t('#2A2D34')} strokeWidth={0.9} />
+      <line x1={1} y1={-26} x2={8} y2={-18} stroke={t('#D8C8A0')} strokeWidth={0.9} strokeLinecap="round" />
+      <line x1={-1} y1={-24} x2={5} y2={-17} stroke={t('#D8C8A0')} strokeWidth={0.9} strokeLinecap="round" />
     </g>
   );
 }
 
 // `outfits` : trois tenues tirées de la graine par l'appelant (jamais Math.random).
-export function StageBand({ outfits, sky, rainy, still }: { outfits: readonly Outfit[]; sky: Sky; rainy: boolean; still: boolean }): ReactElement {
+export function StageBand({ outfits, sky: night, rainy, still, lit = false }: { outfits: readonly Outfit[]; sky: Sky; rainy: boolean; still: boolean; lit?: boolean }): ReactElement {
+  const sky = lit ? { ...night, daylight: Math.max(night.daylight, 0.75) } : night;
   return (
     <g data-stage-band-group="">
       {MUSICIANS.map((m, i) => (
-        <g key={m.instrument} data-stage-band={m.instrument} transform={`translate(${m.x} ${-STAGE.floor})`}>
+        <g key={m.instrument} data-stage-band={m.instrument} data-lit={lit ? 'true' : 'false'} transform={`translate(${m.x} ${STAGE_STAND})`}>
           <g transform={`scale(${SCALE})`}>
             <g>
               {!still && <animateTransform attributeName="transform" type="rotate" values="0 0 0;-2.5 0 0;0 0 0;2.5 0 0;0 0 0" dur={`${(1.1 + i * 0.25).toFixed(2)}s`} repeatCount="indefinite" />}
@@ -88,9 +92,9 @@ export function StageBeams({ still }: { still: boolean }): ReactElement {
             data-target-y={ty}
             points={`${o.x.toFixed(2)},${o.y.toFixed(2)} ${tx - BEAM_HALF},${ty} ${tx + BEAM_HALF},${ty}`}
             fill="#FFF1B8"
-            opacity={0.26}
+            opacity={0.3}
           >
-            {!still && <animate attributeName="opacity" values="0.2;0.32;0.2" dur={`${(2.4 + i * 0.5).toFixed(1)}s`} repeatCount="indefinite" />}
+            {!still && <animate attributeName="opacity" values="0.24;0.36;0.24" dur={`${(2.4 + i * 0.5).toFixed(1)}s`} repeatCount="indefinite" />}
           </polygon>
         );
       })}

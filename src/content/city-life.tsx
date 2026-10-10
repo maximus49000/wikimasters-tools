@@ -350,7 +350,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             <ShopWorks key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} change={shops.street[i]?.change ?? null} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} seed={seed} />
           ) : null,
         )}
-        {/* Décors de fête contre les façades (drapeaux d'entrée, scène) et équipes à l'échelle ou à pied (install-layer.tsx). */}
+        {/* Décors de fête contre les façades : drapeaux d'entrée (install-layer.tsx). */}
         <InstallLayer {...install} part="back" />
         {shops.views.map((view) => {
           const frame = shops.frames.get(view.slot.id)!;
@@ -453,6 +453,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           );
         })}
         {of((e) => e.layer === 'sidewalk').map(eventNode)}
+        {/* Scène, équipes à l'échelle et porteurs : devant les passants (un passant passe toujours derrière une équipe). */}
+        <InstallLayer {...install} part="crew" />
         {/* Camion de déménagement garé au bord du trottoir : devant les passants, derrière les lampadaires et les files. */}
         {shops.views.map((view, i) => (
           <MovingTruck
