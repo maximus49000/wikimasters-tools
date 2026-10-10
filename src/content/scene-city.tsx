@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactElement } from 'react';
 import { lampLit } from '../core/library/activity';
 import { doorsFor } from '../core/library/city/doors';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
@@ -10,9 +10,31 @@ import { ShopFront } from './shop-sprites';
 import { ShopInterior, sliceCount } from './shop-interiors';
 import { furnitureAt } from '../core/library/city/shops/view';
 import { useStreetShops } from './use-street-shops';
+import { useArtStyle } from './art-setting';
+import { GhibliWindows } from './ghibli-windows';
+import { usePaintedCity } from './painted-city';
+import { cityPaintPlan } from '../core/library/paint/city-plan';
+import { gradeFor, gradeValues } from '../core/library/paint/grade';
 
 // Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
 const FAR_LIGHT = 0.5;
+
+const FADE = 'opacity 1s ease';
+const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Vrai pendant `ms` après être repassé à faux : laisse le temps au fondu de sortie de la ville peinte.
+function useLingering(on: boolean, ms: number): boolean {
+  const [late, setLate] = useState(on);
+  useEffect(() => {
+    if (on) {
+      setLate(true);
+      return;
+    }
+    const id = window.setTimeout(() => setLate(false), ms);
+    return () => window.clearTimeout(id);
+  }, [on, ms]);
+  return on || late;
+}
 
 // Les lampadaires ne sont pas ici : ils sont dans le calque animé, devant les passants (StreetLamps, city-life.tsx).
 // Locaux commerciaux (vague 1b-iv-a) : devanture et intérieur dans le décor fixe ; clients et équipe du chantier dans le
@@ -33,101 +55,146 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
   const dark = sky.daylight < 0.45;
   const lane = mixHex('#8A8C9E', '#F2EEE2', sky.daylight);
   const { frames, views, street: slotDays } = useStreetShops(width, height, seed, city);
+  const [art] = useArtStyle();
+  const ghibli = art === 'ghibli';
+  const lingering = useLingering(ghibli, reducedMotion() ? 0 : 1000);
+  const plan = useMemo(() => (lingering ? cityPaintPlan(width, height, seed) : null), [lingering, width, height, seed]);
+  const painted = usePaintedCity(plan);
+  const gradeId = useId().replace(/:/g, '');
+  const farBlocks =
+  buildings.filter((b) => b.far).map((b, i) => (
+      <g key={`f${i}`}>
+        <rect x={b.x} y={ground - b.h} width={b.w} height={b.h} fill={far} />
+        {/* Fenêtres du fond : même activité qu'au premier plan, mais petites, froides et dissipées par la distance. */}
+        {b.farWindows.map((win, j) => {
+          const lit = lampLit(win.u, minutes) || (gloom && win.u < 0.55);
+          return (
+            <rect
+              key={j}
+              data-far-lamp=""
+              data-lit={lit ? 'true' : 'false'}
+              x={win.x}
+              y={win.y}
+              width={FAR_WINDOW.w}
+              height={FAR_WINDOW.h}
+              fill={win.blue ? '#B8D0FF' : '#FFE3A0'}
+              opacity={lit ? dim * FAR_LIGHT : 0}
+              style={{ transition: 'opacity 4s ease' }}
+            />
+          );
+        })}
+      </g>
+    ));
+  const nearBlocks =
+  buildings.filter((b) => !b.far).map((b, i) => (
+      <g key={`n${i}`}>
+        <rect x={b.x} y={ground - b.h} width={b.w} height={b.h} fill={near} />
+        {b.lamps.map((lamp, j) => {
+          const lit = lampLit(lamp.u, minutes) || (gloom && lamp.u < 0.55);
+          return (
+            <rect
+              key={j}
+              data-lamp=""
+              data-lit={lit ? 'true' : 'false'}
+              x={lamp.x}
+              y={lamp.y}
+              width={5}
+              height={7}
+              fill={lamp.blue ? '#9FC4FF' : '#FFD27A'}
+              opacity={lit ? dim : 0}
+              style={{ transition: 'opacity 4s ease' }}
+            />
+          );
+        })}
+      </g>
+    ));
+  // Locaux : la vitrine montre l'intérieur (rogné par le <svg> imbriqué de ShopFront) ; la nuit, seuls les commerces
+  // ouverts sont éclairés. Jour de changement : le mobilier de l'ancien commerce sort par tranches, puis celui du nouveau
+  // rentre (furnitureAt) ; il reste en place pendant le chantier d'enseigne. Personnel, premier plan de l'intérieur ouvert
+  // (devant le personnel) et rideau roulant sont dans le calque animé (StaffLayer, city-shops-life.tsx).
+  const shopFronts =
+  views.map((view, i) => {
+      const frame = frames.get(view.slot.id)!;
+      const open = view.phase === 'open';
+      const w = frame.window.w;
+      const n = sliceCount(w);
+      const change = slotDays[i]?.change ?? null;
+      const moving = view.interior ? null : furnitureAt(view, n);
+      const type = moving ? (moving.from === 'before' ? change?.before?.type : change?.after?.type) ?? null : null;
+      return (
+        <ShopFront key={view.slot.id} frame={frame} view={view} sky={sky} lit={dark && open} shutter={false}>
+          {view.interior && <ShopInterior type={view.interior} w={w} h={frame.window.h} sky={sky} lit={dark && open} front={!open} />}
+          {moving && type && (
+            <ShopInterior type={type} w={w} h={frame.window.h} sky={sky} lit={false} slices={{ shown: moving.shown, n, doorRight: view.slot.doorSide === 'left' }} />
+          )}
+        </ShopFront>
+      );
+    });
+  const streetFragment = (
+    <>
+        {/* Trottoir contre les immeubles, chaussée à deux files (fond vers la gauche, premier plan vers la droite), trottoir d'en face. */}
+        <rect x={0} y={ground} width={width} height={height - ground} fill={street} />
+        <rect x={0} y={ground} width={width} height={metrics.curb - ground} fill={walk} />
+        <rect x={0} y={metrics.curb - 1} width={width} height={2} fill="#00000033" />
+        <rect data-far-sidewalk="" x={0} y={metrics.farSide} width={width} height={height - metrics.farSide} fill={walk} />
+        <rect x={0} y={metrics.farSide} width={width} height={2} fill="#00000033" />
+        <line
+          data-lane-mark=""
+          x1={0}
+          x2={width}
+          y1={(metrics.laneY.far + metrics.laneY.near) / 2 - 8 * unit}
+          y2={(metrics.laneY.far + metrics.laneY.near) / 2 - 8 * unit}
+          stroke={lane}
+          strokeWidth={1.6 * unit}
+          strokeDasharray={`${14 * unit} ${12 * unit}`}
+          opacity={0.8}
+        />
+        <rect x={0} y={ground - 2} width={width} height={3} fill="#00000022" />
+    </>
+  );
+  const entrances =
+  doors.map((door) => (
+      <g
+        key={door.id}
+        data-door={door.id}
+        transform={`translate(${entranceLeft(door.x, unit).toFixed(1)} ${metrics.doorY.toFixed(1)}) scale(${(unit * STREET_SCALE.entranceX).toFixed(3)} ${(unit * STREET_SCALE.entranceY).toFixed(3)})`}
+      >
+        <EntranceSprite variant={door.variant} hallLit={dark && door.hallU < 0.6} sky={sky} />
+      </g>
+    ));
+  if (!lingering) {
+    return (
+      <g data-scene-body>
+        {farBlocks}
+        {nearBlocks}
+        {shopFronts}
+        {streetFragment}
+        {entrances}
+      </g>
+    );
+  }
+  const showPainted = ghibli && painted.ready;
+  const fade = reducedMotion() ? 'none' : FADE;
   return (
-    <g data-scene-body>
-      {buildings.filter((b) => b.far).map((b, i) => (
-        <g key={`f${i}`}>
-          <rect x={b.x} y={ground - b.h} width={b.w} height={b.h} fill={far} />
-          {/* Fenêtres du fond : même activité qu'au premier plan, mais petites, froides et dissipées par la distance. */}
-          {b.farWindows.map((win, j) => {
-            const lit = lampLit(win.u, minutes) || (gloom && win.u < 0.55);
-            return (
-              <rect
-                key={j}
-                data-far-lamp=""
-                data-lit={lit ? 'true' : 'false'}
-                x={win.x}
-                y={win.y}
-                width={FAR_WINDOW.w}
-                height={FAR_WINDOW.h}
-                fill={win.blue ? '#B8D0FF' : '#FFE3A0'}
-                opacity={lit ? dim * FAR_LIGHT : 0}
-                style={{ transition: 'opacity 4s ease' }}
-              />
-            );
-          })}
+    <g data-scene-body data-art="ghibli">
+      <g data-classic-city="" style={{ opacity: showPainted ? 0 : 1, transition: fade }}>
+        {farBlocks}
+        {nearBlocks}
+        {streetFragment}
+      </g>
+      <g data-painted-city="" data-ready={painted.ready ? 'true' : 'false'} style={{ opacity: showPainted ? 1 : 0, transition: fade }}>
+        <filter id={gradeId} colorInterpolationFilters="sRGB">
+          <feColorMatrix type="matrix" values={gradeValues(gradeFor(sky.daylight, sky.twilight, gloom))} />
+        </filter>
+        <g filter={`url(#${gradeId})`}>
+          {painted.tiles.filter((t) => t.url !== '').map((t) => (
+            <image key={t.x} data-painted-tile={t.x} href={t.url} x={t.x} y={0} width={t.w} height={height} preserveAspectRatio="none" />
+          ))}
         </g>
-      ))}
-      {buildings.filter((b) => !b.far).map((b, i) => (
-        <g key={`n${i}`}>
-          <rect x={b.x} y={ground - b.h} width={b.w} height={b.h} fill={near} />
-          {b.lamps.map((lamp, j) => {
-            const lit = lampLit(lamp.u, minutes) || (gloom && lamp.u < 0.55);
-            return (
-              <rect
-                key={j}
-                data-lamp=""
-                data-lit={lit ? 'true' : 'false'}
-                x={lamp.x}
-                y={lamp.y}
-                width={5}
-                height={7}
-                fill={lamp.blue ? '#9FC4FF' : '#FFD27A'}
-                opacity={lit ? dim : 0}
-                style={{ transition: 'opacity 4s ease' }}
-              />
-            );
-          })}
-        </g>
-      ))}
-      {/* Locaux : la vitrine montre l'intérieur (rogné par le <svg> imbriqué de ShopFront) ; la nuit, seuls les commerces
-          ouverts sont éclairés. Jour de changement : le mobilier de l'ancien commerce sort par tranches, puis celui du nouveau
-          rentre (furnitureAt) ; il reste en place pendant le chantier d'enseigne. Personnel, premier plan de l'intérieur ouvert
-          (devant le personnel) et rideau roulant sont dans le calque animé (StaffLayer, city-shops-life.tsx). */}
-      {views.map((view, i) => {
-        const frame = frames.get(view.slot.id)!;
-        const open = view.phase === 'open';
-        const w = frame.window.w;
-        const n = sliceCount(w);
-        const change = slotDays[i]?.change ?? null;
-        const moving = view.interior ? null : furnitureAt(view, n);
-        const type = moving ? (moving.from === 'before' ? change?.before?.type : change?.after?.type) ?? null : null;
-        return (
-          <ShopFront key={view.slot.id} frame={frame} view={view} sky={sky} lit={dark && open} shutter={false}>
-            {view.interior && <ShopInterior type={view.interior} w={w} h={frame.window.h} sky={sky} lit={dark && open} front={!open} />}
-            {moving && type && (
-              <ShopInterior type={type} w={w} h={frame.window.h} sky={sky} lit={false} slices={{ shown: moving.shown, n, doorRight: view.slot.doorSide === 'left' }} />
-            )}
-          </ShopFront>
-        );
-      })}
-      {/* Trottoir contre les immeubles, chaussée à deux files (fond vers la gauche, premier plan vers la droite), trottoir d'en face. */}
-      <rect x={0} y={ground} width={width} height={height - ground} fill={street} />
-      <rect x={0} y={ground} width={width} height={metrics.curb - ground} fill={walk} />
-      <rect x={0} y={metrics.curb - 1} width={width} height={2} fill="#00000033" />
-      <rect data-far-sidewalk="" x={0} y={metrics.farSide} width={width} height={height - metrics.farSide} fill={walk} />
-      <rect x={0} y={metrics.farSide} width={width} height={2} fill="#00000033" />
-      <line
-        data-lane-mark=""
-        x1={0}
-        x2={width}
-        y1={(metrics.laneY.far + metrics.laneY.near) / 2 - 8 * unit}
-        y2={(metrics.laneY.far + metrics.laneY.near) / 2 - 8 * unit}
-        stroke={lane}
-        strokeWidth={1.6 * unit}
-        strokeDasharray={`${14 * unit} ${12 * unit}`}
-        opacity={0.8}
-      />
-      <rect x={0} y={ground - 2} width={width} height={3} fill="#00000022" />
-      {doors.map((door) => (
-        <g
-          key={door.id}
-          data-door={door.id}
-          transform={`translate(${entranceLeft(door.x, unit).toFixed(1)} ${metrics.doorY.toFixed(1)}) scale(${(unit * STREET_SCALE.entranceX).toFixed(3)} ${(unit * STREET_SCALE.entranceY).toFixed(3)})`}
-        >
-          <EntranceSprite variant={door.variant} hallLit={dark && door.hallU < 0.6} sky={sky} />
-        </g>
-      ))}
+        <GhibliWindows buildings={buildings} minutes={minutes} gloom={gloom} dim={dim} farLight={FAR_LIGHT} />
+      </g>
+      {shopFronts}
+      {entrances}
     </g>
   );
 }
