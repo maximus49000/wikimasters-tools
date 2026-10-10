@@ -554,8 +554,10 @@ export function ShopOutdoors({ view, frame, metrics, minutes, date, weather, wal
 // ---------- Plafond global des figurants (spec §6) ----------
 // Toujours comptés, jamais retirés : personnel (derrière la vitrine ; à la porte ou en route, visible), serveur de terrasse et
 // porteur de tables, équipe du chantier, déménageurs et camion, videurs ; la file de la boîte compte pour sa longueur maximale.
+// Derrière la vitrine : les nœuds posés (`data-posed`), sauf celui de la relève de l'ouvreur (`data-swap`), qui est la même
+// personne que celle à la porte ; le nœud de sortie caché (data-staff-where="inside", inactif) n'est pas compté.
 const KEEP_SELECTOR = [
-  '[data-staff-where="inside"]',
+  '[data-posed="staff"]:not([data-swap])',
   '[data-staff-member][data-active="true"]',
   '[data-terrace-waiter]',
   '[data-terrace-carrier]',

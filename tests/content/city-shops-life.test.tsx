@@ -4,7 +4,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { StaffLayer, dayShifts, staffCast } from '../../src/content/city-shops-life';
+import { StaffLayer, countShopSprites, dayShifts, staffCast } from '../../src/content/city-shops-life';
 import { addDays, dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
 import { cityMetrics } from '../../src/core/library/city/metrics';
@@ -230,6 +230,30 @@ describe('personnel : rendu (StaffLayer)', () => {
     expect(inside[0]!.querySelector(`[data-accessory="${ACCESSORY.bakery}"]`)).not.toBeNull();
     expect(c.querySelector('[data-staff-window] [data-interior-front="bakery"]')).not.toBeNull();
     expect(c.querySelector('[id]')).toBeNull();
+  });
+  it('plafond des figurants : chaque employé visible compte une fois (relève de l’ouvreur, nœud de sortie caché)', () => {
+    const date = { y: 2026, m: 10, d: 10 };
+    let handovers = 0;
+    let hiddenExits = 0;
+    for (const type of ['bakery', 'cafe', 'restaurant'] as const) {
+      const shifts = staffShiftsAt(SHOP_DEFS[type], SEED, 'shop-0', date);
+      // Minutes où un même employé pourrait avoir deux nœuds : lever du rideau (relève), minute avant la sortie ; plus midi.
+      const minutes = new Set<number>([12 * 60]);
+      for (const sh of shifts) {
+        if (sh.shutterUp !== undefined) minutes.add(Math.floor(sh.shutterUp)).add(Math.ceil(sh.shutterUp));
+        minutes.add(Math.floor(sh.leaveAt - 1)).add(Math.ceil(sh.leaveAt - 1));
+      }
+      for (const m of [...minutes].filter((x) => x >= 0 && x < 1440)) {
+        const c = draw(type, date, m, false);
+        if (c.querySelector('[data-swap="in"]')) handovers++;
+        if (c.querySelector('[data-staff-member][data-staff-where="inside"][data-active="false"]')) hiddenExits++;
+        const people = new Set([...c.querySelectorAll('[data-staff-member][data-active="true"], [data-posed="staff"]')].map((n) => n.getAttribute('data-staff-member')));
+        expect(countShopSprites(c).keep, `${type} ${m}`).toBe(people.size);
+        act(() => mounted.pop()!.root.unmount());
+      }
+    }
+    expect(handovers).toBeGreaterThan(0);
+    expect(hiddenExits).toBeGreaterThan(0);
   });
   it('mouvement réduit : rideau sans transition', () => {
     const c = draw('bakery', TUESDAY, 10 * 60, true);
