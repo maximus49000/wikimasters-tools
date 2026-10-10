@@ -88,4 +88,14 @@ describe('ciel peint de la Ville', () => {
     expect(op('[data-classic-sun]')).toBe('1');
     expect(['0', '']).toContain(op('[data-sky-texture]'));
   });
+
+  it('croix d’étoiles : opacité du ciel sur le groupe interne, fondu externe à 1', async () => {
+    setJobRunnerForTests(async (j) => `data:image/png;base64,${btoa(j.key)}`);
+    writeArt('ghibli');
+    mount('city', { ...NIGHT, stars: 0.4 });
+    await flush();
+    const outer = q('[data-star-crosses]');
+    expect(outer?.style.opacity).toBe('1');
+    expect(outer?.querySelector('g')?.getAttribute('opacity')).toBe('0.4');
+  });
 });

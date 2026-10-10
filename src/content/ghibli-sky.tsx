@@ -1,5 +1,6 @@
 import { useId, type ReactElement } from 'react';
 import { MOON_SIZE, SKY_TEXTURE, SUN_SIZE } from '../core/library/paint/sky-painter';
+import { mixHex } from '../core/library/sky';
 import type { PaintedSky } from './painted-sky';
 
 // Ciel peint de la Ville (vague Ghibli, G2), dans le décor fixe : aucune animation ici (les copies `<use>` de chaque fenêtre
@@ -29,10 +30,12 @@ type Star = { i: number; x: number; y: number; r: number };
 export function GhibliStarCrosses({ stars, opacity, shown }: { stars: Star[]; opacity: number; shown: boolean }): ReactElement {
   const bright = stars.filter((s) => s.r > 1.8);
   return (
-    <g data-star-crosses="" opacity={opacity} style={fadeStyle(shown)}>
-      {opacity > 0 && bright.map((s) => (
-        <path key={s.i} d={`M${s.x - 4} ${s.y}H${s.x + 4}M${s.x} ${s.y - 4}V${s.y + 4}`} stroke="#FFFAEB" strokeOpacity={0.55} strokeWidth={0.7} strokeLinecap="round" />
-      ))}
+    <g data-star-crosses="" style={fadeStyle(shown)}>
+      <g opacity={opacity} style={{ transition: 'opacity 4s ease' }}>
+        {opacity > 0 && bright.map((s) => (
+          <path key={s.i} d={`M${s.x - 4} ${s.y}H${s.x + 4}M${s.x} ${s.y - 4}V${s.y + 4}`} stroke="#FFFAEB" strokeOpacity={0.55} strokeWidth={0.7} strokeLinecap="round" />
+        ))}
+      </g>
     </g>
   );
 }
@@ -45,7 +48,7 @@ export function GhibliSun({ x, y, twilight, painted, shown }: { x: number; y: nu
     <g data-ghibli-sun="" transform={`translate(${x} ${y})`} style={fadeStyle(shown)}>
       <defs>
         <radialGradient id={id}>
-          <stop offset="0" stopColor={dusk > 0.5 ? '#FFAA5A' : '#FFF6CD'} stopOpacity={0.55} />
+          <stop offset="0" stopColor={mixHex('#FFF6CD', '#FFAA5A', dusk)} stopOpacity={0.55} />
           <stop offset="1" stopColor="#FFF0C8" stopOpacity={0} />
         </radialGradient>
       </defs>
