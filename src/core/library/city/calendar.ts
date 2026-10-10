@@ -3,7 +3,7 @@ export type YMD = { y: number; m: number; d: number };
 export type HolidayPeriod = { name: string; start: string; end: string };
 export type DayKind = 'school' | 'wednesday' | 'weekend' | 'holiday' | 'public-holiday';
 // Fêtes de la scène Ville (vague 1b-ii) : `hours` en minutes, [début, fin) ; une plage ne passe pas minuit (on écrit une ligne par jour).
-export type FestivityId = 'new-year' | 'bastille' | 'christmas-eve';
+export type FestivityId = 'new-year' | 'bastille' | 'christmas-eve' | 'epiphany' | 'valentine' | 'easter' | 'may-day' | 'music' | 'armistice';
 export type Festivity = { id: FestivityId; hours: readonly (readonly [number, number])[] };
 export type DayContext = { date: YMD; iso: string; weekday: number; kind: DayKind; schoolOn: boolean; publicHoliday: string | null; festivities: Festivity[] };
 
@@ -63,13 +63,24 @@ export function publicHolidays(year: number, alsaceMoselle = false): Record<stri
 // Ajouter une fête = ajouter une ligne (un id peut avoir plusieurs jours).
 export const FESTIVITIES: readonly { id: FestivityId; m: number; d: number; hours: Festivity['hours'] }[] = [
   { id: 'new-year', m: 12, d: 31, hours: [[1290, 1440]] },
-  { id: 'new-year', m: 1, d: 1, hours: [[0, 30]] },
-  { id: 'bastille', m: 7, d: 14, hours: [[1260, 1440]] },
+  { id: 'new-year', m: 1, d: 1, hours: [[0, 60]] },
+  { id: 'valentine', m: 2, d: 14, hours: [[600, 1380]] },
+  { id: 'may-day', m: 5, d: 1, hours: [[480, 1080]] },
+  { id: 'music', m: 6, d: 21, hours: [[1020, 1440]] },
+  { id: 'bastille', m: 7, d: 14, hours: [[600, 720], [1260, 1440]] },
+  { id: 'armistice', m: 11, d: 11, hours: [[480, 1080]] },
   { id: 'christmas-eve', m: 12, d: 24, hours: [[0, 1440]] },
   { id: 'christmas-eve', m: 12, d: 25, hours: [[0, 720]] },
 ];
 
-export const festivitiesOn = ({ m, d }: YMD): Festivity[] => FESTIVITIES.filter((f) => f.m === m && f.d === d).map(({ id, hours }) => ({ id, hours }));
+// Fêtes à date calculée : Pâques (dimanche) et Épiphanie (premier dimanche de janvier).
+export function festivitiesOn(date: YMD): Festivity[] {
+  const out: Festivity[] = FESTIVITIES.filter((f) => f.m === date.m && f.d === date.d).map(({ id, hours }) => ({ id, hours }));
+  const easter = easterSunday(date.y);
+  if (date.m === easter.m && date.d === easter.d) out.push({ id: 'easter', hours: [[540, 1080]] });
+  if (date.m === 1 && date.d <= 7 && weekdayOf(date) === 0) out.push({ id: 'epiphany', hours: [[600, 1080]] });
+  return out;
+}
 
 export function activeFestivities(list: readonly Festivity[], minute: number): FestivityId[] {
   const ids = list.filter((f) => f.hours.some(([a, b]) => minute >= a && minute < b)).map((f) => f.id);

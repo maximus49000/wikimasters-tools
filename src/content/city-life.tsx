@@ -7,7 +7,7 @@ import { cityFacades } from '../core/library/city/facades';
 import { cityIntensity, type CityContext } from '../core/library/city/intensity';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { FAR_SHRINK, STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
-import { pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
+import { festiveMark, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/customers';
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { StaffShift } from '../core/library/city/shops/staff';
@@ -38,6 +38,8 @@ export type CityLifeProps = { width: number; height: number; sky: Sky; seed: num
 
 // Écart entre un parent et chaque enfant qu'il accompagne (repère du sprite, avant l'échelle).
 const COMPANION_GAP = 16;
+// Couple (Saint-Valentin) : le second adulte marche à côté, à taille normale.
+const PAIR_GAP = 13;
 // Durée du fondu d'apparition/disparition (CSS) ; un absent continue d'avancer tant qu'il s'efface (avec une petite marge).
 const FADE_S = 3;
 // Fondu court des habitants (leur présence est réécrite par la boucle) : ils n'apparaissent ni ne disparaissent d'un coup
@@ -176,6 +178,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const events = useCityEvents({ seed, width, city, intensity, vehicles, still, frozenT: frozen.current });
 
   const pedActive = useMemo(() => new Set(peds.filter((p) => p.u < pedestrianGate(p, intensity)).map((p) => p.id)), [peds, intensity]);
+  const marks = useMemo(() => new Map(peds.map((p) => [p.id, festiveMark(p, intensity)] as const)), [peds, intensity]);
   // Une voiture effacée par un véhicule d'événement n'est pas présente pendant tout son passage.
   const vehActive = useMemo(
     () => new Set(vehicles.filter((v) => v.u < vehicleGate(v, intensity) && !events.yielded.has(v.id)).map((v) => v.id)),
@@ -421,6 +424,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-ped=""
               data-role={p.role}
               data-profile={p.profile}
+              data-mark={marks.get(p.id) ?? undefined}
               data-active={active ? 'true' : 'false'}
               transform={pedTransform(p, metrics, width, t0)}
               opacity={active ? 1 : 0}
@@ -428,11 +432,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             >
               {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7. */}
               {p.companions.map((outfit, k) => (
-                <g key={k} data-companion="" transform={`translate(${-COMPANION_GAP * (k + 1)} 0) scale(0.7)`}>
+                <g key={k} data-companion="" transform={p.pair ? `translate(${-PAIR_GAP} 0) scale(0.95)` : `translate(${-COMPANION_GAP * (k + 1)} 0) scale(0.7)`}>
                   <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />
                 </g>
               ))}
-              <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} />
+              <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={marks.get(p.id)} />
             </g>
           );
         })}

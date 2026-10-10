@@ -1,9 +1,10 @@
 import type { ReactElement } from 'react';
 import { DOOR_WIDTH } from '../core/library/city/doors';
-import type { Outfit } from '../core/library/city/people';
+import type { FestiveMark, Outfit } from '../core/library/city/people';
 import type { Vehicle } from '../core/library/city/vehicles';
 import type { Sky } from '../core/library/sky';
 import { mixHex } from '../core/library/sky';
+import { MarkArt } from './festive-marks';
 
 // Sprites de la ville (portés de la maquette v3 validée). Repère « pieds à l'origine » :
 // base à y = 0, la silhouette regarde vers +x. Aucun id SVG fixe. Pas de décor de fête (vague 1b).
@@ -15,7 +16,7 @@ export const tone = (c: string, sky: Sky): string => mixHex(mixHex(c, '#0B1030',
 // Assis (`seated`, vague 1b-iv-b : fauteuil du coiffeur, table du restaurant) : cuisse à l'horizontale, tibia vertical, le haut du
 // corps descend de SEAT_DROP. La tête est dans un groupe `data-head` que la boucle d'animation tourne ou incline (gestes).
 export const SEAT_DROP = 4;
-export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false }: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean; seated?: boolean }): ReactElement {
+export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false, mark = null }: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean; seated?: boolean; mark?: FestiveMark | null }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const skin = t(o.skin);
   const pants = t(o.bottomColor);
@@ -106,6 +107,7 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false }
           <path d="M-9 -44 Q4 -58 17 -44 Z" fill={t('#C0392B')} />
         </g>
       )}
+      {mark && <MarkArt mark={mark} t={t} />}
     </>
   );
   return (

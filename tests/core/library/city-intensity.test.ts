@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dayContext } from '../../../src/core/library/city/calendar';
-import { cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
+import { FESTIVE_SHARE, cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
 
 const vacations = [{ name: 'Toussaint', start: '2026-10-17', end: '2026-11-02' }];
 const DAYS = {
@@ -193,5 +193,34 @@ describe('robustesse', () => {
   });
   it('est déterministe : deux appels identiques donnent le même résultat', () => {
     expect(at(8.25, 'school', { precip: 0.3 })).toEqual(at(8.25, 'school', { precip: 0.3 }));
+  });
+});
+
+describe('intensité festive', () => {
+  const fete = (m: number, d: number) => dayContext({ y: 2026, m, d }, []);
+  const ctx = (hours: number, day: ReturnType<typeof fete>, extra: Partial<CityContext> = {}): CityContext => ({ minutes: Math.round(hours * 60), day, precip: 0, snow: false, storm: false, daylight: hours > 6 && hours < 20 ? 1 : 0, ...extra });
+  it('est nulle hors fête et hors plage', () => {
+    expect(cityIntensity(ctx(12, DAYS.school)).festive).toBeNull();
+    expect(cityIntensity(ctx(8, fete(2, 14))).festive).toBeNull();
+    expect(cityIntensity(ctx(12, fete(2, 14))).festive).toEqual({ id: 'valentine', share: FESTIVE_SHARE.valentine });
+  });
+  it('n’a pas de signe pour la veille de Noël', () => {
+    expect(cityIntensity(ctx(12, fete(12, 24))).festive).toBeNull();
+  });
+  it('renforce la foule à la Fête de la musique et la calme le jour de Noël', () => {
+    const plain = cityIntensity(ctx(21, DAYS.weekend));
+    const music = cityIntensity(ctx(21, fete(6, 21)));
+    expect(music.walkers).toBeGreaterThan(plain.walkers);
+    expect(music.walkers).toBeGreaterThanOrEqual(0.5 * 0.99);
+    const noel = cityIntensity(ctx(10, fete(12, 25)));
+    const base = cityIntensity(ctx(10, { ...fete(12, 25), festivities: [] }));
+    expect(noel.walkers).toBeLessThan(base.walkers);
+  });
+  it('reste dans [0, 1]', () => {
+    for (const m of [1, 2, 5, 6, 7, 11, 12]) for (const h of [0, 4, 12, 22]) {
+      const w = cityIntensity(ctx(h, fete(m, 14))).walkers;
+      expect(w).toBeGreaterThanOrEqual(0);
+      expect(w).toBeLessThanOrEqual(1);
+    }
   });
 });

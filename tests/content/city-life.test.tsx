@@ -63,6 +63,20 @@ const noYieldNow = (hours: number, days: { y: number; m: number; d: number }[]):
 };
 const active = (c: HTMLElement, selector: string) => c.querySelectorAll(`${selector}[data-active="true"]`).length;
 
+describe('CityLifeLayer : fêtes', () => {
+  it('à la Saint-Valentin, des passants portent un signe et des couples se promènent', () => {
+    const c = make(12, { y: 2026, m: 2, d: 14 });
+    expect(c.querySelectorAll('[data-ped][data-mark][data-active="true"]').length).toBeGreaterThan(0);
+    expect(c.querySelectorAll('[data-ped][data-role="festive"][data-mark="heart-balloon"]').length).toBeGreaterThan(0);
+    expect(c.querySelector('[data-role="festive"][data-active="true"] [data-companion]')).not.toBeNull();
+  });
+  it('un jour ordinaire : aucun signe', () => {
+    const c = make(12, { y: 2026, m: 10, d: 10 });
+    expect(c.querySelector('[data-mark]')).toBeNull();
+    expect(active(c, '[data-role="festive"]')).toBe(0);
+  });
+});
+
 describe('CityLifeLayer', () => {
   it('le lundi à 8 h : des costumes, des familles et beaucoup de voitures', () => {
     vi.spyOn(Date, 'now').mockReturnValue(noYieldNow(8.25, [{ y: 2026, m: 10, d: 5 }]));

@@ -27,7 +27,7 @@ describe('vehiclesFor', () => {
     expect(bikes).toBeGreaterThan(0);
   });
   it('les voitures suivent la circulation et les vélos les piétons', () => {
-    const i = { traffic: 0.7, walkers: 0.2, suits: 0, schoolTo: 0, schoolFrom: 0, kids: 0, sport: 0, umbrellas: false, weekendLike: false };
+    const i = { traffic: 0.7, walkers: 0.2, suits: 0, schoolTo: 0, schoolFrom: 0, kids: 0, sport: 0, umbrellas: false, weekendLike: false, festive: null };
     const car = vehiclesFor(2000, 1).find((v) => v.kind === 'car')!;
     const bike = { ...car, kind: 'bike' as const, lane: 'near' as const };
     expect(vehicleGate(car, i)).toBe(0.7);

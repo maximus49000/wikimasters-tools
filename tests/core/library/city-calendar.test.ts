@@ -76,7 +76,7 @@ describe('fêtes', () => {
     expect(activeFestivities(eve, 1290)).toEqual(['new-year']);
     const jan = festivitiesOn({ y: 2027, m: 1, d: 1 });
     expect(activeFestivities(jan, 29)).toEqual(['new-year']);
-    expect(activeFestivities(jan, 30)).toEqual([]);
+    expect(activeFestivities(jan, 60)).toEqual([]);
     const noel25 = festivitiesOn({ y: 2026, m: 12, d: 25 });
     expect(activeFestivities(noel25, 719)).toEqual(['christmas-eve']);
     expect(activeFestivities(noel25, 720)).toEqual([]);
@@ -87,5 +87,32 @@ describe('fêtes', () => {
   });
   it('la table ne contient que des dates valides', () => {
     for (const f of FESTIVITIES) expect(new Date(Date.UTC(2028, f.m - 1, f.d)).getUTCDate()).toBe(f.d);
+  });
+});
+
+describe('fêtes de 1b-ii-b', () => {
+  const ids = (y: number, m: number, d: number) => festivitiesOn({ y, m, d }).map((f) => f.id);
+  const hours = (y: number, m: number, d: number, id: string) => festivitiesOn({ y, m, d }).find((f) => f.id === id)?.hours;
+  it('place les fêtes à date fixe', () => {
+    expect(ids(2026, 2, 14)).toEqual(['valentine']);
+    expect(ids(2026, 5, 1)).toEqual(['may-day']);
+    expect(ids(2026, 6, 21)).toEqual(['music']);
+    expect(ids(2026, 11, 11)).toEqual(['armistice']);
+    expect(hours(2026, 6, 21, 'music')).toEqual([[1020, 1440]]);
+  });
+  it('calcule Pâques', () => {
+    expect(ids(2026, 4, 5)).toEqual(['easter']);
+    expect(ids(2027, 3, 28)).toEqual(['easter']);
+    expect(ids(2026, 4, 6)).toEqual([]);
+  });
+  it('place l’Épiphanie le premier dimanche de janvier', () => {
+    expect(ids(2026, 1, 4)).toEqual(['epiphany']);
+    expect(ids(2027, 1, 3)).toEqual(['epiphany']);
+    expect(ids(2026, 1, 11)).toEqual([]);
+    expect(ids(2026, 1, 1)).toEqual(['new-year']);
+  });
+  it('ajoute le défilé du matin au 14 juillet et étend le 1er janvier', () => {
+    expect(hours(2026, 7, 14, 'bastille')).toEqual([[600, 720], [1260, 1440]]);
+    expect(hours(2027, 1, 1, 'new-year')).toEqual([[0, 60]]);
   });
 });
