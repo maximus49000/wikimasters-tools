@@ -611,7 +611,7 @@ export function ParadeUnitSprite({ unit, sky, still }: Props): ReactElement {
   const begin = '0s';
   const Art = ARTS[unit.kind];
   return (
-    <g data-parade-unit={unit.kind}>
+    <g data-parade-unit={unit.kind} data-lane={unit.lane}>
       <Art unit={unit} t={tint} anim={anim} begin={begin} />
     </g>
   );

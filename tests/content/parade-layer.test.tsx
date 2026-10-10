@@ -57,6 +57,17 @@ describe('grand défilé du 14 juillet', () => {
     // Sur la file du premier plan : dans le calque du cortège, après la file du premier plan.
     expect(c.querySelector(UNITS)!.closest('[data-parade]')).not.toBeNull();
   });
+  it('à 10 h 30 : le cortège occupe les deux files, la file du fond est dessinée derrière celle du premier plan', () => {
+    const c = mount(10.5);
+    expect(count(c, `${UNITS}[data-lane="far"]`)).toBeGreaterThan(0);
+    expect(count(c, `${UNITS}[data-lane="near"]`)).toBeGreaterThan(0);
+    const far = c.querySelector('[data-parade][data-lane="far"]')!;
+    const near = c.querySelector('[data-parade][data-lane="near"]')!;
+    expect(far.compareDocumentPosition(near) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // La file du fond est réduite par rapport à celle du premier plan.
+    const scale = (el: Element): number => Number(/scale\(([\d.]+)\)/.exec(el.querySelector('[data-parade-id]')!.getAttribute('transform')!)![1]);
+    expect(scale(far)).toBeLessThan(scale(near));
+  });
   it('à 9 h : route fermée (aucune voiture), barrières posées, pas encore de cortège', () => {
     const c = mount(9);
     expect(count(c, UNITS)).toBe(0);
@@ -96,13 +107,13 @@ describe('sprites du cortège', () => {
   const sky = skyAt(630, times);
   const KINDS: ParadeKind[] = ['band', 'motorbikes', 'flags', 'infantry', 'cavalry', 'jeeps', 'trucks', 'tanks', 'firetruck'];
   it.each(KINDS)('%s se dessine', (kind) => {
-    const c = render(<svg><ParadeUnitSprite unit={{ id: `u-${kind}`, kind, variant: 0.4, half: 80, start: 0 }} sky={sky} still={false} /></svg>);
+    const c = render(<svg><ParadeUnitSprite unit={{ id: `u-${kind}`, kind, variant: 0.4, half: 80, start: 0, lane: 'near' as const }} sky={sky} still={false} /></svg>);
     const node = c.querySelector(`[data-parade-unit="${kind}"]`)!;
     expect(node).not.toBeNull();
     expect(node.querySelectorAll('rect, path, circle, ellipse, line, polygon').length).toBeGreaterThan(5);
   });
   const unitOf = (kind: ParadeKind, still = false): HTMLDivElement =>
-    render(<svg><ParadeUnitSprite unit={{ id: `u-${kind}`, kind, variant: 0.4, half: 80, start: 0 }} sky={sky} still={still} /></svg>);
+    render(<svg><ParadeUnitSprite unit={{ id: `u-${kind}`, kind, variant: 0.4, half: 80, start: 0, lane: 'near' as const }} sky={sky} still={still} /></svg>);
   it('cavaliers : quatre jambes par cheval, bottes contre le flanc (au-dessus du ventre)', () => {
     const c = unitOf('cavalry');
     expect(count(c, '[data-horse-leg]')).toBe(4 * 3);
@@ -114,10 +125,10 @@ describe('sprites du cortège', () => {
   });
   it('sans animation en mouvement réduit, mêmes dessins à variante égale', () => {
     const draw = (still: boolean): string =>
-      render(<svg><ParadeUnitSprite unit={{ id: 'u', kind: 'infantry', variant: 0.7, half: 70, start: 0 }} sky={sky} still={still} /></svg>).innerHTML;
-    const a = render(<svg><ParadeUnitSprite unit={{ id: 'u', kind: 'cavalry', variant: 0.2, half: 80, start: 0 }} sky={sky} still /></svg>);
+      render(<svg><ParadeUnitSprite unit={{ id: 'u', kind: 'infantry', variant: 0.7, half: 70, start: 0, lane: 'near' as const }} sky={sky} still={still} /></svg>).innerHTML;
+    const a = render(<svg><ParadeUnitSprite unit={{ id: 'u', kind: 'cavalry', variant: 0.2, half: 80, start: 0, lane: 'near' as const }} sky={sky} still /></svg>);
     expect(count(a, 'animate, animateTransform')).toBe(0);
     expect(draw(false)).toBe(draw(false));
-    expect(count(render(<svg><ParadeUnitSprite unit={{ id: 'u', kind: 'infantry', variant: 0.7, half: 70, start: 0 }} sky={sky} still={false} /></svg>), 'animate, animateTransform')).toBeGreaterThan(0);
+    expect(count(render(<svg><ParadeUnitSprite unit={{ id: 'u', kind: 'infantry', variant: 0.7, half: 70, start: 0, lane: 'near' as const }} sky={sky} still={false} /></svg>), 'animate, animateTransform')).toBeGreaterThan(0);
   });
 });

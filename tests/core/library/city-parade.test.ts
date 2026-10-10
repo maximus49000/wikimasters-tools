@@ -61,35 +61,53 @@ describe('route fermée', () => {
 });
 
 describe('cortège', () => {
-  const units = paradeUnits(7, 720, DAY0);
+  const all = paradeUnits(7, 720, DAY0);
+  const lanes = (list: ReturnType<typeof paradeUnits>) => ({ near: list.filter((u) => u.lane === 'near'), far: list.filter((u) => u.lane === 'far') });
+  const units = lanes(all).near;
+  it('occupe les deux files', () => {
+    const { near, far } = lanes(all);
+    expect(near.length).toBeGreaterThan(4);
+    expect(far.length).toBeGreaterThan(4);
+    expect(near.length + far.length).toBe(all.length);
+  });
   it('est déterministe et dépend de la graine', () => {
-    expect(paradeUnits(7, 720, DAY0)).toEqual(units);
-    expect(paradeUnits(8, 720, DAY0).map((u) => u.kind)).not.toEqual(units.map((u) => u.kind));
+    expect(paradeUnits(7, 720, DAY0)).toEqual(all);
+    expect(paradeUnits(8, 720, DAY0).map((u) => u.kind)).not.toEqual(all.map((u) => u.kind));
   });
-  it('commence par la fanfare, finit par les pompiers, demi-longueurs par type', () => {
-    expect(units.length).toBeGreaterThan(4);
-    expect(units[0]!.kind).toBe('band');
-    expect(units[units.length - 1]!.kind).toBe('firetruck');
-    for (const u of units) expect(u.half).toBe(HALF[u.kind]);
-    expect(new Set(units.map((u) => u.id)).size).toBe(units.length);
+  it('les deux files ont des tirages distincts et un départ décalé', () => {
+    const { near, far } = lanes(all);
+    expect(far.map((u) => u.kind)).not.toEqual(near.map((u) => u.kind));
+    expect(far[0]!.start - near[0]!.start).toBeGreaterThanOrEqual(10);
   });
-  it('couvre 10 h à 12 h et ne chevauche jamais', () => {
-    const first = units[0]!.start;
-    expect(first).toBeGreaterThanOrEqual(DAY0 + PARADE[0] * 60 - 1);
-    expect(first).toBeLessThanOrEqual(DAY0 + PARADE[0] * 60 + 60);
-    expect(units[units.length - 1]!.start).toBeLessThan(DAY0 + PARADE[1] * 60);
-    for (let i = 1; i < units.length; i++) {
-      const gap = units[i]!.start - units[i - 1]!.start;
-      expect(gap).toBeGreaterThanOrEqual((units[i]!.half + units[i - 1]!.half) / PARADE_SPEED);
+  it('file du premier plan : commence par la fanfare, finit par les pompiers ; file du fond : porte-drapeaux puis camions, sans fanfare', () => {
+    const { near, far } = lanes(all);
+    expect(near[0]!.kind).toBe('band');
+    expect(near[near.length - 1]!.kind).toBe('firetruck');
+    expect(far[0]!.kind).toBe('flags');
+    expect(far[far.length - 1]!.kind).toBe('trucks');
+    expect(far.some((u) => u.kind === 'band' || u.kind === 'firetruck')).toBe(false);
+    for (const u of all) expect(u.half).toBe(HALF[u.kind]);
+    expect(new Set(all.map((u) => u.id)).size).toBe(all.length);
+  });
+  it('couvre 10 h à 12 h et ne chevauche jamais dans une même file', () => {
+    for (const list of Object.values(lanes(all))) {
+      expect(list[0]!.start).toBeGreaterThanOrEqual(DAY0 + PARADE[0] * 60 - 1);
+      expect(list[0]!.start).toBeLessThanOrEqual(DAY0 + PARADE[0] * 60 + 60);
+      expect(list[list.length - 1]!.start).toBeLessThan(DAY0 + PARADE[1] * 60);
+      for (let i = 1; i < list.length; i++) {
+        const gap = list[i]!.start - list[i - 1]!.start;
+        expect(gap).toBeGreaterThanOrEqual((list[i]!.half + list[i - 1]!.half) / PARADE_SPEED);
+      }
     }
   });
-  it('varie : jamais deux unités du même type de suite, fanfares rares et espacées', () => {
+  it('varie par file : jamais deux unités du même type de suite, fanfares rares et espacées', () => {
     for (const seed of [1, 2, 3, 7, 8, 42, 99]) {
-      const list = paradeUnits(seed, 720, DAY0);
-      for (let i = 1; i < list.length; i++) expect(list[i]!.kind).not.toBe(list[i - 1]!.kind);
-      const bands = list.map((u, i) => (u.kind === 'band' ? i : -1)).filter((i) => i >= 0);
-      for (let i = 1; i < bands.length; i++) expect(bands[i]! - bands[i - 1]!).toBeGreaterThan(4);
-      expect(bands.length / list.length).toBeLessThan(0.1);
+      for (const list of Object.values(lanes(paradeUnits(seed, 720, DAY0)))) {
+        for (let i = 1; i < list.length; i++) expect(list[i]!.kind).not.toBe(list[i - 1]!.kind);
+        const bands = list.map((u, i) => (u.kind === 'band' ? i : -1)).filter((i) => i >= 0);
+        for (let i = 1; i < bands.length; i++) expect(bands[i]! - bands[i - 1]!).toBeGreaterThan(4);
+        expect(bands.length / list.length).toBeLessThan(0.1);
+      }
     }
   });
   it('paradeX : hors champ = null, avance à PARADE_SPEED', () => {

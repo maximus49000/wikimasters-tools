@@ -11,7 +11,8 @@ export const roadClosed = (fests: readonly FestivityId[], minute: number): boole
 
 export type ParadeKind = 'motorbikes' | 'flags' | 'band' | 'infantry' | 'cavalry' | 'jeeps' | 'trucks' | 'tanks' | 'firetruck';
 // `start` : instant (s) où le centre de l'unité entre dans le champ par la gauche ; `half` : demi-longueur dessinée (px).
-export type ParadeUnit = { id: string; kind: ParadeKind; variant: number; half: number; start: number };
+export type ParadeLane = 'near' | 'far';
+export type ParadeUnit = { id: string; kind: ParadeKind; variant: number; half: number; start: number; lane: ParadeLane };
 
 export const PARADE_SPEED = 22; // px/s, commune à toutes les unités
 const MARGIN = 40; // espace libre (px) entre deux unités
@@ -22,10 +23,11 @@ const WEIGHTS: readonly (readonly [ParadeKind, number])[] = [
   ['motorbikes', 1], ['flags', 1], ['band', 0.4], ['infantry', 1.4], ['cavalry', 1], ['jeeps', 1], ['trucks', 1], ['tanks', 1],
 ];
 const BAND_SPACING = 4;
-const drawKind = (rng: () => number, recent: readonly ParadeKind[]): ParadeKind => {
+const FAR_OFFSET_S = 12; // départ de la file du fond décalé, pour que les unités des deux files ne soient pas alignées
+const drawKind = (rng: () => number, recent: readonly ParadeKind[], lane: ParadeLane): ParadeKind => {
   const prev = recent[recent.length - 1];
   const bandNear = recent.slice(-BAND_SPACING).includes('band');
-  const pool = WEIGHTS.filter(([k]) => k !== prev && !(k === 'band' && bandNear));
+  const pool = WEIGHTS.filter(([k]) => k !== prev && !(k === 'band' && (bandNear || lane === 'far')));
   const total = pool.reduce((a, [, w]) => a + w, 0);
   let r = rng() * total;
   for (const [k, w] of pool) {
@@ -37,25 +39,34 @@ const drawKind = (rng: () => number, recent: readonly ParadeKind[]): ParadeKind 
 
 const gap = (a: number, b: number): number => (a + b + MARGIN) / PARADE_SPEED;
 
-// Toutes les unités de 10 h à 12 h : la fanfare ouvre la marche, les pompiers ferment, la suite est tirée de la graine
-// (jamais deux fois le même type de suite, fanfare peu fréquente et espacée).
-export function paradeUnits(seed: number, width: number, dayStartS: number): ParadeUnit[] {
-  void width;
-  const rng = mulberry32(seed ^ hashString('bastille-parade'));
-  const t0 = dayStartS + PARADE[0] * 60;
+// Un flux par file, indépendant (tirages distincts). File du premier plan : la fanfare ouvre, les pompiers ferment.
+// File du fond : porte-drapeaux en tête (pas de fanfare), camions en queue, départ décalé de FAR_OFFSET_S.
+function laneUnits(seed: number, lane: ParadeLane, dayStartS: number): ParadeUnit[] {
+  const far = lane === 'far';
+  const rng = mulberry32(seed ^ hashString(far ? 'bastille-parade-far' : 'bastille-parade'));
+  const t0 = dayStartS + PARADE[0] * 60 + (far ? FAR_OFFSET_S : 0);
   const end = dayStartS + PARADE[1] * 60;
-  const make = (n: number, kind: ParadeKind, start: number): ParadeUnit => ({ id: `parade-${n}`, kind, variant: rng(), half: HALF[kind], start });
-  const out: ParadeUnit[] = [make(0, 'band', t0)];
+  const closer: ParadeKind = far ? 'trucks' : 'firetruck';
+  const make = (n: number, kind: ParadeKind, start: number): ParadeUnit => ({ id: far ? `parade-far-${n}` : `parade-${n}`, kind, variant: rng(), half: HALF[kind], start, lane });
+  const out: ParadeUnit[] = [make(0, far ? 'flags' : 'band', t0)];
   for (;;) {
     const prev = out[out.length - 1]!;
-    const kind = drawKind(rng, out.slice(-BAND_SPACING).map((u) => u.kind));
+    const kind = drawKind(rng, out.slice(-BAND_SPACING).map((u) => u.kind), lane);
     const start = prev.start + gap(prev.half, HALF[kind]);
-    if (start + gap(HALF[kind], HALF.firetruck) >= end) break;
+    if (start + gap(HALF[kind], HALF[closer]) >= end) break;
     out.push(make(out.length, kind, start));
   }
+  // Évite deux camions de suite en queue de la file du fond.
+  if (far && out.length > 1 && out[out.length - 1]!.kind === closer) out.pop();
   const last = out[out.length - 1]!;
-  out.push(make(out.length, 'firetruck', last.start + gap(last.half, HALF.firetruck)));
+  out.push(make(out.length, closer, last.start + gap(last.half, HALF[closer])));
   return out;
+}
+
+// Toutes les unités de 10 h à 12 h, sur les deux files de la route fermée (même vitesse, même sens).
+export function paradeUnits(seed: number, width: number, dayStartS: number): ParadeUnit[] {
+  void width;
+  return [...laneUnits(seed, 'far', dayStartS), ...laneUnits(seed, 'near', dayStartS)];
 }
 
 // Position (centre) de l'unité à l'instant `t` ; null tant qu'elle n'est pas entrée et une fois sortie.

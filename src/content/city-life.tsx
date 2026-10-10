@@ -477,9 +477,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       {/* Drapeaux de lampadaires, barrières, camionnettes et camions élévateurs : devant les lampadaires, derrière les files. */}
       <InstallLayer {...install} part="front" />
       {lane('far')}
+      {/* Grand défilé du 14 juillet (route fermée, aucune voiture) : une file du fond réduite, derrière celle du premier plan. */}
+      <ParadeLayer lane="far" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} />
       {lane('near')}
-      {/* Grand défilé du 14 juillet : sur la file du premier plan (route fermée, aucune voiture), devant elle. */}
-      <ParadeLayer width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} />
+      <ParadeLayer lane="near" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} />
     </g>
   );
 }
