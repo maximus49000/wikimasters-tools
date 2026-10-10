@@ -1,11 +1,11 @@
 import { useMemo, useReducer, useRef, type ReactElement } from 'react';
 import type { YMD } from '../core/library/city/calendar';
-import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
+import { DOOR_WIDTH, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
 import { SHOP_DEFS } from '../core/library/city/shops/catalog';
 import { isOpenAt } from '../core/library/city/shops/hours';
 import { ADVANCE_S, nightclubDoor, queueAt } from '../core/library/city/shops/queue';
-import type { ShopFrame } from '../core/library/city/shops/slots';
+import type { ShopFrame, ShopSlot } from '../core/library/city/shops/slots';
 import type { ShopView } from '../core/library/city/shops/view';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
@@ -18,10 +18,12 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // elle ne re-rend que quand quelqu'un entre (toutes les 15 à 30 s). Aucun id SVG.
 
 const OPEN_MIN = 23 * 60; // ouverture (catalog.ts) : sert à savoir si ce soir est un soir d'ouverture
-const QUEUE_START = 12; // px (à unit = 1) de la porte à la première personne
-const QUEUE_PITCH = 6.5; // px entre deux personnes de la file
+const QUEUE_START = 9; // px (à unit = 1) de la porte à la première personne (juste derrière le videur)
+const QUEUE_PITCH = 6.5; // px entre deux personnes de la file, quand la façade le permet…
+const MIN_PITCH = 3.5; // … resserrés jusque-là sinon (en dessous, les silhouettes se confondent)
+const MAX_QUEUE = 6;
 const BOUNCER_DX = 5.5; // px de la porte à chaque videur
-const CORDON = [8, 28] as const; // potelets, px de la porte, côté file
+const CORDON_FROM = 7; // premier potelet, px de la porte ; le second est au niveau de la 3e personne
 const QUEUE_FRAME_MS = 50;
 const STILL_QUEUE = 3; // mouvement réduit : 3 personnes immobiles
 
@@ -39,6 +41,16 @@ export function queueFrame(seed: number, slotId: string, t: number, minutes: num
   const prev = queueAt(seed, slotId, t - ADVANCE_S, minutes, isOpen)[0];
   const ghost = prev && prev.entersAt <= t && prev.id !== q[0]?.id ? { id: prev.id, outfitKey: prev.outfitKey, p: Math.min(0.999, Math.max(0, (t - prev.entersAt) / ADVANCE_S)) } : null;
   return { members, ghost };
+}
+
+// Géométrie de la file : elle s'étire du côté de la vitrine (les gens regardent la porte), jusqu'à l'entrée des habitants de
+// l'immeuble au plus ; l'écart entre deux personnes est resserré (MIN_PITCH au moins) pour que six personnes y tiennent.
+export function queueLayout(slot: ShopSlot, frame: ShopFrame, unit: number): { doorX: number; away: 1 | -1; pitch: number } {
+  const doorX = frame.door.x + frame.door.w / 2;
+  const away: 1 | -1 = frame.window.x + frame.window.w / 2 < doorX ? -1 : 1;
+  const run = (away < 0 ? doorX - (slot.residentDoorX + DOOR_WIDTH) : slot.residentDoorX - doorX) / unit;
+  const fit = run > 0 ? (run - QUEUE_START) / (MAX_QUEUE - 1) : QUEUE_PITCH;
+  return { doorX, away, pitch: Math.min(QUEUE_PITCH, Math.max(MIN_PITCH, fit)) };
 }
 
 // Cordon et videurs : seulement les soirs d'ouverture (de 22 h 30 à la fermeture), jamais pendant un chantier ou un déménagement.
@@ -111,14 +123,13 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   const [, refresh] = useReducer((x: number) => x + 1, 0);
   const u = metrics.unit;
   const k = u * STREET_SCALE.person;
-  const doorX = frame.door.x + frame.door.w / 2;
-  // La file s'étire du côté de la vitrine ; les gens regardent la porte.
-  const away: 1 | -1 = frame.window.x + frame.window.w / 2 < doorX ? -1 : 1;
+  const { doorX, away, pitch } = queueLayout(view.slot, frame, u);
   const y = metrics.doorY + (metrics.walkY - metrics.doorY) * 0.3;
-  const slotX = (pos: number): number => doorX + away * (QUEUE_START + pos * QUEUE_PITCH) * u;
+  const slotX = (pos: number): number => doorX + away * (QUEUE_START + pos * pitch) * u;
   const memberTransform = (pos: number): string => `translate(${slotX(pos).toFixed(1)} ${y.toFixed(1)}) scale(${(-away * k).toFixed(3)} ${k.toFixed(3)})`;
   const ghostTransform = (p: number): string => `translate(${(slotX(0) + (doorX - slotX(0)) * p).toFixed(1)} ${y.toFixed(1)}) scale(${(-away * k).toFixed(3)} ${k.toFixed(3)})`;
-  const outfits = useMemo(() => new Map<string, Outfit>(), []);
+  // Cache des tenues (effet de bord idempotent pendant le rendu : une même clé donne toujours la même tenue).
+  const outfits = useMemo(() => new Map<string, Outfit>(), [seed, id]);
   const outfitOf = (key: string): Outfit => {
     let o = outfits.get(key);
     if (!o) {
@@ -152,11 +163,12 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
         }
       },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [reduced, isOpen, seed, id, minutes, sessionT0, doorX, away, y, k],
+    [reduced, isOpen, seed, id, minutes, sessionT0, doorX, away, pitch, y, k],
   );
   useWallClockLoop(place, [place], { frameMs: QUEUE_FRAME_MS });
   if (!door) return null;
   const f = frameAt(Date.now() / 1000);
+  // Effet de bord idempotent pendant le rendu : la boucle compare la composition de la file à celle qui est affichée.
   shown.current = signature(f);
   const bouncers = [0, 1].map((i) => bouncerOutfit(seed, id, i));
   return (
@@ -181,7 +193,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
           </g>
         );
       })}
-      <CordonSprite x0={doorX + away * CORDON[0] * u} x1={doorX + away * CORDON[1] * u} y={y + 2 * u} k={k} sky={sky} />
+      <CordonSprite x0={doorX + away * CORDON_FROM * u} x1={slotX(2.3)} y={y + 2 * u} k={k} sky={sky} />
     </g>
   );
 }

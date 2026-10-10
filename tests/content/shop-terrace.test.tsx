@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 // tests/content/shop-terrace.test.tsx — terrasses, cordon, videurs et file de la boîte de nuit (rendu, vague 1b-iv-b)
-import { act, type ReactNode } from 'react';
+import { act, useEffect, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { NightclubDoor, queueFrame } from '../../src/content/shop-queue';
+import { NightclubDoor, queueFrame, queueLayout } from '../../src/content/shop-queue';
 import { ShopTerrace, terraceTables, waiterAt, weatherHistory } from '../../src/content/shop-terrace';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
@@ -151,6 +151,8 @@ describe('terrasse : rendu (ShopTerrace)', () => {
       }
       for (const n of perTable.values()) expect(n).toBe(1);
       expect(host.querySelectorAll('[data-terrace-waiter], [data-terrace-carrier]')).toHaveLength(0);
+      // Aucune glissade : les tables n'ont pas de transition.
+      for (const t of tables(host)) expect((t as SVGGElement).style.transition).toBe('');
     }
     expect(seated).toBeGreaterThan(0);
   });
@@ -223,6 +225,26 @@ describe('boîte de nuit : cordon, videurs et file (NightclubDoor)', () => {
     expect(club(MON, 22 * 60 + 45).querySelector('[data-nightclub]')).toBeNull();
     expect(club(SAT, 14 * 60).querySelector('[data-nightclub]')).toBeNull();
   });
+  it('queueLayout : la file se resserre pour ne pas déborder sur l’entrée des habitants (sauf façade trop étroite)', () => {
+    let fitted = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      for (const slot of shopSlotsFor(W, H, seed)) {
+        const f = shopFrame(slot, metrics.ground);
+        const { doorX, away, pitch } = queueLayout(slot, f, metrics.unit);
+        expect(pitch).toBeGreaterThanOrEqual(3.5);
+        expect(pitch).toBeLessThanOrEqual(6.5);
+        // File du côté de la vitrine.
+        expect(Math.sign(f.window.x + f.window.w / 2 - doorX)).toBe(away);
+        const last = doorX + away * (9 + 5 * pitch) * metrics.unit;
+        const residentEdge = away < 0 ? slot.residentDoorX + 12 : slot.residentDoorX;
+        if (pitch > 3.5) {
+          fitted++;
+          expect(away < 0 ? last >= residentEdge - 1e-6 : last <= residentEdge + 1e-6).toBe(true);
+        }
+      }
+    }
+    expect(fitted).toBeGreaterThan(0);
+  });
   it('queueFrame : la tête qui vient d’entrer s’efface dans la porte, les autres avancent', () => {
     let ghosts = 0;
     for (let t = 0; t < 300; t += 0.25) {
@@ -268,5 +290,34 @@ describe('CityLifeLayer : terrasses selon la météo de la rue', () => {
     const { seed, date, slotId } = find();
     expect(life(seed, date, targetOf('sun')).querySelectorAll(`[data-shop-terrace="${slotId}"] [data-terrace-table]`).length).toBeGreaterThanOrEqual(2);
     expect(life(seed, date, targetOf('rain')).querySelectorAll('[data-terrace-table]')).toHaveLength(0);
+  });
+  it('horloge réglée APRÈS le montage (effet du parent) : la terrasse et ses parasols se corrigent aussitôt', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { seed, date, slotId } = find();
+    // Comme useWeather : l'horloge rend une météo par défaut (ici la pluie) tant que le parent n'a pas posé sa source.
+    const source = { w: targetOf('rain') };
+    const clock = { read: (): Weather => source.w };
+    function Panel({ children }: { children: ReactNode }): ReactNode {
+      useEffect(() => {
+        source.w = targetOf('sun');
+      }, []);
+      return children;
+    }
+    const minutes = 12 * 60 + 30;
+    const sky = skyAt(minutes, times);
+    const city: CityContext = { minutes, day: dayContext(date, []), precip: 0, snow: false, storm: false, daylight: sky.daylight, shops: { epochDay: dayNumber(SAT), names: {} } };
+    const { host } = render(
+      <Panel>
+        <svg><CityLifeLayer width={W} height={H} sky={sky} seed={seed} city={city} rainy={false} weather={clock} /></svg>
+      </Panel>,
+    );
+    // Premier rendu avec la météo par défaut : rien.
+    expect(host.querySelectorAll('[data-terrace-table]')).toHaveLength(0);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const terrace = host.querySelector(`[data-shop-terrace="${slotId}"]`)!;
+    expect(terrace.getAttribute('data-terrace-state')).toBe('umbrellas');
+    expect(terrace.querySelectorAll('[data-parasol]').length).toBe(terrace.querySelectorAll('[data-terrace-table]').length);
   });
 });

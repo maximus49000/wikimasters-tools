@@ -56,24 +56,39 @@ function cycleEntries(base: number, cycle: number): { id: string; at: number; ou
 
 // Contrat de `tSeconds` : secondes RELATIVES À LA SESSION (0 = montage de la scène), croissantes d'un appel à l'autre ;
 // jamais une minute du jour ni une heure Unix. La file avance avec t (une entrée toutes les 15 à 30 s) ; `minutes` (minute du
-// jour) ne règle que sa longueur. Coût en O(t) : la recherche du cycle courant part toujours du cycle 0 (≈ 64 entrées et
-// 16 à 32 min par cycle), soit une trentaine de cycles pour une session de dix heures.
+// jour) ne règle que sa longueur. Les débuts de cycle (≈ 64 entrées, 16 à 32 min par cycle) sont gardés par file (cycleAt) :
+// chaque cycle n'est généré qu'une fois pour sa durée, l'appel courant coûte une dichotomie et un cycle.
 export function queueAt(seed: number, slotId: string, tSeconds: number, minutes: number, isOpen: boolean): QueueMember[] {
   if (!isOpen) return [];
   const length = targetLength(minutes);
   if (length === 0) return [];
   const base = (seed ^ hashString(`queue:${slotId}`)) >>> 0;
-  // Les cycles se suivent : durée d'un cycle = instant de sa dernière entrée (connue en le générant). On part du cycle 0
-  // (t = 0) et on avance cycle par cycle jusqu'à celui qui contient t ; un t négatif reste dans le cycle 0.
-  let cycle = 0;
-  let offset = 0;
-  let entries = cycleEntries(base, cycle);
-  while (offset + cycleLength(entries) <= tSeconds) {
-    offset += cycleLength(entries);
-    cycle++;
-    entries = cycleEntries(base, cycle);
+  const { cycle, offset } = cycleAt(base, tSeconds);
+  return collect(base, cycle, offset, cycleEntries(base, cycle), tSeconds, length);
+}
+
+// Débuts des cycles déjà connus, par file (`base`) : les cycles se suivent (durée d'un cycle = instant de sa dernière entrée,
+// connue en le générant) ; on ne génère que les cycles pas encore vus, puis on cherche par dichotomie celui qui contient t.
+// Un t négatif reste dans le cycle 0. Même résultat qu'un parcours depuis le cycle 0, sans le refaire à chaque image.
+const starts = new Map<number, number[]>();
+const MAX_QUEUES = 64; // garde-fou : au-delà (graines et locaux successifs), on oublie tout
+function cycleAt(base: number, t: number): { cycle: number; offset: number } {
+  let s = starts.get(base);
+  if (!s) {
+    if (starts.size >= MAX_QUEUES) starts.clear();
+    s = [0];
+    starts.set(base, s);
   }
-  return collect(base, cycle, offset, entries, tSeconds, length);
+  while (s[s.length - 1]! <= t) s.push(s[s.length - 1]! + cycleLength(cycleEntries(base, s.length - 1)));
+  // s[lo] ≤ t < s[hi] (t < 0 : cycle 0).
+  let lo = 0;
+  let hi = s.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (s[mid]! <= t) lo = mid;
+    else hi = mid;
+  }
+  return { cycle: lo, offset: s[lo]! };
 }
 
 function collect(

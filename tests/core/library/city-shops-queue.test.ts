@@ -80,6 +80,13 @@ describe('file de la boîte de nuit', () => {
     expect(cycles.size).toBeGreaterThanOrEqual(4);
   });
 
+  it('ne dépend pas de l’ordre des appels (débuts de cycle gardés en mémoire)', () => {
+    const cold = queueAt(81, 'ordre', 4000, MIN(1), true);
+    queueAt(81, 'ordre', 9000, MIN(1), true);
+    queueAt(81, 'ordre', 10, MIN(1), true);
+    expect(queueAt(81, 'ordre', 4000, MIN(1), true)).toEqual(cold);
+  });
+
   it('diffère d’un local à l’autre', () => {
     const a = queueAt(3, 'shop-1', 300, MIN(1), true);
     const b = queueAt(3, 'shop-2', 300, MIN(1), true);

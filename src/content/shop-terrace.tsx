@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, useReducer, type ReactElement } from 'react';
 import type { YMD } from '../core/library/city/calendar';
 import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
@@ -9,6 +9,7 @@ import { WEATHER_HOLD, holdWeather, terraceAt, terraceGuests, terraceWeatherAt, 
 import type { ShopView } from '../core/library/city/shops/view';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
+import { FADE_MS } from '../core/library/weather/weather-clock';
 import type { Weather } from '../core/library/weather/weather-types';
 import { PersonSprite, tone } from './city-sprites';
 
@@ -30,24 +31,19 @@ const WAITER_BESIDE = 9;
 // ---------- Météo de la rue : relevés de la dernière minute et des WEATHER_HOLD précédentes ----------
 export type TerraceSky = { now: TerraceWeather; before: TerraceWeather };
 
-// Historique des relevés par minute d'horloge. Au premier relevé (et après un trou), les minutes manquantes sont relues sur
-// l'horloge de météo au passé : l'hystérésis tient dès l'ouverture de la scène.
-export function weatherHistory(): { sample(read: (nowMs: number) => Weather, nowMs: number): TerraceSky } {
+// Historique des relevés par minute d'horloge. Seuls les relevés réels de la minute courante sont gardés (`store`) ; les minutes
+// manquantes de la fenêtre sont relues sur l'horloge de météo au passé À CHAQUE relevé, sans être gardées (dix lectures par
+// minute) : un relevé pris avant que l'horloge ait sa vraie source (réglée par un effet du parent, après le montage de la ville)
+// ne fige donc pas une fausse fenêtre pendant dix minutes. L'hystérésis tient dès l'ouverture de la scène.
+export function weatherHistory(): { sample(read: (nowMs: number) => Weather, nowMs: number, store?: boolean): TerraceSky } {
   const seen = new Map<number, TerraceWeather>();
   return {
-    sample(read, nowMs) {
+    sample(read, nowMs, store = true) {
       const minute = Math.floor(nowMs / 60_000);
       const now = terraceWeatherAt(read(nowMs));
-      seen.set(minute, now);
+      if (store) seen.set(minute, now);
       const window: TerraceWeather[] = [];
-      for (let k = 1; k <= WEATHER_HOLD; k++) {
-        let w = seen.get(minute - k);
-        if (!w) {
-          w = terraceWeatherAt(read(nowMs - k * 60_000));
-          seen.set(minute - k, w);
-        }
-        window.push(w);
-      }
+      for (let k = 1; k <= WEATHER_HOLD; k++) window.push(seen.get(minute - k) ?? terraceWeatherAt(read(nowMs - k * 60_000)));
       for (const key of seen.keys()) if (key < minute - WEATHER_HOLD) seen.delete(key);
       return { now, before: holdWeather(window) };
     },
@@ -55,15 +51,30 @@ export function weatherHistory(): { sample(read: (nowMs: number) => Weather, now
 }
 
 // Sans horloge de météo (scène sans météo) : seulement le drapeau « pluie » du décor, sans soleil.
+// Au montage, l'horloge peut encore rendre sa météo par défaut (useWeather lui donne sa source dans un effet, qui passe après
+// ceux de la ville) puis fondre 30 s vers la vraie : deux relevés forcés (juste après les effets, puis à la fin du fondu), et
+// aucun relevé gardé avant la fin du fondu.
 export function useTerraceWeather(clock: { read(nowMs: number): Weather } | undefined, rainy: boolean, minutes: number): TerraceSky {
   const history = useMemo(() => weatherHistory(), [clock]);
+  const settledAt = useMemo(() => Date.now() + FADE_MS, [clock]);
+  const [resample, bump] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    if (!clock) return;
+    const timers = [window.setTimeout(bump, 0), window.setTimeout(bump, FADE_MS + 100)];
+    return () => timers.forEach((id) => window.clearTimeout(id));
+  }, [clock]);
+  // Effet de bord idempotent dans useMemo : l'historique ne fait qu'enregistrer le relevé de la minute (le même relevé refait
+  // donne le même résultat) ; il est propre à cette horloge.
   return useMemo(() => {
-    if (clock) return history.sample((ms) => clock.read(ms), Date.now());
+    if (clock) {
+      const now = Date.now();
+      return history.sample((ms) => clock.read(ms), now, now >= settledAt);
+    }
     const w: TerraceWeather = { rain: rainy, snow: false, storm: false, wind: false, sunny: false };
     return { now: w, before: w };
-    // `minutes` : nouveau relevé à chaque minute de la scène.
+    // `minutes` : nouveau relevé à chaque minute de la scène ; `resample` : relevés forcés après le montage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [history, clock, rainy, minutes]);
+  }, [history, clock, rainy, minutes, resample, settledAt]);
 }
 
 // ---------- Géométrie ----------
