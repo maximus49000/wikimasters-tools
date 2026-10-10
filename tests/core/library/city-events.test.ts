@@ -1,7 +1,7 @@
 // tests/core/library/city-events.test.ts
 import { describe, expect, it } from 'vitest';
 import {
-  EVENT_DEFS, HYPER_S, MAX_EVENTS, SLOT_S, activeEvents, cityEventSchedule, conditionsKey, defOf, eligible, eventX, hyperStartMinute, mergeSchedules, travelSpan, weightOf,
+  EVENT_DEFS, HYPER_S, MAX_EVENTS, SLOT_S, activeEvents, cityEventSchedule, conditionsKey, defOf, eligible, eventX, hyperStartMinute, mergeSchedules, travelSpan, weightOf, yieldsFor,
   type CityEvent, type CityEventId,
   type EventConditions, type ScheduleInput,
 } from '../../../src/core/library/city/events';
@@ -251,5 +251,20 @@ describe('événements de fête', () => {
   it('garde le programme ordinaire identique (sans fête)', () => {
     const sig = (es: CityEvent[]) => es.map((e) => `${e.id}@${e.key}`).join();
     expect(sig(many(DAY_DRY, 600, 30)).includes('parade')).toBe(false);
+  });
+});
+
+describe('défilé : vélos', () => {
+  const car = vehiclesFor(2000, 3).find((v) => v.kind === 'car')!;
+  const bike = { ...car, kind: 'bike' as const, lane: 'near' as const };
+  const base = { key: 'p', layer: 'street' as const, start: 0, end: 60, dir: 1 as const, track: 'near' as const, speed: 30, x0: 0, y: 0, pick: 0, variant: 0, yields: [] as string[] };
+  const xe = eventX({ ...base, id: 'parade' }, 720, 0);
+  // Un vélo placé exactement sur le convoi au départ (le décalage de phase déplace le vélo d'autant).
+  const onConvoy = { ...bike, phase: bike.phase + (xe - loopX(bike.phase, LANE_DIR[bike.lane] * bike.speed, 720, 0)) };
+  it('efface les vélos proches du convoi', () => {
+    expect(yieldsFor({ ...base, id: 'parade' }, defOf('parade').half, [onConvoy], 720)).toContain(bike.id);
+  });
+  it('ne les efface pas pour un autre véhicule de la voie (bus)', () => {
+    expect(yieldsFor({ ...base, id: 'bus' }, defOf('bus').half, [onConvoy], 720)).not.toContain(bike.id);
   });
 });

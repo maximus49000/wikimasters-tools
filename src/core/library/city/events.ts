@@ -172,7 +172,8 @@ export function yieldsFor(e: CityEvent, half: number, vehicles: Vehicle[], width
   const loop = travelSpan(width);
   const xe = eventX(e, width, e.start);
   return vehicles
-    .filter((v) => trackOf(v) === e.track)
+    // Le défilé occupe toute la voie du premier plan : les vélos s'effacent aussi.
+    .filter((v) => trackOf(v) === e.track || (e.id === 'parade' && trackOf(v) === 'bike'))
     .filter((v) => {
       const xv = loopX(v.phase, LANE_DIR[v.lane] * v.speed, width, e.start);
       const d = (((xv - xe) % loop) + loop) % loop;

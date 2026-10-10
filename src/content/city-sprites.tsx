@@ -278,10 +278,10 @@ export function EntranceSprite({ variant, hallLit, sky, flag = false }: { varian
       {flag && (
         // Drapeau tricolore sur hampe, planté sur l'auvent (sans animation), assombri la nuit.
         <g data-door-flag="">
-          <line x1={3} y1={-31} x2={3} y2={-45} stroke={tone('#6B5B4A', sky)} strokeWidth={0.8} />
-          <rect x={3} y={-45} width={3} height={5} fill={tone('#2B4FA0', sky)} />
-          <rect x={6} y={-45} width={3} height={5} fill={tone('#F2F2F2', sky)} />
-          <rect x={9} y={-45} width={3} height={5} fill={tone('#C0302B', sky)} />
+          <line x1={7} y1={-31} x2={7} y2={-45} stroke={tone('#6B5B4A', sky)} strokeWidth={0.8} />
+          <rect x={7} y={-45} width={3} height={5} fill={tone('#2B4FA0', sky)} />
+          <rect x={10} y={-45} width={3} height={5} fill={tone('#F2F2F2', sky)} />
+          <rect x={13} y={-45} width={3} height={5} fill={tone('#C0302B', sky)} />
         </g>
       )}
     </g>
