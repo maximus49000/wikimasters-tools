@@ -77,6 +77,7 @@ import { useCityDay } from './use-city-calendar';
 import { useShopNames } from './use-shop-names';
 import { dayNumber } from '../core/library/city/shops/hours';
 import { useWeather } from './use-weather';
+import { useArtStyle } from './art-setting';
 import { useLightEnabled } from './light-setting';
 import { useZoneChoice, type ZoneChoice } from './zone-setting';
 import { WEATHER_SCENES } from './scene-weather';
@@ -227,6 +228,7 @@ type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsR
 export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMarket }: Props) {
   const roomCards = useRoomCards(collection, kinds, library);
   const [lightOn, setLightOn] = useLightEnabled();
+  const [art, setArt] = useArtStyle();
   const [zoneChoice, setZoneChoice] = useZoneChoice();
   const zoneLabel = zoneChoice === 'auto' ? 'automatique' : `zone ${zoneChoice}`;
   const [picking, setPicking] = useState(false);
@@ -859,6 +861,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           {WEATHER_SCENES.includes(room.scene) && (
             <Btn label="Lumière" pressed={lightOn} data={{ 'light-toggle': '' }} onClick={() => setLightOn(!lightOn)}>
               <Icon paths={ICONS.bulb} />
+            </Btn>
+          )}
+          {room.scene === 'city' && (
+            <Btn label={`Graphisme Ghibli : ${art === 'ghibli' ? 'activé' : 'désactivé'}`} pressed={art === 'ghibli'} data={{ 'art-toggle': '' }} onClick={() => setArt(art === 'ghibli' ? 'classic' : 'ghibli')}>
+              <span className="wmt-lib-zone-glyph" aria-hidden="true">
+                🎨
+              </span>
             </Btn>
           )}
           {room.scene === 'city' && (
