@@ -32,6 +32,16 @@ const svg = (node: ReactNode): SVGSVGElement => {
   return host.querySelector('svg')!;
 };
 
+describe('signes de fête', () => {
+  const outfit = outfitFor('ordinary', mulberry32(3));
+  it.each(['crown', 'heart-balloon', 'basket', 'lily', 'flag', 'poppy', 'streamer', 'note'] as const)('dessine le signe %s', (mark) => {
+    expect(svg(<PersonSprite outfit={outfit} sky={sky} rainy={false} umbrella={false} mark={mark} />).querySelector(`[data-mark-art="${mark}"]`)).not.toBeNull();
+  });
+  it('ne dessine aucun signe par défaut', () => {
+    expect(svg(<PersonSprite outfit={outfit} sky={sky} rainy={false} umbrella={false} />).querySelector('[data-mark-art]')).toBeNull();
+  });
+});
+
 describe('sprites de la ville', () => {
   it('dessine un passant avec parapluie seulement quand on le demande', () => {
     const outfit = outfitFor('ordinary', mulberry32(3));
