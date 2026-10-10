@@ -3,10 +3,10 @@ import type { YMD } from '../core/library/city/calendar';
 import { COUNTER_HALF, STAND_DEPTH } from '../core/library/city/beer';
 import { doorsFor, type Door } from '../core/library/city/doors';
 import {
-  absMinute, beerStandsFor, crewAt, crewStepWindow, decorSetsFor, footWindow, itemEquipment, itemPhase, itemShown,
-  type DecorItem, type DecorSet,
+  LIFT_FETCH, absMinute, beerStandsFor, crewAt, crewStepWindow, decorSetsFor, footWindow, inVehicle, itemEquipment, itemPhase, itemShown,
+  setWindow, type DecorItem, type DecorSet, type Transport,
 } from '../core/library/city/install';
-import { VAN_SPEED, vanAt, vanCrewAt, vanVisit, type VanVisit } from '../core/library/city/van';
+import { TRANSPORT_SPEED, vanAt, vanCrewAt, vanVisit, type VanVisit, type VehicleKind } from '../core/library/city/van';
 import { lampsFor, type Lamp } from '../core/library/city/lamps';
 import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
@@ -17,8 +17,8 @@ import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { entranceLeft } from './city-sprites';
 import {
-  BARRIER, Barrier, CrewWorker, DoorFlag, FlagArt, HOLD_HAND, HeldSpot, HeldTruss, LampFlag, LiftTruck, STAGE, StageFloor, StageFrame,
-  StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
+  BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, FlagCrate, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE,
+  LampFlag, LiftTruck, STAGE, StageFloor, StageFrame, StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
 } from './install-sprites';
 import { CarriedCounter, HeldRoll, StandAwning, StandCounter } from './music-sprites';
 import { MusicStreet, type StreetNode } from './music-street';
@@ -33,13 +33,17 @@ import { LadderSprite } from './shop-sprites';
 // camionnettes, camions élévateurs et leur équipe) et `street` (sur la chaussée de la rue privatisée de la Fête de la musique :
 // barrières en travers, stands de bière, leurs équipes, serveurs, clients et foule, triés par profondeur, music-street.tsx).
 // Mouvement réduit : seuls les décors posés (phase `present`), aucune équipe ni véhicule.
-// Aucun humain n'apparaît ni ne disparaît sur place : la camionnette arrive en roulant depuis le bord du monde et y repart, les
-// ouvriers à pied en descendent par la portière arrière et y remontent (city/van.ts) ; ceux du camion élévateur sortent de sa
-// cabine et y rentrent. Rien n'apparaît ni ne disparaît non plus dans les mains : pour chaque élément, l'équipe à pied va à
-// l'arrière de la camionnette, en sort l'objet (barrière, planche, comptoir) ou descend l'échelle de la galerie, le porte
-// jusqu'à sa place, puis revient ; à la dépose, elle rapporte l'objet et le range (portière ouverte), l'échelle remonte sur
-// la galerie. Un objet porté (`data-carried-item`, `data-ladder`) porte `data-carried` : `hands` (tenu), `held` (échelle
-// dressée, tenue en bas), `van` (encore à moitié dans la camionnette).
+// Les décors sont ENTREPOSÉS dans un véhicule de transport (`set.transport`, spec §7.2) : camionnette (barrières, échelle),
+// vélo porteur (drapeaux d'entrée et échelle, un seul ouvrier), camion plateau (scène, stands de bière) ou plateau du camion
+// élévateur (drapeaux de lampadaires). Le véhicule arrive chargé en roulant depuis le bord du monde, se gare, on y prend chaque
+// élément à la pose ; à la dépose, chaque élément y est rangé avant qu'il reparte (city/van.ts). Aucun humain n'apparaît ni ne
+// disparaît sur place : les ouvriers à pied descendent du véhicule (portière arrière, cabine du camion plateau, selle du vélo)
+// et y remontent ; ceux du camion élévateur sortent de sa cabine et y rentrent. Rien n'apparaît ni ne disparaît dans les mains :
+// pour chaque élément, l'équipe à pied va à l'arrière du véhicule, en sort l'objet (barrière, planche, comptoir) ou prend
+// l'échelle, le porte jusqu'à sa place, puis revient ; à la dépose, elle rapporte l'objet et le range. Un élément entreposé
+// est marqué `data-stored-item` (`set/item`, `data-carried` = `van` | `bike` | `truck` | `lift`), un élément porté
+// `data-load-item` ; un objet porté (`data-carried-item`, `data-ladder`) porte `data-carried` : `hands` (tenu), `held`
+// (échelle dressée, tenue en bas), `van` | `bike` | `truck` | `lift` (encore à moitié dans le véhicule).
 // Les travailleurs portent `data-worker` : le plafond global des figurants (shopSpriteBudget) les compte.
 
 export type InstallPart = 'back' | 'crew' | 'front' | 'street' | 'all';
@@ -72,70 +76,88 @@ const hasLadder = (set: DecorSet): boolean => set.items.some((i) => itemEquipmen
 const STREET_SETS: ReadonlySet<string> = new Set(['beer-stands-music', 'barriers-music']);
 const onStreet = (set: DecorSet): boolean => STREET_SETS.has(set.id);
 
-// ---------- Camionnette ----------
-// 1,4 fois l'échelle des véhicules (≈ 1,3 fois la hauteur d'un ouvrier) ; demi-longueur en unités du sprite.
+// ---------- Véhicules de transport (camionnette, vélo porteur, camion plateau) ----------
+// Échelle : camionnette 1,4 fois celle des véhicules (≈ 1,3 fois la hauteur d'un ouvrier), vélo porteur 1 fois, camion plateau
+// 1,1 fois. En unités du sprite : `half` demi-longueur, `door` arrière (où l'on prend et range les objets), `cab` endroit où
+// l'on monte et descend (centre de la caisse fermée, cabine, selle), `ladder` centre de l'échelle rangée.
 const VAN_GROW = 1.4;
 const VAN_HALF = 28;
-const vanK = (u: number): number => u * STREET_SCALE.vehicle * VAN_GROW;
-// Demi-longueur du camion élévateur (unités du sprite). Écart minimal entre le centre de la camionnette et le point de travail
-// du camion élévateur : les deux carrosseries plus 8 px, et jamais moins de 60 px.
+type Spec = { grow: number; half: number; door: number; cab: number; ladder: { x: number; y: number } };
+const SPEC: Readonly<Record<VehicleKind, Spec>> = {
+  van: { grow: VAN_GROW, half: VAN_HALF, door: 22, cab: 0, ladder: VAN_LADDER },
+  'cargo-bike': { grow: 1, half: BIKE.half, door: BIKE.door, cab: BIKE.saddle, ladder: BIKE.ladder },
+  truck: { grow: 1.1, half: FLATBED.half, door: FLATBED.door, cab: FLATBED.cab, ladder: FLATBED.ladder },
+};
+// Véhicule de l'équipe à pied d'un jeu (les drapeaux de lampadaires n'en ont pas : ils voyagent sur le camion élévateur).
+const kindOf = (set: DecorSet): VehicleKind => (set.transport === 'lift' ? 'van' : set.transport);
+const vehK = (kind: VehicleKind, u: number): number => u * STREET_SCALE.vehicle * SPEC[kind].grow;
+const vehHalf = (kind: VehicleKind, u: number): number => SPEC[kind].half * vehK(kind, u);
+// `data-carried` d'un objet encore (à moitié) dans son véhicule, et des éléments qui y sont entreposés.
+const TAG: Readonly<Record<Transport, string>> = { van: 'van', 'cargo-bike': 'bike', truck: 'truck', lift: 'lift' };
+// Demi-longueur du camion élévateur (unités du sprite). Écart minimal entre le centre d'un véhicule garé et le point de travail
+// d'un camion élévateur : les deux carrosseries plus 8 px si la rue le permet, et jamais moins de 60 px.
 const LIFT_HALF = 32;
-const vanClear = (u: number): number => Math.max(60, VAN_HALF * vanK(u) + LIFT_HALF * u * STREET_SCALE.vehicle + 8 * u);
-// Portière arrière (unités du sprite, depuis le centre) ; hors champ : la carrosserie entière plus une marge.
-const VAN_DOOR = 22;
-// Distance (unités) sur laquelle elle se range contre le trottoir depuis la file de circulation la plus proche, et en repart.
+const vanClear = (u: number, half: number): number => Math.max(60, half + LIFT_HALF * u * STREET_SCALE.vehicle + 8 * u);
+const LIFT_MIN = 60;
+// Distance (unités) sur laquelle la camionnette se range contre le trottoir depuis la file de circulation la plus proche.
 const VAN_PULL = 70;
-const vanOff = (u: number): number => VAN_HALF * vanK(u) + 20 * u;
-// Trottoir au bord de la rue : là où les ouvriers descendent de la camionnette et y remontent (derrière sa carrosserie).
+// Hors champ : la carrosserie entière plus une marge.
+const vanOff = (half: number, u: number): number => half + 20 * u;
+// Trottoir au bord de la rue : là où les ouvriers descendent du véhicule et y remontent (derrière sa carrosserie).
 const vanY = (m: CityMetrics): number => m.curb - 2 * m.unit;
-// Fête de la musique : plusieurs camionnettes le même jour (scènes, stands, barrières), parfois en même temps. Elles roulent le
-// long du trottoir (la route est fermée, les barrières laissent ce passage) chacune dans sa rangée, décalées de VAN_ROW unités
-// en profondeur : l'une passe devant l'autre, jamais à travers.
+// Fête de la musique : plusieurs véhicules le même jour (scènes, stands, barrières), parfois en même temps. Ils roulent le
+// long du trottoir (la route est fermée, les barrières laissent ce passage) chacun dans sa rangée, décalés de VAN_ROW unités
+// en profondeur : l'un passe devant l'autre, jamais à travers ; garés, ils ne se recouvrent pas.
 const VAN_ROW = 2.5;
 const VAN_ROWS = 4;
 const vanBaseY = (m: CityMetrics, row: number): number => m.curb + (1.5 + row * VAN_ROW) * m.unit;
-// Arrière de la camionnette garée, au sol : sur le trottoir (équipes du trottoir) ou au niveau des roues (équipes de la chaussée).
+// Arrière du véhicule garé, au sol : sur le trottoir (équipes du trottoir) ou au niveau des roues (équipes de la chaussée).
 function homePt(g: VanGeom | null, item: DecorItem, m: CityMetrics, street: boolean): Pt {
   if (!g) return { x: item.x, y: vanY(m) };
   return { x: g.park - g.dir * (g.half + HOME_GAP * m.unit), y: street ? g.baseY : vanY(m) };
 }
-// Ouvriers à pied : à l'arrière de la camionnette garée, juste après sa carrosserie (ils y prennent et y rangent les objets).
+// Ouvriers à pied : à l'arrière du véhicule garé, juste après sa carrosserie (ils y prennent et y rangent les objets).
 const HOME_GAP = 5;
 // Chaussée : couloir de marche des équipes de la rue privatisée (devant les comptoirs, derrière les barrières de la file proche).
 const AISLE = 30;
-// Part d'un trajet passée à l'arrière de la camionnette, à sortir l'objet (ou l'échelle de la galerie) ou à le ranger.
+// Part d'un trajet passée à l'arrière du véhicule, à sortir l'objet (ou l'échelle) ou à le ranger.
 const FETCH = 0.25;
 
-// Géométrie de la camionnette garée, pour l'équipe à pied : centre, sens, bas des roues, échelle, demi-longueur.
-type VanGeom = { park: number; dir: 1 | -1; baseY: number; k: number; half: number };
+// Géométrie du véhicule garé, pour l'équipe à pied : type, centre, sens, bas des roues, échelle, demi-longueur.
+type VanGeom = { kind: VehicleKind; park: number; dir: 1 | -1; baseY: number; k: number; half: number };
 
-// Place de la camionnette (centre, px du monde) : à côté de la scène, sinon tirée de la graine ; puis décalée pas à pas jusqu'à
-// ne masquer le pied d'aucun lampadaire, ni la scène, ni une barrière posée, ni les places où un camion élévateur travaille
-// (`works` : celles de tous les jeux du jour, si la rue le permet), ni une autre camionnette du jour (`taken`), ni (Fête de la
-// musique) un stand de bière, fûts compris (`stands`).
-function vanX(set: DecorSet, width: number, seed: number, lamps: readonly Lamp[], m: CityMetrics, works: readonly number[], taken: readonly number[], stands: readonly number[]): number {
+// Place du véhicule (centre, px du monde) : à côté de la scène, sinon tirée de la graine ; puis décalée pas à pas jusqu'à ne
+// masquer le pied d'aucun lampadaire, ni une scène, ni une barrière posée, à 60 px au moins des places où un camion élévateur
+// travaille. Si la rue le permet, aussi : loin des autres véhicules du jour (`taken`), d'aucun stand de bière (fûts compris :
+// sur la chaussée, devant le véhicule rangé contre le trottoir), et à l'écart des camions élévateurs de deux carrosseries.
+function vanX(
+  set: DecorSet, width: number, seed: number, lamps: readonly Lamp[], m: CityMetrics, works: readonly number[],
+  taken: readonly { x: number; half: number }[], stands: readonly number[], stages: readonly number[],
+): number {
   const u = m.unit;
-  const half = VAN_HALF * vanK(u);
+  const half = vehHalf(kindOf(set), u);
   const stage = set.items.find((i) => i.kind === 'stage-floor');
-  const base = stage ? stage.x + 90 * u : Math.round(60 + mulberry32(seed ^ hashString(`${set.id}-van`))() * Math.max(0, width - 120));
+  const base = stage ? stage.x + (STAGE.half + 6) * u + half : Math.round(60 + mulberry32(seed ^ hashString(`${set.id}-van`))() * Math.max(0, width - 120));
   const own = set.items.filter((i) => itemEquipment(set, i) === 'lift').flatMap((i) => [liftPark(i, 1, m), liftPark(i, -1, m)]);
   const barriers = set.items.filter((i) => i.kind === 'barrier').map((i) => barrierX(i.x, lamps, u));
   const free = (x: number): boolean =>
     x >= half + 2 && x <= width - half - 2
     && lamps.every((l) => Math.abs(l.x - x) >= half + 3 * u)
     && barriers.every((b) => Math.abs(b - x) >= half + barrierClear(u))
-    && (!stage || Math.abs(x - stage.x) >= (STAGE.half + 4) * u + half)
-    && own.every((w) => Math.abs(w - x) >= vanClear(u));
-  const clear = (x: number): boolean =>
-    works.every((w) => Math.abs(w - x) >= vanClear(u))
-    && taken.every((p) => Math.abs(p - x) >= 2 * half + 6 * u)
-    && stands.every((st) => Math.abs(st - x) >= half + (COUNTER_HALF + 16) * u);
-  // D'abord une place loin de tous les camions élévateurs et des autres camionnettes du jour, sinon loin de ceux du jeu seulement.
-  for (const strict of [true, false]) {
+    && stages.every((st) => Math.abs(x - st) >= (STAGE.half + 4) * u + half)
+    && own.every((w) => Math.abs(w - x) >= vanClear(u, half))
+    && works.every((w) => Math.abs(w - x) >= LIFT_MIN);
+  const apart = (x: number): boolean => taken.every((p) => Math.abs(p.x - x) >= half + p.half + 6 * u);
+  const offStands = (x: number): boolean => stands.every((st) => Math.abs(st - x) >= half + (COUNTER_HALF + 16) * u);
+  const wide = (x: number): boolean => works.every((w) => Math.abs(w - x) >= vanClear(u, half));
+  // Du plus exigeant au moins exigeant : une place qui respecte tout, sinon on renonce d'abord à l'écart large des camions
+  // élévateurs, puis aux stands, enfin aux autres véhicules (rangés dans une autre rangée : l'un passe devant l'autre).
+  const tiers: ((x: number) => boolean)[] = [(x) => apart(x) && offStands(x) && wide(x), (x) => apart(x) && offStands(x), apart, () => true];
+  for (const ok of tiers) {
     for (let k = 0; k * 4 * u < width; k++) {
       for (const s of [1, -1]) {
         const x = base + s * k * 4 * u;
-        if (free(x) && (!strict || clear(x))) return x;
+        if (free(x) && ok(x)) return x;
       }
     }
   }
@@ -146,13 +168,19 @@ function vanX(set: DecorSet, width: number, seed: number, lamps: readonly Lamp[]
 const liftWorks = (sets: readonly DecorSet[], m: CityMetrics): number[] =>
   sets.flatMap((s) => s.items.filter((i) => itemEquipment(s, i) === 'lift').flatMap((i) => [liftPark(i, 1, m), liftPark(i, -1, m)]));
 
-// Visite de la camionnette pour la fenêtre de montage (ou de démontage) d'un jeu à équipe à pied, sinon null. Fête de la
-// musique : elle longe le trottoir (pas de file de circulation : route fermée, et deux camionnettes ne s'y croisent jamais).
+// Visite du véhicule pour la fenêtre de montage (ou de démontage) d'un jeu à équipe à pied, sinon null. Le camion plateau reste
+// garé toute la fenêtre (le camion élévateur y prend encore des pièces). Fête de la musique : on longe le trottoir (pas de file
+// de circulation : route fermée). Le vélo porteur roule le long du trottoir.
 function visitOf(set: DecorSet, removing: boolean, park: number, width: number, m: CityMetrics): VanVisit | null {
   const fw = footWindow(set, removing);
   if (!fw) return null;
   const u = m.unit;
-  return vanVisit({ park, width, offstage: vanOff(u), first: fw.first, last: fw.last, speed: VAN_SPEED * u, door: VAN_DOOR * vanK(u), pull: set.fest === 'music' ? 0 : VAN_PULL * u });
+  const kind = kindOf(set);
+  const half = vehHalf(kind, u);
+  return vanVisit({
+    park, width, offstage: vanOff(half, u), first: fw.first, last: fw.last, speed: TRANSPORT_SPEED[kind] * u, door: SPEC[kind].door * vehK(kind, u),
+    pull: kind === 'van' && set.fest !== 'music' ? VAN_PULL * u : 0, hold: kind === 'truck' ? setWindow(set, removing) : null,
+  });
 }
 
 // ---------- Barrières ----------
@@ -212,13 +240,19 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
   const works = liftWorks(sets, metrics);
   const parks = new Map<string, number>();
   const standXs = [...standSide.keys()].length > 0 ? beerStandsFor(width, height, seed).map((st) => st.x) : [];
-  for (const s of sets.filter(hasCrewOnFoot)) parks.set(s.id, vanX(s, width, seed, lamps, metrics, works, [...parks.values()], s.fest === 'music' ? standXs : []));
-  // Rangées des camionnettes de la Fête de la musique (une par jeu, dans l'ordre des jeux).
+  // Scènes du jour (jamais de véhicule garé dessus).
+  const stageXsOfDay = sets.flatMap((s) => s.items.filter((i) => i.kind === 'stage-floor').map((i) => i.x));
+  for (const s of sets.filter(hasCrewOnFoot)) {
+    const taken = [...parks].map(([id, x]) => ({ x, half: vehHalf(kindOf(sets.find((o) => o.id === id)!), u) }));
+    parks.set(s.id, vanX(s, width, seed, lamps, metrics, works, taken, s.fest === 'music' ? standXs : [], s.fest === 'music' ? stageXsOfDay : []));
+  }
+  // Rangées des véhicules de la Fête de la musique (une par jeu, dans l'ordre des jeux).
   const rows = new Map(sets.filter((s) => s.fest === 'music' && hasCrewOnFoot(s)).map((s, i) => [s.id, i % VAN_ROWS] as const));
   const visit = (set: DecorSet, removing: boolean): VanVisit | null => (parks.has(set.id) ? visitOf(set, removing, parks.get(set.id)!, width, metrics) : null);
   const geomOf = (set: DecorSet, removing: boolean): VanGeom | null => {
     const v = visit(set, removing);
-    return v ? { park: v.park, dir: v.dir, baseY: vanBaseY(metrics, rows.get(set.id) ?? 0), k: vanK(u), half: VAN_HALF * vanK(u) } : null;
+    const kind = kindOf(set);
+    return v ? { kind, park: v.park, dir: v.dir, baseY: vanBaseY(metrics, rows.get(set.id) ?? 0), k: vehK(kind, u), half: vehHalf(kind, u) } : null;
   };
   const homeOf = (g: VanGeom | null, item: DecorItem, street: boolean): Pt => homePt(g, item, metrics, street);
 
@@ -252,32 +286,45 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
     }
     if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits.get(set.id)!, metrics, sky, rainy, still, width));
     if (still) continue;
-    // Camionnette de l'équipe à pied (échelles, barrières, plancher, comptoirs) : elle arrive en roulant, se gare au bord de la
-    // rue avant le premier créneau et repart en roulant après le dernier (city/van.ts). Elle ne s'efface jamais : un camion
-    // élévateur qui passe (ou se gare tout près, si la rue est trop courte pour l'éviter) est dessiné devant elle.
+    // Véhicule de transport de l'équipe à pied (camionnette, vélo porteur, camion plateau) : il arrive chargé en roulant, se
+    // gare au bord de la rue avant le premier créneau et repart en roulant après le dernier (city/van.ts), une fois tout rangé.
+    // Il ne s'efface jamais : un camion élévateur qui passe (ou se gare tout près, si la rue est trop courte pour l'éviter) est
+    // dessiné devant lui.
     const inp = crews.find((c) => c.set === set);
     let boarding: Drawn | null = null;
     if (hasCrewOnFoot(set)) {
       const crew = crewAt(set, abs, set.day);
-      const half = VAN_HALF * vanK(u);
+      const kind = kindOf(set);
+      const k = vehK(kind, u);
+      const half = vehHalf(kind, u);
       const row = rows.get(set.id) ?? 0;
-      // L'échelle est sur la galerie tant que l'équipe ne la tient pas (elle la descend et l'y remonte : ladderCrew).
+      // L'échelle est sur le véhicule tant que l'équipe ne la tient pas (elle l'y prend et l'y range : ladderCrew).
       const ladderOnRoof = hasLadder(set) && !(crew && inp && itemEquipment(inp.set, inp.item) === 'ladder');
+      // Éléments entreposés dans le véhicule à cet instant (pris à la pose, rangés à la dépose).
+      const stored = set.items.filter((i) => inVehicle(set, i, abs));
       for (const removing of [false, true]) {
         const v = visit(set, removing);
         const st = v && vanAt(v, abs);
         if (!v || !st) continue;
-        // Ouvriers qui descendent de la camionnette ou y remontent (juste avant le premier créneau, juste après le dernier ;
-        // le camion élévateur du même jeu peut être à l'œuvre en même temps).
+        // Ouvriers qui descendent du véhicule ou y remontent (juste avant le premier créneau, juste après le dernier ; le camion
+        // élévateur du même jeu peut être à l'œuvre en même temps).
         const vc = vanCrewAt(v, abs);
         if ((!inp || itemEquipment(inp.set, inp.item) === 'lift') && (vc.phase === 'alight' || vc.phase === 'board')) {
           const van = geomOf(set, removing);
           boarding = vanCrewNode({ set, removing, visit: v, boarding: vc.phase === 'board', q: vc.q, abs, width, seed, metrics, sky, rainy, outfits: outfits.get(set.id)!, doors, lamps, van, street: onStreet(set), standSide, home: { x: 0, y: 0 } });
         }
-        // Portière ouverte : à la descente et à la remontée, et quand un ouvrier sort ou range un objet à l'arrière.
+        // Portière (hayon) ouverte : à la descente et à la remontée, et quand un ouvrier sort ou range un objet à l'arrière.
         const open = st.door || (!!inp && inp.removing === removing && st.phase === 'parked' && atVan(inp));
-        // Rangée (ou presque) : sous les camions élévateurs et les barrières ; dans la file : devant eux.
+        // Rangé (ou presque) : sous les camions élévateurs et les barrières ; dans la file : devant eux.
         const y = lerp(vanBaseY(metrics, row), metrics.laneY.far, st.lane);
+        const ids = stored.map((i) => `${set.id}/${i.id}`);
+        // Vélo porteur : l'ouvrier est en selle tant qu'il n'en est pas descendu.
+        const rider = vc.phase === 'inside' ? outfits.get(set.id)![0]! : null;
+        const art = kind === 'cargo-bike'
+          ? <CargoBike sky={sky} lights={lights} ladder={ladderOnRoof} flags={ids} rider={rider} />
+          : kind === 'truck'
+            ? <Flatbed sky={sky} lights={lights} open={open} ladder={ladderOnRoof} load={stored.map((i) => ({ id: `${set.id}/${i.id}`, kind: i.kind }))} />
+            : <Van sky={sky} lights={lights} ladder={ladderOnRoof} open={open} stored={ids} />;
         drawn.push({
           part: 'front',
           under: st.lane < 0.5,
@@ -285,6 +332,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
             <g
               key={`${set.id}-van-${removing ? 'out' : 'in'}`}
               data-install-van={set.id}
+              data-transport={kind}
               data-x={st.x.toFixed(1)}
               data-half={half.toFixed(1)}
               data-door-x={v.door.toFixed(1)}
@@ -293,9 +341,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
               data-van-row={row}
               style={{ transform: `translate(${st.x.toFixed(1)}px, ${y.toFixed(1)}px)`, transition: VAN_MOVE }}
             >
-              <g transform={`scale(${(st.dir * vanK(u)).toFixed(3)} ${vanK(u).toFixed(3)})`}>
-                <Van sky={sky} lights={lights} ladder={ladderOnRoof} open={open} />
-              </g>
+              <g transform={`scale(${(st.dir * k).toFixed(3)} ${k.toFixed(3)})`}>{art}</g>
             </g>
           ),
         });
@@ -486,9 +532,10 @@ function walkAt(path: readonly Pt[], q: number, fallback: 1 | -1): Pt & { dir: 1
 // Profondeur de dessin d'une équipe de la chaussée : devant son couloir et sa place.
 const streetDepth = (item: DecorItem): number => Math.max(AISLE, item.lane ? LANE_BARRIER_DEPTH[item.lane] : STAND_DEPTH + 3) + 0.5;
 
-// Équipe à pied : les deux ouvriers, plus ce qui est dessiné derrière eux (échelle) et devant eux (charge portée). Même
-// structure pour l'équipe qui descend de la camionnette : React garde les mêmes nœuds et la transition les fait glisser.
-type FootCrew = { back: ReactNode; a: Worker; b: Worker; front: ReactNode };
+// Équipe à pied : les deux ouvriers (un seul pour le vélo porteur : `b` null), plus ce qui est dessiné derrière eux (échelle)
+// et devant eux (charge portée). Même structure pour l'équipe qui descend du véhicule : React garde les mêmes nœuds et la
+// transition les fait glisser.
+type FootCrew = { back: ReactNode; a: Worker; b: Worker | null; front: ReactNode };
 
 function crewNodes(inp: CrewInput): Drawn[] {
   const eq = itemEquipment(inp.set, inp.item);
@@ -512,17 +559,17 @@ const footNodes = (c: FootCrew, inp: Pick<CrewInput, 'outfits' | 'sky' | 'rainy'
   return (
     <>
       {c.back}
-      <WorkerNode w={c.b} outfit={inp.outfits[1]!} inp={inp} k={k} id="b" />
+      {c.b && <WorkerNode w={c.b} outfit={inp.outfits[1]!} inp={inp} k={k} id="b" />}
       <WorkerNode w={c.a} outfit={inp.outfits[0]!} inp={inp} k={k} id="a" />
       {c.front}
     </>
   );
 };
 
-// Ouvriers qui descendent de la camionnette (du centre de sa carrosserie, où ils sont cachés, jusqu'à leur place au début du
-// premier créneau) ou y remontent (de leur place à la fin du dernier créneau jusqu'au centre). Positions de départ et
-// d'arrivée tirées de la géométrie même de l'équipe : aucun saut au passage. Toujours dans la partie `crew` (avant la
-// camionnette, qui les cache).
+// Ouvriers qui descendent du véhicule (du centre de la caisse de la camionnette, de la cabine du camion plateau, où ils sont
+// cachés, ou de la selle du vélo porteur, jusqu'à leur place au début du premier créneau) ou y remontent (de leur place à la
+// fin du dernier créneau jusque-là). Positions de départ et d'arrivée tirées de la géométrie même de l'équipe : aucun saut au
+// passage. Toujours dans la partie `crew` (avant le véhicule, qui les cache).
 type BoardInput = Omit<CrewInput, 'item' | 'step' | 'progress' | 'stepFrom' | 'stepTo'> & { visit: VanVisit; boarding: boolean; q: number };
 function vanCrewNode(b: BoardInput): Drawn | null {
   const foot = orderOf(b.set, b.removing).filter((i) => itemEquipment(b.set, i) !== 'lift');
@@ -532,7 +579,7 @@ function vanCrewNode(b: BoardInput): Drawn | null {
   const inp: CrewInput = { ...b, item, step: b.boarding ? 'leave' : 'arrive', progress: b.boarding ? 1 : 0, stepFrom: b.abs, stepTo: b.abs, home };
   const eq = itemEquipment(b.set, item);
   const edge = eq === 'ladder' ? ladderCrew(inp) : handCrew(inp);
-  const center = b.visit.park;
+  const center = b.van ? b.visit.park + b.visit.dir * SPEC[b.van.kind].cab * b.van.k : b.visit.park;
   // Ils passent la plus grande part de la descente (de la remontée) cachés dans la carrosserie, puis gagnent l'arrière.
   const k = b.boarding ? Math.min(1, b.q / 0.6) : Math.max(0, (b.q - 0.4) / 0.6);
   const move = (w: Worker): Worker => {
@@ -542,7 +589,7 @@ function vanCrewNode(b: BoardInput): Drawn | null {
     return { x, y, dir, pose: 'walk' };
   };
   const attrs = { 'data-crew': b.set.id, 'data-van-crew': b.boarding ? 'board' : 'alight', 'data-removing': b.removing ? 'true' : 'false' };
-  return { part: 'crew', node: <g key={`${b.set.id}-crew`} {...attrs}>{footNodes({ back: null, a: move(edge.a), b: move(edge.b), front: null }, b)}</g> };
+  return { part: 'crew', node: <g key={`${b.set.id}-crew`} {...attrs}>{footNodes({ back: null, a: move(edge.a), b: edge.b && move(edge.b), front: null }, b)}</g> };
 }
 
 type Worker = { x: number; y: number; dir: 1 | -1; pose: CrewPose; held?: ReactNode };
@@ -558,36 +605,39 @@ function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp:
   );
 }
 
+// Élément porté (`set/item`) et d'où il vient : `hands` (tenu), ou le véhicule où il est encore à moitié.
+const loadAttrs = (inp: Pick<CrewInput, 'set' | 'item'>, by: string): Record<string, string> => ({ 'data-load-item': `${inp.set.id}/${inp.item.id}`, 'data-carried': by });
 // Petit drapeau tenu à bout de bras (roulé ou déplié).
-const heldFlag = (inp: CrewInput, dir: 1 | -1, up: boolean): ReactNode => {
+const heldFlag = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
   const u = inp.metrics.unit;
   return (
-    <g data-held-flag="" transform={`translate(${(dir * 3 * u).toFixed(2)} ${(-(up ? 22 : 13) * u).toFixed(2)}) scale(${(dir * 0.7 * u).toFixed(3)} ${(0.7 * u).toFixed(3)})`}>
+    <g data-held-flag="" {...loadAttrs(inp, by)} transform={`translate(${(dir * 3 * u).toFixed(2)} ${(-(up ? 22 : 13) * u).toFixed(2)}) scale(${(dir * 0.7 * u).toFixed(3)} ${(0.7 * u).toFixed(3)})`}>
       <line x1={0} y1={0} x2={0} y2={-9} stroke={inp.sky.daylight < 0.3 ? '#3A3228' : '#6B5B4A'} strokeWidth={0.8} />
       <g transform="translate(0 -9)"><FlagArt sky={inp.sky} w={6} h={4} /></g>
     </g>
   );
 };
 // Toile de l'auvent roulée, tenue à la main (au bout du bras levé en haut de l'échelle).
-const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean): ReactNode => {
+const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
   const u = inp.metrics.unit;
   return (
-    <g transform={`translate(${(dir * 3 * u).toFixed(2)} ${(-(up ? 22 : 13) * u).toFixed(2)}) scale(${(dir * 0.8 * u).toFixed(3)} ${(0.8 * u).toFixed(3)})`}>
+    <g {...loadAttrs(inp, by)} transform={`translate(${(dir * 3 * u).toFixed(2)} ${(-(up ? 22 : 13) * u).toFixed(2)}) scale(${(dir * 0.8 * u).toFixed(3)} ${(0.8 * u).toFixed(3)})`}>
       <HeldRoll sky={inp.sky} />
     </g>
   );
 };
 
 // Pièce de la scène tenue par l'ouvrier de la nacelle : tronçon de treillis (ossature) ou projecteur.
-const heldPiece = (inp: CrewInput, dir: 1 | -1, up: boolean): ReactNode => {
+const heldPiece = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
   const u = inp.metrics.unit;
   const t = `translate(${(dir * 3 * u).toFixed(2)} ${(-(up ? 22 : 13) * u).toFixed(2)}) scale(${(dir * 0.8 * u).toFixed(3)} ${(0.8 * u).toFixed(3)})`;
-  return <g transform={t}>{inp.item.kind === 'stage-frame' ? <HeldTruss sky={inp.sky} /> : <HeldSpot sky={inp.sky} />}</g>;
+  return <g {...loadAttrs(inp, by)} transform={t}>{inp.item.kind === 'stage-frame' ? <HeldTruss sky={inp.sky} /> : <HeldSpot sky={inp.sky} />}</g>;
 };
 
-// Échelle : l'équipe la descend de la galerie de la camionnette, la porte à l'épaule en marchant, l'appuie (inclinée) contre la
-// façade, centrée sur la porte, ou contre le bout de l'auvent d'un stand ; l'un monte, l'autre la tient en bas. Au retour, ils
-// la remontent sur la galerie. Le drapeau (ou la toile de l'auvent) voyage à la main.
+// Échelle : l'équipe la prend sur son véhicule (galerie de la camionnette, porte-bagages du vélo porteur, flanc du camion
+// plateau), la porte à l'épaule en marchant, l'appuie (inclinée) contre la façade, centrée sur la porte, ou contre le bout de
+// l'auvent d'un stand ; l'un monte, l'autre la tient en bas. Au retour, ils l'y rangent. Le drapeau (sorti de la caisse du vélo)
+// ou la toile de l'auvent (sortie du plateau) voyage à la main. Vélo porteur : un seul ouvrier, l'échelle portée en son milieu.
 const LADDER_TILT = 12;
 function ladderCrew(inp: CrewInput): FootCrew {
   const m = inp.metrics;
@@ -616,15 +666,17 @@ function ladderCrew(inp: CrewInput): FootCrew {
   const bx = lx - lean * 8 * u;
   const top = foot - 14 * u;
   const p = inp.progress;
-  const object = (on: boolean, dir: 1 | -1, up: boolean): ReactNode => (on ? (awning ? heldRoll(inp, dir, up) : heldFlag(inp, dir, up)) : null);
+  const solo = inp.set.transport === 'cargo-bike';
+  const tag = TAG[inp.set.transport];
+  const object = (on: boolean, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (on ? (awning ? heldRoll(inp, dir, up, by) : heldFlag(inp, dir, up, by)) : null);
   let a: Worker;
-  let b: Worker;
+  let b: Worker | null;
   let ladder: ReactElement;
   // Échelle couchée sur l'épaule : de `ax` (devant) vers l'arrière, à la hauteur `ly`.
   // Même structure de transformation (CSS, avec la transition des ouvriers) portée, dressée ou couchée : l'échelle glisse avec
   // ceux qui la tiennent d'un rendu à la minute au suivant.
   const ladderStyle = (x: number, y: number, dir: 1 | -1, deg: number): CSSProperties => ({ transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${dir}, 1) rotate(${deg.toFixed(1)}deg)`, transition: MOVE });
-  const carried = (ax: number, dir: 1 | -1, ly: number, by: 'hands' | 'van' = 'hands'): ReactElement => (
+  const carried = (ax: number, dir: 1 | -1, ly: number, by = 'hands'): ReactElement => (
     <g data-ladder="" data-ladder-state="carried" data-carried={by} data-x={(ax - (dir * h) / 2).toFixed(1)} style={ladderStyle(ax, ly, dir, -90)}>
       <LadderSprite height={h} />
     </g>
@@ -642,26 +694,32 @@ function ladderCrew(inp: CrewInput): FootCrew {
       const st = tripStage(inp.step, p, true);
       const work = { x: lx, y: foot };
       const dirW = arrive ? toward : ((-toward) as 1 | -1);
-      // L'échelle portée s'étend derrière celui de devant : si l'équipe s'éloigne de la camionnette, il part une échelle plus loin.
+      // L'échelle portée s'étend derrière celui de devant (seul : de part et d'autre de lui) : si l'équipe s'éloigne du véhicule,
+      // elle part une échelle (une demi-échelle) plus loin.
       const away = inp.van ? ((-inp.van.dir) as 1 | -1) : dirW;
-      const startX = inp.home.x + (dirW === away ? away * (h - 3 * u) : 0);
+      const behind = solo ? h / 2 : h - 3 * u;
+      const startX = inp.home.x + (dirW === away ? away * behind : 0);
       const path = arrive ? footPath(inp, work, startX) : footPath(inp, work, startX).reverse();
       const pos = walkAt(path, st.q, dirW);
       // Le drapeau (la toile) part avec l'équipe à la pose, revient avec elle à la dépose.
       const withObject = arrive ? !inp.removing : inp.removing;
       if (st.atVan && inp.van) {
-        // À l'arrière de la camionnette : ils descendent l'échelle de la galerie (ou l'y remontent), bras levés.
+        // À l'arrière du véhicule : ils prennent l'échelle rangée dessus (ou l'y rangent), bras levés ; le drapeau (la toile)
+        // sort de la caisse (du plateau) ou y rentre en même temps.
         const g = inp.van;
         const face = sgn(g.park - pos.x, g.dir);
-        const roofX = g.park + g.dir * VAN_LADDER.x * g.k;
-        const roofY = g.baseY + VAN_LADDER.y * g.k;
-        a = { x: pos.x, y: pos.y, dir: face, pose: 'reach', held: object(withObject, dirW, false) };
-        b = { x: lerp(pos.x - face * 6 * u, pos.x - dirW * (h - 3 * u), st.k), y: pos.y, dir: face, pose: 'reach' };
-        ladder = carried(lerp(roofX + (dirW * h) / 2, pos.x, st.k), dirW, lerp(roofY, pos.y - 20 * u, st.k), st.k < 0.15 ? 'van' : 'hands');
+        const L = SPEC[g.kind].ladder;
+        const roofX = g.park + g.dir * L.x * g.k;
+        const roofY = g.baseY + L.y * g.k;
+        const by = st.k < 0.15 ? tag : 'hands';
+        a = { x: pos.x, y: pos.y, dir: face, pose: 'reach', held: object(withObject, dirW, false, by) };
+        b = solo ? null : { x: lerp(pos.x - face * 6 * u, pos.x - dirW * (h - 3 * u), st.k), y: pos.y, dir: face, pose: 'reach' };
+        const front = solo ? pos.x + (dirW * h) / 2 : pos.x;
+        ladder = carried(lerp(roofX + (dirW * h) / 2, front, st.k), dirW, lerp(roofY, pos.y - 20 * u, st.k), by);
       } else {
         a = { x: pos.x, y: pos.y, dir: pos.dir, pose: 'carry', held: object(withObject, pos.dir, false) };
-        b = { x: pos.x - pos.dir * (h - 3 * u), y: pos.y, dir: pos.dir, pose: 'carry' };
-        ladder = carried(pos.x, pos.dir, pos.y - 20 * u);
+        b = solo ? null : { x: pos.x - pos.dir * (h - 3 * u), y: pos.y, dir: pos.dir, pose: 'carry' };
+        ladder = carried(solo ? pos.x + (pos.dir * h) / 2 : pos.x, pos.dir, pos.y - 20 * u);
       }
       break;
     }
@@ -670,8 +728,8 @@ function ladderCrew(inp: CrewInput): FootCrew {
       // On dresse l'échelle bras levés ; on la couche bras vers l'avant et le bas. L'autre garde le drapeau (la toile).
       const raise = inp.step === 'ladder-up' ? p : 1 - p;
       const holds = inp.step === 'ladder-up' ? !inp.removing : inp.removing;
-      a = { x: lx + lean * 4 * u, y: foot, dir: (-lean) as 1 | -1, pose: inp.step === 'ladder-up' ? 'reach' : 'hold' };
-      b = { x: bx, y: foot, dir: lean, pose: 'stand', held: object(holds, lean, false) };
+      a = { x: lx + lean * 4 * u, y: foot, dir: (-lean) as 1 | -1, pose: inp.step === 'ladder-up' ? 'reach' : 'hold', held: solo ? object(holds, (-lean) as 1 | -1, false) : undefined };
+      b = solo ? null : { x: bx, y: foot, dir: lean, pose: 'stand', held: object(holds, lean, false) };
       ladder = standing(90 * (1 - raise));
       break;
     }
@@ -682,7 +740,7 @@ function ladderCrew(inp: CrewInput): FootCrew {
       // L'objet est à la main pendant la montée et la fixation (pose) ; pendant la descente (dépose).
       const holds = inp.removing ? inp.step === 'descend' : inp.step === 'climb' || inp.step === 'fix';
       a = { x: along(y), y, dir: lean, pose: onTop ? 'reach' : 'climb', held: object(holds, lean, true) };
-      b = { x: bx, y: foot, dir: lean, pose: 'hold' };
+      b = solo ? null : { x: bx, y: foot, dir: lean, pose: 'hold' };
       ladder = standing(0);
     }
   }
@@ -713,8 +771,8 @@ function handCrew(inp: CrewInput): FootCrew {
   const placedY = lane ? laneBarrierY(m, lane) : barrier ? barrierY(m) : counter ? standBase(m) : stageBase(m);
   const p = inp.progress;
   // Charge : placée par une transformation CSS avec la même transition que les porteurs (elle glisse avec eux).
-  const load = (x: number, base: number, tilt: number, by: 'hands' | 'van'): ReactElement => {
-    const attrs = { 'data-carried-item': barrier ? 'barrier' : counter ? 'counter' : 'plank', 'data-carried': by, 'data-x': x.toFixed(1) };
+  const load = (x: number, base: number, tilt: number, by: string): ReactElement => {
+    const attrs = { 'data-carried-item': barrier ? 'barrier' : counter ? 'counter' : 'plank', ...loadAttrs(inp, by), 'data-x': x.toFixed(1) };
     const k = barrierK(u);
     const shape = barrier
       ? `matrix(${lerp(k, 0.3 * k, tilt).toFixed(3)}, ${lerp(0, 0.72 * k, tilt).toFixed(3)}, 0, ${k.toFixed(3)}, 0, 0)`
@@ -750,7 +808,7 @@ function handCrew(inp: CrewInput): FootCrew {
       const inside = inp.street ? g.park - g.dir * (g.half + half + u) : g.park - g.dir * (g.half - half * 0.4);
       a = { x: pos.x + g.dir * off, y: pos.y, dir: g.dir, pose: 'hold' };
       b = { x: pos.x - g.dir * off, y: pos.y, dir: g.dir, pose: 'hold' };
-      carried = load(lerp(inside, pos.x, st.k), pos.y + carryDy, 0, st.k < 0.15 ? 'van' : 'hands');
+      carried = load(lerp(inside, pos.x, st.k), pos.y + carryDy, 0, st.k < 0.15 ? TAG[inp.set.transport] : 'hands');
     } else if (loaded) carried = load(pos.x, pos.y + carryDy, 0, 'hands');
   } else {
     // place : face à face de part et d'autre de l'objet ; on le descend jusqu'au sol (pose) ou on le soulève (dépose).
@@ -860,13 +918,47 @@ function liftCrew(inp: CrewInput): ReactElement {
   const ground: Worker | null = g.inside
     ? null
     : { x: gx, y: gy, dir: walking ? sgn(inp.step === 'deploy' ? spot - cab : cab - spot, g.dir) : lamp ? -1 : g.dir, pose: walking ? 'walk' : 'stand' };
-  const waiting: Worker | null = g.inside || g.inBucket ? null : { x: g.here + rest.x, y: gy, dir: g.dir, pose: 'stand' };
+  // La pièce à poser est entreposée (city/install.ts, `inVehicle`) : drapeaux dans la caisse du plateau du camion élévateur,
+  // pièces de la scène sur le camion plateau garé tout près. Au déploiement (pose), l'ouvrier de la nacelle va l'y prendre
+  // (LIFT_FETCH) et revient sous la nacelle ; au repli (dépose), il va l'y ranger et revient.
+  const W0 = g.here + rest.x;
+  const own = inp.set.transport === 'lift' || !inp.van;
+  const F = own ? g.here + g.dir * LIFT_CRATE.x * kv : inp.home.x;
+  const tag = own ? 'lift' : TAG[inp.set.transport];
+  const fetching = (inp.step === 'deploy' && !inp.removing) || (inp.step === 'stow' && inp.removing);
+  let waiting: Worker | null = g.inside || g.inBucket ? null : { x: W0, y: gy, dir: g.dir, pose: 'stand' };
+  if (waiting && fetching) {
+    const p = inp.progress;
+    const piece = (dir: 1 | -1, by: string): ReactNode => (lamp ? heldFlag(inp, dir, false, by) : heldPiece(inp, dir, false, by));
+    // Va (mains vides à la pose, chargé à la dépose), prend ou range, revient (chargé à la pose, mains vides à la dépose).
+    // Il sort de la cabine (au début de l'étape) et y rentre (à la fin) sous la nacelle : il attend là un instant.
+    const go = 0.1;
+    const back = 0.85;
+    if (p < LIFT_FETCH.from) {
+      const dir = sgn(F - W0, g.dir);
+      const q = Math.max(0, (p - go) / (LIFT_FETCH.from - go));
+      waiting = { x: lerp(W0, F, q), y: gy, dir, pose: q > 0 ? 'walk' : 'stand', held: inp.removing ? piece(dir, 'hands') : undefined };
+    } else if (p < LIFT_FETCH.to) {
+      const q = (p - LIFT_FETCH.from) / (LIFT_FETCH.to - LIFT_FETCH.from);
+      const out = inp.removing ? 1 - q : q; // 0 : dans le véhicule, 1 : en main
+      const dir = sgn(F - W0, g.dir);
+      waiting = { x: F, y: gy, dir, pose: 'reach', held: piece(dir, out < 0.5 ? tag : 'hands') };
+    } else {
+      const dir = sgn(W0 - F, g.dir);
+      const q = Math.min(1, (p - LIFT_FETCH.to) / (back - LIFT_FETCH.to));
+      waiting = { x: lerp(F, W0, q), y: gy, dir: q < 1 ? dir : g.dir, pose: q < 1 ? 'walk' : 'stand', held: inp.removing ? undefined : piece(dir, 'hands') };
+    }
+  }
+  // Caisse de drapeaux sur le plateau du camion élévateur : ceux qui restent à poser, ou déjà rangés.
+  const cargo = inp.set.transport === 'lift'
+    ? <FlagCrate sky={inp.sky} tag="lift" flags={inp.set.items.filter((i) => inVehicle(inp.set, i, inp.abs)).map((i) => `${inp.set.id}/${i.id}`)} />
+    : null;
   return (
     <>
       {ground && <WorkerNode w={ground} outfit={inp.outfits[1]!} inp={inp} k={kp} />}
       {waiting && <WorkerNode w={waiting} outfit={inp.outfits[0]!} inp={inp} k={kp} />}
-      <g data-lift-truck="" data-x={g.tx.toFixed(1)} data-park={g.here.toFixed(1)} style={{ transform: `translate(${g.tx.toFixed(1)}px, ${g.ty.toFixed(1)}px)`, transition: MOVE }}>
-        <LiftTruck sky={inp.sky} still={false} dir={g.dir} k={kv} u={u} outrigger={g.outrigger} bucket={bucket} rider={rider} beacon />
+      <g data-lift-truck="" data-x={g.tx.toFixed(1)} data-half={(LIFT_HALF * kv).toFixed(1)} data-park={g.here.toFixed(1)} style={{ transform: `translate(${g.tx.toFixed(1)}px, ${g.ty.toFixed(1)}px)`, transition: MOVE }}>
+        <LiftTruck sky={inp.sky} still={false} dir={g.dir} k={kv} u={u} outrigger={g.outrigger} bucket={bucket} rider={rider} beacon cargo={cargo} />
       </g>
     </>
   );

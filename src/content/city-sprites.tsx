@@ -137,7 +137,7 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false, 
 // ---------- Cycliste assis (repère du vélo : il est dessiné à l'échelle des véhicules, ≈ 0,65 de celle d'un passant) ----------
 const DEFAULT_RIDER: Outfit = { skin: '#E0A97F', hair: 'short', hairColor: '#3B2A1E', hatColor: '#3B6FD6', top: 'jacket', topColor: '#3B6FD6', bottom: 'jeans', bottomColor: '#243044', accessory: 'none', accessoryColor: '#5A6B7A' };
 
-function Cyclist({ outfit: o, sky }: { outfit: Outfit; sky: Sky }): ReactElement {
+export function Cyclist({ outfit: o, sky }: { outfit: Outfit; sky: Sky }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const covered = o.hair === 'cap' || o.hair === 'beanie';
   return (

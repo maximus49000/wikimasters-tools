@@ -13,7 +13,7 @@ const BEER = '#E9B533';
 const FOAM = '#FBF6E6';
 
 // Fût de bière (cylindre d'acier), pieds à y = 0.
-function Keg({ x, sky }: { x: number; sky: Sky }): ReactElement {
+export function Keg({ x, sky }: { x: number; sky: Sky }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (
     <g data-keg="">
@@ -96,13 +96,21 @@ export function StandAwning({ sky }: { sky: Sky }): ReactElement {
   );
 }
 
-// Comptoir porté à deux (sans tireuse ni gobelets : on les pose après), centre en x = 0, bas à y = 0.
+// Comptoir porté à deux (sans tireuse ni gobelets : on les pose après), centre en x = 0, bas à y = 0 ; ses deux fûts voyagent
+// couchés sur le zinc (sortis avec lui du camion plateau, posés à son pied).
 export function CarriedCounter({ sky }: { sky: Sky }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (
     <g data-carried-counter="">
       <rect x={-26} y={-12} width={52} height={12} fill={t(WOOD)} />
       <rect x={-27.5} y={-13.6} width={55} height={2} rx={0.6} fill={t(WOOD_TOP)} />
+      {[-12, 2].map((x) => (
+        <g key={x} data-carried-keg="">
+          <rect x={x} y={-19.6} width={8.5} height={6} rx={1.2} fill={t(STEEL)} />
+          <rect x={x + 2.6} y={-19.6} width={0.9} height={6} fill={t('#6E7680')} />
+          <rect x={x + 5.6} y={-19.6} width={0.9} height={6} fill={t('#6E7680')} />
+        </g>
+      ))}
     </g>
   );
 }

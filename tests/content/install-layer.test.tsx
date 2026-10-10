@@ -270,14 +270,17 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
   };
   const u = metrics.unit;
   const WALK = 24 * WALK_PACE * 60 * u; // px par minute : le passant le plus rapide (hors joggeurs)
-  const check = (date: YMD, setId: string, from: number, to: number, removing: boolean): void => {
-    const set = decorSetsFor(date, W, H, SEED).find((s) => s.id === setId)!;
+  // `spans` : suite continue de (date, de, à) — un démontage de nuit commence la veille (le camion plateau arrive avant minuit).
+  const check = (spans: readonly (readonly [YMD, number, number])[], setId: string, removing: boolean): void => {
+    const set = decorSetsFor(spans[0]![0], W, H, SEED).find((s) => s.id === setId)!;
     const fw = footWindow(set, removing)!;
-    const day = dayNumber(date);
+    // Vélo porteur : un seul ouvrier.
+    const crewSize = set.transport === 'cargo-bike' ? 1 : 2;
     let prev: Snap | null = null;
     let appeared = 0;
     let atDoor = false;
-    for (let m = from; m < to; m++) {
+    for (const [date, from, to] of spans) for (let m = from; m < to; m++) {
+      const day = dayNumber(date);
       const s = snap(date, m, setId);
       const tag = `${setId} ${date.d}/${date.m} ${m}`;
       expect(s.opacity, `${tag} : opacité`).toBe(0);
@@ -305,7 +308,7 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
       if (absMinute(day, m) === fw.first) {
         // Au début du créneau : à l'arrière de la camionnette, portière ouverte (les deux porteurs et leur charge, ou l'échelle
         // qu'ils descendent de la galerie, juste derrière la carrosserie).
-        expect(s.workers.size, tag).toBe(2);
+        expect(s.workers.size, tag).toBe(crewSize);
         for (const w of s.workers.values()) expect(Math.abs(w.x - s.van!.door), `${tag} : à la portière`).toBeLessThanOrEqual(s.van!.half + 45 * u);
         atDoor = true;
       }
@@ -317,18 +320,18 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
     expect(prev!.workers.size).toBe(0);
   };
   it('barrières du 14/7 : pose de 7 h à 8 h, dépose de 12 h 30 à 13 h 30', () => {
-    check(D14, 'barriers-bastille', 380, 520, false);
-    check(D14, 'barriers-bastille', 710, 850, true);
+    check([[D14, 380, 520]], 'barriers-bastille', false);
+    check([[D14, 710, 850]], 'barriers-bastille', true);
   });
-  it('plancher de la scène : montage le 21/6, démontage de nuit le 22/6', () => {
-    check(MUSIC, 'stage-music-0', 500, 720, false);
-    check(MUSIC_NEXT, 'stage-music-0', 120, 290, true);
-  });
-  it('drapeaux d entrée à l échelle, 13/7 (début et fin de la journée)', () => {
+  it('plancher de la scène (camion plateau, garé tout le montage) : montage le 21/6, démontage de nuit le 22/6', () => {
+    check([[MUSIC, 500, 1000]], 'stage-music-0', false);
+    check([[MUSIC, 1400, 1440], [MUSIC_NEXT, 0, 290]], 'stage-music-0', true);
+  }, 60000);
+  it('drapeaux d entrée à l échelle (vélo porteur, un ouvrier), 13/7 (début et fin de la journée)', () => {
     const set = decorSetsFor(D13, W, H, SEED).find((s) => s.id === 'doors-bastille')!;
     expect(footWindow(set, false)).not.toBeNull();
-    check(D13, 'doors-bastille', 500, 1060, false);
-  });
+    check([[D13, 500, 1060]], 'doors-bastille', false);
+  }, 60000);
   it('camion élévateur : arrive et repart hors champ, ses ouvriers sortent de la cabine et y rentrent', () => {
     const scan = (date: YMD, setId: string, from: number, to: number, arrives: boolean, leaves: boolean): void => {
       let prev: { x: number; workers: number[] } | null = null;
@@ -494,5 +497,130 @@ describe('branchement dans la vie de la ville', () => {
   });
   it('14/7 à midi : drapeaux d’entrée posés', () => {
     expect(count(mount(D14, 720), '[data-decor-item][data-decor-kind="door-flag"]')).toBe(FLAG_DOORS);
+  });
+});
+
+describe('décors entreposés dans un véhicule de transport (vélo porteur, camion plateau, camionnette)', () => {
+  type St = 'none' | 'stored' | 'carried' | 'posed';
+  type Veh = { x: number; half: number };
+  const unmountAll = (): void => {
+    for (const { root, host } of mounted.splice(0)) {
+      act(() => root.unmount());
+      host.remove();
+    }
+  };
+  // État de chaque élément (`set/item`) à cette minute : posé, porté (`data-load-item`), entreposé dans un véhicule
+  // (`data-stored-item`), sinon absent de la scène ; et le véhicule qui le contient.
+  const statesAt = (date: YMD, m: number): { st: Map<string, St>; veh: Map<string, Veh> } => {
+    const c = layer(date, m);
+    const st = new Map<string, St>();
+    const veh = new Map<string, Veh>();
+    const tag = `${date.d}/${date.m} ${m}`;
+    for (const e of c.querySelectorAll('[data-stored-item]')) {
+      const key = e.getAttribute('data-stored-item')!;
+      const v = e.closest('[data-install-van], [data-lift-truck]');
+      expect(v, `${tag} ${key} entreposé hors véhicule`).not.toBeNull();
+      expect(['van', 'bike', 'truck', 'lift']).toContain(e.getAttribute('data-carried'));
+      expect(st.has(key), `${tag} ${key} deux fois`).toBe(false);
+      st.set(key, 'stored');
+      veh.set(key, { x: Number(v!.getAttribute('data-x')), half: Number(v!.getAttribute('data-half')) });
+    }
+    for (const e of c.querySelectorAll('[data-load-item]')) {
+      const key = e.getAttribute('data-load-item')!;
+      expect(st.has(key), `${tag} ${key} porté et ${st.get(key)}`).toBe(false);
+      expect(e.closest('[data-crew]'), `${tag} ${key} porté sans équipe`).not.toBeNull();
+      st.set(key, 'carried');
+    }
+    for (const e of c.querySelectorAll('[data-decor-item]')) {
+      const key = `${e.getAttribute('data-decor-set')}/${e.getAttribute('data-decor-item')}`;
+      expect(st.has(key), `${tag} ${key} posé et ${st.get(key)}`).toBe(false);
+      st.set(key, 'posed');
+    }
+    unmountAll();
+    return { st, veh };
+  };
+  const off = (v: Veh | undefined): boolean => !!v && (v.x + v.half < 0 || v.x - v.half > W);
+  const ALLOWED = new Set(['none>stored', 'stored>none', 'stored>carried', 'carried>stored', 'carried>posed', 'posed>carried']);
+  // Balayage minute par minute d'une suite continue de (date, minute) : un élément n'est jamais visible hors du décor posé sans
+  // être porté ou dans un véhicule ; il n'entre en scène et n'en sort que dans un véhicule hors champ.
+  const sweep = (spans: readonly (readonly [YMD, number, number])[]): { seq: Map<string, St[]>; moves: number } => {
+    const seq = new Map<string, St[]>();
+    let prev: { st: Map<string, St>; veh: Map<string, Veh> } | null = null;
+    let moves = 0;
+    let n = 0;
+    for (const [date, from, to] of spans) {
+      for (let m = from; m < to; m++) {
+        const now = statesAt(date, m);
+        const keys = new Set([...now.st.keys(), ...(prev?.st.keys() ?? [])]);
+        for (const key of keys) {
+          const a: St = prev ? prev.st.get(key) ?? 'none' : 'none';
+          const b: St = now.st.get(key) ?? 'none';
+          if (!seq.has(key)) seq.set(key, Array.from({ length: n }, () => 'none' as St));
+          const tag = `${date.d}/${date.m} ${m} ${key} : ${a} → ${b}`;
+          if (prev && a !== b) {
+            moves++;
+            expect(ALLOWED.has(`${a}>${b}`), tag).toBe(true);
+            if (a === 'none') expect(off(now.veh.get(key)), `${tag} (véhicule dans le champ)`).toBe(true);
+            if (b === 'none') expect(off(prev.veh.get(key)), `${tag} (véhicule dans le champ)`).toBe(true);
+          }
+        }
+        for (const [key, list] of seq) list.push(now.st.get(key) ?? 'none');
+        n++;
+        prev = now;
+      }
+    }
+    return { seq, moves };
+  };
+  // Pose : chaque élément posé a d'abord été entreposé ; dépose : il est rangé avant de quitter la scène avec le véhicule.
+  const checkStory = (seq: Map<string, St[]>): number => {
+    let posed = 0;
+    for (const [key, list] of seq) {
+      const firstPosed = list.indexOf('posed');
+      if (firstPosed < 0) continue;
+      posed++;
+      if (list[0] === 'none') expect(list.slice(0, firstPosed).includes('stored'), `${key} posé sans avoir été dans un véhicule`).toBe(true);
+      const lastPosed = list.lastIndexOf('posed');
+      if (list[list.length - 1] === 'none') expect(list.slice(lastPosed).includes('stored'), `${key} parti sans être rangé`).toBe(true);
+    }
+    return posed;
+  };
+  it('13/7 : drapeaux d entrée sortis du vélo porteur, drapeaux de lampadaires pris sur le plateau du camion élévateur', () => {
+    const { seq, moves } = sweep([[D13, 500, 1080]]);
+    expect(moves).toBeGreaterThan(0);
+    expect(checkStory(seq)).toBe(LAMPS + FLAG_DOORS);
+  }, 240000);
+  it('14/7 : barrières sorties de la camionnette et rangées', () => {
+    const { seq } = sweep([[D14, 380, 880]]);
+    expect(checkStory(seq)).toBeGreaterThan(0);
+  }, 240000);
+  it('15/7 : tout est rangé dans son véhicule avant son départ', () => {
+    const { seq } = sweep([[D15, 500, 1080]]);
+    expect(checkStory(seq)).toBe(LAMPS + FLAG_DOORS);
+  }, 240000);
+  it('21/6 : scène et stands sortis du camion plateau, barrières de la camionnette', () => {
+    const { seq } = sweep([[MUSIC, 500, 1000]]);
+    expect(checkStory(seq)).toBeGreaterThan(5);
+  }, 240000);
+  it('nuit du 21 au 22/6 : la dépose range tout dans les camions plateaux et la camionnette', () => {
+    const { seq } = sweep([[MUSIC, 1380, 1440], [MUSIC_NEXT, 0, 330]]);
+    expect(checkStory(seq)).toBeGreaterThan(5);
+  }, 240000);
+
+  it('vélo porteur pendant la pose des drapeaux d entrée, camion plateau pendant le montage de la scène', () => {
+    const bike = layer(D13, 14 * 60);
+    expect(count(bike, '[data-install-van="doors-bastille"] [data-cargo-bike]')).toBe(1);
+    expect(count(bike, '[data-install-van="doors-bastille"][data-transport="cargo-bike"]')).toBe(1);
+    expect(count(bike, '[data-van]')).toBe(0);
+    const truck = layer(MUSIC, 10 * 60);
+    expect(count(truck, '[data-install-van="stage-music-0"] [data-flatbed]')).toBe(1);
+    // Les pièces encore à poser sont sur le plateau.
+    expect(count(truck, '[data-install-van="stage-music-0"] [data-stored-item]')).toBeGreaterThan(0);
+    const stands = layer(MUSIC, 13 * 60);
+    expect(count(stands, '[data-install-van="beer-stands-music"] [data-flatbed]')).toBe(1);
+    expect(count(stands, '[data-install-van="barriers-music"] [data-van]')).toBe(1);
+  });
+  it('drapeaux de lampadaires : une caisse sur le plateau du camion élévateur', () => {
+    const c = layer(D13, 9 * 60 + 5);
+    expect(count(c, '[data-crew="lamps-bastille"] [data-lift-truck] [data-stored-item]')).toBeGreaterThan(0);
   });
 });

@@ -8,23 +8,29 @@
 export const VAN_TIMING = { pause: 1, alight: 2, board: 2 } as const;
 // Vitesse de la camionnette (px du monde par minute à l'échelle 1 : multiplier par `unit`).
 export const VAN_SPEED = 120;
+// Véhicules de transport des décors (spec §7.2) et leur vitesse : le vélo porteur roule moins vite que la camionnette, le
+// camion plateau, chargé, un peu moins vite aussi. Même machinerie (arrivée, place, départ) pour les trois.
+export type VehicleKind = 'van' | 'cargo-bike' | 'truck';
+export const TRANSPORT_SPEED: Readonly<Record<VehicleKind, number>> = { van: VAN_SPEED, 'cargo-bike': 90, truck: 100 };
 
 // `park` : centre une fois garée ; `dir` : sens de marche (celui de l'arrivée) ; `door` : portière arrière (x du monde) ;
 // `first` / `last` : début du premier créneau et fin du dernier de l'équipe à pied ; `speed` : px du monde par minute ;
 // `pull` : distance (px) sur laquelle elle quitte la file de circulation pour se ranger contre le trottoir (et l'inverse).
-export type VanVisit = { park: number; dir: 1 | -1; edgeIn: number; edgeOut: number; door: number; first: number; last: number; speed: number; pull: number };
+// `hold` : fenêtre pendant laquelle le véhicule doit rester garé même sans équipe à pied dehors (camion plateau : on y prend
+// des pièces pour le camion élévateur après le dernier créneau à pied, ou on les y range avant le premier) ; null sinon.
+export type VanVisit = { park: number; dir: 1 | -1; edgeIn: number; edgeOut: number; door: number; first: number; last: number; speed: number; pull: number; hold: { from: number; to: number } | null };
 // `lane` : 0 = rangée contre le trottoir, 1 = dans la file de circulation (elle y roule, devant les barrières posées).
 export type VanState = { x: number; dir: 1 | -1; phase: 'arrive' | 'parked' | 'leave'; door: boolean; lane: number };
 export type VanCrew = { phase: 'inside' } | { phase: 'out' } | { phase: 'alight' | 'board'; q: number };
 
-type VisitInput = { park: number; width: number; offstage: number; first: number; last: number; speed: number; door: number; pull?: number };
+type VisitInput = { park: number; width: number; offstage: number; first: number; last: number; speed: number; door: number; pull?: number; hold?: { from: number; to: number } | null };
 
 // `offstage` : distance au-delà du bord où la camionnette est entièrement hors champ ; `door` : distance du centre à la portière.
-export function vanVisit({ park, width, offstage, first, last, speed, door, pull = 0 }: VisitInput): VanVisit {
+export function vanVisit({ park, width, offstage, first, last, speed, door, pull = 0, hold = null }: VisitInput): VanVisit {
   const edgeIn = park < width / 2 ? -offstage : width + offstage;
   const dir: 1 | -1 = edgeIn < park ? 1 : -1;
   const edgeOut = dir > 0 ? width + offstage : -offstage;
-  return { park, dir, edgeIn, edgeOut, door: park - dir * door, first, last, speed, pull };
+  return { park, dir, edgeIn, edgeOut, door: park - dir * door, first, last, speed, pull, hold };
 }
 
 const lerp = (a: number, b: number, p: number): number => a + (b - a) * p;
@@ -34,8 +40,8 @@ const lerp = (a: number, b: number, p: number): number => a + (b - a) * p;
 export function vanSchedule(v: VanVisit): { appear: number; driveIn: number; parked: number; depart: number; driveOut: number; gone: number } {
   const driveIn = Math.abs(v.park - v.edgeIn) / v.speed;
   const driveOut = Math.abs(v.edgeOut - v.park) / v.speed;
-  const parked = v.first - VAN_TIMING.alight - 1 - VAN_TIMING.pause;
-  const depart = v.last + VAN_TIMING.board + 1 + VAN_TIMING.pause;
+  const parked = Math.min(v.first - VAN_TIMING.alight - 1 - VAN_TIMING.pause, v.hold ? v.hold.from - VAN_TIMING.pause : Infinity);
+  const depart = Math.max(v.last + VAN_TIMING.board + 1 + VAN_TIMING.pause, v.hold ? v.hold.to + VAN_TIMING.pause : -Infinity);
   return { appear: parked - driveIn - 1, driveIn, parked, depart, driveOut, gone: depart + driveOut + 2 };
 }
 

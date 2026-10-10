@@ -1,7 +1,8 @@
 import type { ReactElement, ReactNode } from 'react';
+import type { ItemKind } from '../core/library/city/install';
 import type { Outfit } from '../core/library/city/people';
 import type { Sky } from '../core/library/sky';
-import { PersonSprite, tone } from './city-sprites';
+import { Cyclist, PersonSprite, tone } from './city-sprites';
 import type { WorkerPose } from './shop-sprites';
 
 // Décors de fête posés par des équipes et matériel des équipes (spec §7, tâche 10). Repère des sprites : pieds / sol à y = 0,
@@ -233,10 +234,12 @@ export function HeldSpot({ sky }: { sky: Sky }): ReactElement {
 // y = VAN_LADDER.y, 25 unités : à l'échelle de la camionnette, la longueur de celle que l'équipe porte) ; `open` : la
 // portière arrière est ouverte (les ouvriers descendent ou remontent).
 export const VAN_LADDER = { x: -6, y: -28 } as const;
-export function Van({ sky, ladder, lights, open = false }: { sky: Sky; ladder: boolean; lights: boolean; open?: boolean }): ReactElement {
+// `stored` : éléments entreposés dans la caisse fermée (barrières, planches) : repères sans dessin (`data-stored-item`).
+export function Van({ sky, ladder, lights, open = false, stored = [] }: { sky: Sky; ladder: boolean; lights: boolean; open?: boolean; stored?: readonly string[] }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (
     <g data-van="" data-van-open={open ? 'true' : 'false'}>
+      {stored.map((id) => <g key={id} data-stored-item={id} data-carried="van" />)}
       <rect x={-25} y={-24} width={50} height={20} rx={3} fill={t('#ECECEA')} />
       <rect x={-25} y={-13} width={50} height={2.4} fill={t('#E8601C')} />
       {/* Portière arrière ouverte : l'embrasure sombre et le battant rabattu vers l'arrière. */}
@@ -292,9 +295,11 @@ export function liftElbow(p: { x: number; y: number }, b: { x: number; y: number
   return e1.y < e2.y ? e1 : e2;
 }
 
-type LiftProps = { sky: Sky; still: boolean; dir: 1 | -1; k: number; u: number; outrigger: number; bucket: { x: number; y: number }; rider: ReactNode; beacon: boolean };
+// `cargo` : chargement posé sur le plateau, dans le repère du véhicule (caisse de drapeaux `FlagCrate`, posée en LIFT_CRATE).
+type LiftProps = { sky: Sky; still: boolean; dir: 1 | -1; k: number; u: number; outrigger: number; bucket: { x: number; y: number }; rider: ReactNode; beacon: boolean; cargo?: ReactNode };
+export const LIFT_CRATE = { x: -2, y: -12 } as const;
 
-export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, beacon }: LiftProps): ReactElement {
+export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, beacon, cargo = null }: LiftProps): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const yellow = t('#E8B923');
   const p = liftPivot(dir, k);
@@ -319,6 +324,7 @@ export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, bea
         <rect x={16} y={-24} width={16} height={20} rx={2.5} fill={t('#ECECEA')} />
         <rect x={22} y={-21.5} width={8} height={7} fill={t('#CFE4F2')} opacity={0.85} />
         <rect x={-23} y={-18} width={10} height={6} rx={1} fill={yellow} />
+        {cargo && <g transform={`translate(${LIFT_CRATE.x} ${LIFT_CRATE.y})`}>{cargo}</g>}
         <rect x={20} y={-26} width={4} height={2} rx={0.8} fill="#E8601C">
           {beacon && !still && <animate attributeName="opacity" values="1;0.25;1" dur="0.9s" repeatCount="indefinite" />}
         </rect>
@@ -338,6 +344,169 @@ export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, bea
         <rect x={-bw / 2} y={-bh} width={bw} height={bh} rx={0.8 * u} fill={t('#F2F2F0')} stroke={yellow} strokeWidth={0.6 * u} />
         <line x1={-bw / 2} y1={-bh} x2={bw / 2} y2={-bh} stroke={t(STEEL)} strokeWidth={0.7 * u} />
       </g>
+    </g>
+  );
+}
+
+// ---------- Caisse de drapeaux (plateau du camion élévateur, porte-bagages du vélo porteur) ----------
+// Repère : centre du bas de la caisse à (0, 0), unités du véhicule. Un petit drapeau roulé dépasse de la caisse par élément
+// encore entreposé (`data-stored-item`, `data-carried` = `tag`) ; la caisse se vide à mesure qu'on les pose.
+export function FlagCrate({ sky, flags, tag, w = 14 }: { sky: Sky; flags: readonly string[]; tag: string; w?: number }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
+  const n = flags.length;
+  return (
+    <g data-flag-crate="">
+      {flags.map((id, i) => {
+        const x = -w / 2 + 1.5 + ((i + 0.5) * (w - 3)) / Math.max(1, n);
+        return (
+          <g key={id} data-stored-item={id} data-carried={tag} transform={`translate(${x.toFixed(2)} -5)`}>
+            <line x1={0} y1={0} x2={0} y2={-6} stroke={t(POLE)} strokeWidth={0.6} />
+            <g transform="translate(0 -6)"><FlagArt sky={sky} w={3.6} h={2.4} /></g>
+          </g>
+        );
+      })}
+      <rect x={-w / 2} y={-5.5} width={w} height={5.5} rx={0.6} fill={t('#9A6B3E')} stroke={t('#6E4A28')} strokeWidth={0.4} />
+      <line x1={-w / 2} y1={-2.8} x2={w / 2} y2={-2.8} stroke={t('#6E4A28')} strokeWidth={0.4} />
+    </g>
+  );
+}
+
+// Échelle couchée (rangée sur un véhicule) : longueur `len`, centrée en x = 0, rails à y = ±1.
+function StowedLadder({ sky, len }: { sky: Sky; len: number }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
+  const n = Math.max(2, Math.round(len / 3));
+  return (
+    <g data-van-ladder="" stroke={t('#8E969F')} strokeLinecap="round">
+      <line x1={-len / 2} y1={1} x2={len / 2} y2={1} strokeWidth={0.8} />
+      <line x1={-len / 2} y1={-1} x2={len / 2} y2={-1} strokeWidth={0.8} />
+      {Array.from({ length: n }, (_, i) => {
+        const x = -len / 2 + 0.5 + (i * (len - 1)) / (n - 1);
+        return <line key={i} x1={x} y1={-1} x2={x} y2={1} strokeWidth={0.5} />;
+      })}
+    </g>
+  );
+}
+
+// ---------- Vélo porteur (repère des véhicules : roues à y = 0, regard vers +x) ----------
+// Vélo à long porte-bagages arrière : une caisse de drapeaux sur le porte-bagages, l'échelle couchée par-dessus (`ladder`) ;
+// `rider` : l'ouvrier en selle (gilet orange, `data-worker`), null quand il en est descendu.
+export const BIKE = { half: 40, door: 26, saddle: -4, crate: { x: -25, y: -12 }, ladder: { x: -20, y: -21, len: 34 } } as const;
+export function CargoBike({ sky, lights, ladder, flags, rider }: { sky: Sky; lights: boolean; ladder: boolean; flags: readonly string[]; rider: Outfit | null }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
+  const frame = t('#2F7D5B');
+  return (
+    <g data-cargo-bike="">
+      <g fill="none" stroke={t('#2A2D34')} strokeWidth={1.2}>
+        <circle cx={-20} cy={-5} r={5} />
+        <circle cx={14} cy={-5} r={5} />
+      </g>
+      {/* Cadre allongé, porte-bagages jusqu'à l'arrière, potence et guidon. */}
+      <path d="M-20 -5 L-6 -12 L8 -12 L14 -5 M-6 -12 L-4 -16 M8 -12 L9 -18 M-36 -12 L-8 -12 M-30 -12 L-20 -5 M-12 -12 L-20 -5" fill="none" stroke={frame} strokeWidth={1.4} strokeLinecap="round" />
+      <rect x={-6.5} y={-17.4} width={5} height={1.4} rx={0.6} fill={t('#2A2D34')} />
+      <line x1={8} y1={-18} x2={12} y2={-18.5} stroke={t('#2A2D34')} strokeWidth={1.1} strokeLinecap="round" />
+      <g transform={`translate(${BIKE.crate.x} ${BIKE.crate.y})`}><FlagCrate sky={sky} flags={flags} tag="bike" w={20} /></g>
+      {ladder && <g transform={`translate(${BIKE.ladder.x} ${BIKE.ladder.y})`}><StowedLadder sky={sky} len={BIKE.ladder.len} /></g>}
+      {rider && (
+        <g data-worker="" data-bike-rider="" transform="translate(-1 -1.5)">
+          <Cyclist outfit={rider} sky={sky} />
+          <path d="M-4 -17 L-1.9 -22.6 L1.1 -21.8 L-0.9 -16.2Z" fill={t('#F28C28')} />
+        </g>
+      )}
+      {lights && <circle cx={16} cy={-15} r={1.5} fill="#FFE9A0" />}
+    </g>
+  );
+}
+
+// ---------- Camion plateau (repère des véhicules : roues à y = 0, regard vers +x) ----------
+// Cabine à l'avant, petite grue de chargement repliée derrière elle, plateau à ridelles basses, hayon à l'arrière (`open` :
+// abaissé pendant qu'on décharge ou charge). Chargement (`load`, entreposé : `data-stored-item`, `data-carried="truck"`) posé
+// sur le plateau en piles tassées : planches, treillis et projecteurs de la scène ; panneaux de comptoir, fûts et toiles
+// d'auvent roulées des stands. `ladder` : échelle accrochée au flanc (stands).
+export const FLATBED = { half: 52, door: 47, cab: 36, deck: -11, ladder: { x: -24, y: -16.5, len: 30 } } as const;
+export type FlatbedLoad = { id: string; kind: ItemKind };
+export function Flatbed({ sky, lights, open, ladder, load }: { sky: Sky; lights: boolean; open: boolean; ladder: boolean; load: readonly FlatbedLoad[] }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
+  const deck = FLATBED.deck;
+  const tagged = (id: string, node: ReactNode): ReactElement => <g key={id} data-stored-item={id} data-carried="truck">{node}</g>;
+  const of = (k: ItemKind): FlatbedLoad[] => load.filter((l) => l.kind === k);
+  const counters = of('stand-counter');
+  const rolls = of('stand-awning');
+  const pieces: ReactElement[] = [];
+  // Scène : planches (plancher), treillis (portique), trois projecteurs.
+  for (const l of of('stage-floor')) {
+    pieces.push(tagged(l.id, (
+      <g>
+        {[0, 1, 2, 3].map((i) => <rect key={i} x={-44} y={deck - 2 * (i + 1)} width={27} height={1.9} fill={t(i % 2 ? '#7A6048' : '#9A7E62')} stroke={t('#5A4634')} strokeWidth={0.25} />)}
+      </g>
+    )));
+  }
+  for (const l of of('stage-frame')) {
+    const zig = Array.from({ length: 7 }, (_, i) => `${-15 + i * 3} ${i % 2 ? deck - 6 : deck - 0.8}`).join(' ');
+    pieces.push(tagged(l.id, (
+      <g stroke={t('#9CA3AC')} fill="none">
+        <line x1={-15} y1={deck - 0.8} x2={3} y2={deck - 0.8} strokeWidth={0.9} />
+        <line x1={-15} y1={deck - 6} x2={3} y2={deck - 6} strokeWidth={0.9} />
+        <polyline points={zig} strokeWidth={0.4} />
+      </g>
+    )));
+  }
+  for (const l of of('stage-spots')) {
+    pieces.push(tagged(l.id, (
+      <g>
+        {[5, 11, 17].map((x) => (
+          <g key={x}>
+            <rect x={x} y={deck - 5.5} width={5.2} height={5.5} rx={0.8} fill={t('#1E2026')} />
+            <circle cx={x + 2.6} cy={deck - 2.8} r={1.4} fill={t('#5A5F6A')} />
+          </g>
+        ))}
+      </g>
+    )));
+  }
+  // Stands : panneaux de comptoir empilés (avec leurs deux fûts dans la rangée de fûts), toiles roulées par-dessus la pile.
+  counters.forEach((l, i) => {
+    pieces.push(tagged(l.id, (
+      <g>
+        <rect x={-44} y={deck - 2.3 * (i + 1)} width={24} height={2.1} fill={t('#8A5A34')} stroke={t('#6A4426')} strokeWidth={0.2} />
+        {[0, 1].map((j) => <rect key={j} x={-18 + i * 7.4 + j * 3.5} y={deck - 5.2} width={3.2} height={5.2} rx={0.8} fill={t('#9AA2AC')} stroke={t('#6E7680')} strokeWidth={0.3} />)}
+      </g>
+    )));
+  });
+  rolls.forEach((l, i) => {
+    const y = deck - 2.3 * counters.length - 2.6 * (i + 1);
+    pieces.push(tagged(l.id, (
+      <g>
+        <rect x={-43} y={y} width={22} height={2.5} rx={1.2} fill={t('#C8322E')} />
+        {[-38, -31, -25].map((x) => <rect key={x} x={x} y={y} width={2} height={2.5} fill={t('#F4F1EA')} />)}
+      </g>
+    )));
+  });
+  return (
+    <g data-flatbed="" data-flatbed-open={open ? 'true' : 'false'}>
+      {/* Grue de chargement repliée (mât derrière la cabine, flèche couchée vers l'arrière). */}
+      <rect x={20} y={-30} width={3.4} height={20} fill={t('#E8B923')} />
+      <line x1={21.7} y1={-28.5} x2={-10} y2={-26} stroke={t('#E8B923')} strokeWidth={1.8} strokeLinecap="round" />
+      <line x1={-10} y1={-26} x2={-10} y2={-21} stroke={t('#3B3F4A')} strokeWidth={0.4} />
+      {pieces}
+      {/* Plateau, ridelles basses, châssis. */}
+      <rect x={-46} y={deck} width={70} height={3.5} fill={t('#7A5A3A')} />
+      <rect x={-46} y={deck - 1.6} width={70} height={1.6} fill={t('#B9BEC4')} stroke={t('#8A9098')} strokeWidth={0.3} />
+      <rect x={-46} y={-7.5} width={74} height={2.5} fill={t('#2E323C')} />
+      {/* Hayon : relevé, ou abaissé (rabattu vers le sol) pendant le déchargement. */}
+      {open ? (
+        <path data-flatbed-tailgate="open" d={`M-46 ${deck + 1} L-52 -3 L-50.4 -2 L-45 ${deck + 3}Z`} fill={t('#B9BEC4')} stroke={t('#8A9098')} strokeWidth={0.4} />
+      ) : (
+        <rect data-flatbed-tailgate="closed" x={-47.5} y={deck - 3} width={1.8} height={6} fill={t('#B9BEC4')} />
+      )}
+      {ladder && <g transform={`translate(${FLATBED.ladder.x} ${FLATBED.ladder.y})`}><StowedLadder sky={sky} len={FLATBED.ladder.len} /></g>}
+      {/* Cabine. */}
+      <rect x={24} y={-28} width={22} height={23} rx={2.5} fill={t('#2F5E8E')} />
+      <rect x={33} y={-25} width={11} height={8} fill={t('#CFE4F2')} opacity={0.85} />
+      <line x1={31} y1={-25} x2={31} y2={-8} stroke={t('#244A70')} strokeWidth={0.6} />
+      <rect x={27} y={-30} width={5} height={2} rx={0.8} fill="#E8601C" />
+      <circle cx={-33} cy={-4.5} r={4.5} fill="#222" />
+      <circle cx={-22} cy={-4.5} r={4.5} fill="#222" />
+      <circle cx={36} cy={-4.5} r={4.5} fill="#222" />
+      {lights && <circle cx={46} cy={-10} r={2.2} fill="#FFE9A0" />}
     </g>
   );
 }

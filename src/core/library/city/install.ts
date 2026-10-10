@@ -17,7 +17,12 @@ export type ItemKind = 'lamp-flag' | 'door-flag' | 'stage-floor' | 'stage-frame'
 export type DecorItem = { id: string; kind: ItemKind; x: number; high: boolean; u: number; removeU: number; lane?: 'far' | 'near'; group?: string };
 export type DecorWindow = { dayOffset: number; from: number; to: number }; // minutes ; dayOffset par rapport au jour de la fête
 // `day` : numéro du jour de la fête (dayNumber) — ajout au plan, pour que l'appelant sache quel `festDay` passer.
-export type DecorSet = { id: string; fest: FestivityId; day: number; equipment: Equipment; install: DecorWindow; remove: DecorWindow; items: DecorItem[] };
+// `transport` : véhicule où le décor est ENTREPOSÉ (spec §7.2, table des transports) : il y est pris à la pose et rangé à la
+// dépose, avant que le véhicule reparte. `van` : camionnette (barrières, échelles) ; `cargo-bike` : vélo porteur (drapeaux
+// d'entrée, légers, et l'échelle) ; `truck` : camion plateau (scène, stands de bière) ; `lift` : plateau du camion élévateur
+// lui-même (drapeaux de lampadaires).
+export type Transport = 'van' | 'cargo-bike' | 'truck' | 'lift';
+export type DecorSet = { id: string; fest: FestivityId; day: number; equipment: Equipment; transport: Transport; install: DecorWindow; remove: DecorWindow; items: DecorItem[] };
 export type CrewStep = string; // voir STEPS_BY_EQUIPMENT
 export type ItemPhase = { phase: 'absent' } | { phase: 'present' } | { phase: 'installing' | 'removing'; step: string; progress: number };
 
@@ -66,12 +71,12 @@ function setsForFest(fest: FestivityId, day: number, width: number, height: numb
   if (FLAG_FESTS.includes(fest)) {
     const lampsId = `lamps-${fest}`;
     out.push({
-      id: lampsId, fest, day, equipment: 'lift', install: { ...EVE }, remove: { ...MORROW },
+      id: lampsId, fest, day, equipment: 'lift', transport: 'lift', install: { ...EVE }, remove: { ...MORROW },
       items: lampsFor(width, seed).map((l) => ({ id: l.id, kind: 'lamp-flag', x: l.x, high: true, ...drawn(seed, lampsId, l.id) })),
     });
     const doorsId = `doors-${fest}`;
     out.push({
-      id: doorsId, fest, day, equipment: 'ladder', install: { ...EVE }, remove: { ...MORROW },
+      id: doorsId, fest, day, equipment: 'ladder', transport: 'cargo-bike', install: { ...EVE }, remove: { ...MORROW },
       items: doorsFor(width, height, seed)
         .filter((d) => d.hallU < 0.5)
         .map((d) => ({ id: d.id, kind: 'door-flag', x: d.x + DOOR_WIDTH / 2, high: true, ...drawn(seed, doorsId, d.id) })),
@@ -81,7 +86,7 @@ function setsForFest(fest: FestivityId, day: number, width: number, height: numb
     const id = 'barriers-bastille';
     const items: DecorItem[] = [];
     for (let k = 0, x = BARRIER_STEP / 2; x < width; k++, x += BARRIER_STEP) items.push({ id: `barrier-${k}`, kind: 'barrier', x, high: false, ...drawn(seed, id, `barrier-${k}`) });
-    out.push({ id, fest, day, equipment: 'hand', install: { dayOffset: 0, from: 420, to: 480 }, remove: { dayOffset: 0, from: 750, to: 810 }, items });
+    out.push({ id, fest, day, equipment: 'hand', transport: 'van', install: { dayOffset: 0, from: 420, to: 480 }, remove: { dayOffset: 0, from: 750, to: 810 }, items });
   }
   if (fest === 'music') {
     // Scènes : ordre imposé, plancher, ossature, projecteurs au montage ; l'inverse au démontage (on ne retire pas le
@@ -89,7 +94,7 @@ function setsForFest(fest: FestivityId, day: number, width: number, height: numb
     const kinds: ItemKind[] = ['stage-floor', 'stage-frame', 'stage-spots'];
     stageXs(width, seed).forEach((x, k) => {
       out.push({
-        id: `stage-music-${k}`, fest, day, equipment: 'lift', install: { dayOffset: 0, from: 540, to: 960 }, remove: { dayOffset: 1, from: 0, to: 240 },
+        id: `stage-music-${k}`, fest, day, equipment: 'lift', transport: 'truck', install: { dayOffset: 0, from: 540, to: 960 }, remove: { dayOffset: 1, from: 0, to: 240 },
         items: kinds.map((kind, i) => ({ id: kind, kind, x, high: kind !== 'stage-floor', u: i / 3, removeU: (2 - i) / 3 })),
       });
     });
@@ -102,7 +107,7 @@ function setsForFest(fest: FestivityId, day: number, width: number, height: numb
         barriers.push({ id, kind: 'barrier', x, high: false, lane, ...drawn(seed, barriersId, id) });
       }
     }
-    out.push({ id: barriersId, fest, day, equipment: 'hand', install: { dayOffset: 0, from: 780, to: 840 }, remove: { dayOffset: 1, from: 270, to: 300 }, items: barriers });
+    out.push({ id: barriersId, fest, day, equipment: 'hand', transport: 'van', install: { dayOffset: 0, from: 780, to: 840 }, remove: { dayOffset: 1, from: 270, to: 300 }, items: barriers });
     // Stands de bière : stand par stand (ordre tiré), le comptoir à la main puis l'auvent à l'échelle ; au démontage,
     // l'auvent d'abord, puis le comptoir.
     const standsId = 'beer-stands-music';
@@ -120,7 +125,7 @@ function setsForFest(fest: FestivityId, day: number, width: number, height: numb
     const down = rank('remove');
     const n = stands.length * 2;
     out.push({
-      id: standsId, fest, day, equipment: 'ladder', install: { dayOffset: 0, from: 720, to: 930 }, remove: { dayOffset: 1, from: 150, to: 300 },
+      id: standsId, fest, day, equipment: 'ladder', transport: 'truck', install: { dayOffset: 0, from: 720, to: 930 }, remove: { dayOffset: 1, from: 150, to: 300 },
       items: stands.flatMap((st, j): DecorItem[] => [
         { id: `${st.id}-counter`, kind: 'stand-counter', x: st.x, high: false, group: st.id, u: (2 * up[j]!) / n, removeU: (2 * down[j]! + 1) / n },
         { id: `${st.id}-awning`, kind: 'stand-awning', x: st.x, high: true, group: st.id, u: (2 * up[j]! + 1) / n, removeU: (2 * down[j]!) / n },
@@ -271,4 +276,27 @@ export function footWindow(set: DecorSet, removing: boolean): { first: number; l
   const foot = [...set.items].sort((a, b) => key(a) - key(b) || (a.id < b.id ? -1 : 1)).filter((i) => itemEquipment(set, i) !== 'lift');
   if (foot.length === 0) return null;
   return { first: slotOf(set, foot[0]!, set.day, removing).from, last: slotOf(set, foot[foot.length - 1]!, set.day, removing).to };
+}
+
+// Fenêtre entière (minutes absolues) de montage ou de démontage d'un jeu : le camion plateau reste garé de son début à sa fin
+// (on y prend encore des pièces après le dernier créneau à pied, ou on y en range avant le premier).
+export function setWindow(set: DecorSet, removing: boolean): { from: number; to: number } {
+  const w = removing ? set.remove : set.install;
+  return { from: absMinute(set.day + w.dayOffset, w.from), to: absMinute(set.day + w.dayOffset, w.to) };
+}
+
+// Pièce posée au camion élévateur : l'ouvrier de la nacelle la prend (dans la caisse du plateau du camion élévateur, ou à
+// l'arrière du camion plateau) pendant le déploiement, entre ces deux fractions de l'étape : il y va les mains vides, la sort,
+// revient. À la dépose, pendant le repli, il la rapporte, la range entre ces deux fractions, puis revient les mains vides.
+export const LIFT_FETCH = { from: 0.4, to: 0.6 } as const;
+
+// L'élément est-il entreposé dans son véhicule de transport à cet instant ? Avant son créneau de pose et après son créneau de
+// dépose (le véhicule de la fenêtre l'emporte) ; au camion élévateur, aussi jusqu'à la prise (déploiement) et dès le
+// rangement (repli). À la main ou à l'échelle, l'objet sort du véhicule dès le début de l'aller (calque : `tripStage`).
+export function inVehicle(set: DecorSet, item: DecorItem, abs: number): boolean {
+  const p = itemPhase(set, item, abs, set.day);
+  if (p.phase === 'absent') return true;
+  if (p.phase === 'present' || itemEquipment(set, item) !== 'lift') return false;
+  if (p.phase === 'installing') return p.step === 'arrive' || (p.step === 'deploy' && p.progress < LIFT_FETCH.from);
+  return p.step === 'leave' || (p.step === 'stow' && p.progress >= LIFT_FETCH.to);
 }
