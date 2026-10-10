@@ -3,7 +3,6 @@ import { lampLit } from '../core/library/activity';
 import { doorsFor } from '../core/library/city/doors';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
-import { hashString } from '../core/library/scene-world';
 import { mixHex } from '../core/library/sky';
 import { EntranceSprite, entranceLeft } from './city-sprites';
 import type { SceneBodyProps } from './scene-panorama';
@@ -81,14 +80,15 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
         </g>
       ))}
       {/* Locaux : la vitrine montre l'intérieur (rogné par le <svg> imbriqué de ShopFront) ; la nuit, seuls les commerces
-          ouverts sont éclairés. Le vendeur n'est là que si la boutique est ouverte (chantier : intérieur vide). */}
+          ouverts sont éclairés (chantier : intérieur vide). Personnel, premier plan de l'intérieur ouvert (devant le personnel) et
+          rideau roulant sont dans le calque animé (StaffLayer, city-shops-life.tsx). */}
       {views.map((view) => {
         const frame = frames.get(view.slot.id)!;
         const open = view.phase === 'open';
         return (
-          <ShopFront key={view.slot.id} frame={frame} view={view} sky={sky} lit={dark && open}>
+          <ShopFront key={view.slot.id} frame={frame} view={view} sky={sky} lit={dark && open} shutter={false}>
             {view.interior && (
-              <ShopInterior type={view.interior} w={frame.window.w} h={frame.window.h} sky={sky} lit={dark && open} staffed={open} seed={hashString(view.slot.id) ^ seed} />
+              <ShopInterior type={view.interior} w={frame.window.w} h={frame.window.h} sky={sky} lit={dark && open} front={!open} />
             )}
           </ShopFront>
         );

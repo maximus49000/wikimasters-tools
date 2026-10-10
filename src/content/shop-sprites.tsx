@@ -8,7 +8,8 @@ import { tone } from './city-sprites';
 // Devantures de la scène Ville. Repère : celui du MONDE (les rectangles de shopFrame), non mis à l'échelle ; le rez-de-chaussée
 // fait 30 px de haut, le bandeau d'enseigne 5. Les objets portés (CarriedSign, CarriedPlacard) et l'échelle sont dessinés dans un
 // repère local : base à y = 0, centrés sur x = 0. Aucun `id` : la scène est copiée dans chaque fenêtre par <use>, et le clip de
-// l'intérieur passe par un <svg> imbriqué (overflow hidden), pas par un clipPath. Aucune animation.
+// l'intérieur passe par un <svg> imbriqué (overflow hidden), pas par un clipPath. Seule animation : le rideau roulant du calque
+// animé (RollingShutter, vague 1b-iv-b), qui monte ou descend par une transition CSS.
 export type WorkerPose = 'walk' | 'stand' | 'climb' | 'reach' | 'carry';
 
 const ORANGE = '#E8601C';
@@ -75,12 +76,19 @@ export function CarriedPlacard({ w, sky }: { w: number; sky: Sky }): ReactElemen
   return <ForSalePlacard x={-w / 2} y={-9} w={w + 2} sky={sky} />;
 }
 
-function Shutter({ frame, sky }: { frame: ShopFrame; sky: Sky }): ReactElement {
+// Rectangle que couvre le rideau : la vitrine et la porte.
+export function shutterBox(frame: ShopFrame): Rect {
   const { window: win, door } = frame;
   const x = Math.min(win.x, door.x);
-  const right = Math.max(win.x + win.w, door.x + door.w);
   const y = Math.min(win.y, door.y);
-  const bottom = Math.max(win.y + win.h, door.y + door.h);
+  return { x, y, w: Math.max(win.x + win.w, door.x + door.w) - x, h: Math.max(win.y + win.h, door.y + door.h) - y };
+}
+
+function Shutter({ frame, sky }: { frame: ShopFrame; sky: Sky }): ReactElement {
+  const box = shutterBox(frame);
+  const { x, y } = box;
+  const right = x + box.w;
+  const bottom = y + box.h;
   const slats: number[] = [];
   for (let s = y + 1.5; s < bottom; s += 1.5) slats.push(s);
   return (
@@ -90,6 +98,25 @@ function Shutter({ frame, sky }: { frame: ShopFrame; sky: Sky }): ReactElement {
         <line key={s} x1={x} y1={s} x2={right} y2={s} stroke={tone('#6E747C', sky)} strokeWidth={0.3} />
       ))}
     </g>
+  );
+}
+
+// Rideau roulant (calque animé) : baissé, levé, ou en train de monter / descendre. Il glisse dans son coffre (un <svg> imbriqué
+// à la taille du rideau, qui le rogne) par une transition CSS de SHUTTER_S secondes quand l'état change à la minute ; aucune
+// transition en mouvement réduit. Levé, il reste dans le DOM (caché dans le coffre) pour que la descente parte d'en haut.
+export const SHUTTER_S = 5;
+export type ShutterState = 'up' | 'down' | 'rising' | 'falling';
+export function RollingShutter({ frame, sky, state, still }: { frame: ShopFrame; sky: Sky; state: ShutterState; still: boolean }): ReactElement {
+  const box = shutterBox(frame);
+  const lowered = state === 'down' || state === 'falling';
+  return (
+    <svg data-rolling-shutter={state} x={box.x} y={box.y} width={box.w} height={box.h} overflow="hidden">
+      <g style={{ transform: `translate(0px, ${lowered ? '0' : (-box.h).toFixed(1)}px)`, transition: still ? undefined : `transform ${SHUTTER_S}s ease-in-out` }}>
+        <g transform={`translate(${-box.x} ${-box.y})`}>
+          <Shutter frame={frame} sky={sky} />
+        </g>
+      </g>
+    </svg>
   );
 }
 
@@ -105,7 +132,9 @@ function Awning({ win, color, sky }: { win: Rect; color: string; sky: Sky }): Re
   );
 }
 
-export function ShopFront({ frame, view, sky, lit, children }: { frame: ShopFrame; view: ShopView; sky: Sky; lit: boolean; children?: ReactNode }): ReactElement {
+// `shutter` : rideau baissé dessiné ici (défaut : quand c'est fermé). La scène Ville passe `false` : le rideau y est roulant,
+// dans le calque animé (il monte quand l'employé ouvre, descend quand il ferme).
+export function ShopFront({ frame, view, sky, lit, shutter = view.phase === 'closed', children }: { frame: ShopFrame; view: ShopView; sky: Sky; lit: boolean; shutter?: boolean; children?: ReactNode }): ReactElement {
   const { sign, window: win, door } = frame;
   const t = (c: string): string => tone(c, sky);
   const type = view.sign?.type ?? null;
@@ -136,7 +165,7 @@ export function ShopFront({ frame, view, sky, lit, children }: { frame: ShopFram
       <rect x={door.x - 0.5} y={door.y - 0.5} width={door.w + 1} height={door.h + 1} fill={t(FRAME)} />
       <rect x={door.x} y={door.y} width={door.w} height={door.h} fill={glow ? '#FFE7B0' : t(GLASS)} opacity={glow ? 0.85 : 0.9} />
       <rect x={door.x + (view.slot.doorSide === 'left' ? 0.8 : door.w - 1.4)} y={door.y + door.h / 2} width={0.6} height={2} fill={t(ALU)} />
-      {view.phase === 'closed' && <Shutter frame={frame} sky={sky} />}
+      {shutter && <Shutter frame={frame} sky={sky} />}
       {view.placard && <ForSalePlacard x={win.x} y={win.y + 4} w={win.w} sky={sky} />}
     </g>
   );

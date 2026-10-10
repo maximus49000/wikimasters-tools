@@ -83,14 +83,15 @@ describe('CityScene : locaux commerciaux', () => {
     for (const shop of shops) expect(shop.querySelector('[data-interior], [data-placard]')).not.toBeNull();
     expect(c.querySelectorAll('[data-shop-phase="for-sale"]')).toHaveLength(0);
   });
-  it('à 3 h du matin : rideau baissé sur tous les commerces qui ne sont pas de nuit', () => {
+  // Le rideau roulant est dans le calque animé (StaffLayer) : voir city-shops-life.test.tsx.
+  it('à 3 h du matin : fermés (hors commerces de nuit), sans rideau peint dans le décor fixe', () => {
     const c = scene(180);
     const types = streetOn(slots, SEED, EPOCH, EPOCH, {}).map((s) => s.tenant!.type);
     slots.forEach((slot, i) => {
       if (SHOP_DEFS[types[i]!].crowd === 'night') return;
       const shop = c.querySelector(`[data-shop="${slot.id}"]`)!;
       expect(shop.getAttribute('data-shop-phase')).toBe('closed');
-      expect(shop.querySelector('[data-shutter]')).not.toBeNull();
+      expect(shop.querySelector('[data-shutter]')).toBeNull();
     });
   });
   it('sans commerces dans le contexte : aucun local dessiné', () => {

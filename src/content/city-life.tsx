@@ -8,11 +8,13 @@ import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { FAR_SHRINK, STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/customers';
+import type { StaffShift } from '../core/library/city/shops/staff';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
 import { loopX } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
-import { ShopCustomers, ShopWorks, placeCustomers, setIfChanged } from './city-shops-life';
+import { ShopCustomers, ShopWorks, StaffLayer, collectPosedStaff, dayShifts, placeCustomers, placeStaff, setIfChanged, shopShutter, type PosedStaff } from './city-shops-life';
+import { interiorPost } from './shop-interiors';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
@@ -46,6 +48,9 @@ const vehicleTransform = (v: Vehicle, m: CityMetrics, width: number, t: number, 
 };
 
 const NO_VISITS: Visit[] = [];
+const NO_SHIFTS: StaffShift[] = [];
+// Gestes des employés : posés au plus dix fois par seconde (les étapes durent au moins une demi-seconde).
+const STAFF_POSE_S = 0.1;
 
 const placementTransform = (p: EventPlacement): string => `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) scale(${p.sx.toFixed(3)} ${p.sy.toFixed(3)})`;
 
@@ -134,9 +139,25 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     [shops.slots, shops.frames, shops.views, seed],
   );
   const visits = shops.views.length > 0 ? allVisits : NO_VISITS;
+  // Personnel : postes du jour mémoïsés par (rue, jour) — staffShiftsAt recalcule deux plans à chaque appel.
+  const date = city.day.date;
+  const dayKey = `${date.y}-${date.m}-${date.d}`;
+  const shifts = useMemo(
+    () => new Map(shops.street.map((s) => [s.slot.id, dayShifts(s, seed, date)])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shops.street, seed, dayKey],
+  );
+  // Un client n'entre que rideau levé (pas pendant qu'il monte ou descend).
   const gates = useMemo(
-    () => new Map(shops.views.map((v) => [v.slot.id, still ? 0 : customerGate(v, city.minutes, intensity)])),
-    [shops.views, city.minutes, intensity, still],
+    () =>
+      new Map(
+        shops.views.map((v) => [
+          v.slot.id,
+          still || shopShutter(v, shifts.get(v.slot.id) ?? NO_SHIFTS, date, city.minutes, false) !== 'up' ? 0 : customerGate(v, city.minutes, intensity),
+        ]),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shops.views, shifts, city.minutes, intensity, still],
   );
 
   // Événements de la ville : programme du grand créneau, événements actifs, voitures effacées, ambulances.
@@ -156,6 +177,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let first = true;
     let leaving = new Set<string>();
     let leaveUntil = 0;
+    let staff: PosedStaff[] = [];
+    let posedAt = -Infinity;
     const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
     return (now: number): void => {
       // Mouvement réduit : toujours le même instant, y compris quand le placement est refait après un changement de minute.
@@ -168,6 +191,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         leaving = new Set([...moving.current].filter((id) => !vehActive.has(id) && !pedActive.has(id)));
         leaveUntil = t + FADE_S + 0.2;
         moving.current = new Set([...vehActive, ...pedActive]);
+        staff = collectPosedStaff(el);
       }
       for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
       for (const p of peds) if (moves(p.id, t)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
@@ -188,6 +212,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (s.active || first) node.setAttribute('transform', residentTransform(trip, s.x, metrics));
       }
       placeCustomers(nodes, visits, gates, width, metrics, t, first);
+      // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
+      if (!still && Math.abs(t - posedAt) >= STAFF_POSE_S) {
+        placeStaff(staff, t);
+        posedAt = t;
+      }
       first = false;
       // En dernier : peut demander un re-rendu (nouvel ensemble d'événements), qui recrée cette fonction.
       events.check(t);
@@ -269,12 +298,37 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
           lampadaires (bord du trottoir), la file du fond, puis celle du premier plan. */}
       <g data-city-sidewalk="">
-        {/* Contre les devantures : l'équipe d'un chantier, puis les clients (derrière les vitrines et sur le trottoir). */}
+        {/* Contre les devantures : l'équipe d'un chantier, le personnel (derrière la vitrine, rideau roulant, trottoir), puis les
+            clients (derrière les vitrines et sur le trottoir). */}
         {shops.views.map((view, i) =>
           view.phase === 'works' ? (
             <ShopWorks key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} change={shops.street[i]?.change ?? null} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} seed={seed} />
           ) : null,
         )}
+        {shops.views.map((view) => {
+          const frame = shops.frames.get(view.slot.id)!;
+          const type = view.sign?.type ?? null;
+          if (!type) return null;
+          return (
+            <StaffLayer
+              key={view.slot.id}
+              view={view}
+              shifts={shifts.get(view.slot.id) ?? NO_SHIFTS}
+              frame={frame}
+              metrics={metrics}
+              minutes={city.minutes}
+              reduced={still}
+              date={date}
+              width={width}
+              sky={sky}
+              rainy={rainy}
+              umbrella={intensity.umbrellas}
+              seed={seed}
+              seats={visits.filter((v) => v.slotId === view.slot.id).map((v) => v.seat.x - frame.window.x)}
+              post={interiorPost(type, frame.window.w, frame.window.h)}
+            />
+          );
+        })}
         <ShopCustomers
           visits={visits}
           frames={shops.frames}

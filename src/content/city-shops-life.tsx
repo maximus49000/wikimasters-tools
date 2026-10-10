@@ -1,20 +1,28 @@
 import { useMemo, type ReactElement } from 'react';
+import { isoDate, type YMD } from '../core/library/city/calendar';
+import { MAX_TRIP_PX } from '../core/library/city/doors';
 import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
-import { outfitFor } from '../core/library/city/people';
+import { outfitFor, type Outfit, type Profile } from '../core/library/city/people';
+import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import { visitAt, visitHappens, type Visit } from '../core/library/city/shops/customers';
-import type { Change } from '../core/library/city/shops/lifecycle';
+import { ACCESSORY, SHOP_FAMILY, gestureAt, takesAway, type Pose } from '../core/library/city/shops/gestures';
+import { dayNumber } from '../core/library/city/shops/hours';
+import type { Change, SlotDay } from '../core/library/city/shops/lifecycle';
 import type { ShopFrame } from '../core/library/city/shops/slots';
-import type { ShopView } from '../core/library/city/shops/view';
+import { WALK_MIN, shutterAt, staffAt, staffShiftsAt, type StaffShift, type StaffState } from '../core/library/city/shops/staff';
+import { changePlans, type ShopView } from '../core/library/city/shops/view';
 import { WORK_STEPS, type WorkStep } from '../core/library/city/shops/works';
-import { hashString, mulberry32 } from '../core/library/scene-world';
+import { WORLD_MARGIN, hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite } from './city-sprites';
-import { SHOP_DEFS } from '../core/library/city/shops/catalog';
-import { LIT_SKY } from './shop-interiors';
-import { CarriedPlacard, CarriedSign, LadderSprite, type WorkerPose } from './shop-sprites';
+import { AccessorySprite, LIFTING, PosedPerson, STANDING, applyPose, poseHandles, showCarry, type PoseHandles } from './shop-gesture-sprites';
+import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
+import { CarriedPlacard, CarriedSign, LadderSprite, RollingShutter, type ShutterState, type WorkerPose } from './shop-sprites';
 
 // Vie des commerces dans le calque animé de la Ville (vague 1b-iv-a) : clients qui entrent, restent derrière la vitrine et
-// ressortent ; équipe du chantier du matin (deux ouvriers, une échelle, l'ancienne et la nouvelle enseigne).
+// ressortent ; équipe du chantier du matin (deux ouvriers, une échelle, l'ancienne et la nouvelle enseigne). Vague 1b-iv-b :
+// le personnel (StaffLayer) arrive à pied, lève le rideau roulant, travaille, se relaie, baisse le rideau et repart ; clients et
+// employés font le geste de la famille du commerce (poses écrites par la boucle, voir shop-gesture-sprites.tsx).
 // Clients : DEUX nœuds par visite, l'un sur le trottoir (stades « in » et « out »), l'autre dans un <svg> imbriqué posé sur la
 // vitrine (stade « inside », rogné sans clipPath ni id) ; la boucle d'animation de CityLifeLayer active l'un ou l'autre
 // (placeCustomers). Équipe : rendue à la minute (re-rendu React), déplacée par une transition CSS de 30 s entre deux minutes.
@@ -37,22 +45,29 @@ export const setIfChanged = (node: Element, name: string, value: string): void =
 };
 
 // ---------- Clients ----------
-export type CustomerState = { on: boolean; inside: boolean; x: number; fade: number };
+export type CustomerState = { on: boolean; inside: boolean; x: number; fade: number; gesture: Pose | null; carry: boolean };
 
 // Présence d'une visite à l'instant t : en route (ou dans le magasin) et tirée pour ce tour de cycle, local ouvert (gate > 0).
+// Dans le magasin, le client fait le geste de la famille ; en ressortant, il porte un petit objet si la famille s'y prête.
 export function customerState(v: Visit, gate: number, width: number, t: number): CustomerState {
   const pos = visitAt(v, width, t);
   const on = pos !== null && gate > 0 && visitHappens(v, t, gate);
-  return { on, inside: pos?.stage === 'inside', x: pos?.x ?? v.doorX, fade: on && pos ? pos.fade : 0 };
+  return { on, inside: pos?.stage === 'inside', x: pos?.x ?? v.doorX, fade: on && pos ? pos.fade : 0, gesture: pos?.gesture ?? null, carry: pos?.carry ?? false };
 }
+
+// Fauteuil et table : le client est assis.
+const seatedFor = (type: ShopTypeId | null): boolean => type !== null && (SHOP_FAMILY[type] === 'chair' || SHOP_FAMILY[type] === 'table');
+// Objet emporté sur le trottoir : tenu à la main, bras le long du corps.
+const CARRY_AT = 'translate(4 -15)';
 
 const sidewalkTransform = (v: Visit, x: number, m: CityMetrics): string => {
   const k = m.unit * STREET_SCALE.person * v.scale;
   return `translate(${x.toFixed(1)} ${m.doorY.toFixed(1)}) scale(${(v.dir * k).toFixed(3)} ${k.toFixed(3)})`;
 };
+// À sa place (comptoir, rayon, fauteuil, table : `seat`), tourné vers le centre de la vitrine.
 const insideTransform = (v: Visit, f: ShopFrame, shift = 0): string => {
   const k = INSIDE_SCALE * v.scale;
-  return `translate(${(v.innerX - f.window.x).toFixed(1)} ${(f.window.h - shift - INSIDE_DY).toFixed(1)}) scale(${(v.dir * k).toFixed(3)} ${k.toFixed(3)})`;
+  return `translate(${(v.seat.x - f.window.x).toFixed(1)} ${(f.window.h - shift - INSIDE_DY).toFixed(1)}) scale(${(v.seat.facing * k).toFixed(3)} ${k.toFixed(3)})`;
 };
 const insideId = (v: Visit): string => `${v.id}-in`;
 
@@ -66,12 +81,14 @@ export function placeCustomers(nodes: Map<string, SVGGElement>, visits: Visit[],
       setIfChanged(out, 'data-active', on ? 'true' : 'false');
       setIfChanged(out, 'opacity', (on ? s.fade : 0).toFixed(2));
       if (on || first) out.setAttribute('transform', sidewalkTransform(v, s.x, m));
+      if (v.type !== null && takesAway(v.type)) showCarry(poseHandles(out), on && s.carry);
     }
     const inn = nodes.get(insideId(v));
     if (inn) {
       const on = s.on && s.inside;
       setIfChanged(inn, 'data-active', on ? 'true' : 'false');
       setIfChanged(inn, 'opacity', (on ? s.fade : 0).toFixed(2));
+      if (on && s.gesture) applyPose(poseHandles(inn), s.gesture);
     }
   }
 }
@@ -112,7 +129,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
               const on = s.on && s.inside;
               return (
                 <g key={v.id} data-life-id={insideId(v)} data-customer-inside="" data-active={on ? 'true' : 'false'} transform={insideTransform(v, f, shift)} opacity={(on ? s.fade : 0).toFixed(2)} style={style}>
-                  <PersonSprite outfit={v.outfit} sky={lit ? LIT_SKY : sky} rainy={false} umbrella={false} />
+                  <PosedPerson outfit={v.outfit} sky={lit ? LIT_SKY : sky} rainy={false} umbrella={false} accessory={v.type ? ACCESSORY[v.type] : null} pose={s.gesture ?? STANDING} seated={seatedFor(v.type)} />
                 </g>
               );
             })}
@@ -125,6 +142,11 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
         return (
           <g key={v.id} data-life-id={v.id} data-customer="" data-active={on ? 'true' : 'false'} transform={sidewalkTransform(v, s.x, metrics)} opacity={(on ? s.fade : 0).toFixed(2)} style={style}>
             <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={umbrella} />
+            {v.type !== null && takesAway(v.type) && (
+              <g data-item="" transform={CARRY_AT} visibility={on && s.carry ? 'visible' : 'hidden'}>
+                <AccessorySprite id={ACCESSORY[v.type]} sky={sky} />
+              </g>
+            )}
           </g>
         );
       })}
@@ -231,4 +253,220 @@ export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, sti
       ))}
     </g>
   );
+}
+
+// ---------- Personnel ----------
+// Taille d'un employé derrière la vitrine (celle de l'ancien vendeur peint) ; au plus trois personnes visibles par local
+// (le relais peut en mettre six), réparties autour de la place de service (fractions de la vitrine).
+const STAFF_SCALE = 0.5;
+const MAX_VISIBLE = 3;
+const SPREAD = [0, -0.3, 0.3] as const;
+// Trajet sur le trottoir : seulement la dernière minute avant l'entrée et la première après la sortie, en une transition CSS
+// linéaire d'une minute (la scène est re-rendue à la minute) ; le reste des WALK_MIN minutes se passe hors du champ.
+const STAFF_WALK = 'transform 60s linear, opacity 0.4s ease';
+const EPS = 1e-6;
+
+// Postes à considérer pour un local un jour donné (mémoïsés par jour dans la couche : staffShiftsAt recalcule deux plans).
+// Le jour d'un changement : personne avant la fin du chantier d'enseigne ; le nouvel occupant n'a que les postes qui commencent
+// ce jour-là et finissent après le chantier (arrivée et lever du rideau repoussés à la fin du chantier s'il ouvre plus tôt).
+export function dayShifts(s: SlotDay, seed: number, date: YMD): StaffShift[] {
+  if (!s.tenant) return [];
+  const all = staffShiftsAt(SHOP_DEFS[s.tenant.type], seed, s.slot.id, date);
+  const c = s.change;
+  if (!c || c.day !== dayNumber(date)) return all;
+  if (!c.after) return [];
+  const end = changePlans(seed, s.slot.id, c.day, c.kind).works.end;
+  const today = `-${isoDate(date)}-`;
+  return all
+    .filter((sh) => sh.id.includes(today) && sh.leaveAt > end + 1)
+    .map((sh): StaffShift => {
+      const arriveAt = Math.max(sh.arriveAt, end);
+      return {
+        ...sh,
+        arriveAt,
+        breaks: sh.breaks.filter(([a]) => a >= arriveAt),
+        ...(sh.shutterUp !== undefined ? { shutterUp: Math.max(sh.shutterUp, arriveAt) } : {}),
+      };
+    });
+}
+
+// Tenue d'un employé : tirée de son poste (la même personne reste reconnaissable dans la journée) ; ni sac ni cartable au travail.
+export function staffOutfit(seed: number, outfitKey: string): Outfit {
+  const rng = mulberry32(seed ^ hashString(`staff-outfit|${outfitKey}`));
+  const u = rng();
+  const profile: Profile = u < 0.15 ? 'suit' : u < 0.3 ? 'worker' : 'ordinary';
+  return { ...outfitFor(profile, rng), accessory: 'none' };
+}
+
+// Le local a-t-il un rideau roulant (commerce ouvert ou fermé, hors chantier et déménagement) ?
+const hasShutter = (view: ShopView): boolean => view.sign !== null && (view.phase === 'open' || view.phase === 'closed') && !view.works && !view.moving;
+
+// État du rideau à la minute ; null sans rideau. Mouvement réduit : selon l'heure (levé si ouvert), sans geste.
+export function shopShutter(view: ShopView, shifts: StaffShift[], date: YMD, minutes: number, reduced: boolean): ShutterState | null {
+  if (!hasShutter(view)) return null;
+  if (reduced) return view.phase === 'open' ? 'up' : 'down';
+  return shutterAt(shifts, SHOP_DEFS[view.sign!.type], date, minutes);
+}
+
+// Ordre d'affichage quand il y a trop de monde : l'ancre de chaque équipe (jamais en pause) d'abord, puis par arrivée.
+const anchorFirst = (a: StaffShift, b: StaffShift): number => Number(!a.id.endsWith('-m0')) - Number(!b.id.endsWith('-m0')) || a.arriveAt - b.arriveAt;
+
+export type StaffCast = {
+  shutter: ShutterState | null;
+  // Derrière la vitrine : au plus MAX_VISIBLE avec ceux de la porte, au moins un dès que quelqu'un travaille et que le rideau n'est pas baissé.
+  inside: StaffShift[];
+  // Sur le trottoir : à la porte (rideau), ou en route (visible la dernière minute avant l'entrée, la première après la sortie).
+  street: { shift: StaffShift; state: StaffState; visible: boolean; atDoor: boolean }[];
+};
+
+export function staffCast(view: ShopView, shifts: StaffShift[], date: YMD, minutes: number, reduced: boolean): StaffCast {
+  const shutter = shopShutter(view, shifts, date, minutes, reduced);
+  if (shutter === null) return { shutter, inside: [], street: [] };
+  const states = staffAt(shifts, minutes);
+  const working = shifts.filter((_, i) => states[i]!.where === 'inside' && !states[i]!.onBreak).sort(anchorFirst);
+  if (reduced) {
+    // Exactement une personne à son poste quand c'est ouvert, aucune sinon ; personne en route.
+    const one = working[0] ?? [...shifts].sort(anchorFirst)[0];
+    return { shutter, inside: view.phase === 'open' && one ? [one] : [], street: [] };
+  }
+  const street: StaffCast['street'] = [];
+  shifts.forEach((shift, i) => {
+    const state = states[i]!;
+    switch (state.where) {
+      case 'opening':
+      case 'closing':
+        street.push({ shift, state, visible: true, atDoor: true });
+        break;
+      case 'walking-in':
+        street.push({ shift, state, visible: (1 - state.progress) * WALK_MIN <= 1 + EPS, atDoor: false });
+        break;
+      case 'walking-out':
+        street.push({ shift, state, visible: state.progress * WALK_MIN < 1 - EPS, atDoor: false });
+        break;
+      case 'inside':
+        // La minute avant la sortie, le nœud existe déjà (caché à la porte) : le départ glissera depuis la porte.
+        if (minutes >= shift.leaveAt - 1) street.push({ shift, state, visible: false, atDoor: true });
+        break;
+      default:
+        break;
+    }
+  });
+  const atDoor = street.filter((x) => x.visible && x.atDoor).length;
+  // Rideau baissé : personne ne se voit derrière (ceux qui attendent l'ouverture ou finissent la fermeture sont cachés).
+  const inside = shutter === 'down' ? [] : working.slice(0, Math.max(1, MAX_VISIBLE - atDoor));
+  return { shutter, inside, street };
+}
+
+type StaffProps = {
+  view: ShopView;
+  shifts: StaffShift[];
+  frame: ShopFrame;
+  metrics: CityMetrics;
+  minutes: number;
+  reduced: boolean;
+  date: YMD;
+  width: number;
+  sky: Sky;
+  rainy: boolean;
+  umbrella: boolean;
+  seed: number;
+  // Places des clients dans la vitrine (x local) : l'employé se tourne vers la plus proche.
+  seats: number[];
+  // Place de service (x local, interiorPost).
+  post: number;
+};
+
+const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
+
+export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, date, width, sky, rainy, umbrella, seed, seats, post }: StaffProps): ReactElement | null {
+  const outfits = useMemo(() => new Map(shifts.map((s) => [s.id, staffOutfit(seed, s.outfitKey)])), [shifts, seed]);
+  const cast = staffCast(view, shifts, date, minutes, reduced);
+  if (cast.shutter === null) return null;
+  const type = view.sign!.type;
+  const { window: win, door } = frame;
+  const open = view.phase === 'open';
+  const lit = sky.daylight < 0.45 && open;
+  const shift = SHOP_DEFS[type].awning ? 3 : 0;
+  const inSky = lit ? LIT_SKY : sky;
+  // Le premier plan de l'intérieur (comptoir…) est redessiné ici, devant le personnel, quand la boutique est ouverte (le décor
+  // fixe ne le dessine alors pas) ou quand quelqu'un est encore derrière la vitrine pendant la descente du rideau.
+  const front = open || cast.inside.length > 0;
+  const doorX = door.x + door.w / 2;
+  const k = metrics.unit * STREET_SCALE.person;
+  const toward = (x: number): 1 | -1 => {
+    let best: number | null = null;
+    for (const s of seats) if (best === null || Math.abs(s - x) < Math.abs(best - x)) best = s;
+    return best === null || best >= x ? 1 : -1;
+  };
+  return (
+    <g data-shop-staff={view.slot.id} data-shutter-state={cast.shutter}>
+      {front && (
+        <svg data-staff-window="" x={win.x} y={win.y + shift} width={win.w} height={win.h - shift} overflow="hidden">
+          <g transform={shift ? `translate(0 ${-shift})` : undefined}>
+            {cast.inside.map((s, i) => {
+              const x = clamp(post + SPREAD[i]! * win.w, 2.5, win.w - 2.5);
+              const dir = toward(x);
+              const gseed = hashString(s.id);
+              return (
+                <g
+                  key={s.id}
+                  data-staff-member={s.id}
+                  data-staff-where="inside"
+                  data-posed="staff"
+                  data-gesture-type={type}
+                  data-gesture-seed={gseed}
+                  transform={`translate(${x.toFixed(2)} ${win.h - 1}) scale(${dir * STAFF_SCALE} ${STAFF_SCALE})`}
+                >
+                  <PosedPerson outfit={outfits.get(s.id)!} sky={inSky} rainy={false} umbrella={false} accessory={ACCESSORY[type]} pose={reduced ? STANDING : gestureAt(type, 'staff', 0, gseed)} />
+                </g>
+              );
+            })}
+            <ShopInteriorFront type={type} w={win.w} h={win.h} sky={sky} lit={lit} />
+          </g>
+        </svg>
+      )}
+      <RollingShutter frame={frame} sky={sky} state={cast.shutter} still={reduced} />
+      {cast.street.map(({ shift: s, state, visible, atDoor }) => {
+        const side = state.side;
+        const toEdge = side > 0 ? doorX + WORLD_MARGIN : width + WORLD_MARGIN - doorX;
+        const edge = doorX - side * Math.min(toEdge, MAX_TRIP_PX);
+        // En route : caché au bord tant que la dernière minute n'est pas venue, puis glisse jusqu'à la porte ; au départ, glisse de la porte au bord.
+        const x = atDoor || (state.where === 'walking-in' && visible) ? doorX : edge;
+        const dir = state.where === 'walking-out' ? (-side as 1 | -1) : side;
+        const lifting = state.where === 'opening' || state.where === 'closing';
+        const outfit = outfits.get(s.id)!;
+        return (
+          <g
+            key={s.id}
+            data-staff-member={s.id}
+            data-staff-where={state.where}
+            data-active={visible ? 'true' : 'false'}
+            opacity={visible ? 1 : 0}
+            style={{ transform: `translate(${x.toFixed(1)}px, ${metrics.doorY.toFixed(1)}px)`, transition: reduced ? undefined : STAFF_WALK }}
+          >
+            <g transform={`scale(${(dir * k).toFixed(3)} ${k.toFixed(3)})`}>
+              {lifting ? (
+                <PosedPerson outfit={outfit} sky={sky} rainy={rainy} umbrella={false} accessory={null} pose={LIFTING} />
+              ) : (
+                <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={umbrella} />
+              )}
+            </g>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+// Employés derrière les vitrines : collectés une fois par jeu de nœuds, mis en pose par la boucle (geste de la famille).
+export type PosedStaff = { h: PoseHandles; type: ShopTypeId; seed: number };
+export function collectPosedStaff(root: Element): PosedStaff[] {
+  const out: PosedStaff[] = [];
+  for (const node of root.querySelectorAll('[data-posed="staff"]')) {
+    out.push({ h: poseHandles(node), type: node.getAttribute('data-gesture-type') as ShopTypeId, seed: Number(node.getAttribute('data-gesture-seed')) });
+  }
+  return out;
+}
+export function placeStaff(staff: PosedStaff[], t: number): void {
+  for (const s of staff) applyPose(s.h, gestureAt(s.type, 'staff', t, s.seed));
 }

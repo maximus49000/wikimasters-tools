@@ -12,7 +12,10 @@ import { mixHex } from '../core/library/sky';
 export const tone = (c: string, sky: Sky): string => mixHex(mixHex(c, '#0B1030', 0.55), c, sky.daylight);
 
 // ---------- Passant (hauteur ≈ 40, tête centrée à y = -33) ----------
-export function PersonSprite({ outfit: o, sky, rainy, umbrella }: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean }): ReactElement {
+// Assis (`seated`, vague 1b-iv-b : fauteuil du coiffeur, table du restaurant) : cuisse à l'horizontale, tibia vertical, le haut du
+// corps descend de SEAT_DROP. La tête est dans un groupe `data-head` que la boucle d'animation tourne ou incline (gestes).
+export const SEAT_DROP = 4;
+export function PersonSprite({ outfit: o, sky, rainy, umbrella, seated = false }: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean; seated?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const skin = t(o.skin);
   const pants = t(o.bottomColor);
@@ -22,30 +25,34 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella }: { outfit: Outf
   // Sous la pluie, les hauts légers deviennent un imperméable.
   const raincoat = rainy && (o.top === 'jacket' || o.top === 'sweater' || o.top === 'tee' || o.top === 'shirt');
   const topFill = t(raincoat ? '#2E5E8A' : o.topColor);
-  return (
-    <g>
-      {/* Bas */}
-      {(o.bottom === 'skirt' || o.bottom === 'dress') && (
-        <>
-          <rect x={-3} y={-8} width={2.4} height={8} fill={skin} />
-          <rect x={0.6} y={-8} width={2.4} height={8} fill={skin} />
-          <path d="M-5.5 -15 H5.5 L7 -7 H-7Z" fill={pants} />
-        </>
-      )}
-      {o.bottom === 'shorts' && (
-        <>
-          <rect x={-3.5} y={-6} width={2.6} height={6} fill={skin} />
-          <rect x={0.9} y={-6} width={2.6} height={6} fill={skin} />
-          <rect x={-4} y={-15} width={8} height={8} fill={pants} />
-        </>
-      )}
-      {o.bottom !== 'skirt' && o.bottom !== 'dress' && o.bottom !== 'shorts' && (
-        // pants | jeans | jogging, et toute valeur future : jambes pleines
-        <>
-          <rect x={-4} y={-15} width={3.4} height={15} fill={pants} />
-          <rect x={0.6} y={-15} width={3.4} height={15} fill={pants} />
-        </>
-      )}
+  const bare = o.bottom === 'skirt' || o.bottom === 'dress' || o.bottom === 'shorts';
+  // Jambes : debout (selon le bas) ou assis (cuisse vers l'avant, tibia vertical ; jupe et short laissent le tibia nu).
+  const legs = seated ? (
+    <g data-seated="">
+      <rect x={-4} y={-11} width={10} height={3.4} fill={pants} />
+      <rect x={3} y={-8} width={3} height={8} fill={bare ? skin : pants} />
+    </g>
+  ) : o.bottom === 'skirt' || o.bottom === 'dress' ? (
+    <>
+      <rect x={-3} y={-8} width={2.4} height={8} fill={skin} />
+      <rect x={0.6} y={-8} width={2.4} height={8} fill={skin} />
+      <path d="M-5.5 -15 H5.5 L7 -7 H-7Z" fill={pants} />
+    </>
+  ) : o.bottom === 'shorts' ? (
+    <>
+      <rect x={-3.5} y={-6} width={2.6} height={6} fill={skin} />
+      <rect x={0.9} y={-6} width={2.6} height={6} fill={skin} />
+      <rect x={-4} y={-15} width={8} height={8} fill={pants} />
+    </>
+  ) : (
+    // pants | jeans | jogging, et toute valeur future : jambes pleines
+    <>
+      <rect x={-4} y={-15} width={3.4} height={15} fill={pants} />
+      <rect x={0.6} y={-15} width={3.4} height={15} fill={pants} />
+    </>
+  );
+  const upper = (
+    <>
       {/* Sac à dos (derrière) */}
       {o.accessory === 'backpack' && <rect x={-9} y={-27} width={5} height={12} rx={1.5} fill={acc} />}
       {/* Haut : le manteau descend plus bas */}
@@ -59,33 +66,35 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella }: { outfit: Outf
       {o.top === 'jersey' && <rect x={-5} y={-22} width={10} height={2.4} fill={t('#FFFFFF')} opacity={0.8} />}
       {o.accessory === 'scarf' && <rect x={-5} y={-29} width={10} height={3} rx={1} fill={acc} />}
       {/* Tête */}
-      <circle cx={0} cy={-33} r={4.6} fill={skin} />
-      {/* Coiffure ('bald' : rien) */}
-      {o.hair === 'short' && <path d="M-4.8 -33 A4.8 4.8 0 0 1 4.8 -33 Z" fill={hair} />}
-      {o.hair === 'long' && (
-        <>
-          <rect x={-5.2} y={-37} width={10.4} height={4} rx={3} fill={hair} />
-          <rect x={-5.4} y={-35} width={3} height={11} rx={1.5} fill={hair} />
-        </>
-      )}
-      {o.hair === 'bun' && (
-        <>
-          <path d="M-4.8 -33 A4.8 4.8 0 0 1 4.8 -33 Z" fill={hair} />
-          <circle cx={-1} cy={-39} r={2.4} fill={hair} />
-        </>
-      )}
-      {o.hair === 'cap' && (
-        <>
-          <path d="M-4.9 -33.5 A4.9 4.9 0 0 1 4.9 -33.5 Z" fill={hat} />
-          <rect x={2} y={-35} width={6} height={1.6} fill={hat} />
-        </>
-      )}
-      {o.hair === 'beanie' && (
-        <>
-          <path d="M-5 -33 A5 5 0 0 1 5 -33 Z" fill={hat} />
-          <circle cx={0} cy={-38.4} r={1.4} fill={hat} />
-        </>
-      )}
+      <g data-head="">
+        <circle cx={0} cy={-33} r={4.6} fill={skin} />
+        {/* Coiffure ('bald' : rien) */}
+        {o.hair === 'short' && <path d="M-4.8 -33 A4.8 4.8 0 0 1 4.8 -33 Z" fill={hair} />}
+        {o.hair === 'long' && (
+          <>
+            <rect x={-5.2} y={-37} width={10.4} height={4} rx={3} fill={hair} />
+            <rect x={-5.4} y={-35} width={3} height={11} rx={1.5} fill={hair} />
+          </>
+        )}
+        {o.hair === 'bun' && (
+          <>
+            <path d="M-4.8 -33 A4.8 4.8 0 0 1 4.8 -33 Z" fill={hair} />
+            <circle cx={-1} cy={-39} r={2.4} fill={hair} />
+          </>
+        )}
+        {o.hair === 'cap' && (
+          <>
+            <path d="M-4.9 -33.5 A4.9 4.9 0 0 1 4.9 -33.5 Z" fill={hat} />
+            <rect x={2} y={-35} width={6} height={1.6} fill={hat} />
+          </>
+        )}
+        {o.hair === 'beanie' && (
+          <>
+            <path d="M-5 -33 A5 5 0 0 1 5 -33 Z" fill={hat} />
+            <circle cx={0} cy={-38.4} r={1.4} fill={hat} />
+          </>
+        )}
+      </g>
       {/* Accessoires à la main */}
       {o.accessory === 'bag' && <rect x={5} y={-17} width={6} height={7} rx={1.5} fill={acc} />}
       {o.accessory === 'case' && <rect x={5} y={-10} width={9} height={6.5} rx={1} fill={t('#4A3B2A')} />}
@@ -97,6 +106,12 @@ export function PersonSprite({ outfit: o, sky, rainy, umbrella }: { outfit: Outf
           <path d="M-9 -44 Q4 -58 17 -44 Z" fill={t('#C0392B')} />
         </g>
       )}
+    </>
+  );
+  return (
+    <g>
+      {legs}
+      {seated ? <g transform={`translate(0 ${SEAT_DROP})`}>{upper}</g> : upper}
     </g>
   );
 }
