@@ -26,7 +26,7 @@ Dans `SkyAndStars` / `Celestial` (`scene-panorama.tsx`), variante Ghibli pour la
 
 ## 2. Cumulus (couche météo, en mouvement)
 
-- **Formes** : `cloudShape(seed, k)` décrit le nuage n° k (0 à 11) : rangée basse de bulles au ventre plat, puis étages de bulles plus petites vers le sommet, toutes contenues dans le cadre du nuage (largeur 110 à 220 px, hauteur = 0,85 × largeur, à l'échelle 1).
+- **Formes** : `cloudShape(seed, k)` décrit le nuage n° k (0 à 11) : rangée basse de bulles au ventre plat, puis étages de bulles plus petites vers le sommet, toutes contenues dans le cadre du nuage (largeur 80 à 120 px à l'échelle 1, hauteur = 0,85 × largeur ; la réserve les agrandit de ×0,8 à ×1,9, comme les nuages actuels d'environ 70 px).
 - **Peinture** : `paintCloud(ctx, shape, palette, seed)` peint les bulles du haut vers le bas (les basses recouvrent les hautes, volutes nettes), chaque touche éclairée selon sa position dans sa bulle (lumière en haut à gauche), contraste plus faible vers la base, liseré clair sur le bord éclairé des bulles hautes, ventre ombré.
 - **Palette** : `cloudPalette(daylight, twilight, cloudDark)` → trois couleurs (lumière, milieu, ombre), mélange des palettes validées : jour `#FFFDF6 / #DCE3EE / #A6A3C9`, coucher `#FFE7B8 / #F1A783 / #7A6699`, nuit `#7381AE / #4B5687 / #262C58`, gris (pluie) `#C9CDD4 / #9AA0AC / #5E6474`, orage `#8B90A0 / #5B6070 / #2C3040`. `cloudDark` est l'obscurité déjà calculée par la boucle (pluie et ciel très couvert).
 - **Crans** : chacune des trois entrées est arrondie au douzième ; la clé (version du dessin, graine, crans) désigne un jeu de 12 nuages peints. Cache mémoire de 3 jeux. Quand le cran change, le nouveau jeu est peint pendant les temps morts, puis les 12 `<image>` de `<defs>` changent de `href` d'un coup ; d'ici là l'ancien jeu reste affiché.
@@ -45,7 +45,7 @@ Dans `SkyAndStars` / `Celestial` (`scene-panorama.tsx`), variante Ghibli pour la
 - `src/core/library/paint/sky-painter.ts` : `cloudShape`, `paintCloud`, `cloudPalette`, `paletteStep`, `paintSkyTexture`, `paintSun`, `paintMoon`, `paintFogBand` (fonctions pures sur `PaintCtx`).
 - `src/core/library/paint/snow-painter.ts` : `paintSnowTile(ctx, { tile, width, height, seed, plan })`.
 - `src/content/painted-sky.ts` : peinture hors écran et caches (texture, astres, jeux de nuages, brume, tranches de neige), sur le modèle de `painted-city.ts` (même repli jsdom, même injection pour les tests).
-- `scene-weather.tsx` : prop `art` (`'classic' | 'ghibli'`), Ghibli seulement si `scene === 'city'`. Les nœuds `data-wx` gardent leurs noms : la boucle ne change que pour les nuages (plus de `fill` par nuage), la brume (translation) et l'éclair (trois traits).
+- `scene-weather.tsx` : lit le réglage par `useArtStyle()` (comme `scene-city.tsx`), Ghibli seulement si `scene === 'city'` ; nouvelle prop `gloom` (passée par `RoomView`) pour l'étalonnage de la neige posée. Les nœuds `data-wx` gardent leurs noms : la boucle ne change que pour les nuages (plus de `fill` par nuage), la brume (translation) et l'éclair (trois traits).
 - **Prêt** : tant que la texture, les astres et le premier jeu de nuages ne sont pas prêts, le ciel et la météo actuels restent affichés ; ensuite fondu d'une seconde (bascule directe si mouvement réduit). La neige posée et la brume peintes s'affichent dès qu'elles sont prêtes ; jusque-là, le rectangle de neige et le dégradé de brume actuels.
 
 ## 5. Tests
