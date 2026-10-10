@@ -98,4 +98,15 @@ describe('ville peinte', () => {
     expect(noon).toBeTruthy();
     expect(night).not.toBe(noon);
   });
+
+  it('une erreur de peinture sur une tranche n’arrête pas les autres', async () => {
+    localStorage.setItem(ART_KEY, 'ghibli');
+    setTilePainterForTests(async (_p, t) => {
+      if (t === 0) throw new Error('boom');
+      return `blob:fake-${t}`;
+    });
+    await render(12 * 60);
+    expect(qa('[data-painted-tile]').length).toBe(1);
+    expect(q('[data-painted-city]')?.getAttribute('data-ready')).toBe('false');
+  });
 });

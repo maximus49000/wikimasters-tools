@@ -4,7 +4,7 @@ import { paintCityTile, TILE, tileCount, tileKey } from '../core/library/paint/c
 import { mulberry32 } from '../core/library/scene-world';
 
 // Peinture des tranches de la ville (vague Ghibli) : canvas hors écran pendant les temps morts, une tranche par créneau,
-// image PNG en URL d'objet, cache mémoire (64 tranches au plus, les plus anciennes libérées).
+// image PNG en data URL, cache mémoire (64 tranches au plus, les plus anciennes libérées).
 export type PaintedTile = { x: number; w: number; url: string };
 export type TilePainter = (plan: CityPaintPlan, tile: number) => Promise<string | null>;
 
@@ -17,9 +17,8 @@ function remember(key: string, url: string): void {
   cache.delete(key);
   cache.set(key, url);
   while (cache.size > CACHE_MAX) {
-    const [oldKey, oldUrl] = cache.entries().next().value as [string, string];
+    const oldKey = cache.keys().next().value as string;
     cache.delete(oldKey);
-    if (oldUrl.startsWith('blob:') && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(oldUrl);
   }
 }
 
@@ -71,8 +70,7 @@ export const canvasTilePainter: TilePainter = async (plan, tile) => {
   paintCityTile(ctx, plan, tile);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   paperGrain(ctx, canvas.width, canvas.height, plan.seed ^ (tile + 1));
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-  return blob ? URL.createObjectURL(blob) : null;
+  return canvas.toDataURL('image/png');
 };
 
 const idle = (fn: () => void): (() => void) => {
@@ -98,7 +96,7 @@ export function usePaintedCity(plan: CityPaintPlan | null): { ready: boolean; ti
       const t = keys.findIndex((k) => !cache.has(k) && !failed.has(k));
       if (t < 0) return;
       cancelIdle = idle(() => {
-        void painter(plan, t).then((url) => {
+        void painter(plan, t).catch(() => null).then((url) => {
           if (url) remember(keys[t]!, url);
           else failed.add(keys[t]!);
           if (!cancelled) {
