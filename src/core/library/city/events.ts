@@ -1,6 +1,7 @@
 import { activeFestivities, type FestivityId } from './calendar';
 import { WORLD_MARGIN, hashString, loopX, mulberry32 } from '../scene-world';
 import type { CityContext, CityIntensity } from './intensity';
+import { santaOn, santaWindowsIn } from './santa';
 import { FAR_SHRINK, STREET_SCALE } from './metrics';
 import { LANE_DIR, VEHICLE_HALF, type Lane, type LaneSpeeds, type Vehicle } from './vehicles';
 
@@ -177,6 +178,8 @@ export function cityEventSchedule(input: ScheduleInput): CityEvent[] {
   const { seed, width, hyper, cond, vehicles, speeds } = input;
   const t0 = hyper * HYPER_S;
   const out: CityEvent[] = [];
+  // Pendant un passage du père Noël, le ciel est à lui : aucun autre événement de ciel ne part (ni ne le croise).
+  const santa = santaOn(cond.fests, cond.daylight) ? santaWindowsIn(t0, t0 + HYPER_S, seed) : [];
   for (let n = 0; n < HYPER_SLOTS; n++) {
     const rng = mulberry32(seed ^ hashString('city-events') ^ Math.imul(hyper * HYPER_SLOTS + n + 1, 2654435761));
     // Toujours le même nombre de tirages par créneau : un changement de condition ne décale pas les créneaux suivants.
@@ -199,6 +202,7 @@ export function cityEventSchedule(input: ScheduleInput): CityEvent[] {
     const speed = def.layer === 'fixed' ? 0 : def.speed ?? (track === 'bike' ? speeds.bike : speeds[track as Lane]);
     const end = start + (def.layer === 'fixed' ? def.duration! : travelSpan(width) / speed);
     if (end > t0 + HYPER_S) continue;
+    if (def.layer === 'sky' && santa.some((w) => w.start < end && start < w.end)) continue;
     const overlapping = out.filter((e) => e.start < end && start < e.end);
     if (overlapping.length >= MAX_EVENTS) continue;
     if (overlapping.some((e) => e.id === def.id || (track !== null && e.track === track))) continue;

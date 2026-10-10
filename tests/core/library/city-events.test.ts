@@ -7,6 +7,7 @@ import {
 } from '../../../src/core/library/city/events';
 import { STREET_SCALE, FAR_SHRINK } from '../../../src/core/library/city/metrics';
 import { LANE_DIR, VEHICLE_HALF, laneSpeeds, vehiclesFor } from '../../../src/core/library/city/vehicles';
+import { santaWindowsIn } from '../../../src/core/library/city/santa';
 import { WORLD_MARGIN, loopX } from '../../../src/core/library/scene-world';
 
 const DAY_DRY: EventConditions = { daylight: 1, wet: false, workday: true, traffic: 0.6, walkers: 0.5, fests: [] };
@@ -195,5 +196,26 @@ describe('fêtes', () => {
   });
   it('pas de feu d’artifice sous la pluie, même le soir de fête', () => {
     expect(fireworks({ ...base, wet: true, fests: ['new-year'] }, 22 * 60, 120)).toBe(0);
+  });
+});
+
+describe('père Noël et ciel', () => {
+  const eve: EventConditions = { ...NIGHT_DRY, fests: ['christmas-eve'] };
+  it('pendant un passage du père Noël, aucun événement de ciel n’est tiré', () => {
+    let skyAlone = 0;
+    for (let h = 1_440_000; h < 1_440_040; h++) {
+      const windows = santaWindowsIn(h * HYPER_S, (h + 1) * HYPER_S, 7);
+      for (const e of cityEventSchedule(input(h, eve, 22 * 60))) {
+        if (e.layer === 'sky') skyAlone++;
+        expect(windows.some((w) => w.start < e.end && e.start < w.end && e.layer === 'sky')).toBe(false);
+      }
+    }
+    // Le test n’est pas vide : des événements de ciel sont bien tirés en dehors des passages.
+    expect(skyAlone).toBeGreaterThan(0);
+  });
+  it('hors fêtes, le programme est inchangé', () => {
+    for (let h = 1_440_000; h < 1_440_020; h++) {
+      expect(cityEventSchedule(input(h, NIGHT_DRY, 22 * 60))).toEqual(cityEventSchedule(input(h, { ...NIGHT_DRY, fests: [] }, 22 * 60)));
+    }
   });
 });
