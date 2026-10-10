@@ -1835,4 +1835,49 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v25',
+    theme: 'collection',
+    glyph: '🎅',
+    title: 'Père Noël et feux d’artifice dans la ville',
+    summary: 'Le 24 décembre un traîneau traverse le ciel de la ville toutes les 15 minutes, et le soir du 31 décembre ou du 14 juillet les feux d’artifice se multiplient',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Un calendrier des fêtes',
+        text: 'La scène « Ville » connaît quelques fêtes françaises : la veille de Noël, le soir du Nouvel An et la Fête nationale. Le jour venu, la rue change de ton sans rien vous demander.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À ce que la ville ne soit pas la même un soir ordinaire et un soir de fête, et à poser le socle de futures animations de saison.' },
+          { label: 'Comment faire', text: 'Rien à régler : la date de l’appareil suffit. Le réglage de l’heure du ciel (jour, nuit, heure choisie) ne change pas la date.' },
+          { label: 'D’où viennent les données', text: 'De la date de votre appareil et d’une petite table de fêtes embarquée dans l’extension. Rien n’est envoyé.' },
+          { label: 'Limites', text: 'Calendrier français uniquement, et seulement trois fêtes pour l’instant. Il n’y a pas de réglage de date : pour voir une fête, il faut l’attendre ou changer la date de l’appareil.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Le père Noël',
+        text: 'Le 24 décembre, de la nuit tombée jusqu’à l’aube (et à l’aube du 25), un traîneau tiré par cinq rennes traverse le ciel toutes les 15 minutes d’horloge. Environ une fois sur trois, il se pose sur un toit : le père Noël descend avec sa hotte, disparaît derrière la cheminée, une fenêtre de l’immeuble s’allume, puis il remonte à bord et repart.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À offrir un petit moment de magie à qui laisse la pièce ouverte le soir de Noël.' },
+          { label: 'Comment faire', text: 'Ouvrez une pièce « Ville » avec une fenêtre le 24 décembre au soir et regardez le ciel : le passage tombe à un instant différent dans chaque quart d’heure.' },
+          { label: 'Comment ça marche', text: 'L’instant, la hauteur et le sens de chaque passage sont tirés de la pièce et du quart d’heure d’horloge : toutes les fenêtres montrent donc le même traîneau en même temps, et le même passage après un rechargement. Pendant son passage, aucun avion ni hélicoptère ne traverse le ciel.' },
+          { label: 'Limites', text: 'Rien ne se voit dans une pièce sans fenêtre. Le père Noël ne se pose que s’il y a un toit visible en entier, sinon il traverse simplement. Si vous réduisez les animations, seul un traîneau posé sur un toit est montré, et seulement pendant un quart d’heure qui livre.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Les feux d’artifice des grands soirs',
+        text: 'Le soir du 31 décembre (jusqu’à minuit et demi) et le soir du 14 juillet, les feux d’artifice partent de derrière les immeubles bien plus souvent que les autres soirs.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À marquer les grands soirs de l’année dans la rue.' },
+          { label: 'Comment ça marche', text: 'Les feux d’artifice existaient déjà les autres soirs, mais très rarement : les jours de fête, leur chance de partir est bien plus grande (fortement le soir du Nouvel An, un peu moins pour la Fête nationale).' },
+          { label: 'Limites', text: 'Il n’y a jamais de feu d’artifice sous la pluie, même un soir de fête, et il n’est pas reporté. Il n’y a pas de pic particulier à minuit : le poids fort du Nouvel An vaut pour toute la soirée. Si vous réduisez les animations, aucun feu d’artifice n’est montré.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];

@@ -147,4 +147,14 @@ describe('catalogue des fiches', () => {
     expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v24')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v23'));
     expect(ENTRIES.find((e) => e.id === 'bibliotheque-v23')!.title).toBe('La rue commerçante');
   });
+
+  it('la fiche bibliotheque-v25 présente les fêtes, le père Noël, les feux d’artifice et leurs limites', () => {
+    const entry = ENTRIES.find((e) => e.id === 'bibliotheque-v25');
+    expect(entry).toBeDefined();
+    expect(entry!.steps).toHaveLength(3);
+    const text = entry!.steps.map((s) => `${s.title} ${s.text} ${(s.details ?? []).map((d) => `${d.label} ${d.text}`).join(' ')}`).join(' ');
+    for (const word of ['24 décembre', 'traîneau', '15 minutes', 'cheminée', '31 décembre', '14 juillet', 'pluie', 'Limites']) expect(text, word).toContain(word);
+    for (const step of entry!.steps) expect(step.details?.some((d) => d.label === 'Limites'), step.title).toBe(true);
+    expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v25')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v24'));
+  });
 });
