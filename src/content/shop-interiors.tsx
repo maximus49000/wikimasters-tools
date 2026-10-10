@@ -2,6 +2,7 @@ import { useMemo, type ReactElement } from 'react';
 import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import { mixHex, type Sky, skyAt } from '../core/library/sky';
 import { tone } from './city-sprites';
+import { EMPTY_WINDOW } from './shop-sprites';
 import { bakery, butcher, cheese, chocolatier, fishmonger, greengrocer, grocery, minimarket, pastry, wine } from './shop-interiors-alimentation';
 import { antiques, bikes, bookshop, florist, games, optician, petshop, records, thrift } from './shop-interiors-boutiques';
 import { counter, group, type Kit, makeKit, poly, shelf } from './shop-interiors-kit';
@@ -257,15 +258,24 @@ export function interiorPost(type: ShopTypeId, w: number, h: number): number {
 // dessinés par le calque animé (StaffLayer, city-shops-life.tsx) entre le fond et le premier plan. Pour cela, quand le calque
 // animé redessine le premier plan par-dessus le personnel (`front={false}` ici, ShopInteriorFront là-bas), le décor fixe ne
 // dessine que le fond (pas de double opacité des éléments translucides).
-export function ShopInterior({ type, w, h, sky, lit, front = true }: { type: ShopTypeId; w: number; h: number; sky: Sky; lit: boolean; front?: boolean }): ReactElement {
+// Jour de déménagement (vague 1b-iv-b) : le mobilier est découpé en `n` tranches verticales ; seules les `shown` tranches les plus
+// éloignées de la porte sont montrées (on sort d'abord ce qui est près de la porte, on rentre d'abord ce qui va au fond), le reste
+// est caché par un rectangle au fond de vitrine vide (un seul rectangle, aucun id ni masque).
+export type InteriorSlices = { shown: number; n: number; doorRight: boolean };
+export const sliceCount = (w: number): number => Math.min(5, Math.max(2, Math.round(w / 7)));
+
+export function ShopInterior({ type, w, h, sky, lit, front = true, slices }: { type: ShopTypeId; w: number; h: number; sky: Sky; lit: boolean; front?: boolean; slices?: InteriorSlices }): ReactElement {
   const def = SHOP_DEFS[type];
   const { k, t } = paint(type, w, h, sky, lit);
+  const hidden = slices ? Math.min(slices.n, Math.max(0, slices.n - slices.shown)) : 0;
+  const cut = (hidden * w) / (slices?.n ?? 1);
   return (
-    <g data-interior={type}>
+    <g data-interior={type} {...(slices ? { 'data-slices': `${slices.n - hidden}/${slices.n}` } : {})}>
       <rect x={0} y={0} width={w} height={h} fill={t(def.wall)} />
       <rect x={0} y={h - 3} width={w} height={3} fill={t(def.floor)} />
       {group(k.back)}
       {front && group(k.front)}
+      {hidden > 0 && <rect data-slices-cover="" x={slices!.doorRight ? w - cut : 0} y={0} width={cut} height={h} fill={tone(EMPTY_WINDOW, sky)} />}
     </g>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changePlans, shopViewAt } from '../../../src/core/library/city/shops/view';
+import { TRUCK_SHIFT_MIN, changePlans, furnitureAt, movingOffsets, shopViewAt } from '../../../src/core/library/city/shops/view';
 import { dayNumber } from '../../../src/core/library/city/shops/hours';
 import type { SlotDay } from '../../../src/core/library/city/shops/lifecycle';
 
@@ -27,9 +27,10 @@ describe('vue d’un local', () => {
     const install = works.steps.find((x) => x.step === 'install')!;
     const removeEnd = works.steps.find((x) => x.step === 'remove')!.to;
     expect(shopViewAt(relet, 1, date, moving.start + 1)).toMatchObject({ phase: 'works', sign: { type: 'bakery' } });
-    // entre la fin du déménagement et le début de l'enseigne : local vide, ancienne enseigne
+    // entre la fin du déménagement et le début de l'enseigne : nouveau mobilier en place, ancienne enseigne
     const gap = shopViewAt(relet, 1, date, moving.end + 1);
-    expect(gap).toMatchObject({ phase: 'works', interior: null, interiorStage: 'empty', sign: { type: 'bakery' }, moving: null, works: null });
+    expect(gap).toMatchObject({ phase: 'works', interior: null, interiorStage: 'after', sign: { type: 'bakery' }, moving: null, works: null });
+    expect(shopViewAt(relet, 1, date, works.start + 1).interiorStage).toBe('after');
     expect(shopViewAt(relet, 1, date, works.start + 1)).toMatchObject({ phase: 'works', sign: { type: 'bakery' }, interior: null });
     expect(shopViewAt(relet, 1, date, removeEnd + 1)).toMatchObject({ phase: 'works', sign: null });
     expect(shopViewAt(relet, 1, date, install.to + 1)).toMatchObject({ phase: 'works', sign: { type: 'bar' } });
@@ -65,5 +66,81 @@ describe('vue d’un local', () => {
     expect(shopViewAt(s, 1, date, moving.start + 1)).toMatchObject({ placard: true, sign: null });
     expect(shopViewAt(s, 1, date, plan.start + 1)).toMatchObject({ placard: true, sign: null });
     expect(shopViewAt(s, 1, date, plan.end + 1)).toMatchObject({ placard: false, sign: { type: 'bar' } });
+  });
+  it('passage À vendre : le local reste vide après le déménagement, pendant le chantier', () => {
+    const s: SlotDay = { slot, tenant: null, change: { day: today, kind: 'to-sale', before: bakery, after: null } };
+    const { moving, works } = changePlans(1, 'shop-0', today, 'to-sale');
+    expect(shopViewAt(s, 1, date, moving.end + 1).interiorStage).toBe('empty');
+    expect(shopViewAt(s, 1, date, works.start + 1).interiorStage).toBe('empty');
+  });
+});
+
+describe('mobilier par tranches (furnitureAt)', () => {
+  const N = 4;
+  const at = (m: number) => furnitureAt(shopViewAt(relet, 1, date, m), N);
+  const { moving } = changePlans(1, 'shop-0', today, 'relet');
+  const step = (name: string) => moving.steps.find((x) => x.step === name)!;
+  it('l’ancien mobilier part tranche par tranche (il en reste une jusqu’à la bascule), puis le nouveau arrive', () => {
+    expect(at(moving.start + 0.5)).toEqual({ from: 'before', shown: N });
+    const out = step('carry-out');
+    let last = N;
+    for (let p = 0; p < 0.5; p += 0.05) {
+      const f = at(out.from + p * (out.to - out.from))!;
+      expect(f.from).toBe('before');
+      expect(f.shown).toBeLessThanOrEqual(last);
+      expect(f.shown).toBeGreaterThanOrEqual(1);
+      last = f.shown;
+    }
+    expect(last).toBe(1);
+    expect(at(out.to - 0.01)).toBeNull();
+    expect(at(step('pause').from + 0.5)).toBeNull();
+    const inn = step('carry-in');
+    let prev = 0;
+    for (let p = 0.5; p < 1; p += 0.05) {
+      const f = at(inn.from + p * (inn.to - inn.from))!;
+      expect(f.from).toBe('after');
+      expect(f.shown).toBeGreaterThanOrEqual(Math.max(1, prev));
+      prev = f.shown;
+    }
+    expect(prev).toBe(N);
+    expect(at(step('leave').from + 0.5)).toEqual({ from: 'after', shown: N });
+  });
+  it('jour ordinaire : rien de plus que l’intérieur', () => {
+    expect(furnitureAt(shopViewAt({ slot, tenant: bakery, change: null }, 1, date, 600), N)).toBeNull();
+  });
+});
+
+describe('un seul camion à la fois (movingOffsets)', () => {
+  const slotN = (i: number) => ({ ...slot, id: `shop-${i}`, index: i, x: 100 + 40 * i });
+  const change = (i: number, kind: 'relet' | 'to-sale' | 'from-sale' = 'relet'): SlotDay => ({
+    slot: slotN(i),
+    tenant: kind === 'to-sale' ? null : bar,
+    change: { day: today, kind, before: kind === 'from-sale' ? null : bakery, after: kind === 'to-sale' ? null : bar },
+  });
+  it('deux locaux le même jour : le second (ordre des locaux) est décalé de 2 h, sans chevauchement', () => {
+    const street: SlotDay[] = [change(2), { slot: slotN(1), tenant: bakery, change: null }, change(0, 'to-sale')];
+    const offsets = movingOffsets(street, 1, today);
+    expect(offsets.get('shop-0')).toBe(0);
+    expect(offsets.get('shop-2')).toBe(TRUCK_SHIFT_MIN);
+    expect(offsets.has('shop-1')).toBe(false);
+    const a = changePlans(1, 'shop-0', today, 'to-sale', 0);
+    const b = changePlans(1, 'shop-2', today, 'relet', TRUCK_SHIFT_MIN);
+    expect(b.moving.start).toBeGreaterThanOrEqual(a.moving.end);
+    // Le chantier d'enseigne suit le déménagement décalé.
+    expect(b.works.start).toBeGreaterThanOrEqual(b.moving.end + 15);
+    // La vue du second local suit son décalage : fermé (ancien état) à l'heure où le premier déménage, puis son propre camion.
+    const view = (m: number) => shopViewAt(street[0]!, 1, date, m, TRUCK_SHIFT_MIN);
+    expect(view(a.moving.start + 5).moving).toBeNull();
+    expect(view(b.moving.start + 1).moving).not.toBeNull();
+    for (let m = 0; m < 1440; m++) {
+      const busy = [a.moving, b.moving].filter((p) => m >= p.start && m < p.end).length;
+      expect(busy).toBeLessThanOrEqual(1);
+    }
+  });
+  it('trois locaux le même jour : 0, 2 h, 4 h ; un changement d’un autre jour ne compte pas', () => {
+    const other: SlotDay = { slot: slotN(3), tenant: bar, change: { day: today - 3, kind: 'relet', before: bakery, after: bar } };
+    const offsets = movingOffsets([change(0), change(1, 'from-sale'), change(2), other], 1, today);
+    expect([0, 1, 2].map((i) => offsets.get(`shop-${i}`))).toEqual([0, TRUCK_SHIFT_MIN, 2 * TRUCK_SHIFT_MIN]);
+    expect(offsets.has('shop-3')).toBe(false);
   });
 });

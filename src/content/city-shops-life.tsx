@@ -272,13 +272,14 @@ const EPS = 1e-6;
 // Postes à considérer pour un local un jour donné (mémoïsés par jour dans la couche : staffShiftsAt recalcule deux plans).
 // Le jour d'un changement : personne avant la fin du chantier d'enseigne ; le nouvel occupant n'a que les postes qui commencent
 // ce jour-là et finissent après le chantier (arrivée et lever du rideau repoussés à la fin du chantier s'il ouvre plus tôt).
-export function dayShifts(s: SlotDay, seed: number, date: YMD): StaffShift[] {
+// `offsetMin` : décalage du déménagement (un seul camion à la fois, movingOffsets) ; le chantier, donc l'arrivée, suit.
+export function dayShifts(s: SlotDay, seed: number, date: YMD, offsetMin = 0): StaffShift[] {
   if (!s.tenant) return [];
   const all = staffShiftsAt(SHOP_DEFS[s.tenant.type], seed, s.slot.id, date);
   const c = s.change;
   if (!c || c.day !== dayNumber(date)) return all;
   if (!c.after) return [];
-  const end = changePlans(seed, s.slot.id, c.day, c.kind).works.end;
+  const end = changePlans(seed, s.slot.id, c.day, c.kind, offsetMin).works.end;
   const today = `-${isoDate(date)}-`;
   return all
     .filter((sh) => sh.id.includes(today) && sh.leaveAt > end + 1)

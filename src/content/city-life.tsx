@@ -8,6 +8,7 @@ import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { FAR_SHRINK, STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/customers';
+import { dayNumber } from '../core/library/city/shops/hours';
 import type { StaffShift } from '../core/library/city/shops/staff';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
 import { loopX } from '../core/library/scene-world';
@@ -15,6 +16,7 @@ import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, type PosedStaff, type Swap } from './city-shops-life';
+import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
 import { interiorPost } from './shop-interiors';
 import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
@@ -146,9 +148,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const date = city.day.date;
   const dayKey = `${date.y}-${date.m}-${date.d}`;
   const shifts = useMemo(
-    () => new Map(shops.street.map((s) => [s.slot.id, dayShifts(s, seed, date)])),
+    () => new Map(shops.street.map((s) => [s.slot.id, dayShifts(s, seed, date, shops.offsets.get(s.slot.id) ?? 0)])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shops.street, seed, dayKey],
+    [shops.street, shops.offsets, seed, dayKey],
   );
   // Un client n'entre que rideau levé (pas pendant qu'il monte ou descend).
   const gates = useMemo(
@@ -186,6 +188,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let staff: PosedStaff[] = [];
     let swaps: Swap[] = [];
     let waiters: Waiter[] = [];
+    let crews: Crew[] = [];
     let posedAt = -Infinity;
     const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
     return (now: number): void => {
@@ -202,6 +205,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         staff = collectPosedStaff(el);
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
+        crews = collectMovers(el);
       }
       for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
       for (const p of peds) if (moves(p.id, t)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
@@ -223,7 +227,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       }
       placeCustomers(nodes, visits, gates, width, metrics, t, first);
       placeSwaps(swaps, t);
-      if (!still) placeWaiters(waiters, t);
+      if (!still) {
+        placeWaiters(waiters, t);
+        placeMovers(crews, t);
+      }
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
       if (!still && Math.abs(t - posedAt) >= STAFF_POSE_S) {
         placeStaff(staff, t);
@@ -391,6 +398,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             sessionT0={frozen.current!}
           />
         ))}
+        {/* Déménagement : les porteurs (dessinés avant le camion, ils passent derrière lui en y entrant). */}
+        {shops.views.map((view) => (
+          <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} />
+        ))}
         {peds.map((p) => {
           const active = pedActive.has(p.id);
           return (
@@ -416,6 +427,23 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           );
         })}
         {of((e) => e.layer === 'sidewalk').map(eventNode)}
+        {/* Camion de déménagement garé au bord du trottoir : devant les passants, derrière les lampadaires et les files. */}
+        {shops.views.map((view, i) => (
+          <MovingTruck
+            key={view.slot.id}
+            view={view}
+            frame={shops.frames.get(view.slot.id)!}
+            change={shops.street[i]?.change ?? null}
+            offset={shops.offsets.get(view.slot.id) ?? 0}
+            seed={seed}
+            minutes={city.minutes}
+            width={width}
+            metrics={metrics}
+            sky={sky}
+            lights={lights}
+            still={still}
+          />
+        ))}
       </g>
       <StreetLamps width={width} height={height} seed={seed} minutes={city.minutes} daylight={sky.daylight} forcedNight={forcedNight} />
       {lane('far')}

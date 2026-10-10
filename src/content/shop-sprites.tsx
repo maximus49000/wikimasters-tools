@@ -18,6 +18,8 @@ const GLASS = '#BFE3F0';
 const ALU = '#B9C0C8';
 const SHUTTER = '#8C939C';
 const BARE = '#D8D2C4';
+// Fond d'une vitrine sans mobilier (local vide, chantier) : sert aussi à cacher les tranches de mobilier déjà sorties.
+export const EMPTY_WINDOW = '#2A2D36';
 
 // Nom sur un bandeau de largeur w : estimation 2,2 px par caractère, sinon le texte est comprimé.
 function SignText({ name, cx, y, w, ink }: { name: string; cx: number; y: number; w: number; ink: string }): ReactElement {
@@ -156,7 +158,7 @@ export function ShopFront({ frame, view, sky, lit, shutter = view.phase === 'clo
         )}
       </g>
       <rect x={win.x - 0.5} y={win.y - 0.5} width={win.w + 1} height={win.h + 1} fill={t(FRAME)} />
-      <rect x={win.x} y={win.y} width={win.w} height={win.h} fill={glow ? '#FFE7B0' : t('#2A2D36')} opacity={glow ? 0.85 : 1} />
+      <rect x={win.x} y={win.y} width={win.w} height={win.h} fill={glow ? '#FFE7B0' : t(EMPTY_WINDOW)} opacity={glow ? 0.85 : 1} />
       <svg x={win.x} y={win.y} width={win.w} height={win.h} overflow="hidden">
         {children}
       </svg>

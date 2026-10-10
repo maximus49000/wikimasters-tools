@@ -14,7 +14,7 @@ import { dayNumber, isOpenAt, rangesOf, ymdOfDay } from '../../src/core/library/
 import { streetOn } from '../../src/core/library/city/shops/lifecycle';
 import { shopFrame, shopSlotsFor } from '../../src/core/library/city/shops/slots';
 import { staffShiftsAt } from '../../src/core/library/city/shops/staff';
-import { changePlans, shopViewAt, type ShopView } from '../../src/core/library/city/shops/view';
+import { changePlans, movingOffsets, shopViewAt, type ShopView } from '../../src/core/library/city/shops/view';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -109,14 +109,18 @@ describe('personnel : qui est visible (staffCast)', () => {
       const seedSlots = shopSlotsFor(W, H, seed);
       for (let day = EPOCH + 1; day < EPOCH + 120; day++) {
         const ymd = ymdOfDay(day);
-        for (const s of streetOn(seedSlots, seed, EPOCH, day, {})) {
+        const street = streetOn(seedSlots, seed, EPOCH, day, {});
+        // Décalages du déménagement (un seul camion à la fois) : le chantier, donc l'arrivée du personnel, suit.
+        const offsets = movingOffsets(street, seed, day);
+        for (const s of street) {
           if (!s.change) continue;
           changes++;
-          const end = changePlans(seed, s.slot.id, day, s.change.kind).works.end;
+          const offset = offsets.get(s.slot.id) ?? 0;
+          const end = changePlans(seed, s.slot.id, day, s.change.kind, offset).works.end;
           if (s.tenant && isOpenAt(SHOP_DEFS[s.tenant.type], ymd, Math.ceil(end))) opensBeforeEnd++;
-          const shifts = dayShifts(s, seed, ymd);
+          const shifts = dayShifts(s, seed, ymd, offset);
           for (let m = 0; m < 1440; m++) {
-            const view = shopViewAt(s, seed, ymd, m);
+            const view = shopViewAt(s, seed, ymd, m, offset);
             const cast = staffCast(view, shifts, ymd, m, false);
             const where = `graine ${seed} jour ${day} ${s.slot.id} ${m}`;
             if (m < end) {
