@@ -16,12 +16,18 @@ import { tileCount } from '../../src/core/library/paint/city-painter';
 const SKY: Sky = { phase: 'day', daylight: 1, twilight: 0, sunFrac: 0.5, moonFrac: null, stars: 0, top: '#6FB1E8', bottom: '#BFE0F5' };
 let container: HTMLDivElement;
 let root: Root;
+// Clés demandées au peintre de test (dans l'ordre).
+let asked: string[] = [];
 beforeEach(() => {
+  asked = [];
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
   vi.setSystemTime(new Date(2026, 5, 21, 14, 0));
   localStorage.clear();
   resetPaintQueueForTests();
-  setJobRunnerForTests(async (j) => `data:image/png;base64,${btoa(j.key)}`);
+  setJobRunnerForTests(async (j) => {
+    asked.push(j.key);
+    return `data:image/png;base64,${btoa(j.key)}`;
+  });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -111,6 +117,7 @@ describe('précipitations et phénomènes peints', () => {
     expect(lines).toHaveLength(3);
     const d = lines.map((l) => l.getAttribute('d'));
     expect(d[0]).toMatch(/^M/);
+    expect(d[0]).not.toBe('M0 0');
     expect(new Set(d).size).toBe(1);
   });
 
@@ -135,5 +142,121 @@ describe('précipitations et phénomènes peints', () => {
     const cover = container.querySelector('[data-wx="snow-cover"]')!;
     expect(cover.querySelectorAll('image[data-snow-tile]')).toHaveLength(tileCount(1080));
     expect(Number(cover.getAttribute('opacity'))).toBeGreaterThan(0);
+  });
+});
+
+describe('relecture finale', () => {
+  it('première apparition des nuages peints : montés à opacité 0, puis 1 (fondu)', async () => {
+    writeArt('ghibli');
+    const seen: { node: Element; old: string | null }[] = [];
+    const observer = new MutationObserver((records) => { for (const r of records) seen.push({ node: r.target as Element, old: r.oldValue }); });
+    observer.observe(container, { subtree: true, attributes: true, attributeFilter: ['style'], attributeOldValue: true });
+    mount(clockOf('cloudy'));
+    await flush();
+    for (const r of observer.takeRecords()) seen.push({ node: r.target as Element, old: r.oldValue });
+    observer.disconnect();
+    const use = container.querySelector<SVGElement>('use[data-cloud-painted]')!;
+    expect(use.style.opacity).toBe('1');
+    expect(seen.some((s) => s.node === use && /opacity: 0[;\s]/.test(`${s.old ?? ''} `))).toBe(true);
+  });
+
+  it('temps clair : ni neige posée ni brume demandées au peintre ; neige et brume : demandées', async () => {
+    writeArt('ghibli');
+    mount(clockOf('sun'));
+    await flush(120);
+    expect(asked.some((k) => k.startsWith('snow|'))).toBe(false);
+    expect(asked.some((k) => k.includes('|fog|'))).toBe(false);
+    expect(container.querySelector('rect[data-wx="snow-cover"]')).not.toBeNull();
+    mount(clockOf('snow'));
+    await flush(120);
+    expect(asked.some((k) => k.startsWith('snow|'))).toBe(true);
+    expect(asked.some((k) => k.includes('|fog|'))).toBe(true);
+  });
+
+  it('brume seule : la brume est peinte, pas la neige posée', async () => {
+    writeArt('ghibli');
+    mount(clockOf('fog'));
+    await flush(120);
+    expect(asked.some((k) => k.includes('|fog|'))).toBe(true);
+    expect(asked.some((k) => k.startsWith('snow|'))).toBe(false);
+  });
+
+  it('besoin gardé : la neige qui cesse ne remet pas la neige posée au rectangle', async () => {
+    writeArt('ghibli');
+    mount(clockOf('snow'));
+    await flush(120);
+    mount(clockOf('sun'));
+    await flush(5);
+    expect(container.querySelector('[data-wx="snow-cover"]')!.tagName.toLowerCase()).toBe('g');
+  });
+
+  it('agrandissement pendant la neige : la dernière série de tranches reste affichée', async () => {
+    writeArt('ghibli');
+    const clock = clockOf('snow');
+    act(() => root.render(<svg><WeatherLayer scene="city" width={720} height={216} seed={1} sky={SKY} clock={clock} /></svg>));
+    await flush(120);
+    act(() => root.render(<svg><WeatherLayer scene="city" width={1080} height={216} seed={1} sky={SKY} clock={clock} /></svg>));
+    const cover = container.querySelector('[data-wx="snow-cover"]')!;
+    expect(cover.tagName.toLowerCase()).toBe('g');
+    expect(cover.querySelectorAll('image[data-snow-tile]').length).toBeGreaterThan(0);
+  });
+
+  it('Ghibli → classique → Ghibli : éclair et neige classiques rétablis, nuages repris sans repeindre', async () => {
+    const clock = clockOf('storm');
+    let t = Date.now();
+    while (!lightningAt(clock.read(t), t, 1)) t += 50;
+    vi.setSystemTime(t - 1000);
+    writeArt('ghibli');
+    mount(clock);
+    await flush(5);
+    expect(hrefs()).toHaveLength(12);
+    const clouds = asked.filter((k) => k.includes('|cloud|')).length;
+    expect(clouds).toBe(12);
+    act(() => writeArt('classic'));
+    await flush(30);
+    expect(container.querySelector('[data-wx-bolt-line]')).toBeNull();
+    const bolt = container.querySelector('path[data-wx="bolt"]')!;
+    expect(bolt.getAttribute('d')).toMatch(/^M-?\d+ 0 L/);
+    expect(container.querySelector('rect[data-wx="snow-cover"]')).not.toBeNull();
+    act(() => writeArt('ghibli'));
+    await flush(10);
+    expect(container.querySelectorAll('[data-wx-bolt-line]')).toHaveLength(3);
+    expect(container.querySelector('use[data-cloud-painted]')).not.toBeNull();
+    expect(asked.filter((k) => k.includes('|cloud|')).length).toBe(clouds);
+  });
+
+  it('neige : classique rétablit le rectangle, Ghibli les tranches', async () => {
+    writeArt('ghibli');
+    mount(clockOf('snow'));
+    await flush(120);
+    expect(container.querySelector('[data-wx="snow-cover"]')!.tagName.toLowerCase()).toBe('g');
+    act(() => writeArt('classic'));
+    await flush(5);
+    expect(container.querySelector('[data-wx="snow-cover"]')!.tagName.toLowerCase()).toBe('rect');
+    act(() => writeArt('ghibli'));
+    await flush(5);
+    expect(container.querySelector('[data-wx="snow-cover"]')!.tagName.toLowerCase()).toBe('g');
+  });
+
+  it('relance de la boucle : les nuages ne sautent pas (dérive gardée)', async () => {
+    const base = clockOf('cloudy').read(Date.now());
+    let wind = 1;
+    const clock = { read: () => ({ ...base, wind }) };
+    writeArt('ghibli');
+    act(() => root.render(<svg><WeatherLayer scene="city" width={720} height={216} seed={1} sky={SKY} clock={clock} /></svg>));
+    await flush(50);
+    wind = 0;
+    await flush(5);
+    const x = (): number => Number(/translate\(([-\d.]+)/.exec(container.querySelector('[data-wx="clouds-drift"]')!.getAttribute('transform') ?? '')![1]);
+    const before = x();
+    // Relance de la boucle (changement de nœuds) : classique.
+    act(() => writeArt('classic'));
+    expect(Math.abs(x() - before)).toBeLessThan(2);
+  });
+
+  it('classique : le cran des nuages n’est pas signalé (pas de re-rendu, rien de peint)', async () => {
+    mount(clockOf('cloudy'));
+    await flush(30);
+    expect(asked).toHaveLength(0);
   });
 });

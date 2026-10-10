@@ -99,3 +99,23 @@ describe('ciel peint de la Ville', () => {
     expect(outer?.querySelector('g')?.getAttribute('opacity')).toBe('0.4');
   });
 });
+
+describe('première apparition du ciel peint', () => {
+  it('le peint est monté à opacité 0, puis passe à 1 (fondu), le soleil actuel s’efface', async () => {
+    setJobRunnerForTests(async (j) => `data:image/png;base64,${btoa(j.key)}`);
+    writeArt('ghibli');
+    const seen: { node: Element; old: string | null }[] = [];
+    const observer = new MutationObserver((records) => { for (const r of records) seen.push({ node: r.target as Element, old: r.oldValue }); });
+    observer.observe(container, { subtree: true, attributes: true, attributeFilter: ['style'], attributeOldValue: true });
+    mount('city');
+    await flush();
+    for (const r of observer.takeRecords()) seen.push({ node: r.target as Element, old: r.oldValue });
+    observer.disconnect();
+    const texture = q('[data-sky-texture]')!;
+    expect(texture.style.opacity).toBe('1');
+    expect(seen.some((s) => s.node === texture && /opacity: 0[;\s]/.test(`${s.old ?? ''} `))).toBe(true);
+    const sun = q('[data-ghibli-sun]')!;
+    expect(seen.some((s) => s.node === sun && /opacity: 0[;\s]/.test(`${s.old ?? ''} `))).toBe(true);
+    expect(op('[data-classic-sun]')).toBe('0');
+  });
+});

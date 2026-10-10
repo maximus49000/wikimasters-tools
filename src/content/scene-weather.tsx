@@ -6,12 +6,12 @@ import { mixHex, type Sky } from '../core/library/sky';
 import { lightningAt, rainbowOf } from '../core/library/weather/weather-clock';
 import { CLOUD_BLOBS, godRayTarget, rayWindow, sunCoverage, type CloudSpot } from '../core/library/weather/weather-rays';
 import { smooth, type Weather } from '../core/library/weather/weather-types';
-import { CLOUD_KINDS, FOG_W, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
+import { CLOUD_KINDS, FOG_W, cloudBlobs, cloudShape, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { gradeFor, gradeValues } from '../core/library/paint/grade';
 import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
-import { fadeStyle } from './ghibli-sky';
+import { fadeStyle, useShownAfterMount } from './ghibli-sky';
 import { usePaintedClouds, usePaintedFog, usePaintedSnow } from './painted-sky';
 import { celestialPlace } from './scene-panorama';
 
@@ -113,7 +113,11 @@ function PatternDefs({ id, seed, ghibli }: { id: string; seed: number; ghibli: b
   );
 }
 
-type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; sky: RefObject<Sky>; onWet: RefObject<Props['onWet']>; onStep: RefObject<((s: CloudStep) => void) | undefined>; layout: string };
+// `cover` : nuages pris pour la couverture du soleil (forme peinte quand les nuages peints sont montrés), relus à chaque relevé.
+type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; cover: RefObject<readonly CloudSpot[]>; sky: RefObject<Sky>; onWet: RefObject<Props['onWet']>; onStep: RefObject<((s: CloudStep) => void) | undefined>; layout: string };
+
+// Positions intégrées des nuages, de la neige et de la brume : gardées d'une relance de la boucle à l'autre (pas de saut).
+type Motion = { drift: number; snowFarX: number; snowNearX: number; fogX: number };
 
 // Met la météo à l'écran sans re-rendu React : même horloge murale pour toutes les fenêtres, même règle d'économie que les acteurs
 // (~30 images/s, en pause quand la page est cachée, figée si l'utilisateur demande moins de mouvement).
@@ -124,6 +128,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   const skyRef = input.sky;
   const onWetRef = input.onWet;
   const onStepRef = input.onStep;
+  const coverRef = input.cover;
+  const motionRef = useRef<Motion | null>(null);
   useLayoutEffect(() => {
     const el = sky.current;
     const floor = ground.current;
@@ -158,11 +164,10 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     let wet: boolean | null = null;
     let lastMs = Date.now();
     // Positions intégrées (vitesse × durée) : un changement de vent change la VITESSE, jamais la position d'un coup.
-    const w0 = clock.read(lastMs);
-    let drift = positiveMod((lastMs / 1000) * windSpeed(w0.wind), width);
-    let snowFarX = 0;
-    let snowNearX = 0;
-    let fogX = 0;
+    // Posées une fois (premier lancement), puis reprises telles quelles à chaque relance.
+    if (!motionRef.current) motionRef.current = { drift: positiveMod((lastMs / 1000) * windSpeed(clock.read(lastMs).wind), width), snowFarX: 0, snowNearX: 0, fogX: 0 };
+    const m = motionRef.current;
+    m.drift = positiveMod(m.drift, width);
     let rayStrength = -1;
     let hidden = 0;
     let coveredAt = -Infinity;
@@ -183,12 +188,16 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       const dark = clamp01(rainDark + 0.35 * smoothstep(0.85, 1, w.cloud));
       // Ciel couvert sans pluie : des nuages nettement plus sombres que le voile gris du fond (le voile ne couvre que le ciel).
       const cloudDark = Math.max(dark, 0.5 * smoothstep(0.7, 1, w.cloud));
-      // Cran de couleur des nuages peints : signalé à React seulement quand il change (rare).
-      const step = cloudStep(daylight, skyRef.current.twilight, cloudDark);
-      const stepText = stepKey(step);
-      if (stepText !== lastStep) {
-        lastStep = stepText;
-        onStepRef.current?.(step);
+      // Cran de couleur des nuages peints : signalé à React seulement quand il change (rare), et seulement en Ghibli Ville
+      // (ailleurs, pas de signal donc pas de re-rendu ; le passage en Ghibli relance la boucle, qui signale alors le cran).
+      const signal = onStepRef.current;
+      if (signal) {
+        const step = cloudStep(daylight, skyRef.current.twilight, cloudDark);
+        const stepText = stepKey(step);
+        if (stepText !== lastStep) {
+          lastStep = stepText;
+          signal(step);
+        }
       }
       // Le voile par-dessus le décor ne dépend que de la pluie : les immeubles restent bien visibles quand il ne pleut pas.
       const thick = w.cloud * (0.3 + 0.7 * rainDark);
@@ -233,8 +242,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         if (shownOpacity <= 0) put(node, 'display', 'none');
         else if (node.hasAttribute('display')) node.removeAttribute('display');
       });
-      drift = positiveMod(drift + dt * windSpeed(w.wind), width);
-      put(nodes.drift, 'transform', `translate(${drift.toFixed(1)} 0)`);
+      m.drift = positiveMod(m.drift + dt * windSpeed(w.wind), width);
+      put(nodes.drift, 'transform', `translate(${m.drift.toFixed(1)} 0)`);
 
       set(nodes.fog, w.fog * 0.8);
       set(nodes.rainFar, rain * 0.7);
@@ -247,19 +256,19 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       // Motifs : seulement s'ils se voient (et figés si moins de mouvement).
       // Brume peinte : bancs qui dérivent lentement (≈ 12 px/s), figés si moins de mouvement.
       if (patterns.fog && w.fog > 0) {
-        fogX = (fogX + dt * 12) % FOG_W;
-        put(patterns.fog, 'patternTransform', `translate(${fogX.toFixed(1)} 0)`);
+        m.fogX = (m.fogX + dt * 12) % FOG_W;
+        put(patterns.fog, 'patternTransform', `translate(${m.fogX.toFixed(1)} 0)`);
       }
       const tm = still ? 0 : t;
       if (rain > 0) {
         put(patterns.rainFar, 'patternTransform', `rotate(${(lean * 0.6).toFixed(1)}) translate(0 ${((tm * 220) % TILE).toFixed(1)})`);
         put(patterns.rainNear, 'patternTransform', `rotate(${lean.toFixed(1)}) translate(0 ${((tm * 420) % TILE).toFixed(1)})`);
       }
-      snowFarX += dt * 8 * (w.wind + 0.2);
-      snowNearX += dt * 14 * (w.wind + 0.2);
+      m.snowFarX += dt * 8 * (w.wind + 0.2);
+      m.snowNearX += dt * 14 * (w.wind + 0.2);
       if (snow > 0) {
-        put(patterns.snowFar, 'patternTransform', `translate(${((Math.sin(tm * 0.6) * 12 + snowFarX) % TILE).toFixed(1)} ${((tm * 18) % TILE).toFixed(1)})`);
-        put(patterns.snowNear, 'patternTransform', `translate(${((Math.sin(tm * 0.8) * 18 + snowNearX) % TILE).toFixed(1)} ${((tm * 34) % TILE).toFixed(1)})`);
+        put(patterns.snowFar, 'patternTransform', `translate(${((Math.sin(tm * 0.6) * 12 + m.snowFarX) % TILE).toFixed(1)} ${((tm * 18) % TILE).toFixed(1)})`);
+        put(patterns.snowNear, 'patternTransform', `translate(${((Math.sin(tm * 0.8) * 18 + m.snowNearX) % TILE).toFixed(1)} ${((tm * 34) % TILE).toFixed(1)})`);
       }
 
       // Éclairs : jamais quand le mouvement est réduit (un flash figé plusieurs secondes serait pire).
@@ -281,7 +290,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       else if (now - coveredAt >= COVER_MS || still) {
         coveredAt = now;
         const sun = celestialPlace(sunFrac, width, height);
-        const cov = sunCoverage(sun.x, sun.y, pool.filter((_, i) => (cloudOpacity[i] ?? 0) >= 0.5), drift, width);
+        const cov = sunCoverage(sun.x, sun.y, coverRef.current.filter((_, i) => (cloudOpacity[i] ?? 0) >= 0.5), m.drift, width);
         hidden = 1 - (1 - cov) * (1 - clamp01(overcast));
       }
       // Part du soleil masquée, lue par le calque de lumière sur le <svg> de la pièce.
@@ -341,7 +350,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       svg?.style.removeProperty('--wmt-precip');
       svg?.style.removeProperty('--wmt-sun-hidden');
     };
-  }, [sky, ground, clock, seed, width, height, pool, skyRef, layout]);
+  }, [sky, ground, clock, seed, width, height, pool, coverRef, skyRef, layout]);
   return placeRef;
 }
 
@@ -362,20 +371,42 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const [art] = useArtStyle();
   const ghibli = art === 'ghibli' && scene === 'city';
   const [step, setStep] = useState<CloudStep | null>(null);
-  const onStepRef = useRef<((s: CloudStep) => void) | undefined>(setStep);
+  // Le cran n'est signalé qu'en Ghibli Ville : en classique et sur les autres scènes, la boucle ne re-rend pas la couche.
+  const onStepRef = useRef<((s: CloudStep) => void) | undefined>(undefined);
+  onStepRef.current = ghibli ? setStep : undefined;
   const painted = usePaintedClouds(seed, ghibli ? step : null);
-  const showPainted = ghibli && painted.ready;
+  const still = reducedMotion();
+  // Nuages peints montés à opacité 0, puis montrés au rendu suivant : le fondu joue dès la première apparition.
+  const showPainted = useShownAfterMount(painted.ready, ghibli, still);
+  // Couverture du soleil : bulles du nuage peint de chaque emplacement (forme n° (i + graine) mod 12) quand il est montré.
+  // (Calculée seulement en Ghibli Ville : ailleurs, la réserve classique telle quelle.)
+  const paintedPool = useMemo<CloudSpot[]>(() => {
+    if (!ghibli) return pool;
+    const blobs = Array.from({ length: CLOUD_KINDS }, (_, k) => cloudBlobs(cloudShape(seed, k)));
+    return pool.map((c, i) => ({ ...c, blobs: blobs[(((i + seed) % CLOUD_KINDS) + CLOUD_KINDS) % CLOUD_KINDS] }));
+  }, [pool, seed, ghibli]);
+  const coverRef = useRef<readonly CloudSpot[]>(pool);
+  coverRef.current = showPainted ? paintedPool : pool;
+  // Neige posée et brume peintes seulement si la météo en a besoin (relue à chaque rendu, soit chaque minute) ;
+  // un besoin apparu reste acquis tant que la couche est montée (pas d'aller-retour entre peint et dessin actuel).
+  const need = useRef({ snow: false, fog: false });
+  if (ghibli && (!need.current.snow || !need.current.fog)) {
+    const now = clock.read(Date.now());
+    if ((now.kind === 'snow' && now.precip > 0) || now.snowCover > 0) need.current.snow = true;
+    if (now.fog > 0) need.current.fog = true;
+  }
+  const needSnow = ghibli && need.current.snow;
   const fogH = Math.round(height * 0.7);
-  const fogUrl = usePaintedFog(seed, fogH, ghibli);
-  const plan = useMemo(() => (ghibli ? cityPaintPlan(width, height, seed) : null), [ghibli, width, height, seed]);
+  const fogUrl = usePaintedFog(seed, fogH, ghibli && need.current.fog);
+  const plan = useMemo(() => (needSnow ? cityPaintPlan(width, height, seed) : null), [needSnow, width, height, seed]);
   const snow = usePaintedSnow(plan);
   // La boucle met ses nœuds en cache : elle repart quand la neige posée ou la brume changent de nœud.
   const layout = `${ghibli}|${snow.ready}|${fogUrl !== ''}`;
-  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, sky: skyRef, onWet: onWetRef, onStep: onStepRef, layout });
+  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onWet: onWetRef, onStep: onStepRef, layout });
   // Mouvement réduit : pas de boucle, mais le ciel (chaque minute) relance un placement pour suivre la météo.
   useLayoutEffect(() => {
-    if (reducedMotion()) placeRef.current?.();
-  }, [sky, placeRef]);
+    if (still) placeRef.current?.();
+  }, [sky, placeRef, still]);
 
   const groundFrac = GROUND[scene];
   const ground = groundFrac === undefined ? height : height * groundFrac;
@@ -390,6 +421,9 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   // Filets : éventail vers le bas depuis le soleil (posé au milieu la nuit, éteint de toute façon).
   const sun = sky.sunFrac === null ? { x: width / 2, y: 0 } : celestialPlace(sky.sunFrac, width, height);
   const rayLength = 0.9 * height;
+  // Styles de fondu partagés par tous les nuages de la réserve (calculés une fois par rendu).
+  const classicStyle = fadeStyle(!showPainted, still);
+  const paintedStyle = fadeStyle(showPainted, still);
   const rays = Array.from({ length: RAY_COUNT }, (_, i) => {
     const a = -RAY_SPREAD + (i * 2 * RAY_SPREAD) / (RAY_COUNT - 1);
     const end = (deg: number): string => {
@@ -449,10 +483,10 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
           <g id={`${uid}-strip`} data-wx="clouds" fill="#FFFFFF">
             {pool.map((c, i) => (
               <g key={i} data-wx-cloud="" display="none" opacity={0} transform={`translate(${c.x.toFixed(1)} ${c.y.toFixed(1)}) scale(${c.s.toFixed(2)})`}>
-                <g data-cloud-classic="" style={fadeStyle(!showPainted)}>
+                <g data-cloud-classic="" style={classicStyle}>
                   {CLOUD_BLOBS.map((b, j) => <ellipse key={j} cx={b.cx} cy={b.cy} rx={b.rx} ry={b.ry} />)}
                 </g>
-                {painted.ready && <use data-cloud-painted="" href={`#${uid}-cloud-${(((i + seed) % CLOUD_KINDS) + CLOUD_KINDS) % CLOUD_KINDS}`} style={fadeStyle(showPainted)} />}
+                {painted.ready && <use data-cloud-painted="" href={`#${uid}-cloud-${(((i + seed) % CLOUD_KINDS) + CLOUD_KINDS) % CLOUD_KINDS}`} style={paintedStyle} />}
               </g>
             ))}
           </g>

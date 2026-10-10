@@ -81,9 +81,14 @@ export function usePaintedFog(seed: number, h: number, on: boolean): string {
 
 export type SnowTile = { x: number; w: number; url: string };
 
+// Tranches de neige posée du plan demandé ; tant que la nouvelle série n'est pas complète (agrandissement), la dernière
+// série complète reste affichée (comme les nuages) au lieu de retomber au rectangle actuel.
 export function usePaintedSnow(plan: CityPaintPlan | null): { ready: boolean; tiles: SnowTile[] } {
   const jobs = useMemo(() => (plan ? snowJobs(plan) : []), [plan]);
   const ready = usePaintJobs(jobs, plan !== null);
+  const last = useRef<{ seed: number; tiles: SnowTile[] } | null>(null);
   const tiles = jobs.map((j) => ({ x: j.x, w: j.w, url: ready.get(j.key) ?? '' }));
-  return { ready: tiles.length > 0 && tiles.every((t) => t.url !== ''), tiles };
+  if (plan && tiles.length > 0 && tiles.every((t) => t.url !== '')) last.current = { seed: plan.seed, tiles };
+  const kept = plan && last.current && last.current.seed === plan.seed ? last.current.tiles : null;
+  return { ready: kept !== null, tiles: kept ?? [] };
 }
