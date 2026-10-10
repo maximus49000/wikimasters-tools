@@ -227,7 +227,9 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
   const k = metrics.unit * STREET_SCALE.person * TERRACE_SCALE;
   const doorX = frame.door.x + frame.door.w / 2;
   const hue = def.sign;
-  const move = reduced ? undefined : SLIDE;
+  // Glissade seulement pendant le montage et le démontage : une terrasse déjà posée (ouverte, parasols) n'a pas de transition,
+  // sinon un nœud dont le style est résolu tard (onglet caché au montage) glisserait une minute depuis le coin (0, 0).
+  const move = reduced || (t.state !== 'setting-up' && t.state !== 'clearing') ? undefined : SLIDE;
   const slides = places.map((_, i) => slideOf(t.state, t.progress, n, i, reduced));
   const at = (i: number): number => doorX + (places[i]!.x - doorX) * slides[i]!;
   const parasols = t.state === 'umbrellas';

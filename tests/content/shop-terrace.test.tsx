@@ -113,6 +113,15 @@ describe('terrasse : rendu (ShopTerrace)', () => {
     expect(host.querySelector('[data-shop-terrace]')!.getAttribute('data-terrace-state')).toBe('setting-up');
     expect(host.querySelector('[data-terrace-carrier]')).not.toBeNull();
     expect(host.querySelectorAll('[data-terrace-guest]')).toHaveLength(0);
+    // Les tables glissent pendant le montage…
+    for (const t of tables(host)) expect((t as SVGGElement).style.transition).toContain('60s');
+  });
+  it('terrasse posée (ouverte ou parasols) : aucune glissade, rien ne peut partir du coin de la scène', () => {
+    for (const w of [FINE, SUN]) {
+      const { host } = render(terrace('cafe', 12 * 60, w));
+      expect(tables(host).length).toBeGreaterThanOrEqual(2);
+      for (const t of tables(host)) expect((t as SVGGElement).style.transition).toBe('');
+    }
   });
   it('après la pluie, la terrasse revient directement en place (pas de montage)', () => {
     const { host, root } = render(terrace('cafe', 12 * 60, FINE, RAIN));
