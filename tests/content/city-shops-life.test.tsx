@@ -13,7 +13,7 @@ import { ACCESSORY } from '../../src/core/library/city/shops/gestures';
 import { dayNumber, isOpenAt, rangesOf, ymdOfDay } from '../../src/core/library/city/shops/hours';
 import { streetOn } from '../../src/core/library/city/shops/lifecycle';
 import { shopFrame, shopSlotsFor } from '../../src/core/library/city/shops/slots';
-import { staffShiftsAt } from '../../src/core/library/city/shops/staff';
+import { WALK_MIN, staffShiftsAt, type StaffShift } from '../../src/core/library/city/shops/staff';
 import { changePlans, movingOffsets, shopViewAt, type ShopView } from '../../src/core/library/city/shops/view';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
@@ -70,13 +70,37 @@ const viewOf = (type: ShopTypeId, date: YMD, minutes: number): ShopView => ({
   interiorStage: null,
 });
 
+// Minutes à vérifier pour un invariant sur la journée : celles où quelque chose change (arrivée et départ de chaque poste, début
+// et fin de la marche, rideau, pauses, plus les bornes données : ouverture, fermeture, chantier), chacune à ±1, plus une minute
+// sur sept. Remplace le balayage des 1440 minutes (trop lent sous la suite complète) sans perdre les transitions.
+function criticalMinutes(shifts: StaffShift[], bounds: number[]): number[] {
+  const marks = [...bounds];
+  for (const sh of shifts) {
+    marks.push(sh.arriveAt, sh.arriveAt - WALK_MIN, sh.leaveAt, sh.leaveAt + WALK_MIN);
+    if (sh.shutterUp !== undefined) marks.push(sh.shutterUp);
+    if (sh.shutterDown !== undefined) marks.push(sh.shutterDown);
+    for (const [a, b] of sh.breaks) marks.push(a, b);
+  }
+  const out = new Set<number>();
+  for (let m = 0; m < 1440; m += 7) out.add(m);
+  for (const v of marks) {
+    for (const base of [v, v - 1440]) {
+      for (let m = Math.floor(base) - 1; m <= Math.ceil(base) + 1; m++) if (m >= 0 && m < 1440) out.add(m);
+    }
+  }
+  return [...out].sort((a, b) => a - b);
+}
+// Ouvertures et fermetures du jour et de la veille (plages qui passent minuit).
+const rangeBounds = (type: ShopTypeId, date: YMD): number[] =>
+  [...rangesOf(SHOP_DEFS[type], date), ...rangesOf(SHOP_DEFS[type], addDays(date, -1)).map(([a, b]) => [a - 1440, b - 1440] as const)].flat();
+
 describe('personnel : qui est visible (staffCast)', () => {
   it('pour chaque type, toute la journée : un local ouvert montre au moins une personne derrière la vitrine, jamais plus de trois visibles', () => {
     // Samedi (amplitudes longues, relais) et le dimanche qui suit (plages de la veille passées minuit).
     for (const date of [{ y: 2026, m: 10, d: 10 }, { y: 2026, m: 10, d: 11 }]) {
       for (const type of SHOP_TYPE_IDS) {
         const shifts = staffShiftsAt(SHOP_DEFS[type], SEED, 'shop-0', date);
-        for (let m = 0; m < 1440; m++) {
+        for (const m of criticalMinutes(shifts, rangeBounds(type, date))) {
           const view = viewOf(type, date, m);
           const cast = staffCast(view, shifts, date, m, false);
           const atDoor = cast.street.filter((s) => s.visible && s.atDoor).length;
@@ -87,7 +111,7 @@ describe('personnel : qui est visible (staffCast)', () => {
         }
       }
     }
-  }, 30_000);
+  });
   it('mouvement réduit : exactement une personne si ouvert, aucune sinon, personne sur le trottoir, rideau selon l’heure', () => {
     const date = { y: 2026, m: 10, d: 10 };
     for (const type of SHOP_TYPE_IDS) {
@@ -119,7 +143,9 @@ describe('personnel : qui est visible (staffCast)', () => {
           const end = changePlans(seed, s.slot.id, day, s.change.kind, offset).works.end;
           if (s.tenant && isOpenAt(SHOP_DEFS[s.tenant.type], ymd, Math.ceil(end))) opensBeforeEnd++;
           const shifts = dayShifts(s, seed, ymd, offset);
-          for (let m = 0; m < 1440; m++) {
+          const plans = changePlans(seed, s.slot.id, day, s.change.kind, offset);
+          const bounds = [plans.moving.start, plans.moving.end, plans.works.start, plans.works.end, ...(s.tenant ? rangeBounds(s.tenant.type, ymd) : [])];
+          for (const m of criticalMinutes(shifts, bounds)) {
             const view = shopViewAt(s, seed, ymd, m, offset);
             const cast = staffCast(view, shifts, ymd, m, false);
             const where = `graine ${seed} jour ${day} ${s.slot.id} ${m}`;
@@ -139,7 +165,7 @@ describe('personnel : qui est visible (staffCast)', () => {
     expect(changes).toBeGreaterThan(5);
     expect(openMinutes).toBeGreaterThan(0);
     expect(opensBeforeEnd).toBeGreaterThan(0);
-  }, 60_000);
+  });
 });
 
 describe('personnel : rendu (StaffLayer)', () => {
