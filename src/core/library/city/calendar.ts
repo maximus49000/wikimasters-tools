@@ -2,7 +2,10 @@ export type YMD = { y: number; m: number; d: number };
 // `start` inclus, `end` EXCLU (jour de reprise des cours), au format AAAA-MM-JJ : la comparaison de chaînes suffit.
 export type HolidayPeriod = { name: string; start: string; end: string };
 export type DayKind = 'school' | 'wednesday' | 'weekend' | 'holiday' | 'public-holiday';
-export type DayContext = { date: YMD; iso: string; weekday: number; kind: DayKind; schoolOn: boolean; publicHoliday: string | null };
+// Fêtes de la scène Ville (vague 1b-ii) : `hours` en minutes, [début, fin) ; une plage ne passe pas minuit (on écrit une ligne par jour).
+export type FestivityId = 'new-year' | 'bastille' | 'christmas-eve';
+export type Festivity = { id: FestivityId; hours: readonly (readonly [number, number])[] };
+export type DayContext = { date: YMD; iso: string; weekday: number; kind: DayKind; schoolOn: boolean; publicHoliday: string | null; festivities: Festivity[] };
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 export const isoDate = ({ y, m, d }: YMD): string => `${y}-${pad(m)}-${pad(d)}`;
@@ -57,11 +60,27 @@ export function publicHolidays(year: number, alsaceMoselle = false): Record<stri
   return out;
 }
 
+// Ajouter une fête = ajouter une ligne (un id peut avoir plusieurs jours).
+export const FESTIVITIES: readonly { id: FestivityId; m: number; d: number; hours: Festivity['hours'] }[] = [
+  { id: 'new-year', m: 12, d: 31, hours: [[1290, 1440]] },
+  { id: 'new-year', m: 1, d: 1, hours: [[0, 30]] },
+  { id: 'bastille', m: 7, d: 14, hours: [[1260, 1440]] },
+  { id: 'christmas-eve', m: 12, d: 24, hours: [[0, 1440]] },
+  { id: 'christmas-eve', m: 12, d: 25, hours: [[0, 720]] },
+];
+
+export const festivitiesOn = ({ m, d }: YMD): Festivity[] => FESTIVITIES.filter((f) => f.m === m && f.d === d).map(({ id, hours }) => ({ id, hours }));
+
+export function activeFestivities(list: readonly Festivity[], minute: number): FestivityId[] {
+  const ids = list.filter((f) => f.hours.some(([a, b]) => minute >= a && minute < b)).map((f) => f.id);
+  return ids.filter((id, i) => ids.indexOf(id) === i);
+}
+
 export function dayContext(date: YMD, periods: HolidayPeriod[], alsaceMoselle = false): DayContext {
   const iso = isoDate(date);
   const weekday = weekdayOf(date);
   const publicHoliday = publicHolidays(date.y, alsaceMoselle)[iso] ?? null;
   const onVacation = periods.some((p) => iso >= p.start && iso < p.end);
   const kind: DayKind = publicHoliday ? 'public-holiday' : weekday === 0 || weekday === 6 ? 'weekend' : onVacation ? 'holiday' : weekday === 3 ? 'wednesday' : 'school';
-  return { date, iso, weekday, kind, schoolOn: kind === 'school' || kind === 'wednesday', publicHoliday };
+  return { date, iso, weekday, kind, schoolOn: kind === 'school' || kind === 'wednesday', publicHoliday, festivities: festivitiesOn(date) };
 }
