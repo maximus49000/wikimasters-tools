@@ -303,9 +303,10 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
         expect(Math.abs(w.x - prev!.van!.x), `${tag} : ouvrier ${k} disparu loin de la camionnette`).toBeLessThanOrEqual(prev!.van!.half);
       }
       if (absMinute(day, m) === fw.first) {
-        // Au début du créneau : à la portière.
+        // Au début du créneau : à l'arrière de la camionnette, portière ouverte (les deux porteurs et leur charge, ou l'échelle
+        // qu'ils descendent de la galerie, juste derrière la carrosserie).
         expect(s.workers.size, tag).toBe(2);
-        for (const w of s.workers.values()) expect(Math.abs(w.x - s.van!.door), `${tag} : à la portière`).toBeLessThanOrEqual(s.van!.half);
+        for (const w of s.workers.values()) expect(Math.abs(w.x - s.van!.door), `${tag} : à la portière`).toBeLessThanOrEqual(s.van!.half + 45 * u);
         atDoor = true;
       }
       prev = s;

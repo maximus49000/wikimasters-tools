@@ -229,8 +229,10 @@ export function HeldSpot({ sky }: { sky: Sky }): ReactElement {
 }
 
 // ---------- Camionnette de l'équipe (repère des véhicules : roues à y = 0, regard vers +x) ----------
-// Blanche à bande orange, galerie de toit ; `ladder` : l'échelle est rangée sur la galerie (en fin de journée) ; `open` : la
+// Blanche à bande orange, galerie de toit ; `ladder` : l'échelle est rangée sur la galerie (centrée en x = VAN_LADDER.x, à
+// y = VAN_LADDER.y, 25 unités : à l'échelle de la camionnette, la longueur de celle que l'équipe porte) ; `open` : la
 // portière arrière est ouverte (les ouvriers descendent ou remontent).
+export const VAN_LADDER = { x: -6, y: -28 } as const;
 export function Van({ sky, ladder, lights, open = false }: { sky: Sky; ladder: boolean; lights: boolean; open?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (
@@ -250,9 +252,9 @@ export function Van({ sky, ladder, lights, open = false }: { sky: Sky; ladder: b
       {[-20, -6, 8].map((x) => <line key={x} x1={x} y1={-25.5} x2={x} y2={-24} stroke={t(STEEL)} strokeWidth={0.6} />)}
       {ladder && (
         <g data-van-ladder="" stroke={t('#B9C0C8')} strokeLinecap="round">
-          <line x1={-24} y1={-27} x2={12} y2={-27} strokeWidth={0.8} />
-          <line x1={-24} y1={-29} x2={12} y2={-29} strokeWidth={0.8} />
-          {Array.from({ length: 12 }, (_, i) => <line key={i} x1={-23 + i * 3} y1={-29} x2={-23 + i * 3} y2={-27} strokeWidth={0.5} />)}
+          <line x1={-18.5} y1={-27} x2={6.5} y2={-27} strokeWidth={0.8} />
+          <line x1={-18.5} y1={-29} x2={6.5} y2={-29} strokeWidth={0.8} />
+          {Array.from({ length: 9 }, (_, i) => <line key={i} x1={-18 + i * 3} y1={-29} x2={-18 + i * 3} y2={-27} strokeWidth={0.5} />)}
         </g>
       )}
       <circle cx={-14} cy={-3} r={4} fill="#222" />

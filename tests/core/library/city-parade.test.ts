@@ -24,9 +24,10 @@ describe('roadClosed', () => {
     expect(roadClosed({ y: 2026, m: 7, d: 13 }, 600)).toBe(false);
     expect(roadClosed({ y: 2026, m: 10, d: 10 }, 600)).toBe(false);
   });
-  it('Fête de la musique : du 21/6 14 h jusqu’à la fin de la dépose de nuit le 22/6 (5 h)', () => {
-    expect(MUSIC_CLOSURE).toEqual({ from: 840, to: 300 });
-    expect(roadClosed(D21, 839)).toBe(false);
+  it('Fête de la musique : du 21/6 13 h (pose des barrières en travers) jusqu’à la fin de la dépose de nuit le 22/6 (5 h)', () => {
+    expect(MUSIC_CLOSURE).toEqual({ from: 780, to: 300 });
+    expect(roadClosed(D21, 779)).toBe(false);
+    expect(roadClosed(D21, 780)).toBe(true);
     expect(roadClosed(D21, 840)).toBe(true);
     expect(roadClosed(D21, 1439)).toBe(true);
     expect(roadClosed(D22, 0)).toBe(true);
@@ -51,7 +52,7 @@ describe('roadClosed', () => {
     expect(cityIntensity(ctx({ y: 2026, m: 7, d: 13 }, 600)).closed).toBe(false);
     expect(cityIntensity(ctx({ y: 2026, m: 6, d: 21 }, 1200)).closed).toBe(true);
     expect(cityIntensity(ctx({ y: 2026, m: 6, d: 22 }, 120)).closed).toBe(true);
-    expect(cityIntensity(ctx({ y: 2026, m: 6, d: 21 }, 780)).closed).toBe(false);
+    expect(cityIntensity(ctx({ y: 2026, m: 6, d: 21 }, 770)).closed).toBe(false);
   });
 });
 

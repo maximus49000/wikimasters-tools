@@ -135,8 +135,9 @@ describe('CityLifeLayer', () => {
     const order = Array.from(layer.children)
       .filter((el) => el.tagName.toLowerCase() !== 'defs')
       .map((el) => (el.hasAttribute('data-city-events-back') ? 'events-back' : el.hasAttribute('data-city-sidewalk') ? 'sidewalk' : el.hasAttribute('data-street-lamps') ? 'lamps' : el.hasAttribute('data-install-part') ? `install-${el.getAttribute('data-install-part')}` : el.getAttribute('data-city-lane')));
-    // Décors de fête du devant (drapeaux de lampadaires, camions élévateurs) : juste après les lampadaires.
-    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'far', 'near']);
+    // Décors de fête du devant (drapeaux de lampadaires, camions élévateurs) : juste après les lampadaires ; puis la chaussée de
+    // la rue privatisée (Fête de la musique), avant les files.
+    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'install-street', 'far', 'near']);
     expect(layer.querySelectorAll('[data-street-lamp][data-lit="true"]').length).toBeGreaterThan(0);
   });
   it('les vélos roulent sur leur piste, dessinés après les voitures de la file du premier plan', () => {

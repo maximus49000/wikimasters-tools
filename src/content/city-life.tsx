@@ -480,6 +480,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <StreetLamps width={width} height={height} seed={seed} minutes={city.minutes} daylight={sky.daylight} forcedNight={forcedNight} />
       {/* Drapeaux de lampadaires, barrières, camionnettes et camions élévateurs : devant les lampadaires, derrière les files. */}
       <InstallLayer {...install} part="front" />
+      {/* Rue privatisée de la Fête de la musique : barrières en travers, stands de bière, serveurs, files et foule, triés par
+          profondeur sur la chaussée (aucune voiture ne roule alors). */}
+      <InstallLayer {...install} part="street" />
       {lane('far')}
       {/* Grand défilé du 14 juillet (route fermée, aucune voiture) : une file du fond réduite, derrière celle du premier plan. */}
       <ParadeLayer lane="far" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} />

@@ -9,9 +9,10 @@ import { outfitFor, type Outfit } from './people';
 export const CLOSURE: readonly [number, number] = [480, 810]; // 8 h à 13 h 30 (minutes)
 export const PARADE: readonly [number, number] = [600, 720]; // 10 h à 12 h (minutes)
 
-// Fête de la musique : rue privatisée du 21/6 à 14 h (barrières posées de 13 h à 14 h) jusqu'au 22/6 à 5 h, fin de la dépose
+// Fête de la musique : rue privatisée du 21/6 à 13 h, dès que l'équipe commence à poser les barrières EN TRAVERS des files (de
+// 13 h à 14 h : aucune voiture ne traverse une barrière posée), jusqu'au 22/6 à 5 h, fin de la dépose
 // de nuit (stands de 2 h 30 à 5 h, barrières de 4 h 30 à 5 h, voir install.ts) : `to` est une minute du lendemain.
-export const MUSIC_CLOSURE = { from: 840, to: 300 } as const;
+export const MUSIC_CLOSURE = { from: 780, to: 300 } as const;
 
 // Route fermée à la minute `minute` du jour `date` : 14 juillet (défilé) ou Fête de la musique (rue privatisée, à cheval sur
 // minuit). La fermeture ne dépend que du calendrier, pas des plages de foule.

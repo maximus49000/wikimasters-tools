@@ -124,14 +124,14 @@ export function musicianAt(i: number, t: number, dayStartS: number, g: StageGeom
 
 type LiveProps = {
   stageX: number; base: number; unit: number; width: number; minutes: number; dayOffset: number;
-  outfits: readonly Outfit[]; sky: Sky; rainy: boolean; still: boolean; lit?: boolean;
+  outfits: readonly Outfit[]; sky: Sky; rainy: boolean; still: boolean; lit?: boolean; stageId?: string;
 };
 
 // Musiciens à l'échelle de la scène (0,8 du repère de la scène), pieds sur le trottoir (`base`) ou sur le plancher. La boucle de
 // l'horloge murale place les marcheurs à chaque image et ne re-rend que lorsqu'un musicien change d'état. `dayOffset` : jours
 // écoulés depuis le jour de la fête (1 la nuit suivante). `outfits` : trois tenues tirées de la graine par l'appelant (jamais
 // Math.random). Mouvement réduit : seulement ceux qui jouent, immobiles.
-export function StageBand({ stageX, base, unit, width, minutes, dayOffset, outfits, sky: night, rainy, still, lit = false }: LiveProps): ReactElement | null {
+export function StageBand({ stageX, base, unit, width, minutes, dayOffset, outfits, sky: night, rainy, still, lit = false, stageId = '' }: LiveProps): ReactElement | null {
   const sky = lit ? { ...night, daylight: Math.max(night.daylight, 0.75) } : night;
   const now = Date.now() / 1000;
   const dayStart = useSceneDayStart(minutes, now) - dayOffset * 86400;
@@ -160,7 +160,7 @@ export function StageBand({ stageX, base, unit, width, minutes, dayOffset, outfi
   const states = statesAt(now).map((p) => (still && p.mode !== 'playing' ? { ...p, mode: 'absent' as const } : p));
   if (states.every((p) => p.mode === 'absent')) return null;
   return (
-    <g data-stage-band-group="" ref={root}>
+    <g data-stage-band-group={stageId} ref={root}>
       {MUSICIANS.map((m, i) => {
         const p = states[i]!;
         if (p.mode === 'absent') return null;
