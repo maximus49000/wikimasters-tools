@@ -1,4 +1,4 @@
-import type { FestivityId } from './calendar';
+import { addDays, festivityStartsOn, type FestivityId, type YMD } from './calendar';
 import { WORLD_MARGIN, hashString, mulberry32 } from '../scene-world';
 import { WALK_PACE, cityMetrics } from './metrics';
 import { outfitFor, type Outfit } from './people';
@@ -9,7 +9,20 @@ import { outfitFor, type Outfit } from './people';
 export const CLOSURE: readonly [number, number] = [480, 810]; // 8 h à 13 h 30 (minutes)
 export const PARADE: readonly [number, number] = [600, 720]; // 10 h à 12 h (minutes)
 
-export const roadClosed = (fests: readonly FestivityId[], minute: number): boolean => fests.includes('bastille') && minute >= CLOSURE[0] && minute < CLOSURE[1];
+// Fête de la musique : rue privatisée du 21/6 à 14 h (barrières posées de 13 h à 14 h) jusqu'au 22/6 à 5 h, fin de la dépose
+// de nuit (stands de 2 h 30 à 5 h, barrières de 4 h 30 à 5 h, voir install.ts) : `to` est une minute du lendemain.
+export const MUSIC_CLOSURE = { from: 840, to: 300 } as const;
+
+// Route fermée à la minute `minute` du jour `date` : 14 juillet (défilé) ou Fête de la musique (rue privatisée, à cheval sur
+// minuit). La fermeture ne dépend que du calendrier, pas des plages de foule.
+export function roadClosed(date: YMD, minute: number): boolean {
+  if (festivityStartsOn(date, 'bastille') && minute >= CLOSURE[0] && minute < CLOSURE[1]) return true;
+  if (festivityStartsOn(date, 'music') && minute >= MUSIC_CLOSURE.from) return true;
+  return festivityStartsOn(addDays(date, -1), 'music') && minute < MUSIC_CLOSURE.to;
+}
+
+// Le cortège du 14 juillet roule-t-il (de 10 h jusqu'à la réouverture de la route) ? `fests` : fêtes du jour.
+export const paradeOn = (fests: readonly FestivityId[], minute: number): boolean => fests.includes('bastille') && minute >= PARADE[0] && minute < CLOSURE[1];
 
 export type ParadeKind = 'motorbikes' | 'flags' | 'band' | 'infantry' | 'cavalry' | 'jeeps' | 'trucks' | 'tanks' | 'firetruck';
 // `start` : instant (s) où le centre de l'unité entre dans le champ par la gauche ; `half` : demi-longueur dessinée (px).

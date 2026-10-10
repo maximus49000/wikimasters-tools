@@ -1,6 +1,6 @@
 // tests/core/library/city-calendar.test.ts
 import { describe, expect, it } from 'vitest';
-import { FESTIVITIES, activeFestivities, addDays, dayContext, easterSunday, festivitiesOn, isoDate, publicHolidays, weekdayOf, type HolidayPeriod } from '../../../src/core/library/city/calendar';
+import { FESTIVITIES, activeFestivities, addDays, dayContext, easterSunday, festivitiesOn, festivityStartsOn, isoDate, publicHolidays, weekdayOf, type HolidayPeriod } from '../../../src/core/library/city/calendar';
 
 describe('Pâques et jours fériés', () => {
   it('calcule le dimanche de Pâques', () => {
@@ -99,6 +99,12 @@ describe('fêtes de 1b-ii-b', () => {
     expect(ids(2026, 6, 21)).toEqual(['music']);
     expect(ids(2026, 11, 11)).toEqual(['armistice']);
     expect(hours(2026, 6, 21, 'music')).toEqual([[1020, 1440]]);
+    // La fête se prolonge dans la nuit du 21 au 22, jusqu'à 4 h 30 (fin de la dépose de nuit).
+    expect(ids(2026, 6, 22)).toEqual(['music']);
+    expect(hours(2026, 6, 22, 'music')).toEqual([[0, 270]]);
+    expect(activeFestivities(festivitiesOn({ y: 2026, m: 6, d: 22 }), 30)).toEqual(['music']);
+    expect(activeFestivities(festivitiesOn({ y: 2026, m: 6, d: 22 }), 270)).toEqual([]);
+    expect(ids(2026, 6, 23)).toEqual([]);
   });
   it('calcule Pâques', () => {
     expect(ids(2026, 4, 5)).toEqual(['easter']);
@@ -114,5 +120,16 @@ describe('fêtes de 1b-ii-b', () => {
   it('ajoute le défilé du matin au 14 juillet et étend le 1er janvier', () => {
     expect(hours(2026, 7, 14, 'bastille')).toEqual([[600, 720], [1260, 1440]]);
     expect(hours(2027, 1, 1, 'new-year')).toEqual([[0, 60]]);
+  });
+});
+
+describe('festivityStartsOn', () => {
+  it('ne retient que le premier jour d’une fête qui passe minuit', () => {
+    expect(festivityStartsOn({ y: 2026, m: 6, d: 21 }, 'music')).toBe(true);
+    expect(festivityStartsOn({ y: 2026, m: 6, d: 22 }, 'music')).toBe(false);
+    expect(festivityStartsOn({ y: 2026, m: 12, d: 31 }, 'new-year')).toBe(true);
+    expect(festivityStartsOn({ y: 2027, m: 1, d: 1 }, 'new-year')).toBe(false);
+    expect(festivityStartsOn({ y: 2026, m: 7, d: 14 }, 'bastille')).toBe(true);
+    expect(festivityStartsOn({ y: 2026, m: 7, d: 13 }, 'bastille')).toBe(false);
   });
 });

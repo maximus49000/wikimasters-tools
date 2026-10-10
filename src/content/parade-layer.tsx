@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ReactElement } from 'react';
 import type { FestivityId } from '../core/library/city/calendar';
 import { FAR_SHRINK, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
-import { PARADE, paradeUnits, paradeX, roadClosed, type ParadeLane, type ParadeUnit } from '../core/library/city/parade';
+import { paradeOn, paradeUnits, paradeX, type ParadeLane, type ParadeUnit } from '../core/library/city/parade';
 import type { Sky } from '../core/library/sky';
 import { ParadeUnitSprite } from './parade-sprites';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -9,7 +9,7 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // Calque du grand défilé du 14 juillet (spec §7.4). Le moteur (`city/parade.ts`) est pur : le flux des unités se calcule
 // depuis l'instant (s) du début du jour de la scène. Ici, la boucle lit l'horloge murale, pose chaque unité visible par un
 // `transform` (sans re-rendu) et ne re-rend que lorsque l'ensemble des unités dans le champ change. Le cortège roule sur les deux
-// files de la route (une instance du calque par file, la file du fond réduite de FAR_SHRINK), vers la droite, pendant la fermeture de la route (`roadClosed`) à partir de 10 h. Mouvement réduit :
+// files de la route (une instance du calque par file, la file du fond réduite de FAR_SHRINK), vers la droite, pendant la fermeture de la route du 14 juillet à partir de 10 h (`paradeOn`). Mouvement réduit :
 // le cortège ne part pas (rien n'est dessiné).
 
 // Début du jour de la scène (s, horloge murale) : la minute de la scène est alignée sur les minutes de l'horloge
@@ -29,7 +29,7 @@ const visibleAt = (units: readonly ParadeUnit[], width: number, t: number): Para
 const keyOf = (list: readonly ParadeUnit[]): string => list.map((u) => u.id).join(',');
 
 export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metrics, lane }: Props): ReactElement | null {
-  const on = !still && roadClosed(dayFests, minutes) && minutes >= PARADE[0];
+  const on = !still && paradeOn(dayFests, minutes);
   const now = Date.now() / 1000;
   const dayStart = useSceneDayStart(minutes, now);
   const units = useMemo(() => (on ? paradeUnits(seed, width, dayStart).filter((u) => u.lane === lane) : []), [on, lane, seed, width, dayStart]);

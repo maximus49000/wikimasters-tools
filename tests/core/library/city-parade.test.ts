@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLOSURE, CROWD_LANE, PARADE, PARADE_SPEED, crowdFor, crowdLevel, flypastWindow, spectatorAt, spectatorTimes, paradeUnits, paradeX, roadClosed, type ParadeKind } from '../../../src/core/library/city/parade';
+import { CLOSURE, CROWD_LANE, MUSIC_CLOSURE, PARADE, paradeOn, PARADE_SPEED, crowdFor, crowdLevel, flypastWindow, spectatorAt, spectatorTimes, paradeUnits, paradeX, roadClosed, type ParadeKind } from '../../../src/core/library/city/parade';
 import { cityEventSchedule, defOf, eligible, EVENT_DEFS, conditionsKey, type EventConditions } from '../../../src/core/library/city/events';
 import { cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
 import { dayContext, type YMD } from '../../../src/core/library/city/calendar';
@@ -10,22 +10,48 @@ const DAY0 = 1_000_000 * 86400 / 86400; // instant (s) arbitraire de début de j
 const ctx = (date: YMD, minutes: number): CityContext => ({ minutes, day: dayContext(date, []), precip: 0, snow: false, storm: false, daylight: 1 });
 
 describe('roadClosed', () => {
-  it('bastille uniquement, de 8 h à 13 h 30, fin de la dépose des barrières (borne haute exclue)', () => {
+  const D14: YMD = { y: 2026, m: 7, d: 14 };
+  const D21: YMD = { y: 2026, m: 6, d: 21 };
+  const D22: YMD = { y: 2026, m: 6, d: 22 };
+  it('le 14/7, de 8 h à 13 h 30, fin de la dépose des barrières (borne haute exclue)', () => {
     expect(CLOSURE).toEqual([480, 810]);
     expect(PARADE).toEqual([600, 720]);
-    expect(roadClosed(['bastille'], 479)).toBe(false);
-    expect(roadClosed(['bastille'], 480)).toBe(true);
-    expect(roadClosed(['bastille'], 809)).toBe(true);
-    expect(roadClosed(['bastille'], 760)).toBe(true);
-    expect(roadClosed(['bastille'], 810)).toBe(false);
-    expect(roadClosed(['music'], 600)).toBe(false);
-    expect(roadClosed([], 600)).toBe(false);
+    expect(roadClosed(D14, 479)).toBe(false);
+    expect(roadClosed(D14, 480)).toBe(true);
+    expect(roadClosed(D14, 809)).toBe(true);
+    expect(roadClosed(D14, 760)).toBe(true);
+    expect(roadClosed(D14, 810)).toBe(false);
+    expect(roadClosed({ y: 2026, m: 7, d: 13 }, 600)).toBe(false);
+    expect(roadClosed({ y: 2026, m: 10, d: 10 }, 600)).toBe(false);
+  });
+  it('Fête de la musique : du 21/6 14 h jusqu’à la fin de la dépose de nuit le 22/6 (5 h)', () => {
+    expect(MUSIC_CLOSURE).toEqual({ from: 840, to: 300 });
+    expect(roadClosed(D21, 839)).toBe(false);
+    expect(roadClosed(D21, 840)).toBe(true);
+    expect(roadClosed(D21, 1439)).toBe(true);
+    expect(roadClosed(D22, 0)).toBe(true);
+    expect(roadClosed(D22, 269)).toBe(true);
+    expect(roadClosed(D22, 299)).toBe(true);
+    expect(roadClosed(D22, 300)).toBe(false);
+    expect(roadClosed(D22, 840)).toBe(false);
+    expect(roadClosed({ y: 2026, m: 6, d: 20 }, 1000)).toBe(false);
+    expect(roadClosed(D21, 600)).toBe(false);
+  });
+  it('le cortège ne part que le 14/7 (pas pour la Fête de la musique)', () => {
+    expect(paradeOn(['bastille'], 600)).toBe(true);
+    expect(paradeOn(['bastille'], 599)).toBe(false);
+    expect(paradeOn(['bastille'], 809)).toBe(true);
+    expect(paradeOn(['bastille'], 810)).toBe(false);
+    expect(paradeOn(['music'], 900)).toBe(false);
   });
   it('cityIntensity le calcule le 14/7 et pas un autre jour', () => {
     expect(cityIntensity(ctx({ y: 2026, m: 7, d: 14 }, 600)).closed).toBe(true);
     expect(cityIntensity(ctx({ y: 2026, m: 7, d: 14 }, 800)).closed).toBe(true);
     expect(cityIntensity(ctx({ y: 2026, m: 7, d: 14 }, 820)).closed).toBe(false);
     expect(cityIntensity(ctx({ y: 2026, m: 7, d: 13 }, 600)).closed).toBe(false);
+    expect(cityIntensity(ctx({ y: 2026, m: 6, d: 21 }, 1200)).closed).toBe(true);
+    expect(cityIntensity(ctx({ y: 2026, m: 6, d: 22 }, 120)).closed).toBe(true);
+    expect(cityIntensity(ctx({ y: 2026, m: 6, d: 21 }, 780)).closed).toBe(false);
   });
 });
 

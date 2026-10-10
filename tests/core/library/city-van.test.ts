@@ -98,7 +98,7 @@ describe('footWindow : créneaux de l équipe à pied d une fenêtre', () => {
   });
   it('scène : seul le plancher est à la main (premier au montage, dernier au démontage)', () => {
     const d = { y: 2026, m: 6, d: 21 };
-    const set = decorSetsFor(d, 1440, 600, 1).find((s) => s.id === 'stage-music')!;
+    const set = decorSetsFor(d, 1440, 600, 1).find((s) => s.id === 'stage-music-0')!;
     const day = dayNumber(d);
     expect(footWindow(set, false)).toEqual({ first: absMinute(day, 540), last: absMinute(day, 680) });
     expect(footWindow(set, true)).toEqual({ first: absMinute(day + 1, 160), last: absMinute(day + 1, 240) });

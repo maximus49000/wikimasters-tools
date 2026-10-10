@@ -5,11 +5,14 @@ import {
   STEPS_BY_EQUIPMENT,
   absMinute,
   crewAt,
+  beerStandsFor,
   decorSetsFor,
   itemEquipment,
+  stageXs,
   itemPhase,
   itemShown,
   stepsOf,
+  STAND_STAGE_CLEAR,
   type DecorSet,
 } from '../../../src/core/library/city/install';
 import { dayNumber } from '../../../src/core/library/city/shops/hours';
@@ -33,8 +36,8 @@ describe('decorSetsFor', () => {
     expect(ids({ y: 2026, m: 7, d: 12 })).toEqual([]);
     expect(ids({ y: 2026, m: 7, d: 14 })).toEqual(expect.arrayContaining(['barriers-bastille', 'lamps-bastille', 'doors-bastille']));
     expect(ids({ y: 2026, m: 7, d: 15 })).toEqual(expect.arrayContaining(['lamps-bastille', 'doors-bastille']));
-    expect(ids({ y: 2026, m: 6, d: 21 })).toContain('stage-music');
-    expect(ids({ y: 2026, m: 6, d: 22 })).toContain('stage-music');
+    expect(ids({ y: 2026, m: 6, d: 21 })).toContain('stage-music-0');
+    expect(ids({ y: 2026, m: 6, d: 22 })).toContain('stage-music-0');
     expect(ids({ y: 2026, m: 3, d: 10 })).toEqual([]);
   });
   it('pose les drapeaux le 1er mai et le 11 novembre', () => {
@@ -57,7 +60,7 @@ describe('decorSetsFor', () => {
     expect(barriers.install).toEqual({ dayOffset: 0, from: 420, to: 480 });
     expect(barriers.remove).toEqual({ dayOffset: 0, from: 750, to: 810 });
     expect(barriers.items.map((i) => i.x)).toEqual(Array.from({ length: barriers.items.length }, (_, k) => 60 + 120 * k));
-    const stage = setOf({ y: 2026, m: 6, d: 21 }, 'stage-music');
+    const stage = setOf({ y: 2026, m: 6, d: 21 }, 'stage-music-0');
     expect(stage.items.map((i) => i.kind)).toEqual(['stage-floor', 'stage-frame', 'stage-spots']);
     expect(new Set(stage.items.map((i) => i.x)).size).toBe(1);
   });
@@ -70,7 +73,7 @@ describe('decorSetsFor', () => {
         if (item.high) expect(['ladder', 'lift']).toContain(eq);
       }
     }
-    const stage = sets.find((s) => s.id === 'stage-music')!;
+    const stage = sets.find((s) => s.id === 'stage-music-0')!;
     expect(stage.items.map((i) => itemEquipment(stage, i))).toEqual(['hand', 'lift', 'lift']);
   });
 });
@@ -91,7 +94,7 @@ describe('itemPhase', () => {
     expect(p.phase).toBe('removing');
   });
   it('va toujours absent → installing → present → removing → absent', () => {
-    const sets = [...decorSetsFor({ y: 2026, m: 7, d: 14 }, W, H, SEED), setOf({ y: 2026, m: 6, d: 21 }, 'stage-music')];
+    const sets = [...decorSetsFor({ y: 2026, m: 7, d: 14 }, W, H, SEED), ...decorSetsFor({ y: 2026, m: 6, d: 21 }, W, H, SEED)];
     for (const s of sets) {
       const day = s.day;
       for (const item of s.items) {
@@ -170,7 +173,7 @@ describe('itemPhase', () => {
 });
 
 describe('scène de la Fête de la musique', () => {
-  const stage = setOf({ y: 2026, m: 6, d: 21 }, 'stage-music');
+  const stage = setOf({ y: 2026, m: 6, d: 21 }, 'stage-music-0');
   const [floor, frame, spots] = stage.items as [DecorSet['items'][0], DecorSet['items'][0], DecorSet['items'][0]];
   const firstPresent = (item: typeof floor): number => {
     for (let t = absMinute(MUSIC, 0); t < absMinute(MUSIC + 1, 0); t += 1) if (itemPhase(stage, item, t, MUSIC).phase === 'present') return t;
@@ -199,7 +202,7 @@ describe('scène de la Fête de la musique', () => {
 
 describe('crewAt', () => {
   it('une seule intervention à la fois par jeu, null hors fenêtres', () => {
-    const sets = [...decorSetsFor({ y: 2026, m: 7, d: 14 }, W, H, SEED), setOf({ y: 2026, m: 6, d: 21 }, 'stage-music')];
+    const sets = [...decorSetsFor({ y: 2026, m: 7, d: 14 }, W, H, SEED), ...decorSetsFor({ y: 2026, m: 6, d: 21 }, W, H, SEED)];
     for (const s of sets) {
       const day = s.day;
       for (let t = absMinute(day - 2, 0); t < absMinute(day + 3, 0); t += 2) {
@@ -221,5 +224,112 @@ describe('crewAt', () => {
     expect(crewAt(lamps, at({ y: 2026, m: 7, d: 14 }, 12), BASTILLE)).toBeNull();
     expect(crewAt(lamps, at({ y: 2026, m: 7, d: 13 }, 12), BASTILLE)).not.toBeNull();
     expect(crewAt(lamps, at({ y: 2026, m: 7, d: 15 }, 12), BASTILLE)?.removing).toBe(true);
+  });
+});
+
+describe('Fête de la musique : scènes, barrières, stands de bière', () => {
+  const D20: YMD = { y: 2026, m: 6, d: 20 };
+  const D21: YMD = { y: 2026, m: 6, d: 21 };
+  const D22: YMD = { y: 2026, m: 6, d: 22 };
+  it('un seul exemplaire de chaque jeu, la veille, le jour et le lendemain (la fête du 22/6 0 h-4 h 30 prolonge celle du 21)', () => {
+    for (const d of [D20, D21, D22]) {
+      const list = ids(d);
+      expect(list.filter((id) => id === 'beer-stands-music')).toHaveLength(1);
+      expect(list.filter((id) => id === 'barriers-music')).toHaveLength(1);
+      expect(list).toContain('stage-music-0');
+      expect(new Set(list).size).toBe(list.length);
+      for (const s of decorSetsFor(d, W, H, SEED)) if (s.fest === 'music') expect(s.day).toBe(MUSIC);
+    }
+    expect(ids({ y: 2026, m: 6, d: 23 }).some((id) => id.endsWith('-music'))).toBe(false);
+    expect(ids({ y: 2026, m: 6, d: 19 })).toEqual([]);
+  });
+  it('N scènes = max(1, round(largeur / 700)), régulièrement réparties', () => {
+    for (const [w, n] of [[400, 1], [720, 1], [1440, 2], [2100, 3], [2800, 4]] as const) {
+      const xs = stageXs(w, SEED);
+      expect(xs, `${w}`).toHaveLength(n);
+      const sets = decorSetsFor(D21, w, H, SEED).filter((s) => s.id.startsWith('stage-music'));
+      expect(sets.map((s) => s.id)).toEqual(Array.from({ length: n }, (_, k) => `stage-music-${k}`));
+      sets.forEach((s, k) => {
+        expect(s.items.map((i) => i.kind)).toEqual(['stage-floor', 'stage-frame', 'stage-spots']);
+        expect(s.items.every((i) => i.x === xs[k])).toBe(true);
+        expect(s.install).toEqual({ dayOffset: 0, from: 540, to: 960 });
+        expect(s.remove).toEqual({ dayOffset: 1, from: 0, to: 240 });
+        // Chaque scène dans sa part de rue.
+        expect(xs[k]!).toBeGreaterThan((k * w) / n);
+        expect(xs[k]!).toBeLessThan(((k + 1) * w) / n);
+      });
+    }
+    expect(stageXs(1440, 1)).not.toEqual(stageXs(1440, 2));
+  });
+  it('barrières de la rue privatisée : posées de 13 h à 14 h le 21/6, retirées de 4 h 30 à 5 h le 22/6', () => {
+    const b = setOf(D21, 'barriers-music');
+    expect(b.equipment).toBe('hand');
+    expect(b.install).toEqual({ dayOffset: 0, from: 780, to: 840 });
+    expect(b.remove).toEqual({ dayOffset: 1, from: 270, to: 300 });
+    expect(b.items.length).toBeGreaterThanOrEqual(2);
+    expect(b.items.every((i) => i.kind === 'barrier' && !i.high && (i.lane === 'far' || i.lane === 'near'))).toBe(true);
+    expect(b.items.some((i) => itemPhase(b, i, at(D21, 13, 59) + 0.5, MUSIC).phase !== 'present')).toBe(true);
+    for (const i of b.items) {
+      expect(itemPhase(b, i, at(D21, 12, 59), MUSIC).phase).toBe('absent');
+      expect(itemPhase(b, i, at(D21, 14), MUSIC).phase).toBe('present');
+      expect(itemPhase(b, i, at(D22, 4, 29), MUSIC).phase).toBe('present');
+      expect(itemPhase(b, i, at(D22, 5), MUSIC).phase).toBe('absent');
+    }
+  });
+  it('stands : max(2, round(largeur / 240)), sur la chaussée, jamais sur une scène', () => {
+    for (const w of [400, 720, 1000, 1440, 2100, 2800]) {
+      for (const seed of [1, 2, 3, 12345]) {
+        const stands = beerStandsFor(w, H, seed);
+        expect(stands, `${w}`).toHaveLength(Math.max(2, Math.round(w / 240)));
+        const stages = stageXs(w, seed);
+        const clear = STAND_STAGE_CLEAR * (H / 340);
+        for (const s of stands) {
+          expect(s.x).toBeGreaterThan(0);
+          expect(s.x).toBeLessThan(w);
+          if (w >= 720) for (const x of stages) expect(Math.abs(s.x - x), `${w}/${seed} ${s.id}`).toBeGreaterThanOrEqual(clear - 1e-9);
+          expect([1, -1]).toContain(s.side);
+        }
+        // Ordonnés de gauche à droite, ids distincts.
+        expect(stands.map((s) => s.x)).toEqual([...stands.map((s) => s.x)].sort((a, b) => a - b));
+        expect(new Set(stands.map((s) => s.id)).size).toBe(stands.length);
+      }
+    }
+  });
+  it('jeu beer-stands-music : comptoir (main) puis auvent (échelle), montage 12 h-15 h 30, dépose 2 h 30-5 h', () => {
+    const set = setOf(D21, 'beer-stands-music');
+    const stands = beerStandsFor(W, H, SEED);
+    expect(set.install).toEqual({ dayOffset: 0, from: 720, to: 930 });
+    expect(set.remove).toEqual({ dayOffset: 1, from: 150, to: 300 });
+    expect(set.items).toHaveLength(stands.length * 2);
+    for (const st of stands) {
+      const counter = set.items.find((i) => i.id === `${st.id}-counter`)!;
+      const awning = set.items.find((i) => i.id === `${st.id}-awning`)!;
+      expect(counter.kind).toBe('stand-counter');
+      expect(awning.kind).toBe('stand-awning');
+      expect(counter.high).toBe(false);
+      expect(awning.high).toBe(true);
+      expect(itemEquipment(set, counter)).toBe('hand');
+      expect(itemEquipment(set, awning)).toBe('ladder');
+      expect(counter.x).toBe(st.x);
+      expect(awning.x).toBe(st.x);
+      expect(counter.group).toBe(st.id);
+      // L'auvent ne se pose qu'après le comptoir, et se retire avant lui.
+      expect(awning.u).toBeGreaterThan(counter.u);
+      expect(awning.removeU).toBeLessThan(counter.removeU);
+      let counterUp = Infinity;
+      let awningUp = Infinity;
+      for (let t = at(D21, 12); t < at(D21, 16); t += 0.5) {
+        if (counterUp === Infinity && itemPhase(set, counter, t, MUSIC).phase === 'present') counterUp = t;
+        if (awningUp === Infinity && itemPhase(set, awning, t, MUSIC).phase === 'present') awningUp = t;
+      }
+      expect(counterUp).toBeLessThan(awningUp);
+      expect(awningUp).toBeLessThanOrEqual(at(D21, 15, 30));
+      for (const i of [counter, awning]) {
+        expect(itemPhase(set, i, at(D21, 11, 59), MUSIC)).toEqual({ phase: 'absent' });
+        expect(itemPhase(set, i, at(D22, 2, 29), MUSIC)).toEqual({ phase: 'present' });
+        expect(itemPhase(set, i, at(D22, 5), MUSIC)).toEqual({ phase: 'absent' });
+      }
+    }
+    expect(STEPS_BY_EQUIPMENT.ladder).toContain('fix');
   });
 });

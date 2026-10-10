@@ -320,8 +320,8 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
     check(D14, 'barriers-bastille', 710, 850, true);
   });
   it('plancher de la scène : montage le 21/6, démontage de nuit le 22/6', () => {
-    check(MUSIC, 'stage-music', 500, 720, false);
-    check(MUSIC_NEXT, 'stage-music', 120, 290, true);
+    check(MUSIC, 'stage-music-0', 500, 720, false);
+    check(MUSIC_NEXT, 'stage-music-0', 120, 290, true);
   });
   it('drapeaux d entrée à l échelle, 13/7 (début et fin de la journée)', () => {
     const set = decorSetsFor(D13, W, H, SEED).find((s) => s.id === 'doors-bastille')!;
@@ -361,8 +361,8 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
     // Début et fin de journée (le reste du trajet est continu : d'un lampadaire au milieu du chemin vers le suivant).
     scan(D13, 'lamps-bastille', 535, 600, true, false);
     scan(D13, 'lamps-bastille', 950, 1030, false, true);
-    scan(MUSIC, 'stage-music', 670, 740, true, false);
-    scan(MUSIC, 'stage-music', 900, 970, false, true);
+    scan(MUSIC, 'stage-music-0', 670, 740, true, false);
+    scan(MUSIC, 'stage-music-0', 900, 970, false, true);
   }, 40000);
   it('mouvement réduit : ni camionnette ni ouvrier', () => {
     expect(count(layer(D14, 425, true), '[data-install-van], [data-worker]')).toBe(0);

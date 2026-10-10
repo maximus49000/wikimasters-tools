@@ -67,6 +67,8 @@ export const FESTIVITIES: readonly { id: FestivityId; m: number; d: number; hour
   { id: 'valentine', m: 2, d: 14, hours: [[600, 1380]] },
   { id: 'may-day', m: 5, d: 1, hours: [[480, 1080]] },
   { id: 'music', m: 6, d: 21, hours: [[1020, 1440]] },
+  // La Fête de la musique se prolonge dans la nuit, jusqu'à 4 h 30 (fin de la dépose des stands et des scènes).
+  { id: 'music', m: 6, d: 22, hours: [[0, 270]] },
   { id: 'bastille', m: 7, d: 14, hours: [[600, 720], [1260, 1440]] },
   { id: 'armistice', m: 11, d: 11, hours: [[480, 1080]] },
   { id: 'christmas-eve', m: 12, d: 24, hours: [[0, 1440]] },
@@ -81,6 +83,11 @@ export function festivitiesOn(date: YMD): Festivity[] {
   if (date.m === 1 && date.d <= 7 && weekdayOf(date) === 0) out.push({ id: 'epiphany', hours: [[600, 1080]] });
   return out;
 }
+
+// La fête `id` commence-t-elle ce jour-là (elle y est, et pas la veille) ? Une fête qui passe minuit (Nouvel An, Fête de la
+// musique) n'a ainsi qu'un jour d'ancrage, celui des décors et de la route privatisée.
+export const festivityStartsOn = (date: YMD, id: FestivityId): boolean =>
+  festivitiesOn(date).some((f) => f.id === id) && !festivitiesOn(addDays(date, -1)).some((f) => f.id === id);
 
 export function activeFestivities(list: readonly Festivity[], minute: number): FestivityId[] {
   const ids = list.filter((f) => f.hours.some(([a, b]) => minute >= a && minute < b)).map((f) => f.id);

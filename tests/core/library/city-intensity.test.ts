@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dayContext } from '../../../src/core/library/city/calendar';
-import { FESTIVE_SHARE, cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
+import { CLOSED_WALKERS, FESTIVE_SHARE, cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
 
 const vacations = [{ name: 'Toussaint', start: '2026-10-17', end: '2026-11-02' }];
 const DAYS = {
@@ -210,8 +210,11 @@ describe('intensité festive', () => {
   it('renforce la foule à la Fête de la musique et la calme le jour de Noël', () => {
     const plain = cityIntensity(ctx(21, DAYS.weekend));
     const music = cityIntensity(ctx(21, fete(6, 21)));
-    expect(music.walkers).toBeGreaterThan(plain.walkers);
-    expect(music.walkers).toBeGreaterThanOrEqual(0.5 * 0.99);
+    // Route privatisée le soir du 21/6 : la foule devant les scènes est dessinée à part, les marcheurs ordinaires (renforcés
+    // par la fête) sont réduits à CLOSED_WALKERS.
+    expect(music.closed).toBe(true);
+    expect(music.walkers).toBeGreaterThan(plain.walkers * CLOSED_WALKERS);
+    expect(music.walkers).toBeGreaterThanOrEqual(0.5 * CLOSED_WALKERS * 0.99);
     const noel = cityIntensity(ctx(10, fete(12, 25)));
     const base = cityIntensity(ctx(10, { ...fete(12, 25), festivities: [] }));
     expect(noel.walkers).toBeLessThan(base.walkers);

@@ -1,5 +1,5 @@
 import { hashString, mulberry32 } from '../scene-world';
-import { addDays, festivitiesOn, type FestivityId, type YMD } from './calendar';
+import { addDays, festivitiesOn, festivityStartsOn, type FestivityId, type YMD } from './calendar';
 import { doorsFor } from './doors';
 import { lampsFor } from './lamps';
 import { DOOR_WIDTH } from './metrics';
@@ -10,9 +10,11 @@ import { dayNumber } from './shops/hours';
 // l'élément k occupe le k-ième créneau (de même durée) de la fenêtre de montage, puis de démontage.
 
 export type Equipment = 'ladder' | 'lift' | 'hand';
-export type ItemKind = 'lamp-flag' | 'door-flag' | 'stage-floor' | 'stage-frame' | 'stage-spots' | 'barrier';
+export type ItemKind = 'lamp-flag' | 'door-flag' | 'stage-floor' | 'stage-frame' | 'stage-spots' | 'barrier' | 'stand-counter' | 'stand-awning';
 // `x` : centre de l'élément ; `u` / `removeU` : ordre d'intervention au montage / au démontage (croissant).
-export type DecorItem = { id: string; kind: ItemKind; x: number; high: boolean; u: number; removeU: number };
+// `lane` : barrière posée EN TRAVERS de la chaussée, dans cette file (rue privatisée de la Fête de la musique) ; absent =
+// au bord du trottoir (défilé). `group` : élément d'un ensemble (stand de bière `stand-k` : comptoir et auvent).
+export type DecorItem = { id: string; kind: ItemKind; x: number; high: boolean; u: number; removeU: number; lane?: 'far' | 'near'; group?: string };
 export type DecorWindow = { dayOffset: number; from: number; to: number }; // minutes ; dayOffset par rapport au jour de la fête
 // `day` : numéro du jour de la fête (dayNumber) — ajout au plan, pour que l'appelant sache quel `festDay` passer.
 export type DecorSet = { id: string; fest: FestivityId; day: number; equipment: Equipment; install: DecorWindow; remove: DecorWindow; items: DecorItem[] };
@@ -44,8 +46,10 @@ const WEIGHTS: Readonly<Record<Equipment, readonly number[]>> = {
 
 export const absMinute = (dayNumber: number, minute: number): number => dayNumber * 1440 + minute;
 
-// Équipement propre à un élément : le plancher de scène et les barrières se portent à la main, le reste suit le jeu.
-export const itemEquipment = (set: DecorSet, item: DecorItem): Equipment => (item.kind === 'stage-floor' || item.kind === 'barrier' ? 'hand' : set.equipment);
+// Équipement propre à un élément : le plancher de scène, les barrières et le comptoir d'un stand (sorti de la camionnette)
+// se portent à la main, le reste suit le jeu.
+const BY_HAND: readonly ItemKind[] = ['stage-floor', 'barrier', 'stand-counter'];
+export const itemEquipment = (set: DecorSet, item: DecorItem): Equipment => (BY_HAND.includes(item.kind) ? 'hand' : set.equipment);
 
 const FLAG_FESTS: readonly FestivityId[] = ['bastille', 'armistice', 'may-day'];
 const EVE = { dayOffset: -1, from: 540, to: 1020 } as const;
@@ -80,16 +84,96 @@ function setsForFest(fest: FestivityId, day: number, width: number, height: numb
     out.push({ id, fest, day, equipment: 'hand', install: { dayOffset: 0, from: 420, to: 480 }, remove: { dayOffset: 0, from: 750, to: 810 }, items });
   }
   if (fest === 'music') {
-    // Ordre imposé : plancher, ossature, projecteurs au montage ; l'inverse au démontage (on ne retire pas le plancher
-    // sous une ossature debout). Il est porté par u / removeU, si bien que le tri commun suffit.
-    const x = Math.round(width * (0.25 + mulberry32(seed ^ hashString('stage-music'))() * 0.5));
+    // Scènes : ordre imposé, plancher, ossature, projecteurs au montage ; l'inverse au démontage (on ne retire pas le
+    // plancher sous une ossature debout). Il est porté par u / removeU, si bien que le tri commun suffit.
     const kinds: ItemKind[] = ['stage-floor', 'stage-frame', 'stage-spots'];
+    stageXs(width, seed).forEach((x, k) => {
+      out.push({
+        id: `stage-music-${k}`, fest, day, equipment: 'lift', install: { dayOffset: 0, from: 540, to: 960 }, remove: { dayOffset: 1, from: 0, to: 240 },
+        items: kinds.map((kind, i) => ({ id: kind, kind, x, high: kind !== 'stage-floor', u: i / 3, removeU: (2 - i) / 3 })),
+      });
+    });
+    // Rue privatisée : deux barrières en travers de la chaussée (une par file) à chaque bout de la rue.
+    const barriersId = 'barriers-music';
+    const barriers: DecorItem[] = [];
+    for (const [end, x] of [['west', MUSIC_BARRIER_EDGE], ['east', width - MUSIC_BARRIER_EDGE]] as const) {
+      for (const lane of ['far', 'near'] as const) {
+        const id = `barrier-${end}-${lane}`;
+        barriers.push({ id, kind: 'barrier', x, high: false, lane, ...drawn(seed, barriersId, id) });
+      }
+    }
+    out.push({ id: barriersId, fest, day, equipment: 'hand', install: { dayOffset: 0, from: 780, to: 840 }, remove: { dayOffset: 1, from: 270, to: 300 }, items: barriers });
+    // Stands de bière : stand par stand (ordre tiré), le comptoir à la main puis l'auvent à l'échelle ; au démontage,
+    // l'auvent d'abord, puis le comptoir.
+    const standsId = 'beer-stands-music';
+    const stands = beerStandsFor(width, height, seed);
+    const rank = (key: string): number[] => {
+      const rng = mulberry32(seed ^ hashString(standsId + key));
+      const order = stands.map((_, j) => ({ j, r: rng() })).sort((a, b) => a.r - b.r);
+      const out: number[] = [];
+      order.forEach(({ j }, k) => {
+        out[j] = k;
+      });
+      return out;
+    };
+    const up = rank('install');
+    const down = rank('remove');
+    const n = stands.length * 2;
     out.push({
-      id: 'stage-music', fest, day, equipment: 'lift', install: { dayOffset: 0, from: 540, to: 960 }, remove: { dayOffset: 1, from: 0, to: 240 },
-      items: kinds.map((kind, i) => ({ id: kind, kind, x, high: kind !== 'stage-floor', u: i / 3, removeU: (2 - i) / 3 })),
+      id: standsId, fest, day, equipment: 'ladder', install: { dayOffset: 0, from: 720, to: 930 }, remove: { dayOffset: 1, from: 150, to: 300 },
+      items: stands.flatMap((st, j): DecorItem[] => [
+        { id: `${st.id}-counter`, kind: 'stand-counter', x: st.x, high: false, group: st.id, u: (2 * up[j]!) / n, removeU: (2 * down[j]! + 1) / n },
+        { id: `${st.id}-awning`, kind: 'stand-awning', x: st.x, high: true, group: st.id, u: (2 * up[j]! + 1) / n, removeU: (2 * down[j]!) / n },
+      ]),
     });
   }
   return out;
+}
+
+// ---------- Fête de la musique : scènes et stands de bière (positions) ----------
+// Barrières de la rue privatisée : à cette distance (px) de chaque bord du monde.
+export const MUSIC_BARRIER_EDGE = 24;
+// Un stand reste à au moins cette distance (unités) du centre d'une scène : demi-scène (48) + demi-stand (26) + marge.
+export const STAND_STAGE_CLEAR = 82;
+// Marge (px) entre un stand et le bord du monde.
+const STAND_EDGE = 40;
+// `side` : côté de la file d'attente (+1 : à droite du comptoir).
+export type BeerStand = { id: string; x: number; side: 1 | -1 };
+
+// N scènes (N = max(1, round(largeur / 700))), une par part de rue, avec un léger tirage autour du milieu de la part.
+export function stageXs(width: number, seed: number): number[] {
+  const n = Math.max(1, Math.round(width / 700));
+  const rng = mulberry32(seed ^ hashString('stage-music'));
+  return Array.from({ length: n }, (_, k) => Math.round((k + 0.5 + (rng() - 0.5) * 0.3) * (width / n)));
+}
+
+// Stands de bière : max(2, round(largeur / 240)), sur la chaussée, répartis régulièrement (léger tirage) sur la longueur de
+// rue libre, c'est-à-dire hors des abords des scènes (STAND_STAGE_CLEAR) : jamais sur une scène. Triés de gauche à droite.
+export function beerStandsFor(width: number, height: number, seed: number): BeerStand[] {
+  const n = Math.max(2, Math.round(width / 240));
+  const clear = STAND_STAGE_CLEAR * (height / 340);
+  const rng = mulberry32(seed ^ hashString('beer-stands'));
+  // Intervalles libres de [STAND_EDGE, width - STAND_EDGE] privés des abords des scènes.
+  let free: [number, number][] = [[STAND_EDGE, width - STAND_EDGE]];
+  for (const x of stageXs(width, seed)) {
+    free = free.flatMap(([a, b]): [number, number][] => [[a, Math.min(b, x - clear)], [Math.max(a, x + clear), b]]).filter(([a, b]) => b > a);
+  }
+  const total = free.reduce((acc, [a, b]) => acc + (b - a), 0);
+  // Rue trop courte pour éviter les scènes : répartition simple sur toute la rue.
+  if (total <= 0) free = [[STAND_EDGE, Math.max(STAND_EDGE + 1, width - STAND_EDGE)]];
+  const len = free.reduce((acc, [a, b]) => acc + (b - a), 0);
+  const toX = (p: number): number => {
+    let left = p;
+    for (const [a, b] of free) {
+      if (left <= b - a) return a + left;
+      left -= b - a;
+    }
+    return free[free.length - 1]![1];
+  };
+  return Array.from({ length: n }, (_, j) => {
+    const p = Math.min(len, Math.max(0, (j + 0.5 + (rng() - 0.5) * 0.4) * (len / n)));
+    return { id: `stand-${j}`, x: Math.round(toX(p) * 10) / 10, side: rng() < 0.5 ? 1 : -1 };
+  });
 }
 
 // Les jeux dont la fête tombe la veille, le jour même ou le lendemain de `date` (un décor déborde sur les jours voisins).
@@ -97,7 +181,8 @@ export function decorSetsFor(date: YMD, width: number, height: number, seed: num
   const out: DecorSet[] = [];
   for (const k of [-1, 0, 1]) {
     const d = addDays(date, k);
-    const fests = festivitiesOn(d).map((f) => f.id).filter((id, i, all) => all.indexOf(id) === i);
+    // Une fête qui passe minuit (Fête de la musique jusqu'à 4 h 30 le 22/6) n'a ses décors qu'une fois : au jour où elle commence.
+    const fests = festivitiesOn(d).map((f) => f.id).filter((id, i, all) => all.indexOf(id) === i && festivityStartsOn(d, id));
     for (const fest of fests) out.push(...setsForFest(fest, dayNumber(d), width, height, seed));
   }
   return out;

@@ -178,7 +178,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lamps, lit);
       if (d) drawn.push(d);
     }
-    if (set.id === 'stage-music') drawn.push(...stageShow(set, abs, dark, bandOutfits, metrics, sky, rainy, still, width));
+    if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits, metrics, sky, rainy, still, width));
     if (still) continue;
     // Camionnette de l'équipe à pied (échelles, barrières, plancher) : elle arrive en roulant, se gare au bord de la rue avant
     // le premier créneau et repart en roulant après le dernier (city/van.ts). Elle ne s'efface jamais : un camion élévateur qui
@@ -266,6 +266,10 @@ function decorNode(set: DecorSet, item: DecorItem, phase: string, door: Door | u
       const art = item.kind === 'stage-floor' ? <StageFloor sky={sky} /> : item.kind === 'stage-frame' ? <StageFrame sky={sky} /> : <StageSpots sky={sky} lit={lit} />;
       return { part: 'crew', node: <g key={key} {...attrs} transform={t}>{art}</g> };
     }
+    case 'stand-counter':
+    case 'stand-awning':
+      // Stands de bière (Fête de la musique) : moteur prêt (install.ts, beer.ts), dessin à venir.
+      return null;
     default: {
       const never: never = item.kind;
       return never;

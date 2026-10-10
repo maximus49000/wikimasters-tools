@@ -23,7 +23,7 @@ export type CityIntensity = {
   umbrellas: boolean;
   weekendLike: boolean;
   festive: { id: FestivityId; share: number } | null;
-  // Route fermée (défilé du 14 juillet) : aucune voiture ni vélo.
+  // Route fermée (défilé du 14 juillet, rue privatisée de la Fête de la musique) : aucune voiture ni vélo.
   closed: boolean;
 };
 
@@ -79,8 +79,9 @@ export function cityIntensity(ctx: CityContext): CityIntensity {
   const traffic = clamp01(lerp(curve(TRAFFIC_WEEK, hour), curve(TRAFFIC_WEEKEND, hour), b) * (1 + 0.25 * wet) * (ctx.snow ? 0.7 : 1));
   const fest = activeFestivities(ctx.day.festivities, ctx.minutes)[0] ?? null;
   const crowd = fest ? FESTIVE_CROWD[fest] : { mult: 1, floor: 0 };
-  // Route fermée (14 juillet) : la plupart des marcheurs sont devenus la foule massée derrière les barrières (parade-crowd.tsx).
-  const closed = roadClosed(ctx.day.festivities.map((f) => f.id), ((ctx.minutes % 1440) + 1440) % 1440);
+  // Route fermée (14 juillet, Fête de la musique) : la plupart des marcheurs sont devenus la foule (derrière les barrières du
+  // défilé, parade-crowd.tsx ; devant les scènes et autour des stands, music-crowd.ts).
+  const closed = roadClosed(ctx.day.date, ((ctx.minutes % 1440) + 1440) % 1440);
   const walkers = clamp01(Math.max(lerp(curve(WALK_WEEK, hour), curve(WALK_WEEKEND, hour), b) * crowd.mult, crowd.floor) * weatherWalk) * (closed ? CLOSED_WALKERS : 1);
   const suits = clamp01(curve(SUITS, hour) * (1 - b) * (1 - b) * weatherWalk);
 
