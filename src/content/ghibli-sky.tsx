@@ -1,0 +1,74 @@
+import { useId, type ReactElement } from 'react';
+import { MOON_SIZE, SKY_TEXTURE, SUN_SIZE } from '../core/library/paint/sky-painter';
+import type { PaintedSky } from './painted-sky';
+
+// Ciel peint de la Ville (vague Ghibli, G2), dans le décor fixe : aucune animation ici (les copies `<use>` de chaque fenêtre
+// ne sont recalculées qu'à la minute). `shown` règle le fondu d'une seconde entre ciel actuel et ciel peint.
+export const FADE_S = 1;
+const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const fadeStyle = (shown: boolean): { opacity: number; transition: string } => ({ opacity: shown ? 1 : 0, transition: reducedMotion() ? 'none' : `opacity ${FADE_S}s ease` });
+const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+const uid = (raw: string): string => raw.replace(/[^a-zA-Z0-9_-]/g, '');
+
+export function GhibliSkyTexture({ width, height, url, shown }: { width: number; height: number; url: string; shown: boolean }): ReactElement {
+  const id = `skytex${uid(useId())}`;
+  return (
+    <g>
+      <defs>
+        <pattern id={id} width={SKY_TEXTURE} height={SKY_TEXTURE} patternUnits="userSpaceOnUse">
+          <image href={url} width={SKY_TEXTURE} height={SKY_TEXTURE} />
+        </pattern>
+      </defs>
+      <rect data-sky-texture="" x={0} y={0} width={width} height={height} fill={`url(#${id})`} style={fadeStyle(shown)} />
+    </g>
+  );
+}
+
+type Star = { i: number; x: number; y: number; r: number };
+// Croix des étoiles les plus brillantes (une sur dix, les plus grosses).
+export function GhibliStarCrosses({ stars, opacity, shown }: { stars: Star[]; opacity: number; shown: boolean }): ReactElement {
+  const bright = stars.filter((s) => s.r > 1.8);
+  return (
+    <g data-star-crosses="" opacity={opacity} style={fadeStyle(shown)}>
+      {opacity > 0 && bright.map((s) => (
+        <path key={s.i} d={`M${s.x - 4} ${s.y}H${s.x + 4}M${s.x} ${s.y - 4}V${s.y + 4}`} stroke="#FFFAEB" strokeOpacity={0.55} strokeWidth={0.7} strokeLinecap="round" />
+      ))}
+    </g>
+  );
+}
+
+export function GhibliSun({ x, y, twilight, painted, shown }: { x: number; y: number; twilight: number; painted: PaintedSky; shown: boolean }): ReactElement {
+  const id = `sunhalo${uid(useId())}`;
+  const dusk = clamp01((twilight - 0.2) / 0.4);
+  const half = SUN_SIZE / 2;
+  return (
+    <g data-ghibli-sun="" transform={`translate(${x} ${y})`} style={fadeStyle(shown)}>
+      <defs>
+        <radialGradient id={id}>
+          <stop offset="0" stopColor={dusk > 0.5 ? '#FFAA5A' : '#FFF6CD'} stopOpacity={0.55} />
+          <stop offset="1" stopColor="#FFF0C8" stopOpacity={0} />
+        </radialGradient>
+      </defs>
+      <circle r={52} fill={`url(#${id})`} />
+      <image href={painted.sunDay} x={-half} y={-half} width={SUN_SIZE} height={SUN_SIZE} opacity={1 - dusk} />
+      <image href={painted.sunDusk} x={-half} y={-half} width={SUN_SIZE} height={SUN_SIZE} opacity={dusk} />
+    </g>
+  );
+}
+
+export function GhibliMoon({ x, y, painted, shown }: { x: number; y: number; painted: PaintedSky; shown: boolean }): ReactElement {
+  const id = `moonhalo${uid(useId())}`;
+  const half = MOON_SIZE / 2;
+  return (
+    <g data-ghibli-moon="" transform={`translate(${x} ${y})`} style={fadeStyle(shown)}>
+      <defs>
+        <radialGradient id={id}>
+          <stop offset="0.3" stopColor="#DCE4FF" stopOpacity={0.35} />
+          <stop offset="1" stopColor="#DCE4FF" stopOpacity={0} />
+        </radialGradient>
+      </defs>
+      <circle r={40} fill={`url(#${id})`} />
+      <image href={painted.moon} x={-half} y={-half} width={MOON_SIZE} height={MOON_SIZE} />
+    </g>
+  );
+}
