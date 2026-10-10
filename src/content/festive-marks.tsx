@@ -25,9 +25,11 @@ export function MarkArt({ mark, t }: { mark: FestiveMark; t: (c: string) => stri
     case 'lily':
       return (
         <g data-mark-art="lily">
-          <path d="M3 -22 Q4 -26 3 -29" stroke={t('#2E8B6A')} strokeWidth={0.8} fill="none" />
-          {[-29, -27, -25].map((y, k) => (
-            <circle key={k} cx={3.6 - (k % 2) * 1.4} cy={y} r={1} fill={t('#FFFFFF')} />
+          <path d="M7 -19 Q9 -27 7.5 -34" stroke={t('#1F9E4A')} strokeWidth={1.4} fill="none" />
+          <path d="M7.2 -22 Q2.5 -25 2 -31 Q6 -28 7.2 -22Z" fill={t('#1F9E4A')} />
+          <path d="M7.4 -24 Q12 -26 12.5 -31 Q8.5 -29 7.4 -24Z" fill={t('#1F9E4A')} />
+          {[-34, -31.5, -29].map((y, k) => (
+            <circle key={k} cx={8.2 + (k % 2 === 0 ? 1.6 : -0.2)} cy={y} r={2.1} fill={t('#FFFFFF')} stroke={t('#9CC9AE')} strokeWidth={0.5} />
           ))}
         </g>
       );
@@ -57,8 +59,9 @@ export function MarkArt({ mark, t }: { mark: FestiveMark; t: (c: string) => stri
     case 'note':
       return (
         <g data-mark-art="note">
-          <circle cx={6} cy={-40} r={1.4} fill={t('#B04FFF')} />
-          <path d="M7.3 -40 V-47 L10 -45.5" stroke={t('#B04FFF')} strokeWidth={0.9} fill="none" />
+          <ellipse cx={6} cy={-41} rx={2.6} ry={2} fill="#FFE27A" stroke="#7A4FD0" strokeWidth={0.6} />
+          <path d="M8.4 -41 V-52 Q12.5 -50.5 12 -46" stroke="#FFE27A" strokeWidth={1.4} fill="none" />
+          <ellipse cx={14} cy={-45} rx={2.6} ry={2} fill="#FFE27A" stroke="#7A4FD0" strokeWidth={0.6} />
         </g>
       );
   }
