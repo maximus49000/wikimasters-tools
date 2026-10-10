@@ -43,8 +43,9 @@ const CREW_GAP = 10;
 const OFFSTAGE = 30;
 const WORKER_MOVE = 'transform 30s linear';
 
-export const setIfChanged = (node: Element, name: string, value: string): void => {
-  if (node.getAttribute(name) !== value) node.setAttribute(name, value);
+// N'écrire un attribut que s'il change (nœud absent : rien).
+export const setIfChanged = (node: Element | null, name: string, value: string): void => {
+  if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
 };
 
 // ---------- Clients ----------

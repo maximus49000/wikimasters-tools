@@ -311,7 +311,8 @@ describe('un seul camion à la fois', () => {
     }
     // La couche applique le décalage : pendant le déménagement du second, seul son camion est là.
     vi.spyOn(Date, 'now').mockReturnValue(NOW);
-    const c = life(second.seed, mid(stepOf(second, 'carry-in').to > stepOf(second, 'carry-in').from ? stepOf(second, 'carry-in') : stepOf(second, 'carry-out')), ymd);
+    // Portage du second : il ne fait que sortir le mobilier s'il est mis en vente, sinon il en rentre.
+    const c = life(second.seed, mid(stepOf(second, second.s.change!.kind === 'to-sale' ? 'carry-out' : 'carry-in')), ymd);
     const trucks = c.querySelectorAll('[data-moving-truck]');
     expect(trucks).toHaveLength(1);
     expect(trucks[0]!.getAttribute('data-moving-truck')).toBe(second.s.slot.id);

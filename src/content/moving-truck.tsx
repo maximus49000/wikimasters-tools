@@ -7,6 +7,7 @@ import type { ShopFrame } from '../core/library/city/shops/slots';
 import { changePlans, type ShopView } from '../core/library/city/shops/view';
 import { WORLD_MARGIN, hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
+import { setIfChanged } from './city-shops-life';
 import { tone } from './city-sprites';
 import { PosedPerson, STANDING, applyPose, poseHandles } from './shop-gesture-sprites';
 import type { Pose } from '../core/library/city/shops/gestures';
@@ -306,6 +307,8 @@ function carryOf(view: ShopView): 'out' | 'in' {
   return m.step === 'carry-in' || m.step === 'close-back' || m.step === 'leave' ? 'in' : 'out';
 }
 
+// Le groupe de l'équipe est à clé par étape : un changement d'étape recrée les nœuds, aucun carton visible, bras chargés ou
+// opacité écrits par la boucle pendant le portage ne restent sur la pause ou la fermeture du hayon.
 export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy, still, t0 }: CrewProps): ReactElement | null {
   const id = view.slot.id;
   const n = moversFor(seed, id, day);
@@ -402,10 +405,6 @@ export function collectMovers(root: Element): Crew[] {
   }
   return out;
 }
-
-const setIfChanged = (node: Element | null, name: string, value: string): void => {
-  if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
-};
 
 export function placeMovers(crews: Crew[], t: number): void {
   for (const c of crews) {
