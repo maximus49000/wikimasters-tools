@@ -13,7 +13,7 @@ import { visitsFor } from '../../src/core/library/city/shops/customers';
 import { dayNumber, ymdOfDay } from '../../src/core/library/city/shops/hours';
 import { streetOn } from '../../src/core/library/city/shops/lifecycle';
 import { shopFrame, shopSlotsFor } from '../../src/core/library/city/shops/slots';
-import { worksPlan } from '../../src/core/library/city/shops/works';
+import { changePlans } from '../../src/core/library/city/shops/view';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,7 +67,8 @@ const worksDay = (() => {
   for (let day = EPOCH + 1; day < EPOCH + 200; day++) {
     const k = streetOn(slots, SEED, EPOCH, day, {}).findIndex((s) => s.change !== null);
     if (k < 0) continue;
-    const step = worksPlan(SEED, slots[k]!.id, day).steps.find((s) => s.step === 'install')!;
+    const kind = streetOn(slots, SEED, EPOCH, day, {})[k]!.change!.kind;
+    const step = changePlans(SEED, slots[k]!.id, day, kind).works.steps.find((s) => s.step === 'install')!;
     return { day, k, minutes: Math.round((step.from + step.to) / 2) };
   }
   throw new Error('aucun chantier en 200 jours');
@@ -131,7 +132,7 @@ describe('CityLifeLayer : clients et équipe du matin', () => {
   it('en mouvement réduit, l’équipe est figée en pose « install » (échelle visible) sans transition', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
     reduceMotion();
-    const plan = worksPlan(SEED, slots[worksDay.k]!.id, worksDay.day);
+    const plan = changePlans(SEED, slots[worksDay.k]!.id, worksDay.day, streetOn(slots, SEED, EPOCH, worksDay.day, {})[worksDay.k]!.change!.kind).works;
     const arrive = plan.steps.find((s) => s.step === 'arrive')!;
     const c = life(Math.ceil(arrive.from + 1), ymdOfDay(worksDay.day));
     const works = c.querySelector(`[data-works="shop-${worksDay.k}"]`)!;

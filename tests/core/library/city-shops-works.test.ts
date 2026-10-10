@@ -27,4 +27,28 @@ describe('chantier du matin', () => {
     expect(at.step).toBe('install');
     expect(at.progress).toBeCloseTo(0.5, 1);
   });
+  it('sans borne basse : identique au comportement d’origine (valeurs figées)', () => {
+    const frozen = [
+      [3, 'shop-1', 20_000, 518, 731, 587.732],
+      [3, 'shop-2', 20_010, 514, 737, 587.006],
+      [1, 'shop-0', 20_500, 562, 727, 616.018],
+      [7, 'shop-4', 20_123, 536, 726, 598.202],
+    ] as const;
+    for (const [seed, id, day, start, end, pauseEnd] of frozen) {
+      const p = worksPlan(seed, id, day);
+      expect(p.start).toBe(start);
+      expect(p.end).toBe(end);
+      expect(Math.round(p.steps[3]!.to * 1000) / 1000).toBe(pauseEnd);
+    }
+  });
+  it('avec une borne basse : commence après elle (jusqu’à 30 min de plus) et dure au moins 2 h', () => {
+    for (let day = 20_000; day < 20_200; day++) {
+      const p = worksPlan(3, 'shop-1', day, 600);
+      expect(p.start).toBeGreaterThanOrEqual(600);
+      expect(p.start).toBeLessThanOrEqual(630);
+      expect(p.end - p.start).toBeGreaterThanOrEqual(120);
+      expect(p.steps[0]!.from).toBe(p.start);
+      expect(p.steps.at(-1)!.to).toBe(p.end);
+    }
+  });
 });
