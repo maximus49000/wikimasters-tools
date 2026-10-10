@@ -20,7 +20,8 @@ import type { Pose } from '../core/library/city/shops/gestures';
 // Rendu à la minute (camion, hayon : transitions CSS d'une minute) ; la navette des porteurs est placée par la boucle
 // d'animation de CityLifeLayer (collectMovers / placeMovers), qui n'écrit que ce qui change. Les porteurs sont dessinés avant
 // le camion : arrivés à l'arrière, ils passent derrière lui (« dans » le camion). Tout est marqué `data-mover` (plafond global
-// de sprites). Aucun id SVG. Mouvement réduit : camion garé hayon ouvert, un porteur figé au milieu du trajet, un carton en main.
+// de sprites). Aucun id SVG. Mouvement réduit : camion garé hayon ouvert ; un porteur figé selon l'étape (au milieu du trajet, un
+// carton en main, pendant les portages ; debout à l'arrière du camion pendant le hayon et la pause ; aucun à l'arrivée et au départ).
 
 // ---------- Géométrie ----------
 // Écart (px du monde) entre le bord de la porte et l'arrière du camion ; profondeur à laquelle un porteur « entre » dans le camion.
@@ -54,9 +55,12 @@ export function movingLayout(frame: ShopFrame, metrics: CityMetrics, width: numb
   const kp = u * STREET_SCALE.person;
   const doorX = door.x + door.w / 2;
   const away: 1 | -1 = win.x + win.w / 2 < doorX ? 1 : -1;
-  const rearX = doorX + away * (door.w / 2 + REAR_GAP);
-  const parkX = rearX - away * TRUCK_REAR * kv;
-  const off = WORLD_MARGIN + TRUCK_HALF * kv;
+  // Garé entièrement dans la scène : près d'un bord, le camion recule vers la porte (il peut alors couvrir le bas de la façade
+  // voisine, limite assumée) ; l'arrière, où vont les porteurs, suit.
+  const half = TRUCK_HALF * kv;
+  const parkX = Math.min(width - half, Math.max(half, doorX + away * (door.w / 2 + REAR_GAP) - away * TRUCK_REAR * kv));
+  const rearX = parkX + away * TRUCK_REAR * kv;
+  const off = WORLD_MARGIN + half;
   return {
     doorX,
     away,
@@ -299,14 +303,6 @@ type CrewProps = {
   t0: number;
 };
 
-// Quel sens de portage pour cette étape (et pour le porteur figé du mouvement réduit).
-function carryOf(view: ShopView): 'out' | 'in' {
-  const m = view.moving!;
-  if (m.kind === 'to-sale') return 'out';
-  if (m.kind === 'from-sale') return 'in';
-  return m.step === 'carry-in' || m.step === 'close-back' || m.step === 'leave' ? 'in' : 'out';
-}
-
 // Le groupe de l'équipe est à clé par étape : un changement d'étape recrée les nœuds, aucun carton visible, bras chargés ou
 // opacité écrits par la boucle pendant le portage ne restent sur la pause ou la fermeture du hayon.
 export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy, still, t0 }: CrewProps): ReactElement | null {
@@ -327,18 +323,20 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
       </g>
     </g>
   );
-  // Mouvement réduit : un seul porteur, figé au milieu du trajet, un carton en main, tourné vers où il va.
+  // Dans la cabine : à l'arrivée et au départ, on ne voit pas l'équipe (mouvement réduit compris).
+  if (step === 'truck-arrives' || step === 'leave') return null;
+  // Mouvement réduit : un seul porteur, figé. Pendant un portage, au milieu du trajet, un carton en main, tourné vers où il va ;
+  // sinon (hayon, pause), debout à l'arrière du camion, les mains vides.
   if (still) {
-    const p = at(0.5);
-    const dir = (carryOf(view) === 'out' ? g.b.x - g.a.x : g.a.x - g.b.x) >= 0 ? 1 : -1;
+    const carrying = step === 'carry-out' || step === 'carry-in';
+    const p = at(carrying ? 0.5 : 0.62);
+    const dir = (step === 'carry-in' ? g.a.x - g.b.x : g.b.x - g.a.x) >= 0 ? 1 : -1;
     return (
       <g key={`${id}-${step}`} data-moving-crew={id} data-moving-step={step} data-still="">
-        {person(0, p.x, p.y, dir, HOLD, true)}
+        {person(0, p.x, p.y, dir, carrying ? HOLD : STANDING, carrying)}
       </g>
     );
   }
-  // Dans la cabine : à l'arrivée et au départ, on ne voit pas l'équipe.
-  if (step === 'truck-arrives' || step === 'leave') return null;
   if (step === 'carry-out' || step === 'carry-in') {
     const geom: CrewGeom = { a: g.a, b: g.b, n, gap, phase: (hashString(`${id}/movers`) % 2400) / 100, carry: step === 'carry-out' ? 'out' : 'in', kindSeed: hashString(`${seed}/${id}/${day}/pieces`) % PIECES.length };
     const f = crewFrame(geom, t0, g.kp);

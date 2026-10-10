@@ -31,6 +31,9 @@ export function changePlans(seed: number, slotId: string, day: number, kind: Cha
 
 // Un seul camion à la fois dans la rue : les locaux qui changent le même jour déménagent l'un après l'autre, dans l'ordre des
 // locaux ; le suivant est décalé de TRUCK_SHIFT_MIN (2 h, puis 4 h…) jusqu'à commencer après la fin du précédent.
+// Cas extrême (6 changements ou plus le même jour, très rare) : le décalage atteint 600 min et plus ; le déménagement finit en
+// soirée, le chantier d'enseigne le suit, et le nouveau commerce n'ouvre souvent que le lendemain (dayShifts : aucun poste ne
+// finit après le chantier). Au-delà de minuit, le déménagement n'est simplement jamais montré ce jour-là.
 export const TRUCK_SHIFT_MIN = 120;
 export function movingOffsets(street: readonly SlotDay[], seed: number, day: number): Map<string, number> {
   const out = new Map<string, number>();
