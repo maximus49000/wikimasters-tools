@@ -8,7 +8,7 @@ import type { PaintCtx } from './paint-ctx';
 // Neige posée (vague Ghibli, G2) : une tranche de TILE px du monde, en coordonnées du monde, à superposer à la ville peinte.
 // Toits (sous la ligne de toit, jamais au-dessus), cheminées, rebords de fenêtres, trottoirs et rue. Chaque immeuble et chaque
 // case du sol a son propre générateur : deux tranches voisines peignent la même chose sur leur bord commun.
-export const SNOW_VERSION = 1;
+export const SNOW_VERSION = 2;
 
 const SNOW = hexRgb('#F4F8FC');
 const SNOW_SHADE = hexRgb('#D8E2EE');
@@ -39,7 +39,28 @@ export function chimneyBox(plan: CityPaintPlan, b: PaintBuilding): { x0: number;
   return { x0: cx - 0.5, x1: cx + 4 * plan.unit, y0: b.top + 1 };
 }
 
-function paintRoofSnow(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding): void {
+// Contexte muet : une touche cachée consomme ses tirages sans rien peindre (le dessin reste le même d'une tranche à l'autre).
+const NO_INK: PaintCtx = {
+  fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over',
+  save() {}, restore() {}, beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, quadraticCurveTo() {}, ellipse() {}, rect() {},
+  fill() {}, stroke() {}, clip() {}, fillRect() {}, createLinearGradient: () => ({ addColorStop() {} }),
+};
+
+// Touche de portée ROOF_REACH centrée en (x, y) qui atteindrait la façade d'un immeuble du premier plan (sous sa ligne de toit,
+// bandes de 1,5 px de part et d'autre comprises). La ligne de toit est affine par morceaux : son minimum sur [x − R, x + R]
+// est pris aux bornes ou aux cassures (faîte du pignon, coins de la mansarde).
+function hiddenByNear(near: readonly PaintBuilding[], x: number, y: number): boolean {
+  const R = ROOF_REACH;
+  for (const b of near) {
+    if (x + R < b.x - 1.5 || x - R > b.x + b.w + 1.5) continue;
+    let low = Math.min(roofLineY(b, x - R), roofLineY(b, x + R));
+    for (const k of [b.x + b.w / 2, b.x + 1.5, b.x + b.w - 1.5]) if (k > x - R && k < x + R) low = Math.min(low, roofLineY(b, k));
+    if (y + R >= low) return true;
+  }
+  return false;
+}
+
+function paintRoofSnow(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding, near: readonly PaintBuilding[] = []): void {
   const rng = mulberry32(plan.seed ^ hashString('ghibli-snow-roof') ^ Math.round(b.x * 8));
   const o = b.far ? 0 : OVERHANG;
   // Pente locale la plus forte autour de x (5 échantillons sur la portée d'une touche).
@@ -54,7 +75,9 @@ function paintRoofSnow(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding): vo
       const size = ROOF_R * (0.7 + rng() * 0.3);
       if (s > 1.5) continue;
       const y = roofLineY(b, x) + ROOF_REACH * Math.sqrt(1 + s * s) + extra + jitterY;
-      dab(ctx, rng, x, y, size, jitter(extra > 1 ? SNOW_SHADE : SNOW, 4, rng), 0.9, 1.8, Math.atan(slopeAt(x)));
+      // Toit du fond : touche tirée puis peinte « à vide » si un immeuble du premier plan la cache.
+      const ink = b.far && hiddenByNear(near, x, y) ? NO_INK : ctx;
+      dab(ink, rng, x, y, size, jitter(extra > 1 ? SNOW_SHADE : SNOW, 4, rng), 0.9, 1.8, Math.atan(slopeAt(x)));
     }
   }
   const c = chimneyBox(plan, b);
@@ -103,7 +126,9 @@ export function paintSnowTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number):
   const x0 = tile * TILE;
   const x1 = Math.min(plan.width, (tile + 1) * TILE);
   const { buildings } = tileItems(plan, tile);
-  for (const b of buildings.filter((x) => x.far)) paintRoofSnow(ctx, plan, b);
+  // Tous les immeubles du premier plan du monde (pas seulement ceux de la tranche) : même décision d'une tranche à l'autre.
+  const near = plan.buildings.filter((x) => !x.far);
+  for (const b of buildings.filter((x) => x.far)) paintRoofSnow(ctx, plan, b, near);
   for (const b of buildings.filter((x) => !x.far)) paintRoofSnow(ctx, plan, b);
   paintGroundSnow(ctx, plan, x0, x1);
 }

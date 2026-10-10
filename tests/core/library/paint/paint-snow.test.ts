@@ -57,6 +57,33 @@ describe('neige posée', () => {
     expect(mine(a)).toEqual(mine(b));
   });
 
+  for (const seed of [1, 4, 7]) {
+    it(`graine ${seed} : la neige des toits du fond n’est jamais peinte sur un immeuble du premier plan`, () => {
+      const plan = cityPaintPlan(1080, 340, seed);
+      // Mêmes générateurs par immeuble et par case : la différence avec un plan sans immeubles du fond = neige des toits du fond.
+      const nearOnly = { ...plan, buildings: plan.buildings.filter((b) => !b.far) };
+      const near = nearOnly.buildings;
+      for (let t = 0; t < tileCount(1080); t++) {
+        const all = recordingCtx();
+        const mine = recordingCtx();
+        paintSnowTile(all, plan, t);
+        paintSnowTile(mine, nearOnly, t);
+        const left = new Map<string, number>();
+        for (const [x, y] of mine.points) left.set(`${x.toFixed(4)},${y.toFixed(4)}`, (left.get(`${x.toFixed(4)},${y.toFixed(4)}`) ?? 0) + 1);
+        const far: [number, number][] = [];
+        for (const [x, y] of all.points) {
+          const k = `${x.toFixed(4)},${y.toFixed(4)}`;
+          const n = left.get(k) ?? 0;
+          if (n > 0) left.set(k, n - 1);
+          else far.push([x, y]);
+        }
+        expect(far.length).toBeGreaterThan(0);
+        const hidden = far.filter(([x, y]) => y < plan.ground && near.some((b) => x >= b.x - 1.5 && x <= b.x + b.w + 1.5 && y >= roofLineY(b, x) - 1e-6));
+        expect(hidden.slice(0, 3)).toEqual([]);
+      }
+    });
+  }
+
   it('n’utilise jamais Math.random', () => {
     vi.spyOn(Math, 'random').mockImplementation(() => { throw new Error('Math.random interdit'); });
     paintSnowTile(recordingCtx(), cityPaintPlan(720, 340, 5), 0);
