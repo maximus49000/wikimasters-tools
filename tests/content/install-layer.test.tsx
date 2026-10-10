@@ -12,6 +12,8 @@ import { lampsFor } from '../../src/core/library/city/lamps';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { dayNumber } from '../../src/core/library/city/shops/hours';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
+import { DARK } from '../../src/core/library/city/events';
+import { STAGE } from '../../src/content/install-sprites';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: { root: Root; host: HTMLDivElement }[] = [];
@@ -158,6 +160,52 @@ describe('calque des équipes d’installation', () => {
 
   it('aucun id SVG fixe', () => {
     for (const [d, m] of [[D13, 720], [D14, 450], [MUSIC, 700]] as const) expect(layer(d, m).querySelector('[id]')).toBeNull();
+  });
+});
+
+describe('scène de la Fête de la musique : musiciens et faisceaux', () => {
+  const num = (e: Element, a: string): number => Number(e.getAttribute(a));
+  it('21/6 à 18 h : structure posée, musiciens présents, aucun faisceau (jour)', () => {
+    expect(skyOf(18 * 60).daylight).toBeGreaterThanOrEqual(DARK);
+    const c = layer(MUSIC, 18 * 60);
+    expect(count(c, '[data-stage-spot]')).toBe(3);
+    expect(count(c, '[data-stage-band]')).toBe(3);
+    expect(count(c, '[data-stage-beam]')).toBe(0);
+  });
+  it('21/6 à 23 h : 3 faisceaux, chacun partant d’un projecteur de la traverse', () => {
+    expect(skyOf(23 * 60).daylight).toBeLessThan(DARK);
+    const c = layer(MUSIC, 23 * 60);
+    const beams = [...c.querySelectorAll('[data-stage-beam]')];
+    expect(beams).toHaveLength(3);
+    beams.forEach((b, i) => {
+      expect(Math.abs(num(b, 'data-origin-x') - STAGE.spotXs[i]!)).toBeLessThan(2);
+      expect(Math.abs(num(b, 'data-origin-y') - (STAGE.spotY + 3))).toBeLessThan(1);
+      expect(num(b, 'data-target-y')).toBe(-STAGE.floor);
+    });
+    expect(count(c, '[data-stage-band]')).toBe(3);
+  });
+  it('21/6 à 10 h : structure en pose, aucun musicien ni faisceau', () => {
+    const c = layer(MUSIC, 10 * 60 + 30);
+    expect(count(c, '[data-stage-band]')).toBe(0);
+    expect(count(c, '[data-stage-beam]')).toBe(0);
+  });
+  it('22/6 à 2 h : dépose, ni faisceau ni musicien', () => {
+    const c = layer(MUSIC_NEXT, 2 * 60);
+    expect(count(c, '[data-stage-band]')).toBe(0);
+    expect(count(c, '[data-stage-beam]')).toBe(0);
+  });
+  it('22/6 à 6 h : rien', () => {
+    const c = layer(MUSIC_NEXT, 6 * 60);
+    expect(count(c, '[data-stage-band], [data-stage-beam], [data-decor-item]')).toBe(0);
+  });
+  it('mouvement réduit : pas d’animation', () => {
+    const c = layer(MUSIC, 23 * 60, true);
+    expect(count(c, '[data-stage-beam]')).toBe(3);
+    expect(count(c, '[data-stage-band]')).toBe(3);
+    expect(count(c, 'animate, animateTransform')).toBe(0);
+  });
+  it('animé hors mouvement réduit', () => {
+    expect(count(layer(MUSIC, 23 * 60), '[data-stage-band] animateTransform')).toBeGreaterThan(0);
   });
 });
 

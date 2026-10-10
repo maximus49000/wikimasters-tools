@@ -80,6 +80,13 @@ export function Barrier({ sky }: { sky: Sky }): ReactElement {
 // Plancher 96 × 8, deux montants en treillis jusqu'à la traverse (y = -60), trois projecteurs accrochés sous la traverse.
 export const STAGE = { half: 48, floor: 8, truss: 60, postX: 44, spotXs: [-28, 0, 28] as const, spotY: -55 } as const;
 
+// Centre de la lentille du projecteur i dans le repère de la scène (la tête est inclinée de -x/3 degrés autour de son accroche).
+export function spotLens(i: number): { x: number; y: number } {
+  const x = STAGE.spotXs[i]!;
+  const a = (-x / 3) * (Math.PI / 180);
+  return { x: x - 3 * Math.sin(a), y: STAGE.spotY + 3 * Math.cos(a) };
+}
+
 export function StageFloor({ sky }: { sky: Sky }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (
@@ -133,8 +140,7 @@ export function StageFrame({ sky }: { sky: Sky }): ReactElement {
   );
 }
 
-// Projecteurs accrochés sous la traverse, orientés vers le plancher. `lit` : lentille allumée (les faisceaux viennent avec
-// les musiciens, tâche 11).
+// Projecteurs accrochés sous la traverse, orientés vers le plancher. `lit` : lentille allumée (les faisceaux sont dans stage-band.tsx).
 export function StageSpots({ sky, lit }: { sky: Sky; lit: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (

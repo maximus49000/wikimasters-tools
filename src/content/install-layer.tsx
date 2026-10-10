@@ -7,11 +7,13 @@ import {
 } from '../core/library/city/install';
 import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
+import { DARK } from '../core/library/city/events';
 import { dayNumber } from '../core/library/city/shops/hours';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { entranceLeft } from './city-sprites';
 import { Barrier, CrewWorker, DoorFlag, FlagArt, LampFlag, LiftTruck, StageFloor, StageFrame, StageSpots, Van, liftRest } from './install-sprites';
+import { StageBand, StageBeams } from './stage-band';
 import { LadderSprite, type WorkerPose } from './shop-sprites';
 
 // Calque des décors de fête et des équipes qui les posent (spec §7, tâche 10). Tout est une fonction de la date et de la minute
@@ -65,7 +67,9 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
     () => new Map(sets.map((s) => [s.id, [0, 1].map((i) => outfitFor('worker', mulberry32(seed ^ hashString(`${s.id}-crew-${i}`))))] as const)),
     [sets, seed],
   );
+  const bandOutfits = useMemo(() => [0, 1, 2].map((i) => outfitFor('ordinary', mulberry32(seed ^ hashString(`stage-band-${i}`)))), [seed]);
   const abs = absMinute(dayNumber(date), minutes);
+  const dark = sky.daylight < DARK;
   const u = metrics.unit;
   const drawn: Drawn[] = [];
 
@@ -75,9 +79,12 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       const ph = itemPhase(set, item, abs, set.day);
       const shown = still ? ph.phase === 'present' : itemShown(set, item, ph);
       if (!shown) continue;
-      const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still);
+      // Projecteurs allumés (et faisceaux) : posés, il fait nuit, et la fête n'est pas finie (la dépose commence après minuit).
+      const lit = item.kind === 'stage-spots' && ph.phase === 'present' && dark && abs < absMinute(set.day + 1, 0);
+      const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lit);
       if (d) drawn.push(d);
     }
+    if (set.id === 'stage-music') drawn.push(...stageShow(set, abs, dark, bandOutfits, metrics, sky, rainy, still));
     if (still) continue;
     // Camionnette de l'équipe à pied (échelles, barrières, plancher), garée au bord de la rue pendant les fenêtres.
     if (hasCrewOnFoot(set)) {
@@ -121,7 +128,7 @@ const lampTransform = (x: number, m: CityMetrics): string => `translate(${x} ${m
 const stageBase = (m: CityMetrics): number => m.curb - m.unit;
 const barrierY = (m: CityMetrics): number => m.curb + 1.5 * m.unit;
 
-function decorNode(set: DecorSet, item: DecorItem, phase: string, door: Door | undefined, m: CityMetrics, sky: Sky, still: boolean): Drawn | null {
+function decorNode(set: DecorSet, item: DecorItem, phase: string, door: Door | undefined, m: CityMetrics, sky: Sky, still: boolean, lit = false): Drawn | null {
   const attrs = { 'data-decor-item': item.id, 'data-decor-kind': item.kind, 'data-decor-set': set.id, 'data-decor-phase': phase };
   const key = `${set.id}-${item.id}`;
   switch (item.kind) {
@@ -136,7 +143,7 @@ function decorNode(set: DecorSet, item: DecorItem, phase: string, door: Door | u
     case 'stage-frame':
     case 'stage-spots': {
       const t = `translate(${item.x.toFixed(1)} ${stageBase(m).toFixed(1)}) scale(${m.unit.toFixed(3)})`;
-      const art = item.kind === 'stage-floor' ? <StageFloor sky={sky} /> : item.kind === 'stage-frame' ? <StageFrame sky={sky} /> : <StageSpots sky={sky} lit={false} />;
+      const art = item.kind === 'stage-floor' ? <StageFloor sky={sky} /> : item.kind === 'stage-frame' ? <StageFrame sky={sky} /> : <StageSpots sky={sky} lit={lit} />;
       return { part: 'back', node: <g key={key} {...attrs} transform={t}>{art}</g> };
     }
     default: {
@@ -144,6 +151,22 @@ function decorNode(set: DecorSet, item: DecorItem, phase: string, door: Door | u
       return never;
     }
   }
+}
+
+// Musiciens (17 h à minuit, plancher posé) et faisceaux (projecteurs posés et nuit), posés sur la scène.
+const BAND_FROM = 17 * 60;
+function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[], m: CityMetrics, sky: Sky, rainy: boolean, still: boolean): Drawn[] {
+  const floor = set.items.find((i) => i.kind === 'stage-floor');
+  const spots = set.items.find((i) => i.kind === 'stage-spots');
+  if (!floor || !spots) return [];
+  if (abs < absMinute(set.day, BAND_FROM) || abs >= absMinute(set.day + 1, 0)) return [];
+  const fp = itemPhase(set, floor, abs, set.day);
+  const sp = itemPhase(set, spots, abs, set.day);
+  const t = `translate(${floor.x.toFixed(1)} ${stageBase(m).toFixed(1)}) scale(${m.unit.toFixed(3)})`;
+  const out: Drawn[] = [];
+  if (sp.phase === 'present' && dark) out.push({ part: 'back', node: <g key={`${set.id}-beams`} transform={t}><StageBeams still={still} /></g> });
+  if (still ? fp.phase === 'present' : itemShown(set, floor, fp)) out.push({ part: 'back', node: <g key={`${set.id}-band`} transform={t}><StageBand outfits={outfits} sky={sky} rainy={rainy} still={still} /></g> });
+  return out;
 }
 
 // ---------- Équipes ----------
