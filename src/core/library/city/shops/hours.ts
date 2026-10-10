@@ -22,7 +22,7 @@ export function nextWorkday(n: number): number {
 }
 
 // Plages d'un jour donné (dimanche : plages propres s'il y en a) ; aucune si le commerce est fermé ce jour-là.
-function rangesOf(def: ShopDef, date: YMD): readonly (readonly [number, number])[] {
+export function rangesOf(def: ShopDef, date: YMD): readonly (readonly [number, number])[] {
   const weekday = weekdayOf(date);
   if (!def.days.includes(weekday)) return [];
   if (!def.holidays && holidayOf(date)) return [];
