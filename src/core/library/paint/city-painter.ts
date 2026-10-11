@@ -1,7 +1,7 @@
 import { hashString, mulberry32 } from '../scene-world';
 import { cellRng, type Box } from './brush';
 import { INK, SHADOW_K, TAU, disc, fillRect, groundShadow, ink, inkRect, light, pick, poly, shade } from './cel';
-import { HILL_ROWS, type CityPaintPlan, type Furniture, type Gull, type HillHouse, type Landmark, type PaintBuilding, type PlanDoor, type Tree } from './city-plan';
+import { HILL_ROWS, type CityPaintPlan, type Furniture, type Gull, type HillHouse, type Landmark, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree } from './city-plan';
 import { paintEntrance } from './shop/entrance';
 import { hexRgb, rgba, type Rgb } from './color';
 import { paintFarWall, paintGull, paintHillGround, paintHillHouse, paintLandmark } from './hill-painter';
@@ -29,13 +29,14 @@ const POSTERS = ['#E85A3A', '#3A7EC8', '#F0C030', '#8A58B8'].map(hexRgb);
 
 export const tileCount = (width: number): number => Math.max(1, Math.ceil(width / TILE));
 
-export type TileItems = { buildings: PaintBuilding[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; furniture: Furniture[]; doors: PlanDoor[] };
+export type TileItems = { buildings: PaintBuilding[]; podiums: PaintPodium[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; furniture: Furniture[]; doors: PlanDoor[] };
 
 export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
   const x0 = tile * TILE - 2;
   const x1 = (tile + 1) * TILE + 2;
   return {
     buildings: plan.buildings.filter((b) => b.x < x1 && b.x + b.w > x0),
+    podiums: plan.podiums.filter((p) => p.x < x1 && p.x + p.w > x0),
     trees: plan.trees.filter((t) => t.x - t.r < x1 && t.x + t.r > x0),
     houses: plan.hill.houses.filter((h) => h.x - 2 < x1 && h.x + h.w + (h.trees ? h.trees.r * 2 : 0) + 2 > x0),
     landmarks: plan.hill.landmarks.filter((l) => l.x - 3 < x1 && l.x + l.w + 3 > x0),
@@ -53,7 +54,9 @@ export function tileKey(plan: CityPaintPlan, tile: number): string {
     plan.height,
     tile,
     Math.min(TILE, plan.width - tile * TILE),
-    it.buildings.map((b) => `${b.id}@${b.x.toFixed(1)}`).join(','),
+    // Sans l'id : celui d'un immeuble du fond (index dans les façades) change quand la pièce grandit.
+    it.buildings.map((b) => `${b.far ? 'f' : ''}@${b.x.toFixed(1)}`).join(','),
+    it.podiums.map((p) => p.x.toFixed(1)).join(','),
     it.trees.map((t) => `${t.x.toFixed(1)}:${t.r.toFixed(1)}`).join(','),
     it.houses.map((h) => `${h.row}${h.x.toFixed(1)}`).join(','),
     it.landmarks.map((l) => `${l.kind}${l.x.toFixed(1)}`).join(','),
@@ -546,6 +549,14 @@ function paintFurniture(ctx: PaintCtx, plan: CityPaintPlan, f: Furniture): void 
   ctx.stroke();
 }
 
+// Socle commun des jumeaux : première version minimale (aplat + trait), remplacée par la peinture complète.
+export function paintPodium(ctx: PaintCtx, plan: CityPaintPlan, p: PaintPodium): void {
+  fillRect(ctx, p.stone, p.x, p.top, p.w, plan.ground - p.top);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 0.9;
+  ctx.strokeRect(p.x, p.top, p.w, plan.ground - p.top);
+}
+
 export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number): void {
   const it = tileItems(plan, tile);
   const x0 = tile * TILE;
@@ -558,6 +569,7 @@ export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number):
   for (const g of it.gulls) paintGull(ctx, g);
   for (const b of it.buildings) if (b.far) paintBuilding(ctx, plan, b);
   for (const b of it.buildings) if (!b.far) paintBuilding(ctx, plan, b);
+  for (const p of it.podiums) paintPodium(ctx, plan, p);
   paintStreet(ctx, plan, x0, x1);
   // Entrées d'immeuble (G4a) : en pierre, sur le trottoir, avant les arbres.
   for (const d of it.doors) paintEntrance(ctx, d.cx, d.base, d.s, d.variant, plan.seed ^ Math.round(d.x * 8));

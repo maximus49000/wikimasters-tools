@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { doorsFor } from '../../../../src/core/library/city/doors';
 import { cityFacades, GROUND_FLOOR } from '../../../../src/core/library/city/facades';
+import { TILE, tileItems } from '../../../../src/core/library/paint/city-painter';
 import { cityPaintPlan, ROOF_H, silhouetteTop } from '../../../../src/core/library/paint/city-plan';
 
 describe('plan de la ville peinte', () => {
@@ -21,7 +22,9 @@ describe('plan de la ville peinte', () => {
     it(`graine ${seed} : fenêtres = lampes (premier plan) ou fenêtres du fond, lucarnes dans le toit`, () => {
       plan.buildings.forEach((b, i) => {
         const f = facades[i]!;
-        expect(b.wins.length).toBe(b.far ? f.farWindows.length : f.lamps.length);
+        // La rangée de fenêtres du socle est peinte sur le socle : elle n'est pas dans les fenêtres de la tour.
+        const towerLamps = b.podiumTop === null ? f.lamps : f.lamps.filter((l) => l.y + 7 <= b.podiumTop!);
+        expect(b.wins.length).toBe(b.far ? f.farWindows.length : towerLamps.length);
         if (!b.far) for (const w of b.wins) expect(w.dormer).toBe(w.y < b.top + ROOF_H);
       });
     });
@@ -73,5 +76,28 @@ describe('plan de la ville peinte', () => {
 
   it('au moins un arbre sur une rue de 2880 px', () => {
     expect(cityPaintPlan(2880, 340, 1).trees.length).toBeGreaterThan(0);
+  });
+  it('liste un socle par jumeau et la silhouette le couvre (même dans le retrait entre les tours)', () => {
+    const plan = cityPaintPlan(1440, 340, 4);
+    const twins = plan.buildings.filter((b) => b.podiumTop !== null);
+    expect(plan.podiums.length * 2).toBe(twins.length);
+    for (const p of plan.podiums) {
+      for (let x = p.x + 0.5; x < p.x + p.w; x += 2) expect(silhouetteTop(plan, x)).toBeLessThanOrEqual(p.top);
+      expect(p.wins.length).toBeGreaterThan(0);
+    }
+  });
+  it("ne pose pas d'arbre dont la couronne descend devant un socle", () => {
+    for (let s = 1; s <= 20; s++) {
+      const plan = cityPaintPlan(1440, 340, s);
+      for (const t of plan.trees) for (const p of plan.podiums) {
+        if (t.x + t.r > p.x && t.x - t.r < p.x + p.w) expect(t.cy + t.r).toBeLessThanOrEqual(p.top);
+      }
+    }
+  });
+  it("range les socles dans les tuiles qu'ils touchent", () => {
+    const plan = cityPaintPlan(1440, 340, 4);
+    const p = plan.podiums[0]!;
+    const tile = Math.floor((p.x + p.w / 2) / TILE);
+    expect(tileItems(plan, tile).podiums).toContain(p);
   });
 });

@@ -1,5 +1,5 @@
 import { doorsFor, DOOR_MARGIN, DOOR_WIDTH } from '../city/doors';
-import { cityFacades, FAR_WINDOW, GROUND_FLOOR } from '../city/facades';
+import { cityFacades, FAR_WINDOW, GROUND_FLOOR, podiumWindows } from '../city/facades';
 import { cityMetrics } from '../city/metrics';
 import { shopSlotsFor } from '../city/shops/slots';
 import { hashString, mulberry32 } from '../scene-world';
@@ -26,7 +26,10 @@ export type Look = {
   pipe: boolean;
   laundry: boolean;
 };
-export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; look: Look };
+// `podiumTop` : haut du socle commun sous la tour (jumeaux), sinon null.
+export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; look: Look; podiumTop: number | null };
+// Socle commun des jumeaux (pierre claire), peint après les tours ; ses fenêtres sont celles de `podiumWindows`.
+export type PaintPodium = { id: number; x: number; w: number; top: number; stone: Rgb; wins: Win[] };
 export type Tree = { id: number; x: number; base: number; cy: number; r: number };
 export type Span = { x0: number; x1: number };
 // Maison du fond : `row` 0 (le plus loin) à 2 ; `base` = sol du rang ; `s` échelle ; `haze` brume ; `top` = haut du toit.
@@ -46,6 +49,7 @@ export type CityPaintPlan = {
   laneMark: number;
   unit: number;
   buildings: PaintBuilding[];
+  podiums: PaintPodium[];
   trees: Tree[];
   blocked: Span[];
   hill: Hill;
@@ -63,6 +67,7 @@ export const FAR_ROOF_H = 6;
 // Lampe de la grille d'origine (facades.ts) : 5 × 7.
 const LAMP = { w: 5, h: 7 } as const;
 
+const STONES = ['#EDE2C8', '#E8DCC0', '#F0E6D0', '#E4D6BA'].map(hexRgb);
 const WALLS = ['#F6E2B4', '#F0A98A', '#CFE0B8', '#F4D89C', '#EEC79A', '#E6BCD0', '#FFF1D6', '#C4D6E6', '#F2CC8C', '#E0C8A0', '#F5B7A0', '#D8E6C8'].map(hexRgb);
 const TILE_ROOFS = ['#D8603A', '#B4523A', '#C86A40', '#9E4A34'].map(hexRgb);
 const SLATE_ROOFS = ['#5A6A84', '#6A6A86', '#4C5A70'].map(hexRgb);
@@ -94,10 +99,11 @@ function lookOf(seed: number, x: number, w: number, far: boolean): Look {
   };
 }
 
-// y du haut de la silhouette des immeubles en x (le plus haut des immeubles qui couvrent x) ; `ground` si aucun.
-export function silhouetteTop(plan: Pick<CityPaintPlan, 'buildings' | 'ground'>, x: number): number {
+// y du haut de la silhouette des immeubles et des socles en x (le plus haut de ce qui couvre x) ; `ground` si rien.
+export function silhouetteTop(plan: Pick<CityPaintPlan, 'buildings' | 'ground' | 'podiums'>, x: number): number {
   let top = plan.ground;
   for (const b of plan.buildings) if (x >= b.x && x <= b.x + b.w) top = Math.min(top, b.top);
+  for (const p of plan.podiums) if (x >= p.x && x <= p.x + p.w) top = Math.min(top, p.top);
   return top;
 }
 
@@ -251,16 +257,27 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     const top = m.ground - f.h;
     const look = lookOf(seed, f.x, f.w, f.far);
     const rng = mulberry32(seed ^ hashString('ghibli-curtain') ^ Math.round(f.x * 8));
+    const podiumTop = f.podium ? m.ground - f.podium.h : null;
+    // Les fenêtres du socle (rangée ajoutée aux lampes de la 1re tour) sont peintes sur le socle, pas sur la tour.
+    const lamps = podiumTop === null ? f.lamps : f.lamps.filter((l) => l.y + LAMP.h <= podiumTop);
     const wins: Win[] = f.far
       ? f.farWindows.map((v) => ({ x: v.x, y: v.y, w: FAR_WINDOW.w, h: FAR_WINDOW.h, dormer: false, curtain: false }))
-      : f.lamps.map((l) => ({ x: l.x, y: l.y, w: LAMP.w, h: LAMP.h, dormer: l.y < top + ROOF_H, curtain: rng() < 0.5 }));
-    return { id, x: f.x, w: f.w, top, far: f.far, wins, look };
+      : lamps.map((l) => ({ x: l.x, y: l.y, w: LAMP.w, h: LAMP.h, dormer: l.y < top + ROOF_H, curtain: rng() < 0.5 }));
+    return { id, x: f.x, w: f.w, top, far: f.far, wins, look, podiumTop };
   });
+  const podiums: PaintPodium[] = [];
+  for (const f of facades) {
+    if (!f.podium || f.x !== f.podium.x) continue;
+    const p = f.podium;
+    const prng = mulberry32(seed ^ hashString('ghibli-podium') ^ Math.round(p.x * 8));
+    const wins = podiumWindows(p, m.ground, seed).map((l) => ({ x: l.x, y: l.y, w: LAMP.w, h: LAMP.h, dormer: false, curtain: prng() < 0.4 }));
+    podiums.push({ id: p.id, x: p.x, w: p.w, top: m.ground - p.h, stone: STONES[Math.floor(prng() * STONES.length)]!, wins });
+  }
   const blocked: Span[] = [
     ...doorsFor(width, height, seed).map((d) => ({ x0: d.x - DOOR_MARGIN, x1: d.x + DOOR_WIDTH + DOOR_MARGIN })),
     ...shopSlotsFor(width, height, seed).map((s) => ({ x0: s.x, x1: s.x + s.w })),
   ];
-  const base = { buildings, ground: m.ground };
+  const base = { buildings, podiums, ground: m.ground };
   const trees: Tree[] = [];
   const rng = mulberry32(seed ^ hashString('ghibli-trees'));
   const crownBottom = m.ground - GROUND_FLOOR - 1;
@@ -270,7 +287,10 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     if (blocked.some((s) => trunk.x1 > s.x0 && trunk.x0 < s.x1)) continue;
     // Plus grande couronne (≤ want, ≥ 9 unités) posée juste au-dessus du rez-de-chaussée et sous la silhouette partout.
     for (let r = want; r >= 9 * m.unit; r -= m.unit) {
-      const cy = crownBottom - r;
+      // Devant un socle (plus haut que le bas habituel de la couronne), la couronne s'arrête sous son toit.
+      const over = podiums.filter((p) => x + r > p.x && x - r < p.x + p.w);
+      const bottom = over.length > 0 ? Math.min(crownBottom, Math.min(...over.map((p) => p.top)) - 1) : crownBottom;
+      const cy = bottom - r;
       let ok = true;
       for (let sx = x - r; sx <= x + r && ok; sx += 1) if (cy - r < silhouetteTop(base, sx) + 2) ok = false;
       if (ok && silhouetteTop(base, x + r) <= cy - r - 2) {
@@ -289,6 +309,7 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     laneMark: (m.laneY.far + m.laneY.near) / 2 - 8 * m.unit,
     unit: m.unit,
     buildings,
+    podiums,
     trees,
     blocked,
     hill: hillPlan(width, height, seed),
