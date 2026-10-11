@@ -94,12 +94,19 @@ export class ShopRegistry {
     this.sprites.set(k, url);
     return url;
   }
-  // Demande de peinture : `done` est appelé quand l'image est prête.
-  want(k: string, paint: () => string, done: () => void): void {
+  // Demande de peinture : `done` est appelé quand l'image est prête. Rend l'annulation : une clé dont plus personne
+  // n'attend l'image (clé changée, composant démonté) n'est pas peinte.
+  want(k: string, paint: () => string, done: () => void): () => void {
     const q = this.queue.get(k);
     if (q) q.done.add(done);
     else this.queue.set(k, { paint, done: new Set([done]) });
     this.pump();
+    return () => {
+      const p = this.queue.get(k);
+      if (!p) return;
+      p.done.delete(done);
+      if (p.done.size === 0) this.queue.delete(k);
+    };
   }
   private pump(): void {
     if (this.pending || this.queue.size === 0) return;
@@ -122,7 +129,8 @@ export class ShopRegistry {
 
 export const ShopContext = createContext<ShopRegistry | null>(null);
 
-// Image de la couche pour `look` ; tant qu'elle n'est pas peinte, la dernière montrée par ce composant (pas de trou), ou null.
+// Image de la couche pour `look` ; tant qu'elle n'est pas peinte, la dernière montrée par ce composant (pas de trou), ou
+// null ; `look` null efface la mémoire (jamais l'image d'un intérieur parti).
 export function useShopLayer(look: ShopLook | null, layer: ShopLayer): string | null {
   const reg = useContext(ShopContext);
   const [, bump] = useState(0);
@@ -131,18 +139,16 @@ export function useShopLayer(look: ShopLook | null, layer: ShopLayer): string | 
   const url = reg && key ? reg.get(key) : null;
   useEffect(() => {
     if (!reg || !key || !look || reg.get(key) !== null) return;
-    let live = true;
-    reg.want(
+    return reg.want(
       key,
       () => paintShopLayer(look, layer),
-      () => live && bump((n) => n + 1),
+      () => bump((n) => n + 1),
     );
-    return () => {
-      live = false;
-    };
     // `look` est entièrement décrit par la clé.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reg, key]);
+  // Plus rien à montrer (intérieur parti, local vidé) : surtout pas l'ancienne image.
+  if (key === null) last.current = null;
   if (url !== null) last.current = url;
   return url ?? last.current;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SHOP_TYPE_IDS, type ShopTypeId } from '../../../../../src/core/library/city/shops/catalog';
-import { INTERIORS, paintInterior } from '../../../../../src/core/library/paint/shop/interiors';
+import { INTERIORS, interiorPostOf, paintInterior } from '../../../../../src/core/library/paint/shop/interiors';
 import { recordingCtx } from '../recording-ctx';
 
 const done = (): ShopTypeId[] => SHOP_TYPE_IDS.filter((t) => t in INTERIORS);
@@ -52,4 +52,9 @@ describe('intérieurs des commerces', () => {
   it('les 32 métiers ont leur intérieur', () => {
     expect(done()).toEqual([...SHOP_TYPE_IDS]);
   });
+
+  it('place du vendeur sans peindre : la même que celle du dessin', () => {
+    for (const t of SHOP_TYPE_IDS) for (const w of [12, 30, 47]) expect(interiorPostOf(t, w, 21)).toBe(paintInterior(recordingCtx(), t, w, 21, 'back', false, 1));
+  });
 });
+

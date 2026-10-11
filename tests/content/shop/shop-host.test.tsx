@@ -87,4 +87,41 @@ describe('registre des commerces', () => {
     );
     expect(seen[seen.length - 1]).toBe(first);
   });
+
+  it('plus d’intérieur (déménagement, local vidé) : plus d’image, jamais l’ancienne', () => {
+    const queue: (() => void)[] = [];
+    const reg = new ShopRegistry('t', { schedule: (cb) => void queue.push(cb) });
+    const seen: (string | null)[] = [];
+    function Probe({ l }: { l: ShopLook | null }) {
+      seen.push(useShopLayer(l, 'back'));
+      return null;
+    }
+    const { rerender } = render(
+      <ShopContext.Provider value={reg}>
+        <Probe l={look()} />
+      </ShopContext.Provider>,
+    );
+    act(() => queue.shift()!());
+    expect(seen[seen.length - 1]).toBe(BLANK_SPRITE);
+    rerender(
+      <ShopContext.Provider value={reg}>
+        <Probe l={null} />
+      </ShopContext.Provider>,
+    );
+    expect(seen[seen.length - 1]).toBeNull();
+  });
+
+  it('une demande abandonnée avant sa peinture n’est pas peinte', () => {
+    const queue: (() => void)[] = [];
+    const reg = new ShopRegistry('t', { schedule: (cb) => void queue.push(cb) });
+    let painted = 0;
+    const cancel = reg.want('a', () => { painted++; return 'ua'; }, () => undefined);
+    cancel();
+    reg.want('b', () => { painted++; return 'ub'; }, () => undefined);
+    while (queue.length) queue.shift()!();
+    expect(painted).toBe(1);
+    expect(reg.get('a')).toBeNull();
+    expect(reg.get('b')).toBe('ub');
+  });
 });
+

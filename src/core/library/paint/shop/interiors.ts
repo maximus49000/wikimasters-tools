@@ -21,3 +21,18 @@ export function paintInterior(ctx: ShopPaintCtx, type: ShopTypeId, w: number, h:
   ctx.restore();
   return Math.min(w - 1, Math.max(1, post));
 }
+
+// Contexte muet : chaque tracé est ignoré (le calcul de la place du vendeur n'a pas besoin de dessiner).
+const MUTE = new Proxy({} as ShopPaintCtx, {
+  get: (_t, key) => (key === 'measureText' ? () => ({ width: 0 }) : () => undefined),
+  set: () => true,
+});
+const posts = new Map<string, number>();
+
+// Place du vendeur d'un intérieur (repère de la partie vitrée), sans peindre ; gardée par (métier, largeur, hauteur).
+export function interiorPostOf(type: ShopTypeId, w: number, h: number): number {
+  const key = `${type}|${w}|${h}`;
+  let p = posts.get(key);
+  if (p === undefined) posts.set(key, (p = paintInterior(MUTE, type, w, h, 'back', false, 1)));
+  return p;
+}

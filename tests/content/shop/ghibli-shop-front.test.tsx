@@ -3,6 +3,9 @@ import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GhibliShopFront, shopLookOf } from '../../../src/content/shop/ghibli-shop-front';
+import { ghibliStaffPost } from '../../../src/content/shop/ghibli-shop-glass';
+import { facadeGeometry } from '../../../src/core/library/paint/shop/facade';
+import { interiorPostOf } from '../../../src/core/library/paint/shop/interiors';
 import { ShopContext, ShopRegistry } from '../../../src/content/shop/shop-host';
 import { shopFrame, shopSlotsFor } from '../../../src/core/library/city/shops/slots';
 import type { ShopView } from '../../../src/core/library/city/shops/view';
@@ -84,4 +87,34 @@ describe('devantures Ghibli', () => {
       root = null;
     }
   });
+
+  it('premier plan (comptoir, vitre) dans le décor quand la boutique n’est pas ouverte, pas quand elle l’est', () => {
+    for (const [v, n] of [[view({ phase: 'closed' }), 1], [view({ phase: 'works', interior: null }), 1], [view(), 0]] as const) {
+      const queue: (() => void)[] = [];
+      const reg = new ShopRegistry('t', { schedule: (cb) => void queue.push(cb) });
+      const slices = v.phase === 'works' ? { shown: 2, n: 3, doorRight: true } : undefined;
+      const host = mount(
+        <ShopContext.Provider value={reg}>
+          <GhibliShopFront view={v} frame={frame} sky={noon} curb={258} interior={v.interior ?? 'bakery'} slices={slices}>
+            <g />
+          </GhibliShopFront>
+        </ShopContext.Provider>,
+      );
+      drain(queue);
+      expect(host.querySelectorAll('image[data-shop-layer="front"]').length).toBe(n);
+      act(() => root?.unmount());
+      root = null;
+    }
+  });
+
+  it('place du vendeur Ghibli : celle du comptoir peint, dans le repère de la vitrine', () => {
+    for (const doorSide of ['left', 'right'] as const) {
+      const sl = { ...slot, doorSide };
+      const f = shopFrame(sl, 238);
+      const v = view({ slot: sl });
+      const g = facadeGeometry({ type: 'bakery', name: '', w: f.sign.w, doorSide, state: 'open', placard: false, night: false, lit: false });
+      expect(ghibliStaffPost(v, f)).toBeCloseTo(g.glass.x - g.win.x + interiorPostOf('bakery', g.glass.w, g.glass.h), 6);
+    }
+  });
 });
+

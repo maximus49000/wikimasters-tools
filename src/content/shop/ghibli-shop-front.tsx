@@ -45,6 +45,9 @@ export function GhibliShopFront({ view, frame, sky, curb, interior, slices, chil
   const back: ShopLook = { ...look, type: interior };
   const facade = useShopLayer(look, 'facade');
   const backUrl = useShopLayer(interior ? back : null, 'back');
+  // Boutique pas ouverte (fermée, déménagement, travaux) : le premier plan (comptoir, vitre) est dans le décor, comme le
+  // classique ; ouverte, le calque animé le dessine devant le personnel (GhibliShopGlass).
+  const frontUrl = useShopLayer(interior && view.phase !== 'open' ? back : null, 'front');
   if (facade === null) return <>{children}</>;
   const o = shopOrigin(frame);
   const win = frame.window;
@@ -62,6 +65,9 @@ export function GhibliShopFront({ view, frame, sky, curb, interior, slices, chil
         <rect x={0} y={0} width={win.w} height={win.h} fill={empty} />
         {backUrl !== null && (
           <image data-shop-layer="back" href={backUrl} x={o.x + glass.x - win.x} y={o.y + glass.y - win.y} width={glass.w} height={glass.h} preserveAspectRatio="none" />
+        )}
+        {frontUrl !== null && (
+          <image data-shop-layer="front" href={frontUrl} x={o.x + glass.x - win.x} y={o.y + glass.y - win.y} width={glass.w} height={glass.h} preserveAspectRatio="none" />
         )}
         {hidden > 0 && <rect data-slices-cover="" x={slices!.doorRight ? win.w - cut : 0} y={0} width={cut} height={win.h} fill={empty} />}
       </svg>
