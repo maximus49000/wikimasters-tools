@@ -65,13 +65,15 @@ describe('fenêtre — pose et taille', () => {
     expect(windows()[0]).toMatchObject({ w: 6, h: 5 });
   });
 
-  it('refuse de rétrécir sous 3×3 et de dépasser 12×10', async () => {
+  it('refuse de rétrécir sous 3×3 et de dépasser 24×12', async () => {
     await placeWindow();
     await click('[data-furniture="window"]');
     for (let i = 0; i < 6; i++) await click('[data-action="win-w-"]');
     expect(windows()[0]!.w).toBe(3);
-    for (let i = 0; i < 12; i++) await click('[data-action="win-w+"]');
-    expect(windows()[0]!.w).toBe(12);
+    for (let i = 0; i < 30; i++) await click('[data-action="win-w+"]');
+    // Au-delà de l'ancien plafond (12), borné par la largeur de la pièce posée au col. de départ.
+    expect(windows()[0]!.w).toBeGreaterThan(12);
+    expect(windows()[0]!.w).toBeLessThanOrEqual(24);
   });
 
   it('refuse un agrandissement qui chevauche un autre objet et fait clignoter les cases', async () => {

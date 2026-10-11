@@ -10,7 +10,7 @@ describe('fenêtre dans la grille', () => {
   it('a un libellé et des bornes de taille', () => {
     expect(labelOf('window')).toBe('Fenêtre');
     expect(WINDOW_MIN).toEqual({ w: 3, h: 3 });
-    expect(WINDOW_MAX).toEqual({ w: 12, h: 10 });
+    expect(WINDOW_MAX).toEqual({ w: 24, h: 12 });
     expect(WINDOW_DEFAULT).toEqual({ w: 6, h: 5 });
   });
 
@@ -35,8 +35,8 @@ describe('fenêtre dans la grille', () => {
   it('se redimensionne dans les bornes', () => {
     expect(resizeWindow([win()], COLS, 'w1', 7, 5)).toEqual([win({ w: 7 })]);
     expect(resizeWindow([win()], COLS, 'w1', 2, 5)).toBeNull();
-    expect(resizeWindow([win()], COLS, 'w1', 13, 5)).toBeNull();
-    expect(resizeWindow([win()], COLS, 'w1', 6, 11)).toBeNull();
+    expect(resizeWindow([win()], COLS, 'w1', 25, 5)).toBeNull();
+    expect(resizeWindow([win()], COLS, 'w1', 6, 13)).toBeNull();
   });
 
   it('refuse un agrandissement qui chevauche un autre objet et signale les cases', () => {
@@ -46,6 +46,11 @@ describe('fenêtre dans la grille', () => {
     if (!check.ok) expect(check.cells.length).toBeGreaterThan(0);
     expect(resizeWindow(layout, COLS, 'w1', 7, 5)).toBeNull();
     expect(resizeWindow(layout, COLS, 'w1', 5, 5)).not.toBeNull();
+  });
+
+  it('accepte une baie vitrée de toute la hauteur du mur', () => {
+    const big = { ...win(), col: 0, row: 0 };
+    expect(resizeWindow([big], COLS, 'w1', 24, 12)).not.toBeNull();
   });
 
   it('refuse un agrandissement qui sort du mur', () => {
