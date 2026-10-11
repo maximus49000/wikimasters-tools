@@ -13,7 +13,9 @@ import { cityMetrics } from '../../src/core/library/city/metrics';
 import { pedestriansFor } from '../../src/core/library/city/people';
 import { WORLD_MARGIN } from '../../src/core/library/scene-world';
 import { vehiclesFor, laneSpeeds } from '../../src/core/library/city/vehicles';
-import { THRESHOLD_S } from '../../src/core/library/city/doorway';
+import { THRESHOLD_S, entranceOpening } from '../../src/core/library/city/doorway';
+import { DOOR_WIDTH } from '../../src/core/library/city/doors';
+import { DOOR_SILL_HALF, DOOR_SILL_TOP } from '../../src/content/door-passage';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -162,6 +164,49 @@ describe('CityLifeLayer', () => {
     expect(c.querySelector(`[data-resident-door][data-trip-id="${found!.id}"]`)!.getAttribute('data-active')).toBe('true');
     expect(c.querySelector(`[data-resident][data-trip-id="${found!.id}"]`)!.getAttribute('data-active')).toBe('false');
     expect(THRESHOLD_S).toBeGreaterThan(0);
+  });
+  it('habitant au seuil : cadre large (parapluie compris) au bord du trottoir, l’ouverture dès 0,4 de profondeur, pieds sur m.doorY', () => {
+    const sky = skyAt(480, times);
+    const m = cityMetrics(340);
+    const doors = doorsFor(720, 340, 1);
+    const flow = residentFlow(cityIntensity({ minutes: 480, day: dayContext({ y: 2026, m: 10, d: 9 }, []), precip: 0, snow: false, storm: false, daylight: sky.daylight }), 480, doors.length, 720);
+    const T0 = 1.8e9;
+    // Un instant au seuil près du trottoir (profondeur < 0,02) et un autre au fond (≥ 0,4), pour des habitants qui sortent ce tour-ci.
+    const find = (ok: (depth: number) => boolean): { trip: ReturnType<typeof tripsFor>[number]; t: number } => {
+      for (const trip of tripsFor(doors, 1, 720)) {
+        for (let t = T0; t < T0 + 600; t += 0.01) {
+          const p = tripAt(trip, 720, t);
+          if (p?.stage === 'threshold' && ok(p.depth) && tripHappens(trip, t, trip.kind === 'out' ? flow.out : flow.in)) return { trip, t };
+        }
+      }
+      throw new Error('aucun seuil');
+    };
+    const box = (at: { trip: ReturnType<typeof tripsFor>[number]; t: number }) => {
+      vi.spyOn(Date, 'now').mockReturnValue(at.t * 1000);
+      const c = make(8, { y: 2026, m: 10, d: 9 });
+      const svg = c.querySelector(`[data-resident-door][data-trip-id="${at.trip.id}"]`)!;
+      expect(svg.getAttribute('data-active')).toBe('true');
+      const dark = svg.querySelector('[data-door-dark]')!;
+      const fig = svg.querySelector('[data-door-fig]')!;
+      const p = tripAt(at.trip, 720, at.t)!;
+      const center = p.x === at.trip.doorX || at.trip.endDoorX === null ? at.trip.doorX : at.trip.endDoorX;
+      const o = entranceOpening(center - DOOR_WIDTH / 2, m);
+      const n = (e: Element, a: string): number => Number(e.getAttribute(a));
+      const [, , fy] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(fig.getAttribute('transform')!)!.map(Number);
+      return { x: n(svg, 'x'), y: n(svg, 'y'), w: n(svg, 'width'), darkX: n(svg, 'x') + n(dark, 'x'), darkY: n(svg, 'y') + n(dark, 'y'), feet: n(svg, 'y') + fy!, depth: p.depth, o, k: m.unit * 0.55 * at.trip.scale };
+    };
+    const sill = box(find((d) => d < 0.02));
+    expect(sill.w).toBeGreaterThanOrEqual(2 * DOOR_SILL_HALF - 0.5);
+    expect(sill.y).toBeLessThanOrEqual(m.doorY - DOOR_SILL_TOP * sill.k * (1 - sill.depth / 0.4) + 0.05);
+    expect(Math.abs(sill.feet + sill.depth * 3 * m.unit - m.doorY)).toBeLessThan(0.1);
+    expect(sill.darkX).toBeCloseTo(sill.o.x, 1);
+    expect(sill.darkY).toBeCloseTo(sill.o.y, 1);
+    vi.restoreAllMocks();
+    const deep = box(find((d) => d >= 0.45 && d < 0.9));
+    expect(deep.x).toBeCloseTo(deep.o.x, 1);
+    expect(deep.y).toBeCloseTo(deep.o.y, 1);
+    expect(deep.w).toBeCloseTo(deep.o.w, 1);
+    expect(deep.darkX).toBeCloseTo(deep.o.x, 1);
   });
   it('les lampadaires sont dessinés après les passants (devant eux) et avant les voitures', () => {
     const c = make(21, { y: 2026, m: 10, d: 5 });

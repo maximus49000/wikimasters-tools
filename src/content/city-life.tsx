@@ -18,6 +18,7 @@ import { loopX } from '../core/library/scene-world';
 import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
 import { useArtStyle } from './art-setting';
+import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
 import { CityEventSprite } from './city-event-sprites';
@@ -136,11 +137,6 @@ const residentTransform = (trip: Trip, x: number, m: CityMetrics, mirror: boolea
 // Centre de la porte du seuil en cours (la sienne, ou celle de l'autre immeuble au bout du trajet).
 const tripDoorX = (trip: Trip, pos: Passage): number => (pos.x === trip.doorX || trip.endDoorX === null ? trip.doorX : trip.endDoorX);
 const doorOpening = (centerX: number, m: CityMetrics) => entranceOpening(centerX - DOOR_WIDTH / 2, m);
-// Dans l'ouverture (repère local = monde − coin de l'ouverture) : la figure s'enfonce et rapetisse avec la profondeur.
-const doorFigTransform = (trip: Trip, pos: Passage, o: { x: number; h: number }, m: CityMetrics, mirror: boolean): string => {
-  const k = residentScale(trip, m) * (1 - 0.12 * pos.depth);
-  return `translate(${(pos.x - o.x).toFixed(1)} ${(o.h - pos.depth * 3 * m.unit).toFixed(1)}) scale(${((mirror ? trip.dir : 1) * k).toFixed(3)} ${k.toFixed(3)})`;
-};
 // Pose Ghibli d'un habitant (rue : image réglée sur la distance ; seuil : la profondeur fait avancer les pas).
 const residentPose = (trip: Trip, pos: Passage, m: CityMetrics): { yaw: number; gait: 'walk' | 'step'; phase: number; head: 0 } => ({
   yaw: pos.yaw,
@@ -366,12 +362,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         setIfChanged(dnode, 'data-active', v.door ? 'true' : 'false');
         setIfChanged(dnode, 'opacity', v.door ? '1.00' : '0.00');
         if (v.door && v.pos) {
-          const o = doorOpening(tripDoorX(trip, v.pos), metrics);
-          setIfChanged(dnode, 'x', o.x.toFixed(1));
-          const fig = dnode.querySelector(':scope > [data-door-fig]');
-          fig?.setAttribute('transform', doorFigTransform(trip, v.pos, o, metrics, !ghibli));
-          setIfChanged(fig, 'opacity', (1 - v.pos.depth).toFixed(2));
-          setIfChanged(dnode.querySelector(':scope > [data-door-dark]'), 'opacity', doorDarkOpacity(v.pos.depth).toFixed(2));
+          // Cadre large sur le seuil (parapluie compris), resserré sur l'ouverture avec la profondeur (door-passage.ts).
+          placeSill(dnode, doorOpening(tripDoorX(trip, v.pos), metrics), v.pos, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir);
           if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics));
         }
       }
@@ -527,7 +519,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           const rest: Passage = { stage: 'street', x: trip.doorX, depth: 0, yaw: 4, gait: 'walk', walked: 0 };
           const sPos = v.street && v.pos ? v.pos : rest;
           const dPos = v.door && v.pos ? v.pos : { ...rest, depth: 1 };
-          const o = doorOpening(v.door && v.pos ? tripDoorX(trip, v.pos) : trip.doorX, metrics);
+          const { clip: o, dark } = sillBox(doorOpening(v.door && v.pos ? tripDoorX(trip, v.pos) : trip.doorX, metrics), dPos.depth, metrics, residentScale(trip, metrics));
           const sprite = (p: Passage): ReactElement =>
             ghibli ? (
               <GhibliFigure outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={residentPose(trip, p, metrics)} />
@@ -540,9 +532,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                 {sprite(sPos)}
               </g>
               {/* Nœud de porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche est copiée par <use>). */}
-              <svg data-resident-door="" data-trip-id={trip.id} data-active={v.door ? 'true' : 'false'} x={o.x.toFixed(1)} y={o.y.toFixed(1)} width={o.w.toFixed(1)} height={o.h.toFixed(1)} overflow="hidden" opacity={v.door ? '1.00' : '0.00'}>
-                <rect data-door-dark="" x={0} y={0} width={o.w} height={o.h} fill={DOOR_DARK} opacity={v.door ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
-                <g data-door-fig="" transform={doorFigTransform(trip, dPos, o, metrics, !ghibli)} opacity={(1 - dPos.depth).toFixed(2)}>
+              <svg data-resident-door="" data-trip-id={trip.id} data-active={v.door ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={v.door ? '1.00' : '0.00'}>
+                <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={v.door ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
+                <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir)} opacity={(1 - dPos.depth).toFixed(2)}>
                   {sprite(dPos)}
                 </g>
               </svg>

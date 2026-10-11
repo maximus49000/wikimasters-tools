@@ -5,7 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { DOOR_SILL_HALF, DOOR_SILL_TOP, StaffLayer, countShopSprites, customerDoorBox, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
+import { StaffLayer, countShopSprites, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
+import { DOOR_SILL_HALF, DOOR_SILL_TOP, sillBox } from '../../src/content/door-passage';
 import { visitAt, visitsFor, type VisitLock } from '../../src/core/library/city/shops/customers';
 import { addDays, dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
@@ -393,12 +394,12 @@ describe('clients : portes et verrou', () => {
   it('cadre de porte : à profondeur 0, ≥ 20 px de large et haut jusqu’au sommet du parapluie ; la porte dès 0,4', () => {
     const door = { x: 100, y: 220, w: 6, h: 18 };
     const k = 0.55;
-    const z = customerDoorBox(door, 0, metrics, k);
+    const z = sillBox(door, 0, metrics, k);
     expect(z.clip.w).toBeGreaterThanOrEqual(20);
     expect(z.clip.y).toBeLessThanOrEqual(metrics.doorY - DOOR_SILL_TOP * k);
     expect(z.clip.y + z.dark.y).toBeCloseTo(door.y, 6);
     for (const d of [0.4, 0.6, 1]) {
-      const b = customerDoorBox(door, d, metrics, k);
+      const b = sillBox(door, d, metrics, k);
       expect(b.clip.x).toBeCloseTo(door.x, 6);
       expect(b.clip.y).toBeCloseTo(door.y, 6);
       expect(b.clip.w).toBeCloseTo(door.w, 6);
@@ -406,7 +407,7 @@ describe('clients : portes et verrou', () => {
       expect(b.dark.y).toBeCloseTo(0, 6);
       expect([b.dark.w, b.dark.h]).toEqual([door.w, door.h]);
     }
-    const mid = customerDoorBox(door, 0.2, metrics, k).clip;
+    const mid = sillBox(door, 0.2, metrics, k).clip;
     expect(mid.w).toBeLessThan(z.clip.w);
     expect(mid.w).toBeGreaterThan(door.w);
     expect(mid.y).toBeGreaterThan(z.clip.y);
