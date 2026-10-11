@@ -561,7 +561,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               <g data-life-id={trip.id} data-trip-id={trip.id} data-resident="" data-trip={trip.kind} data-active={v.street ? 'true' : 'false'} transform={residentTransform(trip, sPos.x, metrics, !ghibli)} opacity={v.street ? '1.00' : '0.00'}>
                 {sprite(sPos, v.street)}
               </g>
-              {/* Nœud de porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche est copiée par <use>). */}
+              {/* Nœud de porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche reste copiable par <use>, comme pour la fenêtre soulevée). */}
               <svg data-resident-door="" data-trip-id={trip.id} data-active={v.door ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={v.door ? '1.00' : '0.00'}>
                 <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={v.door ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
                 <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir)} opacity={(1 - dPos.depth).toFixed(2)}>

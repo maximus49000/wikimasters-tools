@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-// Boucle d'animation sur l'horloge murale : toutes les copies <use> du monde voient le même instant.
+// Boucle d'animation sur l'horloge murale : toutes les vues du monde (y compris une copie <use>) voient le même instant.
 // `place` est appelée tout de suite, puis à chaque image (au plus une toutes les `frameMs` ms) tant que la page est visible ;
 // pas de boucle si l'utilisateur préfère réduire les animations (ou si le navigateur n'a pas requestAnimationFrame).
 export function useWallClockLoop(place: (nowSeconds: number) => void, deps: readonly unknown[], opts: { frameMs?: number } = {}): void {

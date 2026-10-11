@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WindowArt, glassRect } from '../../src/content/window-art';
 import { RoomView } from '../../src/content/RoomView';
 import { createInitialState, activeRoom, setRoomScene, updateLayout } from '../../src/core/library/library-book';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
@@ -38,11 +39,11 @@ const rainyWeather = (): WeatherProp => {
 // Jour de la ville (vendredi 21 juin 2024) : fourni par le panneau, il donne sa population à la scène Ville.
 const cityDay = dayContext({ y: 2024, m: 6, d: 21 }, []);
 
-function show(windows: number, scene: SceneId = 'city', weather?: WeatherProp) {
+function show(windows: number, scene: SceneId = 'city', weather?: WeatherProp, drag: { id: string; x: number; y: number } | null = null) {
   let state = setRoomScene(createInitialState(), 'r1', scene);
   state = updateLayout(state, 'r1', () => Array.from({ length: windows }, (_, i) => ({ id: `w${i}`, kind: 'window' as const, col: 2 + i * 10, row: 1, w: 6 + i * 2, h: 5 })));
   act(() =>
-    root.render(<RoomView room={activeRoom(state)} editing={false} cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined} sceneView={{ sky: skyAt(13 * 60, times), minutes: 13 * 60, weather, city: { day: cityDay, forcedNight: false } }} />),
+    root.render(<RoomView room={activeRoom(state)} editing={false} cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined} drag={drag ? { ...drag, ok: true, ghost: null } : null} sceneView={{ sky: skyAt(13 * 60, times), minutes: 13 * 60, weather, city: { day: cityDay, forcedNight: false } }} />),
   );
 }
 
@@ -56,42 +57,71 @@ describe('RoomView — fenêtres', () => {
     show(2);
     expect(container.querySelectorAll('[data-panorama]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-furniture="window"]')).toHaveLength(2);
-    const uses = container.querySelectorAll('use[data-window-view]');
-    expect(uses).toHaveLength(2);
-    expect(uses[0]!.getAttribute('href')).toBe(uses[1]!.getAttribute('href'));
+    // Le décor est de vrais nœuds, hors de <defs> : aucune copie <use> hors glissé.
+    expect(container.querySelectorAll('[data-window-views] [data-panorama]')).toHaveLength(1);
+    expect(container.querySelector('defs [data-panorama]')).toBeNull();
+    expect(container.querySelector('use')).toBeNull();
   });
 
-  it('décor fixe et acteurs animés sont deux groupes distincts, partagés par toutes les fenêtres', () => {
+  it('une seule couche d’acteurs pour deux fenêtres, hors de <defs>, sans <use>', () => {
     show(2);
-    // Un seul décor fixe, un seul groupe d’acteurs, et les acteurs ne sont PAS dans le décor fixe
-    // (la boucle d’animation ne touche que le groupe des acteurs : les copies du décor fixe ne sont pas recalculées).
-    expect(container.querySelectorAll('defs [data-panorama]')).toHaveLength(1);
-    expect(container.querySelectorAll('defs [data-actors]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-actors]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-window-actors]')).toHaveLength(1);
+    expect(container.querySelector('defs [data-actors]')).toBeNull();
+    expect(container.querySelector('use[data-window-actors]')).toBeNull();
+  });
+
+  it('décor fixe et acteurs animés sont deux groupes distincts, dans le calque des vues', () => {
+    show(2);
+    // La boucle d’animation ne touche que le groupe des acteurs : ils ne sont PAS dans le décor fixe.
+    expect(container.querySelectorAll('[data-window-views] [data-panorama]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-window-views] [data-actors]')).toHaveLength(1);
     expect(container.querySelector('[data-panorama] [data-actor]')).toBeNull();
     expect(container.querySelector('[data-actors] [data-actor]')).not.toBeNull();
-    const staticId = container.querySelector('defs [data-panorama]')!.closest('g[id]')!.id;
-    const actorsId = container.querySelector('defs [data-actors]')!.closest('g[id]')!.id;
+    const staticId = container.querySelector('[data-panorama]')!.closest('g[id]')!.id;
+    const actorsId = container.querySelector('[data-actors]')!.closest('g[id]')!.id;
     expect(staticId).not.toBe(actorsId);
-    const windows = container.querySelectorAll('[data-window-art]');
-    expect(windows).toHaveLength(2);
-    for (const w of windows) {
-      const uses = w.querySelectorAll('use');
-      expect(uses).toHaveLength(2);
-      // Les deux copies sont dans le MÊME groupe découpé, le décor fixe d’abord.
-      expect(uses[0]!.parentElement).toBe(uses[1]!.parentElement);
-      expect(uses[0]!.getAttribute('href')).toBe(`#${staticId}`);
-      expect(uses[0]!.hasAttribute('data-window-view')).toBe(true);
-      expect(uses[1]!.getAttribute('href')).toBe(`#${actorsId}`);
-      expect(uses[1]!.hasAttribute('data-window-actors')).toBe(true);
+    const views = container.querySelector('[data-window-views]')!;
+    expect(views.getAttribute('clip-path')).toBe(`url(#${staticId}-clip)`);
+    // Les cadres ne dessinent plus ni vitre ni décor.
+    for (const w of container.querySelectorAll('[data-window-art]')) {
+      expect(w.querySelector('use')).toBeNull();
+      expect(w.querySelector('rect[fill="#9CC4E8"]')).toBeNull();
     }
+    // Le calque des vues est dessiné avant les cadres.
+    const all = Array.from(container.querySelectorAll('svg > *'));
+    expect(all.indexOf(views)).toBeLessThan(all.indexOf(container.querySelector('[data-furniture="window"]')!.parentElement!));
   });
 
-  it('chaque vitre est découpée à la taille de sa fenêtre', () => {
+  it('un seul masque, avec un rectangle par vitre à la taille de sa fenêtre', () => {
     show(2);
+    expect(container.querySelectorAll('clipPath')).toHaveLength(1);
     const clips = Array.from(container.querySelectorAll('clipPath rect'));
     expect(clips).toHaveLength(2);
     const widths = clips.map((r) => Number(r.getAttribute('width')));
     expect(widths[1]!).toBeGreaterThan(widths[0]!);
+  });
+
+  it('WindowArt sans mode vue ne dessine ni vitre ni décor', () => {
+    const rect = { x: 10, y: 10, w: 100, h: 80 };
+    const palette = { skirt: '#111', edge: '#222' } as never;
+    act(() => root.render(<svg><WindowArt rect={rect} palette={palette} steampunk={false} /></svg>));
+    expect(container.querySelector('rect[fill="#9CC4E8"]')).toBeNull();
+    expect(container.querySelector('use')).toBeNull();
+    expect(container.querySelector('clipPath')).toBeNull();
+    expect(glassRect(rect).w).toBe(86);
+  });
+
+  it('pendant le glissé d’une fenêtre, la copie soulevée recopie le décor par <use>', () => {
+    show(2, 'city', undefined, { id: 'w0', x: 200, y: 200 });
+    const copy = container.querySelector('g[opacity="0.65"] [data-window-art]')!;
+    expect(copy).not.toBeNull();
+    const staticId = container.querySelector('[data-panorama]')!.closest('g[id]')!.id;
+    const actorsId = container.querySelector('[data-actors]')!.closest('g[id]')!.id;
+    expect(copy.querySelector('use[data-window-view]')?.getAttribute('href')).toBe(`#${staticId}`);
+    expect(copy.querySelector('use[data-window-actors]')?.getAttribute('href')).toBe(`#${actorsId}`);
+    // Le décor réel reste unique.
+    expect(container.querySelectorAll('[data-actors]')).toHaveLength(1);
   });
 
   it('le décor suit la scène de la pièce', () => {
@@ -103,20 +133,19 @@ describe('RoomView — fenêtres', () => {
 describe('RoomView — météo dans les fenêtres', () => {
   it('avec la météo, chaque fenêtre montre le sol mouillé, la pluie et des gouttes sur la vitre', () => {
     show(2, 'city', rainyWeather());
-    expect(container.querySelectorAll('defs [data-weather]')).toHaveLength(1);
-    expect(container.querySelectorAll('defs [data-weather-ground]')).toHaveLength(1);
-    const skyId = container.querySelector('defs [data-weather]')!.id;
-    const groundId = container.querySelector('defs [data-weather-ground]')!.id;
-    expect(skyId).not.toBe('');
-    expect(groundId).not.toBe(skyId);
-    for (const w of container.querySelectorAll('[data-window-art]')) {
-      expect(w.querySelector('[data-window-weather]')?.getAttribute('href')).toBe(`#${skyId}`);
-      expect(w.querySelector('[data-window-weather-ground]')?.getAttribute('href')).toBe(`#${groundId}`);
-      expect(w.querySelectorAll('[data-glass-drops] [data-glass-drop]').length).toBeGreaterThanOrEqual(3);
-      // Ordre : décor fixe, sol (flaques, neige), acteurs, puis ciel et précipitations par-dessus.
-      const order = Array.from(w.querySelectorAll('use')).map((u) => Array.from(u.attributes).find((a) => a.name.startsWith('data-window-'))!.name);
-      expect(order).toEqual(['data-window-view', 'data-window-weather-ground', 'data-window-actors', 'data-window-weather']);
-    }
+    expect(container.querySelectorAll('[data-window-views] [data-weather]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-window-views] [data-weather-ground]')).toHaveLength(1);
+    expect(container.querySelector('defs [data-weather]')).toBeNull();
+    const sky = container.querySelector('[data-window-weather]')!;
+    const ground = container.querySelector('[data-window-weather-ground]')!;
+    expect(sky.id).not.toBe('');
+    expect(ground.id).not.toBe(sky.id);
+    // Des gouttes sur chaque vitre (au moins 3 chacune).
+    expect(container.querySelectorAll('[data-glass-drops]')).toHaveLength(2);
+    for (const d of container.querySelectorAll('[data-glass-drops]')) expect(d.querySelectorAll('[data-glass-drop]').length).toBeGreaterThanOrEqual(3);
+    // Ordre : décor fixe, sol (flaques, neige), acteurs, puis ciel et précipitations par-dessus.
+    const kids = Array.from(container.querySelector('[data-window-views]')!.children).map((c) => (c.hasAttribute('data-window-view') ? 'view' : c.hasAttribute('data-window-weather-ground') ? 'ground' : c.hasAttribute('data-window-actors') ? 'actors' : c.hasAttribute('data-window-weather') ? 'sky' : c.hasAttribute('data-glass-drops') ? 'drops' : 'rect'));
+    expect(kids).toEqual(['rect', 'rect', 'view', 'ground', 'actors', 'sky', 'drops', 'drops']);
   });
 
   it('les drapeaux de la météo atteignent le décor : parapluies sous la pluie', () => {
@@ -137,9 +166,9 @@ describe('RoomView — météo dans les fenêtres', () => {
     const clock = createWeatherClock();
     clock.setSource(steadySource('sun'), Date.now());
     show(2, 'city', { clock, flags: { gloom: false, rainy: false } });
-    expect(container.querySelectorAll('[data-window-weather]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-window-weather]')).toHaveLength(1);
     expect(container.querySelector('[data-glass-drops]')).toBeNull();
-    expect(container.querySelector('[data-window-art] animate')).toBeNull();
+    expect(container.querySelector('animate[attributeName="cy"]')).toBeNull();
   });
 
   it('sans météo, ni calque ni gouttes', () => {

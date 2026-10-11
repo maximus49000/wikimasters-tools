@@ -1,5 +1,5 @@
 // Passage d'un seuil (habitants et clients des commerces) : un <svg> imbriqué (ni clipPath ni masque : le calque des figurants
-// est copié par <use>) qui rogne la figure à l'ouverture d'une porte, avec l'ombre de l'entrée dessous.
+// reste copiable par <use>, comme pour la fenêtre soulevée) qui rogne la figure à l'ouverture d'une porte, avec l'ombre de l'entrée dessous.
 import { doorDarkOpacity, type Passage } from '../core/library/city/doorway';
 import type { CityMetrics } from '../core/library/city/metrics';
 import type { Rect } from '../core/library/city/shops/slots';

@@ -13,7 +13,7 @@ import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
 import { FigureContext, FigureRegistry } from './figure/figure-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
-import { WindowArt, glassRect } from './window-art';
+import { WindowArt, GlassDrops, glassRect } from './window-art';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
 import { LightLayer } from './light-layer';
 import { petBoxesOf } from '../core/library/light/pet-boxes';
@@ -181,6 +181,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   function renderPlaced(placed: Placed): ReactElement | null {
     let rect: PxRect;
     let art: ReactElement;
+    let liftedArt: ReactElement | undefined;
     if (placed.kind === 'computer') {
       const desk = deskRects.get(placed.deskId);
       if (!desk) return null;
@@ -195,7 +196,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       art = <SmallArt item={placed.item} rect={rect} palette={palette} lit={isLit(placed)} />;
     } else if (placed.kind === 'window') {
       rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
-      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />;
+      // Le cadre seul : le décor est déjà derrière (calque des vues). La copie soulevée, elle, recopie le décor par `<use>`.
+      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} />;
+      liftedArt = <WindowArt rect={rect} palette={palette} steampunk={steampunk} view worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />;
     } else {
       const cells = rectOf(placed);
       if (!cells || !isStanding(placed)) return null;
@@ -217,7 +220,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
     // Un ordinateur suit aussi son bureau soulevé.
     const lifted = drag !== null && (drag.id === placed.id || (placed.kind === 'computer' && drag.id === placed.deskId) || (placed.kind === 'small' && drag.id === placed.hostId));
-    const liftedCopy = lifted ? liftedCopyOf(rect, art, drag.id === placed.id ? rect : (hostRects.get(drag.id) ?? rect)) : null;
+    const liftedCopy = lifted ? liftedCopyOf(rect, liftedArt ?? art, drag.id === placed.id ? rect : (hostRects.get(drag.id) ?? rect)) : null;
     return (
       <g key={placed.id}>
         <g
@@ -379,6 +382,14 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     }
   }
 
+  const actors = (
+    <g id={`${worldId}-actors`} data-window-actors="">
+      <FigureContext.Provider value={figures}>
+        <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherOn ? view.weather?.clock : undefined} />
+      </FigureContext.Provider>
+    </g>
+  );
+
   return (
     <svg
       viewBox={`0 0 ${width} ${HEIGHT}`}
@@ -392,29 +403,33 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {room.style === 'steampunk' && <SteampunkDecor cols={room.cols} wallH={wallH} />}
       {windows.length > 0 && (
         <defs>
-          {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que
-              le second, si bien que les copies du décor fixe de chaque fenêtre ne sont pas recalculées à chaque image. */}
-          <g id={worldId}>
+          {/* Un seul masque pour toutes les vitres : le décor est dessiné une fois, découpé à la forme des vitres. */}
+          <clipPath id={`${worldId}-clip`}>
+            {glasses.map((g, i) => (
+              <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} rx={steampunk ? 10 : 0} />
+            ))}
+          </clipPath>
+        </defs>
+      )}
+      {windows.length > 0 && (
+        // Le décor vu par les fenêtres, rendu UNE fois en vrais nœuds (plus de copies `<use>` à reconstruire à chaque image),
+        // juste après le mur : un meuble du mur ne chevauche jamais une fenêtre. Les cadres sont dessinés par-dessus.
+        <g data-window-views="" clipPath={`url(#${worldId}-clip)`}>
+          {glasses.map((g, i) => (
+            <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} fill="#9CC4E8" />
+          ))}
+          {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que le second. */}
+          <g id={worldId} data-window-view="">
             <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
           </g>
-          <g id={`${worldId}-actors`}>
-            <FigureContext.Provider value={figures}>
-            <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherOn ? view.weather?.clock : undefined} />
-            </FigureContext.Provider>
-          </g>
-          {/* Météo : deux groupes à part (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. */}
-          {weatherOn && view.weather && (
-            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} onWet={setWet} gloom={gloom} />
+          {/* Météo : deux groupes (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. Sans météo, les acteurs seuls. */}
+          {weatherOn && view.weather ? (
+            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} onWet={setWet} gloom={gloom} between={actors} />
+          ) : (
+            actors
           )}
-          {windows.map((w) => {
-            const glass = glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }));
-            return (
-              <clipPath key={w.id} id={`${worldId}-clip-${w.id}`}>
-                <rect x={glass.x} y={glass.y} width={glass.w} height={glass.h} rx={steampunk ? 10 : 0} />
-              </clipPath>
-            );
-          })}
-        </defs>
+          {drops && glasses.map((g, i) => <GlassDrops key={i} glass={g} />)}
+        </g>
       )}
       {backLayer.map(renderPlaced)}
       {wallLayer}
