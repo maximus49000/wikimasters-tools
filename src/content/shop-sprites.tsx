@@ -2,7 +2,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import type { Rect, ShopFrame } from '../core/library/city/shops/slots';
 import type { ShopView } from '../core/library/city/shops/view';
-import type { Sky } from '../core/library/sky';
+import { mixHex, type Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
 
 // Devantures de la scène Ville. Repère : celui du MONDE (les rectangles de shopFrame), non mis à l'échelle ; le rez-de-chaussée
@@ -103,19 +103,45 @@ function Shutter({ frame, sky }: { frame: ShopFrame; sky: Sky }): ReactElement {
   );
 }
 
+// Rideau cellulo (Ghibli, G4a) : aplat teinté, ombre nette sur le quart droit, rehaut à gauche, lames ombrées, coffre et
+// poignée, trait encré ; sombre pour les commerces de nuit (`dark`).
+const CEL_INK = '#2A1A18';
+const CEL_COOL = '#5A4A9C';
+function ShutterCel({ frame, sky, dark }: { frame: ShopFrame; sky: Sky; dark: boolean }): ReactElement {
+  const { x, y, w, h } = shutterBox(frame);
+  const base = dark ? '#4A4452' : '#9AA0A8';
+  const c = tone(base, sky);
+  const slat = tone(mixHex(base, CEL_COOL, 0.45), sky);
+  const slats: number[] = [];
+  for (let s = y + 1.2; s < y + h; s += 1.4) slats.push(s);
+  return (
+    <g data-shutter-cel="" data-dark={dark ? 'true' : 'false'}>
+      <rect x={x} y={y} width={w} height={h} fill={c} />
+      <rect x={x + w * 0.75} y={y} width={w * 0.25} height={h} fill={tone(mixHex(base, CEL_COOL, 0.25), sky)} />
+      <rect x={x} y={y} width={w * 0.08} height={h} fill={tone(mixHex(base, '#FFF6D0', 0.15), sky)} />
+      {slats.map((s) => (
+        <line key={s} x1={x} y1={s} x2={x + w} y2={s} stroke={slat} strokeWidth={0.3} />
+      ))}
+      <rect data-shutter-box="" x={x} y={y - 0.8} width={w} height={1.6} fill={tone(mixHex(base, CEL_COOL, 0.2), sky)} stroke={CEL_INK} strokeWidth={0.4} />
+      <rect x={x + w / 2 - 1.5} y={y + h - 1.4} width={3} height={0.8} fill={tone('#5A5A60', sky)} stroke={CEL_INK} strokeWidth={0.2} />
+      <rect x={x} y={y} width={w} height={h} fill="none" stroke={CEL_INK} strokeWidth={0.6} />
+    </g>
+  );
+}
+
 // Rideau roulant (calque animé) : baissé, levé, ou en train de monter / descendre. Il glisse dans son coffre (un <svg> imbriqué
 // à la taille du rideau, qui le rogne) par une transition CSS de SHUTTER_S secondes quand l'état change à la minute ; aucune
 // transition en mouvement réduit. `delay` (s) : le rideau attend que l'employé pantin soit arrivé sous lui. Levé, il reste dans le DOM (caché dans le coffre) pour que la descente parte d'en haut.
 export const SHUTTER_S = 5;
 export type ShutterState = 'up' | 'down' | 'rising' | 'falling';
-export function RollingShutter({ frame, sky, state, still, delay = 0 }: { frame: ShopFrame; sky: Sky; state: ShutterState; still: boolean; delay?: number }): ReactElement {
+export function RollingShutter({ frame, sky, state, still, delay = 0, ghibli = false, dark = false }: { frame: ShopFrame; sky: Sky; state: ShutterState; still: boolean; delay?: number; ghibli?: boolean; dark?: boolean }): ReactElement {
   const box = shutterBox(frame);
   const lowered = state === 'down' || state === 'falling';
   return (
     <svg data-rolling-shutter={state} x={box.x} y={box.y} width={box.w} height={box.h} overflow="hidden">
       <g style={{ transform: `translate(0px, ${lowered ? '0' : (-box.h).toFixed(1)}px)`, transition: still ? undefined : `transform ${SHUTTER_S}s ease-in-out ${delay}s` }}>
         <g transform={`translate(${-box.x} ${-box.y})`}>
-          <Shutter frame={frame} sky={sky} />
+          {ghibli ? <ShutterCel frame={frame} sky={sky} dark={dark} /> : <Shutter frame={frame} sky={sky} />}
         </g>
       </g>
     </svg>

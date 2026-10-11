@@ -27,6 +27,7 @@ import { AccessorySprite, GhibliPosed, LIFTING, PosedPerson, STANDING, applyGhib
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
 import { NightclubDoor } from './shop-queue';
 import { GhibliShopGlass, ghibliAwningShift } from './shop/ghibli-shop-glass';
+import { FAMILY } from '../core/library/paint/shop/families';
 import { CarriedPlacard, CarriedSign, LadderSprite, RollingShutter, SHUTTER_S, type ShutterState, type WorkerPose } from './shop-sprites';
 import { ShopTerrace, type TerraceSky } from './shop-terrace';
 
@@ -757,7 +758,7 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
           </g>
         </svg>
       )}
-      <RollingShutter frame={frame} sky={sky} state={cast.shutter} still={reduced} delay={ghibli ? THRESHOLD_S + TURN_S : 0} />
+      <RollingShutter frame={frame} sky={sky} state={cast.shutter} still={reduced} delay={ghibli ? THRESHOLD_S + TURN_S : 0} ghibli={ghibli} dark={FAMILY[type] === 'F'} />
       {cast.street.map(({ shift: s, state, visible, atDoor }) => {
         const side = state.side;
         const toEdge = side > 0 ? doorX + WORLD_MARGIN : width + WORLD_MARGIN - doorX;
