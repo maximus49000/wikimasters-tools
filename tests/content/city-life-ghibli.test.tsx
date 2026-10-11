@@ -2,7 +2,7 @@
 // tests/content/city-life-ghibli.test.tsx
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer, pedPose } from '../../src/content/city-life';
 import { dayContext } from '../../src/core/library/city/calendar';
@@ -27,6 +27,7 @@ afterEach(() => {
     host.remove();
   }
   localStorage.removeItem(ART_KEY);
+  vi.unstubAllGlobals();
 });
 const times = sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120);
 const make = (): HTMLDivElement => {
@@ -77,5 +78,18 @@ describe('passants Ghibli', () => {
     expect(a.gait).toBe('walk');
     expect(a.phase).toBeGreaterThanOrEqual(0);
     expect(a.phase).toBeLessThan(12);
+  });
+  it('mouvement réduit : passants et habitants debout (stand, phase 0), de profil dans le sens de marche', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    const m = cityMetrics(340);
+    const p = pedestriansFor(720, 1)[0]!;
+    expect(pedPose(p, m, 100, true)).toEqual({ yaw: p.dir > 0 ? 0 : 8, gait: 'stand', phase: 0, head: 0 });
+    writeArt('ghibli');
+    const c = make();
+    const keyed = [...c.querySelectorAll('[data-ped] [data-figure][data-key], [data-resident] [data-figure][data-key], svg[data-resident-door] [data-figure][data-key]')];
+    expect(keyed.length).toBeGreaterThan(0);
+    // data-key = palette # sig|yaw|gait|phase|head
+    for (const f of keyed) expect(f.getAttribute('data-key')!.split('#').pop()!.split('|').slice(2, 4)).toEqual(['stand', '0']);
+    for (const f of c.querySelectorAll('[data-ped] [data-figure][data-key]')) expect(['0', '8']).toContain(f.getAttribute('data-key')!.split('#').pop()!.split('|')[1]);
   });
 });

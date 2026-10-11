@@ -119,8 +119,10 @@ const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number, m
   return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${((mirror ? p.dir : 1) * k).toFixed(3)} ${k.toFixed(3)})`;
 };
 
-// Pose d'un passant Ghibli : profil dans le sens de marche, image réglée sur la distance (unités du pantin).
-export const pedPose = (p: Pedestrian, m: CityMetrics, t: number): { yaw: number; gait: 'walk'; phase: number; head: 0 } => {
+// Pose d'un passant Ghibli : profil dans le sens de marche, image réglée sur la distance (unités du pantin). Mouvement réduit
+// (`still`) : debout, toujours de profil (pas de jambes figées en plein pas).
+export const pedPose = (p: Pedestrian, m: CityMetrics, t: number, still = false): { yaw: number; gait: 'walk' | 'stand'; phase: number; head: 0 } => {
+  if (still) return { yaw: facingYaw(p.dir), gait: 'stand', phase: 0, head: 0 };
   const k = m.unit * STREET_SCALE.person * p.scale;
   return { yaw: facingYaw(p.dir), gait: 'walk', phase: phaseIndexOf((p.phase + p.speed * t) / k), head: 0 };
 };
@@ -137,13 +139,10 @@ const residentTransform = (trip: Trip, x: number, m: CityMetrics, mirror: boolea
 // Centre de la porte du seuil en cours (la sienne, ou celle de l'autre immeuble au bout du trajet).
 const tripDoorX = (trip: Trip, pos: Passage): number => (pos.x === trip.doorX || trip.endDoorX === null ? trip.doorX : trip.endDoorX);
 const doorOpening = (centerX: number, m: CityMetrics) => entranceOpening(centerX - DOOR_WIDTH / 2, m);
-// Pose Ghibli d'un habitant (rue : image réglée sur la distance ; seuil : la profondeur fait avancer les pas).
-const residentPose = (trip: Trip, pos: Passage, m: CityMetrics): { yaw: number; gait: 'walk' | 'step'; phase: number; head: 0 } => ({
-  yaw: pos.yaw,
-  gait: pos.gait,
-  phase: phaseIndexOf(pos.walked / residentScale(trip, m) + pos.depth * 8),
-  head: 0,
-});
+// Pose Ghibli d'un habitant (rue : image réglée sur la distance ; seuil : la profondeur fait avancer les pas). Mouvement réduit
+// (`still`) : debout, tourné dans le sens du passage.
+const residentPose = (trip: Trip, pos: Passage, m: CityMetrics, still: boolean): { yaw: number; gait: 'walk' | 'step' | 'stand'; phase: number; head: 0 } =>
+  still ? { yaw: pos.yaw, gait: 'stand', phase: 0, head: 0 } : { yaw: pos.yaw, gait: pos.gait, phase: phaseIndexOf(pos.walked / residentScale(trip, m) + pos.depth * 8), head: 0 };
 
 // Verrou du tirage : décidé au premier instant observé de chaque tour de cycle, gardé tout le tour (un changement de minute,
 // donc de probabilité, ne fait pas disparaître un habitant en route).
@@ -337,7 +336,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (!next && !first) continue;
         node?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
         if (ghibli && next) {
-          const pose = pedPose(p, metrics, t);
+          const pose = pedPose(p, metrics, t, still);
           for (const fig of pedFigs.get(p.id) ?? []) poseFigure(figures, fig, pose);
         }
       }
@@ -359,7 +358,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         setIfChanged(node, 'opacity', v.street ? '1.00' : '0.00');
         if (v.street && v.pos) {
           node.setAttribute('transform', residentTransform(trip, v.pos.x, metrics, !ghibli));
-          if (ghibli) poseFigure(figures, node.querySelector(':scope > [data-figure]'), residentPose(trip, v.pos, metrics));
+          if (ghibli) poseFigure(figures, node.querySelector(':scope > [data-figure]'), residentPose(trip, v.pos, metrics, still));
         } else if (first) node.setAttribute('transform', residentTransform(trip, trip.doorX, metrics, !ghibli));
         if (ghibli && streetOff) hideFigure(figures, node.querySelector(':scope > [data-figure]'));
         const dnode = doorNodes.get(trip.id);
@@ -370,7 +369,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (v.door && v.pos) {
           // Cadre large sur le seuil (parapluie compris), resserré sur l'ouverture avec la profondeur (door-passage.ts).
           placeSill(dnode, doorOpening(tripDoorX(trip, v.pos), metrics), v.pos, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir);
-          if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics));
+          if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics, still));
         } else if (ghibli && doorOff) hideFigure(figures, dnode.querySelector('[data-figure]'));
       }
       placeCustomers(nodes, visits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
@@ -529,7 +528,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans sprite.
           const sprite = (p: Passage, on: boolean): ReactElement =>
             ghibli ? (
-              <GhibliFigure outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={residentPose(trip, p, metrics)} hidden={!on} />
+              <GhibliFigure outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={residentPose(trip, p, metrics, still)} hidden={!on} />
             ) : (
               <PersonSprite outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} />
             );
@@ -589,12 +588,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7. */}
               {p.companions.map((outfit, k) => (
                 <g key={k} data-companion="" transform={p.pair ? `translate(${(ghibli ? -p.dir : -1) * PAIR_GAP} 0) scale(0.95)` : `translate(${(ghibli ? -p.dir : -1) * COMPANION_GAP * (k + 1)} 0) scale(0.7)`}>
-                  {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0)} hidden={!active} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
+                  {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0, still)} hidden={!active} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
                 </g>
               ))}
               {/* En Ghibli, pas de signes de fête avant G3b. */}
               {ghibli ? (
-                <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pedPose(p, metrics, t0)} hidden={!active} />
+                <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pedPose(p, metrics, t0, still)} hidden={!active} />
               ) : (
                 <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={marks.get(p.id)} />
               )}
