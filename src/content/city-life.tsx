@@ -1,7 +1,7 @@
 import { Fragment, useId, useMemo, useRef, type ReactElement } from 'react';
 import { activeFestivities } from '../core/library/city/calendar';
 import { DOOR_WIDTH, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
-import { entranceOpening, type Passage } from '../core/library/city/doorway';
+import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
 import { PULL_DY, fixedFade, placeEvent, pullOver, type EventFrame, type EventPlacement } from '../core/library/city/event-place';
 import type { CityEvent } from '../core/library/city/events';
 import { cityFacades } from '../core/library/city/facades';
@@ -9,7 +9,7 @@ import { cityIntensity, type CityContext } from '../core/library/city/intensity'
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { FAR_SHRINK, STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
-import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/customers';
+import { customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { StaffShift } from '../core/library/city/shops/staff';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
@@ -141,9 +141,6 @@ const doorFigTransform = (trip: Trip, pos: Passage, o: { x: number; h: number },
   const k = residentScale(trip, m) * (1 - 0.12 * pos.depth);
   return `translate(${(pos.x - o.x).toFixed(1)} ${(o.h - pos.depth * 3 * m.unit).toFixed(1)}) scale(${((mirror ? trip.dir : 1) * k).toFixed(3)} ${k.toFixed(3)})`;
 };
-// La porte « s'ouvre » puis « se referme » : l'ombre est pleine à mi-seuil.
-const doorDarkOpacity = (depth: number): number => 0.85 * Math.min(1, 4 * Math.min(depth, 1 - depth));
-const DOOR_DARK = '#1a1622';
 // Pose Ghibli d'un habitant (rue : image réglée sur la distance ; seuil : la profondeur fait avancer les pas).
 const residentPose = (trip: Trip, pos: Passage, m: CityMetrics): { yaw: number; gait: 'walk' | 'step'; phase: number; head: 0 } => ({
   yaw: pos.yaw,
@@ -185,6 +182,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Verrou des tirages de trajets, gardé entre les minutes (remis à zéro si les trajets changent).
   const tripLock = useRef<TripLock>(new Map());
   const lockFor = useRef<Trip[] | null>(null);
+  // Verrou des tirages de visites des commerces, gardé entre les minutes (les visites sont recalculées à chaque minute avec les
+  // vues des locaux, mais leurs identifiants et tirages ne dépendent que de la rue) : remis à zéro si la rue change.
+  const visitLock = useRef<VisitLock>(new Map());
+  const visitLockFor = useRef('');
   // Calculs mémoïsés par (width, height, seed) : populations, entrées, trajets, façades. Recalculés par minute : intensités.
   const metrics = useMemo(() => cityMetrics(height), [height]);
   // Art Ghibli : les passants sont des pantins (symboles du registre de la pièce), posés par la boucle, sans miroir.
@@ -221,10 +222,16 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Commerces : deux visites par local (seulement si la rue a des commerces) ; probabilité d'une visite recalculée à la minute,
   // nulle si le local n'est pas ouvert, et en mouvement réduit (aucun client ne bouge).
   const shops = useStreetShops(width, height, seed, city);
+  // Bouts de trajet des clients : les entrées d'immeubles (centres), comme les habitants.
+  const doorCenters = useMemo(() => doors.map((d) => d.x + DOOR_WIDTH / 2), [doors]);
   const allVisits = useMemo(
-    () => visitsFor(shops.slots, shops.frames, seed, (id) => shops.views.find((v) => v.slot.id === id)?.sign?.type ?? null),
-    [shops.slots, shops.frames, shops.views, seed],
+    () => visitsFor(shops.slots, shops.frames, seed, (id) => shops.views.find((v) => v.slot.id === id)?.sign?.type ?? null, doorCenters, width),
+    [shops.slots, shops.frames, shops.views, seed, doorCenters, width],
   );
+  if (visitLockFor.current !== `${width}:${height}:${seed}`) {
+    visitLockFor.current = `${width}:${height}:${seed}`;
+    visitLock.current = new Map();
+  }
   const visits = shops.views.length > 0 ? allVisits : NO_VISITS;
   // Personnel : postes du jour mémoïsés par (rue, jour) — staffShiftsAt recalcule deux plans à chaque appel.
   const date = city.day.date;
@@ -368,7 +375,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics));
         }
       }
-      placeCustomers(nodes, visits, gates, width, metrics, t, first, muted);
+      placeCustomers(nodes, visits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
       placeSwaps(swaps, t);
       if (!still) {
         placeWaiters(waiters, t);
@@ -511,7 +518,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           sky={sky}
           rainy={rainy}
           umbrella={intensity.umbrellas}
-          fade={still ? undefined : `${RESIDENT_FADE_S}s`}
+          lock={visitLock.current}
+          ghibli={ghibli}
         />
         {trips.map((trip) => {
           const v = residentView(trip, tripLock.current, gateOf(trip), width, t0);

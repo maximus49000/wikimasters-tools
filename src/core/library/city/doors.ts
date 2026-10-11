@@ -47,8 +47,9 @@ export type Trip = { id: string; kind: 'out' | 'in'; doorX: number; endDoorX: nu
 export const MAX_FALLBACK_PX = 1500;
 
 // Porte au bout du trajet : la plus lointaine à portée de MAX_TRIP_PX ; à défaut, la plus proche au-delà du plafond
-// (jusqu'à MAX_FALLBACK_PX) ; à défaut, le bord du monde s'il tient dans MAX_FALLBACK_PX, sinon la plus lointaine porte à portée de repli.
-function endDoorOf(doorX: number, dir: 1 | -1, width: number, others: readonly number[]): number | null {
+// (jusqu'à `fallback`) ; à défaut, le bord du monde s'il tient dans `fallback`, sinon la plus lointaine porte à portée de repli.
+// Partagé avec les clients des commerces (shops/customers.ts), qui ont un repli plus court (aller ET retour dans le cycle).
+export function endDoorOf(doorX: number, dir: 1 | -1, width: number, others: readonly number[], fallback = MAX_FALLBACK_PX): number | null {
   if (!Number.isFinite(width)) return null;
   const toEdge = dir > 0 ? width + WORLD_MARGIN - doorX : doorX + WORLD_MARGIN;
   if (toEdge <= MAX_TRIP_PX) return null;
@@ -58,12 +59,12 @@ function endDoorOf(doorX: number, dir: 1 | -1, width: number, others: readonly n
   let farthest: number | null = null;
   for (const x of others) {
     const d = (x - doorX) * dir;
-    if (d <= MAX_TRIP_PX || d > MAX_FALLBACK_PX) continue;
+    if (d <= MAX_TRIP_PX || d > fallback) continue;
     if (nearest === null || d < (nearest - doorX) * dir) nearest = x;
     if (farthest === null || d > (farthest - doorX) * dir) farthest = x;
   }
   if (nearest !== null) return nearest;
-  return toEdge <= MAX_FALLBACK_PX ? null : farthest;
+  return toEdge <= fallback ? null : farthest;
 }
 
 // `width` : largeur du monde (infinie par défaut : jamais de porte au bout, les trajets vont au bord).

@@ -33,6 +33,10 @@ export function entranceOpening(doorLeftX: number, m: CityMetrics): { x: number;
   return { x: left + 2 * sx, y: m.doorY - 25 * sy, w: 18 * sx, h: 25 * sy };
 }
 
+// Ombre de l'entrée pendant un seuil : la porte « s'ouvre » puis « se referme », pleine à mi-seuil (habitants et clients).
+export const DOOR_DARK = '#1a1622';
+export const doorDarkOpacity = (depth: number): number => 0.85 * Math.min(1, 4 * Math.min(depth, 1 - depth));
+
 // Déroulé d'un aller simple : [seuil de départ ?] → [demi-tour ?] → rue → [demi-tour ?] → [seuil d'arrivée ?].
 // `fromDoor` / `toDoor` : le trajet commence / finit par une porte. `c` : secondes depuis le début du trajet.
 export function passageAt(o: { fromX: number; toX: number; dir: 1 | -1; speed: number; fromDoor: boolean; toDoor: boolean }, c: number): Passage | null {

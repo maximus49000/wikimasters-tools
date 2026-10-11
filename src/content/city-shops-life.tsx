@@ -1,21 +1,26 @@
-import { useMemo, type ReactElement } from 'react';
+import { Fragment, useMemo, type ReactElement } from 'react';
 import { isoDate, type YMD } from '../core/library/city/calendar';
-import { MAX_TRIP_PX } from '../core/library/city/doors';
+import { DOOR_WIDTH, MAX_TRIP_PX } from '../core/library/city/doors';
+import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
 import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit, type Profile } from '../core/library/city/people';
 import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
-import { visitAt, visitHappens, type Visit } from '../core/library/city/shops/customers';
+import { INSIDE_SCALE, lockedVisit, visitAt, visitHappens, type Visit, type VisitInner, type VisitLock, type VisitStage } from '../core/library/city/shops/customers';
 import { ACCESSORY, SHOP_FAMILY, gestureAt, takesAway, type Pose } from '../core/library/city/shops/gestures';
 import { crowdAt, dayNumber } from '../core/library/city/shops/hours';
 import type { Change, SlotDay } from '../core/library/city/shops/lifecycle';
-import type { ShopFrame } from '../core/library/city/shops/slots';
+import type { Rect, ShopFrame } from '../core/library/city/shops/slots';
 import { WALK_MIN, shutterAt, staffAt, staffShiftsAt, type StaffShift, type StaffState } from '../core/library/city/shops/staff';
 import { capFor, spriteBudget, type BudgetSprite } from '../core/library/city/shops/sprite-budget';
 import { changePlans, type ShopView } from '../core/library/city/shops/view';
 import { WORK_STEPS, type WorkStep } from '../core/library/city/shops/works';
 import { WORLD_MARGIN, hashString, mulberry32 } from '../core/library/scene-world';
+import type { FigureKey } from '../core/library/figure/bake';
+import { YAW_FRONT, YAW_RIGHT, phaseIndexOf } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite } from './city-sprites';
+import type { FigureRegistry } from './figure/figure-host';
+import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
 import { AccessorySprite, LIFTING, PosedPerson, STANDING, applyPose, poseHandles, showCarry, type PoseHandles } from './shop-gesture-sprites';
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
 import { NightclubDoor } from './shop-queue';
@@ -27,13 +32,12 @@ import { ShopTerrace, type TerraceSky } from './shop-terrace';
 // le personnel (StaffLayer) arrive à pied, lève le rideau roulant, travaille, se relaie, baisse le rideau et repart ; clients et
 // employés font le geste de la famille du commerce (poses écrites par la boucle, voir shop-gesture-sprites.tsx) ; devant la
 // façade (ShopOutdoors) : terrasse des bars et restaurants (shop-terrace.tsx), cordon, videurs et file de la boîte (shop-queue.tsx).
-// Clients : DEUX nœuds par visite, l'un sur le trottoir (stades « in » et « out »), l'autre dans un <svg> imbriqué posé sur la
-// vitrine (stade « inside », rogné sans clipPath ni id) ; la boucle d'animation de CityLifeLayer active l'un ou l'autre
-// (placeCustomers). Équipe : rendue à la minute (re-rendu React), déplacée par une transition CSS de 30 s entre deux minutes.
+// Clients : TROIS nœuds par visite, l'un sur le trottoir (étapes « in » et « out »), un <svg> imbriqué sur la porte du seuil en
+// cours (porte du local ou entrée d'immeuble au bout du trajet), un dernier dans le <svg> imbriqué posé sur la vitrine (étape
+// « inside », rogné sans clipPath ni id) ; la boucle d'animation de CityLifeLayer n'en active qu'un (placeCustomers), sans fondu.
+// Équipe : rendue à la minute (re-rendu React), déplacée par une transition CSS de 30 s entre deux minutes.
 
-// Taille d'un client derrière la vitrine : celle du vendeur (0,5) un peu réduite, pour que la tête tienne dans la vitrine
-// (21 px de haut) quand il se tient au bord du sol (bas de la vitrine − 3).
-const INSIDE_SCALE = 0.45;
+// Client derrière la vitrine : taille INSIDE_SCALE (customers.ts), pieds au bord du sol (bas de la vitrine − 3).
 const INSIDE_DY = 3;
 // Repère de l'équipe (px du monde) : pieds de l'ouvrier sur l'échelle sous le haut de l'enseigne, objets tenus à bout de bras
 // (au-dessus de la tête) ou à hauteur de taille ; écart entre les deux ouvriers ; distance hors champ d'où ils viennent.
@@ -51,51 +55,120 @@ export const setIfChanged = (node: Element | null, name: string, value: string):
 
 // ---------- Clients ----------
 const NO_MUTED: ReadonlySet<string> = new Set();
-export type CustomerState = { on: boolean; inside: boolean; x: number; fade: number; gesture: Pose | null; carry: boolean };
+type FigurePose = Omit<FigureKey, 'sig'>;
+export type CustomerState = { on: boolean; stage: VisitStage | null; x: number; passage: Passage | null; inner: VisitInner | null; gesture: Pose | null; carry: boolean };
 
 // Présence d'une visite à l'instant t : en route (ou dans le magasin) et tirée pour ce tour de cycle, local ouvert (gate > 0).
-// Dans le magasin, le client fait le geste de la famille ; en ressortant, il porte un petit objet si la famille s'y prête.
-export function customerState(v: Visit, gate: number, width: number, t: number): CustomerState {
+// `lock` : tirage verrouillé pour le tour (la boucle décide, `commit` ; le rendu initial lit sans décider).
+// À sa place, le client fait le geste de la famille ; dans la rue, en repartant, il porte un petit objet si la famille s'y prête.
+export function customerState(v: Visit, gate: number, width: number, t: number, lock?: VisitLock, commit = true): CustomerState {
   const pos = visitAt(v, width, t);
-  const on = pos !== null && gate > 0 && visitHappens(v, t, gate);
-  return { on, inside: pos?.stage === 'inside', x: pos?.x ?? v.doorX, fade: on && pos ? pos.fade : 0, gesture: pos?.gesture ?? null, carry: pos?.carry ?? false };
+  const on = pos !== null && (lock ? lockedVisit(lock, v, t, gate, commit) : gate > 0 && visitHappens(v, t, gate));
+  return { on, stage: pos?.stage ?? null, x: pos?.x ?? v.doorX, passage: pos?.passage ?? null, inner: pos?.inner ?? null, gesture: pos?.gesture ?? null, carry: pos?.carry ?? false };
 }
 
-// Fauteuil et table : le client est assis.
-const seatedFor = (type: ShopTypeId | null): boolean => type !== null && (SHOP_FAMILY[type] === 'chair' || SHOP_FAMILY[type] === 'table');
+// Nœud visible d'un client : rue (`[data-customer]`), porte (`svg[data-customer-door]`, seuil de la porte du local ou de l'entrée
+// d'immeuble au bout du trajet) ou intérieur (`[data-customer-inside]`) ; jamais deux à la fois.
+type Where = 'street' | 'door' | 'inside' | null;
+const whereOf = (s: CustomerState): Where => (!s.on || s.stage === null ? null : s.stage === 'inside' ? 'inside' : s.passage?.stage === 'threshold' ? 'door' : 'street');
+
 // Objet emporté sur le trottoir : tenu à la main, bras le long du corps.
 const CARRY_AT = 'translate(4 -15)';
-
-const sidewalkTransform = (v: Visit, x: number, m: CityMetrics): string => {
-  const k = m.unit * STREET_SCALE.person * v.scale;
-  return `translate(${x.toFixed(1)} ${m.doorY.toFixed(1)}) scale(${(v.dir * k).toFixed(3)} ${k.toFixed(3)})`;
+const streetScale = (v: Visit, m: CityMetrics): number => m.unit * STREET_SCALE.person * v.scale;
+// Sens de marche (dessin classique, retourné en miroir) : il arrive dans le sens `dir`, repart en sens inverse.
+const motionOf = (v: Visit, stage: VisitStage | null): 1 | -1 => (stage === 'in' || stage === 'enter' ? v.dir : (-v.dir as 1 | -1));
+const sidewalkTransform = (v: Visit, x: number, m: CityMetrics, sgn: number): string => {
+  const k = streetScale(v, m);
+  return `translate(${x.toFixed(1)} ${m.doorY.toFixed(1)}) scale(${(sgn * k).toFixed(3)} ${k.toFixed(3)})`;
 };
-// À sa place (comptoir, rayon, fauteuil, table : `seat`), tourné vers le centre de la vitrine.
-const insideTransform = (v: Visit, f: ShopFrame, shift = 0): string => {
+// Ouverture du seuil en cours : la porte du local (entrer, sortir) ou l'entrée d'immeuble au bout du trajet.
+const customerDoorRect = (v: Visit, stage: VisitStage | null, m: CityMetrics): Rect =>
+  stage === 'enter' || stage === 'exit' || v.endDoorX === null ? v.shopDoor : entranceOpening(v.endDoorX - DOOR_WIDTH / 2, m);
+// Dans l'ouverture (repère local) : la figure s'enfonce et rapetisse avec la profondeur, comme un habitant.
+const customerDoorFig = (v: Visit, p: Passage, o: Rect, m: CityMetrics, sgn: number): string => {
+  const k = streetScale(v, m) * (1 - 0.12 * p.depth);
+  return `translate(${(p.x - o.x).toFixed(1)} ${(o.h - p.depth * 3 * m.unit).toFixed(1)}) scale(${(sgn * k).toFixed(3)} ${k.toFixed(3)})`;
+};
+// Pose Ghibli dans la rue ou dans une porte (pas réglés sur la distance ; au seuil, la profondeur fait avancer les pas).
+const passagePose = (v: Visit, p: Passage, m: CityMetrics): FigurePose => ({ yaw: p.yaw, gait: p.gait, phase: phaseIndexOf(p.walked / streetScale(v, m) + p.depth * 8), head: 0 });
+// Derrière la vitrine : `y` = sol du local dans la vitrine (sous le store). Classique : retourné selon la marche, vers sa place sinon.
+const insideTransform = (v: Visit, inner: VisitInner, y: number, mirror: boolean): string => {
   const k = INSIDE_SCALE * v.scale;
-  return `translate(${(v.seat.x - f.window.x).toFixed(1)} ${(f.window.h - shift - INSIDE_DY).toFixed(1)}) scale(${(v.seat.facing * k).toFixed(3)} ${k.toFixed(3)})`;
+  const sgn = !mirror ? 1 : inner.gait === 'walk' ? (inner.yaw === YAW_RIGHT ? 1 : -1) : v.seat.facing;
+  return `translate(${inner.x.toFixed(1)} ${y.toFixed(1)}) scale(${(sgn * k).toFixed(3)} ${k.toFixed(3)})`;
 };
+const innerPose = (v: Visit, inner: VisitInner): FigurePose => ({ yaw: inner.yaw, gait: inner.gait, phase: phaseIndexOf(inner.walked / (INSIDE_SCALE * v.scale)), head: 0 });
+const innerY = (f: ShopFrame, shift: number): number => f.window.h - shift - INSIDE_DY;
 const insideId = (v: Visit): string => `${v.id}-in`;
+const doorId = (v: Visit): string => `${v.id}-door`;
+// Classique : à sa place, le client en geste (PosedPerson) ; en marchant ou en se tournant, la silhouette de passant.
+const atSeat = (inner: VisitInner | null): boolean => inner !== null && (inner.gait === 'stand' || inner.gait === 'seated');
+// Fauteuil et table : le client est assis à sa place.
+const seatedFor = (type: ShopTypeId | null): boolean => type !== null && (SHOP_FAMILY[type] === 'chair' || SHOP_FAMILY[type] === 'table');
+const onOff = (on: boolean): string => (on ? '1.00' : '0.00');
+
+// `lock` : verrou des tirages (gardé par l'appelant entre les minutes) ; `ghibli` + `figures` : pantins posés par la boucle.
+export type CustomerOpts = { lock?: VisitLock; ghibli?: boolean; figures?: FigureRegistry | null };
 
 // Placement par la boucle : n'écrire que ce qui change (la plupart des clients sont absents la plupart du temps).
-// `muted` : visites retirées par le plafond global (shopSpriteBudget) : elles n'ont pas lieu pendant cette minute.
-export function placeCustomers(nodes: Map<string, SVGGElement>, visits: Visit[], gates: Map<string, number>, width: number, m: CityMetrics, t: number, first: boolean, muted: ReadonlySet<string> = NO_MUTED): void {
+// `muted` : visites retirées par le plafond global (shopSpriteBudget) : décidé au verrou, elles n'ont pas lieu de ce tour.
+export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visit[], gates: Map<string, number>, width: number, m: CityMetrics, t: number, first: boolean, muted: ReadonlySet<string> = NO_MUTED, opts: CustomerOpts = {}): void {
+  const ghibli = opts.ghibli === true && !!opts.figures;
+  const pose = (node: Element | null, p: FigurePose): void => {
+    if (ghibli) poseFigure(opts.figures!, node?.querySelector('[data-figure]') ?? null, p);
+  };
   for (const v of visits) {
-    const s = customerState(v, muted.has(v.id) ? 0 : (gates.get(v.slotId) ?? 0), width, t);
+    const s = customerState(v, muted.has(v.id) ? 0 : (gates.get(v.slotId) ?? 0), width, t, opts.lock);
+    const where = whereOf(s);
+    const sgn = ghibli ? 1 : motionOf(v, s.stage);
     const out = nodes.get(v.id);
     if (out) {
-      const on = s.on && !s.inside;
+      const on = where === 'street';
       setIfChanged(out, 'data-active', on ? 'true' : 'false');
-      setIfChanged(out, 'opacity', (on ? s.fade : 0).toFixed(2));
-      if (on || first) out.setAttribute('transform', sidewalkTransform(v, s.x, m));
-      if (v.type !== null && takesAway(v.type)) showCarry(poseHandles(out), on && s.carry);
+      setIfChanged(out, 'opacity', onOff(on));
+      if (on && s.passage) {
+        out.setAttribute('transform', sidewalkTransform(v, s.passage.x, m, sgn));
+        pose(out, passagePose(v, s.passage, m));
+      } else if (first) out.setAttribute('transform', sidewalkTransform(v, s.x, m, sgn));
+      if (!ghibli && v.type !== null && takesAway(v.type)) showCarry(poseHandles(out), on && s.carry);
+    }
+    const door = nodes.get(doorId(v));
+    if (door) {
+      const on = where === 'door';
+      setIfChanged(door, 'data-active', on ? 'true' : 'false');
+      setIfChanged(door, 'opacity', onOff(on));
+      if (on && s.passage) {
+        const o = customerDoorRect(v, s.stage, m);
+        setIfChanged(door, 'x', o.x.toFixed(1));
+        setIfChanged(door, 'y', o.y.toFixed(1));
+        setIfChanged(door, 'width', o.w.toFixed(1));
+        setIfChanged(door, 'height', o.h.toFixed(1));
+        const dark = door.querySelector(':scope > [data-door-dark]');
+        setIfChanged(dark, 'width', o.w.toFixed(1));
+        setIfChanged(dark, 'height', o.h.toFixed(1));
+        setIfChanged(dark, 'opacity', doorDarkOpacity(s.passage.depth).toFixed(2));
+        const fig = door.querySelector(':scope > [data-door-fig]');
+        fig?.setAttribute('transform', customerDoorFig(v, s.passage, o, m, sgn));
+        setIfChanged(fig, 'opacity', (1 - s.passage.depth).toFixed(2));
+        pose(door, passagePose(v, s.passage, m));
+      }
     }
     const inn = nodes.get(insideId(v));
     if (inn) {
-      const on = s.on && s.inside;
+      const on = where === 'inside';
       setIfChanged(inn, 'data-active', on ? 'true' : 'false');
-      setIfChanged(inn, 'opacity', (on ? s.fade : 0).toFixed(2));
-      if (on && s.gesture) applyPose(poseHandles(inn), s.gesture);
+      setIfChanged(inn, 'opacity', onOff(on));
+      if (on && s.inner) {
+        inn.setAttribute('transform', insideTransform(v, s.inner, Number(inn.getAttribute('data-floor') ?? 0), !ghibli));
+        if (ghibli) pose(inn, innerPose(v, s.inner));
+        else {
+          const seat = atSeat(s.inner);
+          const stay = inn.querySelector(':scope > [data-inner-stay]');
+          setIfChanged(stay, 'visibility', seat ? 'visible' : 'hidden');
+          setIfChanged(inn.querySelector(':scope > [data-inner-walk]'), 'visibility', seat ? 'hidden' : 'visible');
+          if (stay && s.gesture) applyPose(poseHandles(stay), s.gesture);
+        }
+      }
     }
   }
 }
@@ -111,29 +184,35 @@ type CustomersProps = {
   sky: Sky;
   rainy: boolean;
   umbrella: boolean;
-  // Fondu court (comme les habitants) : un client dont le magasin ferme à la minute s'efface au lieu de disparaître d'un coup.
-  fade: string | undefined;
+  // Verrou des tirages de la boucle (lu sans décider) ; Ghibli : pantins au lieu du dessin classique.
+  lock?: VisitLock;
+  ghibli?: boolean;
 };
 
-export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0, sky, rainy, umbrella, fade }: CustomersProps): ReactElement {
-  const style = fade ? { transition: `opacity ${fade} ease` } : undefined;
-  const states = visits.map((v) => customerState(v, gates.get(v.slotId) ?? 0, width, t0));
+// Pose de repos des nœuds inactifs (rendu initial) : de face, debout.
+const REST: FigurePose = { yaw: YAW_FRONT, gait: 'stand', phase: 0, head: 0 };
+
+export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0, sky, rainy, umbrella, lock, ghibli = false }: CustomersProps): ReactElement {
+  const states = visits.map((v) => customerState(v, gates.get(v.slotId) ?? 0, width, t0, lock, false));
   const slotIds = [...new Set(visits.map((v) => v.slotId))];
   return (
     <g data-city-customers="">
-      {/* Derrière les vitrines : un <svg> par local, à la place de la vitrine (rogne le client qui dépasse). */}
+      {/* Derrière les vitrines : un <svg> par local, à la place de la vitrine (rogne le client qui entre ou dépasse). */}
       {slotIds.map((id) => {
         const f = frames.get(id)!;
         const view = views.find((x) => x.slot.id === id);
         // Boutique ouverte la nuit : comme le vendeur, le client est éclairé (ciel de jour) ; le store couvre le haut de la vitrine, le client reste dessous.
         const lit = sky.daylight < 0.45 && view?.phase === 'open';
         const shift = view?.sign && SHOP_DEFS[view.sign.type].awning ? 3 : 0;
+        const inSky = lit ? LIT_SKY : sky;
         return (
           <svg key={id} data-shop-window={id} x={f.window.x} y={f.window.y + shift} width={f.window.w} height={f.window.h - shift} overflow="hidden">
             {visits.map((v, i) => {
               if (v.slotId !== id) return null;
               const s = states[i]!;
-              const on = s.on && s.inside;
+              const on = whereOf(s) === 'inside';
+              const inner: VisitInner = on && s.inner ? s.inner : { x: v.seat.x - f.window.x, yaw: v.seat.facing > 0 ? 2 : 6, gait: 'stand', walked: 0 };
+              const seat = atSeat(inner);
               return (
                 <g
                   key={v.id}
@@ -141,13 +220,25 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
                   data-customer-inside=""
                   data-visit={v.id}
                   data-x={v.seat.x.toFixed(1)}
+                  data-floor={innerY(f, shift).toFixed(1)}
                   data-may={(gates.get(v.slotId) ?? 0) > 0 ? 'true' : 'false'}
                   data-active={on ? 'true' : 'false'}
-                  transform={insideTransform(v, f, shift)}
-                  opacity={(on ? s.fade : 0).toFixed(2)}
-                  style={style}
+                  transform={insideTransform(v, inner, innerY(f, shift), !ghibli)}
+                  opacity={onOff(on)}
                 >
-                  <PosedPerson outfit={v.outfit} sky={lit ? LIT_SKY : sky} rainy={false} umbrella={false} accessory={v.type ? ACCESSORY[v.type] : null} pose={s.gesture ?? STANDING} seated={seatedFor(v.type)} />
+                  {ghibli ? (
+                    // Pas d'objet ni de geste avant G3b : debout ou assis à sa place.
+                    <GhibliFigure outfit={v.outfit} sky={inSky} rainy={false} umbrella={false} initial={innerPose(v, inner)} />
+                  ) : (
+                    <>
+                      <g data-inner-stay="" visibility={seat ? 'visible' : 'hidden'}>
+                        <PosedPerson outfit={v.outfit} sky={inSky} rainy={false} umbrella={false} accessory={v.type ? ACCESSORY[v.type] : null} pose={s.gesture ?? STANDING} seated={seatedFor(v.type)} />
+                      </g>
+                      <g data-inner-walk="" visibility={seat ? 'hidden' : 'visible'}>
+                        <PersonSprite outfit={v.outfit} sky={inSky} rainy={false} umbrella={false} />
+                      </g>
+                    </>
+                  )}
                 </g>
               );
             })}
@@ -156,16 +247,33 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
       })}
       {visits.map((v, i) => {
         const s = states[i]!;
-        const on = s.on && !s.inside;
+        const where = whereOf(s);
+        const sgn = ghibli ? 1 : motionOf(v, s.stage);
+        const street = where === 'street' && s.passage ? s.passage : null;
+        const atDoor = where === 'door' && s.passage ? s.passage : null;
+        const o = customerDoorRect(v, s.stage, metrics);
+        const dPos: Passage = atDoor ?? { stage: 'threshold', x: v.doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
+        const sprite = (p: FigurePose, withUmbrella: boolean): ReactElement =>
+          ghibli ? <GhibliFigure outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} initial={p} /> : <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} />;
         return (
-          <g key={v.id} data-life-id={v.id} data-customer="" data-active={on ? 'true' : 'false'} transform={sidewalkTransform(v, s.x, metrics)} opacity={(on ? s.fade : 0).toFixed(2)} style={style}>
-            <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={umbrella} />
-            {v.type !== null && takesAway(v.type) && (
-              <g data-item="" transform={CARRY_AT} visibility={on && s.carry ? 'visible' : 'hidden'}>
-                <AccessorySprite id={ACCESSORY[v.type]} sky={sky} />
+          <Fragment key={v.id}>
+            <g data-life-id={v.id} data-customer="" data-active={street ? 'true' : 'false'} transform={sidewalkTransform(v, street?.x ?? s.x, metrics, sgn)} opacity={onOff(street !== null)}>
+              {sprite(street ? passagePose(v, street, metrics) : REST, umbrella)}
+              {/* Objet emporté : dessin classique seulement (Ghibli : avant G3b, rien en main). */}
+              {!ghibli && v.type !== null && takesAway(v.type) && (
+                <g data-item="" transform={CARRY_AT} visibility={street && s.carry ? 'visible' : 'hidden'}>
+                  <AccessorySprite id={ACCESSORY[v.type]} sky={sky} />
+                </g>
+              )}
+            </g>
+            {/* Seuil d'une porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche est copiée par <use>). */}
+            <svg data-life-id={doorId(v)} data-customer-door="" data-visit={v.id} data-active={atDoor ? 'true' : 'false'} x={o.x.toFixed(1)} y={o.y.toFixed(1)} width={o.w.toFixed(1)} height={o.h.toFixed(1)} overflow="hidden" opacity={onOff(atDoor !== null)}>
+              <rect data-door-dark="" x={0} y={0} width={o.w.toFixed(1)} height={o.h.toFixed(1)} fill={DOOR_DARK} opacity={atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
+              <g data-door-fig="" transform={customerDoorFig(v, dPos, o, metrics, sgn)} opacity={(1 - dPos.depth).toFixed(2)}>
+                {sprite(passagePose(v, dPos, metrics), umbrella)}
               </g>
-            )}
-          </g>
+            </svg>
+          </Fragment>
         );
       })}
     </g>

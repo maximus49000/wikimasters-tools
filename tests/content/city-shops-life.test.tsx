@@ -3,8 +3,10 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { StaffLayer, countShopSprites, dayShifts, staffCast } from '../../src/content/city-shops-life';
+import { StaffLayer, countShopSprites, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
+import { visitAt, visitsFor, type VisitLock } from '../../src/core/library/city/shops/customers';
 import { addDays, dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
 import { cityMetrics } from '../../src/core/library/city/metrics';
@@ -311,5 +313,85 @@ describe('CityLifeLayer : personnel et clients en geste', () => {
       expect(nodes).toHaveLength(2);
       for (const n of nodes) expect(n.querySelector(`[data-accessory="${ACCESSORY[s.tenant!.type]}"]`)).not.toBeNull();
     }
+  });
+});
+
+describe('clients : portes et verrou', () => {
+  const frames = new Map(slots.map((s) => [s.id, shopFrame(s, metrics.ground)]));
+  // Les trois nœuds d'une visite, comme les rend ShopCustomers (rue, porte du local, intérieur).
+  const nodesOf = (id: string): Map<string, Element> => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const make = (tag: string, life: string): Element => {
+      const n = document.createElementNS(ns, tag);
+      n.setAttribute('data-life-id', life);
+      return n;
+    };
+    return new Map([[id, make('g', id)], [`${id}-door`, make('svg', `${id}-door`)], [`${id}-in`, make('g', `${id}-in`)]]);
+  };
+  const active = (nodes: Map<string, Element>): string[] => [...nodes.values()].filter((n) => n.getAttribute('data-active') === 'true').map((n) => n.getAttribute('data-life-id')!);
+  it('changement de minute pendant une visite : le client reste (verrou)', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const t0 = -v.phase;
+    expect(visitAt(v, W, t0 + 10)?.stage).toBe('in');
+    const nodes = nodesOf(v.id);
+    const lock: VisitLock = new Map();
+    placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, t0, true, new Set(), { lock });
+    expect(active(nodes)).toHaveLength(1);
+    placeCustomers(nodes, [v], new Map([[v.slotId, 0]]), W, metrics, t0 + 10, false, new Set(), { lock });
+    expect(active(nodes)).toEqual([v.id]);
+    // Sans verrou, la probabilité nulle aurait retiré le client en pleine rue.
+    const bare = nodesOf(v.id);
+    placeCustomers(bare, [v], new Map([[v.slotId, 0]]), W, metrics, t0 + 10, true, new Set(), { lock: new Map() });
+    expect(active(bare)).toHaveLength(0);
+  });
+  it('visite suspendue par le plafond au moment du verrou : absente tout le tour', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const t0 = -v.phase;
+    const nodes = nodesOf(v.id);
+    const lock: VisitLock = new Map();
+    placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, t0, true, new Set([v.id]), { lock });
+    placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, t0 + 10, false, new Set(), { lock });
+    expect(active(nodes)).toHaveLength(0);
+  });
+  it('un seul nœud actif à la fois : rue, porte du local (seuil) ou intérieur', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const nodes = nodesOf(v.id);
+    const lock: VisitLock = new Map();
+    const seen = new Set<string>();
+    for (let c = 0; c < 240; c += 0.25) {
+      placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, c - v.phase, c === 0, new Set(), { lock });
+      const on = active(nodes);
+      expect(on.length).toBeLessThanOrEqual(1);
+      on.forEach((id) => seen.add(id));
+    }
+    expect([...seen].sort()).toEqual([v.id, `${v.id}-door`, `${v.id}-in`].sort());
+  });
+  it('aucun client sans fondu : nœuds sans opacité intermédiaire ni transition', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
+    const c = life(600);
+    const nodes = c.querySelectorAll('[data-customer], [data-customer-inside], svg[data-customer-door]');
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const n of nodes) {
+      expect(['1.00', '0.00']).toContain(n.getAttribute('opacity'));
+      expect((n as SVGElement).style.transition).toBe('');
+    }
+  });
+  it('Ghibli : chaque client est un pantin (rue, porte, vitrine), sans miroir ni objet ; classique inchangé', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
+    try {
+      writeArt('ghibli');
+      const c = life(600);
+      const nodes = [...c.querySelectorAll('[data-customer], [data-customer-inside], svg[data-customer-door]')];
+      expect(nodes.length).toBeGreaterThan(0);
+      for (const n of nodes) {
+        expect(n.querySelector('[data-figure]')).not.toBeNull();
+        expect(n.querySelector('[data-item], [data-pose-body]')).toBeNull();
+        expect(n.getAttribute('transform') ?? '').not.toMatch(/scale\(-/);
+      }
+    } finally {
+      localStorage.removeItem(ART_KEY);
+    }
+    const classic = life(600);
+    expect(classic.querySelectorAll('[data-customer] [data-figure], [data-customer-inside] [data-figure]')).toHaveLength(0);
   });
 });
