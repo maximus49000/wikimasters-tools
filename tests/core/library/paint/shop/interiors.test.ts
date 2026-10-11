@@ -49,7 +49,7 @@ describe('intérieurs des commerces', () => {
     }
   });
 
-  it('au moins les dix intérieurs alimentaires', () => {
-    expect(done().length).toBeGreaterThanOrEqual(10);
+  it('les 32 métiers ont leur intérieur', () => {
+    expect(done()).toEqual([...SHOP_TYPE_IDS]);
   });
 });
