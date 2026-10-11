@@ -1,8 +1,12 @@
 import type { ReactElement } from 'react';
 import type { Outfit } from '../core/library/city/people';
 import type { Pose } from '../core/library/city/shops/gestures';
+import type { Work } from '../core/library/figure/dress';
+import type { ArmPose } from '../core/library/figure/skeleton';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite, SEAT_DROP, tone } from './city-sprites';
+import type { FigureRegistry } from './figure/figure-host';
+import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 
 // Gestes de travail (vague 1b-iv-b) : un passant (PersonSprite) avec un bras, une main et l'accessoire du commerce, que la
 // boucle d'animation met en pose (applyPose) sans re-rendu React. Repère du passant : pieds à l'origine, il regarde vers +x,
@@ -166,3 +170,101 @@ export function showCarry(h: PoseHandles, carry: boolean): void {
 export const LIFTING: Pose = { arms: 'up', lean: 0, head: 'front', item: 'none', sway: 0 };
 export const CARRYING: Pose = { arms: 'down', lean: 0, head: 'front', item: 'hand', sway: 0 };
 export const STANDING: Pose = { arms: 'down', lean: 0, head: 'front', item: 'none', sway: 0 };
+
+// ---------- Gestes au pantin (Ghibli, G3b) ----------
+// Correspondance d'un geste des commerces vers le pantin : mêmes poses de bras ; penché `lean` (sinus de ±0,5) → niveau 0–2
+// (round(lean × 4), un penché en arrière reste droit) ; tête baissée → un niveau de plus (borné) ; tête tournée → ±4 crans
+// (90°) vers l'arrière, c'est-à-dire vers le côté opposé à celui que la figure regarde, en passant par la face (`facing` :
+// +1 regarde vers la droite, −1 vers la gauche). Fonction pure.
+export type GhibliGesture = { arms: ArmPose; lean: number; head: number };
+export function ghibliGesture(pose: Pose, facing: 1 | -1 = 1): GhibliGesture {
+  const level = Math.min(2, Math.max(0, Math.round(pose.lean * 4)));
+  return { arms: pose.arms, lean: pose.head === 'down' ? Math.min(2, level + 1) : level, head: pose.head === 'turn' ? 4 * facing : 0 };
+}
+// Côté regardé par une orientation (0 droite, 4 face, 8 gauche, 12 dos) : la face et le dos comptent pour la droite.
+export const facingOfYaw = (yaw: number): 1 | -1 => {
+  const y = ((yaw % 16) + 16) % 16;
+  return y > 4 && y < 12 ? -1 : 1;
+};
+// Pose du pantin pour un geste, à sa place (debout ou assis), orienté `yaw`.
+export const ghibliPoseOf = (pose: Pose, yaw: number, seated: boolean): PoseIn => {
+  const g = ghibliGesture(pose, facingOfYaw(yaw));
+  return { yaw, gait: seated ? 'seated' : 'stand', phase: 0, head: g.head, arms: g.arms, lean: g.lean };
+};
+
+// Balancement (`sway`) : même translation que le classique (px par demi-unité), sans rotation ; chaînes en cache.
+const swayCache = new Map<number, string>();
+export function swayTransform(sway: number): string {
+  const half = Math.round(sway * SWAY_PX * 2);
+  let s = swayCache.get(half);
+  if (s === undefined) {
+    s = `translate(${half / 2} 0)`;
+    swayCache.set(half, s);
+  }
+  return s;
+}
+// Objet posé (comptoir, table) : coordonnées classiques (PLACED), du côté regardé (pas de miroir : x × côté) ; assis, abaissé
+// comme le bras du classique. null : rien de posé.
+const placedCache = new Map<string, string>();
+function placedTransform(item: Pose['item'], facing: 1 | -1, seated: boolean): string | null {
+  if (item !== 'counter' && item !== 'table') return null;
+  const k = `${item}|${facing}|${seated ? 1 : 0}`;
+  let s = placedCache.get(k);
+  if (s === undefined) {
+    const [x, y] = PLACED[item];
+    s = `translate(${x * facing} ${y + (seated ? SEAT_DROP : 0)})`;
+    placedCache.set(k, s);
+  }
+  return s;
+}
+const show = (on: boolean): string => (on ? 'inline' : 'none');
+
+// Pantin en geste : la figure (pose `figure` : le geste à sa place, ou la marche), l'accessoire à la main droite (accroche
+// `handR`, montré pendant un geste « hand ») et le même accessoire posé (comptoir, table), dans un groupe balancé (`sway`).
+// `gesture` null (il marche) : rien à la main ni posé. Objets montrés par `display` (pas `visibility` : la figure cachée cache
+// ses objets tenus par `visibility`, qu'un enfant « visible » contredirait).
+type GhibliPosedProps = { outfit: Outfit; sky: Sky; rainy: boolean; accessory: string | null; figure: PoseIn; gesture: Pose | null; seated?: boolean; work?: Work; hidden?: boolean };
+export function GhibliPosed({ outfit, sky, rainy, accessory, figure, gesture, seated = false, work = 'none', hidden = false }: GhibliPosedProps): ReactElement {
+  const item = accessory ? <AccessorySprite id={accessory} sky={sky} /> : null;
+  const placed = gesture ? placedTransform(gesture.item, facingOfYaw(figure.yaw), seated) : null;
+  return (
+    <g data-pose-sway="" transform={swayTransform(gesture?.sway ?? 0)}>
+      <GhibliFigure
+        outfit={outfit}
+        sky={sky}
+        rainy={rainy}
+        umbrella={false}
+        initial={figure}
+        hidden={hidden}
+        work={work}
+        held={item ? [{ anchor: 'handR', node: <g data-item-hand="" display={show(gesture?.item === 'hand')}>{item}</g> }] : undefined}
+      />
+      {item && (
+        <g data-item-placed="" transform={placed ?? 'translate(0 0)'} display={show(placed !== null && !hidden)}>
+          {item}
+        </g>
+      )}
+    </g>
+  );
+}
+
+// Poignées d'un pantin en geste (cherchées une fois par nœud).
+export type GhibliPoseHandles = { sway: Element | null; fig: Element | null; hand: Element | null; placed: Element | null };
+const ghibliCache = new WeakMap<Element, GhibliPoseHandles>();
+export function ghibliHandles(node: Element): GhibliPoseHandles {
+  let h = ghibliCache.get(node);
+  if (!h) {
+    h = { sway: node.querySelector('[data-pose-sway]'), fig: node.querySelector('[data-figure]'), hand: node.querySelector('[data-item-hand]'), placed: node.querySelector('[data-item-placed]') };
+    ghibliCache.set(node, h);
+  }
+  return h;
+}
+// Met un pantin en pose par la boucle : figure (poseFigure, n'écrit qu'au changement), balancement, objets montrés ou non.
+export function applyGhibliPose(reg: FigureRegistry, h: GhibliPoseHandles, figure: PoseIn, gesture: Pose | null, seated = false): void {
+  set(h.sway, 'transform', swayTransform(gesture?.sway ?? 0));
+  poseFigure(reg, h.fig, figure);
+  set(h.hand, 'display', show(gesture?.item === 'hand'));
+  const placed = gesture ? placedTransform(gesture.item, facingOfYaw(figure.yaw), seated) : null;
+  set(h.placed, 'display', show(placed !== null));
+  if (placed) set(h.placed, 'transform', placed);
+}

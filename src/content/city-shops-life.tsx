@@ -1,12 +1,12 @@
-import { Fragment, useMemo, type ReactElement } from 'react';
+import { Fragment, useMemo, useRef, type ReactElement } from 'react';
 import { isoDate, type YMD } from '../core/library/city/calendar';
-import { DOOR_WIDTH, MAX_TRIP_PX } from '../core/library/city/doors';
-import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
+import { DOOR_WIDTH, MAX_TRIP_PX, endDoorOf } from '../core/library/city/doors';
+import { DOOR_DARK, THRESHOLD_S, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
 import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit, type Profile } from '../core/library/city/people';
 import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
-import { INSIDE_SCALE, lockedVisit, visitAt, visitHappens, type Visit, type VisitInner, type VisitLock, type VisitStage } from '../core/library/city/shops/customers';
-import { ACCESSORY, SHOP_FAMILY, gestureAt, takesAway, type Pose } from '../core/library/city/shops/gestures';
+import { INSIDE_SCALE, MAX_VISIT_FALLBACK_PX, lockedVisit, visitAt, visitHappens, type Visit, type VisitInner, type VisitLock, type VisitStage } from '../core/library/city/shops/customers';
+import { ACCESSORY, SHOP_FAMILY, gestureAt, takesAway, type Family, type Pose } from '../core/library/city/shops/gestures';
 import { crowdAt, dayNumber } from '../core/library/city/shops/hours';
 import type { Change, SlotDay } from '../core/library/city/shops/lifecycle';
 import type { Rect, ShopFrame } from '../core/library/city/shops/slots';
@@ -15,13 +15,15 @@ import { capFor, spriteBudget, type BudgetSprite } from '../core/library/city/sh
 import { changePlans, type ShopView } from '../core/library/city/shops/view';
 import { WORK_STEPS, type WorkStep } from '../core/library/city/shops/works';
 import { WORLD_MARGIN, hashString, mulberry32 } from '../core/library/scene-world';
-import { YAW_FRONT, YAW_RIGHT, phaseIndexOf } from '../core/library/figure/gait';
+import { TURN_S, YAW_BACK, YAW_FRONT, YAW_RIGHT, facingYaw, phaseIndexOf, turnYaw } from '../core/library/figure/gait';
+import type { Work } from '../core/library/figure/dress';
+import type { ArmPose } from '../core/library/figure/skeleton';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import type { FigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
-import { AccessorySprite, LIFTING, PosedPerson, STANDING, applyPose, poseHandles, showCarry, type PoseHandles } from './shop-gesture-sprites';
+import { AccessorySprite, GhibliPosed, LIFTING, PosedPerson, STANDING, applyGhibliPose, applyPose, ghibliHandles, ghibliPoseOf, poseHandles, showCarry, type GhibliPoseHandles, type PoseHandles } from './shop-gesture-sprites';
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
 import { NightclubDoor } from './shop-queue';
 import { CarriedPlacard, CarriedSign, LadderSprite, RollingShutter, SHUTTER_S, type ShutterState, type WorkerPose } from './shop-sprites';
@@ -101,6 +103,16 @@ const atSeat = (inner: VisitInner | null): boolean => inner !== null && (inner.g
 // Fauteuil et table : le client est assis à sa place.
 const seatedFor = (type: ShopTypeId | null): boolean => type !== null && (SHOP_FAMILY[type] === 'chair' || SHOP_FAMILY[type] === 'table');
 const onOff = (on: boolean): string => (on ? '1.00' : '0.00');
+// Objet emporté d'un pantin (rue, seuil), cherché une fois par nœud.
+const carriedCache = new WeakMap<Element, Element | null>();
+const carriedOf = (node: Element): Element | null => {
+  let c = carriedCache.get(node);
+  if (c === undefined) {
+    c = node.querySelector('[data-item-carry]');
+    carriedCache.set(node, c);
+  }
+  return c;
+};
 
 // `lock` : verrou des tirages (gardé par l'appelant entre les minutes) ; `ghibli` + `figures` : pantins posés par la boucle.
 export type CustomerOpts = { lock?: VisitLock; ghibli?: boolean; figures?: FigureRegistry | null };
@@ -112,6 +124,8 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
   const pose = (node: Element | null, p: FigurePose): void => {
     if (ghibli) poseFigure(opts.figures!, node?.querySelector('[data-figure]') ?? null, p);
   };
+  // Ghibli : objet emporté (rue, seuil) montré par `display` (la figure éteinte le cache avec elle).
+  const carry = (node: Element, on: boolean): void => setIfChanged(carriedOf(node), 'display', on ? 'inline' : 'none');
   // Ghibli : nœud qui s'éteint (ou premier placement) → figure cachée, sprite libéré ; n'écrit qu'à la bascule.
   const toggle = (node: Element, on: boolean): void => {
     const off = ghibli && !on && (first || node.getAttribute('data-active') !== 'false');
@@ -130,6 +144,7 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
       if (on && s.passage) {
         out.setAttribute('transform', sidewalkTransform(v, s.passage.x, m, sgn));
         pose(out, passagePose(v, s.passage, m));
+        if (ghibli) carry(out, s.carry);
       } else if (first) out.setAttribute('transform', sidewalkTransform(v, s.x, m, sgn));
       if (!ghibli && v.type !== null && takesAway(v.type)) showCarry(poseHandles(out), on && s.carry);
     }
@@ -140,6 +155,7 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
       if (on && s.passage) {
         placeSill(door, customerDoorRect(v, s.stage, m), s.passage, m, streetScale(v, m), sgn);
         pose(door, passagePose(v, s.passage, m));
+        if (ghibli) carry(door, s.carry);
       }
     }
     const inn = nodes.get(insideId(v));
@@ -148,8 +164,12 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
       toggle(inn, on);
       if (on && s.inner) {
         inn.setAttribute('transform', insideTransform(v, s.inner, Number(inn.getAttribute('data-floor') ?? 0), !ghibli));
-        if (ghibli) pose(inn, innerPose(v, s.inner));
-        else {
+        if (ghibli) {
+          // À sa place : le geste (objet à la main ou posé) ; en marchant ou en se tournant : la marche, rien en main.
+          const seated = s.inner.gait === 'seated';
+          const g = atSeat(s.inner) ? s.gesture : null;
+          applyGhibliPose(opts.figures!, ghibliHandles(inn), g ? ghibliPoseOf(g, s.inner.yaw, seated) : innerPose(v, s.inner), g, seated);
+        } else {
           const seat = atSeat(s.inner);
           const stay = inn.querySelector(':scope > [data-inner-stay]');
           setIfChanged(stay, 'visibility', seat ? 'visible' : 'hidden');
@@ -215,8 +235,17 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
                   opacity={onOff(on)}
                 >
                   {ghibli ? (
-                    // Pas d'objet ni de geste avant G3b : debout ou assis à sa place.
-                    <GhibliFigure outfit={v.outfit} sky={inSky} rainy={false} umbrella={false} initial={innerPose(v, inner)} hidden={!on} />
+                    // À sa place, le geste de la famille (objet à la main ou posé) ; en marchant, rien en main.
+                    <GhibliPosed
+                      outfit={v.outfit}
+                      sky={inSky}
+                      rainy={false}
+                      accessory={v.type ? ACCESSORY[v.type] : null}
+                      figure={seat && s.gesture ? ghibliPoseOf(s.gesture, inner.yaw, inner.gait === 'seated') : innerPose(v, inner)}
+                      gesture={seat ? s.gesture : null}
+                      seated={inner.gait === 'seated'}
+                      hidden={!on}
+                    />
                   ) : (
                     <>
                       <g data-inner-stay="" visibility={seat ? 'visible' : 'hidden'}>
@@ -242,16 +271,30 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
         const dPos: Passage = atDoor ?? { stage: 'threshold', x: v.doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
         const { clip: o, dark } = sillBox(customerDoorRect(v, s.stage, metrics), dPos.depth, metrics, streetScale(v, metrics));
         // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans sprite.
+        // Ghibli : l'objet emporté est tenu à la main (la gauche sous le parapluie), montré par la boucle en repartant.
+        const takes = v.type !== null && takesAway(v.type);
         const sprite = (p: FigurePose, withUmbrella: boolean, on: boolean): ReactElement =>
-          ghibli ? <GhibliFigure outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} initial={p} hidden={!on} /> : <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} />;
+          ghibli ? (
+            <GhibliFigure
+              outfit={v.outfit}
+              sky={sky}
+              rainy={rainy}
+              umbrella={withUmbrella}
+              initial={p}
+              hidden={!on}
+              held={takes ? [{ anchor: withUmbrella ? 'handL' : 'handR', node: <g data-item-carry="" display={on && s.carry ? 'inline' : 'none'}><AccessorySprite id={ACCESSORY[v.type!]} sky={sky} /></g> }] : undefined}
+            />
+          ) : (
+            <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} />
+          );
         return (
           <Fragment key={v.id}>
             <g data-life-id={v.id} data-customer="" data-active={street ? 'true' : 'false'} transform={sidewalkTransform(v, street?.x ?? s.x, metrics, sgn)} opacity={onOff(street !== null)}>
               {sprite(street ? passagePose(v, street, metrics) : REST, umbrella, street !== null)}
-              {/* Objet emporté : dessin classique seulement (Ghibli : avant G3b, rien en main). */}
-              {!ghibli && v.type !== null && takesAway(v.type) && (
+              {/* Objet emporté du dessin classique (Ghibli : tenu par le pantin, voir `sprite`). */}
+              {!ghibli && takes && (
                 <g data-item="" transform={CARRY_AT} visibility={street && s.carry ? 'visible' : 'hidden'}>
-                  <AccessorySprite id={ACCESSORY[v.type]} sky={sky} />
+                  <AccessorySprite id={ACCESSORY[v.type!]} sky={sky} />
                 </g>
               )}
             </g>
@@ -310,11 +353,43 @@ function crewAt(step: WorkStep, p: number, lx: number, bx: number, edge: number,
   }
 }
 
-type WorksProps = { view: ShopView; frame: ShopFrame; change: Change | null; width: number; metrics: CityMetrics; sky: Sky; rainy: boolean; still: boolean; seed: number };
+// Ghibli : pose d'un ouvrier (A monte, B reste au pied) selon sa pose du classique. Marche et port de profil dans le sens de
+// marche ; sur l'échelle de dos (escalade, mains aux montants ; enseigne déposée ou posée bras au-dessus de la tête) ; au pied
+// de trois quarts vers l'autre, la nouvelle enseigne portée à deux mains au moment de la passer.
+type Pos = { x: number; y: number };
+type CrewLook = { yaw: number; gait: 'walk' | 'climb' | 'stand'; arms: ArmPose };
+function crewLook(c: CrewPose, i: number): CrewLook {
+  const side = c.dir > 0 ? 2 : 6;
+  switch (c.pose) {
+    case 'walk': return { yaw: facingYaw(c.dir), gait: 'walk', arms: 'swing' };
+    case 'carry': return { yaw: facingYaw(c.dir), gait: 'walk', arms: 'carry' };
+    case 'climb': return { yaw: YAW_BACK, gait: 'climb', arms: 'swing' };
+    case 'reach': return i === 0 ? { yaw: YAW_BACK, gait: 'climb', arms: 'overhead' } : { yaw: side, gait: 'stand', arms: 'carry' };
+    default: return { yaw: side, gait: 'stand', arms: 'swing' };
+  }
+}
+// Durée d'un déplacement de l'équipe (transition CSS entre deux minutes, WORKER_MOVE).
+const WORKER_S = 30;
+// Pose à l'instant t d'un ouvrier qui s'est déplacé de `dist` px depuis `since` (vitesse = dist / WORKER_S) : la phase suit
+// la distance parcourue ; la marche finie, debout ; sur l'échelle, la dernière prise est gardée.
+export type WorkerMove = { look: CrewLook; since: number; dist: number; k: number };
+function workerPose(w: WorkerMove, t: number): PoseIn {
+  const p = w.dist > 0.01 ? Math.min(1, Math.max(0, (t - w.since) / WORKER_S)) : 1;
+  const { yaw, gait, arms } = w.look;
+  if (gait === 'walk' && (p >= 1 || w.dist <= 0.01)) return { yaw, gait: 'stand', phase: 0, head: 0, arms };
+  return { yaw, gait, phase: phaseIndexOf((p * w.dist) / w.k), head: 0, arms };
+}
 
-export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, still, seed }: WorksProps): ReactElement | null {
+type WorksProps = { view: ShopView; frame: ShopFrame; change: Change | null; width: number; metrics: CityMetrics; sky: Sky; rainy: boolean; still: boolean; seed: number; ghibli?: boolean };
+
+export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, still, seed, ghibli = false }: WorksProps): ReactElement | null {
   const id = view.slot.id;
   const outfits = useMemo(() => [0, 1].map((i) => outfitFor('worker', mulberry32(seed ^ hashString(`${id}-crew-${i}`)))), [id, seed]);
+  // Ghibli : début de la transition en cours (nouvelle étape ou progression, à la minute) et positions d'où elle part (celles de
+  // la transition précédente), pour régler la marche sur la distance ; un re-rendu dans la même minute ne change rien.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const since = useMemo(() => Date.now() / 1000, [view.works?.step, view.works?.progress]);
+  const track = useRef<{ key: string; from: Pos[]; at: Pos[] }>({ key: '', from: [], at: [] });
   if (!view.works) return null;
   // Mouvement réduit : pose « install » figée (échelle dressée, l'un en haut avec la nouvelle enseigne), sans transition.
   const step: WorkStep = still ? 'install' : view.works.step;
@@ -329,6 +404,9 @@ export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, sti
   const foot = metrics.doorY;
   const top = sign.y + ON_LADDER_DY;
   const crew = crewAt(step, progress, lx, bx, edge, foot, top);
+  const here = crew.map((c) => ({ x: c.x, y: c.y }));
+  const key = `${step}|${progress}`;
+  track.current = track.current.key === key ? { ...track.current, at: here } : { key, from: track.current.at, at: here };
   const ladder = at(step) >= at('ladder-up') && at(step) <= at('ladder-down');
   // Ce que l'équipe pose (nouvelle enseigne ou écriteau À vendre) et ce qu'elle emporte (ancienne enseigne ou écriteau retiré).
   const fresh = !change ? null : change.kind === 'to-sale' ? <CarriedPlacard w={win.w} sky={sky} /> : change.after ? <CarriedSign type={change.after.type} name={change.after.name} w={sign.w} sky={sky} /> : null;
@@ -358,16 +436,38 @@ export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, sti
           {fresh}
         </g>
       )}
-      {crew.map((c, i) => (
-        <g key={i} data-worker="" data-pose={c.pose} style={{ transform: `translate(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px)`, transition: move }}>
-          <g transform={`scale(${(c.dir * k).toFixed(3)} ${k.toFixed(3)})`}>
-            <PersonSprite outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} />
+      {crew.map((c, i) => {
+        // Ghibli : pantin en gilet, sans miroir ; la boucle (placeWorkers) règle la marche et l'escalade sur la distance.
+        const from = track.current.from[i] ?? c;
+        const w: WorkerMove = { look: crewLook(c, i), since, dist: still ? 0 : Math.hypot(c.x - from.x, c.y - from.y), k };
+        return (
+          <g
+            key={i}
+            data-worker=""
+            data-pose={c.pose}
+            {...(ghibli ? { 'data-move': JSON.stringify(w) } : {})}
+            style={{ transform: `translate(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px)`, transition: move }}
+          >
+            <g transform={ghibli ? `scale(${k.toFixed(3)})` : `scale(${(c.dir * k).toFixed(3)} ${k.toFixed(3)})`}>
+              {ghibli ? <GhibliFigure outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} work="vest" initial={workerPose(w, since)} /> : <PersonSprite outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} />}
+            </g>
+            {item(c.holds, c)}
           </g>
-          {item(c.holds, c)}
-        </g>
-      ))}
+        );
+      })}
     </g>
   );
+}
+
+// Ouvriers Ghibli, collectés une fois par jeu de nœuds, posés par la boucle (marche et escalade réglées sur la distance).
+export type PlacedWorker = { fig: Element | null; move: WorkerMove };
+export function collectWorkers(root: Element): PlacedWorker[] {
+  const out: PlacedWorker[] = [];
+  for (const node of root.querySelectorAll('[data-worker][data-move]')) out.push({ fig: node.querySelector('[data-figure]'), move: JSON.parse(node.getAttribute('data-move')!) as WorkerMove });
+  return out;
+}
+export function placeWorkers(workers: PlacedWorker[], t: number, figures: FigureRegistry): void {
+  for (const w of workers) poseFigure(figures, w.fig, workerPose(w.move, t));
 }
 
 // ---------- Personnel ----------
@@ -495,18 +595,110 @@ type StaffProps = {
   seats: number[];
   // Place de service (x local, interiorPost).
   post: number;
+  // Ghibli : pantins (personnel en geste, trajets à pied posés par la boucle) ; centres des entrées d'immeubles (bouts de trajet).
+  ghibli?: boolean;
+  doorXs?: readonly number[];
 };
 
-const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
+// ---------- Personnel à pied (Ghibli) ----------
+// Script d'un employé sur le trottoir, posé par la boucle (placeStaffWalks) : segments enchaînés depuis `start` (s) ; après le
+// dernier (il est entré par une porte, ou sorti du monde), caché. Jamais d'apparition sur place : on sort d'une porte (seuil de
+// door-passage.ts), on marche, on rentre par une porte.
+type WalkSeg =
+  | { k: 'door'; rect: Rect; x: number; from: number; to: number; yaw: number; dur: number }
+  | { k: 'turn'; x: number; from: number; to: number; via?: number; dur: number }
+  | { k: 'walk'; from: number; to: number; dur: number }
+  | { k: 'stand'; x: number; yaw: number; arms: ArmPose; dur: number };
+// `k` : px du monde par unité du pantin (phase des pas réglée sur la distance).
+export type StaffWalk = { start: number; k: number; segs: WalkSeg[] };
+export type StaffWalkView = { where: 'street'; x: number; pose: PoseIn } | { where: 'door'; rect: Rect; passage: Passage; pose: PoseIn } | null;
 
-export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, date, width, sky, rainy, umbrella, seed, seats, post }: StaffProps): ReactElement | null {
+function segView(s: WalkSeg, p: number, walked: number, k: number): StaffWalkView {
+  switch (s.k) {
+    case 'door': {
+      const depth = s.from + (s.to - s.from) * p;
+      return { where: 'door', rect: s.rect, passage: { stage: 'threshold', x: s.x, depth, yaw: s.yaw, gait: 'walk', walked }, pose: { yaw: s.yaw, gait: 'walk', phase: phaseIndexOf(walked / k + depth * 8), head: 0 } };
+    }
+    case 'turn':
+      return { where: 'street', x: s.x, pose: { yaw: turnYaw(s.from, s.to, p, s.via), gait: 'step', phase: phaseIndexOf(walked / k), head: 0 } };
+    case 'walk': {
+      const d = (s.to - s.from) * p;
+      return { where: 'street', x: s.from + d, pose: { yaw: facingYaw(s.to >= s.from ? 1 : -1), gait: 'walk', phase: phaseIndexOf((walked + Math.abs(d)) / k), head: 0 } };
+    }
+    default:
+      return { where: 'street', x: s.x, pose: { yaw: s.yaw, gait: 'stand', phase: 0, head: 0, arms: s.arms } };
+  }
+}
+export function staffWalkAt(w: StaffWalk, t: number): StaffWalkView {
+  let c = Math.max(0, t - w.start);
+  let walked = 0;
+  for (const s of w.segs) {
+    if (c < s.dur) return segView(s, s.dur > 0 ? c / s.dur : 1, walked, w.k);
+    c -= s.dur;
+    if (s.k === 'walk') walked += Math.abs(s.to - s.from);
+  }
+  return null;
+}
+
+// Durée d'une marche visible (la minute affichée, comme le classique) et marge pour être rentré avant le rendu suivant.
+const WALK_SPAN_S = 60;
+const WALK_SLACK_S = 1;
+// Rideau : sortir par la porte du local, se tourner, le lever (ou le baisser) bras au-dessus de la tête, de dos, puis rentrer.
+const SHUTTER_SCRIPT_S = THRESHOLD_S + TURN_S + SHUTTER_S;
+type WalkCtx = { since: number; doorX: number; door: Rect; width: number; m: CityMetrics; k: number; doorXs: readonly number[] };
+export function staffWalkOf(state: StaffState, c: WalkCtx): StaffWalk | null {
+  const outOf = (rect: Rect, x: number, to: number, via?: number): WalkSeg[] => [
+    { k: 'door', rect, x, from: 1, to: 0, yaw: YAW_FRONT, dur: THRESHOLD_S },
+    { k: 'turn', x, from: YAW_FRONT, to, ...(via !== undefined ? { via } : {}), dur: TURN_S },
+  ];
+  const into = (rect: Rect, x: number, from: number): WalkSeg[] => [
+    { k: 'turn', x, from, to: YAW_BACK, dur: TURN_S },
+    { k: 'door', rect, x, from: 0, to: 1, yaw: YAW_BACK, dur: THRESHOLD_S },
+  ];
+  const side = state.side;
+  switch (state.where) {
+    case 'opening':
+    case 'closing':
+      return {
+        start: c.since,
+        k: c.k,
+        segs: [...outOf(c.door, c.doorX, YAW_BACK, facingYaw(side)), { k: 'stand', x: c.doorX, yaw: YAW_BACK, arms: 'overhead', dur: SHUTTER_S }, { k: 'door', rect: c.door, x: c.doorX, from: 0, to: 1, yaw: YAW_BACK, dur: THRESHOLD_S }],
+      };
+    case 'walking-in':
+    case 'walking-out': {
+      // Bout du trajet du côté `side` (comme les clients) : une entrée d'immeuble, sinon le bord du monde (hors champ).
+      const inbound = state.where === 'walking-in';
+      const far = endDoorOf(c.doorX, (-side) as 1 | -1, c.width, c.doorXs, MAX_VISIT_FALLBACK_PX);
+      const farX = far ?? (side > 0 ? -WORLD_MARGIN : c.width + WORLD_MARGIN);
+      const farRect = far === null ? null : entranceOpening(far - DOOR_WIDTH / 2, c.m);
+      const face = facingYaw(inbound ? side : ((-side) as 1 | -1));
+      const head = inbound ? (farRect ? outOf(farRect, farX, face) : []) : outOf(c.door, c.doorX, face);
+      const tail = inbound ? into(c.door, c.doorX, face) : farRect ? into(farRect, farX, face) : [];
+      const used = [...head, ...tail].reduce((n, x) => n + x.dur, 0);
+      const walk: WalkSeg = { k: 'walk', from: inbound ? farX : c.doorX, to: inbound ? c.doorX : farX, dur: Math.max(1, WALK_SPAN_S - WALK_SLACK_S - used) };
+      return { start: c.since, k: c.k, segs: [...head, walk, ...tail] };
+    }
+    default:
+      return null;
+  }
+}
+const staffStreetT = (x: number, y: number, k: number): string => `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${k.toFixed(3)})`;
+// Tenue de travail des employés : tablier pour les métiers de bouche.
+const APRON: ReadonlySet<Family> = new Set(['counter', 'drink', 'table']);
+const workOf = (type: ShopTypeId): Work => (APRON.has(SHOP_FAMILY[type]) ? 'apron' : 'none');
+
+const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
+const NO_DOORS: readonly number[] = [];
+
+export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, date, width, sky, rainy, umbrella, seed, seats, post, ghibli = false, doorXs = NO_DOORS }: StaffProps): ReactElement | null {
   const outfits = useMemo(() => new Map(shifts.map((s) => [s.id, staffOutfit(seed, s.outfitKey)])), [shifts, seed]);
   const cast = staffCast(view, shifts, date, minutes, reduced);
   // Début de la minute affichée (horloge murale) : repère de la relève de l'ouvreur.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const since = useMemo(() => Date.now() / 1000, [minutes]);
   if (cast.shutter === null) return null;
-  const swapAt = (since + SHUTTER_S).toFixed(2);
+  // Ghibli : l'ouvreur sort par la porte, lève le rideau et rentre (SHUTTER_SCRIPT_S + seuil) avant d'apparaître derrière la vitrine.
+  const swapAt = (since + (ghibli ? SHUTTER_SCRIPT_S + THRESHOLD_S : SHUTTER_S)).toFixed(2);
   const type = view.sign!.type;
   const { window: win, door } = frame;
   const open = view.phase === 'open';
@@ -532,6 +724,10 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
               const x = clamp(post + SPREAD[i]! * win.w, 2.5, win.w - 2.5);
               const dir = toward(x);
               const gseed = hashString(s.id);
+              // Ghibli : le geste de l'instant du rendu (celui que la boucle posera), pour que le pantin ne saute pas à chaque minute.
+              const pose = reduced ? STANDING : gestureAt(type, 'staff', ghibli ? since : 0, gseed);
+              // Ghibli : de trois quarts vers sa place de travail (même côté que le classique), sans miroir.
+              const yaw = dir > 0 ? 2 : 6;
               return (
                 <g
                   key={s.id}
@@ -541,9 +737,14 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
                   data-gesture-type={type}
                   data-gesture-seed={gseed}
                   {...(cast.handover === s.id ? { 'data-swap': 'in', 'data-swap-at': swapAt, opacity: 0 } : {})}
-                  transform={`translate(${x.toFixed(2)} ${win.h - 1}) scale(${dir * STAFF_SCALE} ${STAFF_SCALE})`}
+                  {...(ghibli ? { 'data-yaw': yaw } : {})}
+                  transform={`translate(${x.toFixed(2)} ${win.h - 1}) scale(${(ghibli ? 1 : dir) * STAFF_SCALE} ${STAFF_SCALE})`}
                 >
-                  <PosedPerson outfit={outfits.get(s.id)!} sky={inSky} rainy={false} umbrella={false} accessory={ACCESSORY[type]} pose={reduced ? STANDING : gestureAt(type, 'staff', 0, gseed)} />
+                  {ghibli ? (
+                    <GhibliPosed outfit={outfits.get(s.id)!} sky={inSky} rainy={false} accessory={ACCESSORY[type]} figure={ghibliPoseOf(pose, yaw, false)} gesture={pose} work={workOf(type)} />
+                  ) : (
+                    <PosedPerson outfit={outfits.get(s.id)!} sky={inSky} rainy={false} umbrella={false} accessory={ACCESSORY[type]} pose={pose} />
+                  )}
                 </g>
               );
             })}
@@ -561,6 +762,30 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
         const dir = state.where === 'walking-out' ? (-side as 1 | -1) : side;
         const lifting = state.where === 'opening' || state.where === 'closing';
         const outfit = outfits.get(s.id)!;
+        if (ghibli) {
+          // Pantin : trajet scripté (porte → trottoir → porte), posé par la boucle ; ni transition CSS ni opacité de fondu.
+          const walk = visible && !reduced ? staffWalkOf(state, { since, doorX, door, width, m: metrics, k, doorXs }) : null;
+          const v0 = walk ? staffWalkAt(walk, since) : null;
+          const onStreet = v0?.where === 'street' ? v0 : null;
+          const atSill = v0?.where === 'door' ? v0 : null;
+          const dPos: Passage = atSill?.passage ?? { stage: 'threshold', x: doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
+          const { clip, dark } = sillBox(atSill?.rect ?? door, dPos.depth, metrics, k);
+          const withUmbrella = umbrella && !lifting;
+          const fig = (p: FigurePose, on: boolean): ReactElement => <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} work={workOf(type)} initial={p} hidden={!on} />;
+          return (
+            <g key={s.id} data-staff-member={s.id} data-staff-where={state.where} data-active={visible ? 'true' : 'false'} {...(walk ? { 'data-walk': JSON.stringify(walk) } : {})}>
+              <g data-staff-street="" transform={staffStreetT(onStreet ? onStreet.x : x, metrics.doorY, k)} visibility={onStreet ? 'visible' : 'hidden'}>
+                {fig(onStreet ? onStreet.pose : REST, onStreet !== null)}
+              </g>
+              <svg data-staff-door="" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden" visibility={atSill ? 'visible' : 'hidden'}>
+                <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atSill ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
+                <g data-door-fig="" transform={sillFigTransform(dPos, clip, metrics, k, 1)} opacity={(1 - dPos.depth).toFixed(2)}>
+                  {fig(atSill ? atSill.pose : REST, atSill !== null)}
+                </g>
+              </svg>
+            </g>
+          );
+        }
         return (
           <g
             key={s.id}
@@ -586,16 +811,49 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
 }
 
 // Employés derrière les vitrines : collectés une fois par jeu de nœuds, mis en pose par la boucle (geste de la famille).
-export type PosedStaff = { h: PoseHandles; type: ShopTypeId; seed: number };
+// Ghibli (`g`) : pantin orienté `yaw`, posé par poseFigure (registre `figures`).
+export type PosedStaff = { h: PoseHandles; type: ShopTypeId; seed: number; g: GhibliPoseHandles | null; yaw: number };
 export function collectPosedStaff(root: Element): PosedStaff[] {
   const out: PosedStaff[] = [];
   for (const node of root.querySelectorAll('[data-posed="staff"]')) {
-    out.push({ h: poseHandles(node), type: node.getAttribute('data-gesture-type') as ShopTypeId, seed: Number(node.getAttribute('data-gesture-seed')) });
+    const ghibli = node.hasAttribute('data-yaw');
+    out.push({ h: poseHandles(node), type: node.getAttribute('data-gesture-type') as ShopTypeId, seed: Number(node.getAttribute('data-gesture-seed')), g: ghibli ? ghibliHandles(node) : null, yaw: Number(node.getAttribute('data-yaw') ?? 0) });
   }
   return out;
 }
-export function placeStaff(staff: PosedStaff[], t: number): void {
-  for (const s of staff) applyPose(s.h, gestureAt(s.type, 'staff', t, s.seed));
+export function placeStaff(staff: PosedStaff[], t: number, figures: FigureRegistry | null = null): void {
+  for (const s of staff) {
+    const pose = gestureAt(s.type, 'staff', t, s.seed);
+    if (s.g && figures) applyGhibliPose(figures, s.g, ghibliPoseOf(pose, s.yaw, false), pose);
+    else applyPose(s.h, pose);
+  }
+}
+
+// Employés à pied (Ghibli) : script lu une fois par jeu de nœuds, posé à chaque image (trottoir ou seuil d'une porte).
+export type WalkingStaff = { street: Element | null; door: Element | null; streetFig: Element | null; doorFig: Element | null; walk: StaffWalk };
+export function collectStaffWalks(root: Element): WalkingStaff[] {
+  const out: WalkingStaff[] = [];
+  for (const node of root.querySelectorAll('[data-staff-member][data-walk]')) {
+    const street = node.querySelector(':scope > [data-staff-street]');
+    const door = node.querySelector(':scope > svg[data-staff-door]');
+    out.push({ street, door, streetFig: street?.querySelector('[data-figure]') ?? null, doorFig: door?.querySelector('[data-figure]') ?? null, walk: JSON.parse(node.getAttribute('data-walk')!) as StaffWalk });
+  }
+  return out;
+}
+export function placeStaffWalks(walks: WalkingStaff[], t: number, m: CityMetrics, figures: FigureRegistry): void {
+  for (const w of walks) {
+    const v = staffWalkAt(w.walk, t);
+    setIfChanged(w.street, 'visibility', v?.where === 'street' ? 'visible' : 'hidden');
+    setIfChanged(w.door, 'visibility', v?.where === 'door' ? 'visible' : 'hidden');
+    if (v?.where === 'street') {
+      setIfChanged(w.street, 'transform', staffStreetT(v.x, m.doorY, w.walk.k));
+      poseFigure(figures, w.streetFig, v.pose);
+    } else hideFigure(figures, w.streetFig);
+    if (v?.where === 'door' && w.door) {
+      placeSill(w.door, v.rect, v.passage, m, w.walk.k, 1);
+      poseFigure(figures, w.doorFig, v.pose);
+    } else hideFigure(figures, w.doorFig);
+  }
 }
 
 // Relève de l'ouvreur (data-swap) : à la porte jusqu'à `data-swap-at`, puis derrière la vitrine.

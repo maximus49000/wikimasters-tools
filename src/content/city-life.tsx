@@ -22,7 +22,7 @@ import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
 import { CityEventSprite } from './city-event-sprites';
-import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, shopSpriteBudget, type PosedStaff, type Swap } from './city-shops-life';
+import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
 import { FlypastLayer } from './flypast-sprite';
 import { InstallLayer } from './install-layer';
@@ -282,6 +282,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let swaps: Swap[] = [];
     let waiters: Waiter[] = [];
     let crews: Crew[] = [];
+    // Ghibli : employés à pied (scripts porte → trottoir → porte) et ouvriers du chantier, posés par la boucle.
+    let staffWalks: WalkingStaff[] = [];
+    let workers: PlacedWorker[] = [];
     // Figures Ghibli de chaque passant (compagnons, puis lui-même, au même pas), trouvées à la collecte des nœuds.
     const pedFigs = new Map<string, Element[]>();
     // Nœuds de porte des habitants (<svg> imbriqués), par trajet.
@@ -309,6 +312,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
         crews = collectMovers(el);
+        staffWalks = ghibli ? collectStaffWalks(el) : [];
+        workers = ghibli ? collectWorkers(el) : [];
         if (ghibli) {
           for (const p of peds) {
             const node = nodes.get(p.id);
@@ -377,10 +382,14 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       if (!still) {
         placeWaiters(waiters, t);
         placeMovers(crews, t);
+        if (ghibli) {
+          placeStaffWalks(staffWalks, t, metrics, figures);
+          placeWorkers(workers, t, figures);
+        }
       }
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
       if (!still && Math.abs(t - posedAt) >= STAFF_POSE_S) {
-        placeStaff(staff, t);
+        placeStaff(staff, t, ghibli ? figures : null);
         posedAt = t;
       }
       first = false;
@@ -475,7 +484,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             clients (derrière les vitrines et sur le trottoir). */}
         {shops.views.map((view, i) =>
           view.phase === 'works' ? (
-            <ShopWorks key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} change={shops.street[i]?.change ?? null} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} seed={seed} />
+            <ShopWorks key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} change={shops.street[i]?.change ?? null} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} seed={seed} ghibli={ghibli} />
           ) : null,
         )}
         {/* Décors de fête contre les façades : drapeaux d'entrée (install-layer.tsx). */}
@@ -501,6 +510,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               seed={seed}
               seats={visits.filter((v) => v.slotId === view.slot.id).map((v) => v.seat.x - frame.window.x)}
               post={interiorPost(type, frame.window.w, frame.window.h)}
+              ghibli={ghibli}
+              doorXs={doorCenters}
             />
           );
         })}
