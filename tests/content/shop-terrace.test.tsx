@@ -7,7 +7,7 @@ import { CityLifeLayer } from '../../src/content/city-life';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
 import { MIN_PITCH, NightclubDoor, entryScript, queueFrame, queueLayout, type EntryScript } from '../../src/content/shop-queue';
 import { THRESHOLD_S } from '../../src/core/library/city/doorway';
-import { ADVANCE_S, queueWalkSpeed } from '../../src/core/library/city/shops/queue';
+import { ADVANCE_S, queueAt, queueWalkSpeed } from '../../src/core/library/city/shops/queue';
 import { TURN_S } from '../../src/core/library/figure/gait';
 import { ShopTerrace, collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, terraceTables, tripAt, waiterTripAt, weatherHistory, type TerraceSky } from '../../src/content/shop-terrace';
 import { ACCESSORY, gestureAt } from '../../src/core/library/city/shops/gestures';
@@ -419,9 +419,9 @@ describe('boîte de nuit : file à pied, sans fondu (G3a)', () => {
     const sig = (f: ReturnType<typeof queueFrame>): string => f.members.map((m) => m.id).join(',') + '|' + (f.ghost?.id ?? '');
     let t1 = -1;
     let id = '';
-    for (let t = 0; t < 600 && t1 < 0; t += 0.05) {
-      const a = queueFrame(SEED, 'shop-0', t, 30, true, max, () => 9);
-      const b = queueFrame(SEED, 'shop-0', t + 0.1, 30, true, max, () => 9);
+    for (let t = 2; t < 600 && t1 < 0; t += 0.05) {
+      const a = queueFrame(SEED, 'shop-0', t, 30, true, max, () => 0.5);
+      const b = queueFrame(SEED, 'shop-0', t + 0.1, 30, true, max, () => 0.5);
       if (sig(a) !== sig(b) || a.ghost) continue;
       const m = a.members.find((x, i) => i < a.members.length - 1 && x.pos % 1 > 0.2 && x.pos % 1 < 0.6);
       if (m) {
@@ -546,6 +546,29 @@ describe('boîte de nuit : vigiles et arrivées de la file (G3b)', () => {
       </svg>,
     ).host;
     expect(c.querySelector('[data-queue-arriving]')).toBeNull();
+  });
+
+  it.each([true, false])('longueur cible changée à la minute (diminue : %s) : au re-rendu, personne ne quitte la file ni n’y est posé', (shrink) => {
+    const lengthAt = (m: number): number => queueAt(SEED, 'shop-0', 100, m, true).slice(0, layout0.max).length;
+    let m0 = -1;
+    for (let m = shrink ? 0 : 23 * 60; m < (shrink ? 299 : 1439) && m0 < 0; m++) if (shrink ? lengthAt(m + 1) < lengthAt(m) : lengthAt(m + 1) > lengthAt(m)) m0 = m;
+    expect(m0).toBeGreaterThanOrEqual(0);
+    const now = vi.spyOn(Date, 'now');
+    const club = (m: number): ReactNode => (
+      <svg>
+        <NightclubDoor view={viewOf('nightclub', SAT, m)} frame={frame} metrics={metrics} minutes={m} date={SAT} reduced={false} sky={skyAt(m, times)} seed={SEED} sessionT0={T0} ghibli width={W} />
+      </svg>
+    );
+    for (const tb of [207.3, 251.9]) {
+      now.mockReturnValue((T0 + tb - 0.05) * 1000);
+      const { host, root } = render(club(m0));
+      const ids = (sel: string): string[] => [...host.querySelectorAll(sel)].map((n) => n.getAttribute('data-queue-id')!).sort();
+      const before = { members: ids('[data-queue-member]'), all: ids('[data-queue-id]') };
+      now.mockReturnValue((T0 + tb) * 1000);
+      act(() => root.render(club(m0 + 1)));
+      expect(ids('[data-queue-member]')).toEqual(before.members);
+      for (const id of before.all) expect(ids('[data-queue-id]')).toContain(id);
+    }
   });
 });
 

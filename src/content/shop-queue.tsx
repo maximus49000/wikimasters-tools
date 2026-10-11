@@ -5,7 +5,7 @@ import { DOOR_WIDTH, STREET_SCALE, type CityMetrics } from '../core/library/city
 import { outfitFor, type Outfit } from '../core/library/city/people';
 import { SHOP_DEFS } from '../core/library/city/shops/catalog';
 import { isOpenAt } from '../core/library/city/shops/hours';
-import { ADVANCE_S, nightclubDoor, queueArrivals, queueAt, queueWalkSpeed, type ArrivalLayout, type QueueArrival } from '../core/library/city/shops/queue';
+import { ADVANCE_S, nightclubDoor, queueAt, queueScene, queueWalkSpeed, type ArrivalLayout, type QueueArrival, type QueuePrev } from '../core/library/city/shops/queue';
 import type { ShopFrame, ShopSlot } from '../core/library/city/shops/slots';
 import type { ShopView } from '../core/library/city/shops/view';
 import { hashString, mulberry32 } from '../core/library/scene-world';
@@ -52,20 +52,28 @@ export type QueueFrame = {
 
 // `t` : secondes relatives à la session (voir queueAt), jamais une heure Unix. `max` : nombre de personnes que la façade peut
 // montrer (queueLayout) ; les suivantes attendent hors de la vue (et ne partent vers la file que pour y arriver à temps).
-// `enterS` : durée de l'entrée d'une personne (entryScript, à sa vitesse de marche) ; `arrive` : géométrie des arrivées.
-export function queueFrame(seed: number, slotId: string, t: number, minutes: number, isOpen: boolean, max = MAX_QUEUE, enterS: (id: string) => number = () => ADVANCE_S, arrive?: Omit<ArrivalLayout, 'max'>): QueueFrame {
+// `enterS` : durée de l'entrée d'une personne (entryScript, à sa vitesse de marche) ; `arrive` : géométrie des arrivées, file et
+// arrivées tirées alors d'un même plan (queueScene), continu à travers un changement de minute (`prev`) ; sans `arrive`, file de
+// queueAt seule (aucune arrivée).
+export function queueFrame(seed: number, slotId: string, t: number, minutes: number, isOpen: boolean, max = MAX_QUEUE, enterS: (id: string) => number = () => ADVANCE_S, arrive?: Omit<ArrivalLayout, 'max'>, prev?: QueuePrev): QueueFrame {
   const shown = Math.max(0, max);
+  if (arrive) {
+    const s = queueScene(seed, slotId, t, minutes, isOpen, { ...arrive, max: shown }, prev);
+    const g = s.entered;
+    const total = g ? Math.min(ENTER_LOOKBACK_S, enterS(g.id)) : 0;
+    const ghost = g && t - g.at < total ? { id: g.id, outfitKey: g.outfitKey, c: t - g.at, p: (t - g.at) / total } : null;
+    return { members: s.members.map((m) => ({ id: m.id, outfitKey: m.outfitKey, pos: m.pos })), ghost, arrivals: s.arrivals };
+  }
   const q = queueAt(seed, slotId, t, minutes, isOpen).slice(0, shown);
   const members = q.map((m, i) => ({ id: m.id, outfitKey: m.outfitKey, pos: i + (1 - m.fade) }));
-  const prev = queueAt(seed, slotId, t - ENTER_LOOKBACK_S, minutes, isOpen)[0];
+  const head = queueAt(seed, slotId, t - ENTER_LOOKBACK_S, minutes, isOpen)[0];
   let ghost: QueueFrame['ghost'] = null;
-  if (prev && prev.entersAt <= t && prev.id !== q[0]?.id) {
-    const total = Math.min(ENTER_LOOKBACK_S, enterS(prev.id));
-    const c = t - prev.entersAt;
-    if (c < total) ghost = { id: prev.id, outfitKey: prev.outfitKey, c, p: c / total };
+  if (head && head.entersAt <= t && head.id !== q[0]?.id) {
+    const total = Math.min(ENTER_LOOKBACK_S, enterS(head.id));
+    const c = t - head.entersAt;
+    if (c < total) ghost = { id: head.id, outfitKey: head.outfitKey, c, p: c / total };
   }
-  const arrivals = arrive ? queueArrivals(seed, slotId, t, minutes, isOpen, { ...arrive, max: shown }) : [];
-  return { members, ghost, arrivals };
+  return { members, ghost, arrivals: [] };
 }
 
 // Entrée d'une personne : marche à sa vitesse (queueWalkSpeed) de la place 0 à la porte (`walkS`), demi-tour sur place jusqu'à
@@ -178,6 +186,12 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   const figures = useFigureRegistry();
   // Dernière place connue de chaque membre : qui avance d'un cran d'une image à l'autre marche, sinon il attend.
   const lastPos = useRef(new Map<string, number>());
+  // Minute (et ouverture) montrée, et celle d'avant avec l'instant de session du changement : la file reste continue quand sa
+  // longueur cible change à la minute (queueScene). Effet de bord idempotent pendant le rendu (même valeur, rien ne change).
+  const clock = useRef<{ minutes: number; open: boolean; prev?: QueuePrev } | null>(null);
+  if (!clock.current) clock.current = { minutes, open: isOpen };
+  else if (clock.current.minutes !== minutes || clock.current.open !== isOpen)
+    clock.current = { minutes, open: isOpen, prev: { minutes: clock.current.minutes, open: clock.current.open, since: Date.now() / 1000 - sessionT0 } };
   const slotX = (pos: number): number => doorX + away * (QUEUE_START + pos * pitch) * u;
   const posOf = (m: QueueFrame['members'][number]): number => m.pos;
   // Ghibli : pantin sans miroir (tourné par `yaw`) ; classique : miroir, le sprite regarde vers +x.
@@ -224,7 +238,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   };
   const arrive: Omit<ArrivalLayout, 'max'> = { doorX, away, startPx: QUEUE_START * u, pitchPx: pitch * u, width, doorXs };
   const frameAt = (now: number): QueueFrame =>
-    reduced ? (isOpen ? STILL_FRAME(id, max) : EMPTY_FRAME) : queueFrame(seed, id, now - sessionT0, minutes, isOpen, max, (gid) => entry(gid).end, arrive);
+    reduced ? (isOpen ? STILL_FRAME(id, max) : EMPTY_FRAME) : queueFrame(seed, id, now - sessionT0, minutes, isOpen, max, (gid) => entry(gid).end, arrive, clock.current?.prev);
   // Boucle : marche des personnes (transform, pose) ; un re-rendu seulement quand la file change de composition.
   const place = useMemo(
     () =>

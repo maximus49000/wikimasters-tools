@@ -131,60 +131,168 @@ export type QueueArrival = { id: string; outfitKey: string; joinAt: number; from
 // Entrée d'immeuble trop proche de la place visée (celle de l'immeuble même) : on n'en sort pas pour faire trois pas.
 const MIN_FROM_DOOR_PX = 40;
 
-// Personnes en route vers la file à `t` (secondes de session, même temps que queueAt). Avec M = min(longueur, max) places
-// visibles, l'entrée n° i (dans l'ordre des entrées à venir) rejoint la file visible quand l'entrée n° i − M a lieu : J = son
-// instant ; elle arrive alors à la place M (l'avancée d'un cran l'amène ensuite en M − 1, comme les autres). Celles qui sont
-// au-delà de `max` attendent hors champ : elles ne partent que pour arriver à leur J. Départ du bord du monde du côté de la file
-// (opposé à la porte) ; s'il est à plus de MAX_TRIP_PX, de l'entrée d'immeuble la plus proche au-delà de sa place (seuil puis
-// demi-tour, door-passage), à défaut du bord quand même (long trajet, jamais d'apparition en pleine rue). Un départ antérieur
-// au début de la session est permis : au montage, elle est déjà en route.
-export function queueArrivals(seed: number, slotId: string, t: number, minutes: number, isOpen: boolean, layout: ArrivalLayout): QueueArrival[] {
-  if (!isOpen) return [];
-  const M = Math.min(targetLength(minutes), Math.max(0, layout.max));
-  if (M === 0) return [];
+
+// Minute précédente telle que la scène l'a montrée : `minutes`, boîte ouverte ou non, et `since` (s, session) où la minute
+// courante a pris effet. Sans elle, la longueur cible est supposée constante (scène montée dans la minute).
+export type QueuePrev = { minutes: number; open: boolean; since: number };
+// `members` : personnes de la file visible, dans l'ordre (`pos` : place, fractionnaire pendant l'avancée d'un cran) ;
+// `arrivals` : personnes en route vers leur place ; `entered` : dernière personne visible entrée dans la porte (instant `at`).
+export type QueueSceneMember = { id: string; outfitKey: string; entersAt: number; pos: number };
+export type QueueScene = { members: QueueSceneMember[]; arrivals: QueueArrival[]; entered: { id: string; outfitKey: string; at: number } | null };
+
+type Entry = { id: string; at: number; outfitKey: string };
+type Trip = { fromX: number; fromDoor: boolean; toX: number; dur: number };
+// Plan d'une personne : instant J où elle rejoint la file (toujours l'instant d'une entrée ; -∞ : avant la fenêtre), place à J,
+// départ S = J − durée du trajet.
+type Plan = { J: number; S: number; pos: number; trip: Trip | null; speed: number };
+const LOOKBACK_S = 240; // au-delà, tout le monde est entré (6 places × 30 s au plus) : la fenêtre ne remonte pas plus loin
+const EMPTY_SCENE: QueueScene = { members: [], arrivals: [], entered: null };
+
+// Scène de la file à `t` (secondes de session, même temps que queueAt) : file visible et arrivées, d'un seul plan.
+// Chaque personne (une entrée à venir) rejoint la file à l'instant d'une entrée, la première où il y a de la place (moins de
+// M = min(longueur cible, max) personnes visibles devant elle), et part de façon à y arriver à cet instant : du bord du monde du
+// côté de la file (opposé à la porte) ; s'il est à plus de MAX_TRIP_PX, de l'entrée d'immeuble la plus proche au-delà de sa place
+// (seuil puis demi-tour, door-passage), à défaut du bord quand même (long trajet, jamais d'apparition en pleine rue). Celles qui
+// sont au-delà de `max` attendent hors champ. Sans changement de minute, la file visible est celle de queueAt (M premières).
+// Changement de longueur à la minute (`prev`) : qui était déjà en route ou dans la file selon l'ancienne minute (départ avant
+// `since`) garde son plan — personne ne disparaît, une file trop longue se vide par la porte sans être remplie ; les autres
+// suivent la nouvelle longueur sans partir avant `since` — une file qui s'allonge (ou qui ouvre) se remplit d'arrivées à pied.
+export function queueScene(seed: number, slotId: string, t: number, minutes: number, isOpen: boolean, layout: ArrivalLayout, prev?: QueuePrev): QueueScene {
+  if (!isOpen) return EMPTY_SCENE;
+  const cap = Math.max(0, layout.max);
+  const M1 = Math.min(targetLength(minutes), cap);
+  const change = prev && prev.since <= t ? prev : undefined;
+  const M0 = change ? (change.open ? Math.min(targetLength(change.minutes), cap) : 0) : M1;
+  const tb = change ? change.since : Infinity;
   const base = (seed ^ hashString(`queue:${slotId}`)) >>> 0;
-  const { doorX, away, startPx, pitchPx, width, doorXs } = layout;
-  const toX = doorX + away * (startPx + M * pitchPx);
-  const dir = (-away) as 1 | -1;
-  const edgeX = away > 0 ? width + WORLD_MARGIN : -WORLD_MARGIN;
-  const toEdge = Number.isFinite(width) ? Math.abs(edgeX - toX) : Infinity;
-  let fromX = edgeX;
-  let fromDoor = false;
-  if (toEdge > MAX_TRIP_PX) {
-    let best: number | null = null;
-    for (const x of doorXs) {
-      const d = (x - toX) * away;
-      if (d >= MIN_FROM_DOOR_PX && d <= MAX_TRIP_PX && (best === null || d < (best - toX) * away)) best = x;
+  const trip = tripOf(layout);
+  const maxDur = Math.max(trip(0, MIN_SPEED).dur, trip(cap + 1, MIN_SPEED).dur);
+  const tw = Math.min(t, tb) - LOOKBACK_S;
+  const E = entriesAfter(base, tw, t + maxDur, cap + 2);
+  const speeds = E.map((e) => queueWalkSpeed(seed, slotId, e.id));
+
+  // Plans de tous, avec la longueur `Mof(x)` selon l'instant et un départ au plus tôt `notBefore` ; les `upTo + 1` premiers plans
+  // sont repris de `keep` (engagés).
+  const planAll = (Mof: (x: number) => number, notBefore: number, keep: (Plan | null)[] | null, upTo: number): (Plan | null)[] => {
+    const plans: (Plan | null)[] = [];
+    let lastJ = -Infinity;
+    const Mw = Mof(tw);
+    for (let k = 0; k < E.length; k++) {
+      if (keep && k <= upTo) {
+        const p = keep[k] ?? null;
+        plans.push(p);
+        if (p) lastJ = p.J;
+        continue;
+      }
+      // Déjà dans la file au début de la fenêtre (tête de file d'alors, entrée bien avant t).
+      if (k < Mw && lastJ === -Infinity && plans.every((p) => p !== null)) {
+        plans.push({ J: -Infinity, S: -Infinity, pos: k, trip: null, speed: speeds[k]! });
+        continue;
+      }
+      let plan: Plan | null = null;
+      for (let m = 0; m < k && plan === null; m++) {
+        const x = E[m]!.at;
+        if (x < lastJ) continue;
+        // Visibles devant elle à x (arrivés, pas encore entrés) et avancée en cours (dernière entrée d'une personne visible).
+        let ahead = 0;
+        let last = -Infinity;
+        for (let j = 0; j < k; j++) {
+          const p = plans[j];
+          if (!p) continue;
+          if (E[j]!.at <= x) last = Math.max(last, E[j]!.at);
+          else if (p.J <= x) ahead++;
+        }
+        if (ahead >= Mof(x)) continue;
+        const pos = ahead + 1 - Math.min(1, Math.max(0, (x - last) / ADVANCE_S));
+        const tr = trip(pos, speeds[k]!);
+        if (x - tr.dur < notBefore) continue;
+        plan = { J: x, S: x - tr.dur, pos, trip: tr, speed: speeds[k]! };
+      }
+      plans.push(plan);
+      if (plan) lastJ = plan.J;
     }
-    if (best !== null) {
-      fromX = best;
-      fromDoor = true;
-    } else if (!Number.isFinite(width)) fromX = toX + away * MAX_TRIP_PX; // monde sans bord (scène d'essai) : départ au plafond
+    return plans;
+  };
+
+  let plans: (Plan | null)[];
+  if (!change) plans = planAll(() => M1, -Infinity, null, -1);
+  else {
+    // Plan de l'ancienne minute (longueur M0 pour toujours), engagé jusqu'à la dernière personne partie avant `since`.
+    const old = planAll(() => M0, -Infinity, null, -1);
+    let upTo = -1;
+    old.forEach((p, k) => {
+      if (p && p.S < tb) upTo = k;
+    });
+    plans = planAll((x) => (x < tb ? M0 : M1), tb, old, upTo);
   }
-  const dist = Math.abs(fromX - toX);
-  const extra = fromDoor ? THRESHOLD_S + TURN_S : 0;
-  const horizon = t + dist / MIN_SPEED + extra; // J au-delà : personne n'est encore parti
-  const upcoming = upcomingAt(base, t, M, horizon);
-  const out: QueueArrival[] = [];
-  for (let i = M; i < upcoming.length; i++) {
-    const joinAt = upcoming[i - M]!.at;
-    if (joinAt > horizon) break;
-    const e = upcoming[i]!;
-    const speed = queueWalkSpeed(seed, slotId, e.id);
-    const passage = passageAt({ fromX, toX, dir, speed, fromDoor, toDoor: false }, t - (joinAt - dist / speed - extra));
-    if (passage) out.push({ id: e.id, outfitKey: e.outfitKey, joinAt, fromX, fromDoor, toX, dir, speed, passage });
+
+  let last = -Infinity;
+  for (let k = 0; k < E.length; k++) if (plans[k] && E[k]!.at <= t) last = Math.max(last, E[k]!.at);
+  const fade = Math.min(1, Math.max(0, (t - last) / ADVANCE_S));
+  const dir = (-layout.away) as 1 | -1;
+  const members: QueueSceneMember[] = [];
+  const arrivals: QueueArrival[] = [];
+  let entered: QueueScene['entered'] = null;
+  for (let k = 0; k < E.length; k++) {
+    const p = plans[k];
+    const e = E[k]!;
+    if (!p) continue;
+    if (e.at <= t) {
+      if (!entered || e.at > entered.at) entered = { id: e.id, outfitKey: e.outfitKey, at: e.at };
+      continue;
+    }
+    if (p.J <= t) members.push({ id: e.id, outfitKey: e.outfitKey, entersAt: e.at, pos: members.length + 1 - fade });
+    else if (p.S <= t && p.trip) {
+      const { fromX, fromDoor, toX } = p.trip;
+      const passage = passageAt({ fromX, toX, dir, speed: p.speed, fromDoor, toDoor: false }, t - p.S);
+      if (passage) arrivals.push({ id: e.id, outfitKey: e.outfitKey, joinAt: p.J, fromX, fromDoor, toX, dir, speed: p.speed, passage });
+    }
   }
-  return out;
+  return { members, arrivals, entered };
 }
 
-// Entrées à venir (instant > t), dans l'ordre, jusqu'à ce que l'entrée n° (k − M) dépasse `horizon` (8 cycles au plus).
-function upcomingAt(base: number, t: number, M: number, horizon: number): { id: string; at: number; outfitKey: string }[] {
-  let { cycle, offset } = cycleAt(base, t);
-  const out: { id: string; at: number; outfitKey: string }[] = [];
-  for (let n = 0; n < 8; n++, cycle++) {
+// Personnes en route vers la file (voir queueScene).
+export function queueArrivals(seed: number, slotId: string, t: number, minutes: number, isOpen: boolean, layout: ArrivalLayout, prev?: QueuePrev): QueueArrival[] {
+  return queueScene(seed, slotId, t, minutes, isOpen, layout, prev).arrivals;
+}
+
+// Trajet jusqu'à la place `pos` (bord du monde ou entrée d'immeuble, voir queueScene) et sa durée à `speed`.
+function tripOf(layout: ArrivalLayout): (pos: number, speed: number) => Trip {
+  const { doorX, away, startPx, pitchPx, width, doorXs } = layout;
+  const edgeX = away > 0 ? width + WORLD_MARGIN : -WORLD_MARGIN;
+  return (pos, speed) => {
+    const toX = doorX + away * (startPx + pos * pitchPx);
+    const toEdge = Number.isFinite(width) ? Math.abs(edgeX - toX) : Infinity;
+    let fromX = edgeX;
+    let fromDoor = false;
+    if (toEdge > MAX_TRIP_PX) {
+      let best: number | null = null;
+      for (const x of doorXs) {
+        const d = (x - toX) * away;
+        if (d >= MIN_FROM_DOOR_PX && d <= MAX_TRIP_PX && (best === null || d < (best - toX) * away)) best = x;
+      }
+      if (best !== null) {
+        fromX = best;
+        fromDoor = true;
+      } else if (!Number.isFinite(width)) fromX = toX + away * MAX_TRIP_PX; // monde sans bord (scène d'essai) : départ au plafond
+    }
+    return { fromX, fromDoor, toX, dur: Math.abs(fromX - toX) / speed + (fromDoor ? THRESHOLD_S + TURN_S : 0) };
+  };
+}
+
+// Entrées postérieures à `from`, dans l'ordre, jusqu'à en avoir `extra` au-delà de `until` (8 cycles au plus).
+function entriesAfter(base: number, from: number, until: number, extra: number): Entry[] {
+  let { cycle, offset } = cycleAt(base, from);
+  const out: Entry[] = [];
+  let beyond = 0;
+  for (let n = 0; n < 8 && beyond < extra; n++, cycle++) {
     const entries = cycleEntries(base, cycle);
-    for (const e of entries) if (offset + e.at > t) out.push({ ...e, at: offset + e.at });
-    if (out.length > M && out[out.length - 1 - M]!.at > horizon) break;
+    for (const e of entries) {
+      const at = offset + e.at;
+      if (at <= from) continue;
+      out.push({ ...e, at });
+      if (at > until && ++beyond >= extra) break;
+    }
     offset += cycleLength(entries);
   }
   return out;
