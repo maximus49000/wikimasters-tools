@@ -210,23 +210,29 @@ export function VehicleSprite({ vehicle, sky, lights }: { vehicle: Vehicle; sky:
           )}
         </g>
       );
-    case 'car':
+    case 'car': {
+      // Longueur de la voiture générée (défaut 40) : caisse, cabine et roues suivent ; hauteur inchangée.
+      const L = vehicle.len ?? 40;
+      const h = L / 2;
+      const cab = Math.min(22, L * 0.55);
+      const wx = h - 9;
       return (
         <g>
-          <rect x={-20} y={-13} width={40} height={9} rx={3} fill={body} />
-          <rect x={-11} y={-21} width={22} height={9} rx={3} fill={body} />
-          <rect x={-8} y={-19} width={7} height={6} fill={glass} opacity={0.85} />
-          <rect x={1} y={-19} width={7} height={6} fill={glass} opacity={0.85} />
-          <circle cx={-11} cy={-3} r={4} fill="#222" />
-          <circle cx={11} cy={-3} r={4} fill="#222" />
+          <rect x={-h} y={-13} width={L} height={9} rx={3} fill={body} />
+          <rect x={-cab / 2} y={-21} width={cab} height={9} rx={3} fill={body} />
+          <rect x={-cab / 2 + 3} y={-19} width={cab / 2 - 4} height={6} fill={glass} opacity={0.85} />
+          <rect x={1} y={-19} width={cab / 2 - 4} height={6} fill={glass} opacity={0.85} />
+          <circle cx={-wx} cy={-3} r={4} fill="#222" />
+          <circle cx={wx} cy={-3} r={4} fill="#222" />
           {lights && (
             <g data-headlight="">
-              <circle cx={20} cy={-9} r={2.5} fill="#FFE9A0" />
-              <path d="M20 -9 L42 -4 L42 -14Z" fill="#FFE9A0" opacity={0.25} />
+              <circle cx={h} cy={-9} r={2.5} fill="#FFE9A0" />
+              <path d={`M${h} -9 L${h + 22} -4 L${h + 22} -14Z`} fill="#FFE9A0" opacity={0.25} />
             </g>
           )}
         </g>
       );
+    }
     default: {
       // Exhaustivité : une nouvelle sorte de véhicule doit être dessinée ici.
       const never: never = vehicle.kind;

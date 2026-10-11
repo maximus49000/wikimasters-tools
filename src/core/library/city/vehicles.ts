@@ -8,7 +8,8 @@ export type Lane = 'near' | 'far';
 export const LANE_DIR: Record<Lane, 1 | -1> = { near: 1, far: -1 };
 export type VehicleKind = 'car' | 'bus' | 'van' | 'bike';
 // `rider` : tenue du cycliste (vélos seulement).
-export type Vehicle = { id: string; lane: Lane; kind: VehicleKind; color: string; speed: number; phase: number; u: number; scale: number; rider?: Outfit };
+// `len` : longueur d'une voiture générée (sprite classique allongé ou raccourci, défaut 40).
+export type Vehicle = { id: string; lane: Lane; kind: VehicleKind; color: string; speed: number; phase: number; u: number; scale: number; rider?: Outfit; len?: number };
 
 // Demi-longueur des sprites (repère du sprite, avant échelle) : carrosserie ou roues, sans le faisceau des phares.
 export const VEHICLE_HALF: Record<VehicleKind, number> = { car: 20, bus: 34, van: 23, bike: 12 };

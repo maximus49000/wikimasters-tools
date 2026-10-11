@@ -10,6 +10,8 @@
 import { hashString, mulberry32 } from '../../scene-world';
 import { outfitFor, type Outfit } from '../people';
 import { temperamentOf, type Temperament } from './temperament';
+import { carSpeedFactor, carStream, nextCar, type CarSpec, type CarStream } from './cars';
+import { carExtent } from './car-art';
 import { lightColorAt, newWalker, stepLight, stepWalker, type PushLight, type Walker } from './crossing';
 
 export type Track = 'near' | 'far' | 'bike';
@@ -42,6 +44,7 @@ export type Agent = {
   vmax: number; // px/s
   color: string;
   rider?: Outfit;
+  car?: CarSpec; // fiche générée (voitures seulement)
   event?: string; // clé de l'événement de rue d'origine
   h: Temperament;
   s: number;
@@ -60,6 +63,10 @@ export type Agent = {
   passing: string | null; // id du véhicule arrêté qu'il dépasse
   pulled: boolean; // rangé devant une ambulance
   hazard: boolean;
+  pitch: number; // tangage (rad, > 0 : nez qui plonge)
+  ppitch: number;
+  lean: number; // inertie des occupants (> 0 : penchés en avant)
+  plean: number;
 };
 
 export type ScheduledArrival = { key: string; kind: Extract<AgentKind, 'bus' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike'>; track: Track; start: number; half?: number };
@@ -91,6 +98,7 @@ export type TrafficWorld = {
   walkerAt: number;
   walkerRng: () => number;
   roster: number; // incrémenté quand la liste des agents change
+  cars: CarStream; // suite des voitures générées, partagée par toutes les voies
 };
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -126,6 +134,7 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     walkerAt: 0,
     walkerRng: mulberry32(o.seed ^ hashString('tr-walkers')),
     roster: 0,
+    cars: carStream(o.seed ^ hashString('cars')),
   };
   w.light.since = w.t - 60;
   w.light.log.push({ t: w.t - 60, color: 'green' });
@@ -138,9 +147,13 @@ function newAgent(w: TrafficWorld, kind: AgentKind, track: Track, extra: Partial
   const seed = (w.seed * 7919 + w.serial * 104729) >>> 0;
   const r = mulberry32(seed ^ 0x51ed);
   const h = temperamentOf(r);
-  const scale = kind === 'car' || kind === 'van' ? 0.9 + r() * 0.2 : 1;
-  const half = (extra.half ?? KIND_HALF[kind] * VEHICLE_SCALE * scale * (track === 'far' ? FAR_SHRINK : 1)) * w.unit;
-  const v0 = KIND_V0[kind] * w.unit * (kind === 'ambulance' || kind === 'tram' ? 1 : h.want);
+  // Voiture : fiche tirée de la suite au moment de la création (après le test de place : aucune fiche perdue) ; sa longueur
+  // (+ pare-chocs) et son type règlent la demi-longueur et la vitesse voulue.
+  const car = kind === 'car' ? nextCar(w.cars) : undefined;
+  const scale = car ? 1 : kind === 'van' ? 0.9 + r() * 0.2 : 1;
+  const far = track === 'far' ? FAR_SHRINK : 1;
+  const half = (extra.half ?? (car ? carExtent(car) * VEHICLE_SCALE * far : KIND_HALF[kind] * VEHICLE_SCALE * scale * far)) * w.unit;
+  const v0 = KIND_V0[kind] * w.unit * (kind === 'ambulance' || kind === 'tram' ? 1 : h.want) * (car ? carSpeedFactor(car.arch) : 1);
   const a: Agent = {
     id: `tr-${w.serial++}`,
     kind,
@@ -151,6 +164,7 @@ function newAgent(w: TrafficWorld, kind: AgentKind, track: Track, extra: Partial
     vmax: v0,
     color: COLORS[Math.floor(r() * COLORS.length)]!,
     ...(kind === 'bike' ? { rider: outfitFor('ordinary', mulberry32(seed ^ 0xb1ce)) } : {}),
+    ...(car ? { car } : {}),
     h,
     s: -half,
     ps: -half,
@@ -168,6 +182,10 @@ function newAgent(w: TrafficWorld, kind: AgentKind, track: Track, extra: Partial
     passing: null,
     pulled: false,
     hazard: false,
+    pitch: 0,
+    ppitch: 0,
+    lean: 0,
+    plean: 0,
     ...extra,
   };
   a.half = half;
@@ -211,7 +229,8 @@ function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
     const mean = (track === 'bike' ? 9 : 2.1) / d;
     // Prochaine tentative : intervalle tiré (pelotons serrés ou espacés), quelle que soit la place disponible.
     w.spawnAt[track] = t + Math.max(0.6, -Math.log(1 - r() * 0.98) * mean);
-    const half = KIND_HALF[kind] * VEHICLE_SCALE * (track === 'far' ? FAR_SHRINK : 1) * 1.1 * w.unit;
+    // Place d'entrée : la fiche d'une voiture n'est tirée qu'à sa création, d'où le plus grand encombrement possible (60/2 + 4,2).
+    const half = (kind === 'car' ? 34.2 : KIND_HALF[kind] * 1.1) * VEHICLE_SCALE * (track === 'far' ? FAR_SHRINK : 1) * w.unit;
     if (!entryFree(w, track, half)) continue;
     const a = newAgent(w, kind, track);
     if (kind === 'bus') { a.stops = [sOfX(w, track, w.busStop[track === 'far' ? 'far' : 'near'])]; a.stopFor = [8, 14]; }
@@ -327,6 +346,13 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
       me.cmd += (target - me.cmd) * Math.min(1, DT * 3);
       if (gap < 1.5 * u || me.stop !== null) me.cmd = Math.min(me.cmd, target);
       me.v = Math.max(0, me.v + me.cmd * DT);
+      // Tangage amorti (nez qui plonge au freinage, arrière qui s'assied à l'accélération) et inertie des occupants, plus
+      // lente que la caisse ; bornés (rattrapage après un onglet en arrière-plan).
+      me.ppitch = me.pitch;
+      me.plean = me.lean;
+      const acc = me.v <= 0 && me.cmd < 0 ? 0 : me.cmd / u;
+      me.pitch = clamp(me.pitch + (-acc * 0.0006 - me.pitch) * Math.min(1, DT * 6), -0.06, 0.06);
+      me.lean = clamp(me.lean + (-acc * 0.03 - me.lean) * Math.min(1, DT * 4), -1.5, 1.5);
       // Aucun chevauchement, même avec un retard de perception : on ne dépasse jamais l'arrière du véhicule de devant.
       let next = me.s + me.v * DT;
       if (lead && me.passing !== lead.id) {
@@ -393,9 +419,9 @@ export function warmTraffic(o: { width: number; seed: number; unit: number; star
 }
 
 // Position d'affichage interpolée entre les deux derniers pas (`nowS` ≥ w.t − DT).
-export function agentView(w: TrafficWorld, a: Agent, nowS: number): { x: number; lat: number } {
+export function agentView(w: TrafficWorld, a: Agent, nowS: number): { x: number; lat: number; pitch: number; lean: number } {
   const f = clamp((nowS - w.t) / DT + 1, 0, 1);
-  return { x: xOfS(w, a.track, lerp(a.ps, a.s, f)), lat: lerp(a.plat, a.lat, f) };
+  return { x: xOfS(w, a.track, lerp(a.ps, a.s, f)), lat: lerp(a.plat, a.lat, f), pitch: lerp(a.ppitch, a.pitch, f), lean: lerp(a.plean, a.lean, f) };
 }
 // Freine (feux stop) : décélération franche ou arrêt.
 export const braking = (a: Agent, unit: number): boolean => a.cmd < -6 * unit || (a.v < 2 * unit && a.stop !== 'delivery');

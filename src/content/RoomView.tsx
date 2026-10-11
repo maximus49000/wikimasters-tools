@@ -13,6 +13,7 @@ import { HomeArt, SmallArt } from './furniture-art-home';
 import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
 import { FigureContext, FigureRegistry } from './figure/figure-host';
+import { CarContext, CarRegistry } from './vehicle/car-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, GlassDrops, glassRect } from './window-art';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
@@ -104,6 +105,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const worldId = `${useId()}-world`.replace(/:/g, '');
   // Cache des sprites du pantin (Ghibli) : un par pièce ; les figures sont des <image>, rien n'est hébergé dans le DOM.
   const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`), [worldId]);
+  // Sprites peints des voitures Ghibli : même cycle de vie.
+  const cars = useMemo(() => new CarRegistry(`${worldId}-car`), [worldId]);
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
   // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
@@ -389,11 +392,13 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     () => (
       <g id={`${worldId}-actors`} data-window-actors="">
         <FigureContext.Provider value={figures}>
-          <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherClock} />
+          <CarContext.Provider value={cars}>
+            <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherClock} />
+          </CarContext.Provider>
         </FigureContext.Provider>
       </g>
     ),
-    [worldId, figures, room.scene, room.id, width, wallH, view.sky, view.minutes, gloom, rainy, city, forcedNight, weatherClock],
+    [worldId, figures, cars, room.scene, room.id, width, wallH, view.sky, view.minutes, gloom, rainy, city, forcedNight, weatherClock],
   );
   // La fenêtre soulevée n'a plus de vue à sa place (sa copie porte la sienne) : seul son cadre estompé reste sur le mur.
   const shownGlasses = glasses.filter((_, i) => windows[i]!.id !== drag?.id);

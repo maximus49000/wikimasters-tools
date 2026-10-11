@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advance, agentView, createTraffic, warmTraffic, xOfS, type Agent, type TrafficEnv, type TrafficWorld } from '../../../../../src/core/library/city/traffic/engine';
+import { carExtent } from '../../../../../src/core/library/city/traffic/car-art';
 import { temperamentOf } from '../../../../../src/core/library/city/traffic/temperament';
 import { mulberry32 } from '../../../../../src/core/library/scene-world';
 
@@ -119,5 +120,47 @@ describe('moteur de circulation', () => {
     const v0 = agentView(w, a, w.t - 0.1).x;
     const v1 = agentView(w, a, w.t).x;
     expect(Number.isFinite(v0) && Number.isFinite(v1)).toBe(true);
+  });
+});
+
+describe('voitures générées', () => {
+  it('chaque voiture a sa fiche ; 10 voitures d’affilée (toutes voies) sans type répété ; longueur tirée de la fiche', () => {
+    // Moteur à froid, observé dès le départ : chaque voiture créée est vue (au démarrage à chaud, celles déjà sorties
+    // laisseraient des trous dans la suite).
+    const w = createTraffic({ width: 1080, seed: 5, unit: 1, startS: T0 });
+    const cars: Agent[] = [];
+    const seen = new Set<string>();
+    const t0 = w.t;
+    for (let t = t0; t < t0 + 900 && cars.length < 40; t += 0.5) {
+      advance(w, t, env(1));
+      for (const a of w.agents)
+        if (a.kind === 'car' && !seen.has(a.id)) {
+          seen.add(a.id);
+          cars.push(a);
+        }
+    }
+    cars.sort((p, q) => Number(p.id.slice(3)) - Number(q.id.slice(3)));
+    expect(cars.length).toBeGreaterThan(20);
+    for (const a of cars) {
+      expect(a.car).toBeDefined();
+      const far = a.track === 'far' ? 0.9 : 1;
+      expect(a.half).toBeCloseTo(carExtent(a.car!) * 0.85 * far, 5);
+    }
+    // Ordre de création = ordre de la suite : le rang de la fiche (seed) croît avec le numéro d'agent.
+    for (let i = 0; i + 10 <= cars.length; i++) expect(new Set(cars.slice(i, i + 10).map((a) => a.car!.arch)).size).toBe(10);
+  });
+  it('tangage et inertie : bornés, finis, nez qui plonge au freinage', () => {
+    const w = world(1080, 8, env(1));
+    let plunged = false;
+    for (let t = T0; t < T0 + 1800; t += 2) {
+      advance(w, t, env(1));
+      for (const a of w.agents) {
+        expect(Number.isFinite(a.pitch) && Number.isFinite(a.lean)).toBe(true);
+        expect(Math.abs(a.pitch)).toBeLessThanOrEqual(0.06);
+        expect(Math.abs(a.lean)).toBeLessThanOrEqual(1.5);
+        if (a.cmd < -20 && a.pitch > 0.01) plunged = true;
+      }
+    }
+    expect(plunged).toBe(true);
   });
 });

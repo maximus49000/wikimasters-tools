@@ -12,6 +12,11 @@ import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
 import { DEFAULT_RIDER, PersonSprite, VehicleSprite, tone } from './city-sprites';
 import { useFigureRegistry } from './figure/figure-host';
+import { createPuffs, emitPuffs, forgetPuffSources } from '../core/library/city/traffic/exhaust';
+import { carArt } from '../core/library/city/traffic/car-art';
+import { useCarRegistry } from './vehicle/car-host';
+import { ExhaustPuffs, placePuffs } from './vehicle/exhaust-puffs';
+import { GhibliCar, placeCar } from './vehicle/ghibli-car';
 import { GhibliBike, crankPhase, riderPose } from './figure/ghibli-cyclist';
 import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -35,8 +40,9 @@ export function useTraffic(o: { width: number; seed: number; unit: number; env: 
   return ref.current.handle;
 }
 
-// Échelle d'un véhicule (px par unité de sprite) et ordonnée selon sa voie et son décalage latéral.
-const kOf = (a: Agent, m: CityMetrics): number => m.unit * STREET_SCALE.vehicle * (a.event ? 1 : a.scale) * (a.track === 'far' ? FAR_SHRINK : 1);
+// Échelle d'un véhicule (px par unité de sprite) et ordonnée selon sa voie et son décalage latéral. Voiture générée :
+// échelle 1 (sa longueur est dans sa fiche).
+const kOf = (a: Agent, m: CityMetrics): number => m.unit * STREET_SCALE.vehicle * (a.event || a.car ? 1 : a.scale) * (a.track === 'far' ? FAR_SHRINK : 1);
 const BIKE_TRACK_DY = 2;
 function yOf(a: Agent, lat: number, m: CityMetrics): number {
   const gap = m.laneY.near - m.laneY.far;
@@ -44,13 +50,20 @@ function yOf(a: Agent, lat: number, m: CityMetrics): number {
   if (a.track === 'bike') return m.laneY.near + BIKE_TRACK_DY * m.unit - lat * gap * 0.3;
   return m.laneY.near - lat * gap;
 }
-const transformOf = (w: TrafficWorld, a: Agent, m: CityMetrics, now: number): string => {
+// Voiture Ghibli (`painted`) : jamais retournée (GhibliCar porte le sens), tressaute sur les pavés et tangue au freinage.
+const transformOf = (w: TrafficWorld, a: Agent, m: CityMetrics, now: number, painted = false): string => {
   const v = agentView(w, a, now);
   const k = kOf(a, m);
+  if (painted) {
+    const dir = TRACK_DIR[a.track];
+    const bump = Math.sin((a.dist / k) * 0.13 + a.seed) * 0.12 * Math.min(1, a.v / (30 * m.unit)) * k;
+    return `translate(${v.x.toFixed(1)} ${(yOf(a, v.lat, m) + bump).toFixed(2)}) scale(${k.toFixed(3)}) rotate(${(v.pitch * dir * (180 / Math.PI)).toFixed(2)})`;
+  }
   return `translate(${v.x.toFixed(1)} ${yOf(a, v.lat, m).toFixed(1)}) scale(${(TRACK_DIR[a.track] * k).toFixed(3)} ${k.toFixed(3)})`;
 };
 // Véhicule d'ambiance vu par les sprites actuels.
-const asVehicle = (a: Agent): Vehicle => ({ id: a.id, lane: a.track === 'far' ? 'far' : 'near', kind: a.kind === 'van' || a.kind === 'bus' || a.kind === 'bike' ? a.kind : 'car', color: a.color, speed: a.vmax, phase: 0, u: 0, scale: a.scale, ...(a.rider ? { rider: a.rider } : {}) });
+const asVehicle = (a: Agent): Vehicle => ({ id: a.id, lane: a.track === 'far' ? 'far' : 'near', kind: a.kind === 'van' || a.kind === 'bus' || a.kind === 'bike' ? a.kind : 'car', color: a.color, speed: a.vmax, phase: 0, u: 0, scale: a.scale, ...(a.rider ? { rider: a.rider } : {}), ...(a.car ? { len: a.car.L } : {}) });
+const paintedCar = (a: Agent, ghibli: boolean): boolean => ghibli && a.kind === 'car' && a.car !== undefined;
 // Demi-longueur dessinée (repère du sprite) : feux à l'arrière, détresse aux deux bouts.
 const SPRITE_HALF: Record<string, number> = { car: 20, van: 23, bus: 34, bike: 9, tram: 66, ambulance: 21, 'garbage-truck': 34, 'delivery-bike': 9 };
 
@@ -73,7 +86,11 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
   const [, setRoster] = useState(w.roster);
   const root = useRef<SVGGElement | null>(null);
   const figures = useFigureRegistry();
+  const cars = useCarRegistry();
   const seen = useRef(w.roster);
+  // Fumée d'échappement (Ghibli) : pool fixe de la voie.
+  const puffs = useRef(createPuffs(48)).current;
+  const smoke = useRef<SVGGElement | null>(null);
   const place = useMemo(
     () => (now: number): void => {
       const t = still ? frozenT : now;
@@ -84,19 +101,41 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
       }
       const el = root.current;
       if (!el) return;
+      const alive = new Set<string>();
       for (const node of el.children) {
         const id = node.getAttribute('data-life-id');
         const a = id ? w.agents.find((x) => x.id === id) : undefined;
         if (!a) continue;
-        node.setAttribute('transform', transformOf(w, a, metrics, t));
+        const painted = paintedCar(a, ghibli);
+        node.setAttribute('transform', transformOf(w, a, metrics, t, painted));
+        if (painted) {
+          // Voiture Ghibli : roues, occupants, images peintes ; feu stop ; bouffées au pot.
+          const k = kOf(a, metrics);
+          const dir = TRACK_DIR[a.track];
+          const view = agentView(w, a, t);
+          const carNode = node.querySelector('[data-ghibli-car]');
+          if (carNode && !still) placeCar(figures, cars, carNode, { car: a.car!, dist: a.dist / k, v: a.v / k, lean: view.lean, seed: a.seed }, dir, t);
+          node.querySelector('[data-brake]')?.setAttribute('opacity', braking(a, w.unit) ? '1' : '0');
+          if (!still) {
+            alive.add(a.id);
+            const ex = carArt(a.car!).exhaust;
+            emitPuffs(puffs, { id: a.id, x: view.x + ex.x * k * dir, y: yOf(a, view.lat, metrics) + ex.y * k, k, acc: a.cmd, v: a.v, unit: w.unit, dir }, t);
+          }
+          continue;
+        }
         const brake = node.querySelector(':scope > [data-brake]');
         if (brake) brake.setAttribute('opacity', braking(a, w.unit) ? '1' : '0');
         const hazard = node.querySelector(':scope > [data-hazard]');
         if (hazard) hazard.setAttribute('opacity', a.hazard && Math.floor(t * 1.6) % 2 === 0 ? '1' : '0');
         if (ghibli && a.kind === 'bike' && !still) poseFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), riderPose(1, crankPhase(a.dist / kOf(a, metrics))));
       }
+      if (ghibli) {
+        forgetPuffSources(puffs, alive);
+        placePuffs(smoke.current?.firstElementChild ?? null, puffs, t);
+        cars.flush();
+      }
     },
-    [w, handle, metrics, still, frozenT, ghibli, figures],
+    [w, handle, metrics, still, frozenT, ghibli, figures, cars, puffs],
   );
   useWallClockLoop(place, [place]);
   // Mouvement réduit : un seul placement après le montage.
@@ -113,18 +152,21 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
     <g data-traffic-lane={lane} ref={root}>
       {order.map((a) => {
         const ev = a.event ? eventsByKey.get(a.event) : undefined;
-        const half = SPRITE_HALF[a.kind] ?? 20;
+        const half = a.car ? a.car.L / 2 : (SPRITE_HALF[a.kind] ?? 20);
+        const painted = paintedCar(a, ghibli);
         return (
-          <g key={a.id} data-life-id={a.id} data-vehicle="" data-kind={a.kind} data-lane={a.track} data-active="true" transform={transformOf(w, a, metrics, now)}>
-            {ev ? (
+          <g key={a.id} data-life-id={a.id} data-vehicle="" data-kind={a.kind} data-lane={a.track} data-active="true" transform={transformOf(w, a, metrics, now, painted)}>
+            {painted ? (
+              <GhibliCar car={a.car!} dir={TRACK_DIR[a.track]} sky={sky} rainy={rainy} lights={lights} still={still} />
+            ) : ev ? (
               <CityEventSprite event={ev} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} />
             ) : ghibli && a.kind === 'bike' ? (
               <GhibliBike outfit={a.rider ?? DEFAULT_RIDER} color={tone(a.color, sky)} ink={tone('#3B3F4A', sky)} sky={sky} rainy={rainy} dir={1} phase={still ? 0 : crankPhase(a.dist / kOf(a, metrics))} lights={lights} />
             ) : (
               <VehicleSprite vehicle={asVehicle(a)} sky={sky} lights={lights} />
             )}
-            {a.kind !== 'bike' && a.kind !== 'delivery-bike' && <circle data-brake="" cx={-half + 1.2} cy={-9} r={1.5} fill="#FF3B2F" opacity={braking(a, w.unit) ? 1 : 0} />}
-            {(a.kind === 'van' || a.kind === 'car') && (
+            {!painted && a.kind !== 'bike' && a.kind !== 'delivery-bike' && <circle data-brake="" cx={-half + 1.2} cy={-9} r={1.5} fill="#FF3B2F" opacity={braking(a, w.unit) ? 1 : 0} />}
+            {!painted && (a.kind === 'van' || a.kind === 'car') && (
               <g data-hazard="" opacity={0} fill="#FFB020">
                 <circle cx={-half + 1.2} cy={-11.5} r={1.3} />
                 <circle cx={half - 1.2} cy={-11.5} r={1.3} />
@@ -133,6 +175,11 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
           </g>
         );
       })}
+      {ghibli && (
+        <g ref={smoke}>
+          <ExhaustPuffs pool={puffs} />
+        </g>
+      )}
     </g>
   );
 }
