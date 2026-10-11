@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { BLANK_SPRITE, FigureContext, FigureRegistry, spriteKey, type Palette } from '../../../src/content/figure/figure-host';
 import { GhibliFigure, figurePalette, hideFigure, poseFigure } from '../../../src/content/figure/ghibli-figure';
-import { keyString } from '../../../src/core/library/figure/bake';
+import { anchorsOf, keyString } from '../../../src/core/library/figure/bake';
 import { skyAt, sunTimes } from '../../../src/core/library/sky';
 import type { Outfit } from '../../../src/core/library/city/people';
 
@@ -13,7 +13,7 @@ import type { Outfit } from '../../../src/core/library/city/people';
 const o: Outfit = { skin: '#F2C9A5', hair: 'short', hairColor: '#4a2e1e', hatColor: '#000000', top: 'sweater', topColor: '#C0463A', bottom: 'jeans', bottomColor: '#243044', accessory: 'none', accessoryColor: '#5A6B7A' };
 const sky = skyAt(12 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
 const night = skyAt(23 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
-const key = { sig: 'short.long.pants.none.n', yaw: 0, gait: 'walk' as const, phase: 0, head: 0 };
+const key = { sig: 'short.long.pants.none.n.n', yaw: 0, gait: 'walk' as const, phase: 0, head: 0, arms: 'swing' as const, lean: 0 };
 const pal: Palette = figurePalette(o, sky, false);
 const reg = (opts: { max?: number; perFrame?: number } = {}): { r: FigureRegistry; pk: string } => {
   const r = new FigureRegistry('t', opts);
@@ -23,12 +23,15 @@ const fig = (): Element => document.createElementNS('http://www.w3.org/2000/svg'
 
 describe('palette', () => {
   it('mêmes cases que la tenue (éclairé + ombre), encre et sol ; la nuit change la palette', () => {
-    for (const s of ['skin', 'top', 'bottom', 'hair', 'hat', 'acc', 'shoe', 'umb']) {
+    for (const s of ['skin', 'top', 'bottom', 'hair', 'hat', 'acc', 'shoe', 'umb', 'vest', 'band', 'apron']) {
       expect(pal[`f-${s}`]).toBeTruthy();
       expect(pal[`fs-${s}`]).toBeTruthy();
     }
     expect(pal['f-ink']).toBeTruthy();
     expect(pal['f-ground']).toBe('#3a2f5a');
+    // Tenues de travail : gilet orange, bande claire, tablier écru (de jour, teinte inchangée).
+    expect([pal['f-vest'], pal['f-band'], pal['f-apron']].map((c) => c!.toUpperCase())).toEqual(['#F28C28', '#E8E8E0', '#F4F1EA']);
+    expect(pal['fs-vest']).not.toBe(pal['f-vest']);
     const r = new FigureRegistry('t');
     expect(r.addPalette(figurePalette(o, night, false))).not.toBe(r.addPalette(pal));
     expect(r.addPalette({ ...pal })).toBe(r.addPalette(pal));
@@ -279,5 +282,69 @@ describe('figure Ghibli', () => {
     rerender(night);
     expect(node.getAttribute('data-key')).toBe(spriteKey(pn, key));
     unmount();
+  });
+  const r2 = (n: number): number => Math.round(n * 100) / 100;
+  const heldAt = (node: Element, anchor: string): [number, number] => {
+    const m = /^translate\(([-\d.e]+) ([-\d.e]+)\)$/.exec(node.querySelector(`[data-held="${anchor}"]`)!.getAttribute('transform')!)!;
+    return [r2(Number(m[1])), r2(Number(m[2]))];
+  };
+  it('objet tenu : posé à la main au rendu, suit la pose', () => {
+    const r = new FigureRegistry('t', { perFrame: 10 });
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <FigureContext.Provider value={r}>
+          <svg>
+            <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} work="vest" initial={{ yaw: 0, gait: 'stand', phase: 0, head: 0, arms: 'raise' }} held={[{ anchor: 'handR', node: <circle r={1} /> }]} />
+          </svg>
+        </FigureContext.Provider>,
+      ),
+    );
+    const node = host.querySelector('[data-figure]')!;
+    const sig = node.getAttribute('data-sig')!;
+    expect(sig.split('.')).toHaveLength(6);
+    expect(sig.endsWith('.v')).toBe(true);
+    // L'objet suit l'<image>, dans le même repère (pieds à l'origine).
+    expect(node.firstElementChild!.tagName).toBe('image');
+    const held = node.querySelector('[data-held="handR"]')!;
+    expect(held.previousElementSibling!.tagName).toBe('image');
+    expect(held.querySelector('circle')).not.toBeNull();
+    const k0 = { sig, yaw: 0, gait: 'stand' as const, phase: 0, head: 0, arms: 'raise' as const, lean: 0 };
+    expect(heldAt(node, 'handR')).toEqual(anchorsOf(k0).handR.map(r2));
+    const pk = node.getAttribute('data-palette')!;
+    const k1 = { ...k0, arms: 'down' as const };
+    r.ensure(pk, k1);
+    poseFigure(r, node, { yaw: 0, gait: 'stand', phase: 0, head: 0, arms: 'down' });
+    expect(node.getAttribute('data-key')).toBe(spriteKey(pk, k1));
+    expect(heldAt(node, 'handR')).not.toEqual(anchorsOf(k0).handR.map(r2));
+    expect(heldAt(node, 'handR')).toEqual(anchorsOf(k1).handR.map(r2));
+    // Caché : l'objet aussi ; remis en place : de nouveau visible, à la main.
+    hideFigure(r, node);
+    expect(held.getAttribute('visibility')).toBe('hidden');
+    poseFigure(r, node, { yaw: 0, gait: 'stand', phase: 0, head: 0, arms: 'raise' });
+    expect(held.hasAttribute('visibility')).toBe(false);
+    expect(heldAt(node, 'handR')).toEqual(anchorsOf(k0).handR.map(r2));
+    act(() => root.unmount());
+    host.remove();
+  });
+  it('objet tenu d’une figure cachée : caché dès le rendu', () => {
+    const r = new FigureRegistry('t');
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <FigureContext.Provider value={r}>
+          <svg>
+            <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} hidden initial={{ yaw: 0, gait: 'stand', phase: 0, head: 0 }} held={[{ anchor: 'head', node: <rect width={1} height={1} /> }]} />
+          </svg>
+        </FigureContext.Provider>,
+      ),
+    );
+    expect(host.querySelector('[data-held="head"]')!.getAttribute('visibility')).toBe('hidden');
+    act(() => root.unmount());
+    host.remove();
   });
 });

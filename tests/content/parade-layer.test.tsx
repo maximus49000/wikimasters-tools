@@ -119,12 +119,8 @@ describe('foule de spectateurs', () => {
   it('jour ordinaire : aucun spectateur', () => {
     expect(count(mount(11, ORDINARY), '[data-parade-crowd]')).toBe(0);
   });
-  // Opacité intermédiaire : seulement pour qui passe l'encadrement d'une porte d'immeuble.
-  const fadingAwayFromDoor = (c: Element): number =>
-    [...c.querySelectorAll('[data-parade-crowd] [data-spectator]')].filter((e) => {
-      const o = e.getAttribute('opacity');
-      return o !== null && Number(o) > 0 && Number(o) < 1 && e.getAttribute('data-door') !== 'true';
-    }).length;
+  // Aucun fondu de groupe : on entre et on sort par le seuil d'une porte (<svg> rogné) ou par un bord du monde.
+  const fadingAwayFromDoor = (c: Element): number => [...c.querySelectorAll('[data-parade-crowd] [data-spectator]')].filter((e) => e.getAttribute('opacity') !== null).length;
   it('à 9 h : des spectateurs arrivent à pied (pas animé), aucun fondu sur place', () => {
     const c = mount(9);
     expect(count(c, WALKING)).toBeGreaterThan(0);

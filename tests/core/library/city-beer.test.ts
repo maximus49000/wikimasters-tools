@@ -14,6 +14,7 @@ import {
 } from '../../../src/core/library/city/beer';
 import { absMinute, beerStandsFor, decorSetsFor, itemPhase } from '../../../src/core/library/city/install';
 import { dayNumber } from '../../../src/core/library/city/shops/hours';
+import { YAW_BACK, YAW_FRONT, facingYaw } from '../../../src/core/library/figure/gait';
 
 const W = 1440;
 const H = 600;
@@ -133,7 +134,7 @@ describe('queueAt : positions', () => {
       }
     }
   }, 40000);
-  it('entre et sort hors champ ou par une entrée d’immeuble (fondu à la porte seulement)', () => {
+  it('entre et sort hors champ ou par une entrée d’immeuble (seuil de la porte, jamais de fondu)', () => {
     const s = sched(2);
     for (const c of s.customers.slice(0, 300)) {
       const first = customerAt(s, c, c.walkIn + 1e-6);
@@ -146,13 +147,43 @@ describe('queueAt : positions', () => {
       else expect(first.x < 0 || first.x > W).toBe(true);
       if (c.toDoor) expect(DOORS.some((d) => Math.abs(d - last.x) < 0.5)).toBe(true);
       else expect(last.x < 0 || last.x > W).toBe(true);
-      // Fondu seulement à l'encadrement d'une porte, jamais en file ni au comptoir.
-      for (const t of [c.arrive, (c.arrive + c.start) / 2, (c.start + c.end) / 2]) expect(customerAt(s, c, t).fade).toBeUndefined();
+      // Jamais de fondu ; seuil de la porte (de face en sortant, de dos en rentrant) seulement au bout du trajet.
+      for (const t of [c.walkIn - 0.01, c.walkIn + 1e-6, c.arrive, (c.arrive + c.start) / 2, (c.start + c.end) / 2, c.leave - 1e-6, c.leave + 0.01]) expect('fade' in customerAt(s, c, t)).toBe(false);
+      if (c.fromDoor) expect([first.sill! > 0.99, first.yaw]).toEqual([true, YAW_FRONT]);
+      else expect(first.sill).toBeUndefined();
+      if (c.toDoor) expect([last.sill! > 0.99, last.yaw]).toEqual([true, YAW_BACK]);
+      else expect(last.sill).toBeUndefined();
+      for (const t of [c.arrive, (c.start + c.end) / 2, c.end + 1e-4]) expect(customerAt(s, c, t).sill).toBeUndefined();
+      // En file : tourné vers le comptoir ; au comptoir (après les pas et le demi-tour) : de dos, face au serveur.
+      const w = customerAt(s, c, (c.arrive + c.start) / 2);
+      if (c.start - c.arrive > 1 / 60) expect(w.yaw).toBe(facingYaw(s.stand.x - w.x < 0 ? -1 : 1));
+      expect([customerAt(s, c, c.end - 1e-4).yaw, customerAt(s, c, c.end - 1e-4).gait]).toEqual([YAW_BACK, 'stand']);
+      expect(customerAt(s, c, c.start + 2 / 60).gait).toBe('walk');
       expect(customerAt(s, c, (c.start + c.end) / 2).mode).toBe('being-served');
       expect(customerAt(s, c, c.end + 1e-4).drinking).toBe(true);
       expect(customerAt(s, c, c.arrive - 1e-4).drinking).toBe(false);
     }
   });
+  it('la file qui avance : la phase des pas (walked) ne recule jamais', () => {
+    const s = sched(1);
+    const dt = 0.25 / 60;
+    let moved = 0;
+    let prev = new Map<string, number>();
+    for (const [from, to] of [[OPEN + 5, OPEN + 40], [absMinute(DAY, 1230), absMinute(DAY, 1250)]] as const) {
+      for (let t = from; t < to; t += dt) {
+        const now = new Map(queueAt(s, t).filter((p) => p.mode === 'waiting').map((p) => [p.id, p.walked] as const));
+        for (const [id, w] of now) {
+          const b = prev.get(id);
+          if (b !== undefined) {
+            expect(w, `${id} @${t}`).toBeGreaterThanOrEqual(b - 1e-9);
+            if (w > b) moved++;
+          }
+        }
+        prev = now;
+      }
+    }
+    expect(moved).toBeGreaterThan(0);
+  }, 40000);
   it('la file s’étire du côté tiré du stand, en s’éloignant du comptoir', () => {
     const s = sched(0);
     const side = s.stand.side;
@@ -189,6 +220,15 @@ describe('serveurs', () => {
         }
       }
       expect(serverAt(v, v.depart + 30).mode).toBe('absent');
+      // Pantin : de face derrière le comptoir ; seuil de la porte seulement au bout du trajet, jamais de fondu.
+      expect(serverAt(v, OPEN + 5)).toMatchObject({ yaw: YAW_FRONT, gait: 'stand' });
+      for (const t of [v.walkIn - 1, v.walkIn + 1e-6, OPEN + 5, v.gone - 1e-6, v.gone + 1]) expect('fade' in serverAt(v, t)).toBe(false);
+      const a = serverAt(v, v.walkIn + 1e-6);
+      const b = serverAt(v, v.gone - 1e-6);
+      if (v.fromDoor) expect([a.sill! > 0.99, a.yaw]).toEqual([true, YAW_FRONT]);
+      else expect(a.sill).toBeUndefined();
+      if (v.toDoor) expect([b.sill! > 0.99, b.yaw]).toEqual([true, YAW_BACK]);
+      else expect(b.sill).toBeUndefined();
     }
     // Tirage : certains repartent à la fermeture, d'autres restent jusqu'à l'équipe de nuit (2 h 30).
     const all = [0, 1, 2, 3, 4, 5].flatMap((k) => beerServers({ seed: SEED, stand: stands[k]!, day: DAY, width: W, unit: UNIT, doors: DOORS }));

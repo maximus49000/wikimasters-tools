@@ -74,6 +74,45 @@ Mesures sur le banc (`.superpowers/harness-ville`, paramètre `art=ghibli`), mon
 
 Captures auto-validées (Ghibli midi, soir, nuit, pluie ; classique pour comparaison ; zooms sur une porte, un client assis, la file), contrôle de chaque défaut visible avant PR, puis PR fusionnée et pré-prod. Pas de fiche WikiHow (une fiche globale à la fin de G7).
 
-## G3b et G3c
+## Bilan de G3a (fusionnée, PR #242)
 
-Chacune aura sa section détaillée dans ce fichier avant son plan, en reprenant le moteur de G3a : nouvelles poses (bras commandés par le geste, assis à une terrasse, sur l'échelle, au pas cadencé, à vélo), objets tenus rattachés à la main du squelette, passage au pantin des sites restants et des signes de fête.
+Les symboles `<use>` prévus en §2 se sont révélés trop coûteux (chaque changement de pose recopiait 45 éléments : 140 ms par image à 8 h) : les poses sont **peintes une fois en sprites PNG** (canvas, mêmes tracés) et chaque humain est un `<image>` (`src/content/figure/figure-host.tsx`, `ghibli-figure.tsx`). Palettes quantifiées au huitième de jour. Le passage d'une porte est commun (`src/content/door-passage.ts`). Restes pour G3b : arrivées de la file de la boîte depuis le bord, pas vif avant le demi-tour à sa porte, signes de fête.
+
+## G3b en détail : les gestes
+
+### 1. Moteur : bras, attitudes et points d'accroche
+
+- **Poses de bras** (`ArmPose`) choisies par le site, calculées par cinématique inverse à deux segments (épaule → coude → main, coude orienté vers le bas et l'extérieur) vers une **cible de main** dans le repère du corps (devant, haut, côté), une par bras : `swing` (balancement de marche, actuel), `down`, `reach`, `hold`, `up`, `work` (les cinq gestes des commerces, bras droit ; l'autre le long du corps, sauf `work` : deux mains), `crossed` (bras croisés), `raise` (bras droit levé), `cheer` (deux bras levés), `cup` (gobelet à hauteur de poitrine), `carry` (deux mains devant à la taille, une charge entre elles), `overhead` (deux mains au-dessus de la tête), `tow` (main droite en arrière, tire une charge), `guitar`, `mic`, `drum` (musiciens).
+- **Penché** (`lean` 0, 1, 2 : 0°, 8°, 16° vers l'avant) pour les gestes des commerces.
+- **Allure `climb`** (monter à l'échelle, de dos, genoux qui se lèvent en alternance, mains aux montants) ; **allure `seated`** déjà là (convives, enfant sur les épaules : jambes de part et d'autre de la nuque).
+- **Tenues de travail** dans la forme : gilet orange à bande (équipes), tablier blanc (serveurs, personnel de bouche) ; signature étendue.
+- **Points d'accroche** `anchorsOf(key)` : main droite, main gauche, centre de la tête, haut de la tête, nuque (pour l'enfant porté), en unités du sprite. Les **objets tenus** (accessoires des commerces, drapeaux, téléphone, gobelet, instruments, pièces de scène, cartons, barrières) gardent leur dessin actuel et sont posés à la main du pantin ; les **signes de fête** (couronne, ballon, panier, muguet, drapeau, coquelicot, serpentin, note) à la tête ou à la main.
+- La clé de sprite gagne `arms` et `lean`.
+
+### 2. Figures passées au pantin dans G3b
+
+- **Commerces** : gestes des employés et des clients (boucle `placeStaff` / `placeCustomers`, mêmes scripts `gestures.ts`), employés qui arrivent, lèvent le rideau (`overhead`), se relaient et repartent à pied (phase de marche tirée du temps et de la vitesse de la transition) ; équipe du chantier de l'enseigne (échelle, ancienne et nouvelle enseigne).
+- **Terrasses** : convives assis à leur table, gestes de table ; serveurs qui marchent, plateau en main.
+- **Boîte de nuit** : vigiles bras croisés ; **arrivées de la file depuis le bord du monde** (la personne qui rejoindra la file marche depuis le bord ou une porte proche, en avance de son arrivée) ; demi-tour à la porte sans pas vif (marche normale, demi-tour sur place ensuite).
+- **Défilé du 14 juillet, foule** : spectateurs debout bras levé (drapeau, téléphone, main), enfant sur les épaules, arrivée et départ à pied ; entrée et sortie par les portes avec le passage de seuil commun.
+- **Fête de la musique** : danseurs (rebond, bras levés), gobelets, serveurs des stands, files des stands, marcheurs ; musiciens (guitare, micro, tambour) qui arrivent à pied, montent sur la scène et jouent ; portes avec le passage de seuil commun.
+- **Équipes d'installation** : ouvriers (gilet) qui portent, tirent, tiennent, montent à l'échelle, ouvrier de la nacelle ; **porteurs du déménagement** ; **figurants des événements** de la ville (ouvriers, passants sous la pluie, groupes) ; **père Noël** sur les toits.
+- **Signes de fête** des passants (G3a les avait retirés en Ghibli).
+
+Les cyclistes (y compris le vélo porteur des équipes) et le cortège restent pour G3c.
+
+### 3. Mouvement et animation
+
+- Les sites qui animent aujourd'hui par SMIL (rebond des danseurs, balancement des musiciens, drapeau agité) gardent leur SMIL sur le groupe porteur ; le pantin y est dans une pose fixe (une seule image), seul l'objet ou le corps entier bouge.
+- Les sites qui ont une boucle posent le pantin à chaque image (marche selon la distance, gestes selon les scripts).
+- Mouvement réduit : poses fixes, aucune boucle.
+
+### 4. Performance, tests, vérification
+
+- Même méthode que G3a (banc, processeur ×4, monde 3 456 px) ; la foule d'une fête compte jusqu'à ≈ 200 personnes : mesurer un 14 juillet (défilé) et un 21 juin (rue de la musique) en plus d'un jour ordinaire. Objectif : pas plus de 10 ms au-dessus de `main` en Ghibli, classique inchangé à ±3 ms.
+- Tests : cibles de main atteintes (distance épaule-main ≤ longueur du bras, main près de sa cible), bras croisés devant le torse, signature étendue, points d'accroche, chaque site rend des pantins en Ghibli et son dessin actuel en classique, aucune nouvelle opacité de fondu, arrivées de la file depuis le bord.
+- Captures auto-validées (commerces, terrasse, boîte, 14 juillet, 21 juin, chantier, nacelle, déménagement, pluie), correction de chaque défaut visible avant la PR.
+
+## G3c
+
+Section détaillée écrite avant son plan : cortège du défilé (marcheurs au pas cadencé, instruments, fusils, porte-drapeaux, cavaliers) et cyclistes (vélos de la rue, vélo porteur), sur le moteur de G3a/G3b.

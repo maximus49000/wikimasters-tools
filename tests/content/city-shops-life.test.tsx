@@ -5,15 +5,19 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { StaffLayer, countShopSprites, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
-import { FigureRegistry } from '../../src/content/figure/figure-host';
+import { ShopCustomers, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectWorkers, countShopSprites, customerState, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeWorkers, staffCast } from '../../src/content/city-shops-life';
+import { ghibliGesture } from '../../src/content/shop-gesture-sprites';
+import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
+import { THRESHOLD_S } from '../../src/core/library/city/doorway';
+import { TURN_S } from '../../src/core/library/figure/gait';
 import { DOOR_SILL_HALF, DOOR_SILL_TOP, sillBox } from '../../src/content/door-passage';
 import { visitAt, visitsFor, type VisitLock } from '../../src/core/library/city/shops/customers';
 import { addDays, dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { SHOP_DEFS, SHOP_TYPE_IDS, type ShopTypeId } from '../../src/core/library/city/shops/catalog';
-import { ACCESSORY } from '../../src/core/library/city/shops/gestures';
+import { ACCESSORY, gestureAt, type Pose } from '../../src/core/library/city/shops/gestures';
+import type { WorkStep } from '../../src/core/library/city/shops/works';
 import { dayNumber, isOpenAt, rangesOf, ymdOfDay } from '../../src/core/library/city/shops/hours';
 import { streetOn } from '../../src/core/library/city/shops/lifecycle';
 import { shopFrame, shopSlotsFor } from '../../src/core/library/city/shops/slots';
@@ -174,10 +178,11 @@ describe('personnel : qui est visible (staffCast)', () => {
 
 describe('personnel : rendu (StaffLayer)', () => {
   const frame = shopFrame(slots[0]!, metrics.ground);
-  const draw = (type: ShopTypeId, date: YMD, minutes: number, reduced: boolean): HTMLDivElement =>
+  const draw = (type: ShopTypeId, date: YMD, minutes: number, reduced: boolean, ghibli = false): HTMLDivElement =>
     render(
       <svg>
         <StaffLayer
+          ghibli={ghibli}
           view={viewOf(type, date, minutes)}
           shifts={staffShiftsAt(SHOP_DEFS[type], SEED, 'shop-0', date)}
           frame={frame}
@@ -203,6 +208,12 @@ describe('personnel : rendu (StaffLayer)', () => {
     expect(c.querySelector('[data-staff-where="opening"][data-active="true"] [data-arm]')).not.toBeNull();
     // Le local est ouvert : quelqu'un est derrière la vitrine (l'ouvreur seul y est relevé au bout du geste).
     expect(c.querySelectorAll('[data-staff-window] [data-staff-where="inside"]').length).toBeGreaterThanOrEqual(1);
+  });
+  it('Ghibli : le rideau attend l’ouvreur (seuil + demi-tour), classique : il part tout de suite', () => {
+    const [open] = rangesOf(SHOP_DEFS.bakery, TUESDAY)[0]!;
+    const transitionOf = (c: HTMLElement): string => c.querySelector<SVGGElement>('[data-rolling-shutter] > g')!.style.transition;
+    expect(transitionOf(draw('bakery', TUESDAY, open, false))).toMatch(/ 0s$/);
+    expect(transitionOf(draw('bakery', TUESDAY, open, false, true))).toContain(`ease-in-out ${THRESHOLD_S + TURN_S}s`);
   });
   it('ouvreur seul : il est à la porte puis derrière la vitrine (relève posée par la boucle)', () => {
     const date = { y: 2026, m: 10, d: 10 };
@@ -349,7 +360,8 @@ describe('clients : portes et verrou', () => {
   it('passage rue → porte du local : pieds sur m.doorY, cadre large sur le seuil puis resserré sur la porte, ombre sur la porte', () => {
     const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
     let c0 = 0;
-    while (visitAt(v, W, c0 - v.phase)?.stage !== 'enter') c0 += 0.01;
+    for (let n = 0; visitAt(v, W, c0 - v.phase)?.stage !== 'enter' && n < 200000; n++) c0 += 0.01;
+    expect(visitAt(v, W, c0 - v.phase)?.stage).toBe('enter');
     // Début exact du seuil (dichotomie) : profondeur ≈ 0.
     let lo = c0 - 0.01;
     for (let i = 0; i < 30; i++) {
@@ -498,7 +510,7 @@ describe('clients : portes et verrou', () => {
       expect((n as SVGElement).style.transition).toBe('');
     }
   });
-  it('Ghibli : chaque client est un pantin (rue, porte, vitrine), sans miroir ni objet ; classique inchangé', () => {
+  it('Ghibli : chaque client est un pantin (rue, porte, vitrine), sans miroir ni objet du dessin classique ; classique inchangé', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
     try {
       writeArt('ghibli');
@@ -518,5 +530,238 @@ describe('clients : portes et verrou', () => {
     }
     const classic = life(600);
     expect(classic.querySelectorAll('[data-customer] [data-figure], [data-customer-inside] [data-figure]')).toHaveLength(0);
+  });
+});
+
+// ---------- G3b : gestes des commerces au pantin ----------
+// Clé affichée d'une figure : palette # sig|yaw|gait|phase|head|arms|lean.
+const keyOf = (fig: Element | null): string[] => (fig?.getAttribute('data-key') ?? '').split('#').pop()!.split('|');
+const shown = (n: Element | null): boolean => !!n && n.getAttribute('visibility') !== 'hidden' && n.getAttribute('display') !== 'none';
+
+describe('G3b : correspondance des gestes (ghibliGesture)', () => {
+  const pose = (p: Partial<Pose>): Pose => ({ arms: 'down', lean: 0, head: 'front', item: 'none', sway: 0, ...p });
+  it('bras : mêmes poses que le classique', () => {
+    for (const arms of ['down', 'reach', 'hold', 'up', 'work'] as const) expect(ghibliGesture(pose({ arms })).arms).toBe(arms);
+  });
+  it('penché : round(lean × 4) borné à 0..2 ; tête baissée : +1 (borné)', () => {
+    expect(ghibliGesture(pose({ lean: 0 })).lean).toBe(0);
+    expect(ghibliGesture(pose({ lean: 0.2 })).lean).toBe(1);
+    expect(ghibliGesture(pose({ lean: 0.5 })).lean).toBe(2);
+    expect(ghibliGesture(pose({ lean: -0.4 })).lean).toBe(0);
+    expect(ghibliGesture(pose({ lean: 0.1, head: 'down' })).lean).toBe(1);
+    expect(ghibliGesture(pose({ lean: 0.45, head: 'down' })).lean).toBe(2);
+    expect(ghibliGesture(pose({ head: 'down' })).head).toBe(0);
+  });
+  it('tête : de face 0, tournée de ±4 vers l’arrière (selon le côté regardé)', () => {
+    expect(ghibliGesture(pose({ head: 'front' })).head).toBe(0);
+    expect(ghibliGesture(pose({ head: 'turn' }), 1).head).toBe(4);
+    expect(ghibliGesture(pose({ head: 'turn' }), -1).head).toBe(-4);
+  });
+});
+
+describe('G3b : personnel, clients et chantier en pantins', () => {
+  const frame = shopFrame(slots[0]!, metrics.ground);
+  const NOW = 1_790_000_000_000;
+  const T = NOW / 1000;
+  const withFigures = (figures: FigureRegistry, node: ReactNode): ReactNode => <FigureContext.Provider value={figures}>{node}</FigureContext.Provider>;
+  const staffDraw = (figures: FigureRegistry, type: ShopTypeId, date: YMD, minutes: number, ghibli: boolean): HTMLDivElement =>
+    render(
+      withFigures(
+        figures,
+        <svg>
+          <StaffLayer
+            view={viewOf(type, date, minutes)}
+            shifts={staffShiftsAt(SHOP_DEFS[type], SEED, 'shop-0', date)}
+            frame={frame}
+            metrics={metrics}
+            minutes={minutes}
+            reduced={false}
+            date={date}
+            width={W}
+            sky={skyAt(minutes, times)}
+            rainy={false}
+            umbrella={false}
+            seed={SEED}
+            seats={[frame.window.w * 0.35, frame.window.w * 0.7]}
+            post={frame.window.w * 0.6}
+            ghibli={ghibli}
+          />
+        </svg>,
+      ),
+    );
+  // Pose deux fois, peinture entre les deux (poseFigure garde l'image tant que le sprite n'est pas peint).
+  const settle = (figures: FigureRegistry, f: () => void): void => {
+    f();
+    figures.flush();
+    f();
+  };
+
+  it('employé : pantin en tablier (métier de bouche), objet à la main pendant un geste « hold » ; classique inchangé', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('t3', { perFrame: 50 });
+    const c = staffDraw(figures, 'bakery', TUESDAY, 600, true);
+    const node = c.querySelector('[data-posed="staff"]')!;
+    const fig = node.querySelector('[data-figure]')!;
+    expect(fig.getAttribute('data-sig')!.endsWith('.a')).toBe(true);
+    expect(node.getAttribute('transform') ?? '').not.toMatch(/scale\(-/);
+    expect(node.querySelector('[data-arm], [data-pose-body]')).toBeNull();
+    const seed = Number(node.getAttribute('data-gesture-seed'));
+    let t = 0;
+    const holdsBread = (x: number): boolean => gestureAt('bakery', 'staff', x, seed).arms === 'hold' && gestureAt('bakery', 'staff', x, seed).item === 'hand';
+    for (let n = 0; !holdsBread(t) && n < 20000; n++) t += 0.1;
+    expect(holdsBread(t)).toBe(true);
+    const staff = collectPosedStaff(c);
+    settle(figures, () => placeStaff(staff, t, figures));
+    expect(keyOf(fig)[5]).toBe('hold');
+    expect(['2', '6']).toContain(keyOf(fig)[1]);
+    const hand = node.querySelector('[data-item-hand]')!;
+    expect(hand.querySelector(`[data-accessory="${ACCESSORY.bakery}"]`)).not.toBeNull();
+    expect(hand.closest('[data-held]')!.getAttribute('data-held')).toBe('handR');
+    expect(shown(hand)).toBe(true);
+    // Geste sans objet : la main est vide.
+    let u = 0;
+    for (let n = 0; gestureAt('bakery', 'staff', u, seed).item !== 'none' && n < 20000; n++) u += 0.1;
+    expect(gestureAt('bakery', 'staff', u, seed).item).toBe('none');
+    settle(figures, () => placeStaff(staff, u, figures));
+    expect(shown(hand)).toBe(false);
+    // Hors métier de bouche : sans tablier.
+    const books = staffDraw(figures, 'bookshop', TUESDAY, 15 * 60, true).querySelector('[data-posed="staff"] [data-figure]');
+    if (books) expect(books.getAttribute('data-sig')!.endsWith('.n')).toBe(true);
+    // Classique : le passant en pose, sans pantin.
+    const classic = staffDraw(figures, 'bakery', TUESDAY, 600, false);
+    expect(classic.querySelector('[data-posed="staff"] [data-arm]')).not.toBeNull();
+    expect(classic.querySelector('[data-figure]')).toBeNull();
+  });
+
+  it('employés à pied : sortent de la porte, rideau bras au-dessus de la tête, rentrent par la porte ; aucune opacité de fondu', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('t3w', { perFrame: 50 });
+    const [open] = rangesOf(SHOP_DEFS.bakery, TUESDAY)[0]!;
+    const c = staffDraw(figures, 'bakery', TUESDAY, open, true);
+    const member = c.querySelector('[data-staff-where="opening"][data-active="true"]')!;
+    expect(member).not.toBeNull();
+    expect((member as SVGElement).style.transition).toBe('');
+    expect(member.getAttribute('opacity')).toBeNull();
+    const street = member.querySelector('[data-staff-street]')!;
+    const door = member.querySelector('svg[data-staff-door]')!;
+    const walks = collectStaffWalks(c);
+    expect(walks.length).toBeGreaterThan(0);
+    // Début : dans la porte du local (seuil), pas sur le trottoir.
+    settle(figures, () => placeStaffWalks(walks, T + 0.3, metrics, figures));
+    expect(shown(door)).toBe(true);
+    expect(shown(street)).toBe(false);
+    // Puis devant le rideau, de dos, bras au-dessus de la tête.
+    settle(figures, () => placeStaffWalks(walks, T + 3, metrics, figures));
+    expect(shown(street)).toBe(true);
+    expect(shown(door)).toBe(false);
+    const k = keyOf(street.querySelector('[data-figure]'));
+    expect(k[5]).toBe('overhead');
+    expect(k[1]).toBe('12');
+    // Enfin rentré par la porte : plus rien de visible.
+    settle(figures, () => placeStaffWalks(walks, T + 30, metrics, figures));
+    expect(shown(street)).toBe(false);
+    expect(shown(door)).toBe(false);
+  });
+
+  it('employé qui arrive : marche de profil, phase réglée sur la distance, puis entre par la porte du local', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('t3a', { perFrame: 50 });
+    const shifts = staffShiftsAt(SHOP_DEFS.bakery, SEED, 'shop-0', TUESDAY);
+    const sh = shifts.find((s) => s.arriveAt > 60 && s.shutterUp === undefined) ?? shifts.find((s) => s.arriveAt > 60)!;
+    const m = Math.ceil(sh.arriveAt - 1);
+    const c = staffDraw(figures, 'bakery', TUESDAY, m, true);
+    const member = c.querySelector(`[data-staff-member="${sh.id}"][data-staff-where="walking-in"]`)!;
+    expect(member.getAttribute('data-active')).toBe('true');
+    const street = member.querySelector('[data-staff-street]')!;
+    const walks = collectStaffWalks(c);
+    const xs: number[] = [];
+    for (const dt of [10, 20, 30]) {
+      settle(figures, () => placeStaffWalks(walks, T + dt, metrics, figures));
+      expect(shown(street)).toBe(true);
+      const key = keyOf(street.querySelector('[data-figure]'));
+      expect(key[2]).toBe('walk');
+      expect(['0', '8']).toContain(key[1]);
+      xs.push(Number(/translate\(([-\d.]+)/.exec(street.getAttribute('transform')!)![1]));
+    }
+    const doorX = frame.door.x + frame.door.w / 2;
+    // Avance vers la porte, régulièrement.
+    expect(Math.abs(xs[2]! - doorX)).toBeLessThan(Math.abs(xs[0]! - doorX));
+    expect(Math.abs(xs[1]! - xs[0]! - (xs[2]! - xs[1]!))).toBeLessThan(0.5);
+    // Fin de la minute : seuil de la porte du local, puis caché (dans le local).
+    settle(figures, () => placeStaffWalks(walks, T + 58, metrics, figures));
+    expect(shown(member.querySelector('svg[data-staff-door]'))).toBe(true);
+    settle(figures, () => placeStaffWalks(walks, T + 61, metrics, figures));
+    expect(shown(street) || shown(member.querySelector('svg[data-staff-door]'))).toBe(false);
+  });
+
+  it('client à l’intérieur : pantin qui fait le geste, objet à la main pendant « hold » ; dans la rue en repartant, l’objet emporté', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('t3c', { perFrame: 50 });
+    const frames = new Map(slots.map((s) => [s.id, shopFrame(s, metrics.ground)]));
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const gates = new Map([[v.slotId, 1]]);
+    const c = render(withFigures(figures, <svg><ShopCustomers visits={[v]} frames={frames} views={[]} gates={gates} width={W} metrics={metrics} t0={0} sky={skyAt(600, times)} rainy={false} umbrella={false} ghibli /></svg>));
+    const nodes = new Map([...c.querySelectorAll('[data-life-id]')].map((n) => [n.getAttribute('data-life-id')!, n]));
+    let hold: number | null = null;
+    let carry: number | null = null;
+    for (let t = 0; t < 400 && (hold === null || carry === null); t += 0.1) {
+      const s = customerState(v, 1, W, t);
+      if (hold === null && s.on && s.stage === 'inside' && s.gesture?.arms === 'hold' && s.gesture.item === 'hand') hold = t;
+      if (carry === null && s.on && s.stage === 'out' && s.carry && s.passage?.stage === 'street') carry = t;
+    }
+    expect(hold).not.toBeNull();
+    expect(carry).not.toBeNull();
+    const inn = nodes.get(`${v.id}-in`)!;
+    settle(figures, () => placeCustomers(nodes, [v], gates, W, metrics, hold!, true, new Set(), { ghibli: true, figures }));
+    expect(inn.getAttribute('data-active')).toBe('true');
+    expect(keyOf(inn.querySelector('[data-figure]'))[5]).toBe('hold');
+    const hand = inn.querySelector('[data-item-hand]')!;
+    expect(hand.querySelector(`[data-accessory="${ACCESSORY.bakery}"]`)).not.toBeNull();
+    expect(shown(hand)).toBe(true);
+    const out = nodes.get(v.id)!;
+    settle(figures, () => placeCustomers(nodes, [v], gates, W, metrics, carry!, false, new Set(), { ghibli: true, figures }));
+    expect(out.getAttribute('data-active')).toBe('true');
+    const carried = out.querySelector('[data-item-carry]')!;
+    expect(carried.closest('[data-held]')!.getAttribute('data-held')).toBe('handR');
+    expect(shown(carried)).toBe(true);
+    expect(out.querySelector('[data-item]')).toBeNull();
+  });
+
+  it('chantier : ouvriers en gilet, escalade de dos, enseigne posée bras au-dessus de la tête, ancienne portée ; marche réglée sur la distance', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('t3k', { perFrame: 50 });
+    const view = (step: WorkStep, progress: number): ShopView => ({ ...viewOf('bakery', TUESDAY, 600), phase: 'works', works: { step, progress, kind: 'relet', carrying: 'sign' } });
+    const works = (step: WorkStep, progress: number, ghibli: boolean): ReactNode =>
+      withFigures(figures, <svg><ShopWorks view={view(step, progress)} frame={frame} change={null} width={W} metrics={metrics} sky={skyAt(600, times)} rainy={false} still={false} seed={SEED} ghibli={ghibli} /></svg>);
+    const pose = (c: Element, i: number): string[] => keyOf(c.querySelectorAll('[data-worker]')[i]!.querySelector('[data-figure]'));
+    const climb = render(works('climb', 0.5, true));
+    const sigs = [...climb.querySelectorAll('[data-worker] [data-figure]')].map((f) => f.getAttribute('data-sig')!);
+    expect(sigs).toHaveLength(2);
+    for (const s of sigs) expect(s.endsWith('.v')).toBe(true);
+    expect(pose(climb, 0)[2]).toBe('climb');
+    expect(pose(climb, 0)[1]).toBe('12');
+    const install = render(works('install', 0.5, true));
+    expect(pose(install, 0)[5]).toBe('overhead');
+    const leave = render(works('leave', 0.5, true));
+    expect(pose(leave, 1)[5]).toBe('carry');
+    for (const n of leave.querySelectorAll('[data-worker]')) expect(n.querySelector(':scope > g')!.getAttribute('transform') ?? '').not.toMatch(/scale\(-/);
+    // Marche : deux minutes de suite (transition de 30 s), la boucle pose la marche puis l'arrêt.
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    act(() => root.render(works('arrive', 0.2, true)));
+    act(() => root.render(works('arrive', 0.4, true)));
+    const crew = collectWorkers(host);
+    expect(crew).toHaveLength(2);
+    settle(figures, () => placeWorkers(crew, T + 10, figures));
+    expect(pose(host, 0)[2]).toBe('walk');
+    expect(['0', '8']).toContain(pose(host, 0)[1]);
+    settle(figures, () => placeWorkers(crew, T + 31, figures));
+    expect(pose(host, 0)[2]).toBe('stand');
+    // Classique inchangé.
+    const classic = render(works('climb', 0.5, false));
+    expect(classic.querySelector('[data-figure]')).toBeNull();
+    expect(classic.querySelectorAll('[data-worker]')).toHaveLength(2);
   });
 });

@@ -105,15 +105,15 @@ function Shutter({ frame, sky }: { frame: ShopFrame; sky: Sky }): ReactElement {
 
 // Rideau roulant (calque animé) : baissé, levé, ou en train de monter / descendre. Il glisse dans son coffre (un <svg> imbriqué
 // à la taille du rideau, qui le rogne) par une transition CSS de SHUTTER_S secondes quand l'état change à la minute ; aucune
-// transition en mouvement réduit. Levé, il reste dans le DOM (caché dans le coffre) pour que la descente parte d'en haut.
+// transition en mouvement réduit. `delay` (s) : le rideau attend que l'employé pantin soit arrivé sous lui. Levé, il reste dans le DOM (caché dans le coffre) pour que la descente parte d'en haut.
 export const SHUTTER_S = 5;
 export type ShutterState = 'up' | 'down' | 'rising' | 'falling';
-export function RollingShutter({ frame, sky, state, still }: { frame: ShopFrame; sky: Sky; state: ShutterState; still: boolean }): ReactElement {
+export function RollingShutter({ frame, sky, state, still, delay = 0 }: { frame: ShopFrame; sky: Sky; state: ShutterState; still: boolean; delay?: number }): ReactElement {
   const box = shutterBox(frame);
   const lowered = state === 'down' || state === 'falling';
   return (
     <svg data-rolling-shutter={state} x={box.x} y={box.y} width={box.w} height={box.h} overflow="hidden">
-      <g style={{ transform: `translate(0px, ${lowered ? '0' : (-box.h).toFixed(1)}px)`, transition: still ? undefined : `transform ${SHUTTER_S}s ease-in-out` }}>
+      <g style={{ transform: `translate(0px, ${lowered ? '0' : (-box.h).toFixed(1)}px)`, transition: still ? undefined : `transform ${SHUTTER_S}s ease-in-out ${delay}s` }}>
         <g transform={`translate(${-box.x} ${-box.y})`}>
           <Shutter frame={frame} sky={sky} />
         </g>

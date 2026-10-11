@@ -69,7 +69,7 @@ export const canvasJobRunner: JobRunner = async (job) => {
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.ceil(job.w * job.res));
   canvas.height = Math.max(1, Math.ceil(job.h * job.res));
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   ctx.setTransform(job.res, 0, 0, job.res, -job.x * job.res, 0);
   job.paint(ctx);

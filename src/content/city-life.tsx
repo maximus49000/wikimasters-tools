@@ -21,16 +21,17 @@ import { useArtStyle } from './art-setting';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
-import { CityEventSprite } from './city-event-sprites';
-import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, shopSpriteBudget, type PosedStaff, type Swap } from './city-shops-life';
+import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
+import { MarkHeld, markAnchor, markArms } from './festive-marks';
+import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
 import { FlypastLayer } from './flypast-sprite';
 import { InstallLayer } from './install-layer';
 import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
-import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
-import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
+import { collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type TerraceGuestNode, type Waiter } from './shop-terrace';
+import { LampSprite, PersonSprite, VehicleSprite, tone } from './city-sprites';
 import { SantaLayer } from './santa-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
@@ -261,7 +262,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
 
   // Décors de fête posés par des équipes (calendrier : jour de la scène et minute) ; les travailleurs (data-worker) comptent
   // dans le plafond des figurants (shopSpriteBudget).
-  const install = { width, height, seed, sky, still, date, minutes: city.minutes, metrics, rainy, lights };
+  const install = { width, height, seed, sky, still, date, minutes: city.minutes, metrics, rainy, lights, ghibli };
 
   const pedActive = useMemo(() => new Set(peds.filter((p) => p.u < pedestrianGate(p, intensity)).map((p) => p.id)), [peds, intensity]);
   const marks = useMemo(() => new Map(peds.map((p) => [p.id, festiveMark(p, intensity)] as const)), [peds, intensity]);
@@ -281,7 +282,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let staff: PosedStaff[] = [];
     let swaps: Swap[] = [];
     let waiters: Waiter[] = [];
+    // Convives de terrasse (assis, ou à pied pendant leur minute d'arrivée ou de départ) et porteur des tables (Ghibli).
+    let terraceGuests: TerraceGuestNode[] = [];
+    let carriers: Carrier[] = [];
     let crews: Crew[] = [];
+    // Ghibli : employés à pied (scripts porte → trottoir → porte) et ouvriers du chantier, posés par la boucle.
+    let staffWalks: WalkingStaff[] = [];
+    let workers: PlacedWorker[] = [];
     // Figures Ghibli de chaque passant (compagnons, puis lui-même, au même pas), trouvées à la collecte des nœuds.
     const pedFigs = new Map<string, Element[]>();
     // Nœuds de porte des habitants (<svg> imbriqués), par trajet.
@@ -308,7 +315,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         staff = collectPosedStaff(el);
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
+        terraceGuests = collectTerraceGuests(el);
+        carriers = collectCarriers(el);
         crews = collectMovers(el);
+        staffWalks = ghibli ? collectStaffWalks(el) : [];
+        workers = ghibli ? collectWorkers(el) : [];
         if (ghibli) {
           for (const p of peds) {
             const node = nodes.get(p.id);
@@ -337,7 +348,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         node?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
         if (ghibli && next) {
           const pose = pedPose(p, metrics, t, still);
-          for (const fig of pedFigs.get(p.id) ?? []) poseFigure(figures, fig, pose);
+          // Le chef du groupe (dernière figure) tient son signe de fête : bras `hold` pour un objet à la main.
+          const figs = pedFigs.get(p.id) ?? [];
+          const arms = markArms(marks.get(p.id));
+          figs.forEach((fig, i) => poseFigure(figures, fig, i === figs.length - 1 && arms !== 'swing' ? { ...pose, arms } : pose));
         }
       }
       for (const e of events.active) {
@@ -346,6 +360,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         node.setAttribute('transform', placementTransform(placeEvent(e, t, frame)));
         // Fondu des événements fixes (2 s à l'arrivée et au départ) ; n'écrire l'opacité que lorsqu'elle change.
         if (e.layer === 'fixed') setIfChanged(node, 'opacity', eventOpacity(e, t, still));
+        // Ghibli : pas des figurants du trottoir réglés sur leur chemin (le ripeur du camion garde sa pose).
+        else if (ghibli && e.layer === 'sidewalk') poseEventFigures(figures, node, e, t, metrics, still);
       }
       for (const trip of trips) {
         const node = nodes.get(trip.id);
@@ -375,12 +391,18 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       placeCustomers(nodes, visits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
       placeSwaps(swaps, t);
       if (!still) {
-        placeWaiters(waiters, t);
-        placeMovers(crews, t);
+        placeWaiters(waiters, t, metrics, ghibli ? figures : null);
+        placeCarriers(carriers, t, metrics, ghibli ? figures : null);
+        placeTerraceGuests(terraceGuests, t, metrics, ghibli ? figures : null);
+        placeMovers(crews, t, metrics, ghibli ? figures : null);
+        if (ghibli) {
+          placeStaffWalks(staffWalks, t, metrics, figures);
+          placeWorkers(workers, t, figures);
+        }
       }
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
       if (!still && Math.abs(t - posedAt) >= STAFF_POSE_S) {
-        placeStaff(staff, t);
+        placeStaff(staff, t, ghibli ? figures : null);
         posedAt = t;
       }
       first = false;
@@ -392,14 +414,14 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky, ghibli, figures]);
+  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky, ghibli, figures, marks]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
   const t0 = still ? frozen.current : Date.now() / 1000;
   const eventNode = (e: CityEvent): ReactElement => (
     <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)}>
-      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} />
+      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} walked={e.layer === 'sidewalk' ? eventWalked(e, t0, metrics) : 0} />
     </g>
   );
   const of = (pred: (e: CityEvent) => boolean): CityEvent[] => events.active.filter(pred);
@@ -465,7 +487,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         {fireworks.length > 0 && <g data-event-mask="skyline" mask={`url(#${maskBase}-skyline)`}>{fireworks.map(eventNode)}</g>}
         {cranes.length > 0 && <g data-event-mask="near" mask={`url(#${maskBase}-near)`}>{cranes.map(eventNode)}</g>}
         {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment' || e.id === 'bells').map(eventNode)}
-        <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} />
+        <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} ghibli={ghibli} />
         <FlypastLayer width={width} height={height} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} />
       </g>
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
@@ -475,7 +497,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             clients (derrière les vitrines et sur le trottoir). */}
         {shops.views.map((view, i) =>
           view.phase === 'works' ? (
-            <ShopWorks key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} change={shops.street[i]?.change ?? null} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} seed={seed} />
+            <ShopWorks key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} change={shops.street[i]?.change ?? null} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} seed={seed} ghibli={ghibli} />
           ) : null,
         )}
         {/* Décors de fête contre les façades : drapeaux d'entrée (install-layer.tsx). */}
@@ -501,6 +523,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               seed={seed}
               seats={visits.filter((v) => v.slotId === view.slot.id).map((v) => v.seat.x - frame.window.x)}
               post={interiorPost(type, frame.window.w, frame.window.h)}
+              ghibli={ghibli}
+              doorXs={doorCenters}
             />
           );
         })}
@@ -563,16 +587,19 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             seed={seed}
             sessionT0={frozen.current!}
             ghibli={ghibli}
+            width={width}
+            doorXs={doorCenters}
           />
         ))}
         {/* Déménagement : les porteurs (dessinés avant le camion, ils passent derrière lui en y entrant). */}
         {shops.views.map((view) => (
-          <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} />
+          <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} minutes={city.minutes} offset={shops.offsets.get(view.slot.id) ?? 0} ghibli={ghibli} />
         ))}
         {peds.map((p) => {
           // Présence affichée (pas la voulue) : mémorisée au premier rendu, puis changée seulement par la boucle, au bord.
           if (!shownPeds.current.has(p.id)) shownPeds.current.set(p.id, pedActive.has(p.id));
           const active = still ? pedActive.has(p.id) : shownPeds.current.get(p.id)!;
+          const mark = marks.get(p.id) ?? null;
           return (
             <g
               key={p.id}
@@ -580,7 +607,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-ped=""
               data-role={p.role}
               data-profile={p.profile}
-              data-mark={marks.get(p.id) ?? undefined}
+              data-mark={mark ?? undefined}
               data-active={active ? 'true' : 'false'}
               transform={pedTransform(p, metrics, width, t0, !ghibli)}
               opacity={active ? 1 : 0}
@@ -591,18 +618,26 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                   {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0, still)} hidden={!active} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
                 </g>
               ))}
-              {/* En Ghibli, pas de signes de fête avant G3b. */}
+              {/* Ghibli : le signe de fête est tenu par le pantin (accroche de la tête ou main droite, festive-marks). */}
               {ghibli ? (
-                <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pedPose(p, metrics, t0, still)} hidden={!active} />
+                <GhibliFigure
+                  outfit={p.outfit}
+                  sky={sky}
+                  rainy={rainy}
+                  umbrella={intensity.umbrellas}
+                  initial={{ ...pedPose(p, metrics, t0, still), arms: markArms(mark) }}
+                  hidden={!active}
+                  held={mark ? [{ anchor: markAnchor(mark, intensity.umbrellas), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} /> }] : undefined}
+                />
               ) : (
-                <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={marks.get(p.id)} />
+                <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={mark} />
               )}
             </g>
           );
         })}
         {of((e) => e.layer === 'sidewalk').map(eventNode)}
         {/* Foule du défilé du 14 juillet : au bord du trottoir, derrière les barrières (posées sur la chaussée) et les équipes. */}
-        <ParadeCrowd width={width} seed={seed} sky={sky} still={still} rainy={rainy} dayFests={dayFests} minutes={city.minutes} metrics={metrics} doorXs={doorXs} />
+        <ParadeCrowd width={width} seed={seed} sky={sky} still={still} rainy={rainy} dayFests={dayFests} minutes={city.minutes} metrics={metrics} doorXs={doorXs} ghibli={ghibli} />
         {/* Scène, équipes à l'échelle et porteurs : devant les passants (un passant passe toujours derrière une équipe). */}
         <InstallLayer {...install} part="crew" />
         {/* Camion de déménagement garé au bord du trottoir : devant les passants, derrière les lampadaires et les files. */}

@@ -2,10 +2,13 @@ import { WORLD_MARGIN, hashString, mulberry32 } from '../scene-world';
 import { absMinute, itemPhase, type BeerStand, type DecorSet } from './install';
 import { WALK_PACE, cityMetrics } from './metrics';
 import { outfitFor, type Outfit } from './people';
-import { pathAt, pathDir, pathLength, type PathPt } from './walk-path';
+import { TURN_S, YAW_BACK, YAW_FRONT, facingYaw, turnYaw, yawToward } from '../figure/gait';
+import { pathDir, walkAt, walkDuration, type PathPt, type WalkEnds } from './walk-path';
 
 // Stands de bière de la Fête de la musique (moteur pur, sans état ni Math.random) : service de 17 h à 1 h, file d'attente,
-// clients qui arrivent et repartent à pied, deux serveurs par stand. Les instants (`arrive`, `start`, …) sont des minutes
+// clients qui arrivent et repartent à pied (bout de la rue, hors champ, ou seuil d'une porte d'immeuble : jamais de fondu),
+// deux serveurs par stand. Pantins (walk-path.ts) : en file, tourné vers le comptoir ; au comptoir, de dos face au serveur ;
+// serveurs de face derrière le comptoir ; demi-tour sur place au bout de chaque trajet. Les instants (`arrive`, `start`, …) sont des minutes
 // ABSOLUES (absMinute : dayNumber × 1440 + minute, flottantes, continues à travers minuit) ; les vitesses sont en px/s.
 // Repère : `x` en px du monde ; `depth` en unités (hauteur de la scène / 340) SOUS le bord du trottoir, sur la chaussée
 // (y = curb + depth × unit) ; une profondeur négative est sur le trottoir (seuil des entrées d'immeuble).
@@ -27,6 +30,8 @@ export const SERVE_DEPTH = 23;
 export const QUEUE_DEPTH = 24;
 export const COUNTER_HALF = 26; // demi-largeur du comptoir
 export const SERVE_DX = 9; // place des deux serveurs (et des deux clients servis) de part et d'autre du centre
+// Rang fictif d'où part la phase des pas : `walked` croît quand la file avance (r diminue), jamais de pas à reculons.
+const QUEUE_FAR = 200;
 export const QUEUE_STEP = 7; // écart entre deux personnes de la file
 const QUEUE_GAP = 8; // tête de file : à QUEUE_GAP du bout du comptoir
 const CUSTOMER_LANE = 34; // couloir de marche des clients, devant la file
@@ -40,7 +45,6 @@ const SERVICE_S: readonly [number, number] = [11, 17]; // un serveur sert un cli
 const GAP_S: readonly [number, number] = [8, 14]; // une arrivée toutes les 8 à 14 s…
 const PEAK = { from: 1140, rise: 1200, fall: 1350, to: 1380, factor: 0.5 } as const; // … deux fois plus souvent de 19 h à 23 h
 const NEAR_DOOR = 160; // une entrée est « proche » à moins de NEAR_DOOR unités du stand
-const DOOR_FADE_S = 0.8; // fondu à l'encadrement de la porte (comme les habitants, doors.ts)
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 const smoothstep = (a: number, b: number, x: number): number => {
@@ -131,8 +135,8 @@ export function beerSchedule({ seed, stand, day, width, unit = 1, doors = [] }: 
     const join = rankAt(base, n, b.arrive);
     const pathIn = via(ends.from, slotPt(stand, unit, join), CUSTOMER_LANE);
     const pathOut = via(spotOf(stand, unit, b.server, SERVE_DEPTH), ends.to, CUSTOMER_LANE);
-    const walkIn = b.arrive - pathLength(pathIn, unit) / ends.speed * S;
-    const leave = b.end + pathLength(pathOut, unit) / ends.speed * S;
+    const walkIn = b.arrive - walkDuration(pathIn, unit, ends.speed, inEnds(stand, ends.fromDoor)) * S;
+    const leave = b.end + walkDuration(pathOut, unit, ends.speed, outEnds(ends.toDoor)) * S;
     maxIn = Math.max(maxIn, b.arrive - walkIn);
     maxOut = Math.max(maxOut, leave - b.arrive);
     customers.push({
@@ -142,6 +146,11 @@ export function beerSchedule({ seed, stand, day, width, unit = 1, doors = [] }: 
   });
   return { stand, day, unit, customers, maxIn, maxOut };
 }
+
+// Bouts des trajets d'un client : il finit tourné vers le comptoir (la file est du côté `side`) et repart du comptoir, de dos.
+const queueYaw = (st: BeerStand): number => facingYaw(st.side > 0 ? -1 : 1);
+const inEnds = (st: BeerStand, fromDoor: boolean): WalkEnds => ({ fromDoor, endYaw: queueYaw(st) });
+const outEnds = (toDoor: boolean): WalkEnds => ({ startYaw: YAW_BACK, toDoor });
 
 // Place continue (en crans) du client n dans la file à l'instant t : un cran par client arrivé avant lui et pas encore au
 // comptoir ; quand ce client part au comptoir, le cran s'efface en ADVANCE_S (la file avance d'un pas, sans saut).
@@ -156,41 +165,50 @@ function rankAt(list: readonly { start: number }[], n: number, t: number): numbe
 }
 
 export type QueueMode = 'walking-in' | 'waiting' | 'being-served' | 'leaving' | 'absent';
-// `rank` : rang dans la file (0 = en tête) pour 'waiting', sinon null ; `drinking` : repart avec sa bière ;
-// `fade` (0 à 1) : seulement à l'encadrement d'une porte.
-export type BeerPersonState = { id: string; mode: QueueMode; x: number; depth: number; dir: 1 | -1; rank: number | null; drinking: boolean; fade?: number };
+export type Gait = 'walk' | 'step' | 'stand';
+// `rank` : rang dans la file (0 = en tête) pour 'waiting', sinon null ; `drinking` : repart avec sa bière ; `yaw`, `gait`,
+// `walked` (px, phase des pas) : pantin ; `sill` (0 à 1) : seulement pendant le seuil d'une porte (door-passage.ts).
+export type BeerPersonState = { id: string; mode: QueueMode; x: number; depth: number; dir: 1 | -1; rank: number | null; drinking: boolean; yaw: number; gait: Gait; walked: number; sill?: number };
+const sillOf = (sill: number | undefined): { sill?: number } => (sill !== undefined ? { sill } : {});
 
 export function customerAt(sched: BeerSchedule, c: BeerCustomer, abs: number): BeerPersonState {
   const { stand, unit } = sched;
   const base = { id: c.id, rank: null, drinking: false };
   const toward = (x: number): 1 | -1 => (stand.x - x < 0 ? -1 : 1);
-  if (abs < c.walkIn) return { ...base, mode: 'absent', x: c.pathIn[0]!.x, depth: c.pathIn[0]!.d, dir: pathDir(c.pathIn, 0, unit), ...(c.fromDoor ? { fade: 0 } : {}) };
+  if (abs < c.walkIn) return { ...base, mode: 'absent', x: c.pathIn[0]!.x, depth: c.pathIn[0]!.d, dir: pathDir(c.pathIn, 0, unit), yaw: YAW_FRONT, gait: 'stand', walked: 0 };
   if (abs < c.arrive) {
-    const el = (abs - c.walkIn) * 60;
-    const p = pathAt(c.pathIn, el * c.speed, unit);
-    return { ...base, mode: 'walking-in', x: p.x, depth: p.d, dir: pathDir(c.pathIn, el * c.speed, unit), ...(c.fromDoor ? { fade: smoothstep(0, DOOR_FADE_S, el) } : {}) };
+    const w = walkAt(c.pathIn, unit, c.speed, inEnds(stand, c.fromDoor), (abs - c.walkIn) * 60);
+    return { ...base, mode: 'walking-in', x: w.x, depth: w.d, dir: pathDir(c.pathIn, w.walked, unit), yaw: w.yaw, gait: w.gait, walked: w.walked, ...sillOf(w.sill) };
   }
   if (abs < c.start) {
-    const p = slotPt(stand, unit, rankAt(sched.customers, c.n, abs));
+    const r = rankAt(sched.customers, c.n, abs);
+    const p = slotPt(stand, unit, r);
     let ahead = 0;
     for (let j = c.n - 1; j >= 0 && sched.customers[j]!.start > abs; j--) ahead++;
-    return { ...base, mode: 'waiting', x: p.x, depth: p.d, dir: toward(p.x), rank: ahead };
+    // La file avance d'un cran : quelques pas, la phase suit le déplacement le long de la file.
+    const moving = Math.abs(r - Math.round(r)) > 1e-6;
+    return { ...base, mode: 'waiting', x: p.x, depth: p.d, dir: toward(p.x), rank: ahead, yaw: facingYaw(toward(p.x)), gait: moving ? 'walk' : 'stand', walked: (QUEUE_FAR - r) * QUEUE_STEP * unit };
   }
   if (abs < c.end) {
+    // De la tête de file au comptoir (pas réglés sur la distance), demi-tour sur place, puis de dos face au serveur.
     const a = slotPt(stand, unit, rankAt(sched.customers, c.n, c.start));
     const b = spotOf(stand, unit, c.server, SERVE_DEPTH);
-    const k = smoothstep(0, 1, (abs - c.start) * 60 / SERVE_WALK_S);
+    const el = (abs - c.start) * 60;
+    const k = smoothstep(0, 1, el / SERVE_WALK_S);
     const x = lerp(a.x, b.x, k);
-    return { ...base, mode: 'being-served', x, depth: lerp(a.d, b.d, k), dir: toward(x) };
+    const dist = Math.hypot(b.x - a.x, (b.d - a.d) * unit);
+    const go = dist > 0 ? yawToward(b.x - a.x, (b.d - a.d) * unit) : YAW_BACK;
+    const st = { ...base, mode: 'being-served' as const, x, depth: lerp(a.d, b.d, k), dir: toward(x), walked: k * dist };
+    if (el < SERVE_WALK_S) return { ...st, yaw: go, gait: 'walk' };
+    if (el < SERVE_WALK_S + TURN_S && go !== YAW_BACK) return { ...st, yaw: turnYaw(go, YAW_BACK, (el - SERVE_WALK_S) / TURN_S), gait: 'step' };
+    return { ...st, yaw: YAW_BACK, gait: 'stand' };
   }
   if (abs < c.leave) {
-    const el = (abs - c.end) * 60;
-    const total = (c.leave - c.end) * 60;
-    const p = pathAt(c.pathOut, el * c.speed, unit);
-    return { ...base, drinking: true, mode: 'leaving', x: p.x, depth: p.d, dir: pathDir(c.pathOut, el * c.speed, unit), ...(c.toDoor ? { fade: smoothstep(0, DOOR_FADE_S, total - el) } : {}) };
+    const w = walkAt(c.pathOut, unit, c.speed, outEnds(c.toDoor), (abs - c.end) * 60);
+    return { ...base, drinking: true, mode: 'leaving', x: w.x, depth: w.d, dir: pathDir(c.pathOut, w.walked, unit), yaw: w.yaw, gait: w.gait, walked: w.walked, ...sillOf(w.sill) };
   }
   const last = c.pathOut[c.pathOut.length - 1]!;
-  return { ...base, drinking: true, mode: 'absent', x: last.x, depth: last.d, dir: 1, ...(c.toDoor ? { fade: 0 } : {}) };
+  return { ...base, drinking: true, mode: 'absent', x: last.x, depth: last.d, dir: 1, yaw: YAW_BACK, gait: 'stand', walked: 0 };
 }
 
 // Clients visibles à l'instant `abs` (en marche, en file, au comptoir, repartant) : recherche par dichotomie sur `arrive`.
@@ -214,9 +232,10 @@ export function queueAt(sched: BeerSchedule, abs: number): BeerPersonState[] {
 // ---------- Serveurs ----------
 // Deux par stand, derrière le comptoir. Ils arrivent à pied (bout de la rue ou entrée d'immeuble proche) et sont en place
 // 3 à 15 min avant l'ouverture ; à la fermeture, tirage : ils repartent à pied dans les 10 minutes, ou restent derrière le
-// comptoir jusqu'à l'arrivée de l'équipe de nuit (2 h 30, début de la dépose des stands) et repartent alors.
+// comptoir jusqu'à l'arrivée de l'équipe de nuit (2 h 30, début de la dépose des stands) et repartent alors. `slot` : place
+// derrière le comptoir (0 à gauche, 1 à droite), celle des clients qu'il sert (BeerCustomer.server).
 export type BeerServer = {
-  id: string; standId: string; spot: PathPt; pathIn: PathPt[]; pathOut: PathPt[]; fromDoor: boolean; toDoor: boolean; speed: number; unit: number;
+  id: string; standId: string; slot: 0 | 1; spot: PathPt; pathIn: PathPt[]; pathOut: PathPt[]; fromDoor: boolean; toDoor: boolean; speed: number; unit: number;
   walkIn: number; arrive: number; depart: number; gone: number; stays: boolean; dir: 1 | -1; outfit: Outfit; day: number;
 };
 export const NIGHT_CREW = 150; // 2 h 30 le lendemain (minutes du jour), début de la dépose des stands (install.ts)
@@ -232,34 +251,31 @@ export function beerServers({ seed, stand, day, width, unit = 1, doors = [] }: B
     const stays = rng() < 0.5;
     const depart = stays ? absMinute(day + 1, NIGHT_CREW) : absMinute(day, SERVE_HOURS.to) + rng() * 10;
     return {
-      id: `${stand.id}-server-${k}`, standId: stand.id, spot, pathIn, pathOut, fromDoor: ends.fromDoor, toDoor: ends.toDoor, speed: ends.speed, unit,
-      walkIn: arrive - pathLength(pathIn, unit) / ends.speed * S, arrive, depart, gone: depart + pathLength(pathOut, unit) / ends.speed * S,
+      id: `${stand.id}-server-${k}`, standId: stand.id, slot: k, spot, pathIn, pathOut, fromDoor: ends.fromDoor, toDoor: ends.toDoor, speed: ends.speed, unit,
+      walkIn: arrive - walkDuration(pathIn, unit, ends.speed, { fromDoor: ends.fromDoor, endYaw: YAW_FRONT }) * S, arrive, depart,
+      gone: depart + walkDuration(pathOut, unit, ends.speed, { startYaw: YAW_FRONT, toDoor: ends.toDoor }) * S,
       stays, dir: stand.side === 1 ? -1 : 1, outfit: outfitFor('ordinary', rng), day,
     };
   });
 }
 
 export type ServerMode = 'absent' | 'walking' | 'serving' | 'idle';
-export type ServerState = { x: number; depth: number; dir: 1 | -1; mode: ServerMode; fade?: number };
+// Pantin : de face derrière le comptoir (`yaw`, `gait`, `walked` en marche) ; `sill` : seulement au seuil d'une porte.
+export type ServerState = { x: number; depth: number; dir: 1 | -1; mode: ServerMode; yaw: number; gait: Gait; walked: number; sill?: number };
 
 // `serving` pendant les heures de service, `idle` derrière le comptoir avant l'ouverture et après la fermeture.
 export function serverAt(v: BeerServer, abs: number): ServerState {
-  if (abs < v.walkIn) return { x: v.pathIn[0]!.x, depth: v.pathIn[0]!.d, dir: 1, mode: 'absent', ...(v.fromDoor ? { fade: 0 } : {}) };
-  if (abs < v.arrive) {
-    const el = (abs - v.walkIn) * 60;
-    const p = pathAt(v.pathIn, el * v.speed, v.unit);
-    return { x: p.x, depth: p.d, dir: pathDir(v.pathIn, el * v.speed, v.unit), mode: 'walking', ...(v.fromDoor ? { fade: smoothstep(0, DOOR_FADE_S, el) } : {}) };
-  }
+  const walking = (path: PathPt[], ends: WalkEnds, c: number): ServerState => {
+    const w = walkAt(path, v.unit, v.speed, ends, c);
+    return { x: w.x, depth: w.d, dir: pathDir(path, w.walked, v.unit), mode: 'walking', yaw: w.yaw, gait: w.gait, walked: w.walked, ...sillOf(w.sill) };
+  };
+  if (abs < v.walkIn) return { x: v.pathIn[0]!.x, depth: v.pathIn[0]!.d, dir: 1, mode: 'absent', yaw: YAW_FRONT, gait: 'stand', walked: 0 };
+  if (abs < v.arrive) return walking(v.pathIn, { fromDoor: v.fromDoor, endYaw: YAW_FRONT }, (abs - v.walkIn) * 60);
   if (abs < v.depart) {
     const serving = abs >= absMinute(v.day, SERVE_HOURS.from) && abs < absMinute(v.day, SERVE_HOURS.to);
-    return { x: v.spot.x, depth: v.spot.d, dir: v.dir, mode: serving ? 'serving' : 'idle' };
+    return { x: v.spot.x, depth: v.spot.d, dir: v.dir, mode: serving ? 'serving' : 'idle', yaw: YAW_FRONT, gait: 'stand', walked: 0 };
   }
-  if (abs < v.gone) {
-    const el = (abs - v.depart) * 60;
-    const total = (v.gone - v.depart) * 60;
-    const p = pathAt(v.pathOut, el * v.speed, v.unit);
-    return { x: p.x, depth: p.d, dir: pathDir(v.pathOut, el * v.speed, v.unit), mode: 'walking', ...(v.toDoor ? { fade: smoothstep(0, DOOR_FADE_S, total - el) } : {}) };
-  }
+  if (abs < v.gone) return walking(v.pathOut, { startYaw: YAW_FRONT, toDoor: v.toDoor }, (abs - v.depart) * 60);
   const last = v.pathOut[v.pathOut.length - 1]!;
-  return { x: last.x, depth: last.d, dir: 1, mode: 'absent', ...(v.toDoor ? { fade: 0 } : {}) };
+  return { x: last.x, depth: last.d, dir: 1, mode: 'absent', yaw: YAW_FRONT, gait: 'stand', walked: 0 };
 }

@@ -1,19 +1,24 @@
 // src/core/library/figure/bake.ts
 import { add3, capsule, hull, mul3, pathOf, project, shrink, type P2, type V3 } from './geometry';
 import { hairField, headRegion } from './head';
-import { at, frameOf, poseOf, type Frame3, type Gait, type Pose } from './skeleton';
-import type { Shape } from './dress';
+import { at, frameOf, poseOf, type ArmPose, type Frame3, type Gait, type Pose } from './skeleton';
+import { shapeFromSignature, type Shape } from './dress';
 
 // Cuisson d'une pose quantifiée du pantin en tracés SVG (maquette validée du 2026-10-11). Chaque groupe (jambe, bras,
 // tronc, sac, tête) donne un trait d'encre (union de ses pièces, épaissie au dessin) puis, pièce par pièce, l'ombre et la
 // partie éclairée. Les couleurs ne sont pas ici : chaque tracé porte une case (`slot`) que le dessin relie à une variable CSS.
-export type Slot = 'skin' | 'top' | 'bottom' | 'hair' | 'hat' | 'acc' | 'shoe' | 'umb';
+// Tenues de travail : `vest` (gilet), `band` (bande claire du gilet), `apron` (tablier).
+export type Slot = 'skin' | 'top' | 'bottom' | 'hair' | 'hat' | 'acc' | 'shoe' | 'umb' | 'vest' | 'band' | 'apron';
 export type BakedPart = { slot: Slot; shade: string; lit: string | null };
 export type BakedGroup = { ink: string; parts: BakedPart[] };
 export type Baked = { groups: BakedGroup[]; eyes: P2[] };
-// Indices : `yaw` 0–15 (pas de 22,5°), `phase` 0–11, `head` −4…4 (rotation de la tête seule, pas de 22,5°).
-export type FigureKey = { sig: string; yaw: number; gait: Gait; phase: number; head: number };
-export const keyString = (k: FigureKey): string => `${k.sig}|${k.yaw}|${k.gait}|${k.phase}|${k.head}`;
+// Indices : `yaw` 0–15 (pas de 22,5°), `phase` 0–11, `head` −4…4 (rotation de la tête seule, pas de 22,5°) ; `arms` : geste
+// des bras ('swing' = balancement de marche) ; `lean` : penché vers l'avant (0, 1, 2).
+export type FigureKey = { sig: string; yaw: number; gait: Gait; phase: number; head: number; arms: ArmPose; lean: number };
+export const keyString = (k: FigureKey): string => `${k.sig}|${k.yaw}|${k.gait}|${k.phase}|${k.head}|${k.arms}|${k.lean}`;
+// Points d'accroche des objets tenus (repère du sprite : pieds à l'origine, y vers le bas) : mains, centre et haut de la tête,
+// nuque (arrière du cou, au-dessus des épaules).
+export type Anchor = 'handR' | 'handL' | 'head' | 'headTop' | 'nape';
 // Épaisseur du trait d'encre (unités du pantin), réglée sur les captures pour ≈ 0,5 px à l'écran autour de 24 px de haut.
 export const INK_WIDTH = 0.8;
 
@@ -54,6 +59,8 @@ function ring(c: V3, fr: Frame3, rot: number, wid: number, dep: number, n = 10):
   }
   return out;
 }
+// Moitié avant d'un anneau (du flanc gauche au flanc droit en passant par le devant) : bord du tablier.
+const frontArc = (c: V3, fr: Frame3, rot: number, wid: number, dep: number): V3[] => ring(c, fr, rot, wid, dep, 12).slice(0, 7);
 const box = (c: V3, fr: Frame3, f: number, u: number, l: number): V3[] => {
   const pts: V3[] = [];
   for (const a of [-f, f]) for (const b of [-u, u]) for (const d of [-l, l]) pts.push(at(c, fr, a, b, d));
@@ -73,9 +80,37 @@ function hairPolys(hair: Shape['hair'], headYawIndex: number): P2[][] {
   return r;
 }
 
+// Pose d'une clé : la même pour la cuisson et les accroches (objets tenus posés exactement sur le sprite).
+const poseOfKey = (s: Shape, key: FigureKey): Pose =>
+  poseOf((key.yaw * Math.PI) / 8, (key.phase * 2 * Math.PI) / 12, key.gait, { headYaw: (key.head * Math.PI) / 8, umbrella: s.umbrella, arms: key.arms, lean: key.lean });
+
+// Accroches mémoïsées par clé (les boucles les relisent à chaque changement de pose) ; vidées au-delà de 4096 clés.
+const anchorCache = new Map<string, Record<Anchor, readonly [number, number]>>();
+const r2 = (v: number): number => Math.round(v * 100) / 100 || 0;
+export function anchorsOf(key: FigureKey): Record<Anchor, readonly [number, number]> {
+  const ks = keyString(key);
+  const hit = anchorCache.get(ks);
+  if (hit) return hit;
+  const q = poseOfKey(shapeFromSignature(key.sig), key);
+  const pt = (p: V3): readonly [number, number] => {
+    const r = project(p);
+    return [r2(r[0]), r2(r[1])];
+  };
+  // Main : le poignet (cible de la cinématique inverse), d'où part la pièce de la main.
+  const a = {
+    handR: pt(q.arms[1].hand),
+    handL: pt(q.arms[0].hand),
+    head: pt(q.head),
+    headTop: pt(add3(q.head, mul3(q.headFrame.U, HEAD_R))),
+    nape: pt(at(q.neck, q.fr, -1, 1, 0)),
+  };
+  if (anchorCache.size >= 4096) anchorCache.clear();
+  anchorCache.set(ks, a);
+  return a;
+}
+
 export function bakeFigure(s: Shape, key: FigureKey): Baked {
-  const yaw = (key.yaw * Math.PI) / 8;
-  const q: Pose = poseOf(yaw, (key.phase * 2 * Math.PI) / 12, key.gait, { headYaw: (key.head * Math.PI) / 8, umbrella: s.umbrella });
+  const q: Pose = poseOfKey(s, key);
   const fr = q.fr;
   const legsG: Group[] = [];
   const midG: Group[] = [];
@@ -102,6 +137,18 @@ export function bakeFigure(s: Shape, key: FigureKey): Baked {
     torso.push(hullPart([...ring(add3(q.pelvis, [0, 0.6, 0]), fr, q.pelvisTurn, 8.2, 4.8), ...ring(mul3(add3(kn[0]!, kn[1]!), 0.5), fr, q.pelvisTurn, 11, 6.5)], 'bottom'));
   } else if (!coat) torso.push(hullPart(ring(add3(q.pelvis, [0, 0.4, 0]), fr, q.pelvisTurn, 9, 6), 'bottom'));
   torso.push(hullPart([...ring(shC, fr, q.shoulderTurn, 10, 6.2), ...ring(waist, fr, (q.shoulderTurn + q.pelvisTurn) / 2, 8.2, 5.6), ...ring(add3(q.pelvis, [0, coat ? -6 : 0.4, 0]), fr, q.pelvisTurn, coat ? 10.4 : 9, coat ? 7.2 : 6)], 'top'));
+  // Gilet de chantier : enveloppe du tronc (épaules → bassin) agrandie de 0,4, sans manches ; bande claire à mi-torse.
+  if (s.work === 'vest') {
+    const mid = (q.shoulderTurn * 3 + q.pelvisTurn) / 4;
+    torso.push(hullPart([...ring(shC, fr, q.shoulderTurn, 10.4, 6.6), ...ring(waist, fr, (q.shoulderTurn + q.pelvisTurn) / 2, 8.6, 6), ...ring(add3(q.pelvis, [0, 0.4, 0]), fr, q.pelvisTurn, 9.4, 6.4)], 'vest'));
+    const band = (u: number): V3 => at(q.pelvis, fr, u * Math.sin(q.lean), u * Math.cos(q.lean), 0);
+    torso.push(hullPart([...ring(band(6.9), fr, mid, 9.3, 6.3), ...ring(band(7.9), fr, mid, 9.6, 6.4)], 'band', 0.8));
+  }
+  // Tablier : devant seulement, de la taille aux genoux ; caché de dos (il passerait sur le dos et les jambes).
+  if (s.work === 'apron' && Math.sin((key.yaw * Math.PI) / 8 + q.pelvisTurn) > -0.25) {
+    const kn = q.legs.map((g) => add3(mul3(g.hip, 0.3), mul3(g.knee, 0.7)));
+    torso.push(hullPart([...frontArc(waist, fr, (q.shoulderTurn + q.pelvisTurn) / 2, 8.6, 6.2), ...frontArc(mul3(add3(kn[0]!, kn[1]!), 0.5), fr, q.pelvisTurn, 9.6, 6.8)], 'apron'));
+  }
   if (s.acc === 'scarf') torso.push(hullPart(ring(at(shC, fr, 0, 0.9, 0), fr, q.shoulderTurn, 6.5, 4.4, 8), 'acc', 0.8));
   midG.push({ parts: torso, z: project(q.pelvis)[2] });
   if (s.acc === 'backpack') {

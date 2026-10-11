@@ -3,7 +3,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
-import { CarriedPlacard, CarriedSign, ForSalePlacard, LadderSprite, ShopFront } from '../../src/content/shop-sprites';
+import { CarriedPlacard, CarriedSign, ForSalePlacard, LadderSprite, RollingShutter, SHUTTER_S, ShopFront } from '../../src/content/shop-sprites';
 import { shopFrame } from '../../src/core/library/city/shops/slots';
 import type { ShopView } from '../../src/core/library/city/shops/view';
 import { skyAt } from '../../src/core/library/sky';
@@ -80,5 +80,15 @@ describe('devanture', () => {
     const c = mount(<g><LadderSprite height={20} /><CarriedSign type="bakery" name="Au Fournil" w={20} sky={sky} /><CarriedPlacard w={14} sky={sky} /><ForSalePlacard x={0} y={0} w={20} sky={sky} /></g>);
     expect(c.querySelector('[id]')).toBeNull();
     expect(c.textContent).toContain('À VENDRE');
+  });
+});
+
+describe('RollingShutter : délai de départ', () => {
+  const g = (delay?: number): SVGGElement => mount(<RollingShutter frame={frame} sky={sky} state="rising" still={false} delay={delay} />).querySelector<SVGGElement>('[data-rolling-shutter] > g')!;
+  it('sans délai la transition part tout de suite ; avec un délai, elle attend que l’employé soit sous le rideau', () => {
+    expect(g().style.transition).toContain(`${SHUTTER_S}s ease-in-out 0s`);
+    act(() => root?.unmount());
+    host?.remove();
+    expect(g(1.45).style.transition).toContain(`${SHUTTER_S}s ease-in-out 1.45s`);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bakeFigure, keyString, type FigureKey } from '../../../../src/core/library/figure/bake';
+import { anchorsOf, bakeFigure, keyString, type FigureKey } from '../../../../src/core/library/figure/bake';
 import { shapeFromSignature, shapeOf, signatureOf } from '../../../../src/core/library/figure/dress';
 import { hairField, headRegion } from '../../../../src/core/library/figure/head';
 import { frameOf } from '../../../../src/core/library/figure/skeleton';
@@ -38,7 +38,7 @@ describe('habillage', () => {
 });
 
 describe('cuisson', () => {
-  const key: FigureKey = { sig: signatureOf(shapeOf(girl, false)), yaw: 0, gait: 'walk', phase: 3, head: 0 };
+  const key: FigureKey = { sig: signatureOf(shapeOf(girl, false)), yaw: 0, gait: 'walk', phase: 3, head: 0, arms: 'swing', lean: 0 };
   it('déterministe', () => {
     expect(JSON.stringify(bakeFigure(shapeOf(girl, false), key))).toBe(JSON.stringify(bakeFigure(shapeOf(girl, false), key)));
   });
@@ -78,6 +78,47 @@ describe('cuisson', () => {
     }
   });
   it('clé lisible et stable', () => {
-    expect(keyString(key)).toBe(`${key.sig}|0|walk|3|0`);
+    expect(keyString(key)).toBe(`${key.sig}|0|walk|3|0|swing|0`);
+  });
+});
+
+describe('tenues de travail et accroches', () => {
+  it('signature à 6 champs, relecture des signatures à 5 champs', () => {
+    const s = shapeOf(girl, false, 'vest');
+    expect(signatureOf(s).split('.')).toHaveLength(6);
+    expect(shapeFromSignature(signatureOf(s))).toEqual(s);
+    expect(shapeFromSignature('short.long.skirt.bag.n').work).toBe('none');
+    expect(shapeOf(girl, false).work).toBe('none');
+    expect(shapeFromSignature(signatureOf(shapeOf(girl, true, 'apron')))).toMatchObject({ umbrella: true, work: 'apron' });
+  });
+  it('gilet : des pièces « vest » et « band » ; tablier : « apron »', () => {
+    const k = { sig: '', yaw: 0, gait: 'stand' as const, phase: 0, head: 0, arms: 'swing' as const, lean: 0 };
+    const v = shapeOf(girl, false, 'vest');
+    const slots = bakeFigure(v, { ...k, sig: signatureOf(v) }).groups.flatMap((g) => g.parts.map((p) => p.slot));
+    expect(slots).toContain('vest');
+    expect(slots).toContain('band');
+    expect(slots).not.toContain('apron');
+    const a = shapeOf(girl, false, 'apron');
+    expect(bakeFigure(a, { ...k, sig: signatureOf(a) }).groups.flatMap((g) => g.parts.map((p) => p.slot))).toContain('apron');
+    const n = shapeOf(girl, false);
+    const plain = bakeFigure(n, { ...k, sig: signatureOf(n) }).groups.flatMap((g) => g.parts.map((p) => p.slot));
+    for (const sl of ['vest', 'band', 'apron'] as const) expect(plain).not.toContain(sl);
+  });
+  it('accroches : main droite levée au-dessus de la tête pour « raise » (y vers le bas)', () => {
+    const key = { sig: signatureOf(shapeOf(girl, false)), yaw: 0, gait: 'stand' as const, phase: 0, head: 0, arms: 'raise' as const, lean: 0 };
+    const a = anchorsOf(key);
+    expect(a.handR[1]).toBeLessThan(a.headTop[1]);
+    expect(a.nape[1]).toBeGreaterThan(a.head[1]);
+    expect(keyString(key)).toBe(`${key.sig}|0|stand|0|0|raise|0`);
+    // Mémoïsé par clé ; bras baissés : main sous la taille.
+    expect(anchorsOf({ ...key })).toBe(a);
+    expect(anchorsOf({ ...key, arms: 'down' }).handR[1]).toBeGreaterThan(-15);
+  });
+  it('les gestes changent le sprite : bras et penché dans la cuisson', () => {
+    const s = shapeOf(girl, false);
+    const k: FigureKey = { sig: signatureOf(s), yaw: 4, gait: 'stand', phase: 0, head: 0, arms: 'swing', lean: 0 };
+    const base = JSON.stringify(bakeFigure(s, k));
+    expect(JSON.stringify(bakeFigure(s, { ...k, arms: 'raise' }))).not.toBe(base);
+    expect(JSON.stringify(bakeFigure(s, { ...k, lean: 2 }))).not.toBe(base);
   });
 });

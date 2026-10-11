@@ -15,12 +15,15 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // Début du jour de la scène (s, horloge murale) : la minute de la scène est alignée sur les minutes de l'horloge
 // (voir hyperStartMinute dans events.ts), donc début = début de la minute murale − minutes × 60. Gardé tant qu'il ne bouge
 // pas de plus d'une minute : un re-rendu tombé entre le changement de minute de l'horloge et celui de la scène ne fait pas
-// sauter le cortège.
+// sauter le cortège. Gardé aussi tant que la minute de la scène ne change pas : heure figée (réglage jour, nuit, manuel), le
+// temps continue de couler depuis l'ancrage, rien ne saute en arrière toutes les deux minutes.
 export function useSceneDayStart(minutes: number, nowS: number): number {
-  const ref = useRef<number | null>(null);
+  const ref = useRef<{ start: number; minutes: number } | null>(null);
   const fresh = Math.floor(nowS / 60 + 1e-9) * 60 - minutes * 60;
-  if (ref.current === null || Math.abs(fresh - ref.current) > 90) ref.current = fresh;
-  return ref.current;
+  const r = ref.current;
+  if (r === null || (minutes !== r.minutes && Math.abs(fresh - r.start) > 90)) ref.current = { start: fresh, minutes };
+  else if (minutes !== r.minutes) ref.current = { start: r.start, minutes };
+  return ref.current!.start;
 }
 
 type Props = { width: number; seed: number; sky: Sky; still: boolean; dayFests: readonly FestivityId[]; minutes: number; metrics: CityMetrics; lane: ParadeLane };
