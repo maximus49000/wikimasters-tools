@@ -3,8 +3,8 @@ import { MOON_SIZE, SKY_TEXTURE, SUN_SIZE } from '../core/library/paint/sky-pain
 import { mixHex } from '../core/library/sky';
 import type { PaintedSky } from './painted-sky';
 
-// Ciel peint de la Ville (vague Ghibli, G2), dans le décor fixe : aucune animation ici (les copies `<use>` de chaque fenêtre
-// ne sont recalculées qu'à la minute). `shown` règle le fondu d'une seconde entre ciel actuel et ciel peint.
+// Ciel peint de la Ville (vague Ghibli, G2), dans le décor fixe : aucune animation ici (la copie `<use>` d’une fenêtre soulevée
+// n’est recalculée qu’à la minute). `shown` règle le fondu d'une seconde entre ciel actuel et ciel peint.
 export const FADE_S = 1;
 export const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 // `still` (mouvement réduit) est lu une fois par rendu par l'appelant : pas de matchMedia à chaque nœud.

@@ -298,7 +298,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
                 </g>
               )}
             </g>
-            {/* Seuil d'une porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche est copiée par <use>). */}
+            {/* Seuil d'une porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche reste copiable par <use>, comme pour la fenêtre soulevée). */}
             <svg data-life-id={doorId(v)} data-customer-door="" data-visit={v.id} data-active={atDoor ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={onOff(atDoor !== null)}>
               <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
               <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, streetScale(v, metrics), sgn)} opacity={(1 - dPos.depth).toFixed(2)}>

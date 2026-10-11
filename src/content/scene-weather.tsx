@@ -1,4 +1,4 @@
-import { memo, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type RefObject } from 'react';
+import { memo, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react';
 import type { SceneId } from '../core/library/library-types';
 import { CITY_GROUND } from '../core/library/city/metrics';
 import { mulberry32 } from '../core/library/scene-world';
@@ -26,7 +26,9 @@ type Props = {
   seed: number;
   sky: Sky;
   clock: { read(nowMs: number): Weather };
-  // Identifiants des deux groupes, pour les copier dans chaque fenêtre (`<use>`) : le ciel (au-dessus des acteurs) et le sol (en dessous).
+  // Identifiants des deux groupes, pour les retrouver (boucles de météo et de lumière, copie soulevée d'une fenêtre par `<use>`) : le ciel (au-dessus des acteurs) et le sol (en dessous).
+  // `between` : rendu entre le sol et le ciel (les acteurs, dans l'ordre de dessin des fenêtres).
+  between?: ReactNode;
   id?: string;
   groundId?: string;
   // Appelé quand la pluie devient (ou cesse d'être) assez forte pour des gouttes sur la vitre (avec hystérésis) : rare, sans boucle React.
@@ -148,7 +150,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     const tintStops = Array.from(el.querySelectorAll<SVGElement>('[data-wx-stop="tint"]'));
     const overcastStops = Array.from(el.querySelectorAll<SVGElement>('[data-wx-stop="overcast"]'));
     const cloudNodes = Array.from(el.querySelectorAll<SVGElement>('[data-wx-cloud]'));
-    // N'écrit un attribut que s'il change : les copies `<use>` ne sont pas invalidées pour rien.
+    // N'écrit un attribut que s'il change : les copies `<use>` éventuelles (fenêtre soulevée) ne sont pas invalidées pour rien.
     const put = (node: SVGElement | null, name: string, value: string): void => {
       if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
     };
@@ -357,7 +359,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   return placeRef;
 }
 
-function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, onWet, gloom = false }: Props): ReactElement {
+function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, between, onWet, gloom = false }: Props): ReactElement {
   // Préfixe des motifs/dégradés, propre à chaque pièce (deux pièces affichées ne partagent pas leurs motifs).
   const uid = `wx${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const floorFrac = CLOUD_FLOOR[scene] ?? 0.45;
@@ -441,7 +443,7 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   return (
     <>
       {/* Sol : flaques et neige, sous les passants et les voitures. */}
-      <g data-weather-ground="" data-scene={scene} id={groundId} ref={groundRoot}>
+      <g data-weather-ground="" data-window-weather-ground="" data-scene={scene} id={groundId} ref={groundRoot}>
         <g data-wx="puddles" opacity={0}>
           {puddles.map((p, i) => <ellipse key={i} cx={p.x} cy={p.y} rx={p.rx} ry={p.rx * 0.18} fill="#9FB4C8" opacity={0.6} />)}
         </g>
@@ -458,8 +460,9 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
           <rect data-wx="snow-cover" x={0} y={ground} width={width} height={height - ground} fill="#F4F8FC" opacity={0} />
         )}
       </g>
+      {between}
       {/* Ciel et précipitations, par-dessus le décor et les acteurs. */}
-      <g data-weather="" data-scene={scene} id={id} ref={skyRoot}>
+      <g data-weather="" data-window-weather="" data-scene={scene} id={id} ref={skyRoot}>
         <PatternDefs id={uid} seed={seed} ghibli={ghibli} />
         <defs>
           <linearGradient id={`${uid}-tint`} x1="0" y1="0" x2="0" y2="1">

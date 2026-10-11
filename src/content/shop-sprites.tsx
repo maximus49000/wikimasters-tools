@@ -7,7 +7,7 @@ import { tone } from './city-sprites';
 
 // Devantures de la scène Ville. Repère : celui du MONDE (les rectangles de shopFrame), non mis à l'échelle ; le rez-de-chaussée
 // fait 30 px de haut, le bandeau d'enseigne 5. Les objets portés (CarriedSign, CarriedPlacard) et l'échelle sont dessinés dans un
-// repère local : base à y = 0, centrés sur x = 0. Aucun `id` : la scène est copiée dans chaque fenêtre par <use>, et le clip de
+// repère local : base à y = 0, centrés sur x = 0. Aucun `id` : la scène peut être copiée par <use> (fenêtre soulevée), et le clip de
 // l'intérieur passe par un <svg> imbriqué (overflow hidden), pas par un clipPath. Seule animation : le rideau roulant du calque
 // animé (RollingShutter, vague 1b-iv-b), qui monte ou descend par une transition CSS.
 export type WorkerPose = 'walk' | 'stand' | 'climb' | 'reach' | 'carry';

@@ -5,6 +5,7 @@ import { sizeOf } from '../core/library/furniture-catalog';
 import { boxesOf, lampsOf, layoutSignature } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
+import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { ShelfItemArt, WallArt } from './library-card-art';
 import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
@@ -13,7 +14,7 @@ import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
 import { FigureContext, FigureRegistry } from './figure/figure-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
-import { WindowArt, glassRect } from './window-art';
+import { WindowArt, GlassDrops, glassRect } from './window-art';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
 import { LightLayer } from './light-layer';
 import { petBoxesOf } from '../core/library/light/pet-boxes';
@@ -172,7 +173,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     const cx = rect.x + rect.w / 2;
     const cy = rect.y + rect.h / 2;
     return (
-      <g transform={`translate(${cx + dx} ${cy + dy}) scale(1.08) translate(${-cx} ${-cy})`} opacity={0.65} style={{ pointerEvents: 'none' }}>
+      <g data-lifted-copy="" transform={`translate(${cx + dx} ${cy + dy}) scale(1.08) translate(${-cx} ${-cy})`} opacity={0.65} style={{ pointerEvents: 'none' }}>
         {art}
       </g>
     );
@@ -181,6 +182,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   function renderPlaced(placed: Placed): ReactElement | null {
     let rect: PxRect;
     let art: ReactElement;
+    let liftedArt: ReactElement | undefined;
     if (placed.kind === 'computer') {
       const desk = deskRects.get(placed.deskId);
       if (!desk) return null;
@@ -195,7 +197,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       art = <SmallArt item={placed.item} rect={rect} palette={palette} lit={isLit(placed)} />;
     } else if (placed.kind === 'window') {
       rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
-      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />;
+      // Le cadre seul : le décor est déjà derrière (calque des vues). La copie soulevée, elle, recopie le décor par `<use>`.
+      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} />;
+      liftedArt = <WindowArt rect={rect} palette={palette} steampunk={steampunk} view worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />;
     } else {
       const cells = rectOf(placed);
       if (!cells || !isStanding(placed)) return null;
@@ -217,7 +221,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
     // Un ordinateur suit aussi son bureau soulevé.
     const lifted = drag !== null && (drag.id === placed.id || (placed.kind === 'computer' && drag.id === placed.deskId) || (placed.kind === 'small' && drag.id === placed.hostId));
-    const liftedCopy = lifted ? liftedCopyOf(rect, art, drag.id === placed.id ? rect : (hostRects.get(drag.id) ?? rect)) : null;
+    const liftedCopy = lifted ? liftedCopyOf(rect, liftedArt ?? art, drag.id === placed.id ? rect : (hostRects.get(drag.id) ?? rect)) : null;
     return (
       <g key={placed.id}>
         <g
@@ -379,6 +383,23 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     }
   }
 
+  // Élément STABLE (passé à la couche météo mémoïsée) : un re-rendu de la pièce (glissé, clignotement, animaux…) ne refait pas la météo.
+  const weatherClock = weatherOn ? view.weather?.clock : undefined;
+  const actors = useMemo(
+    () => (
+      <g id={`${worldId}-actors`} data-window-actors="">
+        <FigureContext.Provider value={figures}>
+          <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherClock} />
+        </FigureContext.Provider>
+      </g>
+    ),
+    [worldId, figures, room.scene, room.id, width, wallH, view.sky, view.minutes, gloom, rainy, city, forcedNight, weatherClock],
+  );
+  // La fenêtre soulevée n'a plus de vue à sa place (sa copie porte la sienne) : seul son cadre estompé reste sur le mur.
+  const shownGlasses = glasses.filter((_, i) => windows[i]!.id !== drag?.id);
+  const viewBox = boundingRect(shownGlasses);
+  const gaps = gapRects(shownGlasses);
+
   return (
     <svg
       viewBox={`0 0 ${width} ${HEIGHT}`}
@@ -388,33 +409,42 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       style={{ aspectRatio: `${width} / ${HEIGHT}`, width: `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block' }}
     >
       {decor.glow && <NeonDefs />}
-      <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
-      {room.style === 'steampunk' && <SteampunkDecor cols={room.cols} wallH={wallH} />}
-      {windows.length > 0 && (
-        <defs>
-          {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que
-              le second, si bien que les copies du décor fixe de chaque fenêtre ne sont pas recalculées à chaque image. */}
-          <g id={worldId}>
+      {/* Mur statique (fond + décor steampunk), réutilisé par <use> pour combler les trous entre les vitres. */}
+      <g id={`${worldId}-wall`} data-window-wall="">
+        <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
+        {room.style === 'steampunk' && <g data-steampunk-decor=""><SteampunkDecor cols={room.cols} wallH={wallH} /></g>}
+      </g>
+      {viewBox && (
+        // Le décor vu par les fenêtres, rendu UNE fois en vrais nœuds (plus de copies `<use>` à reconstruire à chaque image),
+        // juste après le mur : un meuble du mur ne chevauche jamais une fenêtre. Les cadres sont dessinés par-dessus.
+        <>
+        {/* Fond de vitre (angles droits, comme avant), sous la vue qui le recouvre. */}
+        <g data-window-glass="" style={{ pointerEvents: 'none' }}>
+          {shownGlasses.map((g, i) => (
+            <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} fill="#9CC4E8" />
+          ))}
+        </g>
+        // Découpé par UN SEUL rectangle (le englobant des vitres) : un masque à plusieurs rectangles ralentit Blink (55 ms contre 8,5 ms
+        // mesurés). Les angles arrondis du steampunk sont couverts par le cadre ; les trous entre vitres redessinent le mur ensuite.
+        <svg data-window-views="" x={viewBox.x} y={viewBox.y} width={viewBox.w} height={viewBox.h} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
+          {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que le second. */}
+          <g id={worldId} data-window-view="">
             <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
           </g>
-          <g id={`${worldId}-actors`}>
-            <FigureContext.Provider value={figures}>
-            <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherOn ? view.weather?.clock : undefined} />
-            </FigureContext.Provider>
-          </g>
-          {/* Météo : deux groupes à part (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. */}
-          {weatherOn && view.weather && (
-            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} onWet={setWet} gloom={gloom} />
+          {/* Météo : deux groupes (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. Sans météo, les acteurs seuls. */}
+          {weatherOn && view.weather ? (
+            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} onWet={setWet} gloom={gloom} between={actors} />
+          ) : (
+            actors
           )}
-          {windows.map((w) => {
-            const glass = glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }));
-            return (
-              <clipPath key={w.id} id={`${worldId}-clip-${w.id}`}>
-                <rect x={glass.x} y={glass.y} width={glass.w} height={glass.h} rx={steampunk ? 10 : 0} />
-              </clipPath>
-            );
-          })}
-        </defs>
+          {drops && shownGlasses.map((g, i) => <GlassDrops key={i} glass={g} />)}
+        </svg>
+        {gaps.map((r, i) => (
+          <svg key={i} data-window-gap="" x={r.x} y={r.y} width={r.w} height={r.h} viewBox={`${r.x} ${r.y} ${r.w} ${r.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
+            <use href={`#${worldId}-wall`} />
+          </svg>
+        ))}
+        </>
       )}
       {backLayer.map(renderPlaced)}
       {wallLayer}

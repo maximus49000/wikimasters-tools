@@ -88,7 +88,7 @@ function Celestial({ width, height, sky, painted, shown, still }: SceneBodyProps
 }
 
 // Boucle d'animation : met les acteurs à leur place sans re-rendu React. Les positions viennent de l'horloge murale :
-// toutes les fenêtres (copies <use> du même groupe) voient donc le même instant.
+// toutes les vues (dont la copie soulevée d’une fenêtre, par <use>) voient donc le même instant.
 function useActorLoop(root: RefObject<SVGGElement | null>, actors: Actor[], width: number): void {
   useEffect(() => {
     const el = root.current;
@@ -119,7 +119,7 @@ function useActorLoop(root: RefObject<SVGGElement | null>, actors: Actor[], widt
 }
 
 // Décor fixe : ciel, étoiles, soleil, lune et paysage. Il ne change qu'à la minute ; aucune animation n'y touche,
-// si bien que les copies `<use>` de chaque fenêtre ne sont pas recalculées à chaque image.
+// si bien que la copie `<use>` d’une fenêtre soulevée n’est pas recalculée à chaque image.
 function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, gloom = false, rainy = false, city, forcedNight = false }: PanoramaProps): ReactElement {
   const props = { width, height, sky, minutes, seed, gloom, rainy, city, forcedNight };
   const terrestrial = scene !== 'space' && scene !== 'earth';

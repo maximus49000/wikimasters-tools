@@ -281,7 +281,7 @@ export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes,
   return (
     <g data-parade-crowd="" data-level={level.toFixed(2)} ref={root}>
       {/* Marcheurs : dans le couloir derrière la foule, dessinés avant elle ; au seuil d'une porte, <svg> rogné à l'ouverture
-          (ni clipPath ni masque : ce calque est copié par <use>) avec l'ombre de l'entrée. */}
+          (ni clipPath ni masque : ce calque reste copiable par <use>, comme pour la fenêtre soulevée) avec l'ombre de l'entrée. */}
       {walkers.map(([s, p]) => {
         const attrs = { 'data-spectator': '', 'data-spectator-id': s.id, 'data-row': s.row, 'data-kind': s.kind, 'data-mode': 'walking' };
         if (p.sill === undefined)
