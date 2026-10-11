@@ -104,4 +104,28 @@ describe('éviction et références', () => {
     expect(r.root.querySelector(a)).not.toBeNull();
     expect(r.root.querySelector(b)).toBeNull();
   });
+
+  it('fonctionne aussi dans un shadow root (fenêtre de la Bibliothèque)', () => {
+    const r = new FigureRegistry('t7', { max: 3, perFrame: 10 });
+    const host = document.createElement('div');
+    document.body.append(host);
+    const inner = document.createElement('div');
+    host.attachShadow({ mode: 'open' }).append(inner);
+    const root = createRoot(inner);
+    const first = r.ensure({ ...key, phase: 0 });
+    act(() =>
+      root.render(
+        <svg>
+          <defs><FigureDefs registry={r} /></defs>
+          <use href={first} />
+        </svg>,
+      ),
+    );
+    for (let p = 1; p < 5; p++) r.ensure({ ...key, phase: p });
+    r.flush();
+    expect(r.root.querySelector(first)).not.toBeNull();
+    expect(r.size()).toBe(3);
+    act(() => root.unmount());
+    host.remove();
+  });
 });
