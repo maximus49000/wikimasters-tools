@@ -9,6 +9,7 @@ import { dayContext } from '../../src/core/library/city/calendar';
 import type { YMD } from '../../src/core/library/city/calendar';
 import { HYPER_S, MAX_EVENTS, STILL_EVENTS, activeEvents, cityEventSchedule, eventConditions, hyperStartMinute, type CityEvent } from '../../src/core/library/city/events';
 import { cityIntensity, type CityContext } from '../../src/core/library/city/intensity';
+import { cityMetrics } from '../../src/core/library/city/metrics';
 import { laneSpeeds, vehiclesFor } from '../../src/core/library/city/vehicles';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
@@ -62,6 +63,35 @@ const findWhen = (city: CityContext, ok: (evs: CityEvent[], T: number) => boolea
   for (let T = 1_790_000_000; T < 1_790_000_000 + span * HYPER_S; T += 1) if (ok(expected(T, city), T)) return T;
   throw new Error('aucun instant trouvé');
 };
+// Événements de rue : entrent dans le moteur de circulation (traffic-layer.tsx) et sont dessinés comme ses véhicules.
+const STREET = new Set<string>(['bus', 'tram', 'ambulance', 'garbage-truck', 'delivery-bike']);
+const METRICS = cityMetrics(340);
+// Ordonnée d'un véhicule (transform posé au montage, à l'instant T).
+const yOfNode = (n: Element): number => Number(/translate\([^ ]+ ([^)]+)\)/.exec(n.getAttribute('transform') ?? '')![1]);
+// Ambulance dans une voie, 1 à 5 s après son départ : indices de dessin de l'ambulance et des voitures rangées au bord
+// (décalage latéral vers le trottoir, au-delà de l'ondulation ordinaire). Premier plan : bord = plus bas à l'écran ; fond :
+// plus haut. Parcourt les passages d'ambulance jusqu'à en trouver un qui fait ranger au moins une voiture.
+const ambulanceLane = (lane: 'near' | 'far'): { amb: number; pulled: number[] } => {
+  const { city } = contextAt(10);
+  const gap = METRICS.laneY.near - METRICS.laneY.far;
+  const edge = lane === 'near' ? (y: number): boolean => y > METRICS.laneY.near + 0.2 * gap : (y: number): boolean => y < METRICS.laneY.far - 0.2 * gap;
+  let from = 0;
+  for (let tries = 0; tries < 6; tries++) {
+    const start = findWhen(city, (evs, t) => t > from && evs.some((e) => e.id === 'ambulance' && e.track === lane && t - e.start >= 0 && t - e.start < 1), 400);
+    from = start + 60;
+    for (let d = 1; d <= 5; d++) {
+      const c = mount(start + d, 10);
+      const children = [...c.querySelector(`[data-traffic-lane="${lane}"]`)!.children];
+      const amb = children.findIndex((n) => n.getAttribute('data-kind') === 'ambulance');
+      const pulled = children.flatMap((n, i) => (n.getAttribute('data-lane') === lane && n.getAttribute('data-kind') !== 'ambulance' && edge(yOfNode(n)) ? [i] : []));
+      if (amb >= 0 && pulled.length > 0) {
+        for (const i of pulled) expect(children[i]!.getAttribute('data-active')).toBe('true');
+        return { amb, pulled };
+      }
+    }
+  }
+  throw new Error('aucun passage d’ambulance ne fait ranger de voiture');
+};
 const mount = (T: number, hours: number, still = false, date?: YMD): HTMLDivElement => {
   vi.spyOn(Date, 'now').mockReturnValue(T * 1000);
   // jsdom n'a pas matchMedia : même bouchon que tests/content/city-life.test.tsx.
@@ -71,25 +101,19 @@ const mount = (T: number, hours: number, still = false, date?: YMD): HTMLDivElem
 };
 
 describe('événements dans la couche de la ville', () => {
-  it('dessine exactement les événements actifs, au plus deux', () => {
+  it('dessine les événements actifs : ceux de la rue comme véhicules du moteur, les autres comme événements', () => {
     const { city } = contextAt(10);
-    const T = findTime(city, (ids) => ids.length > 0);
+    // Un événement de rue parti depuis 2 s : il est entré dans la voie (démarrage à chaud du moteur jusqu'à T).
+    const T = findWhen(city, (evs, t) => evs.some((e) => STREET.has(e.id) && t - e.start >= 2 && t - e.start < 3));
+    const active = expected(T, city);
     const c = mount(T, 10);
     const ids = [...c.querySelectorAll('[data-event]')].map((n) => n.getAttribute('data-event')).sort();
-    expect(ids).toEqual(expected(T, city).map((e) => e.id).sort());
-    expect(ids.length).toBeLessThanOrEqual(MAX_EVENTS);
-  });
-  it('un bus ou un tram efface les voitures collées à lui', () => {
-    const { city } = contextAt(8.25);
-    const withYields = (e: CityEvent): boolean => (e.id === 'bus' || e.id === 'tram') && e.yields.length > 0;
-    const T = findWhen(city, (evs) => evs.some(withYields), 400);
-    const ev = expected(T, city).find(withYields)!;
-    expect(ev.yields.length).toBeGreaterThan(0);
-    const c = mount(T, 8.25);
-    for (const id of ev.yields) {
-      const node = c.querySelector(`[data-life-id="${id}"]`)!;
-      expect(node.getAttribute('data-active')).toBe('false');
-      expect(node.getAttribute('data-yield')).toBe('true');
+    expect(ids).toEqual(active.filter((e) => !STREET.has(e.id)).map((e) => e.id).sort());
+    expect(active.length).toBeLessThanOrEqual(MAX_EVENTS);
+    for (const e of active.filter((x) => STREET.has(x.id))) {
+      const agent = c.querySelector(`[data-traffic-lane] > [data-vehicle][data-kind="${e.id}"]`)!;
+      expect(agent).not.toBeNull();
+      expect(agent.querySelector(`[data-event-sprite="${e.id}"]`)).not.toBeNull();
     }
   });
   it('le feu d’artifice est masqué par les immeubles', () => {
@@ -116,25 +140,30 @@ describe('événements dans la couche de la ville', () => {
     expect(drawn.length).toBe(expected(T, city).filter((e) => STILL_EVENTS.has(e.id)).length);
     expect(c.querySelectorAll('animate, animateTransform')).toHaveLength(0);
   });
-  it('file du premier plan : l’ambulance est dessinée sous les voitures qui se rangent', () => {
-    const { city } = contextAt(10);
-    const T = findWhen(city, (evs) => evs.some((e) => e.id === 'ambulance' && e.track === 'near'), 400);
-    const c = mount(T, 10);
-    const lane = c.querySelector('[data-city-lane="near"]')!;
-    const children = [...lane.children];
-    const amb = children.findIndex((n) => n.getAttribute('data-event') === 'ambulance');
-    const firstCar = children.findIndex((n) => n.hasAttribute('data-vehicle'));
-    expect(amb).toBeGreaterThanOrEqual(0);
-    expect(amb).toBeLessThan(firstCar);
+  // Le bus et le tram ne font plus disparaître les voitures (ancien `yieldsFor`) : ce sont des véhicules du moteur, les autres
+  // gardent leurs distances. L'ambulance fait ranger les voitures au bord (sans fondu) ; l'ordre de dessin suit la profondeur.
+  it('aucune voiture ne s’efface : tous les véhicules du moteur restent dessinés', () => {
+    const { city } = contextAt(8.25);
+    const T = findWhen(city, (evs, t) => evs.some((e) => (e.id === 'bus' || e.id === 'tram') && t - e.start >= 4 && t - e.start < 5), 400);
+    const c = mount(T, 8.25);
+    const vehicles = [...c.querySelectorAll('[data-traffic-lane] > [data-vehicle]')];
+    expect(vehicles.some((n) => n.getAttribute('data-kind') === 'bus' || n.getAttribute('data-kind') === 'tram')).toBe(true);
+    expect(vehicles.filter((n) => n.getAttribute('data-kind') === 'car').length).toBeGreaterThan(0);
+    for (const n of vehicles) {
+      expect(n.getAttribute('data-active')).toBe('true');
+      expect(n.hasAttribute('data-yield')).toBe(false);
+      expect(n.hasAttribute('opacity')).toBe(false);
+    }
   });
-  it('file du fond : l’ambulance reste dessinée après les voitures', () => {
-    const { city } = contextAt(10);
-    const T = findWhen(city, (evs) => evs.some((e) => e.id === 'ambulance' && e.track === 'far'), 400);
-    const c = mount(T, 10);
-    const children = [...c.querySelector('[data-city-lane="far"]')!.children];
-    const amb = children.findIndex((n) => n.getAttribute('data-event') === 'ambulance');
-    const lastCar = children.map((n) => n.hasAttribute('data-vehicle')).lastIndexOf(true);
-    expect(amb).toBeGreaterThan(lastCar);
+  it('file du premier plan : l’ambulance est dessinée sous les voitures rangées au bord pour elle', () => {
+    const { amb, pulled } = ambulanceLane('near');
+    expect(pulled.length).toBeGreaterThan(0);
+    for (const p of pulled) expect(amb).toBeLessThan(p);
+  });
+  it('file du fond : l’ambulance est dessinée après les voitures rangées au bord pour elle', () => {
+    const { amb, pulled } = ambulanceLane('far');
+    expect(pulled.length).toBeGreaterThan(0);
+    for (const p of pulled) expect(amb).toBeGreaterThan(p);
   });
   it('un événement fixe apparaît en fondu (2 s), sans fondu en mouvement réduit', () => {
     const { city } = contextAt(10);
