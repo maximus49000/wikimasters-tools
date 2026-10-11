@@ -31,33 +31,33 @@
 
 ### Task 1: Plan étendu (colline, repères, mobilier, nouveaux détails de façade)
 
-- [ ] Tests : `hill` déterministe et stable au début quand la pièce grandit ; `hillCrestY` dans [0,16 ; 0,24] × hauteur, continue ; repères jamais deux fois la même position ; mobilier hors des entrées, locaux et troncs ; `Look` zinc présent sur certaines graines.
-- [ ] `city-plan.ts` : types, `lookOf` (zinc, antenna, pipe, laundry), `hillPlan(width, height, seed)`, `furnitureFor(...)`, `hillCrestY`.
+- [x] Tests : `hill` déterministe et stable au début quand la pièce grandit ; `hillCrestY` dans [0,16 ; 0,24] × hauteur, continue ; repères jamais deux fois la même position ; mobilier hors des entrées, locaux et troncs ; `Look` zinc présent sur certaines graines.
+- [x] `city-plan.ts` : types, `lookOf` (zinc, antenna, pipe, laundry), `hillPlan(width, height, seed)`, `furnitureFor(...)`, `hillCrestY`.
 
 ### Task 2: Primitives cellulo et contexte
 
-- [ ] `paint-ctx.ts` (+ `recording-ctx.ts`) : `arc`, `strokeRect`.
-- [ ] `cel.ts` : `SUN`, `COOL`, `INK`, `shade`, `light`, `inkRect`, `strokePath`.
+- [x] `paint-ctx.ts` (+ `recording-ctx.ts`) : `arc`, `strokeRect`.
+- [x] `cel.ts` : `SUN`, `COOL`, `INK`, `shade`, `light`, `inkRect`, `strokePath`.
 
 ### Task 3: Peintre du fond (`hill-painter.ts`)
 
-- [ ] Test : rien au-dessus de la crête sauf mouettes (bande bornée) ; maison à cheval identique depuis deux tranches.
-- [ ] Colline, rangs de maisons, tour/dômes, mouettes, mur du fond (rang 4) en cellulo.
+- [x] Test : rien au-dessus de la crête sauf mouettes (bande bornée) ; maison à cheval identique depuis deux tranches.
+- [x] Colline, rangs de maisons, tour/dômes, mouettes, mur du fond (rang 4) en cellulo.
 
 ### Task 4: Peintre du premier plan réécrit (`city-painter.ts`)
 
-- [ ] Tests existants adaptés (points autorisés : colline sous la crête, mouettes) ; plus de `strokes.ts`.
-- [ ] Façades, toits, fenêtres, linge, balcon, gouttière, rue, platanes, mobilier.
+- [x] Tests existants adaptés (points autorisés : colline sous la crête, mouettes) ; plus de `strokes.ts`.
+- [x] Façades, toits, fenêtres, linge, balcon, gouttière, rue, platanes, mobilier.
 
 ### Task 5: Neige, découpe des nuages, étalonnage
 
-- [ ] `roofLineY` zinc ; `skylinePoints` avec crête ; neige sur la crête et les toits du fond ; `NIGHT` retouché ; tests.
+- [x] `roofLineY` zinc ; `skylinePoints` avec crête ; neige sur la crête et les toits du fond ; `NIGHT` retouché ; tests.
 
 ### Task 6: Nuit en SVG
 
-- [ ] `ghibli-windows.tsx` : teintes, halo, silhouettes ; `ghibli-night.tsx` : flaques des lampadaires ; `scene-city.tsx` ; tests.
+- [x] `ghibli-windows.tsx` : teintes, halo, silhouettes ; `ghibli-night.tsx` : flaques des lampadaires ; `scene-city.tsx` ; tests.
 
 ### Task 7: Captures, PR, pré-prod
 
-- [ ] Banc port 5221 : midi / coucher / 22 h / brume, 1080 et 3456, zoom ; comparaison à la maquette ; corrections.
+- [x] Banc port 5221 : midi / coucher / 22 h / brume, 1080 et 3456, zoom ; comparaison à la maquette ; corrections.
 - [ ] Suite de tests, build, PR, fusion, `npm run preprod`, extension reconstruite, mémoire.
