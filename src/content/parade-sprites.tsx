@@ -1,9 +1,13 @@
 import type { ReactElement, ReactNode } from 'react';
-import { outfitFor } from '../core/library/city/people';
+import { outfitFor, type Outfit } from '../core/library/city/people';
+import { anchorsOf } from '../core/library/figure/bake';
+import { shapeOf, signatureOf } from '../core/library/figure/dress';
+import type { ArmPose, Gait } from '../core/library/figure/skeleton';
 import type { ParadeKind, ParadeUnit } from '../core/library/city/parade';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
+import { GhibliFigure, type Held, type PoseIn } from './figure/ghibli-figure';
 
 // Cortège du 14 juillet (spec §7.4, tâche 13). Repère de chaque unité : sol à y = 0, centre de l'unité à x = 0, regard vers
 // +x, dans l'échelle des véhicules (l'appelant applique `unit × STREET_SCALE.vehicle`). Les marcheurs sont dessinés dans le
@@ -12,8 +16,13 @@ import { tone } from './city-sprites';
 // elles suivent la ligne de temps du document, donc toutes les unités marchent au même pas, quel que soit l'instant de leur
 // montage. Chaque figurant à pied
 // ou à cheval porte `data-worker` : il compte dans le plafond des figurants (shopSpriteBudget).
+// Ghibli (G3c) : chaque humain est un pantin (GhibliFigure) sans miroir, de trois quarts vers la droite (PARADE_YAW). Les
+// marcheurs (`data-parade-figure` + `data-arms`) sont posés par la boucle du calque (pas cadencé commun) ; couvre-chefs,
+// instruments, fusils et hampes gardent leur dessin, accrochés à la tête ou à la main du pantin (même repère : centre de la
+// tête à (0, −33)). Cavaliers et motards : pantin en selle (`mount`, accroche `seat` posée sur la selle) ; chefs de bord,
+// chefs de char et pompiers : pantin debout derrière la caisse, la tourelle ou la vitre (rognée).
 
-type Props = { unit: ParadeUnit; sky: Sky; still: boolean };
+type Props = { unit: ParadeUnit; sky: Sky; still: boolean; ghibli?: boolean };
 type Tint = (c: string) => string;
 
 const BLUE = '#2B4FA0';
@@ -258,6 +267,153 @@ const at = (x: number, node: ReactElement, key: number | string, dy = 0): ReactE
   </g>
 );
 
+// ---------- Pantins Ghibli ----------
+export const PARADE_YAW = 1;
+// Tenue du pantin tirée d'un uniforme : tunique → haut, pantalon → bas, cheveux courts sous le couvre-chef.
+const uniform = (d: Dress): Outfit => ({ skin: d.skin, hair: 'short', hairColor: '#2A1D16', hatColor: d.cap, top: 'jacket', topColor: d.tunic, bottom: 'pants', bottomColor: d.trousers, accessory: 'none', accessoryColor: d.belt });
+const crew = (skin: string, top: string, bottom: string, hair: Outfit['hair'], hat: string): Outfit => ({ skin, hair, hairColor: '#2A1D16', hatColor: hat, top: 'jacket', topColor: top, bottom: 'pants', bottomColor: bottom, accessory: 'none', accessoryColor: top });
+const headgear = (d: Dress, t: Tint): Held => ({ anchor: 'head', node: <g transform="translate(0 33)"><Headgear d={d} t={t} /></g> });
+// `arms` du marcheur : geste fixe, ou 'baton' (tambour-major : bras levé puis haut, en alternance, voir paradeArms).
+export type MarchArms = ArmPose | 'baton';
+const marchPose = (arms: MarchArms): PoseIn => ({ yaw: PARADE_YAW, gait: 'walk', phase: 0, head: 0, arms: arms === 'baton' ? 'raise' : arms });
+
+function GMarcher({ d, sky, arms, held }: { d: Dress; sky: Sky; arms: MarchArms; held?: readonly Held[] }): ReactElement {
+  const t: Tint = (c) => tone(c, sky);
+  return (
+    <g data-worker="" data-parade-figure="" data-arms={arms}>
+      <GhibliFigure outfit={uniform(d)} sky={sky} rainy={false} umbrella={false} initial={marchPose(arms)} held={[...(held ?? []), headgear(d, t)]} />
+    </g>
+  );
+}
+
+// Pantin immobile (repère du véhicule) : en selle, `at` = point de la selle où poser le bassin ; debout, `at` = pieds ;
+// `scale` = échelle du pantin dans le repère du véhicule.
+function GRider({ outfit, sky, gait, arms, at: [x, y], scale, held }: { outfit: Outfit; sky: Sky; gait: Gait; arms: ArmPose; at: readonly [number, number]; scale: number; held?: readonly Held[] }): ReactElement {
+  const pose: PoseIn = { yaw: PARADE_YAW, gait, phase: 0, head: 0, arms };
+  let dx = 0;
+  let dy = 0;
+  if (gait === 'mount' || gait === 'pedal') {
+    const a = anchorsOf({ sig: signatureOf(shapeOf(outfit, false)), yaw: PARADE_YAW, gait, phase: 0, head: 0, arms, lean: 0 }).seat;
+    dx = -a[0];
+    dy = -a[1];
+  }
+  return (
+    <g data-worker="" data-parade-figure="" transform={`translate(${x} ${y}) scale(${scale}) translate(${dx} ${dy})`}>
+      <GhibliFigure outfit={outfit} sky={sky} rainy={false} umbrella={false} initial={pose} held={held} />
+    </g>
+  );
+}
+
+// Objets de la fanfare en Ghibli : dessin actuel sans les bras, accroché à la main (ou au milieu des mains) du pantin.
+function bandHeld(kind: Instrument, t: Tint): { arms: MarchArms; held: Held } {
+  const brass = t(BRASS);
+  switch (kind) {
+    case 'tuba':
+      return {
+        arms: 'carry',
+        held: {
+          anchor: 'hands',
+          node: (
+            <g data-instrument="tuba" transform="translate(-4 22)">
+              <ellipse cx={4} cy={-22} rx={3.4} ry={6.5} fill="none" stroke={brass} strokeWidth={1.8} />
+              <path d="M3 -28 L-2 -44 H8 L5 -28Z" fill={brass} />
+              <ellipse cx={3} cy={-44} rx={5} ry={1.3} fill={t('#8A6A1E')} />
+            </g>
+          ),
+        },
+      };
+    case 'trumpet':
+      return {
+        arms: 'horn',
+        held: {
+          anchor: 'handR',
+          node: (
+            <g data-instrument="trumpet" transform="translate(-6 32)">
+              <line x1={3} y1={-32} x2={13} y2={-31} stroke={brass} strokeWidth={1.2} />
+              <path d="M12 -31 L17 -34 V-28Z" fill={brass} />
+              <rect x={6} y={-33.4} width={3} height={2} fill={brass} />
+            </g>
+          ),
+        },
+      };
+    case 'bugle':
+      return {
+        arms: 'horn',
+        held: {
+          anchor: 'handR',
+          node: (
+            <g data-instrument="bugle" transform="translate(-6 31)">
+              <ellipse cx={7} cy={-29} rx={3} ry={2} fill="none" stroke={brass} strokeWidth={1} />
+              <line x1={3} y1={-32} x2={8} y2={-31} stroke={brass} strokeWidth={1} />
+              <path d="M9 -30 L14 -33 V-26Z" fill={brass} />
+              <path d="M8 -28 H13 V-24 L10.5 -25.4 L8 -24Z" fill={t(RED)} />
+            </g>
+          ),
+        },
+      };
+    case 'bass-drum':
+      return {
+        arms: 'drum',
+        held: {
+          anchor: 'hands',
+          node: (
+            <g data-instrument="bass-drum" transform="translate(-4 19)">
+              <circle cx={6} cy={-21} r={8} fill={t(WHITE)} stroke={t(RED)} strokeWidth={1.6} />
+              <circle cx={6} cy={-21} r={2} fill={t(BLUE)} />
+            </g>
+          ),
+        },
+      };
+    case 'snare':
+      return {
+        arms: 'drum',
+        held: {
+          anchor: 'hands',
+          node: (
+            <g data-instrument="snare" transform="translate(-6.5 18.5)">
+              <rect x={2} y={-19} width={9} height={5} fill={t(WHITE)} stroke={t(RED)} strokeWidth={0.8} />
+              <path d="M2 -19 L4.2 -14 L6.4 -19 L8.6 -14 L11 -19" stroke={t(BLUE)} strokeWidth={0.6} fill="none" />
+            </g>
+          ),
+        },
+      };
+    case 'baton':
+      return {
+        arms: 'baton',
+        held: {
+          anchor: 'handR',
+          node: (
+            <g data-instrument="baton">
+              <line x1={0} y1={0} x2={3} y2={-15} stroke={t(BLACK)} strokeWidth={1} />
+              <circle cx={3.2} cy={-16} r={1.8} fill={brass} />
+            </g>
+          ),
+        },
+      };
+  }
+}
+const rifleHeld = (t: Tint): Held => ({
+  anchor: 'handR',
+  node: (
+    <g data-rifle="" transform="translate(-3.6 20)">
+      <line x1={4} y1={-19} x2={-5} y2={-46} stroke={t('#2E2A24')} strokeWidth={1.4} />
+      <path d="M2.6 -21 L5.4 -17 L7 -19 L4.4 -22Z" fill={t('#5A3E26')} />
+    </g>
+  ),
+});
+const flagHeld = (t: Tint, anim: boolean): Held => ({
+  anchor: 'handR',
+  node: (
+    <g data-flag-bearer="" transform="translate(-5 24)">
+      <line x1={5} y1={-14} x2={5} y2={-66} stroke={t('#6B5B4A')} strokeWidth={1.2} />
+      <circle cx={5} cy={-67} r={1.4} fill={t(BRASS)} />
+      <g transform="translate(5 0)">
+        <Tricolore t={t} top={-65} w={27} h={18} anim={anim} />
+      </g>
+    </g>
+  ),
+});
+
 // ---------- Tenues ----------
 const BAND_DRESS: readonly Omit<Dress, 'skin' | 'head'>[] = [
   // Garde républicaine : tunique bleu nuit, pantalon à bande rouge.
@@ -287,7 +443,7 @@ const INFANTRY_DRESS: readonly Omit<Dress, 'skin'>[] = [
 ];
 
 // ---------- Unités ----------
-function Band({ unit, t, anim, begin }: UnitArt): ReactElement {
+function Band({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
   const base = pickOf(BAND_DRESS, unit.variant);
   const skins = skinsOf(unit.id, 6);
   // De l'arrière vers l'avant : tuba, grosse caisse, caisse claire, trompette, clairon, et le chef en tête.
@@ -296,32 +452,38 @@ function Band({ unit, t, anim, begin }: UnitArt): ReactElement {
     <g>
       {row.map((inst, i) => {
         const d: Dress = { ...base, skin: skins[i]!, head: inst === 'baton' ? 'plume' : 'kepi' };
+        if (sky) {
+          const h = bandHeld(inst, t);
+          return at(-75 + i * 30, <GMarcher d={d} sky={sky} arms={h.arms} held={[h.held]} />, inst);
+        }
         return at(-75 + i * 30, <Marcher d={d} t={t} anim={anim} begin={begin}><InstrumentArt kind={inst} d={d} t={t} anim={anim} begin={begin} /></Marcher>, inst);
       })}
     </g>
   );
 }
 
-function Infantry({ unit, t, anim, begin }: UnitArt): ReactElement {
+function Infantry({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
   const base = pickOf(INFANTRY_DRESS, unit.variant);
   const skins = skinsOf(unit.id, 8);
   return (
     <g>
       {skins.map((skin, i) => {
         const d: Dress = { ...base, skin };
+        if (sky) return at(-70 + i * 20, <GMarcher d={d} sky={sky} arms="rifle" held={[rifleHeld(t)]} />, i);
         return at(-70 + i * 20, <Marcher d={d} t={t} anim={anim} begin={begin}><Rifle d={d} t={t} /></Marcher>, i);
       })}
     </g>
   );
 }
 
-function Flags({ unit, t, anim, begin }: UnitArt): ReactElement {
+function Flags({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
   const base = pickOf(INFANTRY_DRESS, (unit.variant * 7) % 1);
   const skins = skinsOf(unit.id, 3);
   return (
     <g>
       {skins.map((skin, i) => {
         const d: Dress = { ...base, skin, head: base.head === 'shako' ? 'kepi' : base.head, cap: base.head === 'shako' ? '#1F2A4A' : base.cap };
+        if (sky) return at(-32 + i * 32, <GMarcher d={d} sky={sky} arms="flag" held={[flagHeld(t, anim)]} />, i);
         return at(
           -32 + i * 32,
           <Marcher d={d} t={t} anim={anim} begin={begin}>
@@ -342,7 +504,7 @@ function Flags({ unit, t, anim, begin }: UnitArt): ReactElement {
 }
 
 // Motard de la Garde : casque blanc, gyrophare bleu.
-function Motorbike({ t, anim, skin }: { t: Tint; anim: boolean; skin: string }): ReactElement {
+function Motorbike({ t, anim, skin, sky }: { t: Tint; anim: boolean; skin: string; sky?: Sky }): ReactElement {
   return (
     <g>
       <circle cx={-11} cy={-6} r={6} fill={t(TYRE)} />
@@ -354,6 +516,9 @@ function Motorbike({ t, anim, skin }: { t: Tint; anim: boolean; skin: string }):
       <rect x={-12} y={-14} width={6} height={4} fill={t(BLUE)} />
       <circle cx={-12} cy={-17} r={1.4} fill="#4F7BFF">{anim && <animate attributeName="opacity" values="1;0.2;1" dur="0.8s" repeatCount="indefinite" />}</circle>
       {/* Pilote : veste bleu nuit, culotte, bottes, casque blanc. */}
+      {sky ? (
+        <GRider outfit={crew(skin, '#1F2A4A', '#1F2A4A', 'cap', WHITE)} sky={sky} gait="mount" arms="handlebar" at={[-2, -15]} scale={FIG} />
+      ) : (
       <g data-worker="" data-parade-figure="">
         <path d="M-4 -16 L2 -14 L1 -7" stroke={t('#1F2A4A')} strokeWidth={2.6} strokeLinecap="round" fill="none" />
         <rect x={0} y={-9} width={2.6} height={4} fill={t(BLACK)} />
@@ -362,24 +527,25 @@ function Motorbike({ t, anim, skin }: { t: Tint; anim: boolean; skin: string }):
         <circle cx={-0.6} cy={-30} r={3} fill={t(skin)} />
         <path d="M-3.8 -30 A3.4 3.4 0 0 1 3.2 -30.6 L3.2 -29 H-3.8Z" fill={t(WHITE)} />
       </g>
+      )}
     </g>
   );
 }
-function Motorbikes({ unit, t, anim }: UnitArt): ReactElement {
+function Motorbikes({ unit, t, anim, sky }: UnitArt): ReactElement {
   const [a, b] = skinsOf(unit.id, 2);
   // En quinconce : la moto du fond (un peu plus haut, un peu plus petite, en retrait) est dessinée d'abord, assez loin
   // derrière pour que sa roue avant ne touche pas la roue arrière de celle du premier plan.
   return (
     <g>
-      <g transform="translate(-20 -3) scale(0.95)"><Motorbike t={t} anim={anim} skin={a!} /></g>
-      <g transform="translate(16 0)"><Motorbike t={t} anim={anim} skin={b!} /></g>
+      <g transform="translate(-20 -3) scale(0.95)"><Motorbike t={t} anim={anim} skin={a!} sky={sky} /></g>
+      <g transform="translate(16 0)"><Motorbike t={t} anim={anim} skin={b!} sky={sky} /></g>
     </g>
   );
 }
 
 // Cavalier de la Garde : cheval au pas (quatre jambes d'aplomb, chacune à son temps), cuirasse, casque à crinière et plumet
 // rouge. Le cavalier est assis sur la selle, la jambe tombant le long du flanc, la botte contre le flanc du cheval.
-function Horseman({ t, anim, begin, coat, skin }: { t: Tint; anim: boolean; begin: string; coat: string; skin: string }): ReactElement {
+function Horseman({ t, anim, begin, coat, skin, sky }: { t: Tint; anim: boolean; begin: string; coat: string; skin: string; sky?: Sky }): ReactElement {
   const c = t(coat);
   // Jambe (pivot à l'épaule ou à la hanche) ; `phase` décale le balancement (pas à quatre temps).
   const leg = (x: number, phase: number, far: boolean): ReactElement => {
@@ -407,6 +573,17 @@ function Horseman({ t, anim, begin, coat, skin }: { t: Tint; anim: boolean; begi
       {/* Tapis de selle bleu à galon blanc, selle */}
       <rect x={-6} y={-24} width={10} height={6} fill={t('#1F2A4A')} stroke={t(WHITE)} strokeWidth={0.5} />
       <path d="M-5 -24 Q-1 -22 3.5 -24.5 L3 -25.5 Q-1 -24 -4.6 -25.5Z" fill={t('#3A2416')} />
+      {sky ? (
+        <GRider
+          outfit={crew(skin, '#1F2A4A', WHITE, 'short', STEEL)}
+          sky={sky}
+          gait="mount"
+          arms="handlebar"
+          at={[-1, -24.5]}
+          scale={FIG}
+          held={[headgear({ tunic: '#1F2A4A', trousers: WHITE, head: 'crested', cap: STEEL, capTop: RED, belt: WHITE, skin }, t)]}
+        />
+      ) : (
       <g data-worker="" data-parade-figure="">
         {/* Cuisse vers l'avant sur la selle, jambe le long du flanc, botte contre le flanc (au-dessus du ventre). */}
         <path d="M-1.5 -24 L2.6 -21.6 L2 -16.5" stroke={t(WHITE)} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
@@ -419,10 +596,11 @@ function Horseman({ t, anim, begin, coat, skin }: { t: Tint; anim: boolean; begi
         <path d="M-3 -42 Q-1 -44 3 -42 Q-2 -41 -7 -36" stroke={t(BLACK)} strokeWidth={1.2} fill="none" />
         <path d="M-1 -42 Q-2.4 -46 -0.4 -49 Q1 -46 -1 -42Z" fill={t(RED)} />
       </g>
+      )}
     </g>
   );
 }
-function Cavalry({ unit, t, anim, begin }: UnitArt): ReactElement {
+function Cavalry({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
   const coats = ['#6B3F22', '#3A2416', '#8A5530'];
   const rng = mulberry32(hashString(`horses-${unit.id}`));
   const skins = skinsOf(unit.id, 3);
@@ -430,7 +608,7 @@ function Cavalry({ unit, t, anim, begin }: UnitArt): ReactElement {
     <g>
       {skins.map((skin, i) => (
         <g key={i} transform={`translate(${-50 + i * 50} 0)`}>
-          <Horseman t={t} anim={anim} begin={begin} coat={pickOf(coats, (unit.variant + rng()) % 1)} skin={skin} />
+          <Horseman t={t} anim={anim} begin={begin} coat={pickOf(coats, (unit.variant + rng()) % 1)} skin={skin} sky={sky} />
         </g>
       ))}
     </g>
@@ -440,10 +618,23 @@ function Cavalry({ unit, t, anim, begin }: UnitArt): ReactElement {
 const ARMY = ['#4B5320', '#5B5B3A', '#B49A6A', '#3F4A3C', '#6B6F4A'] as const; // vert armée, kaki, sable, vert OTAN, olive
 
 // Jeep pavoisée : deux petits drapeaux sur les antennes arrière, un militaire debout.
-function Jeep({ t, anim, paint, skin }: { t: Tint; anim: boolean; paint: string; skin: string }): ReactElement {
+function Jeep({ t, anim, paint, skin, sky }: { t: Tint; anim: boolean; paint: string; skin: string; sky?: Sky }): ReactElement {
   const body = t(paint);
+  const tunic = paint === ARMY[2] ? '#8C7A55' : '#3E4420';
   return (
     <g>
+      {/* Ghibli : le chef de bord, debout dans la caisse, est dessiné avant elle (seul le haut du corps dépasse). */}
+      {sky && (
+        <GRider
+          outfit={crew(skin, tunic, tunic, 'short', '#2B3A6A')}
+          sky={sky}
+          gait="stand"
+          arms="down"
+          at={[-3, -7.5]}
+          scale={0.6}
+          held={[headgear({ tunic, trousers: tunic, head: 'beret', cap: '#2B3A6A', belt: tunic, skin }, t)]}
+        />
+      )}
       <rect x={-19} y={-14} width={38} height={9} rx={2} fill={body} />
       {/* Pare-brise posé sur l'auvent de la caisse, dans son cadre peint. */}
       <rect x={3} y={-16} width={9} height={2.6} fill={body} />
@@ -461,21 +652,23 @@ function Jeep({ t, anim, paint, skin }: { t: Tint; anim: boolean; paint: string;
         </g>
       ))}
       {/* Chef de bord debout, au garde-à-vous */}
-      <g data-worker="" data-parade-figure="">
-        <rect x={-6} y={-24} width={6} height={10} rx={1.2} fill={t(paint === ARMY[2] ? '#8C7A55' : '#3E4420')} />
-        <circle cx={-3} cy={-27} r={2.6} fill={t(skin)} />
-        <ellipse cx={-3.6} cy={-29.2} rx={3.6} ry={1.4} fill={t('#2B3A6A')} />
-      </g>
+      {!sky && (
+        <g data-worker="" data-parade-figure="">
+          <rect x={-6} y={-24} width={6} height={10} rx={1.2} fill={t(tunic)} />
+          <circle cx={-3} cy={-27} r={2.6} fill={t(skin)} />
+          <ellipse cx={-3.6} cy={-29.2} rx={3.6} ry={1.4} fill={t('#2B3A6A')} />
+        </g>
+      )}
     </g>
   );
 }
-function Jeeps({ unit, t, anim }: UnitArt): ReactElement {
+function Jeeps({ unit, t, anim, sky }: UnitArt): ReactElement {
   const paint = pickOf(ARMY, unit.variant);
   const [a, b] = skinsOf(unit.id, 2);
   return (
     <g>
-      <g transform="translate(-26 0)"><Jeep t={t} anim={anim} paint={paint} skin={a!} /></g>
-      <g transform="translate(28 0)"><Jeep t={t} anim={anim} paint={paint} skin={b!} /></g>
+      <g transform="translate(-26 0)"><Jeep t={t} anim={anim} paint={paint} skin={a!} sky={sky} /></g>
+      <g transform="translate(28 0)"><Jeep t={t} anim={anim} paint={paint} skin={b!} sky={sky} /></g>
     </g>
   );
 }
@@ -510,10 +703,12 @@ function Trucks({ unit, t }: UnitArt): ReactElement {
 }
 
 // Char : chenilles qui défilent (tirets animés), galets, caisse, tourelle et canon, chef de char en tourelle.
-function Tank({ t, anim, paint, skin }: { t: Tint; anim: boolean; paint: string; skin: string }): ReactElement {
+function Tank({ t, anim, paint, skin, sky }: { t: Tint; anim: boolean; paint: string; skin: string; sky?: Sky }): ReactElement {
   const body = t(paint);
   return (
     <g>
+      {/* Ghibli : le chef de char, debout dans la tourelle, est dessiné avant la caisse (seuls le buste et la tête dépassent). */}
+      {sky && <GRider outfit={crew(skin, '#3E4420', '#3E4420', 'beanie', '#2A2A26')} sky={sky} gait="stand" arms="down" at={[-5.5, -12]} scale={0.55} />}
       <rect x={-30} y={-9} width={60} height={9} rx={4.5} fill={t('#2A2A26')} />
       <rect x={-29} y={-8.6} width={58} height={8.2} rx={4.1} fill="none" stroke={t('#55554C')} strokeWidth={1.4} strokeDasharray="2 2">
         {anim && <animate attributeName="stroke-dashoffset" values="0;-4" dur="0.4s" repeatCount="indefinite" />}
@@ -523,11 +718,13 @@ function Tank({ t, anim, paint, skin }: { t: Tint; anim: boolean; paint: string;
       <path d="M-14 -16 L-12 -23 H6 L10 -16Z" fill={body} />
       <rect x={9} y={-21.4} width={25} height={2} fill={body} />
       <rect x={30} y={-22} width={4} height={3.2} fill={t('#2A2A26')} />
-      <g data-worker="" data-parade-figure="">
-        <rect x={-8} y={-27} width={5} height={4} fill={t('#3E4420')} />
-        <circle cx={-5.5} cy={-29} r={2.4} fill={t(skin)} />
-        <path d="M-8.4 -29.4 A2.9 2.9 0 0 1 -2.6 -29.4Z" fill={t('#2A2A26')} />
-      </g>
+      {!sky && (
+        <g data-worker="" data-parade-figure="">
+          <rect x={-8} y={-27} width={5} height={4} fill={t('#3E4420')} />
+          <circle cx={-5.5} cy={-29} r={2.4} fill={t(skin)} />
+          <path d="M-8.4 -29.4 A2.9 2.9 0 0 1 -2.6 -29.4Z" fill={t('#2A2A26')} />
+        </g>
+      )}
       <line x1={-20} y1={-16} x2={-24} y2={-30} stroke={t('#333333')} strokeWidth={0.5} />
       <g transform="translate(-24 0)">
         <Tricolore t={t} top={-30} w={6} h={4} anim={anim} />
@@ -535,19 +732,19 @@ function Tank({ t, anim, paint, skin }: { t: Tint; anim: boolean; paint: string;
     </g>
   );
 }
-function Tanks({ unit, t, anim }: UnitArt): ReactElement {
+function Tanks({ unit, t, anim, sky }: UnitArt): ReactElement {
   const paint = pickOf(ARMY, unit.variant);
   const [a, b] = skinsOf(unit.id, 2);
   return (
     <g>
-      <g transform="translate(-48 0)"><Tank t={t} anim={anim} paint={paint} skin={a!} /></g>
-      <g transform="translate(40 0)"><Tank t={t} anim={anim} paint={paint} skin={b!} /></g>
+      <g transform="translate(-48 0)"><Tank t={t} anim={anim} paint={paint} skin={a!} sky={sky} /></g>
+      <g transform="translate(40 0)"><Tank t={t} anim={anim} paint={paint} skin={b!} sky={sky} /></g>
     </g>
   );
 }
 
 // Sapeurs-pompiers : grand camion rouge à échelle, bande blanche, gyrophares bleus, casques chromés dans la cabine.
-function Firetruck({ unit, t, anim }: UnitArt): ReactElement {
+function Firetruck({ unit, t, anim, sky }: UnitArt): ReactElement {
   const red = t(pickOf(['#C8102E', '#B5121B'], unit.variant));
   const skins = skinsOf(unit.id, 2);
   return (
@@ -556,12 +753,21 @@ function Firetruck({ unit, t, anim }: UnitArt): ReactElement {
       <path d="M20 -6 V-30 H34 L42 -18 V-6Z" fill={red} />
       <path d="M33 -28 L40 -18 H33Z" fill={t(GLASS)} opacity={0.85} />
       <rect x={22} y={-27} width={9} height={8} fill={t(GLASS)} opacity={0.85} />
-      {skins.map((skin, i) => (
-        <g key={i}>
-          <circle cx={25 + i * 4} cy={-21.5} r={1.7} fill={t(skin)} />
-          <path d={`M${23.2 + i * 4} -22 A1.9 1.9 0 0 1 ${26.8 + i * 4} -22Z`} fill={t(STEEL)} />
-        </g>
-      ))}
+      {sky ? (
+        // Ghibli : pompiers derrière la vitre latérale, rognés à la vitre par un <svg> imbriqué (pas de clipPath à id).
+        <svg x={22} y={-27} width={9} height={8} viewBox="22 -27 9 8" overflow="hidden">
+          {skins.map((skin, i) => (
+            <GRider key={i} outfit={crew(skin, '#1F2A4A', '#1F2A4A', 'cap', STEEL)} sky={sky} gait="stand" arms="down" at={[25 + i * 4, -11]} scale={0.42} />
+          ))}
+        </svg>
+      ) : (
+        skins.map((skin, i) => (
+          <g key={i}>
+            <circle cx={25 + i * 4} cy={-21.5} r={1.7} fill={t(skin)} />
+            <path d={`M${23.2 + i * 4} -22 A1.9 1.9 0 0 1 ${26.8 + i * 4} -22Z`} fill={t(STEEL)} />
+          </g>
+        ))
+      )}
       <rect x={-46} y={-15} width={88} height={2.4} fill={t(WHITE)} />
       {[-40, -30, -20, -10, 0, 10].map((x) => <rect key={x} x={x} y={-24} width={7} height={7} rx={0.6} fill={t('#9E0E22')} />)}
       {/* Échelle sur le toit, débordant au-dessus de la cabine */}
@@ -591,7 +797,8 @@ function Firetruck({ unit, t, anim }: UnitArt): ReactElement {
   );
 }
 
-type UnitArt = { unit: ParadeUnit; t: Tint; anim: boolean; begin: string };
+// `sky` : présent en Ghibli seulement (pantins), absent en classique.
+type UnitArt = { unit: ParadeUnit; t: Tint; anim: boolean; begin: string; sky?: Sky };
 const ARTS: Readonly<Record<ParadeKind, (p: UnitArt) => ReactElement>> = {
   band: Band,
   motorbikes: Motorbikes,
@@ -604,7 +811,7 @@ const ARTS: Readonly<Record<ParadeKind, (p: UnitArt) => ReactElement>> = {
   firetruck: Firetruck,
 };
 
-export function ParadeUnitSprite({ unit, sky, still }: Props): ReactElement {
+export function ParadeUnitSprite({ unit, sky, still, ghibli = false }: Props): ReactElement {
   const tint: Tint = (c) => tone(c, sky);
   const anim = !still;
   // Pas commun : début à 0 sur la ligne de temps du document (voir en tête).
@@ -612,7 +819,10 @@ export function ParadeUnitSprite({ unit, sky, still }: Props): ReactElement {
   const Art = ARTS[unit.kind];
   return (
     <g data-parade-unit={unit.kind} data-lane={unit.lane}>
-      <Art unit={unit} t={tint} anim={anim} begin={begin} />
+      <Art unit={unit} t={tint} anim={anim} begin={begin} sky={ghibli ? sky : undefined} />
     </g>
   );
 }
+
+// Geste du marcheur à l'instant `t` (s) : tambour-major, bras levé puis bras haut, deux secondes chacun.
+export const paradeArms = (arms: MarchArms, t: number): ArmPose => (arms === 'baton' ? (Math.floor(t / 2) % 2 === 0 ? 'raise' : 'up') : arms);

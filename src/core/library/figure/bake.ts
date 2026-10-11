@@ -1,7 +1,7 @@
 // src/core/library/figure/bake.ts
 import { add3, capsule, hull, mul3, pathOf, project, shrink, type P2, type V3 } from './geometry';
 import { hairField, headRegion } from './head';
-import { at, frameOf, poseOf, type ArmPose, type Frame3, type Gait, type Pose } from './skeleton';
+import { PEDAL, at, frameOf, poseOf, type ArmPose, type Frame3, type Gait, type Pose } from './skeleton';
 import { shapeFromSignature, type Shape } from './dress';
 
 // Cuisson d'une pose quantifiée du pantin en tracés SVG (maquette validée du 2026-10-11). Chaque groupe (jambe, bras,
@@ -233,4 +233,16 @@ export function bakeFigure(s: Shape, key: FigureKey): Baked {
     groups: all.map((g) => ({ ink: g.parts.map((p) => pathOf(p.P)).join(''), parts: g.parts.map((p) => ({ slot: p.slot, shade: pathOf(p.P), lit: p.lit ? pathOf(p.lit) : null })) })),
     eyes,
   };
+}
+
+// Repères d'un pantin à vélo (allure `pedal`, guidon), dans le repère du sprite : selle (bassin), centre du pédalier, milieu
+// des mains. Le pédalier ne dépend pas de la phase (centre du cercle des chevilles) : le vélo se dessine autour.
+export function rideFrame(sig: string, yaw: number): { seat: readonly [number, number]; crank: readonly [number, number]; hands: readonly [number, number] } {
+  const q = poseOfKey(shapeFromSignature(sig), { sig, yaw, gait: 'pedal', phase: 0, head: 0, arms: 'handlebar', lean: 0 });
+  const p = (v: V3): readonly [number, number] => {
+    const r = project(v);
+    return [r2(r[0]), r2(r[1])];
+  };
+  const h = mul3(add3(q.arms[0].hand, q.arms[1].hand), 0.5);
+  return { seat: p(q.pelvis), crank: p(at(q.pelvis, q.fr, PEDAL.f, -PEDAL.d, 0)), hands: p(h) };
 }

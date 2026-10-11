@@ -17,6 +17,7 @@ import { hashString, mulberry32 } from '../core/library/scene-world';
 import { anchorsOf } from '../core/library/figure/bake';
 import { shapeOf, signatureOf } from '../core/library/figure/dress';
 import { YAW_BACK, facingYaw } from '../core/library/figure/gait';
+import { crankPhase } from './figure/ghibli-cyclist';
 import type { Sky } from '../core/library/sky';
 import { workerPose, type CrewLook, type WorkerMove } from './city-shops-life';
 import { entranceLeft } from './city-sprites';
@@ -327,7 +328,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
         // Vélo porteur : l'ouvrier est en selle tant qu'il n'en est pas descendu.
         const rider = vc.phase === 'inside' ? outfits.get(set.id)![0]! : null;
         const art = kind === 'cargo-bike'
-          ? <CargoBike sky={sky} lights={lights} ladder={ladderOnRoof} flags={ids} rider={rider} />
+          ? <CargoBike sky={sky} lights={lights} ladder={ladderOnRoof} flags={ids} rider={rider} ghibli={ghibli ? { rainy, dir: st.dir, phase: crankPhase(Math.abs(st.x) / k) } : undefined} />
           : kind === 'truck'
             ? <Flatbed sky={sky} lights={lights} open={open} ladder={ladderOnRoof} load={stored.map((i) => ({ id: `${set.id}/${i.id}`, kind: i.kind }))} />
             : <Van sky={sky} lights={lights} ladder={ladderOnRoof} open={open} stored={ids} />;

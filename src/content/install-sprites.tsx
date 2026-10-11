@@ -3,6 +3,7 @@ import type { ItemKind } from '../core/library/city/install';
 import type { Outfit } from '../core/library/city/people';
 import type { Sky } from '../core/library/sky';
 import { Cyclist, PersonSprite, tone } from './city-sprites';
+import { GhibliRider } from './figure/ghibli-cyclist';
 import type { WorkerPose } from './shop-sprites';
 
 // Décors de fête posés par des équipes et matériel des équipes (spec §7, tâche 10). Repère des sprites : pieds / sol à y = 0,
@@ -389,9 +390,10 @@ function StowedLadder({ sky, len }: { sky: Sky; len: number }): ReactElement {
 
 // ---------- Vélo porteur (repère des véhicules : roues à y = 0, regard vers +x) ----------
 // Vélo à long porte-bagages arrière : une caisse de drapeaux sur le porte-bagages, l'échelle couchée par-dessus (`ladder`) ;
-// `rider` : l'ouvrier en selle (gilet orange, `data-worker`), null quand il en est descendu.
+// `rider` : l'ouvrier en selle (gilet orange, `data-worker`), null quand il en est descendu. Ghibli (`ghibli`) : l'ouvrier est
+// un pantin à vélo en gilet de chantier, pédalier à l'image `phase`, retourné selon `dir` (sens du groupe, déjà en miroir).
 export const BIKE = { half: 40, door: 26, saddle: -4, crate: { x: -25, y: -12 }, ladder: { x: -20, y: -21, len: 34 } } as const;
-export function CargoBike({ sky, lights, ladder, flags, rider }: { sky: Sky; lights: boolean; ladder: boolean; flags: readonly string[]; rider: Outfit | null }): ReactElement {
+export function CargoBike({ sky, lights, ladder, flags, rider, ghibli }: { sky: Sky; lights: boolean; ladder: boolean; flags: readonly string[]; rider: Outfit | null; ghibli?: { rainy: boolean; dir: 1 | -1; phase: number } }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const frame = t('#2F7D5B');
   return (
@@ -406,7 +408,12 @@ export function CargoBike({ sky, lights, ladder, flags, rider }: { sky: Sky; lig
       <line x1={8} y1={-18} x2={12} y2={-18.5} stroke={t('#2A2D34')} strokeWidth={1.1} strokeLinecap="round" />
       <g transform={`translate(${BIKE.crate.x} ${BIKE.crate.y})`}><FlagCrate sky={sky} flags={flags} tag="bike" w={20} /></g>
       {ladder && <g transform={`translate(${BIKE.ladder.x} ${BIKE.ladder.y})`}><StowedLadder sky={sky} len={BIKE.ladder.len} /></g>}
-      {rider && (
+      {rider && ghibli && (
+        <g data-worker="">
+          <GhibliRider outfit={rider} sky={sky} rainy={ghibli.rainy} dir={ghibli.dir} phase={ghibli.phase} work="vest" seatX={-4} seatY={-17.6} />
+        </g>
+      )}
+      {rider && !ghibli && (
         <g data-worker="" data-bike-rider="" transform="translate(-1 -1.5)">
           <Cyclist outfit={rider} sky={sky} />
           <path d="M-4 -17 L-1.9 -22.6 L1.1 -21.8 L-0.9 -16.2Z" fill={t('#F28C28')} />

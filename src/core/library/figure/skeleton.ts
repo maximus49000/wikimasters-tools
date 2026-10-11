@@ -64,7 +64,7 @@ const TARGETS: Readonly<Record<ArmPose, readonly [T3 | null, T3 | null]>> = {
   handlebar: [[9, -4, -0.6], [9, -4, -0.6]],
   horn: [[5, 4, -3.2], [6.2, 4.4, -2.6]],
   rifle: [null, [3.5, -7, -1.5]],
-  flag: [null, [5, -2.5, -0.8]],
+  flag: [null, [9, -1, -0.3]],
 };
 // side : -1 bras gauche (l < 0), +1 bras droit.
 export const armTarget = (pose: ArmPose, side: -1 | 1): T3 | null => TARGETS[pose][side < 0 ? 0 : 1];
