@@ -1,7 +1,8 @@
-import { WORLD_MARGIN, citySkyline, hashString, mulberry32 } from '../scene-world';
+import { WORLD_MARGIN, hashString, mulberry32 } from '../scene-world';
 import type { CityIntensity } from './intensity';
 import { MAX_TRIP_PX, farDoorX, passageAt, type Passage } from './doorway';
 import { DOOR_MARGIN, DOOR_WIDTH, WALK_PACE } from './metrics';
+import { frontLots } from './lots';
 import { outfitFor, type Outfit, type Profile } from './people';
 import { SHOP_MIN_WIDTH, shopSlotsFor } from './shops/slots';
 
@@ -10,17 +11,16 @@ export { DOOR_MARGIN, DOOR_WIDTH } from './metrics';
 export { MAX_TRIP_PX };
 export const TRIP_CYCLE = 160;
 
-// Une entrée par immeuble du premier plan visible (les plus étroits font 28 px : l'entrée de 12 px y tient avec ses marges).
-// L'entrée est placée dans la partie visible de l'immeuble ([0, width)) ; un immeuble dont la partie visible est trop étroite
+// Une entrée par lot du premier plan visible (les plus étroits font 28 px : l'entrée de 12 px y tient avec ses marges ; un jumeau n'en a qu'une).
+// L'entrée est placée dans la partie visible du lot ([0, width)) ; un lot dont la partie visible est trop étroite
 // pour une entrée (coupé au bord du monde) n'en a pas.
 export function doorsFor(width: number, height: number, seed: number): Door[] {
   const rng = mulberry32(seed ^ hashString('doors'));
   const out: Door[] = [];
   const slots = shopSlotsFor(width, height, seed);
   let shop = 0;
-  for (const b of citySkyline(width, height, seed)) {
-    if (b.far || b.x + b.w <= 0 || b.x >= width) continue;
-    // Trois tirages par immeuble visible, même s'il n'a pas d'entrée : les suivantes ne changent pas.
+  for (const b of frontLots(width, height, seed)) {
+    // Trois tirages par lot visible, même s'il n'a pas d'entrée : les suivantes ne changent pas.
     const at = rng();
     const variant = Math.floor(rng() * 3) as 0 | 1 | 2;
     const hallU = rng();

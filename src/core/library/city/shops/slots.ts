@@ -1,8 +1,9 @@
-import { citySkyline, hashString, mulberry32 } from '../../scene-world';
+import { hashString, mulberry32 } from '../../scene-world';
+import { frontLots } from '../lots';
 import { DOOR_MARGIN, DOOR_WIDTH } from '../metrics';
 import { GROUND_FLOOR } from '../facades';
 
-// Locaux commerciaux : immeubles du premier plan dont la partie visible fait au moins SHOP_MIN_WIDTH px (≈ 60 %).
+// Locaux commerciaux : lots du premier plan (immeuble simple, ou jumeau et son socle) dont la partie visible fait au moins SHOP_MIN_WIDTH px.
 // L'entrée des habitants est poussée au bord (côté tiré) ; le local occupe le reste du rez-de-chaussée.
 export const SHOP_MIN_WIDTH = 38;
 // Écart entre l'entrée des habitants et le local.
@@ -18,8 +19,7 @@ export function shopSlotsFor(width: number, height: number, seed: number): ShopS
   // Générateur propre aux locaux : les tirages de doorsFor (position, variante, hall) ne bougent pas.
   const rng = mulberry32(seed ^ hashString('shop-slots'));
   const out: ShopSlot[] = [];
-  for (const b of citySkyline(width, height, seed)) {
-    if (b.far || b.x + b.w <= 0 || b.x >= width) continue;
+  for (const b of frontLots(width, height, seed)) {
     const side: 'left' | 'right' = rng() < 0.5 ? 'left' : 'right';
     const lo = Math.max(b.x, 0);
     const hi = Math.min(b.x + b.w, width);

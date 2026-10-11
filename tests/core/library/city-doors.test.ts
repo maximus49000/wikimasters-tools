@@ -4,16 +4,17 @@ import { dayContext } from '../../../src/core/library/city/calendar';
 import { DOOR_MARGIN, DOOR_WIDTH, MAX_TRIP_PX, RESIDENT_DOORS_PER_720, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor } from '../../../src/core/library/city/doors';
 import { THRESHOLD_S } from '../../../src/core/library/city/doorway';
 import { TURN_S } from '../../../src/core/library/figure/gait';
+import { frontLots } from '../../../src/core/library/city/lots';
 import { WORLD_MARGIN, citySkyline } from '../../../src/core/library/scene-world';
 
 describe('doorsFor', () => {
-  it('une entrée par immeuble visible du premier plan, à l’intérieur avec une marge, de façon déterministe', () => {
+  it('une entrée par lot visible du premier plan, à l’intérieur avec une marge, de façon déterministe', () => {
     for (const width of [360, 720, 1000, 2880]) {
       for (const seed of [1, 5, 12345]) {
         const doors = doorsFor(width, 340, seed);
         expect(doors).toEqual(doorsFor(width, 340, seed));
-        // Immeubles dont la partie visible ([0, width)) peut porter une entrée avec ses marges.
-        const near = citySkyline(width, 340, seed).filter((b) => !b.far && Math.min(b.x + b.w, width) - Math.max(b.x, 0) >= DOOR_WIDTH + 2 * DOOR_MARGIN);
+        // Lots dont la partie visible ([0, width)) peut porter une entrée avec ses marges.
+        const near = frontLots(width, 340, seed).filter((b) => Math.min(b.x + b.w, width) - Math.max(b.x, 0) >= DOOR_WIDTH + 2 * DOOR_MARGIN);
         expect(doors).toHaveLength(near.length);
         near.forEach((b, i) => {
           const d = doors[i]!;
@@ -28,7 +29,7 @@ describe('doorsFor', () => {
   });
   it('aucune entrée sur les immeubles du fond', () => {
     const far = citySkyline(720, 340, 5).filter((b) => b.far);
-    const near = citySkyline(720, 340, 5).filter((b) => !b.far);
+    const near = frontLots(720, 340, 5);
     for (const d of doorsFor(720, 340, 5)) {
       // Chaque entrée tombe dans un immeuble du premier plan (même si un immeuble du fond se trouve derrière).
       expect(near.some((b) => d.x >= b.x && d.x + DOOR_WIDTH <= b.x + b.w)).toBe(true);
@@ -148,7 +149,7 @@ describe('residentFlow', () => {
   });
 });
 
-describe('densité d’habitants (une entrée par immeuble)', () => {
+describe('densité d’habitants (une entrée par lot)', () => {
   const intensity = (minutes: number, d: number) => cityIntensity({ minutes, day: dayContext({ y: 2026, m: 10, d }, []), precip: 0, snow: false, storm: false, daylight: 1 });
   it('la probabilité par trajet baisse avec le nombre d’entrées, pas en deçà de la densité de référence', () => {
     const i = intensity(8 * 60, 5);
