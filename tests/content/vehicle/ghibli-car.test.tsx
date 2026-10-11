@@ -28,9 +28,55 @@ async function mount(dir: 1 | -1, arch: Parameters<typeof genCar>[1] = 'berline'
   );
   return host;
 }
+const night = skyAt(23 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
 const tx = (el: Element | null): number => Number(el!.getAttribute('transform')!.match(/translate\(([-\d.]+)/)![1]);
 
 describe('voiture Ghibli', () => {
+  it('jupes et ailes PAR-DESSUS les roues', async () => {
+    // Limousine : toujours des jupes.
+    const host = await mount(1, 'limousine', 3);
+    const order = [...host.querySelectorAll('[data-wheel], [data-layer="over"]')].map((e) => (e.hasAttribute('data-wheel') ? 'wheel' : 'over'));
+    expect(order).toEqual(['wheel', 'wheel', 'over']);
+  });
+  it('jour → nuit : l’image affichée reste tant que la nouvelle n’est pas peinte, puis la boucle la pose', async () => {
+    const car = genCar(12, 'break', 0.3);
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    const draw = async (s: typeof sky, still = false): Promise<void> =>
+      act(async () =>
+        root.render(
+          <svg>
+            <Probe />
+            <GhibliCar car={car} dir={1} sky={s} rainy={false} lights={false} still={still} />
+          </svg>,
+        ),
+      );
+    await draw(sky);
+    const body = (): Element => host.querySelector('[data-layer="body"]')!;
+    const dayKey = body().getAttribute('data-shown');
+    await draw(night);
+    const want = body().getAttribute('data-want');
+    expect(want).not.toBe(dayKey);
+    expect(body().getAttribute('data-shown')).toBe(dayKey);
+    regs!.car.flush();
+    placeCar(regs!.fig, regs!.car, host.querySelector('[data-ghibli-car]')!, { car, dist: 0, v: 0, lean: 0, seed: 1 }, 1, 1);
+    expect(body().getAttribute('data-shown')).toBe(want);
+  });
+  it('mouvement réduit : la nouvelle palette est posée tout de suite (aucune boucle ne la poserait)', async () => {
+    const car = genCar(13, 'citadine', 0.6);
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    for (const s of [sky, night])
+      await act(async () =>
+        root.render(
+          <svg>
+            <GhibliCar car={car} dir={1} sky={s} rainy={false} lights={false} still />
+          </svg>,
+        ),
+      );
+    const b = host.querySelector('[data-layer="body"]')!;
+    expect(b.getAttribute('data-shown')).toBe(b.getAttribute('data-want'));
+  });
   it('rend caisse, vitrage, deux roues, un conducteur ; aucun clipPath ni id', async () => {
     const host = await mount(1);
     expect(host.querySelector('[data-layer="body"]')?.getAttribute('href')).toBeTruthy();

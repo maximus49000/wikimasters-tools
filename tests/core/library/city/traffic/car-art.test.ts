@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ARCH_NAMES, genCar } from '../../../../../src/core/library/city/traffic/cars';
-import { carArt, carProfile, wheelOps } from '../../../../../src/core/library/city/traffic/car-art';
+import { carArt, carExtent, carProfile, wheelOps } from '../../../../../src/core/library/city/traffic/car-art';
 
 type P = readonly [number, number];
 const orient = (p: P, q: P, r: P): number => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
@@ -72,6 +72,14 @@ describe('profil et plan de peinture', () => {
       expect(fenders.length, `sport ${i}`).toBeGreaterThanOrEqual(1);
       const b = genCar(i * 5 + 2, 'berline', 0.1);
       expect(carArt(b).over.filter((o) => o.k === 'piece' && o.color === b.body && !b.skirts)).toHaveLength(0);
+    }
+  });
+  it('encombrement : pare-chocs, pot et roue de secours compris', () => {
+    for (let i = 0; i < 40; i++) {
+      const c = genCar(i, '4x4', 0.2);
+      const e = carExtent(c);
+      expect(e).toBeGreaterThanOrEqual(c.L / 2 + 1.6);
+      if (c.spare) expect(e).toBeGreaterThanOrEqual(c.L / 2 + 4.2);
     }
   });
   it('roues : plusieurs opérations par style ; plan mémoïsé', () => {

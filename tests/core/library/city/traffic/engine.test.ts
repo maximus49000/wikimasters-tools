@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advance, agentView, createTraffic, warmTraffic, xOfS, type Agent, type TrafficEnv, type TrafficWorld } from '../../../../../src/core/library/city/traffic/engine';
+import { carExtent } from '../../../../../src/core/library/city/traffic/car-art';
 import { temperamentOf } from '../../../../../src/core/library/city/traffic/temperament';
 import { mulberry32 } from '../../../../../src/core/library/scene-world';
 
@@ -143,7 +144,7 @@ describe('voitures générées', () => {
     for (const a of cars) {
       expect(a.car).toBeDefined();
       const far = a.track === 'far' ? 0.9 : 1;
-      expect(a.half).toBeCloseTo((a.car!.L / 2 + 1) * 0.85 * far, 5);
+      expect(a.half).toBeCloseTo(carExtent(a.car!) * 0.85 * far, 5);
     }
     // Ordre de création = ordre de la suite : le rang de la fiche (seed) croît avec le numéro d'agent.
     for (let i = 0; i + 10 <= cars.length; i++) expect(new Set(cars.slice(i, i + 10).map((a) => a.car!.arch)).size).toBe(10);

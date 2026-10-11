@@ -15,13 +15,21 @@ describe('échappement', () => {
     const p = createPuffs(8);
     for (let t = 0; t < 20; t += 0.05) emitPuffs(p, { id: 'a', x: 0, y: 0, k: 1, acc: 5, v: 30, unit: 1 }, t);
     expect(p.puffs).toHaveLength(8);
-    const q = { x: 0, y: 0, k: 1, born: 0, dark: false, jitter: 0.5, live: true };
+    const q = { x: 0, y: 0, k: 1, born: 0, dark: false, jitter: 0.5, live: true, dir: 1 as const };
     const v0 = puffView(q, 0.1)!;
     const v1 = puffView(q, 1.2)!;
     expect(v1.cy).toBeLessThan(v0.cy);
     expect(v1.r).toBeGreaterThan(v0.r);
     expect(v1.alpha).toBeLessThan(v0.alpha);
     expect(puffView(q, 2)).toBeNull();
+  });
+  it('la bouffée dérive vers l’ARRIÈRE du véhicule, dans les deux sens', () => {
+    for (const dir of [1, -1] as const) {
+      const p = createPuffs(4);
+      emitPuffs(p, { id: 'a', x: 100, y: 0, k: 1, acc: 0, v: 30, unit: 1, dir }, 0);
+      const v = puffView(p.puffs[0]!, 1.5)!;
+      expect(Math.sign(v.cx - 100)).toBe(-dir);
+    }
   });
   it('sources oubliées quand l’agent est sorti', () => {
     const p = createPuffs(8);

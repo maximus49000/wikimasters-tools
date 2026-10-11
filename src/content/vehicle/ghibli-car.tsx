@@ -45,7 +45,8 @@ function wantLayer(c: CarSpec, art: CarArt, layer: CarLayer, lit: Lit): { key: s
   return { key: layerKey(c, layer, lit), paint: () => paintLayer(art, layer, lit) };
 }
 
-export function GhibliCar({ car, dir, sky, rainy, lights }: { car: CarSpec; dir: 1 | -1; sky: Sky; rainy: boolean; lights: boolean }): ReactElement {
+// `still` (mouvement réduit) : aucune boucle ne posera une image en attente, elle est donc peinte tout de suite.
+export function GhibliCar({ car, dir, sky, rainy, lights, still = false }: { car: CarSpec; dir: 1 | -1; sky: Sky; rainy: boolean; lights: boolean; still?: boolean }): ReactElement {
   const reg = useCarRegistry();
   const root = useRef<SVGGElement | null>(null);
   const art = carArt(car);
@@ -53,13 +54,17 @@ export function GhibliCar({ car, dir, sky, rainy, lights }: { car: CarSpec; dir:
   const lit: Lit = { day, night, dir };
   const box = layerBox(art, dir);
   const t = (c: string): string => tone(c, sky);
-  // Image d'une couche : sprite voulu s'il existe ; sinon l'image déjà affichée (rendu précédent) reste et le voulu est
-  // demandé ; première apparition : peint tout de suite.
-  const hrefOf = (sel: string, key: string, paint: () => string): string => {
-    const prev = root.current?.querySelector(sel)?.getAttribute('href') ?? null;
-    if (prev === null) return reg.ensure(key, paint);
-    return reg.request(key, paint) ?? prev;
+  // Image d'une couche et clé réellement montrée : sprite voulu s'il existe ; sinon l'image déjà affichée (rendu précédent)
+  // reste avec sa clé et le voulu est demandé (la boucle le pose une fois peint) ; première apparition ou mouvement réduit :
+  // peint tout de suite.
+  const shownOf = (sel: string, key: string, paint: () => string): { href: string; shown: string } => {
+    const prev = root.current?.querySelector(sel) ?? null;
+    const prevHref = prev?.getAttribute('href') ?? null;
+    if (prevHref === null || still) return { href: reg.ensure(key, paint), shown: key };
+    const url = reg.request(key, paint);
+    return url !== null ? { href: url, shown: key } : { href: prevHref, shown: prev!.getAttribute('data-shown') ?? key };
   };
+  const hrefOf = (sel: string, key: string, paint: () => string): string => shownOf(sel, key, paint).href;
   const wk = wheelKey(car.rim, car.rimColor, car.wheelR, day);
   const wheelHref = hrefOf('[data-wheel] > image', wk, () => paintWheel(car.rim, car.rimColor, car.wheelR, day));
   const wb = wheelBox(car.wheelR);
@@ -80,11 +85,17 @@ export function GhibliCar({ car, dir, sky, rainy, lights }: { car: CarSpec; dir:
     <ellipse data-steer="" cx={n2(steer[0] + 0.8 * dir)} cy={n2(steer[1] - 0.4)} rx={0.6} ry={2} fill="none" stroke={t('#33241f')} strokeWidth={0.8} transform={`rotate(${n2(0.35 * dir * DEG)} ${n2(steer[0] + 0.8 * dir)} ${n2(steer[1] - 0.4)})`} />
   );
   const tail = { x: art.tail.x * dir, y: art.tail.y };
+  const layerImage = (layer: CarLayer): ReactElement => {
+    const w = wantLayer(car, art, layer, lit);
+    const s = shownOf(`[data-layer="${layer}"]`, w.key, w.paint);
+    return <image key={layer} data-layer={layer} data-want={w.key} data-shown={s.shown} href={s.href} x={n2(box.x)} y={n2(box.y)} width={n2(box.w)} height={n2(box.h)} />;
+  };
   const head = { x: art.head.x * dir, y: art.head.y };
   return (
     <g data-ghibli-car="" data-arch={car.arch} data-day={day} data-night={night ? '1' : '0'} data-dir={dir} ref={root}>
       {LAYERS.map((layer) => {
-        if (layer === 'over' && art.over.length === 0) return null;
+        // Jupes et ailes : par-dessus les roues (rendues après elles).
+        if (layer === 'over') return null;
         // Cabriolet : pas d'habitacle, occupants à découvert (sous la caisse, qui cache le bas du corps).
         if (layer === 'interior' && art.interior.length === 0)
           return (
@@ -94,8 +105,7 @@ export function GhibliCar({ car, dir, sky, rainy, lights }: { car: CarSpec; dir:
             </g>
           );
         const w = wantLayer(car, art, layer, lit);
-        const href = hrefOf(`[data-layer="${layer}"]`, w.key, w.paint);
-        const img = <image key={layer} data-layer={layer} data-want={w.key} data-shown={href ? w.key : undefined} href={href} x={n2(box.x)} y={n2(box.y)} width={n2(box.w)} height={n2(box.h)} />;
+        const img = layerImage(layer);
         if (layer !== 'interior') return img;
         // Habitacle puis occupants (rognés au rectangle des vitres ; cabriolet : rien à rogner, la caisse cache le bas).
         return [
@@ -116,6 +126,7 @@ export function GhibliCar({ car, dir, sky, rainy, lights }: { car: CarSpec; dir:
           <circle cx={n2(w.x * dir - 0.25 * w.r)} cy={n2(-w.r * 1.25)} r={n2(w.r * 0.12)} fill="#FFFFFF" opacity={0.8 * Math.max(0.3, day)} />
         </g>
       ))}
+      {art.over.length > 0 && layerImage('over')}
       {art.head.round && <circle cx={n2(head.x)} cy={n2(head.y)} r={1.3} fill={lights ? '#FFF2C0' : t('#E8E2D0')} stroke={t('#33241f')} strokeWidth={0.6} />}
       {lights && (
         <g data-headlight="">

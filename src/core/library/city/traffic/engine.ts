@@ -11,6 +11,7 @@ import { hashString, mulberry32 } from '../../scene-world';
 import { outfitFor, type Outfit } from '../people';
 import { temperamentOf, type Temperament } from './temperament';
 import { carSpeedFactor, carStream, nextCar, type CarSpec, type CarStream } from './cars';
+import { carExtent } from './car-art';
 import { lightColorAt, newWalker, stepLight, stepWalker, type PushLight, type Walker } from './crossing';
 
 export type Track = 'near' | 'far' | 'bike';
@@ -151,7 +152,7 @@ function newAgent(w: TrafficWorld, kind: AgentKind, track: Track, extra: Partial
   const car = kind === 'car' ? nextCar(w.cars) : undefined;
   const scale = car ? 1 : kind === 'van' ? 0.9 + r() * 0.2 : 1;
   const far = track === 'far' ? FAR_SHRINK : 1;
-  const half = (extra.half ?? (car ? (car.L / 2 + 1) * VEHICLE_SCALE * far : KIND_HALF[kind] * VEHICLE_SCALE * scale * far)) * w.unit;
+  const half = (extra.half ?? (car ? carExtent(car) * VEHICLE_SCALE * far : KIND_HALF[kind] * VEHICLE_SCALE * scale * far)) * w.unit;
   const v0 = KIND_V0[kind] * w.unit * (kind === 'ambulance' || kind === 'tram' ? 1 : h.want) * (car ? carSpeedFactor(car.arch) : 1);
   const a: Agent = {
     id: `tr-${w.serial++}`,
@@ -228,8 +229,8 @@ function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
     const mean = (track === 'bike' ? 9 : 2.1) / d;
     // Prochaine tentative : intervalle tiré (pelotons serrés ou espacés), quelle que soit la place disponible.
     w.spawnAt[track] = t + Math.max(0.6, -Math.log(1 - r() * 0.98) * mean);
-    // Place d'entrée : la fiche d'une voiture n'est tirée qu'à sa création, d'où la plus grande longueur possible (60).
-    const half = (kind === 'car' ? 31 : KIND_HALF[kind] * 1.1) * VEHICLE_SCALE * (track === 'far' ? FAR_SHRINK : 1) * w.unit;
+    // Place d'entrée : la fiche d'une voiture n'est tirée qu'à sa création, d'où le plus grand encombrement possible (60/2 + 4,2).
+    const half = (kind === 'car' ? 34.2 : KIND_HALF[kind] * 1.1) * VEHICLE_SCALE * (track === 'far' ? FAR_SHRINK : 1) * w.unit;
     if (!entryFree(w, track, half)) continue;
     const a = newAgent(w, kind, track);
     if (kind === 'bus') { a.stops = [sOfX(w, track, w.busStop[track === 'far' ? 'far' : 'near'])]; a.stopFor = [8, 14]; }

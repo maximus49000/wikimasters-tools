@@ -119,7 +119,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
           if (!still) {
             alive.add(a.id);
             const ex = carArt(a.car!).exhaust;
-            emitPuffs(puffs, { id: a.id, x: view.x + ex.x * k * dir, y: yOf(a, view.lat, metrics) + ex.y * k, k, acc: a.cmd, v: a.v, unit: w.unit }, t);
+            emitPuffs(puffs, { id: a.id, x: view.x + ex.x * k * dir, y: yOf(a, view.lat, metrics) + ex.y * k, k, acc: a.cmd, v: a.v, unit: w.unit, dir }, t);
           }
           continue;
         }
@@ -157,7 +157,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         return (
           <g key={a.id} data-life-id={a.id} data-vehicle="" data-kind={a.kind} data-lane={a.track} data-active="true" transform={transformOf(w, a, metrics, now, painted)}>
             {painted ? (
-              <GhibliCar car={a.car!} dir={TRACK_DIR[a.track]} sky={sky} rainy={rainy} lights={lights} />
+              <GhibliCar car={a.car!} dir={TRACK_DIR[a.track]} sky={sky} rainy={rainy} lights={lights} still={still} />
             ) : ev ? (
               <CityEventSprite event={ev} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} />
             ) : ghibli && a.kind === 'bike' ? (

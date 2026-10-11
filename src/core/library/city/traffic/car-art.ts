@@ -226,6 +226,11 @@ function topAt(pts: readonly (readonly [number, number])[], x: number): number |
   return best;
 }
 
+// Demi-encombrement d'une voiture (unités du sprite) : pare-chocs et pot (x0 − 1,6) compris, roue de secours (x0 − 4,2)
+// pour un 4x4 qui en porte une ; le moteur en tire la demi-longueur (aucun chevauchement à l'arrêt pare-chocs contre
+// pare-chocs).
+export const carExtent = (c: CarSpec): number => Math.max(c.L / 2 + 1.6, c.spare ? c.L / 2 + 4.2 : 0);
+
 const memo = new Map<string, CarArt>();
 export function carArt(c: CarSpec): CarArt {
   const key = `${c.seed}|${c.arch}|${c.hue.toFixed(4)}`;
