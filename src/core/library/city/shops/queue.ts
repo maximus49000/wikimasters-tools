@@ -1,4 +1,7 @@
-import { hashString, mulberry32 } from '../../scene-world';
+import { TURN_S } from '../../figure/gait';
+import { WORLD_MARGIN, hashString, mulberry32 } from '../../scene-world';
+import { MAX_TRIP_PX, THRESHOLD_S, passageAt, type Passage } from '../doorway';
+import { WALK_PACE } from '../metrics';
 
 // File d'attente de la boîte de nuit : fonction pure du temps, sans état conservé.
 export type QueueMember = {
@@ -15,7 +18,7 @@ const MAX_LEN = 6;
 const CYCLE_SIZE = 64; // nombre d'entrées tirées par cycle (un générateur par cycle : on ne tire pas toutes les entrées depuis t = 0)
 const GAP_MIN = 15;
 const GAP_MAX = 30;
-export const ADVANCE_S = 1.2; // durée de l'avancée d'un cran (et de l'entrée dans la porte, côté rendu)
+export const ADVANCE_S = 1.2; // durée de l'avancée d'un cran (l'entrée dans la porte, côté rendu, dure le temps de sa marche)
 const OUTFITS = 12;
 
 const dayMinutes = (minutes: number): number => ((minutes % 1440) + 1440) % 1440;
@@ -109,4 +112,80 @@ function collect(
   }
   const fade = Math.min(1, Math.max(0, (t - lastEntry) / ADVANCE_S));
   return upcoming.slice(0, length).map((e, slot) => ({ id: e.id, slot, entersAt: e.at, outfitKey: e.outfitKey, fade }));
+}
+
+// ---------- Arrivées : la personne qui va rejoindre la file y vient à pied ----------
+// Allure d'une personne de la file (celle des passants, tirée de son id) : (16 + 8·u)·WALK_PACE px/s.
+export function queueWalkSpeed(seed: number, slotId: string, id: string): number {
+  const base = (seed ^ hashString(`queue:${slotId}`)) >>> 0;
+  return (16 + 8 * mulberry32((base ^ hashString(`walk:${id}`)) >>> 0)()) * WALK_PACE;
+}
+const MIN_SPEED = 16 * WALK_PACE;
+
+// Géométrie vue par les arrivées (px du monde) : place `pos` de la file = doorX + away·(startPx + pos·pitchPx) ; `max` : places
+// visibles (queueLayout) ; `width` : largeur du monde ; `doorXs` : centres des entrées d'immeubles (départs possibles).
+export type ArrivalLayout = { doorX: number; away: 1 | -1; startPx: number; pitchPx: number; max: number; width: number; doorXs: readonly number[] };
+// `joinAt` : instant J (s, session) où elle apparaît dans la partie visible de la file ; `fromX` : bord du monde ou centre de
+// l'entrée d'immeuble (`fromDoor`) ; `toX` : sa place à J ; `passage` : où elle en est (seuil, demi-tour, trottoir).
+export type QueueArrival = { id: string; outfitKey: string; joinAt: number; fromX: number; fromDoor: boolean; toX: number; dir: 1 | -1; speed: number; passage: Passage };
+// Entrée d'immeuble trop proche de la place visée (celle de l'immeuble même) : on n'en sort pas pour faire trois pas.
+const MIN_FROM_DOOR_PX = 40;
+
+// Personnes en route vers la file à `t` (secondes de session, même temps que queueAt). Avec M = min(longueur, max) places
+// visibles, l'entrée n° i (dans l'ordre des entrées à venir) rejoint la file visible quand l'entrée n° i − M a lieu : J = son
+// instant ; elle arrive alors à la place M (l'avancée d'un cran l'amène ensuite en M − 1, comme les autres). Celles qui sont
+// au-delà de `max` attendent hors champ : elles ne partent que pour arriver à leur J. Départ du bord du monde du côté de la file
+// (opposé à la porte) ; s'il est à plus de MAX_TRIP_PX, de l'entrée d'immeuble la plus proche au-delà de sa place (seuil puis
+// demi-tour, door-passage), à défaut du bord quand même (long trajet, jamais d'apparition en pleine rue). Un départ antérieur
+// au début de la session est permis : au montage, elle est déjà en route.
+export function queueArrivals(seed: number, slotId: string, t: number, minutes: number, isOpen: boolean, layout: ArrivalLayout): QueueArrival[] {
+  if (!isOpen) return [];
+  const M = Math.min(targetLength(minutes), Math.max(0, layout.max));
+  if (M === 0) return [];
+  const base = (seed ^ hashString(`queue:${slotId}`)) >>> 0;
+  const { doorX, away, startPx, pitchPx, width, doorXs } = layout;
+  const toX = doorX + away * (startPx + M * pitchPx);
+  const dir = (-away) as 1 | -1;
+  const edgeX = away > 0 ? width + WORLD_MARGIN : -WORLD_MARGIN;
+  const toEdge = Number.isFinite(width) ? Math.abs(edgeX - toX) : Infinity;
+  let fromX = edgeX;
+  let fromDoor = false;
+  if (toEdge > MAX_TRIP_PX) {
+    let best: number | null = null;
+    for (const x of doorXs) {
+      const d = (x - toX) * away;
+      if (d >= MIN_FROM_DOOR_PX && d <= MAX_TRIP_PX && (best === null || d < (best - toX) * away)) best = x;
+    }
+    if (best !== null) {
+      fromX = best;
+      fromDoor = true;
+    } else if (!Number.isFinite(width)) fromX = toX + away * MAX_TRIP_PX; // monde sans bord (scène d'essai) : départ au plafond
+  }
+  const dist = Math.abs(fromX - toX);
+  const extra = fromDoor ? THRESHOLD_S + TURN_S : 0;
+  const horizon = t + dist / MIN_SPEED + extra; // J au-delà : personne n'est encore parti
+  const upcoming = upcomingAt(base, t, M, horizon);
+  const out: QueueArrival[] = [];
+  for (let i = M; i < upcoming.length; i++) {
+    const joinAt = upcoming[i - M]!.at;
+    if (joinAt > horizon) break;
+    const e = upcoming[i]!;
+    const speed = queueWalkSpeed(seed, slotId, e.id);
+    const passage = passageAt({ fromX, toX, dir, speed, fromDoor, toDoor: false }, t - (joinAt - dist / speed - extra));
+    if (passage) out.push({ id: e.id, outfitKey: e.outfitKey, joinAt, fromX, fromDoor, toX, dir, speed, passage });
+  }
+  return out;
+}
+
+// Entrées à venir (instant > t), dans l'ordre, jusqu'à ce que l'entrée n° (k − M) dépasse `horizon` (8 cycles au plus).
+function upcomingAt(base: number, t: number, M: number, horizon: number): { id: string; at: number; outfitKey: string }[] {
+  let { cycle, offset } = cycleAt(base, t);
+  const out: { id: string; at: number; outfitKey: string }[] = [];
+  for (let n = 0; n < 8; n++, cycle++) {
+    const entries = cycleEntries(base, cycle);
+    for (const e of entries) if (offset + e.at > t) out.push({ ...e, at: offset + e.at });
+    if (out.length > M && out[out.length - 1 - M]!.at > horizon) break;
+    offset += cycleLength(entries);
+  }
+  return out;
 }

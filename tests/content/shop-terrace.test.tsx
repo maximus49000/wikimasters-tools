@@ -5,7 +5,10 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
-import { MIN_PITCH, NightclubDoor, queueFrame, queueLayout } from '../../src/content/shop-queue';
+import { MIN_PITCH, NightclubDoor, entryScript, queueFrame, queueLayout, type EntryScript } from '../../src/content/shop-queue';
+import { THRESHOLD_S } from '../../src/core/library/city/doorway';
+import { ADVANCE_S, queueWalkSpeed } from '../../src/core/library/city/shops/queue';
+import { TURN_S } from '../../src/core/library/figure/gait';
 import { ShopTerrace, collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, terraceTables, tripAt, waiterTripAt, weatherHistory, type TerraceSky } from '../../src/content/shop-terrace';
 import { ACCESSORY, gestureAt } from '../../src/core/library/city/shops/gestures';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
@@ -229,7 +232,7 @@ describe('boîte de nuit : cordon, videurs et file (NightclubDoor)', () => {
   const club = (date: YMD, minutes: number, reduced = false): HTMLDivElement =>
     render(
       <svg>
-        <NightclubDoor view={viewOf('nightclub', date, minutes)} frame={frame} metrics={metrics} minutes={minutes} date={date} reduced={reduced} sky={skyAt(minutes, times)} seed={SEED} sessionT0={NOW / 1000 - 600} />
+        <NightclubDoor view={viewOf('nightclub', date, minutes)} frame={frame} metrics={metrics} minutes={minutes} date={date} reduced={reduced} sky={skyAt(minutes, times)} seed={SEED} sessionT0={NOW / 1000 - 600} width={W} />
       </svg>,
     ).host;
   it('ouverte (samedi 0 h 30) : cordon, 2 videurs en costume, file de 1 à 6 personnes', () => {
@@ -290,18 +293,18 @@ describe('boîte de nuit : cordon, videurs et file (NightclubDoor)', () => {
     const n = narrowest!;
     expect(n.away < 0 ? n.last >= n.edge - 1e-6 : n.last <= n.edge + 1e-6).toBe(true);
   });
-  it('queueFrame : au plus `max` personnes, la dernière visible arrive en fondu', () => {
-    let fading = 0;
+  it('queueFrame : au plus `max` personnes, la dernière venue arrive une place plus loin (à pied, sans fondu)', () => {
+    let stepping = 0;
     for (let t = 0; t < 300; t += 0.25) {
       const full = queueFrame(SEED, 'shop-0', t, 60, true);
       const two = queueFrame(SEED, 'shop-0', t, 60, true, 2);
       expect(two.members.length).toBeLessThanOrEqual(2);
       expect(two.members.map((m) => m.id)).toEqual(full.members.slice(0, 2).map((m) => m.id));
+      for (const m of two.members) expect(m).not.toHaveProperty('opacity');
       const last = two.members[two.members.length - 1];
-      if (last && last.opacity < 1) fading++;
-      if (two.members.length === 2) expect(two.members[0]!.opacity).toBe(1);
+      if (last && last.pos > two.members.length - 1) stepping++;
     }
-    expect(fading).toBeGreaterThan(0);
+    expect(stepping).toBeGreaterThan(0);
   });
   it('queueFrame : la tête qui vient d’entrer s’efface dans la porte, les autres avancent', () => {
     let ghosts = 0;
@@ -329,28 +332,32 @@ describe('boîte de nuit : file à pied, sans fondu (G3a)', () => {
     vi.spyOn(Date, 'now').mockReturnValue((T0 + t) * 1000);
     return render(
       <svg>
-        <NightclubDoor view={viewOf('nightclub', SAT, 30)} frame={frame} metrics={metrics} minutes={30} date={SAT} reduced={false} sky={skyAt(30, times)} seed={SEED} sessionT0={T0} ghibli={ghibli} />
+        <NightclubDoor view={viewOf('nightclub', SAT, 30)} frame={frame} metrics={metrics} minutes={30} date={SAT} reduced={false} sky={skyAt(30, times)} seed={SEED} sessionT0={T0} ghibli={ghibli} width={W} />
       </svg>,
     ).host;
   };
-  // Instant où la personne qui entre est à `p` (0..1) de son parcours.
-  const when = (lo: number, hi: number): number => {
+  const layout0 = queueLayout(slots[0]!, frame, metrics.unit);
+  const entryOf = (id: string): EntryScript => entryScript(SEED, 'shop-0', id, metrics);
+  // Instant où la personne qui entre est entre lo(e) et hi(e) secondes après son instant d'entrée (e : son script d'entrée).
+  const when = (lo: (e: EntryScript) => number, hi: (e: EntryScript) => number): number => {
     for (let t = 0; t < 600; t += 0.05) {
-      const g = queueFrame(SEED, 'shop-0', t, 30, true).ghost;
-      if (g && g.p > lo && g.p < hi) return t;
+      const g = queueFrame(SEED, 'shop-0', t, 30, true, 6, () => 9).ghost;
+      if (!g) continue;
+      const e = entryOf(g.id);
+      if (g.c > lo(e) && g.c < hi(e)) return t;
     }
     throw new Error('aucune entrée');
   };
+  const walkingAt = (): number => when(() => 0.02, (e) => e.walkS * 0.6);
+  const turningAt = (): number => when((e) => e.walkS + 0.05, (e) => e.turnEnd - 0.05);
+  const sillAt = (): number => when((e) => e.turnEnd + 0.1, (e) => e.end - 0.1);
+  const xOf = (n: Element): number => Number(/translate\(([-\d.]+)/.exec(n.getAttribute('transform')!)![1]);
   it.each([false, true])('aucun nœud de la file n’a d’opacité < 1 (Ghibli : %s)', (ghibli) => {
     let sills = 0;
-    for (const t of [3, 17.3, when(0.2, 0.3), when(0.7, 0.8), 100.4]) {
+    for (const t of [3, 17.3, walkingAt(), sillAt(), 100.4]) {
       const c = clubAt(t, ghibli);
       for (const n of c.querySelectorAll('[data-queue-id]')) expect(Number(n.getAttribute('opacity') ?? '1')).toBe(1);
-      const g = queueFrame(SEED, 'shop-0', t, 30, true).ghost;
-      if (g && g.p > 0.5) {
-        expect(c.querySelectorAll('[data-queue-id] [data-door-fig]').length).toBeGreaterThan(0);
-        sills++;
-      }
+      if (c.querySelector('svg[data-club-door] [data-door-fig]')) sills++;
     }
     expect(sills).toBeGreaterThan(0);
   });
@@ -360,12 +367,12 @@ describe('boîte de nuit : file à pied, sans fondu (G3a)', () => {
     expect(members.length).toBeGreaterThan(0);
     for (const m of members) expect(m.querySelector('[data-figure]')).not.toBeNull();
   });
-  it('p ≤ 0,5 : la personne marche vers la porte ; p > 0,5 : elle passe le seuil dans un svg[data-club-door]', () => {
+  it('la personne marche vers la porte, puis passe le seuil dans un svg[data-club-door]', () => {
     for (const ghibli of [false, true]) {
-      const before = clubAt(when(0.1, 0.4), ghibli);
+      const before = clubAt(walkingAt(), ghibli);
       expect(before.querySelector('[data-queue-entering]')).not.toBeNull();
       expect(before.querySelector('svg[data-club-door] [data-queue-entering]')).toBeNull();
-      const after = clubAt(when(0.6, 0.9), ghibli);
+      const after = clubAt(sillAt(), ghibli);
       const node = after.querySelector('svg[data-club-door] [data-queue-entering]');
       expect(node).not.toBeNull();
       expect(after.querySelector('svg[data-club-door] [data-door-dark]')).not.toBeNull();
@@ -374,33 +381,49 @@ describe('boîte de nuit : file à pied, sans fondu (G3a)', () => {
     }
   });
   // Pose Ghibli lue sur la clé affichée (palette # sig|yaw|gait|phase|head|arms|lean).
-  const poseOf = (fig: Element): { yaw: number; gait: string } => {
+  const poseOf = (fig: Element): { yaw: number; gait: string; arms: string } => {
     const parts = fig.getAttribute('data-key')!.split('#').pop()!.split('|');
-    return { yaw: Number(parts[1]), gait: parts[2]! };
+    return { yaw: Number(parts[1]), gait: parts[2]!, arms: parts[5]! };
   };
   it('Ghibli : demi-tour sur place à la porte avant le seuil (petits pas), marche avant', () => {
-    const { doorX } = queueLayout(slots[0]!, frame, metrics.unit);
-    const walking = clubAt(when(0.01, 0.08), true).querySelector('[data-queue-entering] [data-figure]')!;
+    const { doorX } = layout0;
+    const walking = clubAt(walkingAt(), true).querySelector('[data-queue-entering] [data-figure]')!;
     expect(poseOf(walking).gait).toBe('walk');
-    const turning = clubAt(when(0.3, 0.48), true).querySelector('[data-queue-entering]')!;
+    const turning = clubAt(turningAt(), true).querySelector('[data-queue-entering]')!;
     expect(turning.closest('svg[data-club-door]')).toBeNull();
-    const x = Number(/translate\(([-\d.]+)/.exec(turning.getAttribute('transform')!)![1]);
-    expect(Math.abs(x - doorX)).toBeLessThan(0.11);
+    expect(Math.abs(xOf(turning) - doorX)).toBeLessThan(0.11);
     const pose = poseOf(turning.querySelector('[data-figure]')!);
     expect(pose.gait).toBe('step');
     // Entre le profil (vers la porte) et le dos.
     expect([0, 8]).not.toContain(pose.yaw);
   });
+  it('la personne qui entre marche à sa vitesse de passant (pas de marche pressée), puis demi-tour et seuil', () => {
+    const t = when((e) => e.walkS * 0.45, (e) => e.walkS * 0.55);
+    const g = queueFrame(SEED, 'shop-0', t, 30, true, 6, () => 9).ghost!;
+    const e = entryOf(g.id);
+    const speed = queueWalkSpeed(SEED, 'shop-0', g.id);
+    expect(e.walkS).toBeCloseTo(e.walkDist / speed, 6);
+    expect(e.turnEnd - e.walkS).toBeCloseTo(TURN_S, 6);
+    expect(e.end - e.turnEnd).toBeCloseTo(THRESHOLD_S, 6);
+    // Plus long que l'avancée d'un cran : l'étape d'entrée est allongée, la marche n'est pas accélérée.
+    expect(e.end).toBeGreaterThan(ADVANCE_S);
+    for (const ghibli of [false, true]) {
+      const node = clubAt(t, ghibli).querySelector('[data-queue-entering]')!;
+      const slot0 = layout0.doorX + layout0.away * 9 * metrics.unit;
+      const w = g.c / e.walkS;
+      expect(Math.abs(xOf(node) - (slot0 + (layout0.doorX - slot0) * w))).toBeLessThan(0.11);
+    }
+  });
   it('Ghibli : au re-rendu, un membre qui avance garde sa marche (pose tirée de la dernière place connue)', () => {
-    const max = queueLayout(slots[0]!, frame, metrics.unit).max;
-    const sig = (f: ReturnType<typeof queueFrame>): string => f.members.map((m) => m.id).join(',') + '|' + (f.ghost?.id ?? '') + (f.ghost && f.ghost.p > 0.5 ? '+' : '');
+    const max = layout0.max;
+    const sig = (f: ReturnType<typeof queueFrame>): string => f.members.map((m) => m.id).join(',') + '|' + (f.ghost?.id ?? '');
     let t1 = -1;
     let id = '';
     for (let t = 0; t < 600 && t1 < 0; t += 0.05) {
-      const a = queueFrame(SEED, 'shop-0', t, 30, true, max);
-      const b = queueFrame(SEED, 'shop-0', t + 0.1, 30, true, max);
+      const a = queueFrame(SEED, 'shop-0', t, 30, true, max, () => 9);
+      const b = queueFrame(SEED, 'shop-0', t + 0.1, 30, true, max, () => 9);
       if (sig(a) !== sig(b) || a.ghost) continue;
-      const m = a.members.find((x, i) => i < a.members.length - 1 && x.opacity === 1 && x.pos % 1 > 0.2 && x.pos % 1 < 0.6);
+      const m = a.members.find((x, i) => i < a.members.length - 1 && x.pos % 1 > 0.2 && x.pos % 1 < 0.6);
       if (m) {
         t1 = t;
         id = m.id;
@@ -412,7 +435,7 @@ describe('boîte de nuit : file à pied, sans fondu (G3a)', () => {
     const club = (): ReactNode => (
       <FigureContext.Provider value={reg}>
         <svg>
-          <NightclubDoor view={viewOf('nightclub', SAT, 30)} frame={frame} metrics={metrics} minutes={30} date={SAT} reduced={false} sky={skyAt(30, times)} seed={SEED} sessionT0={T0} ghibli />
+          <NightclubDoor view={viewOf('nightclub', SAT, 30)} frame={frame} metrics={metrics} minutes={30} date={SAT} reduced={false} sky={skyAt(30, times)} seed={SEED} sessionT0={T0} ghibli width={W} />
         </svg>
       </FigureContext.Provider>
     );
@@ -424,22 +447,105 @@ describe('boîte de nuit : file à pied, sans fondu (G3a)', () => {
     act(() => root.render(club()));
     expect(poseOf(host.querySelector(`[data-queue-id="${id}"] [data-figure]`)!).gait).toBe('walk');
   });
-  it('le dernier arrivé est opaque et arrive de plus loin', () => {
+});
+
+describe('boîte de nuit : vigiles et arrivées de la file (G3b)', () => {
+  const T0 = NOW / 1000 - 600;
+  const layout0 = queueLayout(slots[0]!, frame, metrics.unit);
+  const clubAt = (t: number, ghibli: boolean, width = W, doorXs: number[] = []): HTMLDivElement => {
+    vi.spyOn(Date, 'now').mockReturnValue((T0 + t) * 1000);
+    return render(
+      <svg>
+        <NightclubDoor view={viewOf('nightclub', SAT, 30)} frame={frame} metrics={metrics} minutes={30} date={SAT} reduced={false} sky={skyAt(30, times)} seed={SEED} sessionT0={T0} ghibli={ghibli} width={width} doorXs={doorXs} />
+      </svg>,
+    ).host;
+  };
+  const arriveOf = (width: number, doorXs: number[]) => ({ doorX: layout0.doorX, away: layout0.away, startPx: 9 * metrics.unit, pitchPx: layout0.pitch * metrics.unit, width, doorXs });
+  const xOf = (n: Element): number => Number(/translate\(([-\d.]+)/.exec(n.getAttribute('transform')!)![1]);
+  const keyOf = (fig: Element): string[] => fig.getAttribute('data-key')!.split('#').pop()!.split('|');
+
+  it('Ghibli : vigiles en pantin bras croisés, de trois quarts vers la rue (2 à gauche, 6 à droite), sans miroir', () => {
+    const c = clubAt(40, true);
+    const bouncers = [...c.querySelectorAll('[data-bouncer]')];
+    expect(bouncers).toHaveLength(2);
+    for (const b of bouncers) {
+      const fig = b.querySelector('[data-figure]')!;
+      expect(fig).not.toBeNull();
+      expect(b.querySelector('[data-crossed-arms]')).toBeNull();
+      expect(b.getAttribute('transform')).not.toMatch(/scale\(-/);
+      const [, yaw, gait, , , arms] = keyOf(fig);
+      expect(arms).toBe('crossed');
+      expect(gait).toBe('stand');
+      expect(Number(yaw)).toBe(xOf(b) < layout0.doorX ? 2 : 6);
+      // Costume des videurs (noir).
+      expect(fig.getAttribute('data-sig')).toMatch(/^(bald|short)\.long\.pants\.none\./);
+    }
+    // Classique : dessin d'avant (bras croisés posés sur le passant).
+    expect(clubAt(40, false).querySelectorAll('[data-bouncer] [data-crossed-arms]')).toHaveLength(2);
+  });
+
+  it.each([false, true])('arrivée depuis le bord : à pied sur le trottoir, hors de la file, sans opacité (Ghibli : %s)', (ghibli) => {
     let seen = 0;
-    for (let t = 0; t < 120; t += 0.1) {
-      const f = queueFrame(SEED, 'shop-0', t, 30, true, queueLayout(slots[0]!, frame, metrics.unit).max);
-      const m = f.members[f.members.length - 1];
-      if (!m || m.opacity >= 1) continue;
+    for (let t = 30; t < 400 && seen < 3; t += 7.3) {
+      const f = queueFrame(SEED, 'shop-0', t, 30, true, layout0.max, () => 9, arriveOf(W, []));
+      const a = f.arrivals.find((x) => x.passage.x > 0 && x.passage.x < W);
+      if (!a) continue;
       seen++;
-      const c = clubAt(t, true);
-      const node = c.querySelector(`[data-queue-id="${m.id}"]`)!;
+      const c = clubAt(t, ghibli);
+      const node = c.querySelector(`[data-queue-id="${a.id}"]`)!;
+      expect(node.hasAttribute('data-queue-arriving')).toBe(true);
+      expect(node.hasAttribute('data-queue-member')).toBe(false);
       expect(node.getAttribute('opacity')).toBeNull();
-      const x = Number(/translate\(([-\d.]+)/.exec(node.getAttribute('transform')!)![1]);
-      const { doorX, pitch } = queueLayout(slots[0]!, frame, metrics.unit);
-      expect(Math.abs(x - doorX)).toBeGreaterThan((9 + m.pos * pitch) * metrics.unit + 1);
-      if (seen > 2) break;
+      expect(Math.abs(xOf(node) - a.passage.x)).toBeLessThan(0.11);
+      if (ghibli) {
+        expect(keyOf(node.querySelector('[data-figure]')!)[2]).toBe('walk');
+        expect(node.getAttribute('transform')).not.toMatch(/scale\(-/);
+      }
+      expect(c.querySelectorAll('[data-queue-member]').length).toBeLessThanOrEqual(layout0.max);
     }
     expect(seen).toBeGreaterThan(0);
+  });
+
+  it('bord trop loin : l’arrivée sort d’une entrée d’immeuble par le seuil (svg rogné, ombre de l’entrée)', () => {
+    // Un local dont la file s'étire vers +x : dans un monde de 4000 px, le bord de ce côté est hors de portée (MAX_TRIP_PX).
+    const slot = [1, 2, 3, 4, 5, 6, 7, 8].flatMap((s) => shopSlotsFor(W, H, s)).find((sl) => queueLayout(sl, shopFrame(sl, metrics.ground), metrics.unit).away > 0)!;
+    const fr = shopFrame(slot, metrics.ground);
+    const L = queueLayout(slot, fr, metrics.unit);
+    const door = L.doorX + 200;
+    const arrive = { doorX: L.doorX, away: L.away, startPx: 9 * metrics.unit, pitchPx: L.pitch * metrics.unit, width: 4000, doorXs: [door] };
+    let found = false;
+    for (let t = 30; t < 600 && !found; t += 0.1) {
+      const f = queueFrame(SEED, slot.id, t, 30, true, L.max, () => 9, arrive);
+      const a = f.arrivals.find((x) => x.passage.stage === 'threshold' && x.passage.depth > 0.2 && x.passage.depth < 0.8);
+      if (!a) continue;
+      found = true;
+      expect(a.fromX).toBe(door);
+      for (const ghibli of [false, true]) {
+        vi.spyOn(Date, 'now').mockReturnValue((T0 + t) * 1000);
+        const c = render(
+          <svg>
+            <NightclubDoor view={{ ...viewOf('nightclub', SAT, 30), slot }} frame={fr} metrics={metrics} minutes={30} date={SAT} reduced={false} sky={skyAt(30, times)} seed={SEED} sessionT0={T0} ghibli={ghibli} width={4000} doorXs={[door]} />
+          </svg>,
+        ).host;
+        const sill = c.querySelector(`svg[data-club-arrival][data-queue-id="${a.id}"]`)!;
+        expect(sill).not.toBeNull();
+        expect(sill.querySelector('[data-door-dark]')).not.toBeNull();
+        expect(sill.querySelector('[data-door-fig][data-queue-arriving]')).not.toBeNull();
+        expect(sill.hasAttribute('id')).toBe(false);
+      }
+    }
+    expect(found).toBe(true);
+  });
+
+  it('mouvement réduit : aucune arrivée', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    reduceMotion();
+    const c = render(
+      <svg>
+        <NightclubDoor view={viewOf('nightclub', SAT, 30)} frame={frame} metrics={metrics} minutes={30} date={SAT} reduced sky={skyAt(30, times)} seed={SEED} sessionT0={T0} ghibli width={W} />
+      </svg>,
+    ).host;
+    expect(c.querySelector('[data-queue-arriving]')).toBeNull();
   });
 });
 

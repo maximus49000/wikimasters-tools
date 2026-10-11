@@ -581,6 +581,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             seed={seed}
             sessionT0={frozen.current!}
             ghibli={ghibli}
+            width={width}
+            doorXs={doorCenters}
           />
         ))}
         {/* Déménagement : les porteurs (dessinés avant le camion, ils passent derrière lui en y entrant). */}
