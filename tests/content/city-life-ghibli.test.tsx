@@ -59,8 +59,10 @@ describe('passants Ghibli', () => {
     const on = nodes.filter((n) => n.getAttribute('data-active') === 'true');
     expect(off.length).toBeGreaterThan(0);
     expect(on.length).toBeGreaterThan(0);
-    for (const n of off) for (const u of n.querySelectorAll('[data-figure] > use')) expect(u.hasAttribute('href')).toBe(false);
-    for (const n of on) for (const u of n.querySelectorAll('[data-figure] > use')) expect(u.getAttribute('href')).toMatch(/^#/);
+    for (const n of off) for (const u of n.querySelectorAll('[data-figure] > image')) expect(u.hasAttribute('href')).toBe(false);
+    const lit = on.flatMap((n) => [...n.querySelectorAll('[data-figure] > image')]);
+    expect(lit.length).toBeGreaterThan(0);
+    for (const u of lit) expect(u.getAttribute('href')).toMatch(/^data:image\/png/);
   });
   it('bascule classique → Ghibli pendant que la scène tourne', () => {
     const c = make();

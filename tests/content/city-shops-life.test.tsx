@@ -443,12 +443,14 @@ describe('clients : portes et verrou', () => {
     const nodes = nodesOf(v.id);
     const ns = 'http://www.w3.org/2000/svg';
     const figures = new FigureRegistry('tc', { perFrame: 50 });
+    const palette = figures.addPalette({ 'f-ink': '#33241f' });
     for (const n of nodes.values()) {
       const fig = document.createElementNS(ns, 'g');
       fig.setAttribute('data-figure', '');
       fig.setAttribute('data-sig', 'short.long.pants.none.n');
-      const use = document.createElementNS(ns, 'use');
-      use.setAttribute('href', '#stale');
+      fig.setAttribute('data-palette', palette);
+      const use = document.createElementNS(ns, 'image');
+      use.setAttribute('href', 'data:image/png;base64,stale');
       fig.setAttribute('data-key', 'stale');
       fig.append(use);
       n.append(fig);
@@ -461,7 +463,7 @@ describe('clients : portes et verrou', () => {
       placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, c - v.phase, c === 0, new Set(), { lock, ghibli: true, figures });
       figures.flush();
       for (const n of nodes.values()) {
-        const use = n.querySelector('[data-figure] > use')!;
+        const use = n.querySelector('[data-figure] > image')!;
         expect(use.hasAttribute('href')).toBe(n.getAttribute('data-active') === 'true');
       }
       const now = active(nodes).join();
@@ -507,8 +509,8 @@ describe('clients : portes et verrou', () => {
         expect(n.querySelector('[data-figure]')).not.toBeNull();
         expect(n.querySelector('[data-item], [data-pose-body]')).toBeNull();
         expect(n.getAttribute('transform') ?? '').not.toMatch(/scale\(-/);
-        // Nœud inactif : <use> sans href (rien n'est recopié, aucun symbole retenu).
-        const use = n.querySelector('[data-figure] > use')!;
+        // Nœud inactif : <image> sans href (aucun sprite retenu).
+        const use = n.querySelector('[data-figure] > image')!;
         expect(use.hasAttribute('href')).toBe(n.getAttribute('data-active') === 'true');
       }
     } finally {

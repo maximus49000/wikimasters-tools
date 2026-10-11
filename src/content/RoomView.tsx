@@ -11,7 +11,7 @@ import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 import { HomeArt, SmallArt } from './furniture-art-home';
 import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
-import { FigureContext, FigureDefs, FigureRegistry } from './figure/figure-host';
+import { FigureContext, FigureRegistry } from './figure/figure-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, glassRect } from './window-art';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
@@ -101,7 +101,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const width = room.cols * CELL_W;
   const wallH = WALL_ROWS * CELL_H;
   const worldId = `${useId()}-world`.replace(/:/g, '');
-  // Registre des symboles du pantin (Ghibli) : un par pièce, hébergé dans les <defs> du monde, hors des groupes recopiés par <use>.
+  // Cache des sprites du pantin (Ghibli) : un par pièce ; les figures sont des <image>, rien n'est hébergé dans le DOM.
   const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`), [worldId]);
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
@@ -414,7 +414,6 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
               </clipPath>
             );
           })}
-          <FigureDefs registry={figures} />
         </defs>
       )}
       {backLayer.map(renderPlaced)}

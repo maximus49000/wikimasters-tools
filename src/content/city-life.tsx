@@ -184,7 +184,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const visitLockFor = useRef('');
   // Calculs mémoïsés par (width, height, seed) : populations, entrées, trajets, façades. Recalculés par minute : intensités.
   const metrics = useMemo(() => cityMetrics(height), [height]);
-  // Art Ghibli : les passants sont des pantins (symboles du registre de la pièce), posés par la boucle, sans miroir.
+  // Art Ghibli : les passants sont des pantins (sprites du registre de la pièce), posés par la boucle, sans miroir.
   const [art] = useArtStyle();
   const ghibli = art === 'ghibli';
   const figures = useFigureRegistry();
@@ -296,7 +296,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       const t = still ? frozen.current! : now;
       const el = root.current;
       if (!el) return;
-      // Une fois par image : crée les symboles demandés (budget par image) et applique le plafond.
+      // Une fois par image : peint les sprites demandés (budget par image) et applique le plafond.
       if (ghibli) figures.flush();
       if (!nodes) {
         nodes = new Map();
@@ -331,7 +331,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           setIfChanged(node, 'data-active', next ? 'true' : 'false');
           setIfChanged(node, 'opacity', next ? '1' : '0');
         }
-        // Ghibli : un passant caché lâche ses symboles (<use> sans href), seulement à la bascule ou au premier placement.
+        // Ghibli : un passant caché lâche ses sprites (<image> sans href), seulement à la bascule ou au premier placement.
         if (ghibli && !next && (first || next !== prev)) for (const fig of pedFigs.get(p.id) ?? []) hideFigure(figures, fig);
         // Un passant caché n'est pas touché (sauf au premier placement de la scène).
         if (!next && !first) continue;
@@ -353,7 +353,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (!node) continue;
         const v = residentView(trip, tripLock.current, trip.kind === 'out' ? flow.out : flow.in, width, t);
         // N'écrire que ce qui change : la plupart des habitants restent chez eux, inutile de toucher leurs nœuds à chaque image.
-        // Ghibli : nœud éteint (bascule ou premier placement) → figure cachée, symbole libéré.
+        // Ghibli : nœud éteint (bascule ou premier placement) → figure cachée, sprite libéré.
         const streetOff = !v.street && (first || node.getAttribute('data-active') !== 'false');
         setIfChanged(node, 'data-active', v.street ? 'true' : 'false');
         setIfChanged(node, 'opacity', v.street ? '1.00' : '0.00');
@@ -526,7 +526,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           const sPos = v.street && v.pos ? v.pos : rest;
           const dPos = v.door && v.pos ? v.pos : { ...rest, depth: 1 };
           const { clip: o, dark } = sillBox(doorOpening(v.door && v.pos ? tripDoorX(trip, v.pos) : trip.doorX, metrics), dPos.depth, metrics, residentScale(trip, metrics));
-          // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans symbole.
+          // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans sprite.
           const sprite = (p: Passage, on: boolean): ReactElement =>
             ghibli ? (
               <GhibliFigure outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={residentPose(trip, p, metrics)} hidden={!on} />

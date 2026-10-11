@@ -113,7 +113,7 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
   const pose = (node: Element | null, p: FigurePose): void => {
     if (ghibli) poseFigure(opts.figures!, node?.querySelector('[data-figure]') ?? null, p);
   };
-  // Ghibli : nœud qui s'éteint (ou premier placement) → figure cachée, symbole libéré ; n'écrit qu'à la bascule.
+  // Ghibli : nœud qui s'éteint (ou premier placement) → figure cachée, sprite libéré ; n'écrit qu'à la bascule.
   const toggle = (node: Element, on: boolean): void => {
     const off = ghibli && !on && (first || node.getAttribute('data-active') !== 'false');
     setIfChanged(node, 'data-active', on ? 'true' : 'false');
@@ -242,7 +242,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
         const atDoor = where === 'door' && s.passage ? s.passage : null;
         const dPos: Passage = atDoor ?? { stage: 'threshold', x: v.doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
         const { clip: o, dark } = sillBox(customerDoorRect(v, s.stage, metrics), dPos.depth, metrics, streetScale(v, metrics));
-        // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans symbole.
+        // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans sprite.
         const sprite = (p: FigurePose, withUmbrella: boolean, on: boolean): ReactElement =>
           ghibli ? <GhibliFigure outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} initial={p} hidden={!on} /> : <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} />;
         return (

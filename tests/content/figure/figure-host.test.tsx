@@ -3,202 +3,256 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { FigureContext, FigureDefs, FigureRegistry } from '../../../src/content/figure/figure-host';
-import { GhibliFigure, hideFigure, poseFigure } from '../../../src/content/figure/ghibli-figure';
+import { BLANK_SPRITE, FigureContext, FigureRegistry, spriteKey, type Palette } from '../../../src/content/figure/figure-host';
+import { GhibliFigure, figurePalette, hideFigure, poseFigure } from '../../../src/content/figure/ghibli-figure';
+import { keyString } from '../../../src/core/library/figure/bake';
 import { skyAt, sunTimes } from '../../../src/core/library/sky';
 import type { Outfit } from '../../../src/core/library/city/people';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const o: Outfit = { skin: '#F2C9A5', hair: 'short', hairColor: '#4a2e1e', hatColor: '#000000', top: 'sweater', topColor: '#C0463A', bottom: 'jeans', bottomColor: '#243044', accessory: 'none', accessoryColor: '#5A6B7A' };
 const sky = skyAt(12 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
+const night = skyAt(23 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
 const key = { sig: 'short.long.pants.none.n', yaw: 0, gait: 'walk' as const, phase: 0, head: 0 };
+const pal: Palette = figurePalette(o, sky, false, false);
+const reg = (opts: { max?: number; perFrame?: number } = {}): { r: FigureRegistry; pk: string } => {
+  const r = new FigureRegistry('t', opts);
+  return { r, pk: r.addPalette(pal) };
+};
+const fig = (): Element => document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
-describe('registre des symboles', () => {
-  it('ensure crée un symbole une fois et rend sa référence', () => {
-    const r = new FigureRegistry('t1');
-    const a = r.ensure(key);
-    expect(a.startsWith('#t1-')).toBe(true);
-    expect(r.ensure(key)).toBe(a);
-    expect(r.size()).toBe(1);
-    expect(r.root.querySelector(a)?.querySelectorAll('path').length).toBeGreaterThan(5);
-  });
-  it('request met en file, flush respecte le budget par image', () => {
-    const r = new FigureRegistry('t2', { perFrame: 2 });
-    for (let p = 0; p < 5; p++) expect(r.request({ ...key, phase: p })).toBeNull();
-    r.flush();
-    expect(r.size()).toBe(2);
-    r.flush();
-    r.flush();
-    expect(r.size()).toBe(5);
-    expect(r.request({ ...key, phase: 4 })).not.toBeNull();
-  });
-  it('plafond : les moins récemment utilisés partent', () => {
-    const r = new FigureRegistry('t3', { max: 3, perFrame: 10 });
-    for (let p = 0; p < 5; p++) r.ensure({ ...key, phase: p });
-    r.flush();
-    expect(r.size()).toBe(3);
+describe('palette', () => {
+  it('mêmes cases que la tenue (éclairé + ombre), encre et sol ; la nuit change la palette', () => {
+    for (const s of ['skin', 'top', 'bottom', 'hair', 'hat', 'acc', 'shoe', 'umb']) {
+      expect(pal[`f-${s}`]).toBeTruthy();
+      expect(pal[`fs-${s}`]).toBeTruthy();
+    }
+    expect(pal['f-ink']).toBeTruthy();
+    expect(pal['f-ground']).toBe('#3a2f5a');
+    const r = new FigureRegistry('t');
+    expect(r.addPalette(figurePalette(o, night, false, false))).not.toBe(r.addPalette(pal));
+    expect(r.addPalette({ ...pal })).toBe(r.addPalette(pal));
   });
 });
 
-describe('figure Ghibli', () => {
-  it('rend un <use> vers un symbole existant ; poseFigure garde l’image si le symbole manque', () => {
-    const r = new FigureRegistry('t4', { perFrame: 1 });
-    const host = document.createElement('div');
-    document.body.append(host);
-    const root = createRoot(host);
-    act(() =>
-      root.render(
-        <FigureContext.Provider value={r}>
-          <svg>
-            <defs><FigureDefs registry={r} /></defs>
-            <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={{ yaw: 0, gait: 'walk', phase: 0, head: 0 }} />
-          </svg>
-        </FigureContext.Provider>,
-      ),
-    );
-    const node = host.querySelector('[data-figure]')!;
-    const use = node.querySelector('use')!;
-    const first = use.getAttribute('href')!;
-    expect(host.querySelector(`[data-figure-defs] ${first}`)).not.toBeNull();
-    expect((node as HTMLElement).style.getPropertyValue('--f-top')).not.toBe('');
-    poseFigure(r, node, { yaw: 8, gait: 'walk', phase: 5, head: 0 });
-    expect(use.getAttribute('href')).toBe(first);
+describe('registre des sprites', () => {
+  it('clé de sprite = palette + # + pose', () => {
+    expect(spriteKey('P', key)).toBe(`P#${keyString(key)}`);
+  });
+  it('ensure crée un sprite une fois et rend son image (repli BLANK_SPRITE sans canvas)', () => {
+    const { r, pk } = reg();
+    const a = r.ensure(pk, key);
+    expect(a).toBe(BLANK_SPRITE);
+    expect(BLANK_SPRITE.startsWith('data:image/png;base64,')).toBe(true);
+    expect(r.ensure(pk, key)).toBe(a);
+    expect(r.size()).toBe(1);
+    expect(r.has(spriteKey(pk, key))).toBe(true);
+  });
+  it('palette inconnue : rien n’est créé', () => {
+    const { r } = reg();
+    expect(r.ensure('inconnue', key)).toBeNull();
+    expect(r.request('inconnue', key)).toBeNull();
     r.flush();
-    poseFigure(r, node, { yaw: 8, gait: 'walk', phase: 5, head: 0 });
-    expect(use.getAttribute('href')).not.toBe(first);
-    act(() => root.unmount());
-    host.remove();
+    expect(r.size()).toBe(0);
+  });
+  it('deux palettes : deux sprites pour la même pose', () => {
+    const { r, pk } = reg();
+    const pn = r.addPalette(figurePalette(o, night, false, false));
+    r.ensure(pk, key);
+    r.ensure(pn, key);
+    expect(r.size()).toBe(2);
+  });
+  it('request met en file, flush respecte le budget de 8 par image', () => {
+    const { r, pk } = reg();
+    for (let p = 0; p < 12; p++) expect(r.request(pk, { ...key, phase: p })).toBeNull();
+    r.flush();
+    expect(r.size()).toBe(8);
+    for (let p = 0; p < 12; p++) r.request(pk, { ...key, phase: p });
+    r.flush();
+    expect(r.size()).toBe(12);
+    expect(r.request(pk, { ...key, phase: 11 })).toBe(BLANK_SPRITE);
+  });
+  it('plafond par défaut : 1500 sprites, les moins récents partent', () => {
+    const { r, pk } = reg();
+    for (let p = 0; p < 1510; p++) r.ensure(pk, { ...key, phase: p });
+    r.flush();
+    expect(r.size()).toBe(1500);
+    expect(r.has(spriteKey(pk, { ...key, phase: 0 }))).toBe(false);
+    expect(r.has(spriteKey(pk, { ...key, phase: 1509 }))).toBe(true);
   });
 });
 
 describe('éviction et détenteurs', () => {
-  const fig = (): Element => document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  it('une clé détenue par une figure n’est jamais retirée, sans interroger le DOM', () => {
-    const r = new FigureRegistry('t5', { max: 3, perFrame: 10 });
-    const first = r.ensure({ ...key, phase: 0 });
-    expect(r.hold(fig(), { ...key, phase: 0 })).toBe(first);
-    for (let p = 1; p < 5; p++) r.ensure({ ...key, phase: p });
+  it('une clé détenue n’est jamais retirée', () => {
+    const { r, pk } = reg({ max: 3 });
+    const k0 = spriteKey(pk, { ...key, phase: 0 });
+    r.ensure(pk, { ...key, phase: 0 });
+    expect(r.hold(fig(), k0)).toBe(BLANK_SPRITE);
+    for (let p = 1; p < 5; p++) r.ensure(pk, { ...key, phase: p });
     r.flush();
-    expect(r.root.querySelector(first)).not.toBeNull();
+    expect(r.has(k0)).toBe(true);
     expect(r.size()).toBe(3);
   });
   it('une clé libérée peut partir', () => {
-    const r = new FigureRegistry('t5b', { max: 3, perFrame: 10 });
+    const { r, pk } = reg({ max: 3 });
     const n = fig();
-    const first = r.ensure({ ...key, phase: 0 });
-    r.hold(n, { ...key, phase: 0 });
+    const k0 = spriteKey(pk, { ...key, phase: 0 });
+    r.ensure(pk, { ...key, phase: 0 });
+    r.hold(n, k0);
     expect(r.hold(n, null)).toBeNull();
-    for (let p = 1; p < 5; p++) r.ensure({ ...key, phase: p });
+    for (let p = 1; p < 5; p++) r.ensure(pk, { ...key, phase: p });
     r.flush();
-    expect(r.root.querySelector(first)).toBeNull();
+    expect(r.has(k0)).toBe(false);
   });
-  it('changer de pose transfère la détention ; deux détenteurs d’une clé : elle reste tant qu’il en reste un', () => {
-    const r = new FigureRegistry('t5c', { max: 2, perFrame: 10 });
+  it('changer de pose transfère la détention ; deux détenteurs : la clé reste tant qu’il en reste un', () => {
+    const { r, pk } = reg({ max: 2 });
     const a = fig();
     const b = fig();
-    const k0 = r.ensure({ ...key, phase: 0 });
-    const k1 = r.ensure({ ...key, phase: 1 });
-    r.hold(a, { ...key, phase: 0 });
-    r.hold(b, { ...key, phase: 0 });
-    r.hold(a, { ...key, phase: 1 });
+    const k0 = spriteKey(pk, { ...key, phase: 0 });
+    const k1 = spriteKey(pk, { ...key, phase: 1 });
+    r.ensure(pk, { ...key, phase: 0 });
+    r.ensure(pk, { ...key, phase: 1 });
+    r.hold(a, k0);
+    r.hold(b, k0);
+    r.hold(a, k1);
     r.hold(b, null);
-    for (let p = 2; p < 5; p++) r.ensure({ ...key, phase: p });
+    for (let p = 2; p < 5; p++) r.ensure(pk, { ...key, phase: p });
     r.flush();
-    expect(r.root.querySelector(k1)).not.toBeNull();
-    expect(r.root.querySelector(k0)).toBeNull();
+    expect(r.has(k1)).toBe(true);
+    expect(r.has(k0)).toBe(false);
   });
-  it('hold d’une clé sans symbole : demandée, rien n’est détenu, l’ancienne reste détenue', () => {
-    const r = new FigureRegistry('t5d', { max: 1, perFrame: 10 });
+  it('hold d’une clé sans sprite : rien n’est détenu, l’ancienne reste détenue', () => {
+    const { r, pk } = reg({ max: 1 });
     const n = fig();
-    const k0 = r.ensure({ ...key, phase: 0 });
-    r.hold(n, { ...key, phase: 0 });
-    expect(r.hold(n, { ...key, phase: 1 })).toBeNull();
+    const k0 = spriteKey(pk, { ...key, phase: 0 });
+    r.ensure(pk, { ...key, phase: 0 });
+    r.hold(n, k0);
+    expect(r.hold(n, spriteKey(pk, { ...key, phase: 1 }))).toBeNull();
+    r.ensure(pk, { ...key, phase: 2 });
     r.flush();
-    expect(r.root.querySelector(k0)).not.toBeNull();
+    expect(r.has(k0)).toBe(true);
   });
   it('une clé ancienne retouchée survit à une clé jamais retouchée', () => {
-    const r = new FigureRegistry('t6', { max: 3, perFrame: 10 });
-    const a = r.ensure({ ...key, phase: 0 });
-    const b = r.ensure({ ...key, phase: 1 });
-    r.ensure({ ...key, phase: 2 });
-    r.request({ ...key, phase: 0 });
-    r.ensure({ ...key, phase: 3 });
+    const { r, pk } = reg({ max: 3 });
+    r.ensure(pk, { ...key, phase: 0 });
+    r.ensure(pk, { ...key, phase: 1 });
+    r.ensure(pk, { ...key, phase: 2 });
+    r.request(pk, { ...key, phase: 0 });
+    r.ensure(pk, { ...key, phase: 3 });
     r.flush();
-    expect(r.root.querySelector(a)).not.toBeNull();
-    expect(r.root.querySelector(b)).toBeNull();
+    expect(r.has(spriteKey(pk, { ...key, phase: 0 }))).toBe(true);
+    expect(r.has(spriteKey(pk, { ...key, phase: 1 }))).toBe(false);
   });
 });
 
 describe('file de création', () => {
   it('jette les demandes abandonnées depuis plus de 2 images', () => {
-    const r = new FigureRegistry('t8', { perFrame: 1 });
-    for (let p = 0; p < 5; p++) r.request({ ...key, phase: p });
+    const { r, pk } = reg({ perFrame: 1 });
+    for (let p = 0; p < 5; p++) r.request(pk, { ...key, phase: p });
     for (let i = 0; i < 6; i++) r.flush();
     expect(r.size()).toBe(3);
   });
   it('une demande renouvelée à chaque image finit créée', () => {
-    const r = new FigureRegistry('t9', { perFrame: 1 });
-    for (let p = 0; p < 5; p++) r.request({ ...key, phase: p });
+    const { r, pk } = reg({ perFrame: 1 });
+    for (let p = 0; p < 5; p++) r.request(pk, { ...key, phase: p });
     for (let i = 0; i < 6; i++) {
-      r.request({ ...key, phase: 4 });
+      r.request(pk, { ...key, phase: 4 });
       r.flush();
     }
-    expect(r.request({ ...key, phase: 4 })).not.toBeNull();
+    expect(r.request(pk, { ...key, phase: 4 })).not.toBeNull();
   });
 });
 
-describe('figure cachée', () => {
-  const mount = (r: FigureRegistry, hidden: boolean): { host: HTMLDivElement; unmount: () => void } => {
+describe('figure Ghibli', () => {
+  const mount = (r: FigureRegistry, hidden: boolean): { host: HTMLDivElement; rerender: (s: typeof sky) => void; unmount: () => void } => {
     const host = document.createElement('div');
     document.body.append(host);
     const root = createRoot(host);
-    act(() =>
-      root.render(
-        <FigureContext.Provider value={r}>
-          <svg>
-            <defs><FigureDefs registry={r} /></defs>
-            <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} hidden={hidden} initial={{ yaw: 0, gait: 'walk', phase: 0, head: 0 }} />
-          </svg>
-        </FigureContext.Provider>,
-      ),
-    );
-    return { host, unmount: () => { act(() => root.unmount()); host.remove(); } };
+    const draw = (s: typeof sky): void =>
+      act(() =>
+        root.render(
+          <FigureContext.Provider value={r}>
+            <svg>
+              <GhibliFigure outfit={o} sky={s} rainy={false} umbrella={false} hidden={hidden} initial={{ yaw: 0, gait: 'walk', phase: 0, head: 0 }} />
+            </svg>
+          </FigureContext.Provider>,
+        ),
+      );
+    draw(sky);
+    return { host, rerender: draw, unmount: () => { act(() => root.unmount()); host.remove(); } };
   };
-  it('hidden : <use> sans href, aucun symbole créé ; poseFigure la remet en place', () => {
-    const r = new FigureRegistry('t10', { perFrame: 1 });
+  it('rend une <image> avec href et data-palette, sans variables CSS ; poseFigure garde l’image tant que le sprite manque', () => {
+    const r = new FigureRegistry('t', { perFrame: 1 });
+    const { host, unmount } = mount(r, false);
+    const node = host.querySelector('[data-figure]')!;
+    const img = node.firstElementChild!;
+    expect(img.tagName).toBe('image');
+    expect(host.querySelector('use')).toBeNull();
+    expect(img.getAttribute('href')).toBe(BLANK_SPRITE);
+    expect([img.getAttribute('x'), img.getAttribute('y'), img.getAttribute('width'), img.getAttribute('height')]).toEqual(['-20', '-64', '40', '68']);
+    const pk = node.getAttribute('data-palette')!;
+    expect(pk).toBe(r.addPalette(pal));
+    expect(node.getAttribute('data-key')).toBe(spriteKey(pk, key));
+    expect(node.getAttribute('style')).toBeNull();
+    poseFigure(r, node, { yaw: 8, gait: 'walk', phase: 5, head: 0 });
+    expect(node.getAttribute('data-key')).toBe(spriteKey(pk, key));
+    r.flush();
+    poseFigure(r, node, { yaw: 8, gait: 'walk', phase: 5, head: 0 });
+    expect(node.getAttribute('data-key')).toBe(spriteKey(pk, { ...key, yaw: 8, phase: 5 }));
+    expect(img.getAttribute('href')).toBe(BLANK_SPRITE);
+    unmount();
+  });
+  it('hidden : <image> sans href, aucun sprite créé ; poseFigure la remet en place tout de suite', () => {
+    const r = new FigureRegistry('t', { perFrame: 1 });
     const { host, unmount } = mount(r, true);
     const node = host.querySelector('[data-figure]')!;
-    expect(node.querySelector('use')!.hasAttribute('href')).toBe(false);
+    const img = node.querySelector('image')!;
+    expect(img.hasAttribute('href')).toBe(false);
     expect(node.hasAttribute('data-key')).toBe(false);
+    expect(node.getAttribute('data-palette')).not.toBeNull();
     expect(r.size()).toBe(0);
     poseFigure(r, node, { yaw: 8, gait: 'walk', phase: 5, head: 0 });
-    expect(node.querySelector('use')!.getAttribute('href')).toMatch(/^#t10-/);
+    expect(img.getAttribute('href')).toBe(BLANK_SPRITE);
     expect(node.getAttribute('data-key')).not.toBeNull();
     unmount();
   });
   it('hideFigure retire le href et data-key et libère la clé', () => {
-    const r = new FigureRegistry('t11', { max: 1, perFrame: 10 });
+    const { r, pk } = reg({ max: 1, perFrame: 10 });
     const { host, unmount } = mount(r, false);
     const node = host.querySelector('[data-figure]')!;
-    const first = node.querySelector('use')!.getAttribute('href')!;
-    r.ensure({ ...key, phase: 7 });
+    const first = node.getAttribute('data-key')!;
+    r.ensure(pk, { ...key, phase: 7 });
     r.flush();
-    expect(r.root.querySelector(first)).not.toBeNull();
+    expect(r.has(first)).toBe(true);
     hideFigure(r, node);
-    expect(node.querySelector('use')!.hasAttribute('href')).toBe(false);
+    expect(node.querySelector('image')!.hasAttribute('href')).toBe(false);
     expect(node.hasAttribute('data-key')).toBe(false);
-    r.ensure({ ...key, phase: 8 });
+    r.ensure(pk, { ...key, phase: 8 });
     r.flush();
-    expect(r.root.querySelector(first)).toBeNull();
+    expect(r.has(first)).toBe(false);
     unmount();
   });
   it('démontage : la pose détenue est libérée', () => {
-    const r = new FigureRegistry('t12', { max: 1, perFrame: 10 });
+    const { r, pk } = reg({ max: 1, perFrame: 10 });
     const { host, unmount } = mount(r, false);
-    const first = host.querySelector('[data-figure] use')!.getAttribute('href')!;
+    const first = host.querySelector('[data-figure]')!.getAttribute('data-key')!;
     unmount();
-    r.ensure({ ...key, phase: 7 });
+    r.ensure(pk, { ...key, phase: 7 });
     r.flush();
-    expect(r.root.querySelector(first)).toBeNull();
+    expect(r.has(first)).toBe(false);
+  });
+  it('nouvelle palette (nuit) : data-palette et data-key suivent, l’ancienne pose est libérée', () => {
+    const { r } = reg({ max: 1, perFrame: 10 });
+    const { host, rerender, unmount } = mount(r, false);
+    const node = host.querySelector('[data-figure]')!;
+    const day = node.getAttribute('data-key')!;
+    rerender(night);
+    const pn = node.getAttribute('data-palette')!;
+    expect(pn).toBe(r.addPalette(figurePalette(o, night, false, false)));
+    expect(node.getAttribute('data-key')).toBe(spriteKey(pn, key));
+    r.flush();
+    expect(r.has(day)).toBe(false);
+    expect(r.has(spriteKey(pn, key))).toBe(true);
+    unmount();
   });
 });
