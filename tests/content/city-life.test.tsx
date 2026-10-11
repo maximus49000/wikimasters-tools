@@ -214,10 +214,19 @@ describe('CityLifeLayer', () => {
     // Les masques (<defs>) n'apparaissent qu'avec un feu d'artifice ou une grue ; le groupe des événements du fond vient en premier.
     const order = Array.from(layer.children)
       .filter((el) => el.tagName.toLowerCase() !== 'defs')
-      .map((el) => (el.hasAttribute('data-city-events-back') ? 'events-back' : el.hasAttribute('data-city-sidewalk') ? 'sidewalk' : el.hasAttribute('data-street-lamps') ? 'lamps' : el.hasAttribute('data-install-part') ? `install-${el.getAttribute('data-install-part')}` : el.getAttribute('data-city-lane')));
+      .map((el) =>
+        el.hasAttribute('data-city-events-back') ? 'events-back'
+        : el.hasAttribute('data-city-sidewalk') ? 'sidewalk'
+        : el.hasAttribute('data-street-lamps') ? 'lamps'
+        : el.hasAttribute('data-install-part') ? `install-${el.getAttribute('data-install-part')}`
+        : el.hasAttribute('data-crosswalk') ? 'crosswalk'
+        : el.hasAttribute('data-traffic-fixtures') ? `fixtures-${el.getAttribute('data-traffic-fixtures')}`
+        : el.hasAttribute('data-crossing') ? 'crossing'
+        : el.getAttribute('data-city-lane'));
     // Décors de fête du devant (drapeaux de lampadaires, camions élévateurs) : juste après les lampadaires ; puis la chaussée de
-    // la rue privatisée (Fête de la musique), avant les files.
-    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'install-street', 'far', 'near']);
+    // la rue privatisée (Fête de la musique), le passage piéton et le trottoir des immeubles (poteaux), les files, enfin les
+    // piétons du passage et les poteaux du trottoir d'en face, devant tout.
+    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'install-street', 'crosswalk', 'fixtures-near', 'far', 'near', 'crossing', 'fixtures-far']);
     expect(layer.querySelectorAll('[data-street-lamp][data-lit="true"]').length).toBeGreaterThan(0);
   });
   it('les vélos roulent sur leur piste, dessinés après les voitures de la file du premier plan', () => {
@@ -230,45 +239,50 @@ describe('CityLifeLayer', () => {
 });
 
 describe('CityLifeLayer : boucle d’animation', () => {
-  it('un véhicule qui devient absent continue d’avancer pendant son fondu, puis s’arrête', () => {
+  it('circulation : plus de boucle ni de fondu, chaque véhicule avance puis sort par le bord (moteur de circulation)', () => {
     let now = 1_760_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
-    let tick: ((ms: number) => void) | null = null;
+    // Toutes les boucles d'animation (une par calque) : chaque image les rappelle toutes.
+    let pending: ((ms: number) => void)[] = [];
     vi.stubGlobal('requestAnimationFrame', (cb: (ms: number) => void) => {
-      tick = cb;
-      return 1;
+      pending.push(cb);
+      return pending.length;
     });
+    const tick = (ms: number): void => {
+      const run = pending;
+      pending = [];
+      for (const cb of run) cb(ms);
+    };
     vi.stubGlobal('cancelAnimationFrame', () => undefined);
     const ymd = { y: 2026, m: 10, d: 5 };
-    const ctx = (hours: number): CityContext => {
-      const minutes = Math.round(hours * 60);
-      return { minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight: skyAt(minutes, times).daylight };
-    };
-    const sky = skyAt(495, times);
+    const minutes = 8 * 60 + 15;
+    const sky = skyAt(minutes, times);
+    const city: CityContext = { minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight: sky.daylight };
     const host = document.createElement('div');
     document.body.append(host);
     const root = createRoot(host);
     mounted.push({ root, host });
-    act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={ctx(8.25)} rainy={false} /></svg>));
-    const before = new Set(Array.from(host.querySelectorAll('[data-vehicle][data-active="true"]')).map((n) => n.getAttribute('data-life-id')));
-    // 3 h 30 : presque tout le monde disparaît.
-    act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={ctx(3.5)} rainy={false} /></svg>));
-    const leaving = Array.from(host.querySelectorAll<SVGGElement>('[data-vehicle][data-active="false"]')).filter((n) => before.has(n.getAttribute('data-life-id')));
-    expect(leaving.length).toBeGreaterThan(0);
-    const node = leaving[0]!;
-    const at = (): string | null => node.getAttribute('transform');
-    const frame = (dtMs: number, rafMs: number): void => {
-      now += dtMs;
-      act(() => tick!(rafMs));
-    };
-    const t1 = at();
-    frame(1000, 1000);
-    const t2 = at();
-    expect(t2).not.toBe(t1); // pendant le fondu : il avance encore
-    frame(3000, 4000);
-    const t3 = at();
-    frame(1000, 5000);
-    expect(at()).toBe(t3); // fondu fini : il ne bouge plus (opacité 0, aucune écriture)
+    act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={city} rainy={false} /></svg>));
+    const cars = Array.from(host.querySelectorAll<SVGGElement>('[data-vehicle]'));
+    expect(cars.length).toBeGreaterThan(2);
+    for (const c of cars) {
+      expect(c.getAttribute('opacity')).toBeNull();
+      expect(c.style.transition).toBe('');
+    }
+    const at = (id: string | null): string | null => host.querySelector(`[data-life-id="${id}"]`)?.getAttribute('transform') ?? null;
+    const before = new Map(cars.map((c) => [c.getAttribute('data-life-id'), at(c.getAttribute('data-life-id'))] as const));
+    now += 1000;
+    act(() => tick(1000));
+    // Au moins un véhicule a avancé (d'autres peuvent attendre au feu ou derrière un bus).
+    const moved = [...before].filter(([k, v]) => at(k) !== v).map(([k]) => k);
+    expect(moved.length).toBeGreaterThan(0);
+    const id = moved[0]!;
+    // Deux minutes plus tard, il est sorti par le bord (nœud retiré), sans fondu.
+    for (let i = 0; i < 120; i++) {
+      now += 1000;
+      act(() => tick(2000 + i * 1000));
+    }
+    expect(host.querySelector(`[data-life-id="${id}"]`)).toBeNull();
     vi.unstubAllGlobals();
   });
 });

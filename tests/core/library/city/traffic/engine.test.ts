@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { advance, agentView, createTraffic, lightAt, warmTraffic, xOfS, type Agent, type TrafficEnv, type TrafficWorld } from '../../../../../src/core/library/city/traffic/engine';
+import { advance, agentView, createTraffic, warmTraffic, xOfS, type Agent, type TrafficEnv, type TrafficWorld } from '../../../../../src/core/library/city/traffic/engine';
 import { temperamentOf } from '../../../../../src/core/library/city/traffic/temperament';
 import { mulberry32 } from '../../../../../src/core/library/scene-world';
 
-const env = (d: number, extra: Partial<TrafficEnv> = {}): TrafficEnv => ({ demand: { near: d, far: d, bike: d * 0.4 }, closed: false, arrivals: [], deliveries: [], ...extra });
+const env = (d: number, extra: Partial<TrafficEnv> = {}): TrafficEnv => ({ demand: { near: d, far: d, bike: d * 0.4 }, closed: false, arrivals: [], deliveries: [], crowd: 0.6, crossPx: 90, ...extra });
 const T0 = 1_800_000_000;
 const world = (width = 1080, seed = 1, e: TrafficEnv = env(1)): TrafficWorld => warmTraffic({ width, seed, unit: 1, startS: T0 }, e);
 const finite = (a: Agent): boolean => [a.s, a.v, a.cmd, a.lat, a.dist].every(Number.isFinite);
@@ -72,18 +72,21 @@ describe('moteur de circulation', () => {
   });
   it('feu rouge : arrêt avant la ligne, puis redémarrage au vert', () => {
     const w = createTraffic({ width: 2000, seed: 5, unit: 1, startS: T0 });
-    expect(w.light).not.toBeNull();
-    const e = env(1);
+    const e = env(1, { crowd: 1 });
     let sawStop = false;
     for (let t = w.t; t < T0 + 300; t += 0.5) {
       advance(w, t, e);
-      if (lightAt(w.light!, w.t) === 'red') {
+      if (w.light.color === 'red') {
         for (const a of w.agents.filter((x) => x.track === 'near')) {
           const front = xOfS(w, 'near', a.s) + a.half;
-          const line = w.light!.x - 10;
+          const line = w.light.x - 20;
           // Arrêté avant la ligne, à sa marge de sécurité ; personne n'est arrêté au-delà.
           if (a.v < 0.5 && front <= line + 0.5 && front > line - 20) sawStop = true;
-          if (a.v < 0.5 && a.stop === null && !a.pulled) expect(front > line + 1 && front < line + 40).toBe(false);
+          // Arrêté au-delà de la ligne : seulement s'il fait la queue derrière un autre véhicule (bus à l'arrêt, livraison…).
+          if (a.v < 0.5 && a.stop === null && !a.pulled && front > line + 1 && front < line + 40) {
+            const ahead = w.agents.filter((o) => o.track === 'near' && o.s > a.s).map((o) => o.s - o.half - (a.s + a.half));
+            expect(Math.min(...ahead, Infinity)).toBeLessThan(30);
+          }
         }
       }
       expect(overlaps(w)).toEqual([]);

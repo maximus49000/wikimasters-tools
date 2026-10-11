@@ -10,6 +10,7 @@
 import { hashString, mulberry32 } from '../../scene-world';
 import { outfitFor, type Outfit } from '../people';
 import { temperamentOf, type Temperament } from './temperament';
+import { lightColorAt, newWalker, stepLight, stepWalker, type PushLight, type Walker } from './crossing';
 
 export type Track = 'near' | 'far' | 'bike';
 export const TRACK_DIR: Readonly<Record<Track, 1 | -1>> = { near: 1, far: -1, bike: 1 };
@@ -17,6 +18,8 @@ export type AgentKind = 'car' | 'van' | 'bus' | 'bike' | 'tram' | 'ambulance' | 
 export type StopReason = 'bus' | 'delivery' | 'garbage' | 'light' | null;
 
 export const DT = 0.1;
+// Demi-largeur du passage piéton au feu (px à unit = 1) : les voitures s'arrêtent avant, les feux sont à ses deux bords.
+export const CROSS_HALF = 16;
 const HIST = 20; // 2 s d'historique
 export const MARGIN = 90; // px hors champ de chaque côté (× unit)
 const WARM_S = 120;
@@ -66,9 +69,11 @@ export type TrafficEnv = {
   arrivals: readonly ScheduledArrival[];
   // Points de livraison (x du monde) devant les commerces du premier plan.
   deliveries: readonly number[];
+  // Piétons du passage : affluence (0 à 1) et largeur de chaussée à traverser (px).
+  crowd: number;
+  crossPx: number;
 };
 
-type Light = { x: number; offset: number; cycle: number; green: number; amber: number };
 export type TrafficWorld = {
   width: number;
   seed: number;
@@ -80,7 +85,11 @@ export type TrafficWorld = {
   rngs: Record<Track, () => number>;
   spawned: Set<string>;
   busStop: Record<'near' | 'far', number>; // x du monde
-  light: Light | null;
+  light: PushLight; // feu à bouton-poussoir du passage piéton
+  walkers: Walker[];
+  walkerSerial: number;
+  walkerAt: number;
+  walkerRng: () => number;
   roster: number; // incrémenté quand la liste des agents change
 };
 
@@ -97,13 +106,6 @@ const upstreamGreen = (track: Track, t: number): boolean => {
   const off = (hashString(`up-${track}`) % 1000) / 1000;
   return ((t / UPSTREAM.cycle + off) % 1) * UPSTREAM.cycle < UPSTREAM.green;
 };
-// Feu dans le monde (pièces larges) : vert, orange, rouge ; même feu pour les deux sens (carrefour).
-export type LightColor = 'green' | 'amber' | 'red';
-export function lightAt(l: Light, t: number): LightColor {
-  const p = (((t + l.offset) % l.cycle) + l.cycle) % l.cycle;
-  return p < l.green ? 'green' : p < l.green + l.amber ? 'amber' : 'red';
-}
-
 export function createTraffic(o: { width: number; seed: number; unit: number; startS: number }): TrafficWorld {
   const r = mulberry32(o.seed ^ hashString('traffic'));
   const w: TrafficWorld = {
@@ -117,9 +119,17 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     rngs: { near: mulberry32(o.seed ^ hashString('tr-near')), far: mulberry32(o.seed ^ hashString('tr-far')), bike: mulberry32(o.seed ^ hashString('tr-bike')) },
     spawned: new Set(),
     busStop: { near: o.width * lerp(0.25, 0.75, r()), far: o.width * lerp(0.25, 0.75, r()) },
-    light: o.width > 1500 ? { x: o.width * lerp(0.4, 0.6, r()), offset: r() * 40, cycle: 40, green: 22, amber: 3 } : null,
+    // Feu à bouton-poussoir et passage piéton dans toutes les pièces, vers le milieu de la rue ; vert au départ.
+    light: { x: o.width * lerp(0.4, 0.6, r()), color: 'green', since: 0, pressedAt: null, log: [] },
+    walkers: [],
+    walkerSerial: 0,
+    walkerAt: 0,
+    walkerRng: mulberry32(o.seed ^ hashString('tr-walkers')),
     roster: 0,
   };
+  w.light.since = w.t - 60;
+  w.light.log.push({ t: w.t - 60, color: 'green' });
+  w.walkerAt = w.t;
   w.spawnAt = { near: w.t, far: w.t, bike: w.t };
   return w;
 }
@@ -197,7 +207,7 @@ function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
     if (track !== 'bike' && !upstreamGreen(track, t)) continue;
     const r = w.rngs[track];
     const roll = r();
-    const kind: AgentKind = track === 'bike' ? 'bike' : roll < 0.05 ? 'bus' : roll < 0.18 ? 'van' : 'car';
+    const kind: AgentKind = track === 'bike' ? 'bike' : roll < 0.025 ? 'bus' : roll < 0.16 ? 'van' : 'car';
     const mean = (track === 'bike' ? 9 : 2.1) / d;
     // Prochaine tentative : intervalle tiré (pelotons serrés ou espacés), quelle que soit la place disponible.
     w.spawnAt[track] = t + Math.max(0.6, -Math.log(1 - r() * 0.98) * mean);
@@ -251,6 +261,7 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
   const t = w.t + DT;
   const u = w.unit;
   spawn(w, env, t);
+  stepCrossing(w, env, t);
   const ambulances = w.agents.filter((a) => a.kind === 'ambulance');
   for (const track of ['near', 'far', 'bike'] as const) {
     const list = onTrack(w, track);
@@ -293,10 +304,11 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
         }
       }
       // Feu du monde : perçu avec retard ; s'arrête à la ligne si c'est possible sans freiner trop fort.
-      if (w.light && track !== 'bike' && me.kind !== 'ambulance') {
-        const stopS = sOfX(w, track, w.light.x) - 10 * u;
+      if (track !== 'bike' && me.kind !== 'ambulance') {
+        // Ligne d'arrêt avant le passage piéton.
+        const stopS = sOfX(w, track, w.light.x) - (CROSS_HALF + 4) * u;
         const front = me.s + me.half;
-        const seen = lightAt(w.light, t - me.h.react);
+        const seen = lightColorAt(w.light, t - me.h.react);
         if (seen !== 'green' && front < stopS) {
           const g = stopS - front;
           const canStop = (me.v * me.v) / (2 * me.h.b * u * 1.8) < g + 2 * u;
@@ -349,6 +361,21 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
   w.agents = w.agents.filter((a) => a.s - a.half < span(w));
   if (w.agents.length !== before) w.roster++;
   w.t = t;
+}
+
+// Piétons du passage : arrivées tirées selon l'affluence (au plus 8 à la fois), feu à bouton-poussoir.
+function stepCrossing(w: TrafficWorld, env: TrafficEnv, t: number): void {
+  if (env.crowd > 0.02 && t >= w.walkerAt) {
+    w.walkerAt = t + Math.max(3, -Math.log(1 - w.walkerRng() * 0.98) * (16 / env.crowd));
+    if (w.walkers.length < 8) {
+      w.walkers.push(newWalker(w.seed, w.walkerSerial++, w.width, MARGIN * w.unit, w.light.x, CROSS_HALF, w.unit));
+      w.roster++;
+    }
+  }
+  const before = w.walkers.length;
+  w.walkers = w.walkers.filter((p) => stepWalker(p, w.light, t, DT, env.crossPx));
+  if (w.walkers.length !== before) w.roster++;
+  stepLight(w.light, t);
 }
 
 // Fait avancer le monde jusqu'à `toS` (pas fixes). Un retard de plus de MAX_CATCHUP_S (onglet en arrière-plan) est rattrapé
