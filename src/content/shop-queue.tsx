@@ -1,6 +1,6 @@
 import { useMemo, useReducer, useRef, type ReactElement } from 'react';
 import type { YMD } from '../core/library/city/calendar';
-import { doorDarkOpacity, type Passage } from '../core/library/city/doorway';
+import { DOOR_DARK, doorDarkOpacity, type Passage } from '../core/library/city/doorway';
 import { DOOR_WIDTH, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
 import { SHOP_DEFS } from '../core/library/city/shops/catalog';
@@ -10,7 +10,7 @@ import type { ShopFrame, ShopSlot } from '../core/library/city/shops/slots';
 import type { ShopView } from '../core/library/city/shops/view';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { FigureKey } from '../core/library/figure/bake';
-import { facingYaw, phaseIndexOf, YAW_BACK } from '../core/library/figure/gait';
+import { TURN_S, YAW_BACK, facingYaw, phaseIndexOf, turnYaw } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
@@ -33,8 +33,10 @@ const CORDON_FROM = 7; // premier potelet, px de la porte ; le second au niveau 
 const QUEUE_FRAME_MS = 50;
 const STILL_QUEUE = 3; // mouvement réduit : 3 personnes immobiles
 const ARRIVE_FROM = 4; // places de file : la dernière arrivée vient de si loin sur le trottoir (sans fondu : elle marche)
-const DOOR_DARK = '#1a1622'; // ombre de l'entrée (même teinte que les clients et habitants)
 const REF_POS = 100; // origine de la phase de marche (croît quand la place diminue)
+// Personne qui entre (p de 0 à 1 sur ADVANCE_S) : marche jusqu'à WALK_END, demi-tour sur place à la porte (les dernières TURN_S
+// de la première moitié), puis seuil de dos à partir de 0,5. Même durée totale qu'avant le demi-tour.
+const WALK_END = 0.5 - TURN_S / ADVANCE_S;
 type FigurePose = Omit<FigureKey, 'sig'>;
 
 export type QueueFrame = {
@@ -157,14 +159,18 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   const memberTransform = (pos: number): string => tf(slotX(pos), y);
   const face = facingYaw(-away as 1 | -1); // vers la porte
   const memberPose = (pos: number, walking: boolean): FigurePose => ({ yaw: face, gait: walking ? 'walk' : 'stand', phase: walking ? phaseIndexOf(((REF_POS - pos) * pitch * u) / k) : 0, head: 0 });
-  // Personne qui entre : jusqu'à p = 0,5 elle marche de la place 0 à la porte (ses pieds passent de la ligne de la file à celle des
-  // portes, sans saut), puis passe le seuil de dos, dans l'ombre de l'ouverture.
+  // Personne qui entre : jusqu'à WALK_END elle marche de la place 0 à la porte (ses pieds passent de la ligne de la file à celle
+  // des portes, sans saut), fait demi-tour sur place à petits pas jusqu'à p = 0,5, puis passe le seuil de dos, dans l'ombre de
+  // l'ouverture.
   const walkDist = Math.abs(doorX - slotX(0));
   const ghostWalkTransform = (p: number): string => {
-    const w = Math.min(1, p / 0.5);
+    const w = Math.min(1, p / WALK_END);
     return tf(slotX(0) + (doorX - slotX(0)) * w, y + (metrics.doorY - y) * w);
   };
-  const ghostWalkPose = (p: number): FigurePose => ({ yaw: face, gait: 'walk', phase: phaseIndexOf((walkDist * Math.min(1, p / 0.5)) / k), head: 0 });
+  const ghostWalkPose = (p: number): FigurePose =>
+    p < WALK_END
+      ? { yaw: face, gait: 'walk', phase: phaseIndexOf((walkDist * (p / WALK_END)) / k), head: 0 }
+      : { yaw: turnYaw(face, YAW_BACK, (p - WALK_END) / (0.5 - WALK_END)), gait: 'step', phase: phaseIndexOf(walkDist / k), head: 0 };
   const ghostPassage = (p: number): Passage => ({ stage: 'threshold', x: doorX, depth: Math.min(1, Math.max(0, 2 * (p - 0.5))), yaw: YAW_BACK, gait: 'walk', walked: 0 });
   const ghostSillPose = (p: number): FigurePose => ({ yaw: YAW_BACK, gait: 'walk', phase: phaseIndexOf(walkDist / k + ghostPassage(p).depth * 8), head: 0 });
   // Cache des tenues (effet de bord idempotent pendant le rendu : une même clé donne toujours la même tenue).
@@ -204,7 +210,8 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
           if (f.ghost.p <= 0.5) {
             node.setAttribute('transform', ghostWalkTransform(f.ghost.p));
             if (ghibli) poseFigure(figures, node.querySelector('[data-figure]'), ghostWalkPose(f.ghost.p));
-          } else {
+          } else if (node.tagName === 'svg') {
+            // Le nœud de rue est encore là tant que React n'a pas mis le <svg> du seuil à sa place (recomposition à p = 0,5).
             placeSill(node, frame.door, ghostPassage(f.ghost.p), metrics, k, ghibli ? 1 : -away);
             if (ghibli) poseFigure(figures, node.querySelector('[data-figure]'), ghostSillPose(f.ghost.p));
           }
@@ -216,8 +223,15 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   useWallClockLoop(place, [place], { frameMs: QUEUE_FRAME_MS });
   if (!door) return null;
   const f = frameAt(Date.now() / 1000);
-  // Effet de bord idempotent pendant le rendu : la boucle compare la composition de la file à celle qui est affichée.
+  // Effet de bord idempotent pendant le rendu : la boucle compare la composition de la file à celle qui est affichée. Les
+  // dernières places des personnes sorties de la file (entrées) sont oubliées.
   shown.current = signature(f);
+  for (const mid of lastPos.current.keys()) if (!f.members.some((m) => m.id === mid)) lastPos.current.delete(mid);
+  // Pose au rendu : qui avançait à la dernière image garde sa marche (sinon la recomposition le figerait en plein pas).
+  const renderPose = (m: QueueFrame['members'][number]): FigurePose => {
+    const before = lastPos.current.get(m.id);
+    return memberPose(posOf(m), before !== undefined && posOf(m) < before - 1e-6);
+  };
   const person = (o: Outfit, pose: FigurePose): ReactElement => (ghibli ? <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={pose} /> : <PersonSprite outfit={o} sky={sky} rainy={false} umbrella={false} />);
   const bouncers = [0, 1].map((i) => bouncerOutfit(seed, id, i));
   return (
@@ -242,7 +256,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
       {/* De la dernière à la première : celle qui est devant la porte est dessinée par-dessus. */}
       {[...f.members].reverse().map((m) => (
         <g key={m.id} data-queue-id={m.id} data-queue-member="" transform={memberTransform(posOf(m))}>
-          {person(outfitOf(m.outfitKey), memberPose(posOf(m), false))}
+          {person(outfitOf(m.outfitKey), renderPose(m))}
         </g>
       ))}
       {bouncers.map((o, i) => {
