@@ -92,3 +92,17 @@ describe('RollingShutter : délai de départ', () => {
     expect(g(1.45).style.transition).toContain(`${SHUTTER_S}s ease-in-out 1.45s`);
   });
 });
+
+describe('RollingShutter : cellulo en Ghibli', () => {
+  it('lames ombrées, coffre et trait encré ; le classique est inchangé', () => {
+    const cel = mount(<RollingShutter frame={frame} sky={sky} state="down" still ghibli />);
+    expect(cel.querySelector('[data-shutter-cel]')).not.toBeNull();
+    expect(cel.querySelector('[data-shutter-box]')).not.toBeNull();
+    expect(cel.querySelector('[stroke="#2A1A18"]')).not.toBeNull();
+    const dark = mount(<RollingShutter frame={frame} sky={sky} state="down" still ghibli dark />);
+    expect(dark.querySelector('[data-shutter-cel]')!.getAttribute('data-dark')).toBe('true');
+    const classic = mount(<RollingShutter frame={frame} sky={sky} state="down" still />);
+    expect(classic.querySelector('[data-shutter-cel]')).toBeNull();
+    expect(classic.querySelector('[data-shutter]')).not.toBeNull();
+  });
+});

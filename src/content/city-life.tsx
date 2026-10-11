@@ -32,6 +32,7 @@ import { InstallLayer } from './install-layer';
 import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
+import { ghibliStaffPost } from './shop/ghibli-shop-glass';
 import { collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type TerraceGuestNode, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, tone } from './city-sprites';
 import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
@@ -507,7 +508,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               umbrella={intensity.umbrellas}
               seed={seed}
               seats={visits.filter((v) => v.slotId === view.slot.id).map((v) => v.seat.x - frame.window.x)}
-              post={interiorPost(type, frame.window.w, frame.window.h)}
+              post={ghibli ? ghibliStaffPost(view, frame) : interiorPost(type, frame.window.w, frame.window.h)}
               ghibli={ghibli}
               doorXs={doorCenters}
             />

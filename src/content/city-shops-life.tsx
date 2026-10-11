@@ -26,6 +26,8 @@ import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghib
 import { AccessorySprite, GhibliPosed, LIFTING, PosedPerson, STANDING, applyGhibliPose, applyPose, ghibliHandles, ghibliPoseOf, poseHandles, showCarry, type GhibliPoseHandles, type PoseHandles } from './shop-gesture-sprites';
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
 import { NightclubDoor } from './shop-queue';
+import { GhibliShopGlass, ghibliAwningShift } from './shop/ghibli-shop-glass';
+import { FAMILY } from '../core/library/paint/shop/families';
 import { CarriedPlacard, CarriedSign, LadderSprite, RollingShutter, SHUTTER_S, type ShutterState, type WorkerPose } from './shop-sprites';
 import { ShopTerrace, type TerraceSky } from './shop-terrace';
 
@@ -211,7 +213,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
         const view = views.find((x) => x.slot.id === id);
         // Boutique ouverte la nuit : comme le vendeur, le client est éclairé (ciel de jour) ; le store couvre le haut de la vitrine, le client reste dessous.
         const lit = sky.daylight < 0.45 && view?.phase === 'open';
-        const shift = view?.sign && SHOP_DEFS[view.sign.type].awning ? 3 : 0;
+        const shift = ghibli && view ? ghibliAwningShift(view, f, sky) : view?.sign && SHOP_DEFS[view.sign.type].awning ? 3 : 0;
         const inSky = lit ? LIT_SKY : sky;
         return (
           <svg key={id} data-shop-window={id} x={f.window.x} y={f.window.y + shift} width={f.window.w} height={f.window.h - shift} overflow="hidden">
@@ -706,7 +708,8 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
   const { window: win, door } = frame;
   const open = view.phase === 'open';
   const lit = sky.daylight < 0.45 && open;
-  const shift = SHOP_DEFS[type].awning ? 3 : 0;
+  // Store : le personnel est rogné sous le bas du store (Ghibli : lambrequin festonné, plus bas que le store classique).
+  const shift = ghibli ? ghibliAwningShift(view, frame, sky) : SHOP_DEFS[type].awning ? 3 : 0;
   const inSky = lit ? LIT_SKY : sky;
   // Le premier plan de l'intérieur (comptoir…) est redessiné ici, devant le personnel, quand la boutique est ouverte (le décor
   // fixe ne le dessine alors pas) ou quand quelqu'un est encore derrière la vitrine pendant la descente du rideau.
@@ -751,11 +754,11 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
                 </g>
               );
             })}
-            <ShopInteriorFront type={type} w={win.w} h={win.h} sky={sky} lit={lit} />
+            {ghibli ? <GhibliShopGlass view={view} frame={frame} sky={sky} /> : <ShopInteriorFront type={type} w={win.w} h={win.h} sky={sky} lit={lit} />}
           </g>
         </svg>
       )}
-      <RollingShutter frame={frame} sky={sky} state={cast.shutter} still={reduced} delay={ghibli ? THRESHOLD_S + TURN_S : 0} />
+      <RollingShutter frame={frame} sky={sky} state={cast.shutter} still={reduced} delay={ghibli ? THRESHOLD_S + TURN_S : 0} ghibli={ghibli} dark={FAMILY[type] === 'F'} />
       {cast.street.map(({ shift: s, state, visible, atDoor }) => {
         const side = state.side;
         const toEdge = side > 0 ? doorX + WORLD_MARGIN : width + WORLD_MARGIN - doorX;
