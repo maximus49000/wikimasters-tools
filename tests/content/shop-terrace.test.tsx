@@ -313,6 +313,69 @@ describe('boîte de nuit : cordon, videurs et file (NightclubDoor)', () => {
   });
 });
 
+describe('boîte de nuit : file à pied, sans fondu (G3a)', () => {
+  const T0 = NOW / 1000 - 600;
+  const clubAt = (t: number, ghibli: boolean): HTMLDivElement => {
+    vi.spyOn(Date, 'now').mockReturnValue((T0 + t) * 1000);
+    return render(
+      <svg>
+        <NightclubDoor view={viewOf('nightclub', SAT, 30)} frame={frame} metrics={metrics} minutes={30} date={SAT} reduced={false} sky={skyAt(30, times)} seed={SEED} sessionT0={T0} ghibli={ghibli} />
+      </svg>,
+    ).host;
+  };
+  // Instant où la personne qui entre est à `p` (0..1) de son parcours.
+  const when = (lo: number, hi: number): number => {
+    for (let t = 0; t < 600; t += 0.05) {
+      const g = queueFrame(SEED, 'shop-0', t, 30, true).ghost;
+      if (g && g.p > lo && g.p < hi) return t;
+    }
+    throw new Error('aucune entrée');
+  };
+  it.each([false, true])('aucun nœud de la file n’a d’opacité < 1 (Ghibli : %s)', (ghibli) => {
+    for (const t of [3, 17.3, when(0.2, 0.3), when(0.7, 0.8), 100.4]) {
+      const c = clubAt(t, ghibli);
+      for (const n of c.querySelectorAll('[data-queue-id]')) expect(Number(n.getAttribute('opacity') ?? '1')).toBe(1);
+      for (const n of c.querySelectorAll('[data-queue-id] [data-door-fig]')) expect(n).not.toBeNull();
+    }
+  });
+  it('Ghibli : chaque membre de la file est un pantin', () => {
+    const c = clubAt(40, true);
+    const members = [...c.querySelectorAll('[data-queue-member]')];
+    expect(members.length).toBeGreaterThan(0);
+    for (const m of members) expect(m.querySelector('[data-figure]')).not.toBeNull();
+  });
+  it('p ≤ 0,5 : la personne marche vers la porte ; p > 0,5 : elle passe le seuil dans un svg[data-club-door]', () => {
+    for (const ghibli of [false, true]) {
+      const before = clubAt(when(0.1, 0.4), ghibli);
+      expect(before.querySelector('[data-queue-entering]')).not.toBeNull();
+      expect(before.querySelector('svg[data-club-door] [data-queue-entering]')).toBeNull();
+      const after = clubAt(when(0.6, 0.9), ghibli);
+      const node = after.querySelector('svg[data-club-door] [data-queue-entering]');
+      expect(node).not.toBeNull();
+      expect(after.querySelector('svg[data-club-door] [data-door-dark]')).not.toBeNull();
+      expect(after.querySelector('svg[data-club-door]')!.hasAttribute('id')).toBe(false);
+      if (ghibli) expect(node!.querySelector('[data-figure]')).not.toBeNull();
+    }
+  });
+  it('le dernier arrivé est opaque et arrive de plus loin', () => {
+    let seen = 0;
+    for (let t = 0; t < 120; t += 0.1) {
+      const f = queueFrame(SEED, 'shop-0', t, 30, true, queueLayout(slots[0]!, frame, metrics.unit).max);
+      const m = f.members[f.members.length - 1];
+      if (!m || m.opacity >= 1) continue;
+      seen++;
+      const c = clubAt(t, true);
+      const node = c.querySelector(`[data-queue-id="${m.id}"]`)!;
+      expect(node.getAttribute('opacity')).toBeNull();
+      const x = Number(/translate\(([-\d.]+)/.exec(node.getAttribute('transform')!)![1]);
+      const { doorX, pitch } = queueLayout(slots[0]!, frame, metrics.unit);
+      expect(Math.abs(x - doorX)).toBeGreaterThan((9 + m.pos * pitch) * metrics.unit + 1);
+      if (seen > 2) break;
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+});
+
 describe('CityLifeLayer : terrasses selon la météo de la rue', () => {
   // Premier jour où la rue de la graine a un local à terrasse ouvert à midi.
   const find = (): { seed: number; date: YMD; slotId: string } => {

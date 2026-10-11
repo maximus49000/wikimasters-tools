@@ -619,11 +619,12 @@ type OutdoorsProps = {
   sky: Sky;
   seed: number;
   sessionT0: number;
+  ghibli?: boolean;
 };
 
-export function ShopOutdoors({ view, frame, metrics, minutes, date, weather, walkers, reduced, sky, seed, sessionT0 }: OutdoorsProps): ReactElement | null {
+export function ShopOutdoors({ view, frame, metrics, minutes, date, weather, walkers, reduced, sky, seed, sessionT0, ghibli = false }: OutdoorsProps): ReactElement | null {
   const type = view.sign?.type ?? null;
-  if (type === 'nightclub') return <NightclubDoor view={view} frame={frame} metrics={metrics} minutes={minutes} date={date} reduced={reduced} sky={sky} seed={seed} sessionT0={sessionT0} />;
+  if (type === 'nightclub') return <NightclubDoor view={view} frame={frame} metrics={metrics} minutes={minutes} date={date} reduced={reduced} sky={sky} seed={seed} sessionT0={sessionT0} ghibli={ghibli} />;
   if (type === null || SHOP_DEFS[type].terrace === 0) return null;
   // Une terrasse sortie attire : un fond de 0,3 s'ajoute à l'affluence du type (sinon les chaises restent presque toujours vides).
   const crowd = Math.min(1, 0.3 + 0.9 * crowdAt(SHOP_DEFS[type], minutes) * (0.6 + 0.4 * walkers));
