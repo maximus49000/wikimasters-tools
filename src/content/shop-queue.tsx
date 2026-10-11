@@ -6,7 +6,7 @@ import { outfitFor, type Outfit } from '../core/library/city/people';
 import { SHOP_DEFS } from '../core/library/city/shops/catalog';
 import { BOUNCER_STAGGER_S, bouncerArriveOf, bouncerLeaveOf, clearAt, clubWalkAt, clubWalkEnd, walkOffOf, type BouncerPost, type ClubCtx, type ClubPose, type ClubWalk } from '../core/library/city/shops/club-walks';
 import { isOpenAt } from '../core/library/city/shops/hours';
-import { ADVANCE_S, nightclubDoor, queueAt, queueScene, queueWalkSpeed, type ArrivalLayout, type QueueArrival, type QueuePrev } from '../core/library/city/shops/queue';
+import { ADVANCE_S, nightclubDoor, queueAt, queueScene, queueWalkSpeed, targetLength, type ArrivalLayout, type QueueArrival, type QueuePrev } from '../core/library/city/shops/queue';
 import type { ShopFrame, ShopSlot } from '../core/library/city/shops/slots';
 import type { ShopView } from '../core/library/city/shops/view';
 import { hashString, mulberry32 } from '../core/library/scene-world';
@@ -300,10 +300,14 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   if (!life.current) life.current = { present, trans: null };
   else if (life.current.present !== present) life.current = { present, trans: reduced ? null : present ? openingAt(nowT) : closingAt(nowT) };
   else if (life.current.trans && nowT > life.current.trans.end) life.current = { present, trans: null };
-  // Après la fermeture éventuelle (elle lit la minute d'avant) : minute montrée, et celle d'avant.
+  // Après la fermeture éventuelle (elle lit la minute d'avant) : minute montrée, et la dernière minute d'une autre longueur
+  // visible (ou d'une autre ouverture). Une minute de même longueur garde `prev` : sinon le plan mêlé du dernier changement serait
+  // oublié une minute plus tard, alors que des trajets de plus d'une minute en dépendent encore (queueScene l'oublie seule).
+  const shownLength = (m: number): number => Math.min(targetLength(m), max);
   if (!clock.current) clock.current = { minutes, open: isOpen };
-  else if (clock.current.minutes !== minutes || clock.current.open !== isOpen)
+  else if (clock.current.open !== isOpen || shownLength(clock.current.minutes) !== shownLength(minutes))
     clock.current = { minutes, open: isOpen, prev: { minutes: clock.current.minutes, open: clock.current.open, since: nowT } };
+  else if (clock.current.minutes !== minutes) clock.current = { ...clock.current, minutes };
   const isBouncer = (w: ClubWalk): boolean => w.id.startsWith('bouncer-');
   const scaleOf = (w: ClubWalk): number => (isBouncer(w) ? kb : k);
   // Classique : le dessin regarde vers +x, retourné quand la personne regarde vers −x.

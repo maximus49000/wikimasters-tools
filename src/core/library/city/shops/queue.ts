@@ -9,7 +9,7 @@ export type QueueMember = {
   slot: number; // 0 = devant la porte
   entersAt: number; // instant (s) où elle disparaît dans la porte
   outfitKey: string;
-  fade: number; // 0..1 : avancée d'un cran / apparition, 1 = posée
+  fade: number; // 0..1 : avancée d'un cran en cours (0 = une entrée vient d'avoir lieu), 1 = posée ; jamais un fondu (les arrivées marchent)
 };
 
 const OPEN_MIN = 23 * 60; // ouverture (jeu.-sam. 23 h-5 h, voir catalog.ts)
@@ -33,7 +33,7 @@ export function nightclubDoor(isOpen: boolean, minutes: number): { cordon: boole
 }
 
 // Longueur cible 0..6 : monte de 23 h à 0 h, plein entre 0 h et 2 h, redescend jusqu'à la fermeture.
-function targetLength(minutes: number): number {
+export function targetLength(minutes: number): number {
   const u = sinceOpening(minutes); // 0 = 23 h
   let level: number;
   if (u < 60) level = 0.3 + 0.7 * (u / 60);
@@ -131,7 +131,6 @@ export type QueueArrival = { id: string; outfitKey: string; joinAt: number; from
 // Entrée d'immeuble trop proche de la place visée (celle de l'immeuble même) : on n'en sort pas pour faire trois pas.
 const MIN_FROM_DOOR_PX = 40;
 
-
 // Minute précédente telle que la scène l'a montrée : `minutes`, boîte ouverte ou non, et `since` (s, session) où la minute
 // courante a pris effet. Sans elle, la longueur cible est supposée constante (scène montée dans la minute).
 export type QueuePrev = { minutes: number; open: boolean; since: number };
@@ -161,12 +160,14 @@ export function queueScene(seed: number, slotId: string, t: number, minutes: num
   if (!isOpen) return EMPTY_SCENE;
   const cap = Math.max(0, layout.max);
   const M1 = Math.min(targetLength(minutes), cap);
-  const change = prev && prev.since <= t ? prev : undefined;
-  const M0 = change ? (change.open ? Math.min(targetLength(change.minutes), cap) : 0) : M1;
-  const tb = change ? change.since : Infinity;
   const base = (seed ^ hashString(`queue:${slotId}`)) >>> 0;
   const trip = tripOf(layout);
   const maxDur = Math.max(trip(0, MIN_SPEED).dur, trip(cap + 1, MIN_SPEED).dur);
+  // La minute d'avant ne compte plus quand tous ceux qu'elle a engagés sont entrés (départ avant `since`, trajet ≤ maxDur, puis
+  // LOOKBACK_S au plus dans la file) : oubliée, le plan redevient celui d'une longueur constante (et la fenêtre reste bornée).
+  const change = prev && prev.since <= t && t - prev.since < maxDur + LOOKBACK_S ? prev : undefined;
+  const M0 = change ? (change.open ? Math.min(targetLength(change.minutes), cap) : 0) : M1;
+  const tb = change ? change.since : Infinity;
   const tw = Math.min(t, tb) - LOOKBACK_S;
   const E = entriesAfter(base, tw, t + maxDur, cap + 2);
   const speeds = E.map((e) => queueWalkSpeed(seed, slotId, e.id));

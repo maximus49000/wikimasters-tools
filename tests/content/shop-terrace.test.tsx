@@ -570,6 +570,44 @@ describe('boîte de nuit : vigiles et arrivées de la file (G3b)', () => {
       for (const id of before.all) expect(ids('[data-queue-id]')).toContain(id);
     }
   });
+
+  it.each([true, false])('trajets de plus d’une minute (bord lointain) : ni saut ni apparition à la minute qui suit le changement (diminue : %s)', (shrink) => {
+    // Un local dont la file s'étire vers +x : dans un monde de 1400 px, le bord de ce côté est à plus d'une minute de marche.
+    const slot = [1, 2, 3, 4, 5, 6, 7, 8].flatMap((sd) => shopSlotsFor(W, H, sd)).find((sl) => queueLayout(sl, shopFrame(sl, metrics.ground), metrics.unit).away > 0 && queueLayout(sl, shopFrame(sl, metrics.ground), metrics.unit).max >= 4)!;
+    const fr = shopFrame(slot, metrics.ground);
+    const lay = queueLayout(slot, fr, metrics.unit);
+    const lengthAt = (m: number): number => queueAt(SEED, slot.id, 100, m, true).slice(0, lay.max).length;
+    let m0 = -1;
+    for (let m = shrink ? 0 : 23 * 60; m < (shrink ? 298 : 1438) && m0 < 0; m++)
+      if ((shrink ? lengthAt(m + 1) < lengthAt(m) : lengthAt(m + 1) > lengthAt(m)) && lengthAt(m + 2) === lengthAt(m + 1)) m0 = m;
+    expect(m0).toBeGreaterThanOrEqual(0);
+    const now = vi.spyOn(Date, 'now');
+    const club = (m: number): ReactNode => (
+      <svg>
+        <NightclubDoor view={{ ...viewOf('nightclub', SAT, m), slot }} frame={fr} metrics={metrics} minutes={m} date={SAT} reduced={false} sky={skyAt(m, times)} seed={SEED} sessionT0={T0} ghibli={false} width={1400} />
+      </svg>
+    );
+    const spots = (host: HTMLElement): Map<string, number | null> =>
+      new Map([...host.querySelectorAll('[data-queue-id]')].map((n) => [n.getAttribute('data-queue-id')!, n.tagName === 'svg' ? null : Number(/translate\(([-\d.]+)/.exec(n.getAttribute('transform')!)![1])]));
+    const tb = 203.7;
+    now.mockReturnValue((T0 + tb - 0.05) * 1000);
+    const { host, root } = render(club(m0));
+    // Chaque minute, rendue jusqu'à la suivante ; à chaque passage de minute, comparaison de l'image d'avant et de celle d'après.
+    for (const [m, at] of [[m0 + 1, tb], [m0 + 2, tb + 60]] as const) {
+      now.mockReturnValue((T0 + at - 0.05) * 1000);
+      act(() => root.render(club(m - 1)));
+      const before = spots(host);
+      now.mockReturnValue((T0 + at) * 1000);
+      act(() => root.render(club(m)));
+      const after = spots(host);
+      for (const [id, x] of before) {
+        expect(after.has(id), `${id} disparaît à la minute ${m}`).toBe(true);
+        const y = after.get(id);
+        if (x !== null && y !== null && y !== undefined) expect(Math.abs(y - x), `${id} saute à la minute ${m}`).toBeLessThan(1.5);
+      }
+      for (const [id, x] of after) if (!before.has(id)) expect(x === null || x > 1400 + WORLD_MARGIN - 2, `${id} apparaît à la minute ${m}`).toBe(true);
+    }
+  });
 });
 
 describe('boîte de nuit : fermeture et arrivée des videurs, à pied (G3b)', () => {

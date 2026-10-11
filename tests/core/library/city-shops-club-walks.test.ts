@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cityMetrics } from '../../../src/core/library/city/metrics';
 import { BOUNCER_STAGGER_S, bouncerArriveOf, bouncerLeaveOf, clearAt, clubWalkAt, clubWalkEnd, walkOffOf, type ClubCtx } from '../../../src/core/library/city/shops/club-walks';
-import { YAW_LEFT, YAW_RIGHT } from '../../../src/core/library/figure/gait';
+import { TURN_S, YAW_BACK, YAW_LEFT, YAW_RIGHT } from '../../../src/core/library/figure/gait';
 import { WORLD_MARGIN } from '../../../src/core/library/scene-world';
 
 const m = cityMetrics(340);
@@ -44,6 +44,11 @@ describe('fermeture : la file se défait à pied', () => {
   it('arrivée qui sortait d’une entrée : y rentre (seuil jusqu’au fond)', () => {
     const w = walkOffOf({ id: 'a', outfitKey: 'q', x: 700, y: m.doorY, yaw: 4, speed: 14, away: 1, atDoor: 0.4 }, 0, ctx());
     expect(clubWalkAt(w, 0)!.where).toBe('door');
+    // Elle sortait de face : demi-tour sur le seuil (à petits pas, sans s'enfoncer) avant de rentrer de dos.
+    expect(clubWalkAt(w, 0)!.pose).toMatchObject({ yaw: 4, gait: 'step' });
+    const mid = clubWalkAt(w, TURN_S / 2)!;
+    expect(mid.where === 'door' && mid.passage.depth).toBe(0.4);
+    expect(clubWalkAt(w, TURN_S + 0.05)!.pose.yaw).toBe(YAW_BACK);
     const v = clubWalkAt(w, clubWalkEnd(w) - 0.01)!;
     expect(v.where === 'door' && v.passage.depth).toBeGreaterThan(0.95);
   });

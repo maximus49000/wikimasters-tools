@@ -10,7 +10,8 @@ import type { Rect } from './slots';
 // rentrent l'un après l'autre par la porte du club une fois le cordon dégagé ; à leur arrivée (22 h 30), ils en sortent.
 // Segments enchaînés depuis `start` (s, session) ; après le dernier : caché (entré, sorti du monde), ou tenu (`hold`).
 export type ClubSeg =
-  | { k: 'door'; rect: Rect; x: number; from: number; to: number; yaw: number; dur: number }
+  // `turnFrom` : demi-tour sur le seuil (de turnFrom à yaw, à petits pas) pendant le segment, sans s'enfoncer si from = to.
+  | { k: 'door'; rect: Rect; x: number; from: number; to: number; yaw: number; turnFrom?: number; dur: number }
   | { k: 'turn'; x: number; y: number; from: number; to: number; via?: number; dur: number }
   | { k: 'walk'; from: number; to: number; y0: number; y1: number; dur: number }
   | { k: 'stand'; x: number; y: number; yaw: number; arms: ArmPose; dur: number };
@@ -23,7 +24,9 @@ function segView(s: ClubSeg, p: number, walked: number, k: number): ClubWalkView
   switch (s.k) {
     case 'door': {
       const depth = s.from + (s.to - s.from) * p;
-      return { where: 'door', rect: s.rect, passage: { stage: 'threshold', x: s.x, depth, yaw: s.yaw, gait: 'walk', walked }, pose: { yaw: s.yaw, gait: 'walk', phase: phaseIndexOf(walked / k + depth * 8), head: 0 } };
+      const yaw = s.turnFrom === undefined ? s.yaw : turnYaw(s.turnFrom, s.yaw, p);
+      const gait = s.turnFrom === undefined ? 'walk' : 'step';
+      return { where: 'door', rect: s.rect, passage: { stage: 'threshold', x: s.x, depth, yaw, gait, walked }, pose: { yaw, gait, phase: phaseIndexOf(walked / k + depth * 8), head: 0 } };
     }
     case 'turn':
       return { where: 'street', x: s.x, y: s.y, pose: { yaw: turnYaw(s.from, s.to, p, s.via), gait: 'step', phase: phaseIndexOf(walked / k), head: 0 } };
@@ -61,6 +64,8 @@ export function walkOffOf(a: Leaver, start: number, c: ClubCtx): ClubWalk {
     const segs: ClubSeg[] = [];
     if (a.atDoor <= 0) segs.push({ k: 'turn', x: a.x, y: c.metrics.doorY, from: a.yaw, to: YAW_BACK, dur: TURN_S });
     const d = Math.max(0, a.atDoor);
+    // Dans le seuil, de face (elle en sortait) : demi-tour sur place avant de rentrer de dos.
+    if (d > 0 && a.yaw !== YAW_BACK) segs.push({ k: 'door', rect: rectAt(a.x), x: a.x, from: d, to: d, yaw: YAW_BACK, turnFrom: a.yaw, dur: TURN_S });
     segs.push({ k: 'door', rect: rectAt(a.x), x: a.x, from: d, to: 1, yaw: YAW_BACK, dur: (1 - d) * THRESHOLD_S });
     return { id: a.id, outfitKey: a.outfitKey, start, k: c.k, segs };
   }
