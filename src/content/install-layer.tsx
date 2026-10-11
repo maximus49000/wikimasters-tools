@@ -48,7 +48,8 @@ import { LadderSprite } from './shop-sprites';
 
 export type InstallPart = 'back' | 'crew' | 'front' | 'street' | 'all';
 type Layer = 'back' | 'crew' | 'front' | 'street';
-type Props = { width: number; height: number; seed: number; sky: Sky; still: boolean; date: YMD; minutes: number; metrics: CityMetrics; rainy: boolean; lights?: boolean; part?: InstallPart };
+// `ghibli` : graphisme Ghibli (musiciens, serveurs, clients et foule de la Fête de la musique au pantin).
+type Props = { width: number; height: number; seed: number; sky: Sky; still: boolean; date: YMD; minutes: number; metrics: CityMetrics; rainy: boolean; lights?: boolean; part?: InstallPart; ghibli?: boolean };
 
 type Pt = { x: number; y: number };
 // `depth` : pour la partie `street`, profondeur (unités sous le bord du trottoir) qui ordonne le dessin.
@@ -214,7 +215,7 @@ const barrierMatrix = (u: number, tilt: number): string => {
 const AWNING_DEPTH = STAND_DEPTH - 10;
 const standBase = (m: CityMetrics): number => m.curb + STAND_DEPTH * m.unit;
 
-export function InstallLayer({ width, height, seed, sky, still, date, minutes, metrics, rainy, lights = false, part = 'all' }: Props): ReactElement {
+export function InstallLayer({ width, height, seed, sky, still, date, minutes, metrics, rainy, lights = false, part = 'all', ghibli = false }: Props): ReactElement {
   const dayKey = `${date.y}-${date.m}-${date.d}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sets = useMemo(() => decorSetsFor(date, width, height, seed), [dayKey, width, height, seed]);
@@ -284,7 +285,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lamps, lit, standSide);
       if (d) drawn.push(d);
     }
-    if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits.get(set.id)!, metrics, sky, rainy, still, width));
+    if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits.get(set.id)!, metrics, sky, rainy, still, width, ghibli));
     if (still) continue;
     // Véhicule de transport de l'équipe à pied (camionnette, vélo porteur, camion plateau) : il arrive chargé en roulant, se
     // gare au bord de la rue avant le premier créneau et repart en roulant après le dernier (city/van.ts), une fois tout rangé.
@@ -363,7 +364,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       {want('front') && <g data-install-part="front">{pick('front')}</g>}
       {want('street') && (
         <g data-install-part="street">
-          <MusicStreet width={width} height={height} seed={seed} sky={sky} still={still} rainy={rainy} date={date} minutes={minutes} metrics={metrics} extra={street} />
+          <MusicStreet width={width} height={height} seed={seed} sky={sky} still={still} rainy={rainy} date={date} minutes={minutes} metrics={metrics} extra={street} ghibli={ghibli} />
         </g>
       )}
     </>
@@ -432,7 +433,7 @@ function decorNode(
 // les trois musiciens sont alors en place, jamais une scène vide éclairée). La nuit, les projecteurs éclairent les musiciens.
 const BAND_FROM = 17 * 60;
 const BAND_WINDOW: readonly [number, number] = [16 * 60 + 45, 24 * 60 + 20];
-function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[], m: CityMetrics, sky: Sky, rainy: boolean, still: boolean, width: number): Drawn[] {
+function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[], m: CityMetrics, sky: Sky, rainy: boolean, still: boolean, width: number, ghibli: boolean): Drawn[] {
   const floor = set.items.find((i) => i.kind === 'stage-floor');
   const spots = set.items.find((i) => i.kind === 'stage-spots');
   if (!floor || !spots) return [];
@@ -463,6 +464,7 @@ function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[],
           rainy={rainy}
           still={still}
           lit={lit}
+          ghibli={ghibli}
         />
       ),
     });

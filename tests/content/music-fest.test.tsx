@@ -3,6 +3,7 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { InstallLayer } from '../../src/content/install-layer';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
@@ -27,6 +28,7 @@ const unmountAll = (): void => {
   }
 };
 afterEach(() => {
+  localStorage.removeItem(ART_KEY);
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   unmountAll();
@@ -90,6 +92,21 @@ describe('Fête de la musique : la rue le soir', () => {
     expect(count(c, '[data-music-spectator] animateTransform')).toBeGreaterThan(0);
     // La foule ne compte pas dans le plafond des figurants : aucun spectateur, serveur ou client n'est un « travailleur ».
     expect(count(c, '[data-music-spectator][data-worker], [data-beer-server][data-worker], [data-queue-person][data-worker]')).toBe(0);
+  });
+
+  it('Ghibli : foule, serveurs, clients et musiciens au pantin dans la vie de la ville, sans miroir ni fondu', () => {
+    clock();
+    writeArt('ghibli');
+    const c = city(MUSIC, 20 * 60);
+    for (const sel of ['[data-music-spectator]', '[data-beer-server]', '[data-queue-person]', '[data-stage-band]']) {
+      const nodes = [...c.querySelectorAll(sel)];
+      expect(nodes.length, sel).toBeGreaterThan(0);
+      for (const n of nodes) {
+        expect(n.querySelector('[data-figure]'), sel).not.toBeNull();
+        expect(n.getAttribute('opacity'), sel).toBeNull();
+        expect(n.getAttribute('transform') ?? '', sel).not.toMatch(/scale\(-/);
+      }
+    }
   });
 
   it('profondeur : un serveur est derrière son comptoir, ses clients devant', () => {
@@ -169,6 +186,8 @@ describe('Fête de la musique : la rue le soir', () => {
       const c = layer(MUSIC, minutes, false, 720);
       const out = new Map<string, { x: number; y: number }>();
       for (const e of c.querySelectorAll('[data-queue-person], [data-music-spectator][data-mode="walking"], [data-beer-server]')) {
+        // Au seuil d'une porte : <svg> rogné, placé par son cadre (door-passage.ts), pas par un translate.
+        if (e.tagName === 'svg') continue;
         out.set(e.getAttribute('data-queue-person') ?? e.getAttribute('data-fan-id') ?? e.getAttribute('data-beer-server')!, xyOf(e)!);
       }
       unmountAll();

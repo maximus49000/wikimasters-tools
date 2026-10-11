@@ -261,7 +261,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
 
   // Décors de fête posés par des équipes (calendrier : jour de la scène et minute) ; les travailleurs (data-worker) comptent
   // dans le plafond des figurants (shopSpriteBudget).
-  const install = { width, height, seed, sky, still, date, minutes: city.minutes, metrics, rainy, lights };
+  const install = { width, height, seed, sky, still, date, minutes: city.minutes, metrics, rainy, lights, ghibli };
 
   const pedActive = useMemo(() => new Set(peds.filter((p) => p.u < pedestrianGate(p, intensity)).map((p) => p.id)), [peds, intensity]);
   const marks = useMemo(() => new Map(peds.map((p) => [p.id, festiveMark(p, intensity)] as const)), [peds, intensity]);

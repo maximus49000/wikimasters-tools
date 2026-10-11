@@ -4,6 +4,8 @@ import { BEER_MAX_SPEED, COUNTER_HALF, STAND_DEPTH } from '../../../src/core/lib
 import { absMinute, beerStandsFor, stageXs } from '../../../src/core/library/city/install';
 import { CROWD_STEP, STAGE_ZONE, musicCrowdAt, musicCrowdFor, standBlocks, type MusicSpectator } from '../../../src/core/library/city/music-crowd';
 import { dayNumber } from '../../../src/core/library/city/shops/hours';
+import { walkAt, walkDuration } from '../../../src/core/library/city/walk-path';
+import { YAW_BACK, YAW_FRONT, yawToward } from '../../../src/core/library/figure/gait';
 
 const W = 1440;
 const H = 600;
@@ -70,13 +72,47 @@ describe('musicCrowdAt', () => {
       expect(musicCrowdAt(s, s.gone + 0.01).mode).toBe('absent');
     }
   });
-  it('n’apparaît et ne disparaît qu’hors champ ou à une entrée d’immeuble (fondu à la porte seulement)', () => {
+  it('n’apparaît et ne disparaît qu’hors champ ou à une entrée d’immeuble (seuil de la porte, jamais de fondu)', () => {
     for (const s of crowd) {
       for (const p of [musicCrowdAt(s, s.walkIn + 1e-6), musicCrowdAt(s, s.gone - 1e-6)]) {
         expect(p.mode).toBe('walking');
         expect(p.x < 0 || p.x > W || DOORS.some((d) => Math.abs(d - p.x) < 0.5)).toBe(true);
       }
-      expect(musicCrowdAt(s, (s.arrive + s.leave) / 2).fade).toBeUndefined();
+      for (const t of [s.walkIn - 0.1, s.walkIn + 1e-6, (s.walkIn + s.arrive) / 2, (s.arrive + s.leave) / 2, s.gone - 1e-6, s.gone + 0.1]) expect('fade' in musicCrowdAt(s, t)).toBe(false);
+      // Seuil de la porte : de face en sortant de l'immeuble, de dos en y rentrant ; jamais ailleurs.
+      const a = musicCrowdAt(s, s.walkIn + 1e-6);
+      const b = musicCrowdAt(s, s.gone - 1e-6);
+      if (s.fromDoor) expect([a.sill! > 0.99, a.yaw]).toEqual([true, YAW_FRONT]);
+      else expect(a.sill).toBeUndefined();
+      if (s.toDoor) expect([b.sill! > 0.99, b.yaw]).toEqual([true, YAW_BACK]);
+      else expect(b.sill).toBeUndefined();
+      expect(musicCrowdAt(s, (s.walkIn + s.arrive) / 2).sill).toBeUndefined();
+      expect(musicCrowdAt(s, (s.arrive + s.leave) / 2).sill).toBeUndefined();
+    }
+  });
+  it('pantin en place : tourné vers sa scène (de dos, trois quarts) ; groupes des stands et fond de trois quarts', () => {
+    for (const s of crowd) {
+      const p = musicCrowdAt(s, at(22));
+      expect([p.yaw, p.gait]).toEqual([s.yaw, 'stand']);
+      if (s.zone === 'stage') {
+        const toward = yawToward(stages[s.stage!]! - s.x, -s.depth * UNIT);
+        expect(s.yaw).toBe(toward >= 9 ? toward : s.x < stages[s.stage!]! ? 15 : 9);
+        expect(s.yaw).toBeGreaterThanOrEqual(9);
+        expect(s.yaw).toBeLessThanOrEqual(15);
+      } else expect(s.yaw).toBe(s.dir > 0 ? 2 : 6);
+    }
+  });
+  it('pantin en marche : pas réglés sur la distance, demi-tour sur place à l’arrivée, durée du trajet = arrive − walkIn', () => {
+    for (const s of crowd.filter((_, i) => i % 7 === 0)) {
+      const opts = { fromDoor: s.fromDoor, endYaw: s.yaw };
+      expect((s.arrive - s.walkIn) * 60).toBeCloseTo(walkDuration(s.pathIn, UNIT, s.speed, opts), 6);
+      expect((s.gone - s.leave) * 60).toBeCloseTo(walkDuration(s.pathOut, UNIT, s.speed, { startYaw: s.yaw, toDoor: s.toDoor }), 6);
+      const mid = musicCrowdAt(s, (s.walkIn + s.arrive) / 2);
+      const w = walkAt(s.pathIn, UNIT, s.speed, opts, ((s.arrive - s.walkIn) / 2) * 60);
+      expect(mid).toMatchObject({ yaw: w.yaw, gait: w.gait, mode: 'walking' });
+      expect([mid.x, mid.depth, mid.walked].map((v) => v.toFixed(3))).toEqual([w.x, w.d, w.walked].map((v) => v.toFixed(3)));
+      const end = musicCrowdAt(s, s.arrive - 1e-7);
+      expect(end.yaw).toBe(s.yaw);
     }
   });
   it('jamais de saut : écart ≤ vitesse × dt', () => {
