@@ -75,7 +75,11 @@ describe('ScenePanorama (ville)', () => {
 
   // Ville vivante 1a : les passants sont la couche de vie de la ville (CityLifeLayer), plus des acteurs.
   it('les humains sont présents le soir, presque absents à 4 h (opacité cible)', () => {
+    // Scène montée à neuf pour chaque heure : un passant déjà en route finit sa traversée (G3a, aucune disparition sur place),
+    // on compare donc la présence voulue au montage.
     const present = (minutes: number): number => {
+      act(() => root.unmount());
+      root = createRoot(container);
       render(minutes, 'city', {}, true);
       return Array.from(container.querySelectorAll<SVGElement>('[data-city-life] [data-ped]')).filter((el) => el.getAttribute('data-active') === 'true' && el.getAttribute('opacity') === '1').length;
     };
