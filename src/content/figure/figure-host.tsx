@@ -198,7 +198,9 @@ export class FigureRegistry {
 
 let shared: FigureRegistry | null = null;
 export const FigureContext = createContext<FigureRegistry | null>(null);
-// Registre de l'affichage (pièce, panorama) ; repli : registre partagé (les sprites ne vivent pas dans le DOM).
+// Registre de l'affichage (pièce, panorama) ; repli : registre partagé (les sprites ne vivent pas dans le DOM). Le repli
+// suppose une seule couche (tests, rendu isolé) : un seul budget par image, un seul flush ; chaque scène réelle (RoomView,
+// panorama) pose son propre FigureContext.Provider.
 export function useFigureRegistry(): FigureRegistry {
   const r = useContext(FigureContext);
   if (r) return r;
