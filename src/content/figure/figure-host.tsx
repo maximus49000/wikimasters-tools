@@ -30,7 +30,8 @@ export const paletteKey = (p: Palette): string => PALETTE_ORDER.map((k) => p[k] 
 export const spriteKey = (pk: string, key: FigureKey): string => `${pk}#${keyString(key)}`;
 
 // Canvas de rendu partagé (un seul, effacé à chaque sprite) ; null sans canvas 2D. Sous jsdom, pas même d'appel :
-// getContext y signale « Not implemented » à chaque fois.
+// getContext y signale « Not implemented » à chaque fois. `willReadFrequently` : canvas en mémoire (pas sur le GPU) — sur
+// téléphone, toDataURL d'un canvas GPU attend la relecture des pixels (la moitié du temps d'image au 21 juin, mesuré).
 let surface: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null | undefined;
 function getSurface(): typeof surface {
   if (surface !== undefined) return surface;
@@ -39,7 +40,7 @@ function getSurface(): typeof surface {
   const canvas = document.createElement('canvas');
   canvas.width = SPRITE_BOX.w * SPRITE_PX;
   canvas.height = SPRITE_BOX.h * SPRITE_PX;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (ctx) surface = { canvas, ctx };
   return surface;
 }

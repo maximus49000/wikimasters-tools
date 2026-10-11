@@ -37,7 +37,7 @@ function canvasUrl(map: LightMap): string | null {
   scratch ??= document.createElement('canvas');
   if (scratch.width !== map.w) scratch.width = map.w;
   if (scratch.height !== map.h) scratch.height = map.h;
-  const ctx = scratch.getContext('2d');
+  const ctx = scratch.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   const data = ctx.createImageData(map.w, map.h);
   data.data.set(map.rgba);

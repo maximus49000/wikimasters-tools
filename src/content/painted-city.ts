@@ -49,7 +49,7 @@ export const canvasTilePainter: TilePainter = async (plan, tile) => {
   const canvas = document.createElement('canvas');
   canvas.width = Math.ceil(w * dpr);
   canvas.height = Math.ceil(plan.height * dpr);
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   ctx.setTransform(dpr, 0, 0, dpr, -x0 * dpr, 0);
   paintCityTile(ctx, plan, tile);
