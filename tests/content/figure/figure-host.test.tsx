@@ -14,7 +14,7 @@ const o: Outfit = { skin: '#F2C9A5', hair: 'short', hairColor: '#4a2e1e', hatCol
 const sky = skyAt(12 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
 const night = skyAt(23 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
 const key = { sig: 'short.long.pants.none.n', yaw: 0, gait: 'walk' as const, phase: 0, head: 0 };
-const pal: Palette = figurePalette(o, sky, false, false);
+const pal: Palette = figurePalette(o, sky, false);
 const reg = (opts: { max?: number; perFrame?: number } = {}): { r: FigureRegistry; pk: string } => {
   const r = new FigureRegistry('t', opts);
   return { r, pk: r.addPalette(pal) };
@@ -30,8 +30,13 @@ describe('palette', () => {
     expect(pal['f-ink']).toBeTruthy();
     expect(pal['f-ground']).toBe('#3a2f5a');
     const r = new FigureRegistry('t');
-    expect(r.addPalette(figurePalette(o, night, false, false))).not.toBe(r.addPalette(pal));
+    expect(r.addPalette(figurePalette(o, night, false))).not.toBe(r.addPalette(pal));
     expect(r.addPalette({ ...pal })).toBe(r.addPalette(pal));
+  });
+  it('teinte quantifiée au huitième de jour : 0,51 et 0,53 même palette, 0,3 et 0,7 différentes', () => {
+    const at = (daylight: number): Palette => figurePalette(o, { ...sky, daylight }, false);
+    expect(at(0.51)).toEqual(at(0.53));
+    expect(at(0.3)).not.toEqual(at(0.7));
   });
 });
 
@@ -57,7 +62,7 @@ describe('registre des sprites', () => {
   });
   it('deux palettes : deux sprites pour la même pose', () => {
     const { r, pk } = reg();
-    const pn = r.addPalette(figurePalette(o, night, false, false));
+    const pn = r.addPalette(figurePalette(o, night, false));
     r.ensure(pk, key);
     r.ensure(pn, key);
     expect(r.size()).toBe(2);
@@ -241,18 +246,38 @@ describe('figure Ghibli', () => {
     r.flush();
     expect(r.has(first)).toBe(false);
   });
-  it('nouvelle palette (nuit) : data-palette et data-key suivent, l’ancienne pose est libérée', () => {
-    const { r } = reg({ max: 1, perFrame: 10 });
+  it('nouvelle palette (nuit) : aucun sprite peint au rendu, l’ancienne image reste jusqu’à la nouvelle, puis libérée', () => {
+    const { r, pk } = reg({ max: 2, perFrame: 10 });
     const { host, rerender, unmount } = mount(r, false);
     const node = host.querySelector('[data-figure]')!;
     const day = node.getAttribute('data-key')!;
+    expect(r.size()).toBe(1);
     rerender(night);
     const pn = node.getAttribute('data-palette')!;
-    expect(pn).toBe(r.addPalette(figurePalette(o, night, false, false)));
+    expect(pn).toBe(r.addPalette(figurePalette(o, night, false)));
+    // Rien n’est peint pendant le rendu : la figure garde son image et sa clé (détenue), la nouvelle est en file.
+    expect(r.size()).toBe(1);
+    expect(r.has(spriteKey(pn, key))).toBe(false);
+    expect(node.getAttribute('data-key')).toBe(day);
+    expect(node.firstElementChild!.getAttribute('href')).toBe(BLANK_SPRITE);
+    r.flush();
+    expect(r.has(spriteKey(pn, key))).toBe(true);
+    expect(r.has(day)).toBe(true);
+    poseFigure(r, node, { yaw: 0, gait: 'walk', phase: 0, head: 0 });
     expect(node.getAttribute('data-key')).toBe(spriteKey(pn, key));
+    r.ensure(pk, { ...key, phase: 7 });
     r.flush();
     expect(r.has(day)).toBe(false);
-    expect(r.has(spriteKey(pn, key))).toBe(true);
+    unmount();
+  });
+  it('nouvelle palette, sprite déjà peint : utilisé tout de suite au rendu', () => {
+    const { r } = reg({ perFrame: 10 });
+    const pn = r.addPalette(figurePalette(o, night, false));
+    r.ensure(pn, key);
+    const { host, rerender, unmount } = mount(r, false);
+    const node = host.querySelector('[data-figure]')!;
+    rerender(night);
+    expect(node.getAttribute('data-key')).toBe(spriteKey(pn, key));
     unmount();
   });
 });
