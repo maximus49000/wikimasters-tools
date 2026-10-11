@@ -185,7 +185,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const facades = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
   const frame = useMemo<EventFrame>(() => ({ width, height, metrics, facades }), [width, height, metrics, facades]);
   const intensity = useMemo(() => cityIntensity(city), [city]);
-  // Une entrée par immeuble : la probabilité par trajet est réduite selon le nombre d'entrées (≤ 6 habitants par 720 px).
+  // Une entrée par lot : la probabilité par trajet est réduite selon le nombre d'entrées (≤ 6 habitants par 720 px).
   const flow = useMemo(() => residentFlow(intensity, city.minutes, doors.length, width), [intensity, city.minutes, doors.length, width]);
   const lights = sky.daylight < 0.5 || rainy;
   const gateOf = (trip: Trip): number => (trip.kind === 'out' ? flow.out : flow.in);

@@ -29,4 +29,15 @@ describe('vitre des fenêtres', () => {
     const s = html({ x: 0, y: 30, w: 120, h: 150 });
     expect(crossbars(s)).toBe(1);
   });
+
+  it('une baie au sol n’a ni appui ni bord fermé en bas ; une fenêtre en hauteur garde son appui', () => {
+    const baie = html({ x: 10, y: 0, w: 314, h: wallH });
+    expect(baie).not.toContain(' height="7"');
+    // Bord extérieur : un tracé ouvert (pas de Z, pas de rect de la taille de la baie).
+    expect(baie).not.toContain(`width="314" height="${wallH}"`);
+    expect(baie).toMatch(/<path d="M10 \d+ V/);
+    const haute = html({ x: 10, y: 30, w: 120, h: 150 });
+    expect(haute).toContain(' height="7"');
+    expect(haute).toContain('width="120" height="150"');
+  });
 });

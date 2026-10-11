@@ -52,10 +52,11 @@ export function WindowArt({ rect, palette, steampunk, view = false, worldHref, a
   const frame = steampunk ? '#B5833A' : palette.skirt;
   const edge = steampunk ? '#6E4A1E' : palette.edge;
   const bars: ReactElement[] = [];
-  // Montants verticaux tous les ~120 px (un seul au centre jusqu'à 240 px, comme avant) ; traverse seulement hors baie.
+  // Montants verticaux tous les ~120 px (un seul au centre jusqu'à 239 px, comme avant ; deux dès 240 px) ; traverse seulement hors baie.
   const posts = Math.floor(glass.w / 120);
   for (let k = 1; k <= posts; k++) bars.push(<rect key={`v${k}`} x={glass.x + (glass.w * k) / (posts + 1) - 2} y={glass.y} width={4} height={glass.h} fill={frame} />);
   const floor = touchesFloor(rect);
+  const edgeR = steampunk ? 16 : 4;
   if (glass.h >= 110 && !floor) bars.push(<rect key="h" x={glass.x} y={glass.y + glass.h / 2 - 2} width={glass.w} height={4} fill={frame} />);
   const rivets: ReactElement[] = steampunk
     ? [
@@ -89,8 +90,20 @@ export function WindowArt({ rect, palette, steampunk, view = false, worldHref, a
       ) : (
         <rect x={rect.x + 3} y={rect.y + 3} width={rect.w - 6} height={rect.h - 6} rx={steampunk ? 14 : 3} fill="none" stroke={frame} strokeWidth={GLASS_INSET - 1} />
       )}
-      <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} rx={steampunk ? 16 : 4} fill="none" stroke={edge} strokeWidth={1.2} />
-      <rect x={rect.x - 6} y={rect.y + rect.h} width={rect.w + 12} height={7} rx={2} fill={frame} stroke={edge} strokeWidth={1} />
+      {floor ? (
+        // Baie : bord extérieur ouvert en bas (coins hauts arrondis), sans appui.
+        <path
+          d={`M${rect.x} ${rect.y + rect.h} V${rect.y + edgeR} Q${rect.x} ${rect.y} ${rect.x + edgeR} ${rect.y} H${rect.x + rect.w - edgeR} Q${rect.x + rect.w} ${rect.y} ${rect.x + rect.w} ${rect.y + edgeR} V${rect.y + rect.h}`}
+          fill="none"
+          stroke={edge}
+          strokeWidth={1.2}
+        />
+      ) : (
+        <>
+          <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} rx={edgeR} fill="none" stroke={edge} strokeWidth={1.2} />
+          <rect x={rect.x - 6} y={rect.y + rect.h} width={rect.w + 12} height={7} rx={2} fill={frame} stroke={edge} strokeWidth={1} />
+        </>
+      )}
       {rivets}
     </g>
   );

@@ -13,7 +13,7 @@ import type { PaintCtx } from './paint-ctx';
 // son propre générateur : peint depuis deux tranches, il est identique.
 export const TILE = 360;
 // À incrémenter à chaque changement du dessin : invalide le cache des tranches.
-export const PAINT_VERSION = 4;
+export const PAINT_VERSION = 5;
 
 const CLOTH = ['#E8456B', '#FFFFFF', '#F6C62E', '#4E8ED8', '#6BB36B', '#F28CB4'].map(hexRgb);
 const FLOWERS = ['#3F8A3A', '#E8456B', '#F6C62E', '#FFFFFF', '#E070C0'].map(hexRgb);
@@ -326,7 +326,7 @@ export function paintBuilding(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuildi
     ctx.strokeStyle = INK;
     ctx.lineWidth = 1.3;
     ctx.beginPath();
-    ctx.moveTo(x, Math.max(top, left.top) + look.roofH);
+    ctx.moveTo(x, left.top > top ? left.top + left.look.roofH : top + look.roofH);
     ctx.lineTo(x, ground);
     ctx.stroke();
   }

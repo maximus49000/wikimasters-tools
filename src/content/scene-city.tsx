@@ -179,8 +179,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
     return (
       <g data-scene-body>
         {farBlocks}
-        {nearBlocks}
         {podiumBlocks}
+        {nearBlocks}
         {shopFronts}
         {streetFragment}
         {entrances}
@@ -193,8 +193,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
     <g data-scene-body data-art="ghibli">
       <g data-classic-city="" style={{ opacity: showPainted ? 0 : 1, transition: fade }}>
         {farBlocks}
-        {nearBlocks}
         {podiumBlocks}
+        {nearBlocks}
         {streetFragment}
         {/* Entrées : peintes dans les tranches du décor Ghibli (G4a) ; les sprites s'effacent avec le décor classique. */}
         {entrances}

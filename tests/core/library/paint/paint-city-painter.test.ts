@@ -172,7 +172,7 @@ describe('peintre de tranche', () => {
         const touching = left !== null && left.x + left.w >= b.x - 0.5;
         const ctx = recordingCtx();
         paintBuilding(ctx, plan, b);
-        const y0 = touching ? Math.max(b.top, left.top) + b.look.roofH : NaN;
+        const y0 = touching ? (left.top > b.top ? left.top + left.look.roofH : b.top + b.look.roofH) : NaN;
         const i = ctx.ops.findIndex((o) => o.op === 'moveTo' && o.args[0] === b.x && o.args[1] === y0);
         const joint = i >= 0 && ctx.ops[i + 1]!.op === 'lineTo' && ctx.ops[i + 1]!.args[0] === b.x && ctx.ops[i + 1]!.args[1] === plan.ground;
         expect(joint).toBe(touching);

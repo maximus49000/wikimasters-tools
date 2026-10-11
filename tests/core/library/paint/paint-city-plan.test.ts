@@ -106,4 +106,19 @@ describe('plan de la ville peinte', () => {
     const tile = Math.floor((p.x + p.w / 2) / TILE);
     expect(tileItems(plan, tile).podiums).toContain(p);
   });
+
+  it('les deux tours d’un jumeau ont un mur et un toit différents', () => {
+    let pairs = 0;
+    for (let seed = 1; seed <= 30; seed++) {
+      const plan = cityPaintPlan(2160, 340, seed);
+      for (const p of plan.podiums) {
+        const t = plan.buildings.filter((b) => b.podiumTop !== null && b.x >= p.x - 0.01 && b.x + b.w <= p.x + p.w + 0.01);
+        expect(t.length).toBe(2);
+        expect(t[0]!.look.wall).not.toBe(t[1]!.look.wall);
+        expect(t[0]!.look.roof).not.toBe(t[1]!.look.roof);
+        pairs++;
+      }
+    }
+    expect(pairs).toBeGreaterThan(20);
+  });
 });

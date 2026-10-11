@@ -99,6 +99,17 @@ function lookOf(seed: number, x: number, w: number, far: boolean): Look {
   };
 }
 
+// Teinte voisine dans la même palette (déterministe) si `color` est celle de `other` ; sinon `color`.
+function differ<T>(list: readonly T[], color: T, other: T): T {
+  return color === other ? list[(list.indexOf(color) + 1) % list.length]! : color;
+}
+
+// Deuxième tour d'un socle : mur et toit forcés différents de ceux de la 1re (même palette, sans tirage aléatoire de plus).
+function twinLook(look: Look, first: Look): Look {
+  const roofs = look.roofKind === 'gable' ? TILE_ROOFS : look.roofKind === 'mansard' ? SLATE_ROOFS : ZINC_ROOFS;
+  return { ...look, wall: differ(WALLS, look.wall, first.wall), roof: differ(roofs, look.roof, first.roof) };
+}
+
 // y du haut de la silhouette des immeubles et des socles en x (le plus haut de ce qui couvre x) ; `ground` si rien.
 export function silhouetteTop(plan: Pick<CityPaintPlan, 'buildings' | 'ground' | 'podiums'>, x: number): number {
   let top = plan.ground;
@@ -264,6 +275,12 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
       ? f.farWindows.map((v) => ({ x: v.x, y: v.y, w: FAR_WINDOW.w, h: FAR_WINDOW.h, dormer: false, curtain: false }))
       : lamps.map((l) => ({ x: l.x, y: l.y, w: LAMP.w, h: LAMP.h, dormer: l.y < top + ROOF_H, curtain: rng() < 0.5 }));
     return { id, x: f.x, w: f.w, top, far: f.far, wins, look, podiumTop };
+  });
+  // Les deux tours d'un socle n'ont ni le même mur ni le même toit.
+  facades.forEach((f, i) => {
+    if (!f.podium || f.x === f.podium.x) return;
+    const first = facades.findIndex((g) => g.podium?.id === f.podium!.id && g.x === f.podium!.x);
+    if (first >= 0) buildings[i]!.look = twinLook(buildings[i]!.look, buildings[first]!.look);
   });
   const podiums: PaintPodium[] = [];
   for (const f of facades) {

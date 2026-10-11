@@ -11,7 +11,7 @@ export { DOOR_MARGIN, DOOR_WIDTH } from './metrics';
 export { MAX_TRIP_PX };
 export const TRIP_CYCLE = 160;
 
-// Une entrée par lot du premier plan visible (les plus étroits font 28 px : l'entrée de 12 px y tient avec ses marges ; un jumeau n'en a qu'une).
+// Une entrée par lot du premier plan visible (les plus étroits font 40 px pour un simple, 52 px pour des jumeaux : l'entrée de 12 px y tient avec ses marges ; un jumeau n'en a qu'une).
 // L'entrée est placée dans la partie visible du lot ([0, width)) ; un lot dont la partie visible est trop étroite
 // pour une entrée (coupé au bord du monde) n'en a pas.
 export function doorsFor(width: number, height: number, seed: number): Door[] {
