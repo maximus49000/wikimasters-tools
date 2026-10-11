@@ -357,7 +357,7 @@ function crewAt(step: WorkStep, p: number, lx: number, bx: number, edge: number,
 // marche ; sur l'échelle de dos (escalade, mains aux montants ; enseigne déposée ou posée bras au-dessus de la tête) ; au pied
 // de trois quarts vers l'autre, la nouvelle enseigne portée à deux mains au moment de la passer.
 type Pos = { x: number; y: number };
-type CrewLook = { yaw: number; gait: 'walk' | 'climb' | 'stand'; arms: ArmPose };
+export type CrewLook = { yaw: number; gait: 'walk' | 'climb' | 'stand'; arms: ArmPose };
 function crewLook(c: CrewPose, i: number): CrewLook {
   const side = c.dir > 0 ? 2 : 6;
   switch (c.pose) {
@@ -373,7 +373,7 @@ const WORKER_S = 30;
 // Pose à l'instant t d'un ouvrier qui s'est déplacé de `dist` px depuis `since` (vitesse = dist / WORKER_S) : la phase suit
 // la distance parcourue ; la marche finie, debout ; sur l'échelle, la dernière prise est gardée.
 export type WorkerMove = { look: CrewLook; since: number; dist: number; k: number };
-function workerPose(w: WorkerMove, t: number): PoseIn {
+export function workerPose(w: WorkerMove, t: number): PoseIn {
   const p = w.dist > 0.01 ? Math.min(1, Math.max(0, (t - w.since) / WORKER_S)) : 1;
   const { yaw, gait, arms } = w.look;
   if (gait === 'walk' && (p >= 1 || w.dist <= 0.01)) return { yaw, gait: 'stand', phase: 0, head: 0, arms };

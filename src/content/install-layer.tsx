@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { YMD } from '../core/library/city/calendar';
 import { COUNTER_HALF, STAND_DEPTH } from '../core/library/city/beer';
 import { doorsFor, type Door } from '../core/library/city/doors';
@@ -14,8 +14,13 @@ import { pathAt, pathDir, pathLength } from '../core/library/city/walk-path';
 import { DARK } from '../core/library/city/events';
 import { dayNumber } from '../core/library/city/shops/hours';
 import { hashString, mulberry32 } from '../core/library/scene-world';
+import { anchorsOf } from '../core/library/figure/bake';
+import { shapeOf, signatureOf } from '../core/library/figure/dress';
+import { YAW_BACK, facingYaw } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
+import { workerPose, type CrewLook, type WorkerMove } from './city-shops-life';
 import { entranceLeft } from './city-sprites';
+import { GhibliFigure } from './figure/ghibli-figure';
 import {
   BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, FlagCrate, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE,
   LampFlag, LiftTruck, STAGE, StageFloor, StageFrame, StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
@@ -268,7 +273,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       const van = geomOf(set, c.removing);
       return [{
         set, item, step: c.step, progress: c.progress, removing: c.removing, width, seed, metrics, sky, rainy, outfits: outfits.get(set.id)!, doors, lamps,
-        abs, stepFrom: w.from, stepTo: w.to, home: homeOf(van, item, onStreet(set)), van, street: onStreet(set), standSide,
+        abs, stepFrom: w.from, stepTo: w.to, home: homeOf(van, item, onStreet(set)), van, street: onStreet(set), standSide, ghibli,
       }];
     });
   // Élément que des porteurs soulèvent (dépose à la main) : dessiné dans leurs mains, plus à sa place.
@@ -312,7 +317,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
         const vc = vanCrewAt(v, abs);
         if ((!inp || itemEquipment(inp.set, inp.item) === 'lift') && (vc.phase === 'alight' || vc.phase === 'board')) {
           const van = geomOf(set, removing);
-          boarding = vanCrewNode({ set, removing, visit: v, boarding: vc.phase === 'board', q: vc.q, abs, width, seed, metrics, sky, rainy, outfits: outfits.get(set.id)!, doors, lamps, van, street: onStreet(set), standSide, home: { x: 0, y: 0 } });
+          boarding = vanCrewNode({ set, removing, visit: v, boarding: vc.phase === 'board', q: vc.q, abs, width, seed, metrics, sky, rainy, outfits: outfits.get(set.id)!, doors, lamps, van, street: onStreet(set), standSide, home: { x: 0, y: 0 }, ghibli });
         }
         // Portière (hayon) ouverte : à la descente et à la remontée, et quand un ouvrier sort ou range un objet à l'arrière.
         const open = st.door || (!!inp && inp.removing === removing && st.phase === 'parked' && atVan(inp));
@@ -477,8 +482,9 @@ type CrewInput = {
   set: DecorSet; item: DecorItem; step: string; progress: number; removing: boolean; width: number; seed: number;
   metrics: CityMetrics; sky: Sky; rainy: boolean; outfits: Outfit[]; doors: Map<string, Door>; lamps: readonly Lamp[];
   // Minute absolue et bornes de l'étape en cours ; `home` : arrière de la camionnette garée (base de l'équipe à pied) ;
-  // `van` : sa géométrie ; `street` : équipe de la chaussée (partie `street`) ; `standSide` : côté de la file de chaque stand.
-  abs: number; stepFrom: number; stepTo: number; home: Pt; van: VanGeom | null; street: boolean; standSide: ReadonlyMap<string, 1 | -1>;
+  // `van` : sa géométrie ; `street` : équipe de la chaussée (partie `street`) ; `standSide` : côté de la file de chaque stand ;
+  // `ghibli` : ouvriers au pantin (gilet), objets tenus aux accroches des mains.
+  abs: number; stepFrom: number; stepTo: number; home: Pt; van: VanGeom | null; street: boolean; standSide: ReadonlyMap<string, 1 | -1>; ghibli: boolean;
 };
 
 // Itinéraire du camion élévateur : les éléments qu'il pose, dans l'ordre d'intervention. Un élément se rejoint depuis le milieu
@@ -556,7 +562,7 @@ function crewNodes(inp: CrewInput): Drawn[] {
   return [inp.street ? { part: 'street', depth: streetDepth(inp.item), node } : { part: 'crew', node }];
 }
 
-const footNodes = (c: FootCrew, inp: Pick<CrewInput, 'outfits' | 'sky' | 'rainy' | 'metrics'>): ReactNode => {
+const footNodes = (c: FootCrew, inp: Pick<CrewInput, 'outfits' | 'sky' | 'rainy' | 'metrics' | 'ghibli'>): ReactNode => {
   const k = inp.metrics.unit * STREET_SCALE.person;
   return (
     <>
@@ -594,47 +600,99 @@ function vanCrewNode(b: BoardInput): Drawn | null {
   return { part: 'crew', node: <g key={`${b.set.id}-crew`} {...attrs}>{footNodes({ back: null, a: move(edge.a), b: edge.b && move(edge.b), front: null }, b)}</g> };
 }
 
-type Worker = { x: number; y: number; dir: 1 | -1; pose: CrewPose; held?: ReactNode };
+// `held` : objet tenu (repère du passant en classique, du sprite à la main droite en Ghibli) ; `ladder` : sur l'échelle.
+type Worker = { x: number; y: number; dir: 1 | -1; pose: CrewPose; held?: ReactNode; ladder?: boolean };
 
-function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp: Pick<CrewInput, 'sky' | 'rainy'>; k: number; id?: string }): ReactElement {
+// Ghibli : allure et bras du pantin pour la pose du classique. Marche, port, poussée et traction de profil dans le sens de
+// marche ; sur l'échelle de dos (escalade, objet posé bras au-dessus de la tête) ; debout de trois quarts. Jamais de miroir.
+function crewLook(w: Pick<Worker, 'pose' | 'dir' | 'ladder'>): CrewLook {
+  const yaw = facingYaw(w.dir);
+  switch (w.pose) {
+    case 'climb': return { yaw: YAW_BACK, gait: 'climb', arms: 'swing' };
+    case 'reach': return w.ladder ? { yaw: YAW_BACK, gait: 'climb', arms: 'overhead' } : { yaw, gait: 'walk', arms: 'overhead' };
+    case 'carry': return { yaw, gait: 'walk', arms: 'carry' };
+    case 'hold': return { yaw, gait: 'walk', arms: 'hold' };
+    case 'tow': return { yaw, gait: 'walk', arms: 'tow' };
+    case 'walk': return { yaw, gait: 'walk', arms: 'swing' };
+    default: return { yaw: w.dir > 0 ? 2 : 6, gait: 'stand', arms: 'swing' };
+  }
+}
+const crewSig = (o: Outfit): string => signatureOf(shapeOf(o, false, 'vest'));
+// Main droite (repère du sprite) d'un ouvrier Ghibli debout dans ce geste : la charge portée à deux s'y accroche (le
+// balancement de la marche ne la fait pas bouger).
+const restHand = (o: Outfit, w: Pick<Worker, 'pose' | 'dir' | 'ladder'>): readonly [number, number] => {
+  const l = crewLook(w);
+  return anchorsOf({ sig: crewSig(o), yaw: l.yaw, gait: 'stand', phase: 0, head: 0, arms: l.arms, lean: 0 }).handR;
+};
+
+// Ghibli : déplacement depuis le rendu précédent (transition CSS de 30 s entre deux minutes, comme le classique), lu par la
+// boucle (collectWorkers / placeWorkers) : la marche et l'escalade avancent avec la distance parcourue.
+function useWorkerMove(w: Worker, k: number, ghibli: boolean): WorkerMove | null {
+  const xs = w.x.toFixed(1);
+  const ys = w.y.toFixed(1);
+  const prev = useRef<Pt | null>(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const step = useMemo(() => ({ since: Date.now() / 1000, dist: prev.current ? Math.hypot(w.x - prev.current.x, w.y - prev.current.y) : 0 }), [xs, ys]);
+  useLayoutEffect(() => {
+    prev.current = { x: w.x, y: w.y };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [xs, ys]);
+  return ghibli ? { look: crewLook(w), since: step.since, dist: step.dist, k } : null;
+}
+
+function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp: Pick<CrewInput, 'sky' | 'rainy' | 'ghibli'>; k: number; id?: string }): ReactElement {
+  const move = useWorkerMove(w, k, inp.ghibli);
   return (
-    <g data-worker="" data-worker-k={id} data-pose={w.pose} style={{ transform: `translate(${w.x.toFixed(1)}px, ${w.y.toFixed(1)}px)`, transition: MOVE }}>
-      <g transform={`scale(${(w.dir * k).toFixed(3)} ${k.toFixed(3)})`}>
-        <CrewWorker outfit={outfit} sky={inp.sky} rainy={inp.rainy} pose={w.pose} />
-      </g>
-      {w.held}
+    <g
+      data-worker=""
+      data-worker-k={id}
+      data-pose={w.pose}
+      {...(move ? { 'data-move': JSON.stringify(move) } : {})}
+      style={{ transform: `translate(${w.x.toFixed(1)}px, ${w.y.toFixed(1)}px)`, transition: MOVE }}
+    >
+      {move ? (
+        <g transform={`scale(${k.toFixed(3)})`}>
+          <GhibliFigure outfit={outfit} sky={inp.sky} rainy={inp.rainy} umbrella={false} work="vest" initial={workerPose(move, move.since)} held={w.held ? [{ anchor: 'handR', node: w.held }] : undefined} />
+        </g>
+      ) : (
+        <>
+          <g transform={`scale(${(w.dir * k).toFixed(3)} ${k.toFixed(3)})`}>
+            <CrewWorker outfit={outfit} sky={inp.sky} rainy={inp.rainy} pose={w.pose} />
+          </g>
+          {w.held}
+        </>
+      )}
     </g>
   );
 }
 
 // Élément porté (`set/item`) et d'où il vient : `hands` (tenu), ou le véhicule où il est encore à moitié.
 const loadAttrs = (inp: Pick<CrewInput, 'set' | 'item'>, by: string): Record<string, string> => ({ 'data-load-item': `${inp.set.id}/${inp.item.id}`, 'data-carried': by });
+// Objet tenu à la main, d'échelle `s` (unités du monde par unité du dessin, à unit = 1) : classique, à bout de bras dans le
+// repère du passant (bras levé : `up`) ; Ghibli, à la main droite du pantin (repère du sprite, déjà à l'échelle du passant).
+const heldTransform = (inp: CrewInput, dir: 1 | -1, up: boolean, s: number): string => {
+  const u = inp.metrics.unit;
+  if (inp.ghibli) return `scale(${((dir * s) / STREET_SCALE.person).toFixed(3)} ${(s / STREET_SCALE.person).toFixed(3)})`;
+  return `translate(${(dir * 3 * u).toFixed(2)} ${(-(up ? 22 : 13) * u).toFixed(2)}) scale(${(dir * s * u).toFixed(3)} ${(s * u).toFixed(3)})`;
+};
 // Petit drapeau tenu à bout de bras (roulé ou déplié).
-const heldFlag = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
-  const u = inp.metrics.unit;
-  return (
-    <g data-held-flag="" {...loadAttrs(inp, by)} transform={`translate(${(dir * 3 * u).toFixed(2)} ${(-(up ? 22 : 13) * u).toFixed(2)}) scale(${(dir * 0.7 * u).toFixed(3)} ${(0.7 * u).toFixed(3)})`}>
-      <line x1={0} y1={0} x2={0} y2={-9} stroke={inp.sky.daylight < 0.3 ? '#3A3228' : '#6B5B4A'} strokeWidth={0.8} />
-      <g transform="translate(0 -9)"><FlagArt sky={inp.sky} w={6} h={4} /></g>
-    </g>
-  );
-};
+const heldFlag = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (
+  <g data-held-flag="" {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.7)}>
+    <line x1={0} y1={0} x2={0} y2={-9} stroke={inp.sky.daylight < 0.3 ? '#3A3228' : '#6B5B4A'} strokeWidth={0.8} />
+    <g transform="translate(0 -9)"><FlagArt sky={inp.sky} w={6} h={4} /></g>
+  </g>
+);
 // Toile de l'auvent roulée, tenue à la main (au bout du bras levé en haut de l'échelle).
-const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
-  const u = inp.metrics.unit;
-  return (
-    <g {...loadAttrs(inp, by)} transform={`translate(${(dir * 3 * u).toFixed(2)} ${(-(up ? 22 : 13) * u).toFixed(2)}) scale(${(dir * 0.8 * u).toFixed(3)} ${(0.8 * u).toFixed(3)})`}>
-      <HeldRoll sky={inp.sky} />
-    </g>
-  );
-};
+const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (
+  <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>
+    <HeldRoll sky={inp.sky} />
+  </g>
+);
 
 // Pièce de la scène tenue par l'ouvrier de la nacelle : tronçon de treillis (ossature) ou projecteur.
-const heldPiece = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
-  const u = inp.metrics.unit;
-  const t = `translate(${(dir * 3 * u).toFixed(2)} ${(-(up ? 22 : 13) * u).toFixed(2)}) scale(${(dir * 0.8 * u).toFixed(3)} ${(0.8 * u).toFixed(3)})`;
-  return <g {...loadAttrs(inp, by)} transform={t}>{inp.item.kind === 'stage-frame' ? <HeldTruss sky={inp.sky} /> : <HeldSpot sky={inp.sky} />}</g>;
-};
+const heldPiece = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (
+  <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>{inp.item.kind === 'stage-frame' ? <HeldTruss sky={inp.sky} /> : <HeldSpot sky={inp.sky} />}</g>
+);
 
 // Échelle : l'équipe la prend sur son véhicule (galerie de la camionnette, porte-bagages du vélo porteur, flanc du camion
 // plateau), la porte à l'épaule en marchant, l'appuie (inclinée) contre la façade, centrée sur la porte, ou contre le bout de
@@ -741,7 +799,7 @@ function ladderCrew(inp: CrewInput): FootCrew {
       const y = inp.step === 'climb' ? lerp(foot, top, p) : inp.step === 'descend' ? lerp(top, foot, p) : top;
       // L'objet est à la main pendant la montée et la fixation (pose) ; pendant la descente (dépose).
       const holds = inp.removing ? inp.step === 'descend' : inp.step === 'climb' || inp.step === 'fix';
-      a = { x: along(y), y, dir: lean, pose: onTop ? 'reach' : 'climb', held: object(holds, lean, true) };
+      a = { x: along(y), y, dir: lean, pose: onTop ? 'reach' : 'climb', held: object(holds, lean, true), ladder: true };
       b = solo ? null : { x: bx, y: foot, dir: lean, pose: 'hold' };
       ladder = standing(0);
     }
@@ -768,8 +826,18 @@ function handCrew(inp: CrewInput): FootCrew {
   // Prises : les montants de la barrière (tenue à mi-hauteur), les bouts de la planche ou du comptoir.
   const half = barrier ? BARRIER.post * barrierK(u) : counter ? (COUNTER_HALF - 3) * u : 17 * u;
   const off = half + reach;
-  // Bas de la charge portée, depuis les pieds des porteurs.
-  const carryDy = HOLD_HAND.y * k + (barrier ? (BARRIER.height / 2) * barrierK(u) : counter ? 7 * u : 1.25 * u);
+  // Main droite d'un porteur (relative à ses pieds, px du monde) : classique, pose `hold` à `reach` devant lui (derrière pour
+  // `tow`) ; Ghibli, accroche du pantin debout dans ce geste.
+  const handAt = (i: 0 | 1, pose: CrewPose, dir: 1 | -1): Pt => {
+    if (!inp.ghibli) return { x: dir * (pose === 'tow' ? -reach : reach), y: HOLD_HAND.y * k };
+    const h = restHand(inp.outfits[i]!, { pose, dir });
+    return { x: h[0] * k, y: h[1] * k };
+  };
+  // Porteur `i` (0 : a, 1 : b) dont la main droite tient le bout `end` de la charge : le centre de la charge est entre les deux
+  // mains qui la portent.
+  const grip = (i: 0 | 1, end: number, y: number, dir: 1 | -1, pose: CrewPose): Worker => ({ x: end - handAt(i, pose, dir).x, y, dir, pose });
+  // Bas de la charge portée, depuis les pieds des porteurs : à la hauteur moyenne de leurs mains.
+  const carryDy = (a: Worker, b: Worker): number => (handAt(0, a.pose, a.dir).y + handAt(1, b.pose, b.dir).y) / 2 + (barrier ? (BARRIER.height / 2) * barrierK(u) : counter ? 7 * u : 1.25 * u);
   const placedY = lane ? laneBarrierY(m, lane) : barrier ? barrierY(m) : counter ? standBase(m) : stageBase(m);
   const p = inp.progress;
   // Charge : placée par une transformation CSS avec la même transition que les porteurs (elle glisse avec eux).
@@ -800,24 +868,25 @@ function handCrew(inp: CrewInput): FootCrew {
     const path = arrive ? footPath(inp, work, startX) : footPath(inp, work, startX).reverse();
     const pos = walkAt(path, st.q, arrive ? toward : ((-toward) as 1 | -1));
     // Chargés : derrière pousse (bras vers l'avant), devant tire (bras vers l'arrière). À vide : ils marchent.
-    a = { x: pos.x + pos.dir * off, y: pos.y, dir: pos.dir, pose: loaded ? 'tow' : 'walk' };
-    b = { x: pos.x - pos.dir * off, y: pos.y, dir: pos.dir, pose: loaded ? 'hold' : 'walk' };
+    a = loaded ? grip(0, pos.x + pos.dir * half, pos.y, pos.dir, 'tow') : { x: pos.x + pos.dir * off, y: pos.y, dir: pos.dir, pose: 'walk' };
+    b = loaded ? grip(1, pos.x - pos.dir * half, pos.y, pos.dir, 'hold') : { x: pos.x - pos.dir * off, y: pos.y, dir: pos.dir, pose: 'walk' };
     if (loaded && st.atVan && inp.van) {
       // Sortie (ou rangement) : face à la portière ouverte, ils tirent l'objet hors de la camionnette (ou l'y poussent).
       const g = inp.van;
       // Trottoir : l'objet sort de derrière la carrosserie (qui le cache) ; chaussée (dessinée après la camionnette) : il apparaît
       // à la portière ouverte, juste derrière l'arrière.
       const inside = inp.street ? g.park - g.dir * (g.half + half + u) : g.park - g.dir * (g.half - half * 0.4);
-      a = { x: pos.x + g.dir * off, y: pos.y, dir: g.dir, pose: 'hold' };
-      b = { x: pos.x - g.dir * off, y: pos.y, dir: g.dir, pose: 'hold' };
-      carried = load(lerp(inside, pos.x, st.k), pos.y + carryDy, 0, st.k < 0.15 ? TAG[inp.set.transport] : 'hands');
-    } else if (loaded) carried = load(pos.x, pos.y + carryDy, 0, 'hands');
+      // Ghibli : chacun la main droite à un bout de la charge (classique : de part et d'autre, comme avant).
+      a = inp.ghibli ? grip(0, pos.x + g.dir * half, pos.y, g.dir, 'hold') : { x: pos.x + g.dir * off, y: pos.y, dir: g.dir, pose: 'hold' };
+      b = inp.ghibli ? grip(1, pos.x - g.dir * half, pos.y, g.dir, 'hold') : { x: pos.x - g.dir * off, y: pos.y, dir: g.dir, pose: 'hold' };
+      carried = load(lerp(inside, pos.x, st.k), pos.y + carryDy(a, b), 0, st.k < 0.15 ? TAG[inp.set.transport] : 'hands');
+    } else if (loaded) carried = load(pos.x, pos.y + carryDy(a, b), 0, 'hands');
   } else {
     // place : face à face de part et d'autre de l'objet ; on le descend jusqu'au sol (pose) ou on le soulève (dépose).
-    a = { x: placedX + toward * off, y: workY, dir: (-toward) as 1 | -1, pose: 'hold' };
-    b = { x: placedX - toward * off, y: workY, dir: toward, pose: 'hold' };
+    a = grip(0, placedX + toward * half, workY, (-toward) as 1 | -1, 'hold');
+    b = grip(1, placedX - toward * half, workY, toward, 'hold');
     const down = inp.removing ? 1 - p : p;
-    carried = load(placedX, lerp(workY + carryDy, placedY, down), lane ? down : 0, 'hands');
+    carried = load(placedX, lerp(workY + carryDy(a, b), placedY, down), lane ? down : 0, 'hands');
   }
   return { back: null, a, b, front: carried };
 }
@@ -900,7 +969,26 @@ function liftCrew(inp: CrewInput): ReactElement {
   const faceItem = sgn(inp.item.x - (g.here + bucket.x), g.dir);
   // Tenu à la main : le drapeau pour un lampadaire, une pièce de treillis ou un projecteur pour la scène.
   const held = !holds ? null : inp.item.kind === 'lamp-flag' ? heldFlag(inp, faceItem, true) : heldPiece(inp, faceItem, atTop);
-  const rider = !g.inBucket ? null : (
+  // Ghibli : pantin debout dans la nacelle, tourné vers l'élément, bras levés quand il pose ou retire, sinon le long du corps ;
+  // la pièce (drapeau, treillis, projecteur) à la main droite. Immobile (`dist` 0), mais posé par la boucle comme les autres :
+  // un sprite pas encore peint au rendu (bras qui changent) y est posé dès qu'il l'est.
+  const look: CrewLook = { yaw: facingYaw(faceItem), gait: 'stand', arms: atTop ? 'overhead' : 'down' };
+  const perched: WorkerMove = { look, since: 0, dist: 0, k: kp };
+  const rider = !g.inBucket ? null : inp.ghibli ? (
+    <g data-worker="" data-pose={atTop ? 'reach' : 'stand'} data-move={JSON.stringify(perched)}>
+      <g transform={`scale(${kp.toFixed(3)})`}>
+        <GhibliFigure
+          outfit={inp.outfits[0]!}
+          sky={inp.sky}
+          rainy={inp.rainy}
+          umbrella={false}
+          work="vest"
+          initial={workerPose(perched, 0)}
+          held={held ? [{ anchor: 'handR', node: held }] : undefined}
+        />
+      </g>
+    </g>
+  ) : (
     <g data-worker="" data-pose={atTop ? 'reach' : 'stand'}>
       <g transform={`scale(${(faceItem * kp).toFixed(3)} ${kp.toFixed(3)})`}>
         <CrewWorker outfit={inp.outfits[0]!} sky={inp.sky} rainy={inp.rainy} pose={atTop ? 'reach' : 'stand'} />
