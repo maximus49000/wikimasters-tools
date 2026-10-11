@@ -98,7 +98,9 @@ describe('Fête de la musique en Ghibli : la foule', () => {
       const fig = figOf(n);
       const key = keyOf(fig);
       expect([key.yaw, key.gait]).toEqual([s.yaw, 'stand']);
-      expect(key.arms).toBe(fanArms(s, p.dance, t, false));
+      // Premier rendu : gobelet à la poitrine ; les gorgées des buveurs (`data-drinker`) sont posées par la boucle.
+      expect(key.arms).toBe(fanArms(s, p.dance, t, true));
+      expect(n.hasAttribute('data-drinker')).toBe(s.beer && !p.dance);
       arms.add(key.arms);
       if (s.beer) {
         const held = fig.querySelector(':scope > [data-held="handR"]')!;

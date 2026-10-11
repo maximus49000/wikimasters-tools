@@ -71,7 +71,9 @@ function planOf(p: readonly PathPt[], unit: number, speed: number, o: WalkEnds) 
   const y1 = o.toDoor ? YAW_BACK : o.endYaw ?? last;
   return { len, first, last, y0, y1, th0: o.fromDoor ? THRESHOLD_S : 0, tu0: turnS(y0, first), street: len / speed, tu1: turnS(last, y1), th1: o.toDoor ? THRESHOLD_S : 0 };
 }
-// Durée (s) d'un trajet : [seuil] → [demi-tour] → chemin → [demi-tour] → [seuil] (comme passageAt, doorway.ts).
+// Durée (s) d'un trajet : [seuil] → [demi-tour] → chemin → [demi-tour] → [seuil]. Même déroulé que passageAt (doorway.ts,
+// habitants et clients des commerces, ligne droite) et spectatorAt (parade.ts) : toute modification des phases (durées,
+// orientations du seuil YAW_FRONT / YAW_BACK) se reporte dans les trois.
 export function walkDuration(p: readonly PathPt[], unit: number, speed: number, o: WalkEnds): number {
   const q = planOf(p, unit, speed, o);
   return q.th0 + q.tu0 + q.street + q.tu1 + q.th1;

@@ -170,9 +170,10 @@ function DanceArm({ outfit, sky, still, phase }: { outfit: Outfit; sky: Sky; sti
   );
 }
 
-// Spectateur en place : mémoïsé (ne change qu'avec le ciel, la danse, le graphisme ou le mouvement réduit). `t` : instant du
-// rendu (gorgée en cours du pantin, la boucle prend le relais) ; Ghibli : `data-drinker` désigne ceux que la boucle pose.
-const Fan = memo(function Fan({ s, dance, sky, still, rainy, m, ghibli, t }: { s: MusicSpectator; dance: boolean; sky: Sky; still: boolean; rainy: boolean; m: CityMetrics; ghibli: boolean; t: number }): ReactElement {
+// Spectateur en place : mémoïsé (ne change qu'avec le ciel, la danse, le graphisme ou le mouvement réduit ; aucun instant dans
+// ses props : quand la foule change, seuls les nouveaux venus sont rendus). Ghibli : premier rendu gobelet à la poitrine
+// (`cup`) ; `data-drinker` désigne ceux dont la boucle pose ensuite les gorgées, dès l'image suivante.
+const Fan = memo(function Fan({ s, dance, sky, still, rainy, m, ghibli }: { s: MusicSpectator; dance: boolean; sky: Sky; still: boolean; rainy: boolean; m: CityMetrics; ghibli: boolean }): ReactElement {
   const bounce = dance && !still;
   const dur = 0.42 + s.phase * 0.2;
   return (
@@ -188,7 +189,7 @@ const Fan = memo(function Fan({ s, dance, sky, still, rainy, m, ghibli, t }: { s
       <g>
         {bounce && <animateTransform attributeName="transform" type="translate" values="0 0;0 -2.2;0 0" dur={`${dur.toFixed(2)}s`} begin={`-${(s.phase * dur).toFixed(2)}s`} repeatCount="indefinite" />}
         {ghibli ? (
-          <GhibliFigure outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} initial={standPose(s, dance, t, still)} held={s.beer ? cupHeld(sky) : undefined} />
+          <GhibliFigure outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} initial={standPose(s, dance, 0, true)} held={s.beer ? cupHeld(sky) : undefined} />
         ) : (
           <>
             <PersonSprite outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} />
@@ -460,7 +461,7 @@ export function MusicStreet({ width, height, seed, sky, still, rainy, date, minu
   }
   const standKey = standing.map((f) => `${f.s.id}${f.dance ? '*' : ''}`).join(',');
   const fanNodes = useMemo(
-    () => standing.map((f) => ({ depth: f.s.depth, node: <Fan key={f.s.id} s={f.s} dance={f.dance} sky={sky} still={still} rainy={rainy} m={metrics} ghibli={ghibli} t={now} /> })),
+    () => standing.map((f) => ({ depth: f.s.depth, node: <Fan key={f.s.id} s={f.s} dance={f.dance} sky={sky} still={still} rainy={rainy} m={metrics} ghibli={ghibli} /> })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [standKey, sky, still, rainy, metrics, ghibli],
   );

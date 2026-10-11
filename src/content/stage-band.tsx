@@ -229,8 +229,8 @@ export function StageBand({ stageX, base, unit, width, minutes, dayOffset, outfi
     () => (t: number): void => {
       if (still) return;
       const st = statesAt(t);
-      // Mode et allure : l'instrument porté suit l'orientation de la marche (recalculé au début et à la fin d'un demi-tour).
-      const key = st.map((p) => `${p.mode}${p.gait}`).join(',');
+      // Mode, allure et orientation : l'instrument porté suit l'orientation du pantin, demi-tours compris (quelques rendus).
+      const key = st.map((p) => `${p.mode}${p.gait}${p.yaw}`).join(',');
       if (key !== sig) setSig(key);
       const el = root.current;
       if (!el) return;
