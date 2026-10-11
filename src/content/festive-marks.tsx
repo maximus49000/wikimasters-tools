@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import type { FestiveMark } from '../core/library/city/people';
+import type { ArmPose } from '../core/library/figure/skeleton';
 
 // Signes de fête portés par les passants (repère du PersonSprite : pieds à l'origine, tête centrée à y = -33).
 // `t` assombrit les couleurs la nuit.
@@ -65,4 +66,40 @@ export function MarkArt({ mark, t }: { mark: FestiveMark; t: (c: string) => stri
         </g>
       );
   }
+}
+
+// Ghibli (G3b) : le signe est tenu par le pantin, posé à une accroche de la pose affichée (GhibliFigure `held`). Couronne et
+// coquelicot sur la tête (`headTop`, bras de marche) ; ballon, panier, muguet, drapeau, serpentin et note à la main droite
+// (`handR`, bras `hold`). Décalage (dx, dy) : point du dessin classique qui vient sur l'accroche (pied de la couronne, bout
+// de la ficelle, anse du panier, bas de la tige, prise de la hampe…). Le signe est retourné avec le sens de marche (`dir`),
+// comme le dessin classique qui suit son passant : le drapeau flotte devant, le ballon monte devant.
+const HELD_AT: Readonly<Record<FestiveMark, { anchor: 'headTop' | 'handR'; dx: number; dy: number }>> = {
+  crown: { anchor: 'headTop', dx: 0, dy: 37.2 },
+  poppy: { anchor: 'headTop', dx: -2, dy: 23 },
+  'heart-balloon': { anchor: 'handR', dx: -6, dy: 14 },
+  basket: { anchor: 'handR', dx: -9, dy: 11 },
+  lily: { anchor: 'handR', dx: -7, dy: 19 },
+  flag: { anchor: 'handR', dx: -8, dy: 16 },
+  streamer: { anchor: 'handR', dx: 0, dy: 0 },
+  note: { anchor: 'handR', dx: -6, dy: 34 },
+};
+export const markAnchor = (mark: FestiveMark): 'headTop' | 'handR' => HELD_AT[mark].anchor;
+export const markArms = (mark: FestiveMark | null | undefined): ArmPose => (mark && HELD_AT[mark].anchor === 'handR' ? 'hold' : 'swing');
+
+export function MarkHeld({ mark, t, dir }: { mark: FestiveMark; t: (c: string) => string; dir: 1 | -1 }): ReactElement {
+  const { dx, dy } = HELD_AT[mark];
+  return (
+    <g transform={`scale(${dir} 1) translate(${dx} ${dy})`}>
+      {mark === 'streamer' ? (
+        // Serpentin tenu au bout d'un bâtonnet (le chapeau pointu du dessin classique n'irait pas à la main).
+        <g data-mark-art="streamer">
+          <line x1={0} y1={1} x2={0.8} y2={-4} stroke="#6B5B4A" strokeWidth={0.8} />
+          <path d="M0.8 -4 Q5 -7 1.5 -10 Q-2.5 -13 2.5 -16 Q6.5 -19 2.5 -22" stroke={t('#E07A8C')} strokeWidth={1.2} fill="none" />
+          <path d="M0.8 -4 Q-3 -8 0 -12 Q2.5 -15 -0.5 -18" stroke={t('#F2C94C')} strokeWidth={1} fill="none" />
+        </g>
+      ) : (
+        <MarkArt mark={mark} t={t} />
+      )}
+    </g>
+  );
 }

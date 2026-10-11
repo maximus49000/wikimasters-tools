@@ -21,7 +21,8 @@ import { useArtStyle } from './art-setting';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
-import { CityEventSprite } from './city-event-sprites';
+import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
+import { MarkHeld, markAnchor, markArms } from './festive-marks';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
 import { FlypastLayer } from './flypast-sprite';
@@ -30,7 +31,7 @@ import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
 import { collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type TerraceGuestNode, type Waiter } from './shop-terrace';
-import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
+import { LampSprite, PersonSprite, VehicleSprite, tone } from './city-sprites';
 import { SantaLayer } from './santa-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
@@ -347,7 +348,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         node?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
         if (ghibli && next) {
           const pose = pedPose(p, metrics, t, still);
-          for (const fig of pedFigs.get(p.id) ?? []) poseFigure(figures, fig, pose);
+          // Le chef du groupe (dernière figure) tient son signe de fête : bras `hold` pour un objet à la main.
+          const figs = pedFigs.get(p.id) ?? [];
+          const arms = markArms(marks.get(p.id));
+          figs.forEach((fig, i) => poseFigure(figures, fig, i === figs.length - 1 && arms !== 'swing' ? { ...pose, arms } : pose));
         }
       }
       for (const e of events.active) {
@@ -356,6 +360,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         node.setAttribute('transform', placementTransform(placeEvent(e, t, frame)));
         // Fondu des événements fixes (2 s à l'arrivée et au départ) ; n'écrire l'opacité que lorsqu'elle change.
         if (e.layer === 'fixed') setIfChanged(node, 'opacity', eventOpacity(e, t, still));
+        // Ghibli : pas des figurants du trottoir réglés sur leur chemin (le ripeur du camion garde sa pose).
+        else if (ghibli && e.layer === 'sidewalk') poseEventFigures(figures, node, e, t, metrics, still);
       }
       for (const trip of trips) {
         const node = nodes.get(trip.id);
@@ -408,14 +414,14 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky, ghibli, figures]);
+  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky, ghibli, figures, marks]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
   const t0 = still ? frozen.current : Date.now() / 1000;
   const eventNode = (e: CityEvent): ReactElement => (
     <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)}>
-      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} />
+      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} walked={e.layer === 'sidewalk' ? eventWalked(e, t0, metrics) : 0} />
     </g>
   );
   const of = (pred: (e: CityEvent) => boolean): CityEvent[] => events.active.filter(pred);
@@ -481,7 +487,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         {fireworks.length > 0 && <g data-event-mask="skyline" mask={`url(#${maskBase}-skyline)`}>{fireworks.map(eventNode)}</g>}
         {cranes.length > 0 && <g data-event-mask="near" mask={`url(#${maskBase}-near)`}>{cranes.map(eventNode)}</g>}
         {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment' || e.id === 'bells').map(eventNode)}
-        <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} />
+        <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} ghibli={ghibli} />
         <FlypastLayer width={width} height={height} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} />
       </g>
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
@@ -593,6 +599,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           // Présence affichée (pas la voulue) : mémorisée au premier rendu, puis changée seulement par la boucle, au bord.
           if (!shownPeds.current.has(p.id)) shownPeds.current.set(p.id, pedActive.has(p.id));
           const active = still ? pedActive.has(p.id) : shownPeds.current.get(p.id)!;
+          const mark = marks.get(p.id) ?? null;
           return (
             <g
               key={p.id}
@@ -600,7 +607,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-ped=""
               data-role={p.role}
               data-profile={p.profile}
-              data-mark={marks.get(p.id) ?? undefined}
+              data-mark={mark ?? undefined}
               data-active={active ? 'true' : 'false'}
               transform={pedTransform(p, metrics, width, t0, !ghibli)}
               opacity={active ? 1 : 0}
@@ -611,11 +618,19 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                   {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0, still)} hidden={!active} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
                 </g>
               ))}
-              {/* En Ghibli, pas de signes de fête avant G3b. */}
+              {/* Ghibli : le signe de fête est tenu par le pantin (accroche de la tête ou main droite, festive-marks). */}
               {ghibli ? (
-                <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pedPose(p, metrics, t0, still)} hidden={!active} />
+                <GhibliFigure
+                  outfit={p.outfit}
+                  sky={sky}
+                  rainy={rainy}
+                  umbrella={intensity.umbrellas}
+                  initial={{ ...pedPose(p, metrics, t0, still), arms: markArms(mark) }}
+                  hidden={!active}
+                  held={mark ? [{ anchor: markAnchor(mark), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} /> }] : undefined}
+                />
               ) : (
-                <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={marks.get(p.id)} />
+                <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={mark} />
               )}
             </g>
           );

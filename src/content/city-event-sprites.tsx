@@ -1,15 +1,50 @@
 import type { ReactElement } from 'react';
 import type { FestivityId } from '../core/library/city/calendar';
 import type { CityEvent } from '../core/library/city/events';
+import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
+import { anchorsOf } from '../core/library/figure/bake';
+import { shapeOf, signatureOf } from '../core/library/figure/dress';
+import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
+import type { ArmPose } from '../core/library/figure/skeleton';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
+import type { FigureRegistry } from './figure/figure-host';
+import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 
 // Dessins des événements de la ville (maquette validée du 2026-10-09). Petites animations en SMIL, jamais en mouvement
 // réduit ; aucun id SVG fixe. Les tirages de couleurs viennent de la clé de l'événement (déterministes).
-// `fests` : fêtes en cours (forme des ballons de fête).
-type Props = { event: CityEvent; sky: Sky; still: boolean; lights: boolean; rainy: boolean; fests: readonly FestivityId[] };
+// `fests` : fêtes en cours (forme des ballons de fête). `ghibli` : figurants en pantins ; `walked` : chemin parcouru par les
+// marcheurs à l'instant du rendu (unités du pantin, eventWalked).
+type Props = { event: CityEvent; sky: Sky; still: boolean; lights: boolean; rainy: boolean; fests: readonly FestivityId[]; ghibli?: boolean; walked?: number };
+
+// Figurants Ghibli (G3b) : pantins posés dans le repère du sprite, que placeEvent retourne selon `dir` ; `scale(dir 1)`
+// annule ce retournement (jamais de miroir), le profil suit le sens de marche (sens constant : aucun demi-tour). Les
+// marcheurs du trottoir portent `data-walker` (unités ajoutées au chemin parcouru : un groupe ne marche pas au même pas) et
+// `data-arms` : la boucle des événements avance leurs pas (poseEventFigures). Le ripeur, debout sur le marchepied du camion,
+// garde une pose fixe. Le livreur à vélo reste un dessin simple (cyclistes en G3c).
+export const eventWalked = (e: CityEvent, t: number, m: CityMetrics): number => (e.speed * (t - e.start)) / (m.unit * STREET_SCALE.person);
+export const eventWalkPose = (e: CityEvent, walked: number, still: boolean, arms: ArmPose = 'swing'): PoseIn =>
+  still ? { yaw: facingYaw(e.dir), gait: 'stand', phase: 0, head: 0, arms } : { yaw: facingYaw(e.dir), gait: 'walk', phase: phaseIndexOf(walked), head: 0, arms };
+export function poseEventFigures(reg: FigureRegistry, node: Element, e: CityEvent, t: number, m: CityMetrics, still: boolean): void {
+  const walked = eventWalked(e, t, m);
+  for (const w of node.querySelectorAll('[data-walker]')) {
+    const arms = (w.getAttribute('data-arms') ?? 'swing') as ArmPose;
+    poseFigure(reg, w.querySelector(':scope > [data-figure]'), eventWalkPose(e, walked + Number(w.getAttribute('data-walker')), still, arms));
+  }
+}
+// Décalage des pas d'un marcheur au suivant dans un groupe (unités).
+const WALKER_OFFSET = 7;
+// Laisse tenue à la main (accroche du pantin) jusqu'au collier du chien (repère du sprite, comme le dessin classique) : la
+// main est lue sur la pose debout, la laisse suit ensuite la main pendant la marche (le bout bouge d'une unité au plus).
+function leashFrom(o: Outfit, umbrella: boolean, dir: 1 | -1, hand: 'handR' | 'handL'): string {
+  const a = anchorsOf({ sig: signatureOf(shapeOf(o, umbrella)), yaw: facingYaw(dir), gait: 'stand', phase: 0, head: 0, arms: 'hold', lean: 0 })[hand];
+  // Collier en (22, -9) dans le sprite ; repère du pantin : x multiplié par `dir` (retournement annulé).
+  const dx = 22 * dir - a[0];
+  const dy = -9 - a[1];
+  return `M0 0 Q${(dx / 2).toFixed(1)} ${(dy / 2 + 4).toFixed(1)} ${dx.toFixed(1)} ${dy.toFixed(1)}`;
+}
 
 const GLASS = '#CFE4F2';
 const pickOf = <T,>(list: readonly T[], u: number): T => list[Math.min(list.length - 1, Math.floor(u * list.length))]!;
@@ -18,7 +53,7 @@ const outfitsOf = (key: string, profile: Parameters<typeof outfitFor>[0], n: num
   return Array.from({ length: n }, () => outfitFor(profile, rng));
 };
 
-export function CityEventSprite({ event: e, sky, still, lights, rainy, fests }: Props): ReactElement {
+export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, ghibli = false, walked = 0 }: Props): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const anim = !still;
   const body = ((): ReactElement => {
@@ -162,10 +197,28 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests }: 
             <rect x={-34} y={-20} width={4} height={12} fill="#E0A21E" />
             <circle cx={-18} cy={-3} r={4.5} fill="#222" />
             <circle cx={16} cy={-3} r={4.5} fill="#222" />
-            {/* Ripeur derrière le camion, gilet orange. */}
-            <g transform="translate(-42 0) scale(0.65)">
-              <PersonSprite outfit={{ ...worker!, top: 'jacket', topColor: '#E0A21E', bottomColor: '#2E8B6A', accessory: 'none' }} sky={sky} rainy={rainy} umbrella={false} />
-            </g>
+            {/* Ripeur derrière le camion, gilet orange. Ghibli : debout sur le marchepied, la main sur la barre. */}
+            {ghibli ? (
+              <>
+                <rect x={-43} y={-4.4} width={9} height={1.4} fill={t('#555555')} />
+                <g transform="translate(-40 -3) scale(0.65)">
+                  <g transform={`scale(${e.dir} 1)`}>
+                    <GhibliFigure
+                      outfit={{ ...worker!, top: 'jacket', topColor: '#2E8B6A', bottomColor: '#2E8B6A', accessory: 'none' }}
+                      sky={sky}
+                      rainy={rainy}
+                      umbrella={false}
+                      work="vest"
+                      initial={{ yaw: facingYaw(e.dir), gait: 'stand', phase: 0, head: 0, arms: 'reach' }}
+                    />
+                  </g>
+                </g>
+              </>
+            ) : (
+              <g transform="translate(-42 0) scale(0.65)">
+                <PersonSprite outfit={{ ...worker!, top: 'jacket', topColor: '#E0A21E', bottomColor: '#2E8B6A', accessory: 'none' }} sky={sky} rainy={rainy} umbrella={false} />
+              </g>
+            )}
             {lights && <path d="M26 -9 L48 -4 L48 -14Z" fill="#FFE9A0" opacity={0.25} />}
           </g>
         );
@@ -189,10 +242,27 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests }: 
       case 'dog-walker': {
         const [walker] = outfitsOf(e.key, 'stroller', 1);
         const coat = t(pickOf(['#8A5A2B', '#222222', '#E8D9B8', '#B97A52'], e.variant));
+        // Ghibli : laisse dans la main libre (la droite tient le parapluie sous la pluie).
+        const hand = rainy ? 'handL' : 'handR';
         return (
           <g>
-            <PersonSprite outfit={walker!} sky={sky} rainy={rainy} umbrella={rainy} />
-            <path d="M4 -20 Q14 -12 22 -9" stroke="#C0463A" fill="none" strokeWidth={0.8} />
+            {ghibli ? (
+              <g data-walker="0" data-arms="hold" transform={`scale(${e.dir} 1)`}>
+                <GhibliFigure
+                  outfit={walker!}
+                  sky={sky}
+                  rainy={rainy}
+                  umbrella={rainy}
+                  initial={eventWalkPose(e, walked, still, 'hold')}
+                  held={[{ anchor: hand, node: <path data-leash="" d={leashFrom(walker!, rainy, e.dir, hand)} stroke="#C0463A" fill="none" strokeWidth={0.8} /> }]}
+                />
+              </g>
+            ) : (
+              <>
+                <PersonSprite outfit={walker!} sky={sky} rainy={rainy} umbrella={rainy} />
+                <path d="M4 -20 Q14 -12 22 -9" stroke="#C0463A" fill="none" strokeWidth={0.8} />
+              </>
+            )}
             <g data-dog="" transform="translate(26 0)">
               <rect x={-8} y={-11} width={14} height={6} rx={3} fill={coat} />
               <circle cx={7} cy={-11} r={3.5} fill={coat} />
@@ -210,11 +280,17 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests }: 
       case 'umbrella-group':
         return (
           <g>
-            {outfitsOf(e.key, 'ordinary', 3).map((o, i) => (
-              <g key={i} transform={`translate(${-16 * i} 0)`}>
-                <PersonSprite outfit={o} sky={sky} rainy umbrella />
-              </g>
-            ))}
+            {outfitsOf(e.key, 'ordinary', 3).map((o, i) =>
+              ghibli ? (
+                <g key={i} data-walker={i * WALKER_OFFSET} data-arms="swing" transform={`translate(${-16 * i} 0) scale(${e.dir} 1)`}>
+                  <GhibliFigure outfit={o} sky={sky} rainy umbrella initial={eventWalkPose(e, walked + i * WALKER_OFFSET, still)} />
+                </g>
+              ) : (
+                <g key={i} transform={`translate(${-16 * i} 0)`}>
+                  <PersonSprite outfit={o} sky={sky} rainy umbrella />
+                </g>
+              ),
+            )}
           </g>
         );
       case 'crane': {

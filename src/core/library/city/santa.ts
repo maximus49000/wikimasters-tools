@@ -83,3 +83,75 @@ export function santaPoseAt(pass: SantaPass, roof: SantaRoof | null, t: number, 
   const e = ease((p - 0.75) / 0.25);
   return { x: lerp(roof.cx, exit, e), y: lerp(roof.y, sky - 10, e), dir, landed: false, santa: 'aboard', windowLit: false };
 }
+
+// Pas du père Noël posé sur un toit (repère du dessin du traîneau, tourné vers +x, pieds à y = 0 au niveau du toit), pour
+// les deux styles : il ne saute plus de sa place au bout du toit et ne s'efface pas sur place. Aller (tranche « walking »
+// d'avant la livraison) : demi-tour vers le dossier, enjambe le traîneau en grimpant, demi-tour, quelques pas avec la hotte,
+// demi-tour face à la cheminée, descend dedans (rogné au toit par le calque) ; retour : l'inverse, puis se retourne vers
+// l'attelage. `yaw` : orientation dans le repère du dessin (0 vers les rennes, 8 vers l'arrière, 12 de dos) ; le calque la
+// retourne avec le sens du traîneau ; un demi-tour noté 16 → 12 passe par le plus court (15, 14, 13). `dist` : chemin
+// parcouru (unités du dessin), qui fait avancer les pas.
+export type SantaStep = { x: number; y: number; yaw: number; gait: 'stand' | 'step' | 'walk' | 'climb'; dist: number };
+type Pt = { x: number; y: number };
+// Place à bord (pieds au fond de la caisse), pied du traîneau derrière le dossier, bouche de la cheminée, profondeur où il
+// est entièrement descendu (hauteur du pantin ≈ 26 unités du dessin, hotte comprise).
+export const SANTA_SEAT: Pt = { x: -5, y: -4 };
+const BEHIND: Pt = { x: -23, y: 0 };
+const HOLE: Pt = { x: -31, y: 0 };
+export const SANTA_SUNK = 34;
+const SUNK_AT: Pt = { x: HOLE.x, y: SANTA_SUNK };
+// Durées (s) : demi-tour (TURN_S de figure/gait.ts, recopié pour garder ce moteur sans dépendance), enjambée, pas, descente.
+const TURN = 0.45;
+const OVER = 1.4;
+const WALK = 0.8;
+const SINK = 3;
+// Hauteur de l'enjambée au-dessus de la ligne droite (unités).
+const ARC = 9;
+type Seg = { d: number; a: Pt; b: Pt; yaw: readonly [number, number]; gait: SantaStep['gait']; arc?: number };
+const seg = (d: number, a: Pt, b: Pt, yaw: readonly [number, number], gait: SantaStep['gait'], arc?: number): Seg => ({ d, a, b, yaw, gait, arc });
+const OUT: readonly Seg[] = [
+  seg(TURN, SANTA_SEAT, SANTA_SEAT, [16, 12], 'step'),
+  seg(OVER, SANTA_SEAT, BEHIND, [12, 12], 'climb', ARC),
+  seg(TURN, BEHIND, BEHIND, [12, 8], 'step'),
+  seg(WALK, BEHIND, HOLE, [8, 8], 'walk'),
+  seg(TURN, HOLE, HOLE, [8, 12], 'step'),
+  seg(SINK, HOLE, SUNK_AT, [12, 12], 'climb'),
+];
+const BACK: readonly Seg[] = [
+  seg(SINK, SUNK_AT, HOLE, [12, 12], 'climb'),
+  seg(TURN, HOLE, HOLE, [12, 16], 'step'),
+  seg(WALK, HOLE, BEHIND, [0, 0], 'walk'),
+  seg(TURN, BEHIND, BEHIND, [16, 12], 'step'),
+  seg(OVER, BEHIND, SANTA_SEAT, [12, 12], 'climb', ARC),
+  seg(TURN, SANTA_SEAT, SANTA_SEAT, [12, 16], 'step'),
+];
+// Longueur d'un segment (l'enjambée compte sa montée et sa descente) ; un demi-tour fait avancer d'un petit pas.
+const segLen = (s: Seg): number => Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y) + 2 * (s.arc ?? 0) + (s.gait === 'step' ? 4 : 0);
+const SEATED: SantaStep = { x: SANTA_SEAT.x, y: SANTA_SEAT.y, yaw: 0, gait: 'stand', dist: 0 };
+function scriptAt(segs: readonly Seg[], u: number): SantaStep {
+  let dist = 0;
+  let left = u;
+  for (const s of segs) {
+    if (left < s.d) {
+      const k = Math.max(0, left / s.d);
+      const yaw = Math.round(s.yaw[0] + (s.yaw[1] - s.yaw[0]) * k) % 16;
+      const y = lerp(s.a.y, s.b.y, k) - (s.arc ?? 0) * Math.sin(Math.PI * k);
+      return { x: lerp(s.a.x, s.b.x, k), y, yaw, gait: s.gait, dist: dist + segLen(s) * k };
+    }
+    left -= s.d;
+    dist += segLen(s);
+  }
+  const last = segs[segs.length - 1]!;
+  return { x: last.b.x, y: last.b.y, yaw: last.yaw[1] % 16, gait: last.gait === 'climb' ? 'climb' : 'stand', dist };
+}
+
+// Pas du père Noël à l'instant t : à sa place pendant qu'il est à bord (en vol compris), sur le script pendant ses tranches à
+// pied, null s'il est dans la maison ou hors fenêtre.
+export function santaStepAt(pass: SantaPass, roof: SantaRoof | null, t: number): SantaStep | null {
+  const pose = santaPoseAt(pass, roof, t, 1, 1);
+  if (!pose || pose.santa === 'hidden') return null;
+  if (pose.santa === 'aboard') return SEATED;
+  const p = (t - pass.start) / SANTA_WINDOW_S;
+  // Fin de l'aller : resté au fond de la cheminée jusqu'à la tranche cachée (rogné, donc invisible).
+  return p < 0.5 ? scriptAt(OUT, t - (pass.start + 0.3 * SANTA_WINDOW_S)) : scriptAt(BACK, t - (pass.start + 0.6 * SANTA_WINDOW_S));
+}
