@@ -17,10 +17,12 @@ export interface PaintCtx {
   lineTo(x: number, y: number): void;
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void;
   ellipse(x: number, y: number, rx: number, ry: number, rotation: number, start: number, end: number): void;
+  arc(x: number, y: number, r: number, start: number, end: number): void;
   rect(x: number, y: number, w: number, h: number): void;
   fill(): void;
   stroke(): void;
   clip(): void;
   fillRect(x: number, y: number, w: number, h: number): void;
+  strokeRect(x: number, y: number, w: number, h: number): void;
   createLinearGradient(x0: number, y0: number, x1: number, y1: number): GradientLike;
 }

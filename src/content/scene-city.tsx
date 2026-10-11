@@ -12,6 +12,7 @@ import { furnitureAt } from '../core/library/city/shops/view';
 import { useStreetShops } from './use-street-shops';
 import { useArtStyle } from './art-setting';
 import { GhibliWindows } from './ghibli-windows';
+import { GhibliNightLight } from './ghibli-night';
 import { usePaintedCity } from './painted-city';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { gradeFor, gradeValues } from '../core/library/paint/grade';
@@ -39,7 +40,7 @@ function useLingering(on: boolean, ms: number): boolean {
 // Les lampadaires ne sont pas ici : ils sont dans le calque animé, devant les passants (StreetLamps, city-life.tsx).
 // Locaux commerciaux (vague 1b-iv-a) : devanture et intérieur dans le décor fixe ; clients et équipe du chantier dans le
 // calque animé (city-shops-life.tsx). Sans `city.shops`, aucun commerce n'est dessiné.
-export function CityScene({ width, height, sky, minutes, seed, gloom = false, city }: SceneBodyProps): ReactElement {
+export function CityScene({ width, height, sky, minutes, seed, gloom = false, city, forcedNight = false }: SceneBodyProps): ReactElement {
   const metrics = cityMetrics(height);
   const { ground, unit } = metrics;
   const far = mixHex('#232B5C', '#9FB4C8', sky.daylight);
@@ -192,6 +193,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
           ))}
         </g>
         <GhibliWindows buildings={buildings} minutes={minutes} gloom={gloom} dim={dim} farLight={FAR_LIGHT} />
+        <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} />
       </g>
       {shopFronts}
       {entrances}

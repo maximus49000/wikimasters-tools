@@ -1,30 +1,56 @@
-import type { CityPaintPlan } from './city-plan';
-import { roofLineY } from './snow-painter';
+import { hillTopY, type CityPaintPlan } from './city-plan';
+import { roofCuts, roofLineY, roofSpan } from './snow-painter';
 
 // Découpe des nuages peints (vague Ghibli, G2) : le ciel au-dessus de la silhouette de la ville peinte, pour que les cumulus
-// passent DERRIÈRE les toits. Ligne brisée qui suit, de gauche à droite, la plus haute ligne de toit des immeubles qui
-// couvrent x (le sol entre deux immeubles), avec une marche verticale à chaque mur.
+// passent DERRIÈRE les toits et la colline du fond (décor cellulo). Ligne brisée qui suit, de gauche à droite, le plus haut
+// de la ligne de toit des immeubles qui couvrent x et du haut du fond (crête, maisons, repères), avec une marche verticale
+// à chaque mur.
 
-const STEP = 4; // pas d'échantillonnage (px), en plus des cassures exactes des toits
+const STEP = 4; // pas d'échantillonnage (px), en plus des cassures exactes des toits et des maisons
 
-// Sommets de la ligne des toits. Cassures exactes (murs, faîtes, coins des mansardes) plus un point tous les STEP px : entre
-// deux sommets, chaque ligne de toit est affine, et le plus haut de plusieurs toits (minimum de fonctions affines) est concave —
-// la corde passe donc au-dessus (ou sur) les toits, jamais dessous : aucun nuage ne déborde sur une façade.
-export function skylinePoints(plan: Pick<CityPaintPlan, 'width' | 'ground' | 'buildings'>): [number, number][] {
-  const { width, ground, buildings } = plan;
+type Plan = Pick<CityPaintPlan, 'width' | 'ground' | 'buildings' | 'height' | 'hill'>;
+
+// Haut de la ville peinte en x : toits du premier plan et du mur du fond, puis le fond.
+export function cityTopY(plan: Plan, x: number): number {
+  let y = Math.min(plan.ground, hillTopY(plan, x));
+  for (const b of plan.buildings) {
+    const s = roofSpan(b);
+    if (x >= s.x0 && x <= s.x1) y = Math.min(y, roofLineY(b, x));
+  }
+  return y;
+}
+
+// Sommets de la ligne des toits. Cassures exactes (murs, faîtes, coins des mansardes, bords des maisons et repères du fond)
+// plus un point tous les STEP px : entre deux sommets, chaque ligne de toit est affine (la crête, sinusoïdale, l'est à moins
+// de 0,05 px près sur 4 px), et le plus haut de plusieurs lignes (minimum de fonctions affines) est concave — la corde passe
+// donc au-dessus (ou sur) les toits, jamais dessous : aucun nuage ne déborde sur une façade.
+export function skylinePoints(plan: Plan): [number, number][] {
+  const { width, buildings } = plan;
   const cuts = new Set<number>([0, width]);
   for (let x = STEP; x < width; x += STEP) cuts.add(x);
-  for (const b of buildings) for (const k of [b.x, b.x + b.w, b.x + b.w / 2, b.x + 1.5, b.x + b.w - 1.5]) if (k > 0 && k < width) cuts.add(k);
+  const add = (k: number): void => void (k > 0 && k < width && cuts.add(k));
+  for (const b of buildings) for (const k of roofCuts(b)) add(k);
+  for (const h of plan.hill.houses) {
+    add(h.x - 1.5 * h.s);
+    add(h.x + h.w + 1.5 * h.s);
+  }
+  for (const l of plan.hill.landmarks) {
+    add(l.x - 2 * l.s);
+    add(l.x + l.w + 2 * l.s);
+  }
   const xs = [...cuts].sort((a, c) => a - c);
   const pts: [number, number][] = [];
   for (let i = 0; i + 1 < xs.length; i++) {
     const a = xs[i]!;
     const c = xs[i + 1]!;
     const mid = (a + c) / 2;
-    let ya = ground;
-    let yc = ground;
+    // Fond évalué juste à l'intérieur du segment : à une cassure, la marche reste verticale (la valeur de gauche n'est pas
+    // reportée sur le segment de droite). Immeubles qui couvrent le milieu : leur ligne de toit vaut aux deux bouts.
+    let ya = Math.min(plan.ground, hillTopY(plan, Math.min(mid, a + 1e-3)));
+    let yc = Math.min(plan.ground, hillTopY(plan, Math.max(mid, c - 1e-3)));
     for (const b of buildings) {
-      if (mid < b.x || mid > b.x + b.w) continue;
+      const s = roofSpan(b);
+      if (mid < s.x0 || mid > s.x1) continue;
       ya = Math.min(ya, roofLineY(b, a));
       yc = Math.min(yc, roofLineY(b, c));
     }
@@ -36,7 +62,7 @@ export function skylinePoints(plan: Pick<CityPaintPlan, 'width' | 'ground' | 'bu
 }
 
 // Chemin SVG fermé par le haut du monde.
-export function skylinePath(plan: Pick<CityPaintPlan, 'width' | 'ground' | 'buildings'>): string {
+export function skylinePath(plan: Plan): string {
   const r = (v: number): string => String(Math.round(v * 10) / 10);
   // y arrondi vers le haut du monde (au dixième) : la découpe reste au-dessus des toits.
   const up = (v: number): string => String(Math.floor(v * 10) / 10);

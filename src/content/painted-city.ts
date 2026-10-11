@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer } from 'react';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import { paintCityTile, TILE, tileCount, tileKey } from '../core/library/paint/city-painter';
-import { idle, paperGrain } from './paint-queue';
+import { idle } from './paint-queue';
 
 // Peinture des tranches de la ville (vague Ghibli) : canvas hors écran pendant les temps morts, une tranche par créneau,
 // image PNG en data URL, cache mémoire (20 tranches au plus, les plus anciennes libérées).
@@ -52,9 +52,9 @@ export const canvasTilePainter: TilePainter = async (plan, tile) => {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   ctx.setTransform(dpr, 0, 0, dpr, -x0 * dpr, 0);
+  // Cellulo : aplats francs, pas de grain de papier.
   paintCityTile(ctx, plan, tile);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  paperGrain(ctx, canvas.width, canvas.height, plan.seed ^ (tile + 1));
   return canvas.toDataURL('image/png');
 };
 

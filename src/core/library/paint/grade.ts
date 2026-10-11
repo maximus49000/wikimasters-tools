@@ -3,8 +3,9 @@
 export type Grade = number[];
 
 export const IDENTITY: Grade = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
-// Nuit : sombre et bleutée (les fenêtres allumées sont dessinées par-dessus, hors filtre).
-export const NIGHT: Grade = [0.3, 0, 0, 0, 0.02, 0, 0.34, 0, 0, 0.03, 0, 0, 0.55, 0, 0.07, 0, 0, 0, 1, 0];
+// Nuit : sombre et bleu-violet, comme la maquette cellulo (multiplication par #6878C0 puis voile sombre) ; les fenêtres
+// allumées et les flaques des lampadaires sont dessinées par-dessus, hors filtre.
+export const NIGHT: Grade = [0.36, 0, 0, 0, 0.01, 0, 0.41, 0, 0, 0.02, 0, 0, 0.66, 0, 0.05, 0, 0, 0, 1, 0];
 // Lever et coucher : doré.
 export const DUSK: Grade = [1.1, 0.04, 0, 0, 0.03, 0.02, 0.92, 0, 0, 0.01, 0, 0, 0.74, 0, 0, 0, 0, 0, 1, 0];
 
