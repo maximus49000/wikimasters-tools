@@ -2,14 +2,24 @@ import { add3, mul3, type V3 } from './geometry';
 
 // Squelette du pantin (maquette validée du 2026-10-11) : 40 unités de haut, pieds à y = 0, tête centrée vers y = 33.
 // Orientation `yaw` (radians) : 0 regarde vers la droite de l'écran, π/2 vers le spectateur, π vers la gauche, 3π/2 de dos.
-// Allures : debout, petits pas sur place (demi-tour), marche, assis, escalade (face à l'échelle). La hauteur du bassin est fixée par la jambe d'appui :
-// le rebond du buste vient tout seul et le pied d'appui touche toujours le sol.
-export type Gait = 'stand' | 'step' | 'walk' | 'seated' | 'climb';
+// Allures : debout, petits pas sur place (demi-tour), marche, assis, escalade (face à l'échelle), à vélo (`pedal`, pieds sur
+// le pédalier) et en selle (`mount`, cheval ou moto : jambes le long du flanc). La hauteur du bassin est fixée par la jambe
+// d'appui : le rebond du buste vient tout seul et le pied d'appui touche toujours le sol. En selle, le bassin est à RIDE_HIP
+// et le site pose l'accroche `seat` (bassin) sur la selle de son dessin.
+export type Gait = 'stand' | 'step' | 'walk' | 'seated' | 'climb' | 'pedal' | 'mount';
 export const YAWS = 16;
 export const PHASES = 12;
 // Distance parcourue (unités du pantin) pendant un cycle complet de marche (deux pas) : règle la phase sur le déplacement.
 export const STRIDE = 23;
-const AMPLITUDE: Record<Gait, number> = { stand: 0, step: 0.35, walk: 1, seated: 0, climb: 1 };
+const AMPLITUDE: Record<Gait, number> = { stand: 0, step: 0.35, walk: 1, seated: 0, climb: 1, pedal: 0, mount: 0 };
+// Hauteur du bassin en selle ; pédalier (centre devant `f` et sous `d` la hanche, rayon `r`) ; une phase = 1/12 de tour.
+export const RIDE_HIP = 13;
+export const PEDAL = { f: 3.2, d: 11, r: 2.4 } as const;
+const RIDE_LEAN: Readonly<Record<'pedal' | 'mount', number>> = { pedal: 22, mount: 4 };
+// En selle (cheval, moto) : cuisse vers l'avant et le bas, tibia qui retombe d'aplomb, genoux écartés de part et d'autre.
+const MOUNT_THIGH = 50;
+const MOUNT_SPREAD = 1.6;
+export const riding = (g: Gait): g is 'pedal' | 'mount' => g === 'pedal' || g === 'mount';
 export const LIMB = { thigh: 7.6, shin: 7.8, ankle: 1.0, upperArm: 6.3, foreArm: 5.6 } as const;
 
 export type Frame3 = { F: V3; R: V3; U: V3 };
@@ -24,8 +34,10 @@ export type Pose = { fr: Frame3; pelvis: V3; legs: [Leg, Leg]; arms: [Arm, Arm];
 // `arms` : pose des bras (cinématique inverse, 'swing' = balancement de marche) ; `lean` : penché vers l'avant (0, 1, 2).
 export type PoseOpts = { headYaw?: number; umbrella?: boolean; arms?: ArmPose; lean?: number };
 
-export type ArmPose = 'swing' | 'down' | 'reach' | 'hold' | 'up' | 'work' | 'crossed' | 'raise' | 'cheer' | 'cup' | 'carry' | 'overhead' | 'tow' | 'guitar' | 'mic' | 'drum';
-export const ARM_POSES: readonly ArmPose[] = ['swing', 'down', 'reach', 'hold', 'up', 'work', 'crossed', 'raise', 'cheer', 'cup', 'carry', 'overhead', 'tow', 'guitar', 'mic', 'drum'];
+// Cortège et cyclistes (G3c) : `handlebar` (guidon, rênes), `horn` (trompette, clairon à la bouche), `rifle` (crosse tenue
+// devant la hanche, bras gauche qui balance), `flag` (hampe tenue devant la poitrine, bras gauche qui balance).
+export type ArmPose = 'swing' | 'down' | 'reach' | 'hold' | 'up' | 'work' | 'crossed' | 'raise' | 'cheer' | 'cup' | 'carry' | 'overhead' | 'tow' | 'guitar' | 'mic' | 'drum' | 'handlebar' | 'horn' | 'rifle' | 'flag';
+export const ARM_POSES: readonly ArmPose[] = ['swing', 'down', 'reach', 'hold', 'up', 'work', 'crossed', 'raise', 'cheer', 'cup', 'carry', 'overhead', 'tow', 'guitar', 'mic', 'drum', 'handlebar', 'horn', 'rifle', 'flag'];
 // Penché vers l'avant par niveau (gestes des commerces).
 export const LEAN_DEG = 8;
 type T3 = readonly [number, number, number];
@@ -49,6 +61,10 @@ const TARGETS: Readonly<Record<ArmPose, readonly [T3 | null, T3 | null]>> = {
   guitar: [[6, -4, -7], [4, -8, -2]],
   mic: [DOWN, [3, 4.5, -3.2]],
   drum: [[6, -7, -2.5], [6, -7, -2.5]],
+  handlebar: [[9, -4, -0.6], [9, -4, -0.6]],
+  horn: [[5, 4, -3.2], [6.2, 4.4, -2.6]],
+  rifle: [null, [3.5, -7, -1.5]],
+  flag: [null, [5, -2.5, -0.8]],
 };
 // side : -1 bras gauche (l < 0), +1 bras droit.
 export const armTarget = (pose: ArmPose, side: -1 | 1): T3 | null => TARGETS[pose][side < 0 ? 0 : 1];
@@ -60,9 +76,7 @@ const norm3 = (a: V3): V3 => {
   return [a[0] / n, a[1] / n, a[2] / n];
 };
 // Deux segments (épaule → coude → main) vers `target` ; le coude part vers `pole` (bas, extérieur, un peu en arrière).
-function ik(sh: V3, target: V3, pole: V3): { elb: V3; hand: V3 } {
-  const a = LIMB.upperArm;
-  const b = LIMB.foreArm;
+function ik(sh: V3, target: V3, pole: V3, a: number = LIMB.upperArm, b: number = LIMB.foreArm): { elb: V3; hand: V3 } {
   const v = sub3(target, sh);
   const d = Math.min(a + b - 1e-6, Math.max(Math.abs(a - b) + 1e-6, Math.hypot(v[0], v[1], v[2])));
   const n = norm3(v);
@@ -81,6 +95,7 @@ export function poseOf(yaw: number, phase: number, gait: Gait, opts: PoseOpts = 
   const w = AMPLITUDE[gait];
   const seated = gait === 'seated';
   const climb = gait === 'climb';
+  const ride = riding(gait);
   const armsPose = opts.arms ?? 'swing';
   const leanLevel = Math.max(0, Math.min(2, opts.lean ?? 0));
   const legAngles = (ph: number): [number, number] => {
@@ -97,14 +112,29 @@ export function poseOf(yaw: number, phase: number, gait: Gait, opts: PoseOpts = 
   const B = seated ? ([90 * D, 90 * D] as [number, number]) : legAngles(phase + Math.PI);
   const reach = ([th, k]: [number, number]): number => LIMB.thigh * Math.cos(th) + LIMB.shin * Math.cos(th - k);
   // Escalade : le site place le pantin sur les barreaux, le bassin reste à la hauteur de jambe tendue.
-  const hipY = seated ? LIMB.shin + LIMB.ankle + 0.6 : climb ? LIMB.thigh + LIMB.shin + LIMB.ankle : Math.max(reach(A), reach(B)) + LIMB.ankle;
-  const lean = ((seated ? 2 : climb ? 4 : 3 * w) + leanLevel * LEAN_DEG) * D;
-  const pelvisTurn = seated || climb ? 0 : w * 6 * Math.sin(phase) * D;
-  const shoulderTurn = seated || climb ? 0 : -w * 7 * Math.sin(phase) * D;
+  const hipY = ride ? RIDE_HIP : seated ? LIMB.shin + LIMB.ankle + 0.6 : climb ? LIMB.thigh + LIMB.shin + LIMB.ankle : Math.max(reach(A), reach(B)) + LIMB.ankle;
+  const lean = ((ride ? RIDE_LEAN[gait] : seated ? 2 : climb ? 4 : 3 * w) + leanLevel * LEAN_DEG) * D;
+  const pelvisTurn = seated || climb || ride ? 0 : w * 6 * Math.sin(phase) * D;
+  const shoulderTurn = seated || climb || ride ? 0 : -w * 7 * Math.sin(phase) * D;
   const pelvis: V3 = [0, hipY, 0];
   const off = (rot: number, l: number): V3 => add3(mul3(fr.R, l * Math.cos(rot)), mul3(fr.F, -l * Math.sin(rot)));
-  const legs = ([[A, -2.1], [B, 2.1]] as const).map(([[th, k], l]) => {
+  const legs = ([[A, -2.1], [B, 2.1]] as const).map(([[th, k], l], i) => {
     const hip = add3(pelvis, off(pelvisTurn, l));
+    if (gait === 'pedal') {
+      // Cheville sur le cercle du pédalier (sens de la marche : le pied passe en haut vers l'avant), pieds en opposition ;
+      // genou par cinématique inverse, vers l'avant.
+      const c = at(pelvis, fr, PEDAL.f, -PEDAL.d, l);
+      const a = -phase + (i === 0 ? 0 : Math.PI);
+      const target = at(c, fr, PEDAL.r * Math.cos(a), PEDAL.r * Math.sin(a), 0);
+      const { elb: knee, hand: ankle } = ik(hip, target, at(hip, fr, 10, 2, 0), LIMB.thigh, LIMB.shin);
+      return { hip, knee, ankle, toe: at(ankle, fr, 3.0, -0.6, 0), l };
+    }
+    if (gait === 'mount') {
+      const t = MOUNT_THIGH * D;
+      const knee = at(hip, fr, LIMB.thigh * Math.sin(t), -LIMB.thigh * Math.cos(t), l * (MOUNT_SPREAD - 1));
+      const ankle = at(knee, fr, 0, -LIMB.shin, 0);
+      return { hip, knee, ankle, toe: at(ankle, fr, 3.0, -0.6, 0), l };
+    }
     const knee = at(hip, fr, LIMB.thigh * Math.sin(th), -LIMB.thigh * Math.cos(th), l * 0.05);
     const sa = th - k;
     const ankle = at(knee, fr, LIMB.shin * Math.sin(sa), -LIMB.shin * Math.cos(sa), 0);

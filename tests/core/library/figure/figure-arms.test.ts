@@ -11,6 +11,8 @@ describe('bras du pantin', () => {
       for (let y = 0; y < 16; y += 3) {
         const p = poseOf((y * Math.PI) / 8, 1, 'stand', { arms });
         for (const a of p.arms) {
+          // Bras sans cible (bras gauche de `rifle` et `flag`) : balancement, comme 'swing'.
+          if (armTarget(arms, a.l < 0 ? -1 : 1) === null) continue;
           expect(Math.abs(dist(a.sh, a.elb) - LIMB.upperArm)).toBeLessThan(1e-6);
           expect(Math.abs(dist(a.elb, a.hand) - LIMB.foreArm)).toBeLessThan(1e-6);
           expect([...a.sh, ...a.elb, ...a.hand].every(Number.isFinite)).toBe(true);

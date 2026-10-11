@@ -17,8 +17,8 @@ export type Baked = { groups: BakedGroup[]; eyes: P2[] };
 export type FigureKey = { sig: string; yaw: number; gait: Gait; phase: number; head: number; arms: ArmPose; lean: number };
 export const keyString = (k: FigureKey): string => `${k.sig}|${k.yaw}|${k.gait}|${k.phase}|${k.head}|${k.arms}|${k.lean}`;
 // Points d'accroche des objets tenus (repère du sprite : pieds à l'origine, y vers le bas) : mains, centre et haut de la tête,
-// nuque (arrière du cou, au-dessus des épaules).
-export type Anchor = 'handR' | 'handL' | 'head' | 'headTop' | 'nape';
+// nuque (arrière du cou, au-dessus des épaules), selle (bassin : posée par le site sur la selle d'un vélo, d'un cheval, d'une moto).
+export type Anchor = 'handR' | 'handL' | 'head' | 'headTop' | 'nape' | 'seat';
 // Épaisseur du trait d'encre (unités du pantin), réglée sur les captures pour ≈ 0,5 px à l'écran autour de 24 px de haut.
 export const INK_WIDTH = 0.8;
 
@@ -103,6 +103,7 @@ export function anchorsOf(key: FigureKey): Record<Anchor, readonly [number, numb
     head: pt(q.head),
     headTop: pt(add3(q.head, mul3(q.headFrame.U, HEAD_R))),
     nape: pt(at(q.neck, q.fr, -1, 1, 0)),
+    seat: pt(q.pelvis),
   };
   if (anchorCache.size >= 4096) anchorCache.clear();
   anchorCache.set(ks, a);
