@@ -11,10 +11,15 @@ export async function forward(doFetch: Fetcher, url: string, init?: RequestInit)
   let response: Response;
   try {
     response = await doFetch(url, init);
-  } catch {
+  } catch (e) {
+    // Journal Cloudflare seulement (wrangler tail) : hôte et nature de l'échec, jamais l'URL complète (clés, position).
+    console.warn(`amont ${new URL(url).host} injoignable ${e instanceof Error ? e.name : ''}`);
     return failure(502, 'upstream');
   }
-  if (response.status === 401 || response.status === 403 || response.status >= 500) return failure(502, 'upstream');
+  if (response.status === 401 || response.status === 403 || response.status >= 500) {
+    console.warn(`amont ${new URL(url).host} ${response.status}`);
+    return failure(502, 'upstream');
+  }
   const retryAfter = response.headers.get('retry-after');
   return { status: response.status, body: await response.text(), ...(retryAfter ? { retryAfter } : {}) };
 }

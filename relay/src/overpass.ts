@@ -23,7 +23,11 @@ export async function overpass(doFetch: Fetcher, query: string): Promise<Overpas
       body: `data=${encodeURIComponent(query)}`,
     });
     if (result.status === 429) limited = true;
-    if (result.status !== 200) continue;
+    if (result.status !== 200) {
+      // Journal Cloudflare (wrangler tail) : refus non transformé par forward (406, 429…), jamais la position.
+      if (result.status !== 502) console.warn(`overpass ${new URL(url).host} ${result.status}`);
+      continue;
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(result.body);
