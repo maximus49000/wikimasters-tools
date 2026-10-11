@@ -8,6 +8,8 @@ import { useFigureRegistry } from './figure/figure-host';
 import { poseFigure } from './figure/ghibli-figure';
 import { FIG, PARADE_YAW, ParadeUnitSprite, paradeArms, type MarchArms } from './parade-sprites';
 import { useWallClockLoop } from './use-wallclock-loop';
+import { useCarRegistry } from './vehicle/car-host';
+import { placeScripted } from './vehicle/scripted-car';
 
 // Calque du grand défilé du 14 juillet (spec §7.4). Le moteur (`city/parade.ts`) est pur : le flux des unités se calcule
 // depuis l'instant (s) du début du jour de la scène. Ici, la boucle lit l'horloge murale, pose chaque unité visible par un
@@ -37,11 +39,13 @@ type Props = { width: number; seed: number; sky: Sky; still: boolean; dayFests: 
 const visibleAt = (units: readonly ParadeUnit[], width: number, t: number): ParadeUnit[] => units.filter((u) => paradeX(u, width, t) !== null);
 const keyOf = (list: readonly ParadeUnit[]): string => list.map((u) => u.id).join(',');
 
-// Marcheurs d'une unité (nœuds lus une fois par nœud d'unité).
+// Marcheurs et véhicules peints d'une unité (nœuds lus une fois par nœud d'unité).
 const marchersOf = new WeakMap<Element, Element[]>();
+const carsOf = new WeakMap<Element, Element[]>();
 
 export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metrics, lane, ghibli = false }: Props): ReactElement | null {
   const figures = useFigureRegistry();
+  const carReg = useCarRegistry();
   const on = !still && paradeOn(dayFests, minutes);
   const now = Date.now() / 1000;
   const dayStart = useSceneDayStart(minutes, now);
@@ -71,10 +75,15 @@ export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metric
           const arms = paradeArms(m.getAttribute('data-arms') as MarchArms, t);
           poseFigure(figures, m.querySelector(':scope > [data-figure]'), { yaw: PARADE_YAW, gait: 'walk', phase, head: 0, arms });
         }
+        // Véhicules peints (V5) : roues tournées par la distance parcourue par le cortège depuis l'entrée de l'unité, gyrophares,
+        // occupants (unités du véhicule : px du monde / échelle de la file).
+        let cars = carsOf.get(node);
+        if (!cars || (cars.length > 0 && !cars[0]!.isConnected)) carsOf.set(node, (cars = [...node.querySelectorAll('[data-scripted-car]')]));
+        for (const c of cars) placeScripted(figures, carReg, c, (PARADE_SPEED * (t - u.start)) / k, PARADE_SPEED / k, 1, t);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [units, width, shown, k, y, ghibli, figures, dayStart],
+    [units, width, shown, k, y, ghibli, figures, carReg, dayStart],
   );
   useWallClockLoop(place, [place]);
 
