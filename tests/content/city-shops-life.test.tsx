@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { DOOR_SILL_HALF, StaffLayer, countShopSprites, customerDoorBox, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
+import { DOOR_SILL_HALF, DOOR_SILL_TOP, StaffLayer, countShopSprites, customerDoorBox, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
 import { visitAt, visitsFor, type VisitLock } from '../../src/core/library/city/shops/customers';
 import { addDays, dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
@@ -368,8 +368,13 @@ describe('clients : portes et verrou', () => {
     expect(Math.abs(Number(svg.getAttribute('y')) + fy - metrics.doorY)).toBeLessThan(0.1);
     expect(Math.abs(Number(svg.getAttribute('x')) + fx - v.doorX)).toBeLessThan(0.1);
     expect(Number(svg.getAttribute('width'))).toBeGreaterThanOrEqual(2 * DOOR_SILL_HALF);
+    // En haut : toute la figure, parapluie compris.
+    const k = metrics.unit * 0.55 * v.scale;
+    expect(Number(svg.getAttribute('y'))).toBeLessThanOrEqual(metrics.doorY - DOOR_SILL_TOP * k + 0.01);
     // L'ombre reste exactement sur la porte du local.
     const darkAt = (): number => Number(svg.getAttribute('x')) + Number(dark.getAttribute('x'));
+    const darkTop = (): number => Number(svg.getAttribute('y')) + Number(dark.getAttribute('y'));
+    expect(Math.abs(darkTop() - v.shopDoor.y)).toBeLessThan(0.02);
     expect(Math.abs(darkAt() - v.shopDoor.x)).toBeLessThan(0.02);
     expect(Number(dark.getAttribute('width'))).toBeCloseTo(v.shopDoor.w, 2);
     // Au-delà de 0,4 de profondeur : le cadre est la porte.
@@ -378,21 +383,34 @@ describe('clients : portes et verrou', () => {
       expect(visitAt(v, W, c0 + dc - v.phase)!.passage!.depth).toBeGreaterThanOrEqual(0.4);
       expect(Number(svg.getAttribute('width'))).toBeCloseTo(v.shopDoor.w, 2);
       expect(Number(svg.getAttribute('x'))).toBeCloseTo(v.shopDoor.x, 2);
+      expect(Number(svg.getAttribute('y'))).toBeCloseTo(v.shopDoor.y, 2);
       expect(Math.abs(darkAt() - v.shopDoor.x)).toBeLessThan(0.02);
+      expect(Math.abs(darkTop() - v.shopDoor.y)).toBeLessThan(0.02);
+      // Pieds toujours sous la porte, sur la ligne de la rue moins l'enfoncement.
+      expect(Number(svg.getAttribute('y')) + Number(svg.getAttribute('height'))).toBeCloseTo(metrics.doorY, 2);
     }
   });
-  it('cadre de porte : largeur ≥ 20 px à profondeur 0, la porte dès 0,4', () => {
-    const door = { x: 100, y: 200, w: 6, h: 21 };
-    expect(customerDoorBox(door, 0, metrics).clip.w).toBeGreaterThanOrEqual(20);
+  it('cadre de porte : à profondeur 0, ≥ 20 px de large et haut jusqu’au sommet du parapluie ; la porte dès 0,4', () => {
+    const door = { x: 100, y: 220, w: 6, h: 18 };
+    const k = 0.55;
+    const z = customerDoorBox(door, 0, metrics, k);
+    expect(z.clip.w).toBeGreaterThanOrEqual(20);
+    expect(z.clip.y).toBeLessThanOrEqual(metrics.doorY - DOOR_SILL_TOP * k);
+    expect(z.clip.y + z.dark.y).toBeCloseTo(door.y, 6);
     for (const d of [0.4, 0.6, 1]) {
-      const b = customerDoorBox(door, d, metrics);
+      const b = customerDoorBox(door, d, metrics, k);
       expect(b.clip.x).toBeCloseTo(door.x, 6);
+      expect(b.clip.y).toBeCloseTo(door.y, 6);
       expect(b.clip.w).toBeCloseTo(door.w, 6);
-      expect(b.dark).toEqual({ x: 0, y: 0, w: door.w, h: door.h });
+      expect(b.dark.x).toBeCloseTo(0, 6);
+      expect(b.dark.y).toBeCloseTo(0, 6);
+      expect([b.dark.w, b.dark.h]).toEqual([door.w, door.h]);
     }
-    const mid = customerDoorBox(door, 0.2, metrics).clip.w;
-    expect(mid).toBeLessThan(customerDoorBox(door, 0, metrics).clip.w);
-    expect(mid).toBeGreaterThan(door.w);
+    const mid = customerDoorBox(door, 0.2, metrics, k).clip;
+    expect(mid.w).toBeLessThan(z.clip.w);
+    expect(mid.w).toBeGreaterThan(door.w);
+    expect(mid.y).toBeGreaterThan(z.clip.y);
+    expect(mid.y).toBeLessThan(door.y);
   });
   it('changement de minute pendant une visite : le client reste (verrou)', () => {
     const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;

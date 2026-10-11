@@ -84,20 +84,24 @@ const sidewalkTransform = (v: Visit, x: number, m: CityMetrics, sgn: number): st
 // Ouverture du seuil en cours : la porte du local (entrer, sortir) ou l'entrée d'immeuble au bout du trajet.
 const customerDoorRect = (v: Visit, stage: VisitStage | null, m: CityMetrics): Rect =>
   stage === 'enter' || stage === 'exit' || v.endDoorX === null ? v.shopDoor : entranceOpening(v.endDoorX - DOOR_WIDTH / 2, m);
-// Cadre du <svg> de porte (px du monde) : sur le seuil (profondeur 0), centre de la porte ± DOOR_SILL_HALF (toute la figure, parapluie
-// compris, reste visible : elle est encore sur le trottoir), resserré linéairement jusqu'à l'ouverture à DOOR_NARROW_AT, puis
-// l'ouverture ; en bas, jusqu'à la ligne des pieds (m.doorY, un peu sous le bas de la porte du local) : pas de saut de hauteur
-// au passage rue → porte. L'ombre (`dark`, repère local) reste exactement sur l'ouverture.
+// Cadre du <svg> de porte (px du monde) : sur le seuil (profondeur 0), centre de la porte ± DOOR_SILL_HALF et, en haut, le sommet
+// de la figure parapluie compris (m.doorY − DOOR_SILL_TOP unités du sprite × `k`, échelle de la figure) : elle est encore sur le
+// trottoir, rien n'en est coupé ; le cadre se resserre linéairement jusqu'à l'ouverture à DOOR_NARROW_AT, puis reste l'ouverture.
+// En bas, jusqu'à la ligne des pieds (m.doorY, un peu sous le bas de la porte du local) : pas de saut de hauteur au passage
+// rue → porte. L'ombre (`dark`, repère local) reste exactement sur l'ouverture.
 export const DOOR_SILL_HALF = 10;
+export const DOOR_SILL_TOP = 60;
 const DOOR_NARROW_AT = 0.4;
-export function customerDoorBox(o: Rect, depth: number, m: CityMetrics): { clip: Rect; dark: Rect } {
+export function customerDoorBox(o: Rect, depth: number, m: CityMetrics, k: number): { clip: Rect; dark: Rect } {
   const half = DOOR_SILL_HALF * Math.max(1, m.unit);
   const a = Math.min(1, depth / DOOR_NARROW_AT);
+  const lerp = (from: number, to: number): number => from + (to - from) * a;
   const mid = o.x + o.w / 2;
-  const left = mid - half + (o.x - (mid - half)) * a;
-  const right = mid + half + (o.x + o.w - (mid + half)) * a;
-  const clip = { x: left, y: o.y, w: right - left, h: Math.max(o.h, m.doorY - o.y) };
-  return { clip, dark: { x: o.x - left, y: 0, w: o.w, h: o.h } };
+  const left = lerp(mid - half, o.x);
+  const right = lerp(mid + half, o.x + o.w);
+  const top = lerp(Math.min(o.y, m.doorY - DOOR_SILL_TOP * k), o.y);
+  const clip = { x: left, y: top, w: right - left, h: Math.max(o.y + o.h, m.doorY) - top };
+  return { clip, dark: { x: o.x - left, y: o.y - top, w: o.w, h: o.h } };
 }
 // Dans le cadre (repère local) : pieds sur m.doorY au bord du seuil ; la figure s'enfonce et rapetisse avec la profondeur.
 const customerDoorFig = (v: Visit, p: Passage, clip: Rect, m: CityMetrics, sgn: number): string => {
@@ -161,7 +165,7 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
       setIfChanged(door, 'data-active', on ? 'true' : 'false');
       setIfChanged(door, 'opacity', onOff(on));
       if (on && s.passage) {
-        const box = customerDoorBox(customerDoorRect(v, s.stage, m), s.passage.depth, m);
+        const box = customerDoorBox(customerDoorRect(v, s.stage, m), s.passage.depth, m, streetScale(v, m));
         setRect(door, box.clip);
         const dark = door.querySelector(':scope > [data-door-dark]');
         setRect(dark, box.dark);
@@ -271,7 +275,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
         const street = where === 'street' && s.passage ? s.passage : null;
         const atDoor = where === 'door' && s.passage ? s.passage : null;
         const dPos: Passage = atDoor ?? { stage: 'threshold', x: v.doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
-        const { clip: o, dark } = customerDoorBox(customerDoorRect(v, s.stage, metrics), dPos.depth, metrics);
+        const { clip: o, dark } = customerDoorBox(customerDoorRect(v, s.stage, metrics), dPos.depth, metrics, streetScale(v, metrics));
         const sprite = (p: FigurePose, withUmbrella: boolean): ReactElement =>
           ghibli ? <GhibliFigure outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} initial={p} /> : <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} />;
         return (
