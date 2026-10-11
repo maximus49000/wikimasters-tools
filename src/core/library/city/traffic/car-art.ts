@@ -11,8 +11,8 @@ export const INK = '#33241f';
 export type Op =
   // Pièce peinte : ombre violette, trait d'encre, partie éclairée décalée vers la lumière, liseré clair.
   | { k: 'piece'; d: string; color: string; ink?: boolean; ox?: number; oy?: number }
-  // Aplat ; `shade` : en couleur d'ombre ; `ink` : trait d'encre de cette largeur.
-  | { k: 'fill'; d: string; color: string; alpha?: number; shade?: boolean; ink?: number }
+  // Aplat ; `shade` : en couleur d'ombre ; `ink` : trait d'encre de cette largeur ; `clip` : rogné à ce tracé.
+  | { k: 'fill'; d: string; color: string; alpha?: number; shade?: boolean; ink?: number; clip?: string }
   | { k: 'line'; d: string; color: string; w: number; alpha?: number }
   // Pièce sans encre rognée à `clip` (toit bicolore).
   | { k: 'clipPiece'; clip: string; d: string; color: string }
@@ -213,6 +213,19 @@ export function wheelOps(rim: Rim, color: string, r: number): Op[] {
   return ops;
 }
 
+// Haut de la silhouette (y le plus petit) à l'abscisse x, sur la polyligne du profil ; null hors de la voiture.
+function topAt(pts: readonly (readonly [number, number])[], x: number): number | null {
+  let best: number | null = null;
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i]!;
+    const [bx, by] = pts[(i + 1) % pts.length]!;
+    if ((ax - x) * (bx - x) > 0 || ax === bx) continue;
+    const y = ay + ((x - ax) / (bx - ax)) * (by - ay);
+    if (best === null || y < best) best = y;
+  }
+  return best;
+}
+
 const memo = new Map<string, CarArt>();
 export function carArt(c: CarSpec): CarArt {
   const key = `${c.seed}|${c.arch}|${c.hue.toFixed(4)}`;
@@ -275,9 +288,10 @@ function build(c: CarSpec): CarArt {
   body.push({ k: 'line', d: `M${q(p.xWs - 1, p.yBelt)} L${q(p.xWs - 1.6, -c.clear - 0.4)} M${q(doorX, p.yBelt)} L${q(doorX, -c.clear - 0.4)}`, color: INK, w: 0.5, alpha: 0.6 });
   body.push({ k: 'line', d: `M${q(p.xWs - 4, p.yBelt + 1.6)} l1.4 0 M${q(doorX - 3.4, p.yBelt + 1.6)} l1.4 0`, color: c.chrome ? '#d9d6cf' : INK, w: 0.6 });
   if (c.stripe) body.push({ k: 'line', d: `M${q(p.x0 + 1, p.yBelt + 3)} L${q(p.x1 - 1, p.yBelt + 3)}`, color: c.stripe, w: 0.9 });
-  // Passages de roue sombres (la roue est posée dessus à l'affichage).
+  // Passages de roue sombres (la roue est posée dessus à l'affichage), rognés à la silhouette : sur une voiture basse aux
+  // grandes roues (sportive), ils dépassaient du capot.
   const R = c.wheelR + 1.4;
-  for (const x of wx) body.push({ k: 'fill', d: `M${q(x - R, -c.clear + 0.6)} A${f(R)} ${f(R)} 0 0 1 ${q(x + R, -c.clear + 0.6)} Z`, color: '#2b2522' });
+  for (const x of wx) body.push({ k: 'fill', d: `M${q(x - R, -c.clear + 0.6)} A${f(R)} ${f(R)} 0 0 1 ${q(x + R, -c.clear + 0.6)} Z`, color: '#2b2522', clip: p.d });
   // Pare-chocs.
   const bump = c.chrome ? '#d9d6cf' : mixHex(c.body, '#000000', 0.25);
   const cy0 = -c.clear - 2.4;
@@ -314,6 +328,16 @@ function build(c: CarSpec): CarArt {
     const Rs = c.wheelR + 1.6;
     const cy = -c.wheelR * 0.9;
     over.push({ k: 'piece', d: `M${q(wx[0]! - Rs, cy)} A${f(Rs)} ${f(Rs * 0.85)} 0 0 1 ${q(wx[0]! + Rs, cy)} Z`, color: c.body, ox: -0.2 });
+  }
+  // Ailes : une roue dont le haut dépasse de la silhouette (voiture basse aux grandes roues : sportive, coupé) reçoit une aile
+  // bombée couleur caisse, posée par-dessus la roue.
+  for (const x of wx) {
+    const top = topAt(p.pts, x);
+    if (top === null || -2 * c.wheelR - 0.6 >= top) continue;
+    const Ro = c.wheelR + 1.3;
+    const Ri = c.wheelR + 0.25;
+    const cy = -c.wheelR;
+    over.push({ k: 'piece', d: `M${q(x - Ro, cy)} A${f(Ro)} ${f(Ro)} 0 0 1 ${q(x + Ro, cy)} L${q(x + Ri, cy)} A${f(Ri)} ${f(Ri)} 0 0 0 ${q(x - Ri, cy)} Z`, color: c.body, ox: -0.2, oy: -0.3 });
   }
   // Sièges : conducteur près du pare-brise, puis les autres vers l'arrière (bornés à l'habitacle).
   const headY = isOpen ? p.yBelt - 4.2 : p.yRoof + (p.yBelt - p.yRoof) * 0.52;

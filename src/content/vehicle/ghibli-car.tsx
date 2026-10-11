@@ -82,10 +82,17 @@ export function GhibliCar({ car, dir, sky, rainy, lights }: { car: CarSpec; dir:
   const tail = { x: art.tail.x * dir, y: art.tail.y };
   const head = { x: art.head.x * dir, y: art.head.y };
   return (
-    <g data-ghibli-car="" data-day={day} data-night={night ? '1' : '0'} data-dir={dir} ref={root}>
+    <g data-ghibli-car="" data-arch={car.arch} data-day={day} data-night={night ? '1' : '0'} data-dir={dir} ref={root}>
       {LAYERS.map((layer) => {
         if (layer === 'over' && art.over.length === 0) return null;
-        if (layer === 'interior' && art.interior.length === 0) return null;
+        // Cabriolet : pas d'habitacle, occupants à découvert (sous la caisse, qui cache le bas du corps).
+        if (layer === 'interior' && art.interior.length === 0)
+          return (
+            <g key="cabin" data-cabin="">
+              {occupants}
+              {steering}
+            </g>
+          );
         const w = wantLayer(car, art, layer, lit);
         const href = hrefOf(`[data-layer="${layer}"]`, w.key, w.paint);
         const img = <image key={layer} data-layer={layer} data-want={w.key} data-shown={href ? w.key : undefined} href={href} x={n2(box.x)} y={n2(box.y)} width={n2(box.w)} height={n2(box.h)} />;
@@ -101,12 +108,6 @@ export function GhibliCar({ car, dir, sky, rainy, lights }: { car: CarSpec; dir:
           ) : null,
         ];
       })}
-      {!cabin && (
-        <g data-cabin="">
-          {occupants}
-          {steering}
-        </g>
-      )}
       {art.wheels.map((w, i) => (
         <g key={i}>
           <g data-wheel="" data-r={w.r} transform={`translate(${n2(w.x * dir)} ${n2(-w.r)}) rotate(0)`}>
@@ -123,7 +124,7 @@ export function GhibliCar({ car, dir, sky, rainy, lights }: { car: CarSpec; dir:
         </g>
       )}
       <g data-brake="" opacity={0}>
-        <circle cx={n2(tail.x)} cy={n2(tail.y)} r={4} fill="#FF3C28" opacity={0.35} />
+        <circle cx={n2(tail.x)} cy={n2(tail.y)} r={2.4} fill="#FF3C28" opacity={0.3} />
         <circle cx={n2(tail.x)} cy={n2(tail.y)} r={1.1} fill="#FF3B2F" />
       </g>
     </g>

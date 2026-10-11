@@ -45,6 +45,9 @@ describe('voiture Ghibli', () => {
   it('cabriolet : occupants sans habitacle rogné', async () => {
     const host = await mount(1, 'cabriolet');
     expect(host.querySelector('[data-cabin]')?.tagName.toLowerCase()).toBe('g');
+    // Occupants SOUS la caisse : elle cache leurs jambes sous la ceinture.
+    const order = [...host.querySelectorAll('[data-cabin], [data-layer="body"]')].map((e) => (e.hasAttribute('data-cabin') ? 'cabin' : 'body'));
+    expect(order).toEqual(['cabin', 'body']);
     expect(host.querySelector('[data-seat="driver"] [data-figure]')).not.toBeNull();
   });
   it('voie du fond : positions en miroir, pantins tournés vers la gauche', async () => {

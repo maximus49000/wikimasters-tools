@@ -99,6 +99,7 @@ function run(ctx: CanvasRenderingContext2D, ops: readonly Op[], day: number, nig
       case 'fill': {
         const P = new Path2D(op.d);
         ctx.save();
+        if (op.clip) ctx.clip(new Path2D(op.clip));
         if (op.alpha !== undefined) ctx.globalAlpha = op.alpha;
         ctx.fillStyle = op.shade ? shade(t(op.color)) : t(op.color);
         ctx.fill(P);

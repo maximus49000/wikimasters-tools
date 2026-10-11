@@ -57,6 +57,23 @@ describe('profil et plan de peinture', () => {
         expect(a.top).toBeLessThan(-c.H + 0.01);
       }
   });
+  it('passages de roue rognés à la silhouette (rien ne dépasse du capot des voitures basses)', () => {
+    for (const arch of ARCH_NAMES) {
+      const c = genCar(21, arch, 0.4);
+      const arches = carArt(c).body.filter((o) => o.k === 'fill' && o.color === '#2b2522' && o.d.split(' A').length === 2);
+      expect(arches).toHaveLength(2);
+      for (const o of arches) expect(o.k === 'fill' && o.clip).toBe(carProfile(c).d);
+    }
+  });
+  it('ailes au-dessus des roues qui dépasseraient de la caisse (sportive), aucune sur une berline', () => {
+    for (let i = 0; i < 30; i++) {
+      const s = genCar(i * 5 + 2, 'sport', 0.1);
+      const fenders = carArt(s).over.filter((o) => o.k === 'piece' && o.color === s.body);
+      expect(fenders.length, `sport ${i}`).toBeGreaterThanOrEqual(1);
+      const b = genCar(i * 5 + 2, 'berline', 0.1);
+      expect(carArt(b).over.filter((o) => o.k === 'piece' && o.color === b.body && !b.skirts)).toHaveLength(0);
+    }
+  });
   it('roues : plusieurs opérations par style ; plan mémoïsé', () => {
     for (const rim of ['enjoliveur', 'rayons', 'tôle', 'flancs blancs', 'alliage'] as const) expect(wheelOps(rim, '#d9d6cf', 4).length).toBeGreaterThan(2);
     const c = genCar(4, 'break', 0.1);

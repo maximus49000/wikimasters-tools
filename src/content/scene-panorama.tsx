@@ -8,6 +8,7 @@ import type { Weather } from '../core/library/weather/weather-types';
 import { useArtStyle } from './art-setting';
 import { CityLifeLayer, StreetLamps } from './city-life';
 import { FigureContext, FigureRegistry } from './figure/figure-host';
+import { CarContext, CarRegistry } from './vehicle/car-host';
 import { CityScene } from './scene-city';
 import { GhibliMoon, GhibliSkyTexture, GhibliStarCrosses, GhibliSun, fadeStyle, reducedMotion, useShownAfterMount } from './ghibli-sky';
 import { usePaintedSky, type PaintedSky } from './painted-sky';
@@ -195,11 +196,14 @@ export function ScenePanorama(props: PanoramaProps): ReactElement {
   // Cache des sprites du pantin (Ghibli) propre à cet affichage.
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const figures = useMemo(() => new FigureRegistry(`pf${uid}`), [uid]);
+  const cars = useMemo(() => new CarRegistry(`pc${uid}`), [uid]);
   return (
     <g data-panorama-full="">
       <ScenePanoramaStatic {...props} />
       <FigureContext.Provider value={figures}>
-        <SceneActors {...props} />
+        <CarContext.Provider value={cars}>
+          <SceneActors {...props} />
+        </CarContext.Provider>
       </FigureContext.Provider>
     </g>
   );
