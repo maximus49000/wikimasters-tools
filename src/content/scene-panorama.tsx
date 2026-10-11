@@ -5,8 +5,11 @@ import type { SceneId } from '../core/library/library-types';
 import { actorX, actorsFor, mulberry32, type Actor } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import type { Weather } from '../core/library/weather/weather-types';
+import { useArtStyle } from './art-setting';
 import { CityLifeLayer, StreetLamps } from './city-life';
 import { CityScene } from './scene-city';
+import { GhibliMoon, GhibliSkyTexture, GhibliStarCrosses, GhibliSun, fadeStyle, reducedMotion, useShownAfterMount } from './ghibli-sky';
+import { usePaintedSky, type PaintedSky } from './painted-sky';
 import { CountrysideScene, MountainScene, SeaScene } from './scene-nature';
 import { ActorSprite } from './scene-sprites';
 import { EarthScene, SpaceScene } from './scene-space';
@@ -20,12 +23,18 @@ export type PanoramaProps = SceneBodyProps & { scene: SceneId };
 
 const FRAME_MS = 30;
 
-function SkyAndStars({ width, height, sky, seed }: SceneBodyProps): ReactElement {
+// `still` : mouvement réduit, lu une fois par rendu du décor.
+type PaintedProps = { painted: PaintedSky | null; shown: boolean; still: boolean };
+
+export type Star = { i: number; x: number; y: number; r: number };
+export const starsFor = (width: number, height: number, seed: number): Star[] => {
+  const rng = mulberry32(seed ^ 0x57a45);
+  return Array.from({ length: Math.round(width / 9) }, (_, i) => ({ i, x: rng() * width, y: rng() * height * 0.65, r: 0.7 + rng() * 1.3 }));
+};
+
+function SkyAndStars({ width, height, sky, seed, painted, shown, still }: SceneBodyProps & PaintedProps): ReactElement {
   const gradientId = useId().replace(/:/g, '');
-  const stars = useMemo(() => {
-    const rng = mulberry32(seed ^ 0x57a45);
-    return Array.from({ length: Math.round(width / 9) }, (_, i) => ({ i, x: rng() * width, y: rng() * height * 0.65, r: 0.7 + rng() * 1.3 }));
-  }, [width, height, seed]);
+  const stars = useMemo(() => starsFor(width, height, seed), [width, height, seed]);
   return (
     <g data-sky-layer>
       <defs>
@@ -37,9 +46,11 @@ function SkyAndStars({ width, height, sky, seed }: SceneBodyProps): ReactElement
       <rect data-sky x={0} y={0} width={width} height={height} fill={`url(#${gradientId})`} />
       {/* Ciel couvert : gris plein, sous les immeubles (variables posées par la couche météo sur le <svg> de la pièce). */}
       <rect data-sky-veil x={0} y={0} width={width} height={height} style={{ fill: 'var(--wmt-overcast-color, #B9C0CA)', opacity: 'var(--wmt-overcast, 0)' }} />
+      {painted && <GhibliSkyTexture width={width} height={height} url={painted.texture} shown={shown} still={still} daylight={sky.daylight} />}
       <g opacity={sky.stars} style={{ transition: 'opacity 4s ease' }}>
         {sky.stars > 0 && stars.map((s) => <circle key={s.i} data-star="" cx={s.x} cy={s.y} r={s.r} fill="#FFFFFF" />)}
       </g>
+      {painted && <GhibliStarCrosses stars={stars} opacity={sky.stars} shown={shown} still={still} />}
     </g>
   );
 }
@@ -51,24 +62,26 @@ export const celestialPlace = (frac: number, width: number, height: number): { x
 });
 
 // Soleil et lune traversent toute la largeur du monde : ils passent d'une fenêtre à l'autre au fil de la journée.
-function Celestial({ width, height, sky }: SceneBodyProps): ReactElement {
+function Celestial({ width, height, sky, painted, shown, still }: SceneBodyProps & PaintedProps): ReactElement {
   const place = (frac: number): { x: number; y: number } => celestialPlace(frac, width, height);
   const sun = sky.sunFrac === null ? null : place(sky.sunFrac);
   const moon = sky.moonFrac === null ? null : place(sky.moonFrac);
   return (
     <g data-celestial style={{ opacity: 'calc(1 - var(--wmt-overcast, 0))' }}>
       {sun && (
-        <g data-sun="" transform={`translate(${sun.x} ${sun.y})`}>
+        <g data-sun="" data-classic-sun="" transform={`translate(${sun.x} ${sun.y})`} style={fadeStyle(!shown, still)}>
           <circle r={34} fill="#FFE27A" opacity={0.25} />
           <circle r={22} fill={sky.twilight > 0.4 ? '#FF9A4A' : '#FFE27A'} />
         </g>
       )}
       {moon && (
-        <g data-moon="" transform={`translate(${moon.x} ${moon.y})`}>
+        <g data-moon="" data-classic-moon="" transform={`translate(${moon.x} ${moon.y})`} style={fadeStyle(!shown, still)}>
           <circle r={18} fill="#E8ECFF" />
           <circle cx={6} cy={-4} r={16} fill={sky.bottom} opacity={0.35} />
         </g>
       )}
+      {painted && sun && <GhibliSun x={sun.x} y={sun.y} twilight={sky.twilight} painted={painted} shown={shown} still={still} />}
+      {painted && moon && <GhibliMoon x={moon.x} y={moon.y} painted={painted} shown={shown} still={still} />}
     </g>
   );
 }
@@ -109,10 +122,18 @@ function useActorLoop(root: RefObject<SVGGElement | null>, actors: Actor[], widt
 function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, gloom = false, rainy = false, city, forcedNight = false }: PanoramaProps): ReactElement {
   const props = { width, height, sky, minutes, seed, gloom, rainy, city, forcedNight };
   const terrestrial = scene !== 'space' && scene !== 'earth';
+  const [art] = useArtStyle();
+  const ghibli = art === 'ghibli' && scene === 'city';
+  const painted = usePaintedSky(seed, ghibli);
+  // Rendu dès que les images sont prêtes (même bascule désactivée, pour le fondu de sortie) ; montré seulement en Ghibli.
+  const skyArt = scene === 'city' && painted.ready ? painted : null;
+  const still = reducedMotion();
+  // Les nœuds peints naissent à opacité 0, puis passent à 1 au rendu suivant : le fondu joue dès la première apparition.
+  const shown = useShownAfterMount(skyArt !== null, ghibli, still);
   return (
     <g data-panorama="" data-scene={scene}>
-      {terrestrial && <SkyAndStars {...props} />}
-      {terrestrial && <Celestial {...props} />}
+      {terrestrial && <SkyAndStars {...props} painted={skyArt} shown={shown} still={still} />}
+      {terrestrial && <Celestial {...props} painted={skyArt} shown={shown} still={still} />}
       {scene === 'city' && <CityScene {...props} />}
       {scene === 'countryside' && <CountrysideScene {...props} />}
       {scene === 'mountain' && <MountainScene {...props} />}
@@ -127,7 +148,13 @@ function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, glo
 // la boucle d'animation ne modifie que ce groupe.
 function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = false, city, forcedNight = false, weather }: PanoramaProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
-  const actors = useMemo(() => actorsFor(scene, width, height, seed), [scene, width, height, seed]);
+  const [art] = useArtStyle();
+  // Ghibli Ville : les cumulus peints de la couche météo remplacent les nuages blancs plats des acteurs.
+  const noClouds = art === 'ghibli' && scene === 'city';
+  const actors = useMemo(() => {
+    const all = actorsFor(scene, width, height, seed);
+    return noClouds ? all.filter((a) => a.kind !== 'cloud') : all;
+  }, [scene, width, height, seed, noClouds]);
   useActorLoop(root, actors, width);
   const t0 = Date.now() / 1000;
   return (
