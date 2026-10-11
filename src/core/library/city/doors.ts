@@ -1,11 +1,13 @@
 import { WORLD_MARGIN, citySkyline, hashString, mulberry32 } from '../scene-world';
 import type { CityIntensity } from './intensity';
+import { MAX_TRIP_PX, farDoorX, passageAt, type Passage } from './doorway';
 import { DOOR_MARGIN, DOOR_WIDTH, WALK_PACE } from './metrics';
 import { outfitFor, type Outfit, type Profile } from './people';
 import { SHOP_MIN_WIDTH, shopSlotsFor } from './shops/slots';
 
 export type Door = { id: string; x: number; variant: 0 | 1 | 2; hallU: number };
 export { DOOR_MARGIN, DOOR_WIDTH } from './metrics';
+export { MAX_TRIP_PX };
 export const TRIP_CYCLE = 160;
 
 // Une entrée par immeuble du premier plan visible (les plus étroits font 28 px : l'entrée de 12 px y tient avec ses marges).
@@ -37,25 +39,53 @@ export function doorsFor(width: number, height: number, seed: number): Door[] {
   return out;
 }
 
-export type Trip = { id: string; kind: 'out' | 'in'; doorX: number; dir: 1 | -1; speed: number; phase: number; outfit: Outfit; profile: Profile; scale: number };
+// `endDoorX` : porte au bout d'un trajet plafonné (centre) ; l'habitant qui sort y entre, celui qui rentre en sort. null : bord du monde.
+export type Trip = { id: string; kind: 'out' | 'in'; doorX: number; endDoorX: number | null; dir: 1 | -1; speed: number; phase: number; outfit: Outfit; profile: Profile; scale: number };
 
-const FADE_S = 0.8;
-const smooth = (x: number): number => {
-  const t = Math.min(1, Math.max(0, x));
-  return t * t * (3 - 2 * t);
-};
+// Distance maximale d'un trajet de repli : le plus lent des habitants (12,6 px/s) la couvre en ≈ 119 s, deux seuils et deux demi-tours
+// compris, soit bien en deçà de TRIP_CYCLE (160 s) : le cycle ne coupe jamais un trajet en pleine rue.
+export const MAX_FALLBACK_PX = 1500;
 
-export function tripsFor(doors: Door[], seed: number): Trip[] {
+// Porte au bout du trajet : la plus lointaine à portée de MAX_TRIP_PX ; à défaut, la plus proche au-delà du plafond
+// (jusqu'à `fallback`) ; à défaut, le bord du monde s'il tient dans `fallback`, sinon la plus lointaine porte à portée de repli.
+// Partagé avec les clients des commerces (shops/customers.ts), qui ont un repli plus court (aller ET retour dans le cycle).
+export function endDoorOf(doorX: number, dir: 1 | -1, width: number, others: readonly number[], fallback = MAX_FALLBACK_PX): number | null {
+  if (!Number.isFinite(width)) return null;
+  const toEdge = dir > 0 ? width + WORLD_MARGIN - doorX : doorX + WORLD_MARGIN;
+  if (toEdge <= MAX_TRIP_PX) return null;
+  const far = farDoorX(doorX, dir, width, others);
+  if (far !== null) return far;
+  let nearest: number | null = null;
+  let farthest: number | null = null;
+  for (const x of others) {
+    const d = (x - doorX) * dir;
+    if (d <= MAX_TRIP_PX || d > fallback) continue;
+    if (nearest === null || d < (nearest - doorX) * dir) nearest = x;
+    if (farthest === null || d > (farthest - doorX) * dir) farthest = x;
+  }
+  if (nearest !== null) return nearest;
+  return toEdge <= fallback ? null : farthest;
+}
+
+// `width` : largeur du monde (infinie par défaut : jamais de porte au bout, les trajets vont au bord).
+// Un trajet ne dépasse pas MAX_TRIP_PX depuis sa porte : au-delà du plafond il finit à une autre porte, jamais en pleine rue.
+// Durée max = 520 / vitesse min (18 × 0,7 = 12,6) ≈ 41 s + seuils et demi-tours, très en deçà de TRIP_CYCLE.
+export function tripsFor(doors: Door[], seed: number, width = Infinity): Trip[] {
   const rng = mulberry32(seed ^ hashString('trips'));
   const out: Trip[] = [];
+  const centers = doors.map((d) => d.x + DOOR_WIDTH / 2);
   for (const door of doors) {
     for (const kind of ['out', 'in'] as const) {
       const profile: Profile = rng() < 0.3 ? 'suit' : rng() < 0.5 ? 'stroller' : 'ordinary';
+      const doorX = door.x + DOOR_WIDTH / 2;
+      const dir: 1 | -1 = rng() < 0.5 ? 1 : -1;
+      const others = centers.filter((x) => x !== doorX);
       out.push({
         id: `${door.id}-${kind}`,
         kind,
-        doorX: door.x + DOOR_WIDTH / 2,
-        dir: rng() < 0.5 ? 1 : -1,
+        doorX,
+        endDoorX: endDoorOf(doorX, kind === 'out' ? dir : ((-dir) as 1 | -1), width, others),
+        dir,
         speed: (18 + rng() * 8) * WALK_PACE,
         phase: rng() * TRIP_CYCLE,
         outfit: outfitFor(profile, rng),
@@ -67,27 +97,15 @@ export function tripsFor(doors: Door[], seed: number): Trip[] {
   return out;
 }
 
-// Un trajet ne dépasse jamais cette distance depuis la porte : au-delà, l'habitant s'efface (rue latérale) ou apparaît.
-// Durée max = 520 / vitesse min (18 × 0,7 = 12,6) ≈ 41 s, très en deçà de TRIP_CYCLE : le cycle ne coupe jamais un trajet.
-export const MAX_TRIP_PX = 520;
-
-// Distance à parcourir entre la porte et le bord du monde (vers l'avant pour qui sort, depuis l'arrière pour qui rentre), plafonnée.
-const reachOf = (trip: Trip, width: number): number => {
-  const forward = trip.dir > 0 ? width + WORLD_MARGIN - trip.doorX : trip.doorX + WORLD_MARGIN;
-  const backward = trip.dir > 0 ? trip.doorX + WORLD_MARGIN : width + WORLD_MARGIN - trip.doorX;
-  return Math.min(trip.kind === 'out' ? forward : backward, MAX_TRIP_PX);
-};
-
-// Position d'un habitant `t` secondes après la date d'origine, ou null s'il n'est pas en route.
-// `fade` : 0 = invisible, 1 = plein ; fondu de 0,8 s aux deux extrémités (porte, bord du monde ou plafond de distance).
-export function tripAt(trip: Trip, width: number, t: number): { x: number; fade: number } | null {
+// Passage d'un habitant `t` secondes après la date d'origine, ou null s'il n'est pas en route.
+// Départ : seuil de sa porte (qui sort) ou bord du monde / seuil de `endDoorX` (qui rentre) ; arrivée symétrique.
+export function tripAt(trip: Trip, width: number, t: number): Passage | null {
   const c = (((t + trip.phase) % TRIP_CYCLE) + TRIP_CYCLE) % TRIP_CYCLE;
-  const reach = reachOf(trip, width);
-  const duration = reach / trip.speed;
-  if (c >= duration) return null;
-  const fade = Math.min(smooth(c / FADE_S), 1 - smooth((c - (duration - FADE_S)) / FADE_S));
-  const startX = trip.kind === 'out' ? trip.doorX : trip.doorX - trip.dir * reach;
-  return { x: startX + trip.dir * trip.speed * c, fade };
+  const forwardEdge = trip.dir > 0 ? width + WORLD_MARGIN : -WORLD_MARGIN;
+  const backEdge = trip.dir > 0 ? -WORLD_MARGIN : width + WORLD_MARGIN;
+  const far = trip.endDoorX;
+  if (trip.kind === 'out') return passageAt({ fromX: trip.doorX, toX: far ?? forwardEdge, dir: trip.dir, speed: trip.speed, fromDoor: true, toDoor: far !== null }, c);
+  return passageAt({ fromX: far ?? backEdge, toX: trip.doorX, dir: trip.dir, speed: trip.speed, fromDoor: far !== null, toDoor: true }, c);
 }
 
 // Le trajet a lieu dans ce tour de cycle si le tirage de (trajet, tour) passe sous le seuil.

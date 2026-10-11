@@ -1,5 +1,6 @@
 import { useMemo, useReducer, useRef, type ReactElement } from 'react';
 import type { YMD } from '../core/library/city/calendar';
+import { DOOR_DARK, doorDarkOpacity, type Passage } from '../core/library/city/doorway';
 import { DOOR_WIDTH, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
 import { SHOP_DEFS } from '../core/library/city/shops/catalog';
@@ -8,8 +9,13 @@ import { ADVANCE_S, nightclubDoor, queueAt } from '../core/library/city/shops/qu
 import type { ShopFrame, ShopSlot } from '../core/library/city/shops/slots';
 import type { ShopView } from '../core/library/city/shops/view';
 import { hashString, mulberry32 } from '../core/library/scene-world';
+import type { FigureKey } from '../core/library/figure/bake';
+import { TURN_S, YAW_BACK, facingYaw, phaseIndexOf, turnYaw } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
+import { placeSill, sillBox, sillFigTransform } from './door-passage';
+import { useFigureRegistry } from './figure/figure-host';
+import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Boîte de nuit (vague 1b-iv-b) : cordon (deux potelets et une corde) devant la porte, deux videurs en costume noir, bras
@@ -26,6 +32,12 @@ const BOUNCER_DX = 5.5; // px de la porte à chaque videur
 const CORDON_FROM = 7; // premier potelet, px de la porte ; le second au niveau de la 3e personne (au plus à l'entrée des habitants)
 const QUEUE_FRAME_MS = 50;
 const STILL_QUEUE = 3; // mouvement réduit : 3 personnes immobiles
+const ARRIVE_FROM = 4; // places de file : la dernière arrivée vient de si loin sur le trottoir (sans fondu : elle marche)
+const REF_POS = 100; // origine de la phase de marche (croît quand la place diminue)
+// Personne qui entre (p de 0 à 1 sur ADVANCE_S) : marche jusqu'à WALK_END, demi-tour sur place à la porte (les dernières TURN_S
+// de la première moitié), puis seuil de dos à partir de 0,5. Même durée totale qu'avant le demi-tour.
+const WALK_END = 0.5 - TURN_S / ADVANCE_S;
+type FigurePose = Omit<FigureKey, 'sig'>;
 
 export type QueueFrame = {
   // `pos` : place dans la file (0 = devant la porte), fractionnaire pendant l'avancée d'un cran ; la dernière arrive en fondu.
@@ -72,7 +84,8 @@ const STILL_FRAME = (slotId: string, max: number): QueueFrame => ({
   members: Array.from({ length: Math.min(STILL_QUEUE, max) }, (_, i) => ({ id: `still-${i}`, outfitKey: `queue-${hashString(`${slotId}/still/${i}`) % 12}`, pos: i, opacity: 1 })),
   ghost: null,
 });
-const signature = (f: QueueFrame): string => `${f.members.map((m) => m.id).join(',')}|${f.ghost?.id ?? ''}`;
+// Le seuil change le nœud de la personne qui entre (rue, puis <svg> de la porte) : une recomposition à p = 0,5.
+const signature = (f: QueueFrame): string => `${f.members.map((m) => m.id).join(',')}|${f.ghost?.id ?? ''}${f.ghost && f.ghost.p > 0.5 ? '+' : ''}`;
 
 // Videur : costume noir, bras croisés sur la poitrine.
 const BOUNCER_SUIT = '#141418';
@@ -119,9 +132,11 @@ type ClubProps = {
   seed: number;
   // Début de la session (s, horloge murale) : la file avance en temps relatif à la session (contrat de queueAt).
   sessionT0: number;
+  // Art Ghibli : pantins, marchant vers la porte ; sinon dessin classique (mêmes trajets).
+  ghibli?: boolean;
 };
 
-export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sky, seed, sessionT0 }: ClubProps): ReactElement | null {
+export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sky, seed, sessionT0, ghibli = false }: ClubProps): ReactElement | null {
   const id = view.slot.id;
   const door = clubDoorAt(view, date, minutes);
   const isOpen = door?.open ?? false;
@@ -132,9 +147,32 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   const k = u * STREET_SCALE.person;
   const { doorX, away, pitch, max, reach } = queueLayout(view.slot, frame, u);
   const y = metrics.doorY + (metrics.walkY - metrics.doorY) * 0.3;
+  const figures = useFigureRegistry();
+  // Dernière place connue de chaque membre : qui avance d'un cran d'une image à l'autre marche, sinon il attend.
+  const lastPos = useRef(new Map<string, number>());
   const slotX = (pos: number): number => doorX + away * (QUEUE_START + pos * pitch) * u;
-  const memberTransform = (pos: number): string => `translate(${slotX(pos).toFixed(1)} ${y.toFixed(1)}) scale(${(-away * k).toFixed(3)} ${k.toFixed(3)})`;
-  const ghostTransform = (p: number): string => `translate(${(slotX(0) + (doorX - slotX(0)) * p).toFixed(1)} ${y.toFixed(1)}) scale(${(-away * k).toFixed(3)} ${k.toFixed(3)})`;
+  // Place affichée : la dernière arrivée ne se fond plus, elle vient de plus loin sur le trottoir.
+  const posOf = (m: QueueFrame['members'][number]): number => m.pos + (1 - m.opacity) * ARRIVE_FROM;
+  // Ghibli : pantin sans miroir (tourné par `yaw`) ; classique : miroir, le sprite regarde vers +x.
+  const flip = ghibli ? 1 : -away;
+  const tf = (x: number, yy: number): string => `translate(${x.toFixed(1)} ${yy.toFixed(1)}) scale(${(flip * k).toFixed(3)} ${k.toFixed(3)})`;
+  const memberTransform = (pos: number): string => tf(slotX(pos), y);
+  const face = facingYaw(-away as 1 | -1); // vers la porte
+  const memberPose = (pos: number, walking: boolean): FigurePose => ({ yaw: face, gait: walking ? 'walk' : 'stand', phase: walking ? phaseIndexOf(((REF_POS - pos) * pitch * u) / k) : 0, head: 0 });
+  // Personne qui entre : jusqu'à WALK_END elle marche de la place 0 à la porte (ses pieds passent de la ligne de la file à celle
+  // des portes, sans saut), fait demi-tour sur place à petits pas jusqu'à p = 0,5, puis passe le seuil de dos, dans l'ombre de
+  // l'ouverture.
+  const walkDist = Math.abs(doorX - slotX(0));
+  const ghostWalkTransform = (p: number): string => {
+    const w = Math.min(1, p / WALK_END);
+    return tf(slotX(0) + (doorX - slotX(0)) * w, y + (metrics.doorY - y) * w);
+  };
+  const ghostWalkPose = (p: number): FigurePose =>
+    p < WALK_END
+      ? { yaw: face, gait: 'walk', phase: phaseIndexOf((walkDist * (p / WALK_END)) / k), head: 0 }
+      : { yaw: turnYaw(face, YAW_BACK, (p - WALK_END) / (0.5 - WALK_END)), gait: 'step', phase: phaseIndexOf(walkDist / k), head: 0 };
+  const ghostPassage = (p: number): Passage => ({ stage: 'threshold', x: doorX, depth: Math.min(1, Math.max(0, 2 * (p - 0.5))), yaw: YAW_BACK, gait: 'walk', walked: 0 });
+  const ghostSillPose = (p: number): FigurePose => ({ yaw: YAW_BACK, gait: 'walk', phase: phaseIndexOf(walkDist / k + ghostPassage(p).depth * 8), head: 0 });
   // Cache des tenues (effet de bord idempotent pendant le rendu : une même clé donne toujours la même tenue).
   const outfits = useMemo(() => new Map<string, Outfit>(), [seed, id]);
   const outfitOf = (key: string): Outfit => {
@@ -160,35 +198,65 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
         for (const m of f.members) {
           const node = el.querySelector(`[data-queue-id="${m.id}"]`);
           if (!node) continue;
-          node.setAttribute('transform', memberTransform(m.pos));
-          node.setAttribute('opacity', m.opacity.toFixed(2));
+          const pos = posOf(m);
+          node.setAttribute('transform', memberTransform(pos));
+          const before = lastPos.current.get(m.id);
+          lastPos.current.set(m.id, pos);
+          if (ghibli) poseFigure(figures, node.querySelector('[data-figure]'), memberPose(pos, before !== undefined && pos < before - 1e-6));
         }
         if (f.ghost) {
           const node = el.querySelector(`[data-queue-id="${f.ghost.id}"]`);
-          node?.setAttribute('transform', ghostTransform(f.ghost.p));
-          node?.setAttribute('opacity', (1 - f.ghost.p).toFixed(2));
+          if (!node) return;
+          if (f.ghost.p <= 0.5) {
+            node.setAttribute('transform', ghostWalkTransform(f.ghost.p));
+            if (ghibli) poseFigure(figures, node.querySelector('[data-figure]'), ghostWalkPose(f.ghost.p));
+          } else if (node.tagName === 'svg') {
+            // Le nœud de rue est encore là tant que React n'a pas mis le <svg> du seuil à sa place (recomposition à p = 0,5).
+            placeSill(node, frame.door, ghostPassage(f.ghost.p), metrics, k, ghibli ? 1 : -away);
+            if (ghibli) poseFigure(figures, node.querySelector('[data-figure]'), ghostSillPose(f.ghost.p));
+          }
         }
       },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [reduced, isOpen, seed, id, minutes, sessionT0, doorX, away, pitch, max, y, k],
+    [reduced, isOpen, seed, id, minutes, sessionT0, doorX, away, pitch, max, y, k, ghibli, figures, frame, metrics],
   );
   useWallClockLoop(place, [place], { frameMs: QUEUE_FRAME_MS });
   if (!door) return null;
   const f = frameAt(Date.now() / 1000);
-  // Effet de bord idempotent pendant le rendu : la boucle compare la composition de la file à celle qui est affichée.
+  // Effet de bord idempotent pendant le rendu : la boucle compare la composition de la file à celle qui est affichée. Les
+  // dernières places des personnes sorties de la file (entrées) sont oubliées.
   shown.current = signature(f);
+  for (const mid of lastPos.current.keys()) if (!f.members.some((m) => m.id === mid)) lastPos.current.delete(mid);
+  // Pose au rendu : qui avançait à la dernière image garde sa marche (sinon la recomposition le figerait en plein pas).
+  const renderPose = (m: QueueFrame['members'][number]): FigurePose => {
+    const before = lastPos.current.get(m.id);
+    return memberPose(posOf(m), before !== undefined && posOf(m) < before - 1e-6);
+  };
+  const person = (o: Outfit, pose: FigurePose): ReactElement => (ghibli ? <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={pose} /> : <PersonSprite outfit={o} sky={sky} rainy={false} umbrella={false} />);
   const bouncers = [0, 1].map((i) => bouncerOutfit(seed, id, i));
   return (
     <g data-nightclub={id} data-club-open={isOpen ? 'true' : 'false'} data-queue-max={isOpen ? (reduced ? Math.min(STILL_QUEUE, max) : max) : 0} ref={root}>
-      {f.ghost && (
-        <g key={f.ghost.id} data-queue-id={f.ghost.id} data-queue-entering="" transform={ghostTransform(f.ghost.p)} opacity={(1 - f.ghost.p).toFixed(2)}>
-          <PersonSprite outfit={outfitOf(f.ghost.outfitKey)} sky={sky} rainy={false} umbrella={false} />
+      {f.ghost && f.ghost.p <= 0.5 && (
+        <g key={f.ghost.id} data-queue-id={f.ghost.id} data-queue-entering="" transform={ghostWalkTransform(f.ghost.p)}>
+          {person(outfitOf(f.ghost.outfitKey), ghostWalkPose(f.ghost.p))}
         </g>
       )}
+      {f.ghost && f.ghost.p > 0.5 && (() => {
+        const ps = ghostPassage(f.ghost.p);
+        const { clip, dark } = sillBox(frame.door, ps.depth, metrics, k);
+        return (
+          <svg key={f.ghost.id} data-queue-id={f.ghost.id} data-club-door="" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden">
+            <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(ps.depth).toFixed(2)} />
+            <g data-door-fig="" data-queue-entering="" transform={sillFigTransform(ps, clip, metrics, k, ghibli ? 1 : -away)} opacity={(1 - ps.depth).toFixed(2)}>
+              {person(outfitOf(f.ghost.outfitKey), ghostSillPose(f.ghost.p))}
+            </g>
+          </svg>
+        );
+      })()}
       {/* De la dernière à la première : celle qui est devant la porte est dessinée par-dessus. */}
       {[...f.members].reverse().map((m) => (
-        <g key={m.id} data-queue-id={m.id} data-queue-member="" transform={memberTransform(m.pos)} opacity={m.opacity.toFixed(2)}>
-          <PersonSprite outfit={outfitOf(m.outfitKey)} sky={sky} rainy={false} umbrella={false} />
+        <g key={m.id} data-queue-id={m.id} data-queue-member="" transform={memberTransform(posOf(m))}>
+          {person(outfitOf(m.outfitKey), renderPose(m))}
         </g>
       ))}
       {bouncers.map((o, i) => {

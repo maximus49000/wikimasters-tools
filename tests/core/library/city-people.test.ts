@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FestivityId } from '../../../src/core/library/city/calendar';
 import { type CityIntensity } from '../../../src/core/library/city/intensity';
-import { festiveMark, outfitFor, pedestrianGate, pedestriansFor } from '../../../src/core/library/city/people';
+import { festiveMark, outfitFor, pedShown, pedestrianGate, pedestriansFor } from '../../../src/core/library/city/people';
 import { hashString, mulberry32 } from '../../../src/core/library/scene-world';
 
 const zero: CityIntensity = { traffic: 0, walkers: 0, suits: 0, schoolTo: 0, schoolFrom: 0, kids: 0, sport: 0, umbrellas: false, weekendLike: false, festive: null, closed: false };
@@ -91,5 +91,28 @@ describe('passants festifs', () => {
     const n = base.filter((p) => festiveMark(p, festive('bastille', 0.5)) !== null).length;
     expect(n).toBeGreaterThan(base.length * 0.2);
     expect(n).toBeLessThan(base.length * 0.8);
+  });
+});
+
+describe('présence des passants au bord', () => {
+  it('un caché voulu devient affiché dès qu’il est passé hors champ (boucle simulée)', () => {
+    let shown = false;
+    const seen: boolean[] = [];
+    for (let x = 100; x <= 800; x += 50) {
+      shown = pedShown(shown, true, x, 720);
+      seen.push(shown);
+    }
+    expect(seen.slice(0, 13)).toEqual(Array(13).fill(false)); // x 100..700 : en rue, il attend
+    expect(seen[seen.length - 1]).toBe(true); // x = 800 > 720 + 12
+  });
+  it('la marge élargie du groupe retarde la bascule', () => {
+    expect(pedShown(true, false, -20, 720, 40)).toBe(true);
+    expect(pedShown(true, false, -50, 720, 40)).toBe(false);
+  });
+  it('ne bascule qu’hors champ', () => {
+    expect(pedShown(true, false, 300, 720)).toBe(true);
+    expect(pedShown(true, false, -20, 720)).toBe(false);
+    expect(pedShown(false, true, 300, 720)).toBe(false);
+    expect(pedShown(false, true, 740, 720)).toBe(true);
   });
 });

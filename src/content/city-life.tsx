@@ -1,20 +1,26 @@
-import { useId, useMemo, useRef, type ReactElement } from 'react';
+import { Fragment, useId, useMemo, useRef, type ReactElement } from 'react';
 import { activeFestivities } from '../core/library/city/calendar';
-import { doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
+import { DOOR_WIDTH, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
+import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
 import { PULL_DY, fixedFade, placeEvent, pullOver, type EventFrame, type EventPlacement } from '../core/library/city/event-place';
 import type { CityEvent } from '../core/library/city/events';
 import { cityFacades } from '../core/library/city/facades';
 import { cityIntensity, type CityContext } from '../core/library/city/intensity';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { FAR_SHRINK, STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
-import { festiveMark, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
-import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/customers';
+import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
+import { customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { StaffShift } from '../core/library/city/shops/staff';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
+import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
 import { loopX } from '../core/library/scene-world';
 import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
+import { useArtStyle } from './art-setting';
+import { placeSill, sillBox, sillFigTransform } from './door-passage';
+import { useFigureRegistry } from './figure/figure-host';
+import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
 import { CityEventSprite } from './city-event-sprites';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, shopSpriteBudget, type PosedStaff, type Swap } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
@@ -45,9 +51,9 @@ const COMPANION_GAP = 16;
 // Couple (Saint-Valentin) : le second adulte marche à côté, à taille normale.
 const PAIR_GAP = 13;
 // Durée du fondu d'apparition/disparition (CSS) ; un absent continue d'avancer tant qu'il s'efface (avec une petite marge).
-const FADE_S = 3;
-// Fondu court des habitants (leur présence est réécrite par la boucle) : ils n'apparaissent ni ne disparaissent d'un coup
-// en pleine rue. Sert aussi aux voitures qui s'effacent devant un véhicule d'événement. Aucun fondu en mouvement réduit.
+const FADE_S = 3; // fondu des véhicules seulement (les passants entrent et sortent par les bords)
+// Fondu court des voitures qui s'effacent devant un véhicule d'événement (les habitants n'ont plus de fondu : ils passent le
+// seuil de leur porte, voir residentView).
 const RESIDENT_FADE_S = 0.4;
 // Les vélos roulent sur une piste au bord de la file du premier plan (côté droit du sens de marche, vers le spectateur).
 const BIKE_TRACK_DY = 2;
@@ -97,24 +103,64 @@ export function StreetLamps({ width, height, seed, minutes, daylight, forcedNigh
   );
 }
 
-const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number): string => {
+// Marge hors champ (px) d'un groupe : EDGE_PAD + étendue de ses accompagnants (unités du sprite, demi-largeur ~6 comprise) à l'échelle du passant.
+// Reste sous WORLD_MARGIN (80) : chaque groupe sort entièrement du champ à chaque tour.
+export const pedEdgePad = (p: Pedestrian, m: CityMetrics): number => {
+  const trail = p.pair ? PAIR_GAP : p.companions.length * COMPANION_GAP;
+  return EDGE_PAD + (trail + 6) * m.unit * STREET_SCALE.person * p.scale;
+};
+
+// `mirror` : le sprite classique se retourne selon le sens ; le pantin Ghibli se tourne de profil (pedPose), sans miroir.
+const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number, mirror: boolean): string => {
   const x = loopX(p.phase, p.dir * p.speed, width, t);
   // Légère profondeur sur le trottoir : les passants ne marchent pas tous sur la même ligne.
   const y = m.walkY - (p.depth - 0.5) * m.unit * 6;
   const k = m.unit * STREET_SCALE.person * p.scale;
-  return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(p.dir * k).toFixed(3)} ${k.toFixed(3)})`;
+  return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${((mirror ? p.dir : 1) * k).toFixed(3)} ${k.toFixed(3)})`;
 };
 
-const residentTransform = (trip: Trip, x: number, m: CityMetrics): string => {
-  const k = m.unit * STREET_SCALE.person * trip.scale;
-  return `translate(${x.toFixed(1)} ${m.doorY.toFixed(1)}) scale(${(trip.dir * k).toFixed(3)} ${k.toFixed(3)})`;
+// Pose d'un passant Ghibli : profil dans le sens de marche, image réglée sur la distance (unités du pantin). Mouvement réduit
+// (`still`) : debout, toujours de profil (pas de jambes figées en plein pas).
+export const pedPose = (p: Pedestrian, m: CityMetrics, t: number, still = false): { yaw: number; gait: 'walk' | 'stand'; phase: number; head: 0 } => {
+  if (still) return { yaw: facingYaw(p.dir), gait: 'stand', phase: 0, head: 0 };
+  const k = m.unit * STREET_SCALE.person * p.scale;
+  return { yaw: facingYaw(p.dir), gait: 'walk', phase: phaseIndexOf((p.phase + p.speed * t) / k), head: 0 };
 };
 
-// Position et présence d'un habitant à l'instant t : présent si son trajet a lieu dans ce tour de cycle et s'il est en route.
-const residentState = (trip: Trip, gate: number, width: number, t: number): { active: boolean; x: number; fade: number } => {
-  const pos = tripAt(trip, width, t);
-  const active = pos !== null && tripHappens(trip, t, gate);
-  return { active, x: pos?.x ?? trip.doorX, fade: active && pos ? pos.fade : 0 };
+// Habitant : le nœud de rue (`[data-resident]`) et le nœud de porte (`svg[data-resident-door]`, rogné à l'ouverture sombre
+// de l'entrée) ne sont jamais visibles ensemble. Un seul nœud de porte par trajet : au seuil de l'AUTRE porte (`endDoorX`),
+// son attribut x est réécrit (simple, sans nœud superflu ; d'une porte à l'autre, seul le x de l'ouverture change).
+const residentScale = (trip: Trip, m: CityMetrics): number => m.unit * STREET_SCALE.person * trip.scale;
+// `mirror` : le sprite classique se retourne selon le sens ; le pantin Ghibli se tourne par `yaw`.
+const residentTransform = (trip: Trip, x: number, m: CityMetrics, mirror: boolean): string => {
+  const k = residentScale(trip, m);
+  return `translate(${x.toFixed(1)} ${m.doorY.toFixed(1)}) scale(${((mirror ? trip.dir : 1) * k).toFixed(3)} ${k.toFixed(3)})`;
+};
+// Centre de la porte du seuil en cours (la sienne, ou celle de l'autre immeuble au bout du trajet).
+const tripDoorX = (trip: Trip, pos: Passage): number => (pos.x === trip.doorX || trip.endDoorX === null ? trip.doorX : trip.endDoorX);
+const doorOpening = (centerX: number, m: CityMetrics) => entranceOpening(centerX - DOOR_WIDTH / 2, m);
+// Pose Ghibli d'un habitant (rue : image réglée sur la distance ; seuil : la profondeur fait avancer les pas). Mouvement réduit
+// (`still`) : debout, tourné dans le sens du passage.
+const residentPose = (trip: Trip, pos: Passage, m: CityMetrics, still: boolean): { yaw: number; gait: 'walk' | 'step' | 'stand'; phase: number; head: 0 } =>
+  still ? { yaw: pos.yaw, gait: 'stand', phase: 0, head: 0 } : { yaw: pos.yaw, gait: pos.gait, phase: phaseIndexOf(pos.walked / residentScale(trip, m) + pos.depth * 8), head: 0 };
+
+// Verrou du tirage : décidé au premier instant observé de chaque tour de cycle, gardé tout le tour (un changement de minute,
+// donc de probabilité, ne fait pas disparaître un habitant en route).
+type TripLock = Map<string, { turn: number; on: boolean }>;
+const lockedHappens = (lock: TripLock, trip: Trip, t: number, gate: number): boolean => {
+  const turn = Math.floor((t + trip.phase) / TRIP_CYCLE);
+  const got = lock.get(trip.id);
+  if (got && got.turn === turn) return got.on;
+  const on = tripHappens(trip, t, gate);
+  lock.set(trip.id, { turn, on });
+  return on;
+};
+
+// État d'un habitant à l'instant t : passage s'il a lieu ce tour-ci, et nœud visible (rue ou porte).
+const residentView = (trip: Trip, lock: TripLock, gate: number, width: number, t: number): { pos: Passage | null; street: boolean; door: boolean } => {
+  const raw = tripAt(trip, width, t);
+  const pos = raw !== null && lockedHappens(lock, trip, t, gate) ? raw : null;
+  return { pos, street: pos !== null && pos.stage !== 'threshold', door: pos !== null && pos.stage === 'threshold' };
 };
 
 // Opacité d'un événement : fondu des événements fixes, aucun fondu en mouvement réduit (opacité 1).
@@ -124,12 +170,35 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const root = useRef<SVGGElement | null>(null);
   // Passants et véhicules présents au dernier placement : ceux qui disparaissent continuent d'avancer pendant leur fondu.
   const moving = useRef<Set<string>>(new Set());
+  // Présence affichée de chaque passant, gardée entre les minutes : elle ne suit la présence voulue qu'au bord du monde.
+  // Remise à zéro quand la population change (largeur, graine) : sinon des présences d'une autre population seraient reprises.
+  const shownPeds = useRef<Map<string, boolean>>(new Map());
+  const shownFor = useRef<Pedestrian[] | null>(null);
+  // Verrou des tirages de trajets, gardé entre les minutes (remis à zéro si les trajets changent).
+  const tripLock = useRef<TripLock>(new Map());
+  const lockFor = useRef<Trip[] | null>(null);
+  // Verrou des tirages de visites des commerces, gardé entre les minutes (les visites sont recalculées à chaque minute avec les
+  // vues des locaux, mais leurs identifiants et tirages ne dépendent que de la rue) : remis à zéro si la rue change.
+  const visitLock = useRef<VisitLock>(new Map());
+  const visitLockFor = useRef('');
   // Calculs mémoïsés par (width, height, seed) : populations, entrées, trajets, façades. Recalculés par minute : intensités.
   const metrics = useMemo(() => cityMetrics(height), [height]);
+  // Art Ghibli : les passants sont des pantins (sprites du registre de la pièce), posés par la boucle, sans miroir.
+  const [art] = useArtStyle();
+  const ghibli = art === 'ghibli';
+  const figures = useFigureRegistry();
   const peds = useMemo(() => pedestriansFor(width, seed), [width, seed]);
+  if (shownFor.current !== peds) {
+    shownFor.current = peds;
+    shownPeds.current = new Map();
+  }
   const vehicles = useMemo(() => vehiclesFor(width, seed), [width, seed]);
   const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
-  const trips = useMemo(() => tripsFor(doors, seed), [doors, seed]);
+  const trips = useMemo(() => tripsFor(doors, seed, width), [doors, seed, width]);
+  if (lockFor.current !== trips) {
+    lockFor.current = trips;
+    tripLock.current = new Map();
+  }
   const doorXs = useMemo(() => doors.map((d) => d.x), [doors]);
   const facades = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
   const frame = useMemo<EventFrame>(() => ({ width, height, metrics, facades }), [width, height, metrics, facades]);
@@ -148,10 +217,16 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Commerces : deux visites par local (seulement si la rue a des commerces) ; probabilité d'une visite recalculée à la minute,
   // nulle si le local n'est pas ouvert, et en mouvement réduit (aucun client ne bouge).
   const shops = useStreetShops(width, height, seed, city);
+  // Bouts de trajet des clients : les entrées d'immeubles (centres), comme les habitants.
+  const doorCenters = useMemo(() => doors.map((d) => d.x + DOOR_WIDTH / 2), [doors]);
   const allVisits = useMemo(
-    () => visitsFor(shops.slots, shops.frames, seed, (id) => shops.views.find((v) => v.slot.id === id)?.sign?.type ?? null),
-    [shops.slots, shops.frames, shops.views, seed],
+    () => visitsFor(shops.slots, shops.frames, seed, (id) => shops.views.find((v) => v.slot.id === id)?.sign?.type ?? null, doorCenters, width),
+    [shops.slots, shops.frames, shops.views, seed, doorCenters, width],
   );
+  if (visitLockFor.current !== `${width}:${height}:${seed}`) {
+    visitLockFor.current = `${width}:${height}:${seed}`;
+    visitLock.current = new Map();
+  }
   const visits = shops.views.length > 0 ? allVisits : NO_VISITS;
   // Personnel : postes du jour mémoïsés par (rue, jour) — staffShiftsAt recalcule deux plans à chaque appel.
   const date = city.day.date;
@@ -207,29 +282,64 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let swaps: Swap[] = [];
     let waiters: Waiter[] = [];
     let crews: Crew[] = [];
+    // Figures Ghibli de chaque passant (compagnons, puis lui-même, au même pas), trouvées à la collecte des nœuds.
+    const pedFigs = new Map<string, Element[]>();
+    // Nœuds de porte des habitants (<svg> imbriqués), par trajet.
+    const doorNodes = new Map<string, Element>();
     let muted: Set<string> = new Set();
     let posedAt = -Infinity;
-    const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
+    // Véhicules seulement : les passants ne se fondent plus, leur présence bascule au bord (pedShown).
+    const moves = (id: string, t: number): boolean => first || vehActive.has(id) || (t < leaveUntil && leaving.has(id));
     return (now: number): void => {
       // Mouvement réduit : toujours le même instant, y compris quand le placement est refait après un changement de minute.
       const t = still ? frozen.current! : now;
       const el = root.current;
       if (!el) return;
+      // Une fois par image : peint les sprites demandés (budget par image) et applique le plafond.
+      if (ghibli) figures.flush();
       if (!nodes) {
         nodes = new Map();
         for (const node of el.querySelectorAll<SVGGElement>('[data-life-id]')) nodes.set(node.getAttribute('data-life-id')!, node);
-        leaving = new Set([...moving.current].filter((id) => !vehActive.has(id) && !pedActive.has(id)));
+        leaving = new Set([...moving.current].filter((id) => !vehActive.has(id)));
         leaveUntil = t + FADE_S + 0.2;
-        moving.current = new Set([...vehActive, ...pedActive]);
+        moving.current = new Set(vehActive);
+        doorNodes.clear();
+        for (const node of el.querySelectorAll('svg[data-resident-door]')) doorNodes.set(node.getAttribute('data-trip-id')!, node);
         staff = collectPosedStaff(el);
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
         crews = collectMovers(el);
+        if (ghibli) {
+          for (const p of peds) {
+            const node = nodes.get(p.id);
+            if (node) pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
+          }
+        }
         // Plafond global des figurants des commerces : convives de terrasse cachés, visites suspendues pour la minute.
         muted = shopSpriteBudget(el, width);
       }
       for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
-      for (const p of peds) if (moves(p.id, t)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
+      for (const p of peds) {
+        const wanted = pedActive.has(p.id);
+        const prev = shownPeds.current.get(p.id) ?? wanted;
+        // Mouvement réduit : pas de boucle, la présence voulue s'applique telle quelle. Sinon elle ne bascule qu'hors champ.
+        const next = still ? wanted : pedShown(prev, wanted, loopX(p.phase, p.dir * p.speed, width, t), width, pedEdgePad(p, metrics));
+        shownPeds.current.set(p.id, next);
+        const node = nodes.get(p.id);
+        if (node && next !== prev) {
+          setIfChanged(node, 'data-active', next ? 'true' : 'false');
+          setIfChanged(node, 'opacity', next ? '1' : '0');
+        }
+        // Ghibli : un passant caché lâche ses sprites (<image> sans href), seulement à la bascule ou au premier placement.
+        if (ghibli && !next && (first || next !== prev)) for (const fig of pedFigs.get(p.id) ?? []) hideFigure(figures, fig);
+        // Un passant caché n'est pas touché (sauf au premier placement de la scène).
+        if (!next && !first) continue;
+        node?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
+        if (ghibli && next) {
+          const pose = pedPose(p, metrics, t, still);
+          for (const fig of pedFigs.get(p.id) ?? []) poseFigure(figures, fig, pose);
+        }
+      }
       for (const e of events.active) {
         const node = nodes.get(e.key);
         if (!node) continue;
@@ -240,13 +350,29 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       for (const trip of trips) {
         const node = nodes.get(trip.id);
         if (!node) continue;
-        const s = residentState(trip, trip.kind === 'out' ? flow.out : flow.in, width, t);
-        // N'écrire que ce qui change : la plupart des habitants restent chez eux, inutile de toucher leur nœud à chaque image.
-        setIfChanged(node, 'data-active', s.active ? 'true' : 'false');
-        setIfChanged(node, 'opacity', s.fade.toFixed(2));
-        if (s.active || first) node.setAttribute('transform', residentTransform(trip, s.x, metrics));
+        const v = residentView(trip, tripLock.current, trip.kind === 'out' ? flow.out : flow.in, width, t);
+        // N'écrire que ce qui change : la plupart des habitants restent chez eux, inutile de toucher leurs nœuds à chaque image.
+        // Ghibli : nœud éteint (bascule ou premier placement) → figure cachée, sprite libéré.
+        const streetOff = !v.street && (first || node.getAttribute('data-active') !== 'false');
+        setIfChanged(node, 'data-active', v.street ? 'true' : 'false');
+        setIfChanged(node, 'opacity', v.street ? '1.00' : '0.00');
+        if (v.street && v.pos) {
+          node.setAttribute('transform', residentTransform(trip, v.pos.x, metrics, !ghibli));
+          if (ghibli) poseFigure(figures, node.querySelector(':scope > [data-figure]'), residentPose(trip, v.pos, metrics, still));
+        } else if (first) node.setAttribute('transform', residentTransform(trip, trip.doorX, metrics, !ghibli));
+        if (ghibli && streetOff) hideFigure(figures, node.querySelector(':scope > [data-figure]'));
+        const dnode = doorNodes.get(trip.id);
+        if (!dnode) continue;
+        const doorOff = !v.door && (first || dnode.getAttribute('data-active') !== 'false');
+        setIfChanged(dnode, 'data-active', v.door ? 'true' : 'false');
+        setIfChanged(dnode, 'opacity', v.door ? '1.00' : '0.00');
+        if (v.door && v.pos) {
+          // Cadre large sur le seuil (parapluie compris), resserré sur l'ouverture avec la profondeur (door-passage.ts).
+          placeSill(dnode, doorOpening(tripDoorX(trip, v.pos), metrics), v.pos, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir);
+          if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics, still));
+        } else if (ghibli && doorOff) hideFigure(figures, dnode.querySelector('[data-figure]'));
       }
-      placeCustomers(nodes, visits, gates, width, metrics, t, first, muted);
+      placeCustomers(nodes, visits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
       placeSwaps(swaps, t);
       if (!still) {
         placeWaiters(waiters, t);
@@ -266,7 +392,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky]);
+  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky, ghibli, figures]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
@@ -389,23 +515,36 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           sky={sky}
           rainy={rainy}
           umbrella={intensity.umbrellas}
-          fade={still ? undefined : `${RESIDENT_FADE_S}s`}
+          lock={visitLock.current}
+          ghibli={ghibli}
         />
         {trips.map((trip) => {
-          const s = residentState(trip, gateOf(trip), width, t0);
-          return (
-            <g
-              key={trip.id}
-              data-life-id={trip.id}
-              data-resident=""
-              data-trip={trip.kind}
-              data-active={s.active ? 'true' : 'false'}
-              transform={residentTransform(trip, s.x, metrics)}
-              opacity={s.fade.toFixed(2)}
-              style={still ? undefined : { transition: `opacity ${RESIDENT_FADE_S}s ease` }}
-            >
+          const v = residentView(trip, tripLock.current, gateOf(trip), width, t0);
+          // Rendu initial = première image : au repos, l'habitant est posé devant sa porte, de face.
+          const rest: Passage = { stage: 'street', x: trip.doorX, depth: 0, yaw: 4, gait: 'walk', walked: 0 };
+          const sPos = v.street && v.pos ? v.pos : rest;
+          const dPos = v.door && v.pos ? v.pos : { ...rest, depth: 1 };
+          const { clip: o, dark } = sillBox(doorOpening(v.door && v.pos ? tripDoorX(trip, v.pos) : trip.doorX, metrics), dPos.depth, metrics, residentScale(trip, metrics));
+          // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans sprite.
+          const sprite = (p: Passage, on: boolean): ReactElement =>
+            ghibli ? (
+              <GhibliFigure outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={residentPose(trip, p, metrics, still)} hidden={!on} />
+            ) : (
               <PersonSprite outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} />
-            </g>
+            );
+          return (
+            <Fragment key={trip.id}>
+              <g data-life-id={trip.id} data-trip-id={trip.id} data-resident="" data-trip={trip.kind} data-active={v.street ? 'true' : 'false'} transform={residentTransform(trip, sPos.x, metrics, !ghibli)} opacity={v.street ? '1.00' : '0.00'}>
+                {sprite(sPos, v.street)}
+              </g>
+              {/* Nœud de porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche est copiée par <use>). */}
+              <svg data-resident-door="" data-trip-id={trip.id} data-active={v.door ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={v.door ? '1.00' : '0.00'}>
+                <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={v.door ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
+                <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir)} opacity={(1 - dPos.depth).toFixed(2)}>
+                  {sprite(dPos, v.door)}
+                </g>
+              </svg>
+            </Fragment>
           );
         })}
         {/* Devant les façades, entre la ligne des portes et celle des passants : terrasses, cordon, videurs et file. */}
@@ -423,6 +562,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             sky={sky}
             seed={seed}
             sessionT0={frozen.current!}
+            ghibli={ghibli}
           />
         ))}
         {/* Déménagement : les porteurs (dessinés avant le camion, ils passent derrière lui en y entrant). */}
@@ -430,7 +570,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} />
         ))}
         {peds.map((p) => {
-          const active = pedActive.has(p.id);
+          // Présence affichée (pas la voulue) : mémorisée au premier rendu, puis changée seulement par la boucle, au bord.
+          if (!shownPeds.current.has(p.id)) shownPeds.current.set(p.id, pedActive.has(p.id));
+          const active = still ? pedActive.has(p.id) : shownPeds.current.get(p.id)!;
           return (
             <g
               key={p.id}
@@ -440,17 +582,21 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-profile={p.profile}
               data-mark={marks.get(p.id) ?? undefined}
               data-active={active ? 'true' : 'false'}
-              transform={pedTransform(p, metrics, width, t0)}
+              transform={pedTransform(p, metrics, width, t0, !ghibli)}
               opacity={active ? 1 : 0}
-              style={{ transition: `opacity ${FADE_S}s ease` }}
             >
               {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7. */}
               {p.companions.map((outfit, k) => (
-                <g key={k} data-companion="" transform={p.pair ? `translate(${-PAIR_GAP} 0) scale(0.95)` : `translate(${-COMPANION_GAP * (k + 1)} 0) scale(0.7)`}>
-                  <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />
+                <g key={k} data-companion="" transform={p.pair ? `translate(${(ghibli ? -p.dir : -1) * PAIR_GAP} 0) scale(0.95)` : `translate(${(ghibli ? -p.dir : -1) * COMPANION_GAP * (k + 1)} 0) scale(0.7)`}>
+                  {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0, still)} hidden={!active} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
                 </g>
               ))}
-              <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={marks.get(p.id)} />
+              {/* En Ghibli, pas de signes de fête avant G3b. */}
+              {ghibli ? (
+                <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pedPose(p, metrics, t0, still)} hidden={!active} />
+              ) : (
+                <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={marks.get(p.id)} />
+              )}
             </g>
           );
         })}

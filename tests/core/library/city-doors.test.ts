@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { cityIntensity } from '../../../src/core/library/city/intensity';
 import { dayContext } from '../../../src/core/library/city/calendar';
 import { DOOR_MARGIN, DOOR_WIDTH, MAX_TRIP_PX, RESIDENT_DOORS_PER_720, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor } from '../../../src/core/library/city/doors';
+import { THRESHOLD_S } from '../../../src/core/library/city/doorway';
+import { TURN_S } from '../../../src/core/library/figure/gait';
 import { WORLD_MARGIN, citySkyline } from '../../../src/core/library/scene-world';
 
 describe('doorsFor', () => {
@@ -49,11 +51,14 @@ describe('trajets d’habitants', () => {
     const inn = trips.find((t) => t.kind === 'in')!;
     const startOut = tripAt({ ...out, phase: 0 }, 720, 0)!;
     expect(startOut.x).toBeCloseTo(out.doorX, 3);
-    expect(startOut.fade).toBe(0);
-    const arrive = tripAt({ ...inn, phase: 0 }, 720, Math.min(inn.dir > 0 ? inn.doorX + WORLD_MARGIN : 720 + WORLD_MARGIN - inn.doorX, MAX_TRIP_PX) / inn.speed - 0.01);
+    expect(startOut.stage).toBe('threshold');
+    expect(startOut.depth).toBe(1);
+    const street = Math.abs(inn.doorX - (inn.endDoorX ?? (inn.dir > 0 ? -WORLD_MARGIN : 720 + WORLD_MARGIN))) / inn.speed;
+    const arrive = tripAt({ ...inn, phase: 0 }, 720, (inn.endDoorX !== null ? THRESHOLD_S + TURN_S : 0) + street + THRESHOLD_S + TURN_S - 0.01);
     expect(arrive).not.toBeNull();
-    expect(Math.abs(arrive!.x - inn.doorX)).toBeLessThan(inn.speed * 0.05);
-    expect(arrive!.fade).toBeLessThan(0.05);
+    expect(arrive!.x).toBeCloseTo(inn.doorX, 3);
+    expect(arrive!.stage).toBe('threshold');
+    expect(arrive!.depth).toBeGreaterThan(0.95);
   });
   it('n’existe plus une fois le monde traversé', () => {
     const out = trips[0]!;
@@ -70,14 +75,14 @@ describe('trajets d’habitants', () => {
 describe('trajets plafonnés sur un grand monde', () => {
   const width = 2880;
   const doors = doorsFor(width, 340, 5);
-  const trips = tripsFor(doors, 5);
+  const trips = tripsFor(doors, 5, width);
   it('ne parcourent jamais plus de MAX_TRIP_PX et ne sont jamais coupés par le cycle', () => {
     expect(trips.length).toBeGreaterThan(0);
     // une porte au-delà du bord du monde (dernier immeuble qui dépasse) n'a pas de trajet visible dans ce sens
     for (const trip of trips.filter((t) => (t.dir > 0 ? width + WORLD_MARGIN - t.doorX : t.doorX + WORLD_MARGIN) > 60 && (t.dir > 0 ? t.doorX + WORLD_MARGIN : width + WORLD_MARGIN - t.doorX) > 60)) {
       const base = { ...trip, phase: 0 };
-      let prev: { x: number; fade: number } | null = null;
-      let maxFade = 0;
+      let prev: { x: number; stage: string } | null = null;
+      let sawStreet = false;
       let steps = 0;
       for (let t = 0; t < TRIP_CYCLE; t += 0.05) {
         const p = tripAt(base, width, t);
@@ -88,22 +93,46 @@ describe('trajets plafonnés sur un grand monde', () => {
         }
         if (prev) expect(Math.abs(p.x - prev.x)).toBeLessThan(trip.speed * 0.05 + 1e-6);
         expect(Math.abs(p.x - trip.doorX)).toBeLessThanOrEqual(MAX_TRIP_PX + 1);
-        maxFade = Math.max(maxFade, p.fade);
+        if (p.stage === 'street') sawStreet = true;
         prev = p;
         steps++;
       }
       expect(steps).toBeGreaterThan(10);
-      expect(maxFade).toBe(1);
-      expect(prev!.fade).toBeLessThan(0.1);
-      expect(tripAt(base, width, 0)!.fade).toBe(0);
+      expect(sawStreet).toBe(true);
+      expect(tripAt(base, width, 0)!.stage).toBe(trip.kind === 'out' || trip.endDoorX !== null ? 'threshold' : 'street');
     }
   });
-  it('un habitant qui sort loin du bord s’efface au plafond', () => {
-    const out = trips.find((t) => t.kind === 'out' && (t.dir > 0 ? width + WORLD_MARGIN - t.doorX : t.doorX + WORLD_MARGIN) > MAX_TRIP_PX + 50)!;
+  it('un habitant qui sort loin du bord finit à une autre porte, pas en pleine rue', () => {
+    const out = trips.find((t) => t.kind === 'out' && t.endDoorX !== null)!;
     expect(out).toBeDefined();
-    const end = MAX_TRIP_PX / out.speed;
-    expect(tripAt({ ...out, phase: 0 }, width, end - 0.01)!.fade).toBeLessThan(0.05);
-    expect(tripAt({ ...out, phase: 0 }, width, end + 0.01)).toBeNull();
+    expect(Math.abs(out.endDoorX! - out.doorX)).toBeLessThanOrEqual(MAX_TRIP_PX);
+    const end = Math.abs(out.endDoorX! - out.doorX) / out.speed + THRESHOLD_S + TURN_S;
+    expect(tripAt({ ...out, phase: 0 }, width, end + 0.5)!.stage).toMatch(/turn|threshold/);
+    expect(tripAt({ ...out, phase: 0 }, width, end + 1.5)).toBeNull();
+  });
+});
+
+describe('durée des trajets', () => {
+  it('jamais coupés par le cycle, et finissent à une porte ou hors champ (graines 1 à 6, mondes de 720 à 6000 px)', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      for (const width of [720, 1440, 3456, 6000]) {
+        for (const trip of tripsFor(doorsFor(width, 340, seed), seed, width)) {
+          const base = { ...trip, phase: 0 };
+          let first: ReturnType<typeof tripAt> = null;
+          let last: ReturnType<typeof tripAt> = null;
+          let lastT = 0;
+          for (let t = 0; t < TRIP_CYCLE; t += 0.1) {
+            const p = tripAt(base, width, t);
+            if (!p) continue;
+            first ??= p;
+            last = p;
+            lastT = t;
+          }
+          expect(lastT).toBeLessThan(TRIP_CYCLE - 1);
+          for (const end of [first!, last!]) expect(end.stage === 'threshold' || end.x < 0 || end.x > width).toBe(true);
+        }
+      }
+    }
   });
 });
 

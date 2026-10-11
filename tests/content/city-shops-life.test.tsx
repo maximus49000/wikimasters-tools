@@ -3,8 +3,12 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { StaffLayer, countShopSprites, dayShifts, staffCast } from '../../src/content/city-shops-life';
+import { StaffLayer, countShopSprites, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
+import { FigureRegistry } from '../../src/content/figure/figure-host';
+import { DOOR_SILL_HALF, DOOR_SILL_TOP, sillBox } from '../../src/content/door-passage';
+import { visitAt, visitsFor, type VisitLock } from '../../src/core/library/city/shops/customers';
 import { addDays, dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
 import { cityMetrics } from '../../src/core/library/city/metrics';
@@ -311,5 +315,208 @@ describe('CityLifeLayer : personnel et clients en geste', () => {
       expect(nodes).toHaveLength(2);
       for (const n of nodes) expect(n.querySelector(`[data-accessory="${ACCESSORY[s.tenant!.type]}"]`)).not.toBeNull();
     }
+  });
+});
+
+describe('clients : portes et verrou', () => {
+  const frames = new Map(slots.map((s) => [s.id, shopFrame(s, metrics.ground)]));
+  // Les trois nœuds d'une visite, comme les rend ShopCustomers (rue, porte du local, intérieur).
+  const nodesOf = (id: string): Map<string, Element> => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const make = (tag: string, life: string): Element => {
+      const n = document.createElementNS(ns, tag);
+      n.setAttribute('data-life-id', life);
+      return n;
+    };
+    return new Map([[id, make('g', id)], [`${id}-door`, make('svg', `${id}-door`)], [`${id}-in`, make('g', `${id}-in`)]]);
+  };
+  const active = (nodes: Map<string, Element>): string[] => [...nodes.values()].filter((n) => n.getAttribute('data-active') === 'true').map((n) => n.getAttribute('data-life-id')!);
+  // Nœud de porte complet (ombre + figure), comme le rend ShopCustomers.
+  const withDoorParts = (nodes: Map<string, Element>, id: string): { svg: Element; dark: Element; fig: Element } => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = nodes.get(`${id}-door`)!;
+    const dark = document.createElementNS(ns, 'rect');
+    dark.setAttribute('data-door-dark', '');
+    const fig = document.createElementNS(ns, 'g');
+    fig.setAttribute('data-door-fig', '');
+    svg.append(dark, fig);
+    return { svg, dark, fig };
+  };
+  const translateOf = (n: Element): [number, number] => {
+    const m = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(n.getAttribute('transform')!)!;
+    return [Number(m[1]), Number(m[2])];
+  };
+  it('passage rue → porte du local : pieds sur m.doorY, cadre large sur le seuil puis resserré sur la porte, ombre sur la porte', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    let c0 = 0;
+    while (visitAt(v, W, c0 - v.phase)?.stage !== 'enter') c0 += 0.01;
+    // Début exact du seuil (dichotomie) : profondeur ≈ 0.
+    let lo = c0 - 0.01;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + c0) / 2;
+      if (visitAt(v, W, mid - v.phase)?.stage === 'enter') c0 = mid;
+      else lo = mid;
+    }
+    const nodes = nodesOf(v.id);
+    const { svg, dark, fig } = withDoorParts(nodes, v.id);
+    const lock: VisitLock = new Map();
+    const place = (c: number, first = false) => placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, c - v.phase, first, new Set(), { lock });
+    place(c0, true);
+    const p0 = visitAt(v, W, c0 - v.phase)!.passage!;
+    expect(p0.depth).toBeLessThan(1e-4);
+    expect(svg.getAttribute('data-active')).toBe('true');
+    // Pieds dans le repère du monde : y du <svg> + translation de la figure.
+    const [fx, fy] = translateOf(fig);
+    expect(Math.abs(Number(svg.getAttribute('y')) + fy - metrics.doorY)).toBeLessThan(0.1);
+    expect(Math.abs(Number(svg.getAttribute('x')) + fx - v.doorX)).toBeLessThan(0.1);
+    expect(Number(svg.getAttribute('width'))).toBeGreaterThanOrEqual(2 * DOOR_SILL_HALF);
+    // En haut : toute la figure, parapluie compris.
+    const k = metrics.unit * 0.55 * v.scale;
+    expect(Number(svg.getAttribute('y'))).toBeLessThanOrEqual(metrics.doorY - DOOR_SILL_TOP * k + 0.01);
+    // L'ombre reste exactement sur la porte du local.
+    const darkAt = (): number => Number(svg.getAttribute('x')) + Number(dark.getAttribute('x'));
+    const darkTop = (): number => Number(svg.getAttribute('y')) + Number(dark.getAttribute('y'));
+    expect(Math.abs(darkTop() - v.shopDoor.y)).toBeLessThan(0.02);
+    expect(Math.abs(darkAt() - v.shopDoor.x)).toBeLessThan(0.02);
+    expect(Number(dark.getAttribute('width'))).toBeCloseTo(v.shopDoor.w, 2);
+    // Au-delà de 0,4 de profondeur : le cadre est la porte.
+    for (const dc of [0.45, 0.7, 0.95]) {
+      place(c0 + dc);
+      expect(visitAt(v, W, c0 + dc - v.phase)!.passage!.depth).toBeGreaterThanOrEqual(0.4);
+      expect(Number(svg.getAttribute('width'))).toBeCloseTo(v.shopDoor.w, 2);
+      expect(Number(svg.getAttribute('x'))).toBeCloseTo(v.shopDoor.x, 2);
+      expect(Number(svg.getAttribute('y'))).toBeCloseTo(v.shopDoor.y, 2);
+      expect(Math.abs(darkAt() - v.shopDoor.x)).toBeLessThan(0.02);
+      expect(Math.abs(darkTop() - v.shopDoor.y)).toBeLessThan(0.02);
+      // Pieds toujours sous la porte, sur la ligne de la rue moins l'enfoncement.
+      expect(Number(svg.getAttribute('y')) + Number(svg.getAttribute('height'))).toBeCloseTo(metrics.doorY, 2);
+    }
+  });
+  it('cadre de porte : à profondeur 0, ≥ 20 px de large et haut jusqu’au sommet du parapluie ; la porte dès 0,4', () => {
+    const door = { x: 100, y: 220, w: 6, h: 18 };
+    const k = 0.55;
+    const z = sillBox(door, 0, metrics, k);
+    expect(z.clip.w).toBeGreaterThanOrEqual(20);
+    expect(z.clip.y).toBeLessThanOrEqual(metrics.doorY - DOOR_SILL_TOP * k);
+    expect(z.clip.y + z.dark.y).toBeCloseTo(door.y, 6);
+    for (const d of [0.4, 0.6, 1]) {
+      const b = sillBox(door, d, metrics, k);
+      expect(b.clip.x).toBeCloseTo(door.x, 6);
+      expect(b.clip.y).toBeCloseTo(door.y, 6);
+      expect(b.clip.w).toBeCloseTo(door.w, 6);
+      expect(b.dark.x).toBeCloseTo(0, 6);
+      expect(b.dark.y).toBeCloseTo(0, 6);
+      expect([b.dark.w, b.dark.h]).toEqual([door.w, door.h]);
+    }
+    const mid = sillBox(door, 0.2, metrics, k).clip;
+    expect(mid.w).toBeLessThan(z.clip.w);
+    expect(mid.w).toBeGreaterThan(door.w);
+    expect(mid.y).toBeGreaterThan(z.clip.y);
+    expect(mid.y).toBeLessThan(door.y);
+  });
+  it('changement de minute pendant une visite : le client reste (verrou)', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const t0 = -v.phase;
+    expect(visitAt(v, W, t0 + 10)?.stage).toBe('in');
+    const nodes = nodesOf(v.id);
+    const lock: VisitLock = new Map();
+    placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, t0, true, new Set(), { lock });
+    expect(active(nodes)).toHaveLength(1);
+    placeCustomers(nodes, [v], new Map([[v.slotId, 0]]), W, metrics, t0 + 10, false, new Set(), { lock });
+    expect(active(nodes)).toEqual([v.id]);
+    // Sans verrou, la probabilité nulle aurait retiré le client en pleine rue.
+    const bare = nodesOf(v.id);
+    placeCustomers(bare, [v], new Map([[v.slotId, 0]]), W, metrics, t0 + 10, true, new Set(), { lock: new Map() });
+    expect(active(bare)).toHaveLength(0);
+  });
+  it('visite suspendue par le plafond au moment du verrou : absente tout le tour', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const t0 = -v.phase;
+    const nodes = nodesOf(v.id);
+    const lock: VisitLock = new Map();
+    placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, t0, true, new Set([v.id]), { lock });
+    placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, t0 + 10, false, new Set(), { lock });
+    expect(active(nodes)).toHaveLength(0);
+  });
+  it('Ghibli : à chaque bascule, la figure du nœud éteint perd son href (symbole libéré), celle du nœud allumé le retrouve', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const nodes = nodesOf(v.id);
+    const ns = 'http://www.w3.org/2000/svg';
+    const figures = new FigureRegistry('tc', { perFrame: 50 });
+    const palette = figures.addPalette({ 'f-ink': '#33241f' });
+    for (const n of nodes.values()) {
+      const fig = document.createElementNS(ns, 'g');
+      fig.setAttribute('data-figure', '');
+      fig.setAttribute('data-sig', 'short.long.pants.none.n');
+      fig.setAttribute('data-palette', palette);
+      const use = document.createElementNS(ns, 'image');
+      use.setAttribute('href', 'data:image/png;base64,stale');
+      fig.setAttribute('data-key', 'stale');
+      fig.append(use);
+      n.append(fig);
+    }
+    const lock: VisitLock = new Map();
+    const writes = vi.spyOn(Element.prototype, 'removeAttribute');
+    let toggles = 0;
+    let was = '';
+    for (let c = 0; c < 240; c += 0.25) {
+      placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, c - v.phase, c === 0, new Set(), { lock, ghibli: true, figures });
+      figures.flush();
+      for (const n of nodes.values()) {
+        const use = n.querySelector('[data-figure] > image')!;
+        expect(use.hasAttribute('href')).toBe(n.getAttribute('data-active') === 'true');
+      }
+      const now = active(nodes).join();
+      if (now !== was) toggles++;
+      was = now;
+    }
+    expect(toggles).toBeGreaterThan(2);
+    // N'écrit qu'aux bascules : 2 retraits (href, data-key) par extinction, jamais à chaque image.
+    expect(writes.mock.calls.filter(([a]) => a === 'href').length).toBeLessThanOrEqual(toggles + 3);
+    writes.mockRestore();
+  });
+  it('un seul nœud actif à la fois : rue, porte du local (seuil) ou intérieur', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const nodes = nodesOf(v.id);
+    const lock: VisitLock = new Map();
+    const seen = new Set<string>();
+    for (let c = 0; c < 240; c += 0.25) {
+      placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, c - v.phase, c === 0, new Set(), { lock });
+      const on = active(nodes);
+      expect(on.length).toBeLessThanOrEqual(1);
+      on.forEach((id) => seen.add(id));
+    }
+    expect([...seen].sort()).toEqual([v.id, `${v.id}-door`, `${v.id}-in`].sort());
+  });
+  it('aucun client sans fondu : nœuds sans opacité intermédiaire ni transition', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
+    const c = life(600);
+    const nodes = c.querySelectorAll('[data-customer], [data-customer-inside], svg[data-customer-door]');
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const n of nodes) {
+      expect(['1.00', '0.00']).toContain(n.getAttribute('opacity'));
+      expect((n as SVGElement).style.transition).toBe('');
+    }
+  });
+  it('Ghibli : chaque client est un pantin (rue, porte, vitrine), sans miroir ni objet ; classique inchangé', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
+    try {
+      writeArt('ghibli');
+      const c = life(600);
+      const nodes = [...c.querySelectorAll('[data-customer], [data-customer-inside], svg[data-customer-door]')];
+      expect(nodes.length).toBeGreaterThan(0);
+      for (const n of nodes) {
+        expect(n.querySelector('[data-figure]')).not.toBeNull();
+        expect(n.querySelector('[data-item], [data-pose-body]')).toBeNull();
+        expect(n.getAttribute('transform') ?? '').not.toMatch(/scale\(-/);
+        // Nœud inactif : <image> sans href (aucun sprite retenu).
+        const use = n.querySelector('[data-figure] > image')!;
+        expect(use.hasAttribute('href')).toBe(n.getAttribute('data-active') === 'true');
+      }
+    } finally {
+      localStorage.removeItem(ART_KEY);
+    }
+    const classic = life(600);
+    expect(classic.querySelectorAll('[data-customer] [data-figure], [data-customer-inside] [data-figure]')).toHaveLength(0);
   });
 });
