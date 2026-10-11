@@ -222,11 +222,13 @@ describe('CityLifeLayer', () => {
         : el.hasAttribute('data-crosswalk') ? 'crosswalk'
         : el.hasAttribute('data-traffic-fixtures') ? `fixtures-${el.getAttribute('data-traffic-fixtures')}`
         : el.hasAttribute('data-crossing') ? 'crossing'
+        : el.hasAttribute('data-bus-riders') ? `riders-${el.getAttribute('data-bus-riders')}`
         : el.getAttribute('data-city-lane'));
     // Décors de fête du devant (drapeaux de lampadaires, camions élévateurs) : juste après les lampadaires ; puis la chaussée de
     // la rue privatisée (Fête de la musique), le passage piéton et le trottoir des immeubles (poteaux), les files, enfin les
-    // piétons du passage et les poteaux du trottoir d'en face, devant tout.
-    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'install-street', 'crosswalk', 'fixtures-near', 'far', 'near', 'crossing', 'fixtures-far']);
+    // piétons du passage et les poteaux du trottoir d'en face, devant tout. Voyageurs des arrêts de bus : ceux du trottoir des
+    // immeubles derrière leur poteau, la marche du premier plan derrière sa file, ceux du trottoir d'en face devant leur poteau.
+    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'install-street', 'crosswalk', 'riders-far', 'fixtures-near', 'far', 'riders-near-step', 'near', 'crossing', 'fixtures-far', 'riders-near']);
     expect(layer.querySelectorAll('[data-street-lamp][data-lit="true"]').length).toBeGreaterThan(0);
   });
   it('les vélos roulent sur leur piste, dessinés après les voitures de la file du premier plan', () => {

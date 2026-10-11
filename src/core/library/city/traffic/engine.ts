@@ -159,6 +159,17 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     stopCrowd: createStopCrowd(o.seed, 0),
   };
   setLines(w, undefined);
+  // Arrêts de bus à l'écart du passage piéton (poteaux, voyageurs, bus arrêté et sa file ne se mêlent pas au feu) : au moins
+  // 170 unités (230 pour celui d'en face, pour que les deux poteaux ne s'alignent pas), du côté tiré s'il reste dans le monde,
+  // sinon de l'autre.
+  for (const side of ['near', 'far'] as const) {
+    const gap = (side === 'near' ? 230 : 170) * o.unit;
+    const d = w.busStop[side] - w.light.x;
+    if (Math.abs(d) >= gap) continue;
+    const pref = d >= 0 ? 1 : -1;
+    const x = w.light.x + pref * gap;
+    w.busStop[side] = x > 40 * o.unit && x < o.width - 40 * o.unit ? x : w.light.x - pref * gap;
+  }
   w.light.since = w.t - 60;
   w.light.log.push({ t: w.t - 60, color: 'green' });
   w.walkerAt = w.t;
