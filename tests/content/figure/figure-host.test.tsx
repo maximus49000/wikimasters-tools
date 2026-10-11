@@ -70,3 +70,38 @@ describe('figure Ghibli', () => {
     host.remove();
   });
 });
+
+describe('éviction et références', () => {
+  it('un symbole encore référencé par un <use> du document n’est jamais retiré', () => {
+    const r = new FigureRegistry('t5', { max: 3, perFrame: 10 });
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    const first = r.ensure({ ...key, phase: 0 });
+    act(() =>
+      root.render(
+        <svg>
+          <defs><FigureDefs registry={r} /></defs>
+          <use href={first} />
+        </svg>,
+      ),
+    );
+    for (let p = 1; p < 5; p++) r.ensure({ ...key, phase: p });
+    r.flush();
+    expect(r.root.querySelector(first)).not.toBeNull();
+    expect(r.size()).toBe(3);
+    act(() => root.unmount());
+    host.remove();
+  });
+  it('une clé ancienne retouchée survit à une clé jamais retouchée', () => {
+    const r = new FigureRegistry('t6', { max: 3, perFrame: 10 });
+    const a = r.ensure({ ...key, phase: 0 });
+    const b = r.ensure({ ...key, phase: 1 });
+    r.ensure({ ...key, phase: 2 });
+    r.request({ ...key, phase: 0 });
+    r.ensure({ ...key, phase: 3 });
+    r.flush();
+    expect(r.root.querySelector(a)).not.toBeNull();
+    expect(r.root.querySelector(b)).toBeNull();
+  });
+});

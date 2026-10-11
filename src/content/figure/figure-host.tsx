@@ -91,12 +91,24 @@ export class FigureRegistry {
       this.create(key);
       made++;
     }
-    // Plafond : retirer les moins récemment utilisés (début de la Map).
-    while (this.nodes.size > this.max) {
+    // Plafond : retirer les moins récemment utilisés (début de la Map), mais jamais un symbole encore référencé par un <use>
+    // du document (figure statique qui n'appelle plus poseFigure) : il passe en fin de Map. Une passe complète sans retrait
+    // s'arrête (la taille peut alors dépasser le plafond). Racine détachée (tests) : pas de contrôle de référence.
+    const doc = this.root.isConnected ? this.root.ownerDocument : null;
+    let skipped = 0;
+    while (this.nodes.size > this.max && skipped < this.nodes.size) {
       const [k, node] = this.nodes.entries().next().value as [string, SVGGElement];
+      const id = this.ids.get(k)!;
+      if (doc?.querySelector(`use[href="#${id}"]`)) {
+        this.nodes.delete(k);
+        this.nodes.set(k, node);
+        skipped++;
+        continue;
+      }
       node.remove();
       this.nodes.delete(k);
       this.ids.delete(k);
+      skipped = 0;
     }
   }
 }
