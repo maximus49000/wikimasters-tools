@@ -1,36 +1,58 @@
 import { hashString, mulberry32 } from '../scene-world';
 import { DAB_SPREAD, cellRng, dab } from './brush';
 import { TILE, tileItems } from './city-painter';
-import type { CityPaintPlan, PaintBuilding } from './city-plan';
-import { hexRgb, jitter } from './color';
+import { hillCrestY, type CityPaintPlan, type HillHouse, type PaintBuilding } from './city-plan';
+import { hexRgb, jitter, rgba } from './color';
 import type { PaintCtx } from './paint-ctx';
 
 // Neige posée (vague Ghibli, G2) : une tranche de TILE px du monde, en coordonnées du monde, à superposer à la ville peinte.
-// Toits (sous la ligne de toit, jamais au-dessus), cheminées, rebords de fenêtres, trottoirs et rue. Chaque immeuble et chaque
-// case du sol a son propre générateur : deux tranches voisines peignent la même chose sur leur bord commun.
-export const SNOW_VERSION = 2;
+// Toits (sous la ligne de toit, jamais au-dessus), cheminées, rebords de fenêtres, trottoirs et rue, crête de la colline et
+// toits des maisons du fond (décor cellulo). Chaque immeuble et chaque case du sol a son propre générateur : deux tranches
+// voisines peignent la même chose sur leur bord commun.
+export const SNOW_VERSION = 3;
 
 const SNOW = hexRgb('#F4F8FC');
 const SNOW_SHADE = hexRgb('#D8E2EE');
-const OVERHANG = 1.2;
+const OVERHANG = 2;
+// Toit zinc : débord de 1 px, plat à top + 1.
+const ZINC_OVERHANG = 1;
 // Touches de toit : rayon ≤ 0,8, allongement 1,8 → portée ≤ 0,8 × 1,8 × DAB_SPREAD ≈ 1,66 ; centre posé sous la ligne de toit.
 const ROOF_R = 0.8;
 const ROOF_REACH = ROOF_R * 1.8 * DAB_SPREAD;
 const CELL = 40;
 
-// Haut du toit peint en x (mêmes tracés que city-painter.ts).
+// Haut du toit peint en x (mêmes tracés que city-painter.ts : débord de 2 px au premier plan, aucun au fond).
 export function roofLineY(b: PaintBuilding, x: number): number {
   const eave = b.top + b.look.roofH;
-  if (b.far || b.look.roofKind === 'gable') {
+  if (b.look.roofKind === 'gable') {
     const o = b.far ? 0 : OVERHANG;
     const half = b.w / 2 + o;
     const t = Math.min(1, Math.abs(x - (b.x + b.w / 2)) / half);
     return b.top + (eave - b.top) * t;
   }
+  if (b.look.roofKind === 'zinc') return x >= b.x - ZINC_OVERHANG && x <= b.x + b.w + ZINC_OVERHANG ? b.top + 1 : eave;
   const flat = b.top + 1;
-  if (x >= b.x + 1.5 && x <= b.x + b.w - 1.5) return flat;
-  const t = x < b.x + 1.5 ? Math.min(1, (b.x + 1.5 - x) / (1.5 + OVERHANG)) : Math.min(1, (x - (b.x + b.w - 1.5)) / (1.5 + OVERHANG));
+  // Mansarde : plat entre x + 1,5 et x + w − 1,5 au fond, x + 2 et x + w − 2 au premier plan.
+  const k = b.far ? 1.5 : 2;
+  if (x >= b.x + k && x <= b.x + b.w - k) return flat;
+  const o = b.far ? 0 : OVERHANG;
+  const t = x < b.x + k ? Math.min(1, (b.x + k - x) / (k + o)) : Math.min(1, (x - (b.x + b.w - k)) / (k + o));
   return flat + (eave - flat) * t;
+}
+
+// Emprise horizontale du toit peint (débord compris) : hors de là, l'immeuble ne touche pas le ciel.
+export function roofSpan(b: PaintBuilding): { x0: number; x1: number } {
+  const o = b.far ? 0 : b.look.roofKind === 'zinc' ? ZINC_OVERHANG : OVERHANG;
+  return { x0: b.x - o, x1: b.x + b.w + o };
+}
+
+// Cassures de la ligne de toit (murs, faîte, coins) : la ligne est affine entre deux cassures.
+export function roofCuts(b: PaintBuilding): number[] {
+  const o = b.far ? 0 : OVERHANG;
+  if (b.look.roofKind === 'zinc') return [b.x - ZINC_OVERHANG, b.x + b.w + ZINC_OVERHANG];
+  if (b.look.roofKind === 'gable') return [b.x - o, b.x + b.w / 2, b.x + b.w + o];
+  const k = b.far ? 1.5 : 2;
+  return [b.x - o, b.x + k, b.x + b.w - k, b.x + b.w + o];
 }
 
 export function chimneyBox(plan: CityPaintPlan, b: PaintBuilding): { x0: number; x1: number; y0: number } | null {
@@ -42,8 +64,8 @@ export function chimneyBox(plan: CityPaintPlan, b: PaintBuilding): { x0: number;
 // Contexte muet : une touche cachée consomme ses tirages sans rien peindre (le dessin reste le même d'une tranche à l'autre).
 const NO_INK: PaintCtx = {
   fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over',
-  save() {}, restore() {}, beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, quadraticCurveTo() {}, ellipse() {}, rect() {},
-  fill() {}, stroke() {}, clip() {}, fillRect() {}, createLinearGradient: () => ({ addColorStop() {} }),
+  save() {}, restore() {}, beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, quadraticCurveTo() {}, ellipse() {}, arc() {}, rect() {},
+  fill() {}, stroke() {}, clip() {}, fillRect() {}, strokeRect() {}, createLinearGradient: () => ({ addColorStop() {} }),
 };
 
 // Touche de portée ROOF_REACH centrée en (x, y) qui atteindrait la façade d'un immeuble du premier plan (sous sa ligne de toit,
@@ -52,9 +74,9 @@ const NO_INK: PaintCtx = {
 function hiddenByNear(near: readonly PaintBuilding[], x: number, y: number): boolean {
   const R = ROOF_REACH;
   for (const b of near) {
-    if (x + R < b.x - 1.5 || x - R > b.x + b.w + 1.5) continue;
+    if (x + R < b.x - OVERHANG || x - R > b.x + b.w + OVERHANG) continue;
     let low = Math.min(roofLineY(b, x - R), roofLineY(b, x + R));
-    for (const k of [b.x + b.w / 2, b.x + 1.5, b.x + b.w - 1.5]) if (k > x - R && k < x + R) low = Math.min(low, roofLineY(b, k));
+    for (const k of roofCuts(b)) if (k > x - R && k < x + R) low = Math.min(low, roofLineY(b, k));
     if (y + R >= low) return true;
   }
   return false;
@@ -122,12 +144,48 @@ function paintGroundSnow(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: num
   }
 }
 
+// Points du toit d'une maison du fond (mêmes tracés que hill-painter.ts).
+export function hillRoofPoints(h: HillHouse): [number, number][] {
+  const { x, w, s, top } = h;
+  const rh = h.h * 0.32;
+  const o = 1.5 * s;
+  return h.kind === 'gable'
+    ? [[x - o, top + rh], [x + w / 2, top], [x + w + o, top + rh]]
+    : h.kind === 'hip'
+      ? [[x - o, top + rh], [x + w * 0.25, top], [x + w * 0.75, top], [x + w + o, top + rh]]
+      : [[x - o, top + rh], [x + o, top + 1], [x + w - o, top + 1], [x + w + o, top + rh]];
+}
+
+// Fond : bande blanche à bord net le long de la crête (sous la ligne) et trait de neige sur le haut des toits des maisons.
+function paintHillSnow(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number, houses: readonly HillHouse[]): void {
+  const a = x0 - 4;
+  const b = x1 + 4;
+  const crest = (x: number): number => hillCrestY(plan, x);
+  ctx.fillStyle = rgba(SNOW, 0.95);
+  ctx.beginPath();
+  ctx.moveTo(a, crest(a) + 4);
+  for (let x = a; x < b; x += 4) ctx.lineTo(x, crest(x));
+  ctx.lineTo(b, crest(b));
+  ctx.lineTo(b, crest(b) + 4);
+  for (let x = b; x > a; x -= 4) ctx.lineTo(x, crest(x) + 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = rgba(SNOW, 0.95);
+  for (const h of houses) {
+    ctx.lineWidth = 1.6 * h.s;
+    ctx.beginPath();
+    hillRoofPoints(h).forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py + 0.8 * h.s) : ctx.lineTo(px, py + 0.8 * h.s)));
+    ctx.stroke();
+  }
+}
+
 export function paintSnowTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number): void {
   const x0 = tile * TILE;
   const x1 = Math.min(plan.width, (tile + 1) * TILE);
-  const { buildings } = tileItems(plan, tile);
+  const { buildings, houses } = tileItems(plan, tile);
   // Tous les immeubles du premier plan du monde (pas seulement ceux de la tranche) : même décision d'une tranche à l'autre.
   const near = plan.buildings.filter((x) => !x.far);
+  paintHillSnow(ctx, plan, x0, x1, houses);
   for (const b of buildings.filter((x) => x.far)) paintRoofSnow(ctx, plan, b, near);
   for (const b of buildings.filter((x) => !x.far)) paintRoofSnow(ctx, plan, b);
   paintGroundSnow(ctx, plan, x0, x1);

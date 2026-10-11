@@ -99,6 +99,21 @@ describe('ville peinte', () => {
     expect(night).not.toBe(noon);
   });
 
+  it('nuit : flaques des lampadaires et silhouettes aux fenêtres, hors filtre ; rien de visible à midi', async () => {
+    localStorage.setItem(ART_KEY, 'ghibli');
+    setTilePainterForTests(async (_p, t) => `blob:fake-${t}`);
+    await render(23 * 60);
+    const night = q('[data-painted-city] [data-ghibli-night]');
+    expect(night).not.toBeNull();
+    expect(night!.closest('[filter]')).toBeNull();
+    const lamps = qa('[data-ghibli-night] [data-night-lamp]');
+    expect(lamps.length).toBeGreaterThan(0);
+    expect([...lamps].every((l) => l.getAttribute('data-lit') === 'true' && Number(l.getAttribute('opacity')) > 0.5)).toBe(true);
+    expect(qa('[data-ghibli-windows] [data-lamp][data-lit="true"] [data-figure]').length).toBeGreaterThan(0);
+    await render(12 * 60);
+    expect([...qa('[data-ghibli-night] [data-night-lamp]')].every((l) => l.getAttribute('opacity') === '0')).toBe(true);
+  });
+
   it('une erreur de peinture sur une tranche n’arrête pas les autres', async () => {
     localStorage.setItem(ART_KEY, 'ghibli');
     setTilePainterForTests(async (_p, t) => {

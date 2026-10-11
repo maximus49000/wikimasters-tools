@@ -36,18 +36,39 @@ describe('plan de la ville peinte', () => {
         for (let x = t.x - t.r; x <= t.x + t.r; x += 1) expect(t.cy - t.r).toBeGreaterThanOrEqual(silhouetteTop(plan, x) + 2 - 1e-9);
       }
     });
+
+    it(`graine ${seed} : mobilier hors des entrées, des locaux et des troncs, sans chevauchement, affiches sur un mur`, () => {
+      expect(plan.furniture.length).toBeGreaterThan(0);
+      const near = plan.buildings.filter((b) => !b.far);
+      plan.furniture.forEach((f, i) => {
+        const x0 = f.x;
+        const x1 = f.x + f.w;
+        for (const s of plan.blocked) expect(x1 <= s.x0 || x0 >= s.x1).toBe(true);
+        for (const t of plan.trees) expect(x1 <= t.x - 4 * plan.unit || x0 >= t.x + 4 * plan.unit).toBe(true);
+        for (const g of plan.furniture.slice(i + 1)) expect(x1 <= g.x || x0 >= g.x + g.w).toBe(true);
+        if (f.kind === 'poster') expect(near.some((b) => x0 >= b.x + 2 && x1 <= b.x + b.w - 2)).toBe(true);
+      });
+    });
   }
+
+  it('toits : pignon, mansarde et zinc au premier plan, jamais de zinc au fond', () => {
+    const plan = cityPaintPlan(2160, 340, 1);
+    const kinds = new Set(plan.buildings.filter((b) => !b.far).map((b) => b.look.roofKind));
+    expect([...kinds].sort()).toEqual(['gable', 'mansard', 'zinc']);
+    for (const b of plan.buildings.filter((b) => b.far)) expect(b.look.roofKind).not.toBe('zinc');
+  });
 
   it('déterministe, et dépend de la graine', () => {
     expect(cityPaintPlan(720, 340, 3)).toEqual(cityPaintPlan(720, 340, 3));
     expect(cityPaintPlan(720, 340, 3).buildings.map((b) => b.look)).not.toEqual(cityPaintPlan(720, 340, 4).buildings.map((b) => b.look));
   });
 
-  it('agrandir la pièce garde les immeubles et les arbres du début', () => {
+  it('agrandir la pièce garde les immeubles, les arbres et le mobilier du début', () => {
     const small = cityPaintPlan(720, 340, 1);
     const large = cityPaintPlan(1080, 340, 1);
     expect(large.buildings.slice(0, 4)).toEqual(small.buildings.slice(0, 4));
     expect(large.trees.filter((t) => t.x < 300)).toEqual(small.trees.filter((t) => t.x < 300));
+    expect(large.furniture.filter((f) => f.x < 300)).toEqual(small.furniture.filter((f) => f.x < 300));
   });
 
   it('au moins un arbre sur une rue de 2880 px', () => {

@@ -1,15 +1,9 @@
 // tests/core/library/paint/paint-sky-clip.test.ts
 import { describe, expect, it } from 'vitest';
-import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
-import { skylinePath, skylinePoints } from '../../../../src/core/library/paint/sky-clip';
-import { roofLineY } from '../../../../src/core/library/paint/snow-painter';
+import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
+import { cityTopY, skylinePath, skylinePoints } from '../../../../src/core/library/paint/sky-clip';
+import { roofLineY, roofSpan } from '../../../../src/core/library/paint/snow-painter';
 
-// Haut de la ville peinte en x : la plus haute ligne de toit des immeubles qui couvrent x, le sol sinon.
-const top = (plan: ReturnType<typeof cityPaintPlan>, x: number): number => {
-  let y = plan.ground;
-  for (const b of plan.buildings) if (x >= b.x && x <= b.x + b.w) y = Math.min(y, roofLineY(b, x));
-  return y;
-};
 // y de la ligne brisée en x (dernier segment qui contient x : les marches verticales prennent la valeur de droite).
 const at = (pts: [number, number][], x: number): number => {
   for (let i = pts.length - 1; i > 0; i--) {
@@ -21,16 +15,24 @@ const at = (pts: [number, number][], x: number): number => {
 };
 
 describe('silhouette du ciel (découpe des nuages peints)', () => {
+  it('haut de la ville : le plus haut des toits et du fond', () => {
+    const plan = cityPaintPlan(1080, 340, 1);
+    for (let x = 0; x < 1080; x += 3) {
+      const roofs = Math.min(plan.ground, ...plan.buildings.filter((b) => x >= roofSpan(b).x0 && x <= roofSpan(b).x1).map((b) => roofLineY(b, x)));
+      expect(cityTopY(plan, x)).toBeCloseTo(Math.min(roofs, hillTopY(plan, x)), 9);
+    }
+  });
+
   for (const seed of [1, 7]) {
-    it(`graine ${seed} : suit la ligne des toits sans jamais descendre dessous`, () => {
+    it(`graine ${seed} : suit le haut de la ville sans jamais descendre dessous`, () => {
       const plan = cityPaintPlan(1080, 340, seed);
       const pts = skylinePoints(plan);
       expect(pts[0]![0]).toBe(0);
       expect(pts[pts.length - 1]![0]).toBe(1080);
       for (let x = 0.3; x < 1080; x += 0.7) {
         const y = at(pts, x);
-        expect(y).toBeLessThanOrEqual(top(plan, x) + 1e-6);
-        expect(y).toBeGreaterThan(top(plan, x) - 3);
+        expect(y).toBeLessThanOrEqual(cityTopY(plan, x) + 0.1);
+        expect(y).toBeGreaterThan(cityTopY(plan, x) - 3);
       }
     });
   }
