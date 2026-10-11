@@ -25,7 +25,7 @@ describe('typesOfTags', () => {
 });
 
 describe('proxyShops', () => {
-  it('interroge Overpass à 25 km autour de la position arrondie et regroupe les noms par type', async () => {
+  it('interroge Overpass dans un cadre de ±25 km autour de la position arrondie et regroupe les noms par type', async () => {
     const { fetchFn, result } = run('/shops?lat=47.4712&lon=-0.5518', [
       element({ amenity: 'pub', name: 'Le Welsh' }),
       element({ amenity: 'nightclub', name: 'La Chapelle' }),
@@ -35,7 +35,7 @@ describe('proxyShops', () => {
     ]);
     expect(JSON.parse((await result).body)).toEqual({ ok: true, names: { bar: ['Le Welsh'], nightclub: ['La Chapelle'] } });
     const body = String(fetchFn.mock.calls[0]?.[1]?.body ?? '');
-    expect(decodeURIComponent(body)).toContain('around:25000,47.5,-0.6');
+    expect(decodeURIComponent(body)).toContain('[bbox:47.275,-0.933,47.725,-0.267]');
   });
   it('garde au plus 30 noms par type', async () => {
     const many = Array.from({ length: 50 }, (_, i) => element({ shop: 'bakery', name: `Boulangerie ${i}` }));

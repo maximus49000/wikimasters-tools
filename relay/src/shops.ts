@@ -3,7 +3,7 @@ import { failure, type Fetcher, type ProxyResult } from './proxy';
 
 // Noms de commerces réels autour de l'utilisateur (OpenStreetMap, par Overpass avec repli sur un miroir : overpass.ts), pour les
 // enseignes de la scène Ville.
-// Position arrondie à 0,1° (jamais enregistrée ailleurs que dans la clé de cache en mémoire), rayon de 25 km.
+// Position arrondie à 0,1° (jamais enregistrée ailleurs que dans la clé de cache en mémoire), cadre de ±25 km.
 // Réponse réduite à « type du catalogue → noms » (≤ 30 par type, ≤ 24 caractères, dédoublonnés).
 const RADIUS_M = 25_000;
 export const SHOP_NAME_MAX = 30;
@@ -41,10 +41,16 @@ export function typesOfTags(tags: Record<string, string>): string[] {
   return tags.shop ? (SHOP_TAGS[tags.shop] ?? []) : [];
 }
 
+// Cadre de ±RADIUS_M autour de la position (plutôt qu'un cercle `around`) : mesuré le 2026-10-11, le filtre `around` coûtait
+// ≈ 20 s quel que soit le rayon (la requête dépassait son délai sur tous les serveurs : réponse vide avec « remark », d'où les
+// noms inventés), le cadre 6 à 8 s sur 25 km.
 const query = (lat: string, lon: string): string => {
-  const around = `around:${RADIUS_M},${lat},${lon}`;
+  const la = Number(lat);
+  const dLat = RADIUS_M / 111_000;
+  const dLon = RADIUS_M / (111_000 * Math.max(0.1, Math.cos((la * Math.PI) / 180)));
+  const bbox = [la - dLat, Number(lon) - dLon, la + dLat, Number(lon) + dLon].map((v) => v.toFixed(3)).join(',');
   const shops = Object.keys(SHOP_TAGS).concat('clothes').join('|');
-  return `[out:json][timeout:20];(nwr["amenity"~"^(bar|pub|nightclub|pharmacy|cafe|restaurant|fast_food)$"]["name"](${around});nwr["shop"~"^(${shops})$"]["name"](${around});nwr["leisure"="amusement_arcade"]["name"](${around}););out tags 6000;`;
+  return `[out:json][timeout:25][bbox:${bbox}];(nwr["amenity"~"^(bar|pub|nightclub|pharmacy|cafe|restaurant|fast_food)$"]["name"];nwr["shop"~"^(${shops})$"]["name"];nwr["leisure"="amusement_arcade"]["name"];);out tags 6000;`;
 };
 
 export async function proxyShops(url: URL, deps: { fetch: Fetcher; now: () => number }): Promise<ProxyResult> {
