@@ -6,6 +6,8 @@ import { useFigureRegistry } from '../../../src/content/figure/figure-host';
 import { useCarRegistry } from '../../../src/content/vehicle/car-host';
 import { GhibliCar, placeCar } from '../../../src/content/vehicle/ghibli-car';
 import { genCar } from '../../../src/core/library/city/traffic/cars';
+import { carArt } from '../../../src/core/library/city/traffic/car-art';
+import { lookOfCar, type VehicleLook } from '../../../src/core/library/city/traffic/look';
 import { skyAt, sunTimes } from '../../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -22,7 +24,7 @@ async function mount(dir: 1 | -1, arch: Parameters<typeof genCar>[1] = 'berline'
     createRoot(host).render(
       <svg>
         <Probe />
-        <GhibliCar car={genCar(seed, arch, 0.2)} dir={dir} sky={sky} rainy={false} lights={false} />
+        <GhibliCar look={lookOfCar(genCar(seed, arch, 0.2))} dir={dir} sky={sky} rainy={false} lights={false} />
       </svg>,
     ),
   );
@@ -47,7 +49,7 @@ describe('voiture Ghibli', () => {
         root.render(
           <svg>
             <Probe />
-            <GhibliCar car={car} dir={1} sky={s} rainy={false} lights={false} still={still} />
+            <GhibliCar look={lookOfCar(car)} dir={1} sky={s} rainy={false} lights={false} still={still} />
           </svg>,
         ),
       );
@@ -59,7 +61,7 @@ describe('voiture Ghibli', () => {
     expect(want).not.toBe(dayKey);
     expect(body().getAttribute('data-shown')).toBe(dayKey);
     regs!.car.flush();
-    placeCar(regs!.fig, regs!.car, host.querySelector('[data-ghibli-car]')!, { car, dist: 0, v: 0, lean: 0, seed: 1 }, 1, 1);
+    placeCar(regs!.fig, regs!.car, host.querySelector('[data-ghibli-car]')!, { look: lookOfCar(car), dist: 0, v: 0, lean: 0, seed: 1 }, 1, 1);
     expect(body().getAttribute('data-shown')).toBe(want);
   });
   it('mouvement réduit : la nouvelle palette est posée tout de suite (aucune boucle ne la poserait)', async () => {
@@ -70,7 +72,7 @@ describe('voiture Ghibli', () => {
       await act(async () =>
         root.render(
           <svg>
-            <GhibliCar car={car} dir={1} sky={s} rainy={false} lights={false} still />
+            <GhibliCar look={lookOfCar(car)} dir={1} sky={s} rainy={false} lights={false} still />
           </svg>,
         ),
       );
@@ -83,7 +85,7 @@ describe('voiture Ghibli', () => {
     expect(host.querySelector('[data-layer="glazing"]')).not.toBeNull();
     expect(host.querySelector('[data-layer="interior"]')).not.toBeNull();
     expect(host.querySelectorAll('[data-wheel]')).toHaveLength(2);
-    expect(host.querySelector('[data-seat="driver"] [data-figure]')).not.toBeNull();
+    expect(host.querySelector('[data-role="driver"] [data-figure]')).not.toBeNull();
     expect(host.querySelector('[data-cabin]')?.tagName.toLowerCase()).toBe('svg');
     expect(host.querySelector('clipPath')).toBeNull();
     expect(host.querySelector('[id]')).toBeNull();
@@ -94,7 +96,7 @@ describe('voiture Ghibli', () => {
     // Occupants SOUS la caisse : elle cache leurs jambes sous la ceinture.
     const order = [...host.querySelectorAll('[data-cabin], [data-layer="body"]')].map((e) => (e.hasAttribute('data-cabin') ? 'cabin' : 'body'));
     expect(order).toEqual(['cabin', 'body']);
-    expect(host.querySelector('[data-seat="driver"] [data-figure]')).not.toBeNull();
+    expect(host.querySelector('[data-role="driver"] [data-figure]')).not.toBeNull();
   });
   it('voie du fond : positions en miroir, pantins tournés vers la gauche', async () => {
     const right = await mount(1);
@@ -103,20 +105,44 @@ describe('voiture Ghibli', () => {
     const wl = [...left.querySelectorAll('[data-wheel]')].map(tx);
     expect(Math.max(...wr)).toBeGreaterThan(0);
     expect(wl.map((x) => -x).sort()).toEqual(wr.sort());
-    expect(left.querySelector('[data-seat="driver"] [data-figure]')!.getAttribute('data-key')).toContain('|8|seated|');
-    expect(right.querySelector('[data-seat="driver"] [data-figure]')!.getAttribute('data-key')).toContain('|0|seated|');
+    expect(left.querySelector('[data-role="driver"] [data-figure]')!.getAttribute('data-key')).toContain('|8|seated|');
+    expect(right.querySelector('[data-role="driver"] [data-figure]')!.getAttribute('data-key')).toContain('|0|seated|');
   });
   it('placeCar : roues qui tournent avec la distance, rien ne change à distance égale', async () => {
     const host = await mount(1);
     const node = host.querySelector('[data-ghibli-car]')!;
     const car = genCar(11, 'berline', 0.2);
     const wheel = (): string => host.querySelector('[data-wheel]')!.getAttribute('transform')!;
-    placeCar(regs!.fig, regs!.car, node, { car, dist: 0, v: 0, lean: 0, seed: 1 }, 1, 10);
+    placeCar(regs!.fig, regs!.car, node, { look: lookOfCar(car), dist: 0, v: 0, lean: 0, seed: 1 }, 1, 10);
     const a = wheel();
-    placeCar(regs!.fig, regs!.car, node, { car, dist: 0, v: 0, lean: 0, seed: 1 }, 1, 10);
+    placeCar(regs!.fig, regs!.car, node, { look: lookOfCar(car), dist: 0, v: 0, lean: 0, seed: 1 }, 1, 10);
     expect(wheel()).toBe(a);
-    placeCar(regs!.fig, regs!.car, node, { car, dist: 30, v: 50, lean: 0.5, seed: 1 }, 1, 10.1);
+    placeCar(regs!.fig, regs!.car, node, { look: lookOfCar(car), dist: 30, v: 50, lean: 0.5, seed: 1 }, 1, 10.1);
     expect(wheel()).not.toBe(a);
-    expect(host.querySelector('[data-seat="driver"]')!.getAttribute('transform')).toMatch(/translate\(0\.4/);
+    expect(host.querySelector('[data-role="driver"]')!.getAttribute('transform')).toMatch(/translate\(0\.4/);
+  });
+  it('texte peint redressé sur la voie du fond, gyrophares qui clignotent, sièges multiples posés', async () => {
+    const art = { ...carArt(genCar(11, 'berline', 0.2)) };
+    art.seats = [...art.seats, { ...art.seats[0]!, role: 'rear', x: art.seats[0]!.x - 9 }, { ...art.seats[0]!, role: 'rear', x: art.seats[0]!.x - 15 }];
+    art.beacons = [{ x: 0, y: -24, w: 4, h: 2.4, on: '#4f7bff', off: '#22305a' }];
+    const look: VehicleLook = { key: 'test|multi', arch: 'test', art, rim: 'tôle', rimColor: '#d9d6cf' };
+    const host = document.createElement('div');
+    await act(async () =>
+      createRoot(host).render(
+        <svg>
+          <Probe />
+          <GhibliCar look={look} dir={-1} sky={sky} rainy={false} lights={false} />
+        </svg>,
+      ),
+    );
+    const node = host.querySelector('[data-ghibli-car]')!;
+    expect(host.querySelectorAll('[data-role="rear"]')).toHaveLength(2);
+    placeCar(regs!.fig, regs!.car, node, { look, dist: 10, v: 40, lean: 0.5, seed: 1 }, -1, 1);
+    for (const s of host.querySelectorAll('[data-role="rear"]')) expect(s.getAttribute('transform')).toMatch(/translate\(-0\.4/);
+    const b = (): string => host.querySelector('[data-beacon]')!.getAttribute('fill')!;
+    placeCar(regs!.fig, regs!.car, node, { look, dist: 10, v: 40, lean: 0, seed: 1 }, -1, 1.0);
+    const a = b();
+    placeCar(regs!.fig, regs!.car, node, { look, dist: 10, v: 40, lean: 0, seed: 1 }, -1, 1.34);
+    expect(b()).not.toBe(a);
   });
 });

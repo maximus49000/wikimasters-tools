@@ -13,7 +13,7 @@ import { CityEventSprite } from './city-event-sprites';
 import { DEFAULT_RIDER, PersonSprite, VehicleSprite, tone } from './city-sprites';
 import { useFigureRegistry } from './figure/figure-host';
 import { createPuffs, emitPuffs, forgetPuffSources } from '../core/library/city/traffic/exhaust';
-import { carArt } from '../core/library/city/traffic/car-art';
+import { lookOfCar } from '../core/library/city/traffic/look';
 import { useCarRegistry } from './vehicle/car-host';
 import { ExhaustPuffs, placePuffs } from './vehicle/exhaust-puffs';
 import { GhibliCar, placeCar } from './vehicle/ghibli-car';
@@ -114,12 +114,12 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
           const dir = TRACK_DIR[a.track];
           const view = agentView(w, a, t);
           const carNode = node.querySelector('[data-ghibli-car]');
-          if (carNode && !still) placeCar(figures, cars, carNode, { car: a.car!, dist: a.dist / k, v: a.v / k, lean: view.lean, seed: a.seed }, dir, t);
+          if (carNode && !still) placeCar(figures, cars, carNode, { look: lookOfCar(a.car!), dist: a.dist / k, v: a.v / k, lean: view.lean, seed: a.seed }, dir, t);
           node.querySelector('[data-brake]')?.setAttribute('opacity', braking(a, w.unit) ? '1' : '0');
           if (!still) {
             alive.add(a.id);
-            const ex = carArt(a.car!).exhaust;
-            emitPuffs(puffs, { id: a.id, x: view.x + ex.x * k * dir, y: yOf(a, view.lat, metrics) + ex.y * k, k, acc: a.cmd, v: a.v, unit: w.unit, dir }, t);
+            const ex = lookOfCar(a.car!).art.exhaust;
+            if (ex) emitPuffs(puffs, { id: a.id, x: view.x + ex.x * k * dir, y: yOf(a, view.lat, metrics) + ex.y * k, k, acc: a.cmd, v: a.v, unit: w.unit, dir }, t);
           }
           continue;
         }
@@ -157,7 +157,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         return (
           <g key={a.id} data-life-id={a.id} data-vehicle="" data-kind={a.kind} data-lane={a.track} data-active="true" transform={transformOf(w, a, metrics, now, painted)}>
             {painted ? (
-              <GhibliCar car={a.car!} dir={TRACK_DIR[a.track]} sky={sky} rainy={rainy} lights={lights} still={still} />
+              <GhibliCar look={lookOfCar(a.car!)} dir={TRACK_DIR[a.track]} sky={sky} rainy={rainy} lights={lights} still={still} />
             ) : ev ? (
               <CityEventSprite event={ev} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} />
             ) : ghibli && a.kind === 'bike' ? (

@@ -5,6 +5,7 @@
 // (`glazing`), roues (images tournées), jupes (`over`), feux. Couleurs de JOUR : l'exécuteur applique la teinte de nuit.
 // Repère : roues au sol y = 0, regard vers +x, unités des sprites de véhicules.
 import { mixHex } from '../../sky';
+import type { ArmPose } from '../../figure/skeleton';
 import { ARCHETYPES, hsl, type CarSpec, type Occupant, type Rim } from './cars';
 
 export const INK = '#33241f';
@@ -19,8 +20,15 @@ export type Op =
   // Perce la couche (vitres) : ce qui est dessous à l'affichage (occupants, habitacle) apparaît.
   | { k: 'hole'; d: string }
   | { k: 'glass'; d: string }
-  | { k: 'shadow'; x0: number; x1: number };
-export type Seat = { role: Occupant['role']; child: boolean; outfitSeed: number; x: number; headY: number; k: number };
+  | { k: 'shadow'; x0: number; x1: number }
+  // Inscription (girouette, POLICE, TAXI…) : ancrée à gauche en (x, y) (ligne de base), redressée pour le sens −1 ; `bg` :
+  // cartouche bordé d'encre.
+  | { k: 'text'; x: number; y: number; text: string; size: number; color: string; bg?: string };
+// Occupant : (x, headY) = tête du pantin assis (`seated`, défaut), selle (`mount` : pilote d'un deux-roues) ou pieds
+// (`stand` : éboueur sur le marchepied). `over` : dessiné après les roues (par-dessus la machine).
+export type Seat = { role: Occupant['role']; child: boolean; outfitSeed: number; x: number; headY: number; k: number; gait?: 'seated' | 'mount' | 'stand'; arms?: ArmPose; over?: boolean };
+// Gyrophare ou lumineux : rectangle arrondi ; clignote entre `on` et `off`, ou feu fixe (`off` null : allumé la nuit).
+export type Beacon = { x: number; y: number; w: number; h: number; on: string; off: string | null };
 export type Box = { x: number; y: number; w: number; h: number };
 export type CarArt = {
   len: number;
@@ -37,7 +45,8 @@ export type CarArt = {
   wheelHand: { x: number; y: number } | null;
   tail: { x: number; y: number };
   head: { x: number; y: number; round: boolean };
-  exhaust: { x: number; y: number };
+  exhaust: { x: number; y: number } | null;
+  beacons: Beacon[];
 };
 // Échelle des pantins assis (adulte, enfant) : tête de rayon 4,4 × 0,45 ≈ 2 unités, comme les bustes de la maquette.
 export const SEAT_K = { adult: 0.45, child: 0.34 } as const;
@@ -371,5 +380,6 @@ function build(c: CarSpec): CarArt {
     tail: { x: p.x0 + 0.2, y: yTail + 2.3 },
     head: { x: p.x1 - 1, y: p.nose + 1.8, round: c.lamp === 'rond' },
     exhaust,
+    beacons: [],
   };
 }

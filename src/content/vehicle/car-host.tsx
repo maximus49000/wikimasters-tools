@@ -1,7 +1,8 @@
 // src/content/vehicle/car-host.tsx
 import { createContext, useContext } from 'react';
 import { INK, wheelOps, type CarArt, type Op } from '../../core/library/city/traffic/car-art';
-import type { CarSpec, Rim } from '../../core/library/city/traffic/cars';
+import type { Rim } from '../../core/library/city/traffic/cars';
+import type { VehicleLook } from '../../core/library/city/traffic/look';
 import { mixHex, type Sky } from '../../core/library/sky';
 import { tone } from '../city-sprites';
 import { BLANK_SPRITE } from '../figure/figure-host';
@@ -21,7 +22,7 @@ export const litOf = (sky: Sky): { day: number; night: boolean } => {
   const day = Math.round(sky.daylight * STEPS) / STEPS;
   return { day, night: day < 0.5 };
 };
-export const layerKey = (c: CarSpec, layer: CarLayer, lit: Lit): string => `${c.seed}|${c.arch}|${layer}|${lit.day}|${lit.dir}|${lit.night ? 'n' : 'd'}`;
+export const layerKey = (look: VehicleLook, layer: CarLayer, lit: Lit): string => `${look.key}|${layer}|${lit.day}|${lit.dir}|${lit.night ? 'n' : 'd'}`;
 export const wheelKey = (rim: Rim, rimColor: string, r: number, day: number): string => `w|${rim}|${rimColor}|${r.toFixed(2)}|${day}`;
 
 // Cadre commun aux couches (marge 3 unités), en miroir pour le sens −1.
@@ -127,6 +128,29 @@ function run(ctx: CanvasRenderingContext2D, ops: readonly Op[], day: number, nig
         ctx.globalCompositeOperation = 'destination-out';
         ctx.fillStyle = '#000';
         ctx.fill(new Path2D(op.d));
+        ctx.restore();
+        break;
+      }
+      case 'text': {
+        // Le canvas est retourné pour le sens −1 : le texte est redressé autour de son ancre, et tenu du même côté d'elle
+        // qu'en miroir (x0 = −largeur).
+        ctx.save();
+        ctx.translate(op.x, op.y);
+        ctx.scale(sx, 1);
+        ctx.font = `bold ${op.size}px sans-serif`;
+        const w = ctx.measureText(op.text).width;
+        const x0 = sx > 0 ? 0 : -w;
+        if (op.bg) {
+          ctx.fillStyle = t(op.bg);
+          ctx.beginPath();
+          ctx.roundRect(x0 - 0.8, -op.size, w + 1.6, op.size * 1.3, 0.6);
+          ctx.fill();
+          ctx.strokeStyle = ink;
+          ctx.lineWidth = 0.4;
+          ctx.stroke();
+        }
+        ctx.fillStyle = t(op.color);
+        ctx.fillText(op.text, x0, 0);
         ctx.restore();
         break;
       }
