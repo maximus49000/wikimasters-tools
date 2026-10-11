@@ -26,7 +26,7 @@ export const SPECIAL_SPEED: Readonly<Record<SpecialId, number>> = {
 
 const BUST = 0.53; // échelle du pantin assis pour un buste de la maquette d'échelle 1
 const RIDER = 0.5; // pilote en selle
-const STAND = 0.6; // debout (éboueur)
+const STAND = 0.45; // debout (éboueur), à l'échelle des occupants
 const CREAM = '#efe4c6';
 const CHROME = '#d9d6cf';
 
@@ -205,7 +205,7 @@ function build(s: SpecialSpec): CarArt {
         {
           color: '#eef0f2',
           body: rr(-34, -31, 68, 27, [6, 8, 3, 3]),
-          paint: [fill(rect(-33.6, -14.5, 33.6, -11.5), '#2d6db5'), fill(rect(-33.6, -11.5, 33.6, -10.5), '#e8b53a'), ...kidsSign(-33), ...kidsSign(26), text(-24, -16.2, 'TRANSPORT SCOLAIRE', 2.4, '#2d6db5')],
+          paint: [fill(rect(-33.6, -14.5, 33.6, -11.5), '#2d6db5'), fill(rect(-33.6, -11.5, 33.6, -10.5), '#e8b53a'), ...kidsSign(-33), ...kidsSign(26), text(-12, -15.8, 'ÉCOLE', 3.4, '#2d6db5')],
           windows: [...Array.from({ length: 6 }, (_, i) => rr(-30 + i * 9.6, -28, 7.6, 8.4, 1.6)), 'M29 -28 Q33 -27 33.4 -19 L29 -19 Z'],
           people,
           wheels: [[-21, 4.6], [20, 4.6]],
@@ -408,8 +408,8 @@ function build(s: SpecialSpec): CarArt {
           windows: [CAB_WIN],
           people: [
             { x: 19, y: -21.2, k: BUST * 0.8 },
-            { x: -34.4, y: -6.4, k: STAND, gait: 'stand', arms: 'hold', over: true },
-            { x: -31.2, y: -6.4, k: STAND, gait: 'stand', arms: 'hold', over: true },
+            { x: -34.6, y: -7, k: STAND, gait: 'stand', arms: 'hold', over: true },
+            { x: -32, y: -7, k: STAND, gait: 'stand', arms: 'hold', over: true },
           ],
           wheels: [[-21, 4.6], [-10, 4.6], [21, 4.6]],
           beacons: [{ x: 15, y: -29, w: 4, h: 2.2, on: '#ffa23a', off: '#8a5a20' }],

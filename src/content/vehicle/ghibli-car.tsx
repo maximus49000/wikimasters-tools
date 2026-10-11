@@ -71,7 +71,8 @@ export function GhibliCar({ look, dir, sky, rainy, lights, still = false }: { lo
   const hrefOf = (sel: string, key: string, paint: () => string): string => shownOf(sel, key, paint).href;
   const cabin = art.cabin;
   const driver = art.seats.find((s) => s.role === 'driver');
-  const steer = driver ? seatPlacement(driver, dir).hands : null;
+  // Volant : conducteur assis seulement (les pilotes des deux-roues tiennent leur guidon peint).
+  const steer = driver && gaitOf(driver) === 'seated' ? seatPlacement(driver, dir).hands : null;
   const seatNode = (s: Seat, i: number): ReactElement => {
     const p = seatPlacement(s, dir);
     return (
