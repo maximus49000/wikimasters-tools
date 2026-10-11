@@ -163,7 +163,7 @@ describe('terrasse : arrivées et départs des convives (terraceGuestMoves)', ()
 
 describe('terrasse : averse soudaine (rush)', () => {
   const RAIN: TerraceWeather = { ...FINE, rain: true };
-  const rushAt = (badFor: number, beforeBad: TerraceWeather = FINE) => terraceAt(CAFE, true, H(12), badFor > 0 ? RAIN : FINE, OPEN, CLOSE, badFor > 0 ? RAIN : FINE, { badFor, beforeBad });
+  const rushAt = (sinceBad: number, beforeBad: TerraceWeather = FINE) => terraceAt(CAFE, true, H(12), sinceBad > 0 ? RAIN : FINE, OPEN, CLOSE, sinceBad > 0 ? RAIN : FINE, { sinceBad, beforeBad });
   it('1re minute de pluie : les convives se lèvent (tables dehors), puis les tables rentrent en RUSH_CLEAR_MIN minutes', () => {
     expect(rushAt(1)).toMatchObject({ state: 'emptying', tables: 4 });
     for (let s = 0; s < RUSH_CLEAR_MIN; s++) expect(rushAt(RUSH_LEAVE_MIN + 1 + s)).toMatchObject({ state: 'clearing', progress: s / RUSH_CLEAR_MIN, span: RUSH_CLEAR_MIN });
@@ -171,7 +171,14 @@ describe('terrasse : averse soudaine (rush)', () => {
   });
   it('terrasse déjà rentrée avant l’averse (mauvais temps juste avant, ou avant l’ouverture) : rien', () => {
     expect(rushAt(1, RAIN).state).toBe('none');
-    expect(terraceAt(CAFE, true, OPEN + 1, RAIN, OPEN, CLOSE, RAIN, { badFor: 1, beforeBad: FINE }).state).toBe('none');
+    expect(terraceAt(CAFE, true, OPEN + 1, RAIN, OPEN, CLOSE, RAIN, { sinceBad: 1, beforeBad: FINE }).state).toBe('none');
+  });
+  it('averse d’une minute puis beau temps : le démontage va jusqu’au bout (aucune table effacée en route)', () => {
+    // Minute 1 de pluie, puis temps correct : l'hystérésis (weatherBefore) voit la pluie, le rush continue.
+    const at = (sinceBad: number) => terraceAt(CAFE, true, H(12), sinceBad === 1 ? RAIN : FINE, OPEN, CLOSE, RAIN, { sinceBad, beforeBad: FINE });
+    expect(at(1).state).toBe('emptying');
+    for (let s = 0; s < RUSH_CLEAR_MIN; s++) expect(at(RUSH_LEAVE_MIN + 1 + s)).toMatchObject({ state: 'clearing', progress: s / RUSH_CLEAR_MIN });
+    expect(at(RUSH_LEAVE_MIN + RUSH_CLEAR_MIN + 1).state).toBe('none');
   });
   it('les convives sont encore là pendant la minute « emptying » (ils repartent à pied), plus après', () => {
     let seen = 0;

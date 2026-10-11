@@ -16,7 +16,7 @@ import { SHOP_DEFS, type ShopTypeId } from '../../src/core/library/city/shops/ca
 import { dayNumber, isOpenAt, openRangeAt } from '../../src/core/library/city/shops/hours';
 import { streetOn } from '../../src/core/library/city/shops/lifecycle';
 import { shopFrame, shopSlotsFor } from '../../src/core/library/city/shops/slots';
-import type { TerraceWeather } from '../../src/core/library/city/shops/terrace';
+import { WEATHER_HOLD, type TerraceWeather } from '../../src/core/library/city/shops/terrace';
 import { shopViewAt, type ShopView } from '../../src/core/library/city/shops/view';
 import { mulberry32 } from '../../src/core/library/scene-world';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
@@ -775,7 +775,7 @@ describe('G3b : porteur des tables et averse', () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW);
     const figures = new FigureRegistry('g4r', { perFrame: 50 });
     const RAIN_ = { ...FINE, rain: true };
-    const rush = (badFor: number): TerraceSky => ({ now: RAIN_, before: RAIN_, rush: { badFor, beforeBad: FINE } });
+    const rush = (sinceBad: number): TerraceSky => ({ now: RAIN_, before: RAIN_, rush: { sinceBad, beforeBad: FINE } });
     let m = 12 * 60;
     while (at('cafe', m, true, figures, { now: FINE, before: FINE }).querySelectorAll('[data-terrace-guest]').length === 0) m++;
     const c = at('cafe', m, true, figures, rush(1));
@@ -797,8 +797,39 @@ describe('G3b : porteur des tables et averse', () => {
     const rainFrom = t0 - 60_000;
     const read = (ms: number): Weather => targetOf(ms >= rainFrom ? 'rain' : 'sun');
     const s = h.sample(read, t0);
-    expect(s.rush!.badFor).toBe(2);
+    expect(s.rush!.sinceBad).toBe(2);
     expect(s.rush!.beforeBad.rain).toBe(false);
-    expect(h.sample(() => targetOf('sun'), t0).rush!.badFor).toBe(0);
+    // Minute d'avant : sa propre fenêtre (k = 2..11), début de l'averse à sa minute.
+    expect(s.prev!.rush!.sinceBad).toBe(1);
+    expect(s.prev!.now.rain).toBe(true);
+    expect(h.sample(() => targetOf('sun'), t0 + 30 * 60_000).rush!.sinceBad).toBe(0);
+  });
+  it('historique : averse d’une minute puis beau temps, le rush continue (minutes depuis le début de l’averse)', () => {
+    const h = weatherHistory();
+    const t0 = NOW + 30 * 60_000;
+    const rainMinute = Math.floor(t0 / 60_000) - 2;
+    const read = (ms: number): Weather => targetOf(Math.floor(ms / 60_000) === rainMinute ? 'rain' : 'sun');
+    const s = h.sample(read, t0);
+    expect(s.now.rain).toBe(false);
+    expect(s.rush!.sinceBad).toBe(3);
+  });
+  it('fin de l’hystérésis : à la première minute de beau temps, les convives arrivent à pied (pas posés sur la chaise)', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('g4h', { perFrame: 50 });
+    const h = weatherHistory();
+    // Pluie jusqu'à 11 minutes avant : la fenêtre de la minute courante (1..10) est sèche, celle de la minute d'avant (2..11) non.
+    let m = 12 * 60;
+    for (;; m++) {
+      const t0 = NOW + 60 * 60_000;
+      const end = Math.floor(t0 / 60_000) - WEATHER_HOLD - 1;
+      const sky = h.sample((ms) => targetOf(Math.floor(ms / 60_000) <= end ? 'rain' : 'sun'), t0);
+      expect(sky.before.rain).toBe(false);
+      expect(sky.prev!.before.rain).toBe(true);
+      const c = at('cafe', m, true, figures, sky);
+      const guests = [...c.querySelectorAll('[data-terrace-guest]')];
+      if (guests.length === 0) continue;
+      for (const g of guests) expect(g.getAttribute('data-move')).toBe('arrive');
+      break;
+    }
   });
 });

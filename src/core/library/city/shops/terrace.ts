@@ -16,10 +16,10 @@ export const WEATHER_HOLD = 10; // le mauvais temps garde la terrasse rentrée 1
 export const COLD_FROM = 22 * 60; // nuit froide : pas de table de 22 h à 7 h
 export const COLD_UNTIL = 7 * 60;
 export const MAX_GUESTS = 4;
-const TURN_MIN = 45;
+const TURN_MIN = 45; // un convive reste jusqu'à la fin de son « tour » de 45 minutes
 // Averse soudaine (G3b) : une minute pour que les convives rentrent à pied, puis les tables rentrent en 3 minutes (au lieu de 6).
 export const RUSH_LEAVE_MIN = 1;
-export const RUSH_CLEAR_MIN = 3; // un convive reste jusqu'à la fin de son « tour » de 45 minutes
+export const RUSH_CLEAR_MIN = 3;
 
 // Météo continue de la scène (voir weather-types) vers les cinq drapeaux de la terrasse.
 // Le vent existe (Weather.wind, 0..1) : seuil haut, qu'atteint surtout l'orage (0,9 ; la pluie reste à 0,5).
@@ -43,9 +43,10 @@ export function holdWeather(samples: readonly TerraceWeather[]): TerraceWeather 
   return { rain: any('rain'), snow: any('snow'), storm: any('storm'), wind: any('wind'), sunny: samples.length > 0 && samples.every((w) => w.sunny) };
 }
 const NONE = { state: 'none' as TerraceState, progress: 0, tables: 0 };
-// Averse en cours : `badFor` minutes de mauvais temps d'affilée jusqu'à la minute courante comprise (0 : temps correct) ;
-// `beforeBad` : résumé des WEATHER_HOLD minutes qui précèdent (la terrasse était-elle sortie quand l'averse est arrivée ?).
-export type TerraceRush = { badFor: number; beforeBad: TerraceWeather };
+// Averse récente : `sinceBad` minutes depuis le début du mauvais temps (1 : il commence à la minute courante ; 0 : aucun début
+// d'averse dans les dernières minutes), qu'il dure encore ou non ; `beforeBad` : résumé des WEATHER_HOLD minutes qui précèdent
+// ce début (la terrasse était-elle sortie quand l'averse est arrivée ?).
+export type TerraceRush = { sinceBad: number; beforeBad: TerraceWeather };
 // `span` : durée (min) du montage ou du démontage en cours.
 export type TerraceAt = { state: TerraceState; progress: number; tables: number; span?: number };
 
@@ -66,11 +67,12 @@ export function terraceAt(
   const m = ((minutes % 1440) + 1440) % 1440;
   if (m >= COLD_FROM || m < COLD_UNTIL) return NONE;
   // Averse sur une terrasse sortie (elle l'était la minute d'avant l'averse) : personne ne disparaît, les convives rentrent
-  // d'abord (une minute), l'employé rentre ensuite les tables (démontage court). Sans `rush`, tout rentre d'un coup.
-  if (isBad(weather) && rush && rush.badFor >= 1 && rush.badFor <= RUSH_LEAVE_MIN + RUSH_CLEAR_MIN && !isBad(rush.beforeBad)) {
-    const was = terraceAt(def, isOpen, minutes - rush.badFor, rush.beforeBad, openedAt, closesAt, rush.beforeBad);
+  // d'abord (une minute), l'employé rentre ensuite les tables (démontage court), jusqu'au bout même si l'averse a cessé (le
+  // beau temps revenu, l'hystérésis la garde rentrée). Sans `rush`, tout rentre d'un coup.
+  if (rush && rush.sinceBad >= 1 && rush.sinceBad <= RUSH_LEAVE_MIN + RUSH_CLEAR_MIN && !isBad(rush.beforeBad)) {
+    const was = terraceAt(def, isOpen, minutes - rush.sinceBad, rush.beforeBad, openedAt, closesAt, rush.beforeBad);
     if (was.state === 'open' || was.state === 'umbrellas') {
-      const step = rush.badFor - 1;
+      const step = rush.sinceBad - 1;
       if (step < RUSH_LEAVE_MIN) return { state: 'emptying', progress: 0, tables: def.terrace };
       return { state: 'clearing', progress: (step - RUSH_LEAVE_MIN) / RUSH_CLEAR_MIN, tables: def.terrace, span: RUSH_CLEAR_MIN };
     }

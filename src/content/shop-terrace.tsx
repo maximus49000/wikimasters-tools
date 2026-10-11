@@ -39,8 +39,9 @@ const SLIDE = 'transform 60s linear, opacity 0.4s ease';
 const WAITER_BESIDE = 9;
 
 // ---------- Météo de la rue : relevés de la dernière minute et des WEATHER_HOLD précédentes ----------
-// `rush` : averse en cours (minutes de mauvais temps d'affilée, temps d'avant), pour que la terrasse se vide à pied (terraceAt).
-export type TerraceSky = { now: TerraceWeather; before: TerraceWeather; rush?: TerraceRush };
+// `rush` : averse récente (minutes depuis son début, temps d'avant), pour que la terrasse se vide à pied (terraceAt) ;
+// `prev` : la même chose pour la minute d'avant (sa propre fenêtre), pour savoir qui arrive ou repart.
+export type TerraceSky = { now: TerraceWeather; before: TerraceWeather; rush?: TerraceRush; prev?: TerraceSky };
 // Au-delà, l'averse a fini de vider la terrasse : inutile de compter plus loin.
 const RUSH_SPAN = RUSH_LEAVE_MIN + RUSH_CLEAR_MIN + 1;
 
@@ -56,15 +57,26 @@ export function weatherHistory(): { sample(read: (nowMs: number) => Weather, now
       const now = terraceWeatherAt(read(nowMs));
       if (store) seen.set(minute, now);
       const past = (k: number): TerraceWeather => (k === 0 ? now : (seen.get(minute - k) ?? terraceWeatherAt(read(nowMs - k * 60_000))));
-      const window: TerraceWeather[] = [];
-      for (let k = 1; k <= WEATHER_HOLD; k++) window.push(past(k));
-      // Averse : minutes de mauvais temps d'affilée (minute courante comprise), puis les WEATHER_HOLD minutes d'avant.
-      let badFor = 0;
-      while (badFor < RUSH_SPAN && isBad(past(badFor))) badFor++;
-      const prior: TerraceWeather[] = [];
-      for (let k = badFor; k < badFor + WEATHER_HOLD; k++) prior.push(past(k));
-      for (const key of seen.keys()) if (key < minute - WEATHER_HOLD - RUSH_SPAN) seen.delete(key);
-      return { now, before: holdWeather(window), rush: { badFor, beforeBad: holdWeather(prior) } };
+      const hold = (from: number): TerraceWeather => {
+        const window: TerraceWeather[] = [];
+        for (let k = from; k < from + WEATHER_HOLD; k++) window.push(past(k));
+        return holdWeather(window);
+      };
+      // Relevé vu depuis `o` minutes plus tôt : fenêtre d'hystérésis et début d'averse (une minute mauvaise précédée d'une fenêtre
+      // sèche : il n'y en a qu'un dans les RUSH_SPAN dernières minutes, les minutes suivantes ayant cette pluie dans leur fenêtre).
+      const at = (o: number): TerraceSky => {
+        let rush: TerraceRush = { sinceBad: 0, beforeBad: hold(o + 1) };
+        for (let k = o; k < o + RUSH_SPAN; k++) {
+          const prior = hold(k + 1);
+          if (isBad(past(k)) && !isBad(prior)) {
+            rush = { sinceBad: k - o + 1, beforeBad: prior };
+            break;
+          }
+        }
+        return { now: past(o), before: hold(o + 1), rush };
+      };
+      for (const key of seen.keys()) if (key < minute - WEATHER_HOLD - RUSH_SPAN - 1) seen.delete(key);
+      return { ...at(0), prev: at(1) };
     },
   };
 }
@@ -533,14 +545,17 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
   if (!type || SHOP_DEFS[type].terrace === 0) return null;
   const def = SHOP_DEFS[type];
   const id = view.slot.id;
-  // Météo d'une minute voisine : l'averse en cours (rush) est décalée d'autant (elle n'avait pas commencé la minute d'avant
-  // sa première minute : temps d'avant l'averse) ; sans averse, la météo est supposée stable.
+  // Météo d'une minute voisine : la minute d'avant a son propre relevé (`prev`) ; la suivante garde la météo courante, l'averse
+  // récente avancée d'une minute (sans historique, la météo est supposée stable).
   const skyAround = (m: number): TerraceSky => {
+    if (m === minutes) return weather;
+    if (m < minutes && weather.prev) return weather.prev;
     const r = weather.rush;
-    if (!r || r.badFor === 0 || m === minutes) return weather;
-    const bad = r.badFor + (m - minutes);
-    if (bad <= 0) return { now: r.beforeBad, before: r.beforeBad, rush: { badFor: 0, beforeBad: r.beforeBad } };
-    return { ...weather, rush: { badFor: bad, beforeBad: r.beforeBad } };
+    if (!r || r.sinceBad === 0) return weather;
+    const since = r.sinceBad + (m - minutes);
+    // Avant le début de l'averse : le temps d'avant.
+    if (since <= 0) return { now: r.beforeBad, before: r.beforeBad, rush: { sinceBad: 0, beforeBad: r.beforeBad } };
+    return { ...weather, rush: { sinceBad: since, beforeBad: r.beforeBad } };
   };
   const stateAt = (m: number): TerraceAt => {
     const range = openRangeAt(def, date, m);
