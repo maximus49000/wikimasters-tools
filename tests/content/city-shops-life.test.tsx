@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { StaffLayer, countShopSprites, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
+import { DOOR_SILL_HALF, StaffLayer, countShopSprites, customerDoorBox, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
 import { visitAt, visitsFor, type VisitLock } from '../../src/core/library/city/shops/customers';
 import { addDays, dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
@@ -329,6 +329,71 @@ describe('clients : portes et verrou', () => {
     return new Map([[id, make('g', id)], [`${id}-door`, make('svg', `${id}-door`)], [`${id}-in`, make('g', `${id}-in`)]]);
   };
   const active = (nodes: Map<string, Element>): string[] => [...nodes.values()].filter((n) => n.getAttribute('data-active') === 'true').map((n) => n.getAttribute('data-life-id')!);
+  // Nœud de porte complet (ombre + figure), comme le rend ShopCustomers.
+  const withDoorParts = (nodes: Map<string, Element>, id: string): { svg: Element; dark: Element; fig: Element } => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = nodes.get(`${id}-door`)!;
+    const dark = document.createElementNS(ns, 'rect');
+    dark.setAttribute('data-door-dark', '');
+    const fig = document.createElementNS(ns, 'g');
+    fig.setAttribute('data-door-fig', '');
+    svg.append(dark, fig);
+    return { svg, dark, fig };
+  };
+  const translateOf = (n: Element): [number, number] => {
+    const m = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(n.getAttribute('transform')!)!;
+    return [Number(m[1]), Number(m[2])];
+  };
+  it('passage rue → porte du local : pieds sur m.doorY, cadre large sur le seuil puis resserré sur la porte, ombre sur la porte', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    let c0 = 0;
+    while (visitAt(v, W, c0 - v.phase)?.stage !== 'enter') c0 += 0.01;
+    // Début exact du seuil (dichotomie) : profondeur ≈ 0.
+    let lo = c0 - 0.01;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + c0) / 2;
+      if (visitAt(v, W, mid - v.phase)?.stage === 'enter') c0 = mid;
+      else lo = mid;
+    }
+    const nodes = nodesOf(v.id);
+    const { svg, dark, fig } = withDoorParts(nodes, v.id);
+    const lock: VisitLock = new Map();
+    const place = (c: number, first = false) => placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, c - v.phase, first, new Set(), { lock });
+    place(c0, true);
+    const p0 = visitAt(v, W, c0 - v.phase)!.passage!;
+    expect(p0.depth).toBeLessThan(1e-4);
+    expect(svg.getAttribute('data-active')).toBe('true');
+    // Pieds dans le repère du monde : y du <svg> + translation de la figure.
+    const [fx, fy] = translateOf(fig);
+    expect(Math.abs(Number(svg.getAttribute('y')) + fy - metrics.doorY)).toBeLessThan(0.1);
+    expect(Math.abs(Number(svg.getAttribute('x')) + fx - v.doorX)).toBeLessThan(0.1);
+    expect(Number(svg.getAttribute('width'))).toBeGreaterThanOrEqual(2 * DOOR_SILL_HALF);
+    // L'ombre reste exactement sur la porte du local.
+    const darkAt = (): number => Number(svg.getAttribute('x')) + Number(dark.getAttribute('x'));
+    expect(Math.abs(darkAt() - v.shopDoor.x)).toBeLessThan(0.02);
+    expect(Number(dark.getAttribute('width'))).toBeCloseTo(v.shopDoor.w, 2);
+    // Au-delà de 0,4 de profondeur : le cadre est la porte.
+    for (const dc of [0.45, 0.7, 0.95]) {
+      place(c0 + dc);
+      expect(visitAt(v, W, c0 + dc - v.phase)!.passage!.depth).toBeGreaterThanOrEqual(0.4);
+      expect(Number(svg.getAttribute('width'))).toBeCloseTo(v.shopDoor.w, 2);
+      expect(Number(svg.getAttribute('x'))).toBeCloseTo(v.shopDoor.x, 2);
+      expect(Math.abs(darkAt() - v.shopDoor.x)).toBeLessThan(0.02);
+    }
+  });
+  it('cadre de porte : largeur ≥ 20 px à profondeur 0, la porte dès 0,4', () => {
+    const door = { x: 100, y: 200, w: 6, h: 21 };
+    expect(customerDoorBox(door, 0, metrics).clip.w).toBeGreaterThanOrEqual(20);
+    for (const d of [0.4, 0.6, 1]) {
+      const b = customerDoorBox(door, d, metrics);
+      expect(b.clip.x).toBeCloseTo(door.x, 6);
+      expect(b.clip.w).toBeCloseTo(door.w, 6);
+      expect(b.dark).toEqual({ x: 0, y: 0, w: door.w, h: door.h });
+    }
+    const mid = customerDoorBox(door, 0.2, metrics).clip.w;
+    expect(mid).toBeLessThan(customerDoorBox(door, 0, metrics).clip.w);
+    expect(mid).toBeGreaterThan(door.w);
+  });
   it('changement de minute pendant une visite : le client reste (verrou)', () => {
     const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
     const t0 = -v.phase;

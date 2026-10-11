@@ -84,10 +84,33 @@ const sidewalkTransform = (v: Visit, x: number, m: CityMetrics, sgn: number): st
 // Ouverture du seuil en cours : la porte du local (entrer, sortir) ou l'entrée d'immeuble au bout du trajet.
 const customerDoorRect = (v: Visit, stage: VisitStage | null, m: CityMetrics): Rect =>
   stage === 'enter' || stage === 'exit' || v.endDoorX === null ? v.shopDoor : entranceOpening(v.endDoorX - DOOR_WIDTH / 2, m);
-// Dans l'ouverture (repère local) : la figure s'enfonce et rapetisse avec la profondeur, comme un habitant.
-const customerDoorFig = (v: Visit, p: Passage, o: Rect, m: CityMetrics, sgn: number): string => {
+// Cadre du <svg> de porte (px du monde) : sur le seuil (profondeur 0), centre de la porte ± DOOR_SILL_HALF (toute la figure, parapluie
+// compris, reste visible : elle est encore sur le trottoir), resserré linéairement jusqu'à l'ouverture à DOOR_NARROW_AT, puis
+// l'ouverture ; en bas, jusqu'à la ligne des pieds (m.doorY, un peu sous le bas de la porte du local) : pas de saut de hauteur
+// au passage rue → porte. L'ombre (`dark`, repère local) reste exactement sur l'ouverture.
+export const DOOR_SILL_HALF = 10;
+const DOOR_NARROW_AT = 0.4;
+export function customerDoorBox(o: Rect, depth: number, m: CityMetrics): { clip: Rect; dark: Rect } {
+  const half = DOOR_SILL_HALF * Math.max(1, m.unit);
+  const a = Math.min(1, depth / DOOR_NARROW_AT);
+  const mid = o.x + o.w / 2;
+  const left = mid - half + (o.x - (mid - half)) * a;
+  const right = mid + half + (o.x + o.w - (mid + half)) * a;
+  const clip = { x: left, y: o.y, w: right - left, h: Math.max(o.h, m.doorY - o.y) };
+  return { clip, dark: { x: o.x - left, y: 0, w: o.w, h: o.h } };
+}
+// Dans le cadre (repère local) : pieds sur m.doorY au bord du seuil ; la figure s'enfonce et rapetisse avec la profondeur.
+const customerDoorFig = (v: Visit, p: Passage, clip: Rect, m: CityMetrics, sgn: number): string => {
   const k = streetScale(v, m) * (1 - 0.12 * p.depth);
-  return `translate(${(p.x - o.x).toFixed(1)} ${(o.h - p.depth * 3 * m.unit).toFixed(1)}) scale(${(sgn * k).toFixed(3)} ${k.toFixed(3)})`;
+  return `translate(${(p.x - clip.x).toFixed(2)} ${(m.doorY - clip.y - p.depth * 3 * m.unit).toFixed(2)}) scale(${(sgn * k).toFixed(3)} ${k.toFixed(3)})`;
+};
+const setRect = (node: Element | null, r: Rect, xy = true): void => {
+  if (xy) {
+    setIfChanged(node, 'x', r.x.toFixed(2));
+    setIfChanged(node, 'y', r.y.toFixed(2));
+  }
+  setIfChanged(node, 'width', r.w.toFixed(2));
+  setIfChanged(node, 'height', r.h.toFixed(2));
 };
 // Pose Ghibli dans la rue ou dans une porte (pas réglés sur la distance ; au seuil, la profondeur fait avancer les pas).
 const passagePose = (v: Visit, p: Passage, m: CityMetrics): FigurePose => ({ yaw: p.yaw, gait: p.gait, phase: phaseIndexOf(p.walked / streetScale(v, m) + p.depth * 8), head: 0 });
@@ -138,17 +161,13 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
       setIfChanged(door, 'data-active', on ? 'true' : 'false');
       setIfChanged(door, 'opacity', onOff(on));
       if (on && s.passage) {
-        const o = customerDoorRect(v, s.stage, m);
-        setIfChanged(door, 'x', o.x.toFixed(1));
-        setIfChanged(door, 'y', o.y.toFixed(1));
-        setIfChanged(door, 'width', o.w.toFixed(1));
-        setIfChanged(door, 'height', o.h.toFixed(1));
+        const box = customerDoorBox(customerDoorRect(v, s.stage, m), s.passage.depth, m);
+        setRect(door, box.clip);
         const dark = door.querySelector(':scope > [data-door-dark]');
-        setIfChanged(dark, 'width', o.w.toFixed(1));
-        setIfChanged(dark, 'height', o.h.toFixed(1));
+        setRect(dark, box.dark);
         setIfChanged(dark, 'opacity', doorDarkOpacity(s.passage.depth).toFixed(2));
         const fig = door.querySelector(':scope > [data-door-fig]');
-        fig?.setAttribute('transform', customerDoorFig(v, s.passage, o, m, sgn));
+        fig?.setAttribute('transform', customerDoorFig(v, s.passage, box.clip, m, sgn));
         setIfChanged(fig, 'opacity', (1 - s.passage.depth).toFixed(2));
         pose(door, passagePose(v, s.passage, m));
       }
@@ -251,8 +270,8 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
         const sgn = ghibli ? 1 : motionOf(v, s.stage);
         const street = where === 'street' && s.passage ? s.passage : null;
         const atDoor = where === 'door' && s.passage ? s.passage : null;
-        const o = customerDoorRect(v, s.stage, metrics);
         const dPos: Passage = atDoor ?? { stage: 'threshold', x: v.doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
+        const { clip: o, dark } = customerDoorBox(customerDoorRect(v, s.stage, metrics), dPos.depth, metrics);
         const sprite = (p: FigurePose, withUmbrella: boolean): ReactElement =>
           ghibli ? <GhibliFigure outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} initial={p} /> : <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} />;
         return (
@@ -267,8 +286,8 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
               )}
             </g>
             {/* Seuil d'une porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche est copiée par <use>). */}
-            <svg data-life-id={doorId(v)} data-customer-door="" data-visit={v.id} data-active={atDoor ? 'true' : 'false'} x={o.x.toFixed(1)} y={o.y.toFixed(1)} width={o.w.toFixed(1)} height={o.h.toFixed(1)} overflow="hidden" opacity={onOff(atDoor !== null)}>
-              <rect data-door-dark="" x={0} y={0} width={o.w.toFixed(1)} height={o.h.toFixed(1)} fill={DOOR_DARK} opacity={atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
+            <svg data-life-id={doorId(v)} data-customer-door="" data-visit={v.id} data-active={atDoor ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={onOff(atDoor !== null)}>
+              <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
               <g data-door-fig="" transform={customerDoorFig(v, dPos, o, metrics, sgn)} opacity={(1 - dPos.depth).toFixed(2)}>
                 {sprite(passagePose(v, dPos, metrics), umbrella)}
               </g>

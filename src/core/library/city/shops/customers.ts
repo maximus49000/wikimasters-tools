@@ -25,6 +25,9 @@ export const INSIDE_SCALE = 0.45;
 // Repli d'un trajet de client (aller ET retour dans le cycle) : au plus lent (16 × 0,7 = 11,2 px/s), 2 × 900 px ≈ 161 s,
 // plus 60 s de séjour et, par sens, un seuil et un demi-tour à chaque bout (≈ 6 s en tout) : ≈ 227 s, sous VISIT_CYCLE − 1.
 export const MAX_VISIT_FALLBACK_PX = 900;
+// Demi-largeur d'un client dans le dessin (unités du sprite) : la marche intérieure commence et finit une demi-silhouette AU-DELÀ
+// du bord de la vitrine, le corps glisse derrière le montant au lieu d'apparaître à moitié.
+export const FIGURE_HALF_UNITS = 6;
 // Part du séjour au plus consacrée à chaque marche intérieure (vitrine très large : il marche plus vite, pas plus longtemps).
 const INNER_WALK_SHARE = 0.3;
 
@@ -102,10 +105,11 @@ const legs = (v: Visit, width: number) => {
 
 const seatedFamily = (type: ShopTypeId | null): boolean => type !== null && (SHOP_FAMILY[type] === 'chair' || SHOP_FAMILY[type] === 'table');
 
-// Dans le local (`c` : secondes depuis l'entrée) : du bord de la vitrine côté porte jusqu'à sa place, à l'allure du client ramenée
+// Dans le local (`c` : secondes depuis l'entrée) : de derrière le bord de la vitrine côté porte jusqu'à sa place, à l'allure du client ramenée
 // à sa taille dans la vitrine (INSIDE_SCALE contre STREET_SCALE.person), demi-tour vers sa place (yaw 2 ou 6), séjour, retour.
 const innerAt = (v: Visit, c: number): VisitInner => {
-  const from = v.doorX < v.window.x + v.window.w / 2 ? 0 : v.window.w;
+  const off = FIGURE_HALF_UNITS * INSIDE_SCALE * v.scale;
+  const from = v.doorX < v.window.x + v.window.w / 2 ? -off : v.window.w + off;
   const to = v.seat.x - v.window.x;
   const sgn: 1 | -1 = to >= from ? 1 : -1;
   const dist = Math.abs(to - from);

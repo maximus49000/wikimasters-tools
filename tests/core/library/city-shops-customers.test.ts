@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { customerGate, visitAt, visitHappens, visitsFor, VISIT_CYCLE } from '../../../src/core/library/city/shops/customers';
+import { FIGURE_HALF_UNITS, INSIDE_SCALE, customerGate, visitAt, visitHappens, visitsFor, VISIT_CYCLE } from '../../../src/core/library/city/shops/customers';
 import { DOOR_WIDTH, doorsFor } from '../../../src/core/library/city/doors';
 import { YAW_BACK } from '../../../src/core/library/figure/gait';
 import { takesAway } from '../../../src/core/library/city/shops/gestures';
@@ -23,8 +23,10 @@ describe('clients', () => {
       stages.add(s.stage);
       if (s.stage === 'inside') {
         const f = frames.get(v.slotId)!;
-        expect(s.inner!.x).toBeGreaterThanOrEqual(0);
-        expect(s.inner!.x).toBeLessThanOrEqual(f.window.w);
+        // Au plus une demi-silhouette hors de la vitrine (il entre et sort derrière le montant).
+        const off = FIGURE_HALF_UNITS * INSIDE_SCALE * v.scale;
+        expect(s.inner!.x).toBeGreaterThanOrEqual(-off - 1e-9);
+        expect(s.inner!.x).toBeLessThanOrEqual(f.window.w + off + 1e-9);
       }
     }
     expect([...stages].sort()).toEqual(['enter', 'exit', 'in', 'inside', 'out']);
@@ -103,7 +105,9 @@ describe('clients', () => {
     const doorXs = doorsFor(720, 340, 2).map((d) => d.x + DOOR_WIDTH / 2);
     const v = visitsFor(sl, fr, 2, () => 'bakery', doorXs, 720)[0]!;
     const f = fr.get(v.slotId)!;
-    const edge = f.door.x + f.door.w / 2 < f.window.x ? 0 : f.window.w;
+    // Une demi-silhouette au-delà du bord de la vitrine côté porte : le corps glisse derrière le montant.
+    const off = FIGURE_HALF_UNITS * INSIDE_SCALE * v.scale;
+    const edge = f.door.x + f.door.w / 2 < f.window.x ? -off : f.window.w + off;
     const seat = v.seat.x - f.window.x;
     const order: string[] = [];
     let lastEnter: ReturnType<typeof visitAt> = null;
@@ -122,7 +126,10 @@ describe('clients', () => {
     expect(order).toEqual(['in', 'enter', 'inside', 'exit', 'out']);
     expect(lastEnter!.passage!.depth).toBeGreaterThan(0.9);
     expect(lastEnter!.passage!.yaw).toBe(YAW_BACK);
+    // Pas de 0,1 s : au plus ≈ 1,5 px parcouru depuis l'entrée ; la première image est encore derrière le montant.
     expect(Math.abs(firstInside!.inner!.x - edge)).toBeLessThan(2);
+    expect(firstInside!.inner!.x < 0 || firstInside!.inner!.x > f.window.w).toBe(true);
+    expect(off).toBeGreaterThan(2);
     expect(reached).toBe(true);
   });
   it('aucun champ fade dans l’état d’une visite', () => {
