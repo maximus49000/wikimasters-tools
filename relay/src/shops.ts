@@ -1,9 +1,10 @@
-import { failure, forward, type Fetcher, type ProxyResult } from './proxy';
+import { overpass } from './overpass';
+import { failure, type Fetcher, type ProxyResult } from './proxy';
 
-// Noms de commerces réels autour de l'utilisateur (OpenStreetMap, par Overpass, sans clé), pour les enseignes de la scène Ville.
+// Noms de commerces réels autour de l'utilisateur (OpenStreetMap, par Overpass avec repli sur un miroir : overpass.ts), pour les
+// enseignes de la scène Ville.
 // Position arrondie à 0,1° (jamais enregistrée ailleurs que dans la clé de cache en mémoire), rayon de 25 km.
 // Réponse réduite à « type du catalogue → noms » (≤ 30 par type, ≤ 24 caractères, dédoublonnés).
-const OVERPASS = 'https://overpass-api.de/api/interpreter';
 const RADIUS_M = 25_000;
 export const SHOP_NAME_MAX = 30;
 export const SHOP_NAME_LENGTH = 24;
@@ -55,23 +56,9 @@ export async function proxyShops(url: URL, deps: { fetch: Fetcher; now: () => nu
   const key = `${rounded(lat).toFixed(1)},${rounded(lon).toFixed(1)}`;
   const hit = cache.get(key);
   if (hit && deps.now() - hit.at < CACHE_MS) return { status: 200, body: hit.body };
-  const result = await forward(deps.fetch, OVERPASS, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'WikimastersTools/1.0 (relais)' },
-    signal: AbortSignal.timeout(25_000),
-    body: `data=${encodeURIComponent(query(rounded(lat).toFixed(1), rounded(lon).toFixed(1)))}`,
-  });
-  if (result.status !== 200) return result.status === 429 ? result : failure(502, 'upstream');
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(result.body);
-  } catch {
-    return failure(502, 'upstream');
-  }
-  // Overpass répond 200 avec une « remark » quand la requête a été interrompue (délai, mémoire) : résultat partiel, jamais mis en cache.
-  if (typeof (parsed as { remark?: unknown }).remark === 'string') return failure(502, 'upstream');
-  const elements = (parsed as { elements?: unknown }).elements;
-  if (!Array.isArray(elements)) return failure(502, 'upstream');
+  const result = await overpass(deps.fetch, query(rounded(lat).toFixed(1), rounded(lon).toFixed(1)));
+  if (result.ok === false) return result.fail;
+  const elements = result.elements;
   const names: Record<string, string[]> = {};
   for (const el of elements) {
     const tags = (el as { tags?: Record<string, string> }).tags;
