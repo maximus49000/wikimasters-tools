@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
-import { LEFT_GAP, leftOf, paintBuilding, paintCityTile, paintPodium, TILE, tileCount, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
+import { CORNICE, LEFT_GAP, leftOf, paintBuilding, paintCityTile, paintPodium, TILE, tileCount, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
 import { doorsFor } from '../../../../src/core/library/city/doors';
 import { recordingCtx } from './recording-ctx';
 
@@ -135,6 +135,18 @@ describe('peintre de tranche', () => {
     const again = recordingCtx();
     paintPodium(again, plan, p);
     expect(again.ops).toEqual(ctx.ops);
+  });
+
+  it('un socle dont la corniche déborde dans la tranche voisine y est listé', () => {
+    const full = cityPaintPlan(1440, 340, 4);
+    const p = full.podiums[0]!;
+    const x0 = TILE - 2;
+    // Socle fini 1 u avant le bord de la tranche 1 : sa corniche (1,5 u) y entre ; fini 5 u avant : non.
+    const at = (end: number) => ({ ...full, podiums: [{ ...p, x: end - p.w }] });
+    expect(CORNICE.over).toBe(1.5);
+    expect(tileItems(at(x0 - 1), 1).podiums).toHaveLength(1);
+    expect(tileItems(at(x0 - 5), 1).podiums).toHaveLength(0);
+    expect(tileItems(at(x0 - 1), 0).podiums).toHaveLength(1);
   });
 
   it('tour sur socle : pas de salissure de pied (elle serait sous le socle)', () => {

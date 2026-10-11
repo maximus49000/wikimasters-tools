@@ -1,8 +1,8 @@
 import { hashString, mulberry32 } from '../scene-world';
 import { cellRng, type Box } from './brush';
 import { INK, SHADOW_K, TAU, disc, fillRect, groundShadow, ink, inkRect, light, pick, poly, shade } from './cel';
-import { HILL_ROWS, type CityPaintPlan, type Furniture, type Gull, type HillHouse, type Landmark, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree, type Win } from './city-plan';
 import { GROUND_FLOOR } from '../city/facades';
+import { HILL_ROWS, type CityPaintPlan, type Furniture, type Gull, type HillHouse, type Landmark, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree, type Win } from './city-plan';
 import { paintEntrance } from './shop/entrance';
 import { hexRgb, rgba, type Rgb } from './color';
 import { paintFarWall, paintGull, paintHillGround, paintHillHouse, paintLandmark } from './hill-painter';
@@ -29,6 +29,8 @@ const MAILBOX = hexRgb('#F6C820');
 const POSTERS = ['#E85A3A', '#3A7EC8', '#F0C030', '#8A58B8'].map(hexRgb);
 
 export const tileCount = (width: number): number => Math.max(1, Math.ceil(width / TILE));
+// Corniche du socle des jumeaux : débord de chaque côté, hauteur au-dessus de `p.top`, hauteur totale, ombre dessous.
+export const CORNICE = { over: 1.5, up: 0.8, h: 3, drop: 2.5 } as const;
 
 export type TileItems = { buildings: PaintBuilding[]; podiums: PaintPodium[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; furniture: Furniture[]; doors: PlanDoor[] };
 
@@ -37,7 +39,8 @@ export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
   const x1 = (tile + 1) * TILE + 2;
   return {
     buildings: plan.buildings.filter((b) => b.x < x1 && b.x + b.w > x0),
-    podiums: plan.podiums.filter((p) => p.x < x1 && p.x + p.w > x0),
+    // Le socle déborde de sa corniche de chaque côté.
+    podiums: plan.podiums.filter((p) => p.x - CORNICE.over < x1 && p.x + p.w + CORNICE.over > x0),
     trees: plan.trees.filter((t) => t.x - t.r < x1 && t.x + t.r > x0),
     houses: plan.hill.houses.filter((h) => h.x - 2 < x1 && h.x + h.w + (h.trees ? h.trees.r * 2 : 0) + 2 > x0),
     landmarks: plan.hill.landmarks.filter((l) => l.x - 3 < x1 && l.x + l.w + 3 > x0),
@@ -567,7 +570,6 @@ function paintPane(ctx: PaintCtx, win: Win): void {
 // Socle commun des jumeaux (maquette batiments-larges/rue.html) : pierre de taille claire d'un seul tenant sous les deux
 // tours, assises fines, corniche saillante à `p.top` (rehaut dessus, ombre nette dessous), rangée de fenêtres de l'étage
 // encadrées de pierre, bandeau au-dessus du rez-de-chaussée (les locaux et entrées sont peints par-dessus).
-const CORNICE = { over: 1.5, up: 0.8, h: 3, drop: 2.5 } as const;
 export function paintPodium(ctx: PaintCtx, plan: CityPaintPlan, p: PaintPodium): void {
   const { x, w, top, stone } = p;
   const { ground } = plan;

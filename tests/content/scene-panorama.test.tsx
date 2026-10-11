@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScenePanorama } from '../../src/content/scene-panorama';
 import { dayContext } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
-import { doorsFor } from '../../src/core/library/city/doors';
-import { citySkyline } from '../../src/core/library/scene-world';
+import { DOOR_MARGIN, DOOR_WIDTH, doorsFor } from '../../src/core/library/city/doors';
+import { frontLots } from '../../src/core/library/city/lots';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -100,7 +100,9 @@ describe('ScenePanorama (ville)', () => {
     render(23 * 60);
     // Une entrée par immeuble visible du premier plan.
     expect(container.querySelectorAll('[data-door] [data-entrance]')).toHaveLength(doorsFor(720, 340, 5).length);
-    expect(doorsFor(720, 340, 5).length).toBeGreaterThanOrEqual(citySkyline(720, 340, 5).filter((b) => !b.far && b.x + b.w <= 720).length);
+    // Une entrée par lot du premier plan (les jumeaux n'en ont qu'une) dont la partie visible loge une entrée.
+    const roomy = frontLots(720, 340, 5).filter((l) => Math.min(l.x + l.w, 720) - Math.max(l.x, 0) >= DOOR_WIDTH + 2 * DOOR_MARGIN);
+    expect(doorsFor(720, 340, 5).length).toBeGreaterThanOrEqual(roomy.length);
     const lamps = container.querySelectorAll('[data-street-lamp]').length;
     expect(lamps).toBeGreaterThan(2);
     expect(lit()).toBe(lamps);

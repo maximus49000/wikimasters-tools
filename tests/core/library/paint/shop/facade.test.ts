@@ -121,6 +121,18 @@ describe('façades', () => {
     const xs = mullions(60, 'cafe');
     expect(xs).toHaveLength(4);
     for (let k = 1; k < xs.length; k++) expect(xs[k]! - xs[k - 1]!).toBeCloseTo(12, 5);
+    // Façade (fermée la nuit, ouverte) : les mêmes montants sur sa propre vitre, aux mêmes abscisses relatives.
+    for (const state of ['closed', 'open'] as const) {
+      const s = spec({ type: 'records', w: 56, state, night: state === 'closed' });
+      const { glass } = facadeGeometry(s);
+      expect(glass.w).toBe(48);
+      const rec = paint(s);
+      const onFacade = [...new Set(rec.ops.filter((o) => o.op === 'rect' && o.args[2] === 0.8 && o.args[1] === glass.y && o.args[3] === glass.h).map((o) => o.args[0]! - glass.x))];
+      const front = mullions(48, 'records');
+      expect(onFacade).toHaveLength(front.length);
+      onFacade.forEach((v, k) => expect(v).toBeCloseTo(front[k]!, 6));
+    }
+    expect(paint(spec({ type: 'records', w: 37 })).ops.filter((o) => o.op === 'rect' && o.args[2] === 0.8)).toEqual([]);
   });
 
   it('store : le personnel est rogné sous le lambrequin (étals et cafés ouverts seulement)', () => {

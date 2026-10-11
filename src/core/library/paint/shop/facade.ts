@@ -49,6 +49,17 @@ export function facadeGeometry(s: FacadeSpec): { win: Rect; glass: Rect; door: R
   return { win, glass, door };
 }
 
+// Grande vitrine (plus de 30 u : locaux des jumeaux et des lots larges) : travées d'environ 12 u.
+const bayCount = (w: number): number => (w > 30 ? Math.round(w / 12) : 1);
+// Montants verticaux du cadre de la famille entre les travées (0,8 u, trait INK 0,3) ; rien sous 30 u. Peints sur la vitre
+// de la façade (fermée, nuit) et sur celle du premier plan (ouverte) : même géométrie.
+function paintMullions(x: ShopPaintCtx, s: FacadeSpec, g: Rect): void {
+  const bays = bayCount(g.w);
+  if (bays === 1) return;
+  const c = frameColor(s);
+  for (let k = 1; k < bays; k++) R(x, g.x + (k * g.w) / bays - 0.4, g.y, 0.8, g.h, c, { lw: 0.3, sh: 0.3, shX: 0.6, li: 0 });
+}
+
 // Options de la maquette des devantures (ombre `sh` à partir de `shX`, rehaut `li` sur `liW`, trait `lw`) et leurs défauts.
 type MOpts = { sh?: number; shX?: number; li?: number; liW?: number; lw?: number };
 const mo = ({ sh = 0.28, shX = 0.68, li = 0.22, liW = 0.18, lw = 0.5 }: MOpts = {}): CelOpts => ({ s: sh, sx: shX, l: li, lx: liW, lw });
@@ -119,6 +130,7 @@ export function paintFacade(x: TintedCtx, s: FacadeSpec): void {
   x.strokeStyle = INK;
   x.lineWidth = 0.5;
   x.strokeRect(W0.x, W0.y, W0.w, W0.h);
+  paintMullions(x, s, W0);
 
   // Porte
   const dc = f === 'A' ? sign : f === 'F' ? '#1A1420' : f === 'E' ? '#E8E4DA' : '#3A3F4A';
@@ -415,11 +427,10 @@ export function paintGlass(x: ShopPaintCtx, s: FacadeSpec, w: number, h: number)
   x.fillStyle = s.lit ? 'rgba(255,200,110,0.18)' : 'rgba(150,190,220,0.18)';
   x.fillRect(0, 0, w, h);
   glint(x, 0, 0, w, h, s.lit ? 0.1 : 0.25);
-  // Grande vitrine (plus de 30 u, locaux des jumeaux et lots larges) : montants verticaux du cadre de la famille, environ
-  // tous les 12 u ; la boiserie garde un petit bois au milieu de chaque travée.
-  const bays = w > 30 ? Math.round(w / 12) : 1;
-  const wood = f === 'A' && s.type ? shadeOf(SHOP_DEFS[s.type].sign, 0.2) : null;
-  if (wood) {
+  // Boiserie : petits bois (un au milieu de chaque travée d'une grande vitrine) et traverse.
+  const bays = bayCount(w);
+  if (f === 'A' && s.type) {
+    const wood = shadeOf(SHOP_DEFS[s.type].sign, 0.2);
     if (bays === 1) {
       const n = Math.max(2, Math.round(w / 9));
       for (let k = 1; k < n; k++) line(x, [[(k * w) / n, 0], [(k * w) / n, h]], wood, 0.5);
@@ -428,10 +439,7 @@ export function paintGlass(x: ShopPaintCtx, s: FacadeSpec, w: number, h: number)
     }
     line(x, [[0, 6], [w, 6]], wood, 0.5);
   }
-  if (bays > 1) {
-    const c = frameColor(s);
-    for (let k = 1; k < bays; k++) R(x, (k * w) / bays - 0.4, 0, 0.8, h, c, { lw: 0.3, sh: 0.3, shX: 0.6, li: 0 });
-  }
+  paintMullions(x, s, { x: 0, y: 0, w, h });
   x.strokeStyle = INK;
   x.lineWidth = 0.5;
   x.strokeRect(0, 0, w, h);

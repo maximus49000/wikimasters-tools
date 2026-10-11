@@ -112,10 +112,9 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
       </g>
     ));
   // Socles des jumeaux (rendu non peint) : un aplat de la couleur des murs, devant les deux tours.
-  const podiumBlocks =
-  buildings.filter((b) => b.podium && b.x === b.podium.x).map((b) => (
-      <rect key={`p${b.podium!.id}`} data-podium={b.podium!.id} x={b.podium!.x} y={ground - b.podium!.h} width={b.podium!.w} height={b.podium!.h} fill={near} />
-    ));
+  const podiumBlocks = buildings
+    .filter((b) => b.podium && b.x === b.podium.x)
+    .map((b) => <rect key={`p${b.podium!.id}`} data-podium={b.podium!.id} x={b.podium!.x} y={ground - b.podium!.h} width={b.podium!.w} height={b.podium!.h} fill={near} />);
   // Locaux : la vitrine montre l'intérieur (rogné par le <svg> imbriqué de ShopFront) ; la nuit, seuls les commerces
   // ouverts sont éclairés. Jour de changement : le mobilier de l'ancien commerce sort par tranches, puis celui du nouveau
   // rentre (furnitureAt) ; il reste en place pendant le chantier d'enseigne. Personnel, premier plan de l'intérieur ouvert
