@@ -88,7 +88,7 @@ describe('passants Ghibli', () => {
     const c = make();
     const keyed = [...c.querySelectorAll('[data-ped] [data-figure][data-key], [data-resident] [data-figure][data-key], svg[data-resident-door] [data-figure][data-key]')];
     expect(keyed.length).toBeGreaterThan(0);
-    // data-key = palette # sig|yaw|gait|phase|head
+    // data-key = palette # sig|yaw|gait|phase|head|arms|lean
     for (const f of keyed) expect(f.getAttribute('data-key')!.split('#').pop()!.split('|').slice(2, 4)).toEqual(['stand', '0']);
     for (const f of c.querySelectorAll('[data-ped] [data-figure][data-key]')) expect(['0', '8']).toContain(f.getAttribute('data-key')!.split('#').pop()!.split('|')[1]);
   });

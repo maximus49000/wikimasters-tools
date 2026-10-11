@@ -364,7 +364,7 @@ describe('boîte de nuit : file à pied, sans fondu (G3a)', () => {
       if (ghibli) expect(node!.querySelector('[data-figure]')).not.toBeNull();
     }
   });
-  // Pose Ghibli lue sur la clé affichée (palette # sig|yaw|gait|phase|head).
+  // Pose Ghibli lue sur la clé affichée (palette # sig|yaw|gait|phase|head|arms|lean).
   const poseOf = (fig: Element): { yaw: number; gait: string } => {
     const parts = fig.getAttribute('data-key')!.split('#').pop()!.split('|');
     return { yaw: Number(parts[1]), gait: parts[2]! };

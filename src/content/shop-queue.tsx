@@ -9,13 +9,12 @@ import { ADVANCE_S, nightclubDoor, queueAt } from '../core/library/city/shops/qu
 import type { ShopFrame, ShopSlot } from '../core/library/city/shops/slots';
 import type { ShopView } from '../core/library/city/shops/view';
 import { hashString, mulberry32 } from '../core/library/scene-world';
-import type { FigureKey } from '../core/library/figure/bake';
 import { TURN_S, YAW_BACK, facingYaw, phaseIndexOf, turnYaw } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
-import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
+import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Boîte de nuit (vague 1b-iv-b) : cordon (deux potelets et une corde) devant la porte, deux videurs en costume noir, bras
@@ -37,7 +36,7 @@ const REF_POS = 100; // origine de la phase de marche (croît quand la place dim
 // Personne qui entre (p de 0 à 1 sur ADVANCE_S) : marche jusqu'à WALK_END, demi-tour sur place à la porte (les dernières TURN_S
 // de la première moitié), puis seuil de dos à partir de 0,5. Même durée totale qu'avant le demi-tour.
 const WALK_END = 0.5 - TURN_S / ADVANCE_S;
-type FigurePose = Omit<FigureKey, 'sig'>;
+type FigurePose = PoseIn;
 
 export type QueueFrame = {
   // `pos` : place dans la file (0 = devant la porte), fractionnaire pendant l'avancée d'un cran ; la dernière arrive en fondu.

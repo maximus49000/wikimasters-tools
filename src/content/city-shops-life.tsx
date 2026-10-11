@@ -15,13 +15,12 @@ import { capFor, spriteBudget, type BudgetSprite } from '../core/library/city/sh
 import { changePlans, type ShopView } from '../core/library/city/shops/view';
 import { WORK_STEPS, type WorkStep } from '../core/library/city/shops/works';
 import { WORLD_MARGIN, hashString, mulberry32 } from '../core/library/scene-world';
-import type { FigureKey } from '../core/library/figure/bake';
 import { YAW_FRONT, YAW_RIGHT, phaseIndexOf } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import type { FigureRegistry } from './figure/figure-host';
-import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
+import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 import { AccessorySprite, LIFTING, PosedPerson, STANDING, applyPose, poseHandles, showCarry, type PoseHandles } from './shop-gesture-sprites';
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
 import { NightclubDoor } from './shop-queue';
@@ -56,7 +55,7 @@ export const setIfChanged = (node: Element | null, name: string, value: string):
 
 // ---------- Clients ----------
 const NO_MUTED: ReadonlySet<string> = new Set();
-type FigurePose = Omit<FigureKey, 'sig'>;
+type FigurePose = PoseIn;
 export type CustomerState = { on: boolean; stage: VisitStage | null; x: number; passage: Passage | null; inner: VisitInner | null; gesture: Pose | null; carry: boolean };
 
 // Présence d'une visite à l'instant t : en route (ou dans le magasin) et tirée pour ce tour de cycle, local ouvert (gate > 0).
