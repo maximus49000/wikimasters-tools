@@ -59,6 +59,24 @@ describe('cuisson', () => {
     const b = bakeFigure(shape, { ...key, sig: signatureOf(shape) });
     expect(b.groups.some((g) => g.parts.some((p) => p.slot === 'umb'))).toBe(true);
   });
+  it('parapluie en dôme : la toile reste large juste sous son sommet (un cône s’y pince)', () => {
+    const shape = shapeOf(girl, true);
+    for (const yaw of [0, 4, 8, 12]) {
+      const b = bakeFigure(shape, { ...key, sig: signatureOf(shape), yaw, gait: 'stand', phase: 0 });
+      const umb = b.groups.flatMap((g) => g.parts).find((p) => p.slot === 'umb')!;
+      const nums = umb.shade.match(/-?\d+(\.\d+)?/g)!.map(Number);
+      const P = Array.from({ length: nums.length / 2 }, (_, i) => [nums[2 * i]!, nums[2 * i + 1]!] as const);
+      const top = Math.min(...P.map((q) => q[1]));
+      // Largeur du polygone (convexe) à 1 unité sous le sommet : ≈ 4,4 pour l’ancien cône, ≈ 13 pour le dôme.
+      const y = top + 1;
+      const xs: number[] = [];
+      P.forEach((a, i) => {
+        const c = P[(i + 1) % P.length]!;
+        if ((a[1] - y) * (c[1] - y) <= 0 && a[1] !== c[1]) xs.push(a[0] + ((y - a[1]) / (c[1] - a[1])) * (c[0] - a[0]));
+      });
+      expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(9);
+    }
+  });
   it('clé lisible et stable', () => {
     expect(keyString(key)).toBe(`${key.sig}|0|walk|3|0`);
   });

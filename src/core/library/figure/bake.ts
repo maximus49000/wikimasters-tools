@@ -18,6 +18,12 @@ export const keyString = (k: FigureKey): string => `${k.sig}|${k.yaw}|${k.gait}|
 export const INK_WIDTH = 0.8;
 
 const HEAD_R = 4.4;
+// Anneaux de la toile du parapluie (rayon, hauteur au-dessus du haut du manche) : bord, mi-hauteur, haut ; sommet à +3,6.
+const UMB_RINGS: readonly (readonly [number, number])[] = [
+  [9.5, -1.2],
+  [7.5, 1.6],
+  [4, 3.0],
+];
 type Part = { P: P2[]; lit: P2[] | null; slot: Slot; z: number };
 type Group = { parts: Part[]; z: number };
 
@@ -113,10 +119,13 @@ export function bakeFigure(s: Shape, key: FigureKey): Baked {
     if (g.l > 0 && s.umbrella) {
       const top = add3(g.hand, [0, 11, 0]);
       ps.push(capPart(g.hand, top, 0.35, 0.35, 'shoe'));
-      const canopy: V3[] = [add3(top, [0, 3.2, 0])];
-      for (let i = 0; i < 12; i++) {
-        const a = (i / 12) * 2 * Math.PI;
-        canopy.push(add3(top, [Math.cos(a) * 9.5, -1.2, Math.sin(a) * 9.5]));
+      // Toile en dôme (un bord et un sommet seuls se lisaient comme un cône) : enveloppe de trois anneaux, du bord au haut.
+      const canopy: V3[] = [add3(top, [0, 3.6, 0])];
+      for (const [r, dy] of UMB_RINGS) {
+        for (let i = 0; i < 12; i++) {
+          const a = (i / 12) * 2 * Math.PI;
+          canopy.push(add3(top, [Math.cos(a) * r, dy, Math.sin(a) * r]));
+        }
       }
       ps.push(hullPart(canopy, 'umb', 0.84));
     }
