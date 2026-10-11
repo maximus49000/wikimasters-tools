@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useReducer, useRef, type ReactElement } from 'react';
+import { Fragment, useEffect, useMemo, useReducer, useState, type ReactElement } from 'react';
 import type { YMD } from '../core/library/city/calendar';
 import { DOOR_DARK, THRESHOLD_S, doorDarkOpacity, type Passage } from '../core/library/city/doorway';
 import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
@@ -7,9 +7,9 @@ import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import { ACCESSORY, gestureAt } from '../core/library/city/shops/gestures';
 import { openRangeAt } from '../core/library/city/shops/hours';
 import type { Rect, ShopFrame } from '../core/library/city/shops/slots';
-import { SETUP_MIN, WEATHER_HOLD, holdWeather, terraceAt, terraceGuestMoves, terraceGuests, terraceWeatherAt, type GuestMove, type TerraceState, type TerraceWeather } from '../core/library/city/shops/terrace';
+import { RUSH_CLEAR_MIN, RUSH_LEAVE_MIN, WEATHER_HOLD, holdWeather, isBad, terraceAt, terraceGuestMoves, terraceGuests, terraceWeatherAt, type GuestMove, type TerraceAt, type TerraceRush, type TerraceState, type TerraceWeather } from '../core/library/city/shops/terrace';
 import type { ShopView } from '../core/library/city/shops/view';
-import { TURN_S, YAW_BACK, YAW_FRONT, phaseIndexOf, turnYaw, yawToward } from '../core/library/figure/gait';
+import { TURN_S, YAW_BACK, YAW_FRONT, facingYaw, phaseIndexOf, turnYaw, yawToward } from '../core/library/figure/gait';
 import type { ArmPose } from '../core/library/figure/skeleton';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
@@ -39,7 +39,10 @@ const SLIDE = 'transform 60s linear, opacity 0.4s ease';
 const WAITER_BESIDE = 9;
 
 // ---------- Météo de la rue : relevés de la dernière minute et des WEATHER_HOLD précédentes ----------
-export type TerraceSky = { now: TerraceWeather; before: TerraceWeather };
+// `rush` : averse en cours (minutes de mauvais temps d'affilée, temps d'avant), pour que la terrasse se vide à pied (terraceAt).
+export type TerraceSky = { now: TerraceWeather; before: TerraceWeather; rush?: TerraceRush };
+// Au-delà, l'averse a fini de vider la terrasse : inutile de compter plus loin.
+const RUSH_SPAN = RUSH_LEAVE_MIN + RUSH_CLEAR_MIN + 1;
 
 // Historique des relevés par minute d'horloge. Seuls les relevés réels de la minute courante sont gardés (`store`) ; les minutes
 // manquantes de la fenêtre sont relues sur l'horloge de météo au passé À CHAQUE relevé, sans être gardées (dix lectures par
@@ -52,10 +55,16 @@ export function weatherHistory(): { sample(read: (nowMs: number) => Weather, now
       const minute = Math.floor(nowMs / 60_000);
       const now = terraceWeatherAt(read(nowMs));
       if (store) seen.set(minute, now);
+      const past = (k: number): TerraceWeather => (k === 0 ? now : (seen.get(minute - k) ?? terraceWeatherAt(read(nowMs - k * 60_000))));
       const window: TerraceWeather[] = [];
-      for (let k = 1; k <= WEATHER_HOLD; k++) window.push(seen.get(minute - k) ?? terraceWeatherAt(read(nowMs - k * 60_000)));
-      for (const key of seen.keys()) if (key < minute - WEATHER_HOLD) seen.delete(key);
-      return { now, before: holdWeather(window) };
+      for (let k = 1; k <= WEATHER_HOLD; k++) window.push(past(k));
+      // Averse : minutes de mauvais temps d'affilée (minute courante comprise), puis les WEATHER_HOLD minutes d'avant.
+      let badFor = 0;
+      while (badFor < RUSH_SPAN && isBad(past(badFor))) badFor++;
+      const prior: TerraceWeather[] = [];
+      for (let k = badFor; k < badFor + WEATHER_HOLD; k++) prior.push(past(k));
+      for (const key of seen.keys()) if (key < minute - WEATHER_HOLD - RUSH_SPAN) seen.delete(key);
+      return { now, before: holdWeather(window), rush: { badFor, beforeBad: holdWeather(prior) } };
     },
   };
 }
@@ -119,24 +128,6 @@ function slideOf(state: TerraceState, progress: number, n: number, i: number, st
 const WAITER_CYCLE = 36; // un aller-retour toutes les 36 s : 4 s de marche, 6 s à la table, 4 s de retour, le reste à l'intérieur
 const WAITER_WALK = 4;
 const WAITER_SERVE = 6;
-const WAITER_FADE = 0.4;
-
-// Position du serveur à l'instant t (s) : sort de la porte, va à l'une des tables (`targets`, tirée à chaque tour), revient.
-export function waiterAt(t: number, phase: number, doorX: number, targets: readonly number[]): { x: number; dir: 1 | -1; opacity: number } {
-  const u = t + phase;
-  const turn = Math.floor(u / WAITER_CYCLE);
-  const c = u - turn * WAITER_CYCLE;
-  if (targets.length === 0) return { x: doorX, dir: 1, opacity: 0 };
-  const target = targets[(Math.imul(turn + 1, 2654435761) >>> 0) % targets.length]!;
-  const out: 1 | -1 = target >= doorX ? 1 : -1;
-  const back = (-out) as 1 | -1;
-  const lerp = (p: number): number => doorX + (target - doorX) * p;
-  if (c < WAITER_WALK) return { x: lerp(c / WAITER_WALK), dir: out, opacity: Math.min(1, c / WAITER_FADE) };
-  if (c < WAITER_WALK + WAITER_SERVE) return { x: target, dir: out, opacity: 1 };
-  const r = c - WAITER_WALK - WAITER_SERVE;
-  if (r < WAITER_WALK) return { x: lerp(1 - r / WAITER_WALK), dir: back, opacity: Math.min(1, (WAITER_WALK - r) / WAITER_FADE) };
-  return { x: doorX, dir: back, opacity: 0 };
-}
 
 // ---------- Trajets à pied (G3b) : convives qui arrivent ou repartent, serveur en pantin ----------
 // Personne n'apparaît ni ne disparaît sur sa chaise : on sort de la porte du local (seuil de door-passage.ts), on marche en
@@ -224,8 +215,9 @@ export function guestTripOf(move: 'arrive' | 'leave', since: number, seat: SeatP
   return { start: since + rnd * spare, k, doorX, door, segs, before: move === 'arrive' ? 'gone' : 'seated', after: move === 'arrive' ? 'seated' : 'gone' };
 }
 
-// Serveur au pantin : même cycle que le classique (waiterAt), mais il passe le seuil de la porte, marche en diagonale jusqu'à la
-// table tirée au sort (l'objet du commerce à la main droite), le pose (bras tendu), puis revient les mains vides.
+// Serveur (les deux graphismes) : un aller-retour toutes les WAITER_CYCLE s ; il passe le seuil de la porte du local (jamais de
+// fondu sur place), marche en diagonale jusqu'à la table tirée au sort (Ghibli : l'objet du commerce à la main droite), le pose
+// (bras tendu), puis revient les mains vides et rentre.
 const SERVE_YAW: Readonly<Record<1 | -1, number>> = { 1: 2, [-1]: 6 };
 export function waiterTripAt(t: number, phase: number, doorX: number, door: Rect, m: CityMetrics, targets: readonly number[], y: number, k: number): TerraceTrip | null {
   if (targets.length === 0) return null;
@@ -249,6 +241,9 @@ export function waiterTripAt(t: number, phase: number, doorX: number, door: Rect
   return { start: turn * WAITER_CYCLE - phase, k, doorX, door, segs, before: 'gone', after: 'gone' };
 }
 
+// Repère d'un trajet (échelle, porte du local) : un TerraceTrip, ou le script du porteur.
+type TripFrame = { k: number; doorX: number; door: Rect };
+
 // Nœuds d'un trajet : trottoir (`[data-trip-street]`) et seuil (`svg[data-trip-door]`), chacun avec sa figure ; objets tenus
 // (`[data-item-hand]`) montrés par `display` quand le segment le dit. `ghibli` : pantins (jamais en miroir), sinon passant
 // classique retourné selon le côté regardé.
@@ -259,7 +254,7 @@ const tripNodesOf = (root: Element): TripNodes => {
   return { street, door, streetFig: street?.querySelector('[data-figure]') ?? null, doorFig: door?.querySelector('[data-figure]') ?? null, items: [...root.querySelectorAll('[data-item-hand]')] };
 };
 const tripStreetT = (x: number, y: number, sgn: number, k: number): string => `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(sgn * k).toFixed(3)} ${k.toFixed(3)})`;
-function placeTrip(n: TripNodes, v: TripView, w: TerraceTrip, m: CityMetrics, figures: FigureRegistry | null): void {
+function placeTrip(n: TripNodes, v: TripView, w: TripFrame, m: CityMetrics, figures: FigureRegistry | null): void {
   const onStreet = v?.where === 'street' ? v : null;
   const atDoor = v?.where === 'door' ? v : null;
   setIfChanged(n.street, 'visibility', onStreet ? 'visible' : 'hidden');
@@ -276,40 +271,30 @@ function placeTrip(n: TripNodes, v: TripView, w: TerraceTrip, m: CityMetrics, fi
   for (const it of n.items) setIfChanged(it, 'display', held);
 }
 
-// Serveurs : classique (opacité à la porte, inchangé) ou pantin (`data-ghibli`, trajet par la porte, posé par la boucle).
-export type Waiter = { node: Element; door: number; targets: number[]; phase: number; y: number; k: number; ghibli: { rect: Rect; nodes: TripNodes } | null };
+// Serveurs : trajet par la porte posé par la boucle ; `figures` : pantins (null : passant classique).
+export type Waiter = { door: number; rect: Rect; targets: number[]; phase: number; y: number; k: number; nodes: TripNodes };
 export function collectWaiters(root: Element): Waiter[] {
   const out: Waiter[] = [];
   for (const node of root.querySelectorAll('[data-terrace-waiter]')) {
-    const rect = node.getAttribute('data-door-rect');
     out.push({
-      node,
       door: Number(node.getAttribute('data-door-x')),
+      rect: JSON.parse(node.getAttribute('data-door-rect')!) as Rect,
       targets: (node.getAttribute('data-targets') ?? '').split(' ').filter(Boolean).map(Number),
       phase: Number(node.getAttribute('data-phase')),
       y: Number(node.getAttribute('data-y')),
       k: Number(node.getAttribute('data-k')),
-      ghibli: rect ? { rect: JSON.parse(rect) as Rect, nodes: tripNodesOf(node) } : null,
+      nodes: tripNodesOf(node),
     });
   }
   return out;
 }
-const waiterTransform = (x: number, y: number, dir: number, k: number): string => `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(dir * k).toFixed(3)} ${k.toFixed(3)})`;
 const setIfChanged = (node: Element | null, name: string, value: string): void => {
   if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
 };
-// `m` et `figures` : serveurs au pantin (sans eux, seuls les serveurs classiques sont posés).
-export function placeWaiters(waiters: Waiter[], t: number, m: CityMetrics | null = null, figures: FigureRegistry | null = null): void {
+export function placeWaiters(waiters: Waiter[], t: number, m: CityMetrics, figures: FigureRegistry | null): void {
   for (const w of waiters) {
-    if (w.ghibli) {
-      if (!m || !figures) continue;
-      const trip = waiterTripAt(t, w.phase, w.door, w.ghibli.rect, m, w.targets, w.y, w.k);
-      if (trip) placeTrip(w.ghibli.nodes, tripAt(trip, t), trip, m, figures);
-      continue;
-    }
-    const s = waiterAt(t, w.phase, w.door, w.targets);
-    setIfChanged(w.node, 'opacity', s.opacity.toFixed(2));
-    if (s.opacity > 0) setIfChanged(w.node, 'transform', waiterTransform(s.x, w.y, s.dir, w.k));
+    const trip = waiterTripAt(t, w.phase, w.door, w.rect, m, w.targets, w.y, w.k);
+    if (trip) placeTrip(w.nodes, tripAt(trip, t), trip, m, figures);
   }
 }
 
@@ -353,23 +338,96 @@ export function placeTerraceGuests(guests: TerraceGuestNode[], t: number, m: Cit
   }
 }
 
-// Porteur des tables (Ghibli) : il glisse avec elles (transition CSS d'une minute) ; la boucle règle ses pas sur la distance
-// parcourue depuis le début de la transition, debout une fois arrivé.
-export type CarrierMove = { since: number; dist: number; yaw: number; k: number };
-const SLIDE_S = 60;
-export function carrierPose(c: CarrierMove, t: number): PoseIn {
-  const p = c.dist > 0.01 ? Math.min(1, Math.max(0, (t - c.since) / SLIDE_S)) : 1;
-  if (p >= 1) return { yaw: c.yaw, gait: 'stand', phase: 0, head: 0, arms: 'carry' };
-  return { yaw: c.yaw, gait: 'walk', phase: phaseIndexOf((p * c.dist) / c.k), head: 0, arms: 'carry' };
+// ---------- Porteur des tables (les deux graphismes) ----------
+// Les tables glissent par leur transition CSS d'une minute (avancée `from` → `to`, 0 à la porte, 1 à leur place) ; le porteur
+// est placé par la boucle à côté de la table en mouvement, du côté opposé au sens de la glissade (il la pousse, bras en avant sur
+// le plateau : `carry`). Montage, pour chaque table : il revient de la précédente et rentre la chercher, ressort par le seuil de
+// la porte avec elle et l'accompagne jusqu'à sa place. Démontage : il sort, va jusqu'à la table, la pousse jusqu'à la porte et
+// rentre avec elle. `p0` : avancée du montage (ou démontage) au début de la minute ; `span` : sa durée (min).
+export type CarrierSpec = { mode: 'setup' | 'clear'; since: number; p0: number; span: number; doorX: number; door: Rect; y: number; doorY: number; k: number; places: number[]; from: number[]; to: number[] };
+// Temps pour rejoindre la table en sortant de la porte (ou la porte en la quittant), et part maximale d'une table faite à vide.
+const APPROACH_S = 1.2;
+const EMPTY_SHARE = 0.3;
+const sideOf = (x: number, doorX: number): 1 | -1 => (x >= doorX ? 1 : -1);
+export function carrierAt(c: CarrierSpec, t: number): TripView {
+  const n = c.places.length;
+  if (n === 0) return null;
+  const f = Math.min(1, Math.max(0, (t - c.since) / MINUTE_S));
+  const q = Math.min(1 - 1e-9, c.p0 + f / c.span) * n;
+  const j = Math.floor(q);
+  const i = c.mode === 'setup' ? j : n - 1 - j;
+  const len = (c.span * MINUTE_S) / n;
+  const s = (q - j) * len;
+  const pace = c.k * GUEST_PACE;
+  const side = sideOf(c.places[i]!, c.doorX);
+  const dir = c.mode === 'setup' ? side : ((-side) as 1 | -1);
+  const tableX = c.doorX + (c.places[i]! - c.doorX) * (c.from[i]! + (c.to[i]! - c.from[i]!) * f);
+  const cx = tableX - dir * WAITER_BESIDE * c.k;
+  const door = (from: number, to: number, p: number, yaw: number, carry: boolean): TripView => {
+    const depth = from + (to - from) * p;
+    return { where: 'door', item: false, passage: { stage: 'threshold', x: c.doorX, depth, yaw, gait: 'walk', walked: 0 }, pose: { yaw, gait: 'walk', phase: phaseIndexOf(depth * 8), head: 0, arms: carry ? 'carry' : undefined } };
+  };
+  const walk = (x0: number, y0: number, x1: number, y1: number, p: number, carry: boolean): TripView => {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    return { where: 'street', item: false, x: x0 + dx * p, y: y0 + dy * p, pose: { yaw: yawToward(dx, dy), gait: 'walk', phase: phaseIndexOf((Math.hypot(dx, dy) * p) / c.k), head: 0, arms: carry ? 'carry' : undefined } };
+  };
+  // Avec la table : profil dans le sens de la glissade, pas réglés sur la distance parcourue depuis la porte.
+  const along = (): TripView => ({ where: 'street', item: false, x: cx, y: c.y, pose: { yaw: facingYaw(dir), gait: 'walk', phase: phaseIndexOf((Math.abs(cx - c.doorX) + Math.abs(c.y - c.doorY)) / c.k), head: 0, arms: 'carry' } });
+  if (c.mode === 'setup') {
+    let s0 = 0;
+    if (j > 0) {
+      const prev = c.places[j - 1]!;
+      const px = prev - sideOf(prev, c.doorX) * WAITER_BESIDE * c.k;
+      const back = Math.min(len * EMPTY_SHARE, Math.hypot(px - c.doorX, c.y - c.doorY) / pace);
+      if (s < back) return walk(px, c.y, c.doorX, c.doorY, s / back, false);
+      if (s < back + THRESHOLD_S) return door(0, 1, (s - back) / THRESHOLD_S, YAW_BACK, false);
+      s0 = back + THRESHOLD_S;
+    }
+    if (s < s0 + THRESHOLD_S) return door(1, 0, (s - s0) / THRESHOLD_S, YAW_FRONT, true);
+    const a = (s - s0 - THRESHOLD_S) / APPROACH_S;
+    return a < 1 ? walk(c.doorX, c.doorY, cx, c.y, a, true) : along();
+  }
+  const reach = Math.min(len * EMPTY_SHARE, Math.hypot(cx - c.doorX, c.y - c.doorY) / pace);
+  if (s < THRESHOLD_S) return door(1, 0, s / THRESHOLD_S, YAW_FRONT, false);
+  if (s < THRESHOLD_S + reach) return walk(c.doorX, c.doorY, cx, c.y, (s - THRESHOLD_S) / reach, false);
+  // Dernière table : il est rentré un peu avant la fin du démontage (la terrasse disparaît alors du rendu).
+  const end = len - (j === n - 1 ? TRIP_SLACK_S : 0);
+  const home = end - THRESHOLD_S;
+  if (s >= end) return null;
+  if (s >= home) return door(0, 1, (s - home) / THRESHOLD_S, YAW_BACK, true);
+  if (s >= home - APPROACH_S) return walk(cx, c.y, c.doorX, c.doorY, (s - home + APPROACH_S) / APPROACH_S, true);
+  return along();
 }
-export type Carrier = { fig: Element | null; move: CarrierMove };
+// Retour du porteur la minute qui suit le montage : de la dernière table posée à la porte, puis dans le local.
+export function carrierHomeTrip(since: number, from: number, y: number, doorX: number, door: Rect, m: CityMetrics, k: number): TerraceTrip {
+  const dx = doorX - from;
+  const dy = m.doorY - y;
+  const back = yawToward(dx, dy);
+  const at = facingYaw(sideOf(from, doorX));
+  const segs: TripSeg[] = [
+    { k: 'turn', x: from, y, from: at, to: back, dur: TURN_S },
+    { k: 'walk', x0: from, y0: y, x1: doorX, y1: m.doorY, dur: Math.max(0.8, Math.hypot(dx, dy) / (k * GUEST_PACE)) },
+    { k: 'turn', x: doorX, y: m.doorY, from: back, to: YAW_BACK, dur: TURN_S },
+    { k: 'door', from: 0, to: 1, yaw: YAW_BACK, dur: THRESHOLD_S },
+  ];
+  return { start: since, k, doorX, door, segs, before: 'gone', after: 'gone' };
+}
+export type Carrier = { nodes: TripNodes; spec: CarrierSpec | null; trip: TerraceTrip | null };
 export function collectCarriers(root: Element): Carrier[] {
   const out: Carrier[] = [];
-  for (const node of root.querySelectorAll('[data-terrace-carrier][data-move]')) out.push({ fig: node.querySelector('[data-figure]'), move: JSON.parse(node.getAttribute('data-move')!) as CarrierMove });
+  for (const node of root.querySelectorAll('[data-terrace-carrier]')) {
+    const spec = node.getAttribute('data-carrier');
+    const trip = node.getAttribute('data-trip');
+    out.push({ nodes: tripNodesOf(node), spec: spec ? (JSON.parse(spec) as CarrierSpec) : null, trip: trip ? (JSON.parse(trip) as TerraceTrip) : null });
+  }
   return out;
 }
-export function placeCarriers(carriers: Carrier[], t: number, figures: FigureRegistry): void {
-  for (const c of carriers) poseFigure(figures, c.fig, carrierPose(c.move, t));
+export function placeCarriers(carriers: Carrier[], t: number, m: CityMetrics, figures: FigureRegistry | null): void {
+  for (const c of carriers) {
+    if (c.spec) placeTrip(c.nodes, carrierAt(c.spec, t), c.spec, m, figures);
+    else if (c.trip) placeTrip(c.nodes, tripAt(c.trip, t), c.trip, m, figures);
+  }
 }
 
 // ---------- Sprites (repère du passant : pieds à l'origine, il regarde vers +x) ----------
@@ -438,7 +496,7 @@ const CHAIR_X = 9;
 
 // Trajet rendu (trottoir + seuil de la porte du local) : la boucle le pose ensuite (placeTrip). `figure` : dessin de la personne
 // pour une pose ; `sgn` du classique selon le côté regardé.
-function TripBody({ v, trip, metrics, figure, ghibli }: { v: TripView; trip: TerraceTrip; metrics: CityMetrics; figure: (p: PoseIn, on: boolean, item: boolean) => ReactElement; ghibli: boolean }): ReactElement {
+function TripBody({ v, trip, metrics, figure, ghibli }: { v: TripView; trip: TripFrame; metrics: CityMetrics; figure: (p: PoseIn, on: boolean, item: boolean) => ReactElement; ghibli: boolean }): ReactElement {
   const onStreet = v?.where === 'street' ? v : null;
   const atDoor = v?.where === 'door' ? v : null;
   const dPos: Passage = atDoor?.passage ?? { stage: 'threshold', x: trip.doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
@@ -461,19 +519,33 @@ function TripBody({ v, trip, metrics, figure, ghibli }: { v: TripView; trip: Ter
   );
 }
 
+type Guest = { table: number; seat: 0 | 1; leavesAt: number };
+
 export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crowd, crowdNear, reduced, sky, seed, waiterOutfit, ghibli = false }: TerraceProps): ReactElement | null {
   // Début de la minute affichée (horloge murale) : repère des trajets des convives et du porteur.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const since = useMemo(() => Date.now() / 1000, [minutes]);
-  // Porteur (Ghibli) : position d'où part la transition en cours (celle de la minute précédente), pour régler ses pas.
-  const track = useRef<{ key: number; from: number | null; at: number | null }>({ key: -1, from: null, at: null });
+  // Premier rendu : les tables qui glissent sont posées où elles en sont au début de la minute, puis visent leur cible au rendu
+  // suivant (la transition part de là, et non d'une table déjà sortie au montage de la scène) ; le porteur suit le même calcul.
+  const [armed, arm] = useState(false);
+  useEffect(() => arm(true), []);
   const type = view.sign?.type ?? null;
   if (!type || SHOP_DEFS[type].terrace === 0) return null;
   const def = SHOP_DEFS[type];
   const id = view.slot.id;
-  const stateAt = (m: number): { state: TerraceState; progress: number; tables: number } => {
+  // Météo d'une minute voisine : l'averse en cours (rush) est décalée d'autant (elle n'avait pas commencé la minute d'avant
+  // sa première minute : temps d'avant l'averse) ; sans averse, la météo est supposée stable.
+  const skyAround = (m: number): TerraceSky => {
+    const r = weather.rush;
+    if (!r || r.badFor === 0 || m === minutes) return weather;
+    const bad = r.badFor + (m - minutes);
+    if (bad <= 0) return { now: r.beforeBad, before: r.beforeBad, rush: { badFor: 0, beforeBad: r.beforeBad } };
+    return { ...weather, rush: { badFor: bad, beforeBad: r.beforeBad } };
+  };
+  const stateAt = (m: number): TerraceAt => {
     const range = openRangeAt(def, date, m);
-    return terraceAt(def, view.phase === 'open' && range !== null, m, weather.now, range?.[0] ?? 0, range?.[1] ?? 0, weather.before);
+    const w = skyAround(m);
+    return terraceAt(def, view.phase === 'open' && range !== null, m, w.now, range?.[0] ?? 0, range?.[1] ?? 0, w.before, w.rush);
   };
   const t = stateAt(minutes);
   if (t.state === 'none' || t.tables === 0) return null;
@@ -481,10 +553,10 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
   const places = terraceTables(frame, metrics, n);
   const now = terraceGuests(n, seed, id, minutes, crowd, t.state);
   const near = crowdNear ?? ((): number => crowd);
-  const around = (m: number): ReturnType<typeof terraceGuests> => terraceGuests(n, seed, id, m, near(m), stateAt(m).state);
+  const around = (m: number): Guest[] => terraceGuests(n, seed, id, m, near(m), stateAt(m).state);
   // Mouvement réduit : une personne assise par table au plus, immobile (ni arrivée ni départ). Sinon, ceux qui arrivent ou
-  // repartent pendant la minute le font à pied (terraceGuestMoves).
-  const guests: { table: number; seat: 0 | 1; leavesAt: number; move: GuestMove }[] = reduced
+  // repartent pendant la minute le font à pied (terraceGuestMoves) ; à l'averse, tous repartent pendant la minute « emptying ».
+  const guests: (Guest & { move: GuestMove })[] = reduced
     ? now.filter((g, i) => now.findIndex((x) => x.table === g.table) === i).map((g) => ({ ...g, move: 'seated' }))
     : terraceGuestMoves(around(minutes - 1), now, around(minutes + 1));
   const k = metrics.unit * STREET_SCALE.person * TERRACE_SCALE;
@@ -492,25 +564,32 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
   const doorX = door.x + door.w / 2;
   const hue = def.sign;
   const accessory = ACCESSORY[type];
+  const sliding = t.state === 'setting-up' || t.state === 'clearing';
   // Glissade seulement pendant le montage et le démontage : une terrasse déjà posée (ouverte, parasols) n'a pas de transition,
   // sinon un nœud dont le style est résolu tard (onglet caché au montage) glisserait une minute depuis le coin (0, 0).
-  const move = reduced || (t.state !== 'setting-up' && t.state !== 'clearing') ? undefined : SLIDE;
-  // Montage : chaque table vise l'avancée de la minute suivante (la transition d'une minute l'y amène), comme le hayon du
-  // camion ; à la dernière minute toutes sont donc à leur place quand la terrasse devient « posée » (sans transition).
-  const ahead = t.state === 'setting-up' ? Math.min(1, t.progress + 1 / SETUP_MIN) : t.progress;
+  const move = reduced || !sliding ? undefined : SLIDE;
+  // Montage comme démontage : chaque table vise l'avancée de la minute suivante (la transition d'une minute l'y amène), comme le
+  // hayon du camion ; à la dernière minute toutes sont donc à leur place (montage) ou rentrées par la porte (démontage).
+  const ahead = sliding ? Math.min(1, t.progress + 1 / (t.span ?? 1)) : t.progress;
   const slides = places.map((_, i) => slideOf(t.state, ahead, n, i, reduced));
-  const at = (i: number): number => doorX + (places[i]!.x - doorX) * slides[i]!;
+  const before = places.map((_, i) => slideOf(t.state, t.progress, n, i, reduced));
+  const at = (i: number): number => doorX + (places[i]!.x - doorX) * (armed ? slides[i]! : before[i]!);
   const parasols = t.state === 'umbrellas';
-  // Montage / démontage : l'employé accompagne la table en mouvement, du côté de la porte.
-  const moving = !reduced && (t.state === 'setting-up' || t.state === 'clearing');
-  const carried = t.state === 'setting-up' ? Math.min(n - 1, Math.floor(t.progress * n)) : n - 1 - Math.min(n - 1, Math.floor(t.progress * n));
-  const toward = (x: number): 1 | -1 => (x >= doorX ? 1 : -1);
   const waiterY = metrics.doorY + (metrics.walkY - metrics.doorY) * 0.5;
-  const served = [...new Set(guests.map((g) => g.table))].map((i) => places[i]!.x - toward(places[i]!.x) * WAITER_BESIDE * k);
+  // Porteur : script du montage ou du démontage ; la minute qui suit le montage, il revient de la dernière table et rentre.
+  const lastSetup = !reduced && !sliding && stateAt(minutes - 1).state === 'setting-up';
+  const carrierSpec: CarrierSpec | null =
+    !reduced && sliding
+      ? { mode: t.state === 'setting-up' ? 'setup' : 'clear', since, p0: t.progress, span: t.span ?? 1, doorX, door, y: waiterY, doorY: metrics.doorY, k, places: places.map((p) => p.x), from: before, to: slides }
+      : null;
+  const lastX = places[n - 1]!.x;
+  const carrierHome = lastSetup ? carrierHomeTrip(since, lastX - (lastX >= doorX ? 1 : -1) * WAITER_BESIDE * k, waiterY, doorX, door, metrics, k) : null;
+  const toward = (x: number): 1 | -1 => (x >= doorX ? 1 : -1);
+  // Le serveur ne sert que ceux qui restent (pas pendant l'averse ni pendant le départ d'un convive).
+  const served = t.state === 'emptying' ? [] : [...new Set(guests.filter((g) => g.move !== 'leave').map((g) => g.table))].map((i) => places[i]!.x - toward(places[i]!.x) * WAITER_BESIDE * k);
   const phase = (hashString(`${id}/waiter`) % 3600) / 100;
-  const w0 = waiterAt(since, phase, doorX, served);
-  const keyOf = (i: number, g: { seat: 0 | 1; leavesAt: number }): string => `${id}/${i}/${g.seat}/${g.leavesAt}`;
-  const outfitOf = (i: number, g: { seat: 0 | 1; leavesAt: number }): Outfit => outfitFor('ordinary', mulberry32(seed ^ hashString(`${id}/terrace/${i}/${g.seat}/${g.leavesAt}`)));
+  const keyOf = (i: number, g: Guest): string => `${id}/${i}/${g.seat}/${g.leavesAt}`;
+  const outfitOf = (i: number, g: Guest): Outfit => outfitFor('ordinary', mulberry32(seed ^ hashString(`${id}/terrace/${i}/${g.seat}/${g.leavesAt}`)));
   const gestureSeed = (i: number, g: { seat: 0 | 1 }): number => hashString(`${id}/terrace/${i}/${g.seat}`);
   const seatOf = (i: number, g: { seat: 0 | 1 }): SeatPlace => ({ x: places[i]!.x + (g.seat === 0 ? -CHAIR_X : CHAIR_X) * k, y: places[i]!.y, yaw: SEAT_YAW[g.seat] });
   // Trajets de la minute (arrivées et départs), dessinés juste après la table : derrière les tables du rang côté rue.
@@ -522,19 +601,35 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
       trips.set(key, guestTripOf(g.move, since, seatOf(g.table, g), doorX, door, metrics, k, mulberry32(hashString(`${key}/trip`))()));
     }
   }
-  // Porteur : distance de la transition en cours (Ghibli), depuis la place de la minute précédente.
-  const carrierX = at(carried) - toward(places[carried]!.x) * WAITER_BESIDE * k;
-  if (moving) track.current = track.current.key === minutes ? { ...track.current, at: carrierX } : { key: minutes, from: track.current.at ?? carrierX, at: carrierX };
-  const carrierFrom = track.current.from ?? carrierX;
-  const carrierMove: CarrierMove = { since, dist: Math.abs(carrierX - carrierFrom), yaw: yawToward(carrierX === carrierFrom ? toward(places[carried]!.x) : carrierX - carrierFrom, 0), k };
   // Rang du fond d'abord : les tables du rang côté rue passent devant.
   const order = places.map((p, i) => ({ p, i })).sort((a, b) => a.p.row - b.p.row || a.i - b.i);
   const guestFigure = (outfit: Outfit) => (p: PoseIn, on: boolean): ReactElement =>
     ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={false} umbrella={false} initial={p} hidden={!on} /> : <PersonSprite outfit={outfit} sky={sky} rainy={false} umbrella={false} />;
+  // Employé (serveur, porteur) : pantin en tablier (objet du commerce à la main droite pour le serveur), ou passant et tablier.
+  const staffFigure = (withItem: boolean) => (p: PoseIn, on: boolean, held: boolean): ReactElement =>
+    ghibli ? (
+      <GhibliFigure
+        outfit={waiterOutfit}
+        sky={sky}
+        rainy={false}
+        umbrella={false}
+        work="apron"
+        initial={p}
+        hidden={!on}
+        held={withItem ? [{ anchor: 'handR', node: <g data-item-hand="" display={on && held ? 'inline' : 'none'}><AccessorySprite id={accessory} sky={sky} /></g> }] : undefined}
+      />
+    ) : (
+      <>
+        <PersonSprite outfit={waiterOutfit} sky={sky} rainy={false} umbrella={false} />
+        <Apron sky={sky} />
+      </>
+    );
+  const waiterTrip = !reduced && served.length > 0 ? waiterTripAt(since, phase, doorX, door, metrics, served, waiterY, k) : null;
   return (
     <g data-shop-terrace={id} data-terrace-state={t.state}>
       {order.map(({ p, i }) => {
-        const shown = slides[i]! > 0;
+        // Visible tant qu'elle est dehors ou qu'elle glisse pendant la minute (elle rentre par la porte, ou en sort).
+        const shown = slides[i]! > 0 || before[i]! > 0;
         const here = guests.filter((g) => g.table === i);
         return (
           <Fragment key={i}>
@@ -590,45 +685,19 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
           </Fragment>
         );
       })}
-      {moving && (
-        <g data-terrace-carrier="" {...(ghibli ? { 'data-move': JSON.stringify(carrierMove) } : {})} style={{ transform: `translate(${carrierX.toFixed(1)}px, ${waiterY.toFixed(1)}px)`, transition: SLIDE }}>
-          {ghibli ? (
-            <g transform={`scale(${k.toFixed(3)})`}>
-              <GhibliFigure outfit={waiterOutfit} sky={sky} rainy={false} umbrella={false} work="apron" initial={carrierPose(carrierMove, since)} />
-            </g>
-          ) : (
-            <g transform={`scale(${(toward(places[carried]!.x) * k).toFixed(3)} ${k.toFixed(3)})`}>
-              <PersonSprite outfit={waiterOutfit} sky={sky} rainy={false} umbrella={false} />
-              <Apron sky={sky} />
-            </g>
-          )}
+      {carrierSpec && (
+        <g data-terrace-carrier="" data-carrier={JSON.stringify(carrierSpec)}>
+          <TripBody v={carrierAt(carrierSpec, since)} trip={carrierSpec} metrics={metrics} figure={staffFigure(false)} ghibli={ghibli} />
         </g>
       )}
-      {!reduced && served.length > 0 && ghibli && (() => {
-        const trip = waiterTripAt(since, phase, doorX, door, metrics, served, waiterY, k)!;
-        const item = (on: boolean, held: boolean): ReactElement => <g data-item-hand="" display={on && held ? 'inline' : 'none'}><AccessorySprite id={accessory} sky={sky} /></g>;
-        const figure = (p: PoseIn, on: boolean, held: boolean): ReactElement => (
-          <GhibliFigure outfit={waiterOutfit} sky={sky} rainy={false} umbrella={false} work="apron" initial={p} hidden={!on} held={[{ anchor: 'handR', node: item(on, held) }]} />
-        );
-        return (
-          <g data-terrace-waiter="" data-door-x={doorX.toFixed(1)} data-door-rect={JSON.stringify(door)} data-targets={served.map((x) => x.toFixed(1)).join(' ')} data-phase={phase} data-y={waiterY.toFixed(1)} data-k={k.toFixed(4)}>
-            <TripBody v={tripAt(trip, since)} trip={trip} metrics={metrics} figure={figure} ghibli />
-          </g>
-        );
-      })()}
-      {!reduced && served.length > 0 && !ghibli && (
-        <g
-          data-terrace-waiter=""
-          data-door-x={doorX.toFixed(1)}
-          data-targets={served.map((x) => x.toFixed(1)).join(' ')}
-          data-phase={phase}
-          data-y={waiterY.toFixed(1)}
-          data-k={k.toFixed(4)}
-          opacity={w0.opacity.toFixed(2)}
-          transform={waiterTransform(w0.x, waiterY, w0.dir, k)}
-        >
-          <PersonSprite outfit={waiterOutfit} sky={sky} rainy={false} umbrella={false} />
-          <Apron sky={sky} />
+      {carrierHome && (
+        <g data-terrace-carrier="" data-trip={JSON.stringify(carrierHome)}>
+          <TripBody v={tripAt(carrierHome, since)} trip={carrierHome} metrics={metrics} figure={staffFigure(false)} ghibli={ghibli} />
+        </g>
+      )}
+      {waiterTrip && (
+        <g data-terrace-waiter="" data-door-x={doorX.toFixed(1)} data-door-rect={JSON.stringify(door)} data-targets={served.map((x) => x.toFixed(1)).join(' ')} data-phase={phase} data-y={waiterY.toFixed(1)} data-k={k.toFixed(4)}>
+          <TripBody v={tripAt(waiterTrip, since)} trip={waiterTrip} metrics={metrics} figure={staffFigure(ghibli)} ghibli={ghibli} />
         </g>
       )}
     </g>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SHOP_DEFS, SHOP_TYPE_IDS } from '../../../src/core/library/city/shops/catalog';
-import { holdWeather, terraceAt, terraceGuestMoves, terraceGuests, terraceWeatherAt, type TerraceWeather } from '../../../src/core/library/city/shops/terrace';
+import { CLEAR_MIN, RUSH_CLEAR_MIN, RUSH_LEAVE_MIN, SETUP_MIN, holdWeather, terraceAt, terraceGuestMoves, terraceGuests, terraceWeatherAt, type TerraceWeather } from '../../../src/core/library/city/shops/terrace';
 import { targetOf } from '../../../src/core/library/weather/weather-types';
 
 const FINE: TerraceWeather = { rain: false, snow: false, storm: false, wind: false, sunny: false };
@@ -158,5 +158,28 @@ describe('terrasse : arrivées et départs des convives (terraceGuestMoves)', ()
         expect(x.move).toBe(!was ? 'arrive' : !stays ? 'leave' : 'seated');
       }
     }
+  });
+});
+
+describe('terrasse : averse soudaine (rush)', () => {
+  const RAIN: TerraceWeather = { ...FINE, rain: true };
+  const rushAt = (badFor: number, beforeBad: TerraceWeather = FINE) => terraceAt(CAFE, true, H(12), badFor > 0 ? RAIN : FINE, OPEN, CLOSE, badFor > 0 ? RAIN : FINE, { badFor, beforeBad });
+  it('1re minute de pluie : les convives se lèvent (tables dehors), puis les tables rentrent en RUSH_CLEAR_MIN minutes', () => {
+    expect(rushAt(1)).toMatchObject({ state: 'emptying', tables: 4 });
+    for (let s = 0; s < RUSH_CLEAR_MIN; s++) expect(rushAt(RUSH_LEAVE_MIN + 1 + s)).toMatchObject({ state: 'clearing', progress: s / RUSH_CLEAR_MIN, span: RUSH_CLEAR_MIN });
+    expect(rushAt(RUSH_LEAVE_MIN + RUSH_CLEAR_MIN + 1).state).toBe('none');
+  });
+  it('terrasse déjà rentrée avant l’averse (mauvais temps juste avant, ou avant l’ouverture) : rien', () => {
+    expect(rushAt(1, RAIN).state).toBe('none');
+    expect(terraceAt(CAFE, true, OPEN + 1, RAIN, OPEN, CLOSE, RAIN, { badFor: 1, beforeBad: FINE }).state).toBe('none');
+  });
+  it('les convives sont encore là pendant la minute « emptying » (ils repartent à pied), plus après', () => {
+    let seen = 0;
+    for (let m = H(9); m < H(19); m += 13) seen += terraceGuests(4, 3, 's', m, 1, 'emptying').length;
+    expect(seen).toBeGreaterThan(0);
+  });
+  it('durée du montage et du démontage (span)', () => {
+    expect(terraceAt(CAFE, true, OPEN + 2, FINE, OPEN, CLOSE).span).toBe(SETUP_MIN);
+    expect(terraceAt(CAFE, true, CLOSE - 9, FINE, OPEN, CLOSE).span).toBe(CLEAR_MIN);
   });
 });

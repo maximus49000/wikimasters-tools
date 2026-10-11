@@ -315,7 +315,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
         terraceGuests = collectTerraceGuests(el);
-        carriers = ghibli ? collectCarriers(el) : [];
+        carriers = collectCarriers(el);
         crews = collectMovers(el);
         staffWalks = ghibli ? collectStaffWalks(el) : [];
         workers = ghibli ? collectWorkers(el) : [];
@@ -386,12 +386,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       placeSwaps(swaps, t);
       if (!still) {
         placeWaiters(waiters, t, metrics, ghibli ? figures : null);
+        placeCarriers(carriers, t, metrics, ghibli ? figures : null);
         placeTerraceGuests(terraceGuests, t, metrics, ghibli ? figures : null);
         placeMovers(crews, t);
         if (ghibli) {
           placeStaffWalks(staffWalks, t, metrics, figures);
           placeWorkers(workers, t, figures);
-          placeCarriers(carriers, t, figures);
         }
       }
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).

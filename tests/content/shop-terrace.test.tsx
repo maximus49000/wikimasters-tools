@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
 import { MIN_PITCH, NightclubDoor, queueFrame, queueLayout } from '../../src/content/shop-queue';
-import { ShopTerrace, carrierPose, collectCarriers, collectTerraceGuests, collectWaiters, placeTerraceGuests, placeWaiters, terraceTables, waiterAt, weatherHistory } from '../../src/content/shop-terrace';
+import { ShopTerrace, collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, terraceTables, tripAt, waiterTripAt, weatherHistory, type TerraceSky } from '../../src/content/shop-terrace';
 import { ACCESSORY, gestureAt } from '../../src/core/library/city/shops/gestures';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
@@ -188,20 +188,28 @@ describe('terrasse : rendu (ShopTerrace)', () => {
 });
 
 describe('terrasse : serveur et météo', () => {
-  it('le serveur va de la porte à une table et revient, caché le reste du temps', () => {
-    const door = 100;
+  it('le serveur sort par le seuil de la porte, va à une table et revient, absent le reste du temps', () => {
+    const doorX = 100;
+    const door = { x: 96, y: metrics.doorY - 20, w: 8, h: 20 };
     const targets = [80, 70];
-    let shown = 0;
-    for (let t = 0; t < 200; t += 0.5) {
-      const w = waiterAt(t, 7, door, targets);
-      if (w.opacity > 0) {
-        shown++;
-        expect(w.x).toBeGreaterThanOrEqual(70 - 1e-6);
-        expect(w.x).toBeLessThanOrEqual(door + 1e-6);
+    let street = 0;
+    let sill = 0;
+    for (let t = 0; t < 200; t += 0.25) {
+      const trip = waiterTripAt(t, 7, doorX, door, metrics, targets, metrics.doorY + 10, 0.5)!;
+      const v = tripAt(trip, t);
+      if (v?.where === 'street') {
+        street++;
+        expect(v.x).toBeGreaterThanOrEqual(70 - 1e-6);
+        expect(v.x).toBeLessThanOrEqual(doorX + 1e-6);
+      }
+      if (v?.where === 'door') {
+        sill++;
+        expect(v.passage.x).toBe(doorX);
       }
     }
-    expect(shown).toBeGreaterThan(50);
-    expect(shown).toBeLessThan(400);
+    expect(street).toBeGreaterThan(100);
+    expect(sill).toBeGreaterThan(10);
+    expect(street + sill).toBeLessThan(800 * 0.6);
   });
   it('historique : une pluie relevée garde la terrasse rentrée 10 minutes', () => {
     const h = weatherHistory();
@@ -697,27 +705,100 @@ describe('G3b : convives et serveur de terrasse', () => {
   });
 });
 
-describe('G3b : porteur des tables', () => {
-  it('Ghibli : pantin en tablier, sans miroir ; il marche pendant la glissade puis s’arrête', () => {
-    const open = openRangeAt(SHOP_DEFS.cafe, SAT, 9 * 60)![0];
-    vi.spyOn(Date, 'now').mockReturnValue(NOW);
-    const figures = new FigureRegistry('g4p', { perFrame: 50 });
-    const view = (m: number): ReactNode => (
+describe('G3b : porteur des tables et averse', () => {
+  const T = NOW / 1000;
+  const shown = (n: Element | null): boolean => {
+    if (!n) return false;
+    for (let x: Element | null = n; x; x = x.parentElement) if (x.getAttribute('visibility') === 'hidden' || x.getAttribute('display') === 'none') return false;
+    return true;
+  };
+  const keyOf = (fig: Element | null): string[] => (fig?.getAttribute('data-key') ?? '').split('#').pop()!.split('|');
+  const at = (type: ShopTypeId, m: number, ghibli: boolean, figures: FigureRegistry, w: TerraceSky = { now: SUN, before: SUN }): HTMLDivElement =>
+    render(
       <FigureContext.Provider value={figures}>
         <svg>
-          <ShopTerrace view={viewOf('cafe', SAT, m)} frame={frame} metrics={metrics} minutes={m} date={SAT} weather={{ now: SUN, before: SUN }} crowd={1} reduced={false} sky={skyAt(m, times)} seed={SEED} waiterOutfit={waiter} ghibli />
+          <ShopTerrace view={viewOf(type, SAT, m)} frame={frame} metrics={metrics} minutes={m} date={SAT} weather={w} crowd={1} reduced={false} sky={skyAt(m, times)} seed={SEED} waiterOutfit={waiter} ghibli={ghibli} />
         </svg>
-      </FigureContext.Provider>
-    );
-    const { host, root } = render(view(open + 1));
-    act(() => root.render(view(open + 2)));
-    const node = host.querySelector('[data-terrace-carrier]')!;
-    expect(node.querySelector('[data-figure]')!.getAttribute('data-sig')!.endsWith('.a')).toBe(true);
-    expect(node.innerHTML).not.toMatch(/scale\(-/);
-    const carriers = collectCarriers(host);
-    expect(carriers).toHaveLength(1);
-    expect(carriers[0]!.move.dist).toBeGreaterThan(0.01);
-    expect(carrierPose(carriers[0]!.move, NOW / 1000 + 10).gait).toBe('walk');
-    expect(carrierPose(carriers[0]!.move, NOW / 1000 + 61).gait).toBe('stand');
+      </FigureContext.Provider>,
+    ).host;
+  // Où est le porteur à chaque instant de la minute rendue : 'door', 'street' ou 'none'.
+  const follow = (c: HTMLDivElement, ghibli: boolean, figures: FigureRegistry, poses?: string[]): string[] => {
+    const carriers = collectCarriers(c);
+    const node = c.querySelector('[data-terrace-carrier]');
+    const seq: string[] = [];
+    for (let t = T; t < T + 60; t += 0.25) {
+      placeCarriers(carriers, t, metrics, ghibli ? figures : null);
+      if (ghibli) figures.flush();
+      placeCarriers(carriers, t, metrics, ghibli ? figures : null);
+      const street = node?.querySelector('[data-trip-street]') ?? null;
+      const s = shown(street) ? 'street' : shown(node?.querySelector('svg[data-trip-door]') ?? null) ? 'door' : 'none';
+      if (seq[seq.length - 1] !== s) seq.push(s);
+      if (poses && s === 'street') poses.push(keyOf(street!.querySelector('[data-figure]'))[5]!);
+    }
+    return seq;
+  };
+
+  it.each([true, false])('montage : le porteur sort par la porte avec la première table et rentre par la porte la minute d’après (Ghibli : %s)', (ghibli) => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('g4p', { perFrame: 50 });
+    const open = openRangeAt(SHOP_DEFS.cafe, SAT, 9 * 60)![0];
+    const first = at('cafe', open, ghibli, figures);
+    expect(first.querySelector('[data-terrace-carrier]')!.getAttribute('style')).toBeNull();
+    const poses: string[] = [];
+    const seq = follow(first, ghibli, figures, poses);
+    // Avant de sortir, il est dans le local ; puis le seuil, puis le trottoir.
+    expect(seq.slice(seq[0] === 'none' ? 1 : 0, (seq[0] === 'none' ? 1 : 0) + 2)).toEqual(['door', 'street']);
+    if (ghibli) expect(poses).toContain('carry');
+    // Minutes du montage : jamais d'apparition sur le trottoir sans passer la porte.
+    for (let m = open + 1; m < open + 6; m++) {
+      const s = follow(at('cafe', m, ghibli, figures), ghibli, figures);
+      expect(s).not.toContain('none');
+    }
+    // Minute suivante (terrasse posée) : il revient et rentre par la porte.
+    const home = follow(at('cafe', open + 6, ghibli, figures), ghibli, figures);
+    expect(home.slice(-2)).toEqual(['door', 'none']);
+    expect(home[0]).toBe('street');
+  });
+
+  it.each([true, false])('démontage : chaque table rentre par la porte, le porteur avec elle ; dernière minute : tout est rentré (Ghibli : %s)', (ghibli) => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('g4d', { perFrame: 50 });
+    const close = openRangeAt(SHOP_DEFS.cafe, SAT, 12 * 60)![1];
+    const last = at('cafe', close - 10 + 5, ghibli, figures);
+    expect(last.querySelector('[data-shop-terrace]')!.getAttribute('data-terrace-state')).toBe('clearing');
+    const doorX = frame.door.x + frame.door.w / 2;
+    for (const t of tables(last)) expect((t as SVGGElement).style.transform).toContain(`${doorX.toFixed(1)}px`);
+    expect(follow(last, ghibli, figures).slice(-2)).toEqual(['door', 'none']);
+  });
+
+  it('averse soudaine : 1re minute, les convives repartent tous à pied (tables dehors) ; puis l’employé rentre les tables ; puis rien', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('g4r', { perFrame: 50 });
+    const RAIN_ = { ...FINE, rain: true };
+    const rush = (badFor: number): TerraceSky => ({ now: RAIN_, before: RAIN_, rush: { badFor, beforeBad: FINE } });
+    let m = 12 * 60;
+    while (at('cafe', m, true, figures, { now: FINE, before: FINE }).querySelectorAll('[data-terrace-guest]').length === 0) m++;
+    const c = at('cafe', m, true, figures, rush(1));
+    expect(c.querySelector('[data-shop-terrace]')!.getAttribute('data-terrace-state')).toBe('emptying');
+    const guests = [...c.querySelectorAll('[data-terrace-guest]')];
+    expect(guests.length).toBeGreaterThan(0);
+    for (const g of guests) expect(g.getAttribute('data-move')).toBe('leave');
+    expect(c.querySelector('[data-terrace-waiter]')).toBeNull();
+    const after = at('cafe', m + 1, true, figures, rush(2));
+    expect(after.querySelector('[data-shop-terrace]')!.getAttribute('data-terrace-state')).toBe('clearing');
+    expect(after.querySelectorAll('[data-terrace-guest]')).toHaveLength(0);
+    expect(after.querySelector('[data-terrace-carrier]')).not.toBeNull();
+    expect(at('cafe', m + 4, true, figures, rush(5)).querySelector('[data-shop-terrace]')).toBeNull();
+  });
+
+  it('historique : compte les minutes d’averse et garde le temps d’avant', () => {
+    const h = weatherHistory();
+    const t0 = NOW + 30 * 60_000;
+    const rainFrom = t0 - 60_000;
+    const read = (ms: number): Weather => targetOf(ms >= rainFrom ? 'rain' : 'sun');
+    const s = h.sample(read, t0);
+    expect(s.rush!.badFor).toBe(2);
+    expect(s.rush!.beforeBad.rain).toBe(false);
+    expect(h.sample(() => targetOf('sun'), t0).rush!.badFor).toBe(0);
   });
 });
