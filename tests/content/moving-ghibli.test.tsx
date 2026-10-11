@@ -278,6 +278,11 @@ describe('camion de déménagement en Ghibli (V5)', () => {
     const spin = t.querySelector<SVGGElement>('[data-wheel-spin]')!;
     expect(spin.style.transition).toBe(t.style.transition);
   });
+  it('conducteur à bord pendant la dernière minute d’approche (transition vers la place), cabine vide une fois garé', () => {
+    const last = stepOf('truck-arrives').to - 1;
+    expect(truck(last, true).querySelector('[data-moving-truck] [data-seat]')).not.toBeNull();
+    expect(truck(midMinute('open-back'), true).querySelector('[data-moving-truck] [data-seat]')).toBeNull();
+  });
   it('classique inchangé', () => {
     expect(truck(midMinute('truck-arrives'), false).querySelector('[data-scripted-car]')).toBeNull();
   });

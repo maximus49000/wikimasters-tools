@@ -170,6 +170,9 @@ export function MovingTruck({ view, frame, change, offset, seed, minutes, width,
   const g = movingLayout(frame, metrics, width);
   const x = s.at === 'in' ? g.edgeIn : s.at === 'out' ? g.edgeOut : g.parkX;
   const move = still ? undefined : `transform 60s ${s.at === 'out' ? 'ease-in' : 'ease-out'}`;
+  // Conducteur à bord tant que le camion roule : pendant toute l'arrivée (sa dernière minute est déjà « garé » mais la
+  // transition l'amène encore à sa place) et au départ ; cabine vide une fois garé.
+  const occupied = s.at !== 'park' || step.step === 'truck-arrives';
   return (
     <g
       data-moving-truck={view.slot.id}
@@ -179,7 +182,7 @@ export function MovingTruck({ view, frame, change, offset, seed, minutes, width,
       style={{ transform: `translate(${x.toFixed(1)}px, ${g.truckY.toFixed(1)}px)`, transition: move }}
     >
       {ghibli ? (
-        <ScriptedCar spec={{ id: 'moving-truck', seed: hashString(view.slot.id) }} dir={g.away} k={g.kv} sky={sky} rainy={rainy} lights={lights} still={still} occupied={s.at !== 'park'} roll={{ worldX: x, move }}>
+        <ScriptedCar spec={{ id: 'moving-truck', seed: hashString(view.slot.id) }} dir={g.away} k={g.kv} sky={sky} rainy={rainy} lights={lights} still={still} occupied={occupied} roll={{ worldX: x, move }}>
           <Tailgate open={s.open} sky={sky} still={still} />
         </ScriptedCar>
       ) : (
