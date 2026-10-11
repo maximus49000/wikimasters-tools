@@ -21,7 +21,7 @@ import { streetOn } from '../../src/core/library/city/shops/lifecycle';
 import { shopFrame, shopSlotsFor } from '../../src/core/library/city/shops/slots';
 import { WEATHER_HOLD, type TerraceWeather } from '../../src/core/library/city/shops/terrace';
 import { shopViewAt, type ShopView } from '../../src/core/library/city/shops/view';
-import { mulberry32 } from '../../src/core/library/scene-world';
+import { WORLD_MARGIN, mulberry32 } from '../../src/core/library/scene-world';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { targetOf, type Weather } from '../../src/core/library/weather/weather-types';
 
@@ -568,6 +568,91 @@ describe('boîte de nuit : vigiles et arrivées de la file (G3b)', () => {
       act(() => root.render(club(m0 + 1)));
       expect(ids('[data-queue-member]')).toEqual(before.members);
       for (const id of before.all) expect(ids('[data-queue-id]')).toContain(id);
+    }
+  });
+});
+
+describe('boîte de nuit : fermeture et arrivée des videurs, à pied (G3b)', () => {
+  const T0 = NOW / 1000 - 600;
+  const xOf = (n: Element): number => Number(/translate\(([-\d.]+)/.exec(n.getAttribute('transform')!)![1]);
+  const club = (date: YMD, m: number, ghibli: boolean): ReactNode => (
+    <svg>
+      <NightclubDoor view={viewOf('nightclub', date, m)} frame={frame} metrics={metrics} minutes={m} date={date} reduced={false} sky={skyAt(m, times)} seed={SEED} sessionT0={T0} ghibli={ghibli} width={W} />
+    </svg>
+  );
+  // Où est chaque personne affichée : sur le trottoir (x) ou dans un seuil (opacité de la figure : 1 − profondeur).
+  type Spot = { street: number | null; sill: number | null };
+  const spots = (host: HTMLElement): Map<string, Spot> => {
+    const out = new Map<string, Spot>();
+    for (const n of host.querySelectorAll('[data-queue-id], [data-bouncer]')) {
+      const key = n.getAttribute('data-queue-id') ?? `b@${n.getAttribute('data-club-walk') ?? out.size}`;
+      if (n.tagName === 'svg') out.set(key, { street: null, sill: Number(n.querySelector('[data-door-fig]')!.getAttribute('opacity')) });
+      else out.set(key, { street: xOf(n), sill: null });
+    }
+    return out;
+  };
+  it.each([false, true])('fermeture (5 h) : personne ne disparaît sur place, la file s’en va à pied, les videurs finissent dans la porte (Ghibli : %s)', (ghibli) => {
+    const now = vi.spyOn(Date, 'now');
+    const tb = 233.4;
+    now.mockReturnValue((T0 + tb - 0.05) * 1000);
+    const { host, root } = render(club(SAT, 4 * 60 + 59, ghibli));
+    const before = spots(host);
+    expect([...before.keys()].filter((k) => !k.startsWith('b@')).length).toBeGreaterThan(0);
+    now.mockReturnValue((T0 + tb) * 1000);
+    act(() => root.render(club(SAT, 5 * 60, ghibli)));
+    expect(host.querySelector('[data-club-closing]')).not.toBeNull();
+    let last = spots(host);
+    for (const id of before.keys()) if (!id.startsWith('b@')) expect(last.has(id), `${id} disparaît à la fermeture`).toBe(true);
+    expect(host.querySelectorAll('[data-bouncer]')).toHaveLength(2);
+    let bouncersInDoor = 0;
+    for (let t = tb + 0.2; t < tb + 400 && host.querySelector('[data-nightclub]'); t += 0.2) {
+      now.mockReturnValue((T0 + t) * 1000);
+      act(() => root.render(club(SAT, 5 * 60, ghibli)));
+      const cur = spots(host);
+      for (const [id, s] of last) {
+        if (cur.has(id)) continue;
+        // Parti : hors champ (bord du monde) ou au fond d'un seuil.
+        if (s.sill !== null) {
+          expect(s.sill, `${id} disparaît dans un seuil peu profond @${t}`).toBeLessThanOrEqual(0.25);
+          if (id.startsWith('b@')) bouncersInDoor++;
+        } else expect(s.street! < -WORLD_MARGIN + 12 || s.street! > W + WORLD_MARGIN - 12, `${id} disparaît en pleine rue (${s.street}) @${t}`).toBe(true);
+      }
+      for (const id of cur.keys()) if (!last.has(id) && !id.startsWith('b@')) throw new Error(`${id} apparaît @${t}`);
+      for (const n of host.querySelectorAll('[data-queue-id], [data-bouncer]')) expect(n.getAttribute('opacity')).toBeNull();
+      last = cur;
+    }
+    expect(host.querySelector('[data-nightclub]')).toBeNull();
+    expect(bouncersInDoor).toBe(2);
+  });
+
+  it('arrivée des videurs (22 h 30) : ils sortent de la porte du club, puis se postent, bras croisés', () => {
+    const now = vi.spyOn(Date, 'now');
+    const tb = 120.7;
+    now.mockReturnValue((T0 + tb - 0.05) * 1000);
+    const { host, root } = render(club(THU, 22 * 60 + 29, true));
+    expect(host.querySelector('[data-nightclub]')).toBeNull();
+    now.mockReturnValue((T0 + tb) * 1000);
+    act(() => root.render(club(THU, 22 * 60 + 30, true)));
+    const first = [...host.querySelectorAll('[data-bouncer]')];
+    expect(first).toHaveLength(2);
+    // Au fond de l'entrée du club : invisibles (profondeur 1), pas posés sur le trottoir.
+    for (const b of first) {
+      expect(b.tagName).toBe('svg');
+      expect(Number(b.querySelector('[data-door-fig]')!.getAttribute('opacity'))).toBe(0);
+    }
+    let street = 0;
+    for (let t = tb + 0.2; t < tb + 30; t += 0.2) {
+      now.mockReturnValue((T0 + t) * 1000);
+      act(() => root.render(club(THU, 22 * 60 + 30, true)));
+      street += [...host.querySelectorAll('g[data-bouncer][data-club-walk]')].length;
+    }
+    expect(street).toBeGreaterThan(0);
+    const posted = [...host.querySelectorAll('[data-bouncer]')];
+    expect(posted).toHaveLength(2);
+    for (const b of posted) {
+      expect(b.hasAttribute('data-club-walk')).toBe(false);
+      const parts = b.querySelector('[data-figure]')!.getAttribute('data-key')!.split('#').pop()!.split('|');
+      expect(parts[5]).toBe('crossed');
     }
   });
 });

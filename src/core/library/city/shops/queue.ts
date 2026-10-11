@@ -256,27 +256,28 @@ export function queueArrivals(seed: number, slotId: string, t: number, minutes: 
   return queueScene(seed, slotId, t, minutes, isOpen, layout, prev).arrivals;
 }
 
+// Bout d'un trajet depuis `x` du côté `away` (d'où viennent les arrivées, où vont ceux qui s'en vont) : le bord du monde ; s'il
+// est à plus de MAX_TRIP_PX, l'entrée d'immeuble la plus proche au-delà (`door`), à défaut le bord quand même.
+export function routeFrom(x: number, away: 1 | -1, width: number, doorXs: readonly number[]): { x: number; door: boolean } {
+  const edgeX = away > 0 ? width + WORLD_MARGIN : -WORLD_MARGIN;
+  const toEdge = Number.isFinite(width) ? Math.abs(edgeX - x) : Infinity;
+  if (toEdge <= MAX_TRIP_PX) return { x: edgeX, door: false };
+  let best: number | null = null;
+  for (const dx of doorXs) {
+    const d = (dx - x) * away;
+    if (d >= MIN_FROM_DOOR_PX && d <= MAX_TRIP_PX && (best === null || d < (best - x) * away)) best = dx;
+  }
+  if (best !== null) return { x: best, door: true };
+  return { x: Number.isFinite(width) ? edgeX : x + away * MAX_TRIP_PX, door: false }; // monde sans bord (scène d'essai) : au plafond
+}
+
 // Trajet jusqu'à la place `pos` (bord du monde ou entrée d'immeuble, voir queueScene) et sa durée à `speed`.
 function tripOf(layout: ArrivalLayout): (pos: number, speed: number) => Trip {
   const { doorX, away, startPx, pitchPx, width, doorXs } = layout;
-  const edgeX = away > 0 ? width + WORLD_MARGIN : -WORLD_MARGIN;
   return (pos, speed) => {
     const toX = doorX + away * (startPx + pos * pitchPx);
-    const toEdge = Number.isFinite(width) ? Math.abs(edgeX - toX) : Infinity;
-    let fromX = edgeX;
-    let fromDoor = false;
-    if (toEdge > MAX_TRIP_PX) {
-      let best: number | null = null;
-      for (const x of doorXs) {
-        const d = (x - toX) * away;
-        if (d >= MIN_FROM_DOOR_PX && d <= MAX_TRIP_PX && (best === null || d < (best - toX) * away)) best = x;
-      }
-      if (best !== null) {
-        fromX = best;
-        fromDoor = true;
-      } else if (!Number.isFinite(width)) fromX = toX + away * MAX_TRIP_PX; // monde sans bord (scène d'essai) : départ au plafond
-    }
-    return { fromX, fromDoor, toX, dur: Math.abs(fromX - toX) / speed + (fromDoor ? THRESHOLD_S + TURN_S : 0) };
+    const r = routeFrom(toX, away, width, doorXs);
+    return { fromX: r.x, fromDoor: r.door, toX, dur: Math.abs(r.x - toX) / speed + (r.door ? THRESHOLD_S + TURN_S : 0) };
   };
 }
 
