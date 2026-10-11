@@ -30,7 +30,7 @@ Le code de la maquette est la référence du dessin : le portage reprend ses for
   3. **façade** : encadrement, bandeau et nom, store et son ombre, porte, soubassement, enseigne en drapeau, lanternes, étal et ardoise du trottoir, panneau « À vendre », bâche de travaux. La vitrine y est **percée** (transparente) pour laisser voir le fond et le personnel.
 - **Ordre d'empilement** : façade et fond dans le décor (le fond sous la façade, dans le `<svg>` imbriqué de la vitrine comme aujourd'hui) ; personnel, clients et premier plan dans le calque animé (inchangé) ; rideau roulant au-dessus.
 - **Clés de cache** : métier × largeur de vitrine (arrondie au dixième) × côté de la porte × état (`open`, `closed`, `empty`, `works`) × couche × lumière (jour au 1/8, comme les pantins et les voitures) × vitrine allumée. Nom du commerce dans la clé de la façade (il est peint dans l'image).
-- **Nuit** : teinte appliquée à la peinture par paliers (`tone` de `city-sprites` à la lumière quantifiée), sauf les éléments lumineux peints « allumés » quand le local est ouvert la nuit : vitrine (fond et premier plan aux couleurs de jour réchauffées), néons, croix, lanternes, applique, panneau-menu du kebab. La flaque de lumière sur le trottoir et son reflet sur la chaussée (bords nets) rejoignent `GhibliNightLight`, comme les flaques des lampadaires.
+- **Nuit** : teinte appliquée à la peinture par paliers (`tone` de `city-sprites` à la lumière quantifiée), sauf les éléments lumineux peints « allumés » quand le local est ouvert la nuit : vitrine (fond et premier plan aux couleurs de jour réchauffées), néons, croix, lanternes, applique, panneau-menu du kebab. La flaque de lumière sur le trottoir et son reflet sur la chaussée (bords nets) sont dessinés par `GhibliShopFront`, hors filtre, comme les flaques des lampadaires.
 - **Entrées d'immeuble** : les trois modèles validés (porte cochère cintrée à imposte rayonnante sous clé de voûte ; double porte vitrée à ferronnerie sous corniche ; porte à panneaux sous imposte à petits bois), encadrement en pierre, marche, plaque émaillée bleue avec numéro, interphone en laiton. Elles ne changent jamais : **peintes dans les tranches du décor** (`paintCityTile`), le `variant` de `doorsFor` choisissant le modèle et la graine la couleur du bois. L'imposte allumée (hall éclairé la nuit, `hallU < 0.6`) est posée par-dessus en SVG hors filtre, comme les fenêtres de `GhibliWindows`. Le sprite `EntranceSprite` n'est plus dessiné quand le décor peint est affiché.
 - **Rideau roulant** : même mécanique (`RollingShutter`, transition CSS), redessiné en cellulo quand le graphisme est Ghibli : lames ombrées, coffre encré, poignée ; rideau sombre pour la famille F.
 - **Comportements inchangés** : cycle de vie des locaux, horaires, place du vendeur (`post`) et des clients (`seat`), relève, déménagement par tranches (le cache de tranches reste un rectangle posé sur l'image du fond), enseigne portée et posée par les ouvriers, panneau porté.
@@ -49,11 +49,10 @@ Le code de la maquette est la référence du dessin : le portage reprend ses for
 
 ### Contenu (`src/content/`)
 
-- `shop/shop-host.tsx` : registre des images (même conception que `car-host`) : peinture à la demande, plafond de 160 images (les moins récemment demandées partent), budget de peintures par image (2), demande non renouvelée depuis 2 images jetée, `SHOP_PX = 3` pixels par unité (comme `CAR_PX`).
+- `shop/shop-host.tsx` : registre des images (même conception que `car-host`) : peinture à la demande, plafond de 120 images (les moins récemment demandées partent), budget de peintures par image (2), demande non renouvelée depuis 2 images jetée, `SHOP_PX = 4` pixels par unité (détails de 0,1 unité lisibles sur téléphone).
 - `shop/ghibli-shop-front.tsx` : `GhibliShopFront` (façade + fond dans la vitrine) remplace `ShopFront` dans `scene-city.tsx` quand le graphisme est Ghibli ; tant que l'image n'est pas prête, le `ShopFront` classique reste affiché (pas de trou).
 - `shop/ghibli-shop-glass.tsx` : premier plan (`<image>`) qui remplace `ShopInteriorFront` dans `StaffLayer` et dans le calque des clients en Ghibli.
 - `shop-sprites.tsx` : `RollingShutter` prend `ghibli` et dessine le rideau cellulo.
-- `ghibli-night.tsx` : flaques des vitrines allumées et des néons (couleur du néon pour la famille F).
 - `ghibli-windows.tsx` (ou voisin) : impostes allumées des entrées.
 
 ## Hors périmètre
@@ -70,5 +69,5 @@ Scénarios d'interaction employé-client, objets manipulés, durées par métier
 ## Risques
 
 - **Polices** différentes sur Android : le nom est comprimé à la largeur du bandeau, donc pas de débordement ; l'aspect peut varier.
-- **Mémoire** : environ 20 locaux visibles × 3 couches × paliers de lumière ; le plafond de 160 images borne la mémoire (une façade de 60 × 40 unités à 3 px/unité pèse environ 85 Ko décodée).
+- **Mémoire** : environ 20 locaux visibles × 3 couches × paliers de lumière ; environ 160 Ko décodés par façade de 60 × 42 unités ; le plafond de 120 images borne la mémoire à environ 20 Mo au pire.
 - **Repeinte au changement de palier de lumière** : tous les locaux visibles en même temps ; le budget de 2 peintures par image l'étale, l'ancienne image restant affichée en attendant.

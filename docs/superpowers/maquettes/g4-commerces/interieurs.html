@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>Intérieurs cellulo</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:18px 22px 60px;background:#f1ede4;color:#2b2b2b;max-width:1180px}
+h2{margin:0 0 4px}.sub{color:#555;margin:0 0 14px;font-size:14px;line-height:1.45}
+canvas{display:block}
+</style></head><body>
+<h2>G4 · Les 32 intérieurs, en détail</h2>
+<p class="sub">Vitrine réelle de 40 × 22 px, ici agrandie ×8 (en bas à droite de chaque case : la taille réelle ×2). Chaque intérieur est peint UNE fois dans une image mise en cache avec sa devanture : le détail ne coûte rien à l'affichage.</p>
+<canvas id="all"></canvas>
+<script src="interiors.js"></script>
+<script>
+const LABEL={bakery:'Boulangerie',pastry:'Pâtisserie',chocolatier:'Chocolatier',butcher:'Boucherie',fishmonger:'Poissonnerie',cheese:'Fromagerie',greengrocer:'Primeur',wine:'Caviste',grocery:'Épicerie fine',minimarket:'Supérette',pharmacy:'Pharmacie',florist:'Fleuriste',bookshop:'Librairie',records:'Disquaire',games:'Jeux',hairdresser:'Coiffeur',optician:'Opticien',tattoo:'Tatoueur',thrift:'Friperie',antiques:'Antiquaire',petshop:'Animalerie',bikes:'Vélos',laundry:'Laverie',cafe:'Café',restaurant:'Restaurant',pizzeria:'Pizzeria',kebab:'Kebab',sushi:'Sushis',tearoom:'Salon de thé',arcade:'Arcade',bar:'Bar',nightclub:'Boîte de nuit'};
+const Q=new URLSearchParams(location.search),FROM=+(Q.get('from')||0),N=+(Q.get('n')||99);if(Q.get('from')){document.querySelector('h2').remove();document.querySelector('.sub').remove();document.body.style.padding='0'}
+const types=Object.keys(LABEL).slice(FROM,FROM+N),S=8,WW=40,HH=22,cols=3,gap=16,lab=22;
+const cw=WW*S,ch=HH*S;const c=document.getElementById('all');const rows=Math.ceil(types.length/cols);
+c.width=cols*(cw+gap);c.height=rows*(ch+lab+gap);const ctx=c.getContext('2d');ctx.fillStyle='#f1ede4';ctx.fillRect(0,0,c.width,c.height);
+types.forEach((t,i)=>{const x=(i%cols)*(cw+gap),y=Math.floor(i/cols)*(ch+lab+gap);
+ ctx.fillStyle='#2b2b2b';ctx.font='bold 15px system-ui';ctx.fillText(LABEL[t],x,y+16);
+ ctx.save();ctx.translate(x,y+lab);ctx.scale(S,S);IN.draw(ctx,t,0,0,WW,HH,true,i+1);ctx.restore();
+ ctx.strokeStyle='#2A1A18';ctx.lineWidth=3;ctx.strokeRect(x,y+lab,cw,ch);
+ // taille réelle ×2
+ const tx=x+cw-WW*2-4,ty=y+lab+ch-HH*2-4;ctx.fillStyle='#fff';ctx.fillRect(tx-2,ty-2,WW*2+4,HH*2+4);ctx.save();ctx.translate(tx,ty);ctx.scale(2,2);IN.draw(ctx,t,0,0,WW,HH,true,i+1);ctx.restore();
+});
+</script>
+</body></html>
