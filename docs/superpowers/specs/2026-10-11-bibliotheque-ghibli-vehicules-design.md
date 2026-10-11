@@ -52,6 +52,13 @@ Maquette de référence : `.superpowers/brainstorm/vehicules-ghibli/maquette.htm
   - **livraisons** : une camionnette s'arrête devant un commerce le temps d'un déchargement ;
   - **benne à ordures** : arrêts successifs ;
   - **ambulance** : plus rapide, sirène ; les véhicules de sa voie se rangent sur le bas-côté et repartent ensuite, ce qui remplace `pullOver`.
+- **Passage piéton à feu à bouton-poussoir** (demandes du 2026-10-11, à la place des feux à cycle fixe) :
+  - un passage entre deux feux, dans toutes les pièces, vers le milieu de la rue ;
+  - le feu reste vert pour les voitures tant que personne n'attend ;
+  - un piéton qui arrive au bord appuie sur le bouton : orange au bout de 3 s, mais jamais avant **25 s de vert**, sinon le feu serait toujours rouge aux heures de pointe ; puis 13 s de rouge ;
+  - après 1 s de rouge pour tous, chacun traverse après son temps de réaction ; celui qui n'a plus le temps rappuie et attend le cycle suivant ;
+  - les piétons arrivent d'un bord par un trottoir et repartent par l'autre ; leur nombre suit l'affluence des passants, et il n'y en a aucun quand la route est fermée ;
+  - un voyant « appel enregistré » s'allume sur le boîtier.
 - **Événements de rue → agents** : bus, tram, ambulance, benne et vélo livreur deviennent des agents du moteur. `events.ts` garde leur calendrier (heure de départ) ; le moteur les fait entrer par le bord à cette heure. Fin de `yieldsFor` et des fondus de voitures.
 - **Mouvement réduit** : instantané du démarrage à chaud, immobile.
 
