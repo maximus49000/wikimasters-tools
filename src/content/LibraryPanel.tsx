@@ -75,6 +75,7 @@ import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
 import { useCityDay } from './use-city-calendar';
 import { useShopNames } from './use-shop-names';
+import { useBusLines } from './use-bus-lines';
 import { dayNumber } from '../core/library/city/shops/hours';
 import { useWeather } from './use-weather';
 import { useArtStyle } from './art-setting';
@@ -263,6 +264,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const hasCity = lib?.rooms.some((r) => r.scene === 'city') ?? false;
   const cityDay = useCityDay(sceneTime.date, hasCity);
   const shopNames = useShopNames(hasCity);
+  const busLines = useBusLines(hasCity);
   // Rue commerçante : chaque pièce Ville reçoit une fois son jour de départ (tous les locaux occupés ce jour-là) ; écriture notifiée, pour que la pièce affichée le porte aussitôt.
   const today = dayNumber(sceneTime.date);
   useEffect(() => {
@@ -275,9 +277,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       sky: sceneTime.sky,
       minutes: sceneTime.minutes,
       weather: { clock: weather.clock, flags: weather.flags },
-      city: { day: cityDay, forcedNight: lib?.time.mode === 'night', shopNames },
+      city: { day: cityDay, forcedNight: lib?.time.mode === 'night', shopNames, busLines },
     }),
-    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags, cityDay, shopNames, lib?.time.mode],
+    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags, cityDay, shopNames, busLines, lib?.time.mode],
   );
 
   // Position du doigt → case, cible de dépôt et position dans le dessin (null si la pièce n'est pas affichée).

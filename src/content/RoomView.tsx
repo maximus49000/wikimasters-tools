@@ -25,6 +25,7 @@ import { hashString } from '../core/library/scene-world';
 import type { DayContext } from '../core/library/city/calendar';
 import type { CityContext } from '../core/library/city/intensity';
 import { dayNumber } from '../core/library/city/shops/hours';
+import type { BusNetwork } from '../core/library/city/traffic/bus-lines';
 import type { NamePool } from '../core/library/city/shops/lifecycle';
 import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
@@ -45,7 +46,7 @@ export type SceneView = {
   sky: Sky;
   minutes: number;
   weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } };
-  city?: { day: DayContext; forcedNight: boolean; shopNames?: NamePool };
+  city?: { day: DayContext; forcedNight: boolean; shopNames?: NamePool; busLines?: BusNetwork | null };
 };
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
@@ -119,7 +120,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const city = useMemo<CityContext | undefined>(
     () =>
       view.city && room.scene === 'city'
-        ? { minutes: view.minutes, day: view.city.day, precip: rainy ? 0.7 : gloom ? 0.1 : 0, snow: false, storm: false, daylight: view.sky.daylight, shops: { epochDay: room.cityEpoch ?? dayNumber(view.city.day.date), names: view.city.shopNames ?? EMPTY_NAMES } }
+        ? { minutes: view.minutes, day: view.city.day, precip: rainy ? 0.7 : gloom ? 0.1 : 0, snow: false, storm: false, daylight: view.sky.daylight, shops: { epochDay: room.cityEpoch ?? dayNumber(view.city.day.date), names: view.city.shopNames ?? EMPTY_NAMES }, buses: view.city.busLines ?? null }
         : undefined,
     [view.city, room.scene, room.cityEpoch, view.minutes, view.sky.daylight, rainy, gloom],
   );

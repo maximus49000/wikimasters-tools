@@ -284,8 +284,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       crowd: intensity.closed ? 0 : intensity.walkers,
       crossPx: metrics.farSide + 5 * metrics.unit - metrics.walkY,
       vanLabels,
+      ...(city.buses ? { busLines: city.buses.lines, school: city.buses.school } : {}),
     }),
-    [intensity, arrivals, deliveries, metrics, vanLabels],
+    [intensity, arrivals, deliveries, metrics, vanLabels, city.buses],
   );
   const traffic = useTraffic({ width, seed, unit: metrics.unit, env: trafficEnv, startS: still ? (frozen.current ?? 0) : Date.now() / 1000 });
 
