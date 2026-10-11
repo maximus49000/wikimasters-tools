@@ -132,7 +132,8 @@ const residentTransform = (trip: Trip, x: number, m: CityMetrics): string => {
 const residentState = (trip: Trip, gate: number, width: number, t: number): { active: boolean; x: number; fade: number } => {
   const pos = tripAt(trip, width, t);
   const active = pos !== null && tripHappens(trip, t, gate);
-  return { active, x: pos?.x ?? trip.doorX, fade: active && pos ? pos.fade : 0 };
+  // Opacité 1 dans la rue et pendant les demi-tours ; dans l'ombre du seuil, elle baisse avec la profondeur (le rendu de porte précis vient ensuite).
+  return { active, x: pos?.x ?? trip.doorX, fade: active && pos ? (pos.stage === 'threshold' ? 1 - pos.depth : 1) : 0 };
 };
 
 // Opacité d'un événement : fondu des événements fixes, aucun fondu en mouvement réduit (opacité 1).
@@ -159,7 +160,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   }
   const vehicles = useMemo(() => vehiclesFor(width, seed), [width, seed]);
   const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
-  const trips = useMemo(() => tripsFor(doors, seed), [doors, seed]);
+  const trips = useMemo(() => tripsFor(doors, seed, width), [doors, seed, width]);
   const doorXs = useMemo(() => doors.map((d) => d.x), [doors]);
   const facades = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
   const frame = useMemo<EventFrame>(() => ({ width, height, metrics, facades }), [width, height, metrics, facades]);
