@@ -95,6 +95,20 @@ describe('passants festifs', () => {
 });
 
 describe('présence des passants au bord', () => {
+  it('un caché voulu devient affiché dès qu’il est passé hors champ (boucle simulée)', () => {
+    let shown = false;
+    const seen: boolean[] = [];
+    for (let x = 100; x <= 800; x += 50) {
+      shown = pedShown(shown, true, x, 720);
+      seen.push(shown);
+    }
+    expect(seen.slice(0, 13)).toEqual(Array(13).fill(false)); // x 100..700 : en rue, il attend
+    expect(seen[seen.length - 1]).toBe(true); // x = 800 > 720 + 12
+  });
+  it('la marge élargie du groupe retarde la bascule', () => {
+    expect(pedShown(true, false, -20, 720, 40)).toBe(true);
+    expect(pedShown(true, false, -50, 720, 40)).toBe(false);
+  });
   it('ne bascule qu’hors champ', () => {
     expect(pedShown(true, false, 300, 720)).toBe(true);
     expect(pedShown(true, false, -20, 720)).toBe(false);

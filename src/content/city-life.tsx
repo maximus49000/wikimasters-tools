@@ -7,7 +7,7 @@ import { cityFacades } from '../core/library/city/facades';
 import { cityIntensity, type CityContext } from '../core/library/city/intensity';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { FAR_SHRINK, STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
-import { festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
+import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/customers';
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { StaffShift } from '../core/library/city/shops/staff';
@@ -101,6 +101,13 @@ export function StreetLamps({ width, height, seed, minutes, daylight, forcedNigh
   );
 }
 
+// Marge hors champ (px) d'un groupe : EDGE_PAD + étendue de ses accompagnants (unités du sprite, demi-largeur ~6 comprise) à l'échelle du passant.
+// Reste sous WORLD_MARGIN (80) : chaque groupe sort entièrement du champ à chaque tour.
+export const pedEdgePad = (p: Pedestrian, m: CityMetrics): number => {
+  const trail = p.pair ? PAIR_GAP : p.companions.length * COMPANION_GAP;
+  return EDGE_PAD + (trail + 6) * m.unit * STREET_SCALE.person * p.scale;
+};
+
 // `mirror` : le sprite classique se retourne selon le sens ; le pantin Ghibli se tourne de profil (pedPose), sans miroir.
 const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number, mirror: boolean): string => {
   const x = loopX(p.phase, p.dir * p.speed, width, t);
@@ -136,7 +143,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Passants et véhicules présents au dernier placement : ceux qui disparaissent continuent d'avancer pendant leur fondu.
   const moving = useRef<Set<string>>(new Set());
   // Présence affichée de chaque passant, gardée entre les minutes : elle ne suit la présence voulue qu'au bord du monde.
+  // Remise à zéro quand la population change (largeur, graine) : sinon des présences d'une autre population seraient reprises.
   const shownPeds = useRef<Map<string, boolean>>(new Map());
+  const shownFor = useRef<Pedestrian[] | null>(null);
   // Calculs mémoïsés par (width, height, seed) : populations, entrées, trajets, façades. Recalculés par minute : intensités.
   const metrics = useMemo(() => cityMetrics(height), [height]);
   // Art Ghibli : les passants sont des pantins (symboles du registre de la pièce), posés par la boucle, sans miroir.
@@ -144,6 +153,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const ghibli = art === 'ghibli';
   const figures = useFigureRegistry();
   const peds = useMemo(() => pedestriansFor(width, seed), [width, seed]);
+  if (shownFor.current !== peds) {
+    shownFor.current = peds;
+    shownPeds.current = new Map();
+  }
   const vehicles = useMemo(() => vehiclesFor(width, seed), [width, seed]);
   const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
   const trips = useMemo(() => tripsFor(doors, seed), [doors, seed]);
@@ -261,7 +274,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         const wanted = pedActive.has(p.id);
         const prev = shownPeds.current.get(p.id) ?? wanted;
         // Mouvement réduit : pas de boucle, la présence voulue s'applique telle quelle. Sinon elle ne bascule qu'hors champ.
-        const next = still ? wanted : pedShown(prev, wanted, loopX(p.phase, p.dir * p.speed, width, t), width);
+        const next = still ? wanted : pedShown(prev, wanted, loopX(p.phase, p.dir * p.speed, width, t), width, pedEdgePad(p, metrics));
         shownPeds.current.set(p.id, next);
         const node = nodes.get(p.id);
         if (node && next !== prev) {

@@ -84,8 +84,9 @@ export function festiveMark(p: Pedestrian, i: CityIntensity): FestiveMark | null
 export const EDGE_PAD = 12;
 // Présence affichée : la présence voulue (pedestrianGate, à la minute) n'est prise que lorsque le passant est hors champ ;
 // celui qui doit partir finit sa traversée, celui qui doit arriver attend son prochain passage par le bord.
-export function pedShown(prev: boolean, wanted: boolean, x: number, width: number): boolean {
-  return x < -EDGE_PAD || x > width + EDGE_PAD ? wanted : prev;
+// `pad` (px) : marge hors champ propre au groupe (EDGE_PAD + étendue de ses accompagnants, qui suivent derrière le chef).
+export function pedShown(prev: boolean, wanted: boolean, x: number, width: number, pad: number = EDGE_PAD): boolean {
+  return x < -pad || x > width + pad ? wanted : prev;
 }
 
 // Intensité qui décide de la présence d'un passant selon son rôle.

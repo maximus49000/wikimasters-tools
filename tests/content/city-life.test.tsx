@@ -3,12 +3,15 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CityLifeLayer } from '../../src/content/city-life';
+import { CityLifeLayer, pedEdgePad } from '../../src/content/city-life';
 import { dayContext } from '../../src/core/library/city/calendar';
 import { doorsFor, residentFlow, tripAt, tripHappens, tripsFor } from '../../src/core/library/city/doors';
 import { HYPER_S, activeEvents, cityEventSchedule, eventConditions } from '../../src/core/library/city/events';
 import { cityIntensity } from '../../src/core/library/city/intensity';
 import type { CityContext } from '../../src/core/library/city/intensity';
+import { cityMetrics } from '../../src/core/library/city/metrics';
+import { pedestriansFor } from '../../src/core/library/city/people';
+import { WORLD_MARGIN } from '../../src/core/library/scene-world';
 import { vehiclesFor, laneSpeeds } from '../../src/core/library/city/vehicles';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
@@ -225,6 +228,39 @@ describe('CityLifeLayer : présence des passants', () => {
     const still = before.filter((id) => host.querySelector(`[data-ped][data-life-id="${id}"]`)!.getAttribute('data-active') === 'true');
     expect(still.length).toBeGreaterThan(0);
     for (const id of still) expect(host.querySelector(`[data-ped][data-life-id="${id}"]`)!.getAttribute('opacity')).toBe('1');
+  });
+});
+
+describe('CityLifeLayer : présence des passants (suite)', () => {
+  it('la marge de bascule d’un groupe (accompagnants compris) reste sous la marge du monde', () => {
+    for (const h of [340, 500]) {
+      const m = cityMetrics(h);
+      for (let seed = 1; seed <= 5; seed++) {
+        const peds = pedestriansFor(3456, seed);
+        expect(peds.some((p) => p.companions.length > 0)).toBe(true);
+        for (const p of peds) {
+          expect(pedEdgePad(p, m)).toBeGreaterThanOrEqual(12);
+          expect(pedEdgePad(p, m)).toBeLessThan(WORLD_MARGIN);
+        }
+      }
+    }
+  });
+  it('la présence mémorisée est remise à zéro quand la population change (largeur)', () => {
+    const now = 1_760_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    const sky = skyAt(495, times);
+    const ymd = { y: 2026, m: 10, d: 5 };
+    const city = (minutes: number): CityContext => ({ minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight: sky.daylight });
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const draw = (width: number, minutes: number) => act(() => root.render(<svg><CityLifeLayer width={width} height={340} sky={sky} seed={1} city={city(minutes)} rainy={false} /></svg>));
+    draw(720, 495);
+    draw(1440, 210); // autre population + presque personne voulu : rien n'est repris de l'ancienne
+    const fresh = render(<svg><CityLifeLayer width={1440} height={340} sky={sky} seed={1} city={city(210)} rainy={false} /></svg>).container;
+    const flags = (h: Element) => [...h.querySelectorAll('[data-ped]')].map((n) => n.getAttribute('data-active'));
+    expect(flags(host)).toEqual(flags(fresh));
   });
 });
 
