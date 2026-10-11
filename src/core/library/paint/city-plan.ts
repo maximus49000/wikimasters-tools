@@ -72,9 +72,10 @@ const pick = <T>(list: readonly T[], rng: () => number): T => list[Math.floor(rn
 function lookOf(seed: number, x: number, w: number, far: boolean): Look {
   const rng = mulberry32(seed ^ hashString('ghibli-look') ^ Math.round(x * 8));
   const roofKind: RoofKind = far ? (rng() < 0.4 ? 'mansard' : 'gable') : pick(['gable', 'gable', 'gable', 'mansard', 'mansard', 'zinc'] as const, rng);
+  // Mur du fond : palette crème de la colline (il en est le quatrième rang).
   return {
-    wall: pick(WALLS, rng),
-    roof: roofKind === 'gable' ? pick(TILE_ROOFS, rng) : roofKind === 'mansard' ? pick(SLATE_ROOFS, rng) : pick(ZINC_ROOFS, rng),
+    wall: far ? pick(HILL_WALLS, rng) : pick(WALLS, rng),
+    roof: roofKind === 'gable' ? (far ? pick(HILL_ROOFS, rng) : pick(TILE_ROOFS, rng)) : roofKind === 'mansard' ? pick(SLATE_ROOFS, rng) : pick(ZINC_ROOFS, rng),
     roofKind,
     roofH: far ? FAR_ROOF_H : ROOF_H,
     shutters: rng() < 0.75 ? pick(SHUTTERS, rng) : null,
@@ -104,7 +105,7 @@ export const HILL_ROWS = [
   { y: 0.35, s: 0.62, haze: 0.22 },
   { y: 0.43, s: 0.76, haze: 0.14 },
 ] as const;
-export const FAR_HAZE = 0.06;
+export const FAR_HAZE = 0.16;
 // Crête de la colline : entre 0,163 et 0,237 de la hauteur.
 const CREST = { mid: 0.2, a1: 0.025, a2: 0.012, l1: 230, l2: 97 } as const;
 // Une bande de repères (tour-horloge + dôme) et de mouettes par BAND px.

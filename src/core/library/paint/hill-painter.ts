@@ -228,11 +228,13 @@ export function paintFarWall(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuildin
     fillRect(ctx, haze(BRICK, hz), cx, top + 1, 3, b.look.roofH * 0.6);
     fillRect(ctx, ink(0.7), cx - 0.4, top + 1, 3.8, 0.8);
   }
-  ctx.fillStyle = rgba(haze(GLASS_FAR, 0.25), 1);
+  // Grille de fenêtres sur toute la hauteur (même grille que `farWindows` : colonnes de 8 px, rangées de 11 px, 3,5 × 5),
+  // puis les fenêtres de `farWindows` par-dessus (celles que le calque SVG allume la nuit).
+  ctx.fillStyle = rgba(haze(GLASS_FAR, 0.3), 1);
+  const cols = Math.max(1, Math.floor((w - 6) / 8));
+  for (let wy = top + 5; wy + 5 <= plan.ground - 8; wy += 11) for (let c = 0; c < cols; c++) ctx.fillRect(x + 4 + c * 8, wy, 3.5, 5);
+  ctx.fillStyle = rgba(haze(GLASS_FAR, 0.2), 1);
   for (const win of b.wins) ctx.fillRect(win.x, win.y, win.w, win.h);
-  ctx.strokeStyle = ink(0.5);
-  ctx.lineWidth = 0.4;
-  for (const win of b.wins) ctx.strokeRect(win.x, win.y, win.w, win.h);
   ctx.strokeStyle = ink(0.8 - hz);
   ctx.lineWidth = 0.6;
   ctx.strokeRect(x, eave, w, h);
