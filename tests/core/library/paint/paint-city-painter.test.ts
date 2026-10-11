@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
 import { LEFT_GAP, leftOf, paintBuilding, paintCityTile, TILE, tileCount, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
+import { doorsFor } from '../../../../src/core/library/city/doors';
 import { recordingCtx } from './recording-ctx';
 
 afterEach(() => vi.restoreAllMocks());
@@ -116,4 +117,18 @@ describe('peintre de tranche', () => {
     vi.spyOn(Math, 'random').mockImplementation(() => { throw new Error('Math.random interdit'); });
     paintCityTile(recordingCtx(), cityPaintPlan(720, 340, 5), 0);
   });
+
+  it('entrées d’immeuble : celles de doorsFor, dans les tranches qu’elles touchent, et dans la clé', () => {
+    const plan = cityPaintPlan(1080, 340, 1);
+    expect(plan.doors.map((d) => d.x)).toEqual(doorsFor(1080, 340, 1).map((d) => d.x));
+    for (const d of plan.doors) {
+      for (let t = 0; t < tileCount(1080); t++) {
+        const touches = d.cx - 13 * d.s < (t + 1) * TILE + 2 && d.cx + 13 * d.s > t * TILE - 2;
+        expect(tileItems(plan, t).doors.includes(d)).toBe(touches);
+      }
+    }
+    const other = cityPaintPlan(1080, 340, 2);
+    expect(tileKey(plan, 0).split('|').slice(5)).not.toEqual(tileKey(other, 0).split('|').slice(5));
+  });
 });
+

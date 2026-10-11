@@ -1,7 +1,8 @@
 import { hashString, mulberry32 } from '../scene-world';
 import { cellRng, type Box } from './brush';
 import { INK, SHADOW_K, TAU, disc, fillRect, groundShadow, ink, inkRect, light, pick, poly, shade } from './cel';
-import { HILL_ROWS, type CityPaintPlan, type Furniture, type Gull, type HillHouse, type Landmark, type PaintBuilding, type Tree } from './city-plan';
+import { HILL_ROWS, type CityPaintPlan, type Furniture, type Gull, type HillHouse, type Landmark, type PaintBuilding, type PlanDoor, type Tree } from './city-plan';
+import { paintEntrance } from './shop/entrance';
 import { hexRgb, rgba, type Rgb } from './color';
 import { paintFarWall, paintGull, paintHillGround, paintHillHouse, paintLandmark } from './hill-painter';
 import type { PaintCtx } from './paint-ctx';
@@ -11,7 +12,7 @@ import type { PaintCtx } from './paint-ctx';
 // son propre générateur : peint depuis deux tranches, il est identique.
 export const TILE = 360;
 // À incrémenter à chaque changement du dessin : invalide le cache des tranches.
-export const PAINT_VERSION = 2;
+export const PAINT_VERSION = 3;
 
 const CLOTH = ['#E8456B', '#FFFFFF', '#F6C62E', '#4E8ED8', '#6BB36B', '#F28CB4'].map(hexRgb);
 const FLOWERS = ['#3F8A3A', '#E8456B', '#F6C62E', '#FFFFFF', '#E070C0'].map(hexRgb);
@@ -28,7 +29,7 @@ const POSTERS = ['#E85A3A', '#3A7EC8', '#F0C030', '#8A58B8'].map(hexRgb);
 
 export const tileCount = (width: number): number => Math.max(1, Math.ceil(width / TILE));
 
-export type TileItems = { buildings: PaintBuilding[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; furniture: Furniture[] };
+export type TileItems = { buildings: PaintBuilding[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; furniture: Furniture[]; doors: PlanDoor[] };
 
 export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
   const x0 = tile * TILE - 2;
@@ -40,6 +41,7 @@ export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
     landmarks: plan.hill.landmarks.filter((l) => l.x - 3 < x1 && l.x + l.w + 3 > x0),
     gulls: plan.hill.gulls.filter((g) => g.x - 8 * g.s < x1 && g.x + 8 * g.s > x0),
     furniture: plan.furniture.filter((f) => f.x - 10 < x1 && f.x + f.w + 10 > x0),
+    doors: plan.doors.filter((d) => d.cx - 13 * d.s < x1 && d.cx + 13 * d.s > x0),
   };
 }
 
@@ -57,6 +59,7 @@ export function tileKey(plan: CityPaintPlan, tile: number): string {
     it.landmarks.map((l) => `${l.kind}${l.x.toFixed(1)}`).join(','),
     it.gulls.map((g) => g.x.toFixed(1)).join(','),
     it.furniture.map((f) => `${f.kind}${f.x.toFixed(1)}`).join(','),
+    it.doors.map((d) => `${d.variant}${d.x.toFixed(1)}`).join(','),
   ].join('|');
 }
 
@@ -556,6 +559,8 @@ export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number):
   for (const b of it.buildings) if (b.far) paintBuilding(ctx, plan, b);
   for (const b of it.buildings) if (!b.far) paintBuilding(ctx, plan, b);
   paintStreet(ctx, plan, x0, x1);
+  // Entrées d'immeuble (G4a) : en pierre, sur le trottoir, avant les arbres.
+  for (const d of it.doors) paintEntrance(ctx, d.cx, d.base, d.s, d.variant, plan.seed ^ Math.round(d.x * 8));
   for (const t of it.trees) paintTree(ctx, plan, t);
   for (const f of it.furniture) paintFurniture(ctx, plan, f);
 }

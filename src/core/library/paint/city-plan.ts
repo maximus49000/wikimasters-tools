@@ -50,7 +50,12 @@ export type CityPaintPlan = {
   blocked: Span[];
   hill: Hill;
   furniture: Furniture[];
+  // Entrées d'immeuble (G4a) : celles de doorsFor, peintes en pierre dans les tranches (centre, base, échelle de la maquette).
+  doors: PlanDoor[];
 };
+export type PlanDoor = { x: number; variant: 0 | 1 | 2; cx: number; base: number; s: number };
+// Échelle de l'entrée peinte : cadre de pierre de 15 unités ≈ largeur de l'entrée (12 px) plus ses débords permis.
+export const entranceScale = (unit: number): number => unit * 0.92;
 
 // Hauteur du toit peint DANS l'immeuble : une rangée de fenêtres (grille de 14 px) ; ces fenêtres deviennent des lucarnes.
 export const ROOF_H = 14;
@@ -288,5 +293,6 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     blocked,
     hill: hillPlan(width, height, seed),
     furniture: furnitureFor(width, m.unit, seed, blocked, trees, buildings),
+    doors: doorsFor(width, height, seed).map((d) => ({ x: d.x, variant: d.variant, cx: d.x + DOOR_WIDTH / 2, base: m.doorY, s: entranceScale(m.unit) })),
   };
 }

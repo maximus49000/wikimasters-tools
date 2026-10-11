@@ -8,6 +8,7 @@ import { EntranceSprite, entranceLeft } from './city-sprites';
 import type { SceneBodyProps } from './scene-panorama';
 import { ShopFront } from './shop-sprites';
 import { GhibliShopFront } from './shop/ghibli-shop-front';
+import { GhibliEntranceLights } from './shop/ghibli-entrance-lights';
 import { ShopInterior, sliceCount } from './shop-interiors';
 import { furnitureAt } from '../core/library/city/shops/view';
 import { useStreetShops } from './use-street-shops';
@@ -189,6 +190,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
         {farBlocks}
         {nearBlocks}
         {streetFragment}
+        {/* Entrées : peintes dans les tranches du décor Ghibli (G4a) ; les sprites s'effacent avec le décor classique. */}
+        {entrances}
       </g>
       <g data-painted-city="" data-ready={painted.ready ? 'true' : 'false'} style={{ opacity: showPainted ? 1 : 0, transition: fade }}>
         <filter id={gradeId} colorInterpolationFilters="sRGB">
@@ -201,9 +204,9 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
         </g>
         <GhibliWindows buildings={buildings} minutes={minutes} gloom={gloom} dim={dim} farLight={FAR_LIGHT} />
         <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} />
+        <GhibliEntranceLights doors={doors} unit={unit} doorY={metrics.doorY} dark={dark} />
       </g>
       {shopFronts}
-      {entrances}
     </g>
   );
 }
