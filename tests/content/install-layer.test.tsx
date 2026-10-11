@@ -624,3 +624,53 @@ describe('décors entreposés dans un véhicule de transport (vélo porteur, cam
     expect(count(c, '[data-crew="lamps-bastille"] [data-lift-truck] [data-stored-item]')).toBeGreaterThan(0);
   });
 });
+
+describe('véhicules des équipes en Ghibli (V5)', () => {
+  const gLayer = (date: YMD, minutes: number, ghibli = true): HTMLDivElement =>
+    render(
+      <svg>
+        <InstallLayer width={W} height={H} seed={SEED} sky={skyOf(minutes)} still={false} date={date} minutes={minutes} metrics={metrics} rainy={false} ghibli={ghibli} />
+      </svg>,
+    );
+  // Première minute de [from, to) où `ok` est vrai.
+  const find = (date: YMD, from: number, to: number, ok: (c: HTMLDivElement) => boolean, ghibli = true): HTMLDivElement | null => {
+    for (let m = from; m < to; m++) {
+      const c = gLayer(date, m, ghibli);
+      if (ok(c)) return c;
+    }
+    return null;
+  };
+  it('camionnette peinte : modèle crew-van, éléments entreposés conservés ; cabine pleine en roulant, vide garée', () => {
+    const rolling = find(D14, 360, 540, (c) => !!c.querySelector('[data-install-van][data-transport="van"][data-van-phase="arrive"]'));
+    expect(rolling).not.toBeNull();
+    const van = rolling!.querySelector('[data-install-van][data-transport="van"]')!;
+    expect(van.querySelector('[data-scripted-car][data-sid="crew-van"]')).not.toBeNull();
+    expect(van.querySelectorAll('[data-stored-item]').length).toBeGreaterThan(0);
+    expect(van.querySelector('[data-seat]')).not.toBeNull();
+    expect(van.querySelector<SVGGElement>('[data-wheel-spin]')!.style.transition).toBe('transform 60s linear');
+    const parked = find(D14, 360, 540, (c) => !!c.querySelector('[data-install-van][data-transport="van"][data-van-phase="parked"]') && c.querySelectorAll('[data-crew] [data-worker]').length > 0);
+    expect(parked).not.toBeNull();
+    expect(parked!.querySelector('[data-install-van] [data-seat]')).toBeNull();
+  });
+  it('portière ouverte : dessinée dans le groupe en miroir des éléments dynamiques', () => {
+    const c = find(D14, 360, 540, (x) => !!x.querySelector('[data-install-van] [data-van-door]'));
+    expect(c).not.toBeNull();
+    const g = c!.querySelector('[data-van-door]')!.parentElement!;
+    expect(g.getAttribute('transform')).toMatch(/^scale\(-?[\d.]+ [\d.]+\)$/);
+  });
+  it('camion plateau (scène du 21/6) et camion élévateur (13/7) peints, bras et nacelle conservés', () => {
+    const flat = find(MUSIC, 480, 900, (c) => !!c.querySelector('[data-install-van][data-transport="truck"]'));
+    expect(flat).not.toBeNull();
+    expect(flat!.querySelector('[data-install-van][data-transport="truck"] [data-scripted-car][data-sid="flatbed"]')).not.toBeNull();
+    const lift = find(D13, 420, 1080, (c) => !!c.querySelector('[data-lift-truck]'));
+    expect(lift).not.toBeNull();
+    expect(lift!.querySelector('[data-lift-truck] [data-scripted-car][data-sid="lift"]')).not.toBeNull();
+    expect(lift!.querySelector('[data-lift-truck] [data-lift-arm]')).not.toBeNull();
+    expect(lift!.querySelector('[data-lift-truck] [data-lift-bucket]')).not.toBeNull();
+  });
+  it('classique inchangé : aucun véhicule peint', () => {
+    const c = find(D14, 360, 540, (x) => !!x.querySelector('[data-install-van]'), false);
+    expect(c).not.toBeNull();
+    expect(c!.querySelector('[data-scripted-car]')).toBeNull();
+  });
+});
