@@ -26,7 +26,7 @@ const LAYERS: readonly CarLayer[] = ['interior', 'body', 'glazing', 'over'];
 const DEG = 180 / Math.PI;
 const n2 = (x: number): string => x.toFixed(2);
 
-const outfitOf = (s: Seat): Outfit => outfitFor('ordinary', mulberry32(s.outfitSeed));
+const outfitOf = (s: Seat): Outfit => s.outfit ?? outfitFor('ordinary', mulberry32(s.outfitSeed));
 const armsOf = (s: Seat): ArmPose => s.arms ?? (s.role === 'driver' ? 'handlebar' : 'swing');
 const gaitOf = (s: Seat): Gait => s.gait ?? 'seated';
 const yawOf = (dir: 1 | -1): number => (dir > 0 ? 0 : 8);
@@ -50,7 +50,15 @@ function wantLayer(look: VehicleLook, layer: CarLayer, lit: Lit): { key: string;
 }
 
 // `still` (mouvement réduit) : aucune boucle ne posera une image en attente, elle est donc peinte tout de suite.
-export function GhibliCar({ look, dir, sky, rainy, lights, still = false }: { look: VehicleLook; dir: 1 | -1; sky: Sky; rainy: boolean; lights: boolean; still?: boolean }): ReactElement {
+// Véhicule sans boucle (V5 : véhicules scénarisés déplacés par transition CSS d'un rendu à la minute au suivant) :
+// `paintNow` peint aussi tout de suite ; `roll` fait tourner les roues par la MÊME transition que le véhicule (angle = x / r,
+// x : position du véhicule en unités du véhicule, sens du monde) ; `blink` fait clignoter les gyrophares par <animate>.
+// `occupied` faux : cabine vide (l'équipe est descendue).
+type GhibliCarProps = {
+  look: VehicleLook; dir: 1 | -1; sky: Sky; rainy: boolean; lights: boolean; still?: boolean;
+  roll?: { x: number; move?: string }; paintNow?: boolean; occupied?: boolean; blink?: boolean;
+};
+export function GhibliCar({ look, dir, sky, rainy, lights, still = false, roll, paintNow = false, occupied = true, blink = false }: GhibliCarProps): ReactElement {
   const reg = useCarRegistry();
   const root = useRef<SVGGElement | null>(null);
   const art = look.art;
@@ -64,13 +72,14 @@ export function GhibliCar({ look, dir, sky, rainy, lights, still = false }: { lo
   const shownOf = (sel: string, key: string, paint: () => string): { href: string; shown: string } => {
     const prev = root.current?.querySelector(sel) ?? null;
     const prevHref = prev?.getAttribute('href') ?? null;
-    if (prevHref === null || still) return { href: reg.ensure(key, paint), shown: key };
+    if (prevHref === null || still || paintNow) return { href: reg.ensure(key, paint), shown: key };
     const url = reg.request(key, paint);
     return url !== null ? { href: url, shown: key } : { href: prevHref, shown: prev!.getAttribute('data-shown') ?? key };
   };
   const hrefOf = (sel: string, key: string, paint: () => string): string => shownOf(sel, key, paint).href;
   const cabin = art.cabin;
-  const driver = art.seats.find((s) => s.role === 'driver');
+  const seats = occupied ? art.seats : [];
+  const driver = seats.find((s) => s.role === 'driver');
   // Volant : conducteur assis seulement (les pilotes des deux-roues tiennent leur guidon peint).
   const steer = driver && gaitOf(driver) === 'seated' ? seatPlacement(driver, dir).hands : null;
   const seatNode = (s: Seat, i: number): ReactElement => {
@@ -83,8 +92,8 @@ export function GhibliCar({ look, dir, sky, rainy, lights, still = false }: { lo
       </g>
     );
   };
-  const occupants = art.seats.map((s, i) => (s.over ? null : seatNode(s, i)));
-  const overSeats = art.seats.map((s, i) => (s.over ? seatNode(s, i) : null));
+  const occupants = seats.map((s, i) => (s.over ? null : seatNode(s, i)));
+  const overSeats = seats.map((s, i) => (s.over ? seatNode(s, i) : null));
   const steering = steer && (
     <ellipse data-steer="" cx={n2(steer[0] + 0.8 * dir)} cy={n2(steer[1] - 0.4)} rx={0.6} ry={2} fill="none" stroke={t('#33241f')} strokeWidth={0.8} transform={`rotate(${n2(0.35 * dir * DEG)} ${n2(steer[0] + 0.8 * dir)} ${n2(steer[1] - 0.4)})`} />
   );
@@ -124,11 +133,20 @@ export function GhibliCar({ look, dir, sky, rainy, lights, still = false }: { lo
       {art.wheels.map((w, i) => {
         const wk = wheelKey(look.rim, look.rimColor, w.r, day);
         const wb = wheelBox(w.r);
+        const img = <image data-want={wk} href={hrefOf(`[data-wheel][data-r="${w.r}"] image`, wk, () => paintWheel(look.rim, look.rimColor, w.r, day))} x={n2(wb.x)} y={n2(wb.y)} width={n2(wb.w)} height={n2(wb.h)} />;
         return (
           <g key={i}>
-            <g data-wheel="" data-r={w.r} transform={`translate(${n2(w.x * dir)} ${n2(-w.r)}) rotate(0)`}>
-              <image data-want={wk} href={hrefOf(`[data-wheel][data-r="${w.r}"] > image`, wk, () => paintWheel(look.rim, look.rimColor, w.r, day))} x={n2(wb.x)} y={n2(wb.y)} width={n2(wb.w)} height={n2(wb.h)} />
-            </g>
+            {roll ? (
+              <g data-wheel="" data-r={w.r} transform={`translate(${n2(w.x * dir)} ${n2(-w.r)})`}>
+                <g data-wheel-spin="" style={{ transform: `rotate(${n2((roll.x / w.r) * DEG)}deg)`, transition: still ? undefined : roll.move }}>
+                  {img}
+                </g>
+              </g>
+            ) : (
+              <g data-wheel="" data-r={w.r} transform={`translate(${n2(w.x * dir)} ${n2(-w.r)}) rotate(0)`}>
+                {img}
+              </g>
+            )}
             <circle cx={n2(w.x * dir - 0.25 * w.r)} cy={n2(-w.r * 1.25)} r={n2(w.r * 0.12)} fill="#FFFFFF" opacity={0.8 * Math.max(0.3, day)} />
           </g>
         );
@@ -136,7 +154,9 @@ export function GhibliCar({ look, dir, sky, rainy, lights, still = false }: { lo
       {overSeats}
       {art.over.length > 0 && layerImage('over')}
       {art.beacons.map((b, i) => (
-        <rect key={i} data-beacon={i} data-on={b.on} data-off={b.off ?? ''} x={n2(dir > 0 ? b.x : -(b.x + b.w))} y={n2(b.y)} width={n2(b.w)} height={n2(b.h)} rx={n2(b.h / 2)} fill={b.off ?? (lights ? b.on : t(b.on))} stroke={t(INK)} strokeWidth={0.4} />
+        <rect key={i} data-beacon={i} data-on={b.on} data-off={b.off ?? ''} x={n2(dir > 0 ? b.x : -(b.x + b.w))} y={n2(b.y)} width={n2(b.w)} height={n2(b.h)} rx={n2(b.h / 2)} fill={b.off ?? (lights ? b.on : t(b.on))} stroke={t(INK)} strokeWidth={0.4}>
+          {blink && !still && b.off && <animate attributeName="fill" values={`${b.on};${b.off};${b.on}`} dur="0.66s" begin={`${(i % 2) * 0.33}s`} repeatCount="indefinite" />}
+        </rect>
       ))}
       {art.head.round && <circle cx={n2(head.x)} cy={n2(head.y)} r={1.3} fill={lights ? '#FFF2C0' : t('#E8E2D0')} stroke={t('#33241f')} strokeWidth={0.6} />}
       {lights && (
