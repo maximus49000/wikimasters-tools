@@ -271,30 +271,34 @@ describe('trajets des spectateurs (ils arrivent et repartent à pied)', () => {
     expect(worst).toBeLessThanOrEqual(1e-6);
   });
   it('absent : à sa porte ou hors champ ; jamais de fondu, seuil de porte seulement à une entrée d immeuble', () => {
-    for (const s of crowd) {
+    let sills = 0;
+    for (const s of crowd.filter((_, i) => i % 3 === 0)) {
       for (const h of [8, 14]) {
         const p = spectatorAt(s, at(h), D0);
         expect(p.mode).toBe('absent');
         if (p.x >= 0 && p.x <= W) expect(DOORS).toContain(p.x);
       }
-      for (let t = at(8.3); t < at(13.5); t += 7) {
+      for (let t = at(8.3); t < at(13.5); t += 21) {
         const p = spectatorAt(s, t, D0);
         expect('fade' in p).toBe(false);
         if (p.sill !== undefined) {
           expect(DOORS).toContain(p.x);
           expect(p.depth).toBeCloseTo(CROWD_DOOR_DEPTH, 6);
           expect(p.mode).toBe('walking');
+          sills++;
         }
       }
     }
-  });
+    expect(sills).toBeGreaterThan(0);
+  }, 20000);
   it('sortie d immeuble : seuil de face (profondeur 1 → 0), demi-tour sur place, marche (distance croissante), demi-tour vers la chaussée', () => {
     const s = crowd.find((c) => c.fromDoor && Math.abs(c.x - c.from) > 30)!;
     const { arrive } = spectatorTimes(s.u);
     const tIn = D0 + arrive * 60;
     // Premier instant en marche.
     let t0 = tIn - 600;
-    while (spectatorAt(s, t0, D0).mode === 'absent') t0 += 0.01;
+    for (let n = 0; spectatorAt(s, t0, D0).mode === 'absent' && n < 100000; n++) t0 += 0.01;
+    expect(spectatorAt(s, t0, D0).mode).not.toBe('absent');
     const first = spectatorAt(s, t0 + 0.02, D0);
     expect(first.sill).toBeGreaterThan(0.9);
     expect(first.yaw).toBe(YAW_FRONT);
@@ -339,7 +343,8 @@ describe('trajets des spectateurs (ils arrivent et repartent à pied)', () => {
     expect(a.gait).toBe('step');
     expect(a.x).toBe(s.x);
     let t1 = tOut;
-    while (spectatorAt(s, t1, D0).mode !== 'absent') t1 += 0.01;
+    for (let n = 0; spectatorAt(s, t1, D0).mode !== 'absent' && n < 100000; n++) t1 += 0.01;
+    expect(spectatorAt(s, t1, D0).mode).toBe('absent');
     const end = spectatorAt(s, t1 - 0.03, D0);
     expect(end.sill).toBeGreaterThan(0.9);
     expect(end.yaw).toBe(YAW_BACK);

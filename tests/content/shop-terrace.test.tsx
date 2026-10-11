@@ -1029,7 +1029,9 @@ describe('G3b : porteur des tables et averse', () => {
     const RAIN_ = { ...FINE, rain: true };
     const rush = (sinceBad: number): TerraceSky => ({ now: RAIN_, before: RAIN_, rush: { sinceBad, beforeBad: FINE } });
     let m = 12 * 60;
-    while (at('cafe', m, true, figures, { now: FINE, before: FINE }).querySelectorAll('[data-terrace-guest]').length === 0) m++;
+    const guestsAt = (x: number): number => at('cafe', x, true, figures, { now: FINE, before: FINE }).querySelectorAll('[data-terrace-guest]').length;
+    for (let n = 0; guestsAt(m) === 0 && n < 600; n++) m++;
+    expect(guestsAt(m)).toBeGreaterThan(0);
     const c = at('cafe', m, true, figures, rush(1));
     expect(c.querySelector('[data-shop-terrace]')!.getAttribute('data-terrace-state')).toBe('emptying');
     const guests = [...c.querySelectorAll('[data-terrace-guest]')];

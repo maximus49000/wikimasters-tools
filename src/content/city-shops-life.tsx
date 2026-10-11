@@ -755,7 +755,7 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
           </g>
         </svg>
       )}
-      <RollingShutter frame={frame} sky={sky} state={cast.shutter} still={reduced} />
+      <RollingShutter frame={frame} sky={sky} state={cast.shutter} still={reduced} delay={ghibli ? THRESHOLD_S + TURN_S : 0} />
       {cast.street.map(({ shift: s, state, visible, atDoor }) => {
         const side = state.side;
         const toEdge = side > 0 ? doorX + WORLD_MARGIN : width + WORLD_MARGIN - doorX;

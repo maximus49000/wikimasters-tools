@@ -284,11 +284,17 @@ function festDayOf(date: YMD, minutes: number): number | null {
 }
 
 // Pose d'un serveur par la boucle (Ghibli) : marche ou geste au comptoir, gobelet tendu visible seulement pendant `hold`.
-function poseServer(reg: FigureRegistry, node: Element, st: ServerState, gesture: Gesture, m: CityMetrics): void {
-  const fig = node.querySelector('[data-figure]');
+// Nœuds de la rue relus après chaque rendu (une seule recherche par personne et par rendu, pas une par image).
+type Handle = { node: Element; fig: Element | null; cup: Element | null; cupOf: boolean };
+function poseServer(reg: FigureRegistry, h: Handle, st: ServerState, gesture: Gesture, m: CityMetrics): void {
+  if (!h.cupOf) {
+    h.fig = h.node.querySelector('[data-figure]');
+    h.cup = h.fig?.querySelector('[data-server-cup]') ?? null;
+    h.cupOf = true;
+  }
   const arms = serverArms(st, gesture);
-  poseFigure(reg, fig, stepPose(st, m, arms));
-  const cup = fig?.querySelector('[data-server-cup]');
+  poseFigure(reg, h.fig, stepPose(st, m, arms));
+  const cup = h.cup;
   if (!cup) return;
   if (arms === 'hold') cup.removeAttribute('visibility');
   else if (cup.getAttribute('visibility') !== 'hidden') cup.setAttribute('visibility', 'hidden');
@@ -351,8 +357,10 @@ export function MusicStreet({ width, height, seed, sky, still, rainy, date, minu
   const root = useRef<SVGGElement | null>(null);
   // Buveurs (Ghibli) : relus après chaque rendu, posés à chaque image (poseFigure n'écrit que si la pose change).
   const drinkers = useRef<{ s: MusicSpectator; fig: Element }[] | null>(null);
+  const handles = useRef(new Map<string, Handle>());
   useLayoutEffect(() => {
     drinkers.current = null;
+    handles.current.clear();
   });
 
   const place = useMemo(
@@ -368,29 +376,40 @@ export function MusicStreet({ width, height, seed, sky, still, rainy, date, minu
       const el = root.current;
       if (!el) return;
       const a = absAt(t);
+      const cache = handles.current;
+      const handleOf = (sel: string): Handle | null => {
+        let h = cache.get(sel);
+        if (!h || !h.node.isConnected) {
+          const node = el.querySelector(sel);
+          if (!node) return null;
+          h = { node, fig: null, cup: null, cupOf: false };
+          cache.set(sel, h);
+        }
+        return h;
+      };
       s.fans.forEach((p, i) => {
         if (p.mode !== 'walking') return;
         const fan = data.crowd[i]!;
-        const node = el.querySelector(`[data-fan-id="${fan.id}"]`);
-        if (!node || !placeMover(node, p, metrics, ghibli)) return;
-        if (ghibli) poseFigure(figures, node.querySelector('[data-figure]'), stepPose(p, metrics, fan.beer ? 'cup' : 'swing'));
+        const h = handleOf(`[data-fan-id="${fan.id}"]`);
+        if (!h || !placeMover(h.node, p, metrics, ghibli)) return;
+        if (ghibli) poseFigure(figures, (h.fig ??= h.node.querySelector('[data-figure]')), stepPose(p, metrics, fan.beer ? 'cup' : 'swing'));
       });
       s.servers.forEach((p, i) => {
         if (p.mode === 'absent' || (p.mode !== 'walking' && !ghibli)) return;
         const v = data.servers[i]!;
-        const node = el.querySelector(`[data-beer-server="${v.id}"]`);
-        if (!node) return;
-        if (p.mode === 'walking' && !placeMover(node, p, metrics, ghibli)) return;
-        if (ghibli) poseServer(figures, node, p, gestureOf(s, v, a), metrics);
+        const h = handleOf(`[data-beer-server="${v.id}"]`);
+        if (!h) return;
+        if (p.mode === 'walking' && !placeMover(h.node, p, metrics, ghibli)) return;
+        if (ghibli) poseServer(figures, h, p, gestureOf(s, v, a), metrics);
       });
       for (const q of s.queues) {
         for (const p of q) {
-          const node = el.querySelector(`[data-queue-person="${p.id}"]`);
-          if (!node || !placeMover(node, p, metrics, ghibli)) continue;
+          const h = handleOf(`[data-queue-person="${p.id}"]`);
+          if (!h || !placeMover(h.node, p, metrics, ghibli)) continue;
           const c = data.customers.get(p.id)!;
-          if (ghibli) poseFigure(figures, node.querySelector('[data-figure]'), stepPose(p, metrics, customerArms(c, p, a)));
+          if (ghibli) poseFigure(figures, (h.fig ??= h.node.querySelector('[data-figure]')), stepPose(p, metrics, customerArms(c, p, a)));
           // Classique : le gobelet est posé sur le zinc dans les 4 dernières secondes du service.
-          else if (p.mode === 'being-served') node.querySelector('[data-served-cup]')?.setAttribute('visibility', handing(c, a) ? 'visible' : 'hidden');
+          else if (p.mode === 'being-served') h.node.querySelector('[data-served-cup]')?.setAttribute('visibility', handing(c, a) ? 'visible' : 'hidden');
         }
       }
       if (ghibli) {

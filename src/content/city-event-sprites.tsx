@@ -27,12 +27,21 @@ type Props = { event: CityEvent; sky: Sky; still: boolean; lights: boolean; rain
 export const eventWalked = (e: CityEvent, t: number, m: CityMetrics): number => (e.speed * (t - e.start)) / (m.unit * STREET_SCALE.person);
 export const eventWalkPose = (e: CityEvent, walked: number, still: boolean, arms: ArmPose = 'swing'): PoseIn =>
   still ? { yaw: facingYaw(e.dir), gait: 'stand', phase: 0, head: 0, arms } : { yaw: facingYaw(e.dir), gait: 'walk', phase: phaseIndexOf(walked), head: 0, arms };
+// Marcheurs d'un nœud d'événement, lus une fois (relus si un pantin a quitté le DOM).
+type WalkerHandle = { fig: Element | null; offset: number; arms: ArmPose };
+const walkersOf = new WeakMap<Element, WalkerHandle[]>();
 export function poseEventFigures(reg: FigureRegistry, node: Element, e: CityEvent, t: number, m: CityMetrics, still: boolean): void {
   const walked = eventWalked(e, t, m);
-  for (const w of node.querySelectorAll('[data-walker]')) {
-    const arms = (w.getAttribute('data-arms') ?? 'swing') as ArmPose;
-    poseFigure(reg, w.querySelector(':scope > [data-figure]'), eventWalkPose(e, walked + Number(w.getAttribute('data-walker')), still, arms));
+  let list = walkersOf.get(node);
+  if (!list || list.some((h) => h.fig && !h.fig.isConnected)) {
+    list = [...node.querySelectorAll('[data-walker]')].map((w) => ({
+      fig: w.querySelector(':scope > [data-figure]'),
+      offset: Number(w.getAttribute('data-walker')),
+      arms: (w.getAttribute('data-arms') ?? 'swing') as ArmPose,
+    }));
+    walkersOf.set(node, list);
   }
+  for (const h of list) poseFigure(reg, h.fig, eventWalkPose(e, walked + h.offset, still, h.arms));
 }
 // Décalage des pas d'un marcheur au suivant dans un groupe (unités).
 const WALKER_OFFSET = 7;

@@ -164,6 +164,26 @@ describe('queueAt : positions', () => {
       expect(customerAt(s, c, c.arrive - 1e-4).drinking).toBe(false);
     }
   });
+  it('la file qui avance : la phase des pas (walked) ne recule jamais', () => {
+    const s = sched(1);
+    const dt = 0.25 / 60;
+    let moved = 0;
+    let prev = new Map<string, number>();
+    for (const [from, to] of [[OPEN + 5, OPEN + 40], [absMinute(DAY, 1230), absMinute(DAY, 1250)]] as const) {
+      for (let t = from; t < to; t += dt) {
+        const now = new Map(queueAt(s, t).filter((p) => p.mode === 'waiting').map((p) => [p.id, p.walked] as const));
+        for (const [id, w] of now) {
+          const b = prev.get(id);
+          if (b !== undefined) {
+            expect(w, `${id} @${t}`).toBeGreaterThanOrEqual(b - 1e-9);
+            if (w > b) moved++;
+          }
+        }
+        prev = now;
+      }
+    }
+    expect(moved).toBeGreaterThan(0);
+  }, 40000);
   it('la file s’étire du côté tiré du stand, en s’éloignant du comptoir', () => {
     const s = sched(0);
     const side = s.stand.side;

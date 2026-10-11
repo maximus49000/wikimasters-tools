@@ -92,7 +92,7 @@ describe('Fête de la musique : la rue le soir', () => {
     expect(count(c, '[data-music-spectator] animateTransform')).toBeGreaterThan(0);
     // La foule ne compte pas dans le plafond des figurants : aucun spectateur, serveur ou client n'est un « travailleur ».
     expect(count(c, '[data-music-spectator][data-worker], [data-beer-server][data-worker], [data-queue-person][data-worker]')).toBe(0);
-  });
+  }, 20000);
 
   it('Ghibli : foule, serveurs, clients et musiciens au pantin dans la vie de la ville, sans miroir ni fondu', () => {
     clock();

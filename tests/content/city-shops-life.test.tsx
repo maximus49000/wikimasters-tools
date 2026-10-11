@@ -8,6 +8,8 @@ import { CityLifeLayer } from '../../src/content/city-life';
 import { ShopCustomers, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectWorkers, countShopSprites, customerState, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeWorkers, staffCast } from '../../src/content/city-shops-life';
 import { ghibliGesture } from '../../src/content/shop-gesture-sprites';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
+import { THRESHOLD_S } from '../../src/core/library/city/doorway';
+import { TURN_S } from '../../src/core/library/figure/gait';
 import { DOOR_SILL_HALF, DOOR_SILL_TOP, sillBox } from '../../src/content/door-passage';
 import { visitAt, visitsFor, type VisitLock } from '../../src/core/library/city/shops/customers';
 import { addDays, dayContext, type YMD } from '../../src/core/library/city/calendar';
@@ -176,10 +178,11 @@ describe('personnel : qui est visible (staffCast)', () => {
 
 describe('personnel : rendu (StaffLayer)', () => {
   const frame = shopFrame(slots[0]!, metrics.ground);
-  const draw = (type: ShopTypeId, date: YMD, minutes: number, reduced: boolean): HTMLDivElement =>
+  const draw = (type: ShopTypeId, date: YMD, minutes: number, reduced: boolean, ghibli = false): HTMLDivElement =>
     render(
       <svg>
         <StaffLayer
+          ghibli={ghibli}
           view={viewOf(type, date, minutes)}
           shifts={staffShiftsAt(SHOP_DEFS[type], SEED, 'shop-0', date)}
           frame={frame}
@@ -205,6 +208,12 @@ describe('personnel : rendu (StaffLayer)', () => {
     expect(c.querySelector('[data-staff-where="opening"][data-active="true"] [data-arm]')).not.toBeNull();
     // Le local est ouvert : quelqu'un est derrière la vitrine (l'ouvreur seul y est relevé au bout du geste).
     expect(c.querySelectorAll('[data-staff-window] [data-staff-where="inside"]').length).toBeGreaterThanOrEqual(1);
+  });
+  it('Ghibli : le rideau attend l’ouvreur (seuil + demi-tour), classique : il part tout de suite', () => {
+    const [open] = rangesOf(SHOP_DEFS.bakery, TUESDAY)[0]!;
+    const transitionOf = (c: HTMLElement): string => c.querySelector<SVGGElement>('[data-rolling-shutter] > g')!.style.transition;
+    expect(transitionOf(draw('bakery', TUESDAY, open, false))).toMatch(/ 0s$/);
+    expect(transitionOf(draw('bakery', TUESDAY, open, false, true))).toContain(`ease-in-out ${THRESHOLD_S + TURN_S}s`);
   });
   it('ouvreur seul : il est à la porte puis derrière la vitrine (relève posée par la boucle)', () => {
     const date = { y: 2026, m: 10, d: 10 };
@@ -351,7 +360,8 @@ describe('clients : portes et verrou', () => {
   it('passage rue → porte du local : pieds sur m.doorY, cadre large sur le seuil puis resserré sur la porte, ombre sur la porte', () => {
     const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
     let c0 = 0;
-    while (visitAt(v, W, c0 - v.phase)?.stage !== 'enter') c0 += 0.01;
+    for (let n = 0; visitAt(v, W, c0 - v.phase)?.stage !== 'enter' && n < 200000; n++) c0 += 0.01;
+    expect(visitAt(v, W, c0 - v.phase)?.stage).toBe('enter');
     // Début exact du seuil (dichotomie) : profondeur ≈ 0.
     let lo = c0 - 0.01;
     for (let i = 0; i < 30; i++) {
@@ -597,7 +607,9 @@ describe('G3b : personnel, clients et chantier en pantins', () => {
     expect(node.querySelector('[data-arm], [data-pose-body]')).toBeNull();
     const seed = Number(node.getAttribute('data-gesture-seed'));
     let t = 0;
-    while (!(gestureAt('bakery', 'staff', t, seed).arms === 'hold' && gestureAt('bakery', 'staff', t, seed).item === 'hand')) t += 0.1;
+    const holdsBread = (x: number): boolean => gestureAt('bakery', 'staff', x, seed).arms === 'hold' && gestureAt('bakery', 'staff', x, seed).item === 'hand';
+    for (let n = 0; !holdsBread(t) && n < 20000; n++) t += 0.1;
+    expect(holdsBread(t)).toBe(true);
     const staff = collectPosedStaff(c);
     settle(figures, () => placeStaff(staff, t, figures));
     expect(keyOf(fig)[5]).toBe('hold');
@@ -608,7 +620,8 @@ describe('G3b : personnel, clients et chantier en pantins', () => {
     expect(shown(hand)).toBe(true);
     // Geste sans objet : la main est vide.
     let u = 0;
-    while (gestureAt('bakery', 'staff', u, seed).item !== 'none') u += 0.1;
+    for (let n = 0; gestureAt('bakery', 'staff', u, seed).item !== 'none' && n < 20000; n++) u += 0.1;
+    expect(gestureAt('bakery', 'staff', u, seed).item).toBe('none');
     settle(figures, () => placeStaff(staff, u, figures));
     expect(shown(hand)).toBe(false);
     // Hors métier de bouche : sans tablier.

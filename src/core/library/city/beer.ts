@@ -30,6 +30,8 @@ export const SERVE_DEPTH = 23;
 export const QUEUE_DEPTH = 24;
 export const COUNTER_HALF = 26; // demi-largeur du comptoir
 export const SERVE_DX = 9; // place des deux serveurs (et des deux clients servis) de part et d'autre du centre
+// Rang fictif d'où part la phase des pas : `walked` croît quand la file avance (r diminue), jamais de pas à reculons.
+const QUEUE_FAR = 200;
 export const QUEUE_STEP = 7; // écart entre deux personnes de la file
 const QUEUE_GAP = 8; // tête de file : à QUEUE_GAP du bout du comptoir
 const CUSTOMER_LANE = 34; // couloir de marche des clients, devant la file
@@ -185,7 +187,7 @@ export function customerAt(sched: BeerSchedule, c: BeerCustomer, abs: number): B
     for (let j = c.n - 1; j >= 0 && sched.customers[j]!.start > abs; j--) ahead++;
     // La file avance d'un cran : quelques pas, la phase suit le déplacement le long de la file.
     const moving = Math.abs(r - Math.round(r)) > 1e-6;
-    return { ...base, mode: 'waiting', x: p.x, depth: p.d, dir: toward(p.x), rank: ahead, yaw: facingYaw(toward(p.x)), gait: moving ? 'walk' : 'stand', walked: Math.abs(p.x - stand.x) };
+    return { ...base, mode: 'waiting', x: p.x, depth: p.d, dir: toward(p.x), rank: ahead, yaw: facingYaw(toward(p.x)), gait: moving ? 'walk' : 'stand', walked: (QUEUE_FAR - r) * QUEUE_STEP * unit };
   }
   if (abs < c.end) {
     // De la tête de file au comptoir (pas réglés sur la distance), demi-tour sur place, puis de dos face au serveur.
