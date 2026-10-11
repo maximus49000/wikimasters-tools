@@ -108,6 +108,36 @@ describe('toit étroit', () => {
   });
 });
 
+describe('toits ordinaires', () => {
+  it.each([40, 54])('toit de %i px : quelques pas visibles hors de la caisse du traîneau', (w) => {
+    const r = { ...roof, w };
+    const walked: number[] = [];
+    let seen = 0;
+    for (let t = at(0.25); t < at(0.75); t += 0.05) {
+      const s = santaStepAt(pass, r, t);
+      if (!s) continue;
+      if (s.gait === 'walk') walked.push(s.x);
+      // Debout sur le toit ou dans la cheminée : jamais dans la caisse (x de −20 à 13 dans le repère du dessin).
+      if (s.y >= 0) {
+        seen++;
+        expect(s.x < -20 || s.x > 13).toBe(true);
+        expect(Math.abs(s.x - 14)).toBeLessThanOrEqual(w / 2);
+      }
+    }
+    expect(seen).toBeGreaterThan(20);
+    expect(Math.max(...walked) - Math.min(...walked)).toBeGreaterThanOrEqual(6);
+  });
+  it('toit large : le chemin d’origine, derrière le traîneau', () => {
+    const xs: number[] = [];
+    for (let t = at(0.3); t < at(0.4); t += 0.05) {
+      const s = santaStepAt(pass, { ...roof, w: 120 }, t);
+      if (s && s.gait === 'walk') xs.push(s.x);
+    }
+    expect(Math.min(...xs)).toBeLessThan(-29);
+    expect(Math.max(...xs)).toBeGreaterThan(-24);
+  });
+});
+
 describe('père Noël Ghibli', () => {
   it('tenue rouge, bonnet rouge', () => {
     expect(SANTA_OUTFIT).toMatchObject({ topColor: '#C0302B', bottomColor: '#C0302B', hair: 'beanie', hatColor: '#C0302B' });
