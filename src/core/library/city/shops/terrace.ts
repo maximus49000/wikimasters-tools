@@ -89,3 +89,22 @@ export function terraceGuests(
   }
   return guests.slice(0, MAX_GUESTS);
 }
+
+// Arrivées et départs (G3b) : un convive ne se pose ni ne disparaît sur sa chaise. Comparés aux convives des minutes voisines
+// (mêmes règles, `before` à minutes − 1, `after` à minutes + 1), celui qui n'y était pas arrive à pied pendant la minute, celui
+// qui n'y sera plus repart à pied ; présent une seule minute, il n'est pas montré (trop court pour venir et repartir).
+// Un convive est reconnu par sa table, sa place et la fin de son tour. Fonction pure.
+export type TerraceGuest = { table: number; seat: 0 | 1; leavesAt: number };
+export type GuestMove = 'seated' | 'arrive' | 'leave';
+const guestKey = (g: TerraceGuest): string => `${g.table}/${g.seat}/${g.leavesAt}`;
+export function terraceGuestMoves(before: readonly TerraceGuest[], now: readonly TerraceGuest[], after: readonly TerraceGuest[]): (TerraceGuest & { move: GuestMove })[] {
+  const was = new Set(before.map(guestKey));
+  const stays = new Set(after.map(guestKey));
+  const out: (TerraceGuest & { move: GuestMove })[] = [];
+  for (const g of now) {
+    const a = was.has(guestKey(g));
+    const b = stays.has(guestKey(g));
+    if (a || b) out.push({ ...g, move: !a ? 'arrive' : !b ? 'leave' : 'seated' });
+  }
+  return out;
+}

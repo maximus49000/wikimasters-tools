@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SHOP_DEFS, SHOP_TYPE_IDS } from '../../../src/core/library/city/shops/catalog';
-import { holdWeather, terraceAt, terraceGuests, terraceWeatherAt, type TerraceWeather } from '../../../src/core/library/city/shops/terrace';
+import { holdWeather, terraceAt, terraceGuestMoves, terraceGuests, terraceWeatherAt, type TerraceWeather } from '../../../src/core/library/city/shops/terrace';
 import { targetOf } from '../../../src/core/library/weather/weather-types';
 
 const FINE: TerraceWeather = { rain: false, snow: false, storm: false, wind: false, sunny: false };
@@ -130,5 +130,33 @@ describe('terrasse : fenêtre de météo (holdWeather)', () => {
   it('garde la terrasse rentrée tant que la pluie est dans la fenêtre', () => {
     expect(terraceAt(CAFE, true, H(12), SUN, OPEN, CLOSE, holdWeather([SUN, { ...FINE, rain: true }])).state).toBe('none');
     expect(terraceAt(CAFE, true, H(12), SUN, OPEN, CLOSE, holdWeather([SUN, SUN])).state).toBe('umbrellas');
+  });
+});
+
+describe('terrasse : arrivées et départs des convives (terraceGuestMoves)', () => {
+  const g = (table: number, seat: 0 | 1, leavesAt: number) => ({ table, seat, leavesAt });
+  it('absent la minute d’avant : il arrive ; absent la minute d’après : il repart ; sinon assis', () => {
+    const a = g(0, 0, 100), b = g(1, 1, 130), c = g(2, 0, 90);
+    const moves = terraceGuestMoves([a, c], [a, b, c], [a, b]);
+    expect(moves).toEqual([{ ...a, move: 'seated' }, { ...b, move: 'arrive' }, { ...c, move: 'leave' }]);
+  });
+  it('présent une seule minute : pas montré (trop court pour venir à pied)', () => {
+    expect(terraceGuestMoves([], [g(0, 0, 50)], [])).toEqual([]);
+  });
+  it('même place, autre tour (leavesAt différent) : l’un repart, l’autre arrive', () => {
+    const old = g(0, 0, 45), next = g(0, 0, 90);
+    expect(terraceGuestMoves([old], [old], [next]).map((x) => x.move)).toEqual(['leave']);
+    expect(terraceGuestMoves([old], [next], [next]).map((x) => x.move)).toEqual(['arrive']);
+  });
+  it('sur une vraie journée : chaque convive arrive avant d’être assis et repart avant de disparaître', () => {
+    const at = (m: number) => terraceGuests(3, 4, 's', m, 0.9);
+    for (let m = H(9) + 1; m < H(20); m++) {
+      for (const x of terraceGuestMoves(at(m - 1), at(m), at(m + 1))) {
+        const key = (y: { table: number; seat: number; leavesAt: number }) => `${y.table}/${y.seat}/${y.leavesAt}`;
+        const was = at(m - 1).some((y) => key(y) === key(x));
+        const stays = at(m + 1).some((y) => key(y) === key(x));
+        expect(x.move).toBe(!was ? 'arrive' : !stays ? 'leave' : 'seated');
+      }
+    }
   });
 });

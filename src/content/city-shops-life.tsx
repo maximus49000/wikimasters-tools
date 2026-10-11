@@ -889,7 +889,7 @@ export function ShopOutdoors({ view, frame, metrics, minutes, date, weather, wal
   if (type === 'nightclub') return <NightclubDoor view={view} frame={frame} metrics={metrics} minutes={minutes} date={date} reduced={reduced} sky={sky} seed={seed} sessionT0={sessionT0} ghibli={ghibli} />;
   if (type === null || SHOP_DEFS[type].terrace === 0) return null;
   // Une terrasse sortie attire : un fond de 0,3 s'ajoute à l'affluence du type (sinon les chaises restent presque toujours vides).
-  const crowd = Math.min(1, 0.3 + 0.9 * crowdAt(SHOP_DEFS[type], minutes) * (0.6 + 0.4 * walkers));
+  const crowdOf = (m: number): number => Math.min(1, 0.3 + 0.9 * crowdAt(SHOP_DEFS[type], m) * (0.6 + 0.4 * walkers));
   return (
     <ShopTerrace
       view={view}
@@ -898,11 +898,13 @@ export function ShopOutdoors({ view, frame, metrics, minutes, date, weather, wal
       minutes={minutes}
       date={date}
       weather={weather}
-      crowd={crowd}
+      crowd={crowdOf(minutes)}
+      crowdNear={crowdOf}
       reduced={reduced}
       sky={sky}
       seed={seed}
       waiterOutfit={staffOutfit(seed, `${view.slot.id}-waiter`)}
+      ghibli={ghibli}
     />
   );
 }

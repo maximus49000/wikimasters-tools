@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
 import { MIN_PITCH, NightclubDoor, queueFrame, queueLayout } from '../../src/content/shop-queue';
-import { ShopTerrace, terraceTables, waiterAt, weatherHistory } from '../../src/content/shop-terrace';
+import { ShopTerrace, carrierPose, collectCarriers, collectTerraceGuests, collectWaiters, placeTerraceGuests, placeWaiters, terraceTables, waiterAt, weatherHistory } from '../../src/content/shop-terrace';
+import { ACCESSORY, gestureAt } from '../../src/core/library/city/shops/gestures';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
 import { cityMetrics } from '../../src/core/library/city/metrics';
@@ -488,5 +489,235 @@ describe('CityLifeLayer : terrasses selon la météo de la rue', () => {
     const terrace = host.querySelector(`[data-shop-terrace="${slotId}"]`)!;
     expect(terrace.getAttribute('data-terrace-state')).toBe('umbrellas');
     expect(terrace.querySelectorAll('[data-parasol]').length).toBe(terrace.querySelectorAll('[data-terrace-table]').length);
+  });
+});
+
+describe('G3b : convives et serveur de terrasse', () => {
+  const T = NOW / 1000;
+  const keyOf = (fig: Element | null): string[] => (fig?.getAttribute('data-key') ?? '').split('#').pop()!.split('|');
+  // Montré : ni lui ni un ancêtre caché (visibility ou display).
+  const shown = (n: Element | null): boolean => {
+    if (!n) return false;
+    for (let x: Element | null = n; x; x = x.parentElement) if (x.getAttribute('visibility') === 'hidden' || x.getAttribute('display') === 'none') return false;
+    return true;
+  };
+  const draw = (figures: FigureRegistry, type: ShopTypeId, minutes: number, ghibli: boolean, reduced = false): HTMLDivElement =>
+    render(
+      <FigureContext.Provider value={figures}>
+        <svg>
+          <ShopTerrace view={viewOf(type, SAT, minutes)} frame={frame} metrics={metrics} minutes={minutes} date={SAT} weather={{ now: FINE, before: FINE }} crowd={1} reduced={reduced} sky={skyAt(minutes, times)} seed={SEED} waiterOutfit={waiter} ghibli={ghibli} />
+        </svg>
+      </FigureContext.Provider>,
+    ).host;
+  const settle = (figures: FigureRegistry, f: () => void): void => {
+    f();
+    figures.flush();
+    f();
+  };
+  // Première minute où un convive du café arrive / repart / reste assis.
+  const found = new Map<string, number>();
+  const minuteWith = (move: 'arrive' | 'leave' | 'seated'): number => {
+    if (found.has(move)) return found.get(move)!;
+    for (let m = 9 * 60; m < 19 * 60; m++) {
+      vi.spyOn(Date, 'now').mockReturnValue(NOW);
+      const { host, root } = render(
+        <svg>
+          <ShopTerrace view={viewOf('cafe', SAT, m)} frame={frame} metrics={metrics} minutes={m} date={SAT} weather={{ now: FINE, before: FINE }} crowd={1} reduced={false} sky={skyAt(m, times)} seed={SEED} waiterOutfit={waiter} />
+        </svg>,
+      );
+      const hit = host.querySelector(`[data-terrace-guest][data-move="${move}"]`) !== null;
+      act(() => root.unmount());
+      host.remove();
+      mounted.pop();
+      if (hit) {
+        found.set(move, m);
+        return m;
+      }
+    }
+    throw new Error(`aucun convive « ${move} »`);
+  };
+  // Aucun fondu sur un convive : seul le seuil de porte (data-door-fig) porte une opacité.
+  const noFade = (c: Element): void => {
+    for (const n of c.querySelectorAll('[data-terrace-guest], [data-terrace-guest] *, [data-terrace-trip], [data-terrace-trip] *')) {
+      // Groupes seulement (les dessins du sprite ont leurs propres transparences de matière, ex. rayure du maillot).
+      if (n.hasAttribute('data-door-fig') || n.hasAttribute('data-door-dark') || (n.tagName.toLowerCase() !== 'g' && n.tagName.toLowerCase() !== 'svg')) continue;
+      expect(n.getAttribute('opacity')).toBeNull();
+    }
+  };
+
+  it('Ghibli : convive assis en pantin, tourné vers sa table (2 ou 6), sans miroir, geste de la famille à table', () => {
+    const m = minuteWith('seated');
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('g4s', { perFrame: 50 });
+    const c = draw(figures, 'cafe', m, true);
+    const guest = c.querySelector('[data-terrace-guest][data-move="seated"]')!;
+    expect(guest.getAttribute('transform')).not.toMatch(/scale\(-/);
+    const fig = guest.querySelector('[data-figure]')!;
+    expect(fig).not.toBeNull();
+    expect(guest.querySelector('[data-pose-body]')).toBeNull();
+    const guests = collectTerraceGuests(c);
+    settle(figures, () => placeTerraceGuests(guests, T + 5, metrics, figures));
+    const key = keyOf(fig);
+    expect(key[2]).toBe('seated');
+    expect(key[1]).toBe(guest.getAttribute('data-seat') === '0' ? '2' : '6');
+    const seed = Number(guest.getAttribute('data-gesture-seed'));
+    expect(key[5]).toBe(gestureAt('cafe', 'customer', T + 5, seed).arms);
+    expect(guest.querySelector(`[data-accessory="${ACCESSORY.cafe}"]`)).not.toBeNull();
+    noFade(c);
+  });
+
+  it.each([true, false])('arrivée : sort de la porte du local, marche jusqu’à sa chaise et s’assoit, sans fondu (Ghibli : %s)', (ghibli) => {
+    const m = minuteWith('arrive');
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('g4a', { perFrame: 50 });
+    const c = draw(figures, 'cafe', m, ghibli);
+    const guest = c.querySelector('[data-terrace-guest][data-move="arrive"]')!;
+    const key = guest.getAttribute('data-guest-key')!;
+    const trip = c.querySelector(`[data-terrace-trip="${key}"]`)!;
+    expect(trip).not.toBeNull();
+    const seat = guest.querySelector('[data-guest-seat]')!;
+    const street = trip.querySelector('[data-trip-street]')!;
+    const door = trip.querySelector('svg[data-trip-door]')!;
+    // Au rendu : ni sur la chaise ni dans la rue (encore dans le local).
+    expect(shown(seat)).toBe(false);
+    expect(shown(street)).toBe(false);
+    const guests = collectTerraceGuests(c);
+    const seen: string[] = [];
+    const xs: number[] = [];
+    for (let t = T; t < T + 60; t += 0.25) {
+      settle(figures, () => placeTerraceGuests(guests, t, metrics, ghibli ? figures : null));
+      const s = shown(seat) ? 'seat' : shown(street) ? 'street' : shown(door) ? 'door' : 'none';
+      if (seen[seen.length - 1] !== s) seen.push(s);
+      if (s === 'street') xs.push(Number(/translate\(([-\d.]+)/.exec(street.getAttribute('transform')!)![1]));
+      // Jamais à deux endroits à la fois.
+      expect([shown(seat), shown(street), shown(door)].filter(Boolean).length).toBeLessThanOrEqual(1);
+    }
+    expect(seen).toEqual(['none', 'door', 'street', 'seat']);
+    const doorX = frame.door.x + frame.door.w / 2;
+    expect(Math.abs(xs[0]! - doorX)).toBeLessThan(1);
+    expect(Math.abs(xs[xs.length - 1]! - Number(guest.getAttribute('data-seat-x')))).toBeLessThan(1);
+    noFade(c);
+    if (ghibli) {
+      expect(street.querySelector('[data-figure]')).not.toBeNull();
+      expect(street.getAttribute('transform')).not.toMatch(/scale\(-/);
+    } else expect(trip.querySelector('[data-figure]')).toBeNull();
+  });
+
+  it.each([true, false])('départ : se lève, marche jusqu’à la porte et rentre ; rien sur la chaise à la fin de la minute (Ghibli : %s)', (ghibli) => {
+    const m = minuteWith('leave');
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('g4l', { perFrame: 50 });
+    const c = draw(figures, 'cafe', m, ghibli);
+    const guest = c.querySelector('[data-terrace-guest][data-move="leave"]')!;
+    const trip = c.querySelector(`[data-terrace-trip="${guest.getAttribute('data-guest-key')}"]`)!;
+    const seat = guest.querySelector('[data-guest-seat]')!;
+    const street = trip.querySelector('[data-trip-street]')!;
+    const door = trip.querySelector('svg[data-trip-door]')!;
+    expect(shown(seat)).toBe(true);
+    const guests = collectTerraceGuests(c);
+    const seen: string[] = [];
+    let stood = false;
+    for (let t = T; t < T + 60; t += 0.25) {
+      settle(figures, () => placeTerraceGuests(guests, t, metrics, ghibli ? figures : null));
+      const s = shown(seat) ? 'seat' : shown(street) ? 'street' : shown(door) ? 'door' : 'none';
+      if (seen[seen.length - 1] !== s) seen.push(s);
+      if (ghibli && s === 'street' && keyOf(street.querySelector('[data-figure]'))[2] === 'stand') stood = true;
+    }
+    expect(seen).toEqual(['seat', 'street', 'door', 'none']);
+    if (ghibli) expect(stood).toBe(true);
+    noFade(c);
+  });
+
+  it('classique : convive assis inchangé (passant assis, miroir à droite de la table)', () => {
+    const m = minuteWith('seated');
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const c = draw(new FigureRegistry('g4c', { perFrame: 50 }), 'cafe', m, false);
+    const guests = [...c.querySelectorAll('[data-terrace-guest][data-move="seated"]')];
+    expect(guests.length).toBeGreaterThan(0);
+    for (const g of guests) {
+      expect(g.querySelector('[data-figure]')).toBeNull();
+      expect(g.getAttribute('transform')).toBe(g.getAttribute('data-seat') === '0' ? 'translate(-9 0) scale(1 1)' : 'translate(9 0) scale(-1 1)');
+    }
+  });
+
+  it('plafond des figurants : un convive caché par le plafond ne marche pas non plus', () => {
+    const m = minuteWith('arrive');
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const c = draw(new FigureRegistry('g4b', { perFrame: 50 }), 'cafe', m, false);
+    const guest = c.querySelector('[data-terrace-guest][data-move="arrive"]')!;
+    const trip = c.querySelector(`[data-terrace-trip="${guest.getAttribute('data-guest-key')}"]`)!;
+    guest.setAttribute('visibility', 'hidden');
+    const guests = collectTerraceGuests(c);
+    for (let t = T; t < T + 60; t += 0.5) {
+      placeTerraceGuests(guests, t, metrics, null);
+      expect(shown(trip.querySelector('[data-trip-street]'))).toBe(false);
+      expect(shown(trip.querySelector('svg[data-trip-door]'))).toBe(false);
+    }
+  });
+
+  it('mouvement réduit : convives assis immobiles, aucun trajet', () => {
+    const m = minuteWith('arrive');
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const c = draw(new FigureRegistry('g4r', { perFrame: 50 }), 'cafe', m, true, true);
+    expect(c.querySelector('[data-terrace-trip]')).toBeNull();
+    for (const g of c.querySelectorAll('[data-terrace-guest]')) expect(shown(g.querySelector('[data-guest-seat]'))).toBe(true);
+  });
+
+  it('Ghibli : serveur en tablier, sort par la porte avec l’objet du commerce à la main, sert, revient les mains vides', () => {
+    const m = minuteWith('seated');
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('g4w', { perFrame: 50 });
+    const c = draw(figures, 'cafe', m, true);
+    const node = c.querySelector('[data-terrace-waiter]')!;
+    expect(node).not.toBeNull();
+    expect(node.getAttribute('opacity')).toBeNull();
+    const street = node.querySelector('[data-trip-street]')!;
+    const door = node.querySelector('svg[data-trip-door]')!;
+    const fig = street.querySelector('[data-figure]')!;
+    expect(fig.getAttribute('data-sig')!.endsWith('.a')).toBe(true);
+    const item = street.querySelector('[data-item-hand]')!;
+    expect(item.querySelector(`[data-accessory="${ACCESSORY.cafe}"]`)).not.toBeNull();
+    expect(item.closest('[data-held]')!.getAttribute('data-held')).toBe('handR');
+    const waiters = collectWaiters(c);
+    let doors = 0, loaded = 0, empty = 0, served = 0;
+    for (let t = T; t < T + 40; t += 0.25) {
+      settle(figures, () => placeWaiters(waiters, t, metrics, figures));
+      if (shown(door)) doors++;
+      if (!shown(street)) continue;
+      const k = keyOf(fig);
+      expect(street.getAttribute('transform')).not.toMatch(/scale\(-/);
+      if (k[2] === 'walk' && k[5] === 'hold' && shown(item)) loaded++;
+      if (k[2] === 'walk' && k[5] === 'swing' && !shown(item)) empty++;
+      if (k[2] === 'stand') served++;
+    }
+    expect(doors).toBeGreaterThan(0);
+    expect(loaded).toBeGreaterThan(0);
+    expect(empty).toBeGreaterThan(0);
+    expect(served).toBeGreaterThan(0);
+  });
+});
+
+describe('G3b : porteur des tables', () => {
+  it('Ghibli : pantin en tablier, sans miroir ; il marche pendant la glissade puis s’arrête', () => {
+    const open = openRangeAt(SHOP_DEFS.cafe, SAT, 9 * 60)![0];
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const figures = new FigureRegistry('g4p', { perFrame: 50 });
+    const view = (m: number): ReactNode => (
+      <FigureContext.Provider value={figures}>
+        <svg>
+          <ShopTerrace view={viewOf('cafe', SAT, m)} frame={frame} metrics={metrics} minutes={m} date={SAT} weather={{ now: SUN, before: SUN }} crowd={1} reduced={false} sky={skyAt(m, times)} seed={SEED} waiterOutfit={waiter} ghibli />
+        </svg>
+      </FigureContext.Provider>
+    );
+    const { host, root } = render(view(open + 1));
+    act(() => root.render(view(open + 2)));
+    const node = host.querySelector('[data-terrace-carrier]')!;
+    expect(node.querySelector('[data-figure]')!.getAttribute('data-sig')!.endsWith('.a')).toBe(true);
+    expect(node.innerHTML).not.toMatch(/scale\(-/);
+    const carriers = collectCarriers(host);
+    expect(carriers).toHaveLength(1);
+    expect(carriers[0]!.move.dist).toBeGreaterThan(0.01);
+    expect(carrierPose(carriers[0]!.move, NOW / 1000 + 10).gait).toBe('walk');
+    expect(carrierPose(carriers[0]!.move, NOW / 1000 + 61).gait).toBe('stand');
   });
 });

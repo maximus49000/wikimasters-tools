@@ -29,7 +29,7 @@ import { InstallLayer } from './install-layer';
 import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
-import { collectWaiters, placeWaiters, useTerraceWeather, type Waiter } from './shop-terrace';
+import { collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type TerraceGuestNode, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, VehicleSprite } from './city-sprites';
 import { SantaLayer } from './santa-layer';
 import { useCityEvents } from './use-city-events';
@@ -281,6 +281,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let staff: PosedStaff[] = [];
     let swaps: Swap[] = [];
     let waiters: Waiter[] = [];
+    // Convives de terrasse (assis, ou à pied pendant leur minute d'arrivée ou de départ) et porteur des tables (Ghibli).
+    let terraceGuests: TerraceGuestNode[] = [];
+    let carriers: Carrier[] = [];
     let crews: Crew[] = [];
     // Ghibli : employés à pied (scripts porte → trottoir → porte) et ouvriers du chantier, posés par la boucle.
     let staffWalks: WalkingStaff[] = [];
@@ -311,6 +314,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         staff = collectPosedStaff(el);
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
+        terraceGuests = collectTerraceGuests(el);
+        carriers = ghibli ? collectCarriers(el) : [];
         crews = collectMovers(el);
         staffWalks = ghibli ? collectStaffWalks(el) : [];
         workers = ghibli ? collectWorkers(el) : [];
@@ -380,11 +385,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       placeCustomers(nodes, visits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
       placeSwaps(swaps, t);
       if (!still) {
-        placeWaiters(waiters, t);
+        placeWaiters(waiters, t, metrics, ghibli ? figures : null);
+        placeTerraceGuests(terraceGuests, t, metrics, ghibli ? figures : null);
         placeMovers(crews, t);
         if (ghibli) {
           placeStaffWalks(staffWalks, t, metrics, figures);
           placeWorkers(workers, t, figures);
+          placeCarriers(carriers, t, figures);
         }
       }
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
