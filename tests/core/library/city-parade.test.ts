@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CLOSURE, CROWD_LANE, MUSIC_CLOSURE, PARADE, paradeOn, PARADE_SPEED, crowdFor, crowdLevel, flypastWindow, spectatorAt, spectatorTimes, paradeUnits, paradeX, roadClosed, type ParadeKind } from '../../../src/core/library/city/parade';
+import { THRESHOLD_S } from '../../../src/core/library/city/doorway';
+import { TURN_S, YAW_BACK, YAW_FRONT } from '../../../src/core/library/figure/gait';
+import { CLOSURE, CROWD_DOOR_DEPTH, CROWD_LANE, MUSIC_CLOSURE, PARADE, paradeOn, PARADE_SPEED, crowdFor, crowdLevel, flypastWindow, spectatorAt, spectatorTimes, spectatorYaw, paradeUnits, paradeX, roadClosed, type ParadeKind } from '../../../src/core/library/city/parade';
 import { cityEventSchedule, defOf, eligible, EVENT_DEFS, conditionsKey, type EventConditions } from '../../../src/core/library/city/events';
 import { cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
 import { dayContext, type YMD } from '../../../src/core/library/city/calendar';
@@ -268,7 +270,7 @@ describe('trajets des spectateurs (ils arrivent et repartent à pied)', () => {
     }
     expect(worst).toBeLessThanOrEqual(1e-6);
   });
-  it('absent : à sa porte ou hors champ ; fondu seulement à l encadrement d une porte', () => {
+  it('absent : à sa porte ou hors champ ; jamais de fondu, seuil de porte seulement à une entrée d immeuble', () => {
     for (const s of crowd) {
       for (const h of [8, 14]) {
         const p = spectatorAt(s, at(h), D0);
@@ -277,11 +279,74 @@ describe('trajets des spectateurs (ils arrivent et repartent à pied)', () => {
       }
       for (let t = at(8.3); t < at(13.5); t += 7) {
         const p = spectatorAt(s, t, D0);
-        if (p.fade !== undefined && p.fade < 1 && p.mode !== 'absent') {
-          expect(DOORS.some((d) => Math.abs(d - p.x) < 15)).toBe(true);
+        expect('fade' in p).toBe(false);
+        if (p.sill !== undefined) {
+          expect(DOORS).toContain(p.x);
+          expect(p.depth).toBeCloseTo(CROWD_DOOR_DEPTH, 6);
+          expect(p.mode).toBe('walking');
         }
       }
     }
+  });
+  it('sortie d immeuble : seuil de face (profondeur 1 → 0), demi-tour sur place, marche (distance croissante), demi-tour vers la chaussée', () => {
+    const s = crowd.find((c) => c.fromDoor && Math.abs(c.x - c.from) > 30)!;
+    const { arrive } = spectatorTimes(s.u);
+    const tIn = D0 + arrive * 60;
+    // Premier instant en marche.
+    let t0 = tIn - 600;
+    while (spectatorAt(s, t0, D0).mode === 'absent') t0 += 0.01;
+    const first = spectatorAt(s, t0 + 0.02, D0);
+    expect(first.sill).toBeGreaterThan(0.9);
+    expect(first.yaw).toBe(YAW_FRONT);
+    expect(first.x).toBe(s.from);
+    const mid = spectatorAt(s, t0 + THRESHOLD_S / 2, D0);
+    expect(mid.sill).toBeGreaterThan(0.3);
+    expect(mid.sill).toBeLessThan(0.7);
+    const turn = spectatorAt(s, t0 + THRESHOLD_S + TURN_S / 2, D0);
+    expect(turn.sill).toBeUndefined();
+    expect(turn.gait).toBe('step');
+    expect(turn.x).toBe(s.from);
+    // Marche : distance parcourue croissante, sur le chemin.
+    let prev = -1;
+    for (let t = t0 + THRESHOLD_S + TURN_S + 0.05; t < tIn - TURN_S - 0.05; t += 0.5) {
+      const p = spectatorAt(s, t, D0);
+      expect(p.gait).toBe('walk');
+      expect(p.walked).toBeGreaterThan(prev);
+      prev = p.walked;
+    }
+    // Juste avant d'être en place : demi-tour sur place vers la chaussée, à sa place.
+    const last = spectatorAt(s, tIn - 0.02, D0);
+    expect(last.gait).toBe('step');
+    expect(last.x).toBeCloseTo(s.x, 6);
+    expect(spectatorAt(s, tIn + 0.01, D0).yaw).toBe(spectatorYaw(s));
+  });
+  it('en place : de trois quarts vers la chaussée, 2 en arrivant par la gauche, 6 par la droite ; debout', () => {
+    for (const s of crowd) {
+      const y = spectatorYaw(s);
+      expect(y).toBe(s.x >= s.from ? 2 : 6);
+      const p = spectatorAt(s, at(11), D0);
+      expect(p.mode).toBe('standing');
+      expect(p.yaw).toBe(y);
+      expect(p.gait).toBe('stand');
+    }
+  });
+  it('rentrée : demi-tour sur place, marche, demi-tour de dos devant la porte, seuil de dos (profondeur 0 → 1)', () => {
+    const s = crowd.find((c) => c.toDoor && Math.abs(c.x - c.to) > 30)!;
+    const { leave } = spectatorTimes(s.u);
+    const tOut = D0 + leave * 60;
+    const a = spectatorAt(s, tOut + TURN_S / 2, D0);
+    expect(a.mode).toBe('walking');
+    expect(a.gait).toBe('step');
+    expect(a.x).toBe(s.x);
+    let t1 = tOut;
+    while (spectatorAt(s, t1, D0).mode !== 'absent') t1 += 0.01;
+    const end = spectatorAt(s, t1 - 0.03, D0);
+    expect(end.sill).toBeGreaterThan(0.9);
+    expect(end.yaw).toBe(YAW_BACK);
+    expect(end.x).toBe(s.to);
+    const back = spectatorAt(s, t1 - THRESHOLD_S - TURN_S / 2, D0);
+    expect(back.gait).toBe('step');
+    expect(back.sill).toBeUndefined();
   });
   it('les marcheurs passent derrière la foule (couloir de marche) et sont peu nombreux à la fois', () => {
     let max = 0;

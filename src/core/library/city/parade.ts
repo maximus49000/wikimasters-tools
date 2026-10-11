@@ -1,5 +1,7 @@
 import { addDays, festivityStartsOn, type FestivityId, type YMD } from './calendar';
 import { WORLD_MARGIN, hashString, mulberry32 } from '../scene-world';
+import { TURN_S, YAW_BACK, YAW_FRONT, turnYaw, yawToward } from '../figure/gait';
+import { THRESHOLD_S } from './doorway';
 import { WALK_PACE, cityMetrics } from './metrics';
 import { outfitFor, type Outfit } from './people';
 
@@ -136,8 +138,6 @@ const REF = cityMetrics(340);
 export const CROWD_DOOR_DEPTH = (REF.curb - REF.doorY) / REF.unit;
 // Une entrée est « proche » à moins de cette distance (px) de la place.
 const NEAR_DOOR = 170;
-// Fondu à l'encadrement de la porte (le même que pour les habitants, doors.ts).
-const DOOR_FADE_S = 0.8;
 
 // `doors` : centres des entrées d'immeuble (px). Sans entrée proche, le spectateur arrive par un bord de la rue.
 export function crowdFor(seed: number, width: number, doors: readonly number[] = []): Spectator[] {
@@ -224,48 +224,89 @@ function pathOut(s: Spectator): Pt[] {
 }
 const seg = (a: Pt, b: Pt): number => Math.hypot(b.x - a.x, b.d - a.d);
 const lengthOf = (p: readonly Pt[]): number => p.slice(1).reduce((acc, q, i) => acc + seg(p[i]!, q), 0);
-function along(p: readonly Pt[], dist: number): Pt {
+// Orientation d'un tronçon (profondeur qui diminue = vers le spectateur de la scène).
+const segYaw = (a: Pt, b: Pt): number => yawToward(b.x - a.x, a.d - b.d);
+// Point à la distance `dist` du chemin, avec l'orientation du tronçon parcouru (tronçons de longueur nulle sautés).
+function along(p: readonly Pt[], dist: number): Pt & { yaw: number } {
   let left = dist;
+  let yaw = segYaw(p[0]!, p[p.length - 1]!);
   for (let i = 1; i < p.length; i++) {
     const l = seg(p[i - 1]!, p[i]!);
+    if (l > 0) yaw = segYaw(p[i - 1]!, p[i]!);
     if (left <= l && l > 0) {
       const k = left / l;
-      return { x: p[i - 1]!.x + (p[i]!.x - p[i - 1]!.x) * k, d: p[i - 1]!.d + (p[i]!.d - p[i - 1]!.d) * k };
+      return { x: p[i - 1]!.x + (p[i]!.x - p[i - 1]!.x) * k, d: p[i - 1]!.d + (p[i]!.d - p[i - 1]!.d) * k, yaw };
     }
     left -= l;
   }
-  return p[p.length - 1]!;
+  return { ...p[p.length - 1]!, yaw };
 }
+// Orientation du premier et du dernier tronçon non nuls.
+const firstYaw = (p: readonly Pt[]): number => along(p, 1e-6).yaw;
+const lastYaw = (p: readonly Pt[]): number => along(p, lengthOf(p)).yaw;
 const sgn = (v: number): 1 | -1 => (v < 0 ? -1 : 1);
 
+// Orientation en place (pantin) : de trois quarts vers la chaussée, du côté d'où il est arrivé (2 venu de la gauche, 6 de la
+// droite) : le demi-tour qui finit l'arrivée est court. Déterministe (trajet tiré avec la foule).
+export const spectatorYaw = (s: Spectator): number => (s.x >= s.from ? 2 : 6);
+
 export type SpectatorMode = 'absent' | 'walking' | 'standing';
-// `depth` : pied en unités au-dessus du bord du trottoir ; `fade` (0 à 1) : seulement à l'encadrement d'une porte.
-export type SpectatorPos = { x: number; depth: number; dir: 1 | -1; mode: SpectatorMode; fade?: number };
+// `depth` : pied en unités au-dessus du bord du trottoir ; `yaw` (pantin, 0–15) et `gait` : allure ('step' : demi-tour sur
+// place) ; `walked` : distance parcourue sur le chemin (px, phase des pas). `sill` (0 = sur le trottoir, 1 = au fond de
+// l'entrée) : seulement pendant le passage du seuil d'une porte d'immeuble (x = centre de la porte, ligne des portes).
+// Jamais de fondu : on entre et on sort par le seuil (door-passage.ts) ou par un bord du monde, hors champ.
+export type SpectatorPos = { x: number; depth: number; dir: 1 | -1; mode: SpectatorMode; yaw: number; gait: 'walk' | 'step' | 'stand'; walked: number; sill?: number };
 
 // Position du spectateur à l'instant `t` (s, horloge murale), le jour de la scène commençant à `dayStartS`. Il part en avance
-// (longueur du chemin / vitesse) pour être en place quand u < crowdLevel, et repart à pied dès qu'il quitte sa place.
+// pour être en place quand u < crowdLevel, et repart à pied dès qu'il quitte sa place. Arrivée : [seuil de face, demi-tour]
+// → chemin → demi-tour vers la chaussée ; départ : demi-tour → chemin → [demi-tour de dos, seuil] (comme passageAt, doorway.ts).
 export function spectatorAt(s: Spectator, t: number, dayStartS: number): SpectatorPos {
   const { arrive, leave } = spectatorTimes(s.u);
   const tIn = dayStartS + arrive * 60;
   const tOut = dayStartS + leave * 60;
   const pin = pathIn(s);
   const pout = pathOut(s);
-  const durIn = lengthOf(pin) / s.speed;
-  const durOut = lengthOf(pout) / s.speed;
+  const lin = lengthOf(pin);
+  const lout = lengthOf(pout);
+  const stand = spectatorYaw(s);
+  const doorIn = s.fromDoor ? THRESHOLD_S + TURN_S : 0;
+  const doorOut = s.toDoor ? THRESHOLD_S + TURN_S : 0;
+  const durIn = doorIn + lin / s.speed + TURN_S;
+  const durOut = TURN_S + lout / s.speed + doorOut;
   const dirIn = sgn(s.x - s.from);
   const dirOut = sgn(s.to - s.x);
-  const doorFade = (c: number): number => smoothstep(0, DOOR_FADE_S, c);
-  if (t < tIn - durIn) return { x: s.from, depth: pin[0]!.d, dir: dirIn, mode: 'absent', ...(s.fromDoor ? { fade: 0 } : {}) };
+  const p0 = pin[0]!;
+  const pEnd = pout[pout.length - 1]!;
+  if (t < tIn - durIn) return { x: s.from, depth: p0.d, dir: dirIn, mode: 'absent', yaw: YAW_FRONT, gait: 'stand', walked: 0 };
   if (t < tIn) {
-    const c = t - (tIn - durIn);
-    const p = along(pin, c * s.speed);
-    return { x: p.x, depth: p.d, dir: dirIn, mode: 'walking', ...(s.fromDoor ? { fade: doorFade(c) } : {}) };
+    let c = t - (tIn - durIn);
+    const w = (yaw: number, gait: 'walk' | 'step', x: number, d: number, walked: number, sill?: number): SpectatorPos => ({ x, depth: d, dir: dirIn, mode: 'walking', yaw, gait, walked, ...(sill !== undefined ? { sill } : {}) });
+    if (s.fromDoor) {
+      if (c < THRESHOLD_S) return w(YAW_FRONT, 'walk', p0.x, p0.d, 0, 1 - c / THRESHOLD_S);
+      c -= THRESHOLD_S;
+      if (c < TURN_S) return w(turnYaw(YAW_FRONT, firstYaw(pin), c / TURN_S), 'step', p0.x, p0.d, 0);
+      c -= TURN_S;
+    }
+    const walked = Math.min(lin, c * s.speed);
+    const p = along(pin, walked);
+    if (c * s.speed < lin) return w(p.yaw, 'walk', p.x, p.d, walked);
+    return w(turnYaw(lastYaw(pin), stand, (c - lin / s.speed) / TURN_S), 'step', p.x, p.d, lin);
   }
-  if (t < tOut) return { x: s.x, depth: pin[pin.length - 1]!.d, dir: s.dir, mode: 'standing' };
+  if (t < tOut) return { x: s.x, depth: pin[pin.length - 1]!.d, dir: s.dir, mode: 'standing', yaw: stand, gait: 'stand', walked: 0 };
   if (t < tOut + durOut) {
-    const c = t - tOut;
-    const p = along(pout, c * s.speed);
-    return { x: p.x, depth: p.d, dir: dirOut, mode: 'walking', ...(s.toDoor ? { fade: doorFade(durOut - c) } : {}) };
+    let c = t - tOut;
+    const w = (yaw: number, gait: 'walk' | 'step', x: number, d: number, walked: number, sill?: number): SpectatorPos => ({ x, depth: d, dir: dirOut, mode: 'walking', yaw, gait, walked, ...(sill !== undefined ? { sill } : {}) });
+    const q0 = pout[0]!;
+    if (c < TURN_S) return w(turnYaw(stand, firstYaw(pout), c / TURN_S), 'step', q0.x, q0.d, 0);
+    c -= TURN_S;
+    if (c * s.speed < lout) {
+      const p = along(pout, c * s.speed);
+      return w(p.yaw, 'walk', p.x, p.d, c * s.speed);
+    }
+    c -= lout / s.speed;
+    // Bord du monde : le chemin s'arrête hors champ (rien après). Porte : demi-tour de dos, puis le seuil.
+    if (c < TURN_S) return w(turnYaw(lastYaw(pout), YAW_BACK, c / TURN_S), 'step', pEnd.x, pEnd.d, lout);
+    return w(YAW_BACK, 'walk', pEnd.x, pEnd.d, lout, (c - TURN_S) / THRESHOLD_S);
   }
-  return { x: s.to, depth: pout[pout.length - 1]!.d, dir: dirOut, mode: 'absent', ...(s.toDoor ? { fade: 0 } : {}) };
+  return { x: s.to, depth: pEnd.d, dir: dirOut, mode: 'absent', yaw: s.toDoor ? YAW_BACK : lastYaw(pout), gait: 'stand', walked: lout };
 }
