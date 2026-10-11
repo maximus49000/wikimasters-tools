@@ -5,6 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { ParadeUnitSprite } from '../../src/content/parade-sprites';
+import { ParadeLayer } from '../../src/content/parade-layer';
+import { cityMetrics } from '../../src/core/library/city/metrics';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
 import type { ParadeKind } from '../../src/core/library/city/parade';
@@ -191,5 +193,34 @@ describe('sprites du cortège', () => {
     expect(count(a, 'animate, animateTransform')).toBe(0);
     expect(draw(false)).toBe(draw(false));
     expect(count(render(<svg><ParadeUnitSprite unit={{ id: 'u', kind: 'infantry', variant: 0.7, half: 70, start: 0, lane: 'near' as const }} sky={sky} still={false} /></svg>), 'animate, animateTransform')).toBeGreaterThan(0);
+  });
+});
+
+describe('véhicules du défilé en Ghibli (V5)', () => {
+  const sky = skyAt(630, times);
+  const VEHICLES: readonly [ParadeKind, string][] = [['jeeps', 'army-jeep'], ['trucks', 'army-truck'], ['tanks', 'tank'], ['firetruck', 'fire-truck'], ['motorbikes', 'garde-moto']];
+  it.each(VEHICLES)('%s : peints (%s), classique sans véhicule peint', (kind, sid) => {
+    const unit = { id: `u-${kind}`, kind, variant: 0.4, half: 80, start: 0, lane: 'near' as const };
+    const g = render(<svg><ParadeUnitSprite unit={unit} sky={sky} still={false} ghibli /></svg>);
+    expect(count(g, `[data-scripted-car][data-sid="${sid}"]`)).toBeGreaterThan(0);
+    expect(count(render(<svg><ParadeUnitSprite unit={unit} sky={sky} still={false} /></svg>), '[data-scripted-car]')).toBe(0);
+  });
+  it('jeeps : drapeaux des antennes conservés ; chars : chenilles qui défilent', () => {
+    const jeeps = render(<svg><ParadeUnitSprite unit={{ id: 'j', kind: 'jeeps', variant: 0.4, half: 60, start: 0, lane: 'near' as const }} sky={sky} still={false} ghibli /></svg>);
+    expect(jeeps.querySelectorAll('[data-scripted-car]')).toHaveLength(2);
+    expect(count(jeeps, 'line')).toBeGreaterThanOrEqual(4);
+    const tanks = render(<svg><ParadeUnitSprite unit={{ id: 't', kind: 'tanks', variant: 0.4, half: 90, start: 0, lane: 'near' as const }} sky={sky} still={false} ghibli /></svg>);
+    expect(count(tanks, '[data-track] animate')).toBe(2);
+  });
+  it('la boucle du cortège fait tourner les roues des véhicules peints', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(T * 1000);
+    let host: HTMLDivElement | null = null;
+    for (let m = 600; m < 720 && !host; m++) {
+      const c = render(<svg><ParadeLayer width={720} seed={1} sky={skyAt(m, times)} still={false} dayFests={['bastille']} minutes={m} metrics={cityMetrics(340)} lane="near" ghibli /></svg>);
+      if (c.querySelector('[data-scripted-car] [data-wheel]')) host = c;
+    }
+    expect(host).not.toBeNull();
+    const turned = [...host!.querySelectorAll('[data-scripted-car] [data-wheel]')].some((w) => !/rotate\(0(\.00)?\)/.test(w.getAttribute('transform')!));
+    expect(turned).toBe(true);
   });
 });

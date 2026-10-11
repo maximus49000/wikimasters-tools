@@ -274,7 +274,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       const van = geomOf(set, c.removing);
       return [{
         set, item, step: c.step, progress: c.progress, removing: c.removing, width, seed, metrics, sky, rainy, outfits: outfits.get(set.id)!, doors, lamps,
-        abs, stepFrom: w.from, stepTo: w.to, home: homeOf(van, item, onStreet(set)), van, street: onStreet(set), standSide, ghibli,
+        abs, stepFrom: w.from, stepTo: w.to, home: homeOf(van, item, onStreet(set)), van, street: onStreet(set), standSide, ghibli, lights,
       }];
     });
   // Élément que des porteurs soulèvent (dépose à la main) : dessiné dans leurs mains, plus à sa place.
@@ -327,11 +327,14 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
         const ids = stored.map((i) => `${set.id}/${i.id}`);
         // Vélo porteur : l'ouvrier est en selle tant qu'il n'en est pas descendu.
         const rider = vc.phase === 'inside' ? outfits.get(set.id)![0]! : null;
+        // Ghibli (V5) : camionnette et camion plateau peints, roues tournées par la transition du véhicule ; conducteur à
+        // bord tant que l'équipe n'est pas descendue.
+        const gh = ghibli && kind !== 'cargo-bike' ? { rainy, dir: st.dir, k, worldX: st.x, move: VAN_MOVE, occupied: vc.phase === 'inside', still } : undefined;
         const art = kind === 'cargo-bike'
           ? <CargoBike sky={sky} lights={lights} ladder={ladderOnRoof} flags={ids} rider={rider} ghibli={ghibli ? { rainy, dir: st.dir, phase: crankPhase(Math.abs(st.x) / k) } : undefined} />
           : kind === 'truck'
-            ? <Flatbed sky={sky} lights={lights} open={open} ladder={ladderOnRoof} load={stored.map((i) => ({ id: `${set.id}/${i.id}`, kind: i.kind }))} />
-            : <Van sky={sky} lights={lights} ladder={ladderOnRoof} open={open} stored={ids} />;
+            ? <Flatbed sky={sky} lights={lights} open={open} ladder={ladderOnRoof} load={stored.map((i) => ({ id: `${set.id}/${i.id}`, kind: i.kind }))} ghibli={gh} />
+            : <Van sky={sky} lights={lights} ladder={ladderOnRoof} open={open} stored={ids} ghibli={gh} />;
         drawn.push({
           part: 'front',
           under: st.lane < 0.5,
@@ -348,7 +351,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
               data-van-row={row}
               style={{ transform: `translate(${st.x.toFixed(1)}px, ${y.toFixed(1)}px)`, transition: VAN_MOVE }}
             >
-              <g transform={`scale(${(st.dir * k).toFixed(3)} ${k.toFixed(3)})`}>{art}</g>
+              {gh ? art : <g transform={`scale(${(st.dir * k).toFixed(3)} ${k.toFixed(3)})`}>{art}</g>}
             </g>
           ),
         });
@@ -485,7 +488,7 @@ type CrewInput = {
   // Minute absolue et bornes de l'étape en cours ; `home` : arrière de la camionnette garée (base de l'équipe à pied) ;
   // `van` : sa géométrie ; `street` : équipe de la chaussée (partie `street`) ; `standSide` : côté de la file de chaque stand ;
   // `ghibli` : ouvriers au pantin (gilet), objets tenus aux accroches des mains.
-  abs: number; stepFrom: number; stepTo: number; home: Pt; van: VanGeom | null; street: boolean; standSide: ReadonlyMap<string, 1 | -1>; ghibli: boolean;
+  abs: number; stepFrom: number; stepTo: number; home: Pt; van: VanGeom | null; street: boolean; standSide: ReadonlyMap<string, 1 | -1>; ghibli: boolean; lights?: boolean;
 };
 
 // Itinéraire du camion élévateur : les éléments qu'il pose, dans l'ordre d'intervention. Un élément se rejoint depuis le milieu
@@ -1058,7 +1061,20 @@ function liftCrew(inp: CrewInput): ReactElement {
       {ground && <WorkerNode w={ground} outfit={inp.outfits[1]!} inp={inp} k={kp} />}
       {waiting && <WorkerNode w={waiting} outfit={inp.outfits[0]!} inp={inp} k={kp} />}
       <g data-lift-truck="" data-x={g.tx.toFixed(1)} data-half={(LIFT_HALF * kv).toFixed(1)} data-park={g.here.toFixed(1)} style={{ transform: `translate(${g.tx.toFixed(1)}px, ${g.ty.toFixed(1)}px)`, transition: MOVE }}>
-        <LiftTruck sky={inp.sky} still={false} dir={g.dir} k={kv} u={u} outrigger={g.outrigger} bucket={bucket} rider={rider} beacon cargo={cargo} />
+        <LiftTruck
+          sky={inp.sky}
+          still={false}
+          dir={g.dir}
+          k={kv}
+          u={u}
+          outrigger={g.outrigger}
+          bucket={bucket}
+          rider={rider}
+          beacon
+          cargo={cargo}
+          lights={inp.lights ?? false}
+          ghibli={inp.ghibli ? { rainy: inp.rainy, dir: g.dir, k: kv, worldX: g.tx, move: MOVE, occupied: g.inside, still: false } : undefined}
+        />
       </g>
     </>
   );

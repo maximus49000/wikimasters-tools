@@ -640,6 +640,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             sky={sky}
             lights={lights}
             still={still}
+            ghibli={ghibli}
+            rainy={rainy}
           />
         ))}
       </g>

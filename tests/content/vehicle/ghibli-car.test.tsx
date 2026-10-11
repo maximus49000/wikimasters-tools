@@ -8,6 +8,7 @@ import { GhibliCar, placeCar } from '../../../src/content/vehicle/ghibli-car';
 import { genCar } from '../../../src/core/library/city/traffic/cars';
 import { carArt } from '../../../src/core/library/city/traffic/car-art';
 import { lookOfCar, type VehicleLook } from '../../../src/core/library/city/traffic/look';
+import { specialLook } from '../../../src/core/library/city/traffic/special-art';
 import { skyAt, sunTimes } from '../../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -144,5 +145,47 @@ describe('voiture Ghibli', () => {
     const a = b();
     placeCar(regs!.fig, regs!.car, node, { look, dist: 10, v: 40, lean: 0, seed: 1 }, -1, 1.34);
     expect(b()).not.toBe(a);
+  });
+});
+
+describe('voiture Ghibli sans boucle (V5)', () => {
+  const look = specialLook({ id: 'crew-van', seed: 1 });
+  const render = async (el: React.ReactElement): Promise<HTMLElement> => {
+    const host = document.createElement('div');
+    await act(async () => createRoot(host).render(<svg><Probe />{el}</svg>));
+    return host;
+  };
+  it('roll : angle = x / r, transition des roues = celle du véhicule', async () => {
+    const host = await render(<GhibliCar look={look} dir={1} sky={sky} rainy={false} lights={false} roll={{ x: 40, move: 'transform 60s linear' }} paintNow />);
+    const spin = host.querySelectorAll<SVGGElement>('[data-wheel-spin]');
+    expect(spin).toHaveLength(2);
+    expect(spin[0]!.style.transform).toBe(`rotate(${(((40 / 4) * 180) / Math.PI).toFixed(2)}deg)`);
+    expect(spin[0]!.style.transition).toBe('transform 60s linear');
+  });
+  it('paintNow : au rendu suivant (nuit) la nouvelle image est posée sans boucle', async () => {
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    for (const s of [sky, night]) await act(async () => root.render(<svg><GhibliCar look={look} dir={-1} sky={s} rainy={false} lights={false} roll={{ x: 0 }} paintNow /></svg>));
+    const b = host.querySelector('[data-layer="body"]')!;
+    expect(b.getAttribute('data-shown')).toBe(b.getAttribute('data-want'));
+    for (const img of host.querySelectorAll('image')) expect(img.getAttribute('href')).toBeTruthy();
+  });
+  it('occupied faux : aucun siège ni volant', async () => {
+    const host = await render(<GhibliCar look={look} dir={1} sky={sky} rainy={false} lights={false} occupied={false} />);
+    expect(host.querySelectorAll('[data-seat]')).toHaveLength(0);
+    expect(host.querySelector('[data-steer]')).toBeNull();
+  });
+  it('tenue imposée par le siège (uniforme)', async () => {
+    const host = await render(<GhibliCar look={specialLook({ id: 'army-truck', seed: 2 })} dir={1} sky={sky} rainy={false} lights={false} />);
+    expect(host.querySelector('[data-role="driver"] [data-figure]')!.getAttribute('data-key')).toBeTruthy();
+  });
+  it('blink : <animate> sur les gyrophares, aucun en mouvement réduit', async () => {
+    const lift = specialLook({ id: 'lift', seed: 1 });
+    expect((await render(<GhibliCar look={lift} dir={1} sky={sky} rainy={false} lights={false} blink />)).querySelectorAll('[data-beacon] animate')).toHaveLength(1);
+    expect((await render(<GhibliCar look={lift} dir={1} sky={sky} rainy={false} lights={false} blink still />)).querySelectorAll('[data-beacon] animate')).toHaveLength(0);
+  });
+  it('mouvement réduit : pas de transition sur les roues', async () => {
+    const host = await render(<GhibliCar look={look} dir={1} sky={sky} rainy={false} lights={false} roll={{ x: 10, move: 'transform 60s linear' }} still />);
+    expect(host.querySelector<SVGGElement>('[data-wheel-spin]')!.style.transition).toBe('');
   });
 });

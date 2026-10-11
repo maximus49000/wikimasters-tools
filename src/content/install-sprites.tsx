@@ -4,6 +4,7 @@ import type { Outfit } from '../core/library/city/people';
 import type { Sky } from '../core/library/sky';
 import { Cyclist, PersonSprite, tone } from './city-sprites';
 import { GhibliRider } from './figure/ghibli-cyclist';
+import { ScriptedCar } from './vehicle/scripted-car';
 import type { WorkerPose } from './shop-sprites';
 
 // Décors de fête posés par des équipes et matériel des équipes (spec §7, tâche 10). Repère des sprites : pieds / sol à y = 0,
@@ -16,6 +17,11 @@ const RED = '#C0302B';
 const POLE = '#6B5B4A';
 const STEEL = '#3B3F4A';
 const GALVA = '#A7ADB4';
+
+// Graphisme Ghibli d'un véhicule de transport (V5) : carrosserie peinte (vehicle/scripted-car.tsx) dans le repère du sprite,
+// éléments dynamiques classiques par-dessus. L'appelant n'applique alors PAS `scale(dir·k, k)` : `dir` et `k` sont ici ;
+// `worldX` et `move` : position (px du monde) et transition du déplacement (roues) ; `occupied` : conducteur à bord.
+export type GhibliTransport = { rainy: boolean; dir: 1 | -1; k: number; worldX: number; move?: string; occupied: boolean; still: boolean };
 
 // Tissu tricolore : hampe à x = 0, tissu vers +x (bleu à la hampe), haut à y = 0. Ondule hors mouvement réduit.
 export function FlagArt({ sky, w = 9, h = 6, wave = false }: { sky: Sky; w?: number; h?: number; wave?: boolean }): ReactElement {
@@ -236,31 +242,50 @@ export function HeldSpot({ sky }: { sky: Sky }): ReactElement {
 // portière arrière est ouverte (les ouvriers descendent ou remontent).
 export const VAN_LADDER = { x: -6, y: -28 } as const;
 // `stored` : éléments entreposés dans la caisse fermée (barrières, planches) : repères sans dessin (`data-stored-item`).
-export function Van({ sky, ladder, lights, open = false, stored = [] }: { sky: Sky; ladder: boolean; lights: boolean; open?: boolean; stored?: readonly string[] }): ReactElement {
+// Portière arrière ouverte : l'embrasure sombre et le battant rabattu vers l'arrière.
+function VanDoor({ sky }: { sky: Sky }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (
+    <g data-van-door="">
+      <rect x={-24} y={-22} width={5} height={17} fill={t('#2A2C30')} />
+      <path d="M-25 -23 L-31 -21 L-31 -6 L-25 -5 Z" fill={t('#DCDCD8')} stroke={t('#B8B8B2')} strokeWidth={0.5} />
+      <rect x={-30} y={-14} width={4} height={1.6} fill={t('#E8601C')} />
+    </g>
+  );
+}
+function VanLadder({ sky }: { sky: Sky }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
+  return (
+    <g data-van-ladder="" stroke={t('#B9C0C8')} strokeLinecap="round">
+      <line x1={-18.5} y1={-27} x2={6.5} y2={-27} strokeWidth={0.8} />
+      <line x1={-18.5} y1={-29} x2={6.5} y2={-29} strokeWidth={0.8} />
+      {Array.from({ length: 9 }, (_, i) => <line key={i} x1={-18 + i * 3} y1={-29} x2={-18 + i * 3} y2={-27} strokeWidth={0.5} />)}
+    </g>
+  );
+}
+export function Van({ sky, ladder, lights, open = false, stored = [], ghibli }: { sky: Sky; ladder: boolean; lights: boolean; open?: boolean; stored?: readonly string[]; ghibli?: GhibliTransport }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
+  const marks = stored.map((id) => <g key={id} data-stored-item={id} data-carried="van" />);
+  if (ghibli)
+    return (
+      <g data-van="" data-van-open={open ? 'true' : 'false'}>
+        <ScriptedCar spec={{ id: 'crew-van', seed: 1 }} dir={ghibli.dir} k={ghibli.k} sky={sky} rainy={ghibli.rainy} lights={lights} still={ghibli.still} occupied={ghibli.occupied} roll={{ worldX: ghibli.worldX, move: ghibli.move }}>
+          {marks}
+          {open && <VanDoor sky={sky} />}
+          {ladder && <VanLadder sky={sky} />}
+        </ScriptedCar>
+      </g>
+    );
+  return (
     <g data-van="" data-van-open={open ? 'true' : 'false'}>
-      {stored.map((id) => <g key={id} data-stored-item={id} data-carried="van" />)}
+      {marks}
       <rect x={-25} y={-24} width={50} height={20} rx={3} fill={t('#ECECEA')} />
       <rect x={-25} y={-13} width={50} height={2.4} fill={t('#E8601C')} />
-      {/* Portière arrière ouverte : l'embrasure sombre et le battant rabattu vers l'arrière. */}
-      {open && (
-        <g data-van-door="">
-          <rect x={-24} y={-22} width={5} height={17} fill={t('#2A2C30')} />
-          <path d="M-25 -23 L-31 -21 L-31 -6 L-25 -5 Z" fill={t('#DCDCD8')} stroke={t('#B8B8B2')} strokeWidth={0.5} />
-          <rect x={-30} y={-14} width={4} height={1.6} fill={t('#E8601C')} />
-        </g>
-      )}
+      {open && <VanDoor sky={sky} />}
       <rect x={12} y={-21} width={9} height={7} fill={t('#CFE4F2')} opacity={0.85} />
       <line x1={-22} y1={-25.5} x2={10} y2={-25.5} stroke={t(STEEL)} strokeWidth={0.8} />
       {[-20, -6, 8].map((x) => <line key={x} x1={x} y1={-25.5} x2={x} y2={-24} stroke={t(STEEL)} strokeWidth={0.6} />)}
-      {ladder && (
-        <g data-van-ladder="" stroke={t('#B9C0C8')} strokeLinecap="round">
-          <line x1={-18.5} y1={-27} x2={6.5} y2={-27} strokeWidth={0.8} />
-          <line x1={-18.5} y1={-29} x2={6.5} y2={-29} strokeWidth={0.8} />
-          {Array.from({ length: 9 }, (_, i) => <line key={i} x1={-18 + i * 3} y1={-29} x2={-18 + i * 3} y2={-27} strokeWidth={0.5} />)}
-        </g>
-      )}
+      {ladder && <VanLadder sky={sky} />}
       <circle cx={-14} cy={-3} r={4} fill="#222" />
       <circle cx={15} cy={-3} r={4} fill="#222" />
       {lights && <circle cx={25} cy={-9} r={2.2} fill="#FFE9A0" />}
@@ -297,10 +322,10 @@ export function liftElbow(p: { x: number; y: number }, b: { x: number; y: number
 }
 
 // `cargo` : chargement posé sur le plateau, dans le repère du véhicule (caisse de drapeaux `FlagCrate`, posée en LIFT_CRATE).
-type LiftProps = { sky: Sky; still: boolean; dir: 1 | -1; k: number; u: number; outrigger: number; bucket: { x: number; y: number }; rider: ReactNode; beacon: boolean; cargo?: ReactNode };
+type LiftProps = { sky: Sky; still: boolean; dir: 1 | -1; k: number; u: number; outrigger: number; bucket: { x: number; y: number }; rider: ReactNode; beacon: boolean; cargo?: ReactNode; ghibli?: GhibliTransport; lights?: boolean };
 export const LIFT_CRATE = { x: -2, y: -12 } as const;
 
-export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, beacon, cargo = null }: LiftProps): ReactElement {
+export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, beacon, cargo = null, ghibli, lights = false }: LiftProps): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const yellow = t('#E8B923');
   const p = liftPivot(dir, k);
@@ -310,28 +335,36 @@ export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, bea
   const leg = 6 * clamp(outrigger, 0, 1);
   const bw = 10 * u;
   const bh = 7 * u;
+  // Stabilisateurs (vérins) : descendent jusqu'au sol au déploiement.
+  const outriggers = [-27, 13].map((x) => (
+    <g key={x} data-outrigger="">
+      <rect x={x - 1.5} y={-9} width={3} height={2 + leg} fill={t(STEEL)} />
+      <rect x={x - 3} y={-7 + leg} width={6} height={1.2} fill={t(STEEL)} />
+    </g>
+  ));
+  const crate = cargo && <g transform={`translate(${LIFT_CRATE.x} ${LIFT_CRATE.y})`}>{cargo}</g>;
   return (
     <g data-lift="">
+      {ghibli ? (
+        <ScriptedCar spec={{ id: 'lift', seed: 1 }} dir={dir} k={k} sky={sky} rainy={ghibli.rainy} lights={lights} still={ghibli.still} occupied={ghibli.occupied} roll={{ worldX: ghibli.worldX, move: ghibli.move }} under={outriggers}>
+          {crate}
+        </ScriptedCar>
+      ) : (
       <g transform={`scale(${(dir * k).toFixed(3)} ${k.toFixed(3)})`}>
-        {/* Stabilisateurs (vérins) : descendent jusqu'au sol au déploiement. */}
-        {[-27, 13].map((x) => (
-          <g key={x} data-outrigger="">
-            <rect x={x - 1.5} y={-9} width={3} height={2 + leg} fill={t(STEEL)} />
-            <rect x={x - 3} y={-7 + leg} width={6} height={1.2} fill={t(STEEL)} />
-          </g>
-        ))}
+        {outriggers}
         <rect x={-32} y={-12} width={48} height={6} fill={yellow} />
         <rect x={-32} y={-8} width={48} height={1.2} fill={t('#3B3F4A')} />
         <rect x={16} y={-24} width={16} height={20} rx={2.5} fill={t('#ECECEA')} />
         <rect x={22} y={-21.5} width={8} height={7} fill={t('#CFE4F2')} opacity={0.85} />
         <rect x={-23} y={-18} width={10} height={6} rx={1} fill={yellow} />
-        {cargo && <g transform={`translate(${LIFT_CRATE.x} ${LIFT_CRATE.y})`}>{cargo}</g>}
+        {crate}
         <rect x={20} y={-26} width={4} height={2} rx={0.8} fill="#E8601C">
           {beacon && !still && <animate attributeName="opacity" values="1;0.25;1" dur="0.9s" repeatCount="indefinite" />}
         </rect>
         <circle cx={-20} cy={-4.5} r={4.5} fill="#222" />
         <circle cx={22} cy={-4.5} r={4.5} fill="#222" />
       </g>
+      )}
       {/* Bras articulé : flèche basse (pivot → coude), flèche haute (coude → nacelle). */}
       <g data-lift-arm="" stroke={yellow} strokeLinecap="round">
         <line x1={p.x} y1={p.y} x2={e.x} y2={e.y} strokeWidth={2.4 * u} />
@@ -431,7 +464,7 @@ export function CargoBike({ sky, lights, ladder, flags, rider, ghibli }: { sky: 
 // d'auvent roulées des stands. `ladder` : échelle accrochée au flanc (stands).
 export const FLATBED = { half: 52, door: 47, cab: 36, deck: -11, ladder: { x: -24, y: -16.5, len: 30 } } as const;
 export type FlatbedLoad = { id: string; kind: ItemKind };
-export function Flatbed({ sky, lights, open, ladder, load }: { sky: Sky; lights: boolean; open: boolean; ladder: boolean; load: readonly FlatbedLoad[] }): ReactElement {
+export function Flatbed({ sky, lights, open, ladder, load, ghibli }: { sky: Sky; lights: boolean; open: boolean; ladder: boolean; load: readonly FlatbedLoad[]; ghibli?: GhibliTransport }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const deck = FLATBED.deck;
   const tagged = (id: string, node: ReactNode): ReactElement => <g key={id} data-stored-item={id} data-carried="truck">{node}</g>;
@@ -487,6 +520,23 @@ export function Flatbed({ sky, lights, open, ladder, load }: { sky: Sky; lights:
       </g>
     )));
   });
+  // Hayon : relevé, ou abaissé (rabattu vers le sol) pendant le déchargement.
+  const gate = open ? (
+    <path data-flatbed-tailgate="open" d={`M-46 ${deck + 1} L-52 -3 L-50.4 -2 L-45 ${deck + 3}Z`} fill={t('#B9BEC4')} stroke={t('#8A9098')} strokeWidth={0.4} />
+  ) : (
+    <rect data-flatbed-tailgate="closed" x={-47.5} y={deck - 3} width={1.8} height={6} fill={t('#B9BEC4')} />
+  );
+  const stowed = ladder && <g transform={`translate(${FLATBED.ladder.x} ${FLATBED.ladder.y})`}><StowedLadder sky={sky} len={FLATBED.ladder.len} /></g>;
+  if (ghibli)
+    return (
+      <g data-flatbed="" data-flatbed-open={open ? 'true' : 'false'}>
+        <ScriptedCar spec={{ id: 'flatbed', seed: 1 }} dir={ghibli.dir} k={ghibli.k} sky={sky} rainy={ghibli.rainy} lights={lights} still={ghibli.still} occupied={ghibli.occupied} roll={{ worldX: ghibli.worldX, move: ghibli.move }}>
+          {pieces}
+          {gate}
+          {stowed}
+        </ScriptedCar>
+      </g>
+    );
   return (
     <g data-flatbed="" data-flatbed-open={open ? 'true' : 'false'}>
       {/* Grue de chargement repliée (mât derrière la cabine, flèche couchée vers l'arrière). */}
@@ -498,13 +548,8 @@ export function Flatbed({ sky, lights, open, ladder, load }: { sky: Sky; lights:
       <rect x={-46} y={deck} width={70} height={3.5} fill={t('#7A5A3A')} />
       <rect x={-46} y={deck - 1.6} width={70} height={1.6} fill={t('#B9BEC4')} stroke={t('#8A9098')} strokeWidth={0.3} />
       <rect x={-46} y={-7.5} width={74} height={2.5} fill={t('#2E323C')} />
-      {/* Hayon : relevé, ou abaissé (rabattu vers le sol) pendant le déchargement. */}
-      {open ? (
-        <path data-flatbed-tailgate="open" d={`M-46 ${deck + 1} L-52 -3 L-50.4 -2 L-45 ${deck + 3}Z`} fill={t('#B9BEC4')} stroke={t('#8A9098')} strokeWidth={0.4} />
-      ) : (
-        <rect data-flatbed-tailgate="closed" x={-47.5} y={deck - 3} width={1.8} height={6} fill={t('#B9BEC4')} />
-      )}
-      {ladder && <g transform={`translate(${FLATBED.ladder.x} ${FLATBED.ladder.y})`}><StowedLadder sky={sky} len={FLATBED.ladder.len} /></g>}
+      {gate}
+      {stowed}
       {/* Cabine. */}
       <rect x={24} y={-28} width={22} height={23} rx={2.5} fill={t('#2F5E8E')} />
       <rect x={33} y={-25} width={11} height={8} fill={t('#CFE4F2')} opacity={0.85} />

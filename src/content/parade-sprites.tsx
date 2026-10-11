@@ -8,6 +8,7 @@ import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
 import { GhibliFigure, type Held, type PoseIn } from './figure/ghibli-figure';
+import { ScriptedCar } from './vehicle/scripted-car';
 
 // Cortège du 14 juillet (spec §7.4, tâche 13). Repère de chaque unité : sol à y = 0, centre de l'unité à x = 0, regard vers
 // +x, dans l'échelle des véhicules (l'appelant applique `unit × STREET_SCALE.vehicle`). Les marcheurs sont dessinés dans le
@@ -504,7 +505,9 @@ function Flags({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
 }
 
 // Motard de la Garde : casque blanc, gyrophare bleu.
-function Motorbike({ t, anim, skin, sky }: { t: Tint; anim: boolean; skin: string; sky?: Sky }): ReactElement {
+// Ghibli (V5) : moto et motard peints (special-art `garde-moto`), posés par la boucle du cortège.
+function Motorbike({ t, anim, skin, sky, seed }: { t: Tint; anim: boolean; skin: string; sky?: Sky; seed: number }): ReactElement {
+  if (sky) return <ScriptedCar spec={{ id: 'garde-moto', seed }} dir={1} k={1} sky={sky} rainy={false} lights={false} still={!anim} />;
   return (
     <g>
       <circle cx={-11} cy={-6} r={6} fill={t(TYRE)} />
@@ -537,8 +540,8 @@ function Motorbikes({ unit, t, anim, sky }: UnitArt): ReactElement {
   // derrière pour que sa roue avant ne touche pas la roue arrière de celle du premier plan.
   return (
     <g>
-      <g transform="translate(-20 -3) scale(0.95)"><Motorbike t={t} anim={anim} skin={a!} sky={sky} /></g>
-      <g transform="translate(16 0)"><Motorbike t={t} anim={anim} skin={b!} sky={sky} /></g>
+      <g transform="translate(-20 -3) scale(0.95)"><Motorbike t={t} anim={anim} skin={a!} sky={sky} seed={hashString(`${unit.id}-0`)} /></g>
+      <g transform="translate(16 0)"><Motorbike t={t} anim={anim} skin={b!} sky={sky} seed={hashString(`${unit.id}-1`)} /></g>
     </g>
   );
 }
@@ -618,23 +621,26 @@ function Cavalry({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
 const ARMY = ['#4B5320', '#5B5B3A', '#B49A6A', '#3F4A3C', '#6B6F4A'] as const; // vert armée, kaki, sable, vert OTAN, olive
 
 // Jeep pavoisée : deux petits drapeaux sur les antennes arrière, un militaire debout.
-function Jeep({ t, anim, paint, skin, sky }: { t: Tint; anim: boolean; paint: string; skin: string; sky?: Sky }): ReactElement {
+// Ghibli (V5) : jeep, conducteur et chef de bord peints (special-art `army-jeep`), drapeaux des antennes par-dessus.
+function Jeep({ t, anim, paint, skin, sky, seed }: { t: Tint; anim: boolean; paint: string; skin: string; sky?: Sky; seed: number }): ReactElement {
   const body = t(paint);
   const tunic = paint === ARMY[2] ? '#8C7A55' : '#3E4420';
+  const flags = [-17, -14].map((x, i) => (
+    <g key={x}>
+      <line x1={x} y1={-17} x2={x - 1} y2={-34 + i * 2} stroke={t('#333333')} strokeWidth={0.6} />
+      <g transform={`translate(${x - 1} 0)`}>
+        <Tricolore t={t} top={-34 + i * 2} w={7} h={4.6} anim={anim} />
+      </g>
+    </g>
+  ));
+  if (sky)
+    return (
+      <ScriptedCar spec={{ id: 'army-jeep', seed, paint }} dir={1} k={1} sky={sky} rainy={false} lights={false} still={!anim}>
+        {flags}
+      </ScriptedCar>
+    );
   return (
     <g>
-      {/* Ghibli : le chef de bord, debout dans la caisse, est dessiné avant elle (seul le haut du corps dépasse). */}
-      {sky && (
-        <GRider
-          outfit={crew(skin, tunic, tunic, 'short', '#2B3A6A')}
-          sky={sky}
-          gait="stand"
-          arms="down"
-          at={[-3, -7.5]}
-          scale={0.6}
-          held={[headgear({ tunic, trousers: tunic, head: 'beret', cap: '#2B3A6A', belt: tunic, skin }, t)]}
-        />
-      )}
       <rect x={-19} y={-14} width={38} height={9} rx={2} fill={body} />
       {/* Pare-brise posé sur l'auvent de la caisse, dans son cadre peint. */}
       <rect x={3} y={-16} width={9} height={2.6} fill={body} />
@@ -643,22 +649,13 @@ function Jeep({ t, anim, paint, skin, sky }: { t: Tint; anim: boolean; paint: st
       <circle cx={-11} cy={-4} r={4.4} fill={t(TYRE)} />
       <circle cx={12} cy={-4} r={4.4} fill={t(TYRE)} />
       <circle cx={-21} cy={-11} r={3.4} fill={t(TYRE)} />
-      {[-17, -14].map((x, i) => (
-        <g key={x}>
-          <line x1={x} y1={-17} x2={x - 1} y2={-34 + i * 2} stroke={t('#333333')} strokeWidth={0.6} />
-          <g transform={`translate(${x - 1} 0)`}>
-            <Tricolore t={t} top={-34 + i * 2} w={7} h={4.6} anim={anim} />
-          </g>
-        </g>
-      ))}
+      {flags}
       {/* Chef de bord debout, au garde-à-vous */}
-      {!sky && (
-        <g data-worker="" data-parade-figure="">
-          <rect x={-6} y={-24} width={6} height={10} rx={1.2} fill={t(tunic)} />
-          <circle cx={-3} cy={-27} r={2.6} fill={t(skin)} />
-          <ellipse cx={-3.6} cy={-29.2} rx={3.6} ry={1.4} fill={t('#2B3A6A')} />
-        </g>
-      )}
+      <g data-worker="" data-parade-figure="">
+        <rect x={-6} y={-24} width={6} height={10} rx={1.2} fill={t(tunic)} />
+        <circle cx={-3} cy={-27} r={2.6} fill={t(skin)} />
+        <ellipse cx={-3.6} cy={-29.2} rx={3.6} ry={1.4} fill={t('#2B3A6A')} />
+      </g>
     </g>
   );
 }
@@ -667,15 +664,17 @@ function Jeeps({ unit, t, anim, sky }: UnitArt): ReactElement {
   const [a, b] = skinsOf(unit.id, 2);
   return (
     <g>
-      <g transform="translate(-26 0)"><Jeep t={t} anim={anim} paint={paint} skin={a!} sky={sky} /></g>
-      <g transform="translate(28 0)"><Jeep t={t} anim={anim} paint={paint} skin={b!} sky={sky} /></g>
+      <g transform="translate(-26 0)"><Jeep t={t} anim={anim} paint={paint} skin={a!} sky={sky} seed={hashString(`${unit.id}-0`)} /></g>
+      <g transform="translate(28 0)"><Jeep t={t} anim={anim} paint={paint} skin={b!} sky={sky} seed={hashString(`${unit.id}-1`)} /></g>
     </g>
   );
 }
 
 // Camion militaire bâché : cabine à l'avant, plateau sous bâche arrondie, trois essieux.
-function Truck({ t, paint }: { t: Tint; paint: string }): ReactElement {
+// Ghibli (V5) : camion bâché et conducteur peints (special-art `army-truck`).
+function Truck({ t, paint, sky, still, seed }: { t: Tint; paint: string; sky?: Sky; still: boolean; seed: number }): ReactElement {
   const body = t(paint);
+  if (sky) return <ScriptedCar spec={{ id: 'army-truck', seed, paint }} dir={1} k={1} sky={sky} rainy={false} lights={false} still={still} />;
   return (
     <g>
       <rect x={-27} y={-12} width={54} height={5} fill={t('#2E2E26')} />
@@ -692,43 +691,55 @@ function Truck({ t, paint }: { t: Tint; paint: string }): ReactElement {
     </g>
   );
 }
-function Trucks({ unit, t }: UnitArt): ReactElement {
+function Trucks({ unit, t, anim, sky }: UnitArt): ReactElement {
   const paint = pickOf(ARMY, unit.variant);
   return (
     <g>
-      <g transform="translate(-34 0)"><Truck t={t} paint={paint} /></g>
-      <g transform="translate(34 0)"><Truck t={t} paint={paint} /></g>
+      <g transform="translate(-34 0)"><Truck t={t} paint={paint} sky={sky} still={!anim} seed={hashString(`${unit.id}-0`)} /></g>
+      <g transform="translate(34 0)"><Truck t={t} paint={paint} sky={sky} still={!anim} seed={hashString(`${unit.id}-1`)} /></g>
     </g>
   );
 }
 
 // Char : chenilles qui défilent (tirets animés), galets, caisse, tourelle et canon, chef de char en tourelle.
-function Tank({ t, anim, paint, skin, sky }: { t: Tint; anim: boolean; paint: string; skin: string; sky?: Sky }): ReactElement {
+// Ghibli (V5) : char et chef de char peints (special-art `tank`), chenilles qui défilent et drapeau par-dessus.
+function Tank({ t, anim, paint, skin, sky, seed }: { t: Tint; anim: boolean; paint: string; skin: string; sky?: Sky; seed: number }): ReactElement {
   const body = t(paint);
+  const track = (
+    <rect data-track="" x={-29} y={-8.6} width={58} height={8.2} rx={4.1} fill="none" stroke={t('#55554C')} strokeWidth={1.4} strokeDasharray="2 2">
+      {anim && <animate attributeName="stroke-dashoffset" values="0;-4" dur="0.4s" repeatCount="indefinite" />}
+    </rect>
+  );
+  const flag = (
+    <>
+      <line x1={-20} y1={-16} x2={-24} y2={-30} stroke={t('#333333')} strokeWidth={0.5} />
+      <g transform="translate(-24 0)">
+        <Tricolore t={t} top={-30} w={6} h={4} anim={anim} />
+      </g>
+    </>
+  );
+  if (sky)
+    return (
+      <ScriptedCar spec={{ id: 'tank', seed, paint }} dir={1} k={1} sky={sky} rainy={false} lights={false} still={!anim}>
+        {track}
+        {flag}
+      </ScriptedCar>
+    );
   return (
     <g>
-      {/* Ghibli : le chef de char, debout dans la tourelle, est dessiné avant la caisse (seuls le buste et la tête dépassent). */}
-      {sky && <GRider outfit={crew(skin, '#3E4420', '#3E4420', 'beanie', '#2A2A26')} sky={sky} gait="stand" arms="down" at={[-5.5, -12]} scale={0.55} />}
       <rect x={-30} y={-9} width={60} height={9} rx={4.5} fill={t('#2A2A26')} />
-      <rect x={-29} y={-8.6} width={58} height={8.2} rx={4.1} fill="none" stroke={t('#55554C')} strokeWidth={1.4} strokeDasharray="2 2">
-        {anim && <animate attributeName="stroke-dashoffset" values="0;-4" dur="0.4s" repeatCount="indefinite" />}
-      </rect>
+      {track}
       {[-22, -13, -4, 5, 14, 23].map((x) => <circle key={x} cx={x} cy={-4.5} r={3} fill={t('#3E3E36')} />)}
       <path d="M-30 -9 L-27 -16 H24 L31 -9Z" fill={body} />
       <path d="M-14 -16 L-12 -23 H6 L10 -16Z" fill={body} />
       <rect x={9} y={-21.4} width={25} height={2} fill={body} />
       <rect x={30} y={-22} width={4} height={3.2} fill={t('#2A2A26')} />
-      {!sky && (
-        <g data-worker="" data-parade-figure="">
-          <rect x={-8} y={-27} width={5} height={4} fill={t('#3E4420')} />
-          <circle cx={-5.5} cy={-29} r={2.4} fill={t(skin)} />
-          <path d="M-8.4 -29.4 A2.9 2.9 0 0 1 -2.6 -29.4Z" fill={t('#2A2A26')} />
-        </g>
-      )}
-      <line x1={-20} y1={-16} x2={-24} y2={-30} stroke={t('#333333')} strokeWidth={0.5} />
-      <g transform="translate(-24 0)">
-        <Tricolore t={t} top={-30} w={6} h={4} anim={anim} />
+      <g data-worker="" data-parade-figure="">
+        <rect x={-8} y={-27} width={5} height={4} fill={t('#3E4420')} />
+        <circle cx={-5.5} cy={-29} r={2.4} fill={t(skin)} />
+        <path d="M-8.4 -29.4 A2.9 2.9 0 0 1 -2.6 -29.4Z" fill={t('#2A2A26')} />
       </g>
+      {flag}
     </g>
   );
 }
@@ -737,14 +748,16 @@ function Tanks({ unit, t, anim, sky }: UnitArt): ReactElement {
   const [a, b] = skinsOf(unit.id, 2);
   return (
     <g>
-      <g transform="translate(-48 0)"><Tank t={t} anim={anim} paint={paint} skin={a!} sky={sky} /></g>
-      <g transform="translate(40 0)"><Tank t={t} anim={anim} paint={paint} skin={b!} sky={sky} /></g>
+      <g transform="translate(-48 0)"><Tank t={t} anim={anim} paint={paint} skin={a!} sky={sky} seed={hashString(`${unit.id}-0`)} /></g>
+      <g transform="translate(40 0)"><Tank t={t} anim={anim} paint={paint} skin={b!} sky={sky} seed={hashString(`${unit.id}-1`)} /></g>
     </g>
   );
 }
 
 // Sapeurs-pompiers : grand camion rouge à échelle, bande blanche, gyrophares bleus, casques chromés dans la cabine.
+// Ghibli (V5) : camion, échelle, gyrophares et pompiers peints (special-art `fire-truck`).
 function Firetruck({ unit, t, anim, sky }: UnitArt): ReactElement {
+  if (sky) return <ScriptedCar spec={{ id: 'fire-truck', seed: hashString(unit.id) }} dir={1} k={1} sky={sky} rainy={false} lights={false} still={!anim} />;
   const red = t(pickOf(['#C8102E', '#B5121B'], unit.variant));
   const skins = skinsOf(unit.id, 2);
   return (
@@ -753,21 +766,12 @@ function Firetruck({ unit, t, anim, sky }: UnitArt): ReactElement {
       <path d="M20 -6 V-30 H34 L42 -18 V-6Z" fill={red} />
       <path d="M33 -28 L40 -18 H33Z" fill={t(GLASS)} opacity={0.85} />
       <rect x={22} y={-27} width={9} height={8} fill={t(GLASS)} opacity={0.85} />
-      {sky ? (
-        // Ghibli : pompiers derrière la vitre latérale, rognés à la vitre par un <svg> imbriqué (pas de clipPath à id).
-        <svg x={22} y={-27} width={9} height={8} viewBox="22 -27 9 8" overflow="hidden">
-          {skins.map((skin, i) => (
-            <GRider key={i} outfit={crew(skin, '#1F2A4A', '#1F2A4A', 'cap', STEEL)} sky={sky} gait="stand" arms="down" at={[25 + i * 4, -11]} scale={0.42} />
-          ))}
-        </svg>
-      ) : (
-        skins.map((skin, i) => (
-          <g key={i}>
-            <circle cx={25 + i * 4} cy={-21.5} r={1.7} fill={t(skin)} />
-            <path d={`M${23.2 + i * 4} -22 A1.9 1.9 0 0 1 ${26.8 + i * 4} -22Z`} fill={t(STEEL)} />
-          </g>
-        ))
-      )}
+      {skins.map((skin, i) => (
+        <g key={i}>
+          <circle cx={25 + i * 4} cy={-21.5} r={1.7} fill={t(skin)} />
+          <path d={`M${23.2 + i * 4} -22 A1.9 1.9 0 0 1 ${26.8 + i * 4} -22Z`} fill={t(STEEL)} />
+        </g>
+      ))}
       <rect x={-46} y={-15} width={88} height={2.4} fill={t(WHITE)} />
       {[-40, -30, -20, -10, 0, 10].map((x) => <rect key={x} x={x} y={-24} width={7} height={7} rx={0.6} fill={t('#9E0E22')} />)}
       {/* Échelle sur le toit, débordant au-dessus de la cabine */}
