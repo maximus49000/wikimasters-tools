@@ -33,7 +33,7 @@ const INNER_WALK_SHARE = 0.3;
 
 // `endDoorX` : centre de l'entrée d'immeuble d'où il vient et où il repart (null : bord du monde). `shopDoor` : porte du local
 // (px du monde) ; `window` : vitrine (bord gauche, largeur), où il marche en repère local (0 = bord gauche de la vitrine).
-export type Visit = { id: string; slotId: string; doorX: number; endDoorX: number | null; innerX: number; dir: 1 | -1; speed: number; phase: number; stay: number; outfit: Outfit; scale: number;
+export type Visit = { id: string; slotId: string; doorX: number; endDoorX: number | null; dir: 1 | -1; speed: number; phase: number; stay: number; outfit: Outfit; scale: number;
   // Type du commerce au calcul des visites (null si inconnu) et place du client dans l'intérieur, selon la famille.
   type: ShopTypeId | null;
   seat: { x: number; facing: 1 | -1 };
@@ -65,8 +65,6 @@ export function visitsFor(slots: ShopSlot[], frames: Map<string, ShopFrame>, see
         doorX,
         // Il vient du côté opposé à son sens de marche : le bout du trajet est cherché dans le sens −dir.
         endDoorX: endDoorOf(doorX, (-dir) as 1 | -1, width, doorXs, MAX_VISIT_FALLBACK_PX),
-        // Deux places dans la vitrine (au tiers et aux deux tiers) : deux clients ne se superposent pas.
-        innerX: f.window.x + f.window.w * (k === 0 ? 0.35 : 0.7),
         dir,
         speed: (16 + rng() * 8) * WALK_PACE,
         phase: rng() * VISIT_CYCLE,
