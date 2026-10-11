@@ -172,7 +172,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     const cx = rect.x + rect.w / 2;
     const cy = rect.y + rect.h / 2;
     return (
-      <g transform={`translate(${cx + dx} ${cy + dy}) scale(1.08) translate(${-cx} ${-cy})`} opacity={0.65} style={{ pointerEvents: 'none' }}>
+      <g data-lifted-copy="" transform={`translate(${cx + dx} ${cy + dy}) scale(1.08) translate(${-cx} ${-cy})`} opacity={0.65} style={{ pointerEvents: 'none' }}>
         {art}
       </g>
     );
@@ -382,13 +382,20 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     }
   }
 
-  const actors = (
-    <g id={`${worldId}-actors`} data-window-actors="">
-      <FigureContext.Provider value={figures}>
-        <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherOn ? view.weather?.clock : undefined} />
-      </FigureContext.Provider>
-    </g>
+  // Élément STABLE (passé à la couche météo mémoïsée) : un re-rendu de la pièce (glissé, clignotement, animaux…) ne refait pas la météo.
+  const weatherClock = weatherOn ? view.weather?.clock : undefined;
+  const actors = useMemo(
+    () => (
+      <g id={`${worldId}-actors`} data-window-actors="">
+        <FigureContext.Provider value={figures}>
+          <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherClock} />
+        </FigureContext.Provider>
+      </g>
+    ),
+    [worldId, figures, room.scene, room.id, width, wallH, view.sky, view.minutes, gloom, rainy, city, forcedNight, weatherClock],
   );
+  // La fenêtre soulevée n'a plus de vue à sa place (sa copie porte la sienne) : seul son cadre estompé reste sur le mur.
+  const shownGlasses = glasses.filter((_, i) => windows[i]!.id !== drag?.id);
 
   return (
     <svg
@@ -400,12 +407,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     >
       {decor.glow && <NeonDefs />}
       <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
-      {room.style === 'steampunk' && <SteampunkDecor cols={room.cols} wallH={wallH} />}
+      {room.style === 'steampunk' && <g data-steampunk-decor=""><SteampunkDecor cols={room.cols} wallH={wallH} /></g>}
       {windows.length > 0 && (
         <defs>
           {/* Un seul masque pour toutes les vitres : le décor est dessiné une fois, découpé à la forme des vitres. */}
           <clipPath id={`${worldId}-clip`}>
-            {glasses.map((g, i) => (
+            {shownGlasses.map((g, i) => (
               <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} rx={steampunk ? 10 : 0} />
             ))}
           </clipPath>
@@ -414,10 +421,14 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {windows.length > 0 && (
         // Le décor vu par les fenêtres, rendu UNE fois en vrais nœuds (plus de copies `<use>` à reconstruire à chaque image),
         // juste après le mur : un meuble du mur ne chevauche jamais une fenêtre. Les cadres sont dessinés par-dessus.
-        <g data-window-views="" clipPath={`url(#${worldId}-clip)`}>
-          {glasses.map((g, i) => (
+        <>
+        {/* Fond de vitre (angles droits, comme avant), sous la vue qui le recouvre. */}
+        <g data-window-glass="" style={{ pointerEvents: 'none' }}>
+          {shownGlasses.map((g, i) => (
             <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} fill="#9CC4E8" />
           ))}
+        </g>
+        <g data-window-views="" clipPath={`url(#${worldId}-clip)`} style={{ pointerEvents: 'none' }}>
           {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que le second. */}
           <g id={worldId} data-window-view="">
             <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
@@ -428,8 +439,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           ) : (
             actors
           )}
-          {drops && glasses.map((g, i) => <GlassDrops key={i} glass={g} />)}
+          {drops && shownGlasses.map((g, i) => <GlassDrops key={i} glass={g} />)}
         </g>
+        </>
       )}
       {backLayer.map(renderPlaced)}
       {wallLayer}
