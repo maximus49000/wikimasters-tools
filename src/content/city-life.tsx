@@ -5,12 +5,14 @@ import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../co
 import { fixedFade, placeEvent, type EventFrame, type EventPlacement } from '../core/library/city/event-place';
 import { EVENT_DEFS, type CityEvent } from '../core/library/city/events';
 import { cityFacades } from '../core/library/city/facades';
-import { cityIntensity, type CityContext } from '../core/library/city/intensity';
+import { cityIntensity, schoolWindows, type CityContext } from '../core/library/city/intensity';
+import { schoolBusArrivals } from '../core/library/city/traffic/school-bus';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
 import { dayNumber } from '../core/library/city/shops/hours';
+import type { ShopTypeId } from '../core/library/city/shops/catalog';
 import type { StaffShift } from '../core/library/city/shops/staff';
 import type { Vehicle } from '../core/library/city/vehicles';
 import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
@@ -54,6 +56,7 @@ const COMPANION_GAP = 16;
 // Couple (Saint-Valentin) : le second adulte marche à côté, à taille normale.
 const PAIR_GAP = 13;
 // Le moteur de circulation remplace les véhicules d'ambiance : plus de voitures à effacer devant les événements de rue.
+const VAN_LABELS: Partial<Record<ShopTypeId, string>> = { bakery: 'BOULANGERIE', pastry: 'BOULANGERIE', cheese: 'LAITERIE', grocery: 'LAITERIE', minimarket: 'LAITERIE', florist: 'FLEURS', greengrocer: 'PRIMEURS', wine: 'VINS', butcher: 'BOUCHERIE', fishmonger: 'MARÉE' };
 const NO_VEHICLES: Vehicle[] = [];
 const NO_VISITS: Visit[] = [];
 const NO_SHIFTS: StaffShift[] = [];
@@ -244,15 +247,33 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Circulation (spec véhicules §1) : demande par voie selon l'intensité, route fermée, événements de rue planifiés (ils
   // entrent par le bord à leur heure), livraisons devant les portes des commerces.
   const eventsByKey = useMemo(() => new Map(events.schedule.map((e) => [e.key, e] as const)), [events.schedule]);
+  // Cars scolaires (spec véhicules §4) : 2 à 4 passages par créneau d'école du jour, recalculés à la minute.
+  const day = dayNumber(date);
+  const schoolBuses = useMemo<ScheduledArrival[]>(
+    () => schoolBusArrivals({ seed, day, nowS: still ? (frozen.current ?? 0) : Date.now() / 1000, minutes: city.minutes, windows: schoolWindows(city.day) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seed, day, city.day, city.minutes, still],
+  );
   const arrivals = useMemo<ScheduledArrival[]>(
-    () =>
-      events.schedule.flatMap((e): ScheduledArrival[] =>
+    () => [
+      ...events.schedule.flatMap((e): ScheduledArrival[] =>
         e.layer === 'street' && e.track !== null && (e.id === 'bus' || e.id === 'tram' || e.id === 'ambulance' || e.id === 'garbage-truck' || e.id === 'delivery-bike')
           ? [{ key: e.key, kind: e.id, track: e.track, start: e.start, half: EVENT_DEFS.find((d) => d.id === e.id)?.half }]
           : [],
       ),
-    [events.schedule],
+      ...schoolBuses,
+    ],
+    [events.schedule, schoolBuses],
   );
+  // Inscriptions des fourgons Type H : commerces de bouche et fleuristes de la rue (LAITERIE sinon).
+  const vanLabels = useMemo(() => {
+    const out = new Set<string>();
+    for (const v of shops.views) {
+      const label = v.sign?.type ? VAN_LABELS[v.sign.type] : undefined;
+      if (label) out.add(label);
+    }
+    return [...out].sort();
+  }, [shops.views]);
   const deliveries = useMemo(() => shops.views.flatMap((v) => { const f = shops.frames.get(v.slot.id); return f ? [f.door.x + f.door.w / 2] : []; }), [shops.views, shops.frames]);
   const trafficEnv = useMemo<TrafficEnv>(
     () => ({
@@ -262,8 +283,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       deliveries,
       crowd: intensity.closed ? 0 : intensity.walkers,
       crossPx: metrics.farSide + 5 * metrics.unit - metrics.walkY,
+      vanLabels,
     }),
-    [intensity, arrivals, deliveries, metrics],
+    [intensity, arrivals, deliveries, metrics, vanLabels],
   );
   const traffic = useTraffic({ width, seed, unit: metrics.unit, env: trafficEnv, startS: still ? (frozen.current ?? 0) : Date.now() / 1000 });
 

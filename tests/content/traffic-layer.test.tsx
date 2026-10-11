@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { TrafficLane, type TrafficHandle } from '../../src/content/traffic-layer';
 import { cityMetrics } from '../../src/core/library/city/metrics';
-import { warmTraffic, type TrafficEnv } from '../../src/core/library/city/traffic/engine';
+import { advance, warmTraffic, type TrafficEnv } from '../../src/core/library/city/traffic/engine';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -57,5 +57,48 @@ describe('voitures dans la circulation', () => {
     for (const c of s.host.querySelectorAll('[data-exhaust] circle')) expect(c.getAttribute('opacity') ?? '0').toBe('0');
     const k = await lane('near', false);
     expect(k.host.querySelector('[data-exhaust]')).toBeNull();
+  });
+});
+
+describe('véhicules à part dans la circulation', () => {
+  // Monde large et avancé jusqu'à avoir une camionnette et un deux-roues sur la voie du premier plan.
+  const busy = (e: TrafficEnv): TrafficHandle => {
+    const world = warmTraffic({ width: 3000, seed: 7, unit: m.unit, startS: T0 }, e);
+    for (let t = T0; !(world.agents.some((a) => a.kind === 'van' && a.track === 'near') && world.agents.some((a) => a.kind === 'moto' && a.track === 'near')) && t < T0 + 1200; t += 1) advance(world, t, e);
+    return { world, env: e };
+  };
+  const render = async (handle: TrafficHandle, ghibli: boolean, still: boolean): Promise<HTMLElement> => {
+    const host = document.createElement('div');
+    await act(async () =>
+      createRoot(host).render(
+        <svg>
+          <TrafficLane handle={handle} lane="near" metrics={m} sky={sky} lights={false} rainy={false} still={still} ghibli={ghibli} fests={[]} eventsByKey={new Map()} frozenT={handle.world.t} />
+        </svg>,
+      ),
+    );
+    return host;
+  };
+  it('Ghibli : camionnettes et deux-roues peints', async () => {
+    const handle = busy(env);
+    const host = await render(handle, true, true);
+    for (const v of host.querySelectorAll('[data-kind="van"], [data-kind="moto"], [data-kind="bus"]')) expect(v.querySelector('[data-ghibli-car]')).not.toBeNull();
+    expect(host.querySelector('[data-kind="moto"] [data-ghibli-car]')).not.toBeNull();
+  });
+  it('ambulance peinte, gyrophares figés en mouvement réduit', async () => {
+    const e: TrafficEnv = { ...env, demand: { near: 0, far: 0, bike: 0 }, arrivals: [{ key: 'ev-a', kind: 'ambulance', track: 'near', start: T0 - 3 }] };
+    const host = await render({ world: warmTraffic({ width: 3000, seed: 7, unit: m.unit, startS: T0 }, e), env: e }, true, true);
+    const amb = host.querySelector('[data-kind="ambulance"] [data-ghibli-car][data-arch="ambulance"]')!;
+    expect(amb).not.toBeNull();
+    const fills = [...amb.querySelectorAll('[data-beacon]')].map((b) => b.getAttribute('fill'));
+    expect(fills).toHaveLength(2);
+    await act(async () => new Promise((r) => setTimeout(r, 400)));
+    expect([...amb.querySelectorAll('[data-beacon]')].map((b) => b.getAttribute('fill'))).toEqual(fills);
+  });
+  it('classique : deux-roues motorisé en sprite de vélo avec pilote, aucune apparence peinte', async () => {
+    const host = await render(busy(env), false, true);
+    const moto = host.querySelector('[data-kind="moto"]')!;
+    expect(moto).not.toBeNull();
+    expect(moto.querySelector('[data-ghibli-car]')).toBeNull();
+    expect(host.querySelector('[data-ghibli-car]')).toBeNull();
   });
 });

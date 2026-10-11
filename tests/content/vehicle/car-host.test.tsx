@@ -4,6 +4,7 @@ import { BLANK_SPRITE } from '../../../src/content/figure/figure-host';
 import { CarRegistry, layerBox, layerKey, litOf, paintLayer } from '../../../src/content/vehicle/car-host';
 import { carArt } from '../../../src/core/library/city/traffic/car-art';
 import { genCar } from '../../../src/core/library/city/traffic/cars';
+import { lookOfCar } from '../../../src/core/library/city/traffic/look';
 import { skyAt, sunTimes } from '../../../src/core/library/sky';
 
 const sky = skyAt(12 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
@@ -11,14 +12,14 @@ const night = skyAt(23 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lo
 
 describe('registre des voitures', () => {
   it('clés par couche, sens et jour quantifié ; sans canvas : sprite vide', () => {
-    const c = genCar(3, 'berline', 0.4);
+    const c = lookOfCar(genCar(3, 'berline', 0.4));
     const d = { ...litOf(sky), dir: 1 as const };
     expect(layerKey(c, 'body', d)).not.toBe(layerKey(c, 'body', { ...d, dir: -1 }));
     expect(layerKey(c, 'body', d)).not.toBe(layerKey(c, 'body', { ...litOf(night), dir: 1 }));
     expect(litOf(night).night).toBe(true);
     expect(litOf(sky).night).toBe(false);
     expect(litOf(sky).day * 8).toBe(Math.round(litOf(sky).day * 8));
-    expect(paintLayer(carArt(c), 'body', d)).toBe(BLANK_SPRITE);
+    expect(paintLayer(c.art, 'body', d)).toBe(BLANK_SPRITE);
   });
   it('cadre commun aux couches, en miroir pour la voie du fond', () => {
     const a = carArt(genCar(8, 'pick-up', 0.7));

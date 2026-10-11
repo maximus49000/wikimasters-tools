@@ -53,7 +53,7 @@ describe('profil et plan de peinture', () => {
         expect(a.wheelHand).not.toBeNull();
         expect(a.tail.x).toBeLessThan(0);
         expect(a.head.x).toBeGreaterThan(0);
-        expect(a.exhaust.x).toBeLessThan(a.x0 + 2);
+        expect(a.exhaust!.x).toBeLessThan(a.x0 + 2);
         expect(a.top).toBeLessThan(-c.H + 0.01);
       }
   });
@@ -86,5 +86,10 @@ describe('profil et plan de peinture', () => {
     for (const rim of ['enjoliveur', 'rayons', 'tôle', 'flancs blancs', 'alliage'] as const) expect(wheelOps(rim, '#d9d6cf', 4).length).toBeGreaterThan(2);
     const c = genCar(4, 'break', 0.1);
     expect(carArt(c)).toBe(carArt(c));
+  });
+  it('voiture générée : aucun gyrophare, un pot', () => {
+    const a = carArt(genCar(1, 'berline', 0.1));
+    expect(a.beacons).toEqual([]);
+    expect(a.exhaust).not.toBeNull();
   });
 });
