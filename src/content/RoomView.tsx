@@ -11,6 +11,7 @@ import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 import { HomeArt, SmallArt } from './furniture-art-home';
 import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
+import { FigureContext, FigureDefs, FigureRegistry } from './figure/figure-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, glassRect } from './window-art';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
@@ -100,6 +101,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const width = room.cols * CELL_W;
   const wallH = WALL_ROWS * CELL_H;
   const worldId = `${useId()}-world`.replace(/:/g, '');
+  // Registre des symboles du pantin (Ghibli) : un par pièce, hébergé dans les <defs> du monde, hors des groupes recopiés par <use>.
+  const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`), [worldId]);
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
   // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
@@ -395,7 +398,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
             <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
           </g>
           <g id={`${worldId}-actors`}>
+            <FigureContext.Provider value={figures}>
             <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherOn ? view.weather?.clock : undefined} />
+            </FigureContext.Provider>
           </g>
           {/* Météo : deux groupes à part (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. */}
           {weatherOn && view.weather && (
@@ -409,6 +414,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
               </clipPath>
             );
           })}
+          <FigureDefs registry={figures} />
         </defs>
       )}
       {backLayer.map(renderPlaced)}

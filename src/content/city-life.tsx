@@ -12,9 +12,13 @@ import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { StaffShift } from '../core/library/city/shops/staff';
 import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
+import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
 import { loopX } from '../core/library/scene-world';
 import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
+import { useArtStyle } from './art-setting';
+import { useFigureRegistry } from './figure/figure-host';
+import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
 import { CityEventSprite } from './city-event-sprites';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, shopSpriteBudget, type PosedStaff, type Swap } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
@@ -97,12 +101,19 @@ export function StreetLamps({ width, height, seed, minutes, daylight, forcedNigh
   );
 }
 
-const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number): string => {
+// `mirror` : le sprite classique se retourne selon le sens ; le pantin Ghibli se tourne de profil (pedPose), sans miroir.
+const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number, mirror: boolean): string => {
   const x = loopX(p.phase, p.dir * p.speed, width, t);
   // Légère profondeur sur le trottoir : les passants ne marchent pas tous sur la même ligne.
   const y = m.walkY - (p.depth - 0.5) * m.unit * 6;
   const k = m.unit * STREET_SCALE.person * p.scale;
-  return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(p.dir * k).toFixed(3)} ${k.toFixed(3)})`;
+  return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${((mirror ? p.dir : 1) * k).toFixed(3)} ${k.toFixed(3)})`;
+};
+
+// Pose d'un passant Ghibli : profil dans le sens de marche, image réglée sur la distance (unités du pantin).
+export const pedPose = (p: Pedestrian, m: CityMetrics, t: number): { yaw: number; gait: 'walk'; phase: number; head: 0 } => {
+  const k = m.unit * STREET_SCALE.person * p.scale;
+  return { yaw: facingYaw(p.dir), gait: 'walk', phase: phaseIndexOf((p.phase + p.speed * t) / k), head: 0 };
 };
 
 const residentTransform = (trip: Trip, x: number, m: CityMetrics): string => {
@@ -126,6 +137,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const moving = useRef<Set<string>>(new Set());
   // Calculs mémoïsés par (width, height, seed) : populations, entrées, trajets, façades. Recalculés par minute : intensités.
   const metrics = useMemo(() => cityMetrics(height), [height]);
+  // Art Ghibli : les passants sont des pantins (symboles du registre de la pièce), posés par la boucle, sans miroir.
+  const [art] = useArtStyle();
+  const ghibli = art === 'ghibli';
+  const figures = useFigureRegistry();
   const peds = useMemo(() => pedestriansFor(width, seed), [width, seed]);
   const vehicles = useMemo(() => vehiclesFor(width, seed), [width, seed]);
   const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
@@ -207,6 +222,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let swaps: Swap[] = [];
     let waiters: Waiter[] = [];
     let crews: Crew[] = [];
+    // Figures Ghibli de chaque passant (compagnons, puis lui-même, au même pas), trouvées à la collecte des nœuds.
+    const pedFigs = new Map<string, Element[]>();
     let muted: Set<string> = new Set();
     let posedAt = -Infinity;
     const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
@@ -215,6 +232,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       const t = still ? frozen.current! : now;
       const el = root.current;
       if (!el) return;
+      // Une fois par image : crée les symboles demandés (budget par image) et applique le plafond.
+      if (ghibli) figures.flush();
       if (!nodes) {
         nodes = new Map();
         for (const node of el.querySelectorAll<SVGGElement>('[data-life-id]')) nodes.set(node.getAttribute('data-life-id')!, node);
@@ -225,11 +244,24 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
         crews = collectMovers(el);
+        if (ghibli) {
+          for (const p of peds) {
+            const node = nodes.get(p.id);
+            if (node) pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
+          }
+        }
         // Plafond global des figurants des commerces : convives de terrasse cachés, visites suspendues pour la minute.
         muted = shopSpriteBudget(el, width);
       }
       for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
-      for (const p of peds) if (moves(p.id, t)) nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t));
+      for (const p of peds) {
+        if (!moves(p.id, t)) continue;
+        nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
+        if (ghibli) {
+          const pose = pedPose(p, metrics, t);
+          for (const fig of pedFigs.get(p.id) ?? []) poseFigure(figures, fig, pose);
+        }
+      }
       for (const e of events.active) {
         const node = nodes.get(e.key);
         if (!node) continue;
@@ -266,7 +298,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky]);
+  }, [vehicles, peds, trips, vehActive, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky, ghibli, figures]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
@@ -440,17 +472,22 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-profile={p.profile}
               data-mark={marks.get(p.id) ?? undefined}
               data-active={active ? 'true' : 'false'}
-              transform={pedTransform(p, metrics, width, t0)}
+              transform={pedTransform(p, metrics, width, t0, !ghibli)}
               opacity={active ? 1 : 0}
               style={{ transition: `opacity ${FADE_S}s ease` }}
             >
               {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7. */}
               {p.companions.map((outfit, k) => (
-                <g key={k} data-companion="" transform={p.pair ? `translate(${-PAIR_GAP} 0) scale(0.95)` : `translate(${-COMPANION_GAP * (k + 1)} 0) scale(0.7)`}>
-                  <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />
+                <g key={k} data-companion="" transform={p.pair ? `translate(${(ghibli ? -p.dir : -1) * PAIR_GAP} 0) scale(0.95)` : `translate(${(ghibli ? -p.dir : -1) * COMPANION_GAP * (k + 1)} 0) scale(0.7)`}>
+                  {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0)} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
                 </g>
               ))}
-              <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={marks.get(p.id)} />
+              {/* En Ghibli, pas de signes de fête avant G3b. */}
+              {ghibli ? (
+                <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pedPose(p, metrics, t0)} />
+              ) : (
+                <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={marks.get(p.id)} />
+              )}
             </g>
           );
         })}

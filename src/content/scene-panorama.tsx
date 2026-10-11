@@ -7,6 +7,7 @@ import type { Sky } from '../core/library/sky';
 import type { Weather } from '../core/library/weather/weather-types';
 import { useArtStyle } from './art-setting';
 import { CityLifeLayer, StreetLamps } from './city-life';
+import { FigureContext, FigureDefs, FigureRegistry } from './figure/figure-host';
 import { CityScene } from './scene-city';
 import { GhibliMoon, GhibliSkyTexture, GhibliStarCrosses, GhibliSun, fadeStyle, reducedMotion, useShownAfterMount } from './ghibli-sky';
 import { usePaintedSky, type PaintedSky } from './painted-sky';
@@ -191,10 +192,18 @@ export const SceneActors = memo(SceneActorsView);
 
 // Décor complet (fixe puis acteurs) dans un même groupe, pour un affichage sans fenêtres `<use>`.
 export function ScenePanorama(props: PanoramaProps): ReactElement {
+  // Registre des symboles du pantin (Ghibli) propre à cet affichage : ses <defs> sont dans le même document que les <use>.
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const figures = useMemo(() => new FigureRegistry(`pf${uid}`), [uid]);
   return (
     <g data-panorama-full="">
+      <defs>
+        <FigureDefs registry={figures} />
+      </defs>
       <ScenePanoramaStatic {...props} />
-      <SceneActors {...props} />
+      <FigureContext.Provider value={figures}>
+        <SceneActors {...props} />
+      </FigureContext.Provider>
     </g>
   );
 }
