@@ -21,6 +21,8 @@ export const GROUND_FLOOR_H = 30;
 const DW = 6;
 const NEUTRAL = '#D8D2C4';
 
+// `doorSide` (ShopSlot) est le côté de l'ENTRÉE DES HABITANTS ; la porte du magasin est du côté opposé (shopFrame).
+const shopDoorAt = (s: FacadeSpec): 'left' | 'right' => (s.doorSide === 'left' ? 'right' : 'left');
 const familyOf = (s: FacadeSpec): Family => (s.type ? FAMILY[s.type] : 'D');
 const pilaster = (s: FacadeSpec): number => {
   const f = familyOf(s);
@@ -30,10 +32,11 @@ const pilaster = (s: FacadeSpec): number => {
 // Vitrine (`win`, celle de shopFrame), partie vitrée visible (`glass` : pilastre et soubassement retirés) et porte.
 export function facadeGeometry(s: FacadeSpec): { win: Rect; glass: Rect; door: Rect } {
   const f = familyOf(s);
-  const door = { x: s.doorSide === 'left' ? 0 : s.w - DW, y: 9, w: DW, h: 21 };
-  const win = { x: s.doorSide === 'left' ? DW + 1 : 0, y: 8, w: s.w - DW - 1, h: 22 };
+  const doorAt = shopDoorAt(s);
+  const door = { x: doorAt === 'left' ? 0 : s.w - DW, y: 9, w: DW, h: 21 };
+  const win = { x: doorAt === 'left' ? DW + 1 : 0, y: 8, w: s.w - DW - 1, h: 22 };
   const pil = pilaster(s);
-  const glass = { x: win.x + (s.doorSide === 'left' ? 0 : pil), y: win.y, w: win.w - pil, h: win.h - (f === 'A' ? 4 : f === 'E' ? 3 : 0) };
+  const glass = { x: win.x + (doorAt === 'left' ? 0 : pil), y: win.y, w: win.w - pil, h: win.h - (f === 'A' ? 4 : f === 'E' ? 3 : 0) };
   return { win, glass, door };
 }
 
@@ -78,7 +81,9 @@ export function awningDrop(s: FacadeSpec): number {
 }
 
 export function paintFacade(x: TintedCtx, s: FacadeSpec): void {
-  const { w, doorSide, state, lit } = s;
+  const { w, state, lit } = s;
+  // Côté de la porte du magasin (la maquette appelait ainsi `doorSide`).
+  const doorSide = shopDoorAt(s);
   const f = familyOf(s);
   const def = s.type ? SHOP_DEFS[s.type] : null;
   const sign = def?.sign ?? NEUTRAL;

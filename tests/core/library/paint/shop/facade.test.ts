@@ -3,6 +3,7 @@ import { SHOP_TYPE_IDS } from '../../../../../src/core/library/city/shops/catalo
 import { tintedCtx } from '../../../../../src/core/library/paint/shop/ctx';
 import { FAMILY } from '../../../../../src/core/library/paint/shop/families';
 import { awningDrop, facadeGeometry, paintFacade, paintGlass, type FacadeSpec } from '../../../../../src/core/library/paint/shop/facade';
+import { shopFrame } from '../../../../../src/core/library/city/shops/slots';
 import { recordingCtx } from '../recording-ctx';
 
 const spec = (o: Partial<FacadeSpec> = {}): FacadeSpec => ({ type: 'bakery', name: 'Au Pain Perdu', w: 44, doorSide: 'right', state: 'open', placard: false, night: false, lit: false, ...o });
@@ -86,13 +87,14 @@ describe('façades', () => {
     expect(paint(spec({ state: 'works' })).texts).toEqual(['Au Pain Perdu']);
   });
 
-  it('local de 38 à 70 de large, porte des deux côtés : la vitre est dans le local', () => {
+  it('géométrie peinte = celle du local (shopFrame) : vitrine et porte, des deux côtés', () => {
     for (const w of [38, 44, 56, 70]) for (const doorSide of ['left', 'right'] as const) {
-      const { glass, door } = facadeGeometry(spec({ w, doorSide }));
-      expect(glass.x).toBeGreaterThanOrEqual(0);
-      expect(glass.x + glass.w).toBeLessThanOrEqual(w);
-      expect(door.x + door.w).toBeLessThanOrEqual(w);
-      expect(doorSide === 'left' ? door.x : w - door.x - door.w).toBe(0);
+      const slot = { id: 's', index: 0, x: 100, w, doorSide, residentDoorX: 0 };
+      const f = shopFrame(slot, 238);
+      const top = 238 - 30;
+      const { win, door } = facadeGeometry(spec({ w, doorSide }));
+      expect([win.x + slot.x, win.y + top, win.w, win.h - 1]).toEqual([f.window.x, f.window.y, f.window.w, f.window.h]);
+      expect([door.x + slot.x, door.y + top, door.w, door.h]).toEqual([f.door.x, f.door.y, f.door.w, f.door.h]);
     }
   });
 
