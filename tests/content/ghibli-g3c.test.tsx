@@ -85,7 +85,10 @@ describe('cyclistes Ghibli', () => {
   });
   it('les vélos ne se fondent plus (pas de transition d’opacité)', () => {
     const c = mount();
-    for (const b of c.querySelectorAll<SVGGElement>('[data-vehicle][data-kind="bike"]')) expect(b.style.transition).toBe('none');
+    for (const b of c.querySelectorAll<SVGGElement>('[data-vehicle][data-kind="bike"]')) {
+      expect(b.style.transition).toBe('');
+      expect(b.getAttribute('opacity')).toBeNull();
+    }
   });
   it('pédalier : un tour (12 images) par CRANK_TURN unités', () => {
     expect(crankPhase(0)).toBe(0);
