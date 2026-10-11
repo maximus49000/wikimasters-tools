@@ -13,6 +13,7 @@ import { HomeArt, SmallArt } from './furniture-art-home';
 import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
 import { FigureContext, FigureRegistry } from './figure/figure-host';
+import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, GlassDrops, glassRect } from './window-art';
@@ -108,6 +109,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`), [worldId]);
   // Sprites peints des voitures Ghibli : même cycle de vie.
   const cars = useMemo(() => new CarRegistry(`${worldId}-car`), [worldId]);
+  const shops = useMemo(() => new ShopRegistry(`${worldId}-shop`), [worldId]);
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
   // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
@@ -393,9 +395,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     () => (
       <g id={`${worldId}-actors`} data-window-actors="">
         <FigureContext.Provider value={figures}>
+          <ShopContext.Provider value={shops}>
           <CarContext.Provider value={cars}>
             <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherClock} />
           </CarContext.Provider>
+          </ShopContext.Provider>
         </FigureContext.Provider>
       </g>
     ),
@@ -435,7 +439,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         <svg data-window-views="" x={viewBox.x} y={viewBox.y} width={viewBox.w} height={viewBox.h} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
           {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que le second. */}
           <g id={worldId} data-window-view="">
-            <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
+            <ShopContext.Provider value={shops}>
+              <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
+            </ShopContext.Provider>
           </g>
           {/* Météo : deux groupes (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. Sans météo, les acteurs seuls. */}
           {weatherOn && view.weather ? (

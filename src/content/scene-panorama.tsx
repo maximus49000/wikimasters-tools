@@ -8,6 +8,7 @@ import type { Weather } from '../core/library/weather/weather-types';
 import { useArtStyle } from './art-setting';
 import { CityLifeLayer, StreetLamps } from './city-life';
 import { FigureContext, FigureRegistry } from './figure/figure-host';
+import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
 import { CityScene } from './scene-city';
 import { GhibliMoon, GhibliSkyTexture, GhibliStarCrosses, GhibliSun, fadeStyle, reducedMotion, useShownAfterMount } from './ghibli-sky';
@@ -197,13 +198,18 @@ export function ScenePanorama(props: PanoramaProps): ReactElement {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const figures = useMemo(() => new FigureRegistry(`pf${uid}`), [uid]);
   const cars = useMemo(() => new CarRegistry(`pc${uid}`), [uid]);
+  const shops = useMemo(() => new ShopRegistry(`ps${uid}`), [uid]);
   return (
     <g data-panorama-full="">
-      <ScenePanoramaStatic {...props} />
+      <ShopContext.Provider value={shops}>
+        <ScenePanoramaStatic {...props} />
+      </ShopContext.Provider>
       <FigureContext.Provider value={figures}>
+        <ShopContext.Provider value={shops}>
         <CarContext.Provider value={cars}>
           <SceneActors {...props} />
         </CarContext.Provider>
+        </ShopContext.Provider>
       </FigureContext.Provider>
     </g>
   );
