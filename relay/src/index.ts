@@ -9,6 +9,7 @@ import { proxyWeather } from './weather';
 import { proxySchoolCalendar } from './school-calendar';
 import { proxyDepartment } from './department';
 import { proxyShops } from './shops';
+import { proxyBusLines } from './buslines';
 import { indexStatus, indexStep } from './indexer';
 import type { KvLike } from './kv';
 import { parseSearchRequest, searchDocumentaries } from './search';
@@ -91,7 +92,7 @@ async function oembed(id: string): Promise<Response> {
 }
 
 // Limites par adresse (compteurs en mémoire, voir limiter.ts) : [nombre d'appels, fenêtre en ms].
-const LIMITS = { tmdb: [300, 60_000], igdb: [240, 60_000], books: [60, 60_000], weather: [60, 60_000], schoolCalendar: [30, 60_000], department: [60, 60_000], shops: [20, 60_000], issues: [5, 3_600_000] } as const;
+const LIMITS = { tmdb: [300, 60_000], igdb: [240, 60_000], books: [60, 60_000], weather: [60, 60_000], schoolCalendar: [30, 60_000], department: [60, 60_000], shops: [20, 60_000], busLines: [20, 60_000], issues: [5, 3_600_000] } as const;
 const limiter = createLimiter(() => Date.now());
 const igdbToken: TokenState = { current: null };
 
@@ -144,6 +145,8 @@ async function relay(request: Request, url: URL, env: Env): Promise<Response | n
       relayed(await proxyIgdb((await readBody(request)) ?? '', { fetch: net, clientId: env.IGDB_CLIENT_ID, clientSecret: env.IGDB_CLIENT_SECRET, state: igdbToken, now: () => Date.now() }))
     );
   }
+  // Position dans le corps (jamais dans l'URL ni dans les journaux).
+  if (post && url.pathname === '/buslines') return limited(request, 'busLines') ?? relayed(await proxyBusLines((await readBody(request)) ?? '', { fetch: net, now: () => Date.now() }));
   if (post && url.pathname === '/issues') return limited(request, 'issues') ?? relayed(await createIssue((await readBody(request)) ?? '', { fetch: net, token: env.GITHUB_ISSUES_TOKEN }));
   return null;
 }

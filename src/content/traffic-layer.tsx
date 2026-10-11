@@ -3,6 +3,8 @@ import type { CityEvent } from '../core/library/city/events';
 import { FAR_SHRINK, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { CROSS_HALF, MARGIN, TRACK_DIR, advance, agentView, braking, warmTraffic, type Agent, type TrafficEnv, type TrafficWorld } from '../core/library/city/traffic/engine';
 import type { Walker } from '../core/library/city/traffic/crossing';
+import type { Rider } from '../core/library/city/traffic/bus-stop';
+import { nextStops } from '../core/library/city/traffic/bus-lines';
 import { outfitFor } from '../core/library/city/people';
 import { phaseIndexOf } from '../core/library/figure/gait';
 import { mulberry32 } from '../core/library/scene-world';
@@ -71,6 +73,59 @@ const paintedLook = (a: Agent, ghibli: boolean): VehicleLook | null => (ghibli &
 // Demi-longueur dessinée (repère du sprite) : feux à l'arrière, détresse aux deux bouts.
 const SPRITE_HALF: Record<string, number> = { car: 20, van: 23, bus: 34, bike: 9, tram: 66, ambulance: 21, 'garbage-truck': 34, 'delivery-bike': 9, moto: 9, 'school-bus': 34 };
 
+// Girouette latérale du bus Ghibli (repère du véhicule, comme GhibliCar) : bandeau sombre au-dessus des vitres, texte ambré
+// qui défile (deux copies bout à bout dans un <svg> imbriqué : rognage sans clipPath). Avant l'arrêt de la scène : « Prochain
+// arrêt » et la suite ; à l'arrêt : son nom ; après : les arrêts suivants jusqu'au terminus. La boucle n'écrit que la
+// translation du texte, et le texte quand l'état change.
+const MARQUEE = { x0: -14, x1: 20, y: -29.8, h: 2.5, size: 1.9, speed: 7 } as const;
+const marqueeW = (msg: string): number => msg.length * MARQUEE.size * 0.56 + 8;
+function marqueeState(a: Agent): 'a' | 's' | 'd' {
+  return a.stop === 'bus' ? 's' : a.stops.length > 0 ? 'a' : 'd';
+}
+function marqueeText(w: TrafficWorld, a: Agent, state: 'a' | 's' | 'd'): string {
+  const line = a.special?.line;
+  if (!line) return '';
+  const side = a.track === 'far' ? 'far' : 'near';
+  const stops = nextStops(line, w.stopNames[side], state === 'd', a.seed);
+  if (state === 's') return `${line.ref} · Arrêt : ${stops[0] ?? w.stopNames[side]} · Direction ${line.to}`;
+  return `${line.ref} · Prochain arrêt : ${stops.join(' · ')}`;
+}
+function BusMarquee({ dir, msg, state }: { dir: 1 | -1; msg: string; state: string }): ReactElement {
+  const w = MARQUEE.x1 - MARQUEE.x0;
+  const x = dir > 0 ? MARQUEE.x0 : -MARQUEE.x1;
+  const tw = marqueeW(msg);
+  return (
+    <svg data-marquee={state} x={x} y={MARQUEE.y} width={w} height={MARQUEE.h} viewBox={`0 0 ${w} ${MARQUEE.h}`} overflow="hidden">
+      <rect width={w} height={MARQUEE.h} rx={0.6} fill="#1f1a17" />
+      <g data-marquee-text="" data-w={tw.toFixed(2)} transform="translate(0 0)" fill="#ffc94a" fontSize={MARQUEE.size} fontWeight={700} fontFamily="sans-serif">
+        <text x={0.6} y={MARQUEE.h - 0.55}>{msg}</text>
+        <text x={0.6 + tw} y={MARQUEE.h - 0.55}>{msg}</text>
+      </g>
+    </svg>
+  );
+}
+function placeMarquee(w: TrafficWorld, a: Agent, node: Element, t: number): void {
+  const el = node.querySelector('[data-marquee]');
+  if (!el) return;
+  const state = marqueeState(a);
+  const g = el.querySelector('[data-marquee-text]');
+  if (!g) return;
+  if (el.getAttribute('data-marquee') !== state) {
+    const msg = marqueeText(w, a, state);
+    const tw = marqueeW(msg);
+    el.setAttribute('data-marquee', state);
+    g.setAttribute('data-w', tw.toFixed(2));
+    const [t0, t1] = g.querySelectorAll('text');
+    if (t0) t0.textContent = msg;
+    if (t1) {
+      t1.textContent = msg;
+      t1.setAttribute('x', (0.6 + tw).toFixed(2));
+    }
+  }
+  const tw = Number(g.getAttribute('data-w'));
+  g.setAttribute('transform', `translate(${(-((t * MARQUEE.speed) % tw)).toFixed(2)} 0)`);
+}
+
 type LaneProps = {
   handle: TrafficHandle;
   lane: 'near' | 'far';
@@ -119,6 +174,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
           const view = agentView(w, a, t);
           const carNode = node.querySelector('[data-ghibli-car]');
           if (carNode && !still) placeCar(figures, cars, carNode, { look, dist: a.dist / k, v: a.v / k, lean: view.lean, seed: a.seed }, dir, t);
+          if (a.special?.id === 'bus') placeMarquee(w, a, node, t);
           node.querySelector('[data-brake]')?.setAttribute('opacity', braking(a, w.unit) ? '1' : '0');
           node.querySelector(':scope > [data-hazard]')?.setAttribute('opacity', a.hazard && Math.floor(t * 1.6) % 2 === 0 ? '1' : '0');
           if (!still) {
@@ -164,7 +220,10 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         return (
           <g key={a.id} data-life-id={a.id} data-vehicle="" data-kind={a.kind} data-lane={a.track} data-active="true" transform={transformOf(w, a, metrics, now, painted)}>
             {look ? (
-              <GhibliCar look={look} dir={dir} sky={sky} rainy={rainy} lights={lights} still={still} />
+              <>
+                <GhibliCar look={look} dir={dir} sky={sky} rainy={rainy} lights={lights} still={still} />
+                {a.special?.id === 'bus' && <BusMarquee dir={dir} msg={marqueeText(w, a, marqueeState(a))} state={marqueeState(a)} />}
+              </>
             ) : ev ? (
               <CityEventSprite event={ev} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} />
             ) : ghibli && a.kind === 'bike' ? (
@@ -204,9 +263,16 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side }: 
   const u = metrics.unit;
   const t = (c: string): string => tone(c, sky);
   const root = useRef<SVGGElement | null>(null);
+  // Nom de l'arrêt et lignes : changent quand les lignes réelles arrivent (roster du moteur).
+  const [, setRoster] = useState(w.roster);
+  const seen = useRef(w.roster);
   const place = useMemo(
     () => (now: number): void => {
       void now;
+      if (w.roster !== seen.current) {
+        seen.current = w.roster;
+        setRoster(w.roster);
+      }
       const el = root.current;
       if (!el) return;
       // Feu des voitures, et petit voyant « appel enregistré » du boîtier à bouton quand un piéton a appuyé.
@@ -233,17 +299,33 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side }: 
       <circle data-call="" cx={2.4} cy={-19} r={0.5} fill="#FF5A3A" opacity={0.15} />
     </g>
   );
-  const busStop = (x: number, y: number): ReactElement => (
-    <g data-bus-stop="" transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${u.toFixed(3)})`}>
-      <rect x={-0.6} y={-30} width={1.2} height={30} fill={t('#3A3434')} />
-      <rect x={-4.2} y={-36} width={8.4} height={7} rx={1} fill={t('#2F7D64')} />
-      <text x={0} y={-30.9} fontSize={4} fontWeight={700} textAnchor="middle" fill={t('#F2EFE6')}>BUS</text>
-    </g>
-  );
+  // Poteau d'arrêt : drapeau « BUS », plaque au nom de l'arrêt (lignes réelles ou de repli, voir bus-lines.ts) et pastilles
+  // des trois premières lignes à leurs couleurs. La plaque s'ouvre vers l'amont de la voie servie (d'où vient le bus).
+  const busStop = (x: number, y: number, served: 'near' | 'far'): ReactElement => {
+    const name = w.stopNames[served];
+    const refs = w.lines.slice(0, 3);
+    const plate = Math.max(12, name.length * 1.6 + 2.4);
+    const px = served === 'near' ? -plate + 0.6 : -0.6;
+    return (
+      <g data-bus-stop={served} data-stop-name={name} transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${u.toFixed(3)})`}>
+        <rect x={-0.6} y={-30} width={1.2} height={30} fill={t('#3A3434')} />
+        <rect x={-4.2} y={-40} width={8.4} height={7} rx={1} fill={t('#2F7D64')} />
+        <text x={0} y={-34.9} fontSize={4} fontWeight={700} textAnchor="middle" fill={t('#F2EFE6')}>BUS</text>
+        <rect x={px} y={-33} width={plate} height={4.4} rx={0.6} fill={t('#F2EFE6')} stroke={t('#33241F')} strokeWidth={0.35} />
+        <text x={px + plate / 2} y={-29.8} fontSize={2.7} fontWeight={700} textAnchor="middle" fill={t('#2A2622')}>{name}</text>
+        {refs.map((l, i) => (
+          <g key={i}>
+            <rect x={px + 0.4 + i * 5.6} y={-28.2} width={5} height={3.4} rx={0.8} fill={t(l.colour)} />
+            <text x={px + 2.9 + i * 5.6} y={-25.6} fontSize={2.4} fontWeight={700} textAnchor="middle" fill={t('#FFFFFF')}>{l.ref}</text>
+          </g>
+        ))}
+      </g>
+    );
+  };
   return (
     <g data-traffic-fixtures={side} ref={root}>
       {/* La voie du premier plan (vers la droite) longe le trottoir d'en face, en bas de l'image ; celle du fond, le trottoir du haut. */}
-      {side === 'near' ? busStop(w.busStop.far, metrics.curb + 1) : busStop(w.busStop.near, metrics.farSide)}
+      {side === 'near' ? busStop(w.busStop.far, metrics.curb + 1, 'far') : busStop(w.busStop.near, metrics.farSide, 'near')}
       {w.light && (side === 'near' ? pole(w.light.x - (CROSS_HALF + 3) * u, metrics.curb + 1, true) : pole(w.light.x + (CROSS_HALF + 3) * u, metrics.farSide, false))}
     </g>
   );
@@ -329,6 +411,81 @@ export function CrossingLayer({ handle, metrics, sky, rainy, still, ghibli, froz
         const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
         return (
           <g key={p.id} data-crosser={p.id} transform={transform(p)}>
+            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+// Voyageurs des arrêts de bus (bus-stop.ts, état porté par le moteur) : arrivent à pied par un bord, attendent au poteau en
+// regardant venir le bus, marchent jusqu'à sa porte avant et montent (petite marche vers la chaussée, derrière la caisse) ;
+// d'autres descendent et repartent. Trois parties pour la profondeur : `far` (trottoir des immeubles, derrière la voie du
+// fond), `near-step` (montée et descente au premier plan, juste derrière la voie du premier plan), `near` (trottoir d'en face,
+// devant). Re-rendu quand la liste ou la partie d'un voyageur change (roster).
+export type RiderPart = 'far' | 'near-step' | 'near';
+const partOf = (p: Rider): RiderPart | null => (p.stage === 'inside' ? null : p.side === 'far' ? 'far' : p.stage === 'step' || p.stage === 'alight' ? 'near-step' : 'near');
+export function BusStopRiders({ handle, metrics, sky, rainy, still, ghibli, frozenT, part }: CrossProps & { part: RiderPart }): ReactElement {
+  const w = handle.world;
+  const u = metrics.unit;
+  const top = metrics.walkY;
+  const bottom = metrics.farSide + 5 * u;
+  const figures = useFigureRegistry();
+  const root = useRef<SVGGElement | null>(null);
+  const [, setRoster] = useState(w.roster);
+  const view = (p: Rider): { x: number; y: number; yaw: number; k: number; walking: boolean } => {
+    const wait = p.side === 'far' ? (metrics.walkY + metrics.curb) / 2 : bottom;
+    const lane = p.side === 'far' ? metrics.laneY.far - 3 * u : metrics.laneY.near - 2 * u;
+    const y = wait + (lane - wait) * p.step * 0.8;
+    const arrived = Math.abs(p.target - p.x) < 0.5;
+    // Orientation (16 directions : 0 vers la droite, 4 face à nous, 8 vers la gauche, 12 de dos) : en marche, vers la cible ;
+    // à l'attente, vers la chaussée et le côté d'où vient le bus ; sur la marche du bus, vers lui (montée) ou vers nous (descente).
+    const yaw = p.stage === 'step' ? (p.side === 'near' ? 12 : 4) : p.stage === 'alight' ? (p.side === 'near' ? 4 : 12) : !arrived ? (p.target > p.x ? 0 : 8) : p.side === 'near' ? 10 : 2;
+    return { x: p.x, y, yaw, k: u * STREET_SCALE.person * (1 + 0.12 * ((y - top) / (bottom - top))), walking: p.stage === 'step' || p.stage === 'alight' || !arrived };
+  };
+  const transform = (p: Rider): string => {
+    const v = view(p);
+    const mirror = !ghibli && v.yaw > 4 && v.yaw < 12 ? -1 : 1;
+    return `translate(${v.x.toFixed(1)} ${v.y.toFixed(1)}) scale(${(mirror * v.k).toFixed(3)} ${v.k.toFixed(3)})`;
+  };
+  const pose = (p: Rider) => {
+    const v = view(p);
+    return { yaw: v.yaw, gait: v.walking ? ('walk' as const) : ('stand' as const), phase: v.walking ? phaseIndexOf((p.walked + p.step * 14 * u) / v.k) : 0, head: 0 };
+  };
+  const seen = useRef(w.roster);
+  const place = useMemo(
+    () => (now: number): void => {
+      void now;
+      if (w.roster !== seen.current) {
+        seen.current = w.roster;
+        setRoster(w.roster);
+      }
+      const el = root.current;
+      if (!el) return;
+      for (const p of w.stopCrowd.riders) {
+        if (partOf(p) !== part) continue;
+        const node = el.querySelector(`[data-rider="${p.id}"]`);
+        if (!node) continue;
+        node.setAttribute('transform', transform(p));
+        if (ghibli && !still) poseFigure(figures, node.querySelector(':scope > [data-figure]'), pose(p));
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [w, still, ghibli, figures, top, bottom, part],
+  );
+  useWallClockLoop(place, [place]);
+  useEffect(() => {
+    if (still) place(frozenT);
+  }, [still, place, frozenT]);
+  // Profondeur : du plus loin (haut) au plus près (bas).
+  const mine = w.stopCrowd.riders.filter((p) => partOf(p) === part).sort((a, b) => view(a).y - view(b).y);
+  return (
+    <g data-bus-riders={part} ref={root}>
+      {mine.map((p) => {
+        const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
+        return (
+          <g key={p.id} data-rider={p.id} data-stage={p.stage} transform={transform(p)}>
             {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
           </g>
         );

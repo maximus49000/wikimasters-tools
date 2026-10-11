@@ -1,3 +1,4 @@
+import type { BusNetwork } from './traffic/bus-lines';
 import { activeFestivities, type DayContext, type FestivityId } from './calendar';
 import { roadClosed } from './parade';
 import type { NamePool } from './shops/lifecycle';
@@ -11,6 +12,8 @@ export type CityContext = {
   daylight: number;
   // Rue commerçante (vague 1b-iv-a) : jour de départ de la pièce et noms locaux ; absent = pas de commerces.
   shops?: { epochDay: number; names: NamePool };
+  // Lignes de bus réelles autour de la position (relais /buslines) ; absent ou null = lignes de repli.
+  buses?: BusNetwork | null;
 };
 export type CityIntensity = {
   traffic: number;

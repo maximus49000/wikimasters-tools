@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { TrafficLane, type TrafficHandle } from '../../src/content/traffic-layer';
+import { BusStopRiders, TrafficFixtures, TrafficLane, type TrafficHandle } from '../../src/content/traffic-layer';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { advance, warmTraffic, type TrafficEnv } from '../../src/core/library/city/traffic/engine';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
@@ -100,5 +100,42 @@ describe('véhicules à part dans la circulation', () => {
     expect(moto).not.toBeNull();
     expect(moto.querySelector('[data-ghibli-car]')).toBeNull();
     expect(host.querySelector('[data-ghibli-car]')).toBeNull();
+  });
+});
+
+describe('lignes de bus et arrêts (V4)', () => {
+  const line = { ref: '30', from: 'Hôtel de Ville', to: 'Louise Michel', colour: '#e6007e', stops: ['Hôtel de Ville', 'Lutin', 'Brisepotière', 'Louise Michel'] };
+  const busEnv: TrafficEnv = { ...env, busLines: [line], arrivals: [{ key: 'b1', kind: 'bus', track: 'near', start: T0 - 3 }] };
+  async function render(ghibli: boolean): Promise<{ host: HTMLElement; handle: TrafficHandle }> {
+    const handle: TrafficHandle = { world: warmTraffic({ width: 1080, seed: 4, unit: m.unit, startS: T0 }, busEnv), env: busEnv };
+    const host = document.createElement('div');
+    await act(async () =>
+      createRoot(host).render(
+        <svg>
+          <TrafficFixtures handle={handle} metrics={m} sky={sky} still={false} frozenT={T0} side="far" />
+          <TrafficLane handle={handle} lane="near" metrics={m} sky={sky} lights={false} rainy={false} still={false} ghibli={ghibli} fests={[]} eventsByKey={new Map()} frozenT={T0} />
+          <BusStopRiders handle={handle} metrics={m} sky={sky} rainy={false} still={false} ghibli={ghibli} frozenT={T0} part="near" />
+        </svg>,
+      ),
+    );
+    return { host, handle };
+  }
+  it('Ghibli : bus à la ligne réelle, girouette latérale qui annonce l’arrêt de la scène, sans clipPath ni id', async () => {
+    const { host, handle } = await render(true);
+    const bus = host.querySelector('[data-kind="bus"]')!;
+    expect(bus).not.toBeNull();
+    const text = bus.querySelector('[data-marquee] text')!.textContent!;
+    expect(text).toContain('30');
+    expect(text).toContain(handle.world.stopNames.near);
+    expect(host.querySelector('clipPath')).toBeNull();
+    expect(host.querySelector('[id]')).toBeNull();
+    expect(host.querySelector('[data-bus-stop="near"]')!.getAttribute('data-stop-name')).toBe(handle.world.stopNames.near);
+  });
+  it('voyageurs : pantins en Ghibli, sprites classiques sinon ; la girouette latérale est réservée au Ghibli', async () => {
+    const g = await render(true);
+    advance(g.handle.world, T0 + 200, busEnv);
+    for (const n of g.host.querySelectorAll('[data-rider]')) expect(n.querySelector('[data-figure]')).not.toBeNull();
+    const c = await render(false);
+    expect(c.host.querySelector('[data-marquee]')).toBeNull();
   });
 });

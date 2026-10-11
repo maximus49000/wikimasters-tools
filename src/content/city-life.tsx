@@ -34,7 +34,7 @@ import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
 import { collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type TerraceGuestNode, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, tone } from './city-sprites';
-import { CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
+import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
 import type { ScheduledArrival, TrafficEnv } from '../core/library/city/traffic/engine';
 import { SantaLayer } from './santa-layer';
 import { useCityEvents } from './use-city-events';
@@ -284,8 +284,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       crowd: intensity.closed ? 0 : intensity.walkers,
       crossPx: metrics.farSide + 5 * metrics.unit - metrics.walkY,
       vanLabels,
+      ...(city.buses ? { busLines: city.buses.lines, school: city.buses.school } : {}),
     }),
-    [intensity, arrivals, deliveries, metrics, vanLabels],
+    [intensity, arrivals, deliveries, metrics, vanLabels, city.buses],
   );
   const traffic = useTraffic({ width, seed, unit: metrics.unit, env: trafficEnv, startS: still ? (frozen.current ?? 0) : Date.now() / 1000 });
 
@@ -649,14 +650,19 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           profondeur sur la chaussée (aucune voiture ne roule alors). */}
       <InstallLayer {...install} part="street" />
       <Crosswalk handle={traffic} metrics={metrics} sky={sky} />
+      {/* Voyageurs de l'arrêt du trottoir des immeubles (voie du fond) : derrière ses bus. */}
+      <BusStopRiders handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="far" />
       <TrafficFixtures handle={traffic} metrics={metrics} sky={sky} still={still} frozenT={frozen.current ?? 0} side="near" />
       {lane('far')}
       {/* Grand défilé du 14 juillet (route fermée, aucune voiture) : une file du fond réduite, derrière celle du premier plan. */}
       <ParadeLayer lane="far" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} ghibli={ghibli} />
+      {/* Montée et descente au premier plan : derrière la caisse du bus de la voie du premier plan. */}
+      <BusStopRiders handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="near-step" />
       {lane('near')}
       <ParadeLayer lane="near" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} ghibli={ghibli} />
       <CrossingLayer handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} />
       <TrafficFixtures handle={traffic} metrics={metrics} sky={sky} still={still} frozenT={frozen.current ?? 0} side="far" />
+      <BusStopRiders handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="near" />
     </g>
   );
 }

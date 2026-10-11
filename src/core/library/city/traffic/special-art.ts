@@ -169,8 +169,12 @@ function build(s: SpecialSpec): CarArt {
         if (n === 1) people.push({ x: wx + 3.2, y: -23, k: BUST * 0.78 });
         if (n === 2) people.push({ x: wx + 2.2, y: -23, k: BUST * 0.78 }, { x: wx + 5.2, y: -22.6, k: BUST * 0.78 });
       }
-      const sign = `${s.line?.ref ?? '1'}  ${(s.line?.to ?? 'Gare').toUpperCase()}`.slice(0, 22);
-      const sw = 3 + sign.length * 1.62;
+      // Girouette de toit : numéro sur la couleur de la ligne, puis la destination (largeurs estimées, gras 2,6).
+      const ref = s.line?.ref ?? '1';
+      const dest = (s.line?.to ?? 'Gare').toUpperCase().slice(0, 24);
+      const refW = ref.length * 1.85;
+      const sw = Math.min(66, 4.6 + refW + dest.length * 1.62);
+      const sx = Math.max(-33, Math.min(33 - sw, 1 - sw / 2));
       return model(
         {
           color: c,
@@ -179,8 +183,9 @@ function build(s: SpecialSpec): CarArt {
             piece(rr(-33.4, -29.4, 66.8, 12.5, [6.5, 8.5, 0, 0]), CREAM, -0.4, -0.5),
             fill(rect(-33, -16.6, 33, -15.4), '#c9a440'),
             piece(rr(23, -18, 6, 13, 1), mixHex(c, '#000000', 0.15), -0.2),
-            piece(rr(1 - sw / 2, -33.4, sw, 3.8, 1.6), '#2a2622', -0.2),
-            text(2.2 - sw / 2, -30.5, sign, 2.6, '#ffc94a'),
+            piece(rr(sx, -33.4, sw, 3.8, 1.6), '#2a2622', -0.2),
+            text(sx + 1.6, -30.5, ref, 2.6, '#ffffff', c),
+            text(sx + 3.4 + refW, -30.5, dest, 2.6, '#ffc94a'),
           ],
           windows: [...windows, 'M29 -27 Q33 -26 33.4 -19 L29 -19 Z'],
           people,
@@ -195,7 +200,10 @@ function build(s: SpecialSpec): CarArt {
       );
     }
     case 'school-bus': {
-      // Car scolaire blanc et bleu, deux enfants à chaque vitre, panneaux « transport d'enfants » à l'avant et à l'arrière.
+      // Car scolaire blanc et bleu, deux enfants à chaque vitre, panneaux « transport d'enfants » à l'avant et à l'arrière ;
+      // girouette au nom de l'établissement scolaire proche (relais /buslines), sinon « TRANSPORT SCOLAIRE ».
+      const school = (s.label ?? 'Transport scolaire').toUpperCase().slice(0, 24);
+      const schoolW = Math.min(66, 3.2 + school.length * 1.62);
       const people: Person[] = [{ x: 30.6, y: -24.2, k: BUST * 0.8 }];
       for (let i = 0; i < 6; i++) {
         const wx = -30 + i * 9.6;
@@ -205,7 +213,15 @@ function build(s: SpecialSpec): CarArt {
         {
           color: '#eef0f2',
           body: rr(-34, -31, 68, 27, [6, 8, 3, 3]),
-          paint: [fill(rect(-33.6, -14.5, 33.6, -11.5), '#2d6db5'), fill(rect(-33.6, -11.5, 33.6, -10.5), '#e8b53a'), ...kidsSign(-33), ...kidsSign(26), text(-12, -15.8, 'ÉCOLE', 3.4, '#2d6db5')],
+          paint: [
+            fill(rect(-33.6, -14.5, 33.6, -11.5), '#2d6db5'),
+            fill(rect(-33.6, -11.5, 33.6, -10.5), '#e8b53a'),
+            ...kidsSign(-33),
+            ...kidsSign(26),
+            text(-12, -15.8, 'ÉCOLE', 3.4, '#2d6db5'),
+            piece(rr(Math.max(-33, Math.min(33 - schoolW, 1 - schoolW / 2)), -34.4, schoolW, 3.8, 1.6), '#2a2622', -0.2),
+            text(Math.max(-33, Math.min(33 - schoolW, 1 - schoolW / 2)) + 1.6, -31.5, school, 2.6, '#ffc94a'),
+          ],
           windows: [...Array.from({ length: 6 }, (_, i) => rr(-30 + i * 9.6, -28, 7.6, 8.4, 1.6)), 'M29 -28 Q33 -27 33.4 -19 L29 -19 Z'],
           people,
           wheels: [[-21, 4.6], [20, 4.6]],

@@ -14,7 +14,8 @@ import { carSpeedFactor, carStream, nextCar, type CarSpec, type CarStream } from
 import { carExtent } from './car-art';
 import { lightColorAt, newWalker, stepLight, stepWalker, type PushLight, type Walker } from './crossing';
 import { SPECIAL_SPEED, specialExtent, type SpecialId, type SpecialSpec } from './special-art';
-import { fallbackLine } from './bus-lines';
+import { directed, fallbackLine, sceneStopIndex, type BusLine } from './bus-lines';
+import { createStopCrowd, stepStops, type StopCrowd, type StopSide } from './bus-stop';
 
 export type Track = 'near' | 'far' | 'bike';
 export const TRACK_DIR: Readonly<Record<Track, 1 | -1>> = { near: 1, far: -1, bike: 1 };
@@ -84,6 +85,10 @@ export type TrafficEnv = {
   crossPx: number;
   // Inscriptions des fourgons Type H selon les commerces de la rue (LAITERIE par défaut).
   vanLabels?: readonly string[];
+  // Lignes de bus réelles (relais /buslines) ; absentes ou vides : trois lignes de repli tirées par la graine.
+  busLines?: readonly BusLine[];
+  // Établissement scolaire proche (girouette du car scolaire).
+  school?: string | null;
 };
 
 export type TrafficWorld = {
@@ -105,6 +110,11 @@ export type TrafficWorld = {
   roster: number; // incrémenté quand la liste des agents change
   cars: CarStream; // suite des voitures générées, partagée par toutes les voies
   vanLabels: readonly string[]; // inscriptions des Type H (relues de l'environnement à chaque entrée)
+  lineSrc: readonly BusLine[] | undefined; // lignes reçues (pour repérer un changement)
+  lines: readonly BusLine[]; // lignes des bus (réelles, sinon de repli), dans le sens de la voie du premier plan
+  stopNames: Record<StopSide, string>; // nom de l'arrêt de la scène, par voie servie
+  school: string | null;
+  stopCrowd: StopCrowd; // voyageurs des deux arrêts
 };
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -142,10 +152,28 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     roster: 0,
     cars: carStream(o.seed ^ hashString('cars')),
     vanLabels: [],
+    lineSrc: undefined,
+    lines: [],
+    stopNames: { near: '', far: '' },
+    school: null,
+    stopCrowd: createStopCrowd(o.seed, 0),
   };
+  setLines(w, undefined);
+  // Arrêts de bus à l'écart du passage piéton (poteaux, voyageurs, bus arrêté et sa file ne se mêlent pas au feu) : au moins
+  // 170 unités (230 pour celui d'en face, pour que les deux poteaux ne s'alignent pas), du côté tiré s'il reste dans le monde,
+  // sinon de l'autre.
+  for (const side of ['near', 'far'] as const) {
+    const gap = (side === 'near' ? 230 : 170) * o.unit;
+    const d = w.busStop[side] - w.light.x;
+    if (Math.abs(d) >= gap) continue;
+    const pref = d >= 0 ? 1 : -1;
+    const x = w.light.x + pref * gap;
+    w.busStop[side] = x > 40 * o.unit && x < o.width - 40 * o.unit ? x : w.light.x - pref * gap;
+  }
   w.light.since = w.t - 60;
   w.light.log.push({ t: w.t - 60, color: 'green' });
   w.walkerAt = w.t;
+  w.stopCrowd = createStopCrowd(o.seed, w.t);
   w.spawnAt = { near: w.t, far: w.t, bike: w.t };
   return w;
 }
@@ -219,9 +247,9 @@ function specialOf(w: TrafficWorld, kind: AgentKind, seed: number, track: Track)
   const u = mulberry32(seed ^ 0x5bec)();
   switch (kind) {
     case 'bus':
-      return { id: 'bus', seed, line: fallbackLine((w.seed * 3 + Math.floor(u * 3)) >>> 0) };
+      return { id: 'bus', seed, line: directed(w.lines[Math.floor(u * w.lines.length)]!, TRACK_DIR[track]) };
     case 'school-bus':
-      return { id: 'school-bus', seed };
+      return { id: 'school-bus', seed, ...(w.school ? { label: w.school } : {}) };
     case 'tram':
       return { id: 'tram', seed };
     case 'ambulance':
@@ -235,6 +263,16 @@ function specialOf(w: TrafficWorld, kind: AgentKind, seed: number, track: Track)
     default:
       void track;
       return undefined;
+  }
+}
+// Lignes des bus de la pièce : réelles si on en a, sinon trois lignes de repli ; nom de l'arrêt de la scène pour chaque sens
+// (un arrêt intermédiaire de la première ligne, dans le sens de la voie).
+function setLines(w: TrafficWorld, src: readonly BusLine[] | undefined): void {
+  w.lineSrc = src;
+  w.lines = src && src.length > 0 ? src : [0, 1, 2].map((i) => fallbackLine((w.seed * 3 + i) >>> 0));
+  for (const side of ['near', 'far'] as const) {
+    const line = directed(w.lines[0]!, TRACK_DIR[side]);
+    w.stopNames[side] = line.stops[sceneStopIndex(line, w.seed ^ hashString(`stop-${side}`))] ?? line.to;
   }
 }
 function vanSpec(w: TrafficWorld, id: SpecialId, seed: number): SpecialSpec {
@@ -254,6 +292,11 @@ function entryFree(w: TrafficWorld, track: Track, half: number): boolean {
 
 function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
   w.vanLabels = env.vanLabels ?? [];
+  w.school = env.school ?? null;
+  if (env.busLines !== w.lineSrc) {
+    setLines(w, env.busLines);
+    w.roster++;
+  }
   // Événements de rue planifiés : entrent à leur heure dès qu'il y a la place (route fermée : aucun car scolaire).
   for (const e of env.arrivals) {
     if (w.spawned.has(e.key) || e.start > t) continue;
@@ -442,10 +485,29 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
       me.hist.at = k;
     }
   }
+  stepBusStops(w, env, t);
   const before = w.agents.length;
   w.agents = w.agents.filter((a) => a.s - a.half < span(w));
   if (w.agents.length !== before) w.roster++;
   w.t = t;
+}
+
+// Porte avant du bus (fraction de sa demi-longueur, voir special-art : porte en x = 26 sur un encombrement de 37,6).
+export const BUS_DOOR = 0.69;
+// Voyageurs des arrêts (bus-stop.ts) : un bus arrêté à l'arrêt de la scène est retenu tant qu'on monte ou descend.
+function stepBusStops(w: TrafficWorld, env: TrafficEnv, t: number): void {
+  const busAt = (side: StopSide): { id: string; door: number } | null => {
+    const a = w.agents.find((x) => x.track === side && x.kind === 'bus' && x.stop === 'bus');
+    return a ? { id: a.id, door: xOfS(w, side, a.s) + TRACK_DIR[side] * a.half * BUS_DOOR } : null;
+  };
+  const { changed, hold } = stepStops(
+    w.stopCrowd,
+    { stopX: w.busStop, buses: { near: busAt('near'), far: busAt('far') }, crowd: env.crowd, closed: env.closed, width: w.width, margin: MARGIN * w.unit, unit: w.unit },
+    t,
+    DT,
+  );
+  for (const a of w.agents) if (hold.has(a.id)) a.stopUntil = Math.max(a.stopUntil, t + 2 * DT);
+  if (changed) w.roster++;
 }
 
 // Piétons du passage : arrivées tirées selon l'affluence (au plus 8 à la fois), feu à bouton-poussoir.
