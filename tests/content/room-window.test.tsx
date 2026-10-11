@@ -60,7 +60,7 @@ describe('RoomView — fenêtres', () => {
     // Le décor est de vrais nœuds, hors de <defs> : aucune copie <use> hors glissé.
     expect(container.querySelectorAll('[data-window-views] [data-panorama]')).toHaveLength(1);
     expect(container.querySelector('defs [data-panorama]')).toBeNull();
-    expect(container.querySelector('use')).toBeNull();
+    expect(container.querySelector('use:not([href$="-wall"])')).toBeNull();
   });
 
   it('une seule couche d’acteurs pour deux fenêtres, hors de <defs>, sans <use>', () => {
@@ -82,7 +82,8 @@ describe('RoomView — fenêtres', () => {
     const actorsId = container.querySelector('[data-actors]')!.closest('g[id]')!.id;
     expect(staticId).not.toBe(actorsId);
     const views = container.querySelector('[data-window-views]')!;
-    expect(views.getAttribute('clip-path')).toBe(`url(#${staticId}-clip)`);
+    expect(views.tagName.toLowerCase()).toBe('svg');
+    expect(views.getAttribute('overflow')).toBe('hidden');
     // Les cadres ne dessinent plus ni vitre ni décor.
     for (const w of container.querySelectorAll('[data-window-art]')) {
       expect(w.querySelector('use')).toBeNull();
@@ -93,13 +94,36 @@ describe('RoomView — fenêtres', () => {
     expect(all.indexOf(views)).toBeLessThan(all.indexOf(container.querySelector('[data-furniture="window"]')!.parentElement!));
   });
 
-  it('un seul masque, avec un rectangle par vitre à la taille de sa fenêtre', () => {
+  it('la vue est découpée par UN seul rectangle (englobant), sans clipPath', () => {
     show(2);
-    expect(container.querySelectorAll('clipPath')).toHaveLength(1);
-    const clips = Array.from(container.querySelectorAll('clipPath rect'));
-    expect(clips).toHaveLength(2);
-    const widths = clips.map((r) => Number(r.getAttribute('width')));
-    expect(widths[1]!).toBeGreaterThan(widths[0]!);
+    expect(container.querySelector('clipPath')).toBeNull();
+    const views = container.querySelector('[data-window-views]')!;
+    const [x, y, w, h] = ['x', 'y', 'width', 'height'].map((a) => Number(views.getAttribute(a)));
+    // Fenêtres à col 2 (6 de large) et col 12 (8 de large) : de la vitre de gauche à celle de droite.
+    expect(w!).toBeGreaterThan(0);
+    expect(views.getAttribute('viewBox')).toBe(`${x} ${y} ${w} ${h}`);
+  });
+
+  it('des fenêtres alignées sur la même rangée ont un trou de mur entre leurs vitres, dessiné après la vue', () => {
+    show(2);
+    const gaps = container.querySelectorAll('[data-window-gap]');
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]!.querySelector('use')?.getAttribute('href')).toMatch(/-wall$/);
+    expect(container.querySelector('[id$="-wall"]')).not.toBeNull();
+    const kids = Array.from(container.querySelector('svg')!.children);
+    const idx = (el: Element) => kids.findIndex((k) => k === el || k.contains(el));
+    const wall = idx(container.querySelector('[data-window-wall]')!);
+    const views = idx(container.querySelector('[data-window-views]')!);
+    const gap = idx(gaps[0]!);
+    const furniture = idx(container.querySelector('[data-furniture="window"]')!);
+    expect(wall).toBeLessThan(views);
+    expect(views).toBeLessThan(gap);
+    expect(gap).toBeLessThan(furniture);
+  });
+
+  it('une seule fenêtre : aucun trou', () => {
+    show(1);
+    expect(container.querySelector('[data-window-gap]')).toBeNull();
   });
 
   it('WindowArt sans mode vue ne dessine ni vitre ni décor', () => {
@@ -107,13 +131,15 @@ describe('RoomView — fenêtres', () => {
     const palette = { skirt: '#111', edge: '#222' } as never;
     act(() => root.render(<svg><WindowArt rect={rect} palette={palette} steampunk={false} /></svg>));
     expect(container.querySelector('rect[fill="#9CC4E8"]')).toBeNull();
-    expect(container.querySelector('use')).toBeNull();
+    expect(container.querySelector('use:not([href$="-wall"])')).toBeNull();
     expect(container.querySelector('clipPath')).toBeNull();
   });
 
   it('pendant le glissé, la vitre de la fenêtre soulevée quitte le masque et le fond ; l’autre reste', () => {
     show(2, 'city', undefined, { id: 'w0', x: 200, y: 200 });
-    expect(container.querySelectorAll('defs clipPath rect')).toHaveLength(1);
+    // La vue ne couvre plus que l'autre vitre ; la vitre soulevée n'a plus de vue sur le mur.
+    expect(container.querySelectorAll('[data-window-views]')).toHaveLength(1);
+    expect(Number(container.querySelector('[data-window-views]')!.getAttribute('x'))).toBeGreaterThan(200);
     expect(container.querySelectorAll('[data-window-glass] rect')).toHaveLength(1);
   });
 

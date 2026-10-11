@@ -5,6 +5,7 @@ import { sizeOf } from '../core/library/furniture-catalog';
 import { boxesOf, lampsOf, layoutSignature } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
+import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { ShelfItemArt, WallArt } from './library-card-art';
 import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
@@ -396,6 +397,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   );
   // La fenêtre soulevée n'a plus de vue à sa place (sa copie porte la sienne) : seul son cadre estompé reste sur le mur.
   const shownGlasses = glasses.filter((_, i) => windows[i]!.id !== drag?.id);
+  const viewBox = boundingRect(shownGlasses);
+  const gaps = gapRects(shownGlasses);
 
   return (
     <svg
@@ -406,19 +409,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       style={{ aspectRatio: `${width} / ${HEIGHT}`, width: `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block' }}
     >
       {decor.glow && <NeonDefs />}
-      <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
-      {room.style === 'steampunk' && <g data-steampunk-decor=""><SteampunkDecor cols={room.cols} wallH={wallH} /></g>}
-      {windows.length > 0 && (
-        <defs>
-          {/* Un seul masque pour toutes les vitres : le décor est dessiné une fois, découpé à la forme des vitres. */}
-          <clipPath id={`${worldId}-clip`}>
-            {shownGlasses.map((g, i) => (
-              <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} rx={steampunk ? 10 : 0} />
-            ))}
-          </clipPath>
-        </defs>
-      )}
-      {windows.length > 0 && (
+      {/* Mur statique (fond + décor steampunk), réutilisé par <use> pour combler les trous entre les vitres. */}
+      <g id={`${worldId}-wall`} data-window-wall="">
+        <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
+        {room.style === 'steampunk' && <g data-steampunk-decor=""><SteampunkDecor cols={room.cols} wallH={wallH} /></g>}
+      </g>
+      {viewBox && (
         // Le décor vu par les fenêtres, rendu UNE fois en vrais nœuds (plus de copies `<use>` à reconstruire à chaque image),
         // juste après le mur : un meuble du mur ne chevauche jamais une fenêtre. Les cadres sont dessinés par-dessus.
         <>
@@ -428,7 +424,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
             <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} fill="#9CC4E8" />
           ))}
         </g>
-        <g data-window-views="" clipPath={`url(#${worldId}-clip)`} style={{ pointerEvents: 'none' }}>
+        // Découpé par UN SEUL rectangle (le englobant des vitres) : un masque à plusieurs rectangles ralentit Blink (55 ms contre 8,5 ms
+        // mesurés). Les angles arrondis du steampunk sont couverts par le cadre ; les trous entre vitres redessinent le mur ensuite.
+        <svg data-window-views="" x={viewBox.x} y={viewBox.y} width={viewBox.w} height={viewBox.h} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
           {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que le second. */}
           <g id={worldId} data-window-view="">
             <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
@@ -440,7 +438,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
             actors
           )}
           {drops && shownGlasses.map((g, i) => <GlassDrops key={i} glass={g} />)}
-        </g>
+        </svg>
+        {gaps.map((r, i) => (
+          <svg key={i} data-window-gap="" x={r.x} y={r.y} width={r.w} height={r.h} viewBox={`${r.x} ${r.y} ${r.w} ${r.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
+            <use href={`#${worldId}-wall`} />
+          </svg>
+        ))}
         </>
       )}
       {backLayer.map(renderPlaced)}

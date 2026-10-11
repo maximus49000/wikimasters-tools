@@ -44,7 +44,7 @@ describe('RoomView — météo mémoïsée', () => {
     const clock = createWeatherClock();
     clock.setSource(steadySource('rain'), Date.now());
     let state = setRoomScene(createInitialState(), 'r1', 'city');
-    state = updateLayout(state, 'r1', () => [{ id: 'w0', kind: 'window' as const, col: 2, row: 1, w: 6, h: 5 }]);
+    state = updateLayout(state, 'r1', () => [{ id: 'w0', kind: 'window' as const, col: 2, row: 1, w: 6, h: 5 }, { id: 'w1', kind: 'window' as const, col: 12, row: 1, w: 6, h: 5 }]);
     const room = activeRoom(state);
     const sceneView = { sky: skyAt(13 * 60, times), minutes: 13 * 60, weather: { clock, flags: { gloom: true, rainy: true } }, city: { day: dayContext({ y: 2024, m: 6, d: 21 }, []), forcedNight: false } };
     const draw = (x: number) =>
