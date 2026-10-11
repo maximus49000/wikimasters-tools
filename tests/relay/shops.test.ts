@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { OVERPASS_ENDPOINTS } from '../../relay/src/overpass';
 import { proxyShops, typesOfTags } from '../../relay/src/shops';
 
 const element = (tags: Record<string, string>) => ({ type: 'node', id: Math.random(), tags });
@@ -52,17 +53,17 @@ describe('proxyShops', () => {
     expect((await run('/shops?lat=x&lon=2').result).status).toBe(400);
     const failing = run('/shops?lat=45&lon=3', [], 504);
     expect((await failing.result).status).toBe(502);
-    // Les deux serveurs ont été essayés, l'un après l'autre.
-    expect(failing.fetchFn).toHaveBeenCalledTimes(2);
+    // Tous les serveurs ont été essayés, l'un après l'autre.
+    expect(failing.fetchFn).toHaveBeenCalledTimes(OVERPASS_ENDPOINTS.length);
   });
-  it('se replie sur le miroir quand le serveur principal échoue', async () => {
+  it('passe au serveur suivant quand le premier échoue', async () => {
     const fetchFn = vi.fn(async (url: string, _init?: RequestInit) =>
-      url.includes('overpass-api.de') ? new Response('busy', { status: 504 }) : new Response(JSON.stringify({ elements: [element({ amenity: 'pub', name: 'Le Miroir' })] }), { status: 200 }));
+      url === OVERPASS_ENDPOINTS[0]!.url ? new Response('busy', { status: 504 }) : new Response(JSON.stringify({ elements: [element({ amenity: 'pub', name: 'Le Miroir' })] }), { status: 200 }));
     const res = await proxyShops(new URL('https://relais.test/shops?lat=20.01&lon=20.01'), { fetch: fetchFn, now: () => 0 });
     expect(JSON.parse(res.body).names).toEqual({ bar: ['Le Miroir'] });
-    expect(fetchFn.mock.calls.map((c) => c[0])).toEqual(['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']);
+    expect(fetchFn.mock.calls.map((c) => c[0])).toEqual([OVERPASS_ENDPOINTS[0]!.url, OVERPASS_ENDPOINTS[1]!.url]);
   });
-  it('n’interroge pas le miroir quand le serveur principal répond', async () => {
+  it('s’arrête au premier serveur qui répond', async () => {
     const ok = run('/shops?lat=21.01&lon=21.01', [element({ amenity: 'pub', name: 'A' })]);
     await ok.result;
     expect(ok.fetchFn).toHaveBeenCalledTimes(1);
@@ -72,8 +73,8 @@ describe('proxyShops', () => {
     const call = () => proxyShops(new URL('https://relais.test/shops?lat=10.01&lon=10.01'), { fetch: fetchFn, now: () => 0 });
     expect((await call()).status).toBe(502);
     expect((await call()).status).toBe(502);
-    // Rien en cache : chaque appel réessaie les deux serveurs.
-    expect(fetchFn).toHaveBeenCalledTimes(4);
+    // Rien en cache : chaque appel réessaie tous les serveurs.
+    expect(fetchFn).toHaveBeenCalledTimes(2 * OVERPASS_ENDPOINTS.length);
     const init = fetchFn.mock.calls[0]?.[1];
     expect((init?.headers as Record<string, string>)['user-agent']).toBe('WikimastersTools/1.0 (relais)');
     expect(init?.signal).toBeInstanceOf(AbortSignal);

@@ -1,13 +1,16 @@
 import { failure, forward, type Fetcher, type ProxyResult } from './proxy';
 
-// Overpass (OpenStreetMap, sans clé) avec repli : le serveur principal (communautaire, souvent saturé le soir : 504 constatés
-// le 2026-10-09) puis le miroir maps.mail.ru (opéré par VK, plus lent : ≈ 33 s), choisi avec l'accord de l'utilisateur
-// (2026-10-11). Essais l'un après l'autre (jamais en parallèle : pas de charge doublée sur des serveurs publics). Une
-// réponse n'est retenue que complète : 200, JSON, liste `elements`, sans « remark » (requête interrompue, résultat partiel).
+// Overpass (OpenStreetMap, sans clé) avec repli sur plusieurs serveurs publics, essayés l'un après l'autre (jamais en
+// parallèle : pas de charge doublée). Constat du 2026-10-11 (journal du relais) : overpass-api.de refuse les connexions venant
+// de Cloudflare (521) — la « panne » des noms de commerces n'en était pas une — et le miroir maps.mail.ru (VK) répond 504
+// partout. D'où, dans l'ordre : OpenStreetMap France, private.coffee, Kumi Systems, puis overpass-api.de en dernier recours.
+// Une réponse n'est retenue que complète : 200, JSON, liste `elements`, sans « remark » (requête interrompue, résultat partiel).
 // Overpass refuse (406) les requêtes sans User-Agent identifiable.
 export const OVERPASS_ENDPOINTS: readonly { url: string; timeoutMs: number }[] = [
-  { url: 'https://overpass-api.de/api/interpreter', timeoutMs: 20_000 },
-  { url: 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', timeoutMs: 40_000 },
+  { url: 'https://overpass.openstreetmap.fr/api/interpreter', timeoutMs: 15_000 },
+  { url: 'https://overpass.private.coffee/api/interpreter', timeoutMs: 15_000 },
+  { url: 'https://overpass.kumi.systems/api/interpreter', timeoutMs: 15_000 },
+  { url: 'https://overpass-api.de/api/interpreter', timeoutMs: 15_000 },
 ];
 export const OVERPASS_UA = 'WikimastersTools/1.0 (relais)';
 
