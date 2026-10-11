@@ -4,6 +4,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
+import { useSceneDayStart } from '../../src/content/parade-layer';
 import { MovingCrew, collectMovers, frameAt, placeMovers, type CrewScript, type MoverPos } from '../../src/content/moving-truck';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { dayNumber, ymdOfDay } from '../../src/core/library/city/shops/hours';
@@ -48,11 +49,12 @@ const frame = shopFrame(found.s.slot, metrics.ground);
 const stepOf = (name: string) => plan.steps.find((x) => x.step === name)!;
 const midMinute = (name: string): number => Math.round((stepOf(name).from + stepOf(name).to) / 2);
 
-const mount = (minutes: number, ghibli: boolean, figures = new FigureRegistry('t8m', { perFrame: 200 })): HTMLDivElement => {
-  const host = document.createElement('div');
-  document.body.append(host);
-  const root = createRoot(host);
-  mounted.push({ root, host });
+// `t0` : instant du rendu (par défaut, celui de la minute de la scène) ; `root` : racine gardée (re-rendu).
+const mount = (minutes: number, ghibli: boolean, figures = new FigureRegistry('t8m', { perFrame: 200 }), t0 = D0 + minutes * 60, keep?: { root: Root; host: HTMLDivElement }): HTMLDivElement => {
+  const host = keep?.host ?? document.createElement('div');
+  if (!keep) document.body.append(host);
+  const root = keep?.root ?? createRoot(host);
+  if (!keep) mounted.push({ root, host });
   const node: ReactNode = (
     <FigureContext.Provider value={figures}>
       <svg>
@@ -66,7 +68,7 @@ const mount = (minutes: number, ghibli: boolean, figures = new FigureRegistry('t
           sky={skyAt(minutes, times)}
           rainy={false}
           still={false}
-          t0={D0 + minutes * 60}
+          t0={t0}
           minutes={minutes}
           offset={found.offset}
           ghibli={ghibli}
@@ -77,6 +79,7 @@ const mount = (minutes: number, ghibli: boolean, figures = new FigureRegistry('t
   act(() => root.render(node));
   return host;
 };
+const yawGap = (a: number, b: number): number => Math.min((((a - b) % 16) + 16) % 16, (((b - a) % 16) + 16) % 16);
 const scriptOf = (c: Element): CrewScript => JSON.parse(c.querySelector('[data-moving-crew]')!.getAttribute('data-script')!) as CrewScript;
 const keyOf = (fig: Element): FigureKey => {
   const [sig, yaw, gait, phase, head, arms, lean] = fig.getAttribute('data-key')!.split('#').pop()!.split('|');
@@ -157,6 +160,8 @@ describe('déménageurs : entrées et sorties sans fondu (les deux graphismes)',
             const q = prev[i]!;
             const tag = `${sc.step} ${(t - sc.t0).toFixed(2)} s, porteur ${i}`;
             if (p.where === q.where && p.where !== 'off') expect(Math.hypot(p.x - q.x, p.y - q.y), `${tag} : saut`).toBeLessThanOrEqual(sc.speed * 0.05 + 1e-6);
+            // Orientation : jamais de demi-tour d'un coup (au plus deux crans en 0,05 s, le quart de tour du seuil compris).
+            if (p.where !== 'off' && q.where !== 'off') expect(yawGap(p.yaw, q.yaw), `${tag} : orientation ${q.yaw} → ${p.yaw}`).toBeLessThanOrEqual(2);
             checkJoin(sc, q, p, tag);
           });
           prev = cur;
@@ -180,4 +185,72 @@ describe('déménageurs : entrées et sorties sans fondu (les deux graphismes)',
       }
     });
   }
+
+  it('demi-tour à petits pas : en arrivant à sa place, on tourne cran par cran (allure « step »)', () => {
+    const sc = scriptOf(mount(midMinute('open-back'), true));
+    let prev: MoverPos | null = null;
+    let steps = 0;
+    const seen = new Set<number>();
+    for (let t = sc.t0; t < sc.t0 + 40; t += 0.01) {
+      const p = frameAt(sc, t).movers[0]!;
+      if (p.where === 'off') continue;
+      seen.add(p.yaw);
+      if (p.gait === 'step') steps++;
+      if (prev) expect(yawGap(p.yaw, prev.yaw)).toBeLessThanOrEqual(1);
+      prev = p;
+    }
+    expect(steps).toBeGreaterThan(0);
+    // De profil (0 ou 8) à trois quarts (2 ou 6) : passe par 1 ou 7.
+    expect(seen.has(1) || seen.has(7)).toBe(true);
+  });
+});
+
+describe('heure figée (réglage jour, nuit, manuel) : la minute de la scène ne change pas', () => {
+  it('trois minutes d’horloge plus tard, même minute : même ancrage, aucun saut ni changement de meuble', () => {
+    const figures = new FigureRegistry('t8f', { perFrame: 200 });
+    const minute = midMinute('carry-out');
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    mount(minute, false, figures, D0 + minute * 60 + 5, { root, host });
+    const before = scriptOf(host);
+    for (const dt of [61, 125, 185]) {
+      mount(minute, false, figures, D0 + minute * 60 + dt, { root, host });
+      expect(scriptOf(host).t0, `${dt} s`).toBe(before.t0);
+    }
+    // Continuité sur ces trois minutes (même scénario, même suite de meubles).
+    let prev = frameAt(before, D0 + minute * 60 + 5);
+    for (let t = D0 + minute * 60 + 5; t < D0 + minute * 60 + 185; t += 0.05) {
+      const cur = frameAt(scriptOf(host), t);
+      cur.movers.forEach((p, i) => {
+        const q = prev.movers[i]!;
+        if (p.where === q.where && p.where !== 'off') expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeLessThanOrEqual(before.speed * 0.05 + 1e-6);
+      });
+      if (cur.heavy && prev.heavy) expect(cur.kind).toBe(prev.kind);
+      prev = cur;
+    }
+  });
+});
+
+describe('useSceneDayStart (cortège, Fête de la musique, déménagement)', () => {
+  const Probe = ({ minutes, now, out }: { minutes: number; now: number; out: number[] }): null => {
+    out.push(useSceneDayStart(minutes, now));
+    return null;
+  };
+  it('minute figée : ancrage gardé ; minute qui avance avec l’horloge : gardé ; minute changée à la main : réancré', () => {
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const out: number[] = [];
+    const at = (minutes: number, now: number): number => {
+      act(() => root.render(<Probe minutes={minutes} now={now} out={out} />));
+      return out[out.length - 1]!;
+    };
+    const s0 = at(600, D0 + 600 * 60 + 10);
+    for (const dt of [70, 130, 250, 600]) expect(at(600, D0 + 600 * 60 + dt)).toBe(s0);
+    expect(at(610, D0 + 610 * 60 + 5)).toBe(s0);
+    expect(at(611, D0 + 611 * 60 + 5)).toBe(s0);
+    expect(at(900, D0 + 611 * 60 + 20)).toBe(D0 + 611 * 60 - 900 * 60);
+  });
 });

@@ -626,18 +626,27 @@ const restHand = (o: Outfit, w: Pick<Worker, 'pose' | 'dir' | 'ladder'>): readon
 };
 
 // Ghibli : déplacement depuis le rendu précédent (transition CSS de 30 s entre deux minutes, comme le classique), lu par la
-// boucle (collectWorkers / placeWorkers) : la marche et l'escalade avancent avec la distance parcourue.
+// boucle (collectWorkers / placeWorkers) : la marche et l'escalade avancent avec la distance parcourue. Orientation changée
+// (demi-tour, arrivée à l'échelle, mise en place face à face) : la boucle la fait tourner à petits pas pendant les TURN_S
+// premières secondes (`turnFrom`), au lieu d'un saut.
 function useWorkerMove(w: Worker, k: number, ghibli: boolean): WorkerMove | null {
   const xs = w.x.toFixed(1);
   const ys = w.y.toFixed(1);
-  const prev = useRef<Pt | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const step = useMemo(() => ({ since: Date.now() / 1000, dist: prev.current ? Math.hypot(w.x - prev.current.x, w.y - prev.current.y) : 0 }), [xs, ys]);
-  useLayoutEffect(() => {
-    prev.current = { x: w.x, y: w.y };
+  const look = crewLook(w);
+  const prev = useRef<{ x: number; y: number; yaw: number } | null>(null);
+  const step = useMemo(
+    () => {
+      const p = prev.current;
+      return { since: Date.now() / 1000, dist: p ? Math.hypot(w.x - p.x, w.y - p.y) : 0, turnFrom: p && p.yaw !== look.yaw ? p.yaw : undefined };
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [xs, ys]);
-  return ghibli ? { look: crewLook(w), since: step.since, dist: step.dist, k } : null;
+    [xs, ys, look.yaw],
+  );
+  useLayoutEffect(() => {
+    prev.current = { x: w.x, y: w.y, yaw: look.yaw };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [xs, ys, look.yaw]);
+  return ghibli ? { look, since: step.since, dist: step.dist, k, ...(step.turnFrom !== undefined ? { turnFrom: step.turnFrom } : {}) } : null;
 }
 
 function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp: Pick<CrewInput, 'sky' | 'rainy' | 'ghibli'>; k: number; id?: string }): ReactElement {

@@ -371,9 +371,12 @@ function crewLook(c: CrewPose, i: number): CrewLook {
 // Durée d'un déplacement de l'équipe (transition CSS entre deux minutes, WORKER_MOVE).
 const WORKER_S = 30;
 // Pose à l'instant t d'un ouvrier qui s'est déplacé de `dist` px depuis `since` (vitesse = dist / WORKER_S) : la phase suit
-// la distance parcourue ; la marche finie, debout ; sur l'échelle, la dernière prise est gardée.
-export type WorkerMove = { look: CrewLook; since: number; dist: number; k: number };
+// la distance parcourue ; la marche finie, debout ; sur l'échelle, la dernière prise est gardée. `turnFrom` : orientation
+// précédente ; pendant les TURN_S premières secondes, petits pas sur place de l'une à l'autre (jamais de demi-tour d'un coup).
+export type WorkerMove = { look: CrewLook; since: number; dist: number; k: number; turnFrom?: number };
 export function workerPose(w: WorkerMove, t: number): PoseIn {
+  const dt = t - w.since;
+  if (w.turnFrom !== undefined && w.turnFrom !== w.look.yaw && dt < TURN_S) return { yaw: turnYaw(w.turnFrom, w.look.yaw, Math.max(0, dt) / TURN_S), gait: 'step', phase: 0, head: 0, arms: w.look.arms };
   const p = w.dist > 0.01 ? Math.min(1, Math.max(0, (t - w.since) / WORKER_S)) : 1;
   const { yaw, gait, arms } = w.look;
   if (gait === 'walk' && (p >= 1 || w.dist <= 0.01)) return { yaw, gait: 'stand', phase: 0, head: 0, arms };

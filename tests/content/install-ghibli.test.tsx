@@ -206,4 +206,27 @@ describe('équipes d’installation au pantin (Ghibli)', () => {
       expect(r.host.querySelectorAll('[data-crew] [data-crew-worker]').length > 0).toBe(!ghibli);
     }
   });
+
+  it('demi-tour entre deux minutes (arrivée → mise en place face à face) : petits pas sur place, cran par cran', () => {
+    const m = findMinute(D14, 'barriers-bastille', (c) => c.step === 'place' && !c.removing && c.progress < 0.2);
+    const r = mount(D14, true);
+    r.at(m - 1);
+    const t = NOW / 1000 + m * 60;
+    r.at(m, t);
+    const crew = r.host.querySelector('[data-crew="barriers-bastille"]')!;
+    const turning = [...crew.querySelectorAll('[data-worker]')].find((w) => (JSON.parse(w.getAttribute('data-move')!) as { turnFrom?: number }).turnFrom !== undefined)!;
+    expect(turning).toBeDefined();
+    const yaws: number[] = [];
+    const gaits = new Set<string>();
+    for (let s = 0; s <= 0.6; s += 0.02) {
+      settle(r, t + s);
+      const k = keyOf(figOf(turning));
+      yaws.push(k.yaw);
+      gaits.add(k.gait);
+    }
+    const gap = (a: number, b: number): number => Math.min((((a - b) % 16) + 16) % 16, (((b - a) % 16) + 16) % 16);
+    for (let i = 1; i < yaws.length; i++) expect(gap(yaws[i]!, yaws[i - 1]!)).toBeLessThanOrEqual(2);
+    expect(new Set(yaws).size).toBeGreaterThan(2);
+    expect(gaits.has('step')).toBe(true);
+  });
 });

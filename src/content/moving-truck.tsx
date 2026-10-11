@@ -13,7 +13,7 @@ import { PosedPerson, STANDING, applyPose, poseHandles, type PoseHandles } from 
 import { DOOR_DARK, THRESHOLD_S, doorDarkOpacity, type Passage } from '../core/library/city/doorway';
 import { anchorsOf } from '../core/library/figure/bake';
 import { shapeOf, signatureOf } from '../core/library/figure/dress';
-import { YAW_BACK, YAW_FRONT, YAW_RIGHT, facingYaw, phaseIndexOf, turnYaw } from '../core/library/figure/gait';
+import { TURN_S, YAW_BACK, YAW_FRONT, YAW_RIGHT, facingYaw, phaseIndexOf, turnYaw } from '../core/library/figure/gait';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import type { FigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
@@ -200,7 +200,7 @@ type Pt = { x: number; y: number };
 export type CrewGeom = { a: Pt; b: Pt; n: number; gap: number; carry: 'out' | 'in'; kindSeed: number };
 // Porteur à un instant : dans la rue, sur le seuil de la porte (`depth` : 0 trottoir, 1 au fond de l'entrée) ou hors de vue
 // (dans le local, dans le camion). `walked` : px parcourus (phase des pas du pantin) ; `reach` : main tendue vers le hayon.
-export type MoverPos = { where: 'street' | 'door' | 'off'; x: number; y: number; depth: number; dir: 1 | -1; yaw: number; gait: 'walk' | 'stand'; walked: number; loaded: boolean; reach: boolean };
+export type MoverPos = { where: 'street' | 'door' | 'off'; x: number; y: number; depth: number; dir: 1 | -1; yaw: number; gait: 'walk' | 'step' | 'stand'; walked: number; loaded: boolean; reach: boolean };
 // Meuble lourd : position des pieds de la file (milieu entre le premier et le dernier), dans la rue ou sur le seuil.
 export type PiecePos = { where: 'street' | 'door'; x: number; y: number; depth: number };
 export type CrewFrame = { movers: MoverPos[]; kind: Piece; heavy: PiecePos | null };
@@ -283,39 +283,73 @@ export type CrewScript = {
   reach: boolean;
   speed: number;
   k: number;
-  hands: number;
 };
 type Seg =
   | { k: 'off'; dur: number }
+  | { k: 'turn'; at: Pt; from: number; to: number; dir: 1 | -1; dur: number }
   | { k: 'walk'; from: Pt; to: Pt; dur: number }
   | { k: 'sill'; from: number; to: number; face: 1 | -1; dur: number }
   | { k: 'stand'; at: Pt; face: 1 | -1; reach: boolean; dur: number };
 
+// Orientation debout à sa place : de trois quarts, tourné vers `face` ; sens du sprite classique (miroir) d'une orientation.
+const dirOfYaw = (yaw: number, fallback: 1 | -1): 1 | -1 => (yaw > 4 && yaw < 12 ? -1 : yaw < 4 || yaw > 12 ? 1 : fallback);
+const standYaw = (face: 1 | -1): number => (face > 0 ? 2 : 6);
+
 function segsOf(sc: CrewScript, i: number): Seg[] {
   const g = sc.geom;
   const spot = sc.spots[i]!;
-  const walk = (from: Pt, to: Pt): Seg => ({ k: 'walk', from, to, dur: Math.hypot(to.x - from.x, to.y - from.y) / sc.speed });
-  const wait = i * STAGGER;
   const segs: Seg[] = [];
-  if (sc.from === 'hide') segs.push({ k: 'off', dur: wait }, walk(sc.hide, spot));
-  else if (sc.from === 'door') segs.push({ k: 'off', dur: wait }, { k: 'sill', from: 1, to: 0, face: sideOf(g.a.x, spot.x), dur: THRESHOLD_S }, walk(g.a, spot));
-  else if (sc.from === 'truck') segs.push({ k: 'off', dur: wait }, walk(g.b, spot));
-  const stand = (dur: number): Seg => ({ k: 'stand', at: spot, face: sc.face[i]!, reach: sc.reach && i === 0, dur });
+  // Orientation courante : chaque marche commence (et finit) par quelques petits pas sur place, jamais de demi-tour d'un coup.
+  let yaw = standYaw(sc.face[i]!);
+  const turn = (at: Pt, to: number, dir: 1 | -1): void => {
+    if (to !== yaw) segs.push({ k: 'turn', at, from: yaw, to, dir, dur: TURN_S });
+    yaw = to;
+  };
+  const walk = (from: Pt, to: Pt): void => {
+    const dir = sideOf(from.x, to.x);
+    turn(from, facingYaw(dir), dir);
+    segs.push({ k: 'walk', from, to, dur: Math.hypot(to.x - from.x, to.y - from.y) / sc.speed });
+  };
+  const toSpot = (): void => turn(spot, standYaw(sc.face[i]!), sc.face[i]!);
+  const wait = i * STAGGER;
+  if (sc.from === 'hide') {
+    segs.push({ k: 'off', dur: wait });
+    yaw = facingYaw(sideOf(sc.hide.x, spot.x)); // déjà tourné dans la caisse, caché
+    walk(sc.hide, spot);
+    toSpot();
+  } else if (sc.from === 'door') {
+    // Le seuil fait lui-même le quart de tour (de face, puis vers la rue).
+    const dir = sideOf(g.a.x, spot.x);
+    segs.push({ k: 'off', dur: wait }, { k: 'sill', from: 1, to: 0, face: dir, dur: THRESHOLD_S });
+    yaw = facingYaw(dir);
+    walk(g.a, spot);
+    toSpot();
+  } else if (sc.from === 'truck') {
+    segs.push({ k: 'off', dur: wait });
+    yaw = facingYaw(sideOf(g.b.x, spot.x));
+    walk(g.b, spot);
+    toSpot();
+  }
+  const stand = (dur: number): void => void segs.push({ k: 'stand', at: spot, face: sc.face[i]!, reach: sc.reach && i === 0, dur });
   switch (sc.step) {
     case 'carry-out':
-      segs.push(stand(wait), walk(spot, g.a), { k: 'sill', from: 0, to: 1, face: sideOf(spot.x, g.a.x), dur: THRESHOLD_S });
+      stand(wait);
+      walk(spot, g.a);
+      segs.push({ k: 'sill', from: 0, to: 1, face: sideOf(spot.x, g.a.x), dur: THRESHOLD_S });
       break;
     case 'carry-in':
-      segs.push(stand(wait), walk(spot, g.b));
+      stand(wait);
+      walk(spot, g.b);
       break;
     case 'close-back': {
       // Le hayon fermé aux trois cinquièmes de l'étape, ils remontent dans le camion l'un après l'autre.
       const before = segs.reduce((sum, x) => sum + x.dur, 0);
-      segs.push(stand(Math.max(0, (sc.t1 - sc.t0) * 0.6 - before) + wait), walk(spot, sc.hide));
+      stand(Math.max(0, (sc.t1 - sc.t0) * 0.6 - before) + wait);
+      walk(spot, sc.hide);
       break;
     }
     default:
-      segs.push(stand(Infinity));
+      stand(Infinity);
   }
   segs.push({ k: 'off', dur: Infinity });
   return segs;
@@ -325,6 +359,8 @@ function segPos(sc: CrewScript, s: Seg, p: number, walked: number): MoverPos {
   switch (s.k) {
     case 'off':
       return OFF;
+    case 'turn':
+      return { where: 'street', x: s.at.x, y: s.at.y, depth: 0, dir: p < 0.5 ? dirOfYaw(s.from, s.dir) : s.dir, yaw: turnYaw(s.from, s.to, p), gait: 'step', walked, loaded: false, reach: false };
     case 'walk': {
       const at = lerpPt(s.from, s.to, p);
       const dir = sideOf(s.from.x, s.to.x);
@@ -335,7 +371,7 @@ function segPos(sc: CrewScript, s: Seg, p: number, walked: number): MoverPos {
       return { where: 'door', x: sc.geom.a.x, y: sc.geom.a.y, depth, dir: s.face, yaw: sillYaw(depth, s.to < s.from, s.face), gait: 'walk', walked, loaded: false, reach: false };
     }
     default:
-      return { where: 'street', x: s.at.x, y: s.at.y, depth: 0, dir: s.face, yaw: s.face > 0 ? 2 : 6, gait: 'stand', walked, loaded: false, reach: s.reach };
+      return { where: 'street', x: s.at.x, y: s.at.y, depth: 0, dir: s.face, yaw: standYaw(s.face), gait: 'stand', walked, loaded: false, reach: s.reach };
   }
 }
 
@@ -539,11 +575,12 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
     reach: step === 'open-back' || step === 'close-back',
     speed: (len * (1 + (n - 1) * gap)) / LEG / (1 - SILL),
     k: kp,
-    hands: ghibli ? ghibliHands(outfits[0]!) : HANDS,
   };
+  // Premier dessin : le même instant que la première image de la boucle (t0 = Date.now() du rendu), pour que rien ne bouge
+  // entre le rendu et la première pose.
   const f = frameAt(script, t0);
   const pieceLen = Math.max(7 * u, (n - 1) * FILE_GAP * u * (Math.abs(g.b.x - g.a.x) / len) + 6 * u);
-  const lift = script.hands * kp;
+  const lift = (ghibli ? ghibliHands(outfits[0]!) : HANDS) * kp;
   const pieceArt = (
     <g transform={`translate(0 ${(-lift).toFixed(2)})`}>
       {PIECES.filter((kd, i) => HEAVY.has(kd) && PIECES.indexOf(kd) === i).map((kd) => (
