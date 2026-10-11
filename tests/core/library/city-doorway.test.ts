@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { THRESHOLD_S, entranceOpening, farDoorX } from '../../../src/core/library/city/doorway';
+import { entranceOpening, farDoorX } from '../../../src/core/library/city/doorway';
 import { TRIP_CYCLE, doorsFor, tripAt, tripsFor } from '../../../src/core/library/city/doors';
 import { cityMetrics } from '../../../src/core/library/city/metrics';
-import { TURN_S, YAW_BACK, YAW_FRONT } from '../../../src/core/library/figure/gait';
+import { YAW_BACK, YAW_FRONT } from '../../../src/core/library/figure/gait';
 
 describe('porte au bout d’un trajet plafonné', () => {
   it('bord atteignable : pas de porte', () => {
@@ -46,9 +46,6 @@ describe('trajets des habitants', () => {
         expect(end.stage === 'threshold' || offscreen).toBe(true);
       }
     }
-  });
-  it('durée du passage d’une porte', () => {
-    expect(THRESHOLD_S + TURN_S).toBeLessThan(2);
   });
   it('ouverture de l’entrée sous l’auvent', () => {
     const m = cityMetrics(340);

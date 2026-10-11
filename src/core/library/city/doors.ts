@@ -42,17 +42,28 @@ export function doorsFor(width: number, height: number, seed: number): Door[] {
 // `endDoorX` : porte au bout d'un trajet plafonné (centre) ; l'habitant qui sort y entre, celui qui rentre en sort. null : bord du monde.
 export type Trip = { id: string; kind: 'out' | 'in'; doorX: number; endDoorX: number | null; dir: 1 | -1; speed: number; phase: number; outfit: Outfit; profile: Profile; scale: number };
 
-// Porte au bout du trajet : la plus lointaine à portée ; si le bord est au-delà du plafond et qu'aucune porte n'est à portée,
-// la plus proche au-delà (cas rare : un trajet jamais fini en rue ni plus long que le cycle).
+// Distance maximale d'un trajet de repli : le plus lent des habitants (12,6 px/s) la couvre en ≈ 119 s, deux seuils et deux demi-tours
+// compris, soit bien en deçà de TRIP_CYCLE (160 s) : le cycle ne coupe jamais un trajet en pleine rue.
+export const MAX_FALLBACK_PX = 1500;
+
+// Porte au bout du trajet : la plus lointaine à portée de MAX_TRIP_PX ; à défaut, la plus proche au-delà du plafond
+// (jusqu'à MAX_FALLBACK_PX) ; à défaut, le bord du monde s'il tient dans MAX_FALLBACK_PX, sinon la plus lointaine porte à portée de repli.
 function endDoorOf(doorX: number, dir: 1 | -1, width: number, others: readonly number[]): number | null {
   if (!Number.isFinite(width)) return null;
-  const far = farDoorX(doorX, dir, width, others);
-  if (far !== null) return far;
   const toEdge = dir > 0 ? width + WORLD_MARGIN - doorX : doorX + WORLD_MARGIN;
   if (toEdge <= MAX_TRIP_PX) return null;
-  let best: number | null = null;
-  for (const x of others) if ((x - doorX) * dir > 0 && (best === null || (x - doorX) * dir < (best - doorX) * dir)) best = x;
-  return best;
+  const far = farDoorX(doorX, dir, width, others);
+  if (far !== null) return far;
+  let nearest: number | null = null;
+  let farthest: number | null = null;
+  for (const x of others) {
+    const d = (x - doorX) * dir;
+    if (d <= MAX_TRIP_PX || d > MAX_FALLBACK_PX) continue;
+    if (nearest === null || d < (nearest - doorX) * dir) nearest = x;
+    if (farthest === null || d > (farthest - doorX) * dir) farthest = x;
+  }
+  if (nearest !== null) return nearest;
+  return toEdge <= MAX_FALLBACK_PX ? null : farthest;
 }
 
 // `width` : largeur du monde (infinie par défaut : jamais de porte au bout, les trajets vont au bord).
