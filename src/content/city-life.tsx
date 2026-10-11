@@ -388,7 +388,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         placeWaiters(waiters, t, metrics, ghibli ? figures : null);
         placeCarriers(carriers, t, metrics, ghibli ? figures : null);
         placeTerraceGuests(terraceGuests, t, metrics, ghibli ? figures : null);
-        placeMovers(crews, t);
+        placeMovers(crews, t, metrics, ghibli ? figures : null);
         if (ghibli) {
           placeStaffWalks(staffWalks, t, metrics, figures);
           placeWorkers(workers, t, figures);
@@ -587,7 +587,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         ))}
         {/* Déménagement : les porteurs (dessinés avant le camion, ils passent derrière lui en y entrant). */}
         {shops.views.map((view) => (
-          <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} />
+          <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} minutes={city.minutes} offset={shops.offsets.get(view.slot.id) ?? 0} ghibli={ghibli} />
         ))}
         {peds.map((p) => {
           // Présence affichée (pas la voulue) : mémorisée au premier rendu, puis changée seulement par la boucle, au bord.

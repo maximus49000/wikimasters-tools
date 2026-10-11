@@ -46,18 +46,21 @@ export function figurePalette(o: Outfit, sky: Sky, rainy: boolean): Palette {
 // Pose demandée par les sites : geste des bras et penché facultatifs (défauts : balancement de marche, droit).
 export type PoseIn = Omit<FigureKey, 'sig' | 'arms' | 'lean'> & { arms?: ArmPose; lean?: number };
 const keyOf = (sig: string, p: PoseIn): FigureKey => ({ sig, yaw: p.yaw, gait: p.gait, phase: p.phase, head: p.head, arms: p.arms ?? 'swing', lean: p.lean ?? 0 });
-// Objet tenu (outil, plateau, panneau…) : dessiné après l'<image>, translaté sur une accroche du pantin (repère du sprite).
-export type Held = { anchor: Anchor; node: ReactNode };
+// Objet tenu (outil, plateau, panneau…) : dessiné après l'<image>, translaté sur une accroche du pantin (repère du sprite) ;
+// `hands` : milieu des deux mains (carton porté à deux mains).
+export type HeldAnchor = Anchor | 'hands';
+export type Held = { anchor: HeldAnchor; node: ReactNode };
 
 // Transforms des accroches par clé de pose (chaînes prêtes, relues à chaque changement de pose) ; vidées au-delà de 4096.
-const heldCache = new Map<string, Record<Anchor, string>>();
-function heldTransforms(key: FigureKey): Record<Anchor, string> {
+const heldCache = new Map<string, Record<HeldAnchor, string>>();
+function heldTransforms(key: FigureKey): Record<HeldAnchor, string> {
   const ks = keyString(key);
   let t = heldCache.get(ks);
   if (!t) {
     const a = anchorsOf(key);
     const tr = (p: readonly [number, number]): string => `translate(${p[0]} ${p[1]})`;
-    t = { handR: tr(a.handR), handL: tr(a.handL), head: tr(a.head), headTop: tr(a.headTop), nape: tr(a.nape) };
+    const hands = [(a.handR[0] + a.handL[0]) / 2, (a.handR[1] + a.handL[1]) / 2] as const;
+    t = { handR: tr(a.handR), handL: tr(a.handL), head: tr(a.head), headTop: tr(a.headTop), nape: tr(a.nape), hands: tr(hands) };
     if (heldCache.size >= 4096) heldCache.clear();
     heldCache.set(ks, t);
   }
@@ -164,7 +167,7 @@ export function poseFigure(reg: FigureRegistry, node: Element | null, pose: Pose
   const t = heldTransforms(key);
   for (let i = 1; i < kids.length; i++) {
     const h = kids[i]!;
-    const a = h.getAttribute('data-held') as Anchor | null;
+    const a = h.getAttribute('data-held') as HeldAnchor | null;
     if (a === null) continue;
     h.setAttribute('transform', t[a]);
     h.removeAttribute('visibility');

@@ -123,40 +123,49 @@ describe('camion garé (movingLayout)', () => {
 });
 
 describe('porteurs (crewFrame)', () => {
-  const geom: CrewGeom = { a: { x: 100, y: 240 }, b: { x: 130, y: 256 }, n: 3, gap: 0.25, phase: 0, carry: 'out', kindSeed: 0 };
-  it('aller chargé en file indienne, de la porte au camion ; retour à vide ; cachés au dépôt', () => {
-    const f = crewFrame(geom, 3, 0.55);
-    expect(f.movers.every((m) => m.dir === 1)).toBe(true);
-    // Le premier ouvre la marche : il est plus loin sur le trajet que les suivants.
+  const geom: CrewGeom = { a: { x: 100, y: 240 }, b: { x: 130, y: 256 }, n: 3, gap: 0.25, carry: 'out', kindSeed: 0 };
+  it('aller chargé en file indienne, de la porte (seuil) au camion ; retour à vide ; hors de vue au dépôt, jamais de fondu', () => {
+    const f = crewFrame(geom, 3);
+    // Le premier ouvre la marche : il est plus loin sur le trajet ; le dernier est encore dans le local.
+    expect(f.movers[0]!.where).toBe('street');
+    expect(f.movers[0]!.dir).toBe(1);
     expect(f.movers[0]!.x).toBeGreaterThan(f.movers[1]!.x);
-    expect(f.movers[1]!.x).toBeGreaterThan(f.movers[2]!.x);
+    expect(f.movers[2]!.where).toBe('off');
     expect(f.movers.some((m) => m.loaded)).toBe(true);
-    // Dépôt (9 à 12 s) : personne de visible.
-    expect(crewFrame(geom, 10, 0.55).movers.every((m) => m.opacity === 0)).toBe(true);
-    // Retour : vers la porte, rien en main.
-    const back = crewFrame(geom, 16, 0.55);
-    expect(back.movers.every((m) => m.dir === -1 && !m.loaded)).toBe(true);
+    // Sortie du local : par le seuil de la porte (profondeur décroissante), de face.
+    const sill = [0.05, 0.2, 0.35, 0.5].map((t) => crewFrame(geom, t).movers[0]!);
+    expect(sill.every((m) => m.where === 'door' && m.x === geom.a.x)).toBe(true);
+    for (let k = 1; k < sill.length; k++) expect(sill[k]!.depth).toBeLessThan(sill[k - 1]!.depth);
+    expect(sill[0]!.yaw).toBe(4);
+    // Dépôt (9 à 12 s) : personne de visible (dans le camion).
+    expect(crewFrame(geom, 10).movers.every((m) => m.where === 'off')).toBe(true);
+    // Retour : vers la porte, rien en main ; on rentre par le seuil, de dos.
+    const back = crewFrame(geom, 16);
+    expect(back.movers.filter((m) => m.where !== 'off').every((m) => m.dir === -1 && !m.loaded)).toBe(true);
     expect(back.heavy).toBeNull();
+    const enter = crewFrame(geom, 12 + 9 * 0.98 / 1.5).movers[0]!;
+    expect(enter.where).toBe('door');
+    expect(enter.yaw).toBe(12);
   });
   it('meuble lourd : un seul meuble entre le premier et le dernier porteur ; la sorte change à chaque aller', () => {
     const kinds = new Set<string>();
     let heavySeen = 0;
     for (let trip = 0; trip < 14; trip++) {
-      const f = crewFrame(geom, trip * CARRY_CYCLE + 4.5, 0.55);
+      const f = crewFrame(geom, trip * CARRY_CYCLE + 4.5);
       kinds.add(f.kind);
       if (f.heavy) {
         heavySeen++;
+        expect(f.heavy.where).toBe('street');
         expect(f.heavy.x).toBeGreaterThan(Math.min(f.movers[2]!.x, f.movers[0]!.x) - 1e-9);
         expect(f.heavy.x).toBeLessThan(Math.max(f.movers[2]!.x, f.movers[0]!.x) + 1e-9);
-        expect(f.heavy.opacity).toBeGreaterThan(0);
       } else expect(f.kind).toBe('carton');
     }
     expect(heavySeen).toBeGreaterThan(0);
     expect(kinds.size).toBeGreaterThanOrEqual(4);
   });
   it('rentrée : chargés du camion vers la porte', () => {
-    const f = crewFrame({ ...geom, carry: 'in' }, 3, 0.55);
-    expect(f.movers.every((m) => m.dir === -1)).toBe(true);
+    const f = crewFrame({ ...geom, carry: 'in' }, 3);
+    expect(f.movers.filter((m) => m.where !== 'off').every((m) => m.dir === -1)).toBe(true);
     expect(f.movers[0]!.x).toBeLessThan(f.movers[1]!.x);
   });
 });
@@ -197,8 +206,8 @@ describe('CityLifeLayer : déménagement', () => {
     let heavy = false;
     let box = false;
     for (let t = NOW / 1000; t < NOW / 1000 + 7 * CARRY_CYCLE; t += 1) {
-      placeMovers(crews, t);
-      if (Number(crew.querySelector('[data-mover="piece"]')!.getAttribute('opacity')) > 0) heavy = true;
+      placeMovers(crews, t, cityMetrics(H));
+      if (crew.querySelector('[data-mover="piece"]')!.getAttribute('visibility') === 'visible') heavy = true;
       if (crew.querySelector('[data-mover-box][visibility="visible"]')) box = true;
     }
     expect(heavy).toBe(true);
@@ -228,7 +237,7 @@ describe('CityLifeLayer : déménagement', () => {
     const crews = collectMovers(host);
     let t = NOW / 1000;
     for (; t < NOW / 1000 + 7 * CARRY_CYCLE; t += 0.5) {
-      placeMovers(crews, t);
+      placeMovers(crews, t, cityMetrics(H));
       if (host.querySelector('[data-mover-box][visibility="visible"]')) break;
     }
     expect(host.querySelector('[data-mover-box][visibility="visible"]')).not.toBeNull();
