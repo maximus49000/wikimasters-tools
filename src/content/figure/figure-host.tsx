@@ -2,6 +2,7 @@
 import { createContext, useContext } from 'react';
 import { INK_WIDTH, bakeFigure, keyString, type FigureKey } from '../../core/library/figure/bake';
 import { shapeFromSignature } from '../../core/library/figure/dress';
+import { riding } from '../../core/library/figure/skeleton';
 
 // Cache des sprites du pantin (G3) : chaque pose cuite (bake.ts) d'une palette est peinte UNE fois sur un canvas hors écran
 // puis gardée en PNG (data URL : la CSP de la page hôte refuse blob:) ; chaque humain n'est qu'une <image> dont la boucle
@@ -56,12 +57,15 @@ function paint(p: Palette, key: FigureKey): string {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(SPRITE_PX, 0, 0, SPRITE_PX, -SPRITE_BOX.x0 * SPRITE_PX, -SPRITE_BOX.y0 * SPRITE_PX);
   const ink = p['f-ink'] ?? '#33241f';
-  ctx.globalAlpha = 0.28;
-  ctx.fillStyle = p['f-ground'] ?? '#3a2f5a';
-  ctx.beginPath();
-  ctx.ellipse(0, 0.6, 7, 1.8, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  // Ombre au sol, sauf en selle (vélo, cheval, moto : le corps ne touche pas le sol).
+  if (!riding(key.gait)) {
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = p['f-ground'] ?? '#3a2f5a';
+    ctx.beginPath();
+    ctx.ellipse(0, 0.6, 7, 1.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
   ctx.lineWidth = INK_WIDTH * 2;
   ctx.lineJoin = 'round';
   ctx.strokeStyle = ink;

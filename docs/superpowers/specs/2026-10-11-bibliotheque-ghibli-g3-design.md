@@ -113,6 +113,37 @@ Les cyclistes (y compris le vélo porteur des équipes) et le cortège restent p
 - Tests : cibles de main atteintes (distance épaule-main ≤ longueur du bras, main près de sa cible), bras croisés devant le torse, signature étendue, points d'accroche, chaque site rend des pantins en Ghibli et son dessin actuel en classique, aucune nouvelle opacité de fondu, arrivées de la file depuis le bord.
 - Captures auto-validées (commerces, terrasse, boîte, 14 juillet, 21 juin, chantier, nacelle, déménagement, pluie), correction de chaque défaut visible avant la PR.
 
-## G3c
+## Bilan de G3b (fusionnée, PR #243) et vague perf Android (PR #244)
 
-Section détaillée écrite avant son plan : cortège du défilé (marcheurs au pas cadencé, instruments, fusils, porte-drapeaux, cavaliers) et cyclistes (vélos de la rue, vélo porteur), sur le moteur de G3a/G3b.
+Gestes par cinématique inverse, tenues de travail, accroches et objets tenus livrés. Consigne ajoutée pendant G3b : **l'app Android est la cible principale** ; mesures et validation sur le vrai téléphone (S26 Ultra, WebView inspectée par CDP). La vague perf (décor des fenêtres dessiné une fois, un seul rectangle de découpe) a ramené le 21 juin à 19,5 ms et le 14 juillet à 17,9 ms par image sur le téléphone.
+
+## G3c en détail : cortège et cyclistes
+
+### 1. Moteur
+
+- **Allure `pedal`** (cycliste) : bassin sur la selle à hauteur fixe, buste penché de 22°, chaque pied sur un cercle de pédalier (rayon 2,4) centré sous et devant la hanche, les deux pieds en opposition ; genou par cinématique inverse à deux segments, orienté vers l'avant. La phase (0–11) est un douzième de tour de pédalier.
+- **Allure `mount`** (cavalier, motard) : bassin sur la selle à la même hauteur, cuisse vers l'avant et le bas (≈ 50°), tibia qui retombe le long du flanc ; aucune oscillation.
+- Pour `pedal` et `mount`, pas d'ombre au sol dans le sprite (le véhicule porte le corps) ; nouvelle accroche **`seat`** (bassin projeté) : le site pose l'accroche sur la selle de son dessin.
+- **Poses de bras** : `handlebar` (deux mains devant, à hauteur de la taille, bras presque tendus : guidon, rênes), `horn` (deux mains devant la bouche : trompette, clairon), `rifle` (main droite devant la hanche qui tient la crosse, bras gauche qui balance au pas), `flag` (main droite devant la poitrine qui tient la hampe, bras gauche qui balance). Le tambour-major alterne `raise` et `up` toutes les deux secondes.
+- Clé de sprite inchangée dans sa forme (l'allure et le geste en font déjà partie).
+
+### 2. Cortège du 14 juillet (`parade-sprites.tsx`, `parade-layer.tsx`)
+
+- En Ghibli, **chaque marcheur** (fanfare, infanterie, porte-drapeaux) est un pantin à l'échelle actuelle (`FIG`), tenue = uniforme de l'unité (tunique → haut, pantalon → bas, peau tirée comme aujourd'hui, cheveux courts), **de trois-quarts vers la droite** (orientation 1) si les captures le confirment, sinon de profil.
+- **Pas cadencé** : la phase de marche vient de la distance parcourue par le cortège depuis 10 h (tout le cortège roule à `PARADE_SPEED`) : tous au même pas, aucun pied qui glisse. Posée par la boucle du calque (déjà présente), seulement si la pose change.
+- **Couvre-chefs** (képi, shako, bachi, bicorne, casque à crinière, calot, béret, plumet) : leur dessin actuel, accroché à la tête du pantin (même repère : centre de la tête à y = −33, rayon 4,4). **Instruments, fusils, hampes et drapeaux** : dessin actuel accroché à la main (ou au milieu des mains), sans les bras dessinés ; le SMIL des objets (drapeau qui flotte, baguettes) reste sur l'objet.
+- **Cavaliers** et **motards** : pantin `mount` + `handlebar` posé sur la selle (accroche `seat`), cuirasse et casque à crinière (cavalier) ou casque blanc (motard, casquette blanche du pantin) ; le cheval et la moto gardent leur dessin.
+- **Chef de bord des jeeps, chef de char, pompiers en cabine** : pantin debout dessiné derrière la caisse ou la tourelle (seul le haut du corps dépasse) ; les pompiers derrière la vitre de la cabine, rognés par un `<svg>` imbriqué.
+- Classique inchangé. Mouvement réduit : le cortège ne part pas (comme aujourd'hui).
+
+### 3. Cyclistes (`city-sprites.tsx`, `city-life.tsx`, `install-sprites.tsx`, `install-layer.tsx`)
+
+- **Vélos de la rue** : en Ghibli, le cycliste est un pantin `pedal` + `handlebar` posé sur la selle ; le vélo garde son dessin. Le pédalier tourne avec la distance parcourue (un tour pour 2,2 fois la circonférence de la roue). Sur la file du fond, le groupe du vélo est retourné en miroir : le pantin y est retourné une seconde fois et orienté vers la gauche (jamais de pantin en miroir).
+- **Vélo porteur** des équipes : même cycliste (gilet de chantier) tant qu'il est en selle ; il en descend déjà à pied (G3b).
+- Classique inchangé ; mouvement réduit : pédales immobiles.
+
+### 4. Performance, tests, vérification
+
+- Mesures **sur le téléphone** (pré-prod debuggable, CDP) : 14 juillet pendant le défilé (≈ 60 marcheurs en même temps), jour ordinaire avec vélos. Objectif : pas plus de 3 ms au-dessus de `main` en Ghibli.
+- Tests : allures `pedal` et `mount` (pieds sur le cercle du pédalier, longueurs de jambe constantes, aucune valeur non finie), accroche `seat`, gestes `handlebar` / `horn` / `rifle` / `flag`, phase du cortège commune à toutes les unités, chaque unité rend des pantins en Ghibli et son dessin en classique, cycliste en Ghibli (pédales qui tournent, file du fond non retournée).
+- Captures auto-validées (fanfare, infanterie, drapeaux, cavalerie, motards, jeeps, char, pompiers, vélo des deux files, vélo porteur), puis PR fusionnée, pré-prod, et **présentation à l'utilisateur de toutes les captures de G3**.

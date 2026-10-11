@@ -1,9 +1,12 @@
 import { useMemo, useRef, useState, type ReactElement } from 'react';
 import type { FestivityId } from '../core/library/city/calendar';
 import { FAR_SHRINK, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
-import { paradeOn, paradeUnits, paradeX, type ParadeLane, type ParadeUnit } from '../core/library/city/parade';
+import { PARADE_SPEED, paradeOn, paradeUnits, paradeX, type ParadeLane, type ParadeUnit } from '../core/library/city/parade';
+import { phaseIndexOf } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
-import { ParadeUnitSprite } from './parade-sprites';
+import { useFigureRegistry } from './figure/figure-host';
+import { poseFigure } from './figure/ghibli-figure';
+import { FIG, PARADE_YAW, ParadeUnitSprite, paradeArms, type MarchArms } from './parade-sprites';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Calque du grand défilé du 14 juillet (spec §7.4). Le moteur (`city/parade.ts`) est pur : le flux des unités se calcule
@@ -11,6 +14,9 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // `transform` (sans re-rendu) et ne re-rend que lorsque l'ensemble des unités dans le champ change. Le cortège roule sur les deux
 // files de la route (une instance du calque par file, la file du fond réduite de FAR_SHRINK), vers la droite, pendant la fermeture de la route du 14 juillet à partir de 10 h (`paradeOn`). Mouvement réduit :
 // le cortège ne part pas (rien n'est dessiné).
+// Ghibli (G3c) : la boucle pose aussi les marcheurs (`[data-arms]`) au pas cadencé : image de marche tirée de la distance
+// parcourue par le cortège depuis le début du jour (toutes les unités roulent à PARADE_SPEED : tout le monde au même pas,
+// aucun pied qui glisse) ; poseFigure n'écrit que si l'image change.
 
 // Début du jour de la scène (s, horloge murale) : la minute de la scène est alignée sur les minutes de l'horloge
 // (voir hyperStartMinute dans events.ts), donc début = début de la minute murale − minutes × 60. Gardé tant qu'il ne bouge
@@ -26,12 +32,16 @@ export function useSceneDayStart(minutes: number, nowS: number): number {
   return ref.current!.start;
 }
 
-type Props = { width: number; seed: number; sky: Sky; still: boolean; dayFests: readonly FestivityId[]; minutes: number; metrics: CityMetrics; lane: ParadeLane };
+type Props = { width: number; seed: number; sky: Sky; still: boolean; dayFests: readonly FestivityId[]; minutes: number; metrics: CityMetrics; lane: ParadeLane; ghibli?: boolean };
 
 const visibleAt = (units: readonly ParadeUnit[], width: number, t: number): ParadeUnit[] => units.filter((u) => paradeX(u, width, t) !== null);
 const keyOf = (list: readonly ParadeUnit[]): string => list.map((u) => u.id).join(',');
 
-export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metrics, lane }: Props): ReactElement | null {
+// Marcheurs d'une unité (nœuds lus une fois par nœud d'unité).
+const marchersOf = new WeakMap<Element, Element[]>();
+
+export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metrics, lane, ghibli = false }: Props): ReactElement | null {
+  const figures = useFigureRegistry();
   const on = !still && paradeOn(dayFests, minutes);
   const now = Date.now() / 1000;
   const dayStart = useSceneDayStart(minutes, now);
@@ -49,10 +59,22 @@ export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metric
       const vis = visibleAt(units, width, t);
       const key = keyOf(vis);
       if (key !== shown) setShown(key);
-      for (const u of vis) el.querySelector(`[data-parade-id="${u.id}"]`)?.setAttribute('transform', transformAt(u, t));
+      const phase = ghibli ? phaseIndexOf((PARADE_SPEED * (t - dayStart)) / (k * FIG)) : 0;
+      for (const u of vis) {
+        const node = el.querySelector(`[data-parade-id="${u.id}"]`);
+        node?.setAttribute('transform', transformAt(u, t));
+        if (!ghibli || !node) continue;
+        let marchers = marchersOf.get(node);
+        // Relu si les enfants ont été remplacés (bascule de graphisme) : nœuds détachés.
+        if (!marchers || (marchers.length > 0 && !marchers[0]!.isConnected)) marchersOf.set(node, (marchers = [...node.querySelectorAll('[data-arms]')]));
+        for (const m of marchers) {
+          const arms = paradeArms(m.getAttribute('data-arms') as MarchArms, t);
+          poseFigure(figures, m.querySelector(':scope > [data-figure]'), { yaw: PARADE_YAW, gait: 'walk', phase, head: 0, arms });
+        }
+      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [units, width, shown, k, y],
+    [units, width, shown, k, y, ghibli, figures, dayStart],
   );
   useWallClockLoop(place, [place]);
 
@@ -64,7 +86,7 @@ export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metric
     <g data-parade="" data-lane={lane} ref={root}>
       {list.map((u) => (
         <g key={u.id} data-parade-id={u.id} transform={transformAt(u, now)}>
-          <ParadeUnitSprite unit={u} sky={sky} still={still} />
+          <ParadeUnitSprite unit={u} sky={sky} still={still} ghibli={ghibli} />
         </g>
       ))}
     </g>

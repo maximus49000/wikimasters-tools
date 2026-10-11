@@ -60,7 +60,7 @@ function heldTransforms(key: FigureKey): Record<HeldAnchor, string> {
     const a = anchorsOf(key);
     const tr = (p: readonly [number, number]): string => `translate(${p[0]} ${p[1]})`;
     const hands = [(a.handR[0] + a.handL[0]) / 2, (a.handR[1] + a.handL[1]) / 2] as const;
-    t = { handR: tr(a.handR), handL: tr(a.handL), head: tr(a.head), headTop: tr(a.headTop), nape: tr(a.nape), hands: tr(hands) };
+    t = { handR: tr(a.handR), handL: tr(a.handL), head: tr(a.head), headTop: tr(a.headTop), nape: tr(a.nape), seat: tr(a.seat), hands: tr(hands) };
     if (heldCache.size >= 4096) heldCache.clear();
     heldCache.set(ks, t);
   }

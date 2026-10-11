@@ -12,7 +12,7 @@ import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type P
 import { customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { StaffShift } from '../core/library/city/shops/staff';
-import { LANE_DIR, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
+import { LANE_DIR, VEHICLE_HALF, vehicleGate, vehiclesFor, type Vehicle } from '../core/library/city/vehicles';
 import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
 import { loopX } from '../core/library/scene-world';
 import type { Weather } from '../core/library/weather/weather-types';
@@ -31,7 +31,8 @@ import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
 import { collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type TerraceGuestNode, type Waiter } from './shop-terrace';
-import { LampSprite, PersonSprite, VehicleSprite, tone } from './city-sprites';
+import { DEFAULT_RIDER, LampSprite, PersonSprite, VehicleSprite, tone } from './city-sprites';
+import { GhibliBike, crankPhase, riderPose } from './figure/ghibli-cyclist';
 import { SantaLayer } from './santa-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
@@ -58,6 +59,11 @@ const FADE_S = 3; // fondu des véhicules seulement (les passants entrent et sor
 const RESIDENT_FADE_S = 0.4;
 // Les vélos roulent sur une piste au bord de la file du premier plan (côté droit du sens de marche, vers le spectateur).
 const BIKE_TRACK_DY = 2;
+// Échelle d'un vélo (px par unité du véhicule) ; distance parcourue (unités du vélo) pour le pédalier du cycliste Ghibli.
+const vehicleK = (v: Vehicle, m: CityMetrics): number => m.unit * STREET_SCALE.vehicle * v.scale * (v.lane === 'far' ? FAR_SHRINK : 1);
+const bikeDist = (v: Vehicle, m: CityMetrics, t: number): number => (v.phase + v.speed * t) / vehicleK(v, m);
+// Marge hors champ d'un vélo (px) : sa présence ne bascule que là (les cyclistes ne se fondent plus, comme les passants).
+const bikePad = (v: Vehicle, m: CityMetrics): number => VEHICLE_HALF.bike * vehicleK(v, m) + 4;
 
 // `dy` : décalage d'une voiture qui se range devant l'ambulance (0 sinon).
 const vehicleTransform = (v: Vehicle, m: CityMetrics, width: number, t: number, dy = 0): string => {
@@ -174,6 +180,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Présence affichée de chaque passant, gardée entre les minutes : elle ne suit la présence voulue qu'au bord du monde.
   // Remise à zéro quand la population change (largeur, graine) : sinon des présences d'une autre population seraient reprises.
   const shownPeds = useRef<Map<string, boolean>>(new Map());
+  // Présence affichée des vélos (comme les passants : bascule seulement hors champ, sauf quand un événement les efface).
+  const shownBikes = useRef<Map<string, boolean>>(new Map());
   const shownFor = useRef<Pedestrian[] | null>(null);
   // Verrou des tirages de trajets, gardé entre les minutes (remis à zéro si les trajets changent).
   const tripLock = useRef<TripLock>(new Map());
@@ -297,6 +305,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let posedAt = -Infinity;
     // Véhicules seulement : les passants ne se fondent plus, leur présence bascule au bord (pedShown).
     const moves = (id: string, t: number): boolean => first || vehActive.has(id) || (t < leaveUntil && leaving.has(id));
+    // Cyclistes Ghibli (pantin du vélo), trouvés à la collecte des nœuds.
+    const riders = new Map<string, Element | null>();
     return (now: number): void => {
       // Mouvement réduit : toujours le même instant, y compris quand le placement est refait après un changement de minute.
       const t = still ? frozen.current! : now;
@@ -326,10 +336,30 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             if (node) pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
           }
         }
+        if (ghibli) for (const v of vehicles) if (v.kind === 'bike') riders.set(v.id, nodes.get(v.id)?.querySelector('[data-bike-rider] > [data-figure]') ?? null);
         // Plafond global des figurants des commerces : convives de terrasse cachés, visites suspendues pour la minute.
         muted = shopSpriteBudget(el, width);
       }
-      for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
+      for (const v of vehicles) {
+        if (v.kind === 'bike') {
+          // Vélo : présence voulue appliquée hors champ seulement (ou tout de suite si un événement l'efface), jamais de fondu
+          // sur place à la minute. Toujours placé (peu nombreux).
+          const yielded = events.yielded.has(v.id);
+          const wanted = vehActive.has(v.id);
+          const prev = shownBikes.current.get(v.id) ?? wanted;
+          const node = nodes.get(v.id);
+          const next = still || yielded ? wanted : pedShown(prev, wanted, loopX(v.phase, LANE_DIR[v.lane] * v.speed, width, t), width, bikePad(v, metrics));
+          shownBikes.current.set(v.id, next);
+          if (node && next !== prev) {
+            setIfChanged(node, 'data-active', next ? 'true' : 'false');
+            setIfChanged(node, 'opacity', next ? '1' : '0');
+          }
+          node?.setAttribute('transform', vehicleTransform(v, metrics, width, t));
+          if (ghibli && next && !still) poseFigure(figures, riders.get(v.id) ?? null, riderPose(LANE_DIR[v.lane], crankPhase(bikeDist(v, metrics, t))));
+          continue;
+        }
+        if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
+      }
       for (const p of peds) {
         const wanted = pedActive.has(p.id);
         const prev = shownPeds.current.get(p.id) ?? wanted;
@@ -438,8 +468,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       {/* Vélos après les voitures : leur piste est au bord de la file, plus près du spectateur. */}
       {[...vehicles.filter((v) => v.lane === which && v.kind !== 'bike'), ...vehicles.filter((v) => v.lane === which && v.kind === 'bike')]
         .map((v) => {
-          const active = vehActive.has(v.id);
           const yielded = events.yielded.has(v.id);
+          const bike = v.kind === 'bike';
+          if (bike && !shownBikes.current.has(v.id)) shownBikes.current.set(v.id, vehActive.has(v.id));
+          const active = bike && !still && !yielded ? shownBikes.current.get(v.id)! : vehActive.has(v.id);
           return (
             <g
               key={v.id}
@@ -451,9 +483,22 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-yield={yielded ? 'true' : undefined}
               transform={vehicleTransform(v, metrics, width, t0, pullDy(v, events.ambulances, metrics, width, t0))}
               opacity={active ? 1 : 0}
-              style={{ transition: `opacity ${yielded ? RESIDENT_FADE_S : FADE_S}s ease` }}
+              style={{ transition: bike && !yielded ? 'none' : `opacity ${yielded ? RESIDENT_FADE_S : FADE_S}s ease` }}
             >
-              <VehicleSprite vehicle={v} sky={sky} lights={lights} />
+              {ghibli && bike ? (
+                <GhibliBike
+                  outfit={v.rider ?? DEFAULT_RIDER}
+                  color={tone(v.color, sky)}
+                  ink={tone('#3B3F4A', sky)}
+                  sky={sky}
+                  rainy={rainy}
+                  dir={LANE_DIR[v.lane]}
+                  phase={still ? 0 : crankPhase(bikeDist(v, metrics, t0))}
+                  lights={lights}
+                />
+              ) : (
+                <VehicleSprite vehicle={v} sky={sky} lights={lights} />
+              )}
             </g>
           );
         })}
@@ -666,9 +711,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <InstallLayer {...install} part="street" />
       {lane('far')}
       {/* Grand défilé du 14 juillet (route fermée, aucune voiture) : une file du fond réduite, derrière celle du premier plan. */}
-      <ParadeLayer lane="far" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} />
+      <ParadeLayer lane="far" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} ghibli={ghibli} />
       {lane('near')}
-      <ParadeLayer lane="near" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} />
+      <ParadeLayer lane="near" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} ghibli={ghibli} />
     </g>
   );
 }
