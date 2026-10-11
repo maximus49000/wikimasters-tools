@@ -1,0 +1,374 @@
+// Moteur de circulation de la scène Ville (spec véhicules §1). Pur : graine et temps passés en argument, aucun hasard caché.
+// Remplace la boucle (vehiclesFor) : les véhicules entrent par un bord, en pelotons (feu hors champ en amont), et sortent par
+// l'autre. Chaque conducteur a son caractère (temperament.ts) et réagit à ce qu'il a perçu il y a `react` s : véhicule de
+// devant (historique de 2 s) et feu. Loi de poursuite IDM, pied progressif (commande lissée), freinage franc en dernier
+// recours. Arrêts : bus à son arrêt, camionnette en livraison (feux de détresse), benne à ordures ; un conducteur patient
+// dépasse un véhicule arrêté quand la voie d'en face est libre. L'ambulance fait ranger les véhicules devant elle.
+// Coordonnée de voie `s` : distance parcourue depuis le point d'entrée (x = −MARGIN côté gauche pour la voie du premier plan
+// et la piste cyclable, x = width + MARGIN à droite pour la voie du fond) ; sortie quand l'arrière dépasse l'autre bord.
+// Pas fixe DT ; l'affichage interpole entre les deux derniers pas.
+import { hashString, mulberry32 } from '../../scene-world';
+import { outfitFor, type Outfit } from '../people';
+import { temperamentOf, type Temperament } from './temperament';
+
+export type Track = 'near' | 'far' | 'bike';
+export const TRACK_DIR: Readonly<Record<Track, 1 | -1>> = { near: 1, far: -1, bike: 1 };
+export type AgentKind = 'car' | 'van' | 'bus' | 'bike' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike';
+export type StopReason = 'bus' | 'delivery' | 'garbage' | 'light' | null;
+
+export const DT = 0.1;
+const HIST = 20; // 2 s d'historique
+export const MARGIN = 90; // px hors champ de chaque côté (× unit)
+const WARM_S = 120;
+const MAX_CATCHUP_S = 120;
+
+// Demi-longueur dessinée (repère du sprite) et vitesse de base (px/s à unit = 1) par genre.
+export const KIND_HALF: Readonly<Record<AgentKind, number>> = { car: 20, van: 23, bus: 34, bike: 12, tram: 68, ambulance: 21, 'garbage-truck': 34, 'delivery-bike': 12 };
+const KIND_V0: Readonly<Record<AgentKind, number>> = { car: 70, van: 62, bus: 52, bike: 21, tram: 46, ambulance: 130, 'garbage-truck': 34, 'delivery-bike': 27 };
+const VEHICLE_SCALE = 0.85; // STREET_SCALE.vehicle
+const FAR_SHRINK = 0.9;
+const COLORS = ['#3B6FD6', '#C0463A', '#E0A21E', '#2E8B6A', '#444444', '#EEEEEE', '#7A3B8C', '#B3262B', '#4A9CC4'];
+
+export type Agent = {
+  id: string;
+  kind: AgentKind;
+  track: Track;
+  seed: number;
+  scale: number;
+  half: number; // px
+  vmax: number; // px/s
+  color: string;
+  rider?: Outfit;
+  event?: string; // clé de l'événement de rue d'origine
+  h: Temperament;
+  s: number;
+  ps: number; // s au pas précédent (interpolation)
+  v: number;
+  cmd: number; // accélération appliquée (px/s²)
+  dist: number;
+  lat: number; // décalage latéral (fraction de l'écart entre voies ; > 0 vers le centre de la chaussée)
+  plat: number;
+  hist: { s: Float64Array; v: Float64Array; at: number };
+  stop: StopReason;
+  stopUntil: number;
+  stops: number[]; // positions s des arrêts encore à faire (bus, livraison, benne)
+  stopFor: [number, number]; // durée d'un arrêt (s), bornes
+  waited: number; // temps passé à l'arrêt derrière un véhicule arrêté (patience)
+  passing: string | null; // id du véhicule arrêté qu'il dépasse
+  pulled: boolean; // rangé devant une ambulance
+  hazard: boolean;
+};
+
+export type ScheduledArrival = { key: string; kind: Extract<AgentKind, 'bus' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike'>; track: Track; start: number; half?: number };
+export type TrafficEnv = {
+  demand: Readonly<Record<Track, number>>; // 0 à 1
+  closed: boolean;
+  arrivals: readonly ScheduledArrival[];
+  // Points de livraison (x du monde) devant les commerces du premier plan.
+  deliveries: readonly number[];
+};
+
+type Light = { x: number; offset: number; cycle: number; green: number; amber: number };
+export type TrafficWorld = {
+  width: number;
+  seed: number;
+  unit: number;
+  t: number; // temps du dernier pas (s)
+  agents: Agent[];
+  serial: number;
+  spawnAt: Record<Track, number>;
+  rngs: Record<Track, () => number>;
+  spawned: Set<string>;
+  busStop: Record<'near' | 'far', number>; // x du monde
+  light: Light | null;
+  roster: number; // incrémenté quand la liste des agents change
+};
+
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+const clamp = (x: number, a: number, b: number): number => Math.min(b, Math.max(a, x));
+
+export const xOfS = (w: TrafficWorld, track: Track, s: number): number => (TRACK_DIR[track] > 0 ? s - MARGIN * w.unit : w.width + MARGIN * w.unit - s);
+const sOfX = (w: TrafficWorld, track: Track, x: number): number => (TRACK_DIR[track] > 0 ? x + MARGIN * w.unit : w.width + MARGIN * w.unit - x);
+const span = (w: TrafficWorld): number => w.width + 2 * MARGIN * w.unit;
+
+// Feu tricolore hors champ, en amont de chaque voie : les entrées n'arrivent que pendant son vert (pelotons).
+const UPSTREAM = { cycle: 40, green: 24 };
+const upstreamGreen = (track: Track, t: number): boolean => {
+  const off = (hashString(`up-${track}`) % 1000) / 1000;
+  return ((t / UPSTREAM.cycle + off) % 1) * UPSTREAM.cycle < UPSTREAM.green;
+};
+// Feu dans le monde (pièces larges) : vert, orange, rouge ; même feu pour les deux sens (carrefour).
+export type LightColor = 'green' | 'amber' | 'red';
+export function lightAt(l: Light, t: number): LightColor {
+  const p = (((t + l.offset) % l.cycle) + l.cycle) % l.cycle;
+  return p < l.green ? 'green' : p < l.green + l.amber ? 'amber' : 'red';
+}
+
+export function createTraffic(o: { width: number; seed: number; unit: number; startS: number }): TrafficWorld {
+  const r = mulberry32(o.seed ^ hashString('traffic'));
+  const w: TrafficWorld = {
+    width: o.width,
+    seed: o.seed,
+    unit: o.unit,
+    t: Math.floor((o.startS - WARM_S) / DT) * DT,
+    agents: [],
+    serial: 0,
+    spawnAt: { near: 0, far: 0, bike: 0 },
+    rngs: { near: mulberry32(o.seed ^ hashString('tr-near')), far: mulberry32(o.seed ^ hashString('tr-far')), bike: mulberry32(o.seed ^ hashString('tr-bike')) },
+    spawned: new Set(),
+    busStop: { near: o.width * lerp(0.25, 0.75, r()), far: o.width * lerp(0.25, 0.75, r()) },
+    light: o.width > 1500 ? { x: o.width * lerp(0.4, 0.6, r()), offset: r() * 40, cycle: 40, green: 22, amber: 3 } : null,
+    roster: 0,
+  };
+  w.spawnAt = { near: w.t, far: w.t, bike: w.t };
+  return w;
+}
+
+function newAgent(w: TrafficWorld, kind: AgentKind, track: Track, extra: Partial<Agent> = {}): Agent {
+  const seed = (w.seed * 7919 + w.serial * 104729) >>> 0;
+  const r = mulberry32(seed ^ 0x51ed);
+  const h = temperamentOf(r);
+  const scale = kind === 'car' || kind === 'van' ? 0.9 + r() * 0.2 : 1;
+  const half = (extra.half ?? KIND_HALF[kind] * VEHICLE_SCALE * scale * (track === 'far' ? FAR_SHRINK : 1)) * w.unit;
+  const v0 = KIND_V0[kind] * w.unit * (kind === 'ambulance' || kind === 'tram' ? 1 : h.want);
+  const a: Agent = {
+    id: `tr-${w.serial++}`,
+    kind,
+    track,
+    seed,
+    scale,
+    half,
+    vmax: v0,
+    color: COLORS[Math.floor(r() * COLORS.length)]!,
+    ...(kind === 'bike' ? { rider: outfitFor('ordinary', mulberry32(seed ^ 0xb1ce)) } : {}),
+    h,
+    s: -half,
+    ps: -half,
+    v: v0 * 0.85,
+    cmd: 0,
+    dist: 0,
+    lat: 0,
+    plat: 0,
+    hist: { s: new Float64Array(HIST).fill(-half), v: new Float64Array(HIST).fill(v0 * 0.85), at: 0 },
+    stop: null,
+    stopUntil: 0,
+    stops: [],
+    stopFor: [0, 0],
+    waited: 0,
+    passing: null,
+    pulled: false,
+    hazard: false,
+    ...extra,
+  };
+  a.half = half;
+  return a;
+}
+
+const onTrack = (w: TrafficWorld, track: Track): Agent[] => w.agents.filter((a) => a.track === track).sort((p, q) => q.s - p.s);
+
+// Place libre à l'entrée de la voie pour un véhicule de demi-longueur `half`.
+function entryFree(w: TrafficWorld, track: Track, half: number): boolean {
+  let rear = Infinity;
+  for (const a of w.agents) if (a.track === track) rear = Math.min(rear, a.s - a.half);
+  return rear - 2 * half > 18 * w.unit;
+}
+
+function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
+  // Événements de rue planifiés : entrent à leur heure dès qu'il y a la place.
+  for (const e of env.arrivals) {
+    if (w.spawned.has(e.key) || e.start > t) continue;
+    if (t - e.start > 300) continue; // trop ancien (pièce ouverte longtemps après) : ignoré
+    const half = e.half !== undefined ? e.half * VEHICLE_SCALE * (e.track === 'far' ? FAR_SHRINK : 1) : undefined;
+    if (!entryFree(w, e.track, (half ?? KIND_HALF[e.kind] * VEHICLE_SCALE) * w.unit)) continue;
+    const a = newAgent(w, e.kind, e.track, { event: e.key, ...(half !== undefined ? { half } : {}) });
+    if (e.kind === 'bus') { a.stops = [sOfX(w, e.track, w.busStop[e.track === 'far' ? 'far' : 'near'])]; a.stopFor = [8, 14]; }
+    if (e.kind === 'garbage-truck') {
+      for (let s = 140 * w.unit; s < span(w); s += lerp(110, 170, mulberry32(a.seed)()) * w.unit) a.stops.push(s);
+      a.stopFor = [4, 7];
+    }
+    w.agents.push(a);
+    w.spawned.add(e.key);
+    w.roster++;
+  }
+  if (env.closed) return;
+  for (const track of ['near', 'far', 'bike'] as const) {
+    const d = env.demand[track];
+    if (d <= 0.01 || t < w.spawnAt[track]) continue;
+    if (track !== 'bike' && !upstreamGreen(track, t)) continue;
+    const r = w.rngs[track];
+    const roll = r();
+    const kind: AgentKind = track === 'bike' ? 'bike' : roll < 0.05 ? 'bus' : roll < 0.18 ? 'van' : 'car';
+    const mean = (track === 'bike' ? 9 : 2.1) / d;
+    // Prochaine tentative : intervalle tiré (pelotons serrés ou espacés), quelle que soit la place disponible.
+    w.spawnAt[track] = t + Math.max(0.6, -Math.log(1 - r() * 0.98) * mean);
+    const half = KIND_HALF[kind] * VEHICLE_SCALE * (track === 'far' ? FAR_SHRINK : 1) * 1.1 * w.unit;
+    if (!entryFree(w, track, half)) continue;
+    const a = newAgent(w, kind, track);
+    if (kind === 'bus') { a.stops = [sOfX(w, track, w.busStop[track === 'far' ? 'far' : 'near'])]; a.stopFor = [8, 14]; }
+    if (kind === 'van' && track === 'near' && env.deliveries.length > 0 && mulberry32(a.seed ^ 0xde1)() < 0.45) {
+      const x = env.deliveries[Math.floor(mulberry32(a.seed ^ 0xde2)() * env.deliveries.length)]!;
+      a.stops = [sOfX(w, track, x)];
+      a.stopFor = [20, 40];
+    }
+    w.agents.push(a);
+    w.roster++;
+  }
+}
+
+// Ce que `me` perçoit de `lead` : sa position et sa vitesse il y a me.h.react s, jamais plus loin qu'il n'est.
+function perceived(me: Agent, lead: Agent): { s: number; v: number } {
+  const back = Math.min(HIST - 1, Math.round(me.h.react / DT));
+  const i = (lead.hist.at - back + HIST * 4) % HIST;
+  return { s: Math.min(lead.hist.s[i]!, lead.s), v: lead.hist.v[i]! };
+}
+
+function idm(me: Agent, gap: number, vLead: number, t: number, u: number): number {
+  const h = me.h;
+  const v0 = me.vmax * (1 + h.wobble * Math.sin(t * 0.4 + me.seed));
+  const a = h.a * u * (me.kind === 'ambulance' ? 2 : me.kind === 'bike' || me.kind === 'delivery-bike' ? 0.5 : 1);
+  const b = h.b * u;
+  const sStar = h.s0 * u + me.v * h.T + (me.v * (me.v - vLead)) / (2 * Math.sqrt(a * b));
+  const free = 1 - (me.v / Math.max(1, v0)) ** 4;
+  return a * (gap < Infinity ? free - (Math.max(sStar, 0) / Math.max(gap, 0.1)) ** 2 : free);
+}
+
+// Voie d'en face libre pour dépasser sur [x0, x1] (x du monde) pendant ~3 s.
+function oncomingClear(w: TrafficWorld, track: Track, x0: number, x1: number): boolean {
+  const other: Track = track === 'near' ? 'far' : 'near';
+  const lo = Math.min(x0, x1);
+  const hi = Math.max(x0, x1);
+  for (const o of w.agents) {
+    if (o.track !== other) continue;
+    const xo = xOfS(w, other, o.s);
+    // L'autre vient en sens inverse : il entre dans la zone en lo..hi s'il en est à moins de 3 s.
+    const reach = o.v * 3 + o.half;
+    if (xo + reach >= lo && xo - reach <= hi) return false;
+  }
+  return true;
+}
+
+function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
+  const t = w.t + DT;
+  const u = w.unit;
+  spawn(w, env, t);
+  const ambulances = w.agents.filter((a) => a.kind === 'ambulance');
+  for (const track of ['near', 'far', 'bike'] as const) {
+    const list = onTrack(w, track);
+    for (let i = 0; i < list.length; i++) {
+      const me = list[i]!;
+      me.ps = me.s;
+      me.plat = me.lat;
+      // Ambulance qui arrive derrière : se ranger (s'arrêter au bord) tant qu'elle n'est pas passée.
+      const amb = me.kind === 'ambulance' ? null : ambulances.find((a) => a.track === track && a.s < me.s + 30 * u && me.s - a.s < 170 * u);
+      const ambPassed = me.pulled && !ambulances.some((a) => a.track === track && a.s < me.s + me.half + a.half + 10 * u);
+      if (amb) me.pulled = true;
+      else if (ambPassed) me.pulled = false;
+      // Véhicule de devant (on ignore les véhicules rangés pour l'ambulance, et celui qu'on dépasse).
+      let lead: Agent | null = null;
+      for (let j = i - 1; j >= 0; j--) {
+        const c = list[j]!;
+        if (me.kind === 'ambulance' && c.pulled) continue;
+        if (me.passing === c.id) continue;
+        lead = c;
+        break;
+      }
+      let gap = Infinity;
+      let vLead = 0;
+      if (lead) {
+        const p = perceived(me, lead);
+        gap = p.s - lead.half - (me.s + me.half);
+        vLead = p.v;
+      }
+      // Arrêt prévu (bus, livraison, benne) : obstacle immobile à son point d'arrêt.
+      if (me.stop === null && me.stops.length > 0) {
+        const g = me.stops[0]! - (me.s + me.half * 0.2);
+        if (g < -2 * u) me.stops.shift();
+        else if (g < gap) { gap = Math.max(g, 0); vLead = 0; }
+        // IDM s'immobilise à sa marge (s0) avant l'obstacle : l'arrêt commence dès qu'il y est presque arrêté.
+        if (g < me.h.s0 * u + 3 * u && me.v < 2 * u) {
+          me.stops.shift();
+          me.stop = me.kind === 'van' ? 'delivery' : me.kind === 'bus' ? 'bus' : 'garbage';
+          me.stopUntil = t + lerp(me.stopFor[0], me.stopFor[1], mulberry32(me.seed ^ me.stops.length)());
+          me.hazard = me.stop === 'delivery';
+        }
+      }
+      // Feu du monde : perçu avec retard ; s'arrête à la ligne si c'est possible sans freiner trop fort.
+      if (w.light && track !== 'bike' && me.kind !== 'ambulance') {
+        const stopS = sOfX(w, track, w.light.x) - 10 * u;
+        const front = me.s + me.half;
+        const seen = lightAt(w.light, t - me.h.react);
+        if (seen !== 'green' && front < stopS) {
+          const g = stopS - front;
+          const canStop = (me.v * me.v) / (2 * me.h.b * u * 1.8) < g + 2 * u;
+          if (canStop && g < gap) { gap = g; vLead = 0; }
+        }
+      }
+      let target: number;
+      if (me.stop !== null) {
+        target = -me.h.b * u * 2;
+        if (t >= me.stopUntil) { me.stop = null; me.hazard = false; }
+      } else if (me.pulled) {
+        target = me.v > 0 ? -me.h.b * u * 1.6 : 0;
+      } else target = idm(me, gap, vLead, t, u);
+      target = clamp(target, -me.h.b * u * 3, me.h.a * u * (me.kind === 'ambulance' ? 2 : 1));
+      if (gap < 1.5 * u) target = Math.min(target, -me.h.b * u * 3);
+      me.cmd += (target - me.cmd) * Math.min(1, DT * 3);
+      if (gap < 1.5 * u || me.stop !== null) me.cmd = Math.min(me.cmd, target);
+      me.v = Math.max(0, me.v + me.cmd * DT);
+      // Aucun chevauchement, même avec un retard de perception : on ne dépasse jamais l'arrière du véhicule de devant.
+      let next = me.s + me.v * DT;
+      if (lead && me.passing !== lead.id) {
+        const limit = lead.s - lead.half - me.half - 1 * u;
+        if (next > limit) { next = Math.max(me.s, limit); me.v = Math.min(me.v, lead.v); }
+      }
+      me.dist += next - me.s;
+      me.s = next;
+      if (me.v < 0.5 * u && me.cmd < 0) me.cmd = 0;
+      // Patience : bloqué derrière un véhicule arrêté (bus, livraison, benne) → le dépasse si la voie d'en face est libre.
+      if (track !== 'bike' && me.kind !== 'bus' && me.kind !== 'tram' && lead && lead.stop !== null && lead.stop !== 'light' && me.passing === null && gap < 40 * u && me.v < 3 * u) {
+        me.waited += DT;
+        if (me.waited > me.h.patience && oncomingClear(w, track, xOfS(w, track, me.s - me.half), xOfS(w, track, lead.s + lead.half + 2 * me.half + 30 * u))) {
+          me.passing = lead.id;
+          me.waited = 0;
+        }
+      } else if (me.passing === null) me.waited = 0;
+      if (me.passing !== null) {
+        const p = w.agents.find((a) => a.id === me.passing);
+        if (!p || me.s - me.half > p.s + p.half + 8 * u) me.passing = null;
+      }
+      // Décalage latéral : place préférée et ondulation ; vers le centre pour dépasser, vers le bord pour se ranger ou livrer.
+      const want = me.passing !== null ? 0.62 : me.kind === 'ambulance' ? 0.3 : me.pulled ? -0.3 : me.hazard ? -0.22 : (me.h.lane * 0.08 + me.h.sway * 0.08 * Math.sin(me.dist * me.h.swayF + me.seed)) / Math.max(0.6, u);
+      me.lat += (want - me.lat) * Math.min(1, DT * (me.passing !== null || me.pulled ? 1.6 : 0.8));
+      const k = (me.hist.at + 1) % HIST;
+      me.hist.s[k] = me.s;
+      me.hist.v[k] = me.v;
+      me.hist.at = k;
+    }
+  }
+  const before = w.agents.length;
+  w.agents = w.agents.filter((a) => a.s - a.half < span(w));
+  if (w.agents.length !== before) w.roster++;
+  w.t = t;
+}
+
+// Fait avancer le monde jusqu'à `toS` (pas fixes). Un retard de plus de MAX_CATCHUP_S (onglet en arrière-plan) est rattrapé
+// sur les dernières MAX_CATCHUP_S seulement.
+export function advance(w: TrafficWorld, toS: number, env: TrafficEnv): void {
+  if (toS - w.t > MAX_CATCHUP_S) w.t = Math.floor((toS - MAX_CATCHUP_S) / DT) * DT;
+  while (w.t + DT <= toS + 1e-9) stepOnce(w, env);
+}
+
+// Monde déjà vivant à l'instant `startS` (démarrage à chaud de WARM_S s).
+export function warmTraffic(o: { width: number; seed: number; unit: number; startS: number }, env: TrafficEnv): TrafficWorld {
+  const w = createTraffic(o);
+  advance(w, o.startS, env);
+  return w;
+}
+
+// Position d'affichage interpolée entre les deux derniers pas (`nowS` ≥ w.t − DT).
+export function agentView(w: TrafficWorld, a: Agent, nowS: number): { x: number; lat: number } {
+  const f = clamp((nowS - w.t) / DT + 1, 0, 1);
+  return { x: xOfS(w, a.track, lerp(a.ps, a.s, f)), lat: lerp(a.plat, a.lat, f) };
+}
+// Freine (feux stop) : décélération franche ou arrêt.
+export const braking = (a: Agent, unit: number): boolean => a.cmd < -6 * unit || (a.v < 2 * unit && a.stop !== 'delivery');
