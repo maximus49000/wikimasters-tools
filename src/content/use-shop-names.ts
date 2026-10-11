@@ -7,8 +7,8 @@ import { currentPosition, isPositionKnown, subscribePosition } from './scene-pos
 // en mémoire de page (par case, un seul appel partagé) ; seule une date d'échec est écrite, et pendant 24 h on ne redemande pas.
 // Sans nom (position inconnue, échec, pas de pièce Ville) : `{}`, les noms écrits à la main prennent le relais.
 
-// Relais : jusqu’à quatre serveurs Overpass essayés l’un après l’autre (15 s au plus chacun).
-const TIMEOUT_MS = 65_000;
+// Relais : jusqu’à trois serveurs Overpass essayés l’un après l’autre (65 s au plus en tout).
+const TIMEOUT_MS = 70_000;
 const FAIL_KEY = 'wmt:city-shops-fail';
 const FAIL_PAUSE_MS = 24 * 3_600_000;
 const EMPTY: NamePool = {};
