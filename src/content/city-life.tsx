@@ -447,8 +447,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <TrafficLane handle={traffic} lane={which} metrics={metrics} sky={sky} lights={lights} rainy={rainy} still={still} ghibli={ghibli} fests={fests} eventsByKey={eventsByKey} frozenT={frozen.current ?? 0} />
     </g>
   );
-  const silhouette = (list: typeof facades): ReactElement[] =>
-    list.map((b, i) => <rect key={i} x={b.x} y={metrics.ground - b.h} width={b.w} height={b.h + height} fill="#000" />);
+  // Silhouette des immeubles et des socles des jumeaux (la grue reste derrière le socle, dans le retrait entre les tours).
+  const silhouette = (list: typeof facades): ReactElement[] => [
+    ...list.map((b, i) => <rect key={i} x={b.x} y={metrics.ground - b.h} width={b.w} height={b.h + height} fill="#000" />),
+    ...list.filter((b) => b.podium && b.x === b.podium.x).map((b) => <rect key={`p${b.podium!.id}`} x={b.podium!.x} y={metrics.ground - b.podium!.h} width={b.podium!.w} height={b.podium!.h + height} fill="#000" />),
+  ];
 
   return (
     <g data-city-life="" ref={root}>

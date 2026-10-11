@@ -87,12 +87,18 @@ describe('plan de la ville peinte', () => {
     }
   });
   it("ne pose pas d'arbre dont la couronne descend devant un socle", () => {
+    // Compte les couples (arbre, socle) qui se chevauchent : le test ne doit pas passer à vide.
+    let n = 0;
     for (let s = 1; s <= 20; s++) {
       const plan = cityPaintPlan(1440, 340, s);
       for (const t of plan.trees) for (const p of plan.podiums) {
-        if (t.x + t.r > p.x && t.x - t.r < p.x + p.w) expect(t.cy + t.r).toBeLessThanOrEqual(p.top);
+        if (t.x + t.r > p.x && t.x - t.r < p.x + p.w) {
+          expect(t.cy + t.r).toBeLessThanOrEqual(p.top);
+          n++;
+        }
       }
     }
+    expect(n).toBeGreaterThan(0);
   });
   it("range les socles dans les tuiles qu'ils touchent", () => {
     const plan = cityPaintPlan(1440, 340, 4);

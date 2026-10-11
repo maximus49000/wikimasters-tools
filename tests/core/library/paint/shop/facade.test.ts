@@ -107,6 +107,22 @@ describe('façades', () => {
     expect(a.ops.filter((o) => o.op === 'lineTo').length).toBeGreaterThan(d.ops.filter((o) => o.op === 'lineTo').length);
   });
 
+  it('grande vitrine (plus de 30 u) : montants verticaux du cadre, environ tous les 12 u', () => {
+    const mullions = (w: number, type: FacadeSpec['type']): number[] => {
+      const rec = recordingCtx();
+      paintGlass(rec, spec({ type }), w, 18);
+      // Montants = formes `R` (rect rempli puis encré) de 0,8 u de large sur toute la hauteur ; chaque forme trace son rect deux fois.
+      return [...new Set(rec.ops.filter((o) => o.op === 'rect' && o.args[2] === 0.8 && o.args[1] === 0 && o.args[3] === 18).map((o) => o.args[0]!))];
+    };
+    expect(mullions(30, 'records')).toEqual([]);
+    expect(mullions(48, 'records')).toHaveLength(3);
+    expect(mullions(48, 'pharmacy')).toHaveLength(3);
+    expect(mullions(48, 'bakery')).toHaveLength(3);
+    const xs = mullions(60, 'cafe');
+    expect(xs).toHaveLength(4);
+    for (let k = 1; k < xs.length; k++) expect(xs[k]! - xs[k - 1]!).toBeCloseTo(12, 5);
+  });
+
   it('store : le personnel est rogné sous le lambrequin (étals et cafés ouverts seulement)', () => {
     expect(awningDrop(spec({ type: 'greengrocer' }))).toBeGreaterThan(5);
     expect(awningDrop(spec({ type: 'cafe' }))).toBeGreaterThan(awningDrop(spec({ type: 'greengrocer' })));

@@ -28,6 +28,15 @@ const pilaster = (s: FacadeSpec): number => {
   const f = familyOf(s);
   return f === 'A' ? 2 : f === 'E' ? 2.2 : s.type && TILES[s.type] ? 1.8 : 1;
 };
+// Couleur du cadre de la vitrine par famille (celle du pilastre) : boiserie à la couleur de l'enseigne, pierre de la
+// pharmacie, carrelage, noir de la boîte de nuit, métal gris sinon.
+const frameColor = (s: FacadeSpec): string => {
+  const f = familyOf(s);
+  if (f === 'A' && s.type) return SHOP_DEFS[s.type].sign;
+  if (f === 'E') return '#E2D6BC';
+  const tiles = s.type ? TILES[s.type] : undefined;
+  return tiles ?? (f === 'F' ? '#2A2030' : '#5A606C');
+};
 
 // Vitrine (`win`, celle de shopFrame), partie vitrée visible (`glass` : pilastre et soubassement retirés) et porte.
 export function facadeGeometry(s: FacadeSpec): { win: Rect; glass: Rect; door: Rect } {
@@ -406,11 +415,22 @@ export function paintGlass(x: ShopPaintCtx, s: FacadeSpec, w: number, h: number)
   x.fillStyle = s.lit ? 'rgba(255,200,110,0.18)' : 'rgba(150,190,220,0.18)';
   x.fillRect(0, 0, w, h);
   glint(x, 0, 0, w, h, s.lit ? 0.1 : 0.25);
-  if (f === 'A' && s.type) {
-    const c = shadeOf(SHOP_DEFS[s.type].sign, 0.2);
-    const n = Math.max(2, Math.round(w / 9));
-    for (let k = 1; k < n; k++) line(x, [[(k * w) / n, 0], [(k * w) / n, h]], c, 0.5);
-    line(x, [[0, 6], [w, 6]], c, 0.5);
+  // Grande vitrine (plus de 30 u, locaux des jumeaux et lots larges) : montants verticaux du cadre de la famille, environ
+  // tous les 12 u ; la boiserie garde un petit bois au milieu de chaque travée.
+  const bays = w > 30 ? Math.round(w / 12) : 1;
+  const wood = f === 'A' && s.type ? shadeOf(SHOP_DEFS[s.type].sign, 0.2) : null;
+  if (wood) {
+    if (bays === 1) {
+      const n = Math.max(2, Math.round(w / 9));
+      for (let k = 1; k < n; k++) line(x, [[(k * w) / n, 0], [(k * w) / n, h]], wood, 0.5);
+    } else {
+      for (let k = 0; k < bays; k++) line(x, [[((k + 0.5) * w) / bays, 0], [((k + 0.5) * w) / bays, h]], wood, 0.5);
+    }
+    line(x, [[0, 6], [w, 6]], wood, 0.5);
+  }
+  if (bays > 1) {
+    const c = frameColor(s);
+    for (let k = 1; k < bays; k++) R(x, (k * w) / bays - 0.4, 0, 0.8, h, c, { lw: 0.3, sh: 0.3, shX: 0.6, li: 0 });
   }
   x.strokeStyle = INK;
   x.lineWidth = 0.5;
