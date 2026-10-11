@@ -150,7 +150,7 @@ describe('CityLifeLayer', () => {
 });
 
 describe('CityLifeLayer : boucle d’animation', () => {
-  it('un passant ou un véhicule qui devient absent continue d’avancer pendant son fondu, puis s’arrête', () => {
+  it('un véhicule qui devient absent continue d’avancer pendant son fondu, puis s’arrête', () => {
     let now = 1_760_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
     let tick: ((ms: number) => void) | null = null;
@@ -170,10 +170,10 @@ describe('CityLifeLayer : boucle d’animation', () => {
     const root = createRoot(host);
     mounted.push({ root, host });
     act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={ctx(8.25)} rainy={false} /></svg>));
-    const before = new Set(Array.from(host.querySelectorAll('[data-vehicle][data-active="true"], [data-ped][data-active="true"]')).map((n) => n.getAttribute('data-life-id')));
+    const before = new Set(Array.from(host.querySelectorAll('[data-vehicle][data-active="true"]')).map((n) => n.getAttribute('data-life-id')));
     // 3 h 30 : presque tout le monde disparaît.
     act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={ctx(3.5)} rainy={false} /></svg>));
-    const leaving = Array.from(host.querySelectorAll<SVGGElement>('[data-vehicle][data-active="false"], [data-ped][data-active="false"]')).filter((n) => before.has(n.getAttribute('data-life-id')));
+    const leaving = Array.from(host.querySelectorAll<SVGGElement>('[data-vehicle][data-active="false"]')).filter((n) => before.has(n.getAttribute('data-life-id')));
     expect(leaving.length).toBeGreaterThan(0);
     const node = leaving[0]!;
     const at = (): string | null => node.getAttribute('transform');
@@ -190,6 +190,41 @@ describe('CityLifeLayer : boucle d’animation', () => {
     frame(1000, 5000);
     expect(at()).toBe(t3); // fondu fini : il ne bouge plus (opacité 0, aucune écriture)
     vi.unstubAllGlobals();
+  });
+});
+
+describe('CityLifeLayer : présence des passants', () => {
+  it('passants : aucune transition d’opacité (ils entrent et sortent par les bords)', () => {
+    const c = make(12, { y: 2026, m: 10, d: 9 });
+    const peds = c.querySelectorAll<SVGGElement>('[data-ped]');
+    expect(peds.length).toBeGreaterThan(0);
+    for (const p of peds) {
+      expect(p.style.transition).toBe('');
+      expect(['0', '1']).toContain(p.getAttribute('opacity'));
+    }
+  });
+  it('un passant dont la présence voulue tombe en pleine rue reste affiché (bascule différée au bord)', () => {
+    const now = 1_760_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    const ymd = { y: 2026, m: 10, d: 5 };
+    const ctx = (hours: number): CityContext => {
+      const minutes = Math.round(hours * 60);
+      return { minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight: skyAt(minutes, times).daylight };
+    };
+    const sky = skyAt(495, times);
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const draw = (hours: number) => act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={ctx(hours)} rainy={false} /></svg>));
+    draw(8.25);
+    const before = [...host.querySelectorAll('[data-ped][data-active="true"]')].map((n) => n.getAttribute('data-life-id')!);
+    expect(before.length).toBeGreaterThan(3);
+    // 3 h 30 : presque plus personne n'est voulu, mais les passants affichés finissent leur traversée.
+    draw(3.5);
+    const still = before.filter((id) => host.querySelector(`[data-ped][data-life-id="${id}"]`)!.getAttribute('data-active') === 'true');
+    expect(still.length).toBeGreaterThan(0);
+    for (const id of still) expect(host.querySelector(`[data-ped][data-life-id="${id}"]`)!.getAttribute('opacity')).toBe('1');
   });
 });
 

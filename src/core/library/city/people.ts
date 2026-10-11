@@ -80,6 +80,14 @@ export function festiveMark(p: Pedestrian, i: CityIntensity): FestiveMark | null
   return markU(p.id) < f.share ? mark : null;
 }
 
+// Marge hors champ (px) où un passant peut changer de présence : il ne surgit ni ne s'efface jamais dans la rue visible.
+export const EDGE_PAD = 12;
+// Présence affichée : la présence voulue (pedestrianGate, à la minute) n'est prise que lorsque le passant est hors champ ;
+// celui qui doit partir finit sa traversée, celui qui doit arriver attend son prochain passage par le bord.
+export function pedShown(prev: boolean, wanted: boolean, x: number, width: number): boolean {
+  return x < -EDGE_PAD || x > width + EDGE_PAD ? wanted : prev;
+}
+
 // Intensité qui décide de la présence d'un passant selon son rôle.
 export function pedestrianGate(p: Pedestrian, i: CityIntensity): number {
   if (p.role === 'festive') return i.festive && i.festive.id === p.fest ? Math.min(1, i.festive.share * 2) : 0;

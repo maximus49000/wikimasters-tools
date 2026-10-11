@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FestivityId } from '../../../src/core/library/city/calendar';
 import { type CityIntensity } from '../../../src/core/library/city/intensity';
-import { festiveMark, outfitFor, pedestrianGate, pedestriansFor } from '../../../src/core/library/city/people';
+import { festiveMark, outfitFor, pedShown, pedestrianGate, pedestriansFor } from '../../../src/core/library/city/people';
 import { hashString, mulberry32 } from '../../../src/core/library/scene-world';
 
 const zero: CityIntensity = { traffic: 0, walkers: 0, suits: 0, schoolTo: 0, schoolFrom: 0, kids: 0, sport: 0, umbrellas: false, weekendLike: false, festive: null, closed: false };
@@ -91,5 +91,14 @@ describe('passants festifs', () => {
     const n = base.filter((p) => festiveMark(p, festive('bastille', 0.5)) !== null).length;
     expect(n).toBeGreaterThan(base.length * 0.2);
     expect(n).toBeLessThan(base.length * 0.8);
+  });
+});
+
+describe('présence des passants au bord', () => {
+  it('ne bascule qu’hors champ', () => {
+    expect(pedShown(true, false, 300, 720)).toBe(true);
+    expect(pedShown(true, false, -20, 720)).toBe(false);
+    expect(pedShown(false, true, 300, 720)).toBe(false);
+    expect(pedShown(false, true, 740, 720)).toBe(true);
   });
 });

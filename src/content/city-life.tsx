@@ -7,7 +7,7 @@ import { cityFacades } from '../core/library/city/facades';
 import { cityIntensity, type CityContext } from '../core/library/city/intensity';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { FAR_SHRINK, STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
-import { festiveMark, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
+import { festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { customerGate, visitsFor, type Visit } from '../core/library/city/shops/customers';
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { StaffShift } from '../core/library/city/shops/staff';
@@ -49,7 +49,7 @@ const COMPANION_GAP = 16;
 // Couple (Saint-Valentin) : le second adulte marche à côté, à taille normale.
 const PAIR_GAP = 13;
 // Durée du fondu d'apparition/disparition (CSS) ; un absent continue d'avancer tant qu'il s'efface (avec une petite marge).
-const FADE_S = 3;
+const FADE_S = 3; // fondu des véhicules seulement (les passants entrent et sortent par les bords)
 // Fondu court des habitants (leur présence est réécrite par la boucle) : ils n'apparaissent ni ne disparaissent d'un coup
 // en pleine rue. Sert aussi aux voitures qui s'effacent devant un véhicule d'événement. Aucun fondu en mouvement réduit.
 const RESIDENT_FADE_S = 0.4;
@@ -135,6 +135,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const root = useRef<SVGGElement | null>(null);
   // Passants et véhicules présents au dernier placement : ceux qui disparaissent continuent d'avancer pendant leur fondu.
   const moving = useRef<Set<string>>(new Set());
+  // Présence affichée de chaque passant, gardée entre les minutes : elle ne suit la présence voulue qu'au bord du monde.
+  const shownPeds = useRef<Map<string, boolean>>(new Map());
   // Calculs mémoïsés par (width, height, seed) : populations, entrées, trajets, façades. Recalculés par minute : intensités.
   const metrics = useMemo(() => cityMetrics(height), [height]);
   // Art Ghibli : les passants sont des pantins (symboles du registre de la pièce), posés par la boucle, sans miroir.
@@ -226,7 +228,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     const pedFigs = new Map<string, Element[]>();
     let muted: Set<string> = new Set();
     let posedAt = -Infinity;
-    const moves = (id: string, t: number): boolean => first || vehActive.has(id) || pedActive.has(id) || (t < leaveUntil && leaving.has(id));
+    // Véhicules seulement : les passants ne se fondent plus, leur présence bascule au bord (pedShown).
+    const moves = (id: string, t: number): boolean => first || vehActive.has(id) || (t < leaveUntil && leaving.has(id));
     return (now: number): void => {
       // Mouvement réduit : toujours le même instant, y compris quand le placement est refait après un changement de minute.
       const t = still ? frozen.current! : now;
@@ -237,9 +240,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       if (!nodes) {
         nodes = new Map();
         for (const node of el.querySelectorAll<SVGGElement>('[data-life-id]')) nodes.set(node.getAttribute('data-life-id')!, node);
-        leaving = new Set([...moving.current].filter((id) => !vehActive.has(id) && !pedActive.has(id)));
+        leaving = new Set([...moving.current].filter((id) => !vehActive.has(id)));
         leaveUntil = t + FADE_S + 0.2;
-        moving.current = new Set([...vehActive, ...pedActive]);
+        moving.current = new Set(vehActive);
         staff = collectPosedStaff(el);
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
@@ -255,8 +258,19 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       }
       for (const v of vehicles) if (moves(v.id, t)) nodes.get(v.id)?.setAttribute('transform', vehicleTransform(v, metrics, width, t, pullDy(v, events.ambulances, metrics, width, t)));
       for (const p of peds) {
-        if (!moves(p.id, t)) continue;
-        nodes.get(p.id)?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
+        const wanted = pedActive.has(p.id);
+        const prev = shownPeds.current.get(p.id) ?? wanted;
+        // Mouvement réduit : pas de boucle, la présence voulue s'applique telle quelle. Sinon elle ne bascule qu'hors champ.
+        const next = still ? wanted : pedShown(prev, wanted, loopX(p.phase, p.dir * p.speed, width, t), width);
+        shownPeds.current.set(p.id, next);
+        const node = nodes.get(p.id);
+        if (node && next !== prev) {
+          setIfChanged(node, 'data-active', next ? 'true' : 'false');
+          setIfChanged(node, 'opacity', next ? '1' : '0');
+        }
+        // Un passant caché n'est pas touché (sauf au premier placement de la scène).
+        if (!next && !first) continue;
+        node?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
         if (ghibli) {
           const pose = pedPose(p, metrics, t);
           for (const fig of pedFigs.get(p.id) ?? []) poseFigure(figures, fig, pose);
@@ -462,7 +476,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} />
         ))}
         {peds.map((p) => {
-          const active = pedActive.has(p.id);
+          // Présence affichée (pas la voulue) : mémorisée au premier rendu, puis changée seulement par la boucle, au bord.
+          if (!shownPeds.current.has(p.id)) shownPeds.current.set(p.id, pedActive.has(p.id));
+          const active = still ? pedActive.has(p.id) : shownPeds.current.get(p.id)!;
           return (
             <g
               key={p.id}
@@ -474,7 +490,6 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-active={active ? 'true' : 'false'}
               transform={pedTransform(p, metrics, width, t0, !ghibli)}
               opacity={active ? 1 : 0}
-              style={{ transition: `opacity ${FADE_S}s ease` }}
             >
               {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7. */}
               {p.companions.map((outfit, k) => (
