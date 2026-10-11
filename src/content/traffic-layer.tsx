@@ -13,7 +13,8 @@ import { CityEventSprite } from './city-event-sprites';
 import { DEFAULT_RIDER, PersonSprite, VehicleSprite, tone } from './city-sprites';
 import { useFigureRegistry } from './figure/figure-host';
 import { createPuffs, emitPuffs, forgetPuffSources } from '../core/library/city/traffic/exhaust';
-import { lookOfCar } from '../core/library/city/traffic/look';
+import { lookOfCar, type VehicleLook } from '../core/library/city/traffic/look';
+import { specialLook } from '../core/library/city/traffic/special-art';
 import { useCarRegistry } from './vehicle/car-host';
 import { ExhaustPuffs, placePuffs } from './vehicle/exhaust-puffs';
 import { GhibliCar, placeCar } from './vehicle/ghibli-car';
@@ -61,11 +62,14 @@ const transformOf = (w: TrafficWorld, a: Agent, m: CityMetrics, now: number, pai
   }
   return `translate(${v.x.toFixed(1)} ${yOf(a, v.lat, m).toFixed(1)}) scale(${(TRACK_DIR[a.track] * k).toFixed(3)} ${k.toFixed(3)})`;
 };
-// Véhicule d'ambiance vu par les sprites actuels.
-const asVehicle = (a: Agent): Vehicle => ({ id: a.id, lane: a.track === 'far' ? 'far' : 'near', kind: a.kind === 'van' || a.kind === 'bus' || a.kind === 'bike' ? a.kind : 'car', color: a.color, speed: a.vmax, phase: 0, u: 0, scale: a.scale, ...(a.rider ? { rider: a.rider } : {}), ...(a.car ? { len: a.car.L } : {}) });
-const paintedCar = (a: Agent, ghibli: boolean): boolean => ghibli && a.kind === 'car' && a.car !== undefined;
+// Véhicule d'ambiance vu par les sprites actuels (classique) : deux-roues motorisé en vélo avec son pilote, car scolaire en bus.
+const CLASSIC_KIND: Partial<Record<Agent['kind'], Vehicle['kind']>> = { van: 'van', bus: 'bus', bike: 'bike', moto: 'bike', 'school-bus': 'bus' };
+const asVehicle = (a: Agent): Vehicle => ({ id: a.id, lane: a.track === 'far' ? 'far' : 'near', kind: CLASSIC_KIND[a.kind] ?? 'car', color: a.color, speed: a.vmax, phase: 0, u: 0, scale: a.scale, ...(a.rider ? { rider: a.rider } : {}), ...(a.car ? { len: a.car.L } : {}) });
+// Apparence peinte (Ghibli) : voiture générée ou véhicule à part (spec véhicules §4) ; vélos à part (ghibli-cyclist).
+const lookOf = (a: Agent): VehicleLook | null => (a.car ? lookOfCar(a.car) : a.special ? specialLook(a.special) : null);
+const paintedLook = (a: Agent, ghibli: boolean): VehicleLook | null => (ghibli && a.kind !== 'bike' && a.kind !== 'delivery-bike' ? lookOf(a) : null);
 // Demi-longueur dessinée (repère du sprite) : feux à l'arrière, détresse aux deux bouts.
-const SPRITE_HALF: Record<string, number> = { car: 20, van: 23, bus: 34, bike: 9, tram: 66, ambulance: 21, 'garbage-truck': 34, 'delivery-bike': 9 };
+const SPRITE_HALF: Record<string, number> = { car: 20, van: 23, bus: 34, bike: 9, tram: 66, ambulance: 21, 'garbage-truck': 34, 'delivery-bike': 9, moto: 9, 'school-bus': 34 };
 
 type LaneProps = {
   handle: TrafficHandle;
@@ -106,19 +110,20 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         const id = node.getAttribute('data-life-id');
         const a = id ? w.agents.find((x) => x.id === id) : undefined;
         if (!a) continue;
-        const painted = paintedCar(a, ghibli);
-        node.setAttribute('transform', transformOf(w, a, metrics, t, painted));
-        if (painted) {
-          // Voiture Ghibli : roues, occupants, images peintes ; feu stop ; bouffées au pot.
+        const look = paintedLook(a, ghibli);
+        node.setAttribute('transform', transformOf(w, a, metrics, t, look !== null));
+        if (look) {
+          // Véhicule Ghibli : roues, occupants, images peintes, gyrophares ; feu stop, feux de détresse ; bouffées au pot.
           const k = kOf(a, metrics);
           const dir = TRACK_DIR[a.track];
           const view = agentView(w, a, t);
           const carNode = node.querySelector('[data-ghibli-car]');
-          if (carNode && !still) placeCar(figures, cars, carNode, { look: lookOfCar(a.car!), dist: a.dist / k, v: a.v / k, lean: view.lean, seed: a.seed }, dir, t);
+          if (carNode && !still) placeCar(figures, cars, carNode, { look, dist: a.dist / k, v: a.v / k, lean: view.lean, seed: a.seed }, dir, t);
           node.querySelector('[data-brake]')?.setAttribute('opacity', braking(a, w.unit) ? '1' : '0');
+          node.querySelector(':scope > [data-hazard]')?.setAttribute('opacity', a.hazard && Math.floor(t * 1.6) % 2 === 0 ? '1' : '0');
           if (!still) {
             alive.add(a.id);
-            const ex = lookOfCar(a.car!).art.exhaust;
+            const ex = look.art.exhaust;
             if (ex) emitPuffs(puffs, { id: a.id, x: view.x + ex.x * k * dir, y: yOf(a, view.lat, metrics) + ex.y * k, k, acc: a.cmd, v: a.v, unit: w.unit, dir }, t);
           }
           continue;
@@ -153,11 +158,13 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
       {order.map((a) => {
         const ev = a.event ? eventsByKey.get(a.event) : undefined;
         const half = a.car ? a.car.L / 2 : (SPRITE_HALF[a.kind] ?? 20);
-        const painted = paintedCar(a, ghibli);
+        const look = paintedLook(a, ghibli);
+        const painted = look !== null;
+        const dir = TRACK_DIR[a.track];
         return (
           <g key={a.id} data-life-id={a.id} data-vehicle="" data-kind={a.kind} data-lane={a.track} data-active="true" transform={transformOf(w, a, metrics, now, painted)}>
-            {painted ? (
-              <GhibliCar look={lookOfCar(a.car!)} dir={TRACK_DIR[a.track]} sky={sky} rainy={rainy} lights={lights} still={still} />
+            {look ? (
+              <GhibliCar look={look} dir={dir} sky={sky} rainy={rainy} lights={lights} still={still} />
             ) : ev ? (
               <CityEventSprite event={ev} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} />
             ) : ghibli && a.kind === 'bike' ? (
@@ -166,6 +173,12 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
               <VehicleSprite vehicle={asVehicle(a)} sky={sky} lights={lights} />
             )}
             {!painted && a.kind !== 'bike' && a.kind !== 'delivery-bike' && <circle data-brake="" cx={-half + 1.2} cy={-9} r={1.5} fill="#FF3B2F" opacity={braking(a, w.unit) ? 1 : 0} />}
+            {look && a.kind === 'van' && (
+              <g data-hazard="" opacity={0} fill="#FFB020">
+                <circle cx={look.art.tail.x * dir} cy={look.art.tail.y} r={1.3} />
+                <circle cx={look.art.head.x * dir} cy={look.art.head.y} r={1.3} />
+              </g>
+            )}
             {!painted && (a.kind === 'van' || a.kind === 'car') && (
               <g data-hazard="" opacity={0} fill="#FFB020">
                 <circle cx={-half + 1.2} cy={-11.5} r={1.3} />
