@@ -6,6 +6,7 @@
 // Repère : roues au sol y = 0, regard vers +x, unités des sprites de véhicules.
 import { mixHex } from '../../sky';
 import type { ArmPose } from '../../figure/skeleton';
+import type { Outfit } from '../people';
 import { ARCHETYPES, hsl, type CarSpec, type Occupant, type Rim } from './cars';
 
 export const INK = '#33241f';
@@ -26,7 +27,7 @@ export type Op =
   | { k: 'text'; x: number; y: number; text: string; size: number; color: string; bg?: string };
 // Occupant : (x, headY) = tête du pantin assis (`seated`, défaut), selle (`mount` : pilote d'un deux-roues) ou pieds
 // (`stand` : éboueur sur le marchepied). `over` : dessiné après les roues (par-dessus la machine).
-export type Seat = { role: Occupant['role']; child: boolean; outfitSeed: number; x: number; headY: number; k: number; gait?: 'seated' | 'mount' | 'stand'; arms?: ArmPose; over?: boolean };
+export type Seat = { role: Occupant['role']; child: boolean; outfitSeed: number; x: number; headY: number; k: number; gait?: 'seated' | 'mount' | 'stand'; arms?: ArmPose; over?: boolean; outfit?: Outfit };
 // Gyrophare ou lumineux : rectangle arrondi ; clignote entre `on` et `off`, ou feu fixe (`off` null : allumé la nuit).
 export type Beacon = { x: number; y: number; w: number; h: number; on: string; off: string | null };
 export type Box = { x: number; y: number; w: number; h: number };

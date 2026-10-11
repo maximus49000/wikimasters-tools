@@ -9,19 +9,25 @@
 import { hashString, mulberry32 } from '../../scene-world';
 import { mixHex } from '../../sky';
 import type { ArmPose } from '../../figure/skeleton';
+import type { Outfit } from '../people';
 import { INK, circlePath, type Beacon, type CarArt, type Op, type Seat } from './car-art';
 import type { Rim } from './cars';
 import type { BusLine } from './bus-lines';
 import type { VehicleLook } from './look';
 
-export const SPECIAL_IDS = ['bus', 'school-bus', 'tram', 'estafette', 'type-h', 'poste', 'tipper', 'ambulance', 'police', 'taxi', 'garbage', 'vespa', 'mobylette', 'sidecar', 'triporteur'] as const;
+// Véhicules scénarisés (V5) : dessinés aux cotes de leur sprite classique (équipes, déménagement, défilé), jamais tirés par
+// le moteur de circulation.
+export const SCRIPTED_IDS = ['crew-van', 'flatbed', 'lift', 'moving-truck', 'army-jeep', 'army-truck', 'tank', 'fire-truck', 'garde-moto'] as const;
+export const SPECIAL_IDS = ['bus', 'school-bus', 'tram', 'estafette', 'type-h', 'poste', 'tipper', 'ambulance', 'police', 'taxi', 'garbage', 'vespa', 'mobylette', 'sidecar', 'triporteur', ...SCRIPTED_IDS] as const;
 export type SpecialId = (typeof SPECIAL_IDS)[number];
-// `label` : inscription d'un utilitaire (Type H : commerce desservi) ; `line` : ligne d'un bus (girouette, couleur).
-export type SpecialSpec = { id: SpecialId; seed: number; label?: string; line?: BusLine };
+// `label` : inscription d'un utilitaire (Type H : commerce desservi) ; `line` : ligne d'un bus (girouette, couleur) ;
+// `paint` : teinte d'armée d'un véhicule du défilé.
+export type SpecialSpec = { id: SpecialId; seed: number; label?: string; line?: BusLine; paint?: string };
 
 // Vitesse voulue (× vitesse de base du genre de l'agent).
 export const SPECIAL_SPEED: Readonly<Record<SpecialId, number>> = {
   bus: 1, 'school-bus': 1, tram: 1, estafette: 0.95, 'type-h': 0.85, poste: 0.95, tipper: 0.8, ambulance: 1, police: 1.05, taxi: 1.05, garbage: 1, vespa: 0.95, mobylette: 0.75, sidecar: 0.9, triporteur: 0.6,
+  'crew-van': 1, flatbed: 1, lift: 1, 'moving-truck': 1, 'army-jeep': 1, 'army-truck': 1, tank: 1, 'fire-truck': 1, 'garde-moto': 1,
 };
 
 const BUST = 0.53; // échelle du pantin assis pour un buste de la maquette d'échelle 1
@@ -29,6 +35,12 @@ const RIDER = 0.5; // pilote en selle
 const STAND = 0.45; // debout (éboueur), à l'échelle des occupants
 const CREAM = '#efe4c6';
 const CHROME = '#d9d6cf';
+const ARMY = '#4B5320';
+const SKINS = ['#F1C9A5', '#E0A97F', '#C68A5E', '#8D5A3B', '#5E3A26'] as const;
+// Uniforme (défilé) : veste et pantalon de la même couleur, casquette ou bonnet.
+const uniform = (seed: number, i: number, top: string, hair: Outfit['hair'], hat: string): Outfit => ({
+  skin: SKINS[(seed + i * 3) % SKINS.length]!, hair, hairColor: '#2A1D16', hatColor: hat, top: 'jacket', topColor: top, bottom: 'pants', bottomColor: top, accessory: 'none', accessoryColor: top,
+});
 
 const f = (n: number): string => (Math.abs(n) < 1e-9 ? '0' : n.toFixed(2));
 function rr(x: number, y: number, w: number, h: number, r: number | readonly [number, number, number, number]): string {
@@ -54,7 +66,7 @@ const fill = (d: string, color: string, more: Partial<Extract<Op, { k: 'fill' }>
 const line = (d: string, color: string, w: number, alpha?: number): Op => ({ k: 'line', d, color, w, ...(alpha !== undefined ? { alpha } : {}) });
 const text = (x: number, y: number, t: string, size: number, color: string, bg?: string): Op => ({ k: 'text', x, y, text: t, size, color, ...(bg ? { bg } : {}) });
 
-type Person = { x: number; y: number; k: number; role?: Seat['role']; child?: boolean; gait?: Seat['gait']; arms?: ArmPose; over?: boolean };
+type Person = { x: number; y: number; k: number; role?: Seat['role']; child?: boolean; gait?: Seat['gait']; arms?: ArmPose; over?: boolean; outfit?: Outfit };
 type Model = {
   color: string;
   body: string;
@@ -113,6 +125,7 @@ function model(m: Model, seed: number): CarArt {
     ...(p.gait ? { gait: p.gait } : {}),
     ...(p.arms ? { arms: p.arms } : {}),
     ...(p.over ? { over: true } : {}),
+    ...(p.outfit ? { outfit: p.outfit } : {}),
   }));
   const tops = [bb.y0, m.top ?? 0, ...(m.beacons ?? []).map((b) => b.y)];
   for (const o of [...body, ...(m.over ?? [])]) if (o.k === 'text') tops.push(o.y - o.size * 1.2);
@@ -511,10 +524,224 @@ function build(s: SpecialSpec): CarArt {
         },
         s.seed,
       );
+    // ---------- Véhicules scénarisés (V5), aux cotes de leur sprite classique ----------
+    case 'crew-van':
+      // Camionnette des équipes : blanche, bande orange, galerie de toit (l'échelle et la portière ouverte restent dessinées
+      // par-dessus, content/install-sprites.tsx).
+      return model(
+        {
+          color: '#ecebe6',
+          body: 'M-25 -5 L-25 -22 Q-25 -24 -23 -24 L13 -24 Q19 -24 22 -17 L25 -14.4 Q26 -13.4 26 -10 L26 -5 Q26 -4 24.6 -4 L-23.6 -4 Q-25 -4 -25 -5 Z',
+          paint: [fill(rect(-24.6, -13, 25.6, -10.6), '#e8601c'), line('M-22 -25.5 L10 -25.5 M-20 -25.5 L-20 -24 M-6 -25.5 L-6 -24 M8 -25.5 L8 -24', '#8a9098', 0.8)],
+          windows: ['M13 -22 L18.6 -22 Q21 -21 22.4 -16 L13 -16 Z'],
+          people: [{ x: 16.6, y: -18.8, k: BUST * 0.8 }],
+          wheels: [[-14, 4], [15, 4]],
+          arch: { r: 5.6, y: -4.4, color: '#d6d4cc' },
+          chrome: [[-26, -6.4, 3, 1.8], [24, -6.4, 3, 1.8]],
+          lamp: [25.4, -9],
+          tail: [-24.6, -12],
+          exhaust: [-24.6, -3.6],
+          top: -26,
+        },
+        s.seed,
+      );
+    case 'flatbed':
+      // Camion plateau : cabine bleue, plateau de bois à ridelles, grue repliée (le chargement et le hayon restent dessinés
+      // par-dessus).
+      return model(
+        {
+          color: '#2f5e8e',
+          under: [
+            piece(rect(-46, -7.5, 28, -4.6), '#2e323c'),
+            piece(rect(-46, -11, 24, -7.5), '#7a5a3a'),
+            fill(rect(-46, -12.6, 24, -11), '#b9bec4', { ink: 0.3 }),
+            piece(rect(20, -30, 23.4, -12), '#e8b923'),
+            line('M21.7 -28.5 L-10 -26', '#e8b923', 1.8),
+            line('M-10 -26 L-10 -21', INK, 0.4),
+          ],
+          body: 'M24 -4.6 L24 -26 Q24 -28 26.5 -28 L39 -28 Q44 -27.4 45.6 -20 L46.4 -14 Q46.6 -12 46.6 -10 L46.6 -5.6 Q46.6 -4.6 45.4 -4.6 Z',
+          paint: [line('M31 -25 L31 -8', '#244a70', 0.6), fill(rr(27, -30, 5, 2, 0.8), '#e8601c')],
+          windows: ['M33 -25.4 L40 -25.4 Q43.4 -24.6 44.4 -17.6 L33 -17.6 Z'],
+          people: [{ x: 37.4, y: -21.6, k: BUST * 0.8 }],
+          wheels: [[-33, 4.5], [-22, 4.5], [36, 4.5]],
+          lamp: [46, -10],
+          tail: [-45.6, -9.4],
+          exhaust: [-46, -5.6],
+          x0: -46,
+          top: -30,
+        },
+        s.seed,
+      );
+    case 'lift':
+      // Camion élévateur : châssis jaune, tourelle, cabine blanche, gyrophare orange (bras, nacelle et stabilisateurs restent
+      // dessinés à part).
+      return model(
+        {
+          color: '#ecebe6',
+          under: [piece(rect(-32, -12, 16.4, -5), '#e8b923'), fill(rect(-32, -8, 16, -6.8), '#3b3f4a'), piece(rr(-23, -18, 10, 6, 1), '#e8b923')],
+          body: 'M16 -4.6 L16 -22 Q16 -24 18.4 -24 L27 -24 Q31 -23.4 32 -17 L32.6 -12 L32.6 -5.6 Q32.6 -4.6 31.4 -4.6 Z',
+          windows: ['M22 -21.6 L27.6 -21.6 Q30 -21 30.8 -15 L22 -15 Z'],
+          people: [{ x: 25.8, y: -18.6, k: BUST * 0.8 }],
+          wheels: [[-20, 4.5], [22, 4.5]],
+          beacons: [{ x: 20, y: -26, w: 4, h: 2, on: '#ff7a1c', off: '#8a3a12' }],
+          lamp: [32.4, -10],
+          tail: [-31.6, -10],
+          exhaust: [-31.6, -5.4],
+          x0: -32,
+        },
+        s.seed,
+      );
+    case 'moving-truck': {
+      // Camion de déménagement : caisse blanche à bande bleue et carton peint, cabine bleue (le hayon reste dessiné à part).
+      const cab = 'M10 -6 L10 -24 L24 -24 Q31 -24 32 -14 L32 -6 Z';
+      return model(
+        {
+          color: '#f1f0ea',
+          under: [piece(rect(-32, -6.4, 32, -4.4), '#3a3f4a')],
+          body: `${rr(-32, -34, 42, 28, 1.5)} ${cab}`,
+          paint: [piece(cab, '#2e6fd6', -0.2), fill(rect(-31.6, -17, 9.6, -13), '#2e6fd6'), piece(rect(-15, -29, -7, -22), '#c8a06a'), fill(rect(-15, -26, -7, -25.1), '#8a6a3a')],
+          windows: ['M22 -22 L25 -22 Q29 -22 30 -15 L22 -15 Z'],
+          people: [{ x: 25.4, y: -19, k: BUST * 0.75 }],
+          wheels: [[-20, 4.5], [22, 4.5]],
+          lamp: [31.4, -10],
+          tail: [-31.6, -9],
+          exhaust: [-31, -4.4],
+        },
+        s.seed,
+      );
+    }
+    case 'army-jeep': {
+      // Jeep pavoisée : caisse ouverte, roue de secours, pare-brise ; conducteur assis, chef de bord debout (les drapeaux des
+      // antennes restent dessinés par-dessus).
+      const c = s.paint ?? ARMY;
+      const tunic = c === '#B49A6A' ? '#8C7A55' : '#3E4420';
+      const shield = 'M4.4 -15.6 L8.4 -24 L11 -24 L7.6 -15.6 Z';
+      return model(
+        {
+          color: c,
+          under: [fill(circlePath(-21, -11, 3.4), '#2a2a26', { ink: 0.5 }), fill(circlePath(-21, -11, 1.3), c)],
+          body: 'M-19 -5 L-19 -17 L-9 -17 L-9 -14 L3 -14 L3 -16 L12 -16 L12 -14 L17 -14 Q19 -14 19 -12 L19 -6 Q19 -5 18 -5 Z',
+          over: [fill(shield, '#c9dde6', { alpha: 0.6 }), line(shield, c, 1.1)],
+          people: [
+            { x: 5, y: -18.4, k: BUST * 0.72, outfit: uniform(s.seed, 0, tunic, 'cap', tunic) },
+            { x: -3, y: -7.5, k: 0.6, role: 'rear', gait: 'stand', arms: 'down', outfit: uniform(s.seed, 1, tunic, 'cap', '#2B3A6A') },
+          ],
+          wheels: [[-11, 4.4], [12, 4.4]],
+          lamp: [18.6, -11],
+          tail: [-18.6, -12],
+          exhaust: [-19, -4.6],
+          x0: -24.4,
+          top: -24,
+        },
+        s.seed,
+      );
+    }
+    case 'army-truck': {
+      // Camion militaire bâché : plateau sous bâche arrondie, cabine, trois essieux.
+      const c = s.paint ?? ARMY;
+      return model(
+        {
+          color: c,
+          under: [
+            piece(rect(-27, -12, 27, -7), '#2e2e26'),
+            piece('M-27 -12 L-27 -30 Q-27 -33 -24 -33 L6 -33 Q9 -33 9 -30 L9 -12 Z', c === '#B49A6A' ? '#C9B48A' : '#6A6E45'),
+            line('M-18 -32 L-18 -13 M-9 -32 L-9 -13 M0 -32 L0 -13', '#000000', 0.8, 0.18),
+          ],
+          body: 'M11 -7 L11 -26 L21 -26 L27 -18 L27 -7 Z',
+          windows: ['M20 -24 L25 -18 L20 -18 Z'],
+          people: [{ x: 21.6, y: -20.6, k: BUST * 0.7, outfit: uniform(s.seed, 0, '#3E4420', 'cap', '#3E4420') }],
+          wheels: [[-20, 4.5], [-10, 4.5], [17, 4.5]],
+          lamp: [26.6, -11],
+          tail: [-26.6, -10],
+          exhaust: [-27, -6],
+          x0: -27,
+          top: -33,
+        },
+        s.seed,
+      );
+    }
+    case 'tank': {
+      // Char : chenilles, six galets, caisse, tourelle et canon, chef de char debout dans la tourelle (le défilement des
+      // chenilles et le drapeau restent dessinés par-dessus).
+      const c = s.paint ?? ARMY;
+      return model(
+        {
+          color: c,
+          under: [piece(rr(-30, -9, 60, 9, 4.5), '#2a2a26')],
+          body: 'M-30 -9 L-27 -16 L24 -16 L31 -9 Z',
+          paint: [piece('M-14 -16 L-12 -23 L6 -23 L10 -16 Z', c, -0.2), piece(rect(9, -21.4, 34, -19.4), c), fill(rect(30, -22, 34, -18.8), '#2a2a26')],
+          people: [{ x: -5.5, y: -12, k: 0.55, gait: 'stand', arms: 'down', outfit: uniform(s.seed, 0, '#3E4420', 'beanie', '#2A2A26') }],
+          wheels: [[-22, 3], [-13, 3], [-4, 3], [5, 3], [14, 3], [23, 3]],
+          lamp: [30, -11],
+          tail: [-29.6, -11],
+          exhaust: [-30, -10],
+          x1: 34,
+          top: -24,
+        },
+        s.seed,
+      );
+    }
+    case 'fire-truck': {
+      // Sapeurs-pompiers : grand camion rouge, bande blanche, coffres, échelle sur le toit, gyrophares bleus, trois pompiers
+      // dans la cabine.
+      const red = r() < 0.5 ? '#C8102E' : '#B5121B';
+      const rungs = Array.from({ length: 14 }, (_, i) => {
+        const x = -42 + i * 6;
+        const y = -29 - ((x + 44) / 82) * 5;
+        return `M${f(x)} ${f(y)} L${f(x)} ${f(y - 3)}`;
+      }).join(' ');
+      const crewOf = (i: number): Outfit => uniform(s.seed, i, '#1F2A4A', 'cap', '#c8ccd2');
+      return model(
+        {
+          color: red,
+          body: `${rr(-46, -26, 66, 20, 2)} M20 -6 L20 -30 L34 -30 L42 -18 L42 -6 Z`,
+          paint: [
+            fill(rect(-46, -15, 42, -12.6), '#F4F6F8'),
+            ...[-40, -30, -20, -10, 0, 10].map((x) => fill(rr(x, -24, 7, 7, 0.6), '#9E0E22', { ink: 0.3 })),
+            line('M-44 -29 L38 -34 M-44 -32 L38 -37', '#9aa2ac', 1.2),
+            line(rungs, '#9aa2ac', 0.8),
+            piece(rect(-46, -30, -42, -26), '#555555'),
+          ],
+          windows: [rect(22, -27, 31, -19), 'M33 -28 L40 -18 L33 -18 Z'],
+          people: [
+            { x: 35, y: -22.4, k: BUST * 0.7, outfit: crewOf(0) },
+            { x: 25, y: -22.4, k: BUST * 0.7, outfit: crewOf(1) },
+            { x: 29, y: -22.6, k: BUST * 0.7, outfit: crewOf(2) },
+          ],
+          wheels: [[-34, 5], [-14, 5], [30, 5]],
+          beacons: [
+            { x: 24, y: -33, w: 4, h: 3, on: '#3F6BFF', off: '#1d2c66' },
+            { x: 30, y: -33, w: 4, h: 3, on: '#3F6BFF', off: '#1d2c66' },
+          ],
+          lamp: [41.6, -10],
+          tail: [-45.6, -10],
+          exhaust: [-46, -5.6],
+          top: -37,
+        },
+        s.seed,
+      );
+    }
+    case 'garde-moto':
+      // Moto de la Garde : machine blanche, pare-brise, coffre bleu, gyrophare bleu, motard en selle.
+      return model(
+        {
+          color: '#F4F6F8',
+          body: 'M-13 -10 L-4 -16 L6 -16 L13 -9 L9 -6 L-8 -6 Z',
+          paint: [fill('M6 -16 L11 -24 L13 -23 L9 -15 Z', '#c9dde6', { alpha: 0.7, ink: 0.4 }), piece(rect(-12, -14, -6, -10), '#2E4FA8')],
+          people: [{ x: -2, y: -15, k: 0.7, gait: 'mount', arms: 'handlebar', over: true, outfit: uniform(s.seed, 0, '#1F2A4A', 'cap', '#F4F6F8') }],
+          wheels: [[-11, 6], [11, 6]],
+          beacons: [{ x: -13.2, y: -18.4, w: 2.4, h: 2.4, on: '#4F7BFF', off: '#1d2c66' }],
+          lamp: [12.4, -11],
+          tail: [-12.6, -10],
+          exhaust: null,
+          top: -34,
+        },
+        s.seed,
+      );
   }
 }
 
-export const specialKey = (s: SpecialSpec): string => `sp|${s.id}|${s.seed}|${s.label ?? ''}|${s.line ? `${s.line.ref}|${s.line.to}|${s.line.colour}` : ''}`;
+export const specialKey = (s: SpecialSpec): string => `sp|${s.id}|${s.seed}|${s.label ?? ''}|${s.paint ?? ''}|${s.line ? `${s.line.ref}|${s.line.to}|${s.line.colour}` : ''}`;
 const memo = new Map<string, CarArt>();
 export function specialArt(s: SpecialSpec): CarArt {
   const key = specialKey(s);
@@ -530,7 +757,8 @@ export const specialExtent = (s: SpecialSpec): number => {
   const a = specialArt(s);
   return Math.max(-a.x0, a.x1) + 1.6;
 };
-const RIMS: Partial<Record<SpecialId, readonly [Rim, string]>> = { tram: ['tôle', '#3a3236'], vespa: ['enjoliveur', '#e9e6dc'], mobylette: ['rayons', CHROME], sidecar: ['rayons', CHROME], triporteur: ['rayons', CHROME], police: ['tôle', '#2f2f33'], taxi: ['enjoliveur', CHROME] };
+const RIMS: Partial<Record<SpecialId, readonly [Rim, string]>> = { tram: ['tôle', '#3a3236'], vespa: ['enjoliveur', '#e9e6dc'], mobylette: ['rayons', CHROME], sidecar: ['rayons', CHROME], triporteur: ['rayons', CHROME], police: ['tôle', '#2f2f33'], taxi: ['enjoliveur', CHROME],
+  tank: ['tôle', '#3e3e36'], 'army-jeep': ['tôle', '#3e3e36'], 'army-truck': ['tôle', '#3e3e36'], 'garde-moto': ['rayons', CHROME], 'fire-truck': ['enjoliveur', CHROME] };
 const looks = new Map<string, VehicleLook>();
 export function specialLook(s: SpecialSpec): VehicleLook {
   const key = specialKey(s);

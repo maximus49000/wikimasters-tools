@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SPECIAL_IDS, specialArt, specialExtent, specialKey, specialLook, type SpecialSpec } from '../../../../../src/core/library/city/traffic/special-art';
+import { SCRIPTED_IDS, SPECIAL_IDS, specialArt, specialExtent, specialKey, specialLook, type SpecialSpec } from '../../../../../src/core/library/city/traffic/special-art';
 import { fallbackLine } from '../../../../../src/core/library/city/traffic/bus-lines';
 
 const spec = (id: SpecialSpec['id'], seed = 3): SpecialSpec => ({ id, seed, ...(id === 'bus' ? { line: fallbackLine(seed) } : {}) });
@@ -55,4 +55,36 @@ describe('véhicules à part', () => {
     expect(specialKey(s)).toContain('FLEURS');
     expect(specialArt(s).body.some((o) => o.k === 'text' && o.text === 'FLEURS')).toBe(true);
   });
+});
+
+describe('véhicules scénarisés (V5)', () => {
+  it('aux cotes du sprite classique', () => {
+    const wx = (id: SpecialSpec['id']): number[] => specialArt({ id, seed: 1 }).wheels.map((w) => w.x);
+    expect(wx('crew-van')).toEqual([-14, 15]);
+    expect(wx('flatbed')).toEqual([-33, -22, 36]);
+    expect(wx('lift')).toEqual([-20, 22]);
+    expect(wx('moving-truck')).toEqual([-20, 22]);
+    expect(wx('army-truck')).toEqual([-20, -10, 17]);
+    expect(wx('fire-truck')).toEqual([-34, -14, 30]);
+    expect(wx('tank')).toHaveLength(6);
+    const van = specialArt({ id: 'crew-van', seed: 1 });
+    expect(van.x0).toBeGreaterThanOrEqual(-26.5);
+    expect(van.x1).toBeLessThanOrEqual(27.5);
+  });
+  it('teinte d’armée dans la clé et la peinture', () => {
+    expect(specialKey({ id: 'army-jeep', seed: 1, paint: '#4B5320' })).not.toBe(specialKey({ id: 'army-jeep', seed: 1, paint: '#B49A6A' }));
+    expect(specialArt({ id: 'army-jeep', seed: 1, paint: '#B49A6A' }).body.some((o) => o.k === 'piece' && o.color === '#B49A6A')).toBe(true);
+  });
+  it('uniformes : tenue imposée aux occupants du défilé, pas à ceux des équipes', () => {
+    for (const id of ['army-jeep', 'army-truck', 'tank', 'fire-truck', 'garde-moto'] as const) for (const s of specialArt({ id, seed: 2 }).seats) expect(s.outfit).toBeDefined();
+    expect(specialArt({ id: 'crew-van', seed: 2 }).seats[0]!.outfit).toBeUndefined();
+  });
+  it('chef de bord debout (jeep, char), motard en selle par-dessus la machine, gyrophares pompiers et nacelle', () => {
+    expect(specialArt({ id: 'army-jeep', seed: 1 }).seats.some((s) => s.gait === 'stand')).toBe(true);
+    expect(specialArt({ id: 'tank', seed: 1 }).seats[0]).toMatchObject({ gait: 'stand' });
+    expect(specialArt({ id: 'garde-moto', seed: 1 }).seats[0]).toMatchObject({ gait: 'mount', over: true });
+    expect(specialArt({ id: 'fire-truck', seed: 1 }).beacons).toHaveLength(2);
+    expect(specialArt({ id: 'lift', seed: 1 }).beacons).toHaveLength(1);
+  });
+  it.each(SCRIPTED_IDS)('%s : dans SPECIAL_IDS', (id) => expect(SPECIAL_IDS).toContain(id));
 });
