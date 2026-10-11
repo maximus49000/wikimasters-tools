@@ -133,8 +133,9 @@ describe('voitures générées', () => {
     const t0 = w.t;
     for (let t = t0; t < t0 + 900 && cars.length < 40; t += 0.5) {
       advance(w, t, env(1));
+      // Taxis et police (véhicules à part) : hors de la suite des voitures générées.
       for (const a of w.agents)
-        if (a.kind === 'car' && !seen.has(a.id)) {
+        if (a.kind === 'car' && !a.special && !seen.has(a.id)) {
           seen.add(a.id);
           cars.push(a);
         }
@@ -162,5 +163,56 @@ describe('voitures générées', () => {
       }
     }
     expect(plunged).toBe(true);
+  });
+});
+
+describe('véhicules à part', () => {
+  it('tout bus, camionnette, deux-roues a un modèle ; taxis et police parmi les voitures', () => {
+    const e = env(1);
+    const w = warmTraffic({ width: 3000, seed: 9, unit: 1, startS: T0 }, e);
+    const seen = new Set<string>();
+    for (let t = T0; t < T0 + 1800; t += 1) {
+      advance(w, t, e);
+      for (const a of w.agents) {
+        if (a.special) seen.add(a.special.id);
+        if (a.kind === 'bus' || a.kind === 'van' || a.kind === 'moto') expect(a.special).toBeDefined();
+        if (a.kind === 'car') expect(a.car !== undefined || a.special?.id === 'taxi' || a.special?.id === 'police').toBe(true);
+        if (a.kind === 'bus') expect(a.special!.line).toBeDefined();
+      }
+      expect(overlaps(w)).toEqual([]);
+    }
+    for (const id of ['estafette', 'vespa', 'taxi', 'bus']) expect(seen.has(id), id).toBe(true);
+  });
+  it('car scolaire planifié : entre à son heure, jamais route fermée', () => {
+    const arrivals = [{ key: 'school-1', kind: 'school-bus' as const, track: 'near' as const, start: T0 + 10 }];
+    const open = env(0.3, { arrivals });
+    const w = warmTraffic({ width: 1200, seed: 2, unit: 1, startS: T0 }, open);
+    for (let t = T0; t < T0 + 40; t += 0.5) advance(w, t, open);
+    expect(w.agents.some((a) => a.kind === 'school-bus' && a.special?.id === 'school-bus')).toBe(true);
+    const closed = env(0.3, { arrivals, closed: true });
+    const c = warmTraffic({ width: 1200, seed: 2, unit: 1, startS: T0 }, closed);
+    for (let t = T0; t < T0 + 40; t += 0.5) advance(c, t, closed);
+    expect(c.agents.some((a) => a.kind === 'school-bus')).toBe(false);
+  });
+  it('événements de rue : modèles du bus, du tram, de l’ambulance, de la benne', () => {
+    const arrivals = (['bus', 'tram', 'ambulance', 'garbage-truck'] as const).map((kind, i) => ({ key: `ev-${i}`, kind, track: kind === 'tram' ? ('far' as const) : ('near' as const), start: T0 + i * 30 }));
+    const e = env(0.05, { arrivals });
+    const w = warmTraffic({ width: 2000, seed: 3, unit: 1, startS: T0 }, e);
+    const got = new Map<string, string>();
+    for (let t = T0; t < T0 + 150; t += 0.5) {
+      advance(w, t, e);
+      for (const a of w.agents) if (a.event) got.set(a.kind, a.special?.id ?? '');
+    }
+    expect(Object.fromEntries(got)).toEqual({ bus: 'bus', tram: 'tram', ambulance: 'ambulance', 'garbage-truck': 'garbage' });
+  });
+  it('étiquette des Type H tirée des commerces présents', () => {
+    const e = env(1, { vanLabels: ['FLEURS'] });
+    const w = warmTraffic({ width: 3000, seed: 4, unit: 1, startS: T0 }, e);
+    const labels = new Set<string>();
+    for (let t = T0; t < T0 + 1800; t += 2) {
+      advance(w, t, e);
+      for (const a of w.agents) if (a.special?.id === 'type-h') labels.add(a.special.label ?? '');
+    }
+    expect([...labels]).toEqual(['FLEURS']);
   });
 });

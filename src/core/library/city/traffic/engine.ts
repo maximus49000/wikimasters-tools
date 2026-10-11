@@ -13,10 +13,12 @@ import { temperamentOf, type Temperament } from './temperament';
 import { carSpeedFactor, carStream, nextCar, type CarSpec, type CarStream } from './cars';
 import { carExtent } from './car-art';
 import { lightColorAt, newWalker, stepLight, stepWalker, type PushLight, type Walker } from './crossing';
+import { SPECIAL_SPEED, specialExtent, type SpecialId, type SpecialSpec } from './special-art';
+import { fallbackLine } from './bus-lines';
 
 export type Track = 'near' | 'far' | 'bike';
 export const TRACK_DIR: Readonly<Record<Track, 1 | -1>> = { near: 1, far: -1, bike: 1 };
-export type AgentKind = 'car' | 'van' | 'bus' | 'bike' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike';
+export type AgentKind = 'car' | 'van' | 'bus' | 'bike' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike' | 'moto' | 'school-bus';
 export type StopReason = 'bus' | 'delivery' | 'garbage' | 'light' | null;
 
 export const DT = 0.1;
@@ -28,8 +30,8 @@ const WARM_S = 120;
 const MAX_CATCHUP_S = 120;
 
 // Demi-longueur dessinée (repère du sprite) et vitesse de base (px/s à unit = 1) par genre.
-export const KIND_HALF: Readonly<Record<AgentKind, number>> = { car: 20, van: 23, bus: 34, bike: 12, tram: 68, ambulance: 21, 'garbage-truck': 34, 'delivery-bike': 12 };
-const KIND_V0: Readonly<Record<AgentKind, number>> = { car: 70, van: 62, bus: 52, bike: 21, tram: 46, ambulance: 130, 'garbage-truck': 34, 'delivery-bike': 27 };
+export const KIND_HALF: Readonly<Record<AgentKind, number>> = { car: 20, van: 23, bus: 34, bike: 12, tram: 68, ambulance: 21, 'garbage-truck': 34, 'delivery-bike': 12, moto: 12, 'school-bus': 34 };
+const KIND_V0: Readonly<Record<AgentKind, number>> = { car: 70, van: 62, bus: 52, bike: 21, tram: 46, ambulance: 130, 'garbage-truck': 34, 'delivery-bike': 27, moto: 64, 'school-bus': 50 };
 const VEHICLE_SCALE = 0.85; // STREET_SCALE.vehicle
 const FAR_SHRINK = 0.9;
 const COLORS = ['#3B6FD6', '#C0463A', '#E0A21E', '#2E8B6A', '#444444', '#EEEEEE', '#7A3B8C', '#B3262B', '#4A9CC4'];
@@ -45,6 +47,7 @@ export type Agent = {
   color: string;
   rider?: Outfit;
   car?: CarSpec; // fiche générée (voitures seulement)
+  special?: SpecialSpec; // véhicule à part (bus, utilitaire, service, deux-roues, taxi, police)
   event?: string; // clé de l'événement de rue d'origine
   h: Temperament;
   s: number;
@@ -69,7 +72,7 @@ export type Agent = {
   plean: number;
 };
 
-export type ScheduledArrival = { key: string; kind: Extract<AgentKind, 'bus' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike'>; track: Track; start: number; half?: number };
+export type ScheduledArrival = { key: string; kind: Extract<AgentKind, 'bus' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike' | 'school-bus'>; track: Track; start: number; half?: number };
 export type TrafficEnv = {
   demand: Readonly<Record<Track, number>>; // 0 à 1
   closed: boolean;
@@ -79,6 +82,8 @@ export type TrafficEnv = {
   // Piétons du passage : affluence (0 à 1) et largeur de chaussée à traverser (px).
   crowd: number;
   crossPx: number;
+  // Inscriptions des fourgons Type H selon les commerces de la rue (LAITERIE par défaut).
+  vanLabels?: readonly string[];
 };
 
 export type TrafficWorld = {
@@ -99,6 +104,7 @@ export type TrafficWorld = {
   walkerRng: () => number;
   roster: number; // incrémenté quand la liste des agents change
   cars: CarStream; // suite des voitures générées, partagée par toutes les voies
+  vanLabels: readonly string[]; // inscriptions des Type H (relues de l'environnement à chaque entrée)
 };
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -135,6 +141,7 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     walkerRng: mulberry32(o.seed ^ hashString('tr-walkers')),
     roster: 0,
     cars: carStream(o.seed ^ hashString('cars')),
+    vanLabels: [],
   };
   w.light.since = w.t - 60;
   w.light.log.push({ t: w.t - 60, color: 'green' });
@@ -148,12 +155,16 @@ function newAgent(w: TrafficWorld, kind: AgentKind, track: Track, extra: Partial
   const r = mulberry32(seed ^ 0x51ed);
   const h = temperamentOf(r);
   // Voiture : fiche tirée de la suite au moment de la création (après le test de place : aucune fiche perdue) ; sa longueur
-  // (+ pare-chocs) et son type règlent la demi-longueur et la vitesse voulue.
-  const car = kind === 'car' ? nextCar(w.cars) : undefined;
-  const scale = car ? 1 : kind === 'van' ? 0.9 + r() * 0.2 : 1;
+  // (+ pare-chocs) et son type règlent la demi-longueur et la vitesse voulue. Véhicule à part : son modèle (passé par
+  // `extra.special`, sinon tiré ici) règle de même la demi-longueur et la vitesse.
+  const special = extra.special ?? specialOf(w, kind, seed, track);
+  const car = kind === 'car' && !special ? nextCar(w.cars) : undefined;
+  const scale = car || special ? 1 : kind === 'van' ? 0.9 + r() * 0.2 : 1;
   const far = track === 'far' ? FAR_SHRINK : 1;
-  const half = (extra.half ?? (car ? carExtent(car) * VEHICLE_SCALE * far : KIND_HALF[kind] * VEHICLE_SCALE * scale * far)) * w.unit;
-  const v0 = KIND_V0[kind] * w.unit * (kind === 'ambulance' || kind === 'tram' ? 1 : h.want) * (car ? carSpeedFactor(car.arch) : 1);
+  const ext = car ? carExtent(car) : special ? specialExtent(special) : KIND_HALF[kind] * scale;
+  // `extra.half` (événement de rue sans modèle) est déjà à l'échelle des véhicules.
+  const half = (extra.half !== undefined && !special ? extra.half : ext * VEHICLE_SCALE * far) * w.unit;
+  const v0 = KIND_V0[kind] * w.unit * (kind === 'ambulance' || kind === 'tram' ? 1 : h.want) * (car ? carSpeedFactor(car.arch) : special ? SPECIAL_SPEED[special.id] : 1);
   const a: Agent = {
     id: `tr-${w.serial++}`,
     kind,
@@ -163,8 +174,9 @@ function newAgent(w: TrafficWorld, kind: AgentKind, track: Track, extra: Partial
     half,
     vmax: v0,
     color: COLORS[Math.floor(r() * COLORS.length)]!,
-    ...(kind === 'bike' ? { rider: outfitFor('ordinary', mulberry32(seed ^ 0xb1ce)) } : {}),
+    ...(kind === 'bike' || kind === 'moto' ? { rider: outfitFor('ordinary', mulberry32(seed ^ 0xb1ce)) } : {}),
     ...(car ? { car } : {}),
+    ...(special ? { special } : {}),
     h,
     s: -half,
     ps: -half,
@@ -189,7 +201,46 @@ function newAgent(w: TrafficWorld, kind: AgentKind, track: Track, extra: Partial
     ...extra,
   };
   a.half = half;
+  if (special) a.special = special;
   return a;
+}
+
+// Modèle d'un véhicule à part, tiré de sa graine (camionnettes, deux-roues) ou fixé par son genre (bus, car scolaire, tram,
+// ambulance, benne). Un bus porte l'une des trois lignes de la pièce. Taxis, police et camionnettes de livraison reçoivent
+// leur modèle de `spawn` (extra.special).
+const pickW = <T,>(u: number, list: readonly (readonly [T, number])[]): T => {
+  let acc = u * list.reduce((s, [, p]) => s + p, 0);
+  for (const [v, p] of list) if ((acc -= p) < 0) return v;
+  return list[list.length - 1]![0];
+};
+const VANS: readonly (readonly [SpecialId, number])[] = [['estafette', 35], ['type-h', 25], ['poste', 20], ['tipper', 20]];
+const MOTOS: readonly (readonly [SpecialId, number])[] = [['vespa', 35], ['mobylette', 30], ['sidecar', 15], ['triporteur', 20]];
+function specialOf(w: TrafficWorld, kind: AgentKind, seed: number, track: Track): SpecialSpec | undefined {
+  const u = mulberry32(seed ^ 0x5bec)();
+  switch (kind) {
+    case 'bus':
+      return { id: 'bus', seed, line: fallbackLine((w.seed * 3 + Math.floor(u * 3)) >>> 0) };
+    case 'school-bus':
+      return { id: 'school-bus', seed };
+    case 'tram':
+      return { id: 'tram', seed };
+    case 'ambulance':
+      return { id: 'ambulance', seed };
+    case 'garbage-truck':
+      return { id: 'garbage', seed };
+    case 'van':
+      return vanSpec(w, pickW(u, VANS), seed);
+    case 'moto':
+      return { id: pickW(u, MOTOS), seed };
+    default:
+      void track;
+      return undefined;
+  }
+}
+function vanSpec(w: TrafficWorld, id: SpecialId, seed: number): SpecialSpec {
+  if (id !== 'type-h') return { id, seed };
+  const labels = w.vanLabels.length > 0 ? w.vanLabels : ['LAITERIE'];
+  return { id, seed, label: labels[Math.floor(mulberry32(seed ^ 0x1abe)() * labels.length)]! };
 }
 
 const onTrack = (w: TrafficWorld, track: Track): Agent[] => w.agents.filter((a) => a.track === track).sort((p, q) => q.s - p.s);
@@ -202,9 +253,11 @@ function entryFree(w: TrafficWorld, track: Track, half: number): boolean {
 }
 
 function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
-  // Événements de rue planifiés : entrent à leur heure dès qu'il y a la place.
+  w.vanLabels = env.vanLabels ?? [];
+  // Événements de rue planifiés : entrent à leur heure dès qu'il y a la place (route fermée : aucun car scolaire).
   for (const e of env.arrivals) {
     if (w.spawned.has(e.key) || e.start > t) continue;
+    if (env.closed && e.kind === 'school-bus') continue;
     if (t - e.start > 300) continue; // trop ancien (pièce ouverte longtemps après) : ignoré
     const half = e.half !== undefined ? e.half * VEHICLE_SCALE * (e.track === 'far' ? FAR_SHRINK : 1) : undefined;
     if (!entryFree(w, e.track, (half ?? KIND_HALF[e.kind] * VEHICLE_SCALE) * w.unit)) continue;
@@ -225,16 +278,22 @@ function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
     if (track !== 'bike' && !upstreamGreen(track, t)) continue;
     const r = w.rngs[track];
     const roll = r();
-    const kind: AgentKind = track === 'bike' ? 'bike' : roll < 0.025 ? 'bus' : roll < 0.16 ? 'van' : 'car';
+    // Part des genres : bus 2,5 %, camionnettes 13,5 %, deux-roues motorisés 5 %, police 1,2 %, taxis 4,8 %, voitures générées.
+    const kind: AgentKind = track === 'bike' ? 'bike' : roll < 0.025 ? 'bus' : roll < 0.16 ? 'van' : roll < 0.21 ? 'moto' : 'car';
+    const service: SpecialId | null = kind === 'car' && roll < 0.222 ? 'police' : kind === 'car' && roll < 0.27 ? 'taxi' : null;
     const mean = (track === 'bike' ? 9 : 2.1) / d;
     // Prochaine tentative : intervalle tiré (pelotons serrés ou espacés), quelle que soit la place disponible.
     w.spawnAt[track] = t + Math.max(0.6, -Math.log(1 - r() * 0.98) * mean);
     // Place d'entrée : la fiche d'une voiture n'est tirée qu'à sa création, d'où le plus grand encombrement possible (60/2 + 4,2).
     const half = (kind === 'car' ? 34.2 : KIND_HALF[kind] * 1.1) * VEHICLE_SCALE * (track === 'far' ? FAR_SHRINK : 1) * w.unit;
     if (!entryFree(w, track, half)) continue;
-    const a = newAgent(w, kind, track);
+    // Camionnette de livraison : Estafette ou Type H (graine de l'agent à venir, comme dans newAgent).
+    const nextSeed = (w.seed * 7919 + w.serial * 104729) >>> 0;
+    const delivery = kind === 'van' && track === 'near' && env.deliveries.length > 0 && mulberry32(nextSeed ^ 0xde1)() < 0.45;
+    const special: SpecialSpec | undefined = service ? { id: service, seed: nextSeed } : delivery ? vanSpec(w, mulberry32(nextSeed ^ 0x5bec)() < 0.55 ? 'estafette' : 'type-h', nextSeed) : undefined;
+    const a = newAgent(w, kind, track, special ? { special } : {});
     if (kind === 'bus') { a.stops = [sOfX(w, track, w.busStop[track === 'far' ? 'far' : 'near'])]; a.stopFor = [8, 14]; }
-    if (kind === 'van' && track === 'near' && env.deliveries.length > 0 && mulberry32(a.seed ^ 0xde1)() < 0.45) {
+    if (delivery) {
       const x = env.deliveries[Math.floor(mulberry32(a.seed ^ 0xde2)() * env.deliveries.length)]!;
       a.stops = [sOfX(w, track, x)];
       a.stopFor = [20, 40];

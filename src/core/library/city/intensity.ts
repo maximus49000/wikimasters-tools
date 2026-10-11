@@ -66,6 +66,16 @@ const WALK_WEEK: Keys = [[0, 0.06], [4, 0.02], [6, 0.15], [7, 0.5], [8, 0.7], [9
 const WALK_WEEKEND: Keys = [[0, 0.1], [4, 0.02], [8, 0.2], [10, 0.55], [12, 0.8], [15, 0.8], [18, 0.6], [21, 0.35], [23, 0.15], [24, 0.1]];
 const SUITS: Keys = [[0, 0], [6, 0], [7, 0.55], [8, 1], [9, 0.55], [10, 0.15], [12, 0.3], [13.5, 0.2], [16, 0.25], [17, 0.9], [18, 0.6], [19, 0.15], [24, 0]];
 
+// Créneaux d'école (minutes du jour) : ceux de `schoolTo` et `schoolFrom` ci-dessous, de leur début à leur fin. Les cars
+// scolaires (traffic/school-bus.ts) y passent.
+export function schoolWindows(day: Pick<DayContext, 'kind' | 'schoolOn'>): [number, number][] {
+  const out: [number, number][] = [];
+  if (day.schoolOn) out.push([470, 510]);
+  if (day.kind === 'school') out.push([996, 1035]);
+  else if (day.kind === 'wednesday') out.push([696, 735]);
+  return out;
+}
+
 export function cityIntensity(ctx: CityContext): CityIntensity {
   const hour = (((ctx.minutes % 1440) + 1440) % 1440) / 60;
   const kind = ctx.day.kind;
