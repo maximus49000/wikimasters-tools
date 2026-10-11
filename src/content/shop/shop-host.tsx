@@ -10,7 +10,7 @@ import { BLANK_SPRITE } from '../figure/figure-host';
 // Images peintes des commerces (G4a) : chaque local est peint UNE fois par clé sur un canvas hors écran, en trois couches
 // (fond de la vitrine, premier plan devant le personnel avec la vitre, façade percée à la vitrine), puis gardé en PNG
 // (data URL : la CSP du site refuse blob:). Lumière au 1/8 de jour ; boutique éclairée : intérieur aux couleurs de jour,
-// néons sans teinte. Les peintures sont étalées (2 par image) ; tant qu'une couche n'est pas prête, l'appelant garde la
+// néons sans teinte. Les peintures sont étalées (1 couche par image, ≈ 4,5 ms sur ordinateur) ; tant qu'une couche n'est pas prête, l'appelant garde la
 // précédente (useShopLayer).
 export const SHOP_PX = 4;
 export type ShopLayer = 'back' | 'front' | 'facade';
@@ -80,7 +80,7 @@ export class ShopRegistry {
     opts: { max?: number; perFrame?: number; schedule?: (cb: () => void) => void } = {},
   ) {
     this.max = opts.max ?? 120;
-    this.perFrame = opts.perFrame ?? 2;
+    this.perFrame = opts.perFrame ?? 1;
     this.schedule = opts.schedule ?? ((cb) => void requestAnimationFrame(() => cb()));
   }
   size(): number {

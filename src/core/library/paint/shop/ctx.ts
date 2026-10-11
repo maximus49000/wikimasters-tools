@@ -39,6 +39,20 @@ export function tintCss(tint: Tint, c: string): string {
   return p.a >= 1 ? out : rgba(hexRgb(out), p.a);
 }
 
+// Méthodes liées gardées par contexte (un bind par appel coûtait le tiers du temps de peinture d'un local).
+const BOUND = new WeakMap<object, Map<PropertyKey, unknown>>();
+function bound(target: object, key: PropertyKey, fn: unknown): unknown {
+  let m = BOUND.get(target);
+  if (!m) BOUND.set(target, (m = new Map()));
+  let b = m.get(key);
+  if (b === undefined || (b as { raw?: unknown }).raw !== fn) {
+    b = Object.assign((fn as (...a: unknown[]) => unknown).bind(target), { raw: fn });
+    m.set(key, b);
+  }
+  return b;
+}
+const skip = (): void => undefined;
+
 export type TintedCtx = ShopPaintCtx & { glowing(fn: () => void): void };
 
 // Toute couleur affectée (fillStyle, strokeStyle) passe par `tint` ; `glowing(fn)` la suspend le temps de `fn` (néons,
@@ -56,11 +70,18 @@ export function tintedCtx(ctx: ShopPaintCtx, tint: Tint): TintedCtx {
   };
   // `glowing` peut être remplacé (tests : compter les passages).
   let glowFn = glowing;
+  // Couleurs déjà teintes (un local réutilise quelques dizaines de couleurs sur des centaines de remplissages).
+  const cache = new Map<string, string>();
+  const tinted = (c: string): string => {
+    let t = cache.get(c);
+    if (t === undefined) cache.set(c, (t = tintCss(tint, c)));
+    return t;
+  };
   return new Proxy(ctx, {
     get(target, key) {
       if (key === 'glowing') return glowFn;
       const v = Reflect.get(target, key) as unknown;
-      return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      return typeof v === 'function' ? bound(target, key, v) : v;
     },
     set(target, key, value) {
       if (key === 'glowing') {
@@ -68,7 +89,7 @@ export function tintedCtx(ctx: ShopPaintCtx, tint: Tint): TintedCtx {
         return true;
       }
       const color = (key === 'fillStyle' || key === 'strokeStyle') && typeof value === 'string' && !raw;
-      return Reflect.set(target, key, color ? tintCss(tint, value as string) : value);
+      return Reflect.set(target, key, color ? tinted(value as string) : value);
     },
   }) as TintedCtx;
 }
@@ -88,8 +109,8 @@ export function passCtx<T extends ShopPaintCtx>(ctx: T, want: Pass): T & { toFro
       if (key === 'toFront') return toFront;
       const v = Reflect.get(target, key) as unknown;
       if (typeof v !== 'function') return v;
-      if (typeof key === 'string' && DRAWS.has(key) && section !== want) return () => undefined;
-      return (v as (...a: unknown[]) => unknown).bind(target);
+      if (typeof key === 'string' && DRAWS.has(key) && section !== want) return skip;
+      return bound(target, key, v);
     },
     set: (target, key, value) => Reflect.set(target, key, value),
   }) as T & { toFront(): void };

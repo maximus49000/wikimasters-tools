@@ -49,7 +49,7 @@ Le code de la maquette est la référence du dessin : le portage reprend ses for
 
 ### Contenu (`src/content/`)
 
-- `shop/shop-host.tsx` : registre des images (même conception que `car-host`) : peinture à la demande, plafond de 120 images (les moins récemment demandées partent), budget de peintures par image (2), demande non renouvelée depuis 2 images jetée, `SHOP_PX = 4` pixels par unité (détails de 0,1 unité lisibles sur téléphone).
+- `shop/shop-host.tsx` : registre des images (même conception que `car-host`) : peinture à la demande, plafond de 120 images (les moins récemment demandées partent), budget de peintures par image (1 couche), demande non renouvelée depuis 2 images jetée, `SHOP_PX = 4` pixels par unité (détails de 0,1 unité lisibles sur téléphone).
 - `shop/ghibli-shop-front.tsx` : `GhibliShopFront` (façade + fond dans la vitrine) remplace `ShopFront` dans `scene-city.tsx` quand le graphisme est Ghibli ; tant que l'image n'est pas prête, le `ShopFront` classique reste affiché (pas de trou).
 - `shop/ghibli-shop-glass.tsx` : premier plan (`<image>`) qui remplace `ShopInteriorFront` dans `StaffLayer` et dans le calque des clients en Ghibli.
 - `shop-sprites.tsx` : `RollingShutter` prend `ghibli` et dessine le rideau cellulo.
