@@ -54,13 +54,19 @@ export function tintedCtx(ctx: ShopPaintCtx, tint: Tint): TintedCtx {
       raw = was;
     }
   };
+  // `glowing` peut être remplacé (tests : compter les passages).
+  let glowFn = glowing;
   return new Proxy(ctx, {
     get(target, key) {
-      if (key === 'glowing') return glowing;
+      if (key === 'glowing') return glowFn;
       const v = Reflect.get(target, key) as unknown;
       return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v;
     },
     set(target, key, value) {
+      if (key === 'glowing') {
+        glowFn = value as typeof glowing;
+        return true;
+      }
       const color = (key === 'fillStyle' || key === 'strokeStyle') && typeof value === 'string' && !raw;
       return Reflect.set(target, key, color ? tintCss(tint, value as string) : value);
     },
