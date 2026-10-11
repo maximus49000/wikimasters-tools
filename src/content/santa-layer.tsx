@@ -43,8 +43,9 @@ const walkerTransform = (s: SantaStep, dir: 1 | -1, ghibli: boolean): string =>
 // on pose le traîneau avec un `transform` sans re-rendu, et on ne re-rend que lorsque la tranche, le personnage ou la fenêtre
 // allumée changent. Mouvement réduit : pas de boucle, seulement le traîneau posé sur son toit pendant la tranche de `frozenT`
 // (si elle livre sur un toit), sinon rien. Le personnage suit `santaStepAt` (même chemin dans les deux styles) : la boucle
-// réécrit son transform (et sa pose en Ghibli) à chaque image ; un <svg> imbriqué (sans id) le rogne au niveau du toit quand
-// il descend dans la cheminée, au lieu de le faire apparaître ou disparaître sur place.
+// réécrit son transform (et sa pose en Ghibli) à chaque image ; un <svg> imbriqué (sans id ; viewBox = cadre, donc repère du
+// traîneau à l'échelle 1 et coupe à y = 0) le rogne au niveau du toit quand il descend dans la cheminée, au lieu de le
+// faire apparaître ou disparaître sur place.
 type Props = { width: number; height: number; seed: number; sky: Sky; facades: Facade[]; ground: number; fests: readonly string[]; daylight: number; still: boolean; frozenT: number; ghibli?: boolean };
 type View = { tranche: number; santa: SantaPose['santa']; lit: boolean; landed: boolean };
 
@@ -107,7 +108,7 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
   const shown = ghibli ? view.santa !== 'hidden' : view.santa === 'walking';
   const figure =
     shown ? (
-      <svg data-santa-clip="" x={-200} y={-200} width={400} height={200} overflow="hidden">
+      <svg data-santa-clip="" x={-200} y={-200} width={400} height={200} viewBox="-200 -200 400 200" overflow="hidden">
         <g ref={walker} data-santa-figure="" data-santa-where={view.santa} transform={walkerTransform(st, pass.dir, ghibli)}>
           {ghibli ? (
             <GhibliFigure

@@ -36,10 +36,10 @@ const metrics = cityMetrics(340);
 // data-key = palette # sig|yaw|gait|phase|head|arms|lean
 const keyParts = (f: Element): string[] => f.getAttribute('data-key')!.split('#').pop()!.split('|');
 
-const city = (ymd: { y: number; m: number; d: number }): HTMLDivElement => {
+const city = (ymd: { y: number; m: number; d: number }, precip = 0): HTMLDivElement => {
   const minutes = 12 * 60;
-  const c: CityContext = { minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight: sky.daylight };
-  return render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={c} rainy={false} /></svg>);
+  const c: CityContext = { minutes, day: dayContext(ymd, []), precip, snow: false, storm: false, daylight: sky.daylight };
+  return render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={c} rainy={precip > 0.2} /></svg>);
 };
 
 describe('signes de fête des passants (Ghibli)', () => {
@@ -53,6 +53,18 @@ describe('signes de fête des passants (Ghibli)', () => {
       expect(fig.querySelector(':scope > [data-held="handR"] [data-mark-art="heart-balloon"]')).not.toBeNull();
       expect(keyParts(fig)[5]).toBe('hold');
       for (const comp of p.querySelectorAll(':scope > [data-companion] [data-figure]')) expect(comp.querySelector('[data-held]')).toBeNull();
+    }
+  });
+  it('sous la pluie : la main droite tient le parapluie, le ballon passe à la main gauche', () => {
+    writeArt('ghibli');
+    const c = city({ y: 2026, m: 2, d: 14 }, 0.6);
+    const peds = [...c.querySelectorAll('[data-ped][data-mark="heart-balloon"][data-active="true"]')];
+    expect(peds.length).toBeGreaterThan(0);
+    for (const p of peds) {
+      const fig = p.querySelector(':scope > [data-figure]')!;
+      expect(fig.getAttribute('data-sig')!.split('.')[4]).toBe('u');
+      expect(fig.querySelector(':scope > [data-held="handL"] [data-mark-art="heart-balloon"]')).not.toBeNull();
+      expect(fig.querySelector(':scope > [data-held="handR"]')).toBeNull();
     }
   });
   it('11 novembre : le coquelicot est à l’accroche headTop, bras de marche', () => {

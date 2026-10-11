@@ -92,6 +92,22 @@ describe('script du père Noël (pur)', () => {
   });
 });
 
+describe('toit étroit', () => {
+  it('toit de 28 px : il ne pose jamais le pied hors du toit (pied du traîneau et cheminée ramenés dessus)', () => {
+    const narrow = { ...roof, w: 28 };
+    let seen = 0;
+    for (let t = at(0.25); t < at(0.75); t += 0.05) {
+      const s = santaStepAt(pass, narrow, t);
+      // Sur le toit ou dans la cheminée (pas à sa place dans le traîneau, ni en l'air pendant l'enjambée).
+      if (!s || s.y < 0) continue;
+      seen++;
+      // Repère du dessin posé : recentré de −14 sur le toit.
+      expect(Math.abs(s.x - 14)).toBeLessThanOrEqual(14);
+    }
+    expect(seen).toBeGreaterThan(20);
+  });
+});
+
 describe('père Noël Ghibli', () => {
   it('tenue rouge, bonnet rouge', () => {
     expect(SANTA_OUTFIT).toMatchObject({ topColor: '#C0302B', bottomColor: '#C0302B', hair: 'beanie', hatColor: '#C0302B' });
@@ -118,9 +134,14 @@ describe('père Noël Ghibli', () => {
   it('caché derrière la cheminée : aucun personnage', () => {
     expect(mount(at(0.5), true).querySelector('[data-santa-figure]')).toBeNull();
   });
-  it('le personnage est rogné au toit (svg imbriqué), sans id', () => {
+  it('le personnage est rogné au toit (svg imbriqué au repère du traîneau : viewBox = cadre), sans id', () => {
     const c = mount(at(0.3) + 6, true);
-    expect(c.querySelector('svg[data-santa-clip] [data-santa-figure]')).not.toBeNull();
+    const clip = c.querySelector('svg[data-santa-clip]')!;
+    expect(clip.querySelector('[data-santa-figure]')).not.toBeNull();
+    // Sans viewBox, l'origine des enfants serait le coin (x, y) du cadre : le père Noël serait à 200 unités du traîneau.
+    expect(clip.getAttribute('viewBox')!.split(' ').map(Number)).toEqual(['x', 'y', 'width', 'height'].map((k) => Number(clip.getAttribute(k))));
+    // Coupe au niveau du toit : bas du cadre à y = 0.
+    expect(Number(clip.getAttribute('y')) + Number(clip.getAttribute('height'))).toBe(0);
     expect(c.querySelector('[data-santa] [id]')).toBeNull();
   });
 });

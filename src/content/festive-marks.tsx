@@ -83,7 +83,9 @@ const HELD_AT: Readonly<Record<FestiveMark, { anchor: 'headTop' | 'handR'; dx: n
   streamer: { anchor: 'handR', dx: 0, dy: 0 },
   note: { anchor: 'handR', dx: -6, dy: 34 },
 };
-export const markAnchor = (mark: FestiveMark): 'headTop' | 'handR' => HELD_AT[mark].anchor;
+// Sous la pluie, la main droite tient le parapluie : l'objet passe à la main gauche (bras le long du corps).
+export const markAnchor = (mark: FestiveMark, umbrella = false): 'headTop' | 'handR' | 'handL' =>
+  HELD_AT[mark].anchor === 'handR' && umbrella ? 'handL' : HELD_AT[mark].anchor;
 export const markArms = (mark: FestiveMark | null | undefined): ArmPose => (mark && HELD_AT[mark].anchor === 'handR' ? 'hold' : 'swing');
 
 export function MarkHeld({ mark, t, dir }: { mark: FestiveMark; t: (c: string) => string; dir: 1 | -1 }): ReactElement {

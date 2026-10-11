@@ -627,7 +627,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                   umbrella={intensity.umbrellas}
                   initial={{ ...pedPose(p, metrics, t0, still), arms: markArms(mark) }}
                   hidden={!active}
-                  held={mark ? [{ anchor: markAnchor(mark), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} /> }] : undefined}
+                  held={mark ? [{ anchor: markAnchor(mark, intensity.umbrellas), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} /> }] : undefined}
                 />
               ) : (
                 <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={mark} />

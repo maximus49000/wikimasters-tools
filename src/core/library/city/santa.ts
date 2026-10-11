@@ -98,8 +98,10 @@ type Pt = { x: number; y: number };
 export const SANTA_SEAT: Pt = { x: -5, y: -4 };
 const BEHIND: Pt = { x: -23, y: 0 };
 const HOLE: Pt = { x: -31, y: 0 };
+// Le dessin posé est recentré de LANDED_DX sur le toit (santa-sprite) ; marge (px) gardée au bord du toit.
+const LANDED_DX = -14;
+const ROOF_MARGIN = 3;
 export const SANTA_SUNK = 34;
-const SUNK_AT: Pt = { x: HOLE.x, y: SANTA_SUNK };
 // Durées (s) : demi-tour (TURN_S de figure/gait.ts, recopié pour garder ce moteur sans dépendance), enjambée, pas, descente.
 const TURN = 0.45;
 const OVER = 1.4;
@@ -109,22 +111,35 @@ const SINK = 3;
 const ARC = 9;
 type Seg = { d: number; a: Pt; b: Pt; yaw: readonly [number, number]; gait: SantaStep['gait']; arc?: number };
 const seg = (d: number, a: Pt, b: Pt, yaw: readonly [number, number], gait: SantaStep['gait'], arc?: number): Seg => ({ d, a, b, yaw, gait, arc });
-const OUT: readonly Seg[] = [
-  seg(TURN, SANTA_SEAT, SANTA_SEAT, [16, 12], 'step'),
-  seg(OVER, SANTA_SEAT, BEHIND, [12, 12], 'climb', ARC),
-  seg(TURN, BEHIND, BEHIND, [12, 8], 'step'),
-  seg(WALK, BEHIND, HOLE, [8, 8], 'walk'),
-  seg(TURN, HOLE, HOLE, [8, 12], 'step'),
-  seg(SINK, HOLE, SUNK_AT, [12, 12], 'climb'),
-];
-const BACK: readonly Seg[] = [
-  seg(SINK, SUNK_AT, HOLE, [12, 12], 'climb'),
-  seg(TURN, HOLE, HOLE, [12, 16], 'step'),
-  seg(WALK, HOLE, BEHIND, [0, 0], 'walk'),
-  seg(TURN, BEHIND, BEHIND, [16, 12], 'step'),
-  seg(OVER, BEHIND, SANTA_SEAT, [12, 12], 'climb', ARC),
-  seg(TURN, SANTA_SEAT, SANTA_SEAT, [12, 16], 'step'),
-];
+// Pied du traîneau et cheminée ramenés sur le toit (au point le plus proche, marge comprise) : sur un toit étroit, il ne
+// marche jamais dans le vide. Le toit va de cx − w/2 à cx + w/2, soit, dans le repère du dessin, de −w/2 − LANDED_DX à
+// w/2 − LANDED_DX (le retournement selon le sens est symétrique autour de cx).
+function scriptFor(w: number): { out: readonly Seg[]; back: readonly Seg[] } {
+  const lo = -w / 2 - LANDED_DX + ROOF_MARGIN;
+  const hi = w / 2 - LANDED_DX - ROOF_MARGIN;
+  const on = (p: Pt): Pt => ({ x: Math.min(hi, Math.max(lo, p.x)), y: p.y });
+  const behind = on(BEHIND);
+  const hole = on(HOLE);
+  const sunk: Pt = { x: hole.x, y: SANTA_SUNK };
+  return {
+    out: [
+      seg(TURN, SANTA_SEAT, SANTA_SEAT, [16, 12], 'step'),
+      seg(OVER, SANTA_SEAT, behind, [12, 12], 'climb', ARC),
+      seg(TURN, behind, behind, [12, 8], 'step'),
+      seg(WALK, behind, hole, [8, 8], 'walk'),
+      seg(TURN, hole, hole, [8, 12], 'step'),
+      seg(SINK, hole, sunk, [12, 12], 'climb'),
+    ],
+    back: [
+      seg(SINK, sunk, hole, [12, 12], 'climb'),
+      seg(TURN, hole, hole, [12, 16], 'step'),
+      seg(WALK, hole, behind, [0, 0], 'walk'),
+      seg(TURN, behind, behind, [16, 12], 'step'),
+      seg(OVER, behind, SANTA_SEAT, [12, 12], 'climb', ARC),
+      seg(TURN, SANTA_SEAT, SANTA_SEAT, [12, 16], 'step'),
+    ],
+  };
+}
 // Longueur d'un segment (l'enjambée compte sa montée et sa descente) ; un demi-tour fait avancer d'un petit pas.
 const segLen = (s: Seg): number => Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y) + 2 * (s.arc ?? 0) + (s.gait === 'step' ? 4 : 0);
 const SEATED: SantaStep = { x: SANTA_SEAT.x, y: SANTA_SEAT.y, yaw: 0, gait: 'stand', dist: 0 };
@@ -153,5 +168,7 @@ export function santaStepAt(pass: SantaPass, roof: SantaRoof | null, t: number):
   if (pose.santa === 'aboard') return SEATED;
   const p = (t - pass.start) / SANTA_WINDOW_S;
   // Fin de l'aller : resté au fond de la cheminée jusqu'à la tranche cachée (rogné, donc invisible).
-  return p < 0.5 ? scriptAt(OUT, t - (pass.start + 0.3 * SANTA_WINDOW_S)) : scriptAt(BACK, t - (pass.start + 0.6 * SANTA_WINDOW_S));
+  // À pied : seulement pendant une livraison posée, donc avec un toit.
+  const { out, back } = scriptFor(roof!.w);
+  return p < 0.5 ? scriptAt(out, t - (pass.start + 0.3 * SANTA_WINDOW_S)) : scriptAt(back, t - (pass.start + 0.6 * SANTA_WINDOW_S));
 }
