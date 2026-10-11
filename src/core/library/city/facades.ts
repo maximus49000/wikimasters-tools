@@ -1,4 +1,4 @@
-import { SKYLINE_GROUND, citySkyline, hashString, mulberry32, type Building, type Lamp } from '../scene-world';
+import { PODIUM_H, SKYLINE_GROUND, citySkyline, hashString, mulberry32, type Building, type Lamp, type Podium } from '../scene-world';
 import { cityMetrics } from './metrics';
 
 // Façades de la scène Ville, dérivées de `citySkyline` SANS en changer le tirage (mêmes largeurs, hauteurs et fenêtres) :
@@ -16,6 +16,9 @@ export const FAR_WINDOW = { w: 3.5, h: 5 } as const;
 export type FarWindow = { x: number; y: number; u: number; blue: boolean };
 export type Facade = Building & { farWindows: FarWindow[] };
 
+// Bas des étages d'un immeuble : haut du socle pour une tour de jumeaux, haut du rez-de-chaussée sinon.
+const floorsBottom = (b: Building, ground: number): number => ground - (b.podium ? PODIUM_H : GROUND_FLOOR);
+
 // Fenêtres des étages ajoutés sous la grille d'origine (même grille : colonnes de 10 px, rangées de 14 px, fenêtres 5 × 7).
 export function extraFloorWindows(b: Building, ground: number, seed: number): Lamp[] {
   const top = ground - b.h * BUILDING_STRETCH;
@@ -23,10 +26,19 @@ export function extraFloorWindows(b: Building, ground: number, seed: number): La
   const cols = Math.floor(b.w / 10);
   const rng = mulberry32(seed ^ hashString('extra-floors') ^ Math.round(b.x * 8));
   const out: Lamp[] = [];
-  for (let r = rows; top + 4 + r * 14 + 7 <= ground - GROUND_FLOOR; r++) {
+  for (let r = rows; top + 4 + r * 14 + 7 <= floorsBottom(b, ground); r++) {
     for (let c = 0; c < cols; c++) out.push({ x: b.x + 4 + c * 10, y: top + 4 + r * 14, u: rng(), blue: rng() < 0.15 });
   }
   return out;
+}
+
+// Étage du socle des jumeaux : une rangée de fenêtres 5 × 7 au pas de 10, centrée sur la largeur du socle.
+export function podiumWindows(p: Podium, ground: number, seed: number): Lamp[] {
+  const n = Math.floor((p.w - 6) / 10);
+  const x0 = p.x + (p.w - (n * 10 - 5)) / 2;
+  const rng = mulberry32(seed ^ hashString('podium-floor') ^ Math.round(p.x * 8));
+  const y = ground - PODIUM_H + (PODIUM_H - GROUND_FLOOR - 7) / 2;
+  return Array.from({ length: n }, (_, i) => ({ x: x0 + i * 10, y, u: rng(), blue: rng() < 0.15 }));
 }
 
 // Quelques fenêtres d'un immeuble du fond, réparties dans sa moitié haute (le bas est caché par le premier plan).
@@ -57,7 +69,12 @@ export function cityFacades(width: number, height: number, seed: number): Facade
     const lift = b.h * (BUILDING_STRETCH - 1);
     const h = b.h * BUILDING_STRETCH;
     if (b.far) return { ...b, h, farWindows: farWindows(b, ground, seed) };
-    const lamps = [...b.lamps.map((l) => ({ ...l, y: l.y - lift - shift })), ...extraFloorWindows(b, ground, seed)];
+    const bottom = floorsBottom(b, ground);
+    const lamps = [
+      ...b.lamps.map((l) => ({ ...l, y: l.y - lift - shift })).filter((l) => l.y + 7 <= bottom),
+      ...extraFloorWindows(b, ground, seed),
+      ...(b.podium && b.x === b.podium.x ? podiumWindows(b.podium, ground, seed) : []),
+    ];
     return { ...b, h, lamps, farWindows: [] };
   });
 }
