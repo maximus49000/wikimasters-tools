@@ -19,6 +19,7 @@ import type { FigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 import { useSceneDayStart } from './parade-layer';
 import type { Pose } from '../core/library/city/shops/gestures';
+import { ScriptedCar } from './vehicle/scripted-car';
 
 // Déménagement du matin (vague 1b-iv-b), le jour d'un changement de commerce (moving.ts) : un camion blanc et bleu arrive, se
 // gare au bord du trottoir juste après la porte du local (du côté opposé à la vitrine, pour qu'on la voie se vider puis se
@@ -110,6 +111,18 @@ export function truckAt(step: MovingStep, minutes: number, from: number, to: num
 const WHITE = '#F4F6F8';
 const BLUE = '#2E6FD6';
 
+// Hayon : panneau articulé en bas de la caisse ; fermé il est vertical, ouvert il fait rampe vers l'arrière.
+function Tailgate({ open, sky, still }: { open: number; sky: Sky; still: boolean }): ReactElement {
+  const t = (c: string): string => tone(c, sky);
+  return (
+    <g transform={`translate(${TRUCK_REAR} ${HINGE_Y})`}>
+      <g data-tailgate-panel="" style={{ transform: `rotate(${(-90 * open).toFixed(1)}deg)`, transition: still ? undefined : 'transform 60s linear' }}>
+        <rect x={-1.6} y={-27} width={1.6} height={27} fill={t('#D8DCE2')} stroke={t('#8C939C')} strokeWidth={0.3} />
+      </g>
+    </g>
+  );
+}
+
 function TruckSprite({ open, sky, lights, still }: { open: number; sky: Sky; lights: boolean; still: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   return (
@@ -125,12 +138,7 @@ function TruckSprite({ open, sky, lights, still }: { open: number; sky: Sky; lig
       <circle cx={-20} cy={-4.5} r={4.5} fill="#222" />
       <circle cx={22} cy={-4.5} r={4.5} fill="#222" />
       {lights && <circle data-headlight="" cx={31} cy={-10} r={1.8} fill="#FFE9A0" />}
-      {/* Hayon : panneau articulé en bas de la caisse ; fermé il est vertical, ouvert il fait rampe vers l'arrière. */}
-      <g transform={`translate(${TRUCK_REAR} ${HINGE_Y})`}>
-        <g data-tailgate-panel="" style={{ transform: `rotate(${(-90 * open).toFixed(1)}deg)`, transition: still ? undefined : 'transform 60s linear' }}>
-          <rect x={-1.6} y={-27} width={1.6} height={27} fill={t('#D8DCE2')} stroke={t('#8C939C')} strokeWidth={0.3} />
-        </g>
-      </g>
+      <Tailgate open={open} sky={sky} still={still} />
     </g>
   );
 }
@@ -148,26 +156,37 @@ type TruckProps = {
   sky: Sky;
   lights: boolean;
   still: boolean;
+  // Ghibli (V5) : camion peint (vehicle/scripted-car.tsx), roues tournées par la transition du camion, conducteur à bord
+  // tant qu'il roule.
+  ghibli?: boolean;
+  rainy?: boolean;
 };
 
-export function MovingTruck({ view, frame, change, offset, seed, minutes, width, metrics, sky, lights, still }: TruckProps): ReactElement | null {
+export function MovingTruck({ view, frame, change, offset, seed, minutes, width, metrics, sky, lights, still, ghibli = false, rainy = false }: TruckProps): ReactElement | null {
   if (!view.moving || !change) return null;
   const plan = changePlans(seed, view.slot.id, change.day, change.kind, offset).moving;
   const step = plan.steps.find((s) => s.step === view.moving!.step)!;
   const s = truckAt(step.step, minutes, step.from, step.to, still);
   const g = movingLayout(frame, metrics, width);
   const x = s.at === 'in' ? g.edgeIn : s.at === 'out' ? g.edgeOut : g.parkX;
+  const move = still ? undefined : `transform 60s ${s.at === 'out' ? 'ease-in' : 'ease-out'}`;
   return (
     <g
       data-moving-truck={view.slot.id}
       data-mover="truck"
       data-truck-at={s.at}
       data-tailgate={s.open.toFixed(2)}
-      style={{ transform: `translate(${x.toFixed(1)}px, ${g.truckY.toFixed(1)}px)`, transition: still ? undefined : `transform 60s ${s.at === 'out' ? 'ease-in' : 'ease-out'}` }}
+      style={{ transform: `translate(${x.toFixed(1)}px, ${g.truckY.toFixed(1)}px)`, transition: move }}
     >
-      <g transform={`scale(${(g.away * g.kv).toFixed(3)} ${g.kv.toFixed(3)})`}>
-        <TruckSprite open={s.open} sky={sky} lights={lights} still={still} />
-      </g>
+      {ghibli ? (
+        <ScriptedCar spec={{ id: 'moving-truck', seed: hashString(view.slot.id) }} dir={g.away} k={g.kv} sky={sky} rainy={rainy} lights={lights} still={still} occupied={s.at !== 'park'} roll={{ worldX: x, move }}>
+          <Tailgate open={s.open} sky={sky} still={still} />
+        </ScriptedCar>
+      ) : (
+        <g transform={`scale(${(g.away * g.kv).toFixed(3)} ${g.kv.toFixed(3)})`}>
+          <TruckSprite open={s.open} sky={sky} lights={lights} still={still} />
+        </g>
+      )}
     </g>
   );
 }

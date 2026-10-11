@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
 import { useSceneDayStart } from '../../src/content/parade-layer';
-import { MovingCrew, collectMovers, frameAt, placeMovers, type CrewScript, type MoverPos } from '../../src/content/moving-truck';
+import { MovingCrew, MovingTruck, collectMovers, frameAt, placeMovers, type CrewScript, type MoverPos } from '../../src/content/moving-truck';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { dayNumber, ymdOfDay } from '../../src/core/library/city/shops/hours';
 import { streetOn, type SlotDay } from '../../src/core/library/city/shops/lifecycle';
@@ -252,5 +252,33 @@ describe('useSceneDayStart (cortège, Fête de la musique, déménagement)', () 
     expect(at(610, D0 + 610 * 60 + 5)).toBe(s0);
     expect(at(611, D0 + 611 * 60 + 5)).toBe(s0);
     expect(at(900, D0 + 611 * 60 + 20)).toBe(D0 + 611 * 60 - 900 * 60);
+  });
+});
+
+describe('camion de déménagement en Ghibli (V5)', () => {
+  const truck = (minutes: number, ghibli: boolean): HTMLDivElement => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    act(() =>
+      root.render(
+        <svg>
+          <MovingTruck view={shopViewAt(found.s, found.seed, ymd, minutes, found.offset)} frame={frame} change={found.s.change} offset={found.offset} seed={found.seed} minutes={minutes} width={W} metrics={metrics} sky={skyAt(minutes, times)} lights={false} still={false} ghibli={ghibli} rainy={false} />
+        </svg>,
+      ),
+    );
+    return host;
+  };
+  it('camion peint, hayon conservé, roues tournées par la même transition que le camion', () => {
+    const t = truck(midMinute('truck-arrives'), true).querySelector<SVGGElement>('[data-moving-truck]')!;
+    expect(t.querySelector('[data-scripted-car][data-sid="moving-truck"]')).not.toBeNull();
+    expect(t.querySelector('[data-tailgate-panel]')).not.toBeNull();
+    expect(t.querySelector('[data-seat]')).not.toBeNull();
+    const spin = t.querySelector<SVGGElement>('[data-wheel-spin]')!;
+    expect(spin.style.transition).toBe(t.style.transition);
+  });
+  it('classique inchangé', () => {
+    expect(truck(midMinute('truck-arrives'), false).querySelector('[data-scripted-car]')).toBeNull();
   });
 });
