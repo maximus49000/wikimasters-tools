@@ -51,6 +51,17 @@ describe('passants Ghibli', () => {
       expect(p.getAttribute('transform')).not.toMatch(/scale\(-/);
     }
   });
+  it('Ghibli : un nœud inactif (passant, habitant chez lui, seuil vide) n’a pas de href ; un nœud actif en a un', () => {
+    writeArt('ghibli');
+    const c = make();
+    const nodes = [...c.querySelectorAll('[data-ped], [data-resident], svg[data-resident-door]')];
+    const off = nodes.filter((n) => n.getAttribute('data-active') === 'false');
+    const on = nodes.filter((n) => n.getAttribute('data-active') === 'true');
+    expect(off.length).toBeGreaterThan(0);
+    expect(on.length).toBeGreaterThan(0);
+    for (const n of off) for (const u of n.querySelectorAll('[data-figure] > use')) expect(u.hasAttribute('href')).toBe(false);
+    for (const n of on) for (const u of n.querySelectorAll('[data-figure] > use')) expect(u.getAttribute('href')).toMatch(/^#/);
+  });
   it('bascule classique → Ghibli pendant que la scène tourne', () => {
     const c = make();
     act(() => writeArt('ghibli'));

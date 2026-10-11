@@ -21,7 +21,7 @@ import type { Sky } from '../core/library/sky';
 import { PersonSprite } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import type { FigureRegistry } from './figure/figure-host';
-import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
+import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
 import { AccessorySprite, LIFTING, PosedPerson, STANDING, applyPose, poseHandles, showCarry, type PoseHandles } from './shop-gesture-sprites';
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
 import { NightclubDoor } from './shop-queue';
@@ -113,6 +113,13 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
   const pose = (node: Element | null, p: FigurePose): void => {
     if (ghibli) poseFigure(opts.figures!, node?.querySelector('[data-figure]') ?? null, p);
   };
+  // Ghibli : nœud qui s'éteint (ou premier placement) → figure cachée, symbole libéré ; n'écrit qu'à la bascule.
+  const toggle = (node: Element, on: boolean): void => {
+    const off = ghibli && !on && (first || node.getAttribute('data-active') !== 'false');
+    setIfChanged(node, 'data-active', on ? 'true' : 'false');
+    setIfChanged(node, 'opacity', onOff(on));
+    if (off) hideFigure(opts.figures!, node.querySelector('[data-figure]'));
+  };
   for (const v of visits) {
     const s = customerState(v, muted.has(v.id) ? 0 : (gates.get(v.slotId) ?? 0), width, t, opts.lock);
     const where = whereOf(s);
@@ -120,8 +127,7 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
     const out = nodes.get(v.id);
     if (out) {
       const on = where === 'street';
-      setIfChanged(out, 'data-active', on ? 'true' : 'false');
-      setIfChanged(out, 'opacity', onOff(on));
+      toggle(out, on);
       if (on && s.passage) {
         out.setAttribute('transform', sidewalkTransform(v, s.passage.x, m, sgn));
         pose(out, passagePose(v, s.passage, m));
@@ -131,8 +137,7 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
     const door = nodes.get(doorId(v));
     if (door) {
       const on = where === 'door';
-      setIfChanged(door, 'data-active', on ? 'true' : 'false');
-      setIfChanged(door, 'opacity', onOff(on));
+      toggle(door, on);
       if (on && s.passage) {
         placeSill(door, customerDoorRect(v, s.stage, m), s.passage, m, streetScale(v, m), sgn);
         pose(door, passagePose(v, s.passage, m));
@@ -141,8 +146,7 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
     const inn = nodes.get(insideId(v));
     if (inn) {
       const on = where === 'inside';
-      setIfChanged(inn, 'data-active', on ? 'true' : 'false');
-      setIfChanged(inn, 'opacity', onOff(on));
+      toggle(inn, on);
       if (on && s.inner) {
         inn.setAttribute('transform', insideTransform(v, s.inner, Number(inn.getAttribute('data-floor') ?? 0), !ghibli));
         if (ghibli) pose(inn, innerPose(v, s.inner));
@@ -213,7 +217,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
                 >
                   {ghibli ? (
                     // Pas d'objet ni de geste avant G3b : debout ou assis à sa place.
-                    <GhibliFigure outfit={v.outfit} sky={inSky} rainy={false} umbrella={false} initial={innerPose(v, inner)} />
+                    <GhibliFigure outfit={v.outfit} sky={inSky} rainy={false} umbrella={false} initial={innerPose(v, inner)} hidden={!on} />
                   ) : (
                     <>
                       <g data-inner-stay="" visibility={seat ? 'visible' : 'hidden'}>
@@ -238,12 +242,13 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
         const atDoor = where === 'door' && s.passage ? s.passage : null;
         const dPos: Passage = atDoor ?? { stage: 'threshold', x: v.doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
         const { clip: o, dark } = sillBox(customerDoorRect(v, s.stage, metrics), dPos.depth, metrics, streetScale(v, metrics));
-        const sprite = (p: FigurePose, withUmbrella: boolean): ReactElement =>
-          ghibli ? <GhibliFigure outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} initial={p} /> : <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} />;
+        // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans symbole.
+        const sprite = (p: FigurePose, withUmbrella: boolean, on: boolean): ReactElement =>
+          ghibli ? <GhibliFigure outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} initial={p} hidden={!on} /> : <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} />;
         return (
           <Fragment key={v.id}>
             <g data-life-id={v.id} data-customer="" data-active={street ? 'true' : 'false'} transform={sidewalkTransform(v, street?.x ?? s.x, metrics, sgn)} opacity={onOff(street !== null)}>
-              {sprite(street ? passagePose(v, street, metrics) : REST, umbrella)}
+              {sprite(street ? passagePose(v, street, metrics) : REST, umbrella, street !== null)}
               {/* Objet emporté : dessin classique seulement (Ghibli : avant G3b, rien en main). */}
               {!ghibli && v.type !== null && takesAway(v.type) && (
                 <g data-item="" transform={CARRY_AT} visibility={street && s.carry ? 'visible' : 'hidden'}>
@@ -255,7 +260,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
             <svg data-life-id={doorId(v)} data-customer-door="" data-visit={v.id} data-active={atDoor ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={onOff(atDoor !== null)}>
               <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
               <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, streetScale(v, metrics), sgn)} opacity={(1 - dPos.depth).toFixed(2)}>
-                {sprite(passagePose(v, dPos, metrics), umbrella)}
+                {sprite(passagePose(v, dPos, metrics), umbrella, atDoor !== null)}
               </g>
             </svg>
           </Fragment>

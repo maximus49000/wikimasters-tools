@@ -20,7 +20,7 @@ import type { Sky } from '../core/library/sky';
 import { useArtStyle } from './art-setting';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
-import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
+import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
 import { CityEventSprite } from './city-event-sprites';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectSwaps, dayShifts, placeCustomers, placeStaff, placeSwaps, setIfChanged, shopShutter, shopSpriteBudget, type PosedStaff, type Swap } from './city-shops-life';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
@@ -331,10 +331,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           setIfChanged(node, 'data-active', next ? 'true' : 'false');
           setIfChanged(node, 'opacity', next ? '1' : '0');
         }
+        // Ghibli : un passant caché lâche ses symboles (<use> sans href), seulement à la bascule ou au premier placement.
+        if (ghibli && !next && (first || next !== prev)) for (const fig of pedFigs.get(p.id) ?? []) hideFigure(figures, fig);
         // Un passant caché n'est pas touché (sauf au premier placement de la scène).
         if (!next && !first) continue;
         node?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
-        if (ghibli) {
+        if (ghibli && next) {
           const pose = pedPose(p, metrics, t);
           for (const fig of pedFigs.get(p.id) ?? []) poseFigure(figures, fig, pose);
         }
@@ -351,21 +353,25 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (!node) continue;
         const v = residentView(trip, tripLock.current, trip.kind === 'out' ? flow.out : flow.in, width, t);
         // N'écrire que ce qui change : la plupart des habitants restent chez eux, inutile de toucher leurs nœuds à chaque image.
+        // Ghibli : nœud éteint (bascule ou premier placement) → figure cachée, symbole libéré.
+        const streetOff = !v.street && (first || node.getAttribute('data-active') !== 'false');
         setIfChanged(node, 'data-active', v.street ? 'true' : 'false');
         setIfChanged(node, 'opacity', v.street ? '1.00' : '0.00');
         if (v.street && v.pos) {
           node.setAttribute('transform', residentTransform(trip, v.pos.x, metrics, !ghibli));
           if (ghibli) poseFigure(figures, node.querySelector(':scope > [data-figure]'), residentPose(trip, v.pos, metrics));
         } else if (first) node.setAttribute('transform', residentTransform(trip, trip.doorX, metrics, !ghibli));
+        if (ghibli && streetOff) hideFigure(figures, node.querySelector(':scope > [data-figure]'));
         const dnode = doorNodes.get(trip.id);
         if (!dnode) continue;
+        const doorOff = !v.door && (first || dnode.getAttribute('data-active') !== 'false');
         setIfChanged(dnode, 'data-active', v.door ? 'true' : 'false');
         setIfChanged(dnode, 'opacity', v.door ? '1.00' : '0.00');
         if (v.door && v.pos) {
           // Cadre large sur le seuil (parapluie compris), resserré sur l'ouverture avec la profondeur (door-passage.ts).
           placeSill(dnode, doorOpening(tripDoorX(trip, v.pos), metrics), v.pos, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir);
           if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics));
-        }
+        } else if (ghibli && doorOff) hideFigure(figures, dnode.querySelector('[data-figure]'));
       }
       placeCustomers(nodes, visits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
       placeSwaps(swaps, t);
@@ -520,22 +526,23 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           const sPos = v.street && v.pos ? v.pos : rest;
           const dPos = v.door && v.pos ? v.pos : { ...rest, depth: 1 };
           const { clip: o, dark } = sillBox(doorOpening(v.door && v.pos ? tripDoorX(trip, v.pos) : trip.doorX, metrics), dPos.depth, metrics, residentScale(trip, metrics));
-          const sprite = (p: Passage): ReactElement =>
+          // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans symbole.
+          const sprite = (p: Passage, on: boolean): ReactElement =>
             ghibli ? (
-              <GhibliFigure outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={residentPose(trip, p, metrics)} />
+              <GhibliFigure outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={residentPose(trip, p, metrics)} hidden={!on} />
             ) : (
               <PersonSprite outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} />
             );
           return (
             <Fragment key={trip.id}>
               <g data-life-id={trip.id} data-trip-id={trip.id} data-resident="" data-trip={trip.kind} data-active={v.street ? 'true' : 'false'} transform={residentTransform(trip, sPos.x, metrics, !ghibli)} opacity={v.street ? '1.00' : '0.00'}>
-                {sprite(sPos)}
+                {sprite(sPos, v.street)}
               </g>
               {/* Nœud de porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche est copiée par <use>). */}
               <svg data-resident-door="" data-trip-id={trip.id} data-active={v.door ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={v.door ? '1.00' : '0.00'}>
                 <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={v.door ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
                 <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir)} opacity={(1 - dPos.depth).toFixed(2)}>
-                  {sprite(dPos)}
+                  {sprite(dPos, v.door)}
                 </g>
               </svg>
             </Fragment>
@@ -582,12 +589,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7. */}
               {p.companions.map((outfit, k) => (
                 <g key={k} data-companion="" transform={p.pair ? `translate(${(ghibli ? -p.dir : -1) * PAIR_GAP} 0) scale(0.95)` : `translate(${(ghibli ? -p.dir : -1) * COMPANION_GAP * (k + 1)} 0) scale(0.7)`}>
-                  {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0)} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
+                  {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0)} hidden={!active} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
                 </g>
               ))}
               {/* En Ghibli, pas de signes de fête avant G3b. */}
               {ghibli ? (
-                <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pedPose(p, metrics, t0)} />
+                <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pedPose(p, metrics, t0)} hidden={!active} />
               ) : (
                 <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={marks.get(p.id)} />
               )}

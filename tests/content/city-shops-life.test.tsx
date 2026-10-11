@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { StaffLayer, countShopSprites, dayShifts, placeCustomers, staffCast } from '../../src/content/city-shops-life';
+import { FigureRegistry } from '../../src/content/figure/figure-host';
 import { DOOR_SILL_HALF, DOOR_SILL_TOP, sillBox } from '../../src/content/door-passage';
 import { visitAt, visitsFor, type VisitLock } from '../../src/core/library/city/shops/customers';
 import { addDays, dayContext, type YMD } from '../../src/core/library/city/calendar';
@@ -437,6 +438,41 @@ describe('clients : portes et verrou', () => {
     placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, t0 + 10, false, new Set(), { lock });
     expect(active(nodes)).toHaveLength(0);
   });
+  it('Ghibli : à chaque bascule, la figure du nœud éteint perd son href (symbole libéré), celle du nœud allumé le retrouve', () => {
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const nodes = nodesOf(v.id);
+    const ns = 'http://www.w3.org/2000/svg';
+    const figures = new FigureRegistry('tc', { perFrame: 50 });
+    for (const n of nodes.values()) {
+      const fig = document.createElementNS(ns, 'g');
+      fig.setAttribute('data-figure', '');
+      fig.setAttribute('data-sig', 'short.long.pants.none.n');
+      const use = document.createElementNS(ns, 'use');
+      use.setAttribute('href', '#stale');
+      fig.setAttribute('data-key', 'stale');
+      fig.append(use);
+      n.append(fig);
+    }
+    const lock: VisitLock = new Map();
+    const writes = vi.spyOn(Element.prototype, 'removeAttribute');
+    let toggles = 0;
+    let was = '';
+    for (let c = 0; c < 240; c += 0.25) {
+      placeCustomers(nodes, [v], new Map([[v.slotId, 1]]), W, metrics, c - v.phase, c === 0, new Set(), { lock, ghibli: true, figures });
+      figures.flush();
+      for (const n of nodes.values()) {
+        const use = n.querySelector('[data-figure] > use')!;
+        expect(use.hasAttribute('href')).toBe(n.getAttribute('data-active') === 'true');
+      }
+      const now = active(nodes).join();
+      if (now !== was) toggles++;
+      was = now;
+    }
+    expect(toggles).toBeGreaterThan(2);
+    // N'écrit qu'aux bascules : 2 retraits (href, data-key) par extinction, jamais à chaque image.
+    expect(writes.mock.calls.filter(([a]) => a === 'href').length).toBeLessThanOrEqual(toggles + 3);
+    writes.mockRestore();
+  });
   it('un seul nœud actif à la fois : rue, porte du local (seuil) ou intérieur', () => {
     const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
     const nodes = nodesOf(v.id);
@@ -471,6 +507,9 @@ describe('clients : portes et verrou', () => {
         expect(n.querySelector('[data-figure]')).not.toBeNull();
         expect(n.querySelector('[data-item], [data-pose-body]')).toBeNull();
         expect(n.getAttribute('transform') ?? '').not.toMatch(/scale\(-/);
+        // Nœud inactif : <use> sans href (rien n'est recopié, aucun symbole retenu).
+        const use = n.querySelector('[data-figure] > use')!;
+        expect(use.hasAttribute('href')).toBe(n.getAttribute('data-active') === 'true');
       }
     } finally {
       localStorage.removeItem(ART_KEY);

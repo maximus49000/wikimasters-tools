@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { FigureContext, FigureDefs, FigureRegistry } from '../../../src/content/figure/figure-host';
-import { GhibliFigure, poseFigure } from '../../../src/content/figure/ghibli-figure';
+import { GhibliFigure, hideFigure, poseFigure } from '../../../src/content/figure/ghibli-figure';
 import { skyAt, sunTimes } from '../../../src/core/library/sky';
 import type { Outfit } from '../../../src/core/library/city/people';
 
@@ -71,27 +71,50 @@ describe('figure Ghibli', () => {
   });
 });
 
-describe('éviction et références', () => {
-  it('un symbole encore référencé par un <use> du document n’est jamais retiré', () => {
+describe('éviction et détenteurs', () => {
+  const fig = (): Element => document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  it('une clé détenue par une figure n’est jamais retirée, sans interroger le DOM', () => {
     const r = new FigureRegistry('t5', { max: 3, perFrame: 10 });
-    const host = document.createElement('div');
-    document.body.append(host);
-    const root = createRoot(host);
     const first = r.ensure({ ...key, phase: 0 });
-    act(() =>
-      root.render(
-        <svg>
-          <defs><FigureDefs registry={r} /></defs>
-          <use href={first} />
-        </svg>,
-      ),
-    );
+    expect(r.hold(fig(), { ...key, phase: 0 })).toBe(first);
     for (let p = 1; p < 5; p++) r.ensure({ ...key, phase: p });
     r.flush();
     expect(r.root.querySelector(first)).not.toBeNull();
     expect(r.size()).toBe(3);
-    act(() => root.unmount());
-    host.remove();
+  });
+  it('une clé libérée peut partir', () => {
+    const r = new FigureRegistry('t5b', { max: 3, perFrame: 10 });
+    const n = fig();
+    const first = r.ensure({ ...key, phase: 0 });
+    r.hold(n, { ...key, phase: 0 });
+    expect(r.hold(n, null)).toBeNull();
+    for (let p = 1; p < 5; p++) r.ensure({ ...key, phase: p });
+    r.flush();
+    expect(r.root.querySelector(first)).toBeNull();
+  });
+  it('changer de pose transfère la détention ; deux détenteurs d’une clé : elle reste tant qu’il en reste un', () => {
+    const r = new FigureRegistry('t5c', { max: 2, perFrame: 10 });
+    const a = fig();
+    const b = fig();
+    const k0 = r.ensure({ ...key, phase: 0 });
+    const k1 = r.ensure({ ...key, phase: 1 });
+    r.hold(a, { ...key, phase: 0 });
+    r.hold(b, { ...key, phase: 0 });
+    r.hold(a, { ...key, phase: 1 });
+    r.hold(b, null);
+    for (let p = 2; p < 5; p++) r.ensure({ ...key, phase: p });
+    r.flush();
+    expect(r.root.querySelector(k1)).not.toBeNull();
+    expect(r.root.querySelector(k0)).toBeNull();
+  });
+  it('hold d’une clé sans symbole : demandée, rien n’est détenu, l’ancienne reste détenue', () => {
+    const r = new FigureRegistry('t5d', { max: 1, perFrame: 10 });
+    const n = fig();
+    const k0 = r.ensure({ ...key, phase: 0 });
+    r.hold(n, { ...key, phase: 0 });
+    expect(r.hold(n, { ...key, phase: 1 })).toBeNull();
+    r.flush();
+    expect(r.root.querySelector(k0)).not.toBeNull();
   });
   it('une clé ancienne retouchée survit à une clé jamais retouchée', () => {
     const r = new FigureRegistry('t6', { max: 3, perFrame: 10 });
@@ -104,28 +127,78 @@ describe('éviction et références', () => {
     expect(r.root.querySelector(a)).not.toBeNull();
     expect(r.root.querySelector(b)).toBeNull();
   });
+});
 
-  it('fonctionne aussi dans un shadow root (fenêtre de la Bibliothèque)', () => {
-    const r = new FigureRegistry('t7', { max: 3, perFrame: 10 });
+describe('file de création', () => {
+  it('jette les demandes abandonnées depuis plus de 2 images', () => {
+    const r = new FigureRegistry('t8', { perFrame: 1 });
+    for (let p = 0; p < 5; p++) r.request({ ...key, phase: p });
+    for (let i = 0; i < 6; i++) r.flush();
+    expect(r.size()).toBe(3);
+  });
+  it('une demande renouvelée à chaque image finit créée', () => {
+    const r = new FigureRegistry('t9', { perFrame: 1 });
+    for (let p = 0; p < 5; p++) r.request({ ...key, phase: p });
+    for (let i = 0; i < 6; i++) {
+      r.request({ ...key, phase: 4 });
+      r.flush();
+    }
+    expect(r.request({ ...key, phase: 4 })).not.toBeNull();
+  });
+});
+
+describe('figure cachée', () => {
+  const mount = (r: FigureRegistry, hidden: boolean): { host: HTMLDivElement; unmount: () => void } => {
     const host = document.createElement('div');
     document.body.append(host);
-    const inner = document.createElement('div');
-    host.attachShadow({ mode: 'open' }).append(inner);
-    const root = createRoot(inner);
-    const first = r.ensure({ ...key, phase: 0 });
+    const root = createRoot(host);
     act(() =>
       root.render(
-        <svg>
-          <defs><FigureDefs registry={r} /></defs>
-          <use href={first} />
-        </svg>,
+        <FigureContext.Provider value={r}>
+          <svg>
+            <defs><FigureDefs registry={r} /></defs>
+            <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} hidden={hidden} initial={{ yaw: 0, gait: 'walk', phase: 0, head: 0 }} />
+          </svg>
+        </FigureContext.Provider>,
       ),
     );
-    for (let p = 1; p < 5; p++) r.ensure({ ...key, phase: p });
+    return { host, unmount: () => { act(() => root.unmount()); host.remove(); } };
+  };
+  it('hidden : <use> sans href, aucun symbole créé ; poseFigure la remet en place', () => {
+    const r = new FigureRegistry('t10', { perFrame: 1 });
+    const { host, unmount } = mount(r, true);
+    const node = host.querySelector('[data-figure]')!;
+    expect(node.querySelector('use')!.hasAttribute('href')).toBe(false);
+    expect(node.hasAttribute('data-key')).toBe(false);
+    expect(r.size()).toBe(0);
+    poseFigure(r, node, { yaw: 8, gait: 'walk', phase: 5, head: 0 });
+    expect(node.querySelector('use')!.getAttribute('href')).toMatch(/^#t10-/);
+    expect(node.getAttribute('data-key')).not.toBeNull();
+    unmount();
+  });
+  it('hideFigure retire le href et data-key et libère la clé', () => {
+    const r = new FigureRegistry('t11', { max: 1, perFrame: 10 });
+    const { host, unmount } = mount(r, false);
+    const node = host.querySelector('[data-figure]')!;
+    const first = node.querySelector('use')!.getAttribute('href')!;
+    r.ensure({ ...key, phase: 7 });
     r.flush();
     expect(r.root.querySelector(first)).not.toBeNull();
-    expect(r.size()).toBe(3);
-    act(() => root.unmount());
-    host.remove();
+    hideFigure(r, node);
+    expect(node.querySelector('use')!.hasAttribute('href')).toBe(false);
+    expect(node.hasAttribute('data-key')).toBe(false);
+    r.ensure({ ...key, phase: 8 });
+    r.flush();
+    expect(r.root.querySelector(first)).toBeNull();
+    unmount();
+  });
+  it('démontage : la pose détenue est libérée', () => {
+    const r = new FigureRegistry('t12', { max: 1, perFrame: 10 });
+    const { host, unmount } = mount(r, false);
+    const first = host.querySelector('[data-figure] use')!.getAttribute('href')!;
+    unmount();
+    r.ensure({ ...key, phase: 7 });
+    r.flush();
+    expect(r.root.querySelector(first)).toBeNull();
   });
 });

@@ -7,13 +7,19 @@ import { shapeFromSignature } from '../../core/library/figure/dress';
 // la couche des acteurs recopiée par <use> dans chaque fenêtre, et créées à la demande par le DOM (aucun re-rendu React).
 // Chaque humain n'est qu'un <use> vers l'un d'eux. Plafond de symboles (les moins récemment utilisés partent) et budget de
 // créations par image : tant qu'un symbole manque, la figure garde son image courante (poseFigure).
+// Détenteurs : chaque nœud de figure déclare la clé qu'il affiche (hold) ; l'éviction ne retire jamais une clé détenue et
+// n'interroge pas le DOM (une recherche `use[href]` par candidat coûtait l'essentiel de l'image, ≈ 56 000 nœuds).
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export class FigureRegistry {
   readonly root: SVGGElement;
   private readonly ids = new Map<string, string>();
   private readonly nodes = new Map<string, SVGGElement>();
-  private readonly queue = new Map<string, FigureKey>();
+  // File de création : clé → pose et numéro de l'image de la dernière demande (les demandes abandonnées partent).
+  private readonly queue = new Map<string, { key: FigureKey; at: number }>();
+  private readonly holders = new WeakMap<Element, string>();
+  private readonly counts = new Map<string, number>();
+  private frame = 0;
   private next = 0;
   private readonly max: number;
   private readonly perFrame: number;
@@ -81,27 +87,50 @@ export class FigureRegistry {
   request(key: FigureKey): string | null {
     const k = keyString(key);
     const found = this.hit(k);
-    if (!found) this.queue.set(k, key);
+    if (!found) this.queue.set(k, { key, at: this.frame });
     return found;
   }
+  // Associe au nœud `node` la clé qu'il affiche (null : le libère). La nouvelle clé n'est détenue que si son symbole existe
+  // (sinon demandée, rien ne change : la figure garde son image) ; l'ancienne est alors libérée. Rend la référence ou null.
+  hold(node: Element, key: FigureKey | null): string | null {
+    const prev = this.holders.get(node);
+    if (!key) {
+      if (prev !== undefined) {
+        this.holders.delete(node);
+        this.release(prev);
+      }
+      return null;
+    }
+    const href = this.request(key);
+    if (!href) return null;
+    const k = keyString(key);
+    if (prev === k) return href;
+    this.holders.set(node, k);
+    this.counts.set(k, (this.counts.get(k) ?? 0) + 1);
+    if (prev !== undefined) this.release(prev);
+    return href;
+  }
+  private release(k: string): void {
+    const n = (this.counts.get(k) ?? 0) - 1;
+    if (n > 0) this.counts.set(k, n);
+    else this.counts.delete(k);
+  }
   flush(): void {
+    // Demandes non renouvelées depuis plus de 2 images (un marcheur a déjà demandé la phase suivante) : jetées avant de créer.
+    for (const [k, q] of this.queue) if (this.frame - q.at > 2) this.queue.delete(k);
+    this.frame++;
     let made = 0;
-    for (const key of [...this.queue.values()]) {
+    for (const { key } of [...this.queue.values()]) {
       if (made >= this.perFrame) break;
       this.create(key);
       made++;
     }
-    // Plafond : retirer les moins récemment utilisés (début de la Map), mais jamais un symbole encore référencé par un <use>
-    // du document (figure statique qui n'appelle plus poseFigure) : il passe en fin de Map. Une passe complète sans retrait
-    // s'arrête (la taille peut alors dépasser le plafond). Racine détachée (tests) : pas de contrôle de référence.
-    // getRootNode : le document, ou la racine fantôme (shadow root) de la fenêtre de la Bibliothèque.
-    const node0 = this.root.isConnected ? this.root.getRootNode() : null;
-    const doc = node0 && 'querySelector' in node0 ? (node0 as Document | ShadowRoot) : null;
+    // Plafond : retirer les moins récemment utilisés (début de la Map), jamais une clé détenue : elle passe en fin de Map. Une
+    // passe complète sans retrait s'arrête (la taille peut alors dépasser le plafond).
     let skipped = 0;
     while (this.nodes.size > this.max && skipped < this.nodes.size) {
       const [k, node] = this.nodes.entries().next().value as [string, SVGGElement];
-      const id = this.ids.get(k)!;
-      if (doc?.querySelector(`use[href="#${id}"]`)) {
+      if (this.counts.has(k)) {
         this.nodes.delete(k);
         this.nodes.set(k, node);
         skipped++;
