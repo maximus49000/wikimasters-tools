@@ -17,12 +17,12 @@ const render = (node: ReactElement): { rerender: (n: ReactElement) => void } => 
   return { rerender: (n) => act(() => root!.render(n)) };
 };
 
-const look = (o: Partial<ShopLook> = {}): ShopLook => ({ type: 'bakery', name: 'Au Pain Perdu', w: 44, h: 22, doorSide: 'right', state: 'open', day: 1, lit: false, seed: 1, ...o });
+const look = (o: Partial<ShopLook> = {}): ShopLook => ({ type: 'bakery', name: 'Au Pain Perdu', w: 44, h: 22, doorSide: 'right', state: 'open', placard: false, day: 1, lit: false, seed: 1, ...o });
 
 describe('registre des commerces', () => {
   it('clés distinctes par couche, état, côté, lumière, nom', () => {
     const base = shopKey(look(), 'facade');
-    for (const o of [{ state: 'closed' as const }, { doorSide: 'left' as const }, { day: 0.5 }, { lit: true }, { name: 'Autre' }]) expect(shopKey(look(o), 'facade')).not.toBe(base);
+    for (const o of [{ state: 'closed' as const }, { doorSide: 'left' as const }, { day: 0.5 }, { lit: true }, { name: 'Autre' }, { placard: true }]) expect(shopKey(look(o), 'facade')).not.toBe(base);
     expect(shopKey(look(), 'back')).not.toBe(base);
     expect(shopKey(look({ name: 'Autre' }), 'back')).toBe(shopKey(look(), 'back'));
     expect(quantDay(0.53)).toBe(0.5);

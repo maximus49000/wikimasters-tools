@@ -7,6 +7,7 @@ import { mixHex } from '../core/library/sky';
 import { EntranceSprite, entranceLeft } from './city-sprites';
 import type { SceneBodyProps } from './scene-panorama';
 import { ShopFront } from './shop-sprites';
+import { GhibliShopFront } from './shop/ghibli-shop-front';
 import { ShopInterior, sliceCount } from './shop-interiors';
 import { furnitureAt } from '../core/library/city/shops/view';
 import { useStreetShops } from './use-street-shops';
@@ -122,13 +123,19 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
       const change = slotDays[i]?.change ?? null;
       const moving = view.interior ? null : furnitureAt(view, n);
       const type = moving ? (moving.from === 'before' ? change?.before?.type : change?.after?.type) ?? null : null;
-      return (
+      const slices = moving && type ? { shown: moving.shown, n, doorRight: view.slot.doorSide === 'left' } : undefined;
+      const classic = (
         <ShopFront key={view.slot.id} frame={frame} view={view} sky={sky} lit={dark && open} shutter={false}>
           {view.interior && <ShopInterior type={view.interior} w={w} h={frame.window.h} sky={sky} lit={dark && open} front={!open} />}
-          {moving && type && (
-            <ShopInterior type={type} w={w} h={frame.window.h} sky={sky} lit={false} slices={{ shown: moving.shown, n, doorRight: view.slot.doorSide === 'left' }} />
-          )}
+          {slices && type && <ShopInterior type={type} w={w} h={frame.window.h} sky={sky} lit={false} slices={slices} />}
         </ShopFront>
+      );
+      // Ghibli (G4a) : devanture et intérieur peints ; la classique reste affichée tant que l'image n'est pas prête.
+      if (!ghibli) return classic;
+      return (
+        <GhibliShopFront key={view.slot.id} view={view} frame={frame} sky={sky} curb={metrics.curb} interior={view.interior ?? (slices ? type : null)} slices={slices}>
+          {classic}
+        </GhibliShopFront>
       );
     });
   const streetFragment = (

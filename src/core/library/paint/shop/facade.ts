@@ -8,11 +8,13 @@ import { FAMILY, TILES, pictOf, type Family } from './families';
 // Devanture cellulo d'un local (G4a), portée de la maquette validée (docs/superpowers/maquettes/g4-commerces/devantures.html) :
 // encadrement par famille de métier, bandeau et nom, store festonné, porte, enseigne en drapeau, lanternes, étal et ardoise
 // du trottoir. Repère local : x de 0 à w (largeur du local), y = 0 en haut du rez-de-chaussée, 30 au sol ; débords dans
-// FACADE_MARGIN. La vitre est PERCÉE (rien n'y est rempli à l'état ouvert) : le fond de l'intérieur passe dessous, le
+// FACADE_MARGIN. La vitre est PERCÉE (rien n'y est rempli, sauf le local vide) : le fond de l'intérieur passe dessous, le
 // personnel entre les deux, et la vitre elle-même (teinte, reflet, petits bois) est peinte par paintGlass au premier plan.
 // Les éléments lumineux ne sont peints sans teinte (ctx.glowing) que si la boutique est éclairée (`lit`).
 export type FacadeState = 'open' | 'closed' | 'empty' | 'works';
-export type FacadeSpec = { type: ShopTypeId | null; name: string; w: number; doorSide: 'left' | 'right'; state: FacadeState; night: boolean; lit: boolean };
+// `empty` : local à vendre inoccupé (vitre passée au blanc d'Espagne) ; `works` : chantier ou déménagement (vitre percée :
+// le mobilier qui sort par tranches et les ouvriers restent visibles). `placard` : panneau « À vendre » collé à la vitre.
+export type FacadeSpec = { type: ShopTypeId | null; name: string; w: number; doorSide: 'left' | 'right'; state: FacadeState; placard: boolean; night: boolean; lit: boolean };
 export type Rect = { x: number; y: number; w: number; h: number };
 export const FACADE_MARGIN = { left: 9, right: 9, top: 6, bottom: 6 } as const;
 export const GROUND_FLOOR_H = 30;
@@ -62,6 +64,19 @@ const luminance = (c: string): number => {
 };
 const mixHex = (a: string, b: string, t: number): string => rgba(mixRgb(parseColor(a)?.rgb ?? [128, 128, 128], parseColor(b)?.rgb ?? [128, 128, 128], t), 1);
 
+// Store festonné : haut, hauteur de la toile, du lambrequin.
+const awning = (f: Family): { ay: number; ah: number; vh: number } => ({ ay: 7.4, ah: f === 'C' ? 5.5 : 4.6, vh: 2.4 });
+const hasAwning = (s: FacadeSpec): boolean => {
+  const f = familyOf(s);
+  return s.state === 'open' && !!s.type && (f === 'B' || (f === 'C' && s.type !== 'kebab' && s.type !== 'sushi'));
+};
+// Hauteur de vitrine cachée par le store (sous le haut de la vitrine) : le personnel et les clients sont rognés dessous.
+export function awningDrop(s: FacadeSpec): number {
+  if (!hasAwning(s)) return 0;
+  const { ay, ah, vh } = awning(familyOf(s));
+  return ay + ah + vh - facadeGeometry(s).win.y;
+}
+
 export function paintFacade(x: TintedCtx, s: FacadeSpec): void {
   const { w, doorSide, state, lit } = s;
   const f = familyOf(s);
@@ -74,18 +89,16 @@ export function paintFacade(x: TintedCtx, s: FacadeSpec): void {
   const tiles = s.type ? TILES[s.type] : undefined;
   const glow = (fn: () => void): void => (lit ? x.glowing(fn) : fn());
 
-  // Vitre : percée à l'ouverture ; sombre fermée (le rideau roulant passe devant) ; blanc d'Espagne vide ; gris en travaux.
-  if (state !== 'open') {
-    x.fillStyle = state === 'empty' ? '#EDEAE0' : state === 'works' ? '#5A5A60' : '#2A2D36';
+  // Vitre percée (fond et personnel dessous, rideau roulant devant), sauf le local vide : passée au blanc d'Espagne.
+  if (state === 'empty') {
+    x.fillStyle = '#EDEAE0';
     x.fillRect(W0.x, W0.y, W0.w, W0.h);
-    if (state === 'empty') {
-      x.strokeStyle = 'rgba(255,255,255,0.8)';
-      x.lineWidth = 1.2;
-      for (let k = 0; k < 5; k++) {
-        x.beginPath();
-        x.arc(W0.x + 3 + (k * W0.w) / 5, W0.y + 6 + (k % 2) * 7, 3, 0.3, 2.6);
-        x.stroke();
-      }
+    x.strokeStyle = 'rgba(255,255,255,0.8)';
+    x.lineWidth = 1.2;
+    for (let k = 0; k < 5; k++) {
+      x.beginPath();
+      x.arc(W0.x + 3 + (k * W0.w) / 5, W0.y + 6 + (k % 2) * 7, 3, 0.3, 2.6);
+      x.stroke();
     }
     glint(x, W0.x, W0.y, W0.w, W0.h, 0.25);
   }
@@ -131,10 +144,10 @@ export function paintFacade(x: TintedCtx, s: FacadeSpec): void {
   }
 
   // Bandeau d'enseigne et nom
-  const bandC = state === 'empty' || state === 'works' ? NEUTRAL : f === 'F' ? '#1E1626' : f === 'E' ? '#E2D6BC' : sign;
+  const bandC = !def || state === 'empty' ? NEUTRAL : f === 'F' ? '#1E1626' : f === 'E' ? '#E2D6BC' : sign;
   R(x, -0.5, 1.6, w + 1, 5.6, bandC, { lw: 0.6, sh: 0.22, shX: 0.82, li: 0.18, liW: 0.1 });
   if (f === 'A') R(x, -1.2, 0.6, w + 2.4, 1.3, lightOf(bandC, 0.25), { lw: 0.4, sh: 0, li: 0 });
-  if ((open || state === 'closed') && def) {
+  if (def && state !== 'empty') {
     if (f === 'A') {
       const dark = luminance(sign) < 120;
       fitText(x, s.name, w / 2, 4.5, 4.2, dark ? '#F2D27A' : ink, { font: 'serif', w: w - 3, stroke: dark ? shadeOf(sign, 0.5) : null });
@@ -155,26 +168,14 @@ export function paintFacade(x: TintedCtx, s: FacadeSpec): void {
     } else {
       fitText(x, s.name, w / 2, 4.5, 4, ink, { bold: f === 'D', w: w - 3 });
     }
-  } else if (state === 'works') {
+  } else {
+    // Bandeau nu : les trous des fixations de l'enseigne déposée.
     disc(x, 2, 4.4, 0.6, '#6A6A6A', 0);
     disc(x, w - 2, 4.4, 0.6, '#6A6A6A', 0);
   }
 
-  // Travaux : bâche
-  if (state === 'works') {
-    R(x, 0, 7.5, w, 22.5, '#4A7AC8', { lw: 0.5, sh: 0.25, shX: 0.7 });
-    x.strokeStyle = 'rgba(255,255,255,0.35)';
-    x.lineWidth = 0.4;
-    for (let k = 4; k < w; k += 6) {
-      x.beginPath();
-      x.moveTo(k, 8);
-      x.quadraticCurveTo(k + 1.5, 19, k - 0.5, 30);
-      x.stroke();
-    }
-    fitText(x, 'TRAVAUX', w / 2, 18, 3.4, '#FFFFFF', { bold: true, w: w - 4 });
-  }
-  // Local vide : panneau À vendre
-  if (state === 'empty') {
+  // Panneau À vendre collé à la vitre
+  if (s.placard) {
     const pw = Math.min(W0.w - 2, 14);
     const pxx = W0.x + (W0.w - pw) / 2;
     R(x, pxx, 12, pw, 9, '#FFFFFF', { lw: 0.4, sh: 0.15, shX: 0.8, li: 0 });
@@ -185,11 +186,10 @@ export function paintFacade(x: TintedCtx, s: FacadeSpec): void {
   }
 
   // Store festonné (étals, cafés ; ni kebab ni sushis)
-  if (open && (f === 'B' || (f === 'C' && s.type !== 'kebab' && s.type !== 'sushi'))) {
+  if (hasAwning(s)) {
     const ax = win.x - 0.5;
     const aw = (f === 'C' ? w : win.w) + 1;
-    const ay = 7.4;
-    const ah = f === 'C' ? 5.5 : 4.6;
+    const { ay, ah, vh } = awning(f);
     const dx = 1.6;
     const path = (): void => {
       x.moveTo(ax, ay);
@@ -230,7 +230,6 @@ export function paintFacade(x: TintedCtx, s: FacadeSpec): void {
     x.stroke();
     // Lambrequin festonné
     const vy = ay + ah;
-    const vh = 2.4;
     const span = aw + 2 * dx;
     const n = Math.round(span / 2.6);
     x.beginPath();

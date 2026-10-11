@@ -14,16 +14,16 @@ import { BLANK_SPRITE } from '../figure/figure-host';
 // précédente (useShopLayer).
 export const SHOP_PX = 4;
 export type ShopLayer = 'back' | 'front' | 'facade';
-export type ShopLook = { type: ShopTypeId | null; name: string; w: number; h: number; doorSide: 'left' | 'right'; state: FacadeState; day: number; lit: boolean; seed: number };
+export type ShopLook = { type: ShopTypeId | null; name: string; w: number; h: number; doorSide: 'left' | 'right'; state: FacadeState; placard: boolean; day: number; lit: boolean; seed: number };
 
 export const quantDay = (daylight: number): number => Math.round(daylight * 8) / 8;
 
 export function shopKey(l: ShopLook, layer: ShopLayer): string {
   const common = `${layer}|${l.type ?? '-'}|${l.w.toFixed(1)}|${l.h.toFixed(1)}|${l.doorSide}|${l.state}|${l.lit ? 'L' : l.day}|${l.seed}`;
-  return layer === 'facade' ? `${common}|${l.name}|${l.day}` : common;
+  return layer === 'facade' ? `${common}|${l.name}|${l.day}|${l.placard ? 'P' : ''}` : common;
 }
 
-const specOf = (l: ShopLook): FacadeSpec => ({ type: l.type, name: l.name, w: l.w, doorSide: l.doorSide, state: l.state, night: l.day < 0.5, lit: l.lit });
+export const specOf = (l: ShopLook): FacadeSpec => ({ type: l.type, name: l.name, w: l.w, doorSide: l.doorSide, state: l.state, placard: l.placard, night: l.day < 0.5, lit: l.lit });
 
 // Cadre d'une couche dans le repère du local (fond et premier plan : la partie vitrée ; façade : le local et ses débords).
 export function layerBox(l: ShopLook, layer: ShopLayer): { x: number; y: number; w: number; h: number } {

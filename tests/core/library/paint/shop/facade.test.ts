@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { SHOP_TYPE_IDS } from '../../../../../src/core/library/city/shops/catalog';
 import { tintedCtx } from '../../../../../src/core/library/paint/shop/ctx';
 import { FAMILY } from '../../../../../src/core/library/paint/shop/families';
-import { facadeGeometry, paintFacade, paintGlass, type FacadeSpec } from '../../../../../src/core/library/paint/shop/facade';
+import { awningDrop, facadeGeometry, paintFacade, paintGlass, type FacadeSpec } from '../../../../../src/core/library/paint/shop/facade';
 import { recordingCtx } from '../recording-ctx';
 
-const spec = (o: Partial<FacadeSpec> = {}): FacadeSpec => ({ type: 'bakery', name: 'Au Pain Perdu', w: 44, doorSide: 'right', state: 'open', night: false, lit: false, ...o });
+const spec = (o: Partial<FacadeSpec> = {}): FacadeSpec => ({ type: 'bakery', name: 'Au Pain Perdu', w: 44, doorSide: 'right', state: 'open', placard: false, night: false, lit: false, ...o });
 const paint = (s: FacadeSpec) => {
   const rec = recordingCtx();
   paintFacade(tintedCtx(rec, (c) => c), s);
@@ -29,10 +29,10 @@ describe('façades', () => {
     }
   });
 
-  it('vitrine percée : aucun aplat dans la partie vitrée ouverte', () => {
+  it('vitrine percée (ouvert, fermé, travaux) : aucun aplat dans la partie vitrée', () => {
     for (const t of SHOP_TYPE_IDS) {
-      for (const doorSide of ['left', 'right'] as const) {
-        const s = spec({ type: t, doorSide });
+      for (const [doorSide, state] of [['left', 'open'], ['right', 'open'], ['right', 'closed'], ['left', 'works']] as const) {
+        const s = spec({ type: t, doorSide, state });
         const { glass } = facadeGeometry(s);
         const rec = paint(s);
         const inside = rec.ops.filter((o) => o.op === 'fillRect' && o.args[0]! >= glass.x - 0.01 && o.args[1]! >= glass.y - 0.01 && o.args[0]! + o.args[2]! <= glass.x + glass.w + 0.01 && o.args[1]! + o.args[3]! <= glass.y + glass.h + 0.01 && o.args[2]! * o.args[3]! > glass.w * glass.h * 0.5);
@@ -75,9 +75,15 @@ describe('façades', () => {
     }
   });
 
-  it('local vide : bandeau nu et panneau À VENDRE ; travaux : bâche', () => {
-    expect(paint(spec({ type: null, name: '', state: 'empty' })).texts).toContain('À VENDRE');
-    expect(paint(spec({ type: null, name: '', state: 'works' })).texts).toContain('TRAVAUX');
+  it('local vide : vitre passée au blanc et panneau À VENDRE', () => {
+    const rec = paint(spec({ type: null, name: '', state: 'empty', placard: true }));
+    expect(rec.texts).toEqual(['À VENDRE']);
+  });
+
+  it('travaux : vitre percée, enseigne déposée = bandeau nu, panneau si le local était à vendre', () => {
+    expect(paint(spec({ type: null, name: '', state: 'works' })).texts).toEqual([]);
+    expect(paint(spec({ type: null, name: '', state: 'works', placard: true })).texts).toEqual(['À VENDRE']);
+    expect(paint(spec({ state: 'works' })).texts).toEqual(['Au Pain Perdu']);
   });
 
   it('local de 38 à 70 de large, porte des deux côtés : la vitre est dans le local', () => {
@@ -97,5 +103,13 @@ describe('façades', () => {
     paintGlass(d, spec({ type: 'records' }), 30, 18);
     expect(a.ops.some((o) => o.op === 'strokeRect' && o.args.join() === '0,0,30,18')).toBe(true);
     expect(a.ops.filter((o) => o.op === 'lineTo').length).toBeGreaterThan(d.ops.filter((o) => o.op === 'lineTo').length);
+  });
+
+  it('store : le personnel est rogné sous le lambrequin (étals et cafés ouverts seulement)', () => {
+    expect(awningDrop(spec({ type: 'greengrocer' }))).toBeGreaterThan(5);
+    expect(awningDrop(spec({ type: 'cafe' }))).toBeGreaterThan(awningDrop(spec({ type: 'greengrocer' })));
+    expect(awningDrop(spec({ type: 'kebab' }))).toBe(0);
+    expect(awningDrop(spec({ type: 'bakery' }))).toBe(0);
+    expect(awningDrop(spec({ type: 'cafe', state: 'closed' }))).toBe(0);
   });
 });
