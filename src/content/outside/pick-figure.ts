@@ -10,10 +10,18 @@ export function isShown(el: Element, root: Element): boolean {
   if (r.width <= 0 || r.height <= 0) return false;
   // Figure Ghibli rendue invisible par hideFigure : image sans source, clé retirée.
   if (el.hasAttribute('data-sig') && !el.hasAttribute('data-key')) return false;
+  // visibility : la plus proche (élément inclus) décide, « visible » rend l'affichage à un descendant d'un ancêtre masqué.
+  let vis = false;
   for (let n: Element | null = el; n && n !== root; n = n.parentElement) {
     const op = n.getAttribute('opacity');
     if (op !== null && Number(op) === 0) return false;
-    if ((n as SVGElement).style?.display === 'none') return false;
+    const style = (n as SVGElement).style;
+    if (style?.display === 'none' || n.getAttribute('display') === 'none') return false;
+    if (!vis) {
+      const v = (style?.visibility || n.getAttribute('visibility') || '').trim();
+      if (v === 'hidden' || v === 'collapse') return false;
+      if (v === 'visible') vis = true;
+    }
   }
   return true;
 }

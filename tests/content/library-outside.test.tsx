@@ -96,6 +96,23 @@ describe('LibraryPanel : aller dehors', () => {
     expect(q('svg[role="img"]')?.hasAttribute('data-outside')).toBe(false);
   });
 
+  it('changer de pièce dehors ne restitue pas le défilement de l’ancienne pièce', async () => {
+    await click('[data-action="add-room"]');
+    await click('[data-room="r1"]');
+    const sc = q('svg[role="img"]')!.parentElement as HTMLElement;
+    let left = 0;
+    Object.defineProperty(sc, 'scrollLeft', { configurable: true, get: () => left, set: (v: number) => { left = v; } });
+    left = 120;
+    await click('[data-action="outside"]');
+    await click('[data-room="r2"]');
+    expect(left).toBe(0);
+  });
+
+  it('pas de bouton Adapter à l’écran dehors', async () => {
+    await click('[data-action="outside"]');
+    expect(q('[data-action="fit-screen"]')).toBeNull();
+  });
+
   it('à la réouverture, on est à l’intérieur', async () => {
     await click('[data-action="outside"]');
     act(() => root.unmount());

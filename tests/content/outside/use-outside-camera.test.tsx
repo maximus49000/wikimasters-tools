@@ -247,6 +247,86 @@ describe('useOutsideCamera', () => {
     expect(svg().getAttribute('viewBox')).toBe('0.00 0.00 1440.00 340.00');
   });
 
+  it('ResizeObserver : la boîte est re-mesurée après coup et la caméra re-bornée', async () => {
+    const callbacks: Array<() => void> = [];
+    const disconnect = vi.fn();
+    vi.stubGlobal('ResizeObserver', class { constructor(cb: () => void) { callbacks.push(cb); } observe(): void {} disconnect = disconnect; });
+    await goOutside();
+    pointer(box(), 'pointerdown', 500, 100);
+    pointer(box(), 'pointermove', 140, 100);
+    pointer(box(), 'pointerup', 140, 100);
+    expect(svg().getAttribute('viewBox')).toBe('720.00 0.00 720.00 340.00');
+    boxSize = { w: 1440, h: 340 };
+    window.dispatchEvent(new Event('resize'));
+    expect(svg().getAttribute('viewBox')).toBe('720.00 0.00 720.00 340.00');
+    callbacks.forEach((cb) => cb());
+    expect(svg().getAttribute('viewBox')).toBe('0.00 0.00 1440.00 340.00');
+    act(() => root.unmount());
+    expect(disconnect).toHaveBeenCalled();
+    root = createRoot(host);
+  });
+
+  it('la molette ne coupe pas le suivi et un deltaY nul est ignoré', async () => {
+    await goOutside();
+    rects.set(figure(), { x: 600, y: 150, w: 20, h: 40 });
+    tap(610, 170);
+    wheel(360, 170, -100);
+    expect(marker().getAttribute('opacity')).toBe('1');
+    const before = svg().getAttribute('viewBox');
+    const e = new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 360, clientY: 170, deltaY: 0 });
+    box().dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    expect(svg().getAttribute('viewBox')).toBe(before);
+  });
+
+  it('un pointerdown souris non principal est ignoré', async () => {
+    await goOutside();
+    rects.set(figure(), { x: 600, y: 150, w: 20, h: 40 });
+    const ev = (type: string): void => {
+      const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 610, clientY: 170, button: 2 });
+      Object.defineProperty(e, 'pointerId', { value: 1 });
+      Object.defineProperty(e, 'pointerType', { value: 'mouse' });
+      box().dispatchEvent(e);
+    };
+    ev('pointerdown');
+    ev('pointerup');
+    expect(marker().getAttribute('opacity')).toBe('0');
+  });
+
+  it('un appui à deux doigts sans mouvement n’est pas un appui', async () => {
+    await goOutside();
+    rects.set(figure(), { x: 600, y: 150, w: 20, h: 40 });
+    pointer(box(), 'pointerdown', 610, 170, 1);
+    pointer(box(), 'pointerdown', 640, 170, 2);
+    pointer(box(), 'pointerup', 640, 170, 2);
+    pointer(box(), 'pointerup', 610, 170, 1);
+    expect(marker().getAttribute('opacity')).toBe('0');
+  });
+
+  it('le repère flotte doucement (hors mouvement réduit)', async () => {
+    const settled = vi.fn();
+    render({ phase: 'leaving', from: null, windows: [], onSettled: settled });
+    await flushMicrotasks();
+    reduced(false);
+    render({ phase: 'outside', from: null, windows: [], onSettled: settled });
+    rects.set(figure(), { x: 600, y: 150, w: 20, h: 40 });
+    now = 300 * Math.PI / 2;
+    tap(610, 170);
+    // sin = 1 : 4 + 1,5 unités au-dessus du haut de la boîte (y monde 150).
+    expect(marker().getAttribute('transform')).toBe('translate(970.0 144.5)');
+  });
+
+  it('figure dont un ancêtre devient visibility hidden : le suivi s’arrête après 1 s', async () => {
+    await goOutside();
+    rects.set(figure(), { x: 600, y: 150, w: 20, h: 40 });
+    tap(610, 170);
+    expect(marker().getAttribute('opacity')).toBe('1');
+    svg().querySelector('[data-window-views]')!.setAttribute('visibility', 'hidden');
+    flush(1100);
+    expect(marker().getAttribute('opacity')).toBe('0');
+    expect(frames.size).toBe(0);
+  });
+
   it('rentrer : anime vers from puis onSettled("inside") ; démontage = plus aucune image programmée', async () => {
     await goOutside();
     const settled = vi.fn();

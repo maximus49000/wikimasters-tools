@@ -105,7 +105,7 @@ export function useOutsideCamera(o: Options): void {
           cam.current = followStep(cam.current, b, world, centre, dt);
           write(viewRect(cam.current, b, world));
           const m = marker();
-          m?.setAttribute('transform', `translate(${head.x.toFixed(1)} ${(head.y - 4).toFixed(1)})`);
+          m?.setAttribute('transform', `translate(${head.x.toFixed(1)} ${(head.y - 4 - (still ? 0 : 1.5 * Math.sin(now / 300))).toFixed(1)})`);
           m?.setAttribute('opacity', '1');
         }
         raf = requestAnimationFrame((t) => { frames.delete(raf); tick(t); });
@@ -136,10 +136,12 @@ export function useOutsideCamera(o: Options): void {
       const spread = (): number => { const [a, b] = [...ptrs.values()]; return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0; };
       const down = (e: PointerEvent): void => {
         if ((e.target as Element | null)?.closest?.('button')) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         el.setPointerCapture?.(e.pointerId);
         ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
         moved = 0;
-        if (ptrs.size === 2) { stop(); pinch = spread(); }
+        // Deuxième doigt : geste de pincement, jamais un appui (même relevé sans mouvement).
+        if (ptrs.size === 2) { stop(); pinch = spread(); moved = Infinity; }
       };
       const move = (e: PointerEvent): void => {
         const p = ptrs.get(e.pointerId);
@@ -177,9 +179,8 @@ export function useOutsideCamera(o: Options): void {
       };
       const cancel = (e: PointerEvent): void => { ptrs.delete(e.pointerId); pinch = 0; };
       const wheel = (e: WheelEvent): void => {
-        if (!cam.current) return;
+        if (!cam.current || e.deltaY === 0) return;
         e.preventDefault();
-        stop();
         const at = local(e);
         cam.current = zoomAt(cam.current, size(), world, e.deltaY < 0 ? WHEEL_STEP : 1 / WHEEL_STEP, at.x, at.y);
         show();
@@ -189,8 +190,10 @@ export function useOutsideCamera(o: Options): void {
       el.addEventListener('pointerup', up);
       el.addEventListener('pointercancel', cancel);
       el.addEventListener('wheel', wheel, { passive: false });
-      window.addEventListener('resize', show);
-      document.addEventListener('fullscreenchange', show);
+      // La boîte change de taille après l'événement (React applique la taille du conteneur plus tard) : on observe la boîte elle-même ;
+      // repli sur resize si ResizeObserver manque (jsdom).
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => show()) : null;
+      if (ro) ro.observe(el); else window.addEventListener('resize', show);
       show();
       cleanup.push(() => {
         stop();
@@ -199,8 +202,7 @@ export function useOutsideCamera(o: Options): void {
         el.removeEventListener('pointerup', up);
         el.removeEventListener('pointercancel', cancel);
         el.removeEventListener('wheel', wheel);
-        window.removeEventListener('resize', show);
-        document.removeEventListener('fullscreenchange', show);
+        if (ro) ro.disconnect(); else window.removeEventListener('resize', show);
       });
     }
     return () => { for (const f of cleanup) f(); };

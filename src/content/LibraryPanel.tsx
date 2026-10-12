@@ -428,9 +428,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   }, [fill, outside, roomIdNow, colsNow, fitCols, library]);
 
   // Retour à l'intérieur au changement de pièce et en Aménager (le bouton Aménager reste cliquable).
-  useEffect(() => { setOutsidePhase('inside'); }, [roomIdNow]);
+  // useLayoutEffect : aucune image peinte avec la nouvelle pièce encore dehors ; le défilement de l'ancienne pièce ne s'applique pas à la nouvelle.
+  useLayoutEffect(() => { outsideFrom.current = null; setOutsidePhase('inside'); }, [roomIdNow]);
   const editingNow = mode === 'edit';
-  useEffect(() => { if (editingNow) setOutsidePhase('inside'); }, [editingNow]);
+  useLayoutEffect(() => { if (editingNow) setOutsidePhase('inside'); }, [editingNow]);
 
   // Sortir : la zone visible de la pièce (en pixels du monde) est mémorisée pour que la caméra parte de là, et le défilement pour le retour.
   const goOutside = (): void => {
@@ -1172,7 +1173,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             ...(fill ? { width: '100vw', height: '100vh', overflowY: 'auto' } : {}),
             ...(dragging ? { overflowX: 'hidden', touchAction: 'none' } : {}),
             // Dehors : la caméra règle le viewBox, le conteneur ne défile plus et prend le cadre de la fenêtre visible.
-            ...(outside ? { ...(stage.active ? { width: '100vw', height: '100vh', maxWidth: 'none' } : { width: '100%', aspectRatio: `${visibleWidth} / ${HEIGHT}` }), overflow: 'hidden', touchAction: 'none', position: 'relative' } : {}),
+            ...(outside ? { ...(stage.active ? { width: '100vw', height: '100vh', maxWidth: 'none' } : { width: '100%', aspectRatio: `${visibleWidth} / ${HEIGHT}` }), overflow: 'hidden', touchAction: 'none', position: 'relative', userSelect: 'none', WebkitUserSelect: 'none' } : {}),
           }}
         >
           <RoomView
@@ -1216,7 +1217,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           </button>
         )}
         {stage.active && <FullscreenButton active onClick={stage.toggle} right={8} />}
-        {fill && room.cols > fitCols && (
+        {fill && !outside && room.cols > fitCols && (
           <button type="button" data-action="fit-screen" onClick={fitToScreen} style={FIT_BUTTON}>
             Adapter à l’écran
           </button>

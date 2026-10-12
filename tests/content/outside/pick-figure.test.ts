@@ -28,6 +28,38 @@ describe('pickFigure', () => {
     expect(pickFigure(root, 330, 120)).toBe(c);
     expect(pickFigure(root, 200, 120)).toBeNull();
   });
+  it('visibility : l’ancêtre masqué cache, un « visible » plus proche rend', () => {
+    const { root, b } = scene();
+    const wrap = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    b.replaceWith(wrap);
+    wrap.append(b);
+    rect(b, 110, 100, 20, 40);
+    wrap.setAttribute('visibility', 'hidden');
+    expect(isShown(b, root)).toBe(false);
+    expect(pickFigure(root, 115, 120)).not.toBe(b);
+    b.setAttribute('visibility', 'visible');
+    expect(isShown(b, root)).toBe(true);
+    b.removeAttribute('visibility');
+    (wrap as SVGElement).style.visibility = 'collapse';
+    expect(isShown(b, root)).toBe(false);
+  });
+  it('opacity 0, display none (attribut ou style) sur un ancêtre cachent', () => {
+    const { root, b } = scene();
+    const wrap = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    b.replaceWith(wrap);
+    wrap.append(b);
+    rect(b, 110, 100, 20, 40);
+    wrap.setAttribute('opacity', '0');
+    expect(isShown(b, root)).toBe(false);
+    wrap.removeAttribute('opacity');
+    wrap.setAttribute('display', 'none');
+    expect(isShown(b, root)).toBe(false);
+    wrap.removeAttribute('display');
+    (wrap as SVGElement).style.display = 'none';
+    expect(isShown(b, root)).toBe(false);
+    (wrap as SVGElement).style.display = '';
+    expect(isShown(b, root)).toBe(true);
+  });
   it('ignore les personnages cachés', () => {
     const { root, a, b, c } = scene();
     b.setAttribute('opacity', '0.00');

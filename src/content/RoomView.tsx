@@ -141,10 +141,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     if (roomLayers !== 'shown' || !removedRef.current) return;
     removedRef.current = false;
     setGone(false);
-    for (const el of [wallRef.current, layersRef.current]) el?.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 400, easing: 'ease' });
-  }, [roomLayers]);
+    if (!still) for (const el of [wallRef.current, layersRef.current]) el?.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 400, easing: 'ease' });
+  }, [roomLayers, still]);
   const showRoom = roomLayers === 'shown' || (!still && !gone);
-  const fadeStyle = { opacity: roomLayers === 'shown' ? 1 : 0, transition: still ? 'none' : 'opacity 400ms ease' };
+  const fadeStyle = { opacity: roomLayers === 'shown' ? 1 : 0, transition: still ? 'none' : 'opacity 400ms ease', ...(roomLayers === 'hidden' ? { pointerEvents: 'none' as const } : {}) };
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
   // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
