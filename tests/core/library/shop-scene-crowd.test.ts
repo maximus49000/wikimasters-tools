@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { direct } from '../../../src/core/library/city/shops/scene/director';
 import { castFor } from '../../../src/core/library/city/shops/scene/cast';
 import { SLOT_S, inScene } from '../../../src/core/library/city/shops/scene/slots';
+import { stageFor } from '../../../src/core/library/city/shops/scene/stage';
+import type { Segment } from '../../../src/core/library/city/shops/scene/types';
 import { shopFrame, shopSlotsFor } from '../../../src/core/library/city/shops/slots';
 import { outfitFor } from '../../../src/core/library/city/people';
 import { mulberry32 } from '../../../src/core/library/scene-world';
@@ -135,12 +137,49 @@ describe('situations à plusieurs : détails', () => {
     for (const m of ['read-menu', 'eat', 'sit']) expect(custMoves, m).toContain(m);
   });
   it('restaurant : le serveur passe en cuisine (arrière-boutique) entre la commande et le service', () => {
-    const sc = score('restaurant', 3);
-    const st = sc.tracks.filter((t) => t.role === 'staff');
-    const fetchPlates = st.flatMap((t) => t.segments.filter((s) => s.move === 'carry-plates'));
-    expect(fetchPlates.length).toBeGreaterThan(0);
+    const back = stageFor('restaurant', frame).back;
+    let pairs = 0;
+    for (let i = 0; i < 10; i++) for (const t of score('restaurant', i).tracks.filter((u) => u.role === 'staff')) {
+      t.segments.forEach((s, k) => {
+        if (s.move !== 'take-order') return;
+        const j = t.segments.findIndex((g, m) => m > k && g.move === 'serve-plate');
+        if (j < 0) return;
+        pairs++;
+        const kitchen = t.segments.slice(k + 1, j).some((g) => g.move === 'walk' && Math.abs(g.x1 - back) < 1e-6);
+        expect(kitchen, `${i} ${t.id} t=${s.t0}`).toBe(true);
+      });
+    }
+    expect(pairs).toBeGreaterThan(0);
   });
-  it('restaurant : 3 ou 4 tables dans une large vitrine, aucun parti attablé ne chevauche un autre', () => {
+  it('restaurant : les cartes reprises à la commande et rapportées en cuisine (aucune ne reste ni ne disparaît)', () => {
+    const back = stageFor('restaurant', frame).back;
+    for (let i = 0; i < 10; i++) for (const t of score('restaurant', i).tracks.filter((u) => u.role === 'staff')) {
+      t.segments.forEach((s, k) => {
+        if (s.move !== 'take-order') return;
+        expect(t.segments[k - 1]!.move).toBe('take-item');
+        expect(t.segments[k - 1]!.prop).toBe('menu');
+        expect(s.prop).toBe('notepad');
+        const drop = t.segments.findIndex((g, m) => m > k && g.move === 'put-down');
+        expect(t.segments[drop]!.prop).toBe('menu');
+        expect(Math.abs(t.segments[drop]!.x0 - back)).toBeLessThan(1e-6);
+      });
+    }
+  });
+  it('gestes adressés : `show-table` et `beckon-wait` visent toujours un client visible (entré, arrêté dans la vitrine)', () => {
+    let n = 0;
+    for (const type of ['restaurant', 'bakery', 'hairdresser', 'bar'] as const) for (let i = 0; i < 20; i++) {
+      const sc = score(type, i);
+      const cust = sc.tracks.filter((t) => t.role === 'customer');
+      for (const t of sc.tracks.filter((u) => u.role === 'staff')) for (const s of t.segments) {
+        if (s.move !== 'show-table' || type !== 'restaurant') if (s.move !== 'beckon-wait') continue;
+        n++;
+        const seen = cust.some((c) => c.segments.some((g) => g.t0 <= s.t0 && g.t1 > s.t0 && g.move !== 'walk' && g.x0 >= 0 && g.x0 <= frame.window.w));
+        expect(seen, `${type} ${i} ${s.move} t=${s.t0}`).toBe(true);
+      }
+    }
+    expect(n).toBeGreaterThan(20);
+  });
+  it('restaurant : aucun parti attablé ne chevauche un autre', () => {
     for (let i = 0; i < 30; i++) {
       const sc = score('restaurant', i);
       const cust = sc.tracks.filter((t) => t.role === 'customer');
@@ -188,4 +227,38 @@ describe('vitrines minuscules', () => {
       for (const t of sc.tracks) if (t.role === 'customer' && t.enter !== null) expect(t.exit!).toBeLessThanOrEqual(sc.length);
     }
   });
+});
+
+// Largeurs réelles des vitrines (31 à 63 px) en plus de la grande vitrine de 90 px.
+describe('largeurs réelles', () => {
+  const still = (segs: Segment[], t: number) => {
+    const g = segs.find((s) => t >= s.t0 && t < s.t1);
+    return g && g.move !== 'walk' ? g.x0 : null;
+  };
+  const DONE: Partial<Record<ShopTypeId, string>> = { restaurant: 'apporte la note', hairdresser: 'repart avec sa nouvelle coupe', tattoo: 'repart, tatoué' };
+  for (const type of ['bakery', 'bar', 'cafe', 'restaurant', 'hairdresser', 'tattoo'] as const) {
+    it(`${type} à 31, 48, 63 et 90 px : sorties, places immobiles, groupes, enchaînement complet`, () => {
+      for (const w of [31, 48, 63, 90]) {
+        const fr = { ...frame, sign: { ...frame.sign, w: w + 7 }, window: { ...frame.window, w } };
+        let complete = 0;
+        for (let i = 0; i < 10; i++) {
+          const sc = score(type, i, 6, two, fr);
+          const L = SLOT_S(type);
+          if (DONE[type] && sc.log.some((l) => l.includes(DONE[type]!))) complete++;
+          const cust = sc.tracks.filter((t) => t.role === 'customer');
+          for (const t of cust) if (t.enter !== null) expect(t.exit!, `${type} w${w} ${i} ${t.id}`).toBeLessThanOrEqual(L);
+          for (let t = 0; t < L; t += 1) {
+            const at = cust.map((c) => ({ p: c.party, id: c.id, x: still(c.segments, t) })).filter((o) => o.x !== null && o.x >= 0 && o.x <= w);
+            for (let a = 0; a < at.length; a++) for (let b = a + 1; b < at.length; b++) {
+              const d = Math.abs(at[a]!.x! - at[b]!.x!);
+              const why = `${type} w${w} ${i} t=${t} ${at[a]!.id} ${at[b]!.id}`;
+              if (at[a]!.p !== at[b]!.p) expect(d, why).toBeGreaterThan(2);
+              else expect(d, why).toBeGreaterThan(0.3);
+            }
+          }
+        }
+        if (DONE[type]) expect(complete, `${type} w${w}`).toBeGreaterThan(0);
+      }
+    });
+  }
 });

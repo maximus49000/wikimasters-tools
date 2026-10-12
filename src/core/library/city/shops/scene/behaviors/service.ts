@@ -1,6 +1,6 @@
 import { HALF, PLACE } from '../stage';
 import {
-  atDepth, cast, depth, endService, gest, idleNow, say, walkTo, weighted, yawCounter, yawStaff, yawToDoor, yawToward,
+  atDepth, cast, depth, endService, gest, idleNow, say, walkTo, weighted, yawCounter, yawStaff, yawToward,
   type Act, type Actor, type Beat, type PartyRt, type Service, type World,
 } from '../engine';
 import { MOVES } from '../moves';
@@ -225,15 +225,16 @@ function juggle(w: World, svc: Service, beat: Beat): void {
     svc.call = true;
     lead(beat, s, [gest('call-colleague')]);
   }
-  const next = waiting(w, svc.party).find((p) => !p.flags.has('acked') && w.t - Math.max(p.queuedAt, p.since, p.p.arriveAt) >= 2);
+  // Seulement vers quelqu'un qu'on voit : entré, arrêté à sa place (jamais vers une porte vide).
+  const next = waiting(w, svc.party).find((p) => !p.flags.has('acked') && inside(p) && p.actors[0]!.active && idleNow(p.actors[0]!, w.t) && w.t - Math.max(p.queuedAt, p.since, p.p.arriveAt) >= 2);
   if (!next) return;
   next.flags.add('acked');
   const o = next.actors[0]!;
-  const yaw = o.active ? yawToward(s.x, o.x) : yawToDoor(w);
+  const yaw = yawToward(s.x, o.x);
   say(w, `${s.staff!.label} fait signe « j'arrive » à ${next.desc}`);
   const mine: Act[] = [gest('beckon-wait', { yaw }), turn(s.yaw)];
   lead(beat, s, mine);
-  if (o.active && idleNow(o, w.t) && !beat.acts.some(([a]) => a === o)) beat.acts.push([o, [gest('nod')]]);
+  if (!beat.acts.some(([a]) => a === o)) beat.acts.push([o, [gest('nod')]]);
 }
 
 function finish(w: World, svc: Service, aborted: boolean): void {

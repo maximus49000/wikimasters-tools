@@ -107,7 +107,7 @@ export function pickWork(w: World, s: Actor): [PartyRt, Service['kind']] | null 
   const head = postBusy || !first || placeTaken(w, first, serveX(w, s.staff!.post)) ? undefined : first;
   const seat = w.type === 'laundry' ? undefined : w.parties.find((p) => p.state === 'spot' && !p.service && p.actors.every((a) => idleNow(a, w.t)));
   const lost = w.parties.find((p) => p.flags.has('asking') && !p.service && inside(p));
-  if (bill) return [bill, 'bill'];
+  if (bill && room > 12) return [bill, 'bill'];
   if (head && room > 40) return [head, 'serve'];
   if (seat && room > 40) return [seat, 'order'];
   return lost ? [lost, 'help'] : null;

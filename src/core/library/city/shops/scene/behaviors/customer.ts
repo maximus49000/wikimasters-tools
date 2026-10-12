@@ -9,7 +9,7 @@ import {
 import type { Character } from '../types';
 import { chairDecide, chairDoor } from './chair';
 import { childOf, followerDecide, groupStay, meet, restMove } from './group';
-import { TABLE_PATIENCE, freeTable, tableDecide } from './table';
+import { TABLE_PATIENCE, freeTableExists, tableDecide, tableDoor, tableWait } from './table';
 
 export { followerDecide };
 
@@ -28,14 +28,14 @@ function doorReason(w: World, party: PartyRt): string {
   if (w.t >= w.closing) return 'la boutique va fermer';
   if (!staffAvailable(w)) return 'personne pour servir';
   if (w.parties.some((o) => o !== party && outgoing(o, w.t))) return "quelqu'un sort";
-  if (w.family === 'table' && freeTable(w) !== null) return 'personne pour servir';
+  if (w.family === 'table') return freeTableExists(w) ? 'trop de monde' : 'pas de place pour eux';
   if (w.family === 'chair' && w.stage.chairs.some((x) => !w.parties.some((o) => o.chair === x && inside(o)))) return 'personne pour servir';
   return w.parties.some((o) => o !== party && inside(o)) ? 'trop de monde' : 'pas de place pour eux';
 }
-// Entrée selon la famille : au restaurant, le serveur vient vous chercher (rien à faire ici) ; au salon, on va attendre
-// sur la chaise d'attente si personne ne peut vous prendre tout de suite.
+// Entrée selon la famille : au restaurant, on attend dans l'entrée qu'on vous place ; au salon, sur la chaise d'attente
+// si personne ne peut vous prendre tout de suite.
 function tryEnter(w: World, party: PartyRt): boolean {
-  if (w.family === 'table') return false;
+  if (w.family === 'table') return tableDoor(w, party);
   if (w.family === 'chair') return chairDoor(w, party);
   if (!canEnter(w, party)) return false;
   enter(w, party);
@@ -90,6 +90,8 @@ export function arrivals(w: World): void {
     }
     if (party.state !== 'door' || party.service) continue;
     if (w.t < Math.min(w.closing, w.force - 20) && staffAvailable(w) && tryEnter(w, party)) continue;
+    // Quelqu'un sort : on s'écarte et on le laisse passer, la patience ne court pas pendant ce temps.
+    if (w.parties.some((o) => o !== party && outgoing(o, w.t))) party.until = Math.max(party.until, w.t + 1);
     if (w.t >= party.until || w.t >= w.closing) {
       // Il a attendu devant la porte et rebrousse chemin : `exit` sans `enter` (instant du demi-tour).
       const why = doorReason(w, party);
@@ -288,6 +290,6 @@ export function leaderDecide(w: World, a: Actor): void {
   else if (party.state === 'browse') browseDecide(w, party, a);
   else if (party.state === 'spot') spotDecide(w, party, a);
   else if (party.state === 'stay') stayDecide(w, party, a);
-  else if (party.state === 'waiting') chairDecide(w, party);
+  else if (party.state === 'waiting') (w.family === 'table' ? tableWait : chairDecide)(w, party);
   else tableDecide(w, party, a);
 }

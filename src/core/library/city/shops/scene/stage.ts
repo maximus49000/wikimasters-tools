@@ -114,8 +114,9 @@ export function stageFor(type: ShopTypeId, frame: ShopFrame): Stage {
     const stools = range(counter.x0 + HALF, counter.x1 - HALF, PLACE * 1.2);
     const ds = stools.map((v) => depthOf({ w, doorEdge }, v));
     const step = PLACE * 1.2;
-    // Vitrine minuscule (comptoir plus étroit qu'une place) : pas de tabouret, des places debout sur toute la largeur.
-    const near = ds.length ? range(HALF, Math.min(...ds) - step, step) : range(HALF, w - HALF, step);
+    // L'embrasure reste libre : la première place debout est à une silhouette de la porte. Vitrine minuscule (comptoir
+    // plus étroit qu'une place) : pas de tabouret, des places debout sur toute la largeur.
+    const near = ds.length ? range(HALF + PLACE, Math.min(...ds) - step, step) : range(HALF + PLACE, w - HALF, step);
     const far = ds.length ? range(Math.max(...ds) + step, w - HALF, step) : [];
     spots = [...stools, ...near.map(x), ...far.map(x)];
   }

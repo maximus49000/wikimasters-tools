@@ -18,6 +18,7 @@ export function restMove(w: World, a: Actor): SegMove {
   if (party.state === 'leaving' || party.state === 'gone') return 'idle';
   if (w.family === 'table' && party.table !== null && (SEATED.has(party.state) || party.state === 'served')) return 'sit';
   if (a.member === 0 && (party.flags.has('in-chair') || party.flags.has('wait-chair'))) return 'sit';
+  if (a.member === 1 && party.flags.has('mate-sits')) return 'sit';
   return party.state === 'queue' ? 'wait' : 'idle';
 }
 

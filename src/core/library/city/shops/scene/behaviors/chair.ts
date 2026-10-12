@@ -90,9 +90,15 @@ export function chairBeat(w: World, svc: Service, p: number): Beat | null {
   const at = standX(w, chair);
   if (p === 0) {
     if (party.actors.some((a) => a.active)) {
-      // De la chaise d'attente au fauteuil : le meneur seul, ses accompagnants restent où ils sont.
-      party.flags.delete('wait-chair');
-      if (party.actors.length === 1) party.spot = null;
+      // De la chaise d'attente au fauteuil : le meneur seul ; un accompagnant prend la chaise libérée (il s'y assoit), les
+      // autres restent où ils sont. Seul, il libère la place d'attente.
+      const seat = party.flags.delete('wait-chair');
+      const mate = party.actors[1];
+      if (!mate) party.spot = null;
+      else if (seat && party.spot !== null) {
+        party.flags.add('mate-sits');
+        cast([[mate, [walkTo(party.spot), turn(12), gest('sit', { dur: 1 })]]]);
+      }
       cast([[L, [walkTo(chair), turn(yawToward(chair, at))]]]);
     } else {
       // Pris à la porte : il entre droit au fauteuil, ses accompagnants se tiennent juste à côté, côté porte.
@@ -109,6 +115,7 @@ export function chairBeat(w: World, svc: Service, p: number): Beat | null {
   }
   if (p === 1) {
     party.flags.add('in-chair');
+    // geste provisoire, la signature (tâche 6) le remplace
     return B([[s, [gest('greet', { yaw: yawToward(at, chair) }), gest('show-table')]], [L, [gest('greet'), gest('sit', { dur: 1.5 })]]]);
   }
   if (p === 2) {
