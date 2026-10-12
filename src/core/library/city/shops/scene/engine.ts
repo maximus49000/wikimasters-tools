@@ -30,6 +30,7 @@ export type Act = {
   as?: PropId; // objet réel à la place de l'objet générique du geste (verre ou tasse au bar, au café)
   soft?: boolean; // interruptible (boutique vide : un client qui attend passe avant)
   free?: boolean; // jamais rogné à l'échéance (la sortie)
+  mute?: boolean; // sans le picto du geste (le miroir qui ne convainc pas)
 };
 // `watching` : regarde le défilé à la vitrine (behaviors/reactions.ts).
 export type StaffMind = { label: string; post: number; homeYaw: number; present: [number, number]; reserve: boolean; state: 'back' | 'floor' | 'gone'; service: Service | null; called: boolean; quietSince: number; watching?: boolean };
@@ -190,7 +191,7 @@ export function begin(w: World, a: Actor, act: Act): void {
   }
   if (dur <= EPS) return;
   let picto = null;
-  if (m?.picto) {
+  if (m?.picto && !act.mute) {
     const at = t + m.picto.at * dur;
     const crowd = w.pictos.filter((p) => Math.abs(p - at) < PICTO_S).length;
     if (at - a.pictoAt >= PICTO_GAP && t - a.pictoT0 >= PICTO_GAP && crowd < PICTO_MAX) {

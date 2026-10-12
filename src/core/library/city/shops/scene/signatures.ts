@@ -17,13 +17,16 @@ import { atDepth, depth, gest, walkTo, yawStaff, yawToward, type Act, type Actor
 // ailleurs (fin de `try-frames`, `look-mirror`, attente) — elle quitte le visage à la prise de `put-down`.
 // Durées (spec §5) : vente rapide 30-60 s (boucher, fromager, fleuriste, pharmacien, barista) ; conseil 2-4 min (opticien,
 // caviste : conversations à la durée CONSULT, étapes facultatives OPTIONAL tirées par visite) ; long (coiffeur, tatoueur).
-export type SignatureStep = { staff: MoveId | null; customer: MoveId | null; prop?: PropId; picto?: PictoId; walk?: 'shelf' | 'buckets' | 'back' | 'mirror' };
-type Extra = Pick<SignatureStep, 'prop' | 'picto' | 'walk'>;
+// `mute` : le geste du client se joue sans son picto (le miroir qui ne convainc pas).
+export type SignatureStep = { staff: MoveId | null; customer: MoveId | null; prop?: PropId; picto?: PictoId; walk?: 'shelf' | 'buckets' | 'back' | 'mirror'; mute?: boolean };
+type Extra = Pick<SignatureStep, 'prop' | 'picto' | 'walk' | 'mute'>;
 const S = (staff: MoveId | null, customer: MoveId | null = null, o: Extra = {}): SignatureStep => ({ staff, customer, ...o });
 // Opticien : une monture prise au comptoir (celle que le client a posée) ou à l'étagère, essayée devant le miroir, reposée.
+// Seule la dernière monture essayée plaît (traits de joie, posés par visitSteps) ; devant les autres, le client se regarde
+// sans se prononcer (`mute`).
 const PAIR = (from: 'counter' | 'shelf'): SignatureStep[] => [
   ...(from === 'counter' ? [S('offer-frames', null, { prop: 'frames' })] : [S('fetch', null, { prop: 'frames', walk: 'shelf' }), S('hand-over', null, { prop: 'frames' })]),
-  S(null, 'take-item', { prop: 'frames' }), S(null, 'try-frames', { prop: 'frames' }), S('nod', 'look-mirror', { prop: 'frames', picto: 'joy' }), S(null, 'put-down', { prop: 'frames' }),
+  S(null, 'take-item', { prop: 'frames' }), S(null, 'try-frames', { prop: 'frames' }), S('nod', 'look-mirror', { prop: 'frames', mute: true }), S(null, 'put-down', { prop: 'frames' }),
 ];
 // Caviste : un fond versé, tendu ; le client sent (♪) pendant que le caviste raconte, goûte (joie), repose le verre.
 const TASTING: SignatureStep[] = [
@@ -102,7 +105,7 @@ const staffAct = (st: SignatureStep, yaw: number, dur?: number): Act => gest(st.
 // (conversation) ou le client renversé au bac, la sienne sinon.
 const clientAct = (st: SignatureStep, dur?: number): Act => {
   const timed = dur !== undefined && (isLoop(st.customer) || st.customer === 'lie-back');
-  return gest(st.customer!, { ...realProp(st.customer!, st), ...(st.customer === 'try-frames' ? { carry: 'frames' as const } : {}), ...(timed ? { dur } : {}) });
+  return gest(st.customer!, { ...realProp(st.customer!, st), ...(st.customer === 'try-frames' ? { carry: 'frames' as const } : {}), ...(st.mute ? { mute: true } : {}), ...(timed ? { dur } : {}) });
 };
 
 // Compile les étapes en temps de service : marche vers le lieu de l'étape (ou retour au poste) avant le geste. `dur` : durée
@@ -143,8 +146,13 @@ function visitSteps(w: World): Timed[] {
   const opt = OPTIONAL[w.type];
   const skip = !!opt && w.rng() >= opt.p;
   const consult = CONSULT[w.type];
-  return steps.filter((_, k) => !(skip && k >= opt!.from && k < opt!.from + opt!.n))
-    .map((st) => ({ st, ...(consult && isLoop(st.staff) ? { dur: consult[0] + w.rng() * (consult[1] - consult[0]) } : {}) }));
+  const kept = steps.filter((_, k) => !(skip && k >= opt!.from && k < opt!.from + opt!.n));
+  // Le dernier miroir de la visite est celui qui plaît : son picto de joie remplace le silence des essais précédents.
+  const lastMirror = kept.map((st) => st.customer).lastIndexOf('look-mirror');
+  return kept.map((st, k) => ({
+    st: k === lastMirror && st.mute ? { ...st, mute: false, picto: 'joy' as const } : st,
+    ...(consult && isLoop(st.staff) ? { dur: consult[0] + w.rng() * (consult[1] - consult[0]) } : {}),
+  }));
 }
 
 // Comptoir, caisse, rayon : les étapes du métier, jouées au poste entre la demande et la remise. Vide si le métier n'en a pas.

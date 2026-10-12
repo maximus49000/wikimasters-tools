@@ -24,19 +24,24 @@ const clampCounter = (w: World, x: number): number => {
   const c = w.stage.counter;
   return c ? Math.min(c.x1 - HALF, Math.max(c.x0 + HALF, x)) : inward(w, x, 1);
 };
-// Où l'employé se tient pour servir quelqu'un à sa place : derrière le comptoir en face, sinon à côté (côté fond).
-const besideX = (w: World, x: number): number => (overCounter(w, x) ? clampCounter(w, x) : inward(w, x));
+// Où l'employé se tient pour servir quelqu'un à sa place : derrière le comptoir, une demi-silhouette vers le fond (il
+// dépasse derrière l'épaule du client au lieu d'être caché par lui), sinon à côté (côté fond).
+const besideX = (w: World, x: number): number => (overCounter(w, x) ? clampCounter(w, inward(w, x, 0.5)) : inward(w, x));
 
 // Renfort : appelé à l'ouverture d'un service quand au moins deux autres partis attendent encore (le parti servi vient
 // de sortir de la file : trois en tout) et qu'un collègue est en réserve → il l'appelle (`!`), le collègue sort de
 // l'arrière-boutique (premier segment : marche depuis `stage.back`, la porte de l'arrière-boutique). Au comptoir on compte
 // la file ; au bar, au restaurant, au salon : tous ceux qui attendent un employé.
+// Au comptoir et à la caisse, un renfort qui partagerait le poste de celui qui appelle ne pourrait pas servir (un seul
+// parti par poste) : on ne l'appelle pas. Il sort de l'arrière-boutique une fois le bras levé (CALL_S), pas avant.
+const CALL_S = 3.5;
 function summon(w: World, s: Actor, party: PartyRt): boolean {
-  const r = w.staff.find((o) => o.staff!.reserve && o.staff!.state === 'back' && !o.staff!.called && w.t < o.deadline - 40);
-  const n = w.family === 'counter' || browseLike(w) ? w.queue.length : waiting(w, party).length;
+  const atPost = w.family === 'counter' || browseLike(w);
+  const r = w.staff.find((o) => o.staff!.reserve && o.staff!.state === 'back' && !o.staff!.called && (!atPost || o.staff!.post !== s.staff!.post) && w.t < o.deadline - 40);
+  const n = atPost ? w.queue.length : waiting(w, party).length;
   if (!r || n < 2) return false;
   const back = w.stage.back;
-  Object.assign(r, { active: true, x: back, yaw: yawToward(back, r.staff!.post), free: w.t + 1.5, chain: true });
+  Object.assign(r, { active: true, x: back, yaw: yawToward(back, r.staff!.post), free: w.t + CALL_S, chain: true });
   r.staff!.called = true;
   r.staff!.state = 'floor';
   r.track.enter = r.free;

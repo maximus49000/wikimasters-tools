@@ -4,7 +4,7 @@ import type { Outfit } from '../../../people';
 import type { ShopTypeId } from '../../catalog';
 import type { Family } from '../../gestures';
 import { MOVES, type MoveId } from '../moves';
-import { PLACE } from '../stage';
+import { HALF, PLACE } from '../stage';
 import {
   SPEED, cast, gest, hold, idleNow, interrupt, say, walkTo, weighted, yawStaff, yawToward,
   type Act, type Actor, type PartyRt, type Service, type World,
@@ -127,8 +127,15 @@ function idleActivity(w: World, s: Actor): void {
   if (mate && empty && w.rng() < 0.5) {
     const dur = 8 + w.rng() * 4;
     say(w, `${m.label} et ${mate.staff!.label} discutent, la boutique est vide`);
-    cast([[s, [gest('colleague-chat', { dur, soft: true, yaw: yawToward(s.x, mate.x) })]], [mate, [gest('colleague-chat', { dur, soft: true, yaw: yawToward(mate.x, s.x) })]]]);
-    s.rest = mate.rest = w.t + dur + 3;
+    // On ne bavarde pas d'un bout à l'autre de la boutique : celui qui engage rejoint l'autre (une place à côté, de son
+    // côté), le collègue l'attend le temps du trajet ; tous deux se font face, puis chacun retourne à son poste.
+    const near = Math.min(w.stage.w - HALF, Math.max(HALF, mate.x + Math.sign(s.x - mate.x || 1) * PLACE));
+    const trip = Math.abs(near - s.x) / SPEED + TURN_S;
+    const acts: Act[] = [walkTo(near, { soft: true }), gest('colleague-chat', { dur, soft: true, yaw: yawToward(near, mate.x) })];
+    if (near !== m.post) acts.push(walkTo(m.post, { soft: true }));
+    acts.push({ move: 'turn', yaw: m.homeYaw, soft: true });
+    cast([[s, acts], [mate, [{ move: 'idle', dur: trip, soft: true }, gest('colleague-chat', { dur, soft: true, yaw: yawToward(mate.x, near) })]]]);
+    s.rest = mate.rest = w.t + trip + dur + 3;
     return;
   }
   const r = w.rng();

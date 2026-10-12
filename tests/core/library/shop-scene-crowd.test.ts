@@ -50,7 +50,8 @@ describe('situations à plusieurs', () => {
       const sc = direct({ key, frame, staff: two, parties: castFor({ ...key, gate: 1, capacity: 6, dayMinutesAtStart: 750 }), street: NO_STREET });
       const byParty = new Map<string, typeof sc.tracks>();
       for (const t of sc.tracks) if (t.party) byParty.set(t.party, [...(byParty.get(t.party) ?? []), t]);
-      for (const ms of byParty.values()) if (ms.length > 1) for (const m of ms) {
+      // Un groupe qui renonce à la porte (pressé, trop d'attente) repart ensemble sans entrer : il reste groupé aussi.
+      for (const ms of byParty.values()) if (ms.length > 1 && !ms.every((m) => m.enter === null)) for (const m of ms) {
         expect(m.enter).not.toBeNull();
         expect(Math.abs(m.enter! - ms[0]!.enter!)).toBeLessThan(6);
       }
