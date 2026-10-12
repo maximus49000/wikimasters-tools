@@ -90,8 +90,8 @@ describe('RoomView — fenêtres', () => {
       expect(w.querySelector('rect[fill="#9CC4E8"]')).toBeNull();
     }
     // Le calque des vues est dessiné avant les cadres.
-    const all = Array.from(container.querySelectorAll('svg > *'));
-    expect(all.indexOf(views)).toBeLessThan(all.indexOf(container.querySelector('[data-furniture="window"]')!.parentElement!));
+    // (les cadres sont dans le groupe des couches de la pièce : on compare l'ordre du document)
+    expect(views.compareDocumentPosition(container.querySelector('[data-furniture="window"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('la vue est découpée par UN seul rectangle (englobant), sans clipPath', () => {
@@ -118,7 +118,9 @@ describe('RoomView — fenêtres', () => {
     const furniture = idx(container.querySelector('[data-furniture="window"]')!);
     expect(wall).toBeLessThan(views);
     expect(views).toBeLessThan(gap);
-    expect(gap).toBeLessThan(furniture);
+    expect(gap).toBeLessThanOrEqual(furniture);
+    // Dans le groupe des couches, le trou précède le cadre.
+    expect(gaps[0]!.compareDocumentPosition(container.querySelector('[data-furniture="window"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('une seule fenêtre : aucun trou', () => {
