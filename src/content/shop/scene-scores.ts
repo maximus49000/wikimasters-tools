@@ -84,20 +84,23 @@ export const quantGate = (g: number): number => Math.round(Math.max(0, Math.min(
 const slotKey = (p: ShopPlan, index: number): SlotKey => ({ seed: p.env.seed, slotId: p.id, type: p.type, day: p.env.day, index });
 const keyOf = (p: ShopPlan, index: number, gate: number): string => `${scoreKey(slotKey(p, index))}|${quantGate(gate)}`;
 
-// Affluence d'un créneau : celle de sa première lecture (le suivant est lu, donc figé, quand on le précalcule), gardée ensuite —
-// un changement d'affluence ou une fermeture en plein créneau ne recalcule jamais une partition déjà lue (personne ne saute ni
-// ne disparaît) ; la fermeture n'empêche que les nouvelles admissions (placeScene).
-export function slotGate(p: ShopPlan, index: number, gate: number): number {
+// Affluence d'un créneau : celle de sa première lecture rideau levé (le suivant est lu, donc figé, quand on le précalcule),
+// gardée ensuite — un changement d'affluence ou une fermeture en plein créneau ne recalcule jamais une partition déjà lue
+// (personne ne saute ni ne disparaît) ; la fermeture n'empêche que les nouvelles admissions (placeScene). Rideau baissé
+// (`open` faux) : lue sans être figée — à la réouverture (matin, pause de midi), le créneau prend l'affluence du moment.
+export function slotGate(p: ShopPlan, index: number, gate: number, open = true): number {
   const k = scoreKey(slotKey(p, index));
   const memo = gates.get(k);
   if (memo !== undefined) return memo;
   const g = quantGate(gate);
+  if (!open) return g;
   gates.set(k, g);
   while (gates.size > GATE_MEMO_MAX) gates.delete(gates.keys().next().value!);
   return g;
 }
 
 // Taille du cache réglée sur le nombre de boutiques lues (trois créneaux chacune, plus une marge) : jamais de va-et-vient.
+// Idempotent (le cache ne fait que grandir) : appelé au rendu, avant les calculs de partitions du rendu.
 export const sizeCache = (shops: number): void => cache.resize(3 * shops + 8);
 
 export const peekScore = (p: ShopPlan, index: number, gate: number): Score | null => cache.peek(keyOf(p, index, gate));
@@ -147,3 +150,6 @@ export function pumpScore(shops: readonly { plan: ShopPlan; gate: number }[], no
   makeScore(pick.plan, pick.index, pick.gate);
   return true;
 }
+
+// Oublie les affluences figées (tests).
+export const forgetGates = (): void => gates.clear();

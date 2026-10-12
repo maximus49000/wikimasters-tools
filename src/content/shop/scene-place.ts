@@ -51,8 +51,10 @@ export type SceneNodes = { shops: { st: ShopState; rt: ShopRt }[] };
 export const PROP_SLOTS = 3;
 export const CARRY_SLOTS = 2;
 
-// État de la boucle par local (affectations, partis admis ou refusés) : survit aux re-rendus ET aux remontages.
+// État de la boucle par local, graine et jour (affectations, partis admis ou refusés ; les ids de partis ne portent ni la graine
+// ni le jour) : survit aux re-rendus ET aux remontages ; un autre jour ou une autre ville repart d'un état neuf.
 const states = new Map<string, ShopState>();
+const stateKey = (rt: ShopRt): string => `${rt.plan.env.seed}|${rt.plan.env.day}|${rt.plan.id}`;
 const STATES_MAX = 256;
 const NO_MUTED: ReadonlySet<string> = new Set();
 const figOf = (holder: Element | null): Element | null => holder?.querySelector('[data-figure]') ?? null;
@@ -103,10 +105,13 @@ export function collectScene(root: Element): SceneNodes {
   for (const el of root.querySelectorAll('[data-scene-shop]')) {
     const rt = runtimes.get(el);
     if (!rt) continue;
-    let st = states.get(rt.plan.id);
+    const key = stateKey(rt);
+    let st = states.get(key);
     if (!st) {
+      // Les états d'autres jours ou d'autres graines du même local sont oubliés.
+      for (const k of states.keys()) if (k.endsWith(`|${rt.plan.id}`)) states.delete(k);
       if (states.size >= STATES_MAX) states.delete(states.keys().next().value!);
-      states.set(rt.plan.id, (st = newState()));
+      states.set(key, (st = newState()));
     }
     if (!bind(st, el)) continue;
     // Nouveau rendu (ciel, minute) : les tenues sont recalculées.
@@ -272,7 +277,7 @@ function visible(rt: ShopRt, n: number, sec: number, into: Seen[]): Seen[] {
   into.length = 0;
   const p = rt.plan;
   for (let idx = Math.max(0, n - 1); idx <= n + 1; idx++) {
-    const sc = peekScore(p, idx, slotGate(p, idx, rt.gate));
+    const sc = peekScore(p, idx, slotGate(p, idx, rt.gate, rt.open));
     if (!sc) continue;
     const tIn = sec - sc.start;
     for (const track of sc.tracks) {
@@ -317,7 +322,7 @@ function placeShop(st: ShopState, rt: ShopRt, t: number, horns: readonly Horn[],
   const n = slotIndexAt(p.type, sec);
   // Rideau baissé : la vitrine (employés, clients dedans) est cachée — le rideau roulant la couvre —, les clients admis continuent.
   setIf(st.win, 'visibility', rt.open ? 'visible' : 'hidden');
-  const scN = rt.still ? null : peekScore(p, n, slotGate(p, n, rt.gate));
+  const scN = rt.still ? null : peekScore(p, n, slotGate(p, n, rt.gate, rt.open));
   placeStaff(st, rt, scN, sec - slotStart(p.type, n), sec, t, horns, figures, out);
   st.seen.length = 0;
   const seen = rt.still ? st.seen : visible(rt, n, sec, st.seen);
@@ -380,7 +385,7 @@ export function sceneBudget(nodes: SceneNodes, t: number): BudgetSprite[] {
     const sec = t + rt.offset;
     const n = slotIndexAt(p.type, sec);
     for (let idx = Math.max(0, n - 1); idx <= n + 1; idx++) {
-      const sc = peekScore(p, idx, slotGate(p, idx, rt.gate));
+      const sc = peekScore(p, idx, slotGate(p, idx, rt.gate, rt.open));
       if (!sc) continue;
       const tIn = sec - sc.start;
       for (const track of sc.tracks) {
@@ -400,8 +405,8 @@ export function sceneBudget(nodes: SceneNodes, t: number): BudgetSprite[] {
 }
 
 // Partis admis et refusés d'un local (lecture pour les tests) ; `forgetScenes` efface l'état de la boucle (tests).
-export const sceneParties = (id: string): { admitted: ReadonlySet<string>; refused: ReadonlySet<string> } | null => {
-  const st = states.get(id);
+export const sceneParties = (id: string, seed?: number, day?: number): { admitted: ReadonlySet<string>; refused: ReadonlySet<string> } | null => {
+  const st = seed !== undefined && day !== undefined ? states.get(`${seed}|${day}|${id}`) : [...states.entries()].reverse().find(([k]) => k.endsWith(`|${id}`))?.[1];
   return st ? { admitted: st.admitted, refused: st.refused } : null;
 };
 export const forgetScenes = (): void => states.clear();

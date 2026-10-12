@@ -12,7 +12,7 @@ import { sidewalkAt } from '../../../src/core/library/city/shops/scene/sidewalk'
 import type { Score } from '../../../src/core/library/city/shops/scene/types';
 import { GHIBLI_SHOP_SPRITE_CAP, spriteBudget } from '../../../src/core/library/city/shops/sprite-budget';
 import { trackAt } from '../../../src/core/library/city/shops/scene/score';
-import { makeScore, peekScore, planOf, slotGate, type SceneShop } from '../../../src/content/shop/scene-scores';
+import { forgetGates, makeScore, peekScore, planOf, slotGate, type SceneShop } from '../../../src/content/shop/scene-scores';
 import { dayContext } from '../../../src/core/library/city/calendar';
 import type { CityContext } from '../../../src/core/library/city/intensity';
 import { cityMetrics } from '../../../src/core/library/city/metrics';
@@ -37,6 +37,7 @@ const mount = (): { host: HTMLDivElement; draw: (node: ReactNode) => void } => {
 };
 afterEach(() => {
   forgetScenes();
+  forgetGates();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   for (const { root, host } of mounted.splice(0)) {
@@ -101,7 +102,7 @@ function groupMoment(): number {
   throw new Error('aucun groupe');
 }
 
-type Opts = { open?: boolean; gate?: number; pool?: number };
+type Opts = { open?: boolean; gate?: number; pool?: number; day?: number };
 const scene = (secondsOfDay: number, still = false, figures = new FigureRegistry('ts', { perFrame: 50 }), o: Opts = {}): ReactNode => {
   const sky = skyAt(Math.floor(secondsOfDay / 60), times);
   return (
@@ -110,7 +111,7 @@ const scene = (secondsOfDay: number, still = false, figures = new FigureRegistry
         <ShopScene
           shops={[{ ...shop, open: o.open ?? true }]}
           seed={SEED}
-          day={DAY}
+          day={o.day ?? DAY}
           secondsOfDay={secondsOfDay}
           t0={T0}
           width={W}
@@ -280,6 +281,41 @@ describe('ShopScene : fermeture, affluence, partis, remontage, plafond (G4b, rev
     const plan = planOf(shop, env);
     expect(slotGate(plan, 333, 0.8)).toBe(0.8);
     expect(slotGate(plan, 333, 0.1)).toBe(0.8);
+  });
+  it('rideau baissé : l’affluence n’est pas figée ; à la réouverture le créneau prend celle du moment', () => {
+    const plan = planOf(shop, env);
+    expect(slotGate(plan, 444, 0, false)).toBe(0);
+    expect(slotGate(plan, 444, 0.8)).toBe(0.8);
+  });
+  it('fermé puis rouvert en plein créneau : les clients viennent comme dans une boutique restée ouverte', () => {
+    const s = busyMoment();
+    const figures = new FigureRegistry('to', { perFrame: 50 });
+    const { host, draw } = mount();
+    draw(scene(s, false, figures, { open: false, gate: 0 }));
+    const closed = collectScene(host);
+    for (let dt = 0; dt < 5; dt++) placeScene(closed, T0 + dt, figures, []);
+    expect(shownActors(host).size).toBe(0);
+    draw(scene(s, false, figures, { gate: 1 }));
+    placeScene(collectScene(host), T0, figures, []);
+    const shown = [...shownActors(host).keys()].sort();
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown).toEqual([...expected(host, s).keys()].sort());
+  });
+  it('lendemain (même local) : état d’admission neuf', () => {
+    const s = busyMoment();
+    const figures = new FigureRegistry('td', { perFrame: 50 });
+    const { host, draw } = mount();
+    draw(scene(s - 120, false, figures, { pool: 1 }));
+    const nodes = collectScene(host);
+    for (let dt = 0; dt <= 400 && sceneParties(slot.id, SEED, DAY)!.refused.size === 0; dt += 0.5) placeScene(nodes, T0 + dt, figures, []);
+    const today = sceneParties(slot.id, SEED, DAY)!;
+    expect(today.refused.size).toBeGreaterThan(0);
+    draw(scene(s - 120, false, figures, { pool: 12, day: DAY + 1 }));
+    placeScene(collectScene(host), T0, figures, []);
+    const next = sceneParties(slot.id, SEED, DAY + 1)!;
+    expect(next).not.toBeNull();
+    expect(next.refused.size).toBe(0);
+    for (const p of today.admitted) expect(next.admitted.has(p) && today.refused.has(p)).toBe(false);
   });
   it('réserve épuisée : jamais un demi-parti ; un parti refusé n’apparaît jamais', () => {
     const s = busyMoment();
