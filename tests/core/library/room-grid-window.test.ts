@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Layout } from '../../../src/core/library/library-types';
 import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, labelOf } from '../../../src/core/library/furniture-catalog';
-import { moveWindow, placeWindow, rectOf, resizeWindow, shiftLayout, windowFit } from '../../../src/core/library/room-grid';
+import { moveWindow, placeWindow, rectOf, resizeWindow, shiftLayout, stretchWindow, windowFit } from '../../../src/core/library/room-grid';
 
 const COLS = 24;
 const win = (over: Partial<Extract<Layout[number], { kind: 'window' }>> = {}): Layout[number] => ({ id: 'w1', kind: 'window', col: 2, row: 1, w: 6, h: 5, ...over });
@@ -57,6 +57,16 @@ describe('fenêtre dans la grille', () => {
     const big = { ...win(), col: 0, row: 0 };
     expect(resizeWindow([big], 38, 'w1', 38, 12)).not.toBeNull();
     expect(resizeWindow([big], 38, 'w1', 39, 12)).toBeNull();
+  });
+
+  it('s étire d un coup sur toute la largeur ou toute la hauteur du mur', () => {
+    const wide = stretchWindow([win({ col: 5, row: 2 })], 38, 'w1', 'width');
+    expect(wide.ok && wide.layout[0]).toEqual(win({ col: 0, row: 2, w: 38 }));
+    const tall = stretchWindow([win({ col: 5, row: 2 })], 38, 'w1', 'height');
+    expect(tall.ok && tall.layout[0]).toEqual(win({ col: 5, row: 0, h: 12 }));
+    const blocked = stretchWindow([win({ col: 5, row: 2 }), win({ id: 'w2', col: 20, row: 3, w: 3, h: 3 })], 38, 'w1', 'width');
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.cells.length).toBeGreaterThan(0);
   });
 
   it('refuse un agrandissement qui sort du mur', () => {

@@ -176,6 +176,11 @@ describe('parseLibraryState', () => {
     const furnished = updateLayout(wide, 'r1', (layout) => [...layout, { id: 'w9', kind: 'window', col: 30, row: 0, w: 8, h: 12 }]);
     expect(fitRoomWidth(furnished, 'r1', 37)).toBe(furnished);
     expect(fitRoomWidth(furnished, 'r1', 40).rooms[0]!.cols).toBe(40);
+    // Une fenêtre de toute la largeur suit la pièce qui s'élargit ; les autres ne bougent pas.
+    const glazed = updateLayout(state, 'r1', (layout) => [...layout, { id: 'w1', kind: 'window', col: 0, row: 0, w: 24, h: 12 }]);
+    expect(fitRoomWidth(glazed, 'r1', 38).rooms[0]!.layout).toEqual([{ id: 'w1', kind: 'window', col: 0, row: 0, w: 38, h: 12 }]);
+    const small = updateLayout(state, 'r1', (layout) => [...layout, { id: 'w1', kind: 'window', col: 0, row: 0, w: 20, h: 12 }]);
+    expect(fitRoomWidth(small, 'r1', 38).rooms[0]!.layout).toEqual([{ id: 'w1', kind: 'window', col: 0, row: 0, w: 20, h: 12 }]);
     // Les zones de 12 colonnes s'ajoutent toujours à partir d'une largeur quelconque.
     expect(extendRoom(wide, 'r1', 'right').rooms[0]!.cols).toBe(50);
   });
