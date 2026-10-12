@@ -41,11 +41,12 @@ export function recordSnapshot(
   now: number,
 ): HistoryState {
   const cards: Record<string, CardHistory> = {};
+  // Un point ou un jour datés après `now` viennent d'une horloge revenue en arrière : on les écarte (axe du temps, cumul du jour).
   for (const [key, card] of Object.entries(state.cards)) {
     cards[key] = {
       ...card,
-      samples: [...card.samples],
-      days: (card.days ?? []).map((d) => ({ ...d })),
+      samples: card.samples.filter((s) => s.t <= now),
+      days: (card.days ?? []).filter((d) => d.day <= now).map((d) => ({ ...d })),
       hours: { ...card.hours },
     };
   }

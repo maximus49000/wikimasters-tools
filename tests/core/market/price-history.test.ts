@@ -56,6 +56,15 @@ describe('recordSnapshot', () => {
     state = recordSnapshot(state, [auction('a', 120, HOUR, true, later)], later);
     expect(state.cards[KEY]!.samples.map((s) => s.avgBid)).toEqual([120]);
   });
+
+  // Horloge revenue en arrière : un point ou un jour datés du futur tordraient l'axe du temps et bloqueraient le cumul du jour.
+  it('écarte les points et les jours datés dans le futur', () => {
+    const future = T0 + 73 * DAY;
+    let state = recordSnapshot(emptyHistory(), [auction('a', 999, HOUR, true, future)], future);
+    state = recordSnapshot(state, [auction('a', 100, HOUR, true)], T0);
+    expect(state.cards[KEY]!.samples.map((s) => s.avgBid)).toEqual([100]);
+    expect(state.cards[KEY]!.days!.map((d) => d.sum)).toEqual([100]);
+  });
 });
 
 describe('tranches d’heures restantes', () => {
