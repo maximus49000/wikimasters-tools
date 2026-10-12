@@ -44,8 +44,10 @@ canvas{display:block;border-radius:6px;box-shadow:0 2px 10px #0003;background:#d
 <p class="leg">Séquence complète sur 75 s (tranches de santa.ts) sur trois toits ; le zinc sans cheminée reçoit une trappe de toit. Rennes vivants pendant la pause : tête secouée, sabot qui gratte, buée, meneur qui regarde autour. Le père Noël descend en se tenant au traîneau, marche penché vers l'amont la hotte à l'épaule, pose la hotte, enjambe la cheminée et descend (rogné au toit), ressort et revient.</p>
 <h3>7 ter · Variante arrière-plan (recommandée) <span class="tag">×3 · maison de la colline du fond, ×0,55, bleutée, derrière les immeubles</span><span class="anim">animé</span></h3>
 <canvas id="santa-far"></canvas>
-<h3>7 quater · Huit instants clés <span class="tag">×3,2 · toit de tuiles</span></h3>
+<h3>7 quater · Huit instants clés <span class="tag">×3,2 · toit de tuiles, premier plan</span></h3>
 <canvas id="santa-roof-seq"></canvas>
+<h3>7 quater bis · Les mêmes instants en arrière-plan <span class="tag">×3,2 · maison de la colline ×0,7</span></h3>
+<canvas id="santa-far-seq"></canvas>
 <h3>7 quinquies · Le père Noël à côté de deux passants <span class="tag">×9 · même échelle · pantin actuel à droite</span></h3>
 <canvas id="santa-compare"></canvas>
 <h3>7 bis · Tour du père Noël <span class="tag">×4 · 8 orientations · jour puis nuit (lanterne à gauche : révélation, liseré, ombre) · pantin du moteur réel + barbe, moustache, fourrure, ceinture, gants, bottes, pompon</span></h3>
@@ -609,7 +611,7 @@ function santa(ctx,{landed=false,lit=true,t=0,anim=true,aboard=true,pass='base'}
   // harnais : deux rangs reliés au traîneau
   for(const[y,x1]of[[-7,landed?50:70],[-4,landed?40:58]]){ctx.beginPath();ctx.moveTo(8,y);ctx.lineTo(x1,y);ctx.strokeStyle=INK;ctx.lineWidth=1.1;ctx.stroke();ctx.strokeStyle='#A02030';ctx.lineWidth=0.6;ctx.stroke()}
   team.forEach(([x,y,lead],i)=>{ctx.save();ctx.translate(x,y);reindeer(ctx,{lead,landed,t,ph:i*0.2,anim,breath:landed&&i%2===0});ctx.restore()});
-  if(aboard){const id='santa|seated|0',st=anchor(id,'seat'),k=0.7;ctx.save();ctx.translate(-4.5-st[0]*k,-6-st[1]*k);ctx.scale(k,k);pantin(ctx,id);ctx.restore();const hr=anchor(id,'handR');const hx=-4.5+(hr[0]-st[0])*k,hy=-6+(hr[1]-st[1])*k;ctx.beginPath();ctx.moveTo(hx,hy);ctx.quadraticCurveTo((hx+22)/2,hy-1,22,-3.6);ctx.strokeStyle='#A02030';ctx.lineWidth=0.5;ctx.stroke()}
+  if(aboard){const id='santa|seated|0',st=anchor(id,'seat'),k=0.55;ctx.save();ctx.translate(-4.5-st[0]*k,-6-st[1]*k);ctx.scale(k,k);pantin(ctx,id);ctx.restore();const hr=anchor(id,'handR');const hx=-4.5+(hr[0]-st[0])*k,hy=-6+(hr[1]-st[1])*k;ctx.beginPath();ctx.moveTo(hx,hy);ctx.quadraticCurveTo((hx+22)/2,hy-1,22,-3.6);ctx.strokeStyle='#A02030';ctx.lineWidth=0.5;ctx.stroke()}
   // caisse rouge à filet d'or, dossier capitonné, patins dorés à volute
   cel(ctx,()=>{ctx.moveTo(-18,-8);ctx.quadraticCurveTo(-19,-14,-14,-14);ctx.lineTo(-12,-9);ctx.lineTo(10,-9);ctx.quadraticCurveTo(12,-7,9,-4);ctx.lineTo(-14,-4);ctx.quadraticCurveTo(-18,-4,-18,-8);ctx.closePath()},SRED,{lw:0.55,box:{x:-19,y:-14,w:31,h:10},sh:0.3,shX:0.66,li:0.22,liW:0.2});
   ctx.beginPath();ctx.moveTo(-14,-9);ctx.lineTo(9,-9);ctx.strokeStyle=GOLD;ctx.lineWidth=1;ctx.stroke();ctx.beginPath();ctx.moveTo(-16,-6);ctx.lineTo(7,-6);ctx.strokeStyle=GOLD;ctx.lineWidth=0.4;ctx.stroke();
@@ -1041,7 +1043,10 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false,rain=false}={}){const{
 
 // ───────────────────────── 5. Fête de la musique ─────────────────────────
 function musicScene(ctx,{night=false,t=0,x0=0,s=1}={}){const W=432,H=120,G=100,kp=0.55;ctx.save();ctx.scale(s,s);ctx.translate(-x0,0);
- ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,0,W,H);R(ctx,0,0,W,G-24,'#F2DDB4',{lw:0.3,sh:0,li:0});R(ctx,0,G-24,W,24,'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.fillStyle='#8A8494';ctx.fillRect(0,G,W,H-G);
+ ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,0,W,H);
+ // façades (gabarit) sous un vrai ciel : la nuit, le ciel reste bleu nuit profond
+ const wr=mulberry32(4);for(let x=0;x<W;){const w=60+wr()*50,top=22+wr()*12,c=pick(WALLS,wr);R(ctx,x,top,w,G-24-top,c,{lw:0.5,sh:0.25,shX:0.74,li:0.1});P(ctx,[[x-1,top],[x+w+1,top],[x+w-4,top-8],[x+4,top-8]],pick(ROOFS,wr),{lw:0.5,sh:0.3,shX:0.6,li:0.2});for(let wx=x+7;wx+5<x+w-6;wx+=11)for(let wy=top+6;wy<G-32;wy+=15){R(ctx,wx,wy,5,8,'#9AC0DA',{lw:0.4,sh:0,li:0})}x+=w}
+ R(ctx,0,G-24,W,24,'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.fillStyle='#8A8494';ctx.fillRect(0,G,W,H-G);
  const actors=[];const fig=(x,y,id,k=kp,extra)=>{const d=c=>{c.save();c.translate(x,y);c.scale(k,k);pantin(c,id);if(extra)extra(c,id);c.restore()};actors.push({x,y,w:6*k/0.55,h:33*k,draw:d,id});d(ctx)};
  const lamp1=40;ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:night});ctx.restore();
  // scène (base = curb − 1) ; musiciens-repères sur le plancher (STAGE_STAND = −9,5), échelle 0,55 × 0,8 = 0,44
@@ -1102,7 +1107,7 @@ function drawRoof(ctx,r){const{x,w,top,rh,s}=r,half=w/2,cx=x+half,base=top+rh+34
  ctx.fillStyle='rgba(255,255,255,0.85)';ctx.beginPath();pts.forEach(([px,py],i)=>i?ctx.lineTo(px,py):ctx.moveTo(px,py));for(let i=pts.length-1;i>=0;i--)ctx.lineTo(pts[i][0],pts[i][1]+1.6);ctx.closePath();ctx.fill();
  // cheminée réelle (chimney relatif) ou, sans cheminée, trappe de toit (proposition)
  if(r.chimney!==null){const chx=x+w*r.chimney,chy=roofSurface(r,chx-cx);R(ctx,chx,chy-7,4,8,'#8A5A3A',{lw:0.4,sh:0.3,shX:0.6,li:0.2});R(ctx,chx-0.5,chy-7.6,5,1,'#6A4A3A',{lw:0.3,sh:0,li:0.2});r.hole={x:chx+2,y:chy-7.6}}
- else{const hx=cx-half*0.45,hy=roofSurface(r,hx-cx);P(ctx,[[hx-3,hy+0.3],[hx+3,hy+0.3],[hx+2.4,hy-2.6],[hx-2.4,hy-2.6]],'#4A5260',{lw:0.4,sh:0.3,li:0.2});R(ctx,hx-2.4,hy-2.6,4.8,0.8,'#A8B0BC',{lw:0.3,sh:0,li:0.3});r.hole={x:hx,y:hy-2.6}}
+ else{const hx=cx+half*0.35,hy=roofSurface(r,hx-cx);P(ctx,[[hx-3,hy+0.3],[hx+3,hy+0.3],[hx+2.4,hy-2.6],[hx-2.4,hy-2.6]],'#4A5260',{lw:0.4,sh:0.3,li:0.2});R(ctx,hx-2.4,hy-2.6,4.8,0.8,'#A8B0BC',{lw:0.3,sh:0,li:0.3});r.hole={x:hx,y:hy-2.6}}
  for(let wx=x+6;wx<x+w-6;wx+=12)R(ctx,wx,top+rh+6,5,8,'#243050',{lw:0.3,sh:0,li:0});
  r.cx=cx;r.half=half;return r}
 // Traîneau seul (caisse, patins, lanterne), tourné de `tilt` ; `slideDust` : gerbe de givre à l'arrière des patins.
@@ -1114,9 +1119,10 @@ function sleigh(ctx,{lit=true,pass='base'}={}){
  else if(lit){ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,11,-11,0,6,[[0,AMBER_CORE,0.8],[0.3,AMBER,0.4],[1,AMBER,0]]);ctx.beginPath();ctx.arc(11,-11,6,0,TAU);ctx.fill();ctx.restore();P(ctx,[[9.6,-12.6],[12.4,-12.6],[12.2,-9.4],[9.8,-9.4]],'#FFF3B0',{lw:0,sh:0,li:0})}}
 // Séquence complète sur 75 s (tranches de santa.ts : approche 25 %, posé 5 %, marche 10 %, caché 20 %, marche 10 %, posé 5 %, départ 25 %).
 // Repère : `r` toit (drawRoof déjà appelé) ; `t` secondes depuis le début de la fenêtre ; `pass` 'base' / 'lit' ; K = SANTA_K 0,7.
-function santaDelivery(ctx,r,t,{pass='base',K=0.7}={}){const p=t/75,cx=r.cx,entryX=cx-150,exitX=cx+150,skyY=r.top-70;
+function santaDelivery(ctx,r,t,{pass='base',K=0.55}={}){const p=t/75,cx=r.cx,entryX=cx-150,exitX=cx+150,skyY=r.top-70;
  // point de pose : sur le versant gauche du faîte (côté d'arrivée), traîneau incliné selon la pente ; l'attelage s'étage sur la pente
- const landDx=r.kind==='gable'?r.half*0.12:r.half*0.1,landX=cx+landDx,landY=roofSurface(r,landDx),slope=roofSlope(r,landDx);
+ // pose à mi-pente du versant gauche (côté d'arrivée), attelage qui monte vers le faîte ; cheminée sur l'autre versant, atteinte en passant le faîte
+ const landDx=r.kind==='gable'?-r.half*0.45:r.kind==='mansard'?-r.half*0.4:-r.half*0.3,landX=cx+landDx,landY=roofSurface(r,landDx),slope=roofSlope(r,landDx);
  const team=[[24,-11],[35,-11],[20,-5],[31,-5],[46,-7]];
  let sx,sy,landed=false,flying=true,slide=0;
  if(p<0.25){const e=ease(p/0.25);sx=lerp(entryX,landX-6,e);sy=lerp(skyY,landY,e)-Math.sin(e*Math.PI)*8;if(p>0.235){slide=(p-0.235)/0.015}if(p>0.245)flying=false}
@@ -1161,7 +1167,7 @@ function santaDelivery(ctx,r,t,{pass='base',K=0.7}={}){const p=t/75,cx=r.cx,entr
 // Scène 7 : la séquence sur trois toits (tuiles à cheminée, mansarde à cheminée, zinc sans cheminée → trappe), de nuit.
 function santaScene(ctx,t=0){const W=360,H=100;const tt=(t*1)%75;
  ctx.fillStyle='#8EA6D8';ctx.fillRect(0,0,W,H);
- const roofs=[drawRoof(ctx,{x:14,w:92,top:52,rh:14,kind:'gable',chimney:0.24,s:1,wall:'#E6BCD0'}),drawRoof(ctx,{x:134,w:92,top:52,rh:14,kind:'mansard',chimney:0.22,s:1,wall:'#F6E2B4'}),drawRoof(ctx,{x:254,w:92,top:52,rh:14,kind:'zinc',chimney:null,s:1,wall:'#CFE0B8'})];
+ const roofs=[drawRoof(ctx,{x:14,w:92,top:52,rh:14,kind:'gable',chimney:0.7,s:1,wall:'#E6BCD0'}),drawRoof(ctx,{x:134,w:92,top:52,rh:14,kind:'mansard',chimney:0.72,s:1,wall:'#F6E2B4'}),drawRoof(ctx,{x:254,w:92,top:52,rh:14,kind:'zinc',chimney:null,s:1,wall:'#CFE0B8'})];
  ctx.fillStyle='#CFE0B8';ctx.fillRect(0,100,W,2);
  for(const r of roofs)santaDelivery(ctx,r,tt,{pass:'base'});
  nightFilter(ctx,W,H);
@@ -1174,15 +1180,19 @@ function santaFar(ctx,t=0){const W=360,H=100,tt=t%75;
  ctx.fillStyle='#8EA6D8';ctx.fillRect(0,0,W,H);ctx.fillStyle='#A9C9A0';ctx.beginPath();ctx.moveTo(0,40);for(let x=0;x<=W;x+=20)ctx.lineTo(x,30+Math.sin(x/90)*5);ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.fill();
  const rr=mulberry32(5);for(let x=-10;x<W;){const w=20+rr()*20,h=14+rr()*10,y=46+Math.sin(x/90)*4;R(ctx,x,y-h,w,h,mix(pick(WALLS,rr),hex('#9CC0E4'),0.25),{lw:0.3,sh:0.2,li:0});P(ctx,[[x-1,y-h],[x+w/2,y-h-6],[x+w+1,y-h]],mix(pick(ROOFS,rr),hex('#9CC0E4'),0.25),{lw:0.3,sh:0.25,li:0.1});x+=w+2+rr()*10}
  // la maison choisie (rang 3) : toit de tuiles à cheminée, à l'échelle 0,55 et légèrement bleutée
- ctx.save();ctx.translate(150,46);ctx.scale(0.55,0.55);const r=drawRoof(ctx,{x:-46,w:92,top:0,rh:14,kind:'gable',chimney:0.24,s:1,wall:'#F2C8A0'});santaDelivery(ctx,r,tt,{pass:'base'});ctx.fillStyle='rgba(156,192,228,0.28)';ctx.fillRect(-120,-100,400,160);ctx.restore();
+ ctx.save();ctx.translate(150,50);ctx.scale(0.7,0.7);const r=drawRoof(ctx,{x:-46,w:92,top:0,rh:14,kind:'gable',chimney:0.7,s:1,wall:'#F2C8A0'});santaDelivery(ctx,r,tt,{pass:'base'});ctx.fillStyle='rgba(156,192,228,0.22)';ctx.fillRect(-120,-100,400,160);ctx.restore();
  // immeubles du premier plan devant (gabarit)
  for(const[x,w,c]of[[0,70,'#F6E2B4'],[74,90,'#F0A98A'],[250,110,'#CFE0B8']]){R(ctx,x,70,w,30,c,{lw:0.5,sh:0.25,shX:0.74,li:0.1});P(ctx,[[x-1,70],[x+w+1,70],[x+w-4,62],[x+4,62]],'#D8603A',{lw:0.5,sh:0.3,shX:0.6,li:0.2})}
  nightFilter(ctx,W,H);const sr=mulberry32(21);for(let k=0;k<50;k++){const x=sr()*W,y=sr()*28;ctx.fillStyle='rgba(255,250,230,0.7)';ctx.fillRect(x,y,0.9,0.9)}
- ctx.save();ctx.translate(150,46);ctx.scale(0.55,0.55);santaDelivery(ctx,r,tt,{pass:'lit'});ctx.restore();
- text(ctx,'arrière-plan : maison de la colline (rang 3), ×0,55, bleutée · dessinée derrière les immeubles du premier plan',W/2,96,3,'#FFFFFF')}
+ ctx.save();ctx.translate(150,50);ctx.scale(0.7,0.7);santaDelivery(ctx,r,tt,{pass:'lit'});ctx.restore();
+ text(ctx,'arrière-plan : maison de la colline (rang 2), ×0,7, bleutée · dessinée derrière les immeubles du premier plan',W/2,96,3,'#FFFFFF')}
+// Huit instants de la variante arrière-plan (zoom ×3 sur la maison).
+function santaFarSeq(ctx){const cw=84,ch=70;const times=[12,18.3,21.5,24.5,27.8,45,50,60];times.forEach((tt,i)=>{const col=i%4,row=Math.floor(i/4);ctx.save();ctx.translate(col*cw,row*ch);ctx.beginPath();ctx.rect(0,0,cw,ch);ctx.clip();ctx.fillStyle='#8EA6D8';ctx.fillRect(0,0,cw,ch);ctx.fillStyle='#A9C9A0';ctx.fillRect(0,46,cw,ch);
+ const draw=pass=>{ctx.save();ctx.translate(cw/2,46);ctx.scale(0.7,0.7);const r=drawRoof(ctx,{x:-46,w:92,top:0,rh:14,kind:'gable',chimney:0.7,s:1,wall:'#F2C8A0'});if(pass==='base'){santaDelivery(ctx,r,tt,{pass:'base'});ctx.fillStyle='rgba(156,192,228,0.22)';ctx.fillRect(-120,-100,400,160)}else santaDelivery(ctx,r,tt,{pass:'lit'});ctx.restore()};draw('base');nightFilter(ctx,cw,ch);draw('lit');
+ text(ctx,['approche','glissade, givre','descend du traîneau','marche prudente, hotte à l\'épaule','pose la hotte, enjambe','caché, fenêtre allumée','retour','départ'][i]+` · t = ${tt} s`,cw/2,66,2.6,'#FFFFFF',{w:cw-4});ctx.restore()})}
 // Planche : 8 instants clés sur le toit de tuiles (×3,2).
 function santaRoofSeq(ctx){const cw=84,ch=70;const times=[12,18.3,21.5,24.5,27.8,45,50,60];times.forEach((tt,i)=>{const col=i%4,row=Math.floor(i/4);ctx.save();ctx.translate(col*cw,row*ch);ctx.beginPath();ctx.rect(0,0,cw,ch);ctx.clip();ctx.fillStyle='#8EA6D8';ctx.fillRect(0,0,cw,ch);
- const r=drawRoof(ctx,{x:4,w:76,top:34,rh:14,kind:'gable',chimney:0.24,s:1,wall:'#E6BCD0'});santaDelivery(ctx,r,tt,{pass:'base'});nightFilter(ctx,cw,ch);santaDelivery(ctx,r,tt,{pass:'lit'});
+ const r=drawRoof(ctx,{x:4,w:76,top:34,rh:14,kind:'gable',chimney:0.7,s:1,wall:'#E6BCD0'});santaDelivery(ctx,r,tt,{pass:'base'});nightFilter(ctx,cw,ch);santaDelivery(ctx,r,tt,{pass:'lit'});
  text(ctx,['approche (p 0,16)','glissade, givre (0,244)','descend du traîneau (0,29)','marche prudente, hotte à l\'épaule (0,33)','pose la hotte, enjambe (0,37)','caché, fenêtre allumée (0,6)','retour (0,67)','départ (0,8)'][i]+` · t = ${tt} s`,cw/2,66,2.6,'#FFFFFF',{w:cw-4});ctx.restore()})}
 function santaCompare(ctx){const W=150,H=60;ctx.fillStyle='#F2DDB4';ctx.fillRect(0,0,W,H);R(ctx,0,50,W,10,'#E2D2B0',{lw:0.3,sh:0,li:0});
  [['walker0|3','passant (G3)'],['walker1|3','passante (G3)'],['santa|stand|4','père Noël'],['santa|walk|0|3','… en marche, hotte à l\'épaule'],['santa-plain|stand|4','pantin actuel'],['face','']].forEach(([id,l],i)=>{ctx.save();ctx.translate(12+i*24,50);if(i===5){ctx.translate(6,59);ctx.scale(2.4,2.4);ctx.beginPath();ctx.rect(-7,-41,14,13);ctx.clip();pantin(ctx,'santa|stand|4');ctx.restore();text(ctx,'visage de face ×2,4',132,55,2.4,'#5A4A30');return}if(id.startsWith('santa|'))santaWithSack(ctx,id);else pantin(ctx,id);ctx.restore();text(ctx,l,12+i*24,55,2.4,'#5A4A30',{w:23})})}
@@ -1199,7 +1209,7 @@ function santaTurn(ctx,t=0){const W=306,H=124,cw=34;
  row(false,0);row(true,62);
  ctx.save();ctx.translate(W-17,52);pantin(ctx,'santa-plain|stand|4');ctx.restore();text(ctx,'pantin actuel',W-17,57,2.3,'#5A4A30')}
 anim('santa-turn',306,124,4,(ctx,t)=>santaTurn(ctx,t));
-anim('santa',360,100,3,(ctx,t)=>santaScene(ctx,t));anim('santa-far',360,100,3,(ctx,t)=>santaFar(ctx,t));{const ctx=mk('santa-roof-seq',336,140,3.2);santaRoofSeq(ctx)}{const ctx=mk('santa-compare',150,60,7.2);santaCompare(ctx)}
+anim('santa',360,100,3,(ctx,t)=>santaScene(ctx,t));anim('santa-far',360,100,3,(ctx,t)=>santaFar(ctx,t));{const ctx=mk('santa-far-seq',336,140,3.2);santaFarSeq(ctx)}{const ctx=mk('santa-roof-seq',336,140,3.2);santaRoofSeq(ctx)}{const ctx=mk('santa-compare',150,60,7.2);santaCompare(ctx)}
 
 // ───────────────────────── 8. Installations ─────────────────────────
 {const s=2.5,W=432,H=110,G=86;const ctx=mk('install',W,H,s);
