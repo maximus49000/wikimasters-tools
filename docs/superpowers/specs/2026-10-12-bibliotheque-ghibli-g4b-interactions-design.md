@@ -39,7 +39,7 @@ Tout le cœur est dans `src/core/library/city/shops/scene/` (fonctions pures, te
 
 ### 3.2 Créneaux
 
-- Le temps de chaque boutique est découpé en **créneaux** dont la durée dépend de la famille : `counter`/`till`/`drink` 240 s, `browse`/`machine` 360 s, `table` 600 s, `chair` 600 s (tatoueur 900 s), `dance` hors G4b (boîte et salle de jeux gardent leur logique actuelle).
+- Le temps de chaque boutique est découpé en **créneaux** dont la durée dépend de la famille : `counter`/`till`/`drink` 240 s, `browse`/`machine` 360 s (et le caviste, conseil long), `table` 600 s, `chair` 600 s (tatoueur 900 s), `dance` hors G4b (boîte et salle de jeux gardent leur logique actuelle).
 - **Règle de raccord** : un créneau commence et finit avec la boutique au repos (employés à leur poste ou en activité de boutique vide, aucun client à l'intérieur). Les arrivées sont interdites dans la dernière part du créneau (`ARRIVAL_SHARE`), et le metteur en scène écourte (employé qui accélère, bavard qui écourte, indécis qui renonce) pour que tout le monde soit sorti avant la fin. Chaque créneau est donc indépendant : aucune simulation n'a besoin de la précédente.
 - La marche dans la rue (avant la porte, après la porte) reste une fonction pure de la visite (`passageAt`, comme aujourd'hui) ; elle peut déborder sur le créneau voisin. La lecture à l'instant `t` consulte donc les créneaux `N-1`, `N`, `N+1` (clients qui arrivent ou repartent dans la rue).
 
