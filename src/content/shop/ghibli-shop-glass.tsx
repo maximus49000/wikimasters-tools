@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
-import { awningDrop, facadeGeometry } from '../../core/library/paint/shop/facade';
-import { interiorPostOf } from '../../core/library/paint/shop/interiors';
+import { awningDrop } from '../../core/library/paint/shop/facade';
+import { ghibliPostOf } from '../../core/library/city/shops/scene/stage';
 import type { ShopFrame } from '../../core/library/city/shops/slots';
 import type { ShopView } from '../../core/library/city/shops/view';
 import type { Sky } from '../../core/library/sky';
@@ -24,9 +24,8 @@ export const ghibliAwningShift = (view: ShopView, frame: ShopFrame, sky: Sky): n
 
 // Place de service du vendeur en Ghibli (repère de la vitrine, comme interiorPost du classique) : celle du comptoir peint de
 // l'intérieur Ghibli, décalée du pilastre quand la partie vitrée ne commence pas au bord de la vitrine.
+// Règle pure partagée avec le metteur en scène G4b (scene/stage.ts).
 export function ghibliStaffPost(view: ShopView, frame: ShopFrame): number {
   const type = view.sign?.type ?? view.interior;
-  if (!type) return frame.window.w / 2;
-  const g = facadeGeometry({ type, name: '', w: frame.sign.w, doorSide: view.slot.doorSide, state: 'open', placard: false, night: false, lit: false });
-  return g.glass.x - g.win.x + interiorPostOf(type, g.glass.w, g.glass.h);
+  return type ? ghibliPostOf(type, frame.sign.w, view.slot.doorSide) : frame.window.w / 2;
 }

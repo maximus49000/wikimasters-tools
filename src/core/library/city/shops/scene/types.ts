@@ -1,5 +1,6 @@
 import type { Outfit } from '../../people';
 import type { ShopTypeId } from '../catalog';
+import type { MoveId, PictoId, PropId } from './moves';
 
 // Types partagés du metteur en scène des commerces (G4b). Module de types seulement : aucun code exécuté ici.
 
@@ -21,3 +22,18 @@ export type Party = {
 };
 // Identité d'un créneau : `day` est un numéro de jour (`dayNumber` de hours.ts), `index` le rang du créneau dans la journée.
 export type SlotKey = { seed: number; slotId: string; type: ShopTypeId; day: number; index: number };
+
+// ---- Partition du metteur en scène ----
+// Acteur : `staff:<shiftId>` pour un employé, `<partyId>:<rang du membre>` pour un client.
+export type ActorId = string;
+// Segment d'une partition : de t0 à t1 (s depuis le début du créneau), x local à la vitrine interpolé de x0 à x1, orientation
+// (indice 0-15) de yaw0 à yaw1. `move` : geste de la bibliothèque (MOVES) ou marche / demi-tour / station debout ; les poses
+// (bras, penché, tête, allure) se déduisent du geste par keyAtTime à la lecture. `prop` : objet tenu pendant le segment ;
+// `picto` : picto du geste retenu par la règle de rareté (null s'il est tu) ; `seed` : variation propre au segment.
+export type Segment = { t0: number; t1: number; move: MoveId | 'walk' | 'turn' | 'idle'; x0: number; x1: number; yaw0: number; yaw1: number; prop: PropId | null; picto: PictoId | null; seed: number };
+// `enter` / `exit` : instants où le client franchit la porte du local (null s'il n'entre pas) ; pour un employé, sortie de
+// l'arrière-boutique / retour (null s'il est là aux bornes du créneau).
+export type ActorTrack = { id: ActorId; role: 'staff' | 'customer'; outfit: Outfit; scale: number; party: string | null; enter: number | null; exit: number | null; segments: Segment[] };
+export type Score = { key: string; start: number; length: number; tracks: ActorTrack[]; log: string[] };
+// État de la rue fourni au créneau (déjà déterministe) : début d'averse, de défilé, passages du car (s depuis le début du créneau).
+export type StreetState = { rainFrom: number | null; paradeFrom: number | null; busAt: number[] };
