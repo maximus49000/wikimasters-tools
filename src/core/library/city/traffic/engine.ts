@@ -28,6 +28,9 @@ export type StopReason = 'bus' | 'delivery' | 'garbage' | 'light' | null;
 export const DT = 0.1;
 // Demi-largeur du passage piéton au feu (px à unit = 1) : les voitures s'arrêtent avant, les feux sont à ses deux bords.
 export const CROSS_HALF = 16;
+// Poteau du feu d'une voie : à sa ligne d'arrêt (CROSS_HALF + 4 avant le centre du passage), donc en amont du passage pour
+// les voitures qui arrivent, jamais derrière.
+export const lightPoleX = (lightX: number, track: Track, unit: number): number => lightX - TRACK_DIR[track] * (CROSS_HALF + 3) * unit;
 const HIST = 20; // 2 s d'historique
 export const MARGIN = 90; // px hors champ de chaque côté (× unit)
 const WARM_S = 120;

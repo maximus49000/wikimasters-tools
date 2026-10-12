@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advance, agentView, createTraffic, warmTraffic, xOfS, type Agent, type TrafficEnv, type TrafficWorld } from '../../../../../src/core/library/city/traffic/engine';
+import { CROSS_HALF, TRACK_DIR, advance, agentView, createTraffic, lightPoleX, warmTraffic, xOfS, type Agent, type TrafficEnv, type TrafficWorld } from '../../../../../src/core/library/city/traffic/engine';
 import { carExtent } from '../../../../../src/core/library/city/traffic/car-art';
 import { temperamentOf } from '../../../../../src/core/library/city/traffic/temperament';
 import { mulberry32 } from '../../../../../src/core/library/scene-world';
@@ -261,5 +261,19 @@ describe('véhicules à part', () => {
     const b = createTraffic({ width: 2000, seed: 5, unit: 1, startS: T0 });
     for (const w of [a, b]) advance(w, T0 + 60, env(1));
     expect(a.horns).toEqual(b.horns);
+  });
+});
+
+describe('feux du passage piéton', () => {
+  it('chaque feu est avant le passage pour les voitures de sa voie, à leur ligne d’arrêt', () => {
+    for (const unit of [1, 1.6]) {
+      for (const track of ['near', 'far'] as const) {
+        const x = 540;
+        // Distance signée dans le sens de la voie : négative = en amont (les voitures y arrivent avant le passage).
+        const ahead = (lightPoleX(x, track, unit) - x) * TRACK_DIR[track];
+        expect(ahead).toBeLessThan(-CROSS_HALF * unit);
+        expect(ahead).toBeGreaterThan(-(CROSS_HALF + 4) * unit - 0.001);
+      }
+    }
   });
 });

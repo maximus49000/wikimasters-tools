@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { CityEvent } from '../core/library/city/events';
 import { FAR_SHRINK, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
-import { CROSS_HALF, MARGIN, TRACK_DIR, advance, agentView, braking, warmTraffic, type Agent, type TrafficEnv, type TrafficWorld } from '../core/library/city/traffic/engine';
+import { CROSS_HALF, MARGIN, TRACK_DIR, advance, lightPoleX, agentView, braking, warmTraffic, type Agent, type TrafficEnv, type TrafficWorld } from '../core/library/city/traffic/engine';
 import type { Walker } from '../core/library/city/traffic/crossing';
 import type { Rider } from '../core/library/city/traffic/bus-stop';
 import { nextStops } from '../core/library/city/traffic/bus-lines';
@@ -326,7 +326,10 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side }: 
     <g data-traffic-fixtures={side} ref={root}>
       {/* La voie du premier plan (vers la droite) longe le trottoir d'en face, en bas de l'image ; celle du fond, le trottoir du haut. */}
       {side === 'near' ? busStop(w.busStop.far, metrics.curb + 1, 'far') : busStop(w.busStop.near, metrics.farSide, 'near')}
-      {w.light && (side === 'near' ? pole(w.light.x - (CROSS_HALF + 3) * u, metrics.curb + 1, true) : pole(w.light.x + (CROSS_HALF + 3) * u, metrics.farSide, false))}
+      {/* Chaque feu est à droite de la voie qu'il règle, à sa ligne d'arrêt, donc AVANT le passage pour les voitures qui
+          arrivent : voie du fond (vers la gauche) → poteau du trottoir des immeubles, à droite du passage ; voie du premier plan
+          (vers la droite) → poteau du trottoir d'en face, à gauche du passage. Boîtier du bouton tourné vers le passage. */}
+      {w.light && (side === 'near' ? pole(lightPoleX(w.light.x, 'far', u), metrics.curb + 1, true) : pole(lightPoleX(w.light.x, 'near', u), metrics.farSide, false))}
     </g>
   );
 }
