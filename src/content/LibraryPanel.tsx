@@ -36,7 +36,11 @@ import {
   MAX_COLS,
   MIN_COLS,
   CELL_W,
+  CELL_H,
   HEIGHT,
+  WALL_ROWS,
+  pxRect,
+  rectOf,
   SECTION,
   VISIBLE_COLS,
   canHang,
@@ -105,6 +109,8 @@ import { CardPickerDialog, type CardChoice } from './CardPickerDialog';
 import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView, type DragView, type Tool } from './RoomView';
+import { useOutsideCamera, type OutsidePhase } from './outside/use-outside-camera';
+import type { Rect } from '../core/library/outside-camera';
 
 // Près du bord de la pièce visible, le glissé la fait défiler : zone sensible et vitesse (pixels par image).
 const EDGE_ZONE = 48;
@@ -166,6 +172,8 @@ const ICONS = {
   dog: ['M4 8l2-4 4 3', 'M20 8l-2-4-4 3', 'M5 8c0 7 2 12 7 12s7-5 7-12c-2-2-4-3-7-3S7 6 5 8z', 'M9 11h.01', 'M15 11h.01', 'M10 15h4l-2 2z'],
   bulb: ['M9 18h6', 'M10 21h4', 'M12 3a6 6 0 0 0-3.5 10.9c.4.4.5.8.5 1.1V16h6v-1c0-.3.1-.7.5-1.1A6 6 0 0 0 12 3z'],
   check: ['M5 12l5 5L20 7'],
+  door: ['M5 21V3h10v18', 'M15 4l5 2v15h-5', 'M3 21h18', 'M12 12.5h.01'],
+  house: ['M3 11l9-7 9 7', 'M5 10v10h14V10', 'M10 20v-6h4v6'],
   depthFront: ['M5 4h14', 'M12 20V9', 'M7 13l5-5 5 5'],
   depthBack: ['M5 20h14', 'M12 4v11', 'M7 11l5 5 5-5'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
@@ -404,16 +412,63 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   }, [stage.active, orientationNow]);
 
   // Pièce horizontale en plein écran sur un écran en paysage : la pièce couvre tout l'écran, sans bandes noires.
+  const [outsidePhase, setOutsidePhase] = useState<OutsidePhase>('inside');
+  const outsideFrom = useRef<{ rect: Rect | null; left: number; top: number } | null>(null);
+  const outside = outsidePhase !== 'inside';
   const screenSize = useScreenSize(stage.active);
   const fill = stage.active && orientationNow === 'landscape' && screenSize.width > screenSize.height;
   const fitCols = screenCols(screenSize.width, screenSize.height);
   // Pièce plus étroite que l'écran : elle s'élargit d'elle-même à la largeur exacte de l'écran (mur vide ajouté à droite),
   // pour garder le ciel et le sol entiers sans bandes noires. Une pièce plus large n'est réduite que par le bouton.
   const roomIdNow = lib ? activeRoom(lib).id : null;
+  // Dehors, on n'élargit pas la pièce : la vue de la rue ne montre pas les murs.
   useEffect(() => {
-    if (!fill || roomIdNow === null || colsNow >= fitCols) return;
+    if (!fill || outside || roomIdNow === null || colsNow >= fitCols) return;
     void library.update((state) => fitRoomWidth(state, roomIdNow, fitCols));
-  }, [fill, roomIdNow, colsNow, fitCols, library]);
+  }, [fill, outside, roomIdNow, colsNow, fitCols, library]);
+
+  // Retour à l'intérieur au changement de pièce et en Aménager (le bouton Aménager reste cliquable).
+  // useLayoutEffect : aucune image peinte avec la nouvelle pièce encore dehors ; le défilement de l'ancienne pièce ne s'applique pas à la nouvelle.
+  useLayoutEffect(() => { outsideFrom.current = null; setOutsidePhase('inside'); }, [roomIdNow]);
+  const editingNow = mode === 'edit';
+  useLayoutEffect(() => { if (editingNow) setOutsidePhase('inside'); }, [editingNow]);
+
+  // Sortir : la zone visible de la pièce (en pixels du monde) est mémorisée pour que la caméra parte de là, et le défilement pour le retour.
+  const goOutside = (): void => {
+    const sc = scrollRef.current;
+    const svg = sc?.querySelector('svg[role="img"]');
+    const s = svg?.getBoundingClientRect();
+    const roomNow = lib ? activeRoom(lib) : null;
+    const rect = sc && s && roomNow && s.width > 0 && s.height > 0
+      ? { x: (sc.scrollLeft / s.width) * roomNow.cols * CELL_W, y: (sc.scrollTop / s.height) * HEIGHT, w: (sc.clientWidth / s.width) * roomNow.cols * CELL_W, h: (sc.clientHeight / s.height) * HEIGHT }
+      : null;
+    outsideFrom.current = { rect, left: sc?.scrollLeft ?? 0, top: sc?.scrollTop ?? 0 };
+    setOutsidePhase('leaving');
+  };
+  const goInside = (): void => setOutsidePhase('returning');
+
+  const camRoom = lib ? activeRoom(lib) : null;
+  useOutsideCamera({
+    svg: () => scrollRef.current?.querySelector<SVGSVGElement>('svg[role="img"]') ?? null,
+    box: () => scrollRef.current,
+    world: camRoom ? { w: camRoom.cols * CELL_W, h: WALL_ROWS * CELL_H } : { w: 0, h: 0 },
+    phase: outsidePhase,
+    from: outsideFrom.current?.rect ?? null,
+    windows: camRoom ? camRoom.layout.filter((p) => p.kind === 'window').flatMap((p) => { const r = rectOf(p); return r ? [pxRect(r)] : []; }) : [],
+    onSettled: (p) => setOutsidePhase(p),
+  });
+
+  // Retour fini : le défilement d'avant la sortie est rétabli.
+  useLayoutEffect(() => {
+    if (outsidePhase === 'inside' && outsideFrom.current) {
+      const sc = scrollRef.current;
+      if (sc) {
+        sc.scrollLeft = outsideFrom.current.left;
+        sc.scrollTop = outsideFrom.current.top;
+      }
+      outsideFrom.current = null;
+    }
+  }, [outsidePhase]);
 
   // Réglage « Position » (actif par défaut) : la position est demandée une fois par chargement de page, à l'ouverture de la Bibliothèque.
   // Elle n'est gardée qu'en mémoire : sans cette relecture, la vraie météo resterait « simulée » après chaque rechargement.
@@ -1117,6 +1172,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             maxWidth: fill ? 'none' : stage.active ? `min(100vw, calc(100vh * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
             ...(fill ? { width: '100vw', height: '100vh', overflowY: 'auto' } : {}),
             ...(dragging ? { overflowX: 'hidden', touchAction: 'none' } : {}),
+            // Dehors : la caméra règle le viewBox, le conteneur ne défile plus et prend le cadre de la fenêtre visible.
+            ...(outside ? { ...(stage.active ? { width: '100vw', height: '100vh', maxWidth: 'none' } : { width: '100%', aspectRatio: `${visibleWidth} / ${HEIGHT}` }), overflow: 'hidden', touchAction: 'none', position: 'relative', userSelect: 'none', WebkitUserSelect: 'none' } : {}),
           }}
         >
           <RoomView
@@ -1138,7 +1195,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onFurnitureDown={onFurnitureDown}
             onFurnitureMove={onFurnitureMove}
             onFurnitureUp={press.cancel}
-            fill={fill}
+            outside={outside}
+            roomLayers={outsidePhase === 'leaving' || outsidePhase === 'outside' ? 'hidden' : 'shown'}
+            fill={fill && !outside}
             drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost, ghostPx: drag.target.ghostPx } satisfies DragView) : null}
           />
         </div>
@@ -1152,8 +1211,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onClose={() => setViewing(null)}
           />
         )}
+        {!editing && (
+          <button type="button" data-action={outside ? 'inside' : 'outside'} aria-label={outside ? 'Rentrer' : 'Sortir'} title={outside ? 'Rentrer' : 'Sortir'} onClick={outside ? goInside : goOutside} disabled={outsidePhase === 'leaving' || outsidePhase === 'returning'} style={DOOR_BUTTON}>
+            <Icon paths={outside ? ICONS.house : ICONS.door} />
+          </button>
+        )}
         {stage.active && <FullscreenButton active onClick={stage.toggle} right={8} />}
-        {fill && room.cols > fitCols && (
+        {fill && !outside && room.cols > fitCols && (
           <button type="button" data-action="fit-screen" onClick={fitToScreen} style={FIT_BUTTON}>
             Adapter à l’écran
           </button>
@@ -1163,6 +1227,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     </div>
   );
 }
+
+// Bouton Sortir/Rentrer, posé en haut à gauche de la scène.
+const DOOR_BUTTON = { position: 'absolute', top: 8, left: 8, width: 36, height: 36, padding: 0, border: 0, borderRadius: 18, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', display: 'grid', placeItems: 'center', zIndex: 2 } as const;
 
 // Bouton et message posés sur la pièce en plein écran, à gauche du bouton de sortie.
 const FIT_BUTTON = { position: 'absolute', top: 4, right: 48, height: 32, padding: '0 12px', border: 0, borderRadius: 16, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/20px system-ui,sans-serif' } as const;

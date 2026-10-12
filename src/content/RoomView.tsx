@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
@@ -17,6 +17,7 @@ import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
 import { PropContext, PropRegistry } from './prop/prop-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
+import { reducedMotion } from './ghibli-sky';
 import { WindowArt, GlassDrops, glassRect } from './window-art';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
 import { LightLayer } from './light-layer';
@@ -85,6 +86,11 @@ type Props = {
   // Plein écran d'une pièce horizontale sur un écran en paysage : le dessin couvre tout l'écran (plus de colonnes visibles,
   // ou zoom sur la largeur le temps que la pièce trop étroite s'élargisse à celle de l'écran).
   fill?: boolean;
+  // Vue « dehors » : le monde (largeur de la pièce × hauteur du mur) couvre tout le dessin, même sans fenêtre. Le viewBox passé à React
+  // reste constant ; le hook de caméra l'écrit ensuite directement dans le DOM. Un repère de suivi (invisible) est rendu en dernier dans le monde.
+  outside?: boolean;
+  // Couches de la pièce (mur, vitres, meubles, animaux, lumière…) : 'hidden' les estompe (400 ms) puis les retire ; le nœud du monde, lui, reste.
+  roomLayers?: 'shown' | 'hidden';
 };
 
 export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect };
@@ -94,7 +100,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, outside = false, roomLayers = 'shown' }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -118,6 +124,27 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const shops = useMemo(() => new ShopRegistry(`${worldId}-shop`), [worldId]);
   // Accessoires de rue Ghibli (G5) : une instance partagée par le décor fixe et les acteurs.
   const propSprites = useMemo(() => new PropRegistry(`${worldId}-prop`), [worldId]);
+  // Fondu de la pièce : après 400 ms à 'hidden' (0 ms en mouvement réduit) les couches sont retirées du DOM (`gone`).
+  const still = reducedMotion();
+  const [gone, setGone] = useState(false);
+  const removedRef = useRef(false);
+  const wallRef = useRef<SVGGElement>(null);
+  const layersRef = useRef<SVGGElement>(null);
+  useEffect(() => {
+    if (roomLayers !== 'hidden') return undefined;
+    if (still) { removedRef.current = true; setGone(true); return undefined; }
+    const timer = setTimeout(() => { removedRef.current = true; setGone(true); }, 400);
+    return () => clearTimeout(timer);
+  }, [roomLayers, still]);
+  // Retour de la pièce après démontage : fondu d'entrée (absent sous jsdom : appel optionnel).
+  useLayoutEffect(() => {
+    if (roomLayers !== 'shown' || !removedRef.current) return;
+    removedRef.current = false;
+    setGone(false);
+    if (!still) for (const el of [wallRef.current, layersRef.current]) el?.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 400, easing: 'ease' });
+  }, [roomLayers, still]);
+  const showRoom = roomLayers === 'shown' || (!still && !gone);
+  const fadeStyle = { opacity: roomLayers === 'shown' ? 1 : 0, transition: still ? 'none' : 'opacity 400ms ease', ...(roomLayers === 'hidden' ? { pointerEvents: 'none' as const } : {}) };
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
   // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
@@ -512,36 +539,42 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   );
   // La fenêtre soulevée n'a plus de vue à sa place (sa copie porte la sienne) : seul son cadre estompé reste sur le mur.
   const shownGlasses = glasses.filter((_, i) => windows[i]!.id !== drag?.id);
-  const viewBox = boundingRect(shownGlasses);
-  const gaps = gapRects(shownGlasses);
+  const worldRect = outside ? { x: 0, y: 0, w: width, h: wallH } : boundingRect(shownGlasses);
+  const gaps = outside ? [] : gapRects(shownGlasses);
 
   return (
     <svg
-      viewBox={`0 0 ${width} ${HEIGHT}`}
+      viewBox={outside ? `0 0 ${width} ${wallH}` : `0 0 ${width} ${HEIGHT}`}
+      preserveAspectRatio={outside ? 'xMidYMid slice' : undefined}
+      data-outside={outside ? '' : undefined}
       role="img"
       aria-label={room.name}
       data-style={room.style}
-      style={{ aspectRatio: `${width} / ${HEIGHT}`, width: fill ? `max(100vw, calc(100vh * ${width} / ${HEIGHT}))` : `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block', ...(fill ? { alignSelf: 'flex-start' } : {}) }}
+      style={outside ? { width: '100%', height: '100%', display: 'block' } : { aspectRatio: `${width} / ${HEIGHT}`, width: fill ? `max(100vw, calc(100vh * ${width} / ${HEIGHT}))` : `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block', ...(fill ? { alignSelf: 'flex-start' } : {}) }}
     >
       {decor.glow && <NeonDefs />}
       {/* Mur statique (fond + décor steampunk), réutilisé par <use> pour combler les trous entre les vitres. */}
-      <g id={`${worldId}-wall`} data-window-wall="">
-        <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
-        {room.style === 'steampunk' && <g data-steampunk-decor=""><SteampunkDecor cols={room.cols} wallH={wallH} /></g>}
-      </g>
-      {viewBox && (
+      {showRoom && (
+        <g id={`${worldId}-wall`} data-window-wall="" ref={wallRef} style={fadeStyle}>
+          <RoomBackdrop style={room.style} width={width} height={HEIGHT} wallH={wallH} />
+          {room.style === 'steampunk' && <g data-steampunk-decor=""><SteampunkDecor cols={room.cols} wallH={wallH} /></g>}
+        </g>
+      )}
+      {worldRect && (
         // Le décor vu par les fenêtres, rendu UNE fois en vrais nœuds (plus de copies `<use>` à reconstruire à chaque image),
         // juste après le mur : un meuble du mur ne chevauche jamais une fenêtre. Les cadres sont dessinés par-dessus.
         <>
         {/* Fond de vitre (angles droits, comme avant), sous la vue qui le recouvre. */}
-        <g data-window-glass="" style={{ pointerEvents: 'none' }}>
-          {shownGlasses.map((g, i) => (
-            <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} fill="#9CC4E8" />
-          ))}
-        </g>
-        // Découpé par UN SEUL rectangle (le englobant des vitres) : un masque à plusieurs rectangles ralentit Blink (55 ms contre 8,5 ms
-        // mesurés). Les angles arrondis du steampunk sont couverts par le cadre ; les trous entre vitres redessinent le mur ensuite.
-        <svg data-window-views="" x={viewBox.x} y={viewBox.y} width={viewBox.w} height={viewBox.h} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
+        {showRoom && (
+          <g data-window-glass="" style={{ pointerEvents: 'none', ...fadeStyle }}>
+            {shownGlasses.map((g, i) => (
+              <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} fill="#9CC4E8" />
+            ))}
+          </g>
+        )}
+        {/* Découpé par UN SEUL rectangle (le englobant des vitres) : un masque à plusieurs rectangles ralentit Blink (55 ms contre 8,5 ms
+        // mesurés). Les angles arrondis du steampunk sont couverts par le cadre ; les trous entre vitres redessinent le mur ensuite. */}
+        <svg data-window-views="" x={worldRect.x} y={worldRect.y} width={worldRect.w} height={worldRect.h} viewBox={`${worldRect.x} ${worldRect.y} ${worldRect.w} ${worldRect.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
           {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que le second. */}
           <g id={worldId} data-window-view="">
             <ShopContext.Provider value={shops}>
@@ -556,15 +589,18 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           ) : (
             actors
           )}
-          {drops && shownGlasses.map((g, i) => <GlassDrops key={i} glass={g} />)}
+          {drops && !outside && shownGlasses.map((g, i) => <GlassDrops key={i} glass={g} />)}
+          {outside && <g data-follow-marker="" opacity="0"><path d="M-7 -10 L7 -10 L0 0 Z" fill="#fff" stroke="#222" strokeWidth={2} strokeLinejoin="round" /></g>}
         </svg>
-        {gaps.map((r, i) => (
-          <svg key={i} data-window-gap="" x={r.x} y={r.y} width={r.w} height={r.h} viewBox={`${r.x} ${r.y} ${r.w} ${r.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
-            <use href={`#${worldId}-wall`} />
-          </svg>
-        ))}
         </>
       )}
+      {showRoom && (
+      <g data-room-layers="" ref={layersRef} style={fadeStyle}>
+      {gaps.map((r, i) => (
+        <svg key={i} data-window-gap="" x={r.x} y={r.y} width={r.w} height={r.h} viewBox={`${r.x} ${r.y} ${r.w} ${r.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
+          <use href={`#${worldId}-wall`} />
+        </svg>
+      ))}
       {rugs}
       {wallLevel}
       {middle}
@@ -602,6 +638,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           strokeWidth={2.5}
           style={{ pointerEvents: 'none' }}
         />
+      )}
+      </g>
       )}
     </svg>
   );
