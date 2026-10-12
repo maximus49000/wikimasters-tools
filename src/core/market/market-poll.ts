@@ -18,6 +18,10 @@ const WANT_DEBOUNCE_MS = 60_000;
 const TARGETS_KEY = 'market-targets';
 const LOCK_KEY = 'market-lock';
 
+// Une date du stockage postérieure à maintenant vient d'une horloge revenue en arrière (réglage de l'appareil, APK de mesure à
+// l'heure décalée) : on ne s'y fie pas, sinon un verrou, une attente ou un « relevé à l'instant » durerait jusqu'à cette date.
+const isFuture = (at: number, t: number): boolean => at > t;
+
 export type Target = { slug: string; title: string };
 
 type Wanted = Targets['wanted'][string];
@@ -105,31 +109,37 @@ export function createMarketCollector(deps: CollectorDeps) {
 
   // Les cartes à relever : d'abord celles dont le rechargement est forcé (dans l'ordre demandé), puis celles vues
   // récemment à l'écran et pas relevées depuis 30 min. Pas de relevé pendant l'attente qui suit une erreur.
+  // L'attente après une erreur dure 30 min : une échéance plus lointaine vient d'une horloge revenue en arrière.
+  const coolingDown = (state: Targets, t: number): boolean =>
+    state.cooldownUntil !== undefined && t < state.cooldownUntil && state.cooldownUntil - t <= POLL_INTERVAL_MS;
+
   function dueEntries(state: Targets, t: number): [string, Wanted][] {
-    if (state.cooldownUntil !== undefined && t < state.cooldownUntil) return [];
+    if (coolingDown(state, t)) return [];
     const forced = forcedSlugs(state);
     const isForced = new Set(forced);
     const normal = Object.entries(state.wanted).filter(([slug, w]) => {
-      if (isForced.has(slug) || t - w.seenAt >= WANTED_TTL_MS) return false;
-      return t - lastPolled(state, slug) >= POLL_INTERVAL_MS;
+      if (isForced.has(slug) || t - w.seenAt >= WANTED_TTL_MS || isFuture(w.seenAt, t)) return false;
+      return t - lastPolled(state, slug, t) >= POLL_INTERVAL_MS;
     });
     return [...forced.map((slug): [string, Wanted] => [slug, state.wanted[slug]!]), ...normal];
   }
 
-  // Date du dernier relevé d'une carte (stockage ou cet onglet, avant l'écriture par lot).
-  const lastPolled = (state: Targets, slug: string): number =>
-    Math.max(state.polledAt[slug] ?? -Infinity, handled.get(slug) ?? -Infinity);
+  // Date du dernier relevé d'une carte (stockage ou cet onglet, avant l'écriture par lot) ; une date future ne compte pas.
+  const lastPolled = (state: Targets, slug: string, t: number): number => {
+    const stored = state.polledAt[slug] ?? -Infinity;
+    return Math.max(isFuture(stored, t) ? -Infinity : stored, handled.get(slug) ?? -Infinity);
+  };
 
   // La carte du fond à relever : parmi celles de toute la Collection qui n'ont pas été relevées depuis 30 min, la
   // relevée le plus anciennement (jamais relevée d'abord, dans l'ordre du site). Sans ça, une Collection plus longue
   // que 30 min de relevés ne dépasserait jamais ses premières cartes, qui redeviendraient dues avant d'avoir fini.
   function nextBackground(state: Targets, t: number, list: Target[], seen: ReadonlySet<string>): Target | undefined {
-    if (state.cooldownUntil !== undefined && t < state.cooldownUntil) return undefined;
+    if (coolingDown(state, t)) return undefined;
     let best: Target | undefined;
     let bestAt = Infinity;
     for (const card of list) {
       if (seen.has(card.slug)) continue;
-      const last = lastPolled(state, card.slug);
+      const last = lastPolled(state, card.slug, t);
       if (t - last < POLL_INTERVAL_MS || last >= bestAt) continue;
       best = card;
       bestAt = last;
@@ -160,7 +170,7 @@ export function createMarketCollector(deps: CollectorDeps) {
 
   async function takeLock(t: number): Promise<boolean> {
     const lock = await store.get<Lock>(LOCK_KEY);
-    if (lock && lock.owner !== null && lock.owner !== id && t - lock.updatedAt < LOCK_STALE_MS) return false;
+    if (lock && lock.owner !== null && lock.owner !== id && t - lock.updatedAt < LOCK_STALE_MS && !isFuture(lock.updatedAt, t)) return false;
     await store.set(LOCK_KEY, { owner: id, updatedAt: t });
     holdsLock = true;
     return true;
@@ -184,9 +194,12 @@ export function createMarketCollector(deps: CollectorDeps) {
         const wanted = { ...state.wanted };
         for (const target of fresh) wanted[target.slug] = { title: target.title, seenAt: t };
         // On oublie ce qui n'a plus été vu depuis longtemps, et les dates de relevé de plus d'un jour.
-        for (const [slug, entry] of Object.entries(wanted)) if (t - entry.seenAt > WANTED_TTL_MS) delete wanted[slug];
+        // Les dates futures (horloge revenue en arrière) aussi.
+        for (const [slug, entry] of Object.entries(wanted)) {
+          if (t - entry.seenAt > WANTED_TTL_MS || isFuture(entry.seenAt, t)) delete wanted[slug];
+        }
         const polledAt = Object.fromEntries(
-          Object.entries(state.polledAt).filter(([, at]) => t - at < 24 * 3_600_000),
+          Object.entries(state.polledAt).filter(([, at]) => t - at < 24 * 3_600_000 && !isFuture(at, t)),
         );
         return { ...state, wanted, polledAt };
       }).then(() => {

@@ -225,6 +225,44 @@ describe('navigation, onglets multiples, erreurs', () => {
     expect(await w.tab('B').tick()).toBe('ran');
   });
 
+  // Horloge revenue en arrière (APK de mesure à l'heure décalée, réglage de l'appareil) : les dates du stockage sont dans le futur.
+  it('un verrou daté dans le futur ne bloque pas le relevé', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    await w.store.set('market-lock', { owner: 'onglet-disparu', updatedAt: T0 + 73 * 24 * 60 * MIN });
+    const tab = w.tab('A');
+    await tab.want([target('Ted Lasso')]);
+    expect(await tab.tick()).toBe('ran');
+    expect(w.fake.calls).toEqual(['Ted Lasso']);
+  });
+
+  it('une date de relevé dans le futur ne fait pas passer la carte pour à jour', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    const tab = w.tab('A');
+    await tab.want([target('Ted Lasso')]);
+    const state = await w.store.get<{ polledAt: Record<string, number> }>('market-targets');
+    await w.store.set('market-targets', { ...state, polledAt: { Ted_Lasso: T0 + 73 * 24 * 60 * MIN } });
+    expect(await tab.tick()).toBe('ran');
+    expect(w.fake.calls).toEqual(['Ted Lasso']);
+  });
+
+  it('une attente après erreur datée bien au-delà de 30 min est ignorée', async () => {
+    const w = world([auction('a1', 'Ted Lasso', 100)]);
+    const tab = w.tab('A');
+    await tab.want([target('Ted Lasso')]);
+    const state = await w.store.get<object>('market-targets');
+    await w.store.set('market-targets', { ...state, cooldownUntil: T0 + 73 * 24 * 60 * MIN });
+    expect(await tab.tick()).toBe('ran');
+    expect(w.fake.calls).toEqual(['Ted Lasso']);
+  });
+
+  it('une carte vue « dans le futur » est oubliée au lieu de rester en attente pour toujours', async () => {
+    const w = world();
+    const tab = w.tab('A');
+    await w.store.set('market-targets', { wanted: { Ancienne: { title: 'Ancienne', seenAt: T0 + 7 * 60 * MIN } }, polledAt: {} });
+    await tab.want([target('Ted Lasso')]);
+    expect([...(await tab.pendingSlugs())]).toEqual(['Ted_Lasso']);
+  });
+
   it('une vraie erreur (401, 429 persistant…) arrête la passe et attend 30 min', async () => {
     const w = world([auction('a1', 'Ted Lasso', 100)]);
     const tab = w.tab('A');

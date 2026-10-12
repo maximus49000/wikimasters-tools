@@ -23,6 +23,25 @@ describe('createTtlCache', () => {
     expect(calls).toBe(1);
   });
 
+  // Horloge revenue en arrière : une entrée datée du futur ne doit pas rester servie jusqu'à cette date.
+  it('recharge une entrée datée dans le futur', async () => {
+    const { cache, at } = setup();
+    let calls = 0;
+    const loader = async () => `v${++calls}`;
+    at(100_000);
+    await cache.getOrLoad('k', loader);
+    at(0);
+    expect(await cache.getOrLoad('k', loader)).toBe('v2');
+  });
+
+  it('un échec daté dans le futur ne retarde pas la nouvelle tentative', async () => {
+    const { cache, at } = setup();
+    at(100_000);
+    await expect(cache.getOrLoad('k', async () => { throw new Error('réseau'); })).rejects.toThrow('réseau');
+    at(0);
+    expect(await cache.getOrLoad('k', async () => 'v1')).toBe('v1');
+  });
+
   it('recharge après expiration', async () => {
     const { cache, at } = setup();
     let calls = 0;

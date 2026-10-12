@@ -27,10 +27,11 @@ export function createTtlCache(store: KeyValueStore, options: TtlCacheOptions = 
     const entry = (await store.get<Entry<T>>(key)) ?? {};
     const t = now();
 
-    if (entry.value !== undefined && entry.storedAt !== undefined && t - entry.storedAt < ttlMs) {
+    // Une date future (horloge revenue en arrière) ne compte pas : sinon l'entrée resterait servie jusqu'à cette date.
+    if (entry.value !== undefined && entry.storedAt !== undefined && t - entry.storedAt < ttlMs && entry.storedAt <= t) {
       return entry.value;
     }
-    if (entry.failedAt !== undefined && t - entry.failedAt < retryAfterFailureMs) {
+    if (entry.failedAt !== undefined && t - entry.failedAt < retryAfterFailureMs && entry.failedAt <= t) {
       if (entry.value !== undefined) return entry.value;
       throw new CacheBackoffError();
     }
