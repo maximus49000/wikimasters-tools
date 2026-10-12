@@ -1,6 +1,6 @@
-import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, layerOf, sizeOf, wallSizeOf } from './furniture-catalog';
+import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, sizeOf, wallSizeOf } from './furniture-catalog';
 import { STANDING_KINDS } from './library-types';
-import type { Layout, Orientation, Placed, ShelfShape, SmallItem, StandingKind, VinylColor, WallShape } from './library-types';
+import type { Depth, Layout, Orientation, Placed, ShelfShape, SmallItem, StandDepth, StandingKind, VinylColor, WallShape } from './library-types';
 
 export const ROWS = 18;
 // Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
@@ -23,7 +23,7 @@ export type PlaceResult =
   | { ok: true }
   | { ok: false; reason: 'bounds' | 'floor' | 'taken' | 'wall'; cells: Cell[] };
 
-type Standing = Extract<Placed, { kind: StandingKind }>;
+export type Standing = Extract<Placed, { kind: StandingKind }>;
 
 export const isStanding = (p: Placed): p is Standing => (STANDING_KINDS as readonly string[]).includes(p.kind);
 
@@ -52,16 +52,40 @@ const inRoomCell = (cols: number) => (c: Cell): boolean => c.col >= 0 && c.row >
 
 const layerOfPlaced = (p: Placed): 'floor' | 'rug' => (isStanding(p) ? layerOf(p.kind) : 'floor');
 
-// Les cases occupées d'une couche (meubles debout et objets accrochés pour `floor`, tapis pour `rug`), sauf celles de `ignoreId`.
-function takenKeys(layout: Layout, ignoreId?: string, layer: 'floor' | 'rug' = 'floor'): Set<string> {
+// Niveau d'un objet : 0 pour le mur, le champ `depth` ou le défaut du type pour un meuble, celui du porteur pour un objet porté.
+export function depthOf(layout: Layout, p: Placed): Depth {
+  if (p.kind === 'window' || p.kind === 'wall') return 0;
+  if (isStanding(p)) return p.depth ?? depthDefault(p.kind);
+  const hostId = p.kind === 'computer' ? p.deskId : p.kind === 'small' ? p.hostId : p.shelfId;
+  const host = layout.find((q) => q.id === hostId);
+  return host && isStanding(host) ? depthOf(layout, host) : 1;
+}
+
+// Les cases occupées d'une couche à un niveau (meubles debout et objets accrochés pour `floor`, tapis pour `rug`, qui ignorent le niveau), sauf celles de `ignoreId`.
+function takenKeys(layout: Layout, ignoreId: string | undefined, layer: 'floor' | 'rug', depth: Depth): Set<string> {
   const taken = new Set<string>();
   for (const other of layout) {
     if (other.id === ignoreId || layerOfPlaced(other) !== layer) continue;
+    if (layer === 'floor' && depthOf(layout, other) !== depth) continue;
     const otherRect = rectOf(other);
     if (!otherRect) continue;
     for (const c of cellsOf(otherRect)) taken.add(`${c.col}-${c.row}`);
   }
   return taken;
+}
+
+const clashAt = (layout: Layout, cells: Cell[], ignoreId: string | undefined, layer: 'floor' | 'rug', depth: Depth): Cell[] => {
+  const taken = takenKeys(layout, ignoreId, layer, depth);
+  return cells.filter((c) => taken.has(`${c.col}-${c.row}`));
+};
+
+// Le niveau libre le plus proche de `from` pour ce meuble à cet endroit (à égalité, celui de devant), null si les trois sont pris.
+export function freeDepth(layout: Layout, cols: number, kind: StandingKind, col: number, row: number, from: StandDepth, ignoreId?: string): StandDepth | null {
+  const { w, h } = sizeOf(kind);
+  const cells = cellsOf({ col, row, w, h });
+  const layer = layerOf(kind);
+  const order = [from, from + 1, from - 1, from + 2, from - 2].filter((d): d is StandDepth => d >= 1 && d <= 3);
+  return order.find((d) => clashAt(layout, cells, ignoreId, layer, d).length === 0) ?? null;
 }
 
 export function canPlace(layout: Layout, cols: number, kind: StandingKind, col: number, row: number, ignoreId?: string): PlaceResult {
@@ -72,19 +96,17 @@ export function canPlace(layout: Layout, cols: number, kind: StandingKind, col: 
   if (row + h - 1 < WALL_ROWS) return { ok: false, reason: 'floor', cells: cells.filter((c) => c.row === row + h - 1) };
   const layer = layerOf(kind);
   if (layer === 'rug' && row < WALL_ROWS) return { ok: false, reason: 'floor', cells: cells.filter((c) => c.row < WALL_ROWS) };
-  const taken = takenKeys(layout, ignoreId, layer);
-  const clash = cells.filter((c) => taken.has(`${c.col}-${c.row}`));
-  return clash.length > 0 ? { ok: false, reason: 'taken', cells: clash } : { ok: true };
+  if (freeDepth(layout, cols, kind, col, row, depthDefault(kind), ignoreId) !== null) return { ok: true };
+  return { ok: false, reason: 'taken', cells: clashAt(layout, cells, ignoreId, layer, depthDefault(kind)) };
 }
 
-// Un objet accroché doit tenir entièrement sur le mur et sur des cases libres (derrière une étagère, c'est pris).
+// Un objet accroché doit tenir entièrement sur le mur et sur des cases libres du niveau 0 (derrière une étagère, c'est permis).
 export function canHangRect(layout: Layout, cols: number, w: number, h: number, col: number, row: number, ignoreId?: string): PlaceResult {
   const cells = cellsOf({ col, row, w, h });
   const inRoom = inRoomCell(cols);
   if (cells.some((c) => !inRoom(c))) return { ok: false, reason: 'bounds', cells: cells.filter(inRoom) };
   if (row + h > WALL_ROWS) return { ok: false, reason: 'wall', cells: cells.filter((c) => c.row >= WALL_ROWS) };
-  const taken = takenKeys(layout, ignoreId);
-  const clash = cells.filter((c) => taken.has(`${c.col}-${c.row}`));
+  const clash = clashAt(layout, cells, ignoreId, 'floor', 0);
   return clash.length > 0 ? { ok: false, reason: 'taken', cells: clash } : { ok: true };
 }
 
@@ -178,16 +200,45 @@ export function resizeWindow(layout: Layout, cols: number, id: string, w: number
   return layout.map((p) => (p.id === id ? { ...item, w, h } : p));
 }
 
+// Écrit `depth` seulement s'il diffère du défaut du type (et le retire sinon).
+function withDepth(item: Standing, depth: StandDepth): Standing {
+  const { depth: _, ...rest } = item;
+  return depth === depthDefault(item.kind) ? rest : { ...rest, depth };
+}
+
 export function placeStanding(layout: Layout, cols: number, kind: StandingKind, col: number, row: number, id: string): Layout | null {
   if (!canPlace(layout, cols, kind, col, row).ok) return null;
-  return [...layout, { id, kind, col, row }];
+  const d = freeDepth(layout, cols, kind, col, row, depthDefault(kind));
+  if (d === null) return null;
+  return [...layout, withDepth({ id, kind, col, row }, d)];
 }
 
 export function moveStanding(layout: Layout, cols: number, id: string, col: number, row: number): Layout | null {
   const item = layout.find((p) => p.id === id);
   if (!item || !isStanding(item)) return null;
   if (!canPlace(layout, cols, item.kind, col, row, id).ok) return null;
-  return layout.map((p) => (p.id === id ? { ...item, col, row } : p));
+  const d = freeDepth(layout, cols, item.kind, col, row, depthOf(layout, item) as StandDepth, id);
+  if (d === null) return null;
+  return layout.map((p) => (p.id === id ? withDepth({ ...item, col, row }, d) : p));
+}
+
+// Un meuble debout (hors tapis) peut avancer (+1) ou reculer (-1) d'un niveau, dans les bornes 1 à 3, si le niveau visé est libre sous lui.
+function shiftTarget(layout: Layout, id: string, delta: 1 | -1): { item: Standing; next: StandDepth } | null {
+  const item = layout.find((p) => p.id === id);
+  if (!item || !isStanding(item) || layerOf(item.kind) === 'rug') return null;
+  const next = depthOf(layout, item) + delta;
+  if (next < 1 || next > 3) return null;
+  const { w, h } = sizeOf(item.kind);
+  if (clashAt(layout, cellsOf({ col: item.col, row: item.row, w, h }), id, 'floor', next as StandDepth).length > 0) return null;
+  return { item, next: next as StandDepth };
+}
+
+export const canShiftDepth = (layout: Layout, id: string, delta: 1 | -1): boolean => shiftTarget(layout, id, delta) !== null;
+
+export function shiftDepth(layout: Layout, id: string, delta: 1 | -1): Layout | null {
+  const target = shiftTarget(layout, id, delta);
+  if (!target) return null;
+  return layout.map((p) => (p.id === id ? withDepth(target.item, target.next) : p));
 }
 
 // Un ordinateur se pose sur un bureau qui n'en porte pas déjà un (le sien, en cas de déplacement, ne compte pas).

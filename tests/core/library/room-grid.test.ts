@@ -50,7 +50,12 @@ describe('canPlace', () => {
   });
 
   it('refuse un chevauchement et donne les cases en conflit', () => {
-    const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 7 }];
+    // Les trois niveaux sont pris sous le bureau.
+    const layout: Layout = [
+      { id: 'f1', kind: 'shelf', col: 0, row: 7, depth: 2 },
+      { id: 'f2', kind: 'shelf', col: 0, row: 7 },
+      { id: 'f3', kind: 'shelf', col: 0, row: 7, depth: 3 },
+    ];
     const res = canPlace(layout, 24, 'desk', 3, 11);
     expect(res.ok).toBe(false);
     if (!res.ok) {
