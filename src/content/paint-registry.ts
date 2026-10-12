@@ -1,6 +1,9 @@
 // Registre d'images peintes (commerces G4a, accessoires G5) : chaque clé est peinte UNE fois sur un canvas hors écran
 // puis gardée en data URL ; les peintures sont étalées (`perFrame` par image) et le cache plafonné à `max` images (la
 // moins récemment lue part en premier).
+// Lumière quantifiée au 1/8 de jour : une image par palier, pas une par image d'animation.
+export const quantDay = (daylight: number): number => Math.round(daylight * 8) / 8;
+
 export class PaintRegistry {
   private readonly sprites = new Map<string, string>();
   private readonly queue = new Map<string, { paint: () => string; done: Set<() => void> }>();

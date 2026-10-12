@@ -6,12 +6,26 @@ import type { ShopPaintCtx } from '../shop/ctx';
 // disques modelés, tubes cernés d'encre, halos à bord net, ombres portées, roues, drapeau tricolore. Couleurs : chaînes
 // CSS ; la teinte de nuit est appliquée par le contexte (tintedCtx), jamais ici.
 
-// Orientation du peintre en cours. Un accessoire tourné vers −x est dessiné en miroir géométrique (le peintre change le
-// signe de ses abscisses), jamais par un miroir de l'image cuite : la lumière vient toujours du haut à gauche du monde,
-// donc, à −1, l'ombre passe à GAUCHE du repère local et le rehaut à droite. Remis à 1 par l'hôte après chaque peinture.
+// Orientation du peintre en cours. Un accessoire tourné vers −x est peint dans un canvas retourné par l'hôte (le peintre
+// dessine toujours vers +x), jamais par un miroir de l'image cuite : la lumière vient toujours du haut à gauche du monde,
+// donc, à −1, l'ombre passe à GAUCHE du repère local (= droite du monde) et le rehaut à droite. Remis à 1 par l'hôte.
 let dir: 1 | -1 = 1;
 export function facing(d: 1 | -1): void {
   dir = d;
+}
+
+// Texte ou glyphe redressé : à −1 le canvas est retourné, `fn` est donc re-retourné autour de x = cx (sinon tel quel).
+export function upright(x: ShopPaintCtx, cx: number, fn: () => void): void {
+  if (dir === 1) return fn();
+  x.save();
+  x.translate(cx, 0);
+  x.scale(-1, 1);
+  x.translate(-cx, 0);
+  try {
+    fn();
+  } finally {
+    x.restore();
+  }
 }
 
 // cel() qui respecte `facing` : à 1, exactement cel() ; à −1, ombre sur [x − 1, x + w·(1 − sx)], rehaut sur la droite.

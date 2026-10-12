@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ball, facing, flagArt, RD, tube } from '../../../../../src/core/library/paint/props/kit';
+import { ball, facing, flagArt, RD, tube, upright } from '../../../../../src/core/library/paint/props/kit';
 import { recordingCtx } from '../recording-ctx';
 
 describe('kit cellulo des accessoires', () => {
@@ -31,5 +31,22 @@ describe('kit cellulo des accessoires', () => {
     flagArt(a, { w: 10, h: 7, t: 0, wave: false, phase: 0 });
     flagArt(b, { w: 10, h: 7, t: 3.3, wave: false, phase: 2 });
     expect(a.ops).toEqual(b.ops);
+  });
+  it('upright redresse un texte seulement quand le canvas est retourné', () => {
+    const plain = recordingCtx();
+    upright(plain, 5, () => plain.fillText('A', 5, 0));
+    expect(plain.ops.map((o) => o.op)).toEqual(['fillText']);
+    const flipped = recordingCtx();
+    facing(-1);
+    upright(flipped, 5, () => flipped.fillText('A', 5, 0));
+    facing(1);
+    expect(flipped.ops).toEqual([
+      { op: 'save', args: [] },
+      { op: 'translate', args: [5, 0] },
+      { op: 'scale', args: [-1, 1] },
+      { op: 'translate', args: [-5, 0] },
+      { op: 'fillText', args: [5, 0] },
+      { op: 'restore', args: [] },
+    ]);
   });
 });

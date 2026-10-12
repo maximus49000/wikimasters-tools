@@ -6,7 +6,7 @@ import { FACADE_MARGIN, GROUND_FLOOR_H, facadeGeometry, paintFacade, paintGlass,
 import { paintInterior } from '../../core/library/paint/shop/interiors';
 import { tone } from '../city-sprites';
 import { BLANK_SPRITE } from '../figure/figure-host';
-import { PaintRegistry, paintSurface } from '../paint-registry';
+import { PaintRegistry, paintSurface, quantDay } from '../paint-registry';
 
 // Images peintes des commerces (G4a) : chaque local est peint UNE fois par clé sur un canvas hors écran, en trois couches
 // (fond de la vitrine, premier plan devant le personnel avec la vitre, façade percée à la vitrine), puis gardé en PNG
@@ -19,7 +19,7 @@ export const SHOP_PX = 4;
 export type ShopLayer = 'back' | 'front' | 'facade' | 'furnish' | 'glass';
 export type ShopLook = { type: ShopTypeId | null; name: string; w: number; h: number; doorSide: 'left' | 'right'; state: FacadeState; placard: boolean; day: number; lit: boolean; seed: number };
 
-export const quantDay = (daylight: number): number => Math.round(daylight * 8) / 8;
+export { quantDay };
 
 export function shopKey(l: ShopLook, layer: ShopLayer): string {
   const common = `${layer}|${l.type ?? '-'}|${l.w.toFixed(1)}|${l.h.toFixed(1)}|${l.doorSide}|${l.state}|${l.lit ? 'L' : l.day}|${l.seed}`;
