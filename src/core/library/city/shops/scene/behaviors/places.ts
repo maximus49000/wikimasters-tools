@@ -1,4 +1,4 @@
-import { HALF, PLACE, TIGHT, blockSpan, disjoint, standZones } from '../stage';
+import { HALF, PLACE, TIGHT, blockSpan, disjoint, serveDepth, standZones } from '../stage';
 import { atDepth, depth, idleNow, walkTo, type Act, type Actor, type PartyRt, type World } from '../engine';
 
 // Places des clients (G4b) : qui est dedans, où se tient un groupe, file, places debout libres, employé disponible.
@@ -30,8 +30,8 @@ export function placeTaken(w: World, party: PartyRt, anchorX: number): boolean {
   return w.parties.some((o) => o !== party && o.actors.some((a) => a.active && depth(w, a.x) > lo - HALF + 1e-9 && depth(w, a.x) < hi + HALF - 1e-9));
 }
 export const atPlace = (w: World, party: PartyRt, anchorX: number): boolean => Math.abs(party.actors[0]!.x - blockXs(w, party, anchorX)[0]!) < 0.05;
-// Le client servi se tient une demi-silhouette côté porte du vendeur.
-export const serveX = (w: World, post: number): number => atDepth(w, Math.max(HALF, depth(w, post) - HALF));
+// Le client servi se tient une place côté porte du vendeur (stage.serveDepth : les silhouettes ne se recouvrent pas).
+export const serveX = (w: World, post: number): number => atDepth(w, serveDepth(w.stage, post));
 // Places de file prises par un groupe de `n`.
 const consume = (n: number): number => 1 + Math.ceil(((n - 1) * TIGHT) / PLACE);
 export function queueAnchor(w: World, party: PartyRt): number {

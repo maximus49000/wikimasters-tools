@@ -1,5 +1,5 @@
 import { facadeGeometry } from '../../../paint/shop/facade';
-import { interiorPostOf } from '../../../paint/shop/interiors';
+import { interiorFurnitureOf, interiorPostOf } from '../../../paint/shop/interiors';
 import type { ShopTypeId } from '../catalog';
 import { FIGURE_HALF_UNITS, INSIDE_SCALE } from '../customers';
 import { SHOP_FAMILY } from '../gestures';
@@ -20,6 +20,8 @@ export type Stage = {
   waiting: number[]; // chaises d'attente (fauteuils), côté porte
   back: number; // porte de l'arrière-boutique
   window: number[]; // où l'on regarde la rue
+  floorLine: number; // ligne du sol peint (y depuis le haut de la vitrine)
+  seatH: number; // hauteur d'assise des sièges peints au-dessus du sol (tables, fauteuils)
 };
 
 // Demi-silhouette d'un client dans la vitrine ; une place = deux demi-silhouettes.
@@ -63,8 +65,9 @@ export const blockSpan = (d: number, n: number): Span => {
 };
 export const disjoint = (a: Span, b: Span): boolean => a[1] <= b[0] + 1e-9 || b[1] <= a[0] + 1e-9;
 const depthOf = (st: Pick<Stage, 'w' | 'doorEdge'>, x: number): number => (st.doorEdge === 'left' ? x : st.w - x);
-// Où se tient le client servi : une demi-silhouette côté porte du vendeur.
-export const serveDepth = (st: Pick<Stage, 'w' | 'doorEdge'>, post: number): number => Math.max(HALF, depthOf(st, post) - HALF);
+// Où se tient le client servi : une place côté porte du vendeur (les deux silhouettes se touchent sans se recouvrir : le
+// vendeur reste lisible derrière son comptoir, le client devant).
+export const serveDepth = (st: Pick<Stage, 'w' | 'doorEdge'>, post: number): number => Math.max(HALF, depthOf(st, post) - PLACE);
 // Zones où l'on ne s'arrête pas pour flâner (familles à caisse) : le parti servi au poste principal (groupe de trois au pire)
 // et la file. Les clients qui MARCHENT peuvent les traverser (le rendu dessine le marcheur devant, léger décalage de
 // profondeur) ; seuls les clients immobiles ne se chevauchent jamais.
@@ -81,6 +84,24 @@ export function standZones(st: Pick<Stage, 'w' | 'doorEdge' | 'posts' | 'queue'>
 // Nombre de places de file : comptoir 4, caisse / rayon 2 (on y flâne aussi), vélos 3.
 const QUEUE_MAX: Partial<Record<string, number>> = { counter: 4, till: 2, browse: 2, machine: 3 };
 
+// Mobilier peint de l'intérieur Ghibli, ramené au repère de la vitrine (même décalage que ghibliPostOf) : comptoir,
+// tables, fauteuils, ligne du sol. Les acteurs s'alignent sur ce qui est dessiné, pas sur une grille.
+// La largeur d'enseigne se déduit de la vitrine (porte et montant : shopFrame), pas du cadre : un cadre d'essai à la vitrine
+// élargie garde un intérieur peint à sa taille.
+const SIGN_EXTRA = 7;
+function paintedFurniture(type: ShopTypeId, doorSide: 'left' | 'right', w: number) {
+  const g = facadeGeometry({ type, name: '', w: w + SIGN_EXTRA, doorSide, state: 'open', placard: false, night: false, lit: false });
+  const f = interiorFurnitureOf(type, g.glass.w, g.glass.h);
+  const ox = g.glass.x - g.win.x;
+  const cx = (v: number): number => Math.min(w - HALF, Math.max(HALF, ox + v));
+  return {
+    counter: f.counter ? ([Math.max(0, ox + f.counter[0]), Math.min(w, ox + f.counter[1])] as const) : null,
+    tables: f.tables.map((t) => ({ x: cx(t.x), seat: t.seat })),
+    chairs: f.chairs.map((c) => ({ x: cx(c.x), seat: c.seat })),
+    floorLine: g.glass.y - g.win.y + f.floor,
+  };
+}
+
 export function stageFor(type: ShopTypeId, frame: ShopFrame): Stage {
   const w = frame.window.w;
   const doorEdge: 'left' | 'right' = frame.door.x > frame.window.x ? 'right' : 'left';
@@ -88,6 +109,7 @@ export function stageFor(type: ShopTypeId, frame: ShopFrame): Stage {
   const x = (d: number): number => (doorEdge === 'left' ? d : w - d);
   const family = SHOP_FAMILY[type];
   // La porte du local est du côté opposé à l'entrée des habitants (shopFrame).
+  const painted = paintedFurniture(type, doorEdge === 'right' ? 'left' : 'right', w);
   const post0 = clamp(ghibliPostOf(type, frame.sign.w, doorEdge === 'right' ? 'left' : 'right'), HALF, w - HALF);
   const d0 = doorEdge === 'left' ? post0 : w - post0;
   const s0 = Math.max(HALF, d0 - HALF);
@@ -97,22 +119,37 @@ export function stageFor(type: ShopTypeId, frame: ShopFrame): Stage {
   const queued = family === 'counter' || family === 'till' || family === 'browse' || (family === 'machine' && type !== 'laundry');
   const doorward = range(HALF, S[0] - HALF, PLACE).reverse();
   const deep = range(S[1] + HALF, w - HALF, PLACE);
-  let queueDs = !queued ? [] : (doorward.length >= 2 || doorward.length >= deep.length ? doorward : deep).slice(0, QUEUE_MAX[family] ?? 0);
+  const fromDoor = doorward.length >= 2 || doorward.length >= deep.length;
+  let queueDs = !queued ? [] : (fromDoor ? doorward : deep).slice(0, QUEUE_MAX[family] ?? 0);
 
-  // Postes de renfort (comptoir, bar) vers le fond, assez loin pour que deux partis servis ne se touchent pas, hors de la file.
-  const gap = family === 'counter' ? 3 * PLACE : 2 * PLACE;
+  // Postes de renfort (comptoir, bar) vers le fond, à deux places (deux partis servis côte à côte sans se toucher), hors de
+  // la file : les vitrines réelles (33-45 px) n'ont la place d'un second poste qu'à cet écart.
+  const gap = 2 * PLACE;
   const qZone = (): Span | null => (queueDs.length ? [Math.min(...queueDs) - HALF, Math.max(...queueDs) + HALF] : null);
+  // Un poste de renfort se tient derrière le comptoir peint (s'il y en a un).
+  const onCounter = (d: number): boolean => !painted.counter || (x(d) >= painted.counter[0] - 1e-9 && x(d) <= painted.counter[1] + 1e-9);
   const postDs = [d0, ...(family === 'counter' || family === 'drink' ? [d0 + gap, d0 + 2 * gap] : [])].filter((d, i) => {
     if (i === 0) return true;
     const z = qZone();
-    return d <= w - HALF && (family === 'drink' || !z || disjoint(blockSpan(Math.max(HALF, d - HALF), 3), z));
+    return d <= w - HALF && onCounter(d) && (family === 'drink' || !z || disjoint(blockSpan(Math.max(HALF, d - HALF), 3), z));
   });
+  // Comptoir dont le poste peint est au fond (vitrines larges) : le renfort se met côté porte, la file recule d'autant.
+  if (family === 'counter' && postDs.length === 1 && queueDs.length) {
+    const d2 = d0 - gap;
+    const S2 = blockSpan(Math.max(HALF, d2 - HALF), 3);
+    const doorward2 = range(HALF, S2[0] - HALF, PLACE).reverse();
+    if (d2 - HALF > HALF && doorward2.length >= 1 && fromDoor && onCounter(d2)) {
+      postDs.push(d2);
+      queueDs = doorward2.slice(0, QUEUE_MAX[family] ?? 0);
+    }
+  }
   const posts = postDs.map(x);
   const seated = family === 'table' || family === 'chair';
   const lo = Math.min(...posts);
   const hi = Math.max(...posts);
   const reach = family === 'drink' ? 0.3 * w : PLACE;
-  const counter = seated ? null : { x0: Math.max(0, lo - reach), x1: Math.min(w, hi + reach) };
+  // Comptoir : celui qui est peint (les employés devant lui sont derrière, rognés au plan de travail), sinon autour des postes.
+  const counter = seated ? null : painted.counter ? { x0: painted.counter[0], x1: painted.counter[1] } : { x0: Math.max(0, lo - reach), x1: Math.min(w, hi + reach) };
 
   // Places debout : tabourets le long du bar ; rayons / machines hors des zones de service et de file (une place au moins :
   // la file raccourcit s'il le faut).
@@ -142,18 +179,20 @@ export function stageFor(type: ShopTypeId, frame: ShopFrame): Stage {
     spots = spots.map(x);
   }
   const queue = queueDs.map(x);
+  // Tables : celles qui sont peintes (deux chaises de part et d'autre), sinon une grille selon la largeur.
   const nTables = family === 'table' ? Math.max(1, Math.floor((w - PLACE) / 18)) : 0;
-  const tables = Array.from({ length: nTables }, (_, i) => {
-    const cx = PLACE + ((i + 0.5) * (w - 2 * PLACE)) / nTables;
-    return { x: cx, seats: [clamp(cx - 4.2, HALF, w - HALF), clamp(cx + 4.2, HALF, w - HALF)] as [number, number] };
-  });
+  const tableXs = family !== 'table' ? [] : painted.tables.length ? painted.tables.map((t) => t.x) : Array.from({ length: nTables }, (_, i) => PLACE + ((i + 0.5) * (w - 2 * PLACE)) / nTables);
+  const tables = tableXs.map((cx) => ({ x: cx, seats: [clamp(cx - 3, HALF, w - HALF), clamp(cx + 3, HALF, w - HALF)] as [number, number] }));
+  // Fauteuils : ceux qui sont peints, sinon une grille ; dès deux sièges, celui côté porte sert de chaise d'attente ; sinon
+  // on attend debout, juste passé la porte (spots).
   const nChairs = family === 'chair' ? Math.max(1, Math.floor((w - PLACE) / 14)) : 0;
-  const seats = Array.from({ length: nChairs }, (_, i) => PLACE + HALF + ((i + 0.5) * (w - 2 * PLACE - HALF)) / nChairs);
-  // Dès deux sièges, celui côté porte sert de chaise d'attente ; sinon on attend debout, juste passé la porte (spots).
-  const waiting = nChairs >= 2 ? [x(seats[0]!)] : [];
-  const chairs = (nChairs >= 2 ? seats.slice(1) : seats).map(x);
+  const seats = family !== 'chair' ? [] : painted.chairs.length ? painted.chairs.map((c) => depthOf({ w, doorEdge }, c.x)).sort((a, b) => a - b)
+    : Array.from({ length: nChairs }, (_, i) => PLACE + HALF + ((i + 0.5) * (w - 2 * PLACE - HALF)) / nChairs);
+  const waiting = seats.length >= 2 ? [x(seats[0]!)] : [];
+  const chairs = (seats.length >= 2 ? seats.slice(1) : seats).map(x);
   if (family === 'chair' && waiting.length === 0) spots = [x(HALF)];
   const back = x(w - HALF);
   const window = [x(HALF + PLACE), ...(w >= 80 ? [x(w / 2)] : [])];
-  return { w, doorEdge, counter, posts, queue, spots, tables, chairs, waiting, back, window };
+  const seatH = painted.chairs[0]?.seat ?? painted.tables[0]?.seat ?? 2.6;
+  return { w, doorEdge, counter, posts, queue, spots, tables, chairs, waiting, back, window, floorLine: painted.floorLine, seatH };
 }
