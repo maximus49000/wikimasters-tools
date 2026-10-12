@@ -36,12 +36,16 @@ describe('rue d’un créneau', () => {
     const s = streetFor({ slotStartS: 36000, length: 240, precipAt: (m) => (m >= 602 ? 0.6 : 0), paradeActive: () => false, busArrivalsS: [36100, 50000] });
     expect(s.rainFrom).toBe(120);
     expect(s.paradeFrom).toBeNull();
+    expect(s.paradeTo).toBeNull();
     expect(s.busAt).toEqual([100]);
   });
   it('défilé, pluie faible ignorée, parapluies, bus hors créneau écartés', () => {
     const s = streetFor({ slotStartS: 36000, length: 240, precipAt: () => 0.2, paradeActive: (m) => m >= 601, busArrivalsS: [35999, 36000, 36240], umbrellas: true });
     expect(s.rainFrom).toBeNull();
     expect(s.paradeFrom).toBe(60);
+    expect(s.paradeTo).toBe(239);
+    const p = streetFor({ slotStartS: 36000, length: 240, precipAt: () => 0, paradeActive: (m) => m >= 601 && m < 602, busArrivalsS: [] });
+    expect([p.paradeFrom, p.paradeTo]).toEqual([60, 119]);
     expect(s.busAt).toEqual([0]);
     expect(s.umbrellas).toBe(true);
     expect(streetFor({ slotStartS: 0, length: 240, precipAt: () => 0, paradeActive: () => false, busArrivalsS: [] }).umbrellas).toBe(false);
@@ -68,6 +72,36 @@ describe('réactions à la rue', () => {
     }
     expect(waited).toBeGreaterThan(0);
   });
+  it('averse : jamais pour un parti resté dehors, ni pour qui est entré sous la pluie', () => {
+    const narrow = { ...frame, sign: { ...frame.sign, w: 34 }, window: { ...frame.window, w: 31 } };
+    let turnedAway = 0;
+    let waited = 0;
+    for (const type of ['bakery', 'restaurant', 'hairdresser', 'bar'] as const) for (const fr of [frame, narrow]) for (let i = 0; i < 12; i++) {
+      for (const crew of [staff, [{ ...staff[0]!, present: [0, 70] as [number, number] }]]) {
+        const key = { seed: 9, slotId: slot.id, type, day: 20738, index: i };
+        const parties = castFor({ ...key, gate: 1, capacity: 6, dayMinutesAtStart: 750 });
+        for (const rainFrom of [0, 30, 60]) {
+          const sc = direct({ key, frame: fr, staff: crew, parties, street: { rainFrom, paradeFrom: null, busAt: [] } });
+          for (const tr of sc.tracks) {
+            const rain = tr.segments.filter((s) => s.move === 'wait-rain');
+            if (tr.role === 'customer' && tr.enter === null) {
+              turnedAway++;
+              expect(rain).toEqual([]);
+            }
+            if (rain.length) {
+              waited++;
+              // Entré avant le début de l'averse.
+              expect(tr.enter!).toBeLessThan(rainFrom);
+            }
+          }
+          // Averse déjà là au début du créneau : tout le monde est entré sous la pluie, personne n'attend.
+          if (rainFrom === 0) expect(sc.log.some((l) => l.includes("attend que l'averse passe"))).toBe(false);
+        }
+      }
+    }
+    expect(turnedAway).toBeGreaterThan(0);
+    expect(waited).toBeGreaterThan(0);
+  }, 30_000);
   it('averse avec parapluies : personne n’attend', () => {
     for (let i = 0; i < 30; i++) {
       const sc = run('bakery', i, { rainFrom: 30, paradeFrom: null, busAt: [], umbrellas: true });
@@ -94,6 +128,21 @@ describe('réactions à la rue', () => {
     }
     expect(staffLooked).toBeGreaterThan(0);
     expect(customersLooked).toBeGreaterThan(0);
+  });
+  it('défilé : on réagit tant qu’il dure (paradeTo), pas au-delà', () => {
+    let late = 0;
+    for (const type of ['bookshop', 'bar'] as const) for (let i = 0; i < 20; i++) {
+      for (const paradeTo of [100, 300]) {
+        const sc = run(type, i, { rainFrom: null, paradeFrom: 20, paradeTo, busAt: [] }, wide);
+        sane(sc, SLOT_S(type));
+        for (const { s } of segs(sc, 'look-street')) {
+          expect(s.t0).toBeLessThan(paradeTo + 1 + 1e-6);
+          if (s.t0 > 120) late++;
+        }
+      }
+    }
+    // Au-delà des 60 s du repli : le défilé encore en cours attire toujours les regards.
+    expect(late).toBeGreaterThan(0);
   });
   it('bus : les acteurs libres tournent la tête ~1 s, sans casser les services', () => {
     let turned = 0;

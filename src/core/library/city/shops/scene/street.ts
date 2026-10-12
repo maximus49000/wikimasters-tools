@@ -20,12 +20,18 @@ function firstS(input: StreetInput, test: (minutes: number) => boolean): number 
   for (let s = 0; s < input.length; s++) if (test((input.slotStartS + s) / 60)) return s;
   return null;
 }
+// Dernier instant (s du créneau) où la condition est vraie, null sinon.
+function lastS(input: StreetInput, test: (minutes: number) => boolean): number | null {
+  for (let s = input.length - 1; s >= 0; s--) if (test((input.slotStartS + s) / 60)) return s;
+  return null;
+}
 
 export function streetFor(input: StreetInput): StreetState {
   const { slotStartS: t0, length } = input;
   return {
     rainFrom: firstS(input, (m) => input.precipAt(m) >= RAIN),
     paradeFrom: firstS(input, input.paradeActive),
+    paradeTo: lastS(input, input.paradeActive),
     busAt: input.busArrivalsS.filter((b) => b >= t0 && b < t0 + length).map((b) => b - t0).sort((a, b) => a - b),
     umbrellas: input.umbrellas ?? false,
   };

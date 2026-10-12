@@ -5,14 +5,14 @@ import {
   SPEED, atDepth, cast, gest, idleNow, say, walkTo, yawCounter, yawToDoor,
   type Act, type Actor, type PartyRt, type World,
 } from '../engine';
-import { atPlace, partyIdle, partyWalk, placeTaken } from './places';
+import { atPlace, inside, partyIdle, partyWalk, placeTaken } from './places';
 
 // Réactions à la rue (G4b, spec §3.5), d'après l'état de la rue du créneau (street.ts) : averse (le client qui sortait
 // attend dans l'embrasure que ça passe, sauf s'il a son parapluie), défilé (un employé libre et les clients qui flânent ou
 // séjournent vont regarder à la vitrine), passage du bus (les acteurs libres tournent la tête une seconde). Les klaxons ne
 // sont pas connus au calcul du créneau : le rendu les joue en surcouche (tâche 10). Rue vide : aucun tirage, aucun effet.
 
-// Attente au plus après le début de l'averse (s) ; défilé : temps pendant lequel il attire les regards (s).
+// Attente au plus après le début de l'averse (s) ; défilé sans fin connue : temps pendant lequel il attire les regards (s).
 const RAIN_WAIT = 20;
 const PARADE_S = 60;
 // Tourné vers la rue (comme `look-window`).
@@ -20,18 +20,26 @@ const YAW_STREET = 4;
 
 const watchable = (p: PartyRt): boolean => (p.state === 'browse' || p.state === 'stay') && !p.service;
 const homeYaw = (w: World): number => (w.family === 'drink' ? yawCounter(w) : 12);
+// Fin du défilé (exclue, s du créneau) : dernier instant actif + 1 s, sinon PARADE_S après son début.
+const paradeEnd = (w: World): number => {
+  const { paradeFrom: from, paradeTo: to } = w.street;
+  return to !== null && to !== undefined ? to + 1 : from! + PARADE_S;
+};
 const paradeOn = (w: World): boolean => {
   const from = w.street.paradeFrom;
-  return from !== null && w.t >= from && w.t < Math.min(from + PARADE_S, w.closing);
+  return from !== null && w.t >= from && w.t < Math.min(paradeEnd(w), w.closing);
 };
 // Place de l'employé à la vitrine : la plus profonde (les clients prennent d'abord celle près de la porte).
 const staffWindow = (w: World): number => w.stage.window[w.stage.window.length - 1]!;
 
-// Averse : parti sortant, au complet et libre. Il attend dans l'embrasure (dedans) jusqu'à rainFrom + RAIN_WAIT, jamais
-// au-delà de l'échéance de fermeture. Rend vrai tant qu'il attend.
+// Averse : parti sortant, au complet et libre, entré AVANT le début de l'averse (celui qui est entré sous la pluie le
+// sait). Il attend dans l'embrasure (dedans) jusqu'à rainFrom + RAIN_WAIT, jamais au-delà de l'échéance de fermeture.
+// Un parti resté dehors (renoncé à la porte : jamais entré) n'est pas concerné. Rend vrai tant qu'il attend.
 export function rainHold(w: World, party: PartyRt, a: Actor): boolean {
   const { rainFrom, umbrellas } = w.street;
   if (rainFrom === null || umbrellas || w.t < rainFrom) return false;
+  const entered = party.actors[0]!.track.enter;
+  if (!inside(party) || entered === null || entered > w.t || entered >= rainFrom) return false;
   if (w.t >= Math.min(rainFrom + RAIN_WAIT, w.force)) {
     party.flags.delete('rain-wait');
     return false;
@@ -54,11 +62,11 @@ export function paradeReact(w: World, party: PartyRt, a: Actor): boolean {
   if (!paradeOn(w) || !watchable(party) || party.holding || party.spot === null || party.flags.has('asking') || party.flags.has('parade')) return false;
   if (party.state === 'stay' && w.t >= party.until - 10) return false;
   if (!partyIdle(w, party) || !atPlace(w, party, party.spot)) return false;
-  const staffAt = w.staff.some((s) => s.staff!.watching) ? staffWindow(w) : null;
+  const staffAt = w.staff.some((s) => s.active && s.staff!.watching && !s.staff!.service) ? staffWindow(w) : null;
   const win = w.stage.window.find((x) => !placeTaken(w, party, x) && (staffAt === null || Math.abs(staffAt - x) >= PLACE));
   if (win === undefined) return false;
   party.flags.add('parade');
-  party.watch = Math.min(w.t + 20 + w.rng() * 15, w.street.paradeFrom! + PARADE_S, w.closing);
+  party.watch = Math.min(w.t + 20 + w.rng() * 15, paradeEnd(w), w.closing);
   say(w, `${party.desc} regarde le défilé`);
   cast(partyWalk(w, party, win, YAW_STREET));
   return true;

@@ -227,6 +227,13 @@ describe('véhicules à part', () => {
       w.light.log = [{ t: -1e12, color: 'red' }];
       advance(w, t, e);
       for (const a of w.agents) patience.set(a.id, a.h.patience);
+      // Horloges : seulement des conducteurs présents ; celui de tête de file n'accumule pas d'attente.
+      const alive = new Set(w.agents.map((a) => a.id));
+      for (const id of w.hornClock.keys()) expect(alive.has(id)).toBe(true);
+      for (const track of ['near', 'far'] as const) {
+        const head = w.agents.filter((a) => a.track === track).sort((p, q) => q.s - p.s)[0];
+        if (head) expect(w.hornClock.get(head.id)?.stuck ?? 0).toBe(0);
+      }
       for (const h of w.horns) {
         expect(h.t).toBeGreaterThan(w.t - 10 - 1e-9); // fenêtre glissante de 10 s
         heard.set(`${h.by}@${h.t.toFixed(2)}`, h);

@@ -19,12 +19,17 @@ export function stepHorns(w: TrafficWorld, t: number, dt: number, xOf: (a: Agent
   const u = w.unit;
   for (const track of ['near', 'far'] as const) {
     const list = w.agents.filter((a) => a.track === track).sort((p, q) => q.s - p.s);
+    // En tête de file (personne devant) : il n'attend derrière personne, son attente repart de zéro.
+    const head = list[0] ? w.hornClock.get(list[0].id) : undefined;
+    if (head) head.stuck = 0;
     for (let i = 1; i < list.length; i++) {
       const me = list[i]!;
       if (me.h.patience >= IMPATIENT || me.kind === 'ambulance') continue;
       const lead = list[i - 1]!;
       const clock = w.hornClock.get(me.id) ?? { stuck: 0, last: -Infinity };
-      const stuck = me.passing === null && !me.pulled && !lead.pulled && me.v < STOPPED * u && lead.v < STOPPED * u && lead.s - lead.half - (me.s + me.half) < CLOSE * u;
+      // Un véhicule de devant qui dépasse roule : il n'est pas arrêté.
+      const leadStopped = lead.v < STOPPED * u && lead.passing === null && !lead.pulled;
+      const stuck = me.passing === null && !me.pulled && leadStopped && me.v < STOPPED * u && lead.s - lead.half - (me.s + me.half) < CLOSE * u;
       clock.stuck = stuck ? clock.stuck + dt : 0;
       if (clock.stuck > HORN_WAIT && t - clock.last >= HORN_GAP - 1e-9) {
         clock.last = t;
@@ -33,8 +38,8 @@ export function stepHorns(w: TrafficWorld, t: number, dt: number, xOf: (a: Agent
       w.hornClock.set(me.id, clock);
     }
   }
-  // Conducteurs sortis : on oublie leur horloge.
-  if (w.hornClock.size > w.agents.length) {
+  // Conducteurs sortis : on oublie leur horloge (à chaque pas).
+  if (w.hornClock.size > 0) {
     const alive = new Set(w.agents.map((a) => a.id));
     for (const id of w.hornClock.keys()) if (!alive.has(id)) w.hornClock.delete(id);
   }

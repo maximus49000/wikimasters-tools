@@ -56,6 +56,7 @@ export function startService(w: World, s: Actor, party: PartyRt, kind: Service['
   const at = kind === 'serve' || kind === 'help' ? s.staff!.post : besideX(w, leader.x);
   const svc: Service = { kind, staff: s, party, phase: 0, wait: [s, ...party.actors.filter((a) => a.active)], at, call: false };
   s.staff!.service = svc;
+  s.staff!.watching = false; // il quitte la vitrine (défilé) pour servir
   party.service = svc;
   if (kind === 'serve') w.queue = w.queue.filter((p) => p !== party);
   if (kind === 'serve' || kind === 'order' || kind === 'seat' || kind === 'chair') party.state = 'served';
