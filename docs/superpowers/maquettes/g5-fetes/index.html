@@ -37,6 +37,8 @@ canvas{display:block;border-radius:6px;box-shadow:0 2px 10px #0003;background:#d
 
 <h3>7 · Réveillon : père Noël <span class="tag">traîneau en vol avec traînée · attelage posé sur un toit · hotte</span><span class="anim">animé</span></h3>
 <canvas id="santa"></canvas>
+<h3>7 bis · Tour du père Noël <span class="tag">×4 · 8 orientations · jour puis nuit (lanterne à gauche : révélation, liseré, ombre) · pantin du moteur réel + barbe, moustache, fourrure, ceinture, gants, bottes, pompon</span></h3>
+<canvas id="santa-turn"></canvas>
 <p class="leg">Cinq rennes au galop (cycle à quatre temps : rassemblé, détente, réception des antérieurs, poussée), harnais rouge à grelots dorés, meneur au nez rouge ; traîneau rouge à filets d'or, patins à volute, dossier capitonné, lanterne allumée. Posés sur le toit : l'attelage se resserre, sabots au sol, souffle dans l'air froid. Traînée : étoiles et poussière d'or qui scintillent.</p>
 
 <h3>8 · Installations <span class="tag">nacelle déployée · triporteur · caisses de drapeaux · échelles · déménagement : hayon, meubles, cartons</span></h3>
@@ -58,7 +60,16 @@ canvas{display:block;border-radius:6px;box-shadow:0 2px 10px #0003;background:#d
 <canvas id="cycles"></canvas>
 <p class="leg">Quatre poses clés par cycle (angles dans notes.md) : le portage peut calculer les angles à chaque image (sinus) ou cuire ces quatre poses en sprites et les alterner.</p>
 
+<script src="pantins.js"></script>
 <script>
+// ───────────────────────── Pantins cuits par le moteur réel (pantins.js) ─────────────────────────
+// Repère du sprite : pieds à (0,0), cadre −20..20 × −64..4 (SPRITE_BOX de figure-host.tsx). `anchor(id, nom)` : accroches de bake.ts.
+const PIMG={};const PANTINS_READY=Promise.all(Object.entries(window.PANTINS||{}).map(([id,p])=>new Promise(r=>{const im=new Image();im.onload=im.onerror=()=>r();im.src='data:image/svg+xml;utf8,'+encodeURIComponent(p.svg);PIMG[id]=im})));
+function pantin(ctx,id){const im=PIMG[id];if(!im){console.warn('pantin manquant',id);return}ctx.drawImage(im,-20,-64,40,68)}
+const anchor=(id,a)=>(PANTINS[id]||{anchors:{}}).anchors[a]||[0,-20];
+const handsOf=id=>{const a=PANTINS[id].anchors;return[(a.handR[0]+a.handL[0])/2,(a.handR[1]+a.handL[1])/2]};
+// Phase de marche (0–11) d'après la distance parcourue en unités du pantin (STRIDE = 23, gait.ts).
+const walkPhase=d=>((Math.floor(d/23*12))%12+12)%12;
 // ───────────────────────── Outils (mêmes que devantures.html / cel.ts) ─────────────────────────
 const mulberry32=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
 const hashString=s=>{let h=2166136261;for(let i=0;i<s.length;i++)h=Math.imul(h^s.charCodeAt(i),16777619);return h>>>0};
@@ -451,11 +462,12 @@ function horse(ctx,{t=0,coat='#6B3F22',anim=true,withRider=true}={}){const c=C(c
  R(ctx,-6,-24,10,6,'#1F2A4A',{lw:0.45,sh:0.3,shX:0.7,li:0.15});ctx.strokeStyle='#F4F2EA';ctx.lineWidth=0.5;ctx.strokeRect(-5.4,-23.4,8.8,4.8);
  cel(ctx,()=>{ctx.moveTo(-5,-24);ctx.quadraticCurveTo(-1,-22,3.5,-24.5);ctx.lineTo(3,-25.8);ctx.quadraticCurveTo(-1,-24.2,-4.6,-25.8);ctx.closePath()},'#3A2416',{lw:0.4,box:{x:-5,y:-26,w:9,h:3},sh:0.3,li:0.3});
  L(ctx,-2,-24,-2,-18.5,'#3A2416',0.6);// sangle
- if(withRider){ctx.save();ctx.translate(-1,-24.5);ctx.scale(1,1);rider(ctx,{top:'#1F2A4A'});headgear(ctx,'crested',{cap:STEEL,capTop:RED},-15);ctx.restore()}
+ if(withRider){const id=withRider===2?'horseman|2':'horseman',st=anchor(id,'seat');ctx.save();ctx.translate(-1-st[0],-24.5-st[1]);pantin(ctx,id);pantinHat(ctx,id,'crested',{cap:STEEL,capTop:RED});ctx.restore()}
 }
 // Drapeau tricolore de parade (Tricolore : hampe à x = 0, tissu vers −x, haut à `top`, w × h). Vague.
 function tricolore(ctx,{top=-50,w=12,h=8,t=0,phase=0}={}){tube(ctx,0,-14,0,top-2,0.9,POLE,{lw:0.35});ball(ctx,0,top-2.6,0.9,BRASS,0.3);ctx.save();ctx.translate(0,top);ctx.scale(-1,1);flagArt(ctx,{w,h,t,wave:true,phase});ctx.restore()}
 // Coiffes (Headgear : repère du marcheur, tête centrée à −33, r 4,4 ; sommet du crâne ≈ −37). `dy` décale (cavalier).
+function pantinHat(ctx,id,kind,d={}){const h=anchor(id,'head');ctx.save();ctx.translate(h[0],h[1]+33);headgear(ctx,kind,d,0);ctx.restore()}
 function headgear(ctx,kind,d={},dy=0){ctx.save();ctx.translate(0,dy);const cap=d.cap||'#1F2A4A',capTop=d.capTop||cap;
  switch(kind){
  case 'kepi':P(ctx,[[-4.2,-36],[-3.8,-42.5],[3.8,-42.5],[4.2,-36]],cap,{lw:0.45,sh:0.3,shX:0.62,li:0.2});R(ctx,-3.8,-43.4,7.6,1.4,capTop,{lw:0.4,sh:0.3,shX:0.62,li:0.25});RR(ctx,1.8,-36.6,4.4,1.3,0.5,BLACK,{lw:0.3,sh:0,li:0.25});L(ctx,-3.2,-39.2,3.2,-39.2,BRASS,0.5);break;
@@ -468,7 +480,7 @@ function headgear(ctx,kind,d={},dy=0){ctx.save();ctx.translate(0,dy);const cap=d
  case 'plume':P(ctx,[[-4.2,-36],[-3.8,-42.5],[3.8,-42.5],[4.2,-36]],cap,{lw:0.45,sh:0.3,shX:0.62,li:0.2});RR(ctx,1.8,-36.6,4.4,1.3,0.5,BLACK,{lw:0.3,sh:0,li:0.25});cel(ctx,()=>{ctx.moveTo(0,-42);ctx.quadraticCurveTo(-2.6,-48,0,-54);ctx.quadraticCurveTo(2.6,-48,0,-42)},RED,{lw:0.35,box:{x:-2.6,y:-54,w:5.2,h:12},sh:0.25,li:0});cel(ctx,()=>{ctx.moveTo(0,-46);ctx.quadraticCurveTo(-1.4,-49,0,-52);ctx.quadraticCurveTo(1.4,-49,0,-46)},WHITE,{lw:0.25,sh:0,li:0});break;}
  ctx.restore()}
 // Instruments de fanfare (InstrumentArt : repère du marcheur ; bras depuis (0, −26)) ; `t` : battement (s).
-function instrument(ctx,kind,{tunic='#1F2A4A',t=0,anim=true}={}){const brass=BRASS;const arm=(x2,y2)=>{tube(ctx,0,-26,x2,y2,2.4,tunic,{lw:0.4})};
+function instrument(ctx,kind,{tunic='#1F2A4A',t=0,anim=true,arm:withArm=true}={}){const brass=BRASS;const arm=(x2,y2)=>{if(withArm)tube(ctx,0,-26,x2,y2,2.4,tunic,{lw:0.4})};
  switch(kind){
  case 'tuba':arm(5,-22);ctx.beginPath();ctx.ellipse(4,-22,3.4,6.5,0,0,TAU);ctx.strokeStyle=INK;ctx.lineWidth=2.6;ctx.stroke();ctx.strokeStyle=brass;ctx.lineWidth=1.8;ctx.stroke();ctx.strokeStyle='rgba(255,250,220,0.6)';ctx.lineWidth=0.4;ctx.beginPath();ctx.ellipse(3.4,-22.6,3,6,0,Math.PI*1.1,Math.PI*1.7);ctx.stroke();
   P(ctx,[[3,-28],[-2,-44],[8,-44],[5,-28]],brass,{lw:0.45,sh:0.3,shX:0.6,li:0.3,liW:0.3});E(ctx,3,-44,5,1.3,'#8A6A1E',{lw:0.4,sh:0.2,li:0.3});E(ctx,3,-44.3,3.6,0.7,light(C(brass),0.2),{lw:0,sh:0,li:0});break;
@@ -481,7 +493,7 @@ function instrument(ctx,kind,{tunic='#1F2A4A',t=0,anim=true}={}){const brass=BRA
   P(ctx,[[8,-28],[13,-28],[13,-24],[10.5,-25.4],[8,-24]],RED,{lw:0.35,sh:0.25,shX:0.6,li:0.2});ctx.fillStyle=BRASS;ctx.fillRect(9.5,-27.2,2,0.8);break;
  case 'baton':{const a=anim?7.5-17.5*Math.cos(TAU*t/2):-10;ctx.save();ctx.translate(0,-26);ctx.rotate(a*Math.PI/180);ctx.translate(0,26);arm(4,-36);tube(ctx,4,-36,9,-52,1,BLACK,{lw:0.3});ball(ctx,9.3,-53,1.8,brass,0.35);for(let k=0;k<4;k++)L(ctx,4.8+k*1.2,-38.6-k*3.8,5.6+k*1.2,-38.8-k*3.8,BRASS,0.5);ctx.restore();break}}}
 // Fusil à l'épaule (Rifle : canon de (4, −19) à (−5, −46), crosse à la hanche, bras).
-function rifle(ctx,tunic='#1F2A4A'){tube(ctx,4,-19,-5,-46,1.4,'#2E2A24',{lw:0.4});tube(ctx,0.6,-29,-4.2,-44,0.7,'#8A9098',{lw:0.25});P(ctx,[[2.6,-21],[5.4,-17],[7,-19],[4.4,-22]],'#5A3E26',{lw:0.4,sh:0.3,li:0.2});tube(ctx,0,-26,4.4,-20,2.4,tunic,{lw:0.4})}
+function rifle(ctx,tunic='#1F2A4A',withArm=true){tube(ctx,4,-19,-5,-46,1.4,'#2E2A24',{lw:0.4});tube(ctx,0.6,-29,-4.2,-44,0.7,'#8A9098',{lw:0.25});P(ctx,[[2.6,-21],[5.4,-17],[7,-19],[4.4,-22]],'#5A3E26',{lw:0.4,sh:0.3,li:0.2});if(withArm)tube(ctx,0,-26,4.4,-20,2.4,tunic,{lw:0.4})}
 // Accessoires des spectateurs (parade-crowd : bras levé de (4, −26) à (7,2, −37), main à (7,4, −38) ; drapeau hampe de −37 à −49, tissu 7,2 × 5 ; téléphone).
 function crowdProp(ctx,kind,{top='#4A7AB8',skin='#F2C9A2',t=0,phase=0}={}){const a=kind==='phone'?0:12*Math.sin(TAU*t/(1.1+phase*0.8)+phase*TAU);ctx.save();ctx.translate(4,-26);ctx.rotate(a*Math.PI/180);ctx.translate(-4,26);
  tube(ctx,4,-26,7.2,-37,2.4,top,{lw:0.4});disc(ctx,7.4,-38,kind==='wave'?1.7:1.3,skin,0.3);
@@ -683,7 +695,7 @@ function deliveryBike(ctx,{box='#2A9DAA',rider=true}={}){wheel(ctx,-7,-5,5);whee
  RR(ctx,-5.5,-13.6,4,1.2,0.5,'#2A2D34',{lw:0.3,sh:0.2,li:0.2});tube(ctx,2,-15,5,-16,1.1,'#2A2D34',{lw:0.35});
  // porte-bagages et caisse isotherme
  tube(ctx,-13,-23,-1,-23,0.9,fr,{lw:0.35});tube(ctx,-9,-23,-7,-5,0.8,fr,{lw:0.3});RR(ctx,-13,-34,12,11,1,box,{lw:0.5,sh:0.3,shX:0.68,li:0.25,liW:0.2});ctx.strokeStyle='rgba(255,255,255,0.6)';ctx.lineWidth=0.4;ctx.strokeRect(-11.5,-32.5,9,8);disc(ctx,-7,-28.5,2,'#FFFFFF',0.3);ctx.fillStyle=rgba(C(box));ctx.font='bold 2.6px sans-serif';ctx.textAlign='center';ctx.fillText('W',-7,-27.5);
- if(rider){ctx.save();ctx.translate(-2.5,-13.5);ctx.scale(0.62,0.62);figure(ctx,{top:box,bottom:'#2A2F3A'},{arms:'hold'});ctx.restore()}}
+ if(rider){const id='crew|pedal',st=anchor(id,'seat'),k=0.62;ctx.save();ctx.translate(-4-st[0]*k,-16-st[1]*k);ctx.scale(k,k);pantin(ctx,id);ctx.restore()}}
 // Chien du promeneur (data-dog : translate(26, 0) depuis le passant ; corps −8..6 × −11..−5, tête r 3,5 à (7, −11), queue (−8,−10)→(−12,−14), pattes 2 × 5 à x = −6 et 3, ±15° sur 0,5 s ; collier à (−4, −9)).
 // Races tirées de la graine : proportions, oreilles, queue, museau, robe. Marche à quatre temps (cycle 0,5 s), tête qui hoche, queue qui bat.
 const BREEDS=[
@@ -836,6 +848,7 @@ function actorRim(ctx,a,lamp){const d=a.x-lamp.lx,dist=Math.hypot(d,a.y-a.h/2-la
  const px=bx*tf.a+tf.e,py=by*tf.d+tf.f,pw=bw*tf.a,ph=bh*tf.d;ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.7;ctx.drawImage(rimBuf,px,py,pw,ph,px,py,pw,ph);ctx.restore()}
 function relightActors(ctx,actors,lamps){for(const a of actors){let best=null,bd=1e9;for(const l of lamps){const dd=Math.abs(a.x-l.lx);if(dd<bd){bd=dd;best=l}}if(!best)continue;actorShadow(ctx,a,best)}for(const a of actors){let best=null,bd=1e9;for(const l of lamps){const dd=Math.abs(a.x-l.lx);if(dd<bd){bd=dd;best=l}}if(best)actorRim(ctx,a,best)}}
 
+PANTINS_READY.then(()=>{
 // La rue : lampadaires (tous les ~170), feu à bouton + passage, arrêt de bus, terrasse, chien promené, grue au loin, montgolfière et avion.
 const LAMP_XS=[62,232,402,572,742,912,1082],KL=0.85,KP=0.55,LIGHT_X=640;street.cache=new Map();street.light=new Map();
 function street(ctx,{night=false,t=0,x0=0,s=1,flags=false,rain=false}={}){const{W,H,G,CURB,FAR}=ST;ctx.save();ctx.scale(s,s);ctx.translate(-x0,0);
@@ -859,16 +872,16 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false,rain=false}={}){const{
  actor(790,FAR,14,40,c=>{c.save();c.translate(790,FAR);busStop(c,{name:'Gare SNCF',served:'near'});c.restore()});
  // terrasse devant le café (2e local) : guéridon + deux chaises + parasol, à l'échelle du passant
  const cafe=items.filter(i=>i.k==='shop')[1];if(cafe){for(const tx of[cafe.x+10,cafe.x+26])actor(tx,G+14,16,28,c=>{c.save();c.translate(tx,G+14);c.scale(KP,KP);parasol(c,tx===cafe.x+10?'#E8604A':'#2E8B6A');chair(c,-1);table(c);chair(c,1);c.restore()});
-  actor(cafe.x+18,G+14.5,6,19,c=>{c.save();c.translate(cafe.x+18,G+14.5);c.scale(KP,KP);figure(c,{top:'#2A2A30',bottom:'#2A2A30'},{arms:'hold'});apron(c);c.save();c.translate(8.6,-21);accessory(c,'tray');c.restore();c.restore()})}
+  actor(cafe.x+18,G+14.5,6,19,c=>{c.save();c.translate(cafe.x+18,G+14.5);c.scale(KP,KP);pantin(c,'waiter|plates');const h=handsOf('waiter|plates');c.translate(h[0],h[1]);c.scale(1.4,1.4);accessory(c,'tray');c.restore()})}
  // cordon devant Le Palace (10e local)
  const club=items.filter(i=>i.k==='shop')[9];if(club){cordon(ctx,club.x+club.w-14,club.x+club.w-4,G+10,KP)}
  // passants-repères et promeneur avec chien (événement du trottoir, échelle du passant)
  const walkers=[[120,'#4A7AB8'],[300,'#C0463A'],[560,'#2E8B6A'],[700,'#E0A21E'],[980,'#8A5AB8']];
- for(const[x,col]of walkers)actor(x,G+14,6,19,c=>{c.save();c.translate(x,G+14);c.scale(KP,KP);figure(c,{top:col});c.restore()});
- const wx=520+(t*9)%40-20;actor(wx,G+14,6,19,c=>{c.save();c.translate(wx,G+14);c.scale(KP,KP);figure(c,{top:'#8A5A2B',bottom:'#3A3A4A'},{arms:'hold'});c.restore()});
- actor(wx+26*KP+1,G+14,9,8,c=>{c.save();c.translate(wx,G+14);c.scale(KP,KP);c.save();c.translate(26,0);dog(c,{breed:'labrador',seed:3,t,leashTo:[-26+8.6,-20.6]});c.restore();c.restore()});
+ walkers.forEach(([x0],i)=>{const dir=i%2?-1:1,x=(((x0+dir*t*7)%(W+40))+(W+40))%(W+40)-20,ph=walkPhase((x0+t*7)/KP);actor(x,G+14,6,19,c=>{c.save();c.translate(x,G+14);c.scale(KP,KP);pantin(c,`walker${i}|${ph}`);c.restore()})});
+ const wx=520+(t*9)%40-20,dwId=`dogwalker|${walkPhase(t*9/KP)}`,dwH=anchor(dwId,'handR');actor(wx,G+14,6,19,c=>{c.save();c.translate(wx,G+14);c.scale(KP,KP);pantin(c,dwId);c.restore()});
+ actor(wx+26*KP+1,G+14,9,8,c=>{c.save();c.translate(wx,G+14);c.scale(KP,KP);c.save();c.translate(26,0);dog(c,{breed:'labrador',seed:3,t,leashTo:[dwH[0]-26,dwH[1]]});c.restore();c.restore()});
  // ouvrier sur une échelle qui change l'enseigne du 5e local
- const rec=items.filter(i=>i.k==='shop')[4];if(rec){actor(rec.x+8,G,6,32,c=>{c.save();c.translate(rec.x+8,G);ladder(c,30);c.translate(0,-14);c.scale(KP,KP);figure(c,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'up'});c.restore()});actor(rec.x+rec.w/2+6,G,12,19,c=>{c.save();c.translate(rec.x+rec.w/2+6,G);c.scale(KP,KP);figure(c,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'carry'});c.translate(0,-23.5);carriedSign(c,rec.w/KP*0.6,'#1C6FB8','#FFE45C','Proxi Marché');c.restore()})}
+ const rec=items.filter(i=>i.k==='shop')[4];if(rec){actor(rec.x+8,G,6,32,c=>{c.save();c.translate(rec.x+8,G);ladder(c,30);c.translate(0,-14);c.scale(KP,KP);pantin(c,'crew|climb');c.restore()});actor(rec.x+rec.w/2+6,G,12,19,c=>{c.save();c.translate(rec.x+rec.w/2+6,G);c.scale(KP,KP);pantin(c,'crew|carry|0');const h=handsOf('crew|carry|0');c.translate(h[0],h[1]+2);carriedSign(c,rec.w/KP*0.6,'#1C6FB8','#FFE45C','Proxi Marché');c.restore()})}
  if(night){
   const day=snapshot(ctx);const lamps=LAMP_XS.map(x=>({x,lx:x+9*KL,ly:CURB-77*KL}));const lkey=`${x0}|${tf.a}`;let mk=street.light.get(lkey);
   if(!mk){mk=makeMask(ctx,m=>{for(const it of bg.lit){if(it.k==='win')windowMask(m,it.x,it.y,5,8);else shopMask(m,it.x+2,G-20,it.w-4,19,G)}for(const l of lamps)lampMask(m,l.x,CURB,KL)});street.light.set(lkey,mk)}
@@ -902,30 +915,30 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false,rain=false}={}){const{
  cell(108,0,36,100,'feu + bouton · vert',false,p=>{ctx.translate(-6,0);trafficPole(ctx,{color:'green',pressed:true,pass:p});ctx.translate(14,0);busStop(ctx,{name:'Mairie',served:'far'})});
  cell(144,0,36,100,'feu rouge · nuit',true,p=>{ctx.translate(-6,0);trafficPole(ctx,{color:'red',pressed:false,pass:p});ctx.translate(14,0);busStop(ctx,{name:'Gare SNCF',served:'near'})});
  cell(180,0,36,100,'passage · cordon',false,p=>{ctx.save();ctx.translate(0,-56);ctx.scale(0.9,0.9);crosswalk(ctx,0,0,40,1);ctx.restore();cordon(ctx,-10,10,0,1)});
- cell(0,100,54,80,'terrasse',false,p=>{ctx.translate(0,0);parasol(ctx,'#E8604A');chair(ctx,-1);table(ctx);chair(ctx,1);ctx.translate(-20,0);figure(ctx,{top:'#2A2A30',bottom:'#2A2A30'},{arms:'hold'});apron(ctx);ctx.save();ctx.translate(8.6,-21);accessory(ctx,'tray');ctx.restore()});
- cell(54,100,54,80,'enseigne et écriteau portés',false,p=>{ctx.translate(-14,0);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.save();ctx.translate(0,-23.5);carriedSign(ctx,26,'#1C6FB8','#FFE45C','Proxi Marché');ctx.restore();ctx.translate(28,0);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(0,-23.5);carriedPlacard(ctx,16)});
- cell(108,100,36,80,'échelle',false,p=>{ladder(ctx,40);ctx.translate(0,-17);figure(ctx,{top:'#F28C28'},{arms:'up'})});
+ cell(0,100,54,80,'terrasse',false,p=>{ctx.translate(0,0);parasol(ctx,'#E8604A');chair(ctx,-1);table(ctx);chair(ctx,1);ctx.translate(-20,0);pantin(ctx,'waiter|plates');const h=handsOf('waiter|plates');ctx.translate(h[0],h[1]);ctx.scale(1.4,1.4);accessory(ctx,'tray')});
+ cell(54,100,54,80,'enseigne et écriteau portés',false,p=>{ctx.translate(-14,0);pantin(ctx,'crew|carry|0');let h=handsOf('crew|carry|0');ctx.save();ctx.translate(h[0],h[1]+2);carriedSign(ctx,26,'#1C6FB8','#FFE45C','Proxi Marché');ctx.restore();ctx.translate(28,0);pantin(ctx,'crew|carry|8');h=handsOf('crew|carry|8');ctx.translate(h[0],h[1]+6);carriedPlacard(ctx,16)});
+ cell(108,100,36,80,'échelle',false,p=>{ladder(ctx,40);ctx.translate(0,-17);pantin(ctx,'crew|climb')});
  cell(144,100,72,80,'accessoires tenus',false,p=>{ctx.translate(-32,-62);ACCESSORIES.forEach((id,i)=>{ctx.save();ctx.translate((i%8)*8+4,Math.floor(i/8)*12+4);accessory(ctx,id);ctx.restore();text(ctx,id,(i%8)*8+4,Math.floor(i/8)*12+9.5,1.5,'#5A4A30')})});
 }
 
 // ───────────────────────── 5. Fête de la musique ─────────────────────────
 function musicScene(ctx,{night=false,t=0}={}){const W=432,H=120,G=100,kp=0.55;
  ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,0,W,H);R(ctx,0,0,W,G-24,'#F2DDB4',{lw:0.3,sh:0,li:0});R(ctx,0,G-24,W,24,'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.fillStyle='#8A8494';ctx.fillRect(0,G,W,H-G);
- const actors=[];const fig=(x,y,o,a,k=kp,extra)=>{const d=c=>{c.save();c.translate(x,y);c.scale(k,k);figure(c,o,{arms:a});if(extra)extra(c);c.restore()};actors.push({x,y,w:6*k/0.55,h:33*k,draw:d});d(ctx)};
+ const actors=[];const fig=(x,y,id,k=kp,extra)=>{const d=c=>{c.save();c.translate(x,y);c.scale(k,k);pantin(c,id);if(extra)extra(c,id);c.restore()};actors.push({x,y,w:6*k/0.55,h:33*k,draw:d,id});d(ctx)};
  const lamp1=40;ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:night});ctx.restore();
  // scène (base = curb − 1) ; musiciens-repères sur le plancher (STAGE_STAND = −9,5), échelle 0,55 × 0,8 = 0,44
  ctx.save();ctx.translate(130,G-1);stageFrame(ctx);stageFloor(ctx);
-  [[-24,'guitar','#C0463A'],[0,'mic','#E0A21E'],[24,'drum','#2E8B6A']].forEach(([x,k,c])=>{ctx.save();ctx.translate(x,-9.5);ctx.scale(0.44,0.44);figure(ctx,{top:c},{arms:k==='mic'?'hold':'swing'});stageProp(ctx,k);ctx.restore()});
+  [[-24,'guitar'],[0,'mic'],[24,'drum']].forEach(([x,k])=>{ctx.save();ctx.translate(x,-9.5);ctx.scale(0.44,0.44);if(k!=='guitar')stageProp(ctx,k);pantin(ctx,`mus|${k}`);if(k==='guitar'){const h=anchor('mus|guitar','handR');ctx.save();ctx.translate(h[0]-3,h[1]+15);stageProp(ctx,'guitar');ctx.restore()}ctx.restore()});
   stageSpots(ctx,{lit:night});ctx.restore();
  // barrières devant la scène (y = curb + 4, échelle 0,85 × 1,5)
  for(const x of[70,100,160,190]){ctx.save();ctx.translate(x,G+4);ctx.scale(1.275,1.275);barrier(ctx);ctx.restore()}
  // stand de bière sur la chaussée (base = curb + 18) : serveur derrière, client avec gobelet
- ctx.save();ctx.translate(300,G+18);standAwning(ctx);fig(-8,-12,{top:'#F4F1E8'},'hold');standCounter(ctx,1);fig(36,0,{top:'#4A7AB8'},'hold',kp,c=>{c.translate(8.6,-21);beerCup(c,0,2)});ctx.restore();
+ ctx.save();ctx.translate(300,G+18);standAwning(ctx);fig(-8,-12,'server|hold');standCounter(ctx,1);fig(36,0,'client|hold',kp,(c,id)=>{const h=anchor(id,'handR');c.translate(h[0],h[1]);beerCup(c,0,2)});ctx.restore();
  // équipe : comptoir porté à deux (mains à −23,5 × 0,55 = −13), tronçon de treillis, projecteur, toile roulée
- ctx.save();ctx.translate(395,G+10);fig(-30,0,{top:'#F28C28'},'carry');fig(30,0,{top:'#F28C28'},'carry');ctx.translate(0,-13);carriedCounter(ctx);ctx.restore();
- fig(236,G-2,{top:'#F28C28'},'carry',kp,c=>{c.translate(9,-23.5);heldTruss(c)});fig(254,G-2,{top:'#F28C28'},'carry',kp,c=>{c.translate(9,-23.5);heldSpot(c)});fig(20,G+16,{top:'#F28C28'},'carry',kp,c=>{c.translate(9,-23.5);heldRoll(c)});
+ ctx.save();ctx.translate(395,G+10);fig(-30,0,'crew|carry|0');fig(30,0,'crew|carry|8');ctx.translate(0,-13);carriedCounter(ctx);ctx.restore();
+ const held=f=>(c,id)=>{const h=anchor(id,'handR');c.translate(h[0],h[1]);f(c)};fig(236,G-2,'crew|hold|0',kp,held(heldTruss));fig(254,G-2,'crew|hold|8',kp,held(heldSpot));fig(20,G+16,'crew|hold|0',kp,held(heldRoll));
  // spectateurs
- [[80,'#4A7AB8'],[112,'#C0463A'],[150,'#E0A21E'],[176,'#8A5AB8']].forEach(([x,c],i)=>fig(x,G+12,{top:c},i%2?'up':'swing'));
+ [80,112,150,176].forEach((x,i)=>fig(x,G+12,`fan${i}|back`));
  if(night){const day=snapshot(ctx);const mk=makeMask(ctx,m=>{lampMask(m,lamp1,G,0.85);m.fillStyle='rgba(255,255,255,0.55)';m.fillRect(300-31,G+18-36,62,54)});nightFilter(ctx,W,H);revealLit(ctx,day,mk);lampBloom(ctx,lamp1,G,0.85);ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:'lit'});ctx.restore();relightActors(ctx,actors,[{x:lamp1,lx:lamp1+9*0.85,ly:G-77*0.85}]);
   ctx.save();ctx.translate(130,G-1);stageBeams(ctx,t);stageSpots(ctx,{lit:true,pass:'lit'});ctx.restore();
   // guirlande du stand
@@ -941,16 +954,16 @@ function bastilleScene(ctx,t=0){const W=432,H=96,G=74;
  for(const x of[20,160]){ctx.save();ctx.translate(x,G);ctx.scale(0.85,0.85);lamp(ctx,{flag:true,flagT:t+x});ctx.restore()}
  for(const x of[90,116]){ctx.save();ctx.translate(x,G+4);ctx.scale(1.275,1.275);barrier(ctx);ctx.restore()}
  // spectateurs derrière les barrières
- [[84,'flag'],[96,'wave'],[122,'phone'],[134,'flag']].forEach(([x,k],i)=>{ctx.save();ctx.translate(x,G+2);ctx.scale(0.55,0.55);const o={top:['#4A7AB8','#C0463A','#E0A21E','#8A5AB8'][i]};figure(ctx,o);crowdProp(ctx,k,{top:o.top,t,phase:i*0.3});ctx.restore()});
+ [[84,'flag',0],[96,'wave',4],[122,'phone',3],[134,'flag',1]].forEach(([x,k,f],i)=>{const id=`fan${f}|front`,h=anchor(id,'handR');ctx.save();ctx.translate(x,G+2);ctx.scale(0.55,0.55);pantin(ctx,id);if(k==='flag'){tube(ctx,h[0],h[1]+2,h[0],h[1]-10,0.8,POLE,{lw:0.3});ctx.save();ctx.translate(h[0],h[1]-10);flagArt(ctx,{w:7.2,h:5,t,wave:true,phase:i});ctx.restore()}ctx.restore()});
  // cortège sur la chaussée (échelle FIG 0,7, repère des véhicules), de droite à gauche : cavaliers, porte-drapeaux, fanfare, section à fusils
  ctx.save();ctx.translate(0,G+16);ctx.scale(0.7,0.7);
-  const col=['#6B3F22','#3A2416'];[400,445].forEach((x,i)=>{ctx.save();ctx.translate(x+(i?3:0),0);horse(ctx,{t:t+i*0.3,coat:col[i]});ctx.restore()});
-  [330,355].forEach((x,i)=>{ctx.save();ctx.translate(x,0);figure(ctx,{top:'#1F2A4A',bottom:'#F4F2EA'},{arms:'hold',hat:c=>headgear(c,'kepi',{cap:'#1F2A4A',capTop:RED})});tricolore(ctx,{top:-50,w:12,h:8,t,phase:i});ctx.restore()});
-  const band=[['baton','plume'],['tuba','kepi'],['trumpet','kepi'],['bass-drum','shako'],['snare','shako'],['bugle','bachi']];band.forEach(([k,h],i)=>{ctx.save();ctx.translate(190+i*22,0);figure(ctx,{top:'#1F2A4A',bottom:'#1F2A4A'},{arms:'none',hat:c=>headgear(c,h,{cap:h==='bachi'?WHITE:'#1F2A4A',capTop:RED})});instrument(ctx,k,{t});ctx.restore()});
-  [['crested',STEEL],['bicorne','#1E1A18'],['beret','#1F2A4A'],['calot','#1F2A4A']].forEach(([h,c],i)=>{ctx.save();ctx.translate(60+i*22,0);figure(ctx,{top:'#2E4A2A',bottom:'#2E4A2A'},{arms:'none',hat:x=>headgear(x,h,{cap:c,capTop:RED})});rifle(ctx,'#2E4A2A');ctx.restore()});
+  const dist=t*11.5,ph=walkPhase(dist);const col=['#6B3F22','#3A2416'];[400,445].forEach((x,i)=>{ctx.save();ctx.translate(x+(i?3:0),0);horse(ctx,{t:t+i*0.3,coat:col[i],withRider:i?2:1});ctx.restore()});
+  [330,355].forEach((x,i)=>{const id=`band|flag|${(ph+i*6)%12}`,h=anchor(id,'handR');ctx.save();ctx.translate(x,0);pantin(ctx,id);pantinHat(ctx,id,'kepi',{cap:'#1F2A4A',capTop:RED});ctx.translate(h[0],0);tricolore(ctx,{top:-50,w:12,h:8,t,phase:i});ctx.restore()});
+  const band=[['baton','plume','up'],['tuba','kepi','horn'],['trumpet','kepi','horn'],['bass-drum','shako','drum'],['snare','shako','drum'],['bugle','bachi','horn']];band.forEach(([k,h,a],i)=>{const id=`band|${a}|${(ph+i*2)%12}`;ctx.save();ctx.translate(190+i*22,0);instrument(ctx,k,{t,arm:false});pantin(ctx,id);pantinHat(ctx,id,h,{cap:h==='bachi'?WHITE:'#1F2A4A',capTop:RED});ctx.restore()});
+  [['crested',STEEL],['bicorne','#1E1A18'],['beret','#1F2A4A'],['calot','#1F2A4A']].forEach(([h,c],i)=>{const id=`band|rifle|${(ph+i*3)%12}`;ctx.save();ctx.translate(60+i*22,0);rifle(ctx,'#2E4A2A',false);pantin(ctx,id);pantinHat(ctx,id,h,{cap:c,capTop:RED});ctx.restore()});
  ctx.restore();
  // planche des coiffes en haut à droite (×1)
- ctx.save();ctx.translate(250,52);['kepi','beret','shako','bachi','plume','bicorne','crested','calot'].forEach((h,i)=>{ctx.save();ctx.translate(i*22,0);figure(ctx,{top:'#1F2A4A'},{hat:c=>headgear(c,h,{cap:h==='bachi'?WHITE:h==='crested'?STEEL:'#1F2A4A',capTop:RED})});text(ctx,h,0,3.5,2.6,'#5A4A30');ctx.restore()});ctx.restore();}
+ ctx.save();ctx.translate(250,52);['kepi','beret','shako','bachi','plume','bicorne','crested','calot'].forEach((h,i)=>{ctx.save();ctx.translate(i*22,0);pantin(ctx,'navy|stand|4');pantinHat(ctx,'navy|stand|4',h,{cap:h==='bachi'?WHITE:h==='crested'?STEEL:'#1F2A4A',capTop:RED});text(ctx,h,0,3.5,2.6,'#5A4A30');ctx.restore()});ctx.restore();}
 anim('bastille',432,96,2.5,(ctx,t)=>bastilleScene(ctx,t));
 
 // ───────────────────────── 7. Réveillon ─────────────────────────
@@ -959,20 +972,36 @@ function santaScene(ctx,t=0){const W=360,H=90;
  // toits : pignons de tuiles, cheminées
  const roofs=[[0,70,60,52],[60,74,50,58],[110,72,70,50],[180,70,60,54],[240,74,70,46],[310,72,60,56]];
  for(const[x,gy,w,ty]of roofs){R(ctx,x,ty+8,w,gy-ty-8,'#E6BCD0',{lw:0.5,sh:0.25,shX:0.75,li:0.1});P(ctx,[[x-1,ty+8],[x+w/2,ty-4],[x+w+1,ty+8]],'#B4523A',{lw:0.5,sh:0.3,shX:0.55,li:0.2});ctx.fillStyle='rgba(255,255,255,0.9)';ctx.beginPath();ctx.moveTo(x-1,ty+8);ctx.lineTo(x+w/2,ty-4);ctx.lineTo(x+w+1,ty+8);ctx.lineTo(x+w-1,ty+9.5);ctx.lineTo(x+w/2,ty-2.2);ctx.lineTo(x+1,ty+9.5);ctx.fill();R(ctx,x+w*0.7,ty-1,4,8,'#8A5A3A',{lw:0.4,sh:0.3,li:0.2})}
- // en vol
+ // en vol : pantin assis à bord, rênes en main
  ctx.save();ctx.translate(120,28+Math.sin(t*1.3)*1.5);santa(ctx,{landed:false,lit:true,t});ctx.restore();
- // posé sur le toit du 5e (faîte à ty − 4 = 42 ; patins au faîte)
+ // posé sur le toit du 5e (patins au faîte) ; le père Noël marche sur le toit vers la cheminée, la hotte à deux mains (SANTA_K = 0,7)
  ctx.save();ctx.translate(290,44);santa(ctx,{landed:true,lit:true,t,aboard:false});ctx.restore();
- ctx.save();ctx.translate(254,44);ctx.scale(0.55,0.55);santaWalker(ctx);ctx.restore();
- // hotte seule
+ const k=0.7,walkD=(t*6)%26,wx=250+walkD,ph=walkPhase(walkD/k),wid=`santa|walk|0|${ph}`,hd=handsOf(wid);
+ ctx.save();ctx.translate(wx,44);ctx.scale(k,k);pantin(ctx,wid);ctx.translate(hd[0],hd[1]+9);ctx.scale(1.3,1.3);santaSack(ctx);ctx.restore();
+ // debout devant la cheminée, de face, la hotte à deux mains
+ const sid='santa|stand|4',sh=handsOf(sid);ctx.save();ctx.translate(228,44);ctx.scale(k,k);pantin(ctx,sid);ctx.translate(sh[0],sh[1]+9);ctx.scale(1.3,1.3);santaSack(ctx);ctx.restore();
  ctx.save();ctx.translate(30,36);ctx.scale(1.6,1.6);santaSack(ctx);ctx.restore();text(ctx,'hotte ×1,6',30,40,3,'#FFFFFF');
  nightFilter(ctx,W,H);
  const sr=mulberry32(21);for(let k=0;k<70;k++){const x=sr()*W,y=sr()*60,a=0.4+0.6*Math.abs(Math.sin(t*1.5+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.9,0.9)}
  ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,330,14,6,20,[[0,hex('#FFF6D0'),0.5],[1,hex('#FFF6D0'),0]]);ctx.beginPath();ctx.arc(330,14,20,0,TAU);ctx.fill();ctx.restore();ball(ctx,330,14,7,'#FFF6D0',0);
  ctx.save();ctx.translate(120,28+Math.sin(t*1.3)*1.5);santa(ctx,{landed:false,lit:true,t,pass:'lit'});ctx.restore();
  ctx.save();ctx.translate(290,44);santa(ctx,{landed:true,lit:true,t,pass:'lit'});ctx.restore();
- // fenêtres allumées
+ // liserés et ombres de la lanterne du traîneau posé (à (290−14+11, 44−11)) sur le marcheur et le père Noël debout
+ const lamp={x:287,lx:287,ly:33};for(const a of[{x:wx,y:44,w:6,h:28,draw:c=>{c.save();c.translate(wx,44);c.scale(k,k);pantin(c,wid);c.restore()}},{x:228,y:44,w:6,h:28,draw:c=>{c.save();c.translate(228,44);c.scale(k,k);pantin(c,sid);c.restore()}}]){actorShadow(ctx,a,lamp);actorRim(ctx,a,lamp)}
  for(const[x,gy,w,ty]of roofs){for(let wx=x+8;wx<x+w-8;wx+=14){ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,wx+2.5,ty+19,0,9,[[0,AMBER,0.35],[1,AMBER,0]]);ctx.beginPath();ctx.arc(wx+2.5,ty+19,9,0,TAU);ctx.fill();ctx.restore();windowPane(ctx,wx,ty+15,5,8,'#FFE4A0')}}}
+// Tour du père Noël : 8 orientations (pas de 45°), debout la hotte à deux mains, de jour puis de nuit (lanterne à gauche : révélation chaude, liseré, ombre).
+function santaTurn(ctx,t=0){const W=272,H=124,cw=34;
+ const row=(night,y0)=>{ctx.fillStyle=night?'#BFE0F4':'#F2DDB4';ctx.fillRect(0,y0,W,62);R(ctx,0,y0+52,W,10,'#E2D2B0',{lw:0.3,sh:0,li:0});
+  const ids=[];const drawAll=c=>{for(let i=0;i<8;i++){const yaw=(i*2)%16,id=`santa|stand|${yaw}`;ids[i]=id;c.save();c.translate(cw*i+cw/2,y0+52);pantin(c,id);const h=handsOf(id);c.translate(h[0],h[1]+9);c.scale(1.3,1.3);santaSack(c);c.restore()}};drawAll(ctx);
+  for(let i=0;i<8;i++)text(ctx,['profil →','¾ avant','face','¾','profil ←','¾ dos','dos','¾ dos'][i]+` · yaw ${(i*2)%16}`,cw*i+cw/2,y0+57,2.3,night?'#FFFFFF':'#5A4A30');
+  if(night){ctx.save();ctx.beginPath();ctx.rect(0,y0,W,62);ctx.clip();const day=snapshot(ctx);nightFilter(ctx,W,H);
+   const mk=makeMask(ctx,m=>{m.save();m.beginPath();m.rect(0,y0,W,62);m.clip();for(let i=0;i<8;i++)maskDisc(m,cw*i+4,y0+36,22,18,0.9);m.restore()});revealLit(ctx,day,mk);
+   for(let i=0;i<8;i++){const id=ids[i],x=cw*i+cw/2,lamp={x:cw*i+4,lx:cw*i+4,ly:y0+36};const a={x,y:y0+52,w:7,h:40,draw:c=>{c.save();c.translate(x,y0+52);pantin(c,id);const h=handsOf(id);c.translate(h[0],h[1]+9);c.scale(1.3,1.3);santaSack(c);c.restore()}};actorShadow(ctx,a,lamp);actorRim(ctx,a,lamp);
+    tube(ctx,cw*i+4,y0+52,cw*i+4,y0+40,0.6,IRON,{lw:0.25});P(ctx,[[cw*i+2.4,y0+40],[cw*i+5.6,y0+40],[cw*i+5.4,y0+34],[cw*i+2.6,y0+34]],'#FFF3B0',{lw:0.35,sh:0,li:0});ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,cw*i+4,y0+37,0,5,[[0,AMBER_CORE,0.8],[0.3,AMBER,0.4],[1,AMBER,0]]);ctx.beginPath();ctx.arc(cw*i+4,y0+37,5,0,TAU);ctx.fill();ctx.restore()}
+   ctx.restore()}};
+ row(false,0);row(true,62);
+ ctx.save();ctx.translate(W-8,52);ctx.scale(0.6,0.6);pantin(ctx,'santa-plain|stand|4');ctx.restore();text(ctx,'actuel',W-8,57,2.2,'#5A4A30')}
+anim('santa-turn',272,124,4,(ctx,t)=>santaTurn(ctx,t));
 anim('santa',360,90,3,(ctx,t)=>santaScene(ctx,t));
 
 // ───────────────────────── 8. Installations ─────────────────────────
@@ -982,16 +1011,16 @@ anim('santa',360,90,3,(ctx,t)=>santaScene(ctx,t));
  const LX=78;ctx.save();ctx.translate(LX,G);ctx.scale(0.85,0.85);lamp(ctx,{flag:true});ctx.restore();
  ctx.save();ctx.translate(LX-33,G+10);const k=0.85,u=1;ctx.save();ctx.scale(-k,k);for(const x of[-27,13]){R(ctx,x-1.5,-9,3,8,IRON,{lw:0.35,sh:0.3,li:0.2});R(ctx,x-3,-1,6,1.2,IRON,{lw:0.3,sh:0,li:0.2})}R(ctx,-32,-12,48,6,'#E8B923',{lw:0.5,sh:0.28,shX:0.72,li:0.2});R(ctx,-32,-8,48,1.2,IRON,{lw:0.3,sh:0,li:0});RR(ctx,16,-24,16,20,2.5,'#ECECEA',{lw:0.5,sh:0.28,shX:0.7,li:0.2});R(ctx,22,-21.5,8,7,'#CFE4F2',{lw:0.4,sh:0.15,li:0});RR(ctx,-23,-18,10,6,1,'#E8B923',{lw:0.45,sh:0.3,shX:0.6,li:0.25});ctx.save();ctx.translate(-2,-12);flagCrate(ctx,2,14);ctx.restore();wheel(ctx,-20,-4.5,4.5);wheel(ctx,22,-4.5,4.5);ctx.restore();
   text(ctx,'gabarit du camion V5',0,6,3,'#5A4A30');
-  liftArm(ctx,{x:18*k,y:-16*k},{x:33-11,y:-47},u,k,()=>{ctx.save();ctx.translate(0,-2);ctx.scale(0.55,0.55);figure(ctx,{top:'#F28C28'},{arms:'up'});ctx.restore()});ctx.restore();
+  liftArm(ctx,{x:18*k,y:-16*k},{x:33-11,y:-47},u,k,()=>{ctx.save();ctx.translate(0,-2);ctx.scale(0.55,0.55);pantin(ctx,'crew|overhead|0');ctx.restore()});ctx.restore();
  // triporteur avec caisse et échelle, ouvrier-repère en selle
- ctx.save();ctx.translate(200,G+8);ctx.scale(0.85,0.85);cargoBike(ctx,{flags:3,ladderOn:true,rider:()=>{ctx.save();ctx.translate(-4,-17.6);ctx.scale(0.55,0.55);rider(ctx,{top:'#F28C28'});ctx.restore()}});ctx.restore();
+ ctx.save();ctx.translate(200,G+8);ctx.scale(0.85,0.85);cargoBike(ctx,{flags:3,ladderOn:true,rider:()=>{const st=anchor('crew|pedal','seat');ctx.save();ctx.translate(-4-st[0]*0.55,-17.6-st[1]*0.55);ctx.scale(0.55,0.55);pantin(ctx,'crew|pedal');ctx.restore()}});ctx.restore();
  // chargement du plateau (gabarit du plateau : deck à −11)
  ctx.save();ctx.translate(300,G+8);ctx.scale(0.85,0.85);R(ctx,-46,-11,70,3.5,'#7A5A3A',{lw:0.4,sh:0.3,shX:0.7,li:0.15});R(ctx,-46,-12.6,70,1.6,GALVA,{lw:0.3,sh:0.3,li:0.3});flatbedLoad(ctx,{});R(ctx,-47.5,-14,1.8,6,GALVA,{lw:0.35,sh:0.3,li:0.3});ctx.save();ctx.translate(-24,-16.5);stowedLadder(ctx,30);ctx.restore();text(ctx,'gabarit du plateau V5',-10,-3,3.4,'#5A4A30');ctx.restore();
  // déménagement : arrière du camion, hayon fermé et ouvert, meubles portés
  ctx.save();ctx.translate(410,G-2);ctx.scale(0.85,0.85);R(ctx,-32,-34,22,28,'#F4F6F8',{lw:0.5,sh:0.25,shX:0.8,li:0.15});R(ctx,-32,-17,22,4,'#2E6FD6',{lw:0.3,sh:0.2,li:0});tailgate(ctx,0);ctx.translate(-28,0);R(ctx,-32,-34,22,28,'#F4F6F8',{lw:0.5,sh:0.25,shX:0.8,li:0.15});R(ctx,-32,-17,22,4,'#2E6FD6',{lw:0.3,sh:0.2,li:0});ctx.fillStyle='#2A2A30';ctx.fillRect(-32,-33,1.5,26);tailgate(ctx,1);ctx.restore();
  // meubles portés par deux déménageurs-repères (mains à −23,5)
- [['vitrine',30],['etagere',24],['table',22],['fauteuil',18]].forEach(([kind,len],i)=>{ctx.save();ctx.translate(150+i*52,G+18);ctx.scale(0.55,0.55);ctx.translate(-len/2-4,0);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#C0392B'},{arms:'carry'});ctx.translate(len+8,0);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#D95F2B'},{arms:'carry'});ctx.translate(-len/2-4,-23.5);piece(ctx,kind,len,1);ctx.restore();text(ctx,kind,40+i*62,G+22,3.2,'#5A4A30')});
- ctx.save();ctx.translate(360,G+18);ctx.scale(0.55,0.55);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#C0392B'},{arms:'hold'});piece(ctx,'carton',0,1);ctx.restore();text(ctx,'carton',360,G+22,3.2,'#5A4A30');
+ [['vitrine',30],['etagere',24],['table',22],['fauteuil',18]].forEach(([kind,len],i)=>{ctx.save();ctx.translate(150+i*52,G+18);ctx.scale(0.55,0.55);ctx.translate(-len/2-4,0);pantin(ctx,'mover|carry|0');ctx.translate(len+8,0);pantin(ctx,'mover|carry|8');ctx.translate(-len/2-4,handsOf('mover|carry|0')[1]+1);piece(ctx,kind,len,1);ctx.restore();text(ctx,kind,40+i*62,G+22,3.2,'#5A4A30')});
+ ctx.save();ctx.translate(360,G+18);ctx.scale(0.55,0.55);pantin(ctx,'mover|hold|0');{const h=anchor('mover|hold|0','handR');ctx.translate(h[0]-9,h[1]+21)}piece(ctx,'carton',0,1);ctx.restore();text(ctx,'carton',360,G+22,3.2,'#5A4A30');
 }
 
 // ───────────────────────── 9. Événements du ciel ─────────────────────────
@@ -1020,11 +1049,11 @@ anim('events',540,136,2,(ctx,t)=>eventsScene(ctx,t));
 
 // ───────────────────────── 10. Signes festifs ─────────────────────────
 {const s=6,W=180,H=70;const ctx=mk('marks',W,H,s);ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);R(ctx,0,58,W,12,'#E2D2B0',{lw:0.3,sh:0,li:0});
- const list=['crown','heart-balloon','basket','lily','flag','poppy','streamer','note'];list.forEach((m,i)=>{ctx.save();ctx.translate(12+i*22,58);figure(ctx,{top:['#4A7AB8','#C0463A','#2E8B6A','#E0A21E','#8A5AB8','#2A2A30','#D2527F','#3AA9D6'][i]},{arms:m==='crown'||m==='poppy'||m==='streamer'?'swing':'hold'});mark(ctx,m,0.4);ctx.restore();text(ctx,m,12+i*22,63,2.6,'#5A4A30')});}
+ const list=['crown','heart-balloon','basket','lily','flag','poppy','streamer','note'];const HELD_AT={crown:['headTop',0,37.2],poppy:['headTop',-2,23],'heart-balloon':['handR',-6,14],basket:['handR',-9,11],lily:['handR',-7,19],flag:['handR',-8,16],streamer:['headTop',0,37.4],note:['handR',-6,34]};list.forEach((m,i)=>{const head=HELD_AT[m][0]==='headTop',id=`markfig${i}|${head?'swing':'hold'}`,a=anchor(id,HELD_AT[m][0]);ctx.save();ctx.translate(12+i*22,58);pantin(ctx,id);ctx.translate(a[0]+HELD_AT[m][1],a[1]+HELD_AT[m][2]);mark(ctx,m,0.4);ctx.restore();text(ctx,m,12+i*22,63,2.6,'#5A4A30')});}
 
 // ───────────────────────── 11. Chiens ─────────────────────────
 function dogsScene(ctx,t=0){const W=270,H=50;ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);R(ctx,0,40,W,10,'#E2D2B0',{lw:0.3,sh:0,li:0});
- for(let i=0;i<6;i++){ctx.save();ctx.translate(4+i*45,40);figure(ctx,{top:['#4A7AB8','#C0463A','#2E8B6A','#E0A21E','#8A5AB8','#D2527F'][i]},{arms:'hold'});ctx.translate(26,0);const id=dog(ctx,{breed:BREEDS[i].id,seed:i*7+3,t:t+i*0.13,leashTo:[-26+8.6,-20.6]});ctx.restore();text(ctx,id,26+i*45,45,2.8,'#5A4A30')}}
+ for(let i=0;i<6;i++){const pid=`dogwalker|${walkPhase(t*14+i*5)}`,h=anchor(pid,'handR');ctx.save();ctx.translate(4+i*45,40);pantin(ctx,pid);ctx.translate(26,0);const id=dog(ctx,{breed:BREEDS[i].id,seed:i*7+3,t:t+i*0.13,leashTo:[h[0]-26,h[1]]});ctx.restore();text(ctx,id,26+i*45,45,2.8,'#5A4A30')}}
 anim('dogs',270,50,4,(ctx,t)=>dogsScene(ctx,t));
 
 // ───────────────────────── 12. Poses clés ─────────────────────────
@@ -1039,5 +1068,7 @@ if(ONLY){const el=document.getElementById(ONLY);document.body.innerHTML='';docum
 if(FIXED_T===null){const t0=performance.now();let last=0;const visible=new Set();
  const io=new IntersectionObserver(es=>{for(const e of es){if(e.isIntersecting)visible.add(e.target.id);else visible.delete(e.target.id)}},{rootMargin:'100px'});for(const a of ANIMS)io.observe(a.ctx.canvas);
  const loop=now=>{if(now-last>=40){last=now;const t=(now-t0)/1000;for(const a of ANIMS){if(!visible.has(a.id))continue;a.ctx.save();a.ctx.setTransform(1,0,0,1,0,0);a.ctx.clearRect(0,0,a.ctx.canvas.width,a.ctx.canvas.height);a.ctx.restore();a.draw(a.ctx,t)}}requestAnimationFrame(loop)};requestAnimationFrame(loop)}
+window.__ready=true;
+});
 </script>
 </body></html>
