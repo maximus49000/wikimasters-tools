@@ -14,6 +14,7 @@ import { dayNumber } from '../../src/core/library/city/shops/hours';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { DARK } from '../../src/core/library/city/events';
 import { BARRIER, STAGE } from '../../src/content/install-sprites';
+import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
 import { barrierK } from '../../src/content/install-layer';
 import { MUSICIANS, musicianAt } from '../../src/content/stage-band';
 import { VAN_SPEED } from '../../src/core/library/city/van';
@@ -672,5 +673,124 @@ describe('véhicules des équipes en Ghibli (V5)', () => {
     const c = find(D14, 360, 540, (x) => !!x.querySelector('[data-install-van]'), false);
     expect(c).not.toBeNull();
     expect(c!.querySelector('[data-scripted-car]')).toBeNull();
+  });
+});
+
+// G5 : installations en images cellulo (registre d'accessoires) ; le classique reste le repli tant que l'image n'est pas cuite.
+describe('installations cellulo en Ghibli (G5)', () => {
+  // Registre à cuisson manuelle : les images ne sont cuites que lorsque `jobs` est vidé.
+  const gLayer = (date: YMD, minutes: number, ghibli = true, still = false): { host: HTMLDivElement; jobs: (() => void)[] } => {
+    const jobs: (() => void)[] = [];
+    const reg = new PropRegistry('t', { schedule: (cb) => jobs.push(cb) });
+    const host = render(
+      <PropContext.Provider value={reg}>
+        <svg>
+          <InstallLayer width={W} height={H} seed={SEED} sky={skyOf(minutes)} still={still} date={date} minutes={minutes} metrics={metrics} rainy={false} ghibli={ghibli} />
+        </svg>
+      </PropContext.Provider>,
+    );
+    return { host, jobs };
+  };
+  const bake = async (jobs: (() => void)[]): Promise<void> => {
+    while (jobs.length) await act(async () => jobs.shift()!());
+  };
+  const unmountAll = (): void => {
+    for (const { root, host } of mounted.splice(0)) {
+      act(() => root.unmount());
+      host.remove();
+    }
+  };
+  // Première minute de [from, to) où `ok` est vrai (calque monté, non cuit).
+  const find = (date: YMD, from: number, to: number, ok: (c: HTMLDivElement) => boolean): { host: HTMLDivElement; jobs: (() => void)[] } => {
+    for (let m = from; m < to; m++) {
+      const r = gLayer(date, m);
+      if (ok(r.host)) return r;
+      unmountAll();
+    }
+    throw new Error('aucune minute');
+  };
+  // Images des installations (pas celles des pantins).
+  const INSTALL = '[data-barrier-art] image, [data-stage-part] image, [data-lift-bucket] > g > image, [data-held-piece] image, [data-flatbed-load] image, [data-cargo-bike-art] image, [data-van-ladder] image, [data-ladder] image, [data-flag-crate] image';
+
+  it('scène posée (21/6 à 20 h) : plancher, ossature et projecteurs en sprite classique avant cuisson, puis une image chacun ; attributs conservés', async () => {
+    const { host, jobs } = gLayer(MUSIC, 20 * 60);
+    expect(count(host, INSTALL)).toBe(0);
+    expect(count(host, '[data-decor-kind="stage-floor"] rect')).toBeGreaterThan(0);
+    await bake(jobs);
+    for (const kind of ['stage-floor', 'stage-frame', 'stage-spots']) {
+      const g = host.querySelector(`[data-decor-item][data-decor-kind="${kind}"][data-decor-set][data-decor-phase="present"]`)!;
+      expect(g, kind).not.toBeNull();
+      expect(g.querySelectorAll('image')).toHaveLength(1);
+      expect(g.querySelectorAll('rect, line, circle, polyline')).toHaveLength(0);
+    }
+  }, 60000);
+
+  it('nuit de concert (23 h) : faisceaux en deux polygones par projecteur (large + cœur), respiration hors mouvement réduit', () => {
+    const { host } = gLayer(MUSIC, 23 * 60);
+    const beams = [...host.querySelectorAll('[data-stage-beam]')];
+    expect(beams).toHaveLength(3);
+    expect(count(host, '[data-stage-beam-core]')).toBe(3);
+    expect(count(host, '[data-stage-beams] polygon')).toBe(6);
+    beams.forEach((b, i) => {
+      expect(Math.abs(Number(b.getAttribute('data-origin-x')) - STAGE.spotXs[i]!)).toBeLessThan(2);
+      expect(b.querySelector('animate')).not.toBeNull();
+    });
+    unmountAll();
+    expect(count(gLayer(MUSIC, 23 * 60, true, true).host, '[data-stage-beams] animate')).toBe(0);
+  });
+
+  it('montage à la nacelle : nacelle et pièce tenue en image, bras en tubes cellulo, chargement du plateau en image avec ses repères entreposés', async () => {
+    const { host, jobs } = find(MUSIC, 600, 960, (c) => !!c.querySelector('[data-crew][data-equipment="lift"] [data-lift-bucket] [data-held-piece]') && !!c.querySelector('[data-flatbed] [data-stored-item]'));
+    const stored = count(host, '[data-flatbed] [data-stored-item]');
+    expect(count(host, INSTALL)).toBe(0);
+    await bake(jobs);
+    expect(count(host, '[data-lift-bucket] > g > image')).toBe(1);
+    // Chaque pièce tenue (dans la nacelle, ou par l'ouvrier au sol qui va la chercher) : une image, plus aucun trait classique.
+    const held = host.querySelectorAll('[data-held-piece]');
+    expect(held.length).toBeGreaterThan(0);
+    for (const h of held) {
+      expect(h.querySelectorAll('image')).toHaveLength(1);
+      expect(h.querySelector('line, rect, circle, polyline')).toBeNull();
+    }
+    // Bras : trois tubes (vérin + deux flèches) de quatre traits (encre, couleur, ombre, rehaut), articulations modelées.
+    expect(count(host, '[data-lift-arm] line')).toBe(12);
+    expect(count(host, '[data-lift-joint]')).toBe(2);
+    // Un camion plateau par jeu (scène, stands) : une image de chargement chacun.
+    const loads = host.querySelectorAll('[data-flatbed-load]');
+    expect(loads.length).toBeGreaterThan(0);
+    for (const l of loads) expect(l.querySelectorAll('image')).toHaveLength(1);
+    expect(count(host, '[data-flatbed] [data-stored-item]')).toBe(stored);
+    expect(count(host, '[data-flatbed] [data-stored-item] rect')).toBe(0);
+  }, 60000);
+
+  it('barrières du 14/7 et vélo porteur du 13/7 : images après cuisson, repères entreposés et data-x conservés ; jamais une image dans un miroir', async () => {
+    const b = gLayer(D14, 9 * 60);
+    const xs = [...b.host.querySelectorAll('[data-decor-kind="barrier"]')].map((e) => e.getAttribute('data-x'));
+    expect(xs.length).toBeGreaterThan(0);
+    await bake(b.jobs);
+    expect([...b.host.querySelectorAll('[data-decor-kind="barrier"]')].map((e) => e.getAttribute('data-x'))).toEqual(xs);
+    expect(count(b.host, '[data-decor-kind="barrier"] image')).toBe(xs.length);
+    unmountAll();
+    const r = find(D13, 13 * 60, 16 * 60, (c) => !!c.querySelector('[data-install-van="doors-bastille"] [data-cargo-bike] [data-stored-item]'));
+    const stored = count(r.host, '[data-cargo-bike] [data-stored-item]');
+    await bake(r.jobs);
+    expect(count(r.host, '[data-cargo-bike-art] image')).toBe(1);
+    expect(count(r.host, '[data-cargo-bike] [data-stored-item]')).toBe(stored);
+    // Miroir de l'hôte annulé autour de l'image : le produit des facteurs x des transformations au-dessus est positif.
+    for (const img of r.host.querySelectorAll(INSTALL)) {
+      let sx = 1;
+      for (let e: Element | null = img; e; e = e.parentElement) {
+        const m = /scale\((-?[\d.]+)/.exec(`${e.getAttribute('transform') ?? ''} ${(e as HTMLElement).style?.transform ?? ''}`);
+        if (m) sx *= Math.sign(Number(m[1]));
+      }
+      expect(sx, 'image en miroir').toBe(1);
+    }
+  }, 60000);
+
+  it('classique : aucune image d’installation, un seul polygone par faisceau', async () => {
+    const { host, jobs } = gLayer(MUSIC, 23 * 60, false);
+    await bake(jobs);
+    expect(count(host, INSTALL)).toBe(0);
+    expect(count(host, '[data-stage-beams] polygon')).toBe(3);
   });
 });

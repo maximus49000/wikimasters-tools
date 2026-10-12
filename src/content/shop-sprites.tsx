@@ -5,7 +5,7 @@ import type { ShopView } from '../core/library/city/shops/view';
 import { mixHex, type Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
 import '../core/library/paint/props/terrace';
-import { PropImage } from './prop/prop-host';
+import { PropImage, PropInMirror } from './prop/prop-host';
 
 // Devantures de la scène Ville. Repère : celui du MONDE (les rectangles de shopFrame), non mis à l'échelle ; le rez-de-chaussée
 // fait 30 px de haut, le bandeau d'enseigne 5. Les objets portés (CarriedSign, CarriedPlacard) et l'échelle sont dessinés dans un
@@ -59,8 +59,10 @@ export function ForSalePlacard({ x, y, w, sky, ghibli = false }: { x: number; y:
   return <g data-placard="1">{art}</g>;
 }
 
-// Échelle d'aluminium : montants + barreaux tous les 3 px. Ghibli : rails alu et barreaux encrés (`sky` requis pour la lumière).
-export function LadderSprite({ height, sky, ghibli = false }: { height: number; sky?: Sky; ghibli?: boolean }): ReactElement {
+// Échelle d'aluminium : montants + barreaux tous les 3 px. Ghibli : rails alu et barreaux encrés (`sky` requis pour la lumière) ;
+// `dir` : l'hôte retourne le groupe (`scale(dir, 1)` de l'échelle portée par une équipe) : l'image est cuite dans ce sens et
+// posée sans miroir (PropInMirror).
+export function LadderSprite({ height, sky, ghibli = false, dir = 1 }: { height: number; sky?: Sky; ghibli?: boolean; dir?: 1 | -1 }): ReactElement {
   const rungs: number[] = [];
   for (let y = -3; y > -height; y -= 3) rungs.push(y);
   const art = (
@@ -72,7 +74,7 @@ export function LadderSprite({ height, sky, ghibli = false }: { height: number; 
       ))}
     </g>
   );
-  return ghibli && sky ? <PropImage spec={{ id: 'ladder', args: { h: Math.round(height * 10) / 10 }, day: sky.daylight }} fallback={art} /> : art;
+  return ghibli && sky ? <PropInMirror spec={{ id: 'ladder', args: { h: Math.round(height * 10) / 10 }, dir, day: sky.daylight }} fallback={art} /> : art;
 }
 
 // Enseigne portée par un ouvrier : bandeau de la couleur du type, nom dessus.

@@ -113,3 +113,15 @@ export function PropImage({ spec, fallback = null }: { spec: PropSpec; fallback?
   const [x, y, w, h] = shown.box;
   return <image href={shown.url} x={x} y={y} width={w} height={h} preserveAspectRatio="none" />;
 }
+
+// Même image dans un groupe que l'hôte retourne pour `spec.dir` = −1 (`scale(dir·k, k)` des éléments dynamiques des véhicules
+// peints, de l'échelle portée) : ce miroir est annulé autour de l'image, cuite dans le sens `dir` (jamais une image
+// retournée) ; le repli classique garde le miroir de l'hôte.
+export function PropInMirror({ spec, fallback = null }: { spec: PropSpec; fallback?: ReactNode }): ReactElement {
+  if ((spec.dir ?? 1) === 1) return <PropImage spec={spec} fallback={fallback} />;
+  return (
+    <g transform="scale(-1 1)">
+      <PropImage spec={spec} fallback={<g transform="scale(-1 1)">{fallback}</g>} />
+    </g>
+  );
+}

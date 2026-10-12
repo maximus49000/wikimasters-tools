@@ -1,15 +1,21 @@
 import type { ReactElement, ReactNode } from 'react';
 import type { ItemKind } from '../core/library/city/install';
 import type { Outfit } from '../core/library/city/people';
-import type { Sky } from '../core/library/sky';
+import { INK } from '../core/library/paint/cel';
+import '../core/library/paint/props/install';
+import { mixHex, type Sky } from '../core/library/sky';
 import { Cyclist, PersonSprite, tone } from './city-sprites';
 import { GhibliRider } from './figure/ghibli-cyclist';
+import { PropImage, PropInMirror } from './prop/prop-host';
 import { ScriptedCar } from './vehicle/scripted-car';
 import type { WorkerPose } from './shop-sprites';
 
 // Décors de fête posés par des équipes et matériel des équipes (spec §7, tâche 10). Repère des sprites : pieds / sol à y = 0,
 // centrés sur x = 0, regard vers +x ; l'appelant applique l'échelle. Aucun id SVG fixe. Animations SMIL seulement hors
 // mouvement réduit (`still`) ; teinte nocturne par tone(c, sky).
+// Ghibli (G5) : barrière, scène, pièces tenues, nacelle, caisse de drapeaux, échelle couchée, triporteur et chargement du plateau
+// sont des images cellulo (paint/props/install.ts, cuites par le registre d'accessoires) au cadre du sprite classique, qui reste
+// le repli tant que l'image n'est pas cuite ; les flèches du bras articulé restent des tubes SVG cellulo (longueur variable).
 
 const BLUE = '#2B4FA0';
 const WHITE = '#F2F2F2';
@@ -17,6 +23,9 @@ const RED = '#C0302B';
 const POLE = '#6B5B4A';
 const STEEL = '#3B3F4A';
 const GALVA = '#A7ADB4';
+// Cellulo (tubes SVG du bras) : ombre teintée violet, rehaut soleil, comme le kit.
+const COOL = '#5A4A9C';
+const SUN = '#FFF6D0';
 
 // Graphisme Ghibli d'un véhicule de transport (V5) : carrosserie peinte (vehicle/scripted-car.tsx) dans le repère du sprite,
 // éléments dynamiques classiques par-dessus. L'appelant n'applique alors PAS `scale(dir·k, k)` : `dir` et `k` sont ici ;
@@ -67,13 +76,14 @@ export function DoorFlag({ sky }: { sky: Sky }): ReactElement {
 
 // Barrière de type Vauban (24 × 11) : cadre blanc liseré de sombre, barreaux alternés rouge et blanc (contraste sur le
 // trottoir clair comme sur la chaussée), deux pieds plats.
+// Ghibli : image `barrier` (barreaux tube rouge/blanc, cadre galvanisé cerné, plaque à filet), repli classique.
 const BARRIER_RED = '#D0302A';
-export function Barrier({ sky }: { sky: Sky }): ReactElement {
+export function Barrier({ sky, ghibli = false }: { sky: Sky; ghibli?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const bars: number[] = [];
   for (let x = -9.5; x < 10; x += 2.4) bars.push(x);
-  return (
-    <g data-barrier-art="" fill="none" strokeLinecap="round">
+  const art = (
+    <g fill="none" strokeLinecap="round">
       <rect x={-11} y={-11} width={22} height={8.5} rx={1} stroke={t('#2E323C')} strokeWidth={1.5} />
       {bars.map((x, i) => (
         <line key={x} x1={x} y1={-10.5} x2={x} y2={-3} stroke={t(i % 2 === 0 ? BARRIER_RED : '#F4F4F2')} strokeWidth={1} />
@@ -86,6 +96,7 @@ export function Barrier({ sky }: { sky: Sky }): ReactElement {
       <line x1={8} y1={0} x2={14} y2={0} stroke={t('#2E323C')} strokeWidth={1.2} />
     </g>
   );
+  return <g data-barrier-art="">{ghibli ? <PropImage spec={{ id: 'barrier', day: sky.daylight }} fallback={art} /> : art}</g>;
 }
 // Demi-largeur (pieds compris) et demi-écart des montants, unités du sprite.
 export const BARRIER = { half: 14, post: 11, height: 11 } as const;
@@ -104,18 +115,20 @@ export function spotLens(i: number): { x: number; y: number } {
   return { x: x - 3 * Math.sin(a), y: STAGE.spotY + 3 * Math.cos(a) };
 }
 
-export function StageFloor({ sky }: { sky: Sky }): ReactElement {
+// Ghibli : images `stage-floor`, `stage-frame`, `stage-spots` (`lit`), repli classique.
+export function StageFloor({ sky, ghibli = false }: { sky: Sky; ghibli?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
-  return (
-    <g data-stage-part="floor">
+  const art = (
+    <>
       <rect x={-STAGE.half + 1.5} y={-STAGE.floor - STAGE.deck} width={STAGE.half * 2 - 3} height={STAGE.deck} fill={t('#8A7058')} />
       <rect x={-STAGE.half} y={-STAGE.floor} width={STAGE.half * 2} height={STAGE.floor} fill={t('#24262E')} />
       <rect x={-STAGE.half} y={-STAGE.floor} width={STAGE.half * 2} height={1.6} fill={t('#6A5848')} />
       {[-36, -12, 12, 36].map((x) => (
         <line key={x} x1={x} y1={-STAGE.floor + 1.6} x2={x} y2={0} stroke={t('#3A3D46')} strokeWidth={0.6} />
       ))}
-    </g>
+    </>
   );
+  return <g data-stage-part="floor">{ghibli ? <PropImage spec={{ id: 'stage-floor', day: sky.daylight }} fallback={art} /> : art}</g>;
 }
 
 // Treillis vertical (montant) ou horizontal (traverse) : deux tubes et des diagonales.
@@ -147,10 +160,10 @@ function Truss({ x1, y1, x2, y2, c }: { x1: number; y1: number; x2: number; y2: 
   );
 }
 
-export function StageFrame({ sky }: { sky: Sky }): ReactElement {
+export function StageFrame({ sky, ghibli = false }: { sky: Sky; ghibli?: boolean }): ReactElement {
   const c = tone('#9CA3AC', sky);
-  return (
-    <g data-stage-part="frame">
+  const art = (
+    <>
       {/* Toile de fond tendue entre les montants : la scène masque ce qui passe derrière elle. */}
       <rect data-stage-backdrop="" x={-STAGE.postX - 1.5} y={-STAGE.truss + 1.5} width={STAGE.postX * 2 + 3} height={STAGE.truss - STAGE.floor - STAGE.deck - 1.5} fill={tone('#2C2F3D', sky)} />
       {[-30, -15, 0, 15, 30].map((x) => (
@@ -159,33 +172,31 @@ export function StageFrame({ sky }: { sky: Sky }): ReactElement {
       <Truss x1={-STAGE.postX} y1={-STAGE.floor - STAGE.deck} x2={-STAGE.postX} y2={-STAGE.truss} c={c} />
       <Truss x1={STAGE.postX} y1={-STAGE.floor - STAGE.deck} x2={STAGE.postX} y2={-STAGE.truss} c={c} />
       <Truss x1={-STAGE.postX - 2} y1={-STAGE.truss} x2={STAGE.postX + 2} y2={-STAGE.truss} c={c} />
-    </g>
+    </>
   );
+  return <g data-stage-part="frame">{ghibli ? <PropImage spec={{ id: 'stage-frame', day: sky.daylight }} fallback={art} /> : art}</g>;
 }
 
 // Projecteurs accrochés sous la traverse, orientés vers le plancher. `lit` : lentille allumée (les faisceaux sont dans stage-band.tsx).
-export function StageSpots({ sky, lit }: { sky: Sky; lit: boolean }): ReactElement {
+export function StageSpots({ sky, lit, ghibli = false }: { sky: Sky; lit: boolean; ghibli?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
-  return (
-    <g data-stage-part="spots">
-      {STAGE.spotXs.map((x, i) => (
-        <g key={x} data-stage-spot={i} transform={`translate(${x} ${STAGE.spotY})`}>
-          <line x1={0} y1={-3.5} x2={0} y2={-1.5} stroke={t(STEEL)} strokeWidth={0.6} />
-          <rect x={-2.2} y={-1.8} width={4.4} height={4.6} rx={0.8} fill={t('#1E2026')} transform={`rotate(${-x / 3})`} />
-          <circle cx={0} cy={3} r={1.6} fill={lit ? '#FFF1B8' : t('#5A5F6A')} transform={`rotate(${-x / 3})`} />
-        </g>
-      ))}
+  const art = STAGE.spotXs.map((x, i) => (
+    <g key={x} data-stage-spot={i} transform={`translate(${x} ${STAGE.spotY})`}>
+      <line x1={0} y1={-3.5} x2={0} y2={-1.5} stroke={t(STEEL)} strokeWidth={0.6} />
+      <rect x={-2.2} y={-1.8} width={4.4} height={4.6} rx={0.8} fill={t('#1E2026')} transform={`rotate(${-x / 3})`} />
+      <circle cx={0} cy={3} r={1.6} fill={lit ? '#FFF1B8' : t('#5A5F6A')} transform={`rotate(${-x / 3})`} />
     </g>
-  );
+  ));
+  return <g data-stage-part="spots">{ghibli ? <PropImage spec={{ id: 'stage-spots', day: sky.daylight, lit }} fallback={art} /> : art}</g>;
 }
 
 // Structure complète (plancher, ossature, projecteurs) ; `parts` pour n'en dessiner qu'une partie.
-export function StageStructure({ sky, lit, parts = { floor: true, frame: true, spots: true } }: { sky: Sky; lit: boolean; parts?: { floor: boolean; frame: boolean; spots: boolean } }): ReactElement {
+export function StageStructure({ sky, lit, parts = { floor: true, frame: true, spots: true }, ghibli = false }: { sky: Sky; lit: boolean; parts?: { floor: boolean; frame: boolean; spots: boolean }; ghibli?: boolean }): ReactElement {
   return (
     <g data-stage-structure="">
-      {parts.frame && <StageFrame sky={sky} />}
-      {parts.floor && <StageFloor sky={sky} />}
-      {parts.spots && <StageSpots sky={sky} lit={lit} />}
+      {parts.frame && <StageFrame sky={sky} ghibli={ghibli} />}
+      {parts.floor && <StageFloor sky={sky} ghibli={ghibli} />}
+      {parts.spots && <StageSpots sky={sky} lit={lit} ghibli={ghibli} />}
     </g>
   );
 }
@@ -214,26 +225,33 @@ export function CrewWorker({ outfit, sky, rainy, pose }: { outfit: Outfit; sky: 
 }
 
 // Pièces tenues par l'ouvrier de la nacelle pendant le montage de la scène (repère : main à y = 0, vers +x) : un tronçon de
-// treillis (ossature) ou un projecteur (projecteurs).
-export function HeldTruss({ sky }: { sky: Sky }): ReactElement {
+// treillis (ossature) ou un projecteur (projecteurs). Ghibli : image cuite dans le sens `dir` (l'hôte ne retourne plus le
+// groupe : le repli classique est retourné ici pour −x).
+type HeldGhibli = { dir: 1 | -1 };
+function heldImage(id: string, sky: Sky, ghibli: HeldGhibli, art: ReactElement): ReactElement {
+  return <PropImage spec={{ id, dir: ghibli.dir, day: sky.daylight }} fallback={ghibli.dir < 0 ? <g transform="scale(-1 1)">{art}</g> : art} />;
+}
+export function HeldTruss({ sky, ghibli }: { sky: Sky; ghibli?: HeldGhibli }): ReactElement {
   const c = tone('#9CA3AC', sky);
-  return (
-    <g data-held-piece="truss" stroke={c} fill="none">
+  const art = (
+    <g stroke={c} fill="none">
       <line x1={-5} y1={-1.5} x2={9} y2={-1.5} strokeWidth={0.8} />
       <line x1={-5} y1={1.5} x2={9} y2={1.5} strokeWidth={0.8} />
       <polyline points="-5 -1.5 -2 1.5 1 -1.5 4 1.5 7 -1.5 9 1.5" strokeWidth={0.45} />
     </g>
   );
+  return <g data-held-piece="truss">{ghibli ? heldImage('held-truss', sky, ghibli, art) : art}</g>;
 }
-export function HeldSpot({ sky }: { sky: Sky }): ReactElement {
+export function HeldSpot({ sky, ghibli }: { sky: Sky; ghibli?: HeldGhibli }): ReactElement {
   const t = (c: string): string => tone(c, sky);
-  return (
-    <g data-held-piece="spot">
+  const art = (
+    <>
       <line x1={0} y1={0} x2={0} y2={-2.4} stroke={t(STEEL)} strokeWidth={0.7} />
       <rect x={-2.4} y={-2.4} width={6} height={4.8} rx={0.9} fill={t('#1E2026')} />
       <circle cx={3.8} cy={0} r={1.6} fill={t('#5A5F6A')} />
-    </g>
+    </>
   );
+  return <g data-held-piece="spot">{ghibli ? heldImage('held-spot', sky, ghibli, art) : art}</g>;
 }
 
 // ---------- Camionnette de l'équipe (repère des véhicules : roues à y = 0, regard vers +x) ----------
@@ -253,13 +271,20 @@ function VanDoor({ sky }: { sky: Sky }): ReactElement {
     </g>
   );
 }
-function VanLadder({ sky }: { sky: Sky }): ReactElement {
+// Ghibli : la même échelle couchée (25 unités, centrée en VAN_LADDER) en image, dans le groupe en miroir de la camionnette.
+function VanLadder({ sky, ghibli }: { sky: Sky; ghibli?: GhibliTransport }): ReactElement {
   const t = (c: string): string => tone(c, sky);
-  return (
-    <g data-van-ladder="" stroke={t('#B9C0C8')} strokeLinecap="round">
+  const art = (
+    <g stroke={t('#B9C0C8')} strokeLinecap="round">
       <line x1={-18.5} y1={-27} x2={6.5} y2={-27} strokeWidth={0.8} />
       <line x1={-18.5} y1={-29} x2={6.5} y2={-29} strokeWidth={0.8} />
       {Array.from({ length: 9 }, (_, i) => <line key={i} x1={-18 + i * 3} y1={-29} x2={-18 + i * 3} y2={-27} strokeWidth={0.5} />)}
+    </g>
+  );
+  if (!ghibli) return <g data-van-ladder="">{art}</g>;
+  return (
+    <g data-van-ladder="" transform={`translate(${VAN_LADDER.x} ${VAN_LADDER.y})`}>
+      <PropInMirror spec={{ id: 'stowed-ladder', args: { len: 25 }, dir: ghibli.dir, day: sky.daylight }} fallback={<g transform={`translate(${-VAN_LADDER.x} ${-VAN_LADDER.y})`}>{art}</g>} />
     </g>
   );
 }
@@ -272,7 +297,7 @@ export function Van({ sky, ladder, lights, open = false, stored = [], ghibli }: 
         <ScriptedCar spec={{ id: 'crew-van', seed: 1 }} dir={ghibli.dir} k={ghibli.k} sky={sky} rainy={ghibli.rainy} lights={lights} still={ghibli.still} occupied={ghibli.occupied} roll={{ worldX: ghibli.worldX, move: ghibli.move }}>
           {marks}
           {open && <VanDoor sky={sky} />}
-          {ladder && <VanLadder sky={sky} />}
+          {ladder && <VanLadder sky={sky} ghibli={ghibli} />}
         </ScriptedCar>
       </g>
     );
@@ -365,19 +390,90 @@ export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, bea
         <circle cx={22} cy={-4.5} r={4.5} fill="#222" />
       </g>
       )}
-      {/* Bras articulé : flèche basse (pivot → coude), flèche haute (coude → nacelle). */}
-      <g data-lift-arm="" stroke={yellow} strokeLinecap="round">
-        <line x1={p.x} y1={p.y} x2={e.x} y2={e.y} strokeWidth={2.4 * u} />
-        <line x1={e.x} y1={e.y} x2={bucket.x} y2={bucket.y - bh * 0.5} strokeWidth={1.8 * u} />
-      </g>
-      <circle cx={e.x} cy={e.y} r={1.4 * u} fill={t(STEEL)} />
-      <circle cx={p.x} cy={p.y} r={1.6 * u} fill={t(STEEL)} />
-      {/* Nacelle : le travailleur est dessiné avant la paroi, qui cache ses jambes. */}
+      {/* Bras articulé : flèche basse (pivot → coude), flèche haute (coude → nacelle). Ghibli (maquette `liftArm`) : vérin de
+          levage fer, flèches jaunes en tubes cellulo (leur longueur change à chaque image : pas d'image cuite), articulations
+          modelées. */}
+      {ghibli ? (
+        <>
+          <g data-lift-arm="">
+            <CelTube x1={p.x + dir * 6 * u} y1={p.y + 3 * u} x2={(p.x + e.x) / 2} y2={(p.y + e.y) / 2} w={1.1 * u} lw={0.35 * u} c={LIFT_IRON} sky={sky} />
+            <CelTube x1={p.x} y1={p.y} x2={e.x} y2={e.y} w={2.4 * u} lw={0.5 * u} c={LIFT_YELLOW} sky={sky} />
+            <CelTube x1={e.x} y1={e.y} x2={bucket.x} y2={bucket.y - bh * 0.5} w={1.8 * u} lw={0.5 * u} c={LIFT_YELLOW} sky={sky} />
+          </g>
+          <CelBall cx={e.x} cy={e.y} r={1.4 * u} lw={0.35 * u} c={LIFT_IRON} sky={sky} />
+          <CelBall cx={p.x} cy={p.y} r={1.6 * u} lw={0.35 * u} c={LIFT_IRON} sky={sky} />
+        </>
+      ) : (
+        <>
+          <g data-lift-arm="" stroke={yellow} strokeLinecap="round">
+            <line x1={p.x} y1={p.y} x2={e.x} y2={e.y} strokeWidth={2.4 * u} />
+            <line x1={e.x} y1={e.y} x2={bucket.x} y2={bucket.y - bh * 0.5} strokeWidth={1.8 * u} />
+          </g>
+          <circle cx={e.x} cy={e.y} r={1.4 * u} fill={t(STEEL)} />
+          <circle cx={p.x} cy={p.y} r={1.6 * u} fill={t(STEEL)} />
+        </>
+      )}
+      {/* Nacelle : le travailleur est dessiné avant la paroi, qui cache ses jambes. Ghibli : image `lift-bucket` (caisse blanche
+          à liseré jaune et rambarde) à l'unité u, repli classique à la même échelle. */}
       <g data-lift-bucket="" transform={`translate(${bucket.x.toFixed(2)} ${bucket.y.toFixed(2)})`}>
         {rider}
-        <rect x={-bw / 2} y={-bh} width={bw} height={bh} rx={0.8 * u} fill={t('#F2F2F0')} stroke={yellow} strokeWidth={0.6 * u} />
-        <line x1={-bw / 2} y1={-bh} x2={bw / 2} y2={-bh} stroke={t(STEEL)} strokeWidth={0.7 * u} />
+        {ghibli ? (
+          <g transform={`scale(${u.toFixed(3)})`}>
+            <PropImage
+              spec={{ id: 'lift-bucket', day: sky.daylight }}
+              fallback={
+                <>
+                  <rect x={-5} y={-7} width={10} height={7} rx={0.8} fill={t('#F2F2F0')} stroke={yellow} strokeWidth={0.6} />
+                  <line x1={-5} y1={-7} x2={5} y2={-7} stroke={t(STEEL)} strokeWidth={0.7} />
+                </>
+              }
+            />
+          </g>
+        ) : (
+          <>
+            <rect x={-bw / 2} y={-bh} width={bw} height={bh} rx={0.8 * u} fill={t('#F2F2F0')} stroke={yellow} strokeWidth={0.6 * u} />
+            <line x1={-bw / 2} y1={-bh} x2={bw / 2} y2={-bh} stroke={t(STEEL)} strokeWidth={0.7 * u} />
+          </>
+        )}
       </g>
+    </g>
+  );
+}
+
+// Tube cellulo en SVG (bras articulé, en px du monde) : trait encré, couleur, bande d'ombre côté bas-droite et rehaut côté
+// haut-gauche du monde (lumière en haut à gauche ; les positions sont déjà dans le sens du camion : jamais de miroir). Mêmes
+// proportions que `tube` du kit.
+const LIFT_IRON = '#4A5A58';
+const LIFT_YELLOW = '#E8B923';
+function CelTube({ x1, y1, x2, y2, w, lw, c, sky }: { x1: number; y1: number; x2: number; y2: number; w: number; lw: number; c: string; sky: Sky }): ReactElement {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const s = nx * -0.7 + ny * -0.7 > 0 ? 1 : -1;
+  const so = -s * w * 0.28;
+  const lo = s * w * 0.26;
+  const f = (v: number): string => v.toFixed(2);
+  return (
+    <g strokeLinecap="round">
+      <line x1={f(x1)} y1={f(y1)} x2={f(x2)} y2={f(y2)} stroke={tone(INK, sky)} strokeWidth={f(w + lw * 2)} />
+      <line x1={f(x1)} y1={f(y1)} x2={f(x2)} y2={f(y2)} stroke={tone(c, sky)} strokeWidth={f(w)} />
+      <line x1={f(x1 + nx * so)} y1={f(y1 + ny * so)} x2={f(x2 + nx * so)} y2={f(y2 + ny * so)} stroke={tone(mixHex(c, COOL, 0.3), sky)} strokeWidth={f(w * 0.36)} strokeLinecap="butt" />
+      <line x1={f(x1 + nx * lo)} y1={f(y1 + ny * lo)} x2={f(x2 + nx * lo)} y2={f(y2 + ny * lo)} stroke={tone(mixHex(c, SUN, 0.35), sky)} strokeWidth={f(w * 0.26)} strokeLinecap="butt" />
+    </g>
+  );
+}
+// Articulation modelée (comme `ball` du kit, sans clipPath : ombre en disque inscrit en bas à droite, point de lumière en haut
+// à gauche, trait encré).
+function CelBall({ cx, cy, r, lw, c, sky }: { cx: number; cy: number; r: number; lw: number; c: string; sky: Sky }): ReactElement {
+  const f = (v: number): string => v.toFixed(2);
+  return (
+    <g data-lift-joint="">
+      <circle cx={f(cx)} cy={f(cy)} r={f(r)} fill={tone(c, sky)} />
+      <circle cx={f(cx + r * 0.28)} cy={f(cy + r * 0.28)} r={f(r * 0.6)} fill={tone(mixHex(c, COOL, 0.3), sky)} />
+      <circle cx={f(cx - r * 0.35)} cy={f(cy - r * 0.35)} r={f(r * 0.35)} fill={tone(mixHex(c, SUN, 0.4), sky)} />
+      <circle cx={f(cx)} cy={f(cy)} r={f(r)} fill="none" stroke={tone(INK, sky)} strokeWidth={f(lw)} />
     </g>
   );
 }
@@ -385,15 +481,16 @@ export function LiftTruck({ sky, still, dir, k, u, outrigger, bucket, rider, bea
 // ---------- Caisse de drapeaux (plateau du camion élévateur, porte-bagages du vélo porteur) ----------
 // Repère : centre du bas de la caisse à (0, 0), unités du véhicule. Un petit drapeau roulé dépasse de la caisse par élément
 // encore entreposé (`data-stored-item`, `data-carried` = `tag`) ; la caisse se vide à mesure qu'on les pose.
-export function FlagCrate({ sky, flags, tag, w = 14 }: { sky: Sky; flags: readonly string[]; tag: string; w?: number }): ReactElement {
+// Dessin classique de la caisse : `n` drapeaux ; avec `flags` + `tag`, chaque drapeau porte son repère `data-stored-item`.
+function CrateArt({ sky, n, w, flags, tag }: { sky: Sky; n: number; w: number; flags?: readonly string[]; tag?: string }): ReactElement {
   const t = (c: string): string => tone(c, sky);
-  const n = flags.length;
   return (
-    <g data-flag-crate="">
-      {flags.map((id, i) => {
+    <>
+      {Array.from({ length: n }, (_, i) => {
         const x = -w / 2 + 1.5 + ((i + 0.5) * (w - 3)) / Math.max(1, n);
+        const marks = flags && tag ? { 'data-stored-item': flags[i], 'data-carried': tag } : {};
         return (
-          <g key={id} data-stored-item={id} data-carried={tag} transform={`translate(${x.toFixed(2)} -5)`}>
+          <g key={flags?.[i] ?? i} {...marks} transform={`translate(${x.toFixed(2)} -5)`}>
             <line x1={0} y1={0} x2={0} y2={-6} stroke={t(POLE)} strokeWidth={0.6} />
             <g transform="translate(0 -6)"><FlagArt sky={sky} w={3.6} h={2.4} /></g>
           </g>
@@ -401,16 +498,30 @@ export function FlagCrate({ sky, flags, tag, w = 14 }: { sky: Sky; flags: readon
       })}
       <rect x={-w / 2} y={-5.5} width={w} height={5.5} rx={0.6} fill={t('#9A6B3E')} stroke={t('#6E4A28')} strokeWidth={0.4} />
       <line x1={-w / 2} y1={-2.8} x2={w / 2} y2={-2.8} stroke={t('#6E4A28')} strokeWidth={0.4} />
+    </>
+  );
+}
+// Repères des éléments entreposés (sans dessin), pour l'image Ghibli.
+const storedMarks = (flags: readonly string[], tag: string): ReactElement[] => flags.map((id) => <g key={id} data-stored-item={id} data-carried={tag} />);
+// Ghibli : image `flag-crate` (bois à lattes, drapeaux roulés) dans le groupe en miroir du véhicule (`dir`), repères conservés.
+export function FlagCrate({ sky, flags, tag, w = 14, ghibli }: { sky: Sky; flags: readonly string[]; tag: string; w?: number; ghibli?: { dir: 1 | -1 } }): ReactElement {
+  const n = flags.length;
+  if (!ghibli) return <g data-flag-crate=""><CrateArt sky={sky} n={n} w={w} flags={flags} tag={tag} /></g>;
+  return (
+    <g data-flag-crate="">
+      {storedMarks(flags, tag)}
+      <PropInMirror spec={{ id: 'flag-crate', args: { n, w }, dir: ghibli.dir, day: sky.daylight }} fallback={<CrateArt sky={sky} n={n} w={w} />} />
     </g>
   );
 }
 
-// Échelle couchée (rangée sur un véhicule) : longueur `len`, centrée en x = 0, rails à y = ±1.
-function StowedLadder({ sky, len }: { sky: Sky; len: number }): ReactElement {
+// Échelle couchée (rangée sur un véhicule) : longueur `len`, centrée en x = 0, rails à y = ±1. Ghibli : image `stowed-ladder`
+// dans le groupe en miroir du véhicule (`dir`).
+function StowedLadder({ sky, len, ghibli }: { sky: Sky; len: number; ghibli?: { dir: 1 | -1 } }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const n = Math.max(2, Math.round(len / 3));
-  return (
-    <g data-van-ladder="" stroke={t('#8E969F')} strokeLinecap="round">
+  const art = (
+    <g stroke={t('#8E969F')} strokeLinecap="round">
       <line x1={-len / 2} y1={1} x2={len / 2} y2={1} strokeWidth={0.8} />
       <line x1={-len / 2} y1={-1} x2={len / 2} y2={-1} strokeWidth={0.8} />
       {Array.from({ length: n }, (_, i) => {
@@ -419,6 +530,7 @@ function StowedLadder({ sky, len }: { sky: Sky; len: number }): ReactElement {
       })}
     </g>
   );
+  return <g data-van-ladder="">{ghibli ? <PropInMirror spec={{ id: 'stowed-ladder', args: { len }, dir: ghibli.dir, day: sky.daylight }} fallback={art} /> : art}</g>;
 }
 
 // ---------- Vélo porteur (repère des véhicules : roues à y = 0, regard vers +x) ----------
@@ -426,11 +538,13 @@ function StowedLadder({ sky, len }: { sky: Sky; len: number }): ReactElement {
 // `rider` : l'ouvrier en selle (gilet orange, `data-worker`), null quand il en est descendu. Ghibli (`ghibli`) : l'ouvrier est
 // un pantin à vélo en gilet de chantier, pédalier à l'image `phase`, retourné selon `dir` (sens du groupe, déjà en miroir).
 export const BIKE = { half: 40, door: 26, saddle: -4, crate: { x: -25, y: -12 }, ladder: { x: -20, y: -21, len: 34 } } as const;
+// Ghibli : vélo, caisse et échelle en une image `cargo-bike` (roues `wheel`, cadre vert en tubes) dans le groupe en miroir de
+// l'hôte (`dir`), repères des drapeaux entreposés conservés ; le cycliste reste le pantin.
 export function CargoBike({ sky, lights, ladder, flags, rider, ghibli }: { sky: Sky; lights: boolean; ladder: boolean; flags: readonly string[]; rider: Outfit | null; ghibli?: { rainy: boolean; dir: 1 | -1; phase: number } }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const frame = t('#2F7D5B');
-  return (
-    <g data-cargo-bike="">
+  const art = (marks: boolean): ReactElement => (
+    <>
       <g fill="none" stroke={t('#2A2D34')} strokeWidth={1.2}>
         <circle cx={-20} cy={-5} r={5} />
         <circle cx={14} cy={-5} r={5} />
@@ -439,8 +553,20 @@ export function CargoBike({ sky, lights, ladder, flags, rider, ghibli }: { sky: 
       <path d="M-20 -5 L-6 -12 L8 -12 L14 -5 M-6 -12 L-4 -16 M8 -12 L9 -18 M-36 -12 L-8 -12 M-30 -12 L-20 -5 M-12 -12 L-20 -5" fill="none" stroke={frame} strokeWidth={1.4} strokeLinecap="round" />
       <rect x={-6.5} y={-17.4} width={5} height={1.4} rx={0.6} fill={t('#2A2D34')} />
       <line x1={8} y1={-18} x2={12} y2={-18.5} stroke={t('#2A2D34')} strokeWidth={1.1} strokeLinecap="round" />
-      <g transform={`translate(${BIKE.crate.x} ${BIKE.crate.y})`}><FlagCrate sky={sky} flags={flags} tag="bike" w={20} /></g>
+      <g transform={`translate(${BIKE.crate.x} ${BIKE.crate.y})`}>
+        {marks ? <FlagCrate sky={sky} flags={flags} tag="bike" w={20} /> : <g data-flag-crate=""><CrateArt sky={sky} n={flags.length} w={20} /></g>}
+      </g>
       {ladder && <g transform={`translate(${BIKE.ladder.x} ${BIKE.ladder.y})`}><StowedLadder sky={sky} len={BIKE.ladder.len} /></g>}
+    </>
+  );
+  return (
+    <g data-cargo-bike="">
+      {ghibli ? (
+        <g data-cargo-bike-art="">
+          {storedMarks(flags, 'bike')}
+          <PropInMirror spec={{ id: 'cargo-bike', args: { flags: flags.length, ladder }, dir: ghibli.dir, day: sky.daylight }} fallback={art(false)} />
+        </g>
+      ) : art(true)}
       {rider && ghibli && (
         <g data-worker="">
           <GhibliRider outfit={rider} sky={sky} rainy={ghibli.rainy} dir={ghibli.dir} phase={ghibli.phase} work="vest" seatX={-4} seatY={-17.6} />
@@ -467,7 +593,8 @@ export type FlatbedLoad = { id: string; kind: ItemKind };
 export function Flatbed({ sky, lights, open, ladder, load, ghibli }: { sky: Sky; lights: boolean; open: boolean; ladder: boolean; load: readonly FlatbedLoad[]; ghibli?: GhibliTransport }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const deck = FLATBED.deck;
-  const tagged = (id: string, node: ReactNode): ReactElement => <g key={id} data-stored-item={id} data-carried="truck">{node}</g>;
+  // Ghibli : le chargement est une image (`flatbed-load`, comptes par pièce) ; les repères entreposés sont posés à part.
+  const tagged = (id: string, node: ReactNode): ReactElement => (ghibli ? <g key={id}>{node}</g> : <g key={id} data-stored-item={id} data-carried="truck">{node}</g>);
   const of = (k: ItemKind): FlatbedLoad[] => load.filter((l) => l.kind === k);
   const counters = of('stand-counter');
   const rolls = of('stand-awning');
@@ -526,17 +653,22 @@ export function Flatbed({ sky, lights, open, ladder, load, ghibli }: { sky: Sky;
   ) : (
     <rect data-flatbed-tailgate="closed" x={-47.5} y={deck - 3} width={1.8} height={6} fill={t('#B9BEC4')} />
   );
-  const stowed = ladder && <g transform={`translate(${FLATBED.ladder.x} ${FLATBED.ladder.y})`}><StowedLadder sky={sky} len={FLATBED.ladder.len} /></g>;
-  if (ghibli)
+  const stowed = ladder && <g transform={`translate(${FLATBED.ladder.x} ${FLATBED.ladder.y})`}><StowedLadder sky={sky} len={FLATBED.ladder.len} ghibli={ghibli ? { dir: ghibli.dir } : undefined} /></g>;
+  if (ghibli) {
+    const args = { floor: of('stage-floor').length, frame: of('stage-frame').length, spots: of('stage-spots').length, counters: counters.length, rolls: rolls.length };
     return (
       <g data-flatbed="" data-flatbed-open={open ? 'true' : 'false'}>
         <ScriptedCar spec={{ id: 'flatbed', seed: 1 }} dir={ghibli.dir} k={ghibli.k} sky={sky} rainy={ghibli.rainy} lights={lights} still={ghibli.still} occupied={ghibli.occupied} roll={{ worldX: ghibli.worldX, move: ghibli.move }}>
-          {pieces}
+          <g data-flatbed-load="">
+            {storedMarks(load.map((l) => l.id), 'truck')}
+            <PropInMirror spec={{ id: 'flatbed-load', args, dir: ghibli.dir, day: sky.daylight }} fallback={pieces} />
+          </g>
           {gate}
           {stowed}
         </ScriptedCar>
       </g>
     );
+  }
   return (
     <g data-flatbed="" data-flatbed-open={open ? 'true' : 'false'}>
       {/* Grue de chargement repliée (mât derrière la cabine, flèche couchée vers l'arrière). */}

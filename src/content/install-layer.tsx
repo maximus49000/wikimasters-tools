@@ -288,7 +288,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       if (!shown || lifted.has(`${set.id}/${item.id}`)) continue;
       // Projecteurs allumés (et faisceaux) : posés, il fait nuit, et la fête n'est pas finie (la dépose commence après minuit).
       const lit = item.kind === 'stage-spots' && ph.phase === 'present' && dark && abs < absMinute(set.day + 1, 0);
-      const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lamps, lit, standSide);
+      const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lamps, lit, standSide, ghibli);
       if (d) drawn.push(d);
     }
     if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits.get(set.id)!, metrics, sky, rainy, still, width, ghibli));
@@ -387,9 +387,10 @@ const lampTransform = (x: number, m: CityMetrics): string => `translate(${x} ${m
 // Base de la scène : sur le trottoir, son bord avant au bord du trottoir.
 const stageBase = (m: CityMetrics): number => m.curb - m.unit;
 
+// `ghibli` : barrière et scène en images cellulo (install-sprites), sprite classique en repli.
 function decorNode(
   set: DecorSet, item: DecorItem, phase: string, door: Door | undefined, m: CityMetrics, sky: Sky, still: boolean, lamps: readonly Lamp[], lit: boolean,
-  standSide: ReadonlyMap<string, 1 | -1>,
+  standSide: ReadonlyMap<string, 1 | -1>, ghibli: boolean,
 ): Drawn | null {
   const attrs = { 'data-decor-item': item.id, 'data-decor-kind': item.kind, 'data-decor-set': set.id, 'data-decor-phase': phase };
   const key = `${set.id}-${item.id}`;
@@ -406,17 +407,17 @@ function decorNode(
         return {
           part: 'street',
           depth: LANE_BARRIER_DEPTH[item.lane],
-          node: <g key={key} {...attrs} data-barrier-lane={item.lane} data-x={item.x.toFixed(1)} transform={`translate(${item.x.toFixed(1)} ${y.toFixed(1)}) ${barrierMatrix(m.unit, 1)}`}><Barrier sky={sky} /></g>,
+          node: <g key={key} {...attrs} data-barrier-lane={item.lane} data-x={item.x.toFixed(1)} transform={`translate(${item.x.toFixed(1)} ${y.toFixed(1)}) ${barrierMatrix(m.unit, 1)}`}><Barrier sky={sky} ghibli={ghibli} /></g>,
         };
       }
       const x = barrierX(item.x, lamps, m.unit);
-      return { part: 'front', node: <g key={key} {...attrs} data-x={x.toFixed(1)} transform={`translate(${x.toFixed(1)} ${barrierY(m).toFixed(1)}) scale(${barrierK(m.unit).toFixed(3)})`}><Barrier sky={sky} /></g> };
+      return { part: 'front', node: <g key={key} {...attrs} data-x={x.toFixed(1)} transform={`translate(${x.toFixed(1)} ${barrierY(m).toFixed(1)}) scale(${barrierK(m.unit).toFixed(3)})`}><Barrier sky={sky} ghibli={ghibli} /></g> };
     }
     case 'stage-floor':
     case 'stage-frame':
     case 'stage-spots': {
       const t = `translate(${item.x.toFixed(1)} ${stageBase(m).toFixed(1)}) scale(${m.unit.toFixed(3)})`;
-      const art = item.kind === 'stage-floor' ? <StageFloor sky={sky} /> : item.kind === 'stage-frame' ? <StageFrame sky={sky} /> : <StageSpots sky={sky} lit={lit} />;
+      const art = item.kind === 'stage-floor' ? <StageFloor sky={sky} ghibli={ghibli} /> : item.kind === 'stage-frame' ? <StageFrame sky={sky} ghibli={ghibli} /> : <StageSpots sky={sky} lit={lit} ghibli={ghibli} />;
       return { part: 'crew', node: <g key={key} {...attrs} transform={t}>{art}</g> };
     }
     case 'stand-counter':
@@ -453,7 +454,7 @@ function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[],
   const playing = abs >= absMinute(set.day, BAND_FROM) && abs < absMinute(set.day + 1, 0);
   const lit = sp.phase === 'present' && dark && playing;
   const out: Drawn[] = [];
-  if (lit) out.push({ part: 'crew', node: <g key={`${set.id}-beams`} transform={t}><StageBeams still={still} /></g> });
+  if (lit) out.push({ part: 'crew', node: <g key={`${set.id}-beams`} transform={t}><StageBeams still={still} ghibli={ghibli} /></g> });
   if (still ? fp.phase === 'present' : itemShown(set, floor, fp)) {
     const day = Math.floor(abs / 1440);
     out.push({
@@ -702,10 +703,16 @@ const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): React
   </g>
 );
 
-// Pièce de la scène tenue par l'ouvrier de la nacelle : tronçon de treillis (ossature) ou projecteur.
-const heldPiece = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (
-  <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>{inp.item.kind === 'stage-frame' ? <HeldTruss sky={inp.sky} /> : <HeldSpot sky={inp.sky} />}</g>
-);
+// Pièce de la scène tenue par l'ouvrier de la nacelle : tronçon de treillis (ossature) ou projecteur. Ghibli : image cuite
+// dans le sens `dir`, posée sans miroir (à la main droite du pantin, échelle du passant).
+const heldPiece = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
+  const truss = inp.item.kind === 'stage-frame';
+  if (inp.ghibli) {
+    const s = (0.8 / STREET_SCALE.person).toFixed(3);
+    return <g {...loadAttrs(inp, by)} transform={`scale(${s})`}>{truss ? <HeldTruss sky={inp.sky} ghibli={{ dir }} /> : <HeldSpot sky={inp.sky} ghibli={{ dir }} />}</g>;
+  }
+  return <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>{truss ? <HeldTruss sky={inp.sky} /> : <HeldSpot sky={inp.sky} />}</g>;
+};
 
 // Échelle : l'équipe la prend sur son véhicule (galerie de la camionnette, porte-bagages du vélo porteur, flanc du camion
 // plateau), la porte à l'épaule en marchant, l'appuie (inclinée) contre la façade, centrée sur la porte, ou contre le bout de
@@ -749,15 +756,17 @@ function ladderCrew(inp: CrewInput): FootCrew {
   // Même structure de transformation (CSS, avec la transition des ouvriers) portée, dressée ou couchée : l'échelle glisse avec
   // ceux qui la tiennent d'un rendu à la minute au suivant.
   const ladderStyle = (x: number, y: number, dir: 1 | -1, deg: number): CSSProperties => ({ transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${dir}, 1) rotate(${deg.toFixed(1)}deg)`, transition: MOVE });
+  // Ghibli : l'échelle est une image cellulo cuite dans le sens du groupe (`dir`), que `scale(dir, 1)` ne retourne pas.
+  const sprite = (dir: 1 | -1): ReactElement => <LadderSprite height={h} sky={inp.sky} ghibli={inp.ghibli} dir={dir} />;
   const carried = (ax: number, dir: 1 | -1, ly: number, by = 'hands'): ReactElement => (
     <g data-ladder="" data-ladder-state="carried" data-carried={by} data-x={(ax - (dir * h) / 2).toFixed(1)} style={ladderStyle(ax, ly, dir, -90)}>
-      <LadderSprite height={h} />
+      {sprite(dir)}
     </g>
   );
   // `angle` : 0 = appuyée (inclinée de LADDER_TILT), 90 = couchée au sol vers l'arrière.
   const standing = (angle: number): ReactElement => (
     <g data-ladder="" data-ladder-state={angle === 0 ? 'up' : 'moving'} data-carried={angle === 0 ? 'held' : 'hands'} data-x={lx.toFixed(1)} style={ladderStyle(lx, foot, lean, LADDER_TILT * (1 - angle / 90) - angle)}>
-      <LadderSprite height={h} />
+      {sprite(lean)}
     </g>
   );
   switch (inp.step) {
@@ -862,7 +871,7 @@ function handCrew(inp: CrewInput): FootCrew {
       : `matrix(${u.toFixed(3)}, 0, 0, ${u.toFixed(3)}, 0, 0)`;
     return (
       <g {...attrs} style={{ transform: `translate(${x.toFixed(1)}px, ${base.toFixed(1)}px) ${shape}`, transition: MOVE }}>
-        {barrier ? <Barrier sky={inp.sky} /> : counter ? <CarriedCounter sky={inp.sky} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />}
+        {barrier ? <Barrier sky={inp.sky} ghibli={inp.ghibli} /> : counter ? <CarriedCounter sky={inp.sky} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />}
       </g>
     );
   };
@@ -1054,7 +1063,7 @@ function liftCrew(inp: CrewInput): ReactElement {
   }
   // Caisse de drapeaux sur le plateau du camion élévateur : ceux qui restent à poser, ou déjà rangés.
   const cargo = inp.set.transport === 'lift'
-    ? <FlagCrate sky={inp.sky} tag="lift" flags={inp.set.items.filter((i) => inVehicle(inp.set, i, inp.abs)).map((i) => `${inp.set.id}/${i.id}`)} />
+    ? <FlagCrate sky={inp.sky} tag="lift" flags={inp.set.items.filter((i) => inVehicle(inp.set, i, inp.abs)).map((i) => `${inp.set.id}/${i.id}`)} ghibli={inp.ghibli ? { dir: g.dir } : undefined} />
     : null;
   return (
     <>
