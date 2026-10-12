@@ -69,6 +69,13 @@ function heldTransforms(key: FigureKey): Record<HeldAnchor, string> {
 // Pose affichée par chaque nœud (posée par la boucle ou au rendu) : les objets tenus suivent l'image réellement montrée.
 const shownPoses = new WeakMap<Element, FigureKey>();
 
+// Sommet de la tête (repère local de la figure) de la pose actuellement montrée ; null si le nœud n'a aucune pose affichée.
+// L'image du sprite a une grande marge transparente au-dessus du crâne : la boîte écran du nœud ne donne pas le haut de la tête.
+export function figureHeadTop(node: Element): readonly [number, number] | null {
+  const key = shownPoses.get(node);
+  return key ? anchorsOf(key).headTop : null;
+}
+
 // `hidden` : nœud inactif (habitant chez lui, client absent, passant hors présence) : <image> sans href, aucun sprite peint ;
 // la boucle le remet en place par poseFigure. La palette suit le rendu (à la minute, avec le ciel, par paliers) ; au rendu,
 // rien n'est peint si la figure a déjà une image : sprite de la nouvelle clé s'il existe, sinon l'image affichée (et sa clé

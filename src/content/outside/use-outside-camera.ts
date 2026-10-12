@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import { clampCamera, clientToWorld, easeInOut, followStep, initialCamera, lerpRect, pan, viewBoxOf, viewRect, zoomAt, type Camera, type Rect, type Size } from '../../core/library/outside-camera';
+import { figureHeadTop } from '../figure/ghibli-figure';
 import { reducedMotion } from '../ghibli-sky';
 import { isShown, pickFigure } from './pick-figure';
 
@@ -13,6 +14,20 @@ const LOST_MS = 1000;
 const WHEEL_STEP = 1.15;
 
 type Options = { svg: () => SVGSVGElement | null; box: () => HTMLElement | null; world: Size; phase: OutsidePhase; from: Rect | null; windows: readonly Rect[]; onSettled: (phase: 'outside' | 'inside') => void };
+
+// Ordonnée écran du sommet de la tête d'une figure Ghibli (le sprite a une marge transparente au-dessus du crâne, donc la boîte
+// du nœud est trop haute) ; null hors art Ghibli ou sans matrice d'écran : l'appelant garde le haut de la boîte.
+function headClientY(node: Element, svg: SVGSVGElement): number | null {
+  const fig = node.matches('[data-figure]') ? node : node.querySelector('[data-figure][data-key]');
+  const top = fig && figureHeadTop(fig);
+  const ctm = fig && (fig as SVGGraphicsElement).getScreenCTM?.();
+  if (!top || !ctm) return null;
+  const pt = svg.createSVGPoint?.();
+  if (!pt) return null;
+  pt.x = top[0];
+  pt.y = top[1];
+  return pt.matrixTransform(ctm).y;
+}
 
 export function useOutsideCamera(o: Options): void {
   const opts = useRef(o);
@@ -80,7 +95,7 @@ export function useOutsideCamera(o: Options): void {
           const r = following.getBoundingClientRect();
           const cx = r.left + r.width / 2 - b.left;
           const centre = clientToWorld(cam.current, b, world, cx, r.top + r.height / 2 - b.top);
-          const head = clientToWorld(cam.current, b, world, cx, r.top - b.top);
+          const head = clientToWorld(cam.current, b, world, cx, (headClientY(following, svg) ?? r.top) - b.top);
           cam.current = followStep(cam.current, b, world, centre, dt);
           write(viewRect(cam.current, b, world));
           const m = marker();

@@ -170,6 +170,14 @@ describe('useOutsideCamera', () => {
     expect(frames.size).toBe(0);
   });
 
+  it('sans point de tête disponible (art classique, jsdom) : repère posé sur le haut de la boîte, 4 unités au-dessus', async () => {
+    await goOutside();
+    rects.set(figure(), { x: 600, y: 150, w: 20, h: 40 });
+    tap(610, 170);
+    // Caméra initiale x = 360, zoom 1 : haut de la boîte (610, 150) -> monde (970, 150), repère à y - 4.
+    expect(marker().getAttribute('transform')).toBe('translate(970.0 146.0)');
+  });
+
   it('personnage caché plus d’1 s : le suivi s’arrête', async () => {
     await goOutside();
     rects.set(figure(), { x: 600, y: 150, w: 20, h: 40 });

@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { BLANK_SPRITE, FigureContext, FigureRegistry, spriteKey, type Palette } from '../../../src/content/figure/figure-host';
-import { GhibliFigure, figurePalette, hideFigure, poseFigure } from '../../../src/content/figure/ghibli-figure';
+import { GhibliFigure, figureHeadTop, figurePalette, hideFigure, poseFigure } from '../../../src/content/figure/ghibli-figure';
 import { anchorsOf, keyString } from '../../../src/core/library/figure/bake';
 import { skyAt, sunTimes } from '../../../src/core/library/sky';
 import type { Outfit } from '../../../src/core/library/city/people';
@@ -189,6 +189,19 @@ describe('figure Ghibli', () => {
     draw(sky);
     return { host, rerender: draw, unmount: () => { act(() => root.unmount()); host.remove(); } };
   };
+  it('figureHeadTop : haut de la tête de la pose montrée, null sans pose ou une fois cachée', () => {
+    const r = new FigureRegistry('t', { perFrame: 1 });
+    expect(figureHeadTop(fig())).toBeNull();
+    const { host, unmount } = mount(r, false);
+    const node = host.querySelector('[data-figure]')!;
+    const top = figureHeadTop(node)!;
+    expect(top).toHaveLength(2);
+    expect(top.every(Number.isFinite)).toBe(true);
+    expect(top[1]).toBeLessThan(0);
+    hideFigure(r, node);
+    expect(figureHeadTop(node)).toBeNull();
+    unmount();
+  });
   it('rend une <image> avec href et data-palette, sans variables CSS ; poseFigure garde l’image tant que le sprite manque', () => {
     const r = new FigureRegistry('t', { perFrame: 1 });
     const { host, unmount } = mount(r, false);
