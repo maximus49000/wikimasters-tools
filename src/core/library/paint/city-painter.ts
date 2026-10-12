@@ -1,7 +1,8 @@
 import { hashString, mulberry32 } from '../scene-world';
 import { cellRng, type Box } from './brush';
 import { INK, SHADOW_K, TAU, disc, fillRect, groundShadow, ink, inkRect, light, pick, poly, shade } from './cel';
-import { HILL_ROWS, type CityPaintPlan, type Furniture, type Gull, type HillHouse, type Landmark, type PaintBuilding, type PlanDoor, type Tree } from './city-plan';
+import { GROUND_FLOOR } from '../city/facades';
+import { HILL_ROWS, type CityPaintPlan, type Furniture, type Gull, type HillHouse, type Landmark, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree, type Win } from './city-plan';
 import { paintEntrance } from './shop/entrance';
 import { hexRgb, rgba, type Rgb } from './color';
 import { paintFarWall, paintGull, paintHillGround, paintHillHouse, paintLandmark } from './hill-painter';
@@ -12,7 +13,7 @@ import type { PaintCtx } from './paint-ctx';
 // son propre générateur : peint depuis deux tranches, il est identique.
 export const TILE = 360;
 // À incrémenter à chaque changement du dessin : invalide le cache des tranches.
-export const PAINT_VERSION = 3;
+export const PAINT_VERSION = 5;
 
 const CLOTH = ['#E8456B', '#FFFFFF', '#F6C62E', '#4E8ED8', '#6BB36B', '#F28CB4'].map(hexRgb);
 const FLOWERS = ['#3F8A3A', '#E8456B', '#F6C62E', '#FFFFFF', '#E070C0'].map(hexRgb);
@@ -28,14 +29,18 @@ const MAILBOX = hexRgb('#F6C820');
 const POSTERS = ['#E85A3A', '#3A7EC8', '#F0C030', '#8A58B8'].map(hexRgb);
 
 export const tileCount = (width: number): number => Math.max(1, Math.ceil(width / TILE));
+// Corniche du socle des jumeaux : débord de chaque côté, hauteur au-dessus de `p.top`, hauteur totale, ombre dessous.
+export const CORNICE = { over: 1.5, up: 0.8, h: 3, drop: 2.5 } as const;
 
-export type TileItems = { buildings: PaintBuilding[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; furniture: Furniture[]; doors: PlanDoor[] };
+export type TileItems = { buildings: PaintBuilding[]; podiums: PaintPodium[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; furniture: Furniture[]; doors: PlanDoor[] };
 
 export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
   const x0 = tile * TILE - 2;
   const x1 = (tile + 1) * TILE + 2;
   return {
     buildings: plan.buildings.filter((b) => b.x < x1 && b.x + b.w > x0),
+    // Le socle déborde de sa corniche de chaque côté.
+    podiums: plan.podiums.filter((p) => p.x - CORNICE.over < x1 && p.x + p.w + CORNICE.over > x0),
     trees: plan.trees.filter((t) => t.x - t.r < x1 && t.x + t.r > x0),
     houses: plan.hill.houses.filter((h) => h.x - 2 < x1 && h.x + h.w + (h.trees ? h.trees.r * 2 : 0) + 2 > x0),
     landmarks: plan.hill.landmarks.filter((l) => l.x - 3 < x1 && l.x + l.w + 3 > x0),
@@ -53,7 +58,9 @@ export function tileKey(plan: CityPaintPlan, tile: number): string {
     plan.height,
     tile,
     Math.min(TILE, plan.width - tile * TILE),
-    it.buildings.map((b) => `${b.id}@${b.x.toFixed(1)}`).join(','),
+    // Sans l'id : celui d'un immeuble du fond (index dans les façades) change quand la pièce grandit.
+    it.buildings.map((b) => `${b.far ? 'f' : ''}@${b.x.toFixed(1)}`).join(','),
+    it.podiums.map((p) => p.x.toFixed(1)).join(','),
     it.trees.map((t) => `${t.x.toFixed(1)}:${t.r.toFixed(1)}`).join(','),
     it.houses.map((h) => `${h.row}${h.x.toFixed(1)}`).join(','),
     it.landmarks.map((l) => `${l.kind}${l.x.toFixed(1)}`).join(','),
@@ -162,9 +169,9 @@ export function paintBuilding(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuildi
   ctx.clip();
   fillRect(ctx, shade(wall, 0.28), x + w * 0.72, eave, w * 0.28, h);
   if (left && left.top < top) poly(ctx, shade(wall, 0.28), [[x, left.top], [x + (ground - left.top) * SHADOW_K, ground], [x, ground]]);
-  // Rehaut : liseré clair côté soleil ; salissure du pied.
+  // Rehaut : liseré clair côté soleil ; salissure du pied (pas sous une tour de jumeaux : le socle la couvrirait).
   fillRect(ctx, light(wall, 0.45), x, eave, 1.6, h);
-  fillRect(ctx, shade(wall, 0.18), x, ground - 3, w, 3);
+  if (b.podiumTop === null) fillRect(ctx, shade(wall, 0.18), x, ground - 3, w, 3);
   if (look.ivy) {
     const side = look.ivy === 'left' ? x - 2 : x + w * 0.55;
     const clumps: [number, number, number][] = [];
@@ -238,20 +245,7 @@ export function paintBuilding(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuildi
         fillRect(ctx, shade(look.roof, 0.4), win.x - 0.9, win.y, win.w + 1.8, win.h + 0.6);
       }
     }
-    fillRect(ctx, GLASS, win.x, win.y, win.w, win.h);
-    poly(ctx, 'rgba(255,255,255,0.75)', [[win.x, win.y + win.h * 0.55], [win.x + win.w * 0.55, win.y], [win.x + win.w, win.y], [win.x, win.y + win.h * 0.9]]);
-    fillRect(ctx, shade(GLASS, 0.45), win.x, win.y, win.w, 1.2);
-    if (win.curtain) {
-      fillRect(ctx, '#FFF4DC', win.x, win.y, 1.6, win.h);
-      fillRect(ctx, '#FFF4DC', win.x + win.w - 1.6, win.y, 1.6, win.h);
-    }
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 0.6;
-    ctx.strokeRect(win.x, win.y, win.w, win.h);
-    ctx.beginPath();
-    ctx.moveTo(win.x + win.w / 2, win.y);
-    ctx.lineTo(win.x + win.w / 2, win.y + win.h);
-    ctx.stroke();
+    paintPane(ctx, win);
     if (win.dormer) continue;
     if (look.shutters && win.x - 3 >= x && win.x + win.w + 3 <= x + w) {
       fillRect(ctx, light(look.shutters, 0.25), win.x - 2.6, win.y, 2.1, win.h);
@@ -327,6 +321,15 @@ export function paintBuilding(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuildi
     for (let gy = eave + 8; gy < ground; gy += 22) ctx.fillRect(px - 0.6, gy, 2.3, 0.8);
   }
   inkRect(ctx, x, eave, w, h, 0.9);
+  // Mitoyens : trait encré appuyé à la jonction, du toit le plus bas des deux jusqu'au sol.
+  if (left && left.x + left.w >= x - 0.5) {
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(x, left.top > top ? left.top + left.look.roofH : top + look.roofH);
+    ctx.lineTo(x, ground);
+    ctx.stroke();
+  }
 }
 
 function paintStreet(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number): void {
@@ -546,6 +549,65 @@ function paintFurniture(ctx: PaintCtx, plan: CityPaintPlan, f: Furniture): void 
   ctx.stroke();
 }
 
+// Fenêtre d'habitation (tour ou socle) : vitre, reflet, rideaux, trait et meneau.
+function paintPane(ctx: PaintCtx, win: Win): void {
+  fillRect(ctx, GLASS, win.x, win.y, win.w, win.h);
+  poly(ctx, 'rgba(255,255,255,0.75)', [[win.x, win.y + win.h * 0.55], [win.x + win.w * 0.55, win.y], [win.x + win.w, win.y], [win.x, win.y + win.h * 0.9]]);
+  fillRect(ctx, shade(GLASS, 0.45), win.x, win.y, win.w, 1.2);
+  if (win.curtain) {
+    fillRect(ctx, '#FFF4DC', win.x, win.y, 1.6, win.h);
+    fillRect(ctx, '#FFF4DC', win.x + win.w - 1.6, win.y, 1.6, win.h);
+  }
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 0.6;
+  ctx.strokeRect(win.x, win.y, win.w, win.h);
+  ctx.beginPath();
+  ctx.moveTo(win.x + win.w / 2, win.y);
+  ctx.lineTo(win.x + win.w / 2, win.y + win.h);
+  ctx.stroke();
+}
+
+// Socle commun des jumeaux (maquette batiments-larges/rue.html) : pierre de taille claire d'un seul tenant sous les deux
+// tours, assises fines, corniche saillante à `p.top` (rehaut dessus, ombre nette dessous), rangée de fenêtres de l'étage
+// encadrées de pierre, bandeau au-dessus du rez-de-chaussée (les locaux et entrées sont peints par-dessus).
+export function paintPodium(ctx: PaintCtx, plan: CityPaintPlan, p: PaintPodium): void {
+  const { x, w, top, stone } = p;
+  const { ground } = plan;
+  const h = ground - top;
+  fillRect(ctx, stone, x, top, w, h);
+  fillRect(ctx, shade(stone, 0.28), x + w * 0.72, top, w * 0.28, h);
+  fillRect(ctx, light(stone, 0.45), x, top, 1.6, h);
+  fillRect(ctx, shade(stone, 0.18), x, ground - 3, w, 3);
+  // Assises de pierre de taille, de la corniche au bandeau du rez-de-chaussée.
+  const band = ground - GROUND_FLOOR - 1;
+  ctx.strokeStyle = rgba(shade(stone, 0.24), 0.9);
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  for (let y = top + CORNICE.h + 3; y < band - 1; y += 4.5) {
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w, y);
+  }
+  ctx.stroke();
+  fillRect(ctx, shade(stone, 0.3), x, band, w, 1);
+  inkRect(ctx, x, top, w, h, 0.9);
+  // Ombre nette de la corniche, puis les fenêtres de l'étage (linteau et appui en pierre plus claire).
+  fillRect(ctx, shade(stone, 0.42), x, top + CORNICE.h - CORNICE.up, w, CORNICE.drop);
+  for (const win of p.wins) {
+    fillRect(ctx, light(stone, 0.5), win.x - 1.2, win.y - 1, win.w + 2.4, 1);
+    paintPane(ctx, win);
+    fillRect(ctx, '#FFF6E0', win.x - 1.2, win.y + win.h, win.w + 2.4, 1);
+    fillRect(ctx, shade(stone, 0.4), win.x - 1.2, win.y + win.h + 1, win.w + 2.4, 1);
+  }
+  // Corniche en débord : rehaut dessus, face à l'ombre légère, trait.
+  const cx = x - CORNICE.over;
+  const cw = w + 2 * CORNICE.over;
+  const cy = top - CORNICE.up;
+  fillRect(ctx, light(stone, 0.5), cx, cy, cw, CORNICE.h);
+  fillRect(ctx, shade(stone, 0.22), cx, cy + CORNICE.h - 1, cw, 1);
+  fillRect(ctx, shade(stone, 0.42), cx + cw * 0.72, cy + 1.4, cw * 0.28, CORNICE.h - 1.4);
+  inkRect(ctx, cx, cy, cw, CORNICE.h, 0.7);
+}
+
 export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number): void {
   const it = tileItems(plan, tile);
   const x0 = tile * TILE;
@@ -558,6 +620,7 @@ export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number):
   for (const g of it.gulls) paintGull(ctx, g);
   for (const b of it.buildings) if (b.far) paintBuilding(ctx, plan, b);
   for (const b of it.buildings) if (!b.far) paintBuilding(ctx, plan, b);
+  for (const p of it.podiums) paintPodium(ctx, plan, p);
   paintStreet(ctx, plan, x0, x1);
   // Entrées d'immeuble (G4a) : en pierre, sur le trottoir, avant les arbres.
   for (const d of it.doors) paintEntrance(ctx, d.cx, d.base, d.s, d.variant, plan.seed ^ Math.round(d.x * 8));

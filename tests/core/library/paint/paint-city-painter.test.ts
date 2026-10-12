@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
-import { LEFT_GAP, leftOf, paintBuilding, paintCityTile, TILE, tileCount, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
+import { CORNICE, LEFT_GAP, leftOf, paintBuilding, paintCityTile, paintPodium, TILE, tileCount, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
 import { doorsFor } from '../../../../src/core/library/city/doors';
 import { recordingCtx } from './recording-ctx';
 
@@ -116,6 +116,70 @@ describe('peintre de tranche', () => {
   it('n’utilise jamais Math.random', () => {
     vi.spyOn(Math, 'random').mockImplementation(() => { throw new Error('Math.random interdit'); });
     paintCityTile(recordingCtx(), cityPaintPlan(720, 340, 5), 0);
+  });
+
+  it('peint la corniche du socle en débord de 1,5 u de chaque côté, et ses fenêtres', () => {
+    const plan = cityPaintPlan(1440, 340, 4);
+    const p = plan.podiums[0]!;
+    const ctx = recordingCtx();
+    paintPodium(ctx, plan, p);
+    const rects = ctx.ops.filter((o) => o.op === 'fillRect').map((o) => ({ x: o.args[0]!, y: o.args[1]!, w: o.args[2]!, h: o.args[3]! }));
+    expect(rects.some((r) => r.x <= p.x - 1.5 && r.x + r.w >= p.x + p.w + 1.5 && Math.abs(r.y - p.top) < 2)).toBe(true);
+    // Rien au-dessus de la corniche ni hors du débord.
+    for (const [x, y] of ctx.points) {
+      expect(y).toBeGreaterThanOrEqual(p.top - 1.5);
+      expect(x).toBeGreaterThanOrEqual(p.x - 1.6);
+      expect(x).toBeLessThanOrEqual(p.x + p.w + 1.6);
+    }
+    for (const win of p.wins) expect(rects.some((r) => r.x === win.x && r.y === win.y && r.w === win.w && r.h === win.h)).toBe(true);
+    const again = recordingCtx();
+    paintPodium(again, plan, p);
+    expect(again.ops).toEqual(ctx.ops);
+  });
+
+  it('un socle dont la corniche déborde dans la tranche voisine y est listé', () => {
+    const full = cityPaintPlan(1440, 340, 4);
+    const p = full.podiums[0]!;
+    const x0 = TILE - 2;
+    // Socle fini 1 u avant le bord de la tranche 1 : sa corniche (1,5 u) y entre ; fini 5 u avant : non.
+    const at = (end: number) => ({ ...full, podiums: [{ ...p, x: end - p.w }] });
+    expect(CORNICE.over).toBe(1.5);
+    expect(tileItems(at(x0 - 1), 1).podiums).toHaveLength(1);
+    expect(tileItems(at(x0 - 5), 1).podiums).toHaveLength(0);
+    expect(tileItems(at(x0 - 1), 0).podiums).toHaveLength(1);
+  });
+
+  it('tour sur socle : pas de salissure de pied (elle serait sous le socle)', () => {
+    const plan = cityPaintPlan(1440, 340, 4);
+    const tower = plan.buildings.find((b) => b.podiumTop !== null)!;
+    const simple = plan.buildings.find((b) => !b.far && b.podiumTop === null)!;
+    const foot = (b: typeof tower): number => {
+      const ctx = recordingCtx();
+      paintBuilding(ctx, plan, b);
+      return ctx.ops.filter((o) => o.op === 'fillRect' && o.args[0] === b.x && o.args[1] === plan.ground - 3 && o.args[2] === b.w && o.args[3] === 3).length;
+    };
+    expect(foot(simple)).toBe(1);
+    expect(foot(tower)).toBe(0);
+  });
+
+  it('mitoyens : un trait encré appuyé à la jonction, du toit le plus bas au sol', () => {
+    let found = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const plan = cityPaintPlan(2160, 340, seed);
+      for (const b of plan.buildings) {
+        if (b.far) continue;
+        const left = leftOf(plan, b);
+        const touching = left !== null && left.x + left.w >= b.x - 0.5;
+        const ctx = recordingCtx();
+        paintBuilding(ctx, plan, b);
+        const y0 = touching ? (left.top > b.top ? left.top + left.look.roofH : b.top + b.look.roofH) : NaN;
+        const i = ctx.ops.findIndex((o) => o.op === 'moveTo' && o.args[0] === b.x && o.args[1] === y0);
+        const joint = i >= 0 && ctx.ops[i + 1]!.op === 'lineTo' && ctx.ops[i + 1]!.args[0] === b.x && ctx.ops[i + 1]!.args[1] === plan.ground;
+        expect(joint).toBe(touching);
+        if (touching) found++;
+      }
+    }
+    expect(found).toBeGreaterThan(0);
   });
 
   it('entrées d’immeuble : celles de doorsFor, dans les tranches qu’elles touchent, et dans la clé', () => {

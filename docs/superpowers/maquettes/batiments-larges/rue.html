@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>Bâtiments larges — rue cellulo</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:18px 20px 60px;background:#f1ede4;color:#2b2b2b;max-width:2120px;box-sizing:border-box;overflow-x:hidden}
+h2{margin:0 0 4px}h3{margin:26px 0 6px;font-size:17px}.sub{color:#555;margin:0 0 14px;font-size:14px;line-height:1.45;max-width:1100px}
+canvas{display:block;border-radius:6px;box-shadow:0 2px 10px #0003;background:#ddd;width:100%;height:auto}
+.stats{font-size:14px;color:#333;margin:6px 0 0;line-height:1.5}.stats b{color:#1a1a1a}
+.tag{font-size:11px;background:#e5dccb;border-radius:8px;padding:1px 6px;color:#5a4a30;margin-left:6px}
+button{font:inherit;font-size:14px;padding:6px 14px;border-radius:8px;border:1px solid #b8a98a;background:#fff8ea;cursor:pointer;margin-right:10px}
+.seed{font-size:13px;color:#666}
+.leg{font-size:13px;color:#555;margin:6px 0 0;line-height:1.45;max-width:1100px}
+</style></head><body>
+<h2>Bâtiments larges · génération du premier plan par <b>lots</b></h2>
+<p class="sub">Même graine, même fond (ciel, colline de maisons, mur du fond). En haut, l'algorithme actuel de <code>citySkyline</code> (immeubles de 28 à 54 u, écart 8 à 22 u, premier x = 12 par tranche de 360). En bas, la proposition : lots <b>simples</b> (60 %, 40 à 70 u) et lots <b>jumeaux</b> (40 %, deux tours de 26 à 44 u sur un socle commun de 44 u avec une grande boutique) ; entre deux lots, 45 % mitoyens, 55 % séparés de 8 à 22 u. Style cellulo : aplats, un ton d'ombre violet-bleu à bord net, un rehaut, trait encré #2A1A18.</p>
+<p><button id="other">Autre ville</button><span class="seed" id="seedLabel"></span></p>
+
+<h3>1 · Aujourd'hui <span class="tag">2000 u de rue</span></h3>
+<canvas id="today"></canvas>
+<p class="stats" id="statToday"></p>
+
+<h3>2 · Proposition <span class="tag">2000 u de rue · lots simples + jumeaux</span></h3>
+<canvas id="prop"></canvas>
+<p class="stats" id="statProp"></p>
+
+<h3>3 · Zoom ×2,5 <span class="tag">un lot jumeaux et son voisin mitoyen</span></h3>
+<canvas id="zoom"></canvas>
+<p class="leg" id="zoomLeg"></p>
+
+<script>
+// ───────────────────────── Outils (mêmes que le peintre : scene-world.ts, cel.ts, color.ts) ─────────────────────────
+function mulberry32(seed){let a=seed>>>0;return()=>{a=(a+0x6d2b79f5)>>>0;let t=a;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296}}
+function hashString(s){let h=2166136261;for(let i=0;i<s.length;i++)h=Math.imul(h^s.charCodeAt(i),16777619);return h>>>0}
+const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const mix=(a,b,t)=>{t=Math.max(0,Math.min(1,t));return[0,1,2].map(i=>Math.round(a[i]+(b[i]-a[i])*t))};
+const rgba=(c,a=1)=>`rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const C=c=>typeof c==='string'?hex(c):c;
+const SUN=hex('#FFF6D0'),COOL=hex('#5A4A9C'),HAZE=hex('#9CC0E4'),INK='#2A1A18';
+const shade=(c,t=0.3)=>mix(C(c),COOL,t),light=(c,t=0.3)=>mix(C(c),SUN,t),haze=(c,t)=>mix(C(c),HAZE,t);
+const ink=a=>`rgba(42,26,24,${Math.max(0,Math.min(1,a))})`;
+const pick=(l,r)=>l[Math.floor(r()*l.length)];
+const fillRect=(ctx,c,x,y,w,h)=>{ctx.fillStyle=typeof c==='string'&&c.startsWith('rgba')?c:rgba(C(c));ctx.fillRect(x,y,w,h)};
+const inkRect=(ctx,x,y,w,h,lw=0.8)=>{ctx.strokeStyle=INK;ctx.lineWidth=lw;ctx.strokeRect(x,y,w,h)};
+const poly=(ctx,c,pts)=>{ctx.fillStyle=typeof c==='string'&&c.startsWith('rgba')?c:rgba(C(c));ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.fill()};
+const strokePoly=(ctx,pts,lw,style=INK)=>{ctx.strokeStyle=style;ctx.lineWidth=lw;ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.stroke()};
+const disc=(ctx,c,x,y,r)=>{ctx.fillStyle=rgba(C(c));ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill()};
+function text(ctx,s,x,y,size,color,{bold=true,w=null,font='sans-serif'}={}){ctx.save();ctx.font=`${bold?'bold ':''}${size}px ${font}`;ctx.textAlign='center';ctx.textBaseline='middle';let sx=1;if(w){const m=ctx.measureText(s).width;if(m>w)sx=w/m}ctx.translate(x,y);ctx.scale(sx,1);ctx.fillStyle=color;ctx.fillText(s,0,0);ctx.restore()}
+
+// ───────────────────────── Mesures du monde (unité = 1 px du monde, hauteur 340) ─────────────────────────
+const H=340,GROUND=H*0.7,SIDEWALK=H*0.06,CURB=GROUND+SIDEWALK,CANVAS_H=Math.round(CURB+6);
+const STREET_W=2000,CHUNK=360,STRETCH=1.6,GF=30,ROOF_H=14,FAR_ROOF_H=6,FAR_HAZE=0.16;
+const DOOR_W=12,DOOR_MARGIN=4,SHOP_MIN=38,GAP=2,SHOP_DOOR=6;
+const SOCLE_H=GF+14; // rez-de-chaussée + 1 étage
+const WALLS=['#F6E2B4','#F0A98A','#CFE0B8','#F4D89C','#EEC79A','#E6BCD0','#FFF1D6','#C4D6E6','#F2CC8C','#E0C8A0','#F5B7A0','#D8E6C8'];
+const TILE_ROOFS=['#D8603A','#B4523A','#C86A40','#9E4A34'],SLATE_ROOFS=['#5A6A84','#6A6A86','#4C5A70'],ZINC_ROOFS=['#98A4B4','#8290A2'];
+const SHUTTERS=['#5E9C5A','#3E78A0','#A06A3A','#4E8EA0','#8468B0','#C85A50'];
+const HILL_WALLS=['#F4E0B8','#F2C8A0','#EACFA8','#F6E6CC','#E8C0A8','#F0D4B0','#DCCDB4','#F4D0C0'],HILL_ROOFS=['#D0583A','#C86A3E','#B8503A','#E07048','#A84A36','#C25E44'];
+const GLASS='#7FB4E0',BRICK='#C2724E',STONE='#E4D6BA',SOCLE_STONE='#EDE2C8',SIDEWALK_C='#E6D4AE',COBBLE='#B49E7A',GRASS='#5E9A50';
+const FLOWERS=['#3F8A3A','#E8456B','#F6C62E','#FFFFFF','#E070C0'];
+
+// ───────────────────────── Fond : colline + mur du fond (identique dans les deux bandeaux) ─────────────────────────
+const HILL_ROWS=[{y:0.27,s:0.5,haze:0.3},{y:0.35,s:0.62,haze:0.22},{y:0.43,s:0.76,haze:0.14}];
+function hillPlan(seed){
+ const pr=mulberry32(seed^hashString('ghibli-crest'));const phase=[pr()*Math.PI*2,pr()*Math.PI*2];
+ const crest=x=>H*(0.2+0.025*Math.sin(x/230+phase[0])+0.012*Math.sin(x/97+phase[1]));
+ const houses=[];
+ HILL_ROWS.forEach((row,ri)=>{const r=mulberry32(seed^hashString(`ghibli-hill-${ri}`));const base=H*row.y,s=row.s;let x=-20+r()*30;
+  while(x<STREET_W+20){const w=(22+r()*34)*s,h=(30+r()*34)*s;const wall=pick(HILL_WALLS,r),roof=pick(HILL_ROOFS,r);const kind=r()<0.6?'gable':r()<0.5?'mansard':'hip';const dormers=r()<0.6;const chimney=r()<0.7?0.2+r()*0.6:null;const gap=r()<0.35?(6+r()*14)*s:0.5;const trees=r()<0.4?{x:x+w+gap-3*s,r:(6+r()*5)*s}:null;
+   houses.push({x,w,h,base,top:base-h,s,haze:row.haze,wall,roof:kind==='mansard'?'#5A6A84':roof,kind,dormers,chimney,trees});x+=w+gap}});
+ return{crest,houses};
+}
+// Mur du fond : la part `far` de citySkyline, tirée EN PREMIER dans chaque tranche (le premier plan n'y change rien).
+function farWall(seed){const out=[];for(let chunk=0;chunk*CHUNK<STREET_W+CHUNK;chunk++){const rng=mulberry32(seed^Math.imul(chunk+1,2654435761));let x=chunk*CHUNK;const end=(chunk+1)*CHUNK;while(x<end){const w=34+rng()*30,h=(50+rng()*70)*STRETCH;out.push({x,w,h,top:GROUND-h});x+=w-4}}return out}
+// Premier plan ACTUEL : suite du même générateur de tranche, après la part `far`.
+function todayLots(seed){const out=[];for(let chunk=0;chunk*CHUNK<STREET_W+CHUNK;chunk++){const rng=mulberry32(seed^Math.imul(chunk+1,2654435761));
+ {let x=chunk*CHUNK;const end=(chunk+1)*CHUNK;while(x<end){const w=34+rng()*30;rng();x+=w-4}} // part `far` consommée
+ let x=chunk*CHUNK+12;const end=(chunk+1)*CHUNK;
+ while(x<end){const w=28+rng()*26,h0=40+rng()*60;for(let r=0;r<Math.floor(h0/14);r++)for(let c=0;c<Math.floor(w/10);c++){rng();rng()}
+  out.push({kind:'simple',x,w,towers:[{x,w,h:h0*STRETCH}]});x+=w+8+rng()*14}}
+ return out.sort((a,b)=>a.x-b.x)}
+// Premier plan PROPOSÉ : lots simples / jumeaux, mitoyens ou séparés.
+function proposalLots(seed){const r=mulberry32(seed^hashString('lots-v1'));const out=[];let x=12;
+ while(x<STREET_W){let lot;
+  if(r()<0.6){const w=40+r()*30,h=(40+r()*60)*STRETCH;lot={kind:'simple',x,w,towers:[{x,w,h}]}}
+  else{const w1=26+r()*18,w2=26+r()*18,ret=r()*8;const h1=(45+r()*55)*STRETCH;let h2=(45+r()*55)*STRETCH;
+   if(Math.abs(h2-h1)<20){h2=h1+(h2>=h1?1:-1)*(20+r()*30);if(h2>160||h2<72)h2=h1-(h2>160?1:-1)*(20+r()*30)}
+   lot={kind:'twins',x,w:w1+ret+w2,retreat:ret,towers:[{x,w:w1,h:h1},{x:x+w1+ret,w:w2,h:h2}]}}
+  out.push(lot);const gap=r()<0.45?0:8+r()*14;lot.gapAfter=gap;x+=lot.w+gap}
+ return out}
+
+// Apparence d'une tour (même recette que lookOf, générateur propre à x). Les jumeaux reçoivent un mur et un toit
+// différents de leur voisin.
+function lookOf(seed,x,w,avoid){const rng=mulberry32(seed^hashString('ghibli-look')^Math.round(x*8));
+ let roofKind=pick(['gable','gable','gable','mansard','mansard','zinc'],rng);
+ let wall=pick(WALLS,rng);let roof=roofKind==='gable'?pick(TILE_ROOFS,rng):roofKind==='mansard'?pick(SLATE_ROOFS,rng):pick(ZINC_ROOFS,rng);
+ if(avoid){if(wall===avoid.wall)wall=WALLS[(WALLS.indexOf(wall)+5)%WALLS.length];if(roofKind===avoid.roofKind){roofKind=roofKind==='gable'?'mansard':'gable';roof=roofKind==='gable'?pick(TILE_ROOFS,rng):pick(SLATE_ROOFS,rng)}}
+ return{wall,roof,roofKind,shutters:rng()<0.75?pick(SHUTTERS,rng):null,boxes:rng()<0.6,chimney:w>=34&&rng()<0.75?0.2+rng()*0.5:null,antenna:rng()<0.4,pipe:rng()<0.6,curtain:rng}}
+
+// Locaux : entrée des habitants au bord (côté tiré par un générateur propre), local sur le reste.
+const SHOPS=[
+ {name:'Au Pain Perdu',sign:'#8A4B1E',ink:'#F7E3B5',wall:'#F3E2C0',kind:'shelves',items:['#D89A50','#E8B870','#C47A3A']},
+ {name:'Pharmacie',sign:'#E2D6BC',ink:'#1E8A4C',wall:'#EAF5EE',kind:'pharmacy',items:['#FAFCFB']},
+ {name:'Au Chat Qui Pêche',sign:'#D2527F',ink:'#FFF3F7',wall:'#FBE6EE',kind:'florist',items:['#F05A8A','#FFD84A','#B85AE8']},
+ {name:'Roue Libre',sign:'#E0412B',ink:'#FFFFFF',wall:'#EFE8E2',kind:'bikes',items:['#E0412B','#3A7AD8','#2A2A2A']},
+ {name:'Page Blanche',sign:'#2F4B7C',ink:'#F4E7C6',wall:'#E7DEC9',kind:'shelves',items:['#C84A3A','#3A6AA8','#E8B83A','#4A8A4A']},
+ {name:'Proxi Marché',sign:'#1C6FB8',ink:'#FFE45C',wall:'#E8EEF4',kind:'shelves',items:['#E84A3A','#3A8AE8','#F2C83A','#4AB84A']},
+ {name:'Café du Commerce',sign:'#7A3E2A',ink:'#F6E7D0',wall:'#E8D4B8',kind:'cafe',items:['#F4F0E6']},
+ {name:'Pomme d’Api',sign:'#4F9A3B',ink:'#FFFBE0',wall:'#E6F1D3',kind:'florist',items:['#E84A3A','#7AC84A','#F2A03A']},
+ {name:'L’Hair du Temps',sign:'#0F8F8F',ink:'#FFFFFF',wall:'#DFF1F0',kind:'salon',items:['#D6E4EA']},
+ {name:'Le Comté Compte',sign:'#E3B23C',ink:'#3E2B05',wall:'#F6E8B8',kind:'shelves',items:['#F2C84A','#E8D890']},
+ {name:'Optique Lumière',sign:'#243B8A',ink:'#E8F0FF',wall:'#EEF1F8',kind:'shelves',items:['#3A3A3A','#8A6A3A']},
+ {name:'Bella Napoli',sign:'#C8352B',ink:'#FFF4D6',wall:'#F3DCC0',kind:'cafe',items:['#F4F0E6']},
+];
+function shopSlots(lots,seed){const rng=mulberry32(seed^hashString('shop-slots'));const out=[];
+ for(const lot of lots){const side=rng()<0.5?'left':'right';const lo=lot.x,hi=lot.x+lot.w;lot.doorSide=side;
+  const residentDoorX=side==='left'?lo+DOOR_MARGIN:hi-DOOR_MARGIN-DOOR_W;lot.residentDoorX=residentDoorX;
+  if(hi-lo<SHOP_MIN)continue;
+  const x=side==='left'?residentDoorX+DOOR_W+GAP:lo+DOOR_MARGIN;const end=side==='left'?hi-DOOR_MARGIN:residentDoorX-GAP;
+  const slot={x,w:end-x,doorSide:side,type:SHOPS[out.length%SHOPS.length],lot};lot.shop=slot;out.push(slot)}
+ return out}
+
+// ───────────────────────── Peinture ─────────────────────────
+function paintBackground(ctx,seed,x0,x1){
+ const hill=hillPlan(seed);
+ fillRect(ctx,'#6FA8DC',x0-4,0,x1-x0+8,CANVAS_H);
+ // nuages plats
+ const cr=mulberry32(seed^hashString('clouds'));for(let i=0;i<Math.ceil((x1-x0)/420)+1;i++){const cx=x0+cr()*(x1-x0),cy=8+cr()*30,s=0.8+cr()*0.7;ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.ellipse(cx,cy,14*s,4*s,0,0,7);ctx.ellipse(cx+6*s,cy-3*s,8*s,4*s,0,0,7);ctx.ellipse(cx-7*s,cy-2*s,7*s,3.5*s,0,0,7);ctx.fill()}
+ // colline
+ ctx.fillStyle=rgba(haze(GRASS,0.35));ctx.beginPath();ctx.moveTo(x0-4,GROUND);for(let x=x0-4;x<x1+4;x+=4)ctx.lineTo(x,hill.crest(x));ctx.lineTo(x1+4,GROUND);ctx.closePath();ctx.fill();
+ ctx.fillStyle=rgba(haze(light(GRASS,0.4),0.3));ctx.beginPath();ctx.moveTo(x0-4,hill.crest(x0-4)+3);for(let x=x0-4;x<x1+4;x+=4)ctx.lineTo(x,hill.crest(x));for(let x=x1+4;x>x0-4;x-=4)ctx.lineTo(x,hill.crest(x)+3);ctx.closePath();ctx.fill();
+ for(const h of hill.houses)if(h.x+h.w+30>x0&&h.x-4<x1)paintHillHouse(ctx,h);
+ const far=farWall(seed);for(let i=0;i<far.length;i++){const b=far[i];if(b.x+b.w<x0-2||b.x>x1+2)continue;paintFarWall(ctx,b,i?far[i-1]:null)}
+}
+function paintHillHouse(ctx,h){const{x,w,s,haze:hz,base,top}=h;const rh=h.h*0.32;const wall=haze(h.wall,hz),rc=haze(h.roof,hz);
+ fillRect(ctx,wall,x,top+rh,w,h.h-rh+2);fillRect(ctx,shade(wall,0.3),x+w*0.7,top+rh,w*0.3,h.h-rh+2);
+ const o=1.5*s;const pts=h.kind==='gable'?[[x-o,top+rh],[x+w/2,top],[x+w+o,top+rh]]:h.kind==='hip'?[[x-o,top+rh],[x+w*0.25,top],[x+w*0.75,top],[x+w+o,top+rh]]:[[x-o,top+rh],[x+o,top+1],[x+w-o,top+1],[x+w+o,top+rh]];
+ poly(ctx,rc,pts);ctx.save();ctx.beginPath();pts.forEach(([px,py],i)=>i?ctx.lineTo(px,py):ctx.moveTo(px,py));ctx.closePath();ctx.clip();fillRect(ctx,light(rc,0.35),x-o,top,w*0.5+o,rh);fillRect(ctx,shade(rc,0.35),x+w*0.72,top,w*0.28+o,rh);ctx.restore();
+ strokePoly(ctx,pts,0.6,ink(0.85-hz));fillRect(ctx,shade(wall,0.42),x,top+rh,w,2*s);
+ if(h.dormers)for(let dx=x+4*s;dx<x+w-5*s;dx+=8*s){fillRect(ctx,light(rc,0.5),dx,top+rh*0.45,3*s,rh*0.5);fillRect(ctx,shade(wall,0.5),dx+0.6*s,top+rh*0.55,1.8*s,rh*0.38)}
+ if(h.chimney!==null){const cx=x+w*h.chimney;fillRect(ctx,haze(BRICK,hz),cx,top-4*s+rh*0.4,3*s,6*s);fillRect(ctx,ink(0.7-hz),cx-0.4,top-4*s+rh*0.4,3.8*s,0.8)}
+ ctx.fillStyle=rgba(haze('#5A7AA8',hz+0.2));for(let wy=top+rh+4*s;wy+5*s<base;wy+=9*s)for(let wx=x+3*s;wx+4*s<x+w-2*s;wx+=7*s)ctx.fillRect(wx,wy,3.2*s,4.5*s);
+ ctx.strokeStyle=ink(0.8-hz);ctx.lineWidth=0.6;ctx.strokeRect(x,top+rh,w,h.h-rh+2);
+ if(h.trees){const{x:tx,r:tr}=h.trees,ty=base-6*s;ctx.strokeStyle=ink(0.85-hz);ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(tx,ty,tr,0,7);ctx.moveTo(tx+1.6*tr,ty+tr*0.3);ctx.arc(tx+tr*0.8,ty+tr*0.3,tr*0.8,0,7);ctx.stroke();
+  ['#2E6E34','#56A844','#A6DC60'].forEach((c,t)=>{ctx.fillStyle=rgba(haze(c,hz));ctx.beginPath();ctx.arc(tx-t*tr*0.25,ty-t*tr*0.28,tr*(1-t*0.3),0,7);ctx.fill()})}}
+function paintFarWall(ctx,b,left){const hz=FAR_HAZE,{x,w,top}=b;const eave=top+FAR_ROOF_H,h=GROUND-eave;const r=mulberry32(hashString('far')^Math.round(x*8));
+ const wall=haze(pick(HILL_WALLS,r),hz),gable=r()<0.6,rc=haze(gable?pick(HILL_ROOFS,r):'#5A6A84',hz);
+ fillRect(ctx,wall,x,eave,w,h);ctx.save();ctx.beginPath();ctx.rect(x,eave,w,h);ctx.clip();fillRect(ctx,shade(wall,0.28),x+w*0.72,eave,w*0.28,h);
+ if(left&&left.top<top)poly(ctx,shade(wall,0.28),[[x,left.top],[x+(GROUND-left.top)*0.55,GROUND],[x,GROUND]]);fillRect(ctx,light(wall,0.4),x,eave,1.2,h);ctx.restore();
+ const pts=gable?[[x,eave],[x+w/2,top],[x+w,eave]]:[[x,eave],[x+1.5,top+1],[x+w-1.5,top+1],[x+w,eave]];poly(ctx,rc,pts);
+ ctx.save();ctx.beginPath();pts.forEach(([px,py],i)=>i?ctx.lineTo(px,py):ctx.moveTo(px,py));ctx.closePath();ctx.clip();fillRect(ctx,light(rc,0.35),x,top,w*0.5,FAR_ROOF_H);fillRect(ctx,shade(rc,0.35),x+w*0.72,top,w*0.28,FAR_ROOF_H);ctx.restore();
+ strokePoly(ctx,pts,0.6,ink(0.85-hz));fillRect(ctx,shade(wall,0.42),x,eave,w,2);
+ ctx.fillStyle=rgba(haze('#5A7AA8',0.3));const cols=Math.max(1,Math.floor((w-6)/8));for(let wy=top+5;wy+5<=GROUND-8;wy+=11)for(let c=0;c<cols;c++)ctx.fillRect(x+4+c*8,wy,3.5,5);
+ ctx.strokeStyle=ink(0.8-hz);ctx.lineWidth=0.6;ctx.strokeRect(x,eave,w,h)}
+
+function roofPts(x,w,top,look){const eave=top+look.roofH;return look.roofKind==='gable'?[[x-2,eave],[x+w/2,top],[x+w+2,eave]]:look.roofKind==='mansard'?[[x-2,eave],[x+2,top+1],[x+w-2,top+1],[x+w+2,eave]]:[[x-1,eave],[x-1,top+1],[x+w+1,top+1],[x+w+1,eave]]}
+function paintRoof(ctx,x,w,top,look){const eave=top+look.roofH,rc=look.roof,pts=roofPts(x,w,top,look);
+ ctx.save();poly(ctx,rc,pts);ctx.beginPath();pts.forEach(([px,py],i)=>i?ctx.lineTo(px,py):ctx.moveTo(px,py));ctx.closePath();ctx.clip();
+ if(look.roofKind==='gable'){poly(ctx,light(rc,0.35),[[x-2,eave],[x+w/2,top],[x+w/2,eave]]);poly(ctx,shade(rc,0.35),[[x+w/2,top],[x+w+2,eave],[x+w/2,eave]]);ctx.strokeStyle=rgba(shade(rc,0.5),0.8);ctx.lineWidth=0.5;ctx.beginPath();for(let y=top+3;y<eave;y+=2.6){ctx.moveTo(x-2,y);ctx.lineTo(x+w+2,y)}ctx.stroke();fillRect(ctx,light(rc,0.5),x-2,top,w+4,0.8)}
+ else if(look.roofKind==='mansard'){fillRect(ctx,light(rc,0.35),x-2,top,w*0.5,look.roofH);fillRect(ctx,shade(rc,0.3),x+w*0.72,top,w*0.3,look.roofH);ctx.strokeStyle=rgba(shade(rc,0.5),0.7);ctx.lineWidth=0.5;ctx.beginPath();for(let y=top+3.5;y<eave;y+=3){ctx.moveTo(x-2,y);ctx.lineTo(x+w+2,y)}ctx.stroke()}
+ else{fillRect(ctx,light(rc,0.4),x-1,top+1,w*0.5,look.roofH);fillRect(ctx,shade(rc,0.3),x+w*0.72,top,w*0.3,look.roofH);ctx.fillStyle=rgba(shade(rc,0.5));for(let sx=x+4;sx<x+w;sx+=6)ctx.fillRect(sx,top+1,0.7,look.roofH)}
+ ctx.restore();strokePoly(ctx,pts,0.9)}
+
+// Tour : mur de `eave` à `bottom`, fenêtres de top+4 par rangées de 14 tant qu'elles tiennent au-dessus de `winFloor`.
+function paintTower(ctx,t,look,bottom,winFloor,left,rng){const{x,w}=t,top=GROUND-t.h,eave=top+ROOF_H,h=bottom-eave,wall=look.wall;
+ fillRect(ctx,wall,x,eave,w,h);ctx.save();ctx.beginPath();ctx.rect(x,eave,w,h);ctx.clip();
+ fillRect(ctx,shade(wall,0.28),x+w*0.72,eave,w*0.28,h);
+ if(left&&left.top<top)poly(ctx,shade(wall,0.28),[[x,left.top],[x+(GROUND-left.top)*0.55,GROUND],[x,GROUND]]);
+ fillRect(ctx,light(wall,0.45),x,eave,1.6,h);if(bottom===GROUND)fillRect(ctx,shade(wall,0.18),x,GROUND-3,w,3);ctx.restore();
+ paintRoof(ctx,x,w,top,look);fillRect(ctx,shade(wall,0.42),x,eave,w,3.5);
+ if(look.chimney!==null){const cx=x+w*look.chimney,ch=look.roofKind==='zinc'?7:9,cy=top+1;fillRect(ctx,BRICK,cx,cy+2.4,4,ch-2.4);fillRect(ctx,shade(BRICK,0.35),cx+2.6,cy+2.4,1.4,ch-2.4);fillRect(ctx,light(BRICK,0.4),cx,cy+2.4,1,ch-2.4);fillRect(ctx,'#6E3A2A',cx-0.6,cy+2.4,5.2,1.3);for(let p=0;p<2;p++)fillRect(ctx,'#9E6A4A',cx+0.6+p*2,cy,1.2,2.6);inkRect(ctx,cx,cy+2.4,4,ch-2.4,0.7)}
+ if(look.antenna){const ax=x+w*0.75,ay=look.roofKind==='gable'?top+(ROOF_H*Math.abs(ax-(x+w/2)))/(w/2+2):top+1;ctx.strokeStyle=INK;ctx.lineWidth=0.6;ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax,ay-8);ctx.moveTo(ax-3,ay-7);ctx.lineTo(ax+3,ay-7);ctx.moveTo(ax-2,ay-4.5);ctx.lineTo(ax+2,ay-4.5);ctx.stroke()}
+ const cols=Math.floor(w/10);
+ for(let r=0;top+4+r*14+7<=winFloor;r++)for(let c=0;c<cols;c++){const wx=x+4+c*10,wy=top+4+r*14,ww=5,wh=7,dormer=wy<top+ROOF_H;
+  if(dormer){if(look.roofKind==='zinc'){fillRect(ctx,light(look.roof,0.45),wx-1.2,wy-1,ww+2.4,wh+1.6);inkRect(ctx,wx-1.2,wy-1,ww+2.4,wh+1.6,0.6)}
+   else{const p=[[wx-1.4,wy],[wx+ww/2,Math.max(top,wy-3.4)],[wx+ww+1.4,wy]];poly(ctx,light(look.roof,0.45),p);strokePoly(ctx,p,0.7);fillRect(ctx,shade(look.roof,0.4),wx-0.9,wy,ww+1.8,wh+0.6)}}
+  fillRect(ctx,GLASS,wx,wy,ww,wh);poly(ctx,'rgba(255,255,255,0.75)',[[wx,wy+wh*0.55],[wx+ww*0.55,wy],[wx+ww,wy],[wx,wy+wh*0.9]]);fillRect(ctx,shade(GLASS,0.45),wx,wy,ww,1.2);
+  if(rng()<0.5){fillRect(ctx,'#FFF4DC',wx,wy,1.6,wh);fillRect(ctx,'#FFF4DC',wx+ww-1.6,wy,1.6,wh)}
+  ctx.strokeStyle=INK;ctx.lineWidth=0.6;ctx.strokeRect(wx,wy,ww,wh);ctx.beginPath();ctx.moveTo(wx+ww/2,wy);ctx.lineTo(wx+ww/2,wy+wh);ctx.stroke();
+  if(dormer)continue;
+  if(look.shutters&&wx-3>=x&&wx+ww+3<=x+w){fillRect(ctx,light(look.shutters,0.25),wx-2.6,wy,2.1,wh);fillRect(ctx,shade(look.shutters,0.3),wx+ww+0.5,wy,2.1,wh);ctx.strokeStyle=INK;ctx.lineWidth=0.5;ctx.strokeRect(wx-2.6,wy,2.1,wh);ctx.strokeRect(wx+ww+0.5,wy,2.1,wh);ctx.fillStyle=rgba(shade(look.shutters,0.5));for(let k=1.5;k<wh;k+=2){ctx.fillRect(wx-2.3,wy+k,1.5,0.4);ctx.fillRect(wx+ww+0.8,wy+k,1.5,0.4)}}
+  fillRect(ctx,'#FFF6E0',wx-0.9,wy+wh,ww+1.8,1);fillRect(ctx,shade(wall,0.4),wx-0.9,wy+wh+1,ww+1.8,1);
+  if(look.boxes&&rng()<0.55){fillRect(ctx,'#8A4A2E',wx-0.6,wy+wh+1,ww+1.2,1.6);inkRect(ctx,wx-0.6,wy+wh+1,ww+1.2,1.6,0.5);for(let k=0;k<7;k++)disc(ctx,pick(FLOWERS,rng),wx+0.5+rng()*(ww-1),wy+wh+0.4+rng()*1.4,0.7)}}
+ if(look.pipe){const px=x+w-1.6;fillRect(ctx,'#4A4A5A',px,eave+2,1.1,h-2);fillRect(ctx,'rgba(255,255,255,0.4)',px,eave+2,0.4,h-2);ctx.fillStyle=INK;for(let gy=eave+8;gy<bottom;gy+=22)ctx.fillRect(px-0.6,gy,2.3,0.8)}
+ inkRect(ctx,x,eave,w,h,0.9)}
+
+// Socle commun des jumeaux : pierre claire d'un seul tenant, corniche marquée, rangée de fenêtres de l'étage.
+function paintSocle(ctx,lot,rng){const{x,w}=lot,top=GROUND-SOCLE_H,stone=SOCLE_STONE;
+ fillRect(ctx,stone,x,top,w,SOCLE_H);fillRect(ctx,shade(stone,0.28),x+w*0.72,top,w*0.28,SOCLE_H);fillRect(ctx,light(stone,0.45),x,top,1.6,SOCLE_H);fillRect(ctx,shade(stone,0.18),x,GROUND-3,w,3);
+ // joints de pierre de taille (assises)
+ ctx.strokeStyle=rgba(shade(stone,0.35),0.9);ctx.lineWidth=0.4;ctx.beginPath();for(let y=top+6;y<GROUND-GF;y+=4.5){ctx.moveTo(x,y);ctx.lineTo(x+w,y)}ctx.stroke();
+ // corniche : bandeau saillant, rehaut dessus, ombre nette dessous, trait
+ fillRect(ctx,shade(stone,0.42),x-1,top+2.4,w+2,2.2);fillRect(ctx,light(stone,0.5),x-1.5,top-0.8,w+3,2.4);fillRect(ctx,shade(stone,0.3),x-1.5,top+1.6,w+3,0.9);inkRect(ctx,x-1.5,top-0.8,w+3,3.3,0.7);
+ // ombre des tours (débord) sur le socle, puis fenêtres de l'étage du socle
+ fillRect(ctx,shade(stone,0.42),x,top,w,0.01);
+ const cols=Math.floor((w-8)/10);const wy=top+4.5;
+ for(let c=0;c<cols;c++){const wx=x+4+c*10+((w-8)-cols*10)/2,ww=5,wh=7;fillRect(ctx,GLASS,wx,wy,ww,wh);poly(ctx,'rgba(255,255,255,0.75)',[[wx,wy+wh*0.55],[wx+ww*0.55,wy],[wx+ww,wy],[wx,wy+wh*0.9]]);fillRect(ctx,shade(GLASS,0.45),wx,wy,ww,1.2);
+  if(rng()<0.5){fillRect(ctx,'#FFF4DC',wx,wy,1.6,wh);fillRect(ctx,'#FFF4DC',wx+ww-1.6,wy,1.6,wh)}
+  ctx.strokeStyle=INK;ctx.lineWidth=0.6;ctx.strokeRect(wx,wy,ww,wh);ctx.beginPath();ctx.moveTo(wx+ww/2,wy);ctx.lineTo(wx+ww/2,wy+wh);ctx.stroke();
+  // encadrement de pierre + appui
+  fillRect(ctx,light(stone,0.5),wx-1.2,wy-1.4,ww+2.4,1.2);fillRect(ctx,'#FFF6E0',wx-1.2,wy+wh,ww+2.4,1);fillRect(ctx,shade(stone,0.4),wx-1.2,wy+wh+1,ww+2.4,1)}
+ // bandeau fin entre l'étage et le rez-de-chaussée
+ fillRect(ctx,shade(stone,0.3),x,GROUND-GF-1,w,1);
+ inkRect(ctx,x,top,w,SOCLE_H,0.9)}
+
+// Local : enseigne 5 u en haut du rez-de-chaussée, vitrine 21 u, porte vitrée 6 u côté opposé à l'entrée des habitants.
+function paintShop(ctx,slot,rng){const{x,w,doorSide:side,type:d}=slot,top=GROUND-GF,sign=C(d.sign);
+ const doorX=side==='left'?x+w-SHOP_DOOR:x;const win={x:side==='left'?x:x+SHOP_DOOR+1,y:top+8,w:w-SHOP_DOOR-1,h:GF-9};
+ // intérieur simplifié : mur, étagères garnies, comptoir
+ ctx.save();ctx.beginPath();ctx.rect(win.x,win.y,win.w,win.h);ctx.clip();const wall=C(d.wall);fillRect(ctx,wall,win.x,win.y,win.w,win.h);fillRect(ctx,shade(wall,0.18),win.x,win.y,win.w,3);fillRect(ctx,shade(wall,0.35),win.x,win.y+win.h-3,win.w,3);
+ if(d.kind==='shelves'||d.kind==='pharmacy'){for(let k=0;k<3;k++){const sy=win.y+4+k*4.6;fillRect(ctx,'#9A6A44',win.x+1,sy+2.6,win.w-2,0.8);for(let ix=win.x+2;ix+2<win.x+win.w-1;ix+=2.6)fillRect(ctx,pick(d.items,rng),ix,sy,1.8,2.6)}fillRect(ctx,d.kind==='pharmacy'?'#F6F8F7':'#B88A5A',win.x+1,win.y+win.h-8,win.w*0.55,5);inkRect(ctx,win.x+1,win.y+win.h-8,win.w*0.55,5,0.3)}
+ else if(d.kind==='florist'){for(let k=0;k<2;k++){const sy=win.y+5+k*6;fillRect(ctx,'#9A6A44',win.x+1,sy+2.4,win.w-2,0.8);for(let ix=win.x+2;ix+2<win.x+win.w-1;ix+=3)for(let j=0;j<3;j++)disc(ctx,d.items[(j+k)%3],ix+0.4+j*0.8,sy+1,0.7)}fillRect(ctx,'#B88A5A',win.x+1,win.y+win.h-8,win.w*0.55,5);inkRect(ctx,win.x+1,win.y+win.h-8,win.w*0.55,5,0.3)}
+ else if(d.kind==='bikes'){for(let bx=win.x+5;bx+5<win.x+win.w;bx+=9){const by=win.y+win.h-5;ctx.strokeStyle=INK;ctx.lineWidth=0.35;ctx.beginPath();ctx.arc(bx-2.4,by,2,0,7);ctx.stroke();ctx.beginPath();ctx.arc(bx+2.4,by,2,0,7);ctx.stroke();ctx.strokeStyle=pick(d.items,rng);ctx.lineWidth=0.6;ctx.beginPath();ctx.moveTo(bx-2.4,by);ctx.lineTo(bx,by-2.6);ctx.lineTo(bx+2.4,by);ctx.lineTo(bx-0.6,by);ctx.closePath();ctx.stroke()}}
+ else if(d.kind==='cafe'){for(let tx=win.x+5;tx+4<win.x+win.w-8;tx+=9){fillRect(ctx,'#F4F0E6',tx-2.5,win.y+win.h-6.5,5,0.8);fillRect(ctx,'#3A3A3A',tx-0.3,win.y+win.h-5.7,0.6,2.7);inkRect(ctx,tx-2.5,win.y+win.h-6.5,5,0.8,0.25)}fillRect(ctx,'#7A4A2A',win.x+win.w-9,win.y+win.h-9,8,6);inkRect(ctx,win.x+win.w-9,win.y+win.h-9,8,6,0.3)}
+ else{for(let sx=win.x+4;sx+4<win.x+win.w;sx+=9){disc(ctx,'#D6E4EA',sx,win.y+6,2.4);fillRect(ctx,'#1A1A1A',sx-1.6,win.y+win.h-9.5,3.2,4.2);fillRect(ctx,'#1A1A1A',sx-2,win.y+win.h-5.6,4,1.2)}}
+ fillRect(ctx,'rgba(150,190,220,0.18)',win.x,win.y,win.w,win.h);
+ // reflet diagonal
+ ctx.fillStyle='rgba(255,255,255,0.25)';ctx.beginPath();ctx.moveTo(win.x+win.w*0.12,win.y+win.h);ctx.lineTo(win.x+win.w*0.12+win.h*0.5,win.y);ctx.lineTo(win.x+win.w*0.12+win.h*0.5+3,win.y);ctx.lineTo(win.x+win.w*0.12+3,win.y+win.h);ctx.fill();ctx.restore();
+ // meneaux pour les grandes vitrines
+ if(win.w>30){ctx.strokeStyle=rgba(shade(sign,0.2));ctx.lineWidth=0.6;const n=Math.round(win.w/16);for(let k=1;k<n;k++){ctx.beginPath();ctx.moveTo(win.x+k*win.w/n,win.y);ctx.lineTo(win.x+k*win.w/n,win.y+win.h);ctx.stroke()}}
+ inkRect(ctx,win.x,win.y,win.w,win.h,0.5);
+ // soubassement
+ fillRect(ctx,sign,win.x,win.y+win.h-3,win.w,3);fillRect(ctx,shade(sign,0.28),win.x+win.w*0.72,win.y+win.h-3,win.w*0.28,3);inkRect(ctx,win.x,win.y+win.h-3,win.w,3,0.4);
+ // porte vitrée
+ const dc='#3A3F4A';fillRect(ctx,dc,doorX,top+9,SHOP_DOOR,GF-9);fillRect(ctx,shade(dc,0.3),doorX+SHOP_DOOR*0.6,top+9,SHOP_DOOR*0.4,GF-9);fillRect(ctx,'#A8C8DA',doorX+1,top+10.2,SHOP_DOOR-2,GF-12.4);inkRect(ctx,doorX+1,top+10.2,SHOP_DOOR-2,GF-12.4,0.3);fillRect(ctx,'#E8C060',doorX+(side==='left'?SHOP_DOOR-1.6:0.9),top+19,0.7,2.2);inkRect(ctx,doorX,top+9,SHOP_DOOR,GF-9,0.5);
+ // pilastre côté porte + enseigne
+ const px=side==='left'?x+w:x-1;fillRect(ctx,'#5A606C',px,top+7,1,GF-7);
+ fillRect(ctx,sign,x-0.5,top+1.6,w+1,5.6);fillRect(ctx,shade(sign,0.22),x-0.5+(w+1)*0.82,top+1.6,(w+1)*0.18,5.6);fillRect(ctx,light(sign,0.18),x-0.5,top+1.6,(w+1)*0.1,5.6);inkRect(ctx,x-0.5,top+1.6,w+1,5.6,0.6);
+ text(ctx,d.name,x+w/2,top+4.5,4,d.ink,{w:w-3})}
+
+// Entrée des habitants : encadrement en pierre, porte en bois, imposte.
+function paintEntrance(ctx,doorX,seed){const cx=doorX+DOOR_W/2,y=GROUND;const r=mulberry32(seed^hashString('door')^Math.round(doorX*8));const v=Math.floor(r()*3);const wood=pick(['#7A3B2A','#2E5A7E','#3E6A4A','#5A3A5A'],r),stone=STONE;
+ ctx.save();ctx.translate(cx,y);
+ if(v===0){ctx.beginPath();ctx.moveTo(-7.5,0);ctx.lineTo(-7.5,-17);ctx.arc(0,-17,7.5,Math.PI,0);ctx.lineTo(7.5,0);ctx.closePath();ctx.fillStyle=rgba(C(stone));ctx.fill();ctx.save();ctx.clip();fillRect(ctx,shade(stone,0.25),3,-26,6,27);ctx.restore();ctx.strokeStyle=INK;ctx.lineWidth=0.6;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-6,0);ctx.lineTo(-6,-17);ctx.arc(0,-17,6,Math.PI,0);ctx.lineTo(6,0);ctx.closePath();ctx.fillStyle=rgba(C(wood));ctx.fill();ctx.save();ctx.clip();fillRect(ctx,shade(wood,0.3),0,-24,6,24);fillRect(ctx,light(wood,0.2),-6,-24,1.5,24);ctx.restore();ctx.strokeStyle=INK;ctx.lineWidth=0.5;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-6,-17);ctx.arc(0,-17,6,Math.PI,0);ctx.closePath();ctx.fillStyle='#A8C8DA';ctx.fill();ctx.strokeStyle=INK;ctx.lineWidth=0.4;ctx.stroke();ctx.beginPath();for(let a=1;a<4;a++){ctx.moveTo(0,-17);ctx.lineTo(Math.cos(Math.PI+a*Math.PI/4)*6,-17+Math.sin(Math.PI+a*Math.PI/4)*6)}ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,-17);ctx.lineTo(0,0);ctx.moveTo(-6,-17);ctx.lineTo(6,-17);ctx.stroke();for(const sx of[-1,1]){fillRect(ctx,light(wood,0.15),sx*3-1.6,-15.5,3.2,6);inkRect(ctx,sx*3-1.6,-15.5,3.2,6,0.3);fillRect(ctx,light(wood,0.15),sx*3-1.6,-7.5,3.2,6);inkRect(ctx,sx*3-1.6,-7.5,3.2,6,0.3)}
+  fillRect(ctx,light(stone,0.2),-1.2,-25.6,2.4,2.4);inkRect(ctx,-1.2,-25.6,2.4,2.4,0.4)}
+ else if(v===1){fillRect(ctx,stone,-7.5,-25,15,25);fillRect(ctx,shade(stone,0.25),3,-25,4.5,25);inkRect(ctx,-7.5,-25,15,25,0.6);fillRect(ctx,'#2A2A30',-6,-23.5,12,23.5);
+  for(const sx of[-6,0.3]){fillRect(ctx,'#A8C8DA',sx+0.6,-22.8,5,15);ctx.strokeStyle='#1A1A1A';ctx.lineWidth=0.35;ctx.beginPath();for(let k=0;k<3;k++){ctx.moveTo(sx+3.1,-21+k*4.6);ctx.arc(sx+3.1,-19.6+k*4.6,1.4,-Math.PI/2,Math.PI*1.5)}ctx.stroke();ctx.strokeRect(sx+0.6,-22.8,5,15);fillRect(ctx,'#3A3A42',sx+0.6,-7,5,6.4)}
+  fillRect(ctx,light(stone,0.2),-8.2,-26.4,16.4,1.8);inkRect(ctx,-8.2,-26.4,16.4,1.8,0.4)}
+ else{fillRect(ctx,stone,-7.5,-25,15,25);fillRect(ctx,shade(stone,0.25),3,-25,4.5,25);inkRect(ctx,-7.5,-25,15,25,0.6);fillRect(ctx,'#A8C8DA',-6,-23.5,12,5);inkRect(ctx,-6,-23.5,12,5,0.4);ctx.strokeStyle=INK;ctx.lineWidth=0.3;for(let k=1;k<4;k++){ctx.beginPath();ctx.moveTo(-6+k*3,-23.5);ctx.lineTo(-6+k*3,-18.5);ctx.stroke()}
+  fillRect(ctx,wood,-6,-18,12,18);fillRect(ctx,shade(wood,0.3),0.6,-18,5.4,18);fillRect(ctx,light(wood,0.2),-6,-18,1.5,18);inkRect(ctx,-6,-18,12,18,0.5);for(const[px,py,ph]of[[-4.6,-16.4,7],[1,-16.4,7],[-4.6,-8,6.6],[1,-8,6.6]]){fillRect(ctx,light(wood,0.15),px,py,3.6,ph);inkRect(ctx,px,py,3.6,ph,0.3)}}
+ disc(ctx,'#E8C060',v===1?-1:2.4,-9.5,0.45);fillRect(ctx,'#C8BCA4',-8.4,-0.6,16.8,1.4);inkRect(ctx,-8.4,-0.6,16.8,1.4,0.4);
+ fillRect(ctx,'#2A4A9A',8.4,-17,3.6,2.6);ctx.strokeStyle='#FFF';ctx.lineWidth=0.2;ctx.strokeRect(8.7,-16.7,3,2);
+ ctx.restore()}
+
+function paintStreet(ctx,x0,x1){const a=x0-8,w=x1-x0+16;fillRect(ctx,SIDEWALK_C,a,GROUND,w,CURB-GROUND);ctx.strokeStyle=rgba(shade(SIDEWALK_C,0.25));ctx.lineWidth=0.5;ctx.beginPath();for(let j=Math.floor(a/17);j*17<a+w;j++){ctx.moveTo(j*17,GROUND);ctx.lineTo(j*17,CURB)}ctx.stroke();
+ fillRect(ctx,light(SIDEWALK_C,0.5),a,CURB-2.4,w,1.2);fillRect(ctx,shade(SIDEWALK_C,0.5),a,CURB-1.2,w,1.4);fillRect(ctx,INK,a,CURB-0.4,w,0.7);fillRect(ctx,shade(COBBLE,0.45),a,CURB,w,CANVAS_H-CURB);fillRect(ctx,'rgba(50,40,90,0.3)',a,CURB,w,2.2)}
+
+// Voisin de gauche (même plan) à moins de 26 u, pour l'ombre portée.
+function leftOf(towers,t){let best=null;for(const o of towers){if(o===t||o.x>=t.x||o.x+o.w<t.x-26)continue;if(!best||o.x>best.x)best=o}return best}
+
+function paintForeground(ctx,lots,seed){const towers=[];for(const lot of lots)for(const t of lot.towers){t.top=GROUND-t.h;towers.push(t)}
+ for(const lot of lots){const rng=mulberry32(seed^hashString('ghibli-building')^Math.round(lot.x*8));
+  if(lot.kind==='simple'){const t=lot.towers[0];paintTower(ctx,t,lookOf(seed,t.x,t.w),GROUND,GROUND-GF,leftOf(towers,t),rng)}
+  else{const[a,b]=lot.towers;const la=lookOf(seed,a.x,a.w),lb=lookOf(seed,b.x,b.w,la);
+   paintTower(ctx,a,la,GROUND-SOCLE_H,GROUND-SOCLE_H,leftOf(towers,a),rng);paintTower(ctx,b,lb,GROUND-SOCLE_H,GROUND-SOCLE_H,leftOf(towers,b),rng);
+   paintSocle(ctx,lot,rng)}
+  if(lot.shop)paintShop(ctx,lot.shop,rng);
+  paintEntrance(ctx,lot.residentDoorX,seed)}
+ // Jonction des mitoyens : trait encré appuyé sur toute la hauteur du plus bas des deux.
+ for(let i=1;i<lots.length;i++){const p=lots[i-1],l=lots[i];if(l.x-(p.x+p.w)<0.5){const hp=Math.max(...p.towers.map(t=>t.h)),hl=Math.max(...l.towers.map(t=>t.h));ctx.strokeStyle=INK;ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(l.x,GROUND);ctx.lineTo(l.x,GROUND-Math.min(hp,hl)+ROOF_H);ctx.stroke()}}}
+
+function render(canvas,seed,lots,x0,x1,scale){const dpr=2;const w=x1-x0;canvas.width=w*scale*dpr;canvas.height=CANVAS_H*scale*dpr;canvas.style.aspectRatio=`${w*scale} / ${CANVAS_H*scale}`;
+ const ctx=canvas.getContext('2d');ctx.setTransform(scale*dpr,0,0,scale*dpr,-x0*scale*dpr,0);ctx.lineJoin='round';
+ paintBackground(ctx,seed,x0,x1);paintForeground(ctx,lots.filter(l=>l.x<x1+30&&l.x+l.w>x0-30),seed);paintStreet(ctx,x0,x1)}
+
+function stats(lots){const shops=lots.filter(l=>l.shop);const vit=shops.map(l=>l.shop.w-SHOP_DOOR-1);const avg=vit.length?vit.reduce((a,b)=>a+b,0)/vit.length:0;
+ const adj=i=>(i>0&&lots[i].x-(lots[i-1].x+lots[i-1].w)<0.5)||(i<lots.length-1&&lots[i+1].x-(lots[i].x+lots[i].w)<0.5);
+ let twins=0,mit=0,iso=0;lots.forEach((l,i)=>{if(l.kind==='twins')twins++;else if(adj(i))mit++;else iso++});
+ const mitAll=lots.filter((l,i)=>adj(i)).length;
+ return{lots:lots.length,shops:shops.length,avg,twins,mit,iso,mitAll,minVit:vit.length?Math.min(...vit):0,maxVit:vit.length?Math.max(...vit):0}}
+function statLine(s){return`<b>${s.shops} boutiques</b> sur ${s.lots} lots · vitrine moyenne <b>${s.avg.toFixed(1)} u</b> (de ${s.minVit.toFixed(0)} à ${s.maxVit.toFixed(0)} u) · lots jumeaux : <b>${s.twins}</b> · simples mitoyens : <b>${s.mit}</b> · simples isolés : <b>${s.iso}</b> · lots collés à un voisin (jumeaux compris) : ${s.mitAll}`}
+
+let seed=20261011;
+function draw(){document.getElementById('seedLabel').textContent=`graine ${seed}`;
+ const today=todayLots(seed);shopSlots(today,seed);const prop=proposalLots(seed);shopSlots(prop,seed);
+ render(document.getElementById('today'),seed,today,0,STREET_W,1);render(document.getElementById('prop'),seed,prop,0,STREET_W,1);
+ document.getElementById('statToday').innerHTML=statLine(stats(today));document.getElementById('statProp').innerHTML=statLine(stats(prop));
+ // zoom : premier lot jumeaux dont un voisin est mitoyen (sinon le premier lot jumeaux)
+ const adj=i=>(i>0&&prop[i].x-(prop[i-1].x+prop[i-1].w)<0.5)||(i<prop.length-1&&prop[i+1].x-(prop[i].x+prop[i].w)<0.5);
+ let zi=prop.findIndex((l,i)=>l.kind==='twins'&&adj(i));if(zi<0)zi=prop.findIndex(l=>l.kind==='twins');
+ const z=prop[zi];const span=800/2.5;let x0=Math.max(0,Math.min(STREET_W-span,z.x+z.w/2-span/2));
+ render(document.getElementById('zoom'),seed,prop,x0,x0+span,2.5);
+ document.getElementById('zoomLeg').textContent=`Lot jumeaux à x = ${z.x.toFixed(0)} u (tours de ${z.towers[0].w.toFixed(0)} et ${z.towers[1].w.toFixed(0)} u, retrait ${z.retreat.toFixed(1)} u, socle de ${z.w.toFixed(0)} u, vitrine de ${(z.shop?z.shop.w-SHOP_DOOR-1:0).toFixed(0)} u) ; fenêtre de ${span} u à partir de x = ${x0.toFixed(0)}.`}
+document.getElementById('other').onclick=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;draw()};
+draw();
+</script>
+</body></html>

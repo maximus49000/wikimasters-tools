@@ -92,37 +92,65 @@ export function actorsFor(scene: SceneId, width: number, height: number, seed: n
 }
 
 export type Lamp = { x: number; y: number; u: number; blue: boolean };
-export type Building = { x: number; w: number; h: number; far: boolean; lamps: Lamp[] };
+// Socle commun d'un lot « jumeaux » : rez-de-chaussée commercial + un étage, partagé (même objet) par les deux tours.
+export type Podium = { id: number; x: number; w: number; h: number };
+export type Building = { x: number; w: number; h: number; far: boolean; lamps: Lamp[]; podium?: Podium };
 
 export const CHUNK = 360;
+// Hauteur du socle des jumeaux : rez-de-chaussée (GROUND_FLOOR = 30, city/facades.ts) + une rangée de fenêtres (14).
+export const PODIUM_H = 44;
+const LOT = { start: 12, twin: 0.4, touch: 0.45 } as const;
 
 // Sol sur lequel `citySkyline` pose ses fenêtres (son tirage n'en dépend pas) ; la rue dessinée a son propre sol (city/metrics.ts).
 export const SKYLINE_GROUND = 0.78;
 
-// Immeubles de la ville, tirés par bandes de 360 px (une zone de pièce) : agrandir la pièce à droite ne change pas ce qui existe déjà.
+// Grille de fenêtres d'origine (colonnes de 10 px, rangées de 14 px) posée sur SKYLINE_GROUND.
+function lampsOf(rng: () => number, x: number, w: number, h: number, ground: number): Lamp[] {
+  const lamps: Lamp[] = [];
+  for (let r = 0; r < Math.floor(h / 14); r++) {
+    for (let c = 0; c < Math.floor(w / 10); c++) lamps.push({ x: x + 4 + c * 10, y: ground - h + 4 + r * 14, u: rng(), blue: rng() < 0.15 });
+  }
+  return lamps;
+}
+
+// Rang du fond : par tranche de 360 (tirage inchangé). Premier plan : une suite de lots de gauche à droite (un seul
+// générateur, préfixe stable quand la pièce s'élargit) : simple (40-70 px) ou jumeaux (deux tours sur un socle commun),
+// mitoyens ou séparés de 8 à 22 px.
 export function citySkyline(width: number, height: number, seed: number): Building[] {
   const ground = height * SKYLINE_GROUND;
   const out: Building[] = [];
   for (let chunk = 0; chunk * CHUNK < width + CHUNK; chunk++) {
     const rng = mulberry32(seed ^ Math.imul(chunk + 1, 2654435761));
-    for (const far of [true, false]) {
-      let x = chunk * CHUNK + (far ? 0 : 12);
-      const end = (chunk + 1) * CHUNK;
-      while (x < end) {
-        const w = (far ? 34 : 28) + rng() * (far ? 30 : 26);
-        const h = (far ? 50 : 40) + rng() * (far ? 70 : 60);
-        const lamps: Lamp[] = [];
-        if (!far) {
-          for (let r = 0; r < Math.floor(h / 14); r++) {
-            for (let c = 0; c < Math.floor(w / 10); c++) {
-              lamps.push({ x: x + 4 + c * 10, y: ground - h + 4 + r * 14, u: rng(), blue: rng() < 0.15 });
-            }
-          }
-        }
-        out.push({ x, w, h, far, lamps });
-        x += w + (far ? -4 : 8 + rng() * 14);
-      }
+    let x = chunk * CHUNK;
+    const end = (chunk + 1) * CHUNK;
+    while (x < end) {
+      const w = 34 + rng() * 30;
+      const h = 50 + rng() * 70;
+      out.push({ x, w, h, far: true, lamps: [] });
+      x += w - 4;
     }
+  }
+  const rng = mulberry32(seed ^ hashString('city-lots'));
+  let podiumId = 0;
+  for (let x = LOT.start; x < width + CHUNK; ) {
+    if (rng() < LOT.twin) {
+      const wa = 26 + rng() * 18;
+      const wb = 26 + rng() * 18;
+      const gap = rng() * 8;
+      const ha = 45 + rng() * 55;
+      let hb = 45 + rng() * 55;
+      if (Math.abs(ha - hb) < 12.5) hb = ha < 72.5 ? ha + 12.5 : ha - 12.5;
+      const podium: Podium = { id: podiumId++, x, w: wa + gap + wb, h: PODIUM_H };
+      out.push({ x, w: wa, h: ha, far: false, lamps: lampsOf(rng, x, wa, ha, ground), podium });
+      out.push({ x: x + wa + gap, w: wb, h: hb, far: false, lamps: lampsOf(rng, x + wa + gap, wb, hb, ground), podium });
+      x += podium.w;
+    } else {
+      const w = 40 + rng() * 30;
+      const h = 40 + rng() * 60;
+      out.push({ x, w, h, far: false, lamps: lampsOf(rng, x, w, h, ground) });
+      x += w;
+    }
+    x += rng() < LOT.touch ? 0 : 8 + rng() * 14;
   }
   return out;
 }

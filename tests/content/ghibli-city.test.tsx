@@ -56,6 +56,14 @@ describe('ville peinte', () => {
     expect(qa('[data-lamp]').length).toBe(lamps);
   });
 
+  it('graphisme classique : le socle d’un jumeau est dessiné avant les fenêtres (rien ne cache la rangée du socle)', async () => {
+    await render(12 * 60, 2160);
+    const podiums = [...qa('[data-podium]')];
+    expect(podiums.length).toBeGreaterThan(0);
+    const lamps = [...qa('[data-lamp]')];
+    for (const p of podiums) for (const l of lamps) expect(p.compareDocumentPosition(l) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('Ghibli sans canvas (jsdom) : la ville classique reste visible', async () => {
     localStorage.setItem(ART_KEY, 'ghibli');
     await render(12 * 60);

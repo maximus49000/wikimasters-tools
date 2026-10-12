@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BUILDING_STRETCH, FAR_WINDOW, FAR_WINDOWS_MAX, GROUND_FLOOR, cityFacades, extraFloorWindows, farWindows } from '../../../src/core/library/city/facades';
+import { BUILDING_STRETCH, FAR_WINDOW, FAR_WINDOWS_MAX, GROUND_FLOOR, cityFacades, extraFloorWindows, farWindows, podiumWindows } from '../../../src/core/library/city/facades';
 import { CITY_GROUND, cityMetrics } from '../../../src/core/library/city/metrics';
-import { SKYLINE_GROUND, citySkyline } from '../../../src/core/library/scene-world';
+import { PODIUM_H, SKYLINE_GROUND, citySkyline } from '../../../src/core/library/scene-world';
 
 const ground = 340 * CITY_GROUND;
 
@@ -22,10 +22,14 @@ describe('cityFacades', () => {
       expect(f.h).toBeCloseTo(b.h * BUILDING_STRETCH, 6);
       if (b.far) return;
       // Fenêtres d'origine : mêmes x, même seuil, remontées de la hauteur ajoutée et recalées sur le sol de la rue.
-      b.lamps.forEach((l, j) => {
+      // Les fenêtres d'une tour de jumeaux qui tomberaient dans le socle sont écartées (le socle a les siennes).
+      const lift = b.h * (BUILDING_STRETCH - 1) + (340 * SKYLINE_GROUND - ground);
+      const kept = b.lamps.filter((l) => l.y - lift + 7 <= ground - (b.podium ? PODIUM_H : GROUND_FLOOR));
+      if (!b.podium) expect(kept).toHaveLength(b.lamps.length);
+      kept.forEach((l, j) => {
         expect(f.lamps[j]!.x).toBe(l.x);
         expect(f.lamps[j]!.u).toBe(l.u);
-        expect(f.lamps[j]!.y).toBeCloseTo(l.y - b.h * (BUILDING_STRETCH - 1) - (340 * SKYLINE_GROUND - ground), 6);
+        expect(f.lamps[j]!.y).toBeCloseTo(l.y - lift, 6);
       });
       for (const l of f.lamps) {
         expect(l.y).toBeGreaterThanOrEqual(ground - f.h);
@@ -83,5 +87,32 @@ describe('fenêtres recalées sur le sol de la rue', () => {
         expect(lamp.y + 7).toBeLessThanOrEqual(ground - GROUND_FLOOR + 0.001);
       }
     }
+  });
+});
+
+describe('façades des jumeaux', () => {
+  it("ne pose aucune fenêtre de tour dans le socle, et une rangée de fenêtres dans l'étage du socle", () => {
+    for (let s = 1; s <= 20; s++) {
+      const { ground } = cityMetrics(340);
+      for (const f of cityFacades(1440, 340, s)) {
+        if (!f.podium) continue;
+        const own = f.lamps.filter((l) => l.x >= f.x && l.x < f.x + f.w && l.y < ground - PODIUM_H);
+        const inPodium = f.lamps.filter((l) => l.y + 7 > ground - PODIUM_H);
+        for (const l of inPodium) {
+          expect(l.y).toBeGreaterThanOrEqual(ground - PODIUM_H);
+          expect(l.y + 7).toBeLessThanOrEqual(ground - GROUND_FLOOR);
+        }
+        expect(own.every((l) => l.y + 7 <= ground - PODIUM_H)).toBe(true);
+        expect(inPodium.length > 0).toBe(f.x === f.podium.x);
+      }
+    }
+  });
+  it('centre la rangée du socle sur sa largeur', () => {
+    const p = { id: 0, x: 100, w: 80, h: PODIUM_H };
+    const wins = podiumWindows(p, 238, 3);
+    expect(wins.length).toBe(Math.floor((80 - 6) / 10));
+    const left = wins[0]!.x - p.x;
+    const right = p.x + p.w - (wins.at(-1)!.x + 5);
+    expect(Math.abs(left - right)).toBeLessThan(0.01);
   });
 });

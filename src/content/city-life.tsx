@@ -185,7 +185,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const facades = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
   const frame = useMemo<EventFrame>(() => ({ width, height, metrics, facades }), [width, height, metrics, facades]);
   const intensity = useMemo(() => cityIntensity(city), [city]);
-  // Une entrée par immeuble : la probabilité par trajet est réduite selon le nombre d'entrées (≤ 6 habitants par 720 px).
+  // Une entrée par lot : la probabilité par trajet est réduite selon le nombre d'entrées (≤ 6 habitants par 720 px).
   const flow = useMemo(() => residentFlow(intensity, city.minutes, doors.length, width), [intensity, city.minutes, doors.length, width]);
   const lights = sky.daylight < 0.5 || rainy;
   const gateOf = (trip: Trip): number => (trip.kind === 'out' ? flow.out : flow.in);
@@ -447,8 +447,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <TrafficLane handle={traffic} lane={which} metrics={metrics} sky={sky} lights={lights} rainy={rainy} still={still} ghibli={ghibli} fests={fests} eventsByKey={eventsByKey} frozenT={frozen.current ?? 0} />
     </g>
   );
-  const silhouette = (list: typeof facades): ReactElement[] =>
-    list.map((b, i) => <rect key={i} x={b.x} y={metrics.ground - b.h} width={b.w} height={b.h + height} fill="#000" />);
+  // Silhouette des immeubles et des socles des jumeaux (la grue reste derrière le socle, dans le retrait entre les tours).
+  const silhouette = (list: typeof facades): ReactElement[] => [
+    ...list.map((b, i) => <rect key={i} x={b.x} y={metrics.ground - b.h} width={b.w} height={b.h + height} fill="#000" />),
+    ...list.filter((b) => b.podium && b.x === b.podium.x).map((b) => <rect key={`p${b.podium!.id}`} x={b.podium!.x} y={metrics.ground - b.podium!.h} width={b.podium!.w} height={b.podium!.h + height} fill="#000" />),
+  ];
 
   return (
     <g data-city-life="" ref={root}>
