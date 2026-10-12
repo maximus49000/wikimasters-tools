@@ -19,6 +19,8 @@ import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import type { FigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import '../core/library/paint/props/terrace';
+import { PropImage } from './prop/prop-host';
 import { AccessorySprite, GhibliPosed, applyGhibliPose, facingOfYaw, ghibliHandles, ghibliPoseOf, type GhibliPoseHandles } from './shop-gesture-sprites';
 
 // Terrasses (vague 1b-iv-b) : bar, café, restaurant, salon de thé et pizzeria sortent des tables rondes (deux chaises chacune)
@@ -443,41 +445,57 @@ export function placeCarriers(carriers: Carrier[], t: number, m: CityMetrics, fi
 }
 
 // ---------- Sprites (repère du passant : pieds à l'origine, il regarde vers +x) ----------
-function TableSprite({ sky }: { sky: Sky }): ReactElement {
+// Ghibli (G5) : image cellulo du peintre (props/terrace.ts) au même cadre, le dessin classique en repli tant qu'elle n'est pas cuite.
+function TableSprite({ sky, ghibli = false }: { sky: Sky; ghibli?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
-  return (
-    <g data-table-top="">
+  const art = (
+    <>
       <ellipse cx={0} cy={0} rx={3} ry={0.8} fill={t('#3A3A40')} />
       <rect x={-0.7} y={-12} width={1.4} height={12} fill={t('#3A3A40')} />
       <ellipse cx={0} cy={-12.4} rx={6} ry={1.6} fill={t('#D9D4C7')} />
-    </g>
+    </>
   );
+  return <g data-table-top="">{ghibli ? <PropImage spec={{ id: 'table', day: sky.daylight }} fallback={art} /> : art}</g>;
 }
-// Chaise de bistrot, dossier du côté extérieur (`side` : -1 à gauche de la table, 1 à droite).
-function ChairSprite({ side, sky }: { side: -1 | 1; sky: Sky }): ReactElement {
+// Chaise de bistrot, dossier du côté extérieur (`side` : -1 à gauche de la table, 1 à droite). Ghibli : le côté passe par `dir`
+// (l'hôte retourne le canvas, l'ombre reste du bon côté), jamais par un miroir de l'image.
+function ChairSprite({ side, sky, ghibli = false }: { side: -1 | 1; sky: Sky; ghibli?: boolean }): ReactElement {
   const c = tone('#6B4A2E', sky);
-  return (
-    <g data-terrace-chair="" transform={`translate(${side * 9} 0) scale(${side} 1)`}>
+  const art = (
+    <>
       <rect x={-3} y={-8.6} width={6} height={1.4} fill={c} />
       <rect x={2.2} y={-17} width={1.2} height={17} fill={c} />
       <rect x={-3} y={-8} width={1} height={8} fill={c} />
+    </>
+  );
+  if (ghibli)
+    return (
+      <g data-terrace-chair="" transform={`translate(${side * 9} 0)`}>
+        <PropImage spec={{ id: 'chair', dir: side, day: sky.daylight }} fallback={<g transform={`scale(${side} 1)`}>{art}</g>} />
+      </g>
+    );
+  return (
+    <g data-terrace-chair="" transform={`translate(${side * 9} 0) scale(${side} 1)`}>
+      {art}
     </g>
   );
 }
-function ParasolSprite({ sky, hue }: { sky: Sky; hue: string }): ReactElement {
+function ParasolSprite({ sky, hue, ghibli = false }: { sky: Sky; hue: string; ghibli?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
-  return (
-    <g data-parasol="">
+  const art = (
+    <>
       <rect x={-0.4} y={-40} width={0.8} height={28} fill={t('#5A5A5A')} />
       <path d="M-14 -37 Q0 -49 14 -37 Z" fill={t(hue)} />
       <path d="M-14 -37 Q-5 -45 0 -46.5 Q-3 -42 -5 -37 Z" fill={t('#F4F1E8')} opacity={0.85} />
       <path d="M14 -37 Q5 -45 0 -46.5 Q3 -42 5 -37 Z" fill={t('#F4F1E8')} opacity={0.85} />
-    </g>
+    </>
   );
+  return <g data-parasol="">{ghibli ? <PropImage spec={{ id: 'parasol', args: { hue }, day: sky.daylight }} fallback={art} /> : art}</g>;
 }
-// Tablier blanc par-dessus la tenue : le serveur se distingue des clients.
-function Apron({ sky }: { sky: Sky }): ReactElement {
-  return <rect data-apron="" x={-4.2} y={-21} width={8.4} height={13} rx={1} fill={tone('#F4F1E8', sky)} />;
+// Tablier blanc par-dessus la tenue : le serveur se distingue des clients (le pantin Ghibli porte le sien dans sa tenue, `work`).
+function Apron({ sky, ghibli = false }: { sky: Sky; ghibli?: boolean }): ReactElement {
+  const art = <rect data-apron="" x={-4.2} y={-21} width={8.4} height={13} rx={1} fill={tone('#F4F1E8', sky)} />;
+  return ghibli ? <PropImage spec={{ id: 'apron', day: sky.daylight }} fallback={art} /> : art;
 }
 
 type TerraceProps = {
@@ -631,7 +649,7 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
         work="apron"
         initial={p}
         hidden={!on}
-        held={withItem ? [{ anchor: 'handR', node: <g data-item-hand="" display={on && held ? 'inline' : 'none'}><AccessorySprite id={accessory} sky={sky} /></g> }] : undefined}
+        held={withItem ? [{ anchor: 'handR', node: <g data-item-hand="" display={on && held ? 'inline' : 'none'}><AccessorySprite id={accessory} sky={sky} ghibli /></g> }] : undefined}
       />
     ) : (
       <>
@@ -650,8 +668,8 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
           <Fragment key={i}>
             <g data-terrace-table={i} opacity={shown ? 1 : 0} style={{ transform: `translate(${at(i).toFixed(1)}px, ${p.y.toFixed(1)}px)`, transition: move }}>
               <g transform={`scale(${k.toFixed(3)})`}>
-                <ChairSprite side={-1} sky={sky} />
-                <ChairSprite side={1} sky={sky} />
+                <ChairSprite side={-1} sky={sky} ghibli={ghibli} />
+                <ChairSprite side={1} sky={sky} ghibli={ghibli} />
                 {here.map((g) => {
                   const key = keyOf(i, g);
                   const trip = trips.get(key);
@@ -683,8 +701,8 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
                     </g>
                   );
                 })}
-                <TableSprite sky={sky} />
-                {parasols && <ParasolSprite sky={sky} hue={hue} />}
+                <TableSprite sky={sky} ghibli={ghibli} />
+                {parasols && <ParasolSprite sky={sky} hue={hue} ghibli={ghibli} />}
               </g>
             </g>
             {here.map((g) => {

@@ -284,7 +284,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
               umbrella={withUmbrella}
               initial={p}
               hidden={!on}
-              held={takes ? [{ anchor: withUmbrella ? 'handL' : 'handR', node: <g data-item-carry="" display={on && s.carry ? 'inline' : 'none'}><AccessorySprite id={ACCESSORY[v.type!]} sky={sky} /></g> }] : undefined}
+              held={takes ? [{ anchor: withUmbrella ? 'handL' : 'handR', node: <g data-item-carry="" display={on && s.carry ? 'inline' : 'none'}><AccessorySprite id={ACCESSORY[v.type!]} sky={sky} ghibli /></g> }] : undefined}
             />
           ) : (
             <PersonSprite outfit={v.outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} />
@@ -414,8 +414,8 @@ export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, sti
   track.current = track.current.key === key ? { ...track.current, at: here } : { key, from: track.current.at, at: here };
   const ladder = at(step) >= at('ladder-up') && at(step) <= at('ladder-down');
   // Ce que l'équipe pose (nouvelle enseigne ou écriteau À vendre) et ce qu'elle emporte (ancienne enseigne ou écriteau retiré).
-  const fresh = !change ? null : change.kind === 'to-sale' ? <CarriedPlacard w={win.w} sky={sky} /> : change.after ? <CarriedSign type={change.after.type} name={change.after.name} w={sign.w} sky={sky} /> : null;
-  const old = !change ? null : change.kind === 'from-sale' ? <CarriedPlacard w={win.w} sky={sky} /> : change.before ? <CarriedSign type={change.before.type} name={change.before.name} w={sign.w} sky={sky} /> : null;
+  const fresh = !change ? null : change.kind === 'to-sale' ? <CarriedPlacard w={win.w} sky={sky} ghibli={ghibli} /> : change.after ? <CarriedSign type={change.after.type} name={change.after.name} w={sign.w} sky={sky} ghibli={ghibli} /> : null;
+  const old = !change ? null : change.kind === 'from-sale' ? <CarriedPlacard w={win.w} sky={sky} ghibli={ghibli} /> : change.before ? <CarriedSign type={change.before.type} name={change.before.name} w={sign.w} sky={sky} ghibli={ghibli} /> : null;
   // L'ancienne est posée contre la devanture, sous la vitrine, entre la descente et le départ.
   const oldDown = at(step) > at('descend') && at(step) < at('leave');
   const k = metrics.unit * STREET_SCALE.person;
@@ -430,7 +430,7 @@ export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, sti
     <g data-works={id} data-works-step={step}>
       {ladder && (
         <g data-ladder="" transform={`translate(${lx.toFixed(1)} ${foot.toFixed(1)})`}>
-          <LadderSprite height={foot - sign.y + 1} />
+          <LadderSprite height={foot - sign.y + 1} sky={sky} ghibli={ghibli} />
         </g>
       )}
       {oldDown && old && <g data-old-item="" transform={`translate(${(win.x + win.w / 2).toFixed(1)} ${foot.toFixed(1)})`}>{old}</g>}

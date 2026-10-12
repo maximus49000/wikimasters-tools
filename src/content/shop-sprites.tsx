@@ -4,6 +4,8 @@ import type { Rect, ShopFrame } from '../core/library/city/shops/slots';
 import type { ShopView } from '../core/library/city/shops/view';
 import { mixHex, type Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
+import '../core/library/paint/props/terrace';
+import { PropImage } from './prop/prop-host';
 
 // Devantures de la scène Ville. Repère : celui du MONDE (les rectangles de shopFrame), non mis à l'échelle ; le rez-de-chaussée
 // fait 30 px de haut, le bandeau d'enseigne 5. Les objets portés (CarriedSign, CarriedPlacard) et l'échelle sont dessinés dans un
@@ -31,12 +33,14 @@ function SignText({ name, cx, y, w, ink }: { name: string; cx: number; y: number
   );
 }
 
-export function ForSalePlacard({ x, y, w, sky }: { x: number; y: number; w: number; sky: Sky }): ReactElement {
+// Ghibli (G5) : image cellulo du peintre (props/terrace.ts : `for-sale`, `ladder`, `carried-sign`, `carried-placard`) au même
+// cadre, le dessin classique en repli tant qu'elle n'est pas cuite.
+export function ForSalePlacard({ x, y, w, sky, ghibli = false }: { x: number; y: number; w: number; sky: Sky; ghibli?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const pw = Math.min(w - 2, 14);
   const px = x + (w - pw) / 2;
-  return (
-    <g data-placard="1">
+  const art = (
+    <>
       <rect x={px} y={y} width={pw} height={9} fill={t('#FFFFFF')} stroke={t(ORANGE)} strokeWidth={0.5} />
       <rect x={px} y={y} width={pw} height={3.6} fill={t(ORANGE)} />
       <text x={px + pw / 2} y={y + 2.7} fontSize={2.6} fontFamily="sans-serif" fontWeight="bold" textAnchor="middle" fill={t('#FFFFFF')}>
@@ -44,15 +48,22 @@ export function ForSalePlacard({ x, y, w, sky }: { x: number; y: number; w: numb
       </text>
       <rect x={px + 1.5} y={y + 5} width={pw - 3} height={0.7} fill={t('#9A9A9A')} />
       <rect x={px + 1.5} y={y + 6.6} width={pw - 5} height={0.7} fill={t('#9A9A9A')} />
-    </g>
+    </>
   );
+  if (ghibli)
+    return (
+      <g data-placard="1" transform={`translate(${x} ${y})`}>
+        <PropImage spec={{ id: 'for-sale', args: { w }, day: sky.daylight }} fallback={<g transform={`translate(${-x} ${-y})`}>{art}</g>} />
+      </g>
+    );
+  return <g data-placard="1">{art}</g>;
 }
 
-// Échelle d'aluminium : montants + barreaux tous les 3 px.
-export function LadderSprite({ height }: { height: number }): ReactElement {
+// Échelle d'aluminium : montants + barreaux tous les 3 px. Ghibli : rails alu et barreaux encrés (`sky` requis pour la lumière).
+export function LadderSprite({ height, sky, ghibli = false }: { height: number; sky?: Sky; ghibli?: boolean }): ReactElement {
   const rungs: number[] = [];
   for (let y = -3; y > -height; y -= 3) rungs.push(y);
-  return (
+  const art = (
     <g stroke={ALU} strokeLinecap="round">
       <line x1={-2} y1={0} x2={-2} y2={-height} strokeWidth={0.8} />
       <line x1={2} y1={0} x2={2} y2={-height} strokeWidth={0.8} />
@@ -61,20 +72,23 @@ export function LadderSprite({ height }: { height: number }): ReactElement {
       ))}
     </g>
   );
+  return ghibli && sky ? <PropImage spec={{ id: 'ladder', args: { h: Math.round(height * 10) / 10 }, day: sky.daylight }} fallback={art} /> : art;
 }
 
 // Enseigne portée par un ouvrier : bandeau de la couleur du type, nom dessus.
-export function CarriedSign({ type, name, w, sky }: { type: ShopTypeId; name: string; w: number; sky: Sky }): ReactElement {
+export function CarriedSign({ type, name, w, sky, ghibli = false }: { type: ShopTypeId; name: string; w: number; sky: Sky; ghibli?: boolean }): ReactElement {
   const def = SHOP_DEFS[type];
-  return (
-    <g data-carried="sign">
+  const art = (
+    <>
       <rect x={-w / 2} y={-5} width={w} height={5} fill={tone(def.sign, sky)} stroke={tone(FRAME, sky)} strokeWidth={0.4} />
       <SignText name={name} cx={0} y={-1.6} w={w} ink={tone(def.ink, sky)} />
-    </g>
+    </>
   );
+  return <g data-carried="sign">{ghibli ? <PropImage spec={{ id: 'carried-sign', args: { w, sign: def.sign, ink: def.ink, name }, day: sky.daylight }} fallback={art} /> : art}</g>;
 }
 
-export function CarriedPlacard({ w, sky }: { w: number; sky: Sky }): ReactElement {
+export function CarriedPlacard({ w, sky, ghibli = false }: { w: number; sky: Sky; ghibli?: boolean }): ReactElement {
+  if (ghibli) return <PropImage spec={{ id: 'carried-placard', args: { w }, day: sky.daylight }} fallback={<ForSalePlacard x={-w / 2} y={-9} w={w + 2} sky={sky} />} />;
   return <ForSalePlacard x={-w / 2} y={-9} w={w + 2} sky={sky} />;
 }
 
