@@ -1,6 +1,6 @@
 # Bibliothèque Ghibli — G5 : mobilier de rue, lampadaires, fêtes et événements
 
-Date : 2026-10-12. Statut : **brouillon, maquette en cours** (Fable, `docs/superpowers/maquettes/g5-fetes/`). Rien n'est codé avant la validation de la maquette par l'utilisateur.
+Date : 2026-10-12. Statut : **maquette VALIDÉE par l'utilisateur** (Fable, `docs/superpowers/maquettes/g5-fetes/` : `index.html` animée, captures PNG, `pantins.js`, et `notes.md` qui donne la correspondance avec les sprites classiques et les chorégraphies). Prochaine étape : le plan d'implémentation, puis le code.
 
 Suite de la refonte Ghibli (spec générale `2026-10-10-bibliotheque-ghibli-design.md`). Sont déjà fusionnés : G1 et G2, le décor cellulo, G3 (humains), les véhicules V1 à V5, G4a (décor des commerces), les immeubles larges et G4b (interactions dans les commerces). G5 redessine en cellulo **tout ce qui reste au dessin classique dans la scène Ville quand le graphisme Ghibli est activé**, hors pièce (G6) et animaux de la pièce (G7).
 
@@ -16,6 +16,26 @@ Suite de la refonte Ghibli (spec générale `2026-10-10-bibliotheque-ghibli-desi
 - **Engins du ciel** (avion, avion à banderole, hélicoptère, montgolfière, drone, cerf-volant, ballons) : volumes, assiette et balancement naturels, rotors et hélices qui tournent, brûleur à bouffées, traînée de condensation qui s'effiloche, feux à éclats la nuit.
 - **Mouettes** : les mouettes figées peintes dans le décor de la colline sont retirées. Elles sont remplacées par des volées animées qui traversent le ciel de temps en temps, avec battements, planés, virages et parfois une pause sur un toit.
 - **Feux du passage piéton** : chaque poteau est placé avant le passage, pour les voitures de sa voie. C'est corrigé dans l'appli, dans les deux graphismes (`lightPoleX`, commit à part).
+
+## Reprise (pour la prochaine conversation)
+
+- **Validation** : l'utilisateur a validé l'ensemble le 2026-10-12 (« Je valide tout »). Pour les questions ouvertes de Fable qu'il n'a pas tranchées une à une, on retient les propositions de la maquette :
+  - **Chiens** : six races tirées de la graine, trois robes chacune, marche continue (pas d'arrêt pour renifler).
+  - **Rennes** : galop de 0,55 s ; souffle blanc quand ils sont posés.
+  - **Cheval** : corps fixe au pas, comme le classique.
+  - **Lampadaire** : fonte vert-de-gris à lanterne à pans.
+  - **Feux d'artifice** : couleurs et positions du classique, gerbes redessinées.
+  - **Lieu de pose du père Noël** : en arrière-plan, sur une maison de la colline, comme le recommande Fable (`santa-far.png`, `santa-far-seq.png`). La maison doit recevoir la teinte de nuit : sur la maquette elle reste aux couleurs de jour, à corriger au portage.
+- **Source du portage** : `notes.md` de la maquette :
+  - §1 à §4 : sprites ;
+  - §5 : lumière de nuit ;
+  - §6 : pantin du père Noël (`Shape.santa`, cases `beard/fur/belt/buckle/glove/nose/cheek`, `SANTA_K` 0,55) ;
+  - §7 : pose et `santa.ts` ;
+  - §8 : concert ;
+  - §9 : engins du ciel ;
+  - §10 : mouettes.
+- **Script de cuisson des pantins** de la maquette : il était dans le dossier temporaire de la session et n'est pas conservé. Le portage se fait dans `src/core/library/figure/`, à partir de la description de `notes.md` §6.
+- **Déjà fait dans l'appli** : les feux du passage piéton sont placés avant le passage (`lightPoleX`, engine.ts).
 
 ## 1. Périmètre (inventaire du 2026-10-12)
 
