@@ -38,6 +38,8 @@ import { InstallLayer } from './install-layer';
 import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
+import { PropImage } from './prop/prop-host';
+import '../core/library/paint/props/street';
 import { ghibliStaffPost } from './shop/ghibli-shop-glass';
 import { collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type TerraceGuestNode, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, tone } from './city-sprites';
@@ -72,11 +74,13 @@ const STAFF_POSE_S = 0.1;
 
 const placementTransform = (p: EventPlacement): string => `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) scale(${p.sx.toFixed(3)} ${p.sy.toFixed(3)})`;
 
-type StreetLampsProps = { width: number; height: number; seed: number; minutes: number; daylight: number; forcedNight?: boolean };
+type StreetLampsProps = { width: number; height: number; seed: number; minutes: number; daylight: number; forcedNight?: boolean; ghibli?: boolean };
 
 // Lampadaires au bord du trottoir : dessinés devant les passants (leur pied est plus près de la rue) et derrière les voitures.
 // Ils sont dans le calque animé (la boucle n'y touche pas) ; sans contexte de ville, SceneActors les dessine seuls.
-export function StreetLamps({ width, height, seed, minutes, daylight, forcedNight = false }: StreetLampsProps): ReactElement {
+// Ghibli : lampadaire cellulo peint (accessoire `lamp`, G5) au même repère, le sprite classique en repli tant qu'il n'est
+// pas cuit ; sa lumière de nuit (halo, flaque) est celle de GhibliNightLight.
+export function StreetLamps({ width, height, seed, minutes, daylight, forcedNight = false, ghibli = false }: StreetLampsProps): ReactElement {
   const lamps = useMemo(() => lampsFor(width, seed), [width, seed]);
   const m = cityMetrics(height);
   const curb = m.curb;
@@ -86,7 +90,7 @@ export function StreetLamps({ width, height, seed, minutes, daylight, forcedNigh
         const lit = streetLampLit(lamp, minutes, daylight, forcedNight);
         return (
           <g key={lamp.id} data-street-lamp={lamp.id} data-lit={lit ? 'true' : 'false'} transform={`translate(${lamp.x} ${curb.toFixed(1)}) scale(${(m.unit * STREET_SCALE.lamp).toFixed(3)})`}>
-            <LampSprite lit={lit} />
+            {ghibli ? <PropImage spec={{ id: 'lamp', day: daylight, lit }} fallback={<LampSprite lit={lit} />} /> : <LampSprite lit={lit} />}
           </g>
         );
       })}
@@ -716,16 +720,16 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           />
         ))}
       </g>
-      <StreetLamps width={width} height={height} seed={seed} minutes={city.minutes} daylight={sky.daylight} forcedNight={forcedNight} />
+      <StreetLamps width={width} height={height} seed={seed} minutes={city.minutes} daylight={sky.daylight} forcedNight={forcedNight} ghibli={ghibli} />
       {/* Drapeaux de lampadaires, barrières, camionnettes et camions élévateurs : devant les lampadaires, derrière les files. */}
       <InstallLayer {...install} part="front" />
       {/* Rue privatisée de la Fête de la musique : barrières en travers, stands de bière, serveurs, files et foule, triés par
           profondeur sur la chaussée (aucune voiture ne roule alors). */}
       <InstallLayer {...install} part="street" />
-      <Crosswalk handle={traffic} metrics={metrics} sky={sky} />
+      <Crosswalk handle={traffic} metrics={metrics} sky={sky} ghibli={ghibli} />
       {/* Voyageurs de l'arrêt du trottoir des immeubles (voie du fond) : derrière ses bus. */}
       <BusStopRiders handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="far" />
-      <TrafficFixtures handle={traffic} metrics={metrics} sky={sky} still={still} frozenT={frozen.current ?? 0} side="near" />
+      <TrafficFixtures handle={traffic} metrics={metrics} sky={sky} still={still} frozenT={frozen.current ?? 0} side="near" ghibli={ghibli} />
       {lane('far')}
       {/* Grand défilé du 14 juillet (route fermée, aucune voiture) : une file du fond réduite, derrière celle du premier plan. */}
       <ParadeLayer lane="far" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} ghibli={ghibli} />
@@ -734,7 +738,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       {lane('near')}
       <ParadeLayer lane="near" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} ghibli={ghibli} />
       <CrossingLayer handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} />
-      <TrafficFixtures handle={traffic} metrics={metrics} sky={sky} still={still} frozenT={frozen.current ?? 0} side="far" />
+      <TrafficFixtures handle={traffic} metrics={metrics} sky={sky} still={still} frozenT={frozen.current ?? 0} side="far" ghibli={ghibli} />
       <BusStopRiders handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="near" />
     </g>
   );

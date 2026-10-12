@@ -183,7 +183,7 @@ function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = fal
       {/* Ville : la population (passants, habitants, circulation) a sa propre couche et sa propre boucle. */}
       {scene === 'city' && city && <CityLifeLayer width={width} height={height} sky={sky} seed={seed} city={city} rainy={rainy} forcedNight={forcedNight} weather={weather} />}
       {/* Sans contexte de ville (pas de population), les lampadaires restent : ils sont dans ce calque pour passer devant les passants. */}
-      {scene === 'city' && !city && <StreetLamps width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} forcedNight={forcedNight} />}
+      {scene === 'city' && !city && <StreetLamps width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} forcedNight={forcedNight} ghibli={art === 'ghibli'} />}
     </g>
   );
 }

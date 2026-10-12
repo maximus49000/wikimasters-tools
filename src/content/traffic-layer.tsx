@@ -22,6 +22,8 @@ import { ExhaustPuffs, placePuffs } from './vehicle/exhaust-puffs';
 import { GhibliCar, placeCar } from './vehicle/ghibli-car';
 import { GhibliBike, crankPhase, riderPose } from './figure/ghibli-cyclist';
 import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
+import { PropImage } from './prop/prop-host';
+import '../core/library/paint/props/street';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Circulation de la scène Ville (spec véhicules §1, livraison V1). Un moteur par pièce (useTraffic, dans CityLifeLayer),
@@ -258,7 +260,13 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
 
 // Feu tricolore du monde (pièces larges) et poteaux d'arrêt de bus : dessin simple, posé au bord du trottoir. `side` : trottoir
 // du haut (`near` : celui des immeubles, derrière les voies) ou d'en face (`far`, en bas de l'image, devant elles).
-export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side }: { handle: TrafficHandle; metrics: CityMetrics; sky: Sky; still: boolean; frozenT: number; side: 'near' | 'far' }): ReactElement {
+// Ghibli (G5) : feu et poteau d'arrêt sont des accessoires peints (`traffic-pole`, `bus-stop`) aux mêmes repères, le dessin
+// classique en repli tant que l'image n'est pas cuite ; la couleur du feu et l'appel sont alors des arguments de l'image
+// (re-rendu à chaque changement, l'image précédente reste affichée le temps de cuire la nouvelle) et restent lisibles
+// sur le <g> porteur (`data-light-lamp` = couleur active, `data-call` = appel).
+type LightShown = { color: string; pressed: boolean };
+const lightShown = (w: TrafficWorld): LightShown => ({ color: w.light?.color ?? 'green', pressed: w.light?.pressedAt != null });
+export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side, ghibli = false }: { handle: TrafficHandle; metrics: CityMetrics; sky: Sky; still: boolean; frozenT: number; side: 'near' | 'far'; ghibli?: boolean }): ReactElement {
   const w = handle.world;
   const u = metrics.unit;
   const t = (c: string): string => tone(c, sky);
@@ -266,6 +274,8 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side }: 
   // Nom de l'arrêt et lignes : changent quand les lignes réelles arrivent (roster du moteur).
   const [, setRoster] = useState(w.roster);
   const seen = useRef(w.roster);
+  const [light, setLight] = useState<LightShown>(() => lightShown(w));
+  const lightSeen = useRef(light);
   const place = useMemo(
     () => (now: number): void => {
       void now;
@@ -276,29 +286,49 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side }: 
       const el = root.current;
       if (!el) return;
       // Feu des voitures, et petit voyant « appel enregistré » du boîtier à bouton quand un piéton a appuyé.
-      const color = w.light.color;
-      for (const lamp of el.querySelectorAll('[data-light-lamp]')) lamp.setAttribute('opacity', lamp.getAttribute('data-light-lamp') === color ? '1' : '0.18');
-      for (const led of el.querySelectorAll('[data-call]')) led.setAttribute('opacity', w.light.pressedAt !== null ? '1' : '0.15');
+      const next = lightShown(w);
+      if (ghibli) {
+        if (next.color !== lightSeen.current.color || next.pressed !== lightSeen.current.pressed) {
+          lightSeen.current = next;
+          setLight(next);
+        }
+        return;
+      }
+      for (const lamp of el.querySelectorAll('[data-light-lamp]')) lamp.setAttribute('opacity', lamp.getAttribute('data-light-lamp') === next.color ? '1' : '0.18');
+      for (const led of el.querySelectorAll('[data-call]')) led.setAttribute('opacity', next.pressed ? '1' : '0.15');
     },
-    [w],
+    [w, ghibli],
   );
   useWallClockLoop(place, [place]);
   useEffect(() => {
     if (still) place(frozenT);
   }, [still, place, frozenT]);
-  const pole = (x: number, y: number, flip: boolean): ReactElement => (
-    <g transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(flip ? -u : u).toFixed(3)} ${u.toFixed(3)})`}>
+  // Dessin classique du feu ; en Ghibli (repli), lampe active et voyant à leur opacité d'état (la boucle n'y touche pas).
+  const poleArt = (): ReactElement => (
+    <>
       <rect x={-0.8} y={-34} width={1.6} height={34} fill={t('#3A3434')} />
       <rect x={-3} y={-46} width={6} height={13} rx={1.6} fill={t('#2A2626')} />
-      <circle data-light-lamp="red" cx={0} cy={-42.6} r={1.7} fill="#E0402F" opacity={0.18} />
-      <circle data-light-lamp="amber" cx={0} cy={-39.4} r={1.7} fill="#F2A33A" opacity={0.18} />
-      <circle data-light-lamp="green" cx={0} cy={-36.2} r={1.7} fill="#3FC06A" opacity={0.18} />
+      <circle data-light-lamp="red" cx={0} cy={-42.6} r={1.7} fill="#E0402F" opacity={ghibli && light.color === 'red' ? 1 : 0.18} />
+      <circle data-light-lamp="amber" cx={0} cy={-39.4} r={1.7} fill="#F2A33A" opacity={ghibli && light.color === 'amber' ? 1 : 0.18} />
+      <circle data-light-lamp="green" cx={0} cy={-36.2} r={1.7} fill="#3FC06A" opacity={ghibli && light.color === 'green' ? 1 : 0.18} />
       {/* Boîtier à bouton-poussoir des piétons, voyant d'appel. */}
       <rect x={0.8} y={-20} width={3.2} height={4.6} rx={0.6} fill={t('#E8C440')} />
       <circle cx={2.4} cy={-17.2} r={0.8} fill={t('#2A2626')} />
-      <circle data-call="" cx={2.4} cy={-19} r={0.5} fill="#FF5A3A" opacity={0.15} />
-    </g>
+      <circle data-call="" cx={2.4} cy={-19} r={0.5} fill="#FF5A3A" opacity={ghibli && light.pressed ? 1 : 0.15} />
+    </>
   );
+  const pole = (x: number, y: number, flip: boolean): ReactElement =>
+    ghibli ? (
+      // Jamais de miroir de l'image peinte : l'orientation est un paramètre du peintre (`dir`).
+      <g data-light-lamp={light.color} data-call={light.pressed ? 'true' : 'false'} transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${u.toFixed(3)})`}>
+        <PropImage
+          spec={{ id: 'traffic-pole', args: { color: light.color, pressed: light.pressed }, dir: flip ? -1 : 1, day: sky.daylight, lit: sky.daylight < 0.45 }}
+          fallback={<g transform={flip ? 'scale(-1 1)' : undefined}>{poleArt()}</g>}
+        />
+      </g>
+    ) : (
+      <g transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(flip ? -u : u).toFixed(3)} ${u.toFixed(3)})`}>{poleArt()}</g>
+    );
   // Poteau d'arrêt : drapeau « BUS », plaque au nom de l'arrêt (lignes réelles ou de repli, voir bus-lines.ts) et pastilles
   // des trois premières lignes à leurs couleurs. La plaque s'ouvre vers l'amont de la voie servie (d'où vient le bus).
   const busStop = (x: number, y: number, served: 'near' | 'far'): ReactElement => {
@@ -306,8 +336,8 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side }: 
     const refs = w.lines.slice(0, 3);
     const plate = Math.max(12, name.length * 1.6 + 2.4);
     const px = served === 'near' ? -plate + 0.6 : -0.6;
-    return (
-      <g data-bus-stop={served} data-stop-name={name} transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${u.toFixed(3)})`}>
+    const art = (
+      <>
         <rect x={-0.6} y={-30} width={1.2} height={30} fill={t('#3A3434')} />
         <rect x={-4.2} y={-40} width={8.4} height={7} rx={1} fill={t('#2F7D64')} />
         <text x={0} y={-34.9} fontSize={4} fontWeight={700} textAnchor="middle" fill={t('#F2EFE6')}>BUS</text>
@@ -319,6 +349,13 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side }: 
             <text x={px + 2.9 + i * 5.6} y={-25.6} fontSize={2.4} fontWeight={700} textAnchor="middle" fill={t('#FFFFFF')}>{l.ref}</text>
           </g>
         ))}
+      </>
+    );
+    // Lignes de l'image peinte : « ref:#rrggbb » par ligne (couleur de repli du peintre si la couleur n'est pas hexadécimale).
+    const lines = refs.map((l) => `${l.ref.replace(/,/g, ' ')}${/^#[0-9a-fA-F]{6}$/.test(l.colour) ? `:${l.colour}` : ''}`).join(',');
+    return (
+      <g data-bus-stop={served} data-stop-name={name} transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${u.toFixed(3)})`}>
+        {ghibli ? <PropImage spec={{ id: 'bus-stop', args: { name, lines, served }, day: sky.daylight }} fallback={art} /> : art}
       </g>
     );
   };
@@ -336,7 +373,9 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side }: 
 
 // Bandes du passage piéton (sous les voies) : bandes claires empilées du trottoir des immeubles à celui d'en face, un peu
 // plus larges vers le bas (plus près du spectateur).
-export function Crosswalk({ handle, metrics, sky }: { handle: TrafficHandle; metrics: CityMetrics; sky: Sky }): ReactElement | null {
+// Ghibli (G5) : une image peinte par bande (`crosswalk-band`, demi-largeur en u entiers, étirée à la largeur exacte de la
+// bande) au même pas ; la bande peint sa propre transparence et son ombre.
+export function Crosswalk({ handle, metrics, sky, ghibli = false }: { handle: TrafficHandle; metrics: CityMetrics; sky: Sky; ghibli?: boolean }): ReactElement | null {
   const l = handle.world.light;
   if (!l) return null;
   const u = metrics.unit;
@@ -345,10 +384,19 @@ export function Crosswalk({ handle, metrics, sky }: { handle: TrafficHandle; met
   const bars: ReactElement[] = [];
   for (let y = top, i = 0; y < bottom - 2 * u; y += 6 * u, i++) {
     const half = CROSS_HALF * u * (0.92 + 0.16 * ((y - top) / (bottom - top)));
-    bars.push(<rect key={i} x={l.x - half} y={y} width={2 * half} height={3 * u} rx={0.6 * u} />);
+    if (!ghibli) {
+      bars.push(<rect key={i} x={l.x - half} y={y} width={2 * half} height={3 * u} rx={0.6 * u} />);
+      continue;
+    }
+    const h = Math.max(1, Math.round(half / u));
+    bars.push(
+      <g key={i} transform={`translate(${l.x.toFixed(1)} ${y.toFixed(1)}) scale(${(half / h).toFixed(4)} ${u.toFixed(3)})`}>
+        <PropImage spec={{ id: 'crosswalk-band', args: { h }, day: sky.daylight }} fallback={<rect x={-h} y={0} width={2 * h} height={3} rx={0.6} opacity={0.82} />} />
+      </g>,
+    );
   }
   return (
-    <g data-crosswalk="" fill={tone('#F2EFE6', sky)} opacity={0.82}>
+    <g data-crosswalk="" fill={tone('#F2EFE6', sky)} opacity={ghibli ? 1 : 0.82}>
       {bars}
     </g>
   );
