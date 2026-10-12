@@ -51,6 +51,10 @@ canvas{display:block;border-radius:6px;box-shadow:0 2px 10px #0003;background:#d
 <canvas id="dogs"></canvas>
 <p class="leg">Même boîte que le sprite classique (14 × 11, collier à (−4, −9) dans le repère du chien, à 26 du promeneur) ; la graine choisit la race : labrador, teckel, terrier, caniche, berger, bouledogue, et la robe (unie, selle, taches). Marche à quatre temps, tête qui hoche, queue qui bat, oreilles qui suivent.</p>
 
+<h3>12 · Poses clés des cycles <span class="tag">×6 · cheval au pas (1,2 s) · renne au galop (0,55 s) · chien (0,5 s) · drapeau (vague)</span></h3>
+<canvas id="cycles"></canvas>
+<p class="leg">Quatre poses clés par cycle (angles dans notes.md) : le portage peut calculer les angles à chaque image (sinus) ou cuire ces quatre poses en sprites et les alterner.</p>
+
 <script>
 // ───────────────────────── Outils (mêmes que devantures.html / cel.ts) ─────────────────────────
 const mulberry32=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
@@ -488,33 +492,32 @@ const SRED='#C8283A',GOLD='#E8B93A',FUR='#8A5A34';
 // Renne (Reindeer : corps ellipse 5 × 2,8 à (0,0), cou vers (8, −4), tête r 2 à (9, −4,5), bois, nez à (10,8, −4,2), clochette à (4,5, 0,5) ;
 // en vol : pattes de (±3, 2) vers (−7, 5) / (8, 4) ; posé : pattes verticales de 2 à 6). Galop : cycle 0,55 s, `ph` décale les rennes.
 function reindeer(ctx,{lead=false,landed=false,t=0,ph=0,anim=true,breath=false}={}){const fur=C(FUR),belly=light(fur,0.3),dk='#5A3A20';
- const g=anim&&!landed?((t/0.55+ph)%1+1)%1:0; // phase du galop
- // pattes : deux segments (cuisse + canon) avec sabot ; en vol, antérieures et postérieures en opposition
+ const g=anim&&!landed?((t/0.55+ph)%1+1)%1:0; // phase du galop (cycle 0,55 s)
+ // pattes : cuisse + canon + sabot. Galop : antérieurs tendus devant à g = 0, ramassés sous le poitrail à g = 0,5 (genou plié) ;
+ // postérieurs en opposition (tendus derrière à g = 0,5, ramenés sous le ventre à g = 0). Posés : d'aplomb, légèrement ouverts.
  const leg=(x0,y0,front,far)=>{let a1,a2;
-  if(landed){a1=front?4:-4;a2=front?-4:4}
-  else{const k=front?g:(g+0.5)%1; // antérieures tendues en avant à k≈0.25, ramenées à k≈0.75
-   a1=(front?-55:55)*Math.cos(TAU*k)+(front?10:-10);a2=(front?-50:60)*Math.max(0,Math.sin(TAU*k+0.6))+(front?-25:20)}
-  const col=far?shade(fur,0.3):fur;ctx.save();ctx.translate(x0,y0);ctx.rotate(a1*Math.PI/180);tube(ctx,0,0,0,2.8,1.5,col,{lw:0.4,li:far?0.05:0.3});ctx.translate(0,2.8);ctx.rotate(a2*Math.PI/180);tube(ctx,0,0,0,2.4,1.1,col,{lw:0.35,li:far?0.05:0.3});P(ctx,[[-0.8,2.1],[0.9,2.1],[1,3],[-0.9,3]],BLACK,{lw:0.3,sh:0,li:0.3});ctx.restore()};
- leg(-2.4,1.2,false,true);leg(3.4,1.2,true,true);
- // corps au galop : s'allonge à la détente
- const stretch=anim&&!landed?1+0.08*Math.sin(TAU*g):1;
+  if(landed){a1=front?6:-6;a2=front?-6:6}
+  else{const k=front?g:(g+0.5)%1;a1=front?-15-55*Math.cos(TAU*k):15+55*Math.cos(TAU*k);a2=(front?1:-1)*42*Math.max(0,-Math.cos(TAU*k))}
+  const col=far?shade(fur,0.3):fur;ctx.save();ctx.translate(x0,y0);ctx.rotate(a1*Math.PI/180);tube(ctx,0,0,0,2.6,1.7,col,{lw:0.4,li:far?0.05:0.3});ctx.translate(0,2.6);ctx.rotate(a2*Math.PI/180);tube(ctx,0,0,0,2.2,1.3,col,{lw:0.4,li:far?0.05:0.3});P(ctx,[[-0.9,1.9],[0.9,1.9],[1,2.9],[-1,2.9]],BLACK,{lw:0.3,sh:0,li:0.3});ctx.restore()};
+ leg(-2.6,1,false,true);leg(3.4,1,true,true);
+ // corps au galop : s'allonge à la détente, se tasse au rassemblé
+ const stretch=anim&&!landed?1+0.09*Math.cos(TAU*g):1;
  cel(ctx,()=>{ctx.ellipse(0,0,5*stretch,2.8,0,0,TAU)},fur,{lw:0.5,box:{x:-5.5,y:-2.8,w:11,h:5.6},sh:0.3,shX:0.6,li:0.22,liW:0.2});
  ctx.fillStyle=rgba(belly);ctx.beginPath();ctx.ellipse(-0.4,1.3,3.2*stretch,0.9,0,0,TAU);ctx.fill();
- // queue courte
- P(ctx,[[-5,-1.2],[-6.6,-2.4],[-5.2,0]],fur,{lw:0.35,sh:0.3,li:0});
- leg(-3,1.6,false,false);leg(3.2,1.6,true,false);
- // cou et tête
- cel(ctx,()=>{ctx.moveTo(3.6,-2);ctx.lineTo(7,-5.6);ctx.lineTo(9.6,-3.6);ctx.lineTo(5.2,0.4);ctx.closePath()},fur,{lw:0.5,box:{x:3,y:-6,w:7,h:7},sh:0.3,shX:0.6,li:0.2});
- cel(ctx,()=>{ctx.moveTo(7.2,-6.4);ctx.quadraticCurveTo(9.6,-7.4,11.6,-5);ctx.quadraticCurveTo(12,-3.6,11,-3);ctx.quadraticCurveTo(9,-2.4,7,-4);ctx.closePath()},fur,{lw:0.5,box:{x:7,y:-7.5,w:5,h:5},sh:0.3,shX:0.6,li:0.22});
- ctx.fillStyle=rgba(belly);ctx.beginPath();ctx.ellipse(10.2,-3.6,1.4,0.7,0.3,0,TAU);ctx.fill();
- // bois
- ctx.strokeStyle=INK;ctx.lineWidth=1.5;ctx.lineCap='round';const antler=()=>{ctx.beginPath();ctx.moveTo(8.5,-6);ctx.lineTo(7,-9);ctx.moveTo(8.5,-6);ctx.lineTo(10.5,-9);ctx.moveTo(7,-9);ctx.lineTo(5.5,-8.5);ctx.moveTo(7.6,-7.8);ctx.lineTo(6.8,-10.6);ctx.moveTo(10.5,-9);ctx.lineTo(12,-8.5);ctx.moveTo(9.8,-7.8);ctx.lineTo(10.4,-10.6);ctx.stroke()};antler();ctx.strokeStyle=dk;ctx.lineWidth=0.8;antler();
- P(ctx,[[7.2,-6.4],[6,-7.6],[7.6,-7.4]],fur,{lw:0.3,sh:0,li:0});// oreille
- disc(ctx,9.4,-5.3,0.45,BLACK,0);ctx.fillStyle='#FFFFFF';ctx.fillRect(9.1,-5.6,0.3,0.3);
- if(lead){halo(ctx,11.4,-4.4,2.2,'#FF3B3B',0.35);ball(ctx,11.4,-4.4,1.1,'#FF3B3B',0.3)}else disc(ctx,11.5,-4.3,0.55,'#2A1A10',0);
+ P(ctx,[[-5,-1.2],[-6.8,-2.6],[-5.2,0.2]],fur,{lw:0.35,sh:0.3,li:0}); // queue
+ leg(-3.2,1.4,false,false);leg(3,1.4,true,false);
+ // cou et tête (tête r 2 à (9, −4,5) dans le classique ; museau jusqu'à 12,4)
+ cel(ctx,()=>{ctx.moveTo(3.4,-2.2);ctx.lineTo(6.8,-6.2);ctx.lineTo(9.8,-4);ctx.lineTo(5.2,0.6);ctx.closePath()},fur,{lw:0.5,box:{x:3,y:-6.5,w:7,h:7.5},sh:0.3,shX:0.6,li:0.2});
+ cel(ctx,()=>{ctx.moveTo(6.8,-6.8);ctx.quadraticCurveTo(9.4,-8.2,11.8,-5.6);ctx.quadraticCurveTo(12.8,-4.2,11.6,-3);ctx.quadraticCurveTo(9.4,-2.2,6.8,-4);ctx.closePath()},fur,{lw:0.5,box:{x:6.5,y:-8.5,w:6.5,h:6},sh:0.3,shX:0.6,li:0.22});
+ ctx.fillStyle=rgba(belly);ctx.beginPath();ctx.ellipse(10.4,-3.8,1.5,0.8,0.3,0,TAU);ctx.fill();
+ // bois : deux perches ramifiées
+ const antler=(lw,c)=>{ctx.strokeStyle=c;ctx.lineWidth=lw;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(8.4,-6.6);ctx.lineTo(6.6,-10.4);ctx.moveTo(7.6,-8.4);ctx.lineTo(5.4,-9.2);ctx.moveTo(7.1,-9.4);ctx.lineTo(6.4,-12);ctx.moveTo(8.8,-6.6);ctx.lineTo(10.8,-10.4);ctx.moveTo(9.8,-8.4);ctx.lineTo(12,-9.2);ctx.moveTo(10.3,-9.4);ctx.lineTo(10.6,-12);ctx.stroke()};antler(1.7,INK);antler(0.9,dk);
+ P(ctx,[[7,-6.6],[5.6,-8],[7.4,-7.6]],fur,{lw:0.3,sh:0,li:0});// oreille
+ disc(ctx,9.6,-5.6,0.5,BLACK,0);ctx.fillStyle='#FFFFFF';ctx.fillRect(9.3,-5.9,0.3,0.3);
+ if(lead){halo(ctx,11.9,-4.6,2.2,'#FF3B3B',0.35);ball(ctx,11.9,-4.6,1.1,'#FF3B3B',0.3)}else disc(ctx,12,-4.5,0.55,'#2A1A10',0);
  // harnais rouge à grelot
- ctx.strokeStyle='#A02030';ctx.lineWidth=0.7;ctx.beginPath();ctx.moveTo(2.2,-2.6);ctx.quadraticCurveTo(3,0.6,1.2,2.4);ctx.stroke();ball(ctx,4.5,0.5,0.9,GOLD,0.3);
- if(breath){ctx.fillStyle='rgba(255,255,255,0.35)';for(let k=0;k<3;k++){ctx.beginPath();ctx.arc(13+k*1.6,-3.4-k*0.9,0.7+k*0.35,0,TAU);ctx.fill()}}
+ ctx.strokeStyle='#A02030';ctx.lineWidth=0.7;ctx.beginPath();ctx.moveTo(2.4,-2.6);ctx.quadraticCurveTo(3.2,0.6,1.4,2.4);ctx.stroke();ball(ctx,4.5,0.5,0.9,GOLD,0.3);
+ if(breath){ctx.fillStyle='rgba(255,255,255,0.35)';for(let k=0;k<3;k++){ctx.beginPath();ctx.arc(13.4+k*1.6,-3.8-k*0.9,0.7+k*0.35,0,TAU);ctx.fill()}}
 }
 // Hotte (SantaSack : fond du sac à y = −2, centré).
 function santaSack(ctx){cel(ctx,()=>{ctx.moveTo(-3,-2);ctx.quadraticCurveTo(-8,-10,-1,-13);ctx.quadraticCurveTo(5,-10,3,-2);ctx.closePath()},'#8A6A3E',{lw:0.5,box:{x:-8,y:-13,w:11,h:11},sh:0.3,shX:0.62,li:0.22});ctx.beginPath();ctx.moveTo(-3,-11);ctx.quadraticCurveTo(-1,-14,2,-11);ctx.strokeStyle=INK;ctx.lineWidth=1.4;ctx.stroke();ctx.strokeStyle='#5A3A20';ctx.lineWidth=0.8;ctx.stroke();
@@ -688,7 +691,7 @@ const BREEDS=[
  {id:'caniche',len:0.9,h:1,ear:'flop',tail:'pom',snout:0.9,coats:['#F4EFE6','#4A3A30','#C98A5E'],curly:true},
  {id:'berger',len:1.1,h:1.08,ear:'point',tail:'plume',snout:1.2,coats:['#8A5A2B','#2A2420','#B97A52'],saddle:true},
  {id:'bouledogue',len:0.85,h:0.82,ear:'bat',tail:'stub',snout:0.5,coats:['#E8D9B8','#8A7A6A','#2A2420'],spots:true}];
-function dog(ctx,{seed=1,t=0,anim=true,leashTo=null}={}){const rng=mulberry32(seed),b=pick(BREEDS,rng),coat=C(pick(b.coats,rng)),mark=b.saddle?shade(coat,0.45):b.spots?mix(coat,hex('#2A2420'),0.7):null;
+function dog(ctx,{seed=1,t=0,anim=true,leashTo=null,breed=null}={}){const rng=mulberry32(seed),b=breed?BREEDS.find(x=>x.id===breed):pick(BREEDS,rng),coat=C(pick(b.coats,rng)),mark=b.saddle?shade(coat,0.45):b.spots?mix(coat,hex('#2A2420'),0.7):null;
  const L_=b.len,Hh=b.h,g=anim?(t/0.5)%1:0,bob=anim?Math.sin(TAU*g*2)*0.4:0;
  // pattes : hanche à (−6, −6), épaule à (3, −6) ; diagonales en phase
  const leg=(x,ph,far)=>{const a=anim?15*Math.sin(TAU*(g+ph)):0,v=anim?Math.cos(TAU*(g+ph)):0,bend=Math.max(0,v)*25;const col=far?shade(coat,0.3):coat;ctx.save();ctx.translate(x,-6*Hh);ctx.rotate(a*Math.PI/180);tube(ctx,0,0,0,3*Hh,1.8,col,{lw:0.4,li:far?0.05:0.25});ctx.translate(0,3*Hh);ctx.rotate(-bend*Math.PI/180);tube(ctx,0,0,0.2,3*Hh,1.5,col,{lw:0.4,li:far?0.05:0.25});ball(ctx,0.3,3*Hh+0.2,0.9,col,0.3);ctx.restore()};
@@ -741,13 +744,14 @@ const WALLS=['#F6E2B4','#F0A98A','#CFE0B8','#F4D89C','#EEC79A','#E6BCD0','#FFF1D
 const ROOFS=['#D8603A','#B4523A','#C86A40','#5A6A84','#98A4B4'].map(hex);
 const SHOPS=[['Au Pain Perdu','#8A4B1E','#F7E3B5'],['Café du Commerce','#7A3E2A','#F6E7D0'],['Pharmacie','#E2D6BC','#1E8A4C'],['Au Chat Qui Pêche','#D2527F','#FFF3F7'],['Vinyl Café','#1B1B1F','#FF6A3D'],['Le Zinc','#2A1A3A','#FFB347'],['Pomme d’Api','#4F9A3B','#FFFBE0'],['Optique Lumière','#243B8A','#E8F0FF'],['Bella Napoli','#C8352B','#FFF4D6'],['Le Palace','#120A24','#FF4FD8'],['Boucherie Martin','#A3262A','#FFFFFF'],['Lavomatic','#3AA9D6','#FFFFFF']];
 const ST={W:1080,H:184,G:120,SW:20,CURB:140,FAR:176,GF:30};
-function streetBackdrop(ctx,{night=false,seed=7,flags=false,flagT=0,lamps=true}={}){const{W,H,G,CURB,FAR,GF}=ST,r=mulberry32(seed);
+function streetBackdrop(ctx,{night=false,seed=7,behind=null}={}){const{W,H,G,CURB,FAR,GF}=ST,r=mulberry32(seed);
  ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,0,W,H);
  // colline de maisons (fond brumeux)
  ctx.fillStyle='#A9C9A0';ctx.beginPath();ctx.moveTo(0,70);for(let x=0;x<=W;x+=20)ctx.lineTo(x,56+Math.sin(x/120)*6+Math.sin(x/47)*2);ctx.lineTo(W,G);ctx.lineTo(0,G);ctx.fill();
  for(let x=-10;x<W;x+=0){const w=14+r()*16,h=10+r()*12,y=62+Math.sin(x/120)*5;R(ctx,x,y-h,w,h,mix(pick(WALLS,r),hex('#9CC0E4'),0.3),{lw:0.3,sh:0.2,li:0});P(ctx,[[x-1,y-h],[x+w/2,y-h-5],[x+w+1,y-h]],mix(pick(ROOFS,r),hex('#9CC0E4'),0.3),{lw:0.3,sh:0.25,li:0.1});x+=w+2+r()*8}
+ if(behind)behind();
  // immeubles du premier plan
- const blocks=[];let bx=0;while(bx<W){const w=60+Math.floor(r()*50),h=48+r()*22;blocks.push({x:bx,w,h,c:pick(WALLS,r),roof:pick(ROOFS,r)});bx+=w}
+ const blocks=[];let bx=0;while(bx<W){const w=60+Math.floor(r()*50),h=34+r()*22;blocks.push({x:bx,w,h,c:pick(WALLS,r),roof:pick(ROOFS,r)});bx+=w}
  const items=[];
  for(const k of blocks){const top=G-GF-h2(k.h);R(ctx,k.x,top,k.w,G-top,k.c,{lw:0.6,sh:0.25,shX:0.74,li:0.12,liW:0.08});
   P(ctx,[[k.x-1,top],[k.x+k.w+1,top],[k.x+k.w-4,top-9],[k.x+4,top-9]],k.roof,{lw:0.5,sh:0.3,shX:0.6,li:0.2});
@@ -775,11 +779,14 @@ function nightPool(ctx,x,curb,k,u=1){const gx=x+9*k,gy=curb-77*k;ctx.fillStyle='
  const rng=mulberry32(x*7919);for(let i=0;i<6;i++){const sx=x+3*u+(rng()-0.5)*5*u,w=(1.2+rng()*2)*u;ctx.fillStyle=`rgba(255,225,160,${0.45-i*0.05})`;ctx.fillRect(sx-w/2,curb+(2+i*5)*u,w,3.6*u)}}
 
 // La rue : lampadaires (tous les ~170), feu à bouton + passage, arrêt de bus, terrasse, chien promené, grue au loin, montgolfière et avion.
-const LAMP_XS=[62,232,402,572,742,912,1082],KL=0.85,KP=0.55,LIGHT_X=640;
+const LAMP_XS=[62,232,402,572,742,912,1082],KL=0.85,KP=0.55,LIGHT_X=640;street.cache=new Map();
 function street(ctx,{night=false,t=0,x0=0,s=1,flags=false}={}){const{W,H,G,CURB,FAR}=ST;ctx.save();ctx.scale(s,s);ctx.translate(-x0,0);
  // grue au loin (derrière les immeubles), à l'échelle réduite
- ctx.save();ctx.translate(330,G-20);ctx.scale(0.42,0.42);crane(ctx,t,true);ctx.restore();
- const items=streetBackdrop(ctx,{night});
+ // décor fixe mis en cache (une image par jour/nuit × fenêtre × échelle) : seuls les éléments vivants sont redessinés à chaque image
+ const key=`${night}|${x0}|${s}`;let bg=street.cache.get(key);
+ if(!bg){const off=document.createElement('canvas');off.width=ctx.canvas.width;off.height=ctx.canvas.height;const o=off.getContext('2d');o.scale(s,s);o.translate(-x0,0);
+  const items=streetBackdrop(o,{night,behind:()=>{o.save();o.translate(330,G-24);o.scale(0.45,0.45);crane(o,0,false);o.restore()}});bg={off,items};street.cache.set(key,bg)}
+ ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(bg.off,0,0);ctx.restore();const items=bg.items;
  // ciel : montgolfière, avion
  ctx.save();ctx.translate(840,30);ctx.scale(0.55,0.55);balloonEvt(ctx,'#3B6FD6','#F2C94C');ctx.restore();
  ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night});ctx.restore();
@@ -798,7 +805,7 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false}={}){const{W,H,G,CURB,
  // passants-repères et promeneur avec chien (événement du trottoir, échelle du passant)
  const walkers=[[120,'#4A7AB8'],[300,'#C0463A'],[560,'#2E8B6A'],[700,'#E0A21E'],[980,'#8A5AB8']];
  for(const[x,c]of walkers){ctx.save();ctx.translate(x,G+14);ctx.scale(KP,KP);figure(ctx,{top:c});ctx.restore()}
- ctx.save();ctx.translate(380+(t*9)%40-20,G+14);ctx.scale(KP,KP);figure(ctx,{top:'#8A5A2B',bottom:'#3A3A4A'},{arms:'hold'});ctx.translate(26,0);dog(ctx,{seed:3,t,leashTo:[-26+8.6,-20.6]});ctx.restore();
+ ctx.save();ctx.translate(520+(t*9)%40-20,G+14);ctx.scale(KP,KP);figure(ctx,{top:'#8A5A2B',bottom:'#3A3A4A'},{arms:'hold'});ctx.translate(26,0);dog(ctx,{breed:'labrador',seed:3,t,leashTo:[-26+8.6,-20.6]});ctx.restore();
  // ouvrier sur une échelle qui change l'enseigne du 5e local
  const rec=items.filter(i=>i.k==='shop')[4];if(rec){ctx.save();ctx.translate(rec.x+8,G);ladder(ctx,30);ctx.translate(0,-14);ctx.scale(KP,KP);figure(ctx,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'up'});ctx.restore();ctx.save();ctx.translate(rec.x+rec.w/2+6,G);ctx.scale(KP,KP);figure(ctx,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'carry'});ctx.translate(0,-23.5);carriedSign(ctx,rec.w/KP*0.6,'#1C6FB8','#FFE45C','Proxi Marché');ctx.restore()}
  if(night){nightFilter(ctx,W+x0,H);
@@ -815,7 +822,7 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false}={}){const{W,H,G,CURB,
  }
  ctx.restore()}
 {const{W,H}=ST;anim('street-day',W,H,2,(ctx,t)=>street(ctx,{night:false,t}));anim('street-night',W,H,2,(ctx,t)=>street(ctx,{night:true,t}));
- anim('zoom-day',270,H,4,(ctx,t)=>street(ctx,{night:false,t,x0:395}));anim('zoom-night',270,H,4,(ctx,t)=>street(ctx,{night:true,t,x0:395}))}
+ anim('zoom-day',270,H,4,(ctx,t)=>street(ctx,{night:false,t,x0:400}));anim('zoom-night',270,H,4,(ctx,t)=>street(ctx,{night:true,t,x0:400}))}
 
 // ───────────────────────── 4. Planche mobilier de rue (×5) ─────────────────────────
 {const s=5,W=216,H=180;const ctx=mk('board-street',W,H,s);
@@ -834,25 +841,23 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false}={}){const{W,H,G,CURB,
 }
 
 // ───────────────────────── 5. Fête de la musique ─────────────────────────
-function musicScene(ctx,{night=false,t=0}={}){const W=432,H=120,G=100;
+function musicScene(ctx,{night=false,t=0}={}){const W=432,H=120,G=100,kp=0.55;
  ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,0,W,H);R(ctx,0,0,W,G-24,'#F2DDB4',{lw:0.3,sh:0,li:0});R(ctx,0,G-24,W,24,'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.fillStyle='#8A8494';ctx.fillRect(0,G,W,H-G);
+ const fig=(x,y,o,a,k=kp,extra)=>{ctx.save();ctx.translate(x,y);ctx.scale(k,k);figure(ctx,o,{arms:a});if(extra)extra();ctx.restore()};
  const lamp1=40;ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:night});ctx.restore();
- // scène (base = curb − 1)
+ // scène (base = curb − 1) ; musiciens-repères sur le plancher (STAGE_STAND = −9,5), échelle 0,55 × 0,8 = 0,44
  ctx.save();ctx.translate(130,G-1);stageFrame(ctx);stageFloor(ctx);
-  // musiciens-repères sur le plancher (STAGE_STAND = −9,5), échelle 0,8
-  [[-24,'guitar','#C0463A'],[0,'mic','#E0A21E'],[24,'drum','#2E8B6A']].forEach(([x,k,c])=>{ctx.save();ctx.translate(x,-9.5);ctx.scale(0.8,0.8);figure(ctx,{top:c},{arms:k==='mic'?'hold':'swing'});stageProp(ctx,k);ctx.restore()});
+  [[-24,'guitar','#C0463A'],[0,'mic','#E0A21E'],[24,'drum','#2E8B6A']].forEach(([x,k,c])=>{ctx.save();ctx.translate(x,-9.5);ctx.scale(0.44,0.44);figure(ctx,{top:c},{arms:k==='mic'?'hold':'swing'});stageProp(ctx,k);ctx.restore()});
   stageSpots(ctx,{lit:night});ctx.restore();
  // barrières devant la scène (y = curb + 4, échelle 0,85 × 1,5)
  for(const x of[70,100,160,190]){ctx.save();ctx.translate(x,G+4);ctx.scale(1.275,1.275);barrier(ctx);ctx.restore()}
- // stand de bière sur la chaussée (base = curb + 18)
- ctx.save();ctx.translate(300,G+18);standAwning(ctx);standCounter(ctx,1);ctx.save();ctx.translate(-8,-12);figure(ctx,{top:'#F4F1E8'},{arms:'hold'});ctx.restore();ctx.save();ctx.translate(36,0);figure(ctx,{top:'#4A7AB8'},{arms:'hold'});ctx.translate(8.6,-21);beerCup(ctx,0,2);ctx.restore();ctx.restore();
- // équipe : comptoir porté à deux, tronçon de treillis, projecteur, toile roulée
- ctx.save();ctx.translate(390,G+10);carriedCounter(ctx);ctx.translate(-30,0);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(60,0);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.restore();
- ctx.save();ctx.translate(236,G-2);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(9,-23.5);heldTruss(ctx);ctx.restore();
- ctx.save();ctx.translate(258,G-2);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(9,-23.5);heldSpot(ctx);ctx.restore();
- ctx.save();ctx.translate(20,G+16);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(9,-23.5);heldRoll(ctx);ctx.restore();
+ // stand de bière sur la chaussée (base = curb + 18) : serveur derrière, client avec gobelet
+ ctx.save();ctx.translate(300,G+18);standAwning(ctx);fig(-8,-12,{top:'#F4F1E8'},'hold');standCounter(ctx,1);fig(36,0,{top:'#4A7AB8'},'hold',kp,()=>{ctx.translate(8.6,-21);beerCup(ctx,0,2)});ctx.restore();
+ // équipe : comptoir porté à deux (mains à −23,5 × 0,55 = −13), tronçon de treillis, projecteur, toile roulée
+ ctx.save();ctx.translate(395,G+10);fig(-30,0,{top:'#F28C28'},'carry');fig(30,0,{top:'#F28C28'},'carry');ctx.translate(0,-13);carriedCounter(ctx);ctx.restore();
+ fig(236,G-2,{top:'#F28C28'},'carry',kp,()=>{ctx.translate(9,-23.5);heldTruss(ctx)});fig(254,G-2,{top:'#F28C28'},'carry',kp,()=>{ctx.translate(9,-23.5);heldSpot(ctx)});fig(20,G+16,{top:'#F28C28'},'carry',kp,()=>{ctx.translate(9,-23.5);heldRoll(ctx)});
  // spectateurs
- for(const[x,c]of[[80,'#4A7AB8'],[112,'#C0463A'],[150,'#E0A21E'],[176,'#8A5AB8']]){ctx.save();ctx.translate(x,G+12);figure(ctx,{top:c},{arms:x%2?'up':'swing'});ctx.restore()}
+ [[80,'#4A7AB8'],[112,'#C0463A'],[150,'#E0A21E'],[176,'#8A5AB8']].forEach(([x,c],i)=>fig(x,G+12,{top:c},i%2?'up':'swing'));
  if(night){nightFilter(ctx,W,H);nightPool(ctx,lamp1,G,0.85);ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:'lit'});ctx.restore();
   ctx.save();ctx.translate(130,G-1);stageBeams(ctx,t);stageSpots(ctx,{lit:true,pass:'lit'});ctx.restore();
   // guirlande du stand
@@ -868,7 +873,7 @@ function bastilleScene(ctx,t=0){const W=432,H=96,G=74;
  for(const x of[20,160]){ctx.save();ctx.translate(x,G);ctx.scale(0.85,0.85);lamp(ctx,{flag:true,flagT:t+x});ctx.restore()}
  for(const x of[90,116]){ctx.save();ctx.translate(x,G+4);ctx.scale(1.275,1.275);barrier(ctx);ctx.restore()}
  // spectateurs derrière les barrières
- [[84,'flag'],[100,'wave'],[122,'phone'],[136,'flag']].forEach(([x,k],i)=>{ctx.save();ctx.translate(x,G+2);const o={top:['#4A7AB8','#C0463A','#E0A21E','#8A5AB8'][i]};figure(ctx,o);crowdProp(ctx,k,{top:o.top,t,phase:i*0.3});ctx.restore()});
+ [[84,'flag'],[96,'wave'],[122,'phone'],[134,'flag']].forEach(([x,k],i)=>{ctx.save();ctx.translate(x,G+2);ctx.scale(0.55,0.55);const o={top:['#4A7AB8','#C0463A','#E0A21E','#8A5AB8'][i]};figure(ctx,o);crowdProp(ctx,k,{top:o.top,t,phase:i*0.3});ctx.restore()});
  // cortège sur la chaussée (échelle FIG 0,7, repère des véhicules), de droite à gauche : cavaliers, porte-drapeaux, fanfare, section à fusils
  ctx.save();ctx.translate(0,G+16);ctx.scale(0.7,0.7);
   const col=['#6B3F22','#3A2416'];[400,445].forEach((x,i)=>{ctx.save();ctx.translate(x+(i?3:0),0);horse(ctx,{t:t+i*0.3,coat:col[i]});ctx.restore()});
@@ -890,9 +895,9 @@ function santaScene(ctx,t=0){const W=360,H=90;
  ctx.save();ctx.translate(120,28+Math.sin(t*1.3)*1.5);santa(ctx,{landed:false,lit:true,t});ctx.restore();
  // posé sur le toit du 5e (faîte à ty − 4 = 42 ; patins au faîte)
  ctx.save();ctx.translate(290,44);santa(ctx,{landed:true,lit:true,t,aboard:false});ctx.restore();
- ctx.save();ctx.translate(252,44);santaWalker(ctx);ctx.restore();
+ ctx.save();ctx.translate(254,44);ctx.scale(0.55,0.55);santaWalker(ctx);ctx.restore();
  // hotte seule
- ctx.save();ctx.translate(20,80);ctx.scale(1.6,1.6);santaSack(ctx);ctx.restore();text(ctx,'hotte',20,84,3,'#FFFFFF');
+ ctx.save();ctx.translate(30,36);ctx.scale(1.6,1.6);santaSack(ctx);ctx.restore();text(ctx,'hotte ×1,6',30,40,3,'#FFFFFF');
  nightFilter(ctx,W,H);
  const sr=mulberry32(21);for(let k=0;k<70;k++){const x=sr()*W,y=sr()*60,a=0.4+0.6*Math.abs(Math.sin(t*1.5+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.9,0.9)}
  ball(ctx,330,14,7,'#FFF6D0',0);ctx.fillStyle='rgba(255,246,208,0.25)';ctx.beginPath();ctx.arc(330,14,11,0,TAU);ctx.fill();
@@ -906,42 +911,44 @@ anim('santa',360,90,3,(ctx,t)=>santaScene(ctx,t));
 {const s=2.5,W=432,H=110,G=86;const ctx=mk('install',W,H,s);
  ctx.fillStyle='#BFE0F4';ctx.fillRect(0,0,W,H);R(ctx,0,0,W,G-22,'#CFE0B8',{lw:0.3,sh:0,li:0});R(ctx,0,G-22,W,22,'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.fillStyle='#8A8494';ctx.fillRect(0,G,W,H-G);
  // lampadaire que l'équipe décore ; camion-nacelle (gabarit du V5 déjà peint) avec bras déployé jusqu'à la lanterne
- ctx.save();ctx.translate(60,G);ctx.scale(0.85,0.85);lamp(ctx,{flag:true});ctx.restore();
- ctx.save();ctx.translate(110,G+10);const k=0.85,u=1;ctx.save();ctx.scale(-k,k);for(const x of[-27,13]){R(ctx,x-1.5,-9,3,8,IRON,{lw:0.35,sh:0.3,li:0.2});R(ctx,x-3,-1,6,1.2,IRON,{lw:0.3,sh:0,li:0.2})}R(ctx,-32,-12,48,6,'#E8B923',{lw:0.5,sh:0.28,shX:0.72,li:0.2});R(ctx,-32,-8,48,1.2,IRON,{lw:0.3,sh:0,li:0});RR(ctx,16,-24,16,20,2.5,'#ECECEA',{lw:0.5,sh:0.28,shX:0.7,li:0.2});R(ctx,22,-21.5,8,7,'#CFE4F2',{lw:0.4,sh:0.15,li:0});RR(ctx,-23,-18,10,6,1,'#E8B923',{lw:0.45,sh:0.3,shX:0.6,li:0.25});ctx.save();ctx.translate(-2,-12);flagCrate(ctx,2,14);ctx.restore();wheel(ctx,-20,-4.5,4.5);wheel(ctx,22,-4.5,4.5);ctx.restore();
-  text(ctx,'gabarit du camion V5',0,6,2.6,'#5A4A30');
-  liftArm(ctx,{x:18*k,y:-16*k},{x:-40,y:-62},u,k,()=>{ctx.save();ctx.translate(0,-2);ctx.scale(0.55,0.55);figure(ctx,{top:'#F28C28'},{arms:'up'});ctx.restore()});ctx.restore();
+ const LX=78;ctx.save();ctx.translate(LX,G);ctx.scale(0.85,0.85);lamp(ctx,{flag:true});ctx.restore();
+ ctx.save();ctx.translate(LX-33,G+10);const k=0.85,u=1;ctx.save();ctx.scale(-k,k);for(const x of[-27,13]){R(ctx,x-1.5,-9,3,8,IRON,{lw:0.35,sh:0.3,li:0.2});R(ctx,x-3,-1,6,1.2,IRON,{lw:0.3,sh:0,li:0.2})}R(ctx,-32,-12,48,6,'#E8B923',{lw:0.5,sh:0.28,shX:0.72,li:0.2});R(ctx,-32,-8,48,1.2,IRON,{lw:0.3,sh:0,li:0});RR(ctx,16,-24,16,20,2.5,'#ECECEA',{lw:0.5,sh:0.28,shX:0.7,li:0.2});R(ctx,22,-21.5,8,7,'#CFE4F2',{lw:0.4,sh:0.15,li:0});RR(ctx,-23,-18,10,6,1,'#E8B923',{lw:0.45,sh:0.3,shX:0.6,li:0.25});ctx.save();ctx.translate(-2,-12);flagCrate(ctx,2,14);ctx.restore();wheel(ctx,-20,-4.5,4.5);wheel(ctx,22,-4.5,4.5);ctx.restore();
+  text(ctx,'gabarit du camion V5',0,6,3,'#5A4A30');
+  liftArm(ctx,{x:18*k,y:-16*k},{x:33-11,y:-47},u,k,()=>{ctx.save();ctx.translate(0,-2);ctx.scale(0.55,0.55);figure(ctx,{top:'#F28C28'},{arms:'up'});ctx.restore()});ctx.restore();
  // triporteur avec caisse et échelle, ouvrier-repère en selle
  ctx.save();ctx.translate(200,G+8);ctx.scale(0.85,0.85);cargoBike(ctx,{flags:3,ladderOn:true,rider:()=>{ctx.save();ctx.translate(-4,-17.6);ctx.scale(0.55,0.55);rider(ctx,{top:'#F28C28'});ctx.restore()}});ctx.restore();
  // chargement du plateau (gabarit du plateau : deck à −11)
- ctx.save();ctx.translate(300,G+8);ctx.scale(0.85,0.85);R(ctx,-46,-11,70,3.5,'#7A5A3A',{lw:0.4,sh:0.3,shX:0.7,li:0.15});R(ctx,-46,-12.6,70,1.6,GALVA,{lw:0.3,sh:0.3,li:0.3});flatbedLoad(ctx,{});R(ctx,-47.5,-14,1.8,6,GALVA,{lw:0.35,sh:0.3,li:0.3});ctx.save();ctx.translate(-24,-16.5);stowedLadder(ctx,30);ctx.restore();text(ctx,'gabarit du plateau V5',-10,-3,3,'#5A4A30');ctx.restore();
+ ctx.save();ctx.translate(300,G+8);ctx.scale(0.85,0.85);R(ctx,-46,-11,70,3.5,'#7A5A3A',{lw:0.4,sh:0.3,shX:0.7,li:0.15});R(ctx,-46,-12.6,70,1.6,GALVA,{lw:0.3,sh:0.3,li:0.3});flatbedLoad(ctx,{});R(ctx,-47.5,-14,1.8,6,GALVA,{lw:0.35,sh:0.3,li:0.3});ctx.save();ctx.translate(-24,-16.5);stowedLadder(ctx,30);ctx.restore();text(ctx,'gabarit du plateau V5',-10,-3,3.4,'#5A4A30');ctx.restore();
  // déménagement : arrière du camion, hayon fermé et ouvert, meubles portés
  ctx.save();ctx.translate(410,G-2);ctx.scale(0.85,0.85);R(ctx,-32,-34,22,28,'#F4F6F8',{lw:0.5,sh:0.25,shX:0.8,li:0.15});R(ctx,-32,-17,22,4,'#2E6FD6',{lw:0.3,sh:0.2,li:0});tailgate(ctx,0);ctx.translate(-28,0);R(ctx,-32,-34,22,28,'#F4F6F8',{lw:0.5,sh:0.25,shX:0.8,li:0.15});R(ctx,-32,-17,22,4,'#2E6FD6',{lw:0.3,sh:0.2,li:0});ctx.fillStyle='#2A2A30';ctx.fillRect(-32,-33,1.5,26);tailgate(ctx,1);ctx.restore();
  // meubles portés par deux déménageurs-repères (mains à −23,5)
- [['vitrine',30],['etagere',24],['table',22],['fauteuil',18]].forEach(([kind,len],i)=>{ctx.save();ctx.translate(40+i*62,G+18);ctx.scale(0.55,0.55);ctx.translate(-len/2-4,0);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#C0392B'},{arms:'carry'});ctx.translate(len+8,0);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#D95F2B'},{arms:'carry'});ctx.translate(-len/2-4,-23.5);piece(ctx,kind,len,1);ctx.restore();text(ctx,kind,40+i*62,G+22,2.6,'#5A4A30')});
- ctx.save();ctx.translate(290,G+18);ctx.scale(0.55,0.55);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#C0392B'},{arms:'hold'});piece(ctx,'carton',0,1);ctx.restore();text(ctx,'carton',290,G+22,2.6,'#5A4A30');
+ [['vitrine',30],['etagere',24],['table',22],['fauteuil',18]].forEach(([kind,len],i)=>{ctx.save();ctx.translate(150+i*52,G+18);ctx.scale(0.55,0.55);ctx.translate(-len/2-4,0);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#C0392B'},{arms:'carry'});ctx.translate(len+8,0);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#D95F2B'},{arms:'carry'});ctx.translate(-len/2-4,-23.5);piece(ctx,kind,len,1);ctx.restore();text(ctx,kind,40+i*62,G+22,3.2,'#5A4A30')});
+ ctx.save();ctx.translate(360,G+18);ctx.scale(0.55,0.55);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#C0392B'},{arms:'hold'});piece(ctx,'carton',0,1);ctx.restore();text(ctx,'carton',360,G+22,3.2,'#5A4A30');
 }
 
 // ───────────────────────── 9. Événements du ciel ─────────────────────────
-function eventsScene(ctx,t=0){const W=490,H=136,row=68;
+function eventsScene(ctx,t=0){const W=540,H=136,row=68;
  const bg=(y,night)=>{ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,y,W,row);ctx.fillStyle=night?'#6A7AA8':'#CFE0B8';ctx.fillRect(0,y+row-10,W,10)};
  bg(0,false);bg(row,true);
  const put=(x,y,s,f)=>{ctx.save();ctx.translate(x,y);ctx.scale(s,s);f();ctx.restore()};
+ const lab=(l,x,y,c='#5A4A30')=>text(ctx,l,x,y,2.8,c);
  // jour
- put(60,16,0.5,()=>plane(ctx,{t}));put(120,30,0.7,()=>helicopter(ctx,{t}));put(160,24,0.9,()=>drone(ctx,{t}));put(200,30,0.7,()=>balloonEvt(ctx));put(330,14,0.6,()=>bannerPlane(ctx,'#F2C94C',t));put(380,30,0.7,()=>kite(ctx,'#E07A8C',t));
- put(452,58,0.25,()=>crane(ctx,t));put(260,20,0.6,()=>festBalloons(ctx,{bunny:false,t}));put(300,20,0.6,()=>festBalloons(ctx,{bunny:true,t}));put(420,40,0.7,()=>bells(ctx,t));
- put(60,58,0.5,()=>garbageTruck(ctx,{}));put(130,58,0.6,()=>deliveryBike(ctx,{}));
+ put(50,16,0.5,()=>plane(ctx,{t}));lab('avion',50,27);put(115,30,0.7,()=>helicopter(ctx,{t}));lab('hélicoptère',115,45);put(170,22,0.9,()=>drone(ctx,{t}));lab('drone',170,32);
+ put(215,30,0.7,()=>balloonEvt(ctx));lab('montgolfière',215,52);put(270,16,0.6,()=>festBalloons(ctx,{bunny:false,t}));lab('ballons cœur',270,44);put(312,16,0.6,()=>festBalloons(ctx,{bunny:true,t}));lab('ballons lapin',312,44);
+ put(360,36,0.7,()=>kite(ctx,'#E07A8C',t));lab('cerf-volant',372,54);put(405,44,0.7,()=>bells(ctx,t));lab('cloches',405,62);
+ put(528,10,0.6,()=>bannerPlane(ctx,'#F2C94C',t));lab('banderole « Wikimasters »',475,24);put(520,64,0.25,()=>crane(ctx,t));lab('grue (×0,25)',500,64);
+ put(60,56,0.5,()=>garbageTruck(ctx,{}));lab('camion-poubelle',60,64);put(140,56,0.6,()=>deliveryBike(ctx,{}));lab('vélo de livraison',140,64);
  // nuit
- const ny=row;put(60,ny+16,0.5,()=>plane(ctx,{night:true,t}));put(120,ny+30,0.7,()=>helicopter(ctx,{t,night:true,c:'#2E5E8A'}));put(160,ny+24,0.9,()=>drone(ctx,{t,night:true}));
- R(ctx,190,ny+12,60,40,'#E6BCD0',{lw:0.5,sh:0.25,shX:0.75,li:0.1});for(let wx=196;wx<246;wx+=12)for(let wy=ny+16;wy<ny+46;wy+=14)R(ctx,wx,wy,5,8,'#243050',{lw:0.3,sh:0,li:0});
- put(60,ny+58,0.5,()=>garbageTruck(ctx,{lights:true}));put(130,ny+58,0.6,()=>deliveryBike(ctx,{box:'#E0A21E'}));
+ const ny=row;put(50,ny+16,0.5,()=>plane(ctx,{night:true,t}));put(115,ny+30,0.7,()=>helicopter(ctx,{t,night:true,c:'#2E5E8A'}));put(170,ny+24,0.9,()=>drone(ctx,{t,night:true}));
+ R(ctx,200,ny+12,60,40,'#E6BCD0',{lw:0.5,sh:0.25,shX:0.75,li:0.1});for(let wx=206;wx<256;wx+=12)for(let wy=ny+16;wy<ny+46;wy+=14)R(ctx,wx,wy,5,8,'#243050',{lw:0.3,sh:0,li:0});
+ put(60,ny+56,0.5,()=>garbageTruck(ctx,{lights:true}));put(140,ny+56,0.6,()=>deliveryBike(ctx,{box:'#E0A21E'}));
  ctx.save();ctx.beginPath();ctx.rect(0,ny,W,row);ctx.clip();nightFilter(ctx,W,H*2);ctx.restore();
- put(60,ny+16,0.5,()=>plane(ctx,{night:true,t,pass:'lit'}));put(160,ny+24,0.9,()=>{halo(ctx,0,2,2.4,'#40FF80',0.5);disc(ctx,0,2,1.2,'#40FF80',0)});put(120,ny+30,0.7,()=>{halo(ctx,-30,0,2.6,'#FF4040',0.5);disc(ctx,-30,0,1.5,'#FF4040',0)});
- put(208,ny+31,1,()=>apartmentGlow(ctx));put(360,ny+10,0.42,()=>fireworks(ctx,t));
- put(60,ny+58,0.5,()=>{ctx.fillStyle='rgba(255,233,160,0.3)';ctx.beginPath();ctx.moveTo(26,-9);ctx.lineTo(50,-3);ctx.lineTo(50,-15);ctx.fill();halo(ctx,25.6,-9.5,3,'#FFE9A0',0.6);ball(ctx,25.6,-9.5,1.4,'#FFF6D0',0)});put(130,ny+58,0.6,()=>{halo(ctx,6,-16,2,'#FFE9A0',0.6);disc(ctx,6,-16,0.9,'#FFF6D0',0)});
+ put(50,ny+16,0.5,()=>plane(ctx,{night:true,t,pass:'lit'}));put(170,ny+24,0.9,()=>{halo(ctx,0,2,2.4,'#40FF80',0.5);disc(ctx,0,2,1.2,'#40FF80',0)});put(115,ny+30,0.7,()=>{halo(ctx,-30,0,2.6,'#FF4040',0.5);disc(ctx,-30,0,1.5,'#FF4040',0)});
+ put(218,ny+31,1,()=>apartmentGlow(ctx));put(380,ny+8,0.42,()=>fireworks(ctx,t));
+ put(60,ny+56,0.5,()=>{ctx.fillStyle='rgba(255,233,160,0.3)';ctx.beginPath();ctx.moveTo(26,-9);ctx.lineTo(50,-3);ctx.lineTo(50,-15);ctx.fill();halo(ctx,25.6,-9.5,3,'#FFE9A0',0.6);ball(ctx,25.6,-9.5,1.4,'#FFF6D0',0)});put(140,ny+56,0.6,()=>{halo(ctx,6,-16,2,'#FFE9A0',0.6);disc(ctx,6,-16,0.9,'#FFF6D0',0)});
  const sr=mulberry32(31);for(let k=0;k<60;k++){const x=sr()*W,y=ny+sr()*50,a=0.4+0.6*Math.abs(Math.sin(t*2+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.8,0.8)}
- ['avion','hélicoptère','drone','montgolfière','ballons cœur','ballons lapin','banderole','cerf-volant','cloches','grue'].forEach((l,i)=>text(ctx,l,[60,120,160,200,260,300,330,380,420,452][i],[32,44,34,56,42,42,24,54,52,62][i],2.6,'#5A4A30'));
- text(ctx,'camion-poubelle',60,64,2.6,'#5A4A30');text(ctx,'vélo de livraison',130,64,2.6,'#5A4A30');text(ctx,'lueur d’appartement',220,ny+56,2.6,'#FFFFFF');text(ctx,'feux d’artifice',360,ny+60,2.6,'#FFFFFF')}
-anim('events',490,136,2.2,(ctx,t)=>eventsScene(ctx,t));
+ lab('lueur d’appartement',230,ny+58,'#FFFFFF');lab('feux d’artifice (fusée, gerbe, retombée)',380,ny+62,'#FFFFFF');lab('feux de position et phares la nuit',100,ny+65,'#FFFFFF')}
+anim('events',540,136,2,(ctx,t)=>eventsScene(ctx,t));
 
 // ───────────────────────── 10. Signes festifs ─────────────────────────
 {const s=6,W=180,H=70;const ctx=mk('marks',W,H,s);ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);R(ctx,0,58,W,12,'#E2D2B0',{lw:0.3,sh:0,li:0});
@@ -949,11 +956,20 @@ anim('events',490,136,2.2,(ctx,t)=>eventsScene(ctx,t));
 
 // ───────────────────────── 11. Chiens ─────────────────────────
 function dogsScene(ctx,t=0){const W=270,H=50;ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);R(ctx,0,40,W,10,'#E2D2B0',{lw:0.3,sh:0,li:0});
- for(let i=0;i<6;i++){ctx.save();ctx.translate(4+i*45,40);figure(ctx,{top:['#4A7AB8','#C0463A','#2E8B6A','#E0A21E','#8A5AB8','#D2527F'][i]},{arms:'hold'});ctx.translate(26,0);const id=dog(ctx,{seed:i+1,t:t+i*0.13,leashTo:[-26+8.6,-20.6]});ctx.restore();text(ctx,id,26+i*45,45,2.8,'#5A4A30')}}
+ for(let i=0;i<6;i++){ctx.save();ctx.translate(4+i*45,40);figure(ctx,{top:['#4A7AB8','#C0463A','#2E8B6A','#E0A21E','#8A5AB8','#D2527F'][i]},{arms:'hold'});ctx.translate(26,0);const id=dog(ctx,{breed:BREEDS[i].id,seed:i*7+3,t:t+i*0.13,leashTo:[-26+8.6,-20.6]});ctx.restore();text(ctx,id,26+i*45,45,2.8,'#5A4A30')}}
 anim('dogs',270,50,4,(ctx,t)=>dogsScene(ctx,t));
+
+// ───────────────────────── 12. Poses clés ─────────────────────────
+{const s=6,W=180,H=92;const ctx=mk('cycles',W,H,s);ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);
+ const row=(y,label,n,cyc,f)=>{R(ctx,0,y+5,W,0.6,'#D8C8A8',{lw:0,sh:0,li:0});text(ctx,label,2,y-12,2.3,'#5A4A30',{align:'left',w:40});for(let i=0;i<n;i++){ctx.save();ctx.translate(58+i*33,y);f(i*cyc/n,i);ctx.restore();text(ctx,`t = ${(i*cyc/n).toFixed(2)} s`,58+i*33,y+3,2.2,'#5A4A30')}};
+ row(27,'cheval au pas · 1,2 s',4,1.2,(t)=>{ctx.scale(0.6,0.6);horse(ctx,{t,withRider:false})});
+ row(56,'renne au galop · 0,55 s',4,0.55,(t)=>{ctx.scale(1.1,1.1);ctx.translate(-4,-2);reindeer(ctx,{t,lead:true})});
+ row(84,'chien · 0,5 s · drapeau',4,0.5,(t,i)=>{ctx.scale(0.9,0.9);dog(ctx,{breed:'labrador',seed:3,t});ctx.save();ctx.translate(11,-22);flagArt(ctx,{w:11,h:7,t:t*1.8,wave:true});ctx.restore()});}
 
 // ───────────────────────── Boucle d'animation (≤ 30 i/s) et captures ─────────────────────────
 if(ONLY){const el=document.getElementById(ONLY);document.body.innerHTML='';document.body.style.padding='0';document.body.style.background='#fff';el.style.borderRadius='0';el.style.boxShadow='none';document.body.appendChild(el)}
-if(FIXED_T===null){const t0=performance.now();let last=0;const loop=now=>{if(now-last>=33){last=now;const t=(now-t0)/1000;for(const a of ANIMS){if(ONLY&&a.id!==ONLY)continue;a.ctx.save();a.ctx.setTransform(1,0,0,1,0,0);a.ctx.clearRect(0,0,a.ctx.canvas.width,a.ctx.canvas.height);a.ctx.restore();a.draw(a.ctx,t)}}requestAnimationFrame(loop)};requestAnimationFrame(loop)}
+if(FIXED_T===null){const t0=performance.now();let last=0;const visible=new Set();
+ const io=new IntersectionObserver(es=>{for(const e of es){if(e.isIntersecting)visible.add(e.target.id);else visible.delete(e.target.id)}},{rootMargin:'100px'});for(const a of ANIMS)io.observe(a.ctx.canvas);
+ const loop=now=>{if(now-last>=40){last=now;const t=(now-t0)/1000;for(const a of ANIMS){if(!visible.has(a.id))continue;a.ctx.save();a.ctx.setTransform(1,0,0,1,0,0);a.ctx.clearRect(0,0,a.ctx.canvas.width,a.ctx.canvas.height);a.ctx.restore();a.draw(a.ctx,t)}}requestAnimationFrame(loop)};requestAnimationFrame(loop)}
 </script>
 </body></html>
