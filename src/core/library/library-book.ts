@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type Species, type StyleId, type TimeSetting, WEATHER_STATES, type WeatherSetting } from './library-types';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
-import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow } from './room-grid';
+import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
@@ -321,11 +321,13 @@ export function shrinkRoom(state: LibraryState, id: string, side: 'left' | 'righ
 export function fitRoomWidth(state: LibraryState, id: string, cols: number): LibraryState {
   const room = state.rooms.find((candidate) => candidate.id === id);
   if (!room || !Number.isInteger(cols) || cols < MIN_COLS || cols > MAX_COLS || cols === room.cols || !fitsWithin(room.layout, cols)) return state;
-  // Une fenêtre qui couvrait toute la largeur suit la pièce qui s'élargit (si le mur ajouté est libre).
+  // Une fenêtre (ou une rangée de fenêtres accolées) qui couvrait toute la largeur suit la pièce qui s'élargit (si le mur ajouté est libre).
   const follow = (layout: Layout): Layout => {
     let next = layout;
     for (const p of layout) {
-      if (p.kind !== 'window' || p.col !== 0 || p.w !== room.cols) continue;
+      if (p.kind !== 'window') continue;
+      const row = windowRow(next, p.id);
+      if (row[0]!.col !== 0 || Math.max(...row.map((q) => q.col + q.w)) !== room.cols) continue;
       const stretched = stretchWindow(next, cols, p.id, 'width');
       if (stretched.ok) next = stretched.layout;
     }

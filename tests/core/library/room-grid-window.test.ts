@@ -69,6 +69,16 @@ describe('fenêtre dans la grille', () => {
     if (!blocked.ok) expect(blocked.cells.length).toBeGreaterThan(0);
   });
 
+  it('étire d un bloc une rangée de fenêtres accolées, chacune gardant sa part', () => {
+    const pair: Layout = [win({ id: 'a', col: 0, row: 0, w: 12, h: 12 }), win({ id: 'b', col: 12, row: 0, w: 12, h: 12 })];
+    const wide = stretchWindow(pair, 38, 'b', 'width');
+    expect(wide.ok && wide.layout).toEqual([win({ id: 'a', col: 0, row: 0, w: 19, h: 12 }), win({ id: 'b', col: 19, row: 0, w: 19, h: 12 })]);
+    // Une fenêtre loin des autres reste seule.
+    const apart: Layout = [win({ id: 'a', col: 0, row: 0, w: 6, h: 5 }), win({ id: 'b', col: 20, row: 0, w: 6, h: 5 })];
+    const alone = stretchWindow(apart, 38, 'b', 'width');
+    expect(alone.ok).toBe(false);
+  });
+
   it('refuse un agrandissement qui sort du mur', () => {
     expect(resizeWindow([win({ row: 4 })], COLS, 'w1', 6, 9)).toBeNull();
   });

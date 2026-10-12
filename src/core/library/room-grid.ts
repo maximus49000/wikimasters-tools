@@ -125,16 +125,51 @@ export function windowFit(layout: Layout, cols: number, id: string, w: number, h
   return canHangRect(layout, cols, w, h, item.col, item.row, id);
 }
 
-// Étire la fenêtre sur toute la largeur du mur (colonne 0, largeur de la pièce) ou toute sa hauteur (ligne 0, 12 lignes),
-// en gardant l'autre dimension ; refusé (cases en cause) si un objet du mur est sur le chemin.
+type WindowItem = Extract<Placed, { kind: 'window' }>;
+
+// Rangée de fenêtres accolées (bord à bord, ou à une colonne près, à des hauteurs qui se chevauchent) contenant `id`,
+// de gauche à droite : une baie faite de plusieurs fenêtres s'étire d'un bloc.
+export function windowRow(layout: Layout, id: string): WindowItem[] {
+  const all = layout.filter((p): p is WindowItem => p.kind === 'window');
+  const start = all.find((p) => p.id === id);
+  if (!start) return [];
+  const row = new Set<WindowItem>([start]);
+  const touches = (a: WindowItem, b: WindowItem): boolean =>
+    a.row < b.row + b.h && b.row < a.row + a.h && (Math.abs(a.col + a.w - b.col) <= 1 || Math.abs(b.col + b.w - a.col) <= 1);
+  for (let grown = true; grown; ) {
+    grown = false;
+    for (const p of all) {
+      if (row.has(p) || ![...row].some((q) => touches(p, q))) continue;
+      row.add(p);
+      grown = true;
+    }
+  }
+  return [...row].sort((a, b) => a.col - b.col);
+}
+
+// Étire la fenêtre sur toute la largeur du mur ou toute sa hauteur (ligne 0, 12 lignes), en gardant l'autre dimension.
+// En largeur, toute sa rangée de fenêtres accolées s'étale de la colonne 0 au bout de la pièce, chacune gardant sa part.
+// Refusé (cases en cause) si un objet du mur est sur le chemin.
 export type StretchResult = { ok: true; layout: Layout } | Extract<PlaceResult, { ok: false }>;
 export function stretchWindow(layout: Layout, cols: number, id: string, axis: 'width' | 'height'): StretchResult {
   const item = layout.find((p) => p.id === id);
   if (!item || item.kind !== 'window') return { ok: false, reason: 'bounds', cells: [] };
-  const next = axis === 'width' ? { ...item, col: 0, w: Math.min(cols, WINDOW_MAX.w) } : { ...item, row: 0, h: WALL_ROWS };
-  const check = canHangRect(layout, cols, next.w, next.h, next.col, next.row, id);
-  if (!check.ok) return check;
-  return { ok: true, layout: layout.map((p) => (p.id === id ? next : p)) };
+  const group = axis === 'width' ? windowRow(layout, id) : [item];
+  const left = Math.min(...group.map((p) => p.col));
+  const span = Math.max(...group.map((p) => p.col + p.w)) - left;
+  const target = Math.min(cols, WINDOW_MAX.w * group.length);
+  const at = (x: number): number => Math.round(((x - left) * target) / span);
+  const moved = group.map((p) => (axis === 'width' ? { ...p, col: at(p.col), w: at(p.col + p.w) - at(p.col) } : { ...p, row: 0, h: WALL_ROWS }));
+  const ids = new Set(group.map((p) => p.id));
+  let next: Layout = layout.filter((p) => !ids.has(p.id));
+  for (const p of moved) {
+    if (p.w < WINDOW_MIN.w || p.w > WINDOW_MAX.w) return { ok: false, reason: 'bounds', cells: [] };
+    const check = canHangRect(next, cols, p.w, p.h, p.col, p.row);
+    if (!check.ok) return check;
+    next = [...next, p];
+  }
+  const byId = new Map(moved.map((p) => [p.id, p]));
+  return { ok: true, layout: layout.map((p) => byId.get(p.id) ?? p) };
 }
 
 export function resizeWindow(layout: Layout, cols: number, id: string, w: number, h: number): Layout | null {
