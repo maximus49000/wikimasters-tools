@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useId, useMemo, useRef, type ReactElement } from 'react';
+import { Fragment, useCallback, useContext, useId, useMemo, useRef, type ReactElement } from 'react';
 import { activeFestivities } from '../core/library/city/calendar';
 import { DOOR_WIDTH, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
@@ -35,7 +35,8 @@ import { ShopScene, collectScene, muteScene, placeScene, sceneBudget, type Scene
 import { staffSpans, type SceneShop } from './shop/scene-scores';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
 import { FlypastLayer } from './flypast-sprite';
-import { InstallLayer } from './install-layer';
+import { InstallLayer, collectFlags, placeFlags, type WavingFlag } from './install-layer';
+import { PropContext } from './prop/prop-host';
 import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
@@ -209,6 +210,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const [art] = useArtStyle();
   const ghibli = art === 'ghibli';
   const figures = useFigureRegistry();
+  // Images des accessoires (G5) : la boucle y prend les poses des drapeaux qui ondulent (install-layer.tsx, placeFlags).
+  const props = useContext(PropContext);
   const peds = useMemo(() => pedestriansFor(width, seed), [width, seed]);
   if (shownFor.current !== peds) {
     shownFor.current = peds;
@@ -389,6 +392,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // Ghibli : employés à pied (scripts porte → trottoir → porte) et ouvriers du chantier, posés par la boucle.
     let staffWalks: WalkingStaff[] = [];
     let workers: PlacedWorker[] = [];
+    // Ghibli : drapeaux de fête qui ondulent (poses clés choisies par la boucle).
+    let flags: WavingFlag[] = [];
     // Figures Ghibli de chaque passant (compagnons, puis lui-même, au même pas), trouvées à la collecte des nœuds.
     const pedFigs = new Map<string, Element[]>();
     // Nœuds de porte des habitants (<svg> imbriqués), par trajet.
@@ -421,6 +426,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         crews = collectMovers(el);
         staffWalks = ghibli ? collectStaffWalks(el) : [];
         workers = ghibli ? collectWorkers(el) : [];
+        flags = ghibli ? collectFlags(el) : [];
         if (ghibli) {
           for (const p of peds) {
             const node = nodes.get(p.id);
@@ -504,6 +510,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (ghibli) {
           placeStaffWalks(staffWalks, t, metrics, figures);
           placeWorkers(workers, t, figures);
+          placeFlags(flags, t, props);
         }
       }
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
@@ -520,7 +527,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, marks, sceneShops, traffic, litLamps]);
+  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, sceneShops, traffic, litLamps]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.

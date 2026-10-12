@@ -46,11 +46,27 @@ export function FlagArt({ sky, w = 9, h = 6, wave = false }: { sky: Sky; w?: num
   );
 }
 
+// Ghibli (G5) : drapeau en image cellulo `lamp-flag` / `door-flag` (props/install.ts : 8 poses de vague partagées par tous
+// les drapeaux du genre), pose 0 au rendu ; la boucle de la couche (install-layer.tsx, placeFlags) lit `data-flag-wave`,
+// `data-flag-phase` (décalage de pose propre au drapeau) et `data-flag-day` et pose sur l'<image> la pose de l'instant. Mouvement
+// réduit : tissu plat (args `still`), aucun repère de boucle. Repli tant que l'image n'est pas cuite : le sprite classique.
+export type FlagGhibli = { phase: number; still: boolean };
+function flagImage(id: 'lamp-flag' | 'door-flag', sky: Sky, g: FlagGhibli, art: ReactElement): ReactElement {
+  const day = sky.daylight;
+  if (g.still) return <g data-flag-still=""><PropImage spec={{ id, args: { still: true }, day }} fallback={art} /></g>;
+  return (
+    <g data-flag-wave={id} data-flag-phase={g.phase} data-flag-day={day}>
+      <PropImage spec={{ id, day }} fallback={art} />
+    </g>
+  );
+}
+
 // Drapeau de lampadaire, dans le repère du lampadaire (LampSprite : pied y = 0, fût jusqu'à y = -72, crosse vers +x) :
 // support oblique fixé au sommet du fût, côté opposé à la crosse, tissu qui pend vers l'extérieur.
+// Ghibli : image `lamp-flag` (support tube, rotule, tissu en vague à 8 poses), phase par lampadaire.
 export const LAMP_FLAG = { x: -11, y: -71 } as const;
-export function LampFlag({ sky, still }: { sky: Sky; still: boolean }): ReactElement {
-  return (
+export function LampFlag({ sky, still, ghibli }: { sky: Sky; still: boolean; ghibli?: { phase: number } }): ReactElement {
+  const art = (
     <g data-lamp-flag="">
       <line x1={-1.2} y1={-62} x2={LAMP_FLAG.x} y2={LAMP_FLAG.y} stroke={tone(POLE, sky)} strokeWidth={0.9} strokeLinecap="round" />
       <circle cx={-1.2} cy={-62} r={0.9} fill={tone(STEEL, sky)} />
@@ -59,12 +75,14 @@ export function LampFlag({ sky, still }: { sky: Sky; still: boolean }): ReactEle
       </g>
     </g>
   );
+  return ghibli ? flagImage('lamp-flag', sky, { phase: ghibli.phase, still }, art) : art;
 }
 
 // Drapeau d'entrée, dans le repère de EntranceSprite (sprite 22 × 27, auvent en haut à y = -31) : hampe plantée sur l'auvent
 // à x = 7 (dessin validé), tissu centré au-dessus de la porte.
-export function DoorFlag({ sky }: { sky: Sky }): ReactElement {
-  return (
+// Ghibli : image `door-flag` (hampe tube, pointe laiton, tissu en vague à 8 poses), phase par entrée.
+export function DoorFlag({ sky, ghibli }: { sky: Sky; ghibli?: FlagGhibli }): ReactElement {
+  const art = (
     <g data-door-flag="">
       <line x1={7} y1={-31} x2={7} y2={-45} stroke={tone(POLE, sky)} strokeWidth={0.8} />
       <rect x={7} y={-45} width={3} height={5} fill={tone(BLUE, sky)} />
@@ -72,6 +90,7 @@ export function DoorFlag({ sky }: { sky: Sky }): ReactElement {
       <rect x={13} y={-45} width={3} height={5} fill={tone(RED, sky)} />
     </g>
   );
+  return ghibli ? flagImage('door-flag', sky, ghibli, art) : art;
 }
 
 // Barrière de type Vauban (24 × 11) : cadre blanc liseré de sombre, barreaux alternés rouge et blanc (contraste sur le

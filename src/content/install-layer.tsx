@@ -22,6 +22,7 @@ import type { Sky } from '../core/library/sky';
 import { workerPose, type CrewLook, type WorkerMove } from './city-shops-life';
 import { entranceLeft } from './city-sprites';
 import { GhibliFigure } from './figure/ghibli-figure';
+import { paintProp, propKey, type PropRegistry, type PropSpec } from './prop/prop-host';
 import {
   BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, FlagCrate, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE,
   LampFlag, LiftTruck, STAGE, StageFloor, StageFrame, StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
@@ -396,10 +397,10 @@ function decorNode(
   const key = `${set.id}-${item.id}`;
   switch (item.kind) {
     case 'lamp-flag':
-      return { part: 'front', node: <g key={key} {...attrs} transform={lampTransform(item.x, m)}><LampFlag sky={sky} still={still} /></g> };
+      return { part: 'front', node: <g key={key} {...attrs} transform={lampTransform(item.x, m)}><LampFlag sky={sky} still={still} ghibli={ghibli ? { phase: flagPhase(item.x) } : undefined} /></g> };
     case 'door-flag':
       if (!door) return null;
-      return { part: 'back', node: <g key={key} {...attrs} transform={entranceTransform(door, m)}><DoorFlag sky={sky} /></g> };
+      return { part: 'back', node: <g key={key} {...attrs} transform={entranceTransform(door, m)}><DoorFlag sky={sky} ghibli={ghibli ? { phase: flagPhase(door.x), still } : undefined} /></g> };
     case 'barrier': {
       if (item.lane) {
         // En travers de la file : dans la partie `street`, à sa profondeur.
@@ -435,6 +436,50 @@ function decorNode(
       const never: never = item.kind;
       return never;
     }
+  }
+}
+
+// ---------- Drapeaux qui ondulent (Ghibli, boucle) ----------
+// Les drapeaux de lampadaire et d'entrée sont des images à 8 poses de vague (props/install.ts : pose k = k/8 du cycle de
+// 1,6 s) partagées par tous les drapeaux du genre. La boucle de la couche (city-life.tsx, à chaque image) choisit la pose de
+// l'instant `t`, décalée par drapeau de sa phase ((x / 37) | 0 : deux lampadaires voisins n'ondulent pas ensemble), et pose
+// sur l'<image> rendue (pose 0, par PropImage) l'image de cette pose dès que le registre l'a cuite (demandée sinon) : au plus
+// 8 images par genre et par lumière, quel que soit le nombre de lampadaires. Pas d'<image> encore (première cuisson en cours) :
+// le repli classique reste affiché. Mouvement réduit : aucun repère `data-flag-wave` (tissu plat, args still).
+export const FLAG_PHASE_PX = 37;
+const flagPhase = (x: number): number => Math.floor(x / FLAG_PHASE_PX);
+const FLAG_FRAMES = 8;
+const FLAG_FRAME_S = 1.6 / FLAG_FRAMES;
+export type WavingFlag = { node: Element; id: string; phase: number; frame: number; day: number; href: string | null };
+export function collectFlags(root: Element): WavingFlag[] {
+  const out: WavingFlag[] = [];
+  for (const node of root.querySelectorAll('[data-flag-wave]')) {
+    out.push({ node, id: node.getAttribute('data-flag-wave')!, phase: Number(node.getAttribute('data-flag-phase')) || 0, frame: -1, day: NaN, href: null });
+  }
+  return out;
+}
+const noop = (): void => undefined;
+export function placeFlags(flags: readonly WavingFlag[], t: number, reg: PropRegistry | null): void {
+  if (!reg) return;
+  const step = Math.floor(t / FLAG_FRAME_S);
+  for (const f of flags) {
+    const img = f.node.querySelector(':scope > image');
+    if (!img) continue;
+    const frame = (((step + f.phase) % FLAG_FRAMES) + FLAG_FRAMES) % FLAG_FRAMES;
+    // Lumière du rendu (la clé la quantifie) ; la pose déjà posée n'est pas réécrite, sauf si le rendu a remis la pose 0.
+    const day = Number(f.node.getAttribute('data-flag-day'));
+    if (frame === f.frame && day === f.day && img.getAttribute('href') === f.href) continue;
+    const spec: PropSpec = { id: f.id, day, frame };
+    const key = propKey(spec);
+    const url = reg.get(key);
+    if (url === null) {
+      reg.want(key, () => paintProp(spec), noop);
+      continue;
+    }
+    img.setAttribute('href', url);
+    f.frame = frame;
+    f.day = day;
+    f.href = url;
   }
 }
 

@@ -4,17 +4,20 @@ import type { TintedCtx } from '../shop/ctx';
 import { ball, disc, flagArt, groundShadow, halo, PD, RD, RRD, tube, wheel } from './kit';
 import { registerProps, type PropArgs, type PropPaint } from './index';
 
-// Installations de fête cellulo (G5, tâche 5), portées de la maquette validée (docs/superpowers/maquettes/g5-fetes/index.html :
+// Installations de fête cellulo (G5, tâches 5 et 6), portées de la maquette validée (docs/superpowers/maquettes/g5-fetes/index.html :
 // `barrier`, `stageFloor`, `truss`, `stageFrame`, `stageSpots`, `heldTruss`, `heldSpot`, `liftArm` (nacelle), `flagCrate`,
-// `stowedLadder`, `cargoBike`, `flatbedLoad`) dans le repère de chaque sprite classique d'install-sprites.tsx (notes.md §1).
-// Seule la lentille des projecteurs est lumineuse (glowing quand `lit`) ; le reste est teint par le registre. Les flèches du
-// bras articulé restent des tubes SVG tracés par la couche (leur longueur change à chaque image) ; les faisceaux de scène
-// restent des polygones (stage-band.tsx). Les drapeaux de la caisse sont roulés, fixes (pas de vague).
+// `stowedLadder`, `cargoBike`, `flatbedLoad`, `lampFlag`, `doorFlag`) dans le repère de chaque sprite classique
+// d'install-sprites.tsx (notes.md §1). Seule la lentille des projecteurs est lumineuse (glowing quand `lit`) ; le reste est
+// teint par le registre. Les flèches du bras articulé restent des tubes SVG tracés par la couche (leur longueur change à
+// chaque image) ; les faisceaux de scène restent des polygones (stage-band.tsx). Les drapeaux de la caisse sont roulés, fixes
+// (pas de vague) ; ceux des lampadaires et des entrées ondulent en 8 poses clés partagées par tous (la boucle de la couche
+// choisit la pose, décalée par lampadaire).
 
 const IRON = '#4A5A58';
 const STEEL = '#9CA3AC';
 const GALVA = '#B9C0C8';
 const POLE = '#6B5B4A';
+const BRASS = '#D8B04A';
 // Options de la maquette (lw, sh, shX, li, liW) → celles du kit (lw, s, sx, l, lx).
 const op = (lw: number, s: number, sx: number, l: number, lx = 0.18): CelOpts => ({ lw, s, sx, l, lx });
 const DARK = '#22252C';
@@ -282,6 +285,39 @@ function flatbedLoadBox(a: PropArgs): readonly [number, number, number, number] 
   return [-44.5, y0, x1 + 44.5, -10.5 - y0];
 }
 
+// Drapeaux qui ondulent (notes.md §2 « Drapeaux ») : la vague de `flagArt` est une fonction du temps ; 8 poses clés sur son
+// cycle de 1,6 s (pose k = t de k/8 × 1,6 s), partagées par tous les drapeaux du même genre (une image par pose et par
+// lumière, pas une par lampadaire). La boucle de la couche décale la pose de (x / 37) | 0 par lampadaire : chacun a sa
+// phase. Mouvement réduit (`still`) : tissu plat avec un pli d'ombre fixe par bande, identique à toutes les poses.
+const FLAG_FRAMES = 8;
+const FLAG_CYCLE_S = 1.6;
+const flagT = (p: PropPaint): number => (p.frame / FLAG_FRAMES) * FLAG_CYCLE_S;
+const flagStill = (a: PropArgs): boolean => a.still === true;
+
+// Drapeau de lampadaire (LampFlag : support oblique de (−1,2, −62) à (−11, −71) fixé au sommet du fût, côté opposé à la
+// crosse ; tissu 10 × 7 qui pend vers −x depuis LAMP_FLAG) : support `tube` brun, rotule acier, tissu retourné comme le
+// classique (`scale(−1 1)` dans le repère du sprite : ce n'est pas un miroir de l'image, le peintre dessine toujours vers +x).
+function lampFlag(x: TintedCtx, a: PropArgs, p: PropPaint): void {
+  tube(x, -1.2, -62, -11, -71, 0.9, POLE, { lw: 0.35 });
+  disc(x, -1.2, -62, 0.9, IRON, 0.3);
+  x.save();
+  x.translate(-11, -71);
+  x.scale(-1, 1);
+  flagArt(x, { w: 10, h: 7, t: flagT(p), wave: !flagStill(a), phase: 0 });
+  x.restore();
+}
+
+// Drapeau d'entrée (DoorFlag, repère de EntranceSprite : hampe à x = 7 de −31 à −45, tissu 9 × 5 vers +x depuis (7, −45)) :
+// hampe `tube`, pointe laiton, tissu en vague.
+function doorFlag(x: TintedCtx, a: PropArgs, p: PropPaint): void {
+  tube(x, 7, -31, 7, -45.5, 0.8, POLE, { lw: 0.35 });
+  disc(x, 7, -46, 0.6, BRASS, 0.3);
+  x.save();
+  x.translate(7, -45);
+  flagArt(x, { w: 9, h: 5, t: flagT(p), wave: !flagStill(a), phase: 0 });
+  x.restore();
+}
+
 const paintOf = (fn: (x: TintedCtx, a: PropArgs) => void) => (x: TintedCtx, a: PropArgs, _p: PropPaint): void => fn(x, a);
 
 registerProps({
@@ -296,4 +332,7 @@ registerProps({
   'cargo-bike': { box: () => [-38, -23.5, 58.5, 25], paint: paintOf(cargoBike) },
   'flatbed-load': { box: flatbedLoadBox, paint: paintOf(flatbedLoad) },
   'stowed-ladder': { box: (a) => [-ladderLen(a) / 2 - 0.8, -2, ladderLen(a) + 1.6, 4], paint: paintOf((x, a) => stowedLadder(x, ladderLen(a))) },
+  // Cadres : tissu (vague ≤ 13 % de h en haut, × 1,15 en bas) + trait, support ou hampe et rotule / pointe.
+  'lamp-flag': { box: () => [-21.8, -72.6, 22.3, 12], frames: FLAG_FRAMES, paint: lampFlag },
+  'door-flag': { box: () => [6.2, -47, 10.5, 16.8], frames: FLAG_FRAMES, paint: doorFlag },
 });

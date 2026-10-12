@@ -14,8 +14,8 @@ import { dayNumber } from '../../src/core/library/city/shops/hours';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { DARK } from '../../src/core/library/city/events';
 import { BARRIER, STAGE } from '../../src/content/install-sprites';
-import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
-import { barrierK } from '../../src/content/install-layer';
+import { PropContext, PropRegistry, propKey } from '../../src/content/prop/prop-host';
+import { FLAG_PHASE_PX, barrierK, collectFlags, placeFlags } from '../../src/content/install-layer';
 import { MUSICIANS, musicianAt } from '../../src/content/stage-band';
 import { VAN_SPEED } from '../../src/core/library/city/van';
 
@@ -679,9 +679,16 @@ describe('véhicules des équipes en Ghibli (V5)', () => {
 // G5 : installations en images cellulo (registre d'accessoires) ; le classique reste le repli tant que l'image n'est pas cuite.
 describe('installations cellulo en Ghibli (G5)', () => {
   // Registre à cuisson manuelle : les images ne sont cuites que lorsque `jobs` est vidé.
-  const gLayer = (date: YMD, minutes: number, ghibli = true, still = false): { host: HTMLDivElement; jobs: (() => void)[] } => {
+  // `keyed` : registre dont l'« image » est la clé elle-même (jsdom n'a pas de canvas : toutes les images cuites sont le
+  // même sprite vide) ; les href disent alors quelle pose est posée.
+  class KeyedRegistry extends PropRegistry {
+    override want(k: string, _paint: () => string, done: () => void): () => void {
+      return super.want(k, () => `url:${k}`, done);
+    }
+  }
+  const gLayer = (date: YMD, minutes: number, ghibli = true, still = false, keyed = false): { host: HTMLDivElement; jobs: (() => void)[]; reg: PropRegistry } => {
     const jobs: (() => void)[] = [];
-    const reg = new PropRegistry('t', { schedule: (cb) => jobs.push(cb) });
+    const reg = new (keyed ? KeyedRegistry : PropRegistry)('t', { schedule: (cb) => jobs.push(cb) });
     const host = render(
       <PropContext.Provider value={reg}>
         <svg>
@@ -689,7 +696,7 @@ describe('installations cellulo en Ghibli (G5)', () => {
         </svg>
       </PropContext.Provider>,
     );
-    return { host, jobs };
+    return { host, jobs, reg };
   };
   const bake = async (jobs: (() => void)[]): Promise<void> => {
     while (jobs.length) await act(async () => jobs.shift()!());
@@ -796,5 +803,93 @@ describe('installations cellulo en Ghibli (G5)', () => {
     await bake(jobs);
     expect(count(host, INSTALL)).toBe(0);
     expect(count(host, '[data-stage-beams] polygon')).toBe(3);
+  });
+
+  // Drapeaux (tâche 6) : 8 poses clés partagées, choisies par la boucle de la couche (placeFlags) à partir de t, décalées de
+  // (x / 37) | 0 par lampadaire ; mouvement réduit : tissu plat (args still), hors boucle.
+  const LAMP_FLAGS = '[data-decor-kind="lamp-flag"]';
+  const DOOR_FLAGS = '[data-decor-kind="door-flag"]';
+  it('14/7 à midi : drapeaux de lampadaire et d’entrée en sprite classique avant cuisson, puis une image chacun ; phase par lampadaire', async () => {
+    const { host, jobs } = gLayer(D14, 720);
+    expect(count(host, `${LAMP_FLAGS} [data-flag-wave="lamp-flag"]`)).toBe(LAMPS);
+    expect(count(host, `${DOOR_FLAGS} [data-flag-wave="door-flag"]`)).toBe(FLAG_DOORS);
+    expect(count(host, `${LAMP_FLAGS} image, ${DOOR_FLAGS} image`)).toBe(0);
+    expect(count(host, `${LAMP_FLAGS} [data-lamp-flag] line`)).toBe(LAMPS);
+    for (const g of host.querySelectorAll(LAMP_FLAGS)) {
+      const x = Number(/translate\((-?[\d.]+)/.exec(g.getAttribute('transform') ?? '')?.[1]);
+      expect(Number(g.querySelector('[data-flag-wave]')!.getAttribute('data-flag-phase'))).toBe(Math.floor(x / FLAG_PHASE_PX));
+    }
+    await bake(jobs);
+    expect(count(host, `${LAMP_FLAGS} image`)).toBe(LAMPS);
+    expect(count(host, `${DOOR_FLAGS} image`)).toBe(FLAG_DOORS);
+    expect(count(host, `${LAMP_FLAGS} line, ${LAMP_FLAGS} rect, ${DOOR_FLAGS} line, ${DOOR_FLAGS} rect`)).toBe(0);
+    // Plus aucune animation SMIL une fois les images posées (le repli classique en avait une par drapeau de lampadaire).
+    expect(count(host, 'animate, animateTransform')).toBe(0);
+  }, 60000);
+
+  it('boucle : la pose suit t (8 poses sur 1,6 s), chaque lampadaire a sa phase ; 8 images au plus par genre pour tous', async () => {
+    const { host, jobs, reg: registry } = gLayer(D14, 720, true, false, true);
+    const day = skyOf(720).daylight;
+    const key = (id: string, frame: number): string => `url:${propKey({ id, day, frame })}`;
+    await bake(jobs);
+    const flags = collectFlags(host);
+    expect(flags.length).toBe(LAMPS + FLAG_DOORS);
+    const lampHrefs = (): string[] => [...host.querySelectorAll(`${LAMP_FLAGS} image`)].map((i) => i.getAttribute('href') ?? '');
+    expect(lampHrefs()).toEqual(Array<string>(LAMPS).fill(key('lamp-flag', 0)));
+    // Toutes les poses demandées par la boucle, cuites : 7 images de plus par genre au plus (la pose 0 l'est déjà), quel que
+    // soit le nombre de lampadaires ; les 8 poses du lampadaire sont dans le registre.
+    const s0 = registry.size();
+    for (let k = 0; k < 8; k++) {
+      placeFlags(flags, 1000 + k * 0.2, registry);
+      await bake(jobs);
+      placeFlags(flags, 1000 + k * 0.2, registry);
+    }
+    expect(registry.size()).toBeLessThanOrEqual(s0 + 14);
+    for (let k = 0; k < 8; k++) expect(registry.get(propKey({ id: 'lamp-flag', day, frame: k })), `pose ${k}`).not.toBeNull();
+    // À t fixe : pose = (t / 0,2 s + phase) mod 8 pour chaque drapeau ; des lampadaires de phases différentes montrent des
+    // images différentes.
+    const at = (t: number): number => Math.floor(t / (1.6 / 8));
+    const expectPoses = (t: number): void => {
+      for (const g of host.querySelectorAll('[data-flag-wave]')) {
+        const id = g.getAttribute('data-flag-wave')!;
+        const phase = Number(g.getAttribute('data-flag-phase'));
+        expect(g.querySelector('image')!.getAttribute('href'), `${id} phase ${phase} t ${t}`).toBe(key(id, (at(t) + phase) % 8));
+      }
+    };
+    placeFlags(flags, 1000, registry);
+    expectPoses(1000);
+    const h1 = lampHrefs();
+    const phases = lampsFor(W, SEED).map((l) => Math.floor(l.x / FLAG_PHASE_PX) % 8);
+    expect(new Set(phases).size).toBeGreaterThan(1);
+    expect(new Set(h1).size).toBe(new Set(phases).size);
+    // Un cinquième de cycle plus tard, la pose a changé ; un cycle plus tard, elle est revenue.
+    placeFlags(flags, 1000.2, registry);
+    expectPoses(1000.2);
+    expect(lampHrefs()).not.toEqual(h1);
+    placeFlags(flags, 1001.6, registry);
+    expect(lampHrefs()).toEqual(h1);
+    // Sans registre : rien ne bouge.
+    placeFlags(flags, 1000.4, null);
+    expect(lampHrefs()).toEqual(h1);
+  }, 60000);
+
+  it('mouvement réduit : drapeau plat (args still), hors boucle, image quand même', async () => {
+    const { host, jobs, reg: registry } = gLayer(D14, 720, true, true);
+    expect(count(host, LAMP_FLAGS)).toBe(LAMPS);
+    expect(count(host, '[data-flag-wave]')).toBe(0);
+    expect(collectFlags(host)).toHaveLength(0);
+    await bake(jobs);
+    expect(count(host, `${LAMP_FLAGS} image`)).toBe(LAMPS);
+    expect(count(host, `${DOOR_FLAGS} image`)).toBe(FLAG_DOORS);
+    expect(registry.get(propKey({ id: 'lamp-flag', args: { still: true }, day: skyOf(720).daylight }))).not.toBeNull();
+    expect(registry.get(propKey({ id: 'lamp-flag', day: skyOf(720).daylight }))).toBeNull();
+  }, 60000);
+
+  it('classique : aucun repère de boucle, dessin inchangé (ligne, cercle, trois bandes qui ondulent)', () => {
+    const { host } = gLayer(D14, 720, false);
+    expect(count(host, '[data-flag-wave]')).toBe(0);
+    expect(count(host, `${LAMP_FLAGS} [data-lamp-flag] > line`)).toBe(LAMPS);
+    expect(count(host, `${LAMP_FLAGS} [data-flag-art] animateTransform`)).toBe(LAMPS);
+    expect(count(host, `${DOOR_FLAGS} [data-door-flag] rect`)).toBe(3 * FLAG_DOORS);
   });
 });
