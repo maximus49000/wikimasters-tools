@@ -45,9 +45,10 @@ Pouvoir superposer des objets de la pièce sur les mêmes cases, par exemple une
 ## Animaux et robot (`src/core/library/pets/depth.ts`, `RoomView`)
 
 - Un animal **porté** par un meuble (assis, couché, dedans ou dessus : `depthHosts`) prend le niveau de ce meuble et se dessine juste devant lui.
-- Un animal **qui marche au sol** est au niveau 2. Il passe derrière les meubles de niveau 3 et devant ceux des niveaux 0 et 1. Parmi les meubles de niveau 2, l'ordre actuel par la ligne des pieds s'applique (`depthIndex` restreint au niveau).
+- **Navigation libre au sol** (c'est un animal) : les meubles ne bloquent plus la marche. Dans `walk-map.ts`, `blocked` reste entièrement faux, et toutes les cases du sol sont praticables. L'animal passe sous la table basse, sous le bureau, entre les pieds des chaises, derrière la bibliothèque. Les dessus de meubles (`platforms`, sauts, assises) restent ce qu'ils sont. Cela vaut aussi pour le robot.
+- **Niveau d'un animal qui marche** : si ses pieds sont dans l'emprise au sol d'un ou plusieurs meubles, il se dessine juste derrière le meuble de plus bas niveau parmi eux. Il est donc caché par la table basse quand il est dessous, et par la bibliothèque quand il passe derrière. Sinon, il est au niveau 2 : derrière les meubles de niveau 3, devant ceux des niveaux 0 et 1. Parmi les meubles de niveau 2, l'ordre actuel par la ligne des pieds s'applique (`depthIndex` restreint au niveau).
 - Les animaux perchés (`top`) et les bulles restent tout en haut, comme aujourd'hui.
-- La carte de marche (`walk-map.ts`) reste celle d'aujourd'hui : un meuble debout est un obstacle quel que soit son niveau. Il n'y a pas de passage « sous » une table.
+- Les pauses au sol (assis, couché, toilette) peuvent tomber sous un meuble. L'animal y reste caché en partie, et c'est voulu.
 
 ## Lumière
 
@@ -58,12 +59,11 @@ Pouvoir superposer des objets de la pièce sur les mêmes cases, par exemple une
 - Fiche WikiHow : non demandée.
 - Perspective (réduction de taille des niveaux du fond).
 - Plus d'un objet par niveau sur une même case.
-- Animaux qui passent sous une table.
 
 ## Essais
 
 - `room-grid` : pose au niveau par défaut ; repli sur le niveau libre le plus proche ; refus quand 1, 2 et 3 sont pris ; affiche posée derrière une étagère ; deux affiches toujours en conflit ; avancer/reculer libre et bloqué ; pièce ancienne sans `depth` lue au niveau par défaut.
 - `depthOf` des objets portés = niveau du porteur.
 - Rendu (jsdom) : ordre des nœuds (niveau 1 avant niveau 3 même si son bas est plus bas) ; petit objet posé juste après son étagère ; toucher répété qui fait défiler les objets superposés.
-- Animaux : chat sur un fauteuil de niveau 2 dessiné avant une table basse de niveau 3 ; chat qui marche dessiné après une étagère et avant une table basse.
+- Animaux : chat sur un fauteuil de niveau 2 dessiné avant une table basse de niveau 3 ; chat qui marche à découvert dessiné après une étagère et avant une table basse ; chat sous la table basse dessiné juste avant elle ; chat derrière une étagère dessiné juste avant elle ; trajet qui traverse l'emprise d'un meuble sans détour (carte de marche sans case bloquée).
 - Graphisme classique et Ghibli. Capture de validation de la pièce (fenêtre + bibliothèque + fauteuil + table basse) montrée à l'utilisateur, d'abord sur le téléphone.
