@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
+import { extendRoom } from '../../src/core/library/library-book';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -253,20 +254,34 @@ describe('LibraryPanel : plein écran', () => {
     expect(unlock).toHaveBeenCalled();
   });
 
-  it('remplit un écran en paysage et propose d’adapter la pièce à sa largeur exacte', async () => {
+  it('remplit un écran en paysage : une pièce étroite s’élargit d’elle-même à la largeur exacte de l’écran', async () => {
     stub();
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2400 });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });
     await click('[data-action="fullscreen"]');
+    await settle();
     const scroll = q('[data-scroll]') as HTMLElement;
     expect(scroll.style.height).toBe('100vh');
     expect((q('[data-scroll] svg[role="img"]') as SVGElement).style.width).toContain('max(100vw');
+    expect(repo.current()?.rooms[0]?.cols).toBe(38);
+    expect(q('[data-action="fit-screen"]')).toBeNull();
+    await click('[data-action="fullscreen"]');
+    expect((q('[data-scroll]') as HTMLElement).style.height).toBe('');
+  });
+
+  it('propose de réduire à la largeur de l’écran une pièce plus large', async () => {
+    stub();
+    await act(async () => { await repo.update((state) => extendRoom(extendRoom(state, 'r1', 'right'), 'r1', 'right')); });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2400 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });
+    await click('[data-action="fullscreen"]');
+    await settle();
+    expect(repo.current()?.rooms[0]?.cols).toBe(48);
     await click('[data-action="fit-screen"]');
     await settle();
     expect(repo.current()?.rooms[0]?.cols).toBe(38);
     expect(q('[data-action="fit-screen"]')).toBeNull();
     await click('[data-action="fullscreen"]');
-    expect((q('[data-scroll]') as HTMLElement).style.height).toBe('');
   });
 
   it('garde la fenêtre habituelle sur un écran en portrait', async () => {
