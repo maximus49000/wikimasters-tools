@@ -31,7 +31,9 @@ const HORN_S = 1;
 // `geo` : signature du trottoir (porte, largeur, entrées d'immeubles) ; `staffById` : employés du jour par id.
 export type ShopRt = {
   plan: ShopPlan; open: boolean; gate: number; offset: number; still: boolean; geo: string; staffById: ReadonlyMap<string, SceneStaff>;
-  winX: number; hSvg: number; floor: number; staffFloor: number; worktop: number; doorX: number; doorRect: Rect;
+  winX: number; winY: number; hSvg: number; floor: number; staffFloor: number; worktop: number; doorX: number; doorRect: Rect;
+  // Ligne du sol peint et hauteur d'assise des sièges (repère du <svg> de la vitrine) : un client assis a les hanches sur le siège.
+  floorLine: number; seatH: number;
   metrics: CityMetrics; width: number; doorXs: readonly number[]; sky: Sky; inSky: Sky; rainy: boolean; umbrella: boolean; work: Work;
 };
 export const runtimes = new WeakMap<Element, ShopRt>();

@@ -1,7 +1,7 @@
 import { shapeOf, signatureOf } from '../../core/library/figure/dress';
 import type { FigureKey } from '../../core/library/figure/bake';
 import { phaseIndexOf } from '../../core/library/figure/gait';
-import type { ArmPose, Gait } from '../../core/library/figure/skeleton';
+import { LIMB, type ArmPose, type Gait } from '../../core/library/figure/skeleton';
 import { DOOR_WIDTH } from '../../core/library/city/doors';
 import { entranceOpening, type Passage } from '../../core/library/city/doorway';
 import { STREET_SCALE } from '../../core/library/city/metrics';
@@ -49,6 +49,8 @@ type ShopState = {
 export type SceneNodes = { shops: { st: ShopState; rt: ShopRt }[] };
 // Emplacements par boutique : objets en main dans la vitrine, objets emportés sur le trottoir.
 export const PROP_SLOTS = 3;
+// Hanches d'un pantin assis au-dessus de ses pieds (skeleton : jambe repliée).
+const SEAT_HIP = LIMB.shin + LIMB.ankle + 0.6;
 export const CARRY_SLOTS = 2;
 
 // État de la boucle par local, graine et jour (affectations, partis admis ou refusés ; les ids de partis ne portent ni la graine
@@ -95,7 +97,7 @@ function bind(st: ShopState, el: Element): boolean {
   st.props = slotsOf(win, '[data-prop-slot]', 'data-scene-prop');
   st.worn = slotsOf(win, '[data-worn-slot]', 'data-worn-yaw');
   st.carry = slotsOf(el, '[data-carry-slot]', 'data-scene-prop');
-  st.pictos = slotsOf(win, '[data-picto-slot]', 'data-picto-glyph', '[data-picto-pop]');
+  st.pictos = slotsOf(el, '[data-picto-slot]', 'data-picto-glyph', '[data-picto-pop]');
   return true;
 }
 
@@ -163,8 +165,8 @@ function release(e: Entry, figures: FigureRegistry): void {
 }
 
 // Pose d'un pantin de la vitrine (employé ou client) ; objet en main (caché sous `clipY` : derrière le comptoir), monture portée
-// et picto aux accroches de la pose.
-function poseInside(fig: Element | null, v: ActorView, sig: string, head: number, x: number, y: number, k: number, clipY: number, out: Shown, figures: FigureRegistry): void {
+// et picto aux accroches de la pose (le picto vit hors de la vitrine, dans le repère du monde : décalé de son origine).
+function poseInside(fig: Element | null, v: ActorView, sig: string, head: number, x: number, y: number, k: number, clipY: number, rt: ShopRt, out: Shown, figures: FigureRegistry): void {
   const pose = { yaw: v.yaw, gait: v.gait as Gait, phase: v.phase, head, arms: v.arms, lean: v.lean };
   poseFigure(figures, fig, pose);
   const key: FigureKey = { sig, ...pose };
@@ -178,7 +180,7 @@ function poseInside(fig: Element | null, v: ActorView, sig: string, head: number
   const look = v.picto ? pictoLook(v.picto.age) : null;
   if (v.picto && look) {
     const [px, py] = anchorAt(key, 'headTop', x, y, k);
-    out.pictos.push({ id: v.picto.id, x: px, y: py, k, pop: look });
+    out.pictos.push({ id: v.picto.id, x: px + rt.winX, y: py + rt.winY, k, pop: look });
   }
 }
 
@@ -221,7 +223,7 @@ function placeStaff(st: ShopState, rt: ShopRt, sc: Score | null, tIn: number, se
     const look = lookOf(st, rt, track, false, figures);
     wear(s.fig, look, figures);
     const head = hornHead(horns, t, rt.winX + v.x, v.yaw, headOf(v.headYaw), !rt.still && free(v.arms));
-    poseInside(s.fig, v, look.sig, head, v.x, rt.staffFloor, STAFF_SCALE, clipY, out, figures);
+    poseInside(s.fig, v, look.sig, head, v.x, rt.staffFloor, STAFF_SCALE, clipY, rt, out, figures);
   }
 }
 
@@ -245,12 +247,13 @@ function placeCustomer(st: ShopState, rt: ShopRt, e: Entry, a: Seen, t: number, 
       e.front = walking;
     }
     const k = INSIDE_SCALE * v.scale;
-    const y = rt.floor + (walking ? 1 : 0);
+    // Assis : les hanches sur le siège peint (la hauteur d'assise du pantin est celle du squelette assis).
+    const y = v.gait === 'seated' ? rt.floorLine - rt.seatH + SEAT_HIP * k : rt.floor + (walking ? 1 : 0);
     setIf(e.inner, 'transform', `translate(${v.x.toFixed(2)} ${y.toFixed(2)}) scale(${k.toFixed(3)})`);
     const look = lookOf(st, rt, a.track, false, figures);
     wear(e.inFig, look, figures);
     const head = hornHead(horns, t, rt.winX + v.x, v.yaw, headOf(v.headYaw), free(v.arms));
-    poseInside(e.inFig, v, look.sig, head, v.x, y, k, rt.hSvg, out, figures);
+    poseInside(e.inFig, v, look.sig, head, v.x, y, k, rt.hSvg, rt, out, figures);
     return;
   }
   // Trottoir et porte : à l'échelle de la rue (STREET_SCALE), comme placeCustomers.

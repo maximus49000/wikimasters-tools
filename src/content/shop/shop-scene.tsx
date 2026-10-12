@@ -2,7 +2,7 @@ import { Fragment, memo, useLayoutEffect, useMemo, useRef, type ReactElement } f
 import { DOOR_DARK } from '../../core/library/city/doorway';
 import { STREET_SCALE, type CityMetrics } from '../../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../../core/library/city/people';
-import { ACCESSORY } from '../../core/library/city/shops/gestures';
+import { ACCESSORY, SHOP_FAMILY, type Family } from '../../core/library/city/shops/gestures';
 import type { PictoId, PropId } from '../../core/library/city/shops/scene/moves';
 import { slotIndexAt } from '../../core/library/city/shops/scene/slots';
 import { ghibliWorktopOf } from '../../core/library/city/shops/scene/stage';
@@ -58,8 +58,9 @@ const REST: PoseIn = { yaw: 4, gait: 'stand', phase: 0, head: 0, arms: 'down' };
 const PICTOS: readonly PictoId[] = ['question', 'bang', 'note', 'joy', 'sweat', 'heart'];
 const WORN_YAWS = Array.from({ length: 16 }, (_, i) => i);
 const WORN_SLOTS = 2;
-// Clients à la fois dans la réserve d'une boutique (dedans, à la porte, sur le trottoir) : sa capacité et deux de plus.
-export const poolFor = (capacity: number): number => Math.max(4, Math.min(10, capacity + 2));
+// Clients à la fois dans la réserve d'une boutique (dedans, à la porte, sur le trottoir) : sa capacité (en partis) et deux
+// de plus ; au restaurant, une table reçoit jusqu'à trois convives (couple, parent et enfant, amis).
+export const poolFor = (capacity: number, family: Family = 'counter'): number => Math.max(4, Math.min(10, (family === 'table' ? 3 * capacity : capacity) + 2));
 // Ciel au huitième de jour près (comme la palette des pantins) : objets et tenues ne se redessinent pas à chaque minute.
 const useStepSky = (sky: Sky): Sky => {
   const q = Math.round(sky.daylight * 8) / 8;
@@ -120,18 +121,19 @@ const ShopNodes = memo(
                 ))}
               </g>
             ))}
-          {[0, 1].map((i) => (
-            <g key={i} data-picto-slot={i} display="none">
-              <g data-picto-pop="">
-                {PICTOS.map((id) => (
-                  <g key={id} data-picto-glyph={id} display="none">
-                    <PictoGlyph id={id} />
-                  </g>
-                ))}
-              </g>
-            </g>
-          ))}
         </svg>
+        {/* Pictos hors du <svg> de la vitrine (ils flottent au-dessus de la tête, donc au-dessus du haut de la vitrine) : repère du monde. */}
+        {[0, 1].map((i) => (
+          <g key={i} data-picto-slot={i} display="none">
+            <g data-picto-pop="">
+              {PICTOS.map((id) => (
+                <g key={id} data-picto-glyph={id} display="none">
+                  <PictoGlyph id={id} />
+                </g>
+              ))}
+            </g>
+          </g>
+        ))}
         {Array.from({ length: pool }, (_, i) => (
           <Fragment key={i}>
             <g data-scene-street="" data-entry={i} data-active="false" display="none" transform={`translate(${rt.doorX.toFixed(1)} ${rt.metrics.doorY.toFixed(1)})`}>
@@ -185,12 +187,12 @@ export function ShopScene({ shops, seed, day, secondsOfDay, t0, width, metrics, 
     const doorSide = plan.stage.doorEdge === 'right' ? 'left' : 'right';
     const lit = sky.daylight < 0.45 && view.phase === 'open';
     const rt: ShopRt = {
-      plan, open: shop.open, gate, offset, still, geo: `${frame.door.x}|${geo}`, staffById: new Map(shop.staff.map((s) => [s.id, s])), winX: frame.window.x, hSvg, floor: hSvg - 3, staffFloor: hSvg - 1,
-      worktop: ghibliWorktopOf(plan.type, frame.sign.w, doorSide) - shift, doorX: frame.door.x + frame.door.w / 2, doorRect: frame.door,
+      plan, open: shop.open, gate, offset, still, geo: `${frame.door.x}|${geo}`, staffById: new Map(shop.staff.map((s) => [s.id, s])), winX: frame.window.x, winY: frame.window.y + shift, hSvg, floor: hSvg - 3, staffFloor: hSvg - 1,
+      worktop: ghibliWorktopOf(plan.type, frame.sign.w, doorSide) - shift, floorLine: plan.stage.floorLine - shift, seatH: plan.stage.seatH, doorX: frame.door.x + frame.door.w / 2, doorRect: frame.door,
       metrics, width, doorXs, sky, inSky: lit ? LIT_SKY : sky, rainy, umbrella, work: workOf(plan.type),
     };
     const ids = propsOf(plan);
-    const pool = poolSize ?? poolFor(plan.capacity);
+    const pool = poolSize ?? poolFor(plan.capacity, SHOP_FAMILY[plan.type]);
     const present = shop.staff.map((s) => (shop.open && s.spans.some(([a, b]) => secondsOfDay >= a && secondsOfDay < b) ? '1' : '0')).join('');
     // Structure dans la clé (réserve, employés, géométrie) : un changement remonte la boutique entière (aucun nœud déplacé par la
     // boucle — calque avant de la vitrine — n'est jamais retiré seul par React ; l'état de la boucle est gardé par local). Un objet
