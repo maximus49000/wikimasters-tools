@@ -324,6 +324,17 @@ describe('LibraryPanel : niveaux', () => {
     expect(outlineX()).toBe(-3);
   });
 
+  it('toucher un autre objet de la pile le sélectionne lui, pas celui d’après', async () => {
+    await seed();
+    await repo.update((state) => ({ ...state, rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [...r.layout, { id: 'tab', kind: 'coffee-table', col: 0, row: 14 }] } : r)) }));
+    await settle();
+    await click('[data-id="arm"]');
+    await click('[data-id="tab"]');
+    // Le contour est celui de la table basse (4 colonnes), pas celui de l'étagère (6 colonnes).
+    const outlineW = Number([...container.querySelectorAll('[data-selected-copy] rect[stroke="#378ADD"]')].at(-1)?.getAttribute('width'));
+    expect(outlineW).toBeLessThan(5 * 30);
+  });
+
   it('les boutons n’apparaissent pas pour un tapis', async () => {
     await seed();
     await repo.update((state) => ({ ...state, rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [{ id: 'rg', kind: 'rug', col: 2, row: 15 }] } : r)) }));

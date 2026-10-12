@@ -34,6 +34,25 @@ describe('place d’un animal', () => {
     const onArm = { ...feet(2, 14), depthHosts: ['arm'] } as unknown as PetState;
     expect(petSlot(layout, onArm)).toBe(2);
   });
+  it('devant un panier (niveau 3), sur le sol libre : dessiné après lui', () => {
+    const only: Layout = [{ id: 'b', kind: 'basket', col: 2, row: 14 }];
+    expect(petSlot(only, feet(3, 16))).toBe(1);
+  });
+  it('derrière une table basse qui ne le chevauche pas : inchangé, avant elle', () => {
+    const only: Layout = [{ id: 'tab', kind: 'coffee-table', col: 10, row: 14 }];
+    expect(petSlot(only, feet(1, 13))).toBe(0);
+  });
+  it('au-dessus d’une table basse qui le chevauche : derrière elle', () => {
+    const only: Layout = [{ id: 'tab', kind: 'coffee-table', col: 0, row: 14 }];
+    expect(petSlot(only, feet(1, 12))).toBe(0);
+  });
+  it('devant un panier mais derrière un fauteuil avancé au niveau 3 : entre les deux', () => {
+    const two: Layout = [
+      { id: 'b', kind: 'basket', col: 2, row: 12 }, // bas = 14
+      { id: 'arm', kind: 'armchair', col: 2, row: 15, depth: 3 }, // bas = 18
+    ];
+    expect(petSlot(two, feet(3, 14))).toBe(1);
+  });
 });
 
 describe('sélection en pile', () => {
@@ -41,20 +60,24 @@ describe('sélection en pile', () => {
     expect(stackAt(layout, 'tab')).toEqual(['tab', 'arm', 'sh']);
   });
   it('un nouveau toucher passe à l’objet derrière, puis revient au premier', () => {
-    expect(nextInStack(layout, null, 'tab')).toBe('tab');
-    expect(nextInStack(layout, 'tab', 'tab')).toBe('arm');
-    // Le toucher arrive toujours à l'objet de devant : la pile continue.
-    expect(nextInStack(layout, 'arm', 'tab')).toBe('sh');
-    expect(nextInStack(layout, 'sh', 'tab')).toBe('tab');
+    expect(nextInStack(layout, null, 'tab', null)).toBe('tab');
+    expect(nextInStack(layout, 'tab', 'tab', 'tab')).toBe('arm');
+    // Le toucher arrive toujours à l'objet de devant : la pile continue tant qu'on touche le même objet.
+    expect(nextInStack(layout, 'arm', 'tab', 'tab')).toBe('sh');
+    expect(nextInStack(layout, 'sh', 'tab', 'tab')).toBe('tab');
+  });
+  it('toucher un autre objet le sélectionne, même s’il est dans la pile du sélectionné', () => {
+    // Le fauteuil a été touché directement : toucher la table basse devant lui choisit la table, pas l'étagère.
+    expect(nextInStack(layout, 'arm', 'tab', 'arm')).toBe('tab');
   });
   it('un objet seul déjà sélectionné se désélectionne', () => {
     const alone: Layout = [{ id: 'x', kind: 'chair', col: 20, row: 15 }];
-    expect(nextInStack(alone, 'x', 'x')).toBeNull();
+    expect(nextInStack(alone, 'x', 'x', 'x')).toBeNull();
   });
   it('un objet hors pile (tapis, petit objet) déjà sélectionné se désélectionne aussi', () => {
     const lone: Layout = [{ id: 'r', kind: 'rug', col: 2, row: 15 }, { id: 'o', kind: 'lamp', col: 20, row: 15 }];
     expect(stackAt(lone, 'r')).toEqual(['r']);
-    expect(nextInStack(lone, 'r', 'r')).toBeNull();
-    expect(nextInStack(lone, 'o', 'o')).toBeNull();
+    expect(nextInStack(lone, 'r', 'r', 'r')).toBeNull();
+    expect(nextInStack(lone, 'o', 'o', 'o')).toBeNull();
   });
 });

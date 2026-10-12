@@ -93,7 +93,7 @@ import { usePetContext } from './pet-context';
 import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
-import { nextInStack } from '../core/library/depth-order';
+import { nextInStack, stackAt } from '../core/library/depth-order';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
 import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
 import { createLongPress } from './long-press';
@@ -266,6 +266,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const live = useRef<DragLive | null>(null);
   const lastPointer = useRef({ x: 0, y: 0 });
   const pressedId = useRef<string | null>(null);
+  // Dernier objet touché : seul un nouveau toucher du même objet passe à celui de derrière.
+  const lastTapped = useRef<string | null>(null);
   const startDragRef = useRef<(id: string) => void>(() => undefined);
   const press = useMemo(() => createLongPress(() => { if (pressedId.current) startDragRef.current(pressedId.current); }), []);
   useEffect(() => press.cancel, [press]);
@@ -514,7 +516,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       press.start(event.clientX, event.clientY);
       return;
     }
-    pressedId.current = id;
+    // L'objet de derrière sélectionné est redessiné devant, mais l'appui arrive au meuble de devant : on déplace celui qu'on voit.
+    pressedId.current = selectedId && selectedId !== id && stackAt(layout, id).includes(selectedId) ? selectedId : id;
     lastPointer.current = { x: event.clientX, y: event.clientY };
     press.start(event.clientX, event.clientY);
   };
@@ -591,7 +594,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     // L'écran d'un ordinateur se manie comme l'ordinateur.
     if (item.kind === 'computer') return void onPick(id);
     if (tool) return;
-    setSelectedId(nextInStack(layout, selectedId, id));
+    setSelectedId(nextInStack(layout, selectedId, id, lastTapped.current));
+    lastTapped.current = id;
     setMessage('');
   }
 
@@ -646,7 +650,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       return reset();
     }
     setTool(null);
-    setSelectedId(nextInStack(layout, selectedId, id));
+    setSelectedId(nextInStack(layout, selectedId, id, lastTapped.current));
+    lastTapped.current = id;
     setMessage('');
   }
 
