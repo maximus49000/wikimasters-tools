@@ -729,3 +729,231 @@ function dog(ctx,{seed=1,t=0,anim=true,leashTo=null}={}){const rng=mulberry32(se
  if(leashTo){ctx.beginPath();ctx.moveTo(leashTo[0],leashTo[1]);ctx.quadraticCurveTo((leashTo[0]+4)/2,(leashTo[1]-9)/2+4,4.6*L_,-9.2*Hh+bob);ctx.strokeStyle='#C0463A';ctx.lineWidth=0.8;ctx.stroke()}
  return b.id}
 </script>
+<script>
+// ───────────────────────── Scènes ─────────────────────────
+const Q=new URLSearchParams(location.search),FIXED_T=Q.has('t')?Number(Q.get('t')):null,ONLY=Q.get('only');
+const NIGHT_MUL='#6878C0';
+function nightFilter(ctx,W,H){ctx.save();ctx.globalCompositeOperation='multiply';ctx.fillStyle=NIGHT_MUL;ctx.fillRect(-10,-10,W+20,H+20);ctx.restore()}
+function mk(id,W,H,s,cssW=1080){const c=document.getElementById(id);c.width=Math.round(W*s);c.height=Math.round(H*s);c.style.width=cssW+'px';const ctx=c.getContext('2d');ctx.scale(s,s);return ctx}
+const ANIMS=[];function anim(id,W,H,s,draw,cssW){const ctx=mk(id,W,H,s,cssW);ANIMS.push({id,ctx,W,H,draw});draw(ctx,FIXED_T??0)}
+// Fond de rue (décor fixe, déjà peint en cellulo : ici un gabarit simplifié) : ciel, colline, immeubles avec rez-de-chaussée, trottoir, chaussée, trottoir d'en face.
+const WALLS=['#F6E2B4','#F0A98A','#CFE0B8','#F4D89C','#EEC79A','#E6BCD0','#FFF1D6','#C4D6E6','#F2CC8C','#E0C8A0'].map(hex);
+const ROOFS=['#D8603A','#B4523A','#C86A40','#5A6A84','#98A4B4'].map(hex);
+const SHOPS=[['Au Pain Perdu','#8A4B1E','#F7E3B5'],['Café du Commerce','#7A3E2A','#F6E7D0'],['Pharmacie','#E2D6BC','#1E8A4C'],['Au Chat Qui Pêche','#D2527F','#FFF3F7'],['Vinyl Café','#1B1B1F','#FF6A3D'],['Le Zinc','#2A1A3A','#FFB347'],['Pomme d’Api','#4F9A3B','#FFFBE0'],['Optique Lumière','#243B8A','#E8F0FF'],['Bella Napoli','#C8352B','#FFF4D6'],['Le Palace','#120A24','#FF4FD8'],['Boucherie Martin','#A3262A','#FFFFFF'],['Lavomatic','#3AA9D6','#FFFFFF']];
+const ST={W:1080,H:184,G:120,SW:20,CURB:140,FAR:176,GF:30};
+function streetBackdrop(ctx,{night=false,seed=7,flags=false,flagT=0,lamps=true}={}){const{W,H,G,CURB,FAR,GF}=ST,r=mulberry32(seed);
+ ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,0,W,H);
+ // colline de maisons (fond brumeux)
+ ctx.fillStyle='#A9C9A0';ctx.beginPath();ctx.moveTo(0,70);for(let x=0;x<=W;x+=20)ctx.lineTo(x,56+Math.sin(x/120)*6+Math.sin(x/47)*2);ctx.lineTo(W,G);ctx.lineTo(0,G);ctx.fill();
+ for(let x=-10;x<W;x+=0){const w=14+r()*16,h=10+r()*12,y=62+Math.sin(x/120)*5;R(ctx,x,y-h,w,h,mix(pick(WALLS,r),hex('#9CC0E4'),0.3),{lw:0.3,sh:0.2,li:0});P(ctx,[[x-1,y-h],[x+w/2,y-h-5],[x+w+1,y-h]],mix(pick(ROOFS,r),hex('#9CC0E4'),0.3),{lw:0.3,sh:0.25,li:0.1});x+=w+2+r()*8}
+ // immeubles du premier plan
+ const blocks=[];let bx=0;while(bx<W){const w=60+Math.floor(r()*50),h=48+r()*22;blocks.push({x:bx,w,h,c:pick(WALLS,r),roof:pick(ROOFS,r)});bx+=w}
+ const items=[];
+ for(const k of blocks){const top=G-GF-h2(k.h);R(ctx,k.x,top,k.w,G-top,k.c,{lw:0.6,sh:0.25,shX:0.74,li:0.12,liW:0.08});
+  P(ctx,[[k.x-1,top],[k.x+k.w+1,top],[k.x+k.w-4,top-9],[k.x+4,top-9]],k.roof,{lw:0.5,sh:0.3,shX:0.6,li:0.2});
+  for(let wx=k.x+7;wx+5<k.x+k.w-6;wx+=11){for(let wy=top+5;wy<G-GF-9;wy+=15){R(ctx,wx,wy,5,8,'#9AC0DA',{lw:0.4,sh:0,li:0});glint(ctx,wx,wy,5,8,0.3);R(ctx,wx-2.2,wy,2,8,'#5E9C5A',{lw:0.3,sh:0.2,li:0});R(ctx,wx+5.2,wy,2,8,'#5E9C5A',{lw:0.3,sh:0.2,li:0});R(ctx,wx-0.6,wy+8,6.2,1,light(k.c,0.3),{lw:0.3,sh:0,li:0});items.push({k:'win',x:wx,y:wy})}}
+  R(ctx,k.x,G-GF-2.5,k.w,1.6,light(k.c,0.25),{lw:0.4,sh:0,li:0});
+  // rez-de-chaussée : entrée + devanture simplifiée
+  const dx=k.x+6,sw=k.w-6-16-6;const sh=SHOPS[items.filter(i=>i.k==='shop').length%SHOPS.length];
+  R(ctx,dx,G-25,12,25,'#2A2A30',{lw:0.5,sh:0,li:0});R(ctx,dx+1,G-24,10,16,night?'#2A3050':'#A8C8DA',{lw:0.3,sh:0,li:0});glint(ctx,dx+1,G-24,10,16,0.3);R(ctx,dx-1.5,G-27,15,2,'#E4D6BA',{lw:0.4,sh:0.2,li:0});
+  const sx=dx+16;R(ctx,sx,G-22,sw,22,shade(C(sh[1]),0.05),{lw:0.5,sh:0.25,shX:0.8,li:0.1});R(ctx,sx+2,G-20,sw-4,19,night?'#3A3A60':'#CFE4F2',{lw:0.4,sh:0.15,shX:0.75,li:0});glint(ctx,sx+2,G-20,sw-4,19,0.25);
+  R(ctx,sx-0.5,G-28.4,sw+1,5.6,sh[1],{lw:0.6,sh:0.22,shX:0.82,li:0.18,liW:0.1});text(ctx,sh[0],sx+sw/2,G-25.6,4,sh[2],{font:'Georgia, serif',w:sw-3});
+  items.push({k:'shop',x:sx,w:sw,sign:sh,door:dx});
+ }
+ // trottoir, bordure, chaussée pavée, trottoir d'en face
+ R(ctx,0,G,W,CURB-G,'#E2D2B0',{lw:0.5,sh:0,li:0});ctx.strokeStyle='rgba(120,100,70,0.35)';ctx.lineWidth=0.3;for(let k=0;k<W;k+=17){ctx.beginPath();ctx.moveTo(k,G);ctx.lineTo(k-3,CURB);ctx.stroke()}
+ R(ctx,0,CURB-2,W,2,'#C8B890',{lw:0.4,sh:0,li:0});ctx.fillStyle='rgba(70,50,130,0.22)';ctx.fillRect(0,CURB,W,2.5);
+ ctx.fillStyle='#8A8494';ctx.fillRect(0,CURB,W,FAR-CURB);const cr=mulberry32(seed^99);for(let y=CURB+2;y<FAR;y+=4){const w=4+(y-CURB)/12;for(let x=((y/4)|0)%2?0:w/2;x<W;x+=w){const t=cr();ctx.fillStyle=t<0.33?'#9A94A4':t<0.66?'#8A8494':'#7A7488';ctx.fillRect(x+0.3,y+0.3,w-0.6,3.4)}}
+ ctx.fillStyle='rgba(244,240,228,0.6)';for(let x=10;x<W;x+=24)ctx.fillRect(x,CURB+(FAR-CURB)/2-0.6,12,1.2);
+ R(ctx,0,FAR,W,H-FAR,'#D8C8A8',{lw:0.5,sh:0,li:0});ctx.fillStyle='rgba(70,50,130,0.18)';ctx.fillRect(0,FAR,W,1.5);
+ return items;
+ function h2(h){return h}}
+// Lumière nocturne des lampadaires (reproduit GhibliNightLight, déjà livré : flaque, halo, reflets) : lanterne à (9, −77) × k.
+function nightPool(ctx,x,curb,k,u=1){const gx=x+9*k,gy=curb-77*k;ctx.fillStyle='rgba(255,220,140,0.18)';ctx.beginPath();ctx.arc(gx,gy+4*u,22*u,0,TAU);ctx.fill();ctx.fillStyle='rgba(255,230,160,0.3)';ctx.beginPath();ctx.arc(gx,gy+4*u,11*u,0,TAU);ctx.fill();
+ ctx.fillStyle='rgba(255,215,140,0.05)';ctx.beginPath();ctx.moveTo(gx-3*u,gy);ctx.lineTo(gx+3*u,gy);ctx.lineTo(gx+30*u,curb+10*u);ctx.lineTo(gx-26*u,curb+10*u);ctx.fill();
+ ctx.fillStyle='rgba(255,215,140,0.26)';ctx.beginPath();ctx.ellipse(x+3*u,curb-2*u,46*u,13*u,0,0,TAU);ctx.fill();ctx.fillStyle='rgba(255,230,170,0.42)';ctx.beginPath();ctx.ellipse(x+3*u,curb-2*u,24*u,7*u,0,0,TAU);ctx.fill();
+ const rng=mulberry32(x*7919);for(let i=0;i<6;i++){const sx=x+3*u+(rng()-0.5)*5*u,w=(1.2+rng()*2)*u;ctx.fillStyle=`rgba(255,225,160,${0.45-i*0.05})`;ctx.fillRect(sx-w/2,curb+(2+i*5)*u,w,3.6*u)}}
+
+// La rue : lampadaires (tous les ~170), feu à bouton + passage, arrêt de bus, terrasse, chien promené, grue au loin, montgolfière et avion.
+const LAMP_XS=[62,232,402,572,742,912,1082],KL=0.85,KP=0.55,LIGHT_X=640;
+function street(ctx,{night=false,t=0,x0=0,s=1,flags=false}={}){const{W,H,G,CURB,FAR}=ST;ctx.save();ctx.scale(s,s);ctx.translate(-x0,0);
+ // grue au loin (derrière les immeubles), à l'échelle réduite
+ ctx.save();ctx.translate(330,G-20);ctx.scale(0.42,0.42);crane(ctx,t,true);ctx.restore();
+ const items=streetBackdrop(ctx,{night});
+ // ciel : montgolfière, avion
+ ctx.save();ctx.translate(840,30);ctx.scale(0.55,0.55);balloonEvt(ctx,'#3B6FD6','#F2C94C');ctx.restore();
+ ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night});ctx.restore();
+ // mobilier : lampadaires, feu, arrêt, passage
+ crosswalk(ctx,LIGHT_X,CURB+2,FAR-2,1);
+ for(const x of LAMP_XS){ctx.save();ctx.translate(x,CURB);ctx.scale(KL,KL);lamp(ctx,{lit:night,flag:flags,flagT:t});ctx.restore()}
+ ctx.save();ctx.translate(LIGHT_X-19,CURB+1);ctx.scale(-1,1);trafficPole(ctx,{color:night?'red':'green',pressed:!night});ctx.restore();
+ ctx.save();ctx.translate(LIGHT_X+19,FAR);trafficPole(ctx,{color:'green'});ctx.restore();
+ ctx.save();ctx.translate(470,CURB+1);busStop(ctx,{name:'Mairie',served:'far'});ctx.restore();
+ ctx.save();ctx.translate(790,FAR);busStop(ctx,{name:'Gare SNCF',served:'near'});ctx.restore();
+ // terrasse devant le café (2e local) : guéridon + deux chaises + parasol, à l'échelle du passant
+ const cafe=items.filter(i=>i.k==='shop')[1];if(cafe){for(const tx of[cafe.x+10,cafe.x+26]){ctx.save();ctx.translate(tx,G+14);ctx.scale(KP,KP);parasol(ctx,tx===cafe.x+10?'#E8604A':'#2E8B6A');chair(ctx,-1);table(ctx);chair(ctx,1);ctx.restore()}
+  ctx.save();ctx.translate(cafe.x+18,G+14.5);ctx.scale(KP,KP);figure(ctx,{top:'#2A2A30',bottom:'#2A2A30'},{arms:'hold'});apron(ctx);ctx.save();ctx.translate(8.6,-21);accessory(ctx,'tray');ctx.restore();ctx.restore()}
+ // cordon devant Le Palace (10e local)
+ const club=items.filter(i=>i.k==='shop')[9];if(club){cordon(ctx,club.x+club.w-14,club.x+club.w-4,G+10,KP)}
+ // passants-repères et promeneur avec chien (événement du trottoir, échelle du passant)
+ const walkers=[[120,'#4A7AB8'],[300,'#C0463A'],[560,'#2E8B6A'],[700,'#E0A21E'],[980,'#8A5AB8']];
+ for(const[x,c]of walkers){ctx.save();ctx.translate(x,G+14);ctx.scale(KP,KP);figure(ctx,{top:c});ctx.restore()}
+ ctx.save();ctx.translate(380+(t*9)%40-20,G+14);ctx.scale(KP,KP);figure(ctx,{top:'#8A5A2B',bottom:'#3A3A4A'},{arms:'hold'});ctx.translate(26,0);dog(ctx,{seed:3,t,leashTo:[-26+8.6,-20.6]});ctx.restore();
+ // ouvrier sur une échelle qui change l'enseigne du 5e local
+ const rec=items.filter(i=>i.k==='shop')[4];if(rec){ctx.save();ctx.translate(rec.x+8,G);ladder(ctx,30);ctx.translate(0,-14);ctx.scale(KP,KP);figure(ctx,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'up'});ctx.restore();ctx.save();ctx.translate(rec.x+rec.w/2+6,G);ctx.scale(KP,KP);figure(ctx,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'carry'});ctx.translate(0,-23.5);carriedSign(ctx,rec.w/KP*0.6,'#1C6FB8','#FFE45C','Proxi Marché');ctx.restore()}
+ if(night){nightFilter(ctx,W+x0,H);
+  // fenêtres allumées, vitrines, lanternes, feux, feux d'artifice, lueur d'appartement
+  const wr=mulberry32(5);for(const it of items){if(it.k==='win'&&wr()<0.4){const c=pick(['#FFE4A0','#FFC878','#FFF2D0','#9AB8FF'],wr);ctx.fillStyle=rgba(C(c),0.35);ctx.fillRect(it.x-1.5,it.y-1.5,8,11);ctx.fillStyle=rgba(C(c));ctx.fillRect(it.x,it.y,5,8);ctx.fillStyle='rgba(42,26,24,0.35)';ctx.fillRect(it.x+2.3,it.y,0.4,8);ctx.fillRect(it.x,it.y+3.5,5,0.4)}
+   if(it.k==='shop'&&wr()<0.75){ctx.fillStyle='rgba(255,200,110,0.35)';ctx.fillRect(it.x+2,G-20,it.w-4,19);ctx.fillStyle='rgba(255,215,140,0.26)';ctx.beginPath();ctx.moveTo(it.x,G);ctx.lineTo(it.x+it.w,G);ctx.lineTo(it.x+it.w+6,G+12);ctx.lineTo(it.x-6,G+12);ctx.fill()}}
+  const ap=items.filter(i=>i.k==='win')[7];if(ap){ctx.save();ctx.translate(ap.x,ap.y+1);apartmentGlow(ctx);ctx.restore()}
+  for(const x of LAMP_XS){nightPool(ctx,x,CURB,KL);ctx.save();ctx.translate(x,CURB);ctx.scale(KL,KL);lamp(ctx,{lit:true,pass:'lit'});ctx.restore()}
+  ctx.save();ctx.translate(LIGHT_X-19,CURB+1);ctx.scale(-1,1);trafficPole(ctx,{color:'red',pass:'lit'});ctx.restore();ctx.save();ctx.translate(LIGHT_X+19,FAR);trafficPole(ctx,{color:'green',pass:'lit'});ctx.restore();
+  ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night:true,t,pass:'lit'});ctx.restore();
+  ctx.save();ctx.translate(700,20);ctx.scale(0.45,0.45);fireworks(ctx,t,true);ctx.restore();
+  // étoiles
+  const sr=mulberry32(11);for(let k=0;k<40;k++){const x=sr()*W,y=sr()*45,a=0.4+0.6*Math.abs(Math.sin(t*2+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.9,0.9)}
+ }
+ ctx.restore()}
+{const{W,H}=ST;anim('street-day',W,H,2,(ctx,t)=>street(ctx,{night:false,t}));anim('street-night',W,H,2,(ctx,t)=>street(ctx,{night:true,t}));
+ anim('zoom-day',270,H,4,(ctx,t)=>street(ctx,{night:false,t,x0:395}));anim('zoom-night',270,H,4,(ctx,t)=>street(ctx,{night:true,t,x0:395}))}
+
+// ───────────────────────── 4. Planche mobilier de rue (×5) ─────────────────────────
+{const s=5,W=216,H=180;const ctx=mk('board-street',W,H,s);
+ const cell=(x,y,w,h,label,night,draw)=>{ctx.save();ctx.translate(x,y);R(ctx,0,0,w,h,night?'#3A3A5A':'#F2DDB4',{lw:0.3,sh:0,li:0});R(ctx,0,h-8,w,8,night?'#4A4A66':'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.save();ctx.translate(w/2,h-8);draw('base');ctx.restore();if(night){nightFilter(ctx,w,h);ctx.save();ctx.translate(w/2,h-8);draw('lit');ctx.restore()}text(ctx,label,w/2,3.5,3,night?'#FFFFFF':'#5A4A30');ctx.restore()};
+ ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);
+ cell(0,0,36,100,'lampadaire · jour',false,p=>{ctx.scale(0.85,0.85);lamp(ctx,{pass:p})});
+ cell(36,0,36,100,'allumé · nuit',true,p=>{ctx.scale(0.85,0.85);if(p==='lit')nightPool(ctx,0,0,1,1);lamp(ctx,{lit:true,pass:p})});
+ cell(72,0,36,100,'14 juillet',false,p=>{ctx.scale(0.85,0.85);lamp(ctx,{pass:p,flag:true,flagT:0.3})});
+ cell(108,0,36,100,'feu + bouton · vert',false,p=>{ctx.translate(-6,0);trafficPole(ctx,{color:'green',pressed:true,pass:p});ctx.translate(14,0);busStop(ctx,{name:'Mairie',served:'far'})});
+ cell(144,0,36,100,'feu rouge · nuit',true,p=>{ctx.translate(-6,0);trafficPole(ctx,{color:'red',pressed:false,pass:p});ctx.translate(14,0);busStop(ctx,{name:'Gare SNCF',served:'near'})});
+ cell(180,0,36,100,'passage · cordon',false,p=>{ctx.save();ctx.translate(0,-56);ctx.scale(0.9,0.9);crosswalk(ctx,0,0,40,1);ctx.restore();cordon(ctx,-10,10,0,1)});
+ cell(0,100,54,80,'terrasse',false,p=>{ctx.translate(0,0);parasol(ctx,'#E8604A');chair(ctx,-1);table(ctx);chair(ctx,1);ctx.translate(-20,0);figure(ctx,{top:'#2A2A30',bottom:'#2A2A30'},{arms:'hold'});apron(ctx);ctx.save();ctx.translate(8.6,-21);accessory(ctx,'tray');ctx.restore()});
+ cell(54,100,54,80,'enseigne et écriteau portés',false,p=>{ctx.translate(-14,0);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.save();ctx.translate(0,-23.5);carriedSign(ctx,26,'#1C6FB8','#FFE45C','Proxi Marché');ctx.restore();ctx.translate(28,0);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(0,-23.5);carriedPlacard(ctx,16)});
+ cell(108,100,36,80,'échelle',false,p=>{ladder(ctx,40);ctx.translate(0,-17);figure(ctx,{top:'#F28C28'},{arms:'up'})});
+ cell(144,100,72,80,'accessoires tenus',false,p=>{ctx.translate(-32,-62);ACCESSORIES.forEach((id,i)=>{ctx.save();ctx.translate((i%8)*8+4,Math.floor(i/8)*12+4);accessory(ctx,id);ctx.restore();text(ctx,id,(i%8)*8+4,Math.floor(i/8)*12+9.5,1.5,'#5A4A30')})});
+}
+
+// ───────────────────────── 5. Fête de la musique ─────────────────────────
+function musicScene(ctx,{night=false,t=0}={}){const W=432,H=120,G=100;
+ ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,0,W,H);R(ctx,0,0,W,G-24,'#F2DDB4',{lw:0.3,sh:0,li:0});R(ctx,0,G-24,W,24,'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.fillStyle='#8A8494';ctx.fillRect(0,G,W,H-G);
+ const lamp1=40;ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:night});ctx.restore();
+ // scène (base = curb − 1)
+ ctx.save();ctx.translate(130,G-1);stageFrame(ctx);stageFloor(ctx);
+  // musiciens-repères sur le plancher (STAGE_STAND = −9,5), échelle 0,8
+  [[-24,'guitar','#C0463A'],[0,'mic','#E0A21E'],[24,'drum','#2E8B6A']].forEach(([x,k,c])=>{ctx.save();ctx.translate(x,-9.5);ctx.scale(0.8,0.8);figure(ctx,{top:c},{arms:k==='mic'?'hold':'swing'});stageProp(ctx,k);ctx.restore()});
+  stageSpots(ctx,{lit:night});ctx.restore();
+ // barrières devant la scène (y = curb + 4, échelle 0,85 × 1,5)
+ for(const x of[70,100,160,190]){ctx.save();ctx.translate(x,G+4);ctx.scale(1.275,1.275);barrier(ctx);ctx.restore()}
+ // stand de bière sur la chaussée (base = curb + 18)
+ ctx.save();ctx.translate(300,G+18);standAwning(ctx);standCounter(ctx,1);ctx.save();ctx.translate(-8,-12);figure(ctx,{top:'#F4F1E8'},{arms:'hold'});ctx.restore();ctx.save();ctx.translate(36,0);figure(ctx,{top:'#4A7AB8'},{arms:'hold'});ctx.translate(8.6,-21);beerCup(ctx,0,2);ctx.restore();ctx.restore();
+ // équipe : comptoir porté à deux, tronçon de treillis, projecteur, toile roulée
+ ctx.save();ctx.translate(390,G+10);carriedCounter(ctx);ctx.translate(-30,0);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(60,0);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.restore();
+ ctx.save();ctx.translate(236,G-2);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(9,-23.5);heldTruss(ctx);ctx.restore();
+ ctx.save();ctx.translate(258,G-2);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(9,-23.5);heldSpot(ctx);ctx.restore();
+ ctx.save();ctx.translate(20,G+16);figure(ctx,{top:'#F28C28'},{arms:'carry'});ctx.translate(9,-23.5);heldRoll(ctx);ctx.restore();
+ // spectateurs
+ for(const[x,c]of[[80,'#4A7AB8'],[112,'#C0463A'],[150,'#E0A21E'],[176,'#8A5AB8']]){ctx.save();ctx.translate(x,G+12);figure(ctx,{top:c},{arms:x%2?'up':'swing'});ctx.restore()}
+ if(night){nightFilter(ctx,W,H);nightPool(ctx,lamp1,G,0.85);ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:'lit'});ctx.restore();
+  ctx.save();ctx.translate(130,G-1);stageBeams(ctx,t);stageSpots(ctx,{lit:true,pass:'lit'});ctx.restore();
+  // guirlande du stand
+  ctx.save();ctx.translate(300,G+18);for(let x=-28;x<=28;x+=7){halo(ctx,x,-29,2.2,pick(['#FFE27A','#FF8A6A','#8AE0FF'],mulberry32(x+50)),0.5);disc(ctx,x,-29,0.7,'#FFF8D8',0)}ctx.restore()}}
+anim('music-day',432,120,2.5,(ctx,t)=>musicScene(ctx,{night:false,t}));anim('music-night',432,120,2.5,(ctx,t)=>musicScene(ctx,{night:true,t}));
+
+// ───────────────────────── 6. 14 juillet ─────────────────────────
+function bastilleScene(ctx,t=0){const W=432,H=96,G=74;
+ ctx.fillStyle='#BFE0F4';ctx.fillRect(0,0,W,H);R(ctx,0,0,W,G-18,'#F0A98A',{lw:0.3,sh:0,li:0});R(ctx,0,G-18,W,18,'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.fillStyle='#8A8494';ctx.fillRect(0,G,W,H-G);
+ // entrée d'immeuble avec drapeau (repère de l'entrée, échelle 12/22 × 0,85)
+ ctx.save();ctx.translate(60,G-16);ctx.scale(12/22,0.85);R(ctx,-2,-31,26,4,'#4A4F5A',{lw:0.5,sh:0.2,li:0});R(ctx,0,-27,22,27,'#5A606C',{lw:0.5,sh:0.2,li:0});R(ctx,2,-25,18,25,'#A8C8DA',{lw:0.4,sh:0,li:0});doorFlag(ctx,t);ctx.restore();
+ // lampadaires à drapeau
+ for(const x of[20,160]){ctx.save();ctx.translate(x,G);ctx.scale(0.85,0.85);lamp(ctx,{flag:true,flagT:t+x});ctx.restore()}
+ for(const x of[90,116]){ctx.save();ctx.translate(x,G+4);ctx.scale(1.275,1.275);barrier(ctx);ctx.restore()}
+ // spectateurs derrière les barrières
+ [[84,'flag'],[100,'wave'],[122,'phone'],[136,'flag']].forEach(([x,k],i)=>{ctx.save();ctx.translate(x,G+2);const o={top:['#4A7AB8','#C0463A','#E0A21E','#8A5AB8'][i]};figure(ctx,o);crowdProp(ctx,k,{top:o.top,t,phase:i*0.3});ctx.restore()});
+ // cortège sur la chaussée (échelle FIG 0,7, repère des véhicules), de droite à gauche : cavaliers, porte-drapeaux, fanfare, section à fusils
+ ctx.save();ctx.translate(0,G+16);ctx.scale(0.7,0.7);
+  const col=['#6B3F22','#3A2416'];[400,445].forEach((x,i)=>{ctx.save();ctx.translate(x+(i?3:0),0);horse(ctx,{t:t+i*0.3,coat:col[i]});ctx.restore()});
+  [330,355].forEach((x,i)=>{ctx.save();ctx.translate(x,0);figure(ctx,{top:'#1F2A4A',bottom:'#F4F2EA'},{arms:'hold',hat:c=>headgear(c,'kepi',{cap:'#1F2A4A',capTop:RED})});tricolore(ctx,{top:-50,w:12,h:8,t,phase:i});ctx.restore()});
+  const band=[['baton','plume'],['tuba','kepi'],['trumpet','kepi'],['bass-drum','shako'],['snare','shako'],['bugle','bachi']];band.forEach(([k,h],i)=>{ctx.save();ctx.translate(190+i*22,0);figure(ctx,{top:'#1F2A4A',bottom:'#1F2A4A'},{arms:'none',hat:c=>headgear(c,h,{cap:h==='bachi'?WHITE:'#1F2A4A',capTop:RED})});instrument(ctx,k,{t});ctx.restore()});
+  [['crested',STEEL],['bicorne','#1E1A18'],['beret','#1F2A4A'],['calot','#1F2A4A']].forEach(([h,c],i)=>{ctx.save();ctx.translate(60+i*22,0);figure(ctx,{top:'#2E4A2A',bottom:'#2E4A2A'},{arms:'none',hat:x=>headgear(x,h,{cap:c,capTop:RED})});rifle(ctx,'#2E4A2A');ctx.restore()});
+ ctx.restore();
+ // planche des coiffes en haut à droite (×1)
+ ctx.save();ctx.translate(250,52);['kepi','beret','shako','bachi','plume','bicorne','crested','calot'].forEach((h,i)=>{ctx.save();ctx.translate(i*22,0);figure(ctx,{top:'#1F2A4A'},{hat:c=>headgear(c,h,{cap:h==='bachi'?WHITE:h==='crested'?STEEL:'#1F2A4A',capTop:RED})});text(ctx,h,0,3.5,2.6,'#5A4A30');ctx.restore()});ctx.restore();}
+anim('bastille',432,96,2.5,(ctx,t)=>bastilleScene(ctx,t));
+
+// ───────────────────────── 7. Réveillon ─────────────────────────
+function santaScene(ctx,t=0){const W=360,H=90;
+ ctx.fillStyle='#8EA6D8';ctx.fillRect(0,0,W,H);
+ // toits : pignons de tuiles, cheminées
+ const roofs=[[0,70,60,52],[60,74,50,58],[110,72,70,50],[180,70,60,54],[240,74,70,46],[310,72,60,56]];
+ for(const[x,gy,w,ty]of roofs){R(ctx,x,ty+8,w,gy-ty-8,'#E6BCD0',{lw:0.5,sh:0.25,shX:0.75,li:0.1});P(ctx,[[x-1,ty+8],[x+w/2,ty-4],[x+w+1,ty+8]],'#B4523A',{lw:0.5,sh:0.3,shX:0.55,li:0.2});ctx.fillStyle='rgba(255,255,255,0.9)';ctx.beginPath();ctx.moveTo(x-1,ty+8);ctx.lineTo(x+w/2,ty-4);ctx.lineTo(x+w+1,ty+8);ctx.lineTo(x+w-1,ty+9.5);ctx.lineTo(x+w/2,ty-2.2);ctx.lineTo(x+1,ty+9.5);ctx.fill();R(ctx,x+w*0.7,ty-1,4,8,'#8A5A3A',{lw:0.4,sh:0.3,li:0.2})}
+ // en vol
+ ctx.save();ctx.translate(120,28+Math.sin(t*1.3)*1.5);santa(ctx,{landed:false,lit:true,t});ctx.restore();
+ // posé sur le toit du 5e (faîte à ty − 4 = 42 ; patins au faîte)
+ ctx.save();ctx.translate(290,44);santa(ctx,{landed:true,lit:true,t,aboard:false});ctx.restore();
+ ctx.save();ctx.translate(252,44);santaWalker(ctx);ctx.restore();
+ // hotte seule
+ ctx.save();ctx.translate(20,80);ctx.scale(1.6,1.6);santaSack(ctx);ctx.restore();text(ctx,'hotte',20,84,3,'#FFFFFF');
+ nightFilter(ctx,W,H);
+ const sr=mulberry32(21);for(let k=0;k<70;k++){const x=sr()*W,y=sr()*60,a=0.4+0.6*Math.abs(Math.sin(t*1.5+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.9,0.9)}
+ ball(ctx,330,14,7,'#FFF6D0',0);ctx.fillStyle='rgba(255,246,208,0.25)';ctx.beginPath();ctx.arc(330,14,11,0,TAU);ctx.fill();
+ ctx.save();ctx.translate(120,28+Math.sin(t*1.3)*1.5);santa(ctx,{landed:false,lit:true,t,pass:'lit'});ctx.restore();
+ ctx.save();ctx.translate(290,44);santa(ctx,{landed:true,lit:true,t,pass:'lit'});ctx.restore();
+ // fenêtres allumées
+ ctx.fillStyle='#FFE4A0';for(const[x,gy,w,ty]of roofs){for(let wx=x+8;wx<x+w-8;wx+=14){ctx.fillStyle='rgba(255,228,160,0.3)';ctx.fillRect(wx-1.5,ty+13.5,8,11);ctx.fillStyle='#FFE4A0';ctx.fillRect(wx,ty+15,5,8)}}}
+anim('santa',360,90,3,(ctx,t)=>santaScene(ctx,t));
+
+// ───────────────────────── 8. Installations ─────────────────────────
+{const s=2.5,W=432,H=110,G=86;const ctx=mk('install',W,H,s);
+ ctx.fillStyle='#BFE0F4';ctx.fillRect(0,0,W,H);R(ctx,0,0,W,G-22,'#CFE0B8',{lw:0.3,sh:0,li:0});R(ctx,0,G-22,W,22,'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.fillStyle='#8A8494';ctx.fillRect(0,G,W,H-G);
+ // lampadaire que l'équipe décore ; camion-nacelle (gabarit du V5 déjà peint) avec bras déployé jusqu'à la lanterne
+ ctx.save();ctx.translate(60,G);ctx.scale(0.85,0.85);lamp(ctx,{flag:true});ctx.restore();
+ ctx.save();ctx.translate(110,G+10);const k=0.85,u=1;ctx.save();ctx.scale(-k,k);for(const x of[-27,13]){R(ctx,x-1.5,-9,3,8,IRON,{lw:0.35,sh:0.3,li:0.2});R(ctx,x-3,-1,6,1.2,IRON,{lw:0.3,sh:0,li:0.2})}R(ctx,-32,-12,48,6,'#E8B923',{lw:0.5,sh:0.28,shX:0.72,li:0.2});R(ctx,-32,-8,48,1.2,IRON,{lw:0.3,sh:0,li:0});RR(ctx,16,-24,16,20,2.5,'#ECECEA',{lw:0.5,sh:0.28,shX:0.7,li:0.2});R(ctx,22,-21.5,8,7,'#CFE4F2',{lw:0.4,sh:0.15,li:0});RR(ctx,-23,-18,10,6,1,'#E8B923',{lw:0.45,sh:0.3,shX:0.6,li:0.25});ctx.save();ctx.translate(-2,-12);flagCrate(ctx,2,14);ctx.restore();wheel(ctx,-20,-4.5,4.5);wheel(ctx,22,-4.5,4.5);ctx.restore();
+  text(ctx,'gabarit du camion V5',0,6,2.6,'#5A4A30');
+  liftArm(ctx,{x:18*k,y:-16*k},{x:-40,y:-62},u,k,()=>{ctx.save();ctx.translate(0,-2);ctx.scale(0.55,0.55);figure(ctx,{top:'#F28C28'},{arms:'up'});ctx.restore()});ctx.restore();
+ // triporteur avec caisse et échelle, ouvrier-repère en selle
+ ctx.save();ctx.translate(200,G+8);ctx.scale(0.85,0.85);cargoBike(ctx,{flags:3,ladderOn:true,rider:()=>{ctx.save();ctx.translate(-4,-17.6);ctx.scale(0.55,0.55);rider(ctx,{top:'#F28C28'});ctx.restore()}});ctx.restore();
+ // chargement du plateau (gabarit du plateau : deck à −11)
+ ctx.save();ctx.translate(300,G+8);ctx.scale(0.85,0.85);R(ctx,-46,-11,70,3.5,'#7A5A3A',{lw:0.4,sh:0.3,shX:0.7,li:0.15});R(ctx,-46,-12.6,70,1.6,GALVA,{lw:0.3,sh:0.3,li:0.3});flatbedLoad(ctx,{});R(ctx,-47.5,-14,1.8,6,GALVA,{lw:0.35,sh:0.3,li:0.3});ctx.save();ctx.translate(-24,-16.5);stowedLadder(ctx,30);ctx.restore();text(ctx,'gabarit du plateau V5',-10,-3,3,'#5A4A30');ctx.restore();
+ // déménagement : arrière du camion, hayon fermé et ouvert, meubles portés
+ ctx.save();ctx.translate(410,G-2);ctx.scale(0.85,0.85);R(ctx,-32,-34,22,28,'#F4F6F8',{lw:0.5,sh:0.25,shX:0.8,li:0.15});R(ctx,-32,-17,22,4,'#2E6FD6',{lw:0.3,sh:0.2,li:0});tailgate(ctx,0);ctx.translate(-28,0);R(ctx,-32,-34,22,28,'#F4F6F8',{lw:0.5,sh:0.25,shX:0.8,li:0.15});R(ctx,-32,-17,22,4,'#2E6FD6',{lw:0.3,sh:0.2,li:0});ctx.fillStyle='#2A2A30';ctx.fillRect(-32,-33,1.5,26);tailgate(ctx,1);ctx.restore();
+ // meubles portés par deux déménageurs-repères (mains à −23,5)
+ [['vitrine',30],['etagere',24],['table',22],['fauteuil',18]].forEach(([kind,len],i)=>{ctx.save();ctx.translate(40+i*62,G+18);ctx.scale(0.55,0.55);ctx.translate(-len/2-4,0);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#C0392B'},{arms:'carry'});ctx.translate(len+8,0);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#D95F2B'},{arms:'carry'});ctx.translate(-len/2-4,-23.5);piece(ctx,kind,len,1);ctx.restore();text(ctx,kind,40+i*62,G+22,2.6,'#5A4A30')});
+ ctx.save();ctx.translate(290,G+18);ctx.scale(0.55,0.55);figure(ctx,{top:'#5A6470',bottom:'#2A2F3A',hair:'#C0392B'},{arms:'hold'});piece(ctx,'carton',0,1);ctx.restore();text(ctx,'carton',290,G+22,2.6,'#5A4A30');
+}
+
+// ───────────────────────── 9. Événements du ciel ─────────────────────────
+function eventsScene(ctx,t=0){const W=490,H=136,row=68;
+ const bg=(y,night)=>{ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,y,W,row);ctx.fillStyle=night?'#6A7AA8':'#CFE0B8';ctx.fillRect(0,y+row-10,W,10)};
+ bg(0,false);bg(row,true);
+ const put=(x,y,s,f)=>{ctx.save();ctx.translate(x,y);ctx.scale(s,s);f();ctx.restore()};
+ // jour
+ put(60,16,0.5,()=>plane(ctx,{t}));put(120,30,0.7,()=>helicopter(ctx,{t}));put(160,24,0.9,()=>drone(ctx,{t}));put(200,30,0.7,()=>balloonEvt(ctx));put(330,14,0.6,()=>bannerPlane(ctx,'#F2C94C',t));put(380,30,0.7,()=>kite(ctx,'#E07A8C',t));
+ put(452,58,0.25,()=>crane(ctx,t));put(260,20,0.6,()=>festBalloons(ctx,{bunny:false,t}));put(300,20,0.6,()=>festBalloons(ctx,{bunny:true,t}));put(420,40,0.7,()=>bells(ctx,t));
+ put(60,58,0.5,()=>garbageTruck(ctx,{}));put(130,58,0.6,()=>deliveryBike(ctx,{}));
+ // nuit
+ const ny=row;put(60,ny+16,0.5,()=>plane(ctx,{night:true,t}));put(120,ny+30,0.7,()=>helicopter(ctx,{t,night:true,c:'#2E5E8A'}));put(160,ny+24,0.9,()=>drone(ctx,{t,night:true}));
+ R(ctx,190,ny+12,60,40,'#E6BCD0',{lw:0.5,sh:0.25,shX:0.75,li:0.1});for(let wx=196;wx<246;wx+=12)for(let wy=ny+16;wy<ny+46;wy+=14)R(ctx,wx,wy,5,8,'#243050',{lw:0.3,sh:0,li:0});
+ put(60,ny+58,0.5,()=>garbageTruck(ctx,{lights:true}));put(130,ny+58,0.6,()=>deliveryBike(ctx,{box:'#E0A21E'}));
+ ctx.save();ctx.beginPath();ctx.rect(0,ny,W,row);ctx.clip();nightFilter(ctx,W,H*2);ctx.restore();
+ put(60,ny+16,0.5,()=>plane(ctx,{night:true,t,pass:'lit'}));put(160,ny+24,0.9,()=>{halo(ctx,0,2,2.4,'#40FF80',0.5);disc(ctx,0,2,1.2,'#40FF80',0)});put(120,ny+30,0.7,()=>{halo(ctx,-30,0,2.6,'#FF4040',0.5);disc(ctx,-30,0,1.5,'#FF4040',0)});
+ put(208,ny+31,1,()=>apartmentGlow(ctx));put(360,ny+10,0.42,()=>fireworks(ctx,t));
+ put(60,ny+58,0.5,()=>{ctx.fillStyle='rgba(255,233,160,0.3)';ctx.beginPath();ctx.moveTo(26,-9);ctx.lineTo(50,-3);ctx.lineTo(50,-15);ctx.fill();halo(ctx,25.6,-9.5,3,'#FFE9A0',0.6);ball(ctx,25.6,-9.5,1.4,'#FFF6D0',0)});put(130,ny+58,0.6,()=>{halo(ctx,6,-16,2,'#FFE9A0',0.6);disc(ctx,6,-16,0.9,'#FFF6D0',0)});
+ const sr=mulberry32(31);for(let k=0;k<60;k++){const x=sr()*W,y=ny+sr()*50,a=0.4+0.6*Math.abs(Math.sin(t*2+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.8,0.8)}
+ ['avion','hélicoptère','drone','montgolfière','ballons cœur','ballons lapin','banderole','cerf-volant','cloches','grue'].forEach((l,i)=>text(ctx,l,[60,120,160,200,260,300,330,380,420,452][i],[32,44,34,56,42,42,24,54,52,62][i],2.6,'#5A4A30'));
+ text(ctx,'camion-poubelle',60,64,2.6,'#5A4A30');text(ctx,'vélo de livraison',130,64,2.6,'#5A4A30');text(ctx,'lueur d’appartement',220,ny+56,2.6,'#FFFFFF');text(ctx,'feux d’artifice',360,ny+60,2.6,'#FFFFFF')}
+anim('events',490,136,2.2,(ctx,t)=>eventsScene(ctx,t));
+
+// ───────────────────────── 10. Signes festifs ─────────────────────────
+{const s=6,W=180,H=70;const ctx=mk('marks',W,H,s);ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);R(ctx,0,58,W,12,'#E2D2B0',{lw:0.3,sh:0,li:0});
+ const list=['crown','heart-balloon','basket','lily','flag','poppy','streamer','note'];list.forEach((m,i)=>{ctx.save();ctx.translate(12+i*22,58);figure(ctx,{top:['#4A7AB8','#C0463A','#2E8B6A','#E0A21E','#8A5AB8','#2A2A30','#D2527F','#3AA9D6'][i]},{arms:m==='crown'||m==='poppy'||m==='streamer'?'swing':'hold'});mark(ctx,m,0.4);ctx.restore();text(ctx,m,12+i*22,63,2.6,'#5A4A30')});}
+
+// ───────────────────────── 11. Chiens ─────────────────────────
+function dogsScene(ctx,t=0){const W=270,H=50;ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);R(ctx,0,40,W,10,'#E2D2B0',{lw:0.3,sh:0,li:0});
+ for(let i=0;i<6;i++){ctx.save();ctx.translate(4+i*45,40);figure(ctx,{top:['#4A7AB8','#C0463A','#2E8B6A','#E0A21E','#8A5AB8','#D2527F'][i]},{arms:'hold'});ctx.translate(26,0);const id=dog(ctx,{seed:i+1,t:t+i*0.13,leashTo:[-26+8.6,-20.6]});ctx.restore();text(ctx,id,26+i*45,45,2.8,'#5A4A30')}}
+anim('dogs',270,50,4,(ctx,t)=>dogsScene(ctx,t));
+
+// ───────────────────────── Boucle d'animation (≤ 30 i/s) et captures ─────────────────────────
+if(ONLY){const el=document.getElementById(ONLY);document.body.innerHTML='';document.body.style.padding='0';document.body.style.background='#fff';el.style.borderRadius='0';el.style.boxShadow='none';document.body.appendChild(el)}
+if(FIXED_T===null){const t0=performance.now();let last=0;const loop=now=>{if(now-last>=33){last=now;const t=(now-t0)/1000;for(const a of ANIMS){if(ONLY&&a.id!==ONLY)continue;a.ctx.save();a.ctx.setTransform(1,0,0,1,0,0);a.ctx.clearRect(0,0,a.ctx.canvas.width,a.ctx.canvas.height);a.ctx.restore();a.draw(a.ctx,t)}}requestAnimationFrame(loop)};requestAnimationFrame(loop)}
+</script>
+</body></html>
