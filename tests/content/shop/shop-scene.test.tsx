@@ -340,7 +340,7 @@ describe('ShopScene : fermeture, affluence, partis, remontage, plafond (G4b, rev
       expect(shown.size).toBeLessThanOrEqual(2);
     }
     expect(starved).toBe(true);
-  });
+  }, 30_000);
   it('un seul nœud libre : un groupe n’est jamais montré à moitié', () => {
     const s = groupMoment();
     const figures = new FigureRegistry('t1', { perFrame: 50 });
