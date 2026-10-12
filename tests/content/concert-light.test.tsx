@@ -4,7 +4,7 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConcertLight, resetConcertLightForTests } from '../../src/content/concert-light';
+import { ConcertCrowd, ConcertLight, resetConcertLightForTests } from '../../src/content/concert-light';
 import { InstallLayer } from '../../src/content/install-layer';
 import { setLitPatchPainterForTests, type LitPatchPainter } from '../../src/content/painted-city';
 import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
@@ -74,12 +74,20 @@ const layer = (minutes: number, ghibli: boolean, still = false, nowS = NOW): { h
   return { host, jobs };
 };
 const plan = cityPaintPlan(W, H, SEED);
-const light = (nowS: number, opts: { lit?: boolean; still?: boolean; withPlan?: boolean; two?: boolean } = {}): HTMLDivElement => {
+const light = (nowS: number, opts: { lit?: boolean; still?: boolean; two?: boolean } = {}): HTMLDivElement => {
   vi.spyOn(Date, 'now').mockReturnValue(nowS * 1000);
   const node = (k: number): ReactNode => (
-    <ConcertLight key={k} stageX={300 + k * 200} base={metrics.curb - metrics.unit} unit={metrics.unit} lit={opts.lit ?? true} still={opts.still ?? false} plan={opts.withPlan === false ? null : plan} seed={SEED} />
+    <ConcertLight key={k} stageX={300 + k * 200} base={metrics.curb - metrics.unit} unit={metrics.unit} lit={opts.lit ?? true} still={opts.still ?? false} />
   );
   return render(<svg>{node(0)}{opts.two ? node(1) : null}</svg>);
+};
+const crowd = (nowS: number, opts: { lit?: boolean; still?: boolean; withPlan?: boolean } = {}): HTMLDivElement => {
+  vi.spyOn(Date, 'now').mockReturnValue(nowS * 1000);
+  return render(
+    <svg>
+      <ConcertCrowd stageX={300} base={metrics.curb - metrics.unit} unit={metrics.unit} lit={opts.lit ?? true} still={opts.still ?? false} plan={opts.withPlan === false ? null : plan} seed={SEED} />
+    </svg>,
+  );
 };
 const lyrePoints = (c: Element): string[] => [...c.querySelectorAll('[data-concert-beam^="lyre"]')].map((p) => p.getAttribute('points') ?? '');
 
@@ -89,6 +97,11 @@ describe('ConcertLight dans le calque des installations (Ghibli)', () => {
     expect(count(host, '[data-concert-light]')).toBe(1);
     expect(count(host, '[data-stage-beams], [data-stage-beam]')).toBe(0);
     expect(count(host, '[data-concert-light] animate, [data-concert-light] animateTransform')).toBe(0);
+    // Spectacle devant les passants (crew) ; chaussée du public révélée SOUS eux (back), jamais par-dessus.
+    expect(count(host, '[data-install-part="crew"] [data-concert-light]')).toBe(1);
+    expect(count(host, '[data-install-part="back"] [data-concert-crowd-layer]')).toBe(1);
+    expect(count(host, '[data-concert-light] [data-concert-crowd]')).toBe(0);
+    expect(count(host, '[data-concert-crowd]')).toBe(4);
     // Extras de concert (façade son, retours, rampe LED, lyres, contre-jours) : une image allumée avec les projecteurs.
     expect(count(host, '[data-stage-extras]')).toBe(1);
     expect(count(layer(15 * 60, true).host, '[data-concert-light]')).toBe(0);
@@ -104,18 +117,29 @@ describe('ConcertLight dans le calque des installations (Ghibli)', () => {
     expect(count(host, '[data-concert-light]')).toBe(0);
     expect(count(host, '[data-stage-extras]')).toBe(0);
   });
-  it('mouvement réduit : présent, pose t = 0 (lyres au même endroit quelle que soit l’heure)', () => {
+  it('mouvement réduit : présent, pose t = 0 (lyres au même endroit quelle que soit l’heure), jamais de voile blanc figé', () => {
     const a = layer(23 * 60, true, true, NOW);
     const b = layer(23 * 60, true, true, NOW + 1.3);
     expect(count(a.host, '[data-concert-light]')).toBe(1);
     expect(lyrePoints(a.host)).toEqual(lyrePoints(b.host));
     expect(a.host.querySelector('[data-concert-light]')!.getAttribute('data-concert-pal')).toBe('0');
+    expect(a.host.querySelector('[data-concert-hit]')!.getAttribute('opacity')).toBe('0');
+    expect(count(a.host, '[data-concert-crowd-layer]')).toBe(1);
   });
 });
 
 describe('ConcertLight : géométrie et boucle', () => {
   it('rien quand éteint', () => {
     expect(count(light(NOW, { lit: false }), '[data-concert-light]')).toBe(0);
+    expect(count(crowd(NOW, { lit: false }), '[data-concert-crowd-layer]')).toBe(0);
+  });
+  it('mouvement réduit : voile à 0 (pas de hit + strobe de t = 0), aucune boucle rAF ; voile plafonné à 0,5 en strobe', () => {
+    const c = light(NOW, { still: true });
+    expect(c.querySelector('[data-concert-hit]')!.getAttribute('opacity')).toBe('0');
+    expect(frames).toHaveLength(0);
+    const s = light(Math.floor(NOW / 32) * 32 + 0.19);
+    expect(s.querySelector('[data-concert-hit]')!.getAttribute('opacity')).toBe('0.5');
+    expect(frames.length).toBeGreaterThan(0);
   });
   it('10 faisceaux (3 contre-jours, 3 PAR, 4 lyres) en deux polygones à dégradé screen, 4 têtes de lyre, hit, brume, débordement', () => {
     const c = light(NOW);
@@ -131,6 +155,10 @@ describe('ConcertLight : géométrie et boucle', () => {
     expect(count(c, '[data-concert-haze]')).toBe(1);
     expect(count(c, '[data-concert-spill]')).toBe(1);
     expect(count(c, 'animate, animateTransform, clipPath, mask')).toBe(0);
+    // Un seul calque de mélange screen (brume, débordement, faisceaux, voile) : pas un par élément.
+    expect(count(c, '[data-concert-screen]')).toBe(1);
+    expect([...c.querySelectorAll('[style]')].filter((e) => (e as HTMLElement).style.mixBlendMode === 'screen')).toHaveLength(1);
+    for (const sel of ['[data-concert-haze]', '[data-concert-spill]', '[data-concert-hit]', '[data-concert-beam]']) expect(count(c, `[data-concert-screen] ${sel}`)).toBeGreaterThan(0);
     for (const p of c.querySelectorAll('[data-concert-beam]')) expect(p.getAttribute('fill')).toMatch(/^url\(#/);
     // Les PAR partent des lentilles des projecteurs (y ≈ −52) et visent le plancher (y = −8) sous les musiciens.
     const par = c.querySelector('[data-concert-beam="par1"]')!.getAttribute('points')!;
@@ -181,7 +209,7 @@ describe('ConcertLight : géométrie et boucle', () => {
     expect(c.querySelector('[data-concert-hit]')!.getAttribute('opacity')).toBe('0');
   });
   it('révélation du public : 4 images peintes par le peintre de découpes (une par palette, teinte c0), posées dans le repère de la scène', async () => {
-    const c = light(NOW);
+    const c = crowd(NOW);
     // Une peinture par image d'animation : vider la file.
     while (frames.length && painter.mock.calls.length < 4) {
       const cbs = frames.splice(0);
@@ -193,9 +221,19 @@ describe('ConcertLight : géométrie et boucle', () => {
     expect(count(c, '[data-concert-crowd] image')).toBe(4);
     const img = c.querySelector('[data-concert-crowd="0"] image')!;
     expect(Number(img.getAttribute('width'))).toBeGreaterThan(100);
-    // Plancher : 4 groupes d'images d'accessoire (une par palette), la palette courante seule visible.
-    expect(count(c, '[data-concert-floor]')).toBe(4);
-    const noPlan = light(NOW, { withPlan: false });
+    const noPlan = crowd(NOW, { withPlan: false });
     expect(count(noPlan, '[data-concert-crowd] image')).toBe(0);
+    // La palette courante seule visible ; la boucle suit le changement de palette.
+    const tick = (s: number): void => {
+      vi.spyOn(Date, 'now').mockReturnValue(s * 1000);
+      const cbs = frames.splice(0);
+      act(() => { for (const cb of cbs) cb(s * 1000); });
+    };
+    tick(NOW + 8);
+    const shown = [...c.querySelectorAll('[data-concert-crowd]')].map((g) => g.getAttribute('opacity'));
+    expect(shown.filter((o) => o === '1')).toHaveLength(1);
+    expect(shown[paletteIndex(NOW + 8)]).toBe('1');
+    // Plancher : 4 groupes d'images d'accessoire (une par palette) dans le spectacle.
+    expect(count(light(NOW), '[data-concert-floor]')).toBe(4);
   });
 });

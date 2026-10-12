@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, type ReactElement } from 'react';
-import { BACKS, BACK_Y, LYRES, LYRE_Y, PALS, PARS, beamShape, concertState, lighten, lyreTarget, paletteIndex, type ConcertState } from '../core/library/city/concert';
+import { BACKS, BACK_Y, LYRES, LYRE_Y, PALS, PARS, beamShape, concertState, flashAlpha, lighten, lyreTarget, paletteIndex, type ConcertState } from '../core/library/city/concert';
 import { patchBox, type LightBlob } from '../core/library/city/night-light';
 import { PAINT_VERSION } from '../core/library/paint/city-painter';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
@@ -11,19 +11,24 @@ import { PropImage } from './prop/prop-host';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Éclairage de concert de la Fête de la musique en Ghibli (G5, maquette g5-fetes notes §8) : le soir, à la place des faisceaux
-// StageBeams. Repère de la scène (centre x = 0, base y = 0 au sol du trottoir, échelle `unit` : ce groupe porte la
-// transformation). Séquence : city/concert.ts (120 bpm, palette par 8 s, hit, strobe, lyres en éventail croisé), déterministe
-// en t = horloge murale − `t` (origine, 0 par défaut) : toutes les vues (copies <use> comprises) voient la même image.
-// Dessin : faisceaux = <polygon> à <linearGradient> le long du faisceau (α source → α/2 → 0 ; cœur plus clair et plus étroit),
-// en screen ; contre-jours et têtes de lyre = <circle> à <radialGradient> ; brume = voile α 0,07 borné au volume entre les
-// montants et au-dessus du plancher ; hit et strobe = <rect> blanc d'opacité ; débordement coloré c0 α 0,09 au sol (ellipse
-// 120 × 40) ; la lumière touche les gens : plancher révélé = 4 images d'accessoire `stage-glow` (une par palette, le plancher
-// repeint dans c1, masqué) et public révélé = 4 découpes paintLitPatch de la chaussée devant la scène (teinte c0), opacité
-// 1 pour la palette courante seulement. Pas de SMIL : la boucle (useWallClockLoop) réécrit les attributs, seulement ceux qui
-// changent (points et dégradés des lyres à chaque image ; couleurs, opacités des révélations au changement de palette ; hit).
-// Mouvement réduit : pose t = 0, pas de boucle. Rien le jour (`lit` faux).
+// StageBeams. Repère de la scène (centre x = 0, base y = 0 au sol du trottoir, échelle `unit` : chaque groupe porte la
+// transformation). Séquence : city/concert.ts (120 bpm, palette par 8 s, hit, strobe 3 Hz, lyres en éventail croisé),
+// déterministe en t = horloge murale − `t` (origine, 0 par défaut) : toutes les vues (copies <use> comprises) voient la même
+// image.
+// `ConcertLight` (partie `crew`, devant les passants) : faisceaux = <polygon> à <linearGradient> le long du faisceau (α source
+// → α/2 → 0 ; cœur plus clair et plus étroit) ; contre-jours et têtes de lyre = <circle> à <radialGradient> ; brume = voile
+// α 0,07 borné au volume entre les montants et au-dessus du plancher ; hit et strobe = <rect> blanc d'opacité (plafonnée à
+// 0,5) ; débordement coloré c0 α 0,09 au sol (ellipse 120 × 40) ; le tout dans UN SEUL groupe en screen (un seul calque de
+// mélange : Android). Plancher révélé = 4 images d'accessoire `stage-glow` (une par palette, le plancher repeint dans c1,
+// masqué), sous les faisceaux.
+// `ConcertCrowd` (partie `back`, SOUS les passants) : public révélé = 4 découpes paintLitPatch de la chaussée devant la scène
+// (teinte c0). Opacité 1 pour la palette courante seulement.
+// Pas de SMIL : la boucle (useWallClockLoop) réécrit les attributs, seulement ceux qui changent (points et dégradés des lyres à
+// chaque image ; couleurs et opacités des révélations au changement de palette ; hit). Mouvement réduit : pose t = 0, aucun
+// voile blanc, pas de boucle. Rien le jour (`lit` faux).
 
-type Props = { stageX: number; base: number; unit: number; t?: number; lit: boolean; still: boolean; plan: CityPaintPlan | null; seed: number };
+type ShowProps = { stageX: number; base: number; unit: number; t?: number; lit: boolean; still: boolean };
+type CrowdProps = ShowProps & { plan: CityPaintPlan | null; seed: number };
 
 // Faisceau : source fixe, cible et couleur selon l'état ; `key` : back0..2 (contre-jours), par0..2 (projecteurs de la traverse),
 // lyre0..3.
@@ -41,42 +46,30 @@ const BEAMS: readonly BeamDef[] = [
   }),
 ];
 const f2 = (v: number): string => v.toFixed(2);
+const stageTransform = (stageX: number, base: number, unit: number): string => `translate(${stageX.toFixed(1)} ${base.toFixed(1)}) scale(${unit.toFixed(3)})`;
+// Instant de la séquence au rendu (mouvement réduit : pose t = 0).
+const renderT = (still: boolean, origin: number): number => (still ? 0 : Date.now() / 1000 - origin);
 
-// Découpes du public : au plus une peinture par image d'animation, partagées par toutes les scènes.
-const CROWD_MAX = 24;
-let registry = new PaintRegistry('concert-light', { max: CROWD_MAX, perFrame: 1 });
-export function resetConcertLightForTests(): void {
-  registry = new PaintRegistry('concert-light', { max: CROWD_MAX, perFrame: 1 });
-}
-type Job = { key: string; paint: () => string };
-function useImages(jobs: readonly Job[]): void {
-  const [, bump] = useReducer((n: number) => n + 1, 0);
-  const sig = jobs.map((j) => j.key).join('\n');
-  useEffect(() => {
-    const cancels = jobs.filter((j) => registry.get(j.key) === null).map((j) => registry.want(j.key, j.paint, bump));
-    return () => {
-      for (const c of cancels) c();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig]);
+// Opacité des révélations : 1 pour la palette courante seule (`data-concert-pal-index`), écrite seulement si elle change.
+function showPalette(groups: readonly Element[], k: number): void {
+  for (const g of groups) {
+    const want = Number(g.getAttribute('data-concert-pal-index')) === k ? '1' : '0';
+    if (g.getAttribute('opacity') !== want) g.setAttribute('opacity', want);
+  }
 }
 
-// Public révélé : disque 70 × 22 u à 14 u devant le bord du trottoir, pic 0,45 (repère du monde).
-const crowdBlobs = (stageX: number, base: number, u: number): LightBlob[] => [{ cx: stageX, cy: base + 14 * u, rx: 70 * u, ry: 22 * u, peak: 0.45 }];
-
+// ───────────── Spectacle (faisceaux, plancher) ─────────────
 // Poignées sur les nœuds réécrits par la boucle (relues après chaque rendu).
 type Handles = {
-  root: Element;
   beams: { def: BeamDef; poly: Element | null; core: Element | null; stops: Element[]; coreStops: Element[]; grads: Element[]; last: string }[];
   heads: Element[][];
   backs: Element[];
   spill: Element[];
   hit: Element | null;
   floor: Element[];
-  crowd: Element[];
 };
 
-export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still, plan, seed }: Props): ReactElement | null {
+export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still }: ShowProps): ReactElement | null {
   const ids = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const id = (k: string): string => `${ids}-${k}`;
   const root = useRef<SVGGElement | null>(null);
@@ -85,18 +78,8 @@ export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still, pl
   useLayoutEffect(() => {
     handles.current = null;
   });
-  // Instant du rendu (mouvement réduit : pose t = 0).
-  const t0 = still ? 0 : Date.now() / 1000 - origin;
+  const t0 = renderT(still, origin);
   const s0 = concertState(t0);
-
-  const blobs = useMemo(() => crowdBlobs(stageX, base, unit), [stageX, base, unit]);
-  const box = useMemo(() => patchBox(blobs), [blobs]);
-  const keyOf = (k: number): string => `concert|${seed}|${plan?.width ?? 0}|${plan?.height ?? 0}|${PAINT_VERSION}|${stageX}|${unit.toFixed(3)}|${k}`;
-  const paintPatch = litPatchPainter();
-  const jobs: Job[] = lit && plan
-    ? PALS.map((p, k) => ({ key: keyOf(k), paint: () => paintPatch(plan, box, blobs, { multiply: lighten(p[0], 0.5), screen: p[0], screenAlpha: 0.12 }) }))
-    : [];
-  useImages(jobs);
 
   const place = useMemo(
     () => (now: number): void => {
@@ -107,7 +90,6 @@ export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still, pl
       let h = handles.current;
       if (!h) {
         h = {
-          root: el,
           beams: BEAMS.map((def) => ({
             def,
             poly: el.querySelector(`[data-concert-beam="${def.key}"]`),
@@ -122,7 +104,6 @@ export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still, pl
           spill: [...el.querySelectorAll('[data-concert-grad="spill"] stop')],
           hit: el.querySelector('[data-concert-hit]'),
           floor: [...el.querySelectorAll('[data-concert-floor]')],
-          crowd: [...el.querySelectorAll('[data-concert-crowd]')],
         };
         handles.current = h;
         pal.current = -1;
@@ -146,10 +127,7 @@ export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still, pl
           setStops(b.coreStops, [lighten(c, 0.5), c]);
         }
         h.heads.forEach((stops, i) => setStops(stops, ['#FFFFFF', s.lyres[i]!.color, s.lyres[i]!.color]));
-        for (const g of [...h.floor, ...h.crowd]) {
-          const want = Number(g.getAttribute('data-concert-pal-index')) === k ? '1' : '0';
-          if (g.getAttribute('opacity') !== want) g.setAttribute('opacity', want);
-        }
+        showPalette(h.floor, k);
       }
       for (const b of h.beams) {
         if (!b.def.key.startsWith('lyre')) continue;
@@ -164,17 +142,16 @@ export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still, pl
           g.setAttribute('y2', f2(ty));
         }
       }
-      const hit = String(Math.min(1, s.hit + s.strobe));
+      const hit = String(flashAlpha(s));
       if (h.hit && h.hit.getAttribute('opacity') !== hit) h.hit.setAttribute('opacity', hit);
     },
     [still, lit, origin],
   );
-  useWallClockLoop(place, [place]);
+  useWallClockLoop(place, [place], { enabled: lit && !still });
 
   if (!lit) return null;
   const k0 = paletteIndex(t0);
   const [c0] = s0.pal;
-  const screen = { mixBlendMode: 'screen' as const };
   const gradient = (key: string, def: BeamDef, color: string, core: boolean, tx: number, ty: number): ReactElement => (
     <linearGradient key={key} id={id(key)} data-concert-grad={key} gradientUnits="userSpaceOnUse" x1={f2(def.sx)} y1={f2(def.sy)} x2={f2(tx)} y2={f2(ty)}>
       {core ? (
@@ -195,13 +172,8 @@ export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still, pl
     const [tx, ty] = def.target(s0);
     return { def, color: def.color(s0), tx, ty, shape: beamShape(def.sx, def.sy, tx, ty, def.w0, def.w1) };
   });
-  // Découpe du public (repère du monde → repère de la scène).
-  const crowdImage = (k: number): ReactElement | null => {
-    const url = plan ? registry.get(keyOf(k)) : null;
-    return url ? <image href={url} x={f2((box.x - stageX) / unit)} y={f2((box.y - base) / unit)} width={f2(box.w / unit)} height={f2(box.h / unit)} preserveAspectRatio="none" /> : null;
-  };
   return (
-    <g data-concert-light="" data-concert-pal={k0} ref={root} transform={`translate(${stageX.toFixed(1)} ${base.toFixed(1)}) scale(${unit.toFixed(3)})`}>
+    <g data-concert-light="" data-concert-pal={k0} ref={root} transform={stageTransform(stageX, base, unit)}>
       <defs>
         <radialGradient id={id('haze')} data-concert-grad="haze" cx="0.5" cy="0.4" r="0.65">
           <stop offset="0" stopColor="rgb(170,190,240)" stopOpacity={0.07} />
@@ -225,23 +197,18 @@ export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still, pl
         ))}
         {beams.flatMap((b) => [gradient(b.def.key, b.def, b.color, false, b.tx, b.ty), gradient(`${b.def.key}c`, b.def, b.color, true, b.tx, b.ty)])}
       </defs>
-      {/* La lumière touche les gens : plancher repeint dans c1 (image d'accessoire par palette), chaussée du public révélée en c0. */}
+      {/* Plancher repeint dans c1 (image d'accessoire par palette), sous les faisceaux. */}
       <g data-concert-reveal="">
         {PALS.map((_, k) => (
           <g key={k} data-concert-floor="" data-concert-pal-index={k} opacity={k === k0 ? 1 : 0}>
             <PropImage spec={{ id: 'stage-glow', args: { pal: k }, day: 1 }} />
           </g>
         ))}
-        {PALS.map((_, k) => (
-          <g key={k} data-concert-crowd={k} data-concert-pal-index={k} opacity={k === k0 ? 1 : 0}>
-            {crowdImage(k)}
-          </g>
-        ))}
       </g>
-      {/* Brume : seulement dans le volume des faisceaux, entre les montants et au-dessus du plancher. */}
-      <rect data-concert-haze="" x={-STAGE.postX} y={-STAGE.truss + 2} width={STAGE.postX * 2} height={STAGE.truss - STAGE.floor - STAGE.deck - 2} fill={`url(#${id('haze')})`} style={screen} />
-      <ellipse data-concert-spill="" cx={0} cy={0} rx={120} ry={40} fill={`url(#${id('spill')})`} style={screen} />
-      <g data-concert-beams="" style={screen}>
+      {/* Un seul calque en screen : brume (bornée aux montants / au-dessus du plancher), débordement, faisceaux, voile blanc. */}
+      <g data-concert-screen="" style={{ mixBlendMode: 'screen' }}>
+        <rect data-concert-haze="" x={-STAGE.postX} y={-STAGE.truss + 2} width={STAGE.postX * 2} height={STAGE.truss - STAGE.floor - STAGE.deck - 2} fill={`url(#${id('haze')})`} />
+        <ellipse data-concert-spill="" cx={0} cy={0} rx={120} ry={40} fill={`url(#${id('spill')})`} />
         {BACKS.map((x, i) => <circle key={i} data-concert-back-glow={i} cx={x} cy={BACK_Y} r={14} fill={`url(#${id('back')})`} />)}
         {beams.map((b) => (
           <g key={b.def.key}>
@@ -250,8 +217,83 @@ export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still, pl
           </g>
         ))}
         {LYRES.map((x, i) => <circle key={i} data-concert-lyre-head={i} cx={x} cy={LYRE_Y} r={4} fill={`url(#${id(`head${i}`)})`} />)}
+        {/* Mouvement réduit : jamais de voile blanc figé. */}
+        <rect data-concert-hit="" x={-STAGE.half} y={-STAGE.truss} width={STAGE.half * 2} height={STAGE.truss} fill="#FFFFFF" opacity={still ? 0 : flashAlpha(s0)} />
       </g>
-      <rect data-concert-hit="" x={-STAGE.half} y={-STAGE.truss} width={STAGE.half * 2} height={STAGE.truss} fill="#FFFFFF" opacity={Math.min(1, s0.hit + s0.strobe)} style={screen} />
+    </g>
+  );
+}
+
+// ───────────── Public révélé (sous les passants) ─────────────
+// Découpes du public : au plus une peinture par image d'animation, partagées par toutes les scènes.
+const CROWD_MAX = 24;
+let registry = new PaintRegistry('concert-light', { max: CROWD_MAX, perFrame: 1 });
+export function resetConcertLightForTests(): void {
+  registry = new PaintRegistry('concert-light', { max: CROWD_MAX, perFrame: 1 });
+}
+type Job = { key: string; paint: () => string };
+function useImages(jobs: readonly Job[]): void {
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const sig = jobs.map((j) => j.key).join('\n');
+  useEffect(() => {
+    const cancels = jobs.filter((j) => registry.get(j.key) === null).map((j) => registry.want(j.key, j.paint, bump));
+    return () => {
+      for (const c of cancels) c();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
+}
+
+// Disque 70 × 22 u à 14 u devant le bord du trottoir, pic 0,45 (repère du monde).
+const crowdBlobs = (stageX: number, base: number, u: number): LightBlob[] => [{ cx: stageX, cy: base + 14 * u, rx: 70 * u, ry: 22 * u, peak: 0.45 }];
+
+export function ConcertCrowd({ stageX, base, unit, t: origin = 0, lit, still, plan, seed }: CrowdProps): ReactElement | null {
+  const root = useRef<SVGGElement | null>(null);
+  const groups = useRef<Element[] | null>(null);
+  const pal = useRef(-1);
+  useLayoutEffect(() => {
+    groups.current = null;
+  });
+  const t0 = renderT(still, origin);
+  const blobs = useMemo(() => crowdBlobs(stageX, base, unit), [stageX, base, unit]);
+  const box = useMemo(() => patchBox(blobs), [blobs]);
+  const keyOf = (k: number): string => `concert|${seed}|${plan?.width ?? 0}|${plan?.height ?? 0}|${PAINT_VERSION}|${stageX}|${unit.toFixed(3)}|${k}`;
+  const paintPatch = litPatchPainter();
+  const jobs: Job[] = lit && plan
+    ? PALS.map((p, k) => ({ key: keyOf(k), paint: () => paintPatch(plan, box, blobs, { multiply: lighten(p[0], 0.5), screen: p[0], screenAlpha: 0.12 }) }))
+    : [];
+  useImages(jobs);
+  const place = useMemo(
+    () => (now: number): void => {
+      const el = root.current;
+      if (still || !lit || !el) return;
+      const k = paletteIndex(now - origin);
+      if (!groups.current) {
+        groups.current = [...el.querySelectorAll('[data-concert-crowd]')];
+        pal.current = -1;
+      }
+      if (k === pal.current) return;
+      pal.current = k;
+      el.setAttribute('data-concert-pal', String(k));
+      showPalette(groups.current, k);
+    },
+    [still, lit, origin],
+  );
+  useWallClockLoop(place, [place], { enabled: lit && !still });
+  if (!lit) return null;
+  const k0 = paletteIndex(t0);
+  // Découpe (repère du monde → repère de la scène).
+  const image = (k: number): ReactElement | null => {
+    const url = plan ? registry.get(keyOf(k)) : null;
+    return url ? <image href={url} x={f2((box.x - stageX) / unit)} y={f2((box.y - base) / unit)} width={f2(box.w / unit)} height={f2(box.h / unit)} preserveAspectRatio="none" /> : null;
+  };
+  return (
+    <g data-concert-crowd-layer="" data-concert-pal={k0} ref={root} transform={stageTransform(stageX, base, unit)}>
+      {PALS.map((_, k) => (
+        <g key={k} data-concert-crowd={k} data-concert-pal-index={k} opacity={k === k0 ? 1 : 0}>
+          {image(k)}
+        </g>
+      ))}
     </g>
   );
 }

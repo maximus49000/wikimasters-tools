@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BACKS, LYRES, PALS, beamShape, concertState, lyreTarget, paletteIndex } from '../../../../src/core/library/city/concert';
+import { BACKS, LYRES, PALS, beamShape, concertState, flashAlpha, lyreTarget, paletteIndex } from '../../../../src/core/library/city/concert';
 
 // Séquence lumière du concert de la Fête de la musique (G5, maquette g5-fetes notes §8) : moteur pur, déterministe en t.
 describe('concert', () => {
@@ -21,12 +21,18 @@ describe('concert', () => {
     expect(concertState(4.1).hit).toBeCloseTo(0.35);
     expect(concertState(4.2).hit).toBe(0);
   });
-  it('stroboscope : 0,6 s toutes les 32 s, à 12 Hz, α 0,5 ; rien le reste du temps', () => {
-    expect(concertState(32.02).strobe).toBe(0.5);
-    expect(concertState(32.1).strobe).toBe(0);
+  it('stroboscope : 0,6 s toutes les 32 s, à 3 Hz (allumé sur floor(6t) impair), α 0,5 ; rien le reste du temps', () => {
+    expect(concertState(32.02).strobe).toBe(0);
     expect(concertState(32.19).strobe).toBe(0.5);
+    expect(concertState(32.4).strobe).toBe(0);
+    expect(concertState(32.55).strobe).toBe(0.5);
     expect(concertState(32.7).strobe).toBe(0);
     expect(concertState(10).strobe).toBe(0);
+  });
+  it('voile blanc plafonné à 0,5 : hit + strobe au même instant ne dépasse pas 0,5', () => {
+    expect(flashAlpha({ hit: 0.35, strobe: 0.5 })).toBe(0.5);
+    expect(flashAlpha({ hit: 0.35, strobe: 0 })).toBe(0.35);
+    expect(flashAlpha(concertState(32.19))).toBe(0.5);
   });
   it('déterministe et 4 lyres', () => {
     expect(concertState(5.5)).toEqual(concertState(5.5));

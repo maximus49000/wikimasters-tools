@@ -29,7 +29,7 @@ import {
   BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, FlagCrate, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE,
   LampFlag, LiftTruck, STAGE, StageFloor, StageFrame, StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
 } from './install-sprites';
-import { ConcertLight } from './concert-light';
+import { ConcertCrowd, ConcertLight } from './concert-light';
 import { CarriedCounter, HeldRoll, StandAwning, StandCounter } from './music-sprites';
 import { MusicStreet, type StreetNode } from './music-street';
 import { StageBand, StageBeams } from './stage-band';
@@ -519,9 +519,11 @@ function stageShow(
     out.push({
       part: 'crew',
       node: ghibli
-        ? <ConcertLight key={`${set.id}-beams`} stageX={floor.x} base={stageBase(m)} unit={m.unit} lit still={still} plan={plan} seed={seed} />
+        ? <ConcertLight key={`${set.id}-beams`} stageX={floor.x} base={stageBase(m)} unit={m.unit} lit still={still} />
         : <g key={`${set.id}-beams`} transform={t}><StageBeams still={still} /></g>,
     });
+    // Chaussée du public révélée : sous les passants (partie `back`), pas devant eux.
+    if (ghibli) out.push({ part: 'back', node: <ConcertCrowd key={`${set.id}-crowd`} stageX={floor.x} base={stageBase(m)} unit={m.unit} lit still={still} plan={plan} seed={seed} /> });
   }
   if (still ? fp.phase === 'present' : itemShown(set, floor, fp)) {
     const day = Math.floor(abs / 1440);

@@ -3,7 +3,8 @@ import { mixHex } from '../sky';
 // Éclairage de concert de la Fête de la musique (G5, maquette g5-fetes notes §8) : moteur pur, déterministe en t (secondes
 // depuis le début de la séquence). Repère de la scène d'install-sprites (centre x = 0, base y = 0 au sol, plancher −8).
 // 120 bpm : temps 0,5 s, mesure 2 s ; palette changée toutes les 4 mesures (8 s) ; « hit » blanc sur le premier temps de
-// chaque mesure (0,14 s, α 0,35) ; stroboscope rare (0,6 s toutes les 32 s, 12 Hz, α 0,5) ; lyres en éventail croisé sur 4 s.
+// chaque mesure (0,14 s, α 0,35) ; stroboscope rare (0,6 s toutes les 32 s, 3 Hz, α 0,5 ; voile hit + strobe plafonné à 0,5,
+// photosensibilité WCAG 2.3.1) ; lyres en éventail croisé sur 4 s.
 
 export type Palette = readonly [string, string];
 // c0 / c1 : 1 magenta / ambre, 2 cyan / violet, 3 vert / ambre, 4 rouge / blanc.
@@ -29,12 +30,16 @@ export const HIT_S = 0.14;
 export const HIT_A = 0.35;
 export const STROBE_EVERY_S = 32;
 export const STROBE_S = 0.6;
-export const STROBE_HZ = 12;
+// Stroboscope plafonné à 3 Hz : allumé quand floor(6 t) est impair.
+export const STROBE_HZ = 3;
 export const STROBE_A = 0.5;
 export const LYRE_SWEEP_S = 4;
+// Opacité maximale du voile blanc (hit + strobe).
+export const FLASH_MAX = 0.5;
 
 export type Lyre = { pan: number; color: string; target: 'floor' | 'crowd' };
 export type ConcertState = { pal: Palette; lyres: readonly Lyre[]; hit: number; strobe: number; led: number };
+export const flashAlpha = (s: Pick<ConcertState, 'hit' | 'strobe'>): number => Math.min(FLASH_MAX, s.hit + s.strobe);
 
 const wrap = (t: number, p: number): number => ((t % p) + p) % p;
 
@@ -44,7 +49,7 @@ export function concertState(t: number): ConcertState {
   const pal = PALS[paletteIndex(t)]!;
   const [c0, c1] = pal;
   const hit = wrap(t, BAR_S) < HIT_S ? HIT_A : 0;
-  const strobe = wrap(t, STROBE_EVERY_S) < STROBE_S && Math.floor(t * STROBE_HZ) % 2 === 0 ? STROBE_A : 0;
+  const strobe = wrap(t, STROBE_EVERY_S) < STROBE_S && Math.floor(t * STROBE_HZ * 2) % 2 === 1 ? STROBE_A : 0;
   const led = Math.abs(Math.sin(t * 4));
   const lyres = LYRES.map((_, i) => {
     const ph = (2 * Math.PI * t) / LYRE_SWEEP_S + (i * Math.PI) / 2;
