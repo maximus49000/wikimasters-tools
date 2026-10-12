@@ -92,6 +92,10 @@ function paint(p: Palette, key: FigureKey): string {
   return canvas.toDataURL('image/png');
 }
 
+// Plafond de sprites des vues de la bibliothèque (RoomView, ScenePanorama) : la rue Ghibli des commerces (G4b) dépasse
+// 1 500 poses en vue à midi.
+export const FIGURE_SPRITES_MAX = 2400;
+
 export class FigureRegistry {
   private readonly palettes = new Map<string, Palette>();
   // Sprites : clé → data URL, dans l'ordre d'usage (le début de la Map part en premier).

@@ -7,7 +7,7 @@ import type { Sky } from '../core/library/sky';
 import type { Weather } from '../core/library/weather/weather-types';
 import { useArtStyle } from './art-setting';
 import { CityLifeLayer, StreetLamps } from './city-life';
-import { FigureContext, FigureRegistry } from './figure/figure-host';
+import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
 import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
 import { CityScene } from './scene-city';
@@ -198,9 +198,8 @@ export function ScenePanorama(props: PanoramaProps): ReactElement {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   // Plafond de sprites : la rue Ghibli des commerces (gestes des employés et des clients, G4b) dépasse 1 500 poses en vue
   // à midi ; au-delà du plafond le cache tourne et repeint sans cesse. Le classique n'en approche pas.
-  // Quatre sprites peints par image au plus (huit par défaut) : les rafales de gestes (G4b) s'étalent sur quelques images au
-  // lieu de doubler le coût d'une image ; à 30 images/s, 120 sprites/s restent disponibles.
-  const figures = useMemo(() => new FigureRegistry(`pf${uid}`, { max: 2400, perFrame: 4 }), [uid]);
+  // Budget de peinture par image inchangé (défaut, spec G4b §7) ; même réglage que RoomView, la vue livrée.
+  const figures = useMemo(() => new FigureRegistry(`pf${uid}`, { max: FIGURE_SPRITES_MAX }), [uid]);
   const cars = useMemo(() => new CarRegistry(`pc${uid}`), [uid]);
   const shops = useMemo(() => new ShopRegistry(`ps${uid}`), [uid]);
   return (

@@ -12,7 +12,7 @@ import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
 import { HomeArt, SmallArt } from './furniture-art-home';
 import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
-import { FigureContext, FigureRegistry } from './figure/figure-host';
+import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
 import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
@@ -106,7 +106,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const wallH = WALL_ROWS * CELL_H;
   const worldId = `${useId()}-world`.replace(/:/g, '');
   // Cache des sprites du pantin (Ghibli) : un par pièce ; les figures sont des <image>, rien n'est hébergé dans le DOM.
-  const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`), [worldId]);
+  // Plafond : la rue Ghibli des commerces (gestes des employés et des clients, G4b) dépasse 1 500 poses en vue à midi ; au-delà
+  // le cache tournerait et repeindrait sans cesse. Budget de peinture par image : le défaut (spec G4b §7).
+  const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`, { max: FIGURE_SPRITES_MAX }), [worldId]);
   // Sprites peints des voitures Ghibli : même cycle de vie.
   const cars = useMemo(() => new CarRegistry(`${worldId}-car`), [worldId]);
   const shops = useMemo(() => new ShopRegistry(`${worldId}-shop`), [worldId]);
