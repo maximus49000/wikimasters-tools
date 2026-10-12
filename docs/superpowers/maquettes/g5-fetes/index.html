@@ -18,7 +18,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 2px 10px #0003;background:#d
 <h3>3 · Zoom ×4 <span class="tag">jour puis nuit, 270 px de rue</span></h3>
 <canvas id="zoom-day"></canvas><br>
 <canvas id="zoom-night"></canvas>
-<p class="leg">Lumière de nuit : après le bleu nuit (multiply), chaque lumière est <b>ajoutée</b> en mode <code>screen</code> par des dégradés radiaux doux (cœur ambré d'incandescence, bord fondu) : halo du mur autour de la lanterne, flaque en perspective au pied du mât (trottoir puis chaussée), étincelles sur les joints des dalles et des pavés, bloom serré du verre. Les acteurs proches reçoivent un rehaut chaud du côté de la lampe et projettent une ombre portée à l'opposé. Vitrines et fenêtres débordent doucement sur le mur et le trottoir.</p>
+<p class="leg">Lumière de nuit « deux peintures » : la scène de jour, teintée ambre, est <b>révélée</b> à travers un masque d'intensité (décroissance en inverse du carré) par-dessus la scène passée au bleu nuit : près d'une lampe, l'enduit, les volets, les dalles et les pavés retrouvent leurs couleurs, réchauffées ; loin, le bleu profond. Pas de brouillard : seul un bloom serré autour du verre. Flaque aplatie au pied du mât, trapèze doux devant les vitrines éclairées ; acteurs avec ombre portée à l'opposé de la lampe et liseré chaud côté lampe.</p>
 <h3>3 bis · Nuit de pluie <span class="tag">×4 · cône diffus · reflets étirés et ondulés sur les pavés mouillés · pas de feu d'artifice</span><span class="anim">animé</span></h3>
 <canvas id="night-rain"></canvas>
 
@@ -775,61 +775,66 @@ function streetBackdrop(ctx,{night=false,seed=7,behind=null}={}){const{W,H,G,CUR
  return items;
  function h2(h){return h}}
 // ───────────────────────── Lumière de nuit (remplace GhibliNightLight) ─────────────────────────
-// Principe : après le multiply bleu nuit, la lumière est ajoutée en mode `screen` (elle ÉCLAIRCIT et réchauffe ce qu'elle touche,
-// la texture reste visible) avec des dégradés radiaux à décroissance douce : cœur ambré d'incandescence, bord fondu dans le bleu.
-const AMBER=[255,196,112],AMBER_CORE=[255,230,170];
+// Principe « deux peintures » : la scène est peinte de jour, puis (1) une copie est teintée ambre (multiply) : c'est la version
+// « éclairée à la lampe », couleurs locales réchauffées, un peu plus sombres que le jour ; (2) la scène passe au bleu nuit (multiply) ;
+// (3) la version éclairée est RÉVÉLÉE à travers un masque d'intensité (dégradés radiaux à décroissance en inverse du carré adoucie :
+// flaque au sol, mur autour de la lanterne, vitrines et leur trapèze sur le trottoir). Aucun blanc ajouté : la lumière rend aux enduits,
+// volets et pavés leurs couleurs, réchauffées. Dans l'air sec, seul un bloom serré autour du verre.
+const AMBER=[255,196,112],AMBER_CORE=[255,230,170],LIT_TINT='#FFD4A0';
 const grad=(ctx,x,y,r0,r1,stops)=>{const g=ctx.createRadialGradient(x,y,r0,x,y,r1);for(const[o,c,a]of stops)g.addColorStop(o,rgba(c,a));return g};
-// Flaque au sol en perspective : ellipse aplatie centrée au pied du mât (x+3), plus claire au pied, qui s'étale sur le trottoir et faiblit sur la chaussée.
-function groundPool(ctx,x,y,rx,ry,a=1){ctx.save();ctx.globalCompositeOperation='screen';ctx.translate(x,y);ctx.scale(1,ry/rx);ctx.fillStyle=grad(ctx,0,0,0,rx,[[0,AMBER_CORE,0.62*a],[0.22,AMBER,0.46*a],[0.55,AMBER,0.18*a],[1,AMBER,0]]);ctx.beginPath();ctx.arc(0,0,rx,0,TAU);ctx.fill();ctx.restore()}
-// Lumière d'un lampadaire : lanterne à (9, −77)·k. Réchauffe le mur derrière (dégradé radial autour de la lanterne, borné au mur),
-// flaque au sol, joints des pavés qui captent la lumière (étincelles `lighter` près du pied), bloom serré du verre. Pluie : cône très léger
-// et reflets étirés et ondulés sur les pavés mouillés.
-function lampLight(ctx,x,curb,k,{wallTop=-1e9,ground=curb-20,far=curb+40,rain=false,u=1,seed=1}={}){const gx=x+9*k,gy=curb-77*k,R0=58*u;
- ctx.save();ctx.globalCompositeOperation='screen';
- // air et mur : halo large très doux autour de la lanterne, légèrement aplati (il ne monte guère vers le ciel)
- ctx.save();ctx.translate(gx,gy+6*u);ctx.scale(1,0.72);ctx.fillStyle=grad(ctx,0,0,0,R0,[[0,AMBER,0.5],[0.18,AMBER,0.3],[0.5,AMBER,0.1],[1,AMBER,0]]);ctx.beginPath();ctx.arc(0,0,R0,0,TAU);ctx.fill();ctx.restore();
- // bloom serré du verre
- ctx.fillStyle=grad(ctx,gx,gy,0,7*k,[[0,AMBER_CORE,0.9],[0.35,AMBER_CORE,0.45],[1,AMBER,0]]);ctx.beginPath();ctx.arc(gx,gy,7*k,0,TAU);ctx.fill();
- ctx.restore();
- // flaque : trottoir (claire) puis chaussée (plus faible et plus large)
- groundPool(ctx,x+3*u,curb-2*u,54*u,15*u,1);groundPool(ctx,x+3*u,curb+9*u,70*u,13*u,0.45);
- // joints des pavés et des dalles : étincelles chaudes près du pied, de moins en moins loin
- const rng=mulberry32(seed^(x*7919|0));ctx.save();ctx.globalCompositeOperation='lighter';
- for(let i=0;i<26;i++){const d=rng(),ang=rng()*TAU,px=x+3*u+Math.cos(ang)*d*48*u,py=curb-2*u+Math.sin(ang)*d*14*u+(py=>py)(0);const on=py<curb?1:0.55;ctx.fillStyle=rgba(AMBER_CORE,(1-d)*(1-d)*0.32*on);ctx.fillRect(px-(0.5+rng()*0.6)*u,py-0.2*u,(1+rng()*1.4)*u,0.4*u)}
- ctx.restore();
- if(rain){ctx.save();ctx.globalCompositeOperation='screen';
-  // cône diffus dans la pluie
-  const cg=ctx.createLinearGradient(0,gy,0,curb);cg.addColorStop(0,rgba(AMBER,0.16));cg.addColorStop(1,rgba(AMBER,0));ctx.fillStyle=cg;ctx.beginPath();ctx.moveTo(gx-4*k,gy);ctx.lineTo(gx+4*k,gy);ctx.lineTo(gx+26*u,curb);ctx.lineTo(gx-30*u,curb);ctx.closePath();ctx.fill();
-  // reflet étiré sur les pavés mouillés : rubans verticaux ondulés, du bord du trottoir vers le bas, qui s'estompent
-  const w=9*u,h=far-curb;for(let j=0;j<5;j++){const ox=(j-2)*2.6*u,ph=j*1.3;ctx.beginPath();ctx.moveTo(gx+ox-w/2,curb);for(let yy=0;yy<=h;yy+=2*u){const wig=Math.sin(yy/(3*u)+ph)*1.4*u;ctx.lineTo(gx+ox-w/2*(1-yy/h*0.5)+wig,curb+yy)}for(let yy=h;yy>=0;yy-=2*u){const wig=Math.sin(yy/(3*u)+ph+0.8)*1.4*u;ctx.lineTo(gx+ox+w/2*(1-yy/h*0.5)+wig,curb+yy)}ctx.closePath();
-   const rg=ctx.createLinearGradient(0,curb,0,far);rg.addColorStop(0,rgba(AMBER_CORE,0.22));rg.addColorStop(0.5,rgba(AMBER,0.1));rg.addColorStop(1,rgba(AMBER,0));ctx.fillStyle=rg;ctx.fill()}
-  ctx.restore()}}
-// Fenêtre allumée : vitre chaude + lueur douce qui déborde sur le mur.
-function windowLight(ctx,x,y,w,h,c,a=1,part='both'){if(part!=='fill'){ctx.save();ctx.globalCompositeOperation='screen';const cx=x+w/2,cy=y+h/2,r=Math.max(w,h)*1.6;ctx.fillStyle=grad(ctx,cx,cy,0,r,[[0,C(c),0.55*a],[0.4,C(c),0.2*a],[1,C(c),0]]);ctx.fillRect(cx-r,cy-r,2*r,2*r);ctx.restore()}if(part==='glow')return;
- ctx.fillStyle=rgba(C(c),0.95*a);ctx.fillRect(x,y,w,h);ctx.fillStyle='rgba(42,26,24,0.35)';ctx.fillRect(x+w*0.46,y,w*0.08,h);ctx.fillRect(x,y+h*0.44,w,h*0.06)}
-// Vitrine allumée : intérieur chaud, lumière qui déborde doucement sur le trottoir (dégradé vertical) et sur la chaussée.
-function shopLight(ctx,x,y,w,h,ground,far,{c=AMBER,a=1,rain=false}={}){ctx.save();ctx.globalCompositeOperation='screen';
- ctx.fillStyle=rgba(c,0.32*a);ctx.fillRect(x,y,w,h);ctx.save();ctx.translate(x+w/2,ground-1);ctx.scale(w/2+14,24);ctx.fillStyle=grad(ctx,0,0,0,1,[[0,c,0.4*a],[0.4,c,0.18*a],[1,c,0]]);ctx.beginPath();ctx.arc(0,0,1,0,TAU);ctx.fill();ctx.restore();
- // lueur sur le mur autour de la vitrine
- ctx.fillStyle=grad(ctx,x+w/2,y+h/2,w*0.3,w*0.9,[[0,c,0.14*a],[1,c,0]]);ctx.fillRect(x-w/2,y-h,2*w,3*h);
- if(rain){const rg=ctx.createLinearGradient(0,far-20,0,far);rg.addColorStop(0,rgba(c,0.14*a));rg.addColorStop(1,rgba(c,0));ctx.fillStyle=rg;for(let k=0;k<4;k++){const sx=x+w*(0.15+k*0.23);ctx.beginPath();ctx.moveTo(sx-3,far-20);ctx.quadraticCurveTo(sx+2,far-10,sx-2,far);ctx.lineTo(sx+4,far);ctx.quadraticCurveTo(sx+6,far-10,sx+3,far-20);ctx.closePath();ctx.fill()}}
+// Décroissance 1/(1+(d/r0)²) adoucie, en arrêts de dégradé (alpha du masque = intensité).
+const FALL=k=>[[0,[255,255,255],k],[0.15,[255,255,255],0.9*k],[0.35,[255,255,255],0.6*k],[0.6,[255,255,255],0.25*k],[0.85,[255,255,255],0.06*k],[1,[255,255,255],0]];
+const maskDisc=(m,x,y,rx,ry,k=1)=>{m.save();m.translate(x,y);m.scale(1,ry/rx);m.fillStyle=grad(m,0,0,0,rx,FALL(k));m.beginPath();m.arc(0,0,rx,0,TAU);m.fill();m.restore()};
+// Masque d'un lampadaire (lanterne à (9, −77)·k) : mur autour de la lanterne (petit, aplati), flaque au pied du mât (trottoir), flaque de chaussée (faible, rapide).
+function lampMask(m,x,curb,k,u=1){const gx=x+9*k,gy=curb-77*k;maskDisc(m,gx,gy+12*u,44*u,40*u,1);maskDisc(m,x+3*u,curb-2*u,56*u,14*u,1);maskDisc(m,x+3*u,curb+9*u,50*u,10*u,0.6)}
+// Masque d'une vitrine : intérieur plein (la boutique est éclairée), lueur autour sur le mur, trapèze doux sur le trottoir.
+function shopMask(m,x,y,w,h,ground){m.fillStyle='rgba(255,255,255,1)';m.fillRect(x,y,w,h);maskDisc(m,x+w/2,y+h/2,w*0.75,h*1.1,0.35);
+ // trapèze doux sur le trottoir : demi-ellipse de décroissance (bords fondus) + trapèze faible qui garde la direction de la lumière
+ m.save();m.beginPath();m.rect(x-14,ground,w+28,30);m.clip();maskDisc(m,x+w/2,ground,w/2+10,20,0.85);
+ const g=m.createLinearGradient(0,ground,0,ground+22);g.addColorStop(0,'rgba(255,255,255,0.35)');g.addColorStop(1,'rgba(255,255,255,0)');m.fillStyle=g;m.beginPath();m.moveTo(x+2,ground);m.lineTo(x+w-2,ground);m.lineTo(x+w+5,ground+22);m.lineTo(x-5,ground+22);m.closePath();m.fill();m.restore()}
+function windowMask(m,x,y,w,h){maskDisc(m,x+w/2,y+h/2,w*1.3,h*1.1,0.3)}
+// Copie de la scène de jour (avant le bleu nuit).
+function snapshot(ctx){const c=document.createElement('canvas');c.width=ctx.canvas.width;c.height=ctx.canvas.height;c.getContext('2d').drawImage(ctx.canvas,0,0);return c}
+const litBuf=document.createElement('canvas');
+// Révèle la version éclairée : `day` = copie de jour ; `mask` = canvas d'intensité (cache de l'appelant) ; teinte LIT_TINT.
+function revealLit(ctx,day,mask){const cv=ctx.canvas;if(litBuf.width!==cv.width||litBuf.height!==cv.height){litBuf.width=cv.width;litBuf.height=cv.height}
+ const o=litBuf.getContext('2d');o.setTransform(1,0,0,1,0,0);o.globalCompositeOperation='source-over';o.clearRect(0,0,cv.width,cv.height);o.drawImage(day,0,0);
+ o.globalCompositeOperation='multiply';o.fillStyle=LIT_TINT;o.fillRect(0,0,cv.width,cv.height);o.globalCompositeOperation='screen';o.fillStyle=rgba(AMBER,0.2);o.fillRect(0,0,cv.width,cv.height);
+ o.globalCompositeOperation='destination-in';o.drawImage(mask,0,0);
+ ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='source-over';ctx.drawImage(litBuf,0,0);ctx.restore()}
+// Canvas de masque aux dimensions et au repère de `ctx`, rempli par `draw(m)`.
+function makeMask(ctx,draw){const c=document.createElement('canvas');c.width=ctx.canvas.width;c.height=ctx.canvas.height;const m=c.getContext('2d');m.setTransform(ctx.getTransform());draw(m);return c}
+// Bloom serré du verre (seule lumière « dans l'air » par temps sec), en screen.
+function lampBloom(ctx,x,curb,k,{rain=false,u=1}={}){const gx=x+9*k,gy=curb-77*k;ctx.save();ctx.globalCompositeOperation='screen';
+ ctx.fillStyle=grad(ctx,gx,gy,0,6*k,[[0,AMBER_CORE,0.85],[0.3,AMBER,0.45],[1,AMBER,0]]);ctx.beginPath();ctx.arc(gx,gy,6*k,0,TAU);ctx.fill();
+ if(rain){ctx.fillStyle=grad(ctx,gx,gy,0,22*u,[[0,AMBER,0.22],[0.5,AMBER,0.07],[1,AMBER,0]]);ctx.beginPath();ctx.arc(gx,gy,22*u,0,TAU);ctx.fill();
+  const cg=ctx.createLinearGradient(0,gy,0,curb);cg.addColorStop(0,rgba(AMBER,0.12));cg.addColorStop(1,rgba(AMBER,0));ctx.fillStyle=cg;ctx.beginPath();ctx.moveTo(gx-4*k,gy);ctx.lineTo(gx+4*k,gy);ctx.lineTo(gx+22*u,curb);ctx.lineTo(gx-26*u,curb);ctx.closePath();ctx.fill()}
  ctx.restore()}
-// Acteurs touchés par une lampe : ombre portée au sol À L'OPPOSÉ de la lampe (allongée, qui s'estompe, multiply) et rehaut chaud
-// (rim light) sur la face tournée vers la lampe : l'acteur est redessiné dans un canvas tampon, masqué par un dégradé (source-in),
-// puis composé en `screen`. `a` = {x, y (pieds), w, h, draw()} dans le repère courant ; `lamp` = {x: pied du mât, lx: lanterne x, ly}.
+// Vitre d'une fenêtre allumée (opaque, par-dessus la nuit).
+function windowPane(ctx,x,y,w,h,c,a=1){ctx.fillStyle=rgba(C(c),0.95*a);ctx.fillRect(x,y,w,h);ctx.fillStyle='rgba(42,26,24,0.35)';ctx.fillRect(x+w*0.46,y,w*0.08,h);ctx.fillRect(x,y+h*0.44,w,h*0.06)}
+// Pluie : colonne de reflet sous une lumière (x, demi-largeur hw, du bord du trottoir `curb` vers `far`) : petits traits horizontaux brisés,
+// chauds, qui se fondent (densité et alpha décroissants vers le bas) ; `c` couleur de la lumière.
+function wetColumn(ctx,x,hw,curb,far,c=AMBER,k=1,seed=1){const rng=mulberry32(seed^(x*131|0)),h=far-curb;ctx.save();ctx.globalCompositeOperation='screen';
+ for(let i=0;i<90;i++){const v=rng(),y=curb+v*v*h,sp=1-y/far*0+0;const a=k*(1-(y-curb)/h)*(0.55+0.45*rng());const w=(1.5+rng()*4)*(1+(y-curb)/h*1.2),ox=(rng()-0.5)*2*hw*(0.6+0.6*(y-curb)/h);
+  ctx.fillStyle=rgba(i%3?c:AMBER_CORE,a*0.75);ctx.fillRect(x+ox-w/2,y,w,0.5)}ctx.restore()}
+// Pluie : reflet inversé flou des vitrines et façades sur la chaussée mouillée (copie de jour teintée, retournée autour du bord du trottoir).
+function wetReflection(ctx,day,mask,curb,far,ground){const cv=ctx.canvas,tf=ctx.getTransform();const o=litBuf.getContext('2d');o.setTransform(1,0,0,1,0,0);o.globalCompositeOperation='source-over';o.clearRect(0,0,cv.width,cv.height);o.drawImage(day,0,0);o.globalCompositeOperation='multiply';o.fillStyle=LIT_TINT;o.fillRect(0,0,cv.width,cv.height);o.globalCompositeOperation='destination-in';o.drawImage(mask,0,0);
+ ctx.save();ctx.beginPath();ctx.rect(-1e4,curb,2e4,far-curb);ctx.clip();ctx.translate(0,2*curb);ctx.scale(1,-1);const g=ctx.createLinearGradient(0,curb,0,curb-(far-curb));g.addColorStop(0,'rgba(0,0,0,0.42)');g.addColorStop(1,'rgba(0,0,0,0)');
+ ctx.filter='blur(1.2px)';ctx.globalCompositeOperation='screen';ctx.setTransform(tf.a,0,0,-tf.d,tf.e,tf.f+2*curb*tf.d);ctx.globalAlpha=0.35;ctx.drawImage(litBuf,0,0,cv.width,cv.height,0,0,cv.width/tf.a,cv.height/tf.d);ctx.restore();
+ // fondu vers le bas
+ ctx.save();ctx.globalCompositeOperation='destination-out';ctx.fillStyle=g;ctx.restore()}
+// Acteurs touchés par une lampe : ombre portée au sol À L'OPPOSÉ de la lampe (sombre au pied, qui s'estompe, multiply) et liseré chaud
+// (rim light) sur la face tournée vers la lampe : l'acteur est redessiné dans un canvas tampon, masqué par un dégradé (source-in), composé en screen.
 const rimBuf=document.createElement('canvas');
-function actorShadow(ctx,a,lamp){const d=a.x-lamp.lx,dist=Math.hypot(d,a.y-lamp.ly);if(Math.abs(d)>70)return;const dir=d>=0?1:-1,L=Math.min(a.h*1.1,a.h*0.35+Math.abs(d)*0.5),str=0.5*Math.max(0,1-dist/80);
- ctx.save();ctx.globalCompositeOperation='multiply';const g=ctx.createLinearGradient(a.x,a.y,a.x+dir*L,a.y);g.addColorStop(0,`rgba(40,36,90,${str*1.3})`);g.addColorStop(1,'rgba(40,36,90,0)');ctx.fillStyle=g;
- ctx.beginPath();ctx.moveTo(a.x-a.w*0.45,a.y-0.5);ctx.lineTo(a.x+a.w*0.45,a.y-0.5);ctx.lineTo(a.x+dir*L+a.w*0.2,a.y+3.2);ctx.lineTo(a.x+dir*L-a.w*0.2,a.y+3.2);ctx.closePath();ctx.fill();ctx.restore()}
-function actorRim(ctx,a,lamp){const d=a.x-lamp.lx,dist=Math.hypot(d,a.y-a.h/2-lamp.ly);if(dist>95)return;const str=0.75*Math.max(0,1-dist/95);
+function actorShadow(ctx,a,lamp){const d=a.x-lamp.lx,dist=Math.hypot(d,a.y-lamp.ly);if(Math.abs(d)>75)return;const dir=d>=0?1:-1,L=Math.min(a.h*1.2,a.h*0.4+Math.abs(d)*0.55),str=0.8*Math.max(0,1-dist/90);
+ ctx.save();ctx.globalCompositeOperation='multiply';const g=ctx.createLinearGradient(a.x,a.y,a.x+dir*L,a.y);g.addColorStop(0,`rgba(22,18,70,${Math.min(1,str*1.25)})`);g.addColorStop(0.5,`rgba(22,18,70,${str*0.5})`);g.addColorStop(1,'rgba(30,26,80,0)');ctx.fillStyle=g;
+ ctx.beginPath();ctx.moveTo(a.x-a.w*0.5,a.y-0.6);ctx.lineTo(a.x+a.w*0.5,a.y-0.6);ctx.lineTo(a.x+dir*L+a.w*0.25,a.y+3.4);ctx.lineTo(a.x+dir*L-a.w*0.25,a.y+3.4);ctx.closePath();ctx.fill();ctx.restore()}
+function actorRim(ctx,a,lamp){const d=a.x-lamp.lx,dist=Math.hypot(d,a.y-a.h/2-lamp.ly);if(dist>95)return;const str=Math.min(1,1.1*Math.max(0,1-dist/95));
  const tf=ctx.getTransform(),cv=ctx.canvas;if(rimBuf.width!==cv.width||rimBuf.height!==cv.height){rimBuf.width=cv.width;rimBuf.height=cv.height}
- const o=rimBuf.getContext('2d');o.setTransform(tf);const bx=a.x-a.w,by=a.y-a.h-2,bw=2*a.w,bh=a.h+3;o.save();o.beginPath();o.rect(bx,by,bw,bh);o.clip();o.clearRect(bx,by,bw,bh);a.draw(o);
- o.globalCompositeOperation='source-in';const side=d>=0?-1:1;const g=o.createLinearGradient(a.x+side*a.w*0.5,0,a.x-side*a.w*0.35,0);g.addColorStop(0,rgba(AMBER_CORE,str));g.addColorStop(0.5,rgba(AMBER,str*0.35));g.addColorStop(1,rgba(AMBER,0));o.fillStyle=g;o.fillRect(bx,by,bw,bh);o.restore();
- // recopie du tampon (rectangle en pixels de l'appareil)
- const px=bx*tf.a+tf.e,py=by*tf.d+tf.f,pw=bw*tf.a,ph=bh*tf.d;ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='screen';ctx.drawImage(rimBuf,px,py,pw,ph,px,py,pw,ph);ctx.restore()}
-function relightActors(ctx,actors,lamps){for(const a of actors){let best=null,bd=1e9;for(const l of lamps){const dd=Math.abs(a.x-l.lx);if(dd<bd){bd=dd;best=l}}if(!best)continue;actorShadow(ctx,a,best);actorRim(ctx,a,best)}}
-// Compatibilité (planche 4) : flaque simple.
-function nightPool(ctx,x,curb,k,u=1){lampLight(ctx,x,curb,k,{u,ground:curb-20,far:curb+40})}
+ const o=rimBuf.getContext('2d');o.setTransform(tf);o.globalCompositeOperation='source-over';const bx=a.x-a.w,by=a.y-a.h-2,bw=2*a.w,bh=a.h+3;o.save();o.beginPath();o.rect(bx,by,bw,bh);o.clip();o.clearRect(bx,by,bw,bh);a.draw(o);
+ o.globalCompositeOperation='source-in';const side=d>=0?-1:1;const g=o.createLinearGradient(a.x+side*a.w*0.5,0,a.x-side*a.w*0.3,0);g.addColorStop(0,rgba(AMBER_CORE,str));g.addColorStop(0.35,rgba(AMBER,str*0.5));g.addColorStop(1,rgba(AMBER,0));o.fillStyle=g;o.fillRect(bx,by,bw,bh);o.restore();
+ const px=bx*tf.a+tf.e,py=by*tf.d+tf.f,pw=bw*tf.a,ph=bh*tf.d;ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.7;ctx.drawImage(rimBuf,px,py,pw,ph,px,py,pw,ph);ctx.restore()}
+function relightActors(ctx,actors,lamps){for(const a of actors){let best=null,bd=1e9;for(const l of lamps){const dd=Math.abs(a.x-l.lx);if(dd<bd){bd=dd;best=l}}if(!best)continue;actorShadow(ctx,a,best)}for(const a of actors){let best=null,bd=1e9;for(const l of lamps){const dd=Math.abs(a.x-l.lx);if(dd<bd){bd=dd;best=l}}if(best)actorRim(ctx,a,best)}}
 
 // La rue : lampadaires (tous les ~170), feu à bouton + passage, arrêt de bus, terrasse, chien promené, grue au loin, montgolfière et avion.
 const LAMP_XS=[62,232,402,572,742,912,1082],KL=0.85,KP=0.55,LIGHT_X=640;street.cache=new Map();street.light=new Map();
@@ -863,17 +868,17 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false,rain=false}={}){const{
  actor(wx+26*KP+1,G+14,9,8,c=>{c.save();c.translate(wx,G+14);c.scale(KP,KP);c.save();c.translate(26,0);dog(c,{breed:'labrador',seed:3,t,leashTo:[-26+8.6,-20.6]});c.restore();c.restore()});
  // ouvrier sur une échelle qui change l'enseigne du 5e local
  const rec=items.filter(i=>i.k==='shop')[4];if(rec){actor(rec.x+8,G,6,32,c=>{c.save();c.translate(rec.x+8,G);ladder(c,30);c.translate(0,-14);c.scale(KP,KP);figure(c,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'up'});c.restore()});actor(rec.x+rec.w/2+6,G,12,19,c=>{c.save();c.translate(rec.x+rec.w/2+6,G);c.scale(KP,KP);figure(c,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'carry'});c.translate(0,-23.5);carriedSign(c,rec.w/KP*0.6,'#1C6FB8','#FFE45C','Proxi Marché');c.restore()})}
- if(night){nightFilter(ctx,W+x0,H);
-  if(rain){ctx.save();ctx.globalCompositeOperation='multiply';ctx.fillStyle='rgba(120,130,190,0.6)';ctx.fillRect(0,CURB,W,H-CURB);ctx.restore()} // sol mouillé, plus sombre
-  // lumières fixes (fenêtres, vitrines, lampadaires) mises en cache dans une image transparente, composée en `screen`
-  const lamps=LAMP_XS.map(x=>({x,lx:x+9*KL,ly:CURB-77*KL}));const lkey=`${x0}|${tf.a}|${rain}`;let lc=street.light.get(lkey);
-  if(!lc){lc=document.createElement('canvas');lc.width=ctx.canvas.width;lc.height=ctx.canvas.height;const o=lc.getContext('2d');o.setTransform(tf);
-   for(const it of bg.lit){if(it.k==='win')windowLight(o,it.x,it.y,5,8,it.c,1,'glow');else shopLight(o,it.x+2,G-20,it.w-4,19,G,FAR,{rain})}
-   for(const l of lamps)lampLight(o,l.x,CURB,KL,{wallTop:G-60,ground:G,far:FAR,rain});street.light.set(lkey,lc)}
-  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='screen';ctx.drawImage(lc,0,0);ctx.restore();
-  for(const it of bg.lit)if(it.k==='win')windowLight(ctx,it.x,it.y,5,8,it.c,1,'fill');
+ if(night){
+  const day=snapshot(ctx);const lamps=LAMP_XS.map(x=>({x,lx:x+9*KL,ly:CURB-77*KL}));const lkey=`${x0}|${tf.a}`;let mk=street.light.get(lkey);
+  if(!mk){mk=makeMask(ctx,m=>{for(const it of bg.lit){if(it.k==='win')windowMask(m,it.x,it.y,5,8);else shopMask(m,it.x+2,G-20,it.w-4,19,G)}for(const l of lamps)lampMask(m,l.x,CURB,KL)});street.light.set(lkey,mk)}
+  nightFilter(ctx,W+x0,H);
+  if(rain){ctx.save();ctx.globalCompositeOperation='multiply';ctx.fillStyle='rgba(110,120,185,0.75)';ctx.fillRect(0,CURB,W,H-CURB);ctx.restore()} // sol mouillé, plus sombre
+  revealLit(ctx,day,mk);
+  ctx.save();ctx.globalCompositeOperation='screen';for(const it of bg.lit)if(it.k==='shop'){ctx.fillStyle=rgba(AMBER,0.38);ctx.fillRect(it.x+2,G-20,it.w-4,19)}ctx.restore();
+  if(rain){wetReflection(ctx,day,mk,CURB,FAR,G);for(const l of lamps)wetColumn(ctx,l.lx,7,CURB,FAR,AMBER,1,l.x);for(const it of bg.lit)if(it.k==='shop')wetColumn(ctx,it.x+it.w/2,it.w*0.22,CURB,FAR,AMBER,0.4,it.x)}
+  for(const it of bg.lit)if(it.k==='win')windowPane(ctx,it.x,it.y,5,8,it.c);
   const ap=items.filter(i=>i.k==='win')[7];if(ap){ctx.save();ctx.translate(ap.x,ap.y+1);apartmentGlow(ctx);ctx.restore()}
-  for(const l of lamps){ctx.save();ctx.translate(l.x,CURB);ctx.scale(KL,KL);lamp(ctx,{lit:true,pass:'lit'});ctx.restore()}
+  for(const l of lamps){lampBloom(ctx,l.x,CURB,KL,{rain});ctx.save();ctx.translate(l.x,CURB);ctx.scale(KL,KL);lamp(ctx,{lit:true,pass:'lit'});ctx.restore()}
   relightActors(ctx,actors,lamps);
   ctx.save();ctx.translate(LIGHT_X-19,CURB+1);ctx.scale(-1,1);trafficPole(ctx,{color:'red',pass:'lit'});ctx.restore();ctx.save();ctx.translate(LIGHT_X+19,FAR);trafficPole(ctx,{color:'green',pass:'lit'});ctx.restore();
   ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night:true,t,pass:'lit'});ctx.restore();
@@ -888,10 +893,10 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false,rain=false}={}){const{
 
 // ───────────────────────── 4. Planche mobilier de rue (×5) ─────────────────────────
 {const s=5,W=216,H=180;const ctx=mk('board-street',W,H,s);
- const cell=(x,y,w,h,label,night,draw)=>{ctx.save();ctx.translate(x,y);R(ctx,0,0,w,h,night?'#3A3A5A':'#F2DDB4',{lw:0.3,sh:0,li:0});R(ctx,0,h-8,w,8,night?'#4A4A66':'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.save();ctx.translate(w/2,h-8);draw('base');ctx.restore();if(night){nightFilter(ctx,w,h);ctx.save();ctx.translate(w/2,h-8);draw('lit');ctx.restore()}text(ctx,label,w/2,3.5,3,night?'#FFFFFF':'#5A4A30');ctx.restore()};
+ const board={day:null};const cell=(x,y,w,h,label,night,draw)=>{ctx.save();ctx.translate(x,y);R(ctx,0,0,w,h,night?'#E8DCC0':'#F2DDB4',{lw:0.3,sh:0,li:0});R(ctx,0,h-8,w,8,night?'#D8C8A8':'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.save();ctx.translate(w/2,h-8);draw('base');ctx.restore();if(night){board.day=snapshot(ctx);nightFilter(ctx,w,h);ctx.save();ctx.translate(w/2,h-8);draw('lit');ctx.restore()}text(ctx,label,w/2,3.5,3,night?'#FFFFFF':'#5A4A30');ctx.restore()};
  ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);
  cell(0,0,36,100,'lampadaire · jour',false,p=>{ctx.scale(0.85,0.85);lamp(ctx,{pass:p})});
- cell(36,0,36,100,'allumé · nuit',true,p=>{if(p==='lit')lampLight(ctx,0,0,0.85,{wallTop:-92,ground:-6,far:8});ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:p})});
+ cell(36,0,36,100,'allumé · nuit',true,p=>{if(p==='lit'){const mk=makeMask(ctx,m=>{m.save();m.beginPath();m.rect(-18,-92,36,100);m.clip();lampMask(m,0,0,0.85);m.restore()});revealLit(ctx,board.day,mk);lampBloom(ctx,0,0,0.85)}ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:p})});
  cell(72,0,36,100,'14 juillet',false,p=>{ctx.scale(0.85,0.85);lamp(ctx,{pass:p,flag:true,flagT:0.3})});
  cell(108,0,36,100,'feu + bouton · vert',false,p=>{ctx.translate(-6,0);trafficPole(ctx,{color:'green',pressed:true,pass:p});ctx.translate(14,0);busStop(ctx,{name:'Mairie',served:'far'})});
  cell(144,0,36,100,'feu rouge · nuit',true,p=>{ctx.translate(-6,0);trafficPole(ctx,{color:'red',pressed:false,pass:p});ctx.translate(14,0);busStop(ctx,{name:'Gare SNCF',served:'near'})});
@@ -920,7 +925,7 @@ function musicScene(ctx,{night=false,t=0}={}){const W=432,H=120,G=100,kp=0.55;
  fig(236,G-2,{top:'#F28C28'},'carry',kp,c=>{c.translate(9,-23.5);heldTruss(c)});fig(254,G-2,{top:'#F28C28'},'carry',kp,c=>{c.translate(9,-23.5);heldSpot(c)});fig(20,G+16,{top:'#F28C28'},'carry',kp,c=>{c.translate(9,-23.5);heldRoll(c)});
  // spectateurs
  [[80,'#4A7AB8'],[112,'#C0463A'],[150,'#E0A21E'],[176,'#8A5AB8']].forEach(([x,c],i)=>fig(x,G+12,{top:c},i%2?'up':'swing'));
- if(night){nightFilter(ctx,W,H);lampLight(ctx,lamp1,G,0.85,{wallTop:G-70,ground:G-24,far:H});ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:'lit'});ctx.restore();relightActors(ctx,actors,[{x:lamp1,lx:lamp1+9*0.85,ly:G-77*0.85}]);
+ if(night){const day=snapshot(ctx);const mk=makeMask(ctx,m=>{lampMask(m,lamp1,G,0.85);m.fillStyle='rgba(255,255,255,0.55)';m.fillRect(300-31,G+18-36,62,54)});nightFilter(ctx,W,H);revealLit(ctx,day,mk);lampBloom(ctx,lamp1,G,0.85);ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:'lit'});ctx.restore();relightActors(ctx,actors,[{x:lamp1,lx:lamp1+9*0.85,ly:G-77*0.85}]);
   ctx.save();ctx.translate(130,G-1);stageBeams(ctx,t);stageSpots(ctx,{lit:true,pass:'lit'});ctx.restore();
   // guirlande du stand
   ctx.save();ctx.translate(300,G+18);ctx.globalCompositeOperation='screen';for(let x=-28;x<=28;x+=7){const c=C(pick(['#FFE27A','#FF8A6A','#8AE0FF'],mulberry32(x+50)));ctx.fillStyle=grad(ctx,x,-29,0,4,[[0,c,0.9],[0.3,c,0.4],[1,c,0]]);ctx.beginPath();ctx.arc(x,-29,4,0,TAU);ctx.fill();disc(ctx,x,-29,0.7,'#FFF8D8',0)}ctx.restore()}}
@@ -966,7 +971,7 @@ function santaScene(ctx,t=0){const W=360,H=90;
  ctx.save();ctx.translate(120,28+Math.sin(t*1.3)*1.5);santa(ctx,{landed:false,lit:true,t,pass:'lit'});ctx.restore();
  ctx.save();ctx.translate(290,44);santa(ctx,{landed:true,lit:true,t,pass:'lit'});ctx.restore();
  // fenêtres allumées
- for(const[x,gy,w,ty]of roofs){for(let wx=x+8;wx<x+w-8;wx+=14)windowLight(ctx,wx,ty+15,5,8,'#FFE4A0')}}
+ for(const[x,gy,w,ty]of roofs){for(let wx=x+8;wx<x+w-8;wx+=14){ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,wx+2.5,ty+19,0,9,[[0,AMBER,0.35],[1,AMBER,0]]);ctx.beginPath();ctx.arc(wx+2.5,ty+19,9,0,TAU);ctx.fill();ctx.restore();windowPane(ctx,wx,ty+15,5,8,'#FFE4A0')}}}
 anim('santa',360,90,3,(ctx,t)=>santaScene(ctx,t));
 
 // ───────────────────────── 8. Installations ─────────────────────────
