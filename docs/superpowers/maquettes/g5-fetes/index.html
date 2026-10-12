@@ -783,8 +783,8 @@ const LAMP_XS=[62,232,402,572,742,912,1082],KL=0.85,KP=0.55,LIGHT_X=640;street.c
 function street(ctx,{night=false,t=0,x0=0,s=1,flags=false}={}){const{W,H,G,CURB,FAR}=ST;ctx.save();ctx.scale(s,s);ctx.translate(-x0,0);
  // grue au loin (derrière les immeubles), à l'échelle réduite
  // décor fixe mis en cache (une image par jour/nuit × fenêtre × échelle) : seuls les éléments vivants sont redessinés à chaque image
- const key=`${night}|${x0}|${s}`;let bg=street.cache.get(key);
- if(!bg){const off=document.createElement('canvas');off.width=ctx.canvas.width;off.height=ctx.canvas.height;const o=off.getContext('2d');o.scale(s,s);o.translate(-x0,0);
+ const tf=ctx.getTransform(),key=`${night}|${x0}|${tf.a}`;let bg=street.cache.get(key);
+ if(!bg){const off=document.createElement('canvas');off.width=ctx.canvas.width;off.height=ctx.canvas.height;const o=off.getContext('2d');o.setTransform(tf);
   const items=streetBackdrop(o,{night,behind:()=>{o.save();o.translate(330,G-24);o.scale(0.45,0.45);crane(o,0,false);o.restore()}});bg={off,items};street.cache.set(key,bg)}
  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(bg.off,0,0);ctx.restore();const items=bg.items;
  // ciel : montgolfière, avion
