@@ -15,6 +15,7 @@ import { getImageService } from './image-registry';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
 import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
+import { PropContext, PropRegistry } from './prop/prop-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { WindowArt, GlassDrops, glassRect } from './window-art';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
@@ -115,6 +116,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   // Sprites peints des voitures Ghibli : même cycle de vie.
   const cars = useMemo(() => new CarRegistry(`${worldId}-car`), [worldId]);
   const shops = useMemo(() => new ShopRegistry(`${worldId}-shop`), [worldId]);
+  // Accessoires de rue Ghibli (G5) : une instance partagée par le décor fixe et les acteurs.
+  const propSprites = useMemo(() => new PropRegistry(`${worldId}-prop`), [worldId]);
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
   // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
@@ -402,13 +405,15 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         <FigureContext.Provider value={figures}>
           <ShopContext.Provider value={shops}>
           <CarContext.Provider value={cars}>
+          <PropContext.Provider value={propSprites}>
             <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherClock} />
+          </PropContext.Provider>
           </CarContext.Provider>
           </ShopContext.Provider>
         </FigureContext.Provider>
       </g>
     ),
-    [worldId, figures, cars, room.scene, room.id, width, wallH, view.sky, view.minutes, gloom, rainy, city, forcedNight, weatherClock],
+    [worldId, figures, cars, propSprites, room.scene, room.id, width, wallH, view.sky, view.minutes, gloom, rainy, city, forcedNight, weatherClock],
   );
   // La fenêtre soulevée n'a plus de vue à sa place (sa copie porte la sienne) : seul son cadre estompé reste sur le mur.
   const shownGlasses = glasses.filter((_, i) => windows[i]!.id !== drag?.id);
@@ -445,7 +450,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           {/* Deux groupes dans le même repère : le décor fixe et les acteurs animés. La boucle d'animation ne touche que le second. */}
           <g id={worldId} data-window-view="">
             <ShopContext.Provider value={shops}>
+            <PropContext.Provider value={propSprites}>
               <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
+            </PropContext.Provider>
             </ShopContext.Provider>
           </g>
           {/* Météo : deux groupes (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. Sans météo, les acteurs seuls. */}

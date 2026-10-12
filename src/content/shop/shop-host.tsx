@@ -6,6 +6,7 @@ import { FACADE_MARGIN, GROUND_FLOOR_H, facadeGeometry, paintFacade, paintGlass,
 import { paintInterior } from '../../core/library/paint/shop/interiors';
 import { tone } from '../city-sprites';
 import { BLANK_SPRITE } from '../figure/figure-host';
+import { PaintRegistry, paintSurface, quantDay } from '../paint-registry';
 
 // Images peintes des commerces (G4a) : chaque local est peint UNE fois par clé sur un canvas hors écran, en trois couches
 // (fond de la vitrine, premier plan devant le personnel avec la vitre, façade percée à la vitrine), puis gardé en PNG
@@ -18,7 +19,7 @@ export const SHOP_PX = 4;
 export type ShopLayer = 'back' | 'front' | 'facade' | 'furnish' | 'glass';
 export type ShopLook = { type: ShopTypeId | null; name: string; w: number; h: number; doorSide: 'left' | 'right'; state: FacadeState; placard: boolean; day: number; lit: boolean; seed: number };
 
-export const quantDay = (daylight: number): number => Math.round(daylight * 8) / 8;
+export { quantDay };
 
 export function shopKey(l: ShopLook, layer: ShopLayer): string {
   const common = `${layer}|${l.type ?? '-'}|${l.w.toFixed(1)}|${l.h.toFixed(1)}|${l.doorSide}|${l.state}|${l.lit ? 'L' : l.day}|${l.seed}`;
@@ -33,21 +34,8 @@ export function layerBox(l: ShopLook, layer: ShopLayer): { x: number; y: number;
   return { x: -FACADE_MARGIN.left, y: -FACADE_MARGIN.top, w: l.w + FACADE_MARGIN.left + FACADE_MARGIN.right, h: GROUND_FLOOR_H + FACADE_MARGIN.top + FACADE_MARGIN.bottom };
 }
 
-let surface: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null | undefined;
-function getSurface(): typeof surface {
-  if (surface !== undefined) return surface;
-  try {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    surface = ctx ? { canvas, ctx } : null;
-  } catch {
-    surface = null;
-  }
-  return surface;
-}
-
 export function paintShopLayer(l: ShopLook, layer: ShopLayer): string {
-  const s = getSurface();
+  const s = paintSurface();
   if (!s) return BLANK_SPRITE;
   const box = layerBox(l, layer);
   const { canvas, ctx } = s;
@@ -70,64 +58,11 @@ export function paintShopLayer(l: ShopLook, layer: ShopLayer): string {
   return canvas.toDataURL('image/png');
 }
 
-export class ShopRegistry {
-  private readonly sprites = new Map<string, string>();
-  private readonly queue = new Map<string, { paint: () => string; done: Set<() => void> }>();
-  private pending = false;
-  private readonly max: number;
-  private readonly perFrame: number;
-  private readonly schedule: (cb: () => void) => void;
-  constructor(
-    readonly label: string,
-    opts: { max?: number; perFrame?: number; schedule?: (cb: () => void) => void } = {},
-  ) {
-    // 4 calques Ghibli par boutique (fond, mobilier, vitre, façade) × ~60 boutiques de la rue la plus large
-    // (MAX_COLS) + marge : le plafond ne doit jamais évincer la vitre/façade, sinon les murs disparaissent.
-    this.max = opts.max ?? 400;
-    this.perFrame = opts.perFrame ?? 1;
-    this.schedule = opts.schedule ?? ((cb) => void requestAnimationFrame(() => cb()));
-  }
-  size(): number {
-    return this.sprites.size;
-  }
-  // Image de la clé (rang rafraîchi : la moins récemment lue part en premier au-delà du plafond), sinon null.
-  get(k: string): string | null {
-    const url = this.sprites.get(k);
-    if (url === undefined) return null;
-    this.sprites.delete(k);
-    this.sprites.set(k, url);
-    return url;
-  }
-  // Demande de peinture : `done` est appelé quand l'image est prête. Rend l'annulation : une clé dont plus personne
-  // n'attend l'image (clé changée, composant démonté) n'est pas peinte.
-  want(k: string, paint: () => string, done: () => void): () => void {
-    const q = this.queue.get(k);
-    if (q) q.done.add(done);
-    else this.queue.set(k, { paint, done: new Set([done]) });
-    this.pump();
-    return () => {
-      const p = this.queue.get(k);
-      if (!p) return;
-      p.done.delete(done);
-      if (p.done.size === 0) this.queue.delete(k);
-    };
-  }
-  private pump(): void {
-    if (this.pending || this.queue.size === 0) return;
-    this.pending = true;
-    this.schedule(() => {
-      this.pending = false;
-      let made = 0;
-      for (const [k, q] of [...this.queue]) {
-        if (made >= this.perFrame) break;
-        this.queue.delete(k);
-        this.sprites.set(k, q.paint());
-        made++;
-        while (this.sprites.size > this.max) this.sprites.delete(this.sprites.keys().next().value as string);
-        for (const d of q.done) d();
-      }
-      this.pump();
-    });
+// 4 calques Ghibli par boutique (fond, mobilier, vitre, façade) × ~60 boutiques de la rue la plus large
+// (MAX_COLS) + marge : le plafond ne doit jamais évincer la vitre/façade, sinon les murs disparaissent.
+export class ShopRegistry extends PaintRegistry {
+  constructor(label: string, opts: { max?: number; perFrame?: number; schedule?: (cb: () => void) => void } = {}) {
+    super(label, { max: 400, perFrame: 1, ...opts });
   }
 }
 

@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
+import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
 import { MIN_PITCH, NightclubDoor, entryScript, queueFrame, queueLayout, type EntryScript } from '../../src/content/shop-queue';
 import { THRESHOLD_S } from '../../src/core/library/city/doorway';
 import { ADVANCE_S, queueAt, queueWalkSpeed } from '../../src/core/library/city/shops/queue';
@@ -187,6 +188,58 @@ describe('terrasse : rendu (ShopTerrace)', () => {
       for (const t of tables(host)) expect((t as SVGGElement).style.transition).toBe('');
     }
     expect(seated).toBeGreaterThan(0);
+  });
+});
+
+// G5 : mobilier en images cellulo (registre d'accessoires) ; le classique reste le repli tant que l'image n'est pas cuite.
+describe('terrasse et cordon : cellulo en Ghibli (G5)', () => {
+  // Images du mobilier (pas celles des pantins) ; `before` : combien avant que la file ait cuit les images.
+  const FURNITURE = '[data-table-top] > image, [data-terrace-chair] > image, [data-parasol] > image, [data-cordon] image';
+  const cooked = async (node: ReactNode): Promise<{ host: HTMLDivElement; before: number }> => {
+    const jobs: (() => void)[] = [];
+    const reg = new PropRegistry('t', { schedule: (cb) => jobs.push(cb) });
+    const { host } = render(<PropContext.Provider value={reg}>{node}</PropContext.Provider>);
+    const before = host.querySelectorAll(FURNITURE).length;
+    while (jobs.length) await act(async () => jobs.shift()!());
+    return { host, before };
+  };
+  it('tables, chaises et parasols : repli classique puis une image chacun ; la chaise gauche par orientation, jamais par miroir', async () => {
+    const { host, before } = await cooked(
+      <svg>
+        <ShopTerrace view={viewOf('cafe', SAT, 12 * 60)} frame={frame} metrics={metrics} minutes={12 * 60} date={SAT} weather={{ now: SUN, before: SUN }} crowd={1} reduced={false} sky={skyAt(12 * 60, times)} seed={SEED} waiterOutfit={waiter} ghibli />
+      </svg>,
+    );
+    expect(before).toBe(0);
+    const n = tables(host).length;
+    expect(n).toBeGreaterThanOrEqual(2);
+    expect(host.querySelectorAll('[data-table-top] > image')).toHaveLength(n);
+    expect(host.querySelectorAll('[data-parasol] > image')).toHaveLength(n);
+    const chairs = [...host.querySelectorAll('[data-terrace-chair]')];
+    expect(chairs).toHaveLength(2 * n);
+    for (const c of chairs) {
+      expect(c.getAttribute('transform')).not.toContain('scale');
+      expect(c.querySelector(':scope > image')).not.toBeNull();
+    }
+    // Deux images de chaise seulement (une par côté), partagées par toutes les tables.
+    const hrefs = new Set(chairs.map((c) => c.querySelector('image')!.getAttribute('href')));
+    expect(hrefs.size).toBeLessThanOrEqual(2);
+  });
+  it('classique : aucune image, chaises en miroir comme avant', () => {
+    const { host } = render(terrace('cafe', 12 * 60, SUN));
+    expect(host.querySelectorAll(FURNITURE)).toHaveLength(0);
+    for (const c of host.querySelectorAll('[data-terrace-chair]')) expect(c.getAttribute('transform')).toContain('scale(');
+  });
+  it('cordon : deux poteaux en image, corde cellulo en trois traits (encre, velours, rehaut)', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { host, before } = await cooked(
+      <svg>
+        <NightclubDoor view={viewOf('nightclub', SAT, 30)} frame={frame} metrics={metrics} minutes={30} date={SAT} reduced={false} sky={skyAt(30, times)} seed={SEED} sessionT0={NOW / 1000 - 600} width={W} ghibli />
+      </svg>,
+    );
+    expect(before).toBe(0);
+    const cordon = host.querySelector('[data-cordon]')!;
+    expect(cordon.querySelectorAll('image')).toHaveLength(2);
+    expect(cordon.querySelectorAll(':scope > path')).toHaveLength(3);
   });
 });
 

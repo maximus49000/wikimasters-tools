@@ -42,7 +42,7 @@ function useLingering(on: boolean, ms: number): boolean {
 // Les lampadaires ne sont pas ici : ils sont dans le calque animé, devant les passants (StreetLamps, city-life.tsx).
 // Locaux commerciaux (vague 1b-iv-a) : devanture et intérieur dans le décor fixe ; clients et équipe du chantier dans le
 // calque animé (city-shops-life.tsx). Sans `city.shops`, aucun commerce n'est dessiné.
-export function CityScene({ width, height, sky, minutes, seed, gloom = false, city, forcedNight = false }: SceneBodyProps): ReactElement {
+export function CityScene({ width, height, sky, minutes, seed, gloom = false, rainy = false, city, forcedNight = false }: SceneBodyProps): ReactElement {
   const metrics = cityMetrics(height);
   const { ground, unit } = metrics;
   const far = mixHex('#232B5C', '#9FB4C8', sky.daylight);
@@ -64,6 +64,15 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
   const plan = useMemo(() => (lingering ? cityPaintPlan(width, height, seed) : null), [lingering, width, height, seed]);
   const painted = usePaintedCity(plan);
   const gradeId = useId().replace(/:/g, '');
+  // Vitrines pour la lumière de nuit (G5) : vitre de chaque local, allumée la nuit quand le commerce est ouvert (comme ShopFront).
+  const nightShops = useMemo(
+    () =>
+      views.flatMap((view) => {
+        const f = frames.get(view.slot.id);
+        return f ? [{ x: f.window.x, w: f.window.w, top: f.window.y, lit: dark && view.phase === 'open' }] : [];
+      }),
+    [views, frames, dark],
+  );
   const farBlocks =
   buildings.filter((b) => b.far).map((b, i) => (
       <g key={`f${i}`}>
@@ -208,8 +217,9 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ci
             <image key={t.x} data-painted-tile={t.x} href={t.url} x={t.x} y={0} width={t.w} height={height} preserveAspectRatio="none" />
           ))}
         </g>
+        {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}
+        <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} plan={plan} shops={nightShops} rainy={rainy} />
         <GhibliWindows buildings={buildings} minutes={minutes} gloom={gloom} dim={dim} farLight={FAR_LIGHT} />
-        <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} />
         <GhibliEntranceLights doors={doors} unit={unit} doorY={metrics.doorY} dark={dark} />
       </g>
       {shopFronts}

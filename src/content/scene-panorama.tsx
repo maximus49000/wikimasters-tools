@@ -10,6 +10,7 @@ import { CityLifeLayer, StreetLamps } from './city-life';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
 import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
+import { PropContext, PropRegistry } from './prop/prop-host';
 import { CityScene } from './scene-city';
 import { GhibliMoon, GhibliSkyTexture, GhibliStarCrosses, GhibliSun, fadeStyle, reducedMotion, useShownAfterMount } from './ghibli-sky';
 import { usePaintedSky, type PaintedSky } from './painted-sky';
@@ -182,7 +183,7 @@ function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = fal
       {/* Ville : la population (passants, habitants, circulation) a sa propre couche et sa propre boucle. */}
       {scene === 'city' && city && <CityLifeLayer width={width} height={height} sky={sky} seed={seed} city={city} rainy={rainy} forcedNight={forcedNight} weather={weather} />}
       {/* Sans contexte de ville (pas de population), les lampadaires restent : ils sont dans ce calque pour passer devant les passants. */}
-      {scene === 'city' && !city && <StreetLamps width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} forcedNight={forcedNight} />}
+      {scene === 'city' && !city && <StreetLamps width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} forcedNight={forcedNight} ghibli={art === 'ghibli'} />}
     </g>
   );
 }
@@ -202,15 +203,21 @@ export function ScenePanorama(props: PanoramaProps): ReactElement {
   const figures = useMemo(() => new FigureRegistry(`pf${uid}`, { max: FIGURE_SPRITES_MAX }), [uid]);
   const cars = useMemo(() => new CarRegistry(`pc${uid}`), [uid]);
   const shops = useMemo(() => new ShopRegistry(`ps${uid}`), [uid]);
+  // Accessoires de rue Ghibli (G5) : une instance partagée par le décor fixe et les acteurs.
+  const propSprites = useMemo(() => new PropRegistry(`pp${uid}`), [uid]);
   return (
     <g data-panorama-full="">
       <ShopContext.Provider value={shops}>
+      <PropContext.Provider value={propSprites}>
         <ScenePanoramaStatic {...props} />
+      </PropContext.Provider>
       </ShopContext.Provider>
       <FigureContext.Provider value={figures}>
         <ShopContext.Provider value={shops}>
         <CarContext.Provider value={cars}>
+        <PropContext.Provider value={propSprites}>
           <SceneActors {...props} />
+        </PropContext.Provider>
         </CarContext.Provider>
         </ShopContext.Provider>
       </FigureContext.Provider>

@@ -122,9 +122,9 @@ export function fanArms(s: Pick<MusicSpectator, 'beer' | 'phase'>, dance: boolea
   return s.phase < 0.35 ? 'cheer' : s.phase < 0.6 ? 'raise' : 'swing';
 }
 const standPose = (s: MusicSpectator, dance: boolean, t: number, still: boolean): PoseIn => ({ yaw: s.yaw, gait: 'stand', phase: 0, head: 0, arms: fanArms(s, dance, t, still) });
-// Gobelet tenu à la main droite du pantin (poignet à l'origine, la main le serre à mi-hauteur).
+// Gobelet tenu à la main droite du pantin (poignet à l'origine, la main le serre à mi-hauteur) : image cellulo `beer-cup`.
 function HeldCup({ sky }: { sky: Sky }): ReactElement {
-  return <g data-held-cup="" transform="translate(0 2.2) scale(1.1)"><BeerCup sky={sky} /></g>;
+  return <g data-held-cup="" transform="translate(0 2.2) scale(1.1)"><BeerCup sky={sky} ghibli /></g>;
 }
 const cupHeld = (sky: Sky): Held[] => [{ anchor: 'handR', node: <HeldCup sky={sky} /> }];
 // Le serveur tend le gobelet les CUP_S dernières secondes du service (le client tend la main) ; avant, il tire la bière.

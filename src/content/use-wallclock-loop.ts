@@ -2,10 +2,13 @@ import { useEffect } from 'react';
 
 // Boucle d'animation sur l'horloge murale : toutes les vues du monde (y compris une copie <use>) voient le même instant.
 // `place` est appelée tout de suite, puis à chaque image (au plus une toutes les `frameMs` ms) tant que la page est visible ;
-// pas de boucle si l'utilisateur préfère réduire les animations (ou si le navigateur n'a pas requestAnimationFrame).
-export function useWallClockLoop(place: (nowSeconds: number) => void, deps: readonly unknown[], opts: { frameMs?: number } = {}): void {
+// pas de boucle si l'utilisateur préfère réduire les animations (ou si le navigateur n'a pas requestAnimationFrame), ni si
+// `enabled` est faux (rien n'est appelé : l'appelant a figé sa pose).
+export function useWallClockLoop(place: (nowSeconds: number) => void, deps: readonly unknown[], opts: { frameMs?: number; enabled?: boolean } = {}): void {
   const frameMs = opts.frameMs ?? 33;
+  const enabled = opts.enabled ?? true;
   useEffect(() => {
+    if (!enabled) return;
     place(Date.now() / 1000);
     const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (still || typeof window.requestAnimationFrame !== 'function') return;
@@ -20,5 +23,5 @@ export function useWallClockLoop(place: (nowSeconds: number) => void, deps: read
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, enabled]);
 }

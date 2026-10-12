@@ -1,42 +1,201 @@
-import { useMemo, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useReducer, type ReactElement } from 'react';
 import { lampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
-import { mulberry32 } from '../core/library/scene-world';
+import { LANTERN, lampBlobs, patchBox, shopBlobs, wetHalfWidth, wetStrokes } from '../core/library/city/night-light';
+import { PAINT_VERSION } from '../core/library/paint/city-painter';
+import type { CityPaintPlan } from '../core/library/paint/city-plan';
+import { idle } from './paint-queue';
+import { PaintRegistry } from './paint-registry';
+import { AMBER, AMBER_CORE, litPatchPainter, paintWetColumn } from './painted-city';
 
-// Lumière des lampadaires la nuit sur la ville peinte (vague Ghibli, décor cellulo), hors filtre d'étalonnage : halo à
-// deux tons autour de la lanterne, cône discret, flaque à deux tons à bord net sur le trottoir et la chaussée, reflets en
-// traits sur les pavés. Un groupe par lampadaire (`lampsFor`), allumé selon la même règle que le sprite (`lampLit`) ;
-// `dim` règle l'intensité (nuit ou ciel couvert). La lanterne du sprite (LampSprite) est en (9, −77) × échelle.
-const LANTERN = { dx: 9, dy: -77 } as const;
+// Lumière de nuit de la ville peinte (G5, « deux peintures », maquette g5-fetes notes §5), hors filtre d'étalonnage. Les
+// tranches de nuit restent bleues ; par lampadaire allumé et par vitrine allumée, une DÉCOUPE de la version éclairée du décor
+// de jour (painted-city.ts, paintLitPatch) est posée par-dessus : près de la lumière, le décor retrouve ses couleurs,
+// réchauffées. Dans l'air, seul un bloom serré autour du verre (le sprite du lampadaire ne peint que le verre allumé) ; sous
+// la pluie, halo diffus, cône très léger et colonne de lumière en traits sur la chaussée mouillée. Pas de reflet inversé
+// flou (hors premier portage, notes §5 (d)).
+// Un groupe par lampadaire (`lampsFor`), allumé selon la même règle que le sprite (`lampLit`) ; `dim` règle l'intensité
+// (nuit ou ciel couvert), avec la transition d'opacité de 4 s des lumières de la ville.
 
-type Props = { width: number; height: number; seed: number; minutes: number; daylight: number; dim: number; forcedNight?: boolean };
+export type NightShop = { x: number; w: number; top: number; lit: boolean };
+type Props = {
+  width: number;
+  height: number;
+  seed: number;
+  minutes: number;
+  daylight: number;
+  dim: number;
+  forcedNight?: boolean;
+  plan: CityPaintPlan | null;
+  shops: readonly NightShop[];
+  rainy: boolean;
+};
 
-export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, forcedNight = false }: Props): ReactElement {
+const FADE = 'opacity 4s ease';
+// Découpes et colonnes de pluie : au plus une peinture par image d'animation, partagées par toutes les scènes (même graine).
+const NIGHT_MAX = 160;
+let registry = new PaintRegistry('night-light', { max: NIGHT_MAX, perFrame: 1, schedule: (cb) => void idle(cb) });
+export function resetNightLightForTests(): void {
+  registry = new PaintRegistry('night-light', { max: NIGHT_MAX, perFrame: 1, schedule: (cb) => void idle(cb) });
+}
+
+type Job = { key: string; paint: () => string };
+
+// Images de nuit voulues : demandées au registre (rien n'est demandé sans tâche : jamais de découpe de jour) ; re-rendu
+// quand une image arrive. La lecture se fait par `registry.get` au rendu.
+function useNightImages(jobs: readonly Job[]): void {
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const sig = jobs.map((j) => j.key).join('\n');
+  useEffect(() => {
+    const cancels = jobs.filter((j) => registry.get(j.key) === null).map((j) => registry.want(j.key, j.paint, bump));
+    return () => {
+      for (const c of cancels) c();
+    };
+    // `sig` résume les clés : les tâches recréées à chaque rendu avec les mêmes clés ne relancent rien.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
+}
+
+export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, forcedNight = false, plan, shops, rainy }: Props): ReactElement {
   const lamps = useMemo(() => lampsFor(width, seed), [width, seed]);
   const m = cityMetrics(height);
   const k = m.unit * STREET_SCALE.lamp;
   const u = m.unit;
+  const depth = m.farSide - m.curb;
+  const ids = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const bloomId = `${ids}-bloom`;
+  const haloId = `${ids}-halo`;
+  const coneId = `${ids}-cone`;
+  const base = `${seed}|${width}|${height}|${PAINT_VERSION}`;
+
+  const lampViews = lamps.map((lamp) => {
+    const lit = lampLit(lamp, minutes, daylight, forcedNight);
+    const blobs = lampBlobs(lamp.x, m.curb, u, k);
+    const hw = 7 * u;
+    return {
+      lamp,
+      lit,
+      blobs,
+      box: patchBox(blobs),
+      patchKey: `lamp|${base}|${lamp.x}|${k.toFixed(3)}`,
+      wetKey: `wet|${seed}|${lamp.x}|${u.toFixed(3)}|${depth.toFixed(1)}`,
+      hw,
+      colW: 2 * wetHalfWidth(hw, u),
+    };
+  });
+  const shopViews = shops.map((s, i) => {
+    const blobs = shopBlobs(s.x, s.w, m.ground, s.top, u);
+    const hw = 0.22 * s.w;
+    return {
+      shop: s,
+      i,
+      blobs,
+      box: patchBox(blobs),
+      patchKey: `shop|${base}|${s.x.toFixed(1)}|${s.w.toFixed(1)}|${s.top.toFixed(1)}`,
+      wetKey: `wet|${seed}|${(s.x + s.w / 2).toFixed(1)}|${hw.toFixed(2)}|${u.toFixed(3)}|${depth.toFixed(1)}`,
+      hw,
+      colW: 2 * wetHalfWidth(hw, u),
+    };
+  });
+
+  // Tâches : seulement pour ce qui est allumé (une découpe n'est jamais peinte de jour).
+  const jobs: Job[] = [];
+  const paintPatch = litPatchPainter();
+  const wetJob = (key: string, x: number, hw: number, w: number): Job => ({
+    key,
+    paint: () => paintWetColumn(wetStrokes(hw, depth, u, (seed ^ Math.round(x * 131)) >>> 0), w, depth),
+  });
+  for (const v of lampViews) {
+    if (!v.lit) continue;
+    if (plan) jobs.push({ key: v.patchKey, paint: () => paintPatch(plan, v.box, v.blobs) });
+    if (rainy) jobs.push(wetJob(v.wetKey, v.lamp.x, v.hw, v.colW));
+  }
+  for (const v of shopViews) {
+    if (!v.shop.lit) continue;
+    if (plan) jobs.push({ key: v.patchKey, paint: () => paintPatch(plan, v.box, v.blobs) });
+    if (rainy) jobs.push(wetJob(v.wetKey, v.shop.x + v.shop.w / 2, v.hw, v.colW));
+  }
+  useNightImages(jobs);
+
+  // Image cuite (gardée pendant le fondu de sortie quand la lumière s'éteint), sinon rien.
+  const patchImage = (key: string, box: { x: number; y: number; w: number; h: number }, shop = false): ReactElement | null => {
+    const url = plan ? registry.get(key) : null;
+    return url ? <image data-lit-patch="" data-shop={shop ? '' : undefined} href={url} x={box.x} y={box.y} width={box.w} height={box.h} preserveAspectRatio="none" /> : null;
+  };
+  const column = (key: string, cx: number, w: number): ReactElement => {
+    const url = registry.get(key);
+    return (
+      <g data-rain-column="">
+        {url ? <image href={url} x={(cx - w / 2).toFixed(1)} y={m.curb.toFixed(1)} width={w.toFixed(1)} height={depth.toFixed(1)} preserveAspectRatio="none" /> : null}
+      </g>
+    );
+  };
+
   return (
     <g data-ghibli-night="">
-      {lamps.map((lamp) => {
-        const lit = lampLit(lamp, minutes, daylight, forcedNight);
-        const gx = lamp.x + LANTERN.dx * k;
-        const gy = m.curb + LANTERN.dy * k;
-        const rng = mulberry32(seed ^ (lamp.x * 7919));
-        const streaks = Array.from({ length: 6 }, (_, i) => ({ x: lamp.x + 3 * u + (rng() - 0.5) * 5 * u, w: (1.2 + rng() * 2) * u, y: m.curb + (2 + i * 5) * u, a: 0.45 - i * 0.05 }));
-        return (
-          <g key={lamp.id} data-night-lamp={lamp.id} data-lit={lit ? 'true' : 'false'} opacity={lit ? dim : 0} style={{ transition: 'opacity 4s ease' }}>
-            <circle cx={gx} cy={gy + 4 * u} r={22 * u} fill="#FFDC8C" opacity={0.18} />
-            <circle cx={gx} cy={gy + 4 * u} r={11 * u} fill="#FFE6A0" opacity={0.3} />
-            <path d={`M${(gx - 3 * u).toFixed(1)} ${gy.toFixed(1)}H${(gx + 3 * u).toFixed(1)}L${(gx + 30 * u).toFixed(1)} ${(m.curb + 10 * u).toFixed(1)}H${(gx - 26 * u).toFixed(1)}Z`} fill="#FFD78C" opacity={0.05} />
-            <ellipse cx={lamp.x + 3 * u} cy={m.curb - 2 * u} rx={46 * u} ry={13 * u} fill="#FFD78C" opacity={0.26} />
-            <ellipse cx={lamp.x + 3 * u} cy={m.curb - 2 * u} rx={24 * u} ry={7 * u} fill="#FFE6AA" opacity={0.42} />
-            {streaks.map((s, i) => (
-              <rect key={i} x={(s.x - s.w / 2).toFixed(1)} y={s.y.toFixed(1)} width={s.w.toFixed(1)} height={(3.6 * u).toFixed(1)} fill="#FFE1A0" opacity={s.a.toFixed(2)} />
+      <defs>
+        {/* Bloom du verre : cœur ambre pâle α 0,85 → ambre 0,45 à 30 % → 0. */}
+        <radialGradient id={bloomId}>
+          <stop offset="0" stopColor={AMBER_CORE} stopOpacity={0.85} />
+          <stop offset="0.3" stopColor={AMBER} stopOpacity={0.45} />
+          <stop offset="1" stopColor={AMBER} stopOpacity={0} />
+        </radialGradient>
+        {/* Pluie : halo diffus r 22u et cône vertical très léger. */}
+        <radialGradient id={haloId}>
+          <stop offset="0" stopColor={AMBER} stopOpacity={0.22} />
+          <stop offset="0.5" stopColor={AMBER} stopOpacity={0.07} />
+          <stop offset="1" stopColor={AMBER} stopOpacity={0} />
+        </radialGradient>
+        <linearGradient id={coneId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={AMBER} stopOpacity={0.12} />
+          <stop offset="1" stopColor={AMBER} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      {/* Vitrines allumées : découpe sur le mur autour et sur le trottoir (la devanture peinte passe par-dessus). */}
+      <g data-night-shops="">
+        {shopViews.map((v) => (
+          <g key={v.i} data-night-shop={v.i} data-lit={v.shop.lit ? 'true' : 'false'} opacity={v.shop.lit ? dim : 0} style={{ transition: FADE }}>
+            {patchImage(v.patchKey, v.box, true)}
+          </g>
+        ))}
+      </g>
+      {lampViews.map((v) => (
+        <g key={v.lamp.id} data-night-lamp={v.lamp.id} data-lit={v.lit ? 'true' : 'false'} opacity={v.lit ? dim : 0} style={{ transition: FADE }}>
+          {patchImage(v.patchKey, v.box)}
+        </g>
+      ))}
+      {/* Lumière « dans l'air », en screen : UN seul groupe de fusion (l'opacité du groupe de la découpe isolerait le mélange). */}
+      <g style={{ mixBlendMode: 'screen' }}>
+        {lampViews.map((v) => {
+          const gx = v.lamp.x + LANTERN.dx * k;
+          const gy = m.curb + LANTERN.dy * k;
+          return (
+            <g key={v.lamp.id} data-night-glow={v.lamp.id} opacity={v.lit ? dim : 0} style={{ transition: FADE }}>
+              <circle data-bloom="" cx={gx.toFixed(1)} cy={gy.toFixed(1)} r={(6 * k).toFixed(2)} fill={`url(#${bloomId})`} />
+              {rainy && (
+                <>
+                  <circle data-rain-halo="" cx={gx.toFixed(1)} cy={gy.toFixed(1)} r={(22 * u).toFixed(2)} fill={`url(#${haloId})`} />
+                  <path
+                    data-rain-cone=""
+                    d={`M${(gx - 4 * k).toFixed(1)} ${gy.toFixed(1)}H${(gx + 4 * k).toFixed(1)}L${(gx + 22 * u).toFixed(1)} ${m.curb.toFixed(1)}H${(gx - 26 * u).toFixed(1)}Z`}
+                    fill={`url(#${coneId})`}
+                  />
+                  {column(v.wetKey, v.lamp.x + 3 * u, v.colW)}
+                </>
+              )}
+            </g>
+          );
+        })}
+        {rainy && (
+          <g data-night-shop-glow="">
+            {shopViews.map((v) => (
+              <g key={v.i} opacity={v.shop.lit ? dim : 0} style={{ transition: FADE }}>
+                {column(v.wetKey, v.shop.x + v.shop.w / 2, v.colW)}
+              </g>
             ))}
           </g>
-        );
-      })}
+        )}
+      </g>
     </g>
   );
 }

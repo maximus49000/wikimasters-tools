@@ -12,7 +12,17 @@ export function recordingCtx(): RecordingCtx {
   const fills: string[] = [];
   const texts: string[] = [];
   const log = (op: string, args: number[] = []): void => void ops.push({ op, args });
-  const pt = (x: number, y: number): void => void points.push([x, y]);
+  // Rognage : `clip()` borne les points suivants à la boîte du chemin en cours (ombres et rehauts de `cel` débordent la
+  // forme et sont rognés par elle) ; save/restore empilent la boîte. Points du chemin en cours gardés pour la boîte.
+  type Clip = [number, number, number, number] | null;
+  let clip: Clip = null;
+  const clips: Clip[] = [];
+  let path: [number, number][] = [];
+  const pt = (x: number, y: number): void => {
+    path.push([x, y]);
+    if (clip) [x, y] = [Math.min(clip[2], Math.max(clip[0], x)), Math.min(clip[3], Math.max(clip[1], y))];
+    points.push([x, y]);
+  };
   const ctx: RecordingCtx = {
     ops,
     points,
@@ -22,19 +32,25 @@ export function recordingCtx(): RecordingCtx {
     lineWidth: 1,
     globalAlpha: 1,
     globalCompositeOperation: 'source-over',
-    save: () => log('save'),
-    restore: () => log('restore'),
-    beginPath: () => log('beginPath'),
+    save: () => { log('save'); clips.push(clip); },
+    restore: () => { log('restore'); clip = clips.length ? clips.pop()! : null; },
+    beginPath: () => { log('beginPath'); path = []; },
     closePath: () => log('closePath'),
     moveTo: (x, y) => { log('moveTo', [x, y]); pt(x, y); },
     lineTo: (x, y) => { log('lineTo', [x, y]); pt(x, y); },
     quadraticCurveTo: (cx, cy, x, y) => { log('quadraticCurveTo', [cx, cy, x, y]); pt(cx, cy); pt(x, y); },
-    ellipse: (x, y, rx, ry, rot, a0, a1) => { log('ellipse', [x, y, rx, ry, rot, a0, a1]); const m = Math.max(rx, ry); pt(x - m, y - m); pt(x + m, y + m); },
+    // Boîte exacte d'une ellipse droite ; tournée, le carré du grand rayon (englobant sûr).
+    ellipse: (x, y, rx, ry, rot, a0, a1) => { log('ellipse', [x, y, rx, ry, rot, a0, a1]); const [mx, my] = rot ? [Math.max(rx, ry), Math.max(rx, ry)] : [rx, ry]; pt(x - mx, y - my); pt(x + mx, y + my); },
     arc: (x, y, r, a0, a1) => { log('arc', [x, y, r, a0, a1]); pt(x - r, y - r); pt(x + r, y + r); },
     rect: (x, y, w, h) => { log('rect', [x, y, w, h]); pt(x, y); pt(x + w, y + h); },
     fill: () => { log('fill'); fills.push(String(ctx.fillStyle)); },
     stroke: () => log('stroke'),
-    clip: () => log('clip'),
+    clip: () => {
+      log('clip');
+      if (!path.length) return;
+      const box: Clip = [Math.min(...path.map((p) => p[0])), Math.min(...path.map((p) => p[1])), Math.max(...path.map((p) => p[0])), Math.max(...path.map((p) => p[1]))];
+      clip = clip ? [Math.max(clip[0], box[0]), Math.max(clip[1], box[1]), Math.min(clip[2], box[2]), Math.min(clip[3], box[3])] : box;
+    },
     fillRect: (x, y, w, h) => { log('fillRect', [x, y, w, h]); pt(x, y); pt(x + w, y + h); fills.push(String(ctx.fillStyle)); },
     strokeRect: (x, y, w, h) => { log('strokeRect', [x, y, w, h]); pt(x, y); pt(x + w, y + h); },
     texts,
@@ -53,6 +69,7 @@ export function recordingCtx(): RecordingCtx {
     // Largeur approchée : 0,55 em par caractère (taille lue dans `font`, 10 px par défaut).
     measureText: (s) => ({ width: s.length * 0.55 * Number(/(\d+(?:\.\d+)?)px/.exec(ctx.font)?.[1] ?? 10) }),
     createLinearGradient: (x0, y0, x1, y1): GradientLike => { log('gradient', [x0, y0, x1, y1]); return { addColorStop: () => undefined }; },
+    createRadialGradient: (x0, y0, r0, x1, y1, r1): GradientLike => { log('gradient', [x0, y0, r0, x1, y1, r1]); return { addColorStop: () => undefined }; },
   };
   return ctx;
 }

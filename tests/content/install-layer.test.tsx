@@ -14,7 +14,9 @@ import { dayNumber } from '../../src/core/library/city/shops/hours';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { DARK } from '../../src/core/library/city/events';
 import { BARRIER, STAGE } from '../../src/content/install-sprites';
-import { barrierK } from '../../src/content/install-layer';
+import { PropContext, PropRegistry, propKey } from '../../src/content/prop/prop-host';
+import { FLAG_PHASE_PX, barrierK, collectFlags, placeFlags } from '../../src/content/install-layer';
+import { FLAG_CYCLE_S, FLAG_FRAMES } from '../../src/core/library/paint/props/install';
 import { MUSICIANS, musicianAt } from '../../src/content/stage-band';
 import { VAN_SPEED } from '../../src/core/library/city/van';
 
@@ -672,5 +674,225 @@ describe('véhicules des équipes en Ghibli (V5)', () => {
     const c = find(D14, 360, 540, (x) => !!x.querySelector('[data-install-van]'), false);
     expect(c).not.toBeNull();
     expect(c!.querySelector('[data-scripted-car]')).toBeNull();
+  });
+});
+
+// G5 : installations en images cellulo (registre d'accessoires) ; le classique reste le repli tant que l'image n'est pas cuite.
+describe('installations cellulo en Ghibli (G5)', () => {
+  // Registre à cuisson manuelle : les images ne sont cuites que lorsque `jobs` est vidé.
+  // `keyed` : registre dont l'« image » est la clé elle-même (jsdom n'a pas de canvas : toutes les images cuites sont le
+  // même sprite vide) ; les href disent alors quelle pose est posée.
+  class KeyedRegistry extends PropRegistry {
+    override want(k: string, _paint: () => string, done: () => void): () => void {
+      return super.want(k, () => `url:${k}`, done);
+    }
+  }
+  const gLayer = (date: YMD, minutes: number, ghibli = true, still = false, keyed = false): { host: HTMLDivElement; jobs: (() => void)[]; reg: PropRegistry } => {
+    const jobs: (() => void)[] = [];
+    const reg = new (keyed ? KeyedRegistry : PropRegistry)('t', { schedule: (cb) => jobs.push(cb) });
+    const host = render(
+      <PropContext.Provider value={reg}>
+        <svg>
+          <InstallLayer width={W} height={H} seed={SEED} sky={skyOf(minutes)} still={still} date={date} minutes={minutes} metrics={metrics} rainy={false} ghibli={ghibli} />
+        </svg>
+      </PropContext.Provider>,
+    );
+    return { host, jobs, reg };
+  };
+  const bake = async (jobs: (() => void)[]): Promise<void> => {
+    while (jobs.length) await act(async () => jobs.shift()!());
+  };
+  const unmountAll = (): void => {
+    for (const { root, host } of mounted.splice(0)) {
+      act(() => root.unmount());
+      host.remove();
+    }
+  };
+  // Première minute de [from, to) où `ok` est vrai (calque monté, non cuit).
+  const find = (date: YMD, from: number, to: number, ok: (c: HTMLDivElement) => boolean): { host: HTMLDivElement; jobs: (() => void)[] } => {
+    for (let m = from; m < to; m++) {
+      const r = gLayer(date, m);
+      if (ok(r.host)) return r;
+      unmountAll();
+    }
+    throw new Error('aucune minute');
+  };
+  // Images des installations (pas celles des pantins).
+  const INSTALL = '[data-barrier-art] image, [data-stage-part] image, [data-lift-bucket] > g > image, [data-held-piece] image, [data-flatbed-load] image, [data-cargo-bike-art] image, [data-van-ladder] image, [data-ladder] image, [data-flag-crate] image';
+
+  it('scène posée (21/6 à 20 h) : plancher, ossature et projecteurs en sprite classique avant cuisson, puis une image chacun ; attributs conservés', async () => {
+    const { host, jobs } = gLayer(MUSIC, 20 * 60);
+    expect(count(host, INSTALL)).toBe(0);
+    expect(count(host, '[data-decor-kind="stage-floor"] rect')).toBeGreaterThan(0);
+    await bake(jobs);
+    for (const kind of ['stage-floor', 'stage-frame', 'stage-spots']) {
+      const g = host.querySelector(`[data-decor-item][data-decor-kind="${kind}"][data-decor-set][data-decor-phase="present"]`)!;
+      expect(g, kind).not.toBeNull();
+      // Les projecteurs portent aussi les extras de concert (tâche 7 : façade son, retours, rampe LED, lyres, contre-jours).
+      expect(g.querySelectorAll('image')).toHaveLength(kind === 'stage-spots' ? 2 : 1);
+      expect(g.querySelectorAll('rect, line, circle, polyline')).toHaveLength(0);
+    }
+    expect(count(host, '[data-decor-kind="stage-spots"] [data-stage-extras] image')).toBe(1);
+    // Repères vides conservés après cuisson (la tâche 7 s'y accroche) : toile de fond, un par projecteur.
+    expect(count(host, '[data-decor-kind="stage-frame"] [data-stage-backdrop]')).toBe(1);
+    expect(count(host, '[data-decor-kind="stage-spots"] [data-stage-spot]')).toBe(3);
+  }, 60000);
+
+  it('nuit de concert (23 h) : le vrai éclairage de concert (tâche 7) remplace les faisceaux, sans SMIL ; classique inchangé', () => {
+    const { host } = gLayer(MUSIC, 23 * 60);
+    expect(count(host, '[data-concert-light]')).toBe(1);
+    expect(count(host, '[data-stage-beams], [data-stage-beam]')).toBe(0);
+    expect(count(host, '[data-concert-light] animate, [data-concert-light] animateTransform')).toBe(0);
+    expect(count(host, '[data-concert-beam]')).toBe(10);
+    unmountAll();
+    expect(count(gLayer(MUSIC, 23 * 60, true, true).host, '[data-concert-light]')).toBe(1);
+    unmountAll();
+    const classic = gLayer(MUSIC, 23 * 60, false).host;
+    expect(count(classic, '[data-stage-beam]')).toBe(3);
+    expect(count(classic, '[data-concert-light], [data-stage-beam-core]')).toBe(0);
+  });
+
+  it('montage à la nacelle : nacelle et pièce tenue en image, bras en tubes cellulo, chargement du plateau en image avec ses repères entreposés', async () => {
+    const { host, jobs } = find(MUSIC, 600, 960, (c) => !!c.querySelector('[data-crew][data-equipment="lift"] [data-lift-bucket] [data-held-piece]') && !!c.querySelector('[data-flatbed] [data-stored-item]'));
+    const stored = count(host, '[data-flatbed] [data-stored-item]');
+    expect(count(host, INSTALL)).toBe(0);
+    await bake(jobs);
+    expect(count(host, '[data-lift-bucket] > g > image')).toBe(1);
+    // Chaque pièce tenue (dans la nacelle, ou par l'ouvrier au sol qui va la chercher) : une image, plus aucun trait classique.
+    const held = host.querySelectorAll('[data-held-piece]');
+    expect(held.length).toBeGreaterThan(0);
+    for (const h of held) {
+      expect(h.querySelectorAll('image')).toHaveLength(1);
+      expect(h.querySelector('line, rect, circle, polyline')).toBeNull();
+    }
+    // Bras : trois tubes (vérin + deux flèches) de quatre traits (encre, couleur, ombre, rehaut), articulations modelées.
+    expect(count(host, '[data-lift-arm] line')).toBe(12);
+    expect(count(host, '[data-lift-joint]')).toBe(2);
+    // Un camion plateau par jeu (scène, stands) : une image de chargement chacun.
+    const loads = host.querySelectorAll('[data-flatbed-load]');
+    expect(loads.length).toBeGreaterThan(0);
+    for (const l of loads) expect(l.querySelectorAll('image')).toHaveLength(1);
+    expect(count(host, '[data-flatbed] [data-stored-item]')).toBe(stored);
+    expect(count(host, '[data-flatbed] [data-stored-item] rect')).toBe(0);
+  }, 60000);
+
+  it('barrières du 14/7 et vélo porteur du 13/7 : images après cuisson, repères entreposés et data-x conservés ; jamais une image dans un miroir', async () => {
+    const b = gLayer(D14, 9 * 60);
+    const xs = [...b.host.querySelectorAll('[data-decor-kind="barrier"]')].map((e) => e.getAttribute('data-x'));
+    expect(xs.length).toBeGreaterThan(0);
+    await bake(b.jobs);
+    expect([...b.host.querySelectorAll('[data-decor-kind="barrier"]')].map((e) => e.getAttribute('data-x'))).toEqual(xs);
+    expect(count(b.host, '[data-decor-kind="barrier"] image')).toBe(xs.length);
+    unmountAll();
+    const r = find(D13, 13 * 60, 16 * 60, (c) => !!c.querySelector('[data-install-van="doors-bastille"] [data-cargo-bike] [data-stored-item]'));
+    const stored = count(r.host, '[data-cargo-bike] [data-stored-item]');
+    await bake(r.jobs);
+    expect(count(r.host, '[data-cargo-bike-art] image')).toBe(1);
+    expect(count(r.host, '[data-cargo-bike] [data-stored-item]')).toBe(stored);
+    // Miroir de l'hôte annulé autour de l'image : le produit des facteurs x des transformations au-dessus est positif.
+    for (const img of r.host.querySelectorAll(INSTALL)) {
+      let sx = 1;
+      for (let e: Element | null = img; e; e = e.parentElement) {
+        const m = /scale\((-?[\d.]+)/.exec(`${e.getAttribute('transform') ?? ''} ${(e as HTMLElement).style?.transform ?? ''}`);
+        if (m) sx *= Math.sign(Number(m[1]));
+      }
+      expect(sx, 'image en miroir').toBe(1);
+    }
+  }, 60000);
+
+  it('classique : aucune image d’installation, un seul polygone par faisceau', async () => {
+    const { host, jobs } = gLayer(MUSIC, 23 * 60, false);
+    await bake(jobs);
+    expect(count(host, INSTALL)).toBe(0);
+    expect(count(host, '[data-stage-beams] polygon')).toBe(3);
+  });
+
+  // Drapeaux (tâche 6) : 8 poses clés partagées, choisies par la boucle de la couche (placeFlags) à partir de t, décalées de
+  // (x / 37) | 0 par lampadaire ; mouvement réduit : tissu plat (args still), hors boucle.
+  const LAMP_FLAGS = '[data-decor-kind="lamp-flag"]';
+  const DOOR_FLAGS = '[data-decor-kind="door-flag"]';
+  it('14/7 à midi : drapeaux de lampadaire et d’entrée en sprite classique avant cuisson, puis une image chacun ; phase par lampadaire', async () => {
+    const { host, jobs } = gLayer(D14, 720);
+    expect(count(host, `${LAMP_FLAGS} [data-flag-wave="lamp-flag"]`)).toBe(LAMPS);
+    expect(count(host, `${DOOR_FLAGS} [data-flag-wave="door-flag"]`)).toBe(FLAG_DOORS);
+    expect(count(host, `${LAMP_FLAGS} image, ${DOOR_FLAGS} image`)).toBe(0);
+    expect(count(host, `${LAMP_FLAGS} [data-lamp-flag] line`)).toBe(LAMPS);
+    for (const g of host.querySelectorAll(LAMP_FLAGS)) {
+      const x = Number(/translate\((-?[\d.]+)/.exec(g.getAttribute('transform') ?? '')?.[1]);
+      expect(Number(g.querySelector('[data-flag-wave]')!.getAttribute('data-flag-phase'))).toBe(Math.floor(x / FLAG_PHASE_PX));
+    }
+    await bake(jobs);
+    expect(count(host, `${LAMP_FLAGS} image`)).toBe(LAMPS);
+    expect(count(host, `${DOOR_FLAGS} image`)).toBe(FLAG_DOORS);
+    expect(count(host, `${LAMP_FLAGS} line, ${LAMP_FLAGS} rect, ${DOOR_FLAGS} line, ${DOOR_FLAGS} rect`)).toBe(0);
+    // Plus aucune animation SMIL une fois les images posées (le repli classique en avait une par drapeau de lampadaire).
+    expect(count(host, 'animate, animateTransform')).toBe(0);
+  }, 60000);
+
+  it('boucle : la pose suit t (8 poses sur la période T de la vague), chaque lampadaire a sa phase ; 8 images au plus par genre pour tous', async () => {
+    const { host, jobs, reg: registry } = gLayer(D14, 720, true, false, true);
+    const day = skyOf(720).daylight;
+    const key = (id: string, frame: number): string => `url:${propKey({ id, day, frame })}`;
+    await bake(jobs);
+    const flags = collectFlags(host);
+    expect(flags.length).toBe(LAMPS + FLAG_DOORS);
+    const lampHrefs = (): string[] => [...host.querySelectorAll(`${LAMP_FLAGS} image`)].map((i) => i.getAttribute('href') ?? '');
+    expect(lampHrefs()).toEqual(Array<string>(LAMPS).fill(key('lamp-flag', 0)));
+    // Toutes les poses demandées par la boucle, cuites : 7 images de plus par genre au plus (la pose 0 l'est déjà), quel que
+    // soit le nombre de lampadaires ; les 8 poses du lampadaire sont dans le registre.
+    const s0 = registry.size();
+    const S = FLAG_CYCLE_S / FLAG_FRAMES;
+    for (let k = 0; k < 8; k++) {
+      placeFlags(flags, 1000 + k * S, registry);
+      await bake(jobs);
+      placeFlags(flags, 1000 + k * S, registry);
+    }
+    expect(registry.size()).toBeLessThanOrEqual(s0 + 14);
+    for (let k = 0; k < 8; k++) expect(registry.get(propKey({ id: 'lamp-flag', day, frame: k })), `pose ${k}`).not.toBeNull();
+    // À t fixe : pose = (t / (T/8) + phase) mod 8 pour chaque drapeau ; des lampadaires de phases différentes montrent des
+    // images différentes.
+    const at = (t: number): number => Math.floor(t / S);
+    const expectPoses = (t: number): void => {
+      for (const g of host.querySelectorAll('[data-flag-wave]')) {
+        const id = g.getAttribute('data-flag-wave')!;
+        const phase = Number(g.getAttribute('data-flag-phase'));
+        expect(g.querySelector('image')!.getAttribute('href'), `${id} phase ${phase} t ${t}`).toBe(key(id, (at(t) + phase) % 8));
+      }
+    };
+    placeFlags(flags, 1000, registry);
+    expectPoses(1000);
+    const h1 = lampHrefs();
+    const phases = lampsFor(W, SEED).map((l) => Math.floor(l.x / FLAG_PHASE_PX) % 8);
+    expect(new Set(phases).size).toBeGreaterThan(1);
+    expect(new Set(h1).size).toBe(new Set(phases).size);
+    // Un huitième de période plus tard, la pose a changé ; une période T plus tard, elle est revenue.
+    placeFlags(flags, 1000 + S, registry);
+    expectPoses(1000 + S);
+    expect(lampHrefs()).not.toEqual(h1);
+    placeFlags(flags, 1000 + FLAG_CYCLE_S, registry);
+    expect(lampHrefs()).toEqual(h1);
+    // Sans registre : rien ne bouge.
+    placeFlags(flags, 1000 + 2 * S, null);
+    expect(lampHrefs()).toEqual(h1);
+  }, 60000);
+
+  it('mouvement réduit : drapeau plat (args still), hors boucle, image quand même', async () => {
+    const { host, jobs, reg: registry } = gLayer(D14, 720, true, true);
+    expect(count(host, LAMP_FLAGS)).toBe(LAMPS);
+    expect(count(host, '[data-flag-wave]')).toBe(0);
+    expect(collectFlags(host)).toHaveLength(0);
+    await bake(jobs);
+    expect(count(host, `${LAMP_FLAGS} image`)).toBe(LAMPS);
+    expect(count(host, `${DOOR_FLAGS} image`)).toBe(FLAG_DOORS);
+    expect(registry.get(propKey({ id: 'lamp-flag', args: { still: true }, day: skyOf(720).daylight }))).not.toBeNull();
+    expect(registry.get(propKey({ id: 'lamp-flag', day: skyOf(720).daylight }))).toBeNull();
+  }, 60000);
+
+  it('classique : aucun repère de boucle, dessin inchangé (ligne, cercle, trois bandes qui ondulent)', () => {
+    const { host } = gLayer(D14, 720, false);
+    expect(count(host, '[data-flag-wave]')).toBe(0);
+    expect(count(host, `${LAMP_FLAGS} [data-lamp-flag] > line`)).toBe(LAMPS);
+    expect(count(host, `${LAMP_FLAGS} [data-flag-art] animateTransform`)).toBe(LAMPS);
+    expect(count(host, `${DOOR_FLAGS} [data-door-flag] rect`)).toBe(3 * FLAG_DOORS);
   });
 });

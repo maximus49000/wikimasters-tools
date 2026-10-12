@@ -2,7 +2,8 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { BusStopRiders, TrafficFixtures, TrafficLane, type TrafficHandle } from '../../src/content/traffic-layer';
+import { BusStopRiders, Crosswalk, TrafficFixtures, TrafficLane, type TrafficHandle } from '../../src/content/traffic-layer';
+import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { advance, warmTraffic, type TrafficEnv } from '../../src/core/library/city/traffic/engine';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
@@ -137,5 +138,61 @@ describe('lignes de bus et arrêts (V4)', () => {
     for (const n of g.host.querySelectorAll('[data-rider]')) expect(n.querySelector('[data-figure]')).not.toBeNull();
     const c = await render(false);
     expect(c.host.querySelector('[data-marquee]')).toBeNull();
+  });
+});
+
+describe('mobilier de rue peint (G5)', () => {
+  // Registre d'accessoires à cuisson manuelle : les images ne sont cuites que lorsque `jobs` est vidé.
+  async function render(ghibli: boolean): Promise<{ host: HTMLElement; handle: TrafficHandle; jobs: (() => void)[] }> {
+    const handle: TrafficHandle = { world: warmTraffic({ width: 1080, seed: 4, unit: m.unit, startS: T0 }, env), env };
+    const jobs: (() => void)[] = [];
+    const reg = new PropRegistry('t', { schedule: (cb) => jobs.push(cb) });
+    const host = document.createElement('div');
+    await act(async () =>
+      createRoot(host).render(
+        <PropContext.Provider value={reg}>
+          <svg>
+            <Crosswalk handle={handle} metrics={m} sky={sky} ghibli={ghibli} />
+            <TrafficFixtures handle={handle} metrics={m} sky={sky} still={false} frozenT={T0} side="far" ghibli={ghibli} />
+            <TrafficFixtures handle={handle} metrics={m} sky={sky} still={false} frozenT={T0} side="near" ghibli={ghibli} />
+          </svg>
+        </PropContext.Provider>,
+      ),
+    );
+    return { host, handle, jobs };
+  }
+  const bake = async (jobs: (() => void)[]): Promise<void> => {
+    while (jobs.length) await act(async () => jobs.shift()!());
+  };
+  it('Ghibli : feu, arrêts et bandes en sprite classique avant cuisson, puis en <image> ; couleur du feu et appel lisibles sur le <g>', async () => {
+    const { host, handle, jobs } = await render(true);
+    expect(handle.world.light).not.toBeNull();
+    expect(host.querySelector('image')).toBeNull();
+    // Un feu par trottoir (côté `far` : poteau du trottoir des immeubles ; côté `near` : poteau d'en face), 3 lampes chacun.
+    expect(host.querySelectorAll('circle[data-light-lamp]').length).toBe(6);
+    expect(host.querySelectorAll('[data-crosswalk] rect').length).toBeGreaterThan(0);
+    await bake(jobs);
+    const poles = host.querySelectorAll('g[data-light-lamp]');
+    expect(poles.length).toBe(2);
+    for (const pole of poles) {
+      expect(pole.getAttribute('data-light-lamp')).toBe(handle.world.light.color);
+      expect(pole.getAttribute('data-call')).toBe(handle.world.light.pressedAt !== null ? 'true' : 'false');
+      expect(pole.querySelector('image')).not.toBeNull();
+      expect(pole.querySelector('circle')).toBeNull();
+    }
+    for (const stop of host.querySelectorAll('[data-bus-stop]')) expect(stop.querySelector('image')).not.toBeNull();
+    expect(host.querySelectorAll('[data-crosswalk] image').length).toBeGreaterThan(0);
+    expect(host.querySelectorAll('[data-crosswalk] rect').length).toBe(0);
+  });
+  it('Ghibli : le feu est posé sans miroir (scale positif), le classique garde son miroir', async () => {
+    const g = await render(true);
+    expect(scaleX(g.host.querySelector('g[data-light-lamp]')!)).toBeGreaterThan(0);
+    const c = await render(false);
+    expect(c.host.querySelector('image')).toBeNull();
+    expect(c.jobs.length).toBe(0);
+    // Classique : poteau d'en face retourné (scale négatif), lampes à leur opacité d'origine.
+    const flipped = [...c.host.querySelectorAll('[data-traffic-fixtures="near"] g[transform]')].find((n) => scaleX(n) < 0);
+    expect(flipped).toBeDefined();
+    expect(c.host.querySelector('circle[data-light-lamp]')!.getAttribute('opacity')).toBe('0.18');
   });
 });

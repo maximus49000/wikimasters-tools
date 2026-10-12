@@ -1,6 +1,8 @@
 import { useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { YMD } from '../core/library/city/calendar';
 import { COUNTER_HALF, STAND_DEPTH } from '../core/library/city/beer';
+import { FLAG_CYCLE_S, FLAG_FRAMES } from '../core/library/paint/props/install';
+import { cityPaintPlan, type CityPaintPlan } from '../core/library/paint/city-plan';
 import { doorsFor, type Door } from '../core/library/city/doors';
 import {
   LIFT_FETCH, absMinute, beerStandsFor, crewAt, crewStepWindow, decorSetsFor, footWindow, inVehicle, itemEquipment, itemPhase, itemShown,
@@ -22,10 +24,12 @@ import type { Sky } from '../core/library/sky';
 import { workerPose, type CrewLook, type WorkerMove } from './city-shops-life';
 import { entranceLeft } from './city-sprites';
 import { GhibliFigure } from './figure/ghibli-figure';
+import { paintProp, propKey, type PropRegistry, type PropSpec } from './prop/prop-host';
 import {
   BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, FlagCrate, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE,
   LampFlag, LiftTruck, STAGE, StageFloor, StageFrame, StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
 } from './install-sprites';
+import { ConcertCrowd, ConcertLight } from './concert-light';
 import { CarriedCounter, HeldRoll, StandAwning, StandCounter } from './music-sprites';
 import { MusicStreet, type StreetNode } from './music-street';
 import { StageBand, StageBeams } from './stage-band';
@@ -240,6 +244,11 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
     ] as const)),
     [sets, seed],
   );
+  // Plan de la ville peinte (Ghibli, jour d'une scène seulement) : l'éclairage de concert y découpe la chaussée du public.
+  const plan = useMemo<CityPaintPlan | null>(
+    () => (ghibli && (part === 'back' || part === 'all') && sets.some((s) => s.id.startsWith('stage-music')) ? cityPaintPlan(width, height, seed) : null),
+    [ghibli, part, sets, width, height, seed],
+  );
   const abs = absMinute(dayNumber(date), minutes);
   const dark = sky.daylight < DARK;
   const u = metrics.unit;
@@ -288,10 +297,10 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       if (!shown || lifted.has(`${set.id}/${item.id}`)) continue;
       // Projecteurs allumés (et faisceaux) : posés, il fait nuit, et la fête n'est pas finie (la dépose commence après minuit).
       const lit = item.kind === 'stage-spots' && ph.phase === 'present' && dark && abs < absMinute(set.day + 1, 0);
-      const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lamps, lit, standSide);
+      const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lamps, lit, standSide, ghibli);
       if (d) drawn.push(d);
     }
-    if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits.get(set.id)!, metrics, sky, rainy, still, width, ghibli));
+    if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits.get(set.id)!, metrics, sky, rainy, still, width, ghibli, plan, seed));
     if (still) continue;
     // Véhicule de transport de l'équipe à pied (camionnette, vélo porteur, camion plateau) : il arrive chargé en roulant, se
     // gare au bord de la rue avant le premier créneau et repart en roulant après le dernier (city/van.ts), une fois tout rangé.
@@ -387,18 +396,19 @@ const lampTransform = (x: number, m: CityMetrics): string => `translate(${x} ${m
 // Base de la scène : sur le trottoir, son bord avant au bord du trottoir.
 const stageBase = (m: CityMetrics): number => m.curb - m.unit;
 
+// `ghibli` : barrière et scène en images cellulo (install-sprites), sprite classique en repli.
 function decorNode(
   set: DecorSet, item: DecorItem, phase: string, door: Door | undefined, m: CityMetrics, sky: Sky, still: boolean, lamps: readonly Lamp[], lit: boolean,
-  standSide: ReadonlyMap<string, 1 | -1>,
+  standSide: ReadonlyMap<string, 1 | -1>, ghibli: boolean,
 ): Drawn | null {
   const attrs = { 'data-decor-item': item.id, 'data-decor-kind': item.kind, 'data-decor-set': set.id, 'data-decor-phase': phase };
   const key = `${set.id}-${item.id}`;
   switch (item.kind) {
     case 'lamp-flag':
-      return { part: 'front', node: <g key={key} {...attrs} transform={lampTransform(item.x, m)}><LampFlag sky={sky} still={still} /></g> };
+      return { part: 'front', node: <g key={key} {...attrs} transform={lampTransform(item.x, m)}><LampFlag sky={sky} still={still} ghibli={ghibli ? { phase: flagPhase(item.x) } : undefined} /></g> };
     case 'door-flag':
       if (!door) return null;
-      return { part: 'back', node: <g key={key} {...attrs} transform={entranceTransform(door, m)}><DoorFlag sky={sky} /></g> };
+      return { part: 'back', node: <g key={key} {...attrs} transform={entranceTransform(door, m)}><DoorFlag sky={sky} ghibli={ghibli ? { phase: flagPhase(door.x), still } : undefined} /></g> };
     case 'barrier': {
       if (item.lane) {
         // En travers de la file : dans la partie `street`, à sa profondeur.
@@ -406,28 +416,31 @@ function decorNode(
         return {
           part: 'street',
           depth: LANE_BARRIER_DEPTH[item.lane],
-          node: <g key={key} {...attrs} data-barrier-lane={item.lane} data-x={item.x.toFixed(1)} transform={`translate(${item.x.toFixed(1)} ${y.toFixed(1)}) ${barrierMatrix(m.unit, 1)}`}><Barrier sky={sky} /></g>,
+          node: <g key={key} {...attrs} data-barrier-lane={item.lane} data-x={item.x.toFixed(1)} transform={`translate(${item.x.toFixed(1)} ${y.toFixed(1)}) ${barrierMatrix(m.unit, 1)}`}><Barrier sky={sky} ghibli={ghibli} /></g>,
         };
       }
       const x = barrierX(item.x, lamps, m.unit);
-      return { part: 'front', node: <g key={key} {...attrs} data-x={x.toFixed(1)} transform={`translate(${x.toFixed(1)} ${barrierY(m).toFixed(1)}) scale(${barrierK(m.unit).toFixed(3)})`}><Barrier sky={sky} /></g> };
+      return { part: 'front', node: <g key={key} {...attrs} data-x={x.toFixed(1)} transform={`translate(${x.toFixed(1)} ${barrierY(m).toFixed(1)}) scale(${barrierK(m.unit).toFixed(3)})`}><Barrier sky={sky} ghibli={ghibli} /></g> };
     }
     case 'stage-floor':
     case 'stage-frame':
     case 'stage-spots': {
       const t = `translate(${item.x.toFixed(1)} ${stageBase(m).toFixed(1)}) scale(${m.unit.toFixed(3)})`;
-      const art = item.kind === 'stage-floor' ? <StageFloor sky={sky} /> : item.kind === 'stage-frame' ? <StageFrame sky={sky} /> : <StageSpots sky={sky} lit={lit} />;
+      const art = item.kind === 'stage-floor' ? <StageFloor sky={sky} ghibli={ghibli} /> : item.kind === 'stage-frame' ? <StageFrame sky={sky} ghibli={ghibli} /> : <StageSpots sky={sky} lit={lit} ghibli={ghibli} />;
       return { part: 'crew', node: <g key={key} {...attrs} transform={t}>{art}</g> };
     }
     case 'stand-counter':
     case 'stand-awning': {
       // Stands de bière : sur la chaussée ; l'auvent derrière les serveurs, le comptoir devant eux.
       const t = `translate(${item.x.toFixed(1)} ${standBase(m).toFixed(1)}) scale(${m.unit.toFixed(3)})`;
-      if (item.kind === 'stand-awning') return { part: 'street', depth: AWNING_DEPTH, node: <g key={key} {...attrs} transform={t}><StandAwning sky={sky} /></g> };
+      // Ghibli : images cellulo ; l'auvent porte une guirlande d'ampoules, allumées la nuit.
+      if (item.kind === 'stand-awning') {
+        return { part: 'street', depth: AWNING_DEPTH, node: <g key={key} {...attrs} transform={t}><StandAwning sky={sky} ghibli={ghibli ? { garland: true, lit: sky.daylight < DARK } : undefined} /></g> };
+      }
       return {
         part: 'street',
         depth: STAND_DEPTH,
-        node: <g key={key} {...attrs} data-beer-stand={item.group} transform={t}><StandCounter sky={sky} side={standSide.get(item.group ?? '') ?? 1} /></g>,
+        node: <g key={key} {...attrs} data-beer-stand={item.group} transform={t}><StandCounter sky={sky} side={standSide.get(item.group ?? '') ?? 1} ghibli={ghibli} /></g>,
       };
     }
     default: {
@@ -437,12 +450,61 @@ function decorNode(
   }
 }
 
+// ---------- Drapeaux qui ondulent (Ghibli, boucle) ----------
+// Les drapeaux de lampadaire et d'entrée sont des images à FLAG_FRAMES poses de vague (props/install.ts : pose k = k/8 du cycle
+// FLAG_CYCLE_S, sa période) partagées par tous les drapeaux du genre. La boucle de la couche (city-life.tsx, à chaque image)
+// choisit la pose de l'instant `t`, décalée par drapeau de sa phase ((x / 37) | 0 : deux lampadaires voisins n'ondulent pas
+// ensemble), et pose sur l'<image> rendue (pose 0, par PropImage) l'image de cette pose dès que le registre l'a cuite
+// (demandée sinon) : au plus 8 images par genre et par lumière, quel que soit le nombre de lampadaires. Pas d'<image> encore
+// (première cuisson en cours) : le repli classique reste affiché. Mouvement réduit : aucun repère `data-flag-wave` (tissu
+// plat, args still).
+export const FLAG_PHASE_PX = 37;
+const flagPhase = (x: number): number => Math.floor(x / FLAG_PHASE_PX);
+const FLAG_FRAME_S = FLAG_CYCLE_S / FLAG_FRAMES;
+// `img` : l'<image> du drapeau, gardée d'une image à l'autre (recherchée tant qu'elle n'existe pas, ou si le rendu l'a remplacée).
+export type WavingFlag = { node: Element; id: string; phase: number; img: Element | null; frame: number; day: number };
+export function collectFlags(root: Element): WavingFlag[] {
+  const out: WavingFlag[] = [];
+  for (const node of root.querySelectorAll('[data-flag-wave]')) {
+    out.push({ node, id: node.getAttribute('data-flag-wave')!, phase: Number(node.getAttribute('data-flag-phase')) || 0, img: null, frame: -1, day: NaN });
+  }
+  return out;
+}
+const noop = (): void => undefined;
+export function placeFlags(flags: readonly WavingFlag[], t: number, reg: PropRegistry | null): void {
+  if (!reg) return;
+  const step = Math.floor(t / FLAG_FRAME_S);
+  for (const f of flags) {
+    if (!f.img?.isConnected) f.img = f.node.querySelector(':scope > image');
+    if (!f.img) continue;
+    const frame = (((step + f.phase) % FLAG_FRAMES) + FLAG_FRAMES) % FLAG_FRAMES;
+    // Lumière du rendu (la clé la quantifie) : quand elle change, le rendu a remis la pose 0 et `data-flag-day` ; on n'écrit
+    // que si la pose ou la lumière change.
+    const day = Number(f.node.getAttribute('data-flag-day'));
+    if (frame === f.frame && day === f.day) continue;
+    const spec: PropSpec = { id: f.id, day, frame };
+    const key = propKey(spec);
+    const url = reg.get(key);
+    if (url === null) {
+      reg.want(key, () => paintProp(spec), noop);
+      continue;
+    }
+    f.img.setAttribute('href', url);
+    f.frame = frame;
+    f.day = day;
+  }
+}
+
 // Musiciens (plancher posé) : ils arrivent à pied de 16 h 46 à 17 h, jouent jusqu'à minuit et repartent à pied de 0 h 01 à
 // 0 h 15 (stage-band.tsx) ; aucun n'apparaît ni ne disparaît sur place. Faisceaux (projecteurs posés, nuit, 17 h à minuit :
 // les trois musiciens sont alors en place, jamais une scène vide éclairée). La nuit, les projecteurs éclairent les musiciens.
+// Ghibli : le vrai éclairage de concert (concert-light.tsx) remplace les faisceaux ; il découpe la chaussée du public dans `plan`.
 const BAND_FROM = 17 * 60;
 const BAND_WINDOW: readonly [number, number] = [16 * 60 + 45, 24 * 60 + 20];
-function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[], m: CityMetrics, sky: Sky, rainy: boolean, still: boolean, width: number, ghibli: boolean): Drawn[] {
+function stageShow(
+  set: DecorSet, abs: number, dark: boolean, outfits: Outfit[], m: CityMetrics, sky: Sky, rainy: boolean, still: boolean, width: number, ghibli: boolean,
+  plan: CityPaintPlan | null, seed: number,
+): Drawn[] {
   const floor = set.items.find((i) => i.kind === 'stage-floor');
   const spots = set.items.find((i) => i.kind === 'stage-spots');
   if (!floor || !spots) return [];
@@ -453,7 +515,16 @@ function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[],
   const playing = abs >= absMinute(set.day, BAND_FROM) && abs < absMinute(set.day + 1, 0);
   const lit = sp.phase === 'present' && dark && playing;
   const out: Drawn[] = [];
-  if (lit) out.push({ part: 'crew', node: <g key={`${set.id}-beams`} transform={t}><StageBeams still={still} /></g> });
+  if (lit) {
+    out.push({
+      part: 'crew',
+      node: ghibli
+        ? <ConcertLight key={`${set.id}-beams`} stageX={floor.x} base={stageBase(m)} unit={m.unit} lit still={still} />
+        : <g key={`${set.id}-beams`} transform={t}><StageBeams still={still} /></g>,
+    });
+    // Chaussée du public révélée : sous les passants (partie `back`), pas devant eux.
+    if (ghibli) out.push({ part: 'back', node: <ConcertCrowd key={`${set.id}-crowd`} stageX={floor.x} base={stageBase(m)} unit={m.unit} lit still={still} plan={plan} seed={seed} /> });
+  }
   if (still ? fp.phase === 'present' : itemShown(set, floor, fp)) {
     const day = Math.floor(abs / 1440);
     out.push({
@@ -695,17 +766,30 @@ const heldFlag = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): React
     <g transform="translate(0 -9)"><FlagArt sky={inp.sky} w={6} h={4} /></g>
   </g>
 );
-// Toile de l'auvent roulée, tenue à la main (au bout du bras levé en haut de l'échelle).
-const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (
-  <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>
-    <HeldRoll sky={inp.sky} />
-  </g>
-);
+// Toile de l'auvent roulée, tenue à la main (au bout du bras levé en haut de l'échelle). Ghibli : image cuite dans le sens
+// `dir`, posée sans miroir (comme heldPiece).
+const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
+  if (inp.ghibli) {
+    const s = (0.8 / STREET_SCALE.person).toFixed(3);
+    return <g {...loadAttrs(inp, by)} transform={`scale(${s})`}><HeldRoll sky={inp.sky} ghibli={{ dir }} /></g>;
+  }
+  return (
+    <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>
+      <HeldRoll sky={inp.sky} />
+    </g>
+  );
+};
 
-// Pièce de la scène tenue par l'ouvrier de la nacelle : tronçon de treillis (ossature) ou projecteur.
-const heldPiece = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (
-  <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>{inp.item.kind === 'stage-frame' ? <HeldTruss sky={inp.sky} /> : <HeldSpot sky={inp.sky} />}</g>
-);
+// Pièce de la scène tenue par l'ouvrier de la nacelle : tronçon de treillis (ossature) ou projecteur. Ghibli : image cuite
+// dans le sens `dir`, posée sans miroir (à la main droite du pantin, échelle du passant).
+const heldPiece = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
+  const truss = inp.item.kind === 'stage-frame';
+  if (inp.ghibli) {
+    const s = (0.8 / STREET_SCALE.person).toFixed(3);
+    return <g {...loadAttrs(inp, by)} transform={`scale(${s})`}>{truss ? <HeldTruss sky={inp.sky} ghibli={{ dir }} /> : <HeldSpot sky={inp.sky} ghibli={{ dir }} />}</g>;
+  }
+  return <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>{truss ? <HeldTruss sky={inp.sky} /> : <HeldSpot sky={inp.sky} />}</g>;
+};
 
 // Échelle : l'équipe la prend sur son véhicule (galerie de la camionnette, porte-bagages du vélo porteur, flanc du camion
 // plateau), la porte à l'épaule en marchant, l'appuie (inclinée) contre la façade, centrée sur la porte, ou contre le bout de
@@ -749,15 +833,17 @@ function ladderCrew(inp: CrewInput): FootCrew {
   // Même structure de transformation (CSS, avec la transition des ouvriers) portée, dressée ou couchée : l'échelle glisse avec
   // ceux qui la tiennent d'un rendu à la minute au suivant.
   const ladderStyle = (x: number, y: number, dir: 1 | -1, deg: number): CSSProperties => ({ transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${dir}, 1) rotate(${deg.toFixed(1)}deg)`, transition: MOVE });
+  // Ghibli : l'échelle est une image cellulo cuite dans le sens du groupe (`dir`), que `scale(dir, 1)` ne retourne pas.
+  const sprite = (dir: 1 | -1): ReactElement => <LadderSprite height={h} sky={inp.sky} ghibli={inp.ghibli} dir={dir} />;
   const carried = (ax: number, dir: 1 | -1, ly: number, by = 'hands'): ReactElement => (
     <g data-ladder="" data-ladder-state="carried" data-carried={by} data-x={(ax - (dir * h) / 2).toFixed(1)} style={ladderStyle(ax, ly, dir, -90)}>
-      <LadderSprite height={h} />
+      {sprite(dir)}
     </g>
   );
   // `angle` : 0 = appuyée (inclinée de LADDER_TILT), 90 = couchée au sol vers l'arrière.
   const standing = (angle: number): ReactElement => (
     <g data-ladder="" data-ladder-state={angle === 0 ? 'up' : 'moving'} data-carried={angle === 0 ? 'held' : 'hands'} data-x={lx.toFixed(1)} style={ladderStyle(lx, foot, lean, LADDER_TILT * (1 - angle / 90) - angle)}>
-      <LadderSprite height={h} />
+      {sprite(lean)}
     </g>
   );
   switch (inp.step) {
@@ -862,7 +948,7 @@ function handCrew(inp: CrewInput): FootCrew {
       : `matrix(${u.toFixed(3)}, 0, 0, ${u.toFixed(3)}, 0, 0)`;
     return (
       <g {...attrs} style={{ transform: `translate(${x.toFixed(1)}px, ${base.toFixed(1)}px) ${shape}`, transition: MOVE }}>
-        {barrier ? <Barrier sky={inp.sky} /> : counter ? <CarriedCounter sky={inp.sky} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />}
+        {barrier ? <Barrier sky={inp.sky} ghibli={inp.ghibli} /> : counter ? <CarriedCounter sky={inp.sky} ghibli={inp.ghibli} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />}
       </g>
     );
   };
@@ -1054,7 +1140,7 @@ function liftCrew(inp: CrewInput): ReactElement {
   }
   // Caisse de drapeaux sur le plateau du camion élévateur : ceux qui restent à poser, ou déjà rangés.
   const cargo = inp.set.transport === 'lift'
-    ? <FlagCrate sky={inp.sky} tag="lift" flags={inp.set.items.filter((i) => inVehicle(inp.set, i, inp.abs)).map((i) => `${inp.set.id}/${i.id}`)} />
+    ? <FlagCrate sky={inp.sky} tag="lift" flags={inp.set.items.filter((i) => inVehicle(inp.set, i, inp.abs)).map((i) => `${inp.set.id}/${i.id}`)} ghibli={inp.ghibli ? { dir: g.dir } : undefined} />
     : null;
   return (
     <>

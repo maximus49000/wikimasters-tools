@@ -9,6 +9,7 @@ import { isOpenAt } from '../core/library/city/shops/hours';
 import { ADVANCE_S, nightclubDoor, queueAt, queueScene, queueWalkSpeed, targetLength, type ArrivalLayout, type QueueArrival, type QueuePrev } from '../core/library/city/shops/queue';
 import type { ShopFrame, ShopSlot } from '../core/library/city/shops/slots';
 import type { ShopView } from '../core/library/city/shops/view';
+import { INK } from '../core/library/paint/cel';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import { TURN_S, YAW_BACK, facingYaw, phaseIndexOf, turnYaw } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
@@ -16,6 +17,8 @@ import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import '../core/library/paint/props/terrace';
+import { PropImage } from './prop/prop-host';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Boîte de nuit (vague 1b-iv-b) : cordon (deux potelets et une corde) devant la porte, deux videurs en costume noir, bras
@@ -140,19 +143,33 @@ function CrossedArms({ outfit, sky }: { outfit: Outfit; sky: Sky }): ReactElemen
     </g>
   );
 }
-function CordonSprite({ x0, x1, y, k, sky }: { x0: number; x1: number; y: number; k: number; sky: Sky }): ReactElement {
-  const post = (x: number): ReactElement => (
-    <g transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${k.toFixed(3)})`}>
-      <ellipse cx={0} cy={0} rx={2.2} ry={0.7} fill={tone('#B8973A', sky)} />
-      <rect x={-0.6} y={-13} width={1.2} height={13} fill={tone('#D4B04A', sky)} />
-      <circle cx={0} cy={-13.4} r={1} fill={tone('#E8C860', sky)} />
-    </g>
-  );
+// Ghibli (G5) : poteaux de laiton en images cellulo (peintre `cordon-post`, à l'échelle k), corde de velours cernée d'encre avec
+// un rehaut rose (trois <path>) ; le classique en repli tant que l'image n'est pas cuite.
+function CordonSprite({ x0, x1, y, k, sky, ghibli = false }: { x0: number; x1: number; y: number; k: number; sky: Sky; ghibli?: boolean }): ReactElement {
+  const post = (x: number): ReactElement => {
+    const art = (
+      <>
+        <ellipse cx={0} cy={0} rx={2.2} ry={0.7} fill={tone('#B8973A', sky)} />
+        <rect x={-0.6} y={-13} width={1.2} height={13} fill={tone('#D4B04A', sky)} />
+        <circle cx={0} cy={-13.4} r={1} fill={tone('#E8C860', sky)} />
+      </>
+    );
+    return <g transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${k.toFixed(3)})`}>{ghibli ? <PropImage spec={{ id: 'cordon-post', day: sky.daylight }} fallback={art} /> : art}</g>;
+  };
   const top = y - 12.6 * k;
   const mid = (x0 + x1) / 2;
+  const rope = `M${x0.toFixed(1)} ${top.toFixed(1)} Q${mid.toFixed(1)} ${(top + 4 * k).toFixed(1)} ${x1.toFixed(1)} ${top.toFixed(1)}`;
   return (
     <g data-cordon="">
-      <path d={`M${x0.toFixed(1)} ${top.toFixed(1)} Q${mid.toFixed(1)} ${(top + 4 * k).toFixed(1)} ${x1.toFixed(1)} ${top.toFixed(1)}`} stroke={tone('#A0182E', sky)} strokeWidth={1.1 * k} fill="none" />
+      {ghibli ? (
+        <>
+          <path d={rope} stroke={tone(INK, sky)} strokeWidth={1.1 * k + 0.8} strokeLinecap="round" fill="none" />
+          <path d={rope} stroke={tone('#A0182E', sky)} strokeWidth={1.1 * k} strokeLinecap="round" fill="none" />
+          <path d={`M${(x0 + 1).toFixed(1)} ${(top - 0.3 * k).toFixed(1)} Q${mid.toFixed(1)} ${(top + 3.4 * k).toFixed(1)} ${(x1 - 1).toFixed(1)} ${(top - 0.3 * k).toFixed(1)}`} stroke="rgba(255,180,190,0.5)" strokeWidth={0.35 * k} strokeLinecap="round" fill="none" />
+        </>
+      ) : (
+        <path d={rope} stroke={tone('#A0182E', sky)} strokeWidth={1.1 * k} fill="none" />
+      )}
       {post(x0)}
       {post(x1)}
     </g>
@@ -419,7 +436,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
       </svg>
     );
   };
-  const cordon = <CordonSprite x0={doorX + away * CORDON_FROM * u} x1={slotX(Math.min(2.3, reach))} y={y + 2 * u} k={k} sky={sky} />;
+  const cordon = <CordonSprite x0={doorX + away * CORDON_FROM * u} x1={slotX(Math.min(2.3, reach))} y={y + 2 * u} k={k} sky={sky} ghibli={ghibli} />;
   if (!door || tr?.kind === 'closing')
     return (
       <g data-nightclub={id} data-club-open="false" data-club-closing="" ref={root}>

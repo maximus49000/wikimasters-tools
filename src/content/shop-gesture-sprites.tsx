@@ -7,6 +7,8 @@ import type { Sky } from '../core/library/sky';
 import { PersonSprite, SEAT_DROP, tone } from './city-sprites';
 import type { FigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import '../core/library/paint/props/terrace';
+import { PropImage } from './prop/prop-host';
 
 // Gestes de travail (vague 1b-iv-b) : un passant (PersonSprite) avec un bras, une main et l'accessoire du commerce, que la
 // boucle d'animation met en pose (applyPose) sans re-rendu React. Repère du passant : pieds à l'origine, il regarde vers +x,
@@ -48,7 +50,13 @@ function bodyTransform(lean: number, sway: number): string {
 }
 
 // ---------- Accessoires (un dessin par id de ACCESSORY) ----------
-export function AccessorySprite({ id, sky }: { id: string; sky: Sky }): ReactElement {
+// Les 32 ids dessinés (ceux de ACCESSORY) ; tout autre id : le disque gris par défaut.
+export const ACCESSORY_KINDS: readonly string[] = [
+  'baguette', 'box', 'chocolate', 'parcel', 'fish', 'wedge', 'pill', 'bouquet', 'basket', 'bottle', 'bag', 'can', 'bone', 'scissors', 'needle', 'book',
+  'record', 'dice', 'glasses', 'clothes', 'vase', 'glass', 'cup', 'teapot', 'plate', 'pizza', 'wrap', 'tray', 'cocktail', 'joystick', 'laundry', 'tool',
+];
+// `ghibli` : image cellulo (peintre `accessory`, G5), le dessin classique en repli tant qu'elle n'est pas cuite.
+export function AccessorySprite({ id, sky, ghibli = false }: { id: string; sky: Sky; ghibli?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const shape = ((): ReactElement => {
     switch (id) {
@@ -87,7 +95,7 @@ export function AccessorySprite({ id, sky }: { id: string; sky: Sky }): ReactEle
       default: return <circle cx={0} cy={0} r={1.5} fill={t('#8C939C')} />;
     }
   })();
-  return <g data-accessory={id}>{shape}</g>;
+  return <g data-accessory={id}>{ghibli ? <PropImage spec={{ id: 'accessory', args: { kind: id }, day: sky.daylight }} fallback={shape} /> : shape}</g>;
 }
 
 // ---------- Passant en pose ----------
@@ -225,7 +233,7 @@ const show = (on: boolean): string => (on ? 'inline' : 'none');
 // ses objets tenus par `visibility`, qu'un enfant « visible » contredirait).
 type GhibliPosedProps = { outfit: Outfit; sky: Sky; rainy: boolean; accessory: string | null; figure: PoseIn; gesture: Pose | null; seated?: boolean; work?: Work; hidden?: boolean };
 export function GhibliPosed({ outfit, sky, rainy, accessory, figure, gesture, seated = false, work = 'none', hidden = false }: GhibliPosedProps): ReactElement {
-  const item = accessory ? <AccessorySprite id={accessory} sky={sky} /> : null;
+  const item = accessory ? <AccessorySprite id={accessory} sky={sky} ghibli /> : null;
   const placed = gesture ? placedTransform(gesture.item, facingOfYaw(figure.yaw), seated) : null;
   return (
     <g data-pose-sway="" transform={swayTransform(gesture?.sway ?? 0)}>

@@ -302,7 +302,7 @@ function propShape(id: PropId, sky: Sky, accessory: string | null): ReactElement
     }
     // Accessoire du métier (existant) ; sans accessoire, un paquet.
     case 'accessory':
-      return accessory ? <AccessorySprite id={accessory} sky={sky} /> : <Parcel sky={sky} />;
+      return accessory ? <AccessorySprite id={accessory} sky={sky} ghibli /> : <Parcel sky={sky} />;
   }
 }
 
