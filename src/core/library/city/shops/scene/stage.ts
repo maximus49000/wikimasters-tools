@@ -16,7 +16,8 @@ export type Stage = {
   queue: number[]; // places de file, de la tête (près du comptoir) vers la porte
   spots: number[]; // places debout : rayons (flânerie), tabourets (bar), machines
   tables: { x: number; seats: [number, number] }[];
-  chairs: number[];
+  chairs: number[]; // fauteuils de travail (coiffeur, tatoueur)
+  waiting: number[]; // chaises d'attente (fauteuils), côté porte
   back: number; // porte de l'arrière-boutique
   window: number[]; // où l'on regarde la rue
 };
@@ -108,7 +109,16 @@ export function stageFor(type: ShopTypeId, frame: ShopFrame): Stage {
   // Places debout : tabourets le long du bar ; rayons / machines hors des zones de service et de file (une place au moins :
   // la file raccourcit s'il le faut).
   let spots: number[] = [];
-  if (family === 'drink' && counter) spots = range(counter.x0 + HALF, counter.x1 - HALF, PLACE * 1.2);
+  // Bar, café : tabourets le long du comptoir, puis mange-debout jusqu'à la porte (le reste de la salle n'est pas perdu).
+  if (family === 'drink' && counter) {
+    const stools = range(counter.x0 + HALF, counter.x1 - HALF, PLACE * 1.2);
+    const ds = stools.map((v) => depthOf({ w, doorEdge }, v));
+    const step = PLACE * 1.2;
+    // Vitrine minuscule (comptoir plus étroit qu'une place) : pas de tabouret, des places debout sur toute la largeur.
+    const near = ds.length ? range(HALF, Math.min(...ds) - step, step) : range(HALF, w - HALF, step);
+    const far = ds.length ? range(Math.max(...ds) + step, w - HALF, step) : [];
+    spots = [...stools, ...near.map(x), ...far.map(x)];
+  }
   else if (family === 'browse' || family === 'till' || family === 'machine') {
     for (;;) {
       const zones = standZones({ w, doorEdge, posts, queue: queueDs.map(x) }, type);
@@ -129,8 +139,12 @@ export function stageFor(type: ShopTypeId, frame: ShopFrame): Stage {
     return { x: cx, seats: [clamp(cx - 4.2, HALF, w - HALF), clamp(cx + 4.2, HALF, w - HALF)] as [number, number] };
   });
   const nChairs = family === 'chair' ? Math.max(1, Math.floor((w - PLACE) / 14)) : 0;
-  const chairs = Array.from({ length: nChairs }, (_, i) => x(PLACE + HALF + ((i + 0.5) * (w - 2 * PLACE - HALF)) / nChairs));
+  const seats = Array.from({ length: nChairs }, (_, i) => PLACE + HALF + ((i + 0.5) * (w - 2 * PLACE - HALF)) / nChairs);
+  // Dès deux sièges, celui côté porte sert de chaise d'attente ; sinon on attend debout, juste passé la porte (spots).
+  const waiting = nChairs >= 2 ? [x(seats[0]!)] : [];
+  const chairs = (nChairs >= 2 ? seats.slice(1) : seats).map(x);
+  if (family === 'chair' && waiting.length === 0) spots = [x(HALF)];
   const back = x(w - HALF);
   const window = [x(HALF + PLACE), ...(w >= 80 ? [x(w / 2)] : [])];
-  return { w, doorEdge, counter, posts, queue, spots, tables, chairs, back, window };
+  return { w, doorEdge, counter, posts, queue, spots, tables, chairs, waiting, back, window };
 }

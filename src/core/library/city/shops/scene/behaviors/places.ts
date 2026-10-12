@@ -5,7 +5,7 @@ import { atDepth, depth, idleNow, walkTo, type Act, type Actor, type PartyRt, ty
 // Règle de chevauchement : deux clients IMMOBILES (en file, servis, au rayon, au tabouret, attablés) ne se chevauchent
 // jamais ; un client qui MARCHE (segment `walk`) peut passer devant un client immobile — le rendu le dessine devant avec un
 // léger décalage de profondeur. On n'entre pas pendant qu'un autre sort (embrasure de la porte).
-const INSIDE: ReadonlySet<PartyRt['state']> = new Set(['browse', 'queue', 'served', 'spot', 'stay', 'bill', 'leaving']);
+const INSIDE: ReadonlySet<PartyRt['state']> = new Set(['browse', 'queue', 'served', 'spot', 'stay', 'bill', 'seated', 'ordered', 'eating', 'done', 'waiting', 'leaving']);
 export const inside = (p: PartyRt): boolean => INSIDE.has(p.state);
 // Parti en train de sortir (ou dont un membre n'a pas encore franchi la porte).
 export const outgoing = (p: PartyRt, t: number): boolean => p.state === 'leaving' || (p.state === 'gone' && p.actors.some((a) => a.active || (a.track.exit ?? -1) > t));

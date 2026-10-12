@@ -23,7 +23,7 @@ const CLOSING_SHARE = 0.85;
 function partyRuntime(w: World, p: Party): PartyRt {
   const party: PartyRt = {
     p, desc: descOf(p), actors: [], state: 'street', since: 0, queuedAt: 0, spot: null, visits: 0, holding: false,
-    incidents: new Set(p.incidents), flags: new Set(), service: null, until: 0,
+    incidents: new Set(p.incidents), flags: new Set(), service: null, until: 0, table: null, chair: null,
   };
   party.actors = p.members.map((m, k) => ({
     id: `${p.id}:${k}`, track: { id: `${p.id}:${k}`, role: 'customer', outfit: m.outfit, scale: m.scale, party: p.id, enter: null, exit: null, segments: [] },

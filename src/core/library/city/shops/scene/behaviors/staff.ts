@@ -9,8 +9,10 @@ import {
   SPEED, cast, gest, hold, idleNow, interrupt, say, walkTo, weighted, yawStaff, yawToward,
   type Act, type Actor, type PartyRt, type Service, type World,
 } from '../engine';
+import { chairNeeds, chairWork } from './chair';
 import { inside, placeTaken, serveX } from './places';
 import { startService } from './service';
+import { tableNeeds, tableWork } from './table';
 
 // Employés (G4b) : au poste, ils servent (un parti à la fois), renseignent, encaissent ; boutique vide, ils vivent (essuyer,
 // ranger, regarder la rue, téléphone, bâiller, s'étirer, lire, bavarder entre collègues) et reviennent au poste. Le renfort
@@ -51,7 +53,8 @@ export function makeStaff(w: World, list: readonly { id: string; outfit: Outfit;
 
 // Quelqu'un attend un employé : file, place au bar / à table, note, client perdu.
 const unserved = (w: World, p: PartyRt): boolean =>
-  p.service === null && inside(p) && ((p.state === 'spot' && w.type !== 'laundry') || p.state === 'bill' || p.flags.has('asking'));
+  w.family === 'table' ? tableNeeds(w, p) : w.family === 'chair' ? chairNeeds(p)
+    : p.service === null && inside(p) && ((p.state === 'spot' && w.type !== 'laundry') || p.state === 'bill' || p.flags.has('asking'));
 export const workWaiting = (w: World): boolean => w.queue.some((p) => p.service === null) || w.parties.some((p) => unserved(w, p));
 
 // Arrivées depuis l'arrière-boutique (prise de poste en cours de créneau) et échéances (fin de poste, fin de créneau).
@@ -94,6 +97,8 @@ export function left(s: Actor): void {
 // Travail qu'il prendrait maintenant (sans le commencer) : note, tête de file, place qui attend sa commande, client perdu.
 // Un poste ne sert qu'un parti : deux employés au même poste ne serviraient pas deux clients au même endroit.
 export function pickWork(w: World, s: Actor): [PartyRt, Service['kind']] | null {
+  if (w.family === 'table') return tableWork(w, s);
+  if (w.family === 'chair') return chairWork(w, s);
   const room = s.deadline - w.t;
   const postBusy = w.staff.some((o) => o !== s && o.staff!.service?.kind === 'serve' && o.staff!.post === s.staff!.post);
   const bill = w.parties.find((p) => p.state === 'bill' && !p.service && idleNow(p.actors[0]!, w.t));

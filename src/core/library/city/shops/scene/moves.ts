@@ -41,7 +41,7 @@ export const MOVE_IDS = [
   // Reconnaissance
   'recognize', 'hug-hello', 'let-pass', 'after-you',
   // Restaurant
-  'show-table', 'hand-menu', 'read-menu', 'take-order', 'carry-plates', 'serve-plate', 'eat', 'clear-table', 'bring-bill',
+  'sit', 'show-table', 'hand-menu', 'read-menu', 'take-order', 'carry-plates', 'serve-plate', 'eat', 'clear-table', 'bring-bill',
   // Signatures
   'weigh', 'wrap', 'cut-sample', 'taste', 'offer-frames', 'try-frames', 'look-mirror', 'hold-mirror', 'shampoo', 'cut-hair', 'lie-back',
   'pick-stems', 'compose-bouquet', 'pour-wine', 'sniff-wine', 'tattoo', 'wince', 'explain-box', 'listen-nod', 'brew-coffee',
@@ -159,6 +159,8 @@ export const MOVES: Readonly<Record<MoveId, Move>> = {
   'after-you': mv('after-you', [1.2, 1.6], [k(0, 'give', 0, -H), k(0.4, 'give', 1, -H), k(0.85, 'down', 0, -h)]),
 
   // ---- Restaurant ----
+  // Assis au repos (table, fauteuil, chaise d'attente) : le client attablé ou installé attend assis, pas debout.
+  sit: loop('sit', 6, [6, 25], [k(0, 'down', 0, 0, 'seated'), k(0.5, 'down', 0, h, 'seated')]),
   'show-table': mv('show-table', [1.5, 2.5], [k(0, 'point', 0, -H), k(0.4, 'point', 1, -H), k(0.7, 'give', 1, 0)]),
   'hand-menu': mv('hand-menu', [1.2, 2], [k(0, 'hold'), k(0.3, 'give', 1), k(0.75, 'down')], { prop: held('menu', 0, 0.65) }),
   'read-menu': loop('read-menu', 6, [6, 25], [k(0, 'read', 1, 0, 'seated'), k(0.4, 'read', 1, H, 'seated'), k(0.7, 'read', 2, 0, 'seated')], { prop: held('menu', 0, 1, L) }),

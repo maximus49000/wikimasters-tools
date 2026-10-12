@@ -53,7 +53,9 @@ export type Actor = {
   party: PartyRt | null;
   member: number;
 };
-export type PartyState = 'street' | 'door' | 'browse' | 'queue' | 'served' | 'spot' | 'stay' | 'bill' | 'leaving' | 'gone' | 'skipped';
+// Restaurant : `seated` (menus) → `ordered` (en cuisine) → `eating` → `done` (attend débarrassage et note). Fauteuils :
+// `waiting` (chaise d'attente ou debout près de la porte).
+export type PartyState = 'street' | 'door' | 'browse' | 'queue' | 'served' | 'spot' | 'stay' | 'bill' | 'seated' | 'ordered' | 'eating' | 'done' | 'waiting' | 'leaving' | 'gone' | 'skipped';
 export type PartyRt = {
   p: Party;
   desc: string;
@@ -68,15 +70,22 @@ export type PartyRt = {
   flags: Set<string>;
   service: Service | null;
   until: number; // fin de séjour (bar, table) ou d'attente dehors
+  table: number | null; // restaurant : indice de la table (stage.tables)
+  chair: number | null; // fauteuils : x du fauteuil de travail
 };
-export type Beat = { acts: [Actor, Act[]][]; log?: string };
+// `wait` : acteurs à attendre en plus de ceux du lot (un parti mis en marche hors du lot, à l'entrée).
+export type Beat = { acts: [Actor, Act[]][]; log?: string; wait?: Actor[] };
+// Restaurant : `seat` (placement + menus), `order` (carnet → cuisine), `dish` (assiettes), `clear` (débarrassage, note,
+// paiement) ; fauteuils : `chair` (installation, signature, paiement).
 export type Service = {
-  kind: 'serve' | 'help' | 'order' | 'bill';
+  kind: 'serve' | 'help' | 'order' | 'bill' | 'seat' | 'dish' | 'clear' | 'chair';
   staff: Actor;
   party: PartyRt;
   phase: number;
   wait: Actor[]; // acteurs du temps précédent : le suivant part quand tous sont libres
   at: number; // x où l'employé sert
+  call: boolean; // renfort appelé à l'ouverture du service (`call-colleague` en tête du premier temps)
+  steps?: { staff: Act[]; client: Act[]; log?: string }[]; // fauteuils : étapes de la séance (signature du métier)
 };
 export type World = {
   type: ShopTypeId;

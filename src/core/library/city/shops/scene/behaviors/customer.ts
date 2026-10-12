@@ -7,16 +7,40 @@ import {
   atPlace, blockXs, placeTaken, queueAnchorIf, browseLike, freeSpots, inside, outgoing, partyIdle, partyWalk, queueAnchor, queueRoom, queued, staffAvailable,
 } from './places';
 import type { Character } from '../types';
+import { chairDecide, chairDoor } from './chair';
+import { childOf, followerDecide, groupStay, meet, restMove } from './group';
+import { TABLE_PATIENCE, freeTable, tableDecide } from './table';
+
+export { followerDecide };
 
 // Clients (G4b) : entrée par la porte → file / rayon / place → servi (squelette de la famille, service.ts) → séjour éventuel
 // → sortie par la porte. Le meneur décide pour le groupe (marches en bloc, même allure : les écarts se gardent) ; les
-// accompagnants vivent leur attente (l'enfant montre, le conjoint regarde, les amis bavardent).
+// accompagnants vivent leur attente (group.ts). Restaurant : on attend à la porte qu'on vous place (table.ts) ; fauteuils :
+// on attend son tour sur la chaise d'attente (chair.ts).
 
 const ADJ: Readonly<Record<Character, string>> = { rushed: ' pressé', chatty: ' bavard', undecided: ' indécis', regular: ' habitué', lost: ' perdu', ordinary: '' };
 const GROUP = { solo: '', couple: ' (couple)', 'parent-child': ' (parent + enfant)', friends: ' (amis)' } as const;
 export const descOf = (p: PartyRt['p']): string => `Client${ADJ[p.character]}${GROUP[p.kind]}`;
 // Patience devant la porte quand la boutique est pleine (s).
 const PATIENCE = (c: Character): number => (c === 'rushed' ? 8 : 25);
+// Vraie raison du demi-tour à la porte : fermeture proche, personne pour servir, quelqu'un sort, plein, pas de place.
+function doorReason(w: World, party: PartyRt): string {
+  if (w.t >= w.closing) return 'la boutique va fermer';
+  if (!staffAvailable(w)) return 'personne pour servir';
+  if (w.parties.some((o) => o !== party && outgoing(o, w.t))) return "quelqu'un sort";
+  if (w.family === 'table' && freeTable(w) !== null) return 'personne pour servir';
+  if (w.family === 'chair' && w.stage.chairs.some((x) => !w.parties.some((o) => o.chair === x && inside(o)))) return 'personne pour servir';
+  return w.parties.some((o) => o !== party && inside(o)) ? 'trop de monde' : 'pas de place pour eux';
+}
+// Entrée selon la famille : au restaurant, le serveur vient vous chercher (rien à faire ici) ; au salon, on va attendre
+// sur la chaise d'attente si personne ne peut vous prendre tout de suite.
+function tryEnter(w: World, party: PartyRt): boolean {
+  if (w.family === 'table') return false;
+  if (w.family === 'chair') return chairDoor(w, party);
+  if (!canEnter(w, party)) return false;
+  enter(w, party);
+  return true;
+}
 // Décalage d'entrée entre deux membres d'un groupe (s) : l'écart se fait à l'allure de marche.
 const STAGGER = 0.5;
 
@@ -62,15 +86,15 @@ export function arrivals(w: World): void {
         continue;
       }
       party.state = 'door';
-      party.until = w.t + PATIENCE(party.p.character);
+      party.until = w.t + (w.family === 'table' ? TABLE_PATIENCE(party) : PATIENCE(party.p.character));
     }
-    if (party.state !== 'door') continue;
-    if (w.t < Math.min(w.closing, w.force - 20) && staffAvailable(w) && canEnter(w, party)) enter(w, party);
-    else if (w.t >= party.until || w.t >= w.closing) {
-      party.state = 'skipped';
+    if (party.state !== 'door' || party.service) continue;
+    if (w.t < Math.min(w.closing, w.force - 20) && staffAvailable(w) && tryEnter(w, party)) continue;
+    if (w.t >= party.until || w.t >= w.closing) {
       // Il a attendu devant la porte et rebrousse chemin : `exit` sans `enter` (instant du demi-tour).
+      const why = doorReason(w, party);
+      party.state = 'skipped';
       for (const a of party.actors) a.track.exit = w.t;
-      const why = w.t >= w.closing ? 'la boutique va fermer' : w.parties.some((o) => o !== party && inside(o)) ? 'trop de monde' : 'pas de place pour eux';
       say(w, `${party.desc} renonce à la porte — ${why}`);
     }
   }
@@ -100,7 +124,9 @@ export function forceOut(w: World): void {
 // Sortie du groupe : tous ensemble vers la porte, à la même allure ; chacun quitte la scène en franchissant la porte.
 function exitParty(w: World, party: PartyRt): void {
   const out = atDepth(w, -OUTSIDE);
-  cast(party.actors.map((a) => [a, [walkTo(out, { free: true })]]));
+  // Le verre ou la tasse du bar reste sur le comptoir : on ne l'emporte pas dans la rue.
+  const keep = (a: Actor): Act[] => (a.carried === 'glass' || a.carried === 'cup' ? [gest('put-down', { free: true, dur: 1 })] : []);
+  cast(party.actors.map((a) => [a, [...keep(a), walkTo(out, { free: true })]]));
   party.state = 'gone';
 }
 export function exited(a: Actor): void {
@@ -140,12 +166,14 @@ function queueDecide(w: World, party: PartyRt, a: Actor): void {
     say(w, `${party.desc} s'impatiente`);
     return cast([[a, [gest('wait-impatient', { yaw: yawCounter(w) })]]]);
   }
-  if (c === 'undecided' && (idx >= 2 || w.t >= w.closing) && once(party, 'decided')) {
-    if (w.t >= w.closing || w.rng() < 0.5) {
+  const behind = w.queue.length - 1 - idx;
+  if (c === 'undecided' && (behind >= 2 || w.t >= w.closing) && once(party, 'decided')) {
+    if (w.t >= w.closing || w.rng() < 0.4) {
       cast([[a, [gest('shrug')]]]);
       return leave(w, party, 'voit la file grossir… et renonce');
     }
     say(w, `${party.desc} voit la file grossir… et se décide`);
+    party.flags.add('quick');
     return cast([[a, [gest('nod')]]]);
   }
   if (waited > 3 && incident(party, 'sneeze')) {
@@ -156,25 +184,12 @@ function queueDecide(w: World, party: PartyRt, a: Actor): void {
     say(w, `le téléphone de ${party.desc} sonne`);
     return cast([[a, [gest('phone-ring')]]]);
   }
-  const child = party.actors.find((m, k) => k > 0 && m.track.scale < 0.8);
+  const child = childOf(party);
   if (child && idleNow(child, w.t) && incident(party, 'child-tug')) {
     say(w, "l'enfant tire la manche — le parent le retient");
     return cast([[child, [gest('child-tug', { yaw: yawToward(child.x, a.x) })]], [a, [gest('hold-child', { dur: 5, yaw: yawToward(a.x, child.x) })]]]);
   }
-  const friend = w.parties.find((o) => o.p.id === party.p.knows && inside(o) && o.state !== 'leaving');
-  if (friend && once(party, 'met') && once(friend, 'met')) {
-    const f = friend.actors[0]!;
-    say(w, `${party.desc} reconnaît ${friend.desc}`);
-    const batch: [Actor, Act[]][] = [[a, [gest('recognize', { yaw: yawToward(a.x, f.x) })]]];
-    if (idleNow(f, w.t)) batch.push([f, [gest('recognize', { yaw: yawToward(f.x, a.x) })]]);
-    if (w.queue[idx + 1] === friend) {
-      w.queue[idx] = friend;
-      w.queue[idx + 1] = party;
-      say(w, `${party.desc} cède son tour à ${friend.desc}`);
-      batch[0]![1].push(gest('after-you'));
-    }
-    return cast(batch);
-  }
+  if (meet(w, party, a)) return;
   const nb = w.queue[idx - 1] ?? w.queue[idx + 1];
   if (c === 'chatty' && nb && w.rng() < 0.4 && idleNow(nb.actors[0]!, w.t)) {
     const o = nb.actors[0]!;
@@ -231,6 +246,7 @@ function browseDecide(w: World, party: PartyRt, a: Actor): void {
 
 function spotDecide(w: World, party: PartyRt, a: Actor): void {
   if (party.spot !== null && !atPlace(w, party, party.spot)) return;
+  if (meet(w, party, a)) return;
   if (w.type === 'laundry') {
     say(w, `${party.desc} charge une machine`);
     party.state = 'stay';
@@ -253,10 +269,7 @@ function stayDecide(w: World, party: PartyRt, a: Actor): void {
     party.since = w.t;
     return say(w, `${party.desc} demande la note`);
   }
-  if (party.actors.length > 1 && w.family === 'drink' && party.actors.every((m) => m.carried) && once(party, 'toast')) {
-    say(w, `${party.desc} trinquent !`);
-    return cast(party.actors.map((m) => [m, [gest('toast')]]));
-  }
+  if (groupStay(w, party) || meet(w, party, a)) return;
   if (w.t < a.rest) return;
   a.rest = w.t + 4 + w.rng() * 6;
   const group = party.actors.length > 1;
@@ -268,34 +281,13 @@ function stayDecide(w: World, party: PartyRt, a: Actor): void {
 // Meneur : décide pour le groupe selon l'état du parti.
 export function leaderDecide(w: World, a: Actor): void {
   const party = a.party!;
-  a.fill = party.state === 'queue' ? 'wait' : 'idle';
+  a.fill = restMove(w, a);
   if (party.state === 'leaving') {
     if (partyIdle(w, party)) exitParty(w, party);
   } else if (party.state === 'queue') queueDecide(w, party, a);
   else if (party.state === 'browse') browseDecide(w, party, a);
   else if (party.state === 'spot') spotDecide(w, party, a);
   else if (party.state === 'stay') stayDecide(w, party, a);
-}
-
-// Accompagnant : petits gestes d'attente, jamais longs (le meneur attend qu'il soit libre pour bouger le groupe).
-export function followerDecide(w: World, a: Actor): void {
-  const party = a.party!;
-  const leader = party.actors[0]!;
-  if (!['queue', 'served', 'spot', 'stay', 'bill', 'browse'].includes(party.state) || w.t < a.rest) return;
-  // Au plus 6 s de geste, puis au moins 2 s libre : le meneur peut alors déplacer le groupe.
-  a.rest = w.t + 8 + w.rng() * 3;
-  const toLeader = yawToward(a.x, leader.x);
-  const child = a.track.scale < 0.8;
-  const k = weighted(w, [
-    ['child-point', child ? 1 : 0],
-    ['couple-look', party.p.kind === 'couple' && !party.flags.has('heart') ? 1 : 0],
-    ['drink', party.state === 'stay' && a.carried && w.family === 'drink' ? 3 : 0],
-    ['browse-shelf', party.state === 'browse' && !child ? 2 : 0],
-    ['chat', party.p.kind === 'friends' ? 2 : 0],
-    ['listen', child ? 0 : 1.5],
-    ['wait', 3],
-  ] as const);
-  if (k === 'couple-look') party.flags.add('heart');
-  const dur = k === 'wait' || k === 'chat' || k === 'listen' || k === 'browse-shelf' ? { dur: 3 + w.rng() * 3 } : {};
-  cast([[a, [gest(k, { ...dur, ...(k === 'browse-shelf' ? { yaw: 12 } : k === 'wait' ? {} : { yaw: toLeader }) })]]]);
+  else if (party.state === 'waiting') chairDecide(w, party);
+  else tableDecide(w, party, a);
 }
