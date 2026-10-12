@@ -61,6 +61,14 @@ export function depthOf(layout: Layout, p: Placed): Depth {
   return host && isStanding(host) ? depthOf(layout, host) : 1;
 }
 
+// Meubles debout dans l'ordre de dessin : niveau d'abord, puis le bas le plus haut d'abord, puis l'ordre du plan.
+export function byDrawOrder<T extends Standing>(layout: Layout, items: readonly T[]): T[] {
+  return items
+    .map((p, i) => ({ p, i, d: depthOf(layout, p), b: p.row + sizeOf(p.kind).h }))
+    .sort((a, b) => a.d - b.d || a.b - b.b || a.i - b.i)
+    .map((e) => e.p);
+}
+
 // Les cases occupées d'une couche à un niveau (meubles debout et objets accrochés pour `floor`, tapis pour `rug`, qui ignorent le niveau), sauf celles de `ignoreId`.
 function takenKeys(layout: Layout, ignoreId: string | undefined, layer: 'floor' | 'rug', depth: Depth): Set<string> {
   const taken = new Set<string>();
@@ -394,9 +402,10 @@ export function placedSlugs(layout: Layout): Set<string> {
 }
 
 // Emplacement d'étagère sous le point (x, y) du dessin, en pixels.
+// L'emplacement sous (x, y) de l'étagère la plus en avant (deux étagères peuvent se superposer à des niveaux différents).
 export function slotAt(layout: Layout, x: number, y: number): { shelfId: string; slot: number } | null {
-  for (const p of layout) {
-    if (p.kind !== 'shelf') continue;
+  const shelves = layout.filter((p): p is Standing => p.kind === 'shelf');
+  for (const p of byDrawOrder(layout, shelves).reverse()) {
     const rect = rectOf(p);
     if (!rect) continue;
     const i = shelfSlots(pxRect(rect)).findIndex((s) => x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h);

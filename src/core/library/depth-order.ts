@@ -1,17 +1,13 @@
 import { sizeOf } from './furniture-catalog';
 import type { Layout } from './library-types';
-import { CELL_H, CELL_W, depthOf, isStanding, rectOf, type Rect, type Standing } from './room-grid';
+import { CELL_H, CELL_W, byDrawOrder, depthOf, isStanding, rectOf, type Rect, type Standing } from './room-grid';
 import type { PetState } from './pets/motion';
 
 const bottom = (p: Standing): number => p.row + sizeOf(p.kind).h;
 
 // Meubles debout (hors tapis) dans l'ordre de dessin : niveau d'abord, puis le bas le plus haut d'abord, puis l'ordre du plan.
 export function drawOrder(layout: Layout): Standing[] {
-  const items = layout.filter((p): p is Standing => isStanding(p) && p.kind !== 'rug');
-  return items
-    .map((p, i) => ({ p, i, d: depthOf(layout, p), b: bottom(p) }))
-    .sort((a, b) => a.d - b.d || a.b - b.b || a.i - b.i)
-    .map((e) => e.p);
+  return byDrawOrder(layout, layout.filter((p): p is Standing => isStanding(p) && p.kind !== 'rug'));
 }
 
 const contains = (r: Rect, x: number, y: number): boolean =>
