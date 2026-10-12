@@ -13,7 +13,7 @@ const rgbOf = (c: string): [number, number, number] => parseColor(c)?.rgb ?? [..
 const alphaOf = (c: string): number => parseColor(c)?.a ?? 1;
 export const shadeOf = (c: string, t = 0.3): string => rgba(mixRgb(rgbOf(c), COOL, t), alphaOf(c));
 export const lightOf = (c: string, t = 0.3): string => rgba(mixRgb(rgbOf(c), SUN, t), alphaOf(c));
-const withAlpha = (c: string, a: number): string => (a >= 1 ? c : rgba(rgbOf(c), a * alphaOf(c)));
+export const withAlpha = (c: string, a: number): string => (a >= 1 ? c : rgba(rgbOf(c), a * alphaOf(c)));
 
 // Forme : chemin `path` rempli, puis (si `box`) ombre et rehaut rognés au chemin, puis contour encré.
 export function cel(x: ShopPaintCtx, path: () => void, c: string, { box, s = 0.28, sx = 0.66, l = 0.2, lx = 0.2, lw = 0.2, a = 1 }: CelOpts = {}): void {
