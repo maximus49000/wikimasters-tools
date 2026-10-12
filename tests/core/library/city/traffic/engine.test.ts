@@ -215,4 +215,51 @@ describe('véhicules à part', () => {
     }
     expect([...labels]).toEqual(['FLEURS']);
   });
+  it('klaxons : route bloquée au feu rouge, les impatients arrêtés derrière un véhicule arrêté klaxonnent (≥ 12 s d’écart)', () => {
+    const w = createTraffic({ width: 2000, seed: 5, unit: 1, startS: T0 });
+    const e = env(1, { crowd: 0 });
+    const heard = new Map<string, { t: number; x: number; by: string }>();
+    const patience = new Map<string, number>();
+    for (let t = w.t; t < T0 + 120; t += 1) {
+      // Feu rouge qui ne finit pas : la file s'allonge derrière la ligne.
+      w.light.color = 'red';
+      w.light.since = w.t;
+      w.light.log = [{ t: -1e12, color: 'red' }];
+      advance(w, t, e);
+      for (const a of w.agents) patience.set(a.id, a.h.patience);
+      // Horloges : seulement des conducteurs présents ; celui de tête de file n'accumule pas d'attente.
+      const alive = new Set(w.agents.map((a) => a.id));
+      for (const id of w.hornClock.keys()) expect(alive.has(id)).toBe(true);
+      for (const track of ['near', 'far'] as const) {
+        const head = w.agents.filter((a) => a.track === track).sort((p, q) => q.s - p.s)[0];
+        if (head) expect(w.hornClock.get(head.id)?.stuck ?? 0).toBe(0);
+      }
+      for (const h of w.horns) {
+        expect(h.t).toBeGreaterThan(w.t - 10 - 1e-9); // fenêtre glissante de 10 s
+        heard.set(`${h.by}@${h.t.toFixed(2)}`, h);
+      }
+    }
+    const horns = [...heard.values()];
+    expect(horns.length).toBeGreaterThan(0);
+    const byAgent = new Map<string, number[]>();
+    for (const h of horns) {
+      expect(patience.get(h.by)!).toBeLessThan(3.5);
+      expect(h.x).toBeGreaterThan(-100);
+      expect(h.x).toBeLessThan(2100);
+      byAgent.set(h.by, [...(byAgent.get(h.by) ?? []), h.t]);
+    }
+    for (const ts of byAgent.values()) {
+      ts.sort((a, b) => a - b);
+      for (let i = 1; i < ts.length; i++) expect(ts[i]! - ts[i - 1]!).toBeGreaterThanOrEqual(12 - 1e-6);
+    }
+    expect([...byAgent.values()].some((ts) => ts.length >= 2)).toBe(true);
+  });
+  it('klaxons : rue fluide (route fermée) → aucun klaxon ; déterministes', () => {
+    const quiet = world(1080, 2, env(1, { closed: true }));
+    expect(quiet.horns).toEqual([]);
+    const a = createTraffic({ width: 2000, seed: 5, unit: 1, startS: T0 });
+    const b = createTraffic({ width: 2000, seed: 5, unit: 1, startS: T0 });
+    for (const w of [a, b]) advance(w, T0 + 60, env(1));
+    expect(a.horns).toEqual(b.horns);
+  });
 });

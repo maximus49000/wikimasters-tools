@@ -515,7 +515,8 @@ describe('clients : portes et verrou', () => {
     try {
       writeArt('ghibli');
       const c = life(600);
-      const nodes = [...c.querySelectorAll('[data-customer], [data-customer-inside], svg[data-customer-door]')];
+      // G4b : les boutiques du metteur en scène ont leurs clients dans ShopScene (rue, porte, vitrine).
+      const nodes = [...c.querySelectorAll('[data-customer], [data-customer-inside], svg[data-customer-door], [data-scene-street], svg[data-scene-door], [data-scene-actor]')];
       expect(nodes.length).toBeGreaterThan(0);
       for (const n of nodes) {
         expect(n.querySelector('[data-figure]')).not.toBeNull();

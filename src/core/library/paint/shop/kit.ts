@@ -4,7 +4,10 @@ import type { ShopPaintCtx } from './ctx';
 // reconnaissables de la maquette validée (docs/superpowers/maquettes/g4-commerces/interiors.js), en cellulo, portés à
 // l'identique (mêmes nombres, même ordre de tracé). Repère local : x de 0 à w, y de 0 (plafond) à h (sol). Le comptoir
 // et les tables passent au premier plan (devant le personnel) : `counter` et `bistroTable` appellent toFront().
-export type Kit = { x: ShopPaintCtx & { toFront(): void }; w: number; h: number; lit: boolean; r: () => number };
+// `mark` : relevé du mobilier (sans dessiner) pour le metteur en scène G4b (interiorFurnitureOf) : comptoir [x0, x1],
+// table (centre), fauteuil (centre) ; absent au dessin.
+export type Furniture = { kind: 'counter' | 'table' | 'chair'; x: number; x1?: number; seat?: number };
+export type Kit = { x: ShopPaintCtx & { toFront(): void }; w: number; h: number; lit: boolean; r: () => number; mark?: (f: Furniture) => void };
 export type InteriorFn = (k: Kit) => number;
 export type Col = string | readonly (number | undefined)[] | undefined;
 export type Pt = readonly [number, number];
@@ -71,7 +74,7 @@ export function tools(k: Kit) {
 
   function shelf(x: number, y: number, w: number, c: Col = '#9A6A44') { R(x, y, w, 0.6, c, { s: 0, l: 0, lw: 0.15 }); F(x, y + 0.6, w, 0.6, '#2A1A3A', 0.18); }
 
-  function counter(x: number, w: number, h: number, top: Col, front: Col, o: { panels?: boolean } = {}) { X.toFront();  const y = h - 2.2 - 5.2; R(x, y + 0.9, w, 5.2, front, { s: 0.25, sx: 0.78, l: 0.15, lx: 0.12, lw: 0.25 }); R(x - 0.4, y, w + 0.8, 1, top, { s: 0, l: 0.25, lx: 0.5, lw: 0.22 }); if (o.panels) each(x + 0.8, x + w - 0.8, 3.4, px => R(px, y + 2.2, 2.6, 3, li(C(front), 0.1), { s: 0.25, sx: 0.75, l: 0, lw: 0.1 })); return y; }
+  function counter(x: number, w: number, h: number, top: Col, front: Col, o: { panels?: boolean } = {}) { X.toFront(); k.mark?.({ kind: 'counter', x, x1: x + w }); const y = h - 2.2 - 5.2; R(x, y + 0.9, w, 5.2, front, { s: 0.25, sx: 0.78, l: 0.15, lx: 0.12, lw: 0.25 }); R(x - 0.4, y, w + 0.8, 1, top, { s: 0, l: 0.25, lx: 0.5, lw: 0.22 }); if (o.panels) each(x + 0.8, x + w - 0.8, 3.4, px => R(px, y + 2.2, 2.6, 3, li(C(front), 0.1), { s: 0.25, sx: 0.75, l: 0, lw: 0.1 })); return y; }
 
   function pendant(x: number, h0: number, c: Col = '#F2C84A', lit = false) { L(x, 0, x, h0, '#3A3A3A', 0.15); P([[x - 1.3, h0 + 1.4], [x - 0.5, h0], [x + 0.5, h0], [x + 1.3, h0 + 1.4]], c, { s: 0.25, l: 0 }); if (lit) { glow(x, h0 + 2, 3.2, '#FFE6A0', 0.28); dot(x, h0 + 1.5, 0.5, '#FFF6D0'); } }
 
@@ -159,7 +162,7 @@ export function tools(k: Kit) {
 
   function person(cx: number, b: number, s: number, shirt: Col = '#3A6AA8', skin: Col = '#E8B890', hair: Col = '#3A2A1A') { E(cx, b - 3.1 * s, 0.75 * s, 0.85 * s, skin, { s: 0.25, l: 0, lw: 0.12 }); cel(() => { X.arc(cx, b - 3.3 * s, 0.8 * s, Math.PI, 0); }, hair, { s: 0, l: 0, lw: 0 }); P([[cx - 1.1 * s, b], [cx - 1 * s, b - 1.9 * s], [cx - 0.5 * s, b - 2.3 * s], [cx + 0.5 * s, b - 2.3 * s], [cx + 1 * s, b - 1.9 * s], [cx + 1.1 * s, b]], shirt, { s: 0.25, sx: 0.6, l: 0.15, lw: 0.12 }); }
 
-  function bistroTable(cx: number, b: number, top: Col = '#F4F0E6', chair: Col = '#5A3A20') { X.toFront();  E(cx, b - 3.6, 1.6, 0.35, top, { s: 0, l: 0.2, lw: 0.15 }); F(cx - 0.15, b - 3.4, 0.3, 3, '#2A2A2A'); E(cx, b - 0.2, 0.9, 0.2, '#2A2A2A', { s: 0, l: 0, lw: 0 });
+  function bistroTable(cx: number, b: number, top: Col = '#F4F0E6', chair: Col = '#5A3A20') { X.toFront(); k.mark?.({ kind: 'table', x: cx, seat: 2.4 }); E(cx, b - 3.6, 1.6, 0.35, top, { s: 0, l: 0.2, lw: 0.15 }); F(cx - 0.15, b - 3.4, 0.3, 3, '#2A2A2A'); E(cx, b - 0.2, 0.9, 0.2, '#2A2A2A', { s: 0, l: 0, lw: 0 });
   for (const d of [-1, 1]) { X.strokeStyle = chair; X.lineWidth = 0.3; X.beginPath(); X.moveTo(cx + d * 2.2, b); X.lineTo(cx + d * 2.2, b - 2.4); X.moveTo(cx + d * 3.2, b); X.lineTo(cx + d * 3.2, b - 5); X.quadraticCurveTo(cx + d * 3.3, b - 5.8, cx + d * 2.6, b - 5.4); X.stroke(); E(cx + d * 2.7, b - 2.4, 0.8, 0.22, chair, { s: 0, l: 0, lw: 0.1 }); } }
 
   return { cel, R, RR, E, P, L, F, dot, glow, each, text, room, shelf, counter, pendant, frame, plant, bottle, vinyl, sleeve, bookRow, baguette, boule, croissant, basket, cake, macarons, fish, steak, cheeseWheel, wedge, crate, fruitAt, glasses, flower, bucket, hanger, screen, person, bistroTable };

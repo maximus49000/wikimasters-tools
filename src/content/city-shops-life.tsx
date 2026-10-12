@@ -603,6 +603,8 @@ type StaffProps = {
   // Ghibli : pantins (personnel en geste, trajets à pied posés par la boucle) ; centres des entrées d'immeubles (bouts de trajet).
   ghibli?: boolean;
   doorXs?: readonly number[];
+  // Ghibli, boutique du metteur en scène (G4b) : le personnel derrière la vitrine est rendu par ShopScene, pas ici.
+  scene?: boolean;
 };
 
 // ---------- Personnel à pied (Ghibli) ----------
@@ -695,7 +697,7 @@ const workOf = (type: ShopTypeId): Work => (APRON.has(SHOP_FAMILY[type]) ? 'apro
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
 const NO_DOORS: readonly number[] = [];
 
-export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, date, width, sky, rainy, umbrella, seed, seats, post, ghibli = false, doorXs = NO_DOORS }: StaffProps): ReactElement | null {
+export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, date, width, sky, rainy, umbrella, seed, seats, post, ghibli = false, doorXs = NO_DOORS, scene = false }: StaffProps): ReactElement | null {
   const outfits = useMemo(() => new Map(shifts.map((s) => [s.id, staffOutfit(seed, s.outfitKey)])), [shifts, seed]);
   const cast = staffCast(view, shifts, date, minutes, reduced);
   // Début de la minute affichée (horloge murale) : repère de la relève de l'ouvreur.
@@ -726,7 +728,7 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
       {front && (
         <svg data-staff-window="" x={win.x} y={win.y + shift} width={win.w} height={win.h - shift} overflow="hidden">
           <g transform={shift ? `translate(0 ${-shift})` : undefined}>
-            {cast.inside.map((s, i) => {
+            {(scene ? [] : cast.inside).map((s, i) => {
               const x = clamp(post + SPREAD[i]! * win.w, 2.5, win.w - 2.5);
               const dir = toward(x);
               const gseed = hashString(s.id);
@@ -754,7 +756,8 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
                 </g>
               );
             })}
-            {ghibli ? <GhibliShopGlass view={view} frame={frame} sky={sky} /> : <ShopInteriorFront type={type} w={win.w} h={win.h} sky={sky} lit={lit} />}
+            {/* Boutique de la scène G4b, rideau levé : le mobilier seul ici ; la vitre et les murs sont dessinés devant les acteurs (ShopScene). */}
+            {ghibli ? <GhibliShopGlass view={view} frame={frame} sky={sky} layer={scene && cast.shutter === 'up' ? 'furnish' : 'front'} /> : <ShopInteriorFront type={type} w={win.w} h={win.h} sky={sky} lit={lit} />}
           </g>
         </svg>
       )}
@@ -932,6 +935,8 @@ const KEEP_SELECTOR = [
   '[data-mover="porter"]',
   '[data-mover="truck"]',
   '[data-bouncer]',
+  // Scène G4b : employés présents derrière la vitrine (ShopScene).
+  '[data-scene-staff][data-present="true"]',
 ].join(', ');
 
 export type ShopSpriteCount = { keep: number; customers: number; guests: number };
@@ -956,9 +961,10 @@ export function countShopSprites(root: Element): ShopSpriteCount {
 
 // Appliqué une fois par minute (à chaque nouveau jeu de nœuds) : cache les convives de terrasse en trop (visibility) et rend les
 // visites à suspendre pour la minute (placeCustomers). Stable sur la minute : pas de clignotement quand un client entre ou sort.
-export function shopSpriteBudget(root: Element, width: number, cap = capFor(width)): Set<string> {
+// `scene` : clients de la scène G4b (un par acteur, avec son parti : sceneBudget), retirés par parti entier.
+export function shopSpriteBudget(root: Element, width: number, cap = capFor(width), scene: readonly BudgetSprite[] = []): Set<string> {
   const { sprites, guests } = budgetSprites(root);
-  const drop = spriteBudget(sprites, width / 2, cap);
+  const drop = spriteBudget(scene.length ? [...sprites, ...scene] : sprites, width / 2, cap);
   guests.forEach((g, i) => setIfChanged(g, 'visibility', drop.has(`guest-${i}`) ? 'hidden' : 'visible'));
   return new Set([...drop].filter((id) => !id.startsWith('guest-')));
 }

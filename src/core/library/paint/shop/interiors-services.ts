@@ -18,6 +18,7 @@ export function pharmacy(k: Kit): number {
 
 export function hairdresser(k: Kit): number {
   const { w, h } = k;
+  const kit = k;
   const X = k.x;
   const { cel, R, RR, E, L, F, room, bottle } = tools(k);
  room(w, h, '#DFF1F0', '#B0C9C8');
@@ -28,7 +29,7 @@ export function hairdresser(k: Kit): number {
   for (let k = 0; k < n; k++) { const cx = (w / n) * (k + 0.5); E(cx, 5, 2.6, 3, '#C8A040', { s: 0.25, l: 0.2, lw: 0.2 }); E(cx, 5, 2.2, 2.6, '#D6E8F0', { s: 0.12, l: 0, lw: 0.12 }); L(cx - 1, 3.4, cx + 0.2, 2.6, '#FFFFFF', 0.25);
     R(cx - 2.4, 8.6, 4.8, 0.5, '#FFFFFF', { s: 0, l: 0, lw: 0.12 }); for (let j = 0; j < 4; j++) bottle(cx - 1.6 + j * 1.05, 8.6, 1.4 + (j % 2) * 0.4, ['#E8A0C8', '#7AC8E8', '#F2E8C0', '#3A3A3A'][j], { label: null, cap: '#2A2A2A', lw: 0.08 }); }
   X.toFront();
-  for (let k = 0; k < n; k++) { const cx = (w / n) * (k + 0.5);
+  for (let k = 0; k < n; k++) { const cx = (w / n) * (k + 0.5); kit.mark?.({ kind: 'chair', x: cx, seat: 3.8 });
     // fauteuil (dossier, assise, pied chromé)
     RR(cx - 1.7, h - 10, 3.4, 4.4, 0.6, '#1A1A1A', { s: 0, l: 0.25, lw: 0.15 }); RR(cx - 2.1, h - 6, 4.2, 1.3, 0.4, '#1A1A1A', { s: 0, l: 0.2, lw: 0.12 }); F(cx - 0.3, h - 4.7, 0.6, 2.4, '#C8D0D8'); E(cx, h - 2.4, 1.6, 0.3, '#C8D0D8', { s: 0, l: 0, lw: 0.1 });
     if (k === n - 1) { L(cx + 2.8, h - 2.2, cx + 2.8, h - 10, '#C8D0D8', 0.3); cel(() => { X.arc(cx + 1.6, h - 10, 2.2, Math.PI * 0.95, Math.PI * 2.05); X.closePath(); }, '#F28CB4', { box: [cx - 0.6, h - 12.2, 4.4, 2.2], s: 0.25, l: 0.2, lw: 0.15 }); } }
@@ -43,7 +44,7 @@ export function tattoo(k: Kit): number {
   // planches de « flash » au mur (dessins), fauteuil inclinable, lampe articulée, encres
   each(0.8, w - 0.8, 4, (x, i) => { const yy = 1.6 + (i % 2) * 0.6; R(x, yy, 3.6, 4.4, '#F4EAD0', { s: 0, l: 0, lw: 0.12 }); const k = i % 4; if (k === 0) { cel(() => { X.moveTo(x + 1.8, yy + 3.6); X.bezierCurveTo(x + 0.2, yy + 2.2, x + 0.8, yy + 0.8, x + 1.8, yy + 1.8); X.bezierCurveTo(x + 2.8, yy + 0.8, x + 3.4, yy + 2.2, x + 1.8, yy + 3.6); }, '#E63B3B', { s: 0, l: 0, lw: 0.12 }); } else if (k === 1) { L(x + 1.8, yy + 0.6, x + 1.8, yy + 3.2, '#1A1A1A', 0.3); E(x + 1.8, yy + 3.4, 0.9, 0.4, '#1A1A1A', { s: 0, l: 0, lw: 0 }); L(x + 0.9, yy + 1.2, x + 2.7, yy + 1.2, '#1A1A1A', 0.3); } else if (k === 2) { X.strokeStyle = '#2A6A3A'; X.lineWidth = 0.3; X.beginPath(); X.moveTo(x + 0.6, yy + 3.6); X.bezierCurveTo(x + 3.4, yy + 3, x + 0.4, yy + 1.4, x + 3, yy + 0.8); X.stroke(); dot(x + 3, yy + 0.8, 0.4, '#E63B3B'); } else { dot(x + 1.8, yy + 2.2, 1.2, '#F2C83A'); for (let a = 0; a < 8; a++) L(x + 1.8 + Math.cos(a * 0.785) * 1.3, yy + 2.2 + Math.sin(a * 0.785) * 1.3, x + 1.8 + Math.cos(a * 0.785) * 1.7, yy + 2.2 + Math.sin(a * 0.785) * 1.7, '#F2C83A', 0.2); } });
   // fauteuil de tatouage : pied central, assise rembourrée, dossier incliné avec appui-tête, repose-jambes
-  X.toFront(); { const fx = w * 0.32, b = h - 2.2; E(fx, b - 0.3, 2.2, 0.35, '#5A5A62', { s: 0, l: 0, lw: 0.12 }); F(fx - 0.35, b - 4.6, 0.7, 4.3, '#C8D0D8'); L(fx - 0.35, b - 4.6, fx - 0.35, b - 0.3, INK, 0.1);
+  X.toFront(); { const fx = w * 0.32, b = h - 2.2; k.mark?.({ kind: 'chair', x: fx, seat: 5.8 }); E(fx, b - 0.3, 2.2, 0.35, '#5A5A62', { s: 0, l: 0, lw: 0.12 }); F(fx - 0.35, b - 4.6, 0.7, 4.3, '#C8D0D8'); L(fx - 0.35, b - 4.6, fx - 0.35, b - 0.3, INK, 0.1);
     RR(fx - 3.6, b - 5.8, 7.2, 1.5, 0.6, '#1A1A1A', { s: 0, l: 0.3, lx: 0.6, lw: 0.15 });
     X.save(); X.translate(fx + 3.4, b - 5.4); X.rotate(-0.95); RR(0, -1.5, 6, 1.5, 0.6, '#1A1A1A', { s: 0, l: 0.3, lx: 0.6, lw: 0.15 }); RR(6.2, -1.3, 1.8, 1.2, 0.5, '#1A1A1A', { s: 0, l: 0.3, lw: 0.12 }); X.restore();
     X.save(); X.translate(fx - 3.4, b - 5); X.rotate(0.85); RR(0, -1.4, 4.4, 1.4, 0.5, '#1A1A1A', { s: 0, l: 0.3, lx: 0.6, lw: 0.15 }); X.restore();

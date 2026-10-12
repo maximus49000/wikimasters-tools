@@ -17,8 +17,10 @@ import type { ShopView } from './view';
 // fait demi-tour et repart d'où il est venu. Jamais de fondu : il n'apparaît et ne disparaît qu'au bord du monde ou dans
 // l'ombre d'une porte. Deux visites par local et par cycle de VISIT_CYCLE secondes ; présence tirée par (visite, tour de cycle).
 export const VISIT_CYCLE = 240;
-// Réglage global : avec deux visites par local, la moyenne reste vers 4 clients en route par 720 px.
-const CUSTOMER_SCALE = 0.55;
+// Réglage global du dessin classique : avec deux visites par local, la moyenne reste vers 4 clients en route par 720 px.
+export const CLASSIC_CUSTOMER_SCALE = 0.55;
+// Affluence G4b (scène Ghibli des commerces, spec §6) : boutiques plus peuplées, capacité intérieure par famille.
+export const CUSTOMER_SCALE = 0.8;
 // Taille d'un client derrière la vitrine (repère de la vitrine, px du monde) : celle du vendeur (0,5) un peu réduite, pour que
 // la tête tienne dans la vitrine (21 px de haut) quand il se tient au bord du sol.
 export const INSIDE_SCALE = 0.45;
@@ -173,7 +175,8 @@ export function visitHappens(v: Visit, t: number, gate: number): boolean {
 }
 
 // Probabilité qu'une visite ait lieu : seulement si le local est ouvert ; affluence du type × activité de la ville.
-export function customerGate(view: ShopView, minutes: number, i: CityIntensity): number {
+// `scale` : CLASSIC_CUSTOMER_SCALE (visites du dessin classique) ou CUSTOMER_SCALE (scène G4b).
+export function customerGate(view: ShopView, minutes: number, i: CityIntensity, scale = CLASSIC_CUSTOMER_SCALE): number {
   if (view.phase !== 'open' || !view.sign) return 0;
-  return Math.min(1, crowdAt(SHOP_DEFS[view.sign.type], minutes) * Math.max(0.3, i.walkers) * CUSTOMER_SCALE);
+  return Math.min(1, crowdAt(SHOP_DEFS[view.sign.type], minutes) * Math.max(0.3, i.walkers) * scale);
 }
