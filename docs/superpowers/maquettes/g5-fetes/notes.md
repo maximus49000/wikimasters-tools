@@ -1,12 +1,12 @@
 # G5 · Maquette cellulo : lampadaires, mobilier, fêtes, cortège, père Noël, événements, chien
 
-Maquette : `index.html` (canvas 2D, autonome, animée par `requestAnimationFrame`, ≤ 30 i/s). Captures : `*.png` à côté, prises avec `?only=<id>&t=0.4` (temps figé). Paramètres : `?only=<id>` n'affiche qu'un canvas ; `?t=<s>` fige toutes les animations à l'instant `t`.
+Maquette : `index.html` (canvas 2D, autonome, animée par `requestAnimationFrame`, ≤ 30 i/s). Captures : `*.png` à côté, prises avec `?only=<id>&t=0.4` (temps figé) ; `night-rain.png` = zoom ×4 de nuit sous la pluie. Paramètres : `?only=<id>` n'affiche qu'un canvas ; `?t=<s>` fige toutes les animations à l'instant `t`.
 
 Langage : celui des commerces (G4, `devantures.html`) et des voitures (V2-V5). Outils repris tels quels : `mulberry32`, `hex`, `mix`, `SUN=#FFF6D0`, `COOL=#5A4A9C`, `INK=#2A1A18`, `cel()` (aplat + ombre nette violette à droite + rehaut à gauche + trait encré), `R`/`RR`/`E`/`P` (rect, rect arrondi, ellipse, polygone en `cel`), `disc`, `ball` (disque modelé : croissant d'ombre + point de lumière), `tube` (trait épais cerné d'encre avec ombre et rehaut : mâts, poteaux, pattes, membrures), `halo` (deux disques à bord net), `groundShadow` (ellipse violette au sol), `glint`. Lumière en haut à gauche partout.
 
 **Règle du portage** : chaque fonction de dessin reprend exactement le repère, les dimensions et l'ancrage du sprite classique (tableau ci-dessous). Les sprites se posent avec les mêmes `transform` qu'aujourd'hui ; seul le dessin change. Les pantins (G3) ne sont pas redessinés ici : des silhouettes-repères (`figure`, `rider`) marquent leur place et leur taille (33 u, pieds à l'origine, tête à −33).
 
-Nuit : comme pour les commerces, un passage `multiply #6878C0` sur la scène, puis les éléments lumineux sont repassés par-dessus (`pass:'lit'` des fonctions `lamp`, `trafficPole`, `stageSpots`, `santa`, `plane`). Dans l'app, cela correspond aux couches hors filtre d'étalonnage (`GhibliNightLight`, `GhibliWindows`) : la lanterne allumée, les feux, les lentilles des projecteurs, la lanterne du traîneau, les feux de position sont à dessiner dans la même couche « hors filtre ».
+Nuit : un passage `multiply #5868BE` sur la scène, puis les éléments lumineux sont repassés par-dessus (`pass:'lit'` des fonctions `lamp`, `trafficPole`, `stageSpots`, `santa`, `plane`). Dans l'app, cela correspond aux couches hors filtre d'étalonnage (`GhibliNightLight`, `GhibliWindows`) : la lanterne allumée, les feux, les lentilles des projecteurs, la lanterne du traîneau, les feux de position sont à dessiner dans la même couche « hors filtre ».
 
 ## 1. Correspondance sprite classique → dessin maquette
 
@@ -111,8 +111,35 @@ Bord supérieur `y(u) = h·u·(0,08·sin(5,2u − 7,5t + φ) + 0,05·sin(2,6u �
 ## 3. Chien : races tirées de la graine (`BREEDS`)
 `rng = mulberry32(seed)` → race puis robe. Boîte du classique × (L, H) : labrador (1, 1 ; oreilles tombantes, queue droite), teckel (1,35, 0,72 ; museau long), terrier (0,85, 0,85 ; oreilles pointues, queue dressée, poil hirsute), caniche (0,9, 1 ; pompons, queue à pompon), berger (1,1, 1,08 ; oreilles pointues, queue en panache, selle sombre), bouledogue (0,85, 0,82 ; oreilles « chauve-souris », queue courte, museau court, taches). Trois robes par race. Collier rouge à médaille d'or. La laisse du pantin reste accrochée au collier : point `(4,6·L, −9,2·H)` dans le repère du chien (≈ (−4, −9) du classique, soit (22, −9) dans le repère du promeneur).
 
+## 5. Lumière de nuit (remplace `GhibliNightLight` : flaques, halos et reflets)
+
+Retour de l'utilisateur : la lumière des lampadaires doit être « Ghibli mais naturelle ». Les disques et ellipses beiges semi-opaques à bord net (actuel `ghibli-night.tsx`) grisent la scène au lieu de l'éclairer. Nouvelle technique (`lampLight`, `groundPool`, `windowLight`, `shopLight`, `actorShadow`, `actorRim` dans index.html ; captures `street-night.png`, `zoom-night.png`, `night-rain.png`, `music-night.png`, `santa.png`) :
+
+**Ordre des couches.** 1) Scène de jour. 2) Nuit : `multiply` `#5868BE` (bleu nuit profond ; l'ancien `#6878C0` donnait un gris délavé). 3) Lumières **ajoutées en `screen`** : elles éclaircissent et réchauffent ce qu'elles touchent et laissent la texture (dalles, pavés, enduit) visible ; loin des lampes, le bleu reste intact. 4) Verre allumé, feux, lentilles : repassés opaques par-dessus.
+
+**Couleurs.** Ambre d'incandescence `AMBER = rgb(255,196,112)`, cœur `AMBER_CORE = rgb(255,230,170)`. Fenêtres : jaune `#FFE4A0`, orange `#FFC878`, crème `#FFF2D0`, bleu télé `#9AB8FF` (tirage par fenêtre).
+
+**Lampadaire** (lanterne à `(9, −77)·k`, `u` = unité du monde) :
+- *Halo d'air et de mur* : dégradé radial centré sur la lanterne (décalé de +6u vers le bas), rayon `58u`, aplati `scale(1, 0,72)` pour ne pas monter dans le ciel ; arrêts `0 → α 0,5`, `0,18 → 0,3`, `0,5 → 0,1`, `1 → 0`. Il réchauffe le mur derrière le mât, la devanture et le haut des passants sans bord visible.
+- *Bloom du verre* : radial `7k` : `0 → AMBER_CORE 0,9`, `0,35 → 0,45`, `1 → 0`. Le sprite du lampadaire ne dessine que le verre `#FFF3C4` avec un cœur blanc (plus de grand disque).
+- *Flaque au sol* (`groundPool`) : ellipse par `scale(1, ry/rx)` d'un dégradé radial `0 → AMBER_CORE 0,62`, `0,22 → AMBER 0,46`, `0,55 → 0,18`, `1 → 0`. Deux flaques : trottoir, centre `(x + 3u, curb − 2u)`, `rx 54u`, `ry 15u` ; chaussée, centre `(x + 3u, curb + 9u)`, `rx 70u`, `ry 13u`, intensité × 0,45. Plus lumineuse au pied, elle s'étale puis faiblit sur les pavés, dont les joints restent visibles.
+- *Joints qui captent la lumière* : 26 petits rectangles (`1..2,4u × 0,4u`) tirés par la graine autour du pied (rayon 48u × 14u), en `lighter`, alpha `(1 − d)² × 0,32` (× 0,55 sur la chaussée).
+- *Pas de cône par temps sec.* Pluie (`rain`) : cône très léger (dégradé linéaire lanterne → sol, α 0,16 → 0, en `screen`, de ±4k en haut à −30u..+26u au sol) ; sol assombri (`multiply rgba(120,130,190,0,6)` sous le bord du trottoir) ; **reflets étirés** : cinq rubans verticaux ondulés (`sin(y/3u + phase)`, largeur 9u, se rétrécissant vers le bas) du bord du trottoir au trottoir d'en face, dégradé `AMBER_CORE 0,22 → AMBER 0,1 → 0`, en `screen` ; averse en traits fins `rgba(220,230,255,0,22)`.
+
+**Fenêtres allumées** (`windowLight`) : vitre pleine à 95 % + lueur `screen` radiale centrée sur la fenêtre, rayon `1,6 × max(w, h)`, `0 → 0,55`, `0,4 → 0,2`, `1 → 0` ; croisillon encré à 35 %.
+
+**Vitrines** (`shopLight`) : intérieur `screen` ambre α 0,32 ; **débord sur le trottoir** = demi-ellipse radiale centrée au bas de la vitrine (`rx = w/2 + 14`, `ry = 24`), `0 → 0,4`, `0,4 → 0,18`, `1 → 0` (plus de trapèze à bords droits) ; lueur sur le mur autour (radial `0,3w → 0,9w`, α 0,14 → 0). Pluie : quatre reflets verticaux incurvés sur la chaussée en face.
+
+**Acteurs** (passants, chien, poteau de bus, feu, terrasse, ouvriers : tout ce qui est posé devant le décor), relativement à la lampe la plus proche :
+- *Ombre portée* (`actorShadow`) : quadrilatère de la base des pieds (largeur 0,9 w) qui s'allonge **à l'opposé de la lampe** de `L = min(1,1 h, 0,35 h + 0,5·|dx|)` et descend de 3,2u (sol vu légèrement de dessus), rempli d'un dégradé linéaire `rgba(40,36,90, 0,65·(1 − dist/80)) → 0` en `multiply` ; rien au-delà de 70u.
+- *Rehaut chaud* (`actorRim`) : l'acteur est redessiné dans un canvas tampon (boîte 2w × h), masqué en `source-in` par un dégradé linéaire horizontal du côté de la lampe (`AMBER_CORE α 0,75·(1 − dist/95)`) vers 0 au tiers opposé, puis recopié en `screen`. Sa face tournée vers la lampe est ainsi éclairée, l'autre reste dans le bleu.
+
+**Fête de la musique** : lampadaire idem ; faisceaux des projecteurs inchangés (polygones à 0,3 ± 0,06) ; guirlande du stand = petits dégradés radiaux `screen` (r 4) par ampoule. **Réveillon** : fenêtres des toits par `windowLight` ; lanterne du traîneau = bloom radial r 6 ; lune avec halo radial `screen` r 20.
+
+**Portage.** Le calque SVG hors filtre peut tout faire avec des `<radialGradient>` / `<linearGradient>` et `mix-blend-mode: screen` (et `multiply` pour les ombres) : c'est fidèle mais chaque lampadaire ajoute 4 dégradés + 26 petits rects, et les rehauts des acteurs demandent un masque par acteur. **Recommandation** : peindre par lampadaire, **en canvas mis en cache** (une image par `(k, rain)` : halo + bloom + flaques + joints, soit ~140u × 110u, déterministe par la graine du lampadaire), posée en `<image style="mix-blend-mode: screen">` à `(x − 70u, curb − 95u)` dans le calque hors filtre, avec l'opacité 4 s de `lampLit` ; les fenêtres et vitrines en un seul `<radialGradient>` partagé par teinte ; les ombres portées des acteurs en un `<polygon>` à dégradé partagé (orientation = signe de `x − lampe`), posées par la boucle avec l'acteur ; les rehauts chauds réservés aux pantins (sprites PNG : une variante « rim gauche/droite » cuite une fois par pose, ou un simple `<rect>` ambre en `screen` masqué par la silhouette) et au chien, et omis sur le mobilier si le coût est trop élevé.
+
 ## 4. Points d'attention pour le portage
-- La lanterne allumée et son halo proche sont dans le sprite ; la flaque, le cône et les reflets restent dans `GhibliNightLight` (même centre (9, −77)·k) : ne pas doubler.
+- Le sprite du lampadaire ne dessine que le verre allumé ; toute la lumière (halo, bloom, flaques, joints, pluie) est décrite au §5 et remplace `GhibliNightLight`.
 - Les figures de la maquette sont des silhouettes : dans l'app, pantins existants (passants 0,55, musiciens 0,55 × 0,8, parade `FIG` 0,7, père Noël `SANTA_K` 0,7, chien à l'échelle du promeneur).
 - Les gabarits de véhicules (camion-nacelle, plateau, camion de déménagement, camionnette) sont ceux de V5, déjà peints : seuls le bras + nacelle, le chargement, le hayon et les pièces portées sont à redessiner.
 - Le vélo de livraison garde sa mécanique (`events.ts`, piste cyclable) ; le livreur devient un `GhibliRider` (selle à (−4, −16) dans le repère du vélo) avec la caisse isotherme dessinée derrière lui.

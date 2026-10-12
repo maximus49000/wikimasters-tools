@@ -18,6 +18,9 @@ canvas{display:block;border-radius:6px;box-shadow:0 2px 10px #0003;background:#d
 <h3>3 · Zoom ×4 <span class="tag">jour puis nuit, 270 px de rue</span></h3>
 <canvas id="zoom-day"></canvas><br>
 <canvas id="zoom-night"></canvas>
+<p class="leg">Lumière de nuit : après le bleu nuit (multiply), chaque lumière est <b>ajoutée</b> en mode <code>screen</code> par des dégradés radiaux doux (cœur ambré d'incandescence, bord fondu) : halo du mur autour de la lanterne, flaque en perspective au pied du mât (trottoir puis chaussée), étincelles sur les joints des dalles et des pavés, bloom serré du verre. Les acteurs proches reçoivent un rehaut chaud du côté de la lampe et projettent une ombre portée à l'opposé. Vitrines et fenêtres débordent doucement sur le mur et le trottoir.</p>
+<h3>3 bis · Nuit de pluie <span class="tag">×4 · cône diffus · reflets étirés et ondulés sur les pavés mouillés · pas de feu d'artifice</span><span class="anim">animé</span></h3>
+<canvas id="night-rain"></canvas>
 
 <h3>4 · Planche mobilier de rue <span class="tag">×5 · lampadaire éteint / allumé / avec drapeau · feu et boîtier · arrêt de bus · passage · terrasse · cordon · enseigne portée · écriteau · échelle · accessoires tenus</span></h3>
 <canvas id="board-street"></canvas>
@@ -162,7 +165,6 @@ function lamp(ctx,{lit=false,pass='base',flag=false,flagT=0}={}){
  }
  if(lit&&pass==='lit'){
   // halo centré sur la lanterne (9, −77) : ghibli-night y pose déjà sa flaque ; ici seulement le verre et l'auréole proche
-  halo(ctx,9,-77,8,'#FFE6A0',0.32);
   P(ctx,[[5.4,-80],[12.6,-80],[13,-75.2],[5,-75.2]],'#FFF3C4',{lw:0,sh:0,li:0});
   ctx.fillStyle='#FFFFFF';ctx.fillRect(7.2,-79.2,3.6,2);
   L(ctx,9,-80,9,-75.2,'rgba(42,26,24,0.5)',0.35);
@@ -549,7 +551,7 @@ function santa(ctx,{landed=false,lit=true,t=0,anim=true,aboard=true,pass='base'}
   // lanterne accrochée à l'avant
   tube(ctx,11,-9,11,-12.4,0.6,IRON,{lw:0.25});P(ctx,[[9.6,-12.6],[12.4,-12.6],[12.2,-9.4],[9.8,-9.4]],lit?'#FFF3B0':'#E8E2CC',{lw:0.4,sh:lit?0:0.2,li:lit?0:0.3});R(ctx,9.4,-13.1,3.2,0.7,IRON,{lw:0.3,sh:0,li:0.2});
  }
- if(pass==='lit'&&lit){halo(ctx,11,-11,3.2,'#FFE08A',0.5);P(ctx,[[9.6,-12.6],[12.4,-12.6],[12.2,-9.4],[9.8,-9.4]],'#FFF3B0',{lw:0,sh:0,li:0});ctx.fillStyle='#FFFFFF';ctx.fillRect(10.3,-12,1.4,1.4);
+ if(pass==='lit'&&lit){ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,11,-11,0,6,[[0,AMBER_CORE,0.8],[0.3,AMBER,0.4],[1,AMBER,0]]);ctx.beginPath();ctx.arc(11,-11,6,0,TAU);ctx.fill();ctx.restore();P(ctx,[[9.6,-12.6],[12.4,-12.6],[12.2,-9.4],[9.8,-9.4]],'#FFF3B0',{lw:0,sh:0,li:0});ctx.fillStyle='#FFFFFF';ctx.fillRect(10.3,-12,1.4,1.4);
   if(!landed)trail(ctx,t,anim,true);team.forEach(([x,y,lead])=>{if(lead){halo(ctx,x+11.4,y-4.4,3,'#FF3B3B',0.5);ball(ctx,x+11.4,y-4.4,1.1,'#FF5B5B',0)}})}
  ctx.restore()}
 // Traînée scintillante (sparkle : cercles à (−30,−9),(−40,−7),(−51,−10),(−62,−8),(−72,−9,5), clignotement 0,6..1,1 s) : étoiles et poussière d'or.
@@ -735,7 +737,7 @@ function dog(ctx,{seed=1,t=0,anim=true,leashTo=null,breed=null}={}){const rng=mu
 <script>
 // ───────────────────────── Scènes ─────────────────────────
 const Q=new URLSearchParams(location.search),FIXED_T=Q.has('t')?Number(Q.get('t')):null,ONLY=Q.get('only');
-const NIGHT_MUL='#6878C0';
+const NIGHT_MUL='#5868BE';
 function nightFilter(ctx,W,H){ctx.save();ctx.globalCompositeOperation='multiply';ctx.fillStyle=NIGHT_MUL;ctx.fillRect(-10,-10,W+20,H+20);ctx.restore()}
 function mk(id,W,H,s,cssW=1080){const c=document.getElementById(id);c.width=Math.round(W*s);c.height=Math.round(H*s);c.style.width=cssW+'px';const ctx=c.getContext('2d');ctx.scale(s,s);return ctx}
 const ANIMS=[];function anim(id,W,H,s,draw,cssW){const ctx=mk(id,W,H,s,cssW);ANIMS.push({id,ctx,W,H,draw});draw(ctx,FIXED_T??0)}
@@ -772,64 +774,124 @@ function streetBackdrop(ctx,{night=false,seed=7,behind=null}={}){const{W,H,G,CUR
  R(ctx,0,FAR,W,H-FAR,'#D8C8A8',{lw:0.5,sh:0,li:0});ctx.fillStyle='rgba(70,50,130,0.18)';ctx.fillRect(0,FAR,W,1.5);
  return items;
  function h2(h){return h}}
-// Lumière nocturne des lampadaires (reproduit GhibliNightLight, déjà livré : flaque, halo, reflets) : lanterne à (9, −77) × k.
-function nightPool(ctx,x,curb,k,u=1){const gx=x+9*k,gy=curb-77*k;ctx.fillStyle='rgba(255,220,140,0.18)';ctx.beginPath();ctx.arc(gx,gy+4*u,22*u,0,TAU);ctx.fill();ctx.fillStyle='rgba(255,230,160,0.3)';ctx.beginPath();ctx.arc(gx,gy+4*u,11*u,0,TAU);ctx.fill();
- ctx.fillStyle='rgba(255,215,140,0.05)';ctx.beginPath();ctx.moveTo(gx-3*u,gy);ctx.lineTo(gx+3*u,gy);ctx.lineTo(gx+30*u,curb+10*u);ctx.lineTo(gx-26*u,curb+10*u);ctx.fill();
- ctx.fillStyle='rgba(255,215,140,0.26)';ctx.beginPath();ctx.ellipse(x+3*u,curb-2*u,46*u,13*u,0,0,TAU);ctx.fill();ctx.fillStyle='rgba(255,230,170,0.42)';ctx.beginPath();ctx.ellipse(x+3*u,curb-2*u,24*u,7*u,0,0,TAU);ctx.fill();
- const rng=mulberry32(x*7919);for(let i=0;i<6;i++){const sx=x+3*u+(rng()-0.5)*5*u,w=(1.2+rng()*2)*u;ctx.fillStyle=`rgba(255,225,160,${0.45-i*0.05})`;ctx.fillRect(sx-w/2,curb+(2+i*5)*u,w,3.6*u)}}
+// ───────────────────────── Lumière de nuit (remplace GhibliNightLight) ─────────────────────────
+// Principe : après le multiply bleu nuit, la lumière est ajoutée en mode `screen` (elle ÉCLAIRCIT et réchauffe ce qu'elle touche,
+// la texture reste visible) avec des dégradés radiaux à décroissance douce : cœur ambré d'incandescence, bord fondu dans le bleu.
+const AMBER=[255,196,112],AMBER_CORE=[255,230,170];
+const grad=(ctx,x,y,r0,r1,stops)=>{const g=ctx.createRadialGradient(x,y,r0,x,y,r1);for(const[o,c,a]of stops)g.addColorStop(o,rgba(c,a));return g};
+// Flaque au sol en perspective : ellipse aplatie centrée au pied du mât (x+3), plus claire au pied, qui s'étale sur le trottoir et faiblit sur la chaussée.
+function groundPool(ctx,x,y,rx,ry,a=1){ctx.save();ctx.globalCompositeOperation='screen';ctx.translate(x,y);ctx.scale(1,ry/rx);ctx.fillStyle=grad(ctx,0,0,0,rx,[[0,AMBER_CORE,0.62*a],[0.22,AMBER,0.46*a],[0.55,AMBER,0.18*a],[1,AMBER,0]]);ctx.beginPath();ctx.arc(0,0,rx,0,TAU);ctx.fill();ctx.restore()}
+// Lumière d'un lampadaire : lanterne à (9, −77)·k. Réchauffe le mur derrière (dégradé radial autour de la lanterne, borné au mur),
+// flaque au sol, joints des pavés qui captent la lumière (étincelles `lighter` près du pied), bloom serré du verre. Pluie : cône très léger
+// et reflets étirés et ondulés sur les pavés mouillés.
+function lampLight(ctx,x,curb,k,{wallTop=-1e9,ground=curb-20,far=curb+40,rain=false,u=1,seed=1}={}){const gx=x+9*k,gy=curb-77*k,R0=58*u;
+ ctx.save();ctx.globalCompositeOperation='screen';
+ // air et mur : halo large très doux autour de la lanterne, légèrement aplati (il ne monte guère vers le ciel)
+ ctx.save();ctx.translate(gx,gy+6*u);ctx.scale(1,0.72);ctx.fillStyle=grad(ctx,0,0,0,R0,[[0,AMBER,0.5],[0.18,AMBER,0.3],[0.5,AMBER,0.1],[1,AMBER,0]]);ctx.beginPath();ctx.arc(0,0,R0,0,TAU);ctx.fill();ctx.restore();
+ // bloom serré du verre
+ ctx.fillStyle=grad(ctx,gx,gy,0,7*k,[[0,AMBER_CORE,0.9],[0.35,AMBER_CORE,0.45],[1,AMBER,0]]);ctx.beginPath();ctx.arc(gx,gy,7*k,0,TAU);ctx.fill();
+ ctx.restore();
+ // flaque : trottoir (claire) puis chaussée (plus faible et plus large)
+ groundPool(ctx,x+3*u,curb-2*u,54*u,15*u,1);groundPool(ctx,x+3*u,curb+9*u,70*u,13*u,0.45);
+ // joints des pavés et des dalles : étincelles chaudes près du pied, de moins en moins loin
+ const rng=mulberry32(seed^(x*7919|0));ctx.save();ctx.globalCompositeOperation='lighter';
+ for(let i=0;i<26;i++){const d=rng(),ang=rng()*TAU,px=x+3*u+Math.cos(ang)*d*48*u,py=curb-2*u+Math.sin(ang)*d*14*u+(py=>py)(0);const on=py<curb?1:0.55;ctx.fillStyle=rgba(AMBER_CORE,(1-d)*(1-d)*0.32*on);ctx.fillRect(px-(0.5+rng()*0.6)*u,py-0.2*u,(1+rng()*1.4)*u,0.4*u)}
+ ctx.restore();
+ if(rain){ctx.save();ctx.globalCompositeOperation='screen';
+  // cône diffus dans la pluie
+  const cg=ctx.createLinearGradient(0,gy,0,curb);cg.addColorStop(0,rgba(AMBER,0.16));cg.addColorStop(1,rgba(AMBER,0));ctx.fillStyle=cg;ctx.beginPath();ctx.moveTo(gx-4*k,gy);ctx.lineTo(gx+4*k,gy);ctx.lineTo(gx+26*u,curb);ctx.lineTo(gx-30*u,curb);ctx.closePath();ctx.fill();
+  // reflet étiré sur les pavés mouillés : rubans verticaux ondulés, du bord du trottoir vers le bas, qui s'estompent
+  const w=9*u,h=far-curb;for(let j=0;j<5;j++){const ox=(j-2)*2.6*u,ph=j*1.3;ctx.beginPath();ctx.moveTo(gx+ox-w/2,curb);for(let yy=0;yy<=h;yy+=2*u){const wig=Math.sin(yy/(3*u)+ph)*1.4*u;ctx.lineTo(gx+ox-w/2*(1-yy/h*0.5)+wig,curb+yy)}for(let yy=h;yy>=0;yy-=2*u){const wig=Math.sin(yy/(3*u)+ph+0.8)*1.4*u;ctx.lineTo(gx+ox+w/2*(1-yy/h*0.5)+wig,curb+yy)}ctx.closePath();
+   const rg=ctx.createLinearGradient(0,curb,0,far);rg.addColorStop(0,rgba(AMBER_CORE,0.22));rg.addColorStop(0.5,rgba(AMBER,0.1));rg.addColorStop(1,rgba(AMBER,0));ctx.fillStyle=rg;ctx.fill()}
+  ctx.restore()}}
+// Fenêtre allumée : vitre chaude + lueur douce qui déborde sur le mur.
+function windowLight(ctx,x,y,w,h,c,a=1,part='both'){if(part!=='fill'){ctx.save();ctx.globalCompositeOperation='screen';const cx=x+w/2,cy=y+h/2,r=Math.max(w,h)*1.6;ctx.fillStyle=grad(ctx,cx,cy,0,r,[[0,C(c),0.55*a],[0.4,C(c),0.2*a],[1,C(c),0]]);ctx.fillRect(cx-r,cy-r,2*r,2*r);ctx.restore()}if(part==='glow')return;
+ ctx.fillStyle=rgba(C(c),0.95*a);ctx.fillRect(x,y,w,h);ctx.fillStyle='rgba(42,26,24,0.35)';ctx.fillRect(x+w*0.46,y,w*0.08,h);ctx.fillRect(x,y+h*0.44,w,h*0.06)}
+// Vitrine allumée : intérieur chaud, lumière qui déborde doucement sur le trottoir (dégradé vertical) et sur la chaussée.
+function shopLight(ctx,x,y,w,h,ground,far,{c=AMBER,a=1,rain=false}={}){ctx.save();ctx.globalCompositeOperation='screen';
+ ctx.fillStyle=rgba(c,0.32*a);ctx.fillRect(x,y,w,h);ctx.save();ctx.translate(x+w/2,ground-1);ctx.scale(w/2+14,24);ctx.fillStyle=grad(ctx,0,0,0,1,[[0,c,0.4*a],[0.4,c,0.18*a],[1,c,0]]);ctx.beginPath();ctx.arc(0,0,1,0,TAU);ctx.fill();ctx.restore();
+ // lueur sur le mur autour de la vitrine
+ ctx.fillStyle=grad(ctx,x+w/2,y+h/2,w*0.3,w*0.9,[[0,c,0.14*a],[1,c,0]]);ctx.fillRect(x-w/2,y-h,2*w,3*h);
+ if(rain){const rg=ctx.createLinearGradient(0,far-20,0,far);rg.addColorStop(0,rgba(c,0.14*a));rg.addColorStop(1,rgba(c,0));ctx.fillStyle=rg;for(let k=0;k<4;k++){const sx=x+w*(0.15+k*0.23);ctx.beginPath();ctx.moveTo(sx-3,far-20);ctx.quadraticCurveTo(sx+2,far-10,sx-2,far);ctx.lineTo(sx+4,far);ctx.quadraticCurveTo(sx+6,far-10,sx+3,far-20);ctx.closePath();ctx.fill()}}
+ ctx.restore()}
+// Acteurs touchés par une lampe : ombre portée au sol À L'OPPOSÉ de la lampe (allongée, qui s'estompe, multiply) et rehaut chaud
+// (rim light) sur la face tournée vers la lampe : l'acteur est redessiné dans un canvas tampon, masqué par un dégradé (source-in),
+// puis composé en `screen`. `a` = {x, y (pieds), w, h, draw()} dans le repère courant ; `lamp` = {x: pied du mât, lx: lanterne x, ly}.
+const rimBuf=document.createElement('canvas');
+function actorShadow(ctx,a,lamp){const d=a.x-lamp.lx,dist=Math.hypot(d,a.y-lamp.ly);if(Math.abs(d)>70)return;const dir=d>=0?1:-1,L=Math.min(a.h*1.1,a.h*0.35+Math.abs(d)*0.5),str=0.5*Math.max(0,1-dist/80);
+ ctx.save();ctx.globalCompositeOperation='multiply';const g=ctx.createLinearGradient(a.x,a.y,a.x+dir*L,a.y);g.addColorStop(0,`rgba(40,36,90,${str*1.3})`);g.addColorStop(1,'rgba(40,36,90,0)');ctx.fillStyle=g;
+ ctx.beginPath();ctx.moveTo(a.x-a.w*0.45,a.y-0.5);ctx.lineTo(a.x+a.w*0.45,a.y-0.5);ctx.lineTo(a.x+dir*L+a.w*0.2,a.y+3.2);ctx.lineTo(a.x+dir*L-a.w*0.2,a.y+3.2);ctx.closePath();ctx.fill();ctx.restore()}
+function actorRim(ctx,a,lamp){const d=a.x-lamp.lx,dist=Math.hypot(d,a.y-a.h/2-lamp.ly);if(dist>95)return;const str=0.75*Math.max(0,1-dist/95);
+ const tf=ctx.getTransform(),cv=ctx.canvas;if(rimBuf.width!==cv.width||rimBuf.height!==cv.height){rimBuf.width=cv.width;rimBuf.height=cv.height}
+ const o=rimBuf.getContext('2d');o.setTransform(tf);const bx=a.x-a.w,by=a.y-a.h-2,bw=2*a.w,bh=a.h+3;o.save();o.beginPath();o.rect(bx,by,bw,bh);o.clip();o.clearRect(bx,by,bw,bh);a.draw(o);
+ o.globalCompositeOperation='source-in';const side=d>=0?-1:1;const g=o.createLinearGradient(a.x+side*a.w*0.5,0,a.x-side*a.w*0.35,0);g.addColorStop(0,rgba(AMBER_CORE,str));g.addColorStop(0.5,rgba(AMBER,str*0.35));g.addColorStop(1,rgba(AMBER,0));o.fillStyle=g;o.fillRect(bx,by,bw,bh);o.restore();
+ // recopie du tampon (rectangle en pixels de l'appareil)
+ const px=bx*tf.a+tf.e,py=by*tf.d+tf.f,pw=bw*tf.a,ph=bh*tf.d;ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='screen';ctx.drawImage(rimBuf,px,py,pw,ph,px,py,pw,ph);ctx.restore()}
+function relightActors(ctx,actors,lamps){for(const a of actors){let best=null,bd=1e9;for(const l of lamps){const dd=Math.abs(a.x-l.lx);if(dd<bd){bd=dd;best=l}}if(!best)continue;actorShadow(ctx,a,best);actorRim(ctx,a,best)}}
+// Compatibilité (planche 4) : flaque simple.
+function nightPool(ctx,x,curb,k,u=1){lampLight(ctx,x,curb,k,{u,ground:curb-20,far:curb+40})}
 
 // La rue : lampadaires (tous les ~170), feu à bouton + passage, arrêt de bus, terrasse, chien promené, grue au loin, montgolfière et avion.
-const LAMP_XS=[62,232,402,572,742,912,1082],KL=0.85,KP=0.55,LIGHT_X=640;street.cache=new Map();
-function street(ctx,{night=false,t=0,x0=0,s=1,flags=false}={}){const{W,H,G,CURB,FAR}=ST;ctx.save();ctx.scale(s,s);ctx.translate(-x0,0);
- // grue au loin (derrière les immeubles), à l'échelle réduite
+const LAMP_XS=[62,232,402,572,742,912,1082],KL=0.85,KP=0.55,LIGHT_X=640;street.cache=new Map();street.light=new Map();
+function street(ctx,{night=false,t=0,x0=0,s=1,flags=false,rain=false}={}){const{W,H,G,CURB,FAR}=ST;ctx.save();ctx.scale(s,s);ctx.translate(-x0,0);
  // décor fixe mis en cache (une image par jour/nuit × fenêtre × échelle) : seuls les éléments vivants sont redessinés à chaque image
  const tf=ctx.getTransform(),key=`${night}|${x0}|${tf.a}`;let bg=street.cache.get(key);
  if(!bg){const off=document.createElement('canvas');off.width=ctx.canvas.width;off.height=ctx.canvas.height;const o=off.getContext('2d');o.setTransform(tf);
-  const items=streetBackdrop(o,{night,behind:()=>{o.save();o.translate(330,G-24);o.scale(0.45,0.45);crane(o,0,false);o.restore()}});bg={off,items};street.cache.set(key,bg)}
+  const items=streetBackdrop(o,{night,behind:()=>{o.save();o.translate(330,G-24);o.scale(0.45,0.45);crane(o,0,false);o.restore()}});const wr=mulberry32(5),lit=[];for(const it of items){if(it.k==='win'&&wr()<0.4)lit.push({k:'win',x:it.x,y:it.y,c:pick(['#FFE4A0','#FFC878','#FFF2D0','#9AB8FF'],wr)});if(it.k==='shop'&&wr()<0.75)lit.push(it)}bg={off,items,lit};street.cache.set(key,bg)}
  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(bg.off,0,0);ctx.restore();const items=bg.items;
+ // acteurs (dessinés de jour, puis ré-éclairés la nuit : ombre portée et rehaut)
+ const actors=[];const actor=(x,y,w,h,draw)=>{actors.push({x,y,w,h,draw});draw(ctx)};
  // ciel : montgolfière, avion
  ctx.save();ctx.translate(840,30);ctx.scale(0.55,0.55);balloonEvt(ctx,'#3B6FD6','#F2C94C');ctx.restore();
  ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night});ctx.restore();
  // mobilier : lampadaires, feu, arrêt, passage
  crosswalk(ctx,LIGHT_X,CURB+2,FAR-2,1);
  for(const x of LAMP_XS){ctx.save();ctx.translate(x,CURB);ctx.scale(KL,KL);lamp(ctx,{lit:night,flag:flags,flagT:t});ctx.restore()}
- ctx.save();ctx.translate(LIGHT_X-19,CURB+1);ctx.scale(-1,1);trafficPole(ctx,{color:night?'red':'green',pressed:!night});ctx.restore();
- ctx.save();ctx.translate(LIGHT_X+19,FAR);trafficPole(ctx,{color:'green'});ctx.restore();
- ctx.save();ctx.translate(470,CURB+1);busStop(ctx,{name:'Mairie',served:'far'});ctx.restore();
- ctx.save();ctx.translate(790,FAR);busStop(ctx,{name:'Gare SNCF',served:'near'});ctx.restore();
+ actor(LIGHT_X-19,CURB+1,8,46,c=>{c.save();c.translate(LIGHT_X-19,CURB+1);c.scale(-1,1);trafficPole(c,{color:night?'red':'green',pressed:!night});c.restore()});
+ actor(LIGHT_X+19,FAR,8,46,c=>{c.save();c.translate(LIGHT_X+19,FAR);trafficPole(c,{color:'green'});c.restore()});
+ actor(470,CURB+1,14,40,c=>{c.save();c.translate(470,CURB+1);busStop(c,{name:'Mairie',served:'far'});c.restore()});
+ actor(790,FAR,14,40,c=>{c.save();c.translate(790,FAR);busStop(c,{name:'Gare SNCF',served:'near'});c.restore()});
  // terrasse devant le café (2e local) : guéridon + deux chaises + parasol, à l'échelle du passant
- const cafe=items.filter(i=>i.k==='shop')[1];if(cafe){for(const tx of[cafe.x+10,cafe.x+26]){ctx.save();ctx.translate(tx,G+14);ctx.scale(KP,KP);parasol(ctx,tx===cafe.x+10?'#E8604A':'#2E8B6A');chair(ctx,-1);table(ctx);chair(ctx,1);ctx.restore()}
-  ctx.save();ctx.translate(cafe.x+18,G+14.5);ctx.scale(KP,KP);figure(ctx,{top:'#2A2A30',bottom:'#2A2A30'},{arms:'hold'});apron(ctx);ctx.save();ctx.translate(8.6,-21);accessory(ctx,'tray');ctx.restore();ctx.restore()}
+ const cafe=items.filter(i=>i.k==='shop')[1];if(cafe){for(const tx of[cafe.x+10,cafe.x+26])actor(tx,G+14,16,28,c=>{c.save();c.translate(tx,G+14);c.scale(KP,KP);parasol(c,tx===cafe.x+10?'#E8604A':'#2E8B6A');chair(c,-1);table(c);chair(c,1);c.restore()});
+  actor(cafe.x+18,G+14.5,6,19,c=>{c.save();c.translate(cafe.x+18,G+14.5);c.scale(KP,KP);figure(c,{top:'#2A2A30',bottom:'#2A2A30'},{arms:'hold'});apron(c);c.save();c.translate(8.6,-21);accessory(c,'tray');c.restore();c.restore()})}
  // cordon devant Le Palace (10e local)
  const club=items.filter(i=>i.k==='shop')[9];if(club){cordon(ctx,club.x+club.w-14,club.x+club.w-4,G+10,KP)}
  // passants-repères et promeneur avec chien (événement du trottoir, échelle du passant)
  const walkers=[[120,'#4A7AB8'],[300,'#C0463A'],[560,'#2E8B6A'],[700,'#E0A21E'],[980,'#8A5AB8']];
- for(const[x,c]of walkers){ctx.save();ctx.translate(x,G+14);ctx.scale(KP,KP);figure(ctx,{top:c});ctx.restore()}
- ctx.save();ctx.translate(520+(t*9)%40-20,G+14);ctx.scale(KP,KP);figure(ctx,{top:'#8A5A2B',bottom:'#3A3A4A'},{arms:'hold'});ctx.translate(26,0);dog(ctx,{breed:'labrador',seed:3,t,leashTo:[-26+8.6,-20.6]});ctx.restore();
+ for(const[x,col]of walkers)actor(x,G+14,6,19,c=>{c.save();c.translate(x,G+14);c.scale(KP,KP);figure(c,{top:col});c.restore()});
+ const wx=520+(t*9)%40-20;actor(wx,G+14,6,19,c=>{c.save();c.translate(wx,G+14);c.scale(KP,KP);figure(c,{top:'#8A5A2B',bottom:'#3A3A4A'},{arms:'hold'});c.restore()});
+ actor(wx+26*KP+1,G+14,9,8,c=>{c.save();c.translate(wx,G+14);c.scale(KP,KP);c.save();c.translate(26,0);dog(c,{breed:'labrador',seed:3,t,leashTo:[-26+8.6,-20.6]});c.restore();c.restore()});
  // ouvrier sur une échelle qui change l'enseigne du 5e local
- const rec=items.filter(i=>i.k==='shop')[4];if(rec){ctx.save();ctx.translate(rec.x+8,G);ladder(ctx,30);ctx.translate(0,-14);ctx.scale(KP,KP);figure(ctx,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'up'});ctx.restore();ctx.save();ctx.translate(rec.x+rec.w/2+6,G);ctx.scale(KP,KP);figure(ctx,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'carry'});ctx.translate(0,-23.5);carriedSign(ctx,rec.w/KP*0.6,'#1C6FB8','#FFE45C','Proxi Marché');ctx.restore()}
+ const rec=items.filter(i=>i.k==='shop')[4];if(rec){actor(rec.x+8,G,6,32,c=>{c.save();c.translate(rec.x+8,G);ladder(c,30);c.translate(0,-14);c.scale(KP,KP);figure(c,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'up'});c.restore()});actor(rec.x+rec.w/2+6,G,12,19,c=>{c.save();c.translate(rec.x+rec.w/2+6,G);c.scale(KP,KP);figure(c,{top:'#F28C28',bottom:'#3A3A4A'},{arms:'carry'});c.translate(0,-23.5);carriedSign(c,rec.w/KP*0.6,'#1C6FB8','#FFE45C','Proxi Marché');c.restore()})}
  if(night){nightFilter(ctx,W+x0,H);
-  // fenêtres allumées, vitrines, lanternes, feux, feux d'artifice, lueur d'appartement
-  const wr=mulberry32(5);for(const it of items){if(it.k==='win'&&wr()<0.4){const c=pick(['#FFE4A0','#FFC878','#FFF2D0','#9AB8FF'],wr);ctx.fillStyle=rgba(C(c),0.35);ctx.fillRect(it.x-1.5,it.y-1.5,8,11);ctx.fillStyle=rgba(C(c));ctx.fillRect(it.x,it.y,5,8);ctx.fillStyle='rgba(42,26,24,0.35)';ctx.fillRect(it.x+2.3,it.y,0.4,8);ctx.fillRect(it.x,it.y+3.5,5,0.4)}
-   if(it.k==='shop'&&wr()<0.75){ctx.fillStyle='rgba(255,200,110,0.35)';ctx.fillRect(it.x+2,G-20,it.w-4,19);ctx.fillStyle='rgba(255,215,140,0.26)';ctx.beginPath();ctx.moveTo(it.x,G);ctx.lineTo(it.x+it.w,G);ctx.lineTo(it.x+it.w+6,G+12);ctx.lineTo(it.x-6,G+12);ctx.fill()}}
+  if(rain){ctx.save();ctx.globalCompositeOperation='multiply';ctx.fillStyle='rgba(120,130,190,0.6)';ctx.fillRect(0,CURB,W,H-CURB);ctx.restore()} // sol mouillé, plus sombre
+  // lumières fixes (fenêtres, vitrines, lampadaires) mises en cache dans une image transparente, composée en `screen`
+  const lamps=LAMP_XS.map(x=>({x,lx:x+9*KL,ly:CURB-77*KL}));const lkey=`${x0}|${tf.a}|${rain}`;let lc=street.light.get(lkey);
+  if(!lc){lc=document.createElement('canvas');lc.width=ctx.canvas.width;lc.height=ctx.canvas.height;const o=lc.getContext('2d');o.setTransform(tf);
+   for(const it of bg.lit){if(it.k==='win')windowLight(o,it.x,it.y,5,8,it.c,1,'glow');else shopLight(o,it.x+2,G-20,it.w-4,19,G,FAR,{rain})}
+   for(const l of lamps)lampLight(o,l.x,CURB,KL,{wallTop:G-60,ground:G,far:FAR,rain});street.light.set(lkey,lc)}
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='screen';ctx.drawImage(lc,0,0);ctx.restore();
+  for(const it of bg.lit)if(it.k==='win')windowLight(ctx,it.x,it.y,5,8,it.c,1,'fill');
   const ap=items.filter(i=>i.k==='win')[7];if(ap){ctx.save();ctx.translate(ap.x,ap.y+1);apartmentGlow(ctx);ctx.restore()}
-  for(const x of LAMP_XS){nightPool(ctx,x,CURB,KL);ctx.save();ctx.translate(x,CURB);ctx.scale(KL,KL);lamp(ctx,{lit:true,pass:'lit'});ctx.restore()}
+  for(const l of lamps){ctx.save();ctx.translate(l.x,CURB);ctx.scale(KL,KL);lamp(ctx,{lit:true,pass:'lit'});ctx.restore()}
+  relightActors(ctx,actors,lamps);
   ctx.save();ctx.translate(LIGHT_X-19,CURB+1);ctx.scale(-1,1);trafficPole(ctx,{color:'red',pass:'lit'});ctx.restore();ctx.save();ctx.translate(LIGHT_X+19,FAR);trafficPole(ctx,{color:'green',pass:'lit'});ctx.restore();
   ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night:true,t,pass:'lit'});ctx.restore();
-  ctx.save();ctx.translate(700,20);ctx.scale(0.45,0.45);fireworks(ctx,t,true);ctx.restore();
-  // étoiles
-  const sr=mulberry32(11);for(let k=0;k<40;k++){const x=sr()*W,y=sr()*45,a=0.4+0.6*Math.abs(Math.sin(t*2+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.9,0.9)}
+  if(!rain){ctx.save();ctx.translate(700,20);ctx.scale(0.45,0.45);fireworks(ctx,t,true);ctx.restore()}
+  // étoiles (ciel dégagé) ou pluie
+  if(!rain){const sr=mulberry32(11);for(let k=0;k<40;k++){const x=sr()*W,y=sr()*45,a=0.4+0.6*Math.abs(Math.sin(t*2+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.9,0.9)}}
+  else{const rr=mulberry32(13);ctx.strokeStyle='rgba(220,230,255,0.22)';ctx.lineWidth=0.4;for(let k=0;k<220;k++){const x=rr()*W,y=(rr()*H+t*90)%H;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-1.2,y+5);ctx.stroke()}}
  }
  ctx.restore()}
 {const{W,H}=ST;anim('street-day',W,H,2,(ctx,t)=>street(ctx,{night:false,t}));anim('street-night',W,H,2,(ctx,t)=>street(ctx,{night:true,t}));
- anim('zoom-day',270,H,4,(ctx,t)=>street(ctx,{night:false,t,x0:400}));anim('zoom-night',270,H,4,(ctx,t)=>street(ctx,{night:true,t,x0:400}))}
+ anim('zoom-day',270,H,4,(ctx,t)=>street(ctx,{night:false,t,x0:400}));anim('zoom-night',270,H,4,(ctx,t)=>street(ctx,{night:true,t,x0:400}));anim('night-rain',270,H,4,(ctx,t)=>street(ctx,{night:true,t,x0:400,rain:true}))}
 
 // ───────────────────────── 4. Planche mobilier de rue (×5) ─────────────────────────
 {const s=5,W=216,H=180;const ctx=mk('board-street',W,H,s);
  const cell=(x,y,w,h,label,night,draw)=>{ctx.save();ctx.translate(x,y);R(ctx,0,0,w,h,night?'#3A3A5A':'#F2DDB4',{lw:0.3,sh:0,li:0});R(ctx,0,h-8,w,8,night?'#4A4A66':'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.save();ctx.translate(w/2,h-8);draw('base');ctx.restore();if(night){nightFilter(ctx,w,h);ctx.save();ctx.translate(w/2,h-8);draw('lit');ctx.restore()}text(ctx,label,w/2,3.5,3,night?'#FFFFFF':'#5A4A30');ctx.restore()};
  ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);
  cell(0,0,36,100,'lampadaire · jour',false,p=>{ctx.scale(0.85,0.85);lamp(ctx,{pass:p})});
- cell(36,0,36,100,'allumé · nuit',true,p=>{ctx.scale(0.85,0.85);if(p==='lit')nightPool(ctx,0,0,1,1);lamp(ctx,{lit:true,pass:p})});
+ cell(36,0,36,100,'allumé · nuit',true,p=>{if(p==='lit')lampLight(ctx,0,0,0.85,{wallTop:-92,ground:-6,far:8});ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:p})});
  cell(72,0,36,100,'14 juillet',false,p=>{ctx.scale(0.85,0.85);lamp(ctx,{pass:p,flag:true,flagT:0.3})});
  cell(108,0,36,100,'feu + bouton · vert',false,p=>{ctx.translate(-6,0);trafficPole(ctx,{color:'green',pressed:true,pass:p});ctx.translate(14,0);busStop(ctx,{name:'Mairie',served:'far'})});
  cell(144,0,36,100,'feu rouge · nuit',true,p=>{ctx.translate(-6,0);trafficPole(ctx,{color:'red',pressed:false,pass:p});ctx.translate(14,0);busStop(ctx,{name:'Gare SNCF',served:'near'})});
@@ -843,7 +905,7 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false}={}){const{W,H,G,CURB,
 // ───────────────────────── 5. Fête de la musique ─────────────────────────
 function musicScene(ctx,{night=false,t=0}={}){const W=432,H=120,G=100,kp=0.55;
  ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,0,W,H);R(ctx,0,0,W,G-24,'#F2DDB4',{lw:0.3,sh:0,li:0});R(ctx,0,G-24,W,24,'#E2D2B0',{lw:0.3,sh:0,li:0});ctx.fillStyle='#8A8494';ctx.fillRect(0,G,W,H-G);
- const fig=(x,y,o,a,k=kp,extra)=>{ctx.save();ctx.translate(x,y);ctx.scale(k,k);figure(ctx,o,{arms:a});if(extra)extra();ctx.restore()};
+ const actors=[];const fig=(x,y,o,a,k=kp,extra)=>{const d=c=>{c.save();c.translate(x,y);c.scale(k,k);figure(c,o,{arms:a});if(extra)extra(c);c.restore()};actors.push({x,y,w:6*k/0.55,h:33*k,draw:d});d(ctx)};
  const lamp1=40;ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:night});ctx.restore();
  // scène (base = curb − 1) ; musiciens-repères sur le plancher (STAGE_STAND = −9,5), échelle 0,55 × 0,8 = 0,44
  ctx.save();ctx.translate(130,G-1);stageFrame(ctx);stageFloor(ctx);
@@ -852,16 +914,16 @@ function musicScene(ctx,{night=false,t=0}={}){const W=432,H=120,G=100,kp=0.55;
  // barrières devant la scène (y = curb + 4, échelle 0,85 × 1,5)
  for(const x of[70,100,160,190]){ctx.save();ctx.translate(x,G+4);ctx.scale(1.275,1.275);barrier(ctx);ctx.restore()}
  // stand de bière sur la chaussée (base = curb + 18) : serveur derrière, client avec gobelet
- ctx.save();ctx.translate(300,G+18);standAwning(ctx);fig(-8,-12,{top:'#F4F1E8'},'hold');standCounter(ctx,1);fig(36,0,{top:'#4A7AB8'},'hold',kp,()=>{ctx.translate(8.6,-21);beerCup(ctx,0,2)});ctx.restore();
+ ctx.save();ctx.translate(300,G+18);standAwning(ctx);fig(-8,-12,{top:'#F4F1E8'},'hold');standCounter(ctx,1);fig(36,0,{top:'#4A7AB8'},'hold',kp,c=>{c.translate(8.6,-21);beerCup(c,0,2)});ctx.restore();
  // équipe : comptoir porté à deux (mains à −23,5 × 0,55 = −13), tronçon de treillis, projecteur, toile roulée
  ctx.save();ctx.translate(395,G+10);fig(-30,0,{top:'#F28C28'},'carry');fig(30,0,{top:'#F28C28'},'carry');ctx.translate(0,-13);carriedCounter(ctx);ctx.restore();
- fig(236,G-2,{top:'#F28C28'},'carry',kp,()=>{ctx.translate(9,-23.5);heldTruss(ctx)});fig(254,G-2,{top:'#F28C28'},'carry',kp,()=>{ctx.translate(9,-23.5);heldSpot(ctx)});fig(20,G+16,{top:'#F28C28'},'carry',kp,()=>{ctx.translate(9,-23.5);heldRoll(ctx)});
+ fig(236,G-2,{top:'#F28C28'},'carry',kp,c=>{c.translate(9,-23.5);heldTruss(c)});fig(254,G-2,{top:'#F28C28'},'carry',kp,c=>{c.translate(9,-23.5);heldSpot(c)});fig(20,G+16,{top:'#F28C28'},'carry',kp,c=>{c.translate(9,-23.5);heldRoll(c)});
  // spectateurs
  [[80,'#4A7AB8'],[112,'#C0463A'],[150,'#E0A21E'],[176,'#8A5AB8']].forEach(([x,c],i)=>fig(x,G+12,{top:c},i%2?'up':'swing'));
- if(night){nightFilter(ctx,W,H);nightPool(ctx,lamp1,G,0.85);ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:'lit'});ctx.restore();
+ if(night){nightFilter(ctx,W,H);lampLight(ctx,lamp1,G,0.85,{wallTop:G-70,ground:G-24,far:H});ctx.save();ctx.translate(lamp1,G);ctx.scale(0.85,0.85);lamp(ctx,{lit:true,pass:'lit'});ctx.restore();relightActors(ctx,actors,[{x:lamp1,lx:lamp1+9*0.85,ly:G-77*0.85}]);
   ctx.save();ctx.translate(130,G-1);stageBeams(ctx,t);stageSpots(ctx,{lit:true,pass:'lit'});ctx.restore();
   // guirlande du stand
-  ctx.save();ctx.translate(300,G+18);for(let x=-28;x<=28;x+=7){halo(ctx,x,-29,2.2,pick(['#FFE27A','#FF8A6A','#8AE0FF'],mulberry32(x+50)),0.5);disc(ctx,x,-29,0.7,'#FFF8D8',0)}ctx.restore()}}
+  ctx.save();ctx.translate(300,G+18);ctx.globalCompositeOperation='screen';for(let x=-28;x<=28;x+=7){const c=C(pick(['#FFE27A','#FF8A6A','#8AE0FF'],mulberry32(x+50)));ctx.fillStyle=grad(ctx,x,-29,0,4,[[0,c,0.9],[0.3,c,0.4],[1,c,0]]);ctx.beginPath();ctx.arc(x,-29,4,0,TAU);ctx.fill();disc(ctx,x,-29,0.7,'#FFF8D8',0)}ctx.restore()}}
 anim('music-day',432,120,2.5,(ctx,t)=>musicScene(ctx,{night:false,t}));anim('music-night',432,120,2.5,(ctx,t)=>musicScene(ctx,{night:true,t}));
 
 // ───────────────────────── 6. 14 juillet ─────────────────────────
@@ -900,11 +962,11 @@ function santaScene(ctx,t=0){const W=360,H=90;
  ctx.save();ctx.translate(30,36);ctx.scale(1.6,1.6);santaSack(ctx);ctx.restore();text(ctx,'hotte ×1,6',30,40,3,'#FFFFFF');
  nightFilter(ctx,W,H);
  const sr=mulberry32(21);for(let k=0;k<70;k++){const x=sr()*W,y=sr()*60,a=0.4+0.6*Math.abs(Math.sin(t*1.5+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.9,0.9)}
- ball(ctx,330,14,7,'#FFF6D0',0);ctx.fillStyle='rgba(255,246,208,0.25)';ctx.beginPath();ctx.arc(330,14,11,0,TAU);ctx.fill();
+ ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,330,14,6,20,[[0,hex('#FFF6D0'),0.5],[1,hex('#FFF6D0'),0]]);ctx.beginPath();ctx.arc(330,14,20,0,TAU);ctx.fill();ctx.restore();ball(ctx,330,14,7,'#FFF6D0',0);
  ctx.save();ctx.translate(120,28+Math.sin(t*1.3)*1.5);santa(ctx,{landed:false,lit:true,t,pass:'lit'});ctx.restore();
  ctx.save();ctx.translate(290,44);santa(ctx,{landed:true,lit:true,t,pass:'lit'});ctx.restore();
  // fenêtres allumées
- ctx.fillStyle='#FFE4A0';for(const[x,gy,w,ty]of roofs){for(let wx=x+8;wx<x+w-8;wx+=14){ctx.fillStyle='rgba(255,228,160,0.3)';ctx.fillRect(wx-1.5,ty+13.5,8,11);ctx.fillStyle='#FFE4A0';ctx.fillRect(wx,ty+15,5,8)}}}
+ for(const[x,gy,w,ty]of roofs){for(let wx=x+8;wx<x+w-8;wx+=14)windowLight(ctx,wx,ty+15,5,8,'#FFE4A0')}}
 anim('santa',360,90,3,(ctx,t)=>santaScene(ctx,t));
 
 // ───────────────────────── 8. Installations ─────────────────────────
