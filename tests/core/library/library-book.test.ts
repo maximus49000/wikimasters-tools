@@ -181,6 +181,8 @@ describe('parseLibraryState', () => {
     expect(fitRoomWidth(glazed, 'r1', 38).rooms[0]!.layout).toEqual([{ id: 'w1', kind: 'window', col: 0, row: 0, w: 38, h: 12 }]);
     const small = updateLayout(state, 'r1', (layout) => [...layout, { id: 'w1', kind: 'window', col: 0, row: 0, w: 20, h: 12 }]);
     expect(fitRoomWidth(small, 'r1', 38).rooms[0]!.layout).toEqual([{ id: 'w1', kind: 'window', col: 0, row: 0, w: 20, h: 12 }]);
+    const pair = updateLayout(state, 'r1', (layout) => [...layout, { id: 'a', kind: 'window', col: 0, row: 0, w: 12, h: 12 }, { id: 'b', kind: 'window', col: 12, row: 0, w: 12, h: 12 }]);
+    expect(fitRoomWidth(pair, 'r1', 38).rooms[0]!.layout).toEqual([{ id: 'a', kind: 'window', col: 0, row: 0, w: 19, h: 12 }, { id: 'b', kind: 'window', col: 19, row: 0, w: 19, h: 12 }]);
     // Les zones de 12 colonnes s'ajoutent toujours à partir d'une largeur quelconque.
     expect(extendRoom(wide, 'r1', 'right').rooms[0]!.cols).toBe(50);
   });
