@@ -51,6 +51,8 @@ import {
   stretchWindow,
   windowFit,
   canPlace,
+  canShiftDepth,
+  shiftDepth,
   canPlaceComputer,
   firstFreeSlot,
   firstFreeSurfaceSlot,
@@ -95,6 +97,7 @@ import { usePetContext } from './pet-context';
 import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
+import { nextInStack, stackAt } from '../core/library/depth-order';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
 import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
 import { createLongPress } from './long-press';
@@ -171,6 +174,8 @@ const ICONS = {
   check: ['M5 12l5 5L20 7'],
   door: ['M5 21V3h10v18', 'M15 4l5 2v15h-5', 'M3 21h18', 'M12 12.5h.01'],
   house: ['M3 11l9-7 9 7', 'M5 10v10h14V10', 'M10 20v-6h4v6'],
+  depthFront: ['M5 4h14', 'M12 20V9', 'M7 13l5-5 5 5'],
+  depthBack: ['M5 20h14', 'M12 4v11', 'M7 11l5 5 5-5'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
   plus: ['M5 12h14', 'M12 5v14'],
   card: ['M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', 'M12 9v6', 'M9 12h6'],
@@ -269,6 +274,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const live = useRef<DragLive | null>(null);
   const lastPointer = useRef({ x: 0, y: 0 });
   const pressedId = useRef<string | null>(null);
+  // Dernier objet touché : seul un nouveau toucher du même objet passe à celui de derrière.
+  const lastTapped = useRef<string | null>(null);
   const startDragRef = useRef<(id: string) => void>(() => undefined);
   const press = useMemo(() => createLongPress(() => { if (pressedId.current) startDragRef.current(pressedId.current); }), []);
   useEffect(() => press.cancel, [press]);
@@ -563,7 +570,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       press.start(event.clientX, event.clientY);
       return;
     }
-    pressedId.current = id;
+    // L'objet de derrière sélectionné est redessiné devant, mais l'appui arrive au meuble de devant : on déplace celui qu'on voit.
+    pressedId.current = selectedId && selectedId !== id && stackAt(layout, id).includes(selectedId) ? selectedId : id;
     lastPointer.current = { x: event.clientX, y: event.clientY };
     press.start(event.clientX, event.clientY);
   };
@@ -640,7 +648,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     // L'écran d'un ordinateur se manie comme l'ordinateur.
     if (item.kind === 'computer') return void onPick(id);
     if (tool) return;
-    setSelectedId(id === selectedId ? null : id);
+    setSelectedId(nextInStack(layout, selectedId, id, lastTapped.current));
+    lastTapped.current = id;
     setMessage('');
   }
 
@@ -695,7 +704,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       return reset();
     }
     setTool(null);
-    setSelectedId(id === selectedId ? null : id);
+    setSelectedId(nextInStack(layout, selectedId, id, lastTapped.current));
+    lastTapped.current = id;
     setMessage('');
   }
 
@@ -739,6 +749,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const selectedItem = editing ? layout.find((p) => p.id === selectedId) : undefined;
   const selectedLamp = selectedItem && isLamp(selectedItem) ? { id: selectedItem.id, on: isLit(selectedItem) } : null;
+  const selectedStanding = editing && selectedItem && isStanding(selectedItem) && selectedItem.kind !== 'rug' ? selectedItem : undefined;
   const selectedWindow = editing ? layout.find((p) => p.id === selectedId && p.kind === 'window') : undefined;
   const resizeSelected = (dw: number, dh: number): void => {
     if (!selectedWindow || selectedWindow.kind !== 'window') return;
@@ -1102,6 +1113,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
                 <Icon paths={ICONS.trash} />
               </Btn>
+              {selectedStanding && (
+                <>
+                  <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftDepth(layout, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
+                  <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftDepth(layout, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
+                </>
+              )}
               {selectedLamp && (
                 <Btn label={selectedLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={selectedLamp.on} data={{ action: 'lamp' }} onClick={() => void editLayout((l) => toggleLamp(l, selectedLamp.id))}>
                   <Icon paths={ICONS.bulb} />

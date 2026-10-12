@@ -8,11 +8,13 @@ const sofa: Layout = [{ id: 'a', kind: 'sofa', col: 2, row: 12 }];
 describe('buildWalkMap', () => {
   it('bloque les cases des meubles au sol, pas celles des tapis ni du mur', () => {
     const map = buildWalkMap([...sofa, { id: 'r', kind: 'rug', col: 2, row: 15 }, { id: 's', kind: 'shelf', col: 12, row: 10 }], 24);
-    expect(isFree(map, 2, 12)).toBe(false);
+    expect(isFree(map, 2, 12)).toBe(false); // le canapé bas est plein : tout son sol est bloqué
+    expect(isFree(map, 2, 13)).toBe(false);
     expect(isFree(map, 7, 14)).toBe(false);
     expect(isFree(map, 8, 14)).toBe(true);
     expect(isFree(map, 2, 15)).toBe(true);
-    expect(isFree(map, 12, 12)).toBe(false);
+    expect(isFree(map, 12, 12)).toBe(true);
+    expect(isFree(map, 12, 17)).toBe(false);
     expect(isFree(map, 12, 11)).toBe(false);
     expect(isFree(map, -1, 15)).toBe(false);
     expect(isFree(map, 24, 15)).toBe(false);
@@ -71,5 +73,35 @@ describe('segments de marche', () => {
   it('un trajet de longueur nulle donne zéro segment', () => {
     const map = buildWalkMap([], 24);
     expect(groundLeg(map, standPoint(3, 14), standPoint(3, 14))).toEqual([]);
+  });
+});
+
+describe('passer là où il y a la place', () => {
+  it('bloque l’appui d’une étagère, laisse libre l’espace derrière elle', () => {
+    const map = buildWalkMap([{ id: 'sh', kind: 'shelf', col: 0, row: 10 }], 24);
+    expect(isFree(map, 1, 17)).toBe(false);
+    expect(isFree(map, 1, 13)).toBe(true);
+  });
+  it('étagère contre le mur : aucune case derrière', () => {
+    const map = buildWalkMap([{ id: 'sh', kind: 'shelf', col: 0, row: 6 }], 24);
+    expect(isFree(map, 1, 12)).toBe(false);
+    expect(isFree(map, 1, 13)).toBe(false);
+  });
+  it('passe sous une table basse, même avec une chaise collée', () => {
+    const map = buildWalkMap([
+      { id: 't', kind: 'coffee-table', col: 4, row: 15 },
+      { id: 'c', kind: 'chair', col: 8, row: 14 },
+    ], 24);
+    const path = groundPath(map, { col: 2, row: 16 }, { col: 11, row: 16 });
+    expect(path).not.toBeNull();
+    expect(path!.every((c) => c.row === 16)).toBe(true);
+  });
+  it('deux étagères collées ne laissent rien entre elles', () => {
+    const map = buildWalkMap([
+      { id: 'a', kind: 'shelf', col: 0, row: 10 },
+      { id: 'b', kind: 'shelf', col: 6, row: 10 },
+    ], 24);
+    expect(isFree(map, 5, 17)).toBe(false);
+    expect(isFree(map, 6, 17)).toBe(false);
   });
 });

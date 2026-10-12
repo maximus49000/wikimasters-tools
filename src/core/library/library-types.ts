@@ -19,12 +19,17 @@ export type WallShape = 'poster' | 'vinyl' | 'sleeve-square' | 'sleeve-round' | 
 export type ShelfShape = 'cd' | 'dvd' | 'game' | 'book';
 export type VinylColor = 'black' | 'red' | 'blue' | 'green' | 'gold';
 
+// Niveau de profondeur : 0 mur (fenêtres, objets accrochés), 1 fond, 2 milieu, 3 avant.
+export type Depth = 0 | 1 | 2 | 3;
+export type StandDepth = 1 | 2 | 3;
+
 // Un meuble au sol : (col, row) est sa case en haut à gauche. L'ordinateur n'a pas de case : il suit son bureau (et peut afficher une carte).
 // `small` : petit objet posé sur l'emplacement `slot` de la surface du bureau ou de l'étagère `hostId`.
 // `lit` (lampes seulement) : faux = éteinte ; absent = allumée.
+// `depth` : niveau choisi s'il diffère du niveau par défaut du type.
 // `wall` : objet accroché au mur (case en haut à gauche). `stored` : objet rangé dans l'emplacement `slot` (0 à 14) d'une étagère.
 export type Placed =
-  | { id: string; kind: StandingKind; col: number; row: number; lit?: boolean }
+  | { id: string; kind: StandingKind; col: number; row: number; lit?: boolean; depth?: StandDepth }
   | { id: string; kind: 'computer'; deskId: string; slug?: string }
   | { id: string; kind: 'small'; item: SmallItem; hostId: string; slot: number; lit?: boolean }
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }

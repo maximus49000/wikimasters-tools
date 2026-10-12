@@ -1,7 +1,7 @@
 import type { Coat, PetPlan, Pt, Room, Segment, Species } from '../library-types';
 import { STORM_HOLD_MS, layoutSig, nextPlan, resume, standingFrom, touchPlan, type BrainEnv, type Rng } from './brain';
 import type { PetContext } from './context';
-import { depthIndex, depthKey } from './depth';
+import { petSlot } from '../depth-order';
 import { planEndsAt, stateAt, type PetState } from './motion';
 import { jumpMs } from './route';
 import { buildWalkMap } from './walk-map';
@@ -236,14 +236,14 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
           state = stateAt(plan, now);
         }
         plans.set(pet.id, plan);
-        let behind = depthIndex(room.layout, depthKey(room.layout, state));
+        let behind = petSlot(room.layout, state);
         let depthY = state.pos.y;
         // Sur le dos du robot : même rang de dessin que lui, juste devant.
         if (isRide(plan) && state.phase !== 'walk' && state.phase !== 'wait') {
           const robotPlan = planOf(room, plan.with.petId);
           if (robotPlan) {
             const robotState = stateAt(robotPlan, now);
-            behind = depthIndex(room.layout, depthKey(room.layout, robotState));
+            behind = petSlot(room.layout, robotState);
             depthY = robotState.pos.y + 0.1;
           }
         }

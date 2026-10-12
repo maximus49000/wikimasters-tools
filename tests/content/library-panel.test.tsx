@@ -293,3 +293,54 @@ describe('LibraryPanel : plein écran', () => {
     expect(q('[data-action="fit-screen"]')).toBeNull();
   });
 });
+
+describe('LibraryPanel : niveaux', () => {
+  const seed = async () => {
+    await repo.update((state) => ({
+      ...state,
+      rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [{ id: 'sh', kind: 'shelf', col: 0, row: 10 }, { id: 'arm', kind: 'armchair', col: 1, row: 13 }] } : r)),
+    }));
+    await settle();
+    await click('[data-action="edit"]');
+  };
+  const outlineX = () => Number([...container.querySelectorAll('[data-selected-copy] rect[stroke="#378ADD"]')].at(-1)?.getAttribute('x'));
+
+  it('avancer / reculer change le niveau du meuble sélectionné', async () => {
+    await seed();
+    await click('[data-id="arm"]');
+    expect((q('[data-action="depth-front"]') as HTMLButtonElement).disabled).toBe(false);
+    expect((q('[data-action="depth-back"]') as HTMLButtonElement).disabled).toBe(true);
+    await click('[data-action="depth-front"]');
+    expect(repo.current()?.rooms[0]?.layout.find((p) => p.id === 'arm')).toMatchObject({ id: 'arm', depth: 3 });
+  });
+
+  it('un second toucher sélectionne l’objet derrière', async () => {
+    await seed();
+    await click('[data-id="arm"]');
+    const armX = outlineX();
+    await click('[data-id="arm"]');
+    expect(outlineX()).not.toBe(armX);
+    // Le contour est celui de l'étagère (colonne 0 : cadre décalé de 3 px vers la gauche).
+    expect(outlineX()).toBe(-3);
+  });
+
+  it('toucher un autre objet de la pile le sélectionne lui, pas celui d’après', async () => {
+    await seed();
+    await repo.update((state) => ({ ...state, rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [...r.layout, { id: 'tab', kind: 'coffee-table', col: 0, row: 14 }] } : r)) }));
+    await settle();
+    await click('[data-id="arm"]');
+    await click('[data-id="tab"]');
+    // Le contour est celui de la table basse (4 colonnes), pas celui de l'étagère (6 colonnes).
+    const outlineW = Number([...container.querySelectorAll('[data-selected-copy] rect[stroke="#378ADD"]')].at(-1)?.getAttribute('width'));
+    expect(outlineW).toBeLessThan(5 * 30);
+  });
+
+  it('les boutons n’apparaissent pas pour un tapis', async () => {
+    await seed();
+    await repo.update((state) => ({ ...state, rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [{ id: 'rg', kind: 'rug', col: 2, row: 15 }] } : r)) }));
+    await settle();
+    await click('[data-id="rg"]');
+    expect(q('[data-action="depth-front"]')).toBeNull();
+    expect(q('[data-action="remove"]')).not.toBeNull();
+  });
+});

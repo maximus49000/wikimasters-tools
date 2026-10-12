@@ -1,21 +1,24 @@
-import type { FurnitureKind, ShelfShape, SmallItem, SmallKind, StandingKind, StyleId, VinylColor, WallShape } from './library-types';
+import type { FurnitureKind, ShelfShape, SmallItem, SmallKind, StandDepth, StandingKind, StyleId, VinylColor, WallShape } from './library-types';
 
 export type Category = 'storage' | 'seats' | 'pets' | 'deco' | 'steampunk';
 export type PoiType = 'seat' | 'curl' | 'eat' | 'sleep' | 'enter' | 'charge';
 // Point d'intérêt d'un meuble pour les animaux : une case relative au coin haut-gauche du meuble.
 export type Poi = { type: PoiType; dx: number; dy: number };
 
-type Footprint = { w: number; h: number; layer: 'floor' | 'rug'; pois: readonly Poi[] };
+type Footprint = { w: number; h: number; layer: 'floor' | 'rug'; depth: StandDepth; foot: number; under: boolean; pois: readonly Poi[] };
 
 // Tailles en cases (largeur × hauteur). L'étagère a 3 niveaux de 5 emplacements (voir `shelfSlots`).
 const FOOTPRINTS: Record<StandingKind, Footprint> = {
-  shelf: { w: 6, h: 8, layer: 'floor', pois: [] },
-  desk: { w: 5, h: 4, layer: 'floor', pois: [] },
-  chair: { w: 2, h: 3, layer: 'floor', pois: [{ type: 'seat', dx: 1, dy: 1 }] },
+  shelf: { w: 6, h: 8, layer: 'floor', depth: 1, foot: 2, under: false, pois: [] },
+  desk: { w: 5, h: 4, layer: 'floor', depth: 2, foot: 2, under: true, pois: [] },
+  chair: { w: 2, h: 3, layer: 'floor', depth: 2, foot: 1, under: true, pois: [{ type: 'seat', dx: 1, dy: 1 }] },
   sofa: {
     w: 6,
     h: 3,
     layer: 'floor',
+    depth: 2,
+    foot: 3,
+    under: false,
     pois: [
       { type: 'seat', dx: 1, dy: 1 },
       { type: 'seat', dx: 2, dy: 1 },
@@ -23,28 +26,31 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
       { type: 'sleep', dx: 3, dy: 1 },
     ],
   },
-  armchair: { w: 3, h: 3, layer: 'floor', pois: [{ type: 'seat', dx: 1, dy: 1 }] },
-  basket: { w: 3, h: 2, layer: 'floor', pois: [{ type: 'curl', dx: 1, dy: 1 }] },
-  bowl: { w: 2, h: 1, layer: 'floor', pois: [{ type: 'eat', dx: 0, dy: 0 }] },
+  armchair: { w: 3, h: 3, layer: 'floor', depth: 2, foot: 3, under: false, pois: [{ type: 'seat', dx: 1, dy: 1 }] },
+  basket: { w: 3, h: 2, layer: 'floor', depth: 3, foot: 1, under: false, pois: [{ type: 'curl', dx: 1, dy: 1 }] },
+  bowl: { w: 2, h: 1, layer: 'floor', depth: 3, foot: 1, under: false, pois: [{ type: 'eat', dx: 0, dy: 0 }] },
   kennel: {
     w: 4,
     h: 3,
     layer: 'floor',
+    depth: 2,
+    foot: 3,
+    under: false,
     pois: [
       { type: 'enter', dx: 2, dy: 2 },
       { type: 'sleep', dx: 2, dy: 1 },
     ],
   },
   // Station de recharge du robot : une dalle au sol, le robot s'y place (dx 0, dy 0).
-  charger: { w: 2, h: 1, layer: 'floor', pois: [{ type: 'charge', dx: 0, dy: 0 }] },
-  plant: { w: 2, h: 4, layer: 'floor', pois: [] },
-  lamp: { w: 1, h: 5, layer: 'floor', pois: [] },
-  'coffee-table': { w: 4, h: 2, layer: 'floor', pois: [] },
-  rug: { w: 6, h: 3, layer: 'rug', pois: [] },
+  charger: { w: 2, h: 1, layer: 'floor', depth: 3, foot: 1, under: false, pois: [{ type: 'charge', dx: 0, dy: 0 }] },
+  plant: { w: 2, h: 4, layer: 'floor', depth: 1, foot: 1, under: false, pois: [] },
+  lamp: { w: 1, h: 5, layer: 'floor', depth: 1, foot: 1, under: false, pois: [] },
+  'coffee-table': { w: 4, h: 2, layer: 'floor', depth: 3, foot: 2, under: true, pois: [] },
+  rug: { w: 6, h: 3, layer: 'rug', depth: 1, foot: 0, under: true, pois: [] },
   // Meubles exclusifs Steampunk : les points d'intérêt viendront avec leurs comportements.
-  globe: { w: 3, h: 4, layer: 'floor', pois: [] },
-  telescope: { w: 3, h: 5, layer: 'floor', pois: [] },
-  automaton: { w: 2, h: 3, layer: 'floor', pois: [] },
+  globe: { w: 3, h: 4, layer: 'floor', depth: 2, foot: 1, under: false, pois: [] },
+  telescope: { w: 3, h: 5, layer: 'floor', depth: 2, foot: 1, under: true, pois: [] },
+  automaton: { w: 2, h: 3, layer: 'floor', depth: 2, foot: 1, under: false, pois: [] },
 };
 
 const LABELS: Record<FurnitureKind, string> = {
@@ -118,3 +124,10 @@ export function sizeOf(kind: StandingKind): { w: number; h: number } {
 }
 export const layerOf = (kind: StandingKind): 'floor' | 'rug' => FOOTPRINTS[kind].layer;
 export const poisOf = (kind: StandingKind): readonly Poi[] => FOOTPRINTS[kind].pois;
+
+// Niveau de profondeur par défaut du type (1 fond, 2 milieu, 3 avant).
+export const depthDefault = (kind: StandingKind): StandDepth => FOOTPRINTS[kind].depth;
+// Rangées du bas de l'emprise qui touchent vraiment le sol ; au-dessus, c'est l'espace entre le meuble et le mur.
+export const footOf = (kind: StandingKind): number => FOOTPRINTS[kind].foot;
+// Vrai si un animal passe dessous (table, bureau, chaise, trépied).
+export const underOf = (kind: StandingKind): boolean => FOOTPRINTS[kind].under;

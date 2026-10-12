@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { deskAtCell, dropTargetFor, pointerToCell } from '../../src/content/furniture-drag';
+import { deskAtCell, dropTargetFor, hostAtCell, pointerToCell } from '../../src/content/furniture-drag';
 import type { Layout } from '../../src/core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, pxRect, shelfSlots } from '../../src/core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, pxRect, shelfSlots, slotAt } from '../../src/core/library/room-grid';
 
 const COLS = 24;
 const desk = (id: string, col: number, row: number) => ({ id, kind: 'desk' as const, col, row });
@@ -75,13 +75,12 @@ describe('dropTargetFor', () => {
     expect(dropTargetFor(layout, COLS, 'f1', 0, 14).ok).toBe(true);
   });
 
-  it('refuse sur le mur, hors pièce et sur un autre meuble', () => {
+  it('refuse sur le mur et hors pièce, accepte sur un autre meuble (autre niveau)', () => {
     const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 7 }, desk('f2', 10, 11)];
     expect(dropTargetFor(layout, COLS, 'f1', 5, 10)).toMatchObject({ ok: false, reason: 'floor' });
     expect(dropTargetFor(layout, COLS, 'f1', -2, 14)).toMatchObject({ ok: false, reason: 'bounds' });
-    const clash = dropTargetFor(layout, COLS, 'f1', 10, 14);
-    expect(clash).toMatchObject({ ok: false, reason: 'taken' });
-    expect(clash.cells.length).toBeGreaterThan(0);
+    // Sur un autre meuble, la pose reste valide tant qu'un niveau est libre (le meuble passe devant ou derrière).
+    expect(dropTargetFor(layout, COLS, 'f1', 10, 14).ok).toBe(true);
   });
 
   it('ordinateur : valide sur un bureau libre, refusé ailleurs ou sur un bureau occupé', () => {
@@ -95,5 +94,28 @@ describe('dropTargetFor', () => {
 
   it('meuble inconnu : refusé sans rien proposer', () => {
     expect(dropTargetFor([], COLS, 'zz', 1, 4)).toMatchObject({ ok: false, ghost: null });
+  });
+});
+
+describe('porteurs superposés : le lâcher vise celui de devant', () => {
+  // Étagère au niveau 1 (listée d'abord) et bureau au niveau 2 devant elle, sur les mêmes cases.
+  const layout: Layout = [
+    { id: 'sh', kind: 'shelf', col: 0, row: 7 },
+    { id: 'dk', kind: 'desk', col: 0, row: 11 },
+    { id: 'far', kind: 'desk', col: 15, row: 11 },
+    { id: 'o', kind: 'small', item: 'plant', hostId: 'far', slot: 0 },
+  ];
+  it('un petit objet lâché sur les cases communes va sur le bureau de devant', () => {
+    expect(hostAtCell(layout, 1, 12)).toBe('dk');
+    expect(dropTargetFor(layout, COLS, 'o', 1, 12)).toMatchObject({ ok: true, hostId: 'dk' });
+  });
+  it('deux bureaux superposés : l’ordinateur vise celui de devant', () => {
+    const desks: Layout = [{ id: 'mid', kind: 'desk', col: 0, row: 11 }, { id: 'front', kind: 'desk', col: 0, row: 11, depth: 3 }];
+    expect(deskAtCell(desks, 1, 12)).toBe('front');
+  });
+  it('deux étagères superposées : la carte rangée vise celle de devant', () => {
+    const shelves: Layout = [{ id: 'wall', kind: 'shelf', col: 0, row: 7 }, { id: 'front', kind: 'shelf', col: 0, row: 7, depth: 2 }];
+    const slot = shelfSlots(pxRect({ col: 0, row: 7, w: 6, h: 8 }))[0]!;
+    expect(slotAt(shelves, slot.x + 2, slot.y + 2)).toEqual({ shelfId: 'front', slot: 0 });
   });
 });

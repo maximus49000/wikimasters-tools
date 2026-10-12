@@ -1,6 +1,6 @@
 import { sizeOf, wallSizeOf } from '../core/library/furniture-catalog';
 import type { Layout } from '../core/library/library-types';
-import { CELL_H, CELL_W, canHang, canHangRect, canPlace, canPlaceComputer, firstFreeSurfaceSlot, pxRect, rectOf, shelfSlots, slotAt, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
+import { CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, firstFreeSurfaceSlot, pxRect, rectOf, shelfSlots, slotAt, surfaceSlotRect, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -11,20 +11,23 @@ export function pointerToCell(rect: ClientRect, viewBoxW: number, viewBoxH: numb
   return { col: Math.floor(x / CELL_W), row: Math.floor(y / CELL_H), x, y };
 }
 
-// Le bureau dont une case contient (col, row), ou null.
+// Les bureaux (et les étagères si `shelves`), du plus en avant au plus en arrière : sur des cases partagées par
+// plusieurs niveaux, le lâcher vise celui qu'on voit devant.
+const hostsFrontFirst = (layout: Layout, shelves: boolean): Standing[] =>
+  byDrawOrder(layout, layout.filter((p): p is Standing => p.kind === 'desk' || (shelves && p.kind === 'shelf'))).reverse();
+
+// Le bureau le plus en avant dont une case contient (col, row), ou null.
 export function deskAtCell(layout: Layout, col: number, row: number): string | null {
-  for (const placed of layout) {
-    if (placed.kind !== 'desk') continue;
+  for (const placed of hostsFrontFirst(layout, false)) {
     const r = rectOf(placed);
     if (r && col >= r.col && col < r.col + r.w && row >= r.row && row < r.row + r.h) return placed.id;
   }
   return null;
 }
 
-// Le bureau ou l'étagère dont une case contient (col, row), ou null : ils portent les petits objets.
+// Le bureau ou l'étagère le plus en avant dont une case contient (col, row), ou null : ils portent les petits objets.
 export function hostAtCell(layout: Layout, col: number, row: number): string | null {
-  for (const placed of layout) {
-    if (placed.kind !== 'desk' && placed.kind !== 'shelf') continue;
+  for (const placed of hostsFrontFirst(layout, true)) {
     const r = rectOf(placed);
     if (r && col >= r.col && col < r.col + r.w && row >= r.row && row < r.row + r.h) return placed.id;
   }
@@ -33,8 +36,7 @@ export function hostAtCell(layout: Layout, col: number, row: number): string | n
 
 // Le bureau ou l'étagère dont la bande des petits objets (44 px au-dessus du dessus, comme `surfaceSlotRect`) contient le point (x, y).
 export function hostAtSurface(layout: Layout, x: number, y: number): string | null {
-  for (const placed of layout) {
-    if (placed.kind !== 'desk' && placed.kind !== 'shelf') continue;
+  for (const placed of hostsFrontFirst(layout, true)) {
     const r = rectOf(placed);
     if (!r) continue;
     const strip = surfaceSlotRect(pxRect(r), 1, 0);

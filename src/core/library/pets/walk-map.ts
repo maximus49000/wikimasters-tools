@@ -1,4 +1,4 @@
-import { layerOf } from '../furniture-catalog';
+import { footOf, layerOf, underOf } from '../furniture-catalog';
 import type { Layout, Pt, Segment, StandingKind } from '../library-types';
 import { CELL_H, CELL_W, ROWS, WALL_ROWS, isStanding, rectOf, type Cell } from '../room-grid';
 
@@ -9,7 +9,8 @@ export const MAX_GAP = 75;
 
 // Le dessus d'un meuble où le chat peut se tenir : de x0 à x1, à la hauteur y.
 export type Platform = { id: string; x0: number; x1: number; y: number; col: number; row: number; w: number; h: number };
-// `blocked[row - WALL_ROWS][col]` : case du sol occupée par un meuble (les tapis ne bloquent pas).
+// `blocked[row - WALL_ROWS][col]` : case du sol occupée par l'appui d'un meuble plein (les `foot` rangées du bas) ; le reste de l'emprise,
+// le dessous d'un meuble `under` et les tapis restent praticables.
 export type WalkMap = { cols: number; blocked: boolean[][]; platforms: Platform[] };
 
 // Hauteur du dessus, en fraction de la hauteur du meuble depuis son haut (l'assise du canapé est plus bas que son dossier).
@@ -23,8 +24,10 @@ export function buildWalkMap(layout: Layout, cols: number): WalkMap {
     const rect = rectOf(p);
     if (!rect) continue;
     if (layerOf(p.kind) === 'floor') {
-      for (let r = Math.max(rect.row, WALL_ROWS); r < Math.min(rect.row + rect.h, ROWS); r++) {
-        for (let c = Math.max(rect.col, 0); c < Math.min(rect.col + rect.w, cols); c++) blocked[r - WALL_ROWS]![c] = true;
+      if (!underOf(p.kind)) {
+        for (let r = Math.max(rect.row, rect.row + rect.h - footOf(p.kind), WALL_ROWS); r < Math.min(rect.row + rect.h, ROWS); r++) {
+          for (let c = Math.max(rect.col, 0); c < Math.min(rect.col + rect.w, cols); c++) blocked[r - WALL_ROWS]![c] = true;
+        }
       }
     }
     const top = TOP_FRACTION[p.kind];
