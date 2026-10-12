@@ -16,6 +16,7 @@ import { DARK } from '../../src/core/library/city/events';
 import { BARRIER, STAGE } from '../../src/content/install-sprites';
 import { PropContext, PropRegistry, propKey } from '../../src/content/prop/prop-host';
 import { FLAG_PHASE_PX, barrierK, collectFlags, placeFlags } from '../../src/content/install-layer';
+import { FLAG_CYCLE_S, FLAG_FRAMES } from '../../src/core/library/paint/props/install';
 import { MUSICIANS, musicianAt } from '../../src/content/stage-band';
 import { VAN_SPEED } from '../../src/core/library/city/van';
 
@@ -827,7 +828,7 @@ describe('installations cellulo en Ghibli (G5)', () => {
     expect(count(host, 'animate, animateTransform')).toBe(0);
   }, 60000);
 
-  it('boucle : la pose suit t (8 poses sur 1,6 s), chaque lampadaire a sa phase ; 8 images au plus par genre pour tous', async () => {
+  it('boucle : la pose suit t (8 poses sur la période T de la vague), chaque lampadaire a sa phase ; 8 images au plus par genre pour tous', async () => {
     const { host, jobs, reg: registry } = gLayer(D14, 720, true, false, true);
     const day = skyOf(720).daylight;
     const key = (id: string, frame: number): string => `url:${propKey({ id, day, frame })}`;
@@ -839,16 +840,17 @@ describe('installations cellulo en Ghibli (G5)', () => {
     // Toutes les poses demandées par la boucle, cuites : 7 images de plus par genre au plus (la pose 0 l'est déjà), quel que
     // soit le nombre de lampadaires ; les 8 poses du lampadaire sont dans le registre.
     const s0 = registry.size();
+    const S = FLAG_CYCLE_S / FLAG_FRAMES;
     for (let k = 0; k < 8; k++) {
-      placeFlags(flags, 1000 + k * 0.2, registry);
+      placeFlags(flags, 1000 + k * S, registry);
       await bake(jobs);
-      placeFlags(flags, 1000 + k * 0.2, registry);
+      placeFlags(flags, 1000 + k * S, registry);
     }
     expect(registry.size()).toBeLessThanOrEqual(s0 + 14);
     for (let k = 0; k < 8; k++) expect(registry.get(propKey({ id: 'lamp-flag', day, frame: k })), `pose ${k}`).not.toBeNull();
-    // À t fixe : pose = (t / 0,2 s + phase) mod 8 pour chaque drapeau ; des lampadaires de phases différentes montrent des
+    // À t fixe : pose = (t / (T/8) + phase) mod 8 pour chaque drapeau ; des lampadaires de phases différentes montrent des
     // images différentes.
-    const at = (t: number): number => Math.floor(t / (1.6 / 8));
+    const at = (t: number): number => Math.floor(t / S);
     const expectPoses = (t: number): void => {
       for (const g of host.querySelectorAll('[data-flag-wave]')) {
         const id = g.getAttribute('data-flag-wave')!;
@@ -862,14 +864,14 @@ describe('installations cellulo en Ghibli (G5)', () => {
     const phases = lampsFor(W, SEED).map((l) => Math.floor(l.x / FLAG_PHASE_PX) % 8);
     expect(new Set(phases).size).toBeGreaterThan(1);
     expect(new Set(h1).size).toBe(new Set(phases).size);
-    // Un cinquième de cycle plus tard, la pose a changé ; un cycle plus tard, elle est revenue.
-    placeFlags(flags, 1000.2, registry);
-    expectPoses(1000.2);
+    // Un huitième de période plus tard, la pose a changé ; une période T plus tard, elle est revenue.
+    placeFlags(flags, 1000 + S, registry);
+    expectPoses(1000 + S);
     expect(lampHrefs()).not.toEqual(h1);
-    placeFlags(flags, 1001.6, registry);
+    placeFlags(flags, 1000 + FLAG_CYCLE_S, registry);
     expect(lampHrefs()).toEqual(h1);
     // Sans registre : rien ne bouge.
-    placeFlags(flags, 1000.4, null);
+    placeFlags(flags, 1000 + 2 * S, null);
     expect(lampHrefs()).toEqual(h1);
   }, 60000);
 

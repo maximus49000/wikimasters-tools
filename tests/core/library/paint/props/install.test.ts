@@ -19,7 +19,7 @@ const ARGS: Record<string, Record<string, string | number | boolean>> = {
   'stowed-ladder': { len: 30 },
 };
 
-const paint =(id: string, a: Record<string, string | number | boolean>, lit = false): ReturnType<typeof recordingCtx> => {
+const paint = (id: string, a: Record<string, string | number | boolean>, lit = false): ReturnType<typeof recordingCtx> => {
   const c = recordingCtx();
   PROPS[id]!.paint(tintedCtx(c, (s) => s), a, { day: 1, lit, dir: 1, frame: 0 });
   return c;

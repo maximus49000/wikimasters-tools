@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { propKey } from '../../../../../src/content/prop/prop-host';
 import { PROPS } from '../../../../../src/core/library/paint/props/index';
-import '../../../../../src/core/library/paint/props/install';
+import { FLAG_CYCLE_S, FLAG_FRAMES } from '../../../../../src/core/library/paint/props/install';
+import { flagArt } from '../../../../../src/core/library/paint/props/kit';
 import { recordingCtx } from '../recording-ctx';
 import { tintedCtx } from '../../../../../src/core/library/paint/shop/ctx';
 import { touched } from './replay';
@@ -62,6 +63,26 @@ describe('drapeaux animés', () => {
       // La clé distingue le drapeau plat du drapeau qui ondule.
       expect(propKey({ id, args: { still: true }, day: 1 })).not.toBe(propKey({ id, day: 1 }));
     }
+  });
+  it('le cycle est la période de la vague : à t = T le tissu est celui de t = 0 (pose 8 = pose 0, sans à-coup)', () => {
+    expect(FLAG_FRAMES).toBe(8);
+    expect(FLAG_CYCLE_S).toBeCloseTo((2 * Math.PI) / 2.5, 12);
+    const cloth = (t: number): [number, number][] => {
+      const c = recordingCtx();
+      flagArt(c, { w: 10, h: 7, t, wave: true, phase: 0 });
+      return c.points;
+    };
+    const p0 = cloth(0);
+    const pT = cloth(FLAG_CYCLE_S);
+    expect(pT.length).toBe(p0.length);
+    pT.forEach(([x, y], i) => { expect(x).toBeCloseTo(p0[i]![0], 9); expect(y).toBeCloseTo(p0[i]![1], 9); });
+    // Un huitième de période avant T, le tissu n'est pas celui de t = 0 (la vague bouge bien, la période n'est pas triviale).
+    const before = cloth(FLAG_CYCLE_S - FLAG_CYCLE_S / FLAG_FRAMES);
+    expect(before.some(([, y], i) => Math.abs(y - p0[i]![1]) > 0.05)).toBe(true);
+    // La pose k du peintre = le tissu à k/8 × T : les tranches du tissu (x ≤ −11, bord haut) suivent y(u) à cet instant.
+    const k3 = touched(paint('lamp-flag', 3).ops).filter(([x, y]) => x <= -11 && y < -66);
+    const c3 = cloth((3 / FLAG_FRAMES) * FLAG_CYCLE_S).filter(([, y]) => y < 5).map(([x, y]) => [-11 - x, -71 + y] as [number, number]);
+    for (const [x, y] of c3) expect(k3.some(([px, py]) => Math.abs(px - x) < 1e-6 && Math.abs(py - y) < 1e-6), `(${x}, ${y})`).toBe(true);
   });
   it('rien de lumineux : glowing jamais appelé, même allumé', () => {
     for (const id of ['lamp-flag', 'door-flag']) {

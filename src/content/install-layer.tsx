@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { YMD } from '../core/library/city/calendar';
 import { COUNTER_HALF, STAND_DEPTH } from '../core/library/city/beer';
+import { FLAG_CYCLE_S, FLAG_FRAMES } from '../core/library/paint/props/install';
 import { doorsFor, type Door } from '../core/library/city/doors';
 import {
   LIFT_FETCH, absMinute, beerStandsFor, crewAt, crewStepWindow, decorSetsFor, footWindow, inVehicle, itemEquipment, itemPhase, itemShown,
@@ -440,21 +441,22 @@ function decorNode(
 }
 
 // ---------- Drapeaux qui ondulent (Ghibli, boucle) ----------
-// Les drapeaux de lampadaire et d'entrée sont des images à 8 poses de vague (props/install.ts : pose k = k/8 du cycle de
-// 1,6 s) partagées par tous les drapeaux du genre. La boucle de la couche (city-life.tsx, à chaque image) choisit la pose de
-// l'instant `t`, décalée par drapeau de sa phase ((x / 37) | 0 : deux lampadaires voisins n'ondulent pas ensemble), et pose
-// sur l'<image> rendue (pose 0, par PropImage) l'image de cette pose dès que le registre l'a cuite (demandée sinon) : au plus
-// 8 images par genre et par lumière, quel que soit le nombre de lampadaires. Pas d'<image> encore (première cuisson en cours) :
-// le repli classique reste affiché. Mouvement réduit : aucun repère `data-flag-wave` (tissu plat, args still).
+// Les drapeaux de lampadaire et d'entrée sont des images à FLAG_FRAMES poses de vague (props/install.ts : pose k = k/8 du cycle
+// FLAG_CYCLE_S, sa période) partagées par tous les drapeaux du genre. La boucle de la couche (city-life.tsx, à chaque image)
+// choisit la pose de l'instant `t`, décalée par drapeau de sa phase ((x / 37) | 0 : deux lampadaires voisins n'ondulent pas
+// ensemble), et pose sur l'<image> rendue (pose 0, par PropImage) l'image de cette pose dès que le registre l'a cuite
+// (demandée sinon) : au plus 8 images par genre et par lumière, quel que soit le nombre de lampadaires. Pas d'<image> encore
+// (première cuisson en cours) : le repli classique reste affiché. Mouvement réduit : aucun repère `data-flag-wave` (tissu
+// plat, args still).
 export const FLAG_PHASE_PX = 37;
 const flagPhase = (x: number): number => Math.floor(x / FLAG_PHASE_PX);
-const FLAG_FRAMES = 8;
-const FLAG_FRAME_S = 1.6 / FLAG_FRAMES;
-export type WavingFlag = { node: Element; id: string; phase: number; frame: number; day: number; href: string | null };
+const FLAG_FRAME_S = FLAG_CYCLE_S / FLAG_FRAMES;
+// `img` : l'<image> du drapeau, gardée d'une image à l'autre (recherchée tant qu'elle n'existe pas, ou si le rendu l'a remplacée).
+export type WavingFlag = { node: Element; id: string; phase: number; img: Element | null; frame: number; day: number };
 export function collectFlags(root: Element): WavingFlag[] {
   const out: WavingFlag[] = [];
   for (const node of root.querySelectorAll('[data-flag-wave]')) {
-    out.push({ node, id: node.getAttribute('data-flag-wave')!, phase: Number(node.getAttribute('data-flag-phase')) || 0, frame: -1, day: NaN, href: null });
+    out.push({ node, id: node.getAttribute('data-flag-wave')!, phase: Number(node.getAttribute('data-flag-phase')) || 0, img: null, frame: -1, day: NaN });
   }
   return out;
 }
@@ -463,12 +465,13 @@ export function placeFlags(flags: readonly WavingFlag[], t: number, reg: PropReg
   if (!reg) return;
   const step = Math.floor(t / FLAG_FRAME_S);
   for (const f of flags) {
-    const img = f.node.querySelector(':scope > image');
-    if (!img) continue;
+    if (!f.img?.isConnected) f.img = f.node.querySelector(':scope > image');
+    if (!f.img) continue;
     const frame = (((step + f.phase) % FLAG_FRAMES) + FLAG_FRAMES) % FLAG_FRAMES;
-    // Lumière du rendu (la clé la quantifie) ; la pose déjà posée n'est pas réécrite, sauf si le rendu a remis la pose 0.
+    // Lumière du rendu (la clé la quantifie) : quand elle change, le rendu a remis la pose 0 et `data-flag-day` ; on n'écrit
+    // que si la pose ou la lumière change.
     const day = Number(f.node.getAttribute('data-flag-day'));
-    if (frame === f.frame && day === f.day && img.getAttribute('href') === f.href) continue;
+    if (frame === f.frame && day === f.day) continue;
     const spec: PropSpec = { id: f.id, day, frame };
     const key = propKey(spec);
     const url = reg.get(key);
@@ -476,10 +479,9 @@ export function placeFlags(flags: readonly WavingFlag[], t: number, reg: PropReg
       reg.want(key, () => paintProp(spec), noop);
       continue;
     }
-    img.setAttribute('href', url);
+    f.img.setAttribute('href', url);
     f.frame = frame;
     f.day = day;
-    f.href = url;
   }
 }
 

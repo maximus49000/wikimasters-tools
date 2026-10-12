@@ -285,12 +285,14 @@ function flatbedLoadBox(a: PropArgs): readonly [number, number, number, number] 
   return [-44.5, y0, x1 + 44.5, -10.5 - y0];
 }
 
-// Drapeaux qui ondulent (notes.md §2 « Drapeaux ») : la vague de `flagArt` est une fonction du temps ; 8 poses clés sur son
-// cycle de 1,6 s (pose k = t de k/8 × 1,6 s), partagées par tous les drapeaux du même genre (une image par pose et par
-// lumière, pas une par lampadaire). La boucle de la couche décale la pose de (x / 37) | 0 par lampadaire : chacun a sa
-// phase. Mouvement réduit (`still`) : tissu plat avec un pli d'ombre fixe par bande, identique à toutes les poses.
-const FLAG_FRAMES = 8;
-const FLAG_CYCLE_S = 1.6;
+// Drapeaux qui ondulent (notes.md §2 « Drapeaux ») : la vague de `flagArt` est une fonction du temps (deux sinusoïdes en
+// −7,5 t et −5 t) ; sa période commune est T = 2π / 2,5 ≈ 2,513 s (7,5 T = 6π, 5 T = 4π), si bien que la pose 8 est la pose 0 :
+// 8 poses clés à T/8 (pose k = t de k/8 × T), sans à-coup au bouclage, partagées par tous les drapeaux du même genre (une
+// image par pose et par lumière, pas une par lampadaire). La boucle de la couche (install-layer.tsx) décale la pose de
+// (x / 37) | 0 par lampadaire : chacun a sa phase. Mouvement réduit (`still`) : tissu plat avec un pli d'ombre fixe par bande,
+// identique à toutes les poses.
+export const FLAG_FRAMES = 8;
+export const FLAG_CYCLE_S = (2 * Math.PI) / 2.5;
 const flagT = (p: PropPaint): number => (p.frame / FLAG_FRAMES) * FLAG_CYCLE_S;
 const flagStill = (a: PropArgs): boolean => a.still === true;
 
