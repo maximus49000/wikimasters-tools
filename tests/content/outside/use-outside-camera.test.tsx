@@ -2,6 +2,10 @@
 import { act, createElement, useRef, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// Haut de tête simulé : porté par l'attribut data-head (pas de pose Ghibli réelle en jsdom).
+vi.mock('../../../src/content/figure/ghibli-figure', () => ({
+  figureHeadTop: (n: Element): readonly [number, number] | null => (n.hasAttribute('data-head') ? [0, Number(n.getAttribute('data-head'))] : null),
+}));
 import { useOutsideCamera, type OutsidePhase } from '../../../src/content/outside/use-outside-camera';
 import type { Rect } from '../../../src/core/library/outside-camera';
 
@@ -176,6 +180,25 @@ describe('useOutsideCamera', () => {
     tap(610, 170);
     // Caméra initiale x = 360, zoom 1 : haut de la boîte (610, 150) -> monde (970, 150), repère à y - 4.
     expect(marker().getAttribute('transform')).toBe('translate(970.0 146.0)');
+  });
+
+  it('passant avec accompagnant : le repère se pose sur la tête de la figure principale, pas celle de l’accompagnant', async () => {
+    await goOutside();
+    const life = figure();
+    // L'accompagnant est rendu AVANT le parent (cf. city-life.tsx).
+    life.innerHTML = '<g data-companion=""><g data-figure="" data-key="c" data-head="-30"></g></g><g data-figure="" data-key="p" data-head="-50"></g>';
+    const [kid, parent] = [life.querySelector('[data-companion] [data-figure]')!, life.querySelector(':scope > [data-figure]')!];
+    // Faux getScreenCTM : décalage vertical par figure ; faux createSVGPoint : y + f.
+    Object.defineProperty(kid, 'getScreenCTM', { configurable: true, value: () => ({ f: 300 }) });
+    Object.defineProperty(parent, 'getScreenCTM', { configurable: true, value: () => ({ f: 150 }) });
+    Object.defineProperty(svg(), 'createSVGPoint', {
+      configurable: true,
+      value: () => ({ x: 0, y: 0, matrixTransform(m: { f: number }) { return { x: this.x, y: this.y + m.f }; } }),
+    });
+    rects.set(life, { x: 600, y: 150, w: 20, h: 40 });
+    tap(610, 170);
+    // Tête du parent : -50 + 150 = 100 écran -> monde 100, repère à 96 (l'accompagnant donnerait 300 - 30 - 4 = 266).
+    expect(marker().getAttribute('transform')).toBe('translate(970.0 96.0)');
   });
 
   it('personnage caché plus d’1 s : le suivi s’arrête', async () => {

@@ -18,7 +18,13 @@ type Options = { svg: () => SVGSVGElement | null; box: () => HTMLElement | null;
 // Ordonnée écran du sommet de la tête d'une figure Ghibli (le sprite a une marge transparente au-dessus du crâne, donc la boîte
 // du nœud est trop haute) ; null hors art Ghibli ou sans matrice d'écran : l'appelant garde le haut de la boîte.
 function headClientY(node: Element, svg: SVGSVGElement): number | null {
-  const fig = node.matches('[data-figure]') ? node : node.querySelector('[data-figure][data-key]');
+  // Figure principale : le nœud lui-même, sinon l'enfant direct, sinon la première figure hors accompagnant (enfant tenu par la main,
+  // rendu avant le parent et à l'échelle réduite).
+  const fig = node.matches('[data-figure]')
+    ? node
+    : (node.querySelector(':scope > [data-figure][data-key]') ??
+      [...node.querySelectorAll('[data-figure][data-key]')].find((f) => { const c = f.closest('[data-companion]'); return !(c && node.contains(c)); }) ??
+      null);
   const top = fig && figureHeadTop(fig);
   const ctm = fig && (fig as SVGGraphicsElement).getScreenCTM?.();
   if (!top || !ctm) return null;
