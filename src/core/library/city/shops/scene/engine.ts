@@ -45,6 +45,7 @@ export type Actor = {
   fill: SegMove; // geste d'attente quand il n'a rien à faire
   soft: { carried: PropId | null } | null; // acte en cours interruptible (et l'objet tenu avant)
   lastFill: boolean; // le dernier segment est une attente prolongeable
+  seated: boolean; // occupe un siège : de l'assise (`sit`, geste assis) à la marche qui le relève
   pictoAt: number; // instant du dernier picto
   pictoT0: number; // début du segment du dernier picto
   active: boolean; // dans la scène
@@ -133,21 +134,25 @@ export const say = (w: World, text: string): void => {
 };
 const pick = (w: World, [a, b]: readonly [number, number], fast: boolean): number => (fast ? a : a + w.rng() * (b - a));
 
-function push(a: Actor, s: Omit<Segment, 'seed'>, fill: boolean): void {
+function push(a: Actor, s: Omit<Segment, 'seed' | 'seated'>, fill: boolean): void {
   const k = a.track.segments.length;
-  a.track.segments.push({ ...s, seed: (hashString(a.id) ^ Math.imul(k + 1, 2654435761)) >>> 0 });
+  a.track.segments.push({ ...s, seed: (hashString(a.id) ^ Math.imul(k + 1, 2654435761)) >>> 0, ...(a.seated ? { seated: true as const } : {}) });
   a.x = s.x1;
   a.yaw = s.yaw1;
   a.free = s.t1;
   a.lastFill = fill;
 }
 
+// Assis : `sit` ou un geste dont une pose clé est assise (menu, repas, bac à shampoing, grimace au fauteuil).
+const sitsDown = (mv: SegMove): boolean => mv === 'sit' || (mv in MOVES && MOVES[mv as MoveId].keys.some((k) => k.gait === 'seated'));
+
 // Attente jusqu'à `t1` : prolonge l'attente précédente (même geste, ou n'importe laquelle si `move` est omis), sinon ouvre
 // un segment (station debout par défaut).
 export function hold(a: Actor, t1: number, move?: SegMove): void {
   if (t1 <= a.free + EPS) return;
+  if (move !== undefined && sitsDown(move)) a.seated = true;
   const last = a.track.segments[a.track.segments.length - 1];
-  if (last && a.lastFill && (move === undefined || last.move === move) && Math.abs(last.t1 - a.free) < EPS) {
+  if (last && a.lastFill && (move === undefined || last.move === move) && !!last.seated === a.seated && Math.abs(last.t1 - a.free) < EPS) {
     last.t1 = t1;
     a.free = t1;
     return;
@@ -167,6 +172,8 @@ export function begin(w: World, a: Actor, act: Act): void {
   if (walking && Math.abs(to - a.x) < 1e-6) return;
   if (act.move === 'turn' && act.yaw === a.yaw) return;
   const yaw = walking ? yawToward(a.x, to) : act.yaw;
+  // Se lever pour marcher (le demi-tour qui précède la marche se fait debout).
+  if (walking) a.seated = false;
   if (yaw !== undefined && yaw !== a.yaw && act.move !== 'turn') {
     push(a, { t0: t, t1: t + TURN_S, move: 'turn', x0: a.x, x1: a.x, yaw0: a.yaw, yaw1: yaw, prop: a.carried, picto: null }, false);
     t += TURN_S;
@@ -196,6 +203,7 @@ export function begin(w: World, a: Actor, act: Act): void {
   const pid = act.as ?? (m?.prop && m.prop.from === 0 && before ? before : m?.prop?.id);
   const prop = pid ?? a.carried;
   const yaw1 = act.move === 'turn' && act.yaw !== undefined ? act.yaw : a.yaw;
+  if (sitsDown(act.move)) a.seated = true;
   push(a, { t0: t, t1: t + dur, move: act.move, x0: a.x, x1, yaw0: a.yaw, yaw1, prop, picto }, false);
   a.carried = act.carry !== undefined ? act.carry : m?.prop ? (m.prop.to >= 1 ? pid! : null) : before;
   a.soft = act.soft ? { carried: before } : null;

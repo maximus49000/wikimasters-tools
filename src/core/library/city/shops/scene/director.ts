@@ -27,7 +27,7 @@ function partyRuntime(w: World, p: Party): PartyRt {
   };
   party.actors = p.members.map((m, k) => ({
     id: `${p.id}:${k}`, track: { id: `${p.id}:${k}`, role: 'customer', outfit: m.outfit, scale: m.scale, party: p.id, enter: null, exit: null, segments: [] },
-    x: 0, yaw: 0, carried: null, free: 0, rest: 0, pending: [], chain: false, fill: 'idle', soft: null, lastFill: false,
+    x: 0, yaw: 0, carried: null, free: 0, rest: 0, pending: [], chain: false, fill: 'idle', soft: null, lastFill: false, seated: false,
     pictoAt: -99, pictoT0: -99, active: false, deadline: w.force, staff: null, party, member: k,
   }) satisfies Actor);
   return party;

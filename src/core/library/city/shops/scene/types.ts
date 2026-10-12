@@ -29,8 +29,10 @@ export type ActorId = string;
 // Segment d'une partition : de t0 à t1 (s depuis le début du créneau), x local à la vitrine interpolé de x0 à x1, orientation
 // (indice 0-15) de yaw0 à yaw1. `move` : geste de la bibliothèque (MOVES) ou marche / demi-tour / station debout ; les poses
 // (bras, penché, tête, allure) se déduisent du geste par keyAtTime à la lecture. `prop` : objet tenu pendant le segment ;
-// `picto` : picto du geste retenu par la règle de rareté (null s'il est tu) ; `seed` : variation propre au segment.
-export type Segment = { t0: number; t1: number; move: MoveId | 'walk' | 'turn' | 'idle'; x0: number; x1: number; yaw0: number; yaw1: number; prop: PropId | null; picto: PictoId | null; seed: number };
+// `picto` : picto du geste retenu par la règle de rareté (null s'il est tu) ; `seed` : variation propre au segment ; `seated` :
+// l'acteur occupe un siège (fauteuil, chaise d'attente, table), de l'assise jusqu'à la marche qui le relève : allure assise
+// à la lecture, quel que soit le geste (sauf accroupi).
+export type Segment = { t0: number; t1: number; move: MoveId | 'walk' | 'turn' | 'idle'; x0: number; x1: number; yaw0: number; yaw1: number; prop: PropId | null; picto: PictoId | null; seed: number; seated?: true };
 // `enter` / `exit` : instants où le client franchit la porte du local (null s'il n'entre pas) ; pour un employé, sortie de
 // l'arrière-boutique / retour (null s'il est là aux bornes du créneau).
 export type ActorTrack = { id: ActorId; role: 'staff' | 'customer'; outfit: Outfit; scale: number; party: string | null; enter: number | null; exit: number | null; segments: Segment[] };
