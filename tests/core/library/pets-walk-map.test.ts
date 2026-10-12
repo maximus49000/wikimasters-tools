@@ -8,8 +8,8 @@ const sofa: Layout = [{ id: 'a', kind: 'sofa', col: 2, row: 12 }];
 describe('buildWalkMap', () => {
   it('bloque les cases des meubles au sol, pas celles des tapis ni du mur', () => {
     const map = buildWalkMap([...sofa, { id: 'r', kind: 'rug', col: 2, row: 15 }, { id: 's', kind: 'shelf', col: 12, row: 10 }], 24);
-    expect(isFree(map, 2, 12)).toBe(true); // derrière le canapé : l'animal passe
-    expect(isFree(map, 2, 13)).toBe(false); // appui du canapé : 2 rangées du bas
+    expect(isFree(map, 2, 12)).toBe(false); // le canapé bas est plein : tout son sol est bloqué
+    expect(isFree(map, 2, 13)).toBe(false);
     expect(isFree(map, 7, 14)).toBe(false);
     expect(isFree(map, 8, 14)).toBe(true);
     expect(isFree(map, 2, 15)).toBe(true);

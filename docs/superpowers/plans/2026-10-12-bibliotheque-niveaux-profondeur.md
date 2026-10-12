@@ -17,7 +17,7 @@
 - Niveaux par défaut : `shelf`, `lamp`, `plant` → 1 ; `desk`, `chair`, `armchair`, `sofa`, `globe`, `telescope`, `automaton`, `kennel` → 2 ; `coffee-table`, `basket`, `bowl`, `charger` → 3 ; `rug` → 1 (sans effet, couche à part).
 - `Placed` debout : champ optionnel `depth?: 1 | 2 | 3`, écrit seulement s'il diffère du défaut. Une pièce enregistrée sans `depth` se charge à l'identique.
 - `computer`, `small`, `stored` prennent le niveau de leur porteur et se dessinent juste après lui.
-- Appuis (`foot`) et dessous libre (`under`) : `shelf` 2/non · `desk` 2/oui · `chair` 1/oui · `coffee-table` 2/oui · `telescope` 1/oui · `sofa`, `armchair`, `kennel` 2/non · `basket`, `bowl`, `plant`, `lamp`, `globe`, `automaton`, `charger` 1/non · `rug` 0/oui.
+- Appuis (`foot`) et dessous libre (`under`) : `shelf` 2/non · `desk` 2/oui · `chair` 1/oui · `coffee-table` 2/oui · `telescope` 1/oui · `sofa`, `armchair`, `kennel` 3/non · `basket`, `bowl`, `plant`, `lamp`, `globe`, `automaton`, `charger` 1/non · `rug` 0/oui.
 - Pas de fiche WikiHow (demande explicite de l'utilisateur).
 - Pas de perspective : tailles et positions inchangées.
 - Code partagé extension + Android : rien de spécifique à une plateforme. Validation d'abord sur le téléphone (règle « Android d'abord »).

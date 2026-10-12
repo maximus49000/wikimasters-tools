@@ -17,7 +17,7 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
     h: 3,
     layer: 'floor',
     depth: 2,
-    foot: 2,
+    foot: 3,
     under: false,
     pois: [
       { type: 'seat', dx: 1, dy: 1 },
@@ -26,7 +26,7 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
       { type: 'sleep', dx: 3, dy: 1 },
     ],
   },
-  armchair: { w: 3, h: 3, layer: 'floor', depth: 2, foot: 2, under: false, pois: [{ type: 'seat', dx: 1, dy: 1 }] },
+  armchair: { w: 3, h: 3, layer: 'floor', depth: 2, foot: 3, under: false, pois: [{ type: 'seat', dx: 1, dy: 1 }] },
   basket: { w: 3, h: 2, layer: 'floor', depth: 3, foot: 1, under: false, pois: [{ type: 'curl', dx: 1, dy: 1 }] },
   bowl: { w: 2, h: 1, layer: 'floor', depth: 3, foot: 1, under: false, pois: [{ type: 'eat', dx: 0, dy: 0 }] },
   kennel: {
@@ -34,7 +34,7 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
     h: 3,
     layer: 'floor',
     depth: 2,
-    foot: 2,
+    foot: 3,
     under: false,
     pois: [
       { type: 'enter', dx: 2, dy: 2 },

@@ -25,7 +25,7 @@ export function buildWalkMap(layout: Layout, cols: number): WalkMap {
     if (!rect) continue;
     if (layerOf(p.kind) === 'floor') {
       if (!underOf(p.kind)) {
-        for (let r = Math.max(rect.row + rect.h - footOf(p.kind), WALL_ROWS); r < Math.min(rect.row + rect.h, ROWS); r++) {
+        for (let r = Math.max(rect.row, rect.row + rect.h - footOf(p.kind), WALL_ROWS); r < Math.min(rect.row + rect.h, ROWS); r++) {
           for (let c = Math.max(rect.col, 0); c < Math.min(rect.col + rect.w, cols); c++) blocked[r - WALL_ROWS]![c] = true;
         }
       }

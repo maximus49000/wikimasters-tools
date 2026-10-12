@@ -54,7 +54,7 @@ Pouvoir superposer des objets de la pièce sur les mêmes cases, par exemple une
   | `chair` | 1 | oui |
   | `coffee-table` | 2 | oui |
   | `telescope` (trépied) | 1 | oui |
-  | `sofa`, `armchair`, `kennel` | 2 | non |
+  | `sofa`, `armchair`, `kennel` | 3 | non |
   | `basket`, `bowl`, `plant`, `lamp`, `globe`, `automaton`, `charger` | 1 | non |
 
   Les valeurs sont à ajuster sur les dessins pendant le développement. Dans `walk-map.ts`, une case du sol est :

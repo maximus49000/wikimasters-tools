@@ -10,6 +10,7 @@ describe('niveaux de profondeur', () => {
     expect(depthDefault('armchair')).toBe(2);
     expect(depthDefault('coffee-table')).toBe(3);
     expect(footOf('shelf')).toBe(2);
+    expect(footOf('sofa')).toBe(3);
     expect(underOf('coffee-table')).toBe(true);
     expect(underOf('sofa')).toBe(false);
   });
