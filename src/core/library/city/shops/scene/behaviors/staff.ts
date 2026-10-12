@@ -42,7 +42,7 @@ export function makeStaff(w: World, list: readonly { id: string; outfit: Outfit;
     const label = list.length > 1 ? `${role} ${'ABCDEF'[i] ?? i}` : role;
     const there = !reserve && o.present[0] <= 0 && o.present[1] > 0;
     const a: Actor = {
-      id: `staff:${o.id}`, track: { id: `staff:${o.id}`, role: 'staff', outfit: o.outfit, scale: 1, party: null, enter: null, exit: null, segments: [] },
+      id: `staff:${o.id}`, track: { id: `staff:${o.id}`, role: 'staff', outfit: o.outfit, scale: 1, party: null, enter: null, exit: null, arriveAt: null, dir: null, segments: [] },
       x: there ? post : w.stage.back, yaw: yawStaff(w), carried: null, free: 0, rest: 0, pending: [], chain: false, fill: 'idle', soft: null, lastFill: false, seated: false,
       pictoAt: -99, pictoT0: -99, active: there, deadline: Math.min(w.L, o.present[1]) - homeReserve(w), party: null, member: 0,
       staff: { label, post, homeYaw: yawStaff(w), present: o.present, reserve, state: there ? 'floor' : o.present[1] <= 0 ? 'gone' : 'back', service: null, called: false, quietSince: 0 },

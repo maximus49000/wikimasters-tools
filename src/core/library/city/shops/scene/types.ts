@@ -34,8 +34,9 @@ export type ActorId = string;
 // à la lecture, quel que soit le geste (sauf accroupi).
 export type Segment = { t0: number; t1: number; move: MoveId | 'walk' | 'turn' | 'idle'; x0: number; x1: number; yaw0: number; yaw1: number; prop: PropId | null; picto: PictoId | null; seed: number; seated?: true };
 // `enter` / `exit` : instants où le client franchit la porte du local (null s'il n'entre pas) ; pour un employé, sortie de
-// l'arrière-boutique / retour (null s'il est là aux bornes du créneau).
-export type ActorTrack = { id: ActorId; role: 'staff' | 'customer'; outfit: Outfit; scale: number; party: string | null; enter: number | null; exit: number | null; segments: Segment[] };
+// l'arrière-boutique / retour (null s'il est là aux bornes du créneau). `arriveAt` : arrivée du client à la porte (s depuis le
+// début du créneau, Party.arriveAt) ; `dir` : son sens de marche à l'aller (Party.dir) ; null tous deux pour un employé.
+export type ActorTrack = { id: ActorId; role: 'staff' | 'customer'; outfit: Outfit; scale: number; party: string | null; enter: number | null; exit: number | null; arriveAt: number | null; dir: 1 | -1 | null; segments: Segment[] };
 export type Score = { key: string; start: number; length: number; tracks: ActorTrack[]; log: string[] };
 // État de la rue fourni au créneau (déjà déterministe) : début d'averse, de défilé, passages du car (s depuis le début du créneau).
 export type StreetState = { rainFrom: number | null; paradeFrom: number | null; busAt: number[] };

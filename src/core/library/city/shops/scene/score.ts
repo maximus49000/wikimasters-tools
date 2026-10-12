@@ -9,16 +9,23 @@ import type { ActorId, ActorTrack, Score, Segment, SlotKey } from './types';
 // tête, allure) se déduisent du geste du segment par keyAtTime ; x s'interpole, l'orientation tourne par le plus court
 // chemin sur l'anneau des 16 crans. Cache LRU des partitions : une partition se calcule une fois par créneau affiché.
 
-// `where` : 'inside' dans le local ; client : 'street-in' avant d'avoir passé la porte (ou devant la porte s'il rebrousse
-// chemin), 'street-out' après l'avoir repassée (sa marche dans la rue est calculée par le rendu avec `passageAt`) ; un client
-// qui n'entre ni ne s'arrête (entrée et sortie nulles) reste 'street-in' : le rendu le fait passer. Employé : 'none' hors de
-// ses segments (arrière-boutique avant sa prise de poste, après son départ, renfort en réserve). `worn` : la monture
-// essayée est portée sur le visage (convention de signatures.ts). `picto.age` : secondes depuis l'instant où il prend.
+// `where` : 'inside' dans le local ; client : 'street-in' avant d'avoir passé la porte (ou avant de rebrousser chemin),
+// 'street-out' après l'avoir repassée ; un client qui n'entre ni ne s'arrête (entrée et sortie nulles) reste 'street-in'.
+// Employé : 'none' quand aucun segment ne couvre l'instant (arrière-boutique avant sa prise de poste, après son départ,
+// renfort en réserve) ; dérivé des segments seuls, il vaudrait pour plusieurs passages. `worn` : la monture essayée est
+// portée sur le visage (convention de signatures.ts). `picto.age` : secondes depuis l'instant où il prend.
+//
+// Contrat de la rue pour le rendu (marche calculée avec `passageAt`, sens `dir`, arrivée `arriveAt`) :
+// - avant `enter` : le client vient vers la porte dans le sens `dir`, l'atteint à `arriveAt` et y attend jusqu'à `enter` ;
+// - rebroussé (`enter` nul, `exit` posé) : même venue, attente devant la porte de `arriveAt` à `exit`, puis il repart ;
+// - après `exit` (entré ou rebroussé) : il s'en retourne d'où il vient, dans le sens −`dir`, depuis la porte ;
+// - passant (`enter` et `exit` nuls) : il atteint la porte à `arriveAt` et la dépasse sans s'arrêter, dans le sens `dir`.
 export type ActorView = {
   id: ActorId; role: 'staff' | 'customer'; where: 'inside' | 'street-in' | 'street-out' | 'none';
   x: number; yaw: number; gait: Gait; phase: number; arms: ArmPose; lean: number; headYaw: number;
   prop: PropId | null; worn: boolean; picto: { id: PictoId; age: number } | null;
   party: string | null; outfit: Outfit; scale: number; enterAt: number | null; exitAt: number | null;
+  arriveAt: number | null; dir: 1 | -1 | null;
 };
 
 // Durée de vie d'un picto à l'écran (s), la même que la règle de rareté du moteur.
@@ -40,7 +47,8 @@ function segmentIndex(segs: readonly Segment[], t: number): number {
   return found;
 }
 
-// Distance déjà marchée dans les segments de marche contigus qui précèdent : une marche coupée en deux ne bégaie pas.
+// Distance déjà marchée dans les segments de marche contigus qui précèdent : une marche coupée en deux ne bégaie pas. Deux
+// marches séparées par un demi-tour (ou tout autre segment) repartent de la phase 0 : le demi-tour à petits pas remet le pas.
 function walkedBefore(segs: readonly Segment[], i: number): number {
   let d = 0;
   for (let j = i - 1; j >= 0; j--) {
@@ -78,14 +86,15 @@ function worn(segs: readonly Segment[], i: number, u: number): boolean {
 
 function viewOf(track: ActorTrack, t: number): ActorView {
   const segs = track.segments;
-  const base = { id: track.id, role: track.role, party: track.party, outfit: track.outfit, scale: track.scale, enterAt: track.enter, exitAt: track.exit };
+  const base = {
+    id: track.id, role: track.role, party: track.party, outfit: track.outfit, scale: track.scale, enterAt: track.enter, exitAt: track.exit,
+    arriveAt: track.arriveAt ?? null, dir: track.dir ?? null,
+  };
   const still = { gait: 'stand' as Gait, phase: 0, arms: 'down' as ArmPose, lean: 0, headYaw: 0, prop: null, worn: false, picto: null };
   let where: ActorView['where'];
   if (track.role === 'staff') {
-    const first = segs[0];
-    const last = segs[segs.length - 1];
-    const out = !first || t < first.t0 - EPS || t > last!.t1 + EPS || (track.enter !== null && t < track.enter - EPS) || (track.exit !== null && t > track.exit + EPS);
-    where = out ? 'none' : 'inside';
+    const j = segmentIndex(segs, t);
+    where = j >= 0 && t <= segs[j]!.t1 + EPS ? 'inside' : 'none';
   } else if (track.exit !== null && t >= track.exit - EPS) where = 'street-out';
   else if (track.enter === null || t < track.enter - EPS) where = 'street-in';
   else where = 'inside';
