@@ -125,6 +125,18 @@ export function windowFit(layout: Layout, cols: number, id: string, w: number, h
   return canHangRect(layout, cols, w, h, item.col, item.row, id);
 }
 
+// Étire la fenêtre sur toute la largeur du mur (colonne 0, largeur de la pièce) ou toute sa hauteur (ligne 0, 12 lignes),
+// en gardant l'autre dimension ; refusé (cases en cause) si un objet du mur est sur le chemin.
+export type StretchResult = { ok: true; layout: Layout } | Extract<PlaceResult, { ok: false }>;
+export function stretchWindow(layout: Layout, cols: number, id: string, axis: 'width' | 'height'): StretchResult {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'window') return { ok: false, reason: 'bounds', cells: [] };
+  const next = axis === 'width' ? { ...item, col: 0, w: Math.min(cols, WINDOW_MAX.w) } : { ...item, row: 0, h: WALL_ROWS };
+  const check = canHangRect(layout, cols, next.w, next.h, next.col, next.row, id);
+  if (!check.ok) return check;
+  return { ok: true, layout: layout.map((p) => (p.id === id ? next : p)) };
+}
+
 export function resizeWindow(layout: Layout, cols: number, id: string, w: number, h: number): Layout | null {
   const item = layout.find((p) => p.id === id);
   if (!item || item.kind !== 'window' || !windowFit(layout, cols, id, w, h).ok) return null;

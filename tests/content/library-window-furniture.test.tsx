@@ -76,6 +76,14 @@ describe('fenêtre — pose et taille', () => {
     expect(windows()[0]!.w).toBeLessThanOrEqual(24);
   });
 
+  it('s étire d un coup sur toute la largeur puis toute la hauteur du mur', async () => {
+    await placeWindow();
+    await click('[data-furniture="window"]');
+    await click('[data-action="win-w-full"]');
+    await click('[data-action="win-h-full"]');
+    expect(windows()[0]).toMatchObject({ col: 0, row: 0, w: 24, h: 12 });
+  });
+
   it('refuse un agrandissement qui chevauche un autre objet et fait clignoter les cases', async () => {
     await placeWindow();
     await click('[data-kind="window"]');

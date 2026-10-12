@@ -44,6 +44,7 @@ import {
   moveWindow,
   placeWindow,
   resizeWindow,
+  stretchWindow,
   windowFit,
   canPlace,
   canPlaceComputer,
@@ -193,6 +194,8 @@ const ICONS = {
   wxSnow: ['M12 3v18', 'M4.2 7.5l15.6 9', 'M19.8 7.5l-15.6 9', 'M9.5 4.5L12 7l2.5-2.5', 'M9.5 19.5L12 17l2.5 2.5'],
   wxFog: ['M4 9h16', 'M6 13h12', 'M4 17h16'],
   heightPlus: ['M12 9V3', 'M12 15v6', 'M8 5l4 4 4-4', 'M8 19l4-4 4 4'],
+  widthFull: ['M3 5v14', 'M21 5v14', 'M7 12h10', 'M10 9l-3 3 3 3', 'M14 9l3 3-3 3'],
+  heightFull: ['M5 3h14', 'M5 21h14', 'M12 7v10', 'M9 10l3-3 3 3', 'M9 14l3 3 3-3'],
 } as const;
 
 const WEATHER_ICON: Record<WeatherState, readonly string[]> = { sun: ICONS.sun, cloudy: ICONS.wxCloudy, drizzle: ICONS.wxDrizzle, rain: ICONS.wxRain, storm: ICONS.wxStorm, snow: ICONS.wxSnow, fog: ICONS.wxFog };
@@ -695,6 +698,17 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     setMessage('');
     void editLayout((l, cols) => resizeWindow(l, cols, selectedWindow.id, w, h));
   };
+  // Fenêtre étirée d'un coup sur toute la largeur ou toute la hauteur du mur.
+  const stretchSelected = (axis: 'width' | 'height'): void => {
+    if (!selectedWindow) return;
+    const check = stretchWindow(layout, room.cols, selectedWindow.id, axis);
+    if (!check.ok) return refuse(REASONS[check.reason], check.cells);
+    setMessage('');
+    void editLayout((l, cols) => {
+      const again = stretchWindow(l, cols, selectedWindow.id, axis);
+      return again.ok ? again.layout : null;
+    });
+  };
   // « + Carte » : rappuyer annule ; sinon le sélecteur s'ouvre et le choix devient l'outil de pose.
   const startCard = (): void => {
     if (tool?.type === 'card') return reset();
@@ -1045,6 +1059,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                   <Btn label="Fenêtre plus large" data={{ action: 'win-w+' }} onClick={() => resizeSelected(1, 0)}><Icon paths={ICONS.widthPlus} /></Btn>
                   <Btn label="Fenêtre moins haute" data={{ action: 'win-h-' }} onClick={() => resizeSelected(0, -1)}><Icon paths={ICONS.heightMinus} /></Btn>
                   <Btn label="Fenêtre plus haute" data={{ action: 'win-h+' }} onClick={() => resizeSelected(0, 1)}><Icon paths={ICONS.heightPlus} /></Btn>
+                  <Btn label="Fenêtre sur toute la largeur du mur" data={{ action: 'win-w-full' }} onClick={() => stretchSelected('width')}><Icon paths={ICONS.widthFull} /></Btn>
+                  <Btn label="Fenêtre sur toute la hauteur du mur" data={{ action: 'win-h-full' }} onClick={() => stretchSelected('height')}><Icon paths={ICONS.heightFull} /></Btn>
                 </>
               )}
             </>
