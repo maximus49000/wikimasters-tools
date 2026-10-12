@@ -45,6 +45,9 @@ beforeEach(() => {
   frames = [];
   vi.stubGlobal('requestAnimationFrame', (cb: () => void) => { frames.push(cb); return frames.length; });
   vi.stubGlobal('cancelAnimationFrame', () => undefined);
+  // Les découpes sont cuites au repos (idle) : même file que les images d'animation.
+  vi.stubGlobal('requestIdleCallback', (cb: () => void) => { frames.push(cb); return frames.length; });
+  vi.stubGlobal('cancelIdleCallback', () => undefined);
   resetNightLightForTests();
   painter = vi.fn<LitPatchPainter>(() => 'data:image/png;base64,lit');
   setLitPatchPainterForTests(painter);

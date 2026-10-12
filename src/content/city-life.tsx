@@ -708,7 +708,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         {/* Ombres portées des passants sous leurs pieds (Ghibli, nuit, lampe allumée à moins de 75u), en multiply ; posées
             par la boucle. Le liseré chaud côté lampe (actorRim de la maquette) n'est pas porté. */}
         {litLamps.length > 0 && (
-          <g data-actor-shades="">
+          <g data-actor-shades="" style={{ mixBlendMode: 'multiply' }}>
             <defs>
               {(['r', 'l'] as const).map((side) => (
                 <linearGradient key={side} id={`${shadeBase}-${side}`} x1={side === 'r' ? 0 : 1} y1={0} x2={side === 'r' ? 1 : 0} y2={0}>
@@ -721,7 +721,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             {peds.map((p) => {
               const active = still ? pedActive.has(p.id) : (shownPeds.current.get(p.id) ?? pedActive.has(p.id));
               const s = active ? pedShade(p, metrics, width, t0!, litLamps) : null;
-              return <polygon key={p.id} data-shade-for={p.id} points={s?.points ?? ''} opacity={s ? s.opacity.toFixed(2) : '0'} fill={shadeFill(s?.side ?? 'r')} style={{ mixBlendMode: 'multiply' }} />;
+              return <polygon key={p.id} data-shade-for={p.id} points={s?.points ?? ''} opacity={s ? s.opacity.toFixed(2) : '0'} fill={shadeFill(s?.side ?? 'r')} />;
             })}
           </g>
         )}

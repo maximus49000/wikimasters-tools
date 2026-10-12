@@ -493,9 +493,8 @@ function ParasolSprite({ sky, hue, ghibli = false }: { sky: Sky; hue: string; gh
   return <g data-parasol="">{ghibli ? <PropImage spec={{ id: 'parasol', args: { hue }, day: sky.daylight }} fallback={art} /> : art}</g>;
 }
 // Tablier blanc par-dessus la tenue : le serveur se distingue des clients (le pantin Ghibli porte le sien dans sa tenue, `work`).
-function Apron({ sky, ghibli = false }: { sky: Sky; ghibli?: boolean }): ReactElement {
-  const art = <rect data-apron="" x={-4.2} y={-21} width={8.4} height={13} rx={1} fill={tone('#F4F1E8', sky)} />;
-  return ghibli ? <PropImage spec={{ id: 'apron', day: sky.daylight }} fallback={art} /> : art;
+function Apron({ sky }: { sky: Sky }): ReactElement {
+  return <rect data-apron="" x={-4.2} y={-21} width={8.4} height={13} rx={1} fill={tone('#F4F1E8', sky)} />;
 }
 
 type TerraceProps = {

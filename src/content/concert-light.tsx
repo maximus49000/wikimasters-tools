@@ -5,6 +5,7 @@ import { PAINT_VERSION } from '../core/library/paint/city-painter';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import '../core/library/paint/props/music';
 import { STAGE, spotLens } from './install-sprites';
+import { idle } from './paint-queue';
 import { PaintRegistry } from './paint-registry';
 import { litPatchPainter } from './painted-city';
 import { PropImage } from './prop/prop-host';
@@ -227,9 +228,9 @@ export function ConcertLight({ stageX, base, unit, t: origin = 0, lit, still }: 
 // ───────────── Public révélé (sous les passants) ─────────────
 // Découpes du public : au plus une peinture par image d'animation, partagées par toutes les scènes.
 const CROWD_MAX = 24;
-let registry = new PaintRegistry('concert-light', { max: CROWD_MAX, perFrame: 1 });
+let registry = new PaintRegistry('concert-light', { max: CROWD_MAX, perFrame: 1, schedule: (cb) => void idle(cb) });
 export function resetConcertLightForTests(): void {
-  registry = new PaintRegistry('concert-light', { max: CROWD_MAX, perFrame: 1 });
+  registry = new PaintRegistry('concert-light', { max: CROWD_MAX, perFrame: 1, schedule: (cb) => void idle(cb) });
 }
 type Job = { key: string; paint: () => string };
 function useImages(jobs: readonly Job[]): void {

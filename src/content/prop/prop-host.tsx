@@ -60,6 +60,9 @@ export function paintProp(s: PropSpec, surf: PropSurface | null | undefined = pa
   ctx.scale(dir, 1);
   try {
     painter.paint(t, s.args ?? {}, { day, lit, dir, frame: poseOf(s) });
+  } catch {
+    // Un peintre qui échoue ne doit pas bloquer la file de cuisson : image vide.
+    return BLANK_SPRITE;
   } finally {
     ctx.restore();
     facing(1);

@@ -246,8 +246,8 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
   );
   // Plan de la ville peinte (Ghibli, jour d'une scène seulement) : l'éclairage de concert y découpe la chaussée du public.
   const plan = useMemo<CityPaintPlan | null>(
-    () => (ghibli && sets.some((s) => s.id.startsWith('stage-music')) ? cityPaintPlan(width, height, seed) : null),
-    [ghibli, sets, width, height, seed],
+    () => (ghibli && (part === 'back' || part === 'all') && sets.some((s) => s.id.startsWith('stage-music')) ? cityPaintPlan(width, height, seed) : null),
+    [ghibli, part, sets, width, height, seed],
   );
   const abs = absMinute(dayNumber(date), minutes);
   const dark = sky.daylight < DARK;

@@ -1,9 +1,10 @@
-import { Fragment, useEffect, useId, useMemo, useReducer, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useReducer, type ReactElement } from 'react';
 import { lampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
 import { LANTERN, lampBlobs, patchBox, shopBlobs, wetHalfWidth, wetStrokes } from '../core/library/city/night-light';
 import { PAINT_VERSION } from '../core/library/paint/city-painter';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
+import { idle } from './paint-queue';
 import { PaintRegistry } from './paint-registry';
 import { AMBER, AMBER_CORE, litPatchPainter, paintWetColumn } from './painted-city';
 
@@ -33,9 +34,9 @@ type Props = {
 const FADE = 'opacity 4s ease';
 // Découpes et colonnes de pluie : au plus une peinture par image d'animation, partagées par toutes les scènes (même graine).
 const NIGHT_MAX = 160;
-let registry = new PaintRegistry('night-light', { max: NIGHT_MAX, perFrame: 1 });
+let registry = new PaintRegistry('night-light', { max: NIGHT_MAX, perFrame: 1, schedule: (cb) => void idle(cb) });
 export function resetNightLightForTests(): void {
-  registry = new PaintRegistry('night-light', { max: NIGHT_MAX, perFrame: 1 });
+  registry = new PaintRegistry('night-light', { max: NIGHT_MAX, perFrame: 1, schedule: (cb) => void idle(cb) });
 }
 
 type Job = { key: string; paint: () => string };
@@ -158,17 +159,18 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
           </g>
         ))}
       </g>
-      {lampViews.map((v) => {
-        const gx = v.lamp.x + LANTERN.dx * k;
-        const gy = m.curb + LANTERN.dy * k;
-        const opacity = v.lit ? dim : 0;
-        return (
-          <Fragment key={v.lamp.id}>
-            <g data-night-lamp={v.lamp.id} data-lit={v.lit ? 'true' : 'false'} opacity={opacity} style={{ transition: FADE }}>
-              {patchImage(v.patchKey, v.box)}
-            </g>
-            {/* Lumière « dans l'air », en screen : groupe à part (l'opacité du groupe de la découpe isolerait le mélange). */}
-            <g data-night-glow={v.lamp.id} opacity={opacity} style={{ transition: FADE, mixBlendMode: 'screen' }}>
+      {lampViews.map((v) => (
+        <g key={v.lamp.id} data-night-lamp={v.lamp.id} data-lit={v.lit ? 'true' : 'false'} opacity={v.lit ? dim : 0} style={{ transition: FADE }}>
+          {patchImage(v.patchKey, v.box)}
+        </g>
+      ))}
+      {/* Lumière « dans l'air », en screen : UN seul groupe de fusion (l'opacité du groupe de la découpe isolerait le mélange). */}
+      <g style={{ mixBlendMode: 'screen' }}>
+        {lampViews.map((v) => {
+          const gx = v.lamp.x + LANTERN.dx * k;
+          const gy = m.curb + LANTERN.dy * k;
+          return (
+            <g key={v.lamp.id} data-night-glow={v.lamp.id} opacity={v.lit ? dim : 0} style={{ transition: FADE }}>
               <circle data-bloom="" cx={gx.toFixed(1)} cy={gy.toFixed(1)} r={(6 * k).toFixed(2)} fill={`url(#${bloomId})`} />
               {rainy && (
                 <>
@@ -182,18 +184,18 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
                 </>
               )}
             </g>
-          </Fragment>
-        );
-      })}
-      {rainy && (
-        <g data-night-shop-glow="" style={{ mixBlendMode: 'screen' }}>
-          {shopViews.map((v) => (
-            <g key={v.i} opacity={v.shop.lit ? dim : 0} style={{ transition: FADE }}>
-              {column(v.wetKey, v.shop.x + v.shop.w / 2, v.colW)}
-            </g>
-          ))}
-        </g>
-      )}
+          );
+        })}
+        {rainy && (
+          <g data-night-shop-glow="">
+            {shopViews.map((v) => (
+              <g key={v.i} opacity={v.shop.lit ? dim : 0} style={{ transition: FADE }}>
+                {column(v.wetKey, v.shop.x + v.shop.w / 2, v.colW)}
+              </g>
+            ))}
+          </g>
+        )}
+      </g>
     </g>
   );
 }

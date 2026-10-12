@@ -33,14 +33,14 @@ function SignText({ name, cx, y, w, ink }: { name: string; cx: number; y: number
   );
 }
 
-// Ghibli (G5) : image cellulo du peintre (props/terrace.ts : `for-sale`, `ladder`, `carried-sign`, `carried-placard`) au même
+// Ghibli (G5) : image cellulo du peintre (props/terrace.ts : `for-sale` (non appelé : la pancarte portée utilise `carried-placard`), `ladder`, `carried-sign`, `carried-placard`) au même
 // cadre, le dessin classique en repli tant qu'elle n'est pas cuite.
-export function ForSalePlacard({ x, y, w, sky, ghibli = false }: { x: number; y: number; w: number; sky: Sky; ghibli?: boolean }): ReactElement {
+export function ForSalePlacard({ x, y, w, sky }: { x: number; y: number; w: number; sky: Sky }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const pw = Math.min(w - 2, 14);
   const px = x + (w - pw) / 2;
-  const art = (
-    <>
+  return (
+    <g data-placard="1">
       <rect x={px} y={y} width={pw} height={9} fill={t('#FFFFFF')} stroke={t(ORANGE)} strokeWidth={0.5} />
       <rect x={px} y={y} width={pw} height={3.6} fill={t(ORANGE)} />
       <text x={px + pw / 2} y={y + 2.7} fontSize={2.6} fontFamily="sans-serif" fontWeight="bold" textAnchor="middle" fill={t('#FFFFFF')}>
@@ -48,15 +48,8 @@ export function ForSalePlacard({ x, y, w, sky, ghibli = false }: { x: number; y:
       </text>
       <rect x={px + 1.5} y={y + 5} width={pw - 3} height={0.7} fill={t('#9A9A9A')} />
       <rect x={px + 1.5} y={y + 6.6} width={pw - 5} height={0.7} fill={t('#9A9A9A')} />
-    </>
+    </g>
   );
-  if (ghibli)
-    return (
-      <g data-placard="1" transform={`translate(${x} ${y})`}>
-        <PropImage spec={{ id: 'for-sale', args: { w }, day: sky.daylight }} fallback={<g transform={`translate(${-x} ${-y})`}>{art}</g>} />
-      </g>
-    );
-  return <g data-placard="1">{art}</g>;
 }
 
 // Échelle d'aluminium : montants + barreaux tous les 3 px. Ghibli : rails alu et barreaux encrés (`sky` requis pour la lumière) ;

@@ -298,9 +298,8 @@ export function StageBand({ stageX, base, unit, width, minutes, dayOffset, outfi
 }
 
 // Faisceaux : pointe = lentille du projecteur i, base = sol du plancher sous le musicien i (classique). En Ghibli, le vrai
-// éclairage de concert (concert-light.tsx, G5 tâche 7) les remplace ; `ghibli` (cœur fixe, maquette `stageBeams`) reste
-// pour une scène qui voudrait les faisceaux seuls.
-export function StageBeams({ still, ghibli = false }: { still: boolean; ghibli?: boolean }): ReactElement {
+// éclairage de concert (concert-light.tsx, G5 tâche 7) les remplace.
+export function StageBeams({ still }: { still: boolean }): ReactElement {
   return (
     <g data-stage-beams="">
       {STAGE.spotXs.map((_, i) => {
@@ -322,9 +321,6 @@ export function StageBeams({ still, ghibli = false }: { still: boolean; ghibli?:
             >
               {!still && <animate attributeName="opacity" values="0.24;0.36;0.24" dur={dur} repeatCount="indefinite" />}
             </polygon>
-            {ghibli && (
-              <polygon data-stage-beam-core={i} points={`${o.x.toFixed(2)},${o.y.toFixed(2)} ${tx - 4},${ty} ${tx + 4},${ty}`} fill="#FFFADC" opacity={0.18} />
-            )}
           </g>
         );
       })}

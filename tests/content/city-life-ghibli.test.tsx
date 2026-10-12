@@ -103,8 +103,8 @@ describe('ombres portées des passants la nuit (Ghibli)', () => {
     expect(shades.length).toBe(c.querySelectorAll('[data-ped]').length);
     const shown = shades.filter((s) => Number(s.getAttribute('opacity')) > 0);
     expect(shown.length).toBeGreaterThan(0);
+    expect((layer as SVGElement).style.mixBlendMode).toBe('multiply');
     for (const s of shown) {
-      expect((s as SVGElement).style.mixBlendMode).toBe('multiply');
       const id = s.getAttribute('fill')!.match(/^url\(#(.+)\)$/)![1]!;
       expect(c.querySelector(`linearGradient[id="${id}"]`)).not.toBeNull();
       expect(id).not.toBe('wmt-actor-shade');

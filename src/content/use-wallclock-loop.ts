@@ -23,5 +23,5 @@ export function useWallClockLoop(place: (nowSeconds: number) => void, deps: read
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, enabled]);
 }
