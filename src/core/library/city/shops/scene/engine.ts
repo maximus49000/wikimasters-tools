@@ -27,6 +27,7 @@ export type Act = {
   to?: number; // marche : x cible
   yaw?: number; // orientation voulue pendant le geste (un demi-tour est inséré si besoin)
   carry?: PropId | null; // objet tenu après le geste ; par défaut déduit de la fenêtre d'objet du geste
+  as?: PropId; // objet réel à la place de l'objet générique du geste (verre ou tasse au bar, au café)
   soft?: boolean; // interruptible (boutique vide : un client qui attend passe avant)
   free?: boolean; // jamais rogné à l'échéance (la sortie)
 };
@@ -182,10 +183,12 @@ export function begin(w: World, a: Actor, act: Act): void {
     }
   }
   const before = a.carried;
-  const prop = m?.prop?.id ?? a.carried;
+  // Un geste qui commence objet en main montre ce que l'acteur tient vraiment (le verre qu'il a pris, pas un objet générique).
+  const pid = act.as ?? (m?.prop && m.prop.from === 0 && before ? before : m?.prop?.id);
+  const prop = pid ?? a.carried;
   const yaw1 = act.move === 'turn' && act.yaw !== undefined ? act.yaw : a.yaw;
   push(a, { t0: t, t1: t + dur, move: act.move, x0: a.x, x1, yaw0: a.yaw, yaw1, prop, picto }, false);
-  a.carried = act.carry !== undefined ? act.carry : m?.prop ? (m.prop.to >= 1 ? m.prop.id : null) : before;
+  a.carried = act.carry !== undefined ? act.carry : m?.prop ? (m.prop.to >= 1 ? pid! : null) : before;
   a.soft = act.soft ? { carried: before } : null;
 }
 

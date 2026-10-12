@@ -7,9 +7,9 @@ import { MOVES, type MoveId } from '../moves';
 import { PLACE } from '../stage';
 import {
   SPEED, cast, gest, hold, idleNow, interrupt, say, walkTo, weighted, yawStaff, yawToward,
-  type Act, type Actor, type PartyRt, type World,
+  type Act, type Actor, type PartyRt, type Service, type World,
 } from '../engine';
-import { inside } from './places';
+import { inside, placeTaken, serveX } from './places';
 import { startService } from './service';
 
 // Employés (G4b) : au poste, ils servent (un parti à la fois), renseignent, encaissent ; boutique vide, ils vivent (essuyer,
@@ -91,16 +91,26 @@ export function left(s: Actor): void {
   }
 }
 
-function findWork(w: World, s: Actor): boolean {
+// Travail qu'il prendrait maintenant (sans le commencer) : note, tête de file, place qui attend sa commande, client perdu.
+// Un poste ne sert qu'un parti : deux employés au même poste ne serviraient pas deux clients au même endroit.
+export function pickWork(w: World, s: Actor): [PartyRt, Service['kind']] | null {
   const room = s.deadline - w.t;
+  const postBusy = w.staff.some((o) => o !== s && o.staff!.service?.kind === 'serve' && o.staff!.post === s.staff!.post);
   const bill = w.parties.find((p) => p.state === 'bill' && !p.service && idleNow(p.actors[0]!, w.t));
-  const head = w.queue.find((p) => !p.service);
+  const first = w.queue.find((p) => !p.service);
+  // Le client précédent doit avoir quitté le comptoir avant qu'on y appelle le suivant.
+  const head = postBusy || !first || placeTaken(w, first, serveX(w, s.staff!.post)) ? undefined : first;
   const seat = w.type === 'laundry' ? undefined : w.parties.find((p) => p.state === 'spot' && !p.service && p.actors.every((a) => idleNow(a, w.t)));
   const lost = w.parties.find((p) => p.flags.has('asking') && !p.service && inside(p));
-  const [party, kind] = bill ? [bill, 'bill' as const] : head && room > 40 ? [head, 'serve' as const] : seat && room > 40 ? [seat, 'order' as const] : lost ? [lost, 'help' as const] : [null, null];
-  if (!party || !kind) return false;
-  startService(w, s, party, kind);
-  return true;
+  if (bill) return [bill, 'bill'];
+  if (head && room > 40) return [head, 'serve'];
+  if (seat && room > 40) return [seat, 'order'];
+  return lost ? [lost, 'help'] : null;
+}
+function findWork(w: World, s: Actor): boolean {
+  const job = pickWork(w, s);
+  if (job) startService(w, s, job[0], job[1]);
+  return job !== null;
 }
 
 // Activité de boutique vide : aller à l'endroit, faire, revenir ; interruptible (un client passe avant).

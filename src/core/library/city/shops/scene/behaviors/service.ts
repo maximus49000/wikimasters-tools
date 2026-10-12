@@ -17,6 +17,8 @@ const B = (pairs: Pair[], log?: string): Beat => ({ acts: pairs.filter(([, acts]
 const SKIP: Beat = { acts: [] };
 const turn = (yaw: number): Act => ({ move: 'turn', yaw });
 const bikes = (w: World): boolean => w.family === 'machine';
+// Au bar on sert un verre, au café et au salon de thé une tasse : le même objet de la prise à la remise, puis bu sur place.
+const drink = (w: World): { as?: 'glass' | 'cup' } => (w.family !== 'drink' ? {} : { as: w.type === 'bar' ? 'glass' : 'cup' });
 const clampCounter = (w: World, x: number): number => {
   const c = w.stage.counter;
   return c ? Math.min(c.x1 - HALF, Math.max(c.x0 + HALF, x)) : atDepth(w, Math.min(w.stage.w - HALF, depth(w, x) + PLACE));
@@ -37,7 +39,9 @@ export function startService(w: World, s: Actor, party: PartyRt, kind: Service['
   say(w, kind === 'bill' ? `${party.desc} — ${who} → encaisse` : kind === 'help' ? `${party.desc} demande son chemin — ${who} indique le rayon` : `${party.desc} — ${who} libre → accueille`);
 }
 
-// Renfort : file d'au moins trois partis et un collègue en réserve → il l'appelle (`!`), le collègue sort de l'arrière-boutique.
+// Renfort : appelé au début d'un service quand au moins deux autres partis attendent encore dans la file (le parti servi
+// vient d'en sortir : trois partis en tout) et qu'un collègue est en réserve → il l'appelle (`!`), le collègue sort de
+// l'arrière-boutique (premier segment : marche depuis `stage.back`, la porte de l'arrière-boutique).
 function summon(w: World, s: Actor): boolean {
   const r = w.staff.find((o) => o.staff!.reserve && o.staff!.state === 'back' && !o.staff!.called && w.t < o.deadline - 40);
   if (!r || w.queue.length < 2) return false;
@@ -140,9 +144,9 @@ function orderBeat(w: World, svc: Service, p: number): Beat | null {
   const at = besideX(w, m.x);
   if ((p - 3) % 2 === 0) {
     const from = w.family === 'drink' ? s.staff!.post : w.stage.back;
-    return B([[s, [walkTo(from), gest('fetch', { yaw: 12 }), walkTo(at), turn(facing(w, s, m.x))]]]);
+    return B([[s, [walkTo(from), gest('fetch', { yaw: 12, ...drink(w) }), walkTo(at), turn(facing(w, s, m.x))]]]);
   }
-  return B([[s, [gest('hand-over')]], [m, [gest('take-item', w.family === 'drink' ? { carry: 'glass' } : {})]]]);
+  return B([[s, [gest('hand-over')]], [m, [gest('take-item', drink(w))]]]);
 }
 
 function billBeat(w: World, svc: Service, p: number): Beat | null {
@@ -171,6 +175,7 @@ const BEATS = { serve: serveBeat, order: orderBeat, bill: billBeat, help: helpBe
 function finish(w: World, svc: Service, aborted: boolean): void {
   const { party, kind } = svc;
   endService(svc);
+  say(w, `${svc.staff.staff!.label} a fini avec ${party.desc}`);
   if (aborted) {
     // L'employé s'en va (fin de service) : le parti attend un autre employé, ou repartira faute de mieux.
     if (party.state === 'served' && kind === 'serve') {

@@ -5,7 +5,7 @@ import { SHOP_FAMILY } from '../gestures';
 import type { ShopFrame } from '../slots';
 import { arrivals, descOf, exited, followerDecide, forceOut, leaderDecide } from './behaviors/customer';
 import { pump } from './behaviors/service';
-import { left, makeStaff, settle, staffDecide, staffPresence, workWaiting } from './behaviors/staff';
+import { left, makeStaff, pickWork, settle, staffDecide, staffPresence } from './behaviors/staff';
 import { SPEED, hold, interrupt, isFree, run, type Actor, type PartyRt, type World } from './engine';
 import { SLOT_S, STEP, slotStart } from './slots';
 import { OUTSIDE, stageFor } from './stage';
@@ -36,8 +36,8 @@ function partyRuntime(w: World, p: Party): PartyRt {
 function tick(w: World, a: Actor): void {
   if (!a.active) return;
   if (!isFree(a, w.t)) {
-    // Boutique vide interrompue : un client attend, l'employé y va.
-    if (!(a.staff && a.soft && workWaiting(w) && interrupt(w, a))) return;
+    // Boutique vide interrompue : seulement pour un travail qu'il prend aussitôt (sinon sa marche serait hachée pas à pas).
+    if (!(a.staff && a.soft && !a.staff.service && pickWork(w, a) && interrupt(w, a))) return;
   }
   if (!run(w, a)) {
     if (a.staff) staffDecide(w, a);

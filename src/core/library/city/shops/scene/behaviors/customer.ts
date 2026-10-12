@@ -4,7 +4,7 @@ import {
   type Act, type Actor, type PartyRt, type World,
 } from '../engine';
 import {
-  atPlace, blockXs, browseLike, freeSpots, inside, outgoing, partyIdle, partyWalk, queueAnchor, queueRoom, queued, singleFile, staffAvailable,
+  atPlace, blockXs, placeTaken, queueAnchorIf, browseLike, freeSpots, inside, outgoing, partyIdle, partyWalk, queueAnchor, queueRoom, queued, staffAvailable,
 } from './places';
 import type { Character } from '../types';
 
@@ -15,19 +15,16 @@ import type { Character } from '../types';
 const ADJ: Readonly<Record<Character, string>> = { rushed: ' pressé', chatty: ' bavard', undecided: ' indécis', regular: ' habitué', lost: ' perdu', ordinary: '' };
 const GROUP = { solo: '', couple: ' (couple)', 'parent-child': ' (parent + enfant)', friends: ' (amis)' } as const;
 export const descOf = (p: PartyRt['p']): string => `Client${ADJ[p.character]}${GROUP[p.kind]}`;
-// Patience devant la porte quand la boutique est pleine (s) ; plus longue devant une vitrine étroite où l'on attend son tour
-// dehors (on ne s'y croise pas).
-const PATIENCE = (c: Character, narrow: boolean): number => (c === 'rushed' ? 8 : 25) * (narrow ? 1.6 : 1);
+// Patience devant la porte quand la boutique est pleine (s).
+const PATIENCE = (c: Character): number => (c === 'rushed' ? 8 : 25);
 // Décalage d'entrée entre deux membres d'un groupe (s) : l'écart se fait à l'allure de marche.
 const STAGGER = 0.5;
 
 function canEnter(w: World, party: PartyRt): boolean {
-  const others = w.parties.filter((o) => o !== party && (inside(o) || outgoing(o, w.t)));
-  if (singleFile(w) && others.length > 0) return false;
   // On n'entre pas pendant qu'un autre sort : on se croiserait dans l'embrasure.
-  if (others.some((o) => outgoing(o, w.t))) return false;
+  if (w.parties.some((o) => o !== party && outgoing(o, w.t))) return false;
   if (w.family === 'machine' && w.type === 'laundry') return freeSpots(w, party).length > 0;
-  if (queued(w) && !browseLike(w)) return queueRoom(w, party);
+  if (queued(w) && !browseLike(w)) return queueRoom(w, party) && !placeTaken(w, party, queueAnchorIf(w, party));
   return freeSpots(w, party).length > 0;
 }
 
@@ -65,7 +62,7 @@ export function arrivals(w: World): void {
         continue;
       }
       party.state = 'door';
-      party.until = w.t + PATIENCE(party.p.character, singleFile(w));
+      party.until = w.t + PATIENCE(party.p.character);
     }
     if (party.state !== 'door') continue;
     if (w.t < Math.min(w.closing, w.force - 20) && staffAvailable(w) && canEnter(w, party)) enter(w, party);
@@ -73,14 +70,18 @@ export function arrivals(w: World): void {
       party.state = 'skipped';
       // Il a attendu devant la porte et rebrousse chemin : `exit` sans `enter` (instant du demi-tour).
       for (const a of party.actors) a.track.exit = w.t;
-      say(w, `${party.desc} renonce à la porte — trop de monde`);
+      const why = w.t >= w.closing ? 'la boutique va fermer' : w.parties.some((o) => o !== party && inside(o)) ? 'trop de monde' : 'pas de place pour eux';
+      say(w, `${party.desc} renonce à la porte — ${why}`);
     }
   }
 }
 
 export function leave(w: World, party: PartyRt, why?: string): void {
   if (party.state === 'leaving' || party.state === 'gone') return;
-  if (party.service) endService(party.service);
+  if (party.service) {
+    say(w, `${party.service.staff.staff!.label} a fini avec ${party.desc}`);
+    endService(party.service);
+  }
   w.queue = w.queue.filter((p) => p !== party);
   party.state = 'leaving';
   party.since = w.t;
@@ -110,11 +111,10 @@ export function exited(a: Actor): void {
 }
 
 function joinQueue(w: World, party: PartyRt): boolean {
-  if (!queueRoom(w, party) || (singleFile(w) && w.queue.length > 0)) return false;
+  if (!queueRoom(w, party)) return false;
   w.queue.push(party);
   party.queuedAt = w.t;
   party.state = 'queue';
-  party.spot = null;
   return true;
 }
 const once = (party: PartyRt, flag: string): boolean => !party.flags.has(flag) && !!party.flags.add(flag);
@@ -124,7 +124,10 @@ function queueDecide(w: World, party: PartyRt, a: Actor): void {
   if (!staffAvailable(w, 0)) return leave(w, party, 'repart : personne pour servir');
   const anchor = queueAnchor(w, party);
   if (!atPlace(w, party, anchor)) {
-    if (partyIdle(w, party)) cast(partyWalk(w, party, anchor, yawCounter(w)));
+    if (partyIdle(w, party) && !placeTaken(w, party, anchor)) {
+      cast(partyWalk(w, party, anchor, yawCounter(w)));
+      party.spot = null; // il quitte son rayon : la place se libère
+    }
     return;
   }
   if (w.t < a.rest) return;
