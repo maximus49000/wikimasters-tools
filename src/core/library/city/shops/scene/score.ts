@@ -141,6 +141,9 @@ function viewOf(track: ActorTrack, t: number): ActorView {
   return { ...base, where, x, yaw, gait, phase, arms, lean, headYaw, prop: s.prop, worn: worn(segs, i, u), picto };
 }
 
+// Vue d'une seule piste (le rendu ne lit que les pistes visibles à l'instant).
+export const trackAt = viewOf;
+
 // Vue de tous les acteurs de la partition à `tInSlot` secondes depuis le début du créneau, dans l'ordre des pistes.
 export function actorsAt(score: Score, tInSlot: number): ActorView[] {
   return score.tracks.map((track) => viewOf(track, tInSlot));
@@ -167,6 +170,10 @@ export class ScoreCache {
     this.map.set(key, score);
     while (this.map.size > this.max) this.map.delete(this.map.keys().next().value!);
     return score;
+  }
+  // Partition déjà calculée (sans la calculer) : le rendu étale les calculs, une partition par image au plus.
+  peek(key: string): Score | null {
+    return this.map.get(key) ?? null;
   }
   size(): number {
     return this.map.size;

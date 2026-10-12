@@ -81,17 +81,28 @@ const GLYPH: Readonly<Record<PictoId, ReactElement>> = {
   ),
 };
 
-// Picto à l'âge `age` (s) : null hors de [0, PICTO_LIFE[. Saut d'apparition (échelle 1,6 → 1, montée de 2 à 5 unités), puis
-// léger retrait et fondu sur la fin.
-export function Picto({ id, age }: { id: PictoId; age: number }): ReactElement | null {
+// Allure d'un picto à l'âge `age` (s) : null hors de [0, PICTO_LIFE[. Saut d'apparition (échelle 1,6 → 1, montée de 2 à 5
+// unités), puis léger retrait et fondu sur la fin. Lue par Picto et par la boucle de la scène des commerces (shop-scene).
+export function pictoLook(age: number): { transform: string; opacity: string } | null {
   if (age < 0 || age >= PICTO_LIFE) return null;
   const pop = ease(Math.min(1, age / POP_S));
   const out = age > PICTO_LIFE - FADE_S ? (PICTO_LIFE - age) / FADE_S : 1;
   const sc = S * (1.6 - 0.6 * pop) * (0.85 + 0.15 * out);
   const lift = 2 + 3 * pop;
   const opacity = Math.max(0, Math.min(1, Math.min(1, age / POP_S) * out));
+  return { transform: `translate(0 ${f(-lift)}) scale(${f(sc)})`, opacity: String(f(opacity)) };
+}
+
+// Dessin seul d'un picto (sans saut ni fondu), pour les emplacements pré-rendus de la scène.
+export function PictoGlyph({ id }: { id: PictoId }): ReactElement {
+  return GLYPH[id];
+}
+
+export function Picto({ id, age }: { id: PictoId; age: number }): ReactElement | null {
+  const look = pictoLook(age);
+  if (!look) return null;
   return (
-    <g data-picto={id} transform={`translate(0 ${f(-lift)}) scale(${f(sc)})`} opacity={f(opacity)}>
+    <g data-picto={id} transform={look.transform} opacity={look.opacity}>
       {GLYPH[id]}
     </g>
   );

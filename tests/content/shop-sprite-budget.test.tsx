@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { countShopSprites, shopSpriteBudget } from '../../src/content/city-shops-life';
+import { SHOP_SPRITE_CAP, capFor, spriteBudget, type BudgetSprite } from '../../src/core/library/city/shops/sprite-budget';
 import { dayContext } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
 import { dayNumber } from '../../src/core/library/city/shops/hours';
@@ -85,5 +86,52 @@ describe('plafond des figurants dans la scène (shopSpriteBudget)', () => {
     // La règle rend la main : plafond relâché, tout revient.
     expect(shopSpriteBudget(c, W, 1000).size).toBe(0);
     expect(hiddenGuests(c)).toHaveLength(0);
+  });
+});
+
+// ---------- G4b : retrait par parti entier ----------
+describe('plafond G4b : partis entiers (spriteBudget)', () => {
+  const keep = (n: number): BudgetSprite[] => Array.from({ length: n }, (_, i): BudgetSprite => ({ id: `k${i}`, kind: 'keep', x: 360 }));
+  it('SHOP_SPRITE_CAP vaut 52 (par 720 px)', () => {
+    expect(SHOP_SPRITE_CAP).toBe(52);
+    expect(capFor(720)).toBe(52);
+  });
+  it('un couple au-delà du plafond est retiré entier, jamais à moitié', () => {
+    const list: BudgetSprite[] = [
+      ...keep(SHOP_SPRITE_CAP - 2),
+      { id: 'solo:0', kind: 'customer', x: 300, party: 'solo' },
+      { id: 'couple:0', kind: 'customer', x: 20, party: 'couple' },
+      { id: 'couple:1', kind: 'customer', x: 400, party: 'couple' },
+    ];
+    // Un de trop : quel que soit le parti retiré, le couple part ou reste entier.
+    const drop = spriteBudget(list, 360);
+    expect(drop.size).toBeGreaterThan(0);
+    const coupleGone = ['couple:0', 'couple:1'].map((id) => drop.has(id));
+    expect(coupleGone[0]).toBe(coupleGone[1]);
+    expect(list.filter((s) => !drop.has(s.id)).length).toBeLessThanOrEqual(SHOP_SPRITE_CAP);
+  });
+  it('le parti le plus loin du centre part en premier, avec tous ses membres', () => {
+    const list: BudgetSprite[] = [
+      ...keep(SHOP_SPRITE_CAP - 1),
+      { id: 'near:0', kind: 'customer', x: 350, party: 'near' },
+      { id: 'far:0', kind: 'customer', x: 10, party: 'far' },
+      { id: 'far:1', kind: 'customer', x: 14, party: 'far' },
+    ];
+    expect([...spriteBudget(list, 360)].sort()).toEqual(['far:0', 'far:1']);
+  });
+  it('un parti servi dans le tiers central n’est jamais retiré', () => {
+    const list: BudgetSprite[] = [
+      ...keep(SHOP_SPRITE_CAP),
+      { id: 'served:0', kind: 'customer', x: 340, party: 'served', served: true },
+      { id: 'served:1', kind: 'customer', x: 344, party: 'served' },
+      { id: 'idle:0', kind: 'customer', x: 380, party: 'idle' },
+      { id: 'edge:0', kind: 'customer', x: 700, party: 'edge', served: true },
+    ];
+    const drop = spriteBudget(list, 360);
+    expect(drop.has('served:0')).toBe(false);
+    expect(drop.has('served:1')).toBe(false);
+    // Servi mais hors du tiers central : retirable comme les autres.
+    expect(drop.has('edge:0')).toBe(true);
+    expect(drop.has('idle:0')).toBe(true);
   });
 });

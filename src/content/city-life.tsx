@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo, useRef, type ReactElement } from 'react';
+import { Fragment, useCallback, useId, useMemo, useRef, type ReactElement } from 'react';
 import { activeFestivities } from '../core/library/city/calendar';
 import { DOOR_WIDTH, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
@@ -10,7 +10,10 @@ import { schoolBusArrivals } from '../core/library/city/traffic/school-bus';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
-import { customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
+import { CUSTOMER_SCALE, customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
+import { paradeOn } from '../core/library/city/parade';
+import { inScene } from '../core/library/city/shops/scene/slots';
+import { streetFor } from '../core/library/city/shops/scene/street';
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { ShopTypeId } from '../core/library/city/shops/catalog';
 import type { StaffShift } from '../core/library/city/shops/staff';
@@ -25,7 +28,9 @@ import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
 import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
 import { MarkHeld, markAnchor, markArms } from './festive-marks';
-import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
+import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, staffOutfit, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
+import { ShopScene, collectScene, muteScene, placeScene, sceneBudget, type SceneNodes } from './shop/shop-scene';
+import { staffSpans, type SceneShop } from './shop/scene-scores';
 import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
 import { FlypastLayer } from './flypast-sprite';
 import { InstallLayer } from './install-layer';
@@ -231,6 +236,37 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     [shops.views, shifts, city.minutes, intensity, still],
   );
 
+  // Scène G4b (Ghibli) : les boutiques du metteur en scène (hors boîte de nuit et salle de jeux, hors chantier et déménagement)
+  // ont leurs clients et leur personnel posté rendus par ShopScene ; leurs visites de l'ancien rendu ne sont plus dessinées.
+  const sceneShops = useMemo<SceneShop[]>(() => {
+    if (!ghibli) return [];
+    return shops.views.flatMap((v) => {
+      const type = v.sign?.type;
+      if (!type || !inScene(type) || (v.phase !== 'open' && v.phase !== 'closed') || v.works || v.moving) return [];
+      const sh = shifts.get(v.slot.id) ?? NO_SHIFTS;
+      const staff = sh.map((x) => ({ id: x.id, outfit: staffOutfit(seed, x.outfitKey), spans: staffSpans(x) }));
+      return [{ view: v, frame: shops.frames.get(v.slot.id)!, staff, open: shopShutter(v, sh, date, city.minutes, still) === 'up' }];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ghibli, shops.views, shops.frames, shifts, seed, city.minutes, still]);
+  const sceneIds = useMemo(() => new Set(sceneShops.map((x) => x.view.slot.id)), [sceneShops]);
+  // Affluence G4b (CUSTOMER_SCALE) : rideau levé seulement, nulle en mouvement réduit.
+  const sceneGates = useMemo(
+    () => new Map(sceneShops.map((x) => [x.view.slot.id, still || !x.open ? 0 : customerGate(x.view, city.minutes, intensity, CUSTOMER_SCALE)])),
+    [sceneShops, still, city.minutes, intensity],
+  );
+  // Rue d'un créneau : pluie connue seulement à l'instant (averse dès le début du créneau, ou pas), défilé du 14 juillet, parapluies.
+  const sceneDayFests = useMemo(() => city.day.festivities.map((f) => f.id), [city.day]);
+  const sceneStreet = useCallback(
+    (_slotId: string, slotStartS: number, length: number) =>
+      streetFor({ slotStartS, length, precipAt: () => city.precip, paradeActive: (m) => paradeOn(sceneDayFests, ((m % 1440) + 1440) % 1440), busArrivalsS: [], umbrellas: intensity.umbrellas }),
+    [city.precip, sceneDayFests, intensity.umbrellas],
+  );
+  const shopVisits = sceneIds.size > 0 ? visits.filter((v) => !sceneIds.has(v.slotId)) : visits;
+  // Horloge de la scène : seconde du jour = minute de la scène + secondes écoulées depuis le début de la minute murale où elle
+  // a été lue (repère gardé tant que la minute ne change pas : pas de saut au re-rendu).
+  const sceneClock = useRef<{ m: number; base: number } | null>(null);
+
   // Terrasses : météo de la minute et des 10 précédentes (hystérésis du moteur).
   const terraceSky = useTerraceWeather(weather, rainy, city.minutes);
 
@@ -313,6 +349,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // Nœuds de porte des habitants (<svg> imbriqués), par trajet.
     const doorNodes = new Map<string, Element>();
     let muted: Set<string> = new Set();
+    // Scène G4b (Ghibli) : nœuds de ShopScene, posés après les clients de l'ancien rendu.
+    let scene: SceneNodes | null = null;
     let posedAt = -Infinity;
     return (now: number): void => {
       // Mouvement réduit : toujours le même instant, y compris quand le placement est refait après un changement de minute.
@@ -340,8 +378,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             if (node) pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
           }
         }
-        // Plafond global des figurants des commerces : convives de terrasse cachés, visites suspendues pour la minute.
-        muted = shopSpriteBudget(el, width);
+        scene = ghibli ? collectScene(el) : null;
+        // Plafond global des figurants des commerces : convives de terrasse cachés, visites suspendues pour la minute ; scène G4b :
+        // partis entiers retenus pour la minute.
+        muted = shopSpriteBudget(el, width, undefined, scene ? sceneBudget(scene, t) : []);
+        if (scene) muteScene(scene, muted);
       }
       for (const p of peds) {
         const wanted = pedActive.has(p.id);
@@ -401,7 +442,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics, still));
         } else if (ghibli && doorOff) hideFigure(figures, dnode.querySelector('[data-figure]'));
       }
-      placeCustomers(nodes, visits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
+      placeCustomers(nodes, shopVisits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
+      if (scene) placeScene(scene, t, figures, traffic.world.horns);
       placeSwaps(swaps, t);
       if (!still) {
         placeWaiters(waiters, t, metrics, ghibli ? figures : null);
@@ -427,11 +469,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, visits, gates, city.minutes, terraceSky, ghibli, figures, marks]);
+  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, marks, sceneShops, traffic]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
   const t0 = still ? frozen.current : Date.now() / 1000;
+  if (!sceneClock.current || sceneClock.current.m !== city.minutes) sceneClock.current = { m: city.minutes, base: Math.floor(t0! / 60) * 60 };
+  const sceneSeconds = city.minutes * 60 + (t0! - sceneClock.current.base);
   const eventNode = (e: CityEvent): ReactElement => (
     <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)}>
       <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} walked={e.layer === 'sidewalk' ? eventWalked(e, t0, metrics) : 0} />
@@ -514,11 +558,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               post={ghibli ? ghibliStaffPost(view, frame) : interiorPost(type, frame.window.w, frame.window.h)}
               ghibli={ghibli}
               doorXs={doorCenters}
+              scene={sceneIds.has(view.slot.id)}
             />
           );
         })}
         <ShopCustomers
-          visits={visits}
+          visits={shopVisits}
           frames={shops.frames}
           views={shops.views}
           gates={gates}
@@ -531,6 +576,25 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           lock={visitLock.current}
           ghibli={ghibli}
         />
+        {/* Scène G4b (Ghibli) : clients et personnel posté des boutiques du metteur en scène (shop/shop-scene.tsx). */}
+        {sceneShops.length > 0 && (
+          <ShopScene
+            shops={sceneShops}
+            seed={seed}
+            day={day}
+            secondsOfDay={sceneSeconds}
+            t0={t0!}
+            width={width}
+            metrics={metrics}
+            sky={sky}
+            rainy={rainy}
+            umbrella={intensity.umbrellas}
+            gates={sceneGates}
+            street={sceneStreet}
+            doorXs={doorCenters}
+            still={still}
+          />
+        )}
         {trips.map((trip) => {
           const v = residentView(trip, tripLock.current, gateOf(trip), width, t0);
           // Rendu initial = première image : au repos, l'habitant est posé devant sa porte, de face.

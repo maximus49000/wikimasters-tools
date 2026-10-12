@@ -40,6 +40,14 @@ export function ghibliPostOf(type: ShopTypeId, signW: number, doorSide: 'left' |
   return g.glass.x - g.win.x + interiorPostOf(type, g.glass.w, g.glass.h);
 }
 
+// Ligne du plan de travail du comptoir peint (repère de la vitrine, y depuis le haut) : `counter` de kit.ts pose le dessus à
+// 7,4 unités du bas de la partie vitrée (2,2 de socle + 5,2 de façade). Les acteurs derrière le comptoir sont rognés là.
+export const COUNTER_TOP = 7.4;
+export function ghibliWorktopOf(type: ShopTypeId, signW: number, doorSide: 'left' | 'right'): number {
+  const g = facadeGeometry({ type, name: '', w: signW, doorSide, state: 'open', placard: false, night: false, lit: false });
+  return g.glass.y - g.win.y + g.glass.h - COUNTER_TOP;
+}
+
 const clamp = (v: number, lo: number, hi: number): number => (hi < lo ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
 // Places régulières de `d0` à `d1` (profondeur depuis la porte), au pas `step`.
 const range = (d0: number, d1: number, step: number): number[] => {

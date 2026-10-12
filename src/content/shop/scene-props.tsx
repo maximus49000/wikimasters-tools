@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { memo, type ReactElement } from 'react';
 import type { PropId } from '../../core/library/city/shops/scene/moves';
 import { INK } from '../../core/library/paint/cel';
 import { mixHex, type Sky } from '../../core/library/sky';
@@ -351,3 +351,8 @@ export function WornFrames({ yaw, sky, color = '#2A2A3A' }: { yaw: number; sky: 
     </g>
   );
 }
+
+// Versions mémoïsées pour les nœuds pré-rendus de la scène des commerces (le ciel ne change qu'à la minute) : un re-rendu de la
+// scène ne redessine pas les objets cachés.
+export const PropSpriteMemo = memo(PropSprite);
+export const WornFramesMemo = memo(WornFrames);

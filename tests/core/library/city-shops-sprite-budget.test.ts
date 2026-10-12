@@ -26,7 +26,7 @@ describe('plafond des figurants (spriteBudget)', () => {
     const few = crowded().filter((s) => s.kind !== 'terrace').slice(0, 30);
     expect(spriteBudget(few, C).size).toBe(0);
   });
-  it('rue bondée : au plus 40 actifs ; personnel, déménageurs, videurs et file jamais retirés', () => {
+  it('rue bondée : au plus SHOP_SPRITE_CAP actifs ; personnel, déménageurs, videurs et file jamais retirés', () => {
     const list = crowded();
     expect(weightOf(list, new Set())).toBeGreaterThan(SHOP_SPRITE_CAP);
     const drop = spriteBudget(list, C);
@@ -35,7 +35,8 @@ describe('plafond des figurants (spriteBudget)', () => {
   });
   it('ordre de retrait : toutes les terrasses avant le premier client, puis les clients les plus éloignés du centre', () => {
     const list = crowded();
-    const drop = spriteBudget(list, C);
+    // Plafond resserré (40) : l'ordre se lit mieux quand les convives ne suffisent pas.
+    const drop = spriteBudget(list, C, 40);
     const guests = list.filter((s) => s.kind === 'terrace');
     const customers = list.filter((s) => s.kind === 'customer');
     // Ici les 24 convives ne suffisent pas : tous partent, puis des clients.
@@ -47,7 +48,7 @@ describe('plafond des figurants (spriteBudget)', () => {
     const far = (s: BudgetSprite): number => Math.abs(s.x - C);
     expect(Math.min(...gone.map(far))).toBeGreaterThanOrEqual(Math.max(...kept.map(far)));
     // Juste ce qu'il faut : remettre le dernier client retiré ferait dépasser.
-    expect(weightOf(list, drop) + 1).toBeGreaterThan(SHOP_SPRITE_CAP);
+    expect(weightOf(list, drop) + 1).toBeGreaterThan(40);
   });
   it('peu de dépassement : seuls les convives les plus éloignés du centre partent', () => {
     const list = crowded().filter((s) => !s.id.startsWith('cust-') || s.id.endsWith('-0')).filter((s) => !s.id.startsWith('porter'));
@@ -64,15 +65,15 @@ describe('plafond des figurants (spriteBudget)', () => {
   });
   it('le personnel seul au-dessus du plafond : on retire tout ce qui peut l’être, jamais le personnel', () => {
     const list: BudgetSprite[] = [
-      ...Array.from({ length: 45 }, (_, i): BudgetSprite => ({ id: `s${i}`, kind: 'keep', x: i })),
+      ...Array.from({ length: SHOP_SPRITE_CAP + 5 }, (_, i): BudgetSprite => ({ id: `s${i}`, kind: 'keep', x: i })),
       { id: 'c', kind: 'customer', x: 0 },
       { id: 'g', kind: 'terrace', x: 0 },
     ];
     expect([...spriteBudget(list, C)].sort()).toEqual(['c', 'g']);
   });
-  it('plafond par 720 px de scène, jamais moins de 40', () => {
-    expect(capFor(360)).toBe(40);
-    expect(capFor(720)).toBe(40);
-    expect(capFor(1440)).toBe(80);
+  it('plafond par 720 px de scène, jamais moins de SHOP_SPRITE_CAP (52, G4b)', () => {
+    expect(capFor(360)).toBe(52);
+    expect(capFor(720)).toBe(52);
+    expect(capFor(1440)).toBe(104);
   });
 });
