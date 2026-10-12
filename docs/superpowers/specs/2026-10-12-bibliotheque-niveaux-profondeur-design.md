@@ -45,10 +45,28 @@ Pouvoir superposer des objets de la pièce sur les mêmes cases, par exemple une
 ## Animaux et robot (`src/core/library/pets/depth.ts`, `RoomView`)
 
 - Un animal **porté** par un meuble (assis, couché, dedans ou dessus : `depthHosts`) prend le niveau de ce meuble et se dessine juste devant lui.
-- **Navigation libre au sol** (c'est un animal) : les meubles ne bloquent plus la marche. Dans `walk-map.ts`, `blocked` reste entièrement faux, et toutes les cases du sol sont praticables. L'animal passe sous la table basse, sous le bureau, entre les pieds des chaises, derrière la bibliothèque. Les dessus de meubles (`platforms`, sauts, assises) restent ce qu'ils sont. Cela vaut aussi pour le robot.
+- **L'animal passe là où il y a la place, pas ailleurs.** La règle est physique. Le dessin d'un meuble couvre des cases du sol, mais il ne touche vraiment le sol que par ses **rangées d'appui** : les `foot` rangées du bas de son emprise. Chaque type dit aussi s'il a un **dessous libre** (`under`). Deux champs sont ajoutés au catalogue :
+
+  | Type | `foot` (rangées d'appui) | `under` (on passe dessous) |
+  |---|---|---|
+  | `shelf` | 2 | non |
+  | `desk` | 2 | oui |
+  | `chair` | 1 | oui |
+  | `coffee-table` | 2 | oui |
+  | `telescope` (trépied) | 1 | oui |
+  | `sofa`, `armchair`, `kennel` | 2 | non |
+  | `basket`, `bowl`, `plant`, `lamp`, `globe`, `automaton`, `charger` | 1 | non |
+
+  Les valeurs sont à ajuster sur les dessins pendant le développement. Dans `walk-map.ts`, une case du sol est :
+  - **bloquée** si elle est dans les rangées d'appui d'un meuble sans dessous libre (le pied de la bibliothèque, le canapé) ;
+  - **praticable et cachée** si elle est dans les rangées d'appui d'un meuble à dessous libre (sous la table basse, sous le bureau, entre les pieds de la chaise) ;
+  - **praticable et cachée** si elle est couverte par le dessin d'un meuble **au-dessus de ses rangées d'appui**. C'est l'espace entre le meuble et le mur : l'animal passe derrière la bibliothèque.
+  - **Meuble contre le mur** : quand ses rangées d'appui commencent à la première rangée du sol (`WALL_ROWS`), il ne reste aucune case derrière lui, donc aucun passage. Le chat fait le tour, comme aujourd'hui.
+  - Deux meubles accolés ne laissent pas de passage entre eux : il faut au moins une case libre.
+  - Les dessus de meubles (`platforms`, sauts, assises) ne changent pas. Tout cela vaut aussi pour le robot.
 - **Niveau d'un animal qui marche** : si ses pieds sont dans l'emprise au sol d'un ou plusieurs meubles, il se dessine juste derrière le meuble de plus bas niveau parmi eux. Il est donc caché par la table basse quand il est dessous, et par la bibliothèque quand il passe derrière. Sinon, il est au niveau 2 : derrière les meubles de niveau 3, devant ceux des niveaux 0 et 1. Parmi les meubles de niveau 2, l'ordre actuel par la ligne des pieds s'applique (`depthIndex` restreint au niveau).
 - Les animaux perchés (`top`) et les bulles restent tout en haut, comme aujourd'hui.
-- Les pauses au sol (assis, couché, toilette) peuvent tomber sous un meuble. L'animal y reste caché en partie, et c'est voulu.
+- Les pauses au sol (assis, couché, toilette) peuvent tomber sous une table ou derrière un meuble. L'animal y reste caché en partie, et c'est voulu.
 
 ## Lumière
 
@@ -65,5 +83,5 @@ Pouvoir superposer des objets de la pièce sur les mêmes cases, par exemple une
 - `room-grid` : pose au niveau par défaut ; repli sur le niveau libre le plus proche ; refus quand 1, 2 et 3 sont pris ; affiche posée derrière une étagère ; deux affiches toujours en conflit ; avancer/reculer libre et bloqué ; pièce ancienne sans `depth` lue au niveau par défaut.
 - `depthOf` des objets portés = niveau du porteur.
 - Rendu (jsdom) : ordre des nœuds (niveau 1 avant niveau 3 même si son bas est plus bas) ; petit objet posé juste après son étagère ; toucher répété qui fait défiler les objets superposés.
-- Animaux : chat sur un fauteuil de niveau 2 dessiné avant une table basse de niveau 3 ; chat qui marche à découvert dessiné après une étagère et avant une table basse ; chat sous la table basse dessiné juste avant elle ; chat derrière une étagère dessiné juste avant elle ; trajet qui traverse l'emprise d'un meuble sans détour (carte de marche sans case bloquée).
+- Animaux : chat sur un fauteuil de niveau 2 dessiné avant une table basse de niveau 3 ; chat qui marche à découvert dessiné après une étagère et avant une table basse ; chat sous la table basse dessiné juste avant elle ; chat derrière une étagère dessiné juste avant elle ; carte de marche : appui d'une bibliothèque bloqué, dessous d'une table basse praticable, case derrière une bibliothèque éloignée du mur praticable, bibliothèque contre le mur sans passage derrière (le chat fait le tour).
 - Graphisme classique et Ghibli. Capture de validation de la pièce (fenêtre + bibliothèque + fauteuil + table basse) montrée à l'utilisateur, d'abord sur le téléphone.
