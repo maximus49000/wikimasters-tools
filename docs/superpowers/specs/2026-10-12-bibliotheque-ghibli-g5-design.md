@@ -10,6 +10,12 @@ Suite de la refonte Ghibli (spec générale `2026-10-10-bibliotheque-ghibli-desi
 - **Le chien du promeneur** (événement `dog-walker`) est fait en G5, avec les événements.
 - Comme pour les livraisons précédentes, les visuels et les chorégraphies sont faits par Fable, et le portage reprend le code de la maquette.
 - Le graphisme classique reste strictement inchangé.
+- **Lumière de nuit naturelle** (validée sur la deuxième passe) : la ville est peinte deux fois (nuit bleue et version éclairée ambre), et la version éclairée est révélée par un masque à décroissance douce autour des lampadaires et des vitrines. Pas de voile ajouté, seulement un bloom serré au verre. Les acteurs reçoivent une ombre portée à l'opposé de la lampe et un liseré chaud ; sous la pluie, des colonnes de reflets apparaissent. Ce rendu remplace la lumière de `ghibli-night.tsx`.
+- **Père Noël** : refait avec le vrai pantin, avec une tenue complète (barbe et moustache qui suivent la tête, fourrure, ceinture, bonnet à pompon, bottes, gants). Ces ajouts sont faits dans le moteur du pantin.
+- **Concert de la Fête de la musique** : un vrai éclairage de concert le soir. Projecteurs de couleur qui balaient en rythme, brume de scène, contre-jour, public et façades éclairés par la couleur du moment. La scène reste éteinte le jour.
+- **Engins du ciel** (avion, avion à banderole, hélicoptère, montgolfière, drone, cerf-volant, ballons) : volumes, assiette et balancement naturels, rotors et hélices qui tournent, brûleur à bouffées, traînée de condensation qui s'effiloche, feux à éclats la nuit.
+- **Mouettes** : les mouettes figées peintes dans le décor de la colline sont retirées. Elles sont remplacées par des volées animées qui traversent le ciel de temps en temps, avec battements, planés, virages et parfois une pause sur un toit.
+- **Feux du passage piéton** : chaque poteau est placé avant le passage, pour les voitures de sa voie. C'est corrigé dans l'appli, dans les deux graphismes (`lightPoleX`, commit à part).
 
 ## 1. Périmètre (inventaire du 2026-10-12)
 
