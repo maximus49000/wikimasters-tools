@@ -396,11 +396,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // Pièce horizontale en plein écran sur un écran en paysage : la pièce couvre tout l'écran, sans bandes noires.
   const screenSize = useScreenSize(stage.active);
   const fill = stage.active && orientationNow === 'landscape' && screenSize.width > screenSize.height;
-  // Pièce trop étroite pour l'écran : elle est agrandie à sa largeur et la vue part du milieu de la hauteur.
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (fill && el) el.scrollTop = Math.max(0, (el.scrollHeight - el.clientHeight) / 2);
-  }, [fill, colsNow]);
+  const fitCols = screenCols(screenSize.width, screenSize.height);
+  // Pièce plus étroite que l'écran : elle s'élargit d'elle-même à la largeur exacte de l'écran (mur vide ajouté à droite),
+  // pour garder le ciel et le sol entiers sans bandes noires. Une pièce plus large n'est réduite que par le bouton.
+  const roomIdNow = lib ? activeRoom(lib).id : null;
+  useEffect(() => {
+    if (!fill || roomIdNow === null || colsNow >= fitCols) return;
+    void library.update((state) => fitRoomWidth(state, roomIdNow, fitCols));
+  }, [fill, roomIdNow, colsNow, fitCols, library]);
 
   // Réglage « Position » (actif par défaut) : la position est demandée une fois par chargement de page, à l'ouverture de la Bibliothèque.
   // Elle n'est gardée qu'en mémoire : sans cette relecture, la vraie météo resterait « simulée » après chaque rechargement.
@@ -722,8 +725,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     await library.update((state) => shrinkRoom(state, room.id, side));
   }
 
-  // Plein écran paysage : la pièce prend exactement la largeur de l'écran (agrandie ou réduite par la droite).
-  const fitCols = screenCols(screenSize.width, screenSize.height);
+  // Plein écran paysage : une pièce plus large que l'écran est réduite par la droite à sa largeur exacte.
   const fitToScreen = (): void => {
     if (!fitsWithin(layout, fitCols)) return refuse('Retirez d’abord les meubles qui dépassent à droite.');
     setMessage('');
@@ -1118,7 +1120,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           />
         )}
         {stage.active && <FullscreenButton active onClick={stage.toggle} right={8} />}
-        {fill && room.cols !== fitCols && (
+        {fill && room.cols > fitCols && (
           <button type="button" data-action="fit-screen" onClick={fitToScreen} style={FIT_BUTTON}>
             Adapter à l’écran
           </button>

@@ -82,7 +82,7 @@ type Props = {
   // Calque de lumière (ombre et rayons de soleil) par-dessus la pièce ; seulement avec une météo et une fenêtre.
   light?: boolean;
   // Plein écran d'une pièce horizontale sur un écran en paysage : le dessin couvre tout l'écran (plus de colonnes visibles,
-  // ou zoom sur la largeur si la pièce est trop étroite, le surplus de hauteur défile).
+  // ou zoom sur la largeur le temps que la pièce trop étroite s'élargisse à celle de l'écran).
   fill?: boolean;
 };
 
