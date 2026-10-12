@@ -81,6 +81,9 @@ type Props = {
   petFrames?: () => readonly PetFrame[];
   // Calque de lumière (ombre et rayons de soleil) par-dessus la pièce ; seulement avec une météo et une fenêtre.
   light?: boolean;
+  // Plein écran d'une pièce horizontale sur un écran en paysage : le dessin couvre tout l'écran (plus de colonnes visibles,
+  // ou zoom sur la largeur si la pièce est trop étroite, le surplus de hauteur défile).
+  fill?: boolean;
 };
 
 export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect };
@@ -90,7 +93,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -418,7 +421,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       role="img"
       aria-label={room.name}
       data-style={room.style}
-      style={{ aspectRatio: `${width} / ${HEIGHT}`, width: `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block' }}
+      style={{ aspectRatio: `${width} / ${HEIGHT}`, width: fill ? `max(100vw, calc(100vh * ${width} / ${HEIGHT}))` : `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block', ...(fill ? { alignSelf: 'flex-start' } : {}) }}
     >
       {decor.glow && <NeonDefs />}
       {/* Mur statique (fond + décor steampunk), réutilisé par <use> pour combler les trous entre les vitres. */}
