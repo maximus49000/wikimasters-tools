@@ -11,7 +11,9 @@ import type { ActorTrack } from './types';
 // du trajet : entrée d'immeuble ou bord du monde, endDoorOf comme visitsFor), atteint la porte à `arriveAt`, s'y tourne et
 // attend ; s'il entre, il passe le seuil de dos (THRESHOLD_S) pour franchir la porte à `enter` (arrivée avancée au besoin pour
 // que le seuil tienne) ; il ressort de face à `exit` et repart d'où il vient ; rebroussé, il se retourne à `exit` sans seuil ;
-// passant, il dépasse la porte dans le sens `dir` jusqu'à l'autre bout. Temps en secondes du créneau.
+// passant, il dépasse la porte dans le sens `dir` jusqu'à l'autre bout. Temps en secondes du créneau. Un parti marche ensemble :
+// même allure (tirée du parti), même arrivée (réglée sur la première entrée du parti, `partyEnter`), chaque membre GAP_S
+// derrière le précédent (rang du membre dans l'id `<parti>:<rang>`).
 export type SidewalkGeo = { doorX: number; width: number; doorXs: readonly number[] };
 // Vue sur le trottoir : un Passage (rue, demi-tour, seuil) ou l'attente debout devant la porte.
 export type SidewalkView = Omit<Passage, 'gait'> & { gait: Passage['gait'] | 'stand' };
@@ -23,17 +25,25 @@ type Piece =
   | { k: 'door'; t0: number; t1: number; x: number; walked: number };
 export type SidewalkPlan = { from: number; to: number; pieces: Piece[] };
 
-// Allure d'un client dans la rue (px/s), tirée de son identifiant comme celle des visites (16 à 24 × WALK_PACE).
+// Allure d'un client dans la rue (px/s), tirée de son parti (sinon de son id) comme celle des visites (16 à 24 × WALK_PACE).
 export const walkSpeed = (id: string): number => (16 + ((hashString(`walk|${id}`) % 1000) / 1000) * 8) * WALK_PACE;
+// Écart entre deux membres d'un parti qui marchent l'un derrière l'autre (s).
+export const GAP_S = 0.4;
+const rankOf = (id: string): number => {
+  const r = Number(id.slice(id.lastIndexOf(':') + 1));
+  return Number.isFinite(r) ? r : 0;
+};
 const legLength = (l: Leg): number =>
   Math.abs(l.toX - l.fromX) / l.speed + (l.fromDoor ? THRESHOLD_S + TURN_S : 0) + (l.toDoor ? TURN_S + THRESHOLD_S : 0);
 const edgeOf = (dir: 1 | -1, width: number): number => (dir > 0 ? -WORLD_MARGIN : width + WORLD_MARGIN);
 
-export function sidewalkPlan(track: ActorTrack, geo: SidewalkGeo): SidewalkPlan | null {
+// `partyEnter` : première entrée du parti (null s'il n'entre pas ; absent : celle de la piste).
+export function sidewalkPlan(track: ActorTrack, geo: SidewalkGeo, partyEnter: number | null = track.enter): SidewalkPlan | null {
   if (track.role !== 'customer' || track.arriveAt === null || track.dir === null) return null;
   const { doorX, width, doorXs } = geo;
   const dir = track.dir;
-  const speed = walkSpeed(track.id);
+  const speed = walkSpeed(track.party ?? track.id);
+  const lag = rankOf(track.id) * GAP_S;
   const nearEnd = endDoorOf(doorX, (-dir) as 1 | -1, width, doorXs, MAX_VISIT_FALLBACK_PX);
   const near = nearEnd ?? edgeOf(dir, width);
   const go: Leg = { fromX: near, toX: doorX, dir, speed, fromDoor: nearEnd !== null, toDoor: false };
@@ -49,11 +59,14 @@ export function sidewalkPlan(track: ActorTrack, geo: SidewalkGeo): SidewalkPlan 
     // Passant : jusqu'à la porte, puis au-delà dans le même sens.
     const farEnd = endDoorOf(doorX, dir, width, doorXs, MAX_VISIT_FALLBACK_PX);
     const on: Leg = { fromX: doorX, toX: farEnd ?? edgeOf((-dir) as 1 | -1, width), dir, speed, fromDoor: false, toDoor: farEnd !== null };
-    pieces.push({ k: 'leg', t0: track.arriveAt - goLen, t1: track.arriveAt, leg: go, base: 0 });
-    pieces.push({ k: 'leg', t0: track.arriveAt, t1: track.arriveAt + legLength(on), leg: on, base: dist });
+    const pass = track.arriveAt + lag;
+    pieces.push({ k: 'leg', t0: pass - goLen, t1: pass, leg: go, base: 0 });
+    pieces.push({ k: 'leg', t0: pass, t1: pass + legLength(on), leg: on, base: dist });
   } else {
     const sill = track.enter !== null ? track.enter - THRESHOLD_S : track.exit!;
-    const at = track.enter !== null ? Math.min(track.arriveAt, sill - TURN_S) : track.arriveAt;
+    // Arrivée du parti : avancée pour que le seuil de la première entrée tienne ; chaque membre GAP_S derrière.
+    const first = Math.min(track.arriveAt, (partyEnter ?? Infinity) - THRESHOLD_S - TURN_S) + lag;
+    const at = track.enter !== null ? Math.min(first, sill - TURN_S) : Math.min(track.arriveAt + lag, sill);
     const turned = Math.min(at + TURN_S, Math.max(at, sill));
     pieces.push({ k: 'leg', t0: at - goLen, t1: at, leg: go, base: 0 });
     pieces.push({ k: 'turn', t0: at, t1: turned, x: doorX, from: face, to: YAW_BACK, walked: dist });
@@ -64,7 +77,8 @@ export function sidewalkPlan(track: ActorTrack, geo: SidewalkGeo): SidewalkPlan 
     } else {
       // Rebroussé : il se retourne devant la porte et repart (sans seuil).
       pieces.push({ k: 'turn', t0: sill, t1: sill + TURN_S, x: doorX, from: YAW_BACK, to: facingYaw((-dir) as 1 | -1), walked: dist });
-      back(sill + TURN_S, false);
+      if (lag > 0) pieces.push({ k: 'stand', t0: sill + TURN_S, t1: sill + TURN_S + lag, x: doorX, yaw: facingYaw((-dir) as 1 | -1), walked: dist });
+      back(sill + TURN_S + lag, false);
     }
   }
   return { from: pieces[0]!.t0, to: pieces[pieces.length - 1]!.t1, pieces };

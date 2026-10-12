@@ -13,6 +13,7 @@ import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type P
 import { CUSTOMER_SCALE, customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
 import { paradeOn } from '../core/library/city/parade';
 import { inScene } from '../core/library/city/shops/scene/slots';
+import { GHIBLI_SHOP_SPRITE_CAP, capFor } from '../core/library/city/shops/sprite-budget';
 import { streetFor } from '../core/library/city/shops/scene/street';
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { ShopTypeId } from '../core/library/city/shops/catalog';
@@ -380,8 +381,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         }
         scene = ghibli ? collectScene(el) : null;
         // Plafond global des figurants des commerces : convives de terrasse cachés, visites suspendues pour la minute ; scène G4b :
-        // partis entiers retenus pour la minute.
-        muted = shopSpriteBudget(el, width, undefined, scene ? sceneBudget(scene, t) : []);
+        // partis entiers retenus pour la minute (plafond Ghibli : GHIBLI_SHOP_SPRITE_CAP).
+        muted = ghibli ? shopSpriteBudget(el, width, capFor(width, GHIBLI_SHOP_SPRITE_CAP), scene ? sceneBudget(scene, t) : []) : shopSpriteBudget(el, width);
         if (scene) muteScene(scene, muted);
       }
       for (const p of peds) {

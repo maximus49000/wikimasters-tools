@@ -84,18 +84,21 @@ export const quantGate = (g: number): number => Math.round(Math.max(0, Math.min(
 const slotKey = (p: ShopPlan, index: number): SlotKey => ({ seed: p.env.seed, slotId: p.id, type: p.type, day: p.env.day, index });
 const keyOf = (p: ShopPlan, index: number, gate: number): string => `${scoreKey(slotKey(p, index))}|${quantGate(gate)}`;
 
-// Affluence d'un créneau : celle vue à son début (ou à la première lecture pendant lui), figée ensuite — une fermeture en plein
-// créneau ne recalcule pas la partition courante ; un créneau à venir prend l'affluence du moment, sans la figer.
-export function slotGate(p: ShopPlan, index: number, now: number, gate: number): number {
+// Affluence d'un créneau : celle de sa première lecture (le suivant est lu, donc figé, quand on le précalcule), gardée ensuite —
+// un changement d'affluence ou une fermeture en plein créneau ne recalcule jamais une partition déjà lue (personne ne saute ni
+// ne disparaît) ; la fermeture n'empêche que les nouvelles admissions (placeScene).
+export function slotGate(p: ShopPlan, index: number, gate: number): number {
   const k = scoreKey(slotKey(p, index));
   const memo = gates.get(k);
   if (memo !== undefined) return memo;
   const g = quantGate(gate);
-  if (index > slotIndexAt(p.type, now)) return g;
   gates.set(k, g);
   while (gates.size > GATE_MEMO_MAX) gates.delete(gates.keys().next().value!);
   return g;
 }
+
+// Taille du cache réglée sur le nombre de boutiques lues (trois créneaux chacune, plus une marge) : jamais de va-et-vient.
+export const sizeCache = (shops: number): void => cache.resize(3 * shops + 8);
 
 export const peekScore = (p: ShopPlan, index: number, gate: number): Score | null => cache.peek(keyOf(p, index, gate));
 
@@ -136,7 +139,7 @@ export function pumpScore(shops: readonly { plan: ShopPlan; gate: number }[], no
   for (const { plan, gate } of shops) {
     for (const { index, prio } of slotsAt(plan, now)) {
       if (pick && prio >= pick.prio) continue;
-      const g = slotGate(plan, index, now, gate);
+      const g = slotGate(plan, index, gate);
       if (!peekScore(plan, index, g)) pick = { plan, index, gate: g, prio };
     }
   }

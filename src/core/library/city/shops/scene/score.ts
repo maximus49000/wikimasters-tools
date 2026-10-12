@@ -155,7 +155,7 @@ export const scoreKey = (k: SlotKey): string => `${k.seed}|${k.slotId}|${k.type}
 // Cache LRU : la dernière partition lue passe en tête ; au-delà de `max`, la plus anciennement lue est oubliée.
 export class ScoreCache {
   private readonly map = new Map<string, Score>();
-  private readonly max: number;
+  private max: number;
   constructor(max = 64) {
     this.max = max;
   }
@@ -170,6 +170,10 @@ export class ScoreCache {
     this.map.set(key, score);
     while (this.map.size > this.max) this.map.delete(this.map.keys().next().value!);
     return score;
+  }
+  // Agrandit le cache (jamais ne le rétrécit) : le rendu le règle sur le nombre de boutiques lues (3 créneaux chacune).
+  resize(max: number): void {
+    this.max = Math.max(this.max, max);
   }
   // Partition déjà calculée (sans la calculer) : le rendu étale les calculs, une partition par image au plus.
   peek(key: string): Score | null {

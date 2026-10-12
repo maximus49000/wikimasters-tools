@@ -6,8 +6,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../../src/content/art-setting';
 import { CityLifeLayer } from '../../../src/content/city-life';
 import { FigureContext, FigureRegistry } from '../../../src/content/figure/figure-host';
-import { ShopScene, collectScene, placeScene } from '../../../src/content/shop/shop-scene';
-import { makeScore, planOf, type SceneShop } from '../../../src/content/shop/scene-scores';
+import { ShopScene, collectScene, forgetScenes, muteScene, placeScene, sceneBudget, sceneParties } from '../../../src/content/shop/shop-scene';
+import { infoOf, runtimes } from '../../../src/content/shop/scene-read';
+import { sidewalkAt } from '../../../src/core/library/city/shops/scene/sidewalk';
+import type { Score } from '../../../src/core/library/city/shops/scene/types';
+import { GHIBLI_SHOP_SPRITE_CAP, spriteBudget } from '../../../src/core/library/city/shops/sprite-budget';
+import { trackAt } from '../../../src/core/library/city/shops/scene/score';
+import { makeScore, peekScore, planOf, slotGate, type SceneShop } from '../../../src/content/shop/scene-scores';
 import { dayContext } from '../../../src/core/library/city/calendar';
 import type { CityContext } from '../../../src/core/library/city/intensity';
 import { cityMetrics } from '../../../src/core/library/city/metrics';
@@ -31,6 +36,7 @@ const mount = (): { host: HTMLDivElement; draw: (node: ReactNode) => void } => {
   return { host, draw: (node) => act(() => root.render(node)) };
 };
 afterEach(() => {
+  forgetScenes();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   for (const { root, host } of mounted.splice(0)) {
@@ -81,13 +87,28 @@ function freeStaffMoment(): number {
   throw new Error('employé jamais libre');
 }
 
-const scene = (secondsOfDay: number, still = false, figures = new FigureRegistry('ts', { perFrame: 50 })): ReactNode => {
+// Arrivée d'un parti de plusieurs personnes (s du jour, un peu avant qu'il paraisse dans la rue).
+function groupMoment(): number {
+  const plan = planOf(shop, env);
+  const from = slotIndexAt('bakery', 10 * 3600);
+  for (let i = from; i < from + 60; i++) {
+    const sc = makeScore(plan, i, 1);
+    const sizes = new Map<string, number>();
+    for (const tr of sc.tracks) if (tr.party) sizes.set(tr.party, (sizes.get(tr.party) ?? 0) + 1);
+    const tr = sc.tracks.find((x) => x.party && (sizes.get(x.party) ?? 0) >= 2 && x.arriveAt !== null && x.arriveAt > 90);
+    if (tr) return slotStart('bakery', i) + tr.arriveAt! - 90;
+  }
+  throw new Error('aucun groupe');
+}
+
+type Opts = { open?: boolean; gate?: number; pool?: number };
+const scene = (secondsOfDay: number, still = false, figures = new FigureRegistry('ts', { perFrame: 50 }), o: Opts = {}): ReactNode => {
   const sky = skyAt(Math.floor(secondsOfDay / 60), times);
   return (
     <FigureContext.Provider value={figures}>
       <svg>
         <ShopScene
-          shops={[shop]}
+          shops={[{ ...shop, open: o.open ?? true }]}
           seed={SEED}
           day={DAY}
           secondsOfDay={secondsOfDay}
@@ -97,10 +118,11 @@ const scene = (secondsOfDay: number, still = false, figures = new FigureRegistry
           sky={sky}
           rainy={false}
           umbrella={false}
-          gates={new Map([[slot.id, 1]])}
+          gates={new Map([[slot.id, o.gate ?? 1]])}
           street={NO_STREET}
           doorXs={[]}
           still={still}
+          pool={o.pool}
         />
       </svg>
     </FigureContext.Provider>
@@ -177,6 +199,182 @@ describe('ShopScene (Ghibli)', () => {
     expect(head()).toBe('0');
     place(T0, [{ ...horn[0]!, x: frame.window.x + frame.window.w + 400 }]);
     expect(head()).toBe('0');
+  });
+});
+
+// Acteurs montrés (nœud de la réserve affecté, l'un de ses trois nœuds actif) : id → transform du nœud actif.
+const shownActors = (c: Element): Map<string, string> => {
+  const out = new Map<string, string>();
+  for (const inner of c.querySelectorAll('[data-scene-actor][data-actor]')) {
+    const i = inner.getAttribute('data-entry');
+    const nodes = [inner, c.querySelector(`[data-scene-street][data-entry="${i}"]`), c.querySelector(`svg[data-scene-door][data-entry="${i}"]`)];
+    const on = nodes.find((n) => n?.getAttribute('data-active') === 'true');
+    if (on) out.set(inner.getAttribute('data-actor')!, `${on.getAttribute('transform') ?? on.getAttribute('x')}`);
+  }
+  return out;
+};
+const partyOf = (id: string): string => id.slice(0, id.lastIndexOf(':'));
+// Clients attendus visibles à `sec` d'après les partitions des créneaux N−1..N+1 (même lecture que la boucle).
+const expected = (c: Element, sec: number): Map<string, string> => {
+  const rt = runtimes.get(c.querySelector('[data-scene-shop]')!)!;
+  const out = new Map<string, string>();
+  const n = slotIndexAt('bakery', sec);
+  for (let i = n - 1; i <= n + 1; i++) {
+    const sc: Score | null = peekScore(rt.plan, i, slotGate(rt.plan, i, 1));
+    if (!sc) continue;
+    const tIn = sec - sc.start;
+    for (const tr of sc.tracks) {
+      if (tr.role !== 'customer') continue;
+      const info = infoOf(tr, rt, sc);
+      if (tIn < info.from || tIn > info.to) continue;
+      const v = trackAt(tr, tIn);
+      if (v.where === 'inside' || (info.plan && sidewalkAt(info.plan, tIn))) out.set(tr.id, tr.party ?? tr.id);
+    }
+  }
+  return out;
+};
+
+describe('ShopScene : fermeture, affluence, partis, remontage, plafond (G4b, revue 1)', () => {
+  it('rideau baissé en plein créneau : aucun client admis ne disparaît avant la fin de sa visite et de sa marche ; plus d’admission', () => {
+    const s = busyMoment();
+    const figures = new FigureRegistry('tc', { perFrame: 50 });
+    const { host, draw } = mount();
+    draw(scene(s, false, figures));
+    placeScene(collectScene(host), T0, figures, []);
+    const before = new Set(shownActors(host).keys());
+    const admittedBefore = new Set(sceneParties(slot.id)!.admitted);
+    expect(before.size).toBeGreaterThan(0);
+    draw(scene(s, false, figures, { open: false }));
+    const nodes = collectScene(host);
+    let tail = 0;
+    for (let dt = 0; dt <= 300; dt += 1) {
+      placeScene(nodes, T0 + dt, figures, []);
+      const shown = shownActors(host);
+      const want = expected(host, s + dt);
+      for (const id of before) if (want.has(id)) expect(shown.has(id), `${id} à +${dt} s`).toBe(true);
+      // Plus d'admission : seuls des partis admis avant la fermeture.
+      for (const id of shown.keys()) expect(admittedBefore.has(partyOf(id)), id).toBe(true);
+      if ([...before].some((id) => want.has(id) && shown.has(id))) tail = dt;
+    }
+    expect(tail).toBeGreaterThan(0);
+    // La vitrine est cachée (le rideau la couvre) ; le trottoir reste.
+    expect(host.querySelector('svg[data-scene]')!.getAttribute('visibility')).toBe('hidden');
+  });
+  it('affluence changée en plein créneau : même partition, personne ne saute ni ne disparaît', () => {
+    const s = busyMoment();
+    const figures = new FigureRegistry('tg', { perFrame: 50 });
+    const { host, draw } = mount();
+    draw(scene(s, false, figures));
+    placeScene(collectScene(host), T0, figures, []);
+    const a = shownActors(host);
+    expect(a.size).toBeGreaterThan(0);
+    const plan = planOf(shop, env);
+    const n = slotIndexAt('bakery', s);
+    const score = peekScore(plan, n, slotGate(plan, n, 1));
+    draw(scene(s, false, figures, { gate: 0.25 }));
+    placeScene(collectScene(host), T0, figures, []);
+    expect(shownActors(host)).toEqual(a);
+    expect(peekScore(plan, n, slotGate(plan, n, 0.25))).toBe(score);
+  });
+  it('créneau suivant : affluence figée à sa première lecture, reprise quand il devient courant', () => {
+    const plan = planOf(shop, env);
+    expect(slotGate(plan, 333, 0.8)).toBe(0.8);
+    expect(slotGate(plan, 333, 0.1)).toBe(0.8);
+  });
+  it('réserve épuisée : jamais un demi-parti ; un parti refusé n’apparaît jamais', () => {
+    const s = busyMoment();
+    const figures = new FigureRegistry('tp', { perFrame: 50 });
+    const { host, draw } = mount();
+    draw(scene(s - 60, false, figures, { pool: 2 }));
+    const nodes = collectScene(host);
+    let starved = false;
+    for (let dt = 0; dt <= 240; dt += 0.5) {
+      placeScene(nodes, T0 + dt, figures, []);
+      const shown = shownActors(host);
+      const want = expected(host, s - 60 + dt);
+      const parties = new Set([...shown.keys()].map(partyOf));
+      const { refused } = sceneParties(slot.id)!;
+      for (const [id, party] of want) {
+        if (parties.has(party)) expect(shown.has(id), `${id} (parti montré) à +${dt} s`).toBe(true);
+        if (refused.has(party)) starved = true;
+      }
+      for (const p of parties) expect(refused.has(p)).toBe(false);
+      expect(shown.size).toBeLessThanOrEqual(2);
+    }
+    expect(starved).toBe(true);
+  });
+  it('un seul nœud libre : un groupe n’est jamais montré à moitié', () => {
+    const s = groupMoment();
+    const figures = new FigureRegistry('t1', { perFrame: 50 });
+    const { host, draw } = mount();
+    draw(scene(s, false, figures, { pool: 1 }));
+    const nodes = collectScene(host);
+    let groups = 0;
+    for (let dt = 0; dt <= 200; dt += 0.5) {
+      placeScene(nodes, T0 + dt, figures, []);
+      const shown = shownActors(host);
+      const want = expected(host, s + dt);
+      const parties = new Set([...shown.keys()].map(partyOf));
+      for (const [id, party] of want) if (parties.has(party)) expect(shown.has(id), `${id} à +${dt} s`).toBe(true);
+      const sizes = new Map<string, number>();
+      for (const party of want.values()) sizes.set(party, (sizes.get(party) ?? 0) + 1);
+      for (const n of sizes.values()) if (n >= 2) groups++;
+    }
+    expect(groups).toBeGreaterThan(0);
+  });
+  it('remontage (réserve changée) ou re-rendu : les admis restent, les refusés restent refusés', () => {
+    const s = busyMoment();
+    const figures = new FigureRegistry('tr', { perFrame: 50 });
+    const { host, draw } = mount();
+    draw(scene(s - 120, false, figures, { pool: 1 }));
+    const nodes = collectScene(host);
+    // Avance jusqu'à ce qu'un parti ait été refusé faute de place.
+    let dt = 0;
+    for (; dt <= 400 && sceneParties(slot.id)!.refused.size === 0; dt += 0.5) placeScene(nodes, T0 + dt, figures, []);
+    const refused = new Set(sceneParties(slot.id)!.refused);
+    expect(refused.size).toBeGreaterThan(0);
+    const a = shownActors(host);
+    const el = host.querySelector('[data-scene-shop]');
+    // Simple re-rendu : mêmes nœuds, mêmes affectations.
+    draw(scene(s - 120, false, figures, { pool: 1 }));
+    placeScene(collectScene(host), T0 + dt, figures, []);
+    expect(host.querySelector('[data-scene-shop]')).toBe(el);
+    expect(shownActors(host)).toEqual(a);
+    // Remontage (réserve plus grande) : les montrés restent, aucun refusé n'apparaît ensuite.
+    draw(scene(s - 120, false, figures, { pool: 12 }));
+    expect(host.querySelector('[data-scene-shop]')).not.toBe(el);
+    const later = collectScene(host);
+    placeScene(later, T0 + dt, figures, []);
+    expect([...shownActors(host).keys()].sort()).toEqual([...a.keys()].sort());
+    for (let k = 0; k <= 120; k += 1) {
+      placeScene(later, T0 + dt + k, figures, []);
+      for (const id of shownActors(host).keys()) expect(refused.has(partyOf(id)), id).toBe(false);
+    }
+  });
+  it('plafond : les partis admis comptent comme fixes ; les partis à venir sont retenus et n’apparaissent pas', () => {
+    const s = busyMoment();
+    const figures = new FigureRegistry('tb', { perFrame: 50 });
+    const { host, draw } = mount();
+    draw(scene(s, false, figures));
+    const nodes = collectScene(host);
+    placeScene(nodes, T0, figures, []);
+    const admitted = new Set(sceneParties(slot.id)!.admitted);
+    expect(admitted.size).toBeGreaterThan(0);
+    const sprites = sceneBudget(nodes, T0);
+    for (const sp of sprites) expect(sp.kind).toBe(admitted.has(sp.party!) ? 'keep' : 'customer');
+    // Plafond atteint par les fixes : tout parti à venir est retiré, le reste tient sous le plafond.
+    const keep = sprites.filter((x) => x.kind === 'keep').length;
+    const drop = spriteBudget(sprites, W / 2, keep);
+    expect(sprites.filter((x) => !drop.has(x.id)).length).toBe(keep);
+    expect(spriteBudget(sprites, W / 2, GHIBLI_SHOP_SPRITE_CAP).size).toBe(0);
+    muteScene(nodes, drop);
+    // La pose du rendu applique le plafond retenu (pas un ensemble vide).
+    draw(scene(s, false, figures));
+    const later = collectScene(host);
+    for (let dt = 0; dt <= 120; dt += 1) {
+      placeScene(later, T0 + dt, figures, []);
+      for (const id of shownActors(host).keys()) expect(admitted.has(partyOf(id)), id).toBe(true);
+    }
   });
 });
 

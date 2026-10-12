@@ -17,9 +17,9 @@ import { ghibliAwningShift } from './ghibli-shop-glass';
 import { PictoGlyph } from './picto';
 import { CARRIED, CARRY_SLOTS, PROP_SLOTS, STAFF_SCALE, collectScene, placeScene, runtimes, workOf, type ShopRt } from './scene-place';
 import { PropSpriteMemo, WornFramesMemo } from './scene-props';
-import { makeScore, planOf, propsOf, slotGate, type SceneShop } from './scene-scores';
+import { makeScore, peekScore, planOf, propsOf, sizeCache, slotGate, type SceneShop } from './scene-scores';
 
-export { collectScene, muteScene, placeScene, sceneBudget, type SceneNodes } from './scene-place';
+export { collectScene, forgetScenes, muteScene, placeScene, sceneBudget, sceneParties, type SceneNodes } from './scene-place';
 export type { SceneShop, SceneStaff } from './scene-scores';
 
 // Scène Ghibli des commerces (G4b, spec §7) : rend, pour chaque boutique du metteur en scène, une réserve de nœuds que la boucle
@@ -44,10 +44,14 @@ type Props = {
   street: (slotId: string, slotStartS: number, length: number) => StreetState;
   doorXs: readonly number[];
   still: boolean;
+  // Taille de la réserve de clients imposée (tests : réserve épuisée) ; absente : poolFor(capacité).
+  pool?: number;
 };
 
-// Calculs de partitions au rendu initial : le créneau courant des premières boutiques ; les autres viennent par la boucle.
-const INITIAL_SCORES = 4;
+// Calculs de partitions au rendu : au montage, le créneau courant des premières boutiques ; à chaque re-rendu (passage d'un
+// créneau), une seule ; les autres viennent par la boucle (une par image).
+const MOUNT_SCORES = 4;
+const RENDER_SCORES = 1;
 // Pantin de réserve : sa tenue et sa palette sont posées par la boucle à l'affectation (le rendu ne les relit jamais).
 const SPARE: Outfit = outfitFor('ordinary', mulberry32(7));
 const REST: PoseIn = { yaw: 4, gait: 'stand', phase: 0, head: 0, arms: 'down' };
@@ -150,24 +154,30 @@ const ShopNodes = memo(
       </g>
     );
   },
-  (a, b) => a.present === b.present && a.sky === b.sky && a.inSky === b.inSky && a.rainy === b.rainy && a.umbrella === b.umbrella && a.kStreet === b.kStreet,
+  (a, b) => a.present === b.present && a.ids.join() === b.ids.join() && a.sky === b.sky && a.inSky === b.inSky && a.rainy === b.rainy && a.umbrella === b.umbrella && a.kStreet === b.kStreet,
 );
 
-export function ShopScene({ shops, seed, day, secondsOfDay, t0, width, metrics, sky, rainy, umbrella, gates, street, doorXs, still }: Props): ReactElement {
+export function ShopScene({ shops, seed, day, secondsOfDay, t0, width, metrics, sky, rainy, umbrella, gates, street, doorXs, still, pool: poolSize }: Props): ReactElement {
   const root = useRef<SVGGElement | null>(null);
+  const mounted = useRef(false);
+  sizeCache(shops.length);
   const figures = useFigureRegistry();
   const env = useMemo(() => ({ seed, day, street }), [seed, day, street]);
   const stepSky = useStepSky(sky);
   const offset = secondsOfDay - t0;
-  let budget = INITIAL_SCORES;
+  let budget = mounted.current ? RENDER_SCORES : MOUNT_SCORES;
+  const geo = `${width}|${doorXs.join(',')}`;
   const items = shops.map((shop) => {
     const plan = planOf(shop, env);
     const gate = gates.get(plan.id) ?? 0;
     // Rendu initial : seulement le créneau courant, pour les premières boutiques (le reste par la boucle, une par image).
     if (!still && shop.open && budget > 0) {
       const n = slotIndexAt(plan.type, secondsOfDay);
-      budget--;
-      makeScore(plan, n, slotGate(plan, n, secondsOfDay, gate));
+      const g = slotGate(plan, n, gate);
+      if (!peekScore(plan, n, g)) {
+        budget--;
+        makeScore(plan, n, g);
+      }
     }
     const { frame, view } = shop;
     const shift = ghibliAwningShift(view, frame, sky);
@@ -175,16 +185,17 @@ export function ShopScene({ shops, seed, day, secondsOfDay, t0, width, metrics, 
     const doorSide = plan.stage.doorEdge === 'right' ? 'left' : 'right';
     const lit = sky.daylight < 0.45 && view.phase === 'open';
     const rt: ShopRt = {
-      plan, open: shop.open, gate, offset, still, winX: frame.window.x, hSvg, floor: hSvg - 3, staffFloor: hSvg - 1,
+      plan, open: shop.open, gate, offset, still, geo: `${frame.door.x}|${geo}`, staffById: new Map(shop.staff.map((s) => [s.id, s])), winX: frame.window.x, hSvg, floor: hSvg - 3, staffFloor: hSvg - 1,
       worktop: ghibliWorktopOf(plan.type, frame.sign.w, doorSide) - shift, doorX: frame.door.x + frame.door.w / 2, doorRect: frame.door,
       metrics, width, doorXs, sky, inSky: lit ? LIT_SKY : sky, rainy, umbrella, work: workOf(plan.type),
     };
     const ids = propsOf(plan);
-    const pool = poolFor(plan.capacity);
+    const pool = poolSize ?? poolFor(plan.capacity);
     const present = shop.staff.map((s) => (shop.open && s.spans.some(([a, b]) => secondsOfDay >= a && secondsOfDay < b) ? '1' : '0')).join('');
-    // Toute la structure dans la clé : un changement remonte la boutique entière (aucun nœud déplacé par la boucle — calque avant
-    // de la vitrine — n'est jamais retiré seul par React).
-    const key = `${seed}|${plan.id}|${plan.type}|${pool}|${shift}|${frame.window.x},${frame.window.w},${frame.window.h}|${frame.door.x}|${metrics.doorY}|${shop.staff.map((s) => s.id).join(',')}|${ids.join(',')}`;
+    // Structure dans la clé (réserve, employés, géométrie) : un changement remonte la boutique entière (aucun nœud déplacé par la
+    // boucle — calque avant de la vitrine — n'est jamais retiré seul par React ; l'état de la boucle est gardé par local). Un objet
+    // nouvellement vu s'ajoute aux emplacements par simple re-rendu.
+    const key = `${seed}|${plan.id}|${plan.type}|${pool}|${shift}|${frame.window.x},${frame.window.w},${frame.window.h}|${frame.door.x}|${metrics.doorY}|${shop.staff.map((s) => s.id).join(',')}`;
     return { shop, rt, ids, pool, shift, present, key, inSky: lit ? LIT_SKY : stepSky };
   });
   // Après la mise en page : chaque boutique publie son état d'exécution (lu par collectScene), puis première pose.
@@ -195,6 +206,7 @@ export function ShopScene({ shops, seed, day, secondsOfDay, t0, width, metrics, 
       const it = items.find((x) => x.rt.plan.id === node.getAttribute('data-scene-shop'));
       if (it) runtimes.set(node, it.rt);
     }
+    mounted.current = true;
     placeScene(collectScene(el), t0, figures, []);
   });
   const kStreet = metrics.unit * STREET_SCALE.person;

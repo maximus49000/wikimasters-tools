@@ -1,7 +1,7 @@
 // tests/core/library/shop-scene-sidewalk.test.ts — trottoir des clients des partitions (G4b, tâche 10)
 import { describe, expect, it } from 'vitest';
 import { THRESHOLD_S } from '../../../src/core/library/city/doorway';
-import { sidewalkAt, sidewalkPlan } from '../../../src/core/library/city/shops/scene/sidewalk';
+import { GAP_S, sidewalkAt, sidewalkPlan } from '../../../src/core/library/city/shops/scene/sidewalk';
 import type { ActorTrack } from '../../../src/core/library/city/shops/scene/types';
 import { outfitFor } from '../../../src/core/library/city/people';
 import { mulberry32 } from '../../../src/core/library/scene-world';
@@ -47,6 +47,17 @@ describe('trottoir des clients (sidewalkPlan)', () => {
     expect(sidewalkAt(plan, 50)!.x).toBeCloseTo(300, 5);
     expect(sidewalkAt(plan, 55)!.x).toBeGreaterThan(300);
     expect(sidewalkAt(plan, 45)!.x).toBeLessThan(300);
+  });
+  it('un parti marche ensemble : même allure, arrivée commune réglée sur sa première entrée, chacun GAP_S derrière', () => {
+    const lead = sidewalkPlan(track({ id: 'p0:0', enter: 40, exit: 90, arriveAt: 40 }), geo, 40)!;
+    const next = sidewalkPlan(track({ id: 'p0:1', enter: 40.5, exit: 90.5, arriveAt: 40 }), geo, 40)!;
+    const a = sidewalkAt(lead, 20)!;
+    const b = sidewalkAt(next, 20)!;
+    // Le second est derrière (venant de la gauche : x plus petit), d'à peu près GAP_S de marche.
+    expect(b.x).toBeLessThan(a.x);
+    const v = a.x - sidewalkAt(lead, 19)!.x;
+    expect(sidewalkAt(next, 20)!.x - sidewalkAt(next, 19)!.x).toBeCloseTo(v, 6);
+    expect(a.x - b.x).toBeCloseTo(v * GAP_S, 3);
   });
   it('employé : pas de trottoir', () => expect(sidewalkPlan(track({ role: 'staff', arriveAt: null, dir: null }), geo)).toBeNull());
 });

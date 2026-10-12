@@ -5,19 +5,16 @@ import type { CityMetrics } from '../../core/library/city/metrics';
 import type { ShopTypeId } from '../../core/library/city/shops/catalog';
 import { SHOP_FAMILY, type Family } from '../../core/library/city/shops/gestures';
 import type { Rect } from '../../core/library/city/shops/slots';
-import type { BudgetSprite } from '../../core/library/city/shops/sprite-budget';
 import type { PropId } from '../../core/library/city/shops/scene/moves';
-import { trackAt } from '../../core/library/city/shops/scene/score';
 import { sidewalkPlan, type SidewalkPlan } from '../../core/library/city/shops/scene/sidewalk';
-import { slotIndexAt } from '../../core/library/city/shops/scene/slots';
 import type { ActorTrack, Score } from '../../core/library/city/shops/scene/types';
 import type { Horn } from '../../core/library/city/traffic/horns';
 import type { Sky } from '../../core/library/sky';
-import { peekScore, slotGate, type ShopPlan } from './scene-scores';
+import type { SceneStaff, ShopPlan } from './scene-scores';
 
 // Lecture des partitions pour la boucle de la scène des commerces (G4b) : état d'exécution d'une boutique, fenêtre de
 // visibilité et trottoir de chaque piste (mémoïsés par piste), klaxons, accroches du pantin, emplacements partagés (objets en
-// main, montures, objets emportés, pictos) et figurants pour le plafond.
+// main, montures, objets emportés, pictos).
 
 export const STAFF_SCALE = 0.5;
 // Objets tenus de la main gauche (lecture, carnet) ; objets emportés dans la rue.
@@ -31,8 +28,9 @@ const HORN_S = 1;
 
 // État d'exécution d'une boutique, publié par ShopScene à chaque rendu (repère de la vitrine : y depuis le haut du <svg>).
 // `offset` : seconde du jour − horloge murale ; `worktop` : ligne du plan de travail ; `floor` / `staffFloor` : pieds.
+// `geo` : signature du trottoir (porte, largeur, entrées d'immeubles) ; `staffById` : employés du jour par id.
 export type ShopRt = {
-  plan: ShopPlan; open: boolean; gate: number; offset: number; still: boolean;
+  plan: ShopPlan; open: boolean; gate: number; offset: number; still: boolean; geo: string; staffById: ReadonlyMap<string, SceneStaff>;
   winX: number; hSvg: number; floor: number; staffFloor: number; worktop: number; doorX: number; doorRect: Rect;
   metrics: CityMetrics; width: number; doorXs: readonly number[]; sky: Sky; inSky: Sky; rainy: boolean; umbrella: boolean; work: Work;
 };
@@ -50,11 +48,23 @@ export const turnOn = (node: Element, on: boolean): void => {
 // Fenêtre où la piste est visible (s du créneau : trottoir compris), trottoir, objet emporté.
 export type Info = { geo: string; plan: SidewalkPlan | null; from: number; to: number; carry: PropId | null };
 const infos = new WeakMap<ActorTrack, Info>();
-export function infoOf(track: ActorTrack, rt: ShopRt): Info {
-  const geo = `${rt.doorX}|${rt.width}|${rt.doorXs.join(',')}`;
+// Première entrée de chaque parti d'une partition (le parti arrive ensemble à la porte).
+const partyEnters = new WeakMap<Score, Map<string, number>>();
+function partyEnter(sc: Score, track: ActorTrack): number | null {
+  if (!track.party) return track.enter;
+  let m = partyEnters.get(sc);
+  if (!m) {
+    m = new Map();
+    for (const tr of sc.tracks) if (tr.party && tr.enter !== null) m.set(tr.party, Math.min(m.get(tr.party) ?? Infinity, tr.enter));
+    partyEnters.set(sc, m);
+  }
+  return m.get(track.party) ?? null;
+}
+export function infoOf(track: ActorTrack, rt: ShopRt, sc: Score): Info {
   const got = infos.get(track);
-  if (got && got.geo === geo) return got;
-  const plan = sidewalkPlan(track, { doorX: rt.doorX, width: rt.width, doorXs: rt.doorXs });
+  if (got && got.geo === rt.geo) return got;
+  const geo = rt.geo;
+  const plan = sidewalkPlan(track, { doorX: rt.doorX, width: rt.width, doorXs: rt.doorXs }, partyEnter(sc, track));
   const segs = track.segments;
   const last = segs[segs.length - 1];
   const from = Math.min(plan?.from ?? Infinity, segs[0]?.t0 ?? Infinity);
@@ -141,31 +151,4 @@ export function placeSlots(slots: readonly Slot[], list: readonly SlotAt[]): voi
       setIf(slot.inner, 'opacity', p.pop.opacity);
     }
   });
-}
-
-// ---------- Plafond des figurants ----------
-// Clients de la scène pour spriteBudget : chaque client visible dans la minute qui vient compte 1, avec son parti ; `served` :
-// en plein geste dans la vitrine (à l'instant `t`, ou à sa première apparition dans la minute).
-export function sceneBudgetOf(shops: readonly { rt: ShopRt }[], t: number): BudgetSprite[] {
-  const out: BudgetSprite[] = [];
-  for (const { rt } of shops) {
-    if (rt.still || !rt.open) continue;
-    const p = rt.plan;
-    const sec = t + rt.offset;
-    const n = slotIndexAt(p.type, sec);
-    for (let idx = Math.max(0, n - 1); idx <= n + 1; idx++) {
-      const sc = peekScore(p, idx, slotGate(p, idx, sec, rt.gate));
-      if (!sc) continue;
-      const tIn = sec - sc.start;
-      for (const track of sc.tracks) {
-        if (track.role !== 'customer') continue;
-        const info = infoOf(track, rt);
-        if (info.to < tIn || info.from > tIn + 60) continue;
-        const v = trackAt(track, Math.max(tIn, info.from));
-        const inside = v.where === 'inside';
-        out.push({ id: track.id, kind: 'customer', x: inside ? rt.winX + v.x : rt.doorX, party: track.party ?? track.id, served: inside && v.gait !== 'walk' && !free(v.arms) });
-      }
-    }
-  }
-  return out;
 }

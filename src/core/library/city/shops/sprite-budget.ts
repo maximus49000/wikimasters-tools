@@ -5,10 +5,11 @@
 // terrasse), l'équipe du chantier, les déménageurs et leur camion, les videurs et la file de la boîte de nuit — ils portent
 // l'histoire du commerce (un local ouvert n'est jamais vide, la file avance). Passants, habitants et véhicules relèvent du
 // budget de la 1a et ne passent pas par ici.
-// G4b : 52 par 720 px (les scènes des commerces sont plus peuplées) ; les clients d'un même parti (`party`) partent ensemble,
-// jamais un parti dont un membre est servi (`served`) dans le tiers central de la vue.
+// G4b (Ghibli seulement) : 52 par 720 px (les scènes des commerces sont plus peuplées) ; les clients d'un même parti (`party`)
+// partent ensemble, jamais un parti dont un membre est servi (`served`) dans le tiers central de la vue.
 
-export const SHOP_SPRITE_CAP = 52;
+export const SHOP_SPRITE_CAP = 40;
+export const GHIBLI_SHOP_SPRITE_CAP = 52;
 // Largeur de référence du plafond (même référence que les budgets de la 1a : par 720 px de monde).
 export const CAP_WIDTH = 720;
 
@@ -17,8 +18,8 @@ export type SpriteClass = 'keep' | 'customer' | 'terrace';
 // `party` : parti du client (retiré entier ; absent : seul) ; `served` : en pleine interaction (servi, à la caisse…).
 export type BudgetSprite = { id: string; kind: SpriteClass; x: number; weight?: number; party?: string; served?: boolean };
 
-// Plafond pour une scène de `width` px : SHOP_SPRITE_CAP par 720 px, jamais moins que SHOP_SPRITE_CAP.
-export const capFor = (width: number): number => Math.round(SHOP_SPRITE_CAP * Math.max(1, width / CAP_WIDTH));
+// Plafond pour une scène de `width` px : `base` (SHOP_SPRITE_CAP, ou GHIBLI_SHOP_SPRITE_CAP en Ghibli) par 720 px, jamais moins.
+export const capFor = (width: number, base = SHOP_SPRITE_CAP): number => Math.round(base * Math.max(1, width / CAP_WIDTH));
 
 // Ids à retirer pour que le total tienne sous `cap` (ou, si la classe `keep` le dépasse seule, tout ce qui peut l'être).
 // Retrait par parti entier (le plus loin du centre d'abord, distance de son membre le plus proche) ; un parti dont un membre
