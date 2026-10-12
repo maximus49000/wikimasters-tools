@@ -5,13 +5,16 @@ import { add3, mul3, type V3 } from './geometry';
 // Allures : debout, petits pas sur place (demi-tour), marche, assis, escalade (face à l'échelle), à vélo (`pedal`, pieds sur
 // le pédalier) et en selle (`mount`, cheval ou moto : jambes le long du flanc). La hauteur du bassin est fixée par la jambe
 // d'appui : le rebond du buste vient tout seul et le pied d'appui touche toujours le sol. En selle, le bassin est à RIDE_HIP
-// et le site pose l'accroche `seat` (bassin) sur la selle de son dessin.
-export type Gait = 'stand' | 'step' | 'walk' | 'seated' | 'climb' | 'pedal' | 'mount';
+// et le site pose l'accroche `seat` (bassin) sur la selle de son dessin. Accroupi (`crouch`, G4b : ramasser au sol) : les
+// deux jambes pliées pareil, genoux vers l'avant, pieds à plat et écartés, bassin à ≈ 55 % de la hauteur debout, buste penché.
+export type Gait = 'stand' | 'step' | 'walk' | 'seated' | 'climb' | 'pedal' | 'mount' | 'crouch';
 export const YAWS = 16;
 export const PHASES = 12;
 // Distance parcourue (unités du pantin) pendant un cycle complet de marche (deux pas) : règle la phase sur le déplacement.
 export const STRIDE = 23;
-const AMPLITUDE: Record<Gait, number> = { stand: 0, step: 0.35, walk: 1, seated: 0, climb: 1, pedal: 0, mount: 0 };
+const AMPLITUDE: Record<Gait, number> = { stand: 0, step: 0.35, walk: 1, seated: 0, climb: 1, pedal: 0, mount: 0, crouch: 0 };
+// Accroupi : cuisse à 60° vers l'avant, genou plié à 120° (maquette G4b, `crouch` = 1), jambes écartées de 60 %, buste à 25°.
+const CROUCH = { thigh: 60, knee: 120, spread: 1.6, lean: 25 } as const;
 // Hauteur du bassin en selle ; pédalier (centre devant `f` et sous `d` la hanche, rayon `r`) ; une phase = 1/12 de tour.
 export const RIDE_HIP = 13;
 export const PEDAL = { f: 3.2, d: 11, r: 2.4 } as const;
@@ -36,8 +39,18 @@ export type PoseOpts = { headYaw?: number; umbrella?: boolean; arms?: ArmPose; l
 
 // Cortège et cyclistes (G3c) : `handlebar` (guidon, rênes), `horn` (trompette, clairon à la bouche), `rifle` (crosse tenue
 // devant la hanche, bras gauche qui balance), `flag` (hampe tenue devant la poitrine, bras gauche qui balance).
-export type ArmPose = 'swing' | 'down' | 'reach' | 'hold' | 'up' | 'work' | 'crossed' | 'raise' | 'cheer' | 'cup' | 'carry' | 'overhead' | 'tow' | 'guitar' | 'mic' | 'drum' | 'handlebar' | 'horn' | 'rifle' | 'flag';
-export const ARM_POSES: readonly ArmPose[] = ['swing', 'down', 'reach', 'hold', 'up', 'work', 'crossed', 'raise', 'cheer', 'cup', 'carry', 'overhead', 'tow', 'guitar', 'mic', 'drum', 'handlebar', 'horn', 'rifle', 'flag'];
+// Commerces (G4b, portés de la cinématique inverse de la maquette du 2026-10-12) : gestes d'employés et de clients. Les gestes
+// animés ont leurs poses clés en variantes `-1` / `-2` (le metteur en scène alterne) : essuyer, s'étirer, trinquer, emballer,
+// ciseaux. `pick` va avec l'allure `crouch` (main droite vers le sol).
+export type ArmPose =
+  | 'swing' | 'down' | 'reach' | 'hold' | 'up' | 'work' | 'crossed' | 'raise' | 'cheer' | 'cup' | 'carry' | 'overhead' | 'tow' | 'guitar' | 'mic' | 'drum' | 'handlebar' | 'horn' | 'rifle' | 'flag'
+  | 'give' | 'take' | 'point' | 'chin' | 'wave' | 'beckon' | 'pay-card' | 'pay-cash' | 'wipe-1' | 'wipe-2' | 'shelve' | 'phone' | 'yawn' | 'stretch-1' | 'stretch-2' | 'read' | 'toast-1' | 'toast-2'
+  | 'weigh' | 'wrap-1' | 'wrap-2' | 'scissors-1' | 'scissors-2' | 'shampoo' | 'taste' | 'sniff' | 'pour' | 'notepad' | 'plates' | 'mirror' | 'frames' | 'hold-child' | 'tug' | 'sneeze' | 'pick';
+export const ARM_POSES: readonly ArmPose[] = [
+  'swing', 'down', 'reach', 'hold', 'up', 'work', 'crossed', 'raise', 'cheer', 'cup', 'carry', 'overhead', 'tow', 'guitar', 'mic', 'drum', 'handlebar', 'horn', 'rifle', 'flag',
+  'give', 'take', 'point', 'chin', 'wave', 'beckon', 'pay-card', 'pay-cash', 'wipe-1', 'wipe-2', 'shelve', 'phone', 'yawn', 'stretch-1', 'stretch-2', 'read', 'toast-1', 'toast-2',
+  'weigh', 'wrap-1', 'wrap-2', 'scissors-1', 'scissors-2', 'shampoo', 'taste', 'sniff', 'pour', 'notepad', 'plates', 'mirror', 'frames', 'hold-child', 'tug', 'sneeze', 'pick',
+];
 // Penché vers l'avant par niveau (gestes des commerces).
 export const LEAN_DEG = 8;
 type T3 = readonly [number, number, number];
@@ -65,6 +78,42 @@ const TARGETS: Readonly<Record<ArmPose, readonly [T3 | null, T3 | null]>> = {
   horn: [[5, 4, -3.2], [6.2, 4.4, -2.6]],
   rifle: [null, [3.5, -7, -1.5]],
   flag: [null, [9, -1, -0.3]],
+  // Commerces (G4b). Maquette : cibles depuis le bassin, l latéral ; ici depuis l'épaule (u − 10,6, o = |l| − 4,2).
+  give: [DOWN, [9.5, -3.5, -2.2]], // tend un objet, main à hauteur de poitrine
+  take: [DOWN, [7.5, -5.5, -2]], // prend un objet posé (plus bas, plus près)
+  point: [DOWN, [11.3, -2, -0.3]], // bras tendu qui désigne
+  chin: [DOWN, [4.4, 2.2, -3.4]], // main au menton (hésite)
+  wave: [DOWN, [2.5, 5.5, 3.5]], // salue, main levée à côté de la tête
+  beckon: [DOWN, [3.5, 9.5, 1.5]], // appelle, bras tendu au-dessus de la tête
+  'pay-card': [DOWN, [8.5, -5, -2.2]], // carte posée sur le terminal
+  'pay-cash': [[0.5, -8.4, 0.6], [7.5, -6, -1.5]], // main gauche à la poche, billets tendus
+  'wipe-1': [[7, -6.5, -0.5], [9.2, -6.5, -2.4]], // essuie le comptoir, chiffon loin
+  'wipe-2': [[7, -6.5, -0.5], [6.2, -6.2, 1.8]], // … chiffon ramené sur le côté
+  shelve: [DOWN, [7, 6.5, -0.5]], // range en rayon, main en hauteur devant
+  phone: [DOWN, [2.6, 5.2, 0.4]], // téléphone à l'oreille
+  yawn: [[1.5, -9.5, 2.5], [4.5, 2.8, -2.8]], // bâille, main devant la bouche, l'autre bras s'écarte
+  'stretch-1': [[2, 7, 5], [2, 7, 5]], // s'étire, bras écartés en V
+  'stretch-2': [[0.5, 11.6, 0.8], [0.5, 11.6, 0.8]], // … bras tendus au ciel
+  read: [[5.5, -1.1, -1.7], [5.5, -0.6, -2.7]], // livre ou carte tenu à deux mains devant la poitrine
+  'toast-1': [DOWN, [5.5, -3.5, -1.5]], // verre à la poitrine
+  'toast-2': [DOWN, [7.5, 2.5, -1.5]], // … verre levé en avant
+  weigh: [[7.5, -4.6, -1.2], [7.5, -5.6, -1.2]], // pèse, mains au-dessus de la balance
+  'wrap-1': [[8.8, -5.8, -1.7], [5.4, -5.2, -1.7]], // emballe, main gauche en avant
+  'wrap-2': [[5.4, -5.2, -1.7], [8.8, -5.8, -1.7]], // … main droite en avant
+  'scissors-1': [[6, 2.4, -0.4], [8, 2.2, -3]], // coupe la tête du client assis (à hauteur d'épaule), ciseaux ouverts
+  'scissors-2': [[6, 2.4, -0.4], [7.6, 1, -2.2]], // … ciseaux fermés
+  shampoo: [[8.5, 1.8, 0.6], [6.5, 2, 0.6]], // deux mains sur la tête du client renversée au bac
+  taste: [DOWN, [4.4, 2.6, -2.8]], // goûte, main à la bouche
+  sniff: [DOWN, [5.6, 1.6, -3]], // sent, objet sous le nez
+  pour: [[7, -4.6, -1.7], [6.5, 1.4, -4]], // verse : verre tenu, bouteille levée au-dessus
+  notepad: [[6, -2.6, -2], [6.3, -1.8, -3.4]], // écrit sur le carnet
+  plates: [[7, -2.5, 1.5], [7, -2.5, 1.5]], // porte des assiettes, deux mains en avant, écartées
+  mirror: [DOWN, [5, 3.5, 4]], // tend le miroir, bras écarté à hauteur de visage
+  frames: [[4.2, 3.2, 0.2], [4.2, 3.2, 0.2]], // essaie des lunettes, mains aux tempes
+  'hold-child': [DOWN, [3.2, -6.5, 3.5]], // tient la main d'un enfant, bras écarté vers le bas
+  tug: [DOWN, [6, 3, 1.5]], // enfant qui tire la manche, main levée vers l'adulte
+  sneeze: [DOWN, [4.2, 3.4, -2.4]], // éternue, main devant le visage, coude sorti
+  pick: [[6, -7, 0.5], [7.5, -18.6, -2.2]], // ramasse au sol (allure `crouch`), bras droit vers le sol
 };
 // side : -1 bras gauche (l < 0), +1 bras droit.
 export const armTarget = (pose: ArmPose, side: -1 | 1): T3 | null => TARGETS[pose][side < 0 ? 0 : 1];
@@ -95,10 +144,13 @@ export function poseOf(yaw: number, phase: number, gait: Gait, opts: PoseOpts = 
   const w = AMPLITUDE[gait];
   const seated = gait === 'seated';
   const climb = gait === 'climb';
+  const crouch = gait === 'crouch';
   const ride = riding(gait);
   const armsPose = opts.arms ?? 'swing';
   const leanLevel = Math.max(0, Math.min(2, opts.lean ?? 0));
   const legAngles = (ph: number): [number, number] => {
+    // Accroupi : les deux jambes pliées pareil, sans phase ; le bassin descend avec la jambe d'appui (≈ 55 % de debout).
+    if (crouch) return [CROUCH.thigh * D, CROUCH.knee * D];
     if (climb) {
       // Montée de barreau en barreau : la cuisse monte et le genou se plie ensemble, en alternance.
       const t = (30 + 30 * Math.sin(ph)) * D;
@@ -113,12 +165,13 @@ export function poseOf(yaw: number, phase: number, gait: Gait, opts: PoseOpts = 
   const reach = ([th, k]: [number, number]): number => LIMB.thigh * Math.cos(th) + LIMB.shin * Math.cos(th - k);
   // Escalade : le site place le pantin sur les barreaux, le bassin reste à la hauteur de jambe tendue.
   const hipY = ride ? RIDE_HIP : seated ? LIMB.shin + LIMB.ankle + 0.6 : climb ? LIMB.thigh + LIMB.shin + LIMB.ankle : Math.max(reach(A), reach(B)) + LIMB.ankle;
-  const lean = ((ride ? RIDE_LEAN[gait] : seated ? 2 : climb ? 4 : 3 * w) + leanLevel * LEAN_DEG) * D;
+  const lean = ((ride ? RIDE_LEAN[gait] : seated ? 2 : climb ? 4 : crouch ? CROUCH.lean : 3 * w) + leanLevel * LEAN_DEG) * D;
   const pelvisTurn = seated || climb || ride ? 0 : w * 6 * Math.sin(phase) * D;
   const shoulderTurn = seated || climb || ride ? 0 : -w * 7 * Math.sin(phase) * D;
   const pelvis: V3 = [0, hipY, 0];
   const off = (rot: number, l: number): V3 => add3(mul3(fr.R, l * Math.cos(rot)), mul3(fr.F, -l * Math.sin(rot)));
-  const legs = ([[A, -2.1], [B, 2.1]] as const).map(([[th, k], l], i) => {
+  const spread = crouch ? CROUCH.spread : 1;
+  const legs = ([[A, -2.1 * spread], [B, 2.1 * spread]] as const).map(([[th, k], l], i) => {
     const hip = add3(pelvis, off(pelvisTurn, l));
     if (gait === 'pedal') {
       // Cheville sur le cercle du pédalier (sens de la marche : le pied passe en haut vers l'avant), pieds en opposition ;
@@ -138,7 +191,8 @@ export function poseOf(yaw: number, phase: number, gait: Gait, opts: PoseOpts = 
     const knee = at(hip, fr, LIMB.thigh * Math.sin(th), -LIMB.thigh * Math.cos(th), l * 0.05);
     const sa = th - k;
     const ankle = at(knee, fr, LIMB.shin * Math.sin(sa), -LIMB.shin * Math.cos(sa), 0);
-    const a = seated ? 0 : sa * 0.6;
+    // Pied à plat assis et accroupi (le tibia plié ferait plonger la pointe sous le sol).
+    const a = seated || crouch ? 0 : sa * 0.6;
     const toe = at(ankle, fr, 3.0 * Math.cos(a), 3.0 * Math.sin(a) - 0.6, 0);
     return { hip, knee, ankle, toe, l };
   }) as [Leg, Leg];
