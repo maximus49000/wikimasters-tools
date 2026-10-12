@@ -51,4 +51,10 @@ describe('sélection en pile', () => {
     const alone: Layout = [{ id: 'x', kind: 'chair', col: 20, row: 15 }];
     expect(nextInStack(alone, 'x', 'x')).toBeNull();
   });
+  it('un objet hors pile (tapis, petit objet) déjà sélectionné se désélectionne aussi', () => {
+    const lone: Layout = [{ id: 'r', kind: 'rug', col: 2, row: 15 }, { id: 'o', kind: 'lamp', col: 20, row: 15 }];
+    expect(stackAt(lone, 'r')).toEqual(['r']);
+    expect(nextInStack(lone, 'r', 'r')).toBeNull();
+    expect(nextInStack(lone, 'o', 'o')).toBeNull();
+  });
 });

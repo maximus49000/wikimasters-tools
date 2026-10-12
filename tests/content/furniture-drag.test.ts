@@ -75,13 +75,12 @@ describe('dropTargetFor', () => {
     expect(dropTargetFor(layout, COLS, 'f1', 0, 14).ok).toBe(true);
   });
 
-  it('refuse sur le mur, hors pièce et sur un autre meuble', () => {
+  it('refuse sur le mur et hors pièce, accepte sur un autre meuble (autre niveau)', () => {
     const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 7 }, desk('f2', 10, 11)];
     expect(dropTargetFor(layout, COLS, 'f1', 5, 10)).toMatchObject({ ok: false, reason: 'floor' });
     expect(dropTargetFor(layout, COLS, 'f1', -2, 14)).toMatchObject({ ok: false, reason: 'bounds' });
-    const clash = dropTargetFor(layout, COLS, 'f1', 10, 14);
-    expect(clash).toMatchObject({ ok: false, reason: 'taken' });
-    expect(clash.cells.length).toBeGreaterThan(0);
+    // Sur un autre meuble, la pose reste valide tant qu'un niveau est libre (le meuble passe devant ou derrière).
+    expect(dropTargetFor(layout, COLS, 'f1', 10, 14).ok).toBe(true);
   });
 
   it('ordinateur : valide sur un bureau libre, refusé ailleurs ou sur un bureau occupé', () => {

@@ -46,7 +46,8 @@ export function stackAt(layout: Layout, id: string): string[] {
   const back = layout.filter((p) => p.kind === 'window' || p.kind === 'wall');
   const candidates = [...back, ...drawOrder(layout)];
   const ids = candidates.filter((p) => p.id === id || overlaps(rectOf(p)!, targetRect)).map((p) => p.id);
-  return ids.reverse();
+  // Hors pile (tapis, petit objet, ordinateur, carte rangée) : seul, pour que le toucher répété le désélectionne.
+  return ids.includes(id) ? ids.reverse() : [id];
 }
 
 // Toucher un objet déjà choisi de la pile passe à celui de derrière ; au bout de la pile, retour au premier ; seul, il se désélectionne.
