@@ -134,12 +134,16 @@ function nextDayOf(p: ShopPlan, dir: 1 | -1): ShopPlan {
 export const eveOf = (p: ShopPlan): ShopPlan => nextDayOf(p, -1);
 export const lastSlot = (p: ShopPlan): number => slotIndexAt(p.type, DAY_S - 1);
 // Créneau `idx` (rang depuis le début du jour du plan : −1 = dernier de la veille, au-delà du dernier = lendemain) : plan, rang
-// dans son jour, décalage à ajouter aux secondes du jour du plan pour celles de ce jour.
-export function slotRef(p: ShopPlan, idx: number): { plan: ShopPlan; index: number; dt: number } {
+// dans son jour, décalage à ajouter aux secondes du jour du plan pour celles de ce jour. Lu par la boucle à chaque image : un
+// seul objet réutilisé (à lire aussitôt, jamais à garder).
+type SlotRef = { plan: ShopPlan; index: number; dt: number };
+const ref: SlotRef = { plan: null as unknown as ShopPlan, index: 0, dt: 0 };
+export function slotRef(p: ShopPlan, idx: number): Readonly<SlotRef> {
   const per = lastSlot(p) + 1;
-  if (idx < 0) return { plan: eveOf(p), index: idx + per, dt: DAY_S };
-  if (idx >= per) return { plan: nextDayOf(p, 1), index: idx - per, dt: -DAY_S };
-  return { plan: p, index: idx, dt: 0 };
+  ref.plan = idx < 0 ? eveOf(p) : idx >= per ? nextDayOf(p, 1) : p;
+  ref.index = idx < 0 ? idx + per : idx >= per ? idx - per : idx;
+  ref.dt = idx < 0 ? DAY_S : idx >= per ? -DAY_S : 0;
+  return ref;
 }
 
 export const peekScore = (p: ShopPlan, index: number, gate: number): Score | null => cache.peek(keyOf(p, index, gate));

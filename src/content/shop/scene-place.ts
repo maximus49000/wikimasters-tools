@@ -345,9 +345,9 @@ function placeShop(st: ShopState, rt: ShopRt, t: number, horns: readonly Horn[],
   }
   // Rideau baissé : la vitrine (employés, clients dedans) est cachée — le rideau roulant la couvre —, les clients admis continuent.
   setIf(st.win, 'visibility', rt.open ? 'visible' : 'hidden');
-  const cur = slotRef(p, n);
-  const scN = rt.still ? null : peekScore(cur.plan, cur.index, slotGate(cur.plan, cur.index, rt.gate, rt.open));
-  placeStaff(st, rt, scN, sec + cur.dt - slotStart(p.type, cur.index), sec, t, horns, figures, out);
+  const { plan: pn, index: iN, dt: dN } = slotRef(p, n);
+  const scN = rt.still ? null : peekScore(pn, iN, slotGate(pn, iN, rt.gate, rt.open));
+  placeStaff(st, rt, scN, sec + dN - slotStart(p.type, iN), sec, t, horns, figures, out);
   st.seen.length = 0;
   const seen = rt.still ? st.seen : visible(rt, n, sec, st.seen);
   const tick = ++st.tick;
