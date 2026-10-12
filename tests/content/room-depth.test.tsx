@@ -85,3 +85,12 @@ describe('RoomView : niveaux de profondeur', () => {
     expect(copy.querySelector('[data-id]')).toBeNull();
   });
 });
+
+describe('RoomView : ombre de contact', () => {
+  it('ombre de contact seulement là où un objet est derrière', () => {
+    const svg = mount();
+    expect(svg.querySelector('[data-contact-shadow="tab"]')).not.toBeNull();
+    const alone = mount({ layout: [{ id: 'x', kind: 'chair', col: 20, row: 15 }] });
+    expect(alone.querySelector('[data-contact-shadow]')).toBeNull();
+  });
+});

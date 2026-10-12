@@ -398,8 +398,37 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     </g>
   );
   // Un groupe par meuble debout (même s'il n'est pas dessiné) : `behind` compte des meubles de `drawOrder`.
-  const middle: ReactElement[] = drawOrder(room.layout).map((p) => (
+  // Ombre de contact : juste avant un meuble, une ombre nette décalée de 5 px, découpée aux seuls objets de niveau inférieur
+  // qu'elle touche (fenêtres, objets accrochés, meubles plus au fond). Sans objet derrière, pas d'ombre. Aucun flou (coûteux sur Android).
+  const order = drawOrder(room.layout);
+  const contactShadow = (p: Placed): ReactElement | null => {
+    const cells = rectOf(p);
+    if (!cells) return null;
+    const r = pxRect(cells);
+    const sx = r.x + 5;
+    const sy = r.y + 5;
+    const mine = depthOf(room.layout, p);
+    const behindRects: PxRect[] = [];
+    for (const o of room.layout) {
+      if (o.id === p.id || !(o.kind === 'window' || o.kind === 'wall' || (isStanding(o) && o.kind !== 'rug' && order.includes(o)))) continue;
+      if (depthOf(room.layout, o) >= mine) continue;
+      const oc = rectOf(o);
+      if (!oc) continue;
+      const b = pxRect(oc);
+      if (b.x < sx + r.w && b.x + b.w > sx && b.y < sy + r.h && b.y + b.h > sy) behindRects.push(b);
+    }
+    if (behindRects.length === 0) return null;
+    const id = `${worldId}-cs-${p.id}`;
+    return (
+      <g key={`cs-${p.id}`}>
+        <clipPath id={id}>{behindRects.map((b, i) => <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} />)}</clipPath>
+        <rect data-contact-shadow={p.id} x={sx} y={sy} width={r.w} height={r.h} rx={3} fill={palette.text} fillOpacity={0.18} clipPath={`url(#${id})`} style={{ pointerEvents: 'none' }} />
+      </g>
+    );
+  };
+  const middle: ReactElement[] = order.map((p) => (
     <g key={`depth-${p.id}`} data-depth={depthOf(room.layout, p)}>
+      {contactShadow(p)}
       {renderPlaced(p)}
       {carriedOf(p.id)}
     </g>
