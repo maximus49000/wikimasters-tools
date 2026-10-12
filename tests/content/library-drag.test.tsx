@@ -181,3 +181,23 @@ describe('déplacement par appui long', () => {
     expect(q('[role="status"]')?.textContent).toContain('déjà');
   });
 });
+
+describe('déplacement par appui long : objets superposés', () => {
+  it('l’appui long sur l’objet sélectionné derrière déplace celui-ci, pas celui de devant', async () => {
+    await repo.update((state) => ({
+      ...state,
+      rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [{ id: 'sh', kind: 'shelf', col: 0, row: 10 }, { id: 'arm', kind: 'armchair', col: 1, row: 13 }] } : r)),
+    }));
+    await settle();
+    await click('[data-action="edit"]');
+    await click('[data-id="arm"]');
+    await click('[data-id="arm"]');
+    // L'étagère est sélectionnée et redessinée devant ; l'appui arrive pourtant au fauteuil.
+    await longPress('[data-id="arm"]', 45, 390);
+    await pointer('pointermove', window, 345, 390);
+    await pointer('pointerup', window, 345, 390);
+    await settle();
+    expect(layoutNow().find((p) => p.id === 'arm')).toMatchObject({ col: 1, row: 13 });
+    expect(layoutNow().find((p) => p.id === 'sh')).not.toMatchObject({ col: 0, row: 10 });
+  });
+});

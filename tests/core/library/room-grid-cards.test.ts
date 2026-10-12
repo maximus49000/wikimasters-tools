@@ -32,15 +32,15 @@ describe('objets accrochés', () => {
     expect(canHang(layout, 24, 'vinyl', 3, 5)).toMatchObject({ ok: false, reason: 'taken' });
   });
 
-  it('refuse derrière une étagère', () => {
+  it('accepte derrière une étagère (niveau 0, le mur)', () => {
     const layout = placeStanding([], 24, 'shelf', 2, 7, 'f1')!;
     expect(canHang(layout, 24, 'vinyl', 2, 4).ok).toBe(true);
-    expect(canHang(layout, 24, 'vinyl', 2, 6)).toMatchObject({ ok: false, reason: 'taken' });
+    expect(canHang(layout, 24, 'vinyl', 2, 6).ok).toBe(true);
   });
 
-  it('un meuble ne se pose pas sur un objet accroché', () => {
+  it('un meuble se pose devant un objet accroché (niveaux différents)', () => {
     const layout = hang([], 24, 'poster', 2, 8, 'A', 'f1')!;
-    expect(placeStanding(layout, 24, 'shelf', 2, 7, 'f2')).toBeNull();
+    expect(placeStanding(layout, 24, 'shelf', 2, 7, 'f2')).not.toBeNull();
   });
 
   it('se déplace, sans se bloquer lui-même', () => {

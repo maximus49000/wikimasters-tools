@@ -1,7 +1,7 @@
 import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
-import { sizeOf } from '../core/library/furniture-catalog';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
+import { drawOrder } from '../core/library/depth-order';
 import { boxesOf, lampsOf, layoutSignature } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
@@ -193,45 +193,52 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     );
   }
 
-  function renderPlaced(placed: Placed): ReactElement | null {
-    let rect: PxRect;
-    let art: ReactElement;
-    let liftedArt: ReactElement | undefined;
+  // Dessin d'un meuble, d'une fenêtre, d'un ordinateur ou d'un petit objet, et son rectangle ; `null` si rien à dessiner.
+  // `liftedArt` : dessin de la copie soulevée quand il diffère (la fenêtre emporte sa vue).
+  function artOf(placed: Placed): { rect: PxRect; art: ReactElement; liftedArt?: ReactElement } | null {
     if (placed.kind === 'computer') {
       const desk = deskRects.get(placed.deskId);
       if (!desk) return null;
-      rect = computerRect(desk);
+      const rect = computerRect(desk);
       const screenUrl = placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined;
-      art = steampunk ? <AnalyticalEngineArt rect={rect} imageUrl={screenUrl} /> : <ComputerArt rect={rect} imageUrl={screenUrl} />;
-    } else if (placed.kind === 'small') {
+      return { rect, art: steampunk ? <AnalyticalEngineArt rect={rect} imageUrl={screenUrl} /> : <ComputerArt rect={rect} imageUrl={screenUrl} /> };
+    }
+    if (placed.kind === 'small') {
       const hostRect = hostRects.get(placed.hostId);
       const host = room.layout.find((p) => p.id === placed.hostId);
       if (!hostRect || (host?.kind !== 'desk' && host?.kind !== 'shelf')) return null;
-      rect = surfaceSlotRect(hostRect, SURFACE_SLOTS[host.kind], placed.slot);
-      art = <SmallArt item={placed.item} rect={rect} palette={palette} lit={isLit(placed)} />;
-    } else if (placed.kind === 'window') {
-      rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
-      // Le cadre seul : le décor est déjà derrière (calque des vues). La copie soulevée, elle, recopie le décor par `<use>`.
-      art = <WindowArt rect={rect} palette={palette} steampunk={steampunk} />;
-      liftedArt = <WindowArt rect={rect} palette={palette} steampunk={steampunk} view worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />;
-    } else {
-      const cells = rectOf(placed);
-      if (!cells || !isStanding(placed)) return null;
-      rect = pxRect(cells);
-      if (placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton') {
-        // Meubles exclusifs Steampunk : une donnée abîmée dans une autre pièce n'est pas dessinée.
-        if (!steampunk) return null;
-        art = <SteampunkArt kind={placed.kind} rect={rect} palette={palette} />;
-      } else if (placed.kind === 'shelf') {
-        art = <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} />;
-      } else if (steampunk && (placed.kind === 'desk' || placed.kind === 'armchair' || placed.kind === 'lamp')) {
-        art = <SteampunkArt kind={placed.kind} rect={rect} palette={palette} lit={isLit(placed)} />;
-      } else if (placed.kind === 'desk') {
-        art = <DeskArt rect={rect} palette={palette} />;
-      } else {
-        art = <HomeArt kind={placed.kind} rect={rect} palette={palette} lit={isLit(placed)} />;
-      }
+      const rect = surfaceSlotRect(hostRect, SURFACE_SLOTS[host.kind], placed.slot);
+      return { rect, art: <SmallArt item={placed.item} rect={rect} palette={palette} lit={isLit(placed)} /> };
     }
+    if (placed.kind === 'window') {
+      const rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
+      // Le cadre seul : le décor est déjà derrière (calque des vues). La copie soulevée, elle, recopie le décor par `<use>`.
+      return {
+        rect,
+        art: <WindowArt rect={rect} palette={palette} steampunk={steampunk} />,
+        liftedArt: <WindowArt rect={rect} palette={palette} steampunk={steampunk} view worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />,
+      };
+    }
+    const cells = rectOf(placed);
+    if (!cells || !isStanding(placed)) return null;
+    const rect = pxRect(cells);
+    if (placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton') {
+      // Meubles exclusifs Steampunk : une donnée abîmée dans une autre pièce n'est pas dessinée.
+      if (!steampunk) return null;
+      return { rect, art: <SteampunkArt kind={placed.kind} rect={rect} palette={palette} /> };
+    }
+    if (placed.kind === 'shelf') return { rect, art: <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} /> };
+    if (steampunk && (placed.kind === 'desk' || placed.kind === 'armchair' || placed.kind === 'lamp')) {
+      return { rect, art: <SteampunkArt kind={placed.kind} rect={rect} palette={palette} lit={isLit(placed)} /> };
+    }
+    if (placed.kind === 'desk') return { rect, art: <DeskArt rect={rect} palette={palette} /> };
+    return { rect, art: <HomeArt kind={placed.kind} rect={rect} palette={palette} lit={isLit(placed)} /> };
+  }
+
+  function renderPlaced(placed: Placed): ReactElement | null {
+    const drawn = artOf(placed);
+    if (!drawn) return null;
+    const { rect, art, liftedArt } = drawn;
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
     // Un ordinateur suit aussi son bureau soulevé.
     const lifted = drag !== null && (drag.id === placed.id || (placed.kind === 'computer' && drag.id === placed.deskId) || (placed.kind === 'small' && drag.id === placed.hostId));
@@ -269,33 +276,6 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       </g>
     );
   }
-
-  // Ordre de dessin : les tapis en dessous, puis les meubles du plus loin au plus proche (bas le plus haut d'abord),
-  // puis les ordinateurs sur les bureaux ; les objets accrochés viennent ensuite, puis les petits objets par-dessus.
-  const standing = room.layout.filter(isStanding);
-  const bottomRow = (p: (typeof standing)[number]): number => p.row + sizeOf(p.kind).h;
-  const sortedStanding = standing.filter((p) => p.kind !== 'rug').sort((a, b) => bottomRow(a) - bottomRow(b));
-  // À rang égal, l'animal le plus loin (pieds les plus hauts) est inséré en dernier au même indice, donc dessiné en premier.
-  // Les chats s'insèrent au rang `behind` parmi les meubles triés : derrière ceux dont le bas est plus bas que ses pieds, devant les autres.
-  // Un chat perché sur un bureau ou une étagère (`top`) se dessine après les ordinateurs et les petits objets.
-  const petNode = (v: PetView): ReactElement => (
-    <g key={`pet-${v.id}`} data-pet={v.id} ref={(el) => petAttach?.(v.id, el)} onClick={() => onPetTap?.(v.id)} style={{ cursor: 'pointer', pointerEvents: editing ? 'none' : 'auto' }}>
-      <PetSprite species={v.species} coat={v.coat} pose={v.pose} facing={v.facing} name={v.name} still={v.still} />
-    </g>
-  );
-  const middle: (ReactElement | null)[] = sortedStanding.map(renderPlaced);
-  for (const v of [...pets].filter((p) => !p.top).sort((a, b) => b.behind - a.behind || (b.depthY ?? 0) - (a.depthY ?? 0))) middle.splice(Math.min(v.behind, middle.length), 0, petNode(v));
-  const topPets = pets.filter((p) => p.top).map(petNode);
-  // Le nom et les cœurs : tout en haut, au-dessus de tout le reste de la pièce.
-  const bubbles = pets.filter((p) => p.pose === 'purr' || p.pose === 'beep').map((v) => (
-    <g key={`bubble-${v.id}`} data-pet-bubble={v.id} ref={(el) => petAttach?.(`${v.id}${BUBBLE}`, el)}>
-      <PetBubble name={v.name} still={v.still} />
-    </g>
-  ));
-  const backLayer = [...windows, ...standing.filter((p) => p.kind === 'rug')];
-  const computers = room.layout.filter((p) => p.kind === 'computer');
-  // Les petits objets (bande de 44 px au-dessus de leur porteur) passent devant les objets accrochés au mur.
-  const smalls = room.layout.filter((p) => p.kind === 'small');
 
   // Objet touchable (accroché, rangé ou écran) : mêmes gestes que les meubles, pour pouvoir le déplacer.
   function cardGroup(placed: Placed, slug: string, rect: PxRect, art: ReactElement, extra: Record<string, string> = {}): ReactElement {
@@ -336,40 +316,155 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     const rect = rectOf(placed);
     if (rect && placed.kind === 'shelf') shelfRects.set(placed.id, pxRect(rect));
   }
-  const wallLayer: ReactElement[] = [];
-  const cardLayer: ReactElement[] = [];
-  for (const placed of room.layout) {
-    if (placed.kind !== 'wall') continue;
+  // Dessin d'un objet accroché au mur et son rectangle ; `clipKey` nomme ses clipPath (la copie de sélection a les siens).
+  function wallArtOf(placed: Extract<Placed, { kind: 'wall' }>, clipKey = placed.id): { rect: PxRect; art: ReactElement } | null {
     const cells = rectOf(placed);
-    if (!cells) continue;
+    if (!cells) return null;
     const rect = pxRect(cells);
     const info = cards[placed.slug];
-    wallLayer.push(
-      cardGroup(placed, placed.slug, rect, <WallArt rect={rect} shape={placed.shape} color={placed.color} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} id={placed.id} />),
-    );
+    return { rect, art: <WallArt rect={rect} shape={placed.shape} color={placed.color} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} id={clipKey} /> };
   }
+
+  // Objet touchable d'un placement : objet accroché, objet rangé, ou écran d'ordinateur (touchable seulement quand une carte y est affichée).
+  function cardArtOf(placed: Placed): { slug: string; rect: PxRect; art: ReactElement; extra?: Record<string, string> } | null {
+    if (placed.kind === 'wall') {
+      const drawn = wallArtOf(placed);
+      return drawn && { slug: placed.slug, ...drawn };
+    }
+    if (placed.kind === 'stored') {
+      const shelf = shelfRects.get(placed.shelfId);
+      const rect = shelf ? shelfSlots(shelf)[placed.slot] : undefined;
+      if (!rect) return null;
+      const info = cards[placed.slug];
+      return { slug: placed.slug, rect, art: <ShelfItemArt rect={rect} shape={placed.shape} slug={placed.slug} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} /> };
+    }
+    if (placed.kind === 'computer' && placed.slug) {
+      const desk = deskRects.get(placed.deskId);
+      if (!desk) return null;
+      const full = computerRect(desk);
+      const rect = { x: full.x + 5, y: full.y + 5, w: full.w - 10, h: full.h - 12 - 10 };
+      const missing = !cards[placed.slug];
+      return { slug: placed.slug, rect, art: missing ? <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="#1D1D22" /> : <g />, extra: { 'data-screen': placed.id } };
+    }
+    return null;
+  }
+  function cardOf(placed: Placed): ReactElement | null {
+    const drawn = cardArtOf(placed);
+    return drawn && cardGroup(placed, drawn.slug, drawn.rect, drawn.art, drawn.extra);
+  }
+
+  // Objets portés par chaque meuble, dans l'ordre où ils se dessinent juste après lui :
+  // ordinateur, petits objets, objets rangés, puis l'écran de l'ordinateur (zone touchable par-dessus). Un seul passage sur le plan.
+  const carried = new Map<string, { computers: Placed[]; smalls: Placed[]; stored: Placed[] }>();
   for (const placed of room.layout) {
-    if (placed.kind !== 'stored') continue;
-    const shelf = shelfRects.get(placed.shelfId);
-    const rect = shelf ? shelfSlots(shelf)[placed.slot] : undefined;
-    if (!rect) continue;
-    const info = cards[placed.slug];
-    cardLayer.push(
-      cardGroup(placed, placed.slug, rect, <ShelfItemArt rect={rect} shape={placed.shape} slug={placed.slug} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} />),
-    );
+    const hostId = placed.kind === 'computer' ? placed.deskId : placed.kind === 'small' ? placed.hostId : placed.kind === 'stored' ? placed.shelfId : null;
+    if (hostId === null) continue;
+    const entry = carried.get(hostId) ?? { computers: [], smalls: [], stored: [] };
+    (placed.kind === 'computer' ? entry.computers : placed.kind === 'small' ? entry.smalls : entry.stored).push(placed);
+    carried.set(hostId, entry);
   }
-  // Écran d'ordinateur : touchable seulement quand une carte y est affichée.
-  for (const placed of room.layout) {
-    if (placed.kind !== 'computer' || !placed.slug) continue;
-    const desk = deskRects.get(placed.deskId);
-    if (!desk) continue;
-    const full = computerRect(desk);
-    const rect = { x: full.x + 5, y: full.y + 5, w: full.w - 10, h: full.h - 12 - 10 };
-    const missing = !cards[placed.slug];
-    cardLayer.push(
-      cardGroup(placed, placed.slug, rect, missing ? <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="#1D1D22" /> : <g />, { 'data-screen': placed.id }),
+  const carriedOf = (hostId: string): (ReactElement | null)[] => {
+    const entry = carried.get(hostId);
+    if (!entry) return [];
+    return [...entry.computers.map(renderPlaced), ...entry.smalls.map(renderPlaced), ...entry.stored.map(cardOf), ...entry.computers.map(cardOf)];
+  };
+  // Dessins seuls des objets portés (même ordre), pour la copie de sélection : ni `data-id` ni gestes.
+  const carriedArtOf = (hostId: string): ReactElement[] => {
+    const entry = carried.get(hostId);
+    if (!entry) return [];
+    const copy = (placed: Placed, art: ReactElement | undefined, faded = false, tag = ''): ReactElement[] =>
+      art ? [<g key={`copy-${tag}${placed.id}`} data-copy-of={placed.id} opacity={faded ? 0.35 : undefined}>{art}</g>] : [];
+    const card = (placed: Placed, tag = ''): ReactElement[] => {
+      const drawn = cardArtOf(placed);
+      return drawn ? copy(placed, drawn.art, !cards[drawn.slug], tag) : [];
+    };
+    return [
+      ...entry.computers.flatMap((p) => copy(p, artOf(p)?.art)),
+      ...entry.smalls.flatMap((p) => copy(p, artOf(p)?.art)),
+      ...entry.stored.flatMap((p) => card(p)),
+      ...entry.computers.flatMap((p) => card(p, 'screen-')),
+    ];
+  };
+
+  // Ordre de dessin : les tapis en dessous, puis le niveau 0 (fenêtres, objets accrochés), puis les meubles par niveau
+  // (1 à 3) et, dans un niveau, du plus loin au plus proche (bas le plus haut d'abord). Chaque meuble est suivi de ses objets portés.
+  const rugs = room.layout.filter((p) => isStanding(p) && p.kind === 'rug').map((p) => (
+    <g key={`depth-${p.id}`} data-depth={depthOf(room.layout, p)}>{renderPlaced(p)}</g>
+  ));
+  const wallLevel = (
+    <g key="depth-wall" data-depth={0}>
+      {windows.map(renderPlaced)}
+      {room.layout.map((p) => (p.kind === 'wall' ? cardOf(p) : null))}
+    </g>
+  );
+  // Un groupe par meuble debout (même s'il n'est pas dessiné) : `behind` compte des meubles de `drawOrder`.
+  // Ombre de contact : juste avant un meuble, une ombre nette décalée de 5 px, découpée aux seuls objets de niveau inférieur
+  // qu'elle touche (fenêtres, objets accrochés, meubles plus au fond). Sans objet derrière, pas d'ombre. Aucun flou (coûteux sur Android).
+  const order = drawOrder(room.layout);
+  const contactShadow = (p: Placed): ReactElement | null => {
+    const cells = rectOf(p);
+    if (!cells) return null;
+    const r = pxRect(cells);
+    const sx = r.x + 5;
+    const sy = r.y + 5;
+    const mine = depthOf(room.layout, p);
+    const behindRects: PxRect[] = [];
+    for (const o of room.layout) {
+      if (o.id === p.id || !(o.kind === 'window' || o.kind === 'wall' || (isStanding(o) && o.kind !== 'rug' && order.includes(o)))) continue;
+      if (depthOf(room.layout, o) >= mine) continue;
+      const oc = rectOf(o);
+      if (!oc) continue;
+      const b = pxRect(oc);
+      if (b.x < sx + r.w && b.x + b.w > sx && b.y < sy + r.h && b.y + b.h > sy) behindRects.push(b);
+    }
+    if (behindRects.length === 0) return null;
+    const id = `${worldId}-cs-${p.id}`;
+    return (
+      <g key={`cs-${p.id}`}>
+        <clipPath id={id}>{behindRects.map((b, i) => <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} />)}</clipPath>
+        <rect data-contact-shadow={p.id} x={sx} y={sy} width={r.w} height={r.h} rx={3} fill={palette.text} fillOpacity={0.18} clipPath={`url(#${id})`} style={{ pointerEvents: 'none' }} />
+      </g>
     );
-  }
+  };
+  const middle: ReactElement[] = order.map((p) => (
+    <g key={`depth-${p.id}`} data-depth={depthOf(room.layout, p)}>
+      {contactShadow(p)}
+      {renderPlaced(p)}
+      {carriedOf(p.id)}
+    </g>
+  ));
+  // À rang égal, l'animal le plus loin (pieds les plus hauts) est inséré en dernier au même indice, donc dessiné en premier.
+  // Les chats s'insèrent au rang `behind` parmi les meubles (avec leurs objets portés) dans l'ordre de dessin.
+  // Un chat perché sur un bureau ou une étagère (`top`) se dessine après tous les meubles et leurs objets.
+  const petNode = (v: PetView): ReactElement => (
+    <g key={`pet-${v.id}`} data-pet={v.id} ref={(el) => petAttach?.(v.id, el)} onClick={() => onPetTap?.(v.id)} style={{ cursor: 'pointer', pointerEvents: editing ? 'none' : 'auto' }}>
+      <PetSprite species={v.species} coat={v.coat} pose={v.pose} facing={v.facing} name={v.name} still={v.still} />
+    </g>
+  );
+  for (const v of [...pets].filter((p) => !p.top).sort((a, b) => b.behind - a.behind || (b.depthY ?? 0) - (a.depthY ?? 0))) middle.splice(Math.min(v.behind, middle.length), 0, petNode(v));
+  const topPets = pets.filter((p) => p.top).map(petNode);
+  // Le nom et les cœurs : tout en haut, au-dessus de tout le reste de la pièce.
+  const bubbles = pets.filter((p) => p.pose === 'purr' || p.pose === 'beep').map((v) => (
+    <g key={`bubble-${v.id}`} data-pet-bubble={v.id} ref={(el) => petAttach?.(`${v.id}${BUBBLE}`, el)}>
+      <PetBubble name={v.name} still={v.still} />
+    </g>
+  ));
+
+  // Objet sélectionné (meuble debout ou objet du mur) : redessiné par-dessus les meubles, avec son contour, pour rester visible
+  // même caché par un meuble de devant. Sans `data-id` ni gestes : le toucher passe à travers jusqu'à l'objet lui-même.
+  const selected = editing && selectedId ? room.layout.find((p) => p.id === selectedId) : undefined;
+  const selectedDrawn = !selected ? null
+    : selected.kind === 'wall' ? wallArtOf(selected, `${selected.id}-selected`)
+    : selected.kind === 'window' || (isStanding(selected) && selected.kind !== 'rug') ? artOf(selected)
+    : null;
+  // Un porteur sélectionné (étagère, bureau) emporte ses objets dans la copie : sinon son dessin opaque les cacherait.
+  const selectedCopy = selectedDrawn && selected && (
+    <g key="selected-copy" data-selected-copy="" pointer-events="none">
+      {selectedDrawn.art}
+      {carriedArtOf(selected.id)}
+      {outline(selectedDrawn.rect)}
+    </g>
+  );
 
   const cells: ReactElement[] = [];
   if (editing) {
@@ -470,13 +565,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         ))}
         </>
       )}
-      {backLayer.map(renderPlaced)}
-      {wallLayer}
+      {rugs}
+      {wallLevel}
       {middle}
-      {computers.map(renderPlaced)}
-      {smalls.map(renderPlaced)}
+      {selectedCopy}
       {topPets}
-      {cardLayer}
       {/* Sans fenêtre à ciel (calque « sans ciel ») il n'y a rien à montrer tant qu'aucune lampe n'est allumée : pas de calque à 4 Hz. */}
       {light && ((weatherOn && windows.length > 0) || lightLamps.length > 0) && (
         <LightLayer windows={weatherOn ? glasses : NO_GLASS} width={width} height={HEIGHT} wallH={wallH} sky={view.sky} clock={view.weather?.clock ?? STILL_CLOCK} boxes={lightBoxes} lamps={lightLamps} signature={lightSignature} getPetBoxes={getPetBoxes} />

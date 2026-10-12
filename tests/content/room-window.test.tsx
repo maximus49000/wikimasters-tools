@@ -91,7 +91,7 @@ describe('RoomView — fenêtres', () => {
     }
     // Le calque des vues est dessiné avant les cadres.
     const all = Array.from(container.querySelectorAll('svg > *'));
-    expect(all.indexOf(views)).toBeLessThan(all.indexOf(container.querySelector('[data-furniture="window"]')!.parentElement!));
+    expect(all.indexOf(views)).toBeLessThan(all.indexOf(container.querySelector('[data-furniture="window"]')!.closest('[data-depth]')!));
   });
 
   it('la vue est découpée par UN seul rectangle (englobant), sans clipPath', () => {
