@@ -19,7 +19,7 @@ import { figurePalette, hideFigure, poseFigure } from '../figure/ghibli-figure';
 import { pictoLook } from './picto';
 import { peekScore, pumpScore, slotGate } from './scene-scores';
 import {
-  HAND_L, STAFF_SCALE, anchorAt, free, headOf, hornHead, infoOf, partySize, placeSlots, runtimes, setIf, slotsOf, staffTrack, turnOn,
+  HAND_L, STAFF_SCALE, anchorAt, free, headOf, hornHead, infoOf, partySize, placeSlots, pooledSlotsOf, runtimes, setIf, slotsOf, staffTrack, turnOn,
   type ShopRt, type Slot, type SlotAt,
 } from './scene-read';
 
@@ -94,9 +94,9 @@ function bind(st: ShopState, el: Element): boolean {
     st.front = front;
   }
   // Emplacements relus à chaque collecte : un objet nouvellement vu s'y ajoute par re-rendu (sans remontage).
-  st.props = slotsOf(win, '[data-prop-slot]', 'data-scene-prop');
+  st.props = pooledSlotsOf(win, '[data-prop-slot]', '[data-prop-pool]', 'data-scene-prop', st.props);
   st.worn = slotsOf(win, '[data-worn-slot]', 'data-worn-yaw');
-  st.carry = slotsOf(el, '[data-carry-slot]', 'data-scene-prop');
+  st.carry = pooledSlotsOf(el, '[data-carry-slot]', '[data-carry-pool]', 'data-scene-prop', st.carry);
   st.pictos = slotsOf(el, '[data-picto-slot]', 'data-picto-glyph', '[data-picto-pop]');
   return true;
 }

@@ -196,7 +196,9 @@ export const SceneActors = memo(SceneActorsView);
 export function ScenePanorama(props: PanoramaProps): ReactElement {
   // Cache des sprites du pantin (Ghibli) propre à cet affichage.
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
-  const figures = useMemo(() => new FigureRegistry(`pf${uid}`), [uid]);
+  // Plafond de sprites : la rue Ghibli des commerces (gestes des employés et des clients, G4b) dépasse 1 500 poses en vue
+  // à midi ; au-delà du plafond le cache tourne et repeint sans cesse. Le classique n'en approche pas.
+  const figures = useMemo(() => new FigureRegistry(`pf${uid}`, { max: 2400 }), [uid]);
   const cars = useMemo(() => new CarRegistry(`pc${uid}`), [uid]);
   const shops = useMemo(() => new ShopRegistry(`ps${uid}`), [uid]);
   return (

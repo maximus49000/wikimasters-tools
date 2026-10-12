@@ -126,24 +126,55 @@ export function anchorAt(key: FigureKey, anchor: Anchor, x: number, y: number, k
   const p = a[anchor];
   return [x + p[0] * k, y + p[1] * k];
 }
-// Emplacement partagé : un exemplaire caché de chaque dessin, un seul visible, posé à l'accroche de qui le porte.
-export type Slot = { node: Element; inner: Element; items: Map<string, Element>; shown: string | null };
+// Emplacement partagé : un exemplaire caché de chaque dessin, un seul visible, posé à l'accroche de qui le porte. Emplacement
+// à réserve (`pool`) : les dessins vivent dans une réserve cachée de la boutique (rendue par React, jamais déplacée) ; la
+// boucle en clone une copie par emplacement et par dessin à la première demande (`clones`), posée dans l'emplacement.
+export type Slot = { node: Element; inner: Element; items: Map<string, Element>; shown: string | null; pooled: boolean; cur: Element | null; clones: Map<string, Element> };
 // Ce qu'un emplacement montre à cette image : dessin `id` au point (x, y) de son calque, échelle `k` ; `pop` : saut du picto.
 export type SlotAt = { id: string; x: number; y: number; k: number; pop?: { transform: string; opacity: string } };
 export const slotsOf = (root: Element, sel: string, item: string, inner?: string): Slot[] =>
   [...root.querySelectorAll(`:scope > ${sel}`)].map((node) => {
     const items = new Map<string, Element>();
     for (const n of node.querySelectorAll(`[${item}]`)) items.set(n.getAttribute(item)!, n);
-    return { node, inner: (inner ? node.querySelector(inner) : null) ?? node, items, shown: null };
+    return { node, inner: (inner ? node.querySelector(inner) : null) ?? node, items, shown: null, pooled: false, cur: null, clones: new Map() };
   });
+// Emplacements à réserve (`poolSel` : la réserve, sœur des emplacements) ; `prev` : les emplacements de la collecte précédente
+// (leurs clones sont gardés tant que la réserve est la même, oubliés si elle a été re-rendue : autre ciel, autres objets).
+export function pooledSlotsOf(root: Element, sel: string, poolSel: string, item: string, prev: readonly Slot[]): Slot[] {
+  const pool = root.querySelector(`:scope > ${poolSel}`);
+  const items = new Map<string, Element>();
+  if (pool) for (const n of pool.querySelectorAll(`[${item}]`)) items.set(n.getAttribute(item)!, n);
+  return [...root.querySelectorAll(`:scope > ${sel}`)].map((node, i) => {
+    const old = prev[i];
+    if (old && old.node === node && old.items.size === items.size && [...items].every(([k, v]) => old.items.get(k) === v)) return old;
+    if (old?.cur) old.cur.remove();
+    return { node, inner: node, items, shown: null, pooled: true, cur: null, clones: new Map() };
+  });
+}
 export function placeSlots(slots: readonly Slot[], list: readonly SlotAt[]): void {
   slots.forEach((slot, i) => {
     const p = list[i];
     setIf(slot.node, 'display', p ? 'inline' : 'none');
     const id = p ? p.id : null;
     if (slot.shown !== id) {
-      if (slot.shown) setIf(slot.items.get(slot.shown) ?? null, 'display', 'none');
-      if (id) setIf(slot.items.get(id) ?? null, 'display', 'inline');
+      if (slot.pooled) {
+        if (slot.cur) slot.cur.remove();
+        slot.cur = null;
+        if (id) {
+          let el = slot.clones.get(id) ?? null;
+          if (!el) {
+            const base = slot.items.get(id);
+            if (base) slot.clones.set(id, (el = base.cloneNode(true) as Element));
+          }
+          if (el) {
+            slot.node.appendChild(el);
+            slot.cur = el;
+          }
+        }
+      } else {
+        if (slot.shown) setIf(slot.items.get(slot.shown) ?? null, 'display', 'none');
+        if (id) setIf(slot.items.get(id) ?? null, 'display', 'inline');
+      }
       slot.shown = id;
     }
     if (!p) return;

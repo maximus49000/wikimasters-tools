@@ -68,11 +68,13 @@ const useStepSky = (sky: Sky): Sky => {
   return useMemo(() => ({ ...sky, daylight: q }), [q]);
 };
 
+// Réserve d'objets d'une boutique : un exemplaire caché de chaque objet vu dans ses partitions ; la boucle en clone une
+// copie dans l'emplacement qui le montre (un seul jeu de nœuds par boutique, pas un par emplacement).
 function PropSet({ ids, sky, accessory }: { ids: readonly PropId[]; sky: Sky; accessory: string | null }): ReactElement {
   return (
     <>
       {ids.map((id) => (
-        <g key={id} data-scene-prop={id} display="none">
+        <g key={id} data-scene-prop={id}>
           <PropSpriteMemo id={id} sky={sky} accessory={accessory} />
         </g>
       ))}
@@ -106,10 +108,11 @@ const ShopNodes = memo(
             ))}
           </g>
           <g data-scene-front="" />
+          <g data-prop-pool="" display="none">
+            <PropSet ids={ids} sky={inSky} accessory={accessory} />
+          </g>
           {Array.from({ length: PROP_SLOTS }, (_, i) => (
-            <g key={i} data-prop-slot={i} display="none">
-              <PropSet ids={ids} sky={inSky} accessory={accessory} />
-            </g>
+            <g key={i} data-prop-slot={i} display="none" />
           ))}
           {ids.includes('frames') &&
             Array.from({ length: WORN_SLOTS }, (_, i) => (
@@ -147,12 +150,12 @@ const ShopNodes = memo(
             </svg>
           </Fragment>
         ))}
-        {carried.length > 0 &&
-          Array.from({ length: CARRY_SLOTS }, (_, i) => (
-            <g key={i} data-carry-slot={i} display="none">
-              <PropSet ids={carried} sky={sky} accessory={accessory} />
-            </g>
-          ))}
+        {carried.length > 0 && (
+          <g data-carry-pool="" display="none">
+            <PropSet ids={carried} sky={sky} accessory={accessory} />
+          </g>
+        )}
+        {carried.length > 0 && Array.from({ length: CARRY_SLOTS }, (_, i) => <g key={i} data-carry-slot={i} display="none" />)}
       </g>
     );
   },
