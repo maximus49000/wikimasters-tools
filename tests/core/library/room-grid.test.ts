@@ -16,6 +16,8 @@ import {
   pxRect,
   rectOf,
   removeFurniture,
+  screenCols,
+  fitsWithin,
   sectionIsEmpty,
   shelfSlots,
   shiftLayout,
@@ -154,5 +156,22 @@ describe('rectangles en pixels', () => {
       expect(s.x + s.w).toBeLessThanOrEqual(shelf.x + shelf.w);
       expect(s.y + s.h).toBeLessThanOrEqual(shelf.y + shelf.h);
     }
+  });
+});
+
+describe('largeur adaptée à l écran', () => {
+  it('compte les colonnes qui remplissent l écran à la hauteur de la pièce', () => {
+    expect(screenCols(2400, 1080)).toBe(38); // 20:9
+    expect(screenCols(1920, 1080)).toBe(30); // 16:9
+    expect(screenCols(1000, 1000)).toBe(MIN_COLS);
+    expect(screenCols(10000, 1000)).toBe(MAX_COLS);
+    expect(screenCols(0, 0)).toBe(MIN_COLS);
+  });
+
+  it('sait si aucun meuble ne dépasse une largeur', () => {
+    const layout: Layout = [{ id: 'w1', kind: 'window', col: 30, row: 0, w: 8, h: 5 }];
+    expect(fitsWithin(layout, 38)).toBe(true);
+    expect(fitsWithin(layout, 37)).toBe(false);
+    expect(fitsWithin([], 24)).toBe(true);
   });
 });
