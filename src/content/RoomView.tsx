@@ -326,17 +326,17 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   }
 
   // Objet touchable d'un placement : objet accroché, objet rangé, ou écran d'ordinateur (touchable seulement quand une carte y est affichée).
-  function cardOf(placed: Placed): ReactElement | null {
+  function cardArtOf(placed: Placed): { slug: string; rect: PxRect; art: ReactElement; extra?: Record<string, string> } | null {
     if (placed.kind === 'wall') {
       const drawn = wallArtOf(placed);
-      return drawn && cardGroup(placed, placed.slug, drawn.rect, drawn.art);
+      return drawn && { slug: placed.slug, ...drawn };
     }
     if (placed.kind === 'stored') {
       const shelf = shelfRects.get(placed.shelfId);
       const rect = shelf ? shelfSlots(shelf)[placed.slot] : undefined;
       if (!rect) return null;
       const info = cards[placed.slug];
-      return cardGroup(placed, placed.slug, rect, <ShelfItemArt rect={rect} shape={placed.shape} slug={placed.slug} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} />);
+      return { slug: placed.slug, rect, art: <ShelfItemArt rect={rect} shape={placed.shape} slug={placed.slug} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} /> };
     }
     if (placed.kind === 'computer' && placed.slug) {
       const desk = deskRects.get(placed.deskId);
@@ -344,9 +344,13 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       const full = computerRect(desk);
       const rect = { x: full.x + 5, y: full.y + 5, w: full.w - 10, h: full.h - 12 - 10 };
       const missing = !cards[placed.slug];
-      return cardGroup(placed, placed.slug, rect, missing ? <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="#1D1D22" /> : <g />, { 'data-screen': placed.id });
+      return { slug: placed.slug, rect, art: missing ? <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="#1D1D22" /> : <g />, extra: { 'data-screen': placed.id } };
     }
     return null;
+  }
+  function cardOf(placed: Placed): ReactElement | null {
+    const drawn = cardArtOf(placed);
+    return drawn && cardGroup(placed, drawn.slug, drawn.rect, drawn.art, drawn.extra);
   }
 
   // Objets portés par chaque meuble, dans l'ordre où ils se dessinent juste après lui :
@@ -363,6 +367,23 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     const entry = carried.get(hostId);
     if (!entry) return [];
     return [...entry.computers.map(renderPlaced), ...entry.smalls.map(renderPlaced), ...entry.stored.map(cardOf), ...entry.computers.map(cardOf)];
+  };
+  // Dessins seuls des objets portés (même ordre), pour la copie de sélection : ni `data-id` ni gestes.
+  const carriedArtOf = (hostId: string): ReactElement[] => {
+    const entry = carried.get(hostId);
+    if (!entry) return [];
+    const copy = (placed: Placed, art: ReactElement | undefined, faded = false, tag = ''): ReactElement[] =>
+      art ? [<g key={`copy-${tag}${placed.id}`} data-copy-of={placed.id} opacity={faded ? 0.35 : undefined}>{art}</g>] : [];
+    const card = (placed: Placed, tag = ''): ReactElement[] => {
+      const drawn = cardArtOf(placed);
+      return drawn ? copy(placed, drawn.art, !cards[drawn.slug], tag) : [];
+    };
+    return [
+      ...entry.computers.flatMap((p) => copy(p, artOf(p)?.art)),
+      ...entry.smalls.flatMap((p) => copy(p, artOf(p)?.art)),
+      ...entry.stored.flatMap((p) => card(p)),
+      ...entry.computers.flatMap((p) => card(p, 'screen-')),
+    ];
   };
 
   // Ordre de dessin : les tapis en dessous, puis le niveau 0 (fenêtres, objets accrochés), puis les meubles par niveau
@@ -407,9 +428,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     : selected.kind === 'wall' ? wallArtOf(selected, `${selected.id}-selected`)
     : selected.kind === 'window' || (isStanding(selected) && selected.kind !== 'rug') ? artOf(selected)
     : null;
-  const selectedCopy = selectedDrawn && (
+  // Un porteur sélectionné (étagère, bureau) emporte ses objets dans la copie : sinon son dessin opaque les cacherait.
+  const selectedCopy = selectedDrawn && selected && (
     <g key="selected-copy" data-selected-copy="" pointer-events="none">
       {selectedDrawn.art}
+      {carriedArtOf(selected.id)}
       {outline(selectedDrawn.rect)}
     </g>
   );
