@@ -81,7 +81,9 @@ export class ShopRegistry {
     readonly label: string,
     opts: { max?: number; perFrame?: number; schedule?: (cb: () => void) => void } = {},
   ) {
-    this.max = opts.max ?? 120;
+    // 4 calques Ghibli par boutique (fond, mobilier, vitre, façade) × ~60 boutiques de la rue la plus large
+    // (MAX_COLS) + marge : le plafond ne doit jamais évincer la vitre/façade, sinon les murs disparaissent.
+    this.max = opts.max ?? 400;
     this.perFrame = opts.perFrame ?? 1;
     this.schedule = opts.schedule ?? ((cb) => void requestAnimationFrame(() => cb()));
   }
