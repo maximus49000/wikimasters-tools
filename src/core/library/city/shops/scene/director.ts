@@ -16,7 +16,13 @@ import type { Party, Score, SlotKey, StreetState } from './types';
 // boutique au repos. À chaque pas : prises de poste, arrivées à la porte, échéance de fermeture, temps des services, regard
 // au passage d'un bus, puis chaque acteur libre joue ses actes en attente ou décide (behaviors/*). Sortie : la partition (segments par acteur) et un
 // journal lisible. Fonction pure de l'entrée : même créneau, même graine → même partition. Appelant : vérifier `inScene`.
-export type DirectorInput = { key: SlotKey; frame: ShopFrame; staff: { id: string; outfit: Outfit; present: [number, number] }[]; parties: Party[]; street: StreetState };
+// Employé du créneau : `present` = sa première plage (s du créneau), `later` = les suivantes (retour de pause) ; `rank` = rang dans
+// la liste du jour (poste, renfort : stables d'un créneau à l'autre ; défaut : rang dans `staff`). Bornes (défauts : ce créneau
+// seul) : `fromBack` = à l'arrière-boutique à la fin du créneau précédent (renfort en réserve, ou pas encore là) : il entre par
+// le fond au lieu d'être à son poste à t = 0 ; `leaves` = absent au début du créneau suivant (plage finie pile à la borne) :
+// il rentre à l'arrière-boutique avant la fin.
+export type DirectorStaff = { id: string; outfit: Outfit; present: [number, number]; later?: [number, number][]; rank?: number; fromBack?: boolean; leaves?: boolean };
+export type DirectorInput = { key: SlotKey; frame: ShopFrame; staff: DirectorStaff[]; parties: Party[]; street: StreetState };
 
 // Part du créneau à partir de laquelle on écourte (plus de flânerie, l'indécis renonce, l'employé accélère).
 const CLOSING_SHARE = 0.85;

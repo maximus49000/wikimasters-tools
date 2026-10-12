@@ -251,10 +251,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ghibli, shops.views, shops.frames, shifts, seed, city.minutes, still]);
   const sceneIds = useMemo(() => new Set(sceneShops.map((x) => x.view.slot.id)), [sceneShops]);
-  // Affluence G4b (CUSTOMER_SCALE) : rideau levé seulement, nulle en mouvement réduit.
+  // Affluence G4b (CUSTOMER_SCALE) : fonction de la minute, lue par la scène à la minute de DÉBUT de chaque créneau (même
+  // distribution au rechargement, dans une autre fenêtre, pour le créneau suivant précalculé) ; intensité du moment. Rideau
+  // levé seulement, nulle en mouvement réduit.
   const sceneGates = useMemo(
-    () => new Map(sceneShops.map((x) => [x.view.slot.id, still || !x.open ? 0 : customerGate(x.view, city.minutes, intensity, CUSTOMER_SCALE)])),
-    [sceneShops, still, city.minutes, intensity],
+    () => new Map(sceneShops.map((x) => [x.view.slot.id, still || !x.open ? 0 : (m: number) => customerGate(x.view, m, intensity, CUSTOMER_SCALE)])),
+    [sceneShops, still, intensity],
   );
   // Rue d'un créneau : pluie connue seulement à l'instant (averse dès le début du créneau, ou pas), défilé du 14 juillet, parapluies.
   const sceneDayFests = useMemo(() => city.day.festivities.map((f) => f.id), [city.day]);

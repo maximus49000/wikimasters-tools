@@ -315,7 +315,9 @@ describe('ShopScene : fermeture, affluence, partis, remontage, plafond (G4b, rev
     const next = sceneParties(slot.id, SEED, DAY + 1)!;
     expect(next).not.toBeNull();
     expect(next.refused.size).toBe(0);
-    for (const p of today.admitted) expect(next.admitted.has(p) && today.refused.has(p)).toBe(false);
+    // Rien n'est hérité de la veille : les admis du lendemain sont exactement les partis en vue à cet instant.
+    expect(next).not.toBe(today);
+    expect([...next.admitted].sort()).toEqual([...new Set(expected(host, s - 120).values())].sort());
   });
   it('réserve épuisée : jamais un demi-parti ; un parti refusé n’apparaît jamais', () => {
     const s = busyMoment();

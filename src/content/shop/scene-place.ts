@@ -17,7 +17,7 @@ import { placeSill } from '../door-passage';
 import type { FigureRegistry } from '../figure/figure-host';
 import { figurePalette, hideFigure, poseFigure } from '../figure/ghibli-figure';
 import { pictoLook } from './picto';
-import { peekScore, pumpScore, slotGate } from './scene-scores';
+import { peekScore, pumpScore, slotGate, slotRef } from './scene-scores';
 import {
   HAND_L, STAFF_SCALE, anchorAt, free, headOf, hornHead, infoOf, partySize, placeSlots, pooledSlotsOf, runtimes, setIf, slotsOf, staffTrack, turnOn,
   type ShopRt, type Slot, type SlotAt,
@@ -39,19 +39,24 @@ type StaffNode = { id: string; clip: Element; body: Element; fig: Element | null
 type Look = { sig: string; pk: string };
 // Ce que montrent les emplacements d'une boutique à cette image (rempli par les poses, appliqué à la fin).
 type Shown = { props: SlotAt[]; worn: SlotAt[]; carry: SlotAt[]; pictos: SlotAt[] };
-type Seen = { track: ActorTrack; v: ActorView; side: SidewalkView | null; carry: PropId | null; sc: Score };
+// `dt` : piste d'un créneau de la veille (> 0) ou du lendemain (< 0), lue autour de minuit (slotRef).
+type Seen = { track: ActorTrack; v: ActorView; side: SidewalkView | null; carry: PropId | null; sc: Score; dt: number };
 type ShopState = {
   el: Element | null; rt: ShopRt | null; win: Element | null; entries: Entry[]; staff: StaffNode[]; back: Element | null; front: Element | null;
   props: Slot[]; worn: Slot[]; carry: Slot[]; pictos: Slot[];
   assign: Map<string, Entry>; admitted: Set<string>; refused: Set<string>; partyTick: Map<string, number>; muted: ReadonlySet<string>;
   looks: Map<string, Look>; tick: number; seen: Seen[]; out: Shown;
+  // Nœuds hérités pas encore remis à neuf (nouvel état lié à des nœuds déjà montés : lendemain, autre graine ; remontage).
+  fresh: boolean;
 };
 export type SceneNodes = { shops: { st: ShopState; rt: ShopRt }[] };
-// Emplacements par boutique : objets en main dans la vitrine, objets emportés sur le trottoir.
-export const PROP_SLOTS = 3;
+// Emplacements par boutique : un objet en main par acteur de la vitrine (chaque client de la réserve et chaque employé du jour),
+// un objet emporté par client de la réserve sur le trottoir — jamais d'objet qui manque faute de place (bar, café : dix verres
+// et tasses à la fois). Emplacements vides (<g> sans enfant) tant qu'ils ne servent pas ; le dessin est cloné à la demande.
+export const propSlotsFor = (pool: number, staff: number): number => pool + staff;
+export const carrySlotsFor = (pool: number): number => pool;
 // Hanches d'un pantin assis au-dessus de ses pieds (skeleton : jambe repliée).
 const SEAT_HIP = LIMB.shin + LIMB.ankle + 0.6;
-export const CARRY_SLOTS = 2;
 
 // État de la boucle par local, graine et jour (affectations, partis admis ou refusés ; les ids de partis ne portent ni la graine
 // ni le jour) : survit aux re-rendus ET aux remontages ; un autre jour ou une autre ville repart d'un état neuf.
@@ -63,7 +68,7 @@ const figOf = (holder: Element | null): Element | null => holder?.querySelector(
 const newState = (): ShopState => ({
   el: null, rt: null, win: null, entries: [], staff: [], back: null, front: null, props: [], worn: [], carry: [], pictos: [],
   assign: new Map(), admitted: new Set(), refused: new Set(), partyTick: new Map(), muted: NO_MUTED, looks: new Map(), tick: 0, seen: [],
-  out: { props: [], worn: [], carry: [], pictos: [] },
+  out: { props: [], worn: [], carry: [], pictos: [] }, fresh: true,
 });
 
 // (Re)lie l'état d'un local à ses nœuds. Nouveaux nœuds (remontage) : mêmes affectations par rang de nœud, tant que la réserve
@@ -74,6 +79,9 @@ function bind(st: ShopState, el: Element): boolean {
   const front = win?.querySelector(':scope > [data-scene-front]');
   if (!win || !back || !front) return false;
   if (st.el !== el) {
+    // Emplacements hérités d'un autre état (lendemain sur les mêmes nœuds) : copies d'objets retirées, pictos et montures cachés.
+    for (const n of el.querySelectorAll('[data-prop-slot], [data-carry-slot]')) n.replaceChildren();
+    for (const n of el.querySelectorAll('[data-picto-glyph], [data-worn-yaw]')) n.setAttribute('display', 'none');
     const streets = el.querySelectorAll(':scope > [data-scene-street]');
     const doors = el.querySelectorAll(':scope > svg[data-scene-door]');
     const inners = [...back.querySelectorAll(':scope > [data-scene-actor]')];
@@ -89,6 +97,7 @@ function bind(st: ShopState, el: Element): boolean {
       return { id: clip.getAttribute('data-scene-staff')!, clip, body, fig: figOf(body) };
     });
     st.el = el;
+    st.fresh = true;
     st.win = win;
     st.back = back;
     st.front = front;
@@ -110,8 +119,9 @@ export function collectScene(root: Element): SceneNodes {
     const key = stateKey(rt);
     let st = states.get(key);
     if (!st) {
-      // Les états d'autres jours ou d'autres graines du même local sont oubliés.
-      for (const k of states.keys()) if (k.endsWith(`|${rt.plan.id}`)) states.delete(k);
+      // Les états des autres jours ou graines du même local montés sur ces nœuds, ou sur des nœuds démontés, sont oubliés (pas
+      // ceux du même id dans une autre vue encore montée) ; le nouvel état remet à neuf les nœuds qu'il hérite (`fresh`).
+      for (const [k, old] of states) if (old.el === el || (k.endsWith(`|${rt.plan.id}`) && old.el !== null && !old.el.isConnected)) states.delete(k);
       if (states.size >= STATES_MAX) states.delete(states.keys().next().value!);
       states.set(key, (st = newState()));
     }
@@ -275,26 +285,31 @@ function placeCustomer(st: ShopState, rt: ShopRt, e: Entry, a: Seen, t: number, 
   }
 }
 
-// Clients visibles à `sec` (s du jour) dans les créneaux N−1, N, N+1 déjà calculés (rangés dans `into`, réutilisé).
+// Clients visibles à `sec` (s du jour) dans les créneaux N−1, N, N+1 déjà calculés (rangés dans `into`, réutilisé) ; au premier
+// créneau du jour, N−1 est le dernier de la veille (ses clients finissent leur visite et repartent).
 function visible(rt: ShopRt, n: number, sec: number, into: Seen[]): Seen[] {
   into.length = 0;
-  const p = rt.plan;
-  for (let idx = Math.max(0, n - 1); idx <= n + 1; idx++) {
-    const sc = peekScore(p, idx, slotGate(p, idx, rt.gate, rt.open));
+  for (let idx = n - 1; idx <= n + 1; idx++) {
+    const { plan: p, index, dt } = slotRef(rt.plan, idx);
+    const sc = peekScore(p, index, slotGate(p, index, rt.gate, rt.open));
     if (!sc) continue;
-    const tIn = sec - sc.start;
+    const tIn = sec + dt - sc.start;
     for (const track of sc.tracks) {
       if (track.role !== 'customer') continue;
       const info = infoOf(track, rt, sc);
       if (tIn < info.from || tIn > info.to) continue;
       const v = trackAt(track, tIn);
       const side = v.where === 'inside' || !info.plan ? null : sidewalkAt(info.plan, tIn);
-      if (v.where === 'inside' || side) into.push({ track, v, side, carry: info.carry, sc });
+      if (v.where === 'inside' || side) into.push({ track, v, side, carry: info.carry, sc, dt });
     }
   }
   return into;
 }
 
+// Parti (ou acteur) d'une piste pour l'admission : ceux de la veille (`~`) et du lendemain (`+`) sont marqués, les ids ne portant
+// pas le jour.
+const dayMark = (dt: number): string => (dt > 0 ? '~' : dt < 0 ? '+' : '');
+const partyKey = (track: ActorTrack, dt: number): string => dayMark(dt) + (track.party ?? track.id);
 const freeCount = (st: ShopState): number => st.entries.reduce((c, x) => c + (x.party === null ? 1 : 0), 0);
 // Admission d'un parti à sa première vue : rideau levé, pas retenu par le plafond et la réserve libre le tient entier ; ses
 // nœuds lui sont réservés. Refusé, il ne sera jamais montré (ni apparition en pleine rue, ni parti coupé en deux).
@@ -323,10 +338,16 @@ function placeShop(st: ShopState, rt: ShopRt, t: number, horns: readonly Horn[],
   const out = st.out;
   out.props.length = out.worn.length = out.carry.length = out.pictos.length = 0;
   const n = slotIndexAt(p.type, sec);
+  // Nœuds hérités (lendemain : le nouvel état reprend les nœuds de la veille) : ceux qui ne sont à personne sont cachés.
+  if (st.fresh) {
+    st.fresh = false;
+    for (const e of st.entries) if (e.actor === null) release(e, figures);
+  }
   // Rideau baissé : la vitrine (employés, clients dedans) est cachée — le rideau roulant la couvre —, les clients admis continuent.
   setIf(st.win, 'visibility', rt.open ? 'visible' : 'hidden');
-  const scN = rt.still ? null : peekScore(p, n, slotGate(p, n, rt.gate, rt.open));
-  placeStaff(st, rt, scN, sec - slotStart(p.type, n), sec, t, horns, figures, out);
+  const cur = slotRef(p, n);
+  const scN = rt.still ? null : peekScore(cur.plan, cur.index, slotGate(cur.plan, cur.index, rt.gate, rt.open));
+  placeStaff(st, rt, scN, sec + cur.dt - slotStart(p.type, cur.index), sec, t, horns, figures, out);
   st.seen.length = 0;
   const seen = rt.still ? st.seen : visible(rt, n, sec, st.seen);
   const tick = ++st.tick;
@@ -340,10 +361,10 @@ function placeShop(st: ShopState, rt: ShopRt, t: number, horns: readonly Horn[],
     st.assign.delete(id);
   }
   for (const a of seen) {
-    const party = a.track.party ?? a.track.id;
+    const party = partyKey(a.track, a.dt);
     let e = st.assign.get(a.track.id);
     if (!e) {
-      if (!admit(st, rt, party, partySize(a.sc, party))) continue;
+      if (!admit(st, rt, party, partySize(a.sc, a.track.party ?? a.track.id))) continue;
       // Nœud réservé au parti (sinon, après un remontage qui a changé la réserve, un nœud libre).
       e = st.entries.find((x) => x.party === party && x.actor === null) ?? st.entries.find((x) => x.party === null);
       if (!e) continue;
@@ -387,20 +408,21 @@ export function sceneBudget(nodes: SceneNodes, t: number): BudgetSprite[] {
     const p = rt.plan;
     const sec = t + rt.offset;
     const n = slotIndexAt(p.type, sec);
-    for (let idx = Math.max(0, n - 1); idx <= n + 1; idx++) {
-      const sc = peekScore(p, idx, slotGate(p, idx, rt.gate, rt.open));
+    for (let idx = n - 1; idx <= n + 1; idx++) {
+      const { plan: q, index, dt } = slotRef(p, idx);
+      const sc = peekScore(q, index, slotGate(q, index, rt.gate, rt.open));
       if (!sc) continue;
-      const tIn = sec - sc.start;
+      const tIn = sec + dt - sc.start;
       for (const track of sc.tracks) {
         if (track.role !== 'customer') continue;
-        const party = track.party ?? track.id;
+        const party = partyKey(track, dt);
         const admitted = st.admitted.has(party);
         if (st.refused.has(party) || (!admitted && !rt.open)) continue;
         const info = infoOf(track, rt, sc);
         if (info.to < tIn || info.from > tIn + 60) continue;
         const v = trackAt(track, Math.max(tIn, info.from));
         const inside = v.where === 'inside';
-        out.push({ id: track.id, kind: admitted ? 'keep' : 'customer', x: inside ? rt.winX + v.x : rt.doorX, party, served: inside && v.gait !== 'walk' && !free(v.arms) });
+        out.push({ id: dayMark(dt) + track.id, kind: admitted ? 'keep' : 'customer', x: inside ? rt.winX + v.x : rt.doorX, party, served: inside && v.gait !== 'walk' && !free(v.arms) });
       }
     }
   }

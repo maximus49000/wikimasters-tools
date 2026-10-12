@@ -10,7 +10,7 @@ import { sidewalkPlan, type SidewalkPlan } from '../../core/library/city/shops/s
 import type { ActorTrack, Score } from '../../core/library/city/shops/scene/types';
 import type { Horn } from '../../core/library/city/traffic/horns';
 import type { Sky } from '../../core/library/sky';
-import type { SceneStaff, ShopPlan } from './scene-scores';
+import type { GateOf, SceneStaff, ShopPlan } from './scene-scores';
 
 // Lecture des partitions pour la boucle de la scène des commerces (G4b) : état d'exécution d'une boutique, fenêtre de
 // visibilité et trottoir de chaque piste (mémoïsés par piste), klaxons, accroches du pantin, emplacements partagés (objets en
@@ -30,7 +30,7 @@ const HORN_S = 1;
 // `offset` : seconde du jour − horloge murale ; `worktop` : ligne du plan de travail ; `floor` / `staffFloor` : pieds.
 // `geo` : signature du trottoir (porte, largeur, entrées d'immeubles) ; `staffById` : employés du jour par id.
 export type ShopRt = {
-  plan: ShopPlan; open: boolean; gate: number; offset: number; still: boolean; geo: string; staffById: ReadonlyMap<string, SceneStaff>;
+  plan: ShopPlan; open: boolean; gate: GateOf; offset: number; still: boolean; geo: string; staffById: ReadonlyMap<string, SceneStaff>;
   winX: number; winY: number; hSvg: number; floor: number; staffFloor: number; worktop: number; doorX: number; doorRect: Rect;
   // Ligne du sol peint et hauteur d'assise des sièges (repère du <svg> de la vitrine) : un client assis a les hanches sur le siège.
   floorLine: number; seatH: number;

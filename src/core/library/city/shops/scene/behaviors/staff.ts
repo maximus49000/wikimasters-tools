@@ -1,6 +1,5 @@
 import { hashString } from '../../../../scene-world';
 import { TURN_S } from '../../../../figure/gait';
-import type { Outfit } from '../../../people';
 import type { ShopTypeId } from '../../catalog';
 import type { Family } from '../../gestures';
 import { MOVES, type MoveId } from '../moves';
@@ -9,6 +8,7 @@ import {
   SPEED, cast, gest, hold, idleNow, interrupt, say, walkTo, weighted, yawStaff, yawToward,
   type Act, type Actor, type PartyRt, type Service, type World,
 } from '../engine';
+import type { DirectorStaff } from '../director';
 import { chairNeeds, chairWork } from './chair';
 import { inside, placeTaken, serveX } from './places';
 import { staffParade } from './reactions';
@@ -34,19 +34,28 @@ const IDLE: Partial<Record<Family, readonly (readonly [Idle, number])[]>> = {
 // Temps d'un trajet de retour au poste depuis l'autre bout de la vitrine, plus les demi-tours.
 export const homeReserve = (w: World): number => w.stage.w / SPEED + 2 * TURN_S + 0.5;
 
-export function makeStaff(w: World, list: readonly { id: string; outfit: Outfit; present: [number, number] }[], day: number): Actor[] {
-  const anchorAtStart = (i: number) => list.some((o, k) => k !== i && o.present[0] <= 0 && o.present[1] > 0);
+// Peut tenir le rôle de renfort (selon le jour) : jamais le premier de la liste du jour (`rank` : rang dans cette liste).
+export const mayReserve = (id: string, day: number, rank: number): boolean => rank > 0 && (hashString(`${id}|${day}`) & 1) === 1;
+
+// Poste et rôle de renfort tirés du rang dans la liste du JOUR (pas du rang parmi les présents du créneau) : un collègue en
+// pause ne fait pas changer de poste les autres à la borne du créneau. Renfort : en réserve si un collègue qui n'est jamais
+// renfort est là au début du créneau (quelqu'un tient toujours la boutique). Aux bornes, chacun reprend où il était : sorti de
+// la réserve, il entre par l'arrière-boutique ; renfort qui était au poste, il y est encore et retourne en réserve dès que la
+// boutique est calme.
+export function makeStaff(w: World, list: readonly DirectorStaff[], day: number): Actor[] {
+  const anchorAtStart = (i: number) => list.some((o, k) => k !== i && o.present[0] <= 0 && o.present[1] > 0 && !mayReserve(o.id, day, o.rank ?? k));
   return list.map((o, i) => {
-    const post = w.stage.posts[i % w.stage.posts.length]!;
-    const reserve = i > 0 && (hashString(`${o.id}|${day}`) & 1) === 1 && anchorAtStart(i);
+    const rank = o.rank ?? i;
+    const post = w.stage.posts[rank % w.stage.posts.length]!;
+    const reserve = mayReserve(o.id, day, rank) && anchorAtStart(i);
     const role = ROLE[w.type] ?? 'Employé';
-    const label = list.length > 1 ? `${role} ${'ABCDEF'[i] ?? i}` : role;
-    const there = !reserve && o.present[0] <= 0 && o.present[1] > 0;
+    const label = list.length > 1 ? `${role} ${'ABCDEF'[rank] ?? rank}` : role;
+    const there = !(o.fromBack ?? reserve) && o.present[0] <= 0 && o.present[1] > 0;
     const a: Actor = {
       id: `staff:${o.id}`, track: { id: `staff:${o.id}`, role: 'staff', outfit: o.outfit, scale: 1, party: null, enter: null, exit: null, arriveAt: null, dir: null, segments: [] },
       x: there ? post : w.stage.back, yaw: yawStaff(w), carried: null, free: 0, rest: 0, pending: [], chain: false, fill: 'idle', soft: null, lastFill: false, seated: false,
       pictoAt: -99, pictoT0: -99, active: there, deadline: Math.min(w.L, o.present[1]) - homeReserve(w), party: null, member: 0,
-      staff: { label, post, homeYaw: yawStaff(w), present: o.present, reserve, state: there ? 'floor' : o.present[1] <= 0 ? 'gone' : 'back', service: null, called: false, quietSince: 0 },
+      staff: { label, post, homeYaw: yawStaff(w), present: o.present, later: [...(o.later ?? [])], leaves: o.leaves ?? false, reserve, state: there ? 'floor' : o.present[1] <= 0 ? 'gone' : 'back', service: null, called: reserve && there, quietSince: 0 },
     };
     return a;
   });
@@ -58,10 +67,19 @@ const unserved = (w: World, p: PartyRt): boolean =>
     : p.service === null && inside(p) && ((p.state === 'spot' && w.type !== 'laundry') || p.state === 'bill' || p.flags.has('asking'));
 export const workWaiting = (w: World): boolean => w.queue.some((p) => p.service === null) || w.parties.some((p) => unserved(w, p));
 
-// Arrivées depuis l'arrière-boutique (prise de poste en cours de créneau) et échéances (fin de poste, fin de créneau).
+// Arrivées depuis l'arrière-boutique (prise de poste en cours de créneau, retour de pause) et échéances (fin de poste, fin de
+// créneau, départ en pause).
 export function staffPresence(w: World): void {
   for (const s of w.staff) {
     const m = s.staff!;
+    // Plage suivante (retour de pause) : une fois rentré à l'arrière-boutique (ou resté en réserve) à la fin de la précédente.
+    const next = m.later[0];
+    if (next && !s.active && w.t >= next[0] && (m.state === 'gone' || (m.state === 'back' && w.t >= m.present[1]))) {
+      m.present = m.later.shift()!;
+      s.deadline = Math.min(w.L, m.present[1]) - homeReserve(w);
+      s.rest = 0;
+      m.state = 'back';
+    }
     if (m.state === 'back' && !m.reserve && w.t >= m.present[0] && w.t < s.deadline) {
       Object.assign(s, { active: true, x: w.stage.back, free: w.t, chain: false });
       s.track.enter = w.t;
@@ -76,10 +94,11 @@ export function staffPresence(w: World): void {
   }
 }
 
-// Fin de poste : le renfort et celui qui finit son service repartent dans l'arrière-boutique ; les autres rejoignent le poste.
+// Fin de poste : le renfort, celui qui finit son service (ou part en pause) et celui qui ne sera plus là au créneau suivant
+// repartent dans l'arrière-boutique ; les autres rejoignent le poste.
 function goHome(w: World, s: Actor): void {
   const m = s.staff!;
-  const away = m.reserve || m.present[1] < w.L;
+  const away = m.reserve || m.present[1] < w.L || (m.leaves && m.later.length === 0);
   if (away) {
     cast([[s, [walkTo(w.stage.back, { free: true })]]]);
     m.state = 'gone';

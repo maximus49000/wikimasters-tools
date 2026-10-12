@@ -13,11 +13,13 @@ import { sillBox } from '../door-passage';
 import { useFigureRegistry } from '../figure/figure-host';
 import { GhibliFigure, type PoseIn } from '../figure/ghibli-figure';
 import { LIT_SKY } from '../shop-interiors';
-import { ghibliAwningShift } from './ghibli-shop-glass';
+import { shopLookOf } from './ghibli-shop-front';
+import { GhibliWindowCover, ghibliAwningShift } from './ghibli-shop-glass';
+import { shopKey } from './shop-host';
 import { PictoGlyph } from './picto';
-import { CARRIED, CARRY_SLOTS, PROP_SLOTS, STAFF_SCALE, collectScene, placeScene, runtimes, workOf, type ShopRt } from './scene-place';
+import { CARRIED, STAFF_SCALE, carrySlotsFor, propSlotsFor, collectScene, placeScene, runtimes, workOf, type ShopRt } from './scene-place';
 import { PropSpriteMemo, WornFramesMemo } from './scene-props';
-import { makeScore, peekScore, planOf, propsOf, sizeCache, slotGate, type SceneShop } from './scene-scores';
+import { makeScore, peekScore, planOf, propsOf, sizeCache, slotGate, type GateOf, type SceneShop } from './scene-scores';
 
 export { collectScene, forgetScenes, muteScene, placeScene, sceneBudget, sceneParties, type SceneNodes } from './scene-place';
 export type { SceneShop, SceneStaff } from './scene-scores';
@@ -25,7 +27,7 @@ export type { SceneShop, SceneStaff } from './scene-scores';
 // Scène Ghibli des commerces (G4b, spec §7) : rend, pour chaque boutique du metteur en scène, une réserve de nœuds que la boucle
 // (placeScene) pose à chaque image sans re-rendu : employés derrière la vitrine (un <svg> imbriqué chacun, rogné au plan de
 // travail quand il est derrière le comptoir), clients dans la vitrine (repère et rognage de la vitrine, comme ShopCustomers),
-// sur le trottoir et dans la porte (seuil rogné de door-passage) ; quelques emplacements d'objets en main, de montures portées
+// sur le trottoir et dans la porte (seuil rogné de door-passage) ; des emplacements d'objets en main, de montures portées
 // et de pictos par boutique, posés aux accroches du pantin qui les porte. Remplace en Ghibli les clients intérieurs de
 // ShopCustomers et le personnel « debout à son poste » de StaffLayer, pour les boutiques `inScene`.
 type Props = {
@@ -40,7 +42,8 @@ type Props = {
   sky: Sky;
   rainy: boolean;
   umbrella: boolean;
-  gates: Map<string, number>;
+  // Affluence de chaque boutique (GateOf : fonction de la minute, lue au début de chaque créneau ; ou niveau fixe).
+  gates: ReadonlyMap<string, GateOf>;
   street: (slotId: string, slotStartS: number, length: number) => StreetState;
   doorXs: readonly number[];
   still: boolean;
@@ -82,10 +85,11 @@ function PropSet({ ids, sky, accessory }: { ids: readonly PropId[]; sky: Sky; ac
   );
 }
 
-type NodesProps = { shop: SceneShop; rt: ShopRt; ids: readonly PropId[]; pool: number; shift: number; present: string; sky: Sky; inSky: Sky; rainy: boolean; umbrella: boolean; kStreet: number };
+// `cover` : clé de la façade (vitre et murs devant les acteurs, dessinés avec `liveSky`, le ciel du rendu).
+type NodesProps = { shop: SceneShop; rt: ShopRt; ids: readonly PropId[]; pool: number; shift: number; present: string; sky: Sky; inSky: Sky; rainy: boolean; umbrella: boolean; kStreet: number; cover: string; liveSky: Sky };
 // Nœuds d'une boutique : re-rendus seulement quand leur structure, la présence des employés ou le ciel (au huitième) change.
 const ShopNodes = memo(
-  function ShopNodes({ shop, rt, ids, pool, shift, present, sky, inSky, rainy, umbrella, kStreet }: NodesProps): ReactElement {
+  function ShopNodes({ shop, rt, ids, pool, shift, present, sky, inSky, rainy, umbrella, kStreet, liveSky }: NodesProps): ReactElement {
     const { frame } = shop;
     const accessory = ACCESSORY[rt.plan.type];
     const carried = ids.filter((id) => CARRIED.has(id));
@@ -111,7 +115,7 @@ const ShopNodes = memo(
           <g data-prop-pool="" display="none">
             <PropSet ids={ids} sky={inSky} accessory={accessory} />
           </g>
-          {Array.from({ length: PROP_SLOTS }, (_, i) => (
+          {Array.from({ length: propSlotsFor(pool, shop.staff.length) }, (_, i) => (
             <g key={i} data-prop-slot={i} display="none" />
           ))}
           {ids.includes('frames') &&
@@ -124,6 +128,8 @@ const ShopNodes = memo(
                 ))}
               </g>
             ))}
+          {/* Devant tout ce qui est dans la vitrine (acteurs, objets) : la vitre, puis les murs (pilastre, soubassement, montants). */}
+          <GhibliWindowCover view={shop.view} frame={frame} sky={liveSky} shift={shift} />
         </svg>
         {/* Pictos hors du <svg> de la vitrine (ils flottent au-dessus de la tête, donc au-dessus du haut de la vitrine) : repère du monde. */}
         {[0, 1].map((i) => (
@@ -155,11 +161,11 @@ const ShopNodes = memo(
             <PropSet ids={carried} sky={sky} accessory={accessory} />
           </g>
         )}
-        {carried.length > 0 && Array.from({ length: CARRY_SLOTS }, (_, i) => <g key={i} data-carry-slot={i} display="none" />)}
+        {carried.length > 0 && Array.from({ length: carrySlotsFor(pool) }, (_, i) => <g key={i} data-carry-slot={i} display="none" />)}
       </g>
     );
   },
-  (a, b) => a.present === b.present && a.ids.join() === b.ids.join() && a.sky === b.sky && a.inSky === b.inSky && a.rainy === b.rainy && a.umbrella === b.umbrella && a.kStreet === b.kStreet,
+  (a, b) => a.present === b.present && a.cover === b.cover && a.ids.join() === b.ids.join() && a.sky === b.sky && a.inSky === b.inSky && a.rainy === b.rainy && a.umbrella === b.umbrella && a.kStreet === b.kStreet,
 );
 
 export function ShopScene({ shops, seed, day, secondsOfDay, t0, width, metrics, sky, rainy, umbrella, gates, street, doorXs, still, pool: poolSize }: Props): ReactElement {
@@ -201,7 +207,7 @@ export function ShopScene({ shops, seed, day, secondsOfDay, t0, width, metrics, 
     // boucle — calque avant de la vitrine — n'est jamais retiré seul par React ; l'état de la boucle est gardé par local). Un objet
     // nouvellement vu s'ajoute aux emplacements par simple re-rendu.
     const key = `${seed}|${plan.id}|${plan.type}|${pool}|${shift}|${frame.window.x},${frame.window.w},${frame.window.h}|${frame.door.x}|${metrics.doorY}|${shop.staff.map((s) => s.id).join(',')}`;
-    return { shop, rt, ids, pool, shift, present, key, inSky: lit ? LIT_SKY : stepSky };
+    return { shop, rt, ids, pool, shift, present, key, inSky: lit ? LIT_SKY : stepSky, cover: shopKey(shopLookOf(view, frame, sky), 'facade') };
   });
   // Après la mise en page : chaque boutique publie son état d'exécution (lu par collectScene), puis première pose.
   useLayoutEffect(() => {
@@ -218,7 +224,7 @@ export function ShopScene({ shops, seed, day, secondsOfDay, t0, width, metrics, 
   return (
     <g data-shop-scene="" ref={root}>
       {items.map((it) => (
-        <ShopNodes key={it.key} shop={it.shop} rt={it.rt} ids={it.ids} pool={it.pool} shift={it.shift} present={it.present} sky={stepSky} inSky={it.inSky} rainy={rainy} umbrella={umbrella} kStreet={kStreet} />
+        <ShopNodes key={it.key} shop={it.shop} rt={it.rt} ids={it.ids} pool={it.pool} shift={it.shift} present={it.present} sky={stepSky} inSky={it.inSky} rainy={rainy} umbrella={umbrella} kStreet={kStreet} cover={it.cover} liveSky={sky} />
       ))}
     </g>
   );

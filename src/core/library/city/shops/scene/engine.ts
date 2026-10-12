@@ -33,7 +33,7 @@ export type Act = {
   mute?: boolean; // sans le picto du geste (le miroir qui ne convainc pas)
 };
 // `watching` : regarde le défilé à la vitrine (behaviors/reactions.ts).
-export type StaffMind = { label: string; post: number; homeYaw: number; present: [number, number]; reserve: boolean; state: 'back' | 'floor' | 'gone'; service: Service | null; called: boolean; quietSince: number; watching?: boolean };
+export type StaffMind = { label: string; post: number; homeYaw: number; present: [number, number]; later: [number, number][]; leaves: boolean; reserve: boolean; state: 'back' | 'floor' | 'gone'; service: Service | null; called: boolean; quietSince: number; watching?: boolean };
 export type Actor = {
   id: string;
   track: ActorTrack;

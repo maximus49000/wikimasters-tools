@@ -13,7 +13,9 @@ import { BLANK_SPRITE } from '../figure/figure-host';
 // néons sans teinte. Les peintures sont étalées (1 couche par image, ≈ 4,5 ms sur ordinateur) ; tant qu'une couche n'est pas prête, l'appelant garde la
 // précédente (useShopLayer).
 export const SHOP_PX = 4;
-export type ShopLayer = 'back' | 'front' | 'facade';
+// `front` = premier plan (comptoir, tables…) et vitre ; la scène des commerces (G4b) les sépare : `furnish` (le mobilier, sous
+// les acteurs) et `glass` (la vitre seule : teinte, reflet, petits bois, montants, devant les acteurs).
+export type ShopLayer = 'back' | 'front' | 'facade' | 'furnish' | 'glass';
 export type ShopLook = { type: ShopTypeId | null; name: string; w: number; h: number; doorSide: 'left' | 'right'; state: FacadeState; placard: boolean; day: number; lit: boolean; seed: number };
 
 export const quantDay = (daylight: number): number => Math.round(daylight * 8) / 8;
@@ -62,8 +64,8 @@ export function paintShopLayer(l: ShopLook, layer: ShopLayer): string {
     // Intérieur éclairé : couleurs de jour ; sinon la teinte de la lumière du moment.
     const t = tintedCtx(raw, l.lit ? (c: string) => c : tint);
     ctx.translate(box.x, box.y);
-    paintInterior(t, l.type, box.w, box.h, layer, l.lit || l.day >= 0.5, l.seed);
-    if (layer === 'front') paintGlass(t, specOf(l), box.w, box.h);
+    if (layer !== 'glass') paintInterior(t, l.type, box.w, box.h, layer === 'back' ? 'back' : 'front', l.lit || l.day >= 0.5, l.seed);
+    if (layer === 'front' || layer === 'glass') paintGlass(t, specOf(l), box.w, box.h);
   }
   return canvas.toDataURL('image/png');
 }

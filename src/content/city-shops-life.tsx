@@ -756,7 +756,8 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
                 </g>
               );
             })}
-            {ghibli ? <GhibliShopGlass view={view} frame={frame} sky={sky} /> : <ShopInteriorFront type={type} w={win.w} h={win.h} sky={sky} lit={lit} />}
+            {/* Boutique de la scène G4b, rideau levé : le mobilier seul ici ; la vitre et les murs sont dessinés devant les acteurs (ShopScene). */}
+            {ghibli ? <GhibliShopGlass view={view} frame={frame} sky={sky} layer={scene && cast.shutter === 'up' ? 'furnish' : 'front'} /> : <ShopInteriorFront type={type} w={win.w} h={win.h} sky={sky} lit={lit} />}
           </g>
         </svg>
       )}
