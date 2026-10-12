@@ -10,7 +10,7 @@ describe('fenêtre dans la grille', () => {
   it('a un libellé et des bornes de taille', () => {
     expect(labelOf('window')).toBe('Fenêtre');
     expect(WINDOW_MIN).toEqual({ w: 3, h: 3 });
-    expect(WINDOW_MAX).toEqual({ w: 24, h: 12 });
+    expect(WINDOW_MAX).toEqual({ w: 96, h: 12 });
     expect(WINDOW_DEFAULT).toEqual({ w: 6, h: 5 });
   });
 
@@ -51,6 +51,12 @@ describe('fenêtre dans la grille', () => {
   it('accepte une baie vitrée de toute la hauteur du mur', () => {
     const big = { ...win(), col: 0, row: 0 };
     expect(resizeWindow([big], COLS, 'w1', 24, 12)).not.toBeNull();
+  });
+
+  it('accepte une fenêtre de tout le mur d une pièce adaptée à l écran, pas plus large que la pièce', () => {
+    const big = { ...win(), col: 0, row: 0 };
+    expect(resizeWindow([big], 38, 'w1', 38, 12)).not.toBeNull();
+    expect(resizeWindow([big], 38, 'w1', 39, 12)).toBeNull();
   });
 
   it('refuse un agrandissement qui sort du mur', () => {

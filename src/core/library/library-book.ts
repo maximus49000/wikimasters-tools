@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type Species, type StyleId, type TimeSetting, WEATHER_STATES, type WeatherSetting } from './library-types';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
-import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, isLamp, sectionIsEmpty, shiftLayout } from './room-grid';
+import { MAX_COLS, MIN_COLS, SECTION, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
@@ -81,7 +81,7 @@ const roomSchema = z.object({
   style: z.enum(STYLE_IDS),
   scene: z.enum(SCENE_IDS),
   orientation: z.enum(['landscape', 'portrait']),
-  cols: z.number().int().min(MIN_COLS).max(MAX_COLS).refine((cols) => cols % SECTION === 0),
+  cols: z.number().int().min(MIN_COLS).max(MAX_COLS),
   layout: z.array(placedSchema),
   pets: z.array(petSchema).max(MAX_PETS),
   cityEpoch: z.number().int().optional(),
@@ -315,6 +315,13 @@ export function shrinkRoom(state: LibraryState, id: string, side: 'left' | 'righ
   const room = state.rooms.find((candidate) => candidate.id === id);
   if (!room || room.cols - SECTION < MIN_COLS || !sectionIsEmpty(room.layout, room.cols, side)) return state;
   return mapRoom(state, id, (r) => ({ ...r, cols: r.cols - SECTION, layout: side === 'left' ? shiftLayout(r.layout, -SECTION) : r.layout }));
+}
+
+// Met la pièce à `cols` colonnes exactement (largeur d'un écran), par la droite ; refusé si un meuble dépasserait.
+export function fitRoomWidth(state: LibraryState, id: string, cols: number): LibraryState {
+  const room = state.rooms.find((candidate) => candidate.id === id);
+  if (!room || !Number.isInteger(cols) || cols < MIN_COLS || cols > MAX_COLS || cols === room.cols || !fitsWithin(room.layout, cols)) return state;
+  return mapRoom(state, id, (r) => ({ ...r, cols }));
 }
 
 // Applique un changement à l'aménagement de la pièce ; `null` = changement refusé, rien ne bouge.

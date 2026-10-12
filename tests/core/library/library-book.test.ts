@@ -6,6 +6,7 @@ import {
   createInitialState,
   deleteRoom,
   extendRoom,
+  fitRoomWidth,
   nextFurnitureId,
   parseLibraryState,
   renameRoom,
@@ -158,10 +159,25 @@ describe('parseLibraryState', () => {
     expect(parseLibraryState(JSON.parse(JSON.stringify(state)))).toEqual(state);
   });
 
-  it('refuse une largeur qui n est pas un multiple de 12', () => {
+  it('relit une largeur adaptée à un écran (pas un multiple de 12) mais refuse une largeur hors bornes', () => {
     const state = createInitialState();
-    const broken = { ...state, rooms: [{ ...state.rooms[0]!, cols: 30 }] };
+    const fitted = { ...state, rooms: [{ ...state.rooms[0]!, cols: 37 }] };
+    expect(parseLibraryState(fitted)).toEqual(fitted);
+    const broken = { ...state, rooms: [{ ...state.rooms[0]!, cols: 97 }] };
     expect(parseLibraryState(broken)).toEqual(createInitialState());
+  });
+
+  it('adapte la largeur de la pièce à un écran, par la droite, sans couper de meuble', () => {
+    const state = createInitialState();
+    const wide = fitRoomWidth(state, 'r1', 38);
+    expect(wide.rooms[0]!.cols).toBe(38);
+    expect(fitRoomWidth(wide, 'r1', 23)).toBe(wide);
+    expect(fitRoomWidth(wide, 'r1', 97)).toBe(wide);
+    const furnished = updateLayout(wide, 'r1', (layout) => [...layout, { id: 'w9', kind: 'window', col: 30, row: 0, w: 8, h: 12 }]);
+    expect(fitRoomWidth(furnished, 'r1', 37)).toBe(furnished);
+    expect(fitRoomWidth(furnished, 'r1', 40).rooms[0]!.cols).toBe(40);
+    // Les zones de 12 colonnes s'ajoutent toujours à partir d'une largeur quelconque.
+    expect(extendRoom(wide, 'r1', 'right').rooms[0]!.cols).toBe(50);
   });
 
   it('retire un ordinateur sans bureau et les identifiants en double', () => {

@@ -8,7 +8,7 @@ export const WALL_ROWS = 12;
 export const CELL_W = 30;
 export const HEIGHT = 510;
 export const CELL_H = HEIGHT / ROWS;
-// La pièce grandit et rétrécit par zones de 12 colonnes, de 24 à 96 colonnes.
+// La pièce grandit et rétrécit par zones de 12 colonnes, de 24 à 96 colonnes ; « Adapter à l'écran » lui donne une largeur quelconque.
 export const SECTION = 12;
 export const MIN_COLS = 24;
 export const MAX_COLS = 96;
@@ -239,6 +239,20 @@ export function sectionIsEmpty(layout: Layout, cols: number, side: 'left' | 'rig
     if (!rect) return true;
     return side === 'left' ? rect.col >= SECTION : rect.col + rect.w <= cols - SECTION;
   });
+}
+
+// Aucun meuble ne dépasse la colonne `cols` : la pièce peut être réduite à cette largeur par la droite.
+export function fitsWithin(layout: Layout, cols: number): boolean {
+  return layout.every((p) => {
+    const rect = rectOf(p);
+    return !rect || rect.col + rect.w <= cols;
+  });
+}
+
+// Colonnes qui remplissent exactement un écran de `width` × `height` à la hauteur de la pièce, dans les bornes de largeur.
+export function screenCols(width: number, height: number): number {
+  if (!(width > 0) || !(height > 0)) return MIN_COLS;
+  return Math.min(MAX_COLS, Math.max(MIN_COLS, Math.round((width / height) * (HEIGHT / CELL_W))));
 }
 
 export function pxRect(rect: Rect): PxRect {

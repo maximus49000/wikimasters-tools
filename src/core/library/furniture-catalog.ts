@@ -106,8 +106,8 @@ const WALL_SIZES: Record<WallShape, { w: number; h: number }> = {
 export const wallSizeOf = (shape: WallShape): { w: number; h: number } => WALL_SIZES[shape];
 
 export const WINDOW_MIN = { w: 3, h: 3 } as const;
-// Baie vitrée : jusqu'à toute la hauteur du mur (WALL_ROWS = 12, room-grid.ts) et 24 colonnes, bornée par la pièce.
-export const WINDOW_MAX = { w: 24, h: 12 } as const;
+// Baie vitrée : jusqu'à toute la hauteur du mur (WALL_ROWS = 12, room-grid.ts) et toute la largeur (MAX_COLS = 96), bornée par la pièce.
+export const WINDOW_MAX = { w: 96, h: 12 } as const;
 export const WINDOW_DEFAULT = { w: 6, h: 5 } as const;
 
 export const labelOf = (kind: FurnitureKind): string => LABELS[kind];

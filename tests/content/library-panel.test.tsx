@@ -252,4 +252,29 @@ describe('LibraryPanel : plein écran', () => {
     await click('[data-action="fullscreen"]');
     expect(unlock).toHaveBeenCalled();
   });
+
+  it('remplit un écran en paysage et propose d’adapter la pièce à sa largeur exacte', async () => {
+    stub();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2400 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });
+    await click('[data-action="fullscreen"]');
+    const scroll = q('[data-scroll]') as HTMLElement;
+    expect(scroll.style.height).toBe('100vh');
+    expect((q('[data-scroll] svg[role="img"]') as SVGElement).style.width).toContain('max(100vw');
+    await click('[data-action="fit-screen"]');
+    await settle();
+    expect(repo.current()?.rooms[0]?.cols).toBe(38);
+    expect(q('[data-action="fit-screen"]')).toBeNull();
+    await click('[data-action="fullscreen"]');
+    expect((q('[data-scroll]') as HTMLElement).style.height).toBe('');
+  });
+
+  it('garde la fenêtre habituelle sur un écran en portrait', async () => {
+    stub();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1080 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 2400 });
+    await click('[data-action="fullscreen"]');
+    expect((q('[data-scroll]') as HTMLElement).style.height).toBe('');
+    expect(q('[data-action="fit-screen"]')).toBeNull();
+  });
 });

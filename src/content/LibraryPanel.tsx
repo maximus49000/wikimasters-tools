@@ -23,6 +23,7 @@ import {
   setTimeSetting,
   setWeatherSetting,
   shrinkRoom,
+  fitRoomWidth,
   updateLayout,
 } from '../core/library/library-book';
 import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
@@ -68,6 +69,8 @@ import {
   placeStanding,
   removeFurniture,
   sectionIsEmpty,
+  fitsWithin,
+  screenCols,
   type Cell,
 } from '../core/library/room-grid';
 import { STYLE_LABELS, paletteOf } from '../core/library/styles';
@@ -390,6 +393,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     return () => unlockOrientation();
   }, [stage.active, orientationNow]);
 
+  // Pièce horizontale en plein écran sur un écran en paysage : la pièce couvre tout l'écran, sans bandes noires.
+  const screenSize = useScreenSize(stage.active);
+  const fill = stage.active && orientationNow === 'landscape' && screenSize.width > screenSize.height;
+  // Pièce trop étroite pour l'écran : elle est agrandie à sa largeur et la vue part du milieu de la hauteur.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (fill && el) el.scrollTop = Math.max(0, (el.scrollHeight - el.clientHeight) / 2);
+  }, [fill, colsNow]);
+
   // Réglage « Position » (actif par défaut) : la position est demandée une fois par chargement de page, à l'ouverture de la Bibliothèque.
   // Elle n'est gardée qu'en mémoire : sans cette relecture, la vraie météo resterait « simulée » après chaque rechargement.
   const positionOn = useSyncExternalStore(positionSetting.subscribe, positionSetting.enabled, positionSetting.enabled);
@@ -698,7 +710,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (room.cols + SECTION > MAX_COLS) return refuse('La pièce ne peut pas être plus large.');
     setMessage('');
     const el = scrollRef.current;
-    if (side === 'left' && el) pendingScroll.current = (el.clientWidth * SECTION) / VISIBLE_COLS[room.orientation];
+    if (side === 'left' && el) pendingScroll.current = (el.scrollWidth * SECTION) / room.cols;
     await library.update((state) => extendRoom(state, room.id, side));
   }
   async function shrink(side: 'left' | 'right'): Promise<void> {
@@ -706,9 +718,17 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (!sectionIsEmpty(layout, room.cols, side)) return refuse('Retirez d’abord les meubles de cette zone.');
     setMessage('');
     const el = scrollRef.current;
-    if (side === 'left' && el) pendingScroll.current = -(el.clientWidth * SECTION) / VISIBLE_COLS[room.orientation];
+    if (side === 'left' && el) pendingScroll.current = -(el.scrollWidth * SECTION) / room.cols;
     await library.update((state) => shrinkRoom(state, room.id, side));
   }
+
+  // Plein écran paysage : la pièce prend exactement la largeur de l'écran (agrandie ou réduite par la droite).
+  const fitCols = screenCols(screenSize.width, screenSize.height);
+  const fitToScreen = (): void => {
+    if (!fitsWithin(layout, fitCols)) return refuse('Retirez d’abord les meubles qui dépassent à droite.');
+    setMessage('');
+    void library.update((state) => fitRoomWidth(state, room.id, fitCols));
+  };
 
   const setMode2 = (next: 'visit' | 'edit'): void => {
     reset();
@@ -1059,7 +1079,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           ref={scrollRef}
           style={{
             // En plein écran : la fenêtre visible (24 ou 16 colonnes sur 510 de haut) prend la plus grande taille qui tient dans l'écran.
-            maxWidth: stage.active ? `min(100vw, calc(100vh * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
+            maxWidth: fill ? 'none' : stage.active ? `min(100vw, calc(100vh * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
+            ...(fill ? { width: '100vw', height: '100vh', overflowY: 'auto' } : {}),
             ...(dragging ? { overflowX: 'hidden', touchAction: 'none' } : {}),
           }}
         >
@@ -1082,6 +1103,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onFurnitureDown={onFurnitureDown}
             onFurnitureMove={onFurnitureMove}
             onFurnitureUp={press.cancel}
+            fill={fill}
             drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost, ghostPx: drag.target.ghostPx } satisfies DragView) : null}
           />
         </div>
@@ -1096,7 +1118,36 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           />
         )}
         {stage.active && <FullscreenButton active onClick={stage.toggle} right={8} />}
+        {fill && room.cols !== fitCols && (
+          <button type="button" data-action="fit-screen" onClick={fitToScreen} style={FIT_BUTTON}>
+            Adapter à l’écran
+          </button>
+        )}
+        {stage.active && message && <div aria-live="polite" style={STAGE_MESSAGE}>{message}</div>}
       </div>
     </div>
   );
+}
+
+// Bouton et message posés sur la pièce en plein écran, à gauche du bouton de sortie.
+const FIT_BUTTON = { position: 'absolute', top: 4, right: 48, height: 32, padding: '0 12px', border: 0, borderRadius: 16, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/20px system-ui,sans-serif' } as const;
+const STAGE_MESSAGE = { position: 'absolute', top: 44, right: 8, maxWidth: '60vw', padding: '6px 10px', borderRadius: 8, background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/18px system-ui,sans-serif' } as const;
+
+type ScreenSize = { width: number; height: number };
+
+// Taille de l'écran, suivie seulement pendant le plein écran (rotation du téléphone, fenêtre redimensionnée).
+function useScreenSize(watch: boolean): ScreenSize {
+  const read = (): ScreenSize => (typeof window === 'undefined' ? { width: 0, height: 0 } : { width: window.innerWidth, height: window.innerHeight });
+  const [size, setSize] = useState(read);
+  useEffect(() => {
+    if (!watch) return;
+    const sync = (): void => setSize((before) => {
+      const next = read();
+      return next.width === before.width && next.height === before.height ? before : next;
+    });
+    sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  }, [watch]);
+  return size;
 }
