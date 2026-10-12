@@ -58,6 +58,10 @@ canvas{display:block;border-radius:6px;box-shadow:0 2px 10px #0003;background:#d
 
 <h3>9 · Événements du ciel <span class="tag">avion · hélicoptère · drone · montgolfière · banderole · cerf-volant · grue · lueur d'appartement · ballons · cloches · feux d'artifice · camion-poubelle · vélo de livraison</span><span class="anim">animé</span></h3>
 <canvas id="events"></canvas>
+<h3>9 bis · Zoom ×3 sur les engins du ciel <span class="tag">jour puis nuit · avion de ligne, hélicoptère, montgolfière</span><span class="anim">animé</span></h3>
+<canvas id="sky-zoom"></canvas>
+<h3>9 ter · Mouettes <span class="tag">×3 · poses clés du battement · volées à trois distances · pose sur une cheminée</span><span class="anim">animé</span></h3>
+<canvas id="gulls"></canvas>
 <p class="leg">Jour puis nuit. Avion à trois dérives et hublots, traînée de condensation ; hélicoptère à verrière, rotor en balayage ; drone ; montgolfière à fuseaux ; banderole « Wikimasters » ; cerf-volant losange à queue de nœuds ; grue à flèche en treillis ; ballons de fête (cœurs / lapins) ; cloches de Pâques au ruban ; feux d'artifice : fusée qui monte, gerbe de brins à pointes claires qui s'épanouit puis retombe.</p>
 
 <h3>10 · Signes festifs et accessoires tenus <span class="tag">×6 · couronne, ballon cœur, panier, muguet, drapeau, coquelicot, serpentin, note · 30 accessoires des commerces</span></h3>
@@ -92,7 +96,7 @@ const rgba=(c,a=1)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
 const SUN=hex('#FFF6D0'),COOL=hex('#5A4A9C'),INK='#2A1A18';
 const C=h=>typeof h==='string'?hex(h):h;
 const shade=(c,t=0.3)=>mix(C(c),COOL,t),light=(c,t=0.3)=>mix(C(c),SUN,t);
-const TAU=Math.PI*2,clamp=(x,a,b)=>Math.min(b,Math.max(a,x)),lerp=(a,b,t)=>a+(b-a)*t;
+const TAU=Math.PI*2,clamp=(x,a,b)=>Math.min(b,Math.max(a,x)),lerp=(a,b,t)=>a+(b-a)*t,ease=u=>u<0?0:u>1?1:u*u*(3-2*u);
 const pick=(l,r)=>l[Math.floor(r()*l.length)];
 
 // Forme remplie : aplat, ombre nette à droite, rehaut à gauche, trait encré. `box` : boîte de la forme pour l'ombre/rehaut.
@@ -396,18 +400,20 @@ function beam(ctx,sx,sy,tx,ty,w0,w1,c,a=0.5){const dx=tx-sx,dy=ty-sy,l=Math.hypo
 // Éclairage de concert, dans le repère de la scène (base y = 0 au sol du plancher) ; `day` : copie de jour ; `audience`, `musicians` :
 // acteurs (repère de la scène) pour les rehauts colorés. Brume de scène : seulement au-dessus et devant la scène.
 function concertLights(ctx,t,{day=null,audience=[],musicians=[]}={}){const S=STAGE,{pal,hit,strobe}=concertState(t);const c0=pal[0],c1=pal[1];
- ctx.save();ctx.beginPath();ctx.rect(-64,-74,128,86);ctx.clip();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,0,-30,0,70,[[0,[170,190,240],0.14],[0.6,[170,190,240],0.06],[1,[170,190,240],0]]);ctx.fillRect(-64,-74,128,86);ctx.restore();
+ // brume de scène : seulement dans le volume des faisceaux (au-dessus du plancher, entre les montants), très faible
+ ctx.save();ctx.beginPath();ctx.rect(-S.postX,-S.truss+2,S.postX*2,S.truss-S.floor-S.deck-2);ctx.clip();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,0,-36,0,46,[[0,[170,190,240],0.07],[1,[170,190,240],0]]);ctx.fillRect(-64,-74,128,86);ctx.restore();
  for(const x of BACKS){ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,x,-40,0,14,[[0,C(c0),0.8],[0.3,C(c0),0.35],[1,C(c0),0]]);ctx.beginPath();ctx.arc(x,-40,14,0,TAU);ctx.fill();ctx.restore();beam(ctx,x,-40,x*1.6,16,2,22,c0,0.28)}
  S.spotXs.forEach((x,i)=>{const o=spotLens(i),tx=[-24,0,24][i];beam(ctx,o.x,o.y,tx,-S.floor,1.6,9,i===1?'#FFD080':c1,0.5)});
  LYRES.forEach((x,i)=>{const ph=TAU*t/4+i*Math.PI/2,sw=Math.sin(ph)*(i%2?1:-1),floor=i===1||i===2,c=i%2?c0:c1;
   if(floor)beam(ctx,x,-55,x+sw*26,-S.floor+1,1.4,7,c,0.55);else beam(ctx,x,-55,x*0.4+sw*60,30,1.4,16,c,0.4);
   ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,x,-55,0,4,[[0,[255,255,255],0.9],[0.4,C(c),0.6],[1,C(c),0]]);ctx.beginPath();ctx.arc(x,-55,4,0,TAU);ctx.fill();ctx.restore()});
  if(day){const mk=makeMask(ctx,m=>{[-24,0,24].forEach((x,i)=>maskDisc(m,x,-S.floor-2,16,12,i===1?1:0.85));maskDisc(m,0,-S.floor+2,54,6,0.5)});revealLit(ctx,day,mk,rgba(mix(C(c1),[255,255,255],0.45)),0.25,C(c1));
-  const mk2=makeMask(ctx,m=>{maskDisc(m,0,16,90,26,0.55)});revealLit(ctx,day,mk2,rgba(mix(C(c0),[255,255,255],0.5)),0.15,C(c0))}
+  const mk2=makeMask(ctx,m=>{maskDisc(m,0,14,70,22,0.45)});revealLit(ctx,day,mk2,rgba(mix(C(c0),[255,255,255],0.5)),0.12,C(c0))}
  for(const a of musicians)actorRim(ctx,a,{x:0,lx:0,ly:-55},mix(C(c1),[255,255,255],0.4),C(c1),120);
  for(const a of audience)actorRim(ctx,a,{x:a.x,lx:a.x,ly:-30},mix(C(c0),[255,255,255],0.3),C(c0),140);
  if(hit>0||strobe){ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=`rgba(255,255,255,${0.35*hit+0.5*strobe})`;ctx.fillRect(-S.half,-S.truss,S.half*2,S.truss);ctx.restore()}
- ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,0,-20,40,170,[[0,C(c0),0.16],[0.5,C(c0),0.06],[1,C(c0),0]]);ctx.fillRect(-180,-100,360,160);ctx.restore()}
+ // débordement coloré, borné au sol et aux façades proches (pas sur le ciel)
+ ctx.save();ctx.beginPath();ctx.rect(-150,-40,300,80);ctx.clip();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,0,0,30,120,[[0,C(c0),0.09],[1,C(c0),0]]);ctx.fillRect(-150,-40,300,80);ctx.restore()}
 // Pièces tenues (repère : main à y = 0, vers +x).
 
 function heldTruss(ctx){truss(ctx,-5,0,9,0)}
@@ -653,49 +659,109 @@ function mark(ctx,kind,t=0){switch(kind){
 </script>
 <script>
 // ───────────────────────── 9. Événements (city-event-sprites.tsx) ─────────────────────────
-// Avion (fuselage −20..18, aile −4..4 vers le bas, dérive −16..−12 vers le haut, traînée −24..−160 de jour).
-function plane(ctx,{night=false,t=0,pass='base'}={}){if(pass==='base'){
- if(!night){ctx.strokeStyle='rgba(255,255,255,0.7)';ctx.lineWidth=2.2;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(-24,0);ctx.lineTo(-160,1);ctx.stroke();ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=3.6;ctx.beginPath();ctx.moveTo(-40,0.2);ctx.lineTo(-160,1);ctx.stroke()}
- P(ctx,[[-16,0],[-22,-8],[-18,-8],[-12,0]],'#D0D4DC',{lw:0.45,sh:0.3,shX:0.6,li:0.2});
- cel(ctx,()=>{ctx.moveTo(-20,-0.5);ctx.quadraticCurveTo(-8,-3,18,-2);ctx.quadraticCurveTo(25,0,18,2);ctx.quadraticCurveTo(-8,3,-20,0.5);ctx.closePath()},'#F4F4F4',{lw:0.5,box:{x:-20,y:-3,w:45,h:6},sh:0.28,shX:0.7,li:0.2});
- ctx.fillStyle='#3B6FD6';ctx.fillRect(-20,0.6,36,0.9);for(let x=-10;x<14;x+=3.2)R(ctx,x,-1.4,1.4,1,'#6AA0D8',{lw:0.2,sh:0,li:0});R(ctx,14.5,-1.6,3,1.4,'#6AA0D8',{lw:0.25,sh:0,li:0});
- P(ctx,[[-4,0],[-12,10],[-6,10],[4,0]],'#D0D4DC',{lw:0.45,sh:0.3,shX:0.6,li:0.2});
- if(night){disc(ctx,-4,9,1.5,'#FF4040',0);disc(ctx,19,0,1.2,'#FFFFFF',0)}}
- if(pass==='lit'&&night){const bl=0.5+0.5*Math.cos(TAU*t/1.2);halo(ctx,-4,9,3,'#FF4040',bl*0.6);disc(ctx,-4,9,1.5,`rgba(255,80,64,${0.3+0.7*bl})`,0);halo(ctx,19,0,2.4,'#FFFFFF',0.5);disc(ctx,19,0,1.2,'#FFFFFF',0)}}
-// Hélicoptère (cabine ellipse 13 × 7, poutre −30..−12 × −2..1, verrière r 4 à (7, −1), rotor −22..22 à −10, patins −6..10 à 8).
-function helicopter(ctx,{c='#C0463A',t=0,anim=true,night=false}={}){
+// ───────── Engins du ciel (city-event-sprites.tsx :70-137 : mêmes repères, tailles et trajectoires ; dessin en volume et animation secondaire) ─────────
+const HAZE=hex('#9CC0E4');const hz=(c,k)=>k?mix(C(c),HAZE,k):C(c);
+// Avion de ligne (fuselage −20..18, aile vers le bas −4..4 → −12..−6, dérive −16..−12) : vu de trois-quarts dessous, ailes en flèche
+// avec dièdre, deux réacteurs sous l'aile proche, hublots, traînée de condensation née derrière les réacteurs qui s'élargit,
+// s'effiloche et dérive (particules). `far` : perspective atmosphérique (plus pâle et bleutée). Nuit : feu à éclats blanc, balise rouge.
+function plane(ctx,{night=false,t=0,pass='base',far=0.25}={}){const W=hz('#F4F4F4',far),G=hz('#C8CED8',far),ink=far>0.2?'rgba(42,26,24,0.55)':INK;
+ if(pass==='base'){
+  // traînée : particules derrière chaque réacteur (âge croissant vers l'arrière), rayon qui grandit, alpha qui tombe, dérive vers le haut et ondulation
+  if(!night){for(const ey of[7,10]){for(let k=0;k<42;k++){const age=k*0.32,x=-14-k*3.3-ey*0.4,wob=Math.sin(age*1.7+t*0.8+ey)*0.4*age,y=ey+0.6-age*0.12+wob*0.35,rr=0.5+age*0.26,a=0.55*Math.max(0,1-age/13.5)*(0.8+0.2*Math.sin(k*2.3+t*2));if(a<=0.01)continue;ctx.fillStyle=`rgba(255,255,255,${a})`;ctx.beginPath();ctx.arc(x,y,rr,0,TAU);ctx.fill()}}}
+  // aile lointaine (au-dessus, plus petite), stabilisateur
+  P(ctx,[[-5,-1.2],[-13,-7.5],[-16.5,-7],[-9,-0.8]],G,{lw:0.4,sh:0.3,shX:0.6,li:0.15,inkC:ink});P(ctx,[[-15,-0.6],[-21,-5],[-23,-4.6],[-18.5,-0.2]],G,{lw:0.4,sh:0.3,li:0.15,inkC:ink});
+  // dérive
+  P(ctx,[[-13,-1.2],[-17,-9],[-21.5,-9],[-20,-1]],G,{lw:0.45,sh:0.3,shX:0.6,li:0.2,inkC:ink});ctx.fillStyle=hz('#3B6FD6',far);ctx.beginPath();ctx.moveTo(-15.6,-5.5);ctx.lineTo(-19,-8.6);ctx.lineTo(-21.2,-8.6);ctx.lineTo(-18.6,-5.2);ctx.fill();
+  // fuselage : ventre visible (trois-quarts dessous)
+  cel(ctx,()=>{ctx.moveTo(-20,-0.8);ctx.quadraticCurveTo(-8,-3.4,16,-2.6);ctx.quadraticCurveTo(24,-1.2,19,2.2);ctx.quadraticCurveTo(-4,4.2,-20,2.4);ctx.closePath()},W,{lw:0.5,box:{x:-21,y:-4,w:46,h:9},sh:0.3,shX:0.64,li:0.2,inkC:ink});
+  ctx.fillStyle=rgba(shade(C(W),0.22));ctx.beginPath();ctx.moveTo(-19,1.6);ctx.quadraticCurveTo(-2,3.6,18,2);ctx.quadraticCurveTo(-2,2.4,-19,1.6);ctx.fill(); // ombre du ventre
+  ctx.fillStyle=hz('#3B6FD6',far);ctx.fillRect(-19,0.2,36,0.7);for(let x=-10;x<14;x+=2.6)R(ctx,x,-1.6,1.2,0.9,hz('#6AA0D8',far),{lw:0.15,sh:0,li:0});R(ctx,14.6,-2,2.8,1.2,hz('#4A6A90',far),{lw:0.2,sh:0,li:0});
+  // aile proche en flèche, dièdre vers le bas, réacteurs
+  P(ctx,[[-2,0.8],[-9,11.5],[-14.5,11.5],[-8,1.2]],G,{lw:0.45,sh:0.3,shX:0.6,li:0.2,inkC:ink});ctx.fillStyle=rgba(light(C(G),0.3));ctx.beginPath();ctx.moveTo(-3,1.2);ctx.lineTo(-8,8);ctx.lineTo(-9.4,8);ctx.lineTo(-4.5,1.2);ctx.fill();
+  for(const[ex,ey]of[[-5.2,5.2],[-8.6,8.8]]){RR(ctx,ex-2.4,ey-0.3,4.4,2.4,1.1,hz('#B8BEC8',far),{lw:0.4,sh:0.3,shX:0.6,li:0.3,inkC:ink});disc(ctx,ex+2,ey+0.9,1.05,hz('#3A3E48',far),0.3);disc(ctx,ex+2,ey+0.9,0.4,'#8A9098',0)}
+  if(night){disc(ctx,-4,3.6,1.1,'#FF4040',0);disc(ctx,19,0,0.9,'#FFFFFF',0)}}
+ if(pass==='lit'&&night){const bl=0.5+0.5*Math.cos(TAU*t/1.2),st=(t%1.6)<0.08?1:0;halo(ctx,-4,3.6,3,'#FF4040',bl*0.6);disc(ctx,-4,3.6,1.1,`rgba(255,80,64,${0.3+0.7*bl})`,0);if(st){halo(ctx,-14,11,4,'#FFFFFF',0.8);halo(ctx,19,0,4,'#FFFFFF',0.8)}halo(ctx,19,0,2.2,'#FFFFFF',0.4);disc(ctx,-14.5,11.5,0.7,'#30FF60',0);disc(ctx,-16.5,-7,0.7,'#FF4040',0)}}
+// Hélicoptère (cabine 13 × 7, poutre −30..−12, verrière r 4 à (7, −1), rotor −22..22 à −10, patins −6..10 à 8) : assiette à piquer en
+// vol d'avancement (−6°), léger tangage et balancement (1,1 s / 2,3 s), rotor = disque flou en ellipse + deux pales stroboscopiques,
+// rotor de queue qui tourne, verrière à reflet et pilote. Nuit : balise rouge à éclats, feu de position, projecteur.
+function helicopter(ctx,{c='#C0463A',t=0,anim=true,night=false,speed=1}={}){ctx.save();const pitch=(-6*speed+2.2*Math.sin(t*TAU/1.1))*Math.PI/180,roll=1.2*Math.sin(t*TAU/2.3);ctx.translate(0,roll);ctx.rotate(pitch);
  tube(ctx,-6,8,10,8,1,IRON,{lw:0.35});L(ctx,-4,7,-4,8,IRON,0.6);L(ctx,8,7,8,8,IRON,0.6);
- R(ctx,-30,-2,18,3,c,{lw:0.45,sh:0.3,shX:0.6,li:0.25});P(ctx,[[-30,-2],[-30,-7],[-27,-2]],c,{lw:0.4,sh:0.3,li:0.2});
- const rr=anim?2+3*Math.abs(Math.sin(t*40)):1;ctx.save();ctx.translate(-30,-3);ctx.scale(1,1);ctx.rotate(t*30);L(ctx,0,-rr,0,rr,'#2A2A2A',0.8);ctx.restore();
- E(ctx,0,0,13,7,c,{lw:0.55,sh:0.3,shX:0.62,li:0.22,liW:0.2});ctx.fillStyle=rgba(shade(C(c),0.4));ctx.fillRect(-13,-0.6,8,1.4);
- cel(ctx,()=>{ctx.moveTo(3,-4.2);ctx.quadraticCurveTo(10,-6,12,0);ctx.quadraticCurveTo(10,4.5,4,3);ctx.closePath()},'#CFE4F2',{lw:0.45,box:{x:3,y:-6,w:9,h:9},sh:0.2,shX:0.6,li:0});ctx.fillStyle='rgba(255,255,255,0.5)';ctx.beginPath();ctx.ellipse(6.5,-2.6,2.2,1,0.4,0,TAU);ctx.fill();
- tube(ctx,0,-7,0,-10,0.8,'#333',{lw:0.3});
- const sx=anim?Math.abs(Math.cos(t*22)):1;ctx.save();ctx.translate(0,-10);ctx.scale(sx,1);L(ctx,-22,0,22,0,INK,2.2);L(ctx,-22,0,22,0,'#3A3A3A',1.5);ctx.restore();if(anim){ctx.strokeStyle='rgba(60,60,60,0.25)';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(-22,-10);ctx.lineTo(22,-10);ctx.stroke()}
- if(night){halo(ctx,-30,0,2.6,'#FF4040',0.5);disc(ctx,-30,0,1.5,'#FF4040',0)}}
-// Drone (corps 10 × 4, bras −10..10 à −3, hélices à ±10).
-function drone(ctx,{t=0,anim=true,night=false}={}){tube(ctx,-10,-3,10,-3,1,'#333',{lw:0.35});RR(ctx,-5,-2,10,4,1,'#3A3A42',{lw:0.45,sh:0.3,shX:0.6,li:0.3,liW:0.3});ball(ctx,0,1,1.2,'#2A2A2A',0.3);
- for(const cx of[-10,10]){const rx=anim?1+4*Math.abs(Math.cos(t*35+cx)):5;tube(ctx,cx,-3,cx,-4.5,0.8,'#333',{lw:0.3});E(ctx,cx,-4.5,rx,0.9,'#555',{lw:0.3,sh:0.2,li:0.3});if(anim){ctx.fillStyle='rgba(80,80,80,0.25)';ctx.beginPath();ctx.ellipse(cx,-4.5,5,0.9,0,0,TAU);ctx.fill()}}
- if(night){halo(ctx,0,2,2.4,'#40FF80',0.5);disc(ctx,0,2,1.2,'#40FF80',0)}}
-// Montgolfière (enveloppe −16..16 × −36..8, fuseaux, suspentes à ±4 de 8 à 14, nacelle −5..5 × 14..21).
-function balloonEvt(ctx,a='#E0A21E',b='#C0463A'){const env=()=>{ctx.moveTo(-16,-10);ctx.quadraticCurveTo(-16,-36,0,-36);ctx.quadraticCurveTo(16,-36,16,-10);ctx.quadraticCurveTo(12,2,4,8);ctx.lineTo(-4,8);ctx.quadraticCurveTo(-12,2,-16,-10);ctx.closePath()};
- cel(ctx,env,a,{lw:0.55,box:{x:-16,y:-36,w:32,h:44},sh:0.3,shX:0.66,li:0.25,liW:0.2});
- ctx.save();ctx.beginPath();env();ctx.clip();for(const s of[-6,6]){ctx.beginPath();ctx.moveTo(s,-35);ctx.quadraticCurveTo(s*1.5,-10,s*0.66,8);ctx.strokeStyle=rgba(C(b));ctx.lineWidth=3.2;ctx.stroke()}ctx.beginPath();ctx.moveTo(0,-36);ctx.lineTo(0,8);ctx.strokeStyle=rgba(shade(C(a),0.25));ctx.lineWidth=0.6;ctx.stroke();
- ctx.fillStyle='rgba(70,50,130,0.22)';ctx.beginPath();ctx.moveTo(6,-36);ctx.quadraticCurveTo(18,-20,10,8);ctx.lineTo(20,8);ctx.lineTo(20,-40);ctx.fill();ctx.restore();
- ctx.beginPath();env();ctx.strokeStyle=INK;ctx.lineWidth=0.55;ctx.stroke();
- for(const x of[-4,4])L(ctx,x,8,x,14,'#4A3B2A',0.7);R(ctx,-5,14,10,7,'#8A5A2B',{lw:0.45,sh:0.3,shX:0.65,li:0.2});ctx.strokeStyle='rgba(42,26,24,0.3)';ctx.lineWidth=0.3;for(let y=15.5;y<21;y+=1.5){ctx.beginPath();ctx.moveTo(-5,y);ctx.lineTo(5,y);ctx.stroke()}
- ctx.fillStyle='rgba(255,180,60,0.7)';ctx.beginPath();ctx.moveTo(-1.5,8);ctx.lineTo(1.5,8);ctx.lineTo(0,4.5);ctx.fill()}
-// Avion à banderole (petit avion −12..12, câble −12..−24, banderole −104..−24 × −7..7 « Wikimasters »).
-function bannerPlane(ctx,col='#F2C94C',t=0){P(ctx,[[-2,0],[-8,7],[-4,7],[4,0]],'#D0D4DC',{lw:0.45,sh:0.3,shX:0.6,li:0.2});cel(ctx,()=>{ctx.moveTo(-12,-0.5);ctx.quadraticCurveTo(0,-2.5,12,-2);ctx.quadraticCurveTo(16,0,12,2);ctx.quadraticCurveTo(0,2.5,-12,0.5);ctx.closePath()},'#F4F4F4',{lw:0.45,box:{x:-12,y:-2.5,w:28,h:5},sh:0.28,shX:0.7,li:0.2});P(ctx,[[-9,0],[-13,-5],[-10,-5],[-6,0]],'#D0D4DC',{lw:0.4,sh:0.3,li:0.2});
- L(ctx,-12,0,-24,0,'#555',0.6);
- // banderole : vague légère
- const yAt=u=>Math.sin(u*4-t*4)*1.4;ctx.beginPath();for(let i=0;i<=20;i++){const u=i/20;ctx.lineTo(-24-80*u,-7+yAt(u))}for(let i=20;i>=0;i--){const u=i/20;ctx.lineTo(-24-80*u,7+yAt(u))}ctx.closePath();ctx.fillStyle=rgba(C(col));ctx.fill();ctx.strokeStyle=INK;ctx.lineWidth=0.5;ctx.stroke();
- ctx.fillStyle=rgba(shade(C(col),0.3));ctx.beginPath();for(let i=0;i<=20;i++){const u=i/20;ctx.lineTo(-24-80*u,3.4+yAt(u))}for(let i=20;i>=0;i--){const u=i/20;ctx.lineTo(-24-80*u,7+yAt(u))}ctx.fill();
- text(ctx,'Wikimasters',-64,0.5,9,'#5A3A0A',{bold:true})}
-// Cerf-volant (losange ±9 × −12..14, croisillons blancs, queue, ficelle de (0,14) à (−40,150)) ; balancement ±8° sur 3 s.
-function kite(ctx,c='#E07A8C',t=0,anim=true){ctx.strokeStyle='rgba(60,60,60,0.6)';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(0,14);ctx.quadraticCurveTo(-20,80,-40,150);ctx.stroke();
- ctx.save();ctx.rotate((anim?8*Math.sin(TAU*t/3):0)*Math.PI/180);P(ctx,[[0,-12],[9,0],[0,14],[-9,0]],c,{lw:0.5,sh:0.3,shX:0.6,li:0.25});L(ctx,0,-12,0,14,'#FFFFFF',0.8);L(ctx,-9,0,9,0,'#FFFFFF',0.8);
- ctx.beginPath();ctx.moveTo(0,14);for(let k=0;k<4;k++){ctx.quadraticCurveTo(4*(k%2?-1:1),14+k*6+3+Math.sin(t*5+k)*1.5,0,14+(k+1)*6)}ctx.strokeStyle=INK;ctx.lineWidth=1.2;ctx.stroke();ctx.strokeStyle='#3B6FD6';ctx.lineWidth=0.7;ctx.stroke();
- for(let k=0;k<4;k++){const y=20+k*6,x=3*(k%2?-1:1);P(ctx,[[x-1.5,y-1],[x+1.5,y-1],[x+1,y+1],[x-1,y+1]],k%2?'#F2C94C':'#FFFFFF',{lw:0.3,sh:0.2,li:0})}ctx.restore()}
+ cel(ctx,()=>{ctx.moveTo(-12,-2.4);ctx.lineTo(-30,-1.6);ctx.lineTo(-30,1);ctx.lineTo(-12,2.2);ctx.closePath()},c,{lw:0.45,box:{x:-30,y:-3,w:18,h:5},sh:0.3,shX:0.6,li:0.25});P(ctx,[[-30,-1.6],[-30,-8],[-26,-1.4]],c,{lw:0.4,sh:0.3,li:0.2});P(ctx,[[-27,-1.6],[-24,-4.2],[-21,-1.6]],shade(C(c),0.2),{lw:0.35,sh:0.3,li:0.1});
+ // rotor de queue : disque flou + pale
+ {const a=t*34;ctx.save();ctx.translate(-30,-4);ctx.fillStyle='rgba(60,60,70,0.28)';ctx.beginPath();ctx.arc(0,0,3.2,0,TAU);ctx.fill();ctx.rotate(a);L(ctx,0,-3.2,0,3.2,'#2A2A2A',0.8);ctx.rotate(Math.PI/2);L(ctx,0,-3.2,0,3.2,'#2A2A2A',0.8);ctx.restore()}
+ E(ctx,0,0,13,7,c,{lw:0.55,sh:0.3,shX:0.62,li:0.22,liW:0.2});ctx.fillStyle=rgba(shade(C(c),0.4));ctx.fillRect(-13,-0.6,8,1.4);ctx.fillStyle=rgba(light(C(c),0.35));ctx.beginPath();ctx.ellipse(-3,-4.2,6,1.2,0.1,0,TAU);ctx.fill();
+ cel(ctx,()=>{ctx.moveTo(3,-4.2);ctx.quadraticCurveTo(10,-6,12,0);ctx.quadraticCurveTo(10,4.5,4,3);ctx.closePath()},'#9CC4E0',{lw:0.45,box:{x:3,y:-6,w:9,h:9},sh:0.25,shX:0.6,li:0});
+ ball(ctx,7.4,-1.2,1.4,'#F0C8A0',0.3);ctx.fillStyle='#2A2A30';ctx.beginPath();ctx.arc(7.4,-2.1,1.3,Math.PI,0);ctx.fill();R(ctx,6.6,0.2,2,2.6,'#2E5E8A',{lw:0.25,sh:0.2,li:0});
+ ctx.fillStyle='rgba(255,255,255,0.55)';ctx.beginPath();ctx.ellipse(6.2,-3.2,2.6,0.9,0.5,0,TAU);ctx.fill();
+ tube(ctx,0,-7,0,-10,0.9,'#333',{lw:0.3});
+ // rotor principal : disque flou (ellipse), pales visibles par stroboscopie, reflet qui tourne
+ {ctx.save();ctx.translate(0,-10);ctx.fillStyle='rgba(50,50,60,0.22)';ctx.beginPath();ctx.ellipse(0,0,23,1.8,0,0,TAU);ctx.fill();ctx.fillStyle='rgba(255,255,255,0.18)';ctx.beginPath();ctx.ellipse(-6,-0.3,8,0.8,0,0,TAU);ctx.fill();const a=(t*29)%TAU,vis=(Math.floor(t*6)%5)===0;for(const b of[0,Math.PI]){const x=Math.cos(a+b)*22,y=Math.sin(a+b)*1.7;L(ctx,0,0,x,y,vis?'#2A2A2A':'rgba(42,42,42,0.35)',vis?1.2:0.9)}ball(ctx,0,0,1.3,'#3A3E48',0.3);ctx.restore()}
+ if(night){disc(ctx,-30,0,1.4,'#FF4040',0);disc(ctx,12,1,0.8,'#30FF60',0)}ctx.restore()}
+function helicopterLit(ctx,t){const bl=(t%1)<0.12?1:0.25;halo(ctx,-30,0,3,'#FF4040',0.6*bl);disc(ctx,-30,0,1.4,'#FF5050',0);halo(ctx,0,-13,2.4,'#FFFFFF',(t%1.6)<0.08?0.9:0.1);ctx.save();ctx.globalCompositeOperation='screen';const g=ctx.createLinearGradient(6,8,14,40);g.addColorStop(0,'rgba(255,240,200,0.35)');g.addColorStop(1,'rgba(255,240,200,0)');ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(4,8);ctx.lineTo(10,8);ctx.lineTo(26,44);ctx.lineTo(2,44);ctx.closePath();ctx.fill();ctx.restore()}
+// Drone (corps 10 × 4, bras ±10 à −3, hélices ±10) : vol stationnaire hésitant (dérive lente + tremblement), inclinaison selon la
+// dérive, hélices floues, LED qui clignote.
+function drone(ctx,{t=0,anim=true,night=false}={}){ctx.save();const dx=anim?1.6*Math.sin(t*0.9)+0.4*Math.sin(t*7.3):0,dy=anim?0.8*Math.sin(t*1.3+1)+0.3*Math.sin(t*9.1):0;ctx.translate(dx,dy);ctx.rotate(0.9*Math.cos(t*0.9)*Math.PI/180*4);
+ tube(ctx,-10,-3,10,-3,1,'#333',{lw:0.35});RR(ctx,-5,-2,10,4,1,'#3A3A42',{lw:0.45,sh:0.3,shX:0.6,li:0.3,liW:0.3});ball(ctx,0,1.2,1.2,'#2A2A2A',0.3);disc(ctx,0.3,0.9,0.4,'#8AB8E0',0);
+ for(const cx of[-10,10]){tube(ctx,cx,-3,cx,-4.5,0.8,'#333',{lw:0.3});ctx.fillStyle='rgba(80,80,90,0.3)';ctx.beginPath();ctx.ellipse(cx,-4.6,5.2,1,0,0,TAU);ctx.fill();const a=t*40+cx;L(ctx,cx-Math.cos(a)*5,-4.6-Math.sin(a)*0.8,cx+Math.cos(a)*5,-4.6+Math.sin(a)*0.8,'rgba(60,60,60,0.7)',0.6);ball(ctx,cx,-4.6,0.6,'#555',0.2)}
+ const led=Math.floor(t*3)%3===0;if(night||led){disc(ctx,0,2.4,0.9,night?'#40FF80':'#FF4040',0)}ctx.restore()}
+// Montgolfière (enveloppe −16..16 × −36..8, suspentes ±4, nacelle −5..5 × 14..21) : fuseaux en volume, légère déformation
+// sous le vent (2,2 s), balancement de la nacelle, brûleur par bouffées (toutes les 4 s, 0,7 s) qui fait monter un peu
+// puis redescendre, passagers (pantins ×0,3), dérive lente. Nuit : l'enveloppe s'illumine de l'intérieur à chaque bouffée.
+function balloonEvt(ctx,aOr='#E0A21E',b='#C0463A',o={}){if(typeof aOr==='object'){o=aOr;aOr=o.a||'#E0A21E';b=o.b||'#C0463A'}const{t=0,night=false,pass='base',far=0}=o;const a=aOr;
+ const burnT=(t%4),burn=burnT<0.7?Math.sin(Math.PI*burnT/0.7):0,burnEnv=burnT<0.7?burnT/0.7:Math.max(0,1-(burnT-0.7)/2.2);
+ ctx.save();ctx.translate(0,-2.6*burnEnv);const sway=1.6*Math.sin(t*TAU/5.3)*Math.PI/180;ctx.rotate(sway);const wind=1+0.02*Math.sin(t*TAU/2.2);
+ if(pass==='base'){
+  const env=()=>{ctx.moveTo(-16*wind,-10);ctx.quadraticCurveTo(-16*wind,-36,0,-36);ctx.quadraticCurveTo(16*wind,-36,16*wind,-10);ctx.quadraticCurveTo(12,2,4,8);ctx.lineTo(-4,8);ctx.quadraticCurveTo(-12,2,-16*wind,-10);ctx.closePath()};
+  cel(ctx,env,hz(a,far),{lw:0.55,box:{x:-16,y:-36,w:32,h:44},sh:0,li:0});
+  ctx.save();ctx.beginPath();env();ctx.clip();
+  // fuseaux : 7 bandes courbes, alternance a / b, chacune modelée (clair à gauche, ombre à droite)
+  for(let i=-3;i<=3;i++){const u=i/3.6,x0=u*16*wind,x1=(i+1)/3.6*16*wind;const col=C((i+10)%2?a:b);ctx.beginPath();ctx.moveTo(0,-36);ctx.quadraticCurveTo(x0*1.9,-18,x0*0.5,8);ctx.lineTo(x1*0.5,8);ctx.quadraticCurveTo(x1*1.9,-18,0,-36);ctx.closePath();ctx.fillStyle=rgba(hz(col,far));ctx.fill();ctx.fillStyle=rgba(shade(col,0.28));ctx.beginPath();ctx.moveTo(0,-36);ctx.quadraticCurveTo(x1*1.9,-18,x1*0.5,8);ctx.lineTo(x1*0.5-0.6*(x1-x0),8);ctx.quadraticCurveTo(x1*1.9-0.5*(x1-x0),-18,0,-36);ctx.fill()}
+  ctx.fillStyle='rgba(70,50,130,0.3)';ctx.beginPath();ctx.moveTo(6,-36);ctx.quadraticCurveTo(19,-20,10,8);ctx.lineTo(22,8);ctx.lineTo(22,-40);ctx.fill();ctx.fillStyle='rgba(255,246,208,0.32)';ctx.beginPath();ctx.ellipse(-7,-24,4,8,0.2,0,TAU);ctx.fill();
+  if(night&&burn>0){ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,0,-2,0,30,[[0,[255,200,110],0.85*burn],[0.5,[255,170,80],0.4*burn],[1,[255,170,80],0]]);ctx.fillRect(-20,-40,40,50)}
+  ctx.restore();ctx.beginPath();env();ctx.strokeStyle=INK;ctx.lineWidth=0.55;ctx.stroke();
+  // cordages (suspentes croisées), brûleur et flamme, nacelle en osier
+  for(const x of[-4,4]){L(ctx,x,8,x*1.1,14,'#4A3B2A',0.6);L(ctx,x,8,-x*0.4,14,'#4A3B2A',0.35)}
+  R(ctx,-1.8,10,3.6,1.6,'#4A4E58',{lw:0.3,sh:0.3,li:0.2});if(burn>0){cel(ctx,()=>{ctx.moveTo(-1.6,10);ctx.quadraticCurveTo(-3,6-4*burn,0,2-6*burn);ctx.quadraticCurveTo(3,6-4*burn,1.6,10);ctx.closePath()},'#FFB040',{lw:0,sh:0,li:0});ctx.fillStyle='rgba(255,240,180,0.9)';ctx.beginPath();ctx.moveTo(-0.8,10);ctx.quadraticCurveTo(-1,7-2*burn,0,5-3*burn);ctx.quadraticCurveTo(1,7-2*burn,0.8,10);ctx.fill()}
+  // passagers dans la nacelle (pantins ×0,3, coupés par le bord)
+  ctx.save();ctx.beginPath();ctx.rect(-6,6,12,9);ctx.clip();[['passenger|0',-2.4],['passenger|1',2]].forEach(([id,px])=>{ctx.save();ctx.translate(px,20.5);ctx.scale(0.3,0.3);pantin(ctx,id);ctx.restore()});ctx.restore();
+  R(ctx,-5,14,10,7,hz('#A8743A',far),{lw:0.45,sh:0.3,shX:0.65,li:0.2});ctx.strokeStyle='rgba(42,26,24,0.35)';ctx.lineWidth=0.3;for(let y=15.4;y<21;y+=1.3){ctx.beginPath();ctx.moveTo(-5,y);ctx.lineTo(5,y);ctx.stroke()}for(let x=-3.5;x<5;x+=1.7){ctx.beginPath();ctx.moveTo(x,14);ctx.lineTo(x,21);ctx.stroke()}R(ctx,-5.4,13.4,10.8,1,hz('#8A5A2B',far),{lw:0.3,sh:0,li:0.2})}
+ else if(burn>0){ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,0,-14,0,34,[[0,[255,190,100],0.5*burn],[0.6,[255,170,80],0.15*burn],[1,[255,170,80],0]]);ctx.beginPath();ctx.moveTo(-16,-10);ctx.quadraticCurveTo(-16,-36,0,-36);ctx.quadraticCurveTo(16,-36,16,-10);ctx.quadraticCurveTo(12,2,4,8);ctx.lineTo(-4,8);ctx.quadraticCurveTo(-12,2,-16,-10);ctx.fill();halo(ctx,0,6,5,'#FFC060',0.8*burn);ctx.restore()}
+ ctx.restore()}
+// Avion à banderole (avion −12..12, câble vers −24, banderole −104..−24 × ±7) : petit monomoteur à hélice (disque flou), câble en
+// chaînette, banderole « Wikimasters » qui ondule et claque de l'avant vers l'arrière, légère ondulation de trajectoire.
+function bannerPlane(ctx,col='#F2C94C',t=0){ctx.save();ctx.translate(0,1.2*Math.sin(t*0.9));ctx.rotate(1.5*Math.sin(t*0.9+1)*Math.PI/180);
+ // banderole : vague qui court vers l'arrière, amplitude croissante ; bord d'attaque au bout du câble
+ const yAt=u=>Math.sin(u*5.5-t*5.2)*(0.6+2.4*u)+Math.sin(u*2.1-t*2.1)*0.8*u;
+ ctx.beginPath();for(let i=0;i<=24;i++){const u=i/24;ctx.lineTo(-24-80*u,-7+yAt(u))}for(let i=24;i>=0;i--){const u=i/24;ctx.lineTo(-24-80*u,7+yAt(u)*1.1)}ctx.closePath();ctx.fillStyle=rgba(C(col));ctx.fill();
+ ctx.save();ctx.clip();for(let i=0;i<24;i++){const u0=i/24,u1=(i+1)/24,d=yAt(u1)-yAt(u0);ctx.fillStyle=d>0.15?rgba(shade(C(col),0.3)):d<-0.15?rgba(light(C(col),0.3)):'rgba(0,0,0,0)';ctx.fillRect(-24-80*u1,-10,80/24+0.2,22)}ctx.restore();ctx.strokeStyle=INK;ctx.lineWidth=0.5;ctx.stroke();
+ ctx.save();ctx.translate(-64,0.5+yAt(0.5));ctx.rotate(Math.atan2(yAt(0.55)-yAt(0.45),-8));text(ctx,'Wikimasters',0,0,9,'#5A3A0A',{bold:true});ctx.restore();
+ // câble en chaînette (pend sous la ligne de vol)
+ ctx.beginPath();ctx.moveTo(-11,0.6);ctx.quadraticCurveTo(-18,4.5,-24,-7+yAt(0));ctx.strokeStyle='#555';ctx.lineWidth=0.5;ctx.stroke();
+ // monomoteur : fuselage, aile haute, empennage, train, hélice floue
+ P(ctx,[[-2,0.4],[-7,6.5],[-3.5,6.5],[3.5,0.4]],'#D0D4DC',{lw:0.45,sh:0.3,shX:0.6,li:0.2});cel(ctx,()=>{ctx.moveTo(-12,-0.4);ctx.quadraticCurveTo(-2,-2.8,10,-2.2);ctx.quadraticCurveTo(14,-0.8,11,1.6);ctx.quadraticCurveTo(-2,2.6,-12,0.8);ctx.closePath()},'#F4F4F4',{lw:0.45,box:{x:-12,y:-3,w:26,h:6},sh:0.28,shX:0.7,li:0.2});
+ P(ctx,[[-9,0],[-13,-5],[-10,-5],[-6,0]],'#D0D4DC',{lw:0.4,sh:0.3,li:0.2});P(ctx,[[-4,-1.6],[-8,-4.4],[-1,-4.4],[2,-1.8]],'#E0A21E',{lw:0.4,sh:0.3,shX:0.6,li:0.25});R(ctx,4,-2,3,1.2,'#8AB8E0',{lw:0.2,sh:0,li:0});ctx.fillStyle='#C0463A';ctx.fillRect(-11,0.4,21,0.6);
+ L(ctx,0,2,-1,4.4,'#444',0.5);disc(ctx,-1,4.8,0.8,'#2A2A2A',0.2);
+ {ctx.save();ctx.translate(13.2,-0.4);ctx.fillStyle='rgba(80,80,90,0.3)';ctx.beginPath();ctx.ellipse(0,0,1.1,4.6,0,0,TAU);ctx.fill();const a=t*45;L(ctx,-Math.cos(a)*0.9,-Math.sin(a)*4.4,Math.cos(a)*0.9,Math.sin(a)*4.4,'rgba(50,50,50,0.8)',0.7);ball(ctx,0,0,0.8,'#444',0.2);ctx.restore()}
+ ctx.restore()}
+// Cerf-volant (losange ±9 × −12..14, ficelle vers (−40, 150)) : piqués et remontées selon le vent (gîte, altitude), ligne en
+// chaînette qui se tend aux rafales, queue qui serpente.
+function kite(ctx,c='#E07A8C',t=0,anim=true){const gust=0.5+0.5*Math.sin(t*0.7)+0.3*Math.sin(t*2.3),dy=anim?-6*gust+3*Math.sin(t*1.9):0,dx=anim?4*Math.sin(t*0.5):0,ang=anim?(10*Math.sin(t*1.1)+6*(gust-0.5))*Math.PI/180:0;
+ ctx.save();ctx.translate(dx,dy);ctx.beginPath();ctx.moveTo(0,14);const sag=10-8*gust;ctx.quadraticCurveTo(-20+sag*0.6,80+sag*2,-40-dx,150-dy);ctx.strokeStyle='rgba(60,60,60,0.6)';ctx.lineWidth=0.5;ctx.stroke();
+ ctx.rotate(ang);P(ctx,[[0,-12],[9,0],[0,14],[-9,0]],c,{lw:0.5,sh:0.3,shX:0.6,li:0.25});L(ctx,0,-12,0,14,'#FFFFFF',0.8);L(ctx,-9,0,9,0,'#FFFFFF',0.8);
+ ctx.beginPath();ctx.moveTo(0,14);for(let k=0;k<5;k++){ctx.quadraticCurveTo(5*(k%2?-1:1)*(0.6+gust*0.6),14+k*6+3+Math.sin(t*5+k)*1.5,Math.sin(t*3+k)*2,14+(k+1)*6)}ctx.strokeStyle=INK;ctx.lineWidth=1.2;ctx.stroke();ctx.strokeStyle='#3B6FD6';ctx.lineWidth=0.7;ctx.stroke();
+ for(let k=0;k<5;k++){const y=20+k*6,x=Math.sin(t*3+k)*2+3*(k%2?-1:1)*0.5;P(ctx,[[x-1.5,y-1],[x+1.5,y-1],[x+1,y+1],[x-1,y+1]],k%2?'#F2C94C':'#FFFFFF',{lw:0.3,sh:0.2,li:0})}ctx.restore()}
+// Mouettes : poses clés du battement (haut, milieu, bas, plané) ; `flap` ∈ [−1, 1] (−1 ailes hautes, 1 ailes basses), `glide` : ailes
+// tendues légèrement relevées ; `s` taille ; `far` pâleur (distance) ; `turn` : virage (ailes vues de biais, −1..1).
+function gull(ctx,{s=1,flap=0,glide=false,far=0,turn=0,dir=1}={}){ctx.save();ctx.scale(s*dir,s);const W=hz('#F8F8F4',far),G=hz('#B8BEC8',far),ink=`rgba(42,26,24,${0.9-far*0.8})`;
+ const wing=(side)=>{const sx=side*(1-0.35*Math.abs(turn))*(side*turn>0?0.75:1),tipY=glide?-1.6:flap*3.6,midY=glide?-1.4:flap*1.6;ctx.beginPath();ctx.moveTo(0,-0.4);ctx.quadraticCurveTo(sx*3.2,midY-1.2,sx*7.2,tipY-0.4);ctx.quadraticCurveTo(sx*4,midY+0.9,sx*1.2,0.8);ctx.closePath();ctx.fillStyle=rgba(side<0?G:W);ctx.fill();ctx.strokeStyle=ink;ctx.lineWidth=0.35;ctx.stroke();ctx.fillStyle=rgba(hz('#3A3E48',far));ctx.beginPath();ctx.moveTo(sx*5.4,tipY-0.9);ctx.lineTo(sx*7.2,tipY-0.4);ctx.lineTo(sx*5.8,tipY+0.2);ctx.fill()};
+ wing(-1);E(ctx,0.2,0.4,2.6,1,W,{lw:0.35,sh:0.25,shX:0.55,li:0.2,inkC:ink});wing(1);ball(ctx,2.8,-0.4,0.95,W,0.3);P(ctx,[[3.6,-0.5],[5.2,-0.2],[3.6,0.1]],'#E8B030',{lw:0.25,sh:0,li:0});disc(ctx,3,-0.6,0.22,'#1E1A18',0);ctx.restore()}
+// Volée : n mouettes qui traversent le ciel ; chacune bat des ailes par salves (≈ 3,3 battements/s) puis plane 1 à 3 s, suit une
+// trajectoire sinueuse décalée de ses voisines, vire parfois. `land` : l'une d'elles se pose sur la cheminée `land` (x, y) puis repart.
+function flock(ctx,t,{n=4,x0=0,y0=30,dir=1,speed=24,s=1,far=0,land=null,seed=3}={}){const rng=mulberry32(seed);const birds=[];for(let i=0;i<n;i++)birds.push({dx:-i*9-rng()*6,dy:(rng()-0.5)*10,ph:rng()*10,s:s*(0.8+rng()*0.4),glideP:1.5+rng()*2,lander:land&&i===0});
+ for(const b of birds){const tt=t+b.ph;const cyc=tt%(b.glideP+1.6),flapping=cyc<1.6,flap=flapping?Math.sin(TAU*cyc*3.3):-0.3,gl=!flapping;const x=x0+dir*(t*speed+b.dx),y=y0+b.dy+2.5*Math.sin(tt*0.9)+(flapping?-0.6*Math.sin(TAU*cyc*3.3):0.4*cyc);
+  if(b.lander&&land){const u=((t*speed)/120)%1;/* approche 0..0,35, posé 0,35..0,7, envol 0,7..1 */const yaw=u<0.35?1:u<0.7?0:1;let bx,by,fl,glide=false,turn=0;if(u<0.35){const k=u/0.35;bx=lerp(land.x-60*dir,land.x,ease(k));by=lerp(y0,land.y-1.5,ease(k))-Math.sin(k*Math.PI)*8;fl=k>0.8?-0.9:Math.sin(TAU*t*3.3);glide=k>0.4&&k<0.8}else if(u<0.7){bx=land.x;by=land.y-1.5;fl=0.9;glide=false;turn=0}else{const k=(u-0.7)/0.3;bx=land.x+40*dir*k;by=land.y-1.5-26*k+6*Math.sin(k*Math.PI);fl=Math.sin(TAU*t*4)}
+   ctx.save();ctx.translate(bx,by);if(u>=0.35&&u<0.7){gull(ctx,{s:b.s,flap:0.95,far,dir,turn:0.6});ctx.restore();continue}gull(ctx,{s:b.s,flap:fl,glide,far,dir,turn});ctx.restore();continue}
+  ctx.save();ctx.translate(x,y);gull(ctx,{s:b.s,flap,glide:gl,far,dir,turn:0.5*Math.sin(tt*0.4)});ctx.restore()}}
 // Grue (mât ±4 × 0..−200, diagonales tous les 10, flèche −30..70 à −200, contrepoids −34..−26, câble à 45 jusqu'à 30, charge).
 function crane(ctx,t=0,anim=true){const y='#E0A21E';
  tube(ctx,-4,0,-4,-200,2,y,{lw:0.4});tube(ctx,4,0,4,-200,2,y,{lw:0.4});ctx.strokeStyle=rgba(shade(C(y),0.3));ctx.lineWidth=0.9;for(let i=0;i<20;i++){ctx.beginPath();ctx.moveTo(-4,-i*10);ctx.lineTo(4,-i*10-10);ctx.stroke();ctx.beginPath();ctx.moveTo(-4,-i*10-10);ctx.lineTo(4,-i*10-10);ctx.stroke()}
@@ -711,7 +777,7 @@ function apartmentGlow(ctx){ctx.fillStyle='rgba(255,210,122,0.25)';ctx.fillRect(
 // Ballons de fête (fest-balloons : trois ballons à dx = (k−1)·14, nœud à 34 + (k%2)·6 ; cœurs ou lapins), balancement ±4° sur 3..3,8 s.
 function festBalloons(ctx,{bunny=false,t=0,anim=true}={}){const cols=bunny?['#F7C6D9','#CFE8FF','#FFF2A8']:['#E0305A','#F2708C','#B01E48'];
  cols.forEach((c,k)=>{const dx=(k-1)*14,knot=34+(k%2)*6;ctx.save();ctx.translate(0,knot);ctx.rotate((anim?4*Math.sin(TAU*t/(3+k*0.4)+k):0)*Math.PI/180);ctx.translate(dx,-knot-(k%2)*6);
-  ctx.beginPath();ctx.moveTo(0,8);ctx.quadraticCurveTo(-dx*0.3,22,-dx,knot);ctx.strokeStyle='#6B5B4A';ctx.lineWidth=0.6;ctx.stroke();
+  const lag=anim?-3*Math.sin(TAU*t/(3+k*0.4)+k-0.9):0;ctx.beginPath();ctx.moveTo(0,8);ctx.quadraticCurveTo(-dx*0.3+lag,22,-dx,knot);ctx.strokeStyle='#6B5B4A';ctx.lineWidth=0.6;ctx.stroke();
   if(bunny){E(ctx,-3.5,-14,2.4,6.5,c,{lw:0.4,sh:0.3,shX:0.6,li:0.25});E(ctx,3.5,-14,2.4,6.5,c,{lw:0.4,sh:0.3,shX:0.6,li:0.25});E(ctx,-3.5,-14,1,4,'#F7A8C0',{lw:0,sh:0,li:0});E(ctx,3.5,-14,1,4,'#F7A8C0',{lw:0,sh:0,li:0});E(ctx,0,-1,8,9,c,{lw:0.5,sh:0.3,shX:0.62,li:0.25});disc(ctx,-2.8,-3,0.9,'#5A4A4A',0);disc(ctx,2.8,-3,0.9,'#5A4A4A',0);disc(ctx,0,0,0.9,'#E07A8C',0);L(ctx,-1,1.5,1,1.5,'rgba(90,74,74,0.7)',0.4)}
   else cel(ctx,()=>{ctx.moveTo(0,8);ctx.bezierCurveTo(-14,-2,-8,-14,0,-6);ctx.bezierCurveTo(8,-14,14,-2,0,8)},c,{lw:0.5,box:{x:-11,y:-12,w:22,h:20},sh:0.3,shX:0.62,li:0.25});
   ctx.fillStyle='rgba(255,255,255,0.5)';ctx.beginPath();ctx.ellipse(-3,-4,1.6,2.4,0.3,0,TAU);ctx.fill();ctx.restore()});disc(ctx,0,34,1,'#6B5B4A',0)}
@@ -911,8 +977,9 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false,rain=false}={}){const{
  // acteurs (dessinés de jour, puis ré-éclairés la nuit : ombre portée et rehaut)
  const actors=[];const actor=(x,y,w,h,draw)=>{actors.push({x,y,w,h,draw});draw(ctx)};
  // ciel : montgolfière, avion
- ctx.save();ctx.translate(840,30);ctx.scale(0.55,0.55);balloonEvt(ctx,'#3B6FD6','#F2C94C');ctx.restore();
- ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night});ctx.restore();
+ ctx.save();ctx.translate(840+Math.sin(t*0.08)*6,30);ctx.scale(0.55,0.55);balloonEvt(ctx,{a:'#3B6FD6',b:'#F2C94C',t,night});ctx.restore();
+ ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night,t,far:0.3});ctx.restore();
+ if(!night){flock(ctx,t,{n:4,x0:-40+(t*26)%(W+200)-(t*26),y0:22,dir:1,speed:26,s:0.42,far:0.35,seed:3});flock(ctx,t,{n:2,x0:W+60,y0:12,dir:-1,speed:18,s:0.26,far:0.6,seed:9})}
  // mobilier : lampadaires, feu, arrêt, passage
  crosswalk(ctx,LIGHT_X,CURB+2,FAR-2,1);
  for(const x of LAMP_XS){ctx.save();ctx.translate(x,CURB);ctx.scale(KL,KL);lamp(ctx,{lit:night,flag:flags,flagT:t});ctx.restore()}
@@ -946,7 +1013,7 @@ function street(ctx,{night=false,t=0,x0=0,s=1,flags=false,rain=false}={}){const{
   for(const l of lamps){lampBloom(ctx,l.x,CURB,KL,{rain});ctx.save();ctx.translate(l.x,CURB);ctx.scale(KL,KL);lamp(ctx,{lit:true,pass:'lit'});ctx.restore()}
   relightActors(ctx,actors,lamps);
   ctx.save();ctx.translate(LIGHT_X+19,CURB+1);ctx.scale(-1,1);trafficPole(ctx,{color:'red',pass:'lit'});ctx.restore();ctx.save();ctx.translate(LIGHT_X-19,FAR);trafficPole(ctx,{color:'green',pass:'lit'});ctx.restore();
-  ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night:true,t,pass:'lit'});ctx.restore();
+  ctx.save();ctx.translate(150+(t*14)%300,14);ctx.scale(0.5,0.5);plane(ctx,{night:true,t,pass:'lit',far:0.3});ctx.restore();ctx.save();ctx.translate(840+Math.sin(t*0.08)*6,30);ctx.scale(0.55,0.55);balloonEvt(ctx,{a:'#3B6FD6',b:'#F2C94C',t,night:true,pass:'lit'});ctx.restore();
   if(!rain){ctx.save();ctx.translate(700,20);ctx.scale(0.45,0.45);fireworks(ctx,t,true);ctx.restore()}
   // étoiles (ciel dégagé) ou pluie
   if(!rain){const sr=mulberry32(11);for(let k=0;k<40;k++){const x=sr()*W,y=sr()*45,a=0.4+0.6*Math.abs(Math.sin(t*2+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.9,0.9)}}
@@ -1035,7 +1102,7 @@ function drawRoof(ctx,r){const{x,w,top,rh,s}=r,half=w/2,cx=x+half,base=top+rh+34
  ctx.fillStyle='rgba(255,255,255,0.85)';ctx.beginPath();pts.forEach(([px,py],i)=>i?ctx.lineTo(px,py):ctx.moveTo(px,py));for(let i=pts.length-1;i>=0;i--)ctx.lineTo(pts[i][0],pts[i][1]+1.6);ctx.closePath();ctx.fill();
  // cheminée réelle (chimney relatif) ou, sans cheminée, trappe de toit (proposition)
  if(r.chimney!==null){const chx=x+w*r.chimney,chy=roofSurface(r,chx-cx);R(ctx,chx,chy-7,4,8,'#8A5A3A',{lw:0.4,sh:0.3,shX:0.6,li:0.2});R(ctx,chx-0.5,chy-7.6,5,1,'#6A4A3A',{lw:0.3,sh:0,li:0.2});r.hole={x:chx+2,y:chy-7.6}}
- else{const hx=cx+half*0.3,hy=roofSurface(r,hx-cx);P(ctx,[[hx-3,hy+0.3],[hx+3,hy+0.3],[hx+2.4,hy-2.6],[hx-2.4,hy-2.6]],'#4A5260',{lw:0.4,sh:0.3,li:0.2});R(ctx,hx-2.4,hy-2.6,4.8,0.8,'#A8B0BC',{lw:0.3,sh:0,li:0.3});r.hole={x:hx,y:hy-2.6}}
+ else{const hx=cx-half*0.45,hy=roofSurface(r,hx-cx);P(ctx,[[hx-3,hy+0.3],[hx+3,hy+0.3],[hx+2.4,hy-2.6],[hx-2.4,hy-2.6]],'#4A5260',{lw:0.4,sh:0.3,li:0.2});R(ctx,hx-2.4,hy-2.6,4.8,0.8,'#A8B0BC',{lw:0.3,sh:0,li:0.3});r.hole={x:hx,y:hy-2.6}}
  for(let wx=x+6;wx<x+w-6;wx+=12)R(ctx,wx,top+rh+6,5,8,'#243050',{lw:0.3,sh:0,li:0});
  r.cx=cx;r.half=half;return r}
 // Traîneau seul (caisse, patins, lanterne), tourné de `tilt` ; `slideDust` : gerbe de givre à l'arrière des patins.
@@ -1045,12 +1112,11 @@ function sleigh(ctx,{lit=true,pass='base'}={}){
   const run=()=>{ctx.beginPath();ctx.moveTo(-20,0);ctx.quadraticCurveTo(-22,-2,-19,-3);ctx.lineTo(9,-3);ctx.quadraticCurveTo(13,-3,13,-7);ctx.moveTo(-16,-3);ctx.lineTo(-16,0);ctx.moveTo(0,-3);ctx.lineTo(0,0);ctx.moveTo(-20,0);ctx.lineTo(10,0)};run();ctx.strokeStyle=INK;ctx.lineWidth=2.2;ctx.lineCap='round';ctx.stroke();run();ctx.strokeStyle=GOLD;ctx.lineWidth=1.4;ctx.stroke();ball(ctx,13,-7,0.9,GOLD,0.3);
   tube(ctx,11,-9,11,-12.4,0.6,IRON,{lw:0.25});P(ctx,[[9.6,-12.6],[12.4,-12.6],[12.2,-9.4],[9.8,-9.4]],lit?'#FFF3B0':'#E8E2CC',{lw:0.4,sh:0,li:0});R(ctx,9.4,-13.1,3.2,0.7,IRON,{lw:0.3,sh:0,li:0.2})}
  else if(lit){ctx.save();ctx.globalCompositeOperation='screen';ctx.fillStyle=grad(ctx,11,-11,0,6,[[0,AMBER_CORE,0.8],[0.3,AMBER,0.4],[1,AMBER,0]]);ctx.beginPath();ctx.arc(11,-11,6,0,TAU);ctx.fill();ctx.restore();P(ctx,[[9.6,-12.6],[12.4,-12.6],[12.2,-9.4],[9.8,-9.4]],'#FFF3B0',{lw:0,sh:0,li:0})}}
-const ease=u=>u<0?0:u>1?1:u*u*(3-2*u);
 // Séquence complète sur 75 s (tranches de santa.ts : approche 25 %, posé 5 %, marche 10 %, caché 20 %, marche 10 %, posé 5 %, départ 25 %).
 // Repère : `r` toit (drawRoof déjà appelé) ; `t` secondes depuis le début de la fenêtre ; `pass` 'base' / 'lit' ; K = SANTA_K 0,7.
 function santaDelivery(ctx,r,t,{pass='base',K=0.7}={}){const p=t/75,cx=r.cx,entryX=cx-150,exitX=cx+150,skyY=r.top-70;
  // point de pose : sur le versant gauche du faîte (côté d'arrivée), traîneau incliné selon la pente ; l'attelage s'étage sur la pente
- const landDx=r.kind==='gable'?-r.half*0.35:-r.half*0.25,landX=cx+landDx,landY=roofSurface(r,landDx),slope=roofSlope(r,landDx);
+ const landDx=r.kind==='gable'?r.half*0.12:r.half*0.1,landX=cx+landDx,landY=roofSurface(r,landDx),slope=roofSlope(r,landDx);
  const team=[[24,-11],[35,-11],[20,-5],[31,-5],[46,-7]];
  let sx,sy,landed=false,flying=true,slide=0;
  if(p<0.25){const e=ease(p/0.25);sx=lerp(entryX,landX-6,e);sy=lerp(skyY,landY,e)-Math.sin(e*Math.PI)*8;if(p>0.235){slide=(p-0.235)/0.015}if(p>0.245)flying=false}
@@ -1063,8 +1129,8 @@ function santaDelivery(ctx,r,t,{pass='base',K=0.7}={}){const p=t/75,cx=r.cx,entr
  // rennes
  const idle=landed||(p>=0.235&&p<0.25);
  ctx.save();ctx.translate(sx,sy);
- if(pass==='base'){for(const[y,x1]of[[-7,70],[-4,58]]){ctx.beginPath();ctx.moveTo(8*K,y*K);ctx.lineTo(x1*K,(idle?roofSurface(r,landDx+x1*K)-sy+y*K*0.3:y*K));ctx.strokeStyle=INK;ctx.lineWidth=1;ctx.stroke();ctx.strokeStyle='#A02030';ctx.lineWidth=0.5;ctx.stroke()}}
- team.forEach(([x,y],i)=>{const lead=i===4;let ry=y*K,rx=x*K;if(idle){rx=x*K;ry=roofSurface(r,landDx+rx)-sy-2.6*K+(i<2?-1.2:0)}
+ if(pass==='base'){for(const[y,x1]of[[-7,70],[-4,58]]){ctx.beginPath();ctx.moveTo(8*K,y*K);ctx.lineTo(x1*K,(idle?roofSurface(r,clamp(landDx+x1*K,-r.half,r.half))-sy+y*K*0.3:y*K));ctx.strokeStyle=INK;ctx.lineWidth=1;ctx.stroke();ctx.strokeStyle='#A02030';ctx.lineWidth=0.5;ctx.stroke()}}
+ team.forEach(([x,y],i)=>{const lead=i===4;let ry=y*K,rx=x*K;if(idle){rx=x*K;ry=roofSurface(r,clamp(landDx+rx,-r.half,r.half))-sy-2.6*K+(i<2?-1.2:0)}
   ctx.save();ctx.translate(rx,ry);ctx.scale(K,K);if(pass==='base')reindeer(ctx,{lead,landed:idle,t,ph:i*0.2,anim:true,idle:idle?t+i*2.3:null});else if(lead){halo(ctx,11.9,-4.6,3,'#FF3B3B',0.5);ball(ctx,11.9,-4.6,1.1,'#FF5B5B',0)}ctx.restore()});
  ctx.restore();
  // père Noël
@@ -1095,7 +1161,7 @@ function santaDelivery(ctx,r,t,{pass='base',K=0.7}={}){const p=t/75,cx=r.cx,entr
 // Scène 7 : la séquence sur trois toits (tuiles à cheminée, mansarde à cheminée, zinc sans cheminée → trappe), de nuit.
 function santaScene(ctx,t=0){const W=360,H=100;const tt=(t*1)%75;
  ctx.fillStyle='#8EA6D8';ctx.fillRect(0,0,W,H);
- const roofs=[drawRoof(ctx,{x:14,w:92,top:52,rh:14,kind:'gable',chimney:0.62,s:1,wall:'#E6BCD0'}),drawRoof(ctx,{x:134,w:92,top:52,rh:14,kind:'mansard',chimney:0.3,s:1,wall:'#F6E2B4'}),drawRoof(ctx,{x:254,w:92,top:52,rh:14,kind:'zinc',chimney:null,s:1,wall:'#CFE0B8'})];
+ const roofs=[drawRoof(ctx,{x:14,w:92,top:52,rh:14,kind:'gable',chimney:0.24,s:1,wall:'#E6BCD0'}),drawRoof(ctx,{x:134,w:92,top:52,rh:14,kind:'mansard',chimney:0.22,s:1,wall:'#F6E2B4'}),drawRoof(ctx,{x:254,w:92,top:52,rh:14,kind:'zinc',chimney:null,s:1,wall:'#CFE0B8'})];
  ctx.fillStyle='#CFE0B8';ctx.fillRect(0,100,W,2);
  for(const r of roofs)santaDelivery(ctx,r,tt,{pass:'base'});
  nightFilter(ctx,W,H);
@@ -1108,7 +1174,7 @@ function santaFar(ctx,t=0){const W=360,H=100,tt=t%75;
  ctx.fillStyle='#8EA6D8';ctx.fillRect(0,0,W,H);ctx.fillStyle='#A9C9A0';ctx.beginPath();ctx.moveTo(0,40);for(let x=0;x<=W;x+=20)ctx.lineTo(x,30+Math.sin(x/90)*5);ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.fill();
  const rr=mulberry32(5);for(let x=-10;x<W;){const w=20+rr()*20,h=14+rr()*10,y=46+Math.sin(x/90)*4;R(ctx,x,y-h,w,h,mix(pick(WALLS,rr),hex('#9CC0E4'),0.25),{lw:0.3,sh:0.2,li:0});P(ctx,[[x-1,y-h],[x+w/2,y-h-6],[x+w+1,y-h]],mix(pick(ROOFS,rr),hex('#9CC0E4'),0.25),{lw:0.3,sh:0.25,li:0.1});x+=w+2+rr()*10}
  // la maison choisie (rang 3) : toit de tuiles à cheminée, à l'échelle 0,55 et légèrement bleutée
- ctx.save();ctx.translate(150,46);ctx.scale(0.55,0.55);const r=drawRoof(ctx,{x:-46,w:92,top:0,rh:14,kind:'gable',chimney:0.62,s:1,wall:'#F2C8A0'});santaDelivery(ctx,r,tt,{pass:'base'});ctx.fillStyle='rgba(156,192,228,0.28)';ctx.fillRect(-120,-100,400,160);ctx.restore();
+ ctx.save();ctx.translate(150,46);ctx.scale(0.55,0.55);const r=drawRoof(ctx,{x:-46,w:92,top:0,rh:14,kind:'gable',chimney:0.24,s:1,wall:'#F2C8A0'});santaDelivery(ctx,r,tt,{pass:'base'});ctx.fillStyle='rgba(156,192,228,0.28)';ctx.fillRect(-120,-100,400,160);ctx.restore();
  // immeubles du premier plan devant (gabarit)
  for(const[x,w,c]of[[0,70,'#F6E2B4'],[74,90,'#F0A98A'],[250,110,'#CFE0B8']]){R(ctx,x,70,w,30,c,{lw:0.5,sh:0.25,shX:0.74,li:0.1});P(ctx,[[x-1,70],[x+w+1,70],[x+w-4,62],[x+4,62]],'#D8603A',{lw:0.5,sh:0.3,shX:0.6,li:0.2})}
  nightFilter(ctx,W,H);const sr=mulberry32(21);for(let k=0;k<50;k++){const x=sr()*W,y=sr()*28;ctx.fillStyle='rgba(255,250,230,0.7)';ctx.fillRect(x,y,0.9,0.9)}
@@ -1116,10 +1182,10 @@ function santaFar(ctx,t=0){const W=360,H=100,tt=t%75;
  text(ctx,'arrière-plan : maison de la colline (rang 3), ×0,55, bleutée · dessinée derrière les immeubles du premier plan',W/2,96,3,'#FFFFFF')}
 // Planche : 8 instants clés sur le toit de tuiles (×3,2).
 function santaRoofSeq(ctx){const cw=84,ch=70;const times=[12,18.3,21.5,24.5,27.8,45,50,60];times.forEach((tt,i)=>{const col=i%4,row=Math.floor(i/4);ctx.save();ctx.translate(col*cw,row*ch);ctx.beginPath();ctx.rect(0,0,cw,ch);ctx.clip();ctx.fillStyle='#8EA6D8';ctx.fillRect(0,0,cw,ch);
- const r=drawRoof(ctx,{x:4,w:76,top:34,rh:14,kind:'gable',chimney:0.62,s:1,wall:'#E6BCD0'});santaDelivery(ctx,r,tt,{pass:'base'});nightFilter(ctx,cw,ch);santaDelivery(ctx,r,tt,{pass:'lit'});
+ const r=drawRoof(ctx,{x:4,w:76,top:34,rh:14,kind:'gable',chimney:0.24,s:1,wall:'#E6BCD0'});santaDelivery(ctx,r,tt,{pass:'base'});nightFilter(ctx,cw,ch);santaDelivery(ctx,r,tt,{pass:'lit'});
  text(ctx,['approche (p 0,16)','glissade, givre (0,244)','descend du traîneau (0,29)','marche prudente, hotte à l\'épaule (0,33)','pose la hotte, enjambe (0,37)','caché, fenêtre allumée (0,6)','retour (0,67)','départ (0,8)'][i]+` · t = ${tt} s`,cw/2,66,2.6,'#FFFFFF',{w:cw-4});ctx.restore()})}
-function santaCompare(ctx){const W=120,H=60;ctx.fillStyle='#F2DDB4';ctx.fillRect(0,0,W,H);R(ctx,0,50,W,10,'#E2D2B0',{lw:0.3,sh:0,li:0});
- [['walker0|3','passant (G3)'],['walker1|3','passante (G3)'],['santa|stand|4','père Noël'],['santa|walk|0|3','… en marche, hotte à l\'épaule'],['santa-plain|stand|4','pantin actuel']].forEach(([id,l],i)=>{ctx.save();ctx.translate(12+i*24,50);if(id.startsWith('santa|'))santaWithSack(ctx,id);else pantin(ctx,id);ctx.restore();text(ctx,l,12+i*24,55,2.4,'#5A4A30',{w:23})})}
+function santaCompare(ctx){const W=150,H=60;ctx.fillStyle='#F2DDB4';ctx.fillRect(0,0,W,H);R(ctx,0,50,W,10,'#E2D2B0',{lw:0.3,sh:0,li:0});
+ [['walker0|3','passant (G3)'],['walker1|3','passante (G3)'],['santa|stand|4','père Noël'],['santa|walk|0|3','… en marche, hotte à l\'épaule'],['santa-plain|stand|4','pantin actuel'],['face','']].forEach(([id,l],i)=>{ctx.save();ctx.translate(12+i*24,50);if(i===5){ctx.translate(6,59);ctx.scale(2.4,2.4);ctx.beginPath();ctx.rect(-7,-41,14,13);ctx.clip();pantin(ctx,'santa|stand|4');ctx.restore();text(ctx,'visage de face ×2,4',132,55,2.4,'#5A4A30');return}if(id.startsWith('santa|'))santaWithSack(ctx,id);else pantin(ctx,id);ctx.restore();text(ctx,l,12+i*24,55,2.4,'#5A4A30',{w:23})})}
 // Tour du père Noël : 8 orientations (pas de 45°), debout la hotte à deux mains, de jour puis de nuit (lanterne à gauche : révélation chaude, liseré, ombre).
 function santaTurn(ctx,t=0){const W=306,H=124,cw=34;
  const row=(night,y0)=>{ctx.fillStyle=night?'#BFE0F4':'#F2DDB4';ctx.fillRect(0,y0,W,62);R(ctx,0,y0+52,W,10,'#E2D2B0',{lw:0.3,sh:0,li:0});
@@ -1133,7 +1199,7 @@ function santaTurn(ctx,t=0){const W=306,H=124,cw=34;
  row(false,0);row(true,62);
  ctx.save();ctx.translate(W-17,52);pantin(ctx,'santa-plain|stand|4');ctx.restore();text(ctx,'pantin actuel',W-17,57,2.3,'#5A4A30')}
 anim('santa-turn',306,124,4,(ctx,t)=>santaTurn(ctx,t));
-anim('santa',360,100,3,(ctx,t)=>santaScene(ctx,t));anim('santa-far',360,100,3,(ctx,t)=>santaFar(ctx,t));{const ctx=mk('santa-roof-seq',336,140,3.2);santaRoofSeq(ctx)}{const ctx=mk('santa-compare',120,60,9);santaCompare(ctx)}
+anim('santa',360,100,3,(ctx,t)=>santaScene(ctx,t));anim('santa-far',360,100,3,(ctx,t)=>santaFar(ctx,t));{const ctx=mk('santa-roof-seq',336,140,3.2);santaRoofSeq(ctx)}{const ctx=mk('santa-compare',150,60,7.2);santaCompare(ctx)}
 
 // ───────────────────────── 8. Installations ─────────────────────────
 {const s=2.5,W=432,H=110,G=86;const ctx=mk('install',W,H,s);
@@ -1162,21 +1228,36 @@ function eventsScene(ctx,t=0){const W=540,H=136,row=68;
  const lab=(l,x,y,c='#5A4A30')=>text(ctx,l,x,y,2.8,c);
  // jour
  put(50,16,0.5,()=>plane(ctx,{t}));lab('avion',50,27);put(115,30,0.7,()=>helicopter(ctx,{t}));lab('hélicoptère',115,45);put(170,22,0.9,()=>drone(ctx,{t}));lab('drone',170,32);
- put(215,30,0.7,()=>balloonEvt(ctx));lab('montgolfière',215,52);put(270,16,0.6,()=>festBalloons(ctx,{bunny:false,t}));lab('ballons cœur',270,44);put(312,16,0.6,()=>festBalloons(ctx,{bunny:true,t}));lab('ballons lapin',312,44);
+ put(215,30,0.7,()=>balloonEvt(ctx,{t}));lab('montgolfière',215,52);put(270,16,0.6,()=>festBalloons(ctx,{bunny:false,t}));lab('ballons cœur',270,44);put(312,16,0.6,()=>festBalloons(ctx,{bunny:true,t}));lab('ballons lapin',312,44);
  put(360,36,0.7,()=>kite(ctx,'#E07A8C',t));lab('cerf-volant',372,54);put(405,44,0.7,()=>bells(ctx,t));lab('cloches',405,62);
  put(528,10,0.6,()=>bannerPlane(ctx,'#F2C94C',t));lab('banderole « Wikimasters »',475,24);put(520,64,0.25,()=>crane(ctx,t));lab('grue (×0,25)',500,64);
  put(60,56,0.5,()=>garbageTruck(ctx,{}));lab('camion-poubelle',60,64);put(140,56,0.6,()=>deliveryBike(ctx,{}));lab('vélo de livraison',140,64);
  // nuit
- const ny=row;put(50,ny+16,0.5,()=>plane(ctx,{night:true,t}));put(115,ny+30,0.7,()=>helicopter(ctx,{t,night:true,c:'#2E5E8A'}));put(170,ny+24,0.9,()=>drone(ctx,{t,night:true}));
+ const ny=row;put(50,ny+16,0.5,()=>plane(ctx,{night:true,t}));put(115,ny+30,0.7,()=>helicopter(ctx,{t,night:true,c:'#2E5E8A'}));put(170,ny+24,0.9,()=>drone(ctx,{t,night:true}));put(300,ny+30,0.7,()=>balloonEvt(ctx,{t,night:true,a:'#3B6FD6',b:'#F2C94C'}));
  R(ctx,200,ny+12,60,40,'#E6BCD0',{lw:0.5,sh:0.25,shX:0.75,li:0.1});for(let wx=206;wx<256;wx+=12)for(let wy=ny+16;wy<ny+46;wy+=14)R(ctx,wx,wy,5,8,'#243050',{lw:0.3,sh:0,li:0});
  put(60,ny+56,0.5,()=>garbageTruck(ctx,{lights:true}));put(140,ny+56,0.6,()=>deliveryBike(ctx,{box:'#E0A21E'}));
  ctx.save();ctx.beginPath();ctx.rect(0,ny,W,row);ctx.clip();nightFilter(ctx,W,H*2);ctx.restore();
- put(50,ny+16,0.5,()=>plane(ctx,{night:true,t,pass:'lit'}));put(170,ny+24,0.9,()=>{halo(ctx,0,2,2.4,'#40FF80',0.5);disc(ctx,0,2,1.2,'#40FF80',0)});put(115,ny+30,0.7,()=>{halo(ctx,-30,0,2.6,'#FF4040',0.5);disc(ctx,-30,0,1.5,'#FF4040',0)});
+ put(50,ny+16,0.5,()=>plane(ctx,{night:true,t,pass:'lit'}));put(170,ny+24,0.9,()=>{halo(ctx,0,2,2.4,'#40FF80',0.5);disc(ctx,0,2,1.2,'#40FF80',0)});
  put(218,ny+31,1,()=>apartmentGlow(ctx));put(380,ny+8,0.42,()=>fireworks(ctx,t));
- put(60,ny+56,0.5,()=>{ctx.fillStyle='rgba(255,233,160,0.3)';ctx.beginPath();ctx.moveTo(26,-9);ctx.lineTo(50,-3);ctx.lineTo(50,-15);ctx.fill();halo(ctx,25.6,-9.5,3,'#FFE9A0',0.6);ball(ctx,25.6,-9.5,1.4,'#FFF6D0',0)});put(140,ny+56,0.6,()=>{halo(ctx,6,-16,2,'#FFE9A0',0.6);disc(ctx,6,-16,0.9,'#FFF6D0',0)});
+ put(300,ny+30,0.7,()=>balloonEvt(ctx,{t,night:true,pass:'lit'}));put(115,ny+30,0.7,()=>helicopterLit(ctx,t));put(60,ny+56,0.5,()=>{ctx.fillStyle='rgba(255,233,160,0.3)';ctx.beginPath();ctx.moveTo(26,-9);ctx.lineTo(50,-3);ctx.lineTo(50,-15);ctx.fill();halo(ctx,25.6,-9.5,3,'#FFE9A0',0.6);ball(ctx,25.6,-9.5,1.4,'#FFF6D0',0)});put(140,ny+56,0.6,()=>{halo(ctx,6,-16,2,'#FFE9A0',0.6);disc(ctx,6,-16,0.9,'#FFF6D0',0)});
  const sr=mulberry32(31);for(let k=0;k<60;k++){const x=sr()*W,y=ny+sr()*50,a=0.4+0.6*Math.abs(Math.sin(t*2+k));ctx.fillStyle=`rgba(255,250,230,${a})`;ctx.fillRect(x,y,0.8,0.8)}
- lab('lueur d’appartement',230,ny+58,'#FFFFFF');lab('feux d’artifice (fusée, gerbe, retombée)',380,ny+62,'#FFFFFF');lab('feux de position et phares la nuit',100,ny+65,'#FFFFFF')}
+ lab('lueur d’appartement',230,ny+58,'#FFFFFF');lab('montgolfière : bouffée du brûleur',300,ny+58,'#FFFFFF');lab('feux d’artifice (fusée, gerbe, retombée)',380,ny+62,'#FFFFFF');lab('feux de position et phares la nuit',100,ny+65,'#FFFFFF')}
 anim('events',540,136,2,(ctx,t)=>eventsScene(ctx,t));
+function skyZoom(ctx,t){const W=360,H=200,row=100;for(const night of[false,true]){const y0=night?row:0;ctx.save();ctx.beginPath();ctx.rect(0,y0,W,row);ctx.clip();ctx.fillStyle=night?'#8EA6D8':'#BFE0F4';ctx.fillRect(0,y0,W,row);
+  const put=(x,y,s,f)=>{ctx.save();ctx.translate(x,y0+y);ctx.scale(s,s);f();ctx.restore()};
+  put(70,34,1.1,()=>plane(ctx,{night,t,far:0.1}));put(190,40,1.2,()=>helicopter(ctx,{t,night,c:night?'#2E5E8A':'#C0463A'}));put(300,50,1.3,()=>balloonEvt(ctx,{t,night,a:'#E0A21E',b:'#C0463A'}));
+  if(night){nightFilter(ctx,W,H*2);put(70,34,1.1,()=>plane(ctx,{night:true,t,pass:'lit',far:0.1}));put(190,40,1.2,()=>helicopterLit(ctx,t));put(300,50,1.3,()=>balloonEvt(ctx,{t,night:true,pass:'lit'}));const sr=mulberry32(31);for(let k=0;k<50;k++){ctx.fillStyle='rgba(255,250,230,0.7)';ctx.fillRect(sr()*W,y0+sr()*90,0.8,0.8)}}
+  text(ctx,'avion de ligne · traînée en particules',70,y0+92,3.2,night?'#FFFFFF':'#5A4A30');text(ctx,'hélicoptère · assiette, rotor flou, pilote',190,y0+92,3.2,night?'#FFFFFF':'#5A4A30');text(ctx,'montgolfière · fuseaux, brûleur, passagers',300,y0+92,3.2,night?'#FFFFFF':'#5A4A30');ctx.restore()}}
+anim('sky-zoom',360,200,3,(ctx,t)=>skyZoom(ctx,t));
+function gullsScene(ctx,t){const W=360,H=110;ctx.fillStyle='#BFE0F4';ctx.fillRect(0,0,W,H);ctx.fillStyle='#A9C9A0';ctx.beginPath();ctx.moveTo(0,80);for(let x=0;x<=W;x+=20)ctx.lineTo(x,70+Math.sin(x/90)*5);ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.fill();
+ [['haut',-1],['milieu',0],['bas',1],['plané','g'],['virage','t']].forEach(([l,f],i)=>{ctx.save();ctx.translate(20+i*24,16);gull(ctx,{s:2.2,flap:f==='g'||f==='t'?0:f,glide:f==='g',turn:f==='t'?0.8:0});ctx.restore();text(ctx,l,20+i*24,28,2.8,'#5A4A30')});
+ R(ctx,250,56,40,30,'#F2C8A0',{lw:0.5,sh:0.25,shX:0.75,li:0.1});P(ctx,[[249,56],[270,44],[291,56]],'#B4523A',{lw:0.5,sh:0.3,shX:0.55,li:0.2});R(ctx,280,44,4,8,'#8A5A3A',{lw:0.4,sh:0.3,li:0.2});
+ flock(ctx,t,{n:5,x0:-20+((t*24)%(W+140))-t*24,y0:40,dir:1,speed:24,s:1,far:0,seed:3});
+ flock(ctx,t,{n:3,x0:W+40-((t*16)%(W+140))+t*16,y0:30,dir:-1,speed:16,s:0.55,far:0.35,seed:7});
+ flock(ctx,t,{n:2,x0:-10+((t*9)%(W+100))-t*9,y0:34,dir:1,speed:9,s:0.3,far:0.6,seed:11});
+ flock(ctx,t,{n:1,x0:0,y0:50,dir:1,speed:20,s:0.9,far:0,seed:5,land:{x:282,y:44}});
+ text(ctx,'volée proche · moyenne · lointaine (plus petites et pâles) · une mouette se pose sur la cheminée puis repart',W/2,104,3,'#5A4A30')}
+anim('gulls',360,110,3,(ctx,t)=>gullsScene(ctx,t));
 
 // ───────────────────────── 10. Signes festifs ─────────────────────────
 {const s=6,W=180,H=70;const ctx=mk('marks',W,H,s);ctx.fillStyle='#E9DCC4';ctx.fillRect(0,0,W,H);R(ctx,0,58,W,12,'#E2D2B0',{lw:0.3,sh:0,li:0});
