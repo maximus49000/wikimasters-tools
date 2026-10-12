@@ -1,5 +1,5 @@
 import { hexRgb, rgba } from '../color';
-import type { PaintCtx } from '../paint-ctx';
+import type { GradientLike, PaintCtx } from '../paint-ctx';
 
 // Contexte des peintres de commerces (vague Ghibli G4a) : le sous-ensemble du canvas 2D utilisé par la maquette validée
 // (docs/superpowers/maquettes/g4-commerces/) : transformations, courbes de Bézier, rectangles arrondis, texte. Un vrai
@@ -18,6 +18,9 @@ export interface ShopPaintCtx extends PaintCtx {
   fillText(s: string, x: number, y: number): void;
   strokeText(s: string, x: number, y: number): void;
   measureText(s: string): { width: number };
+  // Dégradé radial (masque du plancher révélé par l'éclairage de concert, G5) : un vrai canvas l'a ; les contextes
+  // intermédiaires (entrée peinte, muet) peuvent s'en passer, le peintre se passe alors du masque.
+  createRadialGradient?(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): GradientLike;
 }
 
 // Teinte d'une couleur hexadécimale (#rrggbb → #rrggbb) : la lumière du moment (nuit, crépuscule).

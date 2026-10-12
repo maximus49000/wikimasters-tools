@@ -728,27 +728,28 @@ describe('installations cellulo en Ghibli (G5)', () => {
     for (const kind of ['stage-floor', 'stage-frame', 'stage-spots']) {
       const g = host.querySelector(`[data-decor-item][data-decor-kind="${kind}"][data-decor-set][data-decor-phase="present"]`)!;
       expect(g, kind).not.toBeNull();
-      expect(g.querySelectorAll('image')).toHaveLength(1);
+      // Les projecteurs portent aussi les extras de concert (tâche 7 : façade son, retours, rampe LED, lyres, contre-jours).
+      expect(g.querySelectorAll('image')).toHaveLength(kind === 'stage-spots' ? 2 : 1);
       expect(g.querySelectorAll('rect, line, circle, polyline')).toHaveLength(0);
     }
+    expect(count(host, '[data-decor-kind="stage-spots"] [data-stage-extras] image')).toBe(1);
     // Repères vides conservés après cuisson (la tâche 7 s'y accroche) : toile de fond, un par projecteur.
     expect(count(host, '[data-decor-kind="stage-frame"] [data-stage-backdrop]')).toBe(1);
     expect(count(host, '[data-decor-kind="stage-spots"] [data-stage-spot]')).toBe(3);
   }, 60000);
 
-  it('nuit de concert (23 h) : faisceaux en deux polygones par projecteur (large qui respire comme le classique + cœur fixe, sans SMIL nouveau)', () => {
+  it('nuit de concert (23 h) : le vrai éclairage de concert (tâche 7) remplace les faisceaux, sans SMIL ; classique inchangé', () => {
     const { host } = gLayer(MUSIC, 23 * 60);
-    const beams = [...host.querySelectorAll('[data-stage-beam]')];
-    expect(beams).toHaveLength(3);
-    expect(count(host, '[data-stage-beam-core]')).toBe(3);
-    expect(count(host, '[data-stage-beam-core] animate')).toBe(0);
-    expect(count(host, '[data-stage-beams] polygon')).toBe(6);
-    beams.forEach((b, i) => {
-      expect(Math.abs(Number(b.getAttribute('data-origin-x')) - STAGE.spotXs[i]!)).toBeLessThan(2);
-      expect(b.querySelector('animate')).not.toBeNull();
-    });
+    expect(count(host, '[data-concert-light]')).toBe(1);
+    expect(count(host, '[data-stage-beams], [data-stage-beam]')).toBe(0);
+    expect(count(host, '[data-concert-light] animate, [data-concert-light] animateTransform')).toBe(0);
+    expect(count(host, '[data-concert-beam]')).toBe(10);
     unmountAll();
-    expect(count(gLayer(MUSIC, 23 * 60, true, true).host, '[data-stage-beams] animate')).toBe(0);
+    expect(count(gLayer(MUSIC, 23 * 60, true, true).host, '[data-concert-light]')).toBe(1);
+    unmountAll();
+    const classic = gLayer(MUSIC, 23 * 60, false).host;
+    expect(count(classic, '[data-stage-beam]')).toBe(3);
+    expect(count(classic, '[data-concert-light], [data-stage-beam-core]')).toBe(0);
   });
 
   it('montage à la nacelle : nacelle et pièce tenue en image, bras en tubes cellulo, chargement du plateau en image avec ses repères entreposés', async () => {

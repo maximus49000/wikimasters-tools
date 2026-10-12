@@ -3,6 +3,7 @@ import type { ItemKind } from '../core/library/city/install';
 import type { Outfit } from '../core/library/city/people';
 import { INK } from '../core/library/paint/cel';
 import '../core/library/paint/props/install';
+import '../core/library/paint/props/music';
 import { mixHex, type Sky } from '../core/library/sky';
 import { Cyclist, PersonSprite, tone } from './city-sprites';
 import { GhibliRider } from './figure/ghibli-cyclist';
@@ -205,6 +206,8 @@ export function StageFrame({ sky, ghibli = false }: { sky: Sky; ghibli?: boolean
 }
 
 // Projecteurs accrochés sous la traverse, orientés vers le plancher. `lit` : lentille allumée (les faisceaux sont dans stage-band.tsx).
+// Ghibli : avec les extras de concert (`stage-extras`, props/music.ts : façade son, retours, rampe LED, lyres, contre-jours ;
+// allumés avec les projecteurs), posés avant les projecteurs ; l'éclairage de concert (concert-light.tsx) s'y accroche.
 export function StageSpots({ sky, lit, ghibli = false }: { sky: Sky; lit: boolean; ghibli?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const art = (marks: boolean): ReactElement[] => STAGE.spotXs.map((x, i) => (
@@ -218,6 +221,7 @@ export function StageSpots({ sky, lit, ghibli = false }: { sky: Sky; lit: boolea
   return (
     <g data-stage-part="spots">
       {STAGE.spotXs.map((x, i) => <g key={x} data-stage-spot={i} transform={`translate(${x} ${STAGE.spotY})`} />)}
+      <g data-stage-extras=""><PropImage spec={{ id: 'stage-extras', day: sky.daylight, lit }} /></g>
       <PropImage spec={{ id: 'stage-spots', day: sky.daylight, lit }} fallback={art(false)} />
     </g>
   );

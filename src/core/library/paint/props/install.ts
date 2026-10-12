@@ -59,8 +59,9 @@ function barrier(x: TintedCtx): void {
 // Scène (STAGE d'install-sprites : half 48, plancher 8, dessus 3, traverse à −60, montants à ±44, projecteurs à (−28, 0, 28 ; −55)).
 const S = { half: 48, floor: 8, deck: 3, truss: 60, postX: 44, spotXs: [-28, 0, 28], spotY: -55 } as const;
 
-// Plancher : face avant sombre à lames, dessus bois à lames, nez clair.
-function stageFloor(x: TintedCtx): void {
+// Plancher : face avant sombre à lames, dessus bois à lames, nez clair (repris par `stage-glow` de music.ts : la version
+// révélée par l'éclairage de concert).
+export function stageFloor(x: TintedCtx): void {
   groundShadow(x, 2, 0.5, S.half + 2, 1.6, 0.16);
   RD(x, -S.half, -S.floor, S.half * 2, S.floor, '#262A34', op(0.5, 0.2, 0.75, 0.08));
   for (const sx of [-36, -12, 12, 36]) L(x, sx, -S.floor + 1.6, sx, 0, 'rgba(90,96,110,0.6)', 0.6);

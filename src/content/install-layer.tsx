@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactElement
 import type { YMD } from '../core/library/city/calendar';
 import { COUNTER_HALF, STAND_DEPTH } from '../core/library/city/beer';
 import { FLAG_CYCLE_S, FLAG_FRAMES } from '../core/library/paint/props/install';
+import { cityPaintPlan, type CityPaintPlan } from '../core/library/paint/city-plan';
 import { doorsFor, type Door } from '../core/library/city/doors';
 import {
   LIFT_FETCH, absMinute, beerStandsFor, crewAt, crewStepWindow, decorSetsFor, footWindow, inVehicle, itemEquipment, itemPhase, itemShown,
@@ -28,6 +29,7 @@ import {
   BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, FlagCrate, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE,
   LampFlag, LiftTruck, STAGE, StageFloor, StageFrame, StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
 } from './install-sprites';
+import { ConcertLight } from './concert-light';
 import { CarriedCounter, HeldRoll, StandAwning, StandCounter } from './music-sprites';
 import { MusicStreet, type StreetNode } from './music-street';
 import { StageBand, StageBeams } from './stage-band';
@@ -242,6 +244,11 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
     ] as const)),
     [sets, seed],
   );
+  // Plan de la ville peinte (Ghibli, jour d'une scène seulement) : l'éclairage de concert y découpe la chaussée du public.
+  const plan = useMemo<CityPaintPlan | null>(
+    () => (ghibli && sets.some((s) => s.id.startsWith('stage-music')) ? cityPaintPlan(width, height, seed) : null),
+    [ghibli, sets, width, height, seed],
+  );
   const abs = absMinute(dayNumber(date), minutes);
   const dark = sky.daylight < DARK;
   const u = metrics.unit;
@@ -293,7 +300,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lamps, lit, standSide, ghibli);
       if (d) drawn.push(d);
     }
-    if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits.get(set.id)!, metrics, sky, rainy, still, width, ghibli));
+    if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits.get(set.id)!, metrics, sky, rainy, still, width, ghibli, plan, seed));
     if (still) continue;
     // Véhicule de transport de l'équipe à pied (camionnette, vélo porteur, camion plateau) : il arrive chargé en roulant, se
     // gare au bord de la rue avant le premier créneau et repart en roulant après le dernier (city/van.ts), une fois tout rangé.
@@ -426,11 +433,14 @@ function decorNode(
     case 'stand-awning': {
       // Stands de bière : sur la chaussée ; l'auvent derrière les serveurs, le comptoir devant eux.
       const t = `translate(${item.x.toFixed(1)} ${standBase(m).toFixed(1)}) scale(${m.unit.toFixed(3)})`;
-      if (item.kind === 'stand-awning') return { part: 'street', depth: AWNING_DEPTH, node: <g key={key} {...attrs} transform={t}><StandAwning sky={sky} /></g> };
+      // Ghibli : images cellulo ; l'auvent porte une guirlande d'ampoules, allumées la nuit.
+      if (item.kind === 'stand-awning') {
+        return { part: 'street', depth: AWNING_DEPTH, node: <g key={key} {...attrs} transform={t}><StandAwning sky={sky} ghibli={ghibli ? { garland: true, lit: sky.daylight < DARK } : undefined} /></g> };
+      }
       return {
         part: 'street',
         depth: STAND_DEPTH,
-        node: <g key={key} {...attrs} data-beer-stand={item.group} transform={t}><StandCounter sky={sky} side={standSide.get(item.group ?? '') ?? 1} /></g>,
+        node: <g key={key} {...attrs} data-beer-stand={item.group} transform={t}><StandCounter sky={sky} side={standSide.get(item.group ?? '') ?? 1} ghibli={ghibli} /></g>,
       };
     }
     default: {
@@ -488,9 +498,13 @@ export function placeFlags(flags: readonly WavingFlag[], t: number, reg: PropReg
 // Musiciens (plancher posé) : ils arrivent à pied de 16 h 46 à 17 h, jouent jusqu'à minuit et repartent à pied de 0 h 01 à
 // 0 h 15 (stage-band.tsx) ; aucun n'apparaît ni ne disparaît sur place. Faisceaux (projecteurs posés, nuit, 17 h à minuit :
 // les trois musiciens sont alors en place, jamais une scène vide éclairée). La nuit, les projecteurs éclairent les musiciens.
+// Ghibli : le vrai éclairage de concert (concert-light.tsx) remplace les faisceaux ; il découpe la chaussée du public dans `plan`.
 const BAND_FROM = 17 * 60;
 const BAND_WINDOW: readonly [number, number] = [16 * 60 + 45, 24 * 60 + 20];
-function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[], m: CityMetrics, sky: Sky, rainy: boolean, still: boolean, width: number, ghibli: boolean): Drawn[] {
+function stageShow(
+  set: DecorSet, abs: number, dark: boolean, outfits: Outfit[], m: CityMetrics, sky: Sky, rainy: boolean, still: boolean, width: number, ghibli: boolean,
+  plan: CityPaintPlan | null, seed: number,
+): Drawn[] {
   const floor = set.items.find((i) => i.kind === 'stage-floor');
   const spots = set.items.find((i) => i.kind === 'stage-spots');
   if (!floor || !spots) return [];
@@ -501,7 +515,14 @@ function stageShow(set: DecorSet, abs: number, dark: boolean, outfits: Outfit[],
   const playing = abs >= absMinute(set.day, BAND_FROM) && abs < absMinute(set.day + 1, 0);
   const lit = sp.phase === 'present' && dark && playing;
   const out: Drawn[] = [];
-  if (lit) out.push({ part: 'crew', node: <g key={`${set.id}-beams`} transform={t}><StageBeams still={still} ghibli={ghibli} /></g> });
+  if (lit) {
+    out.push({
+      part: 'crew',
+      node: ghibli
+        ? <ConcertLight key={`${set.id}-beams`} stageX={floor.x} base={stageBase(m)} unit={m.unit} lit still={still} plan={plan} seed={seed} />
+        : <g key={`${set.id}-beams`} transform={t}><StageBeams still={still} /></g>,
+    });
+  }
   if (still ? fp.phase === 'present' : itemShown(set, floor, fp)) {
     const day = Math.floor(abs / 1440);
     out.push({
@@ -743,12 +764,19 @@ const heldFlag = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): React
     <g transform="translate(0 -9)"><FlagArt sky={inp.sky} w={6} h={4} /></g>
   </g>
 );
-// Toile de l'auvent roulée, tenue à la main (au bout du bras levé en haut de l'échelle).
-const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (
-  <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>
-    <HeldRoll sky={inp.sky} />
-  </g>
-);
+// Toile de l'auvent roulée, tenue à la main (au bout du bras levé en haut de l'échelle). Ghibli : image cuite dans le sens
+// `dir`, posée sans miroir (comme heldPiece).
+const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
+  if (inp.ghibli) {
+    const s = (0.8 / STREET_SCALE.person).toFixed(3);
+    return <g {...loadAttrs(inp, by)} transform={`scale(${s})`}><HeldRoll sky={inp.sky} ghibli={{ dir }} /></g>;
+  }
+  return (
+    <g {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.8)}>
+      <HeldRoll sky={inp.sky} />
+    </g>
+  );
+};
 
 // Pièce de la scène tenue par l'ouvrier de la nacelle : tronçon de treillis (ossature) ou projecteur. Ghibli : image cuite
 // dans le sens `dir`, posée sans miroir (à la main droite du pantin, échelle du passant).
@@ -918,7 +946,7 @@ function handCrew(inp: CrewInput): FootCrew {
       : `matrix(${u.toFixed(3)}, 0, 0, ${u.toFixed(3)}, 0, 0)`;
     return (
       <g {...attrs} style={{ transform: `translate(${x.toFixed(1)}px, ${base.toFixed(1)}px) ${shape}`, transition: MOVE }}>
-        {barrier ? <Barrier sky={inp.sky} ghibli={inp.ghibli} /> : counter ? <CarriedCounter sky={inp.sky} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />}
+        {barrier ? <Barrier sky={inp.sky} ghibli={inp.ghibli} /> : counter ? <CarriedCounter sky={inp.sky} ghibli={inp.ghibli} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />}
       </g>
     );
   };

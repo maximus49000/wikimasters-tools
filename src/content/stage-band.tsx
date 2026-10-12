@@ -12,6 +12,8 @@ import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 import { STAGE, STAGE_STAND, spotLens } from './install-sprites';
 import { useSceneDayStart } from './parade-layer';
+import { PropImage } from './prop/prop-host';
+import '../core/library/paint/props/music';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Musiciens de la scène de la Fête de la musique et faisceaux des projecteurs (spec §7.3). Repère de la scène : centre x = 0,
@@ -156,7 +158,9 @@ const poseOfMusician = (i: number, p: MusicianPos, unit: number): PoseIn => {
 };
 
 // Instrument tenu (repère du pantin, poignet droit à l'origine), placé d'après les mains de la pose `arms` (accroches du
-// pantin à l'arrêt, orientation de jeu) : la marche ne fait que translater l'objet avec la main droite.
+// pantin à l'arrêt, orientation de jeu) : la marche ne fait que translater l'objet avec la main droite. G5 : image cellulo
+// `stage-prop` (props/music.ts) aux mêmes accroches (main gauche relative `dx`, `dy` et pied `foot`, arrondis au demi : une
+// image par orientation du pantin), le dessin SVG d'avant en repli tant qu'elle n'est pas cuite.
 function GhibliProp({ kind, sky, outfit, yaw, walking }: { kind: Instrument; sky: Sky; outfit: Outfit; yaw: number; walking: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const sig = signatureOf(shapeOf(outfit, false));
@@ -165,41 +169,49 @@ function GhibliProp({ kind, sky, outfit, yaw, walking }: { kind: Instrument; sky
   const dx = a.handL[0] - hx;
   const dy = a.handL[1] - hy;
   const r2 = (v: number): number => Math.round(v * 100) / 100;
+  const half = (v: number): number => Math.round(v * 2) / 2;
+  let art: ReactElement;
+  let foot = 0;
   if (kind === 'guitar') {
     // Caisse sous la main droite (qui gratte), manche en travers du corps jusqu'à la main gauche et un peu au-delà.
     const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
-    return (
-      <g data-instrument="guitar">
+    art = (
+      <>
         <line x1={0} y1={0} x2={r2(dx * 1.3)} y2={r2(dy * 1.3)} stroke={t('#5A3A22')} strokeWidth={0.9} strokeLinecap="round" />
         <ellipse cx={r2(-dx * 0.12)} cy={r2(-dy * 0.12 + 0.4)} rx={3.2} ry={2.5} fill={t('#B5723A')} transform={`rotate(${r2(ang)} ${r2(-dx * 0.12)} ${r2(-dy * 0.12 + 0.4)})`} />
         <circle cx={r2(-dx * 0.12)} cy={r2(-dy * 0.12 + 0.4)} r={0.8} fill={t('#2A1A10')} />
-      </g>
+      </>
     );
-  }
-  if (kind === 'mic') {
+  } else if (kind === 'mic') {
     // En jouant : micro à la main, pied posé sur le plancher (y du pantin = 0, soit −hy sous la main). En marche : porté.
-    const foot = walking ? 9 : r2(-hy);
-    return (
-      <g data-instrument="mic">
+    foot = walking ? 9 : r2(-hy);
+    art = (
+      <>
         <line data-mic-pole="" x1={0.6} y1={-0.6} x2={0.6} y2={foot} stroke={t('#2A2D34')} strokeWidth={0.6} />
         <line x1={-1.8} y1={foot} x2={3} y2={foot} stroke={t('#2A2D34')} strokeWidth={0.7} strokeLinecap="round" />
         <circle cx={0.6} cy={-1.4} r={1.2} fill={t('#4A4E58')} />
-      </g>
+      </>
+    );
+  } else {
+    // Caisse claire à la taille, centrée entre les deux mains, sur son pied (posé sur le plancher en jouant, porté en marche) ;
+    // baguettes des deux mains vers la peau.
+    const mx = dx / 2;
+    const top = dy / 2 + 1.4;
+    foot = walking ? top + 9 : r2(-hy);
+    art = (
+      <>
+        <line x1={r2(mx - 4.4)} y1={r2(top + 6)} x2={r2(mx - 5)} y2={foot} stroke={t('#2A2D34')} strokeWidth={0.6} />
+        <line x1={r2(mx + 4.4)} y1={r2(top + 6)} x2={r2(mx + 5)} y2={foot} stroke={t('#2A2D34')} strokeWidth={0.6} />
+        <rect x={r2(mx - 5.5)} y={r2(top)} width={11} height={6.5} rx={1} fill={t('#B02A2A')} />
+        <rect x={r2(mx - 5.5)} y={r2(top)} width={11} height={1.5} rx={0.7} fill={t('#E8E8E0')} />
+        <line x1={0} y1={0} x2={r2(mx - 1.2)} y2={r2(top + 0.2)} stroke={t('#D8C8A0')} strokeWidth={0.6} strokeLinecap="round" />
+        <line x1={r2(dx)} y1={r2(dy)} x2={r2(mx + 1.2)} y2={r2(top + 0.2)} stroke={t('#D8C8A0')} strokeWidth={0.6} strokeLinecap="round" />
+      </>
     );
   }
-  // Caisse claire à la taille, centrée entre les deux mains, sur son pied (posé sur le plancher en jouant, porté en marche) ;
-  // baguettes des deux mains vers la peau.
-  const mx = dx / 2;
-  const top = dy / 2 + 1.4;
-  const foot = walking ? top + 9 : r2(-hy);
   return (
-    <g data-instrument="drum">
-      <line x1={r2(mx - 4.4)} y1={r2(top + 6)} x2={r2(mx - 5)} y2={foot} stroke={t('#2A2D34')} strokeWidth={0.6} />
-      <line x1={r2(mx + 4.4)} y1={r2(top + 6)} x2={r2(mx + 5)} y2={foot} stroke={t('#2A2D34')} strokeWidth={0.6} />
-      <rect x={r2(mx - 5.5)} y={r2(top)} width={11} height={6.5} rx={1} fill={t('#B02A2A')} />
-      <rect x={r2(mx - 5.5)} y={r2(top)} width={11} height={1.5} rx={0.7} fill={t('#E8E8E0')} />
-      <line x1={0} y1={0} x2={r2(mx - 1.2)} y2={r2(top + 0.2)} stroke={t('#D8C8A0')} strokeWidth={0.6} strokeLinecap="round" />
-      <line x1={r2(dx)} y1={r2(dy)} x2={r2(mx + 1.2)} y2={r2(top + 0.2)} stroke={t('#D8C8A0')} strokeWidth={0.6} strokeLinecap="round" />
+    <g data-instrument={kind} data-foot={foot}>
+      <PropImage spec={{ id: 'stage-prop', args: { kind, dx: half(dx), dy: half(dy), foot: half(foot) }, day: sky.daylight }} fallback={art} />
     </g>
   );
 }
@@ -285,10 +297,9 @@ export function StageBand({ stageX, base, unit, width, minutes, dayOffset, outfi
   );
 }
 
-// Faisceaux : pointe = lentille du projecteur i, base = sol du plancher sous le musicien i.
-// Ghibli (G5, maquette `stageBeams`) : deux polygones par projecteur, le large (0,3 ± 0,06 sur 2,4 / 2,9 / 3,4 s, comme le
-// classique) et un cœur plus étroit (base ±4) et plus clair, à opacité FIXE (pas d'animation SMIL nouvelle en Ghibli) ;
-// l'éclairage de concert de nuit (tâche 7) les remplace.
+// Faisceaux : pointe = lentille du projecteur i, base = sol du plancher sous le musicien i (classique). En Ghibli, le vrai
+// éclairage de concert (concert-light.tsx, G5 tâche 7) les remplace ; `ghibli` (cœur fixe, maquette `stageBeams`) reste
+// pour une scène qui voudrait les faisceaux seuls.
 export function StageBeams({ still, ghibli = false }: { still: boolean; ghibli?: boolean }): ReactElement {
   return (
     <g data-stage-beams="">

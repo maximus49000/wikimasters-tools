@@ -69,6 +69,7 @@ export function recordingCtx(): RecordingCtx {
     // Largeur approchée : 0,55 em par caractère (taille lue dans `font`, 10 px par défaut).
     measureText: (s) => ({ width: s.length * 0.55 * Number(/(\d+(?:\.\d+)?)px/.exec(ctx.font)?.[1] ?? 10) }),
     createLinearGradient: (x0, y0, x1, y1): GradientLike => { log('gradient', [x0, y0, x1, y1]); return { addColorStop: () => undefined }; },
+    createRadialGradient: (x0, y0, r0, x1, y1, r1): GradientLike => { log('gradient', [x0, y0, r0, x1, y1, r1]); return { addColorStop: () => undefined }; },
   };
   return ctx;
 }
