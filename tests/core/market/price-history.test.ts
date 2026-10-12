@@ -141,6 +141,23 @@ describe('cumul par jour et vues du graphique', () => {
     expect(state.cards[KEY]!.days).toHaveLength(2);
   });
 
+  // Relevés fins perdus (élagage à une heure faussée) : la semaine reprend les cumuls par jour avant le premier relevé gardé.
+  it('la semaine complète les jours sans relevé fin par leur cumul du jour', () => {
+    const card = {
+      slug: 'Ted_Lasso',
+      rarity: 'SR',
+      hours: {},
+      samples: [{ t: T0 + 5 * DAY, avgBid: 300, bidCount: 1 }],
+      days: [
+        { day: Math.floor((T0 + 2 * DAY) / DAY) * DAY, sum: 200, n: 2, min: 90, max: 110 },
+        { day: Math.floor((T0 + 3 * DAY) / DAY) * DAY, sum: 120, n: 1, min: 120, max: 120 },
+        { day: Math.floor((T0 + 5 * DAY) / DAY) * DAY, sum: 300, n: 1, min: 300, max: 300 },
+      ],
+    };
+    expect(seriesFor(card, 'week', T0 + 5 * DAY).map((p) => p.avgBid)).toEqual([100, 120, 300]);
+    expect(seriesFor(card, 'day', T0 + 5 * DAY).map((p) => p.avgBid)).toEqual([300]);
+  });
+
   it('jour et semaine lisent les relevés, mois et année lisent les jours', () => {
     let state = recordSnapshot(emptyHistory(), [auction('a', 100, HOUR, true)], T0);
     const t1 = T0 + 3 * DAY;

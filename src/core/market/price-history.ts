@@ -136,10 +136,20 @@ const VIEW_SPAN_MS: Record<ChartView, number> = {
   year: 365 * DAY_MS,
 };
 
-// Heure, jour et semaine : relevés de 30 min ; mois et année : un point par jour (moyenne, min, max).
+// Heure, jour et semaine : relevés de 30 min (la semaine complétée par les cumuls des jours sans relevé fin) ; mois et année : un point par jour (moyenne, min, max).
 export function seriesFor(card: CardHistory, view: ChartView, now: number): Sample[] {
   const from = now - VIEW_SPAN_MS[view];
-  if (view === 'hour' || view === 'day' || view === 'week') return card.samples.filter((s) => s.t >= from);
+  const fine = card.samples.filter((s) => s.t >= from);
+  if (view === 'hour' || view === 'day') return fine;
+  if (view === 'week') {
+    // Jours de la semaine sans relevé fin (perdus ou jamais faits) : leur cumul du jour, avant le premier relevé gardé.
+    const firstDay = fine.length > 0 ? Math.floor(fine[0]!.t / DAY_MS) * DAY_MS : Infinity;
+    return [...dailyPoints(card, from).filter((p) => p.t < firstDay), ...fine];
+  }
+  return dailyPoints(card, from);
+}
+
+function dailyPoints(card: CardHistory, from: number): Sample[] {
   return (card.days ?? [])
     .filter((d) => d.day + DAY_MS > from)
     .map((d) => ({
