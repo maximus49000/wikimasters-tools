@@ -4,6 +4,7 @@ import type { Outfit } from '../../people';
 import { SHOP_FAMILY } from '../gestures';
 import type { ShopFrame } from '../slots';
 import { arrivals, descOf, exited, followerDecide, forceOut, leaderDecide } from './behaviors/customer';
+import { busGlance } from './behaviors/reactions';
 import { pump } from './behaviors/service';
 import { left, makeStaff, pickWork, settle, staffDecide, staffPresence } from './behaviors/staff';
 import { SPEED, hold, interrupt, isFree, run, type Actor, type PartyRt, type World } from './engine';
@@ -12,8 +13,8 @@ import { OUTSIDE, stageFor } from './stage';
 import type { Party, Score, SlotKey, StreetState } from './types';
 
 // Metteur en scène des commerces (G4b) : simulation à pas fixes (STEP) d'un créneau, de la boutique au repos à la
-// boutique au repos. À chaque pas : prises de poste, arrivées à la porte, échéance de fermeture, temps des services, puis
-// chaque acteur libre joue ses actes en attente ou décide (behaviors/*). Sortie : la partition (segments par acteur) et un
+// boutique au repos. À chaque pas : prises de poste, arrivées à la porte, échéance de fermeture, temps des services, regard
+// au passage d'un bus, puis chaque acteur libre joue ses actes en attente ou décide (behaviors/*). Sortie : la partition (segments par acteur) et un
 // journal lisible. Fonction pure de l'entrée : même créneau, même graine → même partition. Appelant : vérifier `inScene`.
 export type DirectorInput = { key: SlotKey; frame: ShopFrame; staff: { id: string; outfit: Outfit; present: [number, number] }[]; parties: Party[]; street: StreetState };
 
@@ -75,6 +76,7 @@ export function direct(input: DirectorInput): Score {
       forceOut(w);
     }
     pump(w);
+    busGlance(w, actors);
     for (const a of actors) tick(w, a);
   }
   for (const s of w.staff) settle(s, L);

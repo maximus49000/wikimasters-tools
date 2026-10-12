@@ -9,6 +9,7 @@ import {
 import type { Character } from '../types';
 import { chairDecide, chairDoor } from './chair';
 import { childOf, followerDecide, groupStay, meet, restMove } from './group';
+import { paradeReact, rainHold } from './reactions';
 import { TABLE_PATIENCE, freeTableExists, tableDecide, tableDoor, tableWait } from './table';
 
 export { followerDecide };
@@ -16,7 +17,7 @@ export { followerDecide };
 // Clients (G4b) : entrée par la porte → file / rayon / place → servi (squelette de la famille, service.ts) → séjour éventuel
 // → sortie par la porte. Le meneur décide pour le groupe (marches en bloc, même allure : les écarts se gardent) ; les
 // accompagnants vivent leur attente (group.ts). Restaurant : on attend à la porte qu'on vous place (table.ts) ; fauteuils :
-// on attend son tour sur la chaise d'attente (chair.ts).
+// on attend son tour sur la chaise d'attente (chair.ts). Averse, défilé, bus : reactions.ts.
 
 const ADJ: Readonly<Record<Character, string>> = { rushed: ' pressé', chatty: ' bavard', undecided: ' indécis', regular: ' habitué', lost: ' perdu', ordinary: '' };
 const GROUP = { solo: '', couple: ' (couple)', 'parent-child': ' (parent + enfant)', friends: ' (amis)' } as const;
@@ -285,8 +286,9 @@ export function leaderDecide(w: World, a: Actor): void {
   const party = a.party!;
   a.fill = restMove(w, a);
   if (party.state === 'leaving') {
-    if (partyIdle(w, party)) exitParty(w, party);
-  } else if (party.state === 'queue') queueDecide(w, party, a);
+    if (partyIdle(w, party) && !rainHold(w, party, a)) exitParty(w, party);
+  } else if (paradeReact(w, party, a)) return;
+  else if (party.state === 'queue') queueDecide(w, party, a);
   else if (party.state === 'browse') browseDecide(w, party, a);
   else if (party.state === 'spot') spotDecide(w, party, a);
   else if (party.state === 'stay') stayDecide(w, party, a);

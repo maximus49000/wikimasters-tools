@@ -38,5 +38,6 @@ export type Segment = { t0: number; t1: number; move: MoveId | 'walk' | 'turn' |
 // début du créneau, Party.arriveAt) ; `dir` : son sens de marche à l'aller (Party.dir) ; null tous deux pour un employé.
 export type ActorTrack = { id: ActorId; role: 'staff' | 'customer'; outfit: Outfit; scale: number; party: string | null; enter: number | null; exit: number | null; arriveAt: number | null; dir: 1 | -1 | null; segments: Segment[] };
 export type Score = { key: string; start: number; length: number; tracks: ActorTrack[]; log: string[] };
-// État de la rue fourni au créneau (déjà déterministe) : début d'averse, de défilé, passages du car (s depuis le début du créneau).
-export type StreetState = { rainFrom: number | null; paradeFrom: number | null; busAt: number[] };
+// État de la rue fourni au créneau (déjà déterministe) : début d'averse, de défilé, passages du car (s depuis le début du créneau) ;
+// `umbrellas` : on a son parapluie (absent : non), le client qui sort l'ouvre au lieu d'attendre la fin de l'averse (street.ts).
+export type StreetState = { rainFrom: number | null; paradeFrom: number | null; busAt: number[]; umbrellas?: boolean };

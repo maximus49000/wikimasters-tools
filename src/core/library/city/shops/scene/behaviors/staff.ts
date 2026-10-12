@@ -11,6 +11,7 @@ import {
 } from '../engine';
 import { chairNeeds, chairWork } from './chair';
 import { inside, placeTaken, serveX } from './places';
+import { staffParade } from './reactions';
 import { startService } from './service';
 import { tableNeeds, tableWork } from './table';
 
@@ -174,7 +175,7 @@ export function staffDecide(w: World, s: Actor): void {
     m.state = 'gone';
     return;
   }
-  if (w.t < s.rest) return;
+  if (w.t < s.rest || staffParade(w, s)) return;
   if (Math.abs(s.x - m.post) > 1e-6) return cast([[s, [walkTo(m.post, { soft: true }), { move: 'turn', yaw: m.homeYaw, soft: true }]]]);
   idleActivity(w, s);
 }

@@ -31,7 +31,8 @@ export type Act = {
   soft?: boolean; // interruptible (boutique vide : un client qui attend passe avant)
   free?: boolean; // jamais rogné à l'échéance (la sortie)
 };
-export type StaffMind = { label: string; post: number; homeYaw: number; present: [number, number]; reserve: boolean; state: 'back' | 'floor' | 'gone'; service: Service | null; called: boolean; quietSince: number };
+// `watching` : regarde le défilé à la vitrine (behaviors/reactions.ts).
+export type StaffMind = { label: string; post: number; homeYaw: number; present: [number, number]; reserve: boolean; state: 'back' | 'floor' | 'gone'; service: Service | null; called: boolean; quietSince: number; watching?: boolean };
 export type Actor = {
   id: string;
   track: ActorTrack;
@@ -73,6 +74,7 @@ export type PartyRt = {
   until: number; // fin de séjour (bar, table) ou d'attente dehors
   table: number | null; // restaurant : indice de la table (stage.tables)
   chair: number | null; // fauteuils : x du fauteuil de travail
+  watch?: number; // défilé : regarde la rue à la vitrine jusqu'à cet instant (behaviors/reactions.ts)
 };
 // `wait` : acteurs à attendre en plus de ceux du lot (un parti mis en marche hors du lot, à l'entrée).
 export type Beat = { acts: [Actor, Act[]][]; log?: string; wait?: Actor[] };

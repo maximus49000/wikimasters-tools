@@ -16,6 +16,9 @@ import { lightColorAt, newWalker, stepLight, stepWalker, type PushLight, type Wa
 import { SPECIAL_SPEED, specialExtent, type SpecialId, type SpecialSpec } from './special-art';
 import { directed, fallbackLine, sceneStopIndex, type BusLine } from './bus-lines';
 import { createStopCrowd, stepStops, type StopCrowd, type StopSide } from './bus-stop';
+import { stepHorns, type Horn, type HornClock } from './horns';
+
+export type { Horn } from './horns';
 
 export type Track = 'near' | 'far' | 'bike';
 export const TRACK_DIR: Readonly<Record<Track, 1 | -1>> = { near: 1, far: -1, bike: 1 };
@@ -115,6 +118,8 @@ export type TrafficWorld = {
   stopNames: Record<StopSide, string>; // nom de l'arrêt de la scène, par voie servie
   school: string | null;
   stopCrowd: StopCrowd; // voyageurs des deux arrêts
+  horns: Horn[]; // coups de klaxon des 10 dernières secondes (horns.ts)
+  hornClock: Map<string, HornClock>; // attente et dernier klaxon des conducteurs impatients
 };
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -157,6 +162,8 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     stopNames: { near: '', far: '' },
     school: null,
     stopCrowd: createStopCrowd(o.seed, 0),
+    horns: [],
+    hornClock: new Map(),
   };
   setLines(w, undefined);
   // Arrêts de bus à l'écart du passage piéton (poteaux, voyageurs, bus arrêté et sa file ne se mêlent pas au feu) : au moins
@@ -489,6 +496,7 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
   const before = w.agents.length;
   w.agents = w.agents.filter((a) => a.s - a.half < span(w));
   if (w.agents.length !== before) w.roster++;
+  stepHorns(w, t, DT, (a) => xOfS(w, a.track, a.s));
   w.t = t;
 }
 

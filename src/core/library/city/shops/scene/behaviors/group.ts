@@ -1,5 +1,6 @@
 import { cast, gest, idleNow, say, weighted, yawToward, type Act, type Actor, type PartyRt, type SegMove, type World } from '../engine';
 import { inside } from './places';
+import { paradeFollow } from './reactions';
 
 // Groupes et connaissances (G4b) : les accompagnants vivent leur attente (le couple se regarde, l'enfant montre et le
 // parent le retient, les amis bavardent), les amis trinquent au bar, deux connaissances se reconnaissent et bavardent.
@@ -15,6 +16,8 @@ export const SEATED: ReadonlySet<PartyRt['state']> = new Set(['seated', 'ordered
 // dans la file (`wait`) ; sinon station debout.
 export function restMove(w: World, a: Actor): SegMove {
   const party = a.party!;
+  // Averse : le parti qui sortait attend dans l'embrasure (reactions.ts).
+  if (party.state === 'leaving' && party.flags.has('rain-wait')) return 'wait-rain';
   if (party.state === 'leaving' || party.state === 'gone') return 'idle';
   if (w.family === 'table' && party.table !== null && (SEATED.has(party.state) || party.state === 'served')) return 'sit';
   if (a.member === 0 && (party.flags.has('in-chair') || party.flags.has('wait-chair'))) return 'sit';
@@ -60,7 +63,7 @@ export function followerDecide(w: World, a: Actor): void {
   const party = a.party!;
   const leader = party.actors[0]!;
   a.fill = restMove(w, a);
-  if (a.fill === 'sit') return;
+  if (a.fill === 'sit' || paradeFollow(w, a)) return;
   if (!['queue', 'served', 'spot', 'stay', 'bill', 'browse', 'waiting'].includes(party.state) || w.t < a.rest) return;
   // Au plus 6 s de geste, puis au moins 2 s libre : le meneur peut alors déplacer le groupe.
   a.rest = w.t + 8 + w.rng() * 3;
