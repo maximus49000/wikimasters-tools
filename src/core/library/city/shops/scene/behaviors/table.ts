@@ -1,7 +1,8 @@
 import { HALF, OUTSIDE, PLACE, TIGHT } from '../stage';
+import { B, inward, turn, type Pair } from '../beats';
 import {
-  SPEED, atDepth, cast, depth, gest, say, walkTo, yawInward, yawToward,
-  type Act, type Actor, type Beat, type PartyRt, type Service, type World,
+  SPEED, atDepth, cast, gest, say, walkTo, yawInward, yawToward,
+  type Actor, type Beat, type PartyRt, type Service, type World,
 } from '../engine';
 import { leave } from './customer';
 import { SEATED } from './group';
@@ -16,9 +17,6 @@ import { payActs } from './service';
 // vitrine en tient (stage.tables : 1 à 31 px, 2 vers 55, 3 dès 59, 4 plus large).
 // Chaque passage du serveur est un service à part (seat → order → dish → clear) : entre deux, il sert les autres tables.
 
-type Pair = [Actor, Act[]];
-const B = (pairs: Pair[], log?: string, wait?: Actor[]): Beat => ({ acts: pairs.filter(([, a]) => a.length > 0), ...(log ? { log } : {}), ...(wait ? { wait } : {}) });
-const turn = (yaw: number): Act => ({ move: 'turn', yaw });
 // Patience devant la porte du restaurant (s) : on attend volontiers qu'on vous place.
 export const TABLE_PATIENCE = (p: PartyRt): number => (p.p.character === 'rushed' ? 20 : 45);
 // Temps minimal d'un repas complet (placement → départ) : trajets du serveur (≈ 9 traversées) et gestes au plus court.
@@ -102,7 +100,7 @@ export function seatBeat(w: World, svc: Service, p: number): Beat | null {
   const L = party.actors[0]!;
   if (p === 0) {
     // Il vient jusqu'au parti qui attend dans l'entrée (une place plus loin que le meneur) et lui montre la table.
-    const stand = atDepth(w, Math.min(w.stage.w - HALF, depth(w, L.x) + PLACE));
+    const stand = inward(w, L.x, 1);
     const look = yawToward(stand, L.x);
     return B([[s, [walkTo(s.staff!.post), gest('fetch', { yaw: 12, as: 'menu' }), walkTo(stand), turn(look), gest('show-table', { yaw: look })]]]);
   }

@@ -81,14 +81,14 @@ describe('étapes signature : détails', () => {
       }
     }
   });
+  // Combien de créneaux (sur 20) jouent la séquence complète attendue : la plupart, pas un seul.
+  const countOk = (f: (i: number) => boolean, n = 20): number => Array.from({ length: n }, (_, i) => f(i)).filter(Boolean).length;
   it('boucher : la pièce est posée, pesée, emballée ; le paquet est remis', () => {
-    let ok = false;
-    for (let i = 0; i < 20 && !ok; i++) {
+    expect(countOk((i) => {
       const ss = segs(score('butcher', i), 'staff').filter((s) => s.move !== 'walk').map((s) => s.move);
       const w = ss.indexOf('weigh');
-      ok = w > 0 && ss[w - 1] === 'put-down' && ss[w + 1] === 'wrap' && ss.slice(w).includes('hand-over');
-    }
-    expect(ok).toBe(true);
+      return w > 0 && ss[w - 1] === 'put-down' && ss[w + 1] === 'wrap' && ss.slice(w).includes('hand-over');
+    })).toBeGreaterThanOrEqual(12);
   });
   it('fromager : l’éclat est coupé, tendu, pris et goûté (traits de joie possibles)', () => {
     let tasted = 0;
@@ -127,50 +127,46 @@ describe('étapes signature : détails', () => {
     }
     expect(tried).toBeGreaterThan(0);
   });
-  it('fleuriste : va aux seaux, choisit, revient composer ; le bouquet est remis', () => {
-    let ok = false;
-    for (let i = 0; i < 20 && !ok; i++) {
+  it('fleuriste : va aux seaux, choisit, revient composer, emballe ; le bouquet est remis', () => {
+    expect(countOk((i) => {
       const ss = segs(score('florist', i), 'staff');
       const c = ss.findIndex((s) => s.move === 'compose-bouquet');
-      if (c < 0) continue;
+      if (c < 0) return false;
       const before = ss.slice(0, c).map((s) => s.move);
       const pick = before.indexOf('pick-stems');
-      // Marche vers les seaux, deux choix de tiges, marche de retour, puis la composition ; le bouquet est remis à la fin.
-      ok = pick > 0 && before[pick - 1] === 'walk' && before.filter((m) => m === 'pick-stems').length === 2 && before.slice(pick).includes('walk')
-        && ss[c]!.prop === 'bouquet' && ss.slice(c).some((s) => s.move === 'hand-over' && s.prop === 'bouquet');
-    }
-    expect(ok).toBe(true);
+      // Marche vers les seaux, deux choix de tiges, marche de retour, composition, emballage ; le bouquet est remis à la fin.
+      return pick > 0 && before[pick - 1] === 'walk' && before.filter((m) => m === 'pick-stems').length === 2 && before.slice(pick).includes('walk')
+        && ss[c]!.prop === 'bouquet' && ss[c + 1]!.move === 'wrap' && ss[c + 1]!.prop === 'bouquet' && ss.slice(c).some((s) => s.move === 'hand-over' && s.prop === 'bouquet');
+    })).toBeGreaterThanOrEqual(12);
   });
-  it('caviste : verse, tend ; le client sent, goûte (joie), repose le verre', () => {
-    let ok = false;
-    for (let i = 0; i < 30 && !ok; i++) {
+  it('caviste : verse, tend ; le client sent, goûte (joie), repose le verre ; parfois une seconde bouteille', () => {
+    let second = 0;
+    expect(countOk((i) => {
       const sc = score('wine', i, wide);
       const cust = segs(sc, 'customer').filter((s) => s.move !== 'walk').map((s) => s.move);
       const k = cust.indexOf('sniff-wine');
-      ok = k > 0 && cust[k - 1] === 'take-item' && cust[k + 1] === 'sip-wine' && cust[k + 2] === 'put-down' && mv(segs(sc, 'staff')).has('pour-wine');
-    }
-    expect(ok).toBe(true);
+      const staff = segs(sc, 'staff').map((s) => s.move);
+      if (staff.filter((m) => m === 'pour-wine').length >= 2 && staff.includes('fetch')) second++;
+      return k > 0 && cust[k - 1] === 'take-item' && cust[k + 1] === 'sip-wine' && cust[k + 2] === 'put-down' && staff.includes('pour-wine');
+    }, 30)).toBeGreaterThanOrEqual(15);
+    expect(second).toBeGreaterThan(0);
   });
   it('pharmacien : la boîte est posée puis expliquée, le client hoche la tête', () => {
-    let ok = false;
-    for (let i = 0; i < 20 && !ok; i++) {
+    expect(countOk((i) => {
       const sc = score('pharmacy', i);
       const st = segs(sc, 'staff').filter((s) => s.move !== 'walk').map((s) => s.move);
       const e = st.indexOf('explain-box');
-      ok = e > 0 && st[e - 1] === 'put-down' && mv(segs(sc, 'customer')).has('listen-nod');
-    }
-    expect(ok).toBe(true);
+      return e > 0 && st[e - 1] === 'put-down' && mv(segs(sc, 'customer')).has('listen-nod');
+    })).toBeGreaterThanOrEqual(12);
   });
   it('barista : va à la machine, prépare, revient et tend la tasse', () => {
-    let ok = false;
-    for (let i = 0; i < 20 && !ok; i++) {
+    expect(countOk((i) => {
       const ss = segs(score('cafe', i), 'staff');
       const b = ss.findIndex((s) => s.move === 'brew-coffee');
-      if (b < 1) continue;
+      if (b < 1) return false;
       const next = ss.slice(b + 1).find((s) => s.move !== 'walk');
-      ok = ss[b - 1]!.move === 'walk' && ss[b]!.prop === 'cup' && next?.move === 'hand-over' && next.prop === 'cup';
-    }
-    expect(ok).toBe(true);
+      return ss[b - 1]!.move === 'walk' && ss[b]!.prop === 'cup' && next?.move === 'hand-over' && next.prop === 'cup';
+    })).toBeGreaterThanOrEqual(12);
   });
   it('coiffeur : installation (`after-you`, plus de `show-table`), shampoing client renversé, ciseaux, miroir tenu puis reposé', () => {
     let full = 0;
@@ -192,7 +188,7 @@ describe('étapes signature : détails', () => {
       expect(cust).toContain('lie-back');
       expect(cust).toContain('look-mirror');
     }
-    expect(full).toBeGreaterThan(0);
+    expect(full).toBeGreaterThanOrEqual(15);
   });
   it('tatoueur : longue séance (plusieurs passes), grimace du client, miroir à la fin', () => {
     let full = 0;
@@ -208,8 +204,56 @@ describe('étapes signature : détails', () => {
       expect(sm.slice(0, mirror).filter((m) => m === 'tattoo').length).toBeGreaterThanOrEqual(2);
       if (mv(segs(sc, 'customer')).has('wince')) winced++;
     }
-    expect(full).toBeGreaterThan(0);
+    expect(full).toBeGreaterThanOrEqual(15);
     expect(winced).toBeGreaterThan(0);
+  });
+  it('fauteuils : aucune passe plus courte que le minimum de son geste (hors coupure de fermeture)', () => {
+    for (const type of ['hairdresser', 'tattoo'] as const) for (let i = 0; i < 30; i++) {
+      const sc = score(type, i, wide, 4);
+      for (const tr of sc.tracks.filter((t) => t.role === 'staff')) for (const s of tr.segments) {
+        // Les gestes de passe seulement : `chat` et `wipe-counter` servent aussi de boutique vide, interruptible.
+        if (!['shampoo', 'cut-hair', 'tattoo'].includes(s.move) || s.t1 >= sc.length - 30) continue;
+        expect(s.t1 - s.t0, `${type} ${i} ${s.move} à ${s.t0.toFixed(1)} s`).toBeGreaterThanOrEqual(MOVES[s.move as MoveId].dur[0] - 1e-6);
+      }
+    }
+  });
+  it('rien ne disparaît : un objet tenu en fin de segment est encore tenu au suivant, ou le geste l’a remis, posé ou consommé', () => {
+    // Remise / pose / consommation : fenêtre d'objet qui se ferme avant la fin du geste, ou geste de remise sans fenêtre propre.
+    const GIVES: ReadonlySet<string> = new Set(['put-down', 'hand-over', 'taste', 'read-idle']);
+    for (const type of TYPES) for (let i = 0; i < 20; i++) for (const tr of score(type, i, wide, 4).tracks) tr.segments.forEach((s, k) => {
+      if (k === 0 || !tr.segments[k - 1]!.prop || s.prop) return;
+      const prev = tr.segments[k - 1]!;
+      const pm = prev.move in MOVES ? MOVES[prev.move as MoveId] : null;
+      expect((pm?.prop && pm.prop.to < 1) || GIVES.has(prev.move), `${type} ${i} ${tr.id} ${prev.move}(${prev.prop}) → ${s.move}`).toBe(true);
+    });
+  });
+  it('durées (spec §5) : vente rapide 30-60 s, conseil 2-4 min — médianes des services journalisés', () => {
+    const median = (type: (typeof TYPES)[number], n: number): number => {
+      const durs: number[] = [];
+      for (let i = 0; i < n; i++) {
+        const open = new Map<string, number>();
+        for (const l of score(type, i, wide, 4).log) {
+          const [, t, txt] = /^(\d+) s (.*)$/.exec(l)!;
+          const a = /— (\S+) libre → accueille/.exec(txt!);
+          if (a) open.set(a[1]!, +t!);
+          const b = /^(\S+) a fini avec/.exec(txt!);
+          if (b && open.has(b[1]!)) { durs.push(+t! - open.get(b[1]!)!); open.delete(b[1]!); }
+        }
+      }
+      durs.sort((a, b) => a - b);
+      expect(durs.length, type).toBeGreaterThan(10);
+      return durs[Math.floor(durs.length / 2)]!;
+    };
+    for (const type of ['butcher', 'cheese', 'florist', 'pharmacy', 'cafe'] as const) {
+      const m = median(type, 20);
+      expect(m, type).toBeGreaterThanOrEqual(25);
+      expect(m, type).toBeLessThanOrEqual(65);
+    }
+    for (const type of ['optician', 'wine'] as const) {
+      const m = median(type, 30);
+      expect(m, type).toBeGreaterThanOrEqual(110);
+      expect(m, type).toBeLessThanOrEqual(240);
+    }
   });
   it('déterminisme : même créneau, même partition', () => {
     for (const type of ['butcher', 'optician', 'hairdresser'] as const) expect(JSON.stringify(score(type, 2))).toBe(JSON.stringify(score(type, 2)));

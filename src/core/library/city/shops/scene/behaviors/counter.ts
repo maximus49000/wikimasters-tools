@@ -1,5 +1,5 @@
-import { HALF, PLACE } from '../stage';
-import { atDepth, depth, gest, walkTo, weighted, yawCounter, yawStaff, yawToward, type Act, type Actor, type Beat, type PartyRt, type Service, type World } from '../engine';
+import { B, SKIP, bikes, facing, inward, turn, type Pair } from '../beats';
+import { gest, walkTo, weighted, yawCounter, yawStaff, type Act, type Actor, type Beat, type PartyRt, type Service, type World } from '../engine';
 import { MOVES } from '../moves';
 import { counterSignature, fetchesItself } from '../signatures';
 import { childOf } from './group';
@@ -9,15 +9,6 @@ import { payActs } from './service';
 // Comptoir, caisse, rayon (G4b) : le squelette joué au poste. Salut → demande → prise (l'employé va à l'étagère ; au rayon,
 // le client pose l'article) → étapes signature du métier (signatures.ts : pesée, dégustation, essai de montures…) → passage
 // en caisse (rayon) → paiement → remise → au revoir (→ bavardage du bavard). Vélos : l'employé examine, rien n'est remis.
-
-type Pair = [Actor, Act[]];
-const B = (pairs: Pair[], log?: string): Beat => ({ acts: pairs.filter(([, acts]) => acts.length > 0), ...(log ? { log } : {}) });
-const SKIP: Beat = { acts: [] };
-const turn = (yaw: number): Act => ({ move: 'turn', yaw });
-const bikes = (w: World): boolean => w.family === 'machine';
-// Comptoir en face de cette place (tabourets) : l'employé sert par-dessus ; sinon (mange-debout) il vient à côté.
-const overCounter = (w: World, x: number): boolean => !!w.stage.counter && x >= w.stage.counter.x0 - 1e-9 && x <= w.stage.counter.x1 + 1e-9;
-const facing = (w: World, s: Actor, x: number): number => (overCounter(w, x) ? yawStaff(w) : yawToward(s.x, x));
 
 export function askBeat(w: World, s: Actor, party: PartyRt): Beat {
   const L = party.actors[0]!;
@@ -51,10 +42,14 @@ function openBeat(w: World, svc: Service, p: number): Beat {
       if (bikes(w)) return B([[s, [gest('prepare', { dur: 5 + w.rng() * 5 })]]], `${s.staff!.label} examine le vélo`);
       svc.steps = counterSignature(w, s, L);
       if (browseLike(w)) return B([[L, [gest('put-down')]]]);
-      if (fetchesItself(w)) return SKIP;
-      const shelf = atDepth(w, Math.min(w.stage.w - HALF, depth(w, post) + PLACE * 0.8));
+      // Pendant que l'employé va chercher : le téléphone du client sonne, ou le bavard parle dans le vide.
       const wait: Act[] = party.incidents.delete('phone-ring') ? [gest('phone-ring')] : party.p.character === 'chatty' && w.rng() < 0.5 ? [gest('chat', { dur: 4 })] : [];
-      return B([[s, [walkTo(shelf), gest('fetch', { yaw: 12 }), walkTo(post), turn(yawS)]], [L, wait]]);
+      if (fetchesItself(w)) {
+        // La signature va chercher elle-même (seaux de la fleuriste) : le client vit son attente pendant sa première étape.
+        svc.steps[0]!.client.unshift(...wait);
+        return SKIP;
+      }
+      return B([[s, [walkTo(inward(w, post)), gest('fetch', { yaw: 12 }), walkTo(post), turn(yawS)]], [L, wait]]);
     }
   }
 }

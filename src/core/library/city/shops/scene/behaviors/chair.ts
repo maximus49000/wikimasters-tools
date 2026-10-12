@@ -1,7 +1,8 @@
-import { HALF, OUTSIDE, PLACE, TIGHT } from '../stage';
+import { HALF, OUTSIDE, TIGHT } from '../stage';
+import { B, inward, turn } from '../beats';
 import {
-  SPEED, atDepth, cast, depth, gest, say, walkTo, yawInward, yawToward,
-  type Act, type Actor, type Beat, type PartyRt, type Service, type World,
+  SPEED, atDepth, cast, gest, say, walkTo, yawInward, yawToward,
+  type Actor, type Beat, type PartyRt, type Service, type World,
 } from '../engine';
 import { chairSignature } from '../signatures';
 import { leave } from './customer';
@@ -13,9 +14,6 @@ import { payActs } from './service';
 // grimaces, miroir), encaisse au fauteuil, le client repart. Ceux qui attendent s'assoient sur la chaise d'attente
 // (stage.waiting) s'il y en a une, sinon restent debout juste passé la porte.
 
-type Pair = [Actor, Act[]];
-const B = (pairs: Pair[], log?: string, wait?: Actor[]): Beat => ({ acts: pairs.filter(([, a]) => a.length > 0), ...(log ? { log } : {}), ...(wait ? { wait } : {}) });
-const turn = (yaw: number): Act => ({ move: 'turn', yaw });
 
 // Séance (s) : souhaitée, et au minimum pour qu'elle vaille la peine d'être commencée.
 const WANT = (w: World): number => (w.type === 'tattoo' ? 300 + w.rng() * 300 : 120 + w.rng() * 140);
@@ -25,7 +23,7 @@ const tail = (w: World): number => 20 + w.stage.w / SPEED;
 const roomFor = (w: World, s: Actor): number => Math.min(s.deadline, w.force) - w.t;
 
 // Où se tient l'employé : derrière le fauteuil, côté fond.
-const standX = (w: World, chair: number): number => atDepth(w, Math.min(w.stage.w - HALF, depth(w, chair) + PLACE * 0.6));
+const standX = (w: World, chair: number): number => inward(w, chair, 0.6);
 const chairTaken = (w: World, x: number): boolean => w.parties.some((p) => p.chair === x && (inside(p) || p.actors.some((a) => a.active)));
 const freeChair = (w: World, s: Actor): number | null => {
   const free = w.stage.chairs.filter((x) => !chairTaken(w, x));

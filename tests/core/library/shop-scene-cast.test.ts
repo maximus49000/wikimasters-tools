@@ -33,6 +33,8 @@ describe('distribution des partis', () => {
     expect(SLOT_S('bookshop')).toBe(360);
     expect(SLOT_S('restaurant')).toBe(600);
     expect(SLOT_S('tattoo')).toBe(900);
+    expect(SLOT_S('wine')).toBe(360);
+    expect(SLOT_S('grocery')).toBe(240);
     expect(slotStart('bakery', slotIndexAt('bakery', 3600 * 8 + 10))).toBe(3600 * 8);
   });
 

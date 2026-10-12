@@ -1,6 +1,7 @@
-import { HALF, PLACE } from '../stage';
+import { HALF } from '../stage';
+import { B, SKIP, bikes, facing, inward, overCounter, turn } from '../beats';
 import {
-  atDepth, cast, depth, endService, gest, idleNow, say, walkTo, yawStaff, yawToward,
+  cast, endService, gest, idleNow, say, walkTo, yawStaff, yawToward,
   type Act, type Actor, type Beat, type PartyRt, type Service, type World,
 } from '../engine';
 import { drinkSignature } from '../signatures';
@@ -17,22 +18,14 @@ import { afterTable, claimTable, clearBeat, dishBeat, orderBeat as tableOrderBea
 // note. Restaurant : table.ts ; fauteuils : chair.ts.
 // Jongle : entre deux temps d'un service, l'employé fait signe « j'arrive » à celui qui attend (une fois par parti).
 
-type Pair = [Actor, Act[]];
-const B = (pairs: Pair[], log?: string): Beat => ({ acts: pairs.filter(([, acts]) => acts.length > 0), ...(log ? { log } : {}) });
-const SKIP: Beat = { acts: [] };
-const turn = (yaw: number): Act => ({ move: 'turn', yaw });
-const bikes = (w: World): boolean => w.family === 'machine';
 // Au bar on sert un verre, au café et au salon de thé une tasse : le même objet de la prise à la remise, puis bu sur place.
 const drink = (w: World): { as?: 'glass' | 'cup' } => (w.family !== 'drink' ? {} : { as: w.type === 'bar' ? 'glass' : 'cup' });
 const clampCounter = (w: World, x: number): number => {
   const c = w.stage.counter;
-  return c ? Math.min(c.x1 - HALF, Math.max(c.x0 + HALF, x)) : atDepth(w, Math.min(w.stage.w - HALF, depth(w, x) + PLACE));
+  return c ? Math.min(c.x1 - HALF, Math.max(c.x0 + HALF, x)) : inward(w, x, 1);
 };
-// Comptoir en face de cette place (tabourets) : l'employé sert par-dessus ; sinon (mange-debout) il vient à côté.
-const overCounter = (w: World, x: number): boolean => !!w.stage.counter && x >= w.stage.counter.x0 - 1e-9 && x <= w.stage.counter.x1 + 1e-9;
 // Où l'employé se tient pour servir quelqu'un à sa place : derrière le comptoir en face, sinon à côté (côté fond).
-const besideX = (w: World, x: number): number => (overCounter(w, x) ? clampCounter(w, x) : atDepth(w, Math.min(w.stage.w - HALF, depth(w, x) + PLACE * 0.8)));
-const facing = (w: World, s: Actor, x: number): number => (overCounter(w, x) ? yawStaff(w) : yawToward(s.x, x));
+const besideX = (w: World, x: number): number => (overCounter(w, x) ? clampCounter(w, x) : inward(w, x));
 
 // Renfort : appelé à l'ouverture d'un service quand au moins deux autres partis attendent encore (le parti servi vient
 // de sortir de la file : trois en tout) et qu'un collègue est en réserve → il l'appelle (`!`), le collègue sort de
