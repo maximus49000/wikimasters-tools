@@ -20,7 +20,7 @@ Aujourd'hui, derrière la vitrine, employés et clients rejouent chacun une bouc
 | Variantes | caractère du client (pressé, bavard, indécis, habitué, perdu) + aléas indépendants |
 | Échanges | C : à plusieurs (jongle, renfort, employés entre eux, clients qui se reconnaissent, boutique vide vivante) ET visites en groupe (couple, parent + enfant, amis) |
 | Lisibilité | B : langage du corps + pictos rares dessinés main (`?`, `!`, ♪, traits de joie, goutte, cœur) |
-| Affluence | B+ : plus de monde selon métier et heure, et un peu plus encore ; plafond relevé modérément, mesure téléphone obligatoire |
+| Affluence | B+ : plus de monde selon métier et heure, et un peu plus encore ; plafond relevé modérément (mesures téléphone en fin de migration) |
 | Moteur | A + un peu de B : metteur en scène déterministe par l'heure, avec décisions émergentes rejouées en pas fixes et réactions à la rue |
 
 ## 3. Architecture
@@ -90,7 +90,7 @@ Greffées entre « demande » et « remise » du squelette de la famille : bouch
 
 - Facteur d'affluence G4b : `CUSTOMER_SCALE` 0,55 → 0,8, plus la forme `nightlife` (bar vendredi/samedi soir) ; capacité intérieure par famille (comptoir 4 dont file, bar 7, restaurant 4 tables, chaise 2 + 1 en attente).
 - Plafond `SHOP_SPRITE_CAP` 40 → **52** par 720 px. Retrait inchangé (terrasse puis intérieur, du plus loin au plus proche), mais par **parti entier** (on ne coupe pas un couple) et jamais un acteur en pleine interaction visible au centre de la vue.
-- **Mesure sur le téléphone** (Android d'abord) avant la PR : ms/image Ghibli à 8 h, 12 h 30, vendredi 21 h, 14/7 et 21/6, main contre branche ; si la branche dépasse main de plus de 15 %, baisser le plafond (et le noter dans la PR).
+- Mesures : sur PC (banc, CPU ×4) main contre branche à 8 h, 12 h 30, vendredi 21 h ; si la branche dépasse main de plus de 15 %, baisser le plafond (et le noter dans la PR). **Mesures sur le téléphone reportées à la fin de la migration Ghibli** (consigne utilisateur) ; la PR le mentionne.
 
 ## 7. Rendu (`src/content/`)
 
@@ -102,7 +102,7 @@ Greffées entre « demande » et « remise » du squelette de la famille : bouch
 
 - Unitaires (vitest, pur) : déterminisme (même graine → partition identique), invariants §3.4, raccord des créneaux (boutique au repos aux bornes), employés comme ressource, rareté des pictos, capacité, aucun objet sans prise, budget par parti entier, klaxon publié par le moteur de circulation.
 - Banc `.superpowers/harness-ville` (paramètres `art=ghibli`, `date=`, `shops=`) : captures auto-validées par moi de chaque étape (caractères, aléas, boutique vide, file + renfort, bar vendredi soir, restaurant, 8 signatures, pictos, taille réelle) dans `.superpowers/captures-ghibli-g4b/` ; pas de scène vide au moment des captures (choisir l'heure d'après la partition).
-- Mesures téléphone §6.
+- Mesures PC §6 (téléphone : fin de migration).
 - Pas de fiche WikiHow (fiche globale à la fin de G7).
 
 ## 9. Hors périmètre
