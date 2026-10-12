@@ -44,7 +44,7 @@ export const MOVE_IDS = [
   'sit', 'show-table', 'hand-menu', 'read-menu', 'take-order', 'carry-plates', 'serve-plate', 'eat', 'clear-table', 'bring-bill',
   // Signatures
   'weigh', 'wrap', 'cut-sample', 'taste', 'offer-frames', 'try-frames', 'look-mirror', 'hold-mirror', 'shampoo', 'cut-hair', 'lie-back',
-  'pick-stems', 'compose-bouquet', 'pour-wine', 'sniff-wine', 'tattoo', 'wince', 'explain-box', 'listen-nod', 'brew-coffee',
+  'pick-stems', 'compose-bouquet', 'pour-wine', 'sniff-wine', 'sip-wine', 'tattoo', 'wince', 'explain-box', 'listen-nod', 'brew-coffee',
   // Réactions à la rue
   'look-street', 'wait-rain', 'head-turn',
 ] as const;
@@ -180,9 +180,12 @@ export const MOVES: Readonly<Record<MoveId, Move>> = {
   // Goûte : prend l'éclat, le porte à la bouche, savoure la tête tournée (traits de joie).
   taste: mv('taste', [2.5, 4], [k(0, 'take'), k(0.3, 'taste'), k(0.65, 'taste', 0, H)], { prop: held('sample', 0, 0.3), picto: picto('joy', 0.75) }),
   'offer-frames': mv('offer-frames', [1.5, 2.5], [k(0, 'take', 1), k(0.35, 'give'), k(0.8, 'give', 0, h)], { prop: held('frames', 0.2, 1) }),
-  // Essaie : prend la monture, la pose aux tempes (elle « disparaît » sur le visage), tourne la tête, puis la retire.
-  'try-frames': mv('try-frames', [3, 5], [k(0, 'take'), k(0.3, 'frames'), k(0.6, 'frames', 0, 2 * H), k(0.85, 'down')], { prop: held('frames', 0.1, 0.3) }),
-  'look-mirror': mv('look-mirror', [2, 4], [k(0, 'down', 0, 2 * H), k(0.4, 'down', 1, 3 * H), k(0.75, 'down', 0, H)]),
+  // Essaie : prend la monture, la pose aux tempes, tourne la tête, et la garde sur le nez (le metteur en scène la lui laisse,
+  // `carry: 'frames'`). Convention de rendu (signatures.ts) : la monture est en main dans la fenêtre d'objet d'un geste,
+  // portée sur le visage partout ailleurs (ici dès 0,3 ; pendant `look-mirror` qui suit).
+  'try-frames': mv('try-frames', [3, 5], [k(0, 'take'), k(0.3, 'frames'), k(0.6, 'frames', 0, 2 * H), k(0.85, 'down', 0, 2 * H)], { prop: held('frames', 0.1, 0.3) }),
+  // Se regarde dans le miroir : tête tournée vers lui, un penché pour mieux voir ; ça plaît (traits de joie).
+  'look-mirror': mv('look-mirror', [2, 4], [k(0, 'down', 0, 2 * H), k(0.4, 'down', 1, 3 * H), k(0.75, 'down', 0, H)], { picto: picto('joy', 0.6) }),
   'hold-mirror': mv('hold-mirror', [3, 5], [k(0, 'take'), k(0.15, 'mirror', 0, H), k(0.6, 'mirror', 1, H)], { prop: held('mirror', 0.15, 1) }),
   shampoo: loop('shampoo', 2.4, [6, 25], [k(0, 'shampoo', 1), k(0.4, 'shampoo', 2), k(0.7, 'shampoo', 1, h)]),
   'cut-hair': loop('cut-hair', 1.6, [8, 25], [k(0, 'scissors-1', 1), k(0.25, 'scissors-2', 1), k(0.5, 'scissors-1', 1, -h), k(0.75, 'scissors-2', 1)]),
@@ -194,6 +197,8 @@ export const MOVES: Readonly<Record<MoveId, Move>> = {
   'pour-wine': mv('pour-wine', [2.5, 4], [k(0, 'take', 1), k(0.25, 'pour', 1), k(0.6, 'pour', 2), k(0.8, 'give')], { prop: held('glass', 0.75, 1) }),
   // Sent le verre : penché dessus, tête qui s'incline (♪).
   'sniff-wine': mv('sniff-wine', [3, 5], [k(0, 'take', 1), k(0.25, 'sniff', 1), k(0.6, 'sniff', 1, -h)], { prop: held('glass', 0, 1), picto: picto('note', 0.8) }),
+  // Goûte le fond de verre (déjà en main) : lève, boit, savoure la tête tournée (traits de joie) ; le verre reste en main.
+  'sip-wine': mv('sip-wine', [2.5, 4], [k(0, 'toast-1'), k(0.3, 'taste'), k(0.65, 'toast-1', 0, H)], { prop: held('glass', 0, 1), picto: picto('joy', 0.8) }),
   tattoo: loop('tattoo', 8, [10, 25], [k(0, 'work', 2), k(0.3, 'work', 2, h), k(0.6, 'wipe-2', 2), k(0.8, 'work', 2)]),
   // Le client grimace : assis, crispé, tête détournée (goutte).
   wince: mv('wince', [1.5, 2.5], [k(0, 'crossed', 1, -H, 'seated'), k(0.3, 'crossed', 2, -H, 'seated'), k(0.7, 'crossed', 1, 0, 'seated')], { picto: picto('sweat', 0.35) }),

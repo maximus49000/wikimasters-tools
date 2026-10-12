@@ -126,8 +126,8 @@ export function forceOut(w: World): void {
 // Sortie du groupe : tous ensemble vers la porte, à la même allure ; chacun quitte la scène en franchissant la porte.
 function exitParty(w: World, party: PartyRt): void {
   const out = atDepth(w, -OUTSIDE);
-  // Le verre ou la tasse du bar reste sur le comptoir : on ne l'emporte pas dans la rue.
-  const keep = (a: Actor): Act[] => (a.carried === 'glass' || a.carried === 'cup' ? [gest('put-down', { free: true, dur: 1 })] : []);
+  // Le verre ou la tasse du bar, la monture essayée restent sur le comptoir : on ne les emporte pas dans la rue.
+  const keep = (a: Actor): Act[] => (a.carried === 'glass' || a.carried === 'cup' || a.carried === 'frames' ? [gest('put-down', { free: true, dur: 1 })] : []);
   cast(party.actors.map((a) => [a, [...keep(a), walkTo(out, { free: true })]]));
   party.state = 'gone';
 }

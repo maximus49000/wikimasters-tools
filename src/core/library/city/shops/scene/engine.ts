@@ -85,7 +85,7 @@ export type Service = {
   wait: Actor[]; // acteurs du temps précédent : le suivant part quand tous sont libres
   at: number; // x où l'employé sert
   call: boolean; // renfort appelé à l'ouverture du service (`call-colleague` en tête du premier temps)
-  steps?: { staff: Act[]; client: Act[]; log?: string }[]; // fauteuils : étapes de la séance (signature du métier)
+  steps?: { staff: Act[]; client: Act[]; log?: string }[]; // étapes signature du métier compilées (comptoir : à la prise ; fauteuils : à l'installation)
 };
 export type World = {
   type: ShopTypeId;

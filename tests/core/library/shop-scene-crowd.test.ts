@@ -189,12 +189,12 @@ describe('situations à plusieurs : détails', () => {
       }
     }
   });
-  it('fauteuils : installation, étape générique `prepare`, attente assise sur la chaise d’attente', () => {
+  it('fauteuils : installation, étapes du métier (ciseaux, séance : tâche 6), attente assise sur la chaise d’attente', () => {
     let waited = 0;
     for (const type of ['hairdresser', 'tattoo'] as const) for (let i = 0; i < 30; i++) {
       const sc = score(type, i, 4);
       expect(sc.log.some((l) => l.includes('installe'))).toBe(true);
-      expect(movesOf(sc, 'staff')).toContain('prepare');
+      expect(movesOf(sc, 'staff')).toContain(type === 'hairdresser' ? 'cut-hair' : 'tattoo');
       if (sc.log.some((l) => l.includes('attend son tour'))) waited++;
     }
     expect(waited).toBeGreaterThan(0);

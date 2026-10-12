@@ -1,20 +1,20 @@
 import { HALF, PLACE } from '../stage';
 import {
-  atDepth, cast, depth, endService, gest, idleNow, say, walkTo, weighted, yawCounter, yawStaff, yawToward,
+  atDepth, cast, depth, endService, gest, idleNow, say, walkTo, yawStaff, yawToward,
   type Act, type Actor, type Beat, type PartyRt, type Service, type World,
 } from '../engine';
-import { MOVES } from '../moves';
-import { childOf } from './group';
+import { drinkSignature } from '../signatures';
 import { afterChair, chairBeat, chairNeeds, claimChair } from './chair';
+import { askBeat, serveBeat } from './counter';
 import { leave } from './customer';
-import { browseLike, inside, partyWalk, serveX } from './places';
+import { browseLike, inside } from './places';
 import { afterTable, claimTable, clearBeat, dishBeat, orderBeat as tableOrderBeat, seatBeat, tableNeeds } from './table';
 
 // Services (G4b) : squelettes des familles joués à deux (employé ↔ parti) en temps successifs. Un temps part quand tous
 // les acteurs du temps précédent sont libres : le client qui paie et l'employé qui attend finissent ensemble, puis on
-// passe à la suite. Comptoir : salut → demande → service → paiement → remise → au revoir (→ bavardage du bavard).
-// Rayon / caisse : l'article posé sur le comptoir, passé en caisse, payé, rendu. Bar, café : l'employé vient à la place,
-// prend la commande (une seule pour le groupe), apporte, puis encaisse à la note. Restaurant : table.ts ; fauteuils : chair.ts.
+// passe à la suite. Comptoir, rayon, caisse : counter.ts (avec les étapes signature du métier). Bar, café : l'employé vient à
+// la place, prend la commande (une seule pour le groupe), apporte (le barista la prépare à la machine), puis encaisse à la
+// note. Restaurant : table.ts ; fauteuils : chair.ts.
 // Jongle : entre deux temps d'un service, l'employé fait signe « j'arrive » à celui qui attend (une fois par parti).
 
 type Pair = [Actor, Act[]];
@@ -97,65 +97,6 @@ export function payActs(w: World, party: PartyRt): { acts: Act[]; log?: string }
   return { acts, ...(logs.length ? { log: `${party.desc} ${logs.join(', ')}` } : {}) };
 }
 
-function askBeat(w: World, s: Actor, party: PartyRt): Beat {
-  const L = party.actors[0]!;
-  const c = party.p.character;
-  const yawS = facing(w, s, L.x);
-  if (c === 'regular') return B([[s, [gest('nod', { yaw: yawS })]], [L, [gest('nod')]]], `habitué : ${s.staff!.label} prépare sans qu'il ait à parler`);
-  // Indécis pressé par la file : il désigne aussitôt, gestes au plus court.
-  if (c === 'undecided' && (party.flags.has('quick') || w.queue.length >= 2 || w.t >= w.closing)) {
-    return B([[L, [gest('point-item', { dur: MOVES['point-item'].dur[0] })]], [s, [gest('nod', { dur: MOVES.nod.dur[0] })]]], `${party.desc} se décide vite`);
-  }
-  if (c === 'undecided') return B([[L, [gest('chin-think'), gest('change-mind')]], [s, [gest('listen')]]], `${party.desc} désigne, se ravise, redésigne`);
-  if (c === 'rushed') return B([[L, [gest('point-item')]], [s, [gest('nod')]]]);
-  if (c === 'lost') return B([[L, [gest('ask-way')]], [s, [gest('listen')]]]);
-  const child = childOf(party);
-  const pairs: Pair[] = [[L, [gest(weighted(w, [['ask', 2], ['point-item', 1]] as const))]], [s, [gest('listen')]]];
-  if (child && w.rng() < 0.35) pairs.push([child, [gest('child-point')]]);
-  return B(pairs);
-}
-
-function serveBeat(w: World, svc: Service, p: number): Beat | null {
-  const { staff: s, party } = svc;
-  const L = party.actors[0]!;
-  const post = s.staff!.post;
-  const yawS = yawStaff(w);
-  const closing = w.t >= w.closing;
-  switch (p) {
-    case 0: return B([...partyWalk(w, party, serveX(w, post), yawCounter(w)), [s, [walkTo(post), turn(yawS)]]]);
-    case 1: return B([[s, [gest(party.p.character === 'regular' ? 'nod' : 'greet', { yaw: yawS })]], [L, [gest(party.p.character === 'rushed' ? 'nod' : 'greet', { yaw: yawCounter(w) })]]]);
-    case 2: return askBeat(w, s, party);
-    case 3: {
-      if (bikes(w)) return B([[s, [gest('prepare', { dur: 5 + w.rng() * 5 })]]], `${s.staff!.label} examine le vélo`);
-      if (browseLike(w)) return B([[L, [gest('put-down')]]]);
-      const shelf = atDepth(w, Math.min(w.stage.w - HALF, depth(w, post) + PLACE * 0.8));
-      const wait: Act[] = party.incidents.delete('phone-ring') ? [gest('phone-ring')] : party.p.character === 'chatty' && w.rng() < 0.5 ? [gest('chat', { dur: 4 })] : [];
-      return B([[s, [walkTo(shelf), gest('fetch', { yaw: 12 }), walkTo(post), turn(yawS)]], [L, wait]]);
-    }
-    case 4: return browseLike(w) ? B([[s, [gest('take-item', { yaw: yawS }), gest('prepare', { dur: 5 })]]]) : SKIP;
-    case 5: {
-      const pay = payActs(w, party);
-      return B([[L, pay.acts], [s, [gest('nod')]]], pay.log);
-    }
-    case 6: return bikes(w) ? SKIP : B([[s, [gest('hand-over')]], [L, [gest('take-item')]]]);
-    case 7: {
-      const rushed = party.p.character === 'rushed';
-      const chatty = party.p.character === 'chatty' && !closing;
-      if (chatty) party.until = w.t + 6 + w.rng() * 8;
-      return B([[L, rushed ? [] : [gest('wave-bye')]], [s, [gest('nod')]]], rushed ? `${party.desc} repart aussitôt` : chatty ? `${party.desc} reste accoudé à bavarder` : undefined);
-    }
-    default: {
-      if (party.p.character !== 'chatty' || closing || w.t >= party.until || party.flags.has('cut')) return null;
-      if (w.queue.length > 0) {
-        party.flags.add('cut');
-        return B([[s, [gest('beckon-wait')]], [L, [gest('shrug')]]], `${s.staff!.label} fait signe « j'arrive » au suivant — écourte`);
-      }
-      const dur = 5 + w.rng() * 3;
-      return B([[L, [gest('lean-counter', { dur })]], [s, [gest('chat', { dur })]]]);
-    }
-  }
-}
-
 function orderBeat(w: World, svc: Service, p: number): Beat | null {
   const { staff: s, party } = svc;
   const L = party.actors[0]!;
@@ -168,8 +109,11 @@ function orderBeat(w: World, svc: Service, p: number): Beat | null {
   if (!m) return null;
   const at = besideX(w, m.x);
   if ((p - 3) % 2 === 0) {
+    // Prise au comptoir (ou en cuisine), ou la signature du métier (barista : à la machine) ; puis il revient vers le client.
+    const sig = drinkSignature(w, s, m);
     const from = w.family === 'drink' ? s.staff!.post : w.stage.back;
-    return B([[s, [walkTo(from), gest('fetch', { yaw: 12, ...drink(w) }), walkTo(at), turn(facing(w, s, m.x))]]]);
+    const make: Act[] = sig ? sig.acts : [walkTo(from), gest('fetch', { yaw: 12, ...drink(w) })];
+    return B([[s, [...make, walkTo(at), turn(facing(w, s, m.x))]]], k === 0 ? sig?.log : undefined);
   }
   return B([[s, [gest('hand-over')]], [m, [gest('take-item', drink(w))]]]);
 }

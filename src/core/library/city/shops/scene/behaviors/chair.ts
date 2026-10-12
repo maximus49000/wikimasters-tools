@@ -1,28 +1,22 @@
-import type { ShopTypeId } from '../../catalog';
 import { HALF, OUTSIDE, PLACE, TIGHT } from '../stage';
 import {
   SPEED, atDepth, cast, depth, gest, say, walkTo, yawInward, yawToward,
   type Act, type Actor, type Beat, type PartyRt, type Service, type World,
 } from '../engine';
+import { chairSignature } from '../signatures';
 import { leave } from './customer';
 import { blockXs, inside, outgoing, placeTaken } from './places';
 import { payActs } from './service';
 
-// Fauteuils (G4b, famille `chair` : coiffeur, tatoueur) : l'employé installe le client au fauteuil, enchaîne les étapes du
-// métier (signature, tâche 6 ; ici une étape générique `prepare`), encaisse au fauteuil, le client repart. Ceux qui
-// attendent s'assoient sur la chaise d'attente (stage.waiting) s'il y en a une, sinon restent debout juste passé la porte.
+// Fauteuils (G4b, famille `chair` : coiffeur, tatoueur) : l'employé installe le client au fauteuil (salut, « je vous en
+// prie » vers le fauteuil), enchaîne les étapes du métier (signatures.ts : shampoing, ciseaux, miroir ; longue séance,
+// grimaces, miroir), encaisse au fauteuil, le client repart. Ceux qui attendent s'assoient sur la chaise d'attente
+// (stage.waiting) s'il y en a une, sinon restent debout juste passé la porte.
 
 type Pair = [Actor, Act[]];
 const B = (pairs: Pair[], log?: string, wait?: Actor[]): Beat => ({ acts: pairs.filter(([, a]) => a.length > 0), ...(log ? { log } : {}), ...(wait ? { wait } : {}) });
 const turn = (yaw: number): Act => ({ move: 'turn', yaw });
 
-// Étape de la séance : gestes de l'employé et du client joués ensemble (un temps de service).
-export type SigStep = { staff: Act[]; client: Act[]; log?: string };
-// Greffon de la tâche 6 : étapes signature du métier pour une séance de `budget` s (shampoing, ciseaux, miroir ; longue
-// séance penché, pauses, grimace…). Par défaut une étape générique : l'employé travaille, le client reste assis.
-export function signatureFor(_type: ShopTypeId, budget: number): SigStep[] {
-  return [{ staff: [gest('prepare', { dur: budget })], client: [gest('sit', { dur: budget })] }];
-}
 // Séance (s) : souhaitée, et au minimum pour qu'elle vaille la peine d'être commencée.
 const WANT = (w: World): number => (w.type === 'tattoo' ? 300 + w.rng() * 300 : 120 + w.rng() * 140);
 const MIN = (w: World): number => (w.type === 'tattoo' ? 120 : 50);
@@ -115,12 +109,12 @@ export function chairBeat(w: World, svc: Service, p: number): Beat | null {
   }
   if (p === 1) {
     party.flags.add('in-chair');
-    // geste provisoire, la signature (tâche 6) le remplace
-    return B([[s, [gest('greet', { yaw: yawToward(at, chair) }), gest('show-table')]], [L, [gest('greet'), gest('sit', { dur: 1.5 })]]]);
+    // Installation : salut, main ouverte vers le fauteuil (« je vous en prie ») ; le client salue et s'assoit.
+    return B([[s, [gest('greet', { yaw: yawToward(at, chair) }), gest('after-you', { yaw: yawToward(at, chair) })]], [L, [gest('greet'), gest('sit', { dur: 1.5 })]]]);
   }
   if (p === 2) {
     const budget = Math.max(MIN(w), Math.min(WANT(w), roomFor(w, s) - tail(w)));
-    svc.steps = signatureFor(w.type, budget);
+    svc.steps = chairSignature(w, s, L, chair, at, budget);
   }
   const steps = svc.steps ?? [];
   const k = p - 2;
