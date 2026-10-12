@@ -9,6 +9,7 @@ import { cityIntensity, schoolWindows, type CityContext } from '../core/library/
 import { schoolBusArrivals } from '../core/library/city/traffic/school-bus';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
+import { actorShadow, nearestLamp } from '../core/library/city/night-light';
 import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { CUSTOMER_SCALE, customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
 import { paradeOn } from '../core/library/city/parade';
@@ -79,7 +80,7 @@ type StreetLampsProps = { width: number; height: number; seed: number; minutes: 
 // Lampadaires au bord du trottoir : dessinés devant les passants (leur pied est plus près de la rue) et derrière les voitures.
 // Ils sont dans le calque animé (la boucle n'y touche pas) ; sans contexte de ville, SceneActors les dessine seuls.
 // Ghibli : lampadaire cellulo peint (accessoire `lamp`, G5) au même repère, le sprite classique en repli tant qu'il n'est
-// pas cuit ; sa lumière de nuit (halo, flaque) est celle de GhibliNightLight.
+// pas cuit ; sa lumière de nuit (découpe éclairée, bloom, pluie) est celle de GhibliNightLight (ghibli-night.tsx).
 export function StreetLamps({ width, height, seed, minutes, daylight, forcedNight = false, ghibli = false }: StreetLampsProps): ReactElement {
   const lamps = useMemo(() => lampsFor(width, seed), [width, seed]);
   const m = cityMetrics(height);
@@ -105,11 +106,15 @@ export const pedEdgePad = (p: Pedestrian, m: CityMetrics): number => {
   return EDGE_PAD + (trail + 6) * m.unit * STREET_SCALE.person * p.scale;
 };
 
+// Pieds d'un passant (repère du monde). Légère profondeur sur le trottoir : les passants ne marchent pas tous sur la même ligne.
+const pedFoot = (p: Pedestrian, m: CityMetrics, width: number, t: number): { x: number; y: number } => ({
+  x: loopX(p.phase, p.dir * p.speed, width, t),
+  y: m.walkY - (p.depth - 0.5) * m.unit * 6,
+});
+
 // `mirror` : le sprite classique se retourne selon le sens ; le pantin Ghibli se tourne de profil (pedPose), sans miroir.
 const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number, mirror: boolean): string => {
-  const x = loopX(p.phase, p.dir * p.speed, width, t);
-  // Légère profondeur sur le trottoir : les passants ne marchent pas tous sur la même ligne.
-  const y = m.walkY - (p.depth - 0.5) * m.unit * 6;
+  const { x, y } = pedFoot(p, m, width, t);
   const k = m.unit * STREET_SCALE.person * p.scale;
   return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${((mirror ? p.dir : 1) * k).toFixed(3)} ${k.toFixed(3)})`;
 };
@@ -120,6 +125,30 @@ export const pedPose = (p: Pedestrian, m: CityMetrics, t: number, still = false)
   if (still) return { yaw: facingYaw(p.dir), gait: 'stand', phase: 0, head: 0 };
   const k = m.unit * STREET_SCALE.person * p.scale;
   return { yaw: facingYaw(p.dir), gait: 'walk', phase: phaseIndexOf((p.phase + p.speed * t) / k), head: 0 };
+};
+
+// Ombre portée d'un passant par la lampe allumée la plus proche (Ghibli, nuit, notes §5) : pantin ≈ 40 × 11 unités du sprite.
+const PED_SHADE = { h: 40, w: 11 } as const;
+// `side` : sens de l'ombre (r = vers la droite, lampe à gauche), choisit le dégradé partagé.
+type PedShade = { points: string; opacity: number; side: 'r' | 'l' } | null;
+const pedShade = (p: Pedestrian, m: CityMetrics, width: number, t: number, litLamps: readonly { x: number }[]): PedShade => {
+  const foot = pedFoot(p, m, width, t);
+  const lampX = nearestLamp(foot.x, litLamps);
+  if (lampX === null) return null;
+  const k = m.unit * STREET_SCALE.person * p.scale;
+  const s = actorShadow(foot.x, foot.y, PED_SHADE.w * k, PED_SHADE.h * k, lampX, m.unit);
+  return s && { ...s, side: foot.x >= lampX ? 'r' : 'l' };
+};
+
+// Pose l'ombre d'un passant (n'écrit que ce qui change ; sans ombre : opacité 0).
+const placeShade = (node: Element, s: PedShade, fill: (side: 'r' | 'l') => string): void => {
+  if (!s) {
+    setIfChanged(node, 'opacity', '0');
+    return;
+  }
+  node.setAttribute('points', s.points);
+  setIfChanged(node, 'opacity', s.opacity.toFixed(2));
+  setIfChanged(node, 'fill', fill(s.side));
 };
 
 // Habitant : le nœud de rue (`[data-resident]`) et le nœud de porte (`svg[data-resident-door]`, rogné à l'ouverture sombre
@@ -200,6 +229,15 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const lights = sky.daylight < 0.5 || rainy;
   const gateOf = (trip: Trip): number => (trip.kind === 'out' ? flow.out : flow.in);
   const maskBase = `cm${useId().replace(/[^a-zA-Z0-9_-]/g, '')}-city-mask`;
+  // Ombres portées des passants (Ghibli, nuit) : lampes allumées à la minute ; dégradés partagés à id unique par instance de
+  // scène (le contenu est recopié par <use>), un par sens (l'ombre part à l'opposé de la lampe).
+  const lamps = useMemo(() => lampsFor(width, seed), [width, seed]);
+  const litLamps = useMemo(
+    () => (ghibli ? lamps.filter((l) => streetLampLit(l, city.minutes, sky.daylight, forcedNight)) : []),
+    [ghibli, lamps, city.minutes, sky.daylight, forcedNight],
+  );
+  const shadeBase = `${maskBase}-shade`;
+  const shadeFill = (side: 'r' | 'l'): string => `url(#${shadeBase}-${side})`;
 
   // Mouvement réduit : la boucle ne tourne pas, les positions restent celles du premier calcul (pas de saut à chaque minute).
   const frozen = useRef<number | null>(null);
@@ -355,6 +393,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     const pedFigs = new Map<string, Element[]>();
     // Nœuds de porte des habitants (<svg> imbriqués), par trajet.
     const doorNodes = new Map<string, Element>();
+    // Ombres portées des passants (Ghibli, nuit), par passant.
+    const shadeNodes = new Map<string, Element>();
     let muted: Set<string> = new Set();
     // Scène G4b (Ghibli) : nœuds de ShopScene, posés après les clients de l'ancien rendu.
     let scene: SceneNodes | null = null;
@@ -371,6 +411,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         for (const node of el.querySelectorAll<SVGGElement>('[data-life-id]')) nodes.set(node.getAttribute('data-life-id')!, node);
         doorNodes.clear();
         for (const node of el.querySelectorAll('svg[data-resident-door]')) doorNodes.set(node.getAttribute('data-trip-id')!, node);
+        shadeNodes.clear();
+        for (const node of el.querySelectorAll('[data-shade-for]')) shadeNodes.set(node.getAttribute('data-shade-for')!, node);
         staff = collectPosedStaff(el);
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
@@ -404,6 +446,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         }
         // Ghibli : un passant caché lâche ses sprites (<image> sans href), seulement à la bascule ou au premier placement.
         if (ghibli && !next && (first || next !== prev)) for (const fig of pedFigs.get(p.id) ?? []) hideFigure(figures, fig);
+        const shade = shadeNodes.get(p.id);
+        if (shade) placeShade(shade, next ? pedShade(p, metrics, width, t, litLamps) : null, shadeFill);
         // Un passant caché n'est pas touché (sauf au premier placement de la scène).
         if (!next && !first) continue;
         node?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
@@ -476,7 +520,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, marks, sceneShops, traffic]);
+  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, marks, sceneShops, traffic, litLamps]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
@@ -655,6 +699,26 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         {shops.views.map((view) => (
           <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} minutes={city.minutes} offset={shops.offsets.get(view.slot.id) ?? 0} ghibli={ghibli} />
         ))}
+        {/* Ombres portées des passants sous leurs pieds (Ghibli, nuit, lampe allumée à moins de 75u), en multiply ; posées
+            par la boucle. Le liseré chaud côté lampe (actorRim de la maquette) n'est pas porté. */}
+        {litLamps.length > 0 && (
+          <g data-actor-shades="">
+            <defs>
+              {(['r', 'l'] as const).map((side) => (
+                <linearGradient key={side} id={`${shadeBase}-${side}`} x1={side === 'r' ? 0 : 1} y1={0} x2={side === 'r' ? 1 : 0} y2={0}>
+                  <stop offset="0" stopColor="rgb(22,18,70)" stopOpacity={1} />
+                  <stop offset="0.5" stopColor="rgb(22,18,70)" stopOpacity={0.5} />
+                  <stop offset="1" stopColor="rgb(30,26,80)" stopOpacity={0} />
+                </linearGradient>
+              ))}
+            </defs>
+            {peds.map((p) => {
+              const active = still ? pedActive.has(p.id) : (shownPeds.current.get(p.id) ?? pedActive.has(p.id));
+              const s = active ? pedShade(p, metrics, width, t0!, litLamps) : null;
+              return <polygon key={p.id} data-shade-for={p.id} points={s?.points ?? ''} opacity={s ? s.opacity.toFixed(2) : '0'} fill={shadeFill(s?.side ?? 'r')} style={{ mixBlendMode: 'multiply' }} />;
+            })}
+          </g>
+        )}
         {peds.map((p) => {
           // Présence affichée (pas la voulue) : mémorisée au premier rendu, puis changée seulement par la boucle, au bord.
           if (!shownPeds.current.has(p.id)) shownPeds.current.set(p.id, pedActive.has(p.id));

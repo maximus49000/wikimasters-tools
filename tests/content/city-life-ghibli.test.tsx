@@ -30,8 +30,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 const times = sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120);
-const make = (): HTMLDivElement => {
-  const minutes = 12 * 60;
+const make = (minutes = 12 * 60): HTMLDivElement => {
   const sky = skyAt(minutes, times);
   const city: CityContext = { minutes, day: dayContext({ y: 2026, m: 10, d: 9 }, []), precip: 0, snow: false, storm: false, daylight: sky.daylight };
   return render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={city} rainy={false} /></svg>);
@@ -91,5 +90,33 @@ describe('passants Ghibli', () => {
     // data-key = palette # sig|yaw|gait|phase|head|arms|lean
     for (const f of keyed) expect(f.getAttribute('data-key')!.split('#').pop()!.split('|').slice(2, 4)).toEqual(['stand', '0']);
     for (const f of c.querySelectorAll('[data-ped] [data-figure][data-key]')) expect(['0', '8']).toContain(f.getAttribute('data-key')!.split('#').pop()!.split('|')[1]);
+  });
+});
+
+describe('ombres portées des passants la nuit (Ghibli)', () => {
+  it('nuit : une ombre en multiply à dégradé partagé (id de l’instance) sous chaque passant proche d’une lampe allumée', () => {
+    writeArt('ghibli');
+    const c = make(23 * 60);
+    const layer = c.querySelector('[data-actor-shades]');
+    expect(layer).not.toBeNull();
+    const shades = [...layer!.querySelectorAll('polygon[data-shade-for]')];
+    expect(shades.length).toBe(c.querySelectorAll('[data-ped]').length);
+    const shown = shades.filter((s) => Number(s.getAttribute('opacity')) > 0);
+    expect(shown.length).toBeGreaterThan(0);
+    for (const s of shown) {
+      expect((s as SVGElement).style.mixBlendMode).toBe('multiply');
+      const id = s.getAttribute('fill')!.match(/^url\(#(.+)\)$/)![1]!;
+      expect(c.querySelector(`linearGradient[id="${id}"]`)).not.toBeNull();
+      expect(id).not.toBe('wmt-actor-shade');
+      // Seuls les passants présents ont une ombre.
+      const ped = c.querySelector(`[data-ped][data-life-id="${s.getAttribute('data-shade-for')}"]`)!;
+      expect(ped.getAttribute('data-active')).toBe('true');
+    }
+  });
+  it('midi et dessin classique : aucune ombre de lampe', () => {
+    writeArt('ghibli');
+    expect(make(12 * 60).querySelector('[data-actor-shades]')).toBeNull();
+    localStorage.removeItem(ART_KEY);
+    expect(make(23 * 60).querySelector('[data-actor-shades]')).toBeNull();
   });
 });
