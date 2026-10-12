@@ -273,9 +273,13 @@ function flatbedLoad(x: TintedCtx, a: PropArgs): void {
     for (const rx of [-38, -31, -25]) RD(x, rx, y, 2, 2.5, '#F4F1EA', op(0.2, 0.25, 0.5, 0));
   }
 }
+// Cadre : à droite, les projecteurs (22,2) ou la rangée de fûts du dernier comptoir (−18 + 7,4·(n − 1) + 3,5 + 3,2 : jusqu'à
+// 8 stands sur une rue large) ; en haut, les planches ou la pile comptoirs + toiles.
 function flatbedLoadBox(a: PropArgs): readonly [number, number, number, number] {
-  const y0 = Math.min(-19.5, DECK - 2.3 * loadN(a, 'counters') - 2.6 * loadN(a, 'rolls') - 0.3);
-  return [-44.5, y0, 67.2, -10.5 - y0];
+  const counters = loadN(a, 'counters');
+  const x1 = Math.max(22.7, counters ? -18 + (counters - 1) * 7.4 + 6.7 + 0.5 : 0);
+  const y0 = Math.min(-19.5, DECK - 2.3 * counters - 2.6 * loadN(a, 'rolls') - 0.3);
+  return [-44.5, y0, x1 + 44.5, -10.5 - y0];
 }
 
 const paintOf = (fn: (x: TintedCtx, a: PropArgs) => void) => (x: TintedCtx, a: PropArgs, _p: PropPaint): void => fn(x, a);

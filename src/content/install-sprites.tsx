@@ -160,12 +160,14 @@ function Truss({ x1, y1, x2, y2, c }: { x1: number; y1: number; x2: number; y2: 
   );
 }
 
+// Ghibli : les repères `data-stage-backdrop` / `data-stage-spot` restent des éléments vides à côté de l'image (la tâche 7 s'y
+// accroche) ; le repli classique ne les porte alors pas (jamais deux fois le même repère).
 export function StageFrame({ sky, ghibli = false }: { sky: Sky; ghibli?: boolean }): ReactElement {
   const c = tone('#9CA3AC', sky);
-  const art = (
+  const art = (marks: boolean): ReactElement => (
     <>
       {/* Toile de fond tendue entre les montants : la scène masque ce qui passe derrière elle. */}
-      <rect data-stage-backdrop="" x={-STAGE.postX - 1.5} y={-STAGE.truss + 1.5} width={STAGE.postX * 2 + 3} height={STAGE.truss - STAGE.floor - STAGE.deck - 1.5} fill={tone('#2C2F3D', sky)} />
+      <rect {...(marks ? { 'data-stage-backdrop': '' } : {})} x={-STAGE.postX - 1.5} y={-STAGE.truss + 1.5} width={STAGE.postX * 2 + 3} height={STAGE.truss - STAGE.floor - STAGE.deck - 1.5} fill={tone('#2C2F3D', sky)} />
       {[-30, -15, 0, 15, 30].map((x) => (
         <line key={x} x1={x} y1={-STAGE.truss + 1.5} x2={x} y2={-STAGE.floor - STAGE.deck} stroke={tone('#3A3E4E', sky)} strokeWidth={1.2} />
       ))}
@@ -174,20 +176,32 @@ export function StageFrame({ sky, ghibli = false }: { sky: Sky; ghibli?: boolean
       <Truss x1={-STAGE.postX - 2} y1={-STAGE.truss} x2={STAGE.postX + 2} y2={-STAGE.truss} c={c} />
     </>
   );
-  return <g data-stage-part="frame">{ghibli ? <PropImage spec={{ id: 'stage-frame', day: sky.daylight }} fallback={art} /> : art}</g>;
+  if (!ghibli) return <g data-stage-part="frame">{art(true)}</g>;
+  return (
+    <g data-stage-part="frame">
+      <g data-stage-backdrop="" />
+      <PropImage spec={{ id: 'stage-frame', day: sky.daylight }} fallback={art(false)} />
+    </g>
+  );
 }
 
 // Projecteurs accrochés sous la traverse, orientés vers le plancher. `lit` : lentille allumée (les faisceaux sont dans stage-band.tsx).
 export function StageSpots({ sky, lit, ghibli = false }: { sky: Sky; lit: boolean; ghibli?: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
-  const art = STAGE.spotXs.map((x, i) => (
-    <g key={x} data-stage-spot={i} transform={`translate(${x} ${STAGE.spotY})`}>
+  const art = (marks: boolean): ReactElement[] => STAGE.spotXs.map((x, i) => (
+    <g key={x} {...(marks ? { 'data-stage-spot': i } : {})} transform={`translate(${x} ${STAGE.spotY})`}>
       <line x1={0} y1={-3.5} x2={0} y2={-1.5} stroke={t(STEEL)} strokeWidth={0.6} />
       <rect x={-2.2} y={-1.8} width={4.4} height={4.6} rx={0.8} fill={t('#1E2026')} transform={`rotate(${-x / 3})`} />
       <circle cx={0} cy={3} r={1.6} fill={lit ? '#FFF1B8' : t('#5A5F6A')} transform={`rotate(${-x / 3})`} />
     </g>
   ));
-  return <g data-stage-part="spots">{ghibli ? <PropImage spec={{ id: 'stage-spots', day: sky.daylight, lit }} fallback={art} /> : art}</g>;
+  if (!ghibli) return <g data-stage-part="spots">{art(true)}</g>;
+  return (
+    <g data-stage-part="spots">
+      {STAGE.spotXs.map((x, i) => <g key={x} data-stage-spot={i} transform={`translate(${x} ${STAGE.spotY})`} />)}
+      <PropImage spec={{ id: 'stage-spots', day: sky.daylight, lit }} fallback={art(false)} />
+    </g>
+  );
 }
 
 // Structure complète (plancher, ossature, projecteurs) ; `parts` pour n'en dessiner qu'une partie.

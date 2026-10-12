@@ -121,6 +121,9 @@ describe('installations cellulo (barrières, scène, nacelle, triporteur, charge
     expect(n('flatbed-load', base)).toBe(0);
     for (const k of Object.keys(base)) expect(n('flatbed-load', { ...base, [k]: 1 }), k).toBeGreaterThan(0);
     inFrame('flatbed-load', { floor: 1, frame: 1, spots: 1, counters: 3, rolls: 3 });
+    // Rue large : jusqu'à 8 stands (beerStandsFor) ; la rangée de fûts dépasse les projecteurs, le cadre suit.
+    inFrame('flatbed-load', { floor: 1, frame: 1, spots: 1, counters: 8, rolls: 8 });
+    expect(PROPS['flatbed-load']!.box({ counters: 8 })[2]).toBeGreaterThan(PROPS['flatbed-load']!.box({ counters: 2 })[2]);
   });
   it('échelle couchée : la longueur fixe le cadre et le nombre de barreaux', () => {
     const b = PROPS['stowed-ladder']!;

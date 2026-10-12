@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { registerProps } from '../../src/core/library/paint/props/index';
 import { RD } from '../../src/core/library/paint/props/kit';
-import { paintProp, PropContext, PropImage, PropRegistry, propKey, type PropSpec, type PropSurface } from '../../src/content/prop/prop-host';
+import { paintProp, PropContext, PropImage, PropInMirror, PropRegistry, propKey, type PropSpec, type PropSurface } from '../../src/content/prop/prop-host';
 import { recordingCtx, type RecordingCtx } from '../core/library/paint/recording-ctx';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -104,6 +104,47 @@ describe('registre des accessoires', () => {
     await act(async () => jobs.shift()!());
     expect(host.querySelector('image')!.getAttribute('x')).toBe('0');
     await act(async () => show({ id: 'asym', day: 1, dir: -1 }));
+    expect(host.querySelector('image')).toBeNull();
+  });
+});
+
+// Image dans un groupe que l'hôte retourne (`scale(dir·k, k)`) : le miroir est annulé autour de l'image cuite pour `dir`.
+describe('PropInMirror', () => {
+  const mountMirror = (reg: PropRegistry | null) => {
+    const host = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const root = createRoot(host);
+    const show = (spec: PropSpec) => root.render(<PropContext.Provider value={reg}><PropInMirror spec={spec} fallback={<rect data-classic="" />} /></PropContext.Provider>);
+    return { host, show };
+  };
+  it('dir = 1 : une <image> nue, sans groupe', async () => {
+    const jobs: (() => void)[] = [];
+    const reg = new PropRegistry('t', { schedule: (cb) => jobs.push(cb) });
+    const { host, show } = mountMirror(reg);
+    await act(async () => show({ id: 'asym', day: 1 }));
+    await act(async () => jobs.shift()!());
+    const img = host.querySelector('image')!;
+    expect(img.parentElement).toBe(host);
+    expect(host.querySelector('g')).toBeNull();
+  });
+  it('dir = −1 : <image> au cadre retourné dans un seul groupe scale(-1 1), qui annule le miroir de l’hôte', async () => {
+    const jobs: (() => void)[] = [];
+    const reg = new PropRegistry('t', { schedule: (cb) => jobs.push(cb) });
+    const { host, show } = mountMirror(reg);
+    await act(async () => show({ id: 'asym', day: 1, dir: -1 }));
+    await act(async () => jobs.shift()!());
+    const img = host.querySelector('image')!;
+    expect(img.getAttribute('x')).toBe('-4');
+    expect(img.parentElement!.getAttribute('transform')).toBe('scale(-1 1)');
+    expect(img.parentElement!.parentElement).toBe(host);
+    expect(host.querySelectorAll('g')).toHaveLength(1);
+  });
+  it('sans registre, dir = −1 : le repli est retourné deux fois (le miroir de l’hôte est conservé pour le classique)', async () => {
+    const { host, show } = mountMirror(null);
+    await act(async () => show({ id: 'asym', day: 1, dir: -1 }));
+    const classic = host.querySelector('[data-classic]')!;
+    expect(classic).not.toBeNull();
+    expect(classic.parentElement!.getAttribute('transform')).toBe('scale(-1 1)');
+    expect(classic.parentElement!.parentElement!.getAttribute('transform')).toBe('scale(-1 1)');
     expect(host.querySelector('image')).toBeNull();
   });
 });

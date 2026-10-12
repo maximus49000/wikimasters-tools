@@ -286,8 +286,9 @@ export function StageBand({ stageX, base, unit, width, minutes, dayOffset, outfi
 }
 
 // Faisceaux : pointe = lentille du projecteur i, base = sol du plancher sous le musicien i.
-// Ghibli (G5, maquette `stageBeams`) : deux polygones par projecteur, le large (0,3 ± 0,06 sur 2,4 / 2,9 / 3,4 s) et un cœur
-// plus étroit (base ±4) et plus clair à 60 % ; l'éclairage de concert de nuit (tâche 7) les remplace.
+// Ghibli (G5, maquette `stageBeams`) : deux polygones par projecteur, le large (0,3 ± 0,06 sur 2,4 / 2,9 / 3,4 s, comme le
+// classique) et un cœur plus étroit (base ±4) et plus clair, à opacité FIXE (pas d'animation SMIL nouvelle en Ghibli) ;
+// l'éclairage de concert de nuit (tâche 7) les remplace.
 export function StageBeams({ still, ghibli = false }: { still: boolean; ghibli?: boolean }): ReactElement {
   return (
     <g data-stage-beams="">
@@ -311,9 +312,7 @@ export function StageBeams({ still, ghibli = false }: { still: boolean; ghibli?:
               {!still && <animate attributeName="opacity" values="0.24;0.36;0.24" dur={dur} repeatCount="indefinite" />}
             </polygon>
             {ghibli && (
-              <polygon data-stage-beam-core={i} points={`${o.x.toFixed(2)},${o.y.toFixed(2)} ${tx - 4},${ty} ${tx + 4},${ty}`} fill="#FFFADC" opacity={0.18}>
-                {!still && <animate attributeName="opacity" values="0.144;0.216;0.144" dur={dur} repeatCount="indefinite" />}
-              </polygon>
+              <polygon data-stage-beam-core={i} points={`${o.x.toFixed(2)},${o.y.toFixed(2)} ${tx - 4},${ty} ${tx + 4},${ty}`} fill="#FFFADC" opacity={0.18} />
             )}
           </g>
         );

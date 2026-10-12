@@ -723,13 +723,17 @@ describe('installations cellulo en Ghibli (G5)', () => {
       expect(g.querySelectorAll('image')).toHaveLength(1);
       expect(g.querySelectorAll('rect, line, circle, polyline')).toHaveLength(0);
     }
+    // Repères vides conservés après cuisson (la tâche 7 s'y accroche) : toile de fond, un par projecteur.
+    expect(count(host, '[data-decor-kind="stage-frame"] [data-stage-backdrop]')).toBe(1);
+    expect(count(host, '[data-decor-kind="stage-spots"] [data-stage-spot]')).toBe(3);
   }, 60000);
 
-  it('nuit de concert (23 h) : faisceaux en deux polygones par projecteur (large + cœur), respiration hors mouvement réduit', () => {
+  it('nuit de concert (23 h) : faisceaux en deux polygones par projecteur (large qui respire comme le classique + cœur fixe, sans SMIL nouveau)', () => {
     const { host } = gLayer(MUSIC, 23 * 60);
     const beams = [...host.querySelectorAll('[data-stage-beam]')];
     expect(beams).toHaveLength(3);
     expect(count(host, '[data-stage-beam-core]')).toBe(3);
+    expect(count(host, '[data-stage-beam-core] animate')).toBe(0);
     expect(count(host, '[data-stage-beams] polygon')).toBe(6);
     beams.forEach((b, i) => {
       expect(Math.abs(Number(b.getAttribute('data-origin-x')) - STAGE.spotXs[i]!)).toBeLessThan(2);
