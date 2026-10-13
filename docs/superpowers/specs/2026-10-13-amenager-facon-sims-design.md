@@ -13,7 +13,7 @@ En mode « Aménager », `LibraryPanel.tsx` empile 5 à 6 rangées de glyphes au
 
 ## Ce qui a été décidé (avec l'utilisateur)
 
-1. **Tiroir en bas** (option A), qu'on peut replier.
+1. **Tiroir en bas** (option A), visible aussi en plein écran, et réductible à une simple poignée pour contempler la scène.
 2. **Le tiroir ne sert qu'à la construction.** Le ciel, la scène, l'heure, la météo, les animaux et les réglages de la pièce n'y sont pas : ils passent dans la barre du haut.
 3. **Une bulle d'actions sur l'objet sélectionné**, comme dans les Sims, à la place des boutons en rangée.
 
@@ -38,7 +38,7 @@ Les menus déroulants se ferment quand on touche à côté ou quand on appuie su
 
 Le tiroir est ancré en bas du `wmt-lib-stage`. Il se compose de quatre lignes :
 
-1. **Les onglets** : 🪑 Meubles · 🖼️ Cartes · 🧱 Pièce, et ▾/▴ pour replier ou déplier le tiroir.
+1. **Les onglets** : 🪑 Meubles · 🖼️ Cartes · 🧱 Pièce, et ▾ pour réduire le tiroir.
 2. **Les catégories**, en pastilles avec glyphe et libellé.
 3. **Les sous-catégories**, en pastilles plus petites. Cette ligne n'existe que si la catégorie en a.
 4. **Les vignettes**, qui défilent à l'horizontale.
@@ -56,7 +56,9 @@ Arborescence :
   - Style : les pastilles de couleur (`STYLE_IDS`, `chooseStyle`, avec la confirmation Steampunk inchangée)
   - Dimensions : agrandir ou réduire à gauche et à droite, pièce horizontale ou verticale
 
-Quand le tiroir est replié, il n'en reste que la ligne d'onglets. Le tiroir mémorise l'onglet, la catégorie, la sous-catégorie et son état ouvert ou replié pour la session, en état React comme `shownCategory` aujourd'hui. Rien n'est enregistré dans le stockage.
+**Réduction maximale** : ▾ réduit le tiroir à une petite poignée ▴ (environ 32 px), posée sur le bord bas de la scène, pour contempler toute la scène depuis l'intérieur de la pièce. Toucher la poignée rouvre le tiroir tel qu'il était. Le tiroir mémorise l'onglet, la catégorie, la sous-catégorie et son état ouvert ou réduit pour la session, en état React comme `shownCategory` aujourd'hui. Rien n'est enregistré dans le stockage.
+
+**Plein écran** : le tiroir (et la bulle d'actions) restent visibles en plein écran (`stage.active`), ancrés en bas de la scène plein écran, avec la même réduction à une poignée.
 
 **Vignette** : un bouton carré d'environ 56 px, avec le dessin réel du meuble en miniature et son nom en petit dessous. Le dessin vient de `HomeArt`, `SmallArt`, `ShelfArt`, `DeskArt`, `SteampunkArt` ou `WindowArt` (sans la vue extérieure), rendu dans un `<svg>` avec un `viewBox` à la taille de l'objet (`sizeOf` ou `WINDOW_DEFAULT`) et la palette du style de la pièce. La vignette est marquée `aria-pressed` quand l'outil « poser » de ce meuble est actif. Elle porte les mêmes `data-kind` et `aria-label` « Poser : … » qu'aujourd'hui.
 
@@ -97,9 +99,9 @@ Pas de nouvelle donnée enregistrée, pas de migration, et aucun changement au m
 
 - **Pièce non Steampunk** : pas de catégorie ⚙️. Si l'onglet était sur ⚙️ et que le style change, on revient sur la première catégorie.
 - **Collection indisponible** : l'onglet 🖼️ est masqué. Si c'était l'onglet actif, on revient sur 🪑.
-- **Sélection d'un objet pendant que le tiroir est replié** : la bulle s'affiche normalement.
+- **Sélection d'un objet pendant que le tiroir est réduit** : la bulle s'affiche normalement.
 - **Passage en Visiter** : le tiroir et la bulle disparaissent, mais les menus ☁️ 🐾 ⋯ restent disponibles.
-- **Plein écran (`stage.active`)** : le tiroir reste ancré en bas de la scène plein écran.
+- **Plein écran (`stage.active`)** : le tiroir reste visible et ancré en bas de la scène plein écran. Il est réductible à une poignée.
 
 ## Tests
 
@@ -107,7 +109,7 @@ On ne joue que les familles de tests touchées (famille bibliothèque, `npm run 
 
 - **Cœur** : `catalogTree` (Déco a 4 sous-catégories, Steampunk seulement dans une pièce Steampunk, l'union à plat est égale à `FURNITURE_KINDS`).
 - **Interface** : on adapte `library-panel`, `library-furniture`, `library-pets-ui`, `library-light-ui`, `library-cards` et `library-drag`. Les sélecteurs `data-*` sont conservés. Les tests qui cherchaient un contrôle dans une rangée ouvrent d'abord le bon menu ou le bon onglet.
-- **Nouveaux tests** : ouverture et fermeture des menus déroulants (un seul à la fois, Échap) ; repli du tiroir ; bulle visible seulement s'il y a une sélection, avec les bonnes actions selon le type d'objet ; vignette pressée quand l'outil est actif.
+- **Nouveaux tests** : ouverture et fermeture des menus déroulants (un seul à la fois, Échap) ; réduction du tiroir en poignée et réouverture dans le même état ; tiroir présent en plein écran ; bulle visible seulement s'il y a une sélection, avec les bonnes actions selon le type d'objet ; vignette pressée quand l'outil est actif.
 - **Capture de validation** : capture d'écran sur le vrai téléphone (S26 Ultra, APK pré-prod) montrée à l'utilisateur, puis capture de l'extension.
 
 ## Guide WikiHow
