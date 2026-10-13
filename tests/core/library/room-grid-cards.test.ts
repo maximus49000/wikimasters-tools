@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WALL_SHAPES, wallSizeOf } from '../../../src/core/library/furniture-catalog';
+import type { Layout } from '../../../src/core/library/library-types';
 import { WALL_ROWS, boardAt, canHang, firstFreeBoard, hang, moveComputer, moveHung, moveStored, shelfBoardsOf, placeComputer, placeStanding, placedSlugs, removeFurniture, sectionIsEmpty, setScreenCard, shiftLayout, storeCard, unplaceCard } from '../../../src/core/library/room-grid';
 
 describe('catalogue des formes', () => {
@@ -110,6 +111,15 @@ describe('étagère et écran', () => {
     expect(placedSlugs(shown).has('A')).toBe(true);
     expect(setScreenCard(shown, 'f2', 'B')).toEqual(expect.arrayContaining([expect.objectContaining({ slug: 'B' })]));
     expect(unplaceCard(shown, 'f2')[1]).toEqual({ id: 'f2', kind: 'computer', deskId: 'f1' });
+  });
+});
+
+describe('ranger un objet rangé (unplaceCard)', () => {
+  it('les suivants de la tablette se recompactent (rangs 0..n−1)', () => {
+    const shelf = placeStanding([], 24, 'shelf', 0, 7, 'f1')!;
+    const l: Layout = [...shelf, ...['a', 'b', 'c'].map((id, order) => ({ id, kind: 'stored', shape: 'cd', shelfId: 'f1', level: 1, order, slug: id.toUpperCase() }) as const)];
+    const out = unplaceCard(l, 'a');
+    expect(out.filter((p) => p.kind === 'stored').map((p) => [p.id, (p as { order: number }).order])).toEqual([['b', 0], ['c', 1]]);
   });
 });
 

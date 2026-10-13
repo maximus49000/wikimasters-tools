@@ -617,10 +617,11 @@ export function setScreenCard(layout: Layout, computerId: string, slug: string |
   });
 }
 
-// Ranger : retire un objet accroché ou rangé ; sur l'ordinateur, vide seulement l'écran.
+// Ranger : retire un objet accroché ou rangé (les suivants de sa tablette se recompactent) ; sur l'ordinateur, vide seulement l'écran.
 export function unplaceCard(layout: Layout, id: string): Layout {
   const item = layout.find((p) => p.id === id);
   if (item?.kind === 'computer') return setScreenCard(layout, id, null) ?? layout;
-  if (item?.kind === 'wall' || item?.kind === 'stored') return layout.filter((p) => p.id !== id);
+  if (item?.kind === 'stored') return compactShelves(layout.filter((p) => p.id !== id));
+  if (item?.kind === 'wall') return layout.filter((p) => p.id !== id);
   return layout;
 }
