@@ -262,6 +262,28 @@ export function LampSprite({ lit }: { lit: boolean }): ReactElement {
 // Bord gauche d'une entrée dessinée à l'échelle `unit`, pour que son centre reste à door.x + 11 (là où partent les habitants).
 export const entranceLeft = (doorX: number, unit: number): number => doorX + (DOOR_WIDTH / 2) * (1 - unit);
 
+// Vitres éclairées d'une entrée (minuterie du hall, calque animé : hall-lights.tsx), dans le repère de EntranceSprite.
+export function EntranceGlow({ variant }: { variant: 0 | 1 | 2 }): ReactElement {
+  const glow = '#FFD27A';
+  if (variant === 1) return <rect x={5} y={-22} width={12} height={6} fill={glow} />;
+  if (variant === 2) {
+    return (
+      <>
+        <rect x={2} y={-25} width={18} height={25} fill={glow} />
+        <line x1={11} y1={-25} x2={11} y2={0} stroke="#333" />
+        <line x1={2} y1={-13} x2={20} y2={-13} stroke="#333" strokeWidth={0.7} />
+      </>
+    );
+  }
+  return (
+    <>
+      <rect x={2} y={-25} width={8.5} height={25} fill={glow} />
+      <rect x={11.5} y={-25} width={8.5} height={25} fill={glow} />
+      <line x1={11} y1={-25} x2={11} y2={0} stroke="#333" />
+    </>
+  );
+}
+
 // ---------- Entrée d'immeuble : sprite 22 × 27 de x = 0 à 22, auvent un peu plus large, base à y = 0 ----------
 // Dessinée à l'échelle STREET_SCALE.entranceX × entranceY (metrics.ts) : cadre de DOOR_WIDTH = 12 px de large à l'écran.
 // Les jours de drapeaux, le drapeau planté sur l'auvent est un décor posé par une équipe (install-sprites.tsx, DoorFlag).

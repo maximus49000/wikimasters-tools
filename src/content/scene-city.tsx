@@ -8,7 +8,6 @@ import { EntranceSprite, entranceLeft } from './city-sprites';
 import type { SceneBodyProps } from './scene-panorama';
 import { ShopFront } from './shop-sprites';
 import { GhibliShopFront } from './shop/ghibli-shop-front';
-import { GhibliEntranceLights } from './shop/ghibli-entrance-lights';
 import { ShopInterior, sliceCount } from './shop-interiors';
 import { furnitureAt } from '../core/library/city/shops/view';
 import { useStreetShops } from './use-street-shops';
@@ -54,7 +53,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
   // Immeubles étirés (proportions avec les passants), fenêtres d'origine en haut et étages ajoutés : voir facades.ts.
   const buildings = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
   const doors = useMemo(() => doorsFor(width, height, seed), [width, height, seed]);
-  // Hall d'entrée éclairé la nuit (un peu plus d'une entrée sur deux).
+  // Nuit tombée : vitrines des commerces ouverts allumées (les halls d'entrée ont leur minuterie : hall-lights.tsx).
   const dark = sky.daylight < 0.45;
   const lane = mixHex('#8A8C9E', '#F2EEE2', sky.daylight);
   const { frames, views, street: slotDays } = useStreetShops(width, height, seed, city);
@@ -181,7 +180,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         data-door={door.id}
         transform={`translate(${entranceLeft(door.x, unit).toFixed(1)} ${metrics.doorY.toFixed(1)}) scale(${(unit * STREET_SCALE.entranceX).toFixed(3)} ${(unit * STREET_SCALE.entranceY).toFixed(3)})`}
       >
-        <EntranceSprite variant={door.variant} hallLit={dark && door.hallU < 0.6} sky={sky} />
+        <EntranceSprite variant={door.variant} hallLit={false} sky={sky} />
       </g>
     ));
   if (!lingering) {
@@ -220,7 +219,6 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}
         <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} plan={plan} shops={nightShops} rainy={rainy} />
         <GhibliWindows buildings={buildings} minutes={minutes} gloom={gloom} dim={dim} farLight={FAR_LIGHT} />
-        <GhibliEntranceLights doors={doors} unit={unit} doorY={metrics.doorY} dark={dark} />
       </g>
       {shopFronts}
     </g>
