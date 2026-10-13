@@ -19,8 +19,8 @@ ni un objet.
 | 5 | Déménageurs : équipe désorganisée et vivante (pas 3 qui entrent / 3 qui sortent), hayon rapide, entrée dans le camion sans être coupé en deux par le calque du camion | PR #277 (fusionnée) |
 | 6 | Local déménagé : il se vide puis se remplit, les déménageurs sont visibles au travail à l'intérieur | PR #277 (fusionnée) |
 | 7 | Café : le serveur pose la tasse, le client la prend, boit, la repose (plusieurs fois), la tasse reste jusqu'au débarrassage, le client paie avant de partir | PR #278 (fusionnée) |
-| 8 | Piétons : respect des plans (contourner par derrière), attente vivante s'il n'y a pas la place (petits gestes, agacement), jamais à travers un objet ou un véhicule | lot piétons, version légère (choix de l'utilisateur) |
-| 9 | Plus de passants et de vie sur le trottoir d'en face, sans cacher la ville (seulement des éléments bas ; lampadaire côté chaussée ; pas de gros arbre ni de bâtiment) | lot trottoir d'en face |
+| 8 | Piétons : respect des plans (contourner par derrière), attente vivante s'il n'y a pas la place (petits gestes, agacement), jamais à travers un objet ou un véhicule | PR #279 (fusionnée, version légère) |
+| 9 | Plus de passants et de vie sur le trottoir d'en face, sans cacher la ville (seulement des éléments bas ; lampadaire côté chaussée ; pas de gros arbre ni de bâtiment) | lot trottoir d'en face (front-sidewalk.tsx) |
 
 ## À reprendre avec Fable (dessin)
 
@@ -77,3 +77,10 @@ reportée) ; passants qui se croisent sur la même ligne (pas d'évitement entre
 
 Précision de l'utilisateur (2026-10-13) : « personne de la laverie coupée avant l'arrivée du camion ». Pas reproduit : il faut
 une capture au moment où ça arrive (quel commerce déménage, à quelle étape, quelle partie de la personne est coupée).
+
+## Trottoir d'en face
+
+Fait : passants ordinaires sur le trottoir du bas (`front-sidewalk.tsx`, ~1 pour 110 px), un peu plus grands (plus près),
+présence selon l'affluence basculée hors champ, devant les voyageurs de l'arrêt ; traversées du passage piéton plus
+fréquentes (« ils peuvent aussi prendre le passage piéton pour aller en face »). Reste : petits éléments bas (bancs, bornes,
+poubelles, jardinières) — à dessiner avec Fable.

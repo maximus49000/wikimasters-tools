@@ -584,8 +584,9 @@ function stepBusStops(w: TrafficWorld, env: TrafficEnv, t: number): void {
 // Piétons du passage : arrivées tirées selon l'affluence (au plus 8 à la fois), feu à bouton-poussoir.
 function stepCrossing(w: TrafficWorld, env: TrafficEnv, t: number): void {
   if (env.crowd > 0.02 && t >= w.walkerAt) {
-    w.walkerAt = t + Math.max(3, -Math.log(1 - w.walkerRng() * 0.98) * (16 / env.crowd));
-    if (w.walkers.length < 8) {
+    // Revue du 2026-10-13 (trottoir d'en face plus vivant) : on traverse un peu plus souvent pour aller d'un trottoir à l'autre.
+    w.walkerAt = t + Math.max(3, -Math.log(1 - w.walkerRng() * 0.98) * (12 / env.crowd));
+    if (w.walkers.length < 10) {
       w.walkers.push(newWalker(w.seed, w.walkerSerial++, w.width, MARGIN * w.unit, w.light.x, CROSS_HALF, w.unit));
       w.roster++;
     }
