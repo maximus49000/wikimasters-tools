@@ -47,17 +47,10 @@ afterEach(() => {
 });
 
 describe('bouton Graphisme Ghibli', () => {
-  it('bascule, s’enregistre et change d’étiquette', async () => {
+  // Décision du 2026-10-13 : Ghibli est le seul rendu proposé, le choix du graphisme n'est plus affiché.
+  it('absent de la scène Ville (Ghibli seul, plus de choix)', async () => {
     await click('[data-scene="city"]');
-    const btn = () => q('[data-art-toggle]');
-    expect(btn()?.getAttribute('aria-pressed')).toBe('false');
-    expect(btn()?.getAttribute('aria-label')).toBe('Graphisme Ghibli : désactivé');
-    await click('[data-art-toggle]');
-    expect(btn()?.getAttribute('aria-pressed')).toBe('true');
-    expect(btn()?.getAttribute('aria-label')).toBe('Graphisme Ghibli : activé');
-    expect(localStorage.getItem(ART_KEY)).toBe('ghibli');
-    await click('[data-art-toggle]');
-    expect(localStorage.getItem(ART_KEY)).toBe('classic');
+    expect(q('[data-art-toggle]')).toBeNull();
   });
   it('absent hors de la scène Ville', async () => {
     await click('[data-scene="sea"]');
