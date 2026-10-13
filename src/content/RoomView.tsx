@@ -121,7 +121,7 @@ function topPlacementIn(hosts: ReadonlyMap<string, Host>, placed: Placed): { hos
 }
 type Carried = { tops: Placed[]; stored: Extract<Placed, { kind: 'stored' }>[]; computers: Placed[] };
 
-export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect; floor?: Cell[] };
+export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect & { quad?: [number, number][] }; floor?: Cell[] };
 
 function ghostBox(rect: Rect): { x: number; y: number; width: number; height: number } {
   const px = pxRect(rect);
@@ -683,10 +683,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       {bubbles}
       {cells}
       {/* Emplacement d'étagère visé : son parallélogramme (face inclinée en ¾) ; sinon le rectangle. */}
-      {ghostView?.ghostPx && 'quad' in ghostView.ghostPx && Array.isArray(ghostView.ghostPx.quad) ? (
+      {ghostView?.ghostPx?.quad ? (
         <polygon
           data-drag-ghost={ghostView.ok ? 'ok' : 'refused'}
-          points={(ghostView.ghostPx.quad as [number, number][]).map(([x, y]) => `${x},${y}`).join(' ')}
+          points={ghostView.ghostPx.quad.map(([x, y]) => `${x},${y}`).join(' ')}
           fill={ghostView.ok ? '#3BB273' : '#E24B4A'}
           fillOpacity={0.25}
           stroke={ghostView.ok ? '#3BB273' : '#E24B4A'}

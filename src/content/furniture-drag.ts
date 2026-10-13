@@ -50,15 +50,18 @@ export function hostAtSurface(layout: Layout, x: number, y: number): string | nu
   return null;
 }
 
-// Place qu'aurait l'objet rangé `id` à ce rang de la tablette (rectangle englobant à l'écran) ; si la place manque,
+// Place qu'aurait l'objet rangé `id` à ce rang de la tablette (rectangle englobant à l'écran et parallélogramme de sa face) ; si la place manque,
 // posé de force à ce rang (au bout de la tablette pour un refus), quitte à déborder.
-function ghostOf(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): PxRect | undefined {
+function ghostOf(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): GhostPx | undefined {
   const item = layout.find((p) => p.id === id);
   if (!item || item.kind !== 'stored') return undefined;
   const moved = moveStored(layout, id, shelfId, level, order) ?? [...layout.filter((p) => p.id !== id), { ...item, shelfId, level, order }];
   const box = shelfLayoutOf(moved, shelfId).find((b) => b.id === id);
-  return box && { x: box.x, y: box.y, w: box.w, h: box.h };
+  return box && { x: box.x, y: box.y, w: box.w, h: box.h, quad: box.quad };
 }
+
+// Fantôme d'un objet rangé à l'écran : rectangle englobant, et les 4 coins de sa face (parallélogramme en ¾).
+export type GhostPx = PxRect & { quad?: [number, number][] };
 
 export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'not-slot' | 'shelf-full' | 'host-busy' | 'not-host' | 'not-screen';
 
@@ -81,7 +84,7 @@ export type DropTarget = {
   // Carte d'écran : ordinateur visé.
   computerId?: string;
   // Objet rangé : tablette et rang visés (le fantôme, en pixels, est sa place une fois rangé à ce rang).
-  ghostPx?: PxRect;
+  ghostPx?: GhostPx;
   shelfId?: string;
   level?: ShelfLevel;
   order?: number;

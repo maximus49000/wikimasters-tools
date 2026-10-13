@@ -352,6 +352,20 @@ describe('LibraryPanel : cartes', () => {
     expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ kind: 'stored', shelfId: 'f1', level: 2, order: 0 });
   });
 
+  it('sur une étagère de ¾, le fantôme du dépôt suit la face inclinée (parallélogramme)', async () => {
+    const tilted: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 7, angle: 1 }, { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', level: 0, order: 0, slug: 'Daft_Punk' }];
+    await seed(tilted);
+    stubSvgRect();
+    const from = cardCenter(tilted, 'f2');
+    const b = shelfBoardsOf(tilted[0]!)[2]!;
+    const to = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    await longPress('[data-card="Daft_Punk"]', from.x, from.y);
+    await pointer('pointermove', window, to.x, to.y);
+    expect(q('polygon[data-drag-ghost="ok"]')).not.toBeNull();
+    expect(q('rect[data-drag-ghost]')).toBeNull();
+    await pointer('pointerup', window, to.x, to.y);
+  });
+
   it('un objet rangé passe sur la tablette d’une autre étagère', async () => {
     await seed([...shelfLayout, { id: 'f9', kind: 'shelf', col: 10, row: 7 }]);
     stubSvgRect();

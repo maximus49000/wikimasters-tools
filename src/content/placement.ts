@@ -1,5 +1,5 @@
 import type { CardChoice } from './CardPickerDialog';
-import { deskAtCell, dropTargetFor, type DropTarget } from './furniture-drag';
+import { deskAtCell, dropTargetFor, type DropTarget, type GhostPx } from './furniture-drag';
 import { SMALL_ITEM_OF, WINDOW_DEFAULT, isSmallKind, isStandingKind } from '../core/library/furniture-catalog';
 import { nextFurnitureId } from '../core/library/library-book';
 import { applyMatrix, rotateAngle, type Angle } from '../core/library/footprint';
@@ -35,7 +35,7 @@ export type Placement = {
   // Présentation choisie pendant le placement d'un objet rangé (de face / sur la tranche) ; absente : la sienne.
   display?: StoredDisplay;
 };
-export type PlacingView = { id: string; ok: boolean; ghost: Rect | null; ghostPx?: PxRect; floor?: Cell[] };
+export type PlacingView = { id: string; ok: boolean; ghost: Rect | null; ghostPx?: GhostPx; floor?: Cell[] };
 
 export const spotAt = (col: number, row: number): Spot => ({ col, row, x: col * CELL_W + CELL_W / 2, y: row * CELL_H + CELL_H / 2 });
 const spotOfPx = (x: number, y: number): Spot => ({ col: Math.floor(x / CELL_W), row: Math.floor(y / CELL_H), x, y });
