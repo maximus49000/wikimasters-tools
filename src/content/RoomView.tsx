@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, angleOf, computerRect, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlotsOf, surfaceSlotRect, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
+import { frontFaceRect } from '../core/library/footprint';
 import { boxesOf, lampsOf, layoutSignature } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
@@ -9,6 +10,7 @@ import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { ShelfItemArt, WallArt } from './library-card-art';
 import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
+import { AngledFurnitureArt, ComputerBackArt } from './furniture-angled';
 import { HomeArt, SmallArt } from './furniture-art-home';
 import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
 import { getImageService } from './image-registry';
@@ -98,7 +100,7 @@ type Props = {
   roomLayers?: 'shown' | 'hidden';
 };
 
-export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect };
+export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect; floor?: Cell[] };
 
 function ghostBox(rect: Rect): { x: number; y: number; width: number; height: number } {
   const px = pxRect(rect);
@@ -231,7 +233,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     if (placed.kind === 'computer') {
       const desk = deskRects.get(placed.deskId);
       if (!desk) return null;
-      const rect = computerRect(desk);
+      // Bureau tourné : l'écran suit sa face visible ; de dos ou de profil, un écran gris sans image.
+      const deskItem = room.layout.find((p) => p.id === placed.deskId);
+      const deskAngle = deskItem ? angleOf(deskItem) : 0;
+      const face = frontFaceRect(deskAngle, desk);
+      if (!face) return { rect: computerRect(desk), art: <ComputerBackArt rect={computerRect(desk)} side={deskAngle === 2 || deskAngle === 6} /> };
+      const rect = computerRect(face);
       const screenUrl = placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined;
       return { rect, art: steampunk ? <AnalyticalEngineArt rect={rect} imageUrl={screenUrl} /> : <ComputerArt rect={rect} imageUrl={screenUrl} /> };
     }
@@ -254,6 +261,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     const cells = rectOf(placed);
     if (!cells || !isStanding(placed)) return null;
     const rect = pxRect(cells);
+    const angle = angleOf(placed);
+    if (angle !== 0) {
+      // Meuble Steampunk dans une autre pièce : pas dessiné (comme de face).
+      if (!steampunk && (placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton')) return null;
+      return { rect, art: <AngledFurnitureArt kind={placed.kind} angle={angle} rect={rect} palette={palette} lit={isLit(placed)} /> };
+    }
     if (placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton') {
       // Meubles exclusifs Steampunk : une donnée abîmée dans une autre pièce n'est pas dessinée.
       if (!steampunk) return null;
@@ -280,6 +293,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         <g
           data-furniture={placed.kind}
           data-id={placed.id}
+          data-angle={isStanding(placed) && angleOf(placed) !== 0 ? angleOf(placed) : undefined}
           {...(isLamp(placed) && !editing ? {
             role: 'button', tabIndex: 0, 'aria-pressed': isLit(placed), 'aria-label': isLit(placed) ? 'Lampe allumée' : 'Lampe éteinte',
             // Au clavier : Entrée ou Espace bascule la lampe, comme un clic.
@@ -366,8 +380,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       return drawn && { slug: placed.slug, ...drawn };
     }
     if (placed.kind === 'stored') {
-      const shelf = shelfRects.get(placed.shelfId);
-      const rect = shelf ? shelfSlots(shelf)[placed.slot] : undefined;
+      // Étagère de profil ou de dos : face cachée, cartes non dessinées.
+      const shelf = room.layout.find((p) => p.id === placed.shelfId);
+      if (!shelf || !frontFaceRect(angleOf(shelf), { x: 0, y: 0, w: 1, h: 1 })) return null;
+      const rect = shelfSlotsOf(shelf)[placed.slot];
       if (!rect) return null;
       const info = cards[placed.slug];
       return { slug: placed.slug, rect, art: <ShelfItemArt rect={rect} shape={placed.shape} slug={placed.slug} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} /> };
@@ -375,7 +391,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     if (placed.kind === 'computer' && placed.slug) {
       const desk = deskRects.get(placed.deskId);
       if (!desk) return null;
-      const full = computerRect(desk);
+      // Écran de dos ou de profil : ni dessiné ni touchable.
+      const deskItem = room.layout.find((p) => p.id === placed.deskId);
+      const face = frontFaceRect(deskItem ? angleOf(deskItem) : 0, desk);
+      if (!face) return null;
+      const full = computerRect(face);
       const rect = { x: full.x + 5, y: full.y + 5, w: full.w - 10, h: full.h - 12 - 10 };
       const missing = !cards[placed.slug];
       return { slug: placed.slug, rect, art: missing ? <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="#1D1D22" /> : <g />, extra: { 'data-screen': placed.id } };
@@ -636,13 +656,18 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* Cases au sol réellement occupées par le meuble (tourné) : elles portent la couleur, le contour s'efface. */}
+      {ghostView?.floor?.map((c) => (
+        <rect key={`floor-${c.col}-${c.row}`} data-floor-cell={ghostView.ok ? 'ok' : 'refused'} x={c.col * CELL_W + 1} y={c.row * CELL_H + 1} width={CELL_W - 2} height={CELL_H - 2} rx={3}
+          fill={ghostView.ok ? '#3BB273' : '#E24B4A'} fillOpacity={0.35} style={{ pointerEvents: 'none' }} />
+      ))}
       {ghostView?.ghost && (
         <rect
           data-drag-ghost={ghostView.ok ? 'ok' : 'refused'}
           {...ghostBox(ghostView.ghost)}
           rx={6}
           fill={ghostView.ok ? '#3BB273' : '#E24B4A'}
-          fillOpacity={0.25}
+          fillOpacity={ghostView.floor ? 0.08 : 0.25}
           stroke={ghostView.ok ? '#3BB273' : '#E24B4A'}
           strokeWidth={2.5}
           style={{ pointerEvents: 'none' }}

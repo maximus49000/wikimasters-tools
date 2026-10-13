@@ -86,7 +86,7 @@ export const FAMILLES: Famille[] = [
     fichiers: [
       ...c(
         'furniture-drag*', 'placement.*', 'placement-bar.*', 'library-placement.*', 'library-sims-ui.*', 'furniture-thumb.*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
-        'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*',
+        'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*', 'room-angle.*',
       ),
       ...lib('room-grid*', 'furniture-catalog.*', 'footprint.*', 'furniture-projection.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*'),
       'tests/core/picker-filter.test.ts',
