@@ -798,6 +798,36 @@ export function Model3DArt({ kind, angle, rect, palette, lit = true, steampunk =
 - [ ] **Step 3:** Régénérer les empreintes de référence de la lumière par la commande prévue par le dépôt (chercher « golden » dans `tests/` et `package.json`), vérifier visuellement une capture de la pièce éclairée.
 - [ ] **Step 4:** Familles `scene-animaux scene-lumiere scene-piece` → PASS ; commit — `feat(bibliotheque): ombres et animaux suivent les vrais volumes des meubles`.
 
+---
+
+## AVENANT — contenus des meubles en 3D (spec §6, validé le 2026-10-14)
+
+### Task 7b: Modèles 3D des objets rangés, de l'écran et des petits objets + maquette — ARRÊT POUR VALIDATION
+
+**Files:** `src/core/library/item-models.ts` (nouveau), `src/core/library/furniture-render3d.ts` (si besoin : face texturée pour l'image de la carte et le titre), `src/content/model3d-art.tsx` (dessin d'un objet : `Item3DArt`), tests `tests/core/library/item-models.test.ts`, `tests/content/item3d-art.test.tsx` (famille `scene-piece`), banc `.superpowers/harness-modeles/` (non suivi).
+
+**Interfaces:**
+- `export type ItemShape = ShelfShape | 'monitor' | 'small-plant' | 'small-lamp'`
+- `export const ITEM_MODELS: Record<ItemShape, Model>` — CD 14 × 12,5 × 1 cm, DVD et jeu 19 × 13,5 × 1,5, livre 23 × 15 × 3 (L × H × épaisseur), moniteur (dalle ~55 × 33 × 3 cm sur pied), petite plante (~15 × 15 × 25), petite lampe (~15 × 15 × 30). Chaque objet rangé déclare sa face « couverture » (où s'affiche l'image) et sa face « tranche » (où s'écrit le titre).
+- `export function itemFootprintCm(shape: ShelfShape, display: 'cover' | 'spine'): number` — largeur occupée sur la tablette (couverture : largeur ; tranche : épaisseur), sans l'écart.
+- Rendu : un objet est rendu par le moteur dans le repère de son porteur tourné (même angle), avec l'image de la carte projetée sur la couverture (transform matrix sur la face projetée, comme les emplacements ¾) et le titre sur la tranche.
+
+**Tests (d'abord)** : dimensions exactes ; `itemFootprintCm('cd','cover') = 14`, `('cd','spine') = 1`, `('book','spine') = 3` ; un CD de face sur une étagère à l'angle 0 a sa couverture visible (face projetée de largeur ≈ 14 cm × 30/21 px), à l'angle 2 la couverture n'est plus visible et la tranche l'est ; le moniteur et les petits objets restent dans leur boîte ; toutes les formes finies.
+
+**Maquette** : captures (étagère angles 0/1/2/7 avec CD/DVD/jeu de face et livres sur la tranche, tablettes remplies ; bureau angles 0/1/4 avec écran + petite lampe + petite plante ; zoom étagère), regardées, notes honnêtes. **ARRÊT : envoyer les captures à l'utilisateur et attendre sa validation avant 7c.**
+
+### Task 7c: Rangement adaptatif (tablette + ordre) et migration v7
+
+**Files:** `library-types.ts` (objet rangé : `level: 0 | 1 | 2; order: number; display?: 'cover' | 'spine'` à la place de `slot`), `library-book.ts` (schéma, `migrateV6` → v7 : `level = floor(slot/5)`, `order = slot % 5`), `room-grid.ts` (`shelfSlotsIn`/`shelfSlotsOf`/`slotAt`/`firstFreeSlot`/`storeCard`/`moveStored` remplacés par un rangement par largeur : `shelfLayoutOf(layout, shelfId)` → positions x des objets par tablette ; `dropOnShelf(layout, shelfId, level, x, item)` → ordre d'insertion ou refus « plus de place » ; ordres compactés 0..n−1), `placement.ts`, `furniture-drag.ts`, `RoomView.tsx`, `furniture-zoom.tsx`, `cleanLayout` (unicité par `shelfId:level:order`), tests associés.
+
+**Règles** : largeur utile = largeur de la face de l'étagère du modèle (74 cm) ; occupation = Σ (itemFootprintCm + 1 cm) ; un dépôt qui dépasse est refusé (`reason: 'shelf-full'`, message « Plus de place sur cette tablette. ») ; une tablette convertie qui déborde garde ses objets (débordement toléré, rien supprimé). Tests : conversion v6 → v7 sans perte (même tablette, même ordre), idempotente ; 4 CD de face tiennent, le 5e est refusé ; 30 CD sur la tranche tiennent ; insertion au milieu décale les suivants ; déplacement entre tablettes ; zoom et pièce partagent les mêmes positions.
+
+### Task 7d: Sélecteur de présentation et rendu 3D dans la pièce et le zoom
+
+**Files:** `LibraryPanel.tsx` (sélecteur à deux glyphes `data-action="display-cover"` / `"display-spine"` dans la bulle d'un objet rangé et dans la barre de placement ; refus si le changement ne tient plus sur la tablette), `library-ui.tsx` (icônes `cover`, `spine`), `RoomView.tsx` (objets rangés, écran, petits objets dessinés en 3D par `Item3DArt`, dans l'ordre de profondeur), `furniture-zoom.tsx` (même rendu en grand, cartes touchables), occulteurs de lumière des objets (boîtes du modèle), tests jsdom.
+
+**Tests** : basculer couverture ↔ tranche change `display` après ✓ (rien avant) ; refus si ça ne tient plus ; un objet rangé de face affiche l'image de la carte sur sa couverture ; zoom : objets touchables, carte inconnue inerte ; familles `scene-piece scene-lumiere scene-animaux scene-commun` vertes ; captures de la vraie pièce.
+
 ### Task 8: Vérification finale et captures
 
 - [ ] **Step 1:** `npm run test:famille -- scene-piece scene-animaux scene-lumiere`, `npx tsc --noEmit`, `npm run build`.

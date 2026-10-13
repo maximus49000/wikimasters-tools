@@ -95,3 +95,13 @@ Faces visibles seulement (normale tournée vers le spectateur ou le haut), tri d
 - Reprise artistique Fable (plus tard).
 - WikiHow (reporté, comme la PR #302).
 - Changement d'échelle des fenêtres, objets accrochés, cartes.
+
+## 6. Avenant (validé le 2026-10-14) — contenus des meubles en 3D, présentation au choix
+
+Retour de l'utilisateur (capture) : « ce qui remplit un élément en 3D doit aussi être en 3D (juste un trait) ».
+
+- **Objets rangés en 3D** : vraies boîtes à leurs dimensions — CD 14 × 12,5 × 1 cm, DVD 19 × 13,5 × 1,5, jeu 19 × 13,5 × 1,5, livre 23 × 15 × 3 (L × H × épaisseur) — dessinées par le moteur et tournées avec l'étagère, éclairées comme elle.
+- **Présentation au choix par objet** (`display: 'cover' | 'spine'`) : de face (couverture vers l'avant avec l'image de la carte, épaisseur visible de ¾) ou sur la tranche (titre sur la tranche, couverture visible quand l'étagère tourne). Par défaut : livres sur la tranche, CD/DVD/jeux de face. Sélecteur à deux glyphes (couverture | tranche) dans la bulle d'actions et la barre de placement d'un objet rangé, en Aménager.
+- **Rangement adaptatif** : chaque tablette (largeur utile de la face, 74 cm) se remplit de gauche à droite selon la largeur réelle de chaque objet (couverture : sa largeur ; tranche : son épaisseur) + 1 cm d'écart. Un objet qui ne tient pas est refusé (empreinte rouge, message « Plus de place sur cette tablette. »). L'emplacement enregistré devient **tablette (`level` 0 = haut, 1, 2) + ordre (`order`)** ; conversion des rangements existants sans perte (état v6 → v7 : `level = floor(slot / 5)`, `order = slot % 5`, `display` absent = défaut du type), même tablette, même ordre ; si une tablette convertie déborde, l'objet garde sa place (débordement toléré, comme les meubles).
+- **Écran et petits objets en 3D** : moniteur (dalle + pied), petite plante, petite lampe = modèles 3D posés sur le dessus projeté, tournés avec leur meuble.
+- **Maquette d'abord** (captures : étagère de face, ¾, profil, avec objets de face et sur la tranche ; bureau avec écran et petits objets tournés), validation de l'utilisateur, puis intégration.
