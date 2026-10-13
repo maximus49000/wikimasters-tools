@@ -100,7 +100,7 @@ describe('commitPlacement : mêmes dispositions que les anciennes fonctions de p
     const choice = { target: 'shelf', shape: 'book', slug: 'Paris' } as const;
     const p = startPlacement(shelf, COLS, { type: 'card', choice }, CENTER);
     expect(p.target.ok).toBe(true);
-    expect(commitPlacement(p)).toEqual(storeCard(shelf, 'f1', p.target.slot!, 'book', 'Paris', nextFurnitureId(shelf)));
+    expect(commitPlacement(p)).toEqual(storeCard(shelf, 'f1', p.target.level!, p.target.order!, 'book', 'Paris', nextFurnitureId(shelf)));
   });
 
   it('carte impossible à ranger sur une étagère de profil (angle 2) : face cachée', () => {

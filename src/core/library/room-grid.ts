@@ -1,7 +1,8 @@
 import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, underOf, wallSizeOf } from './furniture-catalog';
 import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, frontFaceRect, invertMatrix, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
 import { STANDING_KINDS } from './library-types';
-import type { Depth, Layout, Orientation, Placed, ShelfShape, SmallItem, StandDepth, StandingKind, VinylColor, WallShape } from './library-types';
+import type { Depth, Layout, Orientation, Placed, ShelfLevel, ShelfShape, SmallItem, StandDepth, StandingKind, StoredDisplay, VinylColor, WallShape } from './library-types';
+import { ITEM_MODELS, itemFootprintCm } from './item-models';
 
 export const ROWS = 18;
 // Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
@@ -421,10 +422,6 @@ export function computerRectOn(desk: PxRect, angle: Angle): PxRect {
   return { x: x - COMPUTER_W / 2, y: y - COMPUTER_H + 2, w: COMPUTER_W, h: COMPUTER_H };
 }
 
-const SHELF_PER_LEVEL = 5;
-
-export const SHELF_SLOTS = 15;
-
 // Slugs déjà posés dans la pièce (accrochés, rangés ou à l'écran) : une carte n'y figure qu'une fois.
 export function placedSlugs(layout: Layout): Set<string> {
   const slugs = new Set<string>();
@@ -434,72 +431,190 @@ export function placedSlugs(layout: Layout): Set<string> {
   return slugs;
 }
 
-// Emplacement d'étagère : `local` dans le repère de la face (vue de face), `m` la matrice vers l'écran, `quad` ses 4 coins à l'écran
-// (parallélogramme en ¾) ; x, y, w, h : son rectangle englobant à l'écran (centre exact, fantôme, cible du glisser).
-export type ShelfSlot = PxRect & { local: PxRect; m: Matrix; quad: [number, number][] };
+// Rangement adaptatif des étagères : chaque tablette (largeur utile = largeur de la face du modèle, 74 cm) se remplit de gauche à droite
+// selon la largeur réelle de chaque objet (de face : sa largeur ; sur la tranche : son épaisseur), chacun précédé d'un écart de 1 cm.
+// Un objet est enregistré par sa tablette (`level`, 0 = haut) et son rang (`order`) ; sa position se déduit des objets qui le précèdent.
+export const SHELF_INNER_CM = 74;
+export const SHELF_GAP_CM = 1;
+export const SHELF_LEVELS: readonly ShelfLevel[] = [0, 1, 2];
+export const SHELF_FULL_MESSAGE = 'Plus de place sur cette tablette.';
+// Hauteur de la face de l'étagère (cm) : de la face locale (px) aux cm, verticalement.
+const SHELF_FACE_H_CM = 169;
 
-// Les 15 emplacements d'une face : 3 niveaux entre les tablettes du modèle × 5, du haut vers le bas puis de gauche à droite ;
-// chaque carte est posée sur sa tablette (bas de l'emplacement = dessus de la tablette).
-export function shelfSlotsIn(frame: FaceFrame): ShelfSlot[] {
-  const slotW = frame.w / SHELF_PER_LEVEL;
-  return faceLevels('shelf').flatMap(([top, bottom]) => Array.from({ length: SHELF_PER_LEVEL }, (_, j) => {
-    const y0 = top * frame.h + 4;
-    const local = { x: j * slotW + 2, y: y0, w: slotW - 4, h: bottom * frame.h - y0 };
-    const quad = ([[local.x, local.y], [local.x + local.w, local.y], [local.x + local.w, local.y + local.h], [local.x, local.y + local.h]] as const).map(([u, v]) => applyMatrix(frame.m, u, v));
-    const xs = quad.map((q) => q[0]);
-    const ys = quad.map((q) => q[1]);
-    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), local, m: frame.m, quad };
-  }));
+export type Stored = Extract<Placed, { kind: 'stored' }>;
+// Ce qu'il faut savoir d'un objet pour le ranger : sa forme et sa présentation (et son id s'il est déjà rangé, pour l'écarter du calcul).
+export type StoredLike = { id?: string; shape: ShelfShape; display?: StoredDisplay };
+
+export const isShelfLevel = (v: unknown): v is ShelfLevel => v === 0 || v === 1 || v === 2;
+// Présentation effective : celle choisie, sinon le défaut du type (livre sur la tranche, CD/DVD/jeu de face).
+export const displayOf = (p: StoredLike): StoredDisplay => p.display ?? (p.shape === 'book' ? 'spine' : 'cover');
+export const storedWidthCm = (p: StoredLike): number => itemFootprintCm(p.shape, displayOf(p));
+
+// Objets d'une tablette, de gauche à droite (rang) ; `ignoreId` : l'objet qu'on déplace.
+export function boardItems(layout: Layout, shelfId: string, level: ShelfLevel, ignoreId?: string): Stored[] {
+  return layout.filter((p): p is Stored => p.kind === 'stored' && p.shelfId === shelfId && p.level === level && p.id !== ignoreId).sort((a, b) => a.order - b.order);
 }
+// Largeur occupée (cm) : Σ (largeur + écart).
+export const boardUsedCm = (items: readonly StoredLike[]): number => items.reduce((sum, p) => sum + storedWidthCm(p) + SHELF_GAP_CM, 0);
+const fits = (others: readonly StoredLike[], item: StoredLike): boolean => boardUsedCm(others) + storedWidthCm(item) + SHELF_GAP_CM <= SHELF_INNER_CM + 1e-9;
 
-// Le point (x, y) de l'écran est-il dans l'emplacement (dans son parallélogramme, pas seulement son rectangle englobant) ?
-export function inSlot(s: ShelfSlot, x: number, y: number): boolean {
-  const [u, v] = invertMatrix(s.m, x, y);
-  return u >= s.local.x && u < s.local.x + s.local.w && v >= s.local.y && v < s.local.y + s.local.h;
+// Une tablette sur la face projetée : `local` dans le repère de la face (vue de face, px ; du haut du niveau au dessus de sa planche),
+// `m` la matrice vers l'écran, `quad` ses 4 coins à l'écran (parallélogramme en ¾) ; x, y, w, h : son rectangle englobant.
+export type ShelfBoard = PxRect & { level: ShelfLevel; local: PxRect; m: Matrix; quad: [number, number][] };
+// Un objet rangé à sa place : même repère, avec sa position en cm sur la face (x0Cm depuis le bord gauche de la face) et sa largeur.
+export type ShelfItemBox = ShelfBoard & { id: string; order: number; x0Cm: number; wCm: number };
+
+function onScreen(m: Matrix, local: PxRect): PxRect & { quad: [number, number][] } {
+  const quad = ([[local.x, local.y], [local.x + local.w, local.y], [local.x + local.w, local.y + local.h], [local.x, local.y + local.h]] as const).map(([u, v]) => applyMatrix(m, u, v));
+  const xs = quad.map((q) => q[0]);
+  const ys = quad.map((q) => q[1]);
+  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), quad };
 }
-
-// Emplacements d'une étagère sur sa face projetée (¾ : parallélogramme) ; de profil ou de dos, aucun (face cachée : on n'y range pas
-// de carte invisible ; le zoom de face a ses propres emplacements).
-export function shelfSlotsOf(shelf: Placed): ShelfSlot[] {
+// Les 3 tablettes d'une face (entre les planches du modèle), du haut vers le bas.
+export function shelfBoardsIn(frame: FaceFrame): ShelfBoard[] {
+  return faceLevels('shelf').slice(0, SHELF_LEVELS.length).map(([top, bottom], i) => {
+    const local = { x: 0, y: top * frame.h, w: frame.w, h: (bottom - top) * frame.h };
+    return { level: i as ShelfLevel, local, m: frame.m, ...onScreen(frame.m, local) };
+  });
+}
+function frameOfShelf(shelf: Placed): FaceFrame | null {
   const r = rectOf(shelf);
-  if (!r) return [];
-  const frame = faceFrame('shelf', angleOf(shelf), pxRect(r));
-  return frame ? shelfSlotsIn(frame) : [];
+  return r && shelf.kind === 'shelf' ? faceFrame('shelf', angleOf(shelf), pxRect(r)) : null;
+}
+// Tablettes d'une étagère sur sa face projetée ; de profil ou de dos, aucune (face cachée : on n'y range pas d'objet invisible).
+export function shelfBoardsOf(shelf: Placed): ShelfBoard[] {
+  const frame = frameOfShelf(shelf);
+  return frame ? shelfBoardsIn(frame) : [];
 }
 
-// Emplacement d'étagère sous le point (x, y) du dessin, en pixels.
-// L'emplacement sous (x, y) de l'étagère la plus en avant (deux étagères peuvent se superposer, l'une devant l'autre).
-export function slotAt(layout: Layout, x: number, y: number): { shelfId: string; slot: number } | null {
+// Place de chaque objet rangé de l'étagère `shelfId` sur la face `frame` (pièce ou zoom : mêmes positions en cm, à l'échelle de la face) :
+// posé sur sa tablette, à sa largeur et sa hauteur réelles. Une tablette convertie qui déborde garde ses objets (au-delà de la face).
+export function shelfLayoutIn(frame: FaceFrame, layout: Layout, shelfId: string): ShelfItemBox[] {
+  const sx = frame.w / SHELF_INNER_CM;
+  const sy = frame.h / SHELF_FACE_H_CM;
+  return shelfBoardsIn(frame).flatMap((board) => {
+    let x0 = SHELF_GAP_CM;
+    return boardItems(layout, shelfId, board.level).map((p, order) => {
+      const wCm = storedWidthCm(p);
+      const h = Math.min(ITEM_MODELS[p.shape].h * sy, board.local.h);
+      const local = { x: x0 * sx, y: board.local.y + board.local.h - h, w: wCm * sx, h };
+      const box: ShelfItemBox = { id: p.id, level: board.level, order, x0Cm: x0, wCm, local, m: frame.m, ...onScreen(frame.m, local) };
+      x0 += wCm + SHELF_GAP_CM;
+      return box;
+    });
+  });
+}
+export function shelfLayoutOf(layout: Layout, shelfId: string): ShelfItemBox[] {
+  const shelf = layout.find((p) => p.id === shelfId);
+  const frame = shelf ? frameOfShelf(shelf) : null;
+  return frame ? shelfLayoutIn(frame, layout, shelfId) : [];
+}
+
+// Espace libre de chaque tablette (repère de la face), dessiné en pointillés en Aménager ; une tablette pleine n'en a pas.
+export function shelfFreeIn(frame: FaceFrame, layout: Layout, shelfId: string): { level: ShelfLevel; local: PxRect }[] {
+  const sx = frame.w / SHELF_INNER_CM;
+  return shelfBoardsIn(frame).flatMap((board) => {
+    const used = boardUsedCm(boardItems(layout, shelfId, board.level));
+    const free = SHELF_INNER_CM - used;
+    if (free < SHELF_GAP_CM + 1) return [];
+    const inset = Math.min(4, board.local.h / 4);
+    return [{ level: board.level, local: { x: used * sx, y: board.local.y + inset, w: free * sx, h: board.local.h - inset } }];
+  });
+}
+
+// La tablette sous le point (x, y) du dessin, sur l'étagère la plus en avant (deux étagères peuvent se superposer) ;
+// `xCm` : position du point sur la largeur de la face, en cm depuis son bord gauche.
+export function boardAt(layout: Layout, x: number, y: number): { shelfId: string; level: ShelfLevel; xCm: number } | null {
   const shelves = layout.filter((p): p is Standing => p.kind === 'shelf');
   for (const p of byDrawOrder(layout, shelves).reverse()) {
-    const i = shelfSlotsOf(p).findIndex((s) => inSlot(s, x, y));
-    if (i >= 0) return { shelfId: p.id, slot: i };
+    const frame = frameOfShelf(p);
+    if (!frame) continue;
+    const [u, v] = invertMatrix(frame.m, x, y);
+    if (u < 0 || u >= frame.w) continue;
+    const board = shelfBoardsIn(frame).find((b) => v >= b.local.y && v < b.local.y + b.local.h);
+    if (board) return { shelfId: p.id, level: board.level, xCm: (u / frame.w) * SHELF_INNER_CM };
   }
   return null;
 }
 
-export function firstFreeSlot(layout: Layout, shelfId: string): number | null {
-  const used = new Set(layout.filter((p) => p.kind === 'stored' && p.shelfId === shelfId).map((p) => (p as Extract<Placed, { kind: 'stored' }>).slot));
-  for (let i = 0; i < SHELF_SLOTS; i++) if (!used.has(i)) return i;
+export type ShelfDrop = { ok: true; order: number } | { ok: false; reason: 'shelf-full' | 'not-shelf'; message: string };
+
+// Lâcher `item` sur la tablette `level` de l'étagère `shelfId`, au point `xCm` de la face : rang d'insertion (avant le premier objet dont
+// le centre est à droite du point), ou refus si la place manque. Un objet déjà sur cette tablette peut toujours y changer de rang
+// (une tablette convertie qui déborde reste utilisable).
+export function dropOnShelf(layout: Layout, shelfId: string, level: ShelfLevel, xCm: number, item: StoredLike): ShelfDrop {
+  const shelf = layout.find((p) => p.id === shelfId);
+  if (!shelf || shelf.kind !== 'shelf' || !isShelfLevel(level)) return { ok: false, reason: 'not-shelf', message: 'Déposez l’objet sur une tablette de l’étagère.' };
+  const others = boardItems(layout, shelfId, level, item.id);
+  const self = item.id === undefined ? undefined : layout.find((p) => p.id === item.id);
+  const already = self?.kind === 'stored' && self.shelfId === shelfId && self.level === level;
+  if (!already && !fits(others, item)) return { ok: false, reason: 'shelf-full', message: SHELF_FULL_MESSAGE };
+  let x0 = SHELF_GAP_CM;
+  let order = 0;
+  for (const p of others) {
+    const w = storedWidthCm(p);
+    if (x0 + w / 2 > xCm) break;
+    x0 += w + SHELF_GAP_CM;
+    order++;
+  }
+  return { ok: true, order };
+}
+
+// Première tablette (du haut) où `item` tient, à la suite de ses objets ; null si l'étagère est pleine pour lui.
+export function firstFreeBoard(layout: Layout, shelfId: string, item: StoredLike): { level: ShelfLevel; order: number } | null {
+  for (const level of SHELF_LEVELS) {
+    const others = boardItems(layout, shelfId, level, item.id);
+    if (fits(others, item)) return { level, order: others.length };
+  }
   return null;
 }
 
-export function storeCard(layout: Layout, shelfId: string, slot: number, shape: ShelfShape, slug: string, id: string): Layout | null {
-  const shelf = layout.find((p) => p.id === shelfId);
-  if (!shelf || shelf.kind !== 'shelf' || !Number.isInteger(slot) || slot < 0 || slot >= SHELF_SLOTS) return null;
-  if (layout.some((p) => p.kind === 'stored' && p.shelfId === shelfId && p.slot === slot)) return null;
-  if (placedSlugs(layout).has(slug)) return null;
-  return [...layout, { id, kind: 'stored', shape, shelfId, slot, slug }];
+// Rangs recompactés 0..n−1 sur chaque tablette (rang actuel, puis ordre du plan), sans rien retirer.
+export function compactShelves(layout: Layout): Layout {
+  const boards = new Map<string, Stored[]>();
+  for (const p of layout) {
+    if (p.kind !== 'stored') continue;
+    const key = `${p.shelfId}:${p.level}`;
+    boards.set(key, [...(boards.get(key) ?? []), p]);
+  }
+  const orders = new Map<string, number>();
+  for (const items of boards.values()) [...items].sort((a, b) => a.order - b.order).forEach((p, i) => orders.set(p.id, i));
+  return layout.map((p) => (p.kind === 'stored' && orders.get(p.id) !== p.order ? { ...p, order: orders.get(p.id)! } : p));
 }
 
-// Déplace un objet rangé vers un autre emplacement (le sien est permis, un emplacement pris par un autre non).
-export function moveStored(layout: Layout, id: string, shelfId: string, slot: number): Layout | null {
+// Insère `item` au rang `order` (borné à la fin) de sa tablette : les suivants se décalent d'un rang ; l'ancienne tablette se recompacte.
+function insertStored(layout: Layout, item: Stored, order: number): Layout {
+  const rest = layout.filter((p) => p.id !== item.id);
+  const others = boardItems(rest, item.shelfId, item.level);
+  const at = Math.max(0, Math.min(Math.floor(order), others.length));
+  const ranks = new Map<string, number>(others.map((p, i) => [p.id, i < at ? i : i + 1]));
+  const placed = rest.map((p) => (ranks.has(p.id) ? { ...(p as Stored), order: ranks.get(p.id)! } : p));
+  // L'objet garde sa position dans le plan quand il est déjà rangé (ordre de dessin stable), sinon il s'ajoute à la fin.
+  const index = layout.findIndex((p) => p.id === item.id);
+  const moved = { ...item, order: at };
+  return compactShelves(index < 0 ? [...placed, moved] : [...placed.slice(0, index), moved, ...placed.slice(index)]);
+}
+
+// Range une carte sur la tablette `level` au rang `order` ; refusée si l'étagère est inconnue, la carte déjà posée ou la place insuffisante.
+// `display` absent : défaut du type.
+export function storeCard(layout: Layout, shelfId: string, level: ShelfLevel, order: number, shape: ShelfShape, slug: string, id: string, display?: StoredDisplay): Layout | null {
+  const shelf = layout.find((p) => p.id === shelfId);
+  if (!shelf || shelf.kind !== 'shelf' || !isShelfLevel(level) || !Number.isFinite(order)) return null;
+  if (placedSlugs(layout).has(slug)) return null;
+  const item: Stored = { id, kind: 'stored', shape, shelfId, level, order: 0, ...(display && { display }), slug };
+  if (!fits(boardItems(layout, shelfId, level), item)) return null;
+  return insertStored(layout, item, order);
+}
+
+// Déplace un objet rangé vers une tablette (la sienne ou une autre, sur cette étagère ou une autre) au rang `order`.
+// Refusé si la place manque (jamais dans sa propre tablette).
+export function moveStored(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): Layout | null {
   const item = layout.find((p) => p.id === id);
   const shelf = layout.find((p) => p.id === shelfId);
-  if (!item || item.kind !== 'stored' || !shelf || shelf.kind !== 'shelf') return null;
-  if (!Number.isInteger(slot) || slot < 0 || slot >= SHELF_SLOTS) return null;
-  if (layout.some((p) => p.kind === 'stored' && p.id !== id && p.shelfId === shelfId && p.slot === slot)) return null;
-  return layout.map((p) => (p.id === id ? { ...item, shelfId, slot } : p));
+  if (!item || item.kind !== 'stored' || !shelf || shelf.kind !== 'shelf' || !isShelfLevel(level) || !Number.isFinite(order)) return null;
+  const same = item.shelfId === shelfId && item.level === level;
+  if (!same && !fits(boardItems(layout, shelfId, level, id), item)) return null;
+  return insertStored(layout, { ...item, shelfId, level }, order);
 }
 
 export function setScreenCard(layout: Layout, computerId: string, slug: string | null): Layout | null {

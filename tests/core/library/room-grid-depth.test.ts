@@ -28,7 +28,7 @@ describe('niveaux de profondeur', () => {
       { id: 'c', kind: 'computer', deskId: 'd' },
       { id: 's', kind: 'small', item: 'plant', hostId: 'd', slot: 0 },
       { id: 'sh', kind: 'shelf', col: 20, row: 8 },
-      { id: 'st', kind: 'stored', shape: 'book', shelfId: 'sh', slot: 0, slug: 'X' },
+      { id: 'st', kind: 'stored', shape: 'book', shelfId: 'sh', level: 0, order: 0, slug: 'X' },
     ];
     const at = (id: string) => depthOf(layout, layout.find((p) => p.id === id)!);
     expect([at('w'), at('p'), at('c'), at('s'), at('st')]).toEqual([0, 0, 3, 3, 1]);

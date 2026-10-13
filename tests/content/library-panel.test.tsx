@@ -301,7 +301,7 @@ describe('LibraryPanel : plein écran', () => {
   it('le bouton « Adapter à l’écran » disparaît pendant le zoom sur un meuble', async () => {
     stub();
     await act(async () => { await repo.update((state) => updateLayout(extendRoom(extendRoom(state, 'r1', 'right'), 'r1', 'right'), 'r1', () => [
-      { id: 's', kind: 'shelf', col: 0, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', slot: 0, slug: 'Inconnue' },
+      { id: 's', kind: 'shelf', col: 0, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Inconnue' },
     ])); });
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2400 });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });

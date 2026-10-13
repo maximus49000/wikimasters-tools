@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseLibraryState } from '../../../src/core/library/library-book';
 import { frontFaceRect } from '../../../src/core/library/footprint';
-import { angleOf, byDrawOrder, canPlace, isStanding, moveStanding, placeStanding, pxRect, rectOf, setAngle, shelfSlotsOf, inSlot, slotAt, type Standing } from '../../../src/core/library/room-grid';
+import { angleOf, byDrawOrder, canPlace, isStanding, moveStanding, placeStanding, pxRect, rectOf, setAngle, shelfBoardsOf, boardAt, type Standing } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
 
 describe('angle d’un meuble', () => {
@@ -103,40 +103,41 @@ describe('pose avec angle', () => {
   });
 });
 
-describe('emplacements d’une étagère tournée', () => {
+describe('tablettes d’une étagère tournée', () => {
   const front = { id: 's', kind: 'shelf', col: 0, row: 6 } as const;
-  it('de face : 15 emplacements posés sur les tablettes du modèle, aucun à cheval sur une tablette', () => {
+  it('de face : 3 tablettes posées sur les planches du modèle, dans la face', () => {
     const face = frontFaceRect(0, pxRect(rectOf(front)!), 'shelf')!;
     const k = face.h / 169; // face de l'étagère : 169 cm de haut (de 8 à 177 cm)
     const at = (cm: number) => face.y + (177 - cm) * k;
-    const boards = [[121, 118], [61, 58]].map(([hi, lo]) => [at(hi!), at(lo!)] as const);
-    const slots = shelfSlotsOf(front);
-    expect(slots).toHaveLength(15);
-    // Bas de chaque niveau = dessus de sa tablette (121, 61 cm) ou bas de la face (8 cm, dessus du socle).
-    [121, 61, 8].forEach((cm, i) => { for (let j = 0; j < 5; j++) expect(slots[i * 5 + j]!.y + slots[i * 5 + j]!.h).toBeCloseTo(at(cm), 1); });
-    for (const s of slots) {
-      expect(s.y).toBeGreaterThanOrEqual(face.y);
-      for (const [top, bottom] of boards) expect(s.y + s.h <= top + 1e-6 || s.y >= bottom - 1e-6).toBe(true);
-      expect(s.x).toBeGreaterThanOrEqual(face.x);
-      expect(s.x + s.w).toBeLessThanOrEqual(face.x + face.w + 1e-6);
+    const boards = shelfBoardsOf(front);
+    expect(boards).toHaveLength(3);
+    // Bas de chaque tablette = dessus de sa planche (121, 61 cm) ou bas de la face (8 cm, dessus du socle).
+    [121, 61, 8].forEach((cm, i) => expect(boards[i]!.y + boards[i]!.h).toBeCloseTo(at(cm), 1));
+    for (const b of boards) {
+      expect(b.y).toBeGreaterThanOrEqual(face.y - 1e-6);
+      expect(b.x).toBeCloseTo(face.x, 3);
+      expect(b.x + b.w).toBeCloseTo(face.x + face.w, 3);
     }
   });
   it('¾ : parallélogrammes sur la face inclinée ; le toucher suit le parallélogramme, pas le rectangle englobant', () => {
     for (const angle of [1, 7] as const) {
       const three = { ...front, angle };
-      const slots = shelfSlotsOf(three);
-      expect(slots).toHaveLength(15);
+      const boards = shelfBoardsOf(three);
+      expect(boards).toHaveLength(3);
       const box = frontFaceRect(angle, pxRect(rectOf(three)!), 'shelf')!;
-      slots.forEach((s, i) => {
-        expect(Math.abs(s.quad[1]![1] - s.quad[0]![1]), 'bord du haut incliné').toBeGreaterThan(1);
-        for (const [x, y] of s.quad) {
+      boards.forEach((b, i) => {
+        expect(Math.abs(b.quad[1]![1] - b.quad[0]![1]), 'bord du haut incliné').toBeGreaterThan(1);
+        for (const [x, y] of b.quad) {
           expect(x).toBeGreaterThanOrEqual(box.x - 1e-6); expect(x).toBeLessThanOrEqual(box.x + box.w + 1e-6);
           expect(y).toBeGreaterThanOrEqual(box.y - 1e-6); expect(y).toBeLessThanOrEqual(box.y + box.h + 1e-6);
         }
-        expect(slotAt([three], s.x + s.w / 2, s.y + s.h / 2)).toEqual({ shelfId: 's', slot: i });
-        expect(inSlot(s, s.x + 0.5, s.y + 0.5) && inSlot(s, s.x + s.w - 0.5, s.y + 0.5)).toBe(false);
+        expect(boardAt([three], b.x + b.w / 2, b.y + b.h / 2)).toMatchObject({ shelfId: 's', level: i });
       });
+      // Coin du rectangle englobant hors du parallélogramme (côté où le bord monte) : pas de tablette touchée à cet endroit.
+      const top = boards[0]!;
+      const corner = angle === 1 ? [top.x + top.w - 0.5, top.y + 0.5] : [top.x + 0.5, top.y + 0.5];
+      expect(boardAt([three], corner[0]!, corner[1]!)?.level ?? null).not.toBe(0);
     }
-    for (const angle of [2, 3, 4, 5, 6] as const) expect(shelfSlotsOf({ ...front, angle })).toEqual([]);
+    for (const angle of [2, 3, 4, 5, 6] as const) expect(shelfBoardsOf({ ...front, angle })).toEqual([]);
   });
 });

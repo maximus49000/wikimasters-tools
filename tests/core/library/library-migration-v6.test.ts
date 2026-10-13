@@ -9,7 +9,7 @@ const v5 = (layout: unknown[], cols = 24) => ({ version: 5, activeRoomId: 'r1', 
 describe('migration v6', () => {
   it('garde la colonne et la dernière rangée au sol, prend la nouvelle taille', () => {
     const s = parseLibraryState(v5([{ id: 'a', kind: 'shelf', col: 0, row: 6 }]));
-    expect(s.version).toBe(6);
+    expect(s.version).toBe(7);
     const shelf = s.rooms[0]!.layout[0]!;
     const r = rectOf(shelf)!;
     expect(r.col).toBe(0);
@@ -60,7 +60,7 @@ describe('migration v6', () => {
     ]));
     const layout = s.rooms[0]!.layout;
     expect(layout.find((p) => p.id === 'c')).toEqual({ id: 'c', kind: 'computer', deskId: 'd' });
-    expect(layout.find((p) => p.id === 'st')).toMatchObject({ shelfId: 'sh', slot: 0 });
+    expect(layout.find((p) => p.id === 'st')).toMatchObject({ shelfId: 'sh', level: 0, order: 0 });
     expect(layout.some((p) => p.id === 'd') && layout.some((p) => p.id === 'sh')).toBe(true);
   });
   it('plusieurs pièces et la pièce maison sont conservées', () => {

@@ -11,7 +11,7 @@ import { RoomView } from '../../src/content/RoomView';
 import type { ImageService } from '../../src/core/images/image-service';
 import { setImageService } from '../../src/content/image-registry';
 import type { Layout, Room } from '../../src/core/library/library-types';
-import { shelfSlotsOf } from '../../src/core/library/room-grid';
+import { shelfBoardsOf, shelfLayoutOf } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -20,7 +20,7 @@ const room: Room = {
   pets: [],
   layout: [
     { id: 'f1', kind: 'shelf', col: 0, row: 7 },
-    { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },
+    { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', level: 0, order: 0, slug: 'Daft_Punk' },
     { id: 'f3', kind: 'wall', shape: 'poster', col: 10, row: 4, slug: 'Paris' },
     { id: 'f4', kind: 'wall', shape: 'vinyl', col: 14, row: 4, slug: 'Inconnue' },
   ],
@@ -82,7 +82,7 @@ describe('dessin détaillé', () => {
     ...room,
     layout: [
       { id: 'f1', kind: 'shelf', col: 0, row: 7 },
-      { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },
+      { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', level: 0, order: 0, slug: 'Daft_Punk' },
       { id: 'f3', kind: 'wall', shape: 'poster', col: 10, row: 4, slug: 'Paris' },
       { id: 'd1', kind: 'desk', col: 14, row: 11 },
       { id: 'c1', kind: 'computer', deskId: 'd1', slug: 'Paris' },
@@ -99,9 +99,13 @@ describe('dessin détaillé', () => {
     return container;
   };
 
-  it('ne dessine en pointillés que les emplacements vides', () => {
+  it('dessine en pointillés l’espace libre de chaque tablette, après les cartes rangées', () => {
     const c = render(true);
-    expect(c.querySelectorAll('rect[stroke-dasharray="3 3"]').length).toBe(14);
+    const free = [...c.querySelectorAll('rect[stroke-dasharray="3 3"]')];
+    expect(free.map((r) => r.getAttribute('data-shelf-free'))).toEqual(['0', '1', '2']);
+    // Tablette du haut : un CD (1 + 14 cm) ; les deux autres libres dès le bord gauche.
+    expect(Number(free[0]!.getAttribute('x'))).toBeGreaterThan(Number(free[1]!.getAttribute('x')));
+    expect(Number(free[1]!.getAttribute('x'))).toBe(0);
   });
 
   it('l’écran d’un ordinateur affichant une carte est touchable', () => {
@@ -184,7 +188,7 @@ describe('LibraryPanel : cartes', () => {
     expect(layoutNow().find((p) => p.kind === 'wall')).toMatchObject({ slug: 'Paris', shape: 'poster' });
   });
 
-  it('range une carte sur une étagère à l’emplacement 0', async () => {
+  it('range une carte sur la première tablette d’une étagère', async () => {
     await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 7 }]);
     await click('[data-action="edit"]');
     await pickCard('Paris');
@@ -192,18 +196,18 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-shape="cd"]');
     await click('[data-furniture="shelf"]');
     await placeOk();
-    expect(layoutNow().find((p) => p.kind === 'stored')).toMatchObject({ slug: 'Paris', slot: 0, shelfId: 'f1' });
+    expect(layoutNow().find((p) => p.kind === 'stored')).toMatchObject({ slug: 'Paris', level: 0, order: 0, shelfId: 'f1' });
   });
 
   it('toucher une carte déjà rangée pendant la pose sur une étagère vise son étagère', async () => {
-    await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 7 }, { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' }]);
+    await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 7 }, { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', level: 0, order: 0, slug: 'Daft_Punk' }]);
     await click('[data-action="edit"]');
     await pickCard('Paris');
     await click('[data-target="shelf"]');
     await click('[data-shape="cd"]');
     await click('[data-card="Daft_Punk"]');
     await placeOk();
-    expect(layoutNow().find((p) => p.kind === 'stored' && p.slug === 'Paris')).toMatchObject({ shelfId: 'f1', slot: 1 });
+    expect(layoutNow().find((p) => p.kind === 'stored' && p.slug === 'Paris')).toMatchObject({ shelfId: 'f1', level: 0, order: 1 });
   });
 
   it('affiche une carte sur l’écran d’un ordinateur, et refuse sans ordinateur', async () => {
@@ -243,7 +247,7 @@ describe('LibraryPanel : cartes', () => {
     await seed([
       { id: 'f1', kind: 'wall', shape: 'poster', col: 4, row: 4, slug: 'Paris' },
       { id: 'f2', kind: 'shelf', col: 12, row: 7 },
-      { id: 'f3', kind: 'stored', shape: 'cd', shelfId: 'f2', slot: 0, slug: 'Daft_Punk' },
+      { id: 'f3', kind: 'stored', shape: 'cd', shelfId: 'f2', level: 0, order: 0, slug: 'Daft_Punk' },
     ]);
     await click('[data-action="edit"]');
     await click('[data-card="Paris"]');
@@ -283,13 +287,18 @@ describe('LibraryPanel : cartes', () => {
     await act(async () => { vi.advanceTimersByTime(500); });
     vi.useRealTimers();
   }
-  const slotCenter = (i: number) => {
-    const s = shelfSlotsOf({ id: 'f1', kind: 'shelf', col: 0, row: 7 })[i]!;
-    return { x: s.x + s.w / 2, y: s.y + s.h / 2 };
+  // Centre d'une carte rangée, et un point d'une tablette (fraction `fx` de sa largeur, à mi-hauteur).
+  const cardCenter = (layout: Layout, id: string) => {
+    const b = shelfLayoutOf(layout, 'f1').find((x) => x.id === id)!;
+    return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+  };
+  const boardPoint = (col: number, level: number, fx = 0.5) => {
+    const b = shelfBoardsOf({ id: 'f', kind: 'shelf', col, row: 7 })[level]!;
+    return { x: b.x + b.w * fx, y: b.y + b.h / 2 };
   };
   const shelfLayout: Layout = [
     { id: 'f1', kind: 'shelf', col: 0, row: 7 },
-    { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },
+    { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', level: 0, order: 0, slug: 'Daft_Punk' },
   ];
 
   it('un appui long sur un objet accroché le déplace sur le mur', async () => {
@@ -323,48 +332,50 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-card="Daft_Punk"]');
     await click('[data-action="move"]');
     expect(q('[data-placement-bar]')).not.toBeNull();
-    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ slot: 0 });
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ level: 0, order: 0 });
   });
 
-  it('un appui long sur un objet rangé le déplace dans un autre emplacement', async () => {
+  it('un appui long sur un objet rangé le déplace sur une autre tablette', async () => {
     await seed(shelfLayout);
     stubSvgRect();
-    const from = slotCenter(0);
-    const to = slotCenter(4);
+    const from = cardCenter(shelfLayout, 'f2');
+    const to = boardPoint(0, 2);
     await longPress('[data-card="Daft_Punk"]', from.x, from.y);
     await pointer('pointermove', window, to.x, to.y);
     expect(q('[data-drag-ghost="ok"]')).not.toBeNull();
     await pointer('pointerup', window, to.x, to.y);
     await settle();
     await placeOk();
-    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ kind: 'stored', shelfId: 'f1', slot: 4 });
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ kind: 'stored', shelfId: 'f1', level: 2, order: 0 });
   });
 
-  it('un objet rangé passe sur l’emplacement d’une autre étagère', async () => {
+  it('un objet rangé passe sur la tablette d’une autre étagère', async () => {
     await seed([...shelfLayout, { id: 'f9', kind: 'shelf', col: 10, row: 7 }]);
     stubSvgRect();
-    const from = slotCenter(0);
-    const other = shelfSlotsOf({ id: 'f9', kind: 'shelf', col: 10, row: 7 })[3]!;
+    const from = cardCenter(shelfLayout, 'f2');
+    const other = boardPoint(10, 1);
     await longPress('[data-card="Daft_Punk"]', from.x, from.y);
-    await pointer('pointerup', window, other.x + other.w / 2, other.y + other.h / 2);
+    await pointer('pointerup', window, other.x, other.y);
     await settle();
     await placeOk();
-    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ shelfId: 'f9', slot: 3 });
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ shelfId: 'f9', level: 1, order: 0 });
   });
 
-  it('lâcher un objet sur un emplacement occupé le laisse en place et affiche un message', async () => {
-    await seed([...shelfLayout, { id: 'f3', kind: 'stored', shape: 'dvd', shelfId: 'f1', slot: 1, slug: 'Paris' }]);
+  it('lâcher un objet sur une tablette pleine le laisse en place et affiche « Plus de place sur cette tablette. »', async () => {
+    // Tablette du milieu : 4 CD de face, 60 cm sur 74 ; un 5e n'y tient pas.
+    const full: Layout = [...shelfLayout, ...[0, 1, 2, 3].map((i) => ({ id: `g${i}`, kind: 'stored', shape: 'cd', shelfId: 'f1', level: 1, order: i, slug: `G${i}` }) as const)];
+    await seed(full);
     stubSvgRect();
-    const from = slotCenter(0);
-    const to = slotCenter(1);
+    const from = cardCenter(full, 'f2');
+    const to = boardPoint(0, 1, 0.5);
     await longPress('[data-card="Daft_Punk"]', from.x, from.y);
     await pointer('pointermove', window, to.x, to.y);
     expect(q('[data-drag-ghost="refused"]')).not.toBeNull();
     await pointer('pointerup', window, to.x, to.y);
     await settle();
-    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ slot: 0 });
-    expect(layoutNow().find((p) => p.id === 'f3')).toMatchObject({ slot: 1 });
-    expect(q('[role="status"]')?.textContent).toContain('déjà pris');
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ level: 0, order: 0 });
+    expect(layoutNow().filter((p) => p.kind === 'stored' && p.level === 1)).toHaveLength(4);
+    expect(q('[role="status"]')?.textContent).toContain('Plus de place sur cette tablette.');
   });
 
   it('un appui long sur un ordinateur qui affiche une carte déplace l’ordinateur et sa carte', async () => {

@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { drawSize, faceFrame } from '../core/library/footprint';
 import type { Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, angleOf, computerRectOn, shelfSlotsIn, surfaceSlotRectOn, type PxRect } from '../core/library/room-grid';
+import { CELL_H, CELL_W, angleOf, computerRectOn, shelfFreeIn, shelfLayoutIn, surfaceSlotRectOn, type PxRect } from '../core/library/room-grid';
 import { paletteOf } from '../core/library/styles';
 import { zoomRectOf, type Box, type ZoomTarget } from '../core/library/zoom-target';
 import { ComputerArt } from './furniture-art';
@@ -66,8 +66,11 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const tops = carried.flatMap((p) => (p.kind === 'computer' ? [screen.y] : p.kind === 'small' ? [smallRect(p.slot).y] : []));
   const pad = tops.length > 0 ? Math.max(0, art.y - Math.min(...tops)) + 8 : 0;
   const view = { x: 0, y: -pad, w: art.w, h: art.h + pad };
-  // Cartes rangées : les 15 emplacements de la face avant projetée du modèle.
-  const slots = host === 'shelf' ? shelfSlotsIn(faceFrame('shelf', 0, art)!) : [];
+  // Cartes rangées : à leur place sur les tablettes de la face avant du modèle (mêmes positions en cm que dans la pièce) ;
+  // l'espace libre de chaque tablette en pointillés.
+  const frame = host === 'shelf' ? faceFrame('shelf', 0, art) : null;
+  const boxes = new Map(frame ? shelfLayoutIn(frame, room.layout, item.id).map((b) => [b.id, b]) : []);
+  const free = frame ? shelfFreeIn(frame, room.layout, item.id) : [];
   // Première moitié du pivot : le meuble sous son angle, à sa taille dessinée (réduite s'il le faut pour tenir dans le cadre :
   // en ¾ le bureau est plus large que de face), posé au bas du cadre et centré.
   const turned = drawSize(host, angle);
@@ -90,20 +93,24 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const frontArt = (
     <g>
       <Model3DArt kind={host} angle={0} rect={art} palette={palette} steampunk={steampunk} />
-      {slots.map((slot, i) => carried.some((p) => p.kind === 'stored' && p.slot === i) ? null : (
-        <rect key={i} x={slot.x} y={slot.y} width={slot.w} height={slot.h} rx={2} fill="none" stroke={palette.text} strokeWidth={1} strokeDasharray="3 3" />
+      {frame && free.map(({ level, local }) => (
+        <g key={`free-${level}`} transform={`matrix(${frame.m.join(' ')})`}>
+          <rect data-shelf-free={level} x={local.x} y={local.y} width={local.w} height={local.h} rx={2} fill="none" stroke={palette.text} strokeWidth={1} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+        </g>
       ))}
       {carried.map((p: Placed) => {
         if (p.kind === 'small') {
           return <SmallArt key={p.id} item={p.item} rect={smallRect(p.slot)} palette={palette} lit={p.lit !== false} />;
         }
         if (p.kind === 'stored') {
-          const slot = slots[p.slot];
-          if (!slot) return null;
+          const box = boxes.get(p.id);
+          if (!box) return null;
+          // De face, la face n'est pas inclinée : la place à l'écran est son rectangle englobant.
+          const slot = { x: box.x, y: box.y, w: box.w, h: box.h };
           const info = cards[p.slug];
           return (
             <g key={p.id} data-zoom-card={p.slug} onClick={cardTap(p.slug)} style={{ cursor: info ? 'pointer' : 'default' }}>
-              <ShelfItemArt rect={slot} shape={p.shape} slug={p.slug} title={info?.title ?? ''} imageUrl={imageOf(p.slug)} missing={!info} />
+              <ShelfItemArt rect={slot} shape={p.shape} display={p.display} slug={p.slug} title={info?.title ?? ''} imageUrl={imageOf(p.slug)} missing={!info} />
               <rect x={slot.x} y={slot.y} width={slot.w} height={slot.h} fill="transparent" />
             </g>
           );

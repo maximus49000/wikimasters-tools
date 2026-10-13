@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type StandingKind, type Species, type StyleId, type TimeSetting, WEATHER_STATES, type WeatherSetting } from './library-types';
 import { drawSize, isAngle, type Angle } from './footprint';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
-import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, isStanding, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
+import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, compactShelves, isStanding, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
@@ -40,7 +40,9 @@ const placedSchema = z.union([
     kind: z.literal('stored'),
     shape: z.enum(['cd', 'dvd', 'game', 'book']),
     shelfId: z.string(),
-    slot: z.number().int().min(0).max(14),
+    level: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+    order: z.number().int().min(0),
+    display: z.enum(['cover', 'spine']).optional(),
     slug: z.string(),
   }),
 ]);
@@ -89,7 +91,7 @@ const roomSchema = z.object({
   cityEpoch: z.number().int().optional(),
 });
 const stateSchema = z.object({
-  version: z.literal(6),
+  version: z.literal(7),
   activeRoomId: z.string(),
   homeRoomId: z.string().nullable(),
   time: z.union([
@@ -127,7 +129,7 @@ const makeRoom = (id: string, name: string, orientation: Orientation, style: Roo
 });
 
 export function createInitialState(): LibraryState {
-  return { version: 6, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
+  return { version: 7, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
 }
 
 export function activeRoom(state: LibraryState): Room {
@@ -142,8 +144,13 @@ function stripLit(p: Placed): Placed {
 }
 
 // Nettoie un aménagement lu : un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau, un objet rangé sans étagère
-// ou un petit objet sans porteur, hors emplacements ou sur un emplacement déjà pris, et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi.
+// ou un petit objet sans porteur, hors emplacements ou sur un emplacement déjà pris (objet rangé : même tablette et même rang),
+// et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi. Les rangs de chaque tablette sont ensuite
+// recompactés 0..n−1 (une tablette qui déborde garde ses objets).
 function cleanLayout(layout: Layout): Layout {
+  return compactShelves(cleanEntries(layout));
+}
+function cleanEntries(layout: Layout): Layout {
   const ids = new Set<string>();
   const unique = layout.filter((p) => !ids.has(p.id) && Boolean(ids.add(p.id)));
   const deskIds = new Set(unique.filter((p) => p.kind === 'desk').map((p) => p.id));
@@ -154,7 +161,7 @@ function cleanLayout(layout: Layout): Layout {
     if (p.kind === 'computer' && !deskIds.has(p.deskId)) return false;
     if (p.kind === 'stored') {
       if (!shelfIds.has(p.shelfId)) return false;
-      const key = `${p.shelfId}:${p.slot}`;
+      const key = `${p.shelfId}:${p.level}:${p.order}`;
       if (slots.has(key)) return false;
       slots.add(key);
     }
@@ -277,7 +284,28 @@ export function migrateV5(raw: unknown): unknown {
   return { ...state, version: 6, rooms };
 }
 
-const migrate = (raw: unknown): unknown => migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(raw)))));
+// La v7 range les objets par largeur réelle : l'emplacement `slot` (0 à 14, 5 par tablette) devient tablette + rang
+// (`level = floor(slot / 5)`, `order = slot % 5`), présentation absente (défaut du type). Même tablette, même ordre, rien n'est retiré.
+export function migrateV6(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 6) return raw;
+  const state = raw as { rooms?: unknown };
+  const convert = (p: unknown): unknown => {
+    if (typeof p !== 'object' || p === null || (p as { kind?: unknown }).kind !== 'stored') return p;
+    const { slot, ...rest } = p as { slot?: unknown };
+    // Un emplacement abîmé est laissé tel quel : le schéma refusera la pièce comme avant.
+    if (typeof slot !== 'number' || !Number.isInteger(slot) || slot < 0 || slot > 14) return p;
+    return { ...rest, level: Math.floor(slot / 5), order: slot % 5 };
+  };
+  const rooms = Array.isArray(state.rooms)
+    ? state.rooms.map((room: unknown) => {
+        const r = room as { layout?: unknown } | null;
+        return typeof r === 'object' && r !== null && Array.isArray(r.layout) ? { ...r, layout: r.layout.map(convert) } : room;
+      })
+    : state.rooms;
+  return { ...state, version: 7, rooms };
+}
+
+const migrate = (raw: unknown): unknown => migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(raw))))));
 
 // Un animal impossible (espèce ou pelage inconnus…) est ignoré sans faire perdre la pièce ; trois au plus.
 function cleanPets(raw: unknown): unknown {

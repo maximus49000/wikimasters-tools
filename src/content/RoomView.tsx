@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, computerRectOn, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlotsOf, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, computerRectOn, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfFreeIn, shelfLayoutOf, surfaceSlotRectOn, type ShelfItemBox, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
-import { frontFaceRect, groundTrace } from '../core/library/footprint';
+import { faceFrame, frontFaceRect, groundTrace } from '../core/library/footprint';
 import { boxesOf, lampsOf, signatureOf } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
@@ -205,13 +205,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     const url = cards[slug]?.imageUrl;
     return images?.displayUrl(slug, url) ?? url;
   };
-  // Emplacements d'étagère déjà pris : leurs pointillés ne se dessinent pas.
-  const occupiedSlots = new Map<string, Set<number>>();
+  // Place de chaque objet rangé sur la face projetée de son étagère (rangement par largeur réelle), calculée une fois par étagère.
+  const storedBoxes = new Map<string, ShelfItemBox>();
   for (const placed of room.layout) {
-    if (placed.kind !== 'stored') continue;
-    const set = occupiedSlots.get(placed.shelfId) ?? new Set<number>();
-    set.add(placed.slot);
-    occupiedSlots.set(placed.shelfId, set);
+    if (placed.kind !== 'shelf') continue;
+    for (const box of shelfLayoutOf(room.layout, placed.id)) storedBoxes.set(box.id, box);
   }
   const outline = (rect: PxRect) => (
     <rect x={rect.x - 3} y={rect.y - 3} width={rect.w + 6} height={rect.h + 6} rx={6} fill="none" stroke="#378ADD" strokeWidth={2.5} strokeDasharray="6 4" />
@@ -270,16 +268,16 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     // Tous les meubles debout, à tous les angles : leur modèle 3D (garnitures laiton et rivets dans une pièce Steampunk).
     const model = <Model3DArt kind={placed.kind} angle={angleOf(placed)} rect={rect} palette={palette} lit={isLit(placed)} steampunk={steampunk} />;
     if (placed.kind !== 'shelf' || !editing) return { rect, art: model };
-    // Étagère en Aménager : emplacements vides en pointillés, sur la face projetée (mêmes cases que le toucher et les cartes rangées).
-    const occupied = occupiedSlots.get(placed.id);
+    // Étagère en Aménager : l'espace libre de chaque tablette en pointillés, sur la face projetée (de profil ou de dos : aucun).
+    const frame = faceFrame('shelf', angleOf(placed), rect);
     return {
       rect,
       art: (
         <g>
           {model}
-          {shelfSlotsOf(placed).map((slot, i) => occupied?.has(i) ? null : (
-            <g key={i} transform={matrixOf(slot.m)}>
-              <rect x={slot.local.x} y={slot.local.y} width={slot.local.w} height={slot.local.h} rx={2} fill="none" stroke={palette.text} strokeWidth={1} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+          {frame && shelfFreeIn(frame, room.layout, placed.id).map(({ level, local }) => (
+            <g key={level} transform={matrixOf(frame.m)}>
+              <rect data-shelf-free={level} x={local.x} y={local.y} width={local.w} height={local.h} rx={2} fill="none" stroke={palette.text} strokeWidth={1} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
             </g>
           ))}
         </g>
@@ -332,7 +330,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   }
 
   // Objet touchable (accroché, rangé ou écran) : mêmes gestes que les meubles, pour pouvoir le déplacer.
-  // `quad` : zone touchable exacte (emplacement d'étagère en parallélogramme) au lieu du rectangle.
+  // `quad` : zone touchable exacte (objet rangé : sa place sur la face, en parallélogramme) au lieu du rectangle.
   function cardGroup(placed: Placed, slug: string, rect: PxRect, art: ReactElement, extra: Record<string, string> = {}, quad?: [number, number][]): ReactElement {
     const missing = !cards[slug];
     // L'objet soulevé reste en filigrane à sa place ; sa copie suit le doigt. (L'écran d'un ordinateur suit l'ordinateur, déjà soulevé.)
@@ -391,12 +389,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       // Étagère de profil ou de dos : face cachée, cartes non dessinées.
       const shelf = room.layout.find((p) => p.id === placed.shelfId);
       if (!shelf || !frontFaceRect(angleOf(shelf), { x: 0, y: 0, w: 1, h: 1 }, 'shelf')) return null;
-      const slot = shelfSlotsOf(shelf)[placed.slot];
-      if (!slot) return null;
+      const box = storedBoxes.get(placed.id);
+      if (!box) return null;
       const info = cards[placed.slug];
-      // Dessinée dans le repère de la face : en ¾, la carte suit la face inclinée.
-      const art = <g transform={matrixOf(slot.m)}><ShelfItemArt rect={slot.local} shape={placed.shape} slug={placed.slug} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} /></g>;
-      return { slug: placed.slug, rect: slot, art, quad: slot.quad };
+      // Dessinée dans le repère de la face, à sa place sur la tablette : en ¾, la carte suit la face inclinée.
+      const art = <g transform={matrixOf(box.m)}><ShelfItemArt rect={box.local} shape={placed.shape} display={placed.display} slug={placed.slug} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} /></g>;
+      return { slug: placed.slug, rect: { x: box.x, y: box.y, w: box.w, h: box.h }, art, quad: box.quad };
     }
     if (placed.kind === 'computer' && placed.slug) {
       const desk = deskRects.get(placed.deskId);

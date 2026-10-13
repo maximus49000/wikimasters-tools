@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FurnitureZoom } from '../../src/content/furniture-zoom';
 import type { Room } from '../../src/core/library/library-types';
 import { drawSize, faceFrame, frontFaceRect } from '../../src/core/library/footprint';
-import { CELL_H, CELL_W, shelfSlotsIn } from '../../src/core/library/room-grid';
+import { CELL_H, CELL_W, shelfLayoutIn } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -13,8 +13,8 @@ const room: Room = {
   id: 'r1', name: 'P', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, pets: [],
   layout: [
     { id: 's', kind: 'shelf', col: 0, row: 6, angle: 2 },
-    { id: 'c1', kind: 'stored', shape: 'cd', shelfId: 's', slot: 0, slug: 'Daft_Punk' },
-    { id: 'c2', kind: 'stored', shape: 'book', shelfId: 's', slot: 4, slug: 'Inconnue' },
+    { id: 'c1', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' },
+    { id: 'c2', kind: 'stored', shape: 'book', shelfId: 's', level: 0, order: 4, slug: 'Inconnue' },
   ],
 };
 
@@ -31,7 +31,7 @@ function mount(phase: 'opening' | 'open' | 'closing', onCard = vi.fn(), onBack =
 }
 
 describe('calque du zoom', () => {
-  it('ouvert : vue de face avec les 15 emplacements et les cartes, même si l’étagère est de profil', () => {
+  it('ouvert : vue de face avec l’espace libre des tablettes et les cartes, même si l’étagère est de profil', () => {
     const { container } = mount('open');
     const zoom = container.querySelector('[data-furniture-zoom]')!;
     expect(zoom.getAttribute('data-zoom-face')).toBe('front');
@@ -39,30 +39,29 @@ describe('calque du zoom', () => {
     expect(container.querySelector('[data-zoom-card="Inconnue"]')).not.toBeNull();
     // Carte inconnue : atténuée une seule fois, par son dessin « manquant » (pas d'opacité en plus sur le groupe).
     expect(container.querySelector('[data-zoom-card="Inconnue"]')!.hasAttribute('opacity')).toBe(false);
-    // 13 emplacements vides en pointillés + 2 cartes = 15.
-    expect(container.querySelectorAll('rect[stroke-dasharray]').length + container.querySelectorAll('[data-zoom-card]').length).toBe(15);
+    // L'espace libre de chacune des 3 tablettes en pointillés.
+    expect(container.querySelectorAll('rect[stroke-dasharray]')).toHaveLength(3);
   });
-  it('vue de face : le modèle 3D, 15 emplacements (pointillés + cartes) tous dans sa face avant projetée', () => {
+  it('vue de face : le modèle 3D, les cartes dans sa face avant projetée, aux mêmes places que dans la pièce', () => {
     const { container } = mount('open');
     expect(container.querySelector('.wmt-lib-zoom-piece [data-model3d]')).not.toBeNull();
     const { w, h } = drawSize('shelf', 0);
     const face = frontFaceRect(0, { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H }, 'shelf')!;
-    const dashed = [...container.querySelectorAll('rect[stroke-dasharray]')];
     const hits = [...container.querySelectorAll('[data-zoom-card] rect[fill="transparent"]')];
-    expect(dashed).toHaveLength(13);
     expect(hits).toHaveLength(2);
-    for (const r of [...dashed, ...hits]) {
+    for (const r of hits) {
       const [x, y, rw, rh] = ['x', 'y', 'width', 'height'].map((k) => Number(r.getAttribute(k)));
       expect(x).toBeGreaterThanOrEqual(face.x - 1e-6);
       expect(y).toBeGreaterThanOrEqual(face.y - 1e-6);
       expect(x! + rw!).toBeLessThanOrEqual(face.x + face.w + 1e-6);
       expect(y! + rh!).toBeLessThanOrEqual(face.y + face.h + 1e-6);
     }
-    // Même géométrie que dans la pièce (emplacement 4 = la carte « Inconnue »).
-    const want = shelfSlotsIn(faceFrame('shelf', 0, { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H })!)[4]!;
+    // Même géométrie que dans la pièce : le rangement par largeur sur la face du modèle (2e objet de la tablette du haut).
+    const want = shelfLayoutIn(faceFrame('shelf', 0, { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H })!, room.layout, 's').find((b) => b.id === 'c2')!;
     const hit = container.querySelector('[data-zoom-card="Inconnue"] rect[fill="transparent"]')!;
     expect(Number(hit.getAttribute('x'))).toBeCloseTo(want.x, 1);
     expect(Number(hit.getAttribute('y'))).toBeCloseTo(want.y, 1);
+    expect(Number(hit.getAttribute('width'))).toBeCloseTo(want.w, 1);
   });
   it('pivot : le meuble tourné tient entier dans le cadre (pas rogné)', () => {
     const { container } = mount('opening');

@@ -2,14 +2,14 @@
 // Dessin provisoire Opus — reprise Fable prévue.
 import { crown } from './furniture-models';
 import type { BoxFace, Decal, Model, Piece } from './furniture-render3d';
-import type { ShelfShape } from './library-types';
+import type { ShelfShape, StoredDisplay } from './library-types';
 
 // Objets qui garnissent les meubles, en vrais volumes (cm, même repère que les meubles : x largeur vue de face, y hauteur, z profondeur depuis l'avant) :
 // cartes rangées (CD, DVD, jeu, livre), écran du bureau, petite plante et petite lampe. Ils sont dessinés par le moteur dans le repère de leur
 // meuble (même angle, mêmes tablettes) : ils tournent avec lui et passent devant ou derrière ses planches selon la profondeur.
 export type ItemShape = ShelfShape | 'monitor' | 'small-plant' | 'small-lamp';
 // Présentation d'un objet rangé : couverture vers l'avant (de face) ou tranche vers l'avant (titre lisible).
-export type ItemDisplay = 'cover' | 'spine';
+export type ItemDisplay = StoredDisplay;
 
 // Clés de décalque des modèles : « rôle:forme ». Rôles : `cover` (image de la carte), `spine` (titre), `pages` (tranche des pages d'un livre), `screen` (écran).
 const box = (x: number, y: number, z: number, w: number, h: number, d: number, color: string, decals?: Decal[], tag?: string): Piece =>

@@ -1,0 +1,175 @@
+import { describe, expect, it } from 'vitest';
+import { faceFrame, frontFaceRect, invertMatrix } from '../../../src/core/library/footprint';
+import type { Layout, Placed } from '../../../src/core/library/library-types';
+import {
+  CELL_H, CELL_W, SHELF_FULL_MESSAGE, SHELF_INNER_CM, boardAt, boardItems, dropOnShelf, firstFreeBoard, moveStored, placeStanding, pxRect, rectOf,
+  shelfBoardsOf, shelfFreeIn, shelfLayoutIn, shelfLayoutOf, storeCard,
+} from '../../../src/core/library/room-grid';
+import { drawSize } from '../../../src/core/library/footprint';
+
+type Stored = Extract<Placed, { kind: 'stored' }>;
+const shelf = placeStanding([], 24, 'shelf', 0, 7, 'f1')!;
+const cd = (i: number, level: 0 | 1 | 2, order: number, extra: Partial<Stored> = {}): Stored =>
+  ({ id: `c${i}`, kind: 'stored', shape: 'cd', shelfId: 'f1', level, order, slug: `S${i}`, ...extra });
+
+describe('rangement adaptatif d’une tablette', () => {
+  it('largeur utile : la face de l’étagère, 74 cm', () => {
+    expect(SHELF_INNER_CM).toBe(74);
+  });
+
+  it('4 CD de face tiennent, le 5e est refusé (« Plus de place sur cette tablette. »)', () => {
+    let layout: Layout = shelf;
+    for (let i = 0; i < 4; i++) {
+      const r = dropOnShelf(layout, 'f1', 0, 999, { shape: 'cd' });
+      expect(r).toEqual({ ok: true, order: i });
+      layout = storeCard(layout, 'f1', 0, i, 'cd', `S${i}`, `c${i}`)!;
+      expect(layout).not.toBeNull();
+    }
+    expect(dropOnShelf(layout, 'f1', 0, 999, { shape: 'cd' })).toEqual({ ok: false, reason: 'shelf-full', message: SHELF_FULL_MESSAGE });
+    expect(SHELF_FULL_MESSAGE).toBe('Plus de place sur cette tablette.');
+    expect(storeCard(layout, 'f1', 0, 4, 'cd', 'S4', 'c4')).toBeNull();
+    // Les autres tablettes restent libres.
+    expect(dropOnShelf(layout, 'f1', 1, 0, { shape: 'cd' })).toEqual({ ok: true, order: 0 });
+  });
+
+  it('30 CD sur la tranche tiennent sur une tablette', () => {
+    let layout: Layout = shelf;
+    for (let i = 0; i < 30; i++) {
+      layout = storeCard(layout, 'f1', 2, i, 'cd', `S${i}`, `c${i}`, 'spine')!;
+      expect(layout, `CD ${i}`).not.toBeNull();
+    }
+    expect(boardItems(layout, 'f1', 2)).toHaveLength(30);
+  });
+
+  it('un livre est sur la tranche par défaut (3 cm), un CD de face (14 cm)', () => {
+    const books = shelfLayoutOf([...shelf, { ...cd(0, 0, 0), shape: 'book' }, cd(1, 0, 1)], 'f1');
+    expect(books.map((b) => b.wCm)).toEqual([3, 14]);
+    expect(books.map((b) => b.x0Cm)).toEqual([1, 5]);
+  });
+
+  it('insertion au milieu : décale les suivants ; retrait : compacte', () => {
+    const layout: Layout = [...shelf, cd(0, 0, 0), cd(1, 0, 1), cd(2, 0, 2)];
+    const before = shelfLayoutOf(layout, 'f1');
+    // Lâcher entre le 1er et le 2e (centres 8 cm et 23 cm).
+    const r = dropOnShelf(layout, 'f1', 0, 15, { shape: 'cd', display: 'spine' });
+    expect(r).toEqual({ ok: true, order: 1 });
+    const next = storeCard(layout, 'f1', 0, 1, 'cd', 'N', 'n', 'spine')!;
+    expect(boardItems(next, 'f1', 0).map((p) => [p.id, p.order])).toEqual([['c0', 0], ['n', 1], ['c1', 2], ['c2', 3]]);
+    const after = shelfLayoutOf(next, 'f1');
+    const x = (id: string, l: typeof after) => l.find((b) => b.id === id)!.x0Cm;
+    expect(x('c0', after)).toBe(x('c0', before));
+    expect(x('c1', after)).toBe(x('c1', before) + 2);
+    expect(x('c2', after)).toBe(x('c2', before) + 2);
+    // Retirer le nouveau : les ordres se recompactent.
+    const moved = moveStored(next, 'n', 'f1', 1, 0)!;
+    expect(boardItems(moved, 'f1', 0).map((p) => [p.id, p.order])).toEqual([['c0', 0], ['c1', 1], ['c2', 2]]);
+    expect(boardItems(moved, 'f1', 1).map((p) => [p.id, p.order])).toEqual([['n', 0]]);
+  });
+
+  it('déplacement entre tablettes et entre étagères', () => {
+    const two = placeStanding([...shelf, cd(0, 0, 0), cd(1, 0, 1)], 24, 'shelf', 8, 7, 'f9')!;
+    const a = moveStored(two, 'c0', 'f9', 2, 0)!;
+    expect(a.find((p) => p.id === 'c0')).toMatchObject({ shelfId: 'f9', level: 2, order: 0 });
+    expect(a.find((p) => p.id === 'c1')).toMatchObject({ shelfId: 'f1', level: 0, order: 0 });
+    // Dans la même tablette : passe en tête.
+    const b = moveStored([...shelf, cd(0, 0, 0), cd(1, 0, 1), cd(2, 0, 2)], 'c2', 'f1', 0, 0)!;
+    expect(boardItems(b, 'f1', 0).map((p) => p.id)).toEqual(['c2', 'c0', 'c1']);
+    // Refus : tablette pleine, étagère inconnue, objet non rangé, tablette hors bornes.
+    const full: Layout = [...shelf, cd(0, 0, 0), cd(1, 0, 1), cd(2, 0, 2), cd(3, 0, 3), cd(4, 1, 0)];
+    expect(moveStored(full, 'c4', 'f1', 0, 4)).toBeNull();
+    expect(moveStored(full, 'c4', 'zz', 0, 0)).toBeNull();
+    expect(moveStored(full, 'f1', 'f1', 0, 0)).toBeNull();
+    expect(moveStored(full, 'c4', 'f1', 3 as 0, 0)).toBeNull();
+  });
+
+  it('une tablette qui déborde (convertie) garde ses objets et y laisse déplacer les siens', () => {
+    const over: Layout = [...shelf, ...[0, 1, 2, 3, 4].map((i) => cd(i, 0, i))];
+    expect(shelfLayoutOf(over, 'f1')).toHaveLength(5);
+    expect(moveStored(over, 'c4', 'f1', 0, 0)).not.toBeNull();
+  });
+
+  it('première tablette libre pour un objet (la suite de la tablette)', () => {
+    const full: Layout = [...shelf, cd(0, 0, 0), cd(1, 0, 1), cd(2, 0, 2), cd(3, 0, 3)];
+    expect(firstFreeBoard(shelf, 'f1', { shape: 'cd' })).toEqual({ level: 0, order: 0 });
+    expect(firstFreeBoard(full, 'f1', { shape: 'cd' })).toEqual({ level: 1, order: 0 });
+    expect(firstFreeBoard(full, 'f1', { shape: 'cd', display: 'spine' })).toEqual({ level: 0, order: 4 });
+  });
+
+  it('refuse une carte déjà posée ou une étagère inconnue', () => {
+    const a = storeCard(shelf, 'f1', 0, 0, 'cd', 'A', 'x')!;
+    expect(storeCard(a, 'f1', 0, 1, 'dvd', 'A', 'y')).toBeNull();
+    expect(storeCard(a, 'zz', 0, 0, 'dvd', 'B', 'y')).toBeNull();
+    // Ordre au-delà de la fin : posé en dernier.
+    expect(storeCard(a, 'f1', 0, 9, 'dvd', 'B', 'y')!.find((p) => p.id === 'y')).toMatchObject({ order: 1 });
+  });
+});
+
+describe('positions sur la face projetée', () => {
+  const front = { id: 'f1', kind: 'shelf', col: 0, row: 6 } as const;
+  const items: Layout = [front, cd(0, 0, 0), cd(1, 1, 0, { display: 'spine' }), { ...cd(2, 2, 0), shape: 'dvd' }];
+
+  it('de face : chaque objet posé sur sa tablette, à sa largeur réelle', () => {
+    const face = frontFaceRect(0, pxRect(rectOf(front)!), 'shelf')!;
+    const k = face.h / 169;
+    const at = (cm: number) => face.y + (177 - cm) * k;
+    const boxes = shelfLayoutOf(items, 'f1');
+    expect(boxes).toHaveLength(3);
+    [121, 61, 8].forEach((cm, i) => expect(boxes[i]!.y + boxes[i]!.h).toBeCloseTo(at(cm), 1));
+    const sx = face.w / 74;
+    expect(boxes[0]!.w).toBeCloseTo(14 * sx, 3);
+    expect(boxes[0]!.x).toBeCloseTo(face.x + 1 * sx, 3);
+    expect(boxes[1]!.w).toBeCloseTo(1 * sx, 3);
+    expect(boxes[2]!.h).toBeCloseTo(19 * k, 3);
+  });
+
+  it('¾ : positions dans le parallélogramme de la face ; aucune de profil ni de dos', () => {
+    for (const angle of [1, 7] as const) {
+      const three: Layout = [{ ...front, angle }, ...items.slice(1)];
+      const box = frontFaceRect(angle, pxRect(rectOf(three[0]!)!), 'shelf')!;
+      const frame = faceFrame('shelf', angle, pxRect(rectOf(three[0]!)!))!;
+      const boxes = shelfLayoutOf(three, 'f1');
+      expect(boxes).toHaveLength(3);
+      for (const b of boxes) {
+        expect(Math.abs(b.quad[1]![1] - b.quad[0]![1]), 'bord du haut incliné').toBeGreaterThan(0.1);
+        for (const [x, y] of b.quad) {
+          expect(x).toBeGreaterThanOrEqual(box.x - 1e-6); expect(x).toBeLessThanOrEqual(box.x + box.w + 1e-6);
+          expect(y).toBeGreaterThanOrEqual(box.y - 1e-6); expect(y).toBeLessThanOrEqual(box.y + box.h + 1e-6);
+          const [u, v] = invertMatrix(frame.m, x, y);
+          expect(u).toBeGreaterThanOrEqual(-1e-6); expect(u).toBeLessThanOrEqual(frame.w + 1e-6);
+          expect(v).toBeGreaterThanOrEqual(-1e-6); expect(v).toBeLessThanOrEqual(frame.h + 1e-6);
+        }
+      }
+      expect(shelfBoardsOf(three[0]!)).toHaveLength(3);
+    }
+    for (const angle of [2, 3, 4, 5, 6] as const) {
+      expect(shelfLayoutOf([{ ...front, angle }, ...items.slice(1)], 'f1')).toEqual([]);
+      expect(shelfBoardsOf({ ...front, angle })).toEqual([]);
+    }
+  });
+
+  it('le zoom (face, autre taille) et la pièce partagent les mêmes positions', () => {
+    const { w, h } = drawSize('shelf', 0);
+    const zoom = shelfLayoutIn(faceFrame('shelf', 0, { x: 0, y: 0, w: w * CELL_W * 2.5, h: h * CELL_H * 2.5 })!, items, 'f1');
+    const room = shelfLayoutIn(faceFrame('shelf', 0, pxRect(rectOf(front)!))!, items, 'f1');
+    expect(zoom.map((b) => [b.id, b.level, b.order, b.x0Cm, b.wCm])).toEqual(room.map((b) => [b.id, b.level, b.order, b.x0Cm, b.wCm]));
+    zoom.forEach((z, i) => {
+      expect(z.local.x / 2.5).toBeCloseTo(room[i]!.local.x, 6);
+      expect(z.local.w / 2.5).toBeCloseTo(room[i]!.local.w, 6);
+      expect(z.local.y / 2.5).toBeCloseTo(room[i]!.local.y, 6);
+    });
+  });
+
+  it('touche une tablette sous un point (x en cm sur la face) ; espace libre de chaque tablette', () => {
+    const boards = shelfBoardsOf(front);
+    const b = boards[1]!;
+    const hit = boardAt([front], b.x + b.w / 2, b.y + b.h / 2)!;
+    expect(hit).toMatchObject({ shelfId: 'f1', level: 1 });
+    expect(hit.xCm).toBeCloseTo(37, 0);
+    expect(boardAt([front], 600, 5)).toBeNull();
+    const frame = faceFrame('shelf', 0, pxRect(rectOf(front)!))!;
+    const free = shelfFreeIn(frame, items, 'f1');
+    expect(free.map((f) => f.level)).toEqual([0, 1, 2]);
+    expect(free[0]!.local.x).toBeCloseTo((15 / 74) * frame.w, 3);
+    expect(free[0]!.local.x + free[0]!.local.w).toBeCloseTo(frame.w, 3);
+  });
+});

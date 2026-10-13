@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { deskAtCell, dropTargetFor, hostAtCell, pointerToCell } from '../../src/content/furniture-drag';
 import type { Layout } from '../../src/core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, shelfSlotsOf, slotAt } from '../../src/core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, boardAt, shelfBoardsOf, shelfLayoutOf } from '../../src/core/library/room-grid';
 
 const COLS = 24;
 const desk = (id: string, col: number, row: number) => ({ id, kind: 'desk' as const, col, row });
@@ -46,19 +46,26 @@ describe('dropTargetFor', () => {
     expect(dropTargetFor(layout, COLS, 'f1', 6, 13)).toMatchObject({ ok: false, reason: 'wall' });
   });
 
-  it('un objet rangé vise un emplacement libre, pas un emplacement occupé', () => {
+  it('un objet rangé vise un rang de tablette ; une tablette pleine est refusée', () => {
     const layout: Layout = [
       { id: 'f1', kind: 'shelf', col: 0, row: 7 },
-      { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'A' },
-      { id: 'f3', kind: 'stored', shape: 'dvd', shelfId: 'f1', slot: 1, slug: 'B' },
+      { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', level: 0, order: 0, slug: 'A' },
+      { id: 'f3', kind: 'stored', shape: 'dvd', shelfId: 'f1', level: 0, order: 1, slug: 'B' },
+      ...[0, 1, 2, 3].map((i) => ({ id: `g${i}`, kind: 'stored', shape: 'cd', shelfId: 'f1', level: 1, order: i, slug: `G${i}` }) as const),
     ];
-    const slots = shelfSlotsOf(layout[0]!);
-    const center = (i: number) => ({ x: slots[i]!.x + slots[i]!.w / 2, y: slots[i]!.y + slots[i]!.h / 2 });
-    const busy = dropTargetFor(layout, COLS, 'f2', 0, 7, center(1).x, center(1).y);
-    expect(busy).toMatchObject({ ok: false, reason: 'slot-busy' });
-    const free = dropTargetFor(layout, COLS, 'f2', 0, 7, center(2).x, center(2).y);
-    expect(free).toMatchObject({ ok: true, shelfId: 'f1', slot: 2, ghostPx: slots[2] });
-    expect(dropTargetFor(layout, COLS, 'f2', 0, 7, center(0).x, center(0).y)).toMatchObject({ ok: true, slot: 0 });
+    const boards = shelfBoardsOf(layout[0]!);
+    const at = (level: number, fx: number) => ({ x: boards[level]!.x + boards[level]!.w * fx, y: boards[level]!.y + boards[level]!.h / 2 });
+    // Au bout de la tablette du haut : après le DVD (f2 écarté du calcul, il est déplacé).
+    const end = dropTargetFor(layout, COLS, 'f2', 0, 7, at(0, 0.9).x, at(0, 0.9).y);
+    expect(end).toMatchObject({ ok: true, shelfId: 'f1', level: 0, order: 1 });
+    // Le fantôme est sa place une fois rangé à ce rang.
+    const moved = shelfLayoutOf(layout.map((p) => (p.id === 'f2' ? { ...p, order: 2 } : p)), 'f1').find((b) => b.id === 'f2')!;
+    expect(end.ghostPx!.x).toBeCloseTo(moved.x, 6);
+    expect(dropTargetFor(layout, COLS, 'f2', 0, 7, at(0, 0.02).x, at(0, 0.02).y)).toMatchObject({ ok: true, level: 0, order: 0 });
+    // Tablette du milieu : 4 CD de face, plus de place.
+    const full = dropTargetFor(layout, COLS, 'f2', 0, 7, at(1, 0.5).x, at(1, 0.5).y);
+    expect(full).toMatchObject({ ok: false, reason: 'shelf-full', shelfId: 'f1', level: 1 });
+    expect(full.ghostPx).toBeDefined();
     expect(dropTargetFor(layout, COLS, 'f2', 20, 4, 20 * CELL_W, 4 * CELL_H)).toMatchObject({ ok: false, reason: 'not-slot' });
   });
 
@@ -118,7 +125,7 @@ describe('porteurs superposés : le lâcher vise celui de devant', () => {
   });
   it('deux étagères superposées : la carte rangée vise celle de devant', () => {
     const shelves: Layout = [{ id: 'wall', kind: 'shelf', col: 0, row: 7 }, { id: 'front', kind: 'shelf', col: 0, row: 7, depth: 2 }];
-    const slot = shelfSlotsOf(shelves[0]!)[0]!;
-    expect(slotAt(shelves, slot.x + 2, slot.y + 2)).toEqual({ shelfId: 'front', slot: 0 });
+    const board = shelfBoardsOf(shelves[0]!)[0]!;
+    expect(boardAt(shelves, board.x + 2, board.y + 2)).toMatchObject({ shelfId: 'front', level: 0 });
   });
 });

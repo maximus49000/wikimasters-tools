@@ -1,7 +1,7 @@
 import { wallSizeOf } from '../core/library/furniture-catalog';
 import { drawSize, floorCells } from '../core/library/footprint';
-import type { Layout } from '../core/library/library-types';
-import { angleOf, shelfSlotsOf, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, firstFreeSurfaceSlot, pxRect, rectOf, slotAt, SURFACE_SLOTS, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import type { Layout, ShelfLevel } from '../core/library/library-types';
+import { angleOf, boardAt, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, dropOnShelf, firstFreeSurfaceSlot, moveStored, pxRect, rectOf, shelfLayoutOf, SURFACE_SLOTS, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -50,7 +50,17 @@ export function hostAtSurface(layout: Layout, x: number, y: number): string | nu
   return null;
 }
 
-export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'slot-busy' | 'not-slot' | 'host-busy' | 'not-host' | 'not-screen';
+// Place qu'aurait l'objet rangé `id` à ce rang de la tablette (rectangle englobant à l'écran) ; si la place manque
+// (ou `order` = Infinity), posé de force au bout de la tablette, quitte à déborder.
+function ghostOf(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): PxRect | undefined {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'stored') return undefined;
+  const moved = moveStored(layout, id, shelfId, level, order) ?? [...layout.filter((p) => p.id !== id), { ...item, shelfId, level, order: Infinity }];
+  const box = shelfLayoutOf(moved, shelfId).find((b) => b.id === id);
+  return box && { x: box.x, y: box.y, w: box.w, h: box.h };
+}
+
+export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'not-slot' | 'shelf-full' | 'host-busy' | 'not-host' | 'not-screen';
 
 export type DropTarget = {
   ok: boolean;
@@ -70,25 +80,29 @@ export type DropTarget = {
   hostId?: string;
   // Carte d'écran : ordinateur visé.
   computerId?: string;
-  // Objet rangé : emplacement visé (le fantôme est alors en pixels).
+  // Objet rangé : tablette et rang visés (le fantôme, en pixels, est sa place une fois rangé à ce rang).
   ghostPx?: PxRect;
   shelfId?: string;
-  slot?: number;
+  level?: ShelfLevel;
+  order?: number;
 };
 
 // Où atterrirait le meuble `id` si on le lâchait sur la case (col, row) ?
 // Un meuble debout ou un objet accroché a cette case pour coin bas gauche ; un ordinateur vise le bureau qui la contient ;
-// un objet rangé vise l'emplacement d'étagère sous (x, y) (par défaut le coin de la case).
+// un objet rangé vise la tablette sous (x, y) (par défaut le coin de la case), au rang du point.
 export function dropTargetFor(layout: Layout, cols: number, id: string, col: number, row: number, x: number = col * CELL_W, y: number = row * CELL_H): DropTarget {
   const item = layout.find((p) => p.id === id);
   if (!item) return { ok: false, cells: [], ghost: null };
   if (item.kind === 'stored') {
-    const hit = slotAt(layout, x, y);
+    const hit = boardAt(layout, x, y);
     if (!hit) return { ok: false, reason: 'not-slot', cells: [], ghost: null };
-    const shelf = layout.find((p) => p.id === hit.shelfId);
-    const ghostPx = shelf ? shelfSlotsOf(shelf)[hit.slot] : undefined;
-    const busy = layout.some((p) => p.kind === 'stored' && p.id !== id && p.shelfId === hit.shelfId && p.slot === hit.slot);
-    return { ok: !busy, ...(busy ? { reason: 'slot-busy' as const } : {}), cells: [], ghost: null, ghostPx, shelfId: hit.shelfId, slot: hit.slot };
+    const drop = dropOnShelf(layout, hit.shelfId, hit.level, hit.xCm, item);
+    const where = { shelfId: hit.shelfId, level: hit.level };
+    if (!drop.ok) {
+      // Tablette pleine : l'empreinte rouge est l'objet posé au bout de la tablette (il déborde).
+      return { ok: false, reason: drop.reason === 'shelf-full' ? 'shelf-full' : 'not-slot', cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, Infinity), ...where };
+    }
+    return { ok: true, cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, drop.order), ...where, order: drop.order };
   }
   if (item.kind === 'wall') {
     const { w, h } = wallSizeOf(item.shape);

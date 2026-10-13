@@ -53,6 +53,7 @@ import {
   sectionIsEmpty,
   fitsWithin,
   screenCols,
+  SHELF_FULL_MESSAGE,
   type Cell,
 } from '../core/library/room-grid';
 import { formatMinutes } from '../core/library/time-setting';
@@ -461,7 +462,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   cancelRef.current = reset;
 
-  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'desk-middle': 'Libérez le milieu du bureau pour y poser l’ordinateur.', 'slot-busy': 'Cet emplacement est déjà pris.', 'not-slot': 'Déposez l’objet dans un emplacement de l’étagère.', 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.', 'not-screen': 'Touchez un ordinateur.' } as const;
+  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'desk-middle': 'Libérez le milieu du bureau pour y poser l’ordinateur.', 'not-slot': 'Déposez l’objet sur une tablette de l’étagère.', 'shelf-full': SHELF_FULL_MESSAGE, 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.', 'not-screen': 'Touchez un ordinateur.' } as const;
   // Case au centre de la partie visible de la pièce (au milieu de la pièce si elle n'est pas mesurable, par exemple dans les tests).
   const centerSpot = (): Spot => {
     const sc = scrollRef.current;

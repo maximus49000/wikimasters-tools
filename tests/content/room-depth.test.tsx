@@ -68,7 +68,7 @@ describe('RoomView : niveaux de profondeur', () => {
   });
 
   it('dessine un objet rangé juste après son étagère, dans son groupe', () => {
-    const svg = mount({ layout: [...room.layout, { id: 'cd', kind: 'stored', shape: 'cd', shelfId: 'sh', slot: 0, slug: 'Paris' }] });
+    const svg = mount({ layout: [...room.layout, { id: 'cd', kind: 'stored', shape: 'cd', shelfId: 'sh', level: 0, order: 0, slug: 'Paris' }] });
     const ids = [...svg.querySelectorAll('[data-id]')].map((n) => n.getAttribute('data-id'));
     expect(ids.indexOf('cd')).toBeGreaterThan(ids.indexOf('sh'));
     expect(ids.indexOf('cd')).toBeLessThan(ids.indexOf('arm'));
@@ -84,7 +84,7 @@ describe('RoomView : niveaux de profondeur', () => {
   });
 
   it('la copie d’une étagère sélectionnée emporte ses objets, dessinés après elle, sans gestes', () => {
-    const svg = mount({ editing: true, selectedId: 'sh', layout: [...room.layout, { id: 'cd', kind: 'stored', shape: 'cd', shelfId: 'sh', slot: 0, slug: 'Paris' }] });
+    const svg = mount({ editing: true, selectedId: 'sh', layout: [...room.layout, { id: 'cd', kind: 'stored', shape: 'cd', shelfId: 'sh', level: 0, order: 0, slug: 'Paris' }] });
     const copy = svg.querySelector('[data-selected-copy]')!;
     // Enfants directs : le dessin de l'étagère d'abord, puis ses objets (plante posée, carte rangée).
     const children = [...copy.children];
