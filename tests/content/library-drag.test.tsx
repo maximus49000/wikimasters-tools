@@ -86,6 +86,7 @@ describe('déplacement par appui long', () => {
     await click('[data-kind="desk"]');
     await click('[data-cell="12-14"]');
     await click('[data-category="deco"]');
+    await click('[data-subcategory="plants"]');
     await click('[data-kind="small-plant"]');
     await click('[data-furniture="desk"]');
     const [premier, second] = layoutNow().filter((p) => p.kind === 'desk');

@@ -79,7 +79,7 @@ const LABELS: Record<FurnitureKind, string> = {
 export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }[] = [
   { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer'] },
   { id: 'seats', label: 'Assises', kinds: ['chair', 'sofa', 'armchair'] },
-  { id: 'pets', label: 'Animaux', kinds: ['basket', 'bowl', 'kennel', 'charger'] },
+  { id: 'pets', label: 'Pour animaux', kinds: ['basket', 'bowl', 'kennel', 'charger'] },
   { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug', 'window'] },
   { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
 ];
@@ -89,6 +89,23 @@ export const STEAMPUNK_ONLY: readonly StandingKind[] = ['globe', 'telescope', 'a
 
 // Catégories proposées au catalogue : « Steampunk » seulement dans une pièce Steampunk.
 export const categoriesFor = (style: StyleId): typeof CATEGORIES => CATEGORIES.filter((c) => c.id !== 'steampunk' || style === 'steampunk');
+
+export type Subcategory = 'plants' | 'lights' | 'floor' | 'walls';
+export type CatalogNode = { id: Category; label: string; kinds: FurnitureKind[]; subcategories: { id: Subcategory; label: string; kinds: FurnitureKind[] }[] };
+
+// Sous-catégories du tiroir de construction : seulement pour une catégorie trop fournie pour une seule ligne de vignettes.
+const SUBCATEGORIES: Partial<Record<Category, CatalogNode['subcategories']>> = {
+  deco: [
+    { id: 'plants', label: 'Plantes', kinds: ['plant', 'small-plant'] },
+    { id: 'lights', label: 'Lumières', kinds: ['lamp', 'small-lamp'] },
+    { id: 'floor', label: 'Sol', kinds: ['rug', 'coffee-table'] },
+    { id: 'walls', label: 'Murs', kinds: ['window'] },
+  ],
+};
+
+// Arbre affiché par le tiroir : catégories du style, chacune avec ses sous-catégories éventuelles.
+export const catalogTree = (style: StyleId): CatalogNode[] =>
+  categoriesFor(style).map((c) => ({ id: c.id, label: c.label, kinds: c.kinds, subcategories: SUBCATEGORIES[c.id] ?? [] }));
 
 export const FURNITURE_KINDS: FurnitureKind[] = CATEGORIES.flatMap((category) => category.kinds);
 

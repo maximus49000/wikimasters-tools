@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   activeRoom,
   adoptPet,
-  MAX_PET_NAME,
-  MAX_PETS,
   removePet,
   renamePet,
   createInitialState,
@@ -26,12 +24,9 @@ import {
   fitRoomWidth,
   updateLayout,
 } from '../core/library/library-book';
-import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
-import { SCENE_IDS, STYLE_IDS, coatsOf, type Coat, type Pet, type SceneId, type Species, type TimeSetting, type WeatherSetting, type WeatherState, WEATHER_STATES, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
+import { STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
+import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
-import { COAT_LABELS, paletteOf as coatPaletteOf } from './pet-sprite';
-import { DOG_COAT_LABELS } from './dog-sprite';
-import { ROBOT_COAT_LABELS } from './robot-sprite';
 import {
   MAX_COLS,
   MIN_COLS,
@@ -80,7 +75,6 @@ import {
   screenCols,
   type Cell,
 } from '../core/library/room-grid';
-import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
 import { useCityDay } from './use-city-calendar';
@@ -89,16 +83,13 @@ import { useBusLines } from './use-bus-lines';
 import { dayNumber } from '../core/library/city/shops/hours';
 import { useWeather } from './use-weather';
 import { useLightEnabled } from './light-setting';
-import { useZoneChoice, type ZoneChoice } from './zone-setting';
-import { WEATHER_SCENES } from './scene-weather';
-import { WEATHER_LABEL } from '../core/library/weather/weather-types';
+import { useZoneChoice } from './zone-setting';
 import { usePetContext } from './pet-context';
 import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
-import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
 import { createLongPress } from './long-press';
 import { FullscreenButton, useFullscreen } from './fullscreen';
 import { lockOrientation, unlockOrientation } from './orientation-lock';
@@ -108,6 +99,13 @@ import { CardPickerDialog, type CardChoice } from './CardPickerDialog';
 import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView, type DragView, type Tool } from './RoomView';
+import { Btn, Icon, ICONS } from './library-ui';
+import { LibraryTopBar } from './library-topbar';
+import { NEXT_ZONE, SkyMenu } from './library-sky-menu';
+import { PetsMenu, SPECIES_TEXT } from './library-pets-menu';
+import { RoomMenu } from './library-room-menu';
+import { BuildDrawer, INITIAL_DRAWER, type DrawerState } from './build-drawer';
+import { ActionBubble } from './action-bubble';
 import { useOutsideCamera, type OutsidePhase } from './outside/use-outside-camera';
 import type { Rect } from '../core/library/outside-camera';
 
@@ -143,93 +141,28 @@ export const LIBRARY_CSS = `
 .wmt-lib-pick:disabled{opacity:.4;cursor:not-allowed}
 .wmt-lib-btn:disabled{opacity:.4;cursor:not-allowed}
 .wmt-lib-btn[data-suggested="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
+.wmt-lib-rooms{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+.wmt-lib-pop{position:relative;display:inline-flex}
+.wmt-lib-pop-panel{position:absolute;top:calc(100% + 6px);right:0;z-index:20;display:flex;flex-direction:column;gap:8px;min-width:240px;max-width:min(92vw,420px);max-height:70vh;overflow:auto;padding:10px;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:var(--color-surface,#0d1117);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.wmt-lib-pop-panel[hidden]{display:none}
+.wmt-lib-pop-panel[data-align="start"]{right:auto;left:0}
+.wmt-lib-pop-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.wmt-lib-drawer{position:absolute;left:0;right:0;bottom:0;z-index:5;display:flex;flex-direction:column;gap:6px;padding:6px 8px 8px;background:var(--color-surface,#0d1117);border-top:1px solid var(--color-border,rgba(148,163,184,.35));box-shadow:0 -6px 18px rgba(0,0,0,.35)}
+.wmt-lib-drawer-reduced{left:50%;right:auto;transform:translateX(-50%);padding:0;background:transparent;border:0;box-shadow:none}
+.wmt-lib-drawer-reduced .wmt-lib-btn{min-height:32px;background:rgba(0,0,0,.65);color:#fff;border:0;border-radius:16px 16px 0 0}
+.wmt-lib-drawer-tabs{display:flex;gap:6px;align-items:center}
+.wmt-lib-drawer-panel{display:flex;flex-direction:column;gap:6px}
+.wmt-lib-drawer-panel[hidden]{display:none}
+.wmt-lib-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.wmt-lib-chip{padding:0 10px;white-space:nowrap;font-size:13px;flex:0 0 auto}
+.wmt-lib-subchips .wmt-lib-chip{min-height:32px;font-size:12px}
+.wmt-lib-thumbs{display:flex;flex-direction:row;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.wmt-lib-thumb{flex:0 0 auto;flex-direction:column;width:64px;height:72px;padding:4px;border-radius:10px;gap:2px}
+.wmt-lib-thumb-name{font-size:10px;line-height:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wmt-lib-stage[data-editing="true"]{padding-bottom:var(--wmt-drawer-h,0px)}
+.wmt-lib-stage:fullscreen{box-sizing:border-box}
+.wmt-lib-bubble{position:absolute;z-index:6;display:flex;flex-wrap:wrap;gap:4px;max-width:min(92%,360px);padding:4px;border-radius:22px;background:var(--color-surface,#0d1117);border:1px solid var(--color-accent,#34d399);box-shadow:0 4px 14px rgba(0,0,0,.45)}
 `;
-
-function Icon({ paths }: { paths: readonly string[] }) {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {paths.map((d) => (
-        <path key={d} d={d} />
-      ))}
-    </svg>
-  );
-}
-
-const COAT_LABELS_OF: Record<Species, Record<string, string>> = { cat: COAT_LABELS, dog: DOG_COAT_LABELS, robot: ROBOT_COAT_LABELS };
-const coatLabel = (species: Species, coat: Coat): string => COAT_LABELS_OF[species][coat] ?? coat;
-
-// Textes propres à chaque espèce.
-const SPECIES_TEXT: Record<Species, { name: string; adoptName: string; confirm: string; adoptLabel: string; defaultName: string; defaultCoat: Coat }> = {
-  cat: { name: 'Nom du chat', adoptName: 'Nom du chat à adopter', confirm: 'Adopter ce chat', adoptLabel: 'Adopter un chat', defaultName: 'Minou', defaultCoat: 'orange' },
-  dog: { name: 'Nom du chien', adoptName: 'Nom du chien à adopter', confirm: 'Adopter ce chien', adoptLabel: 'Adopter un chien', defaultName: 'Rex', defaultCoat: 'brown' },
-  robot: { name: 'Nom du robot', adoptName: 'Nom du robot à adopter', confirm: 'Adopter ce robot', adoptLabel: 'Adopter un robot', defaultName: 'Robi', defaultCoat: 'white' },
-};
-
-const ICONS = {
-  cat: ['M5 9L4 3l5 3', 'M19 9l1-6-5 3', 'M5 9c0 6 2 11 7 11s7-5 7-11c-2-2-5-3-7-3S7 7 5 9z', 'M9 12h.01', 'M15 12h.01', 'M11 15l1 1 1-1'],
-  robot: ['M12 3v3', 'M12 3h.01', 'M5 8h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z', 'M9 13h.01', 'M15 13h.01', 'M9.5 16.5h5', 'M2 12v3', 'M22 12v3'],
-  dog: ['M4 8l2-4 4 3', 'M20 8l-2-4-4 3', 'M5 8c0 7 2 12 7 12s7-5 7-12c-2-2-4-3-7-3S7 6 5 8z', 'M9 11h.01', 'M15 11h.01', 'M10 15h4l-2 2z'],
-  bulb: ['M9 18h6', 'M10 21h4', 'M12 3a6 6 0 0 0-3.5 10.9c.4.4.5.8.5 1.1V16h6v-1c0-.3.1-.7.5-1.1A6 6 0 0 0 12 3z'],
-  check: ['M5 12l5 5L20 7'],
-  door: ['M5 21V3h10v18', 'M15 4l5 2v15h-5', 'M3 21h18', 'M12 12.5h.01'],
-  house: ['M3 11l9-7 9 7', 'M5 10v10h14V10', 'M10 20v-6h4v6'],
-  depthFront: ['M5 4h14', 'M12 20V9', 'M7 13l5-5 5 5'],
-  depthBack: ['M5 20h14', 'M12 4v11', 'M7 11l5 5 5-5'],
-  close: ['M6 6l12 12', 'M18 6L6 18'],
-  plus: ['M5 12h14', 'M12 5v14'],
-  card: ['M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', 'M12 9v6', 'M9 12h6'],
-  eye: ['M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z', 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'],
-  pencil: ['M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z', 'm15 5 4 4'],
-  star: ['M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z'],
-  trash: ['M3 6h18', 'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6', 'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2', 'M10 11v6', 'M14 11v6'],
-  landscape: ['M3 7h18a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z'],
-  portrait: ['M7 2h10a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z'],
-  move: ['M5 9l-3 3 3 3', 'M9 5l3-3 3 3', 'M15 19l-3 3-3-3', 'M19 9l3 3-3 3', 'M2 12h20', 'M12 2v20'],
-  extendLeft: ['M4 4v16', 'M9 12h10', 'M14 7v10'],
-  extendRight: ['M20 4v16', 'M5 12h10', 'M10 7v10'],
-  shrinkLeft: ['M4 4v16', 'M9 12h10'],
-  shrinkRight: ['M20 4v16', 'M5 12h10'],
-  fullscreen: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
-  sun: ['M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8z', 'M12 2v2', 'M12 20v2', 'M4.9 4.9l1.4 1.4', 'M17.7 17.7l1.4 1.4', 'M2 12h2', 'M20 12h2', 'M4.9 19.1l1.4-1.4', 'M17.7 6.3l1.4-1.4'],
-  moon: ['M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z'],
-  clock: ['M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z', 'M12 7v5l3 2'],
-  sliders: ['M4 6h10', 'M18 6h2', 'M4 12h2', 'M10 12h10', 'M4 18h12', 'M20 18h0', 'M14 4v4', 'M6 10v4', 'M16 16v4'],
-  widthMinus: ['M3 12h6', 'M21 12h-6', 'M9 8l-4 4 4 4', 'M15 8l4 4-4 4'],
-  widthPlus: ['M9 12H3', 'M15 12h6', 'M5 8l4 4-4 4', 'M19 8l-4 4 4 4'],
-  heightMinus: ['M12 3v6', 'M12 21v-6', 'M8 9l4-4 4 4', 'M8 15l4 4 4-4'],
-  dice: ['M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M8.5 8.5h.01', 'M15.5 8.5h.01', 'M12 12h.01', 'M8.5 15.5h.01', 'M15.5 15.5h.01'],
-  globe: ['M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z', 'M3 12h18', 'M12 3c3.5 3.2 3.5 14.8 0 18', 'M12 3c-3.5 3.2-3.5 14.8 0 18'],
-  wxCloudy: ['M7 18a4 4 0 0 1 0-8a5.5 5.5 0 0 1 10.5 1.5a3.3 3.3 0 0 1-.5 6.5z'],
-  wxDrizzle: ['M7 14a4 4 0 0 1 0-8a5.5 5.5 0 0 1 10.5 1.5a3.3 3.3 0 0 1-.5 6.5z', 'M9 18l-.7 1.6', 'M14 18l-.7 1.6'],
-  wxRain: ['M7 14a4 4 0 0 1 0-8a5.5 5.5 0 0 1 10.5 1.5a3.3 3.3 0 0 1-.5 6.5z', 'M8 17l-1 3', 'M12 17l-1 3', 'M16 17l-1 3'],
-  wxStorm: ['M7 13a4 4 0 0 1 0-8a5.5 5.5 0 0 1 10.5 1.5a3.3 3.3 0 0 1-.5 6.5z', 'M12.5 12l-3 5h4l-2 4'],
-  wxSnow: ['M12 3v18', 'M4.2 7.5l15.6 9', 'M19.8 7.5l-15.6 9', 'M9.5 4.5L12 7l2.5-2.5', 'M9.5 19.5L12 17l2.5 2.5'],
-  wxFog: ['M4 9h16', 'M6 13h12', 'M4 17h16'],
-  heightPlus: ['M12 9V3', 'M12 15v6', 'M8 5l4 4 4-4', 'M8 19l4-4 4 4'],
-  widthFull: ['M3 5v14', 'M21 5v14', 'M7 12h10', 'M10 9l-3 3 3 3', 'M14 9l3 3-3 3'],
-  heightFull: ['M5 3h14', 'M5 21h14', 'M12 7v10', 'M9 10l3-3 3 3', 'M9 14l3 3 3-3'],
-} as const;
-
-const WEATHER_ICON: Record<WeatherState, readonly string[]> = { sun: ICONS.sun, cloudy: ICONS.wxCloudy, drizzle: ICONS.wxDrizzle, rain: ICONS.wxRain, storm: ICONS.wxStorm, snow: ICONS.wxSnow, fog: ICONS.wxFog };
-
-const SCENE_ICON: Record<SceneId, readonly string[]> = {
-  city: ['M4 21V9h6v12', 'M10 21V4h6v17', 'M16 21v-8h4v8', 'M3 21h18'],
-  countryside: ['M2 18c4-6 8-6 10-2 2-4 6-4 10 2', 'M3 21h18', 'M12 6v4', 'M10 8h4'],
-  mountain: ['M2 20l7-12 4 6 3-4 6 10z', 'M9 8l2 3'],
-  sea: ['M2 14c3-3 5 3 8 0s5 3 8 0 3-1 4 0', 'M2 19c3-3 5 3 8 0s5 3 8 0 3-1 4 0', 'M16 5a3 3 0 1 0 0 0.1'],
-  space: ['M12 3l2 5 5 .5-4 3.5 1.5 5L12 14l-4.5 3 1.5-5L5 8.5 10 8z'],
-  earth: ['M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z', 'M3 12h18', 'M12 3c3 3 3 15 0 18', 'M12 3c-3 3-3 15 0 18'],
-};
-const SCENE_LABEL: Record<SceneId, string> = { city: 'Ville', countryside: 'Campagne', mountain: 'Montagne', sea: 'Mer', space: 'Espace', earth: 'Terre vue d’en haut' };
-
-function Btn({ label, pressed, disabled, onClick, data, children }: { label: string; pressed?: boolean; disabled?: boolean; onClick: () => void; data?: Record<string, string>; children: ReactNode }) {
-  const attrs = Object.fromEntries(Object.entries(data ?? {}).map(([key, value]) => [`data-${key}`, value]));
-  return (
-    <button type="button" className="wmt-lib-btn" aria-label={label} title={label} aria-pressed={pressed} disabled={disabled} onClick={onClick} {...attrs}>
-      {children}
-    </button>
-  );
-}
 
 const REFUSALS = {
   bounds: 'Ça ne rentre pas dans la pièce.',
@@ -237,10 +170,6 @@ const REFUSALS = {
   taken: 'Cet emplacement est déjà occupé.',
   wall: 'Un objet mural s’accroche au mur.',
 } as const;
-
-// Réglage cyclique de la zone des vacances : Auto → A → B → C → Corse → Auto.
-const NEXT_ZONE: Record<ZoneChoice, ZoneChoice> = { auto: 'A', A: 'B', B: 'C', C: 'Corse', Corse: 'auto' };
-const ZONE_GLYPH: Record<ZoneChoice, string> = { auto: '📍', A: 'A', B: 'B', C: 'C', Corse: 'Co' };
 
 type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void; onOpenMarket?: (slug: string) => void };
 
@@ -254,7 +183,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [pending, setPending] = useState<CardChoice | null>(null);
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
-  const [category, setCategory] = useState<Category>('storage');
+  const [drawer, setDrawer] = useState<DrawerState>(INITIAL_DRAWER);
   const [tool, setTool] = useState<Tool>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [blink, setBlink] = useState<Cell[]>([]);
@@ -490,16 +419,16 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const editing = mode === 'edit';
   const portrait = room.orientation === 'portrait';
   const visibleWidth = VISIBLE_COLS[room.orientation] * CELL_W;
+  // Hauteur d'écran laissée à la pièce en plein écran : en Aménager, le tiroir (--wmt-drawer-h) en prend le bas.
+  const screenH = editing ? 'calc(100vh - var(--wmt-drawer-h, 0px))' : '100vh';
   const editLayout = (change: Parameters<typeof updateLayout>[2]) => library.update((state) => updateLayout(state, room.id, change));
 
-  const cats = categoriesFor(room.style);
-  const shownCategory: Category = cats.some((c) => c.id === category) ? category : 'storage';
   const chooseStyle = (id: StyleId): void => {
     if (id === room.style) return;
     if (room.style === 'steampunk' && id !== 'steampunk' && countExclusive(room) > 0
       && !window.confirm('Retirer les meubles Steampunk (globe, télescope, automate) de cette pièce ?')) return;
     reset();
-    if (category === 'steampunk' && id !== 'steampunk') setCategory('storage');
+    if (drawer.category === 'steampunk' && id !== 'steampunk') setDrawer((d) => ({ ...d, category: 'storage', sub: null }));
     void library.update((state) => setRoomStyle(state, room.id, id));
   };
   const reset = (): void => {
@@ -810,6 +739,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     void library.update((state) => fitRoomWidth(state, room.id, fitCols));
   };
 
+  // Changer d'onglet, de catégorie ou de sous-catégorie abandonne l'outil en cours, comme le faisaient les anciens boutons de catégorie.
+  const onDrawer = (next: DrawerState): void => {
+    if (next.tab !== drawer.tab || next.category !== drawer.category || next.sub !== drawer.sub) reset();
+    setDrawer(next);
+  };
   const setMode2 = (next: 'visit' | 'edit'): void => {
     reset();
     setMode(next);
@@ -864,304 +798,79 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 
   return (
     <div className="wmt-lib" data-wmt-library>
-      <div className="wmt-lib-row" role="tablist" aria-label="Pièces">
-        {lib.rooms.map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            role="tab"
-            className="wmt-lib-btn"
-            aria-selected={r.id === lib.activeRoomId}
-            data-room={r.id}
-            onClick={() => chooseRoom(r.id)}
-          >
-            {r.id === lib.homeRoomId && <Icon paths={ICONS.star} />}
-            {r.name}
-          </button>
-        ))}
-        <Btn label="Ajouter une pièce" data={{ action: 'add-room' }} onClick={() => { reset(); resetScroll(); void library.update(addRoom); }}>
-          <Icon paths={ICONS.plus} />
-        </Btn>
-      </div>
-
-      <div className="wmt-lib-row">
-        <Btn label="Visiter" pressed={!editing} data={{ action: 'visit' }} onClick={() => setMode2('visit')}>
-          <Icon paths={ICONS.eye} />
-        </Btn>
-        <Btn label="Aménager" pressed={editing} data={{ action: 'edit' }} onClick={() => setMode2('edit')}>
-          <Icon paths={ICONS.pencil} />
-        </Btn>
-        <Btn label="Pièce horizontale" pressed={room.orientation === 'landscape'} data={{ orient: 'landscape' }} onClick={() => chooseOrientation('landscape')}>
-          <Icon paths={ICONS.landscape} />
-        </Btn>
-        <Btn label="Pièce verticale" pressed={portrait} data={{ orient: 'portrait' }} onClick={() => chooseOrientation('portrait')}>
-          <Icon paths={ICONS.portrait} />
-        </Btn>
-        <Btn
-          label="Pièce d’accueil : s’ouvre au lancement"
-          pressed={lib.homeRoomId === room.id}
-          data={{ action: 'home' }}
-          onClick={() => void library.update((state) => setHome(state, state.homeRoomId === room.id ? null : room.id))}
-        >
-          <Icon paths={ICONS.star} />
-        </Btn>
-        <Btn label={stage.active ? 'Quitter le plein écran' : 'Plein écran'} data={{ action: 'fullscreen' }} onClick={stage.toggle}>
-          <Icon paths={ICONS.fullscreen} />
-        </Btn>
-        <span className="wmt-lib-sep" />
-        {editing && (
-          <input
-            key={room.id}
-            className="wmt-lib-name"
-            aria-label="Nom de la pièce"
-            defaultValue={room.name}
-            maxLength={30}
-            onBlur={(event) => {
-              // La valeur est lue tout de suite : currentTarget n'existe plus quand l'écriture s'exécute.
-              const name = event.currentTarget.value;
-              void library.update((state) => renameRoom(state, room.id, name));
-            }}
+      <LibraryTopBar
+        rooms={lib.rooms}
+        activeId={lib.activeRoomId}
+        homeId={lib.homeRoomId}
+        onRoom={chooseRoom}
+        onAddRoom={() => { reset(); resetScroll(); void library.update(addRoom); }}
+        editing={editing}
+        onMode={setMode2}
+        fullscreenActive={stage.active}
+        onFullscreen={stage.toggle}
+        sky={
+          <SkyMenu
+            scene={room.scene}
+            onScene={(id) => void library.update((state) => setRoomScene(state, room.id, id))}
+            time={lib.time}
+            onTime={chooseTime}
+            onMinutes={(minutes) => void library.update((state) => setTimeSetting(state, { mode: 'manual', minutes }))}
+            sunLabel={`${sceneTime.times.kind === 'normal' ? `☀ ${formatMinutes(sceneTime.times.sunrise)} → ${formatMinutes(sceneTime.times.sunset)}` : sceneTime.times.polar === 'day' ? '☀ jour permanent' : '☾ nuit permanente'} · ${formatMinutes(sceneTime.minutes)}`}
+            lightOn={lightOn}
+            onLight={setLightOn}
+            zoneChoice={zoneChoice}
+            zoneLabel={zoneLabel}
+            onZone={() => setZoneChoice(NEXT_ZONE[zoneChoice])}
+            weather={lib.weather}
+            onWeather={chooseWeather}
+            positionOn={positionOn}
+            weatherLabel={`${weather.label}${weather.tempC !== null ? ` · ${Math.round(weather.tempC)} °C` : ''}`}
+            weatherNote={weather.real === 'fallback' ? `(simulée${positionOn && failure ? ` : ${FAILURE_LABEL[failure]}` : ''})` : null}
           />
-        )}
-        {editing && (
-          <Btn label={lib.rooms.length > 1 ? 'Supprimer la pièce' : 'Vider la pièce'} data={{ action: 'delete-room' }} onClick={onDeleteRoom}>
-            <Icon paths={ICONS.trash} />
-          </Btn>
-        )}
-      </div>
+        }
+        pets={
+          <PetsMenu
+            roomId={room.id}
+            pets={room.pets}
+            adopting={adopting}
+            adoptName={adoptName}
+            adoptCoat={adoptCoat}
+            onRename={(pet, name) => void library.update((state) => renamePet(state, room.id, pet.id, name))}
+            onRemove={onRemovePet}
+            onStartAdopt={startAdopt}
+            onAdoptName={setAdoptName}
+            onAdoptCoat={setAdoptCoat}
+            onConfirm={confirmAdopt}
+            onCancel={() => setAdopting(null)}
+          />
+        }
+        roomMenu={
+          <RoomMenu
+            roomId={room.id}
+            name={room.name}
+            isHome={lib.homeRoomId === room.id}
+            canDelete={lib.rooms.length > 1}
+            onRename={(name) => void library.update((state) => renameRoom(state, room.id, name))}
+            onToggleHome={() => void library.update((state) => setHome(state, state.homeRoomId === room.id ? null : room.id))}
+            onDelete={onDeleteRoom}
+          />
+        }
+      />
 
-      {editing && (
-        <div className="wmt-lib-row" role="group" aria-label="Style de la pièce">
-          {STYLE_IDS.map((id) => (
-            <Btn key={id} label={STYLE_LABELS[id]} pressed={room.style === id} data={{ style: id }} onClick={() => chooseStyle(id)}>
-              <span className="wmt-lib-swatch" style={{ background: paletteOf(id).wall, borderColor: paletteOf(id).floor }} />
-            </Btn>
-          ))}
-        </div>
-      )}
-
-      {editing && (
-        <div className="wmt-lib-row" role="group" aria-label="Ciel">
-          {SCENE_IDS.map((id) => (
-            <Btn key={id} label={SCENE_LABEL[id]} pressed={room.scene === id} data={{ scene: id }} onClick={() => void library.update((state) => setRoomScene(state, room.id, id))}>
-              <Icon paths={SCENE_ICON[id]} />
-            </Btn>
-          ))}
-          <span className="wmt-lib-sep" />
-          {(
-            [
-              ['real', 'Heure réelle', ICONS.clock],
-              ['day', 'Toujours le jour', ICONS.sun],
-              ['night', 'Toujours la nuit', ICONS.moon],
-              ['manual', 'Choisir l’heure', ICONS.sliders],
-            ] as const
-          ).map(([mode, label, icon]) => (
-            <Btn key={mode} label={label} pressed={lib.time.mode === mode} data={{ time: mode }} onClick={() => chooseTime(mode)}>
-              <Icon paths={icon} />
-            </Btn>
-          ))}
-          {WEATHER_SCENES.includes(room.scene) && (
-            <Btn label="Lumière" pressed={lightOn} data={{ 'light-toggle': '' }} onClick={() => setLightOn(!lightOn)}>
-              <Icon paths={ICONS.bulb} />
-            </Btn>
-          )}
-          {room.scene === 'city' && (
-            <Btn label={`Zone des vacances : ${zoneLabel}`} pressed={zoneChoice !== 'auto'} data={{ 'zone-toggle': '' }} onClick={() => setZoneChoice(NEXT_ZONE[zoneChoice])}>
-              <span className="wmt-lib-zone-glyph" aria-hidden="true">
-                {ZONE_GLYPH[zoneChoice]}
-              </span>
-            </Btn>
-          )}
-          {lib.time.mode === 'manual' && (
-            <input
-              type="range"
-              data-time-slider=""
-              aria-label="Heure"
-              min={0}
-              max={1439}
-              step={5}
-              value={lib.time.minutes}
-              onChange={(event) => { const minutes = Number(event.currentTarget.value); void library.update((state) => setTimeSetting(state, { mode: 'manual', minutes })); }}
-            />
-          )}
-          <span className="wmt-lib-msg" data-sun-times="">
-            {sceneTime.times.kind === 'normal' ? `☀ ${formatMinutes(sceneTime.times.sunrise)} → ${formatMinutes(sceneTime.times.sunset)}` : sceneTime.times.polar === 'day' ? '☀ jour permanent' : '☾ nuit permanente'}
-            {` · ${formatMinutes(sceneTime.minutes)}`}
-          </span>
-        </div>
-      )}
-
-      {editing && WEATHER_SCENES.includes(room.scene) && (
-        <div className="wmt-lib-row" role="group" aria-label="Météo">
-          <Btn label="Météo aléatoire" pressed={lib.weather.mode === 'random'} data={{ 'weather-mode': 'random' }} onClick={() => chooseWeather({ mode: 'random' })}>
-            <Icon paths={ICONS.dice} />
-          </Btn>
-          <Btn label={positionOn ? 'Météo réelle' : 'Météo réelle (position désactivée dans Paramètre d’extension)'} pressed={lib.weather.mode === 'real'} disabled={!positionOn} data={{ 'weather-mode': 'real' }} onClick={() => chooseWeather({ mode: 'real' })}>
-            <Icon paths={ICONS.globe} />
-          </Btn>
-          <span className="wmt-lib-sep" />
-          {WEATHER_STATES.map((state) => (
-            <Btn key={state} label={WEATHER_LABEL[state]} pressed={lib.weather.mode === 'forced' && lib.weather.state === state} data={{ 'weather-state': state }} onClick={() => chooseWeather({ mode: 'forced', state })}>
-              <Icon paths={WEATHER_ICON[state]} />
-            </Btn>
-          ))}
-          <span className="wmt-lib-msg" data-weather-label="">
-            {weather.label}
-            {weather.tempC !== null ? ` · ${Math.round(weather.tempC)} °C` : ''}
-          </span>
-          {weather.real === 'fallback' && (
-            <span className="wmt-lib-msg" data-weather-note="" title={positionOn ? 'Position inconnue ou réseau indisponible : la météo reste simulée.' : 'Position désactivée dans Paramètre d’extension : la météo reste simulée.'}>
-              (simulée{positionOn && failure ? ` : ${FAILURE_LABEL[failure]}` : ''})
-            </span>
-          )}
-        </div>
-      )}
-
-      {editing && (
-        <div className="wmt-lib-row" role="group" aria-label="Animaux">
-          {room.pets.map((pet) => (
-            <span key={`${room.id}:${pet.id}`} className="wmt-lib-pet" data-pet-edit={pet.id}>
-              <input
-                className="wmt-lib-name"
-                aria-label={SPECIES_TEXT[pet.species].name}
-                defaultValue={pet.name}
-                maxLength={MAX_PET_NAME}
-                onBlur={(event) => {
-                  const name = event.currentTarget.value;
-                  if (!name.trim()) {
-                    event.currentTarget.value = pet.name;
-                    return;
-                  }
-                  if (name === pet.name) return;
-                  void library.update((state) => renamePet(state, room.id, pet.id, name));
-                }}
-              />
-              <Btn label={`Retirer ${pet.name}`} data={{ action: 'remove-pet', pet: pet.id }} onClick={() => onRemovePet(pet)}>
-                <Icon paths={ICONS.trash} />
-              </Btn>
-            </span>
-          ))}
-          {adopting !== null ? (
-            <>
-              <input className="wmt-lib-name" aria-label={SPECIES_TEXT[adopting].adoptName} value={adoptName} maxLength={MAX_PET_NAME} onChange={(event) => setAdoptName(event.currentTarget.value)} />
-              {coatsOf(adopting).map((coat) => (
-                <Btn key={coat} label={coatLabel(adopting, coat)} pressed={adoptCoat === coat} data={{ coat }} onClick={() => setAdoptCoat(coat)}>
-                  <span className="wmt-lib-swatch" style={{ background: coatPaletteOf(adopting, coat).body, borderColor: coatPaletteOf(adopting, coat).belly }} />
-                </Btn>
-              ))}
-              <Btn label={SPECIES_TEXT[adopting].confirm} data={{ action: 'adopt-confirm' }} onClick={confirmAdopt}>
-                <Icon paths={ICONS.check} />
-              </Btn>
-              <Btn label="Annuler" data={{ action: 'adopt-cancel' }} onClick={() => setAdopting(null)}>
-                <Icon paths={ICONS.close} />
-              </Btn>
-            </>
-          ) : (
-            room.pets.length < MAX_PETS && (
-              <>
-                <Btn label="Adopter un chat" data={{ action: 'adopt' }} onClick={() => startAdopt('cat')}>
-                  <Icon paths={ICONS.cat} />
-                </Btn>
-                <Btn label="Adopter un chien" data={{ action: 'adopt-dog' }} onClick={() => startAdopt('dog')}>
-                  <Icon paths={ICONS.dog} />
-                </Btn>
-                <Btn label="Adopter un robot" data={{ action: 'adopt-robot' }} onClick={() => startAdopt('robot')}>
-                  <Icon paths={ICONS.robot} />
-                </Btn>
-              </>
-            )
-          )}
-        </div>
-      )}
-
-      {editing && (
-        <div className="wmt-lib-row" role="group" aria-label="Catégories de meubles">
-          {cats.map((c) => (
-            <Btn key={c.id} label={c.label} pressed={shownCategory === c.id} data={{ category: c.id }} onClick={() => { reset(); setCategory(c.id); }}>
-              <Icon paths={CATEGORY_ICON[c.id]} />
-            </Btn>
-          ))}
-        </div>
-      )}
-
-      {editing && (
-        <div className="wmt-lib-row">
-          {(cats.find((c) => c.id === shownCategory)?.kinds ?? []).map((kind) => (
-            <Btn
-              key={kind}
-              label={`Poser : ${labelOf(kind)}`}
-              pressed={tool?.type === 'new' && tool.kind === kind}
-              data={{ kind }}
-              onClick={() => startNew(kind)}
-            >
-              <Icon paths={KIND_ICON[kind]} />
-            </Btn>
-          ))}
-          {selectedId && (
-            <>
-              <Btn label="Déplacer" pressed={tool?.type === 'move'} data={{ action: 'move' }} onClick={startMove}>
-                <Icon paths={ICONS.move} />
-              </Btn>
-              <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
-                <Icon paths={ICONS.trash} />
-              </Btn>
-              {selectedStanding && (
-                <>
-                  <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftDepth(layout, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
-                  <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftDepth(layout, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
-                </>
-              )}
-              {selectedLamp && (
-                <Btn label={selectedLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={selectedLamp.on} data={{ action: 'lamp' }} onClick={() => void editLayout((l) => toggleLamp(l, selectedLamp.id))}>
-                  <Icon paths={ICONS.bulb} />
-                </Btn>
-              )}
-              {selectedWindow && (
-                <>
-                  <Btn label="Fenêtre plus étroite" data={{ action: 'win-w-' }} onClick={() => resizeSelected(-1, 0)}><Icon paths={ICONS.widthMinus} /></Btn>
-                  <Btn label="Fenêtre plus large" data={{ action: 'win-w+' }} onClick={() => resizeSelected(1, 0)}><Icon paths={ICONS.widthPlus} /></Btn>
-                  <Btn label="Fenêtre moins haute" data={{ action: 'win-h-' }} onClick={() => resizeSelected(0, -1)}><Icon paths={ICONS.heightMinus} /></Btn>
-                  <Btn label="Fenêtre plus haute" data={{ action: 'win-h+' }} onClick={() => resizeSelected(0, 1)}><Icon paths={ICONS.heightPlus} /></Btn>
-                  <Btn label="Fenêtre sur toute la largeur du mur" data={{ action: 'win-w-full' }} onClick={() => stretchSelected('width')}><Icon paths={ICONS.widthFull} /></Btn>
-                  <Btn label="Fenêtre sur toute la hauteur du mur" data={{ action: 'win-h-full' }} onClick={() => stretchSelected('height')}><Icon paths={ICONS.heightFull} /></Btn>
-                </>
-              )}
-            </>
-          )}
-          {collection && (
-            <Btn label="Ajouter une carte" pressed={tool?.type === 'card'} data={{ action: 'add-card' }} onClick={startCard}>
-              <Icon paths={ICONS.card} />
-            </Btn>
-          )}
-          <span className="wmt-lib-sep" />
-          <Btn label="Agrandir la pièce à gauche" data={{ action: 'extend-left' }} onClick={() => void extend('left')}>
-            <Icon paths={ICONS.extendLeft} />
-          </Btn>
-          <Btn label="Réduire la pièce à gauche" data={{ action: 'shrink-left' }} onClick={() => void shrink('left')}>
-            <Icon paths={ICONS.shrinkLeft} />
-          </Btn>
-          <Btn label="Réduire la pièce à droite" data={{ action: 'shrink-right' }} onClick={() => void shrink('right')}>
-            <Icon paths={ICONS.shrinkRight} />
-          </Btn>
-          <Btn label="Agrandir la pièce à droite" data={{ action: 'extend-right' }} onClick={() => void extend('right')}>
-            <Icon paths={ICONS.extendRight} />
-          </Btn>
-        </div>
-      )}
 
       <div className="wmt-lib-msg" role="status">
         {message}
       </div>
 
-      <div className="wmt-lib-stage" ref={stage.ref} data-stage>
+      <div className="wmt-lib-stage" ref={stage.ref} data-stage data-editing={editing}>
         <div
           className="wmt-lib-scroll"
           data-scroll
           ref={scrollRef}
           style={{
             // En plein écran : la fenêtre visible (24 ou 16 colonnes sur 510 de haut) prend la plus grande taille qui tient dans l'écran.
-            maxWidth: fill ? 'none' : stage.active ? `min(100vw, calc(100vh * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
-            ...(fill ? { width: '100vw', height: '100vh', overflowY: 'auto' } : {}),
+            maxWidth: fill ? 'none' : stage.active ? `min(100vw, calc(${screenH} * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
+            ...(fill ? { width: '100vw', height: screenH, overflowY: 'auto' } : {}),
             ...(dragging ? { overflowX: 'hidden', touchAction: 'none' } : {}),
             // Dehors : la caméra règle le viewBox, le conteneur ne défile plus et prend le cadre de la fenêtre visible.
             ...(outside ? { ...(stage.active ? { width: '100vw', height: '100vh', maxWidth: 'none' } : { width: '100%', aspectRatio: `${visibleWidth} / ${HEIGHT}` }), overflow: 'hidden', touchAction: 'none', position: 'relative', userSelect: 'none', WebkitUserSelect: 'none' } : {}),
@@ -1192,6 +901,54 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost, ghostPx: drag.target.ghostPx } satisfies DragView) : null}
           />
         </div>
+        {editing && !outside && (
+          <BuildDrawer
+            state={drawer}
+            onState={onDrawer}
+            style={room.style}
+            orientation={room.orientation}
+            hasCollection={collection !== undefined}
+            activeKind={tool?.type === 'new' ? tool.kind : null}
+            onKind={startNew}
+            cardActive={tool?.type === 'card'}
+            onCard={startCard}
+            onStyle={chooseStyle}
+            onOrientation={chooseOrientation}
+            onExtend={(side) => void extend(side)}
+            onShrink={(side) => void shrink(side)}
+          />
+        )}
+        {editing && !outside && selectedId && (
+          <ActionBubble stage={stage.ref.current} scroll={scrollRef.current} targetId={selectedId}>
+            <Btn label="Déplacer" pressed={tool?.type === 'move'} data={{ action: 'move' }} onClick={startMove}>
+              <Icon paths={ICONS.move} />
+            </Btn>
+            <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
+              <Icon paths={ICONS.trash} />
+            </Btn>
+            {selectedStanding && (
+              <>
+                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftDepth(layout, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
+                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftDepth(layout, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
+              </>
+            )}
+            {selectedLamp && (
+              <Btn label={selectedLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={selectedLamp.on} data={{ action: 'lamp' }} onClick={() => void editLayout((l) => toggleLamp(l, selectedLamp.id))}>
+                <Icon paths={ICONS.bulb} />
+              </Btn>
+            )}
+            {selectedWindow && (
+              <>
+                <Btn label="Fenêtre plus étroite" data={{ action: 'win-w-' }} onClick={() => resizeSelected(-1, 0)}><Icon paths={ICONS.widthMinus} /></Btn>
+                <Btn label="Fenêtre plus large" data={{ action: 'win-w+' }} onClick={() => resizeSelected(1, 0)}><Icon paths={ICONS.widthPlus} /></Btn>
+                <Btn label="Fenêtre moins haute" data={{ action: 'win-h-' }} onClick={() => resizeSelected(0, -1)}><Icon paths={ICONS.heightMinus} /></Btn>
+                <Btn label="Fenêtre plus haute" data={{ action: 'win-h+' }} onClick={() => resizeSelected(0, 1)}><Icon paths={ICONS.heightPlus} /></Btn>
+                <Btn label="Fenêtre sur toute la largeur du mur" data={{ action: 'win-w-full' }} onClick={() => stretchSelected('width')}><Icon paths={ICONS.widthFull} /></Btn>
+                <Btn label="Fenêtre sur toute la hauteur du mur" data={{ action: 'win-h-full' }} onClick={() => stretchSelected('height')}><Icon paths={ICONS.heightFull} /></Btn>
+              </>
+            )}
+          </ActionBubble>
+        )}
         {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} kinds={roomCards.kinds} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}
         {viewing && roomCards.cards[viewing] && (
           <RoomCardDialog

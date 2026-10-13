@@ -48,6 +48,7 @@ afterEach(() => {
 async function withLamp(mode: 'visit' | 'edit') {
   await click('[data-action="edit"]');
   await click('[data-category="deco"]');
+  await click('[data-subcategory="lights"]');
   await click('[data-kind="lamp"]');
   await click('[data-cell="4-14"]');
   expect(layoutNow().some((p) => p.kind === 'lamp')).toBe(true);
@@ -73,6 +74,7 @@ describe('lampes cliquables', () => {
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
     await click('[data-category="deco"]');
+    await click('[data-subcategory="lights"]');
     await click('[data-kind="small-lamp"]');
     await click('[data-furniture="desk"]');
     await click('[data-action="visit"]');
@@ -182,6 +184,7 @@ describe('calque de lumière et dessin des lampes', () => {
     await click('[data-action="edit"]');
     await click('[data-style="steampunk"]');
     await click('[data-category="deco"]');
+    await click('[data-subcategory="lights"]');
     await click('[data-kind="lamp"]');
     await click('[data-cell="4-14"]');
     await click('[data-action="visit"]');
@@ -201,6 +204,7 @@ describe('lampe sans ciel terrestre', () => {
     expect(q('image[data-light]')).toBeNull();
     // Une lampe éteinte ne le monte pas non plus.
     await click('[data-category="deco"]');
+    await click('[data-subcategory="lights"]');
     await click('[data-kind="lamp"]');
     await click('[data-cell="10-14"]');
     expect(q('image[data-light]')).not.toBeNull();
@@ -215,6 +219,7 @@ describe('lampe sans ciel terrestre', () => {
       await click('[data-action="edit"]');
       await click(`[data-scene="${scene}"]`);
       await click('[data-category="deco"]');
+      await click('[data-subcategory="lights"]');
       await click('[data-kind="lamp"]');
       await click('[data-cell="4-14"]');
       expect(layoutNow().some((p) => p.kind === 'lamp')).toBe(true);

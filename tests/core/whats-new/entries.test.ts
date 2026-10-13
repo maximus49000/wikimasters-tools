@@ -157,4 +157,13 @@ describe('catalogue des fiches', () => {
     for (const step of entry!.steps) expect(step.details?.some((d) => d.label === 'Limites'), step.title).toBe(true);
     expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v25')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v24'));
   });
+  it('la fiche bibliotheque-v27 présente le tiroir de construction, la bulle d’actions, la barre du haut et leurs limites', () => {
+    const entry = ENTRIES.find((e) => e.id === 'bibliotheque-v27');
+    expect(entry).toBeDefined();
+    expect(entry!.steps).toHaveLength(3);
+    const text = entry!.steps.map((s) => `${s.title} ${s.text} ${(s.details ?? []).map((d) => `${d.label} ${d.text}`).join(' ')}`).join(' ');
+    for (const word of ['Aménager', 'Meubles', 'Cartes', 'Pièce', 'Déco', 'Lumières', 'poignée', 'plein écran', 'rue', 'bulle', 'Avancer', 'barre du haut', 'météo', 'Animaux', 'orientation']) expect(text, word).toContain(word);
+    for (const step of entry!.steps) expect(step.details?.some((d) => d.label === 'Limites'), step.title).toBe(true);
+    expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v27')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v26'));
+  });
 });

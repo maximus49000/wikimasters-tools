@@ -44,6 +44,7 @@ afterEach(() => {
 
 async function placeWindow() {
   await click('[data-category="deco"]');
+  await click('[data-subcategory="walls"]');
   await click('[data-kind="window"]');
   await click('[data-cell="3-6"]');
 }
@@ -86,6 +87,7 @@ describe('fenêtre — pose et taille', () => {
 
   it('refuse un agrandissement qui chevauche un autre objet et fait clignoter les cases', async () => {
     await placeWindow();
+    await click('[data-subcategory="walls"]');
     await click('[data-kind="window"]');
     await click('[data-cell="12-6"]');
     expect(windows()).toHaveLength(2);
@@ -139,9 +141,9 @@ describe('panneau Ciel', () => {
     expect(getCurrentPosition).toHaveBeenCalledTimes(1);
   });
 
-  it('le panneau n’existe qu’en mode Aménager', async () => {
+  it('le choix du ciel reste dans le menu de la barre du haut en mode Visiter', async () => {
     await click('[data-action="visit"]');
-    expect(q('[role="group"][aria-label="Ciel"]')).toBeNull();
+    expect(q('[data-menu="sky"] [role="group"][aria-label="Ciel"]')).not.toBeNull();
   });
 });
 

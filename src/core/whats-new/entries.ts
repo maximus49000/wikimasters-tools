@@ -1960,4 +1960,47 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v27',
+    theme: 'collection',
+    glyph: '🛋️',
+    title: 'Aménager sa pièce comme dans les Sims',
+    summary: 'Un tiroir de construction en bas, l’ambiance dans la barre du haut, une bulle sur l’objet choisi',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Le tiroir de construction',
+        text: 'Dans Ma Pièce, en mode Aménager, un tiroir s’ouvre en bas de la pièce avec trois onglets : Meubles, Cartes et Pièce. Dans Meubles, choisissez une catégorie (Rangement, Assises, Déco, Pour animaux), puis pour la Déco une sous-catégorie (Plantes, Lumières, Sol, Murs) : chaque meuble est montré par son vrai dessin. L’onglet Pièce règle le style, l’orientation et la taille de la pièce.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À garder la pièce visible pendant qu’on la meuble, au lieu de la repousser sous des rangées de boutons.' },
+          { label: 'Comment faire', text: 'Touchez « Ma Pièce », puis le crayon (Aménager). Touchez une vignette, puis une case de la pièce, ou faites-la glisser : le tiroir reste ouvert pour poser plusieurs objets d’affilée. La flèche ▾ réduit le tiroir à une petite poignée pour contempler la scène, y compris en plein écran ; touchez la poignée pour le rouvrir là où vous l’aviez laissé.' },
+          { label: 'Limites', text: 'Le tiroir n’apparaît ni en mode Visiter ni dans la vue de la rue : on ne meuble pas la rue. L’onglet Cartes n’existe que si votre Collection est disponible.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'La bulle d’actions',
+        text: 'Touchez un objet posé : une bulle apparaît au-dessus de lui avec Déplacer, Retirer, Avancer et Reculer, et selon l’objet, allumer la lampe ou changer la taille de la fenêtre.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À agir sur l’objet là où il se trouve, comme dans les Sims.' },
+          { label: 'Comment ça marche', text: 'La bulle suit l’objet quand la pièce défile ; près du haut de la scène, elle passe en dessous de lui. Elle reste là même tiroir réduit.' },
+          { label: 'Limites', text: 'Une seule bulle à la fois, pour l’objet sélectionné. Une carte rangée sur une étagère se déplace toujours par appui long.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'L’ambiance dans la barre du haut',
+        text: 'Le ciel, l’heure et la météo (☁️), le menu Animaux (🐾 : adopter, renommer, retirer) et les réglages de la pièce (⋯ : nom, pièce d’accueil, suppression) sont maintenant dans la barre du haut, à côté des pièces, aussi en mode Visiter.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À séparer ce qu’on construit (le tiroir) de l’ambiance de la scène (la barre du haut), et à pouvoir changer le ciel ou adopter un animal sans passer en Aménager.' },
+          { label: 'Comment faire', text: 'Touchez le nuage, la patte ou les trois points : un menu s’ouvre sous le bouton. Touchez à côté ou appuyez sur Échap pour le fermer ; un seul menu est ouvert à la fois.' },
+          { label: 'Limites', text: 'L’orientation de la pièce ne se change plus en mode Visiter : passez en Aménager, onglet Pièce. En plein écran, seule la scène est affichée : la barre du haut n’y est pas.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];

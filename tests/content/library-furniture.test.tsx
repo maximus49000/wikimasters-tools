@@ -42,12 +42,14 @@ describe('mobilier dans le panneau', () => {
     expect(q('[data-kind="shelf"]')).not.toBeNull();
     for (const [category, kind] of [['seats', 'sofa'], ['pets', 'basket'], ['deco', 'rug'], ['storage', 'desk']] as const) {
       await click(`[data-category="${category}"]`);
+      if (kind === 'rug') await click('[data-subcategory="floor"]');
       expect(q(`[data-kind="${kind}"]`), kind).not.toBeNull();
     }
   });
 
   it('pose un tapis puis un canapé dessus', async () => {
     await click('[data-category="deco"]');
+    await click('[data-subcategory="floor"]');
     await click('[data-kind="rug"]');
     await click('[data-cell="2-17"]');
     expect(q('[data-furniture="rug"]')).not.toBeNull();
@@ -59,6 +61,7 @@ describe('mobilier dans le panneau', () => {
 
   it('refuse un tapis sur le mur', async () => {
     await click('[data-category="deco"]');
+    await click('[data-subcategory="floor"]');
     await click('[data-kind="rug"]');
     await click('[data-cell="3-5"]');
     expect(q('[data-furniture]')).toBeNull();
@@ -67,6 +70,7 @@ describe('mobilier dans le panneau', () => {
 
   it('explique qu’il faut un porteur pour un petit objet', async () => {
     await click('[data-category="deco"]');
+    await click('[data-subcategory="plants"]');
     await click('[data-kind="small-plant"]');
     expect(q('[role="status"]')?.textContent).toContain('bureau');
     expect(q('[data-furniture]')).toBeNull();
@@ -76,6 +80,7 @@ describe('mobilier dans le panneau', () => {
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
     await click('[data-category="deco"]');
+    await click('[data-subcategory="plants"]');
     await click('[data-kind="small-plant"]');
     await click('[data-furniture="desk"]');
     expect(q('[data-furniture="small"]')).not.toBeNull();
@@ -86,6 +91,7 @@ describe('mobilier dans le panneau', () => {
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
     await click('[data-category="deco"]');
+    await click('[data-subcategory="lights"]');
     await click('[data-kind="small-lamp"]');
     await click('[data-furniture="desk"]');
     await click('[data-furniture="desk"]');
@@ -99,6 +105,7 @@ describe('mobilier dans le panneau', () => {
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
     await click('[data-category="deco"]');
+    await click('[data-subcategory="lights"]');
     await click('[data-kind="small-lamp"]');
     await click('[data-furniture="desk"]');
     await click('[data-furniture="desk"]');
@@ -113,6 +120,7 @@ describe('mobilier dans le panneau', () => {
     await click('[data-category="deco"]');
     // Deux petits objets : ils prennent les emplacements 0 et 1, le milieu du bureau est donc occupé.
     for (let i = 0; i < 2; i += 1) {
+      await click('[data-subcategory="plants"]');
       await click('[data-kind="small-plant"]');
       await click('[data-furniture="desk"]');
     }

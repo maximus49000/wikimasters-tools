@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CATEGORIES, FURNITURE_KINDS, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, layerOf, poisOf, sizeOf } from '../../../src/core/library/furniture-catalog';
+import { CATEGORIES, catalogTree, FURNITURE_KINDS, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, layerOf, poisOf, sizeOf } from '../../../src/core/library/furniture-catalog';
 import { STANDING_KINDS } from '../../../src/core/library/library-types';
 import { MIN_COLS, ROWS, WALL_ROWS } from '../../../src/core/library/room-grid';
 
@@ -55,5 +55,36 @@ describe('catalogue', () => {
     expect(isStandingKind('computer')).toBe(false);
     expect(isSmallKind('small-lamp')).toBe(true);
     expect(SMALL_ITEM_OF['small-plant']).toBe('plant');
+  });
+});
+
+describe('catalogTree', () => {
+  it('découpe la Déco en Plantes, Lumières, Sol et Murs', () => {
+    const deco = catalogTree('scandinave').find((n) => n.id === 'deco');
+    expect(deco?.subcategories.map((s) => s.id)).toEqual(['plants', 'lights', 'floor', 'walls']);
+    expect(deco?.subcategories.find((s) => s.id === 'plants')?.kinds).toEqual(['plant', 'small-plant']);
+    expect(deco?.subcategories.find((s) => s.id === 'lights')?.kinds).toEqual(['lamp', 'small-lamp']);
+    expect(deco?.subcategories.find((s) => s.id === 'floor')?.kinds).toEqual(['rug', 'coffee-table']);
+    expect(deco?.subcategories.find((s) => s.id === 'walls')?.kinds).toEqual(['window']);
+  });
+
+  it('les sous-catégories couvrent exactement les meubles de leur catégorie', () => {
+    for (const node of catalogTree('steampunk')) {
+      if (node.subcategories.length === 0) continue;
+      expect([...node.subcategories.flatMap((s) => s.kinds)].sort()).toEqual([...node.kinds].sort());
+    }
+  });
+
+  it('ne propose Steampunk que dans une pièce Steampunk', () => {
+    expect(catalogTree('scandinave').some((n) => n.id === 'steampunk')).toBe(false);
+    expect(catalogTree('steampunk').some((n) => n.id === 'steampunk')).toBe(true);
+  });
+
+  it('nomme « Pour animaux » la catégorie des meubles d’animaux (le menu 🐾 s’appelle Animaux)', () => {
+    expect(catalogTree('scandinave').find((n) => n.id === 'pets')?.label).toBe('Pour animaux');
+  });
+
+  it('les autres catégories n’ont pas de sous-catégorie', () => {
+    expect(catalogTree('scandinave').filter((n) => n.id !== 'deco').every((n) => n.subcategories.length === 0)).toBe(true);
   });
 });
