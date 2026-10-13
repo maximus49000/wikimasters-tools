@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ART_KEY, readArt, subscribeArt, writeArt } from '../../src/content/art-setting';
+import { ART_KEY, ENGINE_VIEW, readArt, subscribeArt, writeArt } from '../../src/content/art-setting';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -8,7 +8,13 @@ afterEach(() => {
 });
 
 describe('réglage du graphisme', () => {
-  it('vaut « classic » par défaut', () => {
+  it('vaut la valeur par défaut des tests (« classic », le moteur) ; en production Ghibli (__WMT_ART_DEFAULT__ absent)', () => {
+    expect(readArt()).toBe('classic');
+  });
+  it('l’ancien choix « classic » d’un utilisateur ne l’est plus (valeur par défaut) ; seule la valeur interne montre le moteur', () => {
+    localStorage.setItem(ART_KEY, 'classic');
+    expect(readArt()).toBe(__WMT_ART_DEFAULT__);
+    localStorage.setItem(ART_KEY, ENGINE_VIEW);
     expect(readArt()).toBe('classic');
   });
   it('écrit puis relit « ghibli »', () => {
