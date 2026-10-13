@@ -47,8 +47,12 @@ describe('conditions', () => {
     expect(eligible(defOf('garbage-truck'), 7 * 60, DAY_DRY)).toBe(true);
   });
   it('les plages qui passent minuit sont respectées', () => {
-    expect(eligible(defOf('tram'), 10, NIGHT_DRY)).toBe(true); // 0 h 10
-    expect(eligible(defOf('tram'), 3 * 60, NIGHT_DRY)).toBe(false);
+    const night = { ...defOf('tram'), weight: 1 };
+    expect(eligible(night, 10, NIGHT_DRY)).toBe(true); // 0 h 10
+    expect(eligible(night, 3 * 60, NIGHT_DRY)).toBe(false);
+  });
+  it('le tram ne passe plus (ni rails ni arrêts de tram)', () => {
+    for (let m = 0; m < 1440; m += 30) expect(eligible(defOf('tram'), m, DAY_DRY)).toBe(false);
   });
   it('la clé ne change que si une condition passe un seuil', () => {
     expect(conditionsKey({ ...DAY_DRY, traffic: 0.6 })).toBe(conditionsKey({ ...DAY_DRY, traffic: 0.9 }));
@@ -102,7 +106,7 @@ describe('trajets', () => {
   });
   it('un véhicule d’événement à la vitesse de sa file efface les voitures collées à lui, à distance constante', () => {
     const all = many(DAY_DRY, 8 * 60, 300);
-    const e = all.find((x) => (x.id === 'bus' || x.id === 'tram') && x.yields.length > 0);
+    const e = all.find((x) => (x.id === 'garbage-truck' || x.id === 'delivery-bike') && x.yields.length > 0);
     expect(e).toBeDefined();
     const vehicles = vehiclesFor(720, 7);
     const L = travelSpan(720);

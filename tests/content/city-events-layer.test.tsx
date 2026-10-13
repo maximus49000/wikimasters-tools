@@ -140,14 +140,14 @@ describe('événements dans la couche de la ville', () => {
     expect(drawn.length).toBe(expected(T, city).filter((e) => STILL_EVENTS.has(e.id)).length);
     expect(c.querySelectorAll('animate, animateTransform')).toHaveLength(0);
   });
-  // Le bus et le tram ne font plus disparaître les voitures (ancien `yieldsFor`) : ce sont des véhicules du moteur, les autres
+  // Le bus et la benne ne font plus disparaître les voitures (ancien `yieldsFor`) : ce sont des véhicules du moteur, les autres
   // gardent leurs distances. L'ambulance fait ranger les voitures au bord (sans fondu) ; l'ordre de dessin suit la profondeur.
   it('aucune voiture ne s’efface : tous les véhicules du moteur restent dessinés', () => {
     const { city } = contextAt(8.25);
-    const T = findWhen(city, (evs, t) => evs.some((e) => (e.id === 'bus' || e.id === 'tram') && t - e.start >= 4 && t - e.start < 5), 400);
+    const T = findWhen(city, (evs, t) => evs.some((e) => (e.id === 'garbage-truck' || e.id === 'delivery-bike') && t - e.start >= 4 && t - e.start < 5), 400);
     const c = mount(T, 8.25);
     const vehicles = [...c.querySelectorAll('[data-traffic-lane] > [data-vehicle]')];
-    expect(vehicles.some((n) => n.getAttribute('data-kind') === 'bus' || n.getAttribute('data-kind') === 'tram')).toBe(true);
+    expect(vehicles.some((n) => ['bus', 'garbage-truck', 'delivery-bike'].includes(n.getAttribute('data-kind') ?? ''))).toBe(true);
     expect(vehicles.filter((n) => n.getAttribute('data-kind') === 'car').length).toBeGreaterThan(0);
     for (const n of vehicles) {
       expect(n.getAttribute('data-active')).toBe('true');
