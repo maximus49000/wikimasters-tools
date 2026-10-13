@@ -42,9 +42,9 @@ describe('niveaux de profondeur', () => {
     const res = canPlace(layout, 24, 'armchair', 1, 13);
     expect(res).toMatchObject({ ok: false, reason: 'taken' });
     if (!res.ok) expect(res.cells).toEqual(expect.arrayContaining([{ col: 1, row: 13 }, { col: 1, row: 14 }]));
-    // Devant (lignes 15-17) ou derrière (lignes 10-12, devant le mur) : permis.
+    // Devant (lignes 15-17) ou derrière (pieds en ligne 12, devant le mur ; toutes les cases au sol doivent être sur le sol) : permis.
     expect(placeStanding(layout, 24, 'armchair', 1, 15, 'b')).not.toBeNull();
-    expect(placeStanding(layout, 24, 'armchair', 1, 10, 'b')).not.toBeNull();
+    expect(placeStanding(layout, 24, 'chair', 1, 10, 'b')).not.toBeNull();
     // Table basse (pieds sur ses 2 lignes) juste devant l'étagère : permis ; le niveau par défaut n'est pas écrit.
     const withTable = placeStanding(layout, 24, 'coffee-table', 0, 15, 'c')!;
     expect(withTable.every((p) => !('depth' in p))).toBe(true);
@@ -100,8 +100,8 @@ describe('niveaux de profondeur', () => {
 
   it('n’avance pas sur le pied d’un autre meuble', () => {
     const layout: Layout = [
-      { id: 'a', kind: 'armchair', col: 0, row: 12 },
-      { id: 'b', kind: 'armchair', col: 0, row: 15 },
+      { id: 'a', kind: 'chair', col: 0, row: 12 }, // pied en ligne 14
+      { id: 'b', kind: 'chair', col: 0, row: 13 }, // pied en ligne 15
     ];
     expect(canShiftRow(layout, 24, 'a', 1)).toBe(false);
     expect(canShiftRow(layout, 24, 'a', -1)).toBe(true);
