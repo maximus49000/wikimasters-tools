@@ -24,9 +24,14 @@ export function useAnchor(stage: HTMLElement | null, scroll: HTMLElement | null,
     place();
     scroll?.addEventListener('scroll', place, { passive: true });
     window.addEventListener('resize', place);
+    // La pièce se recentre sans nouveau rendu quand le tiroir apparaît ou se cache : on suit aussi la taille de la scène.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    if (stage) observer?.observe(stage);
+    if (scroll) observer?.observe(scroll);
     return () => {
       scroll?.removeEventListener('scroll', place);
       window.removeEventListener('resize', place);
+      observer?.disconnect();
     };
   });
   return { ref, pos };

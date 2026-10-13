@@ -317,6 +317,15 @@ describe('LibraryPanel : cartes', () => {
     expect(q('[role="status"]')?.textContent).toContain('mur');
   });
 
+  it('« Déplacer » dans la bulle d’une carte rangée ouvre le placement', async () => {
+    await seed(shelfLayout);
+    await click('[data-action="edit"]');
+    await click('[data-card="Daft_Punk"]');
+    await click('[data-action="move"]');
+    expect(q('[data-placement-bar]')).not.toBeNull();
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ slot: 0 });
+  });
+
   it('un appui long sur un objet rangé le déplace dans un autre emplacement', async () => {
     await seed(shelfLayout);
     stubSvgRect();

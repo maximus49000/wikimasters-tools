@@ -349,3 +349,26 @@ describe('interrupteur en plein écran', () => {
     expect(repo.current()!.rooms[0]!.layout).toHaveLength(0);
   });
 });
+
+describe('habillage Sims', () => {
+  it('le tiroir range les catégories en colonne à gauche et nomme la catégorie', async () => {
+    await click('[data-action="edit"]');
+    expect(q('.wmt-lib-drawer-body .wmt-lib-cats [data-category="storage"]')).not.toBeNull();
+    expect(q('.wmt-lib-cat-title')?.textContent).toBe('Rangement');
+    expect(q('[data-drawer-tab="furniture"]')?.textContent).toContain('Meubles');
+    expect(q('.wmt-lib-tabs-pill [data-drawer-tab="furniture"]')).not.toBeNull();
+  });
+
+  it('la feuille de style déclare les couleurs Sims', () => {
+    expect(LIBRARY_CSS).toContain('--sims-panel');
+    expect(LIBRARY_CSS).toContain('.wmt-lib-confirm');
+    expect(LIBRARY_CSS).toContain('.wmt-lib-switch');
+  });
+
+  it('les boutons ronds du plein écran ont l’habillage Sims', async () => {
+    stubFullscreen();
+    await click('.wmt-lib-topbar [data-action="fullscreen"]');
+    expect(q('.wmt-lib-fab[data-action="outside"]')).not.toBeNull();
+    expect(q('.wmt-lib-fab[aria-label="Quitter le plein écran"]')).not.toBeNull();
+  });
+});

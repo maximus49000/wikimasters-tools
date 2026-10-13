@@ -74,7 +74,7 @@ import { PlacementBar, PlacementGrip } from './placement-bar';
 import { pointerToCell } from './furniture-drag';
 import { followPointer } from './pointer-follow';
 import { createLongPress } from './long-press';
-import { FullscreenButton, useFullscreen } from './fullscreen';
+import { useFullscreen } from './fullscreen';
 import { lockOrientation, unlockOrientation } from './orientation-lock';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
@@ -141,6 +141,47 @@ export const LIBRARY_CSS = `
 .wmt-lib-stage[data-editing="true"]{padding-bottom:var(--wmt-drawer-h,0px)}
 .wmt-lib-stage:fullscreen{box-sizing:border-box}
 .wmt-lib-bubble{position:absolute;z-index:6;display:flex;flex-wrap:wrap;gap:4px;max-width:min(92%,360px);padding:4px;border-radius:22px;background:var(--color-surface,#0d1117);border:1px solid var(--color-accent,#34d399);box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.wmt-lib-stage{--sims-panel:rgba(250,252,255,.94);--sims-line:#a9c6e8;--sims-blue:#2f7fd6;--sims-blue-dark:#1d5aa3;--sims-tile-top:#fff;--sims-tile-bot:#dce8f6;--sims-green:#4cc23a;--sims-red:#d23b2f;--sims-text:#2b3f5c;--sims-font:ui-rounded,'Nunito','Varela Round',system-ui,sans-serif}
+.wmt-lib-drawer{left:6px;right:6px;bottom:6px;gap:6px;padding:0;background:transparent;border:0;box-shadow:none;font-family:var(--sims-font);font-weight:700;color:var(--sims-text)}
+.wmt-lib-drawer-tabs{display:flex;align-items:center;gap:6px}
+.wmt-lib-tabs-pill{display:flex;gap:2px;padding:3px;border-radius:18px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.wmt-lib-tabs-pill [role="tab"]{min-height:30px;border:0;border-radius:14px;padding:0 10px;gap:5px;color:#5d7594;font-weight:800;font-size:12px}
+.wmt-lib-tabs-pill [role="tab"][aria-selected="true"]{background:linear-gradient(#4a97e8,var(--sims-blue));color:#fff}
+.wmt-lib-drawer-tabs [data-action="drawer-reduce"]{width:36px;min-width:36px;height:36px;min-height:36px;padding:0;border-radius:50%;background:var(--sims-panel);border:2px solid var(--sims-line);color:var(--sims-blue);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.wmt-lib-drawer-panel{padding:6px;border-radius:14px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.wmt-lib-drawer-body{display:flex;gap:6px}
+.wmt-lib-cats{display:flex;flex-direction:column;gap:4px;padding-right:6px;border-right:2px solid #e1ebf7}
+.wmt-lib-cat{width:40px;height:40px;min-width:40px;min-height:40px;padding:0;border-radius:10px;color:#6c86a8;background:linear-gradient(var(--sims-tile-top),#edf3fb);border:1.5px solid #d4e2f3}
+.wmt-lib-cat[aria-pressed="true"]{color:#fff;background:linear-gradient(#4a97e8,var(--sims-blue));border-color:var(--sims-blue-dark)}
+.wmt-lib-drawer-right{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.wmt-lib-cat-title{font-weight:800;font-size:13px;line-height:24px;color:var(--sims-blue-dark)}
+.wmt-lib-subchips .wmt-lib-chip{min-height:24px;padding:0 9px;font-size:11px;font-weight:700;color:#5d7594;background:#eef4fb;border:1.5px solid #d4e2f3}
+.wmt-lib-subchips .wmt-lib-chip[aria-pressed="true"]{background:#fff;color:var(--sims-blue);border-color:var(--sims-blue)}
+.wmt-lib-thumbs{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,64px);grid-auto-columns:60px;gap:6px;overflow-x:auto}
+.wmt-lib-thumb{width:auto;height:auto;border-radius:9px;color:#4e6687;background:linear-gradient(var(--sims-tile-top),var(--sims-tile-bot));border:1.5px solid #c9dbf0;box-shadow:0 1px 2px rgba(40,70,110,.25)}
+.wmt-lib-thumb-name{font-size:9.5px;font-weight:800}
+.wmt-lib-drawer-panel[data-drawer-panel="room"] .wmt-lib-btn{color:var(--sims-blue);border-color:var(--sims-line);background:#fff}
+.wmt-lib-drawer-panel[data-drawer-panel="room"] .wmt-lib-btn[aria-pressed="true"]{border-color:var(--sims-blue);box-shadow:0 0 0 2px rgba(47,127,214,.25)}
+.wmt-lib-drawer-reduced{bottom:0}
+.wmt-lib-drawer-reduced .wmt-lib-btn{width:96px;min-height:30px;background:var(--sims-panel);color:var(--sims-blue);border:2px solid var(--sims-line);border-bottom:0;border-radius:16px 16px 0 0;box-shadow:0 -2px 8px rgba(0,0,0,.3)}
+.wmt-lib-bubble{gap:2px;padding:4px;border-radius:12px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 4px 10px rgba(0,0,0,.35);color:var(--sims-blue)}
+.wmt-lib-bubble .wmt-lib-btn{min-width:34px;min-height:34px;padding:0;border:0;border-radius:9px;color:var(--sims-blue)}
+.wmt-lib-bubble .wmt-lib-btn[aria-pressed="true"]{background:#e4effb}
+.wmt-lib-bubble [data-action="remove"]{color:var(--sims-red)}
+.wmt-lib-placebar{align-items:center;flex-wrap:nowrap}
+.wmt-lib-placebar-sep{width:2px;height:26px;margin:0 3px;background:#dbe6f3}
+.wmt-lib-bubble .wmt-lib-cancel{border-radius:50%;color:#fff;background:linear-gradient(#ef6a5f,var(--sims-red))}
+.wmt-lib-bubble .wmt-lib-confirm{min-width:40px;min-height:40px;border-radius:50%;color:#fff;background:linear-gradient(#6fdc5c,#3ea92f);box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
+.wmt-lib-bubble .wmt-lib-confirm:disabled{opacity:1;background:#c9d3de;color:#eef2f6}
+.wmt-lib-grip-box{position:absolute;z-index:6}
+.wmt-lib-grip{width:32px;height:32px;padding:0;border-radius:50%;display:grid;place-items:center;cursor:grab;background:var(--sims-panel);border:2px solid var(--sims-line);color:var(--sims-blue);box-shadow:0 2px 5px rgba(0,0,0,.3)}
+.wmt-lib-fab{position:absolute;top:8px;z-index:7;width:38px;height:38px;padding:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--sims-panel);border:2px solid var(--sims-line);color:var(--sims-blue);box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.wmt-lib-fab:disabled{opacity:.6}
+.wmt-lib-switch{position:absolute;top:8px;right:54px;z-index:7;display:flex;gap:2px;padding:3px;border-radius:19px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.wmt-lib-switch button{width:34px;height:28px;padding:0;border:0;border-radius:14px;display:grid;place-items:center;cursor:pointer;background:transparent;color:#7d93b0}
+.wmt-lib-switch button[aria-pressed="true"]{background:linear-gradient(#4a97e8,var(--sims-blue));color:#fff}
+.wmt-lib-stage-msg{position:absolute;top:56px;left:50%;transform:translateX(-50%);z-index:7;max-width:80%;padding:6px 12px;border-radius:14px;font:800 12px/16px var(--sims-font);color:var(--sims-text);background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.3);text-align:center}
+@media (orientation:landscape){.wmt-lib-stage:fullscreen .wmt-lib-drawer:not(.wmt-lib-drawer-reduced){left:auto;width:min(470px,70%)}.wmt-lib-stage:fullscreen .wmt-lib-thumbs{grid-template-rows:58px;grid-auto-columns:56px}.wmt-lib-stage:fullscreen .wmt-lib-cats{display:grid;grid-template-columns:repeat(2,30px);align-content:start;gap:3px}.wmt-lib-stage:fullscreen .wmt-lib-cat{width:30px;height:30px;min-width:30px;min-height:30px}}
 `;
 
 const REFUSALS = {
@@ -552,8 +593,6 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const startMove = (): void => {
     if (!selectedId) return;
-    const item = layout.find((p) => p.id === selectedId);
-    if (item?.kind === 'stored') return refuse('Appui long pour la déplacer.');
     startPlacementFor({ type: 'move', id: selectedId });
   };
   const removeSelected = async (): Promise<void> => {
@@ -883,11 +922,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           />
         )}
         {!editing && (
-          <button type="button" data-action={outside ? 'inside' : 'outside'} aria-label={outside ? 'Rentrer' : 'Sortir'} title={outside ? 'Rentrer' : 'Sortir'} onClick={outside ? goInside : goOutside} disabled={outsidePhase === 'leaving' || outsidePhase === 'returning'} style={DOOR_BUTTON}>
+          <button type="button" data-action={outside ? 'inside' : 'outside'} aria-label={outside ? 'Rentrer' : 'Sortir'} title={outside ? 'Rentrer' : 'Sortir'} onClick={outside ? goInside : goOutside} disabled={outsidePhase === 'leaving' || outsidePhase === 'returning'} className="wmt-lib-fab" style={{ left: 8 }}>
             <Icon paths={outside ? ICONS.house : ICONS.door} />
           </button>
         )}
-        {stage.active && <FullscreenButton active onClick={stage.toggle} right={8} />}
+        {stage.active && (
+          <button type="button" className="wmt-lib-fab" style={{ right: 8 }} aria-label="Quitter le plein écran" title="Quitter le plein écran" onClick={stage.toggle}>
+            <Icon paths={ICONS.fullscreen} />
+          </button>
+        )}
         {stage.active && (
           <div className="wmt-lib-switch" data-mode-switch role="group" aria-label="Mode">
             <button type="button" data-action="visit" aria-pressed={!editing} aria-label="Visiter" title="Visiter" onClick={() => setMode2('visit')}><Icon paths={ICONS.eye} /></button>
@@ -899,18 +942,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             Adapter à l’écran
           </button>
         )}
-        {stage.active && message && <div aria-live="polite" style={STAGE_MESSAGE}>{message}</div>}
+        {stage.active && message && <div aria-live="polite" className="wmt-lib-stage-msg">{message}</div>}
       </div>
     </div>
   );
 }
 
-// Bouton Sortir/Rentrer, posé en haut à gauche de la scène.
-const DOOR_BUTTON = { position: 'absolute', top: 8, left: 8, width: 36, height: 36, padding: 0, border: 0, borderRadius: 18, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', display: 'grid', placeItems: 'center', zIndex: 2 } as const;
-
 // Bouton et message posés sur la pièce en plein écran, à gauche du bouton de sortie.
 const FIT_BUTTON = { position: 'absolute', top: 4, right: 148, height: 32, padding: '0 12px', border: 0, borderRadius: 16, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/20px system-ui,sans-serif' } as const;
-const STAGE_MESSAGE = { position: 'absolute', top: 44, right: 8, maxWidth: '60vw', padding: '6px 10px', borderRadius: 8, background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/18px system-ui,sans-serif' } as const;
 
 type ScreenSize = { width: number; height: number };
 

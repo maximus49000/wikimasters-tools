@@ -76,11 +76,14 @@ export function BuildDrawer(props: Props): ReactElement {
   return (
     <div ref={box} className="wmt-lib-drawer" data-drawer data-reduced="false" hidden={props.hidden}>
       <div className="wmt-lib-drawer-tabs" role="tablist" aria-label="Construction">
-        {tabs.map((t) => (
-          <button key={t.id} type="button" role="tab" className="wmt-lib-btn" aria-label={t.label} title={t.label} aria-selected={tab === t.id} data-drawer-tab={t.id} onClick={() => onState({ ...state, tab: t.id })}>
-            <Icon paths={t.icon} />
-          </button>
-        ))}
+        <span className="wmt-lib-tabs-pill">
+          {tabs.map((t) => (
+            <button key={t.id} type="button" role="tab" className="wmt-lib-btn" aria-label={t.label} title={t.label} aria-selected={tab === t.id} data-drawer-tab={t.id} onClick={() => onState({ ...state, tab: t.id })}>
+              <Icon paths={t.icon} />
+              <span className="wmt-lib-tab-label">{t.label}</span>
+            </button>
+          ))}
+        </span>
         <span className="wmt-lib-sep" />
         <Btn label="Réduire le tiroir" data={{ action: 'drawer-reduce' }} onClick={() => onState({ ...state, reduced: true })}>
           <Icon paths={ICONS.chevronDown} />
@@ -88,31 +91,37 @@ export function BuildDrawer(props: Props): ReactElement {
       </div>
 
       <div className="wmt-lib-drawer-panel" data-drawer-panel="furniture" hidden={tab !== 'furniture'}>
-        <div className="wmt-lib-chips" role="group" aria-label="Catégories de meubles">
-          {tree.map((c) => (
-            <Btn key={c.id} className="wmt-lib-chip" label={c.label} pressed={node.id === c.id} data={{ category: c.id }} onClick={() => onState({ ...state, category: c.id, sub: null })}>
-              <Icon paths={CATEGORY_ICON[c.id]} />
-              <span>{c.label}</span>
-            </Btn>
-          ))}
-        </div>
-        {node.subcategories.length > 0 && (
-          <div className="wmt-lib-chips wmt-lib-subchips" role="group" aria-label={`Sous-catégories : ${node.label}`}>
-            {node.subcategories.map((s) => (
-              <Btn key={s.id} className="wmt-lib-chip" label={s.label} pressed={sub?.id === s.id} data={{ subcategory: s.id }} onClick={() => onState({ ...state, sub: s.id })}>
-                <Icon paths={SUB_ICON[s.id]} />
-                <span>{s.label}</span>
+        <div className="wmt-lib-drawer-body">
+          {/* Catégories en colonne à gauche, comme le panneau de la maison du mode Achat des Sims. */}
+          <div className="wmt-lib-cats" role="group" aria-label="Catégories de meubles">
+            {tree.map((c) => (
+              <Btn key={c.id} className="wmt-lib-cat" label={c.label} pressed={node.id === c.id} data={{ category: c.id }} onClick={() => onState({ ...state, category: c.id, sub: null })}>
+                <Icon paths={CATEGORY_ICON[c.id]} />
               </Btn>
             ))}
           </div>
-        )}
-        <div className="wmt-lib-thumbs">
-          {kinds.map((kind) => (
-            <Btn key={kind} className="wmt-lib-thumb" label={`Poser : ${labelOf(kind)}`} data={{ kind }} onClick={() => props.onKind(kind)}>
-              <FurnitureThumb kind={kind} style={style} />
-              <span className="wmt-lib-thumb-name">{labelOf(kind)}</span>
-            </Btn>
-          ))}
+          <div className="wmt-lib-drawer-right">
+            {node.subcategories.length > 0 ? (
+              <div className="wmt-lib-chips wmt-lib-subchips" role="group" aria-label={`Sous-catégories : ${node.label}`}>
+                {node.subcategories.map((s) => (
+                  <Btn key={s.id} className="wmt-lib-chip" label={s.label} pressed={sub?.id === s.id} data={{ subcategory: s.id }} onClick={() => onState({ ...state, sub: s.id })}>
+                    <Icon paths={SUB_ICON[s.id]} />
+                    <span>{s.label}</span>
+                  </Btn>
+                ))}
+              </div>
+            ) : (
+              <div className="wmt-lib-cat-title">{node.label}</div>
+            )}
+            <div className="wmt-lib-thumbs">
+              {kinds.map((kind) => (
+                <Btn key={kind} className="wmt-lib-thumb" label={`Poser : ${labelOf(kind)}`} data={{ kind }} onClick={() => props.onKind(kind)}>
+                  <FurnitureThumb kind={kind} style={style} />
+                  <span className="wmt-lib-thumb-name">{labelOf(kind)}</span>
+                </Btn>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
