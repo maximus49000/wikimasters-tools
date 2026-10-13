@@ -31,4 +31,13 @@ describe('FurnitureThumb', () => {
     const steam = renderToStaticMarkup(<FurnitureThumb kind="desk" style="steampunk" />);
     expect(steam).not.toBe(plain);
   });
+
+  it.each([['computer', 'monitor'], ['small-plant', 'small-plant'], ['small-lamp', 'small-lamp']] as const)('%s : la vignette est le modèle 3D de l’objet', (kind, shape) => {
+    const html = renderToStaticMarkup(<FurnitureThumb kind={kind} style="scandinave" />);
+    expect(html).toContain(`data-item3d="${shape}"`);
+  });
+
+  it('l’ordinateur d’une pièce Steampunk est la machine analytique', () => {
+    expect(renderToStaticMarkup(<FurnitureThumb kind="computer" style="steampunk" />)).not.toBe(renderToStaticMarkup(<FurnitureThumb kind="computer" style="scandinave" />));
+  });
 });

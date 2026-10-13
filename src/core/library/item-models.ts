@@ -91,7 +91,7 @@ export function itemFootprintCm(shape: ShelfShape, display: ItemDisplay): number
   return display === 'cover' ? m.w : m.d;
 }
 
-// Couleur du dos d'un livre, dérivée du slug (donc stable) : même teinte que les dos dessinés à plat (hsl(somme % 360, 35 %, 45 %)), en #RRGGBB.
+// Couleur du dos d'un livre, dérivée du slug (donc stable) : teinte hsl(somme % 360, 35 %, 45 %), en #RRGGBB.
 export function bookColor(slug: string): string {
   let sum = 0;
   for (let i = 0; i < slug.length; i++) sum += slug.charCodeAt(i);

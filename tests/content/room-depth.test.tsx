@@ -86,10 +86,11 @@ describe('RoomView : niveaux de profondeur', () => {
   it('la copie d’une étagère sélectionnée emporte ses objets, dessinés après elle, sans gestes', () => {
     const svg = mount({ editing: true, selectedId: 'sh', layout: [...room.layout, { id: 'cd', kind: 'stored', shape: 'cd', shelfId: 'sh', level: 0, order: 0, slug: 'Paris' }] });
     const copy = svg.querySelector('[data-selected-copy]')!;
-    // Enfants directs : le dessin de l'étagère d'abord, puis ses objets (plante posée, carte rangée).
+    // Enfants directs : le dessin de l'étagère d'abord, puis ses objets (plante posée, cartes rangées dans leur groupe découpé).
     const children = [...copy.children];
-    const card = copy.querySelector(':scope > [data-copy-of="cd"]')!;
-    expect(card).not.toBeNull();
+    expect(copy.querySelector('[data-shelf-items] > [data-copy-of="cd"]')).not.toBeNull();
+    const card = children.find((el) => el.querySelector('[data-shelf-items]'))!;
+    expect(card).toBeDefined();
     expect(children[0]!.hasAttribute('data-copy-of')).toBe(false);
     expect(children.indexOf(copy.querySelector(':scope > [data-copy-of="pl"]')!)).toBeGreaterThan(0);
     expect(children.indexOf(card)).toBeGreaterThan(0);

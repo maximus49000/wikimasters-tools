@@ -556,13 +556,15 @@ export function dropOnShelf(layout: Layout, shelfId: string, level: ShelfLevel, 
   const self = item.id === undefined ? undefined : layout.find((p) => p.id === item.id);
   const already = self?.kind === 'stored' && self.shelfId === shelfId && self.level === level;
   if (!already && !fits(others, item)) return { ok: false, reason: 'shelf-full', message: SHELF_FULL_MESSAGE };
+  // Les centres sont lus aux places qu'on voit : un objet déjà sur cette tablette y garde la sienne pendant qu'on le vise
+  // (sinon le simple fait de le saisir le ferait passer après un voisin plus étroit).
   let x0 = 0;
   let order = 0;
-  for (const p of others) {
+  for (const p of already ? boardItems(layout, shelfId, level) : others) {
     const w = storedWidthCm(p);
-    if (x0 + w / 2 > xCm) break;
+    if (p.id !== item.id && x0 + w / 2 > xCm) break;
     x0 += w + SHELF_GAP_CM;
-    order++;
+    if (p.id !== item.id) order++;
   }
   return { ok: true, order };
 }

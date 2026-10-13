@@ -10,7 +10,7 @@ import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/libr
 import { RoomView } from '../../src/content/RoomView';
 import type { ImageService } from '../../src/core/images/image-service';
 import { setImageService } from '../../src/content/image-registry';
-import type { Layout, Room } from '../../src/core/library/library-types';
+import type { Layout, Placed, Room } from '../../src/core/library/library-types';
 import { shelfBoardsOf, shelfLayoutOf } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -71,7 +71,10 @@ describe('étagère soulevée', () => {
     });
     const card = container.querySelector('[data-card="Daft_Punk"]')!;
     expect(card.getAttribute('opacity')).toBe('0.3');
-    expect(card.parentElement!.querySelector('g[transform*="scale(1.08)"]')).not.toBeNull();
+    // Sa copie suit le doigt avec celle de l'étagère, hors de la découpe de l'étagère.
+    const copies = [...container.querySelectorAll('g[data-lifted-copy]')];
+    expect(copies).toHaveLength(2);
+    for (const copy of copies) expect(copy.closest('g[clip-path]')).toBeNull();
     // un objet mural, lui, ne bouge pas
     expect(container.querySelector('[data-card="Paris"]')!.getAttribute('opacity')).toBe('1');
   });
@@ -391,5 +394,40 @@ describe('LibraryPanel : cartes', () => {
     await settle();
     await placeOk();
     expect(layoutNow().find((p) => p.id === 'c1')).toMatchObject({ kind: 'computer', deskId: 'd2', slug: 'Paris' });
+  });
+
+  it('couverture ↔ tranche dans la bulle d’une carte rangée : enregistré seulement au ✓', async () => {
+    await seed(shelfLayout);
+    await click('[data-action="edit"]');
+    await click('[data-card="Daft_Punk"]');
+    const cover = q('[data-action="display-cover"]')!;
+    expect(cover.getAttribute('aria-label')).toBe('Présenter de face');
+    expect(cover.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-action="display-spine"]')!.getAttribute('title')).toBe('Présenter sur la tranche');
+    await click('[data-action="display-spine"]');
+    // Le placement s'ouvre, objet sur la tranche dans le brouillon ; rien n'est enregistré.
+    expect(q('[data-placement-bar]')).not.toBeNull();
+    expect(q('[data-placement-bar] [data-action="display-spine"]')!.getAttribute('aria-pressed')).toBe('true');
+    expect(layoutNow().find((p) => p.id === 'f2')).not.toHaveProperty('display');
+    await click('[data-action="place-confirm"]');
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ display: 'spine', level: 0, order: 0 });
+  });
+
+  it('présenter de face un objet qui ne tient plus : refusé avec « Plus de place sur cette tablette. »', async () => {
+    // 4 CD de face + un livre sur la tranche : de face, le livre ne tient plus (59 + 1 + 15 > 74).
+    await seed([
+      { id: 'f1', kind: 'shelf', col: 0, row: 7 },
+      ...[0, 1, 2, 3].map((order): Placed => ({ id: 'c' + order, kind: 'stored', shape: 'cd', shelfId: 'f1', level: 0, order, slug: 'cd' + order })),
+      { id: 'b', kind: 'stored', shape: 'book', shelfId: 'f1', level: 0, order: 4, slug: 'Paris' },
+    ]);
+    await click('[data-action="edit"]');
+    await click('[data-card="Paris"]');
+    await click('[data-action="display-cover"]');
+    expect(q('[role="status"]')?.textContent).toContain('Plus de place sur cette tablette.');
+    await click('[data-action="place-confirm"]');
+    expect(layoutNow().find((p) => p.id === 'b')).not.toHaveProperty('display');
+    // Retour sur la tranche dans la barre : de nouveau valide.
+    await click('[data-placement-bar] [data-action="display-spine"]');
+    expect(q('[role="status"]')?.textContent).not.toContain('Plus de place');
   });
 });

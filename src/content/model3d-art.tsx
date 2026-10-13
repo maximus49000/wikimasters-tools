@@ -1,8 +1,9 @@
 // Dessin provisoire Opus — reprise Fable prévue.
 import { memo, useId, type ReactElement } from 'react';
-import type { Angle } from '../core/library/footprint';
+import { hostNativePx } from '../core/library/carried-items';
+import { drawSize, type Angle } from '../core/library/footprint';
 import { FURNITURE_MODELS, STEAMPUNK_TRIM } from '../core/library/furniture-models';
-import { CELL_H, CELL_W, openingOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
+import { CELL_H, CELL_W, openingOf, projectOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
 import { itemModel, itemPieces, type ItemDisplay, type ItemPlacement, type ItemShape } from '../core/library/item-models';
 import type { StandingKind } from '../core/library/library-types';
 import type { PxRect } from '../core/library/room-grid';
@@ -35,7 +36,8 @@ type Drawn = Common & (
 type Halo = { cx: number; cy: number; rx: number; ry: number; item?: string };
 // `opening` : ouverture projetée du meuble porteur (points) qui découpe les objets rangés ; null = ouverture invisible (profil, dos) : ils sont cachés ;
 // absente = objet dessiné seul, sans découpe.
-type Geometry = { shapes: Drawn[]; cols: number; rows: number; halos: Halo[]; opening?: string | null };
+// `origin` (objet seul) : px du coin bas avant gauche de sa boîte, pour le poser par translation dans le repère d'un porteur.
+type Geometry = { shapes: Drawn[]; cols: number; rows: number; halos: Halo[]; opening?: string | null; origin?: [number, number] };
 
 const r4 = (v: number): number => Math.round(v * 1e4) / 1e4;
 // Halo d'une lampe autour de son abat-jour (formes repérées par `pick`), quel que soit l'angle.
@@ -80,12 +82,17 @@ function geometryFrom(model: Model, angle: Angle, lampHalo: boolean): Geometry {
 }
 
 // Géométrie par (meuble, angle, garnitures Steampunk, objets posés), calculée une fois : la pièce se redessine à chaque mouvement du doigt.
-// Le cache est borné (les rangements changent au fil de l'aménagement) : au-delà, les plus anciennes entrées partent.
+// Le cache est borné (les rangements changent au fil de l'aménagement) : au-delà, les entrées les moins récemment utilisées partent
+// (une entrée relue repasse en fin de file).
 const CACHE_MAX = 400;
 const geometryCache = new Map<string, Geometry>();
 function cached(key: string, make: () => Geometry): Geometry {
   const hit = geometryCache.get(key);
-  if (hit) return hit;
+  if (hit) {
+    geometryCache.delete(key);
+    geometryCache.set(key, hit);
+    return hit;
+  }
   const g = make();
   if (geometryCache.size >= CACHE_MAX) geometryCache.delete(geometryCache.keys().next().value!);
   geometryCache.set(key, g);
@@ -151,9 +158,10 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
   }
   // Couverture : image de la carte (rognée au cadre), sinon couverture de remplacement titrée. Boîtier cristal : marge du boîtier, charnière et reflet ;
   // DVD/jeu : bord du boîtier ; jeu : bandeau rouge en haut ; livre : marge du plat.
-  const inset = shape === 'cd' ? { l: w * 0.09, t: h * 0.04 } : shape === 'book' ? { l: w * 0.04, t: h * 0.03 } : { l: w * 0.03, t: h * 0.02 };
+  // Marges de l'image : à gauche (charnière, dos), à droite, en haut et en bas (bord du boîtier ou du plat).
+  const inset = shape === 'cd' ? { l: w * 0.09, r: h * 0.04, t: h * 0.04 } : shape === 'book' ? { l: w * 0.04, r: h * 0.03, t: h * 0.03 } : { l: w * 0.03, r: h * 0.02, t: h * 0.02 };
   const band = shape === 'game' ? h * 0.09 : 0;
-  const [ix, iy, iw, ih] = [inset.l, inset.t + band, w - inset.l - inset.t, h - 2 * inset.t - band];
+  const [ix, iy, iw, ih] = [inset.l, inset.t + band, w - inset.l - inset.r, h - 2 * inset.t - band];
   const fs = Math.min(iw * 0.16, ih * 0.14);
   return (
     <>
@@ -246,36 +254,58 @@ export const Model3DArt = memo(Model3DArtImpl, (a, b) => a.kind === b.kind && a.
   && a.steampunk === b.steampunk && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
   && a.content === b.content && itemsKey(a.items) === itemsKey(b.items));
 
-type ItemProps = { shape: ItemShape; display?: ItemDisplay; angle: Angle; rect: PxRect; palette: Palette; content?: ItemContent; color?: string; steampunk?: boolean };
-
-// Objet seul (vignette, objet posé à part), dessiné depuis son modèle 3D dans son rectangle ; mêmes décors que sur un meuble.
-export function Item3DArt({ shape, display = 'cover', angle, rect, palette, content, color, steampunk = false }: ItemProps): ReactElement {
-  const g = cached(`item:${shape}:${display}:${angle}:${steampunk ? 1 : 0}:${color ?? ''}`, () => {
+// Géométrie d'un objet seul, dans son propre repère, par (forme, présentation, angle, Steampunk, couleur) : la même pour tous les objets
+// de même forme, où qu'ils soient posés (la projection est affine : poser l'objet revient à translater son dessin).
+function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, steampunk: boolean, color?: string): Geometry {
+  return cached(`item:${shape}:${display}:${angle}:${steampunk ? 1 : 0}:${color ?? ''}`, () => {
     const m = itemModel(shape, steampunk);
     const pieces = itemPieces({ key: 'item', shape, display, x: 0, y: 0, z: 0, color }, steampunk);
     // Sur la tranche, la boîte tournée prend la place de la boîte de face (largeur et profondeur échangées).
     const turned = display === 'spine' && shape !== 'monitor' && shape !== 'small-plant' && shape !== 'small-lamp';
-    return geometryFrom({ ...m, ...(turned && { w: m.d, d: m.w }), pieces }, angle, false);
+    const model: Model = { ...m, ...(turned && { w: m.d, d: m.w }), pieces };
+    return { ...geometryFrom(model, angle, false), origin: projectOf(model, angle, [0, 0, 0]) };
   });
+}
+
+// Taille dessinée (cases) d'un objet seul de face : cadre de sa vignette.
+export function itemCells(shape: ItemShape, steampunk = false): { w: number; h: number } {
+  const g = itemGeometry(shape, 'cover', 0, steampunk);
+  return { w: g.cols, h: g.rows };
+}
+
+type ItemProps = { shape: ItemShape; display?: ItemDisplay; angle: Angle; rect: PxRect; palette: Palette; content?: ItemContent; color?: string; steampunk?: boolean };
+
+// Objet seul (vignette), dessiné depuis son modèle 3D dans son rectangle ; mêmes décors que sur un meuble.
+export function Item3DArt({ shape, display = 'cover', angle, rect, palette, content, color, steampunk = false }: ItemProps): ReactElement {
+  const g = itemGeometry(shape, display, angle, steampunk, color);
   const sx = rect.w / (g.cols * CELL_W);
   const sy = rect.h / (g.rows * CELL_H);
   return (
-    <g data-item3d="" transform={`translate(${r1(rect.x)} ${r1(rect.y)}) scale(${sx} ${sy})`}>
+    <g data-item3d={shape} transform={`translate(${r1(rect.x)} ${r1(rect.y)}) scale(${sx} ${sy})`}>
       <Shapes g={g} palette={palette} lit content={content ? { item: content } : undefined} />
     </g>
   );
 }
 
-// Écran vu de dos (gris, sans image) ou de profil (tranche fine).
-export function ComputerBackArt({ rect, side }: { rect: PxRect; side: boolean }): ReactElement {
-  const w = side ? 6 : rect.w;
-  const x = rect.x + (rect.w - w) / 2;
-  const screenH = rect.h - 12;
+type CarriedProps = { host: 'desk' | 'shelf'; angle: Angle; rect: PxRect; placement: ItemPlacement; palette: Palette; content?: ItemContent; steampunk?: boolean };
+
+// Objet porté (carte rangée, écran, petit objet) dessiné à sa place dans le repère de son porteur tourné (`rect` : rectangle du porteur) :
+// même angle, même échelle, même ombrage que le meuble ; sa géométrie est celle de l'objet seul, translatée.
+function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content, steampunk = false }: CarriedProps): ReactElement {
+  const g = itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk, pl.color);
+  const { w, h } = drawSize(host, angle);
+  const [hx, hy] = hostNativePx(host, angle, [pl.x, pl.y, pl.z]);
+  const [ox, oy] = g.origin ?? [0, 0];
   return (
-    <g data-computer-back="">
-      <rect x={x} y={rect.y} width={w} height={screenH} rx={3} fill="#3A3A40" stroke="#1D1D22" strokeWidth={1} />
-      <rect x={rect.x + rect.w / 2 - 4} y={rect.y + screenH} width={8} height={rect.h - screenH - 4} fill="#555555" />
-      <rect x={rect.x + rect.w / 2 - (side ? 6 : 17)} y={rect.y + rect.h - 4} width={side ? 12 : 34} height={4} rx={2} fill="#555555" />
+    <g data-item3d={pl.shape} {...(pl.shape === 'monitor' && steampunk && { 'data-steampunk-art': 'analytical-engine' })}
+      transform={`translate(${r1(rect.x)} ${r1(rect.y)}) scale(${r4(rect.w / (w * CELL_W))} ${r4(rect.h / (h * CELL_H))}) translate(${r1(hx - ox)} ${r1(hy - oy)})`}>
+      <Shapes g={g} palette={palette} lit content={content ? { item: content } : undefined} />
     </g>
   );
 }
+
+// Redessiné seulement si l'objet, sa place, son porteur ou son contenu changent (comparés par valeur : un animal qui bouge ne refait rien).
+export const CarriedItem3D = memo(CarriedItem3DImpl, (a, b) => a.host === b.host && a.angle === b.angle && a.palette === b.palette && a.steampunk === b.steampunk
+  && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
+  && itemsKey([a.placement]) === itemsKey([b.placement])
+  && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit);

@@ -2,7 +2,9 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { Item3DArt, Model3DArt } from '../../src/content/model3d-art';
+import { CarriedItem3D, Item3DArt, Model3DArt } from '../../src/content/model3d-art';
+import { computerPlacement, placementRectPx } from '../../src/core/library/carried-items';
+import { drawSize } from '../../src/core/library/footprint';
 import { FURNITURE_MODELS } from '../../src/core/library/furniture-models';
 import { openingOf } from '../../src/core/library/furniture-render3d';
 import { paletteOf } from '../../src/core/library/styles';
@@ -88,5 +90,40 @@ describe('Model3DArt garni', () => {
     const side = draw(<Model3DArt kind="shelf" angle={2} rect={{ x: 0, y: 0, w: 60, h: 270 }} palette={pal} items={items} content={content} />);
     expect(side.querySelector('[data-model3d] image')).toBeNull();
     expect(side.querySelector('[data-model3d] text')).toBeNull();
+  });
+});
+
+describe('CarriedItem3D', () => {
+  // Points de tous les polygones de l'objet, ramenés en px de la pièce (translate · scale · translate du groupe).
+  function screenBox(c: HTMLElement): { x0: number; x1: number; y0: number; y1: number } {
+    const g = c.querySelector('[data-item3d]')!;
+    const [a, b, sx, sy, e, f] = g.getAttribute('transform')!.match(/-?[\d.]+/g)!.map(Number) as [number, number, number, number, number, number];
+    const pts = [...g.querySelectorAll('polygon')].filter((p) => !p.closest('[transform^="matrix("]')).flatMap((p) => p.getAttribute('points')!.split(' ').map((q) => q.split(',').map(Number) as [number, number]));
+    const xs = pts.map(([x]) => a + sx * (x + e));
+    const ys = pts.map(([, y]) => b + sy * (y + f));
+    return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  }
+  it('un objet rangé est dessiné à sa place dans le repère de l’étagère tournée (même encombrement que sa pose 3D)', () => {
+    for (const angle of [0, 1, 7] as const) {
+      const rect = { x: 60, y: 30, w: drawSize('shelf', angle).w * 30, h: drawSize('shelf', angle).h * (510 / 18) };
+      for (const display of ['cover', 'spine'] as const) {
+        const pl = { key: 'a', shape: 'cd' as const, display, x: 40, y: 61, z: display === 'cover' ? 26.8 : 2 };
+        const c = draw(<CarriedItem3D host="shelf" angle={angle} rect={rect} placement={pl} palette={pal} content={{ url: URL, title: 'Kiki' }} />);
+        const box = screenBox(c);
+        const want = placementRectPx('shelf', angle, rect, pl);
+        expect(box.x0, `${angle} ${display}`).toBeCloseTo(want.x, 0);
+        expect(box.x1).toBeCloseTo(want.x + want.w, 0);
+        expect(box.y0).toBeCloseTo(want.y, 0);
+        expect(box.y1).toBeCloseTo(want.y + want.h, 0);
+      }
+    }
+  });
+  it('l’écran d’une pièce Steampunk est la machine analytique ; de face, il affiche l’image de la carte', () => {
+    const rect = { x: 0, y: 300, w: drawSize('desk', 0).w * 30, h: drawSize('desk', 0).h * (510 / 18) };
+    const steam = draw(<CarriedItem3D host="desk" angle={0} rect={rect} placement={computerPlacement('pc')} palette={pal} steampunk content={{ url: URL }} />);
+    expect(steam.querySelector('[data-steampunk-art="analytical-engine"] image')!.getAttribute('href')).toBe(URL);
+    const plain = draw(<CarriedItem3D host="desk" angle={0} rect={rect} placement={computerPlacement('pc')} palette={pal} content={{ url: URL }} />);
+    expect(plain.querySelector('[data-steampunk-art]')).toBeNull();
+    expect(plain.querySelector('[data-item3d="monitor"] image')).not.toBeNull();
   });
 });

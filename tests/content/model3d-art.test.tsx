@@ -2,7 +2,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { ComputerBackArt, Model3DArt } from '../../src/content/model3d-art';
+import { Model3DArt } from '../../src/content/model3d-art';
 import { paletteOf } from '../../src/core/library/styles';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -51,9 +51,5 @@ describe('Model3DArt', () => {
     expect(on.querySelector('[data-lamp-halo]')!.getAttribute('pointer-events')).toBe('none');
     expect(draw(<Model3DArt kind="lamp" angle={2} rect={rect} palette={paletteOf('scandinave')} lit={false} />).querySelector('[data-lamp-halo]')).toBeNull();
   });
-  it('écran vu de dos : gris, sans image', () => {
-    const c = draw(<ComputerBackArt rect={{ x: 0, y: 0, w: 84, h: 56 }} side={false} />);
-    expect(c.querySelector('[data-computer-back]')).not.toBeNull();
-    expect(c.querySelector('image')).toBeNull();
-  });
+
 });

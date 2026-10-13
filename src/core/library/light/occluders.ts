@@ -1,7 +1,9 @@
 import { drawSize, localPointAt, occludersAt, perchAt, type Angle } from '../footprint';
 import { FURNITURE_MODELS } from '../furniture-models';
-import { CELL_H, CELL_W, DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y } from '../furniture-render3d';
-import { SURFACE_SLOTS, angleOf, computerRectOn, isLamp, isLit, isStanding, pxRect, rectOf, surfaceSlotRectOn } from '../room-grid';
+import { CELL_H, CELL_W, DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, occluderBoxesOf, openingOf, pieceBounds, type Piece } from '../furniture-render3d';
+import { angleOf, isLamp, isLit, isStanding, pxRect, rectOf } from '../room-grid';
+import { computerPlacement, placementBounds, smallPlacement, storedPlacementsOf } from '../carried-items';
+import { itemPieces, type ItemPlacement } from '../item-models';
 import type { PxRect } from '../room-grid';
 import type { Layout, Placed, StandingKind } from '../library-types';
 import { ROOM_DEPTH_FACTOR } from './beam';
@@ -11,13 +13,6 @@ import { ROOM_DEPTH_FACTOR } from './beam';
 export type Geom = { wallH: number; floorH: number };
 export type Box = { owner: string; x0: number; x1: number; d0: number; d1: number; z0: number; z1: number };
 export type LampSource = { id: string; x: number; d: number; z: number; box: string };
-
-const SMALL_BOX_H = 38;
-const SMALL_HALF_W = 10;
-const SMALL_LAMP_Z = 30;
-// Demi-profondeur (cm) des boîtes de l'écran et des petits objets posés sur un dessus.
-const COMPUTER_HALF_D = 10;
-const SMALL_HALF_D = 8;
 
 export const kOf = (g: Geom): number => g.floorH / (g.wallH * ROOM_DEPTH_FACTOR);
 
@@ -45,12 +40,6 @@ function hostFrame(layout: Layout, id: string, g: Geom): HostFrame | null {
   const f = frameOf(layout.find((p) => p.id === id), g);
   return f && (f.kind === 'desk' || f.kind === 'shelf') ? (f as HostFrame) : null;
 }
-// Profondeur monde du point du dessus du porteur à la fraction u de sa largeur, à mi-profondeur (même point que topPoint).
-function topDepth(f: Frame, u: number): number {
-  const m = FURNITURE_MODELS[f.kind];
-  return wd(f, localPointAt(f.kind, f.angle, [u * m.w, m.h, m.d / 2]).z);
-}
-const topZ = (f: Frame): number => wz(f, FURNITURE_MODELS[f.kind].h);
 
 // Dessus praticable d'un meuble (assise, plateau, haut de l'étagère) dans le monde : profondeur et hauteur de son centre ; null sinon.
 export function perchWorldOf(layout: Layout, id: string, g: Geom): { d: number; z: number } | null {
@@ -59,10 +48,22 @@ export function perchWorldOf(layout: Layout, id: string, g: Geom): { d: number; 
   return f && p ? { d: wd(f, p.depth), z: wz(f, p.height) } : null;
 }
 
-// Centre en x et profondeur du petit objet sur son emplacement (même place que son dessin).
-function smallAt(p: Extract<Placed, { kind: 'small' }>, host: HostFrame): { x: number; d: number } {
-  const s = surfaceSlotRectOn(host.r, host.kind, host.angle, p.slot);
-  return { x: s.x + s.w / 2, d: topDepth(host, (p.slot + 0.5) / SURFACE_SLOTS[host.kind]) };
+// Boîtes (monde) d'un objet posé dans le repère de son porteur : celles de ses pièces, tournées avec le porteur (comme un meuble).
+function carriedBoxes(owner: string, host: HostFrame, pieces: Piece[], out: Box[]): void {
+  for (const b of occluderBoxesOf({ ...FURNITURE_MODELS[host.kind], pieces }, host.angle)) {
+    out.push({ owner, x0: wx(host, b.x0), x1: wx(host, b.x1), d0: wd(host, b.d1), d1: wd(host, b.d0), z0: wz(host, b.z0), z1: wz(host, b.z1) });
+  }
+}
+
+// Pose 3D d'un écran ou d'un petit objet sur le dessus de son porteur.
+function topPlacementOf(p: Placed, layout: Layout, g: Geom): { host: HostFrame; pl: ItemPlacement } | null {
+  if (p.kind === 'computer') {
+    const host = hostFrame(layout, p.deskId, g);
+    return host && host.kind === 'desk' ? { host, pl: computerPlacement(p.id) } : null;
+  }
+  if (p.kind !== 'small') return null;
+  const host = hostFrame(layout, p.hostId, g);
+  return host ? { host, pl: smallPlacement(p.id, p.item, host.kind, p.slot) } : null;
 }
 
 export function boxesOf(layout: Layout, geom: Geom): Box[] {
@@ -75,22 +76,26 @@ export function boxesOf(layout: Layout, geom: Geom): Box[] {
       for (const b of occludersAt(f.kind, f.angle)) {
         out.push({ owner: p.id, x0: wx(f, b.x0), x1: wx(f, b.x1), d0: wd(f, b.d1), d1: wd(f, b.d0), z0: wz(f, b.z0), z1: wz(f, b.z1) });
       }
-    } else if (p.kind === 'computer') {
-      const host = hostFrame(layout, p.deskId, geom);
-      if (!host || host.kind !== 'desk') continue;
-      const c = computerRectOn(host.r, host.angle);
-      const d = topDepth(host, 0.5);
-      const hd = (COMPUTER_HALF_D * DEPTH_PX_PER_CM * host.sy) / host.k;
-      const z0 = topZ(host);
-      // Le pied de l'écran touche le dessus, l'écran en dépasse de c.h − 2 px (cf. computerRectOn).
-      out.push({ owner: p.id, x0: c.x, x1: c.x + c.w, d0: d - hd, d1: d + hd, z0, z1: z0 + c.h - 2 });
-    } else if (p.kind === 'small') {
-      const host = hostFrame(layout, p.hostId, geom);
-      if (!host) continue;
-      const { x, d } = smallAt(p, host);
-      const hd = (SMALL_HALF_D * DEPTH_PX_PER_CM * host.sy) / host.k;
-      const z0 = topZ(host);
-      out.push({ owner: p.id, x0: x - SMALL_HALF_W, x1: x + SMALL_HALF_W, d0: d - hd, d1: d + hd, z0, z1: z0 + SMALL_BOX_H });
+      // Objets rangés : une boîte par tablette garnie (du premier au dernier objet, à la hauteur du plus haut), pas une par objet :
+      // le calque de lumière reste léger avec une étagère pleine. Ouverture cachée (profil, dos) : les montants pleins suffisent.
+      if (p.kind === 'shelf' && openingOf(FURNITURE_MODELS.shelf, f.angle)) {
+        const host = f as HostFrame;
+        const boards = new Map<number, [number, number, number, number, number, number]>();
+        for (const [id, pl] of storedPlacementsOf(layout, p.id)) {
+          const item = layout.find((x) => x.id === id);
+          if (item?.kind !== 'stored') continue;
+          const b = placementBounds(pl);
+          const u = boards.get(item.level);
+          boards.set(item.level, u ? [Math.min(u[0], b[0]), Math.max(u[1], b[1]), Math.min(u[2], b[2]), Math.max(u[3], b[3]), Math.min(u[4], b[4]), Math.max(u[5], b[5])] : b);
+        }
+        for (const [level, [x0, x1, y0, y1, z0, z1]] of boards) {
+          carriedBoxes(`${p.id}#${level}`, host, [{ shape: 'box', x: x0, y: y0, z: z0, w: x1 - x0, h: y1 - y0, d: z1 - z0, fill: 'metal' }], out);
+        }
+      }
+    } else if (p.kind === 'computer' || p.kind === 'small') {
+      // Écran et petits objets : les boîtes de leurs pièces (modèle 3D posé sur le dessus, comme leur dessin).
+      const at = topPlacementOf(p, layout, geom);
+      if (at) carriedBoxes(p.id, at.host, itemPieces(at.pl), out);
     }
   }
   return out;
@@ -109,15 +114,17 @@ export function lampsOf(layout: Layout, geom: Geom): LampSource[] {
       const q = localPointAt(f.kind, f.angle, m.glow ?? [m.w / 2, m.h, m.d / 2]);
       out.push({ id: p.id, x: wx(f, q.x), d: wd(f, q.z), z: wz(f, q.y), box: p.id });
     } else if (p.kind === 'small') {
-      const host = hostFrame(layout, p.hostId, geom);
-      if (!host) continue;
-      const { x, d } = smallAt(p, host);
-      out.push({ id: p.id, x, d, z: topZ(host) + SMALL_LAMP_Z, box: p.id });
+      // Petite lampe : ampoule au centre de son abat-jour (pièce `glow` du modèle).
+      const at = topPlacementOf(p, layout, geom);
+      if (!at) continue;
+      const shade = itemPieces(at.pl).find((q) => q.tag?.startsWith('glow:'));
+      const [x0, x1, y0, y1, z0, z1] = shade ? pieceBounds(shade) : placementBounds(at.pl);
+      const q = localPointAt(at.host.kind, at.host.angle, [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2]);
+      out.push({ id: p.id, x: wx(at.host, q.x), d: wd(at.host, q.z), z: wz(at.host, q.y), box: p.id });
     }
   }
   return out;
 }
-
 // Signature des occulteurs et des lampes déjà calculés (la pièce les a sous la main : pas de second calcul).
 export function signatureOf(boxList: readonly Box[], lampList: readonly LampSource[]): string {
   const n = Math.round;

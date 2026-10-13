@@ -59,7 +59,7 @@ describe('meubles tournés', () => {
     expect(Number(dashed[0]!.getAttribute('width'))).toBeCloseTo(free[0]!.local.w, 1);
     expect(dashed[0]!.parentElement!.getAttribute('transform')).toBe(`matrix(${frame.m.join(' ')})`);
     const card = c.querySelector('[data-card="Daft_Punk"]')!;
-    expect(card.querySelector('g[transform]')!.getAttribute('transform')).toBe(`matrix(${box.m.join(' ')})`);
+    expect(card.querySelector('[data-item3d="cd"]')).not.toBeNull();
   });
   it('petits objets sur un porteur tourné : dessinés du fond vers l’avant (le plus haut à l’écran d’abord)', () => {
     const smalls = [0, 1, 2].map((slot) => ({ id: `o${slot}`, kind: 'small', item: 'plant', hostId: 's', slot }) as const);
@@ -82,10 +82,11 @@ describe('meubles tournés', () => {
     expect(mount([{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 1 }, stored]).querySelector('[data-card="Daft_Punk"]')).not.toBeNull();
     expect(mount([{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 2 }, stored]).querySelector('[data-card="Daft_Punk"]')).toBeNull();
   });
-  it('l’écran d’un bureau de dos n’est ni dessiné ni touchable', () => {
+  it('l’écran d’un bureau de dos montre son dos (modèle 3D sans image) ; sa carte n’est pas touchable', () => {
     const c = mount([{ id: 'd', kind: 'desk', col: 2, row: 11, angle: 4 }, { id: 'pc', kind: 'computer', deskId: 'd', slug: 'Paris' }]);
     expect(c.querySelector('[data-screen]')).toBeNull();
-    expect(c.querySelector('[data-computer-back]')).not.toBeNull();
+    expect(c.querySelector('[data-furniture="computer"] [data-item3d="monitor"]')).not.toBeNull();
+    expect(c.querySelector('[data-furniture="computer"] image')).toBeNull();
   });
   it('le fantôme montre ses cases au sol', () => {
     const c = mount([{ id: 'a', kind: 'sofa', col: 2, row: 14, angle: 1 }], {

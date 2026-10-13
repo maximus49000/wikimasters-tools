@@ -4,7 +4,10 @@ import type { Layout } from '../../../src/core/library/library-types';
 import { SURF, buildSurfaceMap } from '../../../src/core/library/light/surfaces';
 import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y } from '../../../src/core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
-import { COMPUTER_H, computerRectOn, pxRect, rectOf, surfaceSlotRectOn } from '../../../src/core/library/room-grid';
+import { pxRect, rectOf, surfaceSlotRectOn } from '../../../src/core/library/room-grid';
+import { computerPlacement, placementRectPx } from '../../../src/core/library/carried-items';
+import { ITEM_MODELS } from '../../../src/core/library/item-models';
+import { drawSize } from '../../../src/core/library/footprint';
 
 const geom = { wallH: 340, floorH: 170 };
 // Dessus du bureau (75 cm) en px de hauteur, et bord avant d'un meuble dont le rectangle commence en `row` (bas en row + rows).
@@ -66,28 +69,61 @@ describe('boxesOf', () => {
     expect(boxesOf(off, geom)).toHaveLength(4);
     expect(lampsOf(off, geom)).toEqual([]);
   });
-  it('une petite lampe repose sur le dessus du bureau, sur son emplacement, à mi-profondeur', () => {
+  it('une petite lampe repose sur le dessus du bureau, sur son emplacement, à mi-profondeur, à la taille de son modèle', () => {
     const l: Layout = [{ id: 'd', kind: 'desk', col: 2, row: 11 }, { id: 's', kind: 'small', item: 'lamp', hostId: 'd', slot: 0 }];
     const b = boxesOf(l, geom).filter((x) => x.owner === 's');
-    expect(b).toHaveLength(1);
-    expect(b[0]!.z0).toBeCloseTo(deskTop, 6);
+    expect(b.length).toBeGreaterThan(0);
+    const [z0, z1] = [Math.min(...b.map((x) => x.z0)), Math.max(...b.map((x) => x.z1))];
+    expect(z0).toBeCloseTo(deskTop, 6);
+    // Jusqu'au haut de l'abat-jour (l'embout, minuscule, ne compte pas pour la lumière).
+    expect(z1).toBeGreaterThan(deskTop + 28 * PX_PER_CM_Y);
+    expect(z1).toBeLessThanOrEqual(deskTop + ITEM_MODELS['small-lamp'].h * PX_PER_CM_Y + 1e-6);
     const slot = surfaceSlotRectOn(pxRect(rectOf(l[0]!)!), 'desk', 0, 0);
-    expect((b[0]!.x0 + b[0]!.x1) / 2).toBeCloseTo(slot.x + slot.w / 2, 6);
+    const [x0, x1] = [Math.min(...b.map((x) => x.x0)), Math.max(...b.map((x) => x.x1))];
+    expect((x0 + x1) / 2).toBeCloseTo(slot.x + slot.w / 2, 6);
+    const [d0, d1] = [Math.min(...b.map((x) => x.d0)), Math.max(...b.map((x) => x.d1))];
     const mid = dFrontOf(11, 5) - (30 * DEPTH_PX_PER_CM) / kOf(geom);
-    expect((b[0]!.d0 + b[0]!.d1) / 2).toBeCloseTo(mid, 6);
+    expect((d0 + d1) / 2).toBeCloseTo(mid, 6);
     const src = lampsOf(l, geom);
     expect(src).toHaveLength(1);
-    expect(src[0]!.z).toBeGreaterThan(deskTop);
+    // Ampoule dans l'abat-jour du modèle.
+    expect(src[0]!.z).toBeGreaterThan(deskTop + 17.5 * PX_PER_CM_Y);
+    expect(src[0]!.z).toBeLessThan(z1);
   });
-  it('un ordinateur pose sa boîte sur le plateau, sous l’écran dessiné (bureau tourné compris)', () => {
+  it('un ordinateur pose les boîtes de son écran 3D sur le plateau (bureau tourné compris), aussi large que son dessin', () => {
     const l: Layout = [{ id: 'd', kind: 'desk', col: 2, row: 11, angle: 1 }, { id: 'c', kind: 'computer', deskId: 'd' }];
     const b = boxesOf(l, geom).filter((x) => x.owner === 'c');
-    expect(b).toHaveLength(1);
-    expect(b[0]!.z0).toBeCloseTo(deskTop, 6);
-    expect(b[0]!.z1).toBeCloseTo(deskTop + COMPUTER_H - 2, 6);
-    const c = computerRectOn(pxRect(rectOf(l[0]!)!), 1);
-    expect(b[0]!.x0).toBeCloseTo(c.x, 6);
-    expect(b[0]!.x1).toBeCloseTo(c.x + c.w, 6);
+    expect(b.length).toBeGreaterThan(0);
+    expect(Math.min(...b.map((x) => x.z0))).toBeCloseTo(deskTop, 6);
+    expect(Math.max(...b.map((x) => x.z1))).toBeCloseTo(deskTop + ITEM_MODELS.monitor.h * PX_PER_CM_Y, 6);
+    const drawn = placementRectPx('desk', 1, pxRect(rectOf(l[0]!)!), computerPlacement('c'));
+    // Dans le rectangle de son dessin (8 coins de son encombrement), presque aussi large.
+    const [x0, x1] = [Math.min(...b.map((x) => x.x0)), Math.max(...b.map((x) => x.x1))];
+    expect(x0).toBeGreaterThanOrEqual(drawn.x - 0.5);
+    expect(x1).toBeLessThanOrEqual(drawn.x + drawn.w + 0.5);
+    expect(x1 - x0).toBeGreaterThan(drawn.w * 0.8);
+  });
+  it('les objets rangés d’une tablette font une boîte (de leur premier au dernier, à la hauteur du plus haut) ; de profil, aucune', () => {
+    const items: Layout = [
+      { id: 'a', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'x' },
+      { id: 'b', kind: 'stored', shape: 'book', shelfId: 's', level: 0, order: 1, slug: 'y' },
+      { id: 'c', kind: 'stored', shape: 'dvd', shelfId: 's', level: 2, order: 0, slug: 'z' },
+    ];
+    const boxes = boxesOf([{ id: 's', kind: 'shelf', col: 2, row: 7 }, ...items], geom);
+    const top = boxes.filter((x) => x.owner === 's#0');
+    const low = boxes.filter((x) => x.owner === 's#2');
+    expect(top).toHaveLength(1);
+    expect(low).toHaveLength(1);
+    expect(top[0]!.z0).toBeCloseTo(121 * PX_PER_CM_Y, 6);
+    expect(top[0]!.z1).toBeCloseTo((121 + 23) * PX_PER_CM_Y, 6); // le livre, plus haut que le CD
+    // Du bord gauche de la face (3 cm) à la fin du livre (3 + 14 + 1 + 3 = 21 cm), centrés dans l'étagère.
+    const sw = drawSize('shelf', 0).w * 30;
+    const off = (sw - 80 * PX_PER_CM_X) / 2;
+    expect(top[0]!.x0).toBeCloseTo(60 + off + 3 * PX_PER_CM_X, 6);
+    expect(top[0]!.x1).toBeCloseTo(60 + off + 21 * PX_PER_CM_X, 6);
+    expect(boxes.some((x) => x.owner === 's#1')).toBe(false);
+    const side = boxesOf([{ id: 's', kind: 'shelf', col: 2, row: 7, angle: 2 }, ...items], geom);
+    expect(side.some((x) => x.owner.startsWith('s#'))).toBe(false);
   });
 });
 

@@ -41,12 +41,16 @@ describe('ITEM_MODELS', () => {
       for (const a of ANGLES) {
         const r = renderModel(m, a);
         expect(r.shapes.length, `${name} ${a}`).toBeGreaterThan(0);
+        // Le dessin est centré dans ses cases (layoutOf) : il ne déborde que si sa trace tournée est plus large qu'elles, de la moitié de l'excès.
+        const t = (a * Math.PI) / 4;
+        const traceW = m.round ? m.w : Math.abs(m.w * Math.cos(t)) + Math.abs(m.d * Math.sin(t));
+        const over = Math.max(0, (traceW * PX_PER_CM_X - r.cols * CELL_W) / 2) + 0.5;
         for (const s of r.shapes) {
           const pts: [number, number][] = 'points' in s ? s.points : [[s.cx - s.rx, s.cy - s.ry], [s.cx + s.rx, s.cy + s.ry]];
           for (const [x, y] of pts) {
             expect(Number.isFinite(x) && Number.isFinite(y), `${name} ${a}`).toBe(true);
-            expect(x, `${name} ${a}`).toBeGreaterThanOrEqual(-15.5);
-            expect(x, `${name} ${a}`).toBeLessThanOrEqual(r.cols * CELL_W + 15.5);
+            expect(x, `${name} ${a}`).toBeGreaterThanOrEqual(-over);
+            expect(x, `${name} ${a}`).toBeLessThanOrEqual(r.cols * CELL_W + over);
             expect(y, `${name} ${a}`).toBeGreaterThanOrEqual(-0.5);
             expect(y, `${name} ${a}`).toBeLessThanOrEqual(r.rows * CELL_H + 0.5);
           }

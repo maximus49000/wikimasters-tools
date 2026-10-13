@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { nextFurnitureId } from '../../src/core/library/library-book';
 import type { Layout } from '../../src/core/library/library-types';
 import { hang, moveStanding, placeComputer, placeSmall, placeStanding, placeWindow, setAngle, setScreenCard, storeCard } from '../../src/core/library/room-grid';
-import { DRAFT_ID, canRotate, rotatePlacement, commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement } from '../../src/content/placement';
+import { DRAFT_ID, canRotate, rotatePlacement, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement } from '../../src/content/placement';
 
 const COLS = 24;
 const CENTER = spotAt(12, 15);
@@ -217,5 +217,59 @@ describe('rotation pendant le placement', () => {
   it('une fenêtre, une carte ou un ordinateur ne tournent pas', () => {
     expect(canRotate(startPlacement([], COLS, { type: 'new', kind: 'window' }, CENTER))).toBe(false);
     expect(rotatePlacement(startPlacement(desk, COLS, { type: 'new', kind: 'computer' }, CENTER), COLS, 1)).toBeNull();
+  });
+});
+
+describe('présentation d’un objet rangé (de face / sur la tranche)', () => {
+  const shelf: Layout = placeStanding([], COLS, 'shelf', 2, 6, 's')!;
+  // 4 CD de face (4 × 14 + 3 = 59 cm) et un livre sur la tranche (3 + 1 = 63 cm) sur la tablette du haut.
+  const full: Layout = [
+    ...shelf,
+    ...[0, 1, 2, 3].map((order) => ({ id: `c${order}`, kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order, slug: `cd${order}` }) as const),
+    { id: 'b', kind: 'stored', shape: 'book', shelfId: 's', level: 0, order: 4, slug: 'Dune' },
+  ];
+  const displayOfIn = (l: Layout, id: string) => (l.find((x) => x.id === id) as { display?: string }).display;
+
+  it('basculer change la présentation dans le brouillon seulement ; elle n’est enregistrée qu’au ✓', () => {
+    const p = startPlacement(full, COLS, { type: 'move', id: 'c3' }, CENTER);
+    const q = displayPlacement(p, COLS, 'spine');
+    expect(q.target.ok).toBe(true);
+    expect(displayOfIn(q.draft, 'c3')).toBe('spine');
+    expect(displayOfIn(q.base, 'c3')).toBeUndefined();
+    expect(displayOfIn(commitPlacement(q)!, 'c3')).toBe('spine');
+    // Il garde sa tablette et son rang.
+    expect(commitPlacement(q)!.find((x) => x.id === 'c3')).toMatchObject({ level: 0, order: 3 });
+  });
+
+  it('refusé si l’objet ne tient plus sur sa tablette sous sa nouvelle présentation', () => {
+    // Le livre de face prend 15 cm : 59 + 1 + 15 = 75 > 74.
+    const p = displayPlacement(startPlacement(full, COLS, { type: 'move', id: 'b' }, CENTER), COLS, 'cover');
+    expect(p.target.ok).toBe(false);
+    expect(p.target.reason).toBe('shelf-full');
+    expect(commitPlacement(p)).toBeNull();
+    // Revenir sur la tranche le rend valide.
+    expect(displayPlacement(p, COLS, 'spine').target.ok).toBe(true);
+  });
+
+  it('la présentation suit l’objet quand on le déplace ensuite ailleurs', () => {
+    const two: Layout = [...full, ...placeStanding([], COLS, 'shelf', 14, 6, 't')!];
+    const p = displayPlacement(startPlacement(two, COLS, { type: 'move', id: 'c0' }, CENTER), COLS, 'spine');
+    const q = moveToItem(p, COLS, 't');
+    expect(q.target.ok).toBe(true);
+    expect(commitPlacement(q)!.find((x) => x.id === 'c0')).toMatchObject({ shelfId: 't', display: 'spine' });
+  });
+
+  it('une carte neuve rangée prend la présentation choisie', () => {
+    const p = startPlacement(shelf, COLS, { type: 'card', choice: { target: 'shelf', shape: 'cd', slug: 'Kiki' } }, CENTER);
+    const q = displayPlacement(p, COLS, 'spine');
+    expect(q.target.ok).toBe(true);
+    expect(commitPlacement(q)!.find((x) => x.kind === 'stored')).toMatchObject({ slug: 'Kiki', display: 'spine' });
+  });
+
+  it('displayOfPlacement : la présentation montrée pendant le placement (défaut du type sinon)', () => {
+    const p = startPlacement(full, COLS, { type: 'move', id: 'b' }, CENTER);
+    expect(displayOfPlacement(p)).toBe('spine');
+    expect(displayOfPlacement(displayPlacement(p, COLS, 'cover'))).toBe('cover');
+    expect(displayOfPlacement(startPlacement(desk, COLS, { type: 'move', id: 'f1' }, CENTER))).toBeNull();
   });
 });

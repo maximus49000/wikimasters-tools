@@ -182,3 +182,18 @@ describe('positions sur la face projetée', () => {
     expect(free[0]!.local.x + free[0]!.local.w).toBeCloseTo(frame.w, 3);
   });
 });
+
+describe('viser sa propre tablette', () => {
+  it('un objet visé à sa place garde son rang, même suivi d’un voisin plus étroit', () => {
+    const layout: Layout = [
+      { id: 's', kind: 'shelf', col: 2, row: 6 },
+      ...[0, 1, 2, 3].map((order): Placed => ({ id: `c${order}`, kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order, slug: `cd${order}` })),
+      { id: 'b', kind: 'stored', shape: 'book', shelfId: 's', level: 0, order: 4, slug: 'Dune' },
+    ];
+    const c3 = layout.find((p) => p.id === 'c3') as Extract<Placed, { kind: 'stored' }>;
+    // Centre de c3 : 45 + 7 = 52 cm ; le livre (3 cm) est vu à 60–63 cm, à sa droite.
+    expect(dropOnShelf(layout, 's', 0, 52, c3)).toEqual({ ok: true, order: 3 });
+    expect(dropOnShelf(layout, 's', 0, 62, c3)).toEqual({ ok: true, order: 4 });
+    expect(dropOnShelf(layout, 's', 0, 20, c3)).toEqual({ ok: true, order: 1 });
+  });
+});

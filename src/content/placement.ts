@@ -3,10 +3,10 @@ import { deskAtCell, dropTargetFor, type DropTarget } from './furniture-drag';
 import { SMALL_ITEM_OF, WINDOW_DEFAULT, isSmallKind, isStandingKind } from '../core/library/furniture-catalog';
 import { nextFurnitureId } from '../core/library/library-book';
 import { applyMatrix, rotateAngle, type Angle } from '../core/library/footprint';
-import type { FurnitureKind, Layout, Placed, ShelfLevel } from '../core/library/library-types';
+import type { FurnitureKind, Layout, Placed, ShelfLevel, StoredDisplay } from '../core/library/library-types';
 import {
   CELL_H, CELL_W, ROWS, angleOf, isStanding, setAngle, firstFreeBoard, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
-  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, SHELF_GAP_CM, SHELF_INNER_CM, shelfBoardsOf, shelfLayoutOf, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect, type StoredLike,
+  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, SHELF_GAP_CM, SHELF_INNER_CM, boardItems, boardUsedCm, displayOf, shelfBoardsOf, shelfLayoutOf, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect, type StoredLike,
 } from '../core/library/room-grid';
 
 // Id de l'objet neuf tant qu'il n'est pas enregistré (renommé au ✓).
@@ -32,6 +32,8 @@ export type Placement = {
   draft: Layout;
   // Angle de l'objet (meubles debout) ; 0 pour ce qui ne tourne pas.
   angle: Angle;
+  // Présentation choisie pendant le placement d'un objet rangé (de face / sur la tranche) ; absente : la sienne.
+  display?: StoredDisplay;
 };
 export type PlacingView = { id: string; ok: boolean; ghost: Rect | null; ghostPx?: PxRect; floor?: Cell[] };
 
@@ -57,6 +59,10 @@ function probeOf(subject: Subject): Placed | null {
 }
 
 const withProbe = (layout: Layout, probe: Placed | null): Layout => (!probe || layout.some((x) => x.id === probe.id) ? layout : [...layout, probe]);
+
+// L'objet rangé `id` sous la présentation `display` (sans effet si elle est absente).
+const withDisplay = (layout: Layout, id: string, display: StoredDisplay | undefined): Layout =>
+  display === undefined ? layout : layout.map((x) => (x.id === id && x.kind === 'stored' ? { ...x, display } : x));
 
 // Pose de force (sans vérification) d'un objet à case : meuble debout, fenêtre, objet accroché.
 function withItemAt(layout: Layout, id: string, col: number, top: number): Layout {
@@ -88,7 +94,7 @@ function aim(layout: Layout, cols: number, p: Placement, spot: Spot): DropTarget
 
 // Construit la disposition avec l'objet à la cible valide, par les fonctions de pose existantes ; null si elles refusent.
 function build(p: Placement, cols: number, t: DropTarget): Layout | null {
-  const base = p.base;
+  const base = withDisplay(p.base, p.id, p.display);
   const s = p.subject;
   if (s.type === 'move') {
     const item = base.find((x) => x.id === p.id);
@@ -105,7 +111,7 @@ function build(p: Placement, cols: number, t: DropTarget): Layout | null {
   if (s.type === 'card') {
     const c = s.choice;
     if (c.target === 'screen') return t.computerId ? setScreenCard(base, t.computerId, c.slug) : null;
-    if (c.target === 'shelf') return t.shelfId !== undefined && t.level !== undefined && t.order !== undefined ? storeCard(base, t.shelfId, t.level, t.order, c.shape, c.slug, DRAFT_ID) : null;
+    if (c.target === 'shelf') return t.shelfId !== undefined && t.level !== undefined && t.order !== undefined ? storeCard(base, t.shelfId, t.level, t.order, c.shape, c.slug, DRAFT_ID, p.display) : null;
     return t.col !== undefined && t.top !== undefined ? hang(base, cols, c.shape, t.col, t.top, c.slug, DRAFT_ID, c.color) : null;
   }
   const kind = s.kind;
@@ -122,7 +128,8 @@ function force(p: Placement, t: DropTarget): Layout {
   const fresh = withProbe(p.base, p.probe);
   const item = fresh.find((x) => x.id === p.id);
   if (item && 'col' in item && t.col !== undefined && t.top !== undefined) return setAngle(withItemAt(fresh, p.id, t.col, t.top), p.id, p.angle);
-  return p.base;
+  // Objet rangé : à sa place, sous la présentation choisie (on voit qu'il déborde).
+  return withDisplay(p.base, p.id, p.display);
 }
 
 function applyEdit(layout: Layout, cols: number, id: string, e: Edit): Layout | null {
@@ -139,10 +146,22 @@ function applyEdit(layout: Layout, cols: number, id: string, e: Edit): Layout | 
 const replay = (layout: Layout, cols: number, id: string, edits: Edit[]): Layout =>
   edits.reduce((l, e) => applyEdit(l, cols, id, e) ?? l, layout);
 
+// Une nouvelle présentation qui élargit l'objet sur sa propre tablette (où il change toujours de rang librement) doit encore y tenir.
+function widensTooMuch(p: Placement, built: Layout): boolean {
+  const item = built.find((x) => x.id === p.id);
+  if (p.display === undefined || item?.kind !== 'stored') return false;
+  const used = boardUsedCm(boardItems(built, item.shelfId, item.level));
+  return used > SHELF_INNER_CM + 1e-9 && used > boardUsedCm(boardItems(p.base, item.shelfId, item.level)) + 1e-9;
+}
+
 function settle(p: Placement, cols: number, spot: Spot): Placement {
-  const aimAt = setAngle(withProbe(p.draft, p.probe), p.id, p.angle);
-  const target = aim(aimAt, cols, p, spot);
-  const built = target.ok ? build(p, cols, target) : null;
+  const aimAt = setAngle(withDisplay(withProbe(p.draft, p.probe), p.id, p.display), p.id, p.angle);
+  let target = aim(aimAt, cols, p, spot);
+  let built = target.ok ? build(p, cols, target) : null;
+  if (built && widensTooMuch(p, built)) {
+    built = null;
+    target = { ...target, ok: false, reason: 'shelf-full' };
+  }
   const shown = replay(built ?? force(p, target), cols, p.id, p.edits);
   return { ...p, spot, target: built ? target : { ...target, ok: false }, draft: shown };
 }
@@ -251,6 +270,22 @@ export function rotatePlacement(p: Placement, cols: number, dir: 1 | -1): Placem
   if (!canRotate(p)) return null;
   const angle = rotateAngle(p.angle, dir);
   return settle({ ...p, angle, draft: setAngle(p.draft, p.id, angle) }, cols, p.spot);
+}
+
+// Couverture ↔ tranche pendant le placement d'un objet rangé (déplacé ou carte neuve) : le fantôme est recalculé à la même visée ;
+// refusé (« Plus de place sur cette tablette. ») s'il ne tient plus. Rien n'est enregistré avant ✓.
+export function displayPlacement(p: Placement, cols: number, display: StoredDisplay): Placement {
+  // Visée : le centre de l'objet à sa place, sous sa nouvelle présentation (il garde sa tablette et son rang).
+  const item = p.draft.find((x) => x.id === p.id);
+  const box = item?.kind === 'stored' ? shelfLayoutOf(withDisplay(p.draft, p.id, display), item.shelfId).find((b) => b.id === p.id) : undefined;
+  return settle({ ...p, display }, cols, box ? spotOfPx(box.x + box.w / 2, box.y + box.h / 2) : p.spot);
+}
+
+// Présentation montrée pendant le placement d'un objet rangé ; null pour un autre objet.
+export function displayOfPlacement(p: Placement): StoredDisplay | null {
+  if (p.subject.type === 'card') return p.subject.choice.target === 'shelf' ? (p.display ?? displayOf({ shape: p.subject.choice.shape })) : null;
+  const item = p.base.find((x) => x.id === p.id);
+  return item?.kind === 'stored' ? (p.display ?? displayOf(item)) : null;
 }
 
 export function editPlacement(p: Placement, cols: number, edit: Edit): Placement | null {
