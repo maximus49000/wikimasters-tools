@@ -1,6 +1,5 @@
-import { sizeOf } from '../furniture-catalog';
 import type { PetPlan, Pt, Segment, Species } from '../library-types';
-import { CELL_W, isStanding } from '../room-grid';
+import { CELL_W, isStanding, rectOf } from '../room-grid';
 import { layoutSig, type BrainEnv } from './brain';
 import { routeMs } from './motion';
 import { planRoute, scaleRoute, type Standing } from './route';
@@ -49,7 +48,7 @@ export function stormPlan(env: BrainEnv, species: Species, from: Standing, now: 
   }
   if (dog && sofa) {
     // Au pied du canapé : la case libre la plus proche de son coin avant gauche, juste devant lui.
-    const foot = nearestFreeCell(map, standPoint(sofa.col, sofa.row + sizeOf(sofa.kind).h), 2);
+    const foot = nearestFreeCell(map, standPoint(sofa.col, sofa.row + rectOf(sofa)!.h), 2);
     const at = foot ? standPoint(foot.col, foot.row) : null;
     const raw = at ? planRoute(map, from, { pt: at, on: null }) : null;
     if (at && raw && !dogBlocked(raw, from.on)) return { action: 'cower', hostId: sofa.id, at, on: null, route: scaleRoute(raw, speed), startedAt: now, lag, actMs: hold, facing: from.facing, sig };

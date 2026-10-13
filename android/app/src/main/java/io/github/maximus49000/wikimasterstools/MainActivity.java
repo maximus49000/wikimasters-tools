@@ -443,8 +443,14 @@ public class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (customView != null) exitCustomView();
-        else if (webView.canGoBack()) webView.goBack();
+        if (customView != null) {
+            // Plein écran : un zoom de meuble ouvert (entrée d'historique wmtZoom) se ferme d'abord, par l'historique de la page ;
+            // sinon, on quitte le plein écran comme avant.
+            webView.evaluateJavascript("!!(history.state&&history.state.wmtZoom)", r -> {
+                if ("true".equals(r)) webView.goBack();
+                else exitCustomView();
+            });
+        } else if (webView.canGoBack()) webView.goBack();
         else super.onBackPressed();
     }
 

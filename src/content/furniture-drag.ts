@@ -1,6 +1,7 @@
-import { sizeOf, wallSizeOf } from '../core/library/furniture-catalog';
+import { wallSizeOf } from '../core/library/furniture-catalog';
+import { drawSize, floorCells } from '../core/library/footprint';
 import type { Layout } from '../core/library/library-types';
-import { CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, firstFreeSurfaceSlot, pxRect, rectOf, shelfSlots, slotAt, surfaceSlotRect, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { angleOf, shelfSlotsOf, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, firstFreeSurfaceSlot, pxRect, rectOf, slotAt, surfaceSlotRect, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -57,6 +58,8 @@ export type DropTarget = {
   // Meuble debout : case en haut à gauche d'arrivée.
   col?: number;
   top?: number;
+  // Meuble debout : ses cases au sol à l'arrivée (escalier compris en diagonale).
+  floor?: Cell[];
   // Ordinateur : bureau d'arrivée.
   deskId?: string;
   // Petit objet : porteur d'arrivée.
@@ -79,8 +82,7 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     const hit = slotAt(layout, x, y);
     if (!hit) return { ok: false, reason: 'not-slot', cells: [], ghost: null };
     const shelf = layout.find((p) => p.id === hit.shelfId);
-    const shelfRect = shelf ? rectOf(shelf) : null;
-    const ghostPx = shelfRect ? shelfSlots(pxRect(shelfRect))[hit.slot] : undefined;
+    const ghostPx = shelf ? shelfSlotsOf(shelf)[hit.slot] : undefined;
     const busy = layout.some((p) => p.kind === 'stored' && p.id !== id && p.shelfId === hit.shelfId && p.slot === hit.slot);
     return { ok: !busy, ...(busy ? { reason: 'slot-busy' as const } : {}), cells: [], ghost: null, ghostPx, shelfId: hit.shelfId, slot: hit.slot };
   }
@@ -119,10 +121,12 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     const room = hostId === item.hostId || firstFreeSurfaceSlot(layout, hostId, id) !== null;
     return room ? { ok: true, cells: [], ghost, hostId } : { ok: false, reason: 'host-busy', cells: [], ghost, hostId };
   }
-  const { w, h } = sizeOf(item.kind);
+  const angle = angleOf(item);
+  const { w, h } = drawSize(item.kind, angle);
   const top = row - h + 1;
   const ghost: Rect = { col, row: top, w, h };
-  const check = canPlace(layout, cols, item.kind, col, top, id);
-  if (check.ok) return { ok: true, cells: [], ghost, col, top };
-  return { ok: false, reason: check.reason, cells: check.cells, ghost, col, top };
+  const floor = floorCells(item.kind, angle, col, top);
+  const check = canPlace(layout, cols, item.kind, col, top, id, angle);
+  if (check.ok) return { ok: true, cells: [], ghost, floor, col, top };
+  return { ok: false, reason: check.reason, cells: check.cells, ghost, floor, col, top };
 }

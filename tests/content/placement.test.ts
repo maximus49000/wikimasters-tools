@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { nextFurnitureId } from '../../src/core/library/library-book';
 import type { Layout } from '../../src/core/library/library-types';
-import { hang, moveStanding, placeComputer, placeSmall, placeStanding, placeWindow, setScreenCard, storeCard } from '../../src/core/library/room-grid';
-import { DRAFT_ID, commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement } from '../../src/content/placement';
+import { hang, moveStanding, placeComputer, placeSmall, placeStanding, placeWindow, setAngle, setScreenCard, storeCard } from '../../src/core/library/room-grid';
+import { DRAFT_ID, canRotate, rotatePlacement, commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement } from '../../src/content/placement';
 
 const COLS = 24;
 const CENTER = spotAt(12, 15);
@@ -102,6 +102,15 @@ describe('commitPlacement : mêmes dispositions que les anciennes fonctions de p
     expect(commitPlacement(p)).toEqual(storeCard(shelf, 'f1', p.target.slot!, 'book', 'Paris', nextFurnitureId(shelf)));
   });
 
+  it('carte impossible à ranger sur une étagère de profil (angle 2) : face cachée', () => {
+    const shelf = setAngle(placeStanding([], COLS, 'shelf', 2, 6, 'f1')!, 'f1', 2);
+    const choice = { target: 'shelf', shape: 'book', slug: 'Paris' } as const;
+    const p = startPlacement(shelf, COLS, { type: 'card', choice }, CENTER);
+    expect(p.target.ok).toBe(false);
+    expect(commitPlacement(p)).toBeNull();
+    expect(moveToItem(p, COLS, 'f1').target.ok).toBe(false);
+  });
+
   it('carte à l’écran', () => {
     const withPc = placeComputer(desk, 'f1', 'f2')!;
     const p = startPlacement(withPc, COLS, { type: 'card', choice: { target: 'screen', slug: 'Paris' } }, CENTER);
@@ -163,5 +172,48 @@ describe('revue finale', () => {
     p = movePlacement(p, COLS, spotAt(21, 7));
     expect(p.target.ok).toBe(true);
     expect(commitPlacement(p)!.find((x) => x.id === 'w1')).toMatchObject({ col: 21, w: 3, h: 5 });
+  });
+});
+
+describe('rotation pendant le placement', () => {
+  it('⟲ tourne d’un cran vers la gauche (+1), ⟳ vers la droite (−1)', () => {
+    const p = startPlacement([], COLS, { type: 'new', kind: 'sofa' }, CENTER);
+    expect(canRotate(p)).toBe(true);
+    const left = rotatePlacement(p, COLS, 1)!;
+    expect(left.angle).toBe(1);
+    expect(left.draft.find((x) => x.id === DRAFT_ID)).toMatchObject({ angle: 1 });
+    expect(rotatePlacement(p, COLS, -1)!.angle).toBe(7);
+  });
+  it('l’angle suit le fantôme quand on le déplace, et ✓ l’enregistre', () => {
+    const p = rotatePlacement(startPlacement([], COLS, { type: 'new', kind: 'sofa' }, CENTER), COLS, 1)!;
+    const moved = movePlacement(p, COLS, spotAt(4, 16));
+    expect(moved.target.ok).toBe(true);
+    expect(commitPlacement(moved)!.find((x) => x.kind === 'sofa')).toMatchObject({ angle: 1 });
+  });
+  it('un angle qui ne tient pas : fantôme tourné, rouge, ✓ refusé', () => {
+    // étagère contre le bord droit : de profil elle tient (2 colonnes), en diagonale (6 colonnes) elle déborde
+    const p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'shelf' }, CENTER), COLS, spotAt(22, 14));
+    const side = rotatePlacement(rotatePlacement(p, COLS, 1)!, COLS, 1)!;
+    expect(side.angle).toBe(2);
+    expect(side.target.ok).toBe(true);
+    const diag = rotatePlacement(side, COLS, -1)!;
+    expect(diag.angle).toBe(1);
+    expect(diag.target).toMatchObject({ ok: false, reason: 'bounds' });
+    expect(diag.draft.find((x) => x.id === DRAFT_ID)).toMatchObject({ angle: 1 });
+    expect(commitPlacement(diag)).toBeNull();
+  });
+  it('déplacer un meuble tourné garde son angle', () => {
+    const l = placeStanding([], COLS, 'sofa', 0, 14, 'f1', 2)!;
+    const p = startPlacement(l, COLS, { type: 'move', id: 'f1' }, CENTER);
+    expect(p.angle).toBe(2);
+    expect(commitPlacement(movePlacement(p, COLS, spotAt(10, 16)))![0]).toMatchObject({ angle: 2 });
+  });
+  it('les cases au sol du fantôme sont exposées (escalier compris)', () => {
+    const p = rotatePlacement(startPlacement([], COLS, { type: 'new', kind: 'sofa' }, CENTER), COLS, 1)!;
+    expect(placingView(p).floor).toHaveLength(12);
+  });
+  it('une fenêtre, une carte ou un ordinateur ne tournent pas', () => {
+    expect(canRotate(startPlacement([], COLS, { type: 'new', kind: 'window' }, CENTER))).toBe(false);
+    expect(rotatePlacement(startPlacement(desk, COLS, { type: 'new', kind: 'computer' }, CENTER), COLS, 1)).toBeNull();
   });
 });

@@ -86,9 +86,9 @@ export const FAMILLES: Famille[] = [
     fichiers: [
       ...c(
         'furniture-drag*', 'placement.*', 'placement-bar.*', 'library-placement.*', 'library-sims-ui.*', 'furniture-thumb.*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
-        'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*',
+        'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*', 'room-angle.*', 'furniture-zoom.*', 'library-zoom.*',
       ),
-      ...lib('room-grid*', 'furniture-catalog.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*'),
+      ...lib('room-grid*', 'furniture-catalog.*', 'footprint.*', 'furniture-projection.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*', 'zoom-target.*'),
       'tests/core/picker-filter.test.ts',
     ],
   },

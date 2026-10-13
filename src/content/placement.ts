@@ -2,10 +2,11 @@ import type { CardChoice } from './CardPickerDialog';
 import { deskAtCell, dropTargetFor, type DropTarget } from './furniture-drag';
 import { SMALL_ITEM_OF, WINDOW_DEFAULT, isSmallKind, isStandingKind } from '../core/library/furniture-catalog';
 import { nextFurnitureId } from '../core/library/library-book';
+import { rotateAngle, type Angle } from '../core/library/footprint';
 import type { FurnitureKind, Layout, Placed } from '../core/library/library-types';
 import {
-  CELL_H, CELL_W, ROWS, firstFreeSlot, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
-  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, shelfSlots, storeCard, stretchWindow, toggleLamp, type PxRect, type Rect,
+  CELL_H, CELL_W, ROWS, angleOf, isStanding, setAngle, shelfSlotsOf, firstFreeSlot, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
+  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect,
 } from '../core/library/room-grid';
 
 // Id de l'objet neuf tant qu'il n'est pas enregistré (renommé au ✓).
@@ -29,8 +30,10 @@ export type Placement = {
   edits: Edit[];
   // Ce qu'on dessine : la disposition avec l'objet à la position visée (de force si elle est refusée).
   draft: Layout;
+  // Angle de l'objet (meubles debout) ; 0 pour ce qui ne tourne pas.
+  angle: Angle;
 };
-export type PlacingView = { id: string; ok: boolean; ghost: Rect | null; ghostPx?: PxRect };
+export type PlacingView = { id: string; ok: boolean; ghost: Rect | null; ghostPx?: PxRect; floor?: Cell[] };
 
 export const spotAt = (col: number, row: number): Spot => ({ col, row, x: col * CELL_W + CELL_W / 2, y: row * CELL_H + CELL_H / 2 });
 const spotOfPx = (x: number, y: number): Spot => ({ col: Math.floor(x / CELL_W), row: Math.floor(y / CELL_H), x, y });
@@ -97,7 +100,7 @@ function build(p: Placement, cols: number, t: DropTarget): Layout | null {
     // Fenêtre : la cible a été validée à sa taille courante (retouchée) ; elle est posée là, puis sa taille est rejouée.
     if (item.kind === 'window') return withItemAt(base, p.id, t.col, t.top);
     if (item.kind === 'wall') return moveHung(base, cols, p.id, t.col, t.top);
-    return moveStanding(base, cols, p.id, t.col, t.top);
+    return moveStanding(base, cols, p.id, t.col, t.top, p.angle);
   }
   if (s.type === 'card') {
     const c = s.choice;
@@ -110,7 +113,7 @@ function build(p: Placement, cols: number, t: DropTarget): Layout | null {
   if (kind === 'window') return t.col !== undefined && t.top !== undefined ? withItemAt(withProbe(base, p.probe), DRAFT_ID, t.col, t.top) : null;
   if (kind === 'computer') return t.deskId ? placeComputer(base, t.deskId, DRAFT_ID) : null;
   if (isSmallKind(kind)) return t.hostId ? placeSmall(base, t.hostId, SMALL_ITEM_OF[kind], DRAFT_ID) : null;
-  if (isStandingKind(kind)) return t.col !== undefined && t.top !== undefined ? placeStanding(base, cols, kind, t.col, t.top, DRAFT_ID) : null;
+  if (isStandingKind(kind)) return t.col !== undefined && t.top !== undefined ? placeStanding(base, cols, kind, t.col, t.top, DRAFT_ID, p.angle) : null;
   return null;
 }
 
@@ -118,7 +121,7 @@ function build(p: Placement, cols: number, t: DropTarget): Layout | null {
 function force(p: Placement, t: DropTarget): Layout {
   const fresh = withProbe(p.base, p.probe);
   const item = fresh.find((x) => x.id === p.id);
-  if (item && 'col' in item && t.col !== undefined && t.top !== undefined) return withItemAt(fresh, p.id, t.col, t.top);
+  if (item && 'col' in item && t.col !== undefined && t.top !== undefined) return setAngle(withItemAt(fresh, p.id, t.col, t.top), p.id, p.angle);
   return p.base;
 }
 
@@ -137,7 +140,8 @@ const replay = (layout: Layout, cols: number, id: string, edits: Edit[]): Layout
   edits.reduce((l, e) => applyEdit(l, cols, id, e) ?? l, layout);
 
 function settle(p: Placement, cols: number, spot: Spot): Placement {
-  const target = aim(withProbe(p.draft, p.probe), cols, p, spot);
+  const aimAt = setAngle(withProbe(p.draft, p.probe), p.id, p.angle);
+  const target = aim(aimAt, cols, p, spot);
   const built = target.ok ? build(p, cols, target) : null;
   const shown = replay(built ?? force(p, target), cols, p.id, p.edits);
   return { ...p, spot, target: built ? target : { ...target, ok: false }, draft: shown };
@@ -149,8 +153,7 @@ function anchorOf(layout: Layout, id: string): Spot | null {
   if (!item) return null;
   if (item.kind === 'stored') {
     const shelf = layout.find((x) => x.id === item.shelfId);
-    const r = shelf ? rectOf(shelf) : null;
-    const box = r ? shelfSlots(pxRect(r))[item.slot] : undefined;
+    const box = shelf ? shelfSlotsOf(shelf)[item.slot] : undefined;
     return box ? spotOfPx(box.x + box.w / 2, box.y + box.h / 2) : null;
   }
   const r = rectFor(layout, item);
@@ -163,8 +166,7 @@ function candidates(layout: Layout, cols: number, subject: Subject, center: Spot
   for (let col = 0; col < cols; col++) for (let row = 0; row < ROWS; row++) spots.push(spotAt(col, row));
   if (subject.type === 'card' && subject.choice.target === 'shelf') {
     for (const shelf of layout.filter((x) => x.kind === 'shelf')) {
-      const r = rectOf(shelf);
-      if (r) for (const b of shelfSlots(pxRect(r))) spots.push(spotOfPx(b.x + b.w / 2, b.y + b.h / 2));
+      for (const b of shelfSlotsOf(shelf)) spots.push(spotOfPx(b.x + b.w / 2, b.y + b.h / 2));
     }
   }
   const d = (s: Spot): number => (s.x - center.x) ** 2 + (s.y - center.y) ** 2;
@@ -172,6 +174,7 @@ function candidates(layout: Layout, cols: number, subject: Subject, center: Spot
 }
 
 export function startPlacement(layout: Layout, cols: number, subject: Subject, center: Spot): Placement {
+  const moved = subject.type === 'move' ? layout.find((x) => x.id === subject.id) : undefined;
   const p0: Placement = {
     subject,
     id: subject.type === 'move' ? subject.id : DRAFT_ID,
@@ -181,12 +184,13 @@ export function startPlacement(layout: Layout, cols: number, subject: Subject, c
     target: { ok: false, cells: [], ghost: null },
     edits: [],
     draft: layout,
+    angle: moved ? angleOf(moved) : 0,
   };
   if (subject.type === 'move') {
     const here = anchorOf(layout, subject.id);
     if (here) return settle(p0, cols, here);
   }
-  const aimAt = withProbe(layout, p0.probe);
+  const aimAt = setAngle(withProbe(layout, p0.probe), p0.id, p0.angle);
   for (const spot of candidates(layout, cols, subject, center)) {
     if (!aim(aimAt, cols, p0, spot).ok) continue;
     const s = settle(p0, cols, spot);
@@ -206,7 +210,7 @@ export function moveToItem(p: Placement, cols: number, itemId: string): Placemen
   const wantsSlot = (p.subject.type === 'card' && p.subject.choice.target === 'shelf') || p.base.find((x) => x.id === p.id)?.kind === 'stored';
   if (wantsSlot && item.kind === 'shelf') {
     const slot = firstFreeSlot(p.base, item.id);
-    const box = slot === null ? undefined : shelfSlots(pxRect(r))[slot];
+    const box = slot === null ? undefined : shelfSlotsOf(item)[slot];
     if (box) return settle(p, cols, spotOfPx(box.x + box.w / 2, box.y + box.h / 2));
   }
   const px = pxRect(r);
@@ -217,6 +221,19 @@ export function moveToItem(p: Placement, cols: number, itemId: string): Placemen
 export function nudgePlacement(p: Placement, cols: number, delta: 1 | -1): Placement | null {
   const next = settle(p, cols, { ...p.spot, row: p.spot.row + delta, y: p.spot.y + delta * CELL_H });
   return next.target.ok ? next : null;
+}
+
+// Seuls les meubles debout tournent (pas les fenêtres, cartes, ordinateurs ni petits objets).
+export function canRotate(p: Placement): boolean {
+  const item = withProbe(p.draft, p.probe).find((x) => x.id === p.id);
+  return item !== undefined && isStanding(item);
+}
+
+// ⟲ (+1) / ⟳ (−1) : l'objet tourne sur place ; s'il ne tient pas à cet angle, il est dessiné tourné et refusé.
+export function rotatePlacement(p: Placement, cols: number, dir: 1 | -1): Placement | null {
+  if (!canRotate(p)) return null;
+  const angle = rotateAngle(p.angle, dir);
+  return settle({ ...p, angle, draft: setAngle(p.draft, p.id, angle) }, cols, p.spot);
 }
 
 export function editPlacement(p: Placement, cols: number, edit: Edit): Placement | null {
@@ -238,4 +255,5 @@ export const placingView = (p: Placement): PlacingView => ({
   ok: p.target.ok,
   ghost: p.target.ghost,
   ...(p.target.ghostPx ? { ghostPx: p.target.ghostPx } : {}),
+  ...(p.target.floor ? { floor: p.target.floor } : {}),
 });
