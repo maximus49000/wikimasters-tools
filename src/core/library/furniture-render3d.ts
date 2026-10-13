@@ -99,10 +99,10 @@ function layoutOf(model: Model, angle: Angle): Layout3d {
   const trace = footprint(model, f);
   const traceW = Math.max(...trace.map((p) => p[0]));
   const traceD = Math.max(...trace.map((p) => p[1]));
-  const cols = Math.max(1, Math.ceil(traceW / 21 - 0.15));
+  const cols = Math.max(1, Math.round(traceW / 21)); // le dessin est centré, un débord d'une demi-case au plus est toléré
   const depthRows = Math.max(1, Math.round(traceD / 50));
   const heightPx = model.h * PX_PER_CM_Y + traceD * DEPTH_PX_PER_CM;
-  const rows = Math.max(depthRows, Math.round(heightPx / CELL_H));
+  const rows = Math.max(depthRows, Math.ceil(heightPx / CELL_H - 0.05)); // jamais le haut coupé
   const bottom = rows * CELL_H;
   const offsetX = (cols * CELL_W - traceW * PX_PER_CM_X) / 2;
   const toPx = (p: V3): [number, number] => {
@@ -135,7 +135,7 @@ function cylFaces(p: Extract<Piece, { shape: 'cyl' }>): Face[] {
   for (let i = 0; i < CYL_SIDES; i++) {
     const a = ring[i]!;
     const b = ring[(i + 1) % CYL_SIDES]!;
-    const m = (a + b) / 2;
+    const m = a + Math.PI / CYL_SIDES; // milieu de la facette (b vaut 0 pour la dernière)
     const P = (t: number, yy: number): V3 => ({ x: p.cx + p.r * Math.cos(t), y: yy, z: p.cz + p.r * Math.sin(t) });
     faces.push({ pts: [P(a, p.y), P(b, p.y), P(b, p.y + p.h), P(a, p.y + p.h)], normal: { x: Math.cos(m), y: 0, z: Math.sin(m) }, shade: SHADE.side + (SHADE.front - SHADE.side) * Math.max(0, -Math.sin(m)) });
   }
@@ -150,29 +150,82 @@ function visible(f: Frame, n: V3): boolean {
   return z < -1e-6;
 }
 
-export function renderModel(model: Model, angle: Angle): Rendered {
-  const L = layoutOf(model, angle);
-  const { f } = L;
-  // Pièces du plus loin au plus proche (centre de la base tourné), puis de bas en haut.
+type Bounds = { x0: number; x1: number; z0: number; z1: number; bottom: number; top: number };
+
+// Encombrement d'une pièce dans le repère tourné (x', z') et en hauteur.
+function boundsOf(p: Piece, f: Frame): Bounds {
+  const pts: [number, number][] =
+    p.shape === 'box' ? [[p.x, p.z], [p.x + p.w, p.z], [p.x + p.w, p.z + p.d], [p.x, p.z + p.d]]
+    : p.shape === 'cyl' ? [[p.cx - p.r, p.cz - p.r], [p.cx + p.r, p.cz - p.r], [p.cx + p.r, p.cz + p.r], [p.cx - p.r, p.cz + p.r]]
+    : [[p.cx - p.rx, p.cz - p.rz], [p.cx + p.rx, p.cz - p.rz], [p.cx + p.rx, p.cz + p.rz], [p.cx - p.rx, p.cz + p.rz]];
+  const r = pts.map(([x, z]) => turn(f, x, z));
+  const bottom = p.shape === 'ball' ? p.cy - p.ry : p.y;
+  const top = p.shape === 'box' || p.shape === 'cyl' ? p.y + p.h : p.cy + p.ry;
+  return { x0: Math.min(...r.map((q) => q[0])), x1: Math.max(...r.map((q) => q[0])), z0: Math.min(...r.map((q) => q[1])), z1: Math.max(...r.map((q) => q[1])), bottom, top };
+}
+
+// Ordre de dessin (peintre) : tri topologique de relations deux à deux, clé de repli = profondeur du centre puis hauteur.
+function paintOrder(pieces: Piece[], f: Frame): Piece[] {
   const center = (p: Piece): [number, number, number] =>
     p.shape === 'box' ? [p.x + p.w / 2, p.y, p.z + p.d / 2] : p.shape === 'cyl' ? [p.cx, p.y, p.cz] : [p.cx, p.cy - p.ry, p.cz];
-  const order = [...model.pieces].sort((a, b) => {
+  const base = [...pieces].sort((a, b) => {
     const [ax, ay, az] = center(a);
     const [bx, by, bz] = center(b);
     return depthOf(f, bx, bz) - depthOf(f, ax, az) || ay - by;
   });
+  const bs = base.map((p) => boundsOf(p, f));
+  const n = base.length;
+  const after: number[][] = base.map(() => []); // after[i] = pièces à dessiner après i
+  const waiting = base.map(() => 0);
+  const EPS = 0.5;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = bs[i]!;
+      const b = bs[j]!;
+      const overlap = a.x0 < b.x1 - 1e-6 && b.x0 < a.x1 - 1e-6 && a.z0 < b.z1 - 1e-6 && b.z0 < a.z1 - 1e-6;
+      let first = -1; // indice de la pièce à dessiner d'abord
+      if (overlap && b.bottom >= a.top - EPS) first = i;
+      else if (overlap && a.bottom >= b.top - EPS) first = j;
+      else if (a.z0 >= b.z1 - 1e-6) first = i; // a entièrement derrière b
+      else if (b.z0 >= a.z1 - 1e-6) first = j;
+      if (first < 0) continue;
+      const second = first === i ? j : i;
+      after[first]!.push(second);
+      waiting[second]!++;
+    }
+  }
+  const done = new Array<boolean>(n).fill(false);
+  const out: Piece[] = [];
+  for (let k = 0; k < n; k++) {
+    let pick = base.findIndex((_, i) => !done[i] && waiting[i] === 0);
+    if (pick < 0) pick = done.indexOf(false); // cycle : repli sur la clé de profondeur
+    done[pick] = true;
+    out.push(base[pick]!);
+    for (const s of after[pick]!) waiting[s]!--;
+  }
+  return out;
+}
+
+export function renderModel(model: Model, angle: Angle): Rendered {
+  const L = layoutOf(model, angle);
+  const { f } = L;
+  const order = paintOrder(model.pieces, f);
   const shapes: Shape[] = [];
   for (const p of order) {
     if (p.shape === 'ball') {
       const [cx, cy] = L.toPx({ x: p.cx, y: p.cy, z: p.cz });
       const rx = Math.hypot(p.rx * f.cos, p.rz * f.sin) * PX_PER_CM_X;
-      shapes.push({ kind: 'ellipse', cx, cy, rx, ry: p.ry * PX_PER_CM_Y, fill: p.fill, shade: SHADE.front });
+      // Hauteur écran : la hauteur propre + la profondeur tournée (rz') qui remonte dans la perspective.
+      const rzTurned = Math.hypot(p.rx * f.sin, p.rz * f.cos);
+      const ry = Math.hypot(p.ry * PX_PER_CM_Y, rzTurned * DEPTH_PX_PER_CM);
+      shapes.push({ kind: 'ellipse', cx, cy, rx, ry, fill: p.fill, shade: SHADE.front });
       continue;
     }
     const faces = (p.shape === 'box' ? boxFaces(p) : cylFaces(p)).filter((fc) => visible(f, fc.normal));
-    // Le dessus en dernier (il recouvre le haut des côtés), sinon les faces du fond d'abord.
-    faces.sort((a, b) => (a.normal.y - b.normal.y) || 0);
-    for (const fc of faces) shapes.push({ kind: 'poly', points: fc.pts.map((pt) => L.toPx(pt)), fill: p.fill, shade: fc.shade });
+    // Le dessus en dernier (il recouvre le haut des côtés) ; l'ordre des côtés visibles est indifférent (ils ne se recouvrent pas).
+    faces.sort((a, b) => a.normal.y - b.normal.y);
+    // Éclairage fixe côté spectateur : la teinte dépend de la normale tournée, pas de la face du modèle.
+    for (const fc of faces) shapes.push({ kind: 'poly', points: fc.pts.map((pt) => L.toPx(pt)), fill: p.fill, shade: fc.normal.y > 0 ? SHADE.top : SHADE.side + (SHADE.front - SHADE.side) * Math.max(0, f.sin * fc.normal.x - f.cos * fc.normal.z) });
   }
   return { shapes, cols: L.cols, rows: L.rows, floor: floorOf(model, L) };
 }

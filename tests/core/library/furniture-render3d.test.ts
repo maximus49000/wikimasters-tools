@@ -30,8 +30,8 @@ describe('renderModel', () => {
         const pts = s.kind === 'poly' ? s.points : [[s.cx - s.rx, s.cy - s.ry], [s.cx + s.rx, s.cy + s.ry]];
         for (const [x, y] of pts) {
           expect(Number.isFinite(x) && Number.isFinite(y)).toBe(true);
-          expect(x).toBeGreaterThanOrEqual(-0.5);
-          expect(x).toBeLessThanOrEqual(r.cols * CELL_W + 0.5);
+          expect(x).toBeGreaterThanOrEqual(-15.5); // débord horizontal d’une demi-case toléré
+          expect(x).toBeLessThanOrEqual(r.cols * CELL_W + 15.5);
           expect(y).toBeGreaterThanOrEqual(-0.5);
           expect(y).toBeLessThanOrEqual(r.rows * CELL_H + 0.5);
         }
@@ -45,7 +45,7 @@ describe('renderModel', () => {
   });
   it('de profil, la largeur dessinée est la profondeur', () => {
     const tall: Model = { w: 80, d: 30, h: 180, pieces: [{ shape: 'box', x: 0, y: 0, z: 0, w: 80, h: 180, d: 30, fill: 'wood' }] };
-    expect(renderModel(tall, 2).cols).toBe(2); // 30 cm → 1,43 case → 2
+    expect(renderModel(tall, 2).cols).toBe(1); // 30 cm → 1,43 case → 1 (arrondi, dessin centré)
     expect(renderModel(tall, 2).floor).toHaveLength(2); // 30 cm de large sur 80 cm de profondeur : les deux cases de la rangée de devant (la 2e rangée est couverte à moins de 50 %)
   });
   it('7 est le miroir de 1 pour un modèle symétrique', () => {
@@ -77,6 +77,52 @@ describe('renderModel', () => {
     const firstLeg = shapes.findIndex((s) => s.fill === 'leg');
     const lastSeat = shapes.map((s) => s.fill).lastIndexOf('desk');
     expect(firstLeg).toBeLessThan(lastSeat);
+  });
+});
+
+describe('corrections de revue', () => {
+  const desk: Model = {
+    w: 120, d: 60, h: 115,
+    pieces: [
+      { shape: 'box', x: 0, y: 72, z: 0, w: 120, h: 3, d: 60, fill: 'desk' },
+      { shape: 'box', x: 40, y: 75, z: 40, w: 40, h: 40, d: 5, fill: 'metal' },
+    ],
+  };
+  it('un objet posé au fond d’un plateau est dessiné après le dessus du plateau', () => {
+    for (const a of [0, 1, 2, 4] as const) {
+      const shapes = renderModel(desk, a).shapes;
+      const lastDesk = shapes.map((s) => s.fill).lastIndexOf('desk');
+      const firstMetal = shapes.findIndex((s) => s.fill === 'metal');
+      expect(firstMetal, `angle ${a}`).toBeGreaterThan(lastDesk);
+    }
+  });
+  it('le haut n’est jamais coupé et le dessin reste dans le rectangle (verticalement strict)', () => {
+    const tall: Model = { w: 80, d: 30, h: 180, pieces: [{ shape: 'box', x: 0, y: 0, z: 0, w: 80, h: 180, d: 30, fill: 'wood' }] };
+    for (const m of [cube, tall]) {
+      for (const a of ANGLES) {
+        const r = renderModel(m, a);
+        for (const s of r.shapes) {
+          const pts = s.kind === 'poly' ? s.points : [[s.cx - s.rx, s.cy - s.ry], [s.cx + s.rx, s.cy + s.ry]];
+          for (const [x, y] of pts) {
+            expect(y).toBeGreaterThanOrEqual(-0.5);
+            expect(y).toBeLessThanOrEqual(r.rows * CELL_H + 0.5);
+            expect(x).toBeGreaterThanOrEqual(-15.5);
+            expect(x).toBeLessThanOrEqual(r.cols * CELL_W + 15.5);
+          }
+        }
+      }
+    }
+  });
+  it('éclairage fixe côté spectateur : le dos d’une boîte a une face à 1, un cylindre garde ses teintes', () => {
+    expect(renderModel(cube, 4).shapes.some((s) => s.kind === 'poly' && s.shade === 1)).toBe(true);
+    const cyl: Model = { w: 40, d: 40, h: 40, pieces: [{ shape: 'cyl', cx: 20, cz: 20, y: 0, r: 20, h: 40, fill: 'metal' }] };
+    const shades = (a: 0 | 4) => renderModel(cyl, a).shapes.map((s) => s.shade.toFixed(3)).sort();
+    expect(shades(4)).toEqual(shades(0));
+  });
+  it('une sphère de face est plus haute à l’écran que sa hauteur seule', () => {
+    const ball: Model = { w: 40, d: 40, h: 40, pieces: [{ shape: 'ball', cx: 20, cy: 20, cz: 20, rx: 20, ry: 20, rz: 20, fill: 'metal' }] };
+    const e = renderModel(ball, 0).shapes[0]!;
+    expect(e.kind === 'ellipse' && e.ry > 20 * PX_PER_CM_Y).toBe(true);
   });
 });
 
