@@ -38,6 +38,22 @@ describe('modèles', () => {
     const h0 = renderModel(FURNITURE_MODELS.shelf, 0).rows;
     for (const a of [1, 2, 3, 4, 5, 6, 7] as const) expect(Math.abs(renderModel(FURNITURE_MODELS.shelf, a).rows - h0)).toBeLessThanOrEqual(1);
   });
+  it('aucune pièce entièrement enfouie dans une autre pièce', () => {
+    const bb = (p: any): number[] => (p.shape === 'box' ? [p.x, p.x + p.w, p.y, p.y + p.h, p.z, p.z + p.d]
+      : p.shape === 'cyl' ? [p.cx - p.r, p.cx + p.r, p.y, p.y + p.h, p.cz - p.r, p.cz + p.r]
+      : [p.cx - p.rx, p.cx + p.rx, p.cy - p.ry, p.cy + p.ry, p.cz - p.rz, p.cz + p.rz]);
+    for (const kind of STANDING_KINDS) {
+      const boxes = FURNITURE_MODELS[kind].pieces.filter((p) => p.shape === 'box').map(bb);
+      FURNITURE_MODELS[kind].pieces.forEach((p, i) => {
+        const a = bb(p);
+        boxes.forEach((b) => {
+          if (b === a || (p.shape === 'box' && b.every((v, k) => v === a[k]))) return;
+          const dedans = [0, 2, 4].every((k) => a[k] >= b[k] - 1e-6 && a[k + 1] <= b[k + 1] + 1e-6);
+          expect(dedans, kind + ' pièce ' + i + ' enfouie').toBe(false);
+        });
+      });
+    }
+  });
   it('les points d’intérêt historiques existent toujours', () => {
     expect(FURNITURE_MODELS.sofa.pois?.filter((p) => p.type === 'seat')).toHaveLength(3);
     expect(FURNITURE_MODELS.sofa.pois?.some((p) => p.type === 'sleep')).toBe(true);

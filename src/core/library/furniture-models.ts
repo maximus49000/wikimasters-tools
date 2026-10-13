@@ -46,7 +46,7 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
       box(0, 12, 0, 200, 30, 90, 'fabric'),
       box(0, 42, 68, 200, 43, 22, 'fabric'),
       box(0, 42, 0, 22, 25, 68, 'fabricDark'), box(178, 42, 0, 22, 25, 68, 'fabricDark'),
-      box(22, 42, 4, 78, 12, 62, 'fabricLight'), box(100, 42, 4, 78, 12, 62, 'fabricLight'),
+      box(22, 42, 4, 52, 12, 62, 'fabricLight'), box(74, 42, 4, 52, 12, 62, 'fabricLight'), box(126, 42, 4, 52, 12, 62, 'fabricLight'),
     ],
     pois: [{ type: 'seat', x: 50, y: 54, z: 35 }, { type: 'seat', x: 100, y: 54, z: 35 }, { type: 'seat', x: 150, y: 54, z: 35 }, { type: 'sleep', x: 120, y: 54, z: 35 }],
   },
@@ -73,18 +73,37 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
   rug: { w: 200, d: 140, h: 1, pieces: [box(0, 0, 0, 200, 1, 140, 'rug')] },
   basket: {
     w: 60, d: 45, h: 25,
-    pieces: [box(0, 0, 0, 60, 25, 45, 'warm'), box(6, 12, 6, 48, 8, 33, 'fabricLight')],
-    pois: [{ type: 'curl', x: 30, y: 20, z: 22 }],
+    // Panier ouvert : fond, quatre parois de 3 cm, coussin visible à l'intérieur.
+    pieces: [
+      box(0, 0, 0, 60, 3, 45, 'warm'),
+      box(0, 3, 0, 60, 22, 3, 'warm'), box(0, 3, 42, 60, 22, 3, 'warm'),
+      box(0, 3, 3, 3, 22, 39, 'warm'), box(57, 3, 3, 3, 22, 39, 'warm'),
+      box(3, 3, 3, 54, 8, 39, 'fabricLight'),
+    ],
+    pois: [{ type: 'curl', x: 30, y: 11, z: 22 }],
   },
-  bowl: { w: 20, d: 20, h: 8, pieces: [cyl(10, 10, 0, 10, 8, 'metal'), cyl(10, 10, 7, 8, 1, 'warm')], pois: [{ type: 'eat', x: 10, y: 0, z: 10 }] },
+  // Gamelle : socle, bord en anneau (quatre parois), croquettes en retrait sous le bord.
+  bowl: {
+    w: 20, d: 20, h: 8,
+    pieces: [cyl(10, 10, 0, 10, 3, 'metal'), box(0, 3, 0, 20, 5, 2, 'metal'), box(0, 3, 18, 20, 5, 2, 'metal'), box(0, 3, 2, 2, 5, 16, 'metal'), box(18, 3, 2, 2, 5, 16, 'metal'), cyl(10, 10, 5, 8, 1, 'warm')],
+    pois: [{ type: 'eat', x: 10, y: 0, z: 10 }],
+  },
   kennel: {
     w: 70, d: 90, h: 75,
-    pieces: [box(0, 0, 0, 70, 50, 90, 'wood'), box(0, 50, 0, 70, 10, 90, 'door'), box(20, 60, 0, 30, 15, 90, 'door'), box(22, 0, 0, 26, 36, 0.5, 'woodDark')],
-    pois: [{ type: 'enter', x: 35, y: 0, z: 2 }, { type: 'sleep', x: 35, y: 10, z: 50 }],
+    // Niche creuse : sol, parois, façade percée d'une porte de 26 × 36, fond sombre visible, toit en gradins.
+    pieces: [
+      box(0, 0, 0, 70, 3, 90, 'wood'),
+      box(0, 3, 0, 3, 47, 90, 'wood'), box(67, 3, 0, 3, 47, 90, 'wood'),
+      box(3, 3, 87, 64, 47, 3, 'wood'),
+      box(3, 3, 0, 19, 47, 3, 'wood'), box(48, 3, 0, 19, 47, 3, 'wood'), box(22, 36, 0, 26, 14, 3, 'wood'),
+      box(22, 3, 80, 26, 33, 7, 'woodDark'),
+      box(0, 50, 0, 70, 6, 90, 'door'), box(8, 56, 0, 54, 7, 90, 'door'), box(18, 63, 0, 34, 6, 90, 'door'), box(28, 69, 0, 14, 6, 90, 'door'),
+    ],
+    pois: [{ type: 'enter', x: 35, y: 0, z: 2 }, { type: 'sleep', x: 35, y: 3, z: 50 }],
   },
   charger: {
     w: 40, d: 30, h: 10,
-    pieces: [box(0, 0, 0, 40, 4, 30, 'metal'), box(0, 4, 24, 40, 6, 6, 'metal'), box(18, 9, 25, 4, 1, 2, 'leaf')],
+    pieces: [box(0, 0, 0, 40, 4, 30, 'metal'), box(0, 4, 24, 40, 6, 6, 'metal'), box(18, 6, 23, 4, 2, 1, 'leaf')],
     pois: [{ type: 'charge', x: 20, y: 4, z: 12 }],
   },
   globe: { w: 50, d: 50, h: 100, pieces: [cyl(25, 25, 0, 20, 4, 'wood'), cyl(25, 25, 4, 2, 52, 'wood'), ball(25, 75, 25, 25, 25, 25, 'metal')] },
