@@ -581,3 +581,38 @@ export function topCornersOf(model: Model, angle: Angle): [[number, number], [nu
   const L = layoutOf(model, angle);
   return [L.toPx({ x: 0, y: model.h, z: 0 }), L.toPx({ x: model.w, y: model.h, z: 0 }), L.toPx({ x: 0, y: model.h, z: model.d })];
 }
+
+// Trace de la base tournée posée au sol (y = 0), projetée en px du rectangle de dessin : ombre au sol du meuble.
+export function floorTraceOf(model: Model, angle: Angle): [number, number][] {
+  const L = layoutOf(model, angle);
+  return baseOf(model).map(([x, z]) => L.toPx({ x, y: 0, z }));
+}
+
+// Coins de la face avant (`model.face`, plan z = 0) projetés, px du rectangle de dessin : haut gauche, haut droit, bas gauche ;
+// null si on ne la voit pas. La projection est affine : en ¾, la face est un parallélogramme.
+export function faceCornersOf(model: Model, angle: Angle): { tl: [number, number]; tr: [number, number]; bl: [number, number] } | null {
+  if (angle !== 0 && angle !== 1 && angle !== 7) return null;
+  const face = model.face ?? { x: 0, y: 0, w: model.w, h: model.h };
+  const L = layoutOf(model, angle);
+  const top = face.y + face.h;
+  return { tl: L.toPx({ x: face.x, y: top, z: 0 }), tr: L.toPx({ x: face.x + face.w, y: top, z: 0 }), bl: L.toPx({ x: face.x, y: face.y, z: 0 }) };
+}
+
+// Niveaux de rangement de la face avant, du haut vers le bas, en fractions de sa hauteur depuis son haut : les intervalles entre
+// les tablettes (boîtes horizontales minces qui traversent la face). Sans tablette : un seul niveau, toute la face.
+export function levelsOf(model: Model): [number, number][] {
+  const face = model.face ?? { x: 0, y: 0, w: model.w, h: model.h };
+  const top = face.y + face.h;
+  const boards = model.pieces
+    .filter((p): p is Extract<Piece, { shape: 'box' }> => p.shape === 'box' && p.h <= 6 && p.w >= face.w * 0.9 && p.y > face.y && p.y + p.h < top)
+    .map((p) => [p.y, p.y + p.h] as const)
+    .sort((a, b) => b[0] - a[0]);
+  const levels: [number, number][] = [];
+  let ceiling = top;
+  for (const [lo, hi] of boards) {
+    levels.push([(top - ceiling) / face.h, (top - hi) / face.h]);
+    ceiling = lo;
+  }
+  levels.push([(top - ceiling) / face.h, 1]);
+  return levels;
+}

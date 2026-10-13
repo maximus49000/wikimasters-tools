@@ -1,6 +1,6 @@
 import type { Poi } from './furniture-catalog';
 import { FURNITURE_MODELS } from './furniture-models';
-import { CELL_H, CELL_W, frontFaceOf, poisOf3d, renderModel, topCornersOf, type Rendered } from './furniture-render3d';
+import { CELL_H, CELL_W, PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, floorTraceOf, frontFaceOf, levelsOf, poisOf3d, renderModel, topCornersOf, type Rendered } from './furniture-render3d';
 import type { StandingKind } from './library-types';
 import type { Cell, PxRect, Rect } from './room-grid';
 
@@ -95,4 +95,58 @@ export function topPoint(kind: StandingKind, angle: Angle, rect: PxRect, u: numb
   const x = fl[0] + u * (fr[0] - fl[0]) + v * (bl[0] - fl[0]);
   const y = fl[1] + u * (fr[1] - fl[1]) + v * (bl[1] - fl[1]);
   return [rect.x + (x * rect.w) / (w * CELL_W), rect.y + (y * rect.h) / (h * CELL_H)];
+}
+
+// Trace au sol du meuble tourné (polygone de sa base), en px du rectangle mis à l'échelle ; mise en cache par (meuble, angle).
+const traceCache = new Map<string, [number, number][]>();
+export function groundTrace(kind: StandingKind, angle: Angle, rect: PxRect): [number, number][] {
+  const key = `${kind}:${angle}`;
+  let t = traceCache.get(key);
+  if (!t) {
+    t = floorTraceOf(FURNITURE_MODELS[kind], angle);
+    traceCache.set(key, t);
+  }
+  const { w, h } = drawSize(kind, angle);
+  return t.map(([x, y]) => [rect.x + (x * rect.w) / (w * CELL_W), rect.y + (y * rect.h) / (h * CELL_H)]);
+}
+
+// Repère de la face avant : rectangle local (0, 0, w, h) — la face vue de face, en px — et matrice SVG (a, b, c, d, e, f) qui l'envoie
+// sur la face projetée (parallélogramme en ¾) dans le rectangle `rect` ; null si la face est cachée. Mis en cache par (meuble, angle).
+export type Matrix = [number, number, number, number, number, number];
+export type FaceFrame = { w: number; h: number; m: Matrix };
+const frameCache = new Map<string, ReturnType<typeof faceCornersOf>>();
+export function faceFrame(kind: StandingKind, angle: Angle, rect: PxRect): FaceFrame | null {
+  const key = `${kind}:${angle}`;
+  if (!frameCache.has(key)) frameCache.set(key, faceCornersOf(FURNITURE_MODELS[kind], angle));
+  const c = frameCache.get(key);
+  if (!c) return null;
+  const { w: cols, h: rows } = drawSize(kind, angle);
+  const sx = rect.w / (cols * CELL_W);
+  const sy = rect.h / (rows * CELL_H);
+  const face = FURNITURE_MODELS[kind].face ?? { w: FURNITURE_MODELS[kind].w, h: FURNITURE_MODELS[kind].h };
+  const w = face.w * PX_PER_CM_X * sx;
+  const h = face.h * PX_PER_CM_Y * sy;
+  const at = ([x, y]: [number, number]): [number, number] => [rect.x + x * sx, rect.y + y * sy];
+  const [tl, tr, bl] = [at(c.tl), at(c.tr), at(c.bl)];
+  return { w, h, m: [(tr[0] - tl[0]) / w, (tr[1] - tl[1]) / w, (bl[0] - tl[0]) / h, (bl[1] - tl[1]) / h, tl[0], tl[1]] };
+}
+
+// Niveaux de rangement de la face (entre les tablettes du modèle), fractions de la hauteur depuis le haut.
+const levelCache = new Map<StandingKind, [number, number][]>();
+export function faceLevels(kind: StandingKind): [number, number][] {
+  let l = levelCache.get(kind);
+  if (!l) {
+    l = levelsOf(FURNITURE_MODELS[kind]);
+    levelCache.set(kind, l);
+  }
+  return l;
+}
+
+// Point local (u, v) de la face → écran, et l'inverse.
+export const applyMatrix = (m: Matrix, u: number, v: number): [number, number] => [m[0] * u + m[2] * v + m[4], m[1] * u + m[3] * v + m[5]];
+export function invertMatrix(m: Matrix, x: number, y: number): [number, number] {
+  const det = m[0] * m[3] - m[1] * m[2];
+  const dx = x - m[4];
+  const dy = y - m[5];
+  return [(m[3] * dx - m[2] * dy) / det, (m[0] * dy - m[1] * dx) / det];
 }

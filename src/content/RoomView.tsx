@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, computerRectOn, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlotsOf, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
-import { frontFaceRect } from '../core/library/footprint';
+import { frontFaceRect, groundTrace } from '../core/library/footprint';
 import { boxesOf, lampsOf, layoutSignature } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
@@ -100,6 +100,9 @@ type Props = {
   // Couches de la pièce (mur, vitres, meubles, animaux, lumière…) : 'hidden' les estompe (400 ms) puis les retire ; le nœud du monde, lui, reste.
   roomLayers?: 'shown' | 'hidden';
 };
+
+// Matrice du repère d'une face (footprint.faceFrame) en attribut SVG.
+export const matrixOf = (m: readonly number[]): string => `matrix(${m.join(' ')})`;
 
 export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect; floor?: Cell[] };
 
@@ -275,7 +278,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         <g>
           {model}
           {shelfSlotsOf(placed).map((slot, i) => occupied?.has(i) ? null : (
-            <rect key={i} x={slot.x} y={slot.y} width={slot.w} height={slot.h} rx={2} fill="none" stroke={palette.text} strokeWidth={1} strokeDasharray="3 3" />
+            <g key={i} transform={matrixOf(slot.m)}>
+              <rect x={slot.local.x} y={slot.local.y} width={slot.local.w} height={slot.local.h} rx={2} fill="none" stroke={palette.text} strokeWidth={1} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+            </g>
           ))}
         </g>
       ),
@@ -327,7 +332,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   }
 
   // Objet touchable (accroché, rangé ou écran) : mêmes gestes que les meubles, pour pouvoir le déplacer.
-  function cardGroup(placed: Placed, slug: string, rect: PxRect, art: ReactElement, extra: Record<string, string> = {}): ReactElement {
+  // `quad` : zone touchable exacte (emplacement d'étagère en parallélogramme) au lieu du rectangle.
+  function cardGroup(placed: Placed, slug: string, rect: PxRect, art: ReactElement, extra: Record<string, string> = {}, quad?: [number, number][]): ReactElement {
     const missing = !cards[slug];
     // L'objet soulevé reste en filigrane à sa place ; sa copie suit le doigt. (L'écran d'un ordinateur suit l'ordinateur, déjà soulevé.)
     // Un objet rangé suit son étagère soulevée.
@@ -354,7 +360,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       >
         {art}
         {editing && selectedId === placed.id && outline(rect)}
-        <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="transparent" />
+        {quad ? <polygon points={quad.map(([x, y]) => `${x},${y}`).join(' ')} fill="transparent" /> : <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="transparent" />}
       </g>
       {lifted && liftedCopyOf(rect, art, anchor)}
       </g>
@@ -376,7 +382,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   }
 
   // Objet touchable d'un placement : objet accroché, objet rangé, ou écran d'ordinateur (touchable seulement quand une carte y est affichée).
-  function cardArtOf(placed: Placed): { slug: string; rect: PxRect; art: ReactElement; extra?: Record<string, string> } | null {
+  function cardArtOf(placed: Placed): { slug: string; rect: PxRect; art: ReactElement; extra?: Record<string, string>; quad?: [number, number][] } | null {
     if (placed.kind === 'wall') {
       const drawn = wallArtOf(placed);
       return drawn && { slug: placed.slug, ...drawn };
@@ -385,10 +391,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       // Étagère de profil ou de dos : face cachée, cartes non dessinées.
       const shelf = room.layout.find((p) => p.id === placed.shelfId);
       if (!shelf || !frontFaceRect(angleOf(shelf), { x: 0, y: 0, w: 1, h: 1 }, 'shelf')) return null;
-      const rect = shelfSlotsOf(shelf)[placed.slot];
-      if (!rect) return null;
+      const slot = shelfSlotsOf(shelf)[placed.slot];
+      if (!slot) return null;
       const info = cards[placed.slug];
-      return { slug: placed.slug, rect, art: <ShelfItemArt rect={rect} shape={placed.shape} slug={placed.slug} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} /> };
+      // Dessinée dans le repère de la face : en ¾, la carte suit la face inclinée.
+      const art = <g transform={matrixOf(slot.m)}><ShelfItemArt rect={slot.local} shape={placed.shape} slug={placed.slug} title={info?.title ?? ''} imageUrl={imageOf(placed.slug)} missing={!info} /></g>;
+      return { slug: placed.slug, rect: slot, art, quad: slot.quad };
     }
     if (placed.kind === 'computer' && placed.slug) {
       const desk = deskRects.get(placed.deskId);
@@ -406,7 +414,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   }
   function cardOf(placed: Placed): ReactElement | null {
     const drawn = cardArtOf(placed);
-    return drawn && cardGroup(placed, drawn.slug, drawn.rect, drawn.art, drawn.extra);
+    return drawn && cardGroup(placed, drawn.slug, drawn.rect, drawn.art, drawn.extra, drawn.quad);
   }
 
   // Objets portés par chaque meuble, dans l'ordre où ils se dessinent juste après lui :
@@ -419,6 +427,13 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     (placed.kind === 'computer' ? entry.computers : placed.kind === 'small' ? entry.smalls : entry.stored).push(placed);
     carried.set(hostId, entry);
   }
+  // Petits objets d'un porteur tourné : du fond vers l'avant (posés sur le dessus, le plus au fond est le plus haut à l'écran) ;
+  // à égalité (de face, de dos), l'ordre du plan.
+  const footOf = (p: Placed): number => {
+    const r = artOf(p)?.rect;
+    return r ? r.y + r.h : 0;
+  };
+  for (const entry of carried.values()) if (entry.smalls.length > 1) entry.smalls.sort((a, b) => footOf(a) - footOf(b));
   const carriedOf = (hostId: string): (ReactElement | null)[] => {
     const entry = carried.get(hostId);
     if (!entry) return [];
@@ -454,37 +469,18 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     </g>
   );
   // Un groupe par meuble debout (même s'il n'est pas dessiné) : `behind` compte des meubles de `drawOrder`.
-  // Ombre de contact : juste avant un meuble, une ombre nette décalée de 5 px, découpée aux seuls objets dessinés avant lui
-  // qu'elle touche (fenêtres, objets accrochés, meubles plus au fond). Sans objet derrière, pas d'ombre. Aucun flou (coûteux sur Android).
+  // Ombre au sol : juste avant un meuble, la trace de sa base tournée (modèle 3D) posée sur le sol, un peu décalée vers la droite
+  // et le bas, en aplat translucide sans trait. Aucun flou (coûteux sur Android) ; le tapis, au sol, n'en a pas.
   const order = drawOrder(room.layout);
-  const contactShadow = (p: Standing): ReactElement | null => {
+  const groundShadow = (p: Standing): ReactElement | null => {
     const cells = rectOf(p);
-    if (!cells) return null;
-    const r = pxRect(cells);
-    const sx = r.x + 5;
-    const sy = r.y + 5;
-    const mine = order.indexOf(p);
-    const behindRects: PxRect[] = [];
-    for (const o of room.layout) {
-      if (o.id === p.id || !(o.kind === 'window' || o.kind === 'wall' || (isStanding(o) && o.kind !== 'rug' && order.includes(o)))) continue;
-      if (isStanding(o) && order.indexOf(o) >= mine) continue;
-      const oc = rectOf(o);
-      if (!oc) continue;
-      const b = pxRect(oc);
-      if (b.x < sx + r.w && b.x + b.w > sx && b.y < sy + r.h && b.y + b.h > sy) behindRects.push(b);
-    }
-    if (behindRects.length === 0) return null;
-    const id = `${worldId}-cs-${p.id}`;
-    return (
-      <g key={`cs-${p.id}`}>
-        <clipPath id={id}>{behindRects.map((b, i) => <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} />)}</clipPath>
-        <rect data-contact-shadow={p.id} x={sx} y={sy} width={r.w} height={r.h} rx={3} fill={palette.text} fillOpacity={0.18} clipPath={`url(#${id})`} style={{ pointerEvents: 'none' }} />
-      </g>
-    );
+    if (!cells || (!steampunk && STEAMPUNK_ONLY.includes(p.kind))) return null;
+    const pts = groundTrace(p.kind, angleOf(p), pxRect(cells)).map(([x, y]) => `${Math.round((x + 4) * 10) / 10},${Math.round((y + 3) * 10) / 10}`).join(' ');
+    return <polygon key={`gs-${p.id}`} data-ground-shadow={p.id} points={pts} fill="#1B1B24" fillOpacity={0.16} style={{ pointerEvents: 'none' }} />;
   };
   const middle: ReactElement[] = order.map((p) => (
     <g key={`depth-${p.id}`} data-depth={depthOf(room.layout, p)}>
-      {contactShadow(p)}
+      {groundShadow(p)}
       {renderPlaced(p)}
       {carriedOf(p.id)}
     </g>
@@ -643,7 +639,19 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       )}
       {bubbles}
       {cells}
-      {ghostView?.ghostPx && (
+      {/* Emplacement d'étagère visé : son parallélogramme (face inclinée en ¾) ; sinon le rectangle. */}
+      {ghostView?.ghostPx && 'quad' in ghostView.ghostPx && Array.isArray(ghostView.ghostPx.quad) ? (
+        <polygon
+          data-drag-ghost={ghostView.ok ? 'ok' : 'refused'}
+          points={(ghostView.ghostPx.quad as [number, number][]).map(([x, y]) => `${x},${y}`).join(' ')}
+          fill={ghostView.ok ? '#3BB273' : '#E24B4A'}
+          fillOpacity={0.25}
+          stroke={ghostView.ok ? '#3BB273' : '#E24B4A'}
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+          style={{ pointerEvents: 'none' }}
+        />
+      ) : ghostView?.ghostPx && (
         <rect
           data-drag-ghost={ghostView.ok ? 'ok' : 'refused'}
           x={ghostView.ghostPx.x}

@@ -1,8 +1,8 @@
 // Dessin provisoire Opus — reprise Fable prévue.
 import { useEffect, useState, type ReactElement } from 'react';
-import { drawSize, frontFaceRect } from '../core/library/footprint';
+import { drawSize, faceFrame } from '../core/library/footprint';
 import type { Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, angleOf, computerRectOn, shelfSlots, surfaceSlotRectOn, type PxRect } from '../core/library/room-grid';
+import { CELL_H, CELL_W, angleOf, computerRectOn, shelfSlotsIn, surfaceSlotRectOn, type PxRect } from '../core/library/room-grid';
 import { paletteOf } from '../core/library/styles';
 import { zoomRectOf, type Box, type ZoomTarget } from '../core/library/zoom-target';
 import { ComputerArt } from './furniture-art';
@@ -67,10 +67,14 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const pad = tops.length > 0 ? Math.max(0, art.y - Math.min(...tops)) + 8 : 0;
   const view = { x: 0, y: -pad, w: art.w, h: art.h + pad };
   // Cartes rangées : les 15 emplacements de la face avant projetée du modèle.
-  const slots = host === 'shelf' ? shelfSlots(frontFaceRect(0, art, 'shelf')!) : [];
-  // Première moitié du pivot : le meuble sous son angle, à sa taille dessinée, posé au bas du cadre et centré.
+  const slots = host === 'shelf' ? shelfSlotsIn(faceFrame('shelf', 0, art)!) : [];
+  // Première moitié du pivot : le meuble sous son angle, à sa taille dessinée (réduite s'il le faut pour tenir dans le cadre :
+  // en ¾ le bureau est plus large que de face), posé au bas du cadre et centré.
   const turned = drawSize(host, angle);
-  const turnedRect: PxRect = { x: (art.w - turned.w * CELL_W) / 2, y: art.h - turned.h * CELL_H, w: turned.w * CELL_W, h: turned.h * CELL_H };
+  const fit = Math.min(1, view.w / (turned.w * CELL_W), view.h / (turned.h * CELL_H));
+  const tw = turned.w * CELL_W * fit;
+  const th = turned.h * CELL_H * fit;
+  const turnedRect: PxRect = { x: (art.w - tw) / 2, y: art.h - th, w: tw, h: th };
   const end = zoomRectOf(stage, view.w / view.h);
   const start = from ?? end;
   const ms = reduced ? ZOOM_REDUCED_MS : ZOOM_MS;

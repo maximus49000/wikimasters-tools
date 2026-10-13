@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { RoomView } from '../../src/content/RoomView';
 import { STANDING_KINDS, type Layout, type Room } from '../../src/core/library/library-types';
 import { STEAMPUNK_ONLY } from '../../src/core/library/furniture-catalog';
-import { shelfSlotsOf } from '../../src/core/library/room-grid';
+import { pxRect, rectOf, shelfSlotsOf, surfaceSlotRectOn } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -49,9 +49,25 @@ describe('meubles tournés', () => {
     const slots = shelfSlotsOf(shelf);
     const dashed = [...c.querySelectorAll('[data-furniture="shelf"] rect[stroke-dasharray="3 3"]')];
     expect(dashed).toHaveLength(14);
-    expect(Number(dashed[0]!.getAttribute('x'))).toBeCloseTo(slots[1]!.x, 1);
-    expect(Number(dashed[0]!.getAttribute('y'))).toBeCloseTo(slots[1]!.y, 1);
-    expect(Number(dashed[0]!.getAttribute('width'))).toBeCloseTo(slots[1]!.w, 1);
+    // Pointillé = emplacement dans le repère de la face, posé par la même matrice que les cartes (face inclinée en ¾).
+    expect(Number(dashed[0]!.getAttribute('x'))).toBeCloseTo(slots[1]!.local.x, 1);
+    expect(Number(dashed[0]!.getAttribute('y'))).toBeCloseTo(slots[1]!.local.y, 1);
+    expect(Number(dashed[0]!.getAttribute('width'))).toBeCloseTo(slots[1]!.local.w, 1);
+    expect(dashed[0]!.parentElement!.getAttribute('transform')).toBe(`matrix(${slots[1]!.m.join(' ')})`);
+    const card = c.querySelector('[data-card="Daft_Punk"]')!;
+    expect(card.querySelector('g[transform]')!.getAttribute('transform')).toBe(`matrix(${slots[0]!.m.join(' ')})`);
+  });
+  it('petits objets sur un porteur tourné : dessinés du fond vers l’avant (le plus haut à l’écran d’abord)', () => {
+    const smalls = [0, 1, 2].map((slot) => ({ id: `o${slot}`, kind: 'small', item: 'plant', hostId: 's', slot }) as const);
+    const order = (angle: 0 | 1 | 7) => [...mount([{ id: 's', kind: 'shelf', col: 0, row: 6, angle }, ...smalls]).querySelectorAll('[data-furniture="small"]')].map((e) => e.getAttribute('data-id'));
+    const byDepth = (angle: 1 | 7) => {
+      const host = pxRect(rectOf({ id: 's', kind: 'shelf', col: 0, row: 6, angle })!);
+      return [0, 1, 2].map((i) => ({ id: `o${i}`, y: surfaceSlotRectOn(host, 'shelf', angle, i).y })).sort((a, b) => a.y - b.y).map((o) => o.id);
+    };
+    expect(order(0)).toEqual(['o0', 'o1', 'o2']);
+    expect(order(1)).toEqual(byDepth(1));
+    expect(order(7)).toEqual(byDepth(7));
+    expect(order(1)).toEqual([...order(7)].reverse());
   });
   it('étagère de profil en Aménager : pas d’emplacements (face cachée)', () => {
     const c = mount([{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 2 }], { editing: true });

@@ -1,5 +1,5 @@
 import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, underOf, wallSizeOf } from './furniture-catalog';
-import { drawRect, floorCells, frontFaceRect, topPoint, type Angle } from './footprint';
+import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, frontFaceRect, invertMatrix, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
 import { STANDING_KINDS } from './library-types';
 import type { Depth, Layout, Orientation, Placed, ShelfShape, SmallItem, StandDepth, StandingKind, VinylColor, WallShape } from './library-types';
 
@@ -421,22 +421,7 @@ export function computerRectOn(desk: PxRect, angle: Angle): PxRect {
   return { x: x - COMPUTER_W / 2, y: y - COMPUTER_H + 2, w: COMPUTER_W, h: COMPUTER_H };
 }
 
-const SHELF_MARGIN = 6;
-const SHELF_LEVELS = 3;
 const SHELF_PER_LEVEL = 5;
-
-// Les 15 emplacements d'une étagère, du haut vers le bas puis de gauche à droite.
-export function shelfSlots(shelf: PxRect): PxRect[] {
-  const levelH = (shelf.h - 2 * SHELF_MARGIN) / SHELF_LEVELS;
-  const slotW = (shelf.w - 2 * SHELF_MARGIN) / SHELF_PER_LEVEL;
-  const slots: PxRect[] = [];
-  for (let i = 0; i < SHELF_LEVELS; i++) {
-    for (let j = 0; j < SHELF_PER_LEVEL; j++) {
-      slots.push({ x: shelf.x + SHELF_MARGIN + j * slotW + 2, y: shelf.y + SHELF_MARGIN + i * levelH + 4, w: slotW - 4, h: levelH - 8 });
-    }
-  }
-  return slots;
-}
 
 export const SHELF_SLOTS = 15;
 
@@ -449,13 +434,37 @@ export function placedSlugs(layout: Layout): Set<string> {
   return slugs;
 }
 
-// Emplacements d'une étagère sur sa face visible (¾ : face rétrécie) ; de profil ou de dos, aucun (face cachée : on n'y range pas
+// Emplacement d'étagère : `local` dans le repère de la face (vue de face), `m` la matrice vers l'écran, `quad` ses 4 coins à l'écran
+// (parallélogramme en ¾) ; x, y, w, h : son rectangle englobant à l'écran (centre exact, fantôme, cible du glisser).
+export type ShelfSlot = PxRect & { local: PxRect; m: Matrix; quad: [number, number][] };
+
+// Les 15 emplacements d'une face : 3 niveaux entre les tablettes du modèle × 5, du haut vers le bas puis de gauche à droite ;
+// chaque carte est posée sur sa tablette (bas de l'emplacement = dessus de la tablette).
+export function shelfSlotsIn(frame: FaceFrame): ShelfSlot[] {
+  const slotW = frame.w / SHELF_PER_LEVEL;
+  return faceLevels('shelf').flatMap(([top, bottom]) => Array.from({ length: SHELF_PER_LEVEL }, (_, j) => {
+    const y0 = top * frame.h + 4;
+    const local = { x: j * slotW + 2, y: y0, w: slotW - 4, h: bottom * frame.h - y0 };
+    const quad = ([[local.x, local.y], [local.x + local.w, local.y], [local.x + local.w, local.y + local.h], [local.x, local.y + local.h]] as const).map(([u, v]) => applyMatrix(frame.m, u, v));
+    const xs = quad.map((q) => q[0]);
+    const ys = quad.map((q) => q[1]);
+    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), local, m: frame.m, quad };
+  }));
+}
+
+// Le point (x, y) de l'écran est-il dans l'emplacement (dans son parallélogramme, pas seulement son rectangle englobant) ?
+export function inSlot(s: ShelfSlot, x: number, y: number): boolean {
+  const [u, v] = invertMatrix(s.m, x, y);
+  return u >= s.local.x && u < s.local.x + s.local.w && v >= s.local.y && v < s.local.y + s.local.h;
+}
+
+// Emplacements d'une étagère sur sa face projetée (¾ : parallélogramme) ; de profil ou de dos, aucun (face cachée : on n'y range pas
 // de carte invisible ; le zoom de face a ses propres emplacements).
-export function shelfSlotsOf(shelf: Placed): PxRect[] {
+export function shelfSlotsOf(shelf: Placed): ShelfSlot[] {
   const r = rectOf(shelf);
   if (!r) return [];
-  const face = frontFaceRect(angleOf(shelf), pxRect(r), 'shelf');
-  return face ? shelfSlots(face) : [];
+  const frame = faceFrame('shelf', angleOf(shelf), pxRect(r));
+  return frame ? shelfSlotsIn(frame) : [];
 }
 
 // Emplacement d'étagère sous le point (x, y) du dessin, en pixels.
@@ -463,7 +472,7 @@ export function shelfSlotsOf(shelf: Placed): PxRect[] {
 export function slotAt(layout: Layout, x: number, y: number): { shelfId: string; slot: number } | null {
   const shelves = layout.filter((p): p is Standing => p.kind === 'shelf');
   for (const p of byDrawOrder(layout, shelves).reverse()) {
-    const i = shelfSlotsOf(p).findIndex((s) => x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h);
+    const i = shelfSlotsOf(p).findIndex((s) => inSlot(s, x, y));
     if (i >= 0) return { shelfId: p.id, slot: i };
   }
   return null;

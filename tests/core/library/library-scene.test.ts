@@ -31,11 +31,12 @@ describe('scène et heure', () => {
     expect(activeRoom(state).layout).toHaveLength(1);
   });
 
-  it('migre un état v1 jusqu’à la v4', () => {
+  it('migre un état v1 jusqu’à la v6', () => {
     const v1 = { version: 1, activeRoomId: 'r1', homeRoomId: null, rooms: [{ id: 'r1', name: 'P', style: 'scandinave', orientation: 'landscape', cols: 24, layout: [{ id: 'f1', kind: 'chair', col: 1, row: 8 }] }] };
     const state = parseLibraryState(v1);
     expect(state.version).toBe(6);
-    expect(activeRoom(state).layout[0]).toMatchObject({ row: 11 });
+    // v2 : 3 rangées plus bas (ligne 11, chaise de 3 rangées : pieds en ligne 13) ; v6 : la chaise prend ses 6 rangées et garde ses pieds en ligne 13.
+    expect(activeRoom(state).layout[0]).toMatchObject({ col: 1, row: 8 });
   });
 
   it('lit une fenêtre valide et écarte une fenêtre hors bornes', () => {

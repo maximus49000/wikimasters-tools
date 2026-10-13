@@ -19,7 +19,6 @@ import {
   screenCols,
   fitsWithin,
   sectionIsEmpty,
-  shelfSlots,
   shiftLayout,
 } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
@@ -146,18 +145,6 @@ describe('rectangles en pixels', () => {
     expect(pc.y + pc.h).toBeLessThanOrEqual(desk.y + 4);
     expect(pc.x).toBeGreaterThanOrEqual(desk.x);
     expect(pc.x + pc.w).toBeLessThanOrEqual(desk.x + desk.w);
-  });
-
-  it("donne 15 emplacements dans l'étagère", () => {
-    const shelf = pxRect({ col: 0, row: 7, w: 6, h: 8 });
-    const slots = shelfSlots(shelf);
-    expect(slots).toHaveLength(15);
-    for (const s of slots) {
-      expect(s.x).toBeGreaterThanOrEqual(shelf.x);
-      expect(s.y).toBeGreaterThanOrEqual(shelf.y);
-      expect(s.x + s.w).toBeLessThanOrEqual(shelf.x + shelf.w);
-      expect(s.y + s.h).toBeLessThanOrEqual(shelf.y + shelf.h);
-    }
   });
 });
 

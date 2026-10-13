@@ -1,7 +1,7 @@
 import { wallSizeOf } from '../core/library/furniture-catalog';
 import { drawSize, floorCells } from '../core/library/footprint';
 import type { Layout } from '../core/library/library-types';
-import { angleOf, shelfSlotsOf, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, firstFreeSurfaceSlot, pxRect, rectOf, slotAt, surfaceSlotRect, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { angleOf, shelfSlotsOf, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, firstFreeSurfaceSlot, pxRect, rectOf, slotAt, SURFACE_SLOTS, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -35,13 +35,17 @@ export function hostAtCell(layout: Layout, col: number, row: number): string | n
   return null;
 }
 
-// Le bureau ou l'étagère dont la bande des petits objets (44 px au-dessus du dessus, comme `surfaceSlotRect`) contient le point (x, y).
+// Le bureau ou l'étagère dont un emplacement de petit objet (posé sur le dessus projeté, à tout angle, comme `surfaceSlotRectOn`)
+// contient le point (x, y).
 export function hostAtSurface(layout: Layout, x: number, y: number): string | null {
   for (const placed of hostsFrontFirst(layout, true)) {
     const r = rectOf(placed);
-    if (!r) continue;
-    const strip = surfaceSlotRect(pxRect(r), 1, 0);
-    if (x >= strip.x && x < strip.x + strip.w && y >= strip.y && y < strip.y + strip.h) return placed.id;
+    if (!r || (placed.kind !== 'desk' && placed.kind !== 'shelf')) continue;
+    const draw = pxRect(r);
+    for (let i = 0; i < SURFACE_SLOTS[placed.kind]; i++) {
+      const s = surfaceSlotRectOn(draw, placed.kind, angleOf(placed), i);
+      if (x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h) return placed.id;
+    }
   }
   return null;
 }

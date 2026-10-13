@@ -97,11 +97,17 @@ describe('RoomView : niveaux de profondeur', () => {
   });
 });
 
-describe('RoomView : ombre de contact', () => {
-  it('ombre de contact seulement là où un objet est derrière', () => {
-    const svg = mount();
-    expect(svg.querySelector('[data-contact-shadow="tab"]')).not.toBeNull();
-    const alone = mount({ layout: [{ id: 'x', kind: 'chair', col: 20, row: 15 }] });
-    expect(alone.querySelector('[data-contact-shadow]')).toBeNull();
+describe('RoomView : ombre au sol', () => {
+  it('chaque meuble debout pose une ombre au sol : la trace de sa base, sans pavé derrière un meuble creux', () => {
+    const svg = mount({ layout: [{ id: 'x', kind: 'chair', col: 20, row: 10 }, { id: 'r', kind: 'rug', col: 2, row: 15 }] });
+    const shadow = svg.querySelector('polygon[data-ground-shadow="x"]')!;
+    expect(shadow).not.toBeNull();
+    expect(shadow.getAttribute('stroke')).toBeNull();
+    expect(svg.querySelector('[data-ground-shadow="r"]')).toBeNull(); // le tapis est au sol
+    // Chaise 2 × 6 cases (rangées 10 à 15) : l'ombre reste dans la bande du sol (dernière rangée et un peu au-dessus), pas sur le dossier.
+    const ys = shadow.getAttribute('points')!.split(' ').map((p) => Number(p.split(',')[1]));
+    expect(Math.min(...ys)).toBeGreaterThan(14 * (510 / 18));
+    expect(Math.max(...ys)).toBeLessThanOrEqual(16 * (510 / 18) + 6);
+    expect(svg.querySelector('[data-contact-shadow]')).toBeNull();
   });
 });

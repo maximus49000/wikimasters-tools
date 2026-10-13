@@ -4,8 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FurnitureZoom } from '../../src/content/furniture-zoom';
 import type { Room } from '../../src/core/library/library-types';
-import { drawSize, frontFaceRect } from '../../src/core/library/footprint';
-import { CELL_H, CELL_W, shelfSlots } from '../../src/core/library/room-grid';
+import { drawSize, faceFrame, frontFaceRect } from '../../src/core/library/footprint';
+import { CELL_H, CELL_W, shelfSlotsIn } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -42,15 +42,38 @@ describe('calque du zoom', () => {
     // 13 emplacements vides en pointillés + 2 cartes = 15.
     expect(container.querySelectorAll('rect[stroke-dasharray]').length + container.querySelectorAll('[data-zoom-card]').length).toBe(15);
   });
-  it('vue de face : le modèle 3D, et les cartes rangées dans sa face avant projetée', () => {
+  it('vue de face : le modèle 3D, 15 emplacements (pointillés + cartes) tous dans sa face avant projetée', () => {
     const { container } = mount('open');
     expect(container.querySelector('.wmt-lib-zoom-piece [data-model3d]')).not.toBeNull();
     const { w, h } = drawSize('shelf', 0);
     const face = frontFaceRect(0, { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H }, 'shelf')!;
-    const want = shelfSlots(face)[4]!;
+    const dashed = [...container.querySelectorAll('rect[stroke-dasharray]')];
+    const hits = [...container.querySelectorAll('[data-zoom-card] rect[fill="transparent"]')];
+    expect(dashed).toHaveLength(13);
+    expect(hits).toHaveLength(2);
+    for (const r of [...dashed, ...hits]) {
+      const [x, y, rw, rh] = ['x', 'y', 'width', 'height'].map((k) => Number(r.getAttribute(k)));
+      expect(x).toBeGreaterThanOrEqual(face.x - 1e-6);
+      expect(y).toBeGreaterThanOrEqual(face.y - 1e-6);
+      expect(x! + rw!).toBeLessThanOrEqual(face.x + face.w + 1e-6);
+      expect(y! + rh!).toBeLessThanOrEqual(face.y + face.h + 1e-6);
+    }
+    // Même géométrie que dans la pièce (emplacement 4 = la carte « Inconnue »).
+    const want = shelfSlotsIn(faceFrame('shelf', 0, { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H })!)[4]!;
     const hit = container.querySelector('[data-zoom-card="Inconnue"] rect[fill="transparent"]')!;
     expect(Number(hit.getAttribute('x'))).toBeCloseTo(want.x, 1);
     expect(Number(hit.getAttribute('y'))).toBeCloseTo(want.y, 1);
+  });
+  it('pivot : le meuble tourné tient entier dans le cadre (pas rogné)', () => {
+    const { container } = mount('opening');
+    const vb = container.querySelector('.wmt-lib-zoom-piece svg')!.getAttribute('viewBox')!.split(' ').map(Number);
+    const g = container.querySelector('.wmt-lib-zoom-piece [data-model3d]')!;
+    const m = /translate\(([-\d.]+) ([-\d.]+)\) scale\(([-\d.e]+) ([-\d.e]+)\)/.exec(g.getAttribute('transform')!)!.slice(1).map(Number);
+    const { w, h } = drawSize('shelf', 2);
+    expect(m[0]).toBeGreaterThanOrEqual(vb[0]! - 1e-6);
+    expect(m[0]! + w * CELL_W * m[2]!).toBeLessThanOrEqual(vb[0]! + vb[2]! + 1e-6);
+    expect(m[1]).toBeGreaterThanOrEqual(vb[1]! - 1e-6);
+    expect(m[1]! + h * CELL_H * m[3]!).toBeLessThanOrEqual(vb[1]! + vb[3]! + 1e-6);
   });
   it('première moitié d’un meuble tourné : le modèle 3D sous son angle', () => {
     const { container } = mount('opening');
