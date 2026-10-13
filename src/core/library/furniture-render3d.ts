@@ -39,8 +39,8 @@ export type Shape =
   | { kind: 'line'; points: [number, number][]; fill: Fill; shade: number };
 export type Rendered = { shapes: Shape[]; cols: number; rows: number; floor: { col: number; row: number }[] };
 
-const CELL_W = 30;
-const CELL_H = 510 / 18;
+export const CELL_W = 30;
+export const CELL_H = 510 / 18;
 // Une case = 21 cm (largeur et hauteur), une rangée de sol = 50 cm de profondeur.
 export const PX_PER_CM_X = CELL_W / 21;
 export const PX_PER_CM_Y = CELL_H / 21;

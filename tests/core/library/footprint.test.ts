@@ -140,5 +140,30 @@ describe('face visible', () => {
     const q = frontFaceRect(1, { x: 0, y: 0, w: r1.w * 30, h: r1.h * (510 / 18) }, 'shelf')!;
     expect(q.x).toBeLessThan(15);
     expect(q.w).toBeLessThan(r1.w * 30);
+    // Valeurs à ¾ (rectangle 4 × 11 deux fois plus grand, décalé de (10, 20)) : tournée de 45°, la face de 74 cm ne fait plus que
+    // 74 × cos 45° cm de large ; son bord gauche (x 3 cm, z 0) tombe à 3 × cos 45° = 2,12 cm du bord gauche de la trace,
+    // plus (84 − 110 × cos 45°) / 2 = 3,11 cm (trace de 77,78 cm centrée dans 4 colonnes de 21 cm) → 5,23 cm.
+    const big1 = { x: 10, y: 20, w: r1.w * 30 * 2, h: r1.h * (510 / 18) * 2 };
+    const f1 = frontFaceRect(1, big1, 'shelf')!;
+    const c45 = Math.SQRT1_2;
+    expect(f1.w).toBeCloseTo(((74 * c45 * 30) / 21) * 2, 3);
+    expect(f1.x).toBeCloseTo(10 + ((3 * c45 + (84 - 110 * c45) / 2) * 30 / 21) * 2, 3);
+    expect(f1.y).toBeGreaterThanOrEqual(big1.y);
+    expect(f1.y + f1.h).toBeLessThanOrEqual(big1.y + big1.h);
+    // À 7, miroir de 1 : même largeur, collée au bord droit symétriquement.
+    const f7 = frontFaceRect(7, big1, 'shelf')!;
+    expect(f7.w).toBeCloseTo(f1.w, 6);
+    expect(f7.x - big1.x).toBeCloseTo(big1.w - (f1.x - big1.x) - f1.w, 6);
+  });
+  it('face du modèle mise en cache : deux appels égaux, et des copies (modifier l’une ne change pas la suivante)', () => {
+    const r = { x: 0, y: 0, w: 120, h: 510 / 18 * 10 };
+    const a = frontFaceRect(0, r, 'shelf')!;
+    const b = frontFaceRect(0, r, 'shelf')!;
+    expect(b).toEqual(a);
+    expect(b).not.toBe(a);
+    a.x = 999;
+    expect(frontFaceRect(0, r, 'shelf')!.x).not.toBe(999);
+    expect(frontFaceRect(3, r, 'shelf')).toBeNull();
+    expect(frontFaceRect(3, r, 'shelf')).toBeNull();
   });
 });
