@@ -11,7 +11,7 @@ export type KnownCard = {
   extract?: string;
   attack?: number;
   defense?: number;
-  // Consultations de l'article Wikipédia (champ `pageviews` de l'API) : trie les cartes liées, les plus consultées d'abord.
+  // Consultations de l'article Wikipédia (champ `pageviews` de l'API) : départage les cartes liées de même précision.
   pageviews?: number;
   // Absent tant que l'API ne l'a pas donné ; `[]` = carte sans étiquette (efface d'anciennes étiquettes).
   tags?: CardTag[];

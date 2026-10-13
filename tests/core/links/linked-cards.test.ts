@@ -10,7 +10,7 @@ describe('linkedCards', () => {
 
   it('rend les cartes que la carte cite et celles qui la citent, sans les articles hors Collection ni la carte elle-même', () => {
     const links = setLinks(EMPTY_LINKS, { Paris: ['Tour_Eiffel', 'France', 'Paris'], Seine: ['Paris'], Londres: ['Tamise'] }, 1);
-    expect(linkedCards(cards, links, 'Paris').map((c) => c.slug)).toEqual(['Tour_Eiffel', 'Seine']);
+    expect(linkedCards(cards, links, 'Paris').map((c) => c.slug)).toEqual(['Seine', 'Tour_Eiffel']);
   });
 
   it('trie par consultations décroissantes, les cartes sans chiffre en dernier, à égalité par titre', () => {
@@ -21,6 +21,30 @@ describe('linkedCards', () => {
   it('ne compte une carte qu’une fois quand les deux se citent', () => {
     const links = setLinks(EMPTY_LINKS, { Paris: ['Seine'], Seine: ['Paris'] }, 1);
     expect(linkedCards(cards, links, 'Paris').map((c) => c.slug)).toEqual(['Seine']);
+  });
+
+  it('écarte les cartes passe-partout, citées par une grande part de la Collection, sauf si les deux articles se citent', () => {
+    // 40 albums citent tous « France » et « Musique » ; seul « Scandale » cite « Thiefaine », qui le cite en retour ; « Musique » cite « Scandale ».
+    const albums = Array.from({ length: 40 }, (_, i) => `Album_${i}`);
+    const all = [card('Scandale', 10), card('Thiefaine', 50), card('France', 99_999), card('Musique', 88_888), ...albums.map((slug) => card(slug))];
+    const links = setLinks(
+      EMPTY_LINKS,
+      { Scandale: ['France', 'Musique', 'Thiefaine'], Thiefaine: ['Scandale'], Musique: ['Scandale'], ...Object.fromEntries(albums.map((slug) => [slug, ['France', 'Musique']])) },
+      1,
+    );
+    expect(linkedCards(all, links, 'Scandale').map((c) => c.slug)).toEqual(['Thiefaine', 'Musique']);
+  });
+
+  it('range les cartes les moins citées ailleurs avant les plus consultées', () => {
+    const all = [card('A'), card('Rare', 1), card('Courante', 1_000_000), card('X'), card('Y'), card('Z')];
+    const links = setLinks(EMPTY_LINKS, { A: ['Courante', 'Rare'], X: ['Courante'], Y: ['Courante'], Z: ['Courante'] }, 1);
+    expect(linkedCards(all, links, 'A').map((c) => c.slug)).toEqual(['Rare', 'Courante']);
+  });
+
+  it('place d’abord les cartes qui se citent l’une l’autre', () => {
+    const all = [card('A'), card('Seule', 1), card('Mutuelle', 1)];
+    const links = setLinks(EMPTY_LINKS, { A: ['Seule', 'Mutuelle'], Mutuelle: ['A'], Seule: [] }, 1);
+    expect(linkedCards(all, links, 'A').map((c) => c.slug)).toEqual(['Mutuelle', 'Seule']);
   });
 
   it('rend une liste vide quand rien n’est lu ou que la carte est inconnue', () => {
@@ -51,6 +75,17 @@ describe('linkedCardsViaArticle', () => {
   it('range d’abord les cartes qui passent par le plus d’articles, avec leurs intermédiaires', () => {
     const links = setLinks(EMPTY_LINKS, { Paris: ['France', 'Fleuve'], Louvre: ['France'], Londres: ['France', 'Fleuve'] }, 1);
     expect(via(links)).toEqual([['Londres', ['Fleuve', 'France']], ['Louvre', ['France']]]);
+  });
+
+  it('ne passe jamais par un article passe-partout', () => {
+    const fillers = Array.from({ length: 40 }, (_, i) => `Carte_${i}`);
+    const all = [...cards, ...fillers.map((slug) => card(slug))];
+    const links = setLinks(
+      EMPTY_LINKS,
+      { Paris: ['France', 'Fleuve'], Louvre: ['France'], Londres: ['Fleuve'], ...Object.fromEntries(fillers.map((slug) => [slug, ['France']])) },
+      1,
+    );
+    expect(linkedCardsViaArticle(all, links, 'Paris').map((v) => [v.card.slug, v.via])).toEqual([['Londres', ['Fleuve']]]);
   });
 
   it('rend une liste vide sans lien lu ou pour une carte inconnue', () => {
