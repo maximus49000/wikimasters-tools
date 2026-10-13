@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
+import { updateLayout } from '../../src/core/library/library-book';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -47,6 +48,8 @@ afterEach(() => {
 
 
 const confirm = () => click('[data-action="place-confirm"]');
+const pointer = (type: string, target: EventTarget, x: number, y: number) =>
+  act(async () => { target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y })); });
 
 describe('mode placement', () => {
   it('une vignette ouvre le placement : tiroir caché, barre visible, rien d’enregistré', async () => {
@@ -133,5 +136,28 @@ describe('mode placement', () => {
     await click('[data-placement-bar] [data-action="lamp"]');
     await confirm();
     expect(layoutNow().find((p) => p.kind === 'lamp')).toMatchObject({ lit: false });
+  });
+
+  it('un appui long sur l’objet en cours de placement ne relance pas le placement', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-kind="shelf"]');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await pointer('pointerdown', q('[data-id="__draft__"]')!, 200, 400);
+    await act(async () => { vi.advanceTimersByTime(600); });
+    vi.useRealTimers();
+    await pointer('pointerup', window, 200, 400);
+    await settle();
+    expect(q('[data-id="__draft__"]')).not.toBeNull();
+    expect((q('[data-action="place-confirm"]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('✓ n’écrase pas une pièce modifiée pendant le placement', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-kind="shelf"]');
+    const roomId = repo.current()!.rooms[0]!.id;
+    await act(async () => { await repo.update((state) => updateLayout(state, roomId, (l) => [...l, { id: 'x9', kind: 'chair', col: 20, row: 15 }])); });
+    await settle();
+    await click('[data-action="place-confirm"]');
+    expect(layoutNow().some((p) => p.id === 'x9')).toBe(true);
   });
 });

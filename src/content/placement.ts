@@ -4,7 +4,7 @@ import { SMALL_ITEM_OF, WINDOW_DEFAULT, isSmallKind, isStandingKind } from '../c
 import { nextFurnitureId } from '../core/library/library-book';
 import type { FurnitureKind, Layout, Placed } from '../core/library/library-types';
 import {
-  CELL_H, CELL_W, ROWS, firstFreeSlot, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, moveWindow, placeComputer, placeSmall,
+  CELL_H, CELL_W, ROWS, firstFreeSlot, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
   placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, shelfSlots, shiftDepth, storeCard, stretchWindow, toggleLamp, type PxRect, type Rect,
 } from '../core/library/room-grid';
 
@@ -94,7 +94,8 @@ function build(p: Placement, cols: number, t: DropTarget): Layout | null {
     if (item.kind === 'small') return t.hostId ? moveSmall(base, p.id, t.hostId) : null;
     if (item.kind === 'stored') return t.shelfId !== undefined && t.slot !== undefined ? moveStored(base, p.id, t.shelfId, t.slot) : null;
     if (t.col === undefined || t.top === undefined) return null;
-    if (item.kind === 'window') return moveWindow(base, cols, p.id, t.col, t.top);
+    // Fenêtre : la cible a été validée à sa taille courante (retouchée) ; elle est posée là, puis sa taille est rejouée.
+    if (item.kind === 'window') return withItemAt(base, p.id, t.col, t.top);
     if (item.kind === 'wall') return moveHung(base, cols, p.id, t.col, t.top);
     return moveStanding(base, cols, p.id, t.col, t.top);
   }

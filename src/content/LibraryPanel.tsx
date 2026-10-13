@@ -366,6 +366,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const getPetContext = usePetContext({ room: petRoom, sceneView, lightOn });
   const sim = usePetSim(petRoom, savePlan, getPetContext);
 
+  // La largeur de la pièce change (ajustement automatique à l'écran) : le placement en cours est abandonné.
+  useEffect(() => {
+    if (placementRef.current) cancelRef.current();
+  }, [colsNow]);
   // Échap abandonne le placement en cours.
   const cancelRef = useRef<() => void>(() => undefined);
   const placingNow = placement !== null;
@@ -447,7 +451,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const done = commitPlacement(placement);
     if (!done) return;
     const keep = placement.subject.type === 'move' ? placement.id : null;
-    await editLayout(() => done);
+    // La pièce a changé pendant le placement (autre onglet, ajustement à l'écran) : on n'écrase rien, on recommence.
+    const before = JSON.stringify(placement.base);
+    if (JSON.stringify(layout) !== before) {
+      reset();
+      return refuse('La pièce a changé : recommencez.');
+    }
+    await editLayout((l) => (JSON.stringify(l) === before ? done : null));
     reset();
     if (keep) setSelectedId(keep);
   };
@@ -520,6 +530,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       press.start(event.clientX, event.clientY);
       return;
     }
+    // Pendant un placement, l'objet se glisse directement (onScrollPointerDown) : un appui long ne doit pas relancer le placement.
+    if (placementRef.current) return;
     // L'objet de derrière sélectionné est redessiné devant, mais l'appui arrive au meuble de devant : on déplace celui qu'on voit.
     pressedId.current = selectedId && selectedId !== id && stackAt(layout, id).includes(selectedId) ? selectedId : id;
     lastPointer.current = { x: event.clientX, y: event.clientY };
@@ -937,7 +949,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             <button type="button" data-action="edit" aria-pressed={editing} aria-label="Aménager" title="Aménager" onClick={() => setMode2('edit')}><Icon paths={ICONS.pencil} /></button>
           </div>
         )}
-        {fill && !outside && room.cols > fitCols && (
+        {fill && !outside && !placement && room.cols > fitCols && (
           <button type="button" data-action="fit-screen" onClick={fitToScreen} style={FIT_BUTTON}>
             Adapter à l’écran
           </button>

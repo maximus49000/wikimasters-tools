@@ -151,3 +151,15 @@ describe('retouches pendant le placement', () => {
     expect(editPlacement(p, COLS, { type: 'lamp' })).toBeNull();
   });
 });
+
+describe('revue finale', () => {
+  it('une fenêtre déjà posée, rétrécie puis déplacée contre le bord, est validée à sa nouvelle taille', () => {
+    const base: Layout = [{ id: 'w1', kind: 'window', col: 2, row: 3, w: 6, h: 5 }];
+    let p = startPlacement(base, COLS, { type: 'move', id: 'w1' }, CENTER);
+    p = editPlacement(p, COLS, { type: 'size', w: 3, h: 5 })!;
+    // Coin bas gauche en colonne 21 : 3 colonnes tiennent (21 à 23), 6 non.
+    p = movePlacement(p, COLS, spotAt(21, 7));
+    expect(p.target.ok).toBe(true);
+    expect(commitPlacement(p)!.find((x) => x.id === 'w1')).toMatchObject({ col: 21, w: 3, h: 5 });
+  });
+});
