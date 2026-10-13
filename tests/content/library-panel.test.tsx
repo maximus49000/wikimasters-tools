@@ -22,6 +22,7 @@ async function click(selector: string) {
   await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   await settle();
 }
+const confirm = async () => { if (container.querySelector('[data-action="place-confirm"]')) await click('[data-action="place-confirm"]'); };
 
 beforeEach(async () => {
   container = document.createElement('div');
@@ -56,8 +57,10 @@ describe('LibraryPanel', () => {
     await click('[data-action="edit"]');
     await click('[data-kind="shelf"]');
     await click('[data-cell="3-13"]');
+    await confirm();
     expect(q('[data-furniture="shelf"]')).not.toBeNull();
     await click('[data-furniture="shelf"]');
+    await confirm();
     await click('[data-action="remove"]');
     expect(q('[data-furniture="shelf"]')).toBeNull();
   });
@@ -66,7 +69,9 @@ describe('LibraryPanel', () => {
     await click('[data-action="edit"]');
     await click('[data-kind="shelf"]');
     await click('[data-cell="3-11"]');
-    expect(q('[data-furniture]')).toBeNull();
+    expect((q('[data-action="place-confirm"]') as HTMLButtonElement).disabled).toBe(true);
+    await confirm();
+    expect(repo.current()?.rooms[0]?.layout ?? []).toHaveLength(0);
     expect(q('[role="status"]')?.textContent).toContain('sol');
   });
 
@@ -74,11 +79,14 @@ describe('LibraryPanel', () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-14"]');
+    await confirm();
     await click('[data-kind="computer"]');
     await click('[data-furniture="desk"]');
+    await confirm();
     expect(q('[data-furniture="computer"]')).not.toBeNull();
     await click('[data-kind="computer"]');
     await click('[data-furniture="desk"]');
+    await confirm();
     expect(container.querySelectorAll('[data-furniture="computer"]')).toHaveLength(1);
     expect(q('[role="status"]')?.textContent).toContain('déjà');
   });
@@ -87,6 +95,7 @@ describe('LibraryPanel', () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-14"]');
+    await confirm();
     const width = () => (q('svg[role="img"]') as unknown as SVGElement).style.width;
     expect(width()).toBe('100%');
     await click('[data-orient="portrait"]');
@@ -110,6 +119,7 @@ describe('LibraryPanel', () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-14"]');
+    await confirm();
     await click('[data-action="extend-left"]');
     expect(repo.current()?.rooms[0]?.layout[0]).toMatchObject({ kind: 'desk', col: 14 });
   });
@@ -118,6 +128,7 @@ describe('LibraryPanel', () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-14"]');
+    await confirm();
     await click('[data-action="extend-left"]');
     expect(repo.current()?.rooms[0]?.cols).toBe(36);
     await click('[data-action="shrink-left"]');
@@ -162,6 +173,7 @@ describe('LibraryPanel', () => {
     await click('[data-action="extend-right"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-14"]');
+    await confirm();
     await click('[data-action="delete-room"]');
     const room = repo.current()?.rooms[0];
     expect(repo.current()?.rooms).toHaveLength(1);
@@ -174,6 +186,7 @@ describe('LibraryPanel', () => {
     await click('[data-action="extend-right"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-14"]');
+    await confirm();
     await click('[data-action="shrink-left"]');
     expect(q('[role="status"]')?.textContent).toContain('meubles');
     expect(repo.current()?.rooms[0]?.cols).toBe(36);
@@ -186,6 +199,7 @@ describe('LibraryPanel', () => {
     await click('[data-action="extend-right"]');
     await click('[data-kind="shelf"]');
     await click('[data-cell="30-13"]');
+    await confirm();
     await click('[data-action="shrink-right"]');
     expect(q('[role="status"]')?.textContent).toContain('meubles');
     expect(repo.current()?.rooms[0]?.cols).toBe(36);

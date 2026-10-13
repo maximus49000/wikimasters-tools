@@ -20,6 +20,7 @@ async function click(selector: string) {
   await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   await settle();
 }
+const confirm = async () => { if (container.querySelector('[data-action="place-confirm"]')) await click('[data-action="place-confirm"]'); };
 
 beforeEach(async () => {
   container = document.createElement('div');
@@ -52,10 +53,12 @@ describe('mobilier dans le panneau', () => {
     await click('[data-subcategory="floor"]');
     await click('[data-kind="rug"]');
     await click('[data-cell="2-17"]');
+    await confirm();
     expect(q('[data-furniture="rug"]')).not.toBeNull();
     await click('[data-category="seats"]');
     await click('[data-kind="sofa"]');
     await click('[data-cell="2-16"]');
+    await confirm();
     expect(q('[data-furniture="sofa"]')).not.toBeNull();
   });
 
@@ -64,7 +67,9 @@ describe('mobilier dans le panneau', () => {
     await click('[data-subcategory="floor"]');
     await click('[data-kind="rug"]');
     await click('[data-cell="3-5"]');
-    expect(q('[data-furniture]')).toBeNull();
+    expect((q('[data-action="place-confirm"]') as HTMLButtonElement).disabled).toBe(true);
+    await confirm();
+    expect(repo.current()?.rooms[0]?.layout ?? []).toHaveLength(0);
     expect(q('[role="status"]')?.textContent).toContain('sol');
   });
 
@@ -79,10 +84,12 @@ describe('mobilier dans le panneau', () => {
   it('pose une petite plante sur un bureau', async () => {
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
+    await confirm();
     await click('[data-category="deco"]');
     await click('[data-subcategory="plants"]');
     await click('[data-kind="small-plant"]');
     await click('[data-furniture="desk"]');
+    await confirm();
     expect(q('[data-furniture="small"]')).not.toBeNull();
   });
 
@@ -90,11 +97,14 @@ describe('mobilier dans le panneau', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
+    await confirm();
     await click('[data-category="deco"]');
     await click('[data-subcategory="lights"]');
     await click('[data-kind="small-lamp"]');
     await click('[data-furniture="desk"]');
+    await confirm();
     await click('[data-furniture="desk"]');
+    await confirm();
     await click('[data-action="remove"]');
     expect(window.confirm).toHaveBeenCalled();
     expect(q('[data-furniture]')).toBeNull();
@@ -104,11 +114,14 @@ describe('mobilier dans le panneau', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
+    await confirm();
     await click('[data-category="deco"]');
     await click('[data-subcategory="lights"]');
     await click('[data-kind="small-lamp"]');
     await click('[data-furniture="desk"]');
+    await confirm();
     await click('[data-furniture="desk"]');
+    await confirm();
     await click('[data-action="remove"]');
     expect(q('[data-furniture="desk"]')).not.toBeNull();
     expect(q('[data-furniture="small"]')).not.toBeNull();
@@ -117,16 +130,19 @@ describe('mobilier dans le panneau', () => {
   it('explique qu’il faut libérer le milieu du bureau pour l’ordinateur', async () => {
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
+    await confirm();
     await click('[data-category="deco"]');
     // Deux petits objets : ils prennent les emplacements 0 et 1, le milieu du bureau est donc occupé.
     for (let i = 0; i < 2; i += 1) {
       await click('[data-subcategory="plants"]');
       await click('[data-kind="small-plant"]');
       await click('[data-furniture="desk"]');
+      await confirm();
     }
     await click('[data-category="storage"]');
     await click('[data-kind="computer"]');
     await click('[data-furniture="desk"]');
+    await confirm();
     expect(q('[role="status"]')?.textContent).toContain('Libérez le milieu du bureau');
     expect(q('[data-furniture="computer"]')).toBeNull();
   });

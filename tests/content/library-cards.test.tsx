@@ -148,6 +148,8 @@ describe('LibraryPanel : cartes', () => {
     await settle();
   }
   const layoutNow = () => activeRoom(repo.current()!).layout;
+  // ✓ du mode placement, s'il est affiché.
+  const placeOk = async () => { if (q('[data-action="place-confirm"]')) await click('[data-action="place-confirm"]'); };
   async function seed(layout: Layout) {
     await repo.update((state) => updateLayout(state, 'r1', () => layout));
     await settle();
@@ -178,6 +180,7 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-target="wall"]');
     await click('[data-shape="poster"]');
     await click('[data-cell="5-9"]');
+    await placeOk();
     expect(layoutNow().find((p) => p.kind === 'wall')).toMatchObject({ slug: 'Paris', shape: 'poster' });
   });
 
@@ -188,6 +191,7 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-target="shelf"]');
     await click('[data-shape="cd"]');
     await click('[data-furniture="shelf"]');
+    await placeOk();
     expect(layoutNow().find((p) => p.kind === 'stored')).toMatchObject({ slug: 'Paris', slot: 0, shelfId: 'f1' });
   });
 
@@ -198,17 +202,20 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-target="shelf"]');
     await click('[data-shape="cd"]');
     await click('[data-card="Daft_Punk"]');
+    await placeOk();
     expect(layoutNow().find((p) => p.kind === 'stored' && p.slug === 'Paris')).toMatchObject({ shelfId: 'f1', slot: 1 });
   });
 
-  it('affiche une carte sur l’écran d’un ordinateur, et refuse un autre meuble', async () => {
-    await seed([{ id: 'd1', kind: 'desk', col: 2, row: 13 }, { id: 'c1', kind: 'computer', deskId: 'd1' }]);
+  it('affiche une carte sur l’écran d’un ordinateur, et refuse sans ordinateur', async () => {
+    await seed([{ id: 'd1', kind: 'desk', col: 2, row: 13 }, { id: 'c1', kind: 'computer', deskId: 'd1' }, { id: 'd2', kind: 'desk', col: 12, row: 13 }]);
     await click('[data-action="edit"]');
     await pickCard('Paris');
     await click('[data-target="screen"]');
-    await click('[data-furniture="desk"]');
-    expect(q('[role="status"]')?.textContent).toContain('Choisissez un ordinateur.');
+    await click('[data-id="d2"]');
+    expect(q('[role="status"]')?.textContent).toContain('Touchez un ordinateur.');
+    expect((q('[data-action="place-confirm"]') as HTMLButtonElement).disabled).toBe(true);
     await click('[data-furniture="computer"]');
+    await placeOk();
     expect(layoutNow().find((p) => p.kind === 'computer')).toMatchObject({ slug: 'Paris' });
   });
 
@@ -222,6 +229,7 @@ describe('LibraryPanel : cartes', () => {
       { id: 'f2', kind: 'wall', shape: 'poster', col: 10, row: 4, slug: 'Inconnue' },
     ]);
     await click('[data-card="Paris"]');
+    await placeOk();
     expect(document.querySelector('[data-room-card="Paris"]')).not.toBeNull();
     expect(onOpenCard).not.toHaveBeenCalled();
     await click('[data-action="card"]');
@@ -293,7 +301,9 @@ describe('LibraryPanel : cartes', () => {
     expect(q('[data-drag-ghost="ok"]')).not.toBeNull();
     await pointer('pointerup', window, 305, 203);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 10, row: 4, slug: 'Paris' });
+    await placeOk();
+    // Saisi en case 3-6 et relâché en 10-7 : l'affiche garde le décalage de la saisie (+7 colonnes, +1 ligne).
+    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 9, row: 5, slug: 'Paris' });
   });
 
   it('un objet accroché lâché sur le sol reste en place et le dit', async () => {
@@ -307,6 +317,15 @@ describe('LibraryPanel : cartes', () => {
     expect(q('[role="status"]')?.textContent).toContain('mur');
   });
 
+  it('« Déplacer » dans la bulle d’une carte rangée ouvre le placement', async () => {
+    await seed(shelfLayout);
+    await click('[data-action="edit"]');
+    await click('[data-card="Daft_Punk"]');
+    await click('[data-action="move"]');
+    expect(q('[data-placement-bar]')).not.toBeNull();
+    expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ slot: 0 });
+  });
+
   it('un appui long sur un objet rangé le déplace dans un autre emplacement', async () => {
     await seed(shelfLayout);
     stubSvgRect();
@@ -317,6 +336,7 @@ describe('LibraryPanel : cartes', () => {
     expect(q('[data-drag-ghost="ok"]')).not.toBeNull();
     await pointer('pointerup', window, to.x, to.y);
     await settle();
+    await placeOk();
     expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ kind: 'stored', shelfId: 'f1', slot: 4 });
   });
 
@@ -328,6 +348,7 @@ describe('LibraryPanel : cartes', () => {
     await longPress('[data-card="Daft_Punk"]', from.x, from.y);
     await pointer('pointerup', window, other.x + other.w / 2, other.y + other.h / 2);
     await settle();
+    await placeOk();
     expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ shelfId: 'f9', slot: 3 });
   });
 
@@ -357,6 +378,7 @@ describe('LibraryPanel : cartes', () => {
     await pointer('pointermove', window, 400, 385);
     await pointer('pointerup', window, 400, 385);
     await settle();
+    await placeOk();
     expect(layoutNow().find((p) => p.id === 'c1')).toMatchObject({ kind: 'computer', deskId: 'd2', slug: 'Paris' });
   });
 });

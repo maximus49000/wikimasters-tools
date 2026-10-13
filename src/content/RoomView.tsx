@@ -33,6 +33,7 @@ import type { NamePool } from '../core/library/city/shops/lifecycle';
 import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
+import type { PlacingView } from './placement';
 
 // Horloge immobile (ciel dégagé) pour le calque de lumière d'une pièce sans météo : les lampes y restent efficaces.
 const NO_GLASS: readonly never[] = [];
@@ -69,6 +70,8 @@ type Props = {
   onFurnitureUp?: () => void;
   // Meuble soulevé : position du doigt dans le repère du dessin, et contour d'arrivée (vert si valide, rouge sinon).
   drag?: DragView | null;
+  // Mode placement : l'objet en cours de placement (estompé) et son empreinte (verte si valide, rouge sinon).
+  placing?: PlacingView | null;
   // Titre et image des cartes posées dans la pièce, par slug ; un slug absent = carte inconnue (objet grisé).
   cards?: Record<string, { title: string; imageUrl?: string }>;
   // Toucher sur un objet accroché, rangé ou sur l'écran de l'ordinateur.
@@ -100,7 +103,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, outside = false, roomLayers = 'shown' }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, outside = false, roomLayers = 'shown' }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -291,7 +294,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           onPointerLeave={onFurnitureUp}
           onPointerCancel={onFurnitureUp}
           onContextMenu={(event) => event.preventDefault()}
-          opacity={lifted ? 0.3 : 1}
+          data-placing={placing?.id === placed.id ? (placing.ok ? 'ok' : 'refused') : undefined}
+          opacity={lifted ? 0.3 : placing?.id === placed.id ? 0.8 : 1}
           style={{ cursor: editing || isLamp(placed) ? 'pointer' : 'default', userSelect: 'none', WebkitTouchCallout: 'none' }}
         >
           {art}
@@ -326,7 +330,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
         onPointerLeave={onFurnitureUp}
         onPointerCancel={onFurnitureUp}
         onContextMenu={(event) => event.preventDefault()}
-        opacity={lifted ? 0.3 : missing ? 0.35 : 1}
+        data-placing={placing?.id === placed.id ? (placing.ok ? 'ok' : 'refused') : undefined}
+        opacity={lifted ? 0.3 : placing?.id === placed.id ? 0.8 : missing ? 0.35 : 1}
         style={{ cursor: 'pointer', userSelect: 'none', WebkitTouchCallout: 'none' }}
       >
         {art}
@@ -542,6 +547,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const worldRect = outside ? { x: 0, y: 0, w: width, h: wallH } : boundingRect(shownGlasses);
   const gaps = outside ? [] : gapRects(shownGlasses);
 
+  // Empreinte d'arrivée : celle du glissé, sinon celle du placement en cours.
+  const ghostView = drag ?? placing;
   return (
     <svg
       viewBox={outside ? `0 0 ${width} ${wallH}` : `0 0 ${width} ${HEIGHT}`}
@@ -612,29 +619,29 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       )}
       {bubbles}
       {cells}
-      {drag?.ghostPx && (
+      {ghostView?.ghostPx && (
         <rect
-          data-drag-ghost={drag.ok ? 'ok' : 'refused'}
-          x={drag.ghostPx.x}
-          y={drag.ghostPx.y}
-          width={drag.ghostPx.w}
-          height={drag.ghostPx.h}
+          data-drag-ghost={ghostView.ok ? 'ok' : 'refused'}
+          x={ghostView.ghostPx.x}
+          y={ghostView.ghostPx.y}
+          width={ghostView.ghostPx.w}
+          height={ghostView.ghostPx.h}
           rx={4}
-          fill={drag.ok ? '#3BB273' : '#E24B4A'}
+          fill={ghostView.ok ? '#3BB273' : '#E24B4A'}
           fillOpacity={0.25}
-          stroke={drag.ok ? '#3BB273' : '#E24B4A'}
+          stroke={ghostView.ok ? '#3BB273' : '#E24B4A'}
           strokeWidth={2.5}
           style={{ pointerEvents: 'none' }}
         />
       )}
-      {drag?.ghost && (
+      {ghostView?.ghost && (
         <rect
-          data-drag-ghost={drag.ok ? 'ok' : 'refused'}
-          {...ghostBox(drag.ghost)}
+          data-drag-ghost={ghostView.ok ? 'ok' : 'refused'}
+          {...ghostBox(ghostView.ghost)}
           rx={6}
-          fill={drag.ok ? '#3BB273' : '#E24B4A'}
+          fill={ghostView.ok ? '#3BB273' : '#E24B4A'}
           fillOpacity={0.25}
-          stroke={drag.ok ? '#3BB273' : '#E24B4A'}
+          stroke={ghostView.ok ? '#3BB273' : '#E24B4A'}
           strokeWidth={2.5}
           style={{ pointerEvents: 'none' }}
         />

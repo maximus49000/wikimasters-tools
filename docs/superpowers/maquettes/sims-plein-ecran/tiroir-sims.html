@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ma Pièce — maquette plein écran façon Sims</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap">
+<style>
+:root{
+  --sims-panel:rgba(250,252,255,.94);
+  --sims-line:#a9c6e8;
+  --sims-blue:#2f7fd6;
+  --sims-blue-dark:#1d5aa3;
+  --sims-tile-top:#ffffff;
+  --sims-tile-bot:#dce8f6;
+  --sims-green:#4cc23a;
+  --sims-text:#2b3f5c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#1b2330;color:#e6edf3;font:14px/1.4 system-ui,sans-serif;padding:24px 16px 48px}
+h1{font-size:20px;margin:0 0 4px}
+.intro{max-width:1100px;margin:0 auto 20px;opacity:.9}
+.intro p{margin:4px 0}
+.board{display:flex;flex-wrap:wrap;gap:28px;justify-content:center;align-items:flex-start}
+.shot{display:flex;flex-direction:column;gap:8px;align-items:center}
+.cap{max-width:340px;font-size:13px;opacity:.9;text-align:center}
+.cap b{color:#fff}
+
+/* ---------- Téléphone ---------- */
+.phone{position:relative;width:340px;height:720px;border-radius:34px;border:10px solid #0b0e13;background:#000;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.phone.land{width:720px;height:340px}
+.scene{position:absolute;inset:0}
+.scene svg{width:100%;height:100%;display:block}
+
+/* Boutons ronds du plein écran (même famille que la porte et ⛶ actuels, passés en style Sims) */
+.fab{position:absolute;top:10px;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.35);color:var(--sims-blue)}
+.fab svg{width:20px;height:20px}
+
+/* Interrupteur Visiter / Aménager */
+.switch{position:absolute;top:10px;right:56px;height:38px;display:flex;align-items:center;padding:3px;border-radius:19px;
+  background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.switch span{width:34px;height:28px;border-radius:14px;display:grid;place-items:center;color:#7d93b0;transition:.2s}
+.switch span svg{width:18px;height:18px}
+.switch span.on{background:linear-gradient(#4a97e8,var(--sims-blue));color:#fff;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
+.land .switch{right:56px}
+
+/* ---------- Tiroir façon Sims ---------- */
+.drawer{position:absolute;left:6px;right:6px;bottom:6px;display:flex;flex-direction:column;gap:6px;font-family:Nunito,system-ui,sans-serif;color:var(--sims-text)}
+.drawer-head{display:flex;align-items:center;gap:6px}
+.tabs{display:flex;gap:2px;padding:3px;border-radius:18px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.tab{height:30px;padding:0 10px;border-radius:14px;display:flex;align-items:center;gap:5px;font-weight:800;font-size:12px;color:#5d7594}
+.tab svg{width:18px;height:18px}
+.tab.on{background:linear-gradient(#4a97e8,var(--sims-blue));color:#fff}
+.collapse{margin-left:auto;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--sims-panel);border:2px solid var(--sims-line);color:var(--sims-blue);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.collapse svg{width:18px;height:18px}
+
+.body{display:flex;gap:6px;padding:6px;border-radius:14px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.cats{display:flex;flex-direction:column;gap:4px;padding-right:6px;border-right:2px solid #e1ebf7}
+.cat{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;color:#6c86a8;background:linear-gradient(var(--sims-tile-top),#edf3fb);border:1.5px solid #d4e2f3}
+.cat svg{width:22px;height:22px}
+.cat.on{color:#fff;background:linear-gradient(#4a97e8,var(--sims-blue));border-color:var(--sims-blue-dark)}
+.right{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.cat-title{display:flex;align-items:center;gap:6px;font-weight:800;font-size:13px;color:var(--sims-blue-dark)}
+.subs{display:flex;gap:4px;overflow:hidden}
+.sub{height:24px;padding:0 9px;border-radius:12px;display:flex;align-items:center;font-size:11px;font-weight:700;color:#5d7594;background:#eef4fb;border:1.5px solid #d4e2f3;white-space:nowrap}
+.sub.on{background:#fff;color:var(--sims-blue);border-color:var(--sims-blue)}
+.grid{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,64px);grid-auto-columns:60px;gap:6px;overflow:hidden}
+.tile{position:relative;border-radius:9px;background:linear-gradient(var(--sims-tile-top),var(--sims-tile-bot));border:1.5px solid #c9dbf0;
+  box-shadow:0 1px 2px rgba(40,70,110,.25);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:3px 2px 2px}
+.tile svg{width:44px;height:38px}
+.tile i{font-style:normal;font-size:9.5px;font-weight:800;line-height:11px;color:#4e6687;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tile.on{border:2px solid var(--sims-blue);box-shadow:0 0 0 3px rgba(47,127,214,.25),0 1px 2px rgba(40,70,110,.25)}
+.tile.on::after{content:"";position:absolute;top:3px;right:3px;width:9px;height:9px;border-radius:50%;background:var(--sims-green);box-shadow:0 0 0 1.5px #fff}
+.more{font-size:10px;text-align:right;color:#7d93b0;font-weight:700}
+
+/* Poignée réduite */
+.handle{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:96px;height:30px;border-radius:16px 16px 0 0;display:grid;place-items:center;
+  background:var(--sims-panel);border:2px solid var(--sims-line);border-bottom:0;color:var(--sims-blue);box-shadow:0 -2px 8px rgba(0,0,0,.3)}
+.handle svg{width:20px;height:20px}
+
+/* Bulle d'actions sur l'objet sélectionné, comme la petite carte des Sims */
+.bubble{position:absolute;display:flex;gap:2px;padding:4px;border-radius:12px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 4px 10px rgba(0,0,0,.35);color:var(--sims-blue)}
+.bubble::after{content:"";position:absolute;left:var(--tail,50%);bottom:-8px;margin-left:-7px;border:7px solid transparent;border-bottom:0;border-top-color:var(--sims-line)}
+.bubble span{width:32px;height:32px;border-radius:8px;display:grid;place-items:center}
+.bubble span:hover,.bubble span.on{background:#e4effb}
+.bubble svg{width:18px;height:18px}
+.sel{position:absolute;border:2px dashed #fff;border-radius:6px;box-shadow:0 0 0 2px rgba(47,127,214,.7)}
+
+/* Mode placement */
+.hint{position:absolute;top:58px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:6px 12px;border-radius:14px;font:800 12px Nunito,system-ui,sans-serif;color:var(--sims-text);background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.hint.bad{color:#b3261e;border-color:#e59a94}
+.ghost{position:absolute;opacity:.8;filter:drop-shadow(0 0 3px rgba(76,194,58,.9))}
+.ghost.bad{filter:drop-shadow(0 0 3px rgba(220,60,50,.95)) sepia(.4) hue-rotate(-40deg)}
+.ghost svg{width:100%;height:100%}
+.foot{position:absolute;border-radius:4px;background:rgba(76,194,58,.35);border:2px solid #4cc23a}
+.foot.bad{background:rgba(220,60,50,.35);border-color:#dc3c32}
+.grip{position:absolute;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--sims-panel);border:2px solid var(--sims-line);color:var(--sims-blue);box-shadow:0 2px 5px rgba(0,0,0,.3)}
+.grip svg{width:16px;height:16px}
+.place{position:absolute;display:flex;align-items:center;gap:3px;padding:4px;border-radius:14px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 4px 10px rgba(0,0,0,.35);color:var(--sims-blue)}
+.place::after{content:"";position:absolute;left:var(--tail,50%);bottom:-8px;margin-left:-7px;border:7px solid transparent;border-bottom:0;border-top-color:var(--sims-line)}
+.place span{width:34px;height:34px;border-radius:9px;display:grid;place-items:center}
+.place span svg{width:18px;height:18px}
+.place .vsep{width:2px;height:26px;background:#dbe6f3;margin:0 3px}
+.place .cancel{background:linear-gradient(#ef6a5f,#d23b2f);color:#fff;border-radius:50%}
+.place .valid{width:40px;height:40px;background:linear-gradient(#6fdc5c,#3ea92f);color:#fff;border-radius:50%;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
+.place .valid.off{background:#c9d3de;color:#eef2f6}
+
+/* Landscape : catégories en colonne, grille plus large */
+.land .drawer{left:auto;right:6px;width:470px}
+.land .grid{grid-template-rows:58px;grid-auto-columns:56px}
+.land .tile svg{width:40px;height:32px}
+.land .cat{width:30px;height:30px}.land .cat svg{width:18px;height:18px}
+.land .cats{display:grid;grid-template-columns:repeat(2,30px);align-content:start;gap:3px}
+
+.legend{max-width:1100px;margin:28px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.legend div{background:#232d3c;border-radius:12px;padding:12px 14px}
+.legend h3{margin:0 0 6px;font-size:14px}
+.legend ul{margin:0;padding-left:18px}
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>Ma Pièce en plein écran — interrupteur ✏️ et tiroir façon Sims</h1>
+  <p>Maquette à valider (pas le vrai rendu de la pièce : le décor est simplifié). Téléphone en portrait, puis en paysage.</p>
+  <p>Changements : <b>1)</b> en plein écran, un interrupteur 👁 / ✏️ en haut à droite, à côté de « quitter le plein écran », fait passer de Visiter à Aménager et inversement ; <b>2)</b> le tiroir, la poignée et la bulle d'actions prennent l'habillage du mode Achat des Sims 4 (panneaux blanc-bleu translucides, liseré bleu clair, vignettes en dégradé, sélection bleue + pastille verte).</p>
+</div>
+
+<!-- Icônes partagées -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></symbol>
+    <symbol id="i-exitfs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+    <symbol id="i-door" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21V3h12v18M3 21h18"/><circle cx="14.5" cy="12" r="1"/></symbol>
+    <symbol id="i-sofa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/><path d="M2 12a2 2 0 0 1 4 0v2h12v-2a2 2 0 0 1 4 0v5H2z"/><path d="M5 17v2M19 17v2"/></symbol>
+    <symbol id="i-frame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 15l3-3 2 2 3-3"/></symbol>
+    <symbol id="i-bricks" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M3 15h18M9 4v5M15 9v6M9 15v5"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></symbol>
+    <symbol id="i-storage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M5 9h14M5 15h14"/></symbol>
+    <symbol id="i-chair" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v18M8 12h10M18 12v9M8 7h3"/></symbol>
+    <symbol id="i-plant" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14V7M12 10c-3 0-5-2-5-5 3 0 5 2 5 5zM12 9c0-3 2-5 5-5 0 3-2 5-5 5z"/><path d="M8 14h8l-1 7H9z"/></symbol>
+    <symbol id="i-bone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l7 7M6.5 10.5a2.5 2.5 0 1 1-1-4 2.5 2.5 0 1 1 4-1zM17.5 13.5a2.5 2.5 0 1 1 1 4 2.5 2.5 0 1 1-4 1z"/></symbol>
+    <symbol id="i-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-front" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="1" fill="currentColor" fill-opacity=".25"/><path d="M4 16V4h12"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="12" height="12" rx="1" fill="currentColor" fill-opacity=".25"/><path d="M20 8v12H8"/></symbol>
+
+    <!-- Décor commun de la pièce (simplifié) -->
+    <symbol id="room" viewBox="0 0 320 700" preserveAspectRatio="xMidYMid slice">
+      <rect width="320" height="700" fill="#e9d3a8"/>
+      <rect y="0" width="320" height="430" fill="#d9b98a"/>
+      <path d="M0 430h320" stroke="#7a5a3a" stroke-width="3"/>
+      <rect y="430" width="320" height="270" fill="#b7865a"/>
+      <g stroke="#94683f" stroke-width="2">
+        <path d="M0 480h320M0 540h320M0 610h320"/>
+      </g>
+      <!-- fenêtre -->
+      <rect x="40" y="110" width="110" height="140" rx="4" fill="#9fd3ee" stroke="#3b2a1d" stroke-width="3"/>
+      <path d="M95 110v140M40 180h110" stroke="#3b2a1d" stroke-width="3"/>
+      <path d="M48 210c20-18 40-10 60-24s40-6 40-6v70H48z" fill="#7cb86a" opacity=".8"/>
+      <!-- étagère -->
+      <rect x="200" y="210" width="90" height="220" fill="#8a5a36" stroke="#3b2a1d" stroke-width="3"/>
+      <path d="M200 265h90M200 320h90M200 375h90" stroke="#3b2a1d" stroke-width="3"/>
+      <rect x="210" y="232" width="10" height="33" fill="#c9433b"/><rect x="222" y="236" width="9" height="29" fill="#3d7bbf"/><rect x="233" y="230" width="11" height="35" fill="#e6b84a"/>
+      <rect x="212" y="292" width="40" height="28" fill="#f3efe4" stroke="#3b2a1d" stroke-width="2"/>
+      <!-- canapé -->
+      <path d="M50 470h150v-40a12 12 0 0 0-12-12H62a12 12 0 0 0-12 12z" fill="#5e8fb8" stroke="#2c3e55" stroke-width="3"/>
+      <rect x="38" y="450" width="174" height="50" rx="12" fill="#6fa3cc" stroke="#2c3e55" stroke-width="3"/>
+      <path d="M50 500v14M200 500v14" stroke="#2c3e55" stroke-width="4"/>
+      <!-- lampe -->
+      <path d="M262 470v-80" stroke="#3b2a1d" stroke-width="3"/>
+      <path d="M244 392h36l-8-26h-20z" fill="#f2d16b" stroke="#3b2a1d" stroke-width="3"/>
+      <ellipse cx="262" cy="474" rx="14" ry="4" fill="#3b2a1d"/>
+      <!-- tapis + chat -->
+      <ellipse cx="140" cy="580" rx="100" ry="22" fill="#c2574a" stroke="#6d2b23" stroke-width="3"/>
+      <path d="M120 570c0-14 22-16 30-6 6-8 16-4 14 6l-2 10h-40z" fill="#e48b3c" stroke="#3b2a1d" stroke-width="2.5"/>
+    </symbol>
+    <symbol id="room-land" viewBox="0 0 700 320" preserveAspectRatio="xMidYMid slice">
+      <rect width="700" height="320" fill="#d9b98a"/>
+      <rect y="220" width="700" height="100" fill="#b7865a"/>
+      <path d="M0 220h700" stroke="#7a5a3a" stroke-width="3"/>
+      <rect x="60" y="50" width="110" height="110" rx="4" fill="#9fd3ee" stroke="#3b2a1d" stroke-width="3"/>
+      <path d="M115 50v110M60 105h110" stroke="#3b2a1d" stroke-width="3"/>
+      <rect x="220" y="80" width="80" height="140" fill="#8a5a36" stroke="#3b2a1d" stroke-width="3"/>
+      <path d="M220 125h80M220 172h80" stroke="#3b2a1d" stroke-width="3"/>
+      <path d="M40 255h150v-30a10 10 0 0 0-10-10H50a10 10 0 0 0-10 10z" fill="#5e8fb8" stroke="#2c3e55" stroke-width="3"/>
+      <rect x="30" y="240" width="170" height="38" rx="10" fill="#6fa3cc" stroke="#2c3e55" stroke-width="3"/>
+      <ellipse cx="150" cy="300" rx="90" ry="12" fill="#c2574a" stroke="#6d2b23" stroke-width="3"/>
+    </symbol>
+
+    <!-- Vignettes : dessins des meubles -->
+    <symbol id="t-shelf" viewBox="0 0 44 38"><rect x="12" y="2" width="20" height="34" fill="#8a5a36" stroke="#3b2a1d" stroke-width="1.5"/><path d="M12 13h20M12 24h20" stroke="#3b2a1d" stroke-width="1.5"/><rect x="14" y="6" width="3" height="7" fill="#c9433b"/><rect x="18" y="7" width="3" height="6" fill="#3d7bbf"/><rect x="22" y="5" width="3" height="8" fill="#e6b84a"/></symbol>
+    <symbol id="t-desk" viewBox="0 0 44 38"><rect x="4" y="16" width="36" height="5" fill="#a46e43" stroke="#3b2a1d" stroke-width="1.5"/><path d="M7 21v15M37 21v15" stroke="#3b2a1d" stroke-width="2"/><rect x="26" y="21" width="10" height="10" fill="#8a5a36" stroke="#3b2a1d" stroke-width="1.5"/></symbol>
+    <symbol id="t-pc" viewBox="0 0 44 38"><rect x="8" y="5" width="28" height="20" rx="2" fill="#36495e" stroke="#1f2a36" stroke-width="1.5"/><rect x="11" y="8" width="22" height="14" fill="#7fc4ea"/><path d="M22 25v6M14 33h16" stroke="#1f2a36" stroke-width="2"/></symbol>
+    <symbol id="t-chair" viewBox="0 0 44 38"><path d="M14 4v18h16V4z" fill="#b5784a" stroke="#3b2a1d" stroke-width="1.5"/><rect x="12" y="20" width="20" height="4" fill="#a46e43" stroke="#3b2a1d" stroke-width="1.5"/><path d="M14 24v12M30 24v12" stroke="#3b2a1d" stroke-width="2"/></symbol>
+    <symbol id="t-sofa" viewBox="0 0 44 38"><path d="M7 26h30v-12a3 3 0 0 0-3-3H10a3 3 0 0 0-3 3z" fill="#5e8fb8" stroke="#2c3e55" stroke-width="1.5"/><rect x="3" y="20" width="38" height="10" rx="3" fill="#6fa3cc" stroke="#2c3e55" stroke-width="1.5"/><path d="M7 30v4M37 30v4" stroke="#2c3e55" stroke-width="2"/></symbol>
+    <symbol id="t-arm" viewBox="0 0 44 38"><path d="M12 26h20v-14a3 3 0 0 0-3-3H15a3 3 0 0 0-3 3z" fill="#9b5fb0" stroke="#4a2756" stroke-width="1.5"/><rect x="8" y="19" width="28" height="10" rx="3" fill="#b07ac4" stroke="#4a2756" stroke-width="1.5"/><path d="M12 29v5M32 29v5" stroke="#4a2756" stroke-width="2"/></symbol>
+  </defs>
+</svg>
+
+<div class="board">
+
+  <!-- 1. Visiter -->
+  <div class="shot">
+    <div class="phone">
+      <div class="scene"><svg><use href="#room"/></svg></div>
+      <div class="fab" style="left:10px"><svg><use href="#i-door"/></svg></div>
+      <div class="switch" title="Visiter / Aménager">
+        <span class="on"><svg><use href="#i-eye"/></svg></span>
+        <span><svg><use href="#i-pencil"/></svg></span>
+      </div>
+      <div class="fab" style="right:10px"><svg><use href="#i-exitfs"/></svg></div>
+    </div>
+    <div class="cap"><b>① Plein écran, Visiter.</b> L'interrupteur 👁 | ✏️ apparaît en haut à droite, à côté de « quitter le plein écran ». La porte (sortir dans la rue) reste à gauche. Rien d'autre à l'écran : on contemple.</div>
+  </div>
+
+  <!-- 2. Aménager, tiroir ouvert + bulle -->
+  <div class="shot">
+    <div class="phone">
+      <div class="scene"><svg><use href="#room"/></svg></div>
+      <div class="switch">
+        <span><svg><use href="#i-eye"/></svg></span>
+        <span class="on"><svg><use href="#i-pencil"/></svg></span>
+      </div>
+      <div class="fab" style="right:10px"><svg><use href="#i-exitfs"/></svg></div>
+
+      <!-- objet sélectionné : la lampe -->
+      <div class="sel" style="left:238px;top:360px;width:48px;height:122px"></div>
+      <div class="bubble" style="left:132px;top:306px;--tail:130px">
+        <span class="on"><svg><use href="#i-move"/></svg></span>
+        <span><svg><use href="#i-front"/></svg></span>
+        <span><svg><use href="#i-back"/></svg></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10c1 1 1 2 1 3h6c0-1 0-2 1-3a6 6 0 0 0-4-10z"/></svg></span>
+        <span style="color:#d0453a"><svg><use href="#i-trash"/></svg></span>
+      </div>
+
+      <div class="drawer">
+        <div class="drawer-head">
+          <div class="tabs">
+            <div class="tab on"><svg><use href="#i-sofa"/></svg>Meubles</div>
+            <div class="tab"><svg><use href="#i-frame"/></svg>Cartes</div>
+            <div class="tab"><svg><use href="#i-bricks"/></svg>Pièce</div>
+          </div>
+          <div class="collapse"><svg><use href="#i-down"/></svg></div>
+        </div>
+        <div class="body">
+          <div class="cats">
+            <div class="cat"><svg><use href="#i-storage"/></svg></div>
+            <div class="cat on"><svg><use href="#i-chair"/></svg></div>
+            <div class="cat"><svg><use href="#i-plant"/></svg></div>
+            <div class="cat"><svg><use href="#i-bone"/></svg></div>
+          </div>
+          <div class="right">
+            <div class="cat-title">Assises</div>
+            <div class="grid">
+              <div class="tile"><svg><use href="#t-chair"/></svg><i>Chaise</i></div>
+              <div class="tile"><svg><use href="#t-sofa"/></svg><i>Canapé</i></div>
+              <div class="tile"><svg><use href="#t-arm"/></svg><i>Fauteuil</i></div>
+              <div class="tile"><svg><use href="#t-chair"/></svg><i>Chaise</i></div>
+              <div class="tile"><svg><use href="#t-sofa"/></svg><i>Canapé</i></div>
+              <div class="tile"><svg><use href="#t-arm"/></svg><i>Fauteuil</i></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>② Aménager.</b> Le ✏️ passe en bleu, le tiroir monte. Onglets en pilule (Meubles · Cartes · Pièce), catégories en colonne à gauche comme le panneau de la maison des Sims, vignettes en grille de 2 rangées qui défile. Toucher une vignette lance le placement (⑥). Au-dessus de l'objet sélectionné, la bulle blanche à pointe (déplacer, avancer, reculer, lampe, retirer).<br><small>Les vignettes 4 à 6 ne sont là que pour montrer la 2ᵉ rangée.</small></div>
+  </div>
+
+  <!-- 3. Déco avec sous-catégories -->
+  <div class="shot">
+    <div class="phone">
+      <div class="scene"><svg><use href="#room"/></svg></div>
+      <div class="switch">
+        <span><svg><use href="#i-eye"/></svg></span>
+        <span class="on"><svg><use href="#i-pencil"/></svg></span>
+      </div>
+      <div class="fab" style="right:10px"><svg><use href="#i-exitfs"/></svg></div>
+      <div class="drawer">
+        <div class="drawer-head">
+          <div class="tabs">
+            <div class="tab on"><svg><use href="#i-sofa"/></svg>Meubles</div>
+            <div class="tab"><svg><use href="#i-frame"/></svg>Cartes</div>
+            <div class="tab"><svg><use href="#i-bricks"/></svg>Pièce</div>
+          </div>
+          <div class="collapse"><svg><use href="#i-down"/></svg></div>
+        </div>
+        <div class="body">
+          <div class="cats">
+            <div class="cat"><svg><use href="#i-storage"/></svg></div>
+            <div class="cat"><svg><use href="#i-chair"/></svg></div>
+            <div class="cat on"><svg><use href="#i-plant"/></svg></div>
+            <div class="cat"><svg><use href="#i-bone"/></svg></div>
+          </div>
+          <div class="right">
+            <div class="subs">
+              <div class="sub on">Plantes</div><div class="sub">Lumières</div><div class="sub">Sol</div><div class="sub">Murs</div>
+            </div>
+            <div class="grid">
+              <div class="tile"><svg viewBox="0 0 44 38"><path d="M22 22V10M22 16c-6 0-9-4-9-9 6 0 9 4 9 9zM22 14c0-6 4-9 9-9 0 5-3 9-9 9z" fill="#6fae5a" stroke="#2f5a26" stroke-width="1.5"/><path d="M14 22h16l-2 14H16z" fill="#c46f45" stroke="#3b2a1d" stroke-width="1.5"/></svg><i>Plante</i></div>
+              <div class="tile"><svg viewBox="0 0 44 38"><path d="M22 28v-8M22 24c-4 0-6-3-6-6 4 0 6 3 6 6zM22 23c0-4 3-6 6-6 0 3-2 6-6 6z" fill="#6fae5a" stroke="#2f5a26" stroke-width="1.5"/><path d="M16 28h12l-1 8H17z" fill="#c46f45" stroke="#3b2a1d" stroke-width="1.5"/></svg><i>Petite plante</i></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>③ Catégorie avec sous-catégories (Déco).</b> Les sous-catégories sont de petites pastilles au-dessus de la grille, la choisie en blanc cerclé de bleu.</div>
+  </div>
+
+  <!-- 4. Réduit -->
+  <div class="shot">
+    <div class="phone">
+      <div class="scene"><svg><use href="#room"/></svg></div>
+      <div class="switch">
+        <span><svg><use href="#i-eye"/></svg></span>
+        <span class="on"><svg><use href="#i-pencil"/></svg></span>
+      </div>
+      <div class="fab" style="right:10px"><svg><use href="#i-exitfs"/></svg></div>
+      <div class="handle"><svg><use href="#i-up"/></svg></div>
+    </div>
+    <div class="cap"><b>④ Tiroir réduit.</b> On reste en Aménager (✏️ toujours bleu) mais le tiroir n'est plus qu'une poignée blanche en bas ; la toucher le rouvre tel qu'il était.</div>
+  </div>
+
+  <!-- 6. Placement : emplacement libre -->
+  <div class="shot">
+    <div class="phone">
+      <div class="scene"><svg><use href="#room"/></svg></div>
+      <div class="switch">
+        <span><svg><use href="#i-eye"/></svg></span>
+        <span class="on"><svg><use href="#i-pencil"/></svg></span>
+      </div>
+      <div class="fab" style="right:10px"><svg><use href="#i-exitfs"/></svg></div>
+      <div class="hint">Glissez le fauteuil ou touchez une case</div>
+
+      <div class="foot ok" style="left:228px;top:552px;width:50px;height:22px"></div>
+      <div class="ghost" style="left:214px;top:494px;width:78px;height:70px"><svg viewBox="0 0 44 38"><use href="#t-arm" width="44" height="38"/></svg></div>
+      <div class="grip" style="left:239px;top:515px"><svg><use href="#i-move"/></svg></div>
+
+      <div class="place" style="left:124px;top:432px;--tail:129px">
+        <span title="Avancer"><svg><use href="#i-front"/></svg></span>
+        <span title="Reculer"><svg><use href="#i-back"/></svg></span>
+        <i class="vsep"></i>
+        <span class="cancel" title="Annuler"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+        <span class="valid" title="Valider"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>
+      </div>
+    </div>
+    <div class="cap"><b>⑥ Placement.</b> Toucher une vignette fait disparaître le tiroir : le fauteuil apparaît en transparence à la première place libre, avec son empreinte au sol en vert. On le glisse (poignée ✥) ou on touche une case. Au-dessus, ses boutons propres (ici avancer / reculer ; une lampe aurait 💡, une fenêtre ses tailles), puis <b style="color:#ff6b6b">✗ annuler</b> et <b style="color:#6fdc5c">✓ valider</b>. Rien n'est enregistré avant ✓ ; ✗ remet le tiroir comme il était.</div>
+  </div>
+
+  <!-- 7. Placement : emplacement refusé -->
+  <div class="shot">
+    <div class="phone">
+      <div class="scene"><svg><use href="#room"/></svg></div>
+      <div class="switch">
+        <span><svg><use href="#i-eye"/></svg></span>
+        <span class="on"><svg><use href="#i-pencil"/></svg></span>
+      </div>
+      <div class="fab" style="right:10px"><svg><use href="#i-exitfs"/></svg></div>
+      <div class="hint bad">Cet emplacement est déjà occupé.</div>
+
+      <div class="foot bad" style="left:124px;top:500px;width:50px;height:22px"></div>
+      <div class="ghost bad" style="left:110px;top:442px;width:78px;height:70px"><svg viewBox="0 0 44 38"><use href="#t-arm" width="44" height="38"/></svg></div>
+      <div class="grip" style="left:135px;top:463px"><svg><use href="#i-move"/></svg></div>
+
+      <div class="place" style="left:54px;top:380px;--tail:95px">
+        <span title="Avancer"><svg><use href="#i-front"/></svg></span>
+        <span title="Reculer"><svg><use href="#i-back"/></svg></span>
+        <i class="vsep"></i>
+        <span class="cancel" title="Annuler"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+        <span class="valid off" title="Valider"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>
+      </div>
+    </div>
+    <div class="cap"><b>⑦ Emplacement refusé.</b> Posé sur le canapé, le fauteuil et son empreinte passent en rouge, le ✓ est grisé et la raison s'affiche en haut (les mêmes messages qu'aujourd'hui). Il suffit de le glisser ailleurs.</div>
+  </div>
+
+  <!-- 5. Paysage -->
+  <div class="shot">
+    <div class="phone land">
+      <div class="scene"><svg><use href="#room-land"/></svg></div>
+      <div class="switch">
+        <span><svg><use href="#i-eye"/></svg></span>
+        <span class="on"><svg><use href="#i-pencil"/></svg></span>
+      </div>
+      <div class="fab" style="right:10px"><svg><use href="#i-exitfs"/></svg></div>
+      <div class="drawer">
+        <div class="drawer-head">
+          <div class="tabs">
+            <div class="tab on"><svg><use href="#i-sofa"/></svg>Meubles</div>
+            <div class="tab"><svg><use href="#i-frame"/></svg>Cartes</div>
+            <div class="tab"><svg><use href="#i-bricks"/></svg>Pièce</div>
+          </div>
+          <div class="collapse"><svg><use href="#i-down"/></svg></div>
+        </div>
+        <div class="body">
+          <div class="cats">
+            <div class="cat on"><svg><use href="#i-storage"/></svg></div>
+            <div class="cat"><svg><use href="#i-chair"/></svg></div>
+            <div class="cat"><svg><use href="#i-plant"/></svg></div>
+            <div class="cat"><svg><use href="#i-bone"/></svg></div>
+          </div>
+          <div class="right">
+            <div class="cat-title">Rangement</div>
+            <div class="grid">
+              <div class="tile"><svg><use href="#t-shelf"/></svg><i>Étagère</i></div>
+              <div class="tile"><svg><use href="#t-desk"/></svg><i>Bureau</i></div>
+              <div class="tile"><svg><use href="#t-pc"/></svg><i>Ordinateur</i></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap" style="max-width:720px"><b>⑤ Paysage.</b> Le tiroir se cale en bas à droite (comme la barre d’objets des Sims), sur une seule rangée de vignettes, catégories en carré 2×2 : la pièce reste visible.</div>
+  </div>
+</div>
+
+<div class="legend">
+  <div><h3>Interrupteur 👁 | ✏️</h3><ul><li>Visible en plein écran seulement (hors plein écran, les boutons Visiter / Aménager de la barre du haut restent).</li><li>Un appui bascule d'un mode à l'autre ; la moitié active est bleue.</li><li>Dans la rue (« Sortir »), passer en ✏️ fait rentrer dans la pièce, comme aujourd'hui.</li></ul></div>
+  <div><h3>Style Sims</h3><ul><li>Panneaux blanc-bleu un peu translucides, liseré bleu clair, ombre douce.</li><li>Vignettes carrées en dégradé blanc → bleu pâle, nom en petit dessous.</li><li>Choix actif : bleu plein (onglets, catégories).</li><li>Placement : objet fantôme + empreinte verte (rouge si refusé), ✗ rouge et ✓ vert.</li><li>Police arrondie (Nunito) pour les libellés du tiroir.</li></ul></div>
+  <div><h3>Inchangé</h3><ul><li>Contenu des onglets, catégories, sous-catégories et actions de la bulle.</li><li>Règles de pose (sol, mur, bureau, étagère) et messages de refus.</li><li>Menus ☁️ 🐾 ⋯ : barre du haut hors plein écran.</li></ul></div>
+</div>
+</body>
+</html>

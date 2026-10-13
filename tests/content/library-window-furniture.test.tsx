@@ -22,6 +22,7 @@ async function click(selector: string) {
   await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   await settle();
 }
+const confirm = async () => { if (container.querySelector('[data-action="place-confirm"]')) await click('[data-action="place-confirm"]'); };
 const room = () => activeRoom(repo.current()!);
 const windows = () => room().layout.filter((p) => p.kind === 'window');
 
@@ -47,6 +48,7 @@ async function placeWindow() {
   await click('[data-subcategory="walls"]');
   await click('[data-kind="window"]');
   await click('[data-cell="3-6"]');
+  await confirm();
 }
 
 describe('fenêtre — pose et taille', () => {
@@ -58,6 +60,7 @@ describe('fenêtre — pose et taille', () => {
   it('se sélectionne et s’agrandit / se réduit avec les boutons', async () => {
     await placeWindow();
     await click('[data-furniture="window"]');
+    await confirm();
     await click('[data-action="win-w+"]');
     await click('[data-action="win-h+"]');
     expect(windows()[0]).toMatchObject({ w: 7, h: 6 });
@@ -90,8 +93,10 @@ describe('fenêtre — pose et taille', () => {
     await click('[data-subcategory="walls"]');
     await click('[data-kind="window"]');
     await click('[data-cell="12-6"]');
+    await confirm();
     expect(windows()).toHaveLength(2);
     await click('[data-furniture="window"][data-id="f1"]');
+    await confirm();
     for (let i = 0; i < 4; i++) await click('[data-action="win-w+"]');
     expect(windows().find((w) => w.id === 'f1')!.w).toBeLessThan(10);
     expect(q('[role="status"]')!.textContent).toMatch(/occupé|place/i);
@@ -109,6 +114,7 @@ describe('fenêtre — pose et taille', () => {
     await click('[data-furniture="window"]');
     await click('[data-action="move"]');
     await click('[data-cell="15-6"]');
+    await confirm();
     expect(windows()[0]).toMatchObject({ col: 15, row: 2 });
   });
 });

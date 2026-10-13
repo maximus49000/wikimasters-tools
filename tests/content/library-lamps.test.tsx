@@ -21,6 +21,7 @@ async function click(selector: string) {
   await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   await settle();
 }
+const confirm = async () => { if (container.querySelector('[data-action="place-confirm"]')) await click('[data-action="place-confirm"]'); };
 const layoutNow = () => repo.current()?.rooms[0]?.layout ?? [];
 const lampNow = () => layoutNow().find((p) => p.kind === 'lamp') as { lit?: boolean } | undefined;
 const pointer = (type: string, target: EventTarget, x: number, y: number) =>
@@ -51,6 +52,7 @@ async function withLamp(mode: 'visit' | 'edit') {
   await click('[data-subcategory="lights"]');
   await click('[data-kind="lamp"]');
   await click('[data-cell="4-14"]');
+  await confirm();
   expect(layoutNow().some((p) => p.kind === 'lamp')).toBe(true);
   if (mode === 'visit') await click('[data-action="visit"]');
 }
@@ -73,10 +75,12 @@ describe('lampes cliquables', () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
+    await confirm();
     await click('[data-category="deco"]');
     await click('[data-subcategory="lights"]');
     await click('[data-kind="small-lamp"]');
     await click('[data-furniture="desk"]');
+    await confirm();
     await click('[data-action="visit"]');
     await click('[data-furniture="small"]');
     expect(layoutNow().find((p) => p.kind === 'small')).toMatchObject({ lit: false });
@@ -99,7 +103,9 @@ describe('lampes cliquables', () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-14"]');
+    await confirm();
     await click('[data-furniture="desk"]');
+    await confirm();
     expect(q('[data-action="lamp"]')).toBeNull();
     await click('[data-action="visit"]');
     await click('[data-furniture="desk"]');
@@ -147,6 +153,7 @@ describe('lampes au clavier (Visiter)', () => {
     await click('[data-action="edit"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-14"]');
+    await confirm();
     await click('[data-action="visit"]');
     expect((q('[data-furniture="desk"]') as unknown as SVGElement).style.cursor).toBe('default');
   });
@@ -187,6 +194,7 @@ describe('calque de lumière et dessin des lampes', () => {
     await click('[data-subcategory="lights"]');
     await click('[data-kind="lamp"]');
     await click('[data-cell="4-14"]');
+    await confirm();
     await click('[data-action="visit"]');
     expect(q('[data-steampunk-art="lamp"] [data-lamp-halo]')).not.toBeNull();
     await click('[data-furniture="lamp"]');
@@ -200,6 +208,7 @@ describe('lampe sans ciel terrestre', () => {
     await click('[data-scene="space"]');
     await click('[data-kind="desk"]');
     await click('[data-cell="2-14"]');
+    await confirm();
     expect(q('[data-furniture="desk"]')).not.toBeNull();
     expect(q('image[data-light]')).toBeNull();
     // Une lampe éteinte ne le monte pas non plus.
@@ -207,8 +216,10 @@ describe('lampe sans ciel terrestre', () => {
     await click('[data-subcategory="lights"]');
     await click('[data-kind="lamp"]');
     await click('[data-cell="10-14"]');
+    await confirm();
     expect(q('image[data-light]')).not.toBeNull();
     await click('[data-furniture="lamp"]');
+    await confirm();
     await click('[data-action="lamp"]');
     expect(lampNow()?.lit).toBe(false);
     expect(q('image[data-light]')).toBeNull();
@@ -222,6 +233,7 @@ describe('lampe sans ciel terrestre', () => {
       await click('[data-subcategory="lights"]');
       await click('[data-kind="lamp"]');
       await click('[data-cell="4-14"]');
+      await confirm();
       expect(layoutNow().some((p) => p.kind === 'lamp')).toBe(true);
       expect(q('image[data-light]')).not.toBeNull();
     });

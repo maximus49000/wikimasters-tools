@@ -21,6 +21,7 @@ async function click(selector: string) {
   await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   await settle();
 }
+const confirm = async () => { if (container.querySelector('[data-action="place-confirm"]')) await click('[data-action="place-confirm"]'); };
 
 beforeEach(async () => {
   try { localStorage.removeItem(LIGHT_KEY); } catch { /* */ }
@@ -58,6 +59,7 @@ describe('bouton Lumière', () => {
     await click('[data-subcategory="walls"]');
     await click('[data-kind="window"]');
     await click('[data-cell="6-4"]');
+    await confirm();
     expect(repo.current()!.rooms[0]!.layout.some((f) => f.kind === 'window')).toBe(true);
     expect(q('[data-light-toggle]')?.getAttribute('aria-pressed')).toBe('true');
     expect(container.querySelector('image[data-light]')).not.toBeNull();

@@ -43,6 +43,7 @@ async function placeGlobe() {
   await click('[data-category="steampunk"]');
   await click('[data-kind="globe"]');
   await click('[data-cell="2-17"]');
+  await click('[data-action="place-confirm"]');
   expect(room().layout.some((item) => item.kind === 'globe')).toBe(true);
 }
 

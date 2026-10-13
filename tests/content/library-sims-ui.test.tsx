@@ -22,6 +22,7 @@ async function click(selector: string) {
   await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   await settle();
 }
+const confirm = async () => { if (container.querySelector('[data-action="place-confirm"]')) await click('[data-action="place-confirm"]'); };
 const menu = (id: string) => q(`[data-menu="${id}"]`) as HTMLElement | null;
 
 beforeEach(async () => {
@@ -98,12 +99,6 @@ describe('tiroir de construction', () => {
     await click('[data-subcategory="lights"]');
     expect(q('[data-kind="lamp"]')).not.toBeNull();
     expect(q('[data-kind="plant"]')).toBeNull();
-  });
-
-  it('marque la vignette dont l’outil est actif', async () => {
-    await click('[data-action="edit"]');
-    await click('[data-kind="desk"]');
-    expect(q('[data-kind="desk"]')?.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('l’onglet Pièce porte le style, l’orientation et les dimensions', async () => {
@@ -189,7 +184,9 @@ describe('bulle d’actions', () => {
     await click('[data-category="storage"]');
     await click('[data-kind="shelf"]');
     await click('[data-cell="3-13"]');
+    await confirm();
     await click('[data-furniture="shelf"]');
+    await confirm();
   }
 
   it('apparaît sur la sélection avec ses actions', async () => {
@@ -197,7 +194,9 @@ describe('bulle d’actions', () => {
     expect(q('[data-action-bubble]')).toBeNull();
     await click('[data-kind="shelf"]');
     await click('[data-cell="3-13"]');
+    await confirm();
     await click('[data-furniture="shelf"]');
+    await confirm();
     const bubble = q('[data-action-bubble]');
     expect(bubble?.closest('[data-stage]')).not.toBeNull();
     expect(bubble?.querySelector('[data-action="move"]')).not.toBeNull();
@@ -213,7 +212,9 @@ describe('bulle d’actions', () => {
     await click('[data-subcategory="lights"]');
     await click('[data-kind="lamp"]');
     await click('[data-cell="3-13"]');
+    await confirm();
     await click('[data-furniture="lamp"]');
+    await confirm();
     expect(q('[data-action-bubble] [data-action="lamp"]')).not.toBeNull();
   });
 
@@ -223,7 +224,9 @@ describe('bulle d’actions', () => {
     await click('[data-subcategory="walls"]');
     await click('[data-kind="window"]');
     await click('[data-cell="3-6"]');
+    await confirm();
     await click('[data-furniture="window"]');
+    await confirm();
     expect(q('[data-action-bubble] [data-action="win-w+"]')).not.toBeNull();
     expect(q('[data-action-bubble] [data-action="win-h-full"]')).not.toBeNull();
   });
@@ -234,7 +237,9 @@ describe('bulle d’actions', () => {
     expect(q('[data-action-bubble]')).toBeNull();
     await click('[data-kind="shelf"]');
     await click('[data-cell="3-13"]');
+    await confirm();
     await click('[data-furniture="shelf"]');
+    await confirm();
     expect(q('[data-action-bubble]')).not.toBeNull();
     await click('[data-action="visit"]');
     expect(q('[data-action-bubble]')).toBeNull();
@@ -277,12 +282,14 @@ describe('corrections de la revue', () => {
     expect(q('[data-furniture]')).toBeNull();
   });
 
-  it('le tiroir ne recrée pas son observateur de taille à chaque rendu', async () => {
+  it('ni le tiroir ni la barre de placement ne recréent leur observateur de taille à chaque rendu', async () => {
     let created = 0;
     vi.stubGlobal('ResizeObserver', class { constructor() { created += 1; } observe() {} disconnect() {} });
     await click('[data-action="edit"]');
-    const before = created;
     await click('[data-kind="shelf"]');
+    const before = created;
+    await click('[data-cell="3-14"]');
+    await click('[data-cell="8-14"]');
     await click('[data-kind="desk"]');
     expect(created).toBe(before);
     vi.unstubAllGlobals();
@@ -291,5 +298,79 @@ describe('corrections de la revue', () => {
   it('en plein écran aussi, la scène laisse la place du tiroir', () => {
     expect(LIBRARY_CSS).not.toContain(':not(:fullscreen){padding-bottom');
     expect(LIBRARY_CSS).toContain('.wmt-lib-stage:fullscreen{box-sizing:border-box');
+  });
+});
+
+function stubFullscreen() {
+  let current: Element | null = null;
+  Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+    configurable: true,
+    value: function (this: HTMLElement) {
+      current = this;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    },
+  });
+  Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => current });
+  Object.defineProperty(document, 'exitFullscreen', {
+    configurable: true,
+    value: () => {
+      current = null;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    },
+  });
+}
+
+describe('interrupteur en plein écran', () => {
+  const press = async (selector: string) => {
+    await act(async () => { (q(selector) as HTMLElement).click(); });
+    await settle();
+  };
+
+  it('n’existe qu’en plein écran et bascule entre Visiter et Aménager', async () => {
+    stubFullscreen();
+    expect(q('[data-mode-switch]')).toBeNull();
+    await click('.wmt-lib-topbar [data-action="fullscreen"]');
+    expect(q('[data-mode-switch] [data-action="visit"]')?.getAttribute('aria-pressed')).toBe('true');
+    await press('[data-mode-switch] [data-action="edit"]');
+    expect(q('[data-mode-switch] [data-action="edit"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-drawer]')).not.toBeNull();
+    await press('[data-mode-switch] [data-action="visit"]');
+    expect(q('[data-drawer]')).toBeNull();
+  });
+
+  it('passer en 👁 pendant un placement l’annule sans rien enregistrer', async () => {
+    stubFullscreen();
+    await click('.wmt-lib-topbar [data-action="fullscreen"]');
+    await press('[data-mode-switch] [data-action="edit"]');
+    await click('[data-kind="shelf"]');
+    expect(q('[data-placement-bar]')).not.toBeNull();
+    await press('[data-mode-switch] [data-action="visit"]');
+    expect(q('[data-placement-bar]')).toBeNull();
+    expect(repo.current()!.rooms[0]!.layout).toHaveLength(0);
+  });
+});
+
+describe('habillage Sims', () => {
+  it('le tiroir range les catégories en colonne à gauche et nomme la catégorie', async () => {
+    await click('[data-action="edit"]');
+    expect(q('.wmt-lib-drawer-body .wmt-lib-cats [data-category="storage"]')).not.toBeNull();
+    expect(q('.wmt-lib-cat-title')?.textContent).toBe('Rangement');
+    expect(q('[data-drawer-tab="furniture"]')?.textContent).toContain('Meubles');
+    expect(q('.wmt-lib-tabs-pill [data-drawer-tab="furniture"]')).not.toBeNull();
+  });
+
+  it('la feuille de style déclare les couleurs Sims', () => {
+    expect(LIBRARY_CSS).toContain('--sims-panel');
+    expect(LIBRARY_CSS).toContain('.wmt-lib-confirm');
+    expect(LIBRARY_CSS).toContain('.wmt-lib-switch');
+  });
+
+  it('les boutons ronds du plein écran ont l’habillage Sims', async () => {
+    stubFullscreen();
+    await click('.wmt-lib-topbar [data-action="fullscreen"]');
+    expect(q('.wmt-lib-fab[data-action="outside"]')).not.toBeNull();
+    expect(q('.wmt-lib-fab[aria-label="Quitter le plein écran"]')).not.toBeNull();
   });
 });
