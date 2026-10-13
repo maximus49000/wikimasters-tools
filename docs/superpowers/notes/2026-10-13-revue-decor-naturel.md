@@ -16,9 +16,9 @@ ni un objet.
 | 2 | Marche de face ou de dos au passage piéton (effet « moonwalk ») | PR #273 (fusionnée) |
 | 3 | Motos et scooters : les mains sur le guidon | PR #273 (fusionnée) |
 | 4 | Vélos au feu rouge : arrêt avant le passage piéton, pied à terre ; remonter une file sans traverser un véhicule | PR #273 (fusionnée) |
-| 5 | Déménageurs : équipe désorganisée et vivante (pas 3 qui entrent / 3 qui sortent), hayon rapide, entrée dans le camion sans être coupé en deux par le calque du camion | lot déménagement (planning par porteur, moving-crew.ts) |
-| 6 | Local déménagé : il se vide puis se remplit, les déménageurs sont visibles au travail à l'intérieur | lot déménagement (planning par porteur, moving-crew.ts) |
-| 7 | Café : le serveur pose la tasse, le client la prend, boit, la repose (plusieurs fois), la tasse reste jusqu'au débarrassage, le client paie avant de partir | lot café |
+| 5 | Déménageurs : équipe désorganisée et vivante (pas 3 qui entrent / 3 qui sortent), hayon rapide, entrée dans le camion sans être coupé en deux par le calque du camion | PR #277 (fusionnée) |
+| 6 | Local déménagé : il se vide puis se remplit, les déménageurs sont visibles au travail à l'intérieur | PR #277 (fusionnée) |
+| 7 | Café : le serveur pose la tasse, le client la prend, boit, la repose (plusieurs fois), la tasse reste jusqu'au débarrassage, le client paie avant de partir | lot café (terrace-service.ts) |
 | 8 | Piétons : respect des plans (contourner par derrière), attente vivante s'il n'y a pas la place (petits gestes, agacement), jamais à travers un objet ou un véhicule | lot piétons |
 | 9 | Plus de passants et de vie sur le trottoir d'en face, sans cacher la ville (seulement des éléments bas ; lampadaire côté chaussée ; pas de gros arbre ni de bâtiment) | lot trottoir d'en face |
 
@@ -48,3 +48,16 @@ Reste :
   désormais seulement par l'arrière. À confirmer avec l'utilisateur si le souci visait autre chose (passants coupés par le
   camion garé, par exemple).
 - Meubles : aplats provisoires (Fable).
+
+## Café : ce qui est fait et ce qui reste
+
+Fait (lot café) : déroulé par convive (`shops/terrace-service.ts`) — servi 40 s à 2 min après s'être assis (le serveur
+apporte la tasse et la pose, geste « give »), 6 à 12 gorgées étalées (prendre, boire à la bouche, reposer), occupations entre
+deux (lire, téléphone, menton dans la main…), paiement avant de partir (serveur au carnet, carte ou billets), tasse qui reste
+sur la table, même après le départ, jusqu'au débarrassage (geste « take », retour la tasse à la main) ; collègue qui sort si
+le serveur est déjà dehors ; boisson = tasse (café, salon de thé) ou verre (bar, restaurant, pizzeria), plus de théière portée
+à la bouche.
+
+Reste : les convives classiques (graphisme non Ghibli) restent assis immobiles (pas de gestes) ; pas de service pendant
+l'averse, le montage ni le démontage (les tasses disparaissent quand on rentre les tables : le serveur devrait les débarrasser
+d'abord) ; bouche des pantins (Fable).

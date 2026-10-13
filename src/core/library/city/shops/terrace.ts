@@ -16,7 +16,7 @@ export const WEATHER_HOLD = 10; // le mauvais temps garde la terrasse rentrée 1
 export const COLD_FROM = 22 * 60; // nuit froide : pas de table de 22 h à 7 h
 export const COLD_UNTIL = 7 * 60;
 export const MAX_GUESTS = 4;
-const TURN_MIN = 45; // un convive reste jusqu'à la fin de son « tour » de 45 minutes
+export const TURN_MIN = 45; // un convive reste jusqu'à la fin de son « tour » de 45 minutes
 // Averse soudaine (G3b) : une minute pour que les convives rentrent à pied, puis les tables rentrent en 3 minutes (au lieu de 6).
 export const RUSH_LEAVE_MIN = 1;
 export const RUSH_CLEAR_MIN = 3;

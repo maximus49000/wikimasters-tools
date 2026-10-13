@@ -43,7 +43,7 @@ import { interiorPost } from './shop-interiors';
 import { PropContext, PropImage } from './prop/prop-host';
 import '../core/library/paint/props/street';
 import { ghibliStaffPost } from './shop/ghibli-shop-glass';
-import { collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type TerraceGuestNode, type Waiter } from './shop-terrace';
+import { collectCarriers, collectCups, collectTerraceGuests, collectWaiters, placeCarriers, placeCups, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type CupNode, type TerraceGuestNode, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, tone } from './city-sprites';
 import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
 import type { ScheduledArrival, TrafficEnv } from '../core/library/city/traffic/engine';
@@ -415,6 +415,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let waiters: Waiter[] = [];
     // Convives de terrasse (assis, ou à pied pendant leur minute d'arrivée ou de départ) et porteur des tables (Ghibli).
     let terraceGuests: TerraceGuestNode[] = [];
+    let cups: CupNode[] = [];
     let carriers: Carrier[] = [];
     let crews: Crew[] = [];
     // Ghibli : employés à pied (scripts porte → trottoir → porte) et ouvriers du chantier, posés par la boucle.
@@ -454,6 +455,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
         terraceGuests = collectTerraceGuests(el);
+        cups = collectCups(el);
         carriers = collectCarriers(el);
         crews = collectMovers(el);
         staffWalks = ghibli ? collectStaffWalks(el) : [];
@@ -548,6 +550,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         placeWaiters(waiters, t, metrics, ghibli ? figures : null);
         placeCarriers(carriers, t, metrics, ghibli ? figures : null);
         placeTerraceGuests(terraceGuests, t, metrics, ghibli ? figures : null);
+        placeCups(cups, t);
         placeMovers(crews, t, metrics, ghibli ? figures : null);
         if (ghibli) {
           placeStaffWalks(staffWalks, t, metrics, figures);
