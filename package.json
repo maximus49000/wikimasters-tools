@@ -12,6 +12,7 @@
     "build": "wxt build",
     "postinstall": "wxt prepare",
     "test": "vitest run",
+    "test:famille": "node scripts/test-familles.mjs",
     "typecheck": "tsc --noEmit",
     "verifier-secrets": "node scripts/check-no-secrets.mjs",
     "build:firefox": "wxt build -b firefox --mv3",
