@@ -35,6 +35,8 @@ describe('calque du zoom', () => {
     expect(zoom.getAttribute('data-zoom-face')).toBe('front');
     expect(container.querySelector('[data-zoom-card="Daft_Punk"]')).not.toBeNull();
     expect(container.querySelector('[data-zoom-card="Inconnue"]')).not.toBeNull();
+    // Carte inconnue : atténuée une seule fois, par son dessin « manquant » (pas d'opacité en plus sur le groupe).
+    expect(container.querySelector('[data-zoom-card="Inconnue"]')!.hasAttribute('opacity')).toBe(false);
     // 13 emplacements vides en pointillés + 2 cartes = 15.
     expect(container.querySelectorAll('rect[stroke-dasharray]').length + container.querySelectorAll('[data-zoom-card]').length).toBe(15);
   });

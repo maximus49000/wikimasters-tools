@@ -10,8 +10,8 @@ export const MAX_GAP = 75;
 
 // Le dessus d'un meuble où le chat peut se tenir : de x0 à x1, à la hauteur y.
 export type Platform = { id: string; x0: number; x1: number; y: number; col: number; row: number; w: number; h: number };
-// `blocked[row - WALL_ROWS][col]` : case du sol occupée par l'appui d'un meuble plein (les `foot` rangées du bas) ; le reste de l'emprise,
-// le dessous d'un meuble `under` et les tapis restent praticables.
+// `blocked[row - WALL_ROWS][col]` : case du sol occupée par l'appui d'un meuble plein, selon son angle (ses cases au sol, `floorCells`) ;
+// le reste de l'emprise, le dessous d'un meuble `under` et les tapis restent praticables.
 export type WalkMap = { cols: number; blocked: boolean[][]; platforms: Platform[] };
 
 // Hauteur du dessus, en fraction de la hauteur du meuble depuis son haut (l'assise du canapé est plus bas que son dossier).

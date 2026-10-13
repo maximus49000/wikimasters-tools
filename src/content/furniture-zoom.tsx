@@ -87,7 +87,7 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
           if (!slot) return null;
           const info = cards[p.slug];
           return (
-            <g key={p.id} data-zoom-card={p.slug} onClick={cardTap(p.slug)} style={{ cursor: info ? 'pointer' : 'default' }} opacity={info ? 1 : 0.35}>
+            <g key={p.id} data-zoom-card={p.slug} onClick={cardTap(p.slug)} style={{ cursor: info ? 'pointer' : 'default' }}>
               <ShelfItemArt rect={slot} shape={p.shape} slug={p.slug} title={info?.title ?? ''} imageUrl={imageOf(p.slug)} missing={!info} />
               <rect x={slot.x} y={slot.y} width={slot.w} height={slot.h} fill="transparent" />
             </g>
