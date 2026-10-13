@@ -1,4 +1,4 @@
-import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, sizeOf, wallSizeOf } from './furniture-catalog';
+import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, footOf, layerOf, sizeOf, wallSizeOf } from './furniture-catalog';
 import { STANDING_KINDS } from './library-types';
 import type { Depth, Layout, Orientation, Placed, ShelfShape, SmallItem, StandDepth, StandingKind, VinylColor, WallShape } from './library-types';
 
@@ -88,13 +88,31 @@ const clashAt = (layout: Layout, cells: Cell[], ignoreId: string | undefined, la
   return cells.filter((c) => taken.has(`${c.col}-${c.row}`));
 };
 
-// Le niveau libre le plus proche de `from` pour ce meuble à cet endroit (à égalité, celui de devant), null si les trois sont pris.
-export function freeDepth(layout: Layout, cols: number, kind: StandingKind, col: number, row: number, from: StandDepth, ignoreId?: string): StandDepth | null {
+// Emprise au sol d'un meuble debout : ses `foot` rangées du bas (au moins une) ; au-dessus, c'est l'espace devant le mur.
+function footRect(kind: StandingKind, col: number, row: number): Rect {
   const { w, h } = sizeOf(kind);
-  const cells = cellsOf({ col, row, w, h });
-  const layer = layerOf(kind);
-  const order = [from, from + 1, from - 1, from + 2, from - 2].filter((d): d is StandDepth => d >= 1 && d <= 3);
-  return order.find((d) => clashAt(layout, cells, ignoreId, layer, d).length === 0) ?? null;
+  const foot = Math.min(h, Math.max(1, footOf(kind)));
+  return { col, row: row + h - foot, w, h: foot };
+}
+
+// Les cases d'emprise au sol de ce meuble déjà prises par un autre meuble debout (hors tapis), quel que soit son niveau :
+// un meuble peut passer devant un autre (pieds plus bas), jamais au même endroit.
+function footClash(layout: Layout, kind: StandingKind, col: number, row: number, ignoreId?: string): Cell[] {
+  const taken = new Set<string>();
+  for (const other of layout) {
+    if (other.id === ignoreId || !isStanding(other) || layerOf(other.kind) !== 'floor') continue;
+    for (const c of cellsOf(footRect(other.kind, other.col, other.row))) taken.add(`${c.col}-${c.row}`);
+  }
+  return cellsOf(footRect(kind, col, row)).filter((c) => taken.has(`${c.col}-${c.row}`));
+}
+
+// Le niveau de ce meuble à cet endroit : `from` si son emprise au sol est libre (un tapis, lui, ne doit couvrir aucun autre tapis), null sinon.
+export function freeDepth(layout: Layout, cols: number, kind: StandingKind, col: number, row: number, from: StandDepth, ignoreId?: string): StandDepth | null {
+  if (layerOf(kind) === 'rug') {
+    const { w, h } = sizeOf(kind);
+    return clashAt(layout, cellsOf({ col, row, w, h }), ignoreId, 'rug', from).length === 0 ? from : null;
+  }
+  return footClash(layout, kind, col, row, ignoreId).length === 0 ? from : null;
 }
 
 export function canPlace(layout: Layout, cols: number, kind: StandingKind, col: number, row: number, ignoreId?: string): PlaceResult {
@@ -106,7 +124,8 @@ export function canPlace(layout: Layout, cols: number, kind: StandingKind, col: 
   const layer = layerOf(kind);
   if (layer === 'rug' && row < WALL_ROWS) return { ok: false, reason: 'floor', cells: cells.filter((c) => c.row < WALL_ROWS) };
   if (freeDepth(layout, cols, kind, col, row, depthDefault(kind), ignoreId) !== null) return { ok: true };
-  return { ok: false, reason: 'taken', cells: clashAt(layout, cells, ignoreId, layer, depthDefault(kind)) };
+  const clash = layer === 'rug' ? clashAt(layout, cells, ignoreId, layer, depthDefault(kind)) : footClash(layout, kind, col, row, ignoreId);
+  return { ok: false, reason: 'taken', cells: clash };
 }
 
 // Un objet accroché doit tenir entièrement sur le mur et sur des cases libres du niveau 0 (derrière une étagère, c'est permis).
@@ -232,7 +251,7 @@ export function moveStanding(layout: Layout, cols: number, id: string, col: numb
 }
 
 // Avancer (+1) descend un meuble debout (hors tapis) d'une ligne vers le bas de l'écran, Reculer (-1) le remonte d'une ligne :
-// mêmes règles qu'un déplacement (dans la pièce, pieds sur le sol, niveau libre choisi s'il chevauche un autre meuble).
+// mêmes règles qu'un déplacement (dans la pièce, pieds sur le sol, emprise au sol libre).
 export function shiftRow(layout: Layout, cols: number, id: string, delta: 1 | -1): Layout | null {
   const item = layout.find((p) => p.id === id);
   if (!item || !isStanding(item) || layerOf(item.kind) === 'rug') return null;
@@ -394,7 +413,7 @@ export function placedSlugs(layout: Layout): Set<string> {
 }
 
 // Emplacement d'étagère sous le point (x, y) du dessin, en pixels.
-// L'emplacement sous (x, y) de l'étagère la plus en avant (deux étagères peuvent se superposer à des niveaux différents).
+// L'emplacement sous (x, y) de l'étagère la plus en avant (deux étagères peuvent se superposer, l'une devant l'autre).
 export function slotAt(layout: Layout, x: number, y: number): { shelfId: string; slot: number } | null {
   const shelves = layout.filter((p): p is Standing => p.kind === 'shelf');
   for (const p of byDrawOrder(layout, shelves).reverse()) {

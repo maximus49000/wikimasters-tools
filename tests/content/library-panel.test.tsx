@@ -298,12 +298,16 @@ describe('LibraryPanel : plein écran', () => {
     await click('[data-action="fullscreen"]');
   });
 
-  it('garde la fenêtre habituelle sur un écran en portrait', async () => {
+  it('prend toute la hauteur d’un écran en portrait (pas de bandes noires), la pièce défile en largeur', async () => {
     stub();
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1080 });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 2400 });
     await click('[data-action="fullscreen"]');
-    expect((q('[data-scroll]') as HTMLElement).style.height).toBe('');
+    expect((q('[data-scroll]') as HTMLElement).style.height).toBe('100vh');
+    expect((q('[data-scroll]') as HTMLElement).style.width).toBe('100vw');
+    await click('[data-action="edit"]');
+    // En Aménager, le tiroir prend le bas de l'écran.
+    expect((q('[data-scroll]') as HTMLElement).style.height).toBe('calc(100vh - var(--wmt-drawer-h, 0px))');
     expect(q('[data-action="fit-screen"]')).toBeNull();
   });
 });
@@ -319,19 +323,17 @@ describe('LibraryPanel : niveaux', () => {
   };
   const outlineX = () => Number([...container.querySelectorAll('[data-selected-copy] rect[stroke="#378ADD"]')].at(-1)?.getAttribute('x'));
 
-  it('avancer descend le meuble sélectionné d’une ligne, reculer le remonte, jusqu’au bas de la pièce', async () => {
+  it('avancer descend le meuble sélectionné d’une ligne, reculer le remonte, jamais sur le pied d’un autre meuble', async () => {
     await seed();
     await click('[data-id="arm"]');
     const arm = () => repo.current()?.rooms[0]?.layout.find((p) => p.id === 'arm');
-    expect((q('[data-action="depth-back"]') as HTMLButtonElement).disabled).toBe(false);
-    await click('[data-action="depth-front"]');
-    expect(arm()).toMatchObject({ row: 14 });
-    await click('[data-action="depth-front"]');
-    expect(arm()).toMatchObject({ row: 15 });
-    // Le fauteuil (3 lignes) touche le bas de la pièce : plus de ligne en dessous.
+    // Une ligne plus bas, le fauteuil poserait un pied sur celui de l'étagère : refusé.
     expect((q('[data-action="depth-front"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((q('[data-action="depth-back"]') as HTMLButtonElement).disabled).toBe(false);
     await click('[data-action="depth-back"]');
-    expect(arm()).toMatchObject({ row: 14 });
+    expect(arm()).toMatchObject({ row: 12 });
+    await click('[data-action="depth-front"]');
+    expect(arm()).toMatchObject({ row: 13 });
   });
 
   it('un second toucher sélectionne l’objet derrière', async () => {

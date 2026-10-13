@@ -162,7 +162,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-thumb-name{font-size:9.5px;font-weight:800}
 .wmt-lib-drawer-panel[data-drawer-panel="room"] .wmt-lib-btn{color:var(--sims-blue);border-color:var(--sims-line);background:#fff}
 .wmt-lib-drawer-panel[data-drawer-panel="room"] .wmt-lib-btn[aria-pressed="true"]{border-color:var(--sims-blue);box-shadow:0 0 0 2px rgba(47,127,214,.25)}
-.wmt-lib-drawer-reduced{bottom:0}
+.wmt-lib-drawer-reduced{bottom:0;left:50%;right:auto}
 .wmt-lib-drawer-reduced .wmt-lib-btn{width:96px;min-height:30px;background:var(--sims-panel);color:var(--sims-blue);border:2px solid var(--sims-line);border-bottom:0;border-radius:16px 16px 0 0;box-shadow:0 -2px 8px rgba(0,0,0,.3)}
 .wmt-lib-bubble{gap:2px;padding:4px;border-radius:12px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 4px 10px rgba(0,0,0,.35);color:var(--sims-blue)}
 .wmt-lib-bubble .wmt-lib-btn{min-width:34px;min-height:34px;padding:0;border:0;border-radius:9px;color:var(--sims-blue)}
@@ -298,6 +298,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const outside = outsidePhase !== 'inside';
   const screenSize = useScreenSize(stage.active);
   const fill = stage.active && orientationNow === 'landscape' && screenSize.width > screenSize.height;
+  // Plein écran sur un écran en hauteur : la pièce prend toute la hauteur laissée par le tiroir et défile en largeur.
+  const tall = stage.active && !fill && screenSize.height > screenSize.width;
   const fitCols = screenCols(screenSize.width, screenSize.height);
   // Pièce plus étroite que l'écran : elle s'élargit d'elle-même à la largeur exacte de l'écran (mur vide ajouté à droite),
   // pour garder le ciel et le sol entiers sans bandes noires. Une pièce plus large n'est réduite que par le bouton.
@@ -824,6 +826,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             // En plein écran : la fenêtre visible (24 ou 16 colonnes sur 510 de haut) prend la plus grande taille qui tient dans l'écran.
             maxWidth: fill ? 'none' : stage.active ? `min(100vw, calc(${screenH} * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
             ...(fill ? { width: '100vw', height: screenH, overflowY: 'auto' } : {}),
+            ...(tall ? { width: '100vw', maxWidth: 'none', height: screenH, overflowY: 'hidden' } : {}),
             ...(following ? { overflowX: 'hidden', touchAction: 'none' } : {}),
             // Dehors : la caméra règle le viewBox, le conteneur ne défile plus et prend le cadre de la fenêtre visible.
             ...(outside ? { ...(stage.active ? { width: '100vw', height: '100vh', maxWidth: 'none' } : { width: '100%', aspectRatio: `${visibleWidth} / ${HEIGHT}` }), overflow: 'hidden', touchAction: 'none', position: 'relative', userSelect: 'none', WebkitUserSelect: 'none' } : {}),
@@ -851,6 +854,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             outside={outside}
             roomLayers={outsidePhase === 'leaving' || outsidePhase === 'outside' ? 'hidden' : 'shown'}
             fill={fill && !outside}
+            fillHeight={tall && !outside ? screenH : undefined}
             placing={placement ? placingView(placement) : null}
           />
         </div>

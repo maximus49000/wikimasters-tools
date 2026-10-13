@@ -33,14 +33,19 @@ type Props = {
   onShrink: (side: 'left' | 'right') => void;
 };
 
-// Hauteur du tiroir recopiée sur la scène (--wmt-drawer-h) : hors plein écran, la pièce s'arrête au-dessus du tiroir.
+// Place réservée en bas de la scène (--wmt-drawer-h) : seulement le panneau de vignettes. La rangée d'onglets et la poignée
+// du tiroir réduit flottent par-dessus la pièce, pour ne laisser aucune bande vide sous elle.
 function useDrawerHeight(reduced: boolean) {
   const box = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const el = box.current;
     const stage = el?.parentElement;
     if (!el || !stage || typeof ResizeObserver === 'undefined') return;
-    const sync = (): void => stage.style.setProperty('--wmt-drawer-h', `${el.offsetHeight}px`);
+    const sync = (): void => {
+      const panel = reduced ? null : el.querySelector<HTMLElement>('.wmt-lib-drawer-panel:not([hidden])');
+      const h = panel ? Math.max(0, Math.round(el.getBoundingClientRect().bottom - panel.getBoundingClientRect().top)) : 0;
+      stage.style.setProperty('--wmt-drawer-h', `${h}px`);
+    };
     sync();
     const observer = new ResizeObserver(sync);
     observer.observe(el);
