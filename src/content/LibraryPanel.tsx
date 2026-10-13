@@ -24,8 +24,8 @@ import {
   fitRoomWidth,
   updateLayout,
 } from '../core/library/library-book';
-import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
-import { STYLE_IDS, type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
+import { STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
+import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
@@ -75,7 +75,6 @@ import {
   screenCols,
   type Cell,
 } from '../core/library/room-grid';
-import { STYLE_LABELS, paletteOf } from '../core/library/styles';
 import { formatMinutes } from '../core/library/time-setting';
 import { useSceneTime } from './use-scene-time';
 import { useCityDay } from './use-city-calendar';
@@ -91,7 +90,6 @@ import { ensurePosition, positionFailure, requestPosition, subscribePosition } f
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
 import { dropTargetFor, pointerToCell, type DropTarget } from './furniture-drag';
-import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
 import { createLongPress } from './long-press';
 import { FullscreenButton, useFullscreen } from './fullscreen';
 import { lockOrientation, unlockOrientation } from './orientation-lock';
@@ -106,6 +104,7 @@ import { LibraryTopBar } from './library-topbar';
 import { NEXT_ZONE, SkyMenu } from './library-sky-menu';
 import { PetsMenu, SPECIES_TEXT } from './library-pets-menu';
 import { RoomMenu } from './library-room-menu';
+import { BuildDrawer, INITIAL_DRAWER, type DrawerState } from './build-drawer';
 import { useOutsideCamera, type OutsidePhase } from './outside/use-outside-camera';
 import type { Rect } from '../core/library/outside-camera';
 
@@ -146,6 +145,19 @@ export const LIBRARY_CSS = `
 .wmt-lib-pop-panel{position:absolute;top:calc(100% + 6px);right:0;z-index:20;display:flex;flex-direction:column;gap:8px;min-width:240px;max-width:min(92vw,420px);max-height:70vh;overflow:auto;padding:10px;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:var(--color-surface,#0d1117);box-shadow:0 8px 24px rgba(0,0,0,.4)}
 .wmt-lib-pop-panel[hidden]{display:none}
 .wmt-lib-pop-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.wmt-lib-drawer{position:absolute;left:0;right:0;bottom:0;z-index:5;display:flex;flex-direction:column;gap:6px;padding:6px 8px 8px;background:var(--color-surface,#0d1117);border-top:1px solid var(--color-border,rgba(148,163,184,.35));box-shadow:0 -6px 18px rgba(0,0,0,.35)}
+.wmt-lib-drawer-reduced{left:50%;right:auto;transform:translateX(-50%);padding:0;background:transparent;border:0;box-shadow:none}
+.wmt-lib-drawer-reduced .wmt-lib-btn{min-height:32px;background:rgba(0,0,0,.65);color:#fff;border:0;border-radius:16px 16px 0 0}
+.wmt-lib-drawer-tabs{display:flex;gap:6px;align-items:center}
+.wmt-lib-drawer-panel{display:flex;flex-direction:column;gap:6px}
+.wmt-lib-drawer-panel[hidden]{display:none}
+.wmt-lib-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.wmt-lib-chip{padding:0 10px;white-space:nowrap;font-size:13px;flex:0 0 auto}
+.wmt-lib-subchips .wmt-lib-chip{min-height:32px;font-size:12px}
+.wmt-lib-thumbs{display:flex;flex-direction:row;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.wmt-lib-thumb{flex:0 0 auto;flex-direction:column;width:64px;height:72px;padding:4px;border-radius:10px;gap:2px}
+.wmt-lib-thumb-name{font-size:10px;line-height:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wmt-lib-stage[data-editing="true"]:not(:fullscreen){padding-bottom:var(--wmt-drawer-h,0px)}
 `;
 
 const REFUSALS = {
@@ -167,7 +179,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [pending, setPending] = useState<CardChoice | null>(null);
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
-  const [category, setCategory] = useState<Category>('storage');
+  const [drawer, setDrawer] = useState<DrawerState>(INITIAL_DRAWER);
   const [tool, setTool] = useState<Tool>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [blink, setBlink] = useState<Cell[]>([]);
@@ -405,14 +417,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const visibleWidth = VISIBLE_COLS[room.orientation] * CELL_W;
   const editLayout = (change: Parameters<typeof updateLayout>[2]) => library.update((state) => updateLayout(state, room.id, change));
 
-  const cats = categoriesFor(room.style);
-  const shownCategory: Category = cats.some((c) => c.id === category) ? category : 'storage';
   const chooseStyle = (id: StyleId): void => {
     if (id === room.style) return;
     if (room.style === 'steampunk' && id !== 'steampunk' && countExclusive(room) > 0
       && !window.confirm('Retirer les meubles Steampunk (globe, télescope, automate) de cette pièce ?')) return;
     reset();
-    if (category === 'steampunk' && id !== 'steampunk') setCategory('storage');
+    if (drawer.category === 'steampunk' && id !== 'steampunk') setDrawer((d) => ({ ...d, category: 'storage', sub: null }));
     void library.update((state) => setRoomStyle(state, room.id, id));
   };
   const reset = (): void => {
@@ -723,6 +733,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     void library.update((state) => fitRoomWidth(state, room.id, fitCols));
   };
 
+  // Changer d'onglet ou de catégorie abandonne l'outil en cours, comme le faisaient les anciens boutons de catégorie.
+  const onDrawer = (next: DrawerState): void => {
+    if (next.tab !== drawer.tab || next.category !== drawer.category) reset();
+    setDrawer(next);
+  };
   const setMode2 = (next: 'visit' | 'edit'): void => {
     reset();
     setMode(next);
@@ -836,51 +851,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         }
       />
 
-      {editing && (
+      {editing && selectedId && (
         <div className="wmt-lib-row">
-          <Btn label="Pièce horizontale" pressed={room.orientation === 'landscape'} data={{ orient: 'landscape' }} onClick={() => chooseOrientation('landscape')}>
-            <Icon paths={ICONS.landscape} />
-          </Btn>
-          <Btn label="Pièce verticale" pressed={portrait} data={{ orient: 'portrait' }} onClick={() => chooseOrientation('portrait')}>
-            <Icon paths={ICONS.portrait} />
-          </Btn>
-        </div>
-      )}
-
-      {editing && (
-        <div className="wmt-lib-row" role="group" aria-label="Style de la pièce">
-          {STYLE_IDS.map((id) => (
-            <Btn key={id} label={STYLE_LABELS[id]} pressed={room.style === id} data={{ style: id }} onClick={() => chooseStyle(id)}>
-              <span className="wmt-lib-swatch" style={{ background: paletteOf(id).wall, borderColor: paletteOf(id).floor }} />
-            </Btn>
-          ))}
-        </div>
-      )}
-
-      {editing && (
-        <div className="wmt-lib-row" role="group" aria-label="Catégories de meubles">
-          {cats.map((c) => (
-            <Btn key={c.id} label={c.label} pressed={shownCategory === c.id} data={{ category: c.id }} onClick={() => { reset(); setCategory(c.id); }}>
-              <Icon paths={CATEGORY_ICON[c.id]} />
-            </Btn>
-          ))}
-        </div>
-      )}
-
-      {editing && (
-        <div className="wmt-lib-row">
-          {(cats.find((c) => c.id === shownCategory)?.kinds ?? []).map((kind) => (
-            <Btn
-              key={kind}
-              label={`Poser : ${labelOf(kind)}`}
-              pressed={tool?.type === 'new' && tool.kind === kind}
-              data={{ kind }}
-              onClick={() => startNew(kind)}
-            >
-              <Icon paths={KIND_ICON[kind]} />
-            </Btn>
-          ))}
-          {selectedId && (
             <>
               <Btn label="Déplacer" pressed={tool?.type === 'move'} data={{ action: 'move' }} onClick={startMove}>
                 <Icon paths={ICONS.move} />
@@ -910,25 +882,6 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 </>
               )}
             </>
-          )}
-          {collection && (
-            <Btn label="Ajouter une carte" pressed={tool?.type === 'card'} data={{ action: 'add-card' }} onClick={startCard}>
-              <Icon paths={ICONS.card} />
-            </Btn>
-          )}
-          <span className="wmt-lib-sep" />
-          <Btn label="Agrandir la pièce à gauche" data={{ action: 'extend-left' }} onClick={() => void extend('left')}>
-            <Icon paths={ICONS.extendLeft} />
-          </Btn>
-          <Btn label="Réduire la pièce à gauche" data={{ action: 'shrink-left' }} onClick={() => void shrink('left')}>
-            <Icon paths={ICONS.shrinkLeft} />
-          </Btn>
-          <Btn label="Réduire la pièce à droite" data={{ action: 'shrink-right' }} onClick={() => void shrink('right')}>
-            <Icon paths={ICONS.shrinkRight} />
-          </Btn>
-          <Btn label="Agrandir la pièce à droite" data={{ action: 'extend-right' }} onClick={() => void extend('right')}>
-            <Icon paths={ICONS.extendRight} />
-          </Btn>
         </div>
       )}
 
@@ -936,7 +889,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         {message}
       </div>
 
-      <div className="wmt-lib-stage" ref={stage.ref} data-stage>
+      <div className="wmt-lib-stage" ref={stage.ref} data-stage data-editing={editing}>
         <div
           className="wmt-lib-scroll"
           data-scroll
@@ -975,6 +928,23 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             drag={drag ? ({ id: drag.id, x: drag.x, y: drag.y, ok: drag.target.ok, ghost: drag.target.ghost, ghostPx: drag.target.ghostPx } satisfies DragView) : null}
           />
         </div>
+        {editing && !outside && (
+          <BuildDrawer
+            state={drawer}
+            onState={onDrawer}
+            style={room.style}
+            orientation={room.orientation}
+            hasCollection={collection !== undefined}
+            activeKind={tool?.type === 'new' ? tool.kind : null}
+            onKind={startNew}
+            cardActive={tool?.type === 'card'}
+            onCard={startCard}
+            onStyle={chooseStyle}
+            onOrientation={chooseOrientation}
+            onExtend={(side) => void extend(side)}
+            onShrink={(side) => void shrink(side)}
+          />
+        )}
         {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} kinds={roomCards.kinds} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}
         {viewing && roomCards.cards[viewing] && (
           <RoomCardDialog

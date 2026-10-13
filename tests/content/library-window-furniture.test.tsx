@@ -44,6 +44,7 @@ afterEach(() => {
 
 async function placeWindow() {
   await click('[data-category="deco"]');
+  await click('[data-subcategory="walls"]');
   await click('[data-kind="window"]');
   await click('[data-cell="3-6"]');
 }
@@ -86,6 +87,7 @@ describe('fenêtre — pose et taille', () => {
 
   it('refuse un agrandissement qui chevauche un autre objet et fait clignoter les cases', async () => {
     await placeWindow();
+    await click('[data-subcategory="walls"]');
     await click('[data-kind="window"]');
     await click('[data-cell="12-6"]');
     expect(windows()).toHaveLength(2);

@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
+import type { CollectionRepo } from '../../src/core/collection/collection-repo';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -76,5 +77,108 @@ describe('barre du haut', () => {
     expect(menu('room')?.querySelector('[data-action="delete-room"]')).not.toBeNull();
   });
 
-  it.todo('les rangées empilées ont disparu');
+});
+
+const drawer = () => q('[data-drawer]') as HTMLElement | null;
+const panel = (id: string) => q(`[data-drawer-panel="${id}"]`) as HTMLElement | null;
+
+describe('tiroir de construction', () => {
+  it('n’existe qu’en Aménager, dans la scène (donc visible en plein écran)', async () => {
+    expect(drawer()).toBeNull();
+    await click('[data-action="edit"]');
+    expect(drawer()).not.toBeNull();
+    expect(drawer()?.closest('[data-stage]')).not.toBeNull();
+  });
+
+  it('montre les vignettes de la catégorie puis des sous-catégories de la Déco', async () => {
+    await click('[data-action="edit"]');
+    expect(q('[data-kind="shelf"] [data-thumb="shelf"]')).not.toBeNull();
+    await click('[data-category="deco"]');
+    expect(q('[data-subcategory="plants"]')?.getAttribute('aria-pressed')).toBe('true');
+    await click('[data-subcategory="lights"]');
+    expect(q('[data-kind="lamp"]')).not.toBeNull();
+    expect(q('[data-kind="plant"]')).toBeNull();
+  });
+
+  it('marque la vignette dont l’outil est actif', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-kind="desk"]');
+    expect(q('[data-kind="desk"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('l’onglet Pièce porte le style, l’orientation et les dimensions', async () => {
+    await click('[data-action="edit"]');
+    expect(panel('room')?.hidden).toBe(true);
+    await click('[data-drawer-tab="room"]');
+    expect(panel('room')?.hidden).toBe(false);
+    expect(panel('furniture')?.hidden).toBe(true);
+    expect(panel('room')?.querySelector('[data-style]')).not.toBeNull();
+    expect(panel('room')?.querySelector('[data-orient="portrait"]')).not.toBeNull();
+    expect(panel('room')?.querySelector('[data-action="extend-right"]')).not.toBeNull();
+  });
+
+  it('se réduit en poignée et se rouvre au même endroit', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-category="seats"]');
+    await click('[data-action="drawer-reduce"]');
+    expect(drawer()?.dataset.reduced).toBe('true');
+    expect(q('[data-category]')).toBeNull();
+    await click('[data-action="drawer-open"]');
+    expect(q('[data-category="seats"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('reste réduit au changement de pièce', async () => {
+    await click('[data-action="add-room"]');
+    await click('[data-action="edit"]');
+    await click('[data-action="drawer-reduce"]');
+    await click('[data-room="r1"]');
+    expect(drawer()?.dataset.reduced).toBe('true');
+  });
+
+  it('revient sur la première catégorie quand une pièce Steampunk change de style', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-style="steampunk"]');
+    await click('[data-category="steampunk"]');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await click('[data-style="scandinave"]');
+    expect(q('[data-category="steampunk"]')).toBeNull();
+    expect(q('[data-category="storage"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('sans Collection, pas d’onglet Cartes', async () => {
+    await click('[data-action="edit"]');
+    expect(q('[data-drawer-tab="cards"]')).toBeNull();
+  });
+
+  it('pas de tiroir dans la vue de la rue', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true })); // mouvement réduit : la sortie est immédiate
+    await click('[data-action="outside"]');
+    expect(q('[data-action="inside"]')).not.toBeNull();
+    expect(drawer()).toBeNull();
+    // Aménager fait rentrer dans la pièce : le tiroir revient.
+    await click('[data-action="edit"]');
+    expect(drawer()).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it.skip('les rangées empilées ont disparu (tâche 6)', async () => {
+    await click('[data-action="edit"]');
+    expect(container.querySelectorAll('.wmt-lib-row').length).toBe(1);
+  });
+});
+
+describe('tiroir avec la Collection', () => {
+  beforeEach(async () => {
+    const fakeCollection = { list: async () => [], subscribe: () => () => undefined } as unknown as CollectionRepo;
+    await act(async () => { root.render(<LibraryPanel library={repo} collection={fakeCollection} />); });
+    await settle();
+  });
+
+  it('l’onglet Cartes lance la pose d’une carte', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-drawer-tab="cards"]');
+    expect(panel('cards')?.hidden).toBe(false);
+    await click('[data-action="add-card"]');
+    expect(q('.wmt-lib-dialog')).not.toBeNull();
+  });
 });
