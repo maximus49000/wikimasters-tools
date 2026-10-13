@@ -20,7 +20,7 @@ import { specialLook } from '../core/library/city/traffic/special-art';
 import { useCarRegistry } from './vehicle/car-host';
 import { ExhaustPuffs, placePuffs } from './vehicle/exhaust-puffs';
 import { GhibliCar, placeCar } from './vehicle/ghibli-car';
-import { GhibliBike, crankPhase, riderPose } from './figure/ghibli-cyclist';
+import { FOOT_DOWN_V, GhibliBike, crankPhase, riderPose } from './figure/ghibli-cyclist';
 import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
 import { PropImage } from './prop/prop-host';
 import '../core/library/paint/props/street';
@@ -52,7 +52,8 @@ const BIKE_TRACK_DY = 2;
 function yOf(a: Agent, lat: number, m: CityMetrics): number {
   const gap = m.laneY.near - m.laneY.far;
   if (a.track === 'far') return m.laneY.far + lat * gap;
-  if (a.track === 'bike') return m.laneY.near + BIKE_TRACK_DY * m.unit - lat * gap * 0.3;
+  // Vélo : au bord du trottoir d'en face ; pour doubler, il monte vers le milieu comme une voiture (dessiné alors derrière elle).
+  if (a.track === 'bike') return m.laneY.near + BIKE_TRACK_DY * m.unit - lat * gap;
   return m.laneY.near - lat * gap;
 }
 // Voiture Ghibli (`painted`) : jamais retournée (GhibliCar porte le sens), tressaute sur les pavés et tangue au freinage.
@@ -190,7 +191,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         if (brake) brake.setAttribute('opacity', braking(a, w.unit) ? '1' : '0');
         const hazard = node.querySelector(':scope > [data-hazard]');
         if (hazard) hazard.setAttribute('opacity', a.hazard && Math.floor(t * 1.6) % 2 === 0 ? '1' : '0');
-        if (ghibli && a.kind === 'bike' && !still) poseFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), riderPose(1, crankPhase(a.dist / kOf(a, metrics))));
+        if (ghibli && a.kind === 'bike' && !still) poseFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), riderPose(1, crankPhase(a.dist / kOf(a, metrics)), a.v < FOOT_DOWN_V * metrics.unit));
       }
       if (ghibli) {
         forgetPuffSources(puffs, alive);
@@ -208,9 +209,10 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
 
   const now = still ? frozenT : Date.now() / 1000;
   const mine = w.agents.filter((a) => (lane === 'far' ? a.track === 'far' : a.track !== 'far'));
-  // Profondeur : au premier plan, le plus au centre de la chaussée (décalage > 0) est derrière ; vélos devant tout.
-  // Au fond, l'inverse.
-  const order = [...mine].sort((p, q) => (p.track === 'bike' ? 1 : 0) - (q.track === 'bike' ? 1 : 0) || (lane === 'near' ? q.lat - p.lat : p.lat - q.lat));
+  // Profondeur : au premier plan, le plus au centre de la chaussée (décalage > 0) est derrière ; à décalage égal, les vélos
+  // (au bord du trottoir) devant. Un vélo qui double par le milieu passe donc derrière la voiture doublée. Au fond, l'inverse.
+  const depth = (a: Agent): number => (lane === 'near' ? -a.lat : a.lat) + (a.track === 'bike' ? 0.05 : 0);
+  const order = [...mine].sort((p, q) => depth(p) - depth(q));
   return (
     <g data-traffic-lane={lane} ref={root}>
       {order.map((a) => {
@@ -229,7 +231,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
             ) : ev ? (
               <CityEventSprite event={ev} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} />
             ) : ghibli && a.kind === 'bike' ? (
-              <GhibliBike outfit={a.rider ?? DEFAULT_RIDER} color={tone(a.color, sky)} ink={tone('#3B3F4A', sky)} sky={sky} rainy={rainy} dir={1} phase={still ? 0 : crankPhase(a.dist / kOf(a, metrics))} lights={lights} />
+              <GhibliBike outfit={a.rider ?? DEFAULT_RIDER} color={tone(a.color, sky)} ink={tone('#3B3F4A', sky)} sky={sky} rainy={rainy} dir={1} phase={still ? 0 : crankPhase(a.dist / kOf(a, metrics))} lights={lights} stopped={a.v < FOOT_DOWN_V * metrics.unit} />
             ) : (
               <VehicleSprite vehicle={asVehicle(a)} sky={sky} lights={lights} />
             )}

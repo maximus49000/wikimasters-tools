@@ -11,8 +11,9 @@ const finite = (a: Agent): boolean => [a.s, a.v, a.cmd, a.lat, a.dist].every(Num
 // Chevauchement entre deux véhicules consécutifs d'une voie (hors dépassement en cours).
 function overlaps(w: TrafficWorld): string[] {
   const bad: string[] = [];
-  for (const track of ['near', 'far', 'bike'] as const) {
-    const list = w.agents.filter((a) => a.track === track).sort((p, q) => q.s - p.s);
+  // Vélos et voie du premier plan partagent la chaussée : aucun vélo ne traverse une voiture, ni l'inverse.
+  for (const road of [['near', 'bike'], ['far']] as const) {
+    const list = w.agents.filter((a) => (road as readonly string[]).includes(a.track)).sort((p, q) => q.s - p.s);
     for (let i = 1; i < list.length; i++) {
       const a = list[i - 1]!;
       const b = list[i]!;
@@ -70,6 +71,25 @@ describe('moteur de circulation', () => {
     const closed = env(1, { closed: true });
     for (let t = T0; t < T0 + 200; t += 2) advance(w, t, closed);
     expect(w.agents.filter((a) => a.track !== 'bike' || true).length).toBe(0);
+  });
+  it('vélos : arrêt au feu rouge avant le passage piéton, jamais à travers une voiture', () => {
+    const w = createTraffic({ width: 2000, seed: 5, unit: 1, startS: T0 });
+    const e = env(1, { crowd: 1, demand: { near: 0.6, far: 0.6, bike: 1 } });
+    let sawBikeStop = false;
+    for (let t = w.t; t < T0 + 400; t += 0.5) {
+      advance(w, t, e);
+      if (w.light.color === 'red') {
+        for (const a of w.agents.filter((x) => x.track === 'bike')) {
+          const front = xOfS(w, 'bike', a.s) + a.half;
+          const line = w.light.x - 20;
+          if (a.v < 0.5 && front <= line + 0.5) sawBikeStop = true;
+          // Aucun vélo arrêté sur le passage piéton.
+          if (a.v < 0.5) expect(front < line + 1 || front > w.light.x + 20).toBe(true);
+        }
+      }
+      expect(overlaps(w)).toEqual([]);
+    }
+    expect(sawBikeStop).toBe(true);
   });
   it('feu rouge : arrêt avant la ligne, puis redémarrage au vert', () => {
     const w = createTraffic({ width: 2000, seed: 5, unit: 1, startS: T0 });

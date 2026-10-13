@@ -303,11 +303,16 @@ function vanSpec(w: TrafficWorld, id: SpecialId, seed: number): SpecialSpec {
 }
 
 const onTrack = (w: TrafficWorld, track: Track): Agent[] => w.agents.filter((a) => a.track === track).sort((p, q) => q.s - p.s);
+// Chaussée partagée (revue du 2026-10-13 : « les vélos passent à travers les voitures ») : les vélos roulent le long du trottoir
+// d'en face, dans le même sens que la voie du premier plan, et partagent sa file : un vélo ne traverse jamais une voiture (il
+// la suit ou la double par le milieu), une voiture ne traverse jamais un vélo (elle le suit puis le double).
+const sameRoad = (a: Track, b: Track): boolean => a === b || (a !== 'far' && b !== 'far');
+const onRoad = (w: TrafficWorld, track: Track): Agent[] => w.agents.filter((a) => sameRoad(a.track, track)).sort((p, q) => q.s - p.s);
 
 // Place libre à l'entrée de la voie pour un véhicule de demi-longueur `half`.
 function entryFree(w: TrafficWorld, track: Track, half: number): boolean {
   let rear = Infinity;
-  for (const a of w.agents) if (a.track === track) rear = Math.min(rear, a.s - a.half);
+  for (const a of w.agents) if (sameRoad(a.track, track)) rear = Math.min(rear, a.s - a.half);
   return rear - 2 * half > 18 * w.unit;
 }
 
@@ -388,7 +393,7 @@ function idm(me: Agent, gap: number, vLead: number, t: number, u: number): numbe
 
 // Voie d'en face libre pour dépasser sur [x0, x1] (x du monde) pendant ~3 s.
 function oncomingClear(w: TrafficWorld, track: Track, x0: number, x1: number): boolean {
-  const other: Track = track === 'near' ? 'far' : 'near';
+  const other: Track = track === 'far' ? 'near' : 'far';
   const lo = Math.min(x0, x1);
   const hi = Math.max(x0, x1);
   for (const o of w.agents) {
@@ -401,21 +406,30 @@ function oncomingClear(w: TrafficWorld, track: Track, x0: number, x1: number): b
   return true;
 }
 
+// Place libre devant `lead` avant la ligne d'arrêt du feu (Infinity s'il l'a passée) : un vélo ne remonte une file que s'il
+// peut se reglisser devant la voiture doublée sans mordre sur le passage piéton.
+function roomAhead(w: TrafficWorld, lead: Agent, u: number): number {
+  const stopS = sOfX(w, lead.track, w.light.x) - (CROSS_HALF + 4) * u;
+  const front = lead.s + lead.half;
+  return front > stopS ? Infinity : stopS - front;
+}
+
 function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
   const t = w.t + DT;
   const u = w.unit;
   spawn(w, env, t);
   stepCrossing(w, env, t);
   const ambulances = w.agents.filter((a) => a.kind === 'ambulance');
-  for (const track of ['near', 'far', 'bike'] as const) {
-    const list = onTrack(w, track);
+  for (const road of ['near', 'far'] as const) {
+    const list = onRoad(w, road);
     for (let i = 0; i < list.length; i++) {
       const me = list[i]!;
+      const track = me.track;
       me.ps = me.s;
       me.plat = me.lat;
       // Ambulance qui arrive derrière : se ranger (s'arrêter au bord) tant qu'elle n'est pas passée.
-      const amb = me.kind === 'ambulance' ? null : ambulances.find((a) => a.track === track && a.s < me.s + 30 * u && me.s - a.s < 170 * u);
-      const ambPassed = me.pulled && !ambulances.some((a) => a.track === track && a.s < me.s + me.half + a.half + 10 * u);
+      const amb = me.kind === 'ambulance' ? null : ambulances.find((a) => sameRoad(a.track, track) && a.s < me.s + 30 * u && me.s - a.s < 170 * u);
+      const ambPassed = me.pulled && !ambulances.some((a) => sameRoad(a.track, track) && a.s < me.s + me.half + a.half + 10 * u);
       if (amb) me.pulled = true;
       else if (ambPassed) me.pulled = false;
       // Véhicule de devant (on ignore les véhicules rangés pour l'ambulance, et celui qu'on dépasse).
@@ -448,7 +462,8 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
         }
       }
       // Feu du monde : perçu avec retard ; s'arrête à la ligne si c'est possible sans freiner trop fort.
-      if (track !== 'bike' && me.kind !== 'ambulance') {
+      // Les vélos aussi s'arrêtent au feu, avant le passage piéton (pied à terre une fois arrêtés, voir `footDown`).
+      if (me.kind !== 'ambulance') {
         // Ligne d'arrêt avant le passage piéton.
         const stopS = sOfX(w, track, w.light.x) - (CROSS_HALF + 4) * u;
         const front = me.s + me.half;
@@ -488,7 +503,15 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
       me.s = next;
       if (me.v < 0.5 * u && me.cmd < 0) me.cmd = 0;
       // Patience : bloqué derrière un véhicule arrêté (bus, livraison, benne) → le dépasse si la voie d'en face est libre.
-      if (track !== 'bike' && me.kind !== 'bus' && me.kind !== 'tram' && lead && lead.stop !== null && lead.stop !== 'light' && me.passing === null && gap < 40 * u && me.v < 3 * u) {
+      // Vélo lent devant une voiture : elle le suit, puis le double par le milieu quand la voie d'en face est libre. Vélo
+      // bloqué derrière une file arrêtée (feu, bouchon) : il remonte la file par le milieu, une voiture après l'autre, sans
+      // jamais la traverser.
+      const stuck = lead !== null && me.passing === null && gap < 40 * u && (
+        (track !== 'bike' && me.kind !== 'bus' && me.kind !== 'tram' && lead.stop !== null && lead.stop !== 'light' && me.v < 3 * u) ||
+        (me.kind !== 'bike' && me.kind !== 'bus' && me.kind !== 'tram' && lead.kind === 'bike' && lead.v < me.vmax * 0.6 && me.v < lead.v + 4 * u) ||
+        (me.kind === 'bike' && lead.kind !== 'bike' && lead.v < 2 * u && me.v < 3 * u && roomAhead(w, lead, u) > 2 * me.half + 10 * u)
+      );
+      if (stuck && lead) {
         me.waited += DT;
         if (me.waited > me.h.patience && oncomingClear(w, track, xOfS(w, track, me.s - me.half), xOfS(w, track, lead.s + lead.half + 2 * me.half + 30 * u))) {
           me.passing = lead.id;

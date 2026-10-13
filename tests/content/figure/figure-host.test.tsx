@@ -210,7 +210,7 @@ describe('figure Ghibli', () => {
     expect(img.tagName).toBe('image');
     expect(host.querySelector('use')).toBeNull();
     expect(img.getAttribute('href')).toBe(BLANK_SPRITE);
-    expect([img.getAttribute('x'), img.getAttribute('y'), img.getAttribute('width'), img.getAttribute('height')]).toEqual(['-20', '-64', '40', '68']);
+    expect([img.getAttribute('x'), img.getAttribute('y'), img.getAttribute('width'), img.getAttribute('height')]).toEqual(['-20', '-64', '40', '74']);
     const pk = node.getAttribute('data-palette')!;
     expect(pk).toBe(r.addPalette(pal));
     expect(node.getAttribute('data-key')).toBe(spriteKey(pk, key));
