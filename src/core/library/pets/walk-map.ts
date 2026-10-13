@@ -49,7 +49,7 @@ export const standPoint = (col: number, row: number): Pt => ({ x: (col + 0.5) * 
 // Cachette du chat sous un canapé : point `hide` du modèle tourné (au sol, sous l'avant de l'assise) ; le canapé, qui le couvre, est dessiné devant.
 export function hideSpot(sofa: Standing): Pt {
   const rect = rectOf(sofa)!;
-  return poiPoint(sofa.kind, angleOf(sofa), pxRect(rect), 'hide') ?? standPoint(sofa.col + 2, rect.row + rect.h - 1);
+  return poiPoint(sofa.kind, angleOf(sofa), pxRect(rect), 'hide') ?? standPoint(rect.col + 2, rect.row + rect.h - 1);
 }
 export const cellOf = (pt: Pt): Cell => ({ col: Math.floor(pt.x / CELL_W), row: Math.floor(pt.y / CELL_H) });
 

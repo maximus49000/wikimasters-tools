@@ -12,21 +12,22 @@ const sun: LightInput = {
 };
 
 // Empreintes régénérées en Tâche 7 (meubles aux vraies proportions) : la carte des surfaces suit la vraie projection des boîtes
-// (dessus au-dessus de l'arête avant), comme le dessin des meubles ; les optimisations doivent toujours garder ces sorties.
+// (dessus au-dessus de l'arête avant, qui ne recouvre que ce qui est derrière lui), comme le dessin des meubles ;
+// les optimisations doivent toujours garder ces sorties.
 describe('empreintes de référence (sortie identique après optimisation)', () => {
   it('lampField 3 lampes / 81 boîtes', () => {
     const { boxes, lamps } = scene(81, 3);
     const surf = buildSurfaceMap(boxes, W, H, GEOM, 6);
-    expect(hash(lampField(lamps, boxes, surf, 6))).toBe('e26d182b');
+    expect(hash(lampField(lamps, boxes, surf, 6))).toBe('c9ccf45b');
   });
   it('lampField 8 lampes / 81 boîtes', () => {
     const { boxes, lamps } = scene(81, 8);
     const surf = buildSurfaceMap(boxes, W, H, GEOM, 6);
-    expect(hash(lampField(lamps, boxes, surf, 6))).toBe('7b36a410');
+    expect(hash(lampField(lamps, boxes, surf, 6))).toBe('6f02a33e');
   });
   it('buildLightMap avec meubles, soleil et lampes', () => {
     const { boxes, lamps } = scene(72, 3);
-    expect(hash(buildLightMap({ ...sun, boxes, lamps }).rgba)).toBe('a0733b0c');
+    expect(hash(buildLightMap({ ...sun, boxes, lamps }).rgba)).toBe('a9ea5141');
   });
   it('buildLightMap avec meubles, soleil bas et nuages variés', () => {
     const { boxes } = scene(40, 0);

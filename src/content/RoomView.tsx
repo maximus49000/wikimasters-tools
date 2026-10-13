@@ -3,7 +3,7 @@ import type { FurnitureKind, Placed, Room } from '../core/library/library-types'
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, computerRectOn, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlotsOf, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { frontFaceRect, groundTrace } from '../core/library/footprint';
-import { boxesOf, lampsOf, layoutSignature } from '../core/library/light/occluders';
+import { boxesOf, lampsOf, signatureOf } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
 import { boundingRect, gapRects } from './window-gaps';
@@ -182,7 +182,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const lightGeom = { wallH, floorH: HEIGHT - wallH };
   const lightBoxes = useMemo(() => boxesOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
   const lightLamps = useMemo(() => lampsOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
-  const lightSignature = useMemo(() => layoutSignature(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lightSignature = useMemo(() => signatureOf(lightBoxes, lightLamps), [lightBoxes, lightLamps]);
   // Identité stable (sinon le calque serait relancé à chaque rendu) : la disposition est lue par référence.
   const layoutRef = useRef(room.layout);
   layoutRef.current = room.layout;

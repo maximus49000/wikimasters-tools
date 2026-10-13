@@ -32,7 +32,9 @@ export function buildSurfaceMap(boxes: readonly Box[], width: number, height: nu
   }
 
   // Boîtes peintes de l'arrière vers l'avant : la plus proche recouvre les autres. Vraie projection (comme le dessin des meubles) :
-  // le dessus va de son arête arrière (yBack) à son arête avant (yFront), la face avant de yFront au bas de la boîte.
+  // le dessus va de son arête arrière (yTop) à son arête avant (yFront), la face avant de yFront au bas de la boîte.
+  // Un dessus ne recouvre une surface de boîte déjà peinte que s'il est plus en avant qu'elle (test de profondeur) : le dessus d'une
+  // base ne passe pas sur le coussin posé dessus, mais un plateau recouvre bien le haut des pieds arrière.
   const sorted = [...boxes].sort((a, b) => a.d1 - b.d1 || a.d0 - b.d0);
   for (const b of sorted) {
     const yTop = wallH + b.d0 * k - b.z1;
@@ -50,9 +52,11 @@ export function buildSurfaceMap(boxes: readonly Box[], width: number, height: nu
         if (x < b.x0 || x > b.x1) continue;
         const n = j * w + i;
         if (y < yFront) {
+          const dTop = (y + b.z1 - wallH) / k;
+          if ((kind[n] === SURF.front || kind[n] === SURF.top) && dTop < (d[n] ?? 0)) continue;
           kind[n] = SURF.top;
           z[n] = b.z1;
-          d[n] = (y + b.z1 - wallH) / k;
+          d[n] = dTop;
         } else {
           kind[n] = SURF.front;
           d[n] = b.d1;

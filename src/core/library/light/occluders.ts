@@ -118,9 +118,12 @@ export function lampsOf(layout: Layout, geom: Geom): LampSource[] {
   return out;
 }
 
-export function layoutSignature(layout: Layout, geom: Geom): string {
+// Signature des occulteurs et des lampes déjà calculés (la pièce les a sous la main : pas de second calcul).
+export function signatureOf(boxList: readonly Box[], lampList: readonly LampSource[]): string {
   const n = Math.round;
-  const boxes = boxesOf(layout, geom).map((b) => `${b.owner}:${n(b.x0)},${n(b.x1)},${n(b.d0)},${n(b.d1)},${n(b.z0)},${n(b.z1)}`);
-  const lamps = lampsOf(layout, geom).map((l) => `${l.id}:${n(l.x)},${n(l.d)},${n(l.z)}`);
+  const boxes = boxList.map((b) => `${b.owner}:${n(b.x0)},${n(b.x1)},${n(b.d0)},${n(b.d1)},${n(b.z0)},${n(b.z1)}`);
+  const lamps = lampList.map((l) => `${l.id}:${n(l.x)},${n(l.d)},${n(l.z)}`);
   return `${boxes.join(';')}|${lamps.join(';')}`;
 }
+
+export const layoutSignature = (layout: Layout, geom: Geom): string => signatureOf(boxesOf(layout, geom), lampsOf(layout, geom));

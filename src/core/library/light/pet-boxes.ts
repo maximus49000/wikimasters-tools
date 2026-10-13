@@ -42,6 +42,7 @@ export function petBoxesOf(frames: readonly PetFrame[], layout: Layout, geom: Ge
     if (shape === 'none') continue;
     // Sur un meuble (assise, plateau, haut de l'étagère) : posé sur son dessus praticable, au centre de sa profondeur, à sa hauteur réelle.
     // Sinon au sol, levé de depthY − pos.y.
+    // (`f.top`, bureau ou étagère, ne sert qu'à l'ordre de dessin : ici tout meuble porteur a son dessus praticable.)
     const perch = f.on ? perchWorldOf(layout, f.on, geom) : null;
     const dC = perch ? perch.d : dOf(f.depthY, geom);
     const lift = perch ? perch.z : Math.max(0, f.depthY - f.pos.y);
