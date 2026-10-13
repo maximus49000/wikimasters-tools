@@ -1,4 +1,5 @@
-import { SURFACE_SLOTS, computerRect, isLamp, isLit, isStanding, pxRect, rectOf, surfaceSlotRect } from '../room-grid';
+import type { Angle } from '../footprint';
+import { SURFACE_SLOTS, angleOf, computerRect, isLamp, isLit, isStanding, pxRect, rectOf, surfaceSlotRect } from '../room-grid';
 import type { PxRect } from '../room-grid';
 import type { Layout, Placed, StandingKind } from '../library-types';
 import { ROOM_DEPTH_FACTOR } from './beam';
@@ -40,6 +41,16 @@ const PRIMS: Record<Kind, Prim[]> = {
   automaton: FULL,
 };
 
+// Primitives tournées (silhouette provisoire en attendant les dessins de Fable) : de profil, largeur et profondeur s'échangent
+// (2 : l'avant à gauche, 6 : l'avant à droite) ; de dos, tout est retourné ; en diagonale, la silhouette de face.
+export function rotatedPrims(kind: Kind, angle: Angle): Prim[] {
+  const prims = PRIMS[kind];
+  if (angle === 2) return prims.map(([x0, x1, z0, z1, d0, d1]) => [d0, d1, z0, z1, 1 - x1, 1 - x0] as const);
+  if (angle === 6) return prims.map(([x0, x1, z0, z1, d0, d1]) => [1 - d1, 1 - d0, z0, z1, x0, x1] as const);
+  if (angle === 4) return prims.map(([x0, x1, z0, z1, d0, d1]) => [1 - x1, 1 - x0, z0, z1, 1 - d1, 1 - d0] as const);
+  return [...prims];
+}
+
 const SMALL_BOX_H = 38;
 const SMALL_HALF_W = 10;
 const SMALL_LAMP_Z = 30;
@@ -49,9 +60,9 @@ export const kOf = (g: Geom): number => g.floorH / (g.wallH * ROOM_DEPTH_FACTOR)
 // Profondeur du bord avant du meuble (le bas de son rectangle écran).
 const dFrontOf = (r: PxRect, g: Geom): number => Math.max(0, (r.y + r.h - g.wallH) / kOf(g));
 
-function primBoxes(owner: string, kind: Kind, r: PxRect, dFront: number): Box[] {
+function primBoxes(owner: string, kind: Kind, r: PxRect, dFront: number, angle: Angle): Box[] {
   const D = DEPTH[kind];
-  return PRIMS[kind].map(([fx0, fx1, fz0, fz1, fd0, fd1]) => ({
+  return rotatedPrims(kind, angle).map(([fx0, fx1, fz0, fz1, fd0, fd1]) => ({
     owner,
     x0: r.x + fx0 * r.w, x1: r.x + fx1 * r.w,
     d0: dFront - fd1 * D, d1: dFront - fd0 * D,
@@ -96,7 +107,7 @@ export function boxesOf(layout: Layout, geom: Geom): Box[] {
       const rect = rectOf(p);
       if (!rect) continue;
       const r = pxRect(rect);
-      out.push(...primBoxes(p.id, p.kind, r, dFrontOf(r, geom)));
+      out.push(...primBoxes(p.id, p.kind, r, dFrontOf(r, geom), angleOf(p)));
     } else if (p.kind === 'computer') {
       const host = hostOf(layout, p.deskId, geom);
       if (!host || host.kind !== 'desk') continue;

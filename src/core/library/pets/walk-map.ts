@@ -1,6 +1,7 @@
-import { footOf, layerOf, underOf } from '../furniture-catalog';
+import { layerOf, underOf } from '../furniture-catalog';
 import type { Layout, Pt, Segment, StandingKind } from '../library-types';
-import { CELL_H, CELL_W, ROWS, WALL_ROWS, isStanding, rectOf, type Cell } from '../room-grid';
+import { floorCells } from '../footprint';
+import { CELL_H, CELL_W, ROWS, WALL_ROWS, angleOf, isStanding, rectOf, type Cell } from '../room-grid';
 
 export const WALK_SPEED = 70; // px par seconde
 // Un saut monte d'au plus MAX_RISE px et franchit au plus MAX_GAP px à l'horizontale.
@@ -25,8 +26,8 @@ export function buildWalkMap(layout: Layout, cols: number): WalkMap {
     if (!rect) continue;
     if (layerOf(p.kind) === 'floor') {
       if (!underOf(p.kind)) {
-        for (let r = Math.max(rect.row, rect.row + rect.h - footOf(p.kind), WALL_ROWS); r < Math.min(rect.row + rect.h, ROWS); r++) {
-          for (let c = Math.max(rect.col, 0); c < Math.min(rect.col + rect.w, cols); c++) blocked[r - WALL_ROWS]![c] = true;
+        for (const c of floorCells(p.kind, angleOf(p), p.col, p.row)) {
+          if (c.row >= WALL_ROWS && c.row < ROWS && c.col >= 0 && c.col < cols) blocked[c.row - WALL_ROWS]![c.col] = true;
         }
       }
     }

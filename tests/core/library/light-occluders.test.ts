@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boxesOf, lampsOf, layoutSignature } from '../../../src/core/library/light/occluders';
+import { boxesOf, lampsOf, layoutSignature, rotatedPrims } from '../../../src/core/library/light/occluders';
 import type { Layout } from '../../../src/core/library/library-types';
 import { SURF, buildSurfaceMap } from '../../../src/core/library/light/surfaces';
 
@@ -63,5 +63,15 @@ describe('layoutSignature', () => {
     expect(layoutSignature([...base], geom)).toBe(s);
     expect(layoutSignature([{ id: 'l', kind: 'lamp', col: 2, row: 8, lit: false }], geom)).not.toBe(s);
     expect(layoutSignature([{ id: 'l', kind: 'lamp', col: 5, row: 8 }], geom)).not.toBe(s);
+  });
+});
+
+describe('rotatedPrims', () => {
+  it('de profil, largeur et profondeur des primitives sont échangées', () => {
+    const front = rotatedPrims('sofa', 0);
+    const side = rotatedPrims('sofa', 2);
+    expect(side).toHaveLength(front.length);
+    // le dossier (profondeur 0,7→1 depuis l'avant) passe à droite, sur toute la largeur du profil
+    expect(side[1]).toEqual([0.7, 1, 0.5, 1, 0, 1]);
   });
 });

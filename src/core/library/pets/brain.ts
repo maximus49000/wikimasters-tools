@@ -1,6 +1,6 @@
-import { poisOf } from '../furniture-catalog';
+import { poisAt } from '../footprint';
 import type { Layout, PetAction, PetPlan, Pt, Segment, Species } from '../library-types';
-import { CELL_W, ROWS, WALL_ROWS, isStanding, rectOf, type Cell } from '../room-grid';
+import { CELL_W, ROWS, WALL_ROWS, angleOf, isStanding, rectOf, type Cell } from '../room-grid';
 import { hashString } from '../scene-world';
 import type { PetContext } from './context';
 import { planEndsAt, stateAt, type PetState } from './motion';
@@ -92,7 +92,7 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     }
     for (const p of env.layout) {
       if (!isStanding(p)) continue;
-      if (p.kind === 'charger') for (const q of poisOf(p.kind).filter((x) => x.type === 'charge')) go('charge', 2, { pt: standPoint(p.col + q.dx, p.row + q.dy), on: null, hostId: p.id }, [25000, 60000], `${p.id}:charge`);
+      if (p.kind === 'charger') for (const q of poisAt(p.kind, angleOf(p)).filter((x) => x.type === 'charge')) go('charge', 2, { pt: standPoint(p.col + q.dx, p.row + q.dy), on: null, hostId: p.id }, [25000, 60000], `${p.id}:charge`);
       if (p.kind === 'rug') go('standby', 0.6, { pt: standPoint(p.col + Math.floor(rectOf(p)!.w / 2), p.row + 1), on: null, hostId: null }, [15000, 30000]);
     }
   } else if (dog) {
@@ -109,7 +109,7 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     }
     for (const p of env.layout) {
       if (!isStanding(p)) continue;
-      const poi = (type: string) => poisOf(p.kind).filter((q) => q.type === type);
+      const poi = (type: string) => poisAt(p.kind, angleOf(p)).filter((q) => q.type === type);
       const cellPt = (dx: number, dy: number): Pt => standPoint(p.col + dx, p.row + dy);
       const plat = map.platforms.find((q) => q.id === p.id);
       if (p.kind === 'basket') for (const q of poi('curl')) go('sleep', 2, { pt: cellPt(q.dx, q.dy), on: null, hostId: p.id }, [25000, 60000], `${p.id}:curl`);
@@ -138,7 +138,7 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     }
     for (const p of env.layout) {
       if (!isStanding(p)) continue;
-      const poi = (type: string) => poisOf(p.kind).filter((q) => q.type === type);
+      const poi = (type: string) => poisAt(p.kind, angleOf(p)).filter((q) => q.type === type);
       const cellPt = (dx: number, dy: number): Pt => standPoint(p.col + dx, p.row + dy);
       const plat = map.platforms.find((q) => q.id === p.id);
       if (p.kind === 'basket') for (const q of poi('curl')) go('sleep', 2.2, { pt: cellPt(q.dx, q.dy), on: null, hostId: p.id }, [25000, 60000], `${p.id}:curl`);
