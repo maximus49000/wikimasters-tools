@@ -161,7 +161,7 @@ describe('tiroir de construction', () => {
     vi.unstubAllGlobals();
   });
 
-  it.skip('les rangées empilées ont disparu (tâche 6)', async () => {
+  it('les rangées empilées ont disparu', async () => {
     await click('[data-action="edit"]');
     expect(container.querySelectorAll('.wmt-lib-row').length).toBe(1);
   });
@@ -180,5 +180,69 @@ describe('tiroir avec la Collection', () => {
     expect(panel('cards')?.hidden).toBe(false);
     await click('[data-action="add-card"]');
     expect(q('.wmt-lib-dialog')).not.toBeNull();
+  });
+});
+
+describe('bulle d’actions', () => {
+  async function selectShelf() {
+    await click('[data-action="edit"]');
+    await click('[data-category="storage"]');
+    await click('[data-kind="shelf"]');
+    await click('[data-cell="3-13"]');
+    await click('[data-furniture="shelf"]');
+  }
+
+  it('apparaît sur la sélection avec ses actions', async () => {
+    await click('[data-action="edit"]');
+    expect(q('[data-action-bubble]')).toBeNull();
+    await click('[data-kind="shelf"]');
+    await click('[data-cell="3-13"]');
+    await click('[data-furniture="shelf"]');
+    const bubble = q('[data-action-bubble]');
+    expect(bubble?.closest('[data-stage]')).not.toBeNull();
+    expect(bubble?.querySelector('[data-action="move"]')).not.toBeNull();
+    expect(bubble?.querySelector('[data-action="remove"]')).not.toBeNull();
+    expect(bubble?.querySelector('[data-action="depth-front"]')).not.toBeNull();
+    expect(bubble?.querySelector('[data-action="lamp"]')).toBeNull();
+    expect(bubble?.querySelector('[data-action="win-w+"]')).toBeNull();
+  });
+
+  it('propose la lampe pour une lampe', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-category="deco"]');
+    await click('[data-subcategory="lights"]');
+    await click('[data-kind="lamp"]');
+    await click('[data-cell="3-13"]');
+    await click('[data-furniture="lamp"]');
+    expect(q('[data-action-bubble] [data-action="lamp"]')).not.toBeNull();
+  });
+
+  it('propose la taille pour une fenêtre', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-category="deco"]');
+    await click('[data-subcategory="walls"]');
+    await click('[data-kind="window"]');
+    await click('[data-cell="3-6"]');
+    await click('[data-furniture="window"]');
+    expect(q('[data-action-bubble] [data-action="win-w+"]')).not.toBeNull();
+    expect(q('[data-action-bubble] [data-action="win-h-full"]')).not.toBeNull();
+  });
+
+  it('disparaît après le retrait et en Visiter', async () => {
+    await selectShelf();
+    await click('[data-action="remove"]');
+    expect(q('[data-action-bubble]')).toBeNull();
+    await click('[data-kind="shelf"]');
+    await click('[data-cell="3-13"]');
+    await click('[data-furniture="shelf"]');
+    expect(q('[data-action-bubble]')).not.toBeNull();
+    await click('[data-action="visit"]');
+    expect(q('[data-action-bubble]')).toBeNull();
+  });
+
+  it('reste affichée tiroir réduit', async () => {
+    await selectShelf();
+    await click('[data-action="drawer-reduce"]');
+    expect(q('[data-action-bubble]')).not.toBeNull();
   });
 });

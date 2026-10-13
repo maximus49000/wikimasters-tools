@@ -105,6 +105,7 @@ import { NEXT_ZONE, SkyMenu } from './library-sky-menu';
 import { PetsMenu, SPECIES_TEXT } from './library-pets-menu';
 import { RoomMenu } from './library-room-menu';
 import { BuildDrawer, INITIAL_DRAWER, type DrawerState } from './build-drawer';
+import { ActionBubble } from './action-bubble';
 import { useOutsideCamera, type OutsidePhase } from './outside/use-outside-camera';
 import type { Rect } from '../core/library/outside-camera';
 
@@ -158,6 +159,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-thumb{flex:0 0 auto;flex-direction:column;width:64px;height:72px;padding:4px;border-radius:10px;gap:2px}
 .wmt-lib-thumb-name{font-size:10px;line-height:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wmt-lib-stage[data-editing="true"]:not(:fullscreen){padding-bottom:var(--wmt-drawer-h,0px)}
+.wmt-lib-bubble{position:absolute;z-index:6;display:flex;flex-wrap:wrap;gap:4px;max-width:min(92%,360px);padding:4px;border-radius:22px;background:var(--color-surface,#0d1117);border:1px solid var(--color-accent,#34d399);box-shadow:0 4px 14px rgba(0,0,0,.45)}
 `;
 
 const REFUSALS = {
@@ -851,39 +853,6 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         }
       />
 
-      {editing && selectedId && (
-        <div className="wmt-lib-row">
-            <>
-              <Btn label="Déplacer" pressed={tool?.type === 'move'} data={{ action: 'move' }} onClick={startMove}>
-                <Icon paths={ICONS.move} />
-              </Btn>
-              <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
-                <Icon paths={ICONS.trash} />
-              </Btn>
-              {selectedStanding && (
-                <>
-                  <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftDepth(layout, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
-                  <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftDepth(layout, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
-                </>
-              )}
-              {selectedLamp && (
-                <Btn label={selectedLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={selectedLamp.on} data={{ action: 'lamp' }} onClick={() => void editLayout((l) => toggleLamp(l, selectedLamp.id))}>
-                  <Icon paths={ICONS.bulb} />
-                </Btn>
-              )}
-              {selectedWindow && (
-                <>
-                  <Btn label="Fenêtre plus étroite" data={{ action: 'win-w-' }} onClick={() => resizeSelected(-1, 0)}><Icon paths={ICONS.widthMinus} /></Btn>
-                  <Btn label="Fenêtre plus large" data={{ action: 'win-w+' }} onClick={() => resizeSelected(1, 0)}><Icon paths={ICONS.widthPlus} /></Btn>
-                  <Btn label="Fenêtre moins haute" data={{ action: 'win-h-' }} onClick={() => resizeSelected(0, -1)}><Icon paths={ICONS.heightMinus} /></Btn>
-                  <Btn label="Fenêtre plus haute" data={{ action: 'win-h+' }} onClick={() => resizeSelected(0, 1)}><Icon paths={ICONS.heightPlus} /></Btn>
-                  <Btn label="Fenêtre sur toute la largeur du mur" data={{ action: 'win-w-full' }} onClick={() => stretchSelected('width')}><Icon paths={ICONS.widthFull} /></Btn>
-                  <Btn label="Fenêtre sur toute la hauteur du mur" data={{ action: 'win-h-full' }} onClick={() => stretchSelected('height')}><Icon paths={ICONS.heightFull} /></Btn>
-                </>
-              )}
-            </>
-        </div>
-      )}
 
       <div className="wmt-lib-msg" role="status">
         {message}
@@ -944,6 +913,37 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onExtend={(side) => void extend(side)}
             onShrink={(side) => void shrink(side)}
           />
+        )}
+        {editing && !outside && selectedId && (
+          <ActionBubble stage={stage.ref.current} scroll={scrollRef.current} targetId={selectedId}>
+            <Btn label="Déplacer" pressed={tool?.type === 'move'} data={{ action: 'move' }} onClick={startMove}>
+              <Icon paths={ICONS.move} />
+            </Btn>
+            <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
+              <Icon paths={ICONS.trash} />
+            </Btn>
+            {selectedStanding && (
+              <>
+                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftDepth(layout, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
+                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftDepth(layout, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
+              </>
+            )}
+            {selectedLamp && (
+              <Btn label={selectedLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={selectedLamp.on} data={{ action: 'lamp' }} onClick={() => void editLayout((l) => toggleLamp(l, selectedLamp.id))}>
+                <Icon paths={ICONS.bulb} />
+              </Btn>
+            )}
+            {selectedWindow && (
+              <>
+                <Btn label="Fenêtre plus étroite" data={{ action: 'win-w-' }} onClick={() => resizeSelected(-1, 0)}><Icon paths={ICONS.widthMinus} /></Btn>
+                <Btn label="Fenêtre plus large" data={{ action: 'win-w+' }} onClick={() => resizeSelected(1, 0)}><Icon paths={ICONS.widthPlus} /></Btn>
+                <Btn label="Fenêtre moins haute" data={{ action: 'win-h-' }} onClick={() => resizeSelected(0, -1)}><Icon paths={ICONS.heightMinus} /></Btn>
+                <Btn label="Fenêtre plus haute" data={{ action: 'win-h+' }} onClick={() => resizeSelected(0, 1)}><Icon paths={ICONS.heightPlus} /></Btn>
+                <Btn label="Fenêtre sur toute la largeur du mur" data={{ action: 'win-w-full' }} onClick={() => stretchSelected('width')}><Icon paths={ICONS.widthFull} /></Btn>
+                <Btn label="Fenêtre sur toute la hauteur du mur" data={{ action: 'win-h-full' }} onClick={() => stretchSelected('height')}><Icon paths={ICONS.heightFull} /></Btn>
+              </>
+            )}
+          </ActionBubble>
         )}
         {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} kinds={roomCards.kinds} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}
         {viewing && roomCards.cards[viewing] && (
