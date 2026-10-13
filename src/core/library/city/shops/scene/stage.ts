@@ -11,7 +11,9 @@ import type { ShopFrame } from '../slots';
 export type Stage = {
   w: number;
   doorEdge: 'left' | 'right';
-  counter: { x0: number; x1: number } | null;
+  // `drawn` : comptoir réellement peint (les employés derrière lui sont rognés à son plan de travail) ; sinon zone de service
+  // tirée des postes, sans meuble pour cacher le bas du corps : on n'y rogne personne.
+  counter: { x0: number; x1: number; drawn: boolean } | null;
   posts: number[]; // [0] = poste principal (celui de l'intérieur peint)
   queue: number[]; // places de file, de la tête (près du comptoir) vers la porte
   spots: number[]; // places debout : rayons (flânerie), tabourets (bar), machines
@@ -149,7 +151,7 @@ export function stageFor(type: ShopTypeId, frame: ShopFrame): Stage {
   const hi = Math.max(...posts);
   const reach = family === 'drink' ? 0.3 * w : PLACE;
   // Comptoir : celui qui est peint (les employés devant lui sont derrière, rognés au plan de travail), sinon autour des postes.
-  const counter = seated ? null : painted.counter ? { x0: painted.counter[0], x1: painted.counter[1] } : { x0: Math.max(0, lo - reach), x1: Math.min(w, hi + reach) };
+  const counter = seated ? null : painted.counter ? { x0: painted.counter[0], x1: painted.counter[1], drawn: true } : { x0: Math.max(0, lo - reach), x1: Math.min(w, hi + reach), drawn: false };
 
   // Places debout : tabourets le long du bar ; rayons / machines hors des zones de service et de file (une place au moins :
   // la file raccourcit s'il le faut).
