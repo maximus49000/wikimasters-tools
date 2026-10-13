@@ -63,7 +63,8 @@ export const EVENT_DEFS: readonly EventDef[] = [
   // Rue
   // Bus : poids nul, ils passent selon leurs horaires (traffic/bus-timetable.ts), plus en événement tiré au hasard.
   { id: 'bus', layer: 'street', weight: 0, hours: [[360, 1380]], half: 36, lanes: ['near', 'far'], needs: 'traffic' },
-  { id: 'tram', layer: 'street', weight: 1.5, hours: [[330, 1440], [0, 30]], half: 68, lanes: ['far'] },
+  // Tram : poids nul, retiré tant que la ville n'a ni rails ni arrêts de tram (dessin et moteur gardés pour son retour).
+  { id: 'tram', layer: 'street', weight: 0, hours: [[330, 1440], [0, 30]], half: 68, lanes: ['far'] },
   { id: 'ambulance', layer: 'street', weight: 1, hours: ALL_DAY, half: 21, speed: 130, lanes: ['near', 'far'] },
   { id: 'garbage-truck', layer: 'street', weight: 1.5, hours: [[330, 540]], half: 34, lanes: ['near'] },
   { id: 'delivery-bike', layer: 'street', weight: 1.5, hours: [[690, 840], [1110, 1380]], half: 12, lanes: 'bike' },
