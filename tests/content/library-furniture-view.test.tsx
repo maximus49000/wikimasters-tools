@@ -78,3 +78,28 @@ describe('RoomView : mobilier', () => {
     expect(order.indexOf('a')).toBeLessThan(order.indexOf('m'));
   });
 });
+
+describe('RoomView : fantôme du placement', () => {
+  function mountPlacing(placing: { id: string; ok: boolean; ghost: { col: number; row: number; w: number; h: number } | null }) {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(<RoomView room={room} editing cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined} placing={placing} />);
+    });
+    return container;
+  }
+
+  it('estompe l’objet placé et dessine son empreinte verte', () => {
+    const container = mountPlacing({ id: 'n', ok: true, ghost: { col: 42, row: 10, w: 3, h: 7 } });
+    const g = container.querySelector('[data-id="n"]')!;
+    expect(g.getAttribute('data-placing')).toBe('ok');
+    expect(g.getAttribute('opacity')).toBe('0.8');
+    expect(container.querySelector('[data-drag-ghost="ok"]')).not.toBeNull();
+  });
+
+  it('empreinte rouge quand c’est refusé', () => {
+    const container = mountPlacing({ id: '__draft__', ok: false, ghost: { col: 2, row: 6, w: 1, h: 1 } });
+    expect(container.querySelector('[data-drag-ghost="refused"]')).not.toBeNull();
+  });
+});
