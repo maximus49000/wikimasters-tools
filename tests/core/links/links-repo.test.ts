@@ -135,7 +135,7 @@ describe('createLinksRepo', () => {
     await repo.resolveMissing(['A']);
     expect(await store.get('kinds-v1')).toEqual({ cards: {}, labels: {} });
     expect(await store.get('links-v1')).toEqual({ titles: ['Ancien'], cards: { A: { at: 1, links: [0] } } });
-    expect(await store.get('links-v2')).toBeDefined();
+    expect(await store.get('links-v3')).toBeDefined();
     expect(linksOf(await repo.load(), 'A')).toEqual(['Pop', 'Lien_A']);
   });
 
