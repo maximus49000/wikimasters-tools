@@ -332,7 +332,7 @@ describe('LibraryPanel : niveaux', () => {
   const seed = async () => {
     await repo.update((state) => ({
       ...state,
-      rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [{ id: 'sh', kind: 'shelf', col: 0, row: 10 }, { id: 'arm', kind: 'armchair', col: 1, row: 13 }] } : r)),
+      rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [{ id: 'sh', kind: 'shelf', col: 0, row: 7 }, { id: 'arm', kind: 'armchair', col: 1, row: 10 }] } : r)),
     }));
     await settle();
     await click('[data-action="edit"]');
@@ -347,9 +347,9 @@ describe('LibraryPanel : niveaux', () => {
     expect((q('[data-action="depth-front"]') as HTMLButtonElement).disabled).toBe(true);
     expect((q('[data-action="depth-back"]') as HTMLButtonElement).disabled).toBe(false);
     await click('[data-action="depth-back"]');
-    expect(arm()).toMatchObject({ row: 12 });
+    expect(arm()).toMatchObject({ row: 9 });
     await click('[data-action="depth-front"]');
-    expect(arm()).toMatchObject({ row: 13 });
+    expect(arm()).toMatchObject({ row: 10 });
   });
 
   it('un second toucher sélectionne l’objet derrière', async () => {
@@ -368,9 +368,9 @@ describe('LibraryPanel : niveaux', () => {
     await settle();
     await click('[data-id="arm"]');
     await click('[data-id="tab"]');
-    // Le contour est celui de la table basse (4 colonnes), pas celui de l'étagère (6 colonnes).
+    // Le contour est celui de la table basse (5 colonnes, cadre élargi de 2 × 3 px), pas celui de l'étagère ni du fauteuil (4 colonnes).
     const outlineW = Number([...container.querySelectorAll('[data-selected-copy] rect[stroke="#378ADD"]')].at(-1)?.getAttribute('width'));
-    expect(outlineW).toBeLessThan(5 * 30);
+    expect(outlineW).toBe(5 * 30 + 6);
   });
 
   it('les boutons n’apparaissent pas pour un tapis', async () => {

@@ -8,7 +8,8 @@ import { createPetRunner } from '../../../src/core/library/pets/runner';
 import { proposeScene } from '../../../src/core/library/pets/scenes';
 import { buildWalkMap, standPoint } from '../../../src/core/library/pets/walk-map';
 
-const sofa: Layout = [{ id: 'a', kind: 'sofa', col: 2, row: 12 }];
+// Canapé de 10 × 6 cases (colonnes 2 à 11, rangées 9 à 14), pied en rangées 13-14 : la rangée 16 est libre devant lui.
+const sofa: Layout = [{ id: 'a', kind: 'sofa', col: 2, row: 9 }];
 const roomWith = (layout: Layout, plan?: PetPlan): Room => ({
   ...createInitialState().rooms[0]!,
   layout,
@@ -541,7 +542,7 @@ describe('orage (6d)', () => {
     expect(cat.key).toBe('a:hide');
     expect(dog.action).toBe('cower');
     expect(dog.hostId).toBe('a');
-    // Devant le canapé (colonnes 2 à 7, rangées 12 à 14), loin des murs.
+    // Devant le canapé (colonnes 2 à 11, pied en rangées 13-14), loin des murs.
     expect(dog.at).toEqual(standPoint(2, 15));
   });
 

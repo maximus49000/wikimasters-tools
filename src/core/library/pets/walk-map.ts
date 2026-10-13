@@ -15,7 +15,8 @@ export type Platform = { id: string; x0: number; x1: number; y: number; col: num
 export type WalkMap = { cols: number; blocked: boolean[][]; platforms: Platform[] };
 
 // Hauteur du dessus, en fraction de la hauteur du meuble depuis son haut (l'assise du canapé est plus bas que son dossier).
-const TOP_FRACTION: Partial<Record<StandingKind, number>> = { sofa: 0.45, armchair: 0.45, chair: 0.45, 'coffee-table': 0.3, desk: 0.05, shelf: 0.02 };
+// Bureau : milieu de son plateau, qui occupe le haut du rectangle (5 rangées, modèle 3D) jusqu'à 0,29 ; plus haut, le saut depuis le sol dépasserait MAX_RISE.
+const TOP_FRACTION: Partial<Record<StandingKind, number>> = { sofa: 0.45, armchair: 0.45, chair: 0.45, 'coffee-table': 0.3, desk: 0.15, shelf: 0.02 };
 
 export function buildWalkMap(layout: Layout, cols: number): WalkMap {
   const blocked = Array.from({ length: ROWS - WALL_ROWS }, () => new Array<boolean>(cols).fill(false));

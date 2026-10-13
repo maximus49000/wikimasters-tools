@@ -11,7 +11,7 @@ import { RoomView } from '../../src/content/RoomView';
 import type { ImageService } from '../../src/core/images/image-service';
 import { setImageService } from '../../src/content/image-registry';
 import type { Layout, Room } from '../../src/core/library/library-types';
-import { pxRect, shelfSlots } from '../../src/core/library/room-grid';
+import { shelfSlotsOf } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -284,7 +284,7 @@ describe('LibraryPanel : cartes', () => {
     vi.useRealTimers();
   }
   const slotCenter = (i: number) => {
-    const s = shelfSlots(pxRect({ col: 0, row: 7, w: 6, h: 8 }))[i]!;
+    const s = shelfSlotsOf({ id: 'f1', kind: 'shelf', col: 0, row: 7 })[i]!;
     return { x: s.x + s.w / 2, y: s.y + s.h / 2 };
   };
   const shelfLayout: Layout = [
@@ -344,7 +344,7 @@ describe('LibraryPanel : cartes', () => {
     await seed([...shelfLayout, { id: 'f9', kind: 'shelf', col: 10, row: 7 }]);
     stubSvgRect();
     const from = slotCenter(0);
-    const other = shelfSlots(pxRect({ col: 10, row: 7, w: 6, h: 8 }))[3]!;
+    const other = shelfSlotsOf({ id: 'f9', kind: 'shelf', col: 10, row: 7 })[3]!;
     await longPress('[data-card="Daft_Punk"]', from.x, from.y);
     await pointer('pointerup', window, other.x + other.w / 2, other.y + other.h / 2);
     await settle();

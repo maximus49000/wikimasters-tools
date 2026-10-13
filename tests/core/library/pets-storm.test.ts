@@ -5,7 +5,8 @@ import { sceneIsValid } from '../../../src/core/library/pets/scenes';
 import { huddlePlans, stormPlan } from '../../../src/core/library/pets/storm';
 import { standPoint } from '../../../src/core/library/pets/walk-map';
 
-const sofa = [{ id: 's', kind: 'sofa', col: 8, row: 12 }] as never;
+// Canapé de 10 × 6 cases, pied en lignes 14-15 : la ligne 16, devant lui, est libre.
+const sofa = [{ id: 's', kind: 'sofa', col: 8, row: 10 }] as never;
 const envOf = (layout = sofa, still = false) => ({ layout, cols: 24, rng: () => 0.5, still, occupied: new Set<string>(), ctx: { ...NO_CONTEXT, storm: { id: 1, since: 0 }, weather: 'storm' as const } });
 const from = { pt: standPoint(2, 16), on: null, hostId: null, facing: 'r' as const };
 
@@ -35,7 +36,7 @@ describe('stormPlan', () => {
     const p = stormPlan({ ...envOf(), occupied: new Set(['s:hide']) }, 'dog', from, 0);
     expect(p.action).toBe('cower');
     expect(p.hostId).toBe('s');
-    expect(p.at).toEqual(standPoint(8, 15));
+    expect(p.at).toEqual(standPoint(8, 16));
     expect(p.key).toBeUndefined();
   });
   it('mouvement réduit : sur place', () => {

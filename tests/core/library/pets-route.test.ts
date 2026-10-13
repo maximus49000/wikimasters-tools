@@ -38,8 +38,10 @@ describe('planRoute', () => {
 
   it('atteint le haut d une étagère en passant par le bureau voisin', () => {
     const layout: Layout = [
-      { id: 'd', kind: 'desk', col: 14, row: 14 },
-      { id: 's', kind: 'shelf', col: 20, row: 10 },
+      // Bureau (75 cm) un peu en retrait de l'étagère (180 cm) : de face, l'écart des dessus (5 rangées) dépasse un saut ;
+      // posé 1 rangée plus au fond, le dessus du bureau est 4 rangées sous celui de l'étagère.
+      { id: 'd', kind: 'desk', col: 14, row: 9 },
+      { id: 's', kind: 'shelf', col: 20, row: 5 },
     ];
     const map = buildWalkMap(layout, 36);
     const shelf = map.platforms.find((p) => p.id === 's')!;

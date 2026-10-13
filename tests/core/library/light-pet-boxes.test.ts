@@ -73,7 +73,8 @@ describe('petBoxesOf', () => {
   });
   it('perché sur un bureau : posé sur le plateau, au milieu du bureau', () => {
     const layout: Layout = [{ id: 'd', kind: 'desk', col: 2, row: 11 }];
-    const deskH = (510 / 18) * 4;
+    // Hauteur du rectangle du bureau (5 rangées) : la boîte provisoire du plateau est encore une fraction du rectangle.
+    const deskH = (510 / 18) * 5;
     const boxes = petBoxesOf([frame({ top: true, on: 'd', pose: 'sit', pos: { x: 100, y: 400 }, depthY: 400 })], layout, geom);
     expect(Math.min(...boxes.map((b) => b.z0))).toBeCloseTo(deskH, 1);
   });

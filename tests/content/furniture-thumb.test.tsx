@@ -15,9 +15,9 @@ describe('FurnitureThumb', () => {
   });
 
   it('cadre le dessin sur la taille du meuble', () => {
-    // Canapé : 6 × 3 cases ; 6 × 30 + 2 × 6 = 192 ; 3 × 510 / 18 + 2 × 6 = 97.
+    // Canapé : 10 × 6 cases ; 10 × 30 + 2 × 6 = 312 ; 6 × 510 / 18 + 2 × 6 = 182.
     const html = renderToStaticMarkup(<FurnitureThumb kind="sofa" style="scandinave" />);
-    expect(html).toContain('viewBox="-6 -6 192 97"');
+    expect(html).toContain('viewBox="-6 -6 312 182"');
   });
 
   it('prend le dessin Steampunk du bureau dans une pièce Steampunk', () => {

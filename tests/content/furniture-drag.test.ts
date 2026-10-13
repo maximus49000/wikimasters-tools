@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { deskAtCell, dropTargetFor, hostAtCell, pointerToCell } from '../../src/content/furniture-drag';
 import type { Layout } from '../../src/core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, pxRect, shelfSlots, slotAt } from '../../src/core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, shelfSlotsOf, slotAt } from '../../src/core/library/room-grid';
 
 const COLS = 24;
 const desk = (id: string, col: number, row: number) => ({ id, kind: 'desk' as const, col, row });
@@ -33,7 +33,8 @@ describe('deskAtCell', () => {
     expect(deskAtCell(layout, 3, 12)).toBe('f1');
   });
   it('ignore les cases hors bureau et les autres meubles', () => {
-    expect(deskAtCell(layout, 7, 12)).toBeNull();
+    // Bureau de 6 colonnes (2 à 7) : la colonne 8 est déjà hors du bureau.
+    expect(deskAtCell(layout, 8, 12)).toBeNull();
     expect(deskAtCell(layout, 8, 8)).toBeNull();
   });
 });
@@ -51,7 +52,7 @@ describe('dropTargetFor', () => {
       { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'A' },
       { id: 'f3', kind: 'stored', shape: 'dvd', shelfId: 'f1', slot: 1, slug: 'B' },
     ];
-    const slots = shelfSlots(pxRect({ col: 0, row: 7, w: 6, h: 8 }));
+    const slots = shelfSlotsOf(layout[0]!);
     const center = (i: number) => ({ x: slots[i]!.x + slots[i]!.w / 2, y: slots[i]!.y + slots[i]!.h / 2 });
     const busy = dropTargetFor(layout, COLS, 'f2', 0, 7, center(1).x, center(1).y);
     expect(busy).toMatchObject({ ok: false, reason: 'slot-busy' });
@@ -63,7 +64,8 @@ describe('dropTargetFor', () => {
 
   it('meuble debout : la case visée est le bas à gauche', () => {
     const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 7 }];
-    const t = dropTargetFor(layout, COLS, 'f1', 5, 14);
+    // Étagère de 10 rangées : bas en ligne 16 → haut en ligne 7.
+    const t = dropTargetFor(layout, COLS, 'f1', 5, 16);
     expect(t.ok).toBe(true);
     expect(t.col).toBe(5);
     expect(t.top).toBe(7);
@@ -72,15 +74,15 @@ describe('dropTargetFor', () => {
 
   it('ignore le meuble lui-même (rester sur place est valide)', () => {
     const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 7 }];
-    expect(dropTargetFor(layout, COLS, 'f1', 0, 14).ok).toBe(true);
+    expect(dropTargetFor(layout, COLS, 'f1', 0, 16).ok).toBe(true);
   });
 
   it('refuse sur le mur, hors pièce et sur le pied d’un autre meuble, accepte devant ou derrière lui', () => {
     const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 7 }, desk('f2', 10, 11)];
     expect(dropTargetFor(layout, COLS, 'f1', 5, 10)).toMatchObject({ ok: false, reason: 'floor' });
-    expect(dropTargetFor(layout, COLS, 'f1', -2, 14)).toMatchObject({ ok: false, reason: 'bounds' });
-    // Pieds sur la même ligne que le bureau (lignes 13-14) : refusé ; pieds plus bas, l'étagère passe devant.
-    expect(dropTargetFor(layout, COLS, 'f1', 10, 14)).toMatchObject({ ok: false, reason: 'taken' });
+    expect(dropTargetFor(layout, COLS, 'f1', -2, 16)).toMatchObject({ ok: false, reason: 'bounds' });
+    // Pied sur la même ligne que celui du bureau (ligne 15) : refusé ; pied plus bas, l'étagère passe devant.
+    expect(dropTargetFor(layout, COLS, 'f1', 10, 15)).toMatchObject({ ok: false, reason: 'taken' });
     expect(dropTargetFor(layout, COLS, 'f1', 10, 16).ok).toBe(true);
   });
 
@@ -99,9 +101,9 @@ describe('dropTargetFor', () => {
 });
 
 describe('porteurs superposés : le lâcher vise celui de devant', () => {
-  // Étagère au niveau 1 (listée d'abord) et bureau au niveau 2 devant elle, sur les mêmes cases.
+  // Étagère au niveau 1 (listée d'abord) et bureau au niveau 2 devant elle, sur les mêmes cases (même bas, ligne 15).
   const layout: Layout = [
-    { id: 'sh', kind: 'shelf', col: 0, row: 7 },
+    { id: 'sh', kind: 'shelf', col: 0, row: 6 },
     { id: 'dk', kind: 'desk', col: 0, row: 11 },
     { id: 'far', kind: 'desk', col: 15, row: 11 },
     { id: 'o', kind: 'small', item: 'plant', hostId: 'far', slot: 0 },
@@ -116,7 +118,7 @@ describe('porteurs superposés : le lâcher vise celui de devant', () => {
   });
   it('deux étagères superposées : la carte rangée vise celle de devant', () => {
     const shelves: Layout = [{ id: 'wall', kind: 'shelf', col: 0, row: 7 }, { id: 'front', kind: 'shelf', col: 0, row: 7, depth: 2 }];
-    const slot = shelfSlots(pxRect({ col: 0, row: 7, w: 6, h: 8 }))[0]!;
+    const slot = shelfSlotsOf(shelves[0]!)[0]!;
     expect(slotAt(shelves, slot.x + 2, slot.y + 2)).toEqual({ shelfId: 'front', slot: 0 });
   });
 });

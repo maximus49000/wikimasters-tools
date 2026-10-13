@@ -42,7 +42,8 @@ describe('dropTargetFor : petit objet', () => {
 
 describe('dropTargetFor : meubles et tapis', () => {
   it('un canapé se dépose avec le bas sur la case visée', () => {
-    expect(dropTargetFor(layout, 48, 's', 30, 16)).toMatchObject({ ok: true, col: 30, top: 14 });
+    // Canapé de 6 rangées de haut : bas en ligne 16 → haut en ligne 11.
+    expect(dropTargetFor(layout, 48, 's', 30, 16)).toMatchObject({ ok: true, col: 30, top: 11 });
   });
 
   it('un tapis refuse le mur', () => {
@@ -54,7 +55,7 @@ describe('dropTargetFor : meubles et tapis', () => {
       { id: 'r', kind: 'rug', col: 0, row: 15 },
       { id: 's', kind: 'sofa', col: 20, row: 14 },
     ];
-    expect(dropTargetFor(onRug, 48, 's', 0, 17)).toMatchObject({ ok: true, col: 0, top: 15 });
+    expect(dropTargetFor(onRug, 48, 's', 0, 17)).toMatchObject({ ok: true, col: 0, top: 12 });
   });
 });
 

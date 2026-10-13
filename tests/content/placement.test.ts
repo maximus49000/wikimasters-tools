@@ -45,7 +45,8 @@ describe('startPlacement', () => {
 
 describe('movePlacement', () => {
   it('donne la même raison que dropTargetFor sur le mur', () => {
-    const p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'shelf' }, CENTER), COLS, spotAt(3, 8));
+    // Étagère de 10 rangées : bas en ligne 11 (sur le mur), haut en ligne 2.
+    const p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'shelf' }, CENTER), COLS, spotAt(3, 11));
     expect(p.target).toMatchObject({ ok: false, reason: 'floor' });
     // Le fantôme est dessiné là où on l'a mis, même refusé.
     expect(p.draft.find((x) => x.id === DRAFT_ID)).toMatchObject({ col: 3 });
@@ -118,7 +119,8 @@ describe('commitPlacement : mêmes dispositions que les anciennes fonctions de p
   });
 
   it('déplacement', () => {
-    const p = movePlacement(startPlacement(desk, COLS, { type: 'move', id: 'f1' }, CENTER), COLS, spotAt(12, 14));
+    // Bureau de 5 rangées : bas en ligne 15 → haut en ligne 11.
+    const p = movePlacement(startPlacement(desk, COLS, { type: 'move', id: 'f1' }, CENTER), COLS, spotAt(12, 15));
     expect(commitPlacement(p)).toEqual(moveStanding(desk, COLS, 'f1', 12, 11));
   });
 
@@ -149,12 +151,12 @@ describe('retouches pendant le placement', () => {
   it('avancer / reculer déplace le fantôme d’une ligne, et refuse hors du sol', () => {
     let p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'chair' }, CENTER), COLS, spotAt(10, 15));
     p = nudgePlacement(p, COLS, 1)!;
-    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ col: 10, row: 14 });
-    // Chaise de 3 lignes, pieds sur la dernière ligne : plus bas, elle sortirait de la pièce.
+    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ col: 10, row: 11 });
+    // Chaise de 6 lignes, pied sur la dernière ligne : plus bas, elle sortirait de la pièce.
     p = nudgePlacement(p, COLS, 1)!;
     expect(nudgePlacement(p, COLS, 1)).toBeNull();
     p = nudgePlacement(p, COLS, -1)!;
-    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ row: 14 });
+    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ row: 11 });
   });
 
   it('une retouche impossible renvoie null', () => {
@@ -191,7 +193,7 @@ describe('rotation pendant le placement', () => {
     expect(commitPlacement(moved)!.find((x) => x.kind === 'sofa')).toMatchObject({ angle: 1 });
   });
   it('un angle qui ne tient pas : fantôme tourné, rouge, ✓ refusé', () => {
-    // étagère contre le bord droit : de profil elle tient (2 colonnes), en diagonale (6 colonnes) elle déborde
+    // étagère contre le bord droit : de profil elle tient (1 colonne), en diagonale (4 colonnes) elle déborde
     const p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'shelf' }, CENTER), COLS, spotAt(22, 14));
     const side = rotatePlacement(rotatePlacement(p, COLS, 1)!, COLS, 1)!;
     expect(side.angle).toBe(2);
@@ -203,14 +205,14 @@ describe('rotation pendant le placement', () => {
     expect(commitPlacement(diag)).toBeNull();
   });
   it('déplacer un meuble tourné garde son angle', () => {
-    const l = placeStanding([], COLS, 'sofa', 0, 14, 'f1', 2)!;
+    const l = placeStanding([], COLS, 'sofa', 0, 10, 'f1', 2)!;
     const p = startPlacement(l, COLS, { type: 'move', id: 'f1' }, CENTER);
     expect(p.angle).toBe(2);
     expect(commitPlacement(movePlacement(p, COLS, spotAt(10, 16)))![0]).toMatchObject({ angle: 2 });
   });
   it('les cases au sol du fantôme sont exposées (escalier compris)', () => {
     const p = rotatePlacement(startPlacement([], COLS, { type: 'new', kind: 'sofa' }, CENTER), COLS, 1)!;
-    expect(placingView(p).floor).toHaveLength(12);
+    expect(placingView(p).floor).toHaveLength(17);
   });
   it('une fenêtre, une carte ou un ordinateur ne tournent pas', () => {
     expect(canRotate(startPlacement([], COLS, { type: 'new', kind: 'window' }, CENTER))).toBe(false);

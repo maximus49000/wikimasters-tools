@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { drawRect, drawSize, floorCells, floorOffsets, frontFaceRect, isAngle, poisAt, rotateAngle } from '../../../src/core/library/footprint';
+import { footOf, poisOf, sizeOf } from '../../../src/core/library/furniture-catalog';
 
 const keys = (cells: { col: number; row: number }[]) => cells.map((c) => `${c.col}-${c.row}`).sort();
+const ANGLES = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 
 describe('angles', () => {
   it('tourne modulo 8', () => {
@@ -15,78 +17,128 @@ describe('angles', () => {
   });
 });
 
+// Tailles tirées des modèles 3D : une colonne = 21 cm, une rangée de sol = 50 cm de profondeur.
 describe('face et dos', () => {
-  it('gardent le rectangle et les rangées du pied', () => {
-    expect(drawSize('sofa', 0)).toEqual({ w: 6, h: 3 });
-    expect(drawSize('sofa', 4)).toEqual({ w: 6, h: 3 });
-    // étagère 6×8, pied 2 : les deux rangées du bas
-    expect(floorOffsets('shelf', 0)).toHaveLength(12);
-    expect(floorOffsets('shelf', 0).every((c) => c.row >= 6)).toBe(true);
+  it('canapé 200 × 90 cm : 10 colonnes, 2 rangées au sol, même rectangle de dos', () => {
+    expect(drawSize('sofa', 0)).toEqual({ w: 10, h: 6 });
+    expect(drawSize('sofa', 4)).toEqual({ w: 10, h: 6 });
+    const floor = floorOffsets('sofa', 0);
+    expect(floor).toHaveLength(20);
+    expect(floor.every((c) => c.row >= 4)).toBe(true);
   });
-  it('le tapis occupe tout son rectangle', () => {
-    expect(floorOffsets('rug', 0)).toHaveLength(18);
+  it('étagère 80 × 30 cm : 4 colonnes, une seule rangée au sol (la dernière)', () => {
+    expect(drawSize('shelf', 0)).toEqual({ w: 4, h: 10 });
+    expect(keys(floorOffsets('shelf', 0))).toEqual(keys([0, 1, 2, 3].map((col) => ({ col, row: 9 }))));
+  });
+  it('le tapis occupe toute sa trace', () => {
+    expect(drawSize('rug', 0)).toEqual({ w: 10, h: 3 });
+    expect(floorOffsets('rug', 0)).toHaveLength(30);
   });
 });
 
 describe('profil', () => {
-  it('canapé 6×3 pied 3 → 3 colonnes × 3 lignes au sol', () => {
-    expect(drawSize('sofa', 2)).toEqual({ w: 3, h: 3 });
-    expect(floorOffsets('sofa', 2)).toHaveLength(9);
-    expect(drawSize('sofa', 6)).toEqual({ w: 3, h: 3 });
+  it('canapé : 90 cm de large (4 colonnes), 200 cm de profondeur (4 rangées au sol)', () => {
+    expect(drawSize('sofa', 2)).toEqual({ w: 4, h: 8 });
+    expect(drawSize('sofa', 6)).toEqual({ w: 4, h: 8 });
+    expect(floorOffsets('sofa', 2)).toHaveLength(16);
   });
-  it('étagère 6×8 pied 2 → 2 colonnes, 3 lignes au sol, 9 de haut', () => {
-    expect(drawSize('shelf', 2)).toEqual({ w: 2, h: 9 });
-    expect(floorOffsets('shelf', 2).every((c) => c.row >= 6)).toBe(true);
+  it('étagère : 30 cm de large (1 colonne), 80 cm de profondeur (2 rangées au sol)', () => {
+    expect(drawSize('shelf', 2)).toEqual({ w: 1, h: 11 });
+    expect(keys(floorOffsets('shelf', 2))).toEqual(['0-10', '0-9']);
   });
 });
 
 describe('diagonale', () => {
-  it('escalier qui descend vers la droite pour 1 et 3, vers la gauche pour 5 et 7', () => {
-    // canapé : largeur 7, 3 lignes au sol, segments de 4 cases
-    expect(drawSize('sofa', 1)).toEqual({ w: 7, h: 3 });
+  it('canapé : escalier qui descend vers la droite à 1 (et 5), vers la gauche à 7 (et 3)', () => {
+    expect(drawSize('sofa', 1)).toEqual({ w: 10, h: 9 });
     const one = floorOffsets('sofa', 1);
     expect(keys(one)).toEqual(keys([
-      ...[0, 1, 2, 3].map((c) => ({ col: c, row: 0 })),
-      ...[2, 3, 4, 5].map((c) => ({ col: c, row: 1 })),
-      ...[3, 4, 5, 6].map((c) => ({ col: c, row: 2 })),
+      ...[2, 3, 4].map((col) => ({ col, row: 5 })),
+      ...[1, 2, 3, 4, 5, 6].map((col) => ({ col, row: 6 })),
+      ...[3, 4, 5, 6, 7, 8].map((col) => ({ col, row: 7 })),
+      ...[6, 7].map((col) => ({ col, row: 8 })),
     ]));
     const seven = floorOffsets('sofa', 7);
-    expect(keys(seven)).toEqual(keys(one.map((c) => ({ col: 6 - c.col, row: c.row }))));
-    expect(keys(floorOffsets('sofa', 3))).toEqual(keys(one));
-    expect(keys(floorOffsets('sofa', 5))).toEqual(keys(seven));
+    expect(keys(seven)).toEqual(keys(one.map((c) => ({ col: 9 - c.col, row: c.row }))));
+    // La trace d'un rectangle est la même après un demi-tour.
+    expect(keys(floorOffsets('sofa', 5))).toEqual(keys(one));
+    expect(keys(floorOffsets('sofa', 3))).toEqual(keys(seven));
+  });
+});
+
+describe('gamelle', () => {
+  it('une seule case à tous les angles', () => {
+    for (const a of ANGLES) {
+      expect(drawSize('bowl', a)).toEqual({ w: 1, h: 1 });
+      expect(floorOffsets('bowl', a)).toEqual([{ col: 0, row: 0 }]);
+    }
   });
 });
 
 describe('positions absolues', () => {
   it('drawRect et floorCells décalent par (col, row)', () => {
-    expect(drawRect('sofa', 2, 4, 13)).toEqual({ col: 4, row: 13, w: 3, h: 3 });
-    expect(floorCells('bowl', 0, 5, 16)).toEqual([{ col: 5, row: 16 }, { col: 6, row: 16 }]);
+    expect(drawRect('sofa', 2, 4, 13)).toEqual({ col: 4, row: 13, w: 4, h: 8 });
+    expect(floorCells('bowl', 0, 5, 16)).toEqual([{ col: 5, row: 16 }]);
+    expect(floorCells('charger', 0, 5, 16)).toEqual([{ col: 5, row: 17 }, { col: 6, row: 17 }]);
+  });
+  it('les cases rendues sont des copies (le cache ne se modifie pas)', () => {
+    floorOffsets('chair', 0)[0]!.col = 99;
+    expect(floorOffsets('chair', 0)[0]!.col).not.toBe(99);
+  });
+});
+
+describe('catalogue dérivé des modèles', () => {
+  it('sizeOf = rectangle de face, footOf = rangées au sol de face', () => {
+    expect(sizeOf('sofa')).toEqual({ w: 10, h: 6 });
+    expect(footOf('sofa')).toBe(2);
+    expect(footOf('shelf')).toBe(1);
+    expect(footOf('rug')).toBe(3);
+    expect(poisOf('chair')).toEqual(poisAt('chair', 0));
   });
 });
 
 describe('points d’intérêt', () => {
   it('restent dans le rectangle de l’angle', () => {
-    for (const a of [0, 1, 2, 3, 4, 5, 6, 7] as const) {
-      const { w, h } = drawSize('sofa', a);
-      for (const p of poisAt('sofa', a)) {
-        expect(p.dx).toBeGreaterThanOrEqual(0);
-        expect(p.dx).toBeLessThan(w);
-        expect(p.dy).toBeGreaterThanOrEqual(0);
-        expect(p.dy).toBeLessThan(h);
+    for (const kind of ['sofa', 'chair', 'kennel', 'basket', 'charger'] as const) {
+      for (const a of ANGLES) {
+        const { w, h } = drawSize(kind, a);
+        for (const p of poisAt(kind, a)) {
+          expect(p.dx).toBeGreaterThanOrEqual(0);
+          expect(p.dx).toBeLessThan(w);
+          expect(p.dy).toBeGreaterThanOrEqual(0);
+          expect(p.dy).toBeLessThan(h);
+        }
       }
     }
   });
-  it('face : inchangés', () => {
-    expect(poisAt('chair', 0)).toEqual([{ type: 'seat', dx: 1, dy: 1 }]);
+  it('tirés du modèle : assise de la chaise de face', () => {
+    expect(poisAt('chair', 0)).toEqual([{ type: 'seat', dx: 0, dy: 3 }]);
   });
 });
 
 describe('face visible', () => {
   const r = { x: 0, y: 0, w: 100, h: 200 };
-  it('face entière à 0, 70 % à gauche à 1, à droite à 7, aucune sinon', () => {
+  it('sans meuble (ancien calcul) : face entière à 0, 70 % à gauche à 1, à droite à 7, aucune sinon', () => {
     expect(frontFaceRect(0, r)).toEqual(r);
     expect(frontFaceRect(1, r)).toEqual({ x: 0, y: 20, w: 70, h: 180 });
     expect(frontFaceRect(7, r)).toEqual({ x: 30, y: 20, w: 70, h: 180 });
     for (const a of [2, 3, 4, 5, 6] as const) expect(frontFaceRect(a, r)).toBeNull();
+  });
+  it('avec le meuble : face projetée du modèle, mise à l’échelle et décalée dans le rectangle', () => {
+    // Étagère de face : 4 × 10 cases = 120 × 283,3 px ; rectangle deux fois plus grand, décalé de (10, 20).
+    const { w, h } = drawSize('shelf', 0);
+    const big = { x: 10, y: 20, w: w * 30 * 2, h: h * (510 / 18) * 2 };
+    const face = frontFaceRect(0, big, 'shelf')!;
+    // Face du modèle : x 3 cm (+ 2 cm : 80 cm centrés dans 4 colonnes de 21 cm) → 5 × 30/21 px, largeur 74 cm → 74 × 30/21 px, × 2.
+    expect(face.x).toBeCloseTo(10 + ((5 * 30) / 21) * 2);
+    expect(face.w).toBeCloseTo(((74 * 30) / 21) * 2);
+    expect(face.y + face.h).toBeLessThanOrEqual(big.y + big.h);
+    expect(face.y).toBeGreaterThanOrEqual(big.y);
+    for (const a of [2, 3, 4, 5, 6] as const) expect(frontFaceRect(a, big, 'shelf')).toBeNull();
+    // À ¾ gauche, la face part du bord gauche et ne couvre pas tout le rectangle.
+    const r1 = drawSize('shelf', 1);
+    const q = frontFaceRect(1, { x: 0, y: 0, w: r1.w * 30, h: r1.h * (510 / 18) }, 'shelf')!;
+    expect(q.x).toBeLessThan(15);
+    expect(q.w).toBeLessThan(r1.w * 30);
   });
 });

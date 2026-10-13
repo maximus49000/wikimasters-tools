@@ -56,16 +56,16 @@ afterEach(() => {
 const confirm = () => click('[data-action="place-confirm"]');
 const cancel = () => click('[data-action="place-cancel"]');
 
-// Un bureau en colonnes 2 à 6, lignes 11 à 14 (créé en mode Aménager).
+// Un bureau en colonnes 2 à 7, lignes 11 à 15 (créé en mode Aménager).
 async function withDesk() {
   await click('[data-action="edit"]');
   await click('[data-kind="desk"]');
-  await click('[data-cell="2-14"]');
+  await click('[data-cell="2-15"]');
   await confirm();
 }
 
-// Le bureau (case bas gauche 2-14) est saisi en (95, 385), soit la case 3-13 : il garde ce décalage sous le doigt.
-// Relâché en (365, 405), case 12-14, sa case bas gauche arrive en 11-15 : colonnes 11 à 15, lignes 12 à 15.
+// Le bureau (case bas gauche 2-15) est saisi en (95, 385), soit la case 3-13 : il garde ce décalage sous le doigt.
+// Relâché en (365, 405), case 12-14, sa case bas gauche arrive en 11-16 : colonnes 11 à 16, lignes 12 à 16.
 describe('appui long → interface de modification (placement)', () => {
   it('appui long, glisser, relâcher : le fantôme attend ✓, puis le bureau est déplacé', async () => {
     await withDesk();
@@ -95,7 +95,7 @@ describe('appui long → interface de modification (placement)', () => {
   it('déplace un petit objet d’un bureau à un autre : le doigt vise le bureau d’arrivée', async () => {
     await withDesk();
     await click('[data-kind="desk"]');
-    await click('[data-cell="12-14"]');
+    await click('[data-cell="12-15"]');
     await confirm();
     await click('[data-category="deco"]');
     await click('[data-subcategory="plants"]');
@@ -204,7 +204,7 @@ describe('appui long → interface de modification (placement)', () => {
   it('l’ordinateur change de bureau ; un bureau déjà occupé est refusé', async () => {
     await withDesk();
     await click('[data-kind="desk"]');
-    await click('[data-cell="12-14"]');
+    await click('[data-cell="12-15"]');
     await confirm();
     const [first, second] = layoutNow().filter((p) => p.kind === 'desk');
     await click('[data-kind="computer"]');
@@ -235,7 +235,7 @@ describe('appui long : objets superposés', () => {
   it('l’appui long sur l’objet sélectionné derrière modifie celui-ci, pas celui de devant', async () => {
     await repo.update((state) => ({
       ...state,
-      rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [{ id: 'sh', kind: 'shelf', col: 0, row: 10 }, { id: 'arm', kind: 'armchair', col: 1, row: 13 }] } : r)),
+      rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout: [{ id: 'sh', kind: 'shelf', col: 0, row: 7 }, { id: 'arm', kind: 'armchair', col: 1, row: 10 }] } : r)),
     }));
     await settle();
     await click('[data-action="edit"]');
@@ -247,7 +247,7 @@ describe('appui long : objets superposés', () => {
     await pointer('pointerup', window, 345, 390);
     await settle();
     await confirm();
-    expect(layoutNow().find((p) => p.id === 'arm')).toMatchObject({ col: 1, row: 13 });
-    expect(layoutNow().find((p) => p.id === 'sh')).not.toMatchObject({ col: 0, row: 10 });
+    expect(layoutNow().find((p) => p.id === 'arm')).toMatchObject({ col: 1, row: 10 });
+    expect(layoutNow().find((p) => p.id === 'sh')).not.toMatchObject({ col: 0, row: 7 });
   });
 });

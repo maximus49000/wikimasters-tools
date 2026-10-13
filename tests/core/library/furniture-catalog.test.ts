@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CATEGORIES, catalogTree, FURNITURE_KINDS, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, layerOf, poisOf, sizeOf } from '../../../src/core/library/furniture-catalog';
+import { floorOffsets } from '../../../src/core/library/footprint';
 import { STANDING_KINDS } from '../../../src/core/library/library-types';
 import { MIN_COLS, ROWS, WALL_ROWS } from '../../../src/core/library/room-grid';
 
@@ -33,8 +34,10 @@ describe('catalogue', () => {
 
   it('la station de recharge : catégorie Animaux, un point charge, 2×1 au sol', () => {
     expect(CATEGORIES.find((c) => c.id === 'pets')!.kinds).toContain('charger');
-    expect(poisOf('charger')).toEqual([{ type: 'charge', dx: 0, dy: 0 }]);
-    expect(sizeOf('charger')).toEqual({ w: 2, h: 1 });
+    // Dalle de 40 × 30 cm : dessin de 2 × 2 cases (le dessus remonte d'une case), 2 cases au sol sur la dernière rangée.
+    expect(poisOf('charger')).toEqual([{ type: 'charge', dx: 1, dy: 1 }]);
+    expect(sizeOf('charger')).toEqual({ w: 2, h: 2 });
+    expect(floorOffsets('charger', 0)).toEqual([{ col: 0, row: 1 }, { col: 1, row: 1 }]);
     expect(layerOf('charger')).toBe('floor');
     expect(labelOf('charger')).toBe('Station de recharge');
   });

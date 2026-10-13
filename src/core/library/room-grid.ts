@@ -439,7 +439,7 @@ export function placedSlugs(layout: Layout): Set<string> {
 export function shelfSlotsOf(shelf: Placed): PxRect[] {
   const r = rectOf(shelf);
   if (!r) return [];
-  const face = frontFaceRect(angleOf(shelf), pxRect(r));
+  const face = frontFaceRect(angleOf(shelf), pxRect(r), 'shelf');
   return face ? shelfSlots(face) : [];
 }
 

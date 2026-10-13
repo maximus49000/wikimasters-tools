@@ -4,7 +4,8 @@ import type { Layout } from '../../../src/core/library/library-types';
 import { SURF, buildSurfaceMap } from '../../../src/core/library/light/surfaces';
 
 const geom = { wallH: 340, floorH: 170 };
-const deskH = (510 / 18) * 4;
+// Hauteur du rectangle du bureau (5 rangées) : les boîtes provisoires sont encore des fractions du rectangle.
+const deskH = (510 / 18) * 5;
 
 describe('boxesOf', () => {
   it('un bureau donne 5 boîtes dont un plateau', () => {
@@ -13,7 +14,7 @@ describe('boxesOf', () => {
     const top = boxes[0]!;
     expect(top.z1).toBeCloseTo(deskH, 1);
     expect(top.x0).toBe(60);
-    expect(top.x1).toBe(210);
+    expect(top.x1).toBe(240);
   });
   it('le fond plein d’une étagère cache à la lumière le canapé posé derrière elle', () => {
     // Canapé (pieds en ligne 15) derrière une étagère posée plus bas (pieds en ligne 18) : le milieu d'une case montre l'étagère.

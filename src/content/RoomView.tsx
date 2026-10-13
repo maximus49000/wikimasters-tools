@@ -236,7 +236,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       // Bureau tourné : l'écran suit sa face visible ; de dos ou de profil, un écran gris sans image.
       const deskItem = room.layout.find((p) => p.id === placed.deskId);
       const deskAngle = deskItem ? angleOf(deskItem) : 0;
-      const face = frontFaceRect(deskAngle, desk);
+      const face = frontFaceRect(deskAngle, desk, 'desk');
       if (!face) return { rect: computerRect(desk), art: <ComputerBackArt rect={computerRect(desk)} side={deskAngle === 2 || deskAngle === 6} /> };
       const rect = computerRect(face);
       const screenUrl = placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined;
@@ -382,7 +382,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     if (placed.kind === 'stored') {
       // Étagère de profil ou de dos : face cachée, cartes non dessinées.
       const shelf = room.layout.find((p) => p.id === placed.shelfId);
-      if (!shelf || !frontFaceRect(angleOf(shelf), { x: 0, y: 0, w: 1, h: 1 })) return null;
+      if (!shelf || !frontFaceRect(angleOf(shelf), { x: 0, y: 0, w: 1, h: 1 }, 'shelf')) return null;
       const rect = shelfSlotsOf(shelf)[placed.slot];
       if (!rect) return null;
       const info = cards[placed.slug];
@@ -393,7 +393,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       if (!desk) return null;
       // Écran de dos ou de profil : ni dessiné ni touchable.
       const deskItem = room.layout.find((p) => p.id === placed.deskId);
-      const face = frontFaceRect(deskItem ? angleOf(deskItem) : 0, desk);
+      const face = frontFaceRect(deskItem ? angleOf(deskItem) : 0, desk, 'desk');
       if (!face) return null;
       const full = computerRect(face);
       const rect = { x: full.x + 5, y: full.y + 5, w: full.w - 10, h: full.h - 12 - 10 };

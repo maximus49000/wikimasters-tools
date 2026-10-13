@@ -11,11 +11,11 @@ import type { Layout, Room } from '../../src/core/library/library-types';
 const room: Room = {
   id: 'r1', name: 'Salon', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, pets: [],
   layout: [
-    { id: 'tab', kind: 'coffee-table', col: 0, row: 14 },
-    // Pieds de l'étagère, du fauteuil et de la table basse sur la même ligne (16) : le niveau départage.
-    { id: 'sh', kind: 'shelf', col: 0, row: 8 },
+    { id: 'tab', kind: 'coffee-table', col: 0, row: 13 },
+    // Bas de l'étagère, du fauteuil et de la table basse sur la même ligne (16) : le niveau départage.
+    { id: 'sh', kind: 'shelf', col: 0, row: 7 },
     { id: 'pl', kind: 'small', item: 'plant', hostId: 'sh', slot: 0 },
-    { id: 'arm', kind: 'armchair', col: 1, row: 13 },
+    { id: 'arm', kind: 'armchair', col: 1, row: 11 },
     { id: 'pos', kind: 'wall', shape: 'poster', col: 1, row: 7, slug: 'Paris' },
   ],
 };
@@ -44,8 +44,8 @@ describe('RoomView : niveaux de profondeur', () => {
 
   it('dessine devant le meuble le plus bas à l’écran, même s’il est au fond', () => {
     const layout: Layout = [
-      { id: 'sofa', kind: 'sofa', col: 0, row: 13 },
-      { id: 'sh', kind: 'shelf', col: 2, row: 10 },
+      { id: 'sofa', kind: 'sofa', col: 0, row: 11 },
+      { id: 'sh', kind: 'shelf', col: 2, row: 8 },
     ];
     const svg = mount({ layout });
     const ids = [...svg.querySelectorAll('[data-id]')].map((n) => n.getAttribute('data-id'));
