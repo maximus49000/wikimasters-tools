@@ -266,6 +266,32 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
 // sur le <g> porteur (`data-light-lamp` = couleur active, `data-call` = appel).
 type LightShown = { color: string; pressed: boolean };
 const lightShown = (w: TrafficWorld): LightShown => ({ color: w.light?.color ?? 'green', pressed: w.light?.pressedAt != null });
+// Panneau « Prochain bus » (afficheur lumineux accroché au poteau, sous la plaque) : ligne et attente en minutes, « à l'approche »
+// quand le bus roule déjà vers l'arrêt ou y est arrêté, « Fin de service » la nuit (aucun bus attendu).
+type Board = { line: string | null; colour: string; wait: string };
+export function nextBusBoard(w: TrafficWorld, served: 'near' | 'far'): Board {
+  const n = w.nextBus[served];
+  if (!n) return { line: null, colour: '#555', wait: 'Fin de service' };
+  const min = Math.ceil(n.in / 60);
+  return { line: n.line.ref, colour: n.line.colour, wait: n.in < 45 ? 'à l’approche' : `${min} min` };
+}
+const BOARD_W = 15;
+function NextBusBoard({ x, board }: { x: number; board: Board }): ReactElement {
+  return (
+    <g data-next-bus={board.line ?? ''} data-next-wait={board.wait} transform={`translate(${x.toFixed(2)} -23.6) scale(1)`}>
+      <rect width={BOARD_W} height={6} rx={0.6} fill="#1f1a17" stroke="#3a3430" strokeWidth={0.3} />
+      <text x={BOARD_W / 2} y={2.1} fontSize={1.6} fontWeight={700} textAnchor="middle" fill="#ffc94a" fontFamily="sans-serif">PROCHAIN BUS</text>
+      {board.line !== null && (
+        <>
+          <rect x={0.8} y={2.8} width={4.6} height={2.6} rx={0.6} fill={/^#[0-9a-fA-F]{6}$/.test(board.colour) ? board.colour : '#2F7D64'} />
+          <text x={3.1} y={4.75} fontSize={1.8} fontWeight={700} textAnchor="middle" fill="#FFFFFF" fontFamily="sans-serif">{board.line}</text>
+        </>
+      )}
+      <text x={board.line !== null ? 10.2 : BOARD_W / 2} y={4.8} fontSize={1.9} fontWeight={700} textAnchor="middle" fill="#ffc94a" fontFamily="sans-serif">{board.wait}</text>
+    </g>
+  );
+}
+
 export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side, ghibli = false }: { handle: TrafficHandle; metrics: CityMetrics; sky: Sky; still: boolean; frozenT: number; side: 'near' | 'far'; ghibli?: boolean }): ReactElement {
   const w = handle.world;
   const u = metrics.unit;
@@ -276,12 +302,21 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side, gh
   const seen = useRef(w.roster);
   const [light, setLight] = useState<LightShown>(() => lightShown(w));
   const lightSeen = useRef(light);
+  // Panneau « Prochain bus » de l'arrêt dessiné ici (ligne et minutes), réécrit quand le texte change.
+  const served: 'near' | 'far' = side === 'near' ? 'far' : 'near';
+  const [board, setBoard] = useState(() => nextBusBoard(w, served));
+  const boardSeen = useRef(board);
   const place = useMemo(
     () => (now: number): void => {
       void now;
       if (w.roster !== seen.current) {
         seen.current = w.roster;
         setRoster(w.roster);
+      }
+      const b = nextBusBoard(w, served);
+      if (b.line !== boardSeen.current.line || b.wait !== boardSeen.current.wait) {
+        boardSeen.current = b;
+        setBoard(b);
       }
       const el = root.current;
       if (!el) return;
@@ -297,7 +332,7 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side, gh
       for (const lamp of el.querySelectorAll('[data-light-lamp]')) lamp.setAttribute('opacity', lamp.getAttribute('data-light-lamp') === next.color ? '1' : '0.18');
       for (const led of el.querySelectorAll('[data-call]')) led.setAttribute('opacity', next.pressed ? '1' : '0.15');
     },
-    [w, ghibli],
+    [w, ghibli, served],
   );
   useWallClockLoop(place, [place]);
   useEffect(() => {
@@ -356,6 +391,7 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side, gh
     return (
       <g data-bus-stop={served} data-stop-name={name} transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${u.toFixed(3)})`}>
         {ghibli ? <PropImage spec={{ id: 'bus-stop', args: { name, lines, served }, day: sky.daylight }} fallback={art} /> : art}
+        <NextBusBoard x={served === 'near' ? -BOARD_W - 1.2 : 1.2} board={board} />
       </g>
     );
   };

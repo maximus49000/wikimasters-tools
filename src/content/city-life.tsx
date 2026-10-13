@@ -7,6 +7,7 @@ import { EVENT_DEFS, type CityEvent } from '../core/library/city/events';
 import { cityFacades } from '../core/library/city/facades';
 import { cityIntensity, schoolWindows, type CityContext } from '../core/library/city/intensity';
 import { schoolBusArrivals } from '../core/library/city/traffic/school-bus';
+import { busArrivals, serviceKindOf } from '../core/library/city/traffic/bus-timetable';
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { actorShadow, nearestLamp } from '../core/library/city/night-light';
@@ -349,6 +350,21 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [seed, day, city.day, city.minutes, still],
   );
+  // Bus à horaires (bus-timetable.ts) : passages des 45 prochaines minutes, recalculés à la minute. La veille compte pour les
+  // passages d'après minuit (jour férié de la veille ignoré : service de semaine ou du samedi selon le jour).
+  const timetableBuses = useMemo<ScheduledArrival[]>(
+    () =>
+      busArrivals({
+        seed,
+        day,
+        nowS: still ? (frozen.current ?? 0) : Date.now() / 1000,
+        minutes: city.minutes,
+        today: serviceKindOf(city.day.weekday, city.day.publicHoliday !== null),
+        yesterday: serviceKindOf((city.day.weekday + 6) % 7, false),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seed, day, city.day, city.minutes, still],
+  );
   const arrivals = useMemo<ScheduledArrival[]>(
     () => [
       ...events.schedule.flatMap((e): ScheduledArrival[] =>
@@ -357,8 +373,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           : [],
       ),
       ...schoolBuses,
+      ...timetableBuses,
     ],
-    [events.schedule, schoolBuses],
+    [events.schedule, schoolBuses, timetableBuses],
   );
   // Inscriptions des fourgons Type H : commerces de bouche et fleuristes de la rue (LAITERIE sinon).
   const vanLabels = useMemo(() => {
@@ -377,6 +394,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       arrivals,
       deliveries,
       crowd: intensity.closed ? 0 : intensity.walkers,
+      timetable: true,
       crossPx: metrics.farSide + 5 * metrics.unit - metrics.walkY,
       vanLabels,
       ...(city.buses ? { busLines: city.buses.lines, school: city.buses.school } : {}),

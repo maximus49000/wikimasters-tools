@@ -61,7 +61,8 @@ export const EVENT_DEFS: readonly EventDef[] = [
   { id: 'balloon', layer: 'sky', weight: 0.6, hours: [[420, 1200]], half: 16, speed: 7, light: 'day', rain: 'dry', y: [0.1, 0.24] },
   { id: 'banner-plane', layer: 'sky', weight: 0.8, hours: [[600, 1140]], half: 60, speed: 35, light: 'day', rain: 'dry', y: [0.08, 0.16] },
   // Rue
-  { id: 'bus', layer: 'street', weight: 2, hours: [[360, 1380]], half: 36, lanes: ['near', 'far'], needs: 'traffic' },
+  // Bus : poids nul, ils passent selon leurs horaires (traffic/bus-timetable.ts), plus en événement tiré au hasard.
+  { id: 'bus', layer: 'street', weight: 0, hours: [[360, 1380]], half: 36, lanes: ['near', 'far'], needs: 'traffic' },
   { id: 'tram', layer: 'street', weight: 1.5, hours: [[330, 1440], [0, 30]], half: 68, lanes: ['far'] },
   { id: 'ambulance', layer: 'street', weight: 1, hours: ALL_DAY, half: 21, speed: 130, lanes: ['near', 'far'] },
   { id: 'garbage-truck', layer: 'street', weight: 1.5, hours: [[330, 540]], half: 34, lanes: ['near'] },

@@ -35,12 +35,18 @@ export type StopEnv = {
   width: number;
   margin: number;
   unit: number;
+  // Bus à horaires (bus-timetable.ts) : délai (s) avant le prochain bus de chaque sens, null si aucun n'est attendu (nuit,
+  // fin de service). Absent : les voyageurs viennent au hasard de l'affluence, comme avant les horaires.
+  nextBus?: Readonly<Record<StopSide, number | null>>;
 };
 
 export const STOP_WAIT_MAX = 5;
 const STEP_S = 0.8; // durée de la marche (montée ou descente)
 const ALIGHT_GAP_S = 1.3;
 const REACH = 70; // distance (unités) d'où un voyageur qui arrive court encore prendre le bus
+// Bus à horaires : on ne vient attendre que dans le quart d'heure qui précède le passage ; personne ne vient si aucun bus
+// n'est attendu, et ceux qui attendent repartent à pied (dernier bus passé).
+export const COME_BEFORE_S = 15 * 60;
 // Places au poteau (unités) : de part et d'autre, sans se chevaucher.
 const SPOTS = [-6, 7, -15, 15, -23] as const;
 
@@ -79,7 +85,17 @@ export function stepStops(c: StopCrowd, env: StopEnv, t: number, dt: number): { 
   const u = env.unit;
   for (const side of ['near', 'far'] as const) {
     // Arrivées : tirées selon l'affluence, depuis un bord.
-    if (!env.closed && env.crowd > 0.02 && t >= c.nextAt[side]) {
+    const next = env.nextBus ? env.nextBus[side] : 0;
+    if (env.nextBus && next === null) {
+      // Plus de bus avant longtemps : ceux qui attendent renoncent et repartent vers un bord.
+      for (const p of c.riders) {
+        if (p.side !== side || (p.stage !== 'arrive' && p.stage !== 'wait')) continue;
+        p.stage = 'leave';
+        p.target = p.x < env.width / 2 ? -env.margin : env.width + env.margin;
+        changed = true;
+      }
+    }
+    if (!env.closed && env.crowd > 0.02 && next !== null && next <= COME_BEFORE_S && t >= c.nextAt[side]) {
       c.nextAt[side] = t + Math.max(4, -Math.log(1 - c.rng() * 0.98) * (34 / env.crowd));
       const waiting = c.riders.filter((p) => p.side === side && (p.stage === 'arrive' || p.stage === 'wait')).length;
       if (waiting < STOP_WAIT_MAX) {
