@@ -17,6 +17,7 @@ import { THRESHOLD_S, entranceOpening } from '../../src/core/library/city/doorwa
 import { DOOR_WIDTH } from '../../src/core/library/city/doors';
 import { DOOR_SILL_HALF, DOOR_SILL_TOP } from '../../src/content/door-passage';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
+import { HALL_TIMER_S, crossingDoorX, seedHallTimers } from '../../src/core/library/city/hall-lights';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -376,5 +377,52 @@ describe('CityLifeLayer : mouvement réduit', () => {
     now += 60_000;
     draw(721);
     expect(transforms()).toEqual(before);
+  });
+});
+
+describe('CityLifeLayer : minuterie des halls', () => {
+  const night = 20.5;
+  const ymd = { y: 2026, m: 10, d: 9 };
+  const litDoors = (c: HTMLElement): string[] => [...c.querySelectorAll('[data-hall-light][data-lit="true"]')].map((n) => n.getAttribute('data-hall-light')!);
+  // Premier habitant au seuil (la nuit) après T0, avec sa porte.
+  const crossing = () => {
+    const minutes = Math.round(night * 60);
+    const sky = skyAt(minutes, times);
+    const doors = doorsFor(720, 340, 1);
+    const flow = residentFlow(cityIntensity({ minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight: sky.daylight }), minutes, doors.length, 720);
+    const trips = tripsFor(doors, 1, 720);
+    const gateOf = (trip: (typeof trips)[number]): number => (trip.kind === 'out' ? flow.out : flow.in);
+    for (let t = 1.8e9; t < 1.8e9 + 1200; t += 0.5) {
+      for (const trip of trips) {
+        const pos = tripAt(trip, 720, t);
+        if (pos?.stage === 'threshold' && tripHappens(trip, t, gateOf(trip))) return { t, door: crossingDoorX(trip, pos), trips, gateOf };
+      }
+    }
+    throw new Error('aucun passage');
+  };
+
+  it('la nuit, le hall s’allume après un passage et suit la minuterie de 2 minutes', () => {
+    const { t, door, trips, gateOf } = crossing();
+    vi.spyOn(Date, 'now').mockReturnValue((t + 30) * 1000);
+    const c = make(night, ymd);
+    expect(litDoors(c)).toContain(String(door));
+    // Chaque hall suit exactement sa minuterie (passages des 2 dernières minutes).
+    const until = seedHallTimers(trips, 720, t + 30, gateOf);
+    for (const n of c.querySelectorAll('[data-hall-light]')) {
+      const x = Number(n.getAttribute('data-hall-light'));
+      expect(n.getAttribute('data-lit')).toBe((until.get(x) ?? -Infinity) > t + 30 ? 'true' : 'false');
+    }
+    expect(HALL_TIMER_S).toBe(120);
+  });
+
+  it('pas de lumière continue : la plupart des halls sont éteints, et aucun de jour', () => {
+    const { t } = crossing();
+    vi.spyOn(Date, 'now').mockReturnValue((t + 30) * 1000);
+    const c = make(night, ymd);
+    expect(litDoors(c).length).toBeLessThan(c.querySelectorAll('[data-hall-light]').length);
+    vi.restoreAllMocks();
+    vi.spyOn(Date, 'now').mockReturnValue((t + 30) * 1000);
+    const day = make(13, ymd);
+    expect(litDoors(day)).toHaveLength(0);
   });
 });

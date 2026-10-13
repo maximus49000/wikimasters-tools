@@ -50,6 +50,8 @@ import { SantaLayer } from './santa-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
 import { useWallClockLoop } from './use-wallclock-loop';
+import { HALL_TIMER_S, crossingDoorX, hallLit, seedHallTimers } from '../core/library/city/hall-lights';
+import { HallLights, hallTransition } from './hall-lights';
 
 // Vie de la scène Ville : passants, habitants qui sortent de leur immeuble ou y rentrent, deux files de circulation,
 // les événements de la ville (vague 1b-i), les clients des commerces et l'équipe d'un chantier (vague 1b-iv-a,
@@ -160,8 +162,8 @@ const residentTransform = (trip: Trip, x: number, m: CityMetrics, mirror: boolea
   const k = residentScale(trip, m);
   return `translate(${x.toFixed(1)} ${m.doorY.toFixed(1)}) scale(${((mirror ? trip.dir : 1) * k).toFixed(3)} ${k.toFixed(3)})`;
 };
-// Centre de la porte du seuil en cours (la sienne, ou celle de l'autre immeuble au bout du trajet).
-const tripDoorX = (trip: Trip, pos: Passage): number => (pos.x === trip.doorX || trip.endDoorX === null ? trip.doorX : trip.endDoorX);
+// Centre de la porte du seuil en cours (la sienne, ou celle de l'autre immeuble au bout du trajet) : city/hall-lights.ts.
+const tripDoorX = crossingDoorX;
 const doorOpening = (centerX: number, m: CityMetrics) => entranceOpening(centerX - DOOR_WIDTH / 2, m);
 // Pose Ghibli d'un habitant (rue : image réglée sur la distance ; seuil : la profondeur fait avancer les pas). Mouvement réduit
 // (`still`) : debout, tourné dans le sens du passage.
@@ -245,6 +247,15 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const frozen = useRef<number | null>(null);
   const still = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (frozen.current === null) frozen.current = Date.now() / 1000;
+  // Minuterie des halls : fin de minuterie par porte, amorcée au montage d'après les passages des 2 dernières minutes, puis
+  // relancée par la boucle à chaque habitant affiché sur un seuil. Remise à zéro si les trajets changent.
+  const hallDark = sky.daylight < 0.45;
+  const hallUntil = useRef<Map<number, number>>(new Map());
+  const hallFor = useRef<Trip[] | null>(null);
+  if (hallFor.current !== trips) {
+    hallUntil.current = seedHallTimers(trips, width, still ? (frozen.current ?? 0) : Date.now() / 1000, gateOf);
+    hallFor.current = trips;
+  }
 
   // Commerces : deux visites par local (seulement si la rue a des commerces) ; probabilité d'une visite recalculée à la minute,
   // nulle si le local n'est pas ouvert, et en mouvement réduit (aucun client ne bouge).
@@ -399,6 +410,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     const doorNodes = new Map<string, Element>();
     // Ombres portées des passants (Ghibli, nuit), par passant.
     const shadeNodes = new Map<string, Element>();
+    // Lumières des halls, par centre de porte.
+    const hallNodes = new Map<number, Element>();
     let muted: Set<string> = new Set();
     // Scène G4b (Ghibli) : nœuds de ShopScene, posés après les clients de l'ancien rendu.
     let scene: SceneNodes | null = null;
@@ -417,6 +430,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         for (const node of el.querySelectorAll('svg[data-resident-door]')) doorNodes.set(node.getAttribute('data-trip-id')!, node);
         shadeNodes.clear();
         for (const node of el.querySelectorAll('[data-shade-for]')) shadeNodes.set(node.getAttribute('data-shade-for')!, node);
+        hallNodes.clear();
+        for (const node of el.querySelectorAll('[data-hall-light]')) hallNodes.set(Number(node.getAttribute('data-hall-light')), node);
         staff = collectPosedStaff(el);
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
@@ -477,6 +492,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         const node = nodes.get(trip.id);
         if (!node) continue;
         const v = residentView(trip, tripLock.current, trip.kind === 'out' ? flow.out : flow.in, width, t);
+        // Habitant sur le seuil : la minuterie du hall de cette porte repart pour 2 minutes.
+        if (v.door && v.pos) hallUntil.current.set(tripDoorX(trip, v.pos), t + HALL_TIMER_S);
         // N'écrire que ce qui change : la plupart des habitants restent chez eux, inutile de toucher leurs nœuds à chaque image.
         // Ghibli : nœud éteint (bascule ou premier placement) → figure cachée, sprite libéré.
         const streetOff = !v.street && (first || node.getAttribute('data-active') !== 'false');
@@ -497,6 +514,14 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           placeSill(dnode, doorOpening(tripDoorX(trip, v.pos), metrics), v.pos, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir);
           if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics, still));
         } else if (ghibli && doorOff) hideFigure(figures, dnode.querySelector('[data-figure]'));
+      }
+      // Halls : allumés tant que la minuterie court et qu'il fait sombre ; n'écrire qu'à la bascule (allumage franc, extinction douce).
+      for (const [x, node] of hallNodes) {
+        const on = hallLit(hallUntil.current, x, t, hallDark);
+        if (node.getAttribute('data-lit') === (on ? 'true' : 'false') && !first) continue;
+        (node as SVGElement).style.transition = hallTransition(on, still);
+        node.setAttribute('data-lit', on ? 'true' : 'false');
+        node.setAttribute('opacity', on ? '1' : '0');
       }
       placeCustomers(nodes, shopVisits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
       if (scene) placeScene(scene, t, figures, traffic.world.horns);
@@ -526,7 +551,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, sceneShops, traffic, litLamps]);
+  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, sceneShops, traffic, litLamps, hallDark]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
@@ -583,6 +608,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
           lampadaires (bord du trottoir), la file du fond, puis celle du premier plan. */}
       <g data-city-sidewalk="">
+        {/* Lumières des halls (minuterie) : devant le décor, derrière les habitants qui passent le seuil. */}
+        <HallLights doors={doors} unit={metrics.unit} doorY={metrics.doorY} ghibli={ghibli} still={still} lit={(x) => hallLit(hallUntil.current, x, t0!, hallDark)} />
         {/* Contre les devantures : l'équipe d'un chantier, le personnel (derrière la vitrine, rideau roulant, trottoir), puis les
             clients (derrière les vitrines et sur le trottoir). */}
         {shops.views.map((view, i) =>
