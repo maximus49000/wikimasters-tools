@@ -16,7 +16,8 @@ import { riding } from '../../core/library/figure/skeleton';
 export type Palette = Record<string, string>;
 // Cadre du sprite en unités du pantin (pieds à l'origine) et résolution (px par unité). Mesuré sur toutes les signatures et
 // allures (trait compris) : sans parapluie |x| ≤ 13,1, avec parapluie |x| ≤ 19,6 ; y de −51,3 à 3,1. D'où ±20 en largeur.
-export const SPRITE_BOX = { x0: -20, y0: -64, w: 40, h: 68 } as const;
+// Vélo arrêté (`perch`) : le pied posé descend jusqu'au sol, 6 unités sous l'origine (bas du cadre à +10).
+export const SPRITE_BOX = { x0: -20, y0: -64, w: 40, h: 74 } as const;
 export const SPRITE_PX = 3;
 // PNG 1×1 transparent : repli sans canvas (jsdom), les tests vérifient les clés, pas les pixels.
 export const BLANK_SPRITE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=';

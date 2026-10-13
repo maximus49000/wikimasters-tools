@@ -19,7 +19,10 @@ export const CRANK_TURN = 2.2 * 2 * Math.PI * 5;
 const mod = (a: number, n: number): number => ((a % n) + n) % n;
 // Image du pédalier pour une distance parcourue (unités du vélo).
 export const crankPhase = (dist: number): number => mod(Math.floor((dist / CRANK_TURN) * PHASES + 1e-9), PHASES);
-export const riderPose = (dir: 1 | -1, phase: number): PoseIn => ({ yaw: dir > 0 ? 1 : 7, gait: 'pedal', phase, head: 0, arms: 'handlebar' });
+// `stopped` : vélo arrêté (feu, file), pied à terre (allure `perch`).
+export const riderPose = (dir: 1 | -1, phase: number, stopped = false): PoseIn => ({ yaw: dir > 0 ? 1 : 7, gait: stopped ? 'perch' : 'pedal', phase: stopped ? 0 : phase, head: 0, arms: 'handlebar' });
+// Vitesse (px/s, à l'unité près) sous laquelle le cycliste pose le pied (au-dessus : il pédale).
+export const FOOT_DOWN_V = 0.8;
 
 type Geo = { seat: readonly [number, number]; crank: readonly [number, number]; hands: readonly [number, number]; anchor: readonly [number, number] };
 const geoCache = new Map<string, Geo>();
@@ -41,18 +44,18 @@ function geoOf(sig: string, dir: 1 | -1, seatX: number): Geo {
 
 // Pantin seul, selle à `seat` (repère du véhicule) : pour un vélo déjà dessiné (vélo porteur).
 // `seatY` : hauteur de la selle si le vélo est déjà dessiné (sinon tirée du pédalier, CRANK_Y).
-export function GhibliRider({ outfit, sky, rainy, dir, phase, work = 'none', seatX, seatY }: { outfit: Outfit; sky: Sky; rainy: boolean; dir: 1 | -1; phase: number; work?: Work; seatX: number; seatY?: number }): ReactElement {
+export function GhibliRider({ outfit, sky, rainy, dir, phase, work = 'none', seatX, seatY, stopped = false }: { outfit: Outfit; sky: Sky; rainy: boolean; dir: 1 | -1; phase: number; work?: Work; seatX: number; seatY?: number; stopped?: boolean }): ReactElement {
   const g0 = geoOf(signatureOf(shapeOf(outfit, false, work)), dir, seatX);
   const g = seatY === undefined ? g0 : { ...g0, seat: [seatX, seatY] as const };
   return (
     <g data-bike-rider="" transform={`translate(${g.seat[0]} ${g.seat[1]}) scale(${dir * RIDER_SCALE} ${RIDER_SCALE}) translate(${-g.anchor[0]} ${-g.anchor[1]})`}>
-      <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={riderPose(dir, phase)} work={work} />
+      <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={riderPose(dir, phase, stopped)} work={work} />
     </g>
   );
 }
 
 // Vélo de ville et son cycliste : roues, cadre en losange autour du pédalier, selle, guidon, phare.
-export function GhibliBike({ outfit, color, ink, sky, rainy, dir, phase, lights }: { outfit: Outfit; color: string; ink: string; sky: Sky; rainy: boolean; dir: 1 | -1; phase: number; lights: boolean }): ReactElement {
+export function GhibliBike({ outfit, color, ink, sky, rainy, dir, phase, lights, stopped = false }: { outfit: Outfit; color: string; ink: string; sky: Sky; rainy: boolean; dir: 1 | -1; phase: number; lights: boolean; stopped?: boolean }): ReactElement {
   const g = geoOf(signatureOf(shapeOf(outfit, false)), dir, -3);
   const [bx, by] = g.crank;
   const rear = [bx - 7.4, -5] as const;
@@ -82,7 +85,7 @@ export function GhibliBike({ outfit, color, ink, sky, rainy, dir, phase, lights 
       <path d={`M${P([st[0] - 0.4, st[1]])} L${P([g.seat[0], g.seat[1] + 0.6])}`} stroke={ink} strokeWidth={0.7} />
       <rect x={g.seat[0] - 1.8} y={g.seat[1] + 0.2} width={3.4} height={1} rx={0.5} fill={ink} />
       <circle cx={bx} cy={by} r={1.3} fill="none" stroke={ink} strokeWidth={0.6} />
-      <GhibliRider outfit={outfit} sky={sky} rainy={rainy} dir={dir} phase={phase} seatX={-3} />
+      <GhibliRider outfit={outfit} sky={sky} rainy={rainy} dir={dir} phase={phase} seatX={-3} stopped={stopped} />
       {lights && (
         <g data-headlight="">
           <circle cx={ht[0] + 1.4} cy={ht[1]} r={1.4} fill="#FFE9A0" />

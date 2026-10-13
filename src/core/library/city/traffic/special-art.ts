@@ -456,8 +456,9 @@ function build(s: SpecialSpec): CarArt {
         {
           color: c,
           body: 'M-10 -4.6 Q-11.6 -11.4 -6 -11.6 L-1.6 -11.6 L-1.4 -6.4 L3.6 -6.4 L6.4 -15.4 L8.4 -15.4 Q9.6 -9 8.6 -4.6 Z',
-          paint: [fill(rr(-7.6, -13.2, 6.4, 1.8, 0.9), '#3a3040'), line('M6.4 -15.6 L8.2 -18 M6.8 -17.6 L5 -18', INK, 0.9)],
-          people: [{ x: -4.4, y: -13, k: RIDER, gait: 'mount', arms: 'handlebar', over: true }],
+          // Colonne de direction qui remonte vers l'arrière, poignées aux mains du pilote (bras tendus, revue du 2026-10-13).
+          paint: [fill(rr(-7.6, -13.2, 6.4, 1.8, 0.9), '#3a3040'), line('M6.4 -15.6 L5 -17.4 M5.6 -17.6 L2.4 -16.6', INK, 0.9)],
+          people: [{ x: -2.6, y: -13, k: RIDER, gait: 'mount', arms: 'handlebar-reach', over: true }],
           wheels: [[-7, 2.6], [7.6, 2.6]],
           lamp: [8.6, -15],
           tail: [-9.8, -8],
@@ -472,8 +473,8 @@ function build(s: SpecialSpec): CarArt {
         {
           color: '#5a3a8a',
           body: 'M-1.6 -9.6 Q1 -11.4 3 -9.6 L2.6 -7.4 L-1.2 -7.4 Z',
-          under: [line('M-7.4 -4 L-1 -10 L6.6 -4 M-1 -10 L-2.4 -13 M-1 -10 L5 -10.4 L6 -14 M0 -6 L2 -6', '#5a3a8a', 1), fill(rr(-4.4, -13.8, 4.4, 1.4, 0.7), '#2b2522')],
-          people: [{ x: -2.4, y: -13.4, k: RIDER, gait: 'mount', arms: 'handlebar', over: true }],
+          under: [line('M-7.4 -4 L-1 -10 L6.6 -4 M-1 -10 L-2.4 -13 M-1 -10 L5 -10.4 L5.6 -15.8 M6 -16.2 L2.8 -16.8 M0 -6 L2 -6', '#5a3a8a', 1), fill(rr(-4.4, -13.8, 4.4, 1.4, 0.7), '#2b2522')],
+          people: [{ x: -2.4, y: -13.4, k: RIDER, gait: 'mount', arms: 'handlebar-reach', over: true }],
           wheels: [[-7.4, 3.2], [6.6, 3.2]],
           lamp: [6.6, -14],
           tail: [-7.6, -9],
@@ -491,8 +492,9 @@ function build(s: SpecialSpec): CarArt {
         {
           color: '#3a3430',
           body: 'M-8 -6 L-8 -11 L6 -12 L8.6 -9 L6 -6 Z',
+          paint: [line('M5.8 -11.8 L3.8 -15.4 M4.4 -15.8 L1.2 -15.6', INK, 0.9)],
           people: [
-            { x: -4, y: -12.4, k: RIDER, gait: 'mount', arms: 'handlebar' },
+            { x: -4, y: -12.4, k: RIDER, gait: 'mount', arms: 'handlebar-reach' },
             { x: 6, y: -15, k: BUST * 0.78, role: 'front' },
           ],
           wheels: [[-9.4, 3.6], [9, 3.6], [12, 3]],
@@ -511,10 +513,10 @@ function build(s: SpecialSpec): CarArt {
       return model(
         {
           color: '#2f7d64',
-          under: [line('M-10 -3.6 L-4 -11 L2 -11 M-4 -11 L-3 -15', '#4a4a52', 1.2)],
+          under: [line('M-10 -3.6 L-4 -11 L2 -11 M-4 -11 L-3 -15 M2 -11 L2.2 -16.4 M2.8 -16.9 L0.6 -16.5', '#4a4a52', 1.2)],
           body: 'M2.6 -6.4 L2.6 -17 L15 -17 L15 -6.4 Z',
           paint: [text(3.8, -10.8, 'LAIT', 2.8, '#f2efe6')],
-          people: [{ x: -4.2, y: -13.2, k: RIDER, gait: 'mount', arms: 'handlebar', over: true }],
+          people: [{ x: -4.2, y: -13.2, k: RIDER, gait: 'mount', arms: 'handlebar-reach', over: true }],
           wheels: [[-10, 3.4], [9, 3.4]],
           lamp: [15, -10],
           tail: [-12.4, -6],
@@ -727,7 +729,7 @@ function build(s: SpecialSpec): CarArt {
         {
           color: '#F4F6F8',
           body: 'M-13 -10 L-4 -16 L6 -16 L13 -9 L9 -6 L-8 -6 Z',
-          paint: [fill('M6 -16 L11 -24 L13 -23 L9 -15 Z', '#c9dde6', { alpha: 0.7, ink: 0.4 }), piece(rect(-12, -14, -6, -10), '#2E4FA8')],
+          paint: [fill('M6 -16 L11 -24 L13 -23 L9 -15 Z', '#c9dde6', { alpha: 0.7, ink: 0.4 }), piece(rect(-12, -14, -6, -10), '#2E4FA8'), line('M7 -16 L5.6 -19.4 M6.2 -19.9 L4 -19.2', INK, 0.9)],
           people: [{ x: -2, y: -15, k: 0.7, gait: 'mount', arms: 'handlebar', over: true, outfit: uniform(s.seed, 0, '#1F2A4A', 'cap', '#F4F6F8') }],
           wheels: [[-11, 6], [11, 6]],
           beacons: [{ x: -13.2, y: -18.4, w: 2.4, h: 2.4, on: '#4F7BFF', off: '#1d2c66' }],

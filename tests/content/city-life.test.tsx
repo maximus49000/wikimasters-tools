@@ -232,12 +232,11 @@ describe('CityLifeLayer', () => {
     expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'install-street', 'crosswalk', 'riders-far', 'fixtures-near', 'far', 'riders-near-step', 'near', 'crossing', 'fixtures-far', 'riders-near']);
     expect(layer.querySelectorAll('[data-street-lamp][data-lit="true"]').length).toBeGreaterThan(0);
   });
-  it('les vélos roulent sur leur piste, dessinés après les voitures de la file du premier plan', () => {
+  it('les vélos roulent avec la file du premier plan (jamais sur la voie du fond)', () => {
+    // Profondeur (revue du 2026-10-13) : un vélo au bord du trottoir est devant les voitures, un vélo qui double par le
+    // milieu passe derrière la voiture doublée ; l'ordre se lit donc au décalage latéral (moteur), pas à la sorte.
     const c = make(12, { y: 2026, m: 10, d: 10 });
-    const near = Array.from(c.querySelectorAll('[data-city-lane="near"] [data-vehicle]'));
-    const kinds = near.map((n) => n.getAttribute('data-kind'));
-    const firstBike = kinds.indexOf('bike');
-    if (firstBike >= 0) expect(kinds.slice(firstBike).every((k) => k === 'bike')).toBe(true);
+    expect(c.querySelectorAll('[data-city-lane="far"] [data-vehicle][data-kind="bike"]').length).toBe(0);
   });
 });
 
