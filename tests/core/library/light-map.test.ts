@@ -19,6 +19,18 @@ describe('buildLightMap', () => {
     expect(at(m, 130, 110)[3]).toBe(0);
     expect(at(m, 130, 200)[3]!).toBeGreaterThan(0);
   });
+  it('ombre un meuble posé devant la fenêtre comme le reste de la pièce', () => {
+    // Étagère haute devant le verre : sa face avant recouvre la fenêtre à l'écran.
+    const shelf: Box = { owner: 's', x0: 80, x1: 180, d0: 20, d1: 60, z0: 0, z1: 330 };
+    const night = { ...base, daylight: 0, sunFrac: null, sunX: null, boxes: [shelf] };
+    const m = buildLightMap(night);
+    const surf = buildSurfaceMap([shelf], base.width, base.height, { wallH: base.wallH, floorH: base.height - base.wallH }, LIGHT_SCALE);
+    const n = Math.floor(110 / LIGHT_SCALE) * surf.w + Math.floor(130 / LIGHT_SCALE);
+    expect(surf.kind[n]).not.toBe(SURF.wall);
+    // Même ombre que la partie du meuble hors du verre, à la même hauteur.
+    expect(at(m, 130, 110)[3]!).toBeGreaterThan(0);
+    expect(Math.abs(at(m, 130, 110)[3]! - at(m, 130, 180)[3]!)).toBeLessThan(40);
+  });
   it('donne le même résultat avec le cache de lumière du ciel', () => {
     const a = buildLightMap(base);
     const b = buildLightMap({ ...base, windows: [...base.windows] });

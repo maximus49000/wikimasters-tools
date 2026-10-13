@@ -157,13 +157,13 @@ export function buildLightMap(input: LightInput): LightMap {
     const y = (j + 0.5) * LIGHT_SCALE;
     for (let i = 0; i < w; i++) {
       const x = (i + 0.5) * LIGHT_SCALE;
-      // La vue à travers le verre n'est jamais assombrie.
-      if (windows.some((g) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h)) continue;
       const n = j * w + i;
+      const kind = surf.kind[n]!;
+      // La vue à travers le verre n'est jamais assombrie, sauf là où un meuble la cache.
+      if (kind === SURF.wall && windows.some((g) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h)) continue;
       const lampL = lampLight[n]! * (petLamp ? petLamp[n]! : 1);
       const light = input.noSky ? 1 : clamp01(clamp01(0.2 + 0.8 * sky * field[n]!) + lampL * need);
       const shade = (1 - light) * shadeGain;
-      const kind = surf.kind[n]!;
       let b = 0;
       if (exact) {
         // Avec des meubles ou des animaux : part du soleil mémorisée (reach × fade), multipliée par le gain du moment et par l'ombre des animaux.
