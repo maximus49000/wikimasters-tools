@@ -1695,7 +1695,7 @@ export const ENTRIES: Entry[] = [
         target: '[data-wmt-library-entry]',
         gesture: 'tap',
         title: 'Des événements dans le ciel et dans la rue',
-        text: 'Dans une pièce dont la scène est « Ville », de temps en temps, quelque chose passe : avion, hélicoptère, drone, montgolfière, avion à banderole, bus articulé, tramway, ambulance, camion-poubelle, livreur à vélo, promeneur de chien.',
+        text: 'Dans une pièce dont la scène est « Ville », de temps en temps, quelque chose passe : avion, hélicoptère, drone, montgolfière, avion à banderole, bus articulé, ambulance, camion-poubelle, livreur à vélo, promeneur de chien.',
         details: [
           { label: 'À quoi ça sert', text: 'À rendre la vue plus vivante : on ne sait jamais ce qu’on va voir passer par la fenêtre.' },
           { label: 'Comment faire', text: 'Rien à régler : ouvrez Ma Pièce, choisissez une pièce dont la scène est « Ville » et regardez par la fenêtre. Un événement traverse tout le paysage, d’une fenêtre à l’autre.' },
