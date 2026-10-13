@@ -126,7 +126,13 @@ export function canPlace(layout: Layout, cols: number, kind: StandingKind, col: 
   const floor = floorCells(kind, angle, col, row);
   const inRoom = inRoomCell(cols);
   if (cells.some((c) => !inRoom(c))) return { ok: false, reason: 'bounds', cells: cells.filter(inRoom) };
-  if (floor.some((c) => c.row < WALL_ROWS)) return { ok: false, reason: 'floor', cells: floor.filter((c) => c.row < WALL_ROWS) };
+  // Un tapis ne se pose pas sur le mur ; un meuble debout doit seulement avoir sa rangée la plus basse au sol (le haut de son emprise peut rester devant le mur).
+  if (layerOf(kind) === 'rug') {
+    if (floor.some((c) => c.row < WALL_ROWS)) return { ok: false, reason: 'floor', cells: floor.filter((c) => c.row < WALL_ROWS) };
+  } else {
+    const lowest = Math.max(...floor.map((c) => c.row));
+    if (lowest < WALL_ROWS) return { ok: false, reason: 'floor', cells: floor.filter((c) => c.row === lowest) };
+  }
   if (freeDepth(layout, cols, kind, col, row, depthDefault(kind), ignoreId, angle) !== null) return { ok: true };
   const clash = layerOf(kind) === 'rug' ? rugClash(layout, floor, ignoreId) : footClash(layout, kind, col, row, ignoreId, angle);
   return { ok: false, reason: 'taken', cells: clash };

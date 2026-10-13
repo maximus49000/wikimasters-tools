@@ -62,6 +62,9 @@ describe('collision par cases au sol', () => {
     const sofa = placeStanding([], COLS, 'sofa', 2, 13, 's')!;
     expect(canPlace(sofa, COLS, 'chair', 3, 13).ok).toBe(false);
   });
+  it('un canapé de face à cheval sur le mur et le sol est accepté', () => {
+    expect(canPlace([], COLS, 'sofa', 0, 10).ok).toBe(true);
+  });
   it('un profil qui sort de la pièce est refusé (bounds)', () => {
     expect(canPlace([], COLS, 'shelf', 23, 9, undefined, 2)).toMatchObject({ ok: false, reason: 'bounds' });
   });
