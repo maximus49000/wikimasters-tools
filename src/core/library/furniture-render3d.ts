@@ -30,7 +30,10 @@ export type Piece = Common & (
 export type Poi3d = { type: PoiType; x: number; y: number; z: number };
 // `face` : rectangle de la face avant (x, y depuis le sol, en cm) où se rangent les cartes et s'affiche l'écran.
 // `round` : base ronde (lampadaire) : la trace au sol est l'ellipse inscrite dans w × d, la largeur dessinée ne change pas avec l'angle.
-export type Model = { w: number; d: number; h: number; pieces: Piece[]; pois?: Poi3d[]; face?: { x: number; y: number; w: number; h: number }; round?: boolean };
+// `perch` : dessus praticable par un chat (assise, plateau, haut de l'étagère) : rectangle x/z en cm à la hauteur y (dessus d'une vraie pièce).
+// `glow` : point d'où part la lumière d'une lampe (dans l'abat-jour), en cm.
+export type Perch = { x: number; z: number; w: number; d: number; y: number };
+export type Model = { w: number; d: number; h: number; pieces: Piece[]; pois?: Poi3d[]; face?: { x: number; y: number; w: number; h: number }; round?: boolean; perch?: Perch; glow?: V3t };
 export type Shape =
   // `ink` : 'none' = aplat sans trait (ombre nette), 'only' = trait seul repassé par-dessus.
   | { kind: 'poly'; points: [number, number][]; fill: Fill; shade: number; ink?: 'none' | 'only' }
@@ -615,4 +618,81 @@ export function levelsOf(model: Model): [number, number][] {
   }
   levels.push([(top - ceiling) / face.h, 1]);
   return levels;
+}
+
+// Repère « lumière » d'un meuble tourné, en cm : x depuis le bord gauche du rectangle de dessin (centrage compris, comme renderModel),
+// y hauteur depuis le sol, z profondeur depuis l'avant de la trace (le bas du rectangle).
+export type LocalBox = { x0: number; x1: number; z0: number; z1: number; d0: number; d1: number };
+const shiftOf = (model: Model, angle: Angle): { f: Frame; dx: number } => {
+  const L = layoutOf(model, angle);
+  const trace = footprint(model, L.f);
+  return { f: L.f, dx: (L.cols * 21 - Math.max(...trace.map((p) => p[0]))) / 2 };
+};
+
+// Point du modèle → px du rectangle de dessin (même projection que le dessin).
+export function projectOf(model: Model, angle: Angle, p: V3t): [number, number] {
+  return layoutOf(model, angle).toPx({ x: p[0], y: p[1], z: p[2] });
+}
+
+export function localPointOf(model: Model, angle: Angle, p: V3t): { x: number; y: number; z: number } {
+  const { f, dx } = shiftOf(model, angle);
+  const l = local(f, { x: p[0], y: p[1], z: p[2] });
+  return { x: l.x + dx, y: l.y, z: l.z };
+}
+
+// Pièce qui compte pour la lumière : ni minuscule (toutes ses mesures ≤ 6 cm : embout, rivet, boule d'articulation), ni contenue à 1 cm près dans une autre
+// (planches peintes, porte et plaque affleurantes de la niche) — elles n'ajoutent pas d'ombre, seulement du calcul.
+const OCCLUDER_MIN = 6;
+function occluding(pieces: Piece[]): Piece[] {
+  const b = pieces.map(pieceBounds);
+  const vol = b.map(([x0, x1, y0, y1, z0, z1]) => (x1 - x0) * (y1 - y0) * (z1 - z0));
+  const inside = (i: number, j: number): boolean => [0, 2, 4].every((k) => b[j]![k]! - 1 <= b[i]![k]! && b[i]![k + 1]! <= b[j]![k + 1]! + 1);
+  return pieces.filter((_, i) => {
+    const [x0, x1, y0, y1, z0, z1] = b[i]!;
+    if (x1 - x0 <= OCCLUDER_MIN && y1 - y0 <= OCCLUDER_MIN && z1 - z0 <= OCCLUDER_MIN) return false;
+    // Deux pièces de même encombrement : la première reste.
+    return !b.some((_, j) => j !== i && inside(i, j) && (vol[j]! > vol[i]! || (vol[j] === vol[i] && j < i)));
+  });
+}
+
+// Occulteurs du meuble tourné : boîte englobante tournée de chaque pièce qui compte (x, profondeur d) et sa hauteur (z), en cm du repère « lumière ».
+// En diagonale, la boîte englobante d'une pièce longue déborde beaucoup de la pièce (un canapé à 45° couvrirait le sol devant lui) :
+// la pièce est découpée en tranches d'au plus SLICE_CM le long de sa plus grande longueur, chaque tranche donne sa boîte.
+const SLICE_CM = 40;
+export function occluderBoxesOf(model: Model, angle: Angle): LocalBox[] {
+  const { f, dx } = shiftOf(model, angle);
+  const out: LocalBox[] = [];
+  for (const p of occluding(model.pieces)) {
+    const [x0, x1, y0, y1, z0, z1] = pieceBounds(p);
+    const alongX = x1 - x0 >= z1 - z0;
+    const n = angle % 2 === 1 ? Math.max(1, Math.ceil((alongX ? x1 - x0 : z1 - z0) / SLICE_CM)) : 1;
+    for (let i = 0; i < n; i++) {
+      const [a0, a1] = alongX ? [x0 + ((x1 - x0) * i) / n, x0 + ((x1 - x0) * (i + 1)) / n] : [z0 + ((z1 - z0) * i) / n, z0 + ((z1 - z0) * (i + 1)) / n];
+      const corners = alongX ? [[a0, z0], [a1, z0], [a1, z1], [a0, z1]] : [[x0, a0], [x1, a0], [x1, a1], [x0, a1]];
+      const r = corners.map(([x, z]) => turn(f, x!, z!));
+      const [xs, zs] = [r.map((q) => q[0]), r.map((q) => q[1])];
+      out.push({ x0: Math.min(...xs) - f.minX + dx, x1: Math.max(...xs) - f.minX + dx, z0: y0, z1: y1, d0: Math.min(...zs) - f.minZ, d1: Math.max(...zs) - f.minZ });
+    }
+  }
+  return out;
+}
+
+// Dessus praticable projeté (px du rectangle de dessin) : segment horizontal qui passe par son centre, bords compris dans le dessus
+// (en ¾ le dessus est un parallélogramme : la corde horizontale par son centre y reste entière) ; `depth` = profondeur du centre (cm
+// depuis l'avant de la trace), `height` = hauteur du dessus (cm). null sans dessus praticable.
+export function perchOf(model: Model, angle: Angle): { x0: number; x1: number; y: number; depth: number; height: number } | null {
+  const p = model.perch;
+  if (!p) return null;
+  const L = layoutOf(model, angle);
+  const pts = [[p.x, p.z], [p.x + p.w, p.z], [p.x + p.w, p.z + p.d], [p.x, p.z + p.d]].map(([x, z]) => L.toPx({ x: x!, y: p.y, z: z! }));
+  const [cx, cy] = [pts.reduce((s, q) => s + q[0], 0) / 4, pts.reduce((s, q) => s + q[1], 0) / 4];
+  const xs: number[] = [];
+  pts.forEach((a, i) => {
+    const b = pts[(i + 1) % 4]!;
+    if ((a[1] - cy) * (b[1] - cy) > 0 || a[1] === b[1]) return;
+    xs.push(a[0] + ((b[0] - a[0]) * (cy - a[1])) / (b[1] - a[1]));
+  });
+  // Corde dégénérée (côtés horizontaux) : tout le dessus, qui est alors un rectangle à l'écran.
+  const [x0, x1] = xs.length >= 2 ? [Math.min(...xs), Math.max(...xs)] : [Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0]))];
+  return { x0, x1, y: cy, depth: local(L.f, { x: p.x + p.w / 2, y: p.y, z: p.z + p.d / 2 }).z, height: p.y };
 }

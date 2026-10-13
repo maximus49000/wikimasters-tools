@@ -11,24 +11,26 @@ const sun: LightInput = {
   sunX: 250, sunFrac: 0.35, daylight: 1, twilight: 0, cloud: 0.2, precip: 0, hidden: 0,
 };
 
+// Empreintes régénérées en Tâche 7 (meubles aux vraies proportions) : la carte des surfaces suit la vraie projection des boîtes
+// (dessus au-dessus de l'arête avant), comme le dessin des meubles ; les optimisations doivent toujours garder ces sorties.
 describe('empreintes de référence (sortie identique après optimisation)', () => {
   it('lampField 3 lampes / 81 boîtes', () => {
     const { boxes, lamps } = scene(81, 3);
     const surf = buildSurfaceMap(boxes, W, H, GEOM, 6);
-    expect(hash(lampField(lamps, boxes, surf, 6))).toBe('b75f6e69');
+    expect(hash(lampField(lamps, boxes, surf, 6))).toBe('e26d182b');
   });
   it('lampField 8 lampes / 81 boîtes', () => {
     const { boxes, lamps } = scene(81, 8);
     const surf = buildSurfaceMap(boxes, W, H, GEOM, 6);
-    expect(hash(lampField(lamps, boxes, surf, 6))).toBe('6e0d24f9');
+    expect(hash(lampField(lamps, boxes, surf, 6))).toBe('7b36a410');
   });
   it('buildLightMap avec meubles, soleil et lampes', () => {
     const { boxes, lamps } = scene(72, 3);
-    expect(hash(buildLightMap({ ...sun, boxes, lamps }).rgba)).toBe('8ecce1e9');
+    expect(hash(buildLightMap({ ...sun, boxes, lamps }).rgba)).toBe('a0733b0c');
   });
   it('buildLightMap avec meubles, soleil bas et nuages variés', () => {
     const { boxes } = scene(40, 0);
-    expect(hash(buildLightMap({ ...sun, sunX: 520, sunFrac: 0.6, cloud: 0.6, hidden: 0.3, boxes }).rgba)).toBe('ee98de4a');
+    expect(hash(buildLightMap({ ...sun, sunX: 520, sunFrac: 0.6, cloud: 0.6, hidden: 0.3, boxes }).rgba)).toBe('6aca97c5');
   });
   it('reste rapide : 3 lampes / 81 boîtes, 96 colonnes (marge large pour une machine chargée)', () => {
     const { boxes, lamps } = scene(81, 3);

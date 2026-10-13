@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CELL_H } from '../../../src/core/library/room-grid';
+import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y } from '../../../src/core/library/furniture-render3d';
 import type { Layout } from '../../../src/core/library/library-types';
 import { buildWalkMap, cellOf, groundLeg, groundPath, isFree, standPoint, toSegments } from '../../../src/core/library/pets/walk-map';
 
@@ -21,12 +22,23 @@ describe('buildWalkMap', () => {
     expect(isFree(map, 24, 15)).toBe(false);
   });
 
-  it('crée une plateforme au dessus du canapé', () => {
+  it('crée une plateforme sur l’assise du canapé : coussins de 54 cm, de 22 à 178 cm, milieu à 35 cm du devant', () => {
     const [plat] = buildWalkMap(sofa, 24).platforms;
     expect(plat!.id).toBe('a');
-    expect(plat!.y).toBeCloseTo((12 + 6 * 0.45) * CELL_H, 5);
-    expect(plat!.x0).toBe(2 * 30 + 6);
-    expect(plat!.x1).toBe(12 * 30 - 6);
+    expect(plat!.top).toBe(54);
+    // Bas du rectangle (ligne 18) − hauteur de l'assise − profondeur du milieu des coussins qui remonte.
+    expect(plat!.y).toBeCloseTo(18 * CELL_H - 54 * PX_PER_CM_Y - 35 * DEPTH_PX_PER_CM, 6);
+    const off = (300 - 200 * PX_PER_CM_X) / 2; // 200 cm centrés dans 10 colonnes
+    expect(plat!.x0).toBeCloseTo(60 + off + 22 * PX_PER_CM_X + 6, 6);
+    expect(plat!.x1).toBeCloseTo(60 + off + 178 * PX_PER_CM_X - 6, 6);
+  });
+
+  it('plateformes à la hauteur réelle des dessus : chaise 48, table basse 45, bureau 75, étagère 180 ; rien sur une lampe', () => {
+    const map = buildWalkMap([
+      { id: 'c', kind: 'chair', col: 0, row: 8 }, { id: 't', kind: 'coffee-table', col: 4, row: 10 },
+      { id: 'd', kind: 'desk', col: 10, row: 9 }, { id: 's', kind: 'shelf', col: 17, row: 4 }, { id: 'l', kind: 'lamp', col: 22, row: 5 },
+    ], 24);
+    expect(Object.fromEntries(map.platforms.map((p) => [p.id, p.top]))).toEqual({ c: 48, t: 45, d: 75, s: 180 });
   });
 
   it('standPoint et cellOf sont inverses', () => {

@@ -1,5 +1,7 @@
-import type { Angle } from '../footprint';
-import { SURFACE_SLOTS, angleOf, computerRect, isLamp, isLit, isStanding, pxRect, rectOf, surfaceSlotRect } from '../room-grid';
+import { drawSize, localPointAt, occludersAt, perchAt, type Angle } from '../footprint';
+import { FURNITURE_MODELS } from '../furniture-models';
+import { CELL_H, CELL_W, DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y } from '../furniture-render3d';
+import { SURFACE_SLOTS, angleOf, computerRectOn, isLamp, isLit, isStanding, pxRect, rectOf, surfaceSlotRectOn } from '../room-grid';
 import type { PxRect } from '../room-grid';
 import type { Layout, Placed, StandingKind } from '../library-types';
 import { ROOM_DEPTH_FACTOR } from './beam';
@@ -10,122 +12,85 @@ export type Geom = { wallH: number; floorH: number };
 export type Box = { owner: string; x0: number; x1: number; d0: number; d1: number; z0: number; z1: number };
 export type LampSource = { id: string; x: number; d: number; z: number; box: string };
 
-type Prim = readonly [fx0: number, fx1: number, fz0: number, fz1: number, fd0: number, fd1: number];
-type Kind = Exclude<StandingKind, 'rug'>;
-
-// Profondeur de chaque meuble, en px monde.
-const DEPTH: Record<Kind, number> = {
-  shelf: 50, desk: 70, chair: 50, sofa: 80, armchair: 70, basket: 60, bowl: 30, kennel: 90,
-  charger: 30, plant: 40, lamp: 30, 'coffee-table': 70, globe: 50, telescope: 40, automaton: 40,
-};
-
-// Primitives en fractions de largeur, de hauteur et de profondeur (depuis l'avant).
-const SOFA: Prim[] = [[0, 1, 0, 0.5, 0, 1], [0, 1, 0.5, 1, 0.7, 1], [0, 0.12, 0.5, 0.72, 0, 0.7], [0.88, 1, 0.5, 0.72, 0, 0.7]];
-const FULL: Prim[] = [[0.1, 0.9, 0, 1, 0.1, 0.9]];
-const PRIMS: Record<Kind, Prim[]> = {
-  desk: [[0, 1, 0.84, 1, 0, 1], [0, 0.06, 0, 0.84, 0, 0.15], [0.94, 1, 0, 0.84, 0, 0.15], [0, 0.06, 0, 0.84, 0.85, 1], [0.94, 1, 0, 0.84, 0.85, 1]],
-  'coffee-table': [[0, 1, 0.66, 1, 0, 1], [0.08, 0.14, 0, 0.66, 0, 0.2], [0.86, 0.92, 0, 0.66, 0, 0.2], [0.08, 0.14, 0, 0.66, 0.8, 1], [0.86, 0.92, 0, 0.66, 0.8, 1]],
-  // Montants, planches et fond plein (dessiné en bois sombre) : la lumière ne voit pas à travers les cases.
-  shelf: [[0, 0.04, 0, 1, 0, 1], [0.96, 1, 0, 1, 0, 1], [0, 1, 0, 0.03, 0, 1], [0, 1, 0.31, 0.34, 0, 1], [0, 1, 0.62, 0.65, 0, 1], [0, 1, 0.97, 1, 0, 1], [0, 1, 0, 1, 0.94, 1]],
-  chair: [[0.1, 0.9, 0.4, 0.5, 0, 1], [0.1, 0.9, 0.5, 1, 0.85, 1], [0.1, 0.2, 0, 0.4, 0, 0.15], [0.8, 0.9, 0, 0.4, 0, 0.15], [0.1, 0.2, 0, 0.4, 0.85, 1], [0.8, 0.9, 0, 0.4, 0.85, 1]],
-  sofa: SOFA,
-  armchair: SOFA,
-  basket: [[0, 1, 0, 0.5, 0, 1]],
-  bowl: [[0, 1, 0, 0.5, 0, 1]],
-  kennel: [[0, 1, 0, 0.7, 0, 1], [0, 1, 0.7, 1, 0, 1]],
-  charger: [[0, 1, 0, 0.3, 0, 1]],
-  plant: [[0.2, 0.8, 0, 0.25, 0.2, 0.8], [0.1, 0.9, 0.25, 1, 0.1, 0.9]],
-  lamp: [[0.1, 0.9, 0, 0.05, 0.2, 0.8], [0.45, 0.55, 0.05, 0.83, 0.45, 0.55], [0, 1, 0.83, 1, 0.2, 0.8]],
-  globe: FULL,
-  telescope: FULL,
-  automaton: FULL,
-};
-
-// Primitives tournées (silhouette provisoire en attendant les dessins de Fable) : de profil, largeur et profondeur s'échangent
-// (2 : l'avant à gauche, 6 : l'avant à droite) ; de dos, tout est retourné ; en diagonale, la silhouette de face.
-export function rotatedPrims(kind: Kind, angle: Angle): Prim[] {
-  const prims = PRIMS[kind];
-  if (angle === 2) return prims.map(([x0, x1, z0, z1, d0, d1]) => [d0, d1, z0, z1, 1 - x1, 1 - x0] as const);
-  if (angle === 6) return prims.map(([x0, x1, z0, z1, d0, d1]) => [1 - d1, 1 - d0, z0, z1, x0, x1] as const);
-  if (angle === 4) return prims.map(([x0, x1, z0, z1, d0, d1]) => [1 - x1, 1 - x0, z0, z1, 1 - d1, 1 - d0] as const);
-  return [...prims];
-}
-
 const SMALL_BOX_H = 38;
 const SMALL_HALF_W = 10;
 const SMALL_LAMP_Z = 30;
-const LAMP_TOP_Z = 0.92;
+// Demi-profondeur (cm) des boîtes de l'écran et des petits objets posés sur un dessus.
+const COMPUTER_HALF_D = 10;
+const SMALL_HALF_D = 8;
 
 export const kOf = (g: Geom): number => g.floorH / (g.wallH * ROOM_DEPTH_FACTOR);
-// Profondeur du bord avant du meuble (le bas de son rectangle écran).
-const dFrontOf = (r: PxRect, g: Geom): number => Math.max(0, (r.y + r.h - g.wallH) / kOf(g));
 
-function primBoxes(owner: string, kind: Kind, r: PxRect, dFront: number, angle: Angle): Box[] {
-  const D = DEPTH[kind];
-  return rotatedPrims(kind, angle).map(([fx0, fx1, fz0, fz1, fd0, fd1]) => ({
-    owner,
-    x0: r.x + fx0 * r.w, x1: r.x + fx1 * r.w,
-    d0: dFront - fd1 * D, d1: dFront - fd0 * D,
-    z0: fz0 * r.h, z1: fz1 * r.h,
-  }));
-}
+// Repère « lumière » d'un meuble posé (cm, cf. occluderBoxesOf) → monde : x px = bord gauche du rectangle + x cm (centrage compris),
+// hauteur px = y cm × PX_PER_CM_Y, profondeur = bord avant (le bas du rectangle écran) − z cm × DEPTH_PX_PER_CM / k.
+type Frame = { kind: Exclude<StandingKind, 'rug'>; angle: Angle; r: PxRect; dFront: number; sx: number; sy: number; k: number };
+type HostFrame = Frame & { kind: 'desk' | 'shelf' };
 
-export type Host = { kind: 'desk' | 'shelf'; r: PxRect; dFront: number; D: number };
-
-export function hostOf(layout: Layout, id: string, g: Geom): Host | null {
-  const h = layout.find((p) => p.id === id);
-  if (!h || (h.kind !== 'desk' && h.kind !== 'shelf')) return null;
-  const rect = rectOf(h);
+function frameOf(p: Placed | undefined, g: Geom): Frame | null {
+  if (!p || !isStanding(p) || p.kind === 'rug') return null;
+  const rect = rectOf(p);
   if (!rect) return null;
   const r = pxRect(rect);
-  return { kind: h.kind, r, dFront: dFrontOf(r, g), D: DEPTH[h.kind] };
+  const angle = angleOf(p);
+  const { w, h } = drawSize(p.kind, angle);
+  const k = kOf(g);
+  return { kind: p.kind, angle, r, dFront: Math.max(0, (r.y + r.h - g.wallH) / k), sx: r.w / (w * CELL_W), sy: r.h / (h * CELL_H), k };
+}
+const wx = (f: Frame, x: number): number => f.r.x + x * PX_PER_CM_X * f.sx;
+const wz = (f: Frame, y: number): number => y * PX_PER_CM_Y * f.sy;
+const wd = (f: Frame, z: number): number => f.dFront - (z * DEPTH_PX_PER_CM * f.sy) / f.k;
+
+// Bureau ou étagère qui porte l'écran ou un petit objet.
+function hostFrame(layout: Layout, id: string, g: Geom): HostFrame | null {
+  const f = frameOf(layout.find((p) => p.id === id), g);
+  return f && (f.kind === 'desk' || f.kind === 'shelf') ? (f as HostFrame) : null;
+}
+// Profondeur monde du point du dessus du porteur à la fraction u de sa largeur, à mi-profondeur (même point que topPoint).
+function topDepth(f: Frame, u: number): number {
+  const m = FURNITURE_MODELS[f.kind];
+  return wd(f, localPointAt(f.kind, f.angle, [u * m.w, m.h, m.d / 2]).z);
+}
+const topZ = (f: Frame): number => wz(f, FURNITURE_MODELS[f.kind].h);
+
+// Dessus praticable d'un meuble (assise, plateau, haut de l'étagère) dans le monde : profondeur et hauteur de son centre ; null sinon.
+export function perchWorldOf(layout: Layout, id: string, g: Geom): { d: number; z: number } | null {
+  const f = frameOf(layout.find((p) => p.id === id), g);
+  const p = f && perchAt(f.kind, f.angle, f.r);
+  return f && p ? { d: wd(f, p.depth), z: wz(f, p.height) } : null;
 }
 
-// Support quelconque (canapé, fauteuil, chaise, table basse…) : même empreinte que ses boîtes, sans exiger bureau ou étagère.
-export type Support = { r: PxRect; dFront: number; D: number };
-
-export function supportOf(layout: Layout, id: string, g: Geom): Support | null {
-  const h = layout.find((p) => p.id === id);
-  if (!h || !isStanding(h) || h.kind === 'rug') return null;
-  const rect = rectOf(h);
-  if (!rect) return null;
-  const r = pxRect(rect);
-  return { r, dFront: dFrontOf(r, g), D: DEPTH[h.kind] };
-}
-
-// Centre en x du petit objet sur son emplacement.
-function smallCx(p: Extract<Placed, { kind: 'small' }>, host: Host): number {
-  const s = surfaceSlotRect(host.r, SURFACE_SLOTS[host.kind], p.slot);
-  return s.x + s.w / 2;
+// Centre en x et profondeur du petit objet sur son emplacement (même place que son dessin).
+function smallAt(p: Extract<Placed, { kind: 'small' }>, host: HostFrame): { x: number; d: number } {
+  const s = surfaceSlotRectOn(host.r, host.kind, host.angle, p.slot);
+  return { x: s.x + s.w / 2, d: topDepth(host, (p.slot + 0.5) / SURFACE_SLOTS[host.kind]) };
 }
 
 export function boxesOf(layout: Layout, geom: Geom): Box[] {
   const out: Box[] = [];
   for (const p of layout) {
     if (isStanding(p)) {
-      if (p.kind === 'rug') continue;
-      const rect = rectOf(p);
-      if (!rect) continue;
-      const r = pxRect(rect);
-      out.push(...primBoxes(p.id, p.kind, r, dFrontOf(r, geom), angleOf(p)));
+      const f = frameOf(p, geom);
+      if (!f) continue;
+      // Une boîte par pièce du modèle tourné ; la profondeur monde croît vers l'avant (z′ = 0).
+      for (const b of occludersAt(f.kind, f.angle)) {
+        out.push({ owner: p.id, x0: wx(f, b.x0), x1: wx(f, b.x1), d0: wd(f, b.d1), d1: wd(f, b.d0), z0: wz(f, b.z0), z1: wz(f, b.z1) });
+      }
     } else if (p.kind === 'computer') {
-      const host = hostOf(layout, p.deskId, geom);
+      const host = hostFrame(layout, p.deskId, geom);
       if (!host || host.kind !== 'desk') continue;
-      const c = computerRect(host.r);
-      out.push({
-        owner: p.id, x0: c.x, x1: c.x + c.w,
-        d0: host.dFront - 0.7 * host.D, d1: host.dFront - 0.3 * host.D,
-        z0: host.r.h, z1: host.r.h + c.h,
-      });
+      const c = computerRectOn(host.r, host.angle);
+      const d = topDepth(host, 0.5);
+      const hd = (COMPUTER_HALF_D * DEPTH_PX_PER_CM * host.sy) / host.k;
+      const z0 = topZ(host);
+      // Le pied de l'écran touche le dessus, l'écran en dépasse de c.h − 2 px (cf. computerRectOn).
+      out.push({ owner: p.id, x0: c.x, x1: c.x + c.w, d0: d - hd, d1: d + hd, z0, z1: z0 + c.h - 2 });
     } else if (p.kind === 'small') {
-      const host = hostOf(layout, p.hostId, geom);
+      const host = hostFrame(layout, p.hostId, geom);
       if (!host) continue;
-      const cx = smallCx(p, host);
-      out.push({
-        owner: p.id, x0: cx - SMALL_HALF_W, x1: cx + SMALL_HALF_W,
-        d0: host.dFront - 0.7 * host.D, d1: host.dFront - 0.3 * host.D,
-        z0: host.r.h, z1: host.r.h + SMALL_BOX_H,
-      });
+      const { x, d } = smallAt(p, host);
+      const hd = (SMALL_HALF_D * DEPTH_PX_PER_CM * host.sy) / host.k;
+      const z0 = topZ(host);
+      out.push({ owner: p.id, x0: x - SMALL_HALF_W, x1: x + SMALL_HALF_W, d0: d - hd, d1: d + hd, z0, z1: z0 + SMALL_BOX_H });
     }
   }
   return out;
@@ -137,14 +102,17 @@ export function lampsOf(layout: Layout, geom: Geom): LampSource[] {
   for (const p of layout) {
     if (!isLamp(p) || !isLit(p)) continue;
     if (isStanding(p)) {
-      const rect = rectOf(p);
-      if (!rect) continue;
-      const r = pxRect(rect);
-      out.push({ id: p.id, x: r.x + r.w / 2, d: dFrontOf(r, geom) - 0.5 * DEPTH.lamp, z: LAMP_TOP_Z * r.h, box: p.id });
+      const f = frameOf(p, geom);
+      if (!f) continue;
+      // Ampoule dans l'abat-jour (point `glow` du modèle), sinon au centre du dessus.
+      const m = FURNITURE_MODELS[f.kind];
+      const q = localPointAt(f.kind, f.angle, m.glow ?? [m.w / 2, m.h, m.d / 2]);
+      out.push({ id: p.id, x: wx(f, q.x), d: wd(f, q.z), z: wz(f, q.y), box: p.id });
     } else if (p.kind === 'small') {
-      const host = hostOf(layout, p.hostId, geom);
+      const host = hostFrame(layout, p.hostId, geom);
       if (!host) continue;
-      out.push({ id: p.id, x: smallCx(p, host), d: host.dFront - 0.5 * host.D, z: host.r.h + SMALL_LAMP_Z, box: p.id });
+      const { x, d } = smallAt(p, host);
+      out.push({ id: p.id, x, d, z: topZ(host) + SMALL_LAMP_Z, box: p.id });
     }
   }
   return out;

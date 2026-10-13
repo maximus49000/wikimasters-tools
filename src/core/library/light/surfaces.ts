@@ -5,9 +5,6 @@ import type { Box, Geom } from './occluders';
 export type SurfaceMap = { w: number; h: number; kind: Uint8Array; d: Float32Array; z: Float32Array };
 export const SURF = { ground: 0, wall: 1, front: 2, top: 3 } as const;
 
-// Part maximale du rectangle écran occupée par la bande du dessus.
-const TOP_STRIP_MAX = 0.4;
-
 export function buildSurfaceMap(boxes: readonly Box[], width: number, height: number, geom: Geom, scale: number): SurfaceMap {
   const w = Math.ceil(width / scale);
   const h = Math.ceil(height / scale);
@@ -34,13 +31,13 @@ export function buildSurfaceMap(boxes: readonly Box[], width: number, height: nu
     }
   }
 
-  // Boîtes peintes de l'arrière vers l'avant : la plus proche recouvre les autres.
+  // Boîtes peintes de l'arrière vers l'avant : la plus proche recouvre les autres. Vraie projection (comme le dessin des meubles) :
+  // le dessus va de son arête arrière (yBack) à son arête avant (yFront), la face avant de yFront au bas de la boîte.
   const sorted = [...boxes].sort((a, b) => a.d1 - b.d1 || a.d0 - b.d0);
   for (const b of sorted) {
-    const yTop = wallH + b.d1 * k - b.z1;
+    const yTop = wallH + b.d0 * k - b.z1;
+    const yFront = wallH + b.d1 * k - b.z1;
     const yBottom = wallH + b.d1 * k - b.z0;
-    const strip = Math.min((b.d1 - b.d0) * k, TOP_STRIP_MAX * (yBottom - yTop));
-    const stripEnd = yTop + strip;
     const iMin = Math.max(0, Math.ceil(b.x0 / scale - 0.5));
     const iMax = Math.min(w - 1, Math.floor(b.x1 / scale - 0.5));
     const jMin = Math.max(0, Math.ceil(yTop / scale - 0.5));
@@ -52,14 +49,14 @@ export function buildSurfaceMap(boxes: readonly Box[], width: number, height: nu
         const x = (i + 0.5) * scale;
         if (x < b.x0 || x > b.x1) continue;
         const n = j * w + i;
-        if (y < stripEnd) {
+        if (y < yFront) {
           kind[n] = SURF.top;
           z[n] = b.z1;
-          d[n] = strip > 0 ? b.d0 + ((y - yTop) / strip) * (b.d1 - b.d0) : b.d1;
+          d[n] = (y + b.z1 - wallH) / k;
         } else {
           kind[n] = SURF.front;
           d[n] = b.d1;
-          z[n] = b.z1 - (y - stripEnd);
+          z[n] = b.z1 - (y - yFront);
         }
       }
     }

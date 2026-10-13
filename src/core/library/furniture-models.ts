@@ -68,11 +68,13 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
       box(3, 0, 0, 74, 8, 30, 'wood'), box(3, 58, 0, 74, 3, 28, 'wood'), box(3, 118, 0, 74, 3, 28, 'wood'), box(0, 177, 0, 80, 3, 30, 'wood'),
     ],
     face: { x: 3, y: 8, w: 74, h: 169 },
+    perch: { x: 0, z: 0, w: 80, d: 30, y: 180 },
   },
   desk: {
     w: 120, d: 60, h: 75,
     pieces: [...legs(120, 60, 72, 4, 4, 'leg'), box(0, 72, 0, 120, 3, 60, 'desk')],
     face: { x: 0, y: 72, w: 120, h: 3 },
+    perch: { x: 0, z: 0, w: 120, d: 60, y: 75 },
   },
   chair: {
     w: 45, d: 50, h: 90,
@@ -83,6 +85,7 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
       box(3, 66, 44, 39, 6, 3, 'wood'), box(3, 80, 44, 39, 8, 3, 'wood'),
     ],
     pois: [{ type: 'seat', x: 22, y: 48, z: 24 }],
+    perch: { x: 2, z: 2, w: 41, d: 44, y: 48 },
   },
   sofa: {
     w: 200, d: 90, h: 85,
@@ -93,7 +96,9 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
       box(0, 42, 0, 22, 25, 68, 'fabricDark'), box(178, 42, 0, 22, 25, 68, 'fabricDark'),
       box(22, 42, 4, 52, 12, 62, 'fabricLight'), box(74, 42, 4, 52, 12, 62, 'fabricLight'), box(126, 42, 4, 52, 12, 62, 'fabricLight'),
     ],
-    pois: [{ type: 'seat', x: 50, y: 54, z: 35 }, { type: 'seat', x: 100, y: 54, z: 35 }, { type: 'seat', x: 150, y: 54, z: 35 }, { type: 'sleep', x: 120, y: 54, z: 35 }],
+    pois: [{ type: 'seat', x: 50, y: 54, z: 35 }, { type: 'seat', x: 100, y: 54, z: 35 }, { type: 'seat', x: 150, y: 54, z: 35 }, { type: 'sleep', x: 120, y: 54, z: 35 }, { type: 'hide', x: 60, y: 0, z: 10 }],
+    // Coussins de l'assise ; cachette du chat : au sol, sous l'avant de l'assise (derrière les pieds avant).
+    perch: { x: 22, z: 4, w: 156, d: 62, y: 54 },
   },
   armchair: {
     w: 80, d: 80, h: 90,
@@ -105,10 +110,11 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
       box(14, 42, 4, 52, 12, 54, 'warmLight'),
     ],
     pois: [{ type: 'seat', x: 40, y: 54, z: 30 }],
+    perch: { x: 14, z: 4, w: 52, d: 54, y: 54 },
   },
-  'coffee-table': { w: 100, d: 55, h: 45, pieces: [...legs(100, 55, 41, 4, 5, 'leg'), box(0, 41, 0, 100, 4, 55, 'desk')] },
+  'coffee-table': { w: 100, d: 55, h: 45, pieces: [...legs(100, 55, 41, 4, 5, 'leg'), box(0, 41, 0, 100, 4, 55, 'desk')], perch: { x: 0, z: 0, w: 100, d: 55, y: 45 } },
   lamp: {
-    w: 40, d: 40, h: 160, round: true,
+    w: 40, d: 40, h: 160, round: true, glow: [20, 140, 20],
     // Lampadaire : socle rond lesté (disque + dôme), tige fine, abat-jour en tissu évasé vers le bas, embout.
     pieces: [
       cyl(20, 20, 0, 15, 2.5, 'metal'), { shape: 'cyl', cx: 20, cz: 20, y: 2.5, r: 15, r2: 6, h: 4, fill: 'metal' },

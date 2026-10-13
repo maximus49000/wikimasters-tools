@@ -38,10 +38,9 @@ describe('planRoute', () => {
 
   it('atteint le haut d une étagère en passant par le bureau voisin', () => {
     const layout: Layout = [
-      // Bureau (75 cm) un peu en retrait de l'étagère (180 cm) : de face, l'écart des dessus (5 rangées) dépasse un saut ;
-      // posé 1 rangée plus au fond, le dessus du bureau est 4 rangées sous celui de l'étagère.
-      { id: 'd', kind: 'desk', col: 14, row: 9 },
-      { id: 's', kind: 'shelf', col: 20, row: 5 },
+      // Bureau (75 cm) et étagère (180 cm) côte à côte, pieds sur la même ligne 16 : 105 cm d'écart, un saut de chat (1,5 m au plus).
+      { id: 'd', kind: 'desk', col: 14, row: 12 },
+      { id: 's', kind: 'shelf', col: 20, row: 7 },
     ];
     const map = buildWalkMap(layout, 36);
     const shelf = map.platforms.find((p) => p.id === 's')!;
@@ -51,8 +50,16 @@ describe('planRoute', () => {
     expect(contiguous(segs)).toBe(true);
   });
 
+  it('ne saute pas plus haut qu un chat : de la table basse (45 cm) à l étagère (180 cm) oui, du sol non', () => {
+    const near: Layout = [{ id: 't', kind: 'coffee-table', col: 15, row: 13 }, { id: 's', kind: 'shelf', col: 20, row: 7 }];
+    const map = buildWalkMap(near, 36);
+    const shelf = map.platforms.find((p) => p.id === 's')!;
+    const segs = planRoute(map, { pt: standPoint(2, 16), on: null }, { pt: { x: (shelf.x0 + shelf.x1) / 2, y: shelf.y }, on: 's' })!;
+    expect(segs.filter((s) => s.kind === 'jump').map((j) => j.on)).toEqual(['t', 's']);
+  });
+
   it('renvoie null quand l étagère n a aucun marchepied', () => {
-    const map = buildWalkMap([{ id: 's', kind: 'shelf', col: 20, row: 10 }], 36);
+    const map = buildWalkMap([{ id: 's', kind: 'shelf', col: 20, row: 7 }], 36);
     const shelf = map.platforms[0]!;
     expect(planRoute(map, { pt: standPoint(2, 16), on: null }, { pt: { x: shelf.x0 + 10, y: shelf.y }, on: 's' })).toBeNull();
   });

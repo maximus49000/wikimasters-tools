@@ -1,6 +1,7 @@
 // tests/core/library/furniture-render3d.test.ts
 import { describe, expect, it } from 'vitest';
-import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, pieceBounds, poisOf3d, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
+import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, localPointOf, occluderBoxesOf, perchOf, pieceBounds, poisOf3d, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
+import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 
 const CELL_W = 30;
 const CELL_H = 510 / 18;
@@ -306,5 +307,90 @@ describe('nouvelles formes (prisme, tige, feuillage, globe)', () => {
     }
     const square: Model = { ...lamp, round: undefined };
     expect(renderModel(square, 1).cols).toBe(3); // trace carrée tournée : 57 cm
+  });
+});
+
+describe('occulteurs et dessus praticable (lumière, animaux)', () => {
+  it('étagère de face : une boîte par pièce, toutes dans la boîte du meuble (dessin centré dans ses 4 colonnes)', () => {
+    const shelf = FURNITURE_MODELS.shelf;
+    const boxes = occluderBoxesOf(shelf, 0);
+    expect(boxes).toHaveLength(7);
+    const off = (4 * 21 - 80) / 2; // 84 cm de rectangle pour 80 cm de meuble
+    for (const b of boxes) {
+      expect(b.x0).toBeGreaterThanOrEqual(off - 1e-6);
+      expect(b.x1).toBeLessThanOrEqual(off + 80 + 1e-6);
+      expect(b.z0).toBeGreaterThanOrEqual(0);
+      expect(b.z1).toBeLessThanOrEqual(180 + 1e-6);
+      expect(b.d0).toBeGreaterThanOrEqual(-1e-6);
+      expect(b.d1).toBeLessThanOrEqual(30 + 1e-6);
+    }
+    // Le fond (2 cm d'épaisseur) est au fond : de 28 à 30 cm depuis l'avant.
+    expect(boxes.some((b) => Math.abs(b.d0 - 28) < 1e-6 && Math.abs(b.d1 - 30) < 1e-6 && b.z1 - b.z0 === 169)).toBe(true);
+  });
+  it('de profil, largeur et profondeur des boîtes sont échangées', () => {
+    const front = occluderBoxesOf(FURNITURE_MODELS.shelf, 0);
+    const side = occluderBoxesOf(FURNITURE_MODELS.shelf, 2);
+    const span = (bs: typeof front, a: 'x' | 'd') => Math.max(...bs.map((b) => b[`${a}1`])) - Math.min(...bs.map((b) => b[`${a}0`]));
+    expect(span(front, 'x')).toBeCloseTo(80, 6);
+    expect(span(front, 'd')).toBeCloseTo(30, 6);
+    expect(span(side, 'x')).toBeCloseTo(30, 6);
+    expect(span(side, 'd')).toBeCloseTo(80, 6);
+  });
+  it('en diagonale, une pièce longue est découpée en tranches qui suivent sa diagonale (pas une grande boîte qui couvre le sol devant)', () => {
+    const sofa = FURNITURE_MODELS.sofa;
+    const boxes = occluderBoxesOf(sofa, 1);
+    expect(boxes.length).toBeGreaterThan(occluderBoxesOf(sofa, 0).length);
+    // Assise (200 cm × 90 cm à 45°) : aucune tranche n'est plus large que (40 + 90) cm × cos 45°.
+    const base = boxes.filter((b) => b.z0 === 12 && b.z1 === 42);
+    expect(base).toHaveLength(5);
+    for (const b of base) expect(b.x1 - b.x0).toBeLessThanOrEqual((40 + 90) * Math.SQRT1_2 + 1e-6);
+  });
+  it('les décors affleurants et les pièces minuscules ne donnent pas de boîte (niche, embout de la lampe)', () => {
+    expect(occluderBoxesOf(FURNITURE_MODELS.kennel, 0).length).toBeLessThan(FURNITURE_MODELS.kennel.pieces.length / 2);
+    expect(occluderBoxesOf(FURNITURE_MODELS.lamp, 0)).toHaveLength(4);
+  });
+  it('le dessus praticable est le dessus d’une vraie pièce (assise, plateau, haut de l’étagère)', () => {
+    for (const kind of ['shelf', 'desk', 'chair', 'sofa', 'armchair', 'coffee-table'] as const) {
+      const m = FURNITURE_MODELS[kind];
+      const p = m.perch!;
+      expect(p, kind).toBeDefined();
+      const [cx, cz] = [p.x + p.w / 2, p.z + p.d / 2];
+      const tops = m.pieces.map(pieceBounds).filter(([x0, x1, , , z0, z1]) => x0 <= cx && cx <= x1 && z0 <= cz && cz <= z1).map((b) => b[3]);
+      expect(tops, kind).toContain(p.y);
+    }
+  });
+  it('un chat assis sur le canapé tourné reste sur son assise : le segment praticable est dans les coussins, à chaque angle', () => {
+    const sofa = FURNITURE_MODELS.sofa;
+    const p = sofa.perch!;
+    for (const a of ANGLES) {
+      const perch = perchOf(sofa, a)!;
+      expect(perch.x1 - perch.x0, `angle ${a}`).toBeGreaterThan(40);
+      // Point écran à la hauteur de l'assise → point du modèle (rotation inverse) : il doit tomber dans le rectangle des coussins.
+      const t = (a * Math.PI) / 4;
+      const [c, s] = [Math.cos(t), Math.sin(t)];
+      const turn = (x: number, z: number): [number, number] => [100 + (x - 100) * c + (z - 45) * s, 45 - (x - 100) * s + (z - 45) * c];
+      const base = [[0, 0], [200, 0], [200, 90], [0, 90]].map(([x, z]) => turn(x!, z!));
+      const [minX, minZ] = [Math.min(...base.map((q) => q[0])), Math.min(...base.map((q) => q[1]))];
+      const traceW = Math.max(...base.map((q) => q[0])) - minX;
+      const r = renderModel(sofa, a);
+      const offX = (r.cols * CELL_W - traceW * PX_PER_CM_X) / 2;
+      for (const x of [perch.x0, (perch.x0 + perch.x1) / 2, perch.x1]) {
+        const lx = (x - offX) / PX_PER_CM_X + minX;
+        const lz = (r.rows * CELL_H - p.y * PX_PER_CM_Y - perch.y) / DEPTH_PX_PER_CM + minZ;
+        // Rotation inverse autour du centre de la base.
+        const [dx, dz] = [lx - 100, lz - 45];
+        const [mx, mz] = [100 + dx * c - dz * s, 45 + dx * s + dz * c];
+        expect(mx, `angle ${a}`).toBeGreaterThanOrEqual(p.x - 1e-6);
+        expect(mx, `angle ${a}`).toBeLessThanOrEqual(p.x + p.w + 1e-6);
+        expect(mz, `angle ${a}`).toBeGreaterThanOrEqual(p.z - 1e-6);
+        expect(mz, `angle ${a}`).toBeLessThanOrEqual(p.z + p.d + 1e-6);
+      }
+    }
+  });
+  it('point du modèle → repère du rectangle : de face, le centre du dessus du bureau est au milieu, à mi-profondeur', () => {
+    const q = localPointOf(FURNITURE_MODELS.desk, 0, [60, 75, 30]);
+    expect(q.x).toBeCloseTo((6 * 21) / 2, 6);
+    expect(q.y).toBe(75);
+    expect(q.z).toBeCloseTo(30, 6);
   });
 });

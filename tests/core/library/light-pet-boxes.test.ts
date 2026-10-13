@@ -4,6 +4,7 @@ import { kOf } from '../../../src/core/library/light/occluders';
 import { pxRect, rectOf } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
 import type { PetFrame } from '../../../src/core/library/pets/runner';
+import { DEPTH_PX_PER_CM, PX_PER_CM_Y } from '../../../src/core/library/furniture-render3d';
 
 const geom = { wallH: 340, floorH: 170 };
 const frame = (over: Partial<PetFrame> = {}): PetFrame => ({
@@ -71,30 +72,33 @@ describe('petBoxesOf', () => {
     expect(Math.min(...ridden.map((b) => b.z0)) - Math.min(...ground.map((b) => b.z0))).toBeCloseTo(26.1, 1);
     expect(ridden[0]!.d1).toBeCloseTo(ground[0]!.d1, 0);
   });
-  it('perché sur un bureau : posé sur le plateau, au milieu du bureau', () => {
+  it('perché sur un bureau : posé sur le plateau (75 cm), au milieu de sa profondeur', () => {
     const layout: Layout = [{ id: 'd', kind: 'desk', col: 2, row: 11 }];
-    // Hauteur du rectangle du bureau (5 rangées) : la boîte provisoire du plateau est encore une fraction du rectangle.
-    const deskH = (510 / 18) * 5;
     const boxes = petBoxesOf([frame({ top: true, on: 'd', pose: 'sit', pos: { x: 100, y: 400 }, depthY: 400 })], layout, geom);
-    expect(Math.min(...boxes.map((b) => b.z0))).toBeCloseTo(deskH, 1);
+    expect(Math.min(...boxes.map((b) => b.z0))).toBeCloseTo(75 * PX_PER_CM_Y, 6);
+    const r = pxRect(rectOf(layout[0] as never)!);
+    const k = kOf(geom);
+    const mid = (r.y + r.h - geom.wallH) / k - (30 * DEPTH_PX_PER_CM) / k;
+    for (const b of boxes) expect((b.d0 + b.d1) / 2).toBeCloseTo(mid, 6);
   });
-  it('assis sur un canapé (top=false) : au milieu du canapé, à hauteur d’assise', () => {
+  it('assis sur un canapé (top=false) : au milieu des coussins, à hauteur d’assise (54 cm)', () => {
     const layout: Layout = [{ id: 's', kind: 'sofa', col: 2, row: 12 }];
     const r = pxRect(rectOf(layout[0] as never)!);
     const k = kOf(geom);
     const dFront = (r.y + r.h - geom.wallH) / k;
-    const seatY = r.y + r.h * 0.45;
+    // Milieu des coussins : 35 cm derrière le devant du canapé.
+    const dC = dFront - (35 * DEPTH_PX_PER_CM) / k;
+    const seatY = r.y + r.h - 54 * PX_PER_CM_Y - 35 * DEPTH_PX_PER_CM;
     const f = frame({ top: false, on: 's', pose: 'sit', pos: { x: r.x + r.w / 2, y: seatY }, depthY: seatY });
     const boxes = petBoxesOf([f], layout, geom);
-    // profondeur du sofa = 80 : milieu = dFront − 40
     for (const b of boxes) {
-      expect(b.d0).toBeGreaterThan(dFront - 40 - 12);
-      expect(b.d1).toBeLessThan(dFront - 40 + 12);
+      expect(b.d0).toBeGreaterThan(dC - 12);
+      expect(b.d1).toBeLessThan(dC + 12);
     }
-    // les pieds sont à la hauteur de l'assise : z = wallH + dC·k − pos.y
+    // les pieds sont à la hauteur de l'assise, qui tombe à l'écran sur la ligne des pieds : z = wallH + dC·k − pos.y
     const z0 = Math.min(...boxes.map((b) => b.z0));
-    expect(z0).toBeGreaterThan(0);
-    expect(z0).toBeCloseTo(geom.wallH + (dFront - 40) * k - seatY, 1);
+    expect(z0).toBeCloseTo(54 * PX_PER_CM_Y, 6);
+    expect(z0).toBeCloseTo(geom.wallH + dC * k - seatY, 6);
   });
   it('un support introuvable retombe au sol', () => {
     const boxes = petBoxesOf([frame({ top: true, on: 'absent', pose: 'sit' })], [], geom);

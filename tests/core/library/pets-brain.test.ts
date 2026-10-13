@@ -49,7 +49,7 @@ describe('nextPlan', () => {
   it('mange et boit à la gamelle, se cache sous le canapé, griffe le fauteuil', () => {
     const layout: Layout = [
       { id: 'a', kind: 'sofa', col: 2, row: 12 },
-      { id: 'g', kind: 'armchair', col: 12, row: 13 },
+      { id: 'g', kind: 'armchair', col: 12, row: 11 },
       { id: 'w', kind: 'bowl', col: 20, row: 17 },
     ];
     const actions = new Set(seeds.map((s) => nextPlan(env(layout, s), from, 0)).map((p) => `${p.action}:${p.hostId}`));

@@ -1,6 +1,6 @@
-import type { Poi } from './furniture-catalog';
+import type { Poi, PoiType } from './furniture-catalog';
 import { FURNITURE_MODELS } from './furniture-models';
-import { CELL_H, CELL_W, PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, floorTraceOf, frontFaceOf, levelsOf, poisOf3d, renderModel, topCornersOf, type Rendered } from './furniture-render3d';
+import { CELL_H, CELL_W, PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, floorTraceOf, frontFaceOf, levelsOf, localPointOf, occluderBoxesOf, perchOf, poisOf3d, projectOf, renderModel, topCornersOf, type LocalBox, type Rendered } from './furniture-render3d';
 import type { StandingKind } from './library-types';
 import type { Cell, PxRect, Rect } from './room-grid';
 
@@ -149,4 +149,57 @@ export function invertMatrix(m: Matrix, x: number, y: number): [number, number] 
   const dx = x - m[4];
   const dy = y - m[5];
   return [(m[3] * dx - m[2] * dy) / det, (m[0] * dy - m[1] * dx) / det];
+}
+
+// Mise en cache par (meuble, angle) d'une valeur tirée du modèle tourné.
+function cached<T>(store: Map<string, T>, kind: StandingKind, angle: Angle, make: () => T): T {
+  const key = `${kind}:${angle}`;
+  if (!store.has(key)) store.set(key, make());
+  return store.get(key)!;
+}
+// Échelle du rectangle `rect` par rapport au dessin du modèle (1 dans la pièce).
+function scaleOf(kind: StandingKind, angle: Angle, rect: PxRect): { sx: number; sy: number } {
+  const { w, h } = drawSize(kind, angle);
+  return { sx: rect.w / (w * CELL_W), sy: rect.h / (h * CELL_H) };
+}
+
+// Point d'intérêt exact (px) du premier point du type donné, ou null : là où l'animal se tient précisément (cachette sous le canapé).
+const poiPxCache = new Map<string, Map<PoiType, [number, number]>>();
+export function poiPoint(kind: StandingKind, angle: Angle, rect: PxRect, type: PoiType): { x: number; y: number } | null {
+  const pts = cached(poiPxCache, kind, angle, () => {
+    const m = new Map<PoiType, [number, number]>();
+    for (const p of FURNITURE_MODELS[kind].pois ?? []) if (!m.has(p.type)) m.set(p.type, projectOf(FURNITURE_MODELS[kind], angle, [p.x, p.y, p.z]));
+    return m;
+  });
+  const q = pts.get(type);
+  if (!q) return null;
+  const { sx, sy } = scaleOf(kind, angle, rect);
+  return { x: rect.x + q[0] * sx, y: rect.y + q[1] * sy };
+}
+
+// Dessus praticable du meuble tourné (corde horizontale par son centre, px du rectangle mis à l'échelle), sa hauteur (cm)
+// et la profondeur de son centre (cm depuis l'avant) ; null sans dessus.
+export type PerchPx = { x0: number; x1: number; y: number; height: number; depth: number };
+const perchCache = new Map<string, ReturnType<typeof perchOf>>();
+export function perchAt(kind: StandingKind, angle: Angle, rect: PxRect): PerchPx | null {
+  const p = cached(perchCache, kind, angle, () => perchOf(FURNITURE_MODELS[kind], angle));
+  if (!p) return null;
+  const { sx, sy } = scaleOf(kind, angle, rect);
+  return { x0: rect.x + p.x0 * sx, x1: rect.x + p.x1 * sx, y: rect.y + p.y * sy, height: p.height, depth: p.depth };
+}
+
+// Occulteurs du meuble tourné (boîtes en cm du repère « lumière » : x depuis le bord gauche du rectangle, z hauteur, d profondeur depuis l'avant).
+const occCache = new Map<string, LocalBox[]>();
+export const occludersAt = (kind: StandingKind, angle: Angle): readonly LocalBox[] => cached(occCache, kind, angle, () => occluderBoxesOf(FURNITURE_MODELS[kind], angle));
+
+// Point du modèle dans le repère « lumière » (cm) ; mis en cache par (meuble, angle, point).
+const localCache = new Map<string, { x: number; y: number; z: number }>();
+export function localPointAt(kind: StandingKind, angle: Angle, p: [number, number, number]): { x: number; y: number; z: number } {
+  const key = `${kind}:${angle}:${p.join(',')}`;
+  let q = localCache.get(key);
+  if (!q) {
+    q = localPointOf(FURNITURE_MODELS[kind], angle, p);
+    localCache.set(key, q);
+  }
+  return q;
 }

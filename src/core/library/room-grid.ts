@@ -408,7 +408,7 @@ export function pxRect(rect: Rect): PxRect {
 }
 
 const COMPUTER_W = 84;
-const COMPUTER_H = 56;
+export const COMPUTER_H = 56;
 
 // L'ordinateur est centré sur le plateau du bureau, son pied appuyé dessus.
 export function computerRect(desk: PxRect): PxRect {

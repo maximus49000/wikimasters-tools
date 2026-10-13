@@ -2,7 +2,7 @@ import { drawSize, floorOffsets, poisAt } from './footprint';
 import type { FurnitureKind, ShelfShape, SmallItem, SmallKind, StandDepth, StandingKind, StyleId, VinylColor, WallShape } from './library-types';
 
 export type Category = 'storage' | 'seats' | 'pets' | 'deco' | 'steampunk';
-export type PoiType = 'seat' | 'curl' | 'eat' | 'sleep' | 'enter' | 'charge';
+export type PoiType = 'seat' | 'curl' | 'eat' | 'sleep' | 'enter' | 'charge' | 'hide';
 // Point d'intérêt d'un meuble pour les animaux : une case relative au coin haut-gauche du meuble.
 export type Poi = { type: PoiType; dx: number; dy: number };
 

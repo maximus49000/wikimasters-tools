@@ -5,7 +5,10 @@ import { hashString } from '../scene-world';
 import type { PetContext } from './context';
 import { planEndsAt, stateAt, type PetState } from './motion';
 import { planRoute, scaleRoute, type Standing } from './route';
-import { buildWalkMap, cellOf, isFree, nearestFreeCell, standPoint, type WalkMap } from './walk-map';
+import { buildWalkMap, cellOf, hideSpot, isFree, nearestFreeCell, standPoint, type Platform, type WalkMap } from './walk-map';
+
+// Point d'un dessus à la colonne d'un point d'intérêt (assise) : ramené sur le dessus praticable (meuble tourné).
+const onPlat = (plat: Platform, x: number): Pt => ({ x: Math.min(plat.x1, Math.max(plat.x0, x)), y: plat.y });
 
 export type Rng = () => number;
 // `occupied` : les places réservées (clés `<meuble>:<point>`) que le chat doit éviter ; vide tant qu'il vit seul.
@@ -121,8 +124,8 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
         }
       }
       if (plat && p.kind === 'sofa') {
-        for (const q of poi('sleep')) go('sleep', 1.2, { pt: { x: (p.col + q.dx + 0.5) * CELL_W, y: plat.y }, on: p.id, hostId: p.id }, [25000, 60000], `${p.id}:sleep`);
-        poi('seat').forEach((q, i) => go('perch', 0.6, { pt: { x: (p.col + q.dx + 0.5) * CELL_W, y: plat.y }, on: p.id, hostId: p.id }, [10000, 25000], `${p.id}:seat${i}`));
+        for (const q of poi('sleep')) go('sleep', 1.2, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [25000, 60000], `${p.id}:sleep`);
+        poi('seat').forEach((q, i) => go('perch', 0.6, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [10000, 25000], `${p.id}:seat${i}`));
       }
     }
   } else {
@@ -150,13 +153,15 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
         }
       }
       if (plat && (p.kind === 'sofa' || p.kind === 'armchair' || p.kind === 'chair')) {
-        for (const q of poi('sleep')) go('sleep', 1.8, { pt: { x: (p.col + q.dx + 0.5) * CELL_W, y: plat.y }, on: p.id, hostId: p.id }, [25000, 60000], `${p.id}:sleep`);
-        poi('seat').forEach((q, i) => go('perch', p.kind === 'sofa' ? 0.5 : 1, { pt: { x: (p.col + q.dx + 0.5) * CELL_W, y: plat.y }, on: p.id, hostId: p.id }, [10000, 25000], `${p.id}:seat${i}`));
+        for (const q of poi('sleep')) go('sleep', 1.8, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [25000, 60000], `${p.id}:sleep`);
+        poi('seat').forEach((q, i) => go('perch', p.kind === 'sofa' ? 0.5 : 1, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [10000, 25000], `${p.id}:seat${i}`));
       }
-      if (p.kind === 'sofa') go('hide', 0.7, { pt: standPoint(p.col + 2, p.row + 2), on: null, hostId: p.id }, [8000, 16000], `${p.id}:hide`);
+      if (p.kind === 'sofa') go('hide', 0.7, { pt: hideSpot(p), on: null, hostId: p.id }, [8000, 16000], `${p.id}:hide`);
       if (p.kind === 'armchair') {
-        const left = { col: p.col - 1, row: p.row + 2 };
-        const right = { col: p.col + 3, row: p.row + 2 };
+        // Contre un flanc du fauteuil, sur sa rangée de devant.
+        const r = rectOf(p)!;
+        const left = { col: r.col - 1, row: r.row + r.h - 1 };
+        const right = { col: r.col + r.w, row: r.row + r.h - 1 };
         const side = isFree(map, left.col, left.row) ? { cell: left, facing: 'r' as const } : isFree(map, right.col, right.row) ? { cell: right, facing: 'l' as const } : null;
         if (side) go('scratch', 1, { pt: standPoint(side.cell.col, side.cell.row), on: null, hostId: null }, [5000, 7000], undefined, side.facing);
       }
