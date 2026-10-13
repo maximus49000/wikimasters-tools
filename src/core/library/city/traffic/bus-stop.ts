@@ -5,7 +5,9 @@
 // - quand un bus marque l'arrêt, ceux qui attendent marchent jusqu'à sa porte avant et montent (petite marche vers la
 //   chaussée, derrière la caisse : `step` de 0 à 1) ; ceux qui arrivent tout près pendant l'arrêt montent aussi ;
 // - 0 à 3 voyageurs descendent, l'un après l'autre (marche de 1 à 0), puis repartent à pied vers un bord ;
-// - le bus attend que les montées et les descentes soient finies (`hold`).
+// - le bus attend que les montées et les descentes soient finies (`hold`) ;
+// - bus à horaires : chaque voyageur vient pour UNE ligne (celle d'un bus attendu dans le quart d'heure) ; il laisse passer
+//   les bus des autres lignes et attend le sien (revue du 2026-10-13).
 // Route fermée : plus personne ne vient attendre (aucun bus ne passera). État porté par le monde de la circulation, avancé à
 // chaque pas (engine.ts), pur et déterministe.
 import { hashString, mulberry32 } from '../../scene-world';
@@ -24,20 +26,22 @@ export type Rider = {
   step: number; // 0 : sur le trottoir ; 1 : dans le bus
   at: number; // instant de début de la descente (inside)
   bus: string | null; // bus emprunté
+  line: string | null; // ligne attendue (numéro) ; null : il prend le premier bus (sans horaires)
 };
 export type StopCrowd = { riders: Rider[]; serial: number; nextAt: Record<StopSide, number>; rng: () => number; served: Set<string> };
 // Ce que le monde fournit : bus arrêté à l'arrêt de chaque côté (porte avant en x du monde), affluence, bords, unité.
 export type StopEnv = {
   stopX: Readonly<Record<StopSide, number>>;
-  buses: Readonly<Record<StopSide, { id: string; door: number } | null>>;
+  buses: Readonly<Record<StopSide, { id: string; door: number; line?: string } | null>>;
   crowd: number;
   closed: boolean;
   width: number;
   margin: number;
   unit: number;
-  // Bus à horaires (bus-timetable.ts) : délai (s) avant le prochain bus de chaque sens, null si aucun n'est attendu (nuit,
-  // fin de service). Absent : les voyageurs viennent au hasard de l'affluence, comme avant les horaires.
-  nextBus?: Readonly<Record<StopSide, number | null>>;
+  // Bus à horaires (bus-timetable.ts) : prochain bus de chaque ligne attendue à l'arrêt de chaque sens (numéro, délai en s),
+  // liste vide si aucun n'est attendu (nuit, fin de service). Absent : les voyageurs viennent au hasard de l'affluence et
+  // prennent le premier bus, comme avant les horaires.
+  nextBus?: Readonly<Record<StopSide, readonly { line: string; in: number }[]>>;
 };
 
 export const STOP_WAIT_MAX = 5;
@@ -59,7 +63,7 @@ export function createStopCrowd(seed: number, t: number): StopCrowd {
 
 function newRider(c: StopCrowd, side: StopSide, x: number, stage: RiderStage, unit: number): Rider {
   const r = mulberry32(hashString(`rider-${c.serial}`) ^ Math.floor(c.rng() * 1e9));
-  return { id: `bs-${c.serial++}`, side, u: r(), speed: lerp(9, 12.5, r()) * unit, stage, x, target: x, walked: 0, step: 0, at: 0, bus: null };
+  return { id: `bs-${c.serial++}`, side, u: r(), speed: lerp(9, 12.5, r()) * unit, stage, x, target: x, walked: 0, step: 0, at: 0, bus: null, line: null };
 }
 
 const freeSpot = (c: StopCrowd, side: StopSide, stopX: number, unit: number): number => {
@@ -84,24 +88,27 @@ export function stepStops(c: StopCrowd, env: StopEnv, t: number, dt: number): { 
   const hold = new Set<string>();
   const u = env.unit;
   for (const side of ['near', 'far'] as const) {
-    // Arrivées : tirées selon l'affluence, depuis un bord.
-    const next = env.nextBus ? env.nextBus[side] : 0;
-    if (env.nextBus && next === null) {
-      // Plus de bus avant longtemps : ceux qui attendent renoncent et repartent vers un bord.
+    // Arrivées : tirées selon l'affluence, depuis un bord ; avec horaires, pour une ligne dont le bus passe bientôt.
+    const timed = env.nextBus?.[side];
+    if (timed) {
+      // Plus de bus de sa ligne avant longtemps : ceux qui l'attendent renoncent et repartent vers un bord.
       for (const p of c.riders) {
         if (p.side !== side || (p.stage !== 'arrive' && p.stage !== 'wait')) continue;
+        if (p.line !== null && timed.some((n) => n.line === p.line)) continue;
         p.stage = 'leave';
         p.target = p.x < env.width / 2 ? -env.margin : env.width + env.margin;
         changed = true;
       }
     }
-    if (!env.closed && env.crowd > 0.02 && next !== null && next <= COME_BEFORE_S && t >= c.nextAt[side]) {
+    const soon = timed ? timed.filter((n) => n.in <= COME_BEFORE_S) : null;
+    if (!env.closed && env.crowd > 0.02 && (soon === null || soon.length > 0) && t >= c.nextAt[side]) {
       c.nextAt[side] = t + Math.max(4, -Math.log(1 - c.rng() * 0.98) * (34 / env.crowd));
       const waiting = c.riders.filter((p) => p.side === side && (p.stage === 'arrive' || p.stage === 'wait')).length;
       if (waiting < STOP_WAIT_MAX) {
         const fromLeft = c.rng() < 0.5;
         const p = newRider(c, side, fromLeft ? -env.margin : env.width + env.margin, 'arrive', u);
         p.target = freeSpot(c, side, env.stopX[side], u);
+        if (soon) p.line = soon[Math.floor(c.rng() * soon.length)]!.line;
         c.riders.push(p);
         changed = true;
       }
@@ -121,8 +128,10 @@ export function stepStops(c: StopCrowd, env: StopEnv, t: number, dt: number): { 
     }
     for (const p of c.riders) {
       if (p.side !== side) continue;
-      if (bus && (p.stage === 'wait' || (p.stage === 'arrive' && Math.abs(p.x - bus.door) < REACH * u))) {
-        // Monte : marche jusqu'à la porte avant (ceux qui arrivent de loin attendront le suivant).
+      const mine = !bus?.line || p.line === null || p.line === bus.line;
+      if (bus && mine && (p.stage === 'wait' || (p.stage === 'arrive' && Math.abs(p.x - bus.door) < REACH * u))) {
+        // Monte : marche jusqu'à la porte avant (ceux qui arrivent de loin attendront le suivant ; ceux d'une autre ligne
+        // laissent passer ce bus).
         p.stage = 'board';
         p.target = bus.door;
         p.bus = bus.id;

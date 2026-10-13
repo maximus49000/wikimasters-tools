@@ -384,9 +384,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         minutes: city.minutes,
         today: serviceKindOf(city.day.weekday, city.day.publicHoliday !== null),
         yesterday: serviceKindOf((city.day.weekday + 6) % 7, false),
+        // Lignes de la plaque de l'arrêt (réelles, sinon les trois de repli du moteur).
+        lines: city.buses?.lines.length || 3,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [seed, day, city.day, city.minutes, still],
+    [seed, day, city.day, city.minutes, still, city.buses?.lines.length],
   );
   const arrivals = useMemo<ScheduledArrival[]>(
     () => [
