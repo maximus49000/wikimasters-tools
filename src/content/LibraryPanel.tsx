@@ -888,6 +888,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           </button>
         )}
         {stage.active && <FullscreenButton active onClick={stage.toggle} right={8} />}
+        {stage.active && (
+          <div className="wmt-lib-switch" data-mode-switch role="group" aria-label="Mode">
+            <button type="button" data-action="visit" aria-pressed={!editing} aria-label="Visiter" title="Visiter" onClick={() => setMode2('visit')}><Icon paths={ICONS.eye} /></button>
+            <button type="button" data-action="edit" aria-pressed={editing} aria-label="Aménager" title="Aménager" onClick={() => setMode2('edit')}><Icon paths={ICONS.pencil} /></button>
+          </div>
+        )}
         {fill && !outside && room.cols > fitCols && (
           <button type="button" data-action="fit-screen" onClick={fitToScreen} style={FIT_BUTTON}>
             Adapter à l’écran
@@ -903,7 +909,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 const DOOR_BUTTON = { position: 'absolute', top: 8, left: 8, width: 36, height: 36, padding: 0, border: 0, borderRadius: 18, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', display: 'grid', placeItems: 'center', zIndex: 2 } as const;
 
 // Bouton et message posés sur la pièce en plein écran, à gauche du bouton de sortie.
-const FIT_BUTTON = { position: 'absolute', top: 4, right: 48, height: 32, padding: '0 12px', border: 0, borderRadius: 16, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/20px system-ui,sans-serif' } as const;
+const FIT_BUTTON = { position: 'absolute', top: 4, right: 148, height: 32, padding: '0 12px', border: 0, borderRadius: 16, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/20px system-ui,sans-serif' } as const;
 const STAGE_MESSAGE = { position: 'absolute', top: 44, right: 8, maxWidth: '60vw', padding: '6px 10px', borderRadius: 8, background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/18px system-ui,sans-serif' } as const;
 
 type ScreenSize = { width: number; height: number };

@@ -298,3 +298,54 @@ describe('corrections de la revue', () => {
     expect(LIBRARY_CSS).toContain('.wmt-lib-stage:fullscreen{box-sizing:border-box');
   });
 });
+
+function stubFullscreen() {
+  let current: Element | null = null;
+  Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+    configurable: true,
+    value: function (this: HTMLElement) {
+      current = this;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    },
+  });
+  Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => current });
+  Object.defineProperty(document, 'exitFullscreen', {
+    configurable: true,
+    value: () => {
+      current = null;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    },
+  });
+}
+
+describe('interrupteur en plein écran', () => {
+  const press = async (selector: string) => {
+    await act(async () => { (q(selector) as HTMLElement).click(); });
+    await settle();
+  };
+
+  it('n’existe qu’en plein écran et bascule entre Visiter et Aménager', async () => {
+    stubFullscreen();
+    expect(q('[data-mode-switch]')).toBeNull();
+    await click('.wmt-lib-topbar [data-action="fullscreen"]');
+    expect(q('[data-mode-switch] [data-action="visit"]')?.getAttribute('aria-pressed')).toBe('true');
+    await press('[data-mode-switch] [data-action="edit"]');
+    expect(q('[data-mode-switch] [data-action="edit"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-drawer]')).not.toBeNull();
+    await press('[data-mode-switch] [data-action="visit"]');
+    expect(q('[data-drawer]')).toBeNull();
+  });
+
+  it('passer en 👁 pendant un placement l’annule sans rien enregistrer', async () => {
+    stubFullscreen();
+    await click('.wmt-lib-topbar [data-action="fullscreen"]');
+    await press('[data-mode-switch] [data-action="edit"]');
+    await click('[data-kind="shelf"]');
+    expect(q('[data-placement-bar]')).not.toBeNull();
+    await press('[data-mode-switch] [data-action="visit"]');
+    expect(q('[data-placement-bar]')).toBeNull();
+    expect(repo.current()!.rooms[0]!.layout).toHaveLength(0);
+  });
+});
