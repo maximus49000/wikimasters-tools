@@ -80,6 +80,10 @@ describe('catalogTree', () => {
     expect(catalogTree('steampunk').some((n) => n.id === 'steampunk')).toBe(true);
   });
 
+  it('nomme « Pour animaux » la catégorie des meubles d’animaux (le menu 🐾 s’appelle Animaux)', () => {
+    expect(catalogTree('scandinave').find((n) => n.id === 'pets')?.label).toBe('Pour animaux');
+  });
+
   it('les autres catégories n’ont pas de sous-catégorie', () => {
     expect(catalogTree('scandinave').filter((n) => n.id !== 'deco').every((n) => n.subcategories.length === 0)).toBe(true);
   });

@@ -79,7 +79,7 @@ const LABELS: Record<FurnitureKind, string> = {
 export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }[] = [
   { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer'] },
   { id: 'seats', label: 'Assises', kinds: ['chair', 'sofa', 'armchair'] },
-  { id: 'pets', label: 'Animaux', kinds: ['basket', 'bowl', 'kennel', 'charger'] },
+  { id: 'pets', label: 'Pour animaux', kinds: ['basket', 'bowl', 'kennel', 'charger'] },
   { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug', 'window'] },
   { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
 ];
