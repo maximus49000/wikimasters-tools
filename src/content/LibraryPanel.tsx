@@ -212,7 +212,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const viewingRef = useRef(viewing);
   viewingRef.current = viewing;
   // Zoom de face sur une étagère ou un bureau (Visiter) ; zoomRef : zoom courant relu par les gestionnaires.
-  const { zoom, open: openZoom, close: closeZoom, reset: resetZoom } = useFurnitureZoom();
+  // Le retour Android/navigateur ferme d'abord la fiche ouverte par-dessus le zoom.
+  const { zoom, open: openZoom, close: closeZoom, reset: resetZoom } = useFurnitureZoom(() => {
+    if (!viewingRef.current) return false;
+    setViewing(null);
+    return true;
+  });
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const [lib, setLib] = useState<LibraryState | null>(library.current());
@@ -643,6 +648,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   // Ouvre le zoom si l'objet touché mène à une étagère garnie ou à un bureau dont l'écran affiche une carte.
   const tryZoom = (id: string): boolean => {
+    // Pas de zoom tant que la caméra extérieure n'est pas entièrement rentrée.
+    if (outsidePhase !== 'inside') return false;
     const target = zoomTargetOf(layout, id);
     if (!target) return false;
     openZoom(target, boxInStage(target.id));
@@ -824,14 +831,19 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const zoomStyle = ((): Record<string, string | number> => {
     if (!zoom) return {};
     const sc = scrollRef.current;
-    // La transformation part du coin du conteneur, décalé dans la scène (centrage) : la caméra se calcule dans son repère.
+    // La transformation part du coin du conteneur, décalé dans la scène (centrage) : la caméra se calcule dans son repère,
+    // où la scène visible commence en (−ox, −oy). Bornée pour que le conteneur agrandi couvre toujours toute la scène.
     const ox = sc?.offsetLeft ?? 0;
     const oy = sc?.offsetTop ?? 0;
+    const box = { w: sc?.clientWidth ?? 0, h: sc?.clientHeight ?? 0 };
     const from = zoom.from;
-    const cam = from ? cameraOf({ w: stageSize.w - 2 * ox, h: stageSize.h - 2 * oy }, { ...from, x: from.x - ox, y: from.y - oy }) : null;
+    const cam = box.w > 0 && box.h > 0 && stageSize.w > 0 && stageSize.h > 0
+      ? cameraOf(box, { x: -ox, y: -oy, w: stageSize.w, h: stageSize.h }, from ? { ...from, x: from.x - ox, y: from.y - oy } : null)
+      : null;
     const on = zoom.phase !== 'closing';
     return {
-      overflow: 'hidden',
+      overflowX: 'hidden',
+      overflowY: 'hidden',
       touchAction: 'none',
       transformOrigin: '0 0',
       transform: on && cam ? `translate(${cam.tx}px, ${cam.ty}px) scale(${cam.scale})` : 'none',
@@ -1082,7 +1094,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             <button type="button" data-action="edit" aria-pressed={editing} aria-label="Aménager" title="Aménager" onClick={() => setMode2('edit')}><Icon paths={ICONS.pencil} /></button>
           </div>
         )}
-        {fill && !outside && !placement && room.cols > fitCols && (
+        {fill && !outside && !placement && !zoom && room.cols > fitCols && (
           <button type="button" data-action="fit-screen" onClick={fitToScreen} style={FIT_BUTTON}>
             Adapter à l’écran
           </button>

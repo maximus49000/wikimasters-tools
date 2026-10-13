@@ -78,7 +78,8 @@ describe('zoom sur un meuble', () => {
     expect(q('[data-action="outside"]')).toBeNull();
     expect(q('[data-mode-switch]')).toBeNull();
     expect(q('[data-menu-button="sky"]')).toBeNull();
-    expect((q('[data-scroll]') as HTMLElement).style.overflow).toBe('hidden');
+    expect((q('[data-scroll]') as HTMLElement).style.overflowX).toBe('hidden');
+    expect((q('[data-scroll]') as HTMLElement).style.overflowY).toBe('hidden');
     expect(q('[data-stage]')!.hasAttribute('data-zoom-open')).toBe(true);
   });
   it('toucher une carte dans le zoom ouvre la fiche ; la fermer revient au zoom', async () => {
@@ -131,6 +132,55 @@ describe('zoom sur un meuble', () => {
     expect(back).not.toHaveBeenCalled();
     // un second retour hors zoom ne rouvre rien et ne plante pas
     await act(async () => { window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
+    expect(q('[data-furniture-zoom]')).toBeNull();
+  });
+  it('← et Échap retirent chacun l’entrée d’historique du zoom exactement une fois', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    const back = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await click('[data-action="zoom-back"]');
+    await advance(500);
+    expect(back).toHaveBeenCalledTimes(1);
+    history.replaceState(null, '');
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    await advance(500);
+    expect(q('[data-furniture-zoom]')).toBeNull();
+    expect(back).toHaveBeenCalledTimes(2);
+  });
+  it('Échap avec la fiche ouverte ferme la fiche seulement', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    const back = vi.spyOn(history, 'back');
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await click('[data-zoom-card="Daft_Punk"]');
+    expect(document.querySelector('[data-room-card="Daft_Punk"]')).not.toBeNull();
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    await advance(500);
+    expect(document.querySelector('[data-room-card]')).toBeNull();
+    expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
+    expect(back).not.toHaveBeenCalled();
+  });
+  it('retour Android/navigateur avec la fiche ouverte : ferme la fiche, le zoom reste (et son entrée d’historique)', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await click('[data-zoom-card="Daft_Punk"]');
+    const push = vi.spyOn(history, 'pushState');
+    await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
+    await advance(500);
+    expect(document.querySelector('[data-room-card]')).toBeNull();
+    expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(history.state).toMatchObject({ wmtZoom: true });
+    // un second retour ferme alors le zoom
+    await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
+    await advance(500);
     expect(q('[data-furniture-zoom]')).toBeNull();
   });
 });

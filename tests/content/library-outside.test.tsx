@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
+import { updateLayout } from '../../src/core/library/library-book';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -120,5 +121,28 @@ describe('LibraryPanel : aller dehors', () => {
     await act(async () => { root.render(<LibraryPanel library={repo} />); });
     await settle();
     expect(q('[data-action="outside"]')).not.toBeNull();
+  });
+
+  it('pas de zoom sur un meuble tant que la caméra extérieure rentre', async () => {
+    // Mouvement normal, images d'animation tenues à la main : la phase « returning » dure tant qu'on ne les joue pas.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => frames.push(f));
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 800, bottom: 400, width: 800, height: 400, toJSON: () => ({}) } as DOMRect);
+    const play = () => act(async () => { for (const f of frames.splice(0)) f(performance.now() + 1e6); await Promise.resolve(); });
+    await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => [
+      { id: 's', kind: 'shelf', col: 0, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', slot: 0, slug: 'Inconnue' },
+    ])); });
+    await settle();
+    await click('[data-action="outside"]');
+    await play();
+    await settle();
+    await click('[data-action="inside"]');
+    expect(q('[data-action="inside"]')?.hasAttribute('disabled')).toBe(true);
+    await click('[data-furniture="shelf"]');
+    expect(q('[data-furniture-zoom]')).toBeNull();
+    await play();
+    await settle();
   });
 });

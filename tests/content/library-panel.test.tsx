@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
-import { extendRoom } from '../../src/core/library/library-book';
+import { extendRoom, updateLayout } from '../../src/core/library/library-book';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -296,6 +296,22 @@ describe('LibraryPanel : plein écran', () => {
     expect(repo.current()?.rooms[0]?.cols).toBe(38);
     expect(q('[data-action="fit-screen"]')).toBeNull();
     await click('[data-action="fullscreen"]');
+  });
+
+  it('le bouton « Adapter à l’écran » disparaît pendant le zoom sur un meuble', async () => {
+    stub();
+    await act(async () => { await repo.update((state) => updateLayout(extendRoom(extendRoom(state, 'r1', 'right'), 'r1', 'right'), 'r1', () => [
+      { id: 's', kind: 'shelf', col: 0, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', slot: 0, slug: 'Inconnue' },
+    ])); });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2400 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });
+    await click('[data-action="fullscreen"]');
+    await settle();
+    expect(q('[data-action="fit-screen"]')).not.toBeNull();
+    await click('[data-furniture="shelf"]');
+    expect(q('[data-furniture-zoom]')).not.toBeNull();
+    expect(q('[data-action="fit-screen"]')).toBeNull();
+    await click('[data-action="zoom-back"]');
   });
 
   it('prend toute la hauteur d’un écran en portrait (pas de bandes noires), la pièce défile en largeur', async () => {

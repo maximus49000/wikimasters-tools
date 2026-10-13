@@ -15,9 +15,18 @@ export function zoomTargetOf(layout: Layout, id: string): ZoomTarget | null {
   return null;
 }
 
-// Caméra : translation puis agrandissement (origine en haut à gauche) qui amène le centre du meuble au centre de la scène.
-export function cameraOf(stage: { w: number; h: number }, target: Box, scale = 1.6): { tx: number; ty: number; scale: number } {
-  return { tx: stage.w / 2 - (target.x + target.w / 2) * scale, ty: stage.h / 2 - (target.y + target.h / 2) * scale, scale };
+// Caméra : translation puis agrandissement (origine en haut à gauche du conteneur) qui amène le centre du meuble au centre
+// de la partie visible. Bornée : le conteneur agrandi couvre toujours le visible + une marge (le flou estompe les bords),
+// quitte à décentrer le meuble ou à agrandir davantage ; sans meuble mesuré, elle agrandit autour du centre du visible.
+export function cameraOf(container: { w: number; h: number }, visible: Box, target: Box | null, wanted = 1.6, margin = 32): { tx: number; ty: number; scale: number } {
+  const scale = Math.max(wanted, (visible.w + 2 * margin) / container.w, (visible.h + 2 * margin) / container.h);
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+  // Centre visé, ramené dans le conteneur (un meuble hors écran ne tire pas la caméra dans le vide).
+  const cx = target ? clamp(target.x + target.w / 2, 0, container.w) : visible.x + visible.w / 2;
+  const cy = target ? clamp(target.y + target.h / 2, 0, container.h) : visible.y + visible.h / 2;
+  const axis = (vPos: number, vSize: number, c: number, size: number) =>
+    clamp(vPos + vSize / 2 - c * scale, vPos + vSize + margin - scale * size, vPos - margin);
+  return { tx: axis(visible.x, visible.w, cx, container.w), ty: axis(visible.y, visible.h, cy, container.h), scale };
 }
 
 // Cadre final de la vue de face : 80 % de la hauteur, largeur selon les proportions (au plus 90 % de la largeur), centré.
