@@ -2,6 +2,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { FURNITURE_KINDS, STEAMPUNK_ONLY } from '../../src/core/library/furniture-catalog';
+import { STANDING_KINDS } from '../../src/core/library/library-types';
 import { FurnitureThumb } from '../../src/content/furniture-thumb';
 
 const styleFor = (kind: string) => ((STEAMPUNK_ONLY as readonly string[]).includes(kind) ? 'steampunk' : 'scandinave');
@@ -12,6 +13,11 @@ describe('FurnitureThumb', () => {
     expect(html).toContain(`data-thumb="${kind}"`);
     // Un vrai dessin, pas une boîte vide : au moins une forme.
     expect(html).toMatch(/<(path|rect|ellipse|circle|polygon|line)/);
+  });
+
+  it.each(STANDING_KINDS)('%s : la vignette est le modèle 3D de face', (kind) => {
+    const html = renderToStaticMarkup(<FurnitureThumb kind={kind} style={styleFor(kind)} />);
+    expect(html).toContain('data-model3d');
   });
 
   it('cadre le dessin sur la taille du meuble', () => {

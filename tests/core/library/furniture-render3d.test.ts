@@ -179,6 +179,23 @@ describe('nouvelles formes (prisme, tige, feuillage, globe)', () => {
     expect(width(2)).toBeLessThan(3 * PX_PER_CM_X);
     for (const a of ANGLES) inRect(renderModel(disc, a));
   });
+  it('tige minuscule (rivet de moins de 4 px à l’écran) : une seule ellipse, à chaque angle', () => {
+    const stud: Model = { w: 10, d: 10, h: 10, pieces: [{ shape: 'rod', a: [5, 5, 0.4], b: [5, 5, 0], r: 1.3, fill: 'shade' }] };
+    for (const a of ANGLES) {
+      const s = renderModel(stud, a).shapes;
+      expect(s, 'angle ' + a).toHaveLength(1);
+      expect(s[0]!.kind).toBe('ellipse');
+    }
+  });
+  it('tige horizontale vue de face : l’ombre nette est en bas', () => {
+    const bar: Model = { w: 40, d: 10, h: 10, pieces: [{ shape: 'rod', a: [2, 5, 5], b: [38, 5, 5], r: 2, fill: 'metal' }] };
+    const s = renderModel(bar, 0).shapes;
+    const shadow = s.find((x) => x.kind === 'poly' && x.ink === 'none');
+    const body = s.find((x) => x.kind === 'poly' && x.ink === undefined);
+    if (shadow?.kind !== 'poly' || body?.kind !== 'poly') throw new Error('formes');
+    const meanY = (pts: [number, number][]) => pts.reduce((m, p) => m + p[1], 0) / pts.length;
+    expect(meanY(shadow.points)).toBeGreaterThan(meanY(body.points));
+  });
   it('tige inclinée : silhouette d’un seul polygone + un bout visible, encombrement rayon compris', () => {
     const rod: Model = { w: 40, d: 40, h: 60, pieces: [{ shape: 'rod', a: [5, 0, 20], b: [35, 58, 20], r: 2, fill: 'metal' }] };
     for (const a of ANGLES) {

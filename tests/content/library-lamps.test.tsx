@@ -184,7 +184,7 @@ describe('calque de lumière et dessin des lampes', () => {
     await click('[data-action="edit"]');
     await click('[data-style="steampunk"]');
     await click('[data-action="visit"]');
-    expect(q('[data-steampunk-art="lamp"] [data-lamp-halo]')!.getAttribute('pointer-events')).toBe('none');
+    expect(q('[data-furniture="lamp"] [data-lamp-halo]')!.getAttribute('pointer-events')).toBe('none');
   });
 
   it('la lampe Steampunk suit aussi son état', async () => {
@@ -196,9 +196,9 @@ describe('calque de lumière et dessin des lampes', () => {
     await click('[data-cell="4-14"]');
     await confirm();
     await click('[data-action="visit"]');
-    expect(q('[data-steampunk-art="lamp"] [data-lamp-halo]')).not.toBeNull();
+    expect(q('[data-furniture="lamp"] [data-lamp-halo]')).not.toBeNull();
     await click('[data-furniture="lamp"]');
-    expect(q('[data-steampunk-art="lamp"] [data-lamp-halo]')).toBeNull();
+    expect(q('[data-furniture="lamp"] [data-lamp-halo]')).toBeNull();
   });
 });
 

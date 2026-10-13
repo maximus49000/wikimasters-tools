@@ -242,6 +242,9 @@ const stud = (x: number, y: number, z: number, r = 1.3, fill: Piece['fill'] = 's
 export const STEAMPUNK_TRIM: Partial<Record<StandingKind, Piece[]>> = {
   // Bureau : sous-main en cuir encadré par le plateau, ceinture en bois sombre rivetée, entretoises et pieds boule en laiton.
   desk: [
+    // Le cuir est logé DANS le plateau (72 à 75), dessus à fleur : il ne passe après le plateau que grâce à la tolérance EPS
+    // de l'ordre du peintre (paintOrder, furniture-render3d : « b.bottom >= a.top − EPS », 74,6 ≥ 75 − 0,5). Changer EPS ou
+    // l'épaisseur du cuir peut le faire disparaître sous le plateau.
     box(6, 74.6, 6, 108, 0.4, 48, 'fabric'),
     box(8, 62, 4, 104, 10, 1, 'woodDark'), box(4, 62, 8, 1, 10, 44, 'woodDark'), box(115, 62, 8, 1, 10, 44, 'woodDark'),
     ...[14, 37, 60, 83, 106].map((x) => stud(x, 67, 3.6)),

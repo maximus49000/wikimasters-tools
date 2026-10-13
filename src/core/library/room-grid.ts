@@ -1,5 +1,5 @@
 import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, underOf, wallSizeOf } from './furniture-catalog';
-import { drawRect, floorCells, frontFaceRect, type Angle } from './footprint';
+import { drawRect, floorCells, frontFaceRect, topPoint, type Angle } from './footprint';
 import { STANDING_KINDS } from './library-types';
 import type { Depth, Layout, Orientation, Placed, ShelfShape, SmallItem, StandDepth, StandingKind, VinylColor, WallShape } from './library-types';
 
@@ -312,7 +312,7 @@ type SmallPlaced = Extract<Placed, { kind: 'small' }>;
 
 // Un bureau porte 4 petits objets, une étagère 3 (sur son dessus).
 export const SURFACE_SLOTS = { desk: 4, shelf: 3 } as const;
-type HostKind = keyof typeof SURFACE_SLOTS;
+export type HostKind = keyof typeof SURFACE_SLOTS;
 const isHost = (p: Placed): p is Placed & { kind: HostKind } => p.kind === 'desk' || p.kind === 'shelf';
 
 // L'ordinateur d'un bureau couvre les deux emplacements du milieu.
@@ -366,6 +366,15 @@ export function surfaceSlotRect(host: PxRect, slotCount: number, slot: number): 
   return { x: host.x + slot * w, y: host.y - SMALL_H + 2, w, h: SMALL_H };
 }
 
+// Emplacement d'un petit objet posé sur le dessus projeté de son porteur tourné : les emplacements se suivent le long de la largeur
+// du meuble (de dos, ils s'inversent à l'écran), à mi-profondeur ; le pied de l'objet touche le dessus.
+export function surfaceSlotRectOn(host: PxRect, kind: HostKind, angle: Angle, slot: number): PxRect {
+  const n = SURFACE_SLOTS[kind];
+  const [x, y] = topPoint(kind, angle, host, (slot + 0.5) / n, 0.5);
+  const w = host.w / n;
+  return { x: x - w / 2, y: y - SMALL_H + 2, w, h: SMALL_H };
+}
+
 // Ajouter une zone à gauche décale les colonnes de tous les meubles ; l'ordinateur suit son bureau.
 export function shiftLayout(layout: Layout, delta: number): Layout {
   return layout.map((p) => (isStanding(p) ? { ...p, col: p.col + delta } : p.kind === 'wall' || p.kind === 'window' ? { ...p, col: p.col + delta } : p));
@@ -404,6 +413,12 @@ const COMPUTER_H = 56;
 // L'ordinateur est centré sur le plateau du bureau, son pied appuyé dessus.
 export function computerRect(desk: PxRect): PxRect {
   return { x: desk.x + desk.w / 2 - COMPUTER_W / 2, y: desk.y - COMPUTER_H + 4, w: COMPUTER_W, h: COMPUTER_H };
+}
+
+// L'écran se tient au milieu du plateau du bureau tourné (rectangle de dessin `desk`) : pied sur le dessus projeté, à mi-profondeur.
+export function computerRectOn(desk: PxRect, angle: Angle): PxRect {
+  const [x, y] = topPoint('desk', angle, desk, 0.5, 0.5);
+  return { x: x - COMPUTER_W / 2, y: y - COMPUTER_H + 2, w: COMPUTER_W, h: COMPUTER_H };
 }
 
 const SHELF_MARGIN = 6;

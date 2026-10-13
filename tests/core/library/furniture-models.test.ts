@@ -50,6 +50,28 @@ describe('modèles', () => {
       });
     }
   });
+  it('garnitures Steampunk : aucune enfouie ; celles posées à l’intérieur d’une boîte affleurent sa surface (cuir, clous)', () => {
+    const bb = (p: Parameters<typeof pieceBounds>[0]): number[] => pieceBounds(p);
+    let flush = 0;
+    for (const [kind, trim] of Object.entries(STEAMPUNK_TRIM)) {
+      const all = [...FURNITURE_MODELS[kind as keyof typeof FURNITURE_MODELS].pieces, ...trim!];
+      const boxes = all.filter((p) => p.shape === 'box').map(bb);
+      trim!.forEach((p, i) => {
+        const a = bb(p);
+        boxes.forEach((b) => {
+          if (p.shape === 'box' && b.every((v, k) => v === a[k])) return;
+          const dedans = [0, 2, 4].every((k) => a[k]! >= b[k]! - 1e-6 && a[k + 1]! <= b[k + 1]! + 1e-6);
+          if (!dedans) return;
+          // Affleurante : elle partage un plan extérieur de la boîte (dessus, avant, flanc…), donc reste visible.
+          const affleure = a.some((v, k) => Math.abs(v - b[k]!) < 1e-6);
+          expect(affleure, kind + ' garniture ' + i + ' enfouie').toBe(true);
+          flush++;
+        });
+      });
+    }
+    // Explicite : le cuir du bureau (dessus du plateau) ; au fauteuil, 12 clous en façade (assise, accoudoirs), 6 au dos du dossier, 6 sur les flancs.
+    expect(flush).toBe(1 + 12 + 6 + 6);
+  });
   it('les points d’intérêt historiques existent toujours', () => {
     expect(FURNITURE_MODELS.sofa.pois?.filter((p) => p.type === 'seat')).toHaveLength(3);
     expect(FURNITURE_MODELS.sofa.pois?.some((p) => p.type === 'sleep')).toBe(true);

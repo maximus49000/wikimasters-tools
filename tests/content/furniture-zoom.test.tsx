@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FurnitureZoom } from '../../src/content/furniture-zoom';
 import type { Room } from '../../src/core/library/library-types';
+import { drawSize, frontFaceRect } from '../../src/core/library/footprint';
+import { CELL_H, CELL_W, shelfSlots } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -39,6 +41,37 @@ describe('calque du zoom', () => {
     expect(container.querySelector('[data-zoom-card="Inconnue"]')!.hasAttribute('opacity')).toBe(false);
     // 13 emplacements vides en pointillés + 2 cartes = 15.
     expect(container.querySelectorAll('rect[stroke-dasharray]').length + container.querySelectorAll('[data-zoom-card]').length).toBe(15);
+  });
+  it('vue de face : le modèle 3D, et les cartes rangées dans sa face avant projetée', () => {
+    const { container } = mount('open');
+    expect(container.querySelector('.wmt-lib-zoom-piece [data-model3d]')).not.toBeNull();
+    const { w, h } = drawSize('shelf', 0);
+    const face = frontFaceRect(0, { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H }, 'shelf')!;
+    const want = shelfSlots(face)[4]!;
+    const hit = container.querySelector('[data-zoom-card="Inconnue"] rect[fill="transparent"]')!;
+    expect(Number(hit.getAttribute('x'))).toBeCloseTo(want.x, 1);
+    expect(Number(hit.getAttribute('y'))).toBeCloseTo(want.y, 1);
+  });
+  it('première moitié d’un meuble tourné : le modèle 3D sous son angle', () => {
+    const { container } = mount('opening');
+    expect(container.querySelector('.wmt-lib-zoom-piece [data-model3d]')).not.toBeNull();
+  });
+  it('bureau : l’écran se tient sur le plateau, dans le cadre', () => {
+    const desk: Room = { ...room, layout: [{ id: 'd', kind: 'desk', col: 0, row: 10 }, { id: 'pc', kind: 'computer', deskId: 'd', slug: 'Daft_Punk' }] };
+    const container = document.createElement('div');
+    document.body.append(container);
+    act(() => {
+      createRoot(container).render(
+        <FurnitureZoom target={{ kind: 'desk', id: 'd' }} room={desk} cards={{ Daft_Punk: { title: 'Daft Punk' } }} imageOf={() => undefined}
+          phase="open" from={null} stage={{ w: 800, h: 400 }} onCard={vi.fn()} onBack={vi.fn()} />,
+      );
+    });
+    const vb = container.querySelector('.wmt-lib-zoom-piece svg')!.getAttribute('viewBox')!.split(' ').map(Number);
+    const screen = container.querySelector('[data-zoom-card="Daft_Punk"] rect')!;
+    const top = Number(screen.getAttribute('y'));
+    // L'écran est entièrement dans le cadre, et son haut au-dessus du bureau (il dépasse du plateau).
+    expect(top).toBeGreaterThanOrEqual(vb[1]!);
+    expect(top).toBeLessThan(0);
   });
   it('toucher une carte connue la signale ; une inconnue ne fait rien', () => {
     const { container, onCard } = mount('open');

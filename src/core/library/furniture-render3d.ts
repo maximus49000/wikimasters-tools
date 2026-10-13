@@ -47,6 +47,7 @@ export const PX_PER_CM_Y = CELL_H / 21;
 export const DEPTH_PX_PER_CM = CELL_H / 50;
 const SHADE = { front: 1, side: 0.82, top: 1.12 } as const;
 const ROUND_STEPS = 24;
+const TINY_PX = 4; // en dessous, un corps rond se dessine d'une seule ellipse
 const SHADOW_SPAN = (50 * Math.PI) / 180; // ombre nette des corps ronds : de la silhouette droite jusqu'à 50° vers le spectateur
 const LEAF_STEPS = 10;
 const LEAF_TWIST = (40 * Math.PI) / 180;
@@ -465,6 +466,14 @@ function drawRound(L: Layout3d, push: Push, A: V3, B: V3, rA: number, rB: number
   const dirs = Array.from({ length: ROUND_STEPS }, (_, i) => dirAt((i * 2 * Math.PI) / ROUND_STEPS));
   const ca = dirs.map((n) => at(A, rA, n));
   const cb = dirs.map((n) => at(B, rB, n));
+  // Corps minuscule à l'écran (rivet, clou) : une seule ellipse au lieu de ~50 points (allège la pièce, Android d'abord).
+  const xs = [...ca, ...cb].map((q) => q[0]);
+  const ys = [...ca, ...cb].map((q) => q[1]);
+  const [sw, sh] = [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
+  if (Math.max(sw, sh) < TINY_PX) {
+    push({ kind: 'ellipse', cx: (Math.max(...xs) + Math.min(...xs)) / 2, cy: (Math.max(...ys) + Math.min(...ys)) / 2, rx: sw / 2, ry: sh / 2, fill, shade: SHADE.front });
+    return;
+  }
   const v = viewDir(f);
   const k = dot(v, u);
   // Génératrice tournée vers le spectateur : elle donne la teinte du corps.
@@ -474,7 +483,10 @@ function drawRound(L: Layout3d, push: Push, A: V3, B: V3, rA: number, rB: number
     const shade = shadeOf(f, toward);
     const w = unit(toward);
     let side = unit(cross(u, w));
-    if (at(A, 1, side)[0] < at(A, 0, side)[0]) side = { x: -side.x, y: -side.y, z: -side.z }; // côté droit de l'écran
+    // Côté droit de l'écran ; tige horizontale vue de face (côté vertical à l'écran) : côté du bas.
+    const [sx0, sy0] = at(A, 0, side);
+    const [sx1, sy1] = at(A, 1, side);
+    if (Math.abs(sx1 - sx0) > 1e-3 ? sx1 < sx0 : sy1 < sy0) side = { x: -side.x, y: -side.y, z: -side.z };
     const strip = Array.from({ length: 7 }, (_, i) => {
       const g = (SHADOW_SPAN * i) / 6;
       return { x: Math.cos(g) * side.x + Math.sin(g) * w.x, y: Math.cos(g) * side.y + Math.sin(g) * w.y, z: Math.cos(g) * side.z + Math.sin(g) * w.z };
@@ -561,4 +573,11 @@ export function frontFaceOf(model: Model, angle: Angle): { x: number; y: number;
   const xs = pts.map((p) => p[0]);
   const ys = pts.map((p) => p[1]);
   return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+}
+
+// Coins du dessus du meuble (plan y = h) projetés, px du rectangle de dessin : avant gauche, avant droit, arrière gauche
+// (la projection étant affine, ces trois points suffisent à placer tout point du dessus).
+export function topCornersOf(model: Model, angle: Angle): [[number, number], [number, number], [number, number]] {
+  const L = layoutOf(model, angle);
+  return [L.toPx({ x: 0, y: model.h, z: 0 }), L.toPx({ x: model.w, y: model.h, z: 0 }), L.toPx({ x: 0, y: model.h, z: model.d })];
 }

@@ -3,9 +3,10 @@ import { isSmallKind, sizeOf, SMALL_ITEM_OF, WINDOW_DEFAULT } from '../core/libr
 import type { FurnitureKind, StyleId } from '../core/library/library-types';
 import { CELL_H, CELL_W, type PxRect } from '../core/library/room-grid';
 import { paletteOf } from '../core/library/styles';
-import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
-import { HomeArt, SmallArt } from './furniture-art-home';
-import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
+import { ComputerArt } from './furniture-art';
+import { SmallArt } from './furniture-art-home';
+import { AnalyticalEngineArt } from './furniture-art-steampunk';
+import { Model3DArt } from './model3d-art';
 import { WindowArt } from './window-art';
 
 const PAD = 6;
@@ -35,11 +36,8 @@ function artOf(kind: FurnitureKind, rect: PxRect, style: StyleId): ReactElement 
   }
   if (kind === 'computer') return steampunk ? <AnalyticalEngineArt rect={rect} /> : <ComputerArt rect={rect} />;
   if (isSmallKind(kind)) return <SmallArt item={SMALL_ITEM_OF[kind]} rect={rect} palette={palette} />;
-  if (kind === 'shelf') return <ShelfArt rect={rect} palette={palette} showSlots={false} />;
-  if (kind === 'globe' || kind === 'telescope' || kind === 'automaton') return <SteampunkArt kind={kind} rect={rect} palette={palette} />;
-  if (steampunk && (kind === 'desk' || kind === 'armchair' || kind === 'lamp')) return <SteampunkArt kind={kind} rect={rect} palette={palette} lit />;
-  if (kind === 'desk') return <DeskArt rect={rect} palette={palette} />;
-  return <HomeArt kind={kind} rect={rect} palette={palette} lit />;
+  // Meuble debout : son modèle 3D de face, à sa taille dessinée (garnitures dans une pièce Steampunk).
+  return <Model3DArt kind={kind} angle={0} rect={rect} palette={palette} lit steampunk={steampunk} />;
 }
 
 // Vignette du tiroir de construction : le vrai dessin du meuble, à la palette du style de la pièce, cadré sur son emprise.

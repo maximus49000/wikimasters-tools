@@ -2,7 +2,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { Model3DArt } from '../../src/content/model3d-art';
+import { ComputerBackArt, Model3DArt } from '../../src/content/model3d-art';
 import { paletteOf } from '../../src/core/library/styles';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -38,5 +38,22 @@ describe('Model3DArt', () => {
     const lines = c.querySelectorAll('[data-model3d] polyline');
     expect(lines.length).toBeGreaterThan(0);
     expect(lines[0]!.getAttribute('fill')).toBe('none');
+  });
+  it('coordonnées arrondies au dixième (attributs courts)', () => {
+    const c = draw(<Model3DArt kind="armchair" angle={1} rect={rect} palette={paletteOf('steampunk')} steampunk />);
+    const nums = [...c.querySelectorAll('[data-model3d] polygon, [data-model3d] polyline')].flatMap((el) => el.getAttribute('points')!.split(/[ ,]/));
+    nums.push(...[...c.querySelectorAll('[data-model3d] ellipse')].flatMap((el) => ['cx', 'cy', 'rx', 'ry'].map((a) => el.getAttribute(a)!)));
+    expect(nums.length).toBeGreaterThan(10);
+    for (const n of nums) expect(n).toMatch(/^-?\d+(\.\d)?$/);
+  });
+  it('la lampe allumée a un halo qui ne capte pas le pointeur ; éteinte, pas de halo', () => {
+    const on = draw(<Model3DArt kind="lamp" angle={2} rect={rect} palette={paletteOf('scandinave')} lit />);
+    expect(on.querySelector('[data-lamp-halo]')!.getAttribute('pointer-events')).toBe('none');
+    expect(draw(<Model3DArt kind="lamp" angle={2} rect={rect} palette={paletteOf('scandinave')} lit={false} />).querySelector('[data-lamp-halo]')).toBeNull();
+  });
+  it('écran vu de dos : gris, sans image', () => {
+    const c = draw(<ComputerBackArt rect={{ x: 0, y: 0, w: 84, h: 56 }} side={false} />);
+    expect(c.querySelector('[data-computer-back]')).not.toBeNull();
+    expect(c.querySelector('image')).toBeNull();
   });
 });

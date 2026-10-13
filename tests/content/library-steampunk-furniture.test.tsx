@@ -3,7 +3,6 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { RoomView } from '../../src/content/RoomView';
-import { STEAMPUNK_REDRAWN } from '../../src/content/furniture-art-steampunk';
 import type { Room, StyleId } from '../../src/core/library/library-types';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -38,16 +37,18 @@ function mount(room: Room) {
 }
 
 describe('meubles Steampunk', () => {
-  it('liste les trois meubles redessinés', () => {
-    expect([...STEAMPUNK_REDRAWN]).toEqual(['desk', 'armchair', 'lamp']);
-  });
-
-  it('dessine chaque meuble avec son art Steampunk', () => {
-    const container = mount(roomOf('steampunk'));
-    const art: Record<string, string> = { desk: 'desk', computer: 'analytical-engine', armchair: 'armchair', lamp: 'lamp', globe: 'globe', telescope: 'telescope', automaton: 'automaton' };
-    for (const [kind, name] of Object.entries(art)) {
-      expect(container.querySelector(`[data-furniture="${kind}"] [data-steampunk-art="${name}"]`), kind).not.toBeNull();
+  it('dessine chaque meuble par son modèle 3D, garnitures Steampunk comprises', () => {
+    const steam = mount(roomOf('steampunk'));
+    const plain = mount(roomOf('scandinave'));
+    for (const kind of ['desk', 'armchair', 'lamp', 'globe', 'telescope', 'automaton']) {
+      expect(steam.querySelector(`[data-furniture="${kind}"] [data-model3d]`), kind).not.toBeNull();
     }
+    // Garnitures (laiton, rivets) : plus de formes que le même meuble hors Steampunk.
+    for (const kind of ['desk', 'armchair', 'lamp']) {
+      const count = (c: HTMLElement) => c.querySelectorAll(`[data-furniture="${kind}"] [data-model3d] > *`).length;
+      expect(count(steam), kind).toBeGreaterThan(count(plain));
+    }
+    expect(steam.querySelector('[data-furniture="computer"] [data-steampunk-art="analytical-engine"]')).not.toBeNull();
   });
 
   it("affiche l'image de la carte dans l'écran de la machine analytique", () => {
@@ -56,16 +57,19 @@ describe('meubles Steampunk', () => {
     expect(image?.getAttribute('referrerPolicy')).toBe('no-referrer');
   });
 
-  it('anime la lampe et la manivelle', () => {
-    const container = mount(roomOf('steampunk'));
-    expect(container.querySelector('[data-steampunk-art="lamp"] animate[attributeName="opacity"]')).not.toBeNull();
-    expect(container.querySelector('[data-steampunk-art="automaton"] animateTransform')).not.toBeNull();
+  it('la lampe allumée a son halo, qui ne capte pas le pointeur', () => {
+    const halo = mount(roomOf('steampunk')).querySelector('[data-furniture="lamp"] [data-lamp-halo]');
+    expect(halo?.getAttribute('pointer-events')).toBe('none');
   });
 
-  it('hors Steampunk : ni art Steampunk, ni meubles exclusifs', () => {
+  it('hors Steampunk : ni machine analytique, ni meubles exclusifs, même tournés', () => {
     const container = mount(roomOf('scandinave'));
     expect(container.querySelector('[data-steampunk-art]')).toBeNull();
     for (const kind of ['globe', 'telescope', 'automaton']) expect(container.querySelector(`[data-furniture="${kind}"]`), kind).toBeNull();
     for (const kind of ['desk', 'computer', 'armchair', 'lamp']) expect(container.querySelector(`[data-furniture="${kind}"]`), kind).not.toBeNull();
+    const turned = roomOf('scandinave');
+    turned.layout = turned.layout.map((p) => (p.kind === 'globe' ? { ...p, angle: 0 } : p.kind === 'telescope' ? { ...p, angle: 3 } : p));
+    const c2 = mount(turned);
+    for (const kind of ['globe', 'telescope']) expect(c2.querySelector(`[data-furniture="${kind}"]`), kind).toBeNull();
   });
 });

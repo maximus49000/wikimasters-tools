@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, angleOf, computerRect, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlotsOf, surfaceSlotRect, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, computerRectOn, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlotsOf, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { frontFaceRect } from '../core/library/footprint';
 import { boxesOf, lampsOf, layoutSignature } from '../core/library/light/occluders';
@@ -9,10 +9,11 @@ import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
 import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { ShelfItemArt, WallArt } from './library-card-art';
-import { ComputerArt, DeskArt, ShelfArt } from './furniture-art';
-import { AngledFurnitureArt, ComputerBackArt } from './furniture-angled';
-import { HomeArt, SmallArt } from './furniture-art-home';
-import { AnalyticalEngineArt, SteampunkArt } from './furniture-art-steampunk';
+import { ComputerArt } from './furniture-art';
+import { ComputerBackArt, Model3DArt } from './model3d-art';
+import { SmallArt } from './furniture-art-home';
+import { AnalyticalEngineArt } from './furniture-art-steampunk';
+import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
 import { getImageService } from './image-registry';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
 import { ShopContext, ShopRegistry } from './shop/shop-host';
@@ -233,12 +234,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     if (placed.kind === 'computer') {
       const desk = deskRects.get(placed.deskId);
       if (!desk) return null;
-      // Bureau tourné : l'écran suit sa face visible ; de dos ou de profil, un écran gris sans image.
+      // L'écran se tient sur le plateau du bureau tourné ; de dos ou de profil (face cachée), un écran gris sans image.
       const deskItem = room.layout.find((p) => p.id === placed.deskId);
       const deskAngle = deskItem ? angleOf(deskItem) : 0;
-      const face = frontFaceRect(deskAngle, desk, 'desk');
-      if (!face) return { rect: computerRect(desk), art: <ComputerBackArt rect={computerRect(desk)} side={deskAngle === 2 || deskAngle === 6} /> };
-      const rect = computerRect(face);
+      const rect = computerRectOn(desk, deskAngle);
+      if (!frontFaceRect(deskAngle, desk, 'desk')) return { rect, art: <ComputerBackArt rect={rect} side={deskAngle === 2 || deskAngle === 6} /> };
       const screenUrl = placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined;
       return { rect, art: steampunk ? <AnalyticalEngineArt rect={rect} imageUrl={screenUrl} /> : <ComputerArt rect={rect} imageUrl={screenUrl} /> };
     }
@@ -246,7 +246,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       const hostRect = hostRects.get(placed.hostId);
       const host = room.layout.find((p) => p.id === placed.hostId);
       if (!hostRect || (host?.kind !== 'desk' && host?.kind !== 'shelf')) return null;
-      const rect = surfaceSlotRect(hostRect, SURFACE_SLOTS[host.kind], placed.slot);
+      // Posé sur le dessus projeté du porteur tourné.
+      const rect = surfaceSlotRectOn(hostRect, host.kind, angleOf(host), placed.slot);
       return { rect, art: <SmallArt item={placed.item} rect={rect} palette={palette} lit={isLit(placed)} /> };
     }
     if (placed.kind === 'window') {
@@ -261,23 +262,24 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     const cells = rectOf(placed);
     if (!cells || !isStanding(placed)) return null;
     const rect = pxRect(cells);
-    const angle = angleOf(placed);
-    if (angle !== 0) {
-      // Meuble Steampunk dans une autre pièce : pas dessiné (comme de face).
-      if (!steampunk && (placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton')) return null;
-      return { rect, art: <AngledFurnitureArt kind={placed.kind} angle={angle} rect={rect} palette={palette} lit={isLit(placed)} /> };
-    }
-    if (placed.kind === 'globe' || placed.kind === 'telescope' || placed.kind === 'automaton') {
-      // Meubles exclusifs Steampunk : une donnée abîmée dans une autre pièce n'est pas dessinée.
-      if (!steampunk) return null;
-      return { rect, art: <SteampunkArt kind={placed.kind} rect={rect} palette={palette} /> };
-    }
-    if (placed.kind === 'shelf') return { rect, art: <ShelfArt rect={rect} palette={palette} showSlots={editing} occupied={occupiedSlots.get(placed.id)} /> };
-    if (steampunk && (placed.kind === 'desk' || placed.kind === 'armchair' || placed.kind === 'lamp')) {
-      return { rect, art: <SteampunkArt kind={placed.kind} rect={rect} palette={palette} lit={isLit(placed)} /> };
-    }
-    if (placed.kind === 'desk') return { rect, art: <DeskArt rect={rect} palette={palette} /> };
-    return { rect, art: <HomeArt kind={placed.kind} rect={rect} palette={palette} lit={isLit(placed)} /> };
+    // Meubles exclusifs Steampunk : une donnée abîmée dans une autre pièce n'est pas dessinée.
+    if (!steampunk && STEAMPUNK_ONLY.includes(placed.kind)) return null;
+    // Tous les meubles debout, à tous les angles : leur modèle 3D (garnitures laiton et rivets dans une pièce Steampunk).
+    const model = <Model3DArt kind={placed.kind} angle={angleOf(placed)} rect={rect} palette={palette} lit={isLit(placed)} steampunk={steampunk} />;
+    if (placed.kind !== 'shelf' || !editing) return { rect, art: model };
+    // Étagère en Aménager : emplacements vides en pointillés, sur la face projetée (mêmes cases que le toucher et les cartes rangées).
+    const occupied = occupiedSlots.get(placed.id);
+    return {
+      rect,
+      art: (
+        <g>
+          {model}
+          {shelfSlotsOf(placed).map((slot, i) => occupied?.has(i) ? null : (
+            <rect key={i} x={slot.x} y={slot.y} width={slot.w} height={slot.h} rx={2} fill="none" stroke={palette.text} strokeWidth={1} strokeDasharray="3 3" />
+          ))}
+        </g>
+      ),
+    };
   }
 
   function renderPlaced(placed: Placed): ReactElement | null {
@@ -393,9 +395,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       if (!desk) return null;
       // Écran de dos ou de profil : ni dessiné ni touchable.
       const deskItem = room.layout.find((p) => p.id === placed.deskId);
-      const face = frontFaceRect(deskItem ? angleOf(deskItem) : 0, desk, 'desk');
-      if (!face) return null;
-      const full = computerRect(face);
+      const deskAngle = deskItem ? angleOf(deskItem) : 0;
+      if (!frontFaceRect(deskAngle, desk, 'desk')) return null;
+      const full = computerRectOn(desk, deskAngle);
       const rect = { x: full.x + 5, y: full.y + 5, w: full.w - 10, h: full.h - 12 - 10 };
       const missing = !cards[placed.slug];
       return { slug: placed.slug, rect, art: missing ? <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="#1D1D22" /> : <g />, extra: { 'data-screen': placed.id } };

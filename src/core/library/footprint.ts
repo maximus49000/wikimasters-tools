@@ -1,6 +1,6 @@
 import type { Poi } from './furniture-catalog';
 import { FURNITURE_MODELS } from './furniture-models';
-import { CELL_H, CELL_W, frontFaceOf, poisOf3d, renderModel, type Rendered } from './furniture-render3d';
+import { CELL_H, CELL_W, frontFaceOf, poisOf3d, renderModel, topCornersOf, type Rendered } from './furniture-render3d';
 import type { StandingKind } from './library-types';
 import type { Cell, PxRect, Rect } from './room-grid';
 
@@ -78,4 +78,21 @@ export function frontFaceRect(angle: Angle, rect: PxRect, kind?: StandingKind): 
   if (angle !== 1 && angle !== 7) return null;
   const top = rect.h * FACE_MARGIN;
   return { x: angle === 1 ? rect.x : rect.x + rect.w * 0.3, y: rect.y + top, w: rect.w * 0.7, h: rect.h - top };
+}
+
+// Point du dessus du meuble tourné (u le long de la largeur, v de l'avant vers l'arrière, fractions 0 à 1), en px du rectangle
+// mis à l'échelle : là où se posent l'écran d'un bureau et les petits objets. Coins mis en cache par (meuble, angle).
+const topCache = new Map<string, ReturnType<typeof topCornersOf>>();
+export function topPoint(kind: StandingKind, angle: Angle, rect: PxRect, u: number, v: number): [number, number] {
+  const key = `${kind}:${angle}`;
+  let c = topCache.get(key);
+  if (!c) {
+    c = topCornersOf(FURNITURE_MODELS[kind], angle);
+    topCache.set(key, c);
+  }
+  const [fl, fr, bl] = c;
+  const { w, h } = drawSize(kind, angle);
+  const x = fl[0] + u * (fr[0] - fl[0]) + v * (bl[0] - fl[0]);
+  const y = fl[1] + u * (fr[1] - fl[1]) + v * (bl[1] - fl[1]);
+  return [rect.x + (x * rect.w) / (w * CELL_W), rect.y + (y * rect.h) / (h * CELL_H)];
 }
