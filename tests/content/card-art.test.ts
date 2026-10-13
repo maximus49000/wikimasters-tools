@@ -85,6 +85,13 @@ describe('syncCardArt', () => {
     expect(document.querySelectorAll(`[${ART_ATTRIBUTE}]`)).toHaveLength(1);
     expect(document.querySelector(`[${ART_ATTRIBUTE}] img`)?.getAttribute('src')).toBe('https://upload.wikimedia.org/2.jpg');
   });
+  it('reconnaît le logo redimensionné du site (/logo-288.webp?dpl=…)', () => {
+    document.body.innerHTML = CARD('Sud (film, 1999)').replace('/_next/image?url=%2Flogo.png&w=64&q=75', '/logo-288.webp?dpl=dpl_abc');
+    expect(document.querySelector('img')?.getAttribute('src')).toBe('/logo-288.webp?dpl=dpl_abc');
+    const art = source(undefined);
+    syncCardArt(document, art);
+    expect(art.request).toHaveBeenCalledWith('Sud_(film,_1999)', 'Sud (film, 1999)');
+  });
   it('ignore un logo hors d’une carte (en-tête du site)', () => {
     document.body.innerHTML = '<header><h1>WikiMasters</h1><img alt="WikiMasters" src="/logo.png"></header>';
     const art = source(undefined);

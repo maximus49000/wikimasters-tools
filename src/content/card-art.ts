@@ -19,12 +19,14 @@ const HEADING_SELECTOR = 'h1,h2,h3,h4,h5,h6,[role="heading"]';
 // Zone image d'une carte du jeu : les 45 % du haut (même repère que l'aperçu, voir card-preview-dom).
 const ART_ZONE = '[class*="h-[45%]"]';
 
-// Une carte sans image affiche le logo du site (`/logo.png`, directement ou via /_next/image?url=…).
+// Une carte sans image affiche le logo du site : `/logo.png` (directement ou via /_next/image?url=…),
+// ou sa version redimensionnée `/logo-288.webp?dpl=…` (depuis octobre 2026).
+const LOGO_PATH = /^\/logo(-\d+)?\.(png|webp|avif)$/;
 function isPlaceholder(img: HTMLImageElement): boolean {
   if (img.getAttribute('alt') !== 'WikiMasters') return false;
   try {
     const url = new URL(img.src, window.location.href);
-    return (url.searchParams.get('url') ?? url.pathname) === '/logo.png';
+    return LOGO_PATH.test(url.searchParams.get('url') ?? url.pathname);
   } catch {
     return false;
   }
