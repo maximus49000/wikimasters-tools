@@ -69,7 +69,7 @@ import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
-import { commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
+import { canRotate, commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, rotatePlacement, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
 import { PlacementBar, PlacementGrip } from './placement-bar';
 import { pointerToCell } from './furniture-drag';
 import { followPointer } from './pointer-follow';
@@ -446,6 +446,19 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const startPlacementFor = (subject: Subject): void => {
     reset();
     showPlacement(startPlacement(layout, room.cols, subject, centerSpot()));
+  };
+  // ⟲ / ⟳ pendant le placement : tourne le fantôme d'un cran (refusé en rouge s'il ne tient pas).
+  const rotatePlacing = (dir: 1 | -1): void => {
+    if (!placement) return;
+    const next = rotatePlacement(placement, room.cols, dir);
+    if (next) showPlacement(next);
+  };
+  // ⟲ / ⟳ dans la bulle : ouvre le placement du meuble sélectionné, déjà tourné.
+  const rotateSelected = (dir: 1 | -1): void => {
+    if (!selectedId) return;
+    const start = startPlacement(layout, room.cols, { type: 'move', id: selectedId }, centerSpot());
+    reset();
+    showPlacement(rotatePlacement(start, room.cols, dir) ?? start);
   };
   // ✓ : une seule écriture, puis retour au tiroir ; après un déplacement, l'objet reste sélectionné.
   const confirmPlacement = async (): Promise<void> => {
@@ -882,6 +895,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
               <Icon paths={ICONS.trash} />
             </Btn>
+            {selectedItem && isStanding(selectedItem) && (
+              <>
+                <Btn label="Tourner à gauche" data={{ action: 'rotate-left' }} onClick={() => rotateSelected(1)}><Icon paths={ICONS.rotateLeft} /></Btn>
+                <Btn label="Tourner à droite" data={{ action: 'rotate-right' }} onClick={() => rotateSelected(-1)}><Icon paths={ICONS.rotateRight} /></Btn>
+              </>
+            )}
             {selectedStanding && (
               <>
                 <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftRow(l, room.cols, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
@@ -907,6 +926,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         )}
         {editing && !outside && placement && (
           <PlacementBar stage={stage.ref.current} scroll={scrollRef.current} targetId={placingView(placement).id} ok={placement.target.ok} onCancel={reset} onConfirm={() => void confirmPlacement()}>
+            {canRotate(placement) && (
+              <>
+                <Btn label="Tourner à gauche" data={{ action: 'rotate-left' }} onClick={() => rotatePlacing(1)}><Icon paths={ICONS.rotateLeft} /></Btn>
+                <Btn label="Tourner à droite" data={{ action: 'rotate-right' }} onClick={() => rotatePlacing(-1)}><Icon paths={ICONS.rotateRight} /></Btn>
+              </>
+            )}
             {placingStanding && (
               <>
                 <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!nudgePlacement(placement, room.cols, 1)} onClick={() => nudgePlacing(1)}><Icon paths={ICONS.depthFront} /></Btn>

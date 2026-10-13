@@ -131,6 +131,7 @@ describe('mode placement', () => {
   it('la barre propose 💡 pour une lampe, et la bascule est gardée au ✓', async () => {
     await click('[data-action="edit"]');
     await click('[data-category="deco"]');
+    await click('[data-subcategory="walls"]');
     await click('[data-subcategory="lights"]');
     await click('[data-kind="lamp"]');
     await click('[data-placement-bar] [data-action="lamp"]');
@@ -159,5 +160,47 @@ describe('mode placement', () => {
     await settle();
     await click('[data-action="place-confirm"]');
     expect(layoutNow().some((p) => p.id === 'x9')).toBe(true);
+  });
+});
+
+async function seed(items: { id: string; kind: string; col: number; row: number }[]) {
+  const roomId = repo.current()!.rooms[0]!.id;
+  await act(async () => { await repo.update((state) => updateLayout(state, roomId, (l) => [...l, ...(items as never[])])); });
+  await settle();
+}
+
+describe('rotation', () => {
+  it('⟲ dans la barre tourne le meuble neuf, ✓ enregistre l’angle', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-category="seats"]');
+    await click('[data-kind="sofa"]');
+    await click('[data-action="rotate-left"]');
+    await click('[data-action="place-confirm"]');
+    expect(layoutNow().find((p) => p.kind === 'sofa')).toMatchObject({ angle: 1 });
+  });
+  it('⟳ tourne vers la droite (angle 7)', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-category="seats"]');
+    await click('[data-kind="sofa"]');
+    await click('[data-action="rotate-right"]');
+    await click('[data-action="place-confirm"]');
+    expect(layoutNow().find((p) => p.kind === 'sofa')).toMatchObject({ angle: 7 });
+  });
+  it('la bulle d’un meuble posé propose ⟲ ⟳ ; ils ouvrent le placement déjà tourné, rien n’est enregistré avant ✓', async () => {
+    await seed([{ id: 'f1', kind: 'sofa', col: 2, row: 14 }]);
+    await click('[data-action="edit"]');
+    await click('[data-furniture="sofa"]');
+    await click('[data-action="rotate-left"]');
+    expect(layoutNow()[0]).not.toHaveProperty('angle');
+    expect(q('[data-placement-bar]')).not.toBeNull();
+    await click('[data-action="place-confirm"]');
+    expect(layoutNow()[0]).toMatchObject({ angle: 1 });
+  });
+  it('pas de ⟲ ⟳ pour une fenêtre', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-category="deco"]');
+    await click('[data-subcategory="walls"]');
+    await click('[data-kind="window"]');
+    expect(q('[data-action="rotate-left"]')).toBeNull();
   });
 });

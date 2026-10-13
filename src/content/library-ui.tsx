@@ -12,6 +12,9 @@ export function Icon({ paths }: { paths: readonly string[] }): ReactElement {
 }
 
 export const ICONS = {
+  rotateLeft: ['M3 12a9 9 0 1 0 3-6.7', 'M3 3v6h6'],
+  rotateRight: ['M21 12a9 9 0 1 1-3-6.7', 'M21 3v6h-6'],
+  back: ['M19 12H5', 'M12 19l-7-7 7-7'],
   cat: ['M5 9L4 3l5 3', 'M19 9l1-6-5 3', 'M5 9c0 6 2 11 7 11s7-5 7-11c-2-2-5-3-7-3S7 7 5 9z', 'M9 12h.01', 'M15 12h.01', 'M11 15l1 1 1-1'],
   robot: ['M12 3v3', 'M12 3h.01', 'M5 8h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z', 'M9 13h.01', 'M15 13h.01', 'M9.5 16.5h5', 'M2 12v3', 'M22 12v3'],
   dog: ['M4 8l2-4 4 3', 'M20 8l-2-4-4 3', 'M5 8c0 7 2 12 7 12s7-5 7-12c-2-2-4-3-7-3S7 6 5 8z', 'M9 11h.01', 'M15 11h.01', 'M10 15h4l-2 2z'],
