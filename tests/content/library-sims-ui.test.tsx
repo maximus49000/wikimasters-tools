@@ -282,12 +282,14 @@ describe('corrections de la revue', () => {
     expect(q('[data-furniture]')).toBeNull();
   });
 
-  it('le tiroir ne recrée pas son observateur de taille à chaque rendu', async () => {
+  it('ni le tiroir ni la barre de placement ne recréent leur observateur de taille à chaque rendu', async () => {
     let created = 0;
     vi.stubGlobal('ResizeObserver', class { constructor() { created += 1; } observe() {} disconnect() {} });
     await click('[data-action="edit"]');
-    const before = created;
     await click('[data-kind="shelf"]');
+    const before = created;
+    await click('[data-cell="3-14"]');
+    await click('[data-cell="8-14"]');
     await click('[data-kind="desk"]');
     expect(created).toBe(before);
     vi.unstubAllGlobals();
