@@ -60,7 +60,16 @@ function skyField(windows: readonly Glass[], width: number, height: number, w: n
 }
 
 const round = (v: number): string => v.toFixed(1);
-const boxesSig = (boxes: readonly Box[]): string => boxes.map((b) => `${b.owner}:${round(b.x0)},${round(b.x1)},${round(b.d0)},${round(b.d1)},${round(b.z0)},${round(b.z1)}`).join(';');
+// Signature des meubles calculée une fois par tableau de boîtes (le même à chaque repeinture tant que la disposition ne change pas).
+const sigCache = new WeakMap<readonly Box[], string>();
+function boxesSig(boxes: readonly Box[]): string {
+  let sig = sigCache.get(boxes);
+  if (sig === undefined) {
+    sig = boxes.map((b) => `${b.owner}:${round(b.x0)},${round(b.x1)},${round(b.d0)},${round(b.d1)},${round(b.z0)},${round(b.z1)}`).join(';');
+    sigCache.set(boxes, sig);
+  }
+  return sig;
+}
 const lampsSig = (lamps: readonly LampSource[]): string => lamps.map((l) => `${l.id}:${round(l.x)},${round(l.d)},${round(l.z)}:${l.box}`).join(';');
 
 // Carte des surfaces visibles et champ des lampes : ne changent qu'avec les meubles, les lampes ou les dimensions.

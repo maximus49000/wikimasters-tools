@@ -10,8 +10,10 @@ import {
   placeSmall,
   removeFurniture,
   shiftLayout,
-  surfaceSlotRect,
+  pxRect,
+  surfaceSlotRectOn,
 } from '../../../src/core/library/room-grid';
+import { drawSize, frontFaceRect, type Angle } from '../../../src/core/library/footprint';
 
 const base: Layout = [
   { id: 'f1', kind: 'desk', col: 2, row: 14 },
@@ -95,9 +97,21 @@ describe('retrait et décalage', () => {
   });
 });
 
-describe('surfaceSlotRect', () => {
-  it('découpe le dessus du porteur en emplacements de 44 px de haut', () => {
-    expect(surfaceSlotRect({ x: 60, y: 400, w: 150, h: 113 }, 4, 1)).toEqual({ x: 97.5, y: 358, w: 37.5, h: 44 });
+describe('objets posés sur le dessus projeté du porteur', () => {
+  const ANGLES: Angle[] = [0, 1, 2, 3, 4, 5, 6, 7];
+  const rectFor = (kind: 'desk' | 'shelf', angle: Angle) => pxRect({ col: 2, row: 6, ...drawSize(kind, angle) });
+  it('les petits objets d’une étagère se posent sur son dessus, de gauche à droite de face, inversés de dos', () => {
+    const shelf = rectFor('shelf', 0);
+    const face = frontFaceRect(0, shelf, 'shelf')!;
+    const slots = [0, 1, 2].map((i) => surfaceSlotRectOn(shelf, 'shelf', 0, i));
+    for (const s of slots) {
+      expect(s.y + s.h).toBeGreaterThan(shelf.y);
+      expect(s.y + s.h).toBeLessThan(face.y);
+      expect(s.h).toBe(44);
+    }
+    expect(slots[0]!.x).toBeLessThan(slots[2]!.x);
+    const back = rectFor('shelf', 4);
+    expect(surfaceSlotRectOn(back, 'shelf', 4, 0).x).toBeGreaterThan(surfaceSlotRectOn(back, 'shelf', 4, 2).x);
   });
 });
 

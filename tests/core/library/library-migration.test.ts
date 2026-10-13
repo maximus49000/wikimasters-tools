@@ -19,13 +19,13 @@ describe('migration v1 → v2', () => {
         { id: 'f5', kind: 'stored', shape: 'cd', shelfId: 'f1', slot: 0, slug: 'Daft_Punk' },
       ]),
     );
-    expect(state.version).toBe(5);
+    expect(state.version).toBe(7);
     const byId = (id: string) => state.rooms[0]!.layout.find((p) => p.id === id);
-    expect(byId('f1')).toMatchObject({ row: 7, col: 2 });
-    expect(byId('f2')).toMatchObject({ row: 11, col: 10 });
+    expect(byId('f1')).toMatchObject({ row: 5, col: 2 }); // v6 : même dernière rangée, étagère plus haute
+    expect(byId('f2')).toMatchObject({ row: 10, col: 10 });
     expect(byId('f4')).toMatchObject({ row: 4, col: 15 });
     expect(byId('f3')).toEqual({ id: 'f3', kind: 'computer', deskId: 'f2' });
-    expect(byId('f5')).toMatchObject({ shelfId: 'f1', slot: 0 });
+    expect(byId('f5')).toMatchObject({ shelfId: 'f1', level: 0, order: 0 });
   });
 
   it('lit un état v2 tel quel', () => {
@@ -34,7 +34,7 @@ describe('migration v1 → v2', () => {
   });
 
   it('une pièce vide commence en v4', () => {
-    expect(createInitialState().version).toBe(5);
+    expect(createInitialState().version).toBe(7);
   });
 
   it('un état inconnu ou abîmé donne une pièce vide', () => {

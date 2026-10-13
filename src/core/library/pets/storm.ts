@@ -4,7 +4,7 @@ import { layoutSig, type BrainEnv } from './brain';
 import { routeMs } from './motion';
 import { planRoute, scaleRoute, type Standing } from './route';
 import { meetCell } from './scenes';
-import { buildWalkMap, nearestFreeCell, standPoint, type WalkMap } from './walk-map';
+import { buildWalkMap, hideSpot, nearestFreeCell, standPoint, type WalkMap } from './walk-map';
 
 const between = (rng: () => number, lo: number, hi: number): number => Math.round(lo + rng() * (hi - lo));
 // L'orage presse le pas : trajets parcourus plus vite que d'habitude.
@@ -42,7 +42,7 @@ export function stormPlan(env: BrainEnv, species: Species, from: Standing, now: 
   // Seul le chat se glisse dessous (place réservée `:hide`) ; le chien se blottit devant, que le chat y soit ou non.
   const sofa = species === 'cat' ? sofas.find((p) => !env.occupied.has(`${p.id}:hide`)) : sofas[0];
   if (species === 'cat' && sofa) {
-    const at = standPoint(sofa.col + 2, sofa.row + 2);
+    const at = hideSpot(sofa);
     const raw = planRoute(map, from, { pt: at, on: null });
     if (raw) return { action: 'hide', hostId: sofa.id, at, on: null, route: scaleRoute(raw, speed), startedAt: now, lag, actMs: hold, facing: from.facing, sig, key: `${sofa.id}:hide` };
   }

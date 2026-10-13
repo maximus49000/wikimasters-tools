@@ -8,7 +8,6 @@ import {
   WALL_ROWS,
   canPlace,
   canPlaceComputer,
-  computerRect,
   moveComputer,
   moveStanding,
   placeComputer,
@@ -19,7 +18,6 @@ import {
   screenCols,
   fitsWithin,
   sectionIsEmpty,
-  shelfSlots,
   shiftLayout,
 } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
@@ -37,22 +35,23 @@ describe('canPlace', () => {
   });
 
   it('refuse un meuble dont le bas est sur le mur', () => {
-    const res = canPlace([], 24, 'shelf', 0, 3);
+    // Étagère 4 × 10 : sa rangée au sol (la dernière) en ligne 10, sur le mur.
+    const res = canPlace([], 24, 'shelf', 0, 1);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('floor');
   });
 
   it('refuse un meuble qui dépasse de la pièce, selon sa largeur', () => {
-    const res = canPlace([], 24, 'shelf', 20, 7);
+    const res = canPlace([], 24, 'shelf', 21, 7);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('bounds');
-    expect(canPlace([], 36, 'shelf', 20, 7).ok).toBe(true);
+    expect(canPlace([], 36, 'shelf', 21, 7).ok).toBe(true);
   });
 
   it('refuse un chevauchement et donne les cases en conflit', () => {
-    // Les pieds du bureau (lignes 13-14) tomberaient sur ceux de l'étagère.
+    // Les pieds du bureau (ligne 16) tomberaient sur ceux de l'étagère (ligne 16, colonnes 0 à 3).
     const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 7 }];
-    const res = canPlace(layout, 24, 'desk', 3, 11);
+    const res = canPlace(layout, 24, 'desk', 3, 12);
     expect(res.ok).toBe(false);
     if (!res.ok) {
       expect(res.reason).toBe('taken');
@@ -135,28 +134,8 @@ describe('décalage et zones de bord', () => {
 describe('rectangles en pixels', () => {
   it('convertit un meuble en pixels', () => {
     const rect = rectOf({ id: 'f1', kind: 'desk', col: 2, row: 11 })!;
-    expect(rect).toEqual({ col: 2, row: 11, w: 5, h: 4 });
-    expect(pxRect(rect)).toMatchObject({ x: 60, w: 150 });
-  });
-
-  it("pose l'ordinateur sur le dessus du bureau", () => {
-    const desk = pxRect({ col: 0, row: 11, w: 5, h: 4 });
-    const pc = computerRect(desk);
-    expect(pc.y + pc.h).toBeLessThanOrEqual(desk.y + 4);
-    expect(pc.x).toBeGreaterThanOrEqual(desk.x);
-    expect(pc.x + pc.w).toBeLessThanOrEqual(desk.x + desk.w);
-  });
-
-  it("donne 15 emplacements dans l'étagère", () => {
-    const shelf = pxRect({ col: 0, row: 7, w: 6, h: 8 });
-    const slots = shelfSlots(shelf);
-    expect(slots).toHaveLength(15);
-    for (const s of slots) {
-      expect(s.x).toBeGreaterThanOrEqual(shelf.x);
-      expect(s.y).toBeGreaterThanOrEqual(shelf.y);
-      expect(s.x + s.w).toBeLessThanOrEqual(shelf.x + shelf.w);
-      expect(s.y + s.h).toBeLessThanOrEqual(shelf.y + shelf.h);
-    }
+    expect(rect).toEqual({ col: 2, row: 11, w: 6, h: 5 });
+    expect(pxRect(rect)).toMatchObject({ x: 60, w: 180 });
   });
 });
 

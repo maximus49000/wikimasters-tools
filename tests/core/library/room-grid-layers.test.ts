@@ -13,12 +13,12 @@ describe('tapis', () => {
 
   it('accepte un meuble par-dessus', () => {
     const layout = placeStanding([], 24, 'rug', 2, 15, 'f1')!;
-    expect(canPlace(layout, 24, 'sofa', 2, 14).ok).toBe(true);
-    expect(canPlace(layout, 24, 'coffee-table', 3, 16).ok).toBe(true);
+    expect(canPlace(layout, 24, 'sofa', 2, 12).ok).toBe(true);
+    expect(canPlace(layout, 24, 'coffee-table', 3, 13).ok).toBe(true);
   });
 
   it('accepte un tapis sous un meuble déjà posé', () => {
-    const layout = placeStanding([], 24, 'sofa', 2, 14, 'f1')!;
+    const layout = placeStanding([], 24, 'sofa', 2, 12, 'f1')!;
     expect(canPlace(layout, 24, 'rug', 2, 15).ok).toBe(true);
   });
 
@@ -27,29 +27,29 @@ describe('tapis', () => {
     const res = canPlace(layout, 24, 'rug', 5, 15);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('taken');
-    expect(canPlace(layout, 24, 'rug', 8, 15).ok).toBe(true);
+    expect(canPlace(layout, 24, 'rug', 12, 15).ok).toBe(true);
   });
 
   it('un tapis ne gêne pas le déplacement d’un meuble', () => {
     const layout: Layout = [
       { id: 'f1', kind: 'rug', col: 2, row: 15 },
-      { id: 'f2', kind: 'sofa', col: 12, row: 14 },
+      { id: 'f2', kind: 'sofa', col: 12, row: 12 },
     ];
-    expect(moveStanding(layout, 24, 'f2', 3, 14)).not.toBeNull();
+    expect(moveStanding(layout, 24, 'f2', 3, 12)).not.toBeNull();
   });
 });
 
 describe('meubles au sol', () => {
   it('deux meubles au sol ne se chevauchent pas', () => {
-    const layout: Layout = [{ id: 'f1', kind: 'sofa', col: 2, row: 14 }];
-    const res = canPlace(layout, 24, 'armchair', 6, 14);
+    const layout: Layout = [{ id: 'f1', kind: 'sofa', col: 2, row: 12 }];
+    const res = canPlace(layout, 24, 'armchair', 6, 12);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('taken');
   });
 
   it('une table basse se pose devant le canapé', () => {
-    const layout = placeStanding([], 24, 'sofa', 2, 12, 'f1')!;
-    expect(canPlace(layout, 24, 'coffee-table', 3, 15).ok).toBe(true);
+    const layout = placeStanding([], 24, 'sofa', 2, 10, 'f1')!;
+    expect(canPlace(layout, 24, 'coffee-table', 3, 13).ok).toBe(true);
   });
 
   it('refuse un meuble dont le bas est dans le mur', () => {

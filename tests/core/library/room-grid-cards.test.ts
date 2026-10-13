@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { WALL_SHAPES, wallSizeOf } from '../../../src/core/library/furniture-catalog';
-import { WALL_ROWS, canHang, firstFreeSlot, hang, moveComputer, moveHung, moveStored, pxRect, rectOf, shelfSlots, slotAt, placeComputer, placeStanding, placedSlugs, removeFurniture, sectionIsEmpty, setScreenCard, shiftLayout, storeCard, unplaceCard } from '../../../src/core/library/room-grid';
+import type { Layout } from '../../../src/core/library/library-types';
+import { WALL_ROWS, boardAt, canHang, firstFreeBoard, hang, moveComputer, moveHung, moveStored, shelfBoardsOf, placeComputer, placeStanding, placedSlugs, removeFurniture, sectionIsEmpty, setScreenCard, shiftLayout, storeCard, unplaceCard } from '../../../src/core/library/room-grid';
 
 describe('catalogue des formes', () => {
   it('chaque forme murale tient dans la hauteur du mur', () => {
@@ -77,28 +78,29 @@ describe('refus de déplacement et couleur', () => {
 describe('étagère et écran', () => {
   const shelf = placeStanding([], 24, 'shelf', 0, 7, 'f1')!;
 
-  it('range dans le premier emplacement libre', () => {
-    expect(firstFreeSlot(shelf, 'f1')).toBe(0);
-    const a = storeCard(shelf, 'f1', 0, 'cd', 'A', 'f2')!;
-    expect(firstFreeSlot(a, 'f1')).toBe(1);
+  it('range sur la première tablette libre, à la suite', () => {
+    expect(firstFreeBoard(shelf, 'f1', { shape: 'cd' })).toEqual({ level: 0, order: 0 });
+    const a = storeCard(shelf, 'f1', 0, 0, 'cd', 'A', 'f2')!;
+    expect(firstFreeBoard(a, 'f1', { shape: 'cd' })).toEqual({ level: 0, order: 1 });
   });
 
-  it('refuse un emplacement occupé, hors étagère ou une carte déjà posée', () => {
-    const a = storeCard(shelf, 'f1', 0, 'cd', 'A', 'f2')!;
-    expect(storeCard(a, 'f1', 0, 'dvd', 'B', 'f3')).toBeNull();
-    expect(storeCard(a, 'f1', 15, 'dvd', 'B', 'f3')).toBeNull();
-    expect(storeCard(a, 'zz', 1, 'dvd', 'B', 'f3')).toBeNull();
-    expect(storeCard(a, 'f1', 1, 'dvd', 'A', 'f3')).toBeNull();
+  it('refuse une tablette hors bornes, hors étagère ou une carte déjà posée', () => {
+    const a = storeCard(shelf, 'f1', 0, 0, 'cd', 'A', 'f2')!;
+    expect(storeCard(a, 'f1', 3 as 0, 0, 'dvd', 'B', 'f3')).toBeNull();
+    expect(storeCard(a, 'zz', 0, 1, 'dvd', 'B', 'f3')).toBeNull();
+    expect(storeCard(a, 'f1', 0, 1, 'dvd', 'A', 'f3')).toBeNull();
   });
 
   it('renvoie null quand l’étagère est pleine', () => {
     let layout = shelf;
-    for (let i = 0; i < 15; i++) layout = storeCard(layout, 'f1', i, 'book', `C${i}`, `s${i}`)!;
-    expect(firstFreeSlot(layout, 'f1')).toBeNull();
+    // 5 CD de face par tablette : 5 × 14 + 4 écarts = 74 cm, la largeur utile entière.
+    for (let i = 0; i < 15; i++) layout = storeCard(layout, 'f1', Math.floor(i / 5) as 0, i % 5, 'cd', `C${i}`, `s${i}`)!;
+    expect(firstFreeBoard(layout, 'f1', { shape: 'cd' })).toBeNull();
+    expect(firstFreeBoard(layout, 'f1', { shape: 'cd', display: 'spine' })).toBeNull();
   });
 
   it('retirer l’étagère retire ses objets', () => {
-    const a = storeCard(shelf, 'f1', 0, 'cd', 'A', 'f2')!;
+    const a = storeCard(shelf, 'f1', 0, 0, 'cd', 'A', 'f2')!;
     expect(removeFurniture(a, 'f1')).toEqual([]);
   });
 
@@ -112,32 +114,36 @@ describe('étagère et écran', () => {
   });
 });
 
+describe('ranger un objet rangé (unplaceCard)', () => {
+  it('les suivants de la tablette se recompactent (rangs 0..n−1)', () => {
+    const shelf = placeStanding([], 24, 'shelf', 0, 7, 'f1')!;
+    const l: Layout = [...shelf, ...['a', 'b', 'c'].map((id, order) => ({ id, kind: 'stored', shape: 'cd', shelfId: 'f1', level: 1, order, slug: id.toUpperCase() }) as const)];
+    const out = unplaceCard(l, 'a');
+    expect(out.filter((p) => p.kind === 'stored').map((p) => [p.id, (p as { order: number }).order])).toEqual([['b', 0], ['c', 1]]);
+  });
+});
+
 describe('déplacer un objet rangé', () => {
   const shelf = placeStanding([], 24, 'shelf', 0, 7, 'f1')!;
-  const a = storeCard(shelf, 'f1', 0, 'cd', 'A', 'f2')!;
+  const a = storeCard(shelf, 'f1', 0, 0, 'cd', 'A', 'f2')!;
 
-  it('change d’emplacement', () => {
-    expect(moveStored(a, 'f2', 'f1', 7)![1]).toMatchObject({ id: 'f2', slot: 7, shelfId: 'f1' });
+  it('change de tablette', () => {
+    expect(moveStored(a, 'f2', 'f1', 1, 0)![1]).toMatchObject({ id: 'f2', level: 1, order: 0, shelfId: 'f1' });
   });
-  it('refuse un emplacement occupé, accepte le sien', () => {
-    const b = storeCard(a, 'f1', 1, 'dvd', 'B', 'f3')!;
-    expect(moveStored(b, 'f2', 'f1', 1)).toBeNull();
-    expect(moveStored(b, 'f2', 'f1', 0)).not.toBeNull();
-  });
-  it('refuse un objet non rangé, une étagère inconnue et un emplacement hors limites', () => {
-    expect(moveStored(a, 'f1', 'f1', 3)).toBeNull();
-    expect(moveStored(a, 'f2', 'zz', 3)).toBeNull();
-    expect(moveStored(a, 'f2', 'f1', 15)).toBeNull();
-    expect(moveStored(a, 'f2', 'f1', -1)).toBeNull();
+  it('refuse un objet non rangé, une étagère inconnue et une tablette hors bornes', () => {
+    expect(moveStored(a, 'f1', 'f1', 1, 0)).toBeNull();
+    expect(moveStored(a, 'f2', 'zz', 1, 0)).toBeNull();
+    expect(moveStored(a, 'f2', 'f1', 3 as 0, 0)).toBeNull();
+    expect(moveStored(a, 'f2', 'f1', -1 as 0, 0)).toBeNull();
   });
   it('passe d’une étagère à l’autre', () => {
     const two = placeStanding(a, 24, 'shelf', 8, 7, 'f9')!;
-    expect(moveStored(two, 'f2', 'f9', 3)!.find((p) => p.id === 'f2')).toMatchObject({ shelfId: 'f9', slot: 3 });
+    expect(moveStored(two, 'f2', 'f9', 0, 3)!.find((p) => p.id === 'f2')).toMatchObject({ shelfId: 'f9', level: 0, order: 0 });
   });
-  it('retrouve l’emplacement sous un point', () => {
-    const slot = shelfSlots(pxRect(rectOf(shelf[0]!)!))[4]!;
-    expect(slotAt(shelf, slot.x + 2, slot.y + 2)).toEqual({ shelfId: 'f1', slot: 4 });
-    expect(slotAt(shelf, 500, 5)).toBeNull();
+  it('retrouve la tablette sous un point', () => {
+    const board = shelfBoardsOf(shelf[0]!)[2]!;
+    expect(boardAt(shelf, board.x + 2, board.y + 2)).toMatchObject({ shelfId: 'f1', level: 2 });
+    expect(boardAt(shelf, 500, 5)).toBeNull();
   });
 });
 

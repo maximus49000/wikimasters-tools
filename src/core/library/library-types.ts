@@ -19,6 +19,9 @@ export type FurnitureKind = StandingKind | 'computer' | 'window' | SmallKind;
 
 export type WallShape = 'poster' | 'vinyl' | 'sleeve-square' | 'sleeve-round' | 'sleeve-frame';
 export type ShelfShape = 'cd' | 'dvd' | 'game' | 'book';
+// Tablette d'une étagère (0 = haut) et présentation d'un objet rangé (couverture ou tranche vers l'avant).
+export type ShelfLevel = 0 | 1 | 2;
+export type StoredDisplay = 'cover' | 'spine';
 export type VinylColor = 'black' | 'red' | 'blue' | 'green' | 'gold';
 
 // Niveau de profondeur : 0 mur (fenêtres, objets accrochés), 1 fond, 2 milieu, 3 avant.
@@ -30,14 +33,15 @@ export type StandDepth = 1 | 2 | 3;
 // `lit` (lampes seulement) : faux = éteinte ; absent = allumée.
 // `depth` : niveau choisi s'il diffère du niveau par défaut du type.
 // `angle` (meubles debout) : rotation par pas de 45° (footprint.ts) ; absent = de face.
-// `wall` : objet accroché au mur (case en haut à gauche). `stored` : objet rangé dans l'emplacement `slot` (0 à 14) d'une étagère.
+// `wall` : objet accroché au mur (case en haut à gauche). `stored` : objet rangé sur la tablette `level` (0 = haut, 1, 2) d'une étagère, au rang `order`
+// (0 = le plus à gauche ; rangs compactés 0..n−1 par tablette) ; `display` : de face ou sur la tranche, absent = défaut du type (livre sur la tranche, le reste de face).
 export type Placed =
   | { id: string; kind: StandingKind; col: number; row: number; lit?: boolean; depth?: StandDepth; angle?: Angle }
   | { id: string; kind: 'computer'; deskId: string; slug?: string }
   | { id: string; kind: 'small'; item: SmallItem; hostId: string; slot: number; lit?: boolean }
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
   | { id: string; kind: 'window'; col: number; row: number; w: number; h: number }
-  | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; slot: number; slug: string };
+  | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; level: ShelfLevel; order: number; display?: StoredDisplay; slug: string };
 
 export type Layout = Placed[];
 
@@ -102,7 +106,7 @@ export type Room = {
 };
 
 export type LibraryState = {
-  version: 5;
+  version: 7;
   activeRoomId: string;
   homeRoomId: string | null;
   // Heure globale de la Bibliothèque (toutes les pièces).

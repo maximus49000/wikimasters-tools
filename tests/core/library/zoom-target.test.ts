@@ -8,7 +8,7 @@ const desk = { id: 'd', kind: 'desk', col: 8, row: 11 } as const;
 describe('zoomTargetOf', () => {
   it('étagère avec une carte (même inconnue) → zoom ; vide → rien', () => {
     expect(zoomTargetOf([shelf], 's')).toBeNull();
-    const l: Layout = [shelf, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', slot: 0, slug: 'Inconnue' }];
+    const l: Layout = [shelf, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Inconnue' }];
     expect(zoomTargetOf(l, 's')).toEqual({ kind: 'shelf', id: 's' });
     expect(zoomTargetOf(l, 'c')).toEqual({ kind: 'shelf', id: 's' });
   });

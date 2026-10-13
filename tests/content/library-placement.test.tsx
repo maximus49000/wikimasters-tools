@@ -85,7 +85,8 @@ describe('mode placement', () => {
   it('✓ grisé et raison affichée sur un emplacement refusé', async () => {
     await click('[data-action="edit"]');
     await click('[data-kind="shelf"]');
-    await click('[data-cell="3-8"]');
+    // Étagère de 10 rangées : bas en ligne 11, sur le mur.
+    await click('[data-cell="3-11"]');
     expect((q('[data-action="place-confirm"]') as HTMLButtonElement).disabled).toBe(true);
     expect(q('[role="status"]')?.textContent).toContain('sol');
   });
@@ -187,7 +188,7 @@ describe('rotation', () => {
     expect(layoutNow().find((p) => p.kind === 'sofa')).toMatchObject({ angle: 7 });
   });
   it('la bulle d’un meuble posé propose ⟲ ⟳ ; ils ouvrent le placement déjà tourné, rien n’est enregistré avant ✓', async () => {
-    await seed([{ id: 'f1', kind: 'sofa', col: 2, row: 14 }]);
+    await seed([{ id: 'f1', kind: 'sofa', col: 2, row: 9 }]);
     await click('[data-action="edit"]');
     await click('[data-furniture="sofa"]');
     await click('[data-action="rotate-left"]');

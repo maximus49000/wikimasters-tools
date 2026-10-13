@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { dropTargetFor, hostAtCell } from '../../src/content/furniture-drag';
+import { dropTargetFor, hostAtCell, hostAtSurface } from '../../src/content/furniture-drag';
 import type { Layout } from '../../src/core/library/library-types';
-import { pxRect, rectOf, surfaceSlotRect } from '../../src/core/library/room-grid';
+import { angleOf, pxRect, rectOf, surfaceSlotRectOn } from '../../src/core/library/room-grid';
 
 const layout: Layout = [
   { id: 'f1', kind: 'desk', col: 2, row: 14 },
@@ -42,7 +42,8 @@ describe('dropTargetFor : petit objet', () => {
 
 describe('dropTargetFor : meubles et tapis', () => {
   it('un canapé se dépose avec le bas sur la case visée', () => {
-    expect(dropTargetFor(layout, 48, 's', 30, 16)).toMatchObject({ ok: true, col: 30, top: 14 });
+    // Canapé de 6 rangées de haut : bas en ligne 16 → haut en ligne 11.
+    expect(dropTargetFor(layout, 48, 's', 30, 16)).toMatchObject({ ok: true, col: 30, top: 11 });
   });
 
   it('un tapis refuse le mur', () => {
@@ -54,14 +55,14 @@ describe('dropTargetFor : meubles et tapis', () => {
       { id: 'r', kind: 'rug', col: 0, row: 15 },
       { id: 's', kind: 'sofa', col: 20, row: 14 },
     ];
-    expect(dropTargetFor(onRug, 48, 's', 0, 17)).toMatchObject({ ok: true, col: 0, top: 15 });
+    expect(dropTargetFor(onRug, 48, 's', 0, 17)).toMatchObject({ ok: true, col: 0, top: 12 });
   });
 });
 
 describe('dropTargetFor : petit objet lâché sur la bande des objets', () => {
-  const px = (id: string, slot: number, count: number) => {
+  const px = (id: string, slot: number, _count: number) => {
     const host = layout.find((p) => p.id === id)!;
-    const r = surfaceSlotRect(pxRect(rectOf(host)!), count, slot);
+    const r = surfaceSlotRectOn(pxRect(rectOf(host)!), host.kind as 'desk' | 'shelf', angleOf(host), slot);
     return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
   };
 
@@ -75,6 +76,22 @@ describe('dropTargetFor : petit objet lâché sur la bande des objets', () => {
     const { x, y } = px('f3', 0, 3);
     const target = dropTargetFor(layout, 48, 'f2', Math.floor(x / 36), Math.floor(y / 36), x, y);
     expect(target).toMatchObject({ ok: true, hostId: 'f3' });
+  });
+});
+
+describe('hostAtSurface : bande des petits objets sur le dessus projeté', () => {
+  it('à tout angle, le haut d’un emplacement posé sur le dessus vise son porteur', () => {
+    for (const angle of [0, 1, 2, 4, 7] as const) {
+      const turned: Layout = [{ id: 'd', kind: 'desk', col: 4, row: 10, angle }];
+      const r = surfaceSlotRectOn(pxRect(rectOf(turned[0]!)!), 'desk', angle, 0);
+      expect(hostAtSurface(turned, r.x + r.w / 2, r.y + 4), 'angle ' + angle).toBe('d');
+    }
+  });
+  it('au-dessus des objets posés (ancienne bande collée au haut du dessin) : rien', () => {
+    const one: Layout = [{ id: 'd', kind: 'desk', col: 4, row: 10 }];
+    const draw = pxRect(rectOf(one[0]!)!);
+    const top = Math.min(...[0, 1, 2, 3].map((i) => surfaceSlotRectOn(draw, 'desk', 0, i).y));
+    expect(hostAtSurface(one, draw.x + 10, top - 6)).toBeNull();
   });
 });
 

@@ -1,4 +1,6 @@
-import { footOf, layerOf, poisOf, sizeOf, type Poi } from './furniture-catalog';
+import type { Poi, PoiType } from './furniture-catalog';
+import { FURNITURE_MODELS } from './furniture-models';
+import { CELL_H, CELL_W, PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, floorTraceOf, frontFaceOf, levelsOf, localPointOf, occluderBoxesOf, perchOf, poisOf3d, projectOf, renderModel, topCornersOf, type LocalBox, type Rendered } from './furniture-render3d';
 import type { StandingKind } from './library-types';
 import type { Cell, PxRect, Rect } from './room-grid';
 
@@ -8,75 +10,187 @@ export type Angle = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export const isAngle = (v: unknown): v is Angle => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 7;
 export const rotateAngle = (a: Angle, dir: 1 | -1): Angle => (((a + dir) % 8) + 8) % 8 as Angle;
 
-const isSide = (a: Angle): boolean => a === 2 || a === 6;
-const isDiagonal = (a: Angle): boolean => a % 2 === 1;
-// L'escalier d'une diagonale descend vers la droite (1, 3) ou vers la gauche (5, 7).
-const descendsRight = (a: Angle): boolean => a === 1 || a === 3;
-
-// Rangées au sol de face : le pied (au moins une, au plus la hauteur) ; un tapis est entièrement au sol.
-function footRows(kind: StandingKind): number {
-  const { h } = sizeOf(kind);
-  return layerOf(kind) === 'rug' ? h : Math.min(h, Math.max(1, footOf(kind)));
+// Rendu du modèle 3D tourné, mis en cache par (meuble, angle) : il est demandé à chaque rendu de la pièce et coûte jusqu'à ~2 ms.
+const cache = new Map<string, Rendered>();
+export function renderedOf(kind: StandingKind, angle: Angle): Rendered {
+  const key = `${kind}:${angle}`;
+  let r = cache.get(key);
+  if (!r) {
+    r = renderModel(FURNITURE_MODELS[kind], angle);
+    cache.set(key, r);
+  }
+  return r;
 }
 
-// De profil ou en diagonale, la largeur devient de la profondeur, comptée à moitié (perspective du sol).
-const depthRows = (kind: StandingKind): number => Math.max(1, Math.ceil(sizeOf(kind).w / 2));
-
+// Rectangle de dessin (en cases) du meuble tourné : rectangle englobant de ses faces projetées.
 export function drawSize(kind: StandingKind, angle: Angle): { w: number; h: number } {
-  const { w, h } = sizeOf(kind);
-  if (!isSide(angle) && !isDiagonal(angle)) return { w, h };
-  const foot = footRows(kind);
-  const depth = depthRows(kind);
-  const width = isSide(angle) ? foot : Math.ceil((w + foot) * 0.75);
-  return { w: width, h: h - foot + depth };
+  const r = renderedOf(kind, angle);
+  return { w: r.cols, h: r.rows };
 }
 
 export function drawRect(kind: StandingKind, angle: Angle, col: number, row: number): Rect {
   return { col, row, ...drawSize(kind, angle) };
 }
 
-export function floorOffsets(kind: StandingKind, angle: Angle): Cell[] {
-  const { w: W, h: H } = drawSize(kind, angle);
-  const cells: Cell[] = [];
-  if (!isDiagonal(angle)) {
-    const rows = isSide(angle) ? depthRows(kind) : footRows(kind);
-    for (let row = H - rows; row < H; row++) for (let col = 0; col < W; col++) cells.push({ col, row });
-    return cells;
-  }
-  const D = depthRows(kind);
-  const T = Math.max(1, Math.min(W, Math.ceil(W / D) + 1));
-  for (let r = 0; r < D; r++) {
-    const start = D === 1 ? 0 : Math.round((r * (W - T)) / (D - 1));
-    for (let c = start; c < start + T; c++) cells.push({ col: descendsRight(angle) ? c : W - 1 - c, row: H - D + r });
-  }
-  return cells;
-}
+// Cases au sol relatives au coin haut-gauche : trace du pied tournée, cases couvertes à plus de 50 % (copies : le cache reste intact).
+export const floorOffsets = (kind: StandingKind, angle: Angle): Cell[] => renderedOf(kind, angle).floor.map((c) => ({ ...c }));
 
 export function floorCells(kind: StandingKind, angle: Angle, col: number, row: number): Cell[] {
   return floorOffsets(kind, angle).map((c) => ({ col: col + c.col, row: row + c.row }));
 }
 
-// Points d'intérêt (animaux) recalés dans le rectangle de l'angle : même distance au bas du meuble, colonne à la même proportion.
+// Points d'intérêt (animaux) tirés du modèle et tournés avec lui, en cases du rectangle de l'angle.
+const poiCache = new Map<string, Poi[]>();
 export function poisAt(kind: StandingKind, angle: Angle): Poi[] {
-  const pois = poisOf(kind);
-  if (angle === 0) return [...pois];
-  const front = sizeOf(kind);
-  const { w, h } = drawSize(kind, angle);
-  const mirror = angle >= 4;
-  return pois.map((p) => {
-    const fromBottom = front.h - 1 - p.dy;
-    const u = (mirror ? front.w - 1 - p.dx : p.dx) / Math.max(1, front.w);
-    return { ...p, dx: Math.min(w - 1, Math.max(0, Math.floor(u * w))), dy: Math.min(h - 1, Math.max(0, h - 1 - fromBottom)) };
-  });
+  const key = `${kind}:${angle}`;
+  let pois = poiCache.get(key);
+  if (!pois) {
+    pois = poisOf3d(FURNITURE_MODELS[kind], angle).map((p) => ({ type: p.type, dx: p.col, dy: p.row }));
+    poiCache.set(key, pois);
+  }
+  return pois.map((p) => ({ ...p }));
 }
 
-// Marge du haut d'un dessin tourné (le dessus du meuble remonte vers le fond) ; même valeur que le projecteur.
-export const FACE_MARGIN = 0.1;
+// Face avant projetée du modèle (px du rectangle de dessin à l'échelle 1), null si cachée ; mise en cache par (meuble, angle) :
+// elle est demandée à chaque rendu et à chaque mouvement du doigt (emplacements d'étagère).
+const faceCache = new Map<string, PxRect | null>();
+function modelFace(kind: StandingKind, angle: Angle): PxRect | null {
+  const key = `${kind}:${angle}`;
+  if (!faceCache.has(key)) faceCache.set(key, frontFaceOf(FURNITURE_MODELS[kind], angle));
+  return faceCache.get(key)!;
+}
 
-// Face avant visible (où se dessinent les cartes rangées et l'écran) : toute la face à 0, 70 % à gauche à 1, à droite à 7 ; null sinon.
-export function frontFaceRect(angle: Angle, rect: PxRect): PxRect | null {
-  if (angle === 0) return rect;
-  if (angle !== 1 && angle !== 7) return null;
-  const top = rect.h * FACE_MARGIN;
-  return { x: angle === 1 ? rect.x : rect.x + rect.w * 0.3, y: rect.y + top, w: rect.w * 0.7, h: rect.h - top };
+// Face avant visible (où se dessinent les cartes rangées et l'écran), visible de face et de ¾ avant seulement ; null sinon :
+// face projetée du modèle du meuble, mise à l'échelle du rectangle.
+export function frontFaceRect(angle: Angle, rect: PxRect, kind: StandingKind): PxRect | null {
+  const face = modelFace(kind, angle);
+  if (!face) return null;
+  const { w, h } = drawSize(kind, angle);
+  const sx = rect.w / (w * CELL_W);
+  const sy = rect.h / (h * CELL_H);
+  return { x: rect.x + face.x * sx, y: rect.y + face.y * sy, w: face.w * sx, h: face.h * sy };
+}
+
+// Point du dessus du meuble tourné (u le long de la largeur, v de l'avant vers l'arrière, fractions 0 à 1), en px du rectangle
+// mis à l'échelle : là où se posent l'écran d'un bureau et les petits objets. Coins mis en cache par (meuble, angle).
+const topCache = new Map<string, ReturnType<typeof topCornersOf>>();
+export function topPoint(kind: StandingKind, angle: Angle, rect: PxRect, u: number, v: number): [number, number] {
+  const key = `${kind}:${angle}`;
+  let c = topCache.get(key);
+  if (!c) {
+    c = topCornersOf(FURNITURE_MODELS[kind], angle);
+    topCache.set(key, c);
+  }
+  const [fl, fr, bl] = c;
+  const { w, h } = drawSize(kind, angle);
+  const x = fl[0] + u * (fr[0] - fl[0]) + v * (bl[0] - fl[0]);
+  const y = fl[1] + u * (fr[1] - fl[1]) + v * (bl[1] - fl[1]);
+  return [rect.x + (x * rect.w) / (w * CELL_W), rect.y + (y * rect.h) / (h * CELL_H)];
+}
+
+// Trace au sol du meuble tourné (polygone de sa base), en px du rectangle mis à l'échelle ; mise en cache par (meuble, angle).
+const traceCache = new Map<string, [number, number][]>();
+export function groundTrace(kind: StandingKind, angle: Angle, rect: PxRect): [number, number][] {
+  const key = `${kind}:${angle}`;
+  let t = traceCache.get(key);
+  if (!t) {
+    t = floorTraceOf(FURNITURE_MODELS[kind], angle);
+    traceCache.set(key, t);
+  }
+  const { w, h } = drawSize(kind, angle);
+  return t.map(([x, y]) => [rect.x + (x * rect.w) / (w * CELL_W), rect.y + (y * rect.h) / (h * CELL_H)]);
+}
+
+// Repère de la face avant : rectangle local (0, 0, w, h) — la face vue de face, en px — et matrice SVG (a, b, c, d, e, f) qui l'envoie
+// sur la face projetée (parallélogramme en ¾) dans le rectangle `rect` ; null si la face est cachée. Mis en cache par (meuble, angle).
+export type Matrix = [number, number, number, number, number, number];
+export type FaceFrame = { w: number; h: number; m: Matrix };
+const frameCache = new Map<string, ReturnType<typeof faceCornersOf>>();
+export function faceFrame(kind: StandingKind, angle: Angle, rect: PxRect): FaceFrame | null {
+  const key = `${kind}:${angle}`;
+  if (!frameCache.has(key)) frameCache.set(key, faceCornersOf(FURNITURE_MODELS[kind], angle));
+  const c = frameCache.get(key);
+  if (!c) return null;
+  const { w: cols, h: rows } = drawSize(kind, angle);
+  const sx = rect.w / (cols * CELL_W);
+  const sy = rect.h / (rows * CELL_H);
+  const face = FURNITURE_MODELS[kind].face ?? { w: FURNITURE_MODELS[kind].w, h: FURNITURE_MODELS[kind].h };
+  const w = face.w * PX_PER_CM_X * sx;
+  const h = face.h * PX_PER_CM_Y * sy;
+  const at = ([x, y]: [number, number]): [number, number] => [rect.x + x * sx, rect.y + y * sy];
+  const [tl, tr, bl] = [at(c.tl), at(c.tr), at(c.bl)];
+  return { w, h, m: [(tr[0] - tl[0]) / w, (tr[1] - tl[1]) / w, (bl[0] - tl[0]) / h, (bl[1] - tl[1]) / h, tl[0], tl[1]] };
+}
+
+// Niveaux de rangement de la face (entre les tablettes du modèle), fractions de la hauteur depuis le haut.
+const levelCache = new Map<StandingKind, [number, number][]>();
+export function faceLevels(kind: StandingKind): [number, number][] {
+  let l = levelCache.get(kind);
+  if (!l) {
+    l = levelsOf(FURNITURE_MODELS[kind]);
+    levelCache.set(kind, l);
+  }
+  return l;
+}
+
+// Point local (u, v) de la face → écran, et l'inverse.
+export const applyMatrix = (m: Matrix, u: number, v: number): [number, number] => [m[0] * u + m[2] * v + m[4], m[1] * u + m[3] * v + m[5]];
+export function invertMatrix(m: Matrix, x: number, y: number): [number, number] {
+  const det = m[0] * m[3] - m[1] * m[2];
+  const dx = x - m[4];
+  const dy = y - m[5];
+  return [(m[3] * dx - m[2] * dy) / det, (m[0] * dy - m[1] * dx) / det];
+}
+
+// Mise en cache par (meuble, angle) d'une valeur tirée du modèle tourné.
+function cached<T>(store: Map<string, T>, kind: StandingKind, angle: Angle, make: () => T): T {
+  const key = `${kind}:${angle}`;
+  if (!store.has(key)) store.set(key, make());
+  return store.get(key)!;
+}
+// Échelle du rectangle `rect` par rapport au dessin du modèle (1 dans la pièce).
+function scaleOf(kind: StandingKind, angle: Angle, rect: PxRect): { sx: number; sy: number } {
+  const { w, h } = drawSize(kind, angle);
+  return { sx: rect.w / (w * CELL_W), sy: rect.h / (h * CELL_H) };
+}
+
+// Point d'intérêt exact (px) du premier point du type donné, ou null : là où l'animal se tient précisément (cachette sous le canapé).
+const poiPxCache = new Map<string, Map<PoiType, [number, number]>>();
+export function poiPoint(kind: StandingKind, angle: Angle, rect: PxRect, type: PoiType): { x: number; y: number } | null {
+  const pts = cached(poiPxCache, kind, angle, () => {
+    const m = new Map<PoiType, [number, number]>();
+    for (const p of FURNITURE_MODELS[kind].pois ?? []) if (!m.has(p.type)) m.set(p.type, projectOf(FURNITURE_MODELS[kind], angle, [p.x, p.y, p.z]));
+    return m;
+  });
+  const q = pts.get(type);
+  if (!q) return null;
+  const { sx, sy } = scaleOf(kind, angle, rect);
+  return { x: rect.x + q[0] * sx, y: rect.y + q[1] * sy };
+}
+
+// Dessus praticable du meuble tourné (corde horizontale par son centre, px du rectangle mis à l'échelle), sa hauteur (cm)
+// et la profondeur de son centre (cm depuis l'avant) ; null sans dessus.
+export type PerchPx = { x0: number; x1: number; y: number; height: number; depth: number };
+const perchCache = new Map<string, ReturnType<typeof perchOf>>();
+export function perchAt(kind: StandingKind, angle: Angle, rect: PxRect): PerchPx | null {
+  const p = cached(perchCache, kind, angle, () => perchOf(FURNITURE_MODELS[kind], angle));
+  if (!p) return null;
+  const { sx, sy } = scaleOf(kind, angle, rect);
+  return { x0: rect.x + p.x0 * sx, x1: rect.x + p.x1 * sx, y: rect.y + p.y * sy, height: p.height, depth: p.depth };
+}
+
+// Occulteurs du meuble tourné (boîtes en cm du repère « lumière » : x depuis le bord gauche du rectangle, z hauteur, d profondeur depuis l'avant).
+const occCache = new Map<string, LocalBox[]>();
+export const occludersAt = (kind: StandingKind, angle: Angle): readonly LocalBox[] => cached(occCache, kind, angle, () => occluderBoxesOf(FURNITURE_MODELS[kind], angle));
+
+// Point du modèle dans le repère « lumière » (cm) ; mis en cache par (meuble, angle, point).
+const localCache = new Map<string, { x: number; y: number; z: number }>();
+export function localPointAt(kind: StandingKind, angle: Angle, p: [number, number, number]): { x: number; y: number; z: number } {
+  const key = `${kind}:${angle}:${p.join(',')}`;
+  let q = localCache.get(key);
+  if (!q) {
+    q = localPointOf(FURNITURE_MODELS[kind], angle, p);
+    localCache.set(key, q);
+  }
+  return q;
 }

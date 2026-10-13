@@ -1,10 +1,18 @@
 import type { KeyValueStore } from '../cache/store';
 import type { CardTag } from '../collection/collection-book';
-import { createInitialState, parseLibraryState } from './library-book';
+import { createInitialState, parseStoredLibraryState } from './library-book';
 import type { LibraryState } from './library-types';
 
 const KEY = 'library';
 const CARDS_KEY = 'library-cards';
+// Copie du blob brut d'avant la v7 (rangement par largeur réelle), écrite une seule fois avant la première écriture, jamais remplacée.
+const BACKUP_KEY = 'library-backup-pre-v7';
+
+// État brut enregistré par une version d'avant la v7 (à copier avant de le convertir).
+const isPreV7 = (raw: unknown): boolean => {
+  const version = typeof raw === 'object' && raw !== null ? (raw as { version?: unknown }).version : undefined;
+  return typeof version === 'number' && version < 7;
+};
 
 // Copie locale des cartes affichées dans les pièces : la pièce se dessine sans dépendre de la Collection.
 export type RoomCardData = { title: string; imageUrl?: string; rarity?: string; extract?: string; attack?: number; defense?: number; tags?: CardTag[] };
@@ -20,7 +28,31 @@ export function createLibraryRepo(store: KeyValueStore) {
   const notify = (): void => {
     for (const listener of listeners) listener();
   };
-  const read = async (): Promise<LibraryState> => parseLibraryState(await store.get<unknown>(KEY));
+  // Copie de sécurité faite (ou déjà présente) : plus besoin de relire sa clé.
+  let backedUp = false;
+  const backup = async (raw: unknown): Promise<void> => {
+    if (backedUp || !isPreV7(raw)) return;
+    if ((await store.get<unknown>(BACKUP_KEY)) === undefined) await store.set(BACKUP_KEY, raw);
+    backedUp = true;
+  };
+  // Lecture analysée ; `damaged` : un état était enregistré mais il est illisible (pièce vide affichée, à ne jamais écrire par-dessus).
+  const read = async (): Promise<{ raw: unknown; state: LibraryState; damaged: boolean }> => {
+    const raw = await store.get<unknown>(KEY);
+    const parsed = parseStoredLibraryState(raw);
+    return { raw, state: parsed ?? createInitialState(), damaged: parsed === null && raw !== undefined && raw !== null };
+  };
+  // Écriture d'un changement : copie de sécurité d'abord (son échec annule l'écriture) ; sur un état illisible, le changement reste en mémoire.
+  const write = async (change: (state: LibraryState) => LibraryState): Promise<void> => {
+    const { raw, state, damaged } = await read();
+    if (damaged) {
+      latest = change(latest ?? state);
+      return;
+    }
+    await backup(raw);
+    const next = change(state);
+    await store.set(KEY, next);
+    latest = next;
+  };
 
   return {
     current: (): LibraryState | null => latest,
@@ -33,7 +65,10 @@ export function createLibraryRepo(store: KeyValueStore) {
     load(): Promise<LibraryState> {
       const run = writeTail.then(async () => {
         try {
-          latest = await read();
+          const { raw, state } = await read();
+          // Copie faite dès le chargement ; son échec n'empêche pas d'afficher la pièce (aucune écriture de l'état ne se fera sans elle).
+          await backup(raw).catch(() => undefined);
+          latest = state;
         } catch {
           latest ??= createInitialState();
         }
@@ -68,9 +103,7 @@ export function createLibraryRepo(store: KeyValueStore) {
     },
     update(change: (state: LibraryState) => LibraryState): Promise<void> {
       const run = writeTail.then(async () => {
-        const next = change(await read());
-        await store.set(KEY, next);
-        latest = next;
+        await write(change);
         notify();
       });
       writeTail = run.catch(() => undefined);
@@ -79,9 +112,7 @@ export function createLibraryRepo(store: KeyValueStore) {
     // Comme `update`, mais sans prévenir les abonnés : le plan du chat change toutes les quelques secondes sans qu'il y ait rien à redessiner.
     updateQuiet(change: (state: LibraryState) => LibraryState): Promise<void> {
       const run = writeTail.then(async () => {
-        const next = change(await read());
-        await store.set(KEY, next);
-        latest = next;
+        await write(change);
       });
       writeTail = run.catch(() => undefined);
       return run;

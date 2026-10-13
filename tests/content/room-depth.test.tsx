@@ -11,11 +11,11 @@ import type { Layout, Room } from '../../src/core/library/library-types';
 const room: Room = {
   id: 'r1', name: 'Salon', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, pets: [],
   layout: [
-    { id: 'tab', kind: 'coffee-table', col: 0, row: 14 },
-    // Pieds de l'étagère, du fauteuil et de la table basse sur la même ligne (16) : le niveau départage.
-    { id: 'sh', kind: 'shelf', col: 0, row: 8 },
+    { id: 'tab', kind: 'coffee-table', col: 0, row: 13 },
+    // Bas de l'étagère, du fauteuil et de la table basse sur la même ligne (16) : le niveau départage.
+    { id: 'sh', kind: 'shelf', col: 0, row: 7 },
     { id: 'pl', kind: 'small', item: 'plant', hostId: 'sh', slot: 0 },
-    { id: 'arm', kind: 'armchair', col: 1, row: 13 },
+    { id: 'arm', kind: 'armchair', col: 1, row: 11 },
     { id: 'pos', kind: 'wall', shape: 'poster', col: 1, row: 7, slug: 'Paris' },
   ],
 };
@@ -44,8 +44,8 @@ describe('RoomView : niveaux de profondeur', () => {
 
   it('dessine devant le meuble le plus bas à l’écran, même s’il est au fond', () => {
     const layout: Layout = [
-      { id: 'sofa', kind: 'sofa', col: 0, row: 13 },
-      { id: 'sh', kind: 'shelf', col: 2, row: 10 },
+      { id: 'sofa', kind: 'sofa', col: 0, row: 11 },
+      { id: 'sh', kind: 'shelf', col: 2, row: 8 },
     ];
     const svg = mount({ layout });
     const ids = [...svg.querySelectorAll('[data-id]')].map((n) => n.getAttribute('data-id'));
@@ -68,7 +68,7 @@ describe('RoomView : niveaux de profondeur', () => {
   });
 
   it('dessine un objet rangé juste après son étagère, dans son groupe', () => {
-    const svg = mount({ layout: [...room.layout, { id: 'cd', kind: 'stored', shape: 'cd', shelfId: 'sh', slot: 0, slug: 'Paris' }] });
+    const svg = mount({ layout: [...room.layout, { id: 'cd', kind: 'stored', shape: 'cd', shelfId: 'sh', level: 0, order: 0, slug: 'Paris' }] });
     const ids = [...svg.querySelectorAll('[data-id]')].map((n) => n.getAttribute('data-id'));
     expect(ids.indexOf('cd')).toBeGreaterThan(ids.indexOf('sh'));
     expect(ids.indexOf('cd')).toBeLessThan(ids.indexOf('arm'));
@@ -84,12 +84,13 @@ describe('RoomView : niveaux de profondeur', () => {
   });
 
   it('la copie d’une étagère sélectionnée emporte ses objets, dessinés après elle, sans gestes', () => {
-    const svg = mount({ editing: true, selectedId: 'sh', layout: [...room.layout, { id: 'cd', kind: 'stored', shape: 'cd', shelfId: 'sh', slot: 0, slug: 'Paris' }] });
+    const svg = mount({ editing: true, selectedId: 'sh', layout: [...room.layout, { id: 'cd', kind: 'stored', shape: 'cd', shelfId: 'sh', level: 0, order: 0, slug: 'Paris' }] });
     const copy = svg.querySelector('[data-selected-copy]')!;
-    // Enfants directs : le dessin de l'étagère d'abord, puis ses objets (plante posée, carte rangée).
+    // Enfants directs : le dessin de l'étagère d'abord, puis ses objets (plante posée, cartes rangées dans leur groupe découpé).
     const children = [...copy.children];
-    const card = copy.querySelector(':scope > [data-copy-of="cd"]')!;
-    expect(card).not.toBeNull();
+    expect(copy.querySelector('[data-shelf-items] > [data-copy-of="cd"]')).not.toBeNull();
+    const card = children.find((el) => el.querySelector('[data-shelf-items]'))!;
+    expect(card).toBeDefined();
     expect(children[0]!.hasAttribute('data-copy-of')).toBe(false);
     expect(children.indexOf(copy.querySelector(':scope > [data-copy-of="pl"]')!)).toBeGreaterThan(0);
     expect(children.indexOf(card)).toBeGreaterThan(0);
@@ -97,11 +98,17 @@ describe('RoomView : niveaux de profondeur', () => {
   });
 });
 
-describe('RoomView : ombre de contact', () => {
-  it('ombre de contact seulement là où un objet est derrière', () => {
-    const svg = mount();
-    expect(svg.querySelector('[data-contact-shadow="tab"]')).not.toBeNull();
-    const alone = mount({ layout: [{ id: 'x', kind: 'chair', col: 20, row: 15 }] });
-    expect(alone.querySelector('[data-contact-shadow]')).toBeNull();
+describe('RoomView : ombre au sol', () => {
+  it('chaque meuble debout pose une ombre au sol : la trace de sa base, sans pavé derrière un meuble creux', () => {
+    const svg = mount({ layout: [{ id: 'x', kind: 'chair', col: 20, row: 10 }, { id: 'r', kind: 'rug', col: 2, row: 15 }] });
+    const shadow = svg.querySelector('polygon[data-ground-shadow="x"]')!;
+    expect(shadow).not.toBeNull();
+    expect(shadow.getAttribute('stroke')).toBeNull();
+    expect(svg.querySelector('[data-ground-shadow="r"]')).toBeNull(); // le tapis est au sol
+    // Chaise 2 × 6 cases (rangées 10 à 15) : l'ombre reste dans la bande du sol (dernière rangée et un peu au-dessus), pas sur le dossier.
+    const ys = shadow.getAttribute('points')!.split(' ').map((p) => Number(p.split(',')[1]));
+    expect(Math.min(...ys)).toBeGreaterThan(14 * (510 / 18));
+    expect(Math.max(...ys)).toBeLessThanOrEqual(16 * (510 / 18) + 6);
+    expect(svg.querySelector('[data-contact-shadow]')).toBeNull();
   });
 });

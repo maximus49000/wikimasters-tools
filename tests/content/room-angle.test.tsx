@@ -3,7 +3,10 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { RoomView } from '../../src/content/RoomView';
-import type { Layout, Room } from '../../src/core/library/library-types';
+import { STANDING_KINDS, type Layout, type Room } from '../../src/core/library/library-types';
+import { STEAMPUNK_ONLY } from '../../src/core/library/furniture-catalog';
+import { faceFrame } from '../../src/core/library/footprint';
+import { pxRect, rectOf, shelfFreeIn, shelfLayoutOf, surfaceSlotRectOn } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -21,25 +24,69 @@ function mount(layout: Layout, extra: Partial<Parameters<typeof RoomView>[0]> = 
 }
 
 describe('meubles tournés', () => {
-  it('un canapé tourné est dessiné par le projecteur (polygones) avec son angle', () => {
+  it('un canapé tourné est dessiné par son modèle 3D avec son angle', () => {
     const c = mount([{ id: 'a', kind: 'sofa', col: 2, row: 14, angle: 1 }]);
     const g = c.querySelector('[data-furniture="sofa"]')!;
     expect(g.getAttribute('data-angle')).toBe('1');
-    expect(g.querySelectorAll('polygon, path[data-face]').length).toBeGreaterThan(3);
+    expect(g.querySelectorAll('[data-model3d] polygon').length).toBeGreaterThan(3);
   });
-  it('de face : le dessin d’origine, sans data-angle', () => {
+  it('de face aussi : le modèle 3D, sans data-angle', () => {
     const c = mount([{ id: 'a', kind: 'sofa', col: 2, row: 14 }]);
-    expect(c.querySelector('[data-furniture="sofa"]')!.hasAttribute('data-angle')).toBe(false);
+    const g = c.querySelector('[data-furniture="sofa"]')!;
+    expect(g.hasAttribute('data-angle')).toBe(false);
+    expect(g.querySelector('[data-model3d]')).not.toBeNull();
+  });
+  it('chaque meuble debout, à chaque angle, est dessiné par son modèle 3D', () => {
+    for (const kind of STANDING_KINDS.filter((k) => !(STEAMPUNK_ONLY as readonly string[]).includes(k))) {
+      for (const angle of [0, 3, 6] as const) {
+        const c = mount([{ id: 'a', kind, col: 2, row: 14, angle }]);
+        expect(c.querySelector(`[data-furniture="${kind}"] [data-model3d]`), `${kind} ${angle}`).not.toBeNull();
+      }
+    }
+  });
+  it('en Aménager, l’espace libre de chaque tablette en pointillés, à la suite des cartes rangées (face projetée)', () => {
+    const shelf = { id: 's', kind: 'shelf', col: 0, row: 6, angle: 1 } as const;
+    const layout = [shelf, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' }] as const;
+    const c = mount([...layout], { editing: true });
+    const frame = faceFrame('shelf', 1, pxRect(rectOf(shelf)!))!;
+    const free = shelfFreeIn(frame, [...layout], 's');
+    const dashed = [...c.querySelectorAll('[data-furniture="shelf"] rect[stroke-dasharray="3 3"]')];
+    expect(dashed).toHaveLength(3);
+    // Pointillé = espace libre dans le repère de la face, posé par la même matrice que les cartes (face inclinée en ¾), dès la fin du CD.
+    const box = shelfLayoutOf([...layout], 's')[0]!;
+    expect(Number(dashed[0]!.getAttribute('x'))).toBeCloseTo(free[0]!.local.x, 1);
+    expect(Number(dashed[0]!.getAttribute('x'))).toBeCloseTo(box.local.x + box.local.w, 1);
+    expect(Number(dashed[0]!.getAttribute('width'))).toBeCloseTo(free[0]!.local.w, 1);
+    expect(dashed[0]!.parentElement!.getAttribute('transform')).toBe(`matrix(${frame.m.join(' ')})`);
+    const card = c.querySelector('[data-card="Daft_Punk"]')!;
+    expect(card.querySelector('[data-item3d="cd"]')).not.toBeNull();
+  });
+  it('petits objets sur un porteur tourné : dessinés du fond vers l’avant (le plus haut à l’écran d’abord)', () => {
+    const smalls = [0, 1, 2].map((slot) => ({ id: `o${slot}`, kind: 'small', item: 'plant', hostId: 's', slot }) as const);
+    const order = (angle: 0 | 1 | 7) => [...mount([{ id: 's', kind: 'shelf', col: 0, row: 6, angle }, ...smalls]).querySelectorAll('[data-furniture="small"]')].map((e) => e.getAttribute('data-id'));
+    const byDepth = (angle: 1 | 7) => {
+      const host = pxRect(rectOf({ id: 's', kind: 'shelf', col: 0, row: 6, angle })!);
+      return [0, 1, 2].map((i) => ({ id: `o${i}`, y: surfaceSlotRectOn(host, 'shelf', angle, i).y })).sort((a, b) => a.y - b.y).map((o) => o.id);
+    };
+    expect(order(0)).toEqual(['o0', 'o1', 'o2']);
+    expect(order(1)).toEqual(byDepth(1));
+    expect(order(7)).toEqual(byDepth(7));
+    expect(order(1)).toEqual([...order(7)].reverse());
+  });
+  it('étagère de profil en Aménager : pas d’emplacements (face cachée)', () => {
+    const c = mount([{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 2 }], { editing: true });
+    expect(c.querySelectorAll('rect[stroke-dasharray="3 3"]')).toHaveLength(0);
   });
   it('les cartes rangées sont visibles de face et de ¾, cachées de profil', () => {
-    const stored = { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', slot: 0, slug: 'Daft_Punk' } as const;
+    const stored = { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' } as const;
     expect(mount([{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 1 }, stored]).querySelector('[data-card="Daft_Punk"]')).not.toBeNull();
     expect(mount([{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 2 }, stored]).querySelector('[data-card="Daft_Punk"]')).toBeNull();
   });
-  it('l’écran d’un bureau de dos n’est ni dessiné ni touchable', () => {
+  it('l’écran d’un bureau de dos montre son dos (modèle 3D sans image) ; sa carte n’est pas touchable', () => {
     const c = mount([{ id: 'd', kind: 'desk', col: 2, row: 11, angle: 4 }, { id: 'pc', kind: 'computer', deskId: 'd', slug: 'Paris' }]);
     expect(c.querySelector('[data-screen]')).toBeNull();
-    expect(c.querySelector('[data-computer-back]')).not.toBeNull();
+    expect(c.querySelector('[data-furniture="computer"] [data-item3d="monitor"]')).not.toBeNull();
+    expect(c.querySelector('[data-furniture="computer"] image')).toBeNull();
   });
   it('le fantôme montre ses cases au sol', () => {
     const c = mount([{ id: 'a', kind: 'sofa', col: 2, row: 14, angle: 1 }], {

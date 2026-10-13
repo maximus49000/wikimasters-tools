@@ -4,7 +4,8 @@ import { isLamp, isLit, moveStanding, shiftLayout, toggleLamp } from '../../../s
 import type { Layout } from '../../../src/core/library/library-types';
 
 const layout: Layout = [
-  { id: 'f1', kind: 'lamp', col: 2, row: 12 },
+  // Lampe de 9 rangées : lignes 8 à 16.
+  { id: 'f1', kind: 'lamp', col: 2, row: 8 },
   { id: 'f2', kind: 'desk', col: 6, row: 12 },
   { id: 'f3', kind: 'small', item: 'lamp', hostId: 'f2', slot: 0 },
   { id: 'f4', kind: 'small', item: 'plant', hostId: 'f2', slot: 3 },
@@ -39,7 +40,7 @@ describe('lampes', () => {
   });
   it('lit survit au déplacement d’une lampe et au décalage de zone', () => {
     const eteinte = toggleLamp(layout, 'f1');
-    const deplacee = moveStanding(eteinte, 48, 'f1', 20, 12);
+    const deplacee = moveStanding(eteinte, 48, 'f1', 20, 8);
     expect(deplacee).not.toBeNull();
     const lampe = deplacee!.find((p) => p.id === 'f1') as { col: number; lit?: boolean };
     expect(lampe.col).toBe(20);

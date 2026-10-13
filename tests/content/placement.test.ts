@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { nextFurnitureId } from '../../src/core/library/library-book';
 import type { Layout } from '../../src/core/library/library-types';
 import { hang, moveStanding, placeComputer, placeSmall, placeStanding, placeWindow, setAngle, setScreenCard, storeCard } from '../../src/core/library/room-grid';
-import { DRAFT_ID, canRotate, rotatePlacement, commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement } from '../../src/content/placement';
+import { DRAFT_ID, canRotate, rotatePlacement, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement } from '../../src/content/placement';
 
 const COLS = 24;
 const CENTER = spotAt(12, 15);
@@ -45,7 +45,8 @@ describe('startPlacement', () => {
 
 describe('movePlacement', () => {
   it('donne la même raison que dropTargetFor sur le mur', () => {
-    const p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'shelf' }, CENTER), COLS, spotAt(3, 8));
+    // Étagère de 10 rangées : bas en ligne 11 (sur le mur), haut en ligne 2.
+    const p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'shelf' }, CENTER), COLS, spotAt(3, 11));
     expect(p.target).toMatchObject({ ok: false, reason: 'floor' });
     // Le fantôme est dessiné là où on l'a mis, même refusé.
     expect(p.draft.find((x) => x.id === DRAFT_ID)).toMatchObject({ col: 3 });
@@ -99,7 +100,7 @@ describe('commitPlacement : mêmes dispositions que les anciennes fonctions de p
     const choice = { target: 'shelf', shape: 'book', slug: 'Paris' } as const;
     const p = startPlacement(shelf, COLS, { type: 'card', choice }, CENTER);
     expect(p.target.ok).toBe(true);
-    expect(commitPlacement(p)).toEqual(storeCard(shelf, 'f1', p.target.slot!, 'book', 'Paris', nextFurnitureId(shelf)));
+    expect(commitPlacement(p)).toEqual(storeCard(shelf, 'f1', p.target.level!, p.target.order!, 'book', 'Paris', nextFurnitureId(shelf)));
   });
 
   it('carte impossible à ranger sur une étagère de profil (angle 2) : face cachée', () => {
@@ -118,7 +119,8 @@ describe('commitPlacement : mêmes dispositions que les anciennes fonctions de p
   });
 
   it('déplacement', () => {
-    const p = movePlacement(startPlacement(desk, COLS, { type: 'move', id: 'f1' }, CENTER), COLS, spotAt(12, 14));
+    // Bureau de 5 rangées : bas en ligne 15 → haut en ligne 11.
+    const p = movePlacement(startPlacement(desk, COLS, { type: 'move', id: 'f1' }, CENTER), COLS, spotAt(12, 15));
     expect(commitPlacement(p)).toEqual(moveStanding(desk, COLS, 'f1', 12, 11));
   });
 
@@ -149,12 +151,12 @@ describe('retouches pendant le placement', () => {
   it('avancer / reculer déplace le fantôme d’une ligne, et refuse hors du sol', () => {
     let p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'chair' }, CENTER), COLS, spotAt(10, 15));
     p = nudgePlacement(p, COLS, 1)!;
-    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ col: 10, row: 14 });
-    // Chaise de 3 lignes, pieds sur la dernière ligne : plus bas, elle sortirait de la pièce.
+    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ col: 10, row: 11 });
+    // Chaise de 6 lignes, pied sur la dernière ligne : plus bas, elle sortirait de la pièce.
     p = nudgePlacement(p, COLS, 1)!;
     expect(nudgePlacement(p, COLS, 1)).toBeNull();
     p = nudgePlacement(p, COLS, -1)!;
-    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ row: 14 });
+    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ row: 11 });
   });
 
   it('une retouche impossible renvoie null', () => {
@@ -191,7 +193,7 @@ describe('rotation pendant le placement', () => {
     expect(commitPlacement(moved)!.find((x) => x.kind === 'sofa')).toMatchObject({ angle: 1 });
   });
   it('un angle qui ne tient pas : fantôme tourné, rouge, ✓ refusé', () => {
-    // étagère contre le bord droit : de profil elle tient (2 colonnes), en diagonale (6 colonnes) elle déborde
+    // étagère contre le bord droit : de profil elle tient (1 colonne), en diagonale (4 colonnes) elle déborde
     const p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'shelf' }, CENTER), COLS, spotAt(22, 14));
     const side = rotatePlacement(rotatePlacement(p, COLS, 1)!, COLS, 1)!;
     expect(side.angle).toBe(2);
@@ -203,17 +205,84 @@ describe('rotation pendant le placement', () => {
     expect(commitPlacement(diag)).toBeNull();
   });
   it('déplacer un meuble tourné garde son angle', () => {
-    const l = placeStanding([], COLS, 'sofa', 0, 14, 'f1', 2)!;
+    const l = placeStanding([], COLS, 'sofa', 0, 10, 'f1', 2)!;
     const p = startPlacement(l, COLS, { type: 'move', id: 'f1' }, CENTER);
     expect(p.angle).toBe(2);
     expect(commitPlacement(movePlacement(p, COLS, spotAt(10, 16)))![0]).toMatchObject({ angle: 2 });
   });
   it('les cases au sol du fantôme sont exposées (escalier compris)', () => {
     const p = rotatePlacement(startPlacement([], COLS, { type: 'new', kind: 'sofa' }, CENTER), COLS, 1)!;
-    expect(placingView(p).floor).toHaveLength(12);
+    expect(placingView(p).floor).toHaveLength(17);
   });
   it('une fenêtre, une carte ou un ordinateur ne tournent pas', () => {
     expect(canRotate(startPlacement([], COLS, { type: 'new', kind: 'window' }, CENTER))).toBe(false);
     expect(rotatePlacement(startPlacement(desk, COLS, { type: 'new', kind: 'computer' }, CENTER), COLS, 1)).toBeNull();
+  });
+});
+
+describe('présentation d’un objet rangé (de face / sur la tranche)', () => {
+  const shelf: Layout = placeStanding([], COLS, 'shelf', 2, 6, 's')!;
+  // 4 CD de face (4 × 14 + 3 = 59 cm) et un livre sur la tranche (3 + 1 = 63 cm) sur la tablette du haut.
+  const full: Layout = [
+    ...shelf,
+    ...[0, 1, 2, 3].map((order) => ({ id: `c${order}`, kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order, slug: `cd${order}` }) as const),
+    { id: 'b', kind: 'stored', shape: 'book', shelfId: 's', level: 0, order: 4, slug: 'Dune' },
+  ];
+  const displayOfIn = (l: Layout, id: string) => (l.find((x) => x.id === id) as { display?: string }).display;
+
+  it('basculer change la présentation dans le brouillon seulement ; elle n’est enregistrée qu’au ✓', () => {
+    const p = startPlacement(full, COLS, { type: 'move', id: 'c3' }, CENTER);
+    const q = displayPlacement(p, COLS, 'spine');
+    expect(q.target.ok).toBe(true);
+    expect(displayOfIn(q.draft, 'c3')).toBe('spine');
+    expect(displayOfIn(q.base, 'c3')).toBeUndefined();
+    expect(displayOfIn(commitPlacement(q)!, 'c3')).toBe('spine');
+    // Il garde sa tablette et son rang.
+    expect(commitPlacement(q)!.find((x) => x.id === 'c3')).toMatchObject({ level: 0, order: 3 });
+  });
+
+  it('refusé si l’objet ne tient plus sur sa tablette sous sa nouvelle présentation', () => {
+    // Le livre de face prend 15 cm : 59 + 1 + 15 = 75 > 74.
+    const p = displayPlacement(startPlacement(full, COLS, { type: 'move', id: 'b' }, CENTER), COLS, 'cover');
+    expect(p.target.ok).toBe(false);
+    expect(p.target.reason).toBe('shelf-full');
+    expect(commitPlacement(p)).toBeNull();
+    // Revenir sur la tranche le rend valide.
+    expect(displayPlacement(p, COLS, 'spine').target.ok).toBe(true);
+  });
+
+  it('la présentation suit l’objet quand on le déplace ensuite ailleurs', () => {
+    const two: Layout = [...full, ...placeStanding([], COLS, 'shelf', 14, 6, 't')!];
+    const p = displayPlacement(startPlacement(two, COLS, { type: 'move', id: 'c0' }, CENTER), COLS, 'spine');
+    const q = moveToItem(p, COLS, 't');
+    expect(q.target.ok).toBe(true);
+    expect(commitPlacement(q)!.find((x) => x.id === 'c0')).toMatchObject({ shelfId: 't', display: 'spine' });
+  });
+
+  it('toucher une étagère vise la première tablette où l’objet tient sous la présentation choisie', () => {
+    // Étagère t : tablette du haut à 63 cm (11 cm libres) : un CD sur la tranche (1 cm) y tient, pas de face (14 cm).
+    const t: Layout = [
+      ...placeStanding([], COLS, 'shelf', 14, 6, 't')!,
+      ...[0, 1, 2, 3].map((order) => ({ id: `t${order}`, kind: 'stored', shape: 'cd', shelfId: 't', level: 0, order, slug: `t${order}` }) as const),
+      { id: 'tb', kind: 'stored', shape: 'book', shelfId: 't', level: 0, order: 4, slug: 'Tb' },
+    ];
+    const p = displayPlacement(startPlacement([...shelf, { id: 'm', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'M' }, ...t], COLS, { type: 'move', id: 'm' }, CENTER), COLS, 'spine');
+    const q = moveToItem(p, COLS, 't');
+    expect(q.target.ok).toBe(true);
+    expect(commitPlacement(q)!.find((x) => x.id === 'm')).toMatchObject({ shelfId: 't', level: 0, order: 5, display: 'spine' });
+  });
+
+  it('une carte neuve rangée prend la présentation choisie', () => {
+    const p = startPlacement(shelf, COLS, { type: 'card', choice: { target: 'shelf', shape: 'cd', slug: 'Kiki' } }, CENTER);
+    const q = displayPlacement(p, COLS, 'spine');
+    expect(q.target.ok).toBe(true);
+    expect(commitPlacement(q)!.find((x) => x.kind === 'stored')).toMatchObject({ slug: 'Kiki', display: 'spine' });
+  });
+
+  it('displayOfPlacement : la présentation montrée pendant le placement (défaut du type sinon)', () => {
+    const p = startPlacement(full, COLS, { type: 'move', id: 'b' }, CENTER);
+    expect(displayOfPlacement(p)).toBe('spine');
+    expect(displayOfPlacement(displayPlacement(p, COLS, 'cover'))).toBe('cover');
+    expect(displayOfPlacement(startPlacement(desk, COLS, { type: 'move', id: 'f1' }, CENTER))).toBeNull();
   });
 });

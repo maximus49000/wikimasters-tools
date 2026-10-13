@@ -1,5 +1,5 @@
 import type { Pt, Segment } from '../library-types';
-import { MAX_GAP, MAX_RISE, groundLeg, isFree, standPoint, toSegments, type Platform, type WalkMap } from './walk-map';
+import { MAX_GAP, MAX_RISE_CM, groundLeg, isFree, standPoint, toSegments, type Platform, type WalkMap } from './walk-map';
 
 // Où se trouve l'animal : le sol (null) ou le dessus d'un meuble (son id).
 export type Support = string | null;
@@ -13,6 +13,7 @@ const platformOf = (map: WalkMap, id: string): Platform | undefined => map.platf
 
 // Le point du sol d'où sauter sur (ou où retomber depuis) un meuble : la case libre la plus proche de son pied, assez près pour sauter.
 function takeoff(map: WalkMap, plat: Platform, climbing: boolean): Pt | null {
+  if (climbing && plat.top > MAX_RISE_CM) return null;
   let best: Pt | null = null;
   let bestScore = Infinity;
   for (let row = plat.row + plat.h - 1; row <= plat.row + plat.h + 1; row++) {
@@ -20,7 +21,7 @@ function takeoff(map: WalkMap, plat: Platform, climbing: boolean): Pt | null {
       if (!isFree(map, col, row)) continue;
       const p = standPoint(col, row);
       const dx = p.x < plat.x0 ? plat.x0 - p.x : p.x > plat.x1 ? p.x - plat.x1 : 0;
-      if (dx > MAX_GAP || (climbing && p.y - plat.y > MAX_RISE)) continue;
+      if (dx > MAX_GAP) continue;
       const score = dx * 3 + Math.abs(row - (plat.row + plat.h)) * 8;
       if (score < bestScore) {
         best = p;
@@ -46,7 +47,7 @@ function hop(map: WalkMap, a: Support, b: Support): Hop | null {
   if (a === null || b === null) return null;
   const p = platformOf(map, a);
   const q = platformOf(map, b);
-  if (!p || !q || p.y - q.y > MAX_RISE) return null;
+  if (!p || !q || q.top - p.top > MAX_RISE_CM) return null;
   const overlap = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0);
   if (overlap >= 0) {
     const x = (Math.max(p.x0, q.x0) + Math.min(p.x1, q.x1)) / 2;

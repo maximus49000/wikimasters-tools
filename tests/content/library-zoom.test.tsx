@@ -36,7 +36,7 @@ async function click(s: string) {
 async function seed(layout: Layout) { await repo.update((st) => updateLayout(st, 'r1', () => layout)); await settle(); }
 const advance = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); });
 
-const SHELF: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 1 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', slot: 0, slug: 'Daft_Punk' }];
+const SHELF: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 1 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' }];
 
 beforeEach(async () => {
   container = document.createElement('div');

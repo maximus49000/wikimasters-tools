@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
 import {
   activeRoom,
   adoptPet,
@@ -24,7 +24,7 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { STEAMPUNK_ONLY, isSmallKind, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
-import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type LibraryState, type Orientation, type PetPlan, type StyleId } from '../core/library/library-types';
+import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
@@ -53,6 +53,8 @@ import {
   sectionIsEmpty,
   fitsWithin,
   screenCols,
+  SHELF_FULL_MESSAGE,
+  displayOf,
   type Cell,
 } from '../core/library/room-grid';
 import { formatMinutes } from '../core/library/time-setting';
@@ -69,7 +71,7 @@ import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
-import { canRotate, commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, rotatePlacement, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
+import { canRotate, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, rotatePlacement, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
 import { PlacementBar, PlacementGrip } from './placement-bar';
 import { pointerToCell } from './furniture-drag';
 import { followPointer } from './pointer-follow';
@@ -461,7 +463,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   cancelRef.current = reset;
 
-  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'desk-middle': 'Libérez le milieu du bureau pour y poser l’ordinateur.', 'slot-busy': 'Cet emplacement est déjà pris.', 'not-slot': 'Déposez l’objet dans un emplacement de l’étagère.', 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.', 'not-screen': 'Touchez un ordinateur.' } as const;
+  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'desk-middle': 'Libérez le milieu du bureau pour y poser l’ordinateur.', 'not-slot': 'Déposez l’objet sur une tablette de l’étagère.', 'shelf-full': SHELF_FULL_MESSAGE, 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.', 'not-screen': 'Touchez un ordinateur.' } as const;
   // Case au centre de la partie visible de la pièce (au milieu de la pièce si elle n'est pas mesurable, par exemple dans les tests).
   const centerSpot = (): Spot => {
     const sc = scrollRef.current;
@@ -495,6 +497,17 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const start = startPlacement(layout, room.cols, { type: 'move', id: selectedId }, centerSpot());
     reset();
     showPlacement(rotatePlacement(start, room.cols, dir) ?? start);
+  };
+  // Couverture ↔ tranche d'un objet rangé : pendant le placement, le fantôme change ; depuis la bulle, le placement s'ouvre déjà basculé.
+  // Rien n'est enregistré avant ✓ ; refusé en rouge (« Plus de place sur cette tablette. ») si l'objet ne tient plus.
+  const displayPlacing = (display: StoredDisplay): void => {
+    if (placement) showPlacement(displayPlacement(placement, room.cols, display));
+  };
+  const displaySelected = (display: StoredDisplay): void => {
+    if (!selectedId) return;
+    const start = startPlacement(layout, room.cols, { type: 'move', id: selectedId }, centerSpot());
+    reset();
+    showPlacement(displayPlacement(start, room.cols, display));
   };
   // ✓ : une seule écriture, puis retour au tiroir ; après un déplacement, l'objet reste sélectionné.
   const confirmPlacement = async (): Promise<void> => {
@@ -709,6 +722,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const placingLamp = placingItem && isLamp(placingItem) ? { on: isLit(placingItem) } : null;
   const placingWindow = placingItem?.kind === 'window' ? placingItem : undefined;
   const selectedLamp = selectedItem && isLamp(selectedItem) ? { id: selectedItem.id, on: isLit(selectedItem) } : null;
+  const selectedDisplay = selectedItem?.kind === 'stored' ? displayOf(selectedItem) : null;
+  const placingDisplay = placement ? displayOfPlacement(placement) : null;
   const selectedStanding = editing && selectedItem && isStanding(selectedItem) && selectedItem.kind !== 'rug' ? selectedItem : undefined;
   const selectedWindow = editing ? layout.find((p) => p.id === selectedId && p.kind === 'window') : undefined;
   const resizeSelected = (dw: number, dh: number): void => {
@@ -1002,6 +1017,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftRow(l, room.cols, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
               </>
             )}
+            {selectedDisplay && <DisplayButtons current={selectedDisplay} onChoose={displaySelected} />}
             {selectedLamp && (
               <Btn label={selectedLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={selectedLamp.on} data={{ action: 'lamp' }} onClick={() => void editLayout((l) => toggleLamp(l, selectedLamp.id))}>
                 <Icon paths={ICONS.bulb} />
@@ -1033,6 +1049,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!nudgePlacement(placement, room.cols, -1)} onClick={() => nudgePlacing(-1)}><Icon paths={ICONS.depthBack} /></Btn>
               </>
             )}
+            {placingDisplay && <DisplayButtons current={placingDisplay} onChoose={displayPlacing} />}
             {placingLamp && (
               <Btn label={placingLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={placingLamp.on} data={{ action: 'lamp' }} onClick={() => editPlacing({ type: 'lamp' })}>
                 <Icon paths={ICONS.bulb} />
@@ -1109,6 +1126,16 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 const FIT_BUTTON = { position: 'absolute', top: 4, right: 148, height: 32, padding: '0 12px', border: 0, borderRadius: 16, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/20px system-ui,sans-serif' } as const;
 
 type ScreenSize = { width: number; height: number };
+
+// Sélecteur de présentation d'un objet rangé : de face (couverture vers l'avant) ou sur la tranche (titre lisible).
+function DisplayButtons({ current, onChoose }: { current: StoredDisplay; onChoose: (display: StoredDisplay) => void }): ReactElement {
+  return (
+    <>
+      <Btn label="Présenter de face" pressed={current === 'cover'} data={{ action: 'display-cover' }} onClick={() => onChoose('cover')}><Icon paths={ICONS.cover} /></Btn>
+      <Btn label="Présenter sur la tranche" pressed={current === 'spine'} data={{ action: 'display-spine' }} onClick={() => onChoose('spine')}><Icon paths={ICONS.spine} /></Btn>
+    </>
+  );
+}
 
 // Taille de l'écran, suivie seulement pendant le plein écran (rotation du téléphone, fenêtre redimensionnée).
 function useScreenSize(watch: boolean): ScreenSize {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CATEGORIES, catalogTree, FURNITURE_KINDS, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, layerOf, poisOf, sizeOf } from '../../../src/core/library/furniture-catalog';
+import { CATEGORIES, catalogTree, FURNITURE_KINDS, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, layerOf, sizeOf } from '../../../src/core/library/furniture-catalog';
+import { floorOffsets, poisAt } from '../../../src/core/library/footprint';
 import { STANDING_KINDS } from '../../../src/core/library/library-types';
 import { MIN_COLS, ROWS, WALL_ROWS } from '../../../src/core/library/room-grid';
 
@@ -15,7 +16,7 @@ describe('catalogue', () => {
   it('les points d’intérêt sont dans l’emprise du meuble', () => {
     for (const kind of STANDING_KINDS) {
       const { w, h } = sizeOf(kind);
-      for (const poi of poisOf(kind)) {
+      for (const poi of poisAt(kind, 0)) {
         expect(poi.dx, kind).toBeGreaterThanOrEqual(0);
         expect(poi.dx, kind).toBeLessThan(w);
         expect(poi.dy, kind).toBeGreaterThanOrEqual(0);
@@ -25,16 +26,18 @@ describe('catalogue', () => {
   });
 
   it('les meubles pour animaux et les assises déclarent leurs points', () => {
-    expect(poisOf('sofa').filter((p) => p.type === 'seat')).toHaveLength(3);
-    expect(poisOf('basket').map((p) => p.type)).toEqual(['curl']);
-    expect(poisOf('bowl').map((p) => p.type)).toEqual(['eat']);
-    expect(poisOf('kennel').map((p) => p.type).sort()).toEqual(['enter', 'sleep']);
+    expect(poisAt('sofa', 0).filter((p) => p.type === 'seat')).toHaveLength(3);
+    expect(poisAt('basket', 0).map((p) => p.type)).toEqual(['curl']);
+    expect(poisAt('bowl', 0).map((p) => p.type)).toEqual(['eat']);
+    expect(poisAt('kennel', 0).map((p) => p.type).sort()).toEqual(['enter', 'sleep']);
   });
 
   it('la station de recharge : catégorie Animaux, un point charge, 2×1 au sol', () => {
     expect(CATEGORIES.find((c) => c.id === 'pets')!.kinds).toContain('charger');
-    expect(poisOf('charger')).toEqual([{ type: 'charge', dx: 0, dy: 0 }]);
-    expect(sizeOf('charger')).toEqual({ w: 2, h: 1 });
+    // Dalle de 40 × 30 cm : dessin de 2 × 2 cases (le dessus remonte d'une case), 2 cases au sol sur la dernière rangée.
+    expect(poisAt('charger', 0)).toEqual([{ type: 'charge', dx: 1, dy: 1 }]);
+    expect(sizeOf('charger')).toEqual({ w: 2, h: 2 });
+    expect(floorOffsets('charger', 0)).toEqual([{ col: 0, row: 1 }, { col: 1, row: 1 }]);
     expect(layerOf('charger')).toBe('floor');
     expect(labelOf('charger')).toBe('Station de recharge');
   });

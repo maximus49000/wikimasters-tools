@@ -5,9 +5,9 @@ import { CELL_H, CELL_W } from '../../../src/core/library/room-grid';
 import type { PetState } from '../../../src/core/library/pets/motion';
 
 const layout: Layout = [
-  { id: 'tab', kind: 'coffee-table', col: 0, row: 14 }, // niveau 3, bas = 16
-  { id: 'sh', kind: 'shelf', col: 0, row: 10 }, // niveau 1, bas = 18
-  { id: 'arm', kind: 'armchair', col: 1, row: 13 }, // niveau 2, bas = 16
+  { id: 'tab', kind: 'coffee-table', col: 0, row: 12 }, // niveau 3, 5 × 4 cases, bas = 16
+  { id: 'sh', kind: 'shelf', col: 0, row: 8 }, // niveau 1, 4 × 10 cases, bas = 18
+  { id: 'arm', kind: 'armchair', col: 1, row: 10 }, // niveau 2, 4 × 6 cases, bas = 16
   { id: 'win', kind: 'window', col: 0, row: 1, w: 6, h: 5 },
 ];
 const feet = (col: number, row: number): PetState => ({ pos: { x: (col + 0.5) * CELL_W, y: (row + 1) * CELL_H - 3 }, depthHosts: [] } as unknown as PetState);
@@ -51,7 +51,7 @@ describe('place d’un animal', () => {
     expect(petSlot(layout, onArm)).toBe(1);
   });
   it('devant un panier (niveau 3), sur le sol libre : dessiné après lui', () => {
-    const only: Layout = [{ id: 'b', kind: 'basket', col: 2, row: 14 }];
+    const only: Layout = [{ id: 'b', kind: 'basket', col: 2, row: 13 }]; // 3 × 3 cases, bas = 16
     expect(petSlot(only, feet(3, 16))).toBe(1);
   });
   it('derrière une table basse qui ne le chevauche pas : inchangé, avant elle', () => {
@@ -64,8 +64,8 @@ describe('place d’un animal', () => {
   });
   it('devant un panier mais derrière un fauteuil plus bas : entre les deux', () => {
     const two: Layout = [
-      { id: 'b', kind: 'basket', col: 2, row: 12 }, // bas = 14
-      { id: 'arm', kind: 'armchair', col: 2, row: 15 }, // bas = 18
+      { id: 'b', kind: 'basket', col: 2, row: 11 }, // bas = 14
+      { id: 'arm', kind: 'armchair', col: 2, row: 12 }, // bas = 18
     ];
     expect(petSlot(two, feet(3, 14))).toBe(1);
   });

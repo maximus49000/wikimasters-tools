@@ -70,6 +70,9 @@ export const ICONS = {
   lights: ['M9 18h6', 'M10 21h4', 'M12 3a6 6 0 0 0-3.5 10.9c.4.4.5.8.5 1.1V16h6v-1c0-.3.1-.7.5-1.1A6 6 0 0 0 12 3z'],
   floor: ['M3 8h18v8H3z', 'M6 11h12'],
   walls: ['M4 3h16v18H4z', 'M12 3v18', 'M4 12h16'],
+  // Présentation d'un objet rangé : de face (boîtier vu de face, son image) ou sur la tranche (dos alignés, le dernier penché).
+  cover: ['M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', 'M8 16l3-4 2 2.5 1.5-1.5L17 16z', 'M14.5 8h.01'],
+  spine: ['M4 4h3v16H4z', 'M9 4h3v16H9z', 'M14 5.2l2.9-.8 3.6 15.2-2.9.8z'],
 } as const;
 
 export function Btn({ label, pressed, disabled, onClick, data, children, className }: { label: string; pressed?: boolean; disabled?: boolean; onClick: () => void; data?: Record<string, string>; children: ReactNode; className?: string }): ReactElement {

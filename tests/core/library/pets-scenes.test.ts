@@ -219,7 +219,7 @@ describe('correctifs de la passe finale', () => {
   });
 
   it('remise à sa place : le recul de deux cases exige aussi la case intermédiaire libre', () => {
-    const blocked: Layout = [{ id: 'k', kind: 'basket', col: 13, row: 15 }]; // appui du panier = rangée 16
+    const blocked: Layout = [{ id: 'k', kind: 'basket', col: 13, row: 14 }]; // appui du panier (3 rangées) = rangée 16
     const e = (s: number): BrainEnv => ({ ...env(s), layout: blocked });
     const at = standPoint(12, 16);
     const map = buildWalkMap(blocked, 36);

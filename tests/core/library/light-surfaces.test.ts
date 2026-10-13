@@ -30,20 +30,27 @@ describe('buildSurfaceMap', () => {
     expect(ground.d).toBeCloseTo((399 - 340) / 0.25, 3); // centre y = 399
   });
 
-  it('boîte pleine : face avant, bande du dessus, hors rectangle inchangé', () => {
-    // yTop = 340 + 50 − 100 = 290, yBottom = 390, S = min(25, 40) = 25 → bande [290, 315)
+  it('boîte pleine : dessus projeté au-dessus de l’arête avant, face avant dessous, hors boîte inchangé', () => {
+    // Arête arrière du dessus : 340 + 100·0,25 − 100 = 265 ; arête avant : 340 + 200·0,25 − 100 = 290 ; bas : 390.
     const m = buildSurfaceMap([box('a', 100, 200)], W, H, G, S);
     const front = at(m, 150, 375);
     expect(front.kind).toBe(SURF.front);
     expect(front.d).toBeCloseTo(200, 4);
-    expect(front.z).toBeCloseTo(100 - (375 - 315), 4);
-    const top = at(m, 150, 297);
+    expect(front.z).toBeCloseTo(100 - (375 - 290), 4);
+    // Dessus : la profondeur du point vu (y = 279) est celle de la vraie projection, d = (279 + 100 − 340) / 0,25.
+    const top = at(m, 150, 279);
     expect(top.kind).toBe(SURF.top);
     expect(top.z).toBeCloseTo(100, 4);
-    expect(top.d).toBeGreaterThanOrEqual(100);
-    expect(top.d).toBeLessThanOrEqual(200);
+    expect(top.d).toBeCloseTo(156, 4);
+    expect(at(m, 150, 261).kind).toBe(SURF.wall);
     expect(at(m, 50, 375).kind).toBe(SURF.ground);
     expect(at(m, 150, 200).kind).toBe(SURF.wall);
+  });
+  it('une planche mince montre tout son dessus (le dessus d’une étagère reçoit la lumière)', () => {
+    // Planche de 4 px d'épaisseur et 60 de profondeur : dessus de 15 px à l'écran (de 340 + 25 − 104 = 261 à 276).
+    const m = buildSurfaceMap([box('p', 100, 160, 100, 200, 100, 104)], W, H, G, S);
+    expect(at(m, 150, 261).kind).toBe(SURF.top);
+    expect(at(m, 150, 273).kind).toBe(SURF.top);
   });
 
   it('la boîte la plus proche gagne, quel que soit l\'ordre', () => {
@@ -58,6 +65,33 @@ describe('buildSurfaceMap', () => {
     }
   });
 
+  it('un coussin posé sur une base plus profonde garde sa face avant ; le dessus de la base seulement là où rien n’est posé', () => {
+    // Base (d 100 → 200, z 0 → 42) dessinée après le coussin (d 120 → 170, z 42 → 54), car plus avancée.
+    const base = box('base', 100, 200, 100, 200, 0, 42);
+    const cushion = box('coussin', 120, 170, 100, 200, 42, 54);
+    for (const list of [[cushion, base], [base, cushion]]) {
+      const m = buildSurfaceMap(list, W, H, G, S);
+      // Face avant du coussin : y de 340 + 42,5 − 54 = 328,5 à 340,5.
+      const c = at(m, 150, 333);
+      expect(c.kind).toBe(SURF.front);
+      expect(c.d).toBeCloseTo(170, 4);
+      expect(c.z).toBeGreaterThanOrEqual(42);
+      expect(c.z).toBeLessThanOrEqual(54);
+      // Devant le coussin (y 340,5 → 348) : le dessus de la base.
+      const t = at(m, 150, 345);
+      expect(t.kind).toBe(SURF.top);
+      expect(t.z).toBeCloseTo(42, 4);
+    }
+  });
+  it('le plateau d’une table recouvre le haut des pieds arrière', () => {
+    const leg = box('pied', 100, 110, 100, 110, 0, 72);
+    const top = box('plateau', 100, 160, 100, 200, 72, 75);
+    const m = buildSurfaceMap([leg, top], W, H, G, S);
+    // Haut du pied arrière : y = 340 + 110·0,25 − 70 ≈ 297 (sous le dessus, qui va de 340 + 25 − 75 = 290 à 305).
+    const p = at(m, 105, 297);
+    expect(p.kind).toBe(SURF.top);
+    expect(p.z).toBeCloseTo(75, 4);
+  });
   it('boîte plus étroite qu\'un pixel : ne plante pas', () => {
     const m = buildSurfaceMap([box('f', 100, 200, 100.5, 101.5)], W, H, G, S);
     expect(m.kind.length).toBe(m.w * m.h);

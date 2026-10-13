@@ -1,12 +1,12 @@
 import type { CardChoice } from './CardPickerDialog';
-import { deskAtCell, dropTargetFor, type DropTarget } from './furniture-drag';
+import { deskAtCell, dropTargetFor, type DropTarget, type GhostPx } from './furniture-drag';
 import { SMALL_ITEM_OF, WINDOW_DEFAULT, isSmallKind, isStandingKind } from '../core/library/furniture-catalog';
 import { nextFurnitureId } from '../core/library/library-book';
-import { rotateAngle, type Angle } from '../core/library/footprint';
-import type { FurnitureKind, Layout, Placed } from '../core/library/library-types';
+import { applyMatrix, rotateAngle, type Angle } from '../core/library/footprint';
+import type { FurnitureKind, Layout, Placed, ShelfLevel, StoredDisplay } from '../core/library/library-types';
 import {
-  CELL_H, CELL_W, ROWS, angleOf, isStanding, setAngle, shelfSlotsOf, firstFreeSlot, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
-  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect,
+  CELL_H, CELL_W, ROWS, angleOf, isStanding, setAngle, firstFreeBoard, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
+  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, SHELF_GAP_CM, SHELF_INNER_CM, boardItems, boardUsedCm, displayOf, shelfBoardsOf, shelfLayoutOf, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect, type StoredLike,
 } from '../core/library/room-grid';
 
 // Id de l'objet neuf tant qu'il n'est pas enregistré (renommé au ✓).
@@ -32,8 +32,10 @@ export type Placement = {
   draft: Layout;
   // Angle de l'objet (meubles debout) ; 0 pour ce qui ne tourne pas.
   angle: Angle;
+  // Présentation choisie pendant le placement d'un objet rangé (de face / sur la tranche) ; absente : la sienne.
+  display?: StoredDisplay;
 };
-export type PlacingView = { id: string; ok: boolean; ghost: Rect | null; ghostPx?: PxRect; floor?: Cell[] };
+export type PlacingView = { id: string; ok: boolean; ghost: Rect | null; ghostPx?: GhostPx; floor?: Cell[] };
 
 export const spotAt = (col: number, row: number): Spot => ({ col, row, x: col * CELL_W + CELL_W / 2, y: row * CELL_H + CELL_H / 2 });
 const spotOfPx = (x: number, y: number): Spot => ({ col: Math.floor(x / CELL_W), row: Math.floor(y / CELL_H), x, y });
@@ -45,7 +47,7 @@ function probeOf(subject: Subject): Placed | null {
   if (subject.type === 'card') {
     const c = subject.choice;
     if (c.target === 'wall') return { id: DRAFT_ID, kind: 'wall', shape: c.shape, col: 0, row: 0, slug: c.slug, ...(c.color ? { color: c.color } : {}) };
-    if (c.target === 'shelf') return { id: DRAFT_ID, kind: 'stored', shape: c.shape, shelfId: '', slot: 0, slug: c.slug };
+    if (c.target === 'shelf') return { id: DRAFT_ID, kind: 'stored', shape: c.shape, shelfId: '', level: 0, order: 0, slug: c.slug };
     return null;
   }
   const kind = subject.kind;
@@ -57,6 +59,10 @@ function probeOf(subject: Subject): Placed | null {
 }
 
 const withProbe = (layout: Layout, probe: Placed | null): Layout => (!probe || layout.some((x) => x.id === probe.id) ? layout : [...layout, probe]);
+
+// L'objet rangé `id` sous la présentation `display` (sans effet si elle est absente).
+const withDisplay = (layout: Layout, id: string, display: StoredDisplay | undefined): Layout =>
+  display === undefined ? layout : layout.map((x) => (x.id === id && x.kind === 'stored' ? { ...x, display } : x));
 
 // Pose de force (sans vérification) d'un objet à case : meuble debout, fenêtre, objet accroché.
 function withItemAt(layout: Layout, id: string, col: number, top: number): Layout {
@@ -88,14 +94,14 @@ function aim(layout: Layout, cols: number, p: Placement, spot: Spot): DropTarget
 
 // Construit la disposition avec l'objet à la cible valide, par les fonctions de pose existantes ; null si elles refusent.
 function build(p: Placement, cols: number, t: DropTarget): Layout | null {
-  const base = p.base;
+  const base = withDisplay(p.base, p.id, p.display);
   const s = p.subject;
   if (s.type === 'move') {
     const item = base.find((x) => x.id === p.id);
     if (!item) return null;
     if (item.kind === 'computer') return t.deskId ? moveComputer(base, p.id, t.deskId) : null;
     if (item.kind === 'small') return t.hostId ? moveSmall(base, p.id, t.hostId) : null;
-    if (item.kind === 'stored') return t.shelfId !== undefined && t.slot !== undefined ? moveStored(base, p.id, t.shelfId, t.slot) : null;
+    if (item.kind === 'stored') return t.shelfId !== undefined && t.level !== undefined && t.order !== undefined ? moveStored(base, p.id, t.shelfId, t.level, t.order) : null;
     if (t.col === undefined || t.top === undefined) return null;
     // Fenêtre : la cible a été validée à sa taille courante (retouchée) ; elle est posée là, puis sa taille est rejouée.
     if (item.kind === 'window') return withItemAt(base, p.id, t.col, t.top);
@@ -105,7 +111,7 @@ function build(p: Placement, cols: number, t: DropTarget): Layout | null {
   if (s.type === 'card') {
     const c = s.choice;
     if (c.target === 'screen') return t.computerId ? setScreenCard(base, t.computerId, c.slug) : null;
-    if (c.target === 'shelf') return t.shelfId !== undefined && t.slot !== undefined ? storeCard(base, t.shelfId, t.slot, c.shape, c.slug, DRAFT_ID) : null;
+    if (c.target === 'shelf') return t.shelfId !== undefined && t.level !== undefined && t.order !== undefined ? storeCard(base, t.shelfId, t.level, t.order, c.shape, c.slug, DRAFT_ID, p.display) : null;
     return t.col !== undefined && t.top !== undefined ? hang(base, cols, c.shape, t.col, t.top, c.slug, DRAFT_ID, c.color) : null;
   }
   const kind = s.kind;
@@ -122,7 +128,8 @@ function force(p: Placement, t: DropTarget): Layout {
   const fresh = withProbe(p.base, p.probe);
   const item = fresh.find((x) => x.id === p.id);
   if (item && 'col' in item && t.col !== undefined && t.top !== undefined) return setAngle(withItemAt(fresh, p.id, t.col, t.top), p.id, p.angle);
-  return p.base;
+  // Objet rangé : à sa place, sous la présentation choisie (on voit qu'il déborde).
+  return withDisplay(p.base, p.id, p.display);
 }
 
 function applyEdit(layout: Layout, cols: number, id: string, e: Edit): Layout | null {
@@ -139,10 +146,22 @@ function applyEdit(layout: Layout, cols: number, id: string, e: Edit): Layout | 
 const replay = (layout: Layout, cols: number, id: string, edits: Edit[]): Layout =>
   edits.reduce((l, e) => applyEdit(l, cols, id, e) ?? l, layout);
 
+// Une nouvelle présentation qui élargit l'objet sur sa propre tablette (où il change toujours de rang librement) doit encore y tenir.
+function widensTooMuch(p: Placement, built: Layout): boolean {
+  const item = built.find((x) => x.id === p.id);
+  if (p.display === undefined || item?.kind !== 'stored') return false;
+  const used = boardUsedCm(boardItems(built, item.shelfId, item.level));
+  return used > SHELF_INNER_CM + 1e-9 && used > boardUsedCm(boardItems(p.base, item.shelfId, item.level)) + 1e-9;
+}
+
 function settle(p: Placement, cols: number, spot: Spot): Placement {
-  const aimAt = setAngle(withProbe(p.draft, p.probe), p.id, p.angle);
-  const target = aim(aimAt, cols, p, spot);
-  const built = target.ok ? build(p, cols, target) : null;
+  const aimAt = setAngle(withDisplay(withProbe(p.draft, p.probe), p.id, p.display), p.id, p.angle);
+  let target = aim(aimAt, cols, p, spot);
+  let built = target.ok ? build(p, cols, target) : null;
+  if (built && widensTooMuch(p, built)) {
+    built = null;
+    target = { ...target, ok: false, reason: 'shelf-full' };
+  }
   const shown = replay(built ?? force(p, target), cols, p.id, p.edits);
   return { ...p, spot, target: built ? target : { ...target, ok: false }, draft: shown };
 }
@@ -152,25 +171,39 @@ function anchorOf(layout: Layout, id: string): Spot | null {
   const item = layout.find((x) => x.id === id);
   if (!item) return null;
   if (item.kind === 'stored') {
-    const shelf = layout.find((x) => x.id === item.shelfId);
-    const box = shelf ? shelfSlotsOf(shelf)[item.slot] : undefined;
+    const box = shelfLayoutOf(layout, item.shelfId).find((b) => b.id === id);
     return box ? spotOfPx(box.x + box.w / 2, box.y + box.h / 2) : null;
   }
   const r = rectFor(layout, item);
   return r ? spotAt(r.col, r.row + r.h - 1) : null;
 }
 
-// Points à essayer, du plus proche au plus loin du centre ; les emplacements d'étagère en plus pour une carte rangée.
+// Points à essayer, du plus proche au plus loin du centre ; pour une carte rangée, en plus, le bout libre de chaque tablette.
 function candidates(layout: Layout, cols: number, subject: Subject, center: Spot): Spot[] {
   const spots: Spot[] = [];
   for (let col = 0; col < cols; col++) for (let row = 0; row < ROWS; row++) spots.push(spotAt(col, row));
   if (subject.type === 'card' && subject.choice.target === 'shelf') {
     for (const shelf of layout.filter((x) => x.kind === 'shelf')) {
-      for (const b of shelfSlotsOf(shelf)) spots.push(spotOfPx(b.x + b.w / 2, b.y + b.h / 2));
+      for (const b of shelfBoardsOf(shelf)) spots.push(freeEndOf(layout, shelf.id, b.level) ?? spotOfPx(b.x + b.w / 2, b.y + b.h / 2));
     }
   }
   const d = (s: Spot): number => (s.x - center.x) ** 2 + (s.y - center.y) ** 2;
   return spots.sort((a, b) => d(a) - d(b));
+}
+
+// Point juste après le dernier objet d'une tablette (là où un objet de plus irait), au milieu de sa hauteur ; null si la face est cachée.
+function freeEndOf(layout: Layout, shelfId: string, level: ShelfLevel): Spot | null {
+  const shelf = layout.find((x) => x.id === shelfId);
+  const board = shelf ? shelfBoardsOf(shelf).find((b) => b.level === level) : undefined;
+  if (!board) return null;
+  const items = shelfLayoutOf(layout, shelfId).filter((b) => b.level === level);
+  const last = items[items.length - 1];
+  // Repère de la face : un demi-centimètre après l'écart qui suit le dernier objet (ou après le bord gauche), à mi-hauteur de la tablette.
+  const cm = (last ? last.x0Cm + last.wCm + SHELF_GAP_CM : 0) + 0.5;
+  const u = cm * (board.local.w / SHELF_INNER_CM);
+  const v = board.local.y + board.local.h / 2;
+  const [x, y] = applyMatrix(board.m, u, v);
+  return spotOfPx(x, y);
 }
 
 export function startPlacement(layout: Layout, cols: number, subject: Subject, center: Spot): Placement {
@@ -209,9 +242,13 @@ export function moveToItem(p: Placement, cols: number, itemId: string): Placemen
   if (!r) return p;
   const wantsSlot = (p.subject.type === 'card' && p.subject.choice.target === 'shelf') || p.base.find((x) => x.id === p.id)?.kind === 'stored';
   if (wantsSlot && item.kind === 'shelf') {
-    const slot = firstFreeSlot(p.base, item.id);
-    const box = slot === null ? undefined : shelfSlotsOf(item)[slot];
-    if (box) return settle(p, cols, spotOfPx(box.x + box.w / 2, box.y + box.h / 2));
+    // La première tablette où l'objet tient, à la suite de ses objets.
+    const moving = p.base.find((x) => x.id === p.id);
+    const probe: StoredLike | null = p.subject.type === 'card' && p.subject.choice.target === 'shelf' ? { shape: p.subject.choice.shape } : moving?.kind === 'stored' ? moving : null;
+    // Sondée sous la présentation choisie pendant le placement (couverture ou tranche), pas celle d'origine.
+    const free = probe ? firstFreeBoard(p.base, item.id, { ...probe, display: p.display ?? probe.display }) : null;
+    const spot = free ? freeEndOf(p.base, item.id, free.level) : null;
+    if (spot) return settle(p, cols, spot);
   }
   const px = pxRect(r);
   return settle(p, cols, { col: r.col, row: r.row + r.h - 1, x: px.x + px.w / 2, y: px.y + px.h / 2 });
@@ -234,6 +271,22 @@ export function rotatePlacement(p: Placement, cols: number, dir: 1 | -1): Placem
   if (!canRotate(p)) return null;
   const angle = rotateAngle(p.angle, dir);
   return settle({ ...p, angle, draft: setAngle(p.draft, p.id, angle) }, cols, p.spot);
+}
+
+// Couverture ↔ tranche pendant le placement d'un objet rangé (déplacé ou carte neuve) : le fantôme est recalculé à la même visée ;
+// refusé (« Plus de place sur cette tablette. ») s'il ne tient plus. Rien n'est enregistré avant ✓.
+export function displayPlacement(p: Placement, cols: number, display: StoredDisplay): Placement {
+  // Visée : le centre de l'objet à sa place, sous sa nouvelle présentation (il garde sa tablette et son rang).
+  const item = p.draft.find((x) => x.id === p.id);
+  const box = item?.kind === 'stored' ? shelfLayoutOf(withDisplay(p.draft, p.id, display), item.shelfId).find((b) => b.id === p.id) : undefined;
+  return settle({ ...p, display }, cols, box ? spotOfPx(box.x + box.w / 2, box.y + box.h / 2) : p.spot);
+}
+
+// Présentation montrée pendant le placement d'un objet rangé ; null pour un autre objet.
+export function displayOfPlacement(p: Placement): StoredDisplay | null {
+  if (p.subject.type === 'card') return p.subject.choice.target === 'shelf' ? (p.display ?? displayOf({ shape: p.subject.choice.shape })) : null;
+  const item = p.base.find((x) => x.id === p.id);
+  return item?.kind === 'stored' ? (p.display ?? displayOf(item)) : null;
 }
 
 export function editPlacement(p: Placement, cols: number, edit: Edit): Placement | null {

@@ -3,9 +3,22 @@ import { NO_CONTEXT } from '../../../src/core/library/pets/context';
 import { planEndsAt, routeMs } from '../../../src/core/library/pets/motion';
 import { sceneIsValid } from '../../../src/core/library/pets/scenes';
 import { huddlePlans, stormPlan } from '../../../src/core/library/pets/storm';
-import { standPoint } from '../../../src/core/library/pets/walk-map';
+import { hideSpot, standPoint } from '../../../src/core/library/pets/walk-map';
+import { groundTrace } from '../../../src/core/library/footprint';
+import { pxRect, rectOf } from '../../../src/core/library/room-grid';
+import { drawOrder, petSlot } from '../../../src/core/library/depth-order';
 
-const sofa = [{ id: 's', kind: 'sofa', col: 8, row: 12 }] as never;
+// Point dans un polygone convexe (signe constant des produits vectoriels).
+const inPolygon = (poly: [number, number][], p: { x: number; y: number }): boolean => {
+  const s = poly.map((a, i) => {
+    const b = poly[(i + 1) % poly.length]!;
+    return (b[0] - a[0]) * (p.y - a[1]) - (b[1] - a[1]) * (p.x - a[0]);
+  });
+  return s.every((v) => v >= 0) || s.every((v) => v <= 0);
+};
+
+// Canapé de 10 × 6 cases, pied en lignes 14-15 : la ligne 16, devant lui, est libre.
+const sofa = [{ id: 's', kind: 'sofa', col: 8, row: 10 }] as never;
 const envOf = (layout = sofa, still = false) => ({ layout, cols: 24, rng: () => 0.5, still, occupied: new Set<string>(), ctx: { ...NO_CONTEXT, storm: { id: 1, since: 0 }, weather: 'storm' as const } });
 const from = { pt: standPoint(2, 16), on: null, hostId: null, facing: 'r' as const };
 
@@ -18,6 +31,19 @@ describe('stormPlan', () => {
     expect(p.lag).toBeGreaterThanOrEqual(500);
     expect(p.lag).toBeLessThanOrEqual(4000);
     expect(p.route.length).toBeGreaterThan(0);
+  });
+  it('la cachette est sous le canapé, à tout angle : au sol sous l’avant de l’assise, dans sa trace, le canapé dessiné devant le chat', () => {
+    for (const angle of [0, 1, 2, 6] as const) {
+      const placed = { id: 's', kind: 'sofa', col: 8, row: angle === 0 ? 10 : 7, angle } as const;
+      const p = stormPlan(envOf([placed] as never), 'cat', from, 1000);
+      expect(p.action, `angle ${angle}`).toBe('hide');
+      expect(p.at).toEqual(hideSpot(placed));
+      const trace = groundTrace('sofa', angle, pxRect(rectOf(placed)!));
+      expect(inPolygon(trace, p.at), `angle ${angle}`).toBe(true);
+      // Le canapé couvre la cachette : le chat est dessiné juste avant lui (derrière).
+      const order = drawOrder([placed] as never);
+      expect(petSlot([placed] as never, { pos: p.at, depthHosts: [] } as never)).toBe(order.findIndex((q) => q.id === 's'));
+    }
   });
   it('sans canapé le chat se blottit contre un mur', () => {
     const p = stormPlan(envOf([] as never), 'cat', from, 1000);
@@ -35,7 +61,7 @@ describe('stormPlan', () => {
     const p = stormPlan({ ...envOf(), occupied: new Set(['s:hide']) }, 'dog', from, 0);
     expect(p.action).toBe('cower');
     expect(p.hostId).toBe('s');
-    expect(p.at).toEqual(standPoint(8, 15));
+    expect(p.at).toEqual(standPoint(8, 16));
     expect(p.key).toBeUndefined();
   });
   it('mouvement réduit : sur place', () => {

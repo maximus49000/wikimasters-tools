@@ -132,7 +132,7 @@ describe('LibraryPanel : aller dehors', () => {
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 800, bottom: 400, width: 800, height: 400, toJSON: () => ({}) } as DOMRect);
     const play = () => act(async () => { for (const f of frames.splice(0)) f(performance.now() + 1e6); await Promise.resolve(); });
     await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => [
-      { id: 's', kind: 'shelf', col: 0, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', slot: 0, slug: 'Inconnue' },
+      { id: 's', kind: 'shelf', col: 0, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Inconnue' },
     ])); });
     await settle();
     await click('[data-action="outside"]');

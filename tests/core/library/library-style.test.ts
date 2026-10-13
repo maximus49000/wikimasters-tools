@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { categoriesFor, STEAMPUNK_ONLY, sizeOf, poisOf } from '../../../src/core/library/furniture-catalog';
+import { categoriesFor, STEAMPUNK_ONLY, sizeOf } from '../../../src/core/library/furniture-catalog';
+import { poisAt } from '../../../src/core/library/footprint';
 import { MIN_COLS, ROWS } from '../../../src/core/library/room-grid';
 import { activeRoom, countExclusive, createInitialState, parseLibraryState, setRoomStyle, updateLayout } from '../../../src/core/library/library-book';
 
@@ -15,7 +16,7 @@ describe('styles de pièce', () => {
       const { w, h } = sizeOf(kind);
       expect(w).toBeLessThanOrEqual(MIN_COLS);
       expect(h).toBeLessThanOrEqual(ROWS);
-      expect(poisOf(kind)).toEqual([]);
+      expect(poisAt(kind, 0)).toEqual([]);
     }
   });
 

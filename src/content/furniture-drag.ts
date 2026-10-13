@@ -1,7 +1,7 @@
 import { wallSizeOf } from '../core/library/furniture-catalog';
 import { drawSize, floorCells } from '../core/library/footprint';
-import type { Layout } from '../core/library/library-types';
-import { angleOf, shelfSlotsOf, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, firstFreeSurfaceSlot, pxRect, rectOf, slotAt, surfaceSlotRect, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import type { Layout, ShelfLevel } from '../core/library/library-types';
+import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, dropOnShelf, firstFreeSurfaceSlot, moveStored, pxRect, rectOf, shelfLayoutOf, SURFACE_SLOTS, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -35,18 +35,35 @@ export function hostAtCell(layout: Layout, col: number, row: number): string | n
   return null;
 }
 
-// Le bureau ou l'étagère dont la bande des petits objets (44 px au-dessus du dessus, comme `surfaceSlotRect`) contient le point (x, y).
+// Le bureau ou l'étagère dont un emplacement de petit objet (posé sur le dessus projeté, à tout angle, comme `surfaceSlotRectOn`)
+// contient le point (x, y).
 export function hostAtSurface(layout: Layout, x: number, y: number): string | null {
   for (const placed of hostsFrontFirst(layout, true)) {
     const r = rectOf(placed);
-    if (!r) continue;
-    const strip = surfaceSlotRect(pxRect(r), 1, 0);
-    if (x >= strip.x && x < strip.x + strip.w && y >= strip.y && y < strip.y + strip.h) return placed.id;
+    if (!r || (placed.kind !== 'desk' && placed.kind !== 'shelf')) continue;
+    const draw = pxRect(r);
+    for (let i = 0; i < SURFACE_SLOTS[placed.kind]; i++) {
+      const s = surfaceSlotRectOn(draw, placed.kind, angleOf(placed), i);
+      if (x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h) return placed.id;
+    }
   }
   return null;
 }
 
-export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'slot-busy' | 'not-slot' | 'host-busy' | 'not-host' | 'not-screen';
+// Place qu'aurait l'objet rangé `id` à ce rang de la tablette (rectangle englobant à l'écran et parallélogramme de sa face) ; si la place manque,
+// posé de force à ce rang (au bout de la tablette pour un refus), quitte à déborder.
+function ghostOf(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): GhostPx | undefined {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'stored') return undefined;
+  const moved = moveStored(layout, id, shelfId, level, order) ?? [...layout.filter((p) => p.id !== id), { ...item, shelfId, level, order }];
+  const box = shelfLayoutOf(moved, shelfId).find((b) => b.id === id);
+  return box && { x: box.x, y: box.y, w: box.w, h: box.h, quad: box.quad };
+}
+
+// Fantôme d'un objet rangé à l'écran : rectangle englobant, et les 4 coins de sa face (parallélogramme en ¾).
+export type GhostPx = PxRect & { quad?: [number, number][] };
+
+export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'not-slot' | 'shelf-full' | 'host-busy' | 'not-host' | 'not-screen';
 
 export type DropTarget = {
   ok: boolean;
@@ -66,25 +83,29 @@ export type DropTarget = {
   hostId?: string;
   // Carte d'écran : ordinateur visé.
   computerId?: string;
-  // Objet rangé : emplacement visé (le fantôme est alors en pixels).
-  ghostPx?: PxRect;
+  // Objet rangé : tablette et rang visés (le fantôme, en pixels, est sa place une fois rangé à ce rang).
+  ghostPx?: GhostPx;
   shelfId?: string;
-  slot?: number;
+  level?: ShelfLevel;
+  order?: number;
 };
 
 // Où atterrirait le meuble `id` si on le lâchait sur la case (col, row) ?
 // Un meuble debout ou un objet accroché a cette case pour coin bas gauche ; un ordinateur vise le bureau qui la contient ;
-// un objet rangé vise l'emplacement d'étagère sous (x, y) (par défaut le coin de la case).
+// un objet rangé vise la tablette sous (x, y) (par défaut le coin de la case), au rang du point.
 export function dropTargetFor(layout: Layout, cols: number, id: string, col: number, row: number, x: number = col * CELL_W, y: number = row * CELL_H): DropTarget {
   const item = layout.find((p) => p.id === id);
   if (!item) return { ok: false, cells: [], ghost: null };
   if (item.kind === 'stored') {
-    const hit = slotAt(layout, x, y);
+    const hit = boardAt(layout, x, y);
     if (!hit) return { ok: false, reason: 'not-slot', cells: [], ghost: null };
-    const shelf = layout.find((p) => p.id === hit.shelfId);
-    const ghostPx = shelf ? shelfSlotsOf(shelf)[hit.slot] : undefined;
-    const busy = layout.some((p) => p.kind === 'stored' && p.id !== id && p.shelfId === hit.shelfId && p.slot === hit.slot);
-    return { ok: !busy, ...(busy ? { reason: 'slot-busy' as const } : {}), cells: [], ghost: null, ghostPx, shelfId: hit.shelfId, slot: hit.slot };
+    const drop = dropOnShelf(layout, hit.shelfId, hit.level, hit.xCm, item);
+    const where = { shelfId: hit.shelfId, level: hit.level };
+    if (!drop.ok) {
+      // Tablette pleine : l'empreinte rouge est l'objet posé au bout de la tablette (il déborde).
+      return { ok: false, reason: drop.reason === 'shelf-full' ? 'shelf-full' : 'not-slot', cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, boardItems(layout, hit.shelfId, hit.level, id).length), ...where };
+    }
+    return { ok: true, cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, drop.order), ...where, order: drop.order };
   }
   if (item.kind === 'wall') {
     const { w, h } = wallSizeOf(item.shape);
