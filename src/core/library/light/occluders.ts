@@ -1,8 +1,8 @@
 import { drawSize, localPointAt, occludersAt, perchAt, type Angle } from '../footprint';
 import { FURNITURE_MODELS } from '../furniture-models';
 import { CELL_H, CELL_W, DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, occluderBoxesOf, openingOf, pieceBounds, type Piece } from '../furniture-render3d';
-import { angleOf, isLamp, isLit, isStanding, pxRect, rectOf } from '../room-grid';
-import { computerPlacement, placementBounds, smallPlacement, storedPlacementsOf } from '../carried-items';
+import { SHELF_GAP_CM, angleOf, boardItems, isLamp, isLit, isStanding, pxRect, rectOf, storedWidthCm } from '../room-grid';
+import { computerPlacement, placementBounds, smallPlacement, storedPlacement } from '../carried-items';
 import { itemPieces, type ItemPlacement } from '../item-models';
 import type { PxRect } from '../room-grid';
 import type { Layout, Placed, StandingKind } from '../library-types';
@@ -80,15 +80,17 @@ export function boxesOf(layout: Layout, geom: Geom): Box[] {
       // le calque de lumière reste léger avec une étagère pleine. Ouverture cachée (profil, dos) : les montants pleins suffisent.
       if (p.kind === 'shelf' && openingOf(FURNITURE_MODELS.shelf, f.angle)) {
         const host = f as HostFrame;
-        const boards = new Map<number, [number, number, number, number, number, number]>();
-        for (const [id, pl] of storedPlacementsOf(layout, p.id)) {
-          const item = layout.find((x) => x.id === id);
-          if (item?.kind !== 'stored') continue;
-          const b = placementBounds(pl);
-          const u = boards.get(item.level);
-          boards.set(item.level, u ? [Math.min(u[0], b[0]), Math.max(u[1], b[1]), Math.min(u[2], b[2]), Math.max(u[3], b[3]), Math.min(u[4], b[4]), Math.max(u[5], b[5])] : b);
-        }
-        for (const [level, [x0, x1, y0, y1, z0, z1]] of boards) {
+        // Tablette par tablette (même rangement que storedPlacementsOf : largeur réelle + 1 cm d'écart), sans recherche par objet.
+        for (const level of [0, 1, 2] as const) {
+          let u: [number, number, number, number, number, number] | null = null;
+          let at = 0;
+          for (const item of boardItems(layout, p.id, level)) {
+            const b = placementBounds(storedPlacement(item, at));
+            at += storedWidthCm(item) + SHELF_GAP_CM;
+            u = u ? [Math.min(u[0], b[0]), Math.max(u[1], b[1]), Math.min(u[2], b[2]), Math.max(u[3], b[3]), Math.min(u[4], b[4]), Math.max(u[5], b[5])] : b;
+          }
+          if (!u) continue;
+          const [x0, x1, y0, y1, z0, z1] = u;
           carriedBoxes(`${p.id}#${level}`, host, [{ shape: 'box', x: x0, y: y0, z: z0, w: x1 - x0, h: y1 - y0, d: z1 - z0, fill: 'metal' }], out);
         }
       }
