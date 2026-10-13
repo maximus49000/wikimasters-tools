@@ -279,4 +279,15 @@ describe('nouvelles formes (prisme, tige, feuillage, globe)', () => {
     expect(b.every((v) => v * sideA <= 0.01)).toBe(true);
     expect(Math.max(...a.map(Math.abs))).toBeGreaterThan(0.7 * 4 * PX_PER_CM_X); // la feuille vue de face garde sa largeur
   });
+  it('modèle rond : même nombre de colonnes à chaque angle, au moins une case au sol ; un modèle carré reste inchangé', () => {
+    const lamp: Model = { w: 40, d: 40, h: 160, round: true, pieces: [{ shape: 'cyl', cx: 20, cz: 20, y: 0, r: 15, h: 160, fill: 'metal' }] };
+    for (const a of ANGLES) {
+      const r = renderModel(lamp, a);
+      expect(r.cols, 'angle ' + a).toBe(2);
+      expect(r.floor.length).toBeGreaterThanOrEqual(1);
+      inRect(r);
+    }
+    const square: Model = { ...lamp, round: undefined };
+    expect(renderModel(square, 1).cols).toBe(3); // trace carrée tournée : 57 cm
+  });
 });

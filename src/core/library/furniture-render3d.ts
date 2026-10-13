@@ -29,7 +29,8 @@ export type Piece = Common & (
 );
 export type Poi3d = { type: PoiType; x: number; y: number; z: number };
 // `face` : rectangle de la face avant (x, y depuis le sol, en cm) où se rangent les cartes et s'affiche l'écran.
-export type Model = { w: number; d: number; h: number; pieces: Piece[]; pois?: Poi3d[]; face?: { x: number; y: number; w: number; h: number } };
+// `round` : base ronde (lampadaire) : la trace au sol est l'ellipse inscrite dans w × d, la largeur dessinée ne change pas avec l'angle.
+export type Model = { w: number; d: number; h: number; pieces: Piece[]; pois?: Poi3d[]; face?: { x: number; y: number; w: number; h: number }; round?: boolean };
 export type Shape =
   // `ink` : 'none' = aplat sans trait (ombre nette), 'only' = trait seul repassé par-dessus.
   | { kind: 'poly'; points: [number, number][]; fill: Fill; shade: number; ink?: 'none' | 'only' }
@@ -60,8 +61,7 @@ function frameOf(model: Model, angle: Angle): Frame {
   const sin = Math.sin(t);
   const cx = model.w / 2;
   const cz = model.d / 2;
-  const base: [number, number][] = [[0, 0], [model.w, 0], [model.w, model.d], [0, model.d]];
-  const rot = base.map(([x, z]) => turn({ cos, sin, cx, cz }, x, z));
+  const rot = baseOf(model).map(([x, z]) => turn({ cos, sin, cx, cz }, x, z));
   return { cos, sin, cx, cz, minX: Math.min(...rot.map((p) => p[0])), minZ: Math.min(...rot.map((p) => p[1])) };
 }
 // (x, z) du modèle → (x', z') tournés, encore non décalés.
@@ -76,9 +76,18 @@ function local(f: Frame, p: V3): { x: number; y: number; z: number } {
   return { x: x - f.minX, y: p.y, z: z - f.minZ };
 }
 
+// Base du meuble (polygone convexe en cm, repère du modèle) : rectangle w × d, ou ellipse inscrite à 16 côtés (invariante par 45°) pour un modèle rond.
+function baseOf(model: Model): [number, number][] {
+  if (!model.round) return [[0, 0], [model.w, 0], [model.w, model.d], [0, model.d]];
+  return Array.from({ length: 16 }, (_, i): [number, number] => {
+    const a = ((i + 0.5) * Math.PI) / 8;
+    return [model.w / 2 + (model.w / 2) * Math.cos(a) / Math.cos(Math.PI / 16), model.d / 2 + (model.d / 2) * Math.sin(a) / Math.cos(Math.PI / 16)];
+  });
+}
+
 // Trace tournée de la base (polygone convexe en cm, repère local).
 function footprint(model: Model, f: Frame): [number, number][] {
-  return ([[0, 0], [model.w, 0], [model.w, model.d], [0, model.d]] as const).map(([x, z]) => {
+  return baseOf(model).map(([x, z]) => {
     const p = local(f, { x, y: 0, z });
     return [p.x, p.z];
   });

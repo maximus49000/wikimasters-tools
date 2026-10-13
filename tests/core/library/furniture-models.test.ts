@@ -1,7 +1,7 @@
 // tests/core/library/furniture-models.test.ts
 import { describe, expect, it } from 'vitest';
 import { STANDING_KINDS } from '../../../src/core/library/library-types';
-import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
+import { FURNITURE_MODELS, STEAMPUNK_TRIM } from '../../../src/core/library/furniture-models';
 import { pieceBounds, renderModel } from '../../../src/core/library/furniture-render3d';
 
 const DIMS: Record<string, [number, number, number]> = {
@@ -91,5 +91,43 @@ describe('modèles reconnaissables (globe, niche, automate, plante)', () => {
     const fills = new Set(fol?.shape === 'foliage' ? fol.leaves.map((l) => l.fill ?? fol.fill) : []);
     expect(fills.has('leaf') && fills.has('leafDark')).toBe(true);
     expect(p.pieces.filter((x) => x.shape === 'cyl').length).toBeGreaterThanOrEqual(3); // pot, bord, terreau
+  });
+});
+
+describe('télescope, lampadaire, garnitures Steampunk', () => {
+  const ANGLES = [0, 1, 2, 3, 4, 5, 6, 7] as const;
+  it('télescope : trépied de trois pieds inclinés, tube incliné d’environ 30° plus large côté objectif, oculaire', () => {
+    const t = FURNITURE_MODELS.telescope;
+    const legs = t.pieces.filter((p) => p.shape === 'rod' && p.a[1] !== p.b[1] && Math.min(p.a[1], p.b[1]) < 1); // pieds posés au sol
+    expect(legs).toHaveLength(3);
+    for (const l of legs) if (l.shape === 'rod') expect(Math.abs(l.a[0] - l.b[0]) + Math.abs(l.a[2] - l.b[2])).toBeGreaterThan(10); // inclinés
+    const tubes = t.pieces.filter((p) => p.shape === 'rod' && p.fill === 'metal' && p.r >= 4);
+    expect(tubes.length).toBeGreaterThanOrEqual(2);
+    const main = tubes[0]!;
+    if (main.shape !== 'rod') throw new Error('tube');
+    const tilt = (Math.atan2(Math.abs(main.b[1] - main.a[1]), Math.hypot(main.b[0] - main.a[0], main.b[2] - main.a[2])) * 180) / Math.PI;
+    expect(Math.abs(tilt - 30)).toBeLessThan(6);
+    expect(Math.max(...tubes.map((p) => (p.shape === 'rod' ? p.r : 0)))).toBeGreaterThan(main.r);
+  });
+  it('lampadaire : base ronde lestée, abat-jour évasé, largeur dessinée identique à chaque angle', () => {
+    const l = FURNITURE_MODELS.lamp;
+    expect(l.round).toBe(true);
+    expect(l.pieces.some((p) => p.shape === 'cyl' && p.fill === 'shade' && (p.r2 ?? p.r) < p.r)).toBe(true);
+    const cols = new Set(ANGLES.map((a) => renderModel(l, a).cols));
+    expect(cols.size).toBe(1);
+  });
+  it.each(['desk', 'armchair', 'lamp'] as const)('%s Steampunk : garnitures nombreuses et dans la boîte du meuble', (kind) => {
+    const m = FURNITURE_MODELS[kind];
+    const trim = STEAMPUNK_TRIM[kind] ?? [];
+    expect(trim.length).toBeGreaterThanOrEqual(6);
+    for (const p of trim) {
+      const [x0, x1, y0, y1, z0, z1] = pieceBounds(p);
+      expect(x0).toBeGreaterThanOrEqual(-0.01); expect(x1).toBeLessThanOrEqual(m.w + 0.01);
+      expect(y0).toBeGreaterThanOrEqual(-0.01); expect(y1).toBeLessThanOrEqual(m.h + 0.01);
+      expect(z0).toBeGreaterThanOrEqual(-0.01); expect(z1).toBeLessThanOrEqual(m.d + 0.01);
+    }
+    const plain = renderModel(m, 0).shapes.length;
+    const steam = renderModel({ ...m, pieces: [...m.pieces, ...trim] }, 0).shapes.length;
+    expect(steam - plain).toBeGreaterThanOrEqual(10);
   });
 });

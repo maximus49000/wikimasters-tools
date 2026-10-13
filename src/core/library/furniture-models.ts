@@ -9,8 +9,20 @@ type Extra = { tone?: number; layer?: number };
 const box = (x: number, y: number, z: number, w: number, h: number, d: number, fill: Piece['fill']): Piece => ({ shape: 'box', x, y, z, w, h, d, fill });
 const cyl = (cx: number, cz: number, y: number, r: number, h: number, fill: Piece['fill']): Piece => ({ shape: 'cyl', cx, cz, y, r, h, fill });
 const ball = (cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, fill: Piece['fill'], extra: Extra = {}): Piece => ({ shape: 'ball', cx, cy, cz, rx, ry, rz, fill, ...extra });
-const rod = (a: V3t, b: V3t, r: number, fill: Piece['fill']): Piece => ({ shape: 'rod', a, b, r, fill });
+const rod = (a: V3t, b: V3t, r: number, fill: Piece['fill'], extra: Extra = {}): Piece => ({ shape: 'rod', a, b, r, fill, ...extra });
 const prism = (axis: 'x' | 'z', profile: [number, number][], from: number, to: number, fill: Piece['fill'], extra: Extra = {}): Piece => ({ shape: 'prism', axis, profile, from, to, fill, ...extra });
+// Tube de la lunette : axe passant par (30, 98, 30), incliné de 30° vers la droite ; P(t) = point de l'axe à t cm du centre, décalé de n cm au-dessus.
+const tubeAt = (t: number, n = 0): V3t => [30 + t * Math.cos(Math.PI / 6) - n * Math.sin(Math.PI / 6), 98 + t * Math.sin(Math.PI / 6) + n * Math.cos(Math.PI / 6), 30];
+const TUBE: Piece[] = [
+  rod(tubeAt(-25), tubeAt(17), 4.3, 'metal', { layer: 1 }),
+  rod(tubeAt(17), tubeAt(27), 5.6, 'metal', { layer: 1 }),
+  rod(tubeAt(-27), tubeAt(-25), 3.2, 'woodDark', { layer: 1 }),
+  rod(tubeAt(-12), tubeAt(-10), 4.8, 'desk', { layer: 1 }), rod(tubeAt(8), tubeAt(10), 4.8, 'desk', { layer: 1 }),
+  rod(tubeAt(-21, 4), tubeAt(-21, 10), 1.5, 'woodDark', { layer: 1 }),
+  rod(tubeAt(-5, 4), tubeAt(-5, 7), 0.6, 'metal', { layer: 1 }), rod(tubeAt(1, 4), tubeAt(1, 7), 0.6, 'metal', { layer: 1 }),
+  rod(tubeAt(-8, 7.5), tubeAt(4, 7.5), 1.4, 'metal', { layer: 1 }),
+];
+
 // Quatre pieds carrés aux coins d'une base w × d.
 const legs = (w: number, d: number, h: number, size: number, inset: number, fill: Piece['fill']): Piece[] => [
   box(inset, 0, inset, size, h, size, fill), box(w - inset - size, 0, inset, size, h, size, fill),
@@ -96,8 +108,14 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
   },
   'coffee-table': { w: 100, d: 55, h: 45, pieces: [...legs(100, 55, 41, 4, 5, 'leg'), box(0, 41, 0, 100, 4, 55, 'desk')] },
   lamp: {
-    w: 40, d: 40, h: 160,
-    pieces: [cyl(20, 20, 0, 15, 3, 'metal'), cyl(20, 20, 3, 1.5, 125, 'metal'), cyl(20, 20, 125, 17, 35, 'shade')],
+    w: 40, d: 40, h: 160, round: true,
+    // Lampadaire : socle rond lesté (disque + dôme), tige fine, abat-jour en tissu évasé vers le bas, embout.
+    pieces: [
+      cyl(20, 20, 0, 15, 2.5, 'metal'), { shape: 'cyl', cx: 20, cz: 20, y: 2.5, r: 15, r2: 6, h: 4, fill: 'metal' },
+      cyl(20, 20, 6.5, 1.1, 118, 'metal'),
+      { shape: 'cyl', cx: 20, cz: 20, y: 124, r: 17.5, r2: 11, h: 33, fill: 'shade' },
+      cyl(20, 20, 157, 1.4, 3, 'metal'),
+    ],
   },
   plant: {
     w: 45, d: 45, h: 110,
@@ -173,7 +191,23 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
       ball(33.4, 95.8, 25, 1.8, 1.8, 1.8, 'metal', { layer: 1 }),
     ],
   },
-  telescope: { w: 60, d: 60, h: 130, pieces: [cyl(30, 30, 0, 25, 3, 'woodDark'), cyl(30, 30, 3, 3, 87, 'wood'), box(5, 90, 23, 50, 14, 14, 'metal'), cyl(52, 30, 104, 3, 8, 'metal')] },
+  telescope: {
+    w: 60, d: 60, h: 130,
+    // Lunette sur trépied : trois pieds de bois inclinés depuis une tête ronde, entretoises, berceau, tube incliné de 30° (bagues, pare-buée plus large
+    // côté objectif, bouchon arrière, porte-oculaire coudé), petit chercheur fixé au-dessus. Le tube passe après le trépied (couche 1).
+    pieces: [
+      ...[90, 210, 330].map((deg) => {
+        const [c, s] = [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
+        return rod([30 + 2 * c, 80, 30 + 2 * s], [30 + 26 * c, 0.6, 30 + 26 * s], 1.8, 'wood'); // bout du pied relevé de 0,6 cm : la coupe inclinée reste au-dessus du sol
+      }),
+      ...[[90, 210], [210, 330], [330, 90]].map(([d1, d2]) => {
+        const at = (deg: number): V3t => [30 + 17 * Math.cos((deg * Math.PI) / 180), 30, 30 + 17 * Math.sin((deg * Math.PI) / 180)];
+        return rod(at(d1!), at(d2!), 0.7, 'metal');
+      }),
+      cyl(30, 30, 80, 4.5, 5, 'woodDark'), box(27, 85, 27, 6, 8, 6, 'metal'),
+      ...TUBE,
+    ],
+  },
   automaton: {
     w: 45, d: 40, h: 110,
     // Automate Steampunk : pieds, jambes articulées, bassin, chaudière cerclée (cadran en façade, engrenages sur les flancs, clé de remontage au dos),
@@ -201,9 +235,34 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
   },
 };
 
-// Garnitures en laiton ajoutées dans une pièce Steampunk.
+// Rivet ou clou de tapissier : petit disque posé sur une face avant (z = 0 côté spectateur), saillie de 0,4 cm vers l'arrière de z.
+const stud = (x: number, y: number, z: number, r = 1.3, fill: Piece['fill'] = 'shade'): Piece => rod([x, y, z + 0.4], [x, y, z], r, fill);
+
+// Garnitures ajoutées dans une pièce Steampunk : laiton (`metal`, `text` = laiton poli), rivets et clous clairs (`shade`), bois sombre.
 export const STEAMPUNK_TRIM: Partial<Record<StandingKind, Piece[]>> = {
-  desk: [box(0, 70, 0, 120, 2, 1, 'metal')],
-  armchair: [box(0, 66, 0, 14, 1, 60, 'metal'), box(66, 66, 0, 14, 1, 60, 'metal')],
-  lamp: [cyl(20, 20, 2, 16, 1, 'metal')],
+  // Bureau : sous-main en cuir encadré par le plateau, ceinture en bois sombre rivetée, entretoises et pieds boule en laiton.
+  desk: [
+    box(6, 74.6, 6, 108, 0.4, 48, 'fabric'),
+    box(8, 62, 4, 104, 10, 1, 'woodDark'), box(4, 62, 8, 1, 10, 44, 'woodDark'), box(115, 62, 8, 1, 10, 44, 'woodDark'),
+    ...[14, 37, 60, 83, 106].map((x) => stud(x, 67, 3.6)),
+    ...[[6, 6], [114, 6], [6, 54], [114, 54]].flatMap(([x, z]) => [ball(x!, 3, z!, 3.4, 3, 3.4, 'metal'), cyl(x!, z!, 6, 2.9, 2, 'text')]),
+    rod([8, 16, 6], [112, 16, 6], 1.1, 'metal'), rod([6, 16, 8], [6, 16, 52], 1.1, 'metal'), rod([114, 16, 8], [114, 16, 52], 1.1, 'metal'),
+  ],
+  // Fauteuil : accoudoirs coiffés de laiton, clous de tapissier sur l'assise et les accoudoirs, bandeau laiton en haut du dossier, pieds boule en laiton.
+  armchair: [
+    box(0, 66, 0, 14, 1, 60, 'metal'), box(66, 66, 0, 14, 1, 60, 'metal'),
+    ...[18, 27, 36, 45, 54, 63].map((x) => stud(x, 38, 0)),
+    ...[46, 54, 62].flatMap((y) => [stud(7, y, 0), stud(73, y, 0)]),
+    box(0, 85, 59.5, 80, 3, 0.5, 'metal'),
+    // Dos et flancs aussi : rangée de clous au dos du dossier, trois clous sur chaque flanc d'accoudoir (lisible de dos et de profil).
+    ...[10, 22, 34, 46, 58, 70].map((x) => rod([x, 84, 79.6], [x, 84, 80], 1.3, 'shade')),
+    ...[15, 30, 45].flatMap((z) => [rod([0.4, 56, z], [0, 56, z], 1.3, 'shade'), rod([79.6, 56, z], [80, 56, z], 1.3, 'shade')]),
+    ...[[9, 9], [71, 9], [9, 71], [71, 71]].map(([x, z]) => ball(x!, 3, z!, 4, 3, 4, 'metal')),
+  ],
+  // Lampadaire : trois pieds boule autour du socle, bagues de bois sombre sur la tige, cerclage et couvercle en laiton poli sur l'abat-jour.
+  lamp: [
+    ...[90, 210, 330].map((deg) => ball(20 + 16 * Math.cos((deg * Math.PI) / 180), 2, 20 + 16 * Math.sin((deg * Math.PI) / 180), 2.5, 2, 2.5, 'text')),
+    ...[35, 70, 105].map((y) => cyl(20, 20, y, 2.4, 2.5, 'woodDark')),
+    cyl(20, 20, 121.5, 18, 2.5, 'text'), cyl(20, 20, 157, 11.5, 1.2, 'text'), ball(20, 159, 20, 1.6, 1, 1.6, 'text', { layer: 1 }),
+  ],
 };
