@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { CityEvent } from '../core/library/city/events';
 import { FAR_SHRINK, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
-import { CROSS_HALF, MARGIN, TRACK_DIR, advance, lightPoleX, agentView, braking, warmTraffic, type Agent, type TrafficEnv, type TrafficWorld } from '../core/library/city/traffic/engine';
+import { CROSS_HALF, MARGIN, TRACK_DIR, advance, lightPoleX, agentView, braking, stopLines, warmTraffic, type Agent, type TrafficEnv, type TrafficWorld } from '../core/library/city/traffic/engine';
 import type { Walker } from '../core/library/city/traffic/crossing';
 import type { Rider } from '../core/library/city/traffic/bus-stop';
 import { nextStops } from '../core/library/city/traffic/bus-lines';
@@ -268,28 +268,33 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
 // sur le <g> porteur (`data-light-lamp` = couleur active, `data-call` = appel).
 type LightShown = { color: string; pressed: boolean };
 const lightShown = (w: TrafficWorld): LightShown => ({ color: w.light?.color ?? 'green', pressed: w.light?.pressedAt != null });
-// Panneau « Prochain bus » (afficheur lumineux accroché au poteau, sous la plaque) : ligne et attente en minutes, « à l'approche »
-// quand le bus roule déjà vers l'arrêt ou y est arrêté, « Fin de service » la nuit (aucun bus attendu).
-type Board = { line: string | null; colour: string; wait: string };
+// Panneau « Prochain bus » (afficheur lumineux accroché au poteau, sous la plaque) : une rangée par ligne de l'arrêt, du bus
+// le plus proche au plus lointain (numéro et attente en minutes, « à l'approche » quand le bus roule déjà vers l'arrêt ou y
+// est arrêté) ; « Fin de service » la nuit (aucun bus attendu).
+type BoardRow = { line: string; colour: string; wait: string };
+type Board = { rows: BoardRow[]; key: string };
 export function nextBusBoard(w: TrafficWorld, served: 'near' | 'far'): Board {
-  const n = w.nextBus[served];
-  if (!n) return { line: null, colour: '#555', wait: 'Fin de service' };
-  const min = Math.ceil(n.in / 60);
-  return { line: n.line.ref, colour: n.line.colour, wait: n.in < 45 ? 'à l’approche' : `${min} min` };
+  const rows = w.nextBus[served].map((n) => ({ line: n.line.ref, colour: n.line.colour, wait: n.in < 45 ? 'à l’approche' : `${Math.ceil(n.in / 60)} min` }));
+  return { rows, key: rows.map((r) => `${r.line}:${r.wait}`).join('|') };
 }
 const BOARD_W = 15;
+const ROW_H = 2.9;
 function NextBusBoard({ x, board }: { x: number; board: Board }): ReactElement {
+  const rows = board.rows;
   return (
-    <g data-next-bus={board.line ?? ''} data-next-wait={board.wait} transform={`translate(${x.toFixed(2)} -23.6) scale(1)`}>
-      <rect width={BOARD_W} height={6} rx={0.6} fill="#1f1a17" stroke="#3a3430" strokeWidth={0.3} />
+    <g data-next-bus={rows.map((r) => r.line).join(',')} data-next-wait={rows.length > 0 ? rows.map((r) => r.wait).join(',') : 'Fin de service'} transform={`translate(${x.toFixed(2)} -23.6) scale(1)`}>
+      <rect width={BOARD_W} height={3.1 + Math.max(1, rows.length) * ROW_H} rx={0.6} fill="#1f1a17" stroke="#3a3430" strokeWidth={0.3} />
       <text x={BOARD_W / 2} y={2.1} fontSize={1.6} fontWeight={700} textAnchor="middle" fill="#ffc94a" fontFamily="sans-serif">PROCHAIN BUS</text>
-      {board.line !== null && (
-        <>
-          <rect x={0.8} y={2.8} width={4.6} height={2.6} rx={0.6} fill={/^#[0-9a-fA-F]{6}$/.test(board.colour) ? board.colour : '#2F7D64'} />
-          <text x={3.1} y={4.75} fontSize={1.8} fontWeight={700} textAnchor="middle" fill="#FFFFFF" fontFamily="sans-serif">{board.line}</text>
-        </>
+      {rows.length === 0 && (
+        <text x={BOARD_W / 2} y={4.8} fontSize={1.9} fontWeight={700} textAnchor="middle" fill="#ffc94a" fontFamily="sans-serif">Fin de service</text>
       )}
-      <text x={board.line !== null ? 10.2 : BOARD_W / 2} y={4.8} fontSize={1.9} fontWeight={700} textAnchor="middle" fill="#ffc94a" fontFamily="sans-serif">{board.wait}</text>
+      {rows.map((r, i) => (
+        <g key={r.line} data-board-row={r.line} transform={`translate(0 ${(i * ROW_H).toFixed(2)})`}>
+          <rect x={0.8} y={2.8} width={4.6} height={2.5} rx={0.6} fill={/^#[0-9a-fA-F]{6}$/.test(r.colour) ? r.colour : '#2F7D64'} />
+          <text x={3.1} y={4.7} fontSize={1.8} fontWeight={700} textAnchor="middle" fill="#FFFFFF" fontFamily="sans-serif">{r.line}</text>
+          <text x={10.2} y={4.75} fontSize={1.9} fontWeight={700} textAnchor="middle" fill="#ffc94a" fontFamily="sans-serif">{r.wait}</text>
+        </g>
+      ))}
     </g>
   );
 }
@@ -316,7 +321,7 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side, gh
         setRoster(w.roster);
       }
       const b = nextBusBoard(w, served);
-      if (b.line !== boardSeen.current.line || b.wait !== boardSeen.current.wait) {
+      if (b.key !== boardSeen.current.key) {
         boardSeen.current = b;
         setBoard(b);
       }
@@ -370,7 +375,7 @@ export function TrafficFixtures({ handle, metrics, sky, still, frozenT, side, gh
   // des trois premières lignes à leurs couleurs. La plaque s'ouvre vers l'amont de la voie servie (d'où vient le bus).
   const busStop = (x: number, y: number, served: 'near' | 'far'): ReactElement => {
     const name = w.stopNames[served];
-    const refs = w.lines.slice(0, 3);
+    const refs = w.lines.slice(0, stopLines(w)); // les seules lignes qui passent (engine.ts)
     const plate = Math.max(12, name.length * 1.6 + 2.4);
     const px = served === 'near' ? -plate + 0.6 : -0.6;
     const art = (

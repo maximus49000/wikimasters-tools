@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIRST_BUS, LAST_BUS, busArrivals, headwayAt, serviceDepartures, serviceKindOf } from '../../../../../src/core/library/city/traffic/bus-timetable';
+import { FIRST_BUS, LAST_BUS, busArrivals, headwayAt, lineHeadwayAt, serviceDepartures, serviceKindOf } from '../../../../../src/core/library/city/traffic/bus-timetable';
 import { createStopCrowd, stepStops, type StopEnv } from '../../../../../src/core/library/city/traffic/bus-stop';
 
 describe('horaires des bus', () => {
@@ -43,43 +43,110 @@ describe('horaires des bus', () => {
   });
 });
 
+describe('lignes de l’arrêt, chacune à sa fréquence', () => {
+  it('seules les lignes de la plaque passent, chacune avec sa grille et sa fréquence', () => {
+    const day = busArrivals({ seed: 3, day: 200, nowS: 0, minutes: 12 * 60, today: 'week', yesterday: 'week', ahead: 45, lines: 3 });
+    expect(new Set(day.map((a) => a.line))).toEqual(new Set([0, 1, 2]));
+    expect(busArrivals({ seed: 3, day: 200, nowS: 0, minutes: 12 * 60, today: 'week', yesterday: 'week', lines: 2 }).every((a) => a.line! < 2)).toBe(true);
+    // Arrivées triées par heure : deux lignes peuvent se suivre à une minute d'écart.
+    for (let i = 1; i < day.length; i++) expect(day[i]!.start).toBeGreaterThanOrEqual(day[i - 1]!.start);
+    // La première ligne est la plus fréquente ; jamais plus d'une heure entre deux bus d'une ligne.
+    expect(lineHeadwayAt(720, 'week', 0)).toBeLessThan(lineHeadwayAt(720, 'week', 2));
+    for (let line = 0; line < 3; line++) {
+      const deps = serviceDepartures(5, 90, 'near', 'week', line);
+      for (let i = 1; i < deps.length; i++) expect(deps[i]! - deps[i - 1]!).toBeLessThanOrEqual(60);
+    }
+  });
+});
+
 describe('voyageurs et horaires', () => {
-  const env = (nextBus: StopEnv['nextBus']): StopEnv => ({ stopX: { near: 400, far: 600 }, buses: { near: null, far: null }, crowd: 1, closed: false, width: 1000, margin: 90, unit: 1, nextBus });
+  const env = (nextBus: StopEnv['nextBus'], buses: StopEnv['buses'] = { near: null, far: null }): StopEnv => ({ stopX: { near: 400, far: 600 }, buses, crowd: 1, closed: false, width: 1000, margin: 90, unit: 1, nextBus });
+  const both = (list: { line: string; in: number }[]): StopEnv['nextBus'] => ({ near: list, far: list });
   it('personne ne vient attendre quand aucun bus n’est attendu (nuit)', () => {
     const c = createStopCrowd(2, 0);
-    for (let t = 0; t < 900; t += 0.1) stepStops(c, env({ near: null, far: null }), t, 0.1);
+    for (let t = 0; t < 900; t += 0.1) stepStops(c, env(both([])), t, 0.1);
     expect(c.riders).toEqual([]);
   });
   it('on ne vient que dans le quart d’heure qui précède le bus', () => {
     const c = createStopCrowd(2, 0);
-    for (let t = 0; t < 600; t += 0.1) stepStops(c, env({ near: 40 * 60, far: 40 * 60 }), t, 0.1);
+    for (let t = 0; t < 600; t += 0.1) stepStops(c, env(both([{ line: '3', in: 40 * 60 }])), t, 0.1);
     expect(c.riders).toEqual([]);
-    for (let t = 600; t < 1200; t += 0.1) stepStops(c, env({ near: 5 * 60, far: 5 * 60 }), t, 0.1);
+    for (let t = 600; t < 1200; t += 0.1) stepStops(c, env(both([{ line: '3', in: 5 * 60 }])), t, 0.1);
     expect(c.riders.length).toBeGreaterThan(0);
   });
   it('après le dernier bus, ceux qui attendent repartent à pied par un bord', () => {
     const c = createStopCrowd(2, 0);
-    for (let t = 0; t < 900; t += 0.1) stepStops(c, env({ near: 300, far: 300 }), t, 0.1);
+    for (let t = 0; t < 900; t += 0.1) stepStops(c, env(both([{ line: '3', in: 300 }])), t, 0.1);
     expect(c.riders.some((p) => p.stage === 'wait')).toBe(true);
-    for (let t = 900; t < 1100; t += 0.1) stepStops(c, env({ near: null, far: null }), t, 0.1);
+    for (let t = 900; t < 1100; t += 0.1) stepStops(c, env(both([])), t, 0.1);
     expect(c.riders).toEqual([]);
+  });
+  it('chacun attend une ligne dont le bus passe bientôt, et laisse passer les bus des autres lignes', () => {
+    const c = createStopCrowd(6, 0);
+    const soon = both([{ line: '15', in: 120 }, { line: '16', in: 60 }, { line: '9', in: 40 * 60 }]);
+    for (let t = 0; t < 600; t += 0.1) stepStops(c, env(soon), t, 0.1);
+    const waiting = c.riders.filter((p) => p.side === 'near' && p.stage === 'wait');
+    expect(waiting.length).toBeGreaterThan(1);
+    for (const p of c.riders) expect(['15', '16']).toContain(p.line);
+    // Le 16 marque l'arrêt : seuls ceux du 16 montent, ceux du 15 restent au poteau.
+    const for15 = waiting.filter((p) => p.line === '15').map((p) => p.id);
+    const for16 = waiting.filter((p) => p.line === '16').map((p) => p.id);
+    expect(for15.length).toBeGreaterThan(0);
+    const at = env(soon, { near: { id: 'b16', door: 420, line: '16' }, far: null });
+    let held = false;
+    for (let t = 600; t < 640; t += 0.1) held = stepStops(c, at, t, 0.1).hold.has('b16') || held;
+    const ids = new Set(c.riders.map((p) => p.id));
+    for (const id of for15) expect(c.riders.find((p) => p.id === id)?.stage).toBe('wait');
+    for (const id of for16) expect(ids.has(id)).toBe(false);
+    if (for16.length > 0) expect(held).toBe(true);
+  });
+  it('quand sa ligne n’a plus de bus, le voyageur renonce ; ceux des autres lignes restent', () => {
+    const c = createStopCrowd(6, 0);
+    for (let t = 0; t < 600; t += 0.1) stepStops(c, env(both([{ line: '15', in: 300 }, { line: '16', in: 300 }])), t, 0.1);
+    for (let t = 600; t < 800; t += 0.1) stepStops(c, env(both([{ line: '16', in: 100 }])), t, 0.1);
+    const left = c.riders.filter((p) => p.stage === 'arrive' || p.stage === 'wait');
+    expect(left.length).toBeGreaterThan(0);
+    for (const p of left) expect(p.line).toBe('16');
   });
 });
 
 describe('panneau « Prochain bus » et ligne du bus à horaires', () => {
-  it('le moteur annonce le prochain bus de chaque arrêt, avec sa ligne ; le bus porte cette ligne', async () => {
+  const line = (ref: string) => ({ ref, from: 'A', to: 'B', colour: '#2f7d64', stops: ['A', 'M', 'B'] });
+  it('le moteur annonce le prochain bus de chaque ligne de l’arrêt, du plus proche au plus lointain ; le bus porte sa ligne', async () => {
     const { warmTraffic, advance } = await import('../../../../../src/core/library/city/traffic/engine');
     const T0 = 1_800_000_000;
-    const env = { demand: { near: 0, far: 0, bike: 0 }, closed: false, deliveries: [], crowd: 0.5, crossPx: 90, timetable: true, arrivals: [{ key: 'bus-x', kind: 'bus' as const, track: 'near' as const, start: T0 + 120, line: 1 }] };
+    const env = {
+      demand: { near: 0, far: 0, bike: 0 }, closed: false, deliveries: [], crowd: 0.5, crossPx: 90, timetable: true,
+      busLines: [line('3'), line('6'), line('9'), line('15'), line('16')],
+      arrivals: [
+        { key: 'bus-a', kind: 'bus' as const, track: 'near' as const, start: T0 + 300, line: 1 },
+        { key: 'bus-b', kind: 'bus' as const, track: 'near' as const, start: T0 + 120, line: 2 },
+        { key: 'bus-c', kind: 'bus' as const, track: 'near' as const, start: T0 + 900, line: 1 },
+      ],
+    };
     const w = warmTraffic({ width: 1080, seed: 4, unit: 1, startS: T0 }, env);
     advance(w, T0 + 1, env);
-    expect(w.nextBus.near).not.toBeNull();
-    expect(w.nextBus.near!.in).toBeGreaterThan(100);
-    expect(w.nextBus.far).toBeNull();
-    const ref = w.nextBus.near!.line.ref;
+    expect(w.nextBus.near.map((n) => n.line.ref)).toEqual(['9', '6']);
+    expect(w.nextBus.near[0]!.in).toBeGreaterThan(100);
+    expect(w.nextBus.far).toEqual([]);
     advance(w, T0 + 125, env);
-    const bus = w.agents.find((a) => a.event === 'bus-x');
-    expect(bus?.special?.line?.ref).toBe(ref);
-    expect(w.nextBus.near!.in).toBe(0);
+    const bus = w.agents.find((a) => a.event === 'bus-b');
+    expect(bus?.special?.line?.ref).toBe('9');
+    expect(w.nextBus.near[0]).toMatchObject({ in: 0, line: { ref: '9' } });
+  });
+  it('une ligne hors de la plaque (au-delà des 3 premières) ne passe jamais', async () => {
+    const { warmTraffic, advance } = await import('../../../../../src/core/library/city/traffic/engine');
+    const T0 = 1_800_000_000;
+    const env = {
+      demand: { near: 0, far: 0, bike: 0 }, closed: false, deliveries: [], crowd: 0, crossPx: 90, timetable: true,
+      busLines: [line('3'), line('6'), line('9'), line('15')],
+      arrivals: [0, 1, 2, 3, 4, 5].map((i) => ({ key: `bus-${i}`, kind: 'bus' as const, track: 'far' as const, start: T0 + 60 + i * 400, line: i })),
+    };
+    const w = warmTraffic({ width: 1080, seed: 4, unit: 1, startS: T0 }, env);
+    for (let t = T0 + 1; t < T0 + 2600; t += 50) {
+      advance(w, t, env);
+      for (const n of w.nextBus.far) expect(['3', '6', '9']).toContain(n.line.ref);
+      for (const a of w.agents) if (a.kind === 'bus') expect(['3', '6', '9']).toContain(a.special?.line?.ref);
+    }
   });
 });

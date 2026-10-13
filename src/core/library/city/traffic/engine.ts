@@ -16,7 +16,7 @@ import { lightColorAt, newWalker, stepLight, stepWalker, type PushLight, type Wa
 import { SPECIAL_SPEED, specialExtent, type SpecialId, type SpecialSpec } from './special-art';
 import { directed, fallbackLine, sceneStopIndex, type BusLine } from './bus-lines';
 import { createStopCrowd, stepStops, type StopCrowd, type StopSide } from './bus-stop';
-import { LEAD_S as BUS_LEAD_S } from './bus-timetable';
+import { LEAD_S as BUS_LEAD_S, STOP_LINES_MAX } from './bus-timetable';
 import { stepHorns, type Horn, type HornClock } from './horns';
 
 export type { Horn } from './horns';
@@ -103,6 +103,7 @@ export type TrafficEnv = {
   timetable?: boolean;
 };
 
+export type NextBus = { in: number; line: BusLine };
 export type TrafficWorld = {
   width: number;
   seed: number;
@@ -127,8 +128,9 @@ export type TrafficWorld = {
   stopNames: Record<StopSide, string>; // nom de l'arrêt de la scène, par voie servie
   school: string | null;
   stopCrowd: StopCrowd; // voyageurs des deux arrêts
-  // Panneau « Prochain bus » de chaque arrêt (bus à horaires) : délai (s) et ligne du prochain bus, null si aucun n'est attendu.
-  nextBus: Record<StopSide, { in: number; line: BusLine } | null>;
+  // Panneau « Prochain bus » de chaque arrêt (bus à horaires) : prochain bus de chaque ligne de l'arrêt (délai en s, ligne),
+  // du plus proche au plus lointain ; liste vide si aucun n'est attendu.
+  nextBus: Record<StopSide, NextBus[]>;
   horns: Horn[]; // coups de klaxon des 10 dernières secondes (horns.ts)
   hornClock: Map<string, HornClock>; // attente et dernier klaxon des conducteurs impatients
 };
@@ -173,7 +175,7 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     stopNames: { near: '', far: '' },
     school: null,
     stopCrowd: createStopCrowd(o.seed, 0),
-    nextBus: { near: null, far: null },
+    nextBus: { near: [], far: [] },
     horns: [],
     hornClock: new Map(),
   };
@@ -266,7 +268,7 @@ function specialOf(w: TrafficWorld, kind: AgentKind, seed: number, track: Track)
   const u = mulberry32(seed ^ 0x5bec)();
   switch (kind) {
     case 'bus':
-      return { id: 'bus', seed, line: directed(w.lines[Math.floor(u * w.lines.length)]!, TRACK_DIR[track]) };
+      return { id: 'bus', seed, line: lineOf(w, Math.floor(u * stopLines(w)), track) };
     case 'school-bus':
       return { id: 'school-bus', seed, ...(w.school ? { label: w.school } : {}) };
     case 'tram':
@@ -286,8 +288,10 @@ function specialOf(w: TrafficWorld, kind: AgentKind, seed: number, track: Track)
 }
 // Lignes des bus de la pièce : réelles si on en a, sinon trois lignes de repli ; nom de l'arrêt de la scène pour chaque sens
 // (un arrêt intermédiaire de la première ligne, dans le sens de la voie).
-// Ligne de rang `i` (modulo le nombre de lignes), dans le sens de la voie.
-const lineOf = (w: TrafficWorld, i: number, track: Track): BusLine => directed(w.lines[((i % w.lines.length) + w.lines.length) % w.lines.length]!, TRACK_DIR[track]);
+// Seules les lignes de la plaque de l'arrêt (les STOP_LINES_MAX premières) passent dans la scène : un bus n'annonce jamais
+// une ligne qui ne dessert pas l'arrêt. Ligne de rang `i` (modulo leur nombre), dans le sens de la voie.
+export const stopLines = (w: TrafficWorld): number => Math.min(STOP_LINES_MAX, w.lines.length);
+const lineOf = (w: TrafficWorld, i: number, track: Track): BusLine => directed(w.lines[((i % stopLines(w)) + stopLines(w)) % stopLines(w)]!, TRACK_DIR[track]);
 function setLines(w: TrafficWorld, src: readonly BusLine[] | undefined): void {
   w.lineSrc = src;
   w.lines = src && src.length > 0 ? src : [0, 1, 2].map((i) => fallbackLine((w.seed * 3 + i) >>> 0));
@@ -545,23 +549,25 @@ export const BUS_DOOR = 0.69;
 function stepBusStops(w: TrafficWorld, env: TrafficEnv, t: number): void {
   const busAt = (side: StopSide): { id: string; door: number } | null => {
     const a = w.agents.find((x) => x.track === side && x.kind === 'bus' && x.stop === 'bus');
-    return a ? { id: a.id, door: xOfS(w, side, a.s) + TRACK_DIR[side] * a.half * BUS_DOOR } : null;
+    return a ? { id: a.id, door: xOfS(w, side, a.s) + TRACK_DIR[side] * a.half * BUS_DOOR, ...(a.special?.line ? { line: a.special.line.ref } : {}) } : null;
   };
-  // Bus à horaires : délai (s) avant le prochain bus à l'arrêt de chaque sens ; 0 s'il roule déjà vers l'arrêt ou y est
-  // arrêté ; null si aucun n'est attendu dans la grille chargée (nuit, fin de service).
-  const nextBusOf = (side: StopSide): { in: number; line: BusLine } | null => {
-    const coming = w.agents.find((a) => a.track === side && a.kind === 'bus' && (a.stop === 'bus' || a.stops.length > 0));
-    if (coming) return { in: 0, line: coming.special?.line ?? lineOf(w, 0, side) };
-    let best: { in: number; line: BusLine } | null = null;
+  // Bus à horaires : prochain bus de chaque ligne à l'arrêt de chaque sens ; délai 0 s'il roule déjà vers l'arrêt ou y est
+  // arrêté ; une ligne absente n'a aucun bus attendu dans la grille chargée (nuit, fin de service).
+  const nextBusOf = (side: StopSide): NextBus[] => {
+    const best = new Map<string, NextBus>();
+    const keep = (n: NextBus): void => {
+      const had = best.get(n.line.ref);
+      if (!had || n.in < had.in) best.set(n.line.ref, n);
+    };
+    for (const a of w.agents) if (a.track === side && a.kind === 'bus' && (a.stop === 'bus' || a.stops.length > 0)) keep({ in: 0, line: a.special?.line ?? lineOf(w, 0, side) });
     for (const e of env.arrivals) {
       if (e.kind !== 'bus' || e.track !== side || w.spawned.has(e.key) || t - e.start > 300) continue;
-      const d = Math.max(0, e.start + BUS_LEAD_S - t);
-      if (best === null || d < best.in) best = { in: d, line: lineOf(w, e.line ?? 0, side) };
+      keep({ in: Math.max(0, e.start + BUS_LEAD_S - t), line: lineOf(w, e.line ?? 0, side) });
     }
-    return best;
+    return [...best.values()].sort((a, b) => a.in - b.in);
   };
   if (env.timetable) w.nextBus = { near: nextBusOf('near'), far: nextBusOf('far') };
-  const nextBusIn = (side: StopSide): number | null => w.nextBus[side]?.in ?? null;
+  const nextBusIn = (side: StopSide): { line: string; in: number }[] => w.nextBus[side].map((n) => ({ line: n.line.ref, in: n.in }));
   const { changed, hold } = stepStops(
     w.stopCrowd,
     {
