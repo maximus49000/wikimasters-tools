@@ -441,11 +441,16 @@ export function Crosswalk({ handle, metrics, sky, ghibli = false }: { handle: Tr
 }
 
 // Piétons du passage (crossing.ts, état porté par le moteur) : arrivent par un trottoir, appuient sur le bouton, attendent au
-// bord, traversent au rouge des voitures, repartent. Dessinés devant les voies (sur le trottoir des immeubles, aucun véhicule
-// ne les recouvre ; sur la chaussée, les voitures sont arrêtées avant le passage). Re-rendu quand la liste change (roster).
+// bord, traversent au rouge des voitures, repartent. Deux parties pour la profondeur (revue du 2026-10-13 : « des gens passent
+// devant les voitures ») : `far`, sur le trottoir des immeubles, dessinée derrière les voies (les voitures les cachent) ;
+// `near`, sur la chaussée (voitures arrêtées avant le passage) et sur le trottoir d'en face, devant. Re-rendu quand la liste ou
+// l'étape d'un piéton change (roster).
 type CrossProps = { handle: TrafficHandle; metrics: CityMetrics; sky: Sky; rainy: boolean; still: boolean; ghibli: boolean; frozenT: number };
+export type CrossPart = 'far' | 'near';
+// Sur le trottoir des immeubles : avant de traverser vers le bas, ou après être monté.
+const crossPartOf = (p: Walker): CrossPart => ((p.down && (p.stage === 'approach' || p.stage === 'wait')) || (!p.down && p.stage === 'leave') ? 'far' : 'near');
 const YAW = { right: 0, down: 4, left: 8, up: 12 } as const;
-export function CrossingLayer({ handle, metrics, sky, rainy, still, ghibli, frozenT }: CrossProps): ReactElement {
+export function CrossingLayer({ handle, metrics, sky, rainy, still, ghibli, frozenT, part = 'near' }: CrossProps & { part?: CrossPart }): ReactElement {
   const w = handle.world;
   const u = metrics.unit;
   const top = metrics.walkY;
@@ -481,6 +486,7 @@ export function CrossingLayer({ handle, metrics, sky, rainy, still, ghibli, froz
       const el = root.current;
       if (!el) return;
       for (const p of w.walkers) {
+        if (crossPartOf(p) !== part) continue;
         const node = el.querySelector(`[data-crosser="${p.id}"]`);
         if (!node) continue;
         node.setAttribute('transform', transform(p));
@@ -488,15 +494,15 @@ export function CrossingLayer({ handle, metrics, sky, rainy, still, ghibli, froz
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [w, still, ghibli, figures, top, bottom],
+    [w, still, ghibli, figures, top, bottom, part],
   );
   useWallClockLoop(place, [place]);
   useEffect(() => {
     if (still) place(frozenT);
   }, [still, place, frozenT]);
   return (
-    <g data-crossing="" ref={root}>
-      {w.walkers.map((p) => {
+    <g data-crossing={part} ref={root}>
+      {w.walkers.filter((p) => crossPartOf(p) === part).map((p) => {
         const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
         return (
           <g key={p.id} data-crosser={p.id} transform={transform(p)}>

@@ -591,8 +591,11 @@ function stepCrossing(w: TrafficWorld, env: TrafficEnv, t: number): void {
     }
   }
   const before = w.walkers.length;
+  // Un changement d'étape peut faire passer un piéton d'un plan de dessin à l'autre (trottoir des immeubles, derrière les
+  // voitures ; chaussée et trottoir d'en face, devant) : la couche se re-rend.
+  const stages = w.walkers.map((p) => p.stage);
   w.walkers = w.walkers.filter((p) => stepWalker(p, w.light, t, DT, env.crossPx));
-  if (w.walkers.length !== before) w.roster++;
+  if (w.walkers.length !== before || w.walkers.some((p, i) => p.stage !== stages[i])) w.roster++;
   stepLight(w.light, t);
 }
 
