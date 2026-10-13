@@ -48,7 +48,7 @@ describe('modèles', () => {
         const a = bb(p);
         boxes.forEach((b) => {
           if (b === a || (p.shape === 'box' && b.every((v, k) => v === a[k]))) return;
-          const dedans = [0, 2, 4].every((k) => a[k] >= b[k] - 1e-6 && a[k + 1] <= b[k + 1] + 1e-6);
+          const dedans = [0, 2, 4].every((k) => a[k]! >= b[k]! - 1e-6 && a[k + 1]! <= b[k + 1]! + 1e-6);
           expect(dedans, kind + ' pièce ' + i + ' enfouie').toBe(false);
         });
       });
