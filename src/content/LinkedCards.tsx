@@ -97,7 +97,7 @@ export function LinkedCards(props: Props) {
   return service ? <LinkedBlock {...props} source={service.source} /> : null;
 }
 
-// Fenêtre « Voir plus » : toutes les cartes liées, les plus consultées d'abord.
+// Fenêtre « Voir plus » : toutes les cartes liées, les plus précises d'abord.
 export function LinkedCardsWindow({ slug, title, onPick, onClose }: { slug: string; title: string; onPick: (slug: string) => void; onClose: () => void }) {
   const source = getLinkedService()?.source;
   const cards = useSyncExternalStore(source?.subscribe ?? noSubscribe, () => source?.linked(slug) ?? NONE);
@@ -117,7 +117,7 @@ export function LinkedCardsWindow({ slug, title, onPick, onClose }: { slug: stri
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: border }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ font: '600 16px/22px system-ui, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Cartes liées à « {title} »</div>
-            <div style={{ fontSize: 12, ...muted }}>{cards.length + viaCards.length} cartes · les plus consultées d&apos;abord</div>
+            <div style={{ fontSize: 12, ...muted }}>{cards.length + viaCards.length} cartes · les plus précises d&apos;abord</div>
           </div>
           <button
             type="button"

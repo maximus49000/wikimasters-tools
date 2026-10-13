@@ -10,7 +10,7 @@ const LOG = '[wikimasters-tools]';
 
 export type LinkedSource = {
   subscribe(listener: () => void): () => void;
-  // Les cartes liées à cette carte (plus consultées d'abord) : même tableau tant que rien ne change, pour un rendu stable.
+  // Les cartes liées à cette carte (plus précises d'abord, sans les passe-partout) : même tableau tant que rien ne change, pour un rendu stable.
   linked(slug: string): KnownCard[];
   // Les cartes à deux sauts, avec leurs articles intermédiaires (même tableau tant que rien ne change).
   linkedVia(slug: string): ViaCard[];
