@@ -10,7 +10,8 @@ import { MIN_PITCH, NightclubDoor, entryScript, queueFrame, queueLayout, type En
 import { THRESHOLD_S } from '../../src/core/library/city/doorway';
 import { ADVANCE_S, queueAt, queueWalkSpeed } from '../../src/core/library/city/shops/queue';
 import { TURN_S } from '../../src/core/library/figure/gait';
-import { ShopTerrace, collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, terraceTables, tripAt, waiterTripAt, weatherHistory, type TerraceSky } from '../../src/content/shop-terrace';
+import { guestPoseAt, type GuestService } from '../../src/core/library/city/shops/terrace-service';
+import { ShopTerrace, collectCarriers, collectTerraceGuests, collectWaiters, placeCarriers, placeTerraceGuests, placeWaiters, terraceTables, tripAt, waiterTaskTrip, weatherHistory, type TerraceSky } from '../../src/content/shop-terrace';
 import { ACCESSORY, gestureAt } from '../../src/core/library/city/shops/gestures';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
@@ -159,18 +160,20 @@ describe('terrasse : rendu (ShopTerrace)', () => {
       expect((t as SVGGElement).style.transform).toContain(`${targets[i]!.x.toFixed(1)}px`);
     }
   });
-  it('convives : 4 au plus, un serveur sort servir', () => {
+  it('convives : 4 au plus ; le serveur sort quand un convive a besoin de lui (servir, encaisser, débarrasser)', () => {
     let seen = 0;
-    for (let m = 8 * 60; m < 20 * 60; m += 17) {
+    let waiters = 0;
+    for (let m = 8 * 60; m < 20 * 60; m += 7) {
       const { host } = render(terrace('cafe', m, FINE));
       const guests = host.querySelectorAll('[data-terrace-guest]').length;
       expect(guests).toBeLessThanOrEqual(4);
-      if (guests > 0) {
-        seen++;
-        expect(host.querySelector('[data-terrace-waiter]')).not.toBeNull();
-      }
+      if (guests > 0) seen++;
+      waiters += host.querySelectorAll('[data-terrace-waiter]').length;
+      // Une tâche n'existe que pour un convive suivi (tasse sur une table de la terrasse).
+      for (const w of host.querySelectorAll('[data-terrace-waiter]')) expect(['bring', 'pay', 'clear']).toContain(w.getAttribute('data-terrace-waiter'));
     }
     expect(seen).toBeGreaterThan(3);
+    expect(waiters).toBeGreaterThan(0);
   });
   it('mouvement réduit : tables selon l’état, au plus une personne par table, personne en route', () => {
     let seated = 0;
@@ -244,28 +247,40 @@ describe('terrasse et cordon : cellulo en Ghibli (G5)', () => {
 });
 
 describe('terrasse : serveur et météo', () => {
-  it('le serveur sort par le seuil de la porte, va à une table et revient, absent le reste du temps', () => {
+  it('le serveur sort par le seuil de la porte, va à la table, fait son geste et revient ; tasse à l’aller (servir) ou au retour (débarrasser)', () => {
     const doorX = 100;
     const door = { x: 96, y: metrics.doorY - 20, w: 8, h: 20 };
-    const targets = [80, 70];
-    let street = 0;
-    let sill = 0;
-    for (let t = 0; t < 200; t += 0.25) {
-      const trip = waiterTripAt(t, 7, doorX, door, metrics, targets, metrics.doorY + 10, 0.5)!;
-      const v = tripAt(trip, t);
-      if (v?.where === 'street') {
-        street++;
-        expect(v.x).toBeGreaterThanOrEqual(70 - 1e-6);
-        expect(v.x).toBeLessThanOrEqual(doorX + 1e-6);
+    for (const kind of ['bring', 'clear', 'pay'] as const) {
+      const trip = waiterTaskTrip({ kind, key: 'k', table: 0, seat: 0, at: 50, act: 2, staff: 0 }, doorX, door, metrics, 70, metrics.doorY + 10, 0.5);
+      let street = 0;
+      let sill = 0;
+      let atTable = 0;
+      let carryOut = false;
+      let carryBack = false;
+      for (let t = 0; t < 100; t += 0.1) {
+        const v = tripAt(trip, t);
+        if (v === null) continue;
+        if (v.where === 'street') {
+          street++;
+          expect(v.x).toBeGreaterThanOrEqual(70 - 1e-6);
+          expect(v.x).toBeLessThanOrEqual(doorX + 1e-6);
+          if (Math.abs(v.x - 70) < 1e-6 && v.pose.gait === 'stand') atTable++;
+          if (v.pose.gait === 'walk' && v.item && t < 50) carryOut = true;
+          if (v.pose.gait === 'walk' && v.item && t > 50) carryBack = true;
+        }
+        if (v.where === 'door') {
+          sill++;
+          expect(v.passage.x).toBe(doorX);
+        }
       }
-      if (v?.where === 'door') {
-        sill++;
-        expect(v.passage.x).toBe(doorX);
-      }
+      expect(street, kind).toBeGreaterThan(10);
+      expect(sill, kind).toBeGreaterThan(5);
+      expect(atTable, kind).toBeGreaterThan(5);
+      expect(carryOut, kind).toBe(kind === 'bring');
+      expect(carryBack, kind).toBe(kind === 'clear');
+      // Arrivé à la table à l'heure de la tâche.
+      expect(tripAt(trip, 50.05)).toMatchObject({ where: 'street', x: 70 });
     }
-    expect(street).toBeGreaterThan(100);
-    expect(sill).toBeGreaterThan(10);
-    expect(street + sill).toBeLessThan(800 * 0.6);
   });
   it('historique : une pluie relevée garde la terrasse rentrée 10 minutes', () => {
     const h = weatherHistory();
@@ -858,7 +873,7 @@ describe('G3b : convives et serveur de terrasse', () => {
     }
   };
 
-  it('Ghibli : convive assis en pantin, tourné vers sa table (2 ou 6), sans miroir, geste de la famille à table', () => {
+  it('Ghibli : convive assis en pantin, tourné vers sa table (2 ou 6), sans miroir, geste du service (gorgée, paiement, occupation)', () => {
     const m = minuteWith('seated');
     vi.spyOn(Date, 'now').mockReturnValue(NOW);
     const figures = new FigureRegistry('g4s', { perFrame: 50 });
@@ -873,8 +888,9 @@ describe('G3b : convives et serveur de terrasse', () => {
     const key = keyOf(fig);
     expect(key[2]).toBe('seated');
     expect(key[1]).toBe(guest.getAttribute('data-seat') === '0' ? '2' : '6');
-    const seed = Number(guest.getAttribute('data-gesture-seed'));
-    expect(key[5]).toBe(gestureAt('cafe', 'customer', T + 5, seed).arms);
+    // Geste tiré du déroulé du service (revue du 2026-10-13), plus du geste en boucle de la famille.
+    const service = JSON.parse(guest.getAttribute('data-service')!) as GuestService;
+    expect(key[5]).toBe(guestPoseAt(service, T + 5, guest.getAttribute('data-pay') as 'pay-card' | 'pay-cash').arms);
     expect(guest.querySelector(`[data-accessory="${ACCESSORY.cafe}"]`)).not.toBeNull();
     noFade(c);
   });
@@ -977,11 +993,13 @@ describe('G3b : convives et serveur de terrasse', () => {
   });
 
   it('Ghibli : serveur en tablier, sort par la porte avec l’objet du commerce à la main, sert, revient les mains vides', () => {
-    const m = minuteWith('seated');
     vi.spyOn(Date, 'now').mockReturnValue(NOW);
     const figures = new FigureRegistry('g4w', { perFrame: 50 });
-    const c = draw(figures, 'cafe', m, true);
-    const node = c.querySelector('[data-terrace-waiter]')!;
+    // Une minute où le serveur apporte une boisson.
+    let m = minuteWith('seated');
+    let c = draw(figures, 'cafe', m, true);
+    for (let n = 0; !c.querySelector('[data-terrace-waiter="bring"]') && n < 400; n++) c = draw(figures, 'cafe', ++m, true);
+    const node = c.querySelector('[data-terrace-waiter="bring"]')!;
     expect(node).not.toBeNull();
     expect(node.getAttribute('opacity')).toBeNull();
     const street = node.querySelector('[data-trip-street]')!;
@@ -993,7 +1011,7 @@ describe('G3b : convives et serveur de terrasse', () => {
     expect(item.closest('[data-held]')!.getAttribute('data-held')).toBe('handR');
     const waiters = collectWaiters(c);
     let doors = 0, loaded = 0, empty = 0, served = 0;
-    for (let t = T; t < T + 40; t += 0.25) {
+    for (let t = T - 10; t < T + 80; t += 0.25) {
       settle(figures, () => placeWaiters(waiters, t, metrics, figures));
       if (shown(door)) doors++;
       if (!shown(street)) continue;
