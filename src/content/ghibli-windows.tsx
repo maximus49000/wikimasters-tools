@@ -1,11 +1,11 @@
 import type { ReactElement } from 'react';
-import { lampLit } from '../core/library/activity';
+import { windowLit, type WindowDay } from '../core/library/city/window-lights';
 import { FAR_WINDOW, type Facade, type FarWindow } from '../core/library/city/facades';
 import type { Lamp } from '../core/library/scene-world';
 
 // Fenêtres allumées de la ville peinte (vague Ghibli, décor cellulo), hors filtre d'étalonnage : teinte variée par fenêtre
 // (bleu froid, jaune, orange, crème), halo débordant à bord net, rideau en contre-jour, silhouette sombre dans certaines,
-// trait encré et meneau. Mêmes positions et même logique d'allumage que la ville classique.
+// trait encré et meneau. Mêmes positions et même logique d'allumage que la ville classique (city/window-lights.ts).
 const INK = '#2A1A18';
 
 export const windowTone = (lamp: Pick<Lamp, 'u' | 'blue'>): string => (lamp.blue ? '#9CC4FF' : lamp.u < 0.38 ? '#FFD86A' : lamp.u < 0.7 ? '#FFB048' : '#FFF0C0');
@@ -36,13 +36,13 @@ function FarLight({ win, lit, dim, farLight }: { win: FarWindow; lit: boolean; d
   return <rect data-far-lamp="" data-lit={lit ? 'true' : 'false'} x={win.x} y={win.y} width={FAR_WINDOW.w} height={FAR_WINDOW.h} fill={win.blue ? '#C4D8FF' : '#FFDFA0'} opacity={lit ? dim * farLight : 0} style={{ transition: 'opacity 4s ease' }} />;
 }
 
-export function GhibliWindows({ buildings, minutes, gloom, dim, farLight }: { buildings: Facade[]; minutes: number; gloom: boolean; dim: number; farLight: number }): ReactElement {
+export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, farLight }: { buildings: Facade[]; minutes: number; day: WindowDay | undefined; daylight: number; gloom: boolean; dim: number; farLight: number }): ReactElement {
   return (
     <g data-ghibli-windows="">
       {buildings.map((b, i) =>
         b.far
-          ? b.farWindows.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={lampLit(win.u, minutes) || (gloom && win.u < 0.55)} dim={dim} farLight={farLight} />)
-          : b.lamps.map((lamp, j) => <NearWindow key={`n${i}-${j}`} lamp={lamp} lit={lampLit(lamp.u, minutes) || (gloom && lamp.u < 0.55)} dim={dim} />),
+          ? b.farWindows.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={windowLit(win.u, minutes, day, daylight, gloom)} dim={dim} farLight={farLight} />)
+          : b.lamps.map((lamp, j) => <NearWindow key={`n${i}-${j}`} lamp={lamp} lit={windowLit(lamp.u, minutes, day, daylight, gloom)} dim={dim} />),
       )}
     </g>
   );

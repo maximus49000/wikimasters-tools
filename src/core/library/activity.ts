@@ -29,7 +29,8 @@ export function activityAt(minutes: number): number {
   return KEYS[KEYS.length - 1]![1];
 }
 
-// Chaque fenêtre d'immeuble a un seuil u ∈ [0,1) tiré de sa graine : elle est allumée quand l'activité dépasse ce seuil.
+// Lumières des scènes nature et espace (les immeubles de la Ville suivent city/window-lights.ts) : chaque lumière a un seuil
+// u ∈ [0,1) tiré de sa graine ; elle est allumée quand l'activité dépasse ce seuil.
 // Au crépuscule les lumières s'allument donc en cascade ; vers 4 h il ne reste que les seuils les plus bas (insomniaques).
 export const lampLit = (u: number, minutes: number): boolean => u < activityAt(minutes) * 0.92;
 
