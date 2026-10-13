@@ -5,7 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
 import { useSceneDayStart } from '../../src/content/parade-layer';
-import { MovingCrew, MovingTruck, collectMovers, frameAt, placeMovers, type CrewScript, type MoverPos } from '../../src/content/moving-truck';
+import { MovingCrew, MovingTruck, cachedPlan, collectMovers, placeMovers } from '../../src/content/moving-truck';
+import { moverAt, pieceAt, type CrewInput, type MoverAt } from '../../src/core/library/city/shops/moving-crew';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { dayNumber, ymdOfDay } from '../../src/core/library/city/shops/hours';
 import { streetOn, type SlotDay } from '../../src/core/library/city/shops/lifecycle';
@@ -15,6 +16,14 @@ import { anchorsOf, type FigureKey } from '../../src/core/library/figure/bake';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+// Planning de l'équipe relu à l'instant t (porteurs et meuble lourd), comme la boucle.
+const frameAt = (sc: CrewInput, t: number): { movers: MoverAt[]; heavy: ReturnType<typeof pieceAt> } => {
+  const plan = cachedPlan(sc);
+  const movers = plan.segs.map((segs) => moverAt(segs, sc.door, t));
+  return { movers, heavy: pieceAt(plan, movers, sc.door, t) };
+};
+// Pas le plus rapide d'un porteur (planning : 0,85 à 1,15 fois le pas de base).
+const maxStep = (sc: CrewInput, dt: number): number => sc.speed * 1.15 * dt + 1e-6;
 const mounted: { root: Root; host: HTMLDivElement }[] = [];
 afterEach(() => {
   for (const { root, host } of mounted.splice(0)) {
@@ -80,7 +89,7 @@ const mount = (minutes: number, ghibli: boolean, figures = new FigureRegistry('t
   return host;
 };
 const yawGap = (a: number, b: number): number => Math.min((((a - b) % 16) + 16) % 16, (((b - a) % 16) + 16) % 16);
-const scriptOf = (c: Element): CrewScript => JSON.parse(c.querySelector('[data-moving-crew]')!.getAttribute('data-script')!) as CrewScript;
+const scriptOf = (c: Element): CrewInput => JSON.parse(c.querySelector('[data-moving-crew]')!.getAttribute('data-script')!) as CrewInput;
 const keyOf = (fig: Element): FigureKey => {
   const [sig, yaw, gait, phase, head, arms, lean] = fig.getAttribute('data-key')!.split('#').pop()!.split('|');
   return { sig: sig!, yaw: Number(yaw), gait: gait as FigureKey['gait'], phase: Number(phase), head: Number(head), arms: arms as FigureKey['arms'], lean: Number(lean) };
@@ -131,26 +140,26 @@ describe('déménageurs au pantin (Ghibli)', () => {
 describe('déménageurs : entrées et sorties sans fondu (les deux graphismes)', () => {
   // Une silhouette n'apparaît ni ne disparaît dans la rue : hors de vue seulement au fond du seuil (profondeur 1), ou derrière la
   // caisse du camion (son arrière `b` ou `hide`, au milieu de la caisse) ; jamais de saut d'un instant au suivant.
-  const near = (p: MoverPos, q: { x: number; y: number }, tol: number): boolean => Math.hypot(p.x - q.x, p.y - q.y) <= tol;
-  const checkJoin = (sc: CrewScript, before: MoverPos, after: MoverPos, tag: string): void => {
+  const near = (p: MoverAt, q: { x: number; y: number }, tol: number): boolean => Math.hypot(p.x - q.x, p.y - q.y) <= tol;
+  const checkJoin = (sc: CrewInput, before: MoverAt, after: MoverAt, tag: string): void => {
     const tol = 1e-6;
     if (before.where === after.where) return;
     const pair = [before, after];
     const off = pair.find((p) => p.where === 'off');
     const street = pair.find((p) => p.where === 'street');
     const door = pair.find((p) => p.where === 'door');
-    if (off && street) expect(near(street, sc.geom.b, sc.speed * 0.05 + tol) || near(street, sc.hide, sc.speed * 0.05 + tol), `${tag} : apparu dans la rue (${street.x}, ${street.y})`).toBe(true);
+    if (off && street) expect(near(street, sc.truck, maxStep(sc, 0.05) + tol) || near(street, sc.cab, maxStep(sc, 0.05) + tol), `${tag} : apparu dans la rue (${street.x}, ${street.y})`).toBe(true);
     if (off && door) expect(door.depth, `${tag} : seuil`).toBeGreaterThan(0.9);
     if (street && door) {
       expect(door.depth, `${tag} : seuil → rue`).toBeLessThan(0.1);
-      expect(near(street, sc.geom.a, sc.speed * 0.05 + 0.5), `${tag} : sortie loin de la porte`).toBe(true);
+      expect(near(street, sc.door, maxStep(sc, 0.05) + 0.5), `${tag} : sortie loin de la porte`).toBe(true);
     }
   };
   for (const ghibli of [false, true]) {
     it(`${ghibli ? 'Ghibli' : 'classique'} : de l'ouverture du hayon à la remontée dans le camion, continu d'un instant au suivant et d'une étape à la suivante`, () => {
       const names = ['open-back', 'carry-out', 'pause', 'carry-in', 'close-back'];
       const scripts = names.map((n) => scriptOf(mount(midMinute(n), ghibli)));
-      let last: MoverPos[] | null = null;
+      let last: MoverAt[] | null = null;
       for (const sc of scripts) {
         if (last) last.forEach((p, i) => checkJoin(sc, p, frameAt(sc, sc.t0).movers[i]!, `${sc.step} (début)`));
         let prev = frameAt(sc, sc.t0).movers;
@@ -159,7 +168,7 @@ describe('déménageurs : entrées et sorties sans fondu (les deux graphismes)',
           cur.forEach((p, i) => {
             const q = prev[i]!;
             const tag = `${sc.step} ${(t - sc.t0).toFixed(2)} s, porteur ${i}`;
-            if (p.where === q.where && p.where !== 'off') expect(Math.hypot(p.x - q.x, p.y - q.y), `${tag} : saut`).toBeLessThanOrEqual(sc.speed * 0.05 + 1e-6);
+            if (p.where === q.where && p.where !== 'off') expect(Math.hypot(p.x - q.x, p.y - q.y), `${tag} : saut`).toBeLessThanOrEqual(maxStep(sc, 0.05));
             // Orientation : jamais de demi-tour d'un coup (au plus deux crans en 0,05 s, le quart de tour du seuil compris).
             if (p.where !== 'off' && q.where !== 'off') expect(yawGap(p.yaw, q.yaw), `${tag} : orientation ${q.yaw} → ${p.yaw}`).toBeLessThanOrEqual(2);
             checkJoin(sc, q, p, tag);
@@ -168,7 +177,7 @@ describe('déménageurs : entrées et sorties sans fondu (les deux graphismes)',
         }
         last = prev;
       }
-      // Fin de la fermeture : tous remontés dans le camion.
+      // Fin de la fermeture : tous remontés dans la cabine.
       expect(last!.every((p) => p.where === 'off')).toBe(true);
     }, 30000);
     it(`${ghibli ? 'Ghibli' : 'classique'} : aucune opacité sur un porteur (seul le seuil de la porte en a une)`, () => {
@@ -180,7 +189,8 @@ describe('déménageurs : entrées et sorties sans fondu (les deux graphismes)',
         placeMovers(crews, t, metrics, ghibli ? figures : null);
         for (const e of c.querySelectorAll('[data-moving-crew], [data-moving-crew] *')) {
           if (!e.hasAttribute('opacity')) continue;
-          expect(e.matches('[data-door-fig], [data-door-dark]') || e.closest('[data-pose-body], [data-head]') !== null, e.outerHTML.slice(0, 80)).toBe(true);
+          // Seuls le seuil de la porte et la vitre du local (déménageurs vus à l'intérieur, voile fixe) portent une opacité.
+          expect(e.matches('[data-door-fig], [data-door-dark], [data-mover-inside]') || e.closest('[data-pose-body], [data-head]') !== null, e.outerHTML.slice(0, 80)).toBe(true);
         }
       }
     });
@@ -188,7 +198,7 @@ describe('déménageurs : entrées et sorties sans fondu (les deux graphismes)',
 
   it('demi-tour à petits pas : en arrivant à sa place, on tourne cran par cran (allure « step »)', () => {
     const sc = scriptOf(mount(midMinute('open-back'), true));
-    let prev: MoverPos | null = null;
+    let prev: MoverAt | null = null;
     let steps = 0;
     const seen = new Set<number>();
     for (let t = sc.t0; t < sc.t0 + 40; t += 0.01) {
@@ -225,9 +235,9 @@ describe('heure figée (réglage jour, nuit, manuel) : la minute de la scène ne
       const cur = frameAt(scriptOf(host), t);
       cur.movers.forEach((p, i) => {
         const q = prev.movers[i]!;
-        if (p.where === q.where && p.where !== 'off') expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeLessThanOrEqual(before.speed * 0.05 + 1e-6);
+        if (p.where === q.where && p.where !== 'off') expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeLessThanOrEqual(maxStep(before, 0.05));
       });
-      if (cur.heavy && prev.heavy) expect(cur.kind).toBe(prev.kind);
+      if (cur.heavy && prev.heavy) expect(cur.heavy.load).toBe(prev.heavy.load);
       prev = cur;
     }
   });

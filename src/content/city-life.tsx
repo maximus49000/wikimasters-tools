@@ -830,6 +830,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             sky={sky}
             lights={lights}
             still={still}
+            t0={t0}
             ghibli={ghibli}
             rainy={rainy}
           />

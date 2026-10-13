@@ -8,7 +8,9 @@ export const MOVING_STEPS = ['truck-arrives', 'open-back', 'carry-out', 'pause',
 export type MovingStep = (typeof MOVING_STEPS)[number];
 export type MovingPlan = { start: number; end: number; steps: { step: MovingStep; from: number; to: number }[]; outOnly: boolean; inOnly: boolean };
 
-const WEIGHT: Record<MovingStep, number> = { 'truck-arrives': 6, 'open-back': 4, 'carry-out': 30, pause: 10, 'carry-in': 30, 'close-back': 4, leave: 6 };
+// Hayon : quelques secondes (manœuvré par le premier arrivé, moving-crew.ts) ; l'ouverture et la fermeture gardent un peu
+// plus d'une minute pour que l'équipe descende de la cabine ou y remonte, à son rythme.
+const WEIGHT: Record<MovingStep, number> = { 'truck-arrives': 6, 'open-back': 1.5, 'carry-out': 30, pause: 10, 'carry-in': 30, 'close-back': 1.5, leave: 6 };
 
 export function movingPlan(seed: number, slotId: string, day: number, kind: Change['kind'], offsetMin = 0): MovingPlan {
   const rng = mulberry32(seed ^ hashString(`moving-${slotId}`) ^ Math.imul(day, 2654435761));

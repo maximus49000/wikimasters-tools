@@ -12,12 +12,12 @@ ni un objet.
 
 | # | Sujet | Lot |
 |---|-------|-----|
-| 1 | Bus à horaires (6 h 50 → 0 h 30, pointes, soir espacé ; dimanche réduit), personne n'attend la nuit, panneau « Prochain bus » (ligne + minutes) | PR bus-horaires |
-| 2 | Marche de face ou de dos au passage piéton (effet « moonwalk ») | lot circulation |
-| 3 | Motos et scooters : les mains sur le guidon | lot circulation |
-| 4 | Vélos au feu rouge : arrêt avant le passage piéton, pied à terre ; remonter une file sans traverser un véhicule | lot circulation |
-| 5 | Déménageurs : équipe désorganisée et vivante (pas 3 qui entrent / 3 qui sortent), hayon rapide, entrée dans le camion sans être coupé en deux par le calque du camion | lot déménagement |
-| 6 | Local déménagé : il se vide puis se remplit, les déménageurs sont visibles au travail à l'intérieur | lot déménagement |
+| 1 | Bus à horaires (6 h 50 → 0 h 30, pointes, soir espacé ; dimanche réduit), personne n'attend la nuit, panneau « Prochain bus » (ligne + minutes) | PR #272 (fusionnée) |
+| 2 | Marche de face ou de dos au passage piéton (effet « moonwalk ») | PR #273 (fusionnée) |
+| 3 | Motos et scooters : les mains sur le guidon | PR #273 (fusionnée) |
+| 4 | Vélos au feu rouge : arrêt avant le passage piéton, pied à terre ; remonter une file sans traverser un véhicule | PR #273 (fusionnée) |
+| 5 | Déménageurs : équipe désorganisée et vivante (pas 3 qui entrent / 3 qui sortent), hayon rapide, entrée dans le camion sans être coupé en deux par le calque du camion | lot déménagement (planning par porteur, moving-crew.ts) |
+| 6 | Local déménagé : il se vide puis se remplit, les déménageurs sont visibles au travail à l'intérieur | lot déménagement (planning par porteur, moving-crew.ts) |
 | 7 | Café : le serveur pose la tasse, le client la prend, boit, la repose (plusieurs fois), la tasse reste jusqu'au débarrassage, le client paie avant de partir | lot café |
 | 8 | Piétons : respect des plans (contourner par derrière), attente vivante s'il n'y a pas la place (petits gestes, agacement), jamais à travers un objet ou un véhicule | lot piétons |
 | 9 | Plus de passants et de vie sur le trottoir d'en face, sans cacher la ville (seulement des éléments bas ; lampadaire côté chaussée ; pas de gros arbre ni de bâtiment) | lot trottoir d'en face |
@@ -34,3 +34,17 @@ ni un objet.
 - **Grue (G5 partie 2, tâche des événements du ciel)** : mouvement pas naturel (rotation, levage d'une charge, câble qui
   descend et remonte, ouvrier dans la cabine), et elle ne doit jamais être cachée à 100 % par les nuages : la flèche reste
   sous la couche de nuages ou les nuages passent derrière elle.
+
+## Déménagement : ce qui est fait et ce qui reste
+
+Fait (lot déménagement) : planning par porteur (pas, temps de prise et de pose, cartons seul, meubles à deux, pauses sur le
+trottoir), hayon manœuvré en 5 s par le premier arrivé (ouverture et fermeture ramenées à ~1 min 30 au lieu de 4 min),
+descente de la cabine et remontée en passant derrière le camion, déménageurs visibles derrière la vitrine quand ils sont dans
+le local, planning calé sur la minute où l'étape devient visible (personne ne surgit).
+
+Reste :
+- La vitrine se vide encore par tranches au rythme de l'étape, pas pièce par pièce avec les allers réels.
+- « Calque du camion » : interprété comme les porteurs coupés par la caisse avant d'être arrivés au camion ; ils entrent
+  désormais seulement par l'arrière. À confirmer avec l'utilisateur si le souci visait autre chose (passants coupés par le
+  camion garé, par exemple).
+- Meubles : aplats provisoires (Fable).
