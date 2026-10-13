@@ -50,12 +50,8 @@ describe('canPlace', () => {
   });
 
   it('refuse un chevauchement et donne les cases en conflit', () => {
-    // Les trois niveaux sont pris sous le bureau.
-    const layout: Layout = [
-      { id: 'f1', kind: 'shelf', col: 0, row: 7, depth: 2 },
-      { id: 'f2', kind: 'shelf', col: 0, row: 7 },
-      { id: 'f3', kind: 'shelf', col: 0, row: 7, depth: 3 },
-    ];
+    // Les pieds du bureau (lignes 13-14) tomberaient sur ceux de l'étagère.
+    const layout: Layout = [{ id: 'f1', kind: 'shelf', col: 0, row: 7 }];
     const res = canPlace(layout, 24, 'desk', 3, 11);
     expect(res.ok).toBe(false);
     if (!res.ok) {

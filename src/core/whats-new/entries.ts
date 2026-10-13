@@ -2062,7 +2062,7 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'À quoi ça sert', text: 'À ce que la pièce se lise comme une vraie pièce vue de trois-quarts : ce qui est plus près de vous cache ce qui est plus loin.' },
           { label: 'Comment faire', text: 'Ouvrez Ma Pièce, passez en Aménager (crayon), puis faites glisser un meuble plus bas ou plus haut : il passe devant ou derrière ses voisins.' },
-          { label: 'Comment ça marche', text: 'Le dessin range les meubles de la ligne la plus haute du sol à la plus basse. Deux meubles dont les pieds sont sur la même ligne gardent leur rang habituel (fond, milieu, avant), qui permet aussi de poser une plante devant une étagère sur les mêmes cases.' },
+          { label: 'Comment ça marche', text: 'Le dessin range les meubles de la ligne la plus haute du sol à la plus basse. Deux meubles ne peuvent pas avoir les pieds au même endroit du sol : l’un est toujours devant l’autre.' },
           { label: 'Limites', text: 'Les objets accrochés au mur et les fenêtres restent toujours derrière les meubles, les tapis toujours dessous.' },
         ],
         scene: { page: '/collection', closeWindows: true },
@@ -2073,8 +2073,41 @@ export const ENTRIES: Entry[] = [
         text: 'En mode Aménager, Avancer (flèche vers le bas) descend le meuble choisi d’une ligne vers vous, Reculer (flèche vers le haut) le remonte d’une ligne vers le mur. Les boutons sont dans la bulle de l’objet et dans la barre du mode placement.',
         details: [
           { label: 'À quoi ça sert', text: 'À ajuster finement la place d’un meuble, donc ce qu’il cache et ce qui le cache, sans le faire glisser.' },
-          { label: 'Comment ça marche', text: 'Les règles sont celles d’un déplacement : le meuble reste dans la pièce et ses pieds sur le sol. S’il arrive sur un autre meuble, il se glisse devant ou derrière lui tout seul, quand c’est possible.' },
+          { label: 'Comment ça marche', text: 'Les règles sont celles d’un déplacement : le meuble reste dans la pièce et ses pieds sur le sol. Il ne peut pas poser ses pieds sur ceux d’un autre meuble.' },
           { label: 'Limites', text: 'Avancer est grisé quand le meuble touche le bas de la pièce, Reculer quand ses pieds sont contre le mur ou que la place est prise. Les tapis restent toujours sous les meubles et n’ont pas ces boutons.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
+  {
+    id: 'bibliotheque-v30',
+    theme: 'collection',
+    glyph: '🛋️',
+    title: 'Un meuble devant l’autre, jamais au même endroit',
+    summary: 'Deux meubles ne partagent plus la même place au sol ; en plein écran vertical, la pièce occupe tout l’écran',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Chaque meuble a sa place au sol',
+        text: 'Dans Ma Pièce, un meuble peut passer devant un autre, mais plus se poser au même endroit : si ses pieds tombent sur ceux d’un autre meuble, l’empreinte devient rouge et la coche reste grisée.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À éviter les poses impossibles, comme un canapé et une étagère confondus sur la même ligne du sol.' },
+          { label: 'Comment ça marche', text: 'Chaque meuble a une emprise au sol : ses rangées du bas qui touchent vraiment le sol (deux pour une étagère, toute la profondeur pour un canapé). Deux emprises ne peuvent pas se chevaucher ; au-dessus, le haut d’un meuble peut passer devant ou derrière un autre.' },
+          { label: 'Comment faire', text: 'Posez le meuble une ligne plus bas pour qu’il passe devant, ou plus haut pour qu’il passe derrière. Avancer et Reculer sont grisés quand la ligne voisine est prise.' },
+          { label: 'Limites', text: 'Les pièces déjà aménagées gardent leurs meubles tels quels ; la règle s’applique dès qu’on en pose ou en déplace un.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Tout l’écran en vertical, tiroir en survol',
+        text: 'En plein écran sur un téléphone tenu droit, la pièce prend toute la hauteur au lieu d’une bande entre deux zones noires ; elle défile de gauche à droite. Le tiroir réduit laisse une poignée qui flotte sur la scène : touchez-la pour le rouvrir.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À voir la pièce en grand pendant qu’on l’aménage, sans espace perdu.' },
+          { label: 'Comment ça marche', text: 'Seul le panneau des vignettes réserve le bas de l’écran ; les onglets du tiroir et la poignée passent par-dessus la pièce.' },
+          { label: 'Limites', text: 'Faites glisser la pièce sur le côté pour voir les colonnes qui ne tiennent pas dans la largeur de l’écran.' },
         ],
         scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
       },

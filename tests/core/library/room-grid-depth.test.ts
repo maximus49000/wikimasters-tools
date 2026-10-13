@@ -34,21 +34,27 @@ describe('niveaux de profondeur', () => {
     expect([at('w'), at('p'), at('c'), at('s'), at('st')]).toEqual([0, 0, 3, 3, 1]);
   });
 
-  it('superpose une bibliothèque, un fauteuil et une table basse sur les mêmes cases', () => {
-    let layout = placeStanding([], 24, 'shelf', 0, 8, 'a')!;
-    layout = placeStanding(layout, 24, 'armchair', 1, 13, 'b')!;
-    layout = placeStanding(layout, 24, 'coffee-table', 0, 14, 'c')!;
-    expect(layout).toHaveLength(3);
-    expect(layout.map((p) => depthOf(layout, p))).toEqual([1, 2, 3]);
-    // Le niveau par défaut n'est pas écrit.
-    expect(layout.every((p) => !('depth' in p))).toBe(true);
+  it('refuse un meuble sur le pied d’un autre (quel que soit le niveau), accepte devant ou derrière', () => {
+    // Étagère : lignes 7 à 14, pieds en lignes 13-14.
+    const layout = placeStanding([], 24, 'shelf', 0, 7, 'a')!;
+    // Fauteuil (pieds sur ses 3 lignes) en 13-15 : il chevauche les pieds de l'étagère.
+    expect(placeStanding(layout, 24, 'armchair', 1, 13, 'b')).toBeNull();
+    const res = canPlace(layout, 24, 'armchair', 1, 13);
+    expect(res).toMatchObject({ ok: false, reason: 'taken' });
+    if (!res.ok) expect(res.cells).toEqual(expect.arrayContaining([{ col: 1, row: 13 }, { col: 1, row: 14 }]));
+    // Devant (lignes 15-17) ou derrière (lignes 10-12, devant le mur) : permis.
+    expect(placeStanding(layout, 24, 'armchair', 1, 15, 'b')).not.toBeNull();
+    expect(placeStanding(layout, 24, 'armchair', 1, 10, 'b')).not.toBeNull();
+    // Table basse (pieds sur ses 2 lignes) juste devant l'étagère : permis ; le niveau par défaut n'est pas écrit.
+    const withTable = placeStanding(layout, 24, 'coffee-table', 0, 15, 'c')!;
+    expect(withTable.every((p) => !('depth' in p))).toBe(true);
   });
 
-  it('se replie sur le niveau libre le plus proche (à égalité, celui de devant)', () => {
+  it('deux fauteuils ne se posent jamais au même endroit', () => {
     const layout = placeStanding([], 24, 'armchair', 0, 13, 'a')!;
-    expect(freeDepth(layout, 24, 'armchair', 0, 13, 2)).toBe(3);
-    const placed = placeStanding(layout, 24, 'armchair', 0, 13, 'b')!;
-    expect(placed.find((p) => p.id === 'b')).toMatchObject({ depth: 3 });
+    expect(freeDepth(layout, 24, 'armchair', 0, 13, 2)).toBeNull();
+    expect(placeStanding(layout, 24, 'armchair', 0, 13, 'b')).toBeNull();
+    expect(placeStanding(layout, 24, 'armchair', 3, 13, 'b')).not.toBeNull();
   });
 
   it('refuse quand les niveaux 1, 2 et 3 sont pris', () => {
@@ -72,15 +78,14 @@ describe('niveaux de profondeur', () => {
     expect(canHang(layout, 24, 'poster', 11, 2).ok).toBe(false);
   });
 
-  it('garde son niveau en déplacement s’il est libre, sinon se replie', () => {
+  it('garde son niveau en déplacement, refuse le pied d’un autre meuble', () => {
     const layout: Layout = [
       { id: 'a', kind: 'armchair', col: 0, row: 13, depth: 3 },
       { id: 'b', kind: 'armchair', col: 10, row: 13, depth: 3 },
     ];
     expect(moveStanding(layout, 24, 'a', 4, 13)!.find((p) => p.id === 'a')).toMatchObject({ depth: 3 });
-    const moved = moveStanding(layout, 24, 'a', 10, 13)!.find((p) => p.id === 'a')!;
-    expect(depthOf(layout, moved)).toBe(2);
-    expect('depth' in moved).toBe(false);
+    expect(moveStanding(layout, 24, 'a', 10, 13)).toBeNull();
+    expect(moveStanding(layout, 24, 'a', 9, 15)).toBeNull();
   });
 
   it('avance (une ligne plus bas) et recule (une ligne plus haut), pieds sur le sol et dans la pièce', () => {
@@ -93,13 +98,13 @@ describe('niveaux de profondeur', () => {
     expect(canShiftRow(wall, 24, 'a', -1)).toBe(false);
   });
 
-  it('en avançant sur un autre meuble, prend un niveau libre', () => {
+  it('n’avance pas sur le pied d’un autre meuble', () => {
     const layout: Layout = [
       { id: 'a', kind: 'armchair', col: 0, row: 12 },
       { id: 'b', kind: 'armchair', col: 0, row: 15 },
     ];
-    const moved = shiftRow(layout, 24, 'a', 1)!;
-    expect(moved.find((p) => p.id === 'a')).toMatchObject({ row: 13, depth: 3 });
+    expect(canShiftRow(layout, 24, 'a', 1)).toBe(false);
+    expect(canShiftRow(layout, 24, 'a', -1)).toBe(true);
   });
 
   it('un tapis n’avance ni ne recule', () => {

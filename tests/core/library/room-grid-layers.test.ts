@@ -41,12 +41,7 @@ describe('tapis', () => {
 
 describe('meubles au sol', () => {
   it('deux meubles au sol ne se chevauchent pas', () => {
-    // Les trois niveaux sont pris sous le fauteuil.
-    const layout: Layout = [
-      { id: 'f1', kind: 'sofa', col: 2, row: 14, depth: 1 },
-      { id: 'f2', kind: 'sofa', col: 2, row: 14 },
-      { id: 'f3', kind: 'sofa', col: 2, row: 14, depth: 3 },
-    ];
+    const layout: Layout = [{ id: 'f1', kind: 'sofa', col: 2, row: 14 }];
     const res = canPlace(layout, 24, 'armchair', 6, 14);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('taken');

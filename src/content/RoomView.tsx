@@ -89,6 +89,8 @@ type Props = {
   // Plein écran d'une pièce horizontale sur un écran en paysage : le dessin couvre tout l'écran (plus de colonnes visibles,
   // ou zoom sur la largeur le temps que la pièce trop étroite s'élargisse à celle de l'écran).
   fill?: boolean;
+  // Plein écran sur un écran en hauteur : le dessin prend toute cette hauteur (CSS) et défile en largeur, sans bandes noires.
+  fillHeight?: string;
   // Vue « dehors » : le monde (largeur de la pièce × hauteur du mur) couvre tout le dessin, même sans fenêtre. Le viewBox passé à React
   // reste constant ; le hook de caméra l'écrit ensuite directement dans le DOM. Un repère de suivi (invisible) est rendu en dernier dans le monde.
   outside?: boolean;
@@ -103,7 +105,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, outside = false, roomLayers = 'shown' }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, fillHeight, outside = false, roomLayers = 'shown' }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -557,7 +559,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       role="img"
       aria-label={room.name}
       data-style={room.style}
-      style={outside ? { width: '100%', height: '100%', display: 'block' } : { aspectRatio: `${width} / ${HEIGHT}`, width: fill ? `max(100vw, calc(100vh * ${width} / ${HEIGHT}))` : `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block', ...(fill ? { alignSelf: 'flex-start' } : {}) }}
+      style={outside ? { width: '100%', height: '100%', display: 'block' } : { aspectRatio: `${width} / ${HEIGHT}`, width: fill ? `max(100vw, calc(100vh * ${width} / ${HEIGHT}))` : fillHeight ? `calc(${fillHeight} * ${width} / ${HEIGHT})` : `${(room.cols / VISIBLE_COLS[room.orientation]) * 100}%`, flexShrink: 0, display: 'block', ...(fill ? { alignSelf: 'flex-start' } : {}) }}
     >
       {decor.glow && <NeonDefs />}
       {/* Mur statique (fond + décor steampunk), réutilisé par <use> pour combler les trous entre les vitres. */}
