@@ -6,7 +6,7 @@ import { applyMatrix, rotateAngle, type Angle } from '../core/library/footprint'
 import type { FurnitureKind, Layout, Placed, ShelfLevel } from '../core/library/library-types';
 import {
   CELL_H, CELL_W, ROWS, angleOf, isStanding, setAngle, firstFreeBoard, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
-  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, shelfBoardsOf, shelfLayoutOf, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect, type StoredLike,
+  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, SHELF_GAP_CM, SHELF_INNER_CM, shelfBoardsOf, shelfLayoutOf, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect, type StoredLike,
 } from '../core/library/room-grid';
 
 // Id de l'objet neuf tant qu'il n'est pas enregistré (renommé au ✓).
@@ -179,8 +179,9 @@ function freeEndOf(layout: Layout, shelfId: string, level: ShelfLevel): Spot | n
   if (!board) return null;
   const items = shelfLayoutOf(layout, shelfId).filter((b) => b.level === level);
   const last = items[items.length - 1];
-  // Repère de la face : 2 px à droite du dernier objet (ou du bord gauche), à mi-hauteur de la tablette.
-  const u = last ? last.local.x + last.local.w + 2 : 2;
+  // Repère de la face : un demi-centimètre après l'écart qui suit le dernier objet (ou après le bord gauche), à mi-hauteur de la tablette.
+  const cm = (last ? last.x0Cm + last.wCm + SHELF_GAP_CM : 0) + 0.5;
+  const u = cm * (board.local.w / SHELF_INNER_CM);
   const v = board.local.y + board.local.h / 2;
   const [x, y] = applyMatrix(board.m, u, v);
   return spotOfPx(x, y);

@@ -3,6 +3,7 @@ import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, frontFaceRect
 import { STANDING_KINDS } from './library-types';
 import type { Depth, Layout, Orientation, Placed, ShelfLevel, ShelfShape, SmallItem, StandDepth, StandingKind, StoredDisplay, VinylColor, WallShape } from './library-types';
 import { ITEM_MODELS, itemFootprintCm } from './item-models';
+import { FURNITURE_MODELS } from './furniture-models';
 
 export const ROWS = 18;
 // Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
@@ -432,14 +433,15 @@ export function placedSlugs(layout: Layout): Set<string> {
 }
 
 // Rangement adaptatif des étagères : chaque tablette (largeur utile = largeur de la face du modèle, 74 cm) se remplit de gauche à droite
-// selon la largeur réelle de chaque objet (de face : sa largeur ; sur la tranche : son épaisseur), chacun précédé d'un écart de 1 cm.
+// selon la largeur réelle de chaque objet (de face : sa largeur ; sur la tranche : son épaisseur), avec 1 cm d'écart ENTRE deux objets
+// (aucune marge au bord : 5 CD de face = 5 × 14 + 4 = 74 cm).
 // Un objet est enregistré par sa tablette (`level`, 0 = haut) et son rang (`order`) ; sa position se déduit des objets qui le précèdent.
-export const SHELF_INNER_CM = 74;
+export const SHELF_INNER_CM = FURNITURE_MODELS.shelf.face!.w;
 export const SHELF_GAP_CM = 1;
 export const SHELF_LEVELS: readonly ShelfLevel[] = [0, 1, 2];
 export const SHELF_FULL_MESSAGE = 'Plus de place sur cette tablette.';
 // Hauteur de la face de l'étagère (cm) : de la face locale (px) aux cm, verticalement.
-const SHELF_FACE_H_CM = 169;
+const SHELF_FACE_H_CM = FURNITURE_MODELS.shelf.face!.h;
 
 export type Stored = Extract<Placed, { kind: 'stored' }>;
 // Ce qu'il faut savoir d'un objet pour le ranger : sa forme et sa présentation (et son id s'il est déjà rangé, pour l'écarter du calcul).
@@ -454,9 +456,12 @@ export const storedWidthCm = (p: StoredLike): number => itemFootprintCm(p.shape,
 export function boardItems(layout: Layout, shelfId: string, level: ShelfLevel, ignoreId?: string): Stored[] {
   return layout.filter((p): p is Stored => p.kind === 'stored' && p.shelfId === shelfId && p.level === level && p.id !== ignoreId).sort((a, b) => a.order - b.order);
 }
-// Largeur occupée (cm) : Σ (largeur + écart).
-export const boardUsedCm = (items: readonly StoredLike[]): number => items.reduce((sum, p) => sum + storedWidthCm(p) + SHELF_GAP_CM, 0);
-const fits = (others: readonly StoredLike[], item: StoredLike): boolean => boardUsedCm(others) + storedWidthCm(item) + SHELF_GAP_CM <= SHELF_INNER_CM + 1e-9;
+// Largeur occupée (cm) : Σ largeurs + un écart entre deux objets voisins (n − 1 écarts).
+export const boardUsedCm = (items: readonly StoredLike[]): number =>
+  items.reduce((sum, p) => sum + storedWidthCm(p), 0) + Math.max(0, items.length - 1) * SHELF_GAP_CM;
+// `item` tient-il à la suite de `others` (un écart de plus s'il n'est pas seul) ?
+const fits = (others: readonly StoredLike[], item: StoredLike): boolean =>
+  boardUsedCm(others) + (others.length > 0 ? SHELF_GAP_CM : 0) + storedWidthCm(item) <= SHELF_INNER_CM + 1e-9;
 
 // Une tablette sur la face projetée : `local` dans le repère de la face (vue de face, px ; du haut du niveau au dessus de sa planche),
 // `m` la matrice vers l'écran, `quad` ses 4 coins à l'écran (parallélogramme en ¾) ; x, y, w, h : son rectangle englobant.
@@ -488,12 +493,12 @@ export function shelfBoardsOf(shelf: Placed): ShelfBoard[] {
 }
 
 // Place de chaque objet rangé de l'étagère `shelfId` sur la face `frame` (pièce ou zoom : mêmes positions en cm, à l'échelle de la face) :
-// posé sur sa tablette, à sa largeur et sa hauteur réelles. Une tablette convertie qui déborde garde ses objets (au-delà de la face).
+// posé sur sa tablette, à sa largeur et sa hauteur réelles, le premier contre le bord gauche. Une tablette convertie qui déborde garde ses objets (au-delà de la face).
 export function shelfLayoutIn(frame: FaceFrame, layout: Layout, shelfId: string): ShelfItemBox[] {
   const sx = frame.w / SHELF_INNER_CM;
   const sy = frame.h / SHELF_FACE_H_CM;
   return shelfBoardsIn(frame).flatMap((board) => {
-    let x0 = SHELF_GAP_CM;
+    let x0 = 0;
     return boardItems(layout, shelfId, board.level).map((p, order) => {
       const wCm = storedWidthCm(p);
       const h = Math.min(ITEM_MODELS[p.shape].h * sy, board.local.h);
@@ -514,9 +519,11 @@ export function shelfLayoutOf(layout: Layout, shelfId: string): ShelfItemBox[] {
 export function shelfFreeIn(frame: FaceFrame, layout: Layout, shelfId: string): { level: ShelfLevel; local: PxRect }[] {
   const sx = frame.w / SHELF_INNER_CM;
   return shelfBoardsIn(frame).flatMap((board) => {
-    const used = boardUsedCm(boardItems(layout, shelfId, board.level));
+    const items = boardItems(layout, shelfId, board.level);
+    const used = boardUsedCm(items);
     const free = SHELF_INNER_CM - used;
-    if (free < SHELF_GAP_CM + 1) return [];
+    // Moins d'1 cm utile (écart compris après le dernier objet) : rien à montrer.
+    if (free - (items.length > 0 ? SHELF_GAP_CM : 0) < 1) return [];
     const inset = Math.min(4, board.local.h / 4);
     return [{ level: board.level, local: { x: used * sx, y: board.local.y + inset, w: free * sx, h: board.local.h - inset } }];
   });
@@ -549,7 +556,7 @@ export function dropOnShelf(layout: Layout, shelfId: string, level: ShelfLevel, 
   const self = item.id === undefined ? undefined : layout.find((p) => p.id === item.id);
   const already = self?.kind === 'stored' && self.shelfId === shelfId && self.level === level;
   if (!already && !fits(others, item)) return { ok: false, reason: 'shelf-full', message: SHELF_FULL_MESSAGE };
-  let x0 = SHELF_GAP_CM;
+  let x0 = 0;
   let order = 0;
   for (const p of others) {
     const w = storedWidthCm(p);

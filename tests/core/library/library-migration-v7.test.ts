@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState, migrateV6, parseLibraryState } from '../../../src/core/library/library-book';
+import { SHELF_INNER_CM, shelfLayoutOf } from '../../../src/core/library/room-grid';
 
 const v6 = (layout: unknown[]) => ({ version: 6, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' },
   rooms: [{ id: 'r1', name: 'P', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, pets: [], layout }] });
@@ -32,11 +33,41 @@ describe('migration v7 (rangement adaptatif)', () => {
     expect(parseLibraryState(once)).toEqual(once);
   });
 
-  it('une tablette convertie qui déborde garde tous ses objets', () => {
-    // 5 CD de face : 5 × (14 + 1) = 75 cm > 74 cm.
+  it('une tablette v6 de 5 CD de face migre sans déborder (5 × 14 + 4 = 74 cm)', () => {
     const s = parseLibraryState(v6([{ id: 'sh', kind: 'shelf', col: 0, row: 6 }, ...[0, 1, 2, 3, 4].map((i) => st(`c${i}`, i))]));
-    const stored = s.rooms[0]!.layout.filter((p) => p.kind === 'stored');
-    expect(stored.map((p) => [p.id, (p as { order: number }).order])).toEqual([['c0', 0], ['c1', 1], ['c2', 2], ['c3', 3], ['c4', 4]]);
+    const layout = s.rooms[0]!.layout;
+    expect(layout.filter((p) => p.kind === 'stored').map((p) => [p.id, (p as { order: number }).order])).toEqual([['c0', 0], ['c1', 1], ['c2', 2], ['c3', 3], ['c4', 4]]);
+    const boxes = shelfLayoutOf(layout, 'sh');
+    const last = boxes[boxes.length - 1]!;
+    expect(last.x0Cm + last.wCm).toBeLessThanOrEqual(SHELF_INNER_CM);
+  });
+
+  it('une tablette qui déborde (6 CD de face, 89 cm) garde tous ses objets à la lecture', () => {
+    const six = [0, 1, 2, 3, 4, 5].map((i) => ({ id: `c${i}`, kind: 'stored', shape: 'cd', shelfId: 'sh', level: 0, order: i, slug: `S${i}` }));
+    const s = parseLibraryState({ ...v6([]), version: 7, rooms: [{ ...v6([]).rooms[0], layout: [{ id: 'sh', kind: 'shelf', col: 0, row: 6 }, ...six] }] });
+    expect(s.rooms[0]!.layout.filter((p) => p.kind === 'stored').map((p) => p.id)).toEqual(['c0', 'c1', 'c2', 'c3', 'c4', 'c5']);
+  });
+
+  it('deux pièces, plusieurs étagères, emplacements non contigus sur les trois tablettes : sans perte, même ordre', () => {
+    const shelves = (prefix: string) => [{ id: `${prefix}A`, kind: 'shelf', col: 0, row: 6 }, { id: `${prefix}B`, kind: 'shelf', col: 10, row: 6 }];
+    const roomA = [...shelves('a'), st('a1', 13, 'dvd', 'aA'), st('a2', 1, 'cd', 'aA'), st('a3', 6, 'book', 'aA'), st('a4', 4, 'game', 'aA'), st('a5', 9, 'cd', 'aA'), st('a6', 11, 'cd', 'aA'),
+      st('a7', 2, 'cd', 'aB'), st('a8', 14, 'dvd', 'aB'), st('a9', 7, 'book', 'aB')];
+    const roomB = [...shelves('b'), st('b1', 3, 'cd', 'bA'), st('b2', 0, 'cd', 'bA'), st('b3', 12, 'game', 'bA'), st('b4', 5, 'dvd', 'bB'), st('b5', 8, 'cd', 'bB'), st('b6', 10, 'book', 'bB')];
+    const raw = v6(roomA);
+    raw.rooms.push({ ...raw.rooms[0]!, id: 'r2', name: 'Q', layout: roomB });
+    const s = parseLibraryState(raw);
+    expect(s.rooms).toHaveLength(2);
+    // Attendu : pour chaque étagère et chaque tablette (slot / 5), les objets triés par slot, rangs 0..n−1.
+    for (const [i, src] of [roomA, roomB].entries()) {
+      const layout = s.rooms[i]!.layout;
+      const stored = src.filter((p) => p.kind === 'stored') as ReturnType<typeof st>[];
+      expect(layout.filter((p) => p.kind === 'stored')).toHaveLength(stored.length);
+      for (const p of stored) {
+        const peers = stored.filter((q) => q.shelfId === p.shelfId && Math.floor(q.slot / 5) === Math.floor(p.slot / 5)).sort((x, y) => x.slot - y.slot);
+        expect(layout.find((q) => q.id === p.id), p.id).toMatchObject({ shelfId: p.shelfId, shape: p.shape, slug: p.slug, level: Math.floor(p.slot / 5), order: peers.indexOf(p) });
+      }
+    }
+    expect(parseLibraryState(s)).toEqual(s);
   });
 
   it('état initial en v7 ; doublon tablette + ordre écarté', () => {

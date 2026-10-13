@@ -17,9 +17,9 @@ describe('rangement adaptatif d’une tablette', () => {
     expect(SHELF_INNER_CM).toBe(74);
   });
 
-  it('4 CD de face tiennent, le 5e est refusé (« Plus de place sur cette tablette. »)', () => {
+  it('5 CD de face tiennent (5 × 14 + 4 écarts = 74 cm), le 6e est refusé (« Plus de place sur cette tablette. »)', () => {
     let layout: Layout = shelf;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       const r = dropOnShelf(layout, 'f1', 0, 999, { shape: 'cd' });
       expect(r).toEqual({ ok: true, order: i });
       layout = storeCard(layout, 'f1', 0, i, 'cd', `S${i}`, `c${i}`)!;
@@ -27,12 +27,14 @@ describe('rangement adaptatif d’une tablette', () => {
     }
     expect(dropOnShelf(layout, 'f1', 0, 999, { shape: 'cd' })).toEqual({ ok: false, reason: 'shelf-full', message: SHELF_FULL_MESSAGE });
     expect(SHELF_FULL_MESSAGE).toBe('Plus de place sur cette tablette.');
-    expect(storeCard(layout, 'f1', 0, 4, 'cd', 'S4', 'c4')).toBeNull();
+    expect(storeCard(layout, 'f1', 0, 5, 'cd', 'S5', 'c5')).toBeNull();
+    // Même un CD sur la tranche (1 cm + 1 cm d'écart) n'y entre plus.
+    expect(dropOnShelf(layout, 'f1', 0, 999, { shape: 'cd', display: 'spine' })).toMatchObject({ ok: false, reason: 'shelf-full' });
     // Les autres tablettes restent libres.
     expect(dropOnShelf(layout, 'f1', 1, 0, { shape: 'cd' })).toEqual({ ok: true, order: 0 });
   });
 
-  it('30 CD sur la tranche tiennent sur une tablette', () => {
+  it('30 CD sur la tranche tiennent sur une tablette (30 + 29 = 59 cm)', () => {
     let layout: Layout = shelf;
     for (let i = 0; i < 30; i++) {
       layout = storeCard(layout, 'f1', 2, i, 'cd', `S${i}`, `c${i}`, 'spine')!;
@@ -44,13 +46,14 @@ describe('rangement adaptatif d’une tablette', () => {
   it('un livre est sur la tranche par défaut (3 cm), un CD de face (14 cm)', () => {
     const books = shelfLayoutOf([...shelf, { ...cd(0, 0, 0), shape: 'book' }, cd(1, 0, 1)], 'f1');
     expect(books.map((b) => b.wCm)).toEqual([3, 14]);
-    expect(books.map((b) => b.x0Cm)).toEqual([1, 5]);
+    // Le premier contre le bord gauche, 1 cm d'écart entre deux objets.
+    expect(books.map((b) => b.x0Cm)).toEqual([0, 4]);
   });
 
   it('insertion au milieu : décale les suivants ; retrait : compacte', () => {
     const layout: Layout = [...shelf, cd(0, 0, 0), cd(1, 0, 1), cd(2, 0, 2)];
     const before = shelfLayoutOf(layout, 'f1');
-    // Lâcher entre le 1er et le 2e (centres 8 cm et 23 cm).
+    // Lâcher entre le 1er et le 2e (centres 7 cm et 22 cm).
     const r = dropOnShelf(layout, 'f1', 0, 15, { shape: 'cd', display: 'spine' });
     expect(r).toEqual({ ok: true, order: 1 });
     const next = storeCard(layout, 'f1', 0, 1, 'cd', 'N', 'n', 'spine')!;
@@ -75,24 +78,29 @@ describe('rangement adaptatif d’une tablette', () => {
     const b = moveStored([...shelf, cd(0, 0, 0), cd(1, 0, 1), cd(2, 0, 2)], 'c2', 'f1', 0, 0)!;
     expect(boardItems(b, 'f1', 0).map((p) => p.id)).toEqual(['c2', 'c0', 'c1']);
     // Refus : tablette pleine, étagère inconnue, objet non rangé, tablette hors bornes.
-    const full: Layout = [...shelf, cd(0, 0, 0), cd(1, 0, 1), cd(2, 0, 2), cd(3, 0, 3), cd(4, 1, 0)];
-    expect(moveStored(full, 'c4', 'f1', 0, 4)).toBeNull();
-    expect(moveStored(full, 'c4', 'zz', 0, 0)).toBeNull();
+    const full: Layout = [...shelf, ...[0, 1, 2, 3, 4].map((i) => cd(i, 0, i)), cd(5, 1, 0)];
+    expect(moveStored(full, 'c5', 'f1', 0, 5)).toBeNull();
+    expect(moveStored(full, 'c5', 'zz', 0, 0)).toBeNull();
     expect(moveStored(full, 'f1', 'f1', 0, 0)).toBeNull();
-    expect(moveStored(full, 'c4', 'f1', 3 as 0, 0)).toBeNull();
+    expect(moveStored(full, 'c5', 'f1', 3 as 0, 0)).toBeNull();
   });
 
   it('une tablette qui déborde (convertie) garde ses objets et y laisse déplacer les siens', () => {
-    const over: Layout = [...shelf, ...[0, 1, 2, 3, 4].map((i) => cd(i, 0, i))];
-    expect(shelfLayoutOf(over, 'f1')).toHaveLength(5);
-    expect(moveStored(over, 'c4', 'f1', 0, 0)).not.toBeNull();
+    // 6 CD de face : 6 × 14 + 5 = 89 cm > 74 cm.
+    const over: Layout = [...shelf, ...[0, 1, 2, 3, 4, 5].map((i) => cd(i, 0, i))];
+    expect(shelfLayoutOf(over, 'f1')).toHaveLength(6);
+    expect(moveStored(over, 'c5', 'f1', 0, 0)).not.toBeNull();
+    expect(storeCard(over, 'f1', 0, 0, 'cd', 'N', 'n', 'spine')).toBeNull();
   });
 
   it('première tablette libre pour un objet (la suite de la tablette)', () => {
-    const full: Layout = [...shelf, cd(0, 0, 0), cd(1, 0, 1), cd(2, 0, 2), cd(3, 0, 3)];
+    const full: Layout = [...shelf, ...[0, 1, 2, 3, 4].map((i) => cd(i, 0, i))];
+    const four: Layout = full.filter((p) => p.id !== 'c4');
     expect(firstFreeBoard(shelf, 'f1', { shape: 'cd' })).toEqual({ level: 0, order: 0 });
     expect(firstFreeBoard(full, 'f1', { shape: 'cd' })).toEqual({ level: 1, order: 0 });
-    expect(firstFreeBoard(full, 'f1', { shape: 'cd', display: 'spine' })).toEqual({ level: 0, order: 4 });
+    expect(firstFreeBoard(full, 'f1', { shape: 'cd', display: 'spine' })).toEqual({ level: 1, order: 0 });
+    // 4 CD = 59 cm : un livre sur la tranche (1 + 3 cm) tient encore à la suite.
+    expect(firstFreeBoard(four, 'f1', { shape: 'book' })).toEqual({ level: 0, order: 4 });
   });
 
   it('refuse une carte déjà posée ou une étagère inconnue', () => {
@@ -117,7 +125,7 @@ describe('positions sur la face projetée', () => {
     [121, 61, 8].forEach((cm, i) => expect(boxes[i]!.y + boxes[i]!.h).toBeCloseTo(at(cm), 1));
     const sx = face.w / 74;
     expect(boxes[0]!.w).toBeCloseTo(14 * sx, 3);
-    expect(boxes[0]!.x).toBeCloseTo(face.x + 1 * sx, 3);
+    expect(boxes[0]!.x).toBeCloseTo(face.x, 3);
     expect(boxes[1]!.w).toBeCloseTo(1 * sx, 3);
     expect(boxes[2]!.h).toBeCloseTo(19 * k, 3);
   });
@@ -169,7 +177,8 @@ describe('positions sur la face projetée', () => {
     const frame = faceFrame('shelf', 0, pxRect(rectOf(front)!))!;
     const free = shelfFreeIn(frame, items, 'f1');
     expect(free.map((f) => f.level)).toEqual([0, 1, 2]);
-    expect(free[0]!.local.x).toBeCloseTo((15 / 74) * frame.w, 3);
+    expect(free[0]!.local.x).toBeCloseTo((14 / 74) * frame.w, 3);
+    expect(free[1]!.local.x).toBeCloseTo((1 / 74) * frame.w, 3);
     expect(free[0]!.local.x + free[0]!.local.w).toBeCloseTo(frame.w, 3);
   });
 });

@@ -1,7 +1,7 @@
 import { wallSizeOf } from '../core/library/furniture-catalog';
 import { drawSize, floorCells } from '../core/library/footprint';
 import type { Layout, ShelfLevel } from '../core/library/library-types';
-import { angleOf, boardAt, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, dropOnShelf, firstFreeSurfaceSlot, moveStored, pxRect, rectOf, shelfLayoutOf, SURFACE_SLOTS, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, dropOnShelf, firstFreeSurfaceSlot, moveStored, pxRect, rectOf, shelfLayoutOf, SURFACE_SLOTS, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -50,12 +50,12 @@ export function hostAtSurface(layout: Layout, x: number, y: number): string | nu
   return null;
 }
 
-// Place qu'aurait l'objet rangé `id` à ce rang de la tablette (rectangle englobant à l'écran) ; si la place manque
-// (ou `order` = Infinity), posé de force au bout de la tablette, quitte à déborder.
+// Place qu'aurait l'objet rangé `id` à ce rang de la tablette (rectangle englobant à l'écran) ; si la place manque,
+// posé de force à ce rang (au bout de la tablette pour un refus), quitte à déborder.
 function ghostOf(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): PxRect | undefined {
   const item = layout.find((p) => p.id === id);
   if (!item || item.kind !== 'stored') return undefined;
-  const moved = moveStored(layout, id, shelfId, level, order) ?? [...layout.filter((p) => p.id !== id), { ...item, shelfId, level, order: Infinity }];
+  const moved = moveStored(layout, id, shelfId, level, order) ?? [...layout.filter((p) => p.id !== id), { ...item, shelfId, level, order }];
   const box = shelfLayoutOf(moved, shelfId).find((b) => b.id === id);
   return box && { x: box.x, y: box.y, w: box.w, h: box.h };
 }
@@ -100,7 +100,7 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     const where = { shelfId: hit.shelfId, level: hit.level };
     if (!drop.ok) {
       // Tablette pleine : l'empreinte rouge est l'objet posé au bout de la tablette (il déborde).
-      return { ok: false, reason: drop.reason === 'shelf-full' ? 'shelf-full' : 'not-slot', cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, Infinity), ...where };
+      return { ok: false, reason: drop.reason === 'shelf-full' ? 'shelf-full' : 'not-slot', cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, boardItems(layout, hit.shelfId, hit.level, id).length), ...where };
     }
     return { ok: true, cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, drop.order), ...where, order: drop.order };
   }

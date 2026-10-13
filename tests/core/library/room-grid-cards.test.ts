@@ -92,9 +92,9 @@ describe('étagère et écran', () => {
 
   it('renvoie null quand l’étagère est pleine', () => {
     let layout = shelf;
-    // 5 DVD de face par tablette : 5 × (13,5 + 1) = 72,5 cm ; il reste 1,5 cm, trop peu même pour un CD sur la tranche (2 cm).
-    for (let i = 0; i < 15; i++) layout = storeCard(layout, 'f1', Math.floor(i / 5) as 0, i % 5, 'dvd', `C${i}`, `s${i}`)!;
-    expect(firstFreeBoard(layout, 'f1', { shape: 'dvd' })).toBeNull();
+    // 5 CD de face par tablette : 5 × 14 + 4 écarts = 74 cm, la largeur utile entière.
+    for (let i = 0; i < 15; i++) layout = storeCard(layout, 'f1', Math.floor(i / 5) as 0, i % 5, 'cd', `C${i}`, `s${i}`)!;
+    expect(firstFreeBoard(layout, 'f1', { shape: 'cd' })).toBeNull();
     expect(firstFreeBoard(layout, 'f1', { shape: 'cd', display: 'spine' })).toBeNull();
   });
 

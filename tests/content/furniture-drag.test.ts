@@ -51,7 +51,7 @@ describe('dropTargetFor', () => {
       { id: 'f1', kind: 'shelf', col: 0, row: 7 },
       { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', level: 0, order: 0, slug: 'A' },
       { id: 'f3', kind: 'stored', shape: 'dvd', shelfId: 'f1', level: 0, order: 1, slug: 'B' },
-      ...[0, 1, 2, 3].map((i) => ({ id: `g${i}`, kind: 'stored', shape: 'cd', shelfId: 'f1', level: 1, order: i, slug: `G${i}` }) as const),
+      ...[0, 1, 2, 3, 4].map((i) => ({ id: `g${i}`, kind: 'stored', shape: 'cd', shelfId: 'f1', level: 1, order: i, slug: `G${i}` }) as const),
     ];
     const boards = shelfBoardsOf(layout[0]!);
     const at = (level: number, fx: number) => ({ x: boards[level]!.x + boards[level]!.w * fx, y: boards[level]!.y + boards[level]!.h / 2 });
@@ -62,10 +62,12 @@ describe('dropTargetFor', () => {
     const moved = shelfLayoutOf(layout.map((p) => (p.id === 'f2' ? { ...p, order: 2 } : p)), 'f1').find((b) => b.id === 'f2')!;
     expect(end.ghostPx!.x).toBeCloseTo(moved.x, 6);
     expect(dropTargetFor(layout, COLS, 'f2', 0, 7, at(0, 0.02).x, at(0, 0.02).y)).toMatchObject({ ok: true, level: 0, order: 0 });
-    // Tablette du milieu : 4 CD de face, plus de place.
+    // Tablette du milieu : 5 CD de face (74 cm), plus de place.
     const full = dropTargetFor(layout, COLS, 'f2', 0, 7, at(1, 0.5).x, at(1, 0.5).y);
     expect(full).toMatchObject({ ok: false, reason: 'shelf-full', shelfId: 'f1', level: 1 });
-    expect(full.ghostPx).toBeDefined();
+    // Empreinte rouge : au bout de la tablette, après les 5 CD (elle déborde de la face).
+    const last = shelfLayoutOf(layout, 'f1').find((b) => b.id === 'g4')!;
+    expect(full.ghostPx!.x).toBeGreaterThanOrEqual(last.x + last.w - 1e-6);
     expect(dropTargetFor(layout, COLS, 'f2', 20, 4, 20 * CELL_W, 4 * CELL_H)).toMatchObject({ ok: false, reason: 'not-slot' });
   });
 

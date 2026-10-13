@@ -362,8 +362,8 @@ describe('LibraryPanel : cartes', () => {
   });
 
   it('lâcher un objet sur une tablette pleine le laisse en place et affiche « Plus de place sur cette tablette. »', async () => {
-    // Tablette du milieu : 4 CD de face, 60 cm sur 74 ; un 5e n'y tient pas.
-    const full: Layout = [...shelfLayout, ...[0, 1, 2, 3].map((i) => ({ id: `g${i}`, kind: 'stored', shape: 'cd', shelfId: 'f1', level: 1, order: i, slug: `G${i}` }) as const)];
+    // Tablette du milieu : 5 CD de face, 74 cm sur 74 ; un 6e n'y tient pas.
+    const full: Layout = [...shelfLayout, ...[0, 1, 2, 3, 4].map((i) => ({ id: `g${i}`, kind: 'stored', shape: 'cd', shelfId: 'f1', level: 1, order: i, slug: `G${i}` }) as const)];
     await seed(full);
     stubSvgRect();
     const from = cardCenter(full, 'f2');
@@ -374,7 +374,7 @@ describe('LibraryPanel : cartes', () => {
     await pointer('pointerup', window, to.x, to.y);
     await settle();
     expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ level: 0, order: 0 });
-    expect(layoutNow().filter((p) => p.kind === 'stored' && p.level === 1)).toHaveLength(4);
+    expect(layoutNow().filter((p) => p.kind === 'stored' && p.level === 1)).toHaveLength(5);
     expect(q('[role="status"]')?.textContent).toContain('Plus de place sur cette tablette.');
   });
 
