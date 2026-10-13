@@ -67,9 +67,9 @@ Règles de calcul à partir du catalogue actuel (largeur `w`, hauteur `h`, pied 
 
 ### Commande (mode placement et bulle)
 
-- Nouvelle retouche `Edit = { type: 'rotate'; dir: 1 | -1 }` dans `placement.ts`, rejouée après chaque déplacement du fantôme comme les autres retouches. `rotateStanding(layout, cols, id, dir)` dans room-grid renvoie la disposition tournée (angle `(a + dir + 8) % 8`) ou null.
+- L'angle courant est gardé dans l'état du placement (`Placement.angle`) et appliqué à chaque déplacement du fantôme ; `rotatePlacement(p, cols, dir)` tourne d'un cran (angle `(a + dir + 8) % 8`), `setAngle` (room-grid) tourne sans vérifier.
 - Si le nouvel angle ne tient pas à l'endroit visé : le fantôme est dessiné tourné, empreinte **rouge**, ✓ désactivé (même comportement qu'un refus de pose). Le fantôme montre les cases au sol exactes (escalier compris).
-- **Barre du mode placement** : deux glyphes **⟲** (tourner à gauche, `dir −1`) et **⟳** (tourner à droite, `dir +1`), à côté de déplacer / supprimer / ✗ / ✓, pour tout meuble debout.
+- **Barre du mode placement** : deux glyphes **⟲** (tourner à gauche, `dir +1` : face → ¾ avant gauche) et **⟳** (tourner à droite, `dir −1`), à côté de déplacer / supprimer / ✗ / ✓, pour tout meuble debout.
 - **Bulle d'actions** d'un meuble posé : mêmes ⟲ ⟳ ; ils ouvrent le mode placement sur ce meuble avec la retouche déjà appliquée (rien n'est enregistré avant ✓).
 - Les vignettes du tiroir restent de face ; un meuble neuf arrive à l'angle 0.
 
