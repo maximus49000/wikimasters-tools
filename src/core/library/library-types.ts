@@ -102,7 +102,7 @@ export type Room = {
 };
 
 export type LibraryState = {
-  version: 5;
+  version: 6;
   activeRoomId: string;
   homeRoomId: string | null;
   // Heure globale de la Bibliothèque (toutes les pièces).
