@@ -139,9 +139,9 @@ describe('panneau Ciel', () => {
     expect(getCurrentPosition).toHaveBeenCalledTimes(1);
   });
 
-  it('le panneau n’existe qu’en mode Aménager', async () => {
+  it('le choix du ciel reste dans le menu de la barre du haut en mode Visiter', async () => {
     await click('[data-action="visit"]');
-    expect(q('[role="group"][aria-label="Ciel"]')).toBeNull();
+    expect(q('[data-menu="sky"] [role="group"][aria-label="Ciel"]')).not.toBeNull();
   });
 });
 

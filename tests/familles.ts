@@ -85,7 +85,7 @@ export const FAMILLES: Famille[] = [
     lourde: true,
     fichiers: [
       ...c(
-        'furniture-drag*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
+        'furniture-drag*', 'library-sims-ui.*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
         'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*',
       ),
       ...lib('room-grid*', 'furniture-catalog.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*'),

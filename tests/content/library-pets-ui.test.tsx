@@ -46,11 +46,10 @@ afterEach(() => {
 });
 
 describe('adoption du chat', () => {
-  it('la rangée Animaux n apparaît qu en mode Aménager', async () => {
-    expect(q('[aria-label="Animaux"]')).toBeNull();
+  it('le menu Animaux de la barre du haut est accessible aussi en mode Visiter', async () => {
+    expect(q('[data-menu="pets"] [data-action="adopt"]')).not.toBeNull();
     await click('[data-action="edit"]');
-    expect(q('[aria-label="Animaux"]')).not.toBeNull();
-    expect(q('[data-action="adopt"]')).not.toBeNull();
+    expect(q('[data-menu="pets"] [data-action="adopt"]')).not.toBeNull();
   });
 
   it('adopte un chat avec un nom et un pelage', async () => {
@@ -60,7 +59,7 @@ describe('adoption du chat', () => {
     await click('[data-coat="black"]');
     await click('[data-action="adopt-confirm"]');
     expect(repo.current()!.rooms[0]!.pets[0]).toMatchObject({ name: 'Moustache', coat: 'black' });
-    expect(q('[data-pet="p1"]')).not.toBeNull();
+    expect(q('g[data-pet="p1"]')).not.toBeNull();
     expect(q('[data-action="adopt"]')).not.toBeNull();
   });
 
@@ -152,7 +151,7 @@ describe('robot', () => {
     await click('[data-action="adopt-robot"]');
     await click('[data-action="adopt-confirm"]');
     await click('[data-action="visit"]');
-    await click('[data-pet="p1"]');
+    await click('g[data-pet="p1"]');
     expect(q('[data-pet-pose="beep"]')).not.toBeNull();
     expect(q('[data-pet-name]')!.textContent).toBe('Robi');
   });
@@ -165,7 +164,7 @@ describe('caresser le chat', () => {
     await type('input[aria-label="Nom du chat à adopter"]', 'Pilou');
     await click('[data-action="adopt-confirm"]');
     await click('[data-action="visit"]');
-    await click('[data-pet="p1"]');
+    await click('g[data-pet="p1"]');
     expect(q('[data-pet-pose="purr"]')).not.toBeNull();
     expect(q('[data-pet-name]')!.textContent).toBe('Pilou');
   });

@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   activeRoom,
   adoptPet,
-  MAX_PET_NAME,
-  MAX_PETS,
   removePet,
   renamePet,
   createInitialState,
@@ -27,11 +25,8 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { categoriesFor, STEAMPUNK_ONLY, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, sizeOf, wallSizeOf, WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, type Category } from '../core/library/furniture-catalog';
-import { SCENE_IDS, STYLE_IDS, coatsOf, type Coat, type Pet, type SceneId, type Species, type TimeSetting, type WeatherSetting, type WeatherState, WEATHER_STATES, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
+import { STYLE_IDS, type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StandingKind, type StyleId } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
-import { COAT_LABELS, paletteOf as coatPaletteOf } from './pet-sprite';
-import { DOG_COAT_LABELS } from './dog-sprite';
-import { ROBOT_COAT_LABELS } from './robot-sprite';
 import {
   MAX_COLS,
   MIN_COLS,
@@ -89,9 +84,7 @@ import { useBusLines } from './use-bus-lines';
 import { dayNumber } from '../core/library/city/shops/hours';
 import { useWeather } from './use-weather';
 import { useLightEnabled } from './light-setting';
-import { useZoneChoice, type ZoneChoice } from './zone-setting';
-import { WEATHER_SCENES } from './scene-weather';
-import { WEATHER_LABEL } from '../core/library/weather/weather-types';
+import { useZoneChoice } from './zone-setting';
 import { usePetContext } from './pet-context';
 import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
@@ -109,6 +102,10 @@ import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView, type DragView, type Tool } from './RoomView';
 import { Btn, Icon, ICONS } from './library-ui';
+import { LibraryTopBar } from './library-topbar';
+import { NEXT_ZONE, SkyMenu } from './library-sky-menu';
+import { PetsMenu, SPECIES_TEXT } from './library-pets-menu';
+import { RoomMenu } from './library-room-menu';
 import { useOutsideCamera, type OutsidePhase } from './outside/use-outside-camera';
 import type { Rect } from '../core/library/outside-camera';
 
@@ -144,29 +141,12 @@ export const LIBRARY_CSS = `
 .wmt-lib-pick:disabled{opacity:.4;cursor:not-allowed}
 .wmt-lib-btn:disabled{opacity:.4;cursor:not-allowed}
 .wmt-lib-btn[data-suggested="true"]{border-color:var(--color-accent,#34d399);color:var(--color-accent,#34d399)}
+.wmt-lib-rooms{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+.wmt-lib-pop{position:relative;display:inline-flex}
+.wmt-lib-pop-panel{position:absolute;top:calc(100% + 6px);right:0;z-index:20;display:flex;flex-direction:column;gap:8px;min-width:240px;max-width:min(92vw,420px);max-height:70vh;overflow:auto;padding:10px;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:var(--color-surface,#0d1117);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.wmt-lib-pop-panel[hidden]{display:none}
+.wmt-lib-pop-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 `;
-
-const COAT_LABELS_OF: Record<Species, Record<string, string>> = { cat: COAT_LABELS, dog: DOG_COAT_LABELS, robot: ROBOT_COAT_LABELS };
-const coatLabel = (species: Species, coat: Coat): string => COAT_LABELS_OF[species][coat] ?? coat;
-
-// Textes propres à chaque espèce.
-const SPECIES_TEXT: Record<Species, { name: string; adoptName: string; confirm: string; adoptLabel: string; defaultName: string; defaultCoat: Coat }> = {
-  cat: { name: 'Nom du chat', adoptName: 'Nom du chat à adopter', confirm: 'Adopter ce chat', adoptLabel: 'Adopter un chat', defaultName: 'Minou', defaultCoat: 'orange' },
-  dog: { name: 'Nom du chien', adoptName: 'Nom du chien à adopter', confirm: 'Adopter ce chien', adoptLabel: 'Adopter un chien', defaultName: 'Rex', defaultCoat: 'brown' },
-  robot: { name: 'Nom du robot', adoptName: 'Nom du robot à adopter', confirm: 'Adopter ce robot', adoptLabel: 'Adopter un robot', defaultName: 'Robi', defaultCoat: 'white' },
-};
-
-const WEATHER_ICON: Record<WeatherState, readonly string[]> = { sun: ICONS.sun, cloudy: ICONS.wxCloudy, drizzle: ICONS.wxDrizzle, rain: ICONS.wxRain, storm: ICONS.wxStorm, snow: ICONS.wxSnow, fog: ICONS.wxFog };
-
-const SCENE_ICON: Record<SceneId, readonly string[]> = {
-  city: ['M4 21V9h6v12', 'M10 21V4h6v17', 'M16 21v-8h4v8', 'M3 21h18'],
-  countryside: ['M2 18c4-6 8-6 10-2 2-4 6-4 10 2', 'M3 21h18', 'M12 6v4', 'M10 8h4'],
-  mountain: ['M2 20l7-12 4 6 3-4 6 10z', 'M9 8l2 3'],
-  sea: ['M2 14c3-3 5 3 8 0s5 3 8 0 3-1 4 0', 'M2 19c3-3 5 3 8 0s5 3 8 0 3-1 4 0', 'M16 5a3 3 0 1 0 0 0.1'],
-  space: ['M12 3l2 5 5 .5-4 3.5 1.5 5L12 14l-4.5 3 1.5-5L5 8.5 10 8z'],
-  earth: ['M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z', 'M3 12h18', 'M12 3c3 3 3 15 0 18', 'M12 3c-3 3-3 15 0 18'],
-};
-const SCENE_LABEL: Record<SceneId, string> = { city: 'Ville', countryside: 'Campagne', mountain: 'Montagne', sea: 'Mer', space: 'Espace', earth: 'Terre vue d’en haut' };
 
 const REFUSALS = {
   bounds: 'Ça ne rentre pas dans la pièce.',
@@ -174,10 +154,6 @@ const REFUSALS = {
   taken: 'Cet emplacement est déjà occupé.',
   wall: 'Un objet mural s’accroche au mur.',
 } as const;
-
-// Réglage cyclique de la zone des vacances : Auto → A → B → C → Corse → Auto.
-const NEXT_ZONE: Record<ZoneChoice, ZoneChoice> = { auto: 'A', A: 'B', B: 'C', C: 'Corse', Corse: 'auto' };
-const ZONE_GLYPH: Record<ZoneChoice, string> = { auto: '📍', A: 'A', B: 'B', C: 'C', Corse: 'Co' };
 
 type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void; onOpenMarket?: (slug: string) => void };
 
@@ -801,71 +777,75 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 
   return (
     <div className="wmt-lib" data-wmt-library>
-      <div className="wmt-lib-row" role="tablist" aria-label="Pièces">
-        {lib.rooms.map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            role="tab"
-            className="wmt-lib-btn"
-            aria-selected={r.id === lib.activeRoomId}
-            data-room={r.id}
-            onClick={() => chooseRoom(r.id)}
-          >
-            {r.id === lib.homeRoomId && <Icon paths={ICONS.star} />}
-            {r.name}
-          </button>
-        ))}
-        <Btn label="Ajouter une pièce" data={{ action: 'add-room' }} onClick={() => { reset(); resetScroll(); void library.update(addRoom); }}>
-          <Icon paths={ICONS.plus} />
-        </Btn>
-      </div>
-
-      <div className="wmt-lib-row">
-        <Btn label="Visiter" pressed={!editing} data={{ action: 'visit' }} onClick={() => setMode2('visit')}>
-          <Icon paths={ICONS.eye} />
-        </Btn>
-        <Btn label="Aménager" pressed={editing} data={{ action: 'edit' }} onClick={() => setMode2('edit')}>
-          <Icon paths={ICONS.pencil} />
-        </Btn>
-        <Btn label="Pièce horizontale" pressed={room.orientation === 'landscape'} data={{ orient: 'landscape' }} onClick={() => chooseOrientation('landscape')}>
-          <Icon paths={ICONS.landscape} />
-        </Btn>
-        <Btn label="Pièce verticale" pressed={portrait} data={{ orient: 'portrait' }} onClick={() => chooseOrientation('portrait')}>
-          <Icon paths={ICONS.portrait} />
-        </Btn>
-        <Btn
-          label="Pièce d’accueil : s’ouvre au lancement"
-          pressed={lib.homeRoomId === room.id}
-          data={{ action: 'home' }}
-          onClick={() => void library.update((state) => setHome(state, state.homeRoomId === room.id ? null : room.id))}
-        >
-          <Icon paths={ICONS.star} />
-        </Btn>
-        <Btn label={stage.active ? 'Quitter le plein écran' : 'Plein écran'} data={{ action: 'fullscreen' }} onClick={stage.toggle}>
-          <Icon paths={ICONS.fullscreen} />
-        </Btn>
-        <span className="wmt-lib-sep" />
-        {editing && (
-          <input
-            key={room.id}
-            className="wmt-lib-name"
-            aria-label="Nom de la pièce"
-            defaultValue={room.name}
-            maxLength={30}
-            onBlur={(event) => {
-              // La valeur est lue tout de suite : currentTarget n'existe plus quand l'écriture s'exécute.
-              const name = event.currentTarget.value;
-              void library.update((state) => renameRoom(state, room.id, name));
-            }}
+      <LibraryTopBar
+        rooms={lib.rooms}
+        activeId={lib.activeRoomId}
+        homeId={lib.homeRoomId}
+        onRoom={chooseRoom}
+        onAddRoom={() => { reset(); resetScroll(); void library.update(addRoom); }}
+        editing={editing}
+        onMode={setMode2}
+        fullscreenActive={stage.active}
+        onFullscreen={stage.toggle}
+        sky={
+          <SkyMenu
+            scene={room.scene}
+            onScene={(id) => void library.update((state) => setRoomScene(state, room.id, id))}
+            time={lib.time}
+            onTime={chooseTime}
+            onMinutes={(minutes) => void library.update((state) => setTimeSetting(state, { mode: 'manual', minutes }))}
+            sunLabel={`${sceneTime.times.kind === 'normal' ? `☀ ${formatMinutes(sceneTime.times.sunrise)} → ${formatMinutes(sceneTime.times.sunset)}` : sceneTime.times.polar === 'day' ? '☀ jour permanent' : '☾ nuit permanente'} · ${formatMinutes(sceneTime.minutes)}`}
+            lightOn={lightOn}
+            onLight={setLightOn}
+            zoneChoice={zoneChoice}
+            zoneLabel={zoneLabel}
+            onZone={() => setZoneChoice(NEXT_ZONE[zoneChoice])}
+            weather={lib.weather}
+            onWeather={chooseWeather}
+            positionOn={positionOn}
+            weatherLabel={`${weather.label}${weather.tempC !== null ? ` · ${Math.round(weather.tempC)} °C` : ''}`}
+            weatherNote={weather.real === 'fallback' ? `(simulée${positionOn && failure ? ` : ${FAILURE_LABEL[failure]}` : ''})` : null}
           />
-        )}
-        {editing && (
-          <Btn label={lib.rooms.length > 1 ? 'Supprimer la pièce' : 'Vider la pièce'} data={{ action: 'delete-room' }} onClick={onDeleteRoom}>
-            <Icon paths={ICONS.trash} />
+        }
+        pets={
+          <PetsMenu
+            roomId={room.id}
+            pets={room.pets}
+            adopting={adopting}
+            adoptName={adoptName}
+            adoptCoat={adoptCoat}
+            onRename={(pet, name) => void library.update((state) => renamePet(state, room.id, pet.id, name))}
+            onRemove={onRemovePet}
+            onStartAdopt={startAdopt}
+            onAdoptName={setAdoptName}
+            onAdoptCoat={setAdoptCoat}
+            onConfirm={confirmAdopt}
+            onCancel={() => setAdopting(null)}
+          />
+        }
+        roomMenu={
+          <RoomMenu
+            roomId={room.id}
+            name={room.name}
+            isHome={lib.homeRoomId === room.id}
+            canDelete={lib.rooms.length > 1}
+            onRename={(name) => void library.update((state) => renameRoom(state, room.id, name))}
+            onToggleHome={() => void library.update((state) => setHome(state, state.homeRoomId === room.id ? null : room.id))}
+            onDelete={onDeleteRoom}
+          />
+        }
+      />
+
+      {editing && (
+        <div className="wmt-lib-row">
+          <Btn label="Pièce horizontale" pressed={room.orientation === 'landscape'} data={{ orient: 'landscape' }} onClick={() => chooseOrientation('landscape')}>
+            <Icon paths={ICONS.landscape} />
           </Btn>
-        )}
-      </div>
+          <Btn label="Pièce verticale" pressed={portrait} data={{ orient: 'portrait' }} onClick={() => chooseOrientation('portrait')}>
+            <Icon paths={ICONS.portrait} />
+          </Btn>
+        </div>
+      )}
 
       {editing && (
         <div className="wmt-lib-row" role="group" aria-label="Style de la pièce">
@@ -874,140 +854,6 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <span className="wmt-lib-swatch" style={{ background: paletteOf(id).wall, borderColor: paletteOf(id).floor }} />
             </Btn>
           ))}
-        </div>
-      )}
-
-      {editing && (
-        <div className="wmt-lib-row" role="group" aria-label="Ciel">
-          {SCENE_IDS.map((id) => (
-            <Btn key={id} label={SCENE_LABEL[id]} pressed={room.scene === id} data={{ scene: id }} onClick={() => void library.update((state) => setRoomScene(state, room.id, id))}>
-              <Icon paths={SCENE_ICON[id]} />
-            </Btn>
-          ))}
-          <span className="wmt-lib-sep" />
-          {(
-            [
-              ['real', 'Heure réelle', ICONS.clock],
-              ['day', 'Toujours le jour', ICONS.sun],
-              ['night', 'Toujours la nuit', ICONS.moon],
-              ['manual', 'Choisir l’heure', ICONS.sliders],
-            ] as const
-          ).map(([mode, label, icon]) => (
-            <Btn key={mode} label={label} pressed={lib.time.mode === mode} data={{ time: mode }} onClick={() => chooseTime(mode)}>
-              <Icon paths={icon} />
-            </Btn>
-          ))}
-          {WEATHER_SCENES.includes(room.scene) && (
-            <Btn label="Lumière" pressed={lightOn} data={{ 'light-toggle': '' }} onClick={() => setLightOn(!lightOn)}>
-              <Icon paths={ICONS.bulb} />
-            </Btn>
-          )}
-          {room.scene === 'city' && (
-            <Btn label={`Zone des vacances : ${zoneLabel}`} pressed={zoneChoice !== 'auto'} data={{ 'zone-toggle': '' }} onClick={() => setZoneChoice(NEXT_ZONE[zoneChoice])}>
-              <span className="wmt-lib-zone-glyph" aria-hidden="true">
-                {ZONE_GLYPH[zoneChoice]}
-              </span>
-            </Btn>
-          )}
-          {lib.time.mode === 'manual' && (
-            <input
-              type="range"
-              data-time-slider=""
-              aria-label="Heure"
-              min={0}
-              max={1439}
-              step={5}
-              value={lib.time.minutes}
-              onChange={(event) => { const minutes = Number(event.currentTarget.value); void library.update((state) => setTimeSetting(state, { mode: 'manual', minutes })); }}
-            />
-          )}
-          <span className="wmt-lib-msg" data-sun-times="">
-            {sceneTime.times.kind === 'normal' ? `☀ ${formatMinutes(sceneTime.times.sunrise)} → ${formatMinutes(sceneTime.times.sunset)}` : sceneTime.times.polar === 'day' ? '☀ jour permanent' : '☾ nuit permanente'}
-            {` · ${formatMinutes(sceneTime.minutes)}`}
-          </span>
-        </div>
-      )}
-
-      {editing && WEATHER_SCENES.includes(room.scene) && (
-        <div className="wmt-lib-row" role="group" aria-label="Météo">
-          <Btn label="Météo aléatoire" pressed={lib.weather.mode === 'random'} data={{ 'weather-mode': 'random' }} onClick={() => chooseWeather({ mode: 'random' })}>
-            <Icon paths={ICONS.dice} />
-          </Btn>
-          <Btn label={positionOn ? 'Météo réelle' : 'Météo réelle (position désactivée dans Paramètre d’extension)'} pressed={lib.weather.mode === 'real'} disabled={!positionOn} data={{ 'weather-mode': 'real' }} onClick={() => chooseWeather({ mode: 'real' })}>
-            <Icon paths={ICONS.globe} />
-          </Btn>
-          <span className="wmt-lib-sep" />
-          {WEATHER_STATES.map((state) => (
-            <Btn key={state} label={WEATHER_LABEL[state]} pressed={lib.weather.mode === 'forced' && lib.weather.state === state} data={{ 'weather-state': state }} onClick={() => chooseWeather({ mode: 'forced', state })}>
-              <Icon paths={WEATHER_ICON[state]} />
-            </Btn>
-          ))}
-          <span className="wmt-lib-msg" data-weather-label="">
-            {weather.label}
-            {weather.tempC !== null ? ` · ${Math.round(weather.tempC)} °C` : ''}
-          </span>
-          {weather.real === 'fallback' && (
-            <span className="wmt-lib-msg" data-weather-note="" title={positionOn ? 'Position inconnue ou réseau indisponible : la météo reste simulée.' : 'Position désactivée dans Paramètre d’extension : la météo reste simulée.'}>
-              (simulée{positionOn && failure ? ` : ${FAILURE_LABEL[failure]}` : ''})
-            </span>
-          )}
-        </div>
-      )}
-
-      {editing && (
-        <div className="wmt-lib-row" role="group" aria-label="Animaux">
-          {room.pets.map((pet) => (
-            <span key={`${room.id}:${pet.id}`} className="wmt-lib-pet" data-pet-edit={pet.id}>
-              <input
-                className="wmt-lib-name"
-                aria-label={SPECIES_TEXT[pet.species].name}
-                defaultValue={pet.name}
-                maxLength={MAX_PET_NAME}
-                onBlur={(event) => {
-                  const name = event.currentTarget.value;
-                  if (!name.trim()) {
-                    event.currentTarget.value = pet.name;
-                    return;
-                  }
-                  if (name === pet.name) return;
-                  void library.update((state) => renamePet(state, room.id, pet.id, name));
-                }}
-              />
-              <Btn label={`Retirer ${pet.name}`} data={{ action: 'remove-pet', pet: pet.id }} onClick={() => onRemovePet(pet)}>
-                <Icon paths={ICONS.trash} />
-              </Btn>
-            </span>
-          ))}
-          {adopting !== null ? (
-            <>
-              <input className="wmt-lib-name" aria-label={SPECIES_TEXT[adopting].adoptName} value={adoptName} maxLength={MAX_PET_NAME} onChange={(event) => setAdoptName(event.currentTarget.value)} />
-              {coatsOf(adopting).map((coat) => (
-                <Btn key={coat} label={coatLabel(adopting, coat)} pressed={adoptCoat === coat} data={{ coat }} onClick={() => setAdoptCoat(coat)}>
-                  <span className="wmt-lib-swatch" style={{ background: coatPaletteOf(adopting, coat).body, borderColor: coatPaletteOf(adopting, coat).belly }} />
-                </Btn>
-              ))}
-              <Btn label={SPECIES_TEXT[adopting].confirm} data={{ action: 'adopt-confirm' }} onClick={confirmAdopt}>
-                <Icon paths={ICONS.check} />
-              </Btn>
-              <Btn label="Annuler" data={{ action: 'adopt-cancel' }} onClick={() => setAdopting(null)}>
-                <Icon paths={ICONS.close} />
-              </Btn>
-            </>
-          ) : (
-            room.pets.length < MAX_PETS && (
-              <>
-                <Btn label="Adopter un chat" data={{ action: 'adopt' }} onClick={() => startAdopt('cat')}>
-                  <Icon paths={ICONS.cat} />
-                </Btn>
-                <Btn label="Adopter un chien" data={{ action: 'adopt-dog' }} onClick={() => startAdopt('dog')}>
-                  <Icon paths={ICONS.dog} />
-                </Btn>
-                <Btn label="Adopter un robot" data={{ action: 'adopt-robot' }} onClick={() => startAdopt('robot')}>
-                  <Icon paths={ICONS.robot} />
-                </Btn>
-              </>
-            )
-          )}
         </div>
       )}
 

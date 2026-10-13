@@ -89,7 +89,7 @@ describe('rangée Météo', () => {
     expect((q('[data-weather-mode="real"]') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('est masquée en scène Espace et Terre, et hors mode Aménager', async () => {
+  it('est masquée en scène Espace et Terre, et reste dans le menu Ciel en mode Visiter', async () => {
     await click('[data-scene="space"]');
     expect(row()).toBeNull();
     await click('[data-scene="earth"]');
@@ -97,7 +97,7 @@ describe('rangée Météo', () => {
     await click('[data-scene="sea"]');
     expect(row()).not.toBeNull();
     await click('[data-action="visit"]');
-    expect(row()).toBeNull();
+    expect(row()).not.toBeNull();
   });
 });
 
