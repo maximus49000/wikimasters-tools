@@ -1,6 +1,6 @@
 // tests/core/library/furniture-render3d.test.ts
 import { describe, expect, it } from 'vitest';
-import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, poisOf3d, renderModel, type Model } from '../../../src/core/library/furniture-render3d';
+import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, pieceBounds, poisOf3d, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
 
 const CELL_W = 30;
 const CELL_H = 510 / 18;
@@ -27,7 +27,7 @@ describe('renderModel', () => {
     for (const a of ANGLES) {
       const r = renderModel(cube, a);
       for (const s of r.shapes) {
-        const pts = s.kind === 'poly' ? s.points : [[s.cx - s.rx, s.cy - s.ry], [s.cx + s.rx, s.cy + s.ry]];
+        const pts = 'points' in s ? s.points : [[s.cx - s.rx, s.cy - s.ry], [s.cx + s.rx, s.cy + s.ry]];
         for (const [x, y] of pts) {
           expect(Number.isFinite(x) && Number.isFinite(y)).toBe(true);
           expect(x).toBeGreaterThanOrEqual(-15.5); // débord horizontal d’une demi-case toléré
@@ -102,7 +102,7 @@ describe('corrections de revue', () => {
       for (const a of ANGLES) {
         const r = renderModel(m, a);
         for (const s of r.shapes) {
-          const pts = s.kind === 'poly' ? s.points : [[s.cx - s.rx, s.cy - s.ry], [s.cx + s.rx, s.cy + s.ry]];
+          const pts = 'points' in s ? s.points : [[s.cx - s.rx, s.cy - s.ry], [s.cx + s.rx, s.cy + s.ry]];
           for (const [x, y] of pts) {
             expect(y).toBeGreaterThanOrEqual(-0.5);
             expect(y).toBeLessThanOrEqual(r.rows * CELL_H + 0.5);
@@ -136,5 +136,147 @@ describe('points d’intérêt et face avant', () => {
     expect(frontFaceOf(cube, 1)).not.toBeNull();
     expect(frontFaceOf(cube, 7)).not.toBeNull();
     for (const a of [2, 3, 4, 5, 6] as const) expect(frontFaceOf(cube, a)).toBeNull();
+  });
+});
+
+describe('nouvelles formes (prisme, tige, feuillage, globe)', () => {
+  const inRect = (r: ReturnType<typeof renderModel>) => {
+    for (const s of r.shapes) {
+      const pts = 'points' in s ? s.points : [[s.cx - s.rx, s.cy - s.ry], [s.cx + s.rx, s.cy + s.ry]];
+      for (const [x, y] of pts) {
+        expect(Number.isFinite(x) && Number.isFinite(y)).toBe(true);
+        expect(y).toBeGreaterThanOrEqual(-0.5);
+        expect(y).toBeLessThanOrEqual(r.rows * CELL_H + 0.5);
+      }
+    }
+  };
+  const roof: Model = {
+    w: 70, d: 90, h: 75,
+    pieces: [
+      { shape: 'prism', axis: 'z', profile: [[0, 43], [35, 71], [35, 75], [0, 47]], from: 0, to: 90, fill: 'door' },
+      { shape: 'prism', axis: 'z', profile: [[35, 71], [70, 43], [70, 47], [35, 75]], from: 0, to: 90, fill: 'door' },
+    ],
+  };
+  it('prisme : toit à deux pans, pans visibles de face avec une teinte entre côté et dessus', () => {
+    const r = renderModel(roof, 0);
+    const slopes = r.shapes.filter((s) => s.kind === 'poly' && s.shade > 0.82 && s.shade < 1.12 && s.shade !== 1);
+    expect(slopes.length).toBeGreaterThanOrEqual(2);
+    for (const a of ANGLES) inRect(renderModel(roof, a));
+  });
+  it('prisme : vu de profil, le pan arrière est caché', () => {
+    const one = { ...roof, pieces: [roof.pieces[0]!] };
+    // Angle 2 : le pan gauche (x petit) passe à l’arrière (le modèle tourne, la face avant vers la gauche).
+    const lit = (a: 2 | 6) => renderModel(one, a).shapes.some((s) => s.shade > 1); // le pan tourné vers nous mêle face et dessus
+    expect(lit(2)).not.toBe(lit(6));
+  });
+  it('tige : un disque tourné vers l’avant se voit de face et devient un trait de profil', () => {
+    const disc: Model = { w: 40, d: 40, h: 40, pieces: [{ shape: 'rod', a: [20, 20, 2], b: [20, 20, 0], r: 10, fill: 'shade' }] };
+    const width = (a: 0 | 2) => {
+      const xs = renderModel(disc, a).shapes.flatMap((s) => ('points' in s ? s.points.map((p) => p[0]) : []));
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(width(0)).toBeCloseTo(20 * PX_PER_CM_X, 0);
+    expect(width(2)).toBeLessThan(3 * PX_PER_CM_X);
+    for (const a of ANGLES) inRect(renderModel(disc, a));
+  });
+  it('tige inclinée : silhouette d’un seul polygone + un bout visible, encombrement rayon compris', () => {
+    const rod: Model = { w: 40, d: 40, h: 60, pieces: [{ shape: 'rod', a: [5, 0, 20], b: [35, 58, 20], r: 2, fill: 'metal' }] };
+    for (const a of ANGLES) {
+      const r = renderModel(rod, a);
+      const inked = r.shapes.filter((s) => s.kind === 'poly' && s.ink === undefined);
+      expect(inked.length).toBeGreaterThanOrEqual(1);
+      expect(inked.length).toBeLessThanOrEqual(2);
+      inRect(r);
+    }
+    // Encombrement exact d'un cylindre : rayon × √(1 − u²) sur chaque axe (u = direction de la tige).
+    const [ux, uy] = [30 / Math.hypot(30, 58), 58 / Math.hypot(30, 58)];
+    const want = [5 - 2 * Math.sqrt(1 - ux * ux), 35 + 2 * Math.sqrt(1 - ux * ux), -2 * Math.sqrt(1 - uy * uy), 58 + 2 * Math.sqrt(1 - uy * uy), 18, 22];
+    pieceBounds(rod.pieces[0]!).forEach((v, i) => expect(v).toBeCloseTo(want[i]!));
+    const disc: Piece = { shape: 'rod', a: [20, 20, 2], b: [20, 20, 0], r: 10, fill: 'shade' };
+    expect(pieceBounds(disc)[4]).toBeCloseTo(0); // un disque tourné vers l'avant ne déborde pas en profondeur
+  });
+  it('feuillage : la feuille du fond est dessinée avant celle de devant, et l’inverse vu de dos', () => {
+    const plant: Model = {
+      w: 40, d: 40, h: 60,
+      pieces: [{ shape: 'foliage', fill: 'leaf', leaves: [
+        { base: [20, 10, 20], ctrl: [20, 40, 10], tip: [20, 30, 2], w: 6 },
+        { base: [20, 10, 20], ctrl: [20, 40, 30], tip: [20, 30, 38], w: 6, fill: 'leafDark' },
+      ] }],
+    };
+    const fills = (a: 0 | 4) => renderModel(plant, a).shapes.filter((s) => s.kind === 'poly').map((s) => s.fill);
+    expect(fills(0)).toEqual(['leafDark', 'leaf']);
+    expect(fills(4)).toEqual(['leaf', 'leafDark']);
+    for (const a of ANGLES) inRect(renderModel(plant, a));
+  });
+  const globe: Model = {
+    w: 50, d: 50, h: 50,
+    pieces: [{
+      shape: 'ball', cx: 25, cy: 25, cz: 25, rx: 19, ry: 19, rz: 19, fill: 'fabric', tilt: 23,
+      marks: [{ fill: 'leaf', pts: [[20, -20], [20, 20], [-20, 20], [-20, -20]] }],
+      lines: [{ lat: 0 }], lineFill: 'edge',
+      rings: [{ lon: -90, from: -113, to: 90, r: 21, w: 3, fill: 'metal' }],
+    }],
+  };
+  it('globe : le méridien passe derrière puis devant la sphère', () => {
+    const s = renderModel(globe, 0).shapes;
+    const ball = s.findIndex((x) => x.kind === 'ellipse');
+    expect(s.slice(0, ball).some((x) => x.fill === 'metal')).toBe(true);
+    expect(s.slice(ball + 1).some((x) => x.fill === 'metal')).toBe(true);
+  });
+  it('globe : un continent tourné vers l’avant se voit de face, pas de dos', () => {
+    expect(renderModel(globe, 0).shapes.some((x) => x.fill === 'leaf')).toBe(true);
+    expect(renderModel(globe, 4).shapes.some((x) => x.fill === 'leaf')).toBe(false);
+  });
+  it('globe : l’équateur est un trait dans l’ellipse de la sphère', () => {
+    for (const a of ANGLES) {
+      const s = renderModel(globe, a).shapes;
+      const e = s.find((x) => x.kind === 'ellipse')!;
+      const lines = s.filter((x) => x.kind === 'line');
+      expect(lines.length).toBeGreaterThan(0);
+      if (e.kind !== 'ellipse') throw new Error('ellipse');
+      for (const l of lines) for (const [x, y] of 'points' in l ? l.points : []) expect(((x - e.cx) / e.rx) ** 2 + ((y - e.cy) / e.ry) ** 2).toBeLessThanOrEqual(1.02);
+      inRect(renderModel(globe, a));
+    }
+  });
+  it('teinte propre (tone) et couche de dessin (layer)', () => {
+    const dark: Model = { ...cube, pieces: [{ ...cube.pieces[0]!, tone: 0.5 } as Piece] };
+    expect(Math.max(...renderModel(dark, 0).shapes.map((s) => s.shade))).toBeCloseTo(0.56);
+    const a: Piece = { shape: 'box', x: 0, y: 0, z: 0, w: 40, h: 40, d: 40, fill: 'wood', layer: 1 };
+    const b: Piece = { shape: 'box', x: 10, y: 0, z: 0, w: 40, h: 60, d: 20, fill: 'metal' };
+    const s = renderModel({ w: 60, d: 40, h: 60, pieces: [a, b] }, 0).shapes;
+    expect(s.map((x) => x.fill).lastIndexOf('metal')).toBeLessThan(s.findIndex((x) => x.fill === 'wood'));
+  });
+  it('cylindre évasé (r2) : le dessus a le rayon du haut', () => {
+    const pot: Model = { w: 40, d: 40, h: 30, pieces: [{ shape: 'cyl', cx: 20, cz: 20, y: 0, r: 12, r2: 18, h: 30, fill: 'warm' }] };
+    const top = renderModel(pot, 0).shapes.find((s) => s.kind === 'poly' && s.shade === 1.12)!;
+    const xs = 'points' in top ? top.points.map((p) => p[0]) : [];
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(36 * PX_PER_CM_X, 0);
+    expect(pieceBounds(pot.pieces[0]!)).toEqual([2, 38, 0, 30, 2, 38]);
+  });
+  it('corps ronds en cellulo : silhouette lisse encrée, ombre nette sans trait côté droit, contour repassé par-dessus', () => {
+    const can: Model = { w: 40, d: 40, h: 40, pieces: [{ shape: 'cyl', cx: 20, cz: 20, y: 0, r: 15, h: 40, fill: 'metal' }] };
+    for (const a of ANGLES) {
+      const s = renderModel(can, a).shapes;
+      const shadow = s.filter((x) => x.kind === 'poly' && x.ink === 'none');
+      const body = s.find((x) => x.kind === 'poly' && x.ink === undefined && x.shade === 1);
+      expect(shadow, 'angle ' + a).toHaveLength(1);
+      expect(s.some((x) => x.kind === 'poly' && x.ink === 'only')).toBe(true);
+      const mean = (pts: [number, number][]) => pts.reduce((m, p) => m + p[0], 0) / pts.length;
+      if (shadow[0]?.kind !== 'poly' || body?.kind !== 'poly') throw new Error('formes');
+      expect(mean(shadow[0].points)).toBeGreaterThan(mean(body.points));
+      expect(s[s.length - 1]!.kind === 'poly' && s[s.length - 1]!.shade === 1.12).toBe(true); // le dessus en dernier
+    }
+  });
+  it('feuillage : une feuille qui retombe vers le spectateur garde ses deux bords de part et d’autre de la nervure (pas de nœud papillon)', () => {
+    const leaf: Model = { w: 40, d: 40, h: 60, pieces: [{ shape: 'foliage', fill: 'leaf', leaves: [{ base: [20, 10, 20], ctrl: [20, 40, 10], tip: [20, 25, 2], w: 8 }] }] };
+    const poly = renderModel(leaf, 0).shapes.find((x) => x.kind === 'poly')!;
+    if (poly.kind !== 'poly') throw new Error('poly');
+    const x0 = (renderModel(leaf, 0).cols * CELL_W) / 2; // nervure au milieu (x = 20 sur 40 cm, dessin centré)
+    const a = poly.points.slice(0, 11).map((p) => p[0] - x0);
+    const b = poly.points.slice(11).map((p) => p[0] - x0);
+    const sideA = Math.sign(a.reduce((m, v) => m + v, 0));
+    expect(a.every((v) => v * sideA >= -0.01)).toBe(true);
+    expect(b.every((v) => v * sideA <= 0.01)).toBe(true);
+    expect(Math.max(...a.map(Math.abs))).toBeGreaterThan(0.7 * 4 * PX_PER_CM_X); // la feuille vue de face garde sa largeur
   });
 });

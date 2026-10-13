@@ -33,4 +33,10 @@ describe('Model3DArt', () => {
     const steam = draw(<Model3DArt kind="desk" angle={0} rect={rect} palette={paletteOf('steampunk')} steampunk />);
     expect(steam.querySelectorAll('polygon').length).toBeGreaterThan(plain.querySelectorAll('polygon').length);
   });
+  it('les traits fins (parallèles du globe) sont des lignes sans remplissage', () => {
+    const c = draw(<Model3DArt kind="globe" angle={0} rect={rect} palette={paletteOf('steampunk')} />);
+    const lines = c.querySelectorAll('[data-model3d] polyline');
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines[0]!.getAttribute('fill')).toBe('none');
+  });
 });

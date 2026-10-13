@@ -30,8 +30,10 @@ export function Model3DArt({ kind, angle, rect, palette, lit = true, steampunk =
   return (
     <g data-model3d="" transform={`translate(${rect.x} ${rect.y}) scale(${sx} ${sy})`}>
       {r.shapes.map((s, i) => (s.kind === 'poly'
-        ? <polygon key={i} points={s.points.map(([x, y]) => `${x},${y}`).join(' ')} fill={color(s.fill, s.shade)} stroke={palette.edge} strokeWidth={1.2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        : <ellipse key={i} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} fill={color(s.fill, s.shade)} stroke={palette.edge} strokeWidth={1.2} vectorEffect="non-scaling-stroke" />))}
+        ? <polygon key={i} points={s.points.map(([x, y]) => `${x},${y}`).join(' ')} fill={s.ink === 'only' ? 'none' : color(s.fill, s.shade)} stroke={s.ink === 'none' ? 'none' : palette.edge} strokeWidth={1.2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        : s.kind === 'line'
+          ? <polyline key={i} points={s.points.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke={color(s.fill, s.shade)} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          : <ellipse key={i} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} fill={color(s.fill, s.shade)} stroke={palette.edge} strokeWidth={1.2} vectorEffect="non-scaling-stroke" />))}
     </g>
   );
 }
