@@ -34,7 +34,7 @@ type Props = {
 };
 
 // Hauteur du tiroir recopiée sur la scène (--wmt-drawer-h) : hors plein écran, la pièce s'arrête au-dessus du tiroir.
-function useDrawerHeight() {
+function useDrawerHeight(reduced: boolean) {
   const box = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const el = box.current;
@@ -48,7 +48,7 @@ function useDrawerHeight() {
       observer.disconnect();
       stage.style.removeProperty('--wmt-drawer-h');
     };
-  });
+  }, [reduced]);
   return box;
 }
 
@@ -56,7 +56,7 @@ function useDrawerHeight() {
 // Les panneaux des onglets restent montés (cachés) ; le tiroir se réduit en une poignée pour contempler la scène.
 export function BuildDrawer(props: Props): ReactElement {
   const { state, onState, style, hasCollection } = props;
-  const box = useDrawerHeight();
+  const box = useDrawerHeight(state.reduced);
   if (state.reduced) {
     return (
       <div ref={box} className="wmt-lib-drawer wmt-lib-drawer-reduced" data-drawer data-reduced="true">

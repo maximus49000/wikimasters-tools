@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import type { CollectionRepo } from '../../src/core/collection/collection-repo';
-import { LibraryPanel } from '../../src/content/LibraryPanel';
+import { LIBRARY_CSS, LibraryPanel } from '../../src/content/LibraryPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -244,5 +244,52 @@ describe('bulle d’actions', () => {
     await selectShelf();
     await click('[data-action="drawer-reduce"]');
     expect(q('[data-action-bubble]')).not.toBeNull();
+  });
+});
+
+describe('corrections de la revue', () => {
+  it('le nom tapé est enregistré quand Échap ferme le menu pendant la saisie', async () => {
+    await click('[data-menu-button="room"]');
+    const input = q('[data-menu="room"] input[aria-label="Nom de la pièce"]') as HTMLInputElement;
+    await act(async () => { input.focus(); input.value = 'Salon'; });
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    await settle();
+    expect(repo.current()?.rooms[0]?.name).toBe('Salon');
+  });
+
+  it('un menu dont le bouton est à droite s’ouvre vers la gauche, sinon vers la droite', async () => {
+    vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(375); // téléphone
+    const sky = q('[data-menu-button="sky"]') as HTMLElement;
+    vi.spyOn(sky, 'getBoundingClientRect').mockReturnValue({ left: 320, right: 360, top: 0, bottom: 40, width: 40, height: 40, x: 320, y: 0, toJSON: () => ({}) } as DOMRect);
+    await click('[data-menu-button="sky"]');
+    expect(menu('sky')?.dataset.align).toBe('end');
+    await click('[data-menu-button="pets"]');
+    expect(menu('pets')?.dataset.align).toBe('start');
+  });
+
+  it('changer de sous-catégorie abandonne l’outil armé', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-category="deco"]');
+    await click('[data-subcategory="lights"]');
+    await click('[data-kind="lamp"]');
+    await click('[data-subcategory="plants"]');
+    await click('[data-cell="3-13"]');
+    expect(q('[data-furniture]')).toBeNull();
+  });
+
+  it('le tiroir ne recrée pas son observateur de taille à chaque rendu', async () => {
+    let created = 0;
+    vi.stubGlobal('ResizeObserver', class { constructor() { created += 1; } observe() {} disconnect() {} });
+    await click('[data-action="edit"]');
+    const before = created;
+    await click('[data-kind="shelf"]');
+    await click('[data-kind="desk"]');
+    expect(created).toBe(before);
+    vi.unstubAllGlobals();
+  });
+
+  it('en plein écran aussi, la scène laisse la place du tiroir', () => {
+    expect(LIBRARY_CSS).not.toContain(':not(:fullscreen){padding-bottom');
+    expect(LIBRARY_CSS).toContain('.wmt-lib-stage:fullscreen{box-sizing:border-box');
   });
 });

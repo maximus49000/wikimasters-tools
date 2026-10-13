@@ -145,6 +145,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-pop{position:relative;display:inline-flex}
 .wmt-lib-pop-panel{position:absolute;top:calc(100% + 6px);right:0;z-index:20;display:flex;flex-direction:column;gap:8px;min-width:240px;max-width:min(92vw,420px);max-height:70vh;overflow:auto;padding:10px;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:var(--color-surface,#0d1117);box-shadow:0 8px 24px rgba(0,0,0,.4)}
 .wmt-lib-pop-panel[hidden]{display:none}
+.wmt-lib-pop-panel[data-align="start"]{right:auto;left:0}
 .wmt-lib-pop-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .wmt-lib-drawer{position:absolute;left:0;right:0;bottom:0;z-index:5;display:flex;flex-direction:column;gap:6px;padding:6px 8px 8px;background:var(--color-surface,#0d1117);border-top:1px solid var(--color-border,rgba(148,163,184,.35));box-shadow:0 -6px 18px rgba(0,0,0,.35)}
 .wmt-lib-drawer-reduced{left:50%;right:auto;transform:translateX(-50%);padding:0;background:transparent;border:0;box-shadow:none}
@@ -158,7 +159,8 @@ export const LIBRARY_CSS = `
 .wmt-lib-thumbs{display:flex;flex-direction:row;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
 .wmt-lib-thumb{flex:0 0 auto;flex-direction:column;width:64px;height:72px;padding:4px;border-radius:10px;gap:2px}
 .wmt-lib-thumb-name{font-size:10px;line-height:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wmt-lib-stage[data-editing="true"]:not(:fullscreen){padding-bottom:var(--wmt-drawer-h,0px)}
+.wmt-lib-stage[data-editing="true"]{padding-bottom:var(--wmt-drawer-h,0px)}
+.wmt-lib-stage:fullscreen{box-sizing:border-box}
 .wmt-lib-bubble{position:absolute;z-index:6;display:flex;flex-wrap:wrap;gap:4px;max-width:min(92%,360px);padding:4px;border-radius:22px;background:var(--color-surface,#0d1117);border:1px solid var(--color-accent,#34d399);box-shadow:0 4px 14px rgba(0,0,0,.45)}
 `;
 
@@ -417,6 +419,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const editing = mode === 'edit';
   const portrait = room.orientation === 'portrait';
   const visibleWidth = VISIBLE_COLS[room.orientation] * CELL_W;
+  // Hauteur d'écran laissée à la pièce en plein écran : en Aménager, le tiroir (--wmt-drawer-h) en prend le bas.
+  const screenH = editing ? 'calc(100vh - var(--wmt-drawer-h, 0px))' : '100vh';
   const editLayout = (change: Parameters<typeof updateLayout>[2]) => library.update((state) => updateLayout(state, room.id, change));
 
   const chooseStyle = (id: StyleId): void => {
@@ -735,9 +739,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     void library.update((state) => fitRoomWidth(state, room.id, fitCols));
   };
 
-  // Changer d'onglet ou de catégorie abandonne l'outil en cours, comme le faisaient les anciens boutons de catégorie.
+  // Changer d'onglet, de catégorie ou de sous-catégorie abandonne l'outil en cours, comme le faisaient les anciens boutons de catégorie.
   const onDrawer = (next: DrawerState): void => {
-    if (next.tab !== drawer.tab || next.category !== drawer.category) reset();
+    if (next.tab !== drawer.tab || next.category !== drawer.category || next.sub !== drawer.sub) reset();
     setDrawer(next);
   };
   const setMode2 = (next: 'visit' | 'edit'): void => {
@@ -865,8 +869,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           ref={scrollRef}
           style={{
             // En plein écran : la fenêtre visible (24 ou 16 colonnes sur 510 de haut) prend la plus grande taille qui tient dans l'écran.
-            maxWidth: fill ? 'none' : stage.active ? `min(100vw, calc(100vh * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
-            ...(fill ? { width: '100vw', height: '100vh', overflowY: 'auto' } : {}),
+            maxWidth: fill ? 'none' : stage.active ? `min(100vw, calc(${screenH} * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
+            ...(fill ? { width: '100vw', height: screenH, overflowY: 'auto' } : {}),
             ...(dragging ? { overflowX: 'hidden', touchAction: 'none' } : {}),
             // Dehors : la caméra règle le viewBox, le conteneur ne défile plus et prend le cadre de la fenêtre visible.
             ...(outside ? { ...(stage.active ? { width: '100vw', height: '100vh', maxWidth: 'none' } : { width: '100%', aspectRatio: `${visibleWidth} / ${HEIGHT}` }), overflow: 'hidden', touchAction: 'none', position: 'relative', userSelect: 'none', WebkitUserSelect: 'none' } : {}),
