@@ -62,12 +62,13 @@ describe('ScenePanorama (ville)', () => {
     expect(container.querySelectorAll('[data-star]').length).toBeGreaterThan(10);
   });
 
-  it('beaucoup de fenêtres allumées à 21 h, presque aucune à 4 h', () => {
+  // 21 juin : il fait encore jour à 21 h à Paris, les logements n'allument qu'à la nuit tombée (city/window-lights.ts).
+  it('beaucoup de fenêtres allumées à 23 h 30, presque aucune à 4 h', () => {
     const lit = (minutes: number): number => {
       render(minutes);
       return Array.from(container.querySelectorAll<SVGElement>('[data-lamp]')).filter((el) => el.getAttribute('data-lit') === 'true').length;
     };
-    const evening = lit(21 * 60);
+    const evening = lit(23 * 60 + 30);
     const deepNight = lit(4 * 60);
     expect(evening).toBeGreaterThan(deepNight * 5);
     expect(deepNight).toBeLessThan(evening / 5 + 1);
