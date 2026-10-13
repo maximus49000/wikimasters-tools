@@ -5,7 +5,10 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { dayShifts } from '../../src/content/city-shops-life';
-import { CARRY_CYCLE, collectMovers, crewFrame, movingLayout, placeMovers, truckAt, type CrewGeom } from '../../src/content/moving-truck';
+import { collectMovers, movingLayout, placeMovers, tailgateAt, truckAt } from '../../src/content/moving-truck';
+
+// Durée d'observation de la boucle (s) : quelques allers-retours.
+const WATCH_S = 170;
 import { CityScene } from '../../src/content/scene-city';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
@@ -88,16 +91,30 @@ const truckOf = (c: Element, f: Found): Element | null => c.querySelector(`[data
 const crewOf = (c: Element, f: Found): Element | null => c.querySelector(`[data-moving-crew="${f.s.slot.id}"]`);
 const translateX = (el: Element): number => Number(/translate\(([-\d.]+)px/.exec((el as SVGGElement).style.transform)![1]);
 
-describe('camion (truckAt)', () => {
-  it('hors champ pendant l’arrivée, garé à la dernière minute, hayon qui s’ouvre puis se ferme, reparti au départ', () => {
-    expect(truckAt('truck-arrives', 482, 480, 486.5, false)).toEqual({ at: 'in', open: 0 });
-    expect(truckAt('truck-arrives', 486, 480, 486.5, false)).toEqual({ at: 'park', open: 0 });
-    expect(truckAt('open-back', 487, 486.5, 490.5, false).open).toBeCloseTo(1.5 / 4);
-    expect(truckAt('carry-out', 500, 490, 520, false)).toEqual({ at: 'park', open: 1 });
-    expect(truckAt('close-back', 590, 589, 593, false).open).toBeCloseTo(0.5);
-    expect(truckAt('leave', 595, 593, 599, false)).toEqual({ at: 'out', open: 0 });
-    // Mouvement réduit : toujours garé, hayon ouvert.
-    for (const step of ['truck-arrives', 'leave', 'pause'] as const) expect(truckAt(step, 500, 490, 510, true)).toEqual({ at: 'park', open: 1 });
+describe('camion (truckAt, tailgateAt)', () => {
+  it('hors champ pendant l’arrivée, garé à la dernière minute, reparti au départ', () => {
+    expect(truckAt('truck-arrives', 482, 486.5, false)).toEqual({ at: 'in' });
+    expect(truckAt('truck-arrives', 486, 486.5, false)).toEqual({ at: 'park' });
+    expect(truckAt('carry-out', 500, 520, false)).toEqual({ at: 'park' });
+    expect(truckAt('leave', 595, 599, false)).toEqual({ at: 'out' });
+    // Mouvement réduit : toujours garé.
+    for (const step of ['truck-arrives', 'leave', 'pause'] as const) expect(truckAt(step, 500, 510, true)).toEqual({ at: 'park' });
+  });
+  it('hayon : manœuvré en quelques secondes à l’heure du planning (pas sur des minutes), fermé à l’arrivée et au départ', () => {
+    const plan = { segs: [], jobs: [], tailgate: { at: 1000, dur: 5 } };
+    // Avant la manœuvre : ouverture visée avec un délai jusqu'à l'heure, puis 5 s.
+    const before = tailgateAt('open-back', plan, 990, false);
+    expect(before.open).toBe(1);
+    expect(before.move).toBe('transform 5.00s ease-in-out 10.00s');
+    // Pendant : le reste seulement.
+    expect(tailgateAt('open-back', plan, 1002, false).move).toBe('transform 3.00s ease-in-out 0.00s');
+    // Après : ouvert, sans transition.
+    expect(tailgateAt('open-back', plan, 1010, false)).toEqual({ open: 1 });
+    expect(tailgateAt('close-back', plan, 990, false).open).toBe(0);
+    expect(tailgateAt('truck-arrives', null, 990, false)).toEqual({ open: 0 });
+    expect(tailgateAt('leave', null, 990, false)).toEqual({ open: 0 });
+    expect(tailgateAt('carry-in', null, 990, false)).toEqual({ open: 1 });
+    expect(tailgateAt('leave', plan, 990, true)).toEqual({ open: 1 });
   });
 });
 
@@ -119,54 +136,6 @@ describe('camion garé (movingLayout)', () => {
     // Loin des bords : rien ne change (l'arrière est à REAR_GAP du bord de la porte, plus la profondeur d'entrée).
     const mid = movingLayout({ sign: r(300, 40), window: r(300, 28), door: r(328, 10) }, m, W);
     expect(mid.b.x).toBeCloseTo(338 + 14 + 5);
-  });
-});
-
-describe('porteurs (crewFrame)', () => {
-  const geom: CrewGeom = { a: { x: 100, y: 240 }, b: { x: 130, y: 256 }, n: 3, gap: 0.25, carry: 'out', kindSeed: 0 };
-  it('aller chargé en file indienne, de la porte (seuil) au camion ; retour à vide ; hors de vue au dépôt, jamais de fondu', () => {
-    const f = crewFrame(geom, 3);
-    // Le premier ouvre la marche : il est plus loin sur le trajet ; le dernier est encore dans le local.
-    expect(f.movers[0]!.where).toBe('street');
-    expect(f.movers[0]!.dir).toBe(1);
-    expect(f.movers[0]!.x).toBeGreaterThan(f.movers[1]!.x);
-    expect(f.movers[2]!.where).toBe('off');
-    expect(f.movers.some((m) => m.loaded)).toBe(true);
-    // Sortie du local : par le seuil de la porte (profondeur décroissante), de face.
-    const sill = [0.05, 0.2, 0.35, 0.5].map((t) => crewFrame(geom, t).movers[0]!);
-    expect(sill.every((m) => m.where === 'door' && m.x === geom.a.x)).toBe(true);
-    for (let k = 1; k < sill.length; k++) expect(sill[k]!.depth).toBeLessThan(sill[k - 1]!.depth);
-    expect(sill[0]!.yaw).toBe(4);
-    // Dépôt (9 à 12 s) : personne de visible (dans le camion).
-    expect(crewFrame(geom, 10).movers.every((m) => m.where === 'off')).toBe(true);
-    // Retour : vers la porte, rien en main ; on rentre par le seuil, de dos.
-    const back = crewFrame(geom, 16);
-    expect(back.movers.filter((m) => m.where !== 'off').every((m) => m.dir === -1 && !m.loaded)).toBe(true);
-    expect(back.heavy).toBeNull();
-    const enter = crewFrame(geom, 12 + 9 * 0.98 / 1.5).movers[0]!;
-    expect(enter.where).toBe('door');
-    expect(enter.yaw).toBe(12);
-  });
-  it('meuble lourd : un seul meuble entre le premier et le dernier porteur ; la sorte change à chaque aller', () => {
-    const kinds = new Set<string>();
-    let heavySeen = 0;
-    for (let trip = 0; trip < 14; trip++) {
-      const f = crewFrame(geom, trip * CARRY_CYCLE + 4.5);
-      kinds.add(f.kind);
-      if (f.heavy) {
-        heavySeen++;
-        expect(f.heavy.where).toBe('street');
-        expect(f.heavy.x).toBeGreaterThan(Math.min(f.movers[2]!.x, f.movers[0]!.x) - 1e-9);
-        expect(f.heavy.x).toBeLessThan(Math.max(f.movers[2]!.x, f.movers[0]!.x) + 1e-9);
-      } else expect(f.kind).toBe('carton');
-    }
-    expect(heavySeen).toBeGreaterThan(0);
-    expect(kinds.size).toBeGreaterThanOrEqual(4);
-  });
-  it('rentrée : chargés du camion vers la porte', () => {
-    const f = crewFrame({ ...geom, carry: 'in' }, 3);
-    expect(f.movers.filter((m) => m.where !== 'off').every((m) => m.dir === -1)).toBe(true);
-    expect(f.movers[0]!.x).toBeLessThan(f.movers[1]!.x);
   });
 });
 
@@ -205,7 +174,7 @@ describe('CityLifeLayer : déménagement', () => {
     expect(crews).toHaveLength(1);
     let heavy = false;
     let box = false;
-    for (let t = NOW / 1000; t < NOW / 1000 + 7 * CARRY_CYCLE; t += 1) {
+    for (let t = NOW / 1000; t < NOW / 1000 + WATCH_S; t += 1) {
       placeMovers(crews, t, cityMetrics(H));
       if (crew.querySelector('[data-mover="piece"]')!.getAttribute('visibility') === 'visible') heavy = true;
       if (crew.querySelector('[data-mover-box][visibility="visible"]')) box = true;
@@ -236,7 +205,7 @@ describe('CityLifeLayer : déménagement', () => {
     // La boucle écrit un carton visible sur un porteur (pose « hold »).
     const crews = collectMovers(host);
     let t = NOW / 1000;
-    for (; t < NOW / 1000 + 7 * CARRY_CYCLE; t += 0.5) {
+    for (; t < NOW / 1000 + WATCH_S; t += 0.5) {
       placeMovers(crews, t, cityMetrics(H));
       if (host.querySelector('[data-mover-box][visibility="visible"]')) break;
     }

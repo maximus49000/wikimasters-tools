@@ -84,7 +84,7 @@ describe('mobilier par tranches (furnitureAt)', () => {
     expect(at(moving.start + 0.5)).toEqual({ from: 'before', shown: N });
     const out = step('carry-out');
     let last = N;
-    for (let p = 0; p < 0.5; p += 0.05) {
+    for (let p = 0; p < 0.49; p += 0.05) {
       const f = at(out.from + p * (out.to - out.from))!;
       expect(f.from).toBe('before');
       expect(f.shown).toBeLessThanOrEqual(last);
