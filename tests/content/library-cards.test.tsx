@@ -148,6 +148,8 @@ describe('LibraryPanel : cartes', () => {
     await settle();
   }
   const layoutNow = () => activeRoom(repo.current()!).layout;
+  // ✓ du mode placement, s'il est affiché.
+  const placeOk = async () => { if (q('[data-action="place-confirm"]')) await click('[data-action="place-confirm"]'); };
   async function seed(layout: Layout) {
     await repo.update((state) => updateLayout(state, 'r1', () => layout));
     await settle();
@@ -178,6 +180,7 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-target="wall"]');
     await click('[data-shape="poster"]');
     await click('[data-cell="5-9"]');
+    await placeOk();
     expect(layoutNow().find((p) => p.kind === 'wall')).toMatchObject({ slug: 'Paris', shape: 'poster' });
   });
 
@@ -188,6 +191,7 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-target="shelf"]');
     await click('[data-shape="cd"]');
     await click('[data-furniture="shelf"]');
+    await placeOk();
     expect(layoutNow().find((p) => p.kind === 'stored')).toMatchObject({ slug: 'Paris', slot: 0, shelfId: 'f1' });
   });
 
@@ -198,17 +202,20 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-target="shelf"]');
     await click('[data-shape="cd"]');
     await click('[data-card="Daft_Punk"]');
+    await placeOk();
     expect(layoutNow().find((p) => p.kind === 'stored' && p.slug === 'Paris')).toMatchObject({ shelfId: 'f1', slot: 1 });
   });
 
-  it('affiche une carte sur l’écran d’un ordinateur, et refuse un autre meuble', async () => {
-    await seed([{ id: 'd1', kind: 'desk', col: 2, row: 13 }, { id: 'c1', kind: 'computer', deskId: 'd1' }]);
+  it('affiche une carte sur l’écran d’un ordinateur, et refuse sans ordinateur', async () => {
+    await seed([{ id: 'd1', kind: 'desk', col: 2, row: 13 }, { id: 'c1', kind: 'computer', deskId: 'd1' }, { id: 'd2', kind: 'desk', col: 12, row: 13 }]);
     await click('[data-action="edit"]');
     await pickCard('Paris');
     await click('[data-target="screen"]');
-    await click('[data-furniture="desk"]');
-    expect(q('[role="status"]')?.textContent).toContain('Choisissez un ordinateur.');
+    await click('[data-id="d2"]');
+    expect(q('[role="status"]')?.textContent).toContain('Touchez un ordinateur.');
+    expect((q('[data-action="place-confirm"]') as HTMLButtonElement).disabled).toBe(true);
     await click('[data-furniture="computer"]');
+    await placeOk();
     expect(layoutNow().find((p) => p.kind === 'computer')).toMatchObject({ slug: 'Paris' });
   });
 
@@ -222,6 +229,7 @@ describe('LibraryPanel : cartes', () => {
       { id: 'f2', kind: 'wall', shape: 'poster', col: 10, row: 4, slug: 'Inconnue' },
     ]);
     await click('[data-card="Paris"]');
+    await placeOk();
     expect(document.querySelector('[data-room-card="Paris"]')).not.toBeNull();
     expect(onOpenCard).not.toHaveBeenCalled();
     await click('[data-action="card"]');

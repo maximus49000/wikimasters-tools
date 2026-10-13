@@ -23,9 +23,9 @@ type Props = {
   style: StyleId;
   orientation: Orientation;
   hasCollection: boolean;
-  activeKind: FurnitureKind | null;
+  // Caché pendant un placement : le tiroir reste monté et garde son état.
+  hidden?: boolean;
   onKind: (kind: FurnitureKind) => void;
-  cardActive: boolean;
   onCard: () => void;
   onStyle: (id: StyleId) => void;
   onOrientation: (orientation: Orientation) => void;
@@ -59,7 +59,7 @@ export function BuildDrawer(props: Props): ReactElement {
   const box = useDrawerHeight(state.reduced);
   if (state.reduced) {
     return (
-      <div ref={box} className="wmt-lib-drawer wmt-lib-drawer-reduced" data-drawer data-reduced="true">
+      <div ref={box} className="wmt-lib-drawer wmt-lib-drawer-reduced" data-drawer data-reduced="true" hidden={props.hidden}>
         <Btn label="Ouvrir le tiroir de construction" data={{ action: 'drawer-open' }} onClick={() => onState({ ...state, reduced: false })}>
           <Icon paths={ICONS.chevronUp} />
         </Btn>
@@ -74,7 +74,7 @@ export function BuildDrawer(props: Props): ReactElement {
   const kinds = sub ? sub.kinds : node.kinds;
   const tabs = TABS.filter((t) => t.id !== 'cards' || hasCollection);
   return (
-    <div ref={box} className="wmt-lib-drawer" data-drawer data-reduced="false">
+    <div ref={box} className="wmt-lib-drawer" data-drawer data-reduced="false" hidden={props.hidden}>
       <div className="wmt-lib-drawer-tabs" role="tablist" aria-label="Construction">
         {tabs.map((t) => (
           <button key={t.id} type="button" role="tab" className="wmt-lib-btn" aria-label={t.label} title={t.label} aria-selected={tab === t.id} data-drawer-tab={t.id} onClick={() => onState({ ...state, tab: t.id })}>
@@ -108,7 +108,7 @@ export function BuildDrawer(props: Props): ReactElement {
         )}
         <div className="wmt-lib-thumbs">
           {kinds.map((kind) => (
-            <Btn key={kind} className="wmt-lib-thumb" label={`Poser : ${labelOf(kind)}`} pressed={props.activeKind === kind} data={{ kind }} onClick={() => props.onKind(kind)}>
+            <Btn key={kind} className="wmt-lib-thumb" label={`Poser : ${labelOf(kind)}`} data={{ kind }} onClick={() => props.onKind(kind)}>
               <FurnitureThumb kind={kind} style={style} />
               <span className="wmt-lib-thumb-name">{labelOf(kind)}</span>
             </Btn>
@@ -118,7 +118,7 @@ export function BuildDrawer(props: Props): ReactElement {
 
       {hasCollection && (
         <div className="wmt-lib-drawer-panel wmt-lib-thumbs" data-drawer-panel="cards" hidden={tab !== 'cards'}>
-          <Btn className="wmt-lib-thumb" label="Ajouter une carte" pressed={props.cardActive} data={{ action: 'add-card' }} onClick={props.onCard}>
+          <Btn className="wmt-lib-thumb" label="Ajouter une carte" data={{ action: 'add-card' }} onClick={props.onCard}>
             <Icon paths={ICONS.card} />
             <span className="wmt-lib-thumb-name">Carte</span>
           </Btn>

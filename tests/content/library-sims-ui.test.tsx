@@ -22,6 +22,7 @@ async function click(selector: string) {
   await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   await settle();
 }
+const confirm = async () => { if (container.querySelector('[data-action="place-confirm"]')) await click('[data-action="place-confirm"]'); };
 const menu = (id: string) => q(`[data-menu="${id}"]`) as HTMLElement | null;
 
 beforeEach(async () => {
@@ -98,12 +99,6 @@ describe('tiroir de construction', () => {
     await click('[data-subcategory="lights"]');
     expect(q('[data-kind="lamp"]')).not.toBeNull();
     expect(q('[data-kind="plant"]')).toBeNull();
-  });
-
-  it('marque la vignette dont l’outil est actif', async () => {
-    await click('[data-action="edit"]');
-    await click('[data-kind="desk"]');
-    expect(q('[data-kind="desk"]')?.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('l’onglet Pièce porte le style, l’orientation et les dimensions', async () => {
@@ -189,7 +184,9 @@ describe('bulle d’actions', () => {
     await click('[data-category="storage"]');
     await click('[data-kind="shelf"]');
     await click('[data-cell="3-13"]');
+    await confirm();
     await click('[data-furniture="shelf"]');
+    await confirm();
   }
 
   it('apparaît sur la sélection avec ses actions', async () => {
@@ -197,7 +194,9 @@ describe('bulle d’actions', () => {
     expect(q('[data-action-bubble]')).toBeNull();
     await click('[data-kind="shelf"]');
     await click('[data-cell="3-13"]');
+    await confirm();
     await click('[data-furniture="shelf"]');
+    await confirm();
     const bubble = q('[data-action-bubble]');
     expect(bubble?.closest('[data-stage]')).not.toBeNull();
     expect(bubble?.querySelector('[data-action="move"]')).not.toBeNull();
@@ -213,7 +212,9 @@ describe('bulle d’actions', () => {
     await click('[data-subcategory="lights"]');
     await click('[data-kind="lamp"]');
     await click('[data-cell="3-13"]');
+    await confirm();
     await click('[data-furniture="lamp"]');
+    await confirm();
     expect(q('[data-action-bubble] [data-action="lamp"]')).not.toBeNull();
   });
 
@@ -223,7 +224,9 @@ describe('bulle d’actions', () => {
     await click('[data-subcategory="walls"]');
     await click('[data-kind="window"]');
     await click('[data-cell="3-6"]');
+    await confirm();
     await click('[data-furniture="window"]');
+    await confirm();
     expect(q('[data-action-bubble] [data-action="win-w+"]')).not.toBeNull();
     expect(q('[data-action-bubble] [data-action="win-h-full"]')).not.toBeNull();
   });
@@ -234,7 +237,9 @@ describe('bulle d’actions', () => {
     expect(q('[data-action-bubble]')).toBeNull();
     await click('[data-kind="shelf"]');
     await click('[data-cell="3-13"]');
+    await confirm();
     await click('[data-furniture="shelf"]');
+    await confirm();
     expect(q('[data-action-bubble]')).not.toBeNull();
     await click('[data-action="visit"]');
     expect(q('[data-action-bubble]')).toBeNull();
