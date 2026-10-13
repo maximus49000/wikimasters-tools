@@ -330,8 +330,13 @@ function dropBadWindows(raw: unknown): unknown {
 
 // Une lecture sûre : un contenu absent, d'une autre version ou abîmé redonne une pièce vide (comme `readView`).
 export function parseLibraryState(raw: unknown): LibraryState {
+  return parseStoredLibraryState(raw) ?? createInitialState();
+}
+
+// Comme `parseLibraryState`, mais null quand l'état lu est illisible (au lieu de la pièce vide) : le dépôt ne l'écrase pas.
+export function parseStoredLibraryState(raw: unknown): LibraryState | null {
   const parsed = stateSchema.safeParse(cleanPets(dropBadWindows(migrate(raw))));
-  if (!parsed.success) return createInitialState();
+  if (!parsed.success) return null;
   const state = parsed.data;
   const ids = state.rooms.map((room) => room.id);
   const rooms = state.rooms.map((room) => ({ ...room, layout: cleanLayout(room.style === 'steampunk' ? room.layout : room.layout.filter((p) => !isExclusive(p))) }));
