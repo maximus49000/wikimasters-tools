@@ -100,6 +100,7 @@ Pas de nouvelle donnée enregistrée, pas de migration, et aucun changement au m
 - **Pièce non Steampunk** : pas de catégorie ⚙️. Si l'onglet était sur ⚙️ et que le style change, on revient sur la première catégorie.
 - **Collection indisponible** : l'onglet 🖼️ est masqué. Si c'était l'onglet actif, on revient sur 🪑.
 - **Sélection d'un objet pendant que le tiroir est réduit** : la bulle s'affiche normalement.
+- **Vue de la rue (« Sortir », `outsidePhase` différent de `inside`)** : le tiroir et la bulle ne s'affichent pas, puisqu'on ne pose pas de mobilier dans la rue. Ils réapparaissent, dans le même état, dès qu'on est rentré dans la pièce. Aujourd'hui, passer en Aménager fait déjà rentrer dans la pièce, et cela reste vrai.
 - **Passage en Visiter** : le tiroir et la bulle disparaissent, mais les menus ☁️ 🐾 ⋯ restent disponibles.
 - **Plein écran (`stage.active`)** : le tiroir reste visible et ancré en bas de la scène plein écran. Il est réductible à une poignée.
 
@@ -109,7 +110,7 @@ On ne joue que les familles de tests touchées (famille bibliothèque, `npm run 
 
 - **Cœur** : `catalogTree` (Déco a 4 sous-catégories, Steampunk seulement dans une pièce Steampunk, l'union à plat est égale à `FURNITURE_KINDS`).
 - **Interface** : on adapte `library-panel`, `library-furniture`, `library-pets-ui`, `library-light-ui`, `library-cards` et `library-drag`. Les sélecteurs `data-*` sont conservés. Les tests qui cherchaient un contrôle dans une rangée ouvrent d'abord le bon menu ou le bon onglet.
-- **Nouveaux tests** : ouverture et fermeture des menus déroulants (un seul à la fois, Échap) ; réduction du tiroir en poignée et réouverture dans le même état ; tiroir présent en plein écran ; bulle visible seulement s'il y a une sélection, avec les bonnes actions selon le type d'objet ; vignette pressée quand l'outil est actif.
+- **Nouveaux tests** : ouverture et fermeture des menus déroulants (un seul à la fois, Échap) ; réduction du tiroir en poignée et réouverture dans le même état ; tiroir présent en plein écran ; tiroir absent dans la vue de la rue ; bulle visible seulement s'il y a une sélection, avec les bonnes actions selon le type d'objet ; vignette pressée quand l'outil est actif.
 - **Capture de validation** : capture d'écran sur le vrai téléphone (S26 Ultra, APK pré-prod) montrée à l'utilisateur, puis capture de l'extension.
 
 ## Guide WikiHow
