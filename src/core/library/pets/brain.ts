@@ -1,6 +1,6 @@
-import { poisOf, sizeOf } from '../furniture-catalog';
+import { poisOf } from '../furniture-catalog';
 import type { Layout, PetAction, PetPlan, Pt, Segment, Species } from '../library-types';
-import { CELL_W, ROWS, WALL_ROWS, isStanding, type Cell } from '../room-grid';
+import { CELL_W, ROWS, WALL_ROWS, isStanding, rectOf, type Cell } from '../room-grid';
 import { hashString } from '../scene-world';
 import type { PetContext } from './context';
 import { planEndsAt, stateAt, type PetState } from './motion';
@@ -93,7 +93,7 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     for (const p of env.layout) {
       if (!isStanding(p)) continue;
       if (p.kind === 'charger') for (const q of poisOf(p.kind).filter((x) => x.type === 'charge')) go('charge', 2, { pt: standPoint(p.col + q.dx, p.row + q.dy), on: null, hostId: p.id }, [25000, 60000], `${p.id}:charge`);
-      if (p.kind === 'rug') go('standby', 0.6, { pt: standPoint(p.col + Math.floor(sizeOf(p.kind).w / 2), p.row + 1), on: null, hostId: null }, [15000, 30000]);
+      if (p.kind === 'rug') go('standby', 0.6, { pt: standPoint(p.col + Math.floor(rectOf(p)!.w / 2), p.row + 1), on: null, hostId: null }, [15000, 30000]);
     }
   } else if (dog) {
     stay('sit', 1.2, [4000, 9000]);

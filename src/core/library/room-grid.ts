@@ -1,4 +1,5 @@
 import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, footOf, layerOf, sizeOf, wallSizeOf } from './furniture-catalog';
+import { drawRect, type Angle } from './footprint';
 import { STANDING_KINDS } from './library-types';
 import type { Depth, Layout, Orientation, Placed, ShelfShape, SmallItem, StandDepth, StandingKind, VinylColor, WallShape } from './library-types';
 
@@ -27,10 +28,12 @@ export type Standing = Extract<Placed, { kind: StandingKind }>;
 
 export const isStanding = (p: Placed): p is Standing => (STANDING_KINDS as readonly string[]).includes(p.kind);
 
+// Angle d'un objet : celui d'un meuble debout, 0 pour le reste.
+export const angleOf = (p: Placed): Angle => (isStanding(p) ? (p.angle ?? 0) : 0);
+
 export function rectOf(p: Placed): Rect | null {
   if (isStanding(p)) {
-    const { w, h } = sizeOf(p.kind);
-    return { col: p.col, row: p.row, w, h };
+    return drawRect(p.kind, angleOf(p), p.col, p.row);
   }
   if (p.kind === 'wall') {
     const { w, h } = wallSizeOf(p.shape);
@@ -65,7 +68,7 @@ export function depthOf(layout: Layout, p: Placed): Depth {
 // puis, pieds sur la même ligne, le niveau (fond, milieu, avant), puis l'ordre du plan.
 export function byDrawOrder<T extends Standing>(layout: Layout, items: readonly T[]): T[] {
   return items
-    .map((p, i) => ({ p, i, d: depthOf(layout, p), b: p.row + sizeOf(p.kind).h }))
+    .map((p, i) => ({ p, i, d: depthOf(layout, p), b: p.row + rectOf(p)!.h }))
     .sort((a, b) => a.b - b.b || a.d - b.d || a.i - b.i)
     .map((e) => e.p);
 }
