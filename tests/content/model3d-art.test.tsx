@@ -1,0 +1,36 @@
+// @vitest-environment jsdom
+import { act, type ReactElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { describe, expect, it } from 'vitest';
+import { Model3DArt } from '../../src/content/model3d-art';
+import { paletteOf } from '../../src/core/library/styles';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+function draw(el: ReactElement) {
+  const c = document.createElement('div');
+  document.body.append(c);
+  act(() => { createRoot(c).render(<svg>{el}</svg>); });
+  return c;
+}
+const rect = { x: 0, y: 0, w: 120, h: 255 };
+
+describe('Model3DArt', () => {
+  it('dessine des polygones encrés pour chaque angle', () => {
+    for (const angle of [0, 1, 2, 3, 4, 5, 6, 7] as const) {
+      const c = draw(<Model3DArt kind="chair" angle={angle} rect={rect} palette={paletteOf('scandinave')} />);
+      expect(c.querySelectorAll('[data-model3d] polygon').length).toBeGreaterThan(3);
+    }
+  });
+  it('l’abat-jour de la lampe change avec lit, à tous les angles', () => {
+    for (const angle of [0, 3, 6] as const) {
+      const on = draw(<Model3DArt kind="lamp" angle={angle} rect={rect} palette={paletteOf('scandinave')} lit />).innerHTML;
+      const off = draw(<Model3DArt kind="lamp" angle={angle} rect={rect} palette={paletteOf('scandinave')} lit={false} />).innerHTML;
+      expect(on).not.toBe(off);
+    }
+  });
+  it('les garnitures Steampunk n’apparaissent que dans une pièce Steampunk', () => {
+    const plain = draw(<Model3DArt kind="desk" angle={0} rect={rect} palette={paletteOf('steampunk')} />);
+    const steam = draw(<Model3DArt kind="desk" angle={0} rect={rect} palette={paletteOf('steampunk')} steampunk />);
+    expect(steam.querySelectorAll('polygon').length).toBeGreaterThan(plain.querySelectorAll('polygon').length);
+  });
+});
