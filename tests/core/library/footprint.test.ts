@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { drawRect, drawSize, floorCells, floorOffsets, frontFaceRect, isAngle, poisAt, rotateAngle } from '../../../src/core/library/footprint';
-import { footOf, poisOf, sizeOf } from '../../../src/core/library/furniture-catalog';
+import { sizeOf } from '../../../src/core/library/furniture-catalog';
 
 const keys = (cells: { col: number; row: number }[]) => cells.map((c) => `${c.col}-${c.row}`).sort();
 const ANGLES = [0, 1, 2, 3, 4, 5, 6, 7] as const;
@@ -88,12 +88,8 @@ describe('positions absolues', () => {
 });
 
 describe('catalogue dérivé des modèles', () => {
-  it('sizeOf = rectangle de face, footOf = rangées au sol de face', () => {
+  it('sizeOf = rectangle de face', () => {
     expect(sizeOf('sofa')).toEqual({ w: 10, h: 6 });
-    expect(footOf('sofa')).toBe(2);
-    expect(footOf('shelf')).toBe(1);
-    expect(footOf('rug')).toBe(3);
-    expect(poisOf('chair')).toEqual(poisAt('chair', 0));
   });
 });
 
@@ -117,13 +113,6 @@ describe('points d’intérêt', () => {
 });
 
 describe('face visible', () => {
-  const r = { x: 0, y: 0, w: 100, h: 200 };
-  it('sans meuble (ancien calcul) : face entière à 0, 70 % à gauche à 1, à droite à 7, aucune sinon', () => {
-    expect(frontFaceRect(0, r)).toEqual(r);
-    expect(frontFaceRect(1, r)).toEqual({ x: 0, y: 20, w: 70, h: 180 });
-    expect(frontFaceRect(7, r)).toEqual({ x: 30, y: 20, w: 70, h: 180 });
-    for (const a of [2, 3, 4, 5, 6] as const) expect(frontFaceRect(a, r)).toBeNull();
-  });
   it('avec le meuble : face projetée du modèle, mise à l’échelle et décalée dans le rectangle', () => {
     // Étagère de face : 4 × 10 cases = 120 × 283,3 px ; rectangle deux fois plus grand, décalé de (10, 20).
     const { w, h } = drawSize('shelf', 0);

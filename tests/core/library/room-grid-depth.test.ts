@@ -2,15 +2,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Layout } from '../../../src/core/library/library-types';
 import { canHang, canPlace, canShiftRow, depthOf, freeDepth, moveStanding, placeStanding, shiftLayout, shiftRow } from '../../../src/core/library/room-grid';
-import { depthDefault, footOf, underOf } from '../../../src/core/library/furniture-catalog';
+import { depthDefault, underOf } from '../../../src/core/library/furniture-catalog';
 
 describe('niveaux de profondeur', () => {
   it('donne le niveau par défaut du type', () => {
     expect(depthDefault('shelf')).toBe(1);
     expect(depthDefault('armchair')).toBe(2);
     expect(depthDefault('coffee-table')).toBe(3);
-    expect(footOf('shelf')).toBe(1);
-    expect(footOf('sofa')).toBe(2);
     expect(underOf('coffee-table')).toBe(true);
     expect(underOf('sofa')).toBe(false);
   });

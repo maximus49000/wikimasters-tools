@@ -1,4 +1,4 @@
-import { drawSize, floorOffsets, poisAt } from './footprint';
+import { drawSize } from './footprint';
 import type { FurnitureKind, ShelfShape, SmallItem, SmallKind, StandDepth, StandingKind, StyleId, VinylColor, WallShape } from './library-types';
 
 export type Category = 'storage' | 'seats' | 'pets' | 'deco' | 'steampunk';
@@ -116,12 +116,8 @@ export const labelOf = (kind: FurnitureKind): string => LABELS[kind];
 // Rectangle de dessin de face (en cases), tiré du modèle 3D.
 export const sizeOf = (kind: StandingKind): { w: number; h: number } => drawSize(kind, 0);
 export const layerOf = (kind: StandingKind): 'floor' | 'rug' => FOOTPRINTS[kind].layer;
-// Points d'intérêt de face, tirés du modèle 3D.
-export const poisOf = (kind: StandingKind): readonly Poi[] => poisAt(kind, 0);
 
 // Niveau de profondeur par défaut du type (1 fond, 2 milieu, 3 avant).
 export const depthDefault = (kind: StandingKind): StandDepth => FOOTPRINTS[kind].depth;
-// Rangées du bas de l'emprise qui touchent vraiment le sol ; au-dessus, c'est l'espace entre le meuble et le mur.
-export const footOf = (kind: StandingKind): number => new Set(floorOffsets(kind, 0).map((c) => c.row)).size;
 // Vrai si un animal passe dessous (table, bureau, chaise, trépied).
 export const underOf = (kind: StandingKind): boolean => FOOTPRINTS[kind].under;

@@ -133,4 +133,3 @@ export function signatureOf(boxList: readonly Box[], lampList: readonly LampSour
   return `${boxes.join(';')}|${lamps.join(';')}`;
 }
 
-export const layoutSignature = (layout: Layout, geom: Geom): string => signatureOf(boxesOf(layout, geom), lampsOf(layout, geom));

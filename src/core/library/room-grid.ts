@@ -1,5 +1,5 @@
 import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, underOf, wallSizeOf } from './furniture-catalog';
-import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, frontFaceRect, invertMatrix, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
+import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, invertMatrix, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
 import { STANDING_KINDS } from './library-types';
 import type { Depth, Layout, Orientation, Placed, ShelfLevel, ShelfShape, SmallItem, StandDepth, StandingKind, StoredDisplay, VinylColor, WallShape } from './library-types';
 import { ITEM_MODELS, itemFootprintCm } from './item-models';
@@ -360,12 +360,6 @@ export function toggleLamp(layout: Layout, id: string): Layout {
   const target = layout.find((p) => p.id === id);
   if (!target || !isLamp(target)) return layout;
   return layout.map((p) => (p.id === id ? ({ ...p, lit: !isLit(p) } as Placed) : p));
-}
-
-// La boîte d'un emplacement de surface : le dessus du porteur, divisé en `slotCount` emplacements de 44 px de haut.
-export function surfaceSlotRect(host: PxRect, slotCount: number, slot: number): PxRect {
-  const w = host.w / slotCount;
-  return { x: host.x + slot * w, y: host.y - SMALL_H + 2, w, h: SMALL_H };
 }
 
 // Emplacement d'un petit objet posé sur le dessus projeté de son porteur tourné : les emplacements se suivent le long de la largeur

@@ -103,7 +103,7 @@ type Props = {
 };
 
 // Matrice du repère d'une face (footprint.faceFrame) en attribut SVG.
-export const matrixOf = (m: readonly number[]): string => `matrix(${m.join(' ')})`;
+const matrixOf = (m: readonly number[]): string => `matrix(${m.join(' ')})`;
 // Points d'un polygone (px au dixième).
 const pointsOf = (pts: readonly (readonly [number, number])[]): string => pts.map(([x, y]) => `${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`).join(' ');
 

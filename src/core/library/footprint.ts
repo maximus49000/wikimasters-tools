@@ -51,9 +51,6 @@ export function poisAt(kind: StandingKind, angle: Angle): Poi[] {
   return pois.map((p) => ({ ...p }));
 }
 
-// Marge du haut d'un dessin tourné (le dessus du meuble remonte vers le fond) ; même valeur que le projecteur.
-export const FACE_MARGIN = 0.1;
-
 // Face avant projetée du modèle (px du rectangle de dessin à l'échelle 1), null si cachée ; mise en cache par (meuble, angle) :
 // elle est demandée à chaque rendu et à chaque mouvement du doigt (emplacements d'étagère).
 const faceCache = new Map<string, PxRect | null>();
@@ -63,21 +60,15 @@ function modelFace(kind: StandingKind, angle: Angle): PxRect | null {
   return faceCache.get(key)!;
 }
 
-// Face avant visible (où se dessinent les cartes rangées et l'écran), visible de face et de ¾ avant seulement ; null sinon.
-// Avec le meuble : face projetée de son modèle, mise à l'échelle du rectangle. Sans (fenêtres) : toute la face à 0, 70 % à gauche à 1, à droite à 7.
-export function frontFaceRect(angle: Angle, rect: PxRect, kind?: StandingKind): PxRect | null {
-  if (kind) {
-    const face = modelFace(kind, angle);
-    if (!face) return null;
-    const { w, h } = drawSize(kind, angle);
-    const sx = rect.w / (w * CELL_W);
-    const sy = rect.h / (h * CELL_H);
-    return { x: rect.x + face.x * sx, y: rect.y + face.y * sy, w: face.w * sx, h: face.h * sy };
-  }
-  if (angle === 0) return rect;
-  if (angle !== 1 && angle !== 7) return null;
-  const top = rect.h * FACE_MARGIN;
-  return { x: angle === 1 ? rect.x : rect.x + rect.w * 0.3, y: rect.y + top, w: rect.w * 0.7, h: rect.h - top };
+// Face avant visible (où se dessinent les cartes rangées et l'écran), visible de face et de ¾ avant seulement ; null sinon :
+// face projetée du modèle du meuble, mise à l'échelle du rectangle.
+export function frontFaceRect(angle: Angle, rect: PxRect, kind: StandingKind): PxRect | null {
+  const face = modelFace(kind, angle);
+  if (!face) return null;
+  const { w, h } = drawSize(kind, angle);
+  const sx = rect.w / (w * CELL_W);
+  const sy = rect.h / (h * CELL_H);
+  return { x: rect.x + face.x * sx, y: rect.y + face.y * sy, w: face.w * sx, h: face.h * sy };
 }
 
 // Point du dessus du meuble tourné (u le long de la largeur, v de l'avant vers l'arrière, fractions 0 à 1), en px du rectangle

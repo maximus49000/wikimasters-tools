@@ -10,7 +10,6 @@ import {
   placeSmall,
   removeFurniture,
   shiftLayout,
-  surfaceSlotRect,
   pxRect,
   surfaceSlotRectOn,
 } from '../../../src/core/library/room-grid';
@@ -95,12 +94,6 @@ describe('retrait et décalage', () => {
   it('décaler la pièce ne touche pas les petits objets', () => {
     const small = { id: 's', kind: 'small', item: 'lamp', hostId: 'f2', slot: 0 } as const;
     expect(shiftLayout([...base, small], 12).find((p) => p.id === 's')).toEqual(small);
-  });
-});
-
-describe('surfaceSlotRect', () => {
-  it('découpe le dessus du porteur en emplacements de 44 px de haut', () => {
-    expect(surfaceSlotRect({ x: 60, y: 400, w: 150, h: 113 }, 4, 1)).toEqual({ x: 97.5, y: 358, w: 37.5, h: 44 });
   });
 });
 

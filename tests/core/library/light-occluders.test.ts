@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boxesOf, kOf, lampsOf, layoutSignature } from '../../../src/core/library/light/occluders';
+import { boxesOf, kOf, lampsOf, signatureOf } from '../../../src/core/library/light/occluders';
 import type { Layout } from '../../../src/core/library/library-types';
 import { SURF, buildSurfaceMap } from '../../../src/core/library/light/surfaces';
 import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y } from '../../../src/core/library/furniture-render3d';
@@ -130,7 +130,8 @@ describe('boxesOf', () => {
   });
 });
 
-describe('layoutSignature', () => {
+describe('signatureOf', () => {
+  const layoutSignature = (layout: Layout, g: typeof geom): string => signatureOf(boxesOf(layout, g), lampsOf(layout, g));
   const base: Layout = [{ id: 'l', kind: 'lamp', col: 2, row: 8 }];
   it('change quand la lampe s’éteint ou qu’un meuble bouge, pas sinon', () => {
     const s = layoutSignature(base, geom);
