@@ -217,3 +217,13 @@ describe('géométrie intérieure', () => {
     expect(stageFor('bar', wide).spots.length).toBeGreaterThan(2);
   });
 });
+
+describe('comptoir peint ou non (personnel rogné au plan de travail)', () => {
+  // Retour du 2026-10-13 : dans une friperie, l'employé perdait ses jambes (rogné derrière un comptoir qui n'existe pas).
+  it('seul un comptoir réellement peint rogne le personnel ; la friperie n’en a pas', () => {
+    const frame = { sign: { x: 0, y: 0, w: 60, h: 5 }, window: { x: 0, y: 10, w: 44, h: 30 }, door: { x: 48, y: 15, w: 10, h: 25 } };
+    expect(stageFor('bakery', frame).counter?.drawn).toBe(true);
+    const thrift = stageFor('thrift', frame).counter;
+    expect(thrift === null || thrift.drawn === false).toBe(true);
+  });
+});

@@ -223,9 +223,10 @@ function placeStaff(st: ShopState, rt: ShopRt, sc: Score | null, tIn: number, se
       hideFigure(figures, s.fig);
       continue;
     }
-    // Derrière le comptoir : rogné au plan de travail (un seul rectangle : le <svg> de l'employé), objet en main compris.
+    // Derrière le comptoir PEINT : rogné au plan de travail (un seul rectangle : le <svg> de l'employé), objet en main compris.
+    // Pas de comptoir dessiné (friperie, librairie…) : personne n'est rogné, sinon il perdrait les jambes sans rien devant.
     const c = stage.counter;
-    const behind = c !== null && v.x >= c.x0 - 0.5 && v.x <= c.x1 + 0.5;
+    const behind = c !== null && c.drawn && v.x >= c.x0 - 0.5 && v.x <= c.x1 + 0.5;
     const clipY = Math.max(0, behind ? rt.worktop : rt.hSvg);
     setIf(s.clip, 'height', clipY.toFixed(2));
     setIf(s.body, 'transform', `translate(${v.x.toFixed(2)} ${rt.staffFloor.toFixed(2)}) scale(${STAFF_SCALE})`);
