@@ -333,7 +333,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     undefined,
     (slugs) => fetchBacklinks((url) => fetch(url, { signal: AbortSignal.timeout(20_000) }), slugs),
   );
-  // Bloc « Cartes liées » de la fiche d'une carte : les cartes de la Collection à un saut, les plus consultées d'abord.
+  // Bloc « Cartes liées » de la fiche d'une carte : les cartes de la Collection à un saut, les plus précises d'abord.
   setLinkedService({
     source: createLinkedSource({ collection: collectionRepo, links: linksRepo }),
     open: (from, slug) => void openLinkedCard(from, slug, (target) => openCardInPage(target, (reopen) => void marketUi.reopenCard(reopen))),

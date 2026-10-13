@@ -265,11 +265,11 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'cartes-liees',
+    id: 'cartes-liees-v2',
     theme: 'fiche',
     glyph: '🔗',
     title: 'Cartes liées',
-    summary: 'Cartes proches, dans la fiche',
+    summary: 'Cartes vraiment proches, dans la fiche',
     steps: [
       {
         target: '[data-wmt-linked]',
@@ -277,7 +277,8 @@ export const ENTRIES: Entry[] = [
         text: 'Sous la fiche d’une carte, ce bloc montre les cartes de votre Collection qui lui sont reliées sur Wikipédia : un moyen rapide de rebondir de carte en carte.',
         details: [
           { label: 'D’où viennent les liens', text: 'Wikipédia : les articles cités dans l’introduction de l’article de la carte, et ceux qui le citent. Les liens sont mémorisés 30 jours.' },
-          { label: 'Ce qui est affiché', text: 'Les 6 cartes les plus consultées sur Wikipédia (nombre de visites de l’article) ; le bouton « Voir les N cartes liées » ouvre la liste complète. Des cartes à deux sauts, reliées par un article intermédiaire, peuvent aussi apparaître (4 au plus), avec l’article qui fait le lien.' },
+          { label: 'Ce qui est affiché', text: 'Les 6 liens les plus précis : d’abord les cartes dont l’article cite celui-ci en retour, puis celles que peu d’autres cartes citent (« Scandale mélancolique » → « Hubert-Félix Thiéfaine »). Les cartes passe-partout comme « France » ou « Film », citées par une grande part de votre Collection, sont écartées. Le bouton « Voir les N cartes liées » ouvre la liste complète. Des cartes à deux sauts, reliées par un article intermédiaire (jamais un passe-partout), peuvent aussi apparaître (4 au plus).' },
+          { label: 'À savoir', text: 'Une carte est passe-partout quand au moins 30 cartes lues, et au moins 5 % d’entre elles, la citent : une petite Collection n’en a donc pas. Une carte passe-partout reste affichée si les deux articles se citent l’un l’autre. À précision égale, les cartes les plus consultées sur Wikipédia passent devant.' },
           { label: 'Comment s’en servir', text: 'Touchez une carte liée pour ouvrir sa fiche.' },
         ],
         scene: { card: 'any' },
@@ -285,7 +286,7 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-linked-more]',
         title: 'Voir toutes les cartes liées',
-        text: 'Quand une carte a plus de cartes liées que le bloc n’en montre, ce bouton ouvre la liste complète, des plus consultées aux moins consultées.',
+        text: 'Quand une carte a plus de cartes liées que le bloc n’en montre, ce bouton ouvre la liste complète, des liens les plus précis aux moins précis.',
         gesture: 'tap',
         optional: true,
         details: [
