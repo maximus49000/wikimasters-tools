@@ -394,3 +394,54 @@ describe('occulteurs et dessus praticable (lumière, animaux)', () => {
     expect(q.z).toBeCloseTo(30, 6);
   });
 });
+
+describe('ordre de dessin des pièces séparées', () => {
+  // Livre debout au bout d'une tablette, contre le montant : les centres trompent (le livre paraît plus proche), la séparation en x tranche.
+  const pair = (mirror: boolean): Model => ({
+    w: 80, d: 30, h: 180,
+    pieces: [
+      { shape: 'box', x: mirror ? 0 : 77, y: 0, z: 0, w: 3, h: 180, d: 30, fill: 'wood', tag: 'montant' },
+      { shape: 'box', x: mirror ? 5 : 72, y: 8, z: 2, w: 3, h: 23, d: 15, fill: 'desk', tag: 'livre' },
+    ],
+  });
+  it('de ¾ et de profil, le montant le plus proche passe après le livre posé contre lui', () => {
+    for (const [angle, mirror] of [[1, false], [7, true], [2, false], [6, true]] as const) {
+      const tags = renderModel(pair(mirror), angle).shapes.map((s) => s.tag);
+      expect(tags.lastIndexOf('livre'), `angle ${angle}`).toBeLessThan(tags.indexOf('montant'));
+    }
+  });
+  it('du côté opposé, le montant lointain passe avant le livre', () => {
+    for (const [angle, mirror] of [[7, false], [1, true]] as const) {
+      const tags = renderModel(pair(mirror), angle).shapes.map((s) => s.tag);
+      expect(tags.lastIndexOf('montant'), `angle ${angle}`).toBeLessThan(tags.indexOf('livre'));
+    }
+  });
+});
+
+describe('faces décorées (décalques) et couleurs propres', () => {
+  const card: Model = {
+    w: 14, d: 1, h: 12.5,
+    pieces: [{ shape: 'box', x: 0, y: 0, z: 0, w: 14, h: 12.5, d: 1, fill: 'metal', color: '#112233', tag: 'corps', decals: [{ face: 'front', key: 'k|cover' }, { face: 'left', key: 'k|spine' }] }],
+  };
+  it('de face, la face avant porte son décalque avec ses trois coins projetés et sa taille en cm', () => {
+    const s = renderModel(card, 0).shapes.find((q) => q.kind === 'poly' && q.decal?.key === 'k|cover');
+    expect(s?.kind).toBe('poly');
+    if (s?.kind !== 'poly' || !s.decal) return;
+    const { tl, tr, bl, w, h } = s.decal;
+    expect(tr[0] - tl[0]).toBeCloseTo(14 * PX_PER_CM_X, 6);
+    expect(tr[1]).toBeCloseTo(tl[1], 6);
+    expect(bl[1] - tl[1]).toBeCloseTo(12.5 * PX_PER_CM_Y, 6);
+    expect([w, h]).toEqual([14, 12.5]);
+  });
+  it('un décalque sur une face cachée n’est pas émis ; la face gauche se voit de profil droit (angle 6)', () => {
+    const keys = (a: 0 | 2 | 6) => renderModel(card, a).shapes.flatMap((q) => (q.kind === 'poly' && q.decal ? [q.decal.key] : []));
+    expect(keys(0)).toEqual(['k|cover']);
+    expect(keys(2)).toEqual([]);
+    expect(keys(6)).toEqual(['k|spine']);
+  });
+  it('la couleur propre et l’étiquette de la pièce passent à ses formes', () => {
+    const shapes = renderModel(card, 1).shapes;
+    expect(shapes.length).toBeGreaterThan(0);
+    for (const q of shapes) expect([q.color, q.tag]).toEqual(['#112233', 'corps']);
+  });
+});

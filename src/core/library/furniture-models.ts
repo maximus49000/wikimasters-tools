@@ -41,7 +41,7 @@ const gear = (u: number, y: number, r0: number, r1: number, n: number): [number,
     return [u + r * Math.cos(a), y + r * Math.sin(a)];
   });
 // Couronne de n feuilles autour de (cx, cz), azimut de départ a0 (degrés) : point de contrôle et pointe à [rayon, hauteur], hauteur décalée de `lift`.
-const crown = (cx: number, cz: number, y0: number, n: number, a0: number, ctrl: [number, number], tip: [number, number], w: number, fills: Piece['fill'][], lift: number[] = [0]): Leaf[] =>
+export const crown = (cx: number, cz: number, y0: number, n: number, a0: number, ctrl: [number, number], tip: [number, number], w: number, fills: Piece['fill'][], lift: number[] = [0]): Leaf[] =>
   Array.from({ length: n }, (_, i) => {
     const a = ((a0 + (360 * i) / n) * Math.PI) / 180;
     const [c, s] = [Math.cos(a), Math.sin(a)];

@@ -11,10 +11,14 @@ export type V3t = [number, number, number];
 export type Leaf = { base: V3t; ctrl: V3t; tip: V3t; w: number; fill?: Fill };
 // Arc de méridien autour d'un globe : longitude `lon`, de la latitude `from` à `to` (au-delà de ±90 il passe de l'autre côté du pôle), rayon `r`, largeur `w` (cm).
 export type GlobeRing = { lon: number; from: number; to: number; r: number; w: number; fill: Fill };
-// `tone` : teinte propre de la pièce (multiplie l'ombrage) ; `layer` : une pièce de couche supérieure passe après les pièces qu'elle chevauche.
-type Common = { fill: Fill; tone?: number; layer?: number };
+// `tone` : teinte propre de la pièce (multiplie l'ombrage) ; `layer` : une pièce de couche supérieure passe après les pièces qu'elle chevauche ;
+// `color` : couleur propre #RRGGBB qui remplace celle de la palette (boîtier de CD, dos d'un livre) ; `tag` : étiquette recopiée sur ses formes (abat-jour à allumer).
+type Common = { fill: Fill; tone?: number; layer?: number; color?: string; tag?: string };
+// Décalque : face d'une boîte décorée par le dessin (image de la carte sur la couverture, titre sur la tranche, écran), repérée par sa clé.
+export type BoxFace = 'front' | 'back' | 'left' | 'right' | 'top';
+export type Decal = { face: BoxFace; key: string };
 export type Piece = Common & (
-  | { shape: 'box'; x: number; y: number; z: number; w: number; h: number; d: number }
+  | { shape: 'box'; x: number; y: number; z: number; w: number; h: number; d: number; decals?: Decal[] }
   // `r2` : rayon du haut (pot évasé) ; par défaut égal à `r`.
   | { shape: 'cyl'; cx: number; cz: number; y: number; r: number; h: number; r2?: number }
   // Globe : `tilt` incline l'axe des pôles vers la droite (degrés) ; `marks` (continents) en (latitude, longitude) degrés, longitude 0 = face avant ;
@@ -34,12 +38,17 @@ export type Poi3d = { type: PoiType; x: number; y: number; z: number };
 // `glow` : point d'où part la lumière d'une lampe (dans l'abat-jour), en cm.
 export type Perch = { x: number; z: number; w: number; d: number; y: number };
 export type Model = { w: number; d: number; h: number; pieces: Piece[]; pois?: Poi3d[]; face?: { x: number; y: number; w: number; h: number }; round?: boolean; perch?: Perch; glow?: V3t };
-export type Shape =
+// Face décorée projetée : coins haut gauche, haut droit, bas gauche (vue de face depuis l'extérieur de la face, haut en haut), taille en cm (largeur, hauteur).
+// La projection étant affine, ces trois points donnent la matrice qui pose un dessin à plat sur la face.
+export type DecalPx = { key: string; tl: [number, number]; tr: [number, number]; bl: [number, number]; w: number; h: number };
+type ShapeCommon = { fill: Fill; shade: number; color?: string; tag?: string };
+export type Shape = ShapeCommon & (
   // `ink` : 'none' = aplat sans trait (ombre nette), 'only' = trait seul repassé par-dessus.
-  | { kind: 'poly'; points: [number, number][]; fill: Fill; shade: number; ink?: 'none' | 'only' }
-  | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number; fill: Fill; shade: number }
+  | { kind: 'poly'; points: [number, number][]; ink?: 'none' | 'only'; decal?: DecalPx }
+  | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
   // Trait fin (parallèles du globe, nervures des feuilles) : couleur de `fill`, sans contour.
-  | { kind: 'line'; points: [number, number][]; fill: Fill; shade: number };
+  | { kind: 'line'; points: [number, number][] }
+);
 export type Rendered = { shapes: Shape[]; cols: number; rows: number; floor: { col: number; row: number }[] };
 
 export const CELL_W = 30;
@@ -152,16 +161,19 @@ function layoutOf(model: Model, angle: Angle): Layout3d {
 const depthOf = (f: Frame, x: number, z: number): number => turn(f, x, z)[1];
 
 type Face = { pts: V3[]; normal: V3 };
+// Face de boîte nommée, avec son repère de décalque : haut gauche, haut droit, bas gauche vus depuis l'extérieur, et sa taille (cm).
+type NamedFace = Face & { name: BoxFace; frame: [V3, V3, V3]; size: [number, number] };
 
-function boxFaces(p: Extract<Piece, { shape: 'box' }>): Face[] {
+function boxFaces(p: Extract<Piece, { shape: 'box' }>): NamedFace[] {
   const { x, y, z, w, h, d } = p;
   const v = (a: number, b: number, c: number): V3 => ({ x: a, y: b, z: c });
+  const [X, Y, Z] = [x + w, y + h, z + d];
   return [
-    { pts: [v(x, y, z), v(x + w, y, z), v(x + w, y + h, z), v(x, y + h, z)], normal: v(0, 0, -1) },
-    { pts: [v(x + w, y, z + d), v(x, y, z + d), v(x, y + h, z + d), v(x + w, y + h, z + d)], normal: v(0, 0, 1) },
-    { pts: [v(x, y, z + d), v(x, y, z), v(x, y + h, z), v(x, y + h, z + d)], normal: v(-1, 0, 0) },
-    { pts: [v(x + w, y, z), v(x + w, y, z + d), v(x + w, y + h, z + d), v(x + w, y + h, z)], normal: v(1, 0, 0) },
-    { pts: [v(x, y + h, z), v(x + w, y + h, z), v(x + w, y + h, z + d), v(x, y + h, z + d)], normal: v(0, 1, 0) },
+    { name: 'front', pts: [v(x, y, z), v(X, y, z), v(X, Y, z), v(x, Y, z)], normal: v(0, 0, -1), frame: [v(x, Y, z), v(X, Y, z), v(x, y, z)], size: [w, h] },
+    { name: 'back', pts: [v(X, y, Z), v(x, y, Z), v(x, Y, Z), v(X, Y, Z)], normal: v(0, 0, 1), frame: [v(X, Y, Z), v(x, Y, Z), v(X, y, Z)], size: [w, h] },
+    { name: 'left', pts: [v(x, y, Z), v(x, y, z), v(x, Y, z), v(x, Y, Z)], normal: v(-1, 0, 0), frame: [v(x, Y, Z), v(x, Y, z), v(x, y, Z)], size: [d, h] },
+    { name: 'right', pts: [v(X, y, z), v(X, y, Z), v(X, Y, Z), v(X, Y, z)], normal: v(1, 0, 0), frame: [v(X, Y, z), v(X, Y, Z), v(X, y, z)], size: [d, h] },
+    { name: 'top', pts: [v(x, Y, z), v(X, Y, z), v(X, Y, Z), v(x, Y, Z)], normal: v(0, 1, 0), frame: [v(x, Y, Z), v(X, Y, Z), v(x, Y, z)], size: [w, d] },
   ];
 }
 
@@ -280,6 +292,9 @@ function paintOrder(pieces: Piece[], f: Frame): Piece[] {
     return depthOf(f, bx, bz) - depthOf(f, ax, az) || ay - by;
   });
   const bs = base.map((p) => boundsOf(p, f));
+  const mb = base.map(pieceBounds); // encombrement dans le repère du modèle (x0, x1, y0, y1, z0, z1)
+  const side = Math.abs(f.sin) > 1e-9 ? Math.sign(f.sin) : 0; // > 0 : le côté droit (+x) est le plus proche
+  const front = Math.abs(f.cos) > 1e-9 ? Math.sign(f.cos) : 0; // > 0 : l'avant (−z) est le plus proche
   const n = base.length;
   const after: number[][] = base.map(() => []); // after[i] = pièces à dessiner après i
   const waiting = base.map(() => 0);
@@ -295,6 +310,10 @@ function paintOrder(pieces: Piece[], f: Frame): Piece[] {
       if (overlap && la !== lb) first = la < lb ? i : j;
       else if (overlap && b.bottom >= a.top - EPS) first = i;
       else if (overlap && a.bottom >= b.top - EPS) first = j;
+      // Pièces séparées dans le repère du modèle (côte à côte en x, ou l'une devant l'autre en z) : la plus proche du spectateur passe après.
+      // Plus sûr que les centres (un livre contre le montant d'une étagère tournée) ; séparées sur les deux axes, elles ne se recouvrent pas à l'écran.
+      else if (overlap && side !== 0 && (mb[i]![1] <= mb[j]![0] + 1e-6 || mb[j]![1] <= mb[i]![0] + 1e-6)) first = (mb[i]![1] <= mb[j]![0] + 1e-6) === side > 0 ? i : j;
+      else if (overlap && front !== 0 && (mb[i]![5] <= mb[j]![4] + 1e-6 || mb[j]![5] <= mb[i]![4] + 1e-6)) first = (mb[i]![5] <= mb[j]![4] + 1e-6) === front > 0 ? j : i;
       else if (a.z0 >= b.z1 - 1e-6) first = i; // a entièrement derrière b
       else if (b.z0 >= a.z1 - 1e-6) first = j;
       if (first < 0) continue;
@@ -322,22 +341,27 @@ export function renderModel(model: Model, angle: Angle): Rendered {
   const shapes: Shape[] = [];
   for (const p of order) {
     const tone = p.tone ?? 1;
-    const push = (s: Shape) => shapes.push(tone === 1 ? s : { ...s, shade: s.shade * tone });
+    const own = p.color !== undefined || p.tag !== undefined;
+    const push = (s: Shape) => shapes.push(tone === 1 && !own ? s : { ...s, shade: s.shade * tone, ...(p.color !== undefined && { color: p.color }), ...(p.tag !== undefined && { tag: p.tag }) });
     if (p.shape === 'ball') { drawBall(p, L, push); continue; }
     if (p.shape === 'rod') { drawRound(L, push, { x: p.a[0], y: p.a[1], z: p.a[2] }, { x: p.b[0], y: p.b[1], z: p.b[2] }, p.r, p.r, p.fill); continue; }
     if (p.shape === 'cyl') { drawRound(L, push, { x: p.cx, y: p.y, z: p.cz }, { x: p.cx, y: p.y + p.h, z: p.cz }, p.r, p.r2 ?? p.r, p.fill); continue; }
     if (p.shape === 'foliage') { drawFoliage(p, L, push); continue; }
-    let faces: Face[];
-    if (p.shape === 'prism') {
-      // Côtés du plus loin au plus proche, puis le bout visible (il recouvre les côtés d'un profil creux, ex. les dents d'un engrenage).
-      const { sides, caps } = prismFaces(p);
-      const depth = (fc: Face) => fc.pts.reduce((sum, q) => sum + depthOf(f, q.x, q.z), 0) / fc.pts.length;
-      faces = [...sides.filter((fc) => visible(f, fc.normal)).sort((a, b) => depth(b) - depth(a)), ...caps.filter((fc) => visible(f, fc.normal))];
-    } else {
-      faces = boxFaces(p).filter((fc) => visible(f, fc.normal));
+    if (p.shape === 'box') {
+      const faces = boxFaces(p).filter((fc) => visible(f, fc.normal));
       // Le dessus en dernier (il recouvre le haut des côtés) ; l'ordre des côtés visibles est indifférent (ils ne se recouvrent pas).
       faces.sort((a, b) => a.normal.y - b.normal.y);
+      for (const fc of faces) {
+        const d = p.decals?.find((q) => q.face === fc.name);
+        const decal: DecalPx | undefined = d && { key: d.key, tl: L.toPx(fc.frame[0]), tr: L.toPx(fc.frame[1]), bl: L.toPx(fc.frame[2]), w: fc.size[0], h: fc.size[1] };
+        push({ kind: 'poly', points: fc.pts.map((pt) => L.toPx(pt)), fill: p.fill, shade: shadeOf(f, fc.normal), ...(decal && { decal }) });
+      }
+      continue;
     }
+    // Prisme : côtés du plus loin au plus proche, puis le bout visible (il recouvre les côtés d'un profil creux, ex. les dents d'un engrenage).
+    const { sides, caps } = prismFaces(p);
+    const depth = (fc: Face) => fc.pts.reduce((sum, q) => sum + depthOf(f, q.x, q.z), 0) / fc.pts.length;
+    const faces = [...sides.filter((fc) => visible(f, fc.normal)).sort((a, b) => depth(b) - depth(a)), ...caps.filter((fc) => visible(f, fc.normal))];
     for (const fc of faces) push({ kind: 'poly', points: fc.pts.map((pt) => L.toPx(pt)), fill: p.fill, shade: shadeOf(f, fc.normal) });
   }
   return { shapes, cols: L.cols, rows: L.rows, floor: floorOf(model, L) };
