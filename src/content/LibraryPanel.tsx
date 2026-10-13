@@ -41,8 +41,8 @@ import {
   resizeWindow,
   stretchWindow,
   windowFit,
-  canShiftDepth,
-  shiftDepth,
+  canShiftRow,
+  shiftRow,
   placedSlugs,
   unplaceCard,
   isLamp,
@@ -69,7 +69,7 @@ import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
-import { commitPlacement, editPlacement, movePlacement, moveToItem, placingView, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
+import { commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
 import { PlacementBar, PlacementGrip } from './placement-bar';
 import { pointerToCell } from './furniture-drag';
 import { followPointer } from './pointer-follow';
@@ -464,6 +464,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const editPlacing = (edit: Edit): void => {
     if (!placement) return;
     const next = editPlacement(placement, room.cols, edit);
+    if (next) showPlacement(next);
+    else refuse('Impossible ici.');
+  };
+  const nudgePlacing = (delta: 1 | -1): void => {
+    if (!placement) return;
+    const next = nudgePlacement(placement, room.cols, delta);
     if (next) showPlacement(next);
     else refuse('Impossible ici.');
   };
@@ -874,8 +880,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             </Btn>
             {selectedStanding && (
               <>
-                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftDepth(layout, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
-                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftDepth(layout, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftDepth(l, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
+                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftRow(l, room.cols, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
+                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftRow(l, room.cols, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
               </>
             )}
             {selectedLamp && (
@@ -899,8 +905,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           <PlacementBar stage={stage.ref.current} scroll={scrollRef.current} targetId={placingView(placement).id} ok={placement.target.ok} onCancel={reset} onConfirm={() => void confirmPlacement()}>
             {placingStanding && (
               <>
-                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftDepth(placement.draft, placement.id, 1)} onClick={() => editPlacing({ type: 'depth', delta: 1 })}><Icon paths={ICONS.depthFront} /></Btn>
-                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftDepth(placement.draft, placement.id, -1)} onClick={() => editPlacing({ type: 'depth', delta: -1 })}><Icon paths={ICONS.depthBack} /></Btn>
+                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!nudgePlacement(placement, room.cols, 1)} onClick={() => nudgePlacing(1)}><Icon paths={ICONS.depthFront} /></Btn>
+                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!nudgePlacement(placement, room.cols, -1)} onClick={() => nudgePlacing(-1)}><Icon paths={ICONS.depthBack} /></Btn>
               </>
             )}
             {placingLamp && (

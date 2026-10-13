@@ -12,7 +12,8 @@ const room: Room = {
   id: 'r1', name: 'Salon', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, pets: [],
   layout: [
     { id: 'tab', kind: 'coffee-table', col: 0, row: 14 },
-    { id: 'sh', kind: 'shelf', col: 0, row: 10 },
+    // Pieds de l'étagère, du fauteuil et de la table basse sur la même ligne (16) : le niveau départage.
+    { id: 'sh', kind: 'shelf', col: 0, row: 8 },
     { id: 'pl', kind: 'small', item: 'plant', hostId: 'sh', slot: 0 },
     { id: 'arm', kind: 'armchair', col: 1, row: 13 },
     { id: 'pos', kind: 'wall', shape: 'poster', col: 1, row: 7, slug: 'Paris' },
@@ -39,6 +40,16 @@ describe('RoomView : niveaux de profondeur', () => {
     expect(ids.indexOf('sh')).toBeLessThan(ids.indexOf('pl'));
     expect(ids.indexOf('pl')).toBeLessThan(ids.indexOf('arm'));
     expect(ids.indexOf('arm')).toBeLessThan(ids.indexOf('tab'));
+  });
+
+  it('dessine devant le meuble le plus bas à l’écran, même s’il est au fond', () => {
+    const layout: Layout = [
+      { id: 'sofa', kind: 'sofa', col: 0, row: 13 },
+      { id: 'sh', kind: 'shelf', col: 2, row: 10 },
+    ];
+    const svg = mount({ layout });
+    const ids = [...svg.querySelectorAll('[data-id]')].map((n) => n.getAttribute('data-id'));
+    expect(ids.indexOf('sofa')).toBeLessThan(ids.indexOf('sh'));
   });
 
   it('marque le niveau de chaque objet', () => {

@@ -5,7 +5,7 @@ import { nextFurnitureId } from '../core/library/library-book';
 import type { FurnitureKind, Layout, Placed } from '../core/library/library-types';
 import {
   CELL_H, CELL_W, ROWS, firstFreeSlot, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
-  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, shelfSlots, shiftDepth, storeCard, stretchWindow, toggleLamp, type PxRect, type Rect,
+  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, shelfSlots, storeCard, stretchWindow, toggleLamp, type PxRect, type Rect,
 } from '../core/library/room-grid';
 
 // Id de l'objet neuf tant qu'il n'est pas enregistré (renommé au ✓).
@@ -14,7 +14,7 @@ export const DRAFT_ID = '__draft__';
 // Ce qu'on place : une vignette du tiroir, une carte choisie, ou un objet déjà posé.
 export type Subject = { type: 'new'; kind: FurnitureKind } | { type: 'card'; choice: CardChoice } | { type: 'move'; id: string };
 // Retouches faites pendant le placement, rejouées après chaque déplacement du fantôme.
-export type Edit = { type: 'depth'; delta: 1 | -1 } | { type: 'lamp' } | { type: 'size'; w: number; h: number } | { type: 'stretch'; axis: 'width' | 'height' };
+export type Edit = { type: 'lamp' } | { type: 'size'; w: number; h: number } | { type: 'stretch'; axis: 'width' | 'height' };
 // Point visé : case (col, row) et position dans le dessin (x, y).
 export type Spot = { col: number; row: number; x: number; y: number };
 export type Placement = {
@@ -124,7 +124,6 @@ function force(p: Placement, t: DropTarget): Layout {
 
 function applyEdit(layout: Layout, cols: number, id: string, e: Edit): Layout | null {
   if (!layout.some((x) => x.id === id)) return null;
-  if (e.type === 'depth') return shiftDepth(layout, id, e.delta);
   if (e.type === 'lamp') {
     const next = toggleLamp(layout, id);
     return next === layout ? null : next;
@@ -212,6 +211,12 @@ export function moveToItem(p: Placement, cols: number, itemId: string): Placemen
   }
   const px = pxRect(r);
   return settle(p, cols, { col: r.col, row: r.row + r.h - 1, x: px.x + px.w / 2, y: px.y + px.h / 2 });
+}
+
+// Avancer (+1) / Reculer (-1) : le fantôme descend ou remonte d'une ligne ; null si la ligne visée est refusée.
+export function nudgePlacement(p: Placement, cols: number, delta: 1 | -1): Placement | null {
+  const next = settle(p, cols, { ...p.spot, row: p.spot.row + delta, y: p.spot.y + delta * CELL_H });
+  return next.target.ok ? next : null;
 }
 
 export function editPlacement(p: Placement, cols: number, edit: Edit): Placement | null {

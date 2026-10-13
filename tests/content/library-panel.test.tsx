@@ -319,13 +319,19 @@ describe('LibraryPanel : niveaux', () => {
   };
   const outlineX = () => Number([...container.querySelectorAll('[data-selected-copy] rect[stroke="#378ADD"]')].at(-1)?.getAttribute('x'));
 
-  it('avancer / reculer change le niveau du meuble sélectionné', async () => {
+  it('avancer descend le meuble sélectionné d’une ligne, reculer le remonte, jusqu’au bas de la pièce', async () => {
     await seed();
     await click('[data-id="arm"]');
-    expect((q('[data-action="depth-front"]') as HTMLButtonElement).disabled).toBe(false);
-    expect((q('[data-action="depth-back"]') as HTMLButtonElement).disabled).toBe(true);
+    const arm = () => repo.current()?.rooms[0]?.layout.find((p) => p.id === 'arm');
+    expect((q('[data-action="depth-back"]') as HTMLButtonElement).disabled).toBe(false);
     await click('[data-action="depth-front"]');
-    expect(repo.current()?.rooms[0]?.layout.find((p) => p.id === 'arm')).toMatchObject({ id: 'arm', depth: 3 });
+    expect(arm()).toMatchObject({ row: 14 });
+    await click('[data-action="depth-front"]');
+    expect(arm()).toMatchObject({ row: 15 });
+    // Le fauteuil (3 lignes) touche le bas de la pièce : plus de ligne en dessous.
+    expect((q('[data-action="depth-front"]') as HTMLButtonElement).disabled).toBe(true);
+    await click('[data-action="depth-back"]');
+    expect(arm()).toMatchObject({ row: 14 });
   });
 
   it('un second toucher sélectionne l’objet derrière', async () => {

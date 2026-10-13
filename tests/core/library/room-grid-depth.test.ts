@@ -1,7 +1,7 @@
 // tests/core/library/room-grid-depth.test.ts
 import { describe, expect, it } from 'vitest';
 import type { Layout } from '../../../src/core/library/library-types';
-import { canHang, canPlace, canShiftDepth, depthOf, freeDepth, moveStanding, placeStanding, shiftDepth, shiftLayout } from '../../../src/core/library/room-grid';
+import { canHang, canPlace, canShiftRow, depthOf, freeDepth, moveStanding, placeStanding, shiftLayout, shiftRow } from '../../../src/core/library/room-grid';
 import { depthDefault, footOf, underOf } from '../../../src/core/library/furniture-catalog';
 
 describe('niveaux de profondeur', () => {
@@ -83,17 +83,28 @@ describe('niveaux de profondeur', () => {
     expect('depth' in moved).toBe(false);
   });
 
-  it('avance et recule dans les bornes 1 à 3, si le niveau visé est libre', () => {
+  it('avance (une ligne plus bas) et recule (une ligne plus haut), pieds sur le sol et dans la pièce', () => {
+    const layout: Layout = [{ id: 'a', kind: 'armchair', col: 0, row: 14 }]; // pieds en ligne 16
+    expect(shiftRow(layout, 24, 'a', 1)!.find((p) => p.id === 'a')).toMatchObject({ row: 15 });
+    expect(shiftRow(layout, 24, 'a', -1)!.find((p) => p.id === 'a')).toMatchObject({ row: 13 });
+    const bottom: Layout = [{ id: 'a', kind: 'armchair', col: 0, row: 15 }]; // pieds sur la dernière ligne
+    expect(canShiftRow(bottom, 24, 'a', 1)).toBe(false);
+    const wall: Layout = [{ id: 'a', kind: 'armchair', col: 0, row: 10 }]; // pieds sur la première ligne du sol
+    expect(canShiftRow(wall, 24, 'a', -1)).toBe(false);
+  });
+
+  it('en avançant sur un autre meuble, prend un niveau libre', () => {
     const layout: Layout = [
-      { id: 'a', kind: 'armchair', col: 0, row: 13 },
-      { id: 'b', kind: 'coffee-table', col: 0, row: 14 },
+      { id: 'a', kind: 'armchair', col: 0, row: 12 },
+      { id: 'b', kind: 'armchair', col: 0, row: 15 },
     ];
-    expect(canShiftDepth(layout, 'a', 1)).toBe(false); // la table basse occupe le niveau 3
-    expect(canShiftDepth(layout, 'a', -1)).toBe(true);
-    const back = shiftDepth(layout, 'a', -1)!;
-    expect(back.find((p) => p.id === 'a')).toMatchObject({ depth: 1 });
-    expect(canShiftDepth(back, 'a', -1)).toBe(false); // jamais au niveau 0
-    expect(shiftDepth(back, 'a', 1)!.find((p) => p.id === 'a')).not.toHaveProperty('depth');
+    const moved = shiftRow(layout, 24, 'a', 1)!;
+    expect(moved.find((p) => p.id === 'a')).toMatchObject({ row: 13, depth: 3 });
+  });
+
+  it('un tapis n’avance ni ne recule', () => {
+    const layout: Layout = [{ id: 'r', kind: 'rug', col: 0, row: 14 }];
+    expect(canShiftRow(layout, 24, 'r', 1)).toBe(false);
   });
 
   it('garde depth quand la pièce est décalée', () => {
