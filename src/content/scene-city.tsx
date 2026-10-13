@@ -1,5 +1,4 @@
 import { useEffect, useId, useMemo, useState, type ReactElement } from 'react';
-import { lampLit } from '../core/library/activity';
 import { doorsFor } from '../core/library/city/doors';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
@@ -14,6 +13,7 @@ import { furnitureAt } from '../core/library/city/shops/view';
 import { useStreetShops } from './use-street-shops';
 import { useArtStyle } from './art-setting';
 import { GhibliWindows } from './ghibli-windows';
+import { windowLit } from '../core/library/city/window-lights';
 import { GhibliNightLight } from './ghibli-night';
 import { usePaintedCity } from './painted-city';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
@@ -79,7 +79,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         <rect x={b.x} y={ground - b.h} width={b.w} height={b.h} fill={far} />
         {/* Fenêtres du fond : même activité qu'au premier plan, mais petites, froides et dissipées par la distance. */}
         {b.farWindows.map((win, j) => {
-          const lit = lampLit(win.u, minutes) || (gloom && win.u < 0.55);
+          const lit = windowLit(win.u, minutes, city?.day, sky.daylight, gloom);
           return (
             <rect
               key={j}
@@ -102,7 +102,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
       <g key={`n${i}`}>
         <rect x={b.x} y={ground - b.h} width={b.w} height={b.h} fill={near} />
         {b.lamps.map((lamp, j) => {
-          const lit = lampLit(lamp.u, minutes) || (gloom && lamp.u < 0.55);
+          const lit = windowLit(lamp.u, minutes, city?.day, sky.daylight, gloom);
           return (
             <rect
               key={j}
@@ -219,7 +219,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         </g>
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}
         <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} plan={plan} shops={nightShops} rainy={rainy} />
-        <GhibliWindows buildings={buildings} minutes={minutes} gloom={gloom} dim={dim} farLight={FAR_LIGHT} />
+        <GhibliWindows buildings={buildings} minutes={minutes} day={city?.day} daylight={sky.daylight} gloom={gloom} dim={dim} farLight={FAR_LIGHT} />
         <GhibliEntranceLights doors={doors} unit={unit} doorY={metrics.doorY} dark={dark} />
       </g>
       {shopFronts}
