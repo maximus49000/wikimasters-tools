@@ -37,13 +37,23 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const steampunk = room.style === 'steampunk';
   const angle = item ? angleOf(item) : 0;
   // Première moitié de l'ouverture (et seconde de la fermeture) : le meuble sous son angle ; ensuite de face.
-  const [face, setFace] = useState<'angled' | 'front'>(phase === 'open' || angle === 0 ? 'front' : phase === 'opening' ? 'angled' : 'front');
+  const reduced = reducedMotion();
+  const [face, setFace] = useState<'angled' | 'front'>(reduced || phase === 'open' || angle === 0 ? 'front' : phase === 'opening' ? 'angled' : 'front');
+  // Le meuble n'a pas encore bougé à la première image : on le pose au départ puis on le laisse rejoindre le cadre final.
+  const [arrived, setArrived] = useState(phase === 'open');
   useEffect(() => {
-    if (angle === 0 || phase === 'open') return setFace('front');
-    const half = (reducedMotion() ? ZOOM_REDUCED_MS : ZOOM_MS) / 2;
+    const raf = window.requestAnimationFrame(() => setArrived(true));
+    return () => window.cancelAnimationFrame(raf);
+  }, []);
+  useEffect(() => {
+    if (reduced || angle === 0 || phase === 'open') {
+      setFace('front');
+      return;
+    }
+    const half = ZOOM_MS / 2;
     const t = window.setTimeout(() => setFace(phase === 'opening' ? 'front' : 'angled'), half);
     return () => window.clearTimeout(t);
-  }, [phase, angle]);
+  }, [phase, angle, reduced, target.id]);
   if (!item || (item.kind !== 'shelf' && item.kind !== 'desk')) return null;
 
   const { w, h } = sizeOf(item.kind);
@@ -53,8 +63,13 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const view = { x: 0, y: -pad, w: art.w, h: art.h + pad };
   const end = zoomRectOf(stage, view.w / view.h);
   const start = from ?? end;
-  const at = phase === 'open' || (phase === 'opening' && face === 'front') ? end : start;
-  const ms = reducedMotion() ? ZOOM_REDUCED_MS : ZOOM_MS;
+  const ms = reduced ? ZOOM_REDUCED_MS : ZOOM_MS;
+  // De face : le meuble grandit (ou rétrécit) d'un trait ; de profil : il se referme puis s'ouvre, chaque moitié sur ms/2.
+  const at = reduced ? end
+    : angle === 0 ? (phase === 'closing' || !arrived ? start : end)
+    : phase === 'open' || (phase === 'opening' && face === 'front') ? end : start;
+  const move = angle === 0 ? ms : ms / 2;
+  const hidden = reduced && (phase === 'closing' || (phase === 'opening' && !arrived));
 
   const carried = room.layout.filter((p) => (p.kind === 'stored' && p.shelfId === item.id) || (p.kind === 'computer' && p.deskId === item.id) || (p.kind === 'small' && p.hostId === item.id));
   const cardTap = (slug: string) => () => { if (cards[slug]) onCard(slug); };
@@ -82,7 +97,7 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
           const screen = computerRect(art);
           const url = p.slug && cards[p.slug] ? imageOf(p.slug) : undefined;
           return (
-            <g key={p.id} {...(p.slug ? { 'data-zoom-card': p.slug, onClick: cardTap(p.slug) } : {})} style={{ cursor: 'pointer' }}>
+            <g key={p.id} {...(p.slug ? { 'data-zoom-card': p.slug, onClick: cardTap(p.slug) } : {})} style={{ cursor: p.slug && cards[p.slug] ? 'pointer' : 'default' }}>
               {steampunk ? <AnalyticalEngineArt rect={screen} imageUrl={url} /> : <ComputerArt rect={screen} imageUrl={url} />}
             </g>
           );
@@ -93,14 +108,14 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   );
 
   return (
-    <div className="wmt-lib-zoom" data-furniture-zoom="" data-zoom-phase={phase} data-zoom-face={face} role="dialog" aria-label={item.kind === 'shelf' ? 'Étagère vue de face' : 'Bureau vu de face'}>
+    <div className="wmt-lib-zoom" data-furniture-zoom="" data-zoom-phase={phase} data-zoom-face={face} style={reduced ? { opacity: hidden ? 0 : 1, transition: `opacity ${ms}ms ease-out` } : undefined} role="dialog" aria-label={item.kind === 'shelf' ? 'Étagère vue de face' : 'Bureau vu de face'}>
       <div className="wmt-lib-zoom-backdrop" data-zoom-backdrop="" onClick={onBack} style={{ opacity: phase === 'closing' ? 0 : 1, transition: `opacity ${ms}ms ease-out` }} />
       <div
         className="wmt-lib-zoom-piece"
         style={{
           left: at.x, top: at.y, width: at.w, height: at.h,
-          transition: `left ${ms / 2}ms ease-out, top ${ms / 2}ms ease-out, width ${ms / 2}ms ease-out, height ${ms / 2}ms ease-out`,
-          animation: angle !== 0 && phase !== 'open' && !reducedMotion() ? `wmt-zoom-pivot ${ms}ms ease-in-out` : undefined,
+          transition: `left ${move}ms ease-out, top ${move}ms ease-out, width ${move}ms ease-out, height ${move}ms ease-out`,
+          animation: angle !== 0 && phase !== 'open' && !reduced ? `wmt-zoom-pivot ${ms}ms ease-in-out` : undefined,
         }}
       >
         <svg viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
