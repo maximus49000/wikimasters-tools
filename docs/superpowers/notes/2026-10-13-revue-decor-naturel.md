@@ -1,0 +1,36 @@
+# Revue du décor du 2026-10-13 : une ville naturelle et vivante
+
+Retours de l'utilisateur sur la scène Ville (graphisme Ghibli), triés selon l'état de la migration (G1 décor, G2 ciel,
+G3 humains, G4 commerces, V1-V5 véhicules, G5 partie 1 faits ; G5 partie 2, G6, G7 à venir). Pas de Fable avant le
+2026-10-17 : tout besoin de dessin est noté ici et repris quand Fable sera de nouveau disponible.
+
+Règle générale (mémoire « humains naturels ») : **tout doit être naturel ET vivant**. On déroule chaque scénario réel de
+bout en bout (qui apporte, qui pose, qui reprend, qui range, qui paie), et personne ne traverse une personne, un véhicule
+ni un objet.
+
+## Traité en code (déjà migré)
+
+| # | Sujet | Lot |
+|---|-------|-----|
+| 1 | Bus à horaires (6 h 50 → 0 h 30, pointes, soir espacé ; dimanche réduit), personne n'attend la nuit, panneau « Prochain bus » (ligne + minutes) | PR bus-horaires |
+| 2 | Marche de face ou de dos au passage piéton (effet « moonwalk ») | lot circulation |
+| 3 | Motos et scooters : les mains sur le guidon | lot circulation |
+| 4 | Vélos au feu rouge : arrêt avant le passage piéton, pied à terre ; remonter une file sans traverser un véhicule | lot circulation |
+| 5 | Déménageurs : équipe désorganisée et vivante (pas 3 qui entrent / 3 qui sortent), hayon rapide, entrée dans le camion sans être coupé en deux par le calque du camion | lot déménagement |
+| 6 | Local déménagé : il se vide puis se remplit, les déménageurs sont visibles au travail à l'intérieur | lot déménagement |
+| 7 | Café : le serveur pose la tasse, le client la prend, boit, la repose (plusieurs fois), la tasse reste jusqu'au débarrassage, le client paie avant de partir | lot café |
+| 8 | Piétons : respect des plans (contourner par derrière), attente vivante s'il n'y a pas la place (petits gestes, agacement), jamais à travers un objet ou un véhicule | lot piétons |
+| 9 | Plus de passants et de vie sur le trottoir d'en face, sans cacher la ville (seulement des éléments bas ; lampadaire côté chaussée ; pas de gros arbre ni de bâtiment) | lot trottoir d'en face |
+
+## À reprendre avec Fable (dessin)
+
+- Meubles portés par les déménageurs : aujourd'hui des rectangles plats (vitrine, étagère, table, fauteuil) → vrais
+  meubles en cellulo.
+- Bouche des pantins pour boire (tête) : la tasse va à la bouche, mais la tête n'a pas de bouche dessinée.
+- Panneau « Prochain bus » : afficheur SVG simple, à peindre dans le style du poteau (`bus-stop` du registre d'accessoires).
+
+## À prendre en compte dans la suite de la migration
+
+- **Grue (G5 partie 2, tâche des événements du ciel)** : mouvement pas naturel (rotation, levage d'une charge, câble qui
+  descend et remonte, ouvrier dans la cabine), et elle ne doit jamais être cachée à 100 % par les nuages : la flèche reste
+  sous la couche de nuages ou les nuages passent derrière elle.

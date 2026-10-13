@@ -16,6 +16,7 @@ import { lightColorAt, newWalker, stepLight, stepWalker, type PushLight, type Wa
 import { SPECIAL_SPEED, specialExtent, type SpecialId, type SpecialSpec } from './special-art';
 import { directed, fallbackLine, sceneStopIndex, type BusLine } from './bus-lines';
 import { createStopCrowd, stepStops, type StopCrowd, type StopSide } from './bus-stop';
+import { LEAD_S as BUS_LEAD_S } from './bus-timetable';
 import { stepHorns, type Horn, type HornClock } from './horns';
 
 export type { Horn } from './horns';
@@ -79,7 +80,9 @@ export type Agent = {
   plean: number;
 };
 
-export type ScheduledArrival = { key: string; kind: Extract<AgentKind, 'bus' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike' | 'school-bus'>; track: Track; start: number; half?: number };
+// `line` (bus à horaires) : rang de la ligne du bus parmi celles de la pièce (modulo leur nombre), pour que le panneau
+// « Prochain bus » de l'arrêt annonce la ligne du bus qui arrive vraiment.
+export type ScheduledArrival = { key: string; kind: Extract<AgentKind, 'bus' | 'tram' | 'ambulance' | 'garbage-truck' | 'delivery-bike' | 'school-bus'>; track: Track; start: number; half?: number; line?: number };
 export type TrafficEnv = {
   demand: Readonly<Record<Track, number>>; // 0 à 1
   closed: boolean;
@@ -95,6 +98,9 @@ export type TrafficEnv = {
   busLines?: readonly BusLine[];
   // Établissement scolaire proche (girouette du car scolaire).
   school?: string | null;
+  // Bus à horaires (bus-timetable.ts) : ils n'entrent que par `arrivals` (plus de bus tirés au hasard) et les voyageurs ne
+  // viennent attendre que si un bus passe bientôt. Absent : ancien comportement (bus tirés dans la circulation).
+  timetable?: boolean;
 };
 
 export type TrafficWorld = {
@@ -121,6 +127,8 @@ export type TrafficWorld = {
   stopNames: Record<StopSide, string>; // nom de l'arrêt de la scène, par voie servie
   school: string | null;
   stopCrowd: StopCrowd; // voyageurs des deux arrêts
+  // Panneau « Prochain bus » de chaque arrêt (bus à horaires) : délai (s) et ligne du prochain bus, null si aucun n'est attendu.
+  nextBus: Record<StopSide, { in: number; line: BusLine } | null>;
   horns: Horn[]; // coups de klaxon des 10 dernières secondes (horns.ts)
   hornClock: Map<string, HornClock>; // attente et dernier klaxon des conducteurs impatients
 };
@@ -165,6 +173,7 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     stopNames: { near: '', far: '' },
     school: null,
     stopCrowd: createStopCrowd(o.seed, 0),
+    nextBus: { near: null, far: null },
     horns: [],
     hornClock: new Map(),
   };
@@ -277,6 +286,8 @@ function specialOf(w: TrafficWorld, kind: AgentKind, seed: number, track: Track)
 }
 // Lignes des bus de la pièce : réelles si on en a, sinon trois lignes de repli ; nom de l'arrêt de la scène pour chaque sens
 // (un arrêt intermédiaire de la première ligne, dans le sens de la voie).
+// Ligne de rang `i` (modulo le nombre de lignes), dans le sens de la voie.
+const lineOf = (w: TrafficWorld, i: number, track: Track): BusLine => directed(w.lines[((i % w.lines.length) + w.lines.length) % w.lines.length]!, TRACK_DIR[track]);
 function setLines(w: TrafficWorld, src: readonly BusLine[] | undefined): void {
   w.lineSrc = src;
   w.lines = src && src.length > 0 ? src : [0, 1, 2].map((i) => fallbackLine((w.seed * 3 + i) >>> 0));
@@ -316,6 +327,7 @@ function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
     if (!entryFree(w, e.track, (half ?? KIND_HALF[e.kind] * VEHICLE_SCALE) * w.unit)) continue;
     const a = newAgent(w, e.kind, e.track, { event: e.key, ...(half !== undefined ? { half } : {}) });
     if (e.kind === 'bus') { a.stops = [sOfX(w, e.track, w.busStop[e.track === 'far' ? 'far' : 'near'])]; a.stopFor = [8, 14]; }
+    if (e.kind === 'bus' && e.line !== undefined && a.special) a.special = { ...a.special, line: lineOf(w, e.line, e.track) };
     if (e.kind === 'garbage-truck') {
       for (let s = 140 * w.unit; s < span(w); s += lerp(110, 170, mulberry32(a.seed)()) * w.unit) a.stops.push(s);
       a.stopFor = [4, 7];
@@ -332,7 +344,8 @@ function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
     const r = w.rngs[track];
     const roll = r();
     // Part des genres : bus 2,5 %, camionnettes 13,5 %, deux-roues motorisés 5 %, police 1,2 %, taxis 4,8 %, voitures générées.
-    const kind: AgentKind = track === 'bike' ? 'bike' : roll < 0.025 ? 'bus' : roll < 0.16 ? 'van' : roll < 0.21 ? 'moto' : 'car';
+    // Bus à horaires : la part des bus revient aux voitures.
+    const kind: AgentKind = track === 'bike' ? 'bike' : roll < 0.025 ? (env.timetable ? 'car' : 'bus') : roll < 0.16 ? 'van' : roll < 0.21 ? 'moto' : 'car';
     const service: SpecialId | null = kind === 'car' && roll < 0.222 ? 'police' : kind === 'car' && roll < 0.27 ? 'taxi' : null;
     const mean = (track === 'bike' ? 9 : 2.1) / d;
     // Prochaine tentative : intervalle tiré (pelotons serrés ou espacés), quelle que soit la place disponible.
@@ -511,9 +524,33 @@ function stepBusStops(w: TrafficWorld, env: TrafficEnv, t: number): void {
     const a = w.agents.find((x) => x.track === side && x.kind === 'bus' && x.stop === 'bus');
     return a ? { id: a.id, door: xOfS(w, side, a.s) + TRACK_DIR[side] * a.half * BUS_DOOR } : null;
   };
+  // Bus à horaires : délai (s) avant le prochain bus à l'arrêt de chaque sens ; 0 s'il roule déjà vers l'arrêt ou y est
+  // arrêté ; null si aucun n'est attendu dans la grille chargée (nuit, fin de service).
+  const nextBusOf = (side: StopSide): { in: number; line: BusLine } | null => {
+    const coming = w.agents.find((a) => a.track === side && a.kind === 'bus' && (a.stop === 'bus' || a.stops.length > 0));
+    if (coming) return { in: 0, line: coming.special?.line ?? lineOf(w, 0, side) };
+    let best: { in: number; line: BusLine } | null = null;
+    for (const e of env.arrivals) {
+      if (e.kind !== 'bus' || e.track !== side || w.spawned.has(e.key) || t - e.start > 300) continue;
+      const d = Math.max(0, e.start + BUS_LEAD_S - t);
+      if (best === null || d < best.in) best = { in: d, line: lineOf(w, e.line ?? 0, side) };
+    }
+    return best;
+  };
+  if (env.timetable) w.nextBus = { near: nextBusOf('near'), far: nextBusOf('far') };
+  const nextBusIn = (side: StopSide): number | null => w.nextBus[side]?.in ?? null;
   const { changed, hold } = stepStops(
     w.stopCrowd,
-    { stopX: w.busStop, buses: { near: busAt('near'), far: busAt('far') }, crowd: env.crowd, closed: env.closed, width: w.width, margin: MARGIN * w.unit, unit: w.unit },
+    {
+      stopX: w.busStop,
+      buses: { near: busAt('near'), far: busAt('far') },
+      crowd: env.crowd,
+      closed: env.closed,
+      width: w.width,
+      margin: MARGIN * w.unit,
+      unit: w.unit,
+      ...(env.timetable ? { nextBus: { near: nextBusIn('near'), far: nextBusIn('far') } } : {}),
+    },
     t,
     DT,
   );
