@@ -21,7 +21,7 @@ describe('migration v1 → v2', () => {
     );
     expect(state.version).toBe(6);
     const byId = (id: string) => state.rooms[0]!.layout.find((p) => p.id === id);
-    expect(byId('f1')).toMatchObject({ row: 5, col: 2 }) // v6 : même dernière rangée, étagère plus haute;
+    expect(byId('f1')).toMatchObject({ row: 5, col: 2 }); // v6 : même dernière rangée, étagère plus haute
     expect(byId('f2')).toMatchObject({ row: 10, col: 10 });
     expect(byId('f4')).toMatchObject({ row: 4, col: 15 });
     expect(byId('f3')).toEqual({ id: 'f3', kind: 'computer', deskId: 'f2' });

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type StandingKind, type Species, type StyleId, type TimeSetting, WEATHER_STATES, type WeatherSetting } from './library-types';
-import { drawSize, isAngle } from './footprint';
+import { drawSize, isAngle, type Angle } from './footprint';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
-import { MAX_COLS, MIN_COLS, ROWS, SECTION, angleOf, canPlace, isStanding, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
+import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, isStanding, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
@@ -219,22 +219,38 @@ const V5_SIZES: Record<StandingKind, { w: number; h: number }> = {
   charger: { w: 2, h: 1 }, plant: { w: 2, h: 4 }, lamp: { w: 1, h: 5 }, 'coffee-table': { w: 4, h: 2 }, rug: { w: 6, h: 3 }, globe: { w: 3, h: 4 }, telescope: { w: 3, h: 5 }, automaton: { w: 2, h: 3 },
 };
 
+// Rangées au sol de face (le « pied ») avant la v6 ; un tapis est entièrement au sol.
+const V5_FOOT: Record<StandingKind, number> = {
+  shelf: 2, desk: 2, chair: 1, sofa: 3, armchair: 3, basket: 1, bowl: 1, kennel: 3, charger: 1, plant: 1, lamp: 1, 'coffee-table': 2, rug: 0, globe: 1, telescope: 1, automaton: 1,
+};
+
+// Taille dessinée avant la v6, selon l'angle (comme l'ancien `drawSize`) : de profil ou en diagonale, la hauteur devient h − pied + profondeur.
+export function v5DrawSize(kind: StandingKind, angle: Angle): { w: number; h: number } {
+  const { w, h } = V5_SIZES[kind];
+  if (angle % 2 === 0 && angle !== 2 && angle !== 6) return { w, h };
+  const foot = kind === 'rug' ? h : Math.min(h, Math.max(1, V5_FOOT[kind]));
+  const depth = Math.max(1, Math.ceil(w / 2));
+  const width = angle === 2 || angle === 6 ? foot : Math.ceil((w + foot) * 0.75);
+  return { w: width, h: h - foot + depth };
+}
+
 // Replace chaque meuble debout aux nouvelles tailles : même colonne, même dernière rangée au sol ; si la place est prise ou
-// déborde, la case libre la plus proche (jamais de suppression) ; sans aucune place, la position calculée est gardée.
-export function refitLayout(layout: Layout, cols: number, oldSize: (kind: StandingKind) => { w: number; h: number }): Layout {
-  const rows = Array.from({ length: ROWS }, (_, r) => r);
+// déborde, la case libre la plus proche (jamais de suppression) ; sans aucune place, la position calculée est gardée telle
+// quelle (elle peut alors sortir de la pièce : le schéma le tolère, pas de recadrage).
+export function refitLayout(layout: Layout, cols: number, oldSize: (kind: StandingKind, angle: Angle) => { w: number; h: number }): Layout {
   const placed = new Map<Placed, Placed>();
   let built: Layout = layout.filter((p) => !isStanding(p));
+  // Liste des cases candidates : construite et triée une seule fois par pièce, par distance à la colonne/rangée d'origine du meuble.
+  let cells: { col: number; row: number }[] | null = null;
   for (const p of layout) {
     if (!isStanding(p)) continue;
-    const angle = angleOf(p);
-    const row = p.row + oldSize(p.kind).h - drawSize(p.kind, angle).h;
+    const angle = isAngle(p.angle) ? p.angle : 0;
+    const row = p.row + oldSize(p.kind, angle).h - drawSize(p.kind, angle).h;
     let next: Placed = { ...p, row };
     if (!canPlace(built, cols, p.kind, p.col, row, undefined, angle).ok) {
-      const cells: { col: number; row: number }[] = [];
-      for (let c = 0; c < cols; c++) for (const r of rows) cells.push({ col: c, row: r });
-      cells.sort((a, b) => Math.abs(a.col - p.col) + Math.abs(a.row - row) - (Math.abs(b.col - p.col) + Math.abs(b.row - row)));
-      const hit = cells.find((cell) => canPlace(built, cols, p.kind, cell.col, cell.row, undefined, angle).ok);
+      cells ??= Array.from({ length: cols * ROWS }, (_, i) => ({ col: Math.floor(i / ROWS), row: i % ROWS }));
+      const dist = (c: { col: number; row: number }): number => Math.abs(c.col - p.col) + Math.abs(c.row - row);
+      const hit = [...cells].sort((x, y) => dist(x) - dist(y)).find((cell) => canPlace(built, cols, p.kind, cell.col, cell.row, undefined, angle).ok);
       if (hit) next = { ...p, col: hit.col, row: hit.row };
     }
     placed.set(p, next);
@@ -255,7 +271,7 @@ export function migrateV5(raw: unknown): unknown {
         // Une disposition abîmée est laissée telle quelle : le schéma la refusera comme avant.
         const sane = (p: unknown): boolean => typeof p === 'object' && p !== null && (!isStanding(p as Placed) || (Number.isInteger((p as { col?: unknown }).col) && Number.isInteger((p as { row?: unknown }).row)));
         if (!layout.every(sane)) return room;
-        return { ...r, layout: refitLayout(layout, r.cols, (k) => V5_SIZES[k]) };
+        return { ...r, layout: refitLayout(layout, r.cols, v5DrawSize) };
       })
     : state.rooms;
   return { ...state, version: 6, rooms };
