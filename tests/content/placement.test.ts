@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { nextFurnitureId } from '../../src/core/library/library-book';
 import type { Layout } from '../../src/core/library/library-types';
 import { hang, moveStanding, placeComputer, placeSmall, placeStanding, placeWindow, setScreenCard, storeCard } from '../../src/core/library/room-grid';
-import { DRAFT_ID, commitPlacement, editPlacement, movePlacement, moveToItem, placingView, spotAt, startPlacement } from '../../src/content/placement';
+import { DRAFT_ID, commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement } from '../../src/content/placement';
 
 const COLS = 24;
 const CENTER = spotAt(12, 15);
@@ -137,13 +137,15 @@ describe('retouches pendant le placement', () => {
     expect(commitPlacement(p)!.find((x) => x.kind === 'window')).toMatchObject({ w: before.w + 1, h: before.h });
   });
 
-  it('la profondeur choisie est gardée au commit', () => {
+  it('avancer / reculer déplace le fantôme d’une ligne, et refuse hors du sol', () => {
     let p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'chair' }, CENTER), COLS, spotAt(10, 15));
-    const next = editPlacement(p, COLS, { type: 'depth', delta: -1 });
-    expect(next).not.toBeNull();
-    p = next!;
-    const committed = commitPlacement(p)!.find((x) => x.kind === 'chair') as { depth?: number };
-    expect(committed.depth).toBeDefined();
+    p = nudgePlacement(p, COLS, 1)!;
+    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ col: 10, row: 14 });
+    // Chaise de 3 lignes, pieds sur la dernière ligne : plus bas, elle sortirait de la pièce.
+    p = nudgePlacement(p, COLS, 1)!;
+    expect(nudgePlacement(p, COLS, 1)).toBeNull();
+    p = nudgePlacement(p, COLS, -1)!;
+    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ row: 14 });
   });
 
   it('une retouche impossible renvoie null', () => {

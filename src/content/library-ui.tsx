@@ -19,8 +19,9 @@ export const ICONS = {
   check: ['M5 12l5 5L20 7'],
   door: ['M5 21V3h10v18', 'M15 4l5 2v15h-5', 'M3 21h18', 'M12 12.5h.01'],
   house: ['M3 11l9-7 9 7', 'M5 10v10h14V10', 'M10 20v-6h4v6'],
-  depthFront: ['M5 4h14', 'M12 20V9', 'M7 13l5-5 5 5'],
-  depthBack: ['M5 20h14', 'M12 4v11', 'M7 11l5 5 5-5'],
+  // Avancer descend le meuble d'une ligne (flèche vers le bas), Reculer le remonte.
+  depthFront: ['M5 20h14', 'M12 4v11', 'M7 11l5 5 5-5'],
+  depthBack: ['M5 4h14', 'M12 20V9', 'M7 13l5-5 5 5'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
   plus: ['M5 12h14', 'M12 5v14'],
   card: ['M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', 'M12 9v6', 'M9 12h6'],

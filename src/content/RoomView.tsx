@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect } from '../core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, SURFACE_SLOTS, computerRect, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfSlots, surfaceSlotRect, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { boxesOf, lampsOf, layoutSignature } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
@@ -418,8 +418,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     ];
   };
 
-  // Ordre de dessin : les tapis en dessous, puis le niveau 0 (fenêtres, objets accrochés), puis les meubles par niveau
-  // (1 à 3) et, dans un niveau, du plus loin au plus proche (bas le plus haut d'abord). Chaque meuble est suivi de ses objets portés.
+  // Ordre de dessin : les tapis en dessous, puis le niveau 0 (fenêtres, objets accrochés), puis les meubles du plus loin au plus
+  // proche (bas le plus haut d'abord, le niveau ne départageant que des pieds sur la même ligne). Chaque meuble est suivi de ses objets portés.
   const rugs = room.layout.filter((p) => isStanding(p) && p.kind === 'rug').map((p) => (
     <g key={`depth-${p.id}`} data-depth={depthOf(room.layout, p)}>{renderPlaced(p)}</g>
   ));
@@ -430,20 +430,20 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     </g>
   );
   // Un groupe par meuble debout (même s'il n'est pas dessiné) : `behind` compte des meubles de `drawOrder`.
-  // Ombre de contact : juste avant un meuble, une ombre nette décalée de 5 px, découpée aux seuls objets de niveau inférieur
+  // Ombre de contact : juste avant un meuble, une ombre nette décalée de 5 px, découpée aux seuls objets dessinés avant lui
   // qu'elle touche (fenêtres, objets accrochés, meubles plus au fond). Sans objet derrière, pas d'ombre. Aucun flou (coûteux sur Android).
   const order = drawOrder(room.layout);
-  const contactShadow = (p: Placed): ReactElement | null => {
+  const contactShadow = (p: Standing): ReactElement | null => {
     const cells = rectOf(p);
     if (!cells) return null;
     const r = pxRect(cells);
     const sx = r.x + 5;
     const sy = r.y + 5;
-    const mine = depthOf(room.layout, p);
+    const mine = order.indexOf(p);
     const behindRects: PxRect[] = [];
     for (const o of room.layout) {
       if (o.id === p.id || !(o.kind === 'window' || o.kind === 'wall' || (isStanding(o) && o.kind !== 'rug' && order.includes(o)))) continue;
-      if (depthOf(room.layout, o) >= mine) continue;
+      if (isStanding(o) && order.indexOf(o) >= mine) continue;
       const oc = rectOf(o);
       if (!oc) continue;
       const b = pxRect(oc);

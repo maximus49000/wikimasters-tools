@@ -13,14 +13,30 @@ const layout: Layout = [
 const feet = (col: number, row: number): PetState => ({ pos: { x: (col + 0.5) * CELL_W, y: (row + 1) * CELL_H - 3 }, depthHosts: [] } as unknown as PetState);
 
 describe('ordre de dessin', () => {
-  it('trie par niveau d’abord, même si le bas du fond est plus bas', () => {
-    expect(drawOrder(layout).map((p) => p.id)).toEqual(['sh', 'arm', 'tab']);
+  it('le meuble le plus bas à l’écran passe devant, quel que soit son niveau', () => {
+    // L'étagère (niveau 1) a ses pieds en ligne 18, sous ceux du fauteuil et de la table basse (ligne 16).
+    expect(drawOrder(layout).map((p) => p.id)).toEqual(['arm', 'tab', 'sh']);
+  });
+  it('une étagère posée plus bas qu’un canapé passe devant lui', () => {
+    const room: Layout = [
+      { id: 'sofa', kind: 'sofa', col: 0, row: 13 },
+      { id: 'sh', kind: 'shelf', col: 2, row: 10 },
+    ];
+    expect(drawOrder(room).map((p) => p.id)).toEqual(['sofa', 'sh']);
+  });
+  it('pieds sur la même ligne : le niveau départage', () => {
+    const room: Layout = [
+      { id: 'front', kind: 'armchair', col: 0, row: 13, depth: 3 },
+      { id: 'back', kind: 'armchair', col: 0, row: 13, depth: 1 },
+    ];
+    expect(drawOrder(room).map((p) => p.id)).toEqual(['back', 'front']);
   });
 });
 
 describe('place d’un animal', () => {
-  it('à découvert : niveau 2, derrière la table basse, devant l’étagère', () => {
-    expect(petSlot(layout, feet(10, 17))).toBe(2);
+  it('à découvert : devant les meubles dont les pieds sont plus haut, derrière l’étagère plus basse', () => {
+    expect(petSlot(layout, feet(10, 16))).toBe(2);
+    expect(petSlot(layout, feet(10, 14))).toBe(0);
   });
   it('sous la table basse : juste derrière elle', () => {
     const only: Layout = [{ id: 'tab', kind: 'coffee-table', col: 0, row: 14 }];
@@ -32,7 +48,7 @@ describe('place d’un animal', () => {
   });
   it('porté par le fauteuil : juste devant lui', () => {
     const onArm = { ...feet(2, 14), depthHosts: ['arm'] } as unknown as PetState;
-    expect(petSlot(layout, onArm)).toBe(2);
+    expect(petSlot(layout, onArm)).toBe(1);
   });
   it('devant un panier (niveau 3), sur le sol libre : dessiné après lui', () => {
     const only: Layout = [{ id: 'b', kind: 'basket', col: 2, row: 14 }];
@@ -46,10 +62,10 @@ describe('place d’un animal', () => {
     const only: Layout = [{ id: 'tab', kind: 'coffee-table', col: 0, row: 14 }];
     expect(petSlot(only, feet(1, 12))).toBe(0);
   });
-  it('devant un panier mais derrière un fauteuil avancé au niveau 3 : entre les deux', () => {
+  it('devant un panier mais derrière un fauteuil plus bas : entre les deux', () => {
     const two: Layout = [
       { id: 'b', kind: 'basket', col: 2, row: 12 }, // bas = 14
-      { id: 'arm', kind: 'armchair', col: 2, row: 15, depth: 3 }, // bas = 18
+      { id: 'arm', kind: 'armchair', col: 2, row: 15 }, // bas = 18
     ];
     expect(petSlot(two, feet(3, 14))).toBe(1);
   });
@@ -57,7 +73,7 @@ describe('place d’un animal', () => {
 
 describe('sélection en pile', () => {
   it('liste les objets superposés, de l’avant vers le fond', () => {
-    expect(stackAt(layout, 'tab')).toEqual(['tab', 'arm', 'sh']);
+    expect(stackAt(layout, 'tab')).toEqual(['sh', 'tab', 'arm']);
   });
   it('un nouveau toucher passe à l’objet derrière, puis revient au premier', () => {
     expect(nextInStack(layout, null, 'tab', null)).toBe('tab');

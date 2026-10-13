@@ -61,11 +61,12 @@ export function depthOf(layout: Layout, p: Placed): Depth {
   return host && isStanding(host) ? depthOf(layout, host) : 1;
 }
 
-// Meubles debout dans l'ordre de dessin : niveau d'abord, puis le bas le plus haut d'abord, puis l'ordre du plan.
+// Meubles debout dans l'ordre de dessin : le bas le plus haut d'abord (le meuble le plus bas à l'écran passe devant),
+// puis, pieds sur la même ligne, le niveau (fond, milieu, avant), puis l'ordre du plan.
 export function byDrawOrder<T extends Standing>(layout: Layout, items: readonly T[]): T[] {
   return items
     .map((p, i) => ({ p, i, d: depthOf(layout, p), b: p.row + sizeOf(p.kind).h }))
-    .sort((a, b) => a.d - b.d || a.b - b.b || a.i - b.i)
+    .sort((a, b) => a.b - b.b || a.d - b.d || a.i - b.i)
     .map((e) => e.p);
 }
 
@@ -230,24 +231,15 @@ export function moveStanding(layout: Layout, cols: number, id: string, col: numb
   return layout.map((p) => (p.id === id ? withDepth({ ...item, col, row }, d) : p));
 }
 
-// Un meuble debout (hors tapis) peut avancer (+1) ou reculer (-1) d'un niveau, dans les bornes 1 à 3, si le niveau visé est libre sous lui.
-function shiftTarget(layout: Layout, id: string, delta: 1 | -1): { item: Standing; next: StandDepth } | null {
+// Avancer (+1) descend un meuble debout (hors tapis) d'une ligne vers le bas de l'écran, Reculer (-1) le remonte d'une ligne :
+// mêmes règles qu'un déplacement (dans la pièce, pieds sur le sol, niveau libre choisi s'il chevauche un autre meuble).
+export function shiftRow(layout: Layout, cols: number, id: string, delta: 1 | -1): Layout | null {
   const item = layout.find((p) => p.id === id);
   if (!item || !isStanding(item) || layerOf(item.kind) === 'rug') return null;
-  const next = depthOf(layout, item) + delta;
-  if (next < 1 || next > 3) return null;
-  const { w, h } = sizeOf(item.kind);
-  if (clashAt(layout, cellsOf({ col: item.col, row: item.row, w, h }), id, 'floor', next as StandDepth).length > 0) return null;
-  return { item, next: next as StandDepth };
+  return moveStanding(layout, cols, id, item.col, item.row + delta);
 }
 
-export const canShiftDepth = (layout: Layout, id: string, delta: 1 | -1): boolean => shiftTarget(layout, id, delta) !== null;
-
-export function shiftDepth(layout: Layout, id: string, delta: 1 | -1): Layout | null {
-  const target = shiftTarget(layout, id, delta);
-  if (!target) return null;
-  return layout.map((p) => (p.id === id ? withDepth(target.item, target.next) : p));
-}
+export const canShiftRow = (layout: Layout, cols: number, id: string, delta: 1 | -1): boolean => shiftRow(layout, cols, id, delta) !== null;
 
 // Un ordinateur se pose sur un bureau qui n'en porte pas déjà un (le sien, en cas de déplacement, ne compte pas).
 export function canPlaceComputer(layout: Layout, deskId: string, ignoreId?: string): boolean {
