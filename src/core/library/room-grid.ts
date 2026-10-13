@@ -472,7 +472,8 @@ export function shelfBoardsOf(shelf: Placed): ShelfBoard[] {
   return frame ? shelfBoardsIn(frame) : [];
 }
 
-// Place de chaque objet rangé de l'étagère `shelfId` sur la face `frame` (pièce ou zoom : mêmes positions en cm, à l'échelle de la face) :
+// Place de chaque objet rangé de l'étagère `shelfId` sur la face `frame` (pièce ou zoom : mêmes positions en cm, à l'échelle de la face),
+// sur le plan de la face (z = 0) : les objets dessinés se tiennent 2 cm en retrait (carried-items, FRONT_CM ; écart volontaire) :
 // posé sur sa tablette, à sa largeur et sa hauteur réelles, le premier contre le bord gauche. Une tablette convertie qui déborde garde ses objets (au-delà de la face).
 export function shelfLayoutIn(frame: FaceFrame, layout: Layout, shelfId: string): ShelfItemBox[] {
   const sx = frame.w / SHELF_INNER_CM;

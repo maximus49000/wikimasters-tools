@@ -13,6 +13,9 @@ const SHELF = FURNITURE_MODELS.shelf;
 const DESK = FURNITURE_MODELS.desk;
 // Tout objet rangé, de face comme sur la tranche, se tient près du bord avant de sa tablette (2 cm en retrait), comme dans une vraie
 // bibliothèque : il se lit posé sur la tablette, pas reculé contre le fond.
+// Écart volontaire : la visée d'une tablette, le fantôme du dépôt et les pointillés de place libre (room-grid : boardAt, shelfLayoutIn,
+// shelfFreeIn) restent sur le plan de la face (z = 0), 2 cm devant les objets ; à l'écran (échelle 1), environ 1 px de face et 2 px en ¾.
+// Un seul repère de face pour la visée garde les tablettes alignées sur les planches dessinées.
 const FRONT_CM = 2;
 // Écran posé vers le fond du bureau (son pied à 40 cm de l'avant) : la place devant reste libre pour les petits objets.
 const MONITOR_Z_CM = 40;
