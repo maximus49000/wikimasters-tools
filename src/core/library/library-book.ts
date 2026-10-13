@@ -247,7 +247,11 @@ export function v5DrawSize(kind: StandingKind, angle: Angle): { w: number; h: nu
 export function refitLayout(layout: Layout, cols: number, oldSize: (kind: StandingKind, angle: Angle) => { w: number; h: number }): Layout {
   const placed = new Map<Placed, Placed>();
   let built: Layout = layout.filter((p) => !isStanding(p));
-  // Liste des cases candidates : construite et triée une seule fois par pièce, par distance à la colonne/rangée d'origine du meuble.
+  // Liste des cases candidates : construite une seule fois par pièce, triée par distance à la colonne/rangée d'origine du meuble.
+  // Coût au pire (une seule fois, à la migration) : pour chaque meuble délogé, un tri de cols × ROWS cases (96 × 18 = 1 728 au plus)
+  // puis un essai canPlace par case jusqu'à la première libre ; sans aucune place, toutes les cases sont essayées (≈ meubles délogés
+  // × 1 728 × taille de l'aménagement). Acceptable pour une pièce réelle (quelques dizaines de meubles) : pas de plafond, pour ne
+  // jamais renoncer à une place libre.
   let cells: { col: number; row: number }[] | null = null;
   for (const p of layout) {
     if (!isStanding(p)) continue;
