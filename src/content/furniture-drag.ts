@@ -45,7 +45,7 @@ export function hostAtSurface(layout: Layout, x: number, y: number): string | nu
   return null;
 }
 
-export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'slot-busy' | 'not-slot' | 'host-busy' | 'not-host';
+export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'slot-busy' | 'not-slot' | 'host-busy' | 'not-host' | 'not-screen';
 
 export type DropTarget = {
   ok: boolean;
@@ -61,6 +61,8 @@ export type DropTarget = {
   deskId?: string;
   // Petit objet : porteur d'arrivée.
   hostId?: string;
+  // Carte d'écran : ordinateur visé.
+  computerId?: string;
   // Objet rangé : emplacement visé (le fantôme est alors en pixels).
   ghostPx?: PxRect;
   shelfId?: string;
