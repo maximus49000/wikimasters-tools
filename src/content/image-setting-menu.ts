@@ -5,18 +5,20 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 export type EntrySpec = { attribute: string; label: string; iconPaths: string[] };
 
 export function buildEntry(settingsLink: HTMLAnchorElement, onOpen: () => void, spec: EntrySpec): HTMLElement {
-  const entry = settingsLink.cloneNode(true) as HTMLElement;
+  // Sur la page du lien copié, celui-ci est en surbrillance (couleur, point) : la ligne copie alors un lien voisin au repos,
+  // pour rester indépendante de lui. Le site ne pose pas toujours aria-current : la page courante compte aussi.
+  const isActive = (a: Element) => a.hasAttribute('aria-current') || a.getAttribute('href') === location.pathname;
+  let model: Element = settingsLink;
+  if (isActive(settingsLink)) {
+    const siblings = Array.from(settingsLink.parentElement?.children ?? []).filter(
+      (a) => a.tagName === 'A' && a !== settingsLink && a.hasAttribute('href') && !isActive(a) && !a.getAttributeNames().some((n) => /^data-wmt-/.test(n)),
+    );
+    model = siblings.find((a) => a.querySelector('svg')) ?? siblings[0] ?? settingsLink;
+  }
+  const entry = model.cloneNode(true) as HTMLElement;
   entry.setAttribute(spec.attribute, '');
   entry.removeAttribute('href');
   entry.removeAttribute('aria-current');
-  // Sur la page des paramètres le lien est en surbrillance : la ligne reprend le style d'un lien voisin au repos,
-  // pour rester indépendante de « Paramètres ».
-  if (settingsLink.hasAttribute('aria-current')) {
-    const resting = Array.from(settingsLink.parentElement?.querySelectorAll('a') ?? []).find(
-      (a) => a !== settingsLink && !a.hasAttribute('aria-current') && !a.getAttributeNames().some((n) => /^data-wmt-.+-setting$/.test(n)),
-    );
-    if (resting) entry.className = resting.className;
-  }
   entry.setAttribute('role', 'button');
   entry.setAttribute('tabindex', '0');
   entry.style.cursor = 'pointer';
