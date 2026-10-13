@@ -222,14 +222,15 @@ describe('CityLifeLayer', () => {
         : el.hasAttribute('data-install-part') ? `install-${el.getAttribute('data-install-part')}`
         : el.hasAttribute('data-crosswalk') ? 'crosswalk'
         : el.hasAttribute('data-traffic-fixtures') ? `fixtures-${el.getAttribute('data-traffic-fixtures')}`
-        : el.hasAttribute('data-crossing') ? 'crossing'
+        : el.hasAttribute('data-crossing') ? `crossing-${el.getAttribute('data-crossing')}`
         : el.hasAttribute('data-bus-riders') ? `riders-${el.getAttribute('data-bus-riders')}`
         : el.getAttribute('data-city-lane'));
     // Décors de fête du devant (drapeaux de lampadaires, camions élévateurs) : juste après les lampadaires ; puis la chaussée de
     // la rue privatisée (Fête de la musique), le passage piéton et le trottoir des immeubles (poteaux), les files, enfin les
     // piétons du passage et les poteaux du trottoir d'en face, devant tout. Voyageurs des arrêts de bus : ceux du trottoir des
     // immeubles derrière leur poteau, la marche du premier plan derrière sa file, ceux du trottoir d'en face devant leur poteau.
-    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'install-street', 'crosswalk', 'riders-far', 'fixtures-near', 'far', 'riders-near-step', 'near', 'crossing', 'fixtures-far', 'riders-near']);
+    // Piétons du passage : sur le trottoir des immeubles derrière les voitures (`crossing-far`), sur la chaussée et en face devant.
+    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'install-street', 'crosswalk', 'riders-far', 'crossing-far', 'fixtures-near', 'far', 'riders-near-step', 'near', 'crossing-near', 'fixtures-far', 'riders-near']);
     expect(layer.querySelectorAll('[data-street-lamp][data-lit="true"]').length).toBeGreaterThan(0);
   });
   it('les vélos roulent avec la file du premier plan (jamais sur la voie du fond)', () => {
@@ -423,5 +424,20 @@ describe('CityLifeLayer : minuterie des halls', () => {
     vi.spyOn(Date, 'now').mockReturnValue((t + 30) * 1000);
     const day = make(13, ymd);
     expect(litDoors(day)).toHaveLength(0);
+  });
+});
+
+describe('passants : contournement léger (revue du 2026-10-13)', () => {
+  it('dodgeY : ligne de contournement dans la zone, retour en douceur à leur ligne au-delà', async () => {
+    const { dodgeY } = await import('../../src/content/city-life');
+    const zones = [{ x0: 100, x1: 140, y: 50 }];
+    expect(dodgeY(120, 60, zones, 1)).toBe(50);
+    expect(dodgeY(100, 60, zones, 1)).toBe(50);
+    expect(dodgeY(80, 60, zones, 1)).toBe(60); // à 20 > 12 unités : sa ligne
+    const mid = dodgeY(94, 60, zones, 1);
+    expect(mid).toBeGreaterThan(50);
+    expect(mid).toBeLessThan(60);
+    // Continu : pas de saut d'un pas au suivant.
+    for (let x = 70; x < 170; x += 0.5) expect(Math.abs(dodgeY(x + 0.5, 60, zones, 1) - dodgeY(x, 60, zones, 1))).toBeLessThan(0.7);
   });
 });

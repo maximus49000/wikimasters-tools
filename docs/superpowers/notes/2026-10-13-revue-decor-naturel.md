@@ -18,8 +18,8 @@ ni un objet.
 | 4 | Vélos au feu rouge : arrêt avant le passage piéton, pied à terre ; remonter une file sans traverser un véhicule | PR #273 (fusionnée) |
 | 5 | Déménageurs : équipe désorganisée et vivante (pas 3 qui entrent / 3 qui sortent), hayon rapide, entrée dans le camion sans être coupé en deux par le calque du camion | PR #277 (fusionnée) |
 | 6 | Local déménagé : il se vide puis se remplit, les déménageurs sont visibles au travail à l'intérieur | PR #277 (fusionnée) |
-| 7 | Café : le serveur pose la tasse, le client la prend, boit, la repose (plusieurs fois), la tasse reste jusqu'au débarrassage, le client paie avant de partir | lot café (terrace-service.ts) |
-| 8 | Piétons : respect des plans (contourner par derrière), attente vivante s'il n'y a pas la place (petits gestes, agacement), jamais à travers un objet ou un véhicule | lot piétons |
+| 7 | Café : le serveur pose la tasse, le client la prend, boit, la repose (plusieurs fois), la tasse reste jusqu'au débarrassage, le client paie avant de partir | PR #278 (fusionnée) |
+| 8 | Piétons : respect des plans (contourner par derrière), attente vivante s'il n'y a pas la place (petits gestes, agacement), jamais à travers un objet ou un véhicule | lot piétons, version légère (choix de l'utilisateur) |
 | 9 | Plus de passants et de vie sur le trottoir d'en face, sans cacher la ville (seulement des éléments bas ; lampadaire côté chaussée ; pas de gros arbre ni de bâtiment) | lot trottoir d'en face |
 
 ## À reprendre avec Fable (dessin)
@@ -61,3 +61,19 @@ le serveur est déjà dehors ; boisson = tasse (café, salon de thé) ou verre (
 Reste : les convives classiques (graphisme non Ghibli) restent assis immobiles (pas de gestes) ; pas de service pendant
 l'averse, le montage ni le démontage (les tasses disparaissent quand on rentre les tables : le serveur devrait les débarrasser
 d'abord) ; bouche des pantins (Fable).
+
+## Piétons : version légère (choix de l'utilisateur, 2026-10-13)
+
+Fait : les passants gardent leur boucle mais contournent (`dodgeY`, city-life.tsx) — devant les terrasses ouvertes, derrière
+les déménageurs et les piétons qui attendent au passage piéton (dessinés après eux) ; passants dessinés du plus loin au plus
+proche ; déménageurs dessinés après les passants. « Des gens passent devant les voitures » (précisé : trottoir des
+immeubles) : les piétons du passage piéton qui longent le trottoir des immeubles étaient dessinés devant toute la chaussée ;
+ils sont maintenant derrière les voitures (`CrossingLayer part="far"`).
+
+Reste : attente vivante (petits gestes, agacement) quand il n'y a pas de place — demande les agents simulés (version complète,
+reportée) ; passants qui se croisent sur la même ligne (pas d'évitement entre eux).
+
+## Point ouvert : la personne de la laverie coupée « avant l'arrivée du camion »
+
+Précision de l'utilisateur (2026-10-13) : « personne de la laverie coupée avant l'arrivée du camion ». Pas reproduit : il faut
+une capture au moment où ça arrive (quel commerce déménage, à quelle étape, quelle partie de la personne est coupée).

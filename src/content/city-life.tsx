@@ -18,7 +18,7 @@ import { inScene } from '../core/library/city/shops/scene/slots';
 import { GHIBLI_SHOP_SPRITE_CAP, capFor } from '../core/library/city/shops/sprite-budget';
 import { streetFor } from '../core/library/city/shops/scene/street';
 import { dayNumber } from '../core/library/city/shops/hours';
-import type { ShopTypeId } from '../core/library/city/shops/catalog';
+import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import type { StaffShift } from '../core/library/city/shops/staff';
 import type { Vehicle } from '../core/library/city/vehicles';
 import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
@@ -34,7 +34,7 @@ import { MarkHeld, markAnchor, markArms } from './festive-marks';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, staffOutfit, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
 import { ShopScene, collectScene, muteScene, placeScene, sceneBudget, type SceneNodes } from './shop/shop-scene';
 import { staffSpans, type SceneShop } from './shop/scene-scores';
-import { MovingCrew, MovingTruck, collectMovers, placeMovers, type Crew } from './moving-truck';
+import { MovingCrew, MovingTruck, collectMovers, movingLayout, placeMovers, type Crew } from './moving-truck';
 import { FlypastLayer } from './flypast-sprite';
 import { InstallLayer, collectFlags, placeFlags, type WavingFlag } from './install-layer';
 import { ParadeCrowd } from './parade-crowd';
@@ -46,7 +46,7 @@ import { ghibliStaffPost } from './shop/ghibli-shop-glass';
 import { collectCarriers, collectCups, collectTerraceGuests, collectWaiters, placeCarriers, placeCups, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type CupNode, type TerraceGuestNode, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, tone } from './city-sprites';
 import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
-import type { ScheduledArrival, TrafficEnv } from '../core/library/city/traffic/engine';
+import { CROSS_HALF, type ScheduledArrival, type TrafficEnv } from '../core/library/city/traffic/engine';
 import { SantaLayer } from './santa-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
@@ -109,15 +109,37 @@ export const pedEdgePad = (p: Pedestrian, m: CityMetrics): number => {
   return EDGE_PAD + (trail + 6) * m.unit * STREET_SCALE.person * p.scale;
 };
 
+// Zones à contourner sur le trottoir des immeubles (revue du 2026-10-13, version légère) : sur [x0, x1], le passant se décale
+// en douceur jusqu'à la ligne `y` — devant (côté bordure) pour longer une terrasse, derrière (côté façades) pour passer dans le
+// dos des déménageurs ou des piétons qui attendent au passage piéton (dessinés après les passants, ils les cachent alors).
+export type DodgeZone = { x0: number; x1: number; y: number };
+// Distance (unités) sur laquelle le passant rejoint sa ligne de contournement.
+const DODGE_RAMP = 12;
+export function dodgeY(x: number, baseY: number, zones: readonly DodgeZone[], unit: number): number {
+  let best = 0;
+  let y = baseY;
+  for (const z of zones) {
+    const out = x < z.x0 ? z.x0 - x : x > z.x1 ? x - z.x1 : 0;
+    const w = Math.max(0, 1 - out / (DODGE_RAMP * unit));
+    if (w > best) {
+      best = w;
+      // Lissé (smoothstep) : pas de virage brusque.
+      y = baseY + (z.y - baseY) * (w * w * (3 - 2 * w));
+    }
+  }
+  return y;
+}
+
 // Pieds d'un passant (repère du monde). Légère profondeur sur le trottoir : les passants ne marchent pas tous sur la même ligne.
-const pedFoot = (p: Pedestrian, m: CityMetrics, width: number, t: number): { x: number; y: number } => ({
-  x: loopX(p.phase, p.dir * p.speed, width, t),
-  y: m.walkY - (p.depth - 0.5) * m.unit * 6,
-});
+const pedFoot = (p: Pedestrian, m: CityMetrics, width: number, t: number, zones: readonly DodgeZone[] = []): { x: number; y: number } => {
+  const x = loopX(p.phase, p.dir * p.speed, width, t);
+  const y = m.walkY - (p.depth - 0.5) * m.unit * 6;
+  return { x, y: zones.length > 0 ? dodgeY(x, y, zones, m.unit) : y };
+};
 
 // `mirror` : le sprite classique se retourne selon le sens ; le pantin Ghibli se tourne de profil (pedPose), sans miroir.
-const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number, mirror: boolean): string => {
-  const { x, y } = pedFoot(p, m, width, t);
+const pedTransform = (p: Pedestrian, m: CityMetrics, width: number, t: number, mirror: boolean, zones: readonly DodgeZone[] = []): string => {
+  const { x, y } = pedFoot(p, m, width, t, zones);
   const k = m.unit * STREET_SCALE.person * p.scale;
   return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${((mirror ? p.dir : 1) * k).toFixed(3)} ${k.toFixed(3)})`;
 };
@@ -134,8 +156,8 @@ export const pedPose = (p: Pedestrian, m: CityMetrics, t: number, still = false)
 const PED_SHADE = { h: 40, w: 11 } as const;
 // `side` : sens de l'ombre (r = vers la droite, lampe à gauche), choisit le dégradé partagé.
 type PedShade = { points: string; opacity: number; side: 'r' | 'l' } | null;
-const pedShade = (p: Pedestrian, m: CityMetrics, width: number, t: number, litLamps: readonly { x: number }[]): PedShade => {
-  const foot = pedFoot(p, m, width, t);
+const pedShade = (p: Pedestrian, m: CityMetrics, width: number, t: number, litLamps: readonly { x: number }[], zones: readonly DodgeZone[] = []): PedShade => {
+  const foot = pedFoot(p, m, width, t, zones);
   const lampX = nearestLamp(foot.x, litLamps);
   if (lampX === null) return null;
   const k = m.unit * STREET_SCALE.person * p.scale;
@@ -404,6 +426,32 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const traffic = useTraffic({ width, seed, unit: metrics.unit, env: trafficEnv, startS: still ? (frozen.current ?? 0) : Date.now() / 1000 });
 
   const pedActive = useMemo(() => new Set(peds.filter((p) => p.u < pedestrianGate(p, intensity)).map((p) => p.id)), [peds, intensity]);
+  // Zones à contourner fixes pour la minute : terrasses (devant) et déménagements (derrière).
+  const dodgeZones = useMemo<DodgeZone[]>(() => {
+    const u = metrics.unit;
+    const front = metrics.walkY + 2.5 * u;
+    const back = metrics.walkY - 4.5 * u;
+    const out: DodgeZone[] = [];
+    for (const v of shops.views) {
+      const f = shops.frames.get(v.slot.id);
+      if (!f) continue;
+      const type = v.sign?.type;
+      if (type && v.phase === 'open' && SHOP_DEFS[type].terrace > 0) {
+        const x0 = Math.min(f.window.x, f.door.x);
+        const x1 = Math.max(f.window.x + f.window.w, f.door.x + f.door.w);
+        out.push({ x0: x0 - 4 * u, x1: x1 + 4 * u, y: front });
+      }
+      if (v.moving && v.moving.step !== 'truck-arrives' && v.moving.step !== 'leave') {
+        const g = movingLayout(f, metrics, width);
+        const reach = 34 * u; // places d'attente de l'autre côté de la porte
+        out.push({ x0: Math.min(g.a.x - reach, g.b.x) , x1: Math.max(g.a.x + reach, g.b.x), y: back });
+      }
+    }
+    return out;
+  }, [shops.views, shops.frames, metrics, width]);
+  // Plus les piétons qui attendent au passage (trottoir des immeubles), relus à chaque image ; réutilisé sans allocation.
+  const zonesNow = useRef<DodgeZone[]>([]);
+  const pedsByDepth = useMemo(() => [...peds].sort((a, b) => b.depth - a.depth), [peds]);
   const marks = useMemo(() => new Map(peds.map((p) => [p.id, festiveMark(p, intensity)] as const)), [peds, intensity]);
   // Placement à chaque image. La table des nœuds est remplie au premier appel (après le montage) ;
   // tout est placé une fois, puis bougent les présents et, pendant leur fondu, ceux qui viennent de disparaître.
@@ -473,6 +521,14 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         muted = ghibli ? shopSpriteBudget(el, width, capFor(width, GHIBLI_SHOP_SPRITE_CAP), scene ? sceneBudget(scene, t) : []) : shopSpriteBudget(el, width);
         if (scene) muteScene(scene, muted);
       }
+      const zones = zonesNow.current;
+      zones.length = 0;
+      for (const z of dodgeZones) zones.push(z);
+      const lw = traffic.world;
+      if (lw.walkers.some((w) => (w.down && (w.stage === 'approach' || w.stage === 'wait')) || (!w.down && w.stage === 'leave'))) {
+        const half = (CROSS_HALF + 8) * metrics.unit;
+        zones.push({ x0: lw.light.x - half, x1: lw.light.x + half, y: metrics.walkY - 4.5 * metrics.unit });
+      }
       for (const p of peds) {
         const wanted = pedActive.has(p.id);
         const prev = shownPeds.current.get(p.id) ?? wanted;
@@ -487,10 +543,10 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         // Ghibli : un passant caché lâche ses sprites (<image> sans href), seulement à la bascule ou au premier placement.
         if (ghibli && !next && (first || next !== prev)) for (const fig of pedFigs.get(p.id) ?? []) hideFigure(figures, fig);
         const shade = shadeNodes.get(p.id);
-        if (shade) placeShade(shade, next ? pedShade(p, metrics, width, t, litLamps) : null, shadeFill);
+        if (shade) placeShade(shade, next ? pedShade(p, metrics, width, t, litLamps, zones) : null, shadeFill);
         // Un passant caché n'est pas touché (sauf au premier placement de la scène).
         if (!next && !first) continue;
-        node?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli));
+        node?.setAttribute('transform', pedTransform(p, metrics, width, t, !ghibli, zones));
         if (ghibli && next) {
           const pose = pedPose(p, metrics, t, still);
           // Le chef du groupe (dernière figure) tient son signe de fête : bras `hold` pour un objet à la main.
@@ -572,7 +628,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, sceneShops, traffic, litLamps, hallDark]);
+  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, sceneShops, traffic, litLamps, hallDark, dodgeZones]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
@@ -749,10 +805,6 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             doorXs={doorCenters}
           />
         ))}
-        {/* Déménagement : les porteurs (dessinés avant le camion, ils passent derrière lui en y entrant). */}
-        {shops.views.map((view) => (
-          <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} minutes={city.minutes} offset={shops.offsets.get(view.slot.id) ?? 0} ghibli={ghibli} />
-        ))}
         {/* Ombres portées des passants sous leurs pieds (Ghibli, nuit, lampe allumée à moins de 75u), en multiply ; posées
             par la boucle. Le liseré chaud côté lampe (actorRim de la maquette) n'est pas porté. */}
         {litLamps.length > 0 && (
@@ -768,12 +820,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             </defs>
             {peds.map((p) => {
               const active = still ? pedActive.has(p.id) : (shownPeds.current.get(p.id) ?? pedActive.has(p.id));
-              const s = active ? pedShade(p, metrics, width, t0!, litLamps) : null;
+              const s = active ? pedShade(p, metrics, width, t0!, litLamps, dodgeZones) : null;
               return <polygon key={p.id} data-shade-for={p.id} points={s?.points ?? ''} opacity={s ? s.opacity.toFixed(2) : '0'} fill={shadeFill(s?.side ?? 'r')} />;
             })}
           </g>
         )}
-        {peds.map((p) => {
+        {/* Du plus loin (côté façades) au plus proche : un passant plus près passe devant un autre. */}
+        {pedsByDepth.map((p) => {
           // Présence affichée (pas la voulue) : mémorisée au premier rendu, puis changée seulement par la boucle, au bord.
           if (!shownPeds.current.has(p.id)) shownPeds.current.set(p.id, pedActive.has(p.id));
           const active = still ? pedActive.has(p.id) : shownPeds.current.get(p.id)!;
@@ -787,7 +840,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-profile={p.profile}
               data-mark={mark ?? undefined}
               data-active={active ? 'true' : 'false'}
-              transform={pedTransform(p, metrics, width, t0, !ghibli)}
+              transform={pedTransform(p, metrics, width, t0, !ghibli, dodgeZones)}
               opacity={active ? 1 : 0}
             >
               {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7. */}
@@ -818,6 +871,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         <ParadeCrowd width={width} seed={seed} sky={sky} still={still} rainy={rainy} dayFests={dayFests} minutes={city.minutes} metrics={metrics} doorXs={doorXs} ghibli={ghibli} />
         {/* Scène, équipes à l'échelle et porteurs : devant les passants (un passant passe toujours derrière une équipe). */}
         <InstallLayer {...install} part="crew" />
+        {/* Déménagement : les porteurs, après les passants (un passant les contourne par derrière, ils le cachent) et avant le
+            camion (ils passent derrière lui en y entrant). */}
+        {shops.views.map((view) => (
+          <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} minutes={city.minutes} offset={shops.offsets.get(view.slot.id) ?? 0} ghibli={ghibli} />
+        ))}
         {/* Camion de déménagement garé au bord du trottoir : devant les passants, derrière les lampadaires et les files. */}
         {shops.views.map((view, i) => (
           <MovingTruck
@@ -848,6 +906,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <Crosswalk handle={traffic} metrics={metrics} sky={sky} ghibli={ghibli} />
       {/* Voyageurs de l'arrêt du trottoir des immeubles (voie du fond) : derrière ses bus. */}
       <BusStopRiders handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="far" />
+      {/* Piétons du passage sur le trottoir des immeubles (avant de traverser, ou une fois montés) : derrière les voitures. */}
+      <CrossingLayer handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="far" />
       <TrafficFixtures handle={traffic} metrics={metrics} sky={sky} still={still} frozenT={frozen.current ?? 0} side="near" ghibli={ghibli} />
       {lane('far')}
       {/* Grand défilé du 14 juillet (route fermée, aucune voiture) : une file du fond réduite, derrière celle du premier plan. */}
@@ -856,7 +916,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <BusStopRiders handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="near-step" />
       {lane('near')}
       <ParadeLayer lane="near" width={width} seed={seed} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} metrics={metrics} ghibli={ghibli} />
-      <CrossingLayer handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} />
+      <CrossingLayer handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="near" />
       <TrafficFixtures handle={traffic} metrics={metrics} sky={sky} still={still} frozenT={frozen.current ?? 0} side="far" ghibli={ghibli} />
       <BusStopRiders handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="near" />
     </g>
