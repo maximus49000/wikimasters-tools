@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { boxesOf, lampsOf, layoutSignature } from '../../../src/core/library/light/occluders';
 import type { Layout } from '../../../src/core/library/library-types';
+import { SURF, buildSurfaceMap } from '../../../src/core/library/light/surfaces';
 
 const geom = { wallH: 340, floorH: 170 };
 const deskH = (510 / 18) * 4;
@@ -13,6 +14,17 @@ describe('boxesOf', () => {
     expect(top.z1).toBeCloseTo(deskH, 1);
     expect(top.x0).toBe(60);
     expect(top.x1).toBe(210);
+  });
+  it('le fond plein d’une étagère cache à la lumière le canapé posé derrière elle', () => {
+    // Canapé (pieds en ligne 15) derrière une étagère posée plus bas (pieds en ligne 18) : le milieu d'une case montre l'étagère.
+    const layout: Layout = [{ id: 'sofa', kind: 'sofa', col: 2, row: 12 }, { id: 'sh', kind: 'shelf', col: 5, row: 10 }];
+    const boxes = boxesOf(layout, geom);
+    const map = buildSurfaceMap(boxes, 720, 510, geom, 1);
+    const shelfBack = Math.min(...boxes.filter((b) => b.owner === 'sh').map((b) => b.d0));
+    // x = 190 (case de gauche de l'étagère, devant le canapé), y = 395 (case du milieu, à hauteur du canapé).
+    const n = 395 * map.w + 190;
+    expect(map.kind[n]).toBe(SURF.front);
+    expect(map.d[n]).toBeGreaterThanOrEqual(shelfBack);
   });
   it('un tapis ne donne rien', () => {
     expect(boxesOf([{ id: 'r', kind: 'rug', col: 2, row: 12 }], geom)).toEqual([]);
