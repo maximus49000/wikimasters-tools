@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { STANDING_KINDS } from '../../../src/core/library/library-types';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
-import { renderModel } from '../../../src/core/library/furniture-render3d';
+import { pieceBounds, renderModel } from '../../../src/core/library/furniture-render3d';
 
 const DIMS: Record<string, [number, number, number]> = {
   shelf: [80, 30, 180], desk: [120, 60, 75], chair: [45, 50, 90], sofa: [200, 90, 85], armchair: [80, 80, 90],
@@ -18,9 +18,7 @@ describe('modèles', () => {
   it.each(STANDING_KINDS)('%s : toutes les pièces tiennent dans la boîte du meuble', (kind) => {
     const m = FURNITURE_MODELS[kind];
     for (const p of m.pieces) {
-      const [x0, x1, y0, y1, z0, z1] = p.shape === 'box' ? [p.x, p.x + p.w, p.y, p.y + p.h, p.z, p.z + p.d]
-        : p.shape === 'cyl' ? [p.cx - p.r, p.cx + p.r, p.y, p.y + p.h, p.cz - p.r, p.cz + p.r]
-        : [p.cx - p.rx, p.cx + p.rx, p.cy - p.ry, p.cy + p.ry, p.cz - p.rz, p.cz + p.rz];
+      const [x0, x1, y0, y1, z0, z1] = pieceBounds(p);
       expect(x0).toBeGreaterThanOrEqual(-0.01); expect(x1).toBeLessThanOrEqual(m.w + 0.01);
       expect(y0).toBeGreaterThanOrEqual(-0.01); expect(y1).toBeLessThanOrEqual(m.h + 0.01);
       expect(z0).toBeGreaterThanOrEqual(-0.01); expect(z1).toBeLessThanOrEqual(m.d + 0.01);
@@ -39,9 +37,7 @@ describe('modèles', () => {
     for (const a of [1, 2, 3, 4, 5, 6, 7] as const) expect(Math.abs(renderModel(FURNITURE_MODELS.shelf, a).rows - h0)).toBeLessThanOrEqual(1);
   });
   it('aucune pièce entièrement enfouie dans une autre pièce', () => {
-    const bb = (p: any): number[] => (p.shape === 'box' ? [p.x, p.x + p.w, p.y, p.y + p.h, p.z, p.z + p.d]
-      : p.shape === 'cyl' ? [p.cx - p.r, p.cx + p.r, p.y, p.y + p.h, p.cz - p.r, p.cz + p.r]
-      : [p.cx - p.rx, p.cx + p.rx, p.cy - p.ry, p.cy + p.ry, p.cz - p.rz, p.cz + p.rz]);
+    const bb = (p: Parameters<typeof pieceBounds>[0]): number[] => pieceBounds(p);
     for (const kind of STANDING_KINDS) {
       const boxes = FURNITURE_MODELS[kind].pieces.filter((p) => p.shape === 'box').map(bb);
       FURNITURE_MODELS[kind].pieces.forEach((p, i) => {
@@ -60,5 +56,40 @@ describe('modèles', () => {
     expect(FURNITURE_MODELS.chair.pois?.[0]?.type).toBe('seat');
     expect(FURNITURE_MODELS.charger.pois?.[0]?.type).toBe('charge');
     expect(FURNITURE_MODELS.kennel.pois?.map((p) => p.type).sort()).toEqual(['enter', 'sleep']);
+  });
+});
+
+describe('modèles reconnaissables (globe, niche, automate, plante)', () => {
+  const ANGLES = [0, 1, 2, 3, 4, 5, 6, 7] as const;
+  it('globe : sphère inclinée avec continents, équateur et méridien en laiton, socle rond en bois', () => {
+    const g = FURNITURE_MODELS.globe;
+    const sphere = g.pieces.find((p) => p.shape === 'ball' && p.marks !== undefined);
+    expect(sphere?.shape === 'ball' && Math.abs((sphere.tilt ?? 0) - 23) < 2).toBe(true);
+    expect(sphere?.shape === 'ball' && (sphere.marks?.length ?? 0) >= 3 && sphere.rings?.[0]?.fill === 'metal').toBe(true);
+    expect(g.pieces.some((p) => p.shape === 'cyl' && p.y === 0 && (p.fill === 'wood' || p.fill === 'woodDark'))).toBe(true);
+    for (const a of ANGLES) expect(renderModel(g, a).shapes.some((s) => s.fill === 'leaf'), 'continent visible ' + a).toBe(true);
+  });
+  it('niche : toit à deux pans qui déborde, porte sombre en façade', () => {
+    const k = FURNITURE_MODELS.kennel;
+    const roof = k.pieces.filter((p) => p.shape === 'prism' && p.fill === 'door');
+    expect(roof.length).toBeGreaterThanOrEqual(2);
+    const walls = k.pieces.filter((p) => p.fill === 'wood').map(pieceBounds);
+    const roofB = roof.map(pieceBounds);
+    expect(Math.min(...roofB.map((b) => b[0]))).toBeLessThan(Math.min(...walls.map((b) => b[0]))); // débord
+    expect(k.pieces.some((p) => (p.tone ?? 1) < 0.8)).toBe(true); // ouverture sombre
+  });
+  it('automate : deux bras, deux yeux clairs, un cadran', () => {
+    const a = FURNITURE_MODELS.automaton;
+    expect(a.pieces.filter((p) => p.shape === 'rod' && p.fill === 'metal').length).toBeGreaterThanOrEqual(4); // bras et jambes
+    expect(a.pieces.filter((p) => p.shape === 'rod' && p.fill === 'shade').length).toBeGreaterThanOrEqual(3); // yeux + cadran
+    for (const ang of ANGLES) expect(renderModel(a, ang).shapes.length).toBeGreaterThan(12);
+  });
+  it('plante : pot en terre avec bord et terreau, au moins 12 feuilles en deux verts', () => {
+    const p = FURNITURE_MODELS.plant;
+    const fol = p.pieces.find((x) => x.shape === 'foliage');
+    expect(fol?.shape === 'foliage' && fol.leaves.length >= 12).toBe(true);
+    const fills = new Set(fol?.shape === 'foliage' ? fol.leaves.map((l) => l.fill ?? fol.fill) : []);
+    expect(fills.has('leaf') && fills.has('leafDark')).toBe(true);
+    expect(p.pieces.filter((x) => x.shape === 'cyl').length).toBeGreaterThanOrEqual(3); // pot, bord, terreau
   });
 });
