@@ -2003,4 +2003,48 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v28',
+    theme: 'collection',
+    glyph: '✏️',
+    title: 'Placer un meuble comme dans les Sims',
+    summary: 'Un interrupteur en plein écran, un objet fantôme à ajuster, puis Valider ou Annuler',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'L’interrupteur en plein écran',
+        text: 'En plein écran, Ma Pièce affiche en haut à droite un interrupteur œil | crayon : l’œil pour Visiter, le crayon pour Aménager. Le tiroir de construction, à l’allure du mode Achat des Sims, s’ouvre en bas dès qu’on passe au crayon.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À meubler sa pièce sans quitter le plein écran, où la barre du haut n’est pas affichée.' },
+          { label: 'Comment faire', text: 'Ouvrez Ma Pièce, touchez le bouton plein écran, puis la moitié crayon de l’interrupteur. Touchez l’œil pour revenir à la visite.' },
+          { label: 'Limites', text: 'Hors plein écran, ce sont les boutons Visiter et Aménager de la barre du haut qui servent. Repasser à l’œil pendant un placement l’annule.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Le mode placement',
+        text: 'Touchez une vignette du tiroir : le tiroir s’efface et l’objet apparaît en fantôme à la première place libre, au milieu de ce que vous voyez. Son empreinte est verte si l’endroit convient, rouge sinon, avec la raison en haut.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À voir l’objet en place et à l’ajuster avant de le poser, comme dans le mode Achat des Sims.' },
+          { label: 'Comment faire', text: 'Faites glisser l’objet (ou la poignée à son centre), ou touchez l’endroit voulu : une case, un bureau, une étagère, un ordinateur. La barre au-dessus de l’objet propose ses réglages : Avancer et Reculer, allumer la lampe, la taille de la fenêtre.' },
+          { label: 'Comment ça marche', text: 'Les règles sont celles d’avant : un meuble au sol, un cadre au mur, un ordinateur sur un bureau, une carte rangée dans une étagère. Rien n’est enregistré tant que vous n’avez pas validé.' },
+          { label: 'Limites', text: 'Pas de rotation. Un petit objet ou un ordinateur sans bureau ni étagère libre reste rouge : posez d’abord un meuble porteur.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Valider ou Annuler, Déplacer et l’appui long',
+        text: 'La coche verte (Valider) pose l’objet et rouvre le tiroir là où vous l’aviez laissé ; la croix rouge (Annuler) renonce, rien ne change. Pour modifier un objet déjà posé, meuble ou carte, touchez « Déplacer » dans sa bulle, ou faites un appui long dessus : il passe dans le même mode et suit aussitôt le doigt.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À ne jamais poser ou déplacer un objet par erreur, et à retoucher un objet sans le retirer.' },
+          { label: 'Comment faire', text: 'Ajustez l’objet, puis touchez la coche. Pour un déplacement, la croix remet l’objet à sa place. Échap annule aussi sur ordinateur. En mode Visiter, toucher une carte ouvre toujours sa fiche (musique, film, livre…).' },
+          { label: 'Limites', text: 'La coche est grisée tant que l’endroit est refusé. Changer de pièce, sortir dans la rue ou repasser en Visiter annule le placement en cours.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];

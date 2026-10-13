@@ -166,4 +166,13 @@ describe('catalogue des fiches', () => {
     for (const step of entry!.steps) expect(step.details?.some((d) => d.label === 'Limites'), step.title).toBe(true);
     expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v27')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v26'));
   });
+  it('la fiche bibliotheque-v28 présente l’interrupteur, le mode placement, ✓ / ✗, l’appui long et leurs limites', () => {
+    const entry = ENTRIES.find((e) => e.id === 'bibliotheque-v28');
+    expect(entry).toBeDefined();
+    expect(entry!.steps).toHaveLength(3);
+    const text = entry!.steps.map((s) => `${s.title} ${s.text} ${(s.details ?? []).map((d) => `${d.label} ${d.text}`).join(' ')}`).join(' ');
+    for (const word of ['plein écran', 'fantôme', 'Valider', 'Annuler', 'Déplacer', 'appui long', 'glisser', 'carte']) expect(text, word).toContain(word);
+    for (const step of entry!.steps) expect(step.details?.some((d) => d.label === 'Limites'), step.title).toBe(true);
+    expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v28')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v27'));
+  });
 });
