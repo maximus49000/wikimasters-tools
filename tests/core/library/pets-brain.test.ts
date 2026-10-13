@@ -340,3 +340,13 @@ describe('contexte (6d)', () => {
     expect(p.actMs).toBe(1500);
   });
 });
+
+describe('layoutSig', () => {
+  it('change quand un meuble tourne sur place (itinéraires à replanifier)', () => {
+    const before: Layout = [{ id: 's', kind: 'sofa', col: 4, row: 14 }];
+    const after: Layout = [{ id: 's', kind: 'sofa', col: 4, row: 14, angle: 1 }];
+    expect(layoutSig(after, 36)).not.toBe(layoutSig(before, 36));
+    // De face, angle absent ou 0 : même signature.
+    expect(layoutSig([{ id: 's', kind: 'sofa', col: 4, row: 14, angle: 0 }], 36)).toBe(layoutSig(before, 36));
+  });
+});

@@ -18,9 +18,10 @@ type Ms = readonly [number, number];
 type Candidate = { weight: number; action: PetAction; route: Segment[]; at: Pt; on: string | null; hostId: string | null; facing: 'l' | 'r'; ms: Ms; key?: string };
 type Dest = { pt: Pt; on: string | null; hostId: string | null };
 
-// Signature des meubles debout : quand elle change, les itinéraires mémorisés ne sont plus fiables.
+// Signature des meubles debout : quand elle change, les itinéraires mémorisés ne sont plus fiables. L'angle en fait partie : un meuble
+// tourné sur place change de trace (et de taille) au sol.
 export function layoutSig(layout: Layout, cols: number): string {
-  const parts = layout.filter(isStanding).map((p) => `${p.id}:${p.kind}:${p.col}:${p.row}`).sort();
+  const parts = layout.filter(isStanding).map((p) => `${p.id}:${p.kind}:${p.col}:${p.row}:${angleOf(p)}`).sort();
   return `${cols}|${hashString(parts.join(','))}`;
 }
 
