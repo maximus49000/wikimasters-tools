@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { nextFurnitureId } from '../../src/core/library/library-book';
 import type { Layout } from '../../src/core/library/library-types';
-import { hang, moveStanding, placeComputer, placeSmall, placeStanding, placeWindow, setScreenCard, storeCard } from '../../src/core/library/room-grid';
+import { hang, moveStanding, placeComputer, placeSmall, placeStanding, placeWindow, setAngle, setScreenCard, storeCard } from '../../src/core/library/room-grid';
 import { DRAFT_ID, canRotate, rotatePlacement, commitPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement } from '../../src/content/placement';
 
 const COLS = 24;
@@ -100,6 +100,15 @@ describe('commitPlacement : mêmes dispositions que les anciennes fonctions de p
     const p = startPlacement(shelf, COLS, { type: 'card', choice }, CENTER);
     expect(p.target.ok).toBe(true);
     expect(commitPlacement(p)).toEqual(storeCard(shelf, 'f1', p.target.slot!, 'book', 'Paris', nextFurnitureId(shelf)));
+  });
+
+  it('carte impossible à ranger sur une étagère de profil (angle 2) : face cachée', () => {
+    const shelf = setAngle(placeStanding([], COLS, 'shelf', 2, 6, 'f1')!, 'f1', 2);
+    const choice = { target: 'shelf', shape: 'book', slug: 'Paris' } as const;
+    const p = startPlacement(shelf, COLS, { type: 'card', choice }, CENTER);
+    expect(p.target.ok).toBe(false);
+    expect(commitPlacement(p)).toBeNull();
+    expect(moveToItem(p, COLS, 'f1').target.ok).toBe(false);
   });
 
   it('carte à l’écran', () => {

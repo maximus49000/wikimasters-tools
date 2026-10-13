@@ -99,13 +99,13 @@ describe('pose avec angle', () => {
 });
 
 describe('emplacements d’une étagère tournée', () => {
-  it('de face : comme avant ; ¾ : sur la face visible ; profil : le rectangle', () => {
+  it('de face : comme avant ; ¾ : sur la face visible ; profil ou dos : aucun emplacement', () => {
     const front = { id: 's', kind: 'shelf', col: 0, row: 6 } as const;
     expect(shelfSlotsOf(front)).toEqual(shelfSlots(pxRect(rectOf(front)!)));
     const three = { ...front, angle: 1 as const };
     const slots = shelfSlotsOf(three);
     const r = pxRect(rectOf(three)!);
     expect(Math.max(...slots.map((s) => s.x + s.w))).toBeLessThanOrEqual(r.x + r.w * 0.7 + 0.001);
-    expect(shelfSlotsOf({ ...front, angle: 2 })).toHaveLength(15);
+    for (const angle of [2, 3, 4, 5, 6] as const) expect(shelfSlotsOf({ ...front, angle })).toEqual([]);
   });
 });

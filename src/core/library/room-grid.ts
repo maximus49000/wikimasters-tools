@@ -434,12 +434,13 @@ export function placedSlugs(layout: Layout): Set<string> {
   return slugs;
 }
 
-// Emplacements d'une étagère sur sa face visible (¾ : face rétrécie) ; de profil ou de dos, le rectangle entier (cartes non dessinées).
+// Emplacements d'une étagère sur sa face visible (¾ : face rétrécie) ; de profil ou de dos, aucun (face cachée : on n'y range pas
+// de carte invisible ; le zoom de face a ses propres emplacements).
 export function shelfSlotsOf(shelf: Placed): PxRect[] {
   const r = rectOf(shelf);
   if (!r) return [];
-  const px = pxRect(r);
-  return shelfSlots(frontFaceRect(angleOf(shelf), px) ?? px);
+  const face = frontFaceRect(angleOf(shelf), pxRect(r));
+  return face ? shelfSlots(face) : [];
 }
 
 // Emplacement d'étagère sous le point (x, y) du dessin, en pixels.
