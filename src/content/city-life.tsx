@@ -45,6 +45,7 @@ import '../core/library/paint/props/street';
 import { ghibliStaffPost } from './shop/ghibli-shop-glass';
 import { collectCarriers, collectCups, collectTerraceGuests, collectWaiters, placeCarriers, placeCups, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type CupNode, type TerraceGuestNode, type Waiter } from './shop-terrace';
 import { LampSprite, PersonSprite, tone } from './city-sprites';
+import { FrontSidewalk } from './front-sidewalk';
 import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
 import { CROSS_HALF, type ScheduledArrival, type TrafficEnv } from '../core/library/city/traffic/engine';
 import { SantaLayer } from './santa-layer';
@@ -919,6 +920,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <CrossingLayer handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="near" />
       <TrafficFixtures handle={traffic} metrics={metrics} sky={sky} still={still} frozenT={frozen.current ?? 0} side="far" ghibli={ghibli} />
       <BusStopRiders handle={traffic} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} frozenT={frozen.current ?? 0} part="near" />
+      {/* Trottoir d'en face : passants, devant tout (revue du 2026-10-13, « plus de vie sans cacher la ville »). */}
+      <FrontSidewalk width={width} seed={seed} metrics={metrics} sky={sky} rainy={rainy} still={still} ghibli={ghibli} intensity={intensity} handle={traffic} frozenT={frozen.current ?? 0} />
     </g>
   );
 }
