@@ -4,7 +4,7 @@ import { drawSize, faceFrame, type Angle } from '../core/library/footprint';
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
 import { openingOf } from '../core/library/furniture-render3d';
 import type { Placed, Room } from '../core/library/library-types';
-import { carriedPlacementOf, placementDepth, placementRectPx, screenQuad, storedDrawOrder, storedFrontQuad, storedPlacementsOf } from '../core/library/carried-items';
+import { boxOfQuad, cardQuad, carriedPlacementOf, placementDepth, placementRectPx, storedDrawOrder, storedPlacementsOf } from '../core/library/carried-items';
 import type { ItemPlacement } from '../core/library/item-models';
 import { CELL_H, CELL_W, angleOf, isLit, shelfFreeIn, type PxRect } from '../core/library/room-grid';
 import { paletteOf } from '../core/library/styles';
@@ -102,11 +102,8 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const cardTap = (slug: string) => () => { if (cards[slug]) onCard(slug); };
   // Zone touchable d'une carte : la face avant d'un objet rangé (là où on le voit), la vitre de l'écran ; rien pour un petit objet.
   const hitOf = (p: Placed, pl: ItemPlacement): PxRect | null => {
-    const quad = p.kind === 'stored' ? storedFrontQuad(0, art, pl) : p.kind === 'computer' && p.slug ? screenQuad(0, art, pl, steampunk) : null;
-    if (!quad || quad.length === 0) return null;
-    const xs = quad.map((q) => q[0]);
-    const ys = quad.map((q) => q[1]);
-    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+    const quad = cardQuad(p, 0, art, pl, steampunk);
+    return quad && quad.length > 0 ? boxOfQuad(quad) : null;
   };
 
   // Le meuble sous l'angle `a` dans `rect`, garni de ses objets.

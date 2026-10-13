@@ -121,6 +121,9 @@ describe('boxesOf', () => {
     const off = (sw - 80 * PX_PER_CM_X) / 2;
     expect(top[0]!.x0).toBeCloseTo(60 + off + 3 * PX_PER_CM_X, 6);
     expect(top[0]!.x1).toBeCloseTo(60 + off + 21 * PX_PER_CM_X, 6);
+    // Près du bord avant : de 2 cm à 17 cm (le livre sur la tranche, 15 cm de profondeur), pas jusqu'au fond.
+    expect(top[0]!.d1 - top[0]!.d0).toBeCloseTo((15 * DEPTH_PX_PER_CM) / kOf(geom), 6);
+    expect(top[0]!.d1).toBeCloseTo(dFrontOf(7, drawSize('shelf', 0).h) - (2 * DEPTH_PX_PER_CM) / kOf(geom), 6);
     expect(boxes.some((x) => x.owner === 's#1')).toBe(false);
     const side = boxesOf([{ id: 's', kind: 'shelf', col: 2, row: 7, angle: 2 }, ...items], geom);
     expect(side.some((x) => x.owner.startsWith('s#'))).toBe(false);

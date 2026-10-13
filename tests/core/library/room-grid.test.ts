@@ -8,7 +8,6 @@ import {
   WALL_ROWS,
   canPlace,
   canPlaceComputer,
-  computerRect,
   moveComputer,
   moveStanding,
   placeComputer,
@@ -137,14 +136,6 @@ describe('rectangles en pixels', () => {
     const rect = rectOf({ id: 'f1', kind: 'desk', col: 2, row: 11 })!;
     expect(rect).toEqual({ col: 2, row: 11, w: 6, h: 5 });
     expect(pxRect(rect)).toMatchObject({ x: 60, w: 180 });
-  });
-
-  it("pose l'ordinateur sur le dessus du bureau", () => {
-    const desk = pxRect({ col: 0, row: 11, w: 5, h: 4 });
-    const pc = computerRect(desk);
-    expect(pc.y + pc.h).toBeLessThanOrEqual(desk.y + 4);
-    expect(pc.x).toBeGreaterThanOrEqual(desk.x);
-    expect(pc.x + pc.w).toBeLessThanOrEqual(desk.x + desk.w);
   });
 });
 

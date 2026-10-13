@@ -107,7 +107,7 @@ describe('CarriedItem3D', () => {
     for (const angle of [0, 1, 7] as const) {
       const rect = { x: 60, y: 30, w: drawSize('shelf', angle).w * 30, h: drawSize('shelf', angle).h * (510 / 18) };
       for (const display of ['cover', 'spine'] as const) {
-        const pl = { key: 'a', shape: 'cd' as const, display, x: 40, y: 61, z: display === 'cover' ? 26.8 : 2 };
+        const pl = { key: 'a', shape: 'cd' as const, display, x: 40, y: 61, z: 2 };
         const c = draw(<CarriedItem3D host="shelf" angle={angle} rect={rect} placement={pl} palette={pal} content={{ url: URL, title: 'Kiki' }} />);
         const box = screenBox(c);
         const want = placementRectPx('shelf', angle, rect, pl);
@@ -125,5 +125,19 @@ describe('CarriedItem3D', () => {
     const plain = draw(<CarriedItem3D host="desk" angle={0} rect={rect} placement={computerPlacement('pc')} palette={pal} content={{ url: URL }} />);
     expect(plain.querySelector('[data-steampunk-art]')).toBeNull();
     expect(plain.querySelector('[data-item3d="monitor"] image')).not.toBeNull();
+  });
+  it('deux livres de couleurs différentes : même géométrie, dos à la couleur de chacun (couleur posée au dessin)', () => {
+    const rect = { x: 0, y: 0, w: drawSize('shelf', 1).w * 30, h: drawSize('shelf', 1).h * (510 / 18) };
+    const pl = { key: 'a', shape: 'book' as const, display: 'spine' as const, x: 10, y: 8, z: 2 };
+    const red = draw(<CarriedItem3D host="shelf" angle={1} rect={rect} placement={{ ...pl, color: '#AA2222' }} palette={pal} />);
+    const blue = draw(<CarriedItem3D host="shelf" angle={1} rect={rect} placement={{ ...pl, color: '#2222AA' }} palette={pal} />);
+    const pts = (c: HTMLElement) => [...c.querySelectorAll('polygon')].map((e) => e.getAttribute('points'));
+    const fills = (c: HTMLElement) => [...c.querySelectorAll('polygon')].map((e) => e.getAttribute('fill'));
+    expect(pts(red)).toEqual(pts(blue));
+    // Le dos (ombré selon la face) prend la couleur de chaque livre : rouge d'un côté, bleu de l'autre.
+    const hue = (f: string | null) => (f && /^#[0-9a-f]{6}$/.test(f) ? [parseInt(f.slice(1, 3), 16), parseInt(f.slice(5, 7), 16)] : [0, 0]);
+    expect(fills(red).some((f) => hue(f)[0]! > hue(f)[1]! + 60)).toBe(true);
+    expect(fills(blue).some((f) => hue(f)[1]! > hue(f)[0]! + 60)).toBe(true);
+    expect(fills(red)).not.toEqual(fills(blue));
   });
 });

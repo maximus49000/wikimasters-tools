@@ -178,7 +178,7 @@ describe('zoom : objets en 3D', () => {
     // L'étagère passe avant ses objets.
     expect(model.querySelector('[data-model3d]')!.compareDocumentPosition(model.querySelector('[data-item3d]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
-  it('zone touchable d’un objet : sa face avant (de face, l’objet adossé au fond est plus haut que la tablette)', () => {
+  it('zone touchable d’un objet : sa face avant, près du bord de la tablette', () => {
     const { container } = zoomOf(room, { kind: 'shelf', id: 's' });
     const { w, h } = drawSize('shelf', 0);
     const art = { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H };

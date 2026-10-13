@@ -11,10 +11,9 @@ import { SHELF_GAP_CM, SURFACE_SLOTS, boardItems, displayOf, storedWidthCm, type
 
 const SHELF = FURNITURE_MODELS.shelf;
 const DESK = FURNITURE_MODELS.desk;
-// Planche du fond de l'étagère (face avant à 28 cm) : un objet présenté de face s'y adosse ; sur la tranche, il s'aligne sur l'avant
-// des tablettes (2 cm en retrait), comme dans une vraie bibliothèque.
-const SHELF_BACK_CM = 28;
-const SPINE_FRONT_CM = 2;
+// Tout objet rangé, de face comme sur la tranche, se tient près du bord avant de sa tablette (2 cm en retrait), comme dans une vraie
+// bibliothèque : il se lit posé sur la tablette, pas reculé contre le fond.
+const FRONT_CM = 2;
 // Écran posé vers le fond du bureau (son pied à 40 cm de l'avant) : la place devant reste libre pour les petits objets.
 const MONITOR_Z_CM = 40;
 const SMALL_SHAPE: Record<SmallItem, ItemShape> = { plant: 'small-plant', lamp: 'small-lamp' };
@@ -24,13 +23,12 @@ const SMALL_SHAPE: Record<SmallItem, ItemShape> = { plant: 'small-plant', lamp: 
 const BOARD_TOP_CM: readonly number[] = levelsOf(SHELF).map(([, bottom]) => Math.round((SHELF.face!.y + SHELF.face!.h * (1 - bottom)) * 1e6) / 1e6);
 export const boardTopCm = (level: ShelfLevel): number => BOARD_TOP_CM[level]!;
 
-// Objet rangé à `x0Cm` du bord gauche de la face (rangement de room-grid) ; un livre prend la couleur de dos de sa carte.
+// Objet rangé à `x0Cm` du bord gauche de la face (rangement de room-grid), près du bord avant ; un livre prend la couleur de dos de sa carte.
 export function storedPlacement(item: Stored, x0Cm: number): ItemPlacement {
   const display = displayOf(item);
-  const m = ITEM_MODELS[item.shape];
   return {
     key: item.id, shape: item.shape, display,
-    x: SHELF.face!.x + x0Cm, y: boardTopCm(item.level), z: display === 'cover' ? SHELF_BACK_CM - m.d - 0.2 : SPINE_FRONT_CM,
+    x: SHELF.face!.x + x0Cm, y: boardTopCm(item.level), z: FRONT_CM,
     ...(item.shape === 'book' && { color: bookColor(item.slug) }),
   };
 }
@@ -137,6 +135,21 @@ export function screenQuad(angle: Angle, rect: PxRect, pl: ItemPlacement, steamp
   if (!glass || glass.shape !== 'box') return [];
   const [x0, x1, y0, y1, z] = [pl.x + glass.x, pl.x + glass.x + glass.w, pl.y + glass.y, pl.y + glass.y + glass.h, pl.z + glass.z];
   return ([[x0, y1], [x1, y1], [x1, y0], [x0, y0]] as const).map(([x, y]) => hostPointPx('desk', angle, rect, [x, y, z]));
+}
+
+// Zone touchable de la carte d'un objet porté (px de la pièce) : face avant d'un objet rangé, vitre d'un écran qui affiche une carte ;
+// null pour un petit objet ou un écran vide.
+export function cardQuad(p: Placed, angle: Angle, rect: PxRect, pl: ItemPlacement, steampunk = false): [number, number][] | null {
+  if (p.kind === 'stored') return storedFrontQuad(angle, rect, pl);
+  if (p.kind === 'computer' && p.slug) return screenQuad(angle, rect, pl, steampunk);
+  return null;
+}
+
+// Rectangle englobant d'un polygone (px).
+export function boxOfQuad(quad: readonly (readonly [number, number])[]): PxRect {
+  const xs = quad.map((q) => q[0]);
+  const ys = quad.map((q) => q[1]);
+  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
 }
 
 // Profondeur (cm, depuis l'avant de la trace tournée) du centre d'un objet posé : les objets d'un même dessus se dessinent du plus loin au plus proche.

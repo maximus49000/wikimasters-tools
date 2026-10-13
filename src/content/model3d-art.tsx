@@ -27,7 +27,8 @@ const pts = (points: [number, number][]): string => points.map(([x, y]) => `${r1
 // Formes prêtes à dessiner (attributs déjà arrondis) ; `ink` : 'none' aplat sans trait, 'only' trait seul ; `color` : couleur propre (sinon la palette) ;
 // `glow` : objet dont l'abat-jour s'allume ; `decal` : face décorée (image, titre, pages, écran) posée par la matrice `m` (unités : mm de la face).
 type DecalDraw = { item: string; role: string; shape: string; m: string; w: number; h: number; dim: number };
-type Common = { fill: Fill; shade: number; color?: string; glow?: string; stored?: true };
+// `body` : corps d'un objet dont la couleur se choisit au dessin (dos d'un livre propre à chaque carte).
+type Common = { fill: Fill; shade: number; color?: string; glow?: string; stored?: true; body?: true };
 type Drawn = Common & (
   | { tag: 'polygon'; points: string; ink?: 'none' | 'only'; decal?: DecalDraw }
   | { tag: 'polyline'; points: string }
@@ -159,7 +160,7 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
   // Couverture : image de la carte (rognée au cadre), sinon couverture de remplacement titrée. Boîtier cristal : marge du boîtier, charnière et reflet ;
   // DVD/jeu : bord du boîtier ; jeu : bandeau rouge en haut ; livre : marge du plat.
   // Marges de l'image : à gauche (charnière, dos), à droite, en haut et en bas (bord du boîtier ou du plat).
-  const inset = shape === 'cd' ? { l: w * 0.09, r: h * 0.04, t: h * 0.04 } : shape === 'book' ? { l: w * 0.04, r: h * 0.03, t: h * 0.03 } : { l: w * 0.03, r: h * 0.02, t: h * 0.02 };
+  const inset = shape === 'cd' ? { l: w * 0.09, r: w * 0.036, t: h * 0.04 } : shape === 'book' ? { l: w * 0.04, r: w * 0.046, t: h * 0.03 } : { l: w * 0.03, r: w * 0.028, t: h * 0.02 };
   const band = shape === 'game' ? h * 0.09 : 0;
   const [ix, iy, iw, ih] = [inset.l, inset.t + band, w - inset.l - inset.r, h - 2 * inset.t - band];
   const fs = Math.min(iw * 0.16, ih * 0.14);
@@ -184,13 +185,13 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
   );
 }
 
-type DrawProps = { g: Geometry; palette: Palette; lit: boolean; content?: Record<string, ItemContent>; lampShade?: boolean };
+type DrawProps = { g: Geometry; palette: Palette; lit: boolean; content?: Record<string, ItemContent>; lampShade?: boolean; bodyColor?: string };
 
 // Formes d'une géométrie, décors des faces compris (dans l'ordre du peintre : un décor passe juste après sa face).
-function Shapes({ g, palette, lit, content, lampShade = false }: DrawProps): ReactElement {
+function Shapes({ g, palette, lit, content, lampShade = false, bodyColor }: DrawProps): ReactElement {
   const clipId = `wm-ouverture-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const isLit = (s: Drawn) => (s.glow !== undefined ? content?.[s.glow]?.lit ?? true : lampShade && s.fill === 'shade' && lit);
-  const base = (s: Drawn) => (isLit(s) ? LIT_SHADE : s.color ?? palette[s.fill]);
+  const base = (s: Drawn) => (isLit(s) ? LIT_SHADE : (s.body && bodyColor) || (s.color ?? palette[s.fill]));
   const color = (s: Drawn) => shadeHex(base(s), s.shade);
   const drawOne = (s: Drawn, i: number): ReactElement => {
     if (s.tag === 'polyline') return <polyline key={i} points={s.points} fill="none" stroke={color(s)} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
@@ -256,14 +257,20 @@ export const Model3DArt = memo(Model3DArtImpl, (a, b) => a.kind === b.kind && a.
 
 // Géométrie d'un objet seul, dans son propre repère, par (forme, présentation, angle, Steampunk, couleur) : la même pour tous les objets
 // de même forme, où qu'ils soient posés (la projection est affine : poser l'objet revient à translater son dessin).
-function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, steampunk: boolean, color?: string): Geometry {
-  return cached(`item:${shape}:${display}:${angle}:${steampunk ? 1 : 0}:${color ?? ''}`, () => {
+// La couleur propre du corps (dos d'un livre) n'entre pas dans la clé : le corps est marqué `body` et coloré au dessin (bodyColor).
+const BODY = '#B0D1E5';
+function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, steampunk: boolean): Geometry {
+  return cached(`item:${shape}:${display}:${angle}:${steampunk ? 1 : 0}`, () => {
     const m = itemModel(shape, steampunk);
-    const pieces = itemPieces({ key: 'item', shape, display, x: 0, y: 0, z: 0, color }, steampunk);
+    const pieces = itemPieces({ key: 'item', shape, display, x: 0, y: 0, z: 0, color: BODY }, steampunk);
     // Sur la tranche, la boîte tournée prend la place de la boîte de face (largeur et profondeur échangées).
     const turned = display === 'spine' && shape !== 'monitor' && shape !== 'small-plant' && shape !== 'small-lamp';
     const model: Model = { ...m, ...(turned && { w: m.d, d: m.w }), pieces };
-    return { ...geometryFrom(model, angle, false), origin: projectOf(model, angle, [0, 0, 0]) };
+    const g = geometryFrom(model, angle, false);
+    // Corps repéré par la couleur témoin, rendu à sa couleur de boîtier par défaut (remplacée au dessin s'il en a une).
+    const own = m.pieces.find((q) => q.tag === 'body')?.color;
+    const shapes = g.shapes.map((d): Drawn => (d.color === BODY ? { ...d, body: true, ...(own ? { color: own } : {}) } : d));
+    return { ...g, shapes, origin: projectOf(model, angle, [0, 0, 0]) };
   });
 }
 
@@ -277,12 +284,12 @@ type ItemProps = { shape: ItemShape; display?: ItemDisplay; angle: Angle; rect: 
 
 // Objet seul (vignette), dessiné depuis son modèle 3D dans son rectangle ; mêmes décors que sur un meuble.
 export function Item3DArt({ shape, display = 'cover', angle, rect, palette, content, color, steampunk = false }: ItemProps): ReactElement {
-  const g = itemGeometry(shape, display, angle, steampunk, color);
+  const g = itemGeometry(shape, display, angle, steampunk);
   const sx = rect.w / (g.cols * CELL_W);
   const sy = rect.h / (g.rows * CELL_H);
   return (
     <g data-item3d={shape} transform={`translate(${r1(rect.x)} ${r1(rect.y)}) scale(${sx} ${sy})`}>
-      <Shapes g={g} palette={palette} lit content={content ? { item: content } : undefined} />
+      <Shapes g={g} palette={palette} lit content={content ? { item: content } : undefined} bodyColor={color} />
     </g>
   );
 }
@@ -292,14 +299,14 @@ type CarriedProps = { host: 'desk' | 'shelf'; angle: Angle; rect: PxRect; placem
 // Objet porté (carte rangée, écran, petit objet) dessiné à sa place dans le repère de son porteur tourné (`rect` : rectangle du porteur) :
 // même angle, même échelle, même ombrage que le meuble ; sa géométrie est celle de l'objet seul, translatée.
 function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content, steampunk = false }: CarriedProps): ReactElement {
-  const g = itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk, pl.color);
+  const g = itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk);
   const { w, h } = drawSize(host, angle);
   const [hx, hy] = hostNativePx(host, angle, [pl.x, pl.y, pl.z]);
   const [ox, oy] = g.origin ?? [0, 0];
   return (
     <g data-item3d={pl.shape} {...(pl.shape === 'monitor' && steampunk && { 'data-steampunk-art': 'analytical-engine' })}
       transform={`translate(${r1(rect.x)} ${r1(rect.y)}) scale(${r4(rect.w / (w * CELL_W))} ${r4(rect.h / (h * CELL_H))}) translate(${r1(hx - ox)} ${r1(hy - oy)})`}>
-      <Shapes g={g} palette={palette} lit content={content ? { item: content } : undefined} />
+      <Shapes g={g} palette={palette} lit content={content ? { item: content } : undefined} bodyColor={pl.color} />
     </g>
   );
 }

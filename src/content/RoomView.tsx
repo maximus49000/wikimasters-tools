@@ -2,10 +2,10 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
-import { drawSize, faceFrame, frontFaceRect, groundTrace } from '../core/library/footprint';
+import { drawSize, faceFrame, frontFaceRect, groundTrace, type Angle } from '../core/library/footprint';
 import { boxesOf, lampsOf, signatureOf } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
-import { computerPlacement, placementDepth, placementRectPx, screenQuad, smallPlacement, storedDrawOrder, storedFrontQuad, storedPlacementsOf } from '../core/library/carried-items';
+import { boxOfQuad, cardQuad, computerPlacement, placementDepth, placementRectPx, smallPlacement, storedDrawOrder, storedPlacementsOf } from '../core/library/carried-items';
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
 import { openingOf } from '../core/library/furniture-render3d';
 import type { ItemPlacement } from '../core/library/item-models';
@@ -104,13 +104,22 @@ type Props = {
 
 // Matrice du repère d'une face (footprint.faceFrame) en attribut SVG.
 export const matrixOf = (m: readonly number[]): string => `matrix(${m.join(' ')})`;
-// Points d'un polygone (px au dixième) et son rectangle englobant.
+// Points d'un polygone (px au dixième).
 const pointsOf = (pts: readonly (readonly [number, number])[]): string => pts.map(([x, y]) => `${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`).join(' ');
-function boxOfQuad(quad: readonly (readonly [number, number])[]): PxRect {
-  const xs = quad.map((q) => q[0]);
-  const ys = quad.map((q) => q[1]);
-  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+
+// Porteur (bureau ou étagère) d'objets : son type, son angle et son rectangle.
+type Host = { kind: 'desk' | 'shelf'; angle: Angle; rect: PxRect };
+// Pose 3D d'un écran ou d'un petit objet sur le dessus de son porteur.
+function topPlacementIn(hosts: ReadonlyMap<string, Host>, placed: Placed): { host: Host; pl: ItemPlacement } | null {
+  if (placed.kind === 'computer') {
+    const host = hosts.get(placed.deskId);
+    return host?.kind === 'desk' ? { host, pl: computerPlacement(placed.id) } : null;
+  }
+  if (placed.kind !== 'small') return null;
+  const host = hosts.get(placed.hostId);
+  return host ? { host, pl: smallPlacement(placed.id, placed.item, host.kind, placed.slot) } : null;
 }
+type Carried = { tops: Placed[]; stored: Extract<Placed, { kind: 'stored' }>[]; computers: Placed[] };
 
 export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect; floor?: Cell[] };
 
@@ -200,13 +209,15 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   );
   const blinking = new Set(blink.map((c) => `${c.col}-${c.row}`));
 
-  // Bureaux et étagères : ils portent les petits objets.
-  const hostRects = new Map<string, PxRect>();
-  for (const placed of room.layout) {
-    const rect = rectOf(placed);
-    if (!rect) continue;
-    if (placed.kind === 'desk' || placed.kind === 'shelf') hostRects.set(placed.id, pxRect(rect));
-  }
+  // Bureaux et étagères : ils portent les objets (calculés une fois par disposition).
+  const hosts = useMemo(() => {
+    const out = new Map<string, Host>();
+    for (const placed of room.layout) {
+      const rect = rectOf(placed);
+      if (rect && (placed.kind === 'desk' || placed.kind === 'shelf')) out.set(placed.id, { kind: placed.kind, angle: angleOf(placed), rect: pxRect(rect) });
+    }
+    return out;
+  }, [room.layout]);
   const imageOf = (slug: string): string | undefined => {
     const url = cards[slug]?.imageUrl;
     return images?.displayUrl(slug, url) ?? url;
@@ -217,22 +228,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     for (const placed of room.layout) if (placed.kind === 'shelf') for (const [id, pl] of storedPlacementsOf(room.layout, placed.id)) out.set(id, pl);
     return out;
   }, [room.layout]);
-  // Porteur (bureau ou étagère) d'un objet porté : son type, son angle et son rectangle.
-  const hostOf = (hostId: string): { kind: 'desk' | 'shelf'; angle: ReturnType<typeof angleOf>; rect: PxRect } | null => {
-    const rect = hostRects.get(hostId);
-    const host = room.layout.find((p) => p.id === hostId);
-    return rect && (host?.kind === 'desk' || host?.kind === 'shelf') ? { kind: host.kind, angle: angleOf(host), rect } : null;
-  };
-  // Pose 3D d'un écran ou d'un petit objet sur le dessus de son porteur.
-  const topPlacement = (placed: Placed): { host: NonNullable<ReturnType<typeof hostOf>>; pl: ItemPlacement } | null => {
-    if (placed.kind === 'computer') {
-      const host = hostOf(placed.deskId);
-      return host?.kind === 'desk' ? { host, pl: computerPlacement(placed.id) } : null;
-    }
-    if (placed.kind !== 'small') return null;
-    const host = hostOf(placed.hostId);
-    return host ? { host, pl: smallPlacement(placed.id, placed.item, host.kind, placed.slot) } : null;
-  };
+  const hostOf = (hostId: string): Host | null => hosts.get(hostId) ?? null;
+  const topPlacement = (placed: Placed) => topPlacementIn(hosts, placed);
   const outline = (rect: PxRect) => (
     <rect x={rect.x - 3} y={rect.y - 3} width={rect.w + 6} height={rect.h + 6} rx={6} fill="none" stroke="#378ADD" strokeWidth={2.5} strokeDasharray="6 4" />
   );
@@ -305,7 +302,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
     // Un ordinateur suit aussi son bureau soulevé.
     const lifted = drag !== null && (drag.id === placed.id || (placed.kind === 'computer' && drag.id === placed.deskId) || (placed.kind === 'small' && drag.id === placed.hostId));
-    const liftedCopy = lifted ? liftedCopyOf(rect, liftedArt ?? art, drag.id === placed.id ? rect : (hostRects.get(drag.id) ?? rect)) : null;
+    const liftedCopy = lifted ? liftedCopyOf(rect, liftedArt ?? art, drag.id === placed.id ? rect : (hosts.get(drag.id)?.rect ?? rect)) : null;
     return (
       <g key={placed.id}>
         <g
@@ -414,14 +411,14 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
       const info = cards[placed.slug];
       // Vraie boîte posée sur sa tablette, tournée avec l'étagère : image de la carte sur la couverture, titre sur la tranche.
       const art = <CarriedItem3D host="shelf" angle={host.angle} rect={host.rect} placement={pl} palette={palette} content={info ? { url: imageOf(placed.slug), title: info.title } : undefined} />;
-      const quad = storedFrontQuad(host.angle, host.rect, pl);
+      const quad = cardQuad(placed, host.angle, host.rect, pl)!;
       return { slug: placed.slug, rect: boxOfQuad(quad), art, quad };
     }
     if (placed.kind === 'computer' && placed.slug) {
       // Écran de dos ou de profil : sa carte n'est ni visible ni touchable.
       const at = topPlacement(placed);
       if (!at || !frontFaceRect(at.host.angle, at.host.rect, 'desk')) return null;
-      const quad = screenQuad(at.host.angle, at.host.rect, at.pl, steampunk);
+      const quad = cardQuad(placed, at.host.angle, at.host.rect, at.pl, steampunk)!;
       const missing = !cards[placed.slug];
       return { slug: placed.slug, rect: boxOfQuad(quad), art: missing ? <polygon points={pointsOf(quad)} fill="#1D1D22" /> : <g />, extra: { 'data-screen': placed.id }, quad };
     }
@@ -434,30 +431,34 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
 
   // Objets portés par chaque meuble, dans l'ordre où ils se dessinent juste après lui : objets rangés (dans l'étagère), puis écran et
   // petits objets du dessus du plus loin au plus proche, puis la carte de l'écran (zone touchable par-dessus). Un seul passage sur le plan.
-  const carried = new Map<string, { tops: Placed[]; stored: Extract<Placed, { kind: 'stored' }>[]; computers: Placed[] }>();
-  for (const placed of room.layout) {
-    const hostId = placed.kind === 'computer' ? placed.deskId : placed.kind === 'small' ? placed.hostId : placed.kind === 'stored' ? placed.shelfId : null;
-    if (hostId === null) continue;
-    const entry = carried.get(hostId) ?? { tops: [], stored: [], computers: [] };
-    if (placed.kind === 'stored') entry.stored.push(placed);
-    else entry.tops.push(placed);
-    if (placed.kind === 'computer') entry.computers.push(placed);
-    carried.set(hostId, entry);
-  }
-  for (const [hostId, entry] of carried) {
-    const host = hostOf(hostId);
-    if (!host) continue;
-    // Sur le dessus : du plus loin au plus proche (de dos, l'écran passe devant) ; à égalité, l'ordre du plan.
-    if (entry.tops.length > 1) {
-      const depthOfTop = (p: Placed): number => {
-        const at = topPlacement(p);
-        return at ? placementDepth(host.kind, host.angle, at.pl, steampunk) : 0;
-      };
-      const depth = new Map(entry.tops.map((p) => [p.id, depthOfTop(p)]));
-      entry.tops.sort((a, b) => depth.get(b.id)! - depth.get(a.id)!);
+  // Calculés une fois par disposition (tri par profondeur compris) : un re-rendu de la pièce ne les refait pas.
+  const carried = useMemo(() => {
+    const out = new Map<string, Carried>();
+    for (const placed of room.layout) {
+      const hostId = placed.kind === 'computer' ? placed.deskId : placed.kind === 'small' ? placed.hostId : placed.kind === 'stored' ? placed.shelfId : null;
+      if (hostId === null) continue;
+      const entry = out.get(hostId) ?? { tops: [], stored: [], computers: [] };
+      if (placed.kind === 'stored') entry.stored.push(placed);
+      else entry.tops.push(placed);
+      if (placed.kind === 'computer') entry.computers.push(placed);
+      out.set(hostId, entry);
     }
-    entry.stored = storedDrawOrder(entry.stored, host.angle);
-  }
+    for (const [hostId, entry] of out) {
+      const host = hosts.get(hostId);
+      if (!host) continue;
+      // Sur le dessus : du plus loin au plus proche (de dos, l'écran passe devant) ; à égalité, l'ordre du plan.
+      if (entry.tops.length > 1) {
+        const depthOfTop = (p: Placed): number => {
+          const at = topPlacementIn(hosts, p);
+          return at ? placementDepth(host.kind, host.angle, at.pl, steampunk) : 0;
+        };
+        const depth = new Map(entry.tops.map((p) => [p.id, depthOfTop(p)]));
+        entry.tops.sort((x, y) => depth.get(y.id)! - depth.get(x.id)!);
+      }
+      entry.stored = storedDrawOrder(entry.stored, host.angle);
+    }
+    return out;
+  }, [room.layout, hosts, steampunk]);
   // Groupe des objets rangés d'une étagère, découpé à son ouverture avant projetée (px de la pièce) : une seule découpe par étagère.
   // `tag` distingue la copie de sélection (ses identifiants de découpe).
   const storedClip = (hostId: string, tag: string, nodes: (ReactElement | null)[]): ReactElement | null => {

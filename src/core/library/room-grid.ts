@@ -409,20 +409,6 @@ export function pxRect(rect: Rect): PxRect {
   return { x: rect.col * CELL_W, y: rect.row * CELL_H, w: rect.w * CELL_W, h: rect.h * CELL_H };
 }
 
-const COMPUTER_W = 84;
-export const COMPUTER_H = 56;
-
-// L'ordinateur est centré sur le plateau du bureau, son pied appuyé dessus.
-export function computerRect(desk: PxRect): PxRect {
-  return { x: desk.x + desk.w / 2 - COMPUTER_W / 2, y: desk.y - COMPUTER_H + 4, w: COMPUTER_W, h: COMPUTER_H };
-}
-
-// L'écran se tient au milieu du plateau du bureau tourné (rectangle de dessin `desk`) : pied sur le dessus projeté, à mi-profondeur.
-export function computerRectOn(desk: PxRect, angle: Angle): PxRect {
-  const [x, y] = topPoint('desk', angle, desk, 0.5, 0.5);
-  return { x: x - COMPUTER_W / 2, y: y - COMPUTER_H + 2, w: COMPUTER_W, h: COMPUTER_H };
-}
-
 // Slugs déjà posés dans la pièce (accrochés, rangés ou à l'écran) : une carte n'y figure qu'une fois.
 export function placedSlugs(layout: Layout): Set<string> {
   const slugs = new Set<string>();

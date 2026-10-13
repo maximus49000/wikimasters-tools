@@ -51,5 +51,4 @@ describe('Model3DArt', () => {
     expect(on.querySelector('[data-lamp-halo]')!.getAttribute('pointer-events')).toBe('none');
     expect(draw(<Model3DArt kind="lamp" angle={2} rect={rect} palette={paletteOf('scandinave')} lit={false} />).querySelector('[data-lamp-halo]')).toBeNull();
   });
-
 });

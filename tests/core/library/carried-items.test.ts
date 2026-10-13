@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { boardTopCm, carriedPlacementOf, computerPlacement, hostPointPx, placementDepth, placementRectPx, screenQuad, smallPlacement, storedDrawOrder, storedFrontQuad, storedPlacementsOf } from '../../../src/core/library/carried-items';
-import { topPoint } from '../../../src/core/library/footprint';
+import { drawSize, topPoint } from '../../../src/core/library/footprint';
 import { bookColor } from '../../../src/core/library/item-models';
 import type { Layout } from '../../../src/core/library/library-types';
 import { pxRect, rectOf, shelfLayoutOf } from '../../../src/core/library/room-grid';
@@ -18,9 +18,9 @@ describe('objets portés en 3D', () => {
     expect([boardTopCm(0), boardTopCm(1), boardTopCm(2)]).toEqual([121, 61, 8]);
   });
 
-  it('un objet de face s’adosse au fond, un objet sur la tranche s’aligne sur l’avant, à la suite de ses voisins', () => {
+  it('tout objet rangé, de face ou sur la tranche, se tient près du bord avant, à la suite de ses voisins', () => {
     const pl = storedPlacementsOf(stored, 's');
-    expect(pl.get('a')).toMatchObject({ shape: 'cd', display: 'cover', x: 3, y: 121, z: 26.8 });
+    expect(pl.get('a')).toMatchObject({ shape: 'cd', display: 'cover', x: 3, y: 121, z: 2 });
     // Livre (sur la tranche par défaut) : après le CD (14 cm) et 1 cm d'écart ; couleur de dos de sa carte.
     expect(pl.get('b')).toMatchObject({ shape: 'book', display: 'spine', x: 18, y: 121, z: 2, color: bookColor('Dune') });
     expect(pl.get('c')).toMatchObject({ display: 'spine', x: 3, y: 8 });
@@ -60,6 +60,18 @@ describe('objets portés en 3D', () => {
       expect(x).toBeLessThanOrEqual(box.x + box.w + 1e-6);
       expect(y).toBeGreaterThanOrEqual(box.y - 1e-6);
       expect(y).toBeLessThanOrEqual(box.y + box.h + 1e-6);
+    }
+  });
+
+  it('à chaque angle, le pied de l’écran reste sur le plateau (dans le rectangle de dessin, au-dessus des pieds du bureau)', () => {
+    for (const angle of [0, 1, 2, 3, 4, 5, 6, 7] as const) {
+      const rect = pxRect({ col: 2, row: 6, ...drawSize('desk', angle) });
+      const pc = computerPlacement('pc');
+      const [x, y] = hostPointPx('desk', angle, rect, [pc.x + 27.5, pc.y, pc.z + 8]);
+      expect(y, `angle ${angle}`).toBeGreaterThan(rect.y);
+      expect(y, `angle ${angle}`).toBeLessThan(rect.y + rect.h * 0.6);
+      expect(x).toBeGreaterThan(rect.x);
+      expect(x).toBeLessThan(rect.x + rect.w);
     }
   });
 

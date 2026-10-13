@@ -1127,7 +1127,6 @@ const FIT_BUTTON = { position: 'absolute', top: 4, right: 148, height: 32, paddi
 
 type ScreenSize = { width: number; height: number };
 
-// Taille de l'écran, suivie seulement pendant le plein écran (rotation du téléphone, fenêtre redimensionnée).
 // Sélecteur de présentation d'un objet rangé : de face (couverture vers l'avant) ou sur la tranche (titre lisible).
 function DisplayButtons({ current, onChoose }: { current: StoredDisplay; onChoose: (display: StoredDisplay) => void }): ReactElement {
   return (
@@ -1138,6 +1137,7 @@ function DisplayButtons({ current, onChoose }: { current: StoredDisplay; onChoos
   );
 }
 
+// Taille de l'écran, suivie seulement pendant le plein écran (rotation du téléphone, fenêtre redimensionnée).
 function useScreenSize(watch: boolean): ScreenSize {
   const read = (): ScreenSize => (typeof window === 'undefined' ? { width: 0, height: 0 } : { width: window.innerWidth, height: window.innerHeight });
   const [size, setSize] = useState(read);

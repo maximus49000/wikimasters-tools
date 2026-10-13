@@ -11,7 +11,6 @@ import {
   removeFurniture,
   shiftLayout,
   surfaceSlotRect,
-  computerRectOn,
   pxRect,
   surfaceSlotRectOn,
 } from '../../../src/core/library/room-grid';
@@ -108,24 +107,6 @@ describe('surfaceSlotRect', () => {
 describe('objets posés sur le dessus projeté du porteur', () => {
   const ANGLES: Angle[] = [0, 1, 2, 3, 4, 5, 6, 7];
   const rectFor = (kind: 'desk' | 'shelf', angle: Angle) => pxRect({ col: 2, row: 6, ...drawSize(kind, angle) });
-  it('l’écran se tient sur le plateau du bureau : pied entre le fond et le bord avant du dessus, centré', () => {
-    const desk = rectFor('desk', 0);
-    const pc = computerRectOn(desk, 0);
-    const face = frontFaceRect(0, desk, 'desk')!;
-    expect(pc.y + pc.h).toBeGreaterThan(desk.y + 2);
-    expect(pc.y + pc.h).toBeLessThan(face.y);
-    expect(pc.x + pc.w / 2).toBeCloseTo(desk.x + desk.w / 2, 0);
-  });
-  it('à chaque angle, le pied de l’écran reste sur le plateau (dans le rectangle de dessin, au-dessus des pieds)', () => {
-    for (const a of ANGLES) {
-      const desk = rectFor('desk', a);
-      const pc = computerRectOn(desk, a);
-      expect(pc.y + pc.h, 'angle ' + a).toBeGreaterThan(desk.y);
-      expect(pc.y + pc.h, 'angle ' + a).toBeLessThan(desk.y + desk.h * 0.6);
-      expect(pc.x + pc.w / 2).toBeGreaterThan(desk.x);
-      expect(pc.x + pc.w / 2).toBeLessThan(desk.x + desk.w);
-    }
-  });
   it('les petits objets d’une étagère se posent sur son dessus, de gauche à droite de face, inversés de dos', () => {
     const shelf = rectFor('shelf', 0);
     const face = frontFaceRect(0, shelf, 'shelf')!;
