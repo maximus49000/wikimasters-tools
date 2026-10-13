@@ -7,9 +7,9 @@ describe('horaires des bus', () => {
     for (const kind of ['week', 'saturday', 'sunday'] as const) {
       const deps = serviceDepartures(7, 100, 'near', kind);
       expect(deps[0]).toBeGreaterThanOrEqual(FIRST_BUS[kind]);
-      expect(deps[0]).toBeLessThan(FIRST_BUS[kind] + 6);
+      expect(deps[0]).toBeLessThan(FIRST_BUS[kind] + 8);
       expect(deps[deps.length - 1]).toBeLessThanOrEqual(LAST_BUS);
-      expect(deps[deps.length - 1]).toBeGreaterThanOrEqual(LAST_BUS - 30);
+      expect(deps[deps.length - 1]).toBeGreaterThan(LAST_BUS - 40);
     }
     expect(FIRST_BUS.week).toBe(6 * 60 + 50);
     expect(LAST_BUS).toBe(24 * 60 + 30);
@@ -82,6 +82,38 @@ describe('pointes et écart entre les bus', () => {
     for (const side of ['near', 'far'] as const) {
       const s = arr.filter((a) => a.track === side);
       for (let i = 1; i < s.length; i++) expect(s[i]!.start - s[i - 1]!.start).toBeGreaterThanOrEqual(MIN_GAP * 60);
+    }
+  });
+});
+
+describe('grille cadencée validée (2026-10-13)', () => {
+  const h = (m: number, kind: 'week' | 'saturday' | 'sunday') => [0, 1, 2].map((l) => lineHeadwayAt(m, kind, l));
+  it('semaine, samedi plus fourni en journée, dimanche réduit', () => {
+    expect(h(420, 'week')).toEqual([24, 32, 40]);
+    expect(h(500, 'week')).toEqual([8, 8, 8]);
+    expect(h(720, 'week')).toEqual([16, 24, 32]);
+    expect(h(1050, 'week')).toEqual([8, 8, 8]);
+    expect(h(1200, 'week')).toEqual([24, 32, 40]);
+    expect(h(1300, 'week')).toEqual([40, 48, 56]);
+    expect(h(500, 'saturday')).toEqual([24, 32, 40]);
+    expect(h(720, 'saturday')).toEqual([16, 16, 24]);
+    expect(h(1050, 'saturday')).toEqual([16, 16, 24]);
+    expect(h(1200, 'saturday')).toEqual([24, 24, 32]);
+    expect(h(1300, 'saturday')).toEqual([32, 40, 48]);
+    expect(h(600, 'sunday')).toEqual([32, 40, 48]);
+    expect(h(900, 'sunday')).toEqual([24, 32, 40]);
+    expect(h(1200, 'sunday')).toEqual([40, 48, 56]);
+    expect(serviceDepartures(1, 9, 'near', 'sunday', 2)[0]).toBeGreaterThanOrEqual(8 * 60);
+  });
+  it('aucun bus retardé : chaque ligne garde sa minute dans le cycle de 8, et les lignes ne se croisent jamais', () => {
+    for (let seed = 1; seed < 20; seed++) {
+      for (const kind of ['week', 'saturday', 'sunday'] as const) {
+        const phases = [0, 1, 2].map((l) => new Set(serviceDepartures(seed, 400 + seed, 'far', kind, l).map((m) => m % 8)));
+        for (const p of phases) expect(p.size).toBe(1);
+        expect(new Set(phases.map((p) => [...p][0])).size).toBe(3);
+        const all = stopDepartures(seed, 400 + seed, 'far', kind, 3);
+        expect(all.map((d) => d.m)).toEqual([0, 1, 2].flatMap((l) => serviceDepartures(seed, 400 + seed, 'far', kind, l)).sort((x, y) => x - y));
+      }
     }
   });
 });

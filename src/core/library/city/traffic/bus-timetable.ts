@@ -1,14 +1,17 @@
 // Horaires des bus de la scène (revue du 2026-10-13 : « personne n'attend le bus toute la nuit »). Les bus ne sont plus tirés
-// au hasard dans la circulation : ils passent à l'arrêt selon une grille fixe, propre à chaque sens, comme un vrai réseau :
-// - service de 6 h 50 (8 h le dimanche et les jours fériés) au dernier passage de 0 h 30 ;
-// - peu de bus au petit matin, montée en charge jusqu'aux heures de pointe (7 h 30 - 9 h 30, 16 h 30 - 19 h en semaine),
-//   fréquence de journée entre les deux, puis on espace le soir (15 min) et la nuit (30 min) ;
-// - le samedi n'a pas de pointe du matin ; le dimanche roule à 20 min toute la journée.
-// Les passages d'après minuit (jusqu'à 0 h 30) prolongent le service de la veille. Les voyageurs (bus-stop.ts) ne viennent
-// attendre que si un bus passe bientôt, et repartent à pied après le dernier.
-// Revue du 2026-10-13 (« le panneau annonce le 15 à un arrêt du 3, du 6 et du 9 ») : chaque ligne de la plaque de l'arrêt a
-// sa propre grille, à sa fréquence (LINE_FACTOR), et seules ces lignes passent : le 15 et le 16 peuvent arriver à une
-// minute d'écart, le panneau les annonce sur des rangées distinctes.
+// au hasard dans la circulation : ils passent à l'arrêt selon une grille fixe, propre à chaque sens, comme un vrai réseau.
+// Seules les lignes de la plaque de l'arrêt passent (3 au plus), chacune à sa fréquence ; le panneau les annonce sur des
+// rangées distinctes. Grille validée par l'utilisateur le 2026-10-13 (minutes entre deux bus d'une ligne, lignes 1 / 2 / 3) :
+// - semaine, de 6 h 50 : 24/32/40 jusqu'à 7 h 30, pointe 8/8/8 jusqu'à 9 h 30, journée 16/24/32, pointe 8/8/8 de 16 h 30
+//   à 19 h, soirée 24/32/40 jusqu'à 21 h, puis 40/48/56 ;
+// - samedi (jour de sorties, plus de bus en journée), de 6 h 50 : 24/32/40 jusqu'à 9 h 30, 16/16/24 jusqu'à 19 h,
+//   24/24/32 jusqu'à 21 h, puis 32/40/48 ;
+// - dimanche et jours fériés (service réduit), de 8 h : 32/40/48 jusqu'à midi, 24/32/40 jusqu'à 19 h, puis 40/48/56 ;
+// - dernier passage de chaque ligne au plus tard à 0 h 30 ; les passages d'après minuit prolongent le service de la veille.
+// Grille cadencée : tous les intervalles sont des multiples de CYCLE (8 min) et chaque ligne garde sa minute dans le cycle
+// (LINE_PHASE : +0, +3, +5) ; deux lignes ne passent donc jamais à la même minute (2 min d'écart au moins) sans qu'aucun bus
+// soit retardé. En circulation, un bus retenu (feu, bouchon) arrive en retard et le suivant garde son heure, comme en vrai.
+// Les voyageurs (bus-stop.ts) ne viennent attendre que si un bus de leur ligne passe bientôt, et repartent après le dernier.
 import { hashString, mulberry32 } from '../../scene-world';
 import type { ScheduledArrival } from './engine';
 import type { StopSide } from './bus-stop';
@@ -18,56 +21,50 @@ export type ServiceKind = 'week' | 'saturday' | 'sunday';
 export const FIRST_BUS: Readonly<Record<ServiceKind, number>> = { week: 410, saturday: 410, sunday: 480 };
 export const LAST_BUS = 1470;
 
-// Intervalle entre deux bus (minutes) à la minute `m` (410 → 1470) d'un jour de service.
-export function headwayAt(m: number, kind: ServiceKind): number {
-  if (kind === 'sunday') return m < 1260 ? 20 : 30;
-  if (m < 450) return 20; // petit matin
-  if (m < 570) return kind === 'week' ? 8 : 15; // pointe du matin (pas le samedi)
-  if (m < 990) return 12; // journée
-  if (m < 1140) return kind === 'week' ? 8 : 12; // pointe du soir
-  if (m < 1260) return 15; // soirée
-  return 30; // fin de service
-}
-
-// Lignes desservant l'arrêt (celles de sa plaque, au plus 3) et fréquence de chacune : intervalle de la grille du réseau
-// multiplié par ce facteur (la première ligne est la plus fréquente), plafonné à une heure. Aux heures de pointe de la
-// semaine, chaque ligne passe toutes les 8 minutes (consigne du 2026-10-13).
 export const STOP_LINES_MAX = 3;
-export const LINE_FACTOR = [1.6, 2.1, 2.7] as const;
+export const CYCLE = 8;
+export const LINE_PHASE = [0, 3, 5] as const;
 export const PEAK_HEADWAY = 8;
-const HEADWAY_MAX = 60;
+// Écart minimal entre deux bus d'un arrêt, garanti par la grille cadencée (phases 0, 3, 5 dans un cycle de 8).
+export const MIN_GAP = 2;
+
+type Band = readonly [until: number, headways: readonly [number, number, number]];
+const GRID: Readonly<Record<ServiceKind, readonly Band[]>> = {
+  week: [[450, [24, 32, 40]], [570, [8, 8, 8]], [990, [16, 24, 32]], [1140, [8, 8, 8]], [1260, [24, 32, 40]], [Infinity, [40, 48, 56]]],
+  saturday: [[570, [24, 32, 40]], [1140, [16, 16, 24]], [1260, [24, 24, 32]], [Infinity, [32, 40, 48]]],
+  sunday: [[720, [32, 40, 48]], [1140, [24, 32, 40]], [Infinity, [40, 48, 56]]],
+};
+
+// Intervalle (minutes) entre deux bus de la ligne de rang `line` à la minute `m` (410 → 1470) d'un jour de service.
 export function lineHeadwayAt(m: number, kind: ServiceKind, line: number): number {
-  const network = headwayAt(m, kind);
-  if (network <= PEAK_HEADWAY) return PEAK_HEADWAY;
-  return Math.min(HEADWAY_MAX, Math.round(network * (LINE_FACTOR[line] ?? LINE_FACTOR[LINE_FACTOR.length - 1]!)));
+  const band = GRID[kind].find(([until]) => m < until)!;
+  return band[1][Math.min(line, 2)]!;
 }
+// Intervalle de la ligne la plus fréquente (rythme général du réseau).
+export const headwayAt = (m: number, kind: ServiceKind): number => lineHeadwayAt(m, kind, 0);
 
 // Passages d'une ligne (rang `line` sur la plaque) un jour de service à l'arrêt d'un sens, en minutes depuis le minuit de ce
-// jour (jusqu'à LAST_BUS).
+// jour (jusqu'à LAST_BUS). Le décalage du jour (0 à 7 min, propre au sens) est commun à toutes les lignes : chacune garde sa
+// phase dans le cycle.
 export function serviceDepartures(seed: number, day: number, side: StopSide, kind: ServiceKind, line = 0): number[] {
-  // Décalage propre au sens, à la ligne et au jour (les lignes et les sens ne passent pas ensemble), au plus 6 min.
-  const r = mulberry32(seed ^ hashString(`bus-timetable-${side}${line > 0 ? `-${line}` : ''}`) ^ Math.imul(day, 2654435761));
+  const r = mulberry32(seed ^ hashString(`bus-timetable-${side}`) ^ Math.imul(day, 2654435761));
+  const phase = Math.floor(r() * CYCLE) + (LINE_PHASE[line] ?? 0);
+  const first = FIRST_BUS[kind];
   const out: number[] = [];
-  let m = FIRST_BUS[kind] + Math.floor(r() * 6);
+  let m = first + ((((phase - first) % CYCLE) + CYCLE) % CYCLE);
   while (m <= LAST_BUS) {
     out.push(m);
     m += lineHeadwayAt(m, kind, line);
   }
-  // Dernier passage de 0 h 30 : assuré par la première ligne (les autres finissent sur leur grille).
-  if (line === 0 && out[out.length - 1] !== LAST_BUS && out[out.length - 1]! < LAST_BUS - 10) out.push(LAST_BUS);
   return out;
 }
 
-// Jamais deux bus à la même heure à un arrêt (consigne du 2026-10-13) : au moins MIN_GAP minutes entre deux passages,
-// toutes lignes confondues ; un bus qui tomberait trop près du précédent est retardé d'autant.
-export const MIN_GAP = 2;
+// Passages de toutes les lignes de l'arrêt, dans l'ordre (jamais deux à la même minute : grille cadencée).
 export type StopDeparture = { m: number; line: number; i: number };
 export function stopDepartures(seed: number, day: number, side: StopSide, kind: ServiceKind, lines: number): StopDeparture[] {
   const all: StopDeparture[] = [];
   for (let line = 0; line < lines; line++) serviceDepartures(seed, day, side, kind, line).forEach((m, i) => all.push({ m, line, i }));
-  all.sort((a, b) => a.m - b.m || a.line - b.line);
-  for (let k = 1; k < all.length; k++) all[k]!.m = Math.max(all[k]!.m, all[k - 1]!.m + MIN_GAP);
-  return all;
+  return all.sort((a, b) => a.m - b.m || a.line - b.line);
 }
 
 export const serviceKindOf = (weekday: number, holiday: boolean): ServiceKind => (holiday || weekday === 0 ? 'sunday' : weekday === 6 ? 'saturday' : 'week');
