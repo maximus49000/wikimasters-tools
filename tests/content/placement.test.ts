@@ -259,6 +259,19 @@ describe('présentation d’un objet rangé (de face / sur la tranche)', () => {
     expect(commitPlacement(q)!.find((x) => x.id === 'c0')).toMatchObject({ shelfId: 't', display: 'spine' });
   });
 
+  it('toucher une étagère vise la première tablette où l’objet tient sous la présentation choisie', () => {
+    // Étagère t : tablette du haut à 63 cm (11 cm libres) : un CD sur la tranche (1 cm) y tient, pas de face (14 cm).
+    const t: Layout = [
+      ...placeStanding([], COLS, 'shelf', 14, 6, 't')!,
+      ...[0, 1, 2, 3].map((order) => ({ id: `t${order}`, kind: 'stored', shape: 'cd', shelfId: 't', level: 0, order, slug: `t${order}` }) as const),
+      { id: 'tb', kind: 'stored', shape: 'book', shelfId: 't', level: 0, order: 4, slug: 'Tb' },
+    ];
+    const p = displayPlacement(startPlacement([...shelf, { id: 'm', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'M' }, ...t], COLS, { type: 'move', id: 'm' }, CENTER), COLS, 'spine');
+    const q = moveToItem(p, COLS, 't');
+    expect(q.target.ok).toBe(true);
+    expect(commitPlacement(q)!.find((x) => x.id === 'm')).toMatchObject({ shelfId: 't', level: 0, order: 5, display: 'spine' });
+  });
+
   it('une carte neuve rangée prend la présentation choisie', () => {
     const p = startPlacement(shelf, COLS, { type: 'card', choice: { target: 'shelf', shape: 'cd', slug: 'Kiki' } }, CENTER);
     const q = displayPlacement(p, COLS, 'spine');

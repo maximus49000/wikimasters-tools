@@ -245,7 +245,8 @@ export function moveToItem(p: Placement, cols: number, itemId: string): Placemen
     // La première tablette où l'objet tient, à la suite de ses objets.
     const moving = p.base.find((x) => x.id === p.id);
     const probe: StoredLike | null = p.subject.type === 'card' && p.subject.choice.target === 'shelf' ? { shape: p.subject.choice.shape } : moving?.kind === 'stored' ? moving : null;
-    const free = probe ? firstFreeBoard(p.base, item.id, probe) : null;
+    // Sondée sous la présentation choisie pendant le placement (couverture ou tranche), pas celle d'origine.
+    const free = probe ? firstFreeBoard(p.base, item.id, { ...probe, display: p.display ?? probe.display }) : null;
     const spot = free ? freeEndOf(p.base, item.id, free.level) : null;
     if (spot) return settle(p, cols, spot);
   }
