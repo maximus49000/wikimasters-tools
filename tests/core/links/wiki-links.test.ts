@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LEAD_BATCH, extractLeadLinks, fetchLeadLinks } from '../../../src/core/links/wiki-links';
+import { LEAD_BATCH, extractConceptLinks, extractLeadLinks, fetchLeadLinks } from '../../../src/core/links/wiki-links';
 
 const respond = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response;
 const page = (title: string, content: string | null, extra: Record<string, unknown> = {}) => ({
   title,
   ...(content === null ? { missing: true } : { revisions: [{ slots: { main: { content } } }] }),
   ...extra,
+});
+
+describe('extractConceptLinks', () => {
+  it('rend les liens écrits en minuscule (noms communs), pas les noms propres ni « iPhone »', () => {
+    const text = "Un [[entraîneur (sport)|entraîneur]] de [[football]] [[Portugal|portugais]], passé par le [[FC Porto]], sur [[iPhone]].";
+    expect(extractConceptLinks(text)).toEqual(['Entraîneur_(sport)', 'Football']);
+  });
 });
 
 describe('extractLeadLinks', () => {

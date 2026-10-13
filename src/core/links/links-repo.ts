@@ -1,9 +1,10 @@
 import type { KeyValueStore } from '../cache/store';
-import { EMPTY_LINKS, needsLinksLookup, setLinks, type LinksState } from './links-book';
+import { EMPTY_LINKS, needsLinksLookup, setLinks, type FetchedLinks, type LinksState } from './links-book';
 
-// `v2` : les liens viennent du wikitexte de l'introduction (lots de 50 articles). Les `links-v1` lus un article par requête,
-// avec les liens que les modèles d'infobox ajoutent (« Genre musical », « Label discographique »…), sont laissés de côté.
-const KEY = 'links-v2';
+// `v3` : les liens viennent du wikitexte de l'introduction (lots de 50 articles), avec les articles liés en minuscule (notions
+// générales). Les `links-v2` (sans cette marque) et `links-v1` (un article par requête, liens ajoutés par les modèles d'infobox)
+// sont laissés de côté : la Collection est relue une fois.
+const KEY = 'links-v3';
 // Après un échec (429, hors ligne, stockage plein), on laisse Wikipédia respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
 // Articles lus par requête : la limite de l'API. Wikipédia accorde 200 requêtes par minute à chaque IP (mesuré : le quota se rétablit
@@ -19,7 +20,7 @@ const WINDOW_MS = 60_000;
 const BACKLINK_WEIGHT = 3;
 
 // Les liens de l'introduction de plusieurs articles (slugs, au plus BATCH_SIZE), par article.
-export type LinksFetcher = (slugs: string[]) => Promise<Record<string, string[]>>;
+export type LinksFetcher = (slugs: string[]) => Promise<FetchedLinks>;
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
