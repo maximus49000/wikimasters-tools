@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { KnownCard } from '../../../src/core/collection/collection-book';
-import { EMPTY_LINKS, setLinks } from '../../../src/core/links/links-book';
+import { CONCEPTS, EMPTY_LINKS, setLinks, type FetchedLinks } from '../../../src/core/links/links-book';
 import { formatViews, linkedCards, linkedCardsViaArticle } from '../../../src/core/links/linked-cards';
 
 const card = (slug: string, pageviews?: number): KnownCard => ({ slug, title: slug.replace(/_/g, ' '), ...(pageviews !== undefined ? { pageviews } : {}) });
@@ -47,6 +47,13 @@ describe('linkedCards', () => {
     expect(linkedCards(all, links, 'A').map((c) => c.slug)).toEqual(['Mutuelle', 'Seule']);
   });
 
+  it('écarte toujours les articles trop vagues : notion générale, date, pays, même liés dans les deux sens', () => {
+    const all = [card('Mourinho'), card('Football', 9), card('2000_en_football', 9), card('Portugal', 9), card('FC_Porto', 1)];
+    const fetched: FetchedLinks = { Mourinho: ['Football', '2000_en_football', 'Portugal', 'FC_Porto'], Portugal: ['Mourinho'], FC_Porto: ['Mourinho'] };
+    fetched[CONCEPTS] = ['Football'];
+    expect(linkedCards(all, setLinks(EMPTY_LINKS, fetched, 1), 'Mourinho').map((c) => c.slug)).toEqual(['FC_Porto']);
+  });
+
   it('rend une liste vide quand rien n’est lu ou que la carte est inconnue', () => {
     expect(linkedCards(cards, EMPTY_LINKS, 'Paris')).toEqual([]);
     expect(linkedCards(cards, setLinks(EMPTY_LINKS, { Seine: ['Paris'] }, 1), 'Absente')).toEqual([]);
@@ -58,8 +65,8 @@ describe('linkedCardsViaArticle', () => {
   const via = (links: ReturnType<typeof setLinks>) => linkedCardsViaArticle(cards, links, 'Paris').map((v) => [v.card.slug, v.via]);
 
   it('relie par un article hors Collection que les deux cartes citent', () => {
-    const links = setLinks(EMPTY_LINKS, { Paris: ['France'], Louvre: ['France', 'Musee'], Londres: ['Angleterre'] }, 1);
-    expect(via(links)).toEqual([['Louvre', ['France']]]);
+    const links = setLinks(EMPTY_LINKS, { Paris: ['Gothique'], Louvre: ['Gothique', 'Musee'], Londres: ['Angleterre'] }, 1);
+    expect(via(links)).toEqual([['Louvre', ['Gothique']]]);
   });
 
   it('relie par une carte lue : elle cite la cible, ou la cible la cite', () => {
@@ -73,8 +80,8 @@ describe('linkedCardsViaArticle', () => {
   });
 
   it('range d’abord les cartes qui passent par le plus d’articles, avec leurs intermédiaires', () => {
-    const links = setLinks(EMPTY_LINKS, { Paris: ['France', 'Fleuve'], Louvre: ['France'], Londres: ['France', 'Fleuve'] }, 1);
-    expect(via(links)).toEqual([['Londres', ['Fleuve', 'France']], ['Louvre', ['France']]]);
+    const links = setLinks(EMPTY_LINKS, { Paris: ['Gothique', 'Fleuve'], Louvre: ['Gothique'], Londres: ['Gothique', 'Fleuve'] }, 1);
+    expect(via(links)).toEqual([['Londres', ['Fleuve', 'Gothique']], ['Louvre', ['Gothique']]]);
   });
 
   it('ne passe jamais par un article passe-partout', () => {
@@ -82,15 +89,46 @@ describe('linkedCardsViaArticle', () => {
     const all = [...cards, ...fillers.map((slug) => card(slug))];
     const links = setLinks(
       EMPTY_LINKS,
-      { Paris: ['France', 'Fleuve'], Louvre: ['France'], Londres: ['Fleuve'], ...Object.fromEntries(fillers.map((slug) => [slug, ['France']])) },
+      { Paris: ['Gothique', 'Fleuve'], Louvre: ['Gothique'], Londres: ['Fleuve'], ...Object.fromEntries(fillers.map((slug) => [slug, ['Gothique']])) },
       1,
     );
     expect(linkedCardsViaArticle(all, links, 'Paris').map((v) => [v.card.slug, v.via])).toEqual([['Londres', ['Fleuve']]]);
   });
 
+  it('ne passe jamais par une date, un pays ou une notion générale, même cartes non possédées', () => {
+    const fetched: FetchedLinks = {
+      Paris: ['2000_en_football', '2004_en_football', 'France', 'Entraîneur', 'Seine_(fleuve)'],
+      Louvre: ['2000_en_football', '2004_en_football', 'France', 'Entraîneur'],
+      Londres: ['Seine_(fleuve)'],
+    };
+    fetched[CONCEPTS] = ['Entraîneur'];
+    expect(via(setLinks(EMPTY_LINKS, fetched, 1))).toEqual([['Londres', ['Seine (fleuve)']]]);
+  });
+
+  it('garde une grande ville comme carte liée, jamais comme intermédiaire', () => {
+    const all = [card('Paris'), card('Tour_Eiffel'), card('Louvre')];
+    const links = setLinks(EMPTY_LINKS, { Tour_Eiffel: ['Paris'], Louvre: ['Paris'] }, 1);
+    expect(linkedCards(all, links, 'Tour_Eiffel').map((c) => c.slug)).toEqual(['Paris']);
+    expect(linkedCardsViaArticle(all, links, 'Tour_Eiffel')).toEqual([]);
+  });
+
+  it('classe par le meilleur intermédiaire, pas par leur nombre, et le montre en premier', () => {
+    const fillers = Array.from({ length: 6 }, (_, i) => `Carte_${i}`);
+    // « Courant » est cité par 8 cartes, « Rare » par 2 : Londres (un lien rare) passe devant Louvre (deux liens courants).
+    const links = setLinks(
+      EMPTY_LINKS,
+      { Paris: ['Courant', 'Banal', 'Rare'], Louvre: ['Courant', 'Banal'], Londres: ['Rare', 'Courant'], ...Object.fromEntries(fillers.map((slug) => [slug, ['Courant', 'Banal']])) },
+      1,
+    );
+    expect(via(links)).toEqual([
+      ['Londres', ['Rare', 'Courant']],
+      ['Louvre', ['Banal', 'Courant']],
+    ]);
+  });
+
   it('rend une liste vide sans lien lu ou pour une carte inconnue', () => {
     expect(via(EMPTY_LINKS)).toEqual([]);
-    expect(linkedCardsViaArticle(cards, setLinks(EMPTY_LINKS, { Louvre: ['France'] }, 1), 'Absente')).toEqual([]);
+    expect(linkedCardsViaArticle(cards, setLinks(EMPTY_LINKS, { Louvre: ['Gothique'] }, 1), 'Absente')).toEqual([]);
   });
 });
 
