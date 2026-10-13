@@ -70,7 +70,9 @@ import { ensurePosition, positionFailure, requestPosition, subscribePosition } f
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
 import { commitPlacement, editPlacement, movePlacement, moveToItem, placingView, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
-import { PlacementBar } from './placement-bar';
+import { PlacementBar, PlacementGrip } from './placement-bar';
+import { pointerToCell } from './furniture-drag';
+import { followPointer } from './pointer-follow';
 import { createLongPress } from './long-press';
 import { FullscreenButton, useFullscreen } from './fullscreen';
 import { lockOrientation, unlockOrientation } from './orientation-lock';
@@ -162,6 +164,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [drawer, setDrawer] = useState<DrawerState>(INITIAL_DRAWER);
   // Placement en cours (objet neuf, carte choisie ou objet déplacé) : rien n'est enregistré avant ✓.
   const [placement, setPlacement] = useState<Placement | null>(null);
+  // Glissé du fantôme : placement courant relu par les écouteurs, arrêt du suivi, clic à avaler après le relâcher.
+  const placementRef = useRef<Placement | null>(null);
+  const stopFollow = useRef<(() => void) | null>(null);
+  const swallowClick = useRef(false);
+  const [following, setFollowing] = useState(false);
+  useEffect(() => () => stopFollow.current?.(), []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [blink, setBlink] = useState<Cell[]>([]);
   const [message, setMessage] = useState('');
@@ -350,6 +358,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const reset = (): void => {
     setPlacement(null);
+    placementRef.current = null;
+    stopFollow.current?.();
+    stopFollow.current = null;
+    setFollowing(false);
     setSelectedId(null);
     setBlink([]);
     setMessage('');
@@ -380,6 +392,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // Le fantôme bouge : l'aide ou la raison du refus s'affiche, et les cases fautives sont marquées.
   const showPlacement = (next: Placement): void => {
     setPlacement(next);
+    placementRef.current = next;
     setMessage(next.target.ok ? PLACE_HINT : next.target.reason ? REASONS[next.target.reason] : '');
     setBlink(next.target.ok ? [] : next.target.cells);
   };
@@ -403,10 +416,60 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (next) showPlacement(next);
     else refuse('Impossible ici.');
   };
-  // Appui long sur un objet : il passe en placement.
+  // Position du doigt → case et position dans le dessin (null si la pièce n'est pas affichée).
+  const spotOfPointer = (clientX: number, clientY: number): Spot | null => {
+    const svg = scrollRef.current?.querySelector('svg[role="img"]');
+    if (!svg) return null;
+    const { col, row, x, y } = pointerToCell(svg.getBoundingClientRect(), room.cols * CELL_W, HEIGHT, clientX, clientY);
+    return { col, row, x, y };
+  };
+  // Glissé du fantôme (appui long, poignée ✥ ou objet lui-même) : un objet à case garde sous le doigt le décalage de la saisie,
+  // un objet à porteur vise ce qui est sous le doigt. Au relâcher, le placement reste ouvert en attendant ✓.
+  const followPlacement = (from: { x: number; y: number }): void => {
+    stopFollow.current?.();
+    const first = placementRef.current;
+    const grab = spotOfPointer(from.x, from.y);
+    if (!first || !grab) return;
+    const keepOffset = first.target.col !== undefined && first.target.top !== undefined;
+    const off = keepOffset ? { col: first.spot.col - grab.col, row: first.spot.row - grab.row } : { col: 0, row: 0 };
+    const track = (clientX: number, clientY: number): void => {
+      const current = placementRef.current;
+      const at = spotOfPointer(clientX, clientY);
+      if (!current || !at) return;
+      const spot = keepOffset ? spotAt(at.col + off.col, at.row + off.row) : at;
+      if (keepOffset && spot.col === current.spot.col && spot.row === current.spot.row) return;
+      showPlacement(movePlacement(current, room.cols, spot));
+    };
+    setFollowing(true);
+    stopFollow.current = followPointer({
+      scroll: () => scrollRef.current,
+      start: from,
+      onMove: track,
+      onEnd: (x, y) => {
+        track(x, y);
+        stopFollow.current = null;
+        setFollowing(false);
+        // Le clic que le navigateur envoie juste après le relâcher ne doit pas déplacer le fantôme.
+        swallowClick.current = true;
+        window.setTimeout(() => { swallowClick.current = false; }, 0);
+      },
+    });
+  };
+  // Pendant un placement, appuyer sur l'objet (son empreinte) le fait glisser.
+  const onScrollPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const current = placementRef.current;
+    if (!current || stopFollow.current) return;
+    const at = spotOfPointer(event.clientX, event.clientY);
+    const g = current.target.ghost;
+    if (!at || !g || at.col < g.col || at.col >= g.col + g.w || at.row < g.row || at.row >= g.row + g.h) return;
+    event.preventDefault();
+    followPlacement({ x: event.clientX, y: event.clientY });
+  };
+  // Appui long sur un objet : l'interface de modification s'ouvre (placement), et l'objet suit aussitôt le doigt.
   startDragRef.current = (id: string): void => {
     setMode('edit');
     startPlacementFor({ type: 'move', id });
+    followPlacement(lastPointer.current);
   };
   const onFurnitureDown = (id: string, event: ReactPointerEvent): void => {
     // En mode Visiter, l'appui long ne fait rien (seul le bouton « Aménager » ouvre l'aménagement), mais il est suivi pour
@@ -454,6 +517,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   }
 
   function onCell(col: number, row: number): void {
+    if (swallowClick.current) {
+      swallowClick.current = false;
+      return;
+    }
     if (placement) showPlacement(movePlacement(placement, room.cols, spotAt(col, row)));
   }
 
@@ -467,6 +534,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const item = layout.find((p) => p.id === id);
     if (!item) return;
     if (placement) {
+      if (swallowClick.current) {
+        swallowClick.current = false;
+        return;
+      }
       if (id !== placingView(placement).id) showPlacement(moveToItem(placement, room.cols, id));
       return;
     }
@@ -691,10 +762,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           className="wmt-lib-scroll"
           data-scroll
           ref={scrollRef}
+          onPointerDown={onScrollPointerDown}
           style={{
             // En plein écran : la fenêtre visible (24 ou 16 colonnes sur 510 de haut) prend la plus grande taille qui tient dans l'écran.
             maxWidth: fill ? 'none' : stage.active ? `min(100vw, calc(${screenH} * ${visibleWidth} / ${HEIGHT}))` : portrait ? 480 : 960,
             ...(fill ? { width: '100vw', height: screenH, overflowY: 'auto' } : {}),
+            ...(following ? { overflowX: 'hidden', touchAction: 'none' } : {}),
             // Dehors : la caméra règle le viewBox, le conteneur ne défile plus et prend le cadre de la fenêtre visible.
             ...(outside ? { ...(stage.active ? { width: '100vw', height: '100vh', maxWidth: 'none' } : { width: '100%', aspectRatio: `${visibleWidth} / ${HEIGHT}` }), overflow: 'hidden', touchAction: 'none', position: 'relative', userSelect: 'none', WebkitUserSelect: 'none' } : {}),
           }}
@@ -795,6 +868,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               </>
             )}
           </PlacementBar>
+        )}
+        {editing && !outside && placement && placingItem && (
+          <PlacementGrip stage={stage.ref.current} scroll={scrollRef.current} targetId={placingView(placement).id} onGrab={(event) => { event.preventDefault(); followPlacement({ x: event.clientX, y: event.clientY }); }} />
         )}
         {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} kinds={roomCards.kinds} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}
         {viewing && roomCards.cards[viewing] && (

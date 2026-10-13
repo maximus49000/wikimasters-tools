@@ -301,7 +301,9 @@ describe('LibraryPanel : cartes', () => {
     expect(q('[data-drag-ghost="ok"]')).not.toBeNull();
     await pointer('pointerup', window, 305, 203);
     await settle();
-    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 10, row: 4, slug: 'Paris' });
+    await placeOk();
+    // Saisi en case 3-6 et relâché en 10-7 : l'affiche garde le décalage de la saisie (+7 colonnes, +1 ligne).
+    expect(layoutNow()[0]).toMatchObject({ kind: 'wall', col: 9, row: 5, slug: 'Paris' });
   });
 
   it('un objet accroché lâché sur le sol reste en place et le dit', async () => {
@@ -325,6 +327,7 @@ describe('LibraryPanel : cartes', () => {
     expect(q('[data-drag-ghost="ok"]')).not.toBeNull();
     await pointer('pointerup', window, to.x, to.y);
     await settle();
+    await placeOk();
     expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ kind: 'stored', shelfId: 'f1', slot: 4 });
   });
 
@@ -336,6 +339,7 @@ describe('LibraryPanel : cartes', () => {
     await longPress('[data-card="Daft_Punk"]', from.x, from.y);
     await pointer('pointerup', window, other.x + other.w / 2, other.y + other.h / 2);
     await settle();
+    await placeOk();
     expect(layoutNow().find((p) => p.id === 'f2')).toMatchObject({ shelfId: 'f9', slot: 3 });
   });
 
@@ -365,6 +369,7 @@ describe('LibraryPanel : cartes', () => {
     await pointer('pointermove', window, 400, 385);
     await pointer('pointerup', window, 400, 385);
     await settle();
+    await placeOk();
     expect(layoutNow().find((p) => p.id === 'c1')).toMatchObject({ kind: 'computer', deskId: 'd2', slug: 'Paris' });
   });
 });
