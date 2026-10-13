@@ -77,11 +77,16 @@ describe('migration v6', () => {
     expect(layout).toHaveLength(2);
     for (const p of layout) expect(rectOf(p)!.col + rectOf(p)!.w).toBeLessThanOrEqual(96);
   });
-  it('sans place, au moins un canapé reste exactement à sa position calculée', () => {
+  it('sans place, le dernier canapé reste exactement à leur position calculée', () => {
     const many = Array.from({ length: 12 }, (_, i) => ({ id: `s${i}`, kind: 'sofa', col: (i % 4) * 6, row: 12 + Math.floor(i / 4) * 2 }));
-    const out = parseLibraryState(v5(many)).rooms[0]!.layout;
-    const kept = out.filter((p, i) => (p as { col: number }).col === many[i]!.col && (p as { row: number }).row === many[i]!.row + 3 - drawSize('sofa', 0).h);
-    expect(kept.length).toBeGreaterThan(0);
+    const out = parseLibraryState(v5(many)).rooms[0]!.layout as unknown as { id: string; col: number; row: number }[];
+    // Refusé = ne passe pas `canPlace` face aux autres : seule la branche « aucune place » peut l'avoir laissé là.
+    // Le dernier canapé n'a plus de place : il reste à la position calculée (dernière rangée conservée) et gêne un autre (ou sort de la pièce).
+    const last = out.find((p) => p.id === 's11')!;
+    const o = many[11]!;
+    expect({ col: last.col, row: last.row }).toEqual({ col: o.col, row: o.row + 3 - drawSize('sofa', 0).h });
+    const others = out.filter((p) => p.id !== 's11');
+    expect(canPlace(others as never, 24, 'sofa', last.col, last.row, 's11').ok).toBe(false);
   });
   it('refitLayout : ancienne taille fournie', () => {
     const out = refitLayout([{ id: 'a', kind: 'sofa', col: 0, row: 10 }] as never, 24, () => ({ w: 1, h: 5 }));
