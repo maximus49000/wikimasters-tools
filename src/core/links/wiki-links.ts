@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getJson, type FetchLike } from '../birth/wikidata-birth';
 import { slugToTitle, titleToSlug } from '../market/market-book';
+import { CONCEPTS, type FetchedLinks } from './links-book';
 
 const WIKIPEDIA = 'https://fr.wikipedia.org/w/api.php';
 // Limite de l'API : 50 titres par requête.
@@ -45,27 +46,47 @@ function isArticle(target: string): boolean {
   return /\s/.test(prefix) || !NOT_ARTICLES.has(prefix.toLowerCase());
 }
 
-// Les articles liés dans un wikitexte (slugs, sans doublon) : les liens écrits `[[Cible]]` ou `[[Cible|texte]]`, y compris dans les
-// paramètres d'une infobox. Ni les fichiers et catégories, ni les liens vers un autre wiki, ni les commentaires ; les notes de bas de page
-// (références, souvent un journal ou un identifiant) sont ignorées : ce ne sont pas elles qui disent le sujet de l'article.
-export function extractLeadLinks(wikitext: string): string[] {
+// Les cibles des liens d'un wikitexte, telles qu'écrites : `[[Cible]]` ou `[[Cible|texte]]`, y compris dans les paramètres d'une infobox.
+// Ni les fichiers et catégories, ni les liens vers un autre wiki, ni les commentaires ; les notes de bas de page (références, souvent
+// un journal ou un identifiant) sont ignorées : ce ne sont pas elles qui disent le sujet de l'article.
+function leadTargets(wikitext: string): string[] {
   const text = wikitext
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<nowiki>[\s\S]*?<\/nowiki>/gi, '')
     .replace(/<ref\b[^>]*\/>/gi, '')
     .replace(/<ref\b[^>]*>[\s\S]*?<\/ref>/gi, '');
-  const slugs = new Set<string>();
+  const targets: string[] = [];
   // On ne lit que la cible : un lien imbriqué dans une légende de fichier est trouvé lui aussi.
   for (const match of text.matchAll(/\[\[([^[\]|#\n]+)/g)) {
     let target = (match[1] ?? '').trim();
     // `[[:Catégorie:X]]` et `[[:en:X]]` sont des liens explicites vers un autre espace de noms ou un autre wiki.
     if (target.startsWith(':')) target = target.slice(1).trim();
-    if (!target || !isArticle(target)) continue;
-    // MediaWiki met la première lettre en majuscule : `[[rock]]` et `[[Rock]]` sont le même article.
-    const slug = titleToSlug(target);
-    slugs.add(slug.charAt(0).toUpperCase() + slug.slice(1));
+    if (target && isArticle(target)) targets.push(target);
   }
-  return [...slugs];
+  return targets;
+}
+
+// MediaWiki met la première lettre en majuscule : `[[rock]]` et `[[Rock]]` sont le même article.
+function targetSlug(target: string): string {
+  const slug = titleToSlug(target);
+  return slug.charAt(0).toUpperCase() + slug.slice(1);
+}
+
+// Les articles liés dans un wikitexte (slugs, sans doublon).
+export function extractLeadLinks(wikitext: string): string[] {
+  return [...new Set(leadTargets(wikitext).map(targetSlug))];
+}
+
+// Les liens écrits en minuscule (`[[football]]`, `[[entraîneur (sport)|entraîneur]]`) : en français, un nom commun, donc une notion
+// générale ; un nom propre (personne, œuvre, lieu, club) prend une majuscule. « iPhone », « eBay » (deuxième lettre en majuscule)
+// restent des noms propres. Slugs, sans doublon.
+export function extractConceptLinks(wikitext: string): string[] {
+  const concepts = leadTargets(wikitext).filter((target) => {
+    const first = target.charAt(0);
+    const second = target.charAt(1);
+    return first !== first.toUpperCase() && !(second && second !== second.toLowerCase());
+  });
+  return [...new Set(concepts.map(targetSlug))];
 }
 
 const renames = z.array(z.object({ from: z.string(), to: z.string() }));
@@ -86,7 +107,7 @@ const responseSchema = z.union([
 // heurterait à cette limite ; 50 articles par requête n'en demandent que 45. Un article inexistant, invalide ou sans introduction
 // donne une liste vide. Une réponse inattendue lève : elle ne doit pas être enregistrée comme « articles sans lien ».
 // Seuls les titres sont envoyés : aucune donnée du jeu ni du compte.
-export async function fetchLeadLinks(fetchFn: FetchLike, slugs: string[]): Promise<Record<string, string[]>> {
+export async function fetchLeadLinks(fetchFn: FetchLike, slugs: string[]): Promise<FetchedLinks> {
   if (slugs.length === 0) return {};
   if (slugs.length > LEAD_BATCH) throw new Error(`Wikipédia : au plus ${LEAD_BATCH} articles par requête`);
   const titles = slugs.map(slugToTitle);
@@ -120,11 +141,16 @@ export async function fetchLeadLinks(fetchFn: FetchLike, slugs: string[]): Promi
     }
   }
   const step = (map: Map<string, string>, title: string) => map.get(title) ?? title;
-  const result: Record<string, string[]> = {};
+  const result: FetchedLinks = {};
+  const concepts = new Set<string>();
   slugs.forEach((slug, index) => {
     const title = titles[index] ?? '';
-    result[slug] = extractLeadLinks(contents.get(step(redirects, step(normalized, title))) ?? '');
+    const wikitext = contents.get(step(redirects, step(normalized, title))) ?? '';
+    result[slug] = extractLeadLinks(wikitext);
+    for (const concept of extractConceptLinks(wikitext)) concepts.add(concept);
   });
+  // Non énumérable : la liste n'apparaît pas parmi les articles lus.
+  Object.defineProperty(result, CONCEPTS, { value: [...concepts] });
   return result;
 }
 
