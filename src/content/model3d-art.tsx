@@ -1,8 +1,8 @@
 // Dessin provisoire Opus — reprise Fable prévue.
-import { memo, type ReactElement } from 'react';
+import { memo, useId, type ReactElement } from 'react';
 import type { Angle } from '../core/library/footprint';
 import { FURNITURE_MODELS, STEAMPUNK_TRIM } from '../core/library/furniture-models';
-import { CELL_H, CELL_W, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
+import { CELL_H, CELL_W, openingOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
 import { itemModel, itemPieces, type ItemDisplay, type ItemPlacement, type ItemShape } from '../core/library/item-models';
 import type { StandingKind } from '../core/library/library-types';
 import type { PxRect } from '../core/library/room-grid';
@@ -26,14 +26,16 @@ const pts = (points: [number, number][]): string => points.map(([x, y]) => `${r1
 // Formes prêtes à dessiner (attributs déjà arrondis) ; `ink` : 'none' aplat sans trait, 'only' trait seul ; `color` : couleur propre (sinon la palette) ;
 // `glow` : objet dont l'abat-jour s'allume ; `decal` : face décorée (image, titre, pages, écran) posée par la matrice `m` (unités : mm de la face).
 type DecalDraw = { item: string; role: string; shape: string; m: string; w: number; h: number; dim: number };
-type Common = { fill: Fill; shade: number; color?: string; glow?: string };
+type Common = { fill: Fill; shade: number; color?: string; glow?: string; stored?: true };
 type Drawn = Common & (
   | { tag: 'polygon'; points: string; ink?: 'none' | 'only'; decal?: DecalDraw }
   | { tag: 'polyline'; points: string }
   | { tag: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
 );
 type Halo = { cx: number; cy: number; rx: number; ry: number; item?: string };
-type Geometry = { shapes: Drawn[]; cols: number; rows: number; halos: Halo[] };
+// `opening` : ouverture projetée du meuble porteur (points) qui découpe les objets rangés ; null = ouverture invisible (profil, dos) : ils sont cachés ;
+// absente = objet dessiné seul, sans découpe.
+type Geometry = { shapes: Drawn[]; cols: number; rows: number; halos: Halo[]; opening?: string | null };
 
 const r4 = (v: number): number => Math.round(v * 1e4) / 1e4;
 // Halo d'une lampe autour de son abat-jour (formes repérées par `pick`), quel que soit l'angle.
@@ -48,7 +50,7 @@ function haloOf(shapes: Shape[], pick: (s: Shape) => boolean): Omit<Halo, 'item'
 function geometryFrom(model: Model, angle: Angle, lampHalo: boolean): Geometry {
   const r = renderModel(model, angle);
   const shapes = r.shapes.map((s): Drawn => {
-    const common: Common = { fill: s.fill, shade: s.shade, ...(s.color && { color: s.color }), ...(s.tag?.startsWith('glow:') && { glow: s.tag.slice(5) }) };
+    const common: Common = { fill: s.fill, shade: s.shade, ...(s.color && { color: s.color }), ...(s.tag?.startsWith('glow:') && { glow: s.tag.slice(5) }), ...(s.tag?.startsWith('stored:') && { stored: true as const }) };
     if (s.kind === 'line') return { ...common, tag: 'polyline', points: pts(s.points) };
     if (s.kind === 'ellipse') return { ...common, tag: 'ellipse', cx: r1(s.cx), cy: r1(s.cy), rx: r1(s.rx), ry: r1(s.ry) };
     const out: Drawn = { ...common, tag: 'polygon', points: pts(s.points), ink: s.ink };
@@ -96,7 +98,10 @@ function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?
     const base = FURNITURE_MODELS[kind];
     const trim = steampunk ? (STEAMPUNK_TRIM[kind] ?? []) : [];
     const extra = (items ?? []).flatMap((i) => itemPieces(i, steampunk));
-    return geometryFrom(trim.length + extra.length > 0 ? { ...base, pieces: [...base.pieces, ...trim, ...extra] } : base, angle, kind === 'lamp');
+    const g = geometryFrom(trim.length + extra.length > 0 ? { ...base, pieces: [...base.pieces, ...trim, ...extra] } : base, angle, kind === 'lamp');
+    if (!g.shapes.some((s) => s.stored)) return g;
+    const o = openingOf(base, angle);
+    return { ...g, opening: o ? pts(o) : null };
   });
 }
 
@@ -175,32 +180,51 @@ type DrawProps = { g: Geometry; palette: Palette; lit: boolean; content?: Record
 
 // Formes d'une géométrie, décors des faces compris (dans l'ordre du peintre : un décor passe juste après sa face).
 function Shapes({ g, palette, lit, content, lampShade = false }: DrawProps): ReactElement {
+  const clipId = `wm-ouverture-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const isLit = (s: Drawn) => (s.glow !== undefined ? content?.[s.glow]?.lit ?? true : lampShade && s.fill === 'shade' && lit);
   const base = (s: Drawn) => (isLit(s) ? LIT_SHADE : s.color ?? palette[s.fill]);
   const color = (s: Drawn) => shadeHex(base(s), s.shade);
+  const drawOne = (s: Drawn, i: number): ReactElement => {
+    if (s.tag === 'polyline') return <polyline key={i} points={s.points} fill="none" stroke={color(s)} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+    if (s.tag === 'ellipse') return <ellipse key={i} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} fill={color(s)} stroke={palette.edge} strokeWidth={1.2} vectorEffect="non-scaling-stroke" />;
+    const poly = <polygon key={i} points={s.points} fill={s.ink === 'only' ? 'none' : color(s)} stroke={s.ink === 'none' ? 'none' : palette.edge} strokeWidth={1.2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+    if (!s.decal) return poly;
+    const d = s.decal;
+    return (
+      <g key={i}>
+        {poly}
+        <g transform={d.m}>
+          <DecalArt d={d} content={content?.[d.item]} color={base(s)} />
+        </g>
+        {d.dim > 0 && <polygon points={s.points} fill="#000000" opacity={d.dim} pointerEvents="none" />}
+      </g>
+    );
+  };
   return (
     <>
       {g.halos.filter((h) => (h.item !== undefined ? content?.[h.item]?.lit ?? true : lit)).map((h, i) => (
         <ellipse key={`h${i}`} data-lamp-halo="" pointerEvents="none" cx={h.cx} cy={h.cy} rx={h.rx} ry={h.ry} fill="#FFD38A" opacity={0.35} />
       ))}
-      {g.shapes.map((s, i) => {
-        if (s.tag === 'polyline') return <polyline key={i} points={s.points} fill="none" stroke={color(s)} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
-        if (s.tag === 'ellipse') return <ellipse key={i} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} fill={color(s)} stroke={palette.edge} strokeWidth={1.2} vectorEffect="non-scaling-stroke" />;
-        const poly = <polygon key={i} points={s.points} fill={s.ink === 'only' ? 'none' : color(s)} stroke={s.ink === 'none' ? 'none' : palette.edge} strokeWidth={1.2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
-        if (!s.decal) return poly;
-        const d = s.decal;
-        return (
-          <g key={i}>
-            {poly}
-            <g transform={d.m}>
-              <DecalArt d={d} content={content?.[d.item]} color={base(s)} />
-            </g>
-            {d.dim > 0 && <polygon points={s.points} fill="#000000" opacity={d.dim} pointerEvents="none" />}
-          </g>
-        );
+      {g.opening && <clipPath id={clipId}><polygon points={g.opening} /></clipPath>}
+      {runsOf(g.shapes).map((run) => {
+        const els = run.shapes.map(([s, i]) => drawOne(s, i));
+        // Objets rangés : découpés à l'ouverture du meuble (une suite d'objets = une seule découpe) ; ouverture invisible : cachés.
+        if (!run.stored || g.opening === undefined) return els;
+        return g.opening ? <g key={`c${run.shapes[0]![1]}`} clipPath={`url(#${clipId})`}>{els}</g> : null;
       })}
     </>
   );
+}
+
+// Formes consécutives de même nature (objet rangé ou non), avec leur rang : l'ordre du peintre est gardé.
+function runsOf(shapes: Drawn[]): { stored: boolean; shapes: [Drawn, number][] }[] {
+  const out: { stored: boolean; shapes: [Drawn, number][] }[] = [];
+  shapes.forEach((s, i) => {
+    const last = out[out.length - 1];
+    if (last && last.stored === !!s.stored) last.shapes.push([s, i]);
+    else out.push({ stored: !!s.stored, shapes: [[s, i]] });
+  });
+  return out;
 }
 
 type Props = { kind: StandingKind; angle: Angle; rect: PxRect; palette: Palette; lit?: boolean; steampunk?: boolean; items?: ItemPlacement[]; content?: Record<string, ItemContent> };

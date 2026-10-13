@@ -395,29 +395,6 @@ describe('occulteurs et dessus praticable (lumière, animaux)', () => {
   });
 });
 
-describe('ordre de dessin des pièces séparées', () => {
-  // Livre debout au bout d'une tablette, contre le montant : les centres trompent (le livre paraît plus proche), la séparation en x tranche.
-  const pair = (mirror: boolean): Model => ({
-    w: 80, d: 30, h: 180,
-    pieces: [
-      { shape: 'box', x: mirror ? 0 : 77, y: 0, z: 0, w: 3, h: 180, d: 30, fill: 'wood', tag: 'montant' },
-      { shape: 'box', x: mirror ? 5 : 72, y: 8, z: 2, w: 3, h: 23, d: 15, fill: 'desk', tag: 'livre' },
-    ],
-  });
-  it('de ¾ et de profil, le montant le plus proche passe après le livre posé contre lui', () => {
-    for (const [angle, mirror] of [[1, false], [7, true], [2, false], [6, true]] as const) {
-      const tags = renderModel(pair(mirror), angle).shapes.map((s) => s.tag);
-      expect(tags.lastIndexOf('livre'), `angle ${angle}`).toBeLessThan(tags.indexOf('montant'));
-    }
-  });
-  it('du côté opposé, le montant lointain passe avant le livre', () => {
-    for (const [angle, mirror] of [[7, false], [1, true]] as const) {
-      const tags = renderModel(pair(mirror), angle).shapes.map((s) => s.tag);
-      expect(tags.lastIndexOf('montant'), `angle ${angle}`).toBeLessThan(tags.indexOf('livre'));
-    }
-  });
-});
-
 describe('faces décorées (décalques) et couleurs propres', () => {
   const card: Model = {
     w: 14, d: 1, h: 12.5,

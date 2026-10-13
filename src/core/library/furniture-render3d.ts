@@ -292,9 +292,6 @@ function paintOrder(pieces: Piece[], f: Frame): Piece[] {
     return depthOf(f, bx, bz) - depthOf(f, ax, az) || ay - by;
   });
   const bs = base.map((p) => boundsOf(p, f));
-  const mb = base.map(pieceBounds); // encombrement dans le repère du modèle (x0, x1, y0, y1, z0, z1)
-  const side = Math.abs(f.sin) > 1e-9 ? Math.sign(f.sin) : 0; // > 0 : le côté droit (+x) est le plus proche
-  const front = Math.abs(f.cos) > 1e-9 ? Math.sign(f.cos) : 0; // > 0 : l'avant (−z) est le plus proche
   const n = base.length;
   const after: number[][] = base.map(() => []); // after[i] = pièces à dessiner après i
   const waiting = base.map(() => 0);
@@ -310,10 +307,6 @@ function paintOrder(pieces: Piece[], f: Frame): Piece[] {
       if (overlap && la !== lb) first = la < lb ? i : j;
       else if (overlap && b.bottom >= a.top - EPS) first = i;
       else if (overlap && a.bottom >= b.top - EPS) first = j;
-      // Pièces séparées dans le repère du modèle (côte à côte en x, ou l'une devant l'autre en z) : la plus proche du spectateur passe après.
-      // Plus sûr que les centres (un livre contre le montant d'une étagère tournée) ; séparées sur les deux axes, elles ne se recouvrent pas à l'écran.
-      else if (overlap && side !== 0 && (mb[i]![1] <= mb[j]![0] + 1e-6 || mb[j]![1] <= mb[i]![0] + 1e-6)) first = (mb[i]![1] <= mb[j]![0] + 1e-6) === side > 0 ? i : j;
-      else if (overlap && front !== 0 && (mb[i]![5] <= mb[j]![4] + 1e-6 || mb[j]![5] <= mb[i]![4] + 1e-6)) first = (mb[i]![5] <= mb[j]![4] + 1e-6) === front > 0 ? j : i;
       else if (a.z0 >= b.z1 - 1e-6) first = i; // a entièrement derrière b
       else if (b.z0 >= a.z1 - 1e-6) first = j;
       if (first < 0) continue;
@@ -623,6 +616,14 @@ export function faceCornersOf(model: Model, angle: Angle): { tl: [number, number
   const L = layoutOf(model, angle);
   const top = face.y + face.h;
   return { tl: L.toPx({ x: face.x, y: top, z: 0 }), tr: L.toPx({ x: face.x + face.w, y: top, z: 0 }), bl: L.toPx({ x: face.x, y: face.y, z: 0 }) };
+}
+
+// Ouverture de la face avant (`model.face` : entre les montants, la plinthe et le dessus) projetée, px du rectangle de dessin :
+// haut gauche, haut droit, bas droit, bas gauche ; null si on ne la voit pas. Un objet rangé dans le meuble ne se voit qu'à travers elle.
+export function openingOf(model: Model, angle: Angle): [number, number][] | null {
+  const c = faceCornersOf(model, angle);
+  if (!c) return null;
+  return [c.tl, c.tr, [c.tr[0] + c.bl[0] - c.tl[0], c.tr[1] + c.bl[1] - c.tl[1]], c.bl];
 }
 
 // Niveaux de rangement de la face avant, du haut vers le bas, en fractions de sa hauteur depuis son haut : les intervalles entre

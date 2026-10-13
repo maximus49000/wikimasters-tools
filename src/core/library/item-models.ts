@@ -102,7 +102,7 @@ export function bookColor(slug: string): string {
   return `#${ch(0)}${ch(8)}${ch(4)}`;
 }
 
-// Objet posé : `key` le distingue (clés de décalque « key|rôle:forme », abat-jour « glow:key ») ; (x, y, z) = coin bas avant gauche de sa boîte
+// Objet posé : `key` le distingue (clés de décalque « key|rôle:forme », formes « stored:key », abat-jour « glow:key ») ; (x, y, z) = coin bas avant gauche de sa boîte
 // dans le repère du meuble, une fois posé ; `color` : couleur du dos d'un livre.
 export type ItemPlacement = { key: string; shape: ItemShape; display?: ItemDisplay; x: number; y: number; z: number; color?: string };
 
@@ -112,11 +112,14 @@ const TURNED: Record<BoxFace, BoxFace> = { left: 'front', front: 'right', right:
 // Pièces d'un objet posé dans le repère de son meuble. Sur la tranche, l'objet rangé tourne d'un quart (les objets rangés ne sont faits que de boîtes).
 export function itemPieces(p: ItemPlacement, steampunk = false): Piece[] {
   const m = itemModel(p.shape, steampunk);
-  const turned = p.display === 'spine' && p.shape !== 'monitor' && p.shape !== 'small-plant' && p.shape !== 'small-lamp';
+  const stored = p.shape !== 'monitor' && p.shape !== 'small-plant' && p.shape !== 'small-lamp';
+  const turned = p.display === 'spine' && stored;
   return m.pieces.map((q): Piece => {
-    // Étiquettes du modèle : `body` reçoit la couleur propre puis disparaît, `glow` devient « glow:key » (allumage de cet objet-là).
+    // Étiquettes : `body` reçoit la couleur propre ; un objet rangé est marqué « stored:key » (il ne se voit qu'à travers l'ouverture du meuble),
+    // `glow` devient « glow:key » (allumage de cet objet-là).
     const base: Piece = { ...q, ...(q.tag === 'body' && p.color && { color: p.color }) };
     if (q.tag === 'glow') base.tag = `glow:${p.key}`;
+    else if (stored) base.tag = `stored:${p.key}`;
     else delete base.tag;
     switch (base.shape) {
       case 'box': {

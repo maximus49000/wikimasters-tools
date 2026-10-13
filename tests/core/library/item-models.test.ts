@@ -1,7 +1,7 @@
 // tests/core/library/item-models.test.ts
 import { describe, expect, it } from 'vitest';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
-import { PX_PER_CM_X, PX_PER_CM_Y, pieceBounds, renderModel, type Model, type Piece, type Shape } from '../../../src/core/library/furniture-render3d';
+import { PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, openingOf, pieceBounds, renderModel, type Model, type Piece, type Shape } from '../../../src/core/library/furniture-render3d';
 import { ITEM_MODELS, STEAMPUNK_MONITOR, bookColor, itemFootprintCm, itemPieces, type ItemShape } from '../../../src/core/library/item-models';
 
 const CELL_W = 30;
@@ -100,15 +100,26 @@ describe('objets posés dans le repère de leur meuble', () => {
     expect(spine.tr[0] - spine.tl[0]).toBeCloseTo(3 * PX_PER_CM_X, 6);
     expect(at(1).map((d) => d.key)).toContain('b|cover:book');
   });
-  it('de ¾, l’objet passe après la tablette qui le porte et avant le montant proche', () => {
-    // Tablette du milieu (y = 58) et montant droit (x = 77) étiquetés pour les retrouver dans l'ordre de dessin.
-    const tagged = FURNITURE_MODELS.shelf.pieces.map((p): Piece => (p.shape === 'box' && p.y === 58 ? { ...p, tag: 'board' } : p.shape === 'box' && p.x === 77 ? { ...p, tag: 'right' } : p));
+  it('de ¾, l’objet passe après la tablette qui le porte ; ses formes sont marquées « rangé »', () => {
+    const tagged = FURNITURE_MODELS.shelf.pieces.map((p): Piece => (p.shape === 'box' && p.y === 58 ? { ...p, tag: 'board' } : p));
     const shelf: Model = { ...FURNITURE_MODELS.shelf, pieces: [...tagged, ...itemPieces({ key: 'g', shape: 'game', display: 'cover', x: 55, y: 61, z: 26.5 })] };
     const order = renderModel(shelf, 1).shapes;
     const cover = order.findIndex((s) => s.kind === 'poly' && s.decal?.key === 'g|cover:game');
     expect(cover).toBeGreaterThan(-1);
     expect(order.map((s) => s.tag).lastIndexOf('board')).toBeLessThan(cover);
-    expect(order.findIndex((s) => s.tag === 'right')).toBeGreaterThan(cover);
+    expect(order[cover]!.tag).toBe('stored:g');
+  });
+  it('ouverture de l’étagère : face avant entre montants, plinthe et dessus, projetée (parallélogramme de ¾), absente de profil et de dos', () => {
+    for (const a of [0, 1, 7] as const) {
+      const o = openingOf(FURNITURE_MODELS.shelf, a)!;
+      const c = faceCornersOf(FURNITURE_MODELS.shelf, a)!;
+      expect(o).toHaveLength(4);
+      expect(o[0]).toEqual(c.tl);
+      expect(o[1]).toEqual(c.tr);
+      expect(o[3]).toEqual(c.bl);
+      expect(o[2]![0]).toBeCloseTo(c.tr[0] + c.bl[0] - c.tl[0], 6);
+    }
+    for (const a of [2, 3, 4, 5, 6] as const) expect(openingOf(FURNITURE_MODELS.shelf, a)).toBeNull();
   });
   it('petite lampe : abat-jour étiqueté pour l’allumage', () => {
     const ps = itemPieces({ key: 'l', shape: 'small-lamp', x: 8, y: 75, z: 35 });
