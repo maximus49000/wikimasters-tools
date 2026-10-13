@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIRST_BUS, LAST_BUS, busArrivals, headwayAt, lineHeadwayAt, serviceDepartures, serviceKindOf } from '../../../../../src/core/library/city/traffic/bus-timetable';
+import { FIRST_BUS, LAST_BUS, MIN_GAP, PEAK_HEADWAY, busArrivals, headwayAt, lineHeadwayAt, serviceDepartures, serviceKindOf, stopDepartures } from '../../../../../src/core/library/city/traffic/bus-timetable';
 import { createStopCrowd, stepStops, type StopEnv } from '../../../../../src/core/library/city/traffic/bus-stop';
 
 describe('horaires des bus', () => {
@@ -55,6 +55,33 @@ describe('lignes de l’arrêt, chacune à sa fréquence', () => {
     for (let line = 0; line < 3; line++) {
       const deps = serviceDepartures(5, 90, 'near', 'week', line);
       for (let i = 1; i < deps.length; i++) expect(deps[i]! - deps[i - 1]!).toBeLessThanOrEqual(60);
+    }
+  });
+});
+
+describe('pointes et écart entre les bus', () => {
+  it('aux heures de pointe de la semaine, chaque ligne passe toutes les 8 minutes (pas le samedi ni le dimanche)', () => {
+    for (const m of [480, 540, 1000, 1100]) for (let line = 0; line < 3; line++) expect(lineHeadwayAt(m, 'week', line)).toBe(PEAK_HEADWAY);
+    expect(PEAK_HEADWAY).toBe(8);
+    expect(lineHeadwayAt(480, 'saturday', 0)).toBeGreaterThan(8);
+    expect(lineHeadwayAt(720, 'sunday', 0)).toBeGreaterThan(8);
+    const deps = serviceDepartures(3, 50, 'near', 'week', 2).filter((m) => m >= 500 && m < 560);
+    for (let i = 1; i < deps.length; i++) expect(deps[i]! - deps[i - 1]!).toBe(8);
+  });
+  it('jamais deux bus à la même heure à un arrêt : au moins 2 minutes entre deux passages, toutes lignes confondues', () => {
+    for (let seed = 1; seed < 40; seed++) {
+      for (const kind of ['week', 'saturday', 'sunday'] as const) {
+        for (const side of ['near', 'far'] as const) {
+          const deps = stopDepartures(seed, 200 + seed, side, kind, 3);
+          expect(deps.length).toBeGreaterThan(30);
+          for (let i = 1; i < deps.length; i++) expect(deps[i]!.m - deps[i - 1]!.m).toBeGreaterThanOrEqual(MIN_GAP);
+        }
+      }
+    }
+    const arr = busArrivals({ seed: 9, day: 300, nowS: 0, minutes: 8 * 60, today: 'week', yesterday: 'week', lines: 3 });
+    for (const side of ['near', 'far'] as const) {
+      const s = arr.filter((a) => a.track === side);
+      for (let i = 1; i < s.length; i++) expect(s[i]!.start - s[i - 1]!.start).toBeGreaterThanOrEqual(MIN_GAP * 60);
     }
   });
 });
@@ -133,6 +160,22 @@ describe('panneau « Prochain bus » et ligne du bus à horaires', () => {
     const bus = w.agents.find((a) => a.event === 'bus-b');
     expect(bus?.special?.line?.ref).toBe('9');
     expect(w.nextBus.near[0]).toMatchObject({ in: 0, line: { ref: '9' } });
+  });
+  it('route coupée (fête de la musique, 14 Juillet) : aucun bus ne passe, l’arrêt est annoncé non desservi', async () => {
+    const { warmTraffic, advance } = await import('../../../../../src/core/library/city/traffic/engine');
+    const T0 = 1_800_000_000;
+    const env = {
+      demand: { near: 0, far: 0, bike: 0 }, closed: true, deliveries: [], crowd: 0, crossPx: 90, timetable: true,
+      busLines: [line('3'), line('6'), line('9')],
+      arrivals: [0, 1, 2].map((i) => ({ key: `bus-${i}`, kind: 'bus' as const, track: 'near' as const, start: T0 + 30 + i * 200, line: i })),
+    };
+    const w = warmTraffic({ width: 1080, seed: 4, unit: 1, startS: T0 }, env);
+    for (let t = T0 + 1; t < T0 + 800; t += 20) {
+      advance(w, t, env);
+      expect(w.agents.some((a) => a.kind === 'bus')).toBe(false);
+      expect(w.nextBus.near).toEqual([]);
+      expect(w.stopClosed).toBe(true);
+    }
   });
   it('une ligne hors de la plaque (au-delà des 3 premières) ne passe jamais', async () => {
     const { warmTraffic, advance } = await import('../../../../../src/core/library/city/traffic/engine');

@@ -30,12 +30,17 @@ export function headwayAt(m: number, kind: ServiceKind): number {
 }
 
 // Lignes desservant l'arrêt (celles de sa plaque, au plus 3) et fréquence de chacune : intervalle de la grille du réseau
-// multiplié par ce facteur (la première ligne est la plus fréquente), plafonné à une heure.
+// multiplié par ce facteur (la première ligne est la plus fréquente), plafonné à une heure. Aux heures de pointe de la
+// semaine, chaque ligne passe toutes les 8 minutes (consigne du 2026-10-13).
 export const STOP_LINES_MAX = 3;
 export const LINE_FACTOR = [1.6, 2.1, 2.7] as const;
+export const PEAK_HEADWAY = 8;
 const HEADWAY_MAX = 60;
-export const lineHeadwayAt = (m: number, kind: ServiceKind, line: number): number =>
-  Math.min(HEADWAY_MAX, Math.round(headwayAt(m, kind) * (LINE_FACTOR[line] ?? LINE_FACTOR[LINE_FACTOR.length - 1]!)));
+export function lineHeadwayAt(m: number, kind: ServiceKind, line: number): number {
+  const network = headwayAt(m, kind);
+  if (network <= PEAK_HEADWAY) return PEAK_HEADWAY;
+  return Math.min(HEADWAY_MAX, Math.round(network * (LINE_FACTOR[line] ?? LINE_FACTOR[LINE_FACTOR.length - 1]!)));
+}
 
 // Passages d'une ligne (rang `line` sur la plaque) un jour de service à l'arrêt d'un sens, en minutes depuis le minuit de ce
 // jour (jusqu'à LAST_BUS).
@@ -53,6 +58,18 @@ export function serviceDepartures(seed: number, day: number, side: StopSide, kin
   return out;
 }
 
+// Jamais deux bus à la même heure à un arrêt (consigne du 2026-10-13) : au moins MIN_GAP minutes entre deux passages,
+// toutes lignes confondues ; un bus qui tomberait trop près du précédent est retardé d'autant.
+export const MIN_GAP = 2;
+export type StopDeparture = { m: number; line: number; i: number };
+export function stopDepartures(seed: number, day: number, side: StopSide, kind: ServiceKind, lines: number): StopDeparture[] {
+  const all: StopDeparture[] = [];
+  for (let line = 0; line < lines; line++) serviceDepartures(seed, day, side, kind, line).forEach((m, i) => all.push({ m, line, i }));
+  all.sort((a, b) => a.m - b.m || a.line - b.line);
+  for (let k = 1; k < all.length; k++) all[k]!.m = Math.max(all[k]!.m, all[k - 1]!.m + MIN_GAP);
+  return all;
+}
+
 export const serviceKindOf = (weekday: number, holiday: boolean): ServiceKind => (holiday || weekday === 0 ? 'sunday' : weekday === 6 ? 'saturday' : 'week');
 
 // Voie du bus pour l'arrêt d'un sens (le bus du premier plan sert l'arrêt d'en face, celui du fond le trottoir des immeubles).
@@ -68,13 +85,11 @@ export function busArrivals(o: { seed: number; day: number; nowS: number; minute
   const lines = Math.max(1, Math.min(STOP_LINES_MAX, o.lines ?? STOP_LINES_MAX));
   const out: ScheduledArrival[] = [];
   for (const side of ['near', 'far'] as const) {
-    for (let line = 0; line < lines; line++) {
-      for (const [d, kind, shift] of [[o.day - 1, o.yesterday, -1440], [o.day, o.today, 0]] as const) {
-        serviceDepartures(o.seed, d, side, kind, line).forEach((dep, i) => {
-          const m = dep + shift; // minutes depuis le minuit de la scène
-          if (m < o.minutes - 5 || m > o.minutes + ahead) return;
-          out.push({ key: `bus-${d}-${side}-${line}-${i}`, kind: 'bus', track: TRACK[side], start: o.nowS + (m - o.minutes) * 60 - LEAD_S, line });
-        });
+    for (const [d, kind, shift] of [[o.day - 1, o.yesterday, -1440], [o.day, o.today, 0]] as const) {
+      for (const dep of stopDepartures(o.seed, d, side, kind, lines)) {
+        const m = dep.m + shift; // minutes depuis le minuit de la scène
+        if (m < o.minutes - 5 || m > o.minutes + ahead) continue;
+        out.push({ key: `bus-${d}-${side}-${dep.line}-${dep.i}`, kind: 'bus', track: TRACK[side], start: o.nowS + (m - o.minutes) * 60 - LEAD_S, line: dep.line });
       }
     }
   }

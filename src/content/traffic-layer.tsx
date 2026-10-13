@@ -270,23 +270,24 @@ type LightShown = { color: string; pressed: boolean };
 const lightShown = (w: TrafficWorld): LightShown => ({ color: w.light?.color ?? 'green', pressed: w.light?.pressedAt != null });
 // Panneau « Prochain bus » (afficheur lumineux accroché au poteau, sous la plaque) : une rangée par ligne de l'arrêt, du bus
 // le plus proche au plus lointain (numéro et attente en minutes, « à l'approche » quand le bus roule déjà vers l'arrêt ou y
-// est arrêté) ; « Fin de service » la nuit (aucun bus attendu).
+// est arrêté) ; « Fin de service » la nuit (aucun bus attendu), « Non desservi » quand la route est coupée.
 type BoardRow = { line: string; colour: string; wait: string };
-type Board = { rows: BoardRow[]; key: string };
+type Board = { rows: BoardRow[]; key: string; empty: string };
 export function nextBusBoard(w: TrafficWorld, served: 'near' | 'far'): Board {
   const rows = w.nextBus[served].map((n) => ({ line: n.line.ref, colour: n.line.colour, wait: n.in < 45 ? 'à l’approche' : `${Math.ceil(n.in / 60)} min` }));
-  return { rows, key: rows.map((r) => `${r.line}:${r.wait}`).join('|') };
+  const empty = w.stopClosed ? 'Non desservi' : 'Fin de service';
+  return { rows, empty, key: `${empty}|${rows.map((r) => `${r.line}:${r.wait}`).join('|')}` };
 }
 const BOARD_W = 15;
 const ROW_H = 2.9;
 function NextBusBoard({ x, board }: { x: number; board: Board }): ReactElement {
   const rows = board.rows;
   return (
-    <g data-next-bus={rows.map((r) => r.line).join(',')} data-next-wait={rows.length > 0 ? rows.map((r) => r.wait).join(',') : 'Fin de service'} transform={`translate(${x.toFixed(2)} -23.6) scale(1)`}>
+    <g data-next-bus={rows.map((r) => r.line).join(',')} data-next-wait={rows.length > 0 ? rows.map((r) => r.wait).join(',') : board.empty} transform={`translate(${x.toFixed(2)} -23.6) scale(1)`}>
       <rect width={BOARD_W} height={3.1 + Math.max(1, rows.length) * ROW_H} rx={0.6} fill="#1f1a17" stroke="#3a3430" strokeWidth={0.3} />
       <text x={BOARD_W / 2} y={2.1} fontSize={1.6} fontWeight={700} textAnchor="middle" fill="#ffc94a" fontFamily="sans-serif">PROCHAIN BUS</text>
       {rows.length === 0 && (
-        <text x={BOARD_W / 2} y={4.8} fontSize={1.9} fontWeight={700} textAnchor="middle" fill="#ffc94a" fontFamily="sans-serif">Fin de service</text>
+        <text x={BOARD_W / 2} y={4.8} fontSize={1.9} fontWeight={700} textAnchor="middle" fill="#ffc94a" fontFamily="sans-serif">{board.empty}</text>
       )}
       {rows.map((r, i) => (
         <g key={r.line} data-board-row={r.line} transform={`translate(0 ${(i * ROW_H).toFixed(2)})`}>

@@ -131,6 +131,7 @@ export type TrafficWorld = {
   // Panneau « Prochain bus » de chaque arrêt (bus à horaires) : prochain bus de chaque ligne de l'arrêt (délai en s, ligne),
   // du plus proche au plus lointain ; liste vide si aucun n'est attendu.
   nextBus: Record<StopSide, NextBus[]>;
+  stopClosed: boolean; // route coupée : arrêts non desservis (panneau « Arrêt non desservi »)
   horns: Horn[]; // coups de klaxon des 10 dernières secondes (horns.ts)
   hornClock: Map<string, HornClock>; // attente et dernier klaxon des conducteurs impatients
 };
@@ -176,6 +177,7 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     school: null,
     stopCrowd: createStopCrowd(o.seed, 0),
     nextBus: { near: [], far: [] },
+    stopClosed: false,
     horns: [],
     hornClock: new Map(),
   };
@@ -330,7 +332,8 @@ function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
   // Événements de rue planifiés : entrent à leur heure dès qu'il y a la place (route fermée : aucun car scolaire).
   for (const e of env.arrivals) {
     if (w.spawned.has(e.key) || e.start > t) continue;
-    if (env.closed && e.kind === 'school-bus') continue;
+    // Route coupée (fête de la musique, 14 Juillet…) : ni car scolaire ni bus de ligne (l'arrêt n'est pas desservi).
+    if (env.closed && (e.kind === 'school-bus' || e.kind === 'bus')) continue;
     if (t - e.start > 300) continue; // trop ancien (pièce ouverte longtemps après) : ignoré
     const half = e.half !== undefined ? e.half * VEHICLE_SCALE * (e.track === 'far' ? FAR_SHRINK : 1) : undefined;
     if (!entryFree(w, e.track, (half ?? KIND_HALF[e.kind] * VEHICLE_SCALE) * w.unit)) continue;
@@ -554,6 +557,7 @@ function stepBusStops(w: TrafficWorld, env: TrafficEnv, t: number): void {
   // Bus à horaires : prochain bus de chaque ligne à l'arrêt de chaque sens ; délai 0 s'il roule déjà vers l'arrêt ou y est
   // arrêté ; une ligne absente n'a aucun bus attendu dans la grille chargée (nuit, fin de service).
   const nextBusOf = (side: StopSide): NextBus[] => {
+    if (env.closed) return []; // route coupée : aucun bus ne passera
     const best = new Map<string, NextBus>();
     const keep = (n: NextBus): void => {
       const had = best.get(n.line.ref);
@@ -567,6 +571,7 @@ function stepBusStops(w: TrafficWorld, env: TrafficEnv, t: number): void {
     return [...best.values()].sort((a, b) => a.in - b.in);
   };
   if (env.timetable) w.nextBus = { near: nextBusOf('near'), far: nextBusOf('far') };
+  w.stopClosed = env.closed;
   const nextBusIn = (side: StopSide): { line: string; in: number }[] => w.nextBus[side].map((n) => ({ line: n.line.ref, in: n.in }));
   const { changed, hold } = stepStops(
     w.stopCrowd,

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useContext, useId, useMemo, useRef, type ReactElement } from 'react';
-import { activeFestivities } from '../core/library/city/calendar';
+import { activeFestivities, addDays, isoDate, publicHolidays } from '../core/library/city/calendar';
 import { DOOR_WIDTH, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
 import { fixedFade, placeEvent, type EventFrame, type EventPlacement } from '../core/library/city/event-place';
@@ -374,7 +374,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     [seed, day, city.day, city.minutes, still],
   );
   // Bus à horaires (bus-timetable.ts) : passages des 45 prochaines minutes, recalculés à la minute. La veille compte pour les
-  // passages d'après minuit (jour férié de la veille ignoré : service de semaine ou du samedi selon le jour).
+  // passages d'après minuit. Jours fériés (du jour comme de la veille) : service du dimanche.
   const timetableBuses = useMemo<ScheduledArrival[]>(
     () =>
       busArrivals({
@@ -383,7 +383,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         nowS: still ? (frozen.current ?? 0) : Date.now() / 1000,
         minutes: city.minutes,
         today: serviceKindOf(city.day.weekday, city.day.publicHoliday !== null),
-        yesterday: serviceKindOf((city.day.weekday + 6) % 7, false),
+        yesterday: serviceKindOf((city.day.weekday + 6) % 7, isoDate(addDays(city.day.date, -1)) in publicHolidays(addDays(city.day.date, -1).y)),
         // Lignes de la plaque de l'arrêt (réelles, sinon les trois de repli du moteur).
         lines: city.buses?.lines.length || 3,
       }),
