@@ -1,7 +1,7 @@
 import { wallSizeOf } from '../core/library/furniture-catalog';
 import { drawSize, floorCells } from '../core/library/footprint';
 import type { Layout, ShelfLevel } from '../core/library/library-types';
-import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, dropOnShelf, firstFreeSurfaceSlot, moveStored, pxRect, rectOf, shelfLayoutOf, SURFACE_SLOTS, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, decoSizeOf, dropOnShelf, firstFreeSurfaceSlot, moveStored, pxRect, rectOf, shelfLayoutOf, SURFACE_SLOTS, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -119,6 +119,14 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     const top = row - item.h + 1;
     const ghost: Rect = { col, row: top, w: item.w, h: item.h };
     const check = canHangRect(layout, cols, item.w, item.h, col, top, id);
+    if (check.ok) return { ok: true, cells: [], ghost, col, top };
+    return { ok: false, reason: check.reason, cells: check.cells, ghost, col, top };
+  }
+  if (item.kind === 'deco') {
+    const { w, h } = decoSizeOf(item);
+    const top = row - h + 1;
+    const ghost: Rect = { col, row: top, w, h };
+    const check = canHangRect(layout, cols, w, h, col, top, id);
     if (check.ok) return { ok: true, cells: [], ghost, col, top };
     return { ok: false, reason: check.reason, cells: check.cells, ghost, col, top };
   }
