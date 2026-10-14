@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { track } from '../core/telemetry/registry';
-import { positionSetting } from './position-setting';
+import { GEO, OFF } from '../core/library/scene-location';
+import { locationSetting } from './location-setting';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -18,9 +19,9 @@ const choice = (selected: boolean) =>
 
 // « Position » : autoriser l'extension à demander la position de l'appareil (météo réelle, lever et coucher du soleil de la Bibliothèque).
 export function PositionSettings({ onClose }: { onClose: () => void }) {
-  const enabled = useSyncExternalStore(positionSetting.subscribe, positionSetting.enabled);
+  const enabled = useSyncExternalStore(locationSetting.subscribe, locationSetting.get).mode !== 'off';
   const set = (next: boolean): void => {
-    positionSetting.setEnabled(next);
+    locationSetting.set(next ? GEO : OFF);
     track('reglage-modifie', 'position');
   };
   return (

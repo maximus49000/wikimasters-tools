@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PositionSettings } from '../../src/content/PositionSettings';
-import { positionSetting } from '../../src/content/position-setting';
+import { locationSetting, resetLocationForTests } from '../../src/content/location-setting';
 import { currentPosition, ensurePosition, isPositionKnown, positionFailure, requestPosition, resetPositionForTests } from '../../src/content/scene-position';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -12,17 +12,18 @@ let getCurrentPosition: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   window.localStorage.clear();
   resetPositionForTests();
+  resetLocationForTests();
   getCurrentPosition = vi.fn((ok: (p: { coords: { latitude: number; longitude: number } }) => void) => ok({ coords: { latitude: 47.45, longitude: -0.47 } }));
   Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } });
 });
 afterEach(() => window.localStorage.clear());
 
 describe('réglage Position', () => {
-  it('est actif par défaut et mémorise le choix', () => {
-    expect(positionSetting.enabled()).toBe(true);
-    positionSetting.setEnabled(false);
-    expect(positionSetting.enabled()).toBe(false);
-    expect(window.localStorage.getItem('wmt:positionEnabled')).toBe('off');
+  it('est en géolocalisation par défaut et mémorise le choix', () => {
+    expect(locationSetting.get()).toEqual({ mode: 'geo' });
+    locationSetting.set({ mode: 'off' });
+    expect(locationSetting.get()).toEqual({ mode: 'off' });
+    expect(window.localStorage.getItem('wmt:scene-location')).toBe('{"mode":"off"}');
   });
 
   it('actif : ensurePosition demande la position une seule fois par page', async () => {
@@ -34,7 +35,7 @@ describe('réglage Position', () => {
   });
 
   it('désactivé : aucune demande, position inconnue', async () => {
-    positionSetting.setEnabled(false);
+    locationSetting.set({ mode: 'off' });
     ensurePosition();
     await requestPosition();
     expect(getCurrentPosition).not.toHaveBeenCalled();
@@ -47,7 +48,7 @@ describe('réglage Position', () => {
     expect(currentPosition().lat).toBeCloseTo(47.45);
     const listener = vi.fn();
     const stop = (await import('../../src/content/scene-position')).subscribePosition(listener);
-    positionSetting.setEnabled(false);
+    locationSetting.set({ mode: 'off' });
     expect(listener).toHaveBeenCalled();
     expect(isPositionKnown()).toBe(false);
     expect(currentPosition().lat).not.toBeCloseTo(47.45);
@@ -121,9 +122,9 @@ describe('fenêtre Position', () => {
     const [on, off] = container.querySelectorAll<HTMLButtonElement>('[data-wmt-position-choice] button');
     expect(on!.getAttribute('aria-pressed')).toBe('true');
     await act(async () => { off!.click(); });
-    expect(positionSetting.enabled()).toBe(false);
+    expect(locationSetting.get().mode).toBe('off');
     expect(off!.getAttribute('aria-pressed')).toBe('true');
     await act(async () => { on!.click(); });
-    expect(positionSetting.enabled()).toBe(true);
+    expect(locationSetting.get().mode).toBe('geo');
   });
 });

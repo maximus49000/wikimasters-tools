@@ -75,7 +75,7 @@ import { useZoneChoice } from './zone-setting';
 import { usePetContext } from './pet-context';
 import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
-import { positionSetting } from './position-setting';
+import { locationSetting } from './location-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
 import { canToggleShelfLink, forgetUnlinkOnMove, shelfGroupOf, toggleShelfLink } from '../core/library/shelf-link';
 import { canRotate, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, rotatePlacement, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
@@ -450,13 +450,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     }
   }, [outsidePhase]);
 
-  // Réglage « Position » (actif par défaut) : la position est demandée une fois par chargement de page, à l'ouverture de la Bibliothèque.
-  // Elle n'est gardée qu'en mémoire : sans cette relecture, la vraie météo resterait « simulée » après chaque rechargement.
-  const positionOn = useSyncExternalStore(positionSetting.subscribe, positionSetting.enabled, positionSetting.enabled);
+  // Lieu de la scène (géolocalisation par défaut) : en géolocalisation, la position est demandée une fois par chargement de page,
+  // à l'ouverture de la Bibliothèque. Elle n'est gardée qu'en mémoire : sans cette relecture, la vraie météo resterait « simulée ».
+  const sceneLocation = useSyncExternalStore(locationSetting.subscribe, locationSetting.get, locationSetting.get);
+  const positionOn = sceneLocation.mode !== 'off';
   const failure = useSyncExternalStore(subscribePosition, positionFailure, positionFailure);
   useEffect(() => {
-    if (positionOn) ensurePosition();
-  }, [positionOn]);
+    if (sceneLocation.mode === 'geo') ensurePosition();
+  }, [sceneLocation.mode]);
 
   // Le chat : son plan est mémorisé sans prévenir les abonnés (il change toutes les quelques secondes, rien à redessiner).
   const savePlan = useCallback((roomId: string, petId: string, plan: PetPlan) => { void library.updateQuiet((state) => setPetPlan(state, roomId, petId, plan)); }, [library]);
@@ -991,7 +992,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onWeather={chooseWeather}
             positionOn={positionOn}
             weatherLabel={`${weather.label}${weather.tempC !== null ? ` · ${Math.round(weather.tempC)} °C` : ''}`}
-            weatherNote={weather.real === 'fallback' ? `(simulée${positionOn && failure ? ` : ${FAILURE_LABEL[failure]}` : ''})` : null}
+            weatherNote={weather.real === 'fallback' ? `(simulée${sceneLocation.mode === 'geo' && failure ? ` : ${FAILURE_LABEL[failure]}` : ''})` : null}
           />
         }
         pets={

@@ -172,6 +172,7 @@ describe('réglage Position — demande à l’ouverture', () => {
   beforeEach(() => resetPositionForTests());
   afterEach(() => {
     window.localStorage.removeItem('wmt:positionEnabled');
+    window.localStorage.removeItem('wmt:scene-location');
     delete (navigator as { permissions?: unknown }).permissions;
     delete (navigator as { geolocation?: unknown }).geolocation;
   });

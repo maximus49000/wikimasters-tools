@@ -1,5 +1,5 @@
 import { positionFromTimezone, type Position } from '../core/library/sky';
-import { positionSetting } from './position-setting';
+import { locationSetting } from './location-setting';
 
 // La position n'est jamais stockée ni envoyée : elle ne sert qu'au calcul du lever et du coucher, sur l'appareil.
 let known: Position | null = null;
@@ -12,17 +12,20 @@ export function positionFailure(): PositionFailure | null {
   return failure;
 }
 
+// Seul le mode Géolocalisation lit (et demande) la position de l'appareil.
+const geoMode = (): boolean => locationSetting.get().mode === 'geo';
+
 // Repli mémorisé : useSyncExternalStore exige un snapshot stable entre deux lectures.
 const fallback = (): Position => (cachedFallback ??= positionFromTimezone(-new Date().getTimezoneOffset()));
 
-// Réglage « Position » désactivé : la vraie position n'est plus lue (le fuseau horaire sert de repli) et celle déjà obtenue est ignorée.
+// Hors géolocalisation : la vraie position n'est plus lue (le fuseau horaire sert de repli) et celle déjà obtenue est ignorée.
 export function currentPosition(): Position {
-  return (positionSetting.enabled() ? known : null) ?? fallback();
+  return (geoMode() ? known : null) ?? fallback();
 }
 
 // Vrai seulement si l'appareil a donné sa vraie position (le repli par fuseau ne suffit pas à interroger la météo réelle).
 export function isPositionKnown(): boolean {
-  return known !== null && positionSetting.enabled();
+  return known !== null && geoMode();
 }
 
 export function subscribePosition(listener: () => void): () => void {
@@ -37,15 +40,15 @@ export function resetPositionForTests(): void {
   failure = null;
 }
 
-// Les abonnés (heure, météo) se redessinent quand le joueur active ou désactive le réglage.
-positionSetting.subscribe(() => {
+// Les abonnés (heure, météo, commerces) se recalculent quand le joueur change de lieu.
+locationSetting.subscribe(() => {
   for (const listener of listeners) listener();
 });
 
 // Une seule demande automatique par chargement de page : un refus ou une fermeture de la fenêtre du navigateur n'est pas redemandé à chaque ouverture.
 let askedThisPage = false;
 export function ensurePosition(): void {
-  if (!positionSetting.enabled() || known !== null || askedThisPage) return;
+  if (!geoMode() || known !== null || askedThisPage) return;
   askedThisPage = true;
   void requestPosition();
 }
@@ -84,7 +87,7 @@ function requestNativePosition(win: NativeLocationWindow, bridge: NonNullable<Na
 
 export function requestPosition(): Promise<Position> {
   return new Promise((resolve) => {
-    if (!positionSetting.enabled()) return resolve(currentPosition());
+    if (!geoMode()) return resolve(currentPosition());
     const nativeWindow = typeof window === 'undefined' ? undefined : (window as NativeLocationWindow);
     if (nativeWindow?.WmtLocation) return void requestNativePosition(nativeWindow, nativeWindow.WmtLocation).then(resolve);
     const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation;
