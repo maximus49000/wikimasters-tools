@@ -470,3 +470,26 @@ describe('formes de feuille', () => {
     expect(pts(leaf('heart'))).toBeGreaterThan(pts(leaf('lance')));
   });
 });
+
+describe('boules en cellulo', () => {
+  const ballModel: Model = { w: 60, d: 60, h: 60, pieces: [{ shape: 'ball', cx: 30, cy: 30, cz: 30, rx: 28, ry: 28, rz: 28, fill: 'fabric' }] };
+  it('une boule a son ombre nette (aplat sans trait) et son contour repassé', () => {
+    for (const a of ANGLES) {
+      const shapes = renderModel(ballModel, a).shapes;
+      const shadow = shapes.find((s) => s.kind === 'poly' && s.ink === 'none');
+      expect(shadow, 'angle ' + a).toBeDefined();
+      expect(shadow!.shade).toBeLessThan(1);
+      expect(shapes.some((s) => s.kind === 'poly' && s.ink === 'only'), 'angle ' + a).toBe(true);
+    }
+  });
+  it('l’ombre est en bas à droite de la boule', () => {
+    const shapes = renderModel(ballModel, 0).shapes;
+    const body = shapes.find((s) => s.kind === 'ellipse')!;
+    const shadow = shapes.find((s) => s.kind === 'poly' && s.ink === 'none')!;
+    if (body.kind !== 'ellipse' || shadow.kind !== 'poly') throw new Error('formes');
+    const mx = shadow.points.reduce((t, p) => t + p[0], 0) / shadow.points.length;
+    const my = shadow.points.reduce((t, p) => t + p[1], 0) / shadow.points.length;
+    expect(mx).toBeGreaterThan(body.cx);
+    expect(my).toBeGreaterThan(body.cy);
+  });
+});

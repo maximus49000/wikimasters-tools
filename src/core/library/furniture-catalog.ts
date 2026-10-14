@@ -78,7 +78,7 @@ const LABELS: Record<FurnitureKind, string> = {
   daybed: 'Méridienne',
   'egg-chair': 'Fauteuil œuf',
   'peacock-chair': 'Fauteuil paon',
-  pouf: 'Pouf marocain',
+  pouf: 'Pouf tricoté',
   beanbag: 'Pouf poire',
   bench: 'Banc',
   dresser: 'Commode',

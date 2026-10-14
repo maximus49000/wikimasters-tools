@@ -65,6 +65,7 @@ const SHADE = { front: 1, side: 0.82, top: 1.12 } as const;
 const ROUND_STEPS = 24;
 const TINY_PX = 4; // en dessous, un corps rond se dessine d'une seule ellipse
 const SHADOW_SPAN = (50 * Math.PI) / 180; // ombre nette des corps ronds : de la silhouette droite jusqu'à 50° vers le spectateur
+const BALL_SHIFT = [0.28, 0.22] as const; // croissant d'ombre des boules : décalage de la partie éclairée (fractions des rayons) vers le haut à gauche
 const LEAF_STEPS = 10;
 const LEAF_TWIST = (40 * Math.PI) / 180;
 
@@ -451,7 +452,8 @@ function drawBall(p: Extract<Piece, { shape: 'ball' }>, L: Layout3d, push: Push)
     const y = Math.sin(la);
     return { x: x * Math.cos(t) + y * Math.sin(t), y: -x * Math.sin(t) + y * Math.cos(t), z: -Math.cos(la) * Math.cos(lo) };
   };
-  const at = (q: V3, s: number) => L.toPx({ x: p.cx + q.x * s, y: p.cy + q.y * s, z: p.cz + q.z * s });
+  // Point de direction q à la distance s (rayon équatorial) : une boule aplatie (pouf) étire ses parallèles et méridiens avec elle.
+  const at = (q: V3, s: number) => L.toPx({ x: p.cx + q.x * s, y: p.cy + q.y * s * (p.ry / p.rx), z: p.cz + q.z * s * (p.rz / p.rx) });
   // Un point hors de la sphère est devant elle s'il est du côté du spectateur (q · v > 0), derrière sinon.
   const front: Shape[] = [];
   for (const g of p.rings ?? []) {
@@ -466,6 +468,24 @@ function drawBall(p: Extract<Piece, { shape: 'ball' }>, L: Layout3d, push: Push)
     }
   }
   push({ kind: 'ellipse', cx, cy, rx, ry, fill: p.fill, shade: SHADE.front });
+  // Cellulo, comme les corps ronds : croissant d'ombre nette en bas à droite (la boule moins elle-même décalée vers la lumière, en haut
+  // à gauche), puis le contour repassé. Une boule minuscule (rivet, pied boule) reste une simple ellipse.
+  if (Math.max(rx, ry) * 2 >= TINY_PX) {
+    const N = 48;
+    const [sx, sy] = [cx - rx * BALL_SHIFT[0], cy - ry * BALL_SHIFT[1]];
+    const at = (ox: number, oy: number, i: number): [number, number] => [ox + rx * Math.cos((i * 2 * Math.PI) / N), oy + ry * Math.sin((i * 2 * Math.PI) / N)];
+    const inside = (q: [number, number], ox: number, oy: number): boolean => ((q[0] - ox) / rx) ** 2 + ((q[1] - oy) / ry) ** 2 < 1;
+    // Arc d'une ellipse qui vérifie `keep`, parcouru d'un seul tenant (on part d'un point qui ne le vérifie pas).
+    const arc = (ox: number, oy: number, keep: (q: [number, number]) => boolean): [number, number][] => {
+      const pts = Array.from({ length: N }, (_, i) => at(ox, oy, i));
+      const start = pts.findIndex((q) => !keep(q));
+      return Array.from({ length: N }, (_, k) => pts[(start + k) % N]!).filter(keep);
+    };
+    const outer = arc(cx, cy, (q) => !inside(q, sx, sy));
+    const inner = arc(sx, sy, (q) => inside(q, cx, cy)).reverse();
+    if (outer.length >= 2 && inner.length >= 2) push({ kind: 'poly', points: [...outer, ...inner], fill: p.fill, shade: SHADE.front * SHADE.side, ink: 'none' });
+    push({ kind: 'poly', points: Array.from({ length: N }, (_, i) => at(cx, cy, i)), fill: p.fill, shade: SHADE.front, ink: 'only' });
+  }
   for (const m of p.marks ?? []) {
     const dense = m.pts.flatMap((a, i) => {
       const b = m.pts[(i + 1) % m.pts.length]!;

@@ -397,20 +397,24 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
     pois: [{ type: 'seat', x: 45, y: 50, z: 28 }],
     perch: { x: 25, z: 10, w: 40, d: 38, y: 50 },
   },
-  // Pouf marocain : rond, bombé, couvercle cousu.
+  // Pouf tricoté : boule de grosse maille un peu écrasée ; côtes de tricot (méridiens) qui se rejoignent au centre du dessus.
   pouf: {
     w: 55, d: 55, h: 40, round: true,
-    pieces: [cone(27.5, 27.5, 0, 24, 27.5, 20, 'warm'), cone(27.5, 27.5, 20, 27.5, 24, 18, 'warm'), cyl(27.5, 27.5, 38, 22, 2, 'warmDark')],
+    pieces: [
+      {
+        shape: 'ball', cx: 27.5, cy: 20, cz: 27.5, rx: 27.5, ry: 20, rz: 27.5, fill: 'warm', lineFill: 'warmDark',
+        lines: Array.from({ length: 24 }, (_, i) => ({ lon: i * 15 })),
+      },
+    ],
     pois: [{ type: 'seat', x: 27.5, y: 40, z: 27.5 }],
     perch: { x: 8, z: 8, w: 39, d: 39, y: 40 },
   },
-  // Pouf poire : grosse poire molle, dos relevé, creux d'assise un peu plus sombre.
+  // Pouf poire : grosse poire molle affaissée au sol ; le dos relevé dépasse derrière l'assise.
   beanbag: {
     w: 80, d: 80, h: 70, round: true,
     pieces: [
-      ball(40, 26, 44, 38, 26, 36, 'fabricLight'),
-      ball(40, 46, 60, 30, 24, 18, 'fabricLight'),
-      ball(40, 50, 44, 16, 3, 12, 'fabricLight', { tone: 0.9, layer: 1 }),
+      ball(40, 44, 58, 26, 26, 20, 'fabricLight'),
+      ball(40, 22, 40, 40, 22, 40, 'fabricLight', { layer: 1 }),
     ],
     pois: [{ type: 'sleep', x: 40, y: 35, z: 34 }],
     perch: { x: 22, z: 18, w: 36, d: 32, y: 35 },
