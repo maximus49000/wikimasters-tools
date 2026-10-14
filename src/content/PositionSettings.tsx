@@ -1,27 +1,16 @@
 import { useSyncExternalStore } from 'react';
 import { track } from '../core/telemetry/registry';
-import { GEO, OFF } from '../core/library/scene-location';
+import type { SceneLocation } from '../core/library/scene-location';
+import { LocationPicker } from './location-picker';
 import { locationSetting } from './location-setting';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
-const choice = (selected: boolean) =>
-  ({
-    flex: 1,
-    minHeight: 44,
-    cursor: 'pointer',
-    font: '600 14px system-ui, sans-serif',
-    color: selected ? '#0d1117' : 'inherit',
-    background: selected ? 'var(--color-accent, #34d399)' : 'none',
-    border: selected ? '1px solid transparent' : border,
-    borderRadius: 8,
-  }) as const;
-
-// « Position » : autoriser l'extension à demander la position de l'appareil (météo réelle, lever et coucher du soleil de la Bibliothèque).
+// « Position » : lieu de la scène de la Bibliothèque (géolocalisation, ville ou désactivé) ; même réglage que le bandeau du menu ☁️.
 export function PositionSettings({ onClose }: { onClose: () => void }) {
-  const enabled = useSyncExternalStore(locationSetting.subscribe, locationSetting.get).mode !== 'off';
-  const set = (next: boolean): void => {
-    locationSetting.set(next ? GEO : OFF);
+  const value = useSyncExternalStore(locationSetting.subscribe, locationSetting.get);
+  const set = (next: SceneLocation): void => {
+    locationSetting.set(next);
     track('reglage-modifie', 'position');
   };
   return (
@@ -39,21 +28,16 @@ export function PositionSettings({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <p data-wmt-position-explain="" style={{ margin: '0 0 8px', opacity: 0.8 }}>
-          À quoi ça sert : à la Bibliothèque, la position de votre appareil règle la vraie météo derrière les fenêtres et l’heure du lever et du coucher du soleil.
+          À quoi ça sert : le lieu de la Bibliothèque règle la vraie météo derrière les fenêtres, le lever et le coucher du soleil, les commerces et les bus de la ville. En Ville, la scène vit aussi à l’heure de la ville choisie.
         </p>
         <p style={{ margin: '0 0 8px', opacity: 0.8 }}>
-          Ce qui est envoyé : seulement votre position arrondie à 0,1° (environ 10 km), au relais météo de l’extension, pour obtenir la météo. Elle n’est jamais enregistrée ; elle reste en mémoire le temps de la page.
+          Ce qui est envoyé : en Géolocalisation, seulement votre position arrondie à 0,1° (environ 10 km), au relais de l’extension. En Ville, les coordonnées arrondies de la ville ; la recherche envoie le texte tapé au relais, qui interroge Open-Meteo. La dernière météo reçue est gardée sur cet appareil avec sa case de 0,1°.
         </p>
         <p style={{ margin: '0 0 12px', opacity: 0.8 }}>
-          Activé : l’appareil vous demande l’autorisation à l’ouverture de la Bibliothèque. Désactivé : plus aucune demande, la météo réelle est grisée (le ciel reste simulé) et l’heure réelle se règle sur le fuseau horaire. Si vous refusez l’autorisation dans le navigateur ou le téléphone, le résultat est le même.
+          Désactivé : plus aucune demande, la météo réelle est grisée (le ciel reste simulé) et l’heure suit le fuseau de l’appareil. Si vous refusez l’autorisation de position, le résultat est le même. Le même réglage s’ouvre depuis le menu ☁️ de la Bibliothèque.
         </p>
-        <div role="group" data-wmt-position-choice="" aria-label="Position" style={{ display: 'flex', gap: 8 }}>
-          <button type="button" aria-pressed={enabled} onClick={() => set(true)} style={choice(enabled)}>
-            Activé
-          </button>
-          <button type="button" aria-pressed={!enabled} onClick={() => set(false)} style={choice(!enabled)}>
-            Désactivé
-          </button>
+        <div data-wmt-position-choice="">
+          <LocationPicker value={value} onChange={set} />
         </div>
       </div>
     </div>

@@ -106,7 +106,10 @@ describe('position native Android', () => {
 describe('fenêtre Position', () => {
   let container: HTMLDivElement;
   let root: Root;
+  const q = (selector: string) => container.querySelector<HTMLElement>(selector);
+  const click = (selector: string) => act(async () => { q(selector)!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -114,17 +117,42 @@ describe('fenêtre Position', () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
-  it('explique l’usage et bascule Activé / Désactivé', async () => {
+  it('explique l’usage et ce qui est envoyé, et propose les trois choix', async () => {
     await act(async () => { root.render(<PositionSettings onClose={() => undefined} />); });
-    expect(container.querySelector('[data-wmt-position-explain]')?.textContent).toContain('météo');
-    const [on, off] = container.querySelectorAll<HTMLButtonElement>('[data-wmt-position-choice] button');
-    expect(on!.getAttribute('aria-pressed')).toBe('true');
-    await act(async () => { off!.click(); });
+    const explain = q('[data-wmt-position-explain]')!.textContent!;
+    for (const word of ['météo', 'Ville', 'heure']) expect(explain, word).toContain(word);
+    const modes = container.querySelectorAll('[data-wmt-position-choice] [data-location-mode]');
+    expect(modes).toHaveLength(3);
+    expect(q('[data-location-mode="geo"]')!.getAttribute('aria-pressed')).toBe('true');
+    await click('[data-location-mode="off"]');
     expect(locationSetting.get().mode).toBe('off');
-    expect(off!.getAttribute('aria-pressed')).toBe('true');
-    await act(async () => { on!.click(); });
+    expect(q('[data-location-mode="off"]')!.getAttribute('aria-pressed')).toBe('true');
+    await click('[data-location-mode="city"]');
+    expect(locationSetting.get().mode).toBe('off');
+    expect(q('[data-place-search]')).not.toBeNull();
+    await click('[data-location-mode="geo"]');
     expect(locationSetting.get().mode).toBe('geo');
+  });
+
+  it('la recherche partagée enregistre la ville touchée', async () => {
+    const ANGERS = { name: 'Angers', admin: 'Pays de la Loire', country: 'France', lat: 47.47, lon: -0.55, tz: 'Europe/Paris' };
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, cities: [ANGERS] }) }) as unknown as Response));
+    await act(async () => { root.render(<PositionSettings onClose={() => undefined} />); });
+    await click('[data-location-mode="city"]');
+    const input = q('[data-place-search]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Angers');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    });
+    await click('[data-place-hit]');
+    expect(locationSetting.get()).toEqual({ mode: 'city', city: ANGERS });
   });
 });
