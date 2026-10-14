@@ -26,11 +26,11 @@ export function ensureDecoFonts(doc: Document = document): void {
 
 // Mesure d'une ligne par un canevas caché (unité : celle de `size`) ; sans canevas (tests), chasse moyenne de 0,55.
 let ctx: CanvasRenderingContext2D | null | undefined;
-export function measureWith(family: string, weight: number): Measure {
+export function measureWith(family: string, weight: number, fallback = 'sans-serif'): Measure {
   return (text, size) => {
     if (ctx === undefined) ctx = typeof document !== 'undefined' ? document.createElement('canvas').getContext?.('2d') ?? null : null;
     if (!ctx) return text.length * size * 0.55;
-    ctx.font = `${weight} ${size * 10}px "${family}"`;
+    ctx.font = `${weight} ${size * 10}px "${family}", ${fallback}`; // même pile que le rendu CSS : si la police est refusée, la mesure suit la police de repli
     return ctx.measureText(text).width / 10;
   };
 }

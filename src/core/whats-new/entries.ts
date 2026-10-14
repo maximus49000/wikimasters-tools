@@ -2147,4 +2147,79 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'horloges-meteo-panneaux-2026-10',
+    theme: 'collection',
+    glyph: '🕰️',
+    title: 'Horloges, météo et panneaux',
+    summary: 'Horloges (même d’une autre ville), météomètres et panneaux écrits pour décorer les murs et les tables de votre pièce',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'À quoi servent-ils',
+        text: 'Donner l’heure, la météo du moment, ou écrire un mot au mur de sa pièce.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À rendre la pièce vivante et utile : une horloge qui marche, un météomètre qui suit le ciel, un panneau pour vos notes.' },
+          { label: 'Comment faire', text: 'Posez-les comme n’importe quel objet, depuis le tiroir Aménager.' },
+          { label: 'Astuce', text: 'Un panneau vide invite à écrire dès qu’on le touche en Aménager.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Les poser',
+        text: 'Aménager › Déco › « Horloges et météo » (horloges, station, baromètre, réveil, pendulette, station de table) ou « Murs » (ardoise, tableau à lettres, néon, liège). Les objets de table se posent sur un bureau ou une étagère.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À choisir l’objet qui convient au mur ou au meuble.' },
+          { label: 'Comment faire', text: 'Ouvrez Aménager, onglet Déco, choisissez la famille puis l’objet, et placez-le comme un meuble.' },
+          { label: 'Astuce', text: 'Réveil, pendulette et station de table n’ont de place que sur un bureau ou une étagère.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Heure d’une autre ville',
+        text: 'Touchez l’horloge (ou 🌐 dans la bulle en Aménager), cherchez la ville ; « 📍 Heure de la scène » revient à l’heure du menu ☁️.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À garder sous les yeux l’heure d’un proche ou d’un lieu lointain.' },
+          { label: 'D’où viennent les données', text: 'L’heure est celle de la scène, ou celle de la ville calculée sur l’appareil, sans internet.' },
+          { label: 'Astuce', text: 'Le passage de minuit et le changement d’heure sont gérés : Tokyo est à +7 h de Paris en octobre, +8 h en janvier.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'La météo',
+        text: 'Les météomètres montrent la météo du visuel (menu ☁️). La température est la vraie en météo réelle (position activée), sinon une température plausible pour la saison.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À voir d’un coup d’œil le temps qu’il fait dans la scène.' },
+          { label: 'D’où viennent les données', text: 'Météo réelle si la position est activée ; sinon une valeur plausible déduite de la saison.' },
+          { label: 'Astuce', text: 'Changez le visuel dans le menu ☁️ pour voir l’aiguille et l’icône réagir.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Écrire sur un panneau',
+        text: 'Touchez le panneau (ou ✏️), 140 caractères ; le texte s’ajuste seul. Taille du panneau : boutons ↔ ↕ de la bulle, de 2 × 2 à 12 × 8 cases. Le néon : couleur au choix, il éclaire un peu le mur la nuit.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À laisser un mot, une liste ou une citation au mur.' },
+          { label: 'Comment ça marche', text: 'La taille des lettres se calcule pour remplir le panneau ; agrandir contre un voisin ou le bord est refusé.' },
+          { label: 'Astuce', text: 'Cinq couleurs de néon : rose, cyan, jaune, vert, blanc.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Limites',
+        text: 'Pas de nom pour l’heure de la scène (la position n’est jamais traduite en adresse). Si le site refuse les polices intégrées, le panneau prend une police standard.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À savoir ce que ces objets ne font pas.' },
+          { label: 'D’où viennent les données', text: 'Rien n’est envoyé : l’heure et la mise en page sont calculées sur l’appareil.' },
+          { label: 'Astuce', text: 'Un panneau en police standard reste lisible, seule la forme des lettres change.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
 ];

@@ -1,5 +1,5 @@
 // Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 2026-10-17), reprise Fable prévue.
-import type { CSSProperties, ReactElement, ReactNode } from 'react';
+import { useEffect, useReducer, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { NEON_COLORS, isPanel } from '../core/library/deco';
 import { BAROMETER_ANGLE, iconOf, type DecoWeather } from '../core/library/deco-weather';
 import type { DecoPlaced, StyleId, WeatherState } from '../core/library/library-types';
@@ -415,7 +415,10 @@ const NEON_WOOD_DARK = '#1C1C38'; // bois sombre du style Néon : cadres plus cl
 function PanelText({ kind, text, x, y, w, h, fill, opacity, glow, editing }: { kind: PanelKind; text: string; x: number; y: number; w: number; h: number; fill: string; opacity?: number; glow?: string; editing: boolean }): ReactElement | null {
   const font = PANEL_FONTS[kind];
   const family = `"${font.family}", ${font.fallback}`;
-  const measure = measureWith(font.family, font.weight);
+  // Re-mesure quand les polices intégrées sont prêtes (la première mesure peut avoir eu la police de repli).
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => { void document.fonts?.ready.then(bump); }, []);
+  const measure = measureWith(font.family, font.weight, font.fallback);
   if (!text.trim()) {
     if (!editing) return null;
     // Invitation sur une seule ligne, discrète (au plus un quart de la hauteur).

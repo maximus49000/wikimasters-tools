@@ -25,6 +25,7 @@ import {
 } from '../core/library/library-book';
 import { STEAMPUNK_ONLY, isSmallKind, labelOf, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
 import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay, type DecoPlaced } from '../core/library/library-types';
+import { ensureDecoFonts } from './deco-fonts';
 import { hasCitySetting, isPanel, PANEL_MAX, PANEL_MIN, type CityTime } from '../core/library/deco';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
@@ -462,6 +463,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     return () => window.removeEventListener('keydown', onKey);
   }, [placingNow]);
 
+  // Polices des panneaux : déclarées dans la page seulement quand un panneau est posé (avant tout retour anticipé : règle des hooks).
+  const roomLayout = lib ? activeRoom(lib).layout : undefined;
+  useEffect(() => { if (roomLayout?.some((p) => p.kind === 'deco' && isPanel(p.deco))) ensureDecoFonts(); }, [roomLayout]);
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
   const room = activeRoom(lib);
