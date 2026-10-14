@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type StandingKind, type Species, type StyleId, type TimeSetting, WEATHER_STATES, type WeatherSetting } from './library-types';
 import { DECO_KINDS, MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN } from './deco';
+import { isKnownTz } from './clock-cities';
 import { drawSize, isAngle, type Angle } from './footprint';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
 import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, compactShelves, isStanding, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
@@ -21,7 +22,7 @@ const windowSchema = z.object({
   w: z.number().int().min(WINDOW_MIN.w).max(WINDOW_MAX.w),
   h: z.number().int().min(WINDOW_MIN.h).max(WINDOW_MAX.h),
 });
-const citySchema = z.object({ name: z.string().min(1).max(60), tz: z.string().min(1) });
+const citySchema = z.object({ name: z.string().min(1).max(60), tz: z.string().refine(isKnownTz) });
 const decoSchema = z.object({
   id: z.string(),
   kind: z.literal('deco'),

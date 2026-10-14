@@ -31,5 +31,10 @@ describe('sauvegarde des objets décoratifs', () => {
     expect(read!.rooms[0]!.layout.map((p) => p.id)).toEqual(['f3', 'f1']);
   });
 
-  it.todo('retire une horloge dont le fuseau est inconnu (tâche 2)');
+  it('retire une horloge dont le fuseau est inconnu, sans toucher aux autres objets', () => {
+    const atlantis = { ...clock, id: 'b5', city: { name: 'Atlantide', tz: 'Ocean/Atlantis' } };
+    const read = parseStoredLibraryState(withLayout([shelf, atlantis, clock]));
+    expect(read).not.toBeNull();
+    expect(read!.rooms[0]!.layout.map((p) => p.id)).toEqual(['f3', 'f1']);
+  });
 });
