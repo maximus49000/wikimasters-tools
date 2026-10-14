@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Angle } from '../../../src/core/library/footprint';
 import { parseLibraryState, createInitialState } from '../../../src/core/library/library-book';
 import type { Layout, Placed } from '../../../src/core/library/library-types';
-import { canToggleShelfLink, linkCandidateOf, shelfGroupOf, toggleShelfLink, touchesRight } from '../../../src/core/library/shelf-link';
+import { canToggleShelfLink, forgetUnlinkOnMove, linkCandidateOf, shelfGroupOf, toggleShelfLink, touchesRight } from '../../../src/core/library/shelf-link';
 import type { Standing } from '../../../src/core/library/room-grid';
 
 const RIGHT: Record<Angle, [number, number]> = { 0: [4, 0], 1: [3, 1], 2: [0, 2], 3: [-3, 1], 4: [-4, 0], 5: [-3, -1], 6: [0, -2], 7: [3, -1] };
@@ -64,6 +64,38 @@ describe('délier / relier', () => {
   });
   it('écarter un meuble défait le lien sans rien nettoyer', () => {
     expect(shelfGroupOf([shelf('a', 0, 6), shelf('b', 5, 6)], 'a')).toEqual(['a']);
+  });
+});
+
+describe('rangée de 3, celle du milieu déliée', () => {
+  it('A et C restent seules ; relier B donne A–B', () => {
+    const l: Layout = [shelf('a', 0, 6), shelf('b', 4, 6, 0, { unlinked: true }), shelf('c', 8, 6)];
+    expect(shelfGroupOf(l, 'a')).toEqual(['a']);
+    expect(shelfGroupOf(l, 'c')).toEqual(['c']);
+    const on = toggleShelfLink(l, 'b');
+    expect(shelfGroupOf(on, 'a')).toEqual(['a', 'b']);
+    expect(shelfGroupOf(on, 'c')).toEqual(['c']);
+  });
+});
+
+describe('refus oublié au déplacement', () => {
+  const moveTo = (l: Layout, id: string, col: number, row: number, angle?: Angle): Layout =>
+    l.map((p) => (p.id === id ? ({ ...p, col, row, ...(angle !== undefined ? { angle } : {}) } as Placed) : p));
+  it('délier A–B puis coller A à C : A et C se lient', () => {
+    const l: Layout = toggleShelfLink([shelf('a', 0, 6), shelf('b', 4, 6), shelf('c', 12, 10)], 'a');
+    expect(shelfGroupOf(l, 'a')).toEqual(['a']);
+    const moved = forgetUnlinkOnMove(l, moveTo(l, 'a', 8, 10), 'a');
+    expect(shelfGroupOf(moved, 'a')).toEqual(['a', 'c']);
+  });
+  it('délié depuis B, A s’en va : B oublie son refus (il visait A)', () => {
+    const l: Layout = toggleShelfLink([shelf('a', 0, 6), shelf('b', 4, 6)], 'b');
+    const moved = forgetUnlinkOnMove(l, moveTo(l, 'a', 0, 12), 'a');
+    expect(moved.find((p) => p.id === 'b')).not.toHaveProperty('unlinked');
+  });
+  it('même place et même angle : le refus reste ; tournée : oublié', () => {
+    const l: Layout = toggleShelfLink([shelf('a', 0, 6), shelf('b', 4, 6)], 'a');
+    expect(forgetUnlinkOnMove(l, l, 'a')).toBe(l);
+    expect(forgetUnlinkOnMove(l, moveTo(l, 'a', 0, 6, 1), 'a').find((p) => p.id === 'a')).not.toHaveProperty('unlinked');
   });
 });
 

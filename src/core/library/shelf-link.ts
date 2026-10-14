@@ -71,6 +71,21 @@ export function toggleShelfLink(layout: Layout, id: string): Layout {
   });
 }
 
+// Bibliothèque `id` déplacée ou tournée (de `before` à `after`) : un refus visait le voisin d'alors, pas le prochain. Le refus est oublié
+// sur elle et sur chaque voisine dont il la visait (celle que ⛓ aurait reliée à elle). Rien ne change si la position et l'angle sont les mêmes.
+export function forgetUnlinkOnMove(before: Layout, after: Layout, id: string): Layout {
+  const was = before.find((p) => p.id === id);
+  const now = after.find((p) => p.id === id);
+  if (!was || !now || !isShelf(was) || !isShelf(now)) return after;
+  if (was.col === now.col && was.row === now.row && angleOf(was) === angleOf(now)) return after;
+  const forget = new Set([id, ...before.filter((p) => isShelf(p) && p.unlinked && linkCandidateOf(before, p.id) === id).map((p) => p.id)]);
+  return after.map((p) => {
+    if (!forget.has(p.id) || !isShelf(p) || !p.unlinked) return p;
+    const { unlinked: _, ...rest } = p;
+    return rest;
+  });
+}
+
 // Le bouton ⛓ n'a de sens que si l'appui change le groupe affiché.
 export function canToggleShelfLink(layout: Layout, id: string): boolean {
   if (shelfGroupOf(layout, id).length === 2) return true;

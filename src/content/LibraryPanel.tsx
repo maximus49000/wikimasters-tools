@@ -24,7 +24,7 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { STEAMPUNK_ONLY, isSmallKind, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
-import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay } from '../core/library/library-types';
+import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
@@ -71,7 +71,7 @@ import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
-import { canToggleShelfLink, shelfGroupOf, toggleShelfLink } from '../core/library/shelf-link';
+import { canToggleShelfLink, forgetUnlinkOnMove, shelfGroupOf, toggleShelfLink } from '../core/library/shelf-link';
 import { canRotate, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, rotatePlacement, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
 import { PlacementBar, PlacementGrip } from './placement-bar';
 import { pointerToCell } from './furniture-drag';
@@ -531,6 +531,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const start = startPlacement(layout, room.cols, { type: 'move', id: selectedId }, centerSpot());
     reset();
     showPlacement(displayPlacement(start, room.cols, display));
+  };
+  // Avancer / Reculer : un déplacement comme un autre (une bibliothèque y oublie son refus de lien ⛓).
+  const shiftRowOf = (l: Layout, id: string, delta: 1 | -1): Layout | null => {
+    const next = shiftRow(l, room.cols, id, delta);
+    return next && forgetUnlinkOnMove(l, next, id);
   };
   // ✓ : une seule écriture, puis retour au tiroir ; après un déplacement, l'objet reste sélectionné.
   const confirmPlacement = async (): Promise<void> => {
@@ -1046,8 +1051,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             )}
             {selectedStanding && (
               <>
-                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftRow(l, room.cols, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
-                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftRow(l, room.cols, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
+                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftRowOf(l, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
+                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftRowOf(l, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
               </>
             )}
             {selectedDisplay && <DisplayButtons current={selectedDisplay} onChoose={displaySelected} />}
