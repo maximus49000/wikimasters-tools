@@ -34,8 +34,9 @@ export type Piece = Common & (
   | { shape: 'foliage'; leaves: Leaf[] }
   // Forme de révolution (pouf poire) : profil (rayon, hauteur) du bas vers le haut, tourné autour de l'axe vertical (cx, cz).
   // `lines` : coutures (méridiens, longitude en degrés, -90 = face avant), couleur `lineFill` ; `ribs` : nombre de côtes du velours ;
-  // `folds` : plis encrés sur la face avant, en sourire (plus bas de `dip` cm au milieu), à la hauteur `y`, sur ± `span` degrés.
-  | { shape: 'lathe'; cx: number; cz: number; profile: [number, number][]; lines?: { lon: number }[]; lineFill?: Fill; ribs?: number; folds?: { y: number; dip: number; span: number }[] }
+  // `folds` : plis encrés sur la face avant, en sourire (plus bas de `dip` cm au milieu), à la hauteur `y`, sur ± `span` degrés ;
+  // `seat` : creux d'assise sur la face avant, du pli (hauteur `y0`, en sourire de `dip`) au rebord (`y1`, relevé de `rise` au milieu).
+  | { shape: 'lathe'; cx: number; cz: number; profile: [number, number][]; lines?: { lon: number }[]; lineFill?: Fill; ribs?: number; folds?: { y: number; dip: number; span: number }[]; seat?: { y0: number; dip: number; y1: number; rise: number; span: number } }
 );
 export type Poi3d = { type: PoiType; x: number; y: number; z: number };
 // `face` : rectangle de la face avant (x, y depuis le sol, en cm) où se rangent les cartes et s'affiche l'écran.
@@ -643,8 +644,48 @@ function drawLathe(p: Extract<Piece, { shape: 'lathe' }>, L: Layout3d, push: Pus
     }
     return 0;
   };
-  // Pli : seulement sur la partie de la surface tournée vers le spectateur (de dos, il disparaît).
   const fineAt = (y: number) => fine.reduce((best, q) => (Math.abs(q.y - y) < Math.abs(best.y - y) ? q : best), fine[0]!);
+  // Creux d'assise, sur la surface et seulement là où elle regarde le spectateur : fond clair (il regarde vers le haut), paroi arrière
+  // dans l'ombre sous le rebord (bande du haut), rebord tracé, deux plis qui partent du fond vers les côtés.
+  const s = p.seat;
+  if (s) {
+    const K = 16;
+    const edge = (yOf: (u: number) => number) => Array.from({ length: K + 1 }, (_, i) => {
+      const u = (i / K) * 2 - 1;
+      return { y: yOf(u), th: ((u * s.span - 90) * Math.PI) / 180 };
+    });
+    const bottom = edge((u) => s.y0 - s.dip * Math.cos((u * Math.PI) / 2));
+    const top = edge((u) => s.y1 + s.rise * Math.cos((u * Math.PI) / 2));
+    // Paroi : épaisse au milieu du rebord, nulle aux bouts (croissant d'ombre).
+    const wall = edge((u) => s.y1 + s.rise * Math.cos((u * Math.PI) / 2) - (s.y1 - s.y0) * 0.4 * Math.cos((u * Math.PI) / 2));
+    const seen = (q: { y: number; th: number }) => facing(fineAt(q.y), q.th);
+    const px = (q: { y: number; th: number }) => L.toPx(at(radiusAt(q.y) * 0.97, q.y, q.th));
+    // Bande entre deux bords, réduite aux points visibles des deux bords.
+    const band = (lo: typeof bottom, hi: typeof bottom): [number, number][] => {
+      const keep = lo.map((q, i) => seen(q) && seen(hi[i]!));
+      const a = lo.filter((_, i) => keep[i]);
+      const b = hi.filter((_, i) => keep[i]);
+      return a.length >= 2 ? [...a.map(px), ...b.reverse().map(px)] : [];
+    };
+    const floor = band(bottom, top);
+    if (floor.length >= 4) {
+      push({ kind: 'poly', points: floor, fill: p.fill, shade: SHADE.top, ink: 'none', tag: 'seat' });
+      const shade = band(wall, top);
+      if (shade.length >= 4) push({ kind: 'poly', points: shade, fill: p.fill, shade: SHADE.side, ink: 'none', tag: 'seat' });
+      const rim = top.filter(seen);
+      if (rim.length >= 2) push({ kind: 'line', points: rim.map(px), fill: p.lineFill ?? 'edge', shade: 1 });
+      // Plis du fond : du milieu du pli vers le haut, de chaque côté.
+      const mid = bottom[K / 2]!;
+      for (const side of [-1, 1]) {
+        const crease = Array.from({ length: 5 }, (_, i) => {
+          const t = i / 4;
+          return { y: mid.y + (s.y1 - s.y0) * 0.45 * t, th: mid.th + side * ((s.span * 0.55 * t) * Math.PI) / 180 };
+        }).filter(seen);
+        if (crease.length >= 2) push({ kind: 'line', points: crease.map(px), fill: p.lineFill ?? 'edge', shade: 1 });
+      }
+    }
+  }
+  // Pli : seulement sur la partie de la surface tournée vers le spectateur (de dos, il disparaît).
   for (const fold of p.folds ?? []) {
     const pts = Array.from({ length: 17 }, (_, i) => {
       const phi = ((i / 16) * 2 - 1) * fold.span;

@@ -525,3 +525,20 @@ describe('forme de révolution (lathe)', () => {
     expect(mid).toBeGreaterThan(ys[ys.length - 1]!);
   });
 });
+
+describe('creux d’assise d’une forme de révolution', () => {
+  const seat = { y0: 44, dip: 7, y1: 58, rise: 3, span: 62 };
+  const drop: Model = {
+    w: 80, d: 80, h: 70, round: true,
+    pieces: [{ shape: 'lathe', cx: 40, cz: 40, fill: 'fabric', profile: [[30, 0], [38, 4], [40, 14], [39, 26], [35, 38], [28, 50], [18, 60], [8, 67], [0, 70]], seat }],
+  };
+  const seatPolys = (a: (typeof ANGLES)[number]) => renderModel(drop, a).shapes.filter((s) => s.kind === 'poly' && s.tag === 'seat');
+  it('de face : fond clair et paroi dans l’ombre', () => {
+    const polys = seatPolys(0);
+    expect(polys.some((s) => s.shade > 1)).toBe(true);
+    expect(polys.some((s) => s.shade < 1)).toBe(true);
+  });
+  it('de dos : pas de creux visible', () => {
+    expect(seatPolys(4)).toHaveLength(0);
+  });
+});

@@ -419,6 +419,7 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
         profile: [[30, 0], [37, 3], [40, 12], [39.5, 24], [36, 36], [29, 48], [19, 59], [9, 66.5], [0, 70]],
         lines: [{ lon: -150 }, { lon: -30 }, { lon: -90 }, { lon: 90 }],
         folds: [{ y: 44, dip: 7, span: 62 }],
+        seat: { y0: 44, dip: 7, y1: 55, rise: 2, span: 58 },
       },
     ],
     pois: [{ type: 'sleep', x: 40, y: 40, z: 22 }],

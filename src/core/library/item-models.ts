@@ -133,7 +133,7 @@ export function itemPieces(p: ItemPlacement, steampunk = false): Piece[] {
       case 'rod': return { ...base, a: [p.x + base.a[0], p.y + base.a[1], p.z + base.a[2]], b: [p.x + base.b[0], p.y + base.b[1], p.z + base.b[2]] };
       case 'ball': return { ...base, cx: p.x + base.cx, cy: p.y + base.cy, cz: p.z + base.cz };
       case 'prism': return { ...base, profile: base.axis === 'z' ? base.profile.map(([u, y]) => [u + p.x, y + p.y]) : base.profile.map(([u, y]) => [u + p.z, y + p.y]), from: base.from + (base.axis === 'z' ? p.z : p.x), to: base.to + (base.axis === 'z' ? p.z : p.x) };
-      case 'lathe': return { ...base, cx: p.x + base.cx, cz: p.z + base.cz, profile: base.profile.map(([r, y]): [number, number] => [r, y + p.y]), ...(base.folds && { folds: base.folds.map((fo) => ({ ...fo, y: fo.y + p.y })) }) };
+      case 'lathe': return { ...base, cx: p.x + base.cx, cz: p.z + base.cz, profile: base.profile.map(([r, y]): [number, number] => [r, y + p.y]), ...(base.folds && { folds: base.folds.map((fo) => ({ ...fo, y: fo.y + p.y })) }), ...(base.seat && { seat: { ...base.seat, y0: base.seat.y0 + p.y, y1: base.seat.y1 + p.y } }) };
       case 'foliage': return { ...base, leaves: base.leaves.map((l) => ({ ...l, base: [l.base[0] + p.x, l.base[1] + p.y, l.base[2] + p.z], ctrl: [l.ctrl[0] + p.x, l.ctrl[1] + p.y, l.ctrl[2] + p.z], tip: [l.tip[0] + p.x, l.tip[1] + p.y, l.tip[2] + p.z] })) };
     }
   });
