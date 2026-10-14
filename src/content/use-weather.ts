@@ -33,9 +33,9 @@ const storage = {
 export function useWeather(setting: WeatherSetting): WeatherView {
   const clock = useMemo(() => createWeatherClock(), []);
   const real = useMemo(() => createRealWeather({ fetch: (url) => fetch(url), now: () => Date.now(), storage }), []);
-  const [observation, setObservation] = useState<RealObservation | null>(() => real.latest());
   const position = useSyncExternalStore(subscribePosition, () => currentPosition(), () => currentPosition());
   const known = isPositionKnown();
+  const [observation, setObservation] = useState<RealObservation | null>(() => (known ? real.latest(position) : null));
   const flagsRef = useRef<WeatherFlags>(OFF);
   const [flags, setFlags] = useState<WeatherFlags>(OFF);
   const [label, setLabel] = useState('');

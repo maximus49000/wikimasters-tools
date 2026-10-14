@@ -76,7 +76,7 @@ export const FAMILLES: Famille[] = [
     lourde: true,
     fichiers: [
       ...c('art-setting.*', 'use-scene-time.*', 'use-wallclock-loop.*', 'paint-queue.*', 'library-launch.*', 'library-view.*', 'library-style-selector.*', 'library-art-ui.*'),
-      ...lib('scene-world.*', 'depth-order.*', 'library-scene.*', 'time-setting.*', 'styles.*', 'activity.*', 'paint/paint-brush.*', 'paint/paint-grade.*'),
+      ...lib('scene-world.*', 'depth-order.*', 'library-scene.*', 'time-setting.*', 'scene-clock.*', 'styles.*', 'activity.*', 'paint/paint-brush.*', 'paint/paint-grade.*'),
     ],
   },
   {
@@ -108,8 +108,8 @@ export const FAMILLES: Famille[] = [
     nom: 'scene-meteo',
     lourde: true,
     fichiers: [
-      ...c('ghibli-sky.*', 'ghibli-weather.*', 'painted-sky.*', 'scene-weather.*', 'scene-nature.*', 'scene-space.*', 'library-weather-ui.*', 'use-weather.*', 'position-setting.*', 'scene-position.*', 'city-gloom.*'),
-      ...lib('sky.*', 'weather-*', 'deco-weather.*', 'weather/**', 'library-weather-setting.*', 'paint/paint-sky-*', 'paint/paint-snow.*'),
+      ...c('ghibli-sky.*', 'ghibli-weather.*', 'painted-sky.*', 'scene-weather.*', 'scene-nature.*', 'scene-space.*', 'library-weather-ui.*', 'use-weather.*', 'position-setting.*', 'scene-position.*', 'location-*', 'city-gloom.*'),
+      ...lib('sky.*', 'scene-location.*', 'geocode.*', 'weather-*', 'deco-weather.*', 'weather/**', 'library-weather-setting.*', 'paint/paint-sky-*', 'paint/paint-snow.*'),
     ],
   },
   {

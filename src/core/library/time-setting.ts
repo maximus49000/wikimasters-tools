@@ -1,10 +1,12 @@
 import type { TimeSetting } from './library-types';
+import { localClock } from './scene-clock';
 
-// Minute locale (0 à 1439) que montre la Bibliothèque : réelle, jour forcé (midi), nuit forcée (minuit) ou choisie.
-export function minutesFor(setting: TimeSetting, now: Date): number {
+// Minute locale (0 à 1439) que montre la Bibliothèque : réelle (dans le fuseau de la scène, `tz` null = appareil), jour forcé (midi),
+// nuit forcée (minuit) ou choisie.
+export function minutesFor(setting: TimeSetting, now: Date, tz: string | null = null): number {
   switch (setting.mode) {
     case 'real':
-      return now.getHours() * 60 + now.getMinutes();
+      return localClock(now, tz).minutes;
     case 'day':
       return 720;
     case 'night':

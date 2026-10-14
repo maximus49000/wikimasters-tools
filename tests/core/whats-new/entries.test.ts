@@ -175,4 +175,13 @@ describe('catalogue des fiches', () => {
     for (const step of entry!.steps) expect(step.details?.some((d) => d.label === 'Limites'), step.title).toBe(true);
     expect(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v28')).toBeGreaterThan(ENTRIES.findIndex((e) => e.id === 'bibliotheque-v27'));
   });
+  it('la fiche lieu-scene-2026-10 présente les trois choix, la recherche, l’heure de la ville et les limites', () => {
+    const entry = ENTRIES.find((e) => e.id === 'lieu-scene-2026-10');
+    expect(entry).toBeDefined();
+    expect(entry!.title).toBe('Lieu de la scène');
+    const text = entry!.steps.map((s) => `${s.title} ${s.text} ${(s.details ?? []).map((d) => `${d.label} ${d.text}`).join(' ')}`).join(' ');
+    for (const word of ['Géolocalisation', 'Ville', 'Désactivé', 'menu ☁️', 'Paramètre d’extension', 'Open-Meteo', 'relais', 'Tokyo', 'vacances', 'hors ligne']) expect(text, word).toContain(word);
+    for (const label of ['À quoi ça sert', 'D’où viennent les données', 'Comment faire', 'Limites']) expect(text, label).toContain(label);
+    expect(ENTRIES.some((e) => e.id === 'position-v1')).toBe(true);
+  });
 });

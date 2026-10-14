@@ -2265,4 +2265,67 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'lieu-scene-2026-10',
+    theme: 'collection',
+    glyph: '🏙',
+    title: 'Lieu de la scène',
+    summary: 'La Bibliothèque vit où vous êtes, ou dans la ville de votre choix, à son heure et sous sa météo',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'À quoi sert le lieu',
+        text: 'Un seul lieu pour toute la Bibliothèque : il règle l’heure réelle, le ciel, le lever et le coucher du soleil, la météo réelle, les commerces et les bus de la ville.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À voir dans votre pièce le temps qu’il fait et l’heure qu’il est chez vous, ou dans une ville qui vous est chère.' },
+          { label: 'Comment faire', text: 'Ouvrez le menu ☁️ et touchez le bandeau en tête (📍, 🏙 ou ⊘) ; le même réglage est dans Plus › Paramètre d’extension › Position.' },
+          { label: 'Astuce', text: 'Le bandeau rappelle toujours le lieu choisi et, pour une ville, l’heure qu’il y est.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Trois choix',
+        text: '📍 Géolocalisation : la position de l’appareil. 🏙 Ville : une ville cherchée dans le monde entier. ⊘ Désactivé : aucune position, l’heure de l’appareil et une météo simulée.',
+        details: [
+          { label: 'Comment faire', text: 'Touchez Géolocalisation ou Désactivé : c’est enregistré aussitôt. Touchez Ville, cherchez, puis touchez la ville voulue.' },
+          { label: 'À savoir', text: 'Toucher « Ville » sans choisir de ville ne change rien : le lieu précédent reste.' },
+          { label: 'Limites', text: 'Un seul lieu pour toutes les pièces, gardé sur cet appareil : l’application et l’extension ont chacune le leur.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Chercher une ville',
+        text: 'Tapez au moins 2 lettres : la liste montre le nom, puis la région, le pays et la population pour départager les villes du même nom.',
+        details: [
+          { label: 'D’où viennent les données', text: 'De la recherche en ligne d’Open-Meteo, interrogée par le relais de l’extension, qui ne reçoit que le texte tapé.' },
+          { label: 'Ce qui est envoyé', text: 'Ensuite, seules les coordonnées arrondies de la ville partent au relais, pour la météo, les commerces et les bus.' },
+          { label: 'Limites', text: 'La recherche ne marche qu’en ligne ; hors ligne, la ville déjà choisie reste et tout continue avec elle.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'L’heure de la ville',
+        text: 'En Ville, la scène vit à l’heure de la ville : depuis Paris, Tokyo est 7 h plus tard en octobre (8 h en janvier) ; à 22 h à Paris, il fait nuit à Tokyo à 5 h du matin, le lendemain.',
+        details: [
+          { label: 'Comment ça marche', text: 'L’heure de la ville est calculée sur l’appareil, sans internet, avec les changements d’heure.' },
+          { label: 'Les horloges', text: 'Une horloge « heure de la scène » donne l’heure de la ville ; une horloge réglée sur une ville garde l’heure de sa ville.' },
+          { label: 'À savoir', text: 'Les modes « Toujours le jour », « Toujours la nuit » et « Choisir l’heure » du menu ☁️ restent possibles.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Limites',
+        text: 'Hors de France, la zone des vacances « Auto » prend la zone par défaut. La recherche de ville demande internet. Désactivé grise la météo réelle.',
+        details: [
+          { label: 'Limites', text: 'Hors de France, le département n’est pas connu : la zone des vacances « Auto » prend la zone par défaut.' },
+          { label: 'Hors ligne', text: 'Météo réelle, commerces et bus échouent comme d’habitude, mais l’heure et le ciel de la ville restent justes.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
 ];

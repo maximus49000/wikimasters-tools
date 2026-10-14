@@ -56,6 +56,8 @@ export type SceneView = {
   minutes: number;
   // Réglage d'heure : en heure réelle les horloges lisent la seconde de l'appareil ; sinon l'heure figée de la scène.
   mode?: TimeSetting['mode'];
+  // Fuseau de la scène (ville du lieu de la scène) ; absent ou null = appareil. Les horloges décalent depuis lui.
+  tz?: string | null;
   weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } };
   city?: { day: DayContext; forcedNight: boolean; shopNames?: NamePool; busLines?: BusNetwork | null };
   // Ce que montrent les météomètres (état, libellé, température réelle).

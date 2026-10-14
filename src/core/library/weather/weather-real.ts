@@ -37,8 +37,9 @@ type Deps = {
   storage: { get(key: string): string | null; set(key: string, value: string): void };
 };
 type Pos = { lat: number; lon: number };
-// Seuls l'instant et l'observation sont enregistrés (stockage partagé avec la page) ; la case (position) reste en mémoire.
-type Saved = { at: number; obs: RealObservation };
+// Instant, observation et case de 0,1° (spec lieu §6) : à la réouverture, une observation fraîche de la même case est reprise sans
+// requête. `cell` null : ancien format, relu comme périmé.
+type Saved = { at: number; obs: RealObservation; cell: string | null };
 
 const KEY = 'wmt:weather-real';
 const FRESH_MS = 15 * 60_000;
@@ -58,27 +59,29 @@ function parseReply(raw: unknown): RealObservation | null {
 
 function parseSaved(text: string | null): Saved | null {
   if (!text) return null;
-  const s = JSON.parse(text) as { at?: unknown; obs?: Record<string, unknown> | null };
+  const s = JSON.parse(text) as { at?: unknown; obs?: Record<string, unknown> | null; cell?: unknown };
   const o = s.obs;
   if (!isNum(s.at) || !o) return null;
   if (![o.code, o.tempC, o.cloud, o.precipMm, o.windKmh, o.visibilityM].every(isNum)) return null;
   const obs: RealObservation = { code: o.code as number, tempC: o.tempC as number, cloud: o.cloud as number, precipMm: o.precipMm as number, windKmh: o.windKmh as number, visibilityM: o.visibilityM as number };
-  return { at: s.at, obs };
+  const savedCell = typeof s.cell === 'string' && /^-?\d+\.\d,-?\d+\.\d$/.test(s.cell) ? s.cell : null;
+  return { at: s.at, obs, cell: savedCell };
 }
 
 // Lit la vraie météo par le relais, avec cache de 15 min, un seul appel à la fois et réessais espacés. Ne lève jamais.
-export function createRealWeather(deps: Deps): { latest(): RealObservation | null; refresh(pos: Pos): Promise<RealObservation | null> } {
+export function createRealWeather(deps: Deps): { latest(pos: Pos | null): RealObservation | null; refresh(pos: Pos): Promise<RealObservation | null> } {
   let saved: Saved | null = null;
   try {
     saved = parseSaved(deps.storage.get(KEY));
   } catch {
     // Cache illisible : on repart de zéro.
   }
-  // Case de la dernière observation, en mémoire seulement : après un rechargement, le relais est relu une fois.
-  let savedCell: string | null = null;
   let failures = 0;
   let retryAt = 0;
-  let inFlight: Promise<RealObservation | null> | null = null;
+  let inFlight: { cell: string; promise: Promise<RealObservation | null> } | null = null;
+
+  // Une observation mémorisée ne vaut que pour sa case : jamais la météo de l'ancienne ville pour la nouvelle.
+  const savedFor = (c: string): RealObservation | null => (saved && saved.cell === c ? saved.obs : null);
 
   const fetchOnce = async (pos: Pos): Promise<RealObservation | null> => {
     try {
@@ -87,8 +90,7 @@ export function createRealWeather(deps: Deps): { latest(): RealObservation | nul
       const obs = parseReply(await response.json());
       if (!obs) throw new Error('shape');
       failures = 0;
-      saved = { at: deps.now(), obs };
-      savedCell = cell(pos);
+      saved = { at: deps.now(), obs, cell: cell(pos) };
       try {
         deps.storage.set(KEY, JSON.stringify(saved));
       } catch {
@@ -98,20 +100,27 @@ export function createRealWeather(deps: Deps): { latest(): RealObservation | nul
     } catch {
       retryAt = deps.now() + BACKOFF_MS[Math.min(failures, BACKOFF_MS.length - 1)]!;
       failures++;
-      return saved?.obs ?? null;
+      return savedFor(cell(pos));
     }
   };
 
   return {
-    latest: () => saved?.obs ?? null,
+    // Observation de départ : seulement pour la case de la scène (jamais celle d'une ancienne ville).
+    latest: (pos) => (pos ? savedFor(cell(pos)) : null),
     refresh(pos) {
-      if (saved && savedCell === cell(pos) && deps.now() - saved.at < FRESH_MS) return Promise.resolve(saved.obs);
-      if (deps.now() < retryAt) return Promise.resolve(saved?.obs ?? null);
+      const here = cell(pos);
+      // Date dans le futur (horloge avancée puis corrigée) : jamais « fraîche ».
+      const age = deps.now() - (saved?.at ?? 0);
+      if (saved && saved.cell === here && age >= 0 && age < FRESH_MS) return Promise.resolve(saved.obs);
+      if (deps.now() < retryAt) return Promise.resolve(savedFor(here));
+      // Une requête en vol pour une autre case n'est pas réutilisée.
+      if (inFlight && inFlight.cell === here) return inFlight.promise;
       // Libéré APRÈS l'affectation : même un fetch qui lève de façon synchrone ne laisse pas de requête « en cours » à jamais.
-      inFlight ??= fetchOnce(pos).finally(() => {
-        inFlight = null;
+      const promise: Promise<RealObservation | null> = fetchOnce(pos).finally(() => {
+        if (inFlight?.promise === promise) inFlight = null;
       });
-      return inFlight;
+      inFlight = { cell: here, promise };
+      return promise;
     },
   };
 }
