@@ -98,26 +98,43 @@ describe('createRealWeather', () => {
     const partial = createRealWeather({ fetch: async () => new Response('{"ok":true,"code":"x"}', { status: 200 }), now: () => 0, storage: memory() });
     expect(await partial.refresh(paris)).toBeNull();
   });
-  it('relit la dernière observation au démarrage, puis relit le relais une fois (la case n’est pas mémorisée)', async () => {
+  it('à la réouverture, une observation de moins de 15 min pour la même case est reprise sans requête', async () => {
     const storage = memory();
     const first = createRealWeather({ fetch: async () => ok(), now: () => 0, storage });
     await first.refresh(paris);
     const fetchFn = vi.fn(async (_url: string) => ok());
-    const second = createRealWeather({ fetch: fetchFn, now: () => 60_000, storage });
+    const second = createRealWeather({ fetch: fetchFn, now: () => 14 * 60_000, storage });
     expect(second.latest()?.code).toBe(61);
-    await second.refresh(paris);
-    await second.refresh(paris);
+    expect((await second.refresh(paris))?.code).toBe(61);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+  it('à la réouverture, une autre case ou une observation de plus de 15 min relit le relais', async () => {
+    const storage = memory();
+    await createRealWeather({ fetch: async () => ok(), now: () => 0, storage }).refresh(paris);
+    const elsewhere = vi.fn(async (_url: string) => ok());
+    await createRealWeather({ fetch: elsewhere, now: () => 60_000, storage }).refresh({ lat: 35.69, lon: 139.69 });
+    expect(elsewhere).toHaveBeenCalledTimes(1);
+    const late = vi.fn(async (_url: string) => ok());
+    await createRealWeather({ fetch: late, now: () => 60_000 + 16 * 60_000, storage }).refresh({ lat: 35.69, lon: 139.69 });
+    expect(late).toHaveBeenCalledTimes(1);
+  });
+  it('ancien format sans case : relu comme périmé (une requête)', async () => {
+    const storage = memory();
+    storage.set('wmt:weather-real', JSON.stringify({ at: 0, obs: { code: 3, tempC: 9, cloud: 80, precipMm: 0, windKmh: 5, visibilityM: 20000 } }));
+    const fetchFn = vi.fn(async (_url: string) => ok());
+    const real = createRealWeather({ fetch: fetchFn, now: () => 60_000, storage });
+    expect(real.latest()?.code).toBe(3);
+    await real.refresh(paris);
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
-  it('n’enregistre jamais la position (ni case, ni coordonnées) dans le stockage de la page', async () => {
+  it('n’enregistre que la case de 0,1°, jamais les coordonnées exactes', async () => {
     const values = new Map<string, string>();
     const storage = { get: (k: string) => values.get(k) ?? null, set: (k: string, v: string) => void values.set(k, v) };
     const real = createRealWeather({ fetch: async () => ok(), now: () => 0, storage });
     await real.refresh({ lat: 43.6047, lon: 1.4442 });
     const written = [...values.values()].join(' ');
-    expect(written).not.toBe('');
-    expect(written).not.toMatch(/cell|lat|lon/);
-    expect(written).not.toMatch(/43\.6|1\.4/);
+    expect(JSON.parse(values.get('wmt:weather-real')!)).toMatchObject({ at: 0, cell: '43.6,1.4' });
+    expect(written).not.toMatch(/43\.60|1\.44|"lat"|"lon"/);
   });
   it('un fetch qui lève de façon synchrone ne bloque pas les relectures suivantes', async () => {
     let now = 0;
