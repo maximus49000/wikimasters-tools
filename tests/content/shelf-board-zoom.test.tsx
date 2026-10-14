@@ -78,4 +78,21 @@ describe('vue d’une tablette', () => {
     fire(board, 'pointerup', { clientY: 120 });
     expect(onLevel).toHaveBeenCalledTimes(1);
   });
+  it('un nouveau rendu au même niveau ne change pas l’animation d’entrée', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const render = (level: ShelfLevel, imageOf: () => undefined) => act(() => { root.render(<ShelfBoardZoom shelfIds={['s', 't']} level={level} room={room} cards={cards} imageOf={imageOf} onCard={vi.fn()} onLevel={vi.fn()} />); });
+    const enter = () => container.querySelector('svg')!.getAttribute('data-board-enter');
+    render(0, () => undefined);
+    expect(enter()).toBe('in');
+    render(1, () => undefined);
+    expect(enter()).toBe('below');
+    render(1, () => undefined);
+    expect(enter()).toBe('below');
+    render(0, () => undefined);
+    expect(enter()).toBe('above');
+    render(0, () => undefined);
+    expect(enter()).toBe('above');
+  });
 });

@@ -1,5 +1,5 @@
 // Dessin provisoire Opus — Fable n'est pas passé, reprise prévue.
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
+import { useRef, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
 import type { Matrix } from '../core/library/footprint';
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
 import type { Room, ShelfLevel } from '../core/library/library-types';
@@ -59,9 +59,10 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
   const width = shelfIds.length * SHELF_INNER_CM + (shelfIds.length + 1) * POST_CM;
   const height = boardH + PLANK_CM + TITLE_CM;
   // Entrée : la tablette du dessous monte, celle du dessus descend ; la première s'agrandit.
-  const prev = useRef(level);
-  const enter = level > prev.current ? 'below' : level < prev.current ? 'above' : 'in';
-  useEffect(() => { prev.current = level; }, [level]);
+  // Direction figée par niveau : un nouveau rendu au même niveau ne rejoue pas l'animation.
+  const entry = useRef<{ level: ShelfLevel; enter: 'in' | 'below' | 'above' }>({ level, enter: 'in' });
+  if (entry.current.level !== level) entry.current = { level, enter: level > entry.current.level ? 'below' : 'above' };
+  const enter = entry.current.enter;
   const startY = useRef<number | null>(null);
   // Le clic qui suit un glissement n'ouvre pas de fiche.
   const swiped = useRef(false);
