@@ -69,7 +69,7 @@ function parseSaved(text: string | null): Saved | null {
 }
 
 // Lit la vraie météo par le relais, avec cache de 15 min, un seul appel à la fois et réessais espacés. Ne lève jamais.
-export function createRealWeather(deps: Deps): { latest(): RealObservation | null; refresh(pos: Pos): Promise<RealObservation | null> } {
+export function createRealWeather(deps: Deps): { latest(pos: Pos | null): RealObservation | null; refresh(pos: Pos): Promise<RealObservation | null> } {
   let saved: Saved | null = null;
   try {
     saved = parseSaved(deps.storage.get(KEY));
@@ -105,7 +105,8 @@ export function createRealWeather(deps: Deps): { latest(): RealObservation | nul
   };
 
   return {
-    latest: () => saved?.obs ?? null,
+    // Observation de départ : seulement pour la case de la scène (jamais celle d'une ancienne ville).
+    latest: (pos) => (pos ? savedFor(cell(pos)) : null),
     refresh(pos) {
       const here = cell(pos);
       // Date dans le futur (horloge avancée puis corrigée) : jamais « fraîche ».
