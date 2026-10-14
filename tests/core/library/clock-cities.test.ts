@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CITIES, cityClock, cityMinutes, isKnownTz, searchCities, tzOffsetMinutes } from '../../../src/core/library/clock-cities';
 
 describe('villes des horloges', () => {
@@ -26,13 +26,26 @@ describe('villes des horloges', () => {
     expect(tzOffsetMinutes('Asia/Tokyo', jan) - tzOffsetMinutes('Europe/Paris', jan)).toBe(8 * 60);
   });
 
-  it('garde l écart quand l heure de la scène est choisie, et repasse minuit', () => {
-    const now = new Date('2026-10-14T10:00:00Z');
-    const device = -now.getTimezoneOffset();
-    const tokyo = tzOffsetMinutes('Asia/Tokyo', now);
-    // 22 h dans la scène → 22 h + (Tokyo − appareil), ramené dans 0..1439.
-    expect(cityMinutes(22 * 60, 'Asia/Tokyo', now)).toBe((((22 * 60 + tokyo - device) % 1440) + 1440) % 1440);
-    expect(cityMinutes(22 * 60, 'Asia/Tokyo', now)).toBeLessThan(1440);
+  describe('heure d une ville, appareil simulé à Paris (UTC+2 en octobre)', () => {
+    const now = new Date('2026-10-14T10:00:42Z');
+    beforeEach(() => {
+      vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(-120);
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('avance de 7 h et repasse minuit : 22 h à la scène donne 5 h à Tokyo', () => {
+      expect(cityMinutes(22 * 60, 'Asia/Tokyo', now)).toBe(300);
+    });
+
+    it('recule en passant minuit : 2 h à la scène donne 20 h à New York', () => {
+      expect(cityMinutes(2 * 60, 'America/New_York', now)).toBe(1200);
+    });
+
+    it('donne l heure, les minutes et les secondes d une ville', () => {
+      expect(cityClock(22 * 60 + 15, { name: 'Tokyo', tz: 'Asia/Tokyo' }, now)).toEqual({ h: 5, m: 15, s: 42 });
+    });
   });
 
   it('sans ville, l horloge donne l heure de la scène et les secondes de l appareil', () => {
