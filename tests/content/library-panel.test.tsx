@@ -341,6 +341,17 @@ describe('LibraryPanel : plein écran', () => {
     expect((q('[data-scroll]') as HTMLElement).style.height).toBe('calc(100vh - var(--wmt-drawer-h, 0px))');
     expect(q('[data-action="fit-screen"]')).toBeNull();
   });
+
+  it('en paysage, Aménager garde la pièce sur tout l’écran (tiroir flottant à droite, pas de bande noire à gauche)', async () => {
+    stub();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2400 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });
+    await click('[data-action="fullscreen"]');
+    await settle();
+    await click('[data-action="edit"]');
+    expect((q('[data-scroll]') as HTMLElement).style.height).toBe('100vh');
+    await click('[data-action="fullscreen"]');
+  });
 });
 
 describe('LibraryPanel : niveaux', () => {
