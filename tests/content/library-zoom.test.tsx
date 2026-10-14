@@ -89,6 +89,8 @@ describe('zoom sur un meuble', () => {
     // Étagère de biais (angle 1) : les cartes de face n'apparaissent qu'à mi-ouverture.
     await advance(500);
     await click('[data-zoom-card="Daft_Punk"]');
+    expect(q('[data-shelf-board="0"]')).not.toBeNull();
+    await click('[data-board-card="Daft_Punk"]');
     expect(document.querySelector('[data-room-card="Daft_Punk"]')).not.toBeNull();
     await click('[data-action="close"]');
     expect(document.querySelector('[data-room-card]')).toBeNull();
@@ -158,6 +160,7 @@ describe('zoom sur un meuble', () => {
     await click('[data-furniture="shelf"]');
     await advance(500);
     await click('[data-zoom-card="Daft_Punk"]');
+    await click('[data-board-card="Daft_Punk"]');
     expect(document.querySelector('[data-room-card="Daft_Punk"]')).not.toBeNull();
     await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
     await advance(500);
@@ -171,6 +174,7 @@ describe('zoom sur un meuble', () => {
     await click('[data-furniture="shelf"]');
     await advance(500);
     await click('[data-zoom-card="Daft_Punk"]');
+    await click('[data-board-card="Daft_Punk"]');
     const push = vi.spyOn(history, 'pushState');
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     await advance(500);
@@ -182,6 +186,11 @@ describe('zoom sur un meuble', () => {
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     await advance(500);
     expect(q('[data-furniture-zoom]')).toBeNull();
+  });
+  it('bibliothèques liées : toucher la vide ouvre les deux', async () => {
+    await seed([{ id: 'a', kind: 'shelf', col: 0, row: 6 }, { id: 'b', kind: 'shelf', col: 4, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 'b', level: 0, order: 0, slug: 'Daft_Punk' }]);
+    await click('[data-id="a"]');
+    expect(container.querySelectorAll('[data-zoom-piece]')).toHaveLength(2);
   });
 });
 

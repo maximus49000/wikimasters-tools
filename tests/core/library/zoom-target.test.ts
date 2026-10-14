@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cameraOf, zoomRectOf, zoomTargetOf } from '../../../src/core/library/zoom-target';
+import { cameraOf, unionBox, zoomRectOf, zoomTargetOf } from '../../../src/core/library/zoom-target';
 import type { Layout } from '../../../src/core/library/library-types';
 
 const shelf = { id: 's', kind: 'shelf', col: 0, row: 6 } as const;
@@ -9,8 +9,18 @@ describe('zoomTargetOf', () => {
   it('étagère avec une carte (même inconnue) → zoom ; vide → rien', () => {
     expect(zoomTargetOf([shelf], 's')).toBeNull();
     const l: Layout = [shelf, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Inconnue' }];
-    expect(zoomTargetOf(l, 's')).toEqual({ kind: 'shelf', id: 's' });
-    expect(zoomTargetOf(l, 'c')).toEqual({ kind: 'shelf', id: 's' });
+    expect(zoomTargetOf(l, 's')).toEqual({ kind: 'shelf', ids: ['s'] });
+    expect(zoomTargetOf(l, 'c')).toEqual({ kind: 'shelf', ids: ['s'] });
+  });
+  it('bibliothèques liées : les deux, même si seule la partenaire range une carte', () => {
+    const l: Layout = [{ id: 'a', kind: 'shelf', col: 0, row: 6 }, { id: 'b', kind: 'shelf', col: 4, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 'b', level: 1, order: 0, slug: 'Paris' }];
+    expect(zoomTargetOf(l, 'a')).toEqual({ kind: 'shelf', ids: ['a', 'b'] });
+    expect(zoomTargetOf(l, 'c')).toEqual({ kind: 'shelf', ids: ['a', 'b'] });
+    expect(zoomTargetOf([l[0]!, l[1]!], 'a')).toBeNull();
+  });
+  it('unionBox : rectangle englobant, null ignorés', () => {
+    expect(unionBox([{ x: 0, y: 10, w: 10, h: 10 }, null, { x: 20, y: 0, w: 5, h: 5 }])).toEqual({ x: 0, y: 0, w: 25, h: 20 });
+    expect(unionBox([null])).toBeNull();
   });
   it('bureau : seulement si son ordinateur affiche une carte ; l’ordinateur vise son bureau', () => {
     expect(zoomTargetOf([desk, { id: 'pc', kind: 'computer', deskId: 'd' }], 'd')).toBeNull();

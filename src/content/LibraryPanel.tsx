@@ -94,7 +94,7 @@ import { BuildDrawer, INITIAL_DRAWER, type DrawerState } from './build-drawer';
 import { ActionBubble } from './action-bubble';
 import { useOutsideCamera, type OutsidePhase } from './outside/use-outside-camera';
 import type { Rect } from '../core/library/outside-camera';
-import { cameraOf, zoomTargetOf, type Box } from '../core/library/zoom-target';
+import { cameraOf, unionBox, zoomIdsOf, zoomTargetOf, type Box } from '../core/library/zoom-target';
 import { FurnitureZoom, ZOOM_MS, ZOOM_REDUCED_MS } from './furniture-zoom';
 import { useFurnitureZoom } from './use-furniture-zoom';
 import { reducedMotion } from './ghibli-sky';
@@ -216,7 +216,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   viewingRef.current = viewing;
   // Zoom de face sur une étagère ou un bureau (Visiter) ; zoomRef : zoom courant relu par les gestionnaires.
   // Le retour Android/navigateur ferme d'abord la fiche ouverte par-dessus le zoom.
-  const { zoom, open: openZoom, close: closeZoom, reset: resetZoom } = useFurnitureZoom(() => {
+  const { zoom, open: openZoom, close: closeZoom, reset: resetZoom, setLevel: setZoomLevel } = useFurnitureZoom(() => {
     if (!viewingRef.current) return false;
     setViewing(null);
     return true;
@@ -669,7 +669,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (outsidePhase !== 'inside') return false;
     const target = zoomTargetOf(layout, id);
     if (!target) return false;
-    openZoom(target, boxInStage(target.id));
+    openZoom(target, unionBox(zoomIdsOf(target).map(boxInStage)));
     return true;
   };
 
@@ -1088,7 +1088,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         {/* Vue de face : sœur du conteneur de défilement, elle n'hérite ni du flou ni de la caméra ; la fiche passe par-dessus. */}
         {zoom && !editing && (
           <FurnitureZoom
-            key={zoom.target.id}
+            key={zoomIdsOf(zoom.target).join('+')}
             target={zoom.target}
             room={room}
             cards={roomCards.cards}
@@ -1096,6 +1096,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             phase={zoom.phase}
             from={zoom.from}
             stage={stageSize}
+            level={zoom.level}
+            onLevel={(lv) => setZoomLevel(lv)}
             onCard={(slug) => setViewing(slug)}
             onBack={closeZoom}
           />
