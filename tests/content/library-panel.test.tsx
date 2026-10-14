@@ -342,7 +342,7 @@ describe('LibraryPanel : plein écran', () => {
     expect(q('[data-action="fit-screen"]')).toBeNull();
   });
 
-  it('en paysage, Aménager garde la pièce sur tout l’écran (tiroir flottant à droite, pas de bande noire à gauche)', async () => {
+  it('en paysage, Aménager garde la pièce sur tout l’écran (tiroir translucide par-dessus, pas de bande noire)', async () => {
     stub();
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2400 });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });

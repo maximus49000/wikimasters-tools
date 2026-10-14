@@ -192,7 +192,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-switch button{width:34px;height:28px;padding:0;border:0;border-radius:14px;display:grid;place-items:center;cursor:pointer;background:transparent;color:#7d93b0}
 .wmt-lib-switch button[aria-pressed="true"]{background:linear-gradient(#4a97e8,var(--sims-blue));color:#fff}
 .wmt-lib-stage-msg{position:absolute;top:56px;left:50%;transform:translateX(-50%);z-index:7;max-width:80%;padding:6px 12px;border-radius:14px;font:800 12px/16px var(--sims-font);color:var(--sims-text);background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.3);text-align:center}
-@media (orientation:landscape){.wmt-lib-stage:fullscreen{padding-bottom:0}.wmt-lib-stage:fullscreen .wmt-lib-drawer:not(.wmt-lib-drawer-reduced){left:auto;width:min(470px,70%)}.wmt-lib-stage:fullscreen .wmt-lib-thumbs{grid-template-rows:58px;grid-auto-columns:56px}.wmt-lib-stage:fullscreen .wmt-lib-cats{display:grid;grid-template-columns:repeat(2,30px);align-content:start;gap:3px}.wmt-lib-stage:fullscreen .wmt-lib-cat{width:30px;height:30px;min-width:30px;min-height:30px}}
+@media (orientation:landscape){.wmt-lib-stage:fullscreen{padding-bottom:0}.wmt-lib-stage:fullscreen .wmt-lib-drawer-panel{background:rgba(250,252,255,.62)}.wmt-lib-stage:fullscreen .wmt-lib-cat:not([aria-pressed="true"]),.wmt-lib-stage:fullscreen .wmt-lib-thumb{background:rgba(255,255,255,.6)}.wmt-lib-stage:fullscreen .wmt-lib-thumbs{grid-template-rows:58px;grid-auto-columns:56px}.wmt-lib-stage:fullscreen .wmt-lib-cats{display:grid;grid-template-columns:repeat(2,30px);align-content:start;gap:3px}.wmt-lib-stage:fullscreen .wmt-lib-cat{width:30px;height:30px;min-width:30px;min-height:30px}}
 `;
 
 const REFUSALS = {
@@ -430,7 +430,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const portrait = room.orientation === 'portrait';
   const visibleWidth = VISIBLE_COLS[room.orientation] * CELL_W;
   // Hauteur d'écran laissée à la pièce en plein écran : en Aménager, le tiroir (--wmt-drawer-h) en prend le bas. Sur un écran
-  // en paysage, le tiroir n'occupe que la droite et flotte par-dessus la pièce (sinon bande noire à sa gauche) ; il se cache
+  // en paysage, le tiroir (toute la largeur, translucide) flotte par-dessus la pièce, qui garde tout l'écran ; il se cache
   // pendant la pose et se réduit pour dégager le sol.
   const drawerFloats = stage.active && screenSize.width > screenSize.height;
   const screenH = editing && !drawerFloats ? 'calc(100vh - var(--wmt-drawer-h, 0px))' : '100vh';
