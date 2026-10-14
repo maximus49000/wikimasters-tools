@@ -2113,4 +2113,38 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v31',
+    theme: 'collection',
+    glyph: '🔍',
+    title: 'Zoomer sur une étagère, lier deux bibliothèques',
+    summary: 'Dans la vue de face d’une bibliothèque, touchez une étagère pour lire ses cartes en grand ; deux bibliothèques collées s’ouvrent ensemble',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Une étagère en grand',
+        text: 'En mode Visiter, touchez une bibliothèque qui range des cartes : elle s’affiche de face. Touchez ensuite une de ses étagères : seules ses cartes restent à l’écran, en grand, avec leur titre. Les flèches ↑ ↓, ou un glissement du doigt, passent à l’étagère du dessus ou du dessous.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À lire les pochettes et les titres sur un téléphone, où la vue de face de la bibliothèque entière est trop petite.' },
+          { label: 'D’où viennent les données', text: 'Les cartes sont celles que vous avez rangées sur l’étagère ; les titres et les images viennent de votre collection Wikimasters.' },
+          { label: 'Comment faire', text: 'Touchez la bibliothèque, puis l’étagère voulue ; ↑ ↓ ou un glissement vertical changent d’étagère, ← revient en arrière.' },
+          { label: 'Comment ça marche', text: 'Les cartes gardent leur place et leurs proportions réelles. Touchez une carte pour ouvrir sa fiche ; ← (ou le retour du téléphone) revient à la vue de face, puis à la pièce.' },
+          { label: 'Limites', text: 'Les livres rangés sur la tranche montrent leur titre sur la tranche, souvent coupé. Dessins provisoires, une version plus soignée viendra.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Deux bibliothèques côte à côte',
+        text: 'Posez deux bibliothèques bord à bord, tournées dans le même sens : elles se lient toutes seules et s’ouvrent ensemble, comme une grande bibliothèque. En mode Aménager, le bouton ⛓ de la bulle les délie (ou les relie).',
+        details: [
+          { label: 'À quoi ça sert', text: 'À parcourir d’un coup une collection qui ne tient pas dans un seul meuble.' },
+          { label: 'Comment ça marche', text: 'Le lien se lit dans la position des meubles : écartez-en un, il disparaît ; rapprochez-les, il revient (sauf si vous l’avez délié). La bibliothèque liée est entourée en pointillés quand l’autre est sélectionnée.' },
+          { label: 'Limites', text: 'Deux bibliothèques au maximum : dans une rangée de trois, les deux de gauche sont liées. Chaque carte reste rangée dans sa propre bibliothèque.' },
+        ],
+        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+      },
+    ],
+  },
 ];
