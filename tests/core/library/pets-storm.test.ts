@@ -22,6 +22,19 @@ const sofa = [{ id: 's', kind: 'sofa', col: 8, row: 10 }] as never;
 const envOf = (layout = sofa, still = false) => ({ layout, cols: 24, rng: () => 0.5, still, occupied: new Set<string>(), ctx: { ...NO_CONTEXT, storm: { id: 1, since: 0 }, weather: 'storm' as const } });
 const from = { pt: standPoint(2, 16), on: null, hostId: null, facing: 'r' as const };
 
+describe('orage avec les nouveaux meubles', () => {
+  it('le chat se cache sous le canapé deux places', () => {
+    const p = stormPlan(envOf([{ id: 'l', kind: 'loveseat', col: 8, row: 12 }] as never), 'cat', from, 1000);
+    expect(p.action).toBe('hide');
+    expect(p.hostId).toBe('l');
+  });
+  it('le chien se blottit au pied de la chauffeuse', () => {
+    const p = stormPlan(envOf([{ id: 'c', kind: 'club-chair', col: 8, row: 12 }] as never), 'dog', from, 1000);
+    expect(p.action).toBe('cower');
+    expect(p.hostId).toBe('c');
+  });
+});
+
 describe('stormPlan', () => {
   it('le chat file sous le canapé (hide) avec un délai', () => {
     const p = stormPlan(envOf(), 'cat', from, 1000);

@@ -5,6 +5,7 @@ import { hashString } from '../scene-world';
 import type { PetContext } from './context';
 import { planEndsAt, stateAt, type PetState } from './motion';
 import { planRoute, scaleRoute, type Standing } from './route';
+import { hasRole } from './roles';
 import { buildWalkMap, cellOf, hideSpot, isFree, nearestFreeCell, standPoint, type Platform, type WalkMap } from './walk-map';
 
 // Point d'un dessus à la colonne d'un point d'intérêt (assise) : ramené sur le dessus praticable (meuble tourné).
@@ -74,7 +75,7 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
     if (key !== undefined && env.occupied.has(key)) return;
     const raw = planRoute(map, from, dest);
     if (!raw) return;
-    // Un chien ne grimpe que sur son canapé : aucun segment ne le pose sur un autre meuble (fauteuil, bureau…).
+    // Un chien ne grimpe que sur un canapé ou un pouf (rôle `dogCouch`) : aucun segment ne le pose sur un autre meuble (fauteuil, bureau…).
     // Un robot roule au sol : aucun segment ne le pose sur un meuble.
     if (robot && raw.some((s) => s.on !== null || s.fromOn !== null)) return;
     if (dog && raw.some((s) => s.on !== null && s.on !== dest.on && s.on !== from.on)) return;
@@ -124,9 +125,13 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
           go('drink', 1, { pt: cellPt(q.dx, q.dy), on: null, hostId: p.id }, [3000, 5000], `${p.id}:eat`);
         }
       }
-      if (plat && p.kind === 'sofa') {
-        for (const q of poi('sleep')) go('sleep', 1.2, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [25000, 60000], `${p.id}:sleep`);
-        poi('seat').forEach((q, i) => go('perch', 0.6, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [10000, 25000], `${p.id}:seat${i}`));
+      if (plat && hasRole(p.kind, 'dogCouch')) {
+        const beds = poi('sleep');
+        const seats = poi('seat');
+        // Dort sur la place `sleep` ; à défaut (chauffeuse, pouf), sur une place assise, réservée comme telle.
+        if (beds.length > 0) for (const q of beds) go('sleep', 1.2, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [25000, 60000], `${p.id}:sleep`);
+        else seats.forEach((q, i) => go('sleep', 1.2, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [25000, 60000], `${p.id}:seat${i}`));
+        seats.forEach((q, i) => go('perch', 0.6, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [10000, 25000], `${p.id}:seat${i}`));
       }
     }
   } else {
@@ -153,12 +158,12 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
           go('drink', 1, { pt: cellPt(q.dx, q.dy), on: null, hostId: p.id }, [3000, 5000], `${p.id}:eat`);
         }
       }
-      if (plat && (p.kind === 'sofa' || p.kind === 'armchair' || p.kind === 'chair')) {
+      if (plat && hasRole(p.kind, 'catSeat')) {
         for (const q of poi('sleep')) go('sleep', 1.8, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [25000, 60000], `${p.id}:sleep`);
         poi('seat').forEach((q, i) => go('perch', p.kind === 'sofa' ? 0.5 : 1, { pt: onPlat(plat, (p.col + q.dx + 0.5) * CELL_W), on: p.id, hostId: p.id }, [10000, 25000], `${p.id}:seat${i}`));
       }
-      if (p.kind === 'sofa') go('hide', 0.7, { pt: hideSpot(p), on: null, hostId: p.id }, [8000, 16000], `${p.id}:hide`);
-      if (p.kind === 'armchair') {
+      if (hasRole(p.kind, 'catHide')) go('hide', 0.7, { pt: hideSpot(p), on: null, hostId: p.id }, [8000, 16000], `${p.id}:hide`);
+      if (hasRole(p.kind, 'catScratch')) {
         // Contre un flanc du fauteuil, sur sa rangée de devant.
         const r = rectOf(p)!;
         const left = { col: r.col - 1, row: r.row + r.h - 1 };
@@ -166,7 +171,7 @@ export function nextPlan(env: BrainEnv, from: Standing, now: number, last?: PetA
         const side = isFree(map, left.col, left.row) ? { cell: left, facing: 'r' as const } : isFree(map, right.col, right.row) ? { cell: right, facing: 'l' as const } : null;
         if (side) go('scratch', 1, { pt: standPoint(side.cell.col, side.cell.row), on: null, hostId: null }, [5000, 7000], undefined, side.facing);
       }
-      if (plat && (p.kind === 'shelf' || p.kind === 'desk')) {
+      if (plat && hasRole(p.kind, 'catTop')) {
         const x = plat.x0 + 10 + env.rng() * Math.max(0, plat.x1 - plat.x0 - 20);
         go('perch', 0.8, { pt: { x, y: plat.y }, on: p.id, hostId: p.id }, [12000, 30000]);
       }
