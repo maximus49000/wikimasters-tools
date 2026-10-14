@@ -10,7 +10,7 @@ export type DrawerTab = 'furniture' | 'cards' | 'room';
 export type DrawerState = { tab: DrawerTab; category: Category; sub: Subcategory | null; reduced: boolean };
 export const INITIAL_DRAWER: DrawerState = { tab: 'furniture', category: 'storage', sub: null, reduced: false };
 
-const SUB_ICON: Record<Subcategory, readonly string[]> = { chairs: KIND_ICON.armchair, couches: KIND_ICON.sofa, poufs: KIND_ICON.pouf, plants: ICONS.plants, lights: ICONS.lights, floor: ICONS.floor, walls: ICONS.walls };
+const SUB_ICON: Record<Subcategory, readonly string[]> = { chairs: KIND_ICON.armchair, couches: KIND_ICON.sofa, poufs: KIND_ICON.pouf, plants: ICONS.plants, lights: ICONS.lights, floor: ICONS.floor, walls: ICONS.walls, clocks: KIND_ICON['wall-clock'] };
 const TABS: { id: DrawerTab; label: string; icon: readonly string[] }[] = [
   { id: 'furniture', label: 'Meubles', icon: ICONS.sofaTab },
   { id: 'cards', label: 'Cartes', icon: ICONS.frame },

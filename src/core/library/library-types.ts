@@ -18,7 +18,7 @@ export const SMALL_ITEMS = ['plant', 'lamp'] as const;
 export type SmallItem = (typeof SMALL_ITEMS)[number];
 export type SmallKind = 'small-plant' | 'small-lamp';
 
-export type FurnitureKind = StandingKind | 'computer' | 'window' | SmallKind;
+export type FurnitureKind = StandingKind | 'computer' | 'window' | SmallKind | DecoKind;
 
 export type WallShape = 'poster' | 'vinyl' | 'sleeve-square' | 'sleeve-round' | 'sleeve-frame';
 export type ShelfShape = 'cd' | 'dvd' | 'game' | 'book';

@@ -43,6 +43,14 @@ export const KIND_ICON: Record<FurnitureKind, readonly string[]> = {
   'paper-lantern': ['M12 3v2', 'M12 5a6 7 0 1 0 .01 0', 'M6 12h12', 'M7 9h10', 'M7 15h10', 'M9 21h6'],
   'arc-lamp': ['M17 21V10c0-5-4-7-9-7', 'M5 6a3 2 0 0 0 6 0z', 'M14 21h6'],
   'square-pouf': ['M5 10c0-2 1-3 3-3h8c2 0 3 1 3 3v8c0 1-1 2-2 2H7c-1 0-2-1-2-2z', 'M5 10h14', 'M9 10v10', 'M12 10v10', 'M15 10v10'],
+  'wall-clock': ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 7v5l3 2'],
+  'digital-clock': ['M3 7h18v10H3z', 'M7 10v4', 'M11 10v4', 'M13 11h.01', 'M13 13h.01', 'M17 10v4'],
+  'weather-station': ['M3 7h18v10H3z', 'M8 12a2.5 2.5 0 1 1 4.5 1.5', 'M15 10v4', 'M17 10v4'],
+  barometer: ['M5 4h14v16H5z', 'M8 14a4 4 0 0 1 8 0', 'M12 14l2-3', 'M8 8h8'],
+  'panel-chalk': ['M4 4h16v14H4z', 'M7 9h7', 'M7 13h10', 'M6 20h12'],
+  'panel-letter': ['M4 4h16v16H4z', 'M8 8v3', 'M12 8v3', 'M16 8v3', 'M8 14v3', 'M12 14v3'],
+  'panel-neon': ['M5 15a4 4 0 0 1 4-4h6a4 4 0 0 1 0 8H9', 'M12 4v3', 'M6 6l2 2', 'M18 6l-2 2'],
+  'panel-cork': ['M4 4h16v16H4z', 'M8 8h4v5H8z', 'M14 9h3', 'M14 13h3', 'M10 8v-2'],
 };
 
 export const CATEGORY_ICON: Record<Category, readonly string[]> = {

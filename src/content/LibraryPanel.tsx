@@ -24,7 +24,8 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { STEAMPUNK_ONLY, isSmallKind, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
-import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay } from '../core/library/library-types';
+import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay, type DecoPlaced } from '../core/library/library-types';
+import { isPanel, PANEL_MAX, PANEL_MIN } from '../core/library/deco';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
@@ -39,6 +40,9 @@ import {
   SECTION,
   VISIBLE_COLS,
   resizeWindow,
+  resizeDeco,
+  decoFit,
+  decoSizeOf,
   stretchWindow,
   windowFit,
   canShiftRow,
@@ -758,6 +762,21 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const linkedToSelected = selectedShelf ? (shelfGroupOf(layout, selectedShelf.id).find((id) => id !== selectedShelf.id) ?? null) : null;
   const selectedStanding = editing && selectedItem && isStanding(selectedItem) && selectedItem.kind !== 'rug' ? selectedItem : undefined;
   const selectedWindow = editing ? layout.find((p) => p.id === selectedId && p.kind === 'window') : undefined;
+  const selectedPanel = editing ? layout.find((p): p is DecoPlaced => p.id === selectedId && p.kind === 'deco' && isPanel(p.deco)) : undefined;
+  const placingPanel = placingItem?.kind === 'deco' && isPanel(placingItem.deco) ? placingItem : undefined;
+  // Panneau retaillé d'une case : refusé (cases qui clignotent) contre un voisin, le bord du mur ou ses bornes.
+  const resizePanel = (dw: number, dh: number): void => {
+    if (!selectedPanel) return;
+    const { w: w0, h: h0 } = decoSizeOf(selectedPanel);
+    const [w, h] = [w0 + dw, h0 + dh];
+    const check = decoFit(layout, room.cols, selectedPanel.id, w, h);
+    if (!check.ok) {
+      const limit = w < PANEL_MIN.w || h < PANEL_MIN.h ? 'Le panneau ne peut pas être plus petit.' : w > PANEL_MAX.w || h > PANEL_MAX.h ? 'Le panneau ne peut pas être plus grand.' : REASONS[check.reason];
+      return refuse(limit, check.cells);
+    }
+    setMessage('');
+    void editLayout((l, cols) => resizeDeco(l, cols, selectedPanel.id, w, h));
+  };
   const resizeSelected = (dw: number, dh: number): void => {
     if (!selectedWindow || selectedWindow.kind !== 'window') return;
     const w = selectedWindow.w + dw;
@@ -1072,6 +1091,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Fenêtre sur toute la hauteur du mur" data={{ action: 'win-h-full' }} onClick={() => stretchSelected('height')}><Icon paths={ICONS.heightFull} /></Btn>
               </>
             )}
+            {selectedPanel && (
+              <>
+                <Btn label="Panneau plus étroit" data={{ action: 'deco-w-' }} onClick={() => resizePanel(-1, 0)}><Icon paths={ICONS.widthMinus} /></Btn>
+                <Btn label="Panneau plus large" data={{ action: 'deco-w+' }} onClick={() => resizePanel(1, 0)}><Icon paths={ICONS.widthPlus} /></Btn>
+                <Btn label="Panneau moins haut" data={{ action: 'deco-h-' }} onClick={() => resizePanel(0, -1)}><Icon paths={ICONS.heightMinus} /></Btn>
+                <Btn label="Panneau plus haut" data={{ action: 'deco-h+' }} onClick={() => resizePanel(0, 1)}><Icon paths={ICONS.heightPlus} /></Btn>
+              </>
+            )}
           </ActionBubble>
         )}
         {editing && !outside && placement && (
@@ -1102,6 +1129,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Fenêtre plus haute" data={{ action: 'win-h+' }} onClick={() => editPlacing({ type: 'size', w: placingWindow.w, h: placingWindow.h + 1 })}><Icon paths={ICONS.heightPlus} /></Btn>
                 <Btn label="Fenêtre sur toute la largeur du mur" data={{ action: 'win-w-full' }} onClick={() => editPlacing({ type: 'stretch', axis: 'width' })}><Icon paths={ICONS.widthFull} /></Btn>
                 <Btn label="Fenêtre sur toute la hauteur du mur" data={{ action: 'win-h-full' }} onClick={() => editPlacing({ type: 'stretch', axis: 'height' })}><Icon paths={ICONS.heightFull} /></Btn>
+              </>
+            )}
+            {placingPanel && (
+              <>
+                <Btn label="Panneau plus étroit" data={{ action: 'deco-w-' }} onClick={() => editPlacing({ type: 'size', w: decoSizeOf(placingPanel).w - 1, h: decoSizeOf(placingPanel).h })}><Icon paths={ICONS.widthMinus} /></Btn>
+                <Btn label="Panneau plus large" data={{ action: 'deco-w+' }} onClick={() => editPlacing({ type: 'size', w: decoSizeOf(placingPanel).w + 1, h: decoSizeOf(placingPanel).h })}><Icon paths={ICONS.widthPlus} /></Btn>
+                <Btn label="Panneau moins haut" data={{ action: 'deco-h-' }} onClick={() => editPlacing({ type: 'size', w: decoSizeOf(placingPanel).w, h: decoSizeOf(placingPanel).h - 1 })}><Icon paths={ICONS.heightMinus} /></Btn>
+                <Btn label="Panneau plus haut" data={{ action: 'deco-h+' }} onClick={() => editPlacing({ type: 'size', w: decoSizeOf(placingPanel).w, h: decoSizeOf(placingPanel).h + 1 })}><Icon paths={ICONS.heightPlus} /></Btn>
               </>
             )}
           </PlacementBar>
