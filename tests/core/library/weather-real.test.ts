@@ -147,4 +147,58 @@ describe('createRealWeather', () => {
     await real.refresh(paris);
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
+  it('une sauvegarde datée du futur n’est pas fraîche : une requête est faite', async () => {
+    const storage = memory();
+    storage.set('wmt:weather-real', JSON.stringify({ at: 3 * 3_600_000, cell: '48.9,2.4', obs: { code: 3, tempC: 9, cloud: 80, precipMm: 0, windKmh: 5, visibilityM: 20000 } }));
+    const fetchFn = vi.fn(async (_url: string) => ok());
+    const real = createRealWeather({ fetch: fetchFn, now: () => 0, storage });
+    expect((await real.refresh(paris))?.code).toBe(61);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+  const tokyo = { lat: 35.68, lon: 139.69 };
+  it('échec après changement de ville : l’observation de l’ancienne case n’est pas rendue', async () => {
+    let now = 0;
+    let fail = false;
+    const fetchFn = vi.fn(async (_url: string) => {
+      if (fail) throw new Error('réseau');
+      return ok();
+    });
+    const real = createRealWeather({ fetch: fetchFn, now: () => now, storage: memory() });
+    await real.refresh(paris);
+    fail = true;
+    now += 16 * 60_000;
+    expect(await real.refresh(tokyo)).toBeNull();
+  });
+  it('pendant l’attente après échec, une autre case ne reçoit pas l’observation de l’ancienne', async () => {
+    let now = 0;
+    let fail = false;
+    const real = createRealWeather({
+      fetch: async () => {
+        if (fail) throw new Error('réseau');
+        return ok();
+      },
+      now: () => now,
+      storage: memory(),
+    });
+    await real.refresh(paris);
+    fail = true;
+    now += 16 * 60_000;
+    await real.refresh(paris); // échec → attente
+    now += 1_000;
+    expect(await real.refresh(tokyo)).toBeNull();
+    expect((await real.refresh(paris))?.code).toBe(61);
+  });
+  it('une requête en vol pour une case n’est pas donnée à une autre case', async () => {
+    const resolvers: Array<(r: Response) => void> = [];
+    const fetchFn = vi.fn((_url: string) => new Promise<Response>((resolve) => resolvers.push(resolve)));
+    const real = createRealWeather({ fetch: fetchFn, now: () => 0, storage: memory() });
+    const a = real.refresh(paris);
+    const b = real.refresh(tokyo);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(String(fetchFn.mock.calls[1]?.[0])).toContain('lat=35.7&lon=139.7');
+    resolvers[0]!(ok({ code: 61 }));
+    resolvers[1]!(ok({ code: 0 }));
+    expect((await a)?.code).toBe(61);
+    expect((await b)?.code).toBe(0);
+  });
 });

@@ -78,7 +78,10 @@ export function createRealWeather(deps: Deps): { latest(): RealObservation | nul
   }
   let failures = 0;
   let retryAt = 0;
-  let inFlight: Promise<RealObservation | null> | null = null;
+  let inFlight: { cell: string; promise: Promise<RealObservation | null> } | null = null;
+
+  // Une observation mémorisée ne vaut que pour sa case : jamais la météo de l'ancienne ville pour la nouvelle.
+  const savedFor = (c: string): RealObservation | null => (saved && saved.cell === c ? saved.obs : null);
 
   const fetchOnce = async (pos: Pos): Promise<RealObservation | null> => {
     try {
@@ -97,20 +100,26 @@ export function createRealWeather(deps: Deps): { latest(): RealObservation | nul
     } catch {
       retryAt = deps.now() + BACKOFF_MS[Math.min(failures, BACKOFF_MS.length - 1)]!;
       failures++;
-      return saved?.obs ?? null;
+      return savedFor(cell(pos));
     }
   };
 
   return {
     latest: () => saved?.obs ?? null,
     refresh(pos) {
-      if (saved && saved.cell === cell(pos) && deps.now() - saved.at < FRESH_MS) return Promise.resolve(saved.obs);
-      if (deps.now() < retryAt) return Promise.resolve(saved?.obs ?? null);
+      const here = cell(pos);
+      // Date dans le futur (horloge avancée puis corrigée) : jamais « fraîche ».
+      const age = deps.now() - (saved?.at ?? 0);
+      if (saved && saved.cell === here && age >= 0 && age < FRESH_MS) return Promise.resolve(saved.obs);
+      if (deps.now() < retryAt) return Promise.resolve(savedFor(here));
+      // Une requête en vol pour une autre case n'est pas réutilisée.
+      if (inFlight && inFlight.cell === here) return inFlight.promise;
       // Libéré APRÈS l'affectation : même un fetch qui lève de façon synchrone ne laisse pas de requête « en cours » à jamais.
-      inFlight ??= fetchOnce(pos).finally(() => {
-        inFlight = null;
+      const promise: Promise<RealObservation | null> = fetchOnce(pos).finally(() => {
+        if (inFlight?.promise === promise) inFlight = null;
       });
-      return inFlight;
+      inFlight = { cell: here, promise };
+      return promise;
     },
   };
 }
