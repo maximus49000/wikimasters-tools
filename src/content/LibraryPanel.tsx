@@ -110,6 +110,8 @@ import { getImageService } from './image-registry';
 
 // Aide affichée pendant un placement valide.
 const PLACE_HINT = 'Glissez ✥ ou touchez l’endroit voulu.';
+// En plein écran, la bulle de message passe par-dessus la pièce : elle s'efface seule après ce délai (ms).
+export const STAGE_MSG_MS = 2500;
 
 const FAILURE_LABEL = { denied: 'position refusée', unavailable: 'position indisponible', timeout: 'position trop longue à obtenir', absent: 'position non gérée', off: 'localisation du téléphone désactivée' } as const;
 
@@ -216,7 +218,7 @@ export const LIBRARY_CSS = `
 .wmt-lib-switch{position:absolute;top:8px;right:54px;z-index:7;display:flex;gap:2px;padding:3px;border-radius:19px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.35)}
 .wmt-lib-switch button{width:34px;height:28px;padding:0;border:0;border-radius:14px;display:grid;place-items:center;cursor:pointer;background:transparent;color:#7d93b0}
 .wmt-lib-switch button[aria-pressed="true"]{background:linear-gradient(#4a97e8,var(--sims-blue));color:#fff}
-.wmt-lib-stage-msg{position:absolute;top:56px;left:50%;transform:translateX(-50%);z-index:7;max-width:80%;padding:6px 12px;border-radius:14px;font:800 12px/16px var(--sims-font);color:var(--sims-text);background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.3);text-align:center}
+.wmt-lib-stage-msg{position:absolute;top:56px;left:50%;transform:translateX(-50%);z-index:7;max-width:80%;padding:6px 12px;border-radius:14px;font:800 12px/16px var(--sims-font);color:var(--sims-text);background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.3);text-align:center;pointer-events:none}
 @media (orientation:landscape){.wmt-lib-stage:fullscreen{padding-bottom:0}.wmt-lib-stage:fullscreen .wmt-lib-drawer-panel{background:rgba(250,252,255,.62)}.wmt-lib-stage:fullscreen .wmt-lib-cat:not([aria-pressed="true"]),.wmt-lib-stage:fullscreen .wmt-lib-thumb{background:rgba(255,255,255,.6)}.wmt-lib-stage:fullscreen .wmt-lib-thumbs{grid-template-rows:58px;grid-auto-columns:56px}.wmt-lib-stage:fullscreen .wmt-lib-cats{display:grid;grid-template-columns:repeat(2,30px);align-content:start;gap:3px}.wmt-lib-stage:fullscreen .wmt-lib-cat{width:30px;height:30px;min-width:30px;min-height:30px}}
 `;
 
@@ -276,6 +278,21 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [blink, setBlink] = useState<Cell[]>([]);
   const [message, setMessage] = useState('');
+  // Bulle du plein écran : chaque nouveau message s'y montre un instant ; l'aide du placement une seule fois par placement,
+  // pour ne pas masquer l'endroit où l'on pose l'objet.
+  const [stageMsg, setStageMsg] = useState('');
+  const hintShown = useRef(false);
+  useEffect(() => {
+    if (!message) hintShown.current = false;
+    if (!message || (message === PLACE_HINT && hintShown.current)) {
+      setStageMsg('');
+      return;
+    }
+    if (message === PLACE_HINT) hintShown.current = true;
+    setStageMsg(message);
+    const timer = window.setTimeout(() => setStageMsg(''), STAGE_MSG_MS);
+    return () => window.clearTimeout(timer);
+  }, [message]);
   const [adopting, setAdopting] = useState<Species | null>(null);
   const [adoptName, setAdoptName] = useState('Minou');
   const [adoptCoat, setAdoptCoat] = useState<Coat>('orange');
@@ -1240,7 +1257,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             Adapter à l’écran
           </button>
         )}
-        {stage.active && message && <div aria-live="polite" className="wmt-lib-stage-msg">{message}</div>}
+        {stage.active && stageMsg && <div aria-live="polite" className="wmt-lib-stage-msg">{stageMsg}</div>}
       </div>
     </div>
   );
