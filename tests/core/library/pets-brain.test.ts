@@ -3,6 +3,11 @@ import type { Layout, PetPlan } from '../../../src/core/library/library-types';
 import { NO_CONTEXT, type PetContext } from '../../../src/core/library/pets/context';
 import { STORM_HOLD_MS, layoutSig, nextPlan, resume, spawnPlan, touchPlan, type BrainEnv } from '../../../src/core/library/pets/brain';
 import { buildWalkMap, cellOf, isFree, standPoint } from '../../../src/core/library/pets/walk-map';
+import { drawSize } from '../../../src/core/library/footprint';
+import type { StandingKind } from '../../../src/core/library/library-types';
+
+// Ligne du haut d'un meuble posé de face, pieds sur la dernière rangée du sol.
+const onFloor = (kind: StandingKind): number => 18 - drawSize(kind, 0).h;
 
 // mulberry32 : un LCG simple donne des suites corrélées pour des graines consécutives (seuls 3 tirages différents sur 200 graines).
 const seeded = (seed: number) => () => {
@@ -177,6 +182,52 @@ describe('chien', () => {
     const layout: Layout = [{ id: 'b', kind: 'basket', col: 10, row: 15 }];
     const plan = seeds.map((s) => nextPlan(env(layout, s), from, 0)).find((p) => p.hostId === 'b')!;
     expect(plan.key).toBe('b:curl');
+  });
+});
+
+describe('chien et nouveaux meubles', () => {
+  const dog = (layout: Layout, seed: number) => env(layout, seed, { species: 'dog' });
+  const lounge: Layout = [
+    { id: 'l', kind: 'loveseat', col: 2, row: onFloor('loveseat') },
+    { id: 'p', kind: 'peacock-chair', col: 12, row: onFloor('peacock-chair') },
+    { id: 'b', kind: 'beanbag', col: 18, row: onFloor('beanbag') },
+    { id: 'a', kind: 'armchair', col: 24, row: onFloor('armchair') },
+  ];
+  it('monte sur le canapé deux places et dort sur le pouf poire, jamais sur le fauteuil paon ni le fauteuil', () => {
+    const plans = seeds.map((s) => nextPlan(dog(lounge, s), from, 0));
+    expect(plans.some((p) => p.on === 'l')).toBe(true);
+    expect(plans.some((p) => p.on === 'b' && p.action === 'sleep')).toBe(true);
+    for (const p of plans) {
+      expect(['p', 'a']).not.toContain(p.on);
+      for (const seg of p.route) expect([null, 'l', 'b']).toContain(seg.on);
+    }
+  });
+});
+
+describe('chat et nouveaux meubles', () => {
+  it('se cache sous le canapé deux places, se perche sur la commode et en haut de l’arbre à chat', () => {
+    const layout: Layout = [
+      { id: 'l', kind: 'loveseat', col: 2, row: onFloor('loveseat') },
+      { id: 'c', kind: 'dresser', col: 12, row: onFloor('dresser') },
+      { id: 't', kind: 'cat-tree', col: 20, row: onFloor('cat-tree') },
+    ];
+    const plans = seeds.map((s) => nextPlan(env(layout, s), from, 0));
+    expect(plans.some((p) => p.action === 'hide' && p.hostId === 'l')).toBe(true);
+    expect(plans.some((p) => p.action === 'perch' && p.on === 'c')).toBe(true);
+    expect(plans.some((p) => p.on === 't')).toBe(true);
+  });
+  it('dort dans le pouf poire et sur la méridienne', () => {
+    const layout: Layout = [{ id: 'b', kind: 'beanbag', col: 4, row: onFloor('beanbag') }, { id: 'm', kind: 'daybed', col: 14, row: onFloor('daybed') }];
+    const plans = seeds.map((s) => nextPlan(env(layout, s), from, 0));
+    expect(plans.some((p) => p.action === 'sleep' && p.on === 'b')).toBe(true);
+    expect(plans.some((p) => p.action === 'sleep' && p.on === 'm')).toBe(true);
+  });
+});
+
+describe('robot et nouveaux meubles', () => {
+  it('ne monte sur aucun', () => {
+    const layout: Layout = [{ id: 'l', kind: 'loveseat', col: 2, row: onFloor('loveseat') }, { id: 'b', kind: 'beanbag', col: 18, row: onFloor('beanbag') }, { id: 'c', kind: 'dresser', col: 26, row: onFloor('dresser') }];
+    for (const s of seeds) expect(nextPlan(env(layout, s, { species: 'robot' }), from, 0).on).toBeNull();
   });
 });
 

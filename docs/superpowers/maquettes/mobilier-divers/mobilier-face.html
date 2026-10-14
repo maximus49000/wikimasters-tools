@@ -1,0 +1,561 @@
+<!doctype html>
+<!-- Maquettes de face du mobilier divers — dessin provisoire Opus : Fable n'est pas passé (gel Fable jusqu'au 2026-10-17), reprise Fable prévue. -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mobilier divers</title>
+<style>
+:root { --ink:#3A2620; --page:#F6F2EA; --card:#FFFDF8; --txt:#2B2622; --mut:#7A6F64; --line:#E3DACB; }
+body { margin:0; background:var(--page); color:var(--txt); font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+header, main { max-width:1200px; margin:auto; padding:0 16px; }
+header { padding-top:20px; }
+h1 { font-size:22px; margin:0 0 6px; }
+.note { color:var(--mut); font-size:13px; margin:2px 0; }
+.bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:12px 0 4px; }
+.bar button { border:1px solid var(--line); background:var(--card); border-radius:999px; padding:5px 11px; cursor:pointer; font:inherit; font-size:13px; color:var(--txt); }
+.bar button.on { background:var(--txt); color:#fff; border-color:var(--txt); }
+.bar .sep { width:1px; height:22px; background:var(--line); margin:0 6px; }
+main { padding-bottom:40px; }
+h2 { font-size:17px; margin:26px 0 10px; border-bottom:1px solid var(--line); padding-bottom:4px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(255px, 1fr)); gap:12px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
+.stage { background:var(--wall); display:flex; align-items:flex-end; justify-content:center; gap:14px; padding:12px 8px 0; min-height:130px; position:relative; }
+.stage svg { display:block; max-width:100%; height:auto; overflow:visible; }
+.stage { overflow:hidden; }
+.zoom { position:absolute; top:6px; right:8px; font-size:11px; background:rgba(255,255,255,.8); border-radius:5px; padding:0 5px; color:#333; }
+.sub { position:absolute; top:6px; left:8px; font-size:11px; background:rgba(255,255,255,.8); border-radius:5px; padding:0 5px; color:#333; }
+.info { padding:10px 12px 12px; }
+.name { font-weight:650; font-size:15px; }
+.num { color:var(--mut); font-weight:500; margin-right:4px; }
+.dims { font-variant-numeric:tabular-nums; margin:2px 0; }
+.cells { color:var(--mut); font-size:12.5px; }
+.tags { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
+.tag { font-size:12px; background:#F0E9DC; border-radius:6px; padding:1px 6px; }
+.pets { font-size:12.5px; color:var(--mut); }
+.new { font-size:12px; color:#9A4B1F; margin-top:5px; }
+.scene { background:var(--wall); border-radius:12px; overflow:hidden; border:1px solid var(--line); }
+.scene svg { display:block; width:100%; height:auto; }
+.ink { stroke:var(--ink); stroke-width:1.3px; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
+.ink.thin { stroke-width:.7px; }
+.grid-l { stroke:rgba(0,0,0,.07); stroke-width:1px; vector-effect:non-scaling-stroke; }
+body.off .halo { display:none; }
+ul.rules { padding-left:18px; } ul.rules li { margin:4px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mobilier divers : maquettes de face</h1>
+  <p class="note">Toutes les maquettes sont à la même échelle (sauf les petits objets, agrandis). Les traits verticaux pâles marquent les cases de 21 cm.</p>
+  <p class="note">Les couleurs suivent le style de la pièce, comme les meubles actuels. Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 17/10), une reprise Fable est prévue.</p>
+  <div class="bar" id="styles"></div>
+</header>
+<main id="main"></main>
+<script>
+const SCANDINAVE = { wall:'#EDE6DA', floor:'#D9BE95', skirt:'#FFFFFF', wood:'#D8C3A0', woodDark:'#B79F78', desk:'#E8D3AE', leg:'#FFFFFF', edge:'#C9B48E', text:'#8A8A8A', fabric:'#8FA3A8', fabricLight:'#A3B6BA', fabricDark:'#7F9398', warm:'#C9A98C', warmLight:'#D8BDA2', warmDark:'#B8977A', leaf:'#7DA57A', leafDark:'#6A9568', rug:'#B9C9C2', shade:'#F4E3B5', metal:'#8A8A8A', door:'#6B5B45' };
+const v = (o) => ({ ...SCANDINAVE, ...o });
+const PALETTES = {
+  'Scandinave': SCANDINAVE,
+  'Moderne': v({ wall:'#E9ECEF', floor:'#B8BEC6', skirt:'#FFFFFF', wood:'#9AA3AD', woodDark:'#7C8691', desk:'#F2F4F6', leg:'#4A5058', edge:'#AEB6BF', fabric:'#4A6FA5', fabricLight:'#6283B8', fabricDark:'#3A5A8A', warm:'#2F3A46', warmLight:'#46525F', warmDark:'#222B34', leaf:'#4FA37C', leafDark:'#3F8C69', rug:'#CBD3DC', shade:'#FFF3C4', metal:'#C0C6CC', door:'#38424C' }),
+  'Industriel': v({ wall:'#8C8C88', floor:'#5E5A55', skirt:'#3E3C39', wood:'#8B6B4A', woodDark:'#6C5238', desk:'#A27C55', leg:'#2B2B2B', edge:'#4D4A46', fabric:'#6B4F3A', fabricLight:'#80614A', fabricDark:'#57402F', warm:'#7A5A3C', warmLight:'#92704F', warmDark:'#5F442C', leaf:'#6E8F5B', leafDark:'#587349', rug:'#4F4B47', shade:'#E8C77A', metal:'#2F2F2F', door:'#2E2A26' }),
+  'Bohème': v({ wall:'#EBD3B5', floor:'#A9744F', skirt:'#7C4F34', wood:'#B5835A', woodDark:'#8F6542', desk:'#C99A6B', leg:'#7C4F34', edge:'#8F6542', fabric:'#C2603F', fabricLight:'#D47A59', fabricDark:'#A24C2F', warm:'#D9A441', warmLight:'#E5BA67', warmDark:'#B8862B', leaf:'#4E8B5A', leafDark:'#3C6F47', rug:'#C77D5A', shade:'#F6D58E', metal:'#B08D57', door:'#6B3F2A' }),
+  'Rétro 70s': v({ wall:'#F2D49B', floor:'#8A5A2B', skirt:'#5E3B1B', wood:'#A8702E', woodDark:'#7E5222', desk:'#C98B3A', leg:'#5E3B1B', edge:'#7E5222', fabric:'#D96B1E', fabricLight:'#E8863E', fabricDark:'#B5540F', warm:'#8A9A2B', warmLight:'#A3B346', warmDark:'#6E7C1D', leaf:'#7A9A32', leafDark:'#617D24', rug:'#E0A93B', shade:'#FFE08A', metal:'#9C7A3C', door:'#5E3B1B' }),
+  'Japandi': v({ wall:'#EFEAE0', floor:'#C8B08A', skirt:'#F7F4EC', wood:'#CBB48F', woodDark:'#A38C68', desk:'#DCC8A4', leg:'#3E3A35', edge:'#B49C77', fabric:'#9AA394', fabricLight:'#ADB5A7', fabricDark:'#838C7D', warm:'#B9A58A', warmLight:'#CBB9A0', warmDark:'#9E8B70', leaf:'#7F9B6E', leafDark:'#68825A', rug:'#DAD3C2', shade:'#F3E6C4', metal:'#4A4640', door:'#5A4A38' }),
+  'Néon gaming': v({ wall:'#14142B', floor:'#1E1E3A', skirt:'#2B2B52', wood:'#2A2A4D', woodDark:'#1C1C38', desk:'#34345E', leg:'#0F0F22', edge:'#00E5FF', fabric:'#5B2A86', fabricLight:'#7A3DB0', fabricDark:'#431F66', warm:'#8A1F5C', warmLight:'#B02C78', warmDark:'#661545', leaf:'#14C77A', leafDark:'#0E9E60', rug:'#2A1F5C', shade:'#FF4FD8', metal:'#8A8AB8', door:'#0F0F22' }),
+  'Steampunk': v({ wall:'#2F4A3B', floor:'#4A3426', skirt:'#B5833A', wood:'#7A4E2D', woodDark:'#58361D', desk:'#B5833A', leg:'#8A5A2A', edge:'#D9A441', fabric:'#6B3A24', fabricLight:'#84492E', fabricDark:'#4F2917', warm:'#8C4A2B', warmLight:'#A5603D', warmDark:'#6E3820', leaf:'#5E8A4A', leafDark:'#486E37', rug:'#5A2E2A', shade:'#FFD27A', metal:'#B87333', door:'#3A2418' }),
+};
+
+// ---------- Outils de dessin (cm, y vers le haut depuis le sol) ----------
+const CELL = 21, ROW = 50, K = 1.45, KSMALL = 3.5;
+let clipN = 0;
+const f = (n) => Math.round(n * 100) / 100;
+const col = (k) => (k.startsWith('#') ? k : `var(--${k})`);
+const dark = (k) => `color-mix(in srgb, ${col(k)} 72%, #2E2A66)`;
+const D = {
+  R: (x, y, w, h, r = 0) => {
+    r = Math.min(r, w / 2, h / 2);
+    if (!r) return `M${x},${y}h${w}v${h}h${-w}Z`;
+    return `M${x + r},${y}L${x + w - r},${y}Q${x + w},${y} ${x + w},${y + r}L${x + w},${y + h - r}Q${x + w},${y + h} ${x + w - r},${y + h}L${x + r},${y + h}Q${x},${y + h} ${x},${y + h - r}L${x},${y + r}Q${x},${y} ${x + r},${y}Z`;
+  },
+  E: (cx, cy, rx, ry) => `M${cx - rx},${cy}A${rx},${ry} 0 1 0 ${cx + rx},${cy}A${rx},${ry} 0 1 0 ${cx - rx},${cy}Z`,
+  P: (pts) => 'M' + pts.map((p) => p.map(f).join(',')).join('L') + 'Z',
+};
+// Feuille lancéolée : base à l'origine, pointe vers +y.
+const leafD = (L, W) => `M0,0C${-W},${f(L * 0.25)} ${f(-W * 0.9)},${f(L * 0.8)} 0,${L}C${f(W * 0.9)},${f(L * 0.8)} ${W},${f(L * 0.25)} 0,0Z`;
+// Angle (degrés) qui oriente +y vers la direction (dx, dy).
+const towards = (dx, dy) => f((Math.atan2(-dx, dy) * 180) / Math.PI);
+const quad = (p0, c, p2, t) => [(1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * c[0] + t * t * p2[0], (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * c[1] + t * t * p2[1]];
+
+class G {
+  constructor() { this.o = []; }
+  // Pièce en cellulo : aplat, ombre nette violet-bleu en bas à droite, trait encré.
+  p(d, k, o = {}) {
+    const tf = o.tf ? ` transform="${o.tf}"` : '';
+    const base = col(k);
+    if (o.flat) { this.o.push(`<path${tf} d="${d}" style="fill:${base}" class="ink${o.thin ? ' thin' : ''}"/>`); return this; }
+    const s = o.s ?? 2.2, id = 'c' + ++clipN;
+    this.o.push(`<g${tf}><clipPath id="${id}"><path d="${d}"/></clipPath><g clip-path="url(#${id})"><path d="${d}" style="fill:${dark(k)}"/><path d="${d}" transform="translate(${-s},${f(s * 0.6)})" style="fill:${base}"/></g>${o.ink === false ? '' : `<path d="${d}" class="ink${o.thin ? ' thin' : ''}" fill="none"/>`}</g>`);
+    return this;
+  }
+  // Tube (tige, arceau, pied tourné) : trait encré puis couleur.
+  tube(d, k, w) {
+    this.o.push(`<path d="${d}" fill="none" stroke="var(--ink)" stroke-width="${w + 1.2}" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" style="stroke:${col(k)}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    return this;
+  }
+  line(d, c, w = 1) { this.o.push(`<path d="${d}" fill="none" style="stroke:${c}" stroke-width="${w}" stroke-linecap="round"/>`); return this; }
+  glow(cx, cy, r) { this.o.push(`<circle class="halo" cx="${f(cx)}" cy="${f(cy)}" r="${r}" fill="url(#halo)"/>`); return this; }
+  at(dx, dy, fn) { this.o.push(`<g transform="translate(${dx},${dy})">`); fn(this); this.o.push('</g>'); return this; }
+  str() { return this.o.join(''); }
+}
+
+// ---------- Dessins ----------
+function tulip(g, x, y, c) { g.p('M-2.4,0C-2.7,3 -2,5.2 -1,5.6L0,4.2L1,5.6C2,5.2 2.7,3 2.4,0C1.4,-1.4 -1.4,-1.4 -2.4,0Z', c, { s: 0.6, tf: `translate(${x},${y})` }); }
+function monsteraLeaf(g, x, y, a, s) {
+  const tf = `translate(${x},${y}) rotate(${a})`;
+  g.p(`M0,${f(s * 0.1)}C${f(-0.6 * s)},${f(-0.08 * s)} ${f(-0.66 * s)},${f(0.78 * s)} 0,${f(1.02 * s)}C${f(0.66 * s)},${f(0.78 * s)} ${f(0.6 * s)},${f(-0.08 * s)} 0,${f(s * 0.1)}Z`, 'leaf', { tf, s: 2.5 });
+  let cuts = '';
+  for (let i = 0; i < 3; i++) for (const side of [-1, 1]) {
+    const y0 = s * (0.32 + 0.2 * i);
+    cuts += `<path d="M${f(side * 0.7 * s)},${f(y0 + 0.06 * s)}L${f(side * 0.2 * s)},${f(y0)}" fill="none" style="stroke:var(--wall)" stroke-width="${f(s * 0.045)}" stroke-linecap="round"/>`;
+  }
+  cuts += `<path d="M0,${f(s * 0.12)}L0,${f(s * 0.95)}" fill="none" style="stroke:var(--leafDark)" stroke-width="0.6"/>`;
+  g.o.push(`<g transform="${tf}">${cuts}</g>`);
+}
+function catCurl(g, x, y) {
+  const c = '#D9893F';
+  g.p(D.E(x, y + 7, 17, 7.5), c, { s: 2 });
+  for (const dx of [-8, -3, 2]) g.line(`M${x + dx},${y + 13.5}q1.5,-3 0.5,-6`, '#B5672A', 0.9);
+  g.p(D.E(x + 13, y + 8, 6.2, 5.5), c, { s: 1.2 });
+  g.p(D.P([[x + 9, y + 12], [x + 10.2, y + 17.5], [x + 13, y + 13.2]]), c, { s: 0.5 });
+  g.p(D.P([[x + 14.5, y + 13], [x + 17.6, y + 16.8], [x + 18, y + 11.5]]), c, { s: 0.5 });
+  g.line(`M${x + 11.5},${y + 8.5}q1.2,-1 2.4,0`, 'var(--ink)', 0.5);
+  g.tube(`M${x - 15},${y + 3}Q${x - 2},${y - 2} ${x + 9},${y + 2}`, c, 3.2);
+}
+
+const ITEMS = [
+  // ===== Lumières =====
+  { cat: 'Lumières', id: 'pendant', name: 'Suspension en dôme', dims: [40, 40, 25], mount: 'plafond', light: true, view: [-8, 48, 165, 256],
+    extra: 'câble réglable : le bas du dôme vers 1,75 m',
+    draw(g) {
+      g.glow(20, 168, 48);
+      g.p(D.R(15, 247, 10, 3, 1), 'metal', { s: 0.6 });
+      g.line('M20,247L20,200', 'var(--ink)', 0.9);
+      g.p(D.R(16, 197, 8, 5, 1), 'metal', { s: 0.8 });
+      g.p('M0,178C0,194 9,200 20,200C31,200 40,194 40,178Z', 'warm', { s: 3 });
+      g.p(D.E(20, 178, 20, 2.6), 'shade', { s: 0 });
+      g.p(D.E(20, 176.5, 5, 3), '#FFF6D8', { s: 0.5 });
+    },
+    pets: 'Hors d\'atteinte de tous les animaux, qui passent dessous.', rule: 'Pose libre au plafond, sans quadrillage visible et sans case au sol.' },
+  { cat: 'Lumières', id: 'arc-lamp', name: 'Lampadaire arc', dims: [165, 32, 205], mount: 'sol', light: true, view: [8, 192, -12, 212],
+    extra: 'seul le socle (32 cm) occupe le sol ; le globe se place au-dessus d\'un fauteuil',
+    draw(g) {
+      g.glow(36, 158, 58);
+      g.tube('M166,8L166,118C166,214 56,222 36,178', 'metal', 2.4);
+      g.p(D.R(150, 0, 32, 7, 3), '#E7E2D8');
+      g.p(D.R(162, 7, 8, 4, 1), 'metal', { s: 0.8 });
+      g.p('M17,152C17,168 26,176 36,176C46,176 55,168 55,152Z', 'metal', { s: 3 });
+      g.p(D.E(36, 152, 19, 2.5), 'shade', { s: 0 });
+      g.p(D.E(36, 150.5, 5, 3), '#FFF6D8', { s: 0.5 });
+    },
+    pets: 'Seul le socle bloque le passage. L\'arc et le globe passent au-dessus d\'un fauteuil ou du rocking chair, comme une table basse au-dessus d\'un tapis.', rule: 'Le globe peut surplomber un autre meuble (emprise au sol réduite au socle).' },
+  { cat: 'Lumières', id: 'sconce', name: 'Applique murale tulipe', dims: [22, 20, 43], mount: 'mur', light: true, view: [-8, 30, 148, 214],
+    extra: 'accrochée vers 1,60 m',
+    draw(g) {
+      g.glow(11, 198, 32);
+      g.p(D.R(6, 158, 10, 16, 3), 'metal', { s: 1 });
+      g.tube('M11,166C11,174 11,178 11,184', 'metal', 1.6);
+      g.p(D.R(7, 182, 8, 3, 1), 'metal', { s: 0.6 });
+      g.p(D.P([[5, 185], [17, 185], [22, 201], [0, 201]]), 'shade', { s: 2 });
+      g.p(D.E(11, 201, 11, 1.6), '#FFF6D8', { s: 0 });
+    },
+    pets: 'Aucune interaction (sur le mur).', rule: 'Premier objet mural qui éclaire : la lumière part du mur.' },
+  { cat: 'Lumières', id: 'paper-lantern', name: 'Lanterne en papier', dims: [45, 45, 61], mount: 'sol', light: true, view: [-8, 53, -12, 66],
+    draw(g) {
+      g.glow(22.5, 32, 50);
+      g.p(D.R(9, 0, 27, 5, 2), 'woodDark', { s: 1 });
+      g.p(D.E(22.5, 32, 22.5, 27), 'shade', { s: 3 });
+      for (let y = 12; y <= 52; y += 6) {
+        const hw = 22.5 * Math.sqrt(Math.max(0, 1 - ((y - 32) / 27) ** 2));
+        g.line(`M${f(22.5 - hw + 1)},${y}Q22.5,${y - 2.2} ${f(22.5 + hw - 1)},${y}`, 'color-mix(in srgb, var(--shade) 65%, #7a5a2a)', 0.5);
+      }
+      g.p(D.R(16, 57, 13, 4, 1.5), 'woodDark', { s: 0.8 });
+    },
+    pets: 'Obstacle au sol. Quand elle est allumée, 🐈 vient s\'allonger à son pied, au chaud.', rule: 'Nouvelle place de sieste qui n\'existe que lampe allumée.' },
+  { cat: 'Lumières', id: 'string-lights', name: 'Guirlande lumineuse', dims: [160, 4, 25], mount: 'mur', light: true, view: [-8, 168, 172, 212],
+    draw(g) {
+      const bulbs = [];
+      for (let s = 0; s < 3; s++) {
+        const a = s * 53.3, b = a + 53.3, m = (a + b) / 2;
+        g.line(`M${f(a)},205Q${f(m)},187 ${f(b)},205`, 'var(--ink)', 0.5);
+        for (const t of [0.18, 0.4, 0.6, 0.82]) bulbs.push(quad([a, 205], [m, 187], [b, 205], t));
+      }
+      bulbs.forEach(([x, y]) => g.glow(x, y - 4, 10));
+      bulbs.forEach(([x, y], i) => {
+        g.p(D.R(f(x - 0.9), f(y - 2), 1.8, 2), 'metal', { s: 0, thin: true });
+        g.p(D.E(f(x), f(y - 4.3), 1.7, 2.4), ['#FFE08A', '#FFC36A', '#FFF1B8'][i % 3], { s: 0.6, thin: true });
+      });
+      [0, 53.3, 106.6, 160].forEach((x) => g.p(D.E(x, 205, 1.3, 1.3), 'metal', { s: 0, thin: true }));
+    },
+    pets: 'Aucune interaction (sur le mur).', rule: 'Lumière faible et diffuse, sans ombre portée.' },
+
+  // ===== Assises =====
+  { cat: 'Assises', id: 'rocking-chair', name: 'Rocking chair', dims: [65, 95, 104], mount: 'sol', view: [-6, 71, -12, 110],
+    view2: [-6, 101, -12, 110], sub2: 'de profil',
+    draw(g) {
+      g.p(D.R(9, 48, 6, 52, 2), 'wood'); g.p(D.R(50, 48, 6, 52, 2), 'wood');
+      for (let i = 0; i < 5; i++) g.p(D.R(f(19.5 + i * 6.2), 50, 2.6, 44, 1), 'woodDark', { s: 0.8 });
+      g.p('M7,92Q32.5,104 58,92L58,98Q32.5,110 7,98Z', 'wood');
+      g.p(D.R(4, 4, 6, 38, 1), 'wood'); g.p(D.R(55, 4, 6, 38, 1), 'wood');
+      g.p(D.R(3, 0, 8, 5, 2), 'woodDark', { s: 1 }); g.p(D.R(54, 0, 8, 5, 2), 'woodDark', { s: 1 });
+      g.p(D.R(1, 40, 63, 5, 1), 'wood');
+      g.p(D.R(6, 45, 53, 7, 3.5), 'fabric');
+      g.p(D.R(5, 45, 4, 18, 1), 'wood', { s: 1 }); g.p(D.R(56, 45, 4, 18, 1), 'wood', { s: 1 });
+      g.p(D.R(0, 62, 14, 4, 2), 'woodDark', { s: 1 }); g.p(D.R(51, 62, 14, 4, 2), 'woodDark', { s: 1 });
+    },
+    draw2(g) {
+      g.tube('M2,9Q48,-5 93,9', 'woodDark', 3);
+      g.tube('M22,5L22,42', 'wood', 3); g.tube('M70,5L72,44', 'wood', 3);
+      g.tube('M66,48L80,98', 'woodDark', 1.6);
+      g.tube('M74,44L90,102', 'wood', 3.5);
+      g.p(D.P([[14, 40], [80, 43], [80, 48], [14, 45]]), 'wood', { s: 1 });
+      g.p(D.P([[18, 45], [76, 48], [74, 53], [20, 51]]), 'fabric', { s: 1.2 });
+      g.tube('M20,46L18,64', 'wood', 2.2);
+      g.tube('M14,65L76,67', 'woodDark', 3);
+    },
+    pets: '🐈 saute sur le coussin (52 cm) pour y dormir, et le fauteuil se balance quand il atterrit. 🐕 ne monte pas (il ne monte que sur le canapé). 🤖 contourne.', rule: 'Petit balancement à l\'arrivée et au départ du chat.' },
+  { cat: 'Assises', id: 'pouf', name: 'Pouf marocain', dims: [55, 55, 40], mount: 'sol', view: [-8, 63, -12, 46],
+    draw(g) {
+      g.p('M3,0C-1,14 0,34 27.5,40C55,34 56,14 52,0Z', 'warm', { s: 3 });
+      g.line('M2,22Q27.5,30 53,22', dark('warm'), 0.8);
+      for (const x of [10, 18.5, 27.5, 36.5, 45]) g.line(`M${x},1Q${f((x - 27.5) * 0.15 + x)},20 ${f(27.5 + (x - 27.5) * 0.4)},38`, dark('warm'), 0.6);
+      g.p(D.E(27.5, 38.5, 3, 1.4), 'warmDark', { s: 0.4 });
+    },
+    pets: '🐈 s\'y perche et y dort (40 cm). 🐕 : à décider, le pouf est assez bas pour qu\'il s\'y couche. 🤖 contourne.' },
+  { cat: 'Assises', id: 'club-chair', name: 'Canapé une place (chauffeuse)', dims: [90, 85, 80], mount: 'sol', view: [-8, 98, -12, 86],
+    draw(g) {
+      g.p(D.R(9, 40, 72, 40, 10), 'fabricDark', { s: 2.5 });
+      g.p(D.R(0, 8, 90, 32, 5), 'fabric', { s: 3 });
+      g.p(D.R(15, 46, 60, 30, 9), 'fabric', { s: 2.5 });
+      g.p(D.R(13, 36, 64, 13, 6), 'fabricLight', { s: 2 });
+      g.p(D.R(0, 8, 17, 50, 8), 'fabric', { s: 2.5 }); g.p(D.R(73, 8, 17, 50, 8), 'fabric', { s: 2.5 });
+      g.p(D.P([[7, 0], [12, 0], [13, 8], [6, 8]]), 'leg', { s: 0.6 }); g.p(D.P([[78, 0], [83, 0], [84, 8], [77, 8]]), 'leg', { s: 0.6 });
+    },
+    pets: '🐈 y dort roulé en boule (49 cm). 🐕 y monte comme sur le canapé, c\'est un canapé une place. 🤖 contourne.', rule: 'Le chien peut monter sur tous les canapés, plus seulement sur le grand.' },
+  { cat: 'Assises', id: 'loveseat', name: 'Canapé deux places', dims: [150, 88, 82], mount: 'sol', view: [-8, 158, -12, 88],
+    draw(g) {
+      g.p(D.R(10, 40, 130, 42, 10), 'warmDark', { s: 2.5 });
+      g.p(D.R(0, 8, 150, 32, 5), 'warm', { s: 3 });
+      g.p(D.R(17, 46, 56, 31, 9), 'warm', { s: 2.5 }); g.p(D.R(77, 46, 56, 31, 9), 'warm', { s: 2.5 });
+      g.p(D.R(15, 36, 60, 13, 6), 'warmLight', { s: 2 }); g.p(D.R(75, 36, 60, 13, 6), 'warmLight', { s: 2 });
+      g.p(D.R(0, 8, 17, 52, 8), 'warm', { s: 2.5 }); g.p(D.R(133, 8, 17, 52, 8), 'warm', { s: 2.5 });
+      g.p(D.P([[7, 0], [12, 0], [13, 8], [6, 8]]), 'leg', { s: 0.6 }); g.p(D.P([[138, 0], [143, 0], [144, 8], [137, 8]]), 'leg', { s: 0.6 });
+    },
+    pets: '🐈 et 🐕 y dorment, chacun sur un coussin. 🐈 se cache dessous par temps d\'orage, comme sous le grand canapé. 🤖 contourne.' },
+  { cat: 'Assises', id: 'daybed', name: 'Méridienne', dims: [165, 70, 85], mount: 'sol', view: [-8, 173, -12, 92],
+    draw(g) {
+      g.p(D.P([[18, 40], [18, 74], [70, 62], [110, 46], [110, 40]]), 'warmDark', { s: 2 });
+      g.p(D.R(0, 8, 165, 32, 5), 'warm', { s: 3 });
+      g.p(D.R(18, 38, 145, 11, 5), 'warmLight', { s: 2 });
+      g.p(D.R(0, 8, 24, 70, 10), 'warm', { s: 2.5 });
+      g.p(D.E(12, 78, 13, 7), 'warmLight', { s: 1.5 });
+      g.p(D.E(32, 56, 7, 8), 'fabric', { s: 1.5 });
+      g.tube('M10,8L9,1', 'leg', 3); g.tube('M155,8L156,1', 'leg', 3);
+    },
+    pets: '🐈 s\'y étire de tout son long (49 cm). 🐕 y monte comme sur le canapé. 🤖 contourne.' },
+  { cat: 'Assises', id: 'beanbag', name: 'Pouf poire', dims: [80, 80, 70], mount: 'sol', view: [-8, 88, -12, 76],
+    draw(g) {
+      g.p('M5,0C-4,20 4,52 30,66C46,72 62,66 72,50C84,30 82,8 75,0Z', 'fabricLight', { s: 4 });
+      g.line('M16,34Q38,44 64,36', dark('fabricLight'), 0.8);
+      g.line('M30,60Q36,52 46,50', dark('fabricLight'), 0.6);
+    },
+    pets: '🐈 et 🐕 s\'y couchent dans le creux (35 cm) : bas et mou, c\'est le seul siège autre qu\'un canapé où le chien monte. 🤖 contourne.', rule: 'Le chien peut aussi se coucher sur le pouf poire.' },
+  { cat: 'Assises', id: 'egg-chair', name: 'Fauteuil œuf suspendu', dims: [100, 100, 195], mount: 'sol', view: [-8, 108, -12, 200],
+    draw(g) {
+      g.tube('M72,5Q100,100 72,186Q60,196 46,190', 'metal', 3);
+      g.line('M46,190L45,151', 'var(--ink)', 0.9);
+      g.p(D.R(13, 0, 64, 5, 2.5), 'metal', { s: 1.2 });
+      const egg = 'M45,151C75,151 82,110 78,80C74,52 60,40 45,40C30,40 16,52 12,80C8,110 15,151 45,151Z';
+      g.p(egg, 'wood', { s: 4 });
+      for (let i = 1; i < 6; i++) g.line(`M${12 + i * 1.2},${40 + i * 18}Q45,${46 + i * 18} ${78 - i * 1.2},${40 + i * 18}`, dark('wood'), 0.5);
+      g.p('M45,138C66,138 70,110 68,88C66,66 58,58 45,58C32,58 24,66 22,88C20,110 24,138 45,138Z', 'woodDark', { s: 3 });
+      g.p(D.R(24, 64, 42, 46, 14), 'fabric', { s: 2.5 });
+      g.p(D.E(45, 66, 23, 8), 'fabricLight', { s: 2 });
+    },
+    pets: '🐈 dort dans l\'œuf (70 cm), et l\'œuf se balance doucement. 🐕 et 🤖 ne peuvent pas y monter.', rule: 'Balancement de l\'œuf, comme pour le rocking chair.' },
+  { cat: 'Assises', id: 'bench', name: 'Banc à coussin', dims: [120, 40, 48], mount: 'sol', view: [-8, 128, -12, 54],
+    draw(g) {
+      g.p(D.R(3, 0, 6, 36, 1), 'wood', { s: 1 }); g.p(D.R(111, 0, 6, 36, 1), 'wood', { s: 1 });
+      g.p(D.R(3, 10, 114, 3, 1), 'woodDark', { s: 0.6 });
+      g.p(D.R(0, 36, 120, 6, 1.5), 'wood', { s: 1.5 });
+      g.p(D.R(4, 42, 112, 6, 3), 'fabric', { s: 1.5 });
+    },
+    pets: 'On passe dessous. 🐈 s\'y perche (48 cm). 🐕 et 🤖 passent dessous ou à côté.' },
+  { cat: 'Assises', id: 'peacock-chair', name: 'Fauteuil paon en rotin', dims: [90, 65, 140], mount: 'sol', view: [-8, 98, -12, 146],
+    draw(g) {
+      const fan = 'M24,40C-8,70 -4,140 45,140C94,140 98,70 66,40Z';
+      g.p(fan, 'wood', { s: 4 });
+      for (let a = -70; a <= 70; a += 14) { const r = (a * Math.PI) / 180; g.line(`M45,44L${f(45 + Math.sin(r) * 50)},${f(44 + Math.cos(r) * 92)}`, dark('wood'), 0.5); }
+      for (const r of [30, 60, 85]) g.line(`M${45 - r * 0.5},${44 + r * 0.9}Q45,${44 + r * 1.08} ${45 + r * 0.5},${44 + r * 0.9}`, dark('wood'), 0.5);
+      g.p('M20,0L70,0L57,22L70,40L20,40L33,22Z', 'woodDark', { s: 2.5 });
+      g.p(D.R(18, 40, 54, 9, 4.5), 'fabric', { s: 2 });
+    },
+    pets: '🐈 dort sur le coussin (49 cm). 🐕 ne monte pas (règle actuelle). 🤖 contourne.' },
+
+  // ===== Tables & rangement =====
+  { cat: 'Tables et rangement', id: 'side-table', name: 'Guéridon', dims: [50, 50, 60], mount: 'sol', view: [-8, 58, -12, 66],
+    draw(g) {
+      g.tube('M25,8L6,0.8', 'wood', 2.6); g.tube('M25,8L44,0.8', 'wood', 2.6);
+      g.p(D.R(23, 4, 4, 52, 1.5), 'wood', { s: 1 });
+      g.p(D.E(25, 10, 5, 3), 'woodDark', { s: 0.8 });
+      g.p(D.R(0, 56, 50, 4, 2), 'desk', { s: 1.2 });
+    },
+    pets: 'On passe dessous, comme sous la table basse. 🐈 peut y monter (60 cm) si le plateau est vide. Il reçoit 1 petit objet.' },
+  { cat: 'Tables et rangement', id: 'dresser', name: 'Commode basse', dims: [100, 45, 82], mount: 'sol', view: [-8, 108, -12, 88],
+    draw(g) {
+      g.p(D.P([[4, 0], [8, 0], [10, 8], [3, 8]]), 'leg', { s: 0.6 }); g.p(D.P([[92, 0], [96, 0], [97, 8], [90, 8]]), 'leg', { s: 0.6 });
+      g.p(D.R(0, 8, 100, 70, 2), 'wood', { s: 3 });
+      for (let i = 0; i < 3; i++) {
+        const y = 12 + i * 22;
+        g.p(D.R(5, y, 90, 19, 1.5), 'desk', { s: 1.5 });
+        g.p(D.E(35, y + 9.5, 2.2, 2.2), 'metal', { s: 0.5 }); g.p(D.E(65, y + 9.5, 2.2, 2.2), 'metal', { s: 0.5 });
+      }
+      g.p(D.R(-2, 78, 104, 4, 1.5), 'woodDark', { s: 1 });
+    },
+    pets: '🐈 se perche sur le dessus (82 cm), entre les objets posés. Elle reçoit 2 petits objets. Pour 🐕 et 🤖, c\'est un obstacle.' },
+  { cat: 'Tables et rangement', id: 'cat-tree', name: 'Arbre à chat', dims: [62, 50, 150], mount: 'sol', view: [-8, 68, -12, 156],
+    draw(g) {
+      const sisal = '#D8BE86', rope = '#B39459';
+      g.p(D.R(0, 0, 62, 6, 2), 'rug', { s: 2 });
+      g.p(D.R(8, 6, 8, 89, 1), sisal, { s: 2 });
+      for (let y = 9; y < 94; y += 4) g.line(`M8.6,${y}L15.4,${y + 1.2}`, rope, 0.5);
+      g.p(D.R(28, 6, 32, 34, 5), 'fabric', { s: 3 });
+      g.p(D.E(44, 21, 8, 9.5), '#3A2E2A', { s: 0 });
+      g.p(D.R(26, 40, 36, 4, 2), 'fabricDark', { s: 1 });
+      g.p(D.R(38, 44, 8, 99, 1), sisal, { s: 2 });
+      for (let y = 47; y < 142; y += 4) g.line(`M38.6,${y}L45.4,${y + 1.2}`, rope, 0.5);
+      g.p(D.R(0, 95, 36, 5, 2), 'fabricDark', { s: 1 });
+      g.line('M3,95L3,79', 'var(--ink)', 0.4);
+      g.p(D.E(3, 76.5, 3, 3), '#E0664A', { s: 0.8 });
+      g.p(D.R(22, 143, 40, 7, 3.5), 'fabric', { s: 1.5 });
+      g.p(D.E(42, 149.6, 16, 1.4), 'fabricDark', { s: 0 });
+    },
+    pets: '🐈 : 3 plateformes (44, 100 et 150 cm ; 150 cm est la limite de saut actuelle), sieste dans la niche, griffes sur les poteaux en sisal, et il tape la balle qui pend. Pour 🐕 et 🤖, c\'est un obstacle.', rule: 'Plusieurs perchoirs sur un même meuble (aujourd\'hui un seul), griffoir et niche-cachette.' },
+
+  // ===== Plantes =====
+  { cat: 'Plantes', id: 'monstera', name: 'Monstera', dims: [85, 70, 120], mount: 'sol', view: [-10, 92, -12, 124],
+    draw(g) {
+      const base = [40, 37];
+      const L = [[16, 64, 64, 20], [64, 66, -62, 20], [22, 82, 40, 26], [58, 85, -38, 26], [48, 74, -18, 21], [38, 92, 8, 25]];
+      L.forEach(([x, y]) => g.tube(`M${base[0]},${base[1]}Q${f((base[0] + x) / 2)},${f(y - 6)} ${x},${y}`, 'leafDark', 1.4));
+      L.forEach(([x, y, a, s]) => monsteraLeaf(g, x, y, a, s));
+      g.p(D.P([[27, 0], [53, 0], [57, 32], [23, 32]]), 'warm', { s: 3 });
+      g.p(D.R(21, 32, 38, 5, 1.5), 'warmDark', { s: 1 });
+    },
+    pets: 'Obstacle au sol, aucune interaction.' },
+  { cat: 'Plantes', id: 'strelitzia', name: 'Oiseau de paradis', dims: [60, 60, 170], mount: 'sol', view: [-8, 68, -12, 175],
+    draw(g) {
+      const leaves = [[9, 82, 38, 40], [52, 84, -36, 42], [14, 105, 16, 58], [46, 112, -12, 55], [28, 98, 3, 62]];
+      leaves.forEach(([x, y]) => g.tube(`M30,35Q${f((30 + x) / 2)},${f((35 + y) / 2)} ${x},${y}`, 'leafDark', 1.3));
+      g.tube('M33,35Q36,90 38,126', 'leafDark', 1.3);
+      leaves.forEach(([x, y, a, L]) => {
+        g.p(leafD(L, f(L * 0.22)), 'leaf', { tf: `translate(${x},${y}) rotate(${a})`, s: 2 });
+        g.o.push(`<path transform="translate(${x},${y}) rotate(${a})" d="M0,2L0,${L - 3}" fill="none" style="stroke:var(--leafDark)" stroke-width="0.6"/>`);
+      });
+      g.p(D.P([[38, 126], [57, 131], [38, 129]]), 'leafDark', { s: 0.6 });
+      g.p(D.P([[42, 129], [50, 143], [46, 130]]), '#F08A24', { s: 0.5 });
+      g.p(D.P([[46, 130], [56, 140], [49, 130.5]]), '#F2A63A', { s: 0.5 });
+      g.p(D.P([[48, 131], [54, 136], [51, 131]]), '#3E6FD8', { s: 0.4 });
+      g.p(D.R(17, 0, 26, 32, 3), 'warmLight', { s: 2.5 });
+      g.p(D.R(15, 30, 30, 5, 1.5), 'warm', { s: 1 });
+    },
+    pets: 'Obstacle au sol, aucune interaction.' },
+  { cat: 'Plantes', id: 'palm', name: 'Palmier areca', dims: [100, 100, 190], mount: 'sol', view: [-14, 104, -12, 194],
+    draw(g) {
+      [[40, 112], [50, 122], [45, 102]].forEach(([x, y]) => g.tube(`M45,36Q${f((45 + x) / 2 + 2)},${f((36 + y) / 2)} ${x},${y}`, 'leafDark', 1.4));
+      const F = [[[40, 108], [8, 132], [-8, 80]], [[45, 102], [78, 138], [96, 86]], [[40, 112], [10, 170], [-4, 118]], [[50, 122], [82, 168], [98, 112]],
+        [[40, 112], [25, 188], [6, 160]], [[50, 122], [55, 192], [80, 165]], [[45, 102], [48, 160], [46, 186]]];
+      F.forEach(([p0, c, p2], n) => {
+        g.line(`M${p0}Q${c} ${p2}`, dark('leafDark'), 1);
+        for (let t = 0.12; t <= 1.001; t += 0.07) {
+          const [x, y] = quad(p0, c, p2, t);
+          const tx = 2 * (1 - t) * (c[0] - p0[0]) + 2 * t * (p2[0] - c[0]), ty = 2 * (1 - t) * (c[1] - p0[1]) + 2 * t * (p2[1] - c[1]);
+          const n2 = Math.hypot(tx, ty), Tx = tx / n2, Ty = ty / n2;
+          for (const side of [-1, 1]) {
+            const dx = side * -Ty * 0.75 + Tx * 0.45, dy = side * Tx * 0.75 + Ty * 0.45 - 0.35;
+            const len = 16 * (1 - 0.55 * t) + 3;
+            g.p(leafD(f(len), 1.6), (n + side + Math.round(t * 10)) % 2 ? 'leaf' : 'leafDark', { flat: true, thin: true, tf: `translate(${f(x)},${f(y)}) rotate(${towards(dx, dy)})` });
+          }
+        }
+      });
+      g.p(D.R(30, 0, 30, 34, 4), 'woodDark', { s: 2.5 });
+      for (let y = 5; y < 33; y += 5) g.line(`M31,${y}L59,${y}`, dark('woodDark'), 0.5);
+      for (let x = 35; x < 58; x += 5) g.line(`M${x},1L${x},33`, dark('woodDark'), 0.4);
+      g.p(D.R(28, 32, 34, 4, 1.5), 'wood', { s: 1 });
+    },
+    pets: 'Obstacle au sol, aucune interaction.' },
+  { cat: 'Plantes', id: 'cactus', name: 'Cactus cierge', dims: [35, 35, 132], mount: 'sol', view: [-8, 43, -12, 136],
+    draw(g) {
+      g.p('M15,58L8,58Q3,58 3,63L3,86Q3,90 6.5,90Q10,90 10,86L10,65L15,65Z', 'leaf', { s: 1.5 });
+      g.p('M20,72L28,72Q32,72 32,77L32,98Q32,102 28.5,102Q25,102 25,98L25,79L20,79Z', 'leaf', { s: 1.5 });
+      g.p(D.R(12, 23, 11, 106, 5.5), 'leaf', { s: 2.5 });
+      for (const d of ['M15,27L15,126', 'M20,27L20,126', 'M6.5,64L6.5,87', 'M28.5,78L28.5,99']) g.line(d, dark('leaf'), 0.5);
+      for (let y = 30; y < 125; y += 9) { g.line(`M12,${y}L10.4,${y + 1}`, 'var(--ink)', 0.3); g.line(`M23,${y + 4}L24.6,${y + 5}`, 'var(--ink)', 0.3); }
+      g.p(D.E(17.5, 130, 4, 2.4), '#EF6F9C', { s: 0.6 });
+      g.p(D.P([[8, 0], [27, 0], [30, 20], [5, 20]]), 'warm', { s: 2 });
+      g.p(D.R(4, 19, 27, 4, 1.5), 'warmDark', { s: 0.8 });
+    },
+    pets: 'Obstacle au sol. Aucun animal ne s\'y frotte.' },
+  { cat: 'Plantes', id: 'pampas', name: 'Grand vase et pampas', dims: [42, 30, 122], mount: 'sol', view: [-16, 50, -12, 126],
+    draw(g) {
+      const P = [[2, 92, 20], [8, 84, 32], [16, 98, 0], [25, 82, -35], [30, 92, -18]];
+      P.forEach(([x, y]) => g.line(`M16,60Q${f((16 + x) / 2)},${f((60 + y) / 2 + 4)} ${x},${y}`, '#B8A47A', 0.7));
+      P.forEach(([x, y, a]) => g.p(D.E(0, 12, 4.2, 13), '#EEDFBE', { tf: `translate(${x},${y}) rotate(${a})`, s: 1.2 }));
+      g.p('M9,0C2,18 2,44 11,54L11,62L21,62L21,54C30,44 30,18 23,0Z', 'warmLight', { s: 3 });
+      g.line('M4.5,20Q16,23.5 27.5,20', dark('warmLight'), 0.6);
+    },
+    pets: 'Obstacle au sol. En option, 🐈 tape les plumes en passant.' },
+  { cat: 'Plantes', id: 'hanging-plant', name: 'Plante suspendue', dims: [44, 34, 90], mount: 'plafond', view: [-12, 46, 150, 256],
+    draw(g) {
+      const cord = '#D9C9A6';
+      for (const x of [3, 13, 21, 31]) g.line(`M17,248L${x},221`, cord, 0.7);
+      g.p(D.E(17, 238, 1.6, 1.6), cord, { s: 0, thin: true });
+      g.p(D.E(17, 248, 2, 2), 'metal', { s: 0, thin: true });
+      const vines = [[[6, 218], [-6, 195], [2, 160]], [[12, 210], [8, 185], [10, 170]], [[24, 212], [36, 190], [28, 164]], [[29, 218], [42, 200], [37, 178]]];
+      vines.forEach(([p0, c, p2]) => {
+        g.line(`M${p0}Q${c} ${p2}`, 'var(--leafDark)', 0.6);
+        let i = 0;
+        for (let t = 0.12; t <= 1.001; t += 0.13) {
+          const [x, y] = quad(p0, c, p2, t);
+          g.p(leafD(4.6, 2.8), i++ % 2 ? 'leaf' : 'leafDark', { flat: true, thin: true, tf: `translate(${f(x)},${f(y)}) rotate(${i % 2 ? 130 : 230})` });
+        }
+      });
+      g.p('M3,221L31,221C31,210 26,204 17,204C8,204 3,210 3,221Z', 'warmLight', { s: 2 });
+      g.line('M5,214L17,206L29,214', cord, 0.6);
+      [[6, 221, 200], [12, 221, 150], [22, 221, 205], [28, 221, 160]].forEach(([x, y, a]) => g.p(leafD(5, 3), 'leaf', { flat: true, thin: true, tf: `translate(${x},${y}) rotate(${a})` }));
+    },
+    pets: 'Hors d\'atteinte de tous les animaux.', rule: 'Pose libre au plafond, comme la suspension (sans quadrillage).' },
+
+  // ===== Petits objets =====
+  { cat: 'Petits objets (posés sur un meuble)', id: 'vase-flowers', name: 'Vase de tulipes', dims: [14, 14, 43], mount: 'objet', small: true, view: [-5, 19, -3, 45],
+    draw(g) {
+      g.p(leafD(13, 2.2), 'leafDark', { tf: 'translate(7,18) rotate(28)', s: 0.6, thin: true });
+      g.p(leafD(12, 2), 'leaf', { tf: 'translate(7,18) rotate(-30)', s: 0.6, thin: true });
+      for (const d of ['M7,19Q4,28 2.5,33', 'M7,19L7,37', 'M7,19Q10,27 11.5,32']) g.line(d, 'var(--leafDark)', 0.5);
+      tulip(g, 2.5, 33, '#E25B6A'); tulip(g, 7, 37, '#F2C14E'); tulip(g, 11.5, 32, '#E25B6A');
+      g.p('M3.5,0L10.5,0C13,7 13,14 10,20L4,20C1,14 1,7 3.5,0Z', 'fabric', { s: 1.2 });
+      g.p(D.R(3.5, 19, 7, 2, 0.8), 'fabricDark', { s: 0.3, thin: true });
+    },
+    pets: '🐈 le contourne quand il se perche sur le meuble qui le porte.' },
+  { cat: 'Petits objets (posés sur un meuble)', id: 'vase-eucalyptus', name: 'Vase boule et eucalyptus', dims: [24, 18, 41], mount: 'objet', small: true, view: [-4, 27, -3, 44],
+    draw(g) {
+      const br = [[[9, 20], [8, 32], [15, 41]], [[9, 20], [14, 27], [23, 32]]];
+      br.forEach(([p0, c, p2]) => {
+        g.line(`M${p0}Q${c} ${p2}`, '#7E8F86', 0.5);
+        for (let t = 0.15; t <= 0.95; t += 0.15) {
+          const [x, y] = quad(p0, c, p2, t);
+          g.p(D.E(f(x - 1.8), f(y), 1.7, 1.4), '#9DB8A6', { s: 0.4, thin: true });
+          g.p(D.E(f(x + 1.8), f(y + 0.6), 1.7, 1.4), '#8AA898', { s: 0.4, thin: true });
+        }
+      });
+      g.p('M4,0L14,0C19,4 19.5,12 12.5,16.5L12,21L6,21L5.5,16.5C-1.5,12 -1,4 4,0Z', 'rug', { s: 1.5 });
+      g.line('M1.6,8Q9,10 16.4,8', dark('rug'), 0.5);
+    },
+    pets: '🐈 le contourne quand il se perche sur le meuble qui le porte.' },
+  { cat: 'Petits objets (posés sur un meuble)', id: 'bonsai', name: 'Bonsaï', dims: [28, 18, 27], mount: 'objet', small: true, view: [-3, 31, -3, 29],
+    draw(g) {
+      g.tube('M14,5C10,10 18,13 13,18', 'woodDark', 2.2);
+      g.tube('M13.5,15L6,19', 'woodDark', 1.2); g.tube('M14.5,13L22,16.5', 'woodDark', 1.2);
+      g.p(D.E(6, 20.5, 6, 3.4), 'leaf', { s: 1 }); g.p(D.E(21.5, 18, 6, 3.2), 'leaf', { s: 1 }); g.p(D.E(13, 23, 7.5, 3.8), 'leaf', { s: 1 });
+      g.p(D.P([[3, 0], [25, 0], [27.5, 5], [0.5, 5]]), 'door', { s: 1 });
+      g.p(D.E(14, 5, 11, 0.9), 'leafDark', { s: 0, thin: true });
+    },
+    pets: '🐈 le contourne quand il se perche sur le meuble qui le porte.' },
+];
+
+// ---------- Mise en page ----------
+const DEFS = '<defs><radialGradient id="halo"><stop offset="0" stop-color="#FFE9A8" stop-opacity=".7"/><stop offset="1" stop-color="#FFE9A8" stop-opacity="0"/></radialGradient></defs>';
+function svgOf(view, draw, k, mount) {
+  const [x0, x1, y0, y1] = view, w = x1 - x0, h = y1 - y0;
+  const g = new G();
+  let back = '';
+  if (y0 < 0) back += `<rect x="${x0}" y="${y0}" width="${w}" height="${-y0}" style="fill:var(--${mount === 'objet' ? 'desk' : 'floor'})"/>`;
+  if (y1 > 250) back += `<rect x="${x0}" y="250" width="${w}" height="${y1 - 250}" style="fill:var(--skirt)"/><line x1="${x0}" y1="250" x2="${x1}" y2="250" class="grid-l"/>`;
+  if (mount !== 'objet' && mount !== 'plafond') for (let x = Math.ceil(x0 / CELL) * CELL; x <= x1; x += CELL) back += `<line x1="${x}" y1="${Math.max(y0, 0)}" x2="${x}" y2="${Math.min(y1, 250)}" class="grid-l"/>`;
+  draw(g);
+  return `<svg viewBox="${x0} ${-y1} ${w} ${h}" width="${f(w * k)}" height="${f(h * k)}">${DEFS}<g transform="scale(1,-1)">${back}${g.str()}</g></svg>`;
+}
+const MOUNT = { sol: '🟫 Au sol', plafond: '⬆️ Plafond', mur: '🧱 Mur', objet: '🍽️ Posé sur un meuble' };
+function cellsOf([w, d, h], mount) {
+  const c = Math.max(1, Math.round(w / CELL)), hh = Math.max(1, Math.round(h / CELL));
+  if (mount === 'sol') return `${c} case${c > 1 ? 's' : ''} de large × ${Math.max(1, Math.round(d / ROW))} rangée(s) de sol, ${hh} cases de haut`;
+  if (mount === 'objet') return 'prend 1 place sur la tablette';
+  if (mount === 'plafond') return 'posé librement au plafond (sans quadrillage)';
+  return `${c} × ${hh} cases sur le mur`;
+}
+
+function scene() {
+  const g = new G();
+  g.at(150, 0, (s) => ITEMS.find((i) => i.id === 'string-lights').draw(s));
+  g.at(258, -12, (s) => ITEMS.find((i) => i.id === 'sconce').draw(s));
+  g.at(550, 0, (s) => ITEMS.find((i) => i.id === 'hanging-plant').draw(s));
+  const it = (id) => ITEMS.find((i) => i.id === id).draw;
+  g.at(30, 0, it('rocking-chair'));
+  g.at(27, 0, it('arc-lamp'));
+  g.at(240, 0, it('side-table'));
+  g.at(258, 60, it('vase-flowers'));
+  g.at(300, 0, it('monstera'));
+  g.at(394, 0, it('pouf'));
+  g.at(402, 0, it('pendant'));
+  g.at(470, 0, it('cat-tree'));
+  g.at(556, 0, it('cactus'));
+  catCurl(g, 62, 52);
+  catCurl(g, 510, 149);
+  const view = [0, 600, -25, 256];
+  return svgOf(view, (gg) => gg.o.push(g.str()), 1, 'sol');
+}
+
+function render() {
+  const main = document.getElementById('main');
+  let html = `<h2>Mise en scène</h2><div class="scene">${scene()}</div>
+  <p class="note">Le lampadaire arc éclaire le rocking chair, où le chat dort. Le guéridon porte le vase, la suspension est au-dessus du pouf, et un second chat dort en haut de l'arbre à chat.</p>`;
+  // ?cat=Assises : n'affiche qu'une catégorie (captures).
+  const only = new URLSearchParams(location.search).get('cat');
+  if (only) html = '';
+  const cats = [...new Set(ITEMS.map((i) => i.cat))];
+  let n = 0;
+  for (const c of cats) {
+    if (only && c !== only) { n += ITEMS.filter((i) => i.cat === c).length; continue; }
+    html += `<h2>${c}</h2><div class="grid">`;
+    for (const it of ITEMS.filter((i) => i.cat === c)) {
+      n++;
+      const k = it.small ? KSMALL : K;
+      const tags = [MOUNT[it.mount], it.light ? '💡 Éclaire' : ''].filter(Boolean).map((t) => `<span class="tag">${t}</span>`).join('');
+      html += `<div class="card"><div class="stage">${it.small ? `<span class="zoom">agrandi ×${f(KSMALL / K)}</span>` : ''}${it.view2 ? '<span class="sub">de face | de profil</span>' : ''}
+        ${svgOf(it.view, it.draw, k, it.mount)}${it.view2 ? svgOf(it.view2, it.draw2, k, it.mount) : ''}</div>
+        <div class="info"><div class="name"><span class="num">${n}.</span>${it.name}</div>
+        <div class="dims">${it.dims[0]} × ${it.dims[1]} × ${it.dims[2]} cm <span class="cells">(L × P × H)</span></div>
+        <div class="cells">${cellsOf(it.dims, it.mount)}${it.extra ? ' · ' + it.extra : ''}</div>
+        <div class="tags">${tags}</div>
+        <div class="pets">${it.pets}</div>${it.rule ? `<div class="new">Nouveau : ${it.rule}</div>` : ''}</div></div>`;
+    }
+    html += '</div>';
+  }
+  main.innerHTML = html;
+}
+
+function applyPalette(name) {
+  for (const [k, val] of Object.entries(PALETTES[name])) document.documentElement.style.setProperty('--' + k, val);
+  document.querySelectorAll('#styles button[data-s]').forEach((b) => b.classList.toggle('on', b.dataset.s === name));
+}
+const bar = document.getElementById('styles');
+bar.innerHTML = Object.keys(PALETTES).map((s) => `<button data-s="${s}">${s}</button>`).join('') + '<span class="sep"></span><button id="light" class="on">💡 Lumières allumées</button>';
+bar.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.s) applyPalette(b.dataset.s);
+  if (b.id === 'light') { const off = document.body.classList.toggle('off'); b.classList.toggle('on', !off); b.textContent = off ? '🌑 Lumières éteintes' : '💡 Lumières allumées'; }
+});
+render();
+applyPalette('Scandinave');
+</script>
+</body>
+</html>

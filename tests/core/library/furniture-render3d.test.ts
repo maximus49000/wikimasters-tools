@@ -1,6 +1,6 @@
 // tests/core/library/furniture-render3d.test.ts
 import { describe, expect, it } from 'vitest';
-import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, localPointOf, occluderBoxesOf, perchOf, pieceBounds, poisOf3d, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
+import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, leafHalf, localPointOf, occluderBoxesOf, perchOf, pieceBounds, poisOf3d, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 
 const CELL_W = 30;
@@ -420,5 +420,132 @@ describe('faces décorées (décalques) et couleurs propres', () => {
     const shapes = renderModel(card, 1).shapes;
     expect(shapes.length).toBeGreaterThan(0);
     for (const q of shapes) expect([q.color, q.tag]).toEqual(['#112233', 'corps']);
+  });
+});
+
+describe('socle séparé (base)', () => {
+  // Meuble large de 160 cm dont seul un socle de 32 × 32 cm, à droite, touche le sol.
+  const arc: Model = {
+    w: 160, d: 32, h: 100,
+    pieces: [{ shape: 'box', x: 128, y: 0, z: 0, w: 32, h: 10, d: 32, fill: 'metal' }, { shape: 'box', x: 0, y: 90, z: 0, w: 160, h: 10, d: 32, fill: 'metal' }],
+    base: { x: 128, z: 0, w: 32, d: 32 },
+  };
+  it('le rectangle de dessin garde toute la largeur du meuble', () => {
+    expect(renderModel(arc, 0).cols).toBe(8);
+  });
+  it('de face, seules les cases du socle sont au sol', () => {
+    // Une case compte si le socle la couvre à plus de 50 % : 32 cm de profondeur sur une rangée de 50, il en couvre une ou deux, à droite.
+    const cols = renderModel(arc, 0).floor.map((c) => c.col);
+    expect(cols.length).toBeGreaterThan(0);
+    expect(cols.every((c) => c >= 6)).toBe(true);
+  });
+  it('à chaque angle, pas plus de 4 cases au sol', () => {
+    for (const a of ANGLES) {
+      const n = renderModel(arc, a).floor.length;
+      expect(n, 'angle ' + a).toBeGreaterThan(0);
+      expect(n, 'angle ' + a).toBeLessThanOrEqual(4);
+    }
+  });
+  it('sans socle, rien ne change (trace = boîte entière)', () => {
+    const { base: _b, ...plain } = arc;
+    expect(renderModel(plain, 0).floor.length).toBe(8);
+  });
+});
+
+describe('formes de feuille', () => {
+  it('pointue aux deux bouts quelle que soit la forme', () => {
+    for (const f of ['lance', 'heart', 'paddle'] as const) {
+      expect(leafHalf(f, 0, 10)).toBeCloseTo(0, 5);
+      expect(leafHalf(f, 1, 10)).toBeLessThan(1);
+    }
+  });
+  it('le cœur est le plus large avant le milieu, la palette reste large jusqu’au bout', () => {
+    const heart = Array.from({ length: 11 }, (_, i) => leafHalf('heart', i / 10, 10));
+    expect(heart.indexOf(Math.max(...heart))).toBeLessThan(5);
+    expect(leafHalf('paddle', 0.85, 10)).toBeGreaterThan(leafHalf('lance', 0.85, 10));
+  });
+  it('une feuille en cœur a des fentes : son contour a plus de points qu’une feuille pointue', () => {
+    const leaf = (form: 'lance' | 'heart'): Model => ({ w: 40, d: 40, h: 40, pieces: [{ shape: 'foliage', fill: 'leaf', leaves: [{ base: [20, 5, 20], ctrl: [20, 20, 15], tip: [20, 32, 12], w: 16, form }] }] });
+    const pts = (m: Model) => renderModel(m, 0).shapes.filter((s) => s.kind === 'poly').map((s) => (s.kind === 'poly' ? s.points.length : 0))[0]!;
+    expect(pts(leaf('heart'))).toBeGreaterThan(pts(leaf('lance')));
+  });
+});
+
+describe('boules en cellulo', () => {
+  const ballModel: Model = { w: 60, d: 60, h: 60, pieces: [{ shape: 'ball', cx: 30, cy: 30, cz: 30, rx: 28, ry: 28, rz: 28, fill: 'fabric' }] };
+  it('une boule a son ombre nette (aplat sans trait) et son contour repassé', () => {
+    for (const a of ANGLES) {
+      const shapes = renderModel(ballModel, a).shapes;
+      const shadow = shapes.find((s) => s.kind === 'poly' && s.ink === 'none');
+      expect(shadow, 'angle ' + a).toBeDefined();
+      expect(shadow!.shade).toBeLessThan(1);
+      expect(shapes.some((s) => s.kind === 'poly' && s.ink === 'only'), 'angle ' + a).toBe(true);
+    }
+  });
+  it('l’ombre est en bas à droite de la boule', () => {
+    const shapes = renderModel(ballModel, 0).shapes;
+    const body = shapes.find((s) => s.kind === 'ellipse')!;
+    const shadow = shapes.find((s) => s.kind === 'poly' && s.ink === 'none')!;
+    if (body.kind !== 'ellipse' || shadow.kind !== 'poly') throw new Error('formes');
+    const mx = shadow.points.reduce((t, p) => t + p[0], 0) / shadow.points.length;
+    const my = shadow.points.reduce((t, p) => t + p[1], 0) / shadow.points.length;
+    expect(mx).toBeGreaterThan(body.cx);
+    expect(my).toBeGreaterThan(body.cy);
+  });
+});
+
+describe('forme de révolution (lathe)', () => {
+  // Goutte de 80 cm de large, 70 cm de haut : profil (rayon, hauteur) du bas vers le sommet.
+  const drop: Model = {
+    w: 80, d: 80, h: 70, round: true,
+    pieces: [{ shape: 'lathe', cx: 40, cz: 40, fill: 'fabric', profile: [[30, 0], [38, 4], [40, 14], [39, 26], [35, 38], [28, 50], [18, 60], [8, 67], [0, 70]], lineFill: 'fabricDark', lines: [{ lon: -150 }, { lon: -30 }, { lon: 90 }], folds: [{ y: 46, dip: 8, span: 70 }] }],
+  };
+  it('tient dans sa boîte', () => {
+    expect(pieceBounds(drop.pieces[0]!)).toEqual([0, 80, 0, 70, 0, 80]);
+  });
+  it('une seule silhouette, son ombre nette et son contour, à chaque angle', () => {
+    for (const a of ANGLES) {
+      const polys = renderModel(drop, a).shapes.filter((s) => s.kind === 'poly');
+      expect(polys.filter((s) => s.kind === 'poly' && s.ink === undefined), 'angle ' + a).toHaveLength(1);
+      expect(polys.some((s) => s.kind === 'poly' && s.ink === 'none'), 'angle ' + a).toBe(true);
+      expect(polys.some((s) => s.kind === 'poly' && s.ink === 'only'), 'angle ' + a).toBe(true);
+    }
+  });
+  it('coutures et pli tracés en traits sur la face visible', () => {
+    const lines = renderModel(drop, 0).shapes.filter((s) => s.kind === 'line');
+    expect(lines.length).toBeGreaterThanOrEqual(3); // au moins deux coutures de face + le pli
+    expect(lines.some((s) => s.fill === 'door')).toBe(true); // le pli, encré
+  });
+  it('le pli est un sourire : plus bas au milieu qu’aux bouts', () => {
+    const fold = renderModel(drop, 0).shapes.find((s) => s.kind === 'line' && s.fill === 'door')!;
+    if (fold.kind !== 'line') throw new Error('pli');
+    const ys = fold.points.map((p) => p[1]);
+    const mid = ys[Math.floor(ys.length / 2)]!;
+    expect(mid).toBeGreaterThan(ys[0]!); // écran : y vers le bas
+    expect(mid).toBeGreaterThan(ys[ys.length - 1]!);
+  });
+});
+
+describe('creux d’assise d’une forme de révolution', () => {
+  const seat = { y0: 44, dip: 7, y1: 58, rise: 3, span: 62 };
+  const drop: Model = {
+    w: 80, d: 80, h: 70, round: true,
+    pieces: [{ shape: 'lathe', cx: 40, cz: 40, fill: 'fabric', profile: [[30, 0], [38, 4], [40, 14], [39, 26], [35, 38], [28, 50], [18, 60], [8, 67], [0, 70]], seat }],
+  };
+  const seatPolys = (a: (typeof ANGLES)[number]) => renderModel(drop, a).shapes.filter((s) => s.kind === 'poly' && s.tag === 'seat');
+  it('de face : fond clair et paroi dans l’ombre', () => {
+    const polys = seatPolys(0);
+    expect(polys.some((s) => s.shade > 1)).toBe(true);
+    expect(polys.some((s) => s.shade < 1)).toBe(true);
+  });
+  it('de dos : pas de creux visible', () => {
+    expect(seatPolys(4)).toHaveLength(0);
+  });
+});
+
+describe('petites boules', () => {
+  it('un rivet ou un pied boule (moins de 14 px) reste un simple aplat, sans croissant ni contour', () => {
+    const rivet: Model = { w: 10, d: 10, h: 10, pieces: [{ shape: 'ball', cx: 5, cy: 5, cz: 5, rx: 3, ry: 3, rz: 3, fill: 'metal' }] };
+    expect(renderModel(rivet, 0).shapes.filter((s) => s.kind === 'poly')).toHaveLength(0);
   });
 });

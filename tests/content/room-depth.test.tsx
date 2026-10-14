@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { RoomView } from '../../src/content/RoomView';
 import type { PetView } from '../../src/content/pet-sim';
 import type { Layout, Room } from '../../src/core/library/library-types';
+import { drawSize } from '../../src/core/library/footprint';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -110,5 +111,29 @@ describe('RoomView : ombre au sol', () => {
     expect(Math.min(...ys)).toBeGreaterThan(14 * (510 / 18));
     expect(Math.max(...ys)).toBeLessThanOrEqual(16 * (510 / 18) + 6);
     expect(svg.querySelector('[data-contact-shadow]')).toBeNull();
+  });
+});
+
+describe('RoomView : lampadaire arc au-dessus d’un canapé', () => {
+  const order = (svg: SVGSVGElement) => [...svg.querySelectorAll('[data-id], [data-overhang]')].map((n) => n.getAttribute('data-id') ?? `over:${n.getAttribute('data-overhang')}`);
+  it('canapé devant le socle mais sous le dôme : socle derrière le canapé, dôme par-dessus', () => {
+    // Socle sur la rangée 16 ; canapé sur les rangées 16 et 17 (pieds devant le socle), sous le dôme (colonnes 10-11).
+    const layout: Layout = [
+      { id: 'lamp', kind: 'arc-lamp', col: 10, row: 17 - drawSize('arc-lamp', 0).h },
+      { id: 'sofa', kind: 'sofa', col: 8, row: 18 - drawSize('sofa', 0).h },
+    ];
+    const ids = order(mount({ layout }));
+    expect(ids.indexOf('lamp')).toBeLessThan(ids.indexOf('sofa'));
+    expect(ids.indexOf('sofa')).toBeLessThan(ids.indexOf('over:lamp'));
+  });
+  it('fauteuil entièrement devant le dôme : il passe devant', () => {
+    // Socle sur la rangée 15 ; fauteuil sur les rangées 16 et 17, entièrement devant.
+    const layout: Layout = [
+      { id: 'lamp', kind: 'arc-lamp', col: 10, row: 16 - drawSize('arc-lamp', 0).h },
+      { id: 'arm', kind: 'armchair', col: 9, row: 18 - drawSize('armchair', 0).h },
+    ];
+    expect(order(mount({ layout })).includes('over:lamp')).toBe(true);
+    const ids = order(mount({ layout }));
+    expect(ids.indexOf('over:lamp')).toBeLessThan(ids.indexOf('arm'));
   });
 });

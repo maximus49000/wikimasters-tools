@@ -4,6 +4,7 @@ import { STANDING_KINDS } from './library-types';
 import type { Depth, Layout, Orientation, Placed, ShelfLevel, ShelfShape, SmallItem, StandDepth, StandingKind, StoredDisplay, VinylColor, WallShape } from './library-types';
 import { ITEM_MODELS, itemFootprintCm } from './item-models';
 import { FURNITURE_MODELS } from './furniture-models';
+import { overhangOf, projectOf } from './furniture-render3d';
 
 export const ROWS = 18;
 // Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
@@ -66,11 +67,40 @@ export function depthOf(layout: Layout, p: Placed): Depth {
   return host && isStanding(host) ? depthOf(layout, host) : 1;
 }
 
-// Meubles debout dans l'ordre de dessin : le bas le plus haut d'abord (le meuble le plus bas à l'écran passe devant),
-// puis, pieds sur la même ligne, le niveau (fond, milieu, avant), puis l'ordre du plan.
+// Ligne juste sous les pieds d'un meuble debout : sous sa case au sol la plus basse. C'est le bas de son rectangle, sauf pour un
+// meuble à socle (lampadaire arc) tourné, dont le dôme déborde devant le socle.
+export function footBottom(p: Standing): number {
+  return Math.max(...floorCells(p.kind, angleOf(p), p.col, p.row).map((c) => c.row)) + 1;
+}
+
+// Rangée du sol sous le surplomb d'un meuble à socle (sous le dôme du lampadaire arc), selon son angle ; null sans surplomb.
+export function overhangRow(p: Standing): number | null {
+  const m = FURNITURE_MODELS[p.kind];
+  const over = overhangOf(m);
+  if (!over) return null;
+  const [, y] = projectOf(m, angleOf(p), [over.at[0], 0, over.at[1]]);
+  return p.row + Math.max(0, Math.min(rectOf(p)!.h - 1, Math.floor(y / CELL_H)));
+}
+
+// Première rangée au sol d'un meuble (le fond de son emprise).
+export const floorTopRow = (p: Standing): number => Math.min(...floorCells(p.kind, angleOf(p), p.col, p.row).map((c) => c.row));
+
+// Zone qui reçoit le toucher d'un meuble : tout son rectangle, sauf pour un meuble à socle (lampadaire arc), dont le rectangle est
+// surtout du vide au-dessus des autres meubles : seulement les cases du socle (son dôme et son arc restent touchables là où ils sont peints).
+export function hitRectOf(p: Standing): PxRect {
+  const rect = rectOf(p)!;
+  if (!FURNITURE_MODELS[p.kind].base) return pxRect(rect);
+  const cells = floorCells(p.kind, angleOf(p), p.col, p.row);
+  const [c0, c1] = [Math.min(...cells.map((c) => c.col)), Math.max(...cells.map((c) => c.col))];
+  const [r0, r1] = [Math.min(...cells.map((c) => c.row)), Math.max(...cells.map((c) => c.row))];
+  return pxRect({ col: c0, row: r0, w: c1 - c0 + 1, h: r1 - r0 + 1 });
+}
+
+// Meubles debout dans l'ordre de dessin : les pieds les plus hauts d'abord (le meuble dont les pieds sont le plus bas à l'écran passe
+// devant), puis, pieds sur la même ligne, le niveau (fond, milieu, avant), puis l'ordre du plan.
 export function byDrawOrder<T extends Standing>(layout: Layout, items: readonly T[]): T[] {
   return items
-    .map((p, i) => ({ p, i, d: depthOf(layout, p), b: p.row + rectOf(p)!.h }))
+    .map((p, i) => ({ p, i, d: depthOf(layout, p), b: footBottom(p) }))
     .sort((a, b) => a.b - b.b || a.d - b.d || a.i - b.i)
     .map((e) => e.p);
 }
@@ -352,7 +382,8 @@ export function moveSmall(layout: Layout, id: string, hostId: string): Layout | 
   return layout.map((p) => (p.id === id ? { ...small, hostId, slot } : p));
 }
 
-export const isLamp = (p: Placed): boolean => p.kind === 'lamp' || (p.kind === 'small' && p.item === 'lamp');
+// Lampe : tout meuble debout dont le modèle a un point de lumière (lampadaire, lanterne, lampadaire arc), ou une petite lampe posée.
+export const isLamp = (p: Placed): boolean => (isStanding(p) && FURNITURE_MODELS[p.kind].glow !== undefined) || (p.kind === 'small' && p.item === 'lamp');
 export const isLit = (p: Placed): boolean => !isLamp(p) || (p as { lit?: boolean }).lit !== false;
 
 // Allume ou éteint une lampe (debout ou posée) ; sans effet sur un autre meuble.

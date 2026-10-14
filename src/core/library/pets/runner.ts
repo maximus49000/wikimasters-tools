@@ -5,6 +5,8 @@ import { petSlot } from '../depth-order';
 import { planEndsAt, stateAt, type PetState } from './motion';
 import { jumpMs } from './route';
 import { buildWalkMap } from './walk-map';
+import { isStanding } from '../room-grid';
+import { hasRole } from './roles';
 import { proposeScene, sceneIsValid } from './scenes';
 import { huddlePlans, stormPlan } from './storm';
 import type { Standing } from './route';
@@ -12,8 +14,11 @@ import type { Standing } from './route';
 export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower' | 'scan' | 'standby' | 'charge' | 'beep' | 'howl' | 'shake' | 'umbrella' | 'shortcircuit' | 'reboot';
 export type PetFrame = { id: string; species: Species; coat: Coat; name: string; pose: Pose; facing: 'l' | 'r'; behind: number; top: boolean; /* id du meuble qui porte l'animal, null au sol */ on: string | null; pos: Pt; /* ordonnée des pieds : départage deux animaux au même rang de dessin */ depthY: number };
 
-const PERCH_KINDS: ReadonlySet<string> = new Set(['desk', 'shelf']);
-const isTop = (room: Room, on: string | null): boolean => on !== null && PERCH_KINDS.has(room.layout.find((p) => p.id === on)?.kind ?? '');
+// Un animal posé sur un dessus (étagère, bureau, commode, guéridon, arbre à chat) est dessiné « en haut ».
+const isTop = (room: Room, on: string | null): boolean => {
+  const host = on === null ? undefined : room.layout.find((p) => p.id === on);
+  return host !== undefined && isStanding(host) && hasRole(host.kind, 'catTop');
+};
 const FUTURE_SLACK_MS = 60_000;
 
 // Si l'animal est en plein saut, son état « d'abandon » est le point d'atterrissage du saut (jamais en l'air).

@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- Pouf poire et pouf carré en velours côtelé, maquettes de face — dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 2026-10-17). -->
+<html lang="fr"><head><meta charset="utf-8"><title>Poufs côtelés</title>
+<style>
+body { margin: 0; background: #F6F2EA; font: 14px system-ui, sans-serif; color: #2B2622; }
+.row { display: flex; gap: 14px; padding: 16px; flex-wrap: wrap; }
+.card { background: #FFFDF8; border: 1px solid #E3DACB; border-radius: 12px; overflow: hidden; width: 420px; }
+.stage { height: 260px; display: flex; align-items: flex-end; justify-content: center; gap: 18px; }
+.info { padding: 10px 12px; } .name { font-weight: 650; font-size: 15px; } .txt { color: #7A6F64; font-size: 13px; }
+</style></head><body>
+<div class="row" id="row"></div>
+<script>
+const INK = '#4A3A30';
+// Deux palettes de pièce : Scandinave (fabricLight bleu-gris) et Bohème (fabricLight terracotta) ; plus un beige façon photo.
+const PALS = [
+  { name: 'Scandinave', wall: '#EDE6DA', floor: '#D9BE95', fab: '#A3B6BA' },
+  { name: 'Bohème', wall: '#EBD3B5', floor: '#A9744F', fab: '#D47A59' },
+  { name: 'Beige (photo)', wall: '#EDE6DA', floor: '#D9BE95', fab: '#E6DDCF' },
+];
+const mix = (hex, k, to = [46, 42, 102]) => { const n = parseInt(hex.slice(1), 16); const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v * k + to[i] * (1 - k))); return `rgb(${c})`; };
+let uid = 0;
+// Pièce cellulo : aplat, ombre nette en bas à droite (la forme moins elle-même décalée vers la lumière), contour encré.
+const piece = (d, fill, s = 8) => { const id = 'k' + ++uid; return `<clipPath id="${id}"><path d="${d}"/></clipPath><g clip-path="url(#${id})"><path d="${d}" fill="${mix(fill, .74)}"/><path d="${d}" transform="translate(${-s},${-s * .6})" fill="${fill}"/>`; };
+const close = (d) => `</g><path d="${d}" fill="none" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/>`;
+// Côtes du velours : traits fins verticaux, légèrement courbés vers les flancs.
+const ribs = (x0, x1, y0, y1, step, col, bend = 0) => { let o = ''; for (let x = x0; x <= x1; x += step) { const b = ((x - (x0 + x1) / 2) / ((x1 - x0) / 2)) * bend; o += `<path d="M${x},${y0} Q${x + b},${(y0 + y1) / 2} ${x + b * .4},${y1}" fill="none" stroke="${col}" stroke-width="1"/>`; } return o; };
+
+function beanbag(fab) {
+  // 80 × 80 × 70 cm (2,5 px/cm) : goutte affaissée, panneaux cousus qui montent au sommet, creux d'assise à l'avant avec ses plis.
+  const body = 'M30,172 C4,160 2,112 30,74 C52,44 86,26 112,26 C150,26 186,52 194,100 C200,140 190,166 166,172 C120,178 72,178 30,172Z';
+  const seat = 'M52,92 C70,70 118,62 160,80 C166,96 150,112 112,114 C82,116 60,108 52,92Z';
+  let s = piece(body, fab, 10);
+  s += ribs(8, 196, 26, 178, 5, mix(fab, .86), 6);
+  // Coutures des panneaux, du sommet vers les flancs.
+  s += `<path d="M112,28 C90,40 66,58 50,86 M112,28 C140,40 170,62 184,96 M112,28 C114,46 116,58 118,66" fill="none" stroke="${mix(fab, .7)}" stroke-width="1.6"/>`;
+  s += close(body);
+  // Creux d'assise : zone enfoncée un peu plus claire, sans contour fermé ; seul le pli du bas (là où le tissu se tasse) est encré,
+  // avec deux plis courts qui partent du fond du creux.
+  s += `<path d="${seat}" fill="${mix(fab, .9, [255, 255, 255])}" opacity=".75"/>`;
+  s += `<path d="M54,94 C74,112 140,114 158,84" fill="none" stroke="${INK}" stroke-width="1.4" stroke-linecap="round"/>`;
+  s += `<path d="M104,108 C100,100 92,94 80,92 M110,108 C116,98 128,90 142,88" fill="none" stroke="${mix(fab, .62)}" stroke-width="1.3" stroke-linecap="round"/>`;
+  return `<svg width="210" height="185" viewBox="0 0 210 185">${s}</svg>`;
+}
+function square(fab) {
+  // 55 × 55 × 40 cm : cube mou aux arêtes arrondies, flancs un peu bombés ; côtes verticales devant, horizontales sur le dessus.
+  const front = 'M10,152 C6,126 8,108 16,90 C56,98 104,98 144,90 C152,108 154,126 150,152 C106,160 54,160 10,152Z';
+  const top = 'M16,90 C13,80 19,73 34,73 L126,73 C141,73 147,80 144,90 C104,98 56,98 16,90Z';
+  let s = piece(front, fab, 8) + ribs(10, 150, 90, 160, 5, mix(fab, .86), 4) + close(front);
+  s += piece(top, mix(fab, .92, [255, 255, 255]), 3);
+  for (let y = 76; y <= 94; y += 3.6) s += `<path d="M10,${y} Q80,${y - 5} 150,${y}" fill="none" stroke="${mix(fab, .84)}" stroke-width="1"/>`;
+  s += `</g><path d="${top}" fill="none" stroke="${INK}" stroke-width="1.4"/>`;
+  return `<svg width="160" height="165" viewBox="0 0 160 165">${s}</svg>`;
+}
+document.getElementById('row').innerHTML = [
+  ['Pouf poire côtelé', '80 × 80 × 70 cm. Goutte molle affaissée au sol, panneaux cousus qui montent au sommet, creux d’assise marqué à l’avant avec ses plis, velours à côtes verticales. Le chat et le chien se couchent dans le creux.', beanbag],
+  ['Pouf carré côtelé', '55 × 55 × 40 cm. Cube mou aux arêtes arrondies, flancs légèrement bombés, côtes verticales sur les côtés et horizontales sur le dessus. Le chat s’y perche, le chien s’y couche.', square],
+].map(([name, txt, draw]) => `<div class="card">${PALS.map((p) => `<div class="stage" style="background:linear-gradient(${p.wall} 82%, ${p.floor} 82%)">${draw(p.fab)}</div>`).join('')}<div class="info"><div class="name">${name}</div><div class="txt">${txt}</div></div></div>`).join('');
+</script>
+</body></html>

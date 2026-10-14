@@ -8,7 +8,109 @@ const DIMS: Record<string, [number, number, number]> = {
   shelf: [80, 30, 180], desk: [120, 60, 75], chair: [45, 50, 90], sofa: [200, 90, 85], armchair: [80, 80, 90],
   'coffee-table': [100, 55, 45], lamp: [40, 40, 160], plant: [45, 45, 110], rug: [200, 140, 1], basket: [60, 45, 25],
   bowl: [20, 20, 8], kennel: [70, 90, 75], charger: [40, 30, 10], globe: [50, 50, 100], telescope: [60, 60, 130], automaton: [45, 40, 110],
+  'rocking-chair': [65, 95, 104], 'club-chair': [90, 85, 80], loveseat: [150, 88, 82], daybed: [165, 70, 85], 'egg-chair': [100, 100, 195],
+  'peacock-chair': [90, 65, 140], pouf: [55, 55, 40], beanbag: [80, 80, 70], bench: [120, 40, 48],
+  dresser: [100, 45, 82], 'side-table': [50, 50, 60], 'cat-tree': [62, 50, 150],
+  monstera: [85, 70, 120], strelitzia: [60, 60, 170], palm: [100, 100, 190], cactus: [35, 35, 132], pampas: [42, 30, 122],
+  'paper-lantern': [45, 45, 61], 'arc-lamp': [165, 32, 205], 'square-pouf': [55, 55, 40],
 };
+
+describe('poufs côtelés (maquettes validées le 2026-10-14)', () => {
+  it('pouf poire : une seule goutte, côtes du velours, coutures qui montent au sommet, pli d’assise en façade', () => {
+    const drop = FURNITURE_MODELS.beanbag.pieces.find((p) => p.shape === 'lathe');
+    expect(drop?.shape === 'lathe' && (drop.ribs ?? 0) >= 24 && (drop.lines?.length ?? 0) >= 3 && drop.folds?.length === 1).toBe(true);
+  });
+  it('pouf carré : place assise et perchoir à 40 cm, côtes verticales devant', () => {
+    const m = FURNITURE_MODELS['square-pouf'];
+    expect(m.pois?.filter((p) => p.type === 'seat')).toHaveLength(1);
+    expect(m.perch?.y).toBe(40);
+    expect(m.pieces.filter((p) => p.shape === 'box' && p.h >= 25 && p.w <= 1.5).length).toBeGreaterThanOrEqual(8);
+  });
+});
+
+describe('lanterne et lampadaire arc', () => {
+  it('ont un point de lumière, un abat-jour à allumer et un socle seul au sol pour l’arc', () => {
+    for (const k of ['paper-lantern', 'arc-lamp'] as const) {
+      expect(FURNITURE_MODELS[k].glow, k).toBeDefined();
+      expect(FURNITURE_MODELS[k].pieces.some((p) => p.fill === 'shade'), k).toBe(true);
+    }
+    expect(FURNITURE_MODELS['arc-lamp'].base).toEqual({ x: 133, z: 0, w: 32, d: 32, round: true });
+  });
+  it('garnitures Steampunk dans la boîte', () => {
+    for (const k of ['paper-lantern', 'arc-lamp'] as const) {
+      const m = FURNITURE_MODELS[k];
+      const trim = STEAMPUNK_TRIM[k] ?? [];
+      expect(trim.length, k).toBeGreaterThanOrEqual(6);
+      for (const p of trim) {
+        const [x0, x1, y0, y1, z0, z1] = pieceBounds(p);
+        expect(x0 >= -0.01 && x1 <= m.w + 0.01 && y0 >= -0.01 && y1 <= m.h + 0.01 && z0 >= -0.01 && z1 <= m.d + 0.01, k).toBe(true);
+      }
+    }
+  });
+  it('le lampadaire arc se dessine à chaque angle sans perdre son globe', () => {
+    for (const a of [0, 1, 2, 3, 4, 5, 6, 7] as const) expect(renderModel(FURNITURE_MODELS['arc-lamp'], a).shapes.some((s) => s.fill === 'shade'), 'angle ' + a).toBe(true);
+  });
+});
+
+describe('plantes du mobilier divers', () => {
+  const leaves = (k: keyof typeof FURNITURE_MODELS) => FURNITURE_MODELS[k].pieces.flatMap((p) => (p.shape === 'foliage' ? p.leaves : []));
+  it('monstera en feuilles en cœur, oiseau de paradis en palettes avec une fleur orange', () => {
+    expect(leaves('monstera').length).toBeGreaterThanOrEqual(6);
+    expect(leaves('monstera').every((l) => l.form === 'heart')).toBe(true);
+    expect(leaves('strelitzia').every((l) => l.form === 'paddle')).toBe(true);
+    expect(FURNITURE_MODELS.strelitzia.pieces.some((p) => p.color === '#F08A24')).toBe(true);
+  });
+  it('palmier : au moins 7 palmes de folioles, moins de 500 formes à chaque angle (Android)', () => {
+    expect(leaves('palm').length).toBeGreaterThanOrEqual(7 * 10);
+    for (const a of [0, 1, 2, 3, 4, 5, 6, 7] as const) expect(renderModel(FURNITURE_MODELS.palm, a).shapes.length).toBeLessThan(500);
+  });
+  it('cactus fleuri, pampas en 5 plumets', () => {
+    expect(FURNITURE_MODELS.cactus.pieces.some((p) => p.color === '#EF6F9C')).toBe(true);
+    expect(leaves('pampas')).toHaveLength(5);
+  });
+});
+
+describe('commode, guéridon, arbre à chat', () => {
+  it('perchoirs : plateau de la commode, du guéridon, haut de l’arbre à chat', () => {
+    expect(FURNITURE_MODELS.dresser.perch?.y).toBe(82);
+    expect(FURNITURE_MODELS['side-table'].perch?.y).toBe(60);
+    expect(FURNITURE_MODELS['cat-tree'].perch?.y).toBe(150);
+  });
+  it('l’arbre à chat a deux poteaux en sisal et une balle rouge', () => {
+    const t = FURNITURE_MODELS['cat-tree'];
+    expect(t.pieces.filter((p) => p.color === '#D8BE86')).toHaveLength(2);
+    expect(t.pieces.some((p) => p.color === '#E0664A')).toBe(true);
+  });
+  it('la commode a trois tiroirs à deux boutons', () => {
+    expect(FURNITURE_MODELS.dresser.pieces.filter((p) => p.shape === 'box' && p.fill === 'desk')).toHaveLength(3);
+    expect(FURNITURE_MODELS.dresser.pieces.filter((p) => p.shape === 'rod' && p.fill === 'metal')).toHaveLength(6);
+  });
+});
+
+const SEATS = ['rocking-chair', 'club-chair', 'loveseat', 'daybed', 'egg-chair', 'peacock-chair', 'pouf', 'beanbag', 'bench'] as const;
+describe('assises du mobilier divers', () => {
+  const places = (k: keyof typeof FURNITURE_MODELS, t: string) => (FURNITURE_MODELS[k].pois ?? []).filter((p) => p.type === t).length;
+  it('places assises et couchages', () => {
+    expect([places('rocking-chair', 'seat'), places('club-chair', 'seat'), places('loveseat', 'seat'), places('daybed', 'seat')]).toEqual([1, 1, 2, 1]);
+    expect([places('egg-chair', 'seat'), places('peacock-chair', 'seat'), places('pouf', 'seat'), places('bench', 'seat')]).toEqual([1, 1, 1, 2]);
+    expect([places('loveseat', 'sleep'), places('daybed', 'sleep'), places('beanbag', 'sleep')]).toEqual([1, 1, 1]);
+    expect(places('loveseat', 'hide')).toBe(1);
+  });
+  it('hauteurs de perchoir de la maquette', () => {
+    expect(SEATS.map((k) => FURNITURE_MODELS[k].perch?.y)).toEqual([52, 49, 49, 49, 70, 50, 40, 40, 48]);
+  });
+  it('perchoirs et places dans la boîte du meuble', () => {
+    for (const k of SEATS) {
+      const m = FURNITURE_MODELS[k];
+      const p = m.perch!;
+      expect(p.x >= 0 && p.x + p.w <= m.w && p.z >= 0 && p.z + p.d <= m.d && p.y <= m.h, k).toBe(true);
+      for (const q of m.pois ?? []) expect(q.x >= 0 && q.x <= m.w && q.z >= 0 && q.z <= m.d, k).toBe(true);
+    }
+  });
+  it('se dessinent à chaque angle', () => {
+    for (const k of SEATS) for (const a of [0, 1, 2, 3, 4, 5, 6, 7] as const) expect(renderModel(FURNITURE_MODELS[k], a).shapes.length, k + ' ' + a).toBeGreaterThanOrEqual(3);
+  });
+});
 
 describe('modèles', () => {
   it.each(STANDING_KINDS)('%s : dimensions réelles du catalogue', (kind) => {

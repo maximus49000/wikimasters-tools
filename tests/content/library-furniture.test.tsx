@@ -44,6 +44,7 @@ describe('mobilier dans le panneau', () => {
     for (const [category, kind] of [['seats', 'sofa'], ['pets', 'basket'], ['deco', 'rug'], ['storage', 'desk']] as const) {
       await click(`[data-category="${category}"]`);
       if (kind === 'rug') await click('[data-subcategory="floor"]');
+      if (kind === 'sofa') await click('[data-subcategory="couches"]');
       expect(q(`[data-kind="${kind}"]`), kind).not.toBeNull();
     }
   });
@@ -56,6 +57,7 @@ describe('mobilier dans le panneau', () => {
     await confirm();
     expect(q('[data-furniture="rug"]')).not.toBeNull();
     await click('[data-category="seats"]');
+    await click('[data-subcategory="couches"]');
     await click('[data-kind="sofa"]');
     await click('[data-cell="2-16"]');
     await confirm();

@@ -7,8 +7,10 @@ import type { Palette } from './styles';
 // vraie rotation de 45° en 45° autour de l'axe vertical, projection dans la perspective de la pièce (le fond est plus haut à l'écran).
 export type Fill = keyof Palette;
 export type V3t = [number, number, number];
-// Feuille : nervure en courbe de Bézier (base → contrôle → pointe), largeur maximale `w` (cm) vers le milieu.
-export type Leaf = { base: V3t; ctrl: V3t; tip: V3t; w: number; fill?: Fill };
+// Feuille : nervure en courbe de Bézier (base → contrôle → pointe), largeur maximale `w` (cm). `form` : 'lance' pointue (défaut),
+// 'heart' large en cœur avec trois paires de fentes (monstera), 'paddle' en palette à bout arrondi (oiseau de paradis).
+export type LeafForm = 'lance' | 'heart' | 'paddle';
+export type Leaf = { base: V3t; ctrl: V3t; tip: V3t; w: number; fill?: Fill; form?: LeafForm };
 // Arc de méridien autour d'un globe : longitude `lon`, de la latitude `from` à `to` (au-delà de ±90 il passe de l'autre côté du pôle), rayon `r`, largeur `w` (cm).
 export type GlobeRing = { lon: number; from: number; to: number; r: number; w: number; fill: Fill };
 // `tone` : teinte propre de la pièce (multiplie l'ombrage) ; `layer` : une pièce de couche supérieure passe après les pièces qu'elle chevauche ;
@@ -30,6 +32,11 @@ export type Piece = Common & (
   | { shape: 'prism'; axis: 'x' | 'z'; profile: [number, number][]; from: number; to: number }
   // Feuillage : feuilles pointues (couleur `fill` par défaut).
   | { shape: 'foliage'; leaves: Leaf[] }
+  // Forme de révolution (pouf poire) : profil (rayon, hauteur) du bas vers le haut, tourné autour de l'axe vertical (cx, cz).
+  // `lines` : coutures (méridiens, longitude en degrés, -90 = face avant), couleur `lineFill` ; `ribs` : nombre de côtes du velours ;
+  // `folds` : plis encrés sur la face avant, en sourire (plus bas de `dip` cm au milieu), à la hauteur `y`, sur ± `span` degrés ;
+  // `seat` : creux d'assise sur la face avant, du pli (hauteur `y0`, en sourire de `dip`) au rebord (`y1`, relevé de `rise` au milieu).
+  | { shape: 'lathe'; cx: number; cz: number; profile: [number, number][]; lines?: { lon: number }[]; lineFill?: Fill; ribs?: number; folds?: { y: number; dip: number; span: number }[]; seat?: { y0: number; dip: number; y1: number; rise: number; span: number } }
 );
 export type Poi3d = { type: PoiType; x: number; y: number; z: number };
 // `face` : rectangle de la face avant (x, y depuis le sol, en cm) où se rangent les cartes et s'affiche l'écran.
@@ -37,7 +44,9 @@ export type Poi3d = { type: PoiType; x: number; y: number; z: number };
 // `perch` : dessus praticable par un chat (assise, plateau, haut de l'étagère) : rectangle x/z en cm à la hauteur y (dessus d'une vraie pièce).
 // `glow` : point d'où part la lumière d'une lampe (dans l'abat-jour), en cm.
 export type Perch = { x: number; z: number; w: number; d: number; y: number };
-export type Model = { w: number; d: number; h: number; pieces: Piece[]; pois?: Poi3d[]; face?: { x: number; y: number; w: number; h: number }; round?: boolean; perch?: Perch; glow?: V3t };
+// `base` : socle (cm, repère du modèle) quand seul lui touche le sol (lampadaire arc) : il donne les cases au sol et l'ombre au sol ;
+// le rectangle de dessin reste celui de la boîte entière.
+export type Model = { w: number; d: number; h: number; pieces: Piece[]; pois?: Poi3d[]; face?: { x: number; y: number; w: number; h: number }; round?: boolean; perch?: Perch; glow?: V3t; base?: { x: number; z: number; w: number; d: number; round?: boolean } };
 // Face décorée projetée : coins haut gauche, haut droit, bas gauche (vue de face depuis l'extérieur de la face, haut en haut), taille en cm (largeur, hauteur).
 // La projection étant affine, ces trois points donnent la matrice qui pose un dessin à plat sur la face.
 export type DecalPx = { key: string; tl: [number, number]; tr: [number, number]; bl: [number, number]; w: number; h: number };
@@ -61,6 +70,9 @@ const SHADE = { front: 1, side: 0.82, top: 1.12 } as const;
 const ROUND_STEPS = 24;
 const TINY_PX = 4; // en dessous, un corps rond se dessine d'une seule ellipse
 const SHADOW_SPAN = (50 * Math.PI) / 180; // ombre nette des corps ronds : de la silhouette droite jusqu'à 50° vers le spectateur
+// En dessous de BALL_CEL_PX de diamètre à l'écran (rivet, pied boule), une boule reste un simple aplat : moins de formes sur Android.
+const BALL_CEL_PX = 14;
+const BALL_SHIFT = [0.28, 0.22] as const; // croissant d'ombre des boules : décalage de la partie éclairée (fractions des rayons) vers le haut à gauche
 const LEAF_STEPS = 10;
 const LEAF_TWIST = (40 * Math.PI) / 180;
 
@@ -98,9 +110,20 @@ function baseOf(model: Model): [number, number][] {
   });
 }
 
-// Trace tournée de la base (polygone convexe en cm, repère local).
-function footprint(model: Model, f: Frame): [number, number][] {
-  return baseOf(model).map(([x, z]) => {
+// Ce qui touche le sol : le socle s'il est déclaré (rectangle ou ellipse inscrite à 16 côtés), sinon la base entière.
+function footOf(model: Model): [number, number][] {
+  const b = model.base;
+  if (!b) return baseOf(model);
+  if (!b.round) return [[b.x, b.z], [b.x + b.w, b.z], [b.x + b.w, b.z + b.d], [b.x, b.z + b.d]];
+  return Array.from({ length: 16 }, (_, i): [number, number] => {
+    const a = ((i + 0.5) * Math.PI) / 8;
+    return [b.x + b.w / 2 + (b.w / 2) * Math.cos(a) / Math.cos(Math.PI / 16), b.z + b.d / 2 + (b.d / 2) * Math.sin(a) / Math.cos(Math.PI / 16)];
+  });
+}
+
+// Trace tournée d'un polygone de base (cm, repère local) : la base entière par défaut.
+function footprint(model: Model, f: Frame, poly: [number, number][] = baseOf(model)): [number, number][] {
+  return poly.map(([x, z]) => {
     const p = local(f, { x, y: 0, z });
     return [p.x, p.z];
   });
@@ -222,12 +245,20 @@ function shadeOf(f: Frame, n: V3): number {
   return ny > 0 ? side + (SHADE.top - side) * ny : side;
 }
 
+// Demi-largeur (cm) d'une feuille au point s ∈ [0, 1] de sa nervure, pour une largeur maximale w.
+export function leafHalf(form: LeafForm, s: number, w: number): number {
+  if (s <= 0 || s >= 1) return 0;
+  if (form === 'heart') return (w / 2) * Math.pow(Math.sin(Math.PI * Math.pow(s, 0.65)), 0.7);
+  if (form === 'paddle') return (w / 2) * Math.min(1, s / 0.12) * Math.sqrt(Math.sin(Math.PI * (0.06 + 0.94 * s)));
+  return (w / 2) * Math.sin(Math.PI * Math.pow(s, 0.8));
+}
+
 // Points de la nervure d'une feuille et demi-largeur (cm) en chacun : pointue aux deux bouts, plus large un peu avant le milieu.
 function leafSamples(l: Leaf): [V3, number][] {
   return Array.from({ length: LEAF_STEPS + 1 }, (_, i): [V3, number] => {
     const s = i / LEAF_STEPS;
     const at = (k: 0 | 1 | 2) => (1 - s) * (1 - s) * l.base[k] + 2 * s * (1 - s) * l.ctrl[k] + s * s * l.tip[k];
-    return [{ x: at(0), y: at(1), z: at(2) }, (l.w / 2) * Math.sin(Math.PI * Math.pow(s, 0.8))];
+    return [{ x: at(0), y: at(1), z: at(2) }, leafHalf(l.form ?? 'lance', s, l.w)];
   });
 }
 
@@ -255,6 +286,11 @@ export function pieceBounds(p: Piece): [number, number, number, number, number, 
       const ys = p.profile.map((q) => q[1]);
       const [u0, u1, t0, t1] = [Math.min(...us), Math.max(...us), Math.min(p.from, p.to), Math.max(p.from, p.to)];
       return p.axis === 'z' ? [u0, u1, Math.min(...ys), Math.max(...ys), t0, t1] : [t0, t1, Math.min(...ys), Math.max(...ys), u0, u1];
+    }
+    case 'lathe': {
+      const r = Math.max(...p.profile.map((q) => q[0]));
+      const ys = p.profile.map((q) => q[1]);
+      return [p.cx - r, p.cx + r, Math.min(...ys), Math.max(...ys), p.cz - r, p.cz + r];
     }
     case 'foliage': {
       const b: [number, number, number, number, number, number] = [Infinity, -Infinity, Infinity, -Infinity, Infinity, -Infinity];
@@ -340,6 +376,7 @@ export function renderModel(model: Model, angle: Angle): Rendered {
     if (p.shape === 'rod') { drawRound(L, push, { x: p.a[0], y: p.a[1], z: p.a[2] }, { x: p.b[0], y: p.b[1], z: p.b[2] }, p.r, p.r, p.fill); continue; }
     if (p.shape === 'cyl') { drawRound(L, push, { x: p.cx, y: p.y, z: p.cz }, { x: p.cx, y: p.y + p.h, z: p.cz }, p.r, p.r2 ?? p.r, p.fill); continue; }
     if (p.shape === 'foliage') { drawFoliage(p, L, push); continue; }
+    if (p.shape === 'lathe') { drawLathe(p, L, push); continue; }
     if (p.shape === 'box') {
       const faces = boxFaces(p).filter((fc) => visible(f, fc.normal));
       // Le dessus en dernier (il recouvre le haut des côtés) ; l'ordre des côtés visibles est indifférent (ils ne se recouvrent pas).
@@ -428,7 +465,8 @@ function drawBall(p: Extract<Piece, { shape: 'ball' }>, L: Layout3d, push: Push)
     const y = Math.sin(la);
     return { x: x * Math.cos(t) + y * Math.sin(t), y: -x * Math.sin(t) + y * Math.cos(t), z: -Math.cos(la) * Math.cos(lo) };
   };
-  const at = (q: V3, s: number) => L.toPx({ x: p.cx + q.x * s, y: p.cy + q.y * s, z: p.cz + q.z * s });
+  // Point de direction q à la distance s (rayon équatorial) : une boule aplatie (pouf) étire ses parallèles et méridiens avec elle.
+  const at = (q: V3, s: number) => L.toPx({ x: p.cx + q.x * s, y: p.cy + q.y * s * (p.ry / p.rx), z: p.cz + q.z * s * (p.rz / p.rx) });
   // Un point hors de la sphère est devant elle s'il est du côté du spectateur (q · v > 0), derrière sinon.
   const front: Shape[] = [];
   for (const g of p.rings ?? []) {
@@ -443,6 +481,24 @@ function drawBall(p: Extract<Piece, { shape: 'ball' }>, L: Layout3d, push: Push)
     }
   }
   push({ kind: 'ellipse', cx, cy, rx, ry, fill: p.fill, shade: SHADE.front });
+  // Cellulo, comme les corps ronds : croissant d'ombre nette en bas à droite (la boule moins elle-même décalée vers la lumière, en haut
+  // à gauche), puis le contour repassé. Une boule minuscule (rivet, pied boule) reste une simple ellipse.
+  if (Math.max(rx, ry) * 2 >= BALL_CEL_PX) {
+    const N = 48;
+    const [sx, sy] = [cx - rx * BALL_SHIFT[0], cy - ry * BALL_SHIFT[1]];
+    const at = (ox: number, oy: number, i: number): [number, number] => [ox + rx * Math.cos((i * 2 * Math.PI) / N), oy + ry * Math.sin((i * 2 * Math.PI) / N)];
+    const inside = (q: [number, number], ox: number, oy: number): boolean => ((q[0] - ox) / rx) ** 2 + ((q[1] - oy) / ry) ** 2 < 1;
+    // Arc d'une ellipse qui vérifie `keep`, parcouru d'un seul tenant (on part d'un point qui ne le vérifie pas).
+    const arc = (ox: number, oy: number, keep: (q: [number, number]) => boolean): [number, number][] => {
+      const pts = Array.from({ length: N }, (_, i) => at(ox, oy, i));
+      const start = pts.findIndex((q) => !keep(q));
+      return Array.from({ length: N }, (_, k) => pts[(start + k) % N]!).filter(keep);
+    };
+    const outer = arc(cx, cy, (q) => !inside(q, sx, sy));
+    const inner = arc(sx, sy, (q) => inside(q, cx, cy)).reverse();
+    if (outer.length >= 2 && inner.length >= 2) push({ kind: 'poly', points: [...outer, ...inner], fill: p.fill, shade: SHADE.front * SHADE.side, ink: 'none' });
+    push({ kind: 'poly', points: Array.from({ length: N }, (_, i) => at(cx, cy, i)), fill: p.fill, shade: SHADE.front, ink: 'only' });
+  }
   for (const m of p.marks ?? []) {
     const dense = m.pts.flatMap((a, i) => {
       const b = m.pts[(i + 1) % m.pts.length]!;
@@ -519,6 +575,132 @@ function drawRound(L: Layout3d, push: Push, A: V3, B: V3, rA: number, rB: number
   if (visible(f, cap.n)) push({ kind: 'poly', points: cap.pts, fill, shade: shadeOf(f, cap.n) });
 }
 
+// Point dans un polygone convexe (signe constant des produits vectoriels).
+function inConvex(poly: [number, number][], q: [number, number]): boolean {
+  let sign = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [a, b] = [poly[i]!, poly[(i + 1) % poly.length]!];
+    const c = (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]);
+    if (Math.abs(c) < 1e-9) continue;
+    if (sign === 0) sign = Math.sign(c);
+    else if (Math.sign(c) !== sign) return false;
+  }
+  return true;
+}
+// Croissant d'ombre d'une silhouette convexe : la silhouette moins elle-même décalée vers la lumière (en haut à gauche).
+function crescentOf(body: [number, number][]): [number, number][] | null {
+  const xs = body.map((q) => q[0]);
+  const ys = body.map((q) => q[1]);
+  const [dx, dy] = [((Math.max(...xs) - Math.min(...xs)) / 2) * BALL_SHIFT[0], ((Math.max(...ys) - Math.min(...ys)) / 2) * BALL_SHIFT[1]];
+  const lit = body.map(([x, y]): [number, number] => [x - dx, y - dy]);
+  // Arc d'un polygone qui vérifie `keep`, parcouru d'un seul tenant (on part d'un sommet qui ne le vérifie pas).
+  const arc = (pts: [number, number][], keep: (q: [number, number]) => boolean): [number, number][] => {
+    const start = pts.findIndex((q) => !keep(q));
+    if (start < 0) return [];
+    return Array.from({ length: pts.length }, (_, k) => pts[(start + k) % pts.length]!).filter(keep);
+  };
+  const outer = arc(body, (q) => !inConvex(lit, q));
+  const inner = arc(lit, (q) => inConvex(body, q)).reverse();
+  return outer.length >= 2 && inner.length >= 2 ? [...outer, ...inner] : null;
+}
+
+// Forme de révolution en cellulo : silhouette (enveloppe des anneaux du profil), croissant d'ombre nette, contour repassé ;
+// puis côtes, coutures et plis tracés seulement là où la surface regarde le spectateur.
+function drawLathe(p: Extract<Piece, { shape: 'lathe' }>, L: Layout3d, push: Push): void {
+  const { f } = L;
+  const N = 32;
+  const pr = p.profile;
+  const at = (r: number, y: number, th: number): V3 => ({ x: p.cx + r * Math.cos(th), y, z: p.cz + r * Math.sin(th) });
+  const rings: [number, number][] = [];
+  for (const [r, y] of pr) for (let i = 0; i < N; i++) rings.push(L.toPx(at(r, y, (i * 2 * Math.PI) / N)));
+  const body = hull(rings);
+  if (body.length < 3) return;
+  push({ kind: 'poly', points: body, fill: p.fill, shade: SHADE.front });
+  const shadow = crescentOf(body);
+  if (shadow) push({ kind: 'poly', points: shadow, fill: p.fill, shade: SHADE.front * SHADE.side, ink: 'none' });
+  // Profil affiné (4 points par segment) avec la normale de chaque point dans le plan du méridien : (pente verticale, −pente du rayon).
+  const fine: { r: number; y: number; nr: number; ny: number }[] = [];
+  pr.forEach(([r0, y0], i) => {
+    const [r1, y1] = pr[Math.min(pr.length - 1, i + 1)]!;
+    const [r2, y2] = i + 1 < pr.length ? [r1, y1] : [r0 - (pr[i - 1]![0] - r0), y0 - (pr[i - 1]![1] - y0)];
+    const steps = i + 1 < pr.length ? 4 : 1;
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps;
+      fine.push({ r: r0 + (r2 - r0) * t, y: y0 + (y2 - y0) * t, nr: y2 - y0, ny: -(r2 - r0) });
+    }
+  });
+  const facing = (q: { nr: number; ny: number }, th: number): boolean => visible(f, { x: Math.cos(th) * q.nr, y: q.ny, z: Math.sin(th) * q.nr });
+  const meridian = (lon: number, fill: Fill, shade: number): void => {
+    const th = (lon * Math.PI) / 180;
+    for (const run of runs(fine, fine.map((q) => facing(q, th)))) {
+      if (run.front && run.pts.length >= 2) push({ kind: 'line', points: run.pts.map((q) => L.toPx(at(q.r, q.y, th))), fill, shade });
+    }
+  };
+  for (let i = 0; i < (p.ribs ?? 0); i++) meridian((i * 360) / (p.ribs ?? 1), p.fill, 0.86);
+  for (const ln of p.lines ?? []) meridian(ln.lon, p.lineFill ?? 'edge', 1);
+  // Rayon à une hauteur donnée (interpolation du profil).
+  const radiusAt = (y: number): number => {
+    for (let i = 0; i + 1 < pr.length; i++) {
+      const [[r0, y0], [r1, y1]] = [pr[i]!, pr[i + 1]!];
+      if (y >= y0 && y <= y1) return y1 === y0 ? r0 : r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
+    }
+    return 0;
+  };
+  const fineAt = (y: number) => fine.reduce((best, q) => (Math.abs(q.y - y) < Math.abs(best.y - y) ? q : best), fine[0]!);
+  // Creux d'assise, sur la surface et seulement là où elle regarde le spectateur : fond clair (il regarde vers le haut), paroi arrière
+  // dans l'ombre sous le rebord (bande du haut), rebord tracé, deux plis qui partent du fond vers les côtés.
+  const s = p.seat;
+  if (s) {
+    const K = 16;
+    const edge = (yOf: (u: number) => number) => Array.from({ length: K + 1 }, (_, i) => {
+      const u = (i / K) * 2 - 1;
+      return { y: yOf(u), th: ((u * s.span - 90) * Math.PI) / 180 };
+    });
+    const bottom = edge((u) => s.y0 - s.dip * Math.cos((u * Math.PI) / 2));
+    const top = edge((u) => s.y1 + s.rise * Math.cos((u * Math.PI) / 2));
+    // Paroi : épaisse au milieu du rebord, nulle aux bouts (croissant d'ombre).
+    const wall = edge((u) => s.y1 + s.rise * Math.cos((u * Math.PI) / 2) - (s.y1 - s.y0) * 0.4 * Math.cos((u * Math.PI) / 2));
+    const seen = (q: { y: number; th: number }) => facing(fineAt(q.y), q.th);
+    const px = (q: { y: number; th: number }) => L.toPx(at(radiusAt(q.y) * 0.97, q.y, q.th));
+    // Bande entre deux bords, réduite aux points visibles des deux bords.
+    const band = (lo: typeof bottom, hi: typeof bottom): [number, number][] => {
+      const keep = lo.map((q, i) => seen(q) && seen(hi[i]!));
+      const a = lo.filter((_, i) => keep[i]);
+      const b = hi.filter((_, i) => keep[i]);
+      return a.length >= 2 ? [...a.map(px), ...b.reverse().map(px)] : [];
+    };
+    const floor = band(bottom, top);
+    if (floor.length >= 4) {
+      push({ kind: 'poly', points: floor, fill: p.fill, shade: SHADE.top, ink: 'none', tag: 'seat' });
+      const shade = band(wall, top);
+      if (shade.length >= 4) push({ kind: 'poly', points: shade, fill: p.fill, shade: SHADE.side, ink: 'none', tag: 'seat' });
+      const rim = top.filter(seen);
+      if (rim.length >= 2) push({ kind: 'line', points: rim.map(px), fill: p.lineFill ?? 'edge', shade: 1 });
+      // Plis du fond : du milieu du pli vers le haut, de chaque côté.
+      const mid = bottom[K / 2]!;
+      for (const side of [-1, 1]) {
+        const crease = Array.from({ length: 5 }, (_, i) => {
+          const t = i / 4;
+          return { y: mid.y + (s.y1 - s.y0) * 0.45 * t, th: mid.th + side * ((s.span * 0.55 * t) * Math.PI) / 180 };
+        }).filter(seen);
+        if (crease.length >= 2) push({ kind: 'line', points: crease.map(px), fill: p.lineFill ?? 'edge', shade: 1 });
+      }
+    }
+  }
+  // Pli : seulement sur la partie de la surface tournée vers le spectateur (de dos, il disparaît).
+  for (const fold of p.folds ?? []) {
+    const pts = Array.from({ length: 17 }, (_, i) => {
+      const phi = ((i / 16) * 2 - 1) * fold.span;
+      const y = fold.y - fold.dip * Math.cos(((phi / fold.span) * Math.PI) / 2);
+      return { y, th: ((phi - 90) * Math.PI) / 180 };
+    });
+    for (const run of runs(pts, pts.map((q) => facing(fineAt(q.y), q.th)))) {
+      if (run.front && run.pts.length >= 2) push({ kind: 'line', points: run.pts.map((q) => L.toPx(at(radiusAt(q.y), q.y, q.th))), fill: 'door', shade: 1 });
+    }
+  }
+  push({ kind: 'poly', points: body, fill: p.fill, shade: SHADE.front, ink: 'only' });
+}
+
 // Feuillage : feuilles du plus loin au plus proche (puis de bas en haut), chacune en aplat pointu avec sa nervure.
 function drawFoliage(p: Extract<Piece, { shape: 'foliage' }>, L: Layout3d, push: Push): void {
   const { f } = L;
@@ -548,6 +730,15 @@ function drawFoliage(p: Extract<Piece, { shape: 'foliage' }>, L: Layout3d, push:
       left.push(L.toPx({ x: q.x + half * W.x, y: q.y + half * W.y, z: q.z + half * W.z }));
       right.push(L.toPx({ x: q.x - half * W.x, y: q.y - half * W.y, z: q.z - half * W.z }));
     });
+    // Monstera : trois paires de fentes, le bord ramené vers la nervure aux points 3, 5 et 7 (de la fin, pour garder les indices).
+    if (l.form === 'heart') {
+      for (const i of [7, 5, 3]) {
+        const [cx, cy] = line[i]!;
+        const pull = (p: [number, number]): [number, number] => [cx + (p[0] - cx) * 0.4, cy + (p[1] - cy) * 0.4];
+        left.splice(i, 0, pull(left[i]!));
+        right.splice(i, 0, pull(right[i]!));
+      }
+    }
     right.reverse();
     // Feuille tournée vers le spectateur un peu plus claire, vers le fond un peu plus sombre.
     const dz = depthOf(f, l.tip[0], l.tip[2]) - depthOf(f, l.base[0], l.base[2]);
@@ -561,8 +752,8 @@ function drawFoliage(p: Extract<Piece, { shape: 'foliage' }>, L: Layout3d, push:
 
 // Cases au sol : couvertes à plus de 50 % par la trace tournée ; au moins la plus couverte.
 function floorOf(model: Model, L: Layout3d): { col: number; row: number }[] {
-  const trace = footprint(model, L.f);
-  const traceW = Math.max(...trace.map((p) => p[0]));
+  const traceW = Math.max(...footprint(model, L.f).map((p) => p[0]));
+  const trace = footprint(model, L.f, footOf(model));
   const shiftX = (L.cols * 21 - traceW) / 2;
   const cells: { col: number; row: number; cover: number }[] = [];
   for (let c = 0; c < L.cols; c++) {
@@ -605,7 +796,7 @@ export function topCornersOf(model: Model, angle: Angle): [[number, number], [nu
 // Trace de la base tournée posée au sol (y = 0), projetée en px du rectangle de dessin : ombre au sol du meuble.
 export function floorTraceOf(model: Model, angle: Angle): [number, number][] {
   const L = layoutOf(model, angle);
-  return baseOf(model).map(([x, z]) => L.toPx({ x, y: 0, z }));
+  return footOf(model).map(([x, z]) => L.toPx({ x, y: 0, z }));
 }
 
 // Coins de la face avant (`model.face`, plan z = 0) projetés, px du rectangle de dessin : haut gauche, haut droit, bas gauche ;
@@ -643,6 +834,24 @@ export function levelsOf(model: Model): [number, number][] {
   }
   levels.push([(top - ceiling) / face.h, 1]);
   return levels;
+}
+
+// Surplomb d'un meuble à socle (lampadaire arc) : les pièces qui ne sont pas au-dessus du socle (arc, dôme) et le point du sol sous
+// elles (centre de leur encombrement, en cm x/z). Le dessin les range à part : elles passent par-dessus les meubles qu'elles surplombent.
+// null sans socle.
+export function overhangOf(model: Model): { pieces: Set<number>; at: [number, number] } | null {
+  const b = model.base;
+  if (!b) return null;
+  const pieces = new Set<number>();
+  let [x0, x1, z0, z1] = [Infinity, -Infinity, Infinity, -Infinity];
+  model.pieces.forEach((p, i) => {
+    const [px0, px1, , , pz0, pz1] = pieceBounds(p);
+    const over = px1 <= b.x + 0.5 || px0 >= b.x + b.w - 0.5 || pz1 <= b.z + 0.5 || pz0 >= b.z + b.d - 0.5;
+    if (!over) return;
+    pieces.add(i);
+    [x0, x1, z0, z1] = [Math.min(x0, px0), Math.max(x1, px1), Math.min(z0, pz0), Math.max(z1, pz1)];
+  });
+  return pieces.size > 0 ? { pieces, at: [(x0 + x1) / 2, (z0 + z1) / 2] } : null;
 }
 
 // Repère « lumière » d'un meuble tourné, en cm : x depuis le bord gauche du rectangle de dessin (centrage compris, comme renderModel),

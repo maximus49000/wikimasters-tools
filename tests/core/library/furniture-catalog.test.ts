@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CATEGORIES, catalogTree, FURNITURE_KINDS, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, layerOf, sizeOf } from '../../../src/core/library/furniture-catalog';
+import { CATEGORIES, catalogTree, FURNITURE_KINDS, SMALL_ITEM_OF, isSmallKind, isStandingKind, labelOf, layerOf, sizeOf, STEAMPUNK_ONLY, underOf } from '../../../src/core/library/furniture-catalog';
 import { floorOffsets, poisAt } from '../../../src/core/library/footprint';
 import { STANDING_KINDS } from '../../../src/core/library/library-types';
 import { MIN_COLS, ROWS, WALL_ROWS } from '../../../src/core/library/room-grid';
@@ -65,9 +65,9 @@ describe('catalogTree', () => {
   it('découpe la Déco en Plantes, Lumières, Sol et Murs', () => {
     const deco = catalogTree('scandinave').find((n) => n.id === 'deco');
     expect(deco?.subcategories.map((s) => s.id)).toEqual(['plants', 'lights', 'floor', 'walls']);
-    expect(deco?.subcategories.find((s) => s.id === 'plants')?.kinds).toEqual(['plant', 'small-plant']);
-    expect(deco?.subcategories.find((s) => s.id === 'lights')?.kinds).toEqual(['lamp', 'small-lamp']);
-    expect(deco?.subcategories.find((s) => s.id === 'floor')?.kinds).toEqual(['rug', 'coffee-table']);
+    expect(deco?.subcategories.find((s) => s.id === 'plants')?.kinds).toEqual(['plant', 'small-plant', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas']);
+    expect(deco?.subcategories.find((s) => s.id === 'lights')?.kinds).toEqual(['lamp', 'small-lamp', 'paper-lantern', 'arc-lamp']);
+    expect(deco?.subcategories.find((s) => s.id === 'floor')?.kinds).toEqual(['rug', 'coffee-table', 'side-table']);
     expect(deco?.subcategories.find((s) => s.id === 'walls')?.kinds).toEqual(['window']);
   });
 
@@ -87,7 +87,26 @@ describe('catalogTree', () => {
     expect(catalogTree('scandinave').find((n) => n.id === 'pets')?.label).toBe('Pour animaux');
   });
 
-  it('les autres catégories n’ont pas de sous-catégorie', () => {
-    expect(catalogTree('scandinave').filter((n) => n.id !== 'deco').every((n) => n.subcategories.length === 0)).toBe(true);
+  it('seules la Déco et les Assises ont des sous-catégories', () => {
+    expect(catalogTree('scandinave').filter((n) => n.subcategories.length > 0).map((n) => n.id)).toEqual(['seats', 'deco']);
+  });
+
+  it('découpe les Assises en Chaises et fauteuils, Canapés, Poufs et bancs', () => {
+    const seats = catalogTree('scandinave').find((n) => n.id === 'seats');
+    expect(seats?.subcategories.map((s) => [s.id, s.label])).toEqual([['chairs', 'Chaises et fauteuils'], ['couches', 'Canapés'], ['poufs', 'Poufs et bancs']]);
+    expect(seats?.subcategories.find((s) => s.id === 'chairs')?.kinds).toEqual(['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair']);
+    expect(seats?.subcategories.find((s) => s.id === 'couches')?.kinds).toEqual(['sofa', 'club-chair', 'loveseat', 'daybed']);
+    expect(seats?.subcategories.find((s) => s.id === 'poufs')?.kinds).toEqual(['pouf', 'square-pouf', 'beanbag', 'bench']);
+  });
+
+  it('commode en Rangement, arbre à chat dans Pour animaux, guéridon dans Déco > Sol', () => {
+    const tree = catalogTree('scandinave');
+    expect(tree.find((n) => n.id === 'storage')?.kinds).toEqual(['shelf', 'desk', 'computer', 'dresser']);
+    expect(tree.find((n) => n.id === 'pets')?.kinds).toEqual(['basket', 'bowl', 'kennel', 'charger', 'cat-tree']);
+    expect(underOf('side-table')).toBe(true);
+  });
+
+  it('les nouveaux meubles restent dans toutes les pièces (aucun réservé au Steampunk)', () => {
+    expect(STEAMPUNK_ONLY).toEqual(['globe', 'telescope', 'automaton']);
   });
 });

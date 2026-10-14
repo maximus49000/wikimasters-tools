@@ -3,6 +3,7 @@ import { CELL_W, isStanding, rectOf } from '../room-grid';
 import { layoutSig, type BrainEnv } from './brain';
 import { routeMs } from './motion';
 import { planRoute, scaleRoute, type Standing } from './route';
+import { hasRole } from './roles';
 import { meetCell } from './scenes';
 import { buildWalkMap, hideSpot, nearestFreeCell, standPoint, type WalkMap } from './walk-map';
 
@@ -38,9 +39,10 @@ export function stormPlan(env: BrainEnv, species: Species, from: Standing, now: 
   const speed = speedOf(species);
   const sig = layoutSig(env.layout, env.cols);
   const dog = species === 'dog';
-  const sofas = env.layout.filter(isStanding).filter((p) => p.kind === 'sofa');
-  // Seul le chat se glisse dessous (place réservée `:hide`) ; le chien se blottit devant, que le chat y soit ou non.
-  const sofa = species === 'cat' ? sofas.find((p) => !env.occupied.has(`${p.id}:hide`)) : sofas[0];
+  const standing = env.layout.filter(isStanding);
+  // Le chat se glisse sous la première cachette libre (place réservée `:hide`) ; le chien se blottit devant son premier canapé ou pouf,
+  // que le chat y soit ou non.
+  const sofa = species === 'cat' ? standing.filter((p) => hasRole(p.kind, 'catHide')).find((p) => !env.occupied.has(`${p.id}:hide`)) : standing.find((p) => hasRole(p.kind, 'dogCouch'));
   if (species === 'cat' && sofa) {
     const at = hideSpot(sofa);
     const raw = planRoute(map, from, { pt: at, on: null });

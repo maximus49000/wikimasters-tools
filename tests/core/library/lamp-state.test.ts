@@ -28,6 +28,19 @@ describe('lampes', () => {
     expect(toggleLamp(layout, 'f2')).toBe(layout);
     expect(toggleLamp(layout, 'zzz')).toBe(layout);
   });
+  it('la lanterne et le lampadaire arc sont des lampes ; le pampas n’en est pas une', () => {
+    const more: Layout = [{ id: 'l1', kind: 'paper-lantern', col: 2, row: 14 }, { id: 'l2', kind: 'arc-lamp', col: 6, row: 7 }, { id: 'p', kind: 'pampas', col: 16, row: 12 }];
+    expect(more.map(isLamp)).toEqual([true, true, false]);
+  });
+  it('une lanterne ou un lampadaire arc éteints le restent à la lecture de l’état', () => {
+    const state = JSON.parse(JSON.stringify({
+      version: 5, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' },
+      rooms: [{ id: 'r1', name: 'P', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, pets: [],
+        layout: [{ id: 'l1', kind: 'paper-lantern', col: 2, row: 14, lit: false }, { id: 'l2', kind: 'arc-lamp', col: 8, row: 7, lit: false }] }],
+    }));
+    const room = parseLibraryState(state).rooms[0]!;
+    expect(room.layout.filter((p) => p.kind === 'paper-lantern' || p.kind === 'arc-lamp').map(isLit)).toEqual([false, false]);
+  });
   it('lit survit à la lecture de l’état et un champ lit sur un autre meuble est écarté', () => {
     const state = JSON.parse(JSON.stringify({
       version: 5, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' },
