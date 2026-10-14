@@ -7,8 +7,10 @@ import type { Palette } from './styles';
 // vraie rotation de 45° en 45° autour de l'axe vertical, projection dans la perspective de la pièce (le fond est plus haut à l'écran).
 export type Fill = keyof Palette;
 export type V3t = [number, number, number];
-// Feuille : nervure en courbe de Bézier (base → contrôle → pointe), largeur maximale `w` (cm) vers le milieu.
-export type Leaf = { base: V3t; ctrl: V3t; tip: V3t; w: number; fill?: Fill };
+// Feuille : nervure en courbe de Bézier (base → contrôle → pointe), largeur maximale `w` (cm). `form` : 'lance' pointue (défaut),
+// 'heart' large en cœur avec trois paires de fentes (monstera), 'paddle' en palette à bout arrondi (oiseau de paradis).
+export type LeafForm = 'lance' | 'heart' | 'paddle';
+export type Leaf = { base: V3t; ctrl: V3t; tip: V3t; w: number; fill?: Fill; form?: LeafForm };
 // Arc de méridien autour d'un globe : longitude `lon`, de la latitude `from` à `to` (au-delà de ±90 il passe de l'autre côté du pôle), rayon `r`, largeur `w` (cm).
 export type GlobeRing = { lon: number; from: number; to: number; r: number; w: number; fill: Fill };
 // `tone` : teinte propre de la pièce (multiplie l'ombrage) ; `layer` : une pièce de couche supérieure passe après les pièces qu'elle chevauche ;
@@ -37,7 +39,9 @@ export type Poi3d = { type: PoiType; x: number; y: number; z: number };
 // `perch` : dessus praticable par un chat (assise, plateau, haut de l'étagère) : rectangle x/z en cm à la hauteur y (dessus d'une vraie pièce).
 // `glow` : point d'où part la lumière d'une lampe (dans l'abat-jour), en cm.
 export type Perch = { x: number; z: number; w: number; d: number; y: number };
-export type Model = { w: number; d: number; h: number; pieces: Piece[]; pois?: Poi3d[]; face?: { x: number; y: number; w: number; h: number }; round?: boolean; perch?: Perch; glow?: V3t };
+// `base` : socle (cm, repère du modèle) quand seul lui touche le sol (lampadaire arc) : il donne les cases au sol et l'ombre au sol ;
+// le rectangle de dessin reste celui de la boîte entière.
+export type Model = { w: number; d: number; h: number; pieces: Piece[]; pois?: Poi3d[]; face?: { x: number; y: number; w: number; h: number }; round?: boolean; perch?: Perch; glow?: V3t; base?: { x: number; z: number; w: number; d: number; round?: boolean } };
 // Face décorée projetée : coins haut gauche, haut droit, bas gauche (vue de face depuis l'extérieur de la face, haut en haut), taille en cm (largeur, hauteur).
 // La projection étant affine, ces trois points donnent la matrice qui pose un dessin à plat sur la face.
 export type DecalPx = { key: string; tl: [number, number]; tr: [number, number]; bl: [number, number]; w: number; h: number };
@@ -98,9 +102,20 @@ function baseOf(model: Model): [number, number][] {
   });
 }
 
-// Trace tournée de la base (polygone convexe en cm, repère local).
-function footprint(model: Model, f: Frame): [number, number][] {
-  return baseOf(model).map(([x, z]) => {
+// Ce qui touche le sol : le socle s'il est déclaré (rectangle ou ellipse inscrite à 16 côtés), sinon la base entière.
+function footOf(model: Model): [number, number][] {
+  const b = model.base;
+  if (!b) return baseOf(model);
+  if (!b.round) return [[b.x, b.z], [b.x + b.w, b.z], [b.x + b.w, b.z + b.d], [b.x, b.z + b.d]];
+  return Array.from({ length: 16 }, (_, i): [number, number] => {
+    const a = ((i + 0.5) * Math.PI) / 8;
+    return [b.x + b.w / 2 + (b.w / 2) * Math.cos(a) / Math.cos(Math.PI / 16), b.z + b.d / 2 + (b.d / 2) * Math.sin(a) / Math.cos(Math.PI / 16)];
+  });
+}
+
+// Trace tournée d'un polygone de base (cm, repère local) : la base entière par défaut.
+function footprint(model: Model, f: Frame, poly: [number, number][] = baseOf(model)): [number, number][] {
+  return poly.map(([x, z]) => {
     const p = local(f, { x, y: 0, z });
     return [p.x, p.z];
   });
@@ -222,12 +237,20 @@ function shadeOf(f: Frame, n: V3): number {
   return ny > 0 ? side + (SHADE.top - side) * ny : side;
 }
 
+// Demi-largeur (cm) d'une feuille au point s ∈ [0, 1] de sa nervure, pour une largeur maximale w.
+export function leafHalf(form: LeafForm, s: number, w: number): number {
+  if (s <= 0 || s >= 1) return 0;
+  if (form === 'heart') return (w / 2) * Math.pow(Math.sin(Math.PI * Math.pow(s, 0.65)), 0.7);
+  if (form === 'paddle') return (w / 2) * Math.min(1, s / 0.12) * Math.sqrt(Math.sin(Math.PI * (0.06 + 0.94 * s)));
+  return (w / 2) * Math.sin(Math.PI * Math.pow(s, 0.8));
+}
+
 // Points de la nervure d'une feuille et demi-largeur (cm) en chacun : pointue aux deux bouts, plus large un peu avant le milieu.
 function leafSamples(l: Leaf): [V3, number][] {
   return Array.from({ length: LEAF_STEPS + 1 }, (_, i): [V3, number] => {
     const s = i / LEAF_STEPS;
     const at = (k: 0 | 1 | 2) => (1 - s) * (1 - s) * l.base[k] + 2 * s * (1 - s) * l.ctrl[k] + s * s * l.tip[k];
-    return [{ x: at(0), y: at(1), z: at(2) }, (l.w / 2) * Math.sin(Math.PI * Math.pow(s, 0.8))];
+    return [{ x: at(0), y: at(1), z: at(2) }, leafHalf(l.form ?? 'lance', s, l.w)];
   });
 }
 
@@ -548,6 +571,15 @@ function drawFoliage(p: Extract<Piece, { shape: 'foliage' }>, L: Layout3d, push:
       left.push(L.toPx({ x: q.x + half * W.x, y: q.y + half * W.y, z: q.z + half * W.z }));
       right.push(L.toPx({ x: q.x - half * W.x, y: q.y - half * W.y, z: q.z - half * W.z }));
     });
+    // Monstera : trois paires de fentes, le bord ramené vers la nervure aux points 3, 5 et 7 (de la fin, pour garder les indices).
+    if (l.form === 'heart') {
+      for (const i of [7, 5, 3]) {
+        const [cx, cy] = line[i]!;
+        const pull = (p: [number, number]): [number, number] => [cx + (p[0] - cx) * 0.4, cy + (p[1] - cy) * 0.4];
+        left.splice(i, 0, pull(left[i]!));
+        right.splice(i, 0, pull(right[i]!));
+      }
+    }
     right.reverse();
     // Feuille tournée vers le spectateur un peu plus claire, vers le fond un peu plus sombre.
     const dz = depthOf(f, l.tip[0], l.tip[2]) - depthOf(f, l.base[0], l.base[2]);
@@ -561,8 +593,8 @@ function drawFoliage(p: Extract<Piece, { shape: 'foliage' }>, L: Layout3d, push:
 
 // Cases au sol : couvertes à plus de 50 % par la trace tournée ; au moins la plus couverte.
 function floorOf(model: Model, L: Layout3d): { col: number; row: number }[] {
-  const trace = footprint(model, L.f);
-  const traceW = Math.max(...trace.map((p) => p[0]));
+  const traceW = Math.max(...footprint(model, L.f).map((p) => p[0]));
+  const trace = footprint(model, L.f, footOf(model));
   const shiftX = (L.cols * 21 - traceW) / 2;
   const cells: { col: number; row: number; cover: number }[] = [];
   for (let c = 0; c < L.cols; c++) {
@@ -605,7 +637,7 @@ export function topCornersOf(model: Model, angle: Angle): [[number, number], [nu
 // Trace de la base tournée posée au sol (y = 0), projetée en px du rectangle de dessin : ombre au sol du meuble.
 export function floorTraceOf(model: Model, angle: Angle): [number, number][] {
   const L = layoutOf(model, angle);
-  return baseOf(model).map(([x, z]) => L.toPx({ x, y: 0, z }));
+  return footOf(model).map(([x, z]) => L.toPx({ x, y: 0, z }));
 }
 
 // Coins de la face avant (`model.face`, plan z = 0) projetés, px du rectangle de dessin : haut gauche, haut droit, bas gauche ;

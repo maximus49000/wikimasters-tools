@@ -1,6 +1,6 @@
 // tests/core/library/furniture-render3d.test.ts
 import { describe, expect, it } from 'vitest';
-import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, localPointOf, occluderBoxesOf, perchOf, pieceBounds, poisOf3d, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
+import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, leafHalf, localPointOf, occluderBoxesOf, perchOf, pieceBounds, poisOf3d, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 
 const CELL_W = 30;
@@ -420,5 +420,53 @@ describe('faces décorées (décalques) et couleurs propres', () => {
     const shapes = renderModel(card, 1).shapes;
     expect(shapes.length).toBeGreaterThan(0);
     for (const q of shapes) expect([q.color, q.tag]).toEqual(['#112233', 'corps']);
+  });
+});
+
+describe('socle séparé (base)', () => {
+  // Meuble large de 160 cm dont seul un socle de 32 × 32 cm, à droite, touche le sol.
+  const arc: Model = {
+    w: 160, d: 32, h: 100,
+    pieces: [{ shape: 'box', x: 128, y: 0, z: 0, w: 32, h: 10, d: 32, fill: 'metal' }, { shape: 'box', x: 0, y: 90, z: 0, w: 160, h: 10, d: 32, fill: 'metal' }],
+    base: { x: 128, z: 0, w: 32, d: 32 },
+  };
+  it('le rectangle de dessin garde toute la largeur du meuble', () => {
+    expect(renderModel(arc, 0).cols).toBe(8);
+  });
+  it('de face, seules les cases du socle sont au sol', () => {
+    // Une case compte si le socle la couvre à plus de 50 % : 32 cm de profondeur sur une rangée de 50, il en couvre une ou deux, à droite.
+    const cols = renderModel(arc, 0).floor.map((c) => c.col);
+    expect(cols.length).toBeGreaterThan(0);
+    expect(cols.every((c) => c >= 6)).toBe(true);
+  });
+  it('à chaque angle, pas plus de 4 cases au sol', () => {
+    for (const a of ANGLES) {
+      const n = renderModel(arc, a).floor.length;
+      expect(n, 'angle ' + a).toBeGreaterThan(0);
+      expect(n, 'angle ' + a).toBeLessThanOrEqual(4);
+    }
+  });
+  it('sans socle, rien ne change (trace = boîte entière)', () => {
+    const { base: _b, ...plain } = arc;
+    expect(renderModel(plain, 0).floor.length).toBe(8);
+  });
+});
+
+describe('formes de feuille', () => {
+  it('pointue aux deux bouts quelle que soit la forme', () => {
+    for (const f of ['lance', 'heart', 'paddle'] as const) {
+      expect(leafHalf(f, 0, 10)).toBeCloseTo(0, 5);
+      expect(leafHalf(f, 1, 10)).toBeLessThan(1);
+    }
+  });
+  it('le cœur est le plus large avant le milieu, la palette reste large jusqu’au bout', () => {
+    const heart = Array.from({ length: 11 }, (_, i) => leafHalf('heart', i / 10, 10));
+    expect(heart.indexOf(Math.max(...heart))).toBeLessThan(5);
+    expect(leafHalf('paddle', 0.85, 10)).toBeGreaterThan(leafHalf('lance', 0.85, 10));
+  });
+  it('une feuille en cœur a des fentes : son contour a plus de points qu’une feuille pointue', () => {
+    const leaf = (form: 'lance' | 'heart'): Model => ({ w: 40, d: 40, h: 40, pieces: [{ shape: 'foliage', fill: 'leaf', leaves: [{ base: [20, 5, 20], ctrl: [20, 20, 15], tip: [20, 32, 12], w: 16, form }] }] });
+    const pts = (m: Model) => renderModel(m, 0).shapes.filter((s) => s.kind === 'poly').map((s) => (s.kind === 'poly' ? s.points.length : 0))[0]!;
+    expect(pts(leaf('heart'))).toBeGreaterThan(pts(leaf('lance')));
   });
 });
