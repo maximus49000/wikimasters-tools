@@ -35,10 +35,11 @@ export type StandDepth = 1 | 2 | 3;
 // `lit` (lampes seulement) : faux = éteinte ; absent = allumée.
 // `depth` : niveau choisi s'il diffère du niveau par défaut du type.
 // `angle` (meubles debout) : rotation par pas de 45° (footprint.ts) ; absent = de face.
+// `unlinked` (étagères) : refuse le lien automatique avec une étagère collée (shelf-link.ts) ; absent = liée si collée.
 // `wall` : objet accroché au mur (case en haut à gauche). `stored` : objet rangé sur la tablette `level` (0 = haut, 1, 2) d'une étagère, au rang `order`
 // (0 = le plus à gauche ; rangs compactés 0..n−1 par tablette) ; `display` : de face ou sur la tranche, absent = défaut du type (livre sur la tranche, le reste de face).
 export type Placed =
-  | { id: string; kind: StandingKind; col: number; row: number; lit?: boolean; depth?: StandDepth; angle?: Angle }
+  | { id: string; kind: StandingKind; col: number; row: number; lit?: boolean; depth?: StandDepth; angle?: Angle; unlinked?: true }
   | { id: string; kind: 'computer'; deskId: string; slug?: string }
   | { id: string; kind: 'small'; item: SmallItem; hostId: string; slot: number; lit?: boolean }
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
