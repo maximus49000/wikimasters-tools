@@ -3,7 +3,8 @@ import { hasRole } from '../../../src/core/library/pets/roles';
 
 describe('rôles des meubles pour les animaux', () => {
   it('le chien monte sur les canapés et les poufs, pas sur les fauteuils', () => {
-    for (const k of ['sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'beanbag'] as const) expect(hasRole(k, 'dogCouch'), k).toBe(true);
+    for (const k of ['sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'square-pouf', 'beanbag'] as const) expect(hasRole(k, 'dogCouch'), k).toBe(true);
+    expect(hasRole('square-pouf', 'catSeat')).toBe(true);
     for (const k of ['armchair', 'chair', 'rocking-chair', 'egg-chair', 'peacock-chair', 'bench'] as const) expect(hasRole(k, 'dogCouch'), k).toBe(false);
   });
   it('le chat a ses assises, ses dessus, ses cachettes et son griffoir', () => {

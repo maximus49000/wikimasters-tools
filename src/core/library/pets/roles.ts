@@ -7,8 +7,8 @@ import type { StandingKind } from '../library-types';
 export type PetRole = 'catSeat' | 'dogCouch' | 'catTop' | 'catHide' | 'catScratch';
 
 const ROLES: Record<PetRole, ReadonlySet<StandingKind>> = {
-  catSeat: new Set(['chair', 'armchair', 'sofa', 'rocking-chair', 'club-chair', 'loveseat', 'daybed', 'egg-chair', 'peacock-chair', 'pouf', 'beanbag', 'bench']),
-  dogCouch: new Set(['sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'beanbag']),
+  catSeat: new Set(['chair', 'armchair', 'sofa', 'rocking-chair', 'club-chair', 'loveseat', 'daybed', 'egg-chair', 'peacock-chair', 'pouf', 'square-pouf', 'beanbag', 'bench']),
+  dogCouch: new Set(['sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'square-pouf', 'beanbag']),
   catTop: new Set(['shelf', 'desk', 'dresser', 'side-table', 'cat-tree']),
   catHide: new Set(['sofa', 'loveseat']),
   catScratch: new Set(['armchair']),

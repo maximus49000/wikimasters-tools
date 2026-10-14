@@ -32,6 +32,10 @@ export type Piece = Common & (
   | { shape: 'prism'; axis: 'x' | 'z'; profile: [number, number][]; from: number; to: number }
   // Feuillage : feuilles pointues (couleur `fill` par défaut).
   | { shape: 'foliage'; leaves: Leaf[] }
+  // Forme de révolution (pouf poire) : profil (rayon, hauteur) du bas vers le haut, tourné autour de l'axe vertical (cx, cz).
+  // `lines` : coutures (méridiens, longitude en degrés, -90 = face avant), couleur `lineFill` ; `ribs` : nombre de côtes du velours ;
+  // `folds` : plis encrés sur la face avant, en sourire (plus bas de `dip` cm au milieu), à la hauteur `y`, sur ± `span` degrés.
+  | { shape: 'lathe'; cx: number; cz: number; profile: [number, number][]; lines?: { lon: number }[]; lineFill?: Fill; ribs?: number; folds?: { y: number; dip: number; span: number }[] }
 );
 export type Poi3d = { type: PoiType; x: number; y: number; z: number };
 // `face` : rectangle de la face avant (x, y depuis le sol, en cm) où se rangent les cartes et s'affiche l'écran.
@@ -280,6 +284,11 @@ export function pieceBounds(p: Piece): [number, number, number, number, number, 
       const [u0, u1, t0, t1] = [Math.min(...us), Math.max(...us), Math.min(p.from, p.to), Math.max(p.from, p.to)];
       return p.axis === 'z' ? [u0, u1, Math.min(...ys), Math.max(...ys), t0, t1] : [t0, t1, Math.min(...ys), Math.max(...ys), u0, u1];
     }
+    case 'lathe': {
+      const r = Math.max(...p.profile.map((q) => q[0]));
+      const ys = p.profile.map((q) => q[1]);
+      return [p.cx - r, p.cx + r, Math.min(...ys), Math.max(...ys), p.cz - r, p.cz + r];
+    }
     case 'foliage': {
       const b: [number, number, number, number, number, number] = [Infinity, -Infinity, Infinity, -Infinity, Infinity, -Infinity];
       for (const l of p.leaves) {
@@ -364,6 +373,7 @@ export function renderModel(model: Model, angle: Angle): Rendered {
     if (p.shape === 'rod') { drawRound(L, push, { x: p.a[0], y: p.a[1], z: p.a[2] }, { x: p.b[0], y: p.b[1], z: p.b[2] }, p.r, p.r, p.fill); continue; }
     if (p.shape === 'cyl') { drawRound(L, push, { x: p.cx, y: p.y, z: p.cz }, { x: p.cx, y: p.y + p.h, z: p.cz }, p.r, p.r2 ?? p.r, p.fill); continue; }
     if (p.shape === 'foliage') { drawFoliage(p, L, push); continue; }
+    if (p.shape === 'lathe') { drawLathe(p, L, push); continue; }
     if (p.shape === 'box') {
       const faces = boxFaces(p).filter((fc) => visible(f, fc.normal));
       // Le dessus en dernier (il recouvre le haut des côtés) ; l'ordre des côtés visibles est indifférent (ils ne se recouvrent pas).
@@ -560,6 +570,92 @@ function drawRound(L: Layout3d, push: Push, A: V3, B: V3, rA: number, rB: number
   }
   const cap = k > 0 ? { pts: cb, n: u } : { pts: ca, n: { x: -u.x, y: -u.y, z: -u.z } };
   if (visible(f, cap.n)) push({ kind: 'poly', points: cap.pts, fill, shade: shadeOf(f, cap.n) });
+}
+
+// Point dans un polygone convexe (signe constant des produits vectoriels).
+function inConvex(poly: [number, number][], q: [number, number]): boolean {
+  let sign = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [a, b] = [poly[i]!, poly[(i + 1) % poly.length]!];
+    const c = (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]);
+    if (Math.abs(c) < 1e-9) continue;
+    if (sign === 0) sign = Math.sign(c);
+    else if (Math.sign(c) !== sign) return false;
+  }
+  return true;
+}
+// Croissant d'ombre d'une silhouette convexe : la silhouette moins elle-même décalée vers la lumière (en haut à gauche).
+function crescentOf(body: [number, number][]): [number, number][] | null {
+  const xs = body.map((q) => q[0]);
+  const ys = body.map((q) => q[1]);
+  const [dx, dy] = [((Math.max(...xs) - Math.min(...xs)) / 2) * BALL_SHIFT[0], ((Math.max(...ys) - Math.min(...ys)) / 2) * BALL_SHIFT[1]];
+  const lit = body.map(([x, y]): [number, number] => [x - dx, y - dy]);
+  // Arc d'un polygone qui vérifie `keep`, parcouru d'un seul tenant (on part d'un sommet qui ne le vérifie pas).
+  const arc = (pts: [number, number][], keep: (q: [number, number]) => boolean): [number, number][] => {
+    const start = pts.findIndex((q) => !keep(q));
+    if (start < 0) return [];
+    return Array.from({ length: pts.length }, (_, k) => pts[(start + k) % pts.length]!).filter(keep);
+  };
+  const outer = arc(body, (q) => !inConvex(lit, q));
+  const inner = arc(lit, (q) => inConvex(body, q)).reverse();
+  return outer.length >= 2 && inner.length >= 2 ? [...outer, ...inner] : null;
+}
+
+// Forme de révolution en cellulo : silhouette (enveloppe des anneaux du profil), croissant d'ombre nette, contour repassé ;
+// puis côtes, coutures et plis tracés seulement là où la surface regarde le spectateur.
+function drawLathe(p: Extract<Piece, { shape: 'lathe' }>, L: Layout3d, push: Push): void {
+  const { f } = L;
+  const N = 32;
+  const pr = p.profile;
+  const at = (r: number, y: number, th: number): V3 => ({ x: p.cx + r * Math.cos(th), y, z: p.cz + r * Math.sin(th) });
+  const rings: [number, number][] = [];
+  for (const [r, y] of pr) for (let i = 0; i < N; i++) rings.push(L.toPx(at(r, y, (i * 2 * Math.PI) / N)));
+  const body = hull(rings);
+  if (body.length < 3) return;
+  push({ kind: 'poly', points: body, fill: p.fill, shade: SHADE.front });
+  const shadow = crescentOf(body);
+  if (shadow) push({ kind: 'poly', points: shadow, fill: p.fill, shade: SHADE.front * SHADE.side, ink: 'none' });
+  // Profil affiné (4 points par segment) avec la normale de chaque point dans le plan du méridien : (pente verticale, −pente du rayon).
+  const fine: { r: number; y: number; nr: number; ny: number }[] = [];
+  pr.forEach(([r0, y0], i) => {
+    const [r1, y1] = pr[Math.min(pr.length - 1, i + 1)]!;
+    const [r2, y2] = i + 1 < pr.length ? [r1, y1] : [r0 - (pr[i - 1]![0] - r0), y0 - (pr[i - 1]![1] - y0)];
+    const steps = i + 1 < pr.length ? 4 : 1;
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps;
+      fine.push({ r: r0 + (r2 - r0) * t, y: y0 + (y2 - y0) * t, nr: y2 - y0, ny: -(r2 - r0) });
+    }
+  });
+  const facing = (q: { nr: number; ny: number }, th: number): boolean => visible(f, { x: Math.cos(th) * q.nr, y: q.ny, z: Math.sin(th) * q.nr });
+  const meridian = (lon: number, fill: Fill, shade: number): void => {
+    const th = (lon * Math.PI) / 180;
+    for (const run of runs(fine, fine.map((q) => facing(q, th)))) {
+      if (run.front && run.pts.length >= 2) push({ kind: 'line', points: run.pts.map((q) => L.toPx(at(q.r, q.y, th))), fill, shade });
+    }
+  };
+  for (let i = 0; i < (p.ribs ?? 0); i++) meridian((i * 360) / (p.ribs ?? 1), p.fill, 0.86);
+  for (const ln of p.lines ?? []) meridian(ln.lon, p.lineFill ?? 'edge', 1);
+  // Rayon à une hauteur donnée (interpolation du profil).
+  const radiusAt = (y: number): number => {
+    for (let i = 0; i + 1 < pr.length; i++) {
+      const [[r0, y0], [r1, y1]] = [pr[i]!, pr[i + 1]!];
+      if (y >= y0 && y <= y1) return y1 === y0 ? r0 : r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
+    }
+    return 0;
+  };
+  // Pli : seulement sur la partie de la surface tournée vers le spectateur (de dos, il disparaît).
+  const fineAt = (y: number) => fine.reduce((best, q) => (Math.abs(q.y - y) < Math.abs(best.y - y) ? q : best), fine[0]!);
+  for (const fold of p.folds ?? []) {
+    const pts = Array.from({ length: 17 }, (_, i) => {
+      const phi = ((i / 16) * 2 - 1) * fold.span;
+      const y = fold.y - fold.dip * Math.cos(((phi / fold.span) * Math.PI) / 2);
+      return { y, th: ((phi - 90) * Math.PI) / 180 };
+    });
+    for (const run of runs(pts, pts.map((q) => facing(fineAt(q.y), q.th)))) {
+      if (run.front && run.pts.length >= 2) push({ kind: 'line', points: run.pts.map((q) => L.toPx(at(radiusAt(q.y), q.y, q.th))), fill: 'door', shade: 1 });
+    }
+  }
+  push({ kind: 'poly', points: body, fill: p.fill, shade: SHADE.front, ink: 'only' });
 }
 
 // Feuillage : feuilles du plus loin au plus proche (puis de bas en haut), chacune en aplat pointu avec sa nervure.

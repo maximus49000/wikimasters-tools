@@ -493,3 +493,35 @@ describe('boules en cellulo', () => {
     expect(my).toBeGreaterThan(body.cy);
   });
 });
+
+describe('forme de révolution (lathe)', () => {
+  // Goutte de 80 cm de large, 70 cm de haut : profil (rayon, hauteur) du bas vers le sommet.
+  const drop: Model = {
+    w: 80, d: 80, h: 70, round: true,
+    pieces: [{ shape: 'lathe', cx: 40, cz: 40, fill: 'fabric', profile: [[30, 0], [38, 4], [40, 14], [39, 26], [35, 38], [28, 50], [18, 60], [8, 67], [0, 70]], lineFill: 'fabricDark', lines: [{ lon: -150 }, { lon: -30 }, { lon: 90 }], folds: [{ y: 46, dip: 8, span: 70 }] }],
+  };
+  it('tient dans sa boîte', () => {
+    expect(pieceBounds(drop.pieces[0]!)).toEqual([0, 80, 0, 70, 0, 80]);
+  });
+  it('une seule silhouette, son ombre nette et son contour, à chaque angle', () => {
+    for (const a of ANGLES) {
+      const polys = renderModel(drop, a).shapes.filter((s) => s.kind === 'poly');
+      expect(polys.filter((s) => s.kind === 'poly' && s.ink === undefined), 'angle ' + a).toHaveLength(1);
+      expect(polys.some((s) => s.kind === 'poly' && s.ink === 'none'), 'angle ' + a).toBe(true);
+      expect(polys.some((s) => s.kind === 'poly' && s.ink === 'only'), 'angle ' + a).toBe(true);
+    }
+  });
+  it('coutures et pli tracés en traits sur la face visible', () => {
+    const lines = renderModel(drop, 0).shapes.filter((s) => s.kind === 'line');
+    expect(lines.length).toBeGreaterThanOrEqual(3); // au moins deux coutures de face + le pli
+    expect(lines.some((s) => s.fill === 'door')).toBe(true); // le pli, encré
+  });
+  it('le pli est un sourire : plus bas au milieu qu’aux bouts', () => {
+    const fold = renderModel(drop, 0).shapes.find((s) => s.kind === 'line' && s.fill === 'door')!;
+    if (fold.kind !== 'line') throw new Error('pli');
+    const ys = fold.points.map((p) => p[1]);
+    const mid = ys[Math.floor(ys.length / 2)]!;
+    expect(mid).toBeGreaterThan(ys[0]!); // écran : y vers le bas
+    expect(mid).toBeGreaterThan(ys[ys.length - 1]!);
+  });
+});

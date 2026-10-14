@@ -96,7 +96,7 @@ describe('catalogTree', () => {
     expect(seats?.subcategories.map((s) => [s.id, s.label])).toEqual([['chairs', 'Chaises et fauteuils'], ['couches', 'Canapés'], ['poufs', 'Poufs et bancs']]);
     expect(seats?.subcategories.find((s) => s.id === 'chairs')?.kinds).toEqual(['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair']);
     expect(seats?.subcategories.find((s) => s.id === 'couches')?.kinds).toEqual(['sofa', 'club-chair', 'loveseat', 'daybed']);
-    expect(seats?.subcategories.find((s) => s.id === 'poufs')?.kinds).toEqual(['pouf', 'beanbag', 'bench']);
+    expect(seats?.subcategories.find((s) => s.id === 'poufs')?.kinds).toEqual(['pouf', 'square-pouf', 'beanbag', 'bench']);
   });
 
   it('commode en Rangement, arbre à chat dans Pour animaux, guéridon dans Déco > Sol', () => {

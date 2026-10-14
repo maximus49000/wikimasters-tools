@@ -409,15 +409,20 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
     pois: [{ type: 'seat', x: 27.5, y: 40, z: 27.5 }],
     perch: { x: 8, z: 8, w: 39, d: 39, y: 40 },
   },
-  // Pouf poire : grosse poire molle affaissée au sol ; le dos relevé dépasse derrière l'assise.
+  // Pouf poire côtelé (maquette validée) : goutte molle affaissée ; devant, le corps bas dont le bord haut fait le pli du creux d'assise,
+  // derrière, le dos relevé dont les coutures montent au sommet ; velours à côtes (méridiens).
   beanbag: {
     w: 80, d: 80, h: 70, round: true,
     pieces: [
-      ball(40, 44, 58, 26, 26, 20, 'fabricLight'),
-      ball(40, 22, 40, 40, 22, 40, 'fabricLight', { layer: 1 }),
+      {
+        shape: 'lathe', cx: 40, cz: 40, fill: 'fabricLight', lineFill: 'fabricDark', ribs: 40,
+        profile: [[30, 0], [37, 3], [40, 12], [39.5, 24], [36, 36], [29, 48], [19, 59], [9, 66.5], [0, 70]],
+        lines: [{ lon: -150 }, { lon: -30 }, { lon: -90 }, { lon: 90 }],
+        folds: [{ y: 44, dip: 7, span: 62 }],
+      },
     ],
-    pois: [{ type: 'sleep', x: 40, y: 35, z: 34 }],
-    perch: { x: 22, z: 18, w: 36, d: 32, y: 35 },
+    pois: [{ type: 'sleep', x: 40, y: 40, z: 22 }],
+    perch: { x: 24, z: 12, w: 32, d: 26, y: 40 },
   },
   // Banc à coussin : deux pieds pleins, tablette basse, assise et coussin ; on passe dessous.
   bench: {
@@ -541,6 +546,17 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
         }),
       },
     ],
+  },
+  // Pouf carré côtelé (maquette validée) : cube mou aux arêtes arrondies et flancs bombés (profil extrudé d'avant en arrière),
+  // côtes verticales en façade.
+  'square-pouf': {
+    w: 55, d: 55, h: 40,
+    pieces: [
+      prism('z', [[3, 0], [52, 0], [54, 4], [55, 14], [55, 26], [54, 34], [52, 38], [45, 39.6], [27.5, 40], [10, 39.6], [3, 38], [1, 34], [0, 26], [0, 14], [1, 4]], 0.4, 55, 'fabricLight'),
+      ...Array.from({ length: 10 }, (_, i) => box(5 + i * 5, 3, 0, 1, 32, 0.4, 'fabricLight', { tone: 0.9 })),
+    ],
+    pois: [{ type: 'seat', x: 27.5, y: 40, z: 27.5 }],
+    perch: { x: 5, z: 5, w: 45, d: 45, y: 40 },
   },
   // Lanterne en papier : socle bas, globe de papier à nervures, chapeau ; tout le globe s'allume.
   'paper-lantern': {

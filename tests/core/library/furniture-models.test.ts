@@ -12,8 +12,21 @@ const DIMS: Record<string, [number, number, number]> = {
   'peacock-chair': [90, 65, 140], pouf: [55, 55, 40], beanbag: [80, 80, 70], bench: [120, 40, 48],
   dresser: [100, 45, 82], 'side-table': [50, 50, 60], 'cat-tree': [62, 50, 150],
   monstera: [85, 70, 120], strelitzia: [60, 60, 170], palm: [100, 100, 190], cactus: [35, 35, 132], pampas: [42, 30, 122],
-  'paper-lantern': [45, 45, 61], 'arc-lamp': [165, 32, 205],
+  'paper-lantern': [45, 45, 61], 'arc-lamp': [165, 32, 205], 'square-pouf': [55, 55, 40],
 };
+
+describe('poufs côtelés (maquettes validées le 2026-10-14)', () => {
+  it('pouf poire : une seule goutte, côtes du velours, coutures qui montent au sommet, pli d’assise en façade', () => {
+    const drop = FURNITURE_MODELS.beanbag.pieces.find((p) => p.shape === 'lathe');
+    expect(drop?.shape === 'lathe' && (drop.ribs ?? 0) >= 24 && (drop.lines?.length ?? 0) >= 3 && drop.folds?.length === 1).toBe(true);
+  });
+  it('pouf carré : place assise et perchoir à 40 cm, côtes verticales devant', () => {
+    const m = FURNITURE_MODELS['square-pouf'];
+    expect(m.pois?.filter((p) => p.type === 'seat')).toHaveLength(1);
+    expect(m.perch?.y).toBe(40);
+    expect(m.pieces.filter((p) => p.shape === 'box' && p.h >= 25 && p.w <= 1.5).length).toBeGreaterThanOrEqual(8);
+  });
+});
 
 describe('lanterne et lampadaire arc', () => {
   it('ont un point de lumière, un abat-jour à allumer et un socle seul au sol pour l’arc', () => {
@@ -84,7 +97,7 @@ describe('assises du mobilier divers', () => {
     expect(places('loveseat', 'hide')).toBe(1);
   });
   it('hauteurs de perchoir de la maquette', () => {
-    expect(SEATS.map((k) => FURNITURE_MODELS[k].perch?.y)).toEqual([52, 49, 49, 49, 70, 50, 40, 35, 48]);
+    expect(SEATS.map((k) => FURNITURE_MODELS[k].perch?.y)).toEqual([52, 49, 49, 49, 70, 50, 40, 40, 48]);
   });
   it('perchoirs et places dans la boîte du meuble', () => {
     for (const k of SEATS) {

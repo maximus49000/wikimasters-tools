@@ -49,6 +49,7 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
   pampas: { layer: 'floor', depth: 1, under: false },
   'paper-lantern': { layer: 'floor', depth: 2, under: false },
   'arc-lamp': { layer: 'floor', depth: 1, under: false },
+  'square-pouf': { layer: 'floor', depth: 3, under: false },
 };
 
 const LABELS: Record<FurnitureKind, string> = {
@@ -91,11 +92,12 @@ const LABELS: Record<FurnitureKind, string> = {
   pampas: 'Pampas',
   'paper-lantern': 'Lanterne',
   'arc-lamp': 'Lampadaire arc',
+  'square-pouf': 'Pouf carré',
 };
 
 export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }[] = [
   { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer', 'dresser'] },
-  { id: 'seats', label: 'Assises', kinds: ['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair', 'sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'beanbag', 'bench'] },
+  { id: 'seats', label: 'Assises', kinds: ['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair', 'sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'square-pouf', 'beanbag', 'bench'] },
   { id: 'pets', label: 'Pour animaux', kinds: ['basket', 'bowl', 'kennel', 'charger', 'cat-tree'] },
   { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'side-table', 'plant', 'lamp', 'small-plant', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas', 'small-lamp', 'paper-lantern', 'arc-lamp', 'rug', 'window'] },
   { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
@@ -115,7 +117,7 @@ const SUBCATEGORIES: Partial<Record<Category, CatalogNode['subcategories']>> = {
   seats: [
     { id: 'chairs', label: 'Chaises et fauteuils', kinds: ['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair'] },
     { id: 'couches', label: 'Canapés', kinds: ['sofa', 'club-chair', 'loveseat', 'daybed'] },
-    { id: 'poufs', label: 'Poufs et bancs', kinds: ['pouf', 'beanbag', 'bench'] },
+    { id: 'poufs', label: 'Poufs et bancs', kinds: ['pouf', 'square-pouf', 'beanbag', 'bench'] },
   ],
   deco: [
     { id: 'plants', label: 'Plantes', kinds: ['plant', 'small-plant', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas'] },

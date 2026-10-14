@@ -42,6 +42,7 @@ export const KIND_ICON: Record<FurnitureKind, readonly string[]> = {
   pampas: ['M10 21c-2-3-2-6 0-8h4c2 2 2 5 0 8z', 'M12 13V5', 'M11 13L7 4', 'M13 13l4-8'],
   'paper-lantern': ['M12 3v2', 'M12 5a6 7 0 1 0 .01 0', 'M6 12h12', 'M7 9h10', 'M7 15h10', 'M9 21h6'],
   'arc-lamp': ['M17 21V10c0-5-4-7-9-7', 'M5 6a3 2 0 0 0 6 0z', 'M14 21h6'],
+  'square-pouf': ['M5 10c0-2 1-3 3-3h8c2 0 3 1 3 3v8c0 1-1 2-2 2H7c-1 0-2-1-2-2z', 'M5 10h14', 'M9 10v10', 'M12 10v10', 'M15 10v10'],
 };
 
 export const CATEGORY_ICON: Record<Category, readonly string[]> = {

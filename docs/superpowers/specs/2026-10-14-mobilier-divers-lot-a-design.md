@@ -16,11 +16,12 @@ Découpage validé en 4 lots, chacun avec sa spec, son plan et sa PR, dans cet o
 | D — comportements animaux | arbre à chat complet (3 plateformes, niche, griffoir, balle), balancement du rocking chair et du fauteuil œuf, sieste au pied de la lanterne allumée |
 
 Autres décisions :
-- Les animaux gardent les règles actuelles (chat : saut ≤ 150 cm ; robot : jamais sur un meuble). Le chien monte sur **tous les canapés** (une place, deux places, méridienne) et sur le **pouf poire** et le **pouf marocain**.
+- Les animaux gardent les règles actuelles (chat : saut ≤ 150 cm ; robot : jamais sur un meuble). Le chien monte sur **tous les canapés** (une place, deux places, méridienne) et sur les trois poufs (**pouf poire**, **pouf tricoté**, **pouf carré**).
+- Avenant du 2026-10-14 (après les captures) : le « pouf marocain » devient un **pouf tricoté** rond (photo de l'utilisateur) ; le **pouf poire** est refait d'après une maquette côtelée validée (une seule goutte, coutures, pli d'assise) ; ajout d'un **pouf carré** côtelé (maquette validée) ; ombre nette sur toutes les formes rondes. Maquettes : `docs/superpowers/maquettes/mobilier-divers/poufs-cotele.*`.
 - Les 3D sont faites par Opus d'après les maquettes, avec la trace « Fable n'est pas passé » (consigne de l'utilisateur : pendant le gel Fable, les visuels faits par Opus portent cette trace pour être repris).
 - Rangement du tiroir de construction validé (§ 5).
 
-## 2. Les 19 meubles du lot A
+## 2. Les 20 meubles du lot A
 
 Dimensions en cm, largeur × profondeur × hauteur, vue de face (repère des modèles : x largeur, y hauteur, z profondeur depuis l'avant).
 
@@ -32,8 +33,9 @@ Dimensions en cm, largeur × profondeur × hauteur, vue de face (repère des mod
 | `daybed` | Méridienne | 165 × 70 × 85 | haut accoudoir à volute à gauche, dossier descendant ; `seat` 1, `sleep` 1, `perch` y = 49 |
 | `egg-chair` | Fauteuil œuf suspendu | 100 × 100 × 195 | pied en arc + socle rond, œuf en rotin, coussin ; `seat` 1, `perch` y = 70 |
 | `peacock-chair` | Fauteuil paon en rotin | 90 × 65 × 140 | dossier en éventail, pied en sablier ; `seat` 1, `perch` y = 49 |
-| `pouf` | Pouf marocain | 55 × 55 × 40 | rond ; `seat` 1, `perch` y = 40 |
-| `beanbag` | Pouf poire | 80 × 80 × 70 | rond, creux d'assise ; `sleep` 1, `perch` y = 35 |
+| `pouf` | Pouf tricoté | 55 × 55 × 40 | boule aplatie à côtes de tricot ; `seat` 1, `perch` y = 40 |
+| `square-pouf` | Pouf carré | 55 × 55 × 40 | cube mou côtelé (profil extrudé) ; `seat` 1, `perch` y = 40 |
+| `beanbag` | Pouf poire | 80 × 80 × 70 | forme de révolution (goutte), côtes, coutures, pli d'assise ; `sleep` 1, `perch` y = 40 |
 | `bench` | Banc à coussin | 120 × 40 × 48 | dessous praticable (`under`) ; `seat` 2, `perch` y = 48 |
 | `dresser` | Commode basse | 100 × 45 × 82 | 3 tiroirs, boutons ; `perch` y = 82 (plateau) |
 | `side-table` | Guéridon | 50 × 50 × 60 | rond, pied central + trépied ; `under`, `perch` y = 60 |
@@ -66,7 +68,12 @@ Les couleurs viennent de la palette du style (`wood`, `fabric`, `warm`, `leaf`, 
 
 Les palmes du palmier sont des rangées de feuilles `lance` fines le long d'une nervure courbe (fonction d'aide dans `furniture-models.ts`). L'arc du lampadaire est une suite de tiges (`rod`) le long d'une courbe de Bézier.
 
-### 3.3 Steampunk
+### 3.3 Formes rondes et forme de révolution (avenant)
+
+- Boules (`ball`) : croissant d'ombre nette en bas à droite + contour repassé, comme les corps ronds ; parallèles et méridiens suivent une boule aplatie.
+- Nouvelle pièce `lathe` : profil (rayon, hauteur) tourné autour d'un axe vertical ; silhouette unique, ombre nette, contour ; côtes (`ribs`), coutures (`lines`) et plis en sourire (`folds`) tracés seulement sur la face visible.
+
+### 3.4 Steampunk
 
 `STEAMPUNK_TRIM` ajoute du laiton et des rivets à `paper-lantern` (cerclages) et `arc-lamp` (bague au pied de l'arc, embout du globe), comme pour `lamp`.
 
@@ -76,8 +83,8 @@ Les règles écrites meuble par meuble dans `pets/brain.ts` (« `p.kind === 'sof
 
 | Rôle | Effet | Meubles |
 |---|---|---|
-| `catSeat` | 🐈 dort sur les places `sleep` et se perche sur les places `seat` | chair, armchair, sofa, rocking-chair, club-chair, loveseat, daybed, egg-chair, peacock-chair, pouf, beanbag, bench |
-| `dogCouch` | 🐕 y monte : dort sur les places `sleep` (sinon sur les `seat`), se pose sur les `seat` | sofa, club-chair, loveseat, daybed, pouf, beanbag |
+| `catSeat` | 🐈 dort sur les places `sleep` et se perche sur les places `seat` | chair, armchair, sofa, rocking-chair, club-chair, loveseat, daybed, egg-chair, peacock-chair, pouf, square-pouf, beanbag, bench |
+| `dogCouch` | 🐕 y monte : dort sur les places `sleep` (sinon sur les `seat`), se pose sur les `seat` | sofa, club-chair, loveseat, daybed, pouf, square-pouf, beanbag |
 | `catTop` | 🐈 se perche à un point au hasard du plateau | shelf, desk, dresser, side-table, cat-tree |
 | `catHide` | 🐈 se cache dessous (jeu et orage) | sofa, loveseat |
 | `catScratch` | 🐈 fait ses griffes contre un flanc | armchair |
@@ -97,7 +104,7 @@ Les règles écrites meuble par meuble dans `pets/brain.ts` (« `p.kind === 'sof
 - **Assises** (nouvelles sous-catégories) :
   - Chaises et fauteuils : chaise, fauteuil, rocking chair, fauteuil œuf, fauteuil paon ;
   - Canapés : canapé, chauffeuse, canapé deux places, méridienne ;
-  - Poufs et bancs : pouf marocain, pouf poire, banc.
+  - Poufs et bancs : pouf tricoté, pouf carré, pouf poire, banc.
 - **Pour animaux** : panier, gamelle, niche, chargeur, **arbre à chat**.
 - **Déco** :
   - Plantes : plante, petite plante, monstera, oiseau de paradis, palmier, cactus, pampas ;

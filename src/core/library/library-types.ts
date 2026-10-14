@@ -9,7 +9,7 @@ export type StyleId = (typeof STYLE_IDS)[number];
 
 export const STANDING_KINDS = ['shelf', 'desk', 'chair', 'sofa', 'armchair', 'basket', 'bowl', 'kennel', 'plant', 'lamp', 'coffee-table', 'rug', 'globe', 'telescope', 'automaton', 'charger',
   // Mobilier divers (lot A).
-  'rocking-chair', 'club-chair', 'loveseat', 'daybed', 'egg-chair', 'peacock-chair', 'pouf', 'beanbag', 'bench', 'dresser', 'side-table', 'cat-tree', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas', 'paper-lantern', 'arc-lamp'] as const;
+  'rocking-chair', 'club-chair', 'loveseat', 'daybed', 'egg-chair', 'peacock-chair', 'pouf', 'beanbag', 'bench', 'dresser', 'side-table', 'cat-tree', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas', 'paper-lantern', 'arc-lamp', 'square-pouf'] as const;
 export type StandingKind = (typeof STANDING_KINDS)[number];
 
 // Petits objets posés sur la surface d'un bureau ou d'une étagère.
