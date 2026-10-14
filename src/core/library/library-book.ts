@@ -14,6 +14,7 @@ const DEFAULT_PET_NAME = 'Minou';
 const DEFAULT_DOG_NAME = 'Rex';
 const DEFAULT_ROBOT_NAME = 'Robi';
 
+const citySchema = z.object({ name: z.string().min(1).max(60), tz: z.string().refine(isKnownTz) });
 const windowSchema = z.object({
   id: z.string(),
   kind: z.literal('window'),
@@ -22,7 +23,6 @@ const windowSchema = z.object({
   w: z.number().int().min(WINDOW_MIN.w).max(WINDOW_MAX.w),
   h: z.number().int().min(WINDOW_MIN.h).max(WINDOW_MAX.h),
 });
-const citySchema = z.object({ name: z.string().min(1).max(60), tz: z.string().refine(isKnownTz) });
 const decoSchema = z.object({
   id: z.string(),
   kind: z.literal('deco'),
@@ -39,7 +39,7 @@ const placedSchema = z.union([
   z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: z.number().int(), row: z.number().int(), lit: z.boolean().optional(), angle: z.unknown().optional(), unlinked: z.literal(true).optional() })
     .transform(({ angle, ...rest }) => (isAngle(angle) && angle !== 0 ? { ...rest, angle } : rest)),
   z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string(), slug: z.string().optional() }),
-  z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3), lit: z.boolean().optional() }),
+  z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3), lit: z.boolean().optional(), city: citySchema.optional() }),
   z.object({
     id: z.string(),
     kind: z.literal('wall'),

@@ -48,7 +48,7 @@ describe('catalogue', () => {
   });
 
   it('les catégories couvrent chaque type une seule fois', () => {
-    const all = [...STANDING_KINDS, 'computer', 'window', 'small-plant', 'small-lamp', ...DECO_KINDS].sort();
+    const all = [...STANDING_KINDS, 'computer', 'window', 'small-plant', 'small-lamp', 'small-alarm', 'small-clock', 'small-station', ...DECO_KINDS].sort();
     expect([...FURNITURE_KINDS].sort()).toEqual(all);
     expect(CATEGORIES.map((c) => c.id)).toEqual(['storage', 'seats', 'pets', 'deco', 'steampunk']);
   });
@@ -114,7 +114,7 @@ describe('catalogTree', () => {
   it('range les horloges, météomètres et panneaux dans Déco', () => {
     const deco = catalogTree('scandinave').find((c) => c.id === 'deco')!;
     // Les kinds small-* s'ajoutent à la tâche 9.
-    expect(deco.subcategories.find((s) => s.id === 'clocks')).toMatchObject({ label: 'Horloges et météo', kinds: ['wall-clock', 'digital-clock', 'weather-station', 'barometer'] });
+    expect(deco.subcategories.find((s) => s.id === 'clocks')).toMatchObject({ label: 'Horloges et météo', kinds: ['wall-clock', 'digital-clock', 'weather-station', 'barometer', 'small-alarm', 'small-clock', 'small-station'] });
     expect(deco.subcategories.find((s) => s.id === 'walls')!.kinds).toEqual(['window', 'panel-chalk', 'panel-letter', 'panel-neon', 'panel-cork']);
     expect(labelOf('panel-letter')).toBe('Tableau à lettres');
   });

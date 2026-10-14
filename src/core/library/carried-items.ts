@@ -19,7 +19,7 @@ const DESK = FURNITURE_MODELS.desk;
 const FRONT_CM = 2;
 // Écran posé vers le fond du bureau (son pied à 40 cm de l'avant) : la place devant reste libre pour les petits objets.
 const MONITOR_Z_CM = 40;
-const SMALL_SHAPE: Record<SmallItem, ItemShape> = { plant: 'small-plant', lamp: 'small-lamp' };
+const SMALL_SHAPE: Record<SmallItem, ItemShape> = { plant: 'small-plant', lamp: 'small-lamp', alarm: 'small-alarm', clock: 'small-clock', station: 'small-station' };
 
 // Dessus (cm) de la planche qui porte chaque tablette : du haut (0) vers le bas (2), lu dans le modèle de l'étagère.
 // (arrondi au millionième : les fractions de levelsOf laissent des restes de calcul flottant).

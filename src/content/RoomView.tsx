@@ -13,7 +13,7 @@ import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
 import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { WallArt } from './library-card-art';
-import { CarriedItem3D, Model3DArt, type ModelPart } from './model3d-art';
+import { CarriedItem3D, Model3DArt, type ItemContent, type ModelPart } from './model3d-art';
 import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
 import { getImageService } from './image-registry';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
@@ -38,7 +38,7 @@ import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
 import type { PlacingView } from './placement';
-import { DecoArt, type DecoView } from './deco-art';
+import { DecoArt, TableFace, type DecoView } from './deco-art';
 import { useClockTick } from './use-clock-tick';
 import { currentPosition } from './scene-position';
 import { cityClock } from '../core/library/clock-cities';
@@ -188,8 +188,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const fadeStyle = { opacity: roomLayers === 'shown' ? 1 : 0, transition: still ? 'none' : 'opacity 400ms ease', ...(roomLayers === 'hidden' ? { pointerEvents: 'none' as const } : {}) };
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
-  // Horloges et météomètres : la seconde ne tourne que si la pièce en contient (R3 : seuls les objets `deco` pour l'instant).
-  const hasDeco = room.layout.some((p) => p.kind === 'deco');
+  // Horloges et météomètres : la seconde ne tourne que si la pièce en contient (objets `deco` et petits objets horloge ou station).
+  const hasDeco = room.layout.some((p) => p.kind === 'deco' || (p.kind === 'small' && (p.item === 'alarm' || p.item === 'clock' || p.item === 'station')));
   const now = useClockTick(hasDeco);
   const night = view.sky.phase === 'night';
   const decoState = view.deco?.state ?? 'cloudy';
@@ -284,7 +284,15 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       if (!at) return null;
       const { host, pl } = at;
       const rect = placementRectPx(host.kind, host.angle, host.rect, pl, steampunk);
-      const content = placed.kind === 'computer' ? { url: placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined } : { lit: isLit(placed) };
+      let content: ItemContent;
+      if (placed.kind === 'computer') content = { url: placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined };
+      else if (placed.item === 'alarm' || placed.item === 'clock' || placed.item === 'station') {
+        // Face décorée (heure, météo) : clé de mémo = tout ce qui change son dessin.
+        const item = placed.item;
+        const v = decoView(placed.city);
+        const faceKey = `${item}|${v.time.h}:${v.time.m}:${v.time.s}|${v.city ?? ''}|${v.weather.state}|${v.weather.tempC}|${v.weather.night}|${room.style}`;
+        content = { face: { key: faceKey, draw: (w: number, h: number) => <TableFace item={item} w={w} h={h} style={room.style} view={v} /> } };
+      } else content = { lit: isLit(placed) };
       return { rect, art: <CarriedItem3D host={host.kind} angle={host.angle} rect={host.rect} placement={pl} palette={palette} steampunk={steampunk} content={content} /> };
     }
     if (placed.kind === 'window') {

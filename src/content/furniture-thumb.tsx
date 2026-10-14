@@ -11,7 +11,7 @@ import { DecoArt, type DecoView } from './deco-art';
 
 const PAD = 6;
 // Objets sans emprise au sol (posés sur un bureau ou une étagère) : leur modèle 3D, cadré sur sa taille dessinée.
-const ITEM_SHAPE: Partial<Record<FurnitureKind, ItemShape>> = { computer: 'monitor', 'small-plant': 'small-plant', 'small-lamp': 'small-lamp' };
+const ITEM_SHAPE: Partial<Record<FurnitureKind, ItemShape>> = { computer: 'monitor', 'small-plant': 'small-plant', 'small-lamp': 'small-lamp', 'small-alarm': 'small-alarm', 'small-clock': 'small-clock', 'small-station': 'small-station' };
 // Ciel derrière le cadre de la fenêtre : dans la pièce, le décor est rendu à part ; en vignette, un aplat suffit.
 const WINDOW_SKY = '#9CC8E8';
 // Vue figée des horloges et météomètres en vignette : 10 h 10, grand soleil.

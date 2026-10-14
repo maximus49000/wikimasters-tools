@@ -22,7 +22,7 @@ const FIXED: Record<Exclude<DecoKind, (typeof PANEL_KINDS)[number]>, { w: number
 
 export const isPanel = (deco: DecoKind): deco is (typeof PANEL_KINDS)[number] => (PANEL_KINDS as readonly string[]).includes(deco);
 export const isWallClock = (deco: DecoKind): boolean => (CLOCK_KINDS as readonly string[]).includes(deco);
-// Objets dont on règle la ville : les horloges murales (les petits objets horloge arrivent avec la tâche 9).
-export const hasCitySetting = (p: Placed): boolean => p.kind === 'deco' && isWallClock(p.deco);
+// Objets dont on règle la ville : les horloges murales, le réveil et la pendulette (la station météo n'a pas de ville).
+export const hasCitySetting = (p: Placed): boolean => (p.kind === 'deco' && isWallClock(p.deco)) || (p.kind === 'small' && (p.item === 'alarm' || p.item === 'clock'));
 // Taille à la pose : fixe, ou défaut du panneau (néon plus large que haut).
 export const decoDefaultSize = (deco: DecoKind): { w: number; h: number } => (isPanel(deco) ? (deco === 'panel-neon' ? { w: 5, h: 2 } : { w: 4, h: 3 }) : FIXED[deco]);
