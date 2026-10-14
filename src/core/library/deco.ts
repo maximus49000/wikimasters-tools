@@ -15,8 +15,8 @@ export const MAX_PANEL_TEXT = 140;
 
 const FIXED: Record<Exclude<DecoKind, (typeof PANEL_KINDS)[number]>, { w: number; h: number }> = {
   'wall-clock': { w: 2, h: 2 },
-  'digital-clock': { w: 2, h: 1 },
-  'weather-station': { w: 2, h: 1 },
+  'digital-clock': { w: 3, h: 2 },
+  'weather-station': { w: 3, h: 2 },
   barometer: { w: 2, h: 3 },
 };
 

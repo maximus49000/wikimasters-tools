@@ -20,6 +20,11 @@ describe('objets décoratifs du mur', () => {
     expect(decoSizeOf(neon as Extract<Layout[number], { kind: 'deco' }>)).toEqual({ w: 5, h: 2 });
   });
 
+  it('l horloge numérique et la station météo font 3×2', () => {
+    expect(rectOf(hangDeco([], COLS, 'digital-clock', 2, 1, 'f1')![0]!)).toMatchObject({ w: 3, h: 2 });
+    expect(rectOf(hangDeco([], COLS, 'weather-station', 2, 1, 'f1')![0]!)).toMatchObject({ w: 3, h: 2 });
+  });
+
   it('refuse le sol, le bord et une fenêtre', () => {
     expect(hangDeco([], COLS, 'barometer', 0, 10, 'f1')).toBeNull();
     expect(hangDeco([], COLS, 'wall-clock', 23, 0, 'f1')).toBeNull();

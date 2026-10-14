@@ -24,8 +24,8 @@ Tailles en cases du mur (une case = 21 cm de large, comme les meubles).
 | `DecoKind` | Nom | Taille (cases) | Contenu |
 |---|---|---|---|
 | `wall-clock` | Horloge à aiguilles | 2 × 2 | cadran, aiguilles des heures, minutes et secondes |
-| `digital-clock` | Horloge numérique | 2 × 1 | afficheur 7 segments HH:MM, deux points qui clignotent chaque seconde |
-| `weather-station` | Station météo | 2 × 1 | pictogramme de la météo, température, libellé, heure de la scène |
+| `digital-clock` | Horloge numérique | 3 × 2 | afficheur 7 segments HH:MM, deux points qui clignotent chaque seconde |
+| `weather-station` | Station météo | 3 × 2 | pictogramme de la météo, température, libellé, heure de la scène |
 | `barometer` | Baromètre à l'ancienne | 2 × 3 | aiguille Tempête → Très sec, thermomètre gradué de −10 à 40 °C |
 | `panel-chalk` | Ardoise | libre | cadre bois, texte à la craie, craie sur le rebord |
 | `panel-letter` | Tableau à lettres | libre | feutrine rainurée, lettres blanches, toujours en capitales |
