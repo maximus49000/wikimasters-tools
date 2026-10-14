@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import type { CollectionRepo } from '../../src/core/collection/collection-repo';
-import { LIBRARY_CSS, LibraryPanel } from '../../src/content/LibraryPanel';
+import { LIBRARY_CSS, LibraryPanel, STAGE_MSG_MS } from '../../src/content/LibraryPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -36,6 +36,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   act(() => root.unmount());
   container.remove();
@@ -349,6 +350,31 @@ describe('interrupteur en plein écran', () => {
     await press('[data-mode-switch] [data-action="visit"]');
     expect(q('[data-placement-bar]')).toBeNull();
     expect(repo.current()!.rooms[0]!.layout).toHaveLength(0);
+  });
+
+  it('la bulle d’aide ne reste pas sur la pièce : montrée une fois, effacée seule, jamais au déplacement', async () => {
+    stubFullscreen();
+    await click('.wmt-lib-topbar [data-action="fullscreen"]');
+    await press('[data-mode-switch] [data-action="edit"]');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const tick = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); });
+    const tap = async (selector: string) => {
+      await act(async () => { (q(selector) as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+      await tick(0);
+    };
+    const bubble = () => q('.wmt-lib-stage-msg')?.textContent ?? null;
+    await tap('[data-kind="shelf"]');
+    expect(bubble()).toContain('Glissez');
+    await tick(STAGE_MSG_MS);
+    expect(bubble()).toBeNull();
+    // Étagère de 10 rangées : bas en ligne 11 refusé (sur le mur), bas en ligne 16 accepté.
+    await tap('[data-cell="3-11"]');
+    expect(bubble()).toContain('sol');
+    await tap('[data-cell="3-16"]');
+    expect(bubble()).toBeNull();
+    expect(q('[role="status"]')?.textContent).toContain('Glissez');
+    vi.useRealTimers();
+    expect(LIBRARY_CSS).toMatch(/\.wmt-lib-stage-msg\{[^}]*pointer-events:none/);
   });
 });
 
