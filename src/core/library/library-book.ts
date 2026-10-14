@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type StandingKind, type Species, type StyleId, type TimeSetting, WEATHER_STATES, type WeatherSetting } from './library-types';
+import { DECO_KINDS, MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN } from './deco';
+import { isKnownTz } from './clock-cities';
 import { drawSize, isAngle, type Angle } from './footprint';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
 import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, compactShelves, isStanding, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
@@ -12,6 +14,7 @@ const DEFAULT_PET_NAME = 'Minou';
 const DEFAULT_DOG_NAME = 'Rex';
 const DEFAULT_ROBOT_NAME = 'Robi';
 
+const citySchema = z.object({ name: z.string().min(1).max(60), tz: z.string().refine(isKnownTz) });
 const windowSchema = z.object({
   id: z.string(),
   kind: z.literal('window'),
@@ -20,11 +23,24 @@ const windowSchema = z.object({
   w: z.number().int().min(WINDOW_MIN.w).max(WINDOW_MAX.w),
   h: z.number().int().min(WINDOW_MIN.h).max(WINDOW_MAX.h),
 });
+const decoSchema = z.object({
+  id: z.string(),
+  kind: z.literal('deco'),
+  deco: z.enum(DECO_KINDS),
+  col: z.number().int(),
+  row: z.number().int(),
+  w: z.number().int().min(PANEL_MIN.w).max(PANEL_MAX.w).optional(),
+  h: z.number().int().min(PANEL_MIN.h).max(PANEL_MAX.h).optional(),
+  city: citySchema.optional(),
+  text: z.string().max(MAX_PANEL_TEXT).optional(),
+  neon: z.enum(['pink', 'cyan', 'yellow', 'green', 'white']).optional(),
+});
+const smallSchema = z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3), lit: z.boolean().optional(), city: citySchema.optional() });
 const placedSchema = z.union([
   z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: z.number().int(), row: z.number().int(), lit: z.boolean().optional(), angle: z.unknown().optional(), unlinked: z.literal(true).optional() })
     .transform(({ angle, ...rest }) => (isAngle(angle) && angle !== 0 ? { ...rest, angle } : rest)),
   z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string(), slug: z.string().optional() }),
-  z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3), lit: z.boolean().optional() }),
+  smallSchema,
   z.object({
     id: z.string(),
     kind: z.literal('wall'),
@@ -35,6 +51,7 @@ const placedSchema = z.union([
     color: z.enum(['black', 'red', 'blue', 'green', 'gold']).optional(),
   }),
   windowSchema,
+  decoSchema,
   z.object({
     id: z.string(),
     kind: z.literal('stored'),
@@ -325,10 +342,17 @@ function cleanPets(raw: unknown): unknown {
   return { ...(raw as object), rooms };
 }
 
-// Une fenêtre impossible (dimensions hors bornes, valeurs non entières…) est ignorée sans faire perdre la pièce.
-function dropBadWindows(raw: unknown): unknown {
+// Une fenêtre, un objet décoratif ou un petit objet impossible (dimensions hors bornes, texte trop long, fuseau inconnu…) est ignoré sans faire perdre la pièce.
+function dropBadWallItems(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { rooms?: unknown }).rooms)) return raw;
-  const ok = (p: unknown): boolean => (p as { kind?: unknown } | null)?.kind !== 'window' || windowSchema.safeParse(p).success;
+  const ok = (p: unknown): boolean => {
+    const kind = (p as { kind?: unknown } | null)?.kind;
+    if (kind === 'window') return windowSchema.safeParse(p).success;
+    if (kind === 'deco') return decoSchema.safeParse(p).success;
+    // Réveil ou pendulette à ville inconnue : seul cet objet disparaît (comme un objet du mur).
+    if (kind === 'small') return smallSchema.safeParse(p).success;
+    return true;
+  };
   const rooms = (raw as { rooms: unknown[] }).rooms.map((room) =>
     typeof room === 'object' && room !== null && Array.isArray((room as { layout?: unknown }).layout) ? { ...room, layout: (room as { layout: unknown[] }).layout.filter(ok) } : room,
   );
@@ -342,7 +366,7 @@ export function parseLibraryState(raw: unknown): LibraryState {
 
 // Comme `parseLibraryState`, mais null quand l'état lu est illisible (au lieu de la pièce vide) : le dépôt ne l'écrase pas.
 export function parseStoredLibraryState(raw: unknown): LibraryState | null {
-  const parsed = stateSchema.safeParse(cleanPets(dropBadWindows(migrate(raw))));
+  const parsed = stateSchema.safeParse(cleanPets(dropBadWallItems(migrate(raw))));
   if (!parsed.success) return null;
   const state = parsed.data;
   const ids = state.rooms.map((room) => room.id);

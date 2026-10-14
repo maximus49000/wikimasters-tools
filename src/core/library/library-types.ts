@@ -1,4 +1,5 @@
 import type { Angle } from './footprint';
+import type { CityTime, DecoKind, NeonColor } from './deco';
 
 // L'orientation ne change que la fenêtre visible sur la pièce (large en horizontal, étroite en vertical).
 export type Orientation = 'landscape' | 'portrait';
@@ -13,11 +14,11 @@ export const STANDING_KINDS = ['shelf', 'desk', 'chair', 'sofa', 'armchair', 'ba
 export type StandingKind = (typeof STANDING_KINDS)[number];
 
 // Petits objets posés sur la surface d'un bureau ou d'une étagère.
-export const SMALL_ITEMS = ['plant', 'lamp'] as const;
+export const SMALL_ITEMS = ['plant', 'lamp', 'alarm', 'clock', 'station'] as const;
 export type SmallItem = (typeof SMALL_ITEMS)[number];
-export type SmallKind = 'small-plant' | 'small-lamp';
+export type SmallKind = 'small-plant' | 'small-lamp' | 'small-alarm' | 'small-clock' | 'small-station';
 
-export type FurnitureKind = StandingKind | 'computer' | 'window' | SmallKind;
+export type FurnitureKind = StandingKind | 'computer' | 'window' | SmallKind | DecoKind;
 
 export type WallShape = 'poster' | 'vinyl' | 'sleeve-square' | 'sleeve-round' | 'sleeve-frame';
 export type ShelfShape = 'cd' | 'dvd' | 'game' | 'book';
@@ -32,21 +33,24 @@ export type StandDepth = 1 | 2 | 3;
 
 // Un meuble au sol : (col, row) est sa case en haut à gauche. L'ordinateur n'a pas de case : il suit son bureau (et peut afficher une carte).
 // `small` : petit objet posé sur l'emplacement `slot` de la surface du bureau ou de l'étagère `hostId`.
-// `lit` (lampes seulement) : faux = éteinte ; absent = allumée.
+// `lit` (lampes seulement) : faux = éteinte ; absent = allumée. `city` (réveil, pendulette) : ville de l'heure affichée, absent = heure de la scène.
 // `depth` : niveau choisi s'il diffère du niveau par défaut du type.
 // `angle` (meubles debout) : rotation par pas de 45° (footprint.ts) ; absent = de face.
 // `unlinked` (étagères) : refuse le lien automatique avec une étagère collée (shelf-link.ts) ; absent = liée si collée.
+// `deco` : horloge, météomètre ou panneau accroché (case en haut à gauche) ; `w`/`h` pour un panneau, `city` pour une horloge, `text`/`neon` pour un panneau.
 // `wall` : objet accroché au mur (case en haut à gauche). `stored` : objet rangé sur la tablette `level` (0 = haut, 1, 2) d'une étagère, au rang `order`
 // (0 = le plus à gauche ; rangs compactés 0..n−1 par tablette) ; `display` : de face ou sur la tranche, absent = défaut du type (livre sur la tranche, le reste de face).
 export type Placed =
   | { id: string; kind: StandingKind; col: number; row: number; lit?: boolean; depth?: StandDepth; angle?: Angle; unlinked?: true }
   | { id: string; kind: 'computer'; deskId: string; slug?: string }
-  | { id: string; kind: 'small'; item: SmallItem; hostId: string; slot: number; lit?: boolean }
+  | { id: string; kind: 'small'; item: SmallItem; hostId: string; slot: number; lit?: boolean; city?: CityTime }
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
   | { id: string; kind: 'window'; col: number; row: number; w: number; h: number }
+  | { id: string; kind: 'deco'; deco: DecoKind; col: number; row: number; w?: number; h?: number; city?: CityTime; text?: string; neon?: NeonColor }
   | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; level: ShelfLevel; order: number; display?: StoredDisplay; slug: string };
 
 export type Layout = Placed[];
+export type DecoPlaced = Extract<Placed, { kind: 'deco' }>;
 
 // Pelages du chat ; chacun a sa palette (pet-sprite.tsx). Le chien a les siens.
 export const COATS = ['orange', 'black', 'gray', 'white', 'tabby', 'bicolor'] as const;

@@ -1,5 +1,5 @@
+// Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 2026-10-17), reprise Fable prévue.
 // src/core/library/item-models.ts
-// Dessin provisoire Opus — reprise Fable prévue.
 import { crown } from './furniture-models';
 import type { BoxFace, Decal, Model, Piece } from './furniture-render3d';
 import type { ShelfShape, StoredDisplay } from './library-types';
@@ -7,7 +7,7 @@ import type { ShelfShape, StoredDisplay } from './library-types';
 // Objets qui garnissent les meubles, en vrais volumes (cm, même repère que les meubles : x largeur vue de face, y hauteur, z profondeur depuis l'avant) :
 // cartes rangées (CD, DVD, jeu, livre), écran du bureau, petite plante et petite lampe. Ils sont dessinés par le moteur dans le repère de leur
 // meuble (même angle, mêmes tablettes) : ils tournent avec lui et passent devant ou derrière ses planches selon la profondeur.
-export type ItemShape = ShelfShape | 'monitor' | 'small-plant' | 'small-lamp';
+export type ItemShape = ShelfShape | 'monitor' | 'small-plant' | 'small-lamp' | 'small-alarm' | 'small-clock' | 'small-station';
 // Présentation d'un objet rangé : couverture vers l'avant (de face) ou tranche vers l'avant (titre lisible).
 export type ItemDisplay = StoredDisplay;
 
@@ -65,6 +65,19 @@ export const ITEM_MODELS: Record<ItemShape, Model> = {
       { shape: 'cyl', cx: 7.5, cz: 7.5, y: 28.5, r: 1, h: 1.5, fill: 'metal' },
     ],
   },
+  // Réveil numérique : boîtier 18 × 7 × 9 cm à face légèrement inclinée (on la dessine droite), écran en décalque `face:alarm`.
+  'small-alarm': { w: 18, d: 7, h: 9, pieces: [box(0, 0, 0, 18, 9, 7, '#3A3A40', [{ face: 'front', key: 'face:alarm' }])] },
+  // Pendulette : corps 14 × 6 × 13 cm, cadran en décalque `face:clock`, deux cloches sur le dessus.
+  'small-clock': {
+    w: 14, d: 6, h: 16,
+    pieces: [
+      box(0, 0, 0, 14, 13, 6, '#B79F78', [{ face: 'front', key: 'face:clock' }]),
+      { shape: 'cyl', cx: 3.5, cz: 3, y: 13, r: 2.2, h: 3, fill: 'metal' },
+      { shape: 'cyl', cx: 10.5, cz: 3, y: 13, r: 2.2, h: 3, fill: 'metal' },
+    ],
+  },
+  // Station de table : boîtier 15 × 6 × 11 cm sur pied, écran en décalque `face:station`.
+  'small-station': { w: 15, d: 6, h: 11, pieces: [box(4, 0, 1, 7, 1.2, 4, '#55555C'), box(0, 1.2, 0, 15, 9.8, 6, '#D8C3A0', [{ face: 'front', key: 'face:station' }])] },
 };
 
 // Écran d'une pièce Steampunk, façon machine analytique : socle en laiton et ses touches rondes, coffre de cuivre, écran à tube (image de la carte),
@@ -164,7 +177,7 @@ export function itemPieces(p: ItemPlacement, steampunk = false): Piece[] {
 }
 
 function placedPieces(p: ItemPlacement, m: Model): Piece[] {
-  const stored = p.shape !== 'monitor' && p.shape !== 'small-plant' && p.shape !== 'small-lamp';
+  const stored = p.shape !== 'monitor' && p.shape !== 'small-plant' && p.shape !== 'small-lamp' && p.shape !== 'small-alarm' && p.shape !== 'small-clock' && p.shape !== 'small-station';
   const turned = p.display === 'spine' && stored;
   return m.pieces.map((q): Piece => {
     // Étiquettes : `body` reçoit la couleur propre ; un objet rangé est marqué « stored:key » (il ne se voit qu'à travers l'ouverture du meuble),

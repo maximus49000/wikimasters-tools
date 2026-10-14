@@ -110,6 +110,15 @@ describe('objets posés dans le repère de leur meuble', () => {
     expect(spine.tr[0] - spine.tl[0]).toBeCloseTo(3 * PX_PER_CM_X, 6);
     expect(at(1).map((d) => d.key)).toContain('b|cover:book');
   });
+  it('réveil, pendulette et station de table ont leurs dimensions et une face décorée', () => {
+    expect([ITEM_MODELS['small-alarm'].w, ITEM_MODELS['small-alarm'].d, ITEM_MODELS['small-alarm'].h]).toEqual([18, 7, 9]);
+    expect([ITEM_MODELS['small-clock'].w, ITEM_MODELS['small-clock'].d, ITEM_MODELS['small-clock'].h]).toEqual([14, 6, 16]);
+    expect([ITEM_MODELS['small-station'].w, ITEM_MODELS['small-station'].d, ITEM_MODELS['small-station'].h]).toEqual([15, 6, 11]);
+    for (const shape of ['small-alarm', 'small-clock', 'small-station'] as const) {
+      const decals = ITEM_MODELS[shape].pieces.flatMap((p) => ('decals' in p && p.decals) || []);
+      expect(decals).toContainEqual({ face: 'front', key: `face:${shape.slice(6)}` });
+    }
+  });
   it('de ¾, l’objet passe après la tablette qui le porte ; ses formes sont marquées « rangé »', () => {
     const tagged = FURNITURE_MODELS.shelf.pieces.map((p): Piece => (p.shape === 'box' && p.y === 58 ? { ...p, tag: 'board' } : p));
     const shelf: Model = { ...FURNITURE_MODELS.shelf, pieces: [...tagged, ...itemPieces({ key: 'g', shape: 'game', display: 'cover', x: 55, y: 61, z: 26.5 })] };

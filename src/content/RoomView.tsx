@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
-import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
+import type { FurnitureKind, Placed, Room, TimeSetting, WeatherState } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { drawSize, faceFrame, frontFaceRect, groundTrace, type Angle } from '../core/library/footprint';
@@ -13,7 +13,7 @@ import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
 import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { WallArt } from './library-card-art';
-import { CarriedItem3D, Model3DArt, type ModelPart } from './model3d-art';
+import { CarriedItem3D, Model3DArt, type ItemContent, type ModelPart } from './model3d-art';
 import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
 import { getImageService } from './image-registry';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
@@ -38,6 +38,7 @@ import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
 import type { PlacingView } from './placement';
+import { LiveDecoArt, isTableClock, tableFaceContent, useDecoScene } from './deco-live';
 
 // Horloge immobile (ciel dégagé) pour le calque de lumière d'une pièce sans météo : les lampes y restent efficaces.
 const NO_GLASS: readonly never[] = [];
@@ -53,8 +54,12 @@ const DEFAULT_VIEW: SceneView = { sky: skyAt(15 * 60, { kind: 'normal', sunrise:
 export type SceneView = {
   sky: Sky;
   minutes: number;
+  // Réglage d'heure : en heure réelle les horloges lisent la seconde de l'appareil ; sinon l'heure figée de la scène.
+  mode?: TimeSetting['mode'];
   weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } };
   city?: { day: DayContext; forcedNight: boolean; shopNames?: NamePool; busLines?: BusNetwork | null };
+  // Ce que montrent les météomètres (état, libellé, température réelle).
+  deco?: { state: WeatherState; label: string; tempC: number | null };
 };
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
@@ -180,6 +185,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const fadeStyle = { opacity: roomLayers === 'shown' ? 1 : 0, transition: still ? 'none' : 'opacity 400ms ease', ...(roomLayers === 'hidden' ? { pointerEvents: 'none' as const } : {}) };
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
+  // Objets décoratifs (`deco`, réveil, pendulette, station) : une scène stable, calculée seulement si la pièce en contient. La seconde
+  // n'est pas lue ici : chaque horloge s'abonne elle-même à la seconde partagée, la pièce n'est pas redessinée à chaque seconde.
+  const hasDeco = room.layout.some((p) => p.kind === 'deco' || (p.kind === 'small' && isTableClock(p.item)));
+  const decoScene = useDecoScene(view, editing, hasDeco);
   // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
   const weatherOn = view.weather !== undefined && WEATHER_SCENES.includes(room.scene);
   const gloom = weatherOn && (view.weather?.flags.gloom ?? false);
@@ -264,7 +273,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       if (!at) return null;
       const { host, pl } = at;
       const rect = placementRectPx(host.kind, host.angle, host.rect, pl, steampunk);
-      const content = placed.kind === 'computer' ? { url: placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined } : { lit: isLit(placed) };
+      let content: ItemContent;
+      if (placed.kind === 'computer') content = { url: placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined };
+      // Face décorée (heure, météo) : elle relit elle-même la seconde, le modèle 3D n'est pas redessiné à chaque seconde.
+      else if (isTableClock(placed.item) && decoScene) content = tableFaceContent(placed.item, placed.city, room.style, decoScene);
+      else content = { lit: isLit(placed) };
       return { rect, art: <CarriedItem3D host={host.kind} angle={host.angle} rect={host.rect} placement={pl} palette={palette} steampunk={steampunk} content={content} /> };
     }
     if (placed.kind === 'window') {
@@ -275,6 +288,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
         art: <WindowArt rect={rect} palette={palette} steampunk={steampunk} />,
         liftedArt: <WindowArt rect={rect} palette={palette} steampunk={steampunk} view worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />,
       };
+    }
+    if (placed.kind === 'deco') {
+      if (!decoScene) return null;
+      const rect = pxRect(rectOf(placed)!);
+      return { rect, art: <LiveDecoArt placed={placed} rect={rect} style={room.style} palette={palette} scene={decoScene} /> };
     }
     const cells = rectOf(placed);
     if (!cells || !isStanding(placed)) return null;
@@ -518,6 +536,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const wallLevel = (
     <g key="depth-wall" data-depth={0}>
       {windows.map((p) => renderPlaced(p))}
+      {room.layout.map((p) => (p.kind === 'deco' ? renderPlaced(p) : null))}
       {room.layout.map((p) => (p.kind === 'wall' ? cardOf(p) : null))}
     </g>
   );
@@ -580,7 +599,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const selected = editing && selectedId ? room.layout.find((p) => p.id === selectedId) : undefined;
   const selectedDrawn = !selected ? null
     : selected.kind === 'wall' ? wallArtOf(selected, `${selected.id}-selected`)
-    : selected.kind === 'window' || (isStanding(selected) && selected.kind !== 'rug') ? artOf(selected)
+    : selected.kind === 'window' || selected.kind === 'deco' || (isStanding(selected) && selected.kind !== 'rug') ? artOf(selected)
     : null;
   // Un porteur sélectionné (étagère, bureau) emporte ses objets dans la copie : sinon son dessin opaque les cacherait.
   const selectedCopy = selectedDrawn && selected && (

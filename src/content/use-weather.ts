@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import type { WeatherSetting } from '../core/library/library-types';
+import type { WeatherSetting, WeatherState } from '../core/library/library-types';
 import { WEATHER_SEED, weatherAtRandom } from '../core/library/weather/weather-plan';
 import { createWeatherClock, steadySource, weatherFlags, type WeatherFlags, type WeatherSource } from '../core/library/weather/weather-clock';
 import { createRealWeather, realToWeather, type RealObservation } from '../core/library/weather/weather-real';
 import { WEATHER_LABEL, nearestState, type Weather } from '../core/library/weather/weather-types';
 import { currentPosition, isPositionKnown, subscribePosition } from './scene-position';
 
-export type WeatherView = { clock: { read(nowMs: number): Weather }; flags: WeatherFlags; label: string; real: 'ok' | 'fallback' | null; tempC: number | null };
+export type WeatherView = { clock: { read(nowMs: number): Weather }; flags: WeatherFlags; label: string; state: WeatherState; real: 'ok' | 'fallback' | null; tempC: number | null };
 
 const OFF: WeatherFlags = { gloom: false, rainy: false };
 const REAL_POLL_MS = 60_000;
@@ -39,6 +39,7 @@ export function useWeather(setting: WeatherSetting): WeatherView {
   const flagsRef = useRef<WeatherFlags>(OFF);
   const [flags, setFlags] = useState<WeatherFlags>(OFF);
   const [label, setLabel] = useState('');
+  const [state, setState] = useState<WeatherState>('cloudy');
 
   const mode = setting.mode;
   const forcedState = setting.mode === 'forced' ? setting.state : null;
@@ -88,7 +89,9 @@ export function useWeather(setting: WeatherSetting): WeatherView {
         flagsRef.current = next;
         setFlags(next);
       }
-      setLabel(WEATHER_LABEL[nearestState(w)]);
+      const s = nearestState(w);
+      setState(s);
+      setLabel(WEATHER_LABEL[s]);
     };
     sync();
     const timer = window.setInterval(sync, 5000);
@@ -99,6 +102,7 @@ export function useWeather(setting: WeatherSetting): WeatherView {
     clock,
     flags,
     label,
+    state,
     real: mode === 'real' ? (useObservation ? 'ok' : 'fallback') : null,
     tempC: useObservation && observation ? observation.tempC : null,
   };

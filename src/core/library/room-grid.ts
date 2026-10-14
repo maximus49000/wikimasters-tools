@@ -1,7 +1,8 @@
 import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, underOf, wallSizeOf } from './furniture-catalog';
 import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, invertMatrix, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
+import { MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN, decoDefaultSize, isPanel, type CityTime, type DecoKind, type NeonColor } from './deco';
 import { STANDING_KINDS } from './library-types';
-import type { Depth, Layout, Orientation, Placed, ShelfLevel, ShelfShape, SmallItem, StandDepth, StandingKind, StoredDisplay, VinylColor, WallShape } from './library-types';
+import type { DecoPlaced, Depth, Layout, Orientation, Placed, ShelfLevel, ShelfShape, SmallItem, StandDepth, StandingKind, StoredDisplay, VinylColor, WallShape } from './library-types';
 import { ITEM_MODELS, itemFootprintCm } from './item-models';
 import { FURNITURE_MODELS } from './furniture-models';
 import { overhangOf, projectOf } from './furniture-render3d';
@@ -43,6 +44,7 @@ export function rectOf(p: Placed): Rect | null {
     return { col: p.col, row: p.row, w, h };
   }
   if (p.kind === 'window') return { col: p.col, row: p.row, w: p.w, h: p.h };
+  if (p.kind === 'deco') return { col: p.col, row: p.row, ...decoSizeOf(p) };
   return null;
 }
 
@@ -60,7 +62,7 @@ const layerOfPlaced = (p: Placed): 'floor' | 'rug' => (isStanding(p) ? layerOf(p
 
 // Niveau d'un objet : 0 pour le mur, le champ `depth` ou le défaut du type pour un meuble, celui du porteur pour un objet porté.
 export function depthOf(layout: Layout, p: Placed): Depth {
-  if (p.kind === 'window' || p.kind === 'wall') return 0;
+  if (p.kind === 'window' || p.kind === 'wall' || p.kind === 'deco') return 0;
   if (isStanding(p)) return p.depth ?? depthDefault(p.kind);
   const hostId = p.kind === 'computer' ? p.deskId : p.kind === 'small' ? p.hostId : p.shelfId;
   const host = layout.find((q) => q.id === hostId);
@@ -270,6 +272,54 @@ export function resizeWindow(layout: Layout, cols: number, id: string, w: number
   return layout.map((p) => (p.id === id ? { ...item, w, h } : p));
 }
 
+// Taille d'un objet décoratif : la sienne pour un panneau (sinon le défaut), fixe pour le reste.
+export const decoSizeOf = (p: DecoPlaced): { w: number; h: number } =>
+  isPanel(p.deco) && p.w !== undefined && p.h !== undefined ? { w: p.w, h: p.h } : decoDefaultSize(p.deco);
+
+export function hangDeco(layout: Layout, cols: number, deco: DecoKind, col: number, row: number, id: string): Layout | null {
+  const { w, h } = decoDefaultSize(deco);
+  if (!canHangRect(layout, cols, w, h, col, row).ok) return null;
+  return [...layout, { id, kind: 'deco', deco, col, row, ...(isPanel(deco) ? { w, h } : {}) }];
+}
+
+export function moveDeco(layout: Layout, cols: number, id: string, col: number, row: number): Layout | null {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'deco') return null;
+  const { w, h } = decoSizeOf(item);
+  if (!canHangRect(layout, cols, w, h, col, row, id).ok) return null;
+  return layout.map((p) => (p.id === id ? { ...item, col, row } : p));
+}
+
+// Un panneau garde son coin haut-gauche ; sa taille reste dans les bornes, sur le mur et sur des cases libres. Les autres objets ont une taille fixe.
+export function decoFit(layout: Layout, cols: number, id: string, w: number, h: number): PlaceResult {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'deco' || !isPanel(item.deco)) return { ok: false, reason: 'bounds', cells: [] };
+  const inRange = Number.isInteger(w) && Number.isInteger(h) && w >= PANEL_MIN.w && w <= PANEL_MAX.w && h >= PANEL_MIN.h && h <= PANEL_MAX.h;
+  if (!inRange) return { ok: false, reason: 'bounds', cells: [] };
+  return canHangRect(layout, cols, w, h, item.col, item.row, id);
+}
+
+export function resizeDeco(layout: Layout, cols: number, id: string, w: number, h: number): Layout | null {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'deco' || !decoFit(layout, cols, id, w, h).ok) return null;
+  return layout.map((p) => (p.id === id ? { ...item, w, h } : p));
+}
+
+// Ville (null la retire : heure de la scène), texte (coupé à 140 caractères) ou couleur du néon d'un objet décoratif ou d'un petit objet horloge.
+export function setDecoSettings(layout: Layout, id: string, patch: { city?: CityTime | null; text?: string; neon?: NeonColor }): Layout {
+  return layout.map((p) => {
+    if (p.id !== id || (p.kind !== 'deco' && p.kind !== 'small')) return p;
+    let next: Placed = p;
+    if (patch.city !== undefined) {
+      const { city: _, ...rest } = next as DecoPlaced;
+      next = (patch.city ? { ...rest, city: patch.city } : rest) as Placed;
+    }
+    if (p.kind === 'deco' && patch.text !== undefined) next = { ...(next as DecoPlaced), text: patch.text.slice(0, MAX_PANEL_TEXT) };
+    if (p.kind === 'deco' && patch.neon !== undefined) next = { ...(next as DecoPlaced), neon: patch.neon };
+    return next;
+  });
+}
+
 // Écrit `depth` seulement s'il diffère du défaut du type (et le retire sinon).
 function withDepth(item: Standing, depth: StandDepth): Standing {
   const { depth: _, ...rest } = item;
@@ -404,7 +454,7 @@ export function surfaceSlotRectOn(host: PxRect, kind: HostKind, angle: Angle, sl
 
 // Ajouter une zone à gauche décale les colonnes de tous les meubles ; l'ordinateur suit son bureau.
 export function shiftLayout(layout: Layout, delta: number): Layout {
-  return layout.map((p) => (isStanding(p) ? { ...p, col: p.col + delta } : p.kind === 'wall' || p.kind === 'window' ? { ...p, col: p.col + delta } : p));
+  return layout.map((p) => (isStanding(p) ? { ...p, col: p.col + delta } : p.kind === 'wall' || p.kind === 'window' || p.kind === 'deco' ? { ...p, col: p.col + delta } : p));
 }
 
 // La zone de 12 colonnes au bord est vide quand aucun meuble ne la touche (même à cheval sur sa frontière).

@@ -23,8 +23,10 @@ import {
   fitRoomWidth,
   updateLayout,
 } from '../core/library/library-book';
-import { STEAMPUNK_ONLY, isSmallKind, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
-import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay } from '../core/library/library-types';
+import { STEAMPUNK_ONLY, isSmallKind, labelOf, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
+import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay, type DecoPlaced } from '../core/library/library-types';
+import { ensureDecoFonts } from './deco-fonts';
+import { hasCitySetting, isPanel, PANEL_MAX, PANEL_MIN, type CityTime } from '../core/library/deco';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
@@ -39,6 +41,10 @@ import {
   SECTION,
   VISIBLE_COLS,
   resizeWindow,
+  resizeDeco,
+  setDecoSettings,
+  decoFit,
+  decoSizeOf,
   stretchWindow,
   windowFit,
   canShiftRow,
@@ -82,6 +88,8 @@ import { lockOrientation, unlockOrientation } from './orientation-lock';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import { CardPickerDialog, type CardChoice } from './CardPickerDialog';
+import { CityPickerDialog } from './CityPickerDialog';
+import { DecoTextDialog } from './DecoTextDialog';
 import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView } from './RoomView';
@@ -121,6 +129,14 @@ export const LIBRARY_CSS = `
 .wmt-lib-sep{flex:1}
 .wmt-lib-zone-glyph{font-size:11px;font-weight:600}
 .wmt-lib-dialog{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
+.wmt-lib-dialog-top{align-items:flex-start;padding-top:8vh}
+.wmt-city-list{display:flex;flex-direction:column;gap:4px}
+.wmt-city-list button{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:44px;padding:0 10px;border-radius:8px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.wmt-city-list button[aria-pressed="true"]{border-color:var(--color-accent,#34d399)}
+.wmt-city-list button span{font-variant-numeric:tabular-nums;opacity:.8}
+.wmt-neon-dot{width:44px;height:44px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+.wmt-neon-dot[aria-pressed="true"]{border-color:var(--color-foreground,#e6edf3)}
+.wmt-lib-dialog-panel textarea{width:100%;box-sizing:border-box;resize:vertical;font:inherit;padding:8px;border-radius:8px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit}
 .wmt-lib-dialog-panel{box-sizing:border-box;width:100%;max-width:min(92vw,480px);max-height:80vh;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:var(--color-surface,#0d1117);color:var(--color-foreground,#e6edf3);font:14px/20px system-ui,sans-serif}
 .wmt-lib-picklist{display:flex;flex-direction:column;gap:6px}
 .wmt-lib-pick{justify-content:flex-start;border-radius:10px;text-align:left}
@@ -219,6 +235,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [zoneChoice, setZoneChoice] = useZoneChoice();
   const zoneLabel = zoneChoice === 'auto' ? 'automatique' : `zone ${zoneChoice}`;
   const [picking, setPicking] = useState(false);
+  // Fenêtre « ville » (horloge) ou « écrire » (panneau) ouverte ; la réf. sert aux écouteurs d'Échap de la fenêtre.
+  const [decoDialog, setDecoDialog] = useState<{ type: 'city' | 'text'; id: string } | null>(null);
+  const decoDialogRef = useRef(decoDialog);
+  decoDialogRef.current = decoDialog;
   const [viewing, setViewing] = useState<string | null>(null);
   const viewingRef = useRef(viewing);
   viewingRef.current = viewing;
@@ -288,10 +308,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     () => ({
       sky: sceneTime.sky,
       minutes: sceneTime.minutes,
+      mode: sceneTime.mode,
       weather: { clock: weather.clock, flags: weather.flags },
       city: { day: cityDay, forcedNight: lib?.time.mode === 'night', shopNames, busLines },
+      deco: { state: weather.state, label: weather.label, tempC: weather.tempC },
     }),
-    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags, cityDay, shopNames, busLines, lib?.time.mode],
+    [sceneTime.sky, sceneTime.minutes, sceneTime.mode, weather.clock, weather.flags, weather.state, weather.label, weather.tempC, cityDay, shopNames, busLines, lib?.time.mode],
   );
 
 
@@ -367,7 +389,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const zoomOpen = zoom !== null;
   useEffect(() => {
     if (!zoomOpen) return;
-    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current) zoomBack(); };
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current && !decoDialogRef.current) zoomBack(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [zoomOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -436,12 +458,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   useEffect(() => {
     if (!placingNow) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') cancelRef.current();
+      if (event.key === 'Escape' && !decoDialogRef.current) cancelRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [placingNow]);
 
+  // Polices des panneaux : déclarées dans la page seulement quand un panneau est posé (avant tout retour anticipé : règle des hooks).
+  const roomLayout = lib ? activeRoom(lib).layout : undefined;
+  useEffect(() => { if (roomLayout?.some((p) => p.kind === 'deco' && isPanel(p.deco))) ensureDecoFonts(); }, [roomLayout]);
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
   const room = activeRoom(lib);
@@ -704,6 +729,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       if (press.consumeClick()) return;
       if (zoomRef.current) return;
       if (tryZoom(id)) return;
+      const tapped = layout.find((p) => p.id === id);
+      if (tapped && hasCitySetting(tapped)) return setDecoDialog({ type: 'city', id });
+      if (tapped?.kind === 'deco' && isPanel(tapped.deco)) return setDecoDialog({ type: 'text', id });
       if (layout.some((p) => p.id === id && isLamp(p))) void editLayout((l) => toggleLamp(l, id));
       return;
     }
@@ -757,6 +785,21 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const linkedToSelected = selectedShelf ? (shelfGroupOf(layout, selectedShelf.id).find((id) => id !== selectedShelf.id) ?? null) : null;
   const selectedStanding = editing && selectedItem && isStanding(selectedItem) && selectedItem.kind !== 'rug' ? selectedItem : undefined;
   const selectedWindow = editing ? layout.find((p) => p.id === selectedId && p.kind === 'window') : undefined;
+  const selectedPanel = editing ? layout.find((p): p is DecoPlaced => p.id === selectedId && p.kind === 'deco' && isPanel(p.deco)) : undefined;
+  const placingPanel = placingItem?.kind === 'deco' && isPanel(placingItem.deco) ? placingItem : undefined;
+  // Panneau retaillé d'une case : refusé (cases qui clignotent) contre un voisin, le bord du mur ou ses bornes.
+  const resizePanel = (dw: number, dh: number): void => {
+    if (!selectedPanel) return;
+    const { w: w0, h: h0 } = decoSizeOf(selectedPanel);
+    const [w, h] = [w0 + dw, h0 + dh];
+    const check = decoFit(layout, room.cols, selectedPanel.id, w, h);
+    if (!check.ok) {
+      const limit = w < PANEL_MIN.w || h < PANEL_MIN.h ? 'Le panneau ne peut pas être plus petit.' : w > PANEL_MAX.w || h > PANEL_MAX.h ? 'Le panneau ne peut pas être plus grand.' : REASONS[check.reason];
+      return refuse(limit, check.cells);
+    }
+    setMessage('');
+    void editLayout((l, cols) => resizeDeco(l, cols, selectedPanel.id, w, h));
+  };
   const resizeSelected = (dw: number, dh: number): void => {
     if (!selectedWindow || selectedWindow.kind !== 'window') return;
     const w = selectedWindow.w + dw;
@@ -1071,6 +1114,18 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Fenêtre sur toute la hauteur du mur" data={{ action: 'win-h-full' }} onClick={() => stretchSelected('height')}><Icon paths={ICONS.heightFull} /></Btn>
               </>
             )}
+            {selectedItem && hasCitySetting(selectedItem) && (
+              <Btn label="Choisir la ville" data={{ action: 'deco-city' }} onClick={() => setDecoDialog({ type: 'city', id: selectedItem.id })}><Icon paths={ICONS.globe} /></Btn>
+            )}
+            {selectedPanel && (
+              <>
+                <Btn label="Écrire" data={{ action: 'deco-write' }} onClick={() => setDecoDialog({ type: 'text', id: selectedPanel.id })}><Icon paths={ICONS.pencil} /></Btn>
+                <Btn label="Panneau plus étroit" data={{ action: 'deco-w-' }} onClick={() => resizePanel(-1, 0)}><Icon paths={ICONS.widthMinus} /></Btn>
+                <Btn label="Panneau plus large" data={{ action: 'deco-w+' }} onClick={() => resizePanel(1, 0)}><Icon paths={ICONS.widthPlus} /></Btn>
+                <Btn label="Panneau moins haut" data={{ action: 'deco-h-' }} onClick={() => resizePanel(0, -1)}><Icon paths={ICONS.heightMinus} /></Btn>
+                <Btn label="Panneau plus haut" data={{ action: 'deco-h+' }} onClick={() => resizePanel(0, 1)}><Icon paths={ICONS.heightPlus} /></Btn>
+              </>
+            )}
           </ActionBubble>
         )}
         {editing && !outside && placement && (
@@ -1103,11 +1158,39 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Fenêtre sur toute la hauteur du mur" data={{ action: 'win-h-full' }} onClick={() => editPlacing({ type: 'stretch', axis: 'height' })}><Icon paths={ICONS.heightFull} /></Btn>
               </>
             )}
+            {placingPanel && (
+              <>
+                <Btn label="Panneau plus étroit" data={{ action: 'deco-w-' }} onClick={() => editPlacing({ type: 'size', w: decoSizeOf(placingPanel).w - 1, h: decoSizeOf(placingPanel).h })}><Icon paths={ICONS.widthMinus} /></Btn>
+                <Btn label="Panneau plus large" data={{ action: 'deco-w+' }} onClick={() => editPlacing({ type: 'size', w: decoSizeOf(placingPanel).w + 1, h: decoSizeOf(placingPanel).h })}><Icon paths={ICONS.widthPlus} /></Btn>
+                <Btn label="Panneau moins haut" data={{ action: 'deco-h-' }} onClick={() => editPlacing({ type: 'size', w: decoSizeOf(placingPanel).w, h: decoSizeOf(placingPanel).h - 1 })}><Icon paths={ICONS.heightMinus} /></Btn>
+                <Btn label="Panneau plus haut" data={{ action: 'deco-h+' }} onClick={() => editPlacing({ type: 'size', w: decoSizeOf(placingPanel).w, h: decoSizeOf(placingPanel).h + 1 })}><Icon paths={ICONS.heightPlus} /></Btn>
+              </>
+            )}
           </PlacementBar>
         )}
         {editing && !outside && placement && placingItem && (
           <PlacementGrip stage={stage.ref.current} scroll={scrollRef.current} targetId={placingView(placement).id} onGrab={(event) => { event.preventDefault(); followPlacement({ x: event.clientX, y: event.clientY }); }} />
         )}
+        {decoDialog?.type === 'city' && (
+          <CityPickerDialog
+            current={(layout.find((p) => p.id === decoDialog.id) as { city?: CityTime } | undefined)?.city}
+            sceneMinutes={sceneTime.minutes}
+            onChoose={(city) => { void editLayout((l) => setDecoSettings(l, decoDialog.id, { city })); setDecoDialog(null); }}
+            onClose={() => setDecoDialog(null)}
+          />
+        )}
+        {decoDialog?.type === 'text' && (() => {
+          const p = layout.find((x) => x.id === decoDialog.id) as DecoPlaced | undefined;
+          return p ? (
+            <DecoTextDialog
+              title={labelOf(p.deco)}
+              text={p.text ?? ''}
+              neon={p.deco === 'panel-neon' ? (p.neon ?? 'pink') : undefined}
+              onSave={(text, neon) => { void editLayout((l) => setDecoSettings(l, p.id, { text, ...(neon ? { neon } : {}) })); setDecoDialog(null); }}
+              onClose={() => setDecoDialog(null)}
+            />
+          ) : null;
+        })()}
         {picking && <CardPickerDialog cards={roomCards.list} taken={placedSlugs(layout)} categoryOf={roomCards.categoryOf} kinds={roomCards.kinds} allowed={['wall', 'shelf', 'screen']} onChoose={chooseCard} onClose={() => setPicking(false)} />}
         {/* Vue de face : sœur du conteneur de défilement, elle n'hérite ni du flou ni de la caméra ; la fiche passe par-dessus. */}
         {zoom && !editing && (
@@ -1117,6 +1200,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             room={room}
             cards={roomCards.cards}
             imageOf={imageOfCard}
+            sceneView={sceneView}
             phase={zoom.phase}
             from={zoom.from}
             stage={stageSize}

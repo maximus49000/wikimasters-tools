@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { inDecoDialog } from './deco-dialog-guard';
 import { createRoot, type Root } from 'react-dom/client';
 import type { PurchaseModel } from '../core/pricing/badge';
 import type { MarketRepo } from '../core/market/market-repo';
@@ -258,7 +259,7 @@ function openSettingsWindow(hostAttribute: string, render: (close: () => void) =
     host.remove();
   }
   function onKey(event: KeyboardEvent) {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape' || inDecoDialog(event)) return;
     event.stopPropagation();
     close();
   }
@@ -374,7 +375,7 @@ function openMarketPopup(
     host.remove();
   }
   function onKey(event: KeyboardEvent) {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape' || inDecoDialog(event)) return;
     event.stopPropagation();
     close();
   }

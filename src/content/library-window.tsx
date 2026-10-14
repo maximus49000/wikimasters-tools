@@ -1,4 +1,5 @@
 import { createRoot, type Root } from 'react-dom/client';
+import { inDecoDialog } from './deco-dialog-guard';
 import type { CollectionRepo } from '../core/collection/collection-repo';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import { setActive } from '../core/library/library-book';
@@ -61,7 +62,7 @@ export function createLibraryWindow({ library, collection, kinds, onOpenCard, on
     document.body.appendChild(host);
     const root = createRoot(mountPoint);
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || document.fullscreenElement) return;
+      if (event.key !== 'Escape' || document.fullscreenElement || inDecoDialog(event)) return;
       event.stopPropagation();
       close();
     };

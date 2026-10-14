@@ -1,12 +1,13 @@
 import type { CardChoice } from './CardPickerDialog';
 import { deskAtCell, dropTargetFor, type DropTarget, type GhostPx } from './furniture-drag';
-import { SMALL_ITEM_OF, WINDOW_DEFAULT, isSmallKind, isStandingKind } from '../core/library/furniture-catalog';
+import { SMALL_ITEM_OF, WINDOW_DEFAULT, isDecoKind, isSmallKind, isStandingKind } from '../core/library/furniture-catalog';
+import { decoDefaultSize, isPanel } from '../core/library/deco';
 import { nextFurnitureId } from '../core/library/library-book';
 import { applyMatrix, rotateAngle, type Angle } from '../core/library/footprint';
 import type { FurnitureKind, Layout, Placed, ShelfLevel, StoredDisplay } from '../core/library/library-types';
 import {
   CELL_H, CELL_W, ROWS, angleOf, isStanding, setAngle, firstFreeBoard, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
-  placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, SHELF_GAP_CM, SHELF_INNER_CM, boardItems, boardUsedCm, displayOf, shelfBoardsOf, shelfLayoutOf, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect, type StoredLike,
+  placeStanding, pxRect, rectOf, resizeDeco, resizeWindow, setScreenCard, SHELF_GAP_CM, SHELF_INNER_CM, boardItems, boardUsedCm, displayOf, shelfBoardsOf, shelfLayoutOf, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect, type StoredLike,
 } from '../core/library/room-grid';
 import { forgetUnlinkOnMove } from '../core/library/shelf-link';
 
@@ -53,6 +54,7 @@ function probeOf(subject: Subject): Placed | null {
   }
   const kind = subject.kind;
   if (kind === 'window') return { id: DRAFT_ID, kind: 'window', col: 0, row: 0, ...WINDOW_DEFAULT };
+  if (isDecoKind(kind)) return { id: DRAFT_ID, kind: 'deco', deco: kind, col: 0, row: 0, ...(isPanel(kind) ? decoDefaultSize(kind) : {}) };
   if (kind === 'computer') return { id: DRAFT_ID, kind: 'computer', deskId: '' };
   if (isSmallKind(kind)) return { id: DRAFT_ID, kind: 'small', item: SMALL_ITEM_OF[kind], hostId: '', slot: 0 };
   if (isStandingKind(kind)) return { id: DRAFT_ID, kind, col: 0, row: 0 };
@@ -105,7 +107,7 @@ function build(p: Placement, cols: number, t: DropTarget): Layout | null {
     if (item.kind === 'stored') return t.shelfId !== undefined && t.level !== undefined && t.order !== undefined ? moveStored(base, p.id, t.shelfId, t.level, t.order) : null;
     if (t.col === undefined || t.top === undefined) return null;
     // Fenêtre : la cible a été validée à sa taille courante (retouchée) ; elle est posée là, puis sa taille est rejouée.
-    if (item.kind === 'window') return withItemAt(base, p.id, t.col, t.top);
+    if (item.kind === 'window' || item.kind === 'deco') return withItemAt(base, p.id, t.col, t.top);
     if (item.kind === 'wall') return moveHung(base, cols, p.id, t.col, t.top);
     return moveStanding(base, cols, p.id, t.col, t.top, p.angle);
   }
@@ -118,6 +120,8 @@ function build(p: Placement, cols: number, t: DropTarget): Layout | null {
   const kind = s.kind;
   // Fenêtre neuve : posée de force à la cible (validée avec sa taille courante), la taille est rejouée ensuite.
   if (kind === 'window') return t.col !== undefined && t.top !== undefined ? withItemAt(withProbe(base, p.probe), DRAFT_ID, t.col, t.top) : null;
+  // Objet décoratif neuf (horloge, météomètre, panneau) : posé comme la fenêtre, sa taille est rejouée ensuite.
+  if (isDecoKind(kind)) return t.col !== undefined && t.top !== undefined ? withItemAt(withProbe(base, p.probe), DRAFT_ID, t.col, t.top) : null;
   if (kind === 'computer') return t.deskId ? placeComputer(base, t.deskId, DRAFT_ID) : null;
   if (isSmallKind(kind)) return t.hostId ? placeSmall(base, t.hostId, SMALL_ITEM_OF[kind], DRAFT_ID) : null;
   if (isStandingKind(kind)) return t.col !== undefined && t.top !== undefined ? placeStanding(base, cols, kind, t.col, t.top, DRAFT_ID, p.angle) : null;
@@ -139,7 +143,7 @@ function applyEdit(layout: Layout, cols: number, id: string, e: Edit): Layout | 
     const next = toggleLamp(layout, id);
     return next === layout ? null : next;
   }
-  if (e.type === 'size') return resizeWindow(layout, cols, id, e.w, e.h);
+  if (e.type === 'size') return layout.find((x) => x.id === id)?.kind === 'deco' ? resizeDeco(layout, cols, id, e.w, e.h) : resizeWindow(layout, cols, id, e.w, e.h);
   const r = stretchWindow(layout, cols, id, e.axis);
   return r.ok ? r.layout : null;
 }

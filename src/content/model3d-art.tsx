@@ -119,7 +119,7 @@ function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?
 }
 
 // Contenu d'un objet posé : image et titre de sa carte, lampe allumée ou non.
-export type ItemContent = { url?: string; title?: string; lit?: boolean };
+export type ItemContent = { url?: string; title?: string; lit?: boolean; face?: { key: string; draw: (w: number, h: number) => ReactElement } };
 
 const cut = (title: string, max: number) => (title.length > max ? `${title.slice(0, Math.max(1, max - 1))}…` : title);
 const GAME_RED = '#E24B4A';
@@ -159,6 +159,7 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
       </>
     );
   }
+  if (role === 'face') return content?.face ? content.face.draw(w, h) : <rect width={w} height={h} fill="#1D1F22" />;
   if (role === 'screen') {
     return url ? <image href={url} width={w} height={h} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" /> : <rect width={w} height={h} fill={PLACEHOLDER} />;
   }
@@ -322,4 +323,4 @@ function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content,
 export const CarriedItem3D = memo(CarriedItem3DImpl, (a, b) => a.host === b.host && a.angle === b.angle && a.palette === b.palette && a.steampunk === b.steampunk
   && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
   && itemsKey([a.placement]) === itemsKey([b.placement])
-  && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit);
+  && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit && a.content?.face?.key === b.content?.face?.key);
