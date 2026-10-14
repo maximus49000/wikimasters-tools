@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LibraryPanel } from '../../src/content/LibraryPanel';
+import { LIBRARY_CSS, LibraryPanel } from '../../src/content/LibraryPanel';
 import { createMemoryStore } from '../../src/core/cache/store';
 import { activeRoom, updateLayout } from '../../src/core/library/library-book';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
@@ -121,5 +121,35 @@ describe('fenêtres ville et écrire', () => {
     expect(document.activeElement).toBe(input);
     await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
     expect(q('[data-city-search]')).toBeNull();
+  });
+  it('toucher le fond ne ferme pas la fenêtre de texte et garde le brouillon (geste pour cacher le clavier Android)', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-id="p1"]');
+    await click('[data-action="deco-write"]');
+    await type('[data-deco-text]', 'Brouillon');
+    await click('[data-wmt-deco-dialog]');
+    expect((q('[data-deco-text]') as HTMLTextAreaElement | null)?.value).toBe('Brouillon');
+    await click('[data-action="deco-text-ok"]');
+    expect(item('p1')).toMatchObject({ text: 'Brouillon' });
+  });
+  it('toucher le fond ferme la fenêtre ville', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-id="c1"]');
+    await click('[data-action="deco-city"]');
+    await click('[data-wmt-deco-dialog]');
+    expect(q('[data-city-search]')).toBeNull();
+  });
+  it('la zone de texte et le champ de recherche ont un libellé accessible', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-id="p1"]');
+    await click('[data-action="deco-write"]');
+    expect(q('[data-deco-text]')!.getAttribute('aria-label')).toBeTruthy();
+    await click('[data-action="deco-text-close"]');
+    await click('[data-id="c1"]');
+    await click('[data-action="deco-city"]');
+    expect(q('[data-city-search]')!.getAttribute('aria-label')).toBeTruthy();
+  });
+  it('les pastilles de couleur du néon font 44 px (cible tactile)', () => {
+    expect(LIBRARY_CSS).toMatch(/\.wmt-neon-dot\{width:44px;height:44px/);
   });
 });

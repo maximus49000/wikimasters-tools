@@ -134,7 +134,7 @@ export const LIBRARY_CSS = `
 .wmt-city-list button{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:44px;padding:0 10px;border-radius:8px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .wmt-city-list button[aria-pressed="true"]{border-color:var(--color-accent,#34d399)}
 .wmt-city-list button span{font-variant-numeric:tabular-nums;opacity:.8}
-.wmt-neon-dot{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+.wmt-neon-dot{width:44px;height:44px;border-radius:50%;border:2px solid transparent;cursor:pointer}
 .wmt-neon-dot[aria-pressed="true"]{border-color:var(--color-foreground,#e6edf3)}
 .wmt-lib-dialog-panel textarea{width:100%;box-sizing:border-box;resize:vertical;font:inherit;padding:8px;border-radius:8px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit}
 .wmt-lib-dialog-panel{box-sizing:border-box;width:100%;max-width:min(92vw,480px);max-height:80vh;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:var(--color-surface,#0d1117);color:var(--color-foreground,#e6edf3);font:14px/20px system-ui,sans-serif}

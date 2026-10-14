@@ -1,5 +1,5 @@
+// Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 2026-10-17), reprise Fable prévue.
 // src/core/library/item-models.ts
-// Dessin provisoire Opus — reprise Fable prévue.
 import { crown } from './furniture-models';
 import type { BoxFace, Decal, Model, Piece } from './furniture-render3d';
 import type { ShelfShape, StoredDisplay } from './library-types';

@@ -30,7 +30,7 @@ export function CityPickerDialog({ current, sceneMinutes, onChoose, onClose }: P
           <span className="wmt-lib-sep">Heure de quelle ville ?</span>
           <Btn label="Fermer" data={{ action: 'deco-city-close' }} onClick={onClose}><Icon paths={ICONS.close} /></Btn>
         </div>
-        <input type="search" data-city-search="" placeholder="Chercher une ville…" value={query} onChange={(e) => setQuery(e.currentTarget.value)} autoFocus />
+        <input type="search" data-city-search="" aria-label="Chercher une ville" placeholder="Chercher une ville…" value={query} onChange={(e) => setQuery(e.currentTarget.value)} autoFocus />
         <div className="wmt-city-list">
           <button type="button" data-city-tz="" aria-pressed={!current} onClick={() => onChoose(null)}>
             📍 Heure de la scène <span>{formatMinutes(sceneMinutes)}</span>
