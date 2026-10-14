@@ -19,7 +19,7 @@
 - Pas de migration : la pièce reste en version 7.
 - Commentaires et libellés en français, style du fichier voisin (densité de commentaires comparable).
 - Commits : messages en français, préfixe `feat(bibliotheque):` / `test(bibliotheque):` / `docs(bibliotheque):`, terminés par `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- Ne jouer que les familles touchées (`scene-piece`, `scene-animaux`, `scene-lumiere`, et la famille des fiches WikiHow pour la tâche 7) ; pas de TNR global.
+- Ne jouer que les familles touchées (`scene-piece`, `scene-animaux`, `scene-lumiere`) ; pas de TNR global.
 
 ## Review Focus
 
@@ -1297,72 +1297,7 @@ git commit -m "feat(bibliotheque): table des rôles des meubles pour les animaux
 
 ---
 
-### Task 7: Fiche WikiHow et « Quoi de neuf »
-
-**Files:**
-- Modify: `src/core/whats-new/entries.ts` (nouvelle entrée en fin de `ENTRIES`)
-- Test: `tests/core/whats-new/entries.test.ts` (exécuté tel quel : il valide toutes les fiches)
-
-**Interfaces:**
-- Consumes: rien.
-- Produces: fiche `bibliotheque-v31`.
-
-- [ ] **Step 1: Write the entry** (dernier élément de `ENTRIES`, après `bibliotheque-v30`)
-
-```ts
-  {
-    id: 'bibliotheque-v31',
-    theme: 'collection',
-    glyph: '🪴',
-    title: 'De nouveaux meubles pour votre pièce',
-    summary: 'Neuf assises, une commode, un guéridon, un arbre à chat, cinq grandes plantes, une lanterne et un lampadaire arc',
-    steps: [
-      {
-        target: '[data-wmt-library-entry]',
-        gesture: 'tap',
-        title: 'Où trouver les nouveaux meubles',
-        text: 'Dans Ma Pièce, passez en Aménager puis ouvrez le tiroir de construction : les Assises se rangent maintenant en Chaises et fauteuils, Canapés, Poufs et bancs ; la commode est dans Rangement, l’arbre à chat dans Pour animaux ; les plantes, la lanterne, le lampadaire arc et le guéridon sont dans Déco.',
-        details: [
-          { label: 'À quoi ça sert', text: 'À meubler la pièce plus librement : rocking chair, chauffeuse, canapé deux places, méridienne, fauteuil œuf, fauteuil paon, pouf marocain, pouf poire, banc, commode, guéridon, arbre à chat, monstera, oiseau de paradis, palmier, cactus, pampas, lanterne en papier et lampadaire arc.' },
-          { label: 'Comment ça marche', text: 'Chaque meuble est dessiné à ses vraies dimensions et prend les couleurs du style de la pièce. Il se pose, se tourne sur 8 angles, avance et recule comme les autres.' },
-        ],
-        scene: { page: '/collection', closeWindows: true },
-      },
-      {
-        target: '[data-wmt-library-entry]',
-        title: 'Les animaux s’en servent',
-        text: 'Le chat dort sur les nouvelles assises, se perche sur la commode, le guéridon et en haut de l’arbre à chat, et se cache sous le canapé deux places. Le chien monte maintenant sur tous les canapés et sur les poufs. Le robot reste au sol.',
-        details: [
-          { label: 'Comment ça marche', text: 'Chaque meuble dit ce qu’il offre aux animaux (place assise, couchage, dessus, cachette) ; le chat grimpe jusqu’à 1,50 m, le haut de l’arbre à chat compris.' },
-          { label: 'Limites', text: 'Pour l’instant, le chat n’utilise que le haut de l’arbre à chat, et le rocking chair et le fauteuil œuf ne se balancent pas encore : ces gestes viendront dans une prochaine version.' },
-        ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
-      },
-      {
-        target: '[data-wmt-library-entry]',
-        title: 'Deux nouvelles lumières',
-        text: 'La lanterne en papier et le lampadaire arc éclairent la pièce comme le lampadaire : touchez-les en Visiter pour les allumer ou les éteindre. Le lampadaire arc ne pose au sol que son socle : son globe passe au-dessus d’un fauteuil ou du rocking chair.',
-        details: [
-          { label: 'Comment faire', text: 'Posez le socle à côté du fauteuil, le globe vient au-dessus de lui : la pose est acceptée tant que le socle n’est pas sur un autre meuble.' },
-          { label: 'Limites', text: 'La lanterne éclaire avec la même portée qu’un lampadaire, même si sa lumière est plus douce.' },
-        ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
-      },
-    ],
-  },
-```
-
-- [ ] **Step 2: Run tests**
-
-Run: `npx vitest run tests/core/whats-new`
-Expected: PASS (si un test exige un champ absent — par ex. `fresh` ou une date —, reprendre exactement les champs de `bibliotheque-v30`).
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/core/whats-new/entries.ts
-git commit -m "docs(bibliotheque): fiche WikiHow des nouveaux meubles"
-```
+### Task 7: (retirée — pas de fiche WikiHow pour ce lot, décision de l’utilisateur du 2026-10-14)
 
 ---
 
@@ -1393,7 +1328,7 @@ Lancer avec Vite (`npx vite --config .superpowers/harness-mobilier/vite.config.t
 
 - [ ] **Step 1: Familles touchées**
 
-Run: `npx tsc --noEmit && npm run test:famille -- scene-piece scene-lumiere scene-animaux` puis la famille qui contient `whats-new.*` (lire son nom dans `tests/familles.ts`, ligne 61).
+Run: `npx tsc --noEmit && npm run test:famille -- scene-piece scene-lumiere scene-animaux`.
 Expected: PASS.
 
 - [ ] **Step 2: Construction**

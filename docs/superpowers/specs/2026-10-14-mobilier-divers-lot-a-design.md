@@ -118,13 +118,7 @@ La lanterne a une lumière plus diffuse qu'un abat-jour, mais elle utilise la m�
 
 ## 7. Guide
 
-Dans la même PR : nouvelle fiche WikiHow « De nouveaux meubles pour votre pièce » (nouvel id, `entries.ts`) en étapes text + how + tip :
-- à quoi servent les nouveaux meubles et où les trouver dans le tiroir ;
-- ce que font les animaux (le chien sur les canapés et les poufs, le chat partout où il peut grimper) ;
-- le lampadaire arc au-dessus d'un fauteuil, la lanterne qui s'allume ;
-- limites : balancements, arbre à chat complet et sieste près de la lanterne arrivent plus tard.
-
-Annonce dans « Quoi de neuf » (id jamais annoncé).
+Pas de fiche WikiHow ni d’annonce « Quoi de neuf » pour ce lot (décision de l’utilisateur, 2026-10-14).
 
 ## 8. Tests
 
