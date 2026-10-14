@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ShelfLevel } from '../core/library/library-types';
 import type { Box, ZoomTarget } from '../core/library/zoom-target';
 import { ZOOM_MS, ZOOM_REDUCED_MS, type ZoomPhase } from './furniture-zoom';
 import { reducedMotion } from './ghibli-sky';
 
-export type ZoomState = { target: ZoomTarget; from: Box | null; phase: ZoomPhase };
+export type ZoomState = { target: ZoomTarget; from: Box | null; phase: ZoomPhase; level: ShelfLevel | null };
 
 // État du zoom sur un meuble : ouverture (500 ms), ouvert, fermeture (500 ms). Une entrée d'historique est posée à l'ouverture,
 // pour que le retour Android (WebView.goBack) ou celui du navigateur ferme le zoom ; ← et Échap la retirent eux-mêmes.
 // onBeforeClose : appelé au retour ; s'il renvoie vrai (il vient de fermer ce qui couvrait le zoom, la fiche), le zoom reste.
-export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomState | null; open: (target: ZoomTarget, from: Box | null) => void; close: () => void; reset: () => void } {
+export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomState | null; open: (target: ZoomTarget, from: Box | null) => void; close: () => void; reset: () => void; setLevel: (level: ShelfLevel | null) => void } {
   const [zoom, setZoom] = useState<ZoomState | null>(null);
   const beforeClose = useRef(onBeforeClose);
   beforeClose.current = onBeforeClose;
@@ -19,11 +20,14 @@ export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomSta
 
   const finishClose = () => later(() => setZoom(null));
   const open = (target: ZoomTarget, from: Box | null) => {
-    setZoom({ target, from, phase: 'opening' });
+    setZoom({ target, from, phase: 'opening', level: null });
     later(() => setZoom((z) => (z ? { ...z, phase: 'open' } : z)));
     history.pushState({ ...(history.state ?? {}), wmtZoom: true }, '');
     ours.current = true;
   };
+  // Second zoom : la tablette `level` (null : retour à la vue de face). Pas d'entrée d'historique en plus : le retour Android
+  // passe par onBeforeClose, qui ramène à la vue de face.
+  const setLevel = (level: ShelfLevel | null) => setZoom((z) => (z ? { ...z, level } : z));
   // ← / Échap / fond : retire notre entrée d'historique (le popstate qui suit est ignoré), puis anime la fermeture.
   const close = () => {
     setZoom((z) => (z && z.phase !== 'closing' ? { ...z, phase: 'closing' } : z));
@@ -60,5 +64,5 @@ export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomSta
     return () => { window.removeEventListener('popstate', onPop); window.clearTimeout(timer.current); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { zoom, open, close, reset };
+  return { zoom, open, close, reset, setLevel };
 }

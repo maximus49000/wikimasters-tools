@@ -1,8 +1,12 @@
 import type { Layout } from './library-types';
+import { shelfGroupOf } from './shelf-link';
 
-// Meuble qui ouvre la vue zoomée : une étagère qui range au moins une carte, ou un bureau dont l'ordinateur affiche une carte.
-export type ZoomTarget = { kind: 'shelf' | 'desk'; id: string };
+// Meuble qui ouvre la vue zoomée : une étagère (avec sa partenaire liée) dont l'une range au moins une carte,
+// ou un bureau dont l'ordinateur affiche une carte.
+export type ZoomTarget = { kind: 'shelf'; ids: string[] } | { kind: 'desk'; id: string };
 export type Box = { x: number; y: number; w: number; h: number };
+
+export const zoomIdsOf = (t: ZoomTarget): string[] => (t.kind === 'shelf' ? t.ids : [t.id]);
 
 // Toucher une carte rangée vise son étagère, toucher un ordinateur vise son bureau.
 export function zoomTargetOf(layout: Layout, id: string): ZoomTarget | null {
@@ -10,9 +14,21 @@ export function zoomTargetOf(layout: Layout, id: string): ZoomTarget | null {
   if (!item) return null;
   if (item.kind === 'stored') return zoomTargetOf(layout, item.shelfId);
   if (item.kind === 'computer') return zoomTargetOf(layout, item.deskId);
-  if (item.kind === 'shelf') return layout.some((p) => p.kind === 'stored' && p.shelfId === id) ? { kind: 'shelf', id } : null;
+  if (item.kind === 'shelf') {
+    const ids = shelfGroupOf(layout, id);
+    return layout.some((p) => p.kind === 'stored' && ids.includes(p.shelfId)) ? { kind: 'shelf', ids } : null;
+  }
   if (item.kind === 'desk') return layout.some((p) => p.kind === 'computer' && p.deskId === id && p.slug) ? { kind: 'desk', id } : null;
   return null;
+}
+
+// Rectangle englobant (caméra sur deux bibliothèques) ; null si aucun n'est mesuré.
+export function unionBox(boxes: (Box | null)[]): Box | null {
+  const b = boxes.filter((x): x is Box => x !== null);
+  if (b.length === 0) return null;
+  const x = Math.min(...b.map((r) => r.x));
+  const y = Math.min(...b.map((r) => r.y));
+  return { x, y, w: Math.max(...b.map((r) => r.x + r.w)) - x, h: Math.max(...b.map((r) => r.y + r.h)) - y };
 }
 
 // Caméra : translation puis agrandissement (origine en haut à gauche du conteneur) qui amène le centre du meuble au centre

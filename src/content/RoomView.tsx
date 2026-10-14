@@ -65,6 +65,8 @@ type Props = {
   // Les cases captent les touchers (une pose ou un déplacement est en cours) ; sinon ce sont les meubles.
   cellsActive: boolean;
   selectedId: string | null;
+  // Bibliothèque liée à celle sélectionnée (Aménager) : même contour, pour voir le lien.
+  linkedId?: string | null;
   blink: Cell[];
   onCell: (col: number, row: number) => void;
   onPick: (id: string) => void;
@@ -131,7 +133,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, fitScreen = false, fillHeight, outside = false, roomLayers = 'shown' }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, linkedId = null, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, fitScreen = false, fillHeight, outside = false, roomLayers = 'shown' }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -233,8 +235,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   }, [room.layout]);
   const hostOf = (hostId: string): Host | null => hosts.get(hostId) ?? null;
   const topPlacement = (placed: Placed) => topPlacementIn(hosts, placed);
-  const outline = (rect: PxRect) => (
-    <rect x={rect.x - 3} y={rect.y - 3} width={rect.w + 6} height={rect.h + 6} rx={6} fill="none" stroke="#378ADD" strokeWidth={2.5} strokeDasharray="6 4" />
+  const outline = (rect: PxRect, kind: 'selected' | 'linked' = 'selected') => (
+    <rect data-outline={kind} x={rect.x - 3} y={rect.y - 3} width={rect.w + 6} height={rect.h + 6} rx={6} fill="none" stroke="#378ADD" strokeWidth={2.5} strokeDasharray="6 4" />
   );
 
   // Copie soulevée d'un dessin (un peu plus grande, en transparence) qui suit le doigt ; `anchor` : le rectangle que le doigt tient.
@@ -336,6 +338,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           {art}
           {decor.glow && placed.kind !== 'rug' && neonOutline(rect, decor.glow)}
           {editing && selectedId === placed.id && outline(rect)}
+          {editing && linkedId === placed.id && outline(rect, 'linked')}
           {(() => {
             const hit = isStanding(placed) ? hitRectOf(placed) : rect;
             return <rect x={hit.x} y={hit.y} width={hit.w} height={hit.h} fill="transparent" />;

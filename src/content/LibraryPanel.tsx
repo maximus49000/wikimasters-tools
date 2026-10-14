@@ -24,7 +24,7 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { STEAMPUNK_ONLY, isSmallKind, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
-import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay } from '../core/library/library-types';
+import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay } from '../core/library/library-types';
 import type { LibraryRepo } from '../core/library/library-repo';
 import {
   MAX_COLS,
@@ -71,6 +71,7 @@ import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
+import { canToggleShelfLink, forgetUnlinkOnMove, shelfGroupOf, toggleShelfLink } from '../core/library/shelf-link';
 import { canRotate, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, rotatePlacement, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
 import { PlacementBar, PlacementGrip } from './placement-bar';
 import { pointerToCell } from './furniture-drag';
@@ -93,7 +94,7 @@ import { BuildDrawer, INITIAL_DRAWER, type DrawerState } from './build-drawer';
 import { ActionBubble } from './action-bubble';
 import { useOutsideCamera, type OutsidePhase } from './outside/use-outside-camera';
 import type { Rect } from '../core/library/outside-camera';
-import { cameraOf, zoomTargetOf, type Box } from '../core/library/zoom-target';
+import { cameraOf, unionBox, zoomIdsOf, zoomTargetOf, type Box } from '../core/library/zoom-target';
 import { FurnitureZoom, ZOOM_MS, ZOOM_REDUCED_MS } from './furniture-zoom';
 import { useFurnitureZoom } from './use-furniture-zoom';
 import { reducedMotion } from './ghibli-sky';
@@ -186,6 +187,14 @@ export const LIBRARY_CSS = `
 .wmt-lib-zoom-backdrop{position:absolute;inset:0;background:transparent}
 .wmt-lib-zoom-piece{position:absolute;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
 @keyframes wmt-zoom-pivot{0%{transform:scaleX(1)}50%{transform:scaleX(0)}100%{transform:scaleX(1)}}
+.wmt-lib-board{position:absolute;left:3%;right:64px;top:10%;bottom:10%;display:flex;align-items:center;justify-content:center;touch-action:none;pointer-events:none}
+.wmt-lib-board svg{width:100%;height:100%;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45));pointer-events:none}
+.wmt-lib-board svg>*{pointer-events:auto}
+.wmt-lib-board-nav{position:absolute;right:-56px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:12px;pointer-events:auto}
+.wmt-lib-board-nav .wmt-lib-fab:disabled{opacity:.35;cursor:default}
+@keyframes wmt-board-in{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+@keyframes wmt-board-below{from{opacity:0;transform:translateY(40%)}to{opacity:1;transform:none}}
+@keyframes wmt-board-above{from{opacity:0;transform:translateY(-40%)}to{opacity:1;transform:none}}
 .wmt-lib-fab{position:absolute;top:8px;z-index:7;width:38px;height:38px;padding:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--sims-panel);border:2px solid var(--sims-line);color:var(--sims-blue);box-shadow:0 2px 6px rgba(0,0,0,.35)}
 .wmt-lib-fab:disabled{opacity:.6}
 .wmt-lib-switch{position:absolute;top:8px;right:54px;z-index:7;display:flex;gap:2px;padding:3px;border-radius:19px;background:var(--sims-panel);border:2px solid var(--sims-line);box-shadow:0 2px 6px rgba(0,0,0,.35)}
@@ -214,14 +223,25 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const viewingRef = useRef(viewing);
   viewingRef.current = viewing;
   // Zoom de face sur une étagère ou un bureau (Visiter) ; zoomRef : zoom courant relu par les gestionnaires.
-  // Le retour Android/navigateur ferme d'abord la fiche ouverte par-dessus le zoom.
-  const { zoom, open: openZoom, close: closeZoom, reset: resetZoom } = useFurnitureZoom(() => {
-    if (!viewingRef.current) return false;
-    setViewing(null);
-    return true;
+  // Le retour Android/navigateur ferme d'abord la fiche ouverte par-dessus le zoom, puis le second zoom (retour à la vue de face).
+  const { zoom, open: openZoom, close: closeZoom, reset: resetZoom, setLevel: setZoomLevel } = useFurnitureZoom(() => {
+    if (viewingRef.current) {
+      setViewing(null);
+      return true;
+    }
+    if (zoomRef.current?.level != null) {
+      setZoomLevel(null);
+      return true;
+    }
+    return false;
   });
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  // ←, Échap, fond : du second zoom à la vue de face, puis de la vue de face à la pièce.
+  const zoomBack = (): void => {
+    if (zoomRef.current?.level != null) setZoomLevel(null);
+    else closeZoom();
+  };
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
   const [drawer, setDrawer] = useState<DrawerState>(INITIAL_DRAWER);
@@ -347,7 +367,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const zoomOpen = zoom !== null;
   useEffect(() => {
     if (!zoomOpen) return;
-    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current) closeZoom(); };
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current) zoomBack(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [zoomOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -512,6 +532,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     reset();
     showPlacement(displayPlacement(start, room.cols, display));
   };
+  // Avancer / Reculer : un déplacement comme un autre (une bibliothèque y oublie son refus de lien ⛓).
+  const shiftRowOf = (l: Layout, id: string, delta: 1 | -1): Layout | null => {
+    const next = shiftRow(l, room.cols, id, delta);
+    return next && forgetUnlinkOnMove(l, next, id);
+  };
   // ✓ : une seule écriture, puis retour au tiroir ; après un déplacement, l'objet reste sélectionné.
   const confirmPlacement = async (): Promise<void> => {
     if (!placement) return;
@@ -668,7 +693,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (outsidePhase !== 'inside') return false;
     const target = zoomTargetOf(layout, id);
     if (!target) return false;
-    openZoom(target, boxInStage(target.id));
+    openZoom(target, unionBox(zoomIdsOf(target).map(boxInStage)));
     return true;
   };
 
@@ -727,6 +752,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const selectedLamp = selectedItem && isLamp(selectedItem) ? { id: selectedItem.id, on: isLit(selectedItem) } : null;
   const selectedDisplay = selectedItem?.kind === 'stored' ? displayOf(selectedItem) : null;
   const placingDisplay = placement ? displayOfPlacement(placement) : null;
+  // Bibliothèque sélectionnée : sa partenaire liée (contour) et le bouton ⛓ quand l'appui change quelque chose.
+  const selectedShelf = selectedItem?.kind === 'shelf' ? selectedItem : undefined;
+  const linkedToSelected = selectedShelf ? (shelfGroupOf(layout, selectedShelf.id).find((id) => id !== selectedShelf.id) ?? null) : null;
   const selectedStanding = editing && selectedItem && isStanding(selectedItem) && selectedItem.kind !== 'rug' ? selectedItem : undefined;
   const selectedWindow = editing ? layout.find((p) => p.id === selectedId && p.kind === 'window') : undefined;
   const resizeSelected = (dw: number, dh: number): void => {
@@ -963,6 +991,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             editing={editing}
             cellsActive={cellsActive}
             selectedId={selectedId}
+            linkedId={editing ? linkedToSelected : null}
             blink={blink}
             sceneView={sceneView}
             light={lightOn}
@@ -1015,10 +1044,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Tourner à droite" data={{ action: 'rotate-right' }} onClick={() => rotateSelected(-1)}><Icon paths={ICONS.rotateRight} /></Btn>
               </>
             )}
+            {selectedShelf && canToggleShelfLink(layout, selectedShelf.id) && (
+              <Btn label={linkedToSelected ? 'Délier les bibliothèques' : 'Relier les bibliothèques'} pressed={linkedToSelected !== null} data={{ action: 'shelf-link' }} onClick={() => void editLayout((l) => toggleShelfLink(l, selectedShelf.id))}>
+                <Icon paths={linkedToSelected ? ICONS.link : ICONS.unlink} />
+              </Btn>
+            )}
             {selectedStanding && (
               <>
-                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftRow(l, room.cols, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
-                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftRow(l, room.cols, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
+                <Btn label="Avancer" data={{ action: 'depth-front' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, 1)} onClick={() => void editLayout((l) => shiftRowOf(l, selectedStanding.id, 1))}><Icon paths={ICONS.depthFront} /></Btn>
+                <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftRowOf(l, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
               </>
             )}
             {selectedDisplay && <DisplayButtons current={selectedDisplay} onChoose={displaySelected} />}
@@ -1078,7 +1112,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         {/* Vue de face : sœur du conteneur de défilement, elle n'hérite ni du flou ni de la caméra ; la fiche passe par-dessus. */}
         {zoom && !editing && (
           <FurnitureZoom
-            key={zoom.target.id}
+            key={zoomIdsOf(zoom.target).join('+')}
             target={zoom.target}
             room={room}
             cards={roomCards.cards}
@@ -1086,8 +1120,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             phase={zoom.phase}
             from={zoom.from}
             stage={stageSize}
+            level={zoom.level}
+            onLevel={(lv) => setZoomLevel(lv)}
             onCard={(slug) => setViewing(slug)}
-            onBack={closeZoom}
+            onBack={zoomBack}
           />
         )}
         {viewing && roomCards.cards[viewing] && (

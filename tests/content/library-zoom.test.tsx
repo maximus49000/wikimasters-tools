@@ -89,6 +89,8 @@ describe('zoom sur un meuble', () => {
     // Étagère de biais (angle 1) : les cartes de face n'apparaissent qu'à mi-ouverture.
     await advance(500);
     await click('[data-zoom-card="Daft_Punk"]');
+    expect(q('[data-shelf-board="0"]')).not.toBeNull();
+    await click('[data-board-card="Daft_Punk"]');
     expect(document.querySelector('[data-room-card="Daft_Punk"]')).not.toBeNull();
     await click('[data-action="close"]');
     expect(document.querySelector('[data-room-card]')).toBeNull();
@@ -158,6 +160,7 @@ describe('zoom sur un meuble', () => {
     await click('[data-furniture="shelf"]');
     await advance(500);
     await click('[data-zoom-card="Daft_Punk"]');
+    await click('[data-board-card="Daft_Punk"]');
     expect(document.querySelector('[data-room-card="Daft_Punk"]')).not.toBeNull();
     await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
     await advance(500);
@@ -171,6 +174,7 @@ describe('zoom sur un meuble', () => {
     await click('[data-furniture="shelf"]');
     await advance(500);
     await click('[data-zoom-card="Daft_Punk"]');
+    await click('[data-board-card="Daft_Punk"]');
     const push = vi.spyOn(history, 'pushState');
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     await advance(500);
@@ -178,9 +182,88 @@ describe('zoom sur un meuble', () => {
     expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
     expect(push).toHaveBeenCalledTimes(1);
     expect(history.state).toMatchObject({ wmtZoom: true });
-    // un second retour ferme alors le zoom
+    // un second retour ramène du second zoom à la vue de face (le zoom reste)
+    await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
+    await advance(500);
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')).not.toBeNull();
+    // un troisième ferme alors le zoom
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     await advance(500);
     expect(q('[data-furniture-zoom]')).toBeNull();
+  });
+  it('second zoom : ← revient à la vue de face, puis à la pièce', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await click('[data-zoom-board="1"]');
+    expect(q('[data-shelf-board="1"]')).not.toBeNull();
+    await click('[data-action="zoom-back"]');
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
+    await click('[data-action="zoom-back"]');
+    await advance(500);
+    expect(q('[data-furniture-zoom]')).toBeNull();
+  });
+  it('second zoom : Échap et le fond reviennent à la vue de face', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await click('[data-zoom-board="0"]');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')).not.toBeNull();
+    await click('[data-zoom-board="0"]');
+    await click('[data-zoom-backdrop]');
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
+  });
+  it('second zoom : retour Android → vue de face, le zoom reste et garde son entrée d’historique', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    const push = vi.spyOn(history, 'pushState');
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await click('[data-zoom-board="0"]');
+    await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
+    expect(history.state).toMatchObject({ wmtZoom: true });
+    expect(push).toHaveBeenCalledTimes(2);
+  });
+  it('bibliothèques liées : toucher la vide ouvre les deux', async () => {
+    await seed([{ id: 'a', kind: 'shelf', col: 0, row: 6 }, { id: 'b', kind: 'shelf', col: 4, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 'b', level: 0, order: 0, slug: 'Daft_Punk' }]);
+    await click('[data-id="a"]');
+    expect(container.querySelectorAll('[data-zoom-piece]')).toHaveLength(2);
+  });
+  it('bibliothèques liées : toucher une tablette de la seconde ouvre le second zoom des deux', async () => {
+    await seed([{ id: 'a', kind: 'shelf', col: 0, row: 6 }, { id: 'b', kind: 'shelf', col: 4, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 'b', level: 0, order: 0, slug: 'Daft_Punk' }]);
+    vi.useFakeTimers();
+    await click('[data-id="a"]');
+    await advance(500);
+    await click('[data-zoom-piece="b"] [data-zoom-board="1"]');
+    expect(q('[data-shelf-board="1"]')).not.toBeNull();
+    expect([...container.querySelectorAll('[data-board-shelf]')].map((e) => e.getAttribute('data-board-shelf'))).toEqual(['a', 'b']);
+  });
+});
+
+describe('bibliothèques liées (Aménager)', () => {
+  const PAIR: Layout = [{ id: 'a', kind: 'shelf', col: 0, row: 6 }, { id: 'b', kind: 'shelf', col: 4, row: 6 }];
+  it('⛓ seulement avec une voisine collée ; délier puis relier', async () => {
+    await seed([{ id: 'a', kind: 'shelf', col: 0, row: 6 }]);
+    await click('[data-action="edit"]');
+    await click('[data-id="a"]');
+    expect(q('[data-action="shelf-link"]')).toBeNull();
+    await seed(PAIR);
+    expect(q('[data-action="shelf-link"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-outline="linked"]')).not.toBeNull();
+    await click('[data-action="shelf-link"]');
+    expect(repo.current()!.rooms[0]!.layout.find((p) => p.id === 'a')).toMatchObject({ unlinked: true });
+    expect(q('[data-action="shelf-link"]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(q('[data-outline="linked"]')).toBeNull();
+    await click('[data-action="shelf-link"]');
+    expect(repo.current()!.rooms[0]!.layout.some((p) => 'unlinked' in p)).toBe(false);
   });
 });

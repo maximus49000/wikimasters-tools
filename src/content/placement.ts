@@ -8,6 +8,7 @@ import {
   CELL_H, CELL_W, ROWS, angleOf, isStanding, setAngle, firstFreeBoard, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
   placeStanding, pxRect, rectOf, resizeWindow, setScreenCard, SHELF_GAP_CM, SHELF_INNER_CM, boardItems, boardUsedCm, displayOf, shelfBoardsOf, shelfLayoutOf, storeCard, stretchWindow, toggleLamp, type Cell, type PxRect, type Rect, type StoredLike,
 } from '../core/library/room-grid';
+import { forgetUnlinkOnMove } from '../core/library/shelf-link';
 
 // Id de l'objet neuf tant qu'il n'est pas enregistré (renommé au ✓).
 export const DRAFT_ID = '__draft__';
@@ -296,8 +297,10 @@ export function editPlacement(p: Placement, cols: number, edit: Edit): Placement
 }
 
 // Disposition finale à enregistrer, l'id provisoire remplacé ; null si la cible est refusée.
+// Bibliothèque déplacée ou tournée : son refus de lien (⛓) est oublié.
 export function commitPlacement(p: Placement): Layout | null {
   if (!p.target.ok) return null;
+  if (p.subject.type === 'move') return forgetUnlinkOnMove(p.base, p.draft, p.id);
   if (!p.draft.some((x) => x.id === DRAFT_ID)) return p.draft;
   const id = nextFurnitureId(p.base);
   return p.draft.map((x) => (x.id === DRAFT_ID ? ({ ...x, id } as Placed) : x));

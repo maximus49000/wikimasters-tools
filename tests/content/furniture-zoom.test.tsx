@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FurnitureZoom } from '../../src/content/furniture-zoom';
 import type { Room } from '../../src/core/library/library-types';
+import type { ZoomTarget } from '../../src/core/library/zoom-target';
 import { drawSize, faceFrame, frontFaceRect } from '../../src/core/library/footprint';
 import { CELL_H, CELL_W, shelfLayoutIn } from '../../src/core/library/room-grid';
 import { computerPlacement, screenQuad, storedFrontQuad, storedPlacementsOf } from '../../src/core/library/carried-items';
@@ -19,16 +20,16 @@ const room: Room = {
   ],
 };
 
-function mount(phase: 'opening' | 'open' | 'closing', onCard = vi.fn(), onBack = vi.fn(), r: Room = room) {
+function mount(phase: 'opening' | 'open' | 'closing', onCard = vi.fn(), onBack = vi.fn(), r: Room = room, onLevel = vi.fn()) {
   const container = document.createElement('div');
   document.body.append(container);
   act(() => {
     createRoot(container).render(
-      <FurnitureZoom target={{ kind: 'shelf', id: 's' }} room={r} cards={{ Daft_Punk: { title: 'Daft Punk' } }} imageOf={() => undefined}
-        phase={phase} from={{ x: 10, y: 20, w: 60, h: 160 }} stage={{ w: 800, h: 400 }} onCard={onCard} onBack={onBack} />,
+      <FurnitureZoom target={{ kind: 'shelf', ids: ['s'] }} room={r} cards={{ Daft_Punk: { title: 'Daft Punk' } }} imageOf={() => undefined}
+        phase={phase} from={{ x: 10, y: 20, w: 60, h: 160 }} stage={{ w: 800, h: 400 }} level={null} onLevel={onLevel} onCard={onCard} onBack={onBack} />,
     );
   });
-  return { container, onCard, onBack };
+  return { container, onCard, onBack, onLevel };
 }
 
 describe('calque du zoom', () => {
@@ -86,7 +87,7 @@ describe('calque du zoom', () => {
     act(() => {
       createRoot(container).render(
         <FurnitureZoom target={{ kind: 'desk', id: 'd' }} room={desk} cards={{ Daft_Punk: { title: 'Daft Punk' } }} imageOf={() => undefined}
-          phase="open" from={null} stage={{ w: 800, h: 400 }} onCard={vi.fn()} onBack={vi.fn()} />,
+          phase="open" from={null} stage={{ w: 800, h: 400 }} level={null} onLevel={vi.fn()} onCard={vi.fn()} onBack={vi.fn()} />,
       );
     });
     const vb = container.querySelector('.wmt-lib-zoom-piece svg')!.getAttribute('viewBox')!.split(' ').map(Number);
@@ -96,12 +97,39 @@ describe('calque du zoom', () => {
     expect(top).toBeGreaterThanOrEqual(vb[1]!);
     expect(top).toBeLessThan(0);
   });
-  it('toucher une carte connue la signale ; une inconnue ne fait rien', () => {
-    const { container, onCard } = mount('open');
+  it('vue de face d’une étagère : toucher une carte (connue ou non) ou la tablette mène au second zoom de son niveau', () => {
+    const { container, onCard, onLevel } = mount('open');
     act(() => { container.querySelector('[data-zoom-card="Daft_Punk"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-    expect(onCard).toHaveBeenCalledWith('Daft_Punk');
     act(() => { container.querySelector('[data-zoom-card="Inconnue"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-    expect(onCard).toHaveBeenCalledTimes(1);
+    act(() => { container.querySelector('[data-zoom-board="2"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(onLevel.mock.calls).toEqual([[0], [0], [2]]);
+    expect(onCard).not.toHaveBeenCalled();
+  });
+  it('deux bibliothèques liées : deux meubles côte à côte, cadre deux fois plus large', () => {
+    const pair: Room = { ...room, layout: [{ id: 's', kind: 'shelf', col: 0, row: 6 }, { id: 't', kind: 'shelf', col: 4, row: 6 }, room.layout[1]!] };
+    const container = document.createElement('div');
+    document.body.append(container);
+    act(() => {
+      createRoot(container).render(
+        <FurnitureZoom target={{ kind: 'shelf', ids: ['s', 't'] }} room={pair} cards={{}} imageOf={() => undefined} phase="open" from={null} stage={{ w: 800, h: 400 }} level={null} onCard={vi.fn()} onLevel={vi.fn()} onBack={vi.fn()} />,
+      );
+    });
+    expect(container.querySelectorAll('[data-zoom-piece]')).toHaveLength(2);
+    const vb = container.querySelector('.wmt-lib-zoom-piece svg')!.getAttribute('viewBox')!.split(' ').map(Number);
+    expect(vb[2]).toBeCloseTo(2 * drawSize('shelf', 0).w * CELL_W);
+    expect(container.querySelector('[data-furniture-zoom]')!.getAttribute('aria-label')).toBe('Bibliothèques vues de face');
+  });
+  it('niveau choisi : la vue de la tablette remplace la vue de face', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    act(() => {
+      createRoot(container).render(
+        <FurnitureZoom target={{ kind: 'shelf', ids: ['s'] }} room={room} cards={{}} imageOf={() => undefined} phase="open" from={null} stage={{ w: 800, h: 400 }} level={1} onCard={vi.fn()} onLevel={vi.fn()} onBack={vi.fn()} />,
+      );
+    });
+    expect(container.querySelector('[data-shelf-board="1"]')).not.toBeNull();
+    expect(container.querySelector('.wmt-lib-zoom-piece')).toBeNull();
+    expect(container.querySelector('[data-action="zoom-back"]')!.getAttribute('aria-label')).toBe('Retour à la vue de face');
   });
   it('← et le fond flouté appellent onBack', () => {
     const { container, onBack } = mount('open');
@@ -157,20 +185,20 @@ describe('calque du zoom', () => {
 
 describe('zoom : objets en 3D', () => {
   const IMG = 'data:image/png;base64,AAAA';
-  function zoomOf(r: Room, target: { kind: 'shelf' | 'desk'; id: string }, phase: 'open' | 'opening' = 'open', onCard = vi.fn()) {
+  function zoomOf(r: Room, target: ZoomTarget, phase: 'open' | 'opening' = 'open', onCard = vi.fn()) {
     const container = document.createElement('div');
     document.body.append(container);
     act(() => {
       createRoot(container).render(
         <FurnitureZoom target={target} room={r} cards={{ Daft_Punk: { title: 'Daft Punk', imageUrl: IMG }, Paris: { title: 'Paris', imageUrl: IMG } }} imageOf={(slug) => (slug === 'Inconnue' ? undefined : IMG)}
-          phase={phase} from={null} stage={{ w: 800, h: 400 }} onCard={onCard} onBack={vi.fn()} />,
+          phase={phase} from={null} stage={{ w: 800, h: 400 }} level={null} onLevel={vi.fn()} onCard={onCard} onBack={vi.fn()} />,
       );
     });
     return { container, onCard };
   }
   it('les objets rangés sont dessinés en 3D sur l’étagère, découpés à son ouverture : image sur la couverture, titre sur la tranche', () => {
     const r: Room = { ...room, layout: [...room.layout, { id: 'c3', kind: 'stored', shape: 'book', shelfId: 's', level: 1, order: 0, slug: 'Paris' }] };
-    const { container } = zoomOf(r, { kind: 'shelf', id: 's' });
+    const { container } = zoomOf(r, { kind: 'shelf', ids: ['s'] });
     const model = container.querySelector('.wmt-lib-zoom-piece')!;
     expect(model.querySelector('image')!.getAttribute('href')).toBe(IMG);
     expect([...model.querySelectorAll('text')].map((t) => t.textContent)).toContain('Paris');
@@ -179,7 +207,7 @@ describe('zoom : objets en 3D', () => {
     expect(model.querySelector('[data-model3d]')!.compareDocumentPosition(model.querySelector('[data-item3d]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
   it('zone touchable d’un objet : sa face avant, près du bord de la tablette', () => {
-    const { container } = zoomOf(room, { kind: 'shelf', id: 's' });
+    const { container } = zoomOf(room, { kind: 'shelf', ids: ['s'] });
     const { w, h } = drawSize('shelf', 0);
     const art = { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H };
     const pl = storedPlacementsOf(room.layout, 's').get('c1')!;
