@@ -290,8 +290,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       minutes: sceneTime.minutes,
       weather: { clock: weather.clock, flags: weather.flags },
       city: { day: cityDay, forcedNight: lib?.time.mode === 'night', shopNames, busLines },
+      deco: { state: weather.state, label: weather.label, tempC: weather.tempC },
     }),
-    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags, cityDay, shopNames, busLines, lib?.time.mode],
+    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags, weather.state, weather.label, weather.tempC, cityDay, shopNames, busLines, lib?.time.mode],
   );
 
 

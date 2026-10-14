@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
-import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
+import type { FurnitureKind, Placed, Room, WeatherState } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { drawSize, faceFrame, frontFaceRect, groundTrace, type Angle } from '../core/library/footprint';
@@ -38,6 +38,12 @@ import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
 import type { PlacingView } from './placement';
+import { DecoArt, type DecoView } from './deco-art';
+import { useClockTick } from './use-clock-tick';
+import { currentPosition } from './scene-position';
+import { cityClock } from '../core/library/clock-cities';
+import { shownTempC, type DecoWeather } from '../core/library/deco-weather';
+import type { CityTime } from '../core/library/deco';
 
 // Horloge immobile (ciel dégagé) pour le calque de lumière d'une pièce sans météo : les lampes y restent efficaces.
 const NO_GLASS: readonly never[] = [];
@@ -55,6 +61,8 @@ export type SceneView = {
   minutes: number;
   weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } };
   city?: { day: DayContext; forcedNight: boolean; shopNames?: NamePool; busLines?: BusNetwork | null };
+  // Ce que montrent les météomètres (état, libellé, température réelle).
+  deco?: { state: WeatherState; label: string; tempC: number | null };
 };
 
 export type Tool = { type: 'new'; kind: FurnitureKind } | { type: 'move'; id: string } | { type: 'card' } | null;
@@ -180,6 +188,18 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const fadeStyle = { opacity: roomLayers === 'shown' ? 1 : 0, transition: still ? 'none' : 'opacity 400ms ease', ...(roomLayers === 'hidden' ? { pointerEvents: 'none' as const } : {}) };
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
+  // Horloges et météomètres : la seconde ne tourne que si la pièce en contient (R3 : seuls les objets `deco` pour l'instant).
+  const hasDeco = room.layout.some((p) => p.kind === 'deco');
+  const now = useClockTick(hasDeco);
+  const night = view.sky.phase === 'night';
+  const decoState = view.deco?.state ?? 'cloudy';
+  const decoWeather: DecoWeather = {
+    state: decoState,
+    label: view.deco?.label ?? '',
+    night,
+    tempC: shownTempC({ realTempC: view.deco?.tempC ?? null, lat: currentPosition().lat, now, state: decoState, night }),
+  };
+  const decoView = (city?: CityTime): DecoView => ({ time: cityClock(view.minutes, city, now), city: city?.name, weather: decoWeather, daylight: view.sky.daylight, editing });
   // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
   const weatherOn = view.weather !== undefined && WEATHER_SCENES.includes(room.scene);
   const gloom = weatherOn && (view.weather?.flags.gloom ?? false);
@@ -275,6 +295,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
         art: <WindowArt rect={rect} palette={palette} steampunk={steampunk} />,
         liftedArt: <WindowArt rect={rect} palette={palette} steampunk={steampunk} view worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />,
       };
+    }
+    if (placed.kind === 'deco') {
+      const rect = pxRect(rectOf(placed)!);
+      return { rect, art: <DecoArt placed={placed} rect={rect} style={room.style} palette={palette} view={decoView(placed.city)} /> };
     }
     const cells = rectOf(placed);
     if (!cells || !isStanding(placed)) return null;
@@ -518,6 +542,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const wallLevel = (
     <g key="depth-wall" data-depth={0}>
       {windows.map((p) => renderPlaced(p))}
+      {room.layout.map((p) => (p.kind === 'deco' ? renderPlaced(p) : null))}
       {room.layout.map((p) => (p.kind === 'wall' ? cardOf(p) : null))}
     </g>
   );
@@ -580,7 +605,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const selected = editing && selectedId ? room.layout.find((p) => p.id === selectedId) : undefined;
   const selectedDrawn = !selected ? null
     : selected.kind === 'wall' ? wallArtOf(selected, `${selected.id}-selected`)
-    : selected.kind === 'window' || (isStanding(selected) && selected.kind !== 'rug') ? artOf(selected)
+    : selected.kind === 'window' || selected.kind === 'deco' || (isStanding(selected) && selected.kind !== 'rug') ? artOf(selected)
     : null;
   // Un porteur sélectionné (étagère, bureau) emporte ses objets dans la copie : sinon son dessin opaque les cacherait.
   const selectedCopy = selectedDrawn && selected && (
