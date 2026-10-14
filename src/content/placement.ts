@@ -265,6 +265,16 @@ export function nudgePlacement(p: Placement, cols: number, delta: 1 | -1): Place
   return next.target.ok ? next : null;
 }
 
+// ◀ (−1) / ▶ (+1) : le fantôme glisse d'une demi-colonne ; refusé, il reste dessiné en rouge (comme pendant un glissé).
+// null pour un objet sans case (ordinateur, petit objet, carte rangée ou d'écran) : il suit son porteur.
+export const canSlide = (p: Placement): boolean => p.target.col !== undefined && !isScreen(p.subject);
+
+export function slidePlacement(p: Placement, cols: number, dir: 1 | -1): Placement | null {
+  if (!canSlide(p)) return null;
+  const col = p.spot.col + dir / 2;
+  return settle(p, cols, { ...p.spot, col, x: p.spot.x + (dir * CELL_W) / 2 });
+}
+
 // Seuls les meubles debout tournent (pas les fenêtres, cartes, ordinateurs ni petits objets).
 export function canRotate(p: Placement): boolean {
   const item = withProbe(p.draft, p.probe).find((x) => x.id === p.id);

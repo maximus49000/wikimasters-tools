@@ -2244,6 +2244,28 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'demi-case-2026-10',
+    theme: 'collection',
+    glyph: '↔️',
+    title: 'Placer à la demi-case',
+    summary: 'Un meuble, un cadre ou une fenêtre peut se poser à une demi-case près, pour le centrer dans un espace pair',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Centrer un objet entre deux autres',
+        text: 'En mode placement, l’objet suit maintenant le doigt par demi-cases à l’horizontale. Les deux nouveaux boutons de la barre (chevron à gauche, chevron à droite) le décalent d’une demi-case à chaque appui.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À centrer un objet de largeur impaire (3 cases) dans un espace de largeur paire (4 cases), entre deux meubles ou sous une fenêtre.' },
+          { label: 'Comment faire', text: 'Ouvrez Ma Pièce, passez en Aménager, faites glisser l’objet près de sa place, puis ajustez avec les boutons demi-case avant de toucher la coche.' },
+          { label: 'Comment ça marche', text: 'Les règles d’un déplacement s’appliquent toujours : l’objet reste dans la pièce et ne chevauche jamais un voisin, même d’une demi-case. Refusé, le fantôme reste rouge et la coche grisée.' },
+          { label: 'Limites', text: 'Seulement à l’horizontale : la hauteur se règle toujours ligne par ligne (Avancer, Reculer). Les objets portés (ordinateur, petits objets, cartes rangées) suivent leur meuble et n’ont pas ces boutons. Une pièce qui contient un objet à la demi-case ne se relit pas dans une version plus ancienne de l’extension ou de l’application.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
     id: 'lieu-scene-2026-10',
     theme: 'collection',
     glyph: '🏙',

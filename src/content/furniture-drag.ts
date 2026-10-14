@@ -6,10 +6,11 @@ import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, can
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
 // Point de l'écran → case de la pièce (et position dans le repère du dessin). `viewBoxW/H` : taille du viewBox du SVG.
+// La colonne suit le doigt par demi-cases (pour centrer un objet dans un espace pair) ; la ligne reste entière.
 export function pointerToCell(rect: ClientRect, viewBoxW: number, viewBoxH: number, clientX: number, clientY: number): { col: number; row: number; x: number; y: number } {
   const x = ((clientX - rect.left) / rect.width) * viewBoxW;
   const y = ((clientY - rect.top) / rect.height) * viewBoxH;
-  return { col: Math.floor(x / CELL_W), row: Math.floor(y / CELL_H), x, y };
+  return { col: Math.floor((2 * x) / CELL_W) / 2, row: Math.floor(y / CELL_H), x, y };
 }
 
 // Les bureaux (et les étagères si `shelves`), du plus en avant au plus en arrière : sur des cases partagées par

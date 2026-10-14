@@ -15,6 +15,12 @@ describe('pointerToCell', () => {
     expect(p.x).toBe(65);
   });
 
+  it('suit le doigt par demi-colonnes (les lignes restent entières)', () => {
+    const rect = { left: 0, top: 0, width: COLS * CELL_W, height: HEIGHT };
+    expect(pointerToCell(rect, COLS * CELL_W, HEIGHT, 2.5 * CELL_W + 1, 5.6 * CELL_H)).toMatchObject({ col: 2.5, row: 5 });
+    expect(pointerToCell(rect, COLS * CELL_W, HEIGHT, 2.5 * CELL_W - 1, 5 * CELL_H)).toMatchObject({ col: 2 });
+  });
+
   it('tient compte de l’échelle (svg plus large que son contenu)', () => {
     const rect = { left: 0, top: 0, width: 2 * COLS * CELL_W, height: 2 * HEIGHT };
     const p = pointerToCell(rect, COLS * CELL_W, HEIGHT, 2 * 65, 2 * 5 * CELL_H + 2);
@@ -23,7 +29,7 @@ describe('pointerToCell', () => {
 
   it('donne des cases négatives hors de la pièce', () => {
     const rect = { left: 0, top: 0, width: COLS * CELL_W, height: HEIGHT };
-    expect(pointerToCell(rect, COLS * CELL_W, HEIGHT, -5, -5)).toMatchObject({ col: -1, row: -1 });
+    expect(pointerToCell(rect, COLS * CELL_W, HEIGHT, -20, -5)).toMatchObject({ col: -1, row: -1 });
   });
 });
 

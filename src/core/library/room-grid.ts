@@ -56,7 +56,23 @@ function cellsOf(rect: Rect): Cell[] {
   return cells;
 }
 
-const inRoomCell = (cols: number) => (c: Cell): boolean => c.col >= 0 && c.row >= 0 && c.col < cols && c.row < ROWS;
+// Une case peut commencer à une demi-colonne (meuble centré dans un espace pair) : elle couvre alors deux moitiés de colonnes voisines.
+const inRoomCell = (cols: number) => (c: Cell): boolean => c.col >= 0 && c.row >= 0 && c.col + 1 <= cols && c.row < ROWS;
+
+// Colonne arrondie à la demi-case la plus proche (les positions enregistrées sont des multiples de 0,5).
+export const snapHalf = (col: number): number => Math.round(col * 2) / 2;
+
+// Cases occupées, comptées par demi-colonnes : deux objets décalés d'une demi-case se chevauchent sur la moitié commune.
+class Taken {
+  private keys = new Set<string>();
+  private static halves = (c: Cell): [string, string] => [`${c.col * 2}-${c.row}`, `${c.col * 2 + 1}-${c.row}`];
+  add(c: Cell): void {
+    for (const k of Taken.halves(c)) this.keys.add(k);
+  }
+  has(c: Cell): boolean {
+    return Taken.halves(c).some((k) => this.keys.has(k));
+  }
+}
 
 const layerOfPlaced = (p: Placed): 'floor' | 'rug' => (isStanding(p) ? layerOf(p.kind) : 'floor');
 
@@ -108,21 +124,21 @@ export function byDrawOrder<T extends Standing>(layout: Layout, items: readonly 
 }
 
 // Les cases occupées d'une couche à un niveau (meubles debout et objets accrochés pour `floor`, tapis pour `rug`, qui ignorent le niveau), sauf celles de `ignoreId`.
-function takenKeys(layout: Layout, ignoreId: string | undefined, layer: 'floor' | 'rug', depth: Depth): Set<string> {
-  const taken = new Set<string>();
+function takenKeys(layout: Layout, ignoreId: string | undefined, layer: 'floor' | 'rug', depth: Depth): Taken {
+  const taken = new Taken();
   for (const other of layout) {
     if (other.id === ignoreId || layerOfPlaced(other) !== layer) continue;
     if (layer === 'floor' && depthOf(layout, other) !== depth) continue;
     const otherRect = rectOf(other);
     if (!otherRect) continue;
-    for (const c of cellsOf(otherRect)) taken.add(`${c.col}-${c.row}`);
+    for (const c of cellsOf(otherRect)) taken.add(c);
   }
   return taken;
 }
 
 const clashAt = (layout: Layout, cells: Cell[], ignoreId: string | undefined, layer: 'floor' | 'rug', depth: Depth): Cell[] => {
   const taken = takenKeys(layout, ignoreId, layer, depth);
-  return cells.filter((c) => taken.has(`${c.col}-${c.row}`));
+  return cells.filter((c) => taken.has(c));
 };
 
 // Deux meubles peuvent partager des cases au sol seulement si l'un est une chaise et l'autre un meuble creux (bureau, table basse, télescope).
@@ -131,22 +147,22 @@ const chairUnder = (a: StandingKind, b: StandingKind): boolean => (a === 'chair'
 // Les cases au sol de ce meuble (à cet angle) déjà prises par un autre meuble debout (hors tapis), quel que soit son niveau :
 // un meuble peut passer devant un autre (pieds plus bas), jamais au même endroit.
 function footClash(layout: Layout, kind: StandingKind, col: number, row: number, ignoreId: string | undefined, angle: Angle): Cell[] {
-  const taken = new Set<string>();
+  const taken = new Taken();
   for (const other of layout) {
     if (other.id === ignoreId || !isStanding(other) || layerOf(other.kind) !== 'floor' || chairUnder(kind, other.kind)) continue;
-    for (const c of floorCells(other.kind, angleOf(other), other.col, other.row)) taken.add(`${c.col}-${c.row}`);
+    for (const c of floorCells(other.kind, angleOf(other), other.col, other.row)) taken.add(c);
   }
-  return floorCells(kind, angle, col, row).filter((c) => taken.has(`${c.col}-${c.row}`));
+  return floorCells(kind, angle, col, row).filter((c) => taken.has(c));
 }
 
 // Cases au sol des tapis (sauf `ignoreId`) : deux tapis ne se chevauchent pas.
 function rugClash(layout: Layout, cells: Cell[], ignoreId: string | undefined): Cell[] {
-  const taken = new Set<string>();
+  const taken = new Taken();
   for (const other of layout) {
     if (other.id === ignoreId || !isStanding(other) || layerOf(other.kind) !== 'rug') continue;
-    for (const c of floorCells(other.kind, angleOf(other), other.col, other.row)) taken.add(`${c.col}-${c.row}`);
+    for (const c of floorCells(other.kind, angleOf(other), other.col, other.row)) taken.add(c);
   }
-  return cells.filter((c) => taken.has(`${c.col}-${c.row}`));
+  return cells.filter((c) => taken.has(c));
 }
 
 // Le niveau de ce meuble à cet endroit : `from` si son emprise au sol est libre (un tapis, lui, ne doit couvrir aucun autre tapis), null sinon.
