@@ -7,6 +7,11 @@ describe('minutesFor', () => {
   it('jour : midi', () => expect(minutesFor({ mode: 'day' }, now)).toBe(720));
   it('nuit : minuit', () => expect(minutesFor({ mode: 'night' }, now)).toBe(0));
   it('manuelle : la minute choisie', () => expect(minutesFor({ mode: 'manual', minutes: 301 }, now)).toBe(301));
+  it('réelle avec un fuseau : l’heure de ce fuseau', () => {
+    const at = new Date('2026-10-14T20:00:00Z');
+    expect(minutesFor({ mode: 'real' }, at, 'Asia/Tokyo')).toBe(5 * 60);
+    expect(minutesFor({ mode: 'manual', minutes: 301 }, at, 'Asia/Tokyo')).toBe(301);
+  });
 });
 
 describe('formatMinutes', () => {

@@ -1,4 +1,8 @@
 import type { CityTime } from './deco';
+import { tzOffsetMinutes } from './scene-clock';
+
+// Décalage d'un fuseau : calculé par l'heure de la scène (scene-clock.ts), ré-exporté pour les horloges.
+export { tzOffsetMinutes };
 
 // Grandes villes pour l'heure d'une horloge : nom et pays en français, fuseau IANA. Calcul local par Intl, sans réseau.
 export type City = { name: string; country: string; tz: string };
@@ -149,19 +153,6 @@ const fold = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '').t
 export function searchCities(query: string): City[] {
   const q = fold(query.trim());
   return q ? CITIES.filter((c) => fold(`${c.name} ${c.country}`).includes(q)) : [...CITIES];
-}
-
-// Décalage d'un fuseau sur UTC à l'instant donné, en minutes (heure d'été comprise). Formateurs mis en cache par fuseau.
-const formatters = new Map<string, Intl.DateTimeFormat>();
-export function tzOffsetMinutes(tz: string, at: Date): number {
-  let f = formatters.get(tz);
-  if (!f) {
-    f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
-    formatters.set(tz, f);
-  }
-  const parts = Object.fromEntries(f.formatToParts(at).map((p) => [p.type, p.value]));
-  const asUtc = Date.UTC(+parts.year!, +parts.month! - 1, +parts.day!, +parts.hour!, +parts.minute!);
-  return Math.round((asUtc - Math.floor(at.getTime() / 60000) * 60000) / 60000);
 }
 
 // Heure d'une ville : heure de la scène décalée de l'écart entre la ville et l'appareil (la scène suit l'heure locale de l'appareil).

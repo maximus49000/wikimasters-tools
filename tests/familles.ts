@@ -76,7 +76,7 @@ export const FAMILLES: Famille[] = [
     lourde: true,
     fichiers: [
       ...c('art-setting.*', 'use-scene-time.*', 'use-wallclock-loop.*', 'paint-queue.*', 'library-launch.*', 'library-view.*', 'library-style-selector.*', 'library-art-ui.*'),
-      ...lib('scene-world.*', 'depth-order.*', 'library-scene.*', 'time-setting.*', 'styles.*', 'activity.*', 'paint/paint-brush.*', 'paint/paint-grade.*'),
+      ...lib('scene-world.*', 'depth-order.*', 'library-scene.*', 'time-setting.*', 'scene-clock.*', 'styles.*', 'activity.*', 'paint/paint-brush.*', 'paint/paint-grade.*'),
     ],
   },
   {
