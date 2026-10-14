@@ -78,7 +78,7 @@ import { ensurePosition, positionFailure, requestPosition, subscribePosition } f
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
 import { canToggleShelfLink, forgetUnlinkOnMove, shelfGroupOf, toggleShelfLink } from '../core/library/shelf-link';
-import { canRotate, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, rotatePlacement, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
+import { canRotate, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, rotatePlacement, canSlide, slidePlacement, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
 import { PlacementBar, PlacementGrip } from './placement-bar';
 import { pointerToCell } from './furniture-drag';
 import { followPointer } from './pointer-follow';
@@ -606,6 +606,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const next = nudgePlacement(placement, room.cols, delta);
     if (next) showPlacement(next);
     else refuse('Impossible ici.');
+  };
+  // ◀ / ▶ : le fantôme glisse d'une demi-case (refusé en rouge s'il chevauche un voisin ou sort de la pièce).
+  const slidePlacing = (dir: 1 | -1): void => {
+    if (!placement) return;
+    const next = slidePlacement(placement, room.cols, dir);
+    if (next) showPlacement(next);
   };
   // Position du doigt → case et position dans le dessin (null si la pièce n'est pas affichée).
   const spotOfPointer = (clientX: number, clientY: number): Spot | null => {
@@ -1151,6 +1157,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <>
                 <Btn label="Tourner à gauche" data={{ action: 'rotate-left' }} onClick={() => rotatePlacing(1)}><Icon paths={ICONS.rotateLeft} /></Btn>
                 <Btn label="Tourner à droite" data={{ action: 'rotate-right' }} onClick={() => rotatePlacing(-1)}><Icon paths={ICONS.rotateRight} /></Btn>
+              </>
+            )}
+            {canSlide(placement) && (
+              <>
+                <Btn label="Une demi-case à gauche" data={{ action: 'half-left' }} onClick={() => slidePlacing(-1)}><Icon paths={ICONS.halfLeft} /></Btn>
+                <Btn label="Une demi-case à droite" data={{ action: 'half-right' }} onClick={() => slidePlacing(1)}><Icon paths={ICONS.halfRight} /></Btn>
               </>
             )}
             {placingStanding && (

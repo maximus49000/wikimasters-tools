@@ -66,6 +66,9 @@ export const ICONS = {
   paw: ['M12 13c-3 0-5 3-5 5a2 2 0 0 0 2 2c1.2 0 2-.6 3-.6s1.8.6 3 .6a2 2 0 0 0 2-2c0-2-2-5-5-5z', 'M6 9.5h.01', 'M9.5 6h.01', 'M14.5 6h.01', 'M18 9.5h.01'],
   more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
   chevronDown: ['M6 9l6 6 6-6'],
+  // Glisser d'une demi-case : chevron vers le bord, trait court = la demi-case parcourue.
+  halfLeft: ['M11 6l-6 6 6 6', 'M13 12h6'],
+  halfRight: ['M13 6l6 6-6 6', 'M5 12h6'],
   chevronUp: ['M6 15l6-6 6 6'],
   sofaTab: ['M4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6H4z', 'M2 12v5h2', 'M22 12v5h-2', 'M6 17v3', 'M18 17v3'],
   frame: ['M4 4h16v16H4z', 'M8 15l3-4 3 3 2-2 2 3'],

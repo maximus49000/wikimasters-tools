@@ -25,8 +25,11 @@ export function buildWalkMap(layout: Layout, cols: number): WalkMap {
     if (!rect) continue;
     if (layerOf(p.kind) === 'floor') {
       if (!underOf(p.kind)) {
+        // Une case à une demi-colonne bloque les deux cases entières qu'elle touche.
         for (const c of floorCells(p.kind, angleOf(p), p.col, p.row)) {
-          if (c.row >= WALL_ROWS && c.row < ROWS && c.col >= 0 && c.col < cols) blocked[c.row - WALL_ROWS]![c.col] = true;
+          for (const col of new Set([Math.floor(c.col), Math.ceil(c.col)])) {
+            if (c.row >= WALL_ROWS && c.row < ROWS && col >= 0 && col < cols) blocked[c.row - WALL_ROWS]![col] = true;
+          }
         }
       }
     }
