@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lieu de la scène</title>
+<style>
+  :root { --bg:#f6f2ea; --ink:#2b2622; --muted:#6b625a; --line:#d8cfc2; --panel:#FFFDF7; --sline:#9DB7D6; --stext:#22344A; --accent:#3FA34D; --sel:#DDEFD9; }
+  * { box-sizing:border-box }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif }
+  h1 { font-size:20px; margin:0 0 6px } h2 { font-size:16px; margin:28px 0 8px } p { max-width:920px; margin:6px 0 }
+  .muted { color:var(--muted) }
+  .row { display:flex; flex-wrap:wrap; gap:18px; align-items:flex-start }
+  .cap { font-size:12px; color:var(--muted); margin-top:6px; max-width:340px }
+  /* Menu ☁️ (habillage Sims de la pièce) */
+  .pop { width:340px; background:var(--panel); border:2px solid var(--sline); border-radius:16px; padding:10px; color:var(--stext); box-shadow:0 4px 12px rgba(0,0,0,.18) }
+  .place { display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 10px; border-radius:12px; background:#EEF4FB; border:2px solid var(--sline); font-weight:800 }
+  .place .glyph { font-size:22px } .place .sub { display:block; font-weight:600; font-size:12px; color:#5A6F86 }
+  .place .chev { margin-left:auto; font-size:18px }
+  .grp { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap }
+  .b { width:44px; height:44px; border-radius:12px; border:2px solid var(--sline); background:#fff; display:flex; align-items:center; justify-content:center; font-size:18px }
+  .b.on { background:var(--sel); border-color:var(--accent) }
+  /* Fenêtre « Lieu de la scène » */
+  .dlg { width:360px; background:var(--panel); border:2px solid var(--sline); border-radius:18px; padding:14px; color:var(--stext); box-shadow:0 6px 18px rgba(0,0,0,.25) }
+  .dlg.dark { background:#0d1117; color:#e6edf3; border:1px solid rgba(148,163,184,.5) }
+  .dlg h3 { margin:0 0 8px; font-size:16px; display:flex; justify-content:space-between; align-items:center }
+  .x { width:40px; height:40px; border-radius:50%; border:2px solid var(--sline); display:flex; align-items:center; justify-content:center; background:#fff }
+  .dark .x { background:none; border:1px solid rgba(148,163,184,.5); border-radius:8px }
+  .seg { display:grid; grid-template-columns:repeat(3,1fr); gap:6px }
+  .seg div { min-height:56px; border-radius:12px; border:2px solid var(--sline); background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; text-align:center; padding:4px }
+  .seg div span { font-size:20px }
+  .seg div.on { background:var(--sel); border-color:var(--accent) }
+  .dark .seg div { background:none; border:1px solid rgba(148,163,184,.5); color:inherit } .dark .seg div.on { background:#34d399; color:#0d1117; border-color:transparent }
+  .search { margin-top:10px; display:flex; align-items:center; gap:8px; min-height:44px; border:2px solid var(--sline); border-radius:12px; padding:0 10px; background:#fff }
+  .dark .search { background:#161b22; border:1px solid rgba(148,163,184,.5) }
+  .res { list-style:none; margin:6px 0 0; padding:0 }
+  .res li { min-height:48px; display:flex; flex-direction:column; justify-content:center; padding:4px 10px; border-radius:10px }
+  .res li + li { border-top:1px solid #E3EAF2 }
+  .dark .res li + li { border-top:1px solid #30363d }
+  .res li.on { background:var(--sel) } .dark .res li.on { background:#1f3b2c }
+  .res b { font-size:14px } .res small { color:#5A6F86 } .dark .res small { color:#9aa4ae }
+  .info { font-size:12.5px; margin:10px 0 0; opacity:.85 }
+  .chosen { margin-top:10px; padding:8px 10px; border-radius:12px; background:#EEF4FB; font-size:13px }
+  .dark .chosen { background:#161b22 }
+  .phone { width:100%; max-width:760px; aspect-ratio:915/412; border-radius:22px; background:#111; padding:10px }
+  .scene { position:relative; height:100%; border-radius:12px; overflow:hidden; background:linear-gradient(#0E1A3A 0 66%, #2B2440 66%); color:#fff }
+  .scene .win { position:absolute; left:8%; top:10%; width:26%; height:44%; background:linear-gradient(#0B1530,#24305A); border:6px solid #6B5440; border-radius:4px }
+  .scene .moon { position:absolute; right:22%; top:18%; width:22px; height:22px; border-radius:50%; background:#F4E9B8; box-shadow:0 0 14px #F4E9B8 }
+  .scene .clock { position:absolute; left:46%; top:14%; padding:6px 10px; border-radius:8px; background:#DCE3D3; color:#25302A; font:700 22px/1 ui-monospace, monospace }
+  .scene .tag { position:absolute; left:46%; top:30%; font-size:12px; background:rgba(255,255,255,.15); padding:3px 8px; border-radius:10px }
+  table { border-collapse:collapse; font-size:13px; max-width:920px } td, th { border:1px solid var(--line); padding:5px 8px; text-align:left; vertical-align:top }
+  @media (max-width:520px) { .pop, .dlg { width:100% } }
+</style>
+</head>
+<body>
+<h1>Lieu de la scène — maquette à valider</h1>
+<p>Un seul lieu pour toute la Bibliothèque, au choix : <b>📍 Géolocalisation</b> (la position de l'appareil), <b>🏙 Ville</b> (n'importe quelle ville du monde, cherchée en ligne) ou <b>⊘ Désactivé</b>. Tout ce qui dépendait de la position s'appuie sur ce choix : heure réelle, soleil et ciel, météo réelle et prévisions, température plausible, commerces, lignes de bus, zone des vacances.</p>
+
+<h2>1. Menu ☁️ de la pièce : le lieu en tête</h2>
+<div class="row">
+  <div>
+    <div class="pop">
+      <div class="place"><span class="glyph">🏙</span><span>Tokyo<span class="sub">Japon · 22:14 · heure de la ville</span></span><span class="chev">›</span></div>
+      <div class="grp"><div class="b on">🏙</div><div class="b">🌾</div><div class="b">⛰</div><div class="b">🌊</div><div class="b">✦</div><div class="b">🌍</div></div>
+      <div class="grp"><div class="b on">🕘</div><div class="b">☀</div><div class="b">☾</div><div class="b">🎚</div><div class="b">💡</div></div>
+      <div class="grp"><div class="b">🎲</div><div class="b">☀</div><div class="b">☁</div><div class="b">🌧</div><div class="b on">📡</div></div>
+    </div>
+    <div class="cap">Le bandeau du haut dit d'où vient la scène ; le toucher ouvre la fenêtre « Lieu de la scène ». Le reste du menu ne change pas.</div>
+  </div>
+  <div>
+    <div class="pop">
+      <div class="place"><span class="glyph">📍</span><span>Ma position<span class="sub">géolocalisation · environ 10 km près</span></span><span class="chev">›</span></div>
+    </div>
+    <div class="cap">En géolocalisation. Sans autorisation ou en « Désactivé » : « ⊘ Lieu désactivé · fuseau de l'appareil ».</div>
+  </div>
+</div>
+
+<h2>2. Fenêtre « Lieu de la scène »</h2>
+<div class="row">
+  <div>
+    <div class="dlg">
+      <h3>Lieu de la scène <span class="x">✕</span></h3>
+      <div class="seg"><div><span>📍</span>Géolocalisation</div><div class="on"><span>🏙</span>Ville</div><div><span>⊘</span>Désactivé</div></div>
+      <div class="search">🔎 <span>ange</span></div>
+      <ul class="res">
+        <li class="on"><b>Angers</b><small>Pays de la Loire, France · 155 000 hab.</small></li>
+        <li><b>Angerville</b><small>Île-de-France, France · 4 300 hab.</small></li>
+        <li><b>Los Angeles</b><small>Californie, États-Unis · 3 900 000 hab.</small></li>
+        <li><b>Angermünde</b><small>Brandebourg, Allemagne · 14 000 hab.</small></li>
+      </ul>
+      <div class="chosen">Choisie : <b>Angers</b> (France) · il y est 14:20</div>
+      <p class="info">D'où viennent les villes : recherche Open-Meteo par notre relais (il faut internet pour chercher ; le choix est ensuite gardé sur l'appareil).</p>
+    </div>
+    <div class="cap">« Ville » choisi : on tape au moins 2 lettres, les villes arrivent avec région, pays et population pour départager les homonymes.</div>
+  </div>
+  <div>
+    <div class="dlg dark">
+      <h3>Position <span class="x">✕</span></h3>
+      <p class="info" style="margin:0 0 10px">À quoi ça sert : la Bibliothèque vit à l'heure, au soleil et à la météo de ce lieu.</p>
+      <div class="seg"><div class="on"><span>📍</span>Géolocalisation</div><div><span>🏙</span>Ville</div><div><span>⊘</span>Désactivé</div></div>
+      <p class="info">Géolocalisation : l'appareil demande l'autorisation ; seule la position arrondie à 0,1° (≈ 10 km) part vers notre relais. Ville : aucune position de l'appareil n'est demandée. Désactivé : météo réelle et prévisions grisées, heure du fuseau de l'appareil.</p>
+    </div>
+    <div class="cap">Plus › Paramètre d'extension › Position : la même fenêtre (habillage des Paramètres). Les deux portes changent le même réglage.</div>
+  </div>
+</div>
+
+<h2>3. Effet : la scène vit à l'heure de la ville</h2>
+<div class="phone"><div class="scene"><div class="win"><div class="moon"></div></div><div class="clock">22:14</div><div class="tag">Tokyo · nuit, ciel de Tokyo</div></div></div>
+<p class="muted">Ville Tokyo choisie depuis Paris à 15 h 14 : la pièce est de nuit, la lune se lève, la météo et les prévisions sont celles de Tokyo, les horloges « heure de la scène » affichent 22:14. Une horloge réglée sur Paris affiche 15:14.</p>
+
+<h2>4. Ce qui suit le lieu</h2>
+<table>
+<tr><th>Fonction</th><th>Géolocalisation</th><th>Ville</th><th>Désactivé</th></tr>
+<tr><td>Heure réelle de la scène</td><td>heure de l'appareil</td><td><b>heure de la ville</b></td><td>heure de l'appareil</td></tr>
+<tr><td>Lever / coucher du soleil, ciel</td><td>position</td><td>coordonnées de la ville</td><td>estimé par le fuseau</td></tr>
+<tr><td>Météo réelle, prévisions</td><td>position</td><td>ville</td><td>grisées (« Activez… »)</td></tr>
+<tr><td>Température plausible</td><td>latitude</td><td>latitude de la ville</td><td>estimée</td></tr>
+<tr><td>Commerces, lignes de bus</td><td>autour de la position</td><td>autour de la ville</td><td>noms par défaut</td></tr>
+<tr><td>Zone des vacances (Auto)</td><td>département de la position</td><td>département de la ville (France)</td><td>zone par défaut</td></tr>
+</table>
+<p class="muted">Limites : ville hors de France → zone des vacances par défaut ; recherche impossible sans internet (le choix déjà fait reste) ; les noms de commerces et de bus dépendent d'OpenStreetMap autour de la ville.</p>
+</body>
+</html>

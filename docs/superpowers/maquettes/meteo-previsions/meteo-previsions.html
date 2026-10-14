@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prévisions de la station météo</title>
+<style>
+  :root { --bg:#f6f2ea; --ink:#2b2622; --muted:#6b625a; --line:#d8cfc2; --wood:#B98B5E; --woodD:#8E6440; --screen:#DCE3D3; --sfg:#25302A; --ssub:#5B6A5F; --sun:#F2B33D; --rain:#3D7DCA; --accent:#2F7D5B; }
+  * { box-sizing:border-box }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif }
+  h1 { font-size:20px; margin:0 0 6px } h2 { font-size:16px; margin:28px 0 8px } p { max-width:920px; margin:6px 0 }
+  .muted { color:var(--muted) }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(440px, 1fr)); gap:16px }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px }
+  .card h3 { font-size:14px; margin:0 0 4px } .card .why { font-size:12px; color:var(--muted); margin:8px 0 0 }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:9px; background:#E8F1EA; color:var(--accent); margin-left:6px; vertical-align:2px }
+  .tag.opt { background:#F3ECE0; color:#8A5A1E }
+  /* Boîtier de la station en grand */
+  .device { background:var(--wood); border-radius:14px; padding:9px; box-shadow:inset 0 0 0 2px var(--woodD), 0 3px 8px rgba(0,0,0,.25) }
+  .lcd { background:var(--screen); border-radius:7px; color:var(--sfg); aspect-ratio:30/18.4; padding:8px 10px; position:relative; overflow:hidden; font-variant-numeric:tabular-nums }
+  .lcd .title { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ssub); display:flex; justify-content:space-between }
+  .dots { position:absolute; bottom:5px; left:0; right:0; display:flex; justify-content:center; gap:4px }
+  .dots i { width:5px; height:5px; border-radius:50%; background:#A9B5A6 } .dots i.on { background:var(--sfg) }
+  .big { font-size:40px; font-weight:700; line-height:1 } .mid { font-size:15px; font-weight:600 } .sm { font-size:11px; color:var(--ssub) }
+  .row { display:flex; align-items:center; gap:10px } .col { display:flex; flex-direction:column }
+  .days { display:grid; gap:2px; text-align:center; margin-top:4px; font-size:11px }
+  .days b { font-size:12px } .days .lo { color:var(--ssub) }
+  .sunp { color:#9A6A08; font-weight:700 } .rainp { color:var(--rain); font-weight:700 }
+  .hours { display:grid; grid-template-columns:repeat(7, 1fr); text-align:center; font-size:10.5px; margin-top:4px; align-items:end }
+  .bar { width:60%; margin:0 auto; background:var(--rain); border-radius:2px 2px 0 0 }
+  .facts { display:grid; grid-template-columns:1fr 1fr; gap:1px 12px; font-size:11.5px; margin-top:3px }
+  .facts span b { font-weight:700 }
+  .dim { opacity:.6 }
+  /* Téléphone en paysage avec le zoom */
+  .phone { width:100%; max-width:760px; aspect-ratio:915/412; border-radius:22px; background:#111; padding:10px; margin:8px 0 }
+  .phone .room { position:relative; width:100%; height:100%; border-radius:12px; overflow:hidden; background:linear-gradient(#EDE6DA 0 66%, #D9BE92 66%) }
+  .phone .shade { position:absolute; inset:0; background:rgba(20,16,12,.55); display:flex; align-items:center; justify-content:center; gap:12px }
+  .phone .device { width:min(58%, 430px) }
+  .navb { width:48px; height:48px; border-radius:50%; border:2px solid rgba(255,255,255,.85); background:rgba(255,255,255,.18); color:#fff; font-size:22px; display:flex; align-items:center; justify-content:center }
+  .close { position:absolute; top:10px; right:12px; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,.9); display:flex; align-items:center; justify-content:center; font-size:18px }
+  .mini-wall { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-end }
+  .mini { width:180px } .mini .lcd { padding:5px 6px } .mini .big { font-size:24px }
+  .cap { font-size:12px; color:var(--muted); margin-top:4px; text-align:center }
+  svg { display:block }
+  table { border-collapse:collapse; font-size:13px; max-width:920px } td, th { border:1px solid var(--line); padding:4px 8px; text-align:left; vertical-align:top }
+  @media (max-width:520px) { .grid { grid-template-columns:1fr } }
+  @media (max-width:520px) { .navb { width:36px; height:36px; font-size:16px } .big { font-size:30px } }
+</style>
+</head>
+<body>
+<h1>Prévisions de la station météo — maquette à valider</h1>
+<p>Toucher la station météo (au mur ou sur un bureau) l'ouvre en grand. <b>◀ ▶</b> passent d'un écran à l'autre ; à la fermeture, la station <b>garde l'écran choisi</b>, dans la pièce comme en plein écran. Données : Open-Meteo par notre relais, uniquement si la position est activée (sinon un message, rien d'inventé). Dessin provisoire Opus : Fable n'est pas passé.</p>
+<p class="muted">Chaque écran porte une étiquette : <span class="tag">proposé</span> = je le recommande, <span class="tag opt">option</span> = à garder ou non selon toi.</p>
+
+<h2>1. Le zoom (téléphone en paysage)</h2>
+<div class="phone"><div class="room"><div class="shade">
+  <div class="navb" aria-label="Écran précédent">◀</div>
+  <div class="device"><div class="lcd" id="zoomlcd"></div></div>
+  <div class="navb" aria-label="Écran suivant">▶</div>
+  <div class="close" aria-label="Fermer">✕</div>
+</div></div></div>
+<p class="muted">Fond assombri, station au centre, gros boutons ◀ ▶ (44 px et plus) de part et d'autre, ✕ en haut à droite. Les points en bas de l'écran disent où l'on est. On peut aussi glisser le doigt vers la gauche ou la droite sur l'écran.</p>
+
+<h2>2. Les écrans</h2>
+<div class="grid" id="screens"></div>
+
+<h2>3. Sur le mur : la station garde l'écran choisi</h2>
+<div class="mini-wall" id="minis"></div>
+<p class="muted">Station de 3 × 2 cases (environ 90 × 57 px) : version résumée de l'écran choisi. Le réveil et la pendulette ne sont pas concernés ; la station de table suit les mêmes règles que celle du mur.</p>
+
+<h2>4. Ce que je propose de ne pas faire</h2>
+<table>
+<tr><th>Écarté</th><th>Pourquoi</th></tr>
+<tr><td>Prévisions inventées sans position</td><td>Ton choix : message « Activez la position » à la place.</td></tr>
+<tr><td>Prévisions d'une autre ville que la position</td><td>La station n'a pas de ville (choix d'origine) ; à rouvrir plus tard si besoin.</td></tr>
+<tr><td>Alertes officielles (vigilance Météo-France)</td><td>Pas fournies par Open-Meteo, il faudrait un autre service.</td></tr>
+</table>
+
+<script>
+// ---------- Pictogrammes ----------
+const SUN = '#F2B33D', CLOUD = '#FFFFFF', GREY = '#B8C0C6', DARK = '#8E979E', RAIN = '#3D7DCA', INK = '#25302A';
+function icon(kind, s = 30) {
+  const sun = (cx, cy, r) => `<g stroke="${INK}" stroke-width="1"><g stroke="${SUN}" stroke-width="2" stroke-linecap="round">${[0,45,90,135,180,225,270,315].map(a=>{const t=a*Math.PI/180;return `<line x1="${cx+Math.cos(t)*r*1.35}" y1="${cy+Math.sin(t)*r*1.35}" x2="${cx+Math.cos(t)*r*1.8}" y2="${cy+Math.sin(t)*r*1.8}"/>`}).join('')}</g><circle cx="${cx}" cy="${cy}" r="${r}" fill="${SUN}"/></g>`;
+  const cloud = (x, y, k, fill) => `<path d="M${x} ${y}h${22*k}a${6*k} ${6*k} 0 0 0 -${2*k} -${11.5*k}a${8*k} ${8*k} 0 0 0 -${15*k} -${2*k}a${5.5*k} ${5.5*k} 0 0 0 -${5*k} ${13.5*k}z" fill="${fill}" stroke="${INK}" stroke-width="1"/>`;
+  const drops = (n) => Array.from({length:n},(_,i)=>`<line x1="${11+i*6}" y1="25" x2="${9+i*6}" y2="30" stroke="${RAIN}" stroke-width="2" stroke-linecap="round"/>`).join('');
+  let g = '';
+  if (kind === 'sun') g = sun(16, 16, 6.5);
+  if (kind === 'part') g = sun(11, 11, 5) + cloud(8, 24, 0.95, CLOUD);
+  if (kind === 'cloud') g = cloud(5, 23, 1.05, GREY);
+  if (kind === 'rain') g = cloud(5, 20, 1.05, DARK) + drops(3);
+  if (kind === 'shower') g = sun(11, 9, 4.5) + cloud(7, 20, 0.95, GREY) + drops(2);
+  if (kind === 'storm') g = cloud(5, 20, 1.05, DARK) + `<path d="M17 20l-4 6h4l-3 6" fill="none" stroke="${SUN}" stroke-width="2"/>`;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 32 32" aria-hidden="true">${g}</svg>`;
+}
+const dots = (n) => `<div class="dots">${[0,1,2,3,4,5].map(i=>`<i class="${i===n?'on':''}"></i>`).join('')}</div>`;
+
+// ---------- Données d'exemple (mer. 14 octobre, 14 h 20) ----------
+const DAYS = [['Auj.','part',16,8,42,20],['Jeu.','rain',14,9,10,85],['Ven.','shower',15,7,35,60],['Sam.','sun',18,6,88,5],['Dim.','sun',19,8,80,10],['Lun.','cloud',16,10,20,30],['Mar.','storm',17,11,15,70]];
+const TREND = [['Mer.','part',17,9],['Jeu.','rain',14,10],['Ven.','rain',13,9],['Sam.','cloud',14,8],['Dim.','part',15,7],['Lun.','sun',16,6],['Mar.','sun',17,7],['Mer.','part',16,8],['Jeu.','cloud',15,9]];
+const HOURS = [['15 h','part',16,0],['17 h','cloud',15,0.2],['19 h','shower',13,1.1],['21 h','rain',11,1.8],['23 h','rain',10,0.9],['1 h','cloud',9,0.1],['3 h','cloud',8,0]];
+
+const SCREENS = [
+  { id:'now', name:'Maintenant', tag:'proposé', why:'L’écran actuel, enrichi : ressenti, humidité, vent. Toujours disponible (sans position : la météo de la scène, comme aujourd’hui).',
+    html: () => `<div class="title"><span>Maintenant</span><span>14:20</span></div>
+      <div class="row" style="margin-top:6px">${icon('part',64)}<div class="col"><span class="big">14°</span><span class="mid">Éclaircies</span></div></div>
+      <div class="facts"><span>Ressenti <b>12°</b></span><span>Humidité <b>78 %</b></span><span>Vent <b>18 km/h SO</b></span><span>Soleil <b class="sunp">42 % auj.</b></span></div>${dots(0)}` },
+  { id:'hour', name:'Pluie dans l’heure', tag:'option', why:'Pluie par quart d’heure pour l’heure qui vient. Précise en France (modèle Météo-France), grossière ailleurs.',
+    html: () => `<div class="title"><span>Pluie dans l’heure</span><span>14:20</span></div>
+      <div class="mid" style="margin:6px 0 2px">Pluie faible vers 15 h 00</div>
+      <div class="hours" style="grid-template-columns:repeat(4,1fr);height:62px">${[[0,'14:30'],[0.1,'14:45'],[0.6,'15:00'],[0.9,'15:15']].map(([mm,h])=>`<div><div class="bar" style="height:${4+mm*40}px"></div><div class="sm">${h}</div></div>`).join('')}</div>
+      <div class="sm">en mm par quart d’heure</div>${dots(1)}` },
+  { id:'today', name:'Aujourd’hui', tag:'proposé', why:'La journée en détail : mini/maxi, % de soleil, risque et quantité de pluie, vent et rafales, lever/coucher, UV, puis heure par heure (toutes les 2 h) avec la pluie en barres.',
+    html: () => `<div class="title"><span>Aujourd’hui</span><span>mer. 14 oct.</span></div>
+      <div class="row" style="margin-top:3px">${icon('part',40)}<div class="col"><span class="mid">8° / <b style="font-size:20px">16°</b></span><span class="sm">Éclaircies</span></div>
+      <div class="facts" style="flex:1"><span>☀ <b class="sunp">42 %</b></span><span>💧 <b class="rainp">20 %</b> · 3,2 mm</span><span>UV <b>2</b></span><span>Vent 25 · raf. 45</span><span>Lever 08:12 · coucher 19:05</span></div></div>
+      <div class="hours">${HOURS.map(([h,k,t,mm])=>`<div><div class="sm">${h}</div>${icon(k,20).replace('<svg','<svg style="margin:0 auto"')}<b>${t}°</b><div class="bar" style="height:${2+mm*7}px;margin-top:2px"></div></div>`).join('')}</div>${dots(2)}` },
+  { id:'week', name:'7 jours', tag:'proposé', why:'Un jour par colonne : pictogramme, maxi et mini, % de soleil, risque de pluie. Le jour actuel est en premier.',
+    html: () => `<div class="title"><span>7 jours</span><span>☀ soleil · 💧 pluie</span></div>
+      <div class="days" style="grid-template-columns:repeat(7,1fr)">${DAYS.map(([d,k,hi,lo,s,r])=>`<div><b>${d}</b>${icon(k,28).replace('<svg','<svg style="margin:2px auto"')}<div><b>${hi}°</b> <span class="lo">${lo}°</span></div><div class="sunp">☀${s}%</div><div class="rainp">💧${r}%</div></div>`).join('')}</div>${dots(3)}` },
+  { id:'trend', name:'Tendance 8 à 16 jours', tag:'option', why:'Les 9 jours suivants, en plus discret : au-delà d’une semaine, les prévisions sont peu fiables (affiché sur l’écran).',
+    html: () => `<div class="title"><span>Tendance</span><span>fiabilité faible</span></div>
+      <div class="days dim" style="grid-template-columns:repeat(9,1fr)">${TREND.map(([d,k,hi,lo])=>`<div><b>${d}</b>${icon(k,24).replace('<svg','<svg style="margin:2px auto"')}<div><b>${hi}°</b></div><div class="lo">${lo}°</div></div>`).join('')}</div>
+      <div class="sm" style="margin-top:4px">du mer. 21 au jeu. 29 octobre</div>${dots(4)}` },
+  { id:'air', name:'Air et pollens', tag:'option', why:'Qualité de l’air (indice européen) et pollens du jour, en Europe seulement. Vient d’un autre service Open-Meteo.',
+    html: () => `<div class="title"><span>Air et pollens</span><span>aujourd’hui</span></div>
+      <div class="row" style="margin-top:6px"><span class="big" style="color:#2F7D5B">32</span><div class="col"><span class="mid">Air : bon</span><span class="sm">indice européen (0 à 100+)</span></div></div>
+      <div class="facts" style="margin-top:8px"><span>Graminées <b>faible</b></span><span>Bouleau <b>nul</b></span><span>Ambroisie <b style="color:#B5651D">moyen</b></span><span>Olivier <b>nul</b></span></div>${dots(5)}` },
+];
+
+document.getElementById('zoomlcd').innerHTML = SCREENS[2].html();
+document.getElementById('screens').innerHTML = SCREENS.map(s => `<div class="card"><h3>${s.name}<span class="tag ${s.tag==='option'?'opt':''}">${s.tag}</span></h3><div class="device"><div class="lcd">${s.html()}</div></div><p class="why">${s.why}</p></div>`).join('')
+  + `<div class="card"><h3>Sans position<span class="tag">proposé</span></h3><div class="device"><div class="lcd" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center"><div style="font-size:34px">📍</div><div class="mid">Activez la position<br>pour voir les prévisions</div><div class="sm" style="margin-top:4px">Paramètres › Position</div>${dots(3)}</div></div><p class="why">Les écrans de prévisions sans position. « Maintenant » reste disponible.</p></div>`;
+
+const MINIS = [
+  ['Maintenant', `<div class="row" style="gap:4px">${icon('part',34)}<div class="col"><span class="big">14°</span><span class="sm">Éclaircies</span></div></div><div class="sm" style="text-align:center">14:20</div>`],
+  ['Aujourd’hui', `<div class="row" style="gap:4px">${icon('part',30)}<div class="col"><span class="mid">8° / 16°</span><span class="sunp" style="font-size:11px">☀ 42 %</span><span class="rainp" style="font-size:11px">💧 20 %</span></div></div>`],
+  ['7 jours', `<div class="days" style="grid-template-columns:repeat(4,1fr);font-size:9px;margin:0">${DAYS.slice(0,4).map(([d,k,hi,lo,s])=>`<div><b style="font-size:9px">${d}</b>${icon(k,18).replace('<svg','<svg style="margin:0 auto"')}<b>${hi}°</b><div class="sunp">${s}%</div></div>`).join('')}</div>`],
+];
+document.getElementById('minis').innerHTML = MINIS.map(([n,h]) => `<div class="mini"><div class="device" style="padding:5px;border-radius:9px"><div class="lcd">${h}</div></div><div class="cap">laissée sur « ${n} »</div></div>`).join('');
+</script>
+</body>
+</html>
