@@ -59,4 +59,23 @@ describe('villes des horloges', () => {
     const tokyo = { name: 'Tokyo', tz: 'Asia/Tokyo' };
     expect(cityClock(10 * 60 + 10, tokyo, now, true)).toEqual({ ...cityClock(10 * 60 + 11, tokyo, now), live: true });
   });
+
+  describe('scène dans un autre fuseau que l’appareil', () => {
+    // 2026-10-14 08:10:42 UTC : 10:10 à Paris, 17:10 à Tokyo, 04:10 à New York.
+    const now = new Date('2026-10-14T08:10:42Z');
+
+    it('une horloge réglée sur Paris quand la scène est à Tokyo donne l’heure de Paris', () => {
+      expect(cityMinutes(17 * 60 + 10, 'Europe/Paris', now, 'Asia/Tokyo')).toBe(10 * 60 + 10);
+      expect(cityClock(17 * 60 + 10, { name: 'Paris', tz: 'Europe/Paris' }, now, false, 'Asia/Tokyo')).toEqual({ h: 10, m: 10, s: 42, live: false });
+    });
+
+    it('en heure réelle, l’horloge « heure de la scène » lit l’heure de la ville de la scène', () => {
+      expect(cityClock(0, undefined, now, true, 'Asia/Tokyo')).toEqual({ h: 17, m: 10, s: 42, live: true });
+      expect(cityClock(0, { name: 'New York', tz: 'America/New_York' }, now, true, 'Asia/Tokyo')).toEqual({ h: 4, m: 10, s: 42, live: true });
+    });
+
+    it('heure figée à 14:00 à Tokyo : Paris affiche 07:00 (écart Tokyo-Paris, pas appareil-Paris)', () => {
+      expect(cityClock(14 * 60, { name: 'Paris', tz: 'Europe/Paris' }, now, false, 'Asia/Tokyo')).toEqual({ h: 7, m: 0, s: 42, live: false });
+    });
+  });
 });

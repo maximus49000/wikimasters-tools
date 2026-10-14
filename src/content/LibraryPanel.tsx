@@ -326,11 +326,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       sky: sceneTime.sky,
       minutes: sceneTime.minutes,
       mode: sceneTime.mode,
+      tz: sceneTime.tz,
       weather: { clock: weather.clock, flags: weather.flags },
       city: { day: cityDay, forcedNight: lib?.time.mode === 'night', shopNames, busLines },
       deco: { state: weather.state, label: weather.label, tempC: weather.tempC },
     }),
-    [sceneTime.sky, sceneTime.minutes, sceneTime.mode, weather.clock, weather.flags, weather.state, weather.label, weather.tempC, cityDay, shopNames, busLines, lib?.time.mode],
+    [sceneTime.sky, sceneTime.minutes, sceneTime.mode, sceneTime.tz, weather.clock, weather.flags, weather.state, weather.label, weather.tempC, cityDay, shopNames, busLines, lib?.time.mode],
   );
 
 
@@ -1193,6 +1194,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           <CityPickerDialog
             current={(layout.find((p) => p.id === decoDialog.id) as { city?: CityTime } | undefined)?.city}
             sceneMinutes={sceneTime.minutes}
+            sceneTz={sceneTime.tz}
             onChoose={(city) => { void editLayout((l) => setDecoSettings(l, decoDialog.id, { city })); setDecoDialog(null); }}
             onClose={() => setDecoDialog(null)}
           />

@@ -15,7 +15,7 @@ import { currentPosition } from './scene-position';
 // mode Aménager) ; seuls les objets qui montrent l'heure s'abonnent à la seconde partagée et se redessinent seuls (spec §4.1).
 
 // `live` : heure réelle (heures et minutes relues à la seconde) ; sinon `minutes` de la scène, figées.
-export type DecoScene = { minutes: number; live: boolean; weather: DecoWeather; daylight: number; editing: boolean };
+export type DecoScene = { minutes: number; live: boolean; tz: string | null; weather: DecoWeather; daylight: number; editing: boolean };
 
 // Scène des objets décoratifs, calculée seulement si la pièce en contient (`active`) et mémoïsée : elle ne change qu'avec la minute
 // de la scène, la météo, le ciel ou le mode Aménager. Sans vue (zoom isolé, test) : heure réelle, ciel couvert de jour.
@@ -29,11 +29,12 @@ export function useDecoScene(view: SceneView | undefined, editing: boolean, acti
     return {
       minutes: view?.minutes ?? 0,
       live: (view?.mode ?? 'real') === 'real',
+      tz: view?.tz ?? null,
       weather: { state, label: deco?.label ?? '', night, tempC },
       daylight: view?.sky.daylight ?? 1,
       editing,
     };
-  }, [active, view?.minutes, view?.mode, view?.sky, deco?.state, deco?.label, deco?.tempC, editing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, view?.minutes, view?.mode, view?.tz, view?.sky, deco?.state, deco?.label, deco?.tempC, editing]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 // Finesse de l'heure montrée : la seconde (aiguilles, deux-points qui clignotent), la minute (heure écrite de la station) ou rien.
@@ -47,7 +48,7 @@ const never = (): number => 0;
 function useDecoView(scene: DecoScene, city: CityTime | undefined, precision: Precision): DecoView {
   const stamp = useSyncExternalStore(precision === 'none' ? noSubscribe : subscribeClockTick, precision === 'second' ? atSecond : precision === 'minute' ? atMinute : never);
   return useMemo(
-    () => ({ time: cityClock(scene.minutes, city, new Date(clockNowMs()), scene.live), city: city?.name, weather: scene.weather, daylight: scene.daylight, editing: scene.editing }),
+    () => ({ time: cityClock(scene.minutes, city, new Date(clockNowMs()), scene.live, scene.tz), city: city?.name, weather: scene.weather, daylight: scene.daylight, editing: scene.editing }),
     [scene, city, stamp], // eslint-disable-line react-hooks/exhaustive-deps
   );
 }
@@ -75,7 +76,7 @@ function LiveTableFace({ item, w, h, style, scene, city }: { item: TableItem; w:
 // change son dessin hors de l'heure réelle.
 export function tableFaceContent(item: TableItem, city: CityTime | undefined, style: StyleId, scene: DecoScene): ItemContent {
   const w = scene.weather;
-  const key = `${item}|${city?.name ?? ''}|${city?.tz ?? ''}|${style}|${scene.live ? 'live' : scene.minutes}|${w.state}|${w.label}|${w.tempC}|${w.night}`;
+  const key = `${item}|${city?.name ?? ''}|${city?.tz ?? ''}|${style}|${scene.live ? 'live' : scene.minutes}|${scene.tz ?? ''}|${w.state}|${w.label}|${w.tempC}|${w.night}`;
   return { face: { key, draw: (fw: number, fh: number) => <LiveTableFace item={item} w={fw} h={fh} style={style} scene={scene} city={city} /> } };
 }
 

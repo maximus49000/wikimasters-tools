@@ -1,5 +1,5 @@
 import type { CityTime } from './deco';
-import { tzOffsetMinutes } from './scene-clock';
+import { localClock, tzOffsetMinutes } from './scene-clock';
 
 // Décalage d'un fuseau : calculé par l'heure de la scène (scene-clock.ts), ré-exporté pour les horloges.
 export { tzOffsetMinutes };
@@ -155,17 +155,18 @@ export function searchCities(query: string): City[] {
   return q ? CITIES.filter((c) => fold(`${c.name} ${c.country}`).includes(q)) : [...CITIES];
 }
 
-// Heure d'une ville : heure de la scène décalée de l'écart entre la ville et l'appareil (la scène suit l'heure locale de l'appareil).
-export function cityMinutes(sceneMinutes: number, tz: string, now: Date): number {
-  const delta = tzOffsetMinutes(tz, now) - -now.getTimezoneOffset();
+// Heure d'une ville : heure de la scène décalée de l'écart entre la ville et le fuseau de la scène (`sceneTz` : ville du lieu de la
+// scène, null = appareil).
+export function cityMinutes(sceneMinutes: number, tz: string, now: Date, sceneTz: string | null = null): number {
+  const delta = tzOffsetMinutes(tz, now) - localClock(now, sceneTz).offsetMin;
   return (((sceneMinutes + delta) % 1440) + 1440) % 1440;
 }
 
-// `live` (heure réelle) : heures et minutes lues sur `now` (la seconde de l'appareil) et non sur la minute de la scène, relue toutes
-// les 30 s : l'horloge change de minute à la seconde près. Heure figée (jour, nuit, manuelle) : l'heure de la scène, l'aiguille des
-// minutes n'avance pas avec les secondes (`live` faux) ; les secondes, elles, viennent toujours de l'appareil.
-export function cityClock(sceneMinutes: number, city: CityTime | undefined, now: Date, live = false): { h: number; m: number; s: number; live: boolean } {
-  const base = live ? now.getHours() * 60 + now.getMinutes() : sceneMinutes;
-  const m = city ? cityMinutes(base, city.tz, now) : ((Math.round(base) % 1440) + 1440) % 1440;
+// `live` (heure réelle) : heures et minutes lues sur `now` dans le fuseau de la scène (la seconde de l'appareil) et non sur la minute
+// de la scène, relue toutes les 30 s : l'horloge change de minute à la seconde près. Heure figée (jour, nuit, manuelle) : l'heure de la
+// scène, l'aiguille des minutes n'avance pas avec les secondes (`live` faux) ; les secondes, elles, viennent toujours de l'appareil.
+export function cityClock(sceneMinutes: number, city: CityTime | undefined, now: Date, live = false, sceneTz: string | null = null): { h: number; m: number; s: number; live: boolean } {
+  const base = live ? localClock(now, sceneTz).minutes : sceneMinutes;
+  const m = city ? cityMinutes(base, city.tz, now, sceneTz) : ((Math.round(base) % 1440) + 1440) % 1440;
   return { h: Math.floor(m / 60), m: m % 60, s: now.getSeconds(), live };
 }

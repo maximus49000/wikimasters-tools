@@ -8,12 +8,13 @@ import { Btn, Icon, ICONS } from './library-ui';
 type Props = {
   current?: CityTime;
   sceneMinutes: number;
+  sceneTz: string | null;
   onChoose: (city: CityTime | null) => void;
   onClose: () => void;
 };
 
 // Choix de la ville dont une horloge affiche l'heure (ou retour à l'heure de la scène).
-export function CityPickerDialog({ current, sceneMinutes, onChoose, onClose }: Props): ReactElement {
+export function CityPickerDialog({ current, sceneMinutes, sceneTz, onChoose, onClose }: Props): ReactElement {
   const [query, setQuery] = useState('');
   const now = new Date();
   const cities = searchCities(query);
@@ -37,7 +38,7 @@ export function CityPickerDialog({ current, sceneMinutes, onChoose, onClose }: P
           </button>
           {cities.map((c) => (
             <button type="button" key={`${c.name}|${c.country}`} data-city-tz={c.tz} aria-pressed={current?.tz === c.tz && current.name === c.name} onClick={() => onChoose({ name: c.name, tz: c.tz })}>
-              {c.name}, {c.country} <span>{formatMinutes(cityMinutes(sceneMinutes, c.tz, now))}</span>
+              {c.name}, {c.country} <span>{formatMinutes(cityMinutes(sceneMinutes, c.tz, now, sceneTz))}</span>
             </button>
           ))}
         </div>
