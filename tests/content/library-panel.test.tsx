@@ -276,11 +276,26 @@ describe('LibraryPanel : plein écran', () => {
     await settle();
     const scroll = q('[data-scroll]') as HTMLElement;
     expect(scroll.style.height).toBe('100vh');
-    expect((q('[data-scroll] svg[role="img"]') as SVGElement).style.width).toContain('max(100vw');
     expect(repo.current()?.rooms[0]?.cols).toBe(38);
     expect(q('[data-action="fit-screen"]')).toBeNull();
     await click('[data-action="fullscreen"]');
     expect((q('[data-scroll]') as HTMLElement).style.height).toBe('');
+  });
+
+  it('une pièce ajustée à l’écran le couvre exactement, sans le léger défilement dû à l’arrondi des colonnes', async () => {
+    stub();
+    // 2400 × 1080 : 37,8 colonnes arrondies à 38, soit 2414 px de pièce pour 2400 px d'écran.
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2400 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });
+    await click('[data-action="fullscreen"]');
+    await settle();
+    expect(repo.current()?.rooms[0]?.cols).toBe(38);
+    const svg = q('[data-scroll] svg[role="img"]') as SVGElement;
+    expect(svg.style.width).toBe('100vw');
+    expect(svg.style.height).toBe('100vh');
+    expect(svg.getAttribute('preserveAspectRatio')).toBe('none');
+    await click('[data-action="fullscreen"]');
+    expect((q('[data-scroll] svg[role="img"]') as SVGElement).getAttribute('preserveAspectRatio')).toBeNull();
   });
 
   it('propose de réduire à la largeur de l’écran une pièce plus large', async () => {
