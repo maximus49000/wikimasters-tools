@@ -81,9 +81,29 @@ describe('panneaux et horloges — tiroir, pose, taille', () => {
     await addWindowAt(8, 6);
     await addPanelAt(3, 6);
     await click(`[data-id="${panelId()}"]`);
-    for (let i = 0; i < 2; i++) await click('[data-action="deco-w+"]');
-    expect(panel()!.w).toBeLessThanOrEqual(5);
+    await click('[data-action="deco-w+"]');
+    expect(panel()!.w).toBe(5);
+    expect(blinking()).toBe(0);
+    await click('[data-action="deco-w+"]');
+    const p = panel()!;
+    const win = layout().find((x) => x.kind === 'window')!;
+    expect(p.w).toBe(5);
+    // Aucun chevauchement de colonnes avec la fenêtre.
+    expect(p.col + p.w! <= win.col!).toBe(true);
+    expect(q('[role="status"]')!.textContent).toMatch(/occupé|place/i);
     expect(blinking()).toBeGreaterThan(0);
+  });
+
+  it('refuse d agrandir un panneau collé au mur de droite : taille inchangée, message affiché', async () => {
+    await addPanelAt(20, 6); // colonnes 20 à 23 : dernière colonne de la pièce
+    expect(panel()).toMatchObject({ col: 20, w: 4 });
+    await click(`[data-id="${panelId()}"]`);
+    await click('[data-action="deco-w+"]');
+    expect(panel()).toMatchObject({ col: 20, w: 4, h: 3 });
+
+    // Refus « hors du mur » : cases listées par canHangRect, donc elles clignotent (compté ici pour mémoire).
+    expect(q("[role=status]")!.textContent).toBe("Ça ne rentre pas dans la pièce.");
+    expect(blinking()).toBe(12);
   });
 
   it('une horloge n a pas de boutons de taille', async () => {
