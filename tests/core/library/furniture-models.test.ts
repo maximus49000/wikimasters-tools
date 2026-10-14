@@ -11,7 +11,26 @@ const DIMS: Record<string, [number, number, number]> = {
   'rocking-chair': [65, 95, 104], 'club-chair': [90, 85, 80], loveseat: [150, 88, 82], daybed: [165, 70, 85], 'egg-chair': [100, 100, 195],
   'peacock-chair': [90, 65, 140], pouf: [55, 55, 40], beanbag: [80, 80, 70], bench: [120, 40, 48],
   dresser: [100, 45, 82], 'side-table': [50, 50, 60], 'cat-tree': [62, 50, 150],
+  monstera: [85, 70, 120], strelitzia: [60, 60, 170], palm: [100, 100, 190], cactus: [35, 35, 132], pampas: [42, 30, 122],
 };
+
+describe('plantes du mobilier divers', () => {
+  const leaves = (k: keyof typeof FURNITURE_MODELS) => FURNITURE_MODELS[k].pieces.flatMap((p) => (p.shape === 'foliage' ? p.leaves : []));
+  it('monstera en feuilles en cœur, oiseau de paradis en palettes avec une fleur orange', () => {
+    expect(leaves('monstera').length).toBeGreaterThanOrEqual(6);
+    expect(leaves('monstera').every((l) => l.form === 'heart')).toBe(true);
+    expect(leaves('strelitzia').every((l) => l.form === 'paddle')).toBe(true);
+    expect(FURNITURE_MODELS.strelitzia.pieces.some((p) => p.color === '#F08A24')).toBe(true);
+  });
+  it('palmier : au moins 7 palmes de folioles, moins de 500 formes à chaque angle (Android)', () => {
+    expect(leaves('palm').length).toBeGreaterThanOrEqual(7 * 10);
+    for (const a of [0, 1, 2, 3, 4, 5, 6, 7] as const) expect(renderModel(FURNITURE_MODELS.palm, a).shapes.length).toBeLessThan(500);
+  });
+  it('cactus fleuri, pampas en 5 plumets', () => {
+    expect(FURNITURE_MODELS.cactus.pieces.some((p) => p.color === '#EF6F9C')).toBe(true);
+    expect(leaves('pampas')).toHaveLength(5);
+  });
+});
 
 describe('commode, guéridon, arbre à chat', () => {
   it('perchoirs : plateau de la commode, du guéridon, haut de l’arbre à chat', () => {

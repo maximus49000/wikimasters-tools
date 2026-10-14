@@ -56,6 +56,49 @@ export const crown = (cx: number, cz: number, y0: number, n: number, a0: number,
     const dy = lift[i % lift.length]!;
     return { base: [cx + c * 1.5, y0, cz + s * 1.5], ctrl: [cx + c * ctrl[0], ctrl[1] + dy, cz + s * ctrl[0]], tip: [cx + c * tip[0], tip[1] + dy, cz + s * tip[0]], w, fill: fills[i % fills.length] };
   });
+// Point d'une courbe de Bézier quadratique (a → c → b) en t ∈ [0, 1].
+const qAt = (a: V3t, c: V3t, b: V3t, t: number): V3t => [0, 1, 2].map((k) => (1 - t) ** 2 * a[k]! + 2 * (1 - t) * t * c[k]! + t * t * b[k]!) as V3t;
+// Feuille sur sa tige : départ à `r0` cm du centre (cx, cz) et à `h0` cm du sol dans l'azimut `az` (degrés ; 270 = vers l'avant),
+// longueur `L` relevée de `elev` degrés, largeur `w` ; la tige part de `from`.
+function stemLeaf(cx: number, cz: number, from: V3t, [az, h0, r0, L, elev, w]: [number, number, number, number, number, number], form: Leaf['form'], fill: Piece['fill']): { stem: Piece; leaf: Leaf } {
+  const [a, e] = [(az * Math.PI) / 180, (elev * Math.PI) / 180];
+  const [dx, dz] = [Math.cos(a), Math.sin(a)];
+  const base: V3t = [cx + dx * r0, h0, cz + dz * r0];
+  const tip: V3t = [base[0] + dx * L * Math.cos(e), h0 + L * Math.sin(e), base[2] + dz * L * Math.cos(e)];
+  const ctrl: V3t = [base[0] + dx * L * 0.5 * Math.cos(e), h0 + L * 0.5 * Math.sin(e) + L * 0.15, base[2] + dz * L * 0.5 * Math.cos(e)];
+  return { stem: rod(from, base, 0.9, 'leafDark'), leaf: { base, ctrl, tip, w, fill, form } };
+}
+// Plante en feuilles sur tiges : les tiges, puis le feuillage.
+const stemmed = (cx: number, cz: number, from: V3t, specs: [number, number, number, number, number, number][], form: Leaf['form'], fills: Piece['fill'][]): Piece[] => {
+  const all = specs.map((s, i) => stemLeaf(cx, cz, from, s, form, fills[i % fills.length]!));
+  return [...all.map((x) => x.stem), { shape: 'foliage', fill: 'leaf', leaves: all.map((x) => x.leaf) }];
+};
+// Palme : 7 paires de folioles fines le long d'une nervure courbe (a → c → b), plus courtes vers la pointe, retombantes.
+function frond(a: V3t, c: V3t, b: V3t): Leaf[] {
+  const out: Leaf[] = [];
+  for (let i = 0; i < 7; i++) {
+    const t = 0.16 + i * 0.13;
+    const p = qAt(a, c, b, t);
+    const tan = [0, 1, 2].map((k) => 2 * (1 - t) * (c[k]! - a[k]!) + 2 * t * (b[k]! - c[k]!));
+    const tl = Math.hypot(tan[0]!, tan[1]!, tan[2]!) || 1;
+    const T = tan.map((v) => v / tl);
+    const hl = Math.hypot(T[0]!, T[2]!) || 1;
+    const N = [-T[2]! / hl, 0, T[0]! / hl];
+    const len = 16 * (1 - 0.5 * t) + 3;
+    for (const side of [-1, 1]) {
+      const d = [side * N[0]! * 0.75 + T[0]! * 0.35, T[1]! * 0.35 - 0.4, side * N[2]! * 0.75 + T[2]! * 0.35];
+      const tip: V3t = [p[0] + d[0]! * len, p[1] + d[1]! * len, p[2] + d[2]! * len];
+      out.push({ base: p, ctrl: [(p[0] + tip[0]) / 2, (p[1] + tip[1]) / 2 + len * 0.12, (p[2] + tip[2]) / 2], tip, w: 2.4, fill: (i + (side > 0 ? 1 : 0)) % 2 ? 'leaf' : 'leafDark' });
+    }
+  }
+  return out;
+}
+// Palmier : sommets des trois cannes, et ses palmes [canne, azimut, portée, montée de la pointe, montée du contrôle].
+const PALM_CANES: V3t[] = [[46, 140, 48], [54, 150, 52], [50, 128, 50]];
+const PALM_FRONDS: [number, number, number, number, number][] = [[0, 180, 32, -15, 40], [0, 240, 30, -5, 42], [1, 0, 32, -10, 38], [1, 60, 30, 0, 40], [1, 120, 28, -20, 36], [2, 300, 30, -25, 30], [2, 90, 24, 30, 40], [1, 270, 10, 32, 30]];
+// Plumets du pampas : bout de chaque tige, relatif au col du vase (21, 60, 15).
+const PAMPAS_ENDS: V3t[] = [[-8, 32, 0], [-6, 24, -4], [0, 33, 0], [7, 24, 4], [9, 30, -3]].map(([x, y, z]) => [21 + x!, 60 + y!, 15 + z!] as V3t);
+
 // Continents du globe en (latitude, longitude) degrés, longitude 0 = face avant du globe.
 const CONTINENTS: [number, number][][] = [
   [[70, -10], [71, 28], [60, 40], [45, 38], [37, 12], [36, -8], [44, -9], [50, -4], [58, -6]], // Europe
@@ -422,6 +465,74 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
       cyl(42, 25, 143, 19, 7, 'fabric'),
     ],
     perch: { x: 27, z: 10, w: 30, d: 30, y: 150 },
+  },
+  // Monstera : pot évasé, six grandes feuilles en cœur découpées sur leurs tiges.
+  monstera: {
+    w: 85, d: 70, h: 120,
+    pieces: [
+      cone(42.5, 35, 0, 12, 16, 32, 'warm'), cyl(42.5, 35, 31, 17, 5, 'warmDark'), cyl(42.5, 35, 35.5, 14.5, 1.5, 'door'),
+      ...stemmed(42.5, 35, [42.5, 37, 35], [
+        [180, 64, 14, 19, 10, 18], [0, 66, 14, 19, 8, 18], [215, 82, 12, 28, 30, 25], [325, 85, 12, 28, 32, 25], [270, 74, 8, 18, 25, 18], [90, 88, 6, 24, 50, 23],
+      ], 'heart', ['leaf', 'leafDark']),
+    ],
+  },
+  // Oiseau de paradis : pot droit, grandes feuilles en palette dressées, une fleur orange et bleue.
+  strelitzia: {
+    w: 60, d: 60, h: 170,
+    pieces: [
+      cyl(30, 30, 0, 13, 32, 'warmLight'), cyl(30, 30, 30, 15, 5, 'warm'),
+      ...stemmed(30, 30, [30, 35, 30], [
+        [180, 88, 6, 40, 66, 11], [0, 90, 6, 40, 64, 11], [200, 105, 4, 58, 76, 13], [340, 110, 4, 54, 78, 13], [270, 98, 4, 58, 74, 14], [90, 96, 4, 52, 72, 13],
+      ], 'paddle', ['leaf', 'leafDark']),
+      rod([32, 35, 32], [36, 126, 28], 1, 'leafDark'),
+      rod([36, 126, 28], [52, 131, 28], 1.6, 'leafDark'),
+      rod([42, 129, 28], [48, 143, 27], 1.4, 'warm', { color: '#F08A24' }),
+      rod([46, 130, 28], [55, 140, 28], 1.2, 'warm', { color: '#F2A63A' }),
+      rod([48, 131, 28], [53, 136, 28], 0.9, 'fabric', { color: '#3E6FD8' }),
+    ],
+  },
+  // Palmier areca : panier tressé, trois cannes, huit palmes arquées en folioles.
+  palm: {
+    w: 100, d: 100, h: 190,
+    pieces: [
+      cone(50, 50, 0, 15, 17, 34, 'woodDark'), cyl(50, 50, 32, 18, 4, 'wood'),
+      ...PALM_CANES.map((top) => rod([50, 36, 50], top, 1.4, 'leafDark')),
+      {
+        shape: 'foliage', fill: 'leaf', leaves: PALM_FRONDS.flatMap(([cane, az, reach, rise, ctrlRise]) => {
+          const base = PALM_CANES[cane]!;
+          const a = (az * Math.PI) / 180;
+          const [dx, dz] = [Math.cos(a), Math.sin(a)];
+          return frond(base, [base[0] + dx * reach * 0.45, base[1] + ctrlRise, base[2] + dz * reach * 0.45], [base[0] + dx * reach, base[1] + rise, base[2] + dz * reach]);
+        }),
+      },
+    ],
+  },
+  // Cactus cierge : pot en terre, colonne et deux bras coudés arrondis, fleur rose au sommet.
+  cactus: {
+    w: 35, d: 35, h: 132, round: true,
+    pieces: [
+      cone(17.5, 17.5, 0, 10, 13, 20, 'warm'), cyl(17.5, 17.5, 19, 14, 4, 'warmDark'),
+      rod([14, 60, 17.5], [6.5, 62, 17.5], 3.5, 'leaf'), cyl(6.5, 17.5, 62, 3.5, 26, 'leaf'), ball(6.5, 88, 17.5, 3.5, 3.5, 3.5, 'leaf'),
+      rod([21, 74, 17.5], [28.5, 76, 17.5], 3.5, 'leaf'), cyl(28.5, 17.5, 76, 3.5, 22, 'leaf'), ball(28.5, 98, 17.5, 3.5, 3.5, 3.5, 'leaf'),
+      cyl(17.5, 17.5, 23, 5.5, 100, 'leaf'), ball(17.5, 123, 17.5, 5.5, 5.5, 5.5, 'leaf'),
+      ball(17.5, 129.5, 17.5, 3.5, 2, 3.5, 'leaf', { color: '#EF6F9C', layer: 1 }),
+    ],
+  },
+  // Grand vase et pampas : vase haut en céramique, cinq tiges, plumets crème.
+  pampas: {
+    w: 42, d: 30, h: 122,
+    pieces: [
+      cone(21, 15, 0, 9, 12, 30, 'warmLight'), cone(21, 15, 30, 12, 5, 24, 'warmLight'), cyl(21, 15, 54, 5, 8, 'warmLight'),
+      ...PAMPAS_ENDS.map((e) => rod([21, 60, 15], e, 0.5, 'warm', { color: '#B8A47A' })),
+      {
+        shape: 'foliage', fill: 'shade', leaves: PAMPAS_ENDS.map((e): Leaf => {
+          const d = [e[0] - 21, e[1] - 60, e[2] - 15];
+          const n = Math.hypot(d[0]!, d[1]!, d[2]!);
+          const tip: V3t = [e[0] + (d[0]! / n) * 24, e[1] + (d[1]! / n) * 24, e[2] + (d[2]! / n) * 24];
+          return { base: e, ctrl: [(e[0] + tip[0]) / 2, (e[1] + tip[1]) / 2, (e[2] + tip[2]) / 2], tip, w: 8, fill: 'shade' };
+        }),
+      },
+    ],
   },
 };
 

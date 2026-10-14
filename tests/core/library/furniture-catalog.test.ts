@@ -65,7 +65,7 @@ describe('catalogTree', () => {
   it('découpe la Déco en Plantes, Lumières, Sol et Murs', () => {
     const deco = catalogTree('scandinave').find((n) => n.id === 'deco');
     expect(deco?.subcategories.map((s) => s.id)).toEqual(['plants', 'lights', 'floor', 'walls']);
-    expect(deco?.subcategories.find((s) => s.id === 'plants')?.kinds).toEqual(['plant', 'small-plant']);
+    expect(deco?.subcategories.find((s) => s.id === 'plants')?.kinds).toEqual(['plant', 'small-plant', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas']);
     expect(deco?.subcategories.find((s) => s.id === 'lights')?.kinds).toEqual(['lamp', 'small-lamp']);
     expect(deco?.subcategories.find((s) => s.id === 'floor')?.kinds).toEqual(['rug', 'coffee-table', 'side-table']);
     expect(deco?.subcategories.find((s) => s.id === 'walls')?.kinds).toEqual(['window']);

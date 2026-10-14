@@ -42,6 +42,11 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
   dresser: { layer: 'floor', depth: 1, under: false },
   'side-table': { layer: 'floor', depth: 2, under: true },
   'cat-tree': { layer: 'floor', depth: 1, under: false },
+  monstera: { layer: 'floor', depth: 1, under: false },
+  strelitzia: { layer: 'floor', depth: 1, under: false },
+  palm: { layer: 'floor', depth: 1, under: false },
+  cactus: { layer: 'floor', depth: 1, under: false },
+  pampas: { layer: 'floor', depth: 1, under: false },
 };
 
 const LABELS: Record<FurnitureKind, string> = {
@@ -77,13 +82,18 @@ const LABELS: Record<FurnitureKind, string> = {
   dresser: 'Commode',
   'side-table': 'Guéridon',
   'cat-tree': 'Arbre à chat',
+  monstera: 'Monstera',
+  strelitzia: 'Oiseau de paradis',
+  palm: 'Palmier',
+  cactus: 'Cactus',
+  pampas: 'Pampas',
 };
 
 export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }[] = [
   { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer', 'dresser'] },
   { id: 'seats', label: 'Assises', kinds: ['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair', 'sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'beanbag', 'bench'] },
   { id: 'pets', label: 'Pour animaux', kinds: ['basket', 'bowl', 'kennel', 'charger', 'cat-tree'] },
-  { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'side-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug', 'window'] },
+  { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'side-table', 'plant', 'lamp', 'small-plant', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas', 'small-lamp', 'rug', 'window'] },
   { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
 ];
 
@@ -104,7 +114,7 @@ const SUBCATEGORIES: Partial<Record<Category, CatalogNode['subcategories']>> = {
     { id: 'poufs', label: 'Poufs et bancs', kinds: ['pouf', 'beanbag', 'bench'] },
   ],
   deco: [
-    { id: 'plants', label: 'Plantes', kinds: ['plant', 'small-plant'] },
+    { id: 'plants', label: 'Plantes', kinds: ['plant', 'small-plant', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas'] },
     { id: 'lights', label: 'Lumières', kinds: ['lamp', 'small-lamp'] },
     { id: 'floor', label: 'Sol', kinds: ['rug', 'coffee-table', 'side-table'] },
     { id: 'walls', label: 'Murs', kinds: ['window'] },

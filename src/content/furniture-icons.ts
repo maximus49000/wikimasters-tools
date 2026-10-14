@@ -35,6 +35,11 @@ export const KIND_ICON: Record<FurnitureKind, readonly string[]> = {
   dresser: ['M4 4h16v15H4z', 'M4 9h16', 'M4 14h16', 'M11 6.5h2', 'M11 11.5h2', 'M11 16.5h2', 'M6 19v2', 'M18 19v2'],
   'side-table': ['M5 7h14', 'M12 7v10', 'M12 17l-4 4', 'M12 17l4 4'],
   'cat-tree': ['M4 21h16', 'M8 21V8', 'M15 21V5', 'M5 8h6', 'M12 5h7', 'M13 13h7v6h-7z'],
+  monstera: ['M12 21v-7', 'M12 14c-6 0-8-4-7-9 4 0 7 3 7 9z', 'M12 14c5 0 7-3 6-8-4 0-6 3-6 8z', 'M8 21h8'],
+  strelitzia: ['M12 21V8', 'M12 12c-3-2-4-6-3-10 3 2 4 6 3 10z', 'M12 10c3-2 4-5 3-8-3 2-4 5-3 8z', 'M12 8l5-1-4 3', 'M9 21h6'],
+  palm: ['M12 21V10', 'M12 10c-3-3-7-3-9-1', 'M12 10c3-3 7-3 9-1', 'M12 10c-1-3-4-5-7-5', 'M12 10c1-3 4-5 7-5', 'M9 21h6'],
+  cactus: ['M10 21V5a2 2 0 0 1 4 0v16', 'M10 13H7a1 1 0 0 1-1-1V8', 'M14 15h3a1 1 0 0 0 1-1v-3', 'M7 21h10'],
+  pampas: ['M10 21c-2-3-2-6 0-8h4c2 2 2 5 0 8z', 'M12 13V5', 'M11 13L7 4', 'M13 13l4-8'],
 };
 
 export const CATEGORY_ICON: Record<Category, readonly string[]> = {
