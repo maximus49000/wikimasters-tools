@@ -380,6 +380,49 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
     pois: [{ type: 'seat', x: 35, y: 48, z: 20 }, { type: 'seat', x: 85, y: 48, z: 20 }],
     perch: { x: 4, z: 3, w: 112, d: 34, y: 48 },
   },
+  // Commode basse : pieds fuselés, caisson, trois tiroirs à deux boutons, plateau qui couvre tout.
+  dresser: {
+    w: 100, d: 45, h: 82,
+    pieces: [
+      ...[[7, 7], [93, 7], [7, 38], [93, 38]].map(([x, z]) => rod([x!, 0, z!], [x!, 8, z!], 2, 'leg')),
+      box(2, 8, 1.6, 96, 70, 42.4, 'wood'),
+      ...[12, 34, 56].flatMap((y) => [box(6, y, 0.6, 88, 19, 1, 'desk'), rod([35, y + 9.5, 0.6], [35, y + 9.5, 0], 2.2, 'metal'), rod([65, y + 9.5, 0.6], [65, y + 9.5, 0], 2.2, 'metal')]),
+      box(0, 78, 0, 100, 4, 45, 'woodDark'),
+    ],
+    perch: { x: 0, z: 0, w: 100, d: 45, y: 82 },
+  },
+  // Guéridon : plateau rond, fût, trépied ; on passe dessous.
+  'side-table': {
+    w: 50, d: 50, h: 60, round: true,
+    pieces: [
+      ...[90, 210, 330].map((deg) => {
+        const a = (deg * Math.PI) / 180;
+        return rod([25, 8, 25], [25 + 19 * Math.cos(a), 1.5, 25 + 19 * Math.sin(a)], 1.5, 'wood');
+      }),
+      ball(25, 9, 25, 4, 3, 4, 'woodDark'),
+      cyl(25, 25, 8, 2, 48, 'wood'),
+      cyl(25, 25, 56, 25, 4, 'desk'),
+    ],
+    perch: { x: 7, z: 7, w: 36, d: 36, y: 60 },
+  },
+  // Arbre à chat : socle moquette, deux poteaux en sisal, niche ronde, plateforme à 1 m, panier en haut, balle pendue.
+  // Lot A : seul le panier du haut est un perchoir (plateformes basses et niche au lot D).
+  'cat-tree': {
+    w: 62, d: 50, h: 150,
+    pieces: [
+      box(0, 0, 0, 62, 6, 50, 'rug'),
+      cyl(12, 25, 6, 4, 89, 'warmLight', { color: '#D8BE86' }),
+      box(28, 6, 8, 32, 34, 34, 'fabric'),
+      rod([44, 22, 8], [44, 22, 7.4], 8.5, 'door', { tone: 0.6 }),
+      box(26, 40, 6, 36, 4, 38, 'fabricDark'),
+      cyl(42, 25, 44, 4, 99, 'warmLight', { color: '#D8BE86' }),
+      box(0, 95, 6, 36, 5, 38, 'fabricDark'),
+      rod([4, 95, 25], [4, 79, 25], 0.3, 'edge'),
+      ball(4, 76.5, 25, 3, 3, 3, 'warm', { color: '#E0664A' }),
+      cyl(42, 25, 143, 19, 7, 'fabric'),
+    ],
+    perch: { x: 27, z: 10, w: 30, d: 30, y: 150 },
+  },
 };
 
 // Rivet ou clou de tapissier : petit disque posé sur une face avant (z = 0 côté spectateur), saillie de 0,4 cm vers l'arrière de z.

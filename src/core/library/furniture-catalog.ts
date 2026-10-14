@@ -39,6 +39,9 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
   pouf: { layer: 'floor', depth: 3, under: false },
   beanbag: { layer: 'floor', depth: 3, under: false },
   bench: { layer: 'floor', depth: 2, under: true },
+  dresser: { layer: 'floor', depth: 1, under: false },
+  'side-table': { layer: 'floor', depth: 2, under: true },
+  'cat-tree': { layer: 'floor', depth: 1, under: false },
 };
 
 const LABELS: Record<FurnitureKind, string> = {
@@ -71,13 +74,16 @@ const LABELS: Record<FurnitureKind, string> = {
   pouf: 'Pouf marocain',
   beanbag: 'Pouf poire',
   bench: 'Banc',
+  dresser: 'Commode',
+  'side-table': 'Guéridon',
+  'cat-tree': 'Arbre à chat',
 };
 
 export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }[] = [
-  { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer'] },
+  { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer', 'dresser'] },
   { id: 'seats', label: 'Assises', kinds: ['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair', 'sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'beanbag', 'bench'] },
-  { id: 'pets', label: 'Pour animaux', kinds: ['basket', 'bowl', 'kennel', 'charger'] },
-  { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug', 'window'] },
+  { id: 'pets', label: 'Pour animaux', kinds: ['basket', 'bowl', 'kennel', 'charger', 'cat-tree'] },
+  { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'side-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug', 'window'] },
   { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
 ];
 
@@ -100,7 +106,7 @@ const SUBCATEGORIES: Partial<Record<Category, CatalogNode['subcategories']>> = {
   deco: [
     { id: 'plants', label: 'Plantes', kinds: ['plant', 'small-plant'] },
     { id: 'lights', label: 'Lumières', kinds: ['lamp', 'small-lamp'] },
-    { id: 'floor', label: 'Sol', kinds: ['rug', 'coffee-table'] },
+    { id: 'floor', label: 'Sol', kinds: ['rug', 'coffee-table', 'side-table'] },
     { id: 'walls', label: 'Murs', kinds: ['window'] },
   ],
 };

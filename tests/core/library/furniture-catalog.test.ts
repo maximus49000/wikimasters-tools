@@ -67,7 +67,7 @@ describe('catalogTree', () => {
     expect(deco?.subcategories.map((s) => s.id)).toEqual(['plants', 'lights', 'floor', 'walls']);
     expect(deco?.subcategories.find((s) => s.id === 'plants')?.kinds).toEqual(['plant', 'small-plant']);
     expect(deco?.subcategories.find((s) => s.id === 'lights')?.kinds).toEqual(['lamp', 'small-lamp']);
-    expect(deco?.subcategories.find((s) => s.id === 'floor')?.kinds).toEqual(['rug', 'coffee-table']);
+    expect(deco?.subcategories.find((s) => s.id === 'floor')?.kinds).toEqual(['rug', 'coffee-table', 'side-table']);
     expect(deco?.subcategories.find((s) => s.id === 'walls')?.kinds).toEqual(['window']);
   });
 
@@ -97,6 +97,13 @@ describe('catalogTree', () => {
     expect(seats?.subcategories.find((s) => s.id === 'chairs')?.kinds).toEqual(['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair']);
     expect(seats?.subcategories.find((s) => s.id === 'couches')?.kinds).toEqual(['sofa', 'club-chair', 'loveseat', 'daybed']);
     expect(seats?.subcategories.find((s) => s.id === 'poufs')?.kinds).toEqual(['pouf', 'beanbag', 'bench']);
+  });
+
+  it('commode en Rangement, arbre à chat dans Pour animaux, guéridon dans Déco > Sol', () => {
+    const tree = catalogTree('scandinave');
+    expect(tree.find((n) => n.id === 'storage')?.kinds).toEqual(['shelf', 'desk', 'computer', 'dresser']);
+    expect(tree.find((n) => n.id === 'pets')?.kinds).toEqual(['basket', 'bowl', 'kennel', 'charger', 'cat-tree']);
+    expect(underOf('side-table')).toBe(true);
   });
 
   it('les nouveaux meubles restent dans toutes les pièces (aucun réservé au Steampunk)', () => {

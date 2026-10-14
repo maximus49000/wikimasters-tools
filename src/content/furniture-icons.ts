@@ -32,6 +32,9 @@ export const KIND_ICON: Record<FurnitureKind, readonly string[]> = {
   pouf: ['M5 10v6a7 3 0 0 0 14 0v-6', 'M5 10a7 3 0 0 1 14 0a7 3 0 0 1-14 0'],
   beanbag: ['M6 20c-3-4-2-12 6-14 8 2 9 10 6 14z', 'M8 14c2 1 6 1 8 0'],
   bench: ['M3 10h18', 'M3 12h18', 'M5 12v8', 'M19 12v8', 'M5 16h14'],
+  dresser: ['M4 4h16v15H4z', 'M4 9h16', 'M4 14h16', 'M11 6.5h2', 'M11 11.5h2', 'M11 16.5h2', 'M6 19v2', 'M18 19v2'],
+  'side-table': ['M5 7h14', 'M12 7v10', 'M12 17l-4 4', 'M12 17l4 4'],
+  'cat-tree': ['M4 21h16', 'M8 21V8', 'M15 21V5', 'M5 8h6', 'M12 5h7', 'M13 13h7v6h-7z'],
 };
 
 export const CATEGORY_ICON: Record<Category, readonly string[]> = {

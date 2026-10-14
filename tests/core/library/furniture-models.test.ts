@@ -10,7 +10,25 @@ const DIMS: Record<string, [number, number, number]> = {
   bowl: [20, 20, 8], kennel: [70, 90, 75], charger: [40, 30, 10], globe: [50, 50, 100], telescope: [60, 60, 130], automaton: [45, 40, 110],
   'rocking-chair': [65, 95, 104], 'club-chair': [90, 85, 80], loveseat: [150, 88, 82], daybed: [165, 70, 85], 'egg-chair': [100, 100, 195],
   'peacock-chair': [90, 65, 140], pouf: [55, 55, 40], beanbag: [80, 80, 70], bench: [120, 40, 48],
+  dresser: [100, 45, 82], 'side-table': [50, 50, 60], 'cat-tree': [62, 50, 150],
 };
+
+describe('commode, guéridon, arbre à chat', () => {
+  it('perchoirs : plateau de la commode, du guéridon, haut de l’arbre à chat', () => {
+    expect(FURNITURE_MODELS.dresser.perch?.y).toBe(82);
+    expect(FURNITURE_MODELS['side-table'].perch?.y).toBe(60);
+    expect(FURNITURE_MODELS['cat-tree'].perch?.y).toBe(150);
+  });
+  it('l’arbre à chat a deux poteaux en sisal et une balle rouge', () => {
+    const t = FURNITURE_MODELS['cat-tree'];
+    expect(t.pieces.filter((p) => p.color === '#D8BE86')).toHaveLength(2);
+    expect(t.pieces.some((p) => p.color === '#E0664A')).toBe(true);
+  });
+  it('la commode a trois tiroirs à deux boutons', () => {
+    expect(FURNITURE_MODELS.dresser.pieces.filter((p) => p.shape === 'box' && p.fill === 'desk')).toHaveLength(3);
+    expect(FURNITURE_MODELS.dresser.pieces.filter((p) => p.shape === 'rod' && p.fill === 'metal')).toHaveLength(6);
+  });
+});
 
 const SEATS = ['rocking-chair', 'club-chair', 'loveseat', 'daybed', 'egg-chair', 'peacock-chair', 'pouf', 'beanbag', 'bench'] as const;
 describe('assises du mobilier divers', () => {
