@@ -23,6 +23,15 @@ export const KIND_ICON: Record<FurnitureKind, readonly string[]> = {
   globe: ['M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z', 'M3 12h18', 'M12 3c3 3 3 15 0 18', 'M12 3c-3 3-3 15 0 18'],
   telescope: ['M4 14l12-6 2 4-12 6z', 'M12 15l-3 6', 'M12 15l3 6'],
   automaton: ['M8 5h8v6H8z', 'M10 8h.01', 'M14 8h.01', 'M7 11h10v7H7z', 'M9 18v3', 'M15 18v3'],
+  'rocking-chair': ['M7 4v11', 'M7 6h7', 'M6 13h10', 'M15 13v4', 'M3 19c4 2 14 2 18 0'],
+  'club-chair': ['M5 11a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v6H5z', 'M3 12v5h3', 'M21 12v5h-3', 'M7 17v2', 'M17 17v2'],
+  loveseat: ['M4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6H4z', 'M12 9v8', 'M2 12v5h2', 'M22 12v5h-2'],
+  daybed: ['M3 7v10', 'M3 12h18v5H3', 'M3 9c3 0 6 1 9 3', 'M5 17v2', 'M19 17v2'],
+  'egg-chair': ['M12 4a6 7 0 1 0 .01 0', 'M18 21c2-6 1-14-6-19', 'M8 21h8'],
+  'peacock-chair': ['M12 14c-6 0-8-4-8-7a8 6 0 0 1 16 0c0 3-2 7-8 7', 'M9 14l3 4 3-4', 'M9 21h6', 'M12 18v3'],
+  pouf: ['M5 10v6a7 3 0 0 0 14 0v-6', 'M5 10a7 3 0 0 1 14 0a7 3 0 0 1-14 0'],
+  beanbag: ['M6 20c-3-4-2-12 6-14 8 2 9 10 6 14z', 'M8 14c2 1 6 1 8 0'],
+  bench: ['M3 10h18', 'M3 12h18', 'M5 12v8', 'M19 12v8', 'M5 16h14'],
 };
 
 export const CATEGORY_ICON: Record<Category, readonly string[]> = {

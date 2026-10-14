@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, type ReactElement } from 'react';
 import { catalogTree, labelOf, type CatalogNode, type Category, type Subcategory } from '../core/library/furniture-catalog';
 import { STYLE_IDS, type FurnitureKind, type Orientation, type StyleId } from '../core/library/library-types';
 import { STYLE_LABELS, paletteOf } from '../core/library/styles';
-import { CATEGORY_ICON } from './furniture-icons';
+import { CATEGORY_ICON, KIND_ICON } from './furniture-icons';
 import { FurnitureThumb } from './furniture-thumb';
 import { Btn, Icon, ICONS } from './library-ui';
 
@@ -10,7 +10,7 @@ export type DrawerTab = 'furniture' | 'cards' | 'room';
 export type DrawerState = { tab: DrawerTab; category: Category; sub: Subcategory | null; reduced: boolean };
 export const INITIAL_DRAWER: DrawerState = { tab: 'furniture', category: 'storage', sub: null, reduced: false };
 
-const SUB_ICON: Record<Subcategory, readonly string[]> = { plants: ICONS.plants, lights: ICONS.lights, floor: ICONS.floor, walls: ICONS.walls };
+const SUB_ICON: Record<Subcategory, readonly string[]> = { chairs: KIND_ICON.armchair, couches: KIND_ICON.sofa, poufs: KIND_ICON.pouf, plants: ICONS.plants, lights: ICONS.lights, floor: ICONS.floor, walls: ICONS.walls };
 const TABS: { id: DrawerTab; label: string; icon: readonly string[] }[] = [
   { id: 'furniture', label: 'Meubles', icon: ICONS.sofaTab },
   { id: 'cards', label: 'Cartes', icon: ICONS.frame },

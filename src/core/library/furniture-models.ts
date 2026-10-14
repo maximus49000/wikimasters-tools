@@ -5,9 +5,11 @@ import type { Leaf, Model, Piece, V3t } from './furniture-render3d';
 
 // Modèles des meubles en cm (x largeur depuis la gauche vue de face, y hauteur depuis le sol, z profondeur depuis l'avant).
 // Ils reprennent les dessins de face historiques : mêmes éléments, mêmes couleurs de palette.
-type Extra = { tone?: number; layer?: number };
-const box = (x: number, y: number, z: number, w: number, h: number, d: number, fill: Piece['fill']): Piece => ({ shape: 'box', x, y, z, w, h, d, fill });
-const cyl = (cx: number, cz: number, y: number, r: number, h: number, fill: Piece['fill']): Piece => ({ shape: 'cyl', cx, cz, y, r, h, fill });
+type Extra = { tone?: number; layer?: number; color?: string };
+const box = (x: number, y: number, z: number, w: number, h: number, d: number, fill: Piece['fill'], extra: Extra = {}): Piece => ({ shape: 'box', x, y, z, w, h, d, fill, ...extra });
+const cyl = (cx: number, cz: number, y: number, r: number, h: number, fill: Piece['fill'], extra: Extra = {}): Piece => ({ shape: 'cyl', cx, cz, y, r, h, fill, ...extra });
+// Tronc de cône : rayon `r` en bas, `r2` en haut.
+const cone = (cx: number, cz: number, y: number, r: number, r2: number, h: number, fill: Piece['fill'], extra: Extra = {}): Piece => ({ shape: 'cyl', cx, cz, y, r, r2, h, fill, ...extra });
 const ball = (cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, fill: Piece['fill'], extra: Extra = {}): Piece => ({ shape: 'ball', cx, cy, cz, rx, ry, rz, fill, ...extra });
 const rod = (a: V3t, b: V3t, r: number, fill: Piece['fill'], extra: Extra = {}): Piece => ({ shape: 'rod', a, b, r, fill, ...extra });
 const prism = (axis: 'x' | 'z', profile: [number, number][], from: number, to: number, fill: Piece['fill'], extra: Extra = {}): Piece => ({ shape: 'prism', axis, profile, from, to, fill, ...extra });
@@ -28,6 +30,12 @@ const legs = (w: number, d: number, h: number, size: number, inset: number, fill
   box(inset, 0, inset, size, h, size, fill), box(w - inset - size, 0, inset, size, h, size, fill),
   box(inset, 0, d - inset - size, size, h, size, fill), box(w - inset - size, 0, d - inset - size, size, h, size, fill),
 ];
+// Patin de rocking chair : arc de 95 cm (le long de z), 4 cm d'épaisseur, posé au sol en son milieu, relevé de 5 cm aux bouts.
+const rocker = (x0: number, x1: number): Piece => {
+  const zs = Array.from({ length: 9 }, (_, i) => (i * 95) / 8);
+  const low = (z: number): number => 5 * ((z - 47.5) / 47.5) ** 2;
+  return prism('x', [...zs.map((z): [number, number] => [z, low(z)]), ...[...zs].reverse().map((z): [number, number] => [z, low(z) + 4])], x0, x1, 'woodDark');
+};
 // Profil d'une porte en arc : rectangle de largeur w posé en (x, y), haut de h, fermé par un demi-cercle.
 const arch = (x: number, y: number, w: number, h: number): [number, number][] => [
   [x, y], [x + w, y],
@@ -238,6 +246,139 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
       rod([11, 91, 19.5], [8.5, 91, 19.5], 2.4, 'desk'), rod([34, 91, 19.5], [36.5, 91, 19.5], 2.4, 'desk'),
       rod([22.5, 101.5, 19.5], [22.5, 106.5, 19.5], 0.8, 'metal'), ball(22.5, 108, 19.5, 2, 2, 2, 'shade'),
     ],
+  },
+
+  // Mobilier divers (lot A). Dessin provisoire Opus — Fable n'est pas passé (gel jusqu'au 2026-10-17), reprise Fable prévue.
+  // Rocking chair : patins courbes, pieds tournés, assise et coussin, dossier incliné à barreaux, accoudoirs.
+  'rocking-chair': {
+    w: 65, d: 95, h: 104,
+    pieces: [
+      rocker(3, 9), rocker(56, 62),
+      rod([6, 5, 22], [6, 42, 22], 1.8, 'wood'), rod([59, 5, 22], [59, 42, 22], 1.8, 'wood'),
+      rod([6, 5, 72], [6, 42, 72], 1.8, 'wood'), rod([59, 5, 72], [59, 42, 72], 1.8, 'wood'),
+      box(1, 40, 15, 63, 5, 62, 'wood'),
+      box(6, 45, 18, 53, 7, 56, 'fabric'),
+      rod([12, 45, 74], [12, 100, 90], 2.2, 'wood'), rod([53, 45, 74], [53, 100, 90], 2.2, 'wood'),
+      ...[19, 25.5, 32, 38.5, 45].map((x) => rod([x, 49, 76], [x, 96, 89], 1.1, 'woodDark')),
+      rod([9, 99, 90], [56, 99, 90], 2.5, 'wood'),
+      rod([3.5, 45, 22], [3, 64, 22], 1.6, 'wood'), rod([61.5, 45, 22], [62, 64, 22], 1.6, 'wood'),
+      rod([3, 64, 20], [3, 66, 76], 2, 'woodDark', { layer: 1 }), rod([62, 64, 20], [62, 66, 76], 2, 'woodDark', { layer: 1 }),
+    ],
+    pois: [{ type: 'seat', x: 32.5, y: 52, z: 45 }],
+    perch: { x: 6, z: 18, w: 53, d: 50, y: 52 },
+  },
+  // Chauffeuse : canapé une place, accoudoirs pleins arrondis, coussins d'assise et de dos.
+  'club-chair': {
+    w: 90, d: 85, h: 80,
+    pieces: [
+      ...legs(90, 85, 8, 5, 6, 'leg'),
+      box(0, 8, 0, 90, 30, 85, 'fabric'),
+      box(8, 38, 62, 74, 42, 23, 'fabricDark'),
+      box(17, 38, 4, 56, 11, 56, 'fabricLight'),
+      box(17, 49, 50, 56, 28, 12, 'fabric'),
+      box(0, 8, 0, 17, 46, 85, 'fabric'), box(73, 8, 0, 17, 46, 85, 'fabric'),
+      rod([8.5, 54, 4], [8.5, 54, 85], 8.5, 'fabric'), rod([81.5, 54, 4], [81.5, 54, 85], 8.5, 'fabric'),
+    ],
+    pois: [{ type: 'seat', x: 45, y: 49, z: 30 }],
+    perch: { x: 17, z: 4, w: 56, d: 46, y: 49 },
+  },
+  // Canapé deux places : deux coussins d'assise et deux de dos ; cachette du chat au sol, sous l'avant de l'assise.
+  loveseat: {
+    w: 150, d: 88, h: 82,
+    pieces: [
+      ...legs(150, 88, 8, 5, 7, 'leg'),
+      box(0, 8, 0, 150, 30, 88, 'warm'),
+      box(8, 38, 64, 134, 44, 24, 'warmDark'),
+      box(17, 38, 4, 57.5, 11, 58, 'warmLight'), box(75.5, 38, 4, 57.5, 11, 58, 'warmLight'),
+      box(17, 49, 54, 57.5, 29, 10, 'warm'), box(75.5, 49, 54, 57.5, 29, 10, 'warm'),
+      box(0, 8, 0, 17, 46, 88, 'warm'), box(133, 8, 0, 17, 46, 88, 'warm'),
+      rod([8.5, 54, 4], [8.5, 54, 88], 8.5, 'warm'), rod([141.5, 54, 4], [141.5, 54, 88], 8.5, 'warm'),
+    ],
+    pois: [{ type: 'seat', x: 46, y: 49, z: 30 }, { type: 'seat', x: 104, y: 49, z: 30 }, { type: 'sleep', x: 75, y: 49, z: 30 }, { type: 'hide', x: 40, y: 0, z: 10 }],
+    perch: { x: 17, z: 4, w: 116, d: 50, y: 49 },
+  },
+  // Méridienne : haut accoudoir à volute à gauche, dossier qui descend vers la droite, long coussin, petit coussin rond.
+  daybed: {
+    w: 165, d: 70, h: 85,
+    pieces: [
+      ...legs(165, 70, 8, 5, 6, 'leg'),
+      box(0, 8, 0, 165, 30, 70, 'warm'),
+      prism('z', [[24, 38], [110, 38], [110, 46], [70, 62], [24, 74]], 56, 70, 'warmDark'),
+      box(24, 38, 4, 139, 11, 52, 'warmLight'),
+      box(0, 8, 0, 24, 62, 70, 'warm'),
+      rod([12, 70, 2], [12, 70, 68], 12, 'warmLight'),
+      ball(36, 57, 48, 6, 8, 7, 'fabric'),
+    ],
+    pois: [{ type: 'seat', x: 60, y: 49, z: 28 }, { type: 'sleep', x: 110, y: 49, z: 28 }],
+    perch: { x: 24, z: 4, w: 139, d: 52, y: 49 },
+  },
+  // Fauteuil œuf suspendu : socle rond, pied en arc terminé par un crochet, chaîne, œuf en rotin ouvert vers l'avant, coussins.
+  'egg-chair': {
+    w: 100, d: 100, h: 195, round: true,
+    pieces: [
+      cyl(45, 50, 0, 30, 4, 'metal'),
+      ...Array.from({ length: 10 }, (_, i) => {
+        const q = (t: number): V3t => [(1 - t) ** 2 * 72 + 2 * (1 - t) * t * 98 + t * t * 72, (1 - t) ** 2 * 4 + 2 * (1 - t) * t * 95 + t * t * 186, 50];
+        return rod(q(i / 10), q((i + 1) / 10), 1.8, 'metal');
+      }),
+      ...Array.from({ length: 4 }, (_, i) => {
+        const q = (t: number): V3t => [(1 - t) ** 2 * 72 + 2 * (1 - t) * t * 60 + t * t * 46, (1 - t) ** 2 * 186 + 2 * (1 - t) * t * 196 + t * t * 190, 50];
+        return rod(q(i / 4), q((i + 1) / 4), 1.8, 'metal');
+      }),
+      rod([46, 190, 50], [45, 151, 50], 0.5, 'metal'),
+      ball(45, 96, 50, 32, 55, 32, 'wood'),
+      ball(45, 92, 32, 25, 42, 14, 'woodDark', { tone: 0.8, layer: 1 }),
+      ball(45, 62, 36, 21, 8, 14, 'fabricLight', { layer: 2 }),
+      ball(45, 92, 40, 19, 22, 6, 'fabric', { layer: 2 }),
+    ],
+    pois: [{ type: 'seat', x: 45, y: 70, z: 36 }],
+    perch: { x: 30, z: 26, w: 30, d: 20, y: 70 },
+  },
+  // Fauteuil paon : dossier en éventail tressé, pied en sablier, coussin rond.
+  'peacock-chair': {
+    w: 90, d: 65, h: 140,
+    pieces: [
+      cone(45, 30, 0, 22, 10, 20, 'woodDark'), cone(45, 30, 20, 10, 24, 20, 'woodDark'),
+      cyl(45, 30, 40, 27, 6, 'wood'),
+      cyl(45, 30, 46, 24, 4, 'fabric'),
+      prism('z', [[24, 40], [66, 40], [80, 55], [87, 80], [85, 105], [75, 125], [60, 137], [45, 140], [30, 137], [15, 125], [5, 105], [3, 80], [10, 55]], 50, 56, 'wood'),
+      ...[-60, -40, -20, 0, 20, 40, 60].map((deg) => {
+        const a = (deg * Math.PI) / 180;
+        return rod([45, 44, 49.6], [45 + Math.sin(a) * 36, 44 + Math.cos(a) * 88, 49.6], 0.6, 'woodDark', { layer: 1 });
+      }),
+    ],
+    pois: [{ type: 'seat', x: 45, y: 50, z: 28 }],
+    perch: { x: 25, z: 10, w: 40, d: 38, y: 50 },
+  },
+  // Pouf marocain : rond, bombé, couvercle cousu.
+  pouf: {
+    w: 55, d: 55, h: 40, round: true,
+    pieces: [cone(27.5, 27.5, 0, 24, 27.5, 20, 'warm'), cone(27.5, 27.5, 20, 27.5, 24, 18, 'warm'), cyl(27.5, 27.5, 38, 22, 2, 'warmDark')],
+    pois: [{ type: 'seat', x: 27.5, y: 40, z: 27.5 }],
+    perch: { x: 8, z: 8, w: 39, d: 39, y: 40 },
+  },
+  // Pouf poire : grosse poire molle, dos relevé, creux d'assise un peu plus sombre.
+  beanbag: {
+    w: 80, d: 80, h: 70, round: true,
+    pieces: [
+      ball(40, 30, 42, 40, 30, 38, 'fabricLight'),
+      ball(40, 48, 60, 34, 22, 20, 'fabricLight'),
+      ball(40, 36, 34, 22, 4, 18, 'fabricLight', { tone: 0.85, layer: 1 }),
+    ],
+    pois: [{ type: 'sleep', x: 40, y: 35, z: 34 }],
+    perch: { x: 22, z: 18, w: 36, d: 32, y: 35 },
+  },
+  // Banc à coussin : deux pieds pleins, tablette basse, assise et coussin ; on passe dessous.
+  bench: {
+    w: 120, d: 40, h: 48,
+    pieces: [
+      box(3, 0, 4, 6, 36, 32, 'wood'), box(111, 0, 4, 6, 36, 32, 'wood'),
+      box(9, 10, 8, 102, 3, 24, 'woodDark'),
+      box(0, 36, 0, 120, 6, 40, 'wood'),
+      box(4, 42, 3, 112, 6, 34, 'fabric'),
+    ],
+    pois: [{ type: 'seat', x: 35, y: 48, z: 20 }, { type: 'seat', x: 85, y: 48, z: 20 }],
+    perch: { x: 4, z: 3, w: 112, d: 34, y: 48 },
   },
 };
 

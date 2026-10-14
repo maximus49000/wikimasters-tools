@@ -29,6 +29,16 @@ const FOOTPRINTS: Record<StandingKind, Footprint> = {
   globe: { layer: 'floor', depth: 2, under: false },
   telescope: { layer: 'floor', depth: 2, under: true },
   automaton: { layer: 'floor', depth: 2, under: false },
+  // Mobilier divers (lot A) : assises.
+  'rocking-chair': { layer: 'floor', depth: 2, under: false },
+  'club-chair': { layer: 'floor', depth: 2, under: false },
+  loveseat: { layer: 'floor', depth: 2, under: false },
+  daybed: { layer: 'floor', depth: 2, under: false },
+  'egg-chair': { layer: 'floor', depth: 2, under: false },
+  'peacock-chair': { layer: 'floor', depth: 2, under: false },
+  pouf: { layer: 'floor', depth: 3, under: false },
+  beanbag: { layer: 'floor', depth: 3, under: false },
+  bench: { layer: 'floor', depth: 2, under: true },
 };
 
 const LABELS: Record<FurnitureKind, string> = {
@@ -52,11 +62,20 @@ const LABELS: Record<FurnitureKind, string> = {
   globe: 'Globe mécanique',
   telescope: 'Télescope',
   automaton: 'Automate',
+  'rocking-chair': 'Rocking chair',
+  'club-chair': 'Chauffeuse',
+  loveseat: 'Canapé deux places',
+  daybed: 'Méridienne',
+  'egg-chair': 'Fauteuil œuf',
+  'peacock-chair': 'Fauteuil paon',
+  pouf: 'Pouf marocain',
+  beanbag: 'Pouf poire',
+  bench: 'Banc',
 };
 
 export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }[] = [
   { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer'] },
-  { id: 'seats', label: 'Assises', kinds: ['chair', 'sofa', 'armchair'] },
+  { id: 'seats', label: 'Assises', kinds: ['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair', 'sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'beanbag', 'bench'] },
   { id: 'pets', label: 'Pour animaux', kinds: ['basket', 'bowl', 'kennel', 'charger'] },
   { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'plant', 'lamp', 'small-plant', 'small-lamp', 'rug', 'window'] },
   { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
@@ -68,11 +87,16 @@ export const STEAMPUNK_ONLY: readonly StandingKind[] = ['globe', 'telescope', 'a
 // Catégories proposées au catalogue : « Steampunk » seulement dans une pièce Steampunk.
 export const categoriesFor = (style: StyleId): typeof CATEGORIES => CATEGORIES.filter((c) => c.id !== 'steampunk' || style === 'steampunk');
 
-export type Subcategory = 'plants' | 'lights' | 'floor' | 'walls';
+export type Subcategory = 'chairs' | 'couches' | 'poufs' | 'plants' | 'lights' | 'floor' | 'walls';
 export type CatalogNode = { id: Category; label: string; kinds: FurnitureKind[]; subcategories: { id: Subcategory; label: string; kinds: FurnitureKind[] }[] };
 
 // Sous-catégories du tiroir de construction : seulement pour une catégorie trop fournie pour une seule ligne de vignettes.
 const SUBCATEGORIES: Partial<Record<Category, CatalogNode['subcategories']>> = {
+  seats: [
+    { id: 'chairs', label: 'Chaises et fauteuils', kinds: ['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair'] },
+    { id: 'couches', label: 'Canapés', kinds: ['sofa', 'club-chair', 'loveseat', 'daybed'] },
+    { id: 'poufs', label: 'Poufs et bancs', kinds: ['pouf', 'beanbag', 'bench'] },
+  ],
   deco: [
     { id: 'plants', label: 'Plantes', kinds: ['plant', 'small-plant'] },
     { id: 'lights', label: 'Lumières', kinds: ['lamp', 'small-lamp'] },

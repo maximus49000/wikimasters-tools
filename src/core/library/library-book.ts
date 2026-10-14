@@ -221,21 +221,24 @@ function migrateV4(raw: unknown): unknown {
 }
 
 // Tailles (cases) des meubles debout avant la v6 : figées ici, le catalogue ayant pris les vraies proportions.
-const V5_SIZES: Record<StandingKind, { w: number; h: number }> = {
+const V5_SIZES: Partial<Record<StandingKind, { w: number; h: number }>> = {
   shelf: { w: 6, h: 8 }, desk: { w: 5, h: 4 }, chair: { w: 2, h: 3 }, sofa: { w: 6, h: 3 }, armchair: { w: 3, h: 3 }, basket: { w: 3, h: 2 }, bowl: { w: 2, h: 1 }, kennel: { w: 4, h: 3 },
   charger: { w: 2, h: 1 }, plant: { w: 2, h: 4 }, lamp: { w: 1, h: 5 }, 'coffee-table': { w: 4, h: 2 }, rug: { w: 6, h: 3 }, globe: { w: 3, h: 4 }, telescope: { w: 3, h: 5 }, automaton: { w: 2, h: 3 },
 };
 
 // Rangées au sol de face (le « pied ») avant la v6 ; un tapis est entièrement au sol.
-const V5_FOOT: Record<StandingKind, number> = {
+const V5_FOOT: Partial<Record<StandingKind, number>> = {
   shelf: 2, desk: 2, chair: 1, sofa: 3, armchair: 3, basket: 1, bowl: 1, kennel: 3, charger: 1, plant: 1, lamp: 1, 'coffee-table': 2, rug: 0, globe: 1, telescope: 1, automaton: 1,
 };
 
 // Taille dessinée avant la v6, selon l'angle (comme l'ancien `drawSize`) : de profil ou en diagonale, la hauteur devient h − pied + profondeur.
 export function v5DrawSize(kind: StandingKind, angle: Angle): { w: number; h: number } {
-  const { w, h } = V5_SIZES[kind];
+  const size = V5_SIZES[kind];
+  // Meuble arrivé après la v6 : aucune pièce d'avant ne peut le contenir, sa taille est déjà la bonne.
+  if (!size) return drawSize(kind, angle);
+  const { w, h } = size;
   if (angle % 2 === 0 && angle !== 2 && angle !== 6) return { w, h };
-  const foot = kind === 'rug' ? h : Math.min(h, Math.max(1, V5_FOOT[kind]));
+  const foot = kind === 'rug' ? h : Math.min(h, Math.max(1, V5_FOOT[kind] ?? 1));
   const depth = Math.max(1, Math.ceil(w / 2));
   const width = angle === 2 || angle === 6 ? foot : Math.ceil((w + foot) * 0.75);
   return { w: width, h: h - foot + depth };
