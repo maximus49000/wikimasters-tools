@@ -1,0 +1,601 @@
+<!doctype html>
+<!-- Maquette Horloges, météomètres et panneaux — dessin provisoire Opus : Fable n'est pas passé (gel Fable jusqu'au 2026-10-17), reprise Fable prévue. -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Horloges, météo et panneaux</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Oswald:wght@500&family=Pacifico&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+:root { --ink:#3A2620; --page:#F6F2EA; --card:#FFFDF8; --txt:#2B2622; --mut:#7A6F64; --line:#E3DACB; --accent:#9A4B1F; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--page); color:var(--txt); font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+header, main { max-width:1200px; margin:auto; padding:0 16px; }
+header { padding-top:20px; }
+h1 { font-size:22px; margin:0 0 6px; }
+.note { color:var(--mut); font-size:13px; margin:2px 0; }
+.bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:10px 0 2px; }
+.bar .lbl { font-size:12px; color:var(--mut); margin-right:2px; min-width:58px; }
+.bar button { border:1px solid var(--line); background:var(--card); border-radius:999px; padding:5px 11px; cursor:pointer; font:inherit; font-size:13px; color:var(--txt); }
+.bar button.on { background:var(--txt); color:#fff; border-color:var(--txt); }
+.bar input[type=range] { width:220px; }
+header { position:sticky; top:0; z-index:5; background:var(--page); padding-bottom:8px; border-bottom:1px solid var(--line); }
+main { padding-bottom:60px; }
+h2 { font-size:17px; margin:26px 0 10px; border-bottom:1px solid var(--line); padding-bottom:4px; }
+.grid.wide { grid-template-columns:repeat(auto-fill, minmax(min(100%, 380px), 1fr)); }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:visible; display:flex; flex-direction:column; position:relative; }
+.stage { background:var(--wall); display:flex; align-items:center; justify-content:center; padding:14px 8px; min-height:190px; max-height:320px; position:relative; border-radius:12px 12px 0 0; overflow:hidden; }
+.stage.desk { align-items:flex-end; padding-bottom:0; }
+.stage svg { display:block; max-width:100%; height:auto; overflow:visible; cursor:pointer; }
+.info { padding:10px 12px 12px; }
+.name { font-weight:650; font-size:15px; }
+.dims { font-variant-numeric:tabular-nums; color:var(--mut); font-size:12.5px; margin:2px 0; }
+.how { font-size:12.5px; margin-top:4px; }
+.tag { display:inline-block; font-size:11.5px; background:#F0E9DC; border-radius:6px; padding:1px 6px; margin:4px 4px 0 0; }
+.tag.q { background:#FCE6D6; color:var(--accent); }
+.ink { stroke:var(--ink); stroke-width:1.3px; vector-effect:non-scaling-stroke; stroke-linejoin:round; stroke-linecap:round; }
+.ink.thin { stroke-width:.7px; }
+.scene { background:var(--wall); border-radius:12px; overflow:hidden; border:1px solid var(--line); }
+.scene svg { display:block; width:100%; height:auto; }
+/* Bulle d'actions (glyphes) + fenêtres */
+.bubble { position:absolute; z-index:20; background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 6px 20px rgba(0,0,0,.18); padding:6px; display:flex; gap:4px; }
+.bubble button { width:38px; height:38px; border:none; border-radius:10px; background:#F4EFE6; font-size:19px; cursor:pointer; }
+.bubble button:hover { background:#EADFCC; }
+.sheet { position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:50; display:flex; align-items:flex-end; justify-content:center; }
+.sheet .box { background:#fff; width:min(440px, 100%); border-radius:16px 16px 0 0; padding:14px 16px 18px; max-height:80vh; overflow:auto; }
+@media (min-width:700px) { .sheet { align-items:center; } .sheet .box { border-radius:16px; } }
+.box h3 { margin:0 0 8px; font-size:16px; display:flex; justify-content:space-between; align-items:center; }
+.box h3 button { border:none; background:none; font-size:20px; cursor:pointer; }
+.box input[type=search], .box textarea { width:100%; font:inherit; font-size:15px; padding:8px 10px; border:1px solid var(--line); border-radius:10px; }
+.box textarea { min-height:90px; resize:vertical; }
+.city { display:flex; justify-content:space-between; width:100%; text-align:left; border:none; background:none; padding:9px 6px; border-bottom:1px solid #F0EAE0; font:inherit; cursor:pointer; }
+.city:hover { background:#FAF6EF; }
+.city .t { font-variant-numeric:tabular-nums; color:var(--mut); }
+.city.on { font-weight:650; }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+.sw { width:30px; height:30px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); cursor:pointer; }
+.sw.on { box-shadow:0 0 0 2px var(--txt); }
+.ok { margin-left:auto; border:none; background:var(--txt); color:#fff; border-radius:10px; padding:8px 16px; font:inherit; cursor:pointer; }
+.handle { cursor:nwse-resize; }
+ul.rules { padding-left:18px; } ul.rules li { margin:5px 0; }
+.size { font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<header>
+  <div class="sticky">
+    <h1>Horloges, météomètres et panneaux</h1>
+    <p class="note">Maquette interactive. <b>Touchez un objet</b> pour ouvrir sa bulle d'actions (🌐 choisir une ville, ✏️ écrire). <b>Tirez la poignée ◢</b> d'un panneau pour l'agrandir ou le rétrécir. Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 17/10).</p>
+    <div class="bar" id="styles"><span class="lbl">Style</span></div>
+    <div class="bar" id="weather"><span class="lbl">Météo ☁️</span></div>
+    <div class="bar" id="time"><span class="lbl">Heure ☁️</span></div>
+  </div>
+</header>
+<main>
+  <h2>La pièce</h2>
+  <div class="scene" id="room"></div>
+  <p class="note">Mur de 16 cases × 12 rangées (case de 21 cm). Horloge à aiguilles, baromètre et panneau au mur ; réveil et station météo posés sur le bureau.</p>
+
+  <h2>Horloges</h2>
+  <div class="grid" id="clocks"></div>
+
+  <h2>Météomètres</h2>
+  <div class="grid" id="meteo"></div>
+
+  <h2>Panneaux (taille libre, texte qui s'ajuste)</h2>
+  <div class="grid wide" id="panels"></div>
+
+  <h2>Fonctionnement proposé</h2>
+  <ul class="rules">
+    <li><b>Horloges</b> : par défaut, l'<b>heure de la scène</b> (menu ☁️ : heure réelle, jour, nuit ou heure choisie), donc celle de votre position (ex. Angers). En touchant l'horloge, 🌐 ouvre la liste des villes : l'horloge affiche alors l'heure de cette ville, et son nom apparaît sur le cadran. Si l'heure de la scène est choisie à la main, l'horloge d'une autre ville garde le même décalage (scène à 22 h à Angers → 5 h à Tokyo). Les secondes avancent toujours.</li>
+    <li><b>Météomètres</b> : ils affichent la <b>météo du visuel</b> (aléatoire, choisie, ou réelle si la position est activée) et sa température : la vraie mesure en météo réelle, sinon une température plausible pour la saison, l'heure et le lieu. La nuit, le soleil devient une lune.</li>
+    <li><b>Panneaux</b> : 4 modèles au choix dans le tiroir (ardoise, tableau à lettres, néon, liège). ✏️ ouvre la saisie du texte ; le texte passe à la ligne et sa taille s'ajuste seule au panneau. En mode placement, deux poignées comme pour la fenêtre : de 2 × 2 cases à 12 × 8 cases.</li>
+    <li><b>Où les poser</b> : les versions murales s'accrochent librement au mur (comme les affiches) ; le réveil, la pendulette et la station de table se posent sur un bureau ou une étagère, comme la petite lampe et la petite plante.</li>
+    <li><b>Tiroir de construction</b> : Déco → nouvelle sous-catégorie « Horloges et météo », et « Murs » reçoit les 4 panneaux à côté de la fenêtre.</li>
+  </ul>
+</main>
+
+<script>
+// ---------- Palettes (reprises des meubles) ----------
+const SCANDINAVE = { wall:'#EDE6DA', floor:'#D9BE95', wood:'#D8C3A0', woodDark:'#B79F78', desk:'#E8D3AE', leg:'#FFFFFF', edge:'#C9B48E', fabric:'#8FA3A8', warm:'#C9A98C', warmDark:'#B8977A', shade:'#F4E3B5', metal:'#8A8A8A' };
+const v = (o) => ({ ...SCANDINAVE, ...o });
+const PALETTES = {
+  'Scandinave': SCANDINAVE,
+  'Moderne': v({ wall:'#E9ECEF', floor:'#B8BEC6', wood:'#9AA3AD', woodDark:'#7C8691', desk:'#F2F4F6', leg:'#4A5058', edge:'#AEB6BF', fabric:'#4A6FA5', warm:'#2F3A46', warmDark:'#222B34', shade:'#FFF3C4', metal:'#C0C6CC' }),
+  'Industriel': v({ wall:'#8C8C88', floor:'#5E5A55', wood:'#8B6B4A', woodDark:'#6C5238', desk:'#A27C55', leg:'#2B2B2B', edge:'#4D4A46', fabric:'#6B4F3A', warm:'#7A5A3C', warmDark:'#5F442C', shade:'#E8C77A', metal:'#2F2F2F' }),
+  'Bohème': v({ wall:'#EBD3B5', floor:'#A9744F', wood:'#B5835A', woodDark:'#8F6542', desk:'#C99A6B', leg:'#7C4F34', edge:'#8F6542', fabric:'#C2603F', warm:'#D9A441', warmDark:'#B8862B', shade:'#F6D58E', metal:'#B08D57' }),
+  'Rétro 70s': v({ wall:'#F2D49B', floor:'#8A5A2B', wood:'#A8702E', woodDark:'#7E5222', desk:'#C98B3A', leg:'#5E3B1B', edge:'#7E5222', fabric:'#D96B1E', warm:'#8A9A2B', warmDark:'#6E7C1D', shade:'#FFE08A', metal:'#9C7A3C' }),
+  'Japandi': v({ wall:'#EFEAE0', floor:'#C8B08A', wood:'#CBB48F', woodDark:'#A38C68', desk:'#DCC8A4', leg:'#3E3A35', edge:'#B49C77', fabric:'#9AA394', warm:'#B9A58A', warmDark:'#9E8B70', shade:'#F3E6C4', metal:'#4A4640' }),
+  'Néon gaming': v({ wall:'#14142B', floor:'#1E1E3A', wood:'#2A2A4D', woodDark:'#1C1C38', desk:'#34345E', leg:'#0F0F22', edge:'#00E5FF', fabric:'#5B2A86', warm:'#8A1F5C', warmDark:'#661545', shade:'#FF4FD8', metal:'#8A8AB8' }),
+  'Steampunk': v({ wall:'#2F4A3B', floor:'#4A3426', wood:'#7A4E2D', woodDark:'#58361D', desk:'#B5833A', leg:'#8A5A2A', edge:'#D9A441', fabric:'#6B3A24', warm:'#8C4A2B', warmDark:'#6E3820', shade:'#FFD27A', metal:'#B87333' }),
+};
+const STYLE_KEY = { 'Scandinave':'scandinave', 'Moderne':'moderne', 'Industriel':'industriel', 'Bohème':'boheme', 'Rétro 70s':'retro70', 'Japandi':'japandi', 'Néon gaming':'neon', 'Steampunk':'steampunk' };
+
+const WEATHERS = [['sun','Soleil'],['cloudy','Nuageux'],['drizzle','Bruine'],['rain','Pluie'],['storm','Orage'],['snow','Neige'],['fog','Brume']];
+const CITIES = [
+  ['Paris','France','Europe/Paris'], ['Londres','Royaume-Uni','Europe/London'], ['Reykjavik','Islande','Atlantic/Reykjavik'], ['Le Caire','Égypte','Africa/Cairo'],
+  ['Moscou','Russie','Europe/Moscow'], ['Dubaï','Émirats arabes unis','Asia/Dubai'], ['Bombay','Inde','Asia/Kolkata'], ['Bangkok','Thaïlande','Asia/Bangkok'],
+  ['Pékin','Chine','Asia/Shanghai'], ['Séoul','Corée du Sud','Asia/Seoul'], ['Tokyo','Japon','Asia/Tokyo'], ['Sydney','Australie','Australia/Sydney'],
+  ['Auckland','Nouvelle-Zélande','Pacific/Auckland'], ['Honolulu','États-Unis','Pacific/Honolulu'], ['Los Angeles','États-Unis','America/Los_Angeles'],
+  ['New York','États-Unis','America/New_York'], ['Montréal','Canada','America/Toronto'], ['Rio de Janeiro','Brésil','America/Sao_Paulo'], ['Le Cap','Afrique du Sud','Africa/Johannesburg'],
+];
+const HOME = { name:'Angers', tz:'Europe/Paris' };
+
+const S = { style:'Scandinave', weather:'sun', timeMode:'real', minutes: 16*60+20, cities:{}, panels:{}, neon:'#FF4FD8' };
+const PANEL_DEFAULTS = {
+  chalk:  { w:4, h:3, text:'Menu du jour\nSoupe de potiron\nTarte aux pommes' },
+  letter: { w:4, h:3, text:'BIENVENUE\nCHEZ NOUS' },
+  neon:   { w:5, h:2, text:'Good vibes' },
+  cork:   { w:4, h:3, text:'Penser à rendre\nles livres lundi !' },
+};
+for (const k in PANEL_DEFAULTS) S.panels[k] = { ...PANEL_DEFAULTS[k] };
+
+// ---------- Outils ----------
+const P = () => PALETTES[S.style];
+const sk = () => STYLE_KEY[S.style];
+const f = (n) => Math.round(n * 100) / 100;
+const R = (x, y, w, h, r = 0) => { r = Math.min(r, w / 2, h / 2); return r ? `M${f(x+r)},${f(y)}H${f(x+w-r)}Q${f(x+w)},${f(y)} ${f(x+w)},${f(y+r)}V${f(y+h-r)}Q${f(x+w)},${f(y+h)} ${f(x+w-r)},${f(y+h)}H${f(x+r)}Q${f(x)},${f(y+h)} ${f(x)},${f(y+h-r)}V${f(y+r)}Q${f(x)},${f(y)} ${f(x+r)},${f(y)}Z` : `M${f(x)},${f(y)}h${f(w)}v${f(h)}h${f(-w)}Z`; };
+const E = (cx, cy, rx, ry = rx) => `M${f(cx-rx)},${f(cy)}A${f(rx)},${f(ry)} 0 1 0 ${f(cx+rx)},${f(cy)}A${f(rx)},${f(ry)} 0 1 0 ${f(cx-rx)},${f(cy)}Z`;
+const shade = (c, k = 0.72) => `color-mix(in srgb, ${c} ${Math.round(k*100)}%, #2E2A66)`;
+const light = (c, k = 0.7) => `color-mix(in srgb, ${c} ${Math.round(k*100)}%, #FFFFFF)`;
+// Aplat + trait encré + ombre nette décalée (style cellulo)
+const flat = (d, fill, { ink = true, thin = false, shadow = true, extra = '' } = {}) =>
+  (shadow ? `<path d="${d}" fill="rgba(30,20,40,.22)" transform="translate(1.1,1.4)"/>` : '') +
+  `<path d="${d}" fill="${fill}" ${ink ? `class="ink${thin ? ' thin' : ''}"` : ''} ${extra}/>`;
+const txt = (x, y, s, fill, str, { family = 'system-ui', weight = 600, anchor = 'middle', extra = '' } = {}) =>
+  `<text x="${f(x)}" y="${f(y)}" font-size="${f(s)}" font-family="${family}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}" dominant-baseline="middle" ${extra}>${str}</text>`;
+const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+// ---------- Temps ----------
+const tzOffset = (tz, d) => { const a = new Date(d.toLocaleString('en-US', { timeZone: tz })); const b = new Date(d.toLocaleString('en-US', { timeZone: 'UTC' })); return Math.round((a - b) / 60000); };
+function sceneMinutes(now) {
+  if (S.timeMode === 'real') { const p = new Date(now.toLocaleString('en-US', { timeZone: HOME.tz })); return p.getHours() * 60 + p.getMinutes(); }
+  if (S.timeMode === 'day') return 13 * 60;
+  if (S.timeMode === 'night') return 23 * 60;
+  return S.minutes;
+}
+// Heure affichée par un objet : scène, ou scène décalée du fuseau de la ville choisie.
+function timeFor(id) {
+  const now = new Date();
+  let m = sceneMinutes(now);
+  const c = S.cities[id];
+  if (c) m += tzOffset(c.tz, now) - tzOffset(HOME.tz, now);
+  m = ((m % 1440) + 1440) % 1440;
+  return { h: Math.floor(m / 60), m: m % 60, s: now.getSeconds() + now.getMilliseconds() / 1000, label: c ? c.name : null };
+}
+const isNight = () => { const m = sceneMinutes(new Date()); return m < 7 * 60 + 30 || m >= 19 * 60 + 45; };
+// Température plausible (octobre, Angers) : douce le jour, plus fraîche la nuit, ajustée par la météo.
+function temperature() {
+  const m = sceneMinutes(new Date());
+  const day = Math.cos(((m / 60) - 15) / 24 * 2 * Math.PI);
+  const adj = { sun: 2, cloudy: 0, drizzle: -1, rain: -2, storm: 1, snow: -14, fog: -3 }[S.weather];
+  return Math.round(12 + 4 * day + adj);
+}
+
+// ---------- Afficheur 7 segments ----------
+const SEGS = { 0:'abcdef', 1:'bc', 2:'abged', 3:'abgcd', 4:'fgbc', 5:'afgcd', 6:'afgedc', 7:'abc', 8:'abcdefg', 9:'abcdfg', '-':'g' };
+function digit(x, y, s, ch, on, off) {
+  const w = 6 * s, h = 10 * s, t = 1.15 * s, g = 0.25 * s;
+  const seg = {
+    a: [x + t*0.7, y, w - 1.4*t, t], d: [x + t*0.7, y + h - t, w - 1.4*t, t], g: [x + t*0.7, y + h/2 - t/2, w - 1.4*t, t],
+    f: [x, y + t*0.5 + g, t, h/2 - t - g], b: [x + w - t, y + t*0.5 + g, t, h/2 - t - g],
+    e: [x, y + h/2 + t*0.5 + g*0, t, h/2 - t - g], c: [x + w - t, y + h/2 + t*0.5 + g*0, t, h/2 - t - g],
+  };
+  const lit = SEGS[ch] || '';
+  return Object.entries(seg).map(([k, [sx, sy, sw, sh]]) => `<path d="${R(sx, sy, sw, sh, t/2)}" fill="${lit.includes(k) ? on : off}"/>`).join('');
+}
+function sevenTime(x, y, s, t, on, off, blink = true) {
+  const hh = String(t.h).padStart(2, '0'), mm = String(t.m).padStart(2, '0');
+  const w = 6 * s, gap = 1.6 * s, col = 3 * s;
+  let out = digit(x, y, s, hh[0], on, off) + digit(x + w + gap, y, s, hh[1], on, off);
+  const cx = x + 2 * w + gap + col / 2 + gap * 0.3;
+  const vis = !blink || Math.floor(t.s) % 2 === 0;
+  out += `<circle cx="${f(cx)}" cy="${f(y + 3.2*s)}" r="${f(0.65*s)}" fill="${vis ? on : off}"/><circle cx="${f(cx)}" cy="${f(y + 6.8*s)}" r="${f(0.65*s)}" fill="${vis ? on : off}"/>`;
+  const x2 = x + 2 * w + gap + col + gap * 0.6;
+  out += digit(x2, y, s, mm[0], on, off) + digit(x2 + w + gap, y, s, mm[1], on, off);
+  return out;
+}
+const sevenWidth = (s) => 4 * 6 * s + 1.6 * s * 2.6 + 3 * s;
+
+// Couleur des afficheurs selon le style
+function ledColors() {
+  const k = sk();
+  if (k === 'neon') return { on: '#00E5FF', off: 'rgba(0,229,255,.08)', bg: '#07071A' };
+  if (k === 'steampunk') return { on: '#FF9A3C', off: 'rgba(255,154,60,.08)', bg: '#1A0E06' };
+  if (k === 'moderne' || k === 'japandi') return { on: '#F4F1EA', off: 'rgba(255,255,255,.06)', bg: '#1D1F22' };
+  if (k === 'retro70') return { on: '#FFB020', off: 'rgba(255,176,32,.08)', bg: '#1E1408' };
+  return { on: '#FF4A3D', off: 'rgba(255,74,61,.08)', bg: '#141414' };
+}
+const glow = (c) => `style="filter:drop-shadow(0 0 1.2px ${c}) drop-shadow(0 0 3px ${c})"`;
+
+// ---------- Pictogrammes météo ----------
+function wicon(cx, cy, r, state, night, c) {
+  const sunC = c.sun || '#F6B73C', cloudC = c.cloud || '#FFFFFF', rainC = c.rain || '#4AA3FF', inkC = c.ink || '#3A2620';
+  const st = `stroke="${inkC}" stroke-width="${f(r*0.07)}" stroke-linejoin="round" stroke-linecap="round"`;
+  const sun = (x, y, rr) => night
+    ? `<path d="M${f(x+rr*0.35)},${f(y-rr)}A${f(rr)},${f(rr)} 0 1 0 ${f(x+rr)},${f(y+rr*0.4)}A${f(rr*0.8)},${f(rr*0.8)} 0 1 1 ${f(x+rr*0.35)},${f(y-rr)}Z" fill="${c.moon || '#F3E3A0'}" ${st}/>`
+    : Array.from({ length: 8 }, (_, i) => { const a = i * Math.PI / 4; return `<line x1="${f(x+Math.cos(a)*rr*1.3)}" y1="${f(y+Math.sin(a)*rr*1.3)}" x2="${f(x+Math.cos(a)*rr*1.7)}" y2="${f(y+Math.sin(a)*rr*1.7)}" stroke="${sunC}" stroke-width="${f(rr*0.22)}" stroke-linecap="round"/>`; }).join('') + `<circle cx="${f(x)}" cy="${f(y)}" r="${f(rr)}" fill="${sunC}" ${st}/>`;
+  const cloud = (x, y, s, fill = cloudC) => `<path d="M${f(x-s*1.1)},${f(y+s*0.45)}a${f(s*0.45)},${f(s*0.45)} 0 0 1 ${f(s*0.15)},${f(-s*0.88)}a${f(s*0.62)},${f(s*0.62)} 0 0 1 ${f(s*1.15)},${f(-s*0.3)}a${f(s*0.5)},${f(s*0.5)} 0 0 1 ${f(s*0.9)},${f(s*0.55)}a${f(s*0.33)},${f(s*0.33)} 0 0 1 ${f(-s*0.05)},${f(s*0.63)}Z" fill="${fill}" ${st}/>`;
+  const drops = (n, len, col) => Array.from({ length: n }, (_, i) => { const x = cx - r*0.55 + i * (r*1.1/(n-1)); return `<line x1="${f(x)}" y1="${f(cy+r*0.45)}" x2="${f(x - r*0.12)}" y2="${f(cy+r*0.45+len)}" stroke="${col}" stroke-width="${f(r*0.11)}" stroke-linecap="round"/>`; }).join('');
+  switch (state) {
+    case 'sun': return sun(cx, cy, r*0.5);
+    case 'cloudy': return sun(cx + r*0.3, cy - r*0.3, r*0.36) + cloud(cx - r*0.05, cy + r*0.15, r*0.62);
+    case 'drizzle': return cloud(cx, cy - r*0.1, r*0.62, c.grey || '#DDE3EA') + drops(3, r*0.28, rainC);
+    case 'rain': return cloud(cx, cy - r*0.15, r*0.62, c.grey || '#C9D2DC') + drops(4, r*0.48, rainC);
+    case 'storm': return cloud(cx, cy - r*0.2, r*0.62, c.dark || '#8E98A6') + `<path d="M${f(cx+r*0.05)},${f(cy+r*0.25)}l${f(-r*0.25)},${f(r*0.38)}h${f(r*0.2)}l${f(-r*0.12)},${f(r*0.36)}l${f(r*0.36)},${f(-r*0.48)}h${f(-r*0.2)}l${f(r*0.12)},${f(-r*0.26)}Z" fill="#FFD23C" ${st}/>`;
+    case 'snow': return cloud(cx, cy - r*0.15, r*0.62, c.grey || '#E4E9EF') + [-0.45, 0, 0.45].map((k, i) => `<text x="${f(cx + k*r)}" y="${f(cy + r*0.72 + (i%2)*r*0.12)}" font-size="${f(r*0.42)}" text-anchor="middle" dominant-baseline="middle" fill="${c.flake || '#7FB8FF'}">✻</text>`).join('');
+    case 'fog': return [0, 1, 2, 3].map((i) => `<line x1="${f(cx - r*0.7 + (i%2)*r*0.15)}" y1="${f(cy - r*0.45 + i*r*0.3)}" x2="${f(cx + r*0.7 - (i%2)*r*0.2)}" y2="${f(cy - r*0.45 + i*r*0.3)}" stroke="${c.fog || '#9AA4AE'}" stroke-width="${f(r*0.14)}" stroke-linecap="round"/>`).join('');
+  }
+  return '';
+}
+
+// ---------- Horloge murale à aiguilles (Ø 32 cm) ----------
+function hands(cx, cy, r, t, { ink = '#2A211C', sec = '#D8432F' } = {}) {
+  const ah = ((t.h % 12) + t.m / 60) * 30, am = (t.m + t.s / 60) * 6, as = Math.floor(t.s) * 6;
+  const hand = (a, len, w, col, tail = 0.12) => { const rad = (a - 90) * Math.PI / 180; return `<line x1="${f(cx - Math.cos(rad)*r*tail)}" y1="${f(cy - Math.sin(rad)*r*tail)}" x2="${f(cx + Math.cos(rad)*r*len)}" y2="${f(cy + Math.sin(rad)*r*len)}" stroke="${col}" stroke-width="${f(w)}" stroke-linecap="round"/>`; };
+  return hand(ah, 0.5, r*0.085, ink) + hand(am, 0.76, r*0.055, ink) + hand(as, 0.84, r*0.022, sec, 0.2) + `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r*0.06)}" fill="${sec}" class="ink thin"/>`;
+}
+function wallClock(id, x, y, W = 32) {
+  const p = P(), k = sk(), r = W / 2, cx = x + r, cy = y + r, t = timeFor(id);
+  const roman = ['XII','I','II','III','IIII','V','VI','VII','VIII','IX','X','XI'];
+  let ring = p.woodDark, face = '#FBF7EE', numC = '#2A211C', sec = '#D8432F', handC = '#2A211C', extra = '';
+  if (k === 'moderne') { ring = '#2A2E33'; face = '#FFFFFF'; }
+  if (k === 'industriel') { ring = '#3A3A38'; face = '#EFE8D8'; sec = '#C0392B'; }
+  if (k === 'japandi') { ring = p.wood; face = '#F6F1E6'; }
+  if (k === 'neon') { ring = '#0F0F22'; face = '#0B0B1E'; numC = '#00E5FF'; handC = '#E6E6FF'; sec = '#FF4FD8'; }
+  if (k === 'steampunk') { ring = '#B87333'; face = '#F1E3C2'; sec = '#8C2A1B'; }
+  let out = flat(E(cx, cy, r), ring);
+  if (k === 'retro70') { // horloge soleil : rayons dorés
+    out = Array.from({ length: 24 }, (_, i) => { const a = i * Math.PI / 12, l = i % 2 ? r * 1.25 : r * 1.45; return `<line x1="${f(cx + Math.cos(a)*r*0.9)}" y1="${f(cy + Math.sin(a)*r*0.9)}" x2="${f(cx + Math.cos(a)*l)}" y2="${f(cy + Math.sin(a)*l)}" stroke="#C9962E" stroke-width="1.1" stroke-linecap="round"/>`; }).join('') + flat(E(cx, cy, r*0.92), '#C9962E');
+    face = '#FFF4D6';
+  }
+  out += `<path d="${E(cx, cy, r*0.84)}" fill="${face}" class="ink thin"/>`;
+  if (k === 'neon') out += `<path d="${E(cx, cy, r*0.9)}" fill="none" stroke="#00E5FF" stroke-width=".9" ${glow('#00E5FF')}/>`;
+  if (k === 'industriel') out += [45,135,225,315].map((a) => `<circle cx="${f(cx + Math.cos(a*Math.PI/180)*r*0.92)}" cy="${f(cy + Math.sin(a*Math.PI/180)*r*0.92)}" r=".7" fill="#8A8A88"/>`).join('');
+  for (let i = 0; i < 60; i++) { if (k === 'japandi' && i % 15) continue; const a = i * 6 * Math.PI / 180, big = i % 5 === 0; out += `<line x1="${f(cx + Math.sin(a)*r*0.78)}" y1="${f(cy - Math.cos(a)*r*0.78)}" x2="${f(cx + Math.sin(a)*r*(big ? 0.68 : 0.74))}" y2="${f(cy - Math.cos(a)*r*(big ? 0.68 : 0.74))}" stroke="${numC}" stroke-width="${big ? .55 : .22}"/>`; }
+  if (k === 'steampunk' || k === 'boheme') roman.forEach((n, i) => { const a = i * 30 * Math.PI / 180; out += txt(cx + Math.sin(a)*r*0.55, cy - Math.cos(a)*r*0.55, r*0.13, numC, n, { family:'Georgia, serif', weight:500 }); });
+  else if (k !== 'japandi' && k !== 'moderne') [12,3,6,9].forEach((n, i) => { const a = i * 90 * Math.PI / 180; out += txt(cx + Math.sin(a)*r*0.55, cy - Math.cos(a)*r*0.55, r*0.17, numC, n, { family: k === 'neon' ? 'Oswald' : 'system-ui' }); });
+  if (t.label) out += txt(cx, cy + r*0.3, r*0.11, numC, t.label.toUpperCase(), { weight:700, extra:'letter-spacing=".3"' });
+  if (k === 'steampunk') out += `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r*0.2)}" fill="none" stroke="#B87333" stroke-width=".5" stroke-dasharray=".9 .5"/>`;
+  out += hands(cx, cy, r, t, { ink: handC, sec });
+  return `<g data-obj="${id}">${out}</g>`;
+}
+
+// ---------- Horloge murale numérique (40 × 16 cm) ----------
+function digitalClock(id, x, y, W = 40, H = 16) {
+  const p = P(), k = sk(), t = timeFor(id), c = ledColors();
+  let out = '';
+  if (k === 'steampunk') { // tubes nixie dans un boîtier de laiton
+    out += flat(R(x, y, W, H, 2), '#7A4E2D') + `<path d="${R(x+1.2, y+H-3, W-2.4, 2, .6)}" fill="#B87333" class="ink thin"/>`;
+    const hh = String(t.h).padStart(2,'0') + String(t.m).padStart(2,'0');
+    for (let i = 0; i < 4; i++) { const tx = x + 3 + i * 8.8 + (i > 1 ? 1.6 : 0); out += `<path d="${R(tx, y+2, 6.6, 10.4, 3.2)}" fill="rgba(255,240,220,.18)" stroke="#2A160A" stroke-width=".4"/>` + txt(tx + 3.3, y + 7.4, 8, c.on, hh[i], { family:'Georgia, serif', weight:400, extra: glow(c.on) }); }
+    out += `<circle cx="${f(x + W/2)}" cy="${f(y+5.6)}" r=".6" fill="${Math.floor(t.s)%2 ? c.off : c.on}"/><circle cx="${f(x + W/2)}" cy="${f(y+9)}" r=".6" fill="${Math.floor(t.s)%2 ? c.off : c.on}"/>`;
+  } else {
+    const caseC = k === 'scandinave' || k === 'japandi' || k === 'boheme' ? p.wood : k === 'retro70' ? '#E8863E' : k === 'neon' ? '#0F0F22' : '#2B2D31';
+    out += flat(R(x, y, W, H, 3), caseC) + `<path d="${R(x+2, y+2, W-4, H-4, 1.6)}" fill="${c.bg}" class="ink thin"/>`;
+    const s = 0.95, w = sevenWidth(s);
+    out += `<g ${glow(c.on)}>${sevenTime(x + (W - w)/2, y + (H - 10*s)/2 + (t.label ? 0.8 : 0), s, t, c.on, c.off)}</g>`;
+    if (t.label) out += txt(x + W/2, y + 3.1, 1.6, c.on, t.label.toUpperCase(), { weight:700, extra:'letter-spacing=".25" opacity=".85"' });
+  }
+  if (k === 'steampunk' && t.label) out += txt(x + W/2, y + H - 2, 1.5, '#F1E3C2', t.label.toUpperCase(), { weight:700 });
+  return `<g data-obj="${id}">${out}</g>`;
+}
+
+// ---------- Réveil numérique de table (18 × 9 cm) ----------
+function deskAlarm(id, x, yBottom) {
+  const p = P(), t = timeFor(id), c = ledColors(), W = 18, H = 9, y = yBottom - H;
+  const caseC = sk() === 'neon' ? '#0F0F22' : sk() === 'retro70' ? '#E8863E' : sk() === 'steampunk' ? '#7A4E2D' : light(p.warmDark, .5);
+  let out = flat(`M${x+1},${y+H}L${x+2.2},${y}H${x+W-2.2}L${x+W-1},${y+H}Z`, caseC) + `<path d="${R(x+3, y+1.6, W-6, H-3.4, 1)}" fill="${c.bg}" class="ink thin"/>`;
+  const s = 0.36, w = sevenWidth(s);
+  out += `<g ${glow(c.on)}>${sevenTime(x + (W - w)/2, y + 2.4, s, t, c.on, c.off)}</g>`;
+  if (t.label) out += txt(x + W/2, y + H - 1.3, .95, c.on, t.label.toUpperCase(), { weight:700 });
+  return `<g data-obj="${id}">${out}</g>`;
+}
+
+// ---------- Pendulette de table (14 × 16 cm) ----------
+function deskClock(id, x, yBottom) {
+  const p = P(), k = sk(), r = 6.5, cx = x + 7, cy = yBottom - 9;
+  const body = k === 'steampunk' ? '#B87333' : k === 'neon' ? '#2A2A4D' : k === 'moderne' ? '#C0392B' : p.woodDark;
+  let out = `<line x1="${cx-4}" y1="${cy+5}" x2="${cx-5.5}" y2="${yBottom}" class="ink" stroke-width="1.6"/><line x1="${cx+4}" y1="${cy+5}" x2="${cx+5.5}" y2="${yBottom}" class="ink" stroke-width="1.6"/>`;
+  out += [-1, 1].map((sd) => flat(E(cx + sd*4.2, cy - r - 1.2, 2.3), body)).join('');
+  out += flat(E(cx, cy, r), body) + `<path d="${E(cx, cy, r*0.8)}" fill="${k === 'neon' ? '#0B0B1E' : '#FBF7EE'}" class="ink thin"/>`;
+  const t = timeFor(id);
+  for (let i = 0; i < 12; i++) { const a = i * 30 * Math.PI / 180; out += `<line x1="${f(cx + Math.sin(a)*r*0.72)}" y1="${f(cy - Math.cos(a)*r*0.72)}" x2="${f(cx + Math.sin(a)*r*0.62)}" y2="${f(cy - Math.cos(a)*r*0.62)}" stroke="${k === 'neon' ? '#00E5FF' : '#2A211C'}" stroke-width=".35"/>`; }
+  if (t.label) out += txt(cx, cy + r*0.38, 1, k === 'neon' ? '#00E5FF' : '#2A211C', t.label.toUpperCase(), { weight:700 });
+  out += hands(cx, cy, r*0.85, t, { ink: k === 'neon' ? '#E6E6FF' : '#2A211C', sec: k === 'neon' ? '#FF4FD8' : '#D8432F' });
+  return `<g data-obj="${id}">${out}</g>`;
+}
+
+// ---------- Station météo murale (34 × 22 cm) ----------
+function screenTheme() {
+  const k = sk();
+  if (k === 'neon') return { bg:'#07071A', fg:'#00E5FF', sub:'#FF4FD8', icon:{ sun:'#FFE14F', cloud:'#1C1C3A', grey:'#2A2A50', dark:'#3A3A66', rain:'#00E5FF', ink:'#00E5FF', moon:'#FFE14F', flake:'#E6E6FF', fog:'#8A8AB8' } };
+  if (k === 'steampunk') return { bg:'#2A1A0C', fg:'#FFB45C', sub:'#E8C07A', icon:{ sun:'#FFB45C', cloud:'#3A2414', grey:'#4A2E18', dark:'#5A3A20', rain:'#FFB45C', ink:'#FFB45C', moon:'#FFD27A', flake:'#FFD27A', fog:'#C08A50' } };
+  if (k === 'industriel' || k === 'moderne') return { bg:'#1D1F22', fg:'#F4F1EA', sub:'#9AA4AE', icon:{ ink:'#1D1F22' } };
+  return { bg:'#DCE3D3', fg:'#25302A', sub:'#5B6A5F', icon:{ ink:'#25302A' } }; // écran « e-ink » doux
+}
+function weatherStation(id, x, y, W = 34, H = 22, small = false) {
+  const p = P(), k = sk(), th = screenTheme(), night = isNight(), temp = temperature();
+  const caseC = k === 'neon' ? '#0F0F22' : k === 'steampunk' ? '#7A4E2D' : k === 'industriel' || k === 'moderne' ? '#2B2D31' : k === 'retro70' ? '#E8863E' : p.wood;
+  let out = flat(R(x, y, W, H, small ? 1.6 : 2.6), caseC) + `<path d="${R(x+1.8, y+1.8, W-3.6, H-3.6, 1.4)}" fill="${th.bg}" class="ink thin"/>`;
+  if (k === 'steampunk') out += [[x+1, y+1], [x+W-1, y+1], [x+1, y+H-1], [x+W-1, y+H-1]].map(([a, b]) => `<circle cx="${a}" cy="${b}" r=".55" fill="#D9A441"/>`).join('');
+  const ir = (H - 3.6) * 0.42;
+  out += `<g ${k === 'neon' ? glow('#00E5FF') : ''}>${wicon(x + 1.8 + ir + 1.2, y + H/2 - (small ? 0 : 1.2), ir, S.weather, night, th.icon)}</g>`;
+  const tx = x + 1.8 + 2 * ir + 3;
+  out += txt(tx, y + H/2 - (small ? 0.4 : 2.2), small ? H*0.36 : H*0.3, th.fg, `${temp}°`, { anchor:'start', weight:700, family:'Oswald', extra: k === 'neon' || k === 'steampunk' ? glow(th.fg) : '' });
+  if (!small) {
+    const lab = WEATHERS.find(([s]) => s === S.weather)[1];
+    out += txt(tx + 0.2, y + H/2 + 3.6, 2.1, th.sub, (night && S.weather === 'sun') ? 'Nuit claire' : lab, { anchor:'start', weight:600 });
+    out += txt(x + W/2, y + H - 3.6, 1.7, th.sub, `${S.cities[id] ? S.cities[id].name : HOME.name} · ${String(timeFor(id).h).padStart(2,'0')}:${String(timeFor(id).m).padStart(2,'0')}`, { weight:600 });
+  }
+  return `<g data-obj="${id}">${out}</g>`;
+}
+function deskStation(id, x, yBottom) {
+  const W = 15, H = 10, y = yBottom - H - 1.2;
+  return `<path d="M${x+3},${yBottom}L${x+4.5},${y+H-.5}H${x+W-4.5}L${x+W-3},${yBottom}Z" fill="${shade(P().woodDark,.9)}" class="ink thin"/>` + weatherStation(id, x, y, W, H, true);
+}
+
+// ---------- Baromètre-thermomètre à l'ancienne (26 × 50 cm) ----------
+function barometer(id, x, y) {
+  const p = P(), k = sk(), W = 26, H = 50, cx = x + W/2, r = 11, cy = y + 13, temp = temperature();
+  const wood = k === 'steampunk' ? '#58361D' : k === 'neon' ? '#2A2A4D' : k === 'moderne' ? '#2F3A46' : shade(p.woodDark, .95);
+  const brass = k === 'neon' ? '#8A8AB8' : k === 'moderne' ? '#C0C6CC' : '#C9962E';
+  const banjo = `M${cx-r-2},${cy}A${r+2},${r+2} 0 0 1 ${cx+r+2},${cy}L${cx+6},${y+H-6}A6,6 0 0 1 ${cx-6},${y+H-6}Z`;
+  let out = flat(banjo, wood) + `<path d="${E(cx, cy, r+0.4)}" fill="${brass}" class="ink thin"/><path d="${E(cx, cy, r-0.9)}" fill="#F4EDDC" class="ink thin"/>`;
+  const labels = [['Tempête', -120], ['Pluie', -65], ['Variable', 0], ['Beau', 65], ['Très sec', 120]];
+  labels.forEach(([lab, a]) => { const rad = (a - 90) * Math.PI / 180; out += txt(cx + Math.cos(rad)*r*0.66, cy + Math.sin(rad)*r*0.66, 1.45, '#3A2620', lab, { family:'Georgia, serif', weight:500, extra:`transform="rotate(${a*0.55} ${f(cx + Math.cos(rad)*r*0.66)} ${f(cy + Math.sin(rad)*r*0.66)})"` }); });
+  for (let a = -130; a <= 130; a += 10) { const rad = (a - 90) * Math.PI / 180; out += `<line x1="${f(cx + Math.cos(rad)*r*0.86)}" y1="${f(cy + Math.sin(rad)*r*0.86)}" x2="${f(cx + Math.cos(rad)*r*(a % 30 ? 0.82 : 0.78))}" y2="${f(cy + Math.sin(rad)*r*(a % 30 ? 0.82 : 0.78))}" stroke="#3A2620" stroke-width=".25"/>`; }
+  const ang = { storm:-118, rain:-70, drizzle:-45, fog:-20, cloudy:0, snow:-55, sun:70 }[S.weather];
+  const rad = (ang - 90) * Math.PI / 180;
+  out += `<line x1="${f(cx - Math.cos(rad)*2)}" y1="${f(cy - Math.sin(rad)*2)}" x2="${f(cx + Math.cos(rad)*r*0.8)}" y2="${f(cy + Math.sin(rad)*r*0.8)}" stroke="#1E1612" stroke-width=".55" stroke-linecap="round" style="transition:all .6s"/><circle cx="${cx}" cy="${cy}" r="1" fill="${brass}" class="ink thin"/>`;
+  // Thermomètre
+  const ty = y + 27, th = 17, tw = 3.2;
+  out += `<path d="${R(cx - 4.6, ty - 1.2, 9.2, th + 4.6, 1.5)}" fill="#F4EDDC" class="ink thin"/>`;
+  out += `<path d="${R(cx - tw/2 + .6, ty, tw - 1.2, th, .9)}" fill="#fff" class="ink thin"/><circle cx="${cx}" cy="${ty + th + 0.8}" r="1.5" fill="#D8432F" class="ink thin"/>`;
+  const lvl = Math.max(0, Math.min(1, (temp + 10) / 50));
+  out += `<path d="${R(cx - 0.45, ty + th * (1 - lvl), .9, th * lvl + 1, .4)}" fill="#D8432F"/>`;
+  [-10, 0, 10, 20, 30, 40].forEach((d) => { const yy = ty + th * (1 - (d + 10) / 50); out += `<line x1="${f(cx + 1.2)}" y1="${f(yy)}" x2="${f(cx + 2.2)}" y2="${f(yy)}" stroke="#3A2620" stroke-width=".2"/>` + txt(cx + 3.3, yy, .95, '#3A2620', d, { weight:500 }); });
+  out += txt(cx - 2.8, ty + th * (1 - lvl), 1.25, '#D8432F', `${temp}°`, { weight:700 });
+  return `<g data-obj="${id}">${out}</g>`;
+}
+
+// ---------- Panneaux ----------
+const CELL = 21;
+const measureCtx = document.createElement('canvas').getContext('2d');
+const PANEL_FONT = { chalk:['Caveat', 600, 1.05], letter:['Oswald', 500, 1.25], neon:['Pacifico', 400, 1.25], cork:['Patrick Hand', 400, 1.15] };
+// Plus grande taille de texte qui tient dans la boîte, avec retour à la ligne automatique.
+function fitText(text, w, h, family, weight, lineH, upper = false) {
+  const src = (upper ? text.toUpperCase() : text).split('\n');
+  for (let s = Math.min(h, 40); s >= 1.5; s -= 0.25) {
+    measureCtx.font = `${weight} ${s * 10}px "${family}"`;
+    const lines = [];
+    for (const para of src) {
+      let cur = '';
+      for (const word of para.split(/\s+/)) {
+        const tryL = cur ? cur + ' ' + word : word;
+        if (measureCtx.measureText(tryL).width / 10 <= w || !cur) cur = tryL; else { lines.push(cur); cur = word; }
+      }
+      lines.push(cur);
+    }
+    const widest = Math.max(...lines.map((l) => measureCtx.measureText(l).width / 10));
+    if (lines.length * s * lineH <= h && widest <= w) return { s, lines };
+  }
+  return { s: 1.5, lines: src };
+}
+function textBlock(x, y, w, h, kind, fill, extra = '') {
+  const [fam, wt, lh] = PANEL_FONT[kind];
+  const { s, lines } = fitText(S.panels[kind].text, w, h, fam, wt, lh, kind === 'letter');
+  const top = y + h / 2 - (lines.length - 1) * s * lh / 2;
+  return lines.map((l, i) => txt(x + w / 2, top + i * s * lh, s, fill, esc(l), { family: `'${fam}'`, weight: wt, extra })).join('');
+}
+function panel(kind, x, y, { handles = false } = {}) {
+  const p = P(), pn = S.panels[kind], W = pn.w * CELL, H = pn.h * CELL;
+  let out = '';
+  if (kind === 'chalk') {
+    out += flat(R(x, y, W, H, 1.5), p.woodDark === '#1C1C38' ? '#5A4636' : p.wood) + `<path d="${R(x+3, y+3, W-6, H-6, .6)}" fill="#2F3B35" class="ink thin"/>`;
+    out += `<path d="M${x+6},${y+H-6}q${W*0.2},-3 ${W*0.4},-1" stroke="rgba(255,255,255,.08)" stroke-width="3" fill="none"/>`;
+    out += textBlock(x + 6, y + 5, W - 12, H - 10, 'chalk', '#F4F1E8', 'opacity=".92"');
+    out += `<path d="${R(x + W - 14, y + H - 4.2, 6, 1.6, .8)}" fill="#FBFBF5" class="ink thin"/>`;
+  } else if (kind === 'letter') {
+    out += flat(R(x, y, W, H, 1), '#C9A774') + `<path d="${R(x+2, y+2, W-4, H-4, .4)}" fill="#1F1F1F" class="ink thin"/>`;
+    for (let yy = y + 3.2; yy < y + H - 2.5; yy += 1.6) out += `<line x1="${x+2.3}" y1="${f(yy)}" x2="${x+W-2.3}" y2="${f(yy)}" stroke="#2D2D2D" stroke-width=".5"/>`;
+    out += textBlock(x + 4.5, y + 4, W - 9, H - 8, 'letter', '#F5F5F2');
+  } else if (kind === 'neon') {
+    out += `<path d="${R(x, y, W, H, 2)}" fill="rgba(255,255,255,.12)" stroke="rgba(255,255,255,.45)" stroke-width=".4"/>`;
+    out += [[x+2.5, y+2.5], [x+W-2.5, y+2.5], [x+2.5, y+H-2.5], [x+W-2.5, y+H-2.5]].map(([a, b]) => `<circle cx="${a}" cy="${b}" r="1" fill="#D8D8D8" class="ink thin"/>`).join('');
+    out += `<line x1="${x+W/2}" y1="${y+H}" x2="${x+W/2}" y2="${y+H+18}" stroke="#222" stroke-width=".5"/>`;
+    out += `<g style="filter:drop-shadow(0 0 1.5px ${S.neon}) drop-shadow(0 0 5px ${S.neon})">${textBlock(x + 4, y + 2.5, W - 8, H - 5, 'neon', light(S.neon, .55))}</g>`;
+  } else if (kind === 'cork') {
+    out += flat(R(x, y, W, H, 1), p.woodDark === '#1C1C38' ? '#6A5240' : p.woodDark) + `<path d="${R(x+2.5, y+2.5, W-5, H-5, .4)}" fill="#C69A64" class="ink thin"/>`;
+    let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+    for (let i = 0; i < W * H / 12; i++) out += `<circle cx="${f(x + 3 + rnd()*(W-6))}" cy="${f(y + 3 + rnd()*(H-6))}" r="${f(.25 + rnd()*.35)}" fill="${rnd() > .5 ? '#A97E4A' : '#D8B07C'}"/>`;
+    const pw = Math.min(W - 10, W * 0.78), ph = H - 10, px = x + (W - pw) / 2, py = y + 5.5;
+    out += `<g transform="rotate(-2 ${f(px + pw/2)} ${f(py + ph/2)})">${flat(R(px, py, pw, ph, .3), '#FFFDF2', { thin:true })}`;
+    for (let yy = py + 3; yy < py + ph - 1; yy += 2.4) out += `<line x1="${px+1}" y1="${f(yy)}" x2="${px+pw-1}" y2="${f(yy)}" stroke="#BFD4EA" stroke-width=".2"/>`;
+    out += textBlock(px + 2, py + 2.5, pw - 4, ph - 4, 'cork', '#24407A') + `<circle cx="${f(px + pw/2)}" cy="${f(py + 1.4)}" r="1.4" fill="#D8432F" class="ink thin"/></g>`;
+    out += `<path d="${R(x + W - 13, y + 4, 7, 5, .2)}" fill="#F6E27A" class="ink thin" transform="rotate(6 ${x+W-9.5} ${y+6.5})"/>`;
+  }
+  if (handles) {
+    out += `<path d="${R(x - .6, y - .6, W + 1.2, H + 1.2, 1)}" fill="none" stroke="#3D8BFD" stroke-width=".5" stroke-dasharray="1.5 1"/>`;
+    out += `<g class="handle" data-handle="${kind}"><circle cx="${x+W}" cy="${y+H}" r="3.2" fill="#3D8BFD" stroke="#fff" stroke-width=".7"/><text x="${x+W}" y="${y+H+.2}" font-size="3.4" fill="#fff" text-anchor="middle" dominant-baseline="middle">◢</text></g>`;
+  }
+  return `<g data-obj="panel-${kind}">${out}</g>`;
+}
+
+// ---------- Cartes ----------
+const svg = (vb, body, px) => `<svg viewBox="${vb.join(' ')}" width="${f(vb[2] * px)}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+const deskTop = (x, y, w) => `<path d="${R(x, y, w, 3, .4)}" fill="var(--desk)" class="ink"/><path d="${R(x+1, y+3, w-2, 12, 0)}" fill="color-mix(in srgb, var(--desk) 85%, #2E2A66)"/>`;
+const CARDS = {
+  clocks: [
+    { id:'c-wall', name:'Horloge à aiguilles', dims:'Ø 32 cm · 2 × 2 cases · au mur', how:'Cadran selon le style : bois clair, métal, soleil doré (Rétro), chiffres romains (Bohème, Steampunk), anneau lumineux (Néon).', draw:() => svg([-6, -6, 44, 44], wallClock('c-wall', 0, 0), 4.6), tags:['🌐 ville'] },
+    { id:'c-digit', name:'Horloge numérique', dims:'40 × 16 cm · 2 × 1 cases · au mur', how:'Afficheur à 7 segments dont la couleur suit le style ; tubes Nixie en Steampunk. Les deux points clignotent chaque seconde.', draw:() => svg([-3, -3, 46, 22], digitalClock('c-digit', 0, 0), 4.6), tags:['🌐 ville'] },
+    { id:'c-alarm', name:'Réveil numérique', dims:'18 × 9 cm · sur bureau ou étagère', how:'Petit objet posé, comme la petite lampe.', desk:true, draw:() => svg([-4, -4, 34, 22], deskTop(-4, 14, 34) + deskAlarm('c-alarm', 4, 14), 6.2), tags:['🌐 ville'] },
+    { id:'c-desk', name:'Pendulette', dims:'14 × 16 cm · sur bureau ou étagère', how:'Petite horloge à deux cloches, aiguilles comme l’horloge murale.', desk:true, draw:() => svg([-6, -4, 26, 26], deskTop(-6, 18, 26) + deskClock('c-desk', 0, 18), 7.8), tags:['🌐 ville'] },
+  ],
+  meteo: [
+    { id:'m-station', name:'Station météo', dims:'34 × 22 cm · 2 × 1 cases · au mur', how:'Pictogramme de la météo du visuel (lune la nuit), température, libellé, ville et heure.', draw:() => svg([-3, -3, 40, 28], weatherStation('m-station', 0, 0), 6.2), tags:['🌐 ville ?'], q:true },
+    { id:'m-baro', name:'Baromètre à l’ancienne', dims:'26 × 50 cm · 2 × 3 cases · au mur', how:'L’aiguille va de « Tempête » à « Très sec » selon la météo ; le thermomètre monte avec la température.', draw:() => svg([-3, -3, 32, 56], barometer('m-baro', 0, 0), 5.2), tags:['🌐 ville ?'], q:true },
+    { id:'m-desk', name:'Station de table', dims:'15 × 11 cm · sur bureau ou étagère', how:'Version compacte : pictogramme et température seulement.', desk:true, draw:() => svg([-4, -4, 23, 21], deskTop(-4, 13, 23) + deskStation('m-desk', 0, 13), 9), tags:['🌐 ville ?'], q:true },
+  ],
+};
+const PANEL_INFO = {
+  chalk: ['Ardoise', 'Tableau noir dans un cadre de bois, écrit à la craie, avec sa craie sur le rebord.'],
+  letter: ['Tableau à lettres', 'Feutrine noire rainurée et lettres blanches enfichées, toujours en capitales.'],
+  neon: ['Néon', 'Écriture lumineuse sur plaque de plexiglas ; couleur au choix (rose, bleu, jaune, vert, blanc). Éclaire un peu le mur la nuit.'],
+  cork: ['Liège', 'Tableau en liège, mot écrit à la main sur une feuille punaisée, et un post-it.'],
+};
+
+function renderCards() {
+  for (const sec of ['clocks', 'meteo']) {
+    const el = document.getElementById(sec);
+    if (!el.dataset.built) {
+      el.innerHTML = CARDS[sec].map((c) => `<div class="card" data-card="${c.id}"><div class="stage ${c.desk ? 'desk' : ''}"></div><div class="info"><div class="name">${c.name}</div><div class="dims">${c.dims}</div><div class="how">${c.how}</div>${c.tags.map((t) => `<span class="tag ${c.q ? 'q' : ''}">${t}${c.q ? ' — à valider' : ''}</span>`).join('')}</div></div>`).join('');
+      el.dataset.built = 1;
+    }
+    for (const c of CARDS[sec]) el.querySelector(`[data-card="${c.id}"] .stage`).innerHTML = c.draw();
+  }
+  const pe = document.getElementById('panels');
+  if (!pe.dataset.built) {
+    pe.innerHTML = Object.keys(PANEL_INFO).map((k) => `<div class="card" data-card="panel-${k}"><div class="stage" style="min-height:260px;max-height:none;align-items:flex-start"></div><div class="info"><div class="name">${PANEL_INFO[k][0]}</div><div class="dims size"></div><div class="how">${PANEL_INFO[k][1]}</div><span class="tag">✏️ écrire</span><span class="tag">◢ taille libre</span></div></div>`).join('');
+    pe.dataset.built = 1;
+  }
+  for (const k of Object.keys(PANEL_INFO)) {
+    const pn = S.panels[k], W = pn.w * CELL, H = pn.h * CELL, card = pe.querySelector(`[data-card="panel-${k}"]`);
+    const vbW = Math.max(7, pn.w + 1) * CELL, vbH = Math.max(5, pn.h + 1) * CELL;
+    let grid = '';
+    for (let gx = 0; gx <= vbW; gx += CELL) grid += `<line x1="${gx}" y1="0" x2="${gx}" y2="${vbH}" stroke="rgba(0,0,0,.06)"/>`;
+    for (let gy = 0; gy <= vbH; gy += CELL) grid += `<line x1="0" y1="${gy}" x2="${vbW}" y2="${gy}" stroke="rgba(0,0,0,.06)"/>`;
+    card.querySelector('.stage').innerHTML = `<svg viewBox="-4 -4 ${vbW + 8} ${vbH + 8}" width="100%" data-panel-svg="${k}">${grid}${panel(k, 0, 0, { handles: true })}</svg>`;
+    card.querySelector('.size').textContent = `${pn.w} × ${pn.h} cases (${pn.w * CELL} × ${pn.h * CELL} cm) · de 2 × 2 à 12 × 8`;
+  }
+}
+
+// ---------- Pièce ----------
+function renderRoom() {
+  const p = P(), cols = 16, rows = 12, W = cols * CELL, Hwall = rows * CELL, Hfloor = 70;
+  let o = `<rect x="0" y="0" width="${W}" height="${Hwall}" fill="var(--wall)"/><rect x="0" y="${Hwall}" width="${W}" height="${Hfloor}" fill="var(--floor)"/><rect x="0" y="${Hwall - 4}" width="${W}" height="4" fill="${shade(p.wall, .85)}"/>`;
+  for (let c = 1; c < cols; c++) o += `<line x1="${c*CELL}" y1="0" x2="${c*CELL}" y2="${Hwall}" stroke="rgba(0,0,0,.05)"/>`;
+  // Fenêtre (repère)
+  const night = isNight();
+  const sky = night ? '#1E2A4A' : { sun:'#9FD3F2', cloudy:'#BFD0DC', drizzle:'#AEBAC4', rain:'#98A5B0', storm:'#6E7884', snow:'#D7DEE6', fog:'#C9CED2' }[S.weather];
+  o += flat(R(CELL, CELL*2, CELL*4, CELL*5, 1), p.leg === '#FFFFFF' ? '#FFFFFF' : p.woodDark) + `<path d="${R(CELL+3, CELL*2+3, CELL*4-6, CELL*5-6, .5)}" fill="${sky}" class="ink thin"/><line x1="${CELL*3}" y1="${CELL*2+3}" x2="${CELL*3}" y2="${CELL*7-3}" class="ink thin"/>`;
+  o += `<g transform="translate(${CELL*3 - 14}, ${CELL*3.6}) scale(1.1)">${wicon(12, 12, 12, S.weather, night, {})}</g>`;
+  // Objets muraux
+  o += wallClock('r-clock', CELL*6 + 5, CELL*1.6, 32);
+  o += barometer('r-baro', CELL*6 + 8, CELL*4.2);
+  o += `<g transform="translate(${CELL*9 + 6}, ${CELL*1.8})">${panel('chalk', 0, 0)}</g>`;
+  o += digitalClock('r-digit', CELL*13.5, CELL*1.3);
+  // Bureau + objets posés
+  const dx = CELL*9.5, dTop = Hwall + 40 - 75, dw = 130;
+  o += flat(R(dx, dTop, dw, 4, .6), 'var(--desk)') + `<path d="${R(dx + 4, dTop + 4, 4, 75 - 4, 0)}" fill="var(--leg)" class="ink thin"/><path d="${R(dx + dw - 8, dTop + 4, 4, 75 - 4, 0)}" fill="var(--leg)" class="ink thin"/><path d="${R(dx + dw - 50, dTop + 4, 40, 18, .4)}" fill="var(--desk)" class="ink thin"/>`;
+  o += deskAlarm('r-alarm', dx + 12, dTop);
+  o += deskStation('r-station', dx + 38, dTop);
+  o += deskClock('r-pend', dx + 62, dTop);
+  document.getElementById('room').innerHTML = `<svg viewBox="0 0 ${W} ${Hwall + Hfloor}" xmlns="http://www.w3.org/2000/svg">${o}</svg>`;
+}
+
+// ---------- Interface ----------
+function applyVars() { const p = P(); for (const [k, val] of Object.entries(p)) document.body.style.setProperty(`--${k}`, val); }
+function render() { renderCards(); renderRoom(); }
+function buildBars() {
+  const st = document.getElementById('styles');
+  for (const name of Object.keys(PALETTES)) st.insertAdjacentHTML('beforeend', `<button data-style="${name}">${name}</button>`);
+  const we = document.getElementById('weather');
+  for (const [k, lab] of WEATHERS) we.insertAdjacentHTML('beforeend', `<button data-w="${k}">${lab}</button>`);
+  const ti = document.getElementById('time');
+  ti.insertAdjacentHTML('beforeend', `<button data-t="real">Heure réelle</button><button data-t="day">Jour</button><button data-t="night">Nuit</button><button data-t="manual">Choisir l’heure</button><input type="range" min="0" max="1439" step="5" value="${S.minutes}" id="slider" hidden><span id="hh" class="note"></span>`);
+  document.querySelector('.sticky').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.style) S.style = b.dataset.style;
+    if (b.dataset.w) S.weather = b.dataset.w;
+    if (b.dataset.t) S.timeMode = b.dataset.t;
+    syncBars(); applyVars(); render();
+  });
+  document.getElementById('slider').addEventListener('input', (e) => { S.minutes = +e.target.value; syncBars(); render(); });
+}
+function syncBars() {
+  document.querySelectorAll('[data-style]').forEach((b) => b.classList.toggle('on', b.dataset.style === S.style));
+  document.querySelectorAll('[data-w]').forEach((b) => b.classList.toggle('on', b.dataset.w === S.weather));
+  document.querySelectorAll('[data-t]').forEach((b) => b.classList.toggle('on', b.dataset.t === S.timeMode));
+  document.getElementById('slider').hidden = S.timeMode !== 'manual';
+  const m = sceneMinutes(new Date());
+  document.getElementById('hh').textContent = `Scène : ${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')} à ${HOME.name}`;
+}
+
+// Bulle d'actions (glyphes) au toucher d'un objet
+let bubble = null;
+const closeBubble = () => { bubble?.remove(); bubble = null; };
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.bubble') || e.target.closest('.handle')) return;
+  const g = e.target.closest('[data-obj]');
+  closeBubble();
+  if (!g) return;
+  const id = g.dataset.obj, isPanel = id.startsWith('panel-'), isWeather = /^(m-|r-station|r-baro)/.test(id);
+  bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = (isPanel ? `<button title="Écrire" data-act="write">✏️</button>` : `<button title="${isWeather ? 'Ville de la météo (à valider)' : 'Choisir une ville'}" data-act="city">🌐</button>`) + `<button title="Déplacer">✥</button><button title="Ranger">🗑️</button>`;
+  const r = g.getBoundingClientRect();
+  bubble.style.left = `${r.left + window.scrollX + r.width / 2 - 64}px`;
+  bubble.style.top = `${r.top + window.scrollY - 56}px`;
+  document.body.appendChild(bubble);
+  bubble.addEventListener('click', (ev) => {
+    const act = ev.target.dataset.act; if (!act) return;
+    closeBubble();
+    if (act === 'city') citySheet(id.replace(/^r-/, 'r-'), isWeather);
+    if (act === 'write') writeSheet(id.slice(6));
+  });
+});
+function sheet(html) {
+  const s = document.createElement('div'); s.className = 'sheet'; s.innerHTML = `<div class="box">${html}</div>`;
+  s.addEventListener('click', (e) => { if (e.target === s || e.target.dataset.close !== undefined) s.remove(); });
+  document.body.appendChild(s); return s;
+}
+function citySheet(id, isWeather) {
+  const s = sheet(`<h3>${isWeather ? 'Météo de quelle ville ?' : 'Heure de quelle ville ?'}<button data-close>✕</button></h3><input type="search" placeholder="Chercher une ville…" autofocus><div class="list"></div>${isWeather ? '<p class="note">Proposition à valider : la météo d’une autre ville serait la météo réelle de cette ville (relais), même si la scène est en météo aléatoire.</p>' : ''}`);
+  const list = s.querySelector('.list');
+  const draw = (q = '') => {
+    const now = new Date();
+    const hm = (tz) => { const d = new Date(now.toLocaleString('en-US', { timeZone: tz })); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+    const cur = S.cities[id]?.tz;
+    list.innerHTML = `<button class="city ${!cur ? 'on' : ''}" data-tz=""><span>📍 ${isWeather ? 'Météo de la scène' : 'Heure de la scène'} (${HOME.name})</span><span class="t">${isWeather ? '' : hm(HOME.tz)}</span></button>` +
+      CITIES.filter(([n, c]) => (n + ' ' + c).toLowerCase().includes(q.toLowerCase())).map(([n, c, tz]) => `<button class="city ${cur === tz ? 'on' : ''}" data-tz="${tz}" data-n="${n}"><span>${n}, ${c}</span><span class="t">${isWeather ? '' : hm(tz)}</span></button>`).join('');
+  };
+  draw();
+  s.querySelector('input').addEventListener('input', (e) => draw(e.target.value));
+  list.addEventListener('click', (e) => { const b = e.target.closest('.city'); if (!b) return; if (b.dataset.tz) S.cities[id] = { name: b.dataset.n, tz: b.dataset.tz }; else delete S.cities[id]; s.remove(); render(); });
+}
+function writeSheet(kind) {
+  const NEONS = ['#FF4FD8', '#00E5FF', '#FFE14F', '#3DFF8B', '#FFFFFF'];
+  const s = sheet(`<h3>Écrire sur : ${PANEL_INFO[kind][0]}<button data-close>✕</button></h3><textarea maxlength="140">${esc(S.panels[kind].text)}</textarea><p class="note">140 caractères au plus. Retour à la ligne libre ; la taille du texte s’ajuste au panneau.</p>${kind === 'neon' ? `<div class="row">${NEONS.map((c) => `<span class="sw ${S.neon === c ? 'on' : ''}" data-c="${c}" style="background:${c}"></span>`).join('')}</div>` : ''}<div class="row"><button class="ok">✓</button></div>`);
+  s.querySelectorAll('.sw').forEach((sw) => sw.addEventListener('click', () => { S.neon = sw.dataset.c; s.querySelectorAll('.sw').forEach((o) => o.classList.toggle('on', o === sw)); }));
+  s.querySelector('.ok').addEventListener('click', () => { S.panels[kind].text = s.querySelector('textarea').value || ' '; s.remove(); render(); });
+}
+
+// Poignée de redimensionnement des panneaux (cases entières, 2×2 → 12×8)
+let drag = null;
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('.handle'); if (!h) return;
+  e.preventDefault();
+  const kind = h.dataset.handle, svgEl = h.closest('svg');
+  drag = { kind, svgEl };
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const svgEl = document.querySelector(`[data-panel-svg="${drag.kind}"]`);
+  const pt = svgEl.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const loc = pt.matrixTransform(svgEl.getScreenCTM().inverse());
+  const w = Math.max(2, Math.min(12, Math.round(loc.x / CELL))), h = Math.max(2, Math.min(8, Math.round(loc.y / CELL)));
+  const pn = S.panels[drag.kind];
+  if (pn.w !== w || pn.h !== h) { pn.w = w; pn.h = h; renderCards(); renderRoom(); }
+});
+document.addEventListener('pointerup', () => { drag = null; });
+
+buildBars(); syncBars(); applyVars();
+document.fonts.ready.then(render);
+render();
+setInterval(() => { if (!drag) { renderCards(); renderRoom(); syncBars(); } }, 1000);
+</script>
+</body>
+</html>
