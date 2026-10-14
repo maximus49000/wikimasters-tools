@@ -118,6 +118,7 @@ Nouvelle fiche, **nouvel id** `lieu-scene-2026-10` (« Lieu de la scène ») : �
 - Passage géolocalisation → ville pendant une demande de position en cours : la réponse arrivée ensuite est gardée en mémoire mais ignorée tant que le mode n'est pas `geo`.
 - Changement de lieu : heure, ciel, météo réelle (nouvelle cellule), commerces, bus et département se recalculent (abonnés de `subscribePosition`).
 - Les caches existants par cellule de 0,1° (météo, commerces, bus, département) restent valables : une ville tombe dans sa cellule.
+- **Correctif (validé 2026-10-14)** : le cache de la météo réelle (`wmt:weather-real`, `weather-real.ts`) enregistre aussi sa cellule (`{ at, obs, cell }`) ; à la réouverture de la page, une météo de moins de 15 min pour la même cellule est reprise sans requête (aujourd'hui la cellule n'est qu'en mémoire, d'où une requête à chaque ouverture). Ancien format sans cellule : relu comme périmé.
 
 ## 7. Tests
 
@@ -132,6 +133,7 @@ Cas à couvrir :
 6. Relais `/geocode` : validation de `q`, forme de la réponse, résultats sans fuseau écartés, cache, erreurs amont.
 7. `LocationDialog` : trois choix, recherche avec attente et annulation, choix d'une ville enregistré, états vide/hors ligne, Échap isolé.
 8. Menu ☁️ : bandeau selon le mode, ouvre la fenêtre.
+9. Cache météo : relu après rechargement pour la même cellule (aucune requête), refait pour une autre cellule ou au-delà de 15 min ; ancien format sans cellule → requête.
 
 ## 8. Hors périmètre
 
