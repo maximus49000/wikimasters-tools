@@ -23,7 +23,7 @@ export function LocationDialog({ onClose }: { onClose: () => void }): ReactEleme
     if (e.key === 'Escape') onClose();
   };
   return (
-    <div ref={box} tabIndex={-1} {...{ [DECO_DIALOG_ATTR]: '' }} data-location-dialog="" className="wmt-lib-dialog wmt-lib-dialog-top" onKeyDown={onKeyDown} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div ref={box} tabIndex={-1} {...{ [DECO_DIALOG_ATTR]: '' }} data-location-dialog="" className="wmt-lib-dialog wmt-lib-dialog-top" onKeyDown={onKeyDown} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="wmt-lib-dialog-panel" role="dialog" aria-modal="true" aria-label="Lieu de la scène">
         <div className="wmt-lib-row">
           <span className="wmt-lib-sep">Lieu de la scène</span>

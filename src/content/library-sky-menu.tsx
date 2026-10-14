@@ -1,6 +1,9 @@
 import type { ReactElement } from 'react';
 import { SCENE_IDS, WEATHER_STATES, type SceneId, type TimeSetting, type WeatherSetting, type WeatherState } from '../core/library/library-types';
 import { WEATHER_LABEL } from '../core/library/weather/weather-types';
+import { localClock } from '../core/library/scene-clock';
+import type { SceneLocation } from '../core/library/scene-location';
+import { formatMinutes } from '../core/library/time-setting';
 import { WEATHER_SCENES } from './scene-weather';
 import type { ZoneChoice } from './zone-setting';
 import { Btn, Icon, ICONS } from './library-ui';
@@ -20,6 +23,17 @@ const SCENE_LABEL: Record<SceneId, string> = { city: 'Ville', countryside: 'Camp
 // Réglage cyclique de la zone des vacances : Auto → A → B → C → Corse → Auto.
 export const NEXT_ZONE: Record<ZoneChoice, ZoneChoice> = { auto: 'A', A: 'B', B: 'C', C: 'Corse', Corse: 'auto' };
 const ZONE_GLYPH: Record<ZoneChoice, string> = { auto: '📍', A: 'A', B: 'B', C: 'C', Corse: 'Co' };
+
+// Bandeau du lieu en tête du menu ☁️ : ce que suit la scène (ville, position de l'appareil ou fuseau de l'appareil).
+export type PlaceBanner = { mode: SceneLocation['mode']; glyph: string; title: string; sub: string };
+export function placeBanner(location: SceneLocation, failure: string | null, now: Date): PlaceBanner {
+  if (location.mode === 'city') {
+    const time = formatMinutes(localClock(now, location.city.tz).minutes);
+    return { mode: 'city', glyph: '🏙', title: location.city.name, sub: [location.city.country, time, 'heure de la ville'].filter(Boolean).join(' · ') };
+  }
+  if (location.mode === 'geo') return { mode: 'geo', glyph: '📍', title: 'Ma position', sub: `géolocalisation · ${failure ?? 'environ 10 km près'}` };
+  return { mode: 'off', glyph: '⊘', title: 'Lieu désactivé', sub: 'fuseau de l’appareil' };
+}
 
 const TIME_MODES = [
   ['real', 'Heure réelle', ICONS.clock],
@@ -45,6 +59,8 @@ type Props = {
   positionOn: boolean;
   weatherLabel: string;
   weatherNote: string | null;
+  place: PlaceBanner;
+  onPlace: () => void;
 };
 
 // Menu ☁️ de la barre du haut : scène et ciel, heure, lumière, zone des vacances, météo (pour les scènes qui en ont une).
@@ -52,6 +68,14 @@ export function SkyMenu(p: Props): ReactElement {
   const hasWeather = WEATHER_SCENES.includes(p.scene);
   return (
     <>
+      <button type="button" className="wmt-lib-place" data-location-banner={p.place.mode} aria-label={`Lieu de la scène : ${p.place.title}, ${p.place.sub}. Changer le lieu`} title="Changer le lieu de la scène" onClick={p.onPlace}>
+        <span className="wmt-lib-place-glyph" aria-hidden="true">{p.place.glyph}</span>
+        <span aria-hidden="true">
+          <strong>{p.place.title}</strong>
+          <small>{p.place.sub}</small>
+        </span>
+        <span className="wmt-lib-place-chev" aria-hidden="true">›</span>
+      </button>
       <div className="wmt-lib-pop-group" role="group" aria-label="Ciel">
         {SCENE_IDS.map((id) => (
           <Btn key={id} label={SCENE_LABEL[id]} pressed={p.scene === id} data={{ scene: id }} onClick={() => p.onScene(id)}>
@@ -89,7 +113,7 @@ export function SkyMenu(p: Props): ReactElement {
           <Btn label="Météo aléatoire" pressed={p.weather.mode === 'random'} data={{ 'weather-mode': 'random' }} onClick={() => p.onWeather({ mode: 'random' })}>
             <Icon paths={ICONS.dice} />
           </Btn>
-          <Btn label={p.positionOn ? 'Météo réelle' : 'Météo réelle (position désactivée dans Paramètre d’extension)'} pressed={p.weather.mode === 'real'} disabled={!p.positionOn} data={{ 'weather-mode': 'real' }} onClick={() => p.onWeather({ mode: 'real' })}>
+          <Btn label={p.positionOn ? 'Météo réelle' : 'Météo réelle (lieu désactivé)'} pressed={p.weather.mode === 'real'} disabled={!p.positionOn} data={{ 'weather-mode': 'real' }} onClick={() => p.onWeather({ mode: 'real' })}>
             <Icon paths={ICONS.globe} />
           </Btn>
           {WEATHER_STATES.map((state) => (
@@ -101,7 +125,7 @@ export function SkyMenu(p: Props): ReactElement {
             {p.weatherLabel}
           </span>
           {p.weatherNote !== null && (
-            <span className="wmt-lib-msg" data-weather-note="" title={p.positionOn ? 'Position inconnue ou réseau indisponible : la météo reste simulée.' : 'Position désactivée dans Paramètre d’extension : la météo reste simulée.'}>
+            <span className="wmt-lib-msg" data-weather-note="" title={p.positionOn ? 'Position inconnue ou réseau indisponible : la météo reste simulée.' : 'Lieu désactivé (bandeau du menu ☁️ ou Paramètre d’extension › Position) : la météo reste simulée.'}>
               {p.weatherNote}
             </span>
           )}

@@ -2,8 +2,9 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LibraryPanel } from '../../src/content/LibraryPanel';
-import { locationSetting } from '../../src/content/location-setting';
+import { LIBRARY_CSS, LibraryPanel } from '../../src/content/LibraryPanel';
+import { placeBanner } from '../../src/content/library-sky-menu';
+import { locationSetting, resetLocationForTests } from '../../src/content/location-setting';
 import { resetPositionForTests } from '../../src/content/scene-position';
 import { createMemoryStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
@@ -26,6 +27,9 @@ const row = () => q('[role="group"][aria-label="Météo"]');
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
   resetPositionForTests();
+  window.localStorage.removeItem('wmt:scene-location');
+  resetLocationForTests();
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{"ok":false}', { status: 503 })));
   Object.defineProperty(navigator, 'geolocation', {
     configurable: true,
     value: { getCurrentPosition: (_ok: unknown, fail: (e: { code: number; message: string }) => void) => fail({ code: 1, message: 'refusé' }) },
@@ -43,6 +47,7 @@ afterEach(() => {
   window.localStorage.removeItem('wmt:scene-location');
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   act(() => root.unmount());
   container.remove();
 });
@@ -85,7 +90,7 @@ describe('rangée Météo', () => {
     const globe = q('[data-weather-mode="real"]') as HTMLButtonElement;
     expect(globe.disabled).toBe(true);
     expect(repo.current()!.weather).toEqual({ mode: 'real' });
-    expect(q('[data-weather-note]')?.getAttribute('title')).toContain('Position désactivée');
+    expect(q('[data-weather-note]')?.getAttribute('title')).toContain('Lieu désactivé');
     await act(async () => { locationSetting.set({ mode: 'geo' }); });
     expect((q('[data-weather-mode="real"]') as HTMLButtonElement).disabled).toBe(false);
   });
@@ -112,5 +117,79 @@ describe('bouton de zone des vacances', () => {
       expect(btn().textContent).toContain(glyph);
       expect(btn().getAttribute('aria-label')).toContain(label);
     }
+  });
+});
+
+const TOKYO = { name: 'Tokyo', country: 'Japon', lat: 35.69, lon: 139.69, tz: 'Asia/Tokyo' };
+
+describe('bandeau du lieu (menu ☁️)', () => {
+  const banner = () => q('[data-location-banner]')!;
+
+  it('géolocalisation : « Ma position » et la raison de l’échec', () => {
+    expect(banner().getAttribute('data-location-banner')).toBe('geo');
+    expect(banner().textContent).toContain('📍');
+    expect(banner().textContent).toContain('Ma position');
+    expect(banner().textContent).toContain('géolocalisation · position refusée');
+  });
+
+  it('ville : nom, pays et heure de la ville', async () => {
+    vi.setSystemTime(new Date('2026-10-14T13:14:00Z'));
+    await act(async () => { locationSetting.set({ mode: 'city', city: TOKYO }); });
+    expect(banner().getAttribute('data-location-banner')).toBe('city');
+    expect(banner().textContent).toContain('🏙');
+    expect(banner().textContent).toContain('Tokyo');
+    expect(banner().textContent).toContain('Japon · 22:14 · heure de la ville');
+    expect(banner().getAttribute('aria-label')).toBe('Lieu de la scène : Tokyo, Japon · 22:14 · heure de la ville. Changer le lieu');
+  });
+
+  it('ville : l’ancien échec de position (refusée) n’apparaît pas dans le bandeau', async () => {
+    expect(banner().textContent).toContain('position refusée');
+    await act(async () => { locationSetting.set({ mode: 'city', city: TOKYO }); });
+    expect(banner().textContent).not.toContain('refusée');
+    await act(async () => { locationSetting.set({ mode: 'off' }); });
+    expect(banner().textContent).not.toContain('refusée');
+  });
+
+  it('désactivé : « Lieu désactivé » et fuseau de l’appareil', async () => {
+    await act(async () => { locationSetting.set({ mode: 'off' }); });
+    expect(banner().textContent).toContain('⊘');
+    expect(banner().textContent).toContain('Lieu désactivé');
+    expect(banner().textContent).toContain('fuseau de l’appareil');
+  });
+
+  it('toucher le bandeau ouvre la fenêtre Lieu de la scène', async () => {
+    await click('[data-location-banner]');
+    expect(q('[data-location-dialog]')).not.toBeNull();
+    await click('[data-action="location-close"]');
+    expect(q('[data-location-dialog]')).toBeNull();
+  });
+
+  it('Échap dans la fenêtre ne ferme qu’elle : le menu ☁️ reste ouvert, le mode Aménager aussi', async () => {
+    await click('[data-menu-button="sky"]');
+    expect(q('[data-menu="sky"]')!.hidden).toBe(false);
+    await click('[data-location-banner]');
+    const dialog = q('[data-location-dialog]')!;
+    await act(async () => { dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(q('[data-location-dialog]')).toBeNull();
+    expect(q('[data-menu="sky"]')!.hidden).toBe(false);
+    expect(q('[data-action="visit"]')).not.toBeNull();
+  });
+
+  it('toucher dans la fenêtre ne ferme pas le menu ☁️', async () => {
+    await click('[data-menu-button="sky"]');
+    await click('[data-location-banner]');
+    const dialog = q('[data-location-dialog]')!;
+    await act(async () => { dialog.querySelector('[role="dialog"]')!.dispatchEvent(new Event('pointerdown', { bubbles: true })); });
+    expect(q('[data-location-dialog]')).not.toBeNull();
+    expect(q('[data-menu="sky"]')!.hidden).toBe(false);
+  });
+
+  it('pays vide : pas de « · » en tête', () => {
+    const b = placeBanner({ mode: 'city', city: { ...TOKYO, country: '' } }, null, new Date('2026-10-14T13:14:00Z'));
+    expect(b.sub).toBe('22:14 · heure de la ville');
+  });
+
+  it('le bandeau est une cible tactile pleine largeur', () => {
+    expect(LIBRARY_CSS).toMatch(/\.wmt-lib-place\{[^}]*width:100%[^}]*min-height:52px/);
   });
 });

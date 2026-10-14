@@ -90,12 +90,13 @@ import type { KindsRepo } from '../core/kinds/kinds-repo';
 import { CardPickerDialog, type CardChoice } from './CardPickerDialog';
 import { CityPickerDialog } from './CityPickerDialog';
 import { DecoTextDialog } from './DecoTextDialog';
+import { LocationDialog } from './LocationDialog';
 import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView } from './RoomView';
 import { Btn, Icon, ICONS } from './library-ui';
 import { LibraryTopBar } from './library-topbar';
-import { NEXT_ZONE, SkyMenu } from './library-sky-menu';
+import { NEXT_ZONE, SkyMenu, placeBanner } from './library-sky-menu';
 import { PetsMenu, SPECIES_TEXT } from './library-pets-menu';
 import { RoomMenu } from './library-room-menu';
 import { BuildDrawer, INITIAL_DRAWER, type DrawerState } from './build-drawer';
@@ -151,6 +152,10 @@ export const LIBRARY_CSS = `
 .wmt-lib-pop-panel[hidden]{display:none}
 .wmt-lib-pop-panel[data-align="start"]{right:auto;left:0}
 .wmt-lib-pop-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.wmt-lib-place{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;margin-bottom:8px;padding:6px 10px;box-sizing:border-box;border-radius:12px;border:1px solid var(--color-border,rgba(148,163,184,.35));background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.wmt-lib-place-glyph{font-size:22px}
+.wmt-lib-place small{display:block;font-size:12px;opacity:.8}
+.wmt-lib-place-chev{margin-left:auto;font-size:18px;opacity:.6}
 .wmt-lib-drawer{position:absolute;left:0;right:0;bottom:0;z-index:5;display:flex;flex-direction:column;gap:6px;padding:6px 8px 8px;background:var(--color-surface,#0d1117);border-top:1px solid var(--color-border,rgba(148,163,184,.35));box-shadow:0 -6px 18px rgba(0,0,0,.35)}
 .wmt-lib-drawer[hidden]{display:none}
 .wmt-lib-drawer-reduced{left:50%;right:auto;transform:translateX(-50%);padding:0;background:transparent;border:0;box-shadow:none}
@@ -238,7 +243,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const zoneLabel = zoneChoice === 'auto' ? 'automatique' : `zone ${zoneChoice}`;
   const [picking, setPicking] = useState(false);
   // Fenêtre « ville » (horloge) ou « écrire » (panneau) ouverte ; la réf. sert aux écouteurs d'Échap de la fenêtre.
-  const [decoDialog, setDecoDialog] = useState<{ type: 'city' | 'text'; id: string } | null>(null);
+  const [decoDialog, setDecoDialog] = useState<{ type: 'city' | 'text'; id: string } | { type: 'location' } | null>(null);
   const decoDialogRef = useRef(decoDialog);
   decoDialogRef.current = decoDialog;
   const [viewing, setViewing] = useState<string | null>(null);
@@ -993,6 +998,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onWeather={chooseWeather}
             positionOn={positionOn}
             weatherLabel={`${weather.label}${weather.tempC !== null ? ` · ${Math.round(weather.tempC)} °C` : ''}`}
+            place={placeBanner(sceneLocation, sceneLocation.mode === 'geo' && failure ? FAILURE_LABEL[failure] : null, new Date())}
+            onPlace={() => setDecoDialog({ type: 'location' })}
             weatherNote={weather.real === 'fallback' ? `(simulée${sceneLocation.mode === 'geo' && failure ? ` : ${FAILURE_LABEL[failure]}` : ''})` : null}
           />
         }
@@ -1190,6 +1197,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         {editing && !outside && placement && placingItem && (
           <PlacementGrip stage={stage.ref.current} scroll={scrollRef.current} targetId={placingView(placement).id} onGrab={(event) => { event.preventDefault(); followPlacement({ x: event.clientX, y: event.clientY }); }} />
         )}
+        {decoDialog?.type === 'location' && <LocationDialog onClose={() => setDecoDialog(null)} />}
         {decoDialog?.type === 'city' && (
           <CityPickerDialog
             current={(layout.find((p) => p.id === decoDialog.id) as { city?: CityTime } | undefined)?.city}
