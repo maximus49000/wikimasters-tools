@@ -187,9 +187,10 @@ export const LIBRARY_CSS = `
 .wmt-lib-zoom-backdrop{position:absolute;inset:0;background:transparent}
 .wmt-lib-zoom-piece{position:absolute;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
 @keyframes wmt-zoom-pivot{0%{transform:scaleX(1)}50%{transform:scaleX(0)}100%{transform:scaleX(1)}}
-.wmt-lib-board{position:absolute;left:3%;right:64px;top:10%;bottom:10%;display:flex;align-items:center;justify-content:center;touch-action:none}
-.wmt-lib-board svg{width:100%;height:100%;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
-.wmt-lib-board-nav{position:absolute;right:-56px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:12px}
+.wmt-lib-board{position:absolute;left:3%;right:64px;top:10%;bottom:10%;display:flex;align-items:center;justify-content:center;touch-action:none;pointer-events:none}
+.wmt-lib-board svg{width:100%;height:100%;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45));pointer-events:none}
+.wmt-lib-board svg>*{pointer-events:auto}
+.wmt-lib-board-nav{position:absolute;right:-56px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:12px;pointer-events:auto}
 .wmt-lib-board-nav .wmt-lib-fab:disabled{opacity:.35;cursor:default}
 @keyframes wmt-board-in{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
 @keyframes wmt-board-below{from{opacity:0;transform:translateY(40%)}to{opacity:1;transform:none}}

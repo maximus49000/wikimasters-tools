@@ -16,14 +16,23 @@ export type ShelfBoardProps = {
   imageOf: (slug: string) => string | undefined;
   onCard: (slug: string) => void;
   onLevel: (level: ShelfLevel) => void;
+  // Portrait et deux bibliothèques liées : les deux tablettes l'une au-dessus de l'autre (celle de gauche en haut) au lieu de côte à côte.
+  stacked?: boolean;
 };
 
 // Face de l'étagère en cm (repère identité) : tablettes et objets rangés y gardent leurs mesures réelles (mêmes calculs que la pièce).
 const FACE = { w: SHELF_INNER_CM, h: FURNITURE_MODELS.shelf.face!.h, m: [1, 0, 0, 1, 0, 0] as Matrix };
 const POST_CM = 3; // montants (bords et entre deux bibliothèques)
 const PLANK_CM = 2;
-const TITLE_CM = 8; // place des titres sous la tablette (2 lignes)
+const TITLE_CM = 8; // bandeau des titres sous la tablette (2 lignes)
 const TITLE_FONT_CM = 2.4;
+const GAP_CM = 4; // entre deux tablettes empilées (portrait)
+// Hauteur montrée : l'objet le plus haut du niveau + une marge (les cartes au plus grand) ; une tablette vide garde un minimum.
+const CROP_MARGIN_CM = 3;
+const MIN_CROP_CM = 16;
+// Titres lisibles quel que soit le style de la pièce : texte foncé sur un bandeau clair.
+const TITLE_BAND = '#f3eee4';
+const TITLE_INK = '#2a2420';
 // Largeur moyenne d'un caractère, en fraction de la taille de police.
 const CHAR_W = 0.55;
 export const SWIPE_PX = 40;
@@ -49,15 +58,22 @@ export function titleLines(title: string, max: number, lines = 2): string[] {
   return res;
 }
 
-// Second zoom : une tablette (de une ou deux bibliothèques liées, à la suite), cartes au plus grand avec leur titre ;
+// Second zoom : une tablette (de une ou deux bibliothèques liées, à la suite ou empilées), cartes au plus grand avec leur titre ;
 // ↑ ↓ ou glisser verticalement pour changer de tablette.
-export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, onLevel }: ShelfBoardProps): ReactElement {
+export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, onLevel, stacked = false }: ShelfBoardProps): ReactElement {
   const palette = paletteOf(room.style);
   const board = shelfBoardsIn(FACE)[level]!;
-  const top = board.local.y;
-  const boardH = board.local.h;
-  const width = shelfIds.length * SHELF_INNER_CM + (shelfIds.length + 1) * POST_CM;
-  const height = boardH + PLANK_CM + TITLE_CM;
+  const n = shelfIds.length;
+  const boxesOf = shelfIds.map((id) => shelfLayoutIn(FACE, room.layout, id).filter((b) => b.level === level));
+  // Recadrage : seul le bas utile du compartiment est montré (les objets sont posés sur la planche), à leurs mesures réelles en cm.
+  const tallest = Math.max(0, ...boxesOf.flat().map((b) => b.local.h));
+  const cropH = Math.min(board.local.h, Math.max(MIN_CROP_CM, tallest + CROP_MARGIN_CM));
+  const cut = board.local.y + board.local.h - cropH; // haut de la partie montrée (repère de la face)
+  const rowH = cropH + PLANK_CM + TITLE_CM;
+  const width = stacked ? SHELF_INNER_CM + 2 * POST_CM : n * SHELF_INNER_CM + (n + 1) * POST_CM;
+  const height = stacked ? n * rowH + (n - 1) * GAP_CM : rowH;
+  // Coin haut gauche de l'intérieur de chaque bibliothèque : à la suite, ou l'une sous l'autre.
+  const originOf = (i: number): [number, number] => (stacked ? [POST_CM, i * (rowH + GAP_CM)] : [POST_CM + i * (SHELF_INNER_CM + POST_CM), 0]);
   // Entrée : la tablette du dessous monte, celle du dessus descend ; la première s'agrandit.
   // Direction figée par niveau : un nouveau rendu au même niveau ne rejoue pas l'animation.
   const entry = useRef<{ level: ShelfLevel; enter: 'in' | 'below' | 'above' }>({ level, enter: 'in' });
@@ -70,7 +86,19 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
     const next = level + d;
     if (isShelfLevel(next)) onLevel(next);
   };
-  const onPointerDown = (e: ReactPointerEvent): void => { startY.current = e.clientY; swiped.current = false; };
+  const captured = useRef(false);
+  const onPointerDown = (e: ReactPointerEvent): void => { startY.current = e.clientY; swiped.current = false; captured.current = false; };
+  // Un glissement qui finit hors de la tablette compte quand même : le doigt est capturé dès qu'il bouge (pas au simple toucher,
+  // sinon le clic serait adressé à la tablette entière et non à la carte touchée).
+  const onPointerMove = (e: ReactPointerEvent): void => {
+    const s = startY.current;
+    if (s === null || captured.current || Math.abs(e.clientY - s) < 8) return;
+    captured.current = true;
+    const el = e.currentTarget as Element;
+    try {
+      if (typeof el.setPointerCapture === 'function') el.setPointerCapture(e.pointerId);
+    } catch { /* pointeur déjà relâché */ }
+  };
   const onPointerUp = (e: ReactPointerEvent): void => {
     const s = startY.current;
     startY.current = null;
@@ -85,17 +113,21 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
   const reduced = reducedMotion();
 
   return (
-    <div className="wmt-lib-board" data-shelf-board={level} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => { startY.current = null; }}>
+    <div className="wmt-lib-board" data-shelf-board={level} data-board-stacked={stacked ? '' : undefined} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => { startY.current = null; }}>
       <svg key={level} data-board-enter={enter} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" style={reduced ? undefined : { animation: `wmt-board-${enter} ${enter === 'in' ? 400 : 250}ms ease-out` }}>
-        <rect x={0} y={boardH} width={width} height={PLANK_CM} fill={palette.wood} />
         {shelfIds.map((id, i) => {
-          const x0 = POST_CM + i * (SHELF_INNER_CM + POST_CM);
-          const boxes = shelfLayoutIn(FACE, room.layout, id).filter((b) => b.level === level);
+          const [x0, y0] = originOf(i);
+          const boxes = boxesOf[i]!;
+          // Montant droit : la dernière à la suite, ou chaque bibliothèque empilée.
+          const rightPost = stacked || i === n - 1;
+          const titleY = y0 + cropH + PLANK_CM;
           return (
-            <g key={id} data-board-shelf={id}>
-              <rect x={x0} y={0} width={SHELF_INNER_CM} height={boardH} fill={palette.woodDark} />
-              <rect x={x0 - POST_CM} y={0} width={POST_CM} height={boardH + PLANK_CM} fill={palette.wood} />
-              {i === shelfIds.length - 1 && <rect x={x0 + SHELF_INNER_CM} y={0} width={POST_CM} height={boardH + PLANK_CM} fill={palette.wood} />}
+            <g key={id} data-board-shelf={id} data-board-y={y0}>
+              <rect x={x0} y={y0} width={SHELF_INNER_CM} height={cropH} fill={palette.woodDark} />
+              <rect x={x0 - POST_CM} y={y0} width={POST_CM} height={cropH + PLANK_CM} fill={palette.wood} />
+              {rightPost && <rect x={x0 + SHELF_INNER_CM} y={y0} width={POST_CM} height={cropH + PLANK_CM} fill={palette.wood} />}
+              <rect x={x0 - POST_CM} y={y0 + cropH} width={SHELF_INNER_CM + 2 * POST_CM} height={PLANK_CM} fill={palette.wood} />
+              <rect data-board-band="" x={x0 - POST_CM} y={titleY} width={SHELF_INNER_CM + 2 * POST_CM} height={TITLE_CM} fill={TITLE_BAND} />
               {boxes.map((b) => {
                 const p = stored.get(b.id);
                 if (!p) return null;
@@ -103,7 +135,7 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                 const title = info?.title ?? p.slug.replace(/_/g, ' ');
                 const url = info ? imageOf(p.slug) : undefined;
                 const x = x0 + b.local.x;
-                const y = b.local.y - top;
+                const y = y0 + b.local.y - cut;
                 const w = b.local.w;
                 const h = b.local.h;
                 const spine = displayOf(p) === 'spine';
@@ -119,12 +151,12 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                     }}
                     style={{ cursor: info ? 'pointer' : 'default' }}
                   >
-                    <rect x={x} y={y} width={w} height={h} fill="#e8e2d6" stroke={palette.text} strokeWidth={0.3} />
+                    <rect x={x} y={y} width={w} height={h} fill="#e8e2d6" stroke={TITLE_INK} strokeWidth={0.3} />
                     {!spine && url && <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" />}
                     {spine
-                      ? <text data-board-title="" transform={`translate(${x + w / 2} ${y + h - 1}) rotate(-90)`} fontSize={spineFont} dominantBaseline="middle" fill={palette.text}>{titleLines(title, (h - 2) / (spineFont * CHAR_W), 1)[0]}</text>
+                      ? <text data-board-title="" transform={`translate(${x + w / 2} ${y + h - 1}) rotate(-90)`} fontSize={spineFont} dominantBaseline="middle" fill={TITLE_INK}>{titleLines(title, (h - 2) / (spineFont * CHAR_W), 1)[0]}</text>
                       : titleLines(title, w / (TITLE_FONT_CM * CHAR_W)).map((line, k) => (
-                        <text key={k} data-board-title="" x={x + w / 2} y={boardH + PLANK_CM + TITLE_FONT_CM * (k + 1)} fontSize={TITLE_FONT_CM} textAnchor="middle" fill={palette.text}>{line}</text>
+                        <text key={k} data-board-title="" x={x + w / 2} y={titleY + TITLE_FONT_CM * (k + 1)} fontSize={TITLE_FONT_CM} textAnchor="middle" fill={TITLE_INK}>{line}</text>
                       ))}
                   </g>
                 );

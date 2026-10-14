@@ -238,6 +238,15 @@ describe('zoom sur un meuble', () => {
     await click('[data-id="a"]');
     expect(container.querySelectorAll('[data-zoom-piece]')).toHaveLength(2);
   });
+  it('bibliothèques liées : toucher une tablette de la seconde ouvre le second zoom des deux', async () => {
+    await seed([{ id: 'a', kind: 'shelf', col: 0, row: 6 }, { id: 'b', kind: 'shelf', col: 4, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 'b', level: 0, order: 0, slug: 'Daft_Punk' }]);
+    vi.useFakeTimers();
+    await click('[data-id="a"]');
+    await advance(500);
+    await click('[data-zoom-piece="b"] [data-zoom-board="1"]');
+    expect(q('[data-shelf-board="1"]')).not.toBeNull();
+    expect([...container.querySelectorAll('[data-board-shelf]')].map((e) => e.getAttribute('data-board-shelf'))).toEqual(['a', 'b']);
+  });
 });
 
 describe('bibliothèques liées (Aménager)', () => {

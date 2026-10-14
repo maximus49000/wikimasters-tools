@@ -61,8 +61,10 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const steampunk = room.style === 'steampunk';
   // Deux bibliothèques liées ont toujours le même angle.
   const angle = item ? angleOf(item) : 0;
+  // Première moitié de l'ouverture (et seconde de la fermeture) : le meuble sous son angle ; ensuite de face.
   const reduced = reducedMotion();
   const [face, setFace] = useState<'angled' | 'front'>(reduced || phase === 'open' || angle === 0 ? 'front' : phase === 'opening' ? 'angled' : 'front');
+  // Le meuble n'a pas encore bougé à la première image : on le pose au départ puis on le laisse rejoindre le cadre final.
   const [arrived, setArrived] = useState(phase === 'open');
   useEffect(() => {
     const raf = window.requestAnimationFrame(() => setArrived(true));
@@ -77,6 +79,7 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
     const t = window.setTimeout(() => setFace(phase === 'opening' ? 'front' : 'angled'), half);
     return () => window.clearTimeout(t);
   }, [phase, angle, reduced, key]);
+  // Objets de chaque bibliothèque (ou du bureau) ; indexé sur `key` : les mêmes ids donnent les mêmes meubles dans `room.layout`.
   const garnishes = useMemo(() => items.map((it) => garnishOf(room.layout, it, cards, imageOf)), [room.layout, key, cards, imageOf]); // eslint-disable-line react-hooks/exhaustive-deps
   const clipId = `wm-zoom-open-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   if (!item || (item.kind !== 'shelf' && item.kind !== 'desk')) return null;
@@ -90,7 +93,10 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const pad = tops.length > 0 ? Math.max(0, art.y - Math.min(...tops)) + 8 : 0;
   // Bibliothèques liées : côte à côte, chacune dans sa largeur.
   const view = { x: 0, y: -pad, w: art.w * n, h: art.h + pad };
+  // Face avant du modèle : l'espace libre de chaque tablette en pointillés et les tablettes touchables (mêmes positions en cm que dans la pièce).
   const frame = host === 'shelf' ? faceFrame('shelf', 0, art) : null;
+  // Première moitié du pivot : chaque meuble sous son angle, à sa taille dessinée (réduite s'il le faut pour tenir dans sa largeur
+  // et dans le cadre : en ¾ le bureau est plus large que de face), posé au bas du cadre et centré dans sa part.
   const turned = drawSize(host, angle);
   const fit = Math.min(1, art.w / (turned.w * CELL_W), view.h / (turned.h * CELL_H));
   const tw = turned.w * CELL_W * fit;
@@ -99,6 +105,7 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const end = zoomRectOf(stage, view.w / view.h);
   const start = from ?? end;
   const ms = reduced ? ZOOM_REDUCED_MS : ZOOM_MS;
+  // De face : le meuble grandit (ou rétrécit) d'un trait ; de profil : il se referme puis s'ouvre, chaque moitié sur ms/2.
   const at = reduced ? end
     : angle === 0 ? (phase === 'closing' || !arrived ? start : end)
     : phase === 'open' || (phase === 'opening' && face === 'front') ? end : start;
@@ -106,6 +113,7 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const hidden = reduced && (phase === 'closing' || (phase === 'opening' && !arrived));
 
   const cardTap = (slug: string) => () => { if (cards[slug]) onCard(slug); };
+  // Zone touchable d'une carte : la face avant d'un objet rangé (là où on le voit), la vitre de l'écran ; rien pour un petit objet.
   const hitOf = (p: Placed, pl: ItemPlacement): PxRect | null => {
     const quad = cardQuad(p, 0, art, pl, steampunk);
     return quad && quad.length > 0 ? boxOfQuad(quad) : null;
@@ -172,6 +180,8 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
   const angledArt = <g>{items.map((it, i) => <g key={it.id}>{garnished(angle, turnedRectAt(i), garnishes[i] ?? [], it.id)}</g>)}</g>;
   const label = host === 'desk' ? 'Bureau vu de face' : n > 1 ? 'Bibliothèques vues de face' : 'Étagère vue de face';
   const onBoard = host === 'shelf' && level !== null && phase !== 'closing';
+  // Portrait : deux tablettes côte à côte feraient une bande trop basse pour lire les titres ; on les empile.
+  const stacked = stage.h > stage.w && ids.length === 2;
   return (
     <div className="wmt-lib-zoom" data-furniture-zoom="" data-zoom-phase={phase} data-zoom-face={face} data-zoom-level={level ?? undefined} style={reduced ? { opacity: hidden ? 0 : 1, transition: `opacity ${ms}ms ease-out` } : undefined} role="dialog" aria-label={label}>
       <div className="wmt-lib-zoom-backdrop" data-zoom-backdrop="" onClick={onBack} style={{ opacity: phase === 'closing' ? 0 : 1, transition: `opacity ${ms}ms ease-out` }} />
@@ -189,7 +199,7 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
           </svg>
         </div>
       )}
-      {onBoard && level !== null && <ShelfBoardZoom shelfIds={ids} level={level} room={room} cards={cards} imageOf={imageOf} onCard={onCard} onLevel={onLevel} />}
+      {onBoard && level !== null && <ShelfBoardZoom shelfIds={ids} level={level} room={room} cards={cards} imageOf={imageOf} onCard={onCard} onLevel={onLevel} stacked={stacked} />}
       <button type="button" className="wmt-lib-fab" data-action="zoom-back" aria-label={level !== null ? 'Retour à la vue de face' : 'Retour à la pièce'} title={level !== null ? 'Retour à la vue de face' : 'Retour à la pièce'} onClick={onBack} style={{ left: 8, top: 8 }}>
         <Icon paths={ICONS.back} />
       </button>

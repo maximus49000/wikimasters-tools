@@ -19,12 +19,12 @@ const room: Room = {
 };
 const cards = { Daft_Punk: { title: 'Daft Punk' }, Le_Petit_Prince: { title: 'Le Petit Prince' }, Paris: { title: 'Paris' } };
 
-function mount(level: ShelfLevel, ids = ['s', 't']) {
+function mount(level: ShelfLevel, ids = ['s', 't'], stacked = false) {
   const onCard = vi.fn();
   const onLevel = vi.fn();
   const container = document.createElement('div');
   document.body.append(container);
-  act(() => { createRoot(container).render(<ShelfBoardZoom shelfIds={ids} level={level} room={room} cards={cards} imageOf={() => undefined} onCard={onCard} onLevel={onLevel} />); });
+  act(() => { createRoot(container).render(<ShelfBoardZoom shelfIds={ids} level={level} room={room} cards={cards} imageOf={() => undefined} onCard={onCard} onLevel={onLevel} stacked={stacked} />); });
   return { container, onCard, onLevel };
 }
 const fire = (el: Element, type: string, init: MouseEventInit = {}) => act(() => { el.dispatchEvent(new MouseEvent(type, { bubbles: true, ...init })); });
@@ -77,6 +77,38 @@ describe('vue d’une tablette', () => {
     fire(board, 'pointerdown', { clientY: 100 });
     fire(board, 'pointerup', { clientY: 120 });
     expect(onLevel).toHaveBeenCalledTimes(1);
+  });
+  it('hauteur recadrée sur l’objet le plus haut du niveau (+ 3 cm), objets posés sur la planche ; niveau vide : 16 cm', () => {
+    const vb = (c: HTMLElement) => c.querySelector('svg')!.getAttribute('viewBox')!.split(' ').map(Number);
+    const { container } = mount(0);
+    // livre 23 cm + 3 → 26 ; planche 2 ; bandeau des titres 8.
+    expect(vb(container)).toEqual([0, 0, 2 * 74 + 3 * 3, 26 + 2 + 8]);
+    const book = container.querySelector('[data-board-card="Le_Petit_Prince"] rect')!;
+    expect(Number(book.getAttribute('y')) + Number(book.getAttribute('height'))).toBeCloseTo(26);
+    expect(Number(book.getAttribute('height'))).toBeCloseTo(23);
+    expect(vb(mount(2).container)[3]).toBe(16 + 2 + 8);
+  });
+  it('titres foncés sur un bandeau clair, quel que soit le style', () => {
+    const { container } = mount(0);
+    expect(container.querySelectorAll('[data-board-band]')).toHaveLength(2);
+    for (const t of container.querySelectorAll('[data-board-title]')) expect(t.getAttribute('fill')).toBe('#2a2420');
+  });
+  it('empilées (portrait) : à peu près carré au lieu d’une bande, celle de gauche en haut, chacune avec ses montants et sa planche', () => {
+    const { container } = mount(0, ['s', 't'], true);
+    const [, , w, h] = container.querySelector('svg')!.getAttribute('viewBox')!.split(' ').map(Number);
+    // Côte à côte : 157 × 36 (≈ 4,4 : 1) ; empilées et recadrées : 80 × 76 (≈ 1 : 1). Sans recadrage ce serait plus haut que large.
+    expect(h).toBe(2 * (26 + 2 + 8) + 4);
+    expect(w! / h!).toBeLessThan(1.1);
+    expect(w).toBe(74 + 2 * 3);
+    const shelves = [...container.querySelectorAll('[data-board-shelf]')];
+    expect(shelves.map((g) => g.getAttribute('data-board-shelf'))).toEqual(['s', 't']);
+    const ys = shelves.map((g) => Number(g.getAttribute('data-board-y')));
+    expect(ys[0]).toBe(0);
+    expect(ys[1]).toBeGreaterThan(26 + 2 + 8 - 1e-9);
+    // La carte de la seconde bibliothèque est dessinée dans sa rangée, à gauche comme la première.
+    const cd = container.querySelector('[data-board-card="Inconnue"] rect')!;
+    expect(Number(cd.getAttribute('y'))).toBeGreaterThan(ys[1]!);
+    expect(Number(cd.getAttribute('x'))).toBe(3);
   });
   it('un nouveau rendu au même niveau ne change pas l’animation d’entrée', () => {
     const container = document.createElement('div');
