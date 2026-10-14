@@ -408,9 +408,9 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
   beanbag: {
     w: 80, d: 80, h: 70, round: true,
     pieces: [
-      ball(40, 30, 42, 40, 30, 38, 'fabricLight'),
-      ball(40, 48, 60, 34, 22, 20, 'fabricLight'),
-      ball(40, 36, 34, 22, 4, 18, 'fabricLight', { tone: 0.85, layer: 1 }),
+      ball(40, 26, 44, 38, 26, 36, 'fabricLight'),
+      ball(40, 46, 60, 30, 24, 18, 'fabricLight'),
+      ball(40, 50, 44, 16, 3, 12, 'fabricLight', { tone: 0.9, layer: 1 }),
     ],
     pois: [{ type: 'sleep', x: 40, y: 35, z: 34 }],
     perch: { x: 22, z: 18, w: 36, d: 32, y: 35 },
