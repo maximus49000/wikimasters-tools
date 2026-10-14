@@ -71,6 +71,7 @@ import { usePetSim } from './pet-sim';
 import { ensurePosition, positionFailure, requestPosition, subscribePosition } from './scene-position';
 import { positionSetting } from './position-setting';
 import { nextInStack, stackAt } from '../core/library/depth-order';
+import { canToggleShelfLink, shelfGroupOf, toggleShelfLink } from '../core/library/shelf-link';
 import { canRotate, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, rotatePlacement, spotAt, startPlacement, type Edit, type Placement, type Spot, type Subject } from './placement';
 import { PlacementBar, PlacementGrip } from './placement-bar';
 import { pointerToCell } from './furniture-drag';
@@ -727,6 +728,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const selectedLamp = selectedItem && isLamp(selectedItem) ? { id: selectedItem.id, on: isLit(selectedItem) } : null;
   const selectedDisplay = selectedItem?.kind === 'stored' ? displayOf(selectedItem) : null;
   const placingDisplay = placement ? displayOfPlacement(placement) : null;
+  // Bibliothèque sélectionnée : sa partenaire liée (contour) et le bouton ⛓ quand l'appui change quelque chose.
+  const selectedShelf = selectedItem?.kind === 'shelf' ? selectedItem : undefined;
+  const linkedToSelected = selectedShelf ? (shelfGroupOf(layout, selectedShelf.id).find((id) => id !== selectedShelf.id) ?? null) : null;
   const selectedStanding = editing && selectedItem && isStanding(selectedItem) && selectedItem.kind !== 'rug' ? selectedItem : undefined;
   const selectedWindow = editing ? layout.find((p) => p.id === selectedId && p.kind === 'window') : undefined;
   const resizeSelected = (dw: number, dh: number): void => {
@@ -963,6 +967,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             editing={editing}
             cellsActive={cellsActive}
             selectedId={selectedId}
+            linkedId={editing ? linkedToSelected : null}
             blink={blink}
             sceneView={sceneView}
             light={lightOn}
@@ -1014,6 +1019,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Tourner à gauche" data={{ action: 'rotate-left' }} onClick={() => rotateSelected(1)}><Icon paths={ICONS.rotateLeft} /></Btn>
                 <Btn label="Tourner à droite" data={{ action: 'rotate-right' }} onClick={() => rotateSelected(-1)}><Icon paths={ICONS.rotateRight} /></Btn>
               </>
+            )}
+            {selectedShelf && canToggleShelfLink(layout, selectedShelf.id) && (
+              <Btn label={linkedToSelected ? 'Délier les bibliothèques' : 'Relier les bibliothèques'} pressed={linkedToSelected !== null} data={{ action: 'shelf-link' }} onClick={() => void editLayout((l) => toggleShelfLink(l, selectedShelf.id))}>
+                <Icon paths={linkedToSelected ? ICONS.link : ICONS.unlink} />
+              </Btn>
             )}
             {selectedStanding && (
               <>

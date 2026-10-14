@@ -184,3 +184,22 @@ describe('zoom sur un meuble', () => {
     expect(q('[data-furniture-zoom]')).toBeNull();
   });
 });
+
+describe('bibliothèques liées (Aménager)', () => {
+  const PAIR: Layout = [{ id: 'a', kind: 'shelf', col: 0, row: 6 }, { id: 'b', kind: 'shelf', col: 4, row: 6 }];
+  it('⛓ seulement avec une voisine collée ; délier puis relier', async () => {
+    await seed([{ id: 'a', kind: 'shelf', col: 0, row: 6 }]);
+    await click('[data-action="edit"]');
+    await click('[data-id="a"]');
+    expect(q('[data-action="shelf-link"]')).toBeNull();
+    await seed(PAIR);
+    expect(q('[data-action="shelf-link"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-outline="linked"]')).not.toBeNull();
+    await click('[data-action="shelf-link"]');
+    expect(repo.current()!.rooms[0]!.layout.find((p) => p.id === 'a')).toMatchObject({ unlinked: true });
+    expect(q('[data-action="shelf-link"]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(q('[data-outline="linked"]')).toBeNull();
+    await click('[data-action="shelf-link"]');
+    expect(repo.current()!.rooms[0]!.layout.some((p) => 'unlinked' in p)).toBe(false);
+  });
+});
