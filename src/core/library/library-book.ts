@@ -35,11 +35,12 @@ const decoSchema = z.object({
   text: z.string().max(MAX_PANEL_TEXT).optional(),
   neon: z.enum(['pink', 'cyan', 'yellow', 'green', 'white']).optional(),
 });
+const smallSchema = z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3), lit: z.boolean().optional(), city: citySchema.optional() });
 const placedSchema = z.union([
   z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: z.number().int(), row: z.number().int(), lit: z.boolean().optional(), angle: z.unknown().optional(), unlinked: z.literal(true).optional() })
     .transform(({ angle, ...rest }) => (isAngle(angle) && angle !== 0 ? { ...rest, angle } : rest)),
   z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string(), slug: z.string().optional() }),
-  z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3), lit: z.boolean().optional(), city: citySchema.optional() }),
+  smallSchema,
   z.object({
     id: z.string(),
     kind: z.literal('wall'),
@@ -341,13 +342,15 @@ function cleanPets(raw: unknown): unknown {
   return { ...(raw as object), rooms };
 }
 
-// Une fenêtre ou un objet décoratif impossible (dimensions hors bornes, texte trop long, fuseau inconnu…) est ignoré sans faire perdre la pièce.
+// Une fenêtre, un objet décoratif ou un petit objet impossible (dimensions hors bornes, texte trop long, fuseau inconnu…) est ignoré sans faire perdre la pièce.
 function dropBadWallItems(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { rooms?: unknown }).rooms)) return raw;
   const ok = (p: unknown): boolean => {
     const kind = (p as { kind?: unknown } | null)?.kind;
     if (kind === 'window') return windowSchema.safeParse(p).success;
     if (kind === 'deco') return decoSchema.safeParse(p).success;
+    // Réveil ou pendulette à ville inconnue : seul cet objet disparaît (comme un objet du mur).
+    if (kind === 'small') return smallSchema.safeParse(p).success;
     return true;
   };
   const rooms = (raw as { rooms: unknown[] }).rooms.map((room) =>
