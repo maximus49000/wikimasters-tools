@@ -1,8 +1,8 @@
 import type { Layout } from './library-types';
-import { CELL_H, CELL_W, byDrawOrder, isStanding, rectOf, type Rect, type Standing } from './room-grid';
+import { CELL_H, CELL_W, byDrawOrder, footBottom, isStanding, rectOf, type Rect, type Standing } from './room-grid';
 import type { PetState } from './pets/motion';
 
-const bottom = (p: Standing): number => p.row + rectOf(p)!.h;
+const bottom = footBottom;
 
 // Meubles debout (hors tapis) dans l'ordre de dessin : le bas le plus haut d'abord, puis le niveau, puis l'ordre du plan.
 export function drawOrder(layout: Layout): Standing[] {

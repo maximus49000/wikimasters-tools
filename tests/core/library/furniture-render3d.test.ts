@@ -542,3 +542,10 @@ describe('creux d’assise d’une forme de révolution', () => {
     expect(seatPolys(4)).toHaveLength(0);
   });
 });
+
+describe('petites boules', () => {
+  it('un rivet ou un pied boule (moins de 14 px) reste un simple aplat, sans croissant ni contour', () => {
+    const rivet: Model = { w: 10, d: 10, h: 10, pieces: [{ shape: 'ball', cx: 5, cy: 5, cz: 5, rx: 3, ry: 3, rz: 3, fill: 'metal' }] };
+    expect(renderModel(rivet, 0).shapes.filter((s) => s.kind === 'poly')).toHaveLength(0);
+  });
+});

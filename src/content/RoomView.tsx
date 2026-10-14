@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room } from '../core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, isLamp, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { drawSize, faceFrame, frontFaceRect, groundTrace, type Angle } from '../core/library/footprint';
 import { boxesOf, lampsOf, signatureOf } from '../core/library/light/occluders';
@@ -13,7 +13,7 @@ import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
 import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { WallArt } from './library-card-art';
-import { CarriedItem3D, Model3DArt } from './model3d-art';
+import { CarriedItem3D, Model3DArt, type ModelPart } from './model3d-art';
 import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
 import { getImageService } from './image-registry';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
@@ -253,7 +253,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
 
   // Dessin d'un meuble, d'une fenêtre, d'un ordinateur ou d'un petit objet, et son rectangle ; `null` si rien à dessiner.
   // `liftedArt` : dessin de la copie soulevée quand il diffère (la fenêtre emporte sa vue).
-  function artOf(placed: Placed): { rect: PxRect; art: ReactElement; liftedArt?: ReactElement } | null {
+  // `part` : pour un meuble à socle (lampadaire arc), seulement le socle et la tige ('base') ou seulement l'arc et le dôme ('overhang').
+  function artOf(placed: Placed, part?: ModelPart): { rect: PxRect; art: ReactElement; liftedArt?: ReactElement } | null {
     if (placed.kind === 'computer' || placed.kind === 'small') {
       // Écran (machine analytique dans une pièce Steampunk) ou petit objet : modèle 3D posé sur le dessus du porteur tourné, avec lui
       // (de dos, l'écran montre son dos, sans image). Son rectangle (zone touchable, contour) est celui de son dessin : l'écran dépasse du bureau.
@@ -279,7 +280,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     // Meubles exclusifs Steampunk : une donnée abîmée dans une autre pièce n'est pas dessinée.
     if (!steampunk && STEAMPUNK_ONLY.includes(placed.kind)) return null;
     // Tous les meubles debout, à tous les angles : leur modèle 3D (garnitures laiton et rivets dans une pièce Steampunk).
-    const model = <Model3DArt kind={placed.kind} angle={angleOf(placed)} rect={rect} palette={palette} lit={isLit(placed)} steampunk={steampunk} />;
+    const model = <Model3DArt kind={placed.kind} angle={angleOf(placed)} rect={rect} palette={palette} lit={isLit(placed)} steampunk={steampunk} part={part} />;
     if (placed.kind !== 'shelf' || !editing) return { rect, art: model };
     // Étagère en Aménager : l'espace libre de chaque tablette en pointillés, sur la face projetée (de profil ou de dos : aucun).
     const frame = faceFrame('shelf', angleOf(placed), rect);
@@ -298,8 +299,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     };
   }
 
-  function renderPlaced(placed: Placed): ReactElement | null {
-    const drawn = artOf(placed);
+  function renderPlaced(placed: Placed, part?: ModelPart): ReactElement | null {
+    const drawn = artOf(placed, part);
     if (!drawn) return null;
     const { rect, art, liftedArt } = drawn;
     // Le meuble soulevé reste en filigrane à sa place ; sa copie, un peu plus grande, suit le doigt.
@@ -335,7 +336,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
           {art}
           {decor.glow && placed.kind !== 'rug' && neonOutline(rect, decor.glow)}
           {editing && selectedId === placed.id && outline(rect)}
-          <rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill="transparent" />
+          {(() => {
+            const hit = isStanding(placed) ? hitRectOf(placed) : rect;
+            return <rect x={hit.x} y={hit.y} width={hit.w} height={hit.h} fill="transparent" />;
+          })()}
         </g>
         {liftedCopy}
       </g>
@@ -483,7 +487,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     if (!entry) return [];
     const after: ReactElement[] = [];
     const stored = storedClip(hostId, '', entry.stored.map((p) => cardOf(p, after)));
-    return [stored, ...after, ...entry.tops.map(renderPlaced), ...entry.computers.map((p) => cardOf(p))];
+    return [stored, ...after, ...entry.tops.map((p) => renderPlaced(p)), ...entry.computers.map((p) => cardOf(p))];
   };
   // Dessins seuls des objets portés (même ordre), pour la copie de sélection : ni `data-id` ni gestes.
   const carriedArtOf = (hostId: string): ReactElement[] => {
@@ -510,7 +514,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   ));
   const wallLevel = (
     <g key="depth-wall" data-depth={0}>
-      {windows.map(renderPlaced)}
+      {windows.map((p) => renderPlaced(p))}
       {room.layout.map((p) => (p.kind === 'wall' ? cardOf(p) : null))}
     </g>
   );
@@ -527,7 +531,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
   const middle: ReactElement[] = order.map((p) => (
     <g key={`depth-${p.id}`} data-depth={depthOf(room.layout, p)}>
       {groundShadow(p)}
-      {renderPlaced(p)}
+      {renderPlaced(p, overhangRow(p) !== null ? 'base' : undefined)}
       {carriedOf(p.id)}
     </g>
   ));
@@ -540,6 +544,26 @@ export function RoomView({ room, editing, cellsActive, selectedId, blink, onCell
     </g>
   );
   for (const v of [...pets].filter((p) => !p.top).sort((a, b) => b.behind - a.behind || (b.depthY ?? 0) - (a.depthY ?? 0))) middle.splice(Math.min(v.behind, middle.length), 0, petNode(v));
+  // Surplomb d'un meuble à socle (arc et dôme du lampadaire arc) : rangé à part, juste après le dernier meuble dont l'emprise au sol
+  // commence sur la rangée sous le dôme ou derrière elle (le dôme le surplombe ou est devant lui) ; un meuble entièrement devant le dôme
+  // reste dessiné après lui. Touchable comme le meuble.
+  for (const p of order) {
+    const row = overhangRow(p);
+    if (row === null) continue;
+    const drawn = artOf(p, 'overhang');
+    if (!drawn) continue;
+    const node = (
+      <g key={`over-${p.id}`} data-overhang={p.id} onClick={() => onPick(p.id)} opacity={drag?.id === p.id ? 0.3 : placing?.id === p.id ? 0.8 : 1} style={{ cursor: editing || isLamp(p) ? 'pointer' : 'default' }}>
+        {drawn.art}
+      </g>
+    );
+    let at = -1;
+    middle.forEach((el, i) => {
+      const q = order.find((o) => `depth-${o.id}` === el.key);
+      if (q && floorTopRow(q) <= row) at = i;
+    });
+    middle.splice(at + 1, 0, node);
+  }
   const topPets = pets.filter((p) => p.top).map(petNode);
   // Le nom et les cœurs : tout en haut, au-dessus de tout le reste de la pièce.
   const bubbles = pets.filter((p) => p.pose === 'purr' || p.pose === 'beep').map((v) => (

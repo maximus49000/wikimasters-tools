@@ -70,6 +70,8 @@ const SHADE = { front: 1, side: 0.82, top: 1.12 } as const;
 const ROUND_STEPS = 24;
 const TINY_PX = 4; // en dessous, un corps rond se dessine d'une seule ellipse
 const SHADOW_SPAN = (50 * Math.PI) / 180; // ombre nette des corps ronds : de la silhouette droite jusqu'à 50° vers le spectateur
+// En dessous de BALL_CEL_PX de diamètre à l'écran (rivet, pied boule), une boule reste un simple aplat : moins de formes sur Android.
+const BALL_CEL_PX = 14;
 const BALL_SHIFT = [0.28, 0.22] as const; // croissant d'ombre des boules : décalage de la partie éclairée (fractions des rayons) vers le haut à gauche
 const LEAF_STEPS = 10;
 const LEAF_TWIST = (40 * Math.PI) / 180;
@@ -481,7 +483,7 @@ function drawBall(p: Extract<Piece, { shape: 'ball' }>, L: Layout3d, push: Push)
   push({ kind: 'ellipse', cx, cy, rx, ry, fill: p.fill, shade: SHADE.front });
   // Cellulo, comme les corps ronds : croissant d'ombre nette en bas à droite (la boule moins elle-même décalée vers la lumière, en haut
   // à gauche), puis le contour repassé. Une boule minuscule (rivet, pied boule) reste une simple ellipse.
-  if (Math.max(rx, ry) * 2 >= TINY_PX) {
+  if (Math.max(rx, ry) * 2 >= BALL_CEL_PX) {
     const N = 48;
     const [sx, sy] = [cx - rx * BALL_SHIFT[0], cy - ry * BALL_SHIFT[1]];
     const at = (ox: number, oy: number, i: number): [number, number] => [ox + rx * Math.cos((i * 2 * Math.PI) / N), oy + ry * Math.sin((i * 2 * Math.PI) / N)];
@@ -832,6 +834,24 @@ export function levelsOf(model: Model): [number, number][] {
   }
   levels.push([(top - ceiling) / face.h, 1]);
   return levels;
+}
+
+// Surplomb d'un meuble à socle (lampadaire arc) : les pièces qui ne sont pas au-dessus du socle (arc, dôme) et le point du sol sous
+// elles (centre de leur encombrement, en cm x/z). Le dessin les range à part : elles passent par-dessus les meubles qu'elles surplombent.
+// null sans socle.
+export function overhangOf(model: Model): { pieces: Set<number>; at: [number, number] } | null {
+  const b = model.base;
+  if (!b) return null;
+  const pieces = new Set<number>();
+  let [x0, x1, z0, z1] = [Infinity, -Infinity, Infinity, -Infinity];
+  model.pieces.forEach((p, i) => {
+    const [px0, px1, , , pz0, pz1] = pieceBounds(p);
+    const over = px1 <= b.x + 0.5 || px0 >= b.x + b.w - 0.5 || pz1 <= b.z + 0.5 || pz0 >= b.z + b.d - 0.5;
+    if (!over) return;
+    pieces.add(i);
+    [x0, x1, z0, z1] = [Math.min(x0, px0), Math.max(x1, px1), Math.min(z0, pz0), Math.max(z1, pz1)];
+  });
+  return pieces.size > 0 ? { pieces, at: [(x0 + x1) / 2, (z0 + z1) / 2] } : null;
 }
 
 // Repère « lumière » d'un meuble tourné, en cm : x depuis le bord gauche du rectangle de dessin (centrage compris, comme renderModel),

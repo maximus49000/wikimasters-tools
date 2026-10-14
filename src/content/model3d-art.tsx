@@ -3,7 +3,7 @@ import { memo, useId, type ReactElement } from 'react';
 import { hostNativePx } from '../core/library/carried-items';
 import { drawSize, type Angle } from '../core/library/footprint';
 import { FURNITURE_MODELS, STEAMPUNK_TRIM } from '../core/library/furniture-models';
-import { CELL_H, CELL_W, openingOf, projectOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
+import { CELL_H, CELL_W, openingOf, overhangOf, projectOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
 import { itemModel, itemPieces, type ItemDisplay, type ItemPlacement, type ItemShape } from '../core/library/item-models';
 import type { StandingKind } from '../core/library/library-types';
 import type { PxRect } from '../core/library/room-grid';
@@ -101,12 +101,17 @@ function cached(key: string, make: () => Geometry): Geometry {
 }
 const itemsKey = (items: ItemPlacement[] | undefined): string =>
   (items ?? []).map((i) => `${i.key},${i.shape},${i.display ?? ''},${i.x},${i.y},${i.z},${i.color ?? ''}`).join(';');
-function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?: ItemPlacement[]): Geometry {
-  return cached(`${kind}:${angle}:${steampunk ? 1 : 0}:${itemsKey(items)}`, () => {
+// `part` (meuble à socle) : 'base' = socle et tige seulement, 'overhang' = arc et dôme seulement (rangés à part dans la pièce) ; absent = tout.
+export type ModelPart = 'base' | 'overhang';
+function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?: ItemPlacement[], part?: ModelPart): Geometry {
+  return cached(`${kind}:${angle}:${steampunk ? 1 : 0}:${itemsKey(items)}:${part ?? ''}`, () => {
     const base = FURNITURE_MODELS[kind];
     const trim = steampunk ? (STEAMPUNK_TRIM[kind] ?? []) : [];
     const extra = (items ?? []).flatMap((i) => itemPieces(i, steampunk));
-    const g = geometryFrom(trim.length + extra.length > 0 ? { ...base, pieces: [...base.pieces, ...trim, ...extra] } : base, angle, base.glow !== undefined);
+    const whole = trim.length + extra.length > 0 ? { ...base, pieces: [...base.pieces, ...trim, ...extra] } : base;
+    const over = part ? overhangOf(whole) : null;
+    const model = over ? { ...whole, pieces: whole.pieces.filter((_, i) => over.pieces.has(i) === (part === 'overhang')) } : whole;
+    const g = geometryFrom(model, angle, base.glow !== undefined);
     if (!g.shapes.some((s) => s.stored)) return g;
     const o = openingOf(base, angle);
     return { ...g, opening: o ? pts(o) : null };
@@ -236,11 +241,11 @@ function runsOf(shapes: Drawn[]): { stored: boolean; shapes: [Drawn, number][] }
   return out;
 }
 
-type Props = { kind: StandingKind; angle: Angle; rect: PxRect; palette: Palette; lit?: boolean; steampunk?: boolean; items?: ItemPlacement[]; content?: Record<string, ItemContent> };
+type Props = { kind: StandingKind; angle: Angle; rect: PxRect; palette: Palette; lit?: boolean; steampunk?: boolean; items?: ItemPlacement[]; content?: Record<string, ItemContent>; part?: ModelPart };
 
 // Meuble dessiné depuis son modèle 3D (vraies proportions), mis à l'échelle de son rectangle, avec les objets qui le garnissent (`items`, dans son repère).
-function Model3DArtImpl({ kind, angle, rect, palette, lit = true, steampunk = false, items, content }: Props): ReactElement {
-  const g = geometryOf(kind, angle, steampunk, items);
+function Model3DArtImpl({ kind, angle, rect, palette, lit = true, steampunk = false, items, content, part }: Props): ReactElement {
+  const g = geometryOf(kind, angle, steampunk, items, part);
   const sx = rect.w / (g.cols * CELL_W);
   const sy = rect.h / (g.rows * CELL_H);
   return (
@@ -253,7 +258,7 @@ function Model3DArtImpl({ kind, angle, rect, palette, lit = true, steampunk = fa
 // Redessiné seulement si le meuble change (le rectangle et la liste d'objets arrivent neufs à chaque rendu : comparés par valeur).
 export const Model3DArt = memo(Model3DArtImpl, (a, b) => a.kind === b.kind && a.angle === b.angle && a.palette === b.palette && a.lit === b.lit
   && a.steampunk === b.steampunk && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
-  && a.content === b.content && itemsKey(a.items) === itemsKey(b.items));
+  && a.content === b.content && itemsKey(a.items) === itemsKey(b.items) && a.part === b.part);
 
 // Géométrie d'un objet seul, dans son propre repère, par (forme, présentation, angle, Steampunk, couleur) : la même pour tous les objets
 // de même forme, où qu'ils soient posés (la projection est affine : poser l'objet revient à translater son dessin).

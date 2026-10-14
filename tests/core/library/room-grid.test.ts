@@ -21,6 +21,9 @@ import {
   shiftLayout,
 } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
+import { byDrawOrder, footBottom, hitRectOf, overhangRow } from '../../../src/core/library/room-grid';
+import { overhangOf } from '../../../src/core/library/furniture-render3d';
+import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 import { drawSize, floorCells } from '../../../src/core/library/footprint';
 
 describe('lampadaire arc au-dessus d’un fauteuil', () => {
@@ -167,5 +170,46 @@ describe('largeur adaptée à l écran', () => {
     expect(fitsWithin(layout, 38)).toBe(true);
     expect(fitsWithin(layout, 37)).toBe(false);
     expect(fitsWithin([], 24)).toBe(true);
+  });
+});
+
+describe('meuble à socle (lampadaire arc tourné)', () => {
+  it('l’ordre de dessin suit la rangée des pieds, pas le bas du rectangle', () => {
+    const lamp: Layout[number] = { id: 'l', kind: 'arc-lamp', col: 10, row: 4, angle: 6 };
+    const foot = footBottom(lamp as never);
+    expect(foot).toBeLessThan(4 + drawSize('arc-lamp', 6).h); // le dôme déborde devant le socle
+    // Fauteuil dont les pieds sont juste devant le socle, mais au-dessus du bas du rectangle du lampadaire.
+    const chair: Layout[number] = { id: 'a', kind: 'armchair', col: 11, row: foot + 1 - drawSize('armchair', 0).h };
+    expect(byDrawOrder([lamp, chair], [lamp, chair] as never[]).map((p) => (p as { id: string }).id)).toEqual(['l', 'a']);
+  });
+  it('sans socle, la rangée des pieds est le bas du rectangle', () => {
+    const sofa: Layout[number] = { id: 's', kind: 'sofa', col: 2, row: 10 };
+    expect(footBottom(sofa as never)).toBe(10 + drawSize('sofa', 0).h);
+  });
+  it('zone de toucher : le socle seulement pour un meuble à socle, tout le rectangle sinon', () => {
+    const lamp = { id: 'l', kind: 'arc-lamp', col: 10, row: 7 } as never;
+    const full = pxRect(rectOf(lamp)!);
+    const hit = hitRectOf(lamp);
+    expect(hit.w).toBeLessThan(full.w / 2);
+    expect(hit.y + hit.h).toBeCloseTo(full.y + full.h, 5);
+    const sofa = { id: 's', kind: 'sofa', col: 2, row: 10 } as never;
+    expect(hitRectOf(sofa)).toEqual(pxRect(rectOf(sofa)!));
+  });
+});
+
+describe('surplomb d’un meuble à socle', () => {
+  it('le lampadaire arc : arc et dôme en surplomb, socle et tige non', () => {
+    const m = FURNITURE_MODELS['arc-lamp'];
+    const over = overhangOf(m)!;
+    expect(over).not.toBeNull();
+    const dome = m.pieces.findIndex((q) => q.shape === 'cyl' && q.fill === 'metal' && q.cx === 19);
+    const socle = m.pieces.findIndex((q) => q.shape === 'cyl' && q.cx === 149 && q.y === 0);
+    expect(over.pieces.has(dome)).toBe(true);
+    expect(over.pieces.has(socle)).toBe(false);
+    expect(overhangOf(FURNITURE_MODELS.sofa)).toBeNull();
+  });
+  it('de face, le point du sol sous le dôme est sur la rangée du socle', () => {
+    const lamp = { id: 'l', kind: 'arc-lamp', col: 10, row: 7 } as never;
+    expect(overhangRow(lamp)).toBe(footBottom(lamp) - 1);
   });
 });

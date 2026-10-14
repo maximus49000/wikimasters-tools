@@ -60,6 +60,14 @@ Les couleurs viennent de la palette du style (`wood`, `fabric`, `warm`, `leaf`, 
 - La carte de marche des animaux (`buildWalkMap`) bloque seulement les cases du socle.
 - Seul `arc-lamp` l'utilise dans ce lot. Les autres modèles ne changent pas.
 
+### 3.1 bis Règle du surplomb (décision de l'utilisateur, 2026-10-14)
+
+Tout meuble à socle (`base`) dont une partie surplombe d'autres meubles (aujourd'hui le lampadaire arc ; demain la suspension, etc.) est dessiné en **deux couches** :
+- le socle et la tige, rangés comme un meuble d'après leurs pieds (`footBottom` : rangée sous la case au sol la plus basse) ;
+- le surplomb (pièces qui ne sont pas au-dessus du socle : arc, dôme), rangé d'après la rangée du sol sous lui (`overhangRow`) : il passe **par-dessus** tout meuble dont l'emprise au sol commence sur cette rangée ou derrière (le dôme le surplombe ou est devant lui), et **derrière** un meuble entièrement devant lui.
+
+Le toucher d'un meuble à socle se limite à son socle et à ses parties peintes (son grand rectangle vide ne capte plus les touchers destinés aux meubles qu'il surplombe).
+
 ### 3.2 Nouvelles formes de feuille
 
 `Leaf` reçoit `form?: 'lance' | 'heart' | 'paddle'` (défaut `lance`, la feuille pointue actuelle) :
