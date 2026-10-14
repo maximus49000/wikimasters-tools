@@ -2214,9 +2214,9 @@ export const ENTRIES: Entry[] = [
         title: 'Limites',
         text: 'Pas de nom pour l’heure de la scène (la position n’est jamais traduite en adresse). Si le site refuse les polices intégrées, le panneau prend une police standard.',
         details: [
-          { label: 'À quoi ça sert', text: 'À savoir ce que ces objets ne font pas.' },
-          { label: 'D’où viennent les données', text: 'Rien n’est envoyé : l’heure et la mise en page sont calculées sur l’appareil.' },
-          { label: 'Astuce', text: 'Un panneau en police standard reste lisible, seule la forme des lettres change.' },
+          { label: 'Heure de la scène', text: 'Elle n’a pas de nom de ville : seules les villes que vous choisissez ont un nom.' },
+          { label: 'Texte des panneaux', text: 'Il est enregistré avec votre pièce, comme vos meubles, et limité à 140 caractères.' },
+          { label: 'Police standard', text: 'Si le site refuse les polices intégrées, le panneau garde sa taille mais change la forme des lettres.' },
         ],
         scene: { page: '/collection', closeWindows: true },
       },

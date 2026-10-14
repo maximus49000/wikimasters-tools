@@ -53,12 +53,12 @@ describe('dessin des objets décoratifs', () => {
       expect(renderToStaticMarkup(<svg><TableFace item={item} w={150} h={70} style="neon" view={view} /></svg>)).toContain(`data-table-face="${item}"`);
     }
   });
-});
 
-it('déclare les 4 polices une seule fois dans le document', () => {
-  ensureDecoFonts(document);
-  ensureDecoFonts(document);
-  const styles = document.querySelectorAll('#wmt-deco-fonts');
-  expect(styles).toHaveLength(1);
-  for (const f of ['WMT Caveat', 'WMT Oswald', 'WMT Pacifico', 'WMT Patrick Hand']) expect(styles[0]!.textContent).toContain(f);
+  it('déclare les 4 polices une seule fois dans le document', () => {
+    ensureDecoFonts(document);
+    ensureDecoFonts(document);
+    const styles = document.querySelectorAll('#wmt-deco-fonts');
+    expect(styles).toHaveLength(1);
+    for (const f of ['WMT Caveat', 'WMT Oswald', 'WMT Pacifico', 'WMT Patrick Hand']) expect(styles[0]!.textContent).toContain(f);
+  });
 });

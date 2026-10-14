@@ -6,7 +6,7 @@ import type { DecoPlaced, StyleId, WeatherState } from '../core/library/library-
 import { decoSizeOf, type PxRect } from '../core/library/room-grid';
 import type { Palette } from '../core/library/styles';
 import { fitText } from '../core/library/text-fit';
-import { PANEL_FONTS, measureWith } from './deco-fonts';
+import { PANEL_FONTS, ensureDecoFonts, measureWith } from './deco-fonts';
 
 // Horloges, météomètres et panneaux du mur, portés de la maquette validée (docs/superpowers/maquettes/horloges-meteo-panneau) :
 // dessin en cm comme la maquette, mis à l'échelle de la case de l'objet (aplats, trait encré, ombre nette décalée).
@@ -415,9 +415,14 @@ const NEON_WOOD_DARK = '#1C1C38'; // bois sombre du style Néon : cadres plus cl
 function PanelText({ kind, text, x, y, w, h, fill, opacity, glow, editing }: { kind: PanelKind; text: string; x: number; y: number; w: number; h: number; fill: string; opacity?: number; glow?: string; editing: boolean }): ReactElement | null {
   const font = PANEL_FONTS[kind];
   const family = `"${font.family}", ${font.fallback}`;
-  // Re-mesure quand les polices intégrées sont prêtes (la première mesure peut avoir eu la police de repli).
+  // Charge la police intégrée de CE panneau puis re-mesure (la première mesure a pu se faire avec la police de repli).
   const [, bump] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => { void document.fonts?.ready.then(bump); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    ensureDecoFonts();
+    void document.fonts?.load(`${font.weight} 16px "${font.family}"`).then(() => { if (!cancelled) bump(); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [font.family, font.weight]);
   const measure = measureWith(font.family, font.weight, font.fallback);
   if (!text.trim()) {
     if (!editing) return null;
