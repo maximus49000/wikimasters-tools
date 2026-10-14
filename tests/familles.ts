@@ -86,7 +86,7 @@ export const FAMILLES: Famille[] = [
     fichiers: [
       ...c(
         'furniture-drag*', 'placement.*', 'placement-bar.*', 'library-placement.*', 'library-sims-ui.*', 'furniture-thumb.*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
-        'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*', 'model3d-art.*', 'item3d-art.*', 'room-angle.*', 'room-carried*', 'furniture-zoom.*', 'library-zoom.*', 'shelf-board-zoom.*',
+        'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*', 'model3d-art.*', 'item3d-art.*', 'room-angle.*', 'room-carried*', 'furniture-zoom.*', 'library-zoom.*', 'shelf-board-zoom.*', 'deco-art.*',
       ),
       ...lib('room-grid*', 'library-migration-v6.*', 'library-migration-v7.*', 'furniture-catalog.*', 'footprint.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*', 'zoom-target.*', 'shelf-link.*', 'furniture-render3d.*', 'furniture-models.*', 'item-models.*', 'carried-items.*', 'clock-cities.*', 'text-fit.*'),
       'tests/core/picker-filter.test.ts',
