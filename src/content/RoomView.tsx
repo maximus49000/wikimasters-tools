@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
-import type { FurnitureKind, Placed, Room, WeatherState } from '../core/library/library-types';
+import type { FurnitureKind, Placed, Room, TimeSetting, WeatherState } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { drawSize, faceFrame, frontFaceRect, groundTrace, type Angle } from '../core/library/footprint';
@@ -38,12 +38,7 @@ import { skyAt, type Sky } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
 import type { PlacingView } from './placement';
-import { DecoArt, TableFace, type DecoView } from './deco-art';
-import { useClockTick } from './use-clock-tick';
-import { currentPosition } from './scene-position';
-import { cityClock } from '../core/library/clock-cities';
-import { shownTempC, type DecoWeather } from '../core/library/deco-weather';
-import type { CityTime } from '../core/library/deco';
+import { LiveDecoArt, isTableClock, tableFaceContent, useDecoScene } from './deco-live';
 
 // Horloge immobile (ciel dégagé) pour le calque de lumière d'une pièce sans météo : les lampes y restent efficaces.
 const NO_GLASS: readonly never[] = [];
@@ -59,6 +54,8 @@ const DEFAULT_VIEW: SceneView = { sky: skyAt(15 * 60, { kind: 'normal', sunrise:
 export type SceneView = {
   sky: Sky;
   minutes: number;
+  // Réglage d'heure : en heure réelle les horloges lisent la seconde de l'appareil ; sinon l'heure figée de la scène.
+  mode?: TimeSetting['mode'];
   weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } };
   city?: { day: DayContext; forcedNight: boolean; shopNames?: NamePool; busLines?: BusNetwork | null };
   // Ce que montrent les météomètres (état, libellé, température réelle).
@@ -188,18 +185,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const fadeStyle = { opacity: roomLayers === 'shown' ? 1 : 0, transition: still ? 'none' : 'opacity 400ms ease', ...(roomLayers === 'hidden' ? { pointerEvents: 'none' as const } : {}) };
   const windows = room.layout.filter((p): p is Extract<Placed, { kind: 'window' }> => p.kind === 'window');
   const view = useMemo(() => sceneView ?? DEFAULT_VIEW, [sceneView]);
-  // Horloges et météomètres : la seconde ne tourne que si la pièce en contient (objets `deco` et petits objets horloge ou station).
-  const hasDeco = room.layout.some((p) => p.kind === 'deco' || (p.kind === 'small' && (p.item === 'alarm' || p.item === 'clock' || p.item === 'station')));
-  const now = useClockTick(hasDeco);
-  const night = view.sky.phase === 'night';
-  const decoState = view.deco?.state ?? 'cloudy';
-  const decoWeather: DecoWeather = {
-    state: decoState,
-    label: view.deco?.label ?? '',
-    night,
-    tempC: shownTempC({ realTempC: view.deco?.tempC ?? null, lat: currentPosition().lat, now, state: decoState, night }),
-  };
-  const decoView = (city?: CityTime): DecoView => ({ time: cityClock(view.minutes, city, now), city: city?.name, weather: decoWeather, daylight: view.sky.daylight, editing });
+  // Objets décoratifs (`deco`, réveil, pendulette, station) : une scène stable, calculée seulement si la pièce en contient. La seconde
+  // n'est pas lue ici : chaque horloge s'abonne elle-même à la seconde partagée, la pièce n'est pas redessinée à chaque seconde.
+  const hasDeco = room.layout.some((p) => p.kind === 'deco' || (p.kind === 'small' && isTableClock(p.item)));
+  const decoScene = useDecoScene(view, editing, hasDeco);
   // Météo : seulement dans les scènes terrestres (ni dans l'espace ni en orbite), et seulement si le panneau la fournit.
   const weatherOn = view.weather !== undefined && WEATHER_SCENES.includes(room.scene);
   const gloom = weatherOn && (view.weather?.flags.gloom ?? false);
@@ -286,13 +275,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       const rect = placementRectPx(host.kind, host.angle, host.rect, pl, steampunk);
       let content: ItemContent;
       if (placed.kind === 'computer') content = { url: placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined };
-      else if (placed.item === 'alarm' || placed.item === 'clock' || placed.item === 'station') {
-        // Face décorée (heure, météo) : clé de mémo = tout ce qui change son dessin.
-        const item = placed.item;
-        const v = decoView(placed.city);
-        const faceKey = `${item}|${v.time.h}:${v.time.m}:${v.time.s}|${v.city ?? ''}|${v.weather.state}|${v.weather.tempC}|${v.weather.night}|${room.style}`;
-        content = { face: { key: faceKey, draw: (w: number, h: number) => <TableFace item={item} w={w} h={h} style={room.style} view={v} /> } };
-      } else content = { lit: isLit(placed) };
+      // Face décorée (heure, météo) : elle relit elle-même la seconde, le modèle 3D n'est pas redessiné à chaque seconde.
+      else if (isTableClock(placed.item) && decoScene) content = tableFaceContent(placed.item, placed.city, room.style, decoScene);
+      else content = { lit: isLit(placed) };
       return { rect, art: <CarriedItem3D host={host.kind} angle={host.angle} rect={host.rect} placement={pl} palette={palette} steampunk={steampunk} content={content} /> };
     }
     if (placed.kind === 'window') {
@@ -305,8 +290,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       };
     }
     if (placed.kind === 'deco') {
+      if (!decoScene) return null;
       const rect = pxRect(rectOf(placed)!);
-      return { rect, art: <DecoArt placed={placed} rect={rect} style={room.style} palette={palette} view={decoView(placed.city)} /> };
+      return { rect, art: <LiveDecoArt placed={placed} rect={rect} style={room.style} palette={palette} scene={decoScene} /> };
     }
     const cells = rectOf(placed);
     if (!cells || !isStanding(placed)) return null;

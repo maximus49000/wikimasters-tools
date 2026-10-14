@@ -1,5 +1,5 @@
 // Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 2026-10-17), reprise Fable prévue.
-import { useEffect, useReducer, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useReducer, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { NEON_COLORS, isPanel } from '../core/library/deco';
 import { BAROMETER_ANGLE, iconOf, type DecoWeather } from '../core/library/deco-weather';
 import type { DecoPlaced, StyleId, WeatherState } from '../core/library/library-types';
@@ -12,7 +12,8 @@ import { PANEL_FONTS, ensureDecoFonts, measureWith } from './deco-fonts';
 // dessin en cm comme la maquette, mis à l'échelle de la case de l'objet (aplats, trait encré, ombre nette décalée).
 
 // Ce que montrent les objets : heure (de la scène ou de la ville choisie), ville, météo du visuel, lumière du jour (0 nuit … 1 jour), mode Aménager.
-export type DecoView = { time: { h: number; m: number; s: number }; city?: string; weather: DecoWeather; daylight: number; editing: boolean };
+// `time.live` : heure réelle (l'aiguille des minutes glisse avec les secondes) ; absent ou faux : heure figée, aiguille immobile.
+export type DecoView = { time: { h: number; m: number; s: number; live?: boolean }; city?: string; weather: DecoWeather; daylight: number; editing: boolean };
 
 // ---------- Outils (ceux de la maquette) ----------
 const f = (n: number): number => Math.round(n * 100) / 100;
@@ -91,7 +92,7 @@ function Hands({ cx, cy, r, t, ink = '#2A211C', sec = '#D8432F' }: { cx: number;
   return (
     <>
       {hand(((t.h % 12) + t.m / 60) * 30, 0.5, r * 0.085, ink)}
-      {hand((t.m + t.s / 60) * 6, 0.76, r * 0.055, ink)}
+      {hand((t.m + (t.live ? t.s / 60 : 0)) * 6, 0.76, r * 0.055, ink)}
       {hand(Math.floor(t.s) * 6, 0.84, r * 0.022, sec, 0.2)}
       <circle cx={f(cx)} cy={f(cy)} r={f(r * 0.06)} fill={sec} {...THIN} />
     </>
@@ -411,28 +412,34 @@ const CELL = 21;
 type PanelKind = keyof typeof PANEL_FONTS;
 const NEON_WOOD_DARK = '#1C1C38'; // bois sombre du style Néon : cadres plus clairs pour rester visibles (comme la maquette)
 
+const HINT = '✏️ Touchez pour écrire';
 // Texte d'un panneau : passé à la ligne et à la plus grande taille qui tient dans la boîte ; panneau vide en Aménager → invitation grise.
 function PanelText({ kind, text, x, y, w, h, fill, opacity, glow, editing }: { kind: PanelKind; text: string; x: number; y: number; w: number; h: number; fill: string; opacity?: number; glow?: string; editing: boolean }): ReactElement | null {
   const font = PANEL_FONTS[kind];
   const family = `"${font.family}", ${font.fallback}`;
   // Charge la police intégrée de CE panneau puis re-mesure (la première mesure a pu se faire avec la police de repli).
-  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const [fontsLoaded, bump] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
     let cancelled = false;
     ensureDecoFonts();
     void document.fonts?.load(`${font.weight} 16px "${font.family}"`).then(() => { if (!cancelled) bump(); }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [font.family, font.weight]);
-  const measure = measureWith(font.family, font.weight, font.fallback);
-  if (!text.trim()) {
-    if (!editing) return null;
-    // Invitation sur une seule ligne, discrète (au plus un quart de la hauteur).
-    const hint = '✏️ Touchez pour écrire';
-    const s = Math.min(h * 0.25, (w * 0.9) / Math.max(measure(hint, 1), 0.01));
-    return <Txt x={x + w / 2} y={y + h / 2} s={s} fill="#8E8A84" o={{ family, weight: font.weight, opacity: 0.9 }}>{hint}</Txt>;
-  }
+  const empty = !text.trim();
   const shown = 'upper' in font && font.upper ? text.toUpperCase() : text;
-  const { size, lines } = fitText(shown, { w, h }, measure, font.lineHeight);
+  // Mesure en cache (texte, boîte, police, chargement de la police) : des milliers d'appels au canevas par ajustement (spec §4.3),
+  // refaits seulement quand l'un d'eux change, jamais à un simple re-rendu.
+  const fit = useMemo(() => {
+    const measure = measureWith(font.family, font.weight, font.fallback);
+    // Invitation sur une seule ligne, discrète (au plus un quart de la hauteur).
+    if (empty) return { hint: Math.min(h * 0.25, (w * 0.9) / Math.max(measure(HINT, 1), 0.01)) };
+    return fitText(shown, { w, h }, measure, font.lineHeight);
+  }, [empty, shown, w, h, font.family, font.weight, font.fallback, font.lineHeight, fontsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  if ('hint' in fit) {
+    if (!editing) return null;
+    return <Txt x={x + w / 2} y={y + h / 2} s={fit.hint} fill="#8E8A84" o={{ family, weight: font.weight, opacity: 0.9 }}>{HINT}</Txt>;
+  }
+  const { size, lines } = fit;
   const top = y + h / 2 - ((lines.length - 1) * size * font.lineHeight) / 2;
   return (
     <g data-panel-text="">

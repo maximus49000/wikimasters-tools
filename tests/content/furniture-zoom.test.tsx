@@ -235,3 +235,23 @@ describe('zoom : objets en 3D', () => {
     expect(turned.querySelector('[data-zoom-face="angled"] .wmt-lib-zoom-piece [data-item3d] [data-lamp-halo]')).not.toBeNull();
   });
 });
+
+describe('objets de table au zoom', () => {
+  it('le réveil, la pendulette et la station montrent leur face (pas un rectangle sombre)', () => {
+    const desk: Room = { ...room, layout: [
+      { id: 'd', kind: 'desk', col: 0, row: 12 },
+      { id: 'a', kind: 'small', item: 'alarm', hostId: 'd', slot: 0 },
+      { id: 'k', kind: 'small', item: 'clock', hostId: 'd', slot: 1 },
+      { id: 'w', kind: 'small', item: 'station', hostId: 'd', slot: 2 },
+    ] };
+    const container = document.createElement('div');
+    document.body.append(container);
+    act(() => {
+      createRoot(container).render(
+        <FurnitureZoom target={{ kind: 'desk', id: 'd' }} room={desk} cards={{}} imageOf={() => undefined}
+          phase="open" from={null} stage={{ w: 800, h: 400 }} level={null} onLevel={vi.fn()} onCard={vi.fn()} onBack={vi.fn()} />,
+      );
+    });
+    for (const item of ['alarm', 'clock', 'station']) expect(container.querySelector(`[data-table-face="${item}"]`)).not.toBeNull();
+  });
+});

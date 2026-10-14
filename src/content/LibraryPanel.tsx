@@ -308,11 +308,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     () => ({
       sky: sceneTime.sky,
       minutes: sceneTime.minutes,
+      mode: sceneTime.mode,
       weather: { clock: weather.clock, flags: weather.flags },
       city: { day: cityDay, forcedNight: lib?.time.mode === 'night', shopNames, busLines },
       deco: { state: weather.state, label: weather.label, tempC: weather.tempC },
     }),
-    [sceneTime.sky, sceneTime.minutes, weather.clock, weather.flags, weather.state, weather.label, weather.tempC, cityDay, shopNames, busLines, lib?.time.mode],
+    [sceneTime.sky, sceneTime.minutes, sceneTime.mode, weather.clock, weather.flags, weather.state, weather.label, weather.tempC, cityDay, shopNames, busLines, lib?.time.mode],
   );
 
 
@@ -1199,6 +1200,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             room={room}
             cards={roomCards.cards}
             imageOf={imageOfCard}
+            sceneView={sceneView}
             phase={zoom.phase}
             from={zoom.from}
             stage={stageSize}

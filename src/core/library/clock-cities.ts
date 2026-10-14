@@ -170,7 +170,11 @@ export function cityMinutes(sceneMinutes: number, tz: string, now: Date): number
   return (((sceneMinutes + delta) % 1440) + 1440) % 1440;
 }
 
-export function cityClock(sceneMinutes: number, city: CityTime | undefined, now: Date): { h: number; m: number; s: number } {
-  const m = city ? cityMinutes(sceneMinutes, city.tz, now) : ((Math.round(sceneMinutes) % 1440) + 1440) % 1440;
-  return { h: Math.floor(m / 60), m: m % 60, s: now.getSeconds() };
+// `live` (heure réelle) : heures et minutes lues sur `now` (la seconde de l'appareil) et non sur la minute de la scène, relue toutes
+// les 30 s : l'horloge change de minute à la seconde près. Heure figée (jour, nuit, manuelle) : l'heure de la scène, l'aiguille des
+// minutes n'avance pas avec les secondes (`live` faux) ; les secondes, elles, viennent toujours de l'appareil.
+export function cityClock(sceneMinutes: number, city: CityTime | undefined, now: Date, live = false): { h: number; m: number; s: number; live: boolean } {
+  const base = live ? now.getHours() * 60 + now.getMinutes() : sceneMinutes;
+  const m = city ? cityMinutes(base, city.tz, now) : ((Math.round(base) % 1440) + 1440) % 1440;
+  return { h: Math.floor(m / 60), m: m % 60, s: now.getSeconds(), live };
 }

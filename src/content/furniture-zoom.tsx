@@ -13,6 +13,8 @@ import { CarriedItem3D, Model3DArt, type ItemContent } from './model3d-art';
 import { Icon, ICONS } from './library-ui';
 import { reducedMotion } from './ghibli-sky';
 import { ShelfBoardZoom } from './shelf-board-zoom';
+import { isTableClock, tableFaceContent, useDecoScene, type DecoScene } from './deco-live';
+import type { SceneView } from './RoomView';
 
 export type ZoomPhase = 'opening' | 'open' | 'closing';
 type Cards = Record<string, { title: string; imageUrl?: string }>;
@@ -21,6 +23,8 @@ type Props = {
   room: Room;
   cards: Cards;
   imageOf: (slug: string) => string | undefined;
+  // Heure et météo de la scène, pour la face du réveil, de la pendulette et de la station ; absente : heure réelle.
+  sceneView?: SceneView;
   phase: ZoomPhase;
   // Rectangle du meuble (ou des deux bibliothèques liées) dans la scène au moment du toucher (départ du pivot) ; null : apparition au centre.
   from: Box | null;
@@ -39,7 +43,8 @@ export const ZOOM_MS = 500;
 export const ZOOM_REDUCED_MS = 150;
 
 // Objets portés posés en 3D dans le repère du meuble (cartes rangées, écran, petits objets) et leur contenu, comme dans la pièce.
-function garnishOf(layout: Placed[], item: Placed, cards: Cards, imageOf: (slug: string) => string | undefined): Garnish[] {
+// Réveil, pendulette, station : la même face que dans la pièce (vivante, à la seconde partagée).
+function garnishOf(layout: Placed[], item: Placed, cards: Cards, imageOf: (slug: string) => string | undefined, style: Room['style'], scene: DecoScene | undefined): Garnish[] {
   const out: Garnish[] = [];
   const shelved = item.kind === 'shelf' ? storedPlacementsOf(layout, item.id) : new Map<string, ItemPlacement>();
   for (const p of layout) {
@@ -47,12 +52,13 @@ function garnishOf(layout: Placed[], item: Placed, cards: Cards, imageOf: (slug:
     if (!pl) continue;
     const slug = p.kind === 'stored' || p.kind === 'computer' ? p.slug : undefined;
     const info = slug ? cards[slug] : undefined;
-    out.push({ p, pl, content: p.kind === 'small' ? { lit: isLit(p) } : info && slug ? { url: imageOf(slug), title: info.title } : {} });
+    const small = p.kind === 'small' ? (isTableClock(p.item) && scene ? tableFaceContent(p.item, p.city, style, scene) : { lit: isLit(p) }) : undefined;
+    out.push({ p, pl, content: small ?? (info && slug ? { url: imageOf(slug), title: info.title } : {}) });
   }
   return out;
 }
 
-export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage, level, onCard, onLevel, onBack }: Props): ReactElement | null {
+export function FurnitureZoom({ target, room, cards, imageOf, sceneView, phase, from, stage, level, onCard, onLevel, onBack }: Props): ReactElement | null {
   const ids = zoomIdsOf(target);
   const key = ids.join('+');
   const items = ids.map((id) => room.layout.find((p) => p.id === id)).filter((p): p is Placed => p !== undefined);
@@ -80,7 +86,9 @@ export function FurnitureZoom({ target, room, cards, imageOf, phase, from, stage
     return () => window.clearTimeout(t);
   }, [phase, angle, reduced, key]);
   // Objets de chaque bibliothèque (ou du bureau) ; indexé sur `key` : les mêmes ids donnent les mêmes meubles dans `room.layout`.
-  const garnishes = useMemo(() => items.map((it) => garnishOf(room.layout, it, cards, imageOf)), [room.layout, key, cards, imageOf]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hasFace = room.layout.some((p) => p.kind === 'small' && isTableClock(p.item));
+  const decoScene = useDecoScene(sceneView, false, hasFace);
+  const garnishes = useMemo(() => items.map((it) => garnishOf(room.layout, it, cards, imageOf, room.style, decoScene)), [room.layout, key, cards, imageOf, room.style, decoScene]); // eslint-disable-line react-hooks/exhaustive-deps
   const clipId = `wm-zoom-open-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   if (!item || (item.kind !== 'shelf' && item.kind !== 'desk')) return null;
 

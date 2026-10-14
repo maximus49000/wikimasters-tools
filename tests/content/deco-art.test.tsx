@@ -61,4 +61,13 @@ describe('dessin des objets décoratifs', () => {
     expect(styles).toHaveLength(1);
     for (const f of ['WMT Caveat', 'WMT Oswald', 'WMT Pacifico', 'WMT Patrick Hand']) expect(styles[0]!.textContent).toContain(f);
   });
+
+  it('aiguille des minutes : glisse avec les secondes en heure réelle, immobile en heure figée', () => {
+    const minuteHand = (time: DecoView['time']) => {
+      const html = renderToStaticMarkup(<svg><TableFace item="clock" w={150} h={150} style="scandinave" view={{ ...view, time }} /></svg>);
+      return [...html.matchAll(/<line [^>]*>/g)].map((m) => m[0])[1];
+    };
+    expect(minuteHand({ h: 10, m: 10, s: 0 })).toBe(minuteHand({ h: 10, m: 10, s: 45 }));
+    expect(minuteHand({ h: 10, m: 10, s: 0, live: true })).not.toBe(minuteHand({ h: 10, m: 10, s: 45, live: true }));
+  });
 });

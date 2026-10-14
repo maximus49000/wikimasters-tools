@@ -44,12 +44,19 @@ describe('villes des horloges', () => {
     });
 
     it('donne l heure, les minutes et les secondes d une ville', () => {
-      expect(cityClock(22 * 60 + 15, { name: 'Tokyo', tz: 'Asia/Tokyo' }, now)).toEqual({ h: 5, m: 15, s: 42 });
+      expect(cityClock(22 * 60 + 15, { name: 'Tokyo', tz: 'Asia/Tokyo' }, now)).toEqual({ h: 5, m: 15, s: 42, live: false });
     });
   });
 
   it('sans ville, l horloge donne l heure de la scène et les secondes de l appareil', () => {
     const now = new Date('2026-10-14T10:00:42Z');
-    expect(cityClock(13 * 60 + 5, undefined, now)).toEqual({ h: 13, m: 5, s: 42 });
+    expect(cityClock(13 * 60 + 5, undefined, now)).toEqual({ h: 13, m: 5, s: 42, live: false });
+  });
+
+  it('en heure réelle, heures et minutes viennent de l appareil (pas de la minute de la scène)', () => {
+    const now = new Date(2026, 9, 14, 10, 11, 5);
+    expect(cityClock(10 * 60 + 10, undefined, now, true)).toEqual({ h: 10, m: 11, s: 5, live: true });
+    const tokyo = { name: 'Tokyo', tz: 'Asia/Tokyo' };
+    expect(cityClock(10 * 60 + 10, tokyo, now, true)).toEqual({ ...cityClock(10 * 60 + 11, tokyo, now), live: true });
   });
 });
