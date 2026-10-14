@@ -111,10 +111,19 @@ describe('CarriedItem3D', () => {
         const c = draw(<CarriedItem3D host="shelf" angle={angle} rect={rect} placement={pl} palette={pal} content={{ url: URL, title: 'Kiki' }} />);
         const box = screenBox(c);
         const want = placementRectPx('shelf', angle, rect, pl);
-        expect(box.x0, `${angle} ${display}`).toBeCloseTo(want.x, 0);
-        expect(box.x1).toBeCloseTo(want.x + want.w, 0);
-        expect(box.y0).toBeCloseTo(want.y, 0);
-        expect(box.y1).toBeCloseTo(want.y + want.h, 0);
+        if (display === 'spine') {
+          expect(box.x0, `${angle} ${display}`).toBeCloseTo(want.x, 0);
+          expect(box.x1).toBeCloseTo(want.x + want.w, 0);
+          expect(box.y0).toBeCloseTo(want.y, 0);
+          expect(box.y1).toBeCloseTo(want.y + want.h, 0);
+        } else {
+          // De face, le boîtier penche sur son présentoir : l'encombrement (boîte droite autour des pièces penchées) entoure son dessin de près.
+          const gaps = [box.x0 - want.x, want.x + want.w - box.x1, box.y0 - want.y, want.y + want.h - box.y1];
+          for (const g of gaps) {
+            expect(g, `${angle} ${display}`).toBeGreaterThan(-0.5);
+            expect(g, `${angle} ${display}`).toBeLessThan(3);
+          }
+        }
       }
     }
   });

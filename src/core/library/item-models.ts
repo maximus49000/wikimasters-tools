@@ -122,9 +122,61 @@ export type ItemPlacement = { key: string; shape: ItemShape; display?: ItemDispl
 // Quart de tour (tranche vers l'avant) : la face gauche passe devant, l'avant à droite, la droite au fond, le fond à gauche.
 const TURNED: Record<BoxFace, BoxFace> = { left: 'front', front: 'right', right: 'back', back: 'left', top: 'top' };
 
+// Présentoir : un CD, un DVD ou un jeu rangé de face ne tient pas droit comme un piquet. Il penche vers l'arrière de STAND_LEAN_DEG,
+// posé sur un petit support sombre : socle fin, rebord avant qui retient le bas du boîtier, béquille au dos qui l'appuie aux deux tiers
+// de sa hauteur. Le support est moins large que la couverture : la place prise sur la tablette ne change pas (seule la profondeur grandit).
+// Un livre de face, ou tout objet sur la tranche, reste droit.
+export const STAND_LEAN_DEG = 14;
+const STAND_COLOR = '#5B4636';
+const STAND = { base: 0.4, lip: 1, lipD: 0.5, strut: 0.4, back: 1.5, rest: 0.62 } as const;
+const onStand = (p: ItemPlacement): boolean => (p.display ?? 'cover') === 'cover' && (p.shape === 'cd' || p.shape === 'dvd' || p.shape === 'game');
+
+// Support du boîtier `m` posé en (x, y, z) (coin bas avant gauche), et le boîtier penché dessus.
+function standPieces(m: Model, c: Extract<Piece, { shape: 'box' }>, x: number, y: number, z: number): Piece[] {
+  const t = (STAND_LEAN_DEG * Math.PI) / 180;
+  const [y0, z0] = [y + STAND.base, z + STAND.lipD];
+  const depth = STAND.lipD + m.h * Math.sin(t) + m.d * Math.cos(t) + STAND.back;
+  const sw = m.w * 0.7;
+  const sx = x + (m.w - sw) / 2;
+  const tag = c.tag;
+  const part = (q: Omit<Extract<Piece, { shape: 'box' }>, 'shape' | 'fill' | 'color'>): Piece => ({ shape: 'box', fill: 'metal', color: STAND_COLOR, ...(tag && { tag }), ...q });
+  // Béquille : du fond du socle jusqu'au dos du boîtier, aux deux tiers de sa hauteur ; penchée vers l'avant autour de son arête bas avant.
+  const at = m.h * STAND.rest;
+  const [backY, backZ] = [y0 + at * Math.cos(t) - m.d * Math.sin(t), z0 + at * Math.sin(t) + m.d * Math.cos(t)];
+  const footZ = z + depth - 0.3 - STAND.strut;
+  const lean = Math.atan2(footZ - backZ, backY - y0);
+  const sww = Math.max(1, m.w * 0.24);
+  return [
+    part({ x: sx, y, z, w: sw, h: STAND.base, d: depth }),
+    part({ x: sx, y: y0, z, w: sw, h: STAND.lip, d: STAND.lipD }),
+    part({ x: x + (m.w - sww) / 2, y: y0, z: footZ, w: sww, h: Math.hypot(backY - y0, footZ - backZ), d: STAND.strut, lean: -(lean * 180) / Math.PI }),
+    { ...c, y: c.y + STAND.base, z: c.z + STAND.lipD, lean: STAND_LEAN_DEG },
+  ];
+}
+
+// Face avant d'un objet rangé (couverture de face, penchée sur son présentoir ; tranche sur la tranche), repère du meuble (cm) :
+// haut gauche, haut droit, bas droit, bas gauche.
+export function storedFrontCorners(p: ItemPlacement): [number, number, number][] {
+  const m = ITEM_MODELS[p.shape];
+  if (!onStand(p)) {
+    const w = p.display === 'spine' ? m.d : m.w;
+    return [[p.x, p.y + m.h, p.z], [p.x + w, p.y + m.h, p.z], [p.x + w, p.y, p.z], [p.x, p.y, p.z]];
+  }
+  const t = (STAND_LEAN_DEG * Math.PI) / 180;
+  const [y0, z0] = [p.y + STAND.base, p.z + STAND.lipD];
+  const [yt, zt] = [y0 + m.h * Math.cos(t), z0 + m.h * Math.sin(t)];
+  return [[p.x, yt, zt], [p.x + m.w, yt, zt], [p.x + m.w, y0, z0], [p.x, y0, z0]];
+}
+
 // Pièces d'un objet posé dans le repère de son meuble. Sur la tranche, l'objet rangé tourne d'un quart (les objets rangés ne sont faits que de boîtes).
 export function itemPieces(p: ItemPlacement, steampunk = false): Piece[] {
   const m = itemModel(p.shape, steampunk);
+  const pieces = placedPieces(p, m);
+  // Le boîtier (seule pièce d'un objet rangé) passe en dernier : la béquille et le socle se trient avec lui par le peintre.
+  return onStand(p) && pieces[0]?.shape === 'box' ? standPieces(m, pieces[0], p.x, p.y, p.z) : pieces;
+}
+
+function placedPieces(p: ItemPlacement, m: Model): Piece[] {
   const stored = p.shape !== 'monitor' && p.shape !== 'small-plant' && p.shape !== 'small-lamp' && p.shape !== 'small-alarm' && p.shape !== 'small-clock' && p.shape !== 'small-station';
   const turned = p.display === 'spine' && stored;
   return m.pieces.map((q): Piece => {

@@ -1,8 +1,8 @@
 // tests/core/library/item-models.test.ts
 import { describe, expect, it } from 'vitest';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
-import { PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, openingOf, pieceBounds, renderModel, type Model, type Piece, type Shape } from '../../../src/core/library/furniture-render3d';
-import { ITEM_MODELS, STEAMPUNK_MONITOR, bookColor, itemFootprintCm, itemPieces, type ItemShape } from '../../../src/core/library/item-models';
+import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, openingOf, pieceBounds, renderModel, type Model, type Piece, type Shape } from '../../../src/core/library/furniture-render3d';
+import { ITEM_MODELS, STAND_LEAN_DEG, STEAMPUNK_MONITOR, bookColor, itemFootprintCm, itemPieces, type ItemShape } from '../../../src/core/library/item-models';
 
 const CELL_W = 30;
 const CELL_H = 510 / 18;
@@ -74,7 +74,11 @@ describe('ITEM_MODELS', () => {
 describe('objets posés dans le repère de leur meuble', () => {
   it('posé de face : boîte à sa place, clés de décalque préfixées par l’objet', () => {
     const ps = itemPieces({ key: 'c1', shape: 'cd', display: 'cover', x: 10, y: 61, z: 27 });
-    expect(pieceBounds(ps[0]!)).toEqual([10, 24, 61, 73.5, 27, 28]);
+    // Boîtier (dernière pièce, sur son présentoir) : à sa place, à sa largeur, posé sur le socle derrière le rebord.
+    const [x0, x1, y0, , z0] = pieceBounds(ps[ps.length - 1]!);
+    expect([x0, x1]).toEqual([10, 24]);
+    expect(y0).toBeGreaterThan(61);
+    expect(z0).toBeGreaterThan(27);
     expect(decalKeys(ps)).toContain('front:c1|cover:cd');
   });
   it('posé sur la tranche : tourné d’un quart, la tranche devant, la couverture à droite', () => {
@@ -87,7 +91,9 @@ describe('objets posés dans le repère de leur meuble', () => {
     const r = renderModel(shelfWith(...itemPieces({ key: 'c1', shape: 'cd', display: 'cover', x: 10, y: 61, z: 27 })), 0);
     const cover = decals(r.shapes).find((d) => d.key === 'c1|cover:cd')!;
     expect(cover.tr[0] - cover.tl[0]).toBeCloseTo(14 * PX_PER_CM_X, 6);
-    expect(cover.bl[1] - cover.tl[1]).toBeCloseTo(12.5 * PX_PER_CM_Y, 6);
+    // Penché sur son présentoir : le haut part vers le fond (la profondeur remonte à l'écran plus lentement que la hauteur).
+    const t = (STAND_LEAN_DEG * Math.PI) / 180;
+    expect(cover.bl[1] - cover.tl[1]).toBeCloseTo(12.5 * (Math.cos(t) * PX_PER_CM_Y + Math.sin(t) * DEPTH_PX_PER_CM), 6);
   });
   it('un CD de face vu de profil : plus de couverture ; sa tranche (titre) se voit de profil droit', () => {
     const keys = (a: 2 | 6) => decals(renderModel(ITEM_MODELS.cd, a).shapes).map((d) => d.key.split(':')[0]);
@@ -137,5 +143,60 @@ describe('objets posés dans le repère de leur meuble', () => {
   it('petite lampe : abat-jour étiqueté pour l’allumage', () => {
     const ps = itemPieces({ key: 'l', shape: 'small-lamp', x: 8, y: 75, z: 35 });
     expect(ps.some((p) => p.tag === 'glow:l')).toBe(true);
+  });
+});
+
+describe('présentoir : CD, DVD et jeu de face penchés sur un support', () => {
+  const boxes = (ps: Piece[]) => ps.filter((p): p is Extract<Piece, { shape: 'box' }> => p.shape === 'box');
+  const caseOf = (ps: Piece[]) => boxes(ps).find((p) => p.decals?.some((d) => d.key.includes('|cover:')))!;
+  it('de face : le boîtier penche vers l’arrière, posé sur un socle avec rebord avant et béquille au dos', () => {
+    for (const shape of ['cd', 'dvd', 'game'] as const) {
+      const ps = itemPieces({ key: 'k', shape, display: 'cover', x: 10, y: 61, z: 2 });
+      const c = caseOf(ps);
+      expect(c.lean, shape).toBe(STAND_LEAN_DEG);
+      expect(boxes(ps).filter((p) => p !== c)).toHaveLength(3);
+      // Tout repose sur la tablette, rien ne descend dessous ni ne dépasse de la largeur de la couverture.
+      for (const p of ps) {
+        const [x0, x1, y0, , z0] = pieceBounds(p);
+        expect(y0, shape).toBeGreaterThanOrEqual(61 - 1e-9);
+        expect(z0, shape).toBeGreaterThanOrEqual(2 - 1e-9);
+        expect(x0, shape).toBeGreaterThanOrEqual(10 - 1e-9);
+        expect(x1, shape).toBeLessThanOrEqual(10 + ITEM_MODELS[shape].w + 1e-9);
+      }
+      // Toutes les pièces du présentoir ne se voient qu'à travers l'ouverture de l'étagère.
+      expect(ps.every((p) => p.tag === 'stored:k'), shape).toBe(true);
+    }
+  });
+  it('la béquille touche le dos du boîtier (pas en l’air, pas dedans)', () => {
+    const ps = itemPieces({ key: 'k', shape: 'dvd', display: 'cover', x: 0, y: 0, z: 0 });
+    const c = caseOf(ps);
+    const strut = boxes(ps).find((p) => (p.lean ?? 0) < 0)!;
+    const t = (STAND_LEAN_DEG * Math.PI) / 180;
+    // Haut avant de la béquille : sur le plan du dos du boîtier.
+    const s = (strut.lean! * Math.PI) / 180;
+    const top = { y: strut.y + strut.h * Math.cos(s), z: strut.z + strut.h * Math.sin(s) };
+    const along = (top.y - c.y) * Math.cos(t) + (top.z - c.z) * Math.sin(t);
+    const across = -(top.y - c.y) * Math.sin(t) + (top.z - c.z) * Math.cos(t);
+    expect(across).toBeCloseTo(c.d, 6);
+    expect(along).toBeGreaterThan(c.h * 0.4);
+    expect(along).toBeLessThan(c.h * 0.9);
+  });
+  it('sur la tranche, ou un livre de face : droit, sans support', () => {
+    for (const p of [itemPieces({ key: 'k', shape: 'cd', display: 'spine', x: 0, y: 0, z: 0 }), itemPieces({ key: 'k', shape: 'book', display: 'cover', x: 0, y: 0, z: 0 })]) {
+      expect(p).toHaveLength(1);
+      expect((p[0] as { lean?: number }).lean).toBeUndefined();
+    }
+  });
+  it('sur l’étagère, la couverture penchée se dessine à chaque angle visible, après le socle et la béquille de face', () => {
+    for (const a of [0, 1, 7] as const) {
+      const r = renderModel(shelfWith(...itemPieces({ key: 'g', shape: 'game', display: 'cover', x: 10, y: 61, z: 2 })), a);
+      const cover = decals(r.shapes).find((d) => d.key === 'g|cover:game');
+      expect(cover, `angle ${a}`).toBeDefined();
+    }
+    // De face, la couverture penchée garde sa largeur et se raccourcit à peine en hauteur (le haut part vers le fond).
+    const r = renderModel(shelfWith(...itemPieces({ key: 'g', shape: 'game', display: 'cover', x: 10, y: 61, z: 2 })), 0);
+    const cover = decals(r.shapes).find((d) => d.key === 'g|cover:game')!;
+    expect(cover.tr[0] - cover.tl[0]).toBeCloseTo(13.5 * PX_PER_CM_X, 6);
+    expect(cover.bl[0]).toBeCloseTo(cover.tl[0], 6);
   });
 });
