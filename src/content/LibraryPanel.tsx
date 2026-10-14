@@ -977,6 +977,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             outside={outside}
             roomLayers={outsidePhase === 'leaving' || outsidePhase === 'outside' ? 'hidden' : 'shown'}
             fill={fill && !outside}
+            fitScreen={room.cols === fitCols}
             fillHeight={tall && !outside ? screenH : undefined}
             placing={placement ? placingView(placement) : null}
           />
