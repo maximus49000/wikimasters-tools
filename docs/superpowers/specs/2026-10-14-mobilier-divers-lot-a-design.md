@@ -84,7 +84,7 @@ Les règles écrites meuble par meuble dans `pets/brain.ts` (« `p.kind === 'sof
 
 - Les poids actuels sont gardés : `sofa` garde son poids de perchoir 0,5 (les autres sièges 1).
 - Le chien ne monte que sur un meuble `dogCouch` et sans passer par un autre meuble (règle actuelle généralisée).
-- L'orage (`storm.ts`) : le chat se cache sous un meuble `catHide` (le plus proche), le chien se blottit au pied d'un `dogCouch` ou d'un mur.
+- L'orage (`storm.ts`) : le chat se cache sous le premier meuble `catHide` dont la cachette est libre (comme aujourd'hui pour le canapé), le chien se blottit au pied d'un `dogCouch` ou d'un mur.
 - `under` (passage dessous) est ajouté à `bench` et `side-table`.
 - Plantes, lanterne et lampadaire arc : obstacles (cases au sol bloquées ; pour l'arc, seulement le socle).
 - Le robot ne change pas.
