@@ -113,4 +113,13 @@ describe('fenêtres ville et écrire', () => {
     expect(q('[data-action="deco-write"]')).not.toBeNull();
     expect(item('p1')).toBeDefined();
   });
+  it('le champ de recherche de la fenêtre ville a le focus à l ouverture, Échap y ferme la fenêtre', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-id="c1"]');
+    await click('[data-action="deco-city"]');
+    const input = q('[data-city-search]')!;
+    expect(document.activeElement).toBe(input);
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(q('[data-city-search]')).toBeNull();
+  });
 });
