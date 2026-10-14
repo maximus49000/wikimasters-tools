@@ -14,11 +14,13 @@ const DEFAULT_PET_NAME = 'Minou';
 const DEFAULT_DOG_NAME = 'Rex';
 const DEFAULT_ROBOT_NAME = 'Robi';
 
+// Colonne d'un objet posé : entière ou à une demi-case (meuble centré dans un espace pair).
+const halfCol = z.number().multipleOf(0.5);
 const citySchema = z.object({ name: z.string().min(1).max(60), tz: z.string().refine(isKnownTz) });
 const windowSchema = z.object({
   id: z.string(),
   kind: z.literal('window'),
-  col: z.number().int(),
+  col: halfCol,
   row: z.number().int(),
   w: z.number().int().min(WINDOW_MIN.w).max(WINDOW_MAX.w),
   h: z.number().int().min(WINDOW_MIN.h).max(WINDOW_MAX.h),
@@ -27,7 +29,7 @@ const decoSchema = z.object({
   id: z.string(),
   kind: z.literal('deco'),
   deco: z.enum(DECO_KINDS),
-  col: z.number().int(),
+  col: halfCol,
   row: z.number().int(),
   w: z.number().int().min(PANEL_MIN.w).max(PANEL_MAX.w).optional(),
   h: z.number().int().min(PANEL_MIN.h).max(PANEL_MAX.h).optional(),
@@ -37,7 +39,7 @@ const decoSchema = z.object({
 });
 const smallSchema = z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3), lit: z.boolean().optional(), city: citySchema.optional() });
 const placedSchema = z.union([
-  z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: z.number().int(), row: z.number().int(), lit: z.boolean().optional(), angle: z.unknown().optional(), unlinked: z.literal(true).optional() })
+  z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: halfCol, row: z.number().int(), lit: z.boolean().optional(), angle: z.unknown().optional(), unlinked: z.literal(true).optional() })
     .transform(({ angle, ...rest }) => (isAngle(angle) && angle !== 0 ? { ...rest, angle } : rest)),
   z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string(), slug: z.string().optional() }),
   smallSchema,
@@ -45,7 +47,7 @@ const placedSchema = z.union([
     id: z.string(),
     kind: z.literal('wall'),
     shape: z.enum(['poster', 'vinyl', 'sleeve-square', 'sleeve-round', 'sleeve-frame']),
-    col: z.number().int(),
+    col: halfCol,
     row: z.number().int(),
     slug: z.string(),
     color: z.enum(['black', 'red', 'blue', 'green', 'gold']).optional(),

@@ -17,7 +17,7 @@ function takeoff(map: WalkMap, plat: Platform, climbing: boolean): Pt | null {
   let best: Pt | null = null;
   let bestScore = Infinity;
   for (let row = plat.row + plat.h - 1; row <= plat.row + plat.h + 1; row++) {
-    for (let col = plat.col - 2; col < plat.col + plat.w + 2; col++) {
+    for (let col = Math.floor(plat.col) - 2; col < plat.col + plat.w + 2; col++) {
       if (!isFree(map, col, row)) continue;
       const p = standPoint(col, row);
       const dx = p.x < plat.x0 ? plat.x0 - p.x : p.x > plat.x1 ? p.x - plat.x1 : 0;

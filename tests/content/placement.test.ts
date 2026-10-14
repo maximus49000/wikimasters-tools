@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { nextFurnitureId } from '../../src/core/library/library-book';
 import type { Layout } from '../../src/core/library/library-types';
 import { hang, moveStanding, placeComputer, placeSmall, placeStanding, placeWindow, setAngle, setScreenCard, storeCard } from '../../src/core/library/room-grid';
-import { DRAFT_ID, canRotate, rotatePlacement, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, spotAt, startPlacement } from '../../src/content/placement';
+import { DRAFT_ID, canRotate, rotatePlacement, commitPlacement, displayOfPlacement, displayPlacement, editPlacement, movePlacement, moveToItem, nudgePlacement, placingView, slidePlacement, spotAt, startPlacement } from '../../src/content/placement';
 
 const COLS = 24;
 const CENTER = spotAt(12, 15);
@@ -157,6 +157,30 @@ describe('retouches pendant le placement', () => {
     expect(nudgePlacement(p, COLS, 1)).toBeNull();
     p = nudgePlacement(p, COLS, -1)!;
     expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ row: 11 });
+  });
+
+  it('◀ ▶ décalent le fantôme d’une demi-colonne, refusé en rouge sur un voisin', () => {
+    let p = movePlacement(startPlacement([], COLS, { type: 'new', kind: 'chair' }, CENTER), COLS, spotAt(10, 15));
+    p = slidePlacement(p, COLS, 1)!;
+    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ col: 10.5 });
+    p = slidePlacement(slidePlacement(p, COLS, -1)!, COLS, -1)!;
+    expect(commitPlacement(p)!.find((x) => x.kind === 'chair')).toMatchObject({ col: 9.5 });
+    // Contre une chaise déjà posée juste à droite : la demi-case de trop chevauche, le fantôme reste dessiné mais refusé.
+    const base = placeStanding([], COLS, 'chair', 12, 12, 'c1')!;
+    const right = (base[0] as { col: number }).col;
+    let q = movePlacement(startPlacement(base, COLS, { type: 'new', kind: 'chair' }, CENTER), COLS, spotAt(right - 4, 15));
+    let lastOk = q.target.col!;
+    while (q.target.ok) {
+      lastOk = q.target.col!;
+      q = slidePlacement(q, COLS, 1)!;
+    }
+    expect(q.target.col).toBe(lastOk + 0.5);
+    expect(placingView(q).ghost).not.toBeNull();
+  });
+
+  it('◀ ▶ ne s’appliquent pas à un objet porté (petit objet, carte rangée)', () => {
+    const p = startPlacement(desk, COLS, { type: 'new', kind: 'computer' }, CENTER);
+    expect(slidePlacement(p, COLS, 1)).toBeNull();
   });
 
   it('une retouche impossible renvoie null', () => {
