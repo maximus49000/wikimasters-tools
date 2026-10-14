@@ -21,6 +21,20 @@ import {
   shiftLayout,
 } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
+import { drawSize, floorCells } from '../../../src/core/library/footprint';
+
+describe('lampadaire arc au-dessus d’un fauteuil', () => {
+  const rowFor = (k: 'armchair' | 'arc-lamp' | 'chair') => 18 - drawSize(k, 0).h;
+  it('le globe passe au-dessus du fauteuil : la pose est acceptée', () => {
+    const layout: Layout = [{ id: 'a', kind: 'armchair', col: 10, row: rowFor('armchair') }];
+    expect(canPlace(layout, 36, 'arc-lamp', 10, rowFor('arc-lamp')).ok).toBe(true);
+  });
+  it('mais pas sur le socle : une chaise ne se pose pas sur ses cases', () => {
+    const layout: Layout = [{ id: 'l', kind: 'arc-lamp', col: 10, row: rowFor('arc-lamp') }];
+    const foot = floorCells('arc-lamp', 0, 10, rowFor('arc-lamp'))[0]!;
+    expect(canPlace(layout, 36, 'chair', foot.col, rowFor('chair')).ok).toBe(false);
+  });
+});
 
 describe('constantes', () => {
   it('décrit la pièce et les fenêtres visibles', () => {

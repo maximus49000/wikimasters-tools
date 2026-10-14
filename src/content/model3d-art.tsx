@@ -106,7 +106,7 @@ function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?
     const base = FURNITURE_MODELS[kind];
     const trim = steampunk ? (STEAMPUNK_TRIM[kind] ?? []) : [];
     const extra = (items ?? []).flatMap((i) => itemPieces(i, steampunk));
-    const g = geometryFrom(trim.length + extra.length > 0 ? { ...base, pieces: [...base.pieces, ...trim, ...extra] } : base, angle, kind === 'lamp');
+    const g = geometryFrom(trim.length + extra.length > 0 ? { ...base, pieces: [...base.pieces, ...trim, ...extra] } : base, angle, base.glow !== undefined);
     if (!g.shapes.some((s) => s.stored)) return g;
     const o = openingOf(base, angle);
     return { ...g, opening: o ? pts(o) : null };
@@ -245,7 +245,7 @@ function Model3DArtImpl({ kind, angle, rect, palette, lit = true, steampunk = fa
   const sy = rect.h / (g.rows * CELL_H);
   return (
     <g data-model3d="" transform={`translate(${r1(rect.x)} ${r1(rect.y)}) scale(${sx} ${sy})`}>
-      <Shapes g={g} palette={palette} lit={lit} content={content} lampShade={kind === 'lamp'} />
+      <Shapes g={g} palette={palette} lit={lit} content={content} lampShade={FURNITURE_MODELS[kind].glow !== undefined} />
     </g>
   );
 }

@@ -352,7 +352,8 @@ export function moveSmall(layout: Layout, id: string, hostId: string): Layout | 
   return layout.map((p) => (p.id === id ? { ...small, hostId, slot } : p));
 }
 
-export const isLamp = (p: Placed): boolean => p.kind === 'lamp' || (p.kind === 'small' && p.item === 'lamp');
+// Lampe : tout meuble debout dont le modèle a un point de lumière (lampadaire, lanterne, lampadaire arc), ou une petite lampe posée.
+export const isLamp = (p: Placed): boolean => (isStanding(p) && FURNITURE_MODELS[p.kind].glow !== undefined) || (p.kind === 'small' && p.item === 'lamp');
 export const isLit = (p: Placed): boolean => !isLamp(p) || (p as { lit?: boolean }).lit !== false;
 
 // Allume ou éteint une lampe (debout ou posée) ; sans effet sur un autre meuble.

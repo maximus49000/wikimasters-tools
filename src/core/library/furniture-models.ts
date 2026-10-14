@@ -99,6 +99,10 @@ const PALM_FRONDS: [number, number, number, number, number][] = [[0, 180, 32, -1
 // Plumets du pampas : bout de chaque tige, relatif au col du vase (21, 60, 15).
 const PAMPAS_ENDS: V3t[] = [[-8, 32, 0], [-6, 24, -4], [0, 33, 0], [7, 24, 4], [9, 30, -3]].map(([x, y, z]) => [21 + x!, 60 + y!, 15 + z!] as V3t);
 
+// Arc du lampadaire arc : Bézier cubique du haut de la tige droite jusqu'au crochet du dôme.
+const ARC: V3t[] = [[149, 118, 16], [149, 219, 16], [40, 219, 16], [19, 176, 16]];
+const arcAt = (t: number): V3t => [0, 1, 2].map((k) => (1 - t) ** 3 * ARC[0]![k]! + 3 * (1 - t) ** 2 * t * ARC[1]![k]! + 3 * (1 - t) * t * t * ARC[2]![k]! + t ** 3 * ARC[3]![k]!) as V3t;
+
 // Continents du globe en (latitude, longitude) degrés, longitude 0 = face avant du globe.
 const CONTINENTS: [number, number][][] = [
   [[70, -10], [71, 28], [60, 40], [45, 38], [37, 12], [36, -8], [44, -9], [50, -4], [58, -6]], // Europe
@@ -534,6 +538,30 @@ export const FURNITURE_MODELS: Record<StandingKind, Model> = {
       },
     ],
   },
+  // Lanterne en papier : socle bas, globe de papier à nervures, chapeau ; tout le globe s'allume.
+  'paper-lantern': {
+    w: 45, d: 45, h: 61, round: true, glow: [22.5, 32, 22.5],
+    pieces: [
+      cyl(22.5, 22.5, 0, 13.5, 5, 'woodDark'),
+      { shape: 'ball', cx: 22.5, cy: 32, cz: 22.5, rx: 22.5, ry: 27, rz: 22.5, fill: 'shade', lines: [{ lat: -45 }, { lat: -22 }, { lat: 0 }, { lat: 22 }, { lat: 45 }], lineFill: 'edge' },
+      cyl(22.5, 22.5, 57, 6.5, 4, 'woodDark'),
+    ],
+  },
+  // Lampadaire arc : socle de marbre rond (seul au sol), tige droite puis grand arc, dôme métal ouvert vers le bas, ampoule.
+  'arc-lamp': {
+    w: 165, d: 32, h: 205, glow: [19, 156, 16],
+    base: { x: 133, z: 0, w: 32, d: 32, round: true },
+    pieces: [
+      cyl(149, 16, 0, 16, 7, 'desk', { color: '#E7E2D8' }),
+      cyl(149, 16, 7, 3, 4, 'metal'),
+      rod([149, 11, 16], [149, 118, 16], 1.2, 'metal'),
+      ...Array.from({ length: 12 }, (_, i) => rod(arcAt(i / 12), arcAt((i + 1) / 12), 1.2, 'metal')),
+      cone(19, 16, 152, 16, 5, 22, 'metal'),
+      cyl(19, 16, 151.5, 15, 0.5, 'shade'),
+      ball(19, 150, 16, 4, 3, 4, 'shade'),
+      cyl(19, 16, 174, 2, 2, 'metal'),
+    ],
+  },
 };
 
 // Rivet ou clou de tapissier : petit disque posé sur une face avant (z = 0 côté spectateur), saillie de 0,4 cm vers l'arrière de z.
@@ -568,5 +596,17 @@ export const STEAMPUNK_TRIM: Partial<Record<StandingKind, Piece[]>> = {
     ...[90, 210, 330].map((deg) => ball(20 + 16 * Math.cos((deg * Math.PI) / 180), 2, 20 + 16 * Math.sin((deg * Math.PI) / 180), 2.5, 2, 2.5, 'text')),
     ...[35, 70, 105].map((y) => cyl(20, 20, y, 2.4, 2.5, 'woodDark')),
     cyl(20, 20, 121.5, 18, 2.5, 'text'), cyl(20, 20, 157, 11.5, 1.2, 'text'), ball(20, 159, 20, 1.6, 1, 1.6, 'text', { layer: 1 }),
+  ],
+  // Lanterne : cerclages de laiton, bague au socle, trois pieds boule.
+  'paper-lantern': [
+    cyl(22.5, 22.5, 14, 17.5, 1.2, 'text'), cyl(22.5, 22.5, 49.2, 17.5, 1.2, 'text'), cyl(22.5, 22.5, 4, 14, 1, 'text'),
+    ...[90, 210, 330].map((deg) => ball(22.5 + 12 * Math.cos((deg * Math.PI) / 180), 1.5, 22.5 + 12 * Math.sin((deg * Math.PI) / 180), 2.2, 1.5, 2.2, 'text')),
+  ],
+  // Lampadaire arc : bandeau de laiton au socle, trois pieds boule, bagues de bois sombre sur la tige, cerclage du dôme.
+  'arc-lamp': [
+    cyl(149, 16, 6.4, 15, 1.2, 'text'),
+    ...[90, 210, 330].map((deg) => ball(149 + 13 * Math.cos((deg * Math.PI) / 180), 1.5, 16 + 13 * Math.sin((deg * Math.PI) / 180), 2.2, 1.5, 2.2, 'text')),
+    cyl(149, 16, 40, 2.6, 2.5, 'woodDark'), cyl(149, 16, 80, 2.6, 2.5, 'woodDark'),
+    cyl(19, 16, 151, 16, 1.5, 'text'),
   ],
 };

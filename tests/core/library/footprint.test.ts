@@ -5,6 +5,18 @@ import { sizeOf } from '../../../src/core/library/furniture-catalog';
 const keys = (cells: { col: number; row: number }[]) => cells.map((c) => `${c.col}-${c.row}`).sort();
 const ANGLES = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 
+describe('lampadaire arc', () => {
+  it('de face : 8 colonnes dessinées, seules les cases du socle (à droite) au sol', () => {
+    expect(drawSize('arc-lamp', 0).w).toBe(8);
+    const cols = floorOffsets('arc-lamp', 0).map((c) => c.col);
+    expect(cols.length).toBeGreaterThan(0);
+    expect(cols.every((c) => c >= 6)).toBe(true);
+  });
+  it('à chaque angle : au plus 4 cases au sol', () => {
+    for (const a of ANGLES) expect(floorOffsets('arc-lamp', a).length).toBeLessThanOrEqual(4);
+  });
+});
+
 describe('angles', () => {
   it('tourne modulo 8', () => {
     expect(rotateAngle(0, 1)).toBe(1);

@@ -12,7 +12,32 @@ const DIMS: Record<string, [number, number, number]> = {
   'peacock-chair': [90, 65, 140], pouf: [55, 55, 40], beanbag: [80, 80, 70], bench: [120, 40, 48],
   dresser: [100, 45, 82], 'side-table': [50, 50, 60], 'cat-tree': [62, 50, 150],
   monstera: [85, 70, 120], strelitzia: [60, 60, 170], palm: [100, 100, 190], cactus: [35, 35, 132], pampas: [42, 30, 122],
+  'paper-lantern': [45, 45, 61], 'arc-lamp': [165, 32, 205],
 };
+
+describe('lanterne et lampadaire arc', () => {
+  it('ont un point de lumière, un abat-jour à allumer et un socle seul au sol pour l’arc', () => {
+    for (const k of ['paper-lantern', 'arc-lamp'] as const) {
+      expect(FURNITURE_MODELS[k].glow, k).toBeDefined();
+      expect(FURNITURE_MODELS[k].pieces.some((p) => p.fill === 'shade'), k).toBe(true);
+    }
+    expect(FURNITURE_MODELS['arc-lamp'].base).toEqual({ x: 133, z: 0, w: 32, d: 32, round: true });
+  });
+  it('garnitures Steampunk dans la boîte', () => {
+    for (const k of ['paper-lantern', 'arc-lamp'] as const) {
+      const m = FURNITURE_MODELS[k];
+      const trim = STEAMPUNK_TRIM[k] ?? [];
+      expect(trim.length, k).toBeGreaterThanOrEqual(6);
+      for (const p of trim) {
+        const [x0, x1, y0, y1, z0, z1] = pieceBounds(p);
+        expect(x0 >= -0.01 && x1 <= m.w + 0.01 && y0 >= -0.01 && y1 <= m.h + 0.01 && z0 >= -0.01 && z1 <= m.d + 0.01, k).toBe(true);
+      }
+    }
+  });
+  it('le lampadaire arc se dessine à chaque angle sans perdre son globe', () => {
+    for (const a of [0, 1, 2, 3, 4, 5, 6, 7] as const) expect(renderModel(FURNITURE_MODELS['arc-lamp'], a).shapes.some((s) => s.fill === 'shade'), 'angle ' + a).toBe(true);
+  });
+});
 
 describe('plantes du mobilier divers', () => {
   const leaves = (k: keyof typeof FURNITURE_MODELS) => FURNITURE_MODELS[k].pieces.flatMap((p) => (p.shape === 'foliage' ? p.leaves : []));

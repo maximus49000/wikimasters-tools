@@ -14,6 +14,14 @@ const geom = { wallH: 340, floorH: 170 };
 const deskTop = 75 * PX_PER_CM_Y;
 const dFrontOf = (row: number, rows: number): number => ((row + rows) * (510 / 18) - geom.wallH) / kOf(geom);
 
+describe('nouvelles lampes', () => {
+  it('la lanterne et le lampadaire arc allumés sont des sources ; éteints, non', () => {
+    const on: Layout = [{ id: 'l1', kind: 'paper-lantern', col: 2, row: 14 }, { id: 'l2', kind: 'arc-lamp', col: 6, row: 7 }];
+    expect(lampsOf(on, geom).map((l) => l.id).sort()).toEqual(['l1', 'l2']);
+    expect(lampsOf(on.map((p) => ({ ...p, lit: false })) as Layout, geom)).toEqual([]);
+  });
+});
+
 describe('boxesOf', () => {
   it('un bureau donne une boîte par pièce de son modèle : plateau en haut, sur toute la largeur et la profondeur', () => {
     const boxes = boxesOf([{ id: 'd', kind: 'desk', col: 2, row: 11 }], geom);

@@ -28,6 +28,12 @@ describe('Model3DArt', () => {
       expect(on).not.toBe(off);
     }
   });
+  it.each(['paper-lantern', 'arc-lamp'] as const)('%s : l’abat-jour s’allume comme celui du lampadaire', (kind) => {
+    const on = draw(<Model3DArt kind={kind} angle={0} rect={rect} palette={paletteOf('scandinave')} lit />).innerHTML;
+    const off = draw(<Model3DArt kind={kind} angle={0} rect={rect} palette={paletteOf('scandinave')} lit={false} />).innerHTML;
+    expect(on.toUpperCase()).toContain('#FFE9A8');
+    expect(off.toUpperCase()).not.toContain('#FFE9A8');
+  });
   it('les garnitures Steampunk n’apparaissent que dans une pièce Steampunk', () => {
     const plain = draw(<Model3DArt kind="desk" angle={0} rect={rect} palette={paletteOf('steampunk')} />);
     const steam = draw(<Model3DArt kind="desk" angle={0} rect={rect} palette={paletteOf('steampunk')} steampunk />);
