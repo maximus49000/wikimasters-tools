@@ -1,7 +1,8 @@
-import { useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { cityMinutes, searchCities } from '../core/library/clock-cities';
 import type { CityTime } from '../core/library/deco';
 import { formatMinutes } from '../core/library/time-setting';
+import { DECO_DIALOG_ATTR } from './deco-dialog-guard';
 import { Btn, Icon, ICONS } from './library-ui';
 
 type Props = {
@@ -13,6 +14,9 @@ type Props = {
 
 // Choix de la ville dont une horloge affiche l'heure (ou retour à l'heure de la scène).
 export function CityPickerDialog({ current, sceneMinutes, onChoose, onClose }: Props): ReactElement {
+  const box = useRef<HTMLDivElement>(null);
+  // Le conteneur prend le focus (sans clavier virtuel) : Échap l'atteint même si rien n'est tapé.
+  useEffect(() => { box.current?.focus(); }, []);
   const [query, setQuery] = useState('');
   const now = new Date();
   const cities = searchCities(query);
@@ -22,7 +26,7 @@ export function CityPickerDialog({ current, sceneMinutes, onChoose, onClose }: P
     if (e.key === 'Escape') onClose();
   };
   return (
-    <div className="wmt-lib-dialog wmt-lib-dialog-top" onKeyDown={onKeyDown} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div ref={box} tabIndex={-1} {...{ [DECO_DIALOG_ATTR]: '' }} className="wmt-lib-dialog wmt-lib-dialog-top" onKeyDown={onKeyDown} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="wmt-lib-dialog-panel" role="dialog" aria-modal="true" aria-label="Heure de quelle ville ?">
         <div className="wmt-lib-row">
           <span className="wmt-lib-sep">Heure de quelle ville ?</span>

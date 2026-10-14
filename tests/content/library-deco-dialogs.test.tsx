@@ -93,4 +93,24 @@ describe('fenêtres ville et écrire', () => {
     await click('[data-action="deco-write"]');
     expect(container.querySelector('[data-deco-text]')!.getAttribute('maxlength')).toBe('140');
   });
+  it('la fenêtre prend le focus à l ouverture, Échap la ferme sans rien retirer', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-id="p1"]');
+    await click('[data-action="deco-write"]');
+    const dialog = q('[data-wmt-deco-dialog]')!;
+    expect(document.activeElement).toBe(dialog);
+    await act(async () => { dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(q('[data-wmt-deco-dialog]')).toBeNull();
+    expect(q('[data-action="deco-write"]')).not.toBeNull();
+    expect(activeRoom(repo.current()!).layout.map((p) => p.id)).toEqual(expect.arrayContaining(['c1', 'p1']));
+  });
+  it('Échap sur window pendant la fenêtre est ignoré par les écouteurs de la pièce', async () => {
+    await click('[data-action="edit"]');
+    await click('[data-id="p1"]');
+    await click('[data-action="deco-write"]');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(q('[data-deco-text]')).not.toBeNull();
+    expect(q('[data-action="deco-write"]')).not.toBeNull();
+    expect(item('p1')).toBeDefined();
+  });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { inDecoDialog } from './deco-dialog-guard';
 import { Icon } from './library-ui';
 
 export type MenuId = 'sky' | 'pets' | 'room';
@@ -24,7 +25,7 @@ export function Popover({ id, open, onOpen, label, icon, children }: { id: MenuI
   useEffect(() => {
     if (!shown) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') closeRef.current();
+      if (event.key === 'Escape' && !inDecoDialog(event)) closeRef.current();
     };
     // composedPath : le panneau peut vivre dans un shadow root (panneaux de la Collection).
     const onDown = (event: PointerEvent): void => {
