@@ -5,7 +5,7 @@
 import { drawSize, type Angle } from './footprint';
 import { FURNITURE_MODELS } from './furniture-models';
 import { CELL_H, CELL_W, levelsOf, localPointOf, pieceBounds, projectOf, type V3t } from './furniture-render3d';
-import { ITEM_MODELS, bookColor, itemModel, itemPieces, type ItemPlacement, type ItemShape } from './item-models';
+import { ITEM_MODELS, bookColor, itemModel, itemPieces, storedFrontCorners, type ItemPlacement, type ItemShape } from './item-models';
 import type { Layout, Placed, ShelfLevel, SmallItem } from './library-types';
 import { SHELF_GAP_CM, SURFACE_SLOTS, boardItems, displayOf, storedWidthCm, type HostKind, type PxRect, type Stored } from './room-grid';
 
@@ -124,12 +124,10 @@ export function placementRectPx(hostKind: HostKind, angle: Angle, rect: PxRect, 
   return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
 }
 
-// Face avant d'un objet rangé (couverture de face, tranche sur la tranche), px de la pièce : haut gauche, haut droit, bas droit, bas gauche
+// Face avant d'un objet rangé (couverture de face, penchée sur son présentoir ; tranche sur la tranche), px de la pièce : haut gauche, haut droit, bas droit, bas gauche
 // (parallélogramme en ¾). Zone touchable de l'objet, là où on le voit.
 export function storedFrontQuad(angle: Angle, rect: PxRect, pl: ItemPlacement): [number, number][] {
-  const m = ITEM_MODELS[pl.shape];
-  const w = pl.display === 'spine' ? m.d : m.w;
-  return ([[pl.x, pl.y + m.h], [pl.x + w, pl.y + m.h], [pl.x + w, pl.y], [pl.x, pl.y]] as const).map(([x, y]) => hostPointPx('shelf', angle, rect, [x, y, pl.z]));
+  return storedFrontCorners(pl).map((q) => hostPointPx('shelf', angle, rect, q));
 }
 
 // Vitre de l'écran (pièce décorée « screen »), px de la pièce, mêmes coins : zone touchable de la carte affichée.

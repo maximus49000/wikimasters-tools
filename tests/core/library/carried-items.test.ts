@@ -100,3 +100,16 @@ describe('objets portés en 3D', () => {
     expect(storedDrawOrder(items, 7)).toEqual([items[2], items[1], items[0]]);
   });
 });
+
+describe('présentoir', () => {
+  it('la zone touchable d’un CD de face suit sa couverture penchée : même largeur, haut remonté vers le fond', () => {
+    const rect = pxRect(rectOf(shelfAt())!);
+    const pl = storedPlacementsOf(stored, 's').get('a')!;
+    const q = storedFrontQuad(0, rect, pl);
+    const flat = storedFrontQuad(0, rect, { ...pl, display: 'spine' });
+    expect(q[1]![0] - q[0]![0]).toBeGreaterThan(flat[1]![0] - flat[0]![0]);
+    // Bas posé sur le socle (au-dessus de la tablette), haut au-dessus du bas.
+    expect(q[3]![1]).toBeLessThan(flat[3]![1]);
+    expect(q[0]![1]).toBeLessThan(q[3]![1]);
+  });
+});
