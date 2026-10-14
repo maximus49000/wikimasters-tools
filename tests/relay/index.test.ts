@@ -62,6 +62,18 @@ describe('routes de transmission', () => {
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get('access-control-allow-origin')).toBe('*');
   });
+
+  it('/geocode valide le texte, garde le CORS et limite le débit', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ results: [] }), { status: 200 })));
+    const short = await call('/geocode?q=a');
+    expect(short.status).toBe(400);
+    expect(short.headers.get('access-control-allow-origin')).toBe('*');
+    expect(await (await call('/geocode?q=Angers')).json()).toEqual({ ok: true, cities: [] });
+    const same = { headers: { 'cf-connecting-ip': '192.0.2.78' } };
+    const send = () => worker.fetch(new Request('https://relais.test/geocode?q=Tokyo', same), env);
+    for (let i = 0; i < 60; i += 1) expect((await send()).status).not.toBe(429);
+    expect((await send()).status).toBe(429);
+  });
   it('/igdb accepte un POST texte valide et refuse le reste', async () => {
     const { detailQuery } = await import('../../src/core/game/igdb-queries');
     vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.startsWith('https://id.twitch.tv/') ? Response.json({ access_token: 't', expires_in: 5_000_000 }) : new Response('[]', { status: 200 }))));
