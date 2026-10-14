@@ -2147,4 +2147,25 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'bibliotheque-v32',
+    theme: 'collection',
+    glyph: '💿',
+    title: 'CD, DVD et jeux sur un présentoir',
+    summary: 'Un CD, un DVD ou un jeu rangé de face penche un peu vers l’arrière, posé sur un petit support, au lieu de se tenir tout droit',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Posés sur un présentoir',
+        text: 'Dans une bibliothèque, un CD, un DVD ou un jeu vidéo présenté de face repose maintenant sur un petit support sombre : un socle, un rebord devant qui retient le bas du boîtier et une béquille au dos. Le boîtier penche un peu vers l’arrière, comme dans un vrai magasin.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À rendre les étagères plus naturelles : un boîtier ne tient pas debout tout seul, droit comme un piquet.' },
+          { label: 'D’où viennent les données', text: 'Les pochettes et les titres viennent de votre collection Wikimasters, comme avant ; le support est dessiné par l’extension.' },
+          { label: 'Comment ça marche', text: 'Le boîtier penche de 14° et le support est moins large que lui : il prend la même place sur la tablette qu’avant, seulement un peu plus de profondeur. L’inclinaison se voit surtout quand la bibliothèque est tournée de biais ; de face, on voit le socle sous le boîtier.' },
+          { label: 'Limites', text: 'Les objets rangés sur la tranche et les livres présentés de face restent droits. Dessin provisoire, une version plus soignée viendra.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
 ];

@@ -549,3 +549,23 @@ describe('petites boules', () => {
     expect(renderModel(rivet, 0).shapes.filter((s) => s.kind === 'poly')).toHaveLength(0);
   });
 });
+
+describe('boîte penchée (lean)', () => {
+  const box = (lean?: number): Piece => ({ shape: 'box', x: 0, y: 0, z: 0, w: 10, h: 20, d: 2, fill: 'metal', ...(lean !== undefined && { lean }) });
+  it('encombrement : penchée vers l’arrière, le haut part vers le fond et descend un peu', () => {
+    const [x0, x1, y0, y1, z0, z1] = pieceBounds(box(30));
+    expect([x0, x1]).toEqual([0, 10]);
+    expect(y0).toBeCloseTo(-2 * Math.sin(Math.PI / 6), 6);
+    expect(y1).toBeCloseTo(20 * Math.cos(Math.PI / 6), 6);
+    expect(z0).toBeCloseTo(0, 6);
+    expect(z1).toBeCloseTo(20 * Math.sin(Math.PI / 6) + 2 * Math.cos(Math.PI / 6), 6);
+    expect(pieceBounds(box(0))).toEqual([0, 10, 0, 20, 0, 2]);
+  });
+  it('penchée vers l’avant, vue de dos : son dos et son dessous (pas le dessus) sont dessinés', () => {
+    const m: Model = { w: 10, d: 20, h: 20, pieces: [{ ...box(-60), z: 18 } as Piece] };
+    const polys = renderModel(m, 4).shapes.filter((s) => s.kind === 'poly');
+    expect(polys).toHaveLength(2);
+    // Dos penché vers l'avant : il remonte vers le haut ; dessous : le plus clair des deux n'est pas un dessus (teinte < dessus).
+    expect(polys.every((s) => s.shade < 1.12)).toBe(true);
+  });
+});

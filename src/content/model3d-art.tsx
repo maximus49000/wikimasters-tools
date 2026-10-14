@@ -3,7 +3,7 @@ import { memo, useId, type ReactElement } from 'react';
 import { hostNativePx } from '../core/library/carried-items';
 import { drawSize, type Angle } from '../core/library/footprint';
 import { FURNITURE_MODELS, STEAMPUNK_TRIM } from '../core/library/furniture-models';
-import { CELL_H, CELL_W, openingOf, overhangOf, projectOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
+import { CELL_H, CELL_W, openingOf, overhangOf, pieceBounds, projectOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
 import { itemModel, itemPieces, type ItemDisplay, type ItemPlacement, type ItemShape } from '../core/library/item-models';
 import type { StandingKind } from '../core/library/library-types';
 import type { PxRect } from '../core/library/room-grid';
@@ -268,9 +268,11 @@ function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, stea
   return cached(`item:${shape}:${display}:${angle}:${steampunk ? 1 : 0}`, () => {
     const m = itemModel(shape, steampunk);
     const pieces = itemPieces({ key: 'item', shape, display, x: 0, y: 0, z: 0, color: BODY }, steampunk);
-    // Sur la tranche, la boîte tournée prend la place de la boîte de face (largeur et profondeur échangées).
-    const turned = display === 'spine' && shape !== 'monitor' && shape !== 'small-plant' && shape !== 'small-lamp';
-    const model: Model = { ...m, ...(turned && { w: m.d, d: m.w }), pieces };
+    // Objet rangé : sa boîte est celle de ses pièces posées (sur la tranche, largeur et profondeur échangées ; de face, le présentoir
+    // l'allonge vers le fond et le boîtier penché).
+    const stored = shape !== 'monitor' && shape !== 'small-plant' && shape !== 'small-lamp';
+    const ext = (k: 1 | 3 | 5) => Math.max(...pieces.map((q) => pieceBounds(q)[k]));
+    const model: Model = { ...m, ...(stored && { w: ext(1), h: ext(3), d: ext(5) }), pieces };
     const g = geometryFrom(model, angle, false);
     // Corps repéré par la couleur témoin, rendu à sa couleur de boîtier par défaut (remplacée au dessin s'il en a une).
     const own = m.pieces.find((q) => q.tag === 'body')?.color;

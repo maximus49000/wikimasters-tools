@@ -20,7 +20,8 @@ type Common = { fill: Fill; tone?: number; layer?: number; color?: string; tag?:
 export type BoxFace = 'front' | 'back' | 'left' | 'right' | 'top';
 export type Decal = { face: BoxFace; key: string };
 export type Piece = Common & (
-  | { shape: 'box'; x: number; y: number; z: number; w: number; h: number; d: number; decals?: Decal[] }
+  // `lean` : boîte penchée vers l'arrière de `lean` degrés autour de son arête bas avant (négatif : vers l'avant) — boîtier sur son présentoir.
+  | { shape: 'box'; x: number; y: number; z: number; w: number; h: number; d: number; decals?: Decal[]; lean?: number }
   // `r2` : rayon du haut (pot évasé) ; par défaut égal à `r`.
   | { shape: 'cyl'; cx: number; cz: number; y: number; r: number; h: number; r2?: number }
   // Globe : `tilt` incline l'axe des pôles vers la droite (degrés) ; `marks` (continents) en (latitude, longitude) degrés, longitude 0 = face avant ;
@@ -185,9 +186,32 @@ const depthOf = (f: Frame, x: number, z: number): number => turn(f, x, z)[1];
 
 type Face = { pts: V3[]; normal: V3 };
 // Face de boîte nommée, avec son repère de décalque : haut gauche, haut droit, bas gauche vus depuis l'extérieur, et sa taille (cm).
-type NamedFace = Face & { name: BoxFace; frame: [V3, V3, V3]; size: [number, number] };
+type NamedFace = Face & { name: BoxFace | 'bottom'; frame: [V3, V3, V3]; size: [number, number] };
 
-function boxFaces(p: Extract<Piece, { shape: 'box' }>): NamedFace[] {
+type BoxPiece = Extract<Piece, { shape: 'box' }>;
+// Penche un point (ou une normale, `vec`) d'une boîte autour de son arête bas avant (y, z) : le haut part vers le fond pour un angle positif.
+function leanOf(p: BoxPiece): (q: V3, vec?: boolean) => V3 {
+  const t = ((p.lean ?? 0) * Math.PI) / 180;
+  const [c, s] = [Math.cos(t), Math.sin(t)];
+  return (q, vec = false) => {
+    const [dy, dz] = vec ? [q.y, q.z] : [q.y - p.y, q.z - p.z];
+    const [y, z] = [dy * c - dz * s, dy * s + dz * c];
+    return vec ? { x: q.x, y, z } : { x: q.x, y: p.y + y, z: p.z + z };
+  };
+}
+
+function boxFaces(p: BoxPiece): NamedFace[] {
+  const faces = straightBoxFaces(p);
+  if (!p.lean) return faces;
+  // Penchée : le dessous peut se voir (béquille vue de dos) ; chaque face tourne avec la boîte.
+  const { x, y, z, w, d } = p;
+  const v = (a: number, b: number, c: number): V3 => ({ x: a, y: b, z: c });
+  faces.push({ name: 'bottom', pts: [v(x, y, z), v(x, y, z + d), v(x + w, y, z + d), v(x + w, y, z)], normal: v(0, -1, 0), frame: [v(x, y, z), v(x + w, y, z), v(x, y, z + d)], size: [w, d] });
+  const L = leanOf(p);
+  return faces.map((fc) => ({ ...fc, pts: fc.pts.map((q) => L(q)), normal: L(fc.normal, true), frame: fc.frame.map((q) => L(q)) as [V3, V3, V3] }));
+}
+
+function straightBoxFaces(p: BoxPiece): NamedFace[] {
   const { x, y, z, w, h, d } = p;
   const v = (a: number, b: number, c: number): V3 => ({ x: a, y: b, z: c });
   const [X, Y, Z] = [x + w, y + h, z + d];
@@ -265,7 +289,15 @@ function leafSamples(l: Leaf): [V3, number][] {
 // Encombrement d'une pièce dans le repère du modèle : [x0, x1, y0, y1, z0, z1] (prudent pour les feuilles : nervure ± demi-largeur).
 export function pieceBounds(p: Piece): [number, number, number, number, number, number] {
   switch (p.shape) {
-    case 'box': return [p.x, p.x + p.w, p.y, p.y + p.h, p.z, p.z + p.d];
+    case 'box': {
+      if (!p.lean) return [p.x, p.x + p.w, p.y, p.y + p.h, p.z, p.z + p.d];
+      // Penchée : encombrement de ses 8 coins penchés.
+      const L = leanOf(p);
+      const pts = [p.y, p.y + p.h].flatMap((y) => [p.z, p.z + p.d].map((z) => L({ x: p.x, y, z })));
+      const ys = pts.map((q) => q.y);
+      const zs = pts.map((q) => q.z);
+      return [p.x, p.x + p.w, Math.min(...ys), Math.max(...ys), Math.min(...zs), Math.max(...zs)];
+    }
     case 'cyl': {
       const r = Math.max(p.r, p.r2 ?? p.r);
       return [p.cx - r, p.cx + r, p.y, p.y + p.h, p.cz - r, p.cz + r];
