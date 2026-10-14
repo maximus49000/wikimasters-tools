@@ -1,4 +1,5 @@
 // Objets décoratifs du mur : horloges, météomètres et panneaux à texte (spec 2026-10-14-horloges-meteo-panneaux).
+import type { Placed } from './library-types';
 export const PANEL_KINDS = ['panel-chalk', 'panel-letter', 'panel-neon', 'panel-cork'] as const;
 export const CLOCK_KINDS = ['wall-clock', 'digital-clock'] as const;
 export const DECO_KINDS = [...CLOCK_KINDS, 'weather-station', 'barometer', ...PANEL_KINDS] as const;
@@ -21,5 +22,7 @@ const FIXED: Record<Exclude<DecoKind, (typeof PANEL_KINDS)[number]>, { w: number
 
 export const isPanel = (deco: DecoKind): deco is (typeof PANEL_KINDS)[number] => (PANEL_KINDS as readonly string[]).includes(deco);
 export const isWallClock = (deco: DecoKind): boolean => (CLOCK_KINDS as readonly string[]).includes(deco);
+// Objets dont on règle la ville : les horloges murales (les petits objets horloge arrivent avec la tâche 9).
+export const hasCitySetting = (p: Placed): boolean => p.kind === 'deco' && isWallClock(p.deco);
 // Taille à la pose : fixe, ou défaut du panneau (néon plus large que haut).
 export const decoDefaultSize = (deco: DecoKind): { w: number; h: number } => (isPanel(deco) ? (deco === 'panel-neon' ? { w: 5, h: 2 } : { w: 4, h: 3 }) : FIXED[deco]);
