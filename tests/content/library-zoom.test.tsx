@@ -182,10 +182,56 @@ describe('zoom sur un meuble', () => {
     expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
     expect(push).toHaveBeenCalledTimes(1);
     expect(history.state).toMatchObject({ wmtZoom: true });
-    // un second retour ferme alors le zoom
+    // un second retour ramène du second zoom à la vue de face (le zoom reste)
+    await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
+    await advance(500);
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')).not.toBeNull();
+    // un troisième ferme alors le zoom
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     await advance(500);
     expect(q('[data-furniture-zoom]')).toBeNull();
+  });
+  it('second zoom : ← revient à la vue de face, puis à la pièce', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await click('[data-zoom-board="1"]');
+    expect(q('[data-shelf-board="1"]')).not.toBeNull();
+    await click('[data-action="zoom-back"]');
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
+    await click('[data-action="zoom-back"]');
+    await advance(500);
+    expect(q('[data-furniture-zoom]')).toBeNull();
+  });
+  it('second zoom : Échap et le fond reviennent à la vue de face', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await click('[data-zoom-board="0"]');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')).not.toBeNull();
+    await click('[data-zoom-board="0"]');
+    await click('[data-zoom-backdrop]');
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
+  });
+  it('second zoom : retour Android → vue de face, le zoom reste et garde son entrée d’historique', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    const push = vi.spyOn(history, 'pushState');
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    await click('[data-zoom-board="0"]');
+    await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
+    expect(q('[data-shelf-board]')).toBeNull();
+    expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
+    expect(history.state).toMatchObject({ wmtZoom: true });
+    expect(push).toHaveBeenCalledTimes(2);
   });
   it('bibliothèques liées : toucher la vide ouvre les deux', async () => {
     await seed([{ id: 'a', kind: 'shelf', col: 0, row: 6 }, { id: 'b', kind: 'shelf', col: 4, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 'b', level: 0, order: 0, slug: 'Daft_Punk' }]);

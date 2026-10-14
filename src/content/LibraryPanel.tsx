@@ -222,14 +222,25 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const viewingRef = useRef(viewing);
   viewingRef.current = viewing;
   // Zoom de face sur une étagère ou un bureau (Visiter) ; zoomRef : zoom courant relu par les gestionnaires.
-  // Le retour Android/navigateur ferme d'abord la fiche ouverte par-dessus le zoom.
+  // Le retour Android/navigateur ferme d'abord la fiche ouverte par-dessus le zoom, puis le second zoom (retour à la vue de face).
   const { zoom, open: openZoom, close: closeZoom, reset: resetZoom, setLevel: setZoomLevel } = useFurnitureZoom(() => {
-    if (!viewingRef.current) return false;
-    setViewing(null);
-    return true;
+    if (viewingRef.current) {
+      setViewing(null);
+      return true;
+    }
+    if (zoomRef.current?.level != null) {
+      setZoomLevel(null);
+      return true;
+    }
+    return false;
   });
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  // ←, Échap, fond : du second zoom à la vue de face, puis de la vue de face à la pièce.
+  const zoomBack = (): void => {
+    if (zoomRef.current?.level != null) setZoomLevel(null);
+    else closeZoom();
+  };
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
   const [drawer, setDrawer] = useState<DrawerState>(INITIAL_DRAWER);
@@ -355,7 +366,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const zoomOpen = zoom !== null;
   useEffect(() => {
     if (!zoomOpen) return;
-    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current) closeZoom(); };
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current) zoomBack(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [zoomOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1106,7 +1117,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             level={zoom.level}
             onLevel={(lv) => setZoomLevel(lv)}
             onCard={(slug) => setViewing(slug)}
-            onBack={closeZoom}
+            onBack={zoomBack}
           />
         )}
         {viewing && roomCards.cards[viewing] && (
