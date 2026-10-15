@@ -1,6 +1,7 @@
 package io.github.maximus49000.wikimasterstools;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
@@ -19,6 +20,9 @@ import com.spotify.protocol.types.Artist;
 import com.spotify.protocol.types.Empty;
 import com.spotify.protocol.types.PlayerState;
 import com.spotify.protocol.types.Track;
+import com.spotify.sdk.android.auth.AuthorizationClient;
+import com.spotify.sdk.android.auth.AuthorizationRequest;
+import com.spotify.sdk.android.auth.AuthorizationResponse;
 
 import org.json.JSONObject;
 
@@ -37,6 +41,9 @@ final class SpotifyRemote {
 
     private static final String DISCONNECTED = "{\"connected\":false}";
     private static final String IMAGE_PREFIX = "spotify:image:";
+    // Accord de l'utilisateur (écran de Spotify ouvert par Wikimasters) : code de retour de l'activité.
+    static final int ACCORD_REQUEST = 0x5370;
+    private static final String[] ACCORD_SCOPES = {"app-remote-control"};
 
     private final Activity activity;
     private final Sink sink;
@@ -54,6 +61,9 @@ final class SpotifyRemote {
     private boolean silentPending;
     // Identifiant que la tentative en cours doit encore recevoir : remplacée ou annulée, elle répond `failed`.
     private String[] openPending = {null};
+    // Accord en cours : la tentative qui l'a demandé et l'identifiant qui attend la réponse.
+    private int accordAttempt = -1;
+    private String[] accordPending;
 
     SpotifyRemote(Activity activity, Sink sink) {
         this.activity = activity;
@@ -71,17 +81,21 @@ final class SpotifyRemote {
         drop();
         this.clientId = clientId;
         this.redirectUri = redirectUri;
-        open(id, !silent);
+        open(id, !silent, false);
     }
 
     // `id` null : reconnexion silencieuse d'onStart, personne n'attend la réponse.
-    private void open(String id, boolean showAuthView) {
+    // `interactive` : une lecture demandée par l'utilisateur, qui peut ouvrir l'écran d'accord.
+    // `accordDone` : l'accord vient d'être demandé pour cette lecture ; on ne le redemande pas (jamais de boucle).
+    private void open(String id, boolean interactive, boolean accordDone) {
         final int mine = ++attempt;
-        silentPending = !showAuthView;
+        silentPending = !interactive;
         // Chaque id n'est répondu qu'une fois (un échec ultérieur, perte de connexion, ne le répète pas).
         final String[] pending = {id};
         openPending = pending;
-        ConnectionParams params = new ConnectionParams.Builder(clientId).setRedirectUri(redirectUri).showAuthView(showAuthView).build();
+        // Jamais `showAuthView(true)` : Spotify ouvrirait son écran d'accord depuis l'arrière-plan, Android 16 le bloque et le SDK
+        // attendrait sans fin. Sans accord, le SDK répond aussitôt UserNotAuthorizedException et Wikimasters ouvre l'accord (askAccord).
+        ConnectionParams params = new ConnectionParams.Builder(clientId).setRedirectUri(redirectUri).showAuthView(false).build();
         SpotifyAppRemote.connect(activity, params, new Connector.ConnectionListener() {
             @Override
             public void onConnected(SpotifyAppRemote connected) {
@@ -110,9 +124,51 @@ final class SpotifyRemote {
                 remote = null;
                 subscription = null;
                 emit(DISCONNECTED);
+                // Accord jamais donné : Spotify ne peut pas afficher son écran depuis l'arrière-plan (Android 16), Wikimasters l'ouvre.
+                if (interactive && !accordDone && error instanceof UserNotAuthorizedException && pending[0] != null && askAccord(mine, pending)) return;
                 reply(pending, codeOf(error));
             }
         });
+    }
+
+    // Ouvre l'écran d'accord de Spotify depuis notre activité (au premier plan, donc autorisée) ; la réponse arrive dans onActivityResult.
+    private boolean askAccord(int mine, String[] pending) {
+        try {
+            AuthorizationRequest request = new AuthorizationRequest.Builder(clientId, AuthorizationResponse.Type.TOKEN, redirectUri)
+                    .setScopes(ACCORD_SCOPES)
+                    .build();
+            accordAttempt = mine;
+            accordPending = pending;
+            AuthorizationClient.openLoginActivity(activity, ACCORD_REQUEST, request);
+            return true;
+        } catch (RuntimeException error) {
+            accordPending = null;
+            return false;
+        }
+    }
+
+    // Retour de l'écran d'accord : accepté, on reconnecte (sans redemander l'accord) ; refusé par Spotify (clé, paquet, empreinte),
+    // `not-authorized` ; annulé, `failed` (l'accord sera reproposé à une prochaine lecture).
+    boolean onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode != ACCORD_REQUEST) return false;
+        String[] pending = accordPending;
+        int mine = accordAttempt;
+        accordPending = null;
+        if (pending == null) return true;
+        if (mine != attempt) {
+            reply(pending, "failed");
+            return true;
+        }
+        AuthorizationResponse response = AuthorizationClient.getResponse(resultCode, data);
+        AuthorizationResponse.Type type = response.getType();
+        if (type == AuthorizationResponse.Type.TOKEN || type == AuthorizationResponse.Type.CODE) {
+            String id = pending[0];
+            pending[0] = null;
+            if (id != null) open(id, true, true);
+            return true;
+        }
+        reply(pending, type == AuthorizationResponse.Type.ERROR ? "not-authorized" : "failed");
+        return true;
     }
 
     private void reply(String[] pending, String code) {
@@ -157,7 +213,8 @@ final class SpotifyRemote {
     }
 
     void onStart() {
-        if (resumeOnStart && remote == null && clientId != null) open(null, false);
+        // Retour de l'écran d'accord : c'est sa réponse qui reconnecte, pas la reprise silencieuse.
+        if (resumeOnStart && remote == null && clientId != null && accordPending == null) open(null, false, false);
     }
 
     void onStop() {

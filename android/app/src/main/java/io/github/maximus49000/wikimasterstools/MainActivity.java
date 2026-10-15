@@ -555,6 +555,14 @@ public class MainActivity extends Activity {
         super.onStop();
     }
 
+    // Réponse de l'écran d'accord de Spotify, ouvert par SpotifyRemote.
+    @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (spotifyRemote != null) spotifyRemote.onActivityResult(requestCode, resultCode, data);
+    }
+
     @Override
     protected void onDestroy() {
         if (spotifyRemote != null) spotifyRemote.release();
