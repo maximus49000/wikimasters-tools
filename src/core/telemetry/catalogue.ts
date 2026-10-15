@@ -5,7 +5,7 @@ export type Service = (typeof SERVICES)[number];
 
 // Valeurs permises du détail ; `[]` = pas de détail.
 export const ACTIONS = {
-  'lecture-musique': ['spotify', 'tidal'],
+  'lecture-musique': ['spotify', 'tidal', 'spotify-sdk'],
   'liaison-compte': ['spotify', 'tidal'],
   'bo-lue': [],
   'bande-annonce-lue': [],
@@ -34,6 +34,8 @@ export const ERRORS = {
   'api-reseau': SERVICES,
   'js-erreur': [],
   'lecture-echec': ['spotify', 'tidal', 'video'],
+  // Échecs du SDK Spotify du téléphone (APK), avant le repli sur la Web API.
+  'lecture-sdk': ['not-installed', 'not-logged-in', 'not-authorized', 'unsupported', 'failed'],
 } as const satisfies Record<string, readonly string[]>;
 
 export const ACTIVE_NAME = 'jour-actif';

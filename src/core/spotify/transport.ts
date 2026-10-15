@@ -1,4 +1,5 @@
 import type { SpotifyFetch } from './spotify-session';
+import type { SpotifyRemote } from './remote-types';
 
 // Ce dont la surcouche a besoin pour parler à Spotify ; l'extension et l'APK le fournissent chacun à leur façon.
 export type SpotifyEnv = {
@@ -11,6 +12,8 @@ export type SpotifyEnv = {
   deviceTypes?: readonly string[];
   // Adresse de retour propre à un autre service (l'APK en a une par service) ; absente : `redirectUri` vaut pour tous.
   redirectUriFor?: (service: 'tidal') => Promise<string>;
+  // Lecture par l'appli Spotify du téléphone (SDK App Remote) ; absente sur l'ordinateur et sur un ancien APK.
+  remote?: SpotifyRemote;
 };
 
 type FetchInit = { method?: string; headers?: Record<string, string>; body?: string };

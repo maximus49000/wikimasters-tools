@@ -24,9 +24,10 @@ export const SPOTIFY_KEY_GUIDE: TourStep = {
   title: 'Utiliser sa propre clé Spotify',
   text: 'Spotify limite l’application partagée à quelques utilisateurs : chacun crée sa propre application Spotify, gratuite, et colle son Client ID dans Paramètre d’extension, puis Lecteur.',
   details: [
-    { label: 'Créer sa clé, pas à pas', text: '1. Créez un compte Spotify, puis ouvrez developer.spotify.com/dashboard. 2. « Create app », cochez « Web API ». 3. Dans « Redirect URI », collez les adresses affichées par l’extension dans Lecteur (bouton copier). 4. Enregistrez, puis copiez le « Client ID ». 5. Dans « User Management » de l’application, ajoutez l’adresse e-mail de votre compte Spotify. 6. Collez le Client ID dans Lecteur, puis « Lier Spotify ».' },
+    { label: 'Créer sa clé, pas à pas', text: '1. Créez un compte Spotify, puis ouvrez developer.spotify.com/dashboard. 2. « Create app », cochez « Web API » et, si vous utilisez l’application Android, « Android ». 3. Dans « Redirect URI », collez les adresses affichées par l’extension dans Lecteur (bouton copier). 4. Sur Android : dans « Android packages », collez le nom du paquet et l’empreinte SHA-1 affichés dans Lecteur, puis « Add ». 5. Enregistrez, puis copiez le « Client ID ». 6. Dans « User Management » de l’application, ajoutez l’adresse e-mail de votre compte Spotify. 7. Collez le Client ID dans Lecteur, puis « Lier Spotify ».' },
     { label: 'Limites', text: 'Une application Spotify en mode développement accepte 25 utilisateurs au plus, que vous ajoutez à la main. Lancer la lecture demande Spotify Premium. Spotify peut aussi demander de patienter : l’extension affiche alors l’heure de reprise.' },
     { label: 'Ce que devient votre clé', text: 'La clé reste sur votre appareil et n’est jamais envoyée ailleurs. « Délier » la conserve. En changer ou l’effacer délie votre compte, qu’il faudra lier de nouveau. Si vous étiez déjà lié avant cette mise à jour, votre clé est déjà enregistrée.' },
+    { label: 'Sur Android', text: 'Avec les Android packages déclarés, la musique se lance dans l’appli Spotify du téléphone sans quitter Wikimasters, même si Spotify est fermé. La première fois, Spotify demande votre accord une seule fois. Sans cette déclaration, la lecture passe par l’ancienne méthode.' },
   ],
 };
 
@@ -318,12 +319,21 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'ecouter-v2',
+    id: 'ecouter-v3',
     theme: 'ecoute',
     glyph: '🎵',
     title: 'Écouter une carte',
     summary: 'Spotify ou Tidal pour les cartes de musique',
     steps: [
+      {
+        target: null,
+        title: 'Lecture directe sur Android',
+        text: 'Sur l’application Android, la musique se lance directement dans l’appli Spotify, même fermée, sans quitter Wikimasters. Si tu as ta propre clé : ajoute une fois la ligne Android affichée dans Paramètre d’extension, puis Lecteur.',
+        details: [
+          { label: 'Comment ça marche', text: 'L’application pilote l’appli Spotify du téléphone (kit officiel de Spotify) : lecture, pause et titre en cours passent par elle, sans limite d’appels. La recherche des titres et les pochettes passent toujours par Spotify sur Internet.' },
+          { label: 'Limites', text: 'Il faut l’appli Spotify installée, un compte connecté et Spotify Premium. Si la lecture directe n’est pas possible, l’ancienne méthode prend le relais et l’écran Lecteur indique pourquoi.' },
+        ],
+      },
       {
         target: '[data-wmt-listen]',
         title: 'Écouter',
