@@ -50,31 +50,37 @@ final class SpotifyRemote {
     private int attempt;
     // Activité terminée : plus rien n'est écrit à la WebView.
     private boolean released;
-    // Une reconnexion silencieuse (onStart) est en cours.
+    // Une reconnexion silencieuse (onStart ou page) est en cours.
     private boolean silentPending;
+    // Identifiant que la tentative en cours doit encore recevoir : remplacée ou annulée, elle répond `failed`.
+    private String[] openPending = {null};
 
     SpotifyRemote(Activity activity, Sink sink) {
         this.activity = activity;
         this.sink = sink;
     }
 
-    void connect(String id, String clientId, String redirectUri) {
+    // `silent` : sans écran d'accord (reconnexion au démarrage de la page) ; annulée par onStop comme celle d'onStart.
+    void connect(String id, String clientId, String redirectUri, boolean silent) {
         if (remote != null && remote.isConnected() && clientId.equals(this.clientId)) {
+            // Déjà relié (nouvelle page après une navigation) : la page n'a pas encore l'état du lecteur, on le lui renvoie.
+            remote.getPlayerApi().getPlayerState().setResultCallback(state -> emit(stateJson(state)));
             answer(id, "");
             return;
         }
         drop();
         this.clientId = clientId;
         this.redirectUri = redirectUri;
-        open(id, true);
+        open(id, !silent);
     }
 
-    // `id` null : reconnexion silencieuse, personne n'attend la réponse.
+    // `id` null : reconnexion silencieuse d'onStart, personne n'attend la réponse.
     private void open(String id, boolean showAuthView) {
         final int mine = ++attempt;
         silentPending = !showAuthView;
         // Chaque id n'est répondu qu'une fois (un échec ultérieur, perte de connexion, ne le répète pas).
         final String[] pending = {id};
+        openPending = pending;
         ConnectionParams params = new ConnectionParams.Builder(clientId).setRedirectUri(redirectUri).showAuthView(showAuthView).build();
         SpotifyAppRemote.connect(activity, params, new Connector.ConnectionListener() {
             @Override
@@ -209,6 +215,8 @@ final class SpotifyRemote {
     private void drop() {
         attempt++;
         silentPending = false;
+        // La tentative en cours ne rappellera peut-être jamais : la page reçoit `failed` tout de suite.
+        reply(openPending, "failed");
         if (subscription != null) subscription.cancel();
         subscription = null;
         if (remote != null) SpotifyAppRemote.disconnect(remote);

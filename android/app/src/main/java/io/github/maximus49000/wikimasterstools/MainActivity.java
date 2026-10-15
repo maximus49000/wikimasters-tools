@@ -273,13 +273,13 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void connect(String id, String clientId, String redirectUri) {
+        public void connect(String id, String clientId, String redirectUri, boolean silent) {
             String callId = clean(id);
             if (clientId == null || !clientId.matches("[0-9a-f]{32}") || redirectUri == null || !redirectUri.equals(SPOTIFY_REDIRECT_SCHEME + "://spotify")) {
                 runOnUiThread(() -> spotifyRemote.notify(callId));
                 return;
             }
-            runOnUiThread(() -> spotifyRemote.connect(callId, clientId, redirectUri));
+            runOnUiThread(() -> spotifyRemote.connect(callId, clientId, redirectUri, silent));
         }
 
         @JavascriptInterface
