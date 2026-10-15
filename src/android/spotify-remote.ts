@@ -19,7 +19,7 @@ export type RemoteWindow = {
 };
 
 // La connexion peut attendre l'accord de l'utilisateur dans Spotify ; le reste est local au téléphone.
-const TIMEOUTS = { connect: 60_000, call: 10_000 };
+const TIMEOUTS = { connect: 90_000, call: 10_000 };
 const CODES: readonly RemoteErrorCode[] = ['not-installed', 'not-logged-in', 'not-authorized', 'unsupported', 'failed'];
 const codeOf = (raw: string): RemoteErrorCode => CODES.find((code) => code === raw) ?? 'failed';
 

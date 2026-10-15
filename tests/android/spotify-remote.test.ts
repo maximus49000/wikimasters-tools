@@ -53,7 +53,7 @@ describe('createAndroidSpotifyRemote', () => {
     await expect(odd).rejects.toMatchObject({ code: 'failed' });
   });
 
-  it('abandonne après le délai : 60 s pour connect, 10 s pour le reste', async () => {
+  it('abandonne après le délai : 90 s pour connect (temps d’accepter l’accord Spotify), 10 s pour le reste', async () => {
     vi.useFakeTimers();
     const { win } = fakeWindow();
     const remote = createAndroidSpotifyRemote(win)!;
@@ -67,7 +67,9 @@ describe('createAndroidSpotifyRemote', () => {
     void connect.catch(() => (settled = true));
     await vi.advanceTimersByTimeAsync(1);
     expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(50_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(20_000);
     await connectFailed;
   });
 
