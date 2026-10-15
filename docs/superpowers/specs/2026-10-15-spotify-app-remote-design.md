@@ -1,6 +1,6 @@
-# Lecture Spotify par le SDK Android App Remote — design (en cours)
+# Lecture Spotify par le SDK Android App Remote — design
 
-Date : 2026-10-15. **Conception interrompue après la section 3** (sections 1 à 3 validées dans la conversation, section 4 à présenter). Document de reprise : à compléter sur un autre ordinateur, puis plan d'implémentation (writing-plans).
+Date : 2026-10-15. Sections 1 à 4 validées (commencée sur un ordinateur, terminée sur un autre). Prochaine étape : plan d'implémentation (writing-plans).
 
 ## Problème
 
@@ -82,7 +82,7 @@ Sur l'APK, lancer une musique échoue souvent. La lecture passe par la Web API (
 - `src/app/overlay.ts` (création de `spotifyApi`) : si `spotify.remote` existe, `play` / `pause` / `playerState` viennent de la couche lecture ; recherche et pochettes restent sur `spotifyApi`.
 - `src/content/player-source.ts` : abonnement facultatif à `subscribe` (rafraîchissement immédiat) ; la boucle reste, sans réseau tant que le SDK est connecté.
 
-## Section 3 — écran Lecteur, WikiHow, nouveautés (présentée, validation à confirmer)
+## Section 3 — écran Lecteur, WikiHow, nouveautés (validée)
 
 **Lecteur (`src/content/SpotifyKeySettings.tsx`), APK seulement** : bloc « Lecture sur ce téléphone » sous les adresses de retour.
 - Ligne d'état :
@@ -100,23 +100,30 @@ Sur l'APK, lancer une musique échoue souvent. La lecture passe par la Web API (
 
 **Suivi d'usage** : `track('lecture-musique', 'spotify')` précise la voie (`sdk` ou `web-api`) ; `reportError` avec le code d'erreur SDK.
 
-## Section 4 — tests et livraison (à présenter)
+## Section 4 — tests et livraison (validée)
 
-Pistes : `tests/core/spotify/remote-playback.test.ts` (faux `SpotifyRemote` + fausse Web API : titre seul, album avec position, liste + file d'attente, repli par code, état poussé, reconnexion silencieuse) ; `tests/android/spotify-remote.test.ts` (pont : identifiants, délais, état) ; tests de `SpotifyKeySettings` (bloc APK) ; vérification manuelle sur téléphone (Spotify fermé, en veille, clé sans Android).
+**Tests automatiques** (seules les familles touchées : Spotify, Android, réglages)
+- `tests/core/spotify/remote-playback.test.ts` (faux `SpotifyRemote` + fausse Web API) : reprise ; titre d'album à sa position (`skipToIndex`) ; album depuis le début ; liste = 1er titre puis 10 `queue` au plus ; un `queue` en échec n'arrête pas la lecture ; repli Web API pour chaque code d'erreur ; état poussé lu sans réseau ; connexion partagée entre appels simultanés ; reconnexion silencieuse au démarrage ; délier / changer de clé remet le statut à zéro.
+- `tests/android/spotify-remote.test.ts` (pont) : identifiants des réponses, délais (60 s `connect`, 10 s le reste), rejet `RemoteError(code)`, `undefined` sans `WmtSpotifyRemote` (ancien APK), `onState`.
+- Tests de `SpotifyKeySettings` : bloc visible sur l'APK seulement, une ligne d'état par statut, boutons copier, « Réessayer la lecture directe ».
 
-Question laissée ouverte : construire un APK de pré-production depuis la branche du correctif (aujourd'hui `scripts/publish-preprod.mjs` ne construit que depuis `main`), pour tester exactement ce qui partira en production.
+**Vérification manuelle sur le téléphone (S26, Android d'abord)**, sur la pré-production publiée après le report dans `main` : Spotify force-stoppé ; Spotify en veille ; premier accord dans Spotify ; titre seul ; titre au milieu d'un album ; liste d'un artiste ; pause / reprise depuis le mini-lecteur ; arrière-plan puis retour ; clé sans Android → repli Web API + ligne « n'autorise pas encore ce téléphone ». Ne pas tester pendant qu'une autre personne écoute sur le compte.
 
-## Livraison
+**Question tranchée (APK de pré-production) :** pas d'APK de pré-production construit depuis la branche du correctif ni de modification de `scripts/publish-preprod.mjs`. La pré-production est publiée comme d'habitude depuis `main` après le report du correctif ; elle porte un numéro plus élevé (≈ 1550) et contient aussi les évolutions de `main`, ce qui est accepté.
 
-- Travail sur `fix/spotify-app-remote`, partie de `origin/production` (ce document y est commité) ; jamais depuis `main`.
-- PR vers `production` (via `fix/production`), puis report dans `main`.
-- Après validation, `npm run corriger` (`scripts/fix-release.mjs`) publie l'APK de production depuis `production` seule.
+## Livraison (processus habituel d'un correctif)
+
+1. Travail sur `fix/spotify-app-remote`, partie de `origin/production` ; jamais depuis `main`.
+2. PR vers `production` (via `fix/production`) : `production` ne reçoit que le correctif, aucune évolution de `main`.
+3. Report dans `main` (merge `production` → `main`), puis `npm run preprod` sans demander : la pré-production reçoit le correctif.
+4. Vérification manuelle sur le téléphone (pré-production).
+5. Production : `npm run corriger` (`scripts/fix-release.mjs`, APK depuis `production` seule) **uniquement sur ordre explicite** du propriétaire.
 
 ## Déclaration de la clé Spotify (à faire une fois)
 
 0. **Empreinte SHA-1**, sur le poste qui construit les APK :
    ```powershell
-   & "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -list -v -keystore "$env:USERPROFILE\.android\debug.keystore" -alias androiddebugkey -storepass android
+   & "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -J-Duser.language=en -list -v -keystore "$env:USERPROFILE\.android\debug.keystore" -alias androiddebugkey -storepass android
    ```
    Garder la valeur de la ligne `SHA1:`.
 1. https://developer.spotify.com/dashboard → l'appli de la clé.
@@ -129,8 +136,4 @@ Question laissée ouverte : construire un APK de pré-production depuis la branc
 
 Faire de même sur l'appli de la clé historique partagée (`LEGACY_SPOTIFY_CLIENT_ID`) : ses utilisateurs n'auront alors rien à faire.
 
-## Reprise
-
-1. `git fetch` puis `git switch fix/spotify-app-remote`.
-2. Faire valider la section 3, présenter la section 4, trancher la question de l'APK pré-prod.
-3. Relire ce document (sans « à présenter » restant), puis plan d'implémentation (`docs/superpowers/plans/`).
+**Fait le 2026-10-15** sur l'appli « 30d88341… », qui est aussi la clé historique partagée (`LEGACY_SPOTIFY_CLIENT_ID`) : les utilisateurs migrés n'ont rien à faire : Android coché, les deux paquets déclarés avec l'empreinte `C2:21:A4:37:FA:93:03:8C:31:B1:61:D1:B5:49:68:A9:C1:26:F3:9E` (clé de debug de ce poste, identique à celle des APK de `livrables/`, vérifiée par `apksigner`). Sous Windows en français, `keytool -list -v` plante (`MissingFormatArgumentException`) : ajouter `-J-Duser.language=en`.
