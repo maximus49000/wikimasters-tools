@@ -4,6 +4,8 @@ import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/stor
 import { createListenRepo } from '../../src/core/music/listen-repo';
 import type { CardMusic } from '../../src/core/music/wikidata-music';
 import { SpotifyError } from '../../src/core/spotify/errors';
+import { setTelemetry } from '../../src/core/telemetry/registry';
+import type { Telemetry } from '../../src/core/telemetry/telemetry';
 
 const card = (slug: string) => ({ slug, title: slug });
 
@@ -13,6 +15,7 @@ type Over = {
   natures?: string[];
   music?: Record<string, object>;
   launchApp?: () => void;
+  playRoute?: () => 'sdk' | 'web-api';
   // Stockage partagé entre deux services : simule deux sessions de la page.
   store?: KeyValueStore;
   // Wikidata n'a pas (encore) répondu pour la carte.
@@ -59,6 +62,7 @@ function setup(over: Over = {}) {
     session,
     api: api as never,
     onPlayed,
+    ...(over.playRoute ? { playRoute: over.playRoute } : {}),
     ...(over.launchApp ? { launchApp: over.launchApp, sleep: async () => undefined } : {}),
   });
   return { service, api, session, sessionListeners, onPlayed, resolve, store };
@@ -312,7 +316,7 @@ describe('createMusicService.play', () => {
   it('lance une piste d’album dans son contexte et prévient le lecteur', async () => {
     const { service, api } = setup();
     expect(await service.play(track, { kind: 'album', items: [track], albumUri: 'spotify:album:AAA' })).toBeNull();
-    expect(api.play).toHaveBeenCalledWith({ contextUri: 'spotify:album:AAA', offsetUri: 'spotify:track:1' });
+    expect(api.play).toHaveBeenCalledWith({ contextUri: 'spotify:album:AAA', offsetUri: 'spotify:track:1', offsetIndex: 0 });
   });
 
   it('lance un morceau seul', async () => {
@@ -451,5 +455,43 @@ describe('createMusicService.musicSlugs', () => {
   it('ignore une carte non musicale', async () => {
     const { service } = setup({ natures: ['Q11424'] });
     expect((await service.musicSlugs([card('Abbey_Road')])).size).toBe(0);
+  });
+});
+
+describe('createMusicService.play : position et voie', () => {
+  const listen = {
+    kind: 'album' as const,
+    albumUri: 'spotify:album:A',
+    items: [
+      { uri: 'spotify:track:1', title: 'Un', artist: 'X' },
+      { uri: 'spotify:track:2', title: 'Deux', artist: 'X' },
+    ],
+  };
+
+  it("donne la position du titre dans l'album (le SDK en a besoin, la Web API l'ignore)", async () => {
+    const { api, service } = setup();
+    await service.play(listen.items[1]!, listen);
+    expect(api.play).toHaveBeenCalledWith({ contextUri: 'spotify:album:A', offsetUri: 'spotify:track:2', offsetIndex: 1 });
+  });
+
+  it('sans titre trouvé dans la liste, pas de position (jamais un mauvais titre)', async () => {
+    const { api, service } = setup();
+    await service.play({ uri: 'spotify:track:99', title: 'Hors liste', artist: 'X' }, listen);
+    expect(api.play).toHaveBeenCalledWith({ contextUri: 'spotify:album:A', offsetUri: 'spotify:track:99' });
+  });
+
+  it('note la voie de lecture : spotify-sdk par le SDK, spotify par la Web API', async () => {
+    const track = vi.fn();
+    setTelemetry({ track, reportError: vi.fn() } as unknown as Telemetry);
+    try {
+      const sdk = setup({ playRoute: () => 'sdk' });
+      await sdk.service.play(listen.items[0]!, listen);
+      expect(track).toHaveBeenLastCalledWith('lecture-musique', 'spotify-sdk');
+      const web = setup({ playRoute: () => 'web-api' });
+      await web.service.play(listen.items[0]!, listen);
+      expect(track).toHaveBeenLastCalledWith('lecture-musique', 'spotify');
+    } finally {
+      setTelemetry(null);
+    }
   });
 });

@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
     private String pendingLocationOrigin;
     private String pendingNativeLocationId;
     private final Updater updater = new Updater(this);
+    private SpotifyRemote spotifyRemote;
     private String overlayScript;
     // Repli quand la WebView ne sait pas injecter au début du document : injection au démarrage de chaque page.
     private boolean injectOnPageStarted;
@@ -96,6 +97,18 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new SpotifyBridge(), "WmtSpotify");
         webView.addJavascriptInterface(new HttpBridge(), "WmtHttp");
         webView.addJavascriptInterface(new LocationBridge(), "WmtLocation");
+        spotifyRemote = new SpotifyRemote(this, new SpotifyRemote.Sink() {
+            @Override
+            public void done(String id, String error) {
+                webView.evaluateJavascript("window.__wmtSpotifyRemoteDone && window.__wmtSpotifyRemoteDone(" + JSONObject.quote(id) + "," + JSONObject.quote(error) + ")", null);
+            }
+
+            @Override
+            public void event(String json) {
+                webView.evaluateJavascript("window.__wmtSpotifyRemoteState && window.__wmtSpotifyRemoteState(" + JSONObject.quote(json) + ")", null);
+            }
+        });
+        webView.addJavascriptInterface(new SpotifyRemoteBridge(), "WmtSpotifyRemote");
 
         overlayScript = readAsset(OVERLAY_ASSET);
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -352,6 +365,81 @@ public class MainActivity extends Activity {
         }
     }
 
+    // Pont « lecture par l'appli Spotify » (SDK App Remote) : seuls des contenus spotify: et l'adresse de retour de ce canal sont acceptés.
+    private final class SpotifyRemoteBridge {
+        private String clean(String id) {
+            return id == null ? "" : id.replaceAll("[^A-Za-z0-9-]", "");
+        }
+
+        private boolean spotifyUri(String uri) {
+            return uri != null && uri.startsWith("spotify:");
+        }
+
+        @JavascriptInterface
+        public void connect(String id, String clientId, String redirectUri, boolean silent) {
+            String callId = clean(id);
+            if (clientId == null || !clientId.matches("[0-9a-f]{32}") || redirectUri == null || !redirectUri.equals(SPOTIFY_REDIRECT_SCHEME + "://spotify")) {
+                runOnUiThread(() -> spotifyRemote.notify(callId));
+                return;
+            }
+            runOnUiThread(() -> spotifyRemote.connect(callId, clientId, redirectUri, silent));
+        }
+
+        @JavascriptInterface
+        public void play(String id, String uri) {
+            String callId = clean(id);
+            runOnUiThread(() -> {
+                if (spotifyUri(uri)) spotifyRemote.play(callId, uri);
+                else spotifyRemote.notify(callId);
+            });
+        }
+
+        @JavascriptInterface
+        public void skipToIndex(String id, String contextUri, int index) {
+            String callId = clean(id);
+            runOnUiThread(() -> {
+                if (spotifyUri(contextUri) && index >= 0) spotifyRemote.skipToIndex(callId, contextUri, index);
+                else spotifyRemote.notify(callId);
+            });
+        }
+
+        @JavascriptInterface
+        public void queue(String id, String uri) {
+            String callId = clean(id);
+            runOnUiThread(() -> {
+                if (spotifyUri(uri)) spotifyRemote.queue(callId, uri);
+                else spotifyRemote.notify(callId);
+            });
+        }
+
+        @JavascriptInterface
+        public void pause(String id) {
+            String callId = clean(id);
+            runOnUiThread(() -> spotifyRemote.pause(callId));
+        }
+
+        @JavascriptInterface
+        public void resume(String id) {
+            String callId = clean(id);
+            runOnUiThread(() -> spotifyRemote.resume(callId));
+        }
+
+        @JavascriptInterface
+        public void disconnect() {
+            runOnUiThread(spotifyRemote::disconnect);
+        }
+
+        @JavascriptInterface
+        public String packageName() {
+            return getPackageName();
+        }
+
+        @JavascriptInterface
+        public String fingerprint() {
+            return spotifyRemote.fingerprint();
+        }
+    }
+
     // Ouvre l'application Spotify (lecture demandée alors qu'elle est fermée). Sans Spotify installé, rien ne se passe.
     private void launchSpotifyApp() {
         try {
@@ -454,8 +542,22 @@ public class MainActivity extends Activity {
         else super.onBackPressed();
     }
 
+    // Lecture par l'appli Spotify : reprise silencieuse au retour, déconnexion en arrière-plan (Spotify continue de jouer).
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (spotifyRemote != null) spotifyRemote.onStart();
+    }
+
+    @Override
+    protected void onStop() {
+        if (spotifyRemote != null) spotifyRemote.onStop();
+        super.onStop();
+    }
+
     @Override
     protected void onDestroy() {
+        if (spotifyRemote != null) spotifyRemote.release();
         webView.destroy();
         super.onDestroy();
     }

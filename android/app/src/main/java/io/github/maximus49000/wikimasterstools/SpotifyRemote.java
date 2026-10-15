@@ -1,0 +1,256 @@
+package io.github.maximus49000.wikimasterstools;
+
+import android.app.Activity;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
+
+import com.spotify.android.appremote.api.ConnectionParams;
+import com.spotify.android.appremote.api.Connector;
+import com.spotify.android.appremote.api.SpotifyAppRemote;
+import com.spotify.android.appremote.api.error.AuthenticationFailedException;
+import com.spotify.android.appremote.api.error.CouldNotFindSpotifyApp;
+import com.spotify.android.appremote.api.error.NotLoggedInException;
+import com.spotify.android.appremote.api.error.UnsupportedFeatureVersionException;
+import com.spotify.android.appremote.api.error.UserNotAuthorizedException;
+import com.spotify.protocol.client.CallResult;
+import com.spotify.protocol.client.Subscription;
+import com.spotify.protocol.types.Artist;
+import com.spotify.protocol.types.Empty;
+import com.spotify.protocol.types.PlayerState;
+import com.spotify.protocol.types.Track;
+
+import org.json.JSONObject;
+
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
+
+// Lecture par l'appli Spotify du téléphone (SDK App Remote) : la surcouche pilote, Spotify joue, Wikimasters reste devant.
+// Toutes les méthodes s'exécutent sur le fil UI (MainActivity y renvoie les appels du pont ; le SDK y rappelle aussi).
+final class SpotifyRemote {
+    interface Sink {
+        // `error` vide : réussite.
+        void done(String id, String error);
+        void event(String json);
+    }
+
+    private static final String DISCONNECTED = "{\"connected\":false}";
+    private static final String IMAGE_PREFIX = "spotify:image:";
+
+    private final Activity activity;
+    private final Sink sink;
+    private SpotifyAppRemote remote;
+    private Subscription<PlayerState> subscription;
+    private String clientId;
+    private String redirectUri;
+    // Une connexion a réussi : reprise silencieuse au retour au premier plan.
+    private boolean resumeOnStart;
+    // Génération de la tentative de connexion en cours : les rappels d'une tentative périmée (annulée, remplacée) sont ignorés.
+    private int attempt;
+    // Activité terminée : plus rien n'est écrit à la WebView.
+    private boolean released;
+    // Une reconnexion silencieuse (onStart ou page) est en cours.
+    private boolean silentPending;
+    // Identifiant que la tentative en cours doit encore recevoir : remplacée ou annulée, elle répond `failed`.
+    private String[] openPending = {null};
+
+    SpotifyRemote(Activity activity, Sink sink) {
+        this.activity = activity;
+        this.sink = sink;
+    }
+
+    // `silent` : sans écran d'accord (reconnexion au démarrage de la page) ; annulée par onStop comme celle d'onStart.
+    void connect(String id, String clientId, String redirectUri, boolean silent) {
+        if (remote != null && remote.isConnected() && clientId.equals(this.clientId)) {
+            // Déjà relié (nouvelle page après une navigation) : la page n'a pas encore l'état du lecteur, on le lui renvoie.
+            remote.getPlayerApi().getPlayerState().setResultCallback(state -> emit(stateJson(state)));
+            answer(id, "");
+            return;
+        }
+        drop();
+        this.clientId = clientId;
+        this.redirectUri = redirectUri;
+        open(id, !silent);
+    }
+
+    // `id` null : reconnexion silencieuse d'onStart, personne n'attend la réponse.
+    private void open(String id, boolean showAuthView) {
+        final int mine = ++attempt;
+        silentPending = !showAuthView;
+        // Chaque id n'est répondu qu'une fois (un échec ultérieur, perte de connexion, ne le répète pas).
+        final String[] pending = {id};
+        openPending = pending;
+        ConnectionParams params = new ConnectionParams.Builder(clientId).setRedirectUri(redirectUri).showAuthView(showAuthView).build();
+        SpotifyAppRemote.connect(activity, params, new Connector.ConnectionListener() {
+            @Override
+            public void onConnected(SpotifyAppRemote connected) {
+                if (mine != attempt) {
+                    // Tentative périmée (délier, arrière-plan, nouvelle connexion, fin de l'activité) : on referme.
+                    SpotifyAppRemote.disconnect(connected);
+                    reply(pending, "failed");
+                    return;
+                }
+                silentPending = false;
+                remote = connected;
+                resumeOnStart = true;
+                subscription = connected.getPlayerApi().subscribeToPlayerState();
+                subscription.setEventCallback(state -> emit(stateJson(state)));
+                reply(pending, "");
+            }
+
+            @Override
+            public void onFailure(Throwable error) {
+                if (mine != attempt) {
+                    reply(pending, "failed");
+                    return;
+                }
+                // Échec de connexion, ou connexion perdue plus tard (Spotify arrêté).
+                silentPending = false;
+                remote = null;
+                subscription = null;
+                emit(DISCONNECTED);
+                reply(pending, codeOf(error));
+            }
+        });
+    }
+
+    private void reply(String[] pending, String code) {
+        String id = pending[0];
+        pending[0] = null;
+        if (id != null) answer(id, code);
+    }
+
+    private void answer(String id, String error) {
+        if (!released) sink.done(id, error);
+    }
+
+    private void emit(String json) {
+        if (!released) sink.event(json);
+    }
+
+    void play(String id, String uri) {
+        run(id, connected() ? remote.getPlayerApi().play(uri) : null);
+    }
+
+    void skipToIndex(String id, String contextUri, int index) {
+        run(id, connected() ? remote.getPlayerApi().skipToIndex(contextUri, index) : null);
+    }
+
+    void queue(String id, String uri) {
+        run(id, connected() ? remote.getPlayerApi().queue(uri) : null);
+    }
+
+    void pause(String id) {
+        run(id, connected() ? remote.getPlayerApi().pause() : null);
+    }
+
+    void resume(String id) {
+        run(id, connected() ? remote.getPlayerApi().resume() : null);
+    }
+
+    // Délier ou changer de clé : plus de reprise automatique.
+    void disconnect() {
+        resumeOnStart = false;
+        drop();
+        emit(DISCONNECTED);
+    }
+
+    void onStart() {
+        if (resumeOnStart && remote == null && clientId != null) open(null, false);
+    }
+
+    void onStop() {
+        if (remote == null) {
+            // Une tentative interactive survit à onStop : l'écran d'autorisation de Spotify met notre activité en arrière-plan.
+            // Seule une reconnexion silencieuse est annulée ; resumeOnStart la relancera au prochain onStart.
+            if (silentPending) drop();
+            return;
+        }
+        drop();
+        emit(DISCONNECTED);
+    }
+
+    // Fin de l'activité : la WebView va disparaître, on ne lui écrit plus rien.
+    void release() {
+        released = true;
+        drop();
+    }
+
+    // Entrée refusée par le pont : la page reçoit `failed` et se replie sur la Web API.
+    void notify(String id) {
+        answer(id, "failed");
+    }
+
+    String fingerprint() {
+        try {
+            PackageInfo info = activity.getPackageManager().getPackageInfo(activity.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
+            Signature[] signers = info.signingInfo.getApkContentsSigners();
+            byte[] digest = MessageDigest.getInstance("SHA-1").digest(signers[0].toByteArray());
+            StringBuilder out = new StringBuilder();
+            for (byte part : digest) {
+                if (out.length() > 0) out.append(':');
+                out.append(String.format("%02X", part));
+            }
+            return out.toString();
+        } catch (Exception error) {
+            return "";
+        }
+    }
+
+    private boolean connected() {
+        return remote != null && remote.isConnected();
+    }
+
+    // Pas de connexion : `failed`, la page reconnecte puis se replie sur la Web API.
+    private void run(String id, CallResult<Empty> result) {
+        if (result == null) {
+            answer(id, "failed");
+            return;
+        }
+        result.setResultCallback(empty -> answer(id, ""));
+        result.setErrorCallback(error -> answer(id, codeOf(error)));
+    }
+
+    private void drop() {
+        attempt++;
+        silentPending = false;
+        // La tentative en cours ne rappellera peut-être jamais : la page reçoit `failed` tout de suite.
+        reply(openPending, "failed");
+        if (subscription != null) subscription.cancel();
+        subscription = null;
+        if (remote != null) SpotifyAppRemote.disconnect(remote);
+        remote = null;
+    }
+
+    static String codeOf(Throwable error) {
+        if (error instanceof CouldNotFindSpotifyApp) return "not-installed";
+        if (error instanceof NotLoggedInException) return "not-logged-in";
+        if (error instanceof UserNotAuthorizedException || error instanceof AuthenticationFailedException) return "not-authorized";
+        if (error instanceof UnsupportedFeatureVersionException) return "unsupported";
+        return "failed";
+    }
+
+    private static String stateJson(PlayerState state) {
+        try {
+            JSONObject out = new JSONObject().put("connected", true);
+            Track track = state == null ? null : state.track;
+            if (track == null || track.uri == null) return out.put("track", JSONObject.NULL).toString();
+            String raw = track.imageUri == null || track.imageUri.raw == null ? "" : track.imageUri.raw;
+            String image = raw.startsWith(IMAGE_PREFIX) ? "https://i.scdn.co/image/" + raw.substring(IMAGE_PREFIX.length()) : "";
+            // Mêmes artistes que la Web API (« A, B ») : la page reconnaît le titre en cours dans ses listes.
+            List<String> names = new ArrayList<>();
+            if (track.artists != null) for (Artist artist : track.artists) if (artist != null && artist.name != null) names.add(artist.name);
+            if (names.isEmpty() && track.artist != null && track.artist.name != null) names.add(track.artist.name);
+            JSONObject item = new JSONObject()
+                    .put("uri", track.uri)
+                    .put("title", track.name == null ? "" : track.name)
+                    .put("artist", String.join(", ", names))
+                    .put("imageUrl", image)
+                    .put("playing", !state.isPaused);
+            return out.put("track", item).toString();
+        } catch (Exception error) {
+            return "{\"connected\":true,\"track\":null}";
+        }
+    }
+}

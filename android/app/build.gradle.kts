@@ -61,4 +61,7 @@ android {
 
 dependencies {
     implementation("androidx.webkit:webkit:1.14.0")
+    // Lecture par l'appli Spotify du téléphone (SDK App Remote, github.com/spotify/android-sdk) ; Gson est requis par le SDK.
+    implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))
+    implementation("com.google.code.gson:gson:2.11.0")
 }
