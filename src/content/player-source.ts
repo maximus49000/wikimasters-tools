@@ -29,6 +29,8 @@ export type PlayerSourceDeps = {
   isVisible?: () => boolean;
   // S'abonne au retour au premier plan ; rend la fonction qui se désabonne.
   onVisible?: (callback: () => void) => () => void;
+  // Changement d'état poussé (SDK du téléphone) : relecture immédiate ; rend la fonction qui se désabonne.
+  onPush?: (listener: () => void) => () => void;
 };
 
 const realIsVisible = () => document.visibilityState === 'visible';
@@ -43,11 +45,12 @@ const realSchedule = (fn: () => void, ms: number) => {
 };
 
 export function createPlayerSource(deps: PlayerSourceDeps) {
-  const { api, session, storage, schedule = realSchedule, isVisible = realIsVisible, onVisible = realOnVisible } = deps;
+  const { api, session, storage, schedule = realSchedule, isVisible = realIsVisible, onVisible = realOnVisible, onPush } = deps;
   const listeners = new Set<() => void>();
   let cancel: (() => void) | null = null;
   let unsubscribe: (() => void) | null = null;
   let unsubscribeVisible: (() => void) | null = null;
+  let unsubscribePush: (() => void) | null = null;
   let running = false;
   let generation = 0;
   let stateKnown = false;
@@ -142,6 +145,7 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
       unsubscribeVisible = onVisible(() => {
         if (isVisible()) void poll();
       });
+      unsubscribePush = onPush?.(() => void poll()) ?? null;
       void poll();
     },
     stop(): void {
@@ -153,6 +157,8 @@ export function createPlayerSource(deps: PlayerSourceDeps) {
       unsubscribe = null;
       unsubscribeVisible?.();
       unsubscribeVisible = null;
+      unsubscribePush?.();
+      unsubscribePush = null;
     },
     refresh: poll,
     async toggle(): Promise<void> {

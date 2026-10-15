@@ -1,6 +1,17 @@
 import type { Platform, PlatformSetting } from '../core/music/platform';
 import type { MusicService } from './music-service';
 import type { PlayerSource } from './player-source';
+import type { RemoteStatus } from '../core/spotify/remote-playback';
+
+// Lecture directe par l'appli Spotify du téléphone (APK seulement) : état, et ce qu'il faut déclarer dans la clé.
+export type RemoteControl = {
+  status(): Promise<RemoteStatus>;
+  packageName(): string;
+  fingerprint(): string;
+  // Bouton « Réessayer la lecture directe ».
+  reset(): Promise<void>;
+  subscribe(listener: () => void): () => void;
+};
 
 // Le service musique est créé une fois par la surcouche ; les fiches de carte (CardPopup) le lisent ici.
 let service: MusicService | null = null;
@@ -39,6 +50,8 @@ export type SpotifyKeyControl = {
   // Lance le mode d'emploi (visite guidée en texte seul) ; la fenêtre « Lecteur » reste ouverte dessous.
   openGuide(): void;
   subscribe(listener: () => void): () => void;
+  // Absent sur l'ordinateur et sur un ancien APK.
+  remote?: RemoteControl;
 };
 let spotifyKey: SpotifyKeyControl | null = null;
 

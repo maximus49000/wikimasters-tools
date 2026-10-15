@@ -290,4 +290,28 @@ describe('isPlayingUri', () => {
     await vi.waitFor(() => expect(source.current().track).toBeNull());
     expect(source.current().linked).toBe(true);
   });
+  it("relit l'état dès que le SDK pousse un changement, et se désabonne à l'arrêt", async () => {
+    let pushed: () => void = () => undefined;
+    const off = vi.fn();
+    const onPush = vi.fn((listener: () => void) => {
+      pushed = listener;
+      return off;
+    });
+    const api = { playerState: vi.fn(async () => null), play: vi.fn(), pause: vi.fn() };
+    const source = createPlayerSource({
+      api,
+      session: { isLinked: async () => true, subscribe: () => () => undefined },
+      storage: { getItem: () => null, setItem: () => undefined },
+      schedule: () => () => undefined,
+      isVisible: () => true,
+      onVisible: () => () => undefined,
+      onPush,
+    });
+    source.start();
+    await vi.waitFor(() => expect(api.playerState).toHaveBeenCalledTimes(1));
+    pushed();
+    await vi.waitFor(() => expect(api.playerState).toHaveBeenCalledTimes(2));
+    source.stop();
+    expect(off).toHaveBeenCalled();
+  });
 });
