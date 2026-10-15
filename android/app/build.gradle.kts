@@ -13,6 +13,9 @@ android {
         // Fournis par scripts/build-apk.mjs (-PversionCode / -PversionName) : Android n'accepte une mise à jour que si versionCode augmente.
         versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
         versionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
+        // Bibliothèque d'authentification Spotify : son adresse de retour (navigateur, sans l'appli Spotify) prend un hôte inutilisé,
+        // pour ne jamais capter le retour de la liaison du compte (`<schéma>://spotify`, reçu par MainActivity).
+        manifestPlaceholders["redirectHostName"] = "spotify-sdk"
     }
 
     buildFeatures {
@@ -30,6 +33,7 @@ android {
             dimension = "channel"
             manifestPlaceholders["appLabel"] = "Wikimasters Tools"
             manifestPlaceholders["redirectScheme"] = "wikimasterstools"
+            manifestPlaceholders["redirectSchemeName"] = "wikimasterstools"
             buildConfigField("String", "REDIRECT_SCHEME", "\"wikimasterstools\"")
             buildConfigField("String", "UPDATE_URL", "\"$releases?per_page=30\"")
             buildConfigField("String", "UPDATE_TAG_PREFIX", "\"android-\"")
@@ -39,6 +43,7 @@ android {
             applicationIdSuffix = ".preprod"
             manifestPlaceholders["appLabel"] = "Wikimasters Tools (pré-prod)"
             manifestPlaceholders["redirectScheme"] = "wikimasterstools-preprod"
+            manifestPlaceholders["redirectSchemeName"] = "wikimasterstools-preprod"
             buildConfigField("String", "REDIRECT_SCHEME", "\"wikimasterstools-preprod\"")
             buildConfigField("String", "UPDATE_URL", "\"$releases?per_page=30\"")
             buildConfigField("String", "UPDATE_TAG_PREFIX", "\"preprod-\"")
@@ -64,4 +69,6 @@ dependencies {
     // Lecture par l'appli Spotify du téléphone (SDK App Remote, github.com/spotify/android-sdk) ; Gson est requis par le SDK.
     implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))
     implementation("com.google.code.gson:gson:2.11.0")
+    // Accord de l'utilisateur ouvert par Wikimasters, au premier plan : Android 16 bloque celui que Spotify ouvre depuis l'arrière-plan.
+    implementation(files("libs/spotify-auth-release-2.1.0.aar"))
 }
