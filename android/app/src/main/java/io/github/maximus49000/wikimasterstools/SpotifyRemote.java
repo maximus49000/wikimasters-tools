@@ -46,6 +46,10 @@ final class SpotifyRemote {
     private String redirectUri;
     // Une connexion a réussi : reprise silencieuse au retour au premier plan.
     private boolean resumeOnStart;
+    // Génération de la tentative de connexion en cours : les rappels d'une tentative périmée (annulée, remplacée) sont ignorés.
+    private int attempt;
+    // Activité terminée : plus rien n'est écrit à la WebView.
+    private boolean released;
 
     SpotifyRemote(Activity activity, Sink sink) {
         this.activity = activity;
@@ -54,7 +58,7 @@ final class SpotifyRemote {
 
     void connect(String id, String clientId, String redirectUri) {
         if (remote != null && remote.isConnected() && clientId.equals(this.clientId)) {
-            sink.done(id, "");
+            answer(id, "");
             return;
         }
         drop();
@@ -65,26 +69,53 @@ final class SpotifyRemote {
 
     // `id` null : reconnexion silencieuse, personne n'attend la réponse.
     private void open(String id, boolean showAuthView) {
+        final int mine = ++attempt;
+        // Chaque id n'est répondu qu'une fois (un échec ultérieur, perte de connexion, ne le répète pas).
+        final String[] pending = {id};
         ConnectionParams params = new ConnectionParams.Builder(clientId).setRedirectUri(redirectUri).showAuthView(showAuthView).build();
         SpotifyAppRemote.connect(activity, params, new Connector.ConnectionListener() {
             @Override
             public void onConnected(SpotifyAppRemote connected) {
+                if (mine != attempt) {
+                    // Tentative périmée (délier, arrière-plan, nouvelle connexion, fin de l'activité) : on referme.
+                    SpotifyAppRemote.disconnect(connected);
+                    reply(pending, "failed");
+                    return;
+                }
                 remote = connected;
                 resumeOnStart = true;
                 subscription = connected.getPlayerApi().subscribeToPlayerState();
-                subscription.setEventCallback(state -> sink.event(stateJson(state)));
-                if (id != null) sink.done(id, "");
+                subscription.setEventCallback(state -> emit(stateJson(state)));
+                reply(pending, "");
             }
 
             @Override
             public void onFailure(Throwable error) {
+                if (mine != attempt) {
+                    reply(pending, "failed");
+                    return;
+                }
                 // Échec de connexion, ou connexion perdue plus tard (Spotify arrêté).
                 remote = null;
                 subscription = null;
-                sink.event(DISCONNECTED);
-                if (id != null) sink.done(id, codeOf(error));
+                emit(DISCONNECTED);
+                reply(pending, codeOf(error));
             }
         });
+    }
+
+    private void reply(String[] pending, String code) {
+        String id = pending[0];
+        pending[0] = null;
+        if (id != null) answer(id, code);
+    }
+
+    private void answer(String id, String error) {
+        if (!released) sink.done(id, error);
+    }
+
+    private void emit(String json) {
+        if (!released) sink.event(json);
     }
 
     void play(String id, String uri) {
@@ -111,7 +142,7 @@ final class SpotifyRemote {
     void disconnect() {
         resumeOnStart = false;
         drop();
-        sink.event(DISCONNECTED);
+        emit(DISCONNECTED);
     }
 
     void onStart() {
@@ -121,17 +152,18 @@ final class SpotifyRemote {
     void onStop() {
         if (remote == null) return;
         drop();
-        sink.event(DISCONNECTED);
+        emit(DISCONNECTED);
     }
 
     // Fin de l'activité : la WebView va disparaître, on ne lui écrit plus rien.
     void release() {
+        released = true;
         drop();
     }
 
     // Entrée refusée par le pont : la page reçoit `failed` et se replie sur la Web API.
     void notify(String id) {
-        sink.done(id, "failed");
+        answer(id, "failed");
     }
 
     String fingerprint() {
@@ -157,14 +189,15 @@ final class SpotifyRemote {
     // Pas de connexion : `failed`, la page reconnecte puis se replie sur la Web API.
     private void run(String id, CallResult<Empty> result) {
         if (result == null) {
-            sink.done(id, "failed");
+            answer(id, "failed");
             return;
         }
-        result.setResultCallback(empty -> sink.done(id, ""));
-        result.setErrorCallback(error -> sink.done(id, codeOf(error)));
+        result.setResultCallback(empty -> answer(id, ""));
+        result.setErrorCallback(error -> answer(id, codeOf(error)));
     }
 
     private void drop() {
+        attempt++;
         if (subscription != null) subscription.cancel();
         subscription = null;
         if (remote != null) SpotifyAppRemote.disconnect(remote);
