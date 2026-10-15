@@ -50,6 +50,8 @@ final class SpotifyRemote {
     private int attempt;
     // Activité terminée : plus rien n'est écrit à la WebView.
     private boolean released;
+    // Une reconnexion silencieuse (onStart) est en cours.
+    private boolean silentPending;
 
     SpotifyRemote(Activity activity, Sink sink) {
         this.activity = activity;
@@ -70,6 +72,7 @@ final class SpotifyRemote {
     // `id` null : reconnexion silencieuse, personne n'attend la réponse.
     private void open(String id, boolean showAuthView) {
         final int mine = ++attempt;
+        silentPending = !showAuthView;
         // Chaque id n'est répondu qu'une fois (un échec ultérieur, perte de connexion, ne le répète pas).
         final String[] pending = {id};
         ConnectionParams params = new ConnectionParams.Builder(clientId).setRedirectUri(redirectUri).showAuthView(showAuthView).build();
@@ -82,6 +85,7 @@ final class SpotifyRemote {
                     reply(pending, "failed");
                     return;
                 }
+                silentPending = false;
                 remote = connected;
                 resumeOnStart = true;
                 subscription = connected.getPlayerApi().subscribeToPlayerState();
@@ -96,6 +100,7 @@ final class SpotifyRemote {
                     return;
                 }
                 // Échec de connexion, ou connexion perdue plus tard (Spotify arrêté).
+                silentPending = false;
                 remote = null;
                 subscription = null;
                 emit(DISCONNECTED);
@@ -150,7 +155,12 @@ final class SpotifyRemote {
     }
 
     void onStop() {
-        if (remote == null) return;
+        if (remote == null) {
+            // Une tentative interactive survit à onStop : l'écran d'autorisation de Spotify met notre activité en arrière-plan.
+            // Seule une reconnexion silencieuse est annulée ; resumeOnStart la relancera au prochain onStart.
+            if (silentPending) drop();
+            return;
+        }
         drop();
         emit(DISCONNECTED);
     }
@@ -198,6 +208,7 @@ final class SpotifyRemote {
 
     private void drop() {
         attempt++;
+        silentPending = false;
         if (subscription != null) subscription.cancel();
         subscription = null;
         if (remote != null) SpotifyAppRemote.disconnect(remote);
