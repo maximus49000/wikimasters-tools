@@ -12,6 +12,10 @@ describe('userMessage', () => {
     expect(userMessage(new Error('boom'))).toBe('Spotify est indisponible pour le moment.');
   });
 
+  it('demande de se connecter dans l’appli Spotify du téléphone', () => {
+    expect(userMessage(new SpotifyError('app-logged-out', 'x'))).toBe('Connecte-toi dans l’appli Spotify du téléphone.');
+  });
+
   describe('limite de débit', () => {
     // Heures de l'appareil : les tests ne dépendent pas du fuseau.
     const at = (day: number, hour: number, minute: number, second = 0) => new Date(2026, 9, day, hour, minute, second).getTime();

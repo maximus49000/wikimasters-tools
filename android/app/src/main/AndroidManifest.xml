@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Mise à jour automatique : installe l'APK de la dernière release de production (GitHub). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 11+ cache les autres applications : le SDK App Remote doit voir Spotify. -->
+    <queries>
+        <package android:name="com.spotify.music" />
+    </queries>
 
     <application
         android:allowBackup="false"

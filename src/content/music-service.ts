@@ -37,6 +37,8 @@ export type MusicServiceDeps = {
   onPlayed: (card?: PlayerCard) => void;
   // Ouvre l'application Spotify quand aucun appareil n'est actif ; absent sur les plateformes qui ne savent pas le faire.
   launchApp?: () => void;
+  // Par où est partie la dernière lecture (SDK du téléphone ou Web API) ; absent : Web API.
+  playRoute?: () => 'sdk' | 'web-api';
   // Attente entre deux essais pendant le démarrage de Spotify (remplaçable en test).
   sleep?: (ms: number) => Promise<void>;
 };
@@ -179,9 +181,10 @@ export function createMusicService(deps: MusicServiceDeps) {
     async play(item: Track | null, listen: Listen, card?: PlayerCard): Promise<string | null> {
       // Hors album : on envoie la suite de la liste pour que Spotify enchaîne les titres.
       // `item` null : le contexte (playlist sans liste de pistes) se lit depuis le début.
-      const from = Math.max(0, listen.items.findIndex((candidate) => candidate.uri === item?.uri));
+      const index = listen.items.findIndex((candidate) => candidate.uri === item?.uri);
+      const from = Math.max(0, index);
       const target: Parameters<typeof api.play>[0] = listen.albumUri
-        ? { contextUri: listen.albumUri, ...(item ? { offsetUri: item.uri } : {}) }
+        ? { contextUri: listen.albumUri, ...(item ? { offsetUri: item.uri } : {}), ...(item && index >= 0 ? { offsetIndex: index } : {}) }
         : { uris: listen.items.length > 0 ? listen.items.slice(from).map((candidate) => candidate.uri) : item ? [item.uri] : [] };
       try {
         try {
@@ -193,7 +196,7 @@ export function createMusicService(deps: MusicServiceDeps) {
           await retryWhileStarting(target);
         }
         onPlayed(card);
-        track('lecture-musique', 'spotify');
+        track('lecture-musique', deps.playRoute?.() === 'sdk' ? 'spotify-sdk' : 'spotify');
         return null;
       } catch (error) {
         reportError('lecture-echec', 'spotify');

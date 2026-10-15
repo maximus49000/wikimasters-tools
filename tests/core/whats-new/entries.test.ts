@@ -24,13 +24,21 @@ describe('catalogue des fiches', () => {
 
   it('explique comment utiliser sa propre clé Spotify (fiche écoute à jour, ancien id retiré)', () => {
     expect(ENTRIES.some((e) => e.id === 'ecouter')).toBe(false);
-    const entry = ENTRIES.find((e) => e.id === 'ecouter-v2');
+    expect(ENTRIES.some((e) => e.id === 'ecouter-v2')).toBe(false);
+    const entry = ENTRIES.find((e) => e.id === 'ecouter-v3');
     const step = entry?.steps.find((s) => s.title === 'Utiliser sa propre clé Spotify');
     expect(step).toBe(SPOTIFY_KEY_GUIDE);
     expect(step?.target).toBeNull();
     expect(step?.scene).toBeUndefined();
     const all = (step?.details ?? []).map((d) => d.text).join(' ') + ' ' + (step?.text ?? '');
-    for (const word of ['developer.spotify.com', 'Redirect URI', 'Client ID', 'User Management', '25']) expect(all, word).toContain(word);
+    for (const word of ['developer.spotify.com', 'Redirect URI', 'Client ID', 'User Management', '25', 'Android packages']) expect(all, word).toContain(word);
+  });
+
+  it('annonce la lecture directe sur Android dans la fiche écoute', () => {
+    const entry = ENTRIES.find((e) => e.id === 'ecouter-v3');
+    const step = entry?.steps.find((s) => s.title === 'Lecture directe sur Android');
+    expect(step?.text).toBe('Sur l’application Android, la musique se lance directement dans l’appli Spotify, même fermée, sans quitter Wikimasters. Si tu as ta propre clé : ajoute une fois la ligne Android affichée dans Paramètre d’extension, puis Lecteur.');
+    expect(step?.details?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 
   it('une seule fiche est annoncée au premier lancement (celle de WikiHow)', () => {

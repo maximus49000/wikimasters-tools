@@ -3,6 +3,7 @@ import { Glyph, type GlyphName } from './Glyphs';
 import { getSpotifyKey, type SpotifyKeyControl } from './music-registry';
 import { normalizeClientId } from '../core/spotify/client-id';
 import { track } from '../core/telemetry/registry';
+import { SpotifyRemoteSettings } from './SpotifyRemoteSettings';
 
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
@@ -162,6 +163,7 @@ export function SpotifyKeySettings({ linked }: { linked: boolean }) {
           )}
         </>
       )}
+      {control.remote && <SpotifyRemoteSettings remote={control.remote} />}
       {pending && (
         <>
           <p role="alert" style={{ margin: '8px 0 0', padding: '8px 10px', borderRadius: 8, border: '1px solid #9e6a03', fontSize: 12 }}>

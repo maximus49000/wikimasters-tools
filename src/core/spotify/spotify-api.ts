@@ -12,7 +12,8 @@ export type FoundPlaylist = { id: string; name: string; owner: string };
 export type FoundTrack =Track & { artistIds: string[]; artists: string[] };
 // `null` : reprendre la lecture en cours.
 // `offsetUri` : le titre du contexte (album, playlist) où commencer ; absent, le contexte se lit depuis le début.
-export type PlayTarget = { uris: string[] } | { contextUri: string; offsetUri?: string } | null;
+// `offsetIndex` : sa position dans le contexte (le SDK du téléphone en a besoin ; la Web API l'ignore).
+export type PlayTarget = { uris: string[] } | { contextUri: string; offsetUri?: string; offsetIndex?: number } | null;
 export type PlayerState = { playing: boolean; uri: string; title: string; artist: string; imageUrl: string | null } | null;
 
 // Maximum accepté par Spotify pour les applications en mode développement (février 2026).

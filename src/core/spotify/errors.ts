@@ -1,6 +1,7 @@
 export type SpotifyErrorCode =
   | 'not-linked'
   | 'no-client-id'
+  | 'app-logged-out'
   | 'no-device'
   | 'not-premium'
   | 'rate-limited'
@@ -22,6 +23,7 @@ export class SpotifyError extends Error {
 }
 
 const MESSAGES: Record<SpotifyErrorCode, string> = {
+  'app-logged-out': 'Connecte-toi dans l’appli Spotify du téléphone.',
   'no-device': 'Ouvre Spotify sur un de tes appareils, puis réessaie.',
   'not-premium': 'Spotify Premium est nécessaire pour lancer la lecture.',
   'not-linked': 'Lie ton compte Spotify pour écouter.',

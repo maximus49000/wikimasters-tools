@@ -76,6 +76,7 @@ import { countryOf } from '../core/tidal/config';
 import { createTidalApi } from '../core/tidal/tidal-api';
 import { createTidalSession } from '../core/tidal/tidal-session';
 import { createPlayerSource } from '../content/player-source';
+import { createRemotePlayback } from '../core/spotify/remote-playback';
 import { mountSpotifyPlayer } from '../content/mount-player';
 import { openCardInPage } from '../content/open-card';
 import { decorateLinked } from '../content/decorate-linked';
@@ -553,9 +554,19 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       await migrateClientId(store);
       const session = createSpotifySession({ store, ...spotify });
       const spotifyApi = createSpotifyApi({ session, fetch: spotify.fetch, store, ...(spotify.deviceTypes ? { deviceTypes: spotify.deviceTypes } : {}) });
+      // APK : lecture, pause et état par l'appli Spotify du téléphone (SDK) ; la recherche et les pochettes restent sur la Web API.
+      const remotePlayback = spotify.remote
+        ? createRemotePlayback({ remote: spotify.remote, api: spotifyApi, session, redirectUri: spotify.redirectUri, store })
+        : null;
+      const playback = remotePlayback ?? spotifyApi;
       const musicRepo = createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs));
       artSources.spotify = { api: spotifyApi, session, music: musicRepo };
-      const player = createPlayerSource({ api: spotifyApi, session, storage: window.localStorage });
+      const player = createPlayerSource({
+        api: playback,
+        session,
+        storage: window.localStorage,
+        ...(remotePlayback ? { onPush: (listener: () => void) => remotePlayback.subscribe(listener) } : {}),
+      });
       const spotifyService = createMusicService({
           collection: collectionRepo,
           kinds: kindsRepo,
@@ -564,12 +575,13 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
           soundtracks: createListenRepo(store, undefined, 'soundtracks-v1'),
           screen: screenRepo,
           session,
-          api: spotifyApi,
+          api: { ...spotifyApi, play: (target) => playback.play(target) },
           onPlayed: (card) => {
             if (card) player.setCard(card);
             void player.refresh();
           },
           ...(spotify.launchApp ? { launchApp: spotify.launchApp } : {}),
+          ...(remotePlayback ? { playRoute: () => remotePlayback.lastRoute() } : {}),
         });
       const platformSetting = createPlatformSetting(window.localStorage);
       setMusicService(spotifyService);
@@ -582,9 +594,21 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         redirectUris: async () => [await spotify.redirectUri()],
         openGuide: () => startTour([SPOTIFY_KEY_GUIDE]),
         subscribe: (listener) => session.subscribe(listener),
+        ...(remotePlayback && spotify.remote
+          ? {
+              remote: {
+                status: () => remotePlayback.status(),
+                packageName: () => spotify.remote!.packageName(),
+                fingerprint: () => spotify.remote!.fingerprint(),
+                reset: () => remotePlayback.reset(),
+                subscribe: (listener: () => void) => remotePlayback.subscribe(listener),
+              },
+            }
+          : {}),
       });
       mountSpotifyPlayer(player, openPlayerCard);
       player.start();
+      remotePlayback?.warm();
 
       // Tidal : seconde plateforme d'écoute, au choix (jamais mélangée à Spotify). Une panne ici laisse Spotify intact.
       try {
