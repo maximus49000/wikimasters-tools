@@ -44,7 +44,7 @@ describe('createAndroidSpotifyRemote', () => {
     const { win, bridge } = fakeWindow();
     const remote = createAndroidSpotifyRemote(win)!;
     const denied = remote.connect('client', 'wikimasterstools://spotify');
-    expect(bridge.connect).toHaveBeenCalledWith(expect.any(String), 'client', 'wikimasterstools://spotify');
+    expect(bridge.connect).toHaveBeenCalledWith(expect.any(String), 'client', 'wikimasterstools://spotify', false);
     win.__wmtSpotifyRemoteDone!(bridge.connect.mock.calls[0]![0] as string, 'not-authorized');
     await expect(denied).rejects.toMatchObject({ code: 'not-authorized' });
     const odd = remote.pause();
@@ -69,6 +69,13 @@ describe('createAndroidSpotifyRemote', () => {
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(50_000);
     await connectFailed;
+  });
+
+  it('connect transmet la reconnexion silencieuse (sans écran d’accord) au pont', () => {
+    const { win, bridge } = fakeWindow();
+    const remote = createAndroidSpotifyRemote(win)!;
+    void remote.connect('client', 'wikimasterstools://spotify', true).catch(() => undefined);
+    expect(bridge.connect).toHaveBeenCalledWith(expect.any(String), 'client', 'wikimasterstools://spotify', true);
   });
 
   it('rejette failed si le pont lève', async () => {

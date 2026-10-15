@@ -68,7 +68,7 @@ export function SpotifyRemoteSettings({ remote }: { remote: RemoteControl }) {
             title="Réessayer la lecture directe"
             style={{ flex: 1, minHeight: 44, cursor: 'pointer', font: '600 14px system-ui, sans-serif', color: 'inherit', background: 'none', border, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
-            <Glyph name="refresh" /> Réessayer
+            <Glyph name="refresh" /> Réessayer la lecture directe
           </button>
         </div>
       )}

@@ -4,7 +4,7 @@ import { RemoteError, type RemoteErrorCode, type RemoteEvent, type SpotifyRemote
 // `window.__wmtSpotifyRemoteDone(id, codeErreur)` (code vide = réussite) et pousse l'état par `window.__wmtSpotifyRemoteState(json)`.
 export type RemoteWindow = {
   WmtSpotifyRemote?: {
-    connect(id: string, clientId: string, redirectUri: string): void;
+    connect(id: string, clientId: string, redirectUri: string, silent: boolean): void;
     play(id: string, uri: string): void;
     skipToIndex(id: string, contextUri: string, index: number): void;
     queue(id: string, uri: string): void;
@@ -80,7 +80,7 @@ export function createAndroidSpotifyRemote(win: RemoteWindow, timeouts: { connec
   }
 
   return {
-    connect: (clientId, redirectUri) => call(timeouts.connect, (id) => bridge.connect(id, clientId, redirectUri)),
+    connect: (clientId, redirectUri, silent) => call(timeouts.connect, (id) => bridge.connect(id, clientId, redirectUri, silent === true)),
     play: (uri) => call(timeouts.call, (id) => bridge.play(id, uri)),
     skipToIndex: (contextUri, index) => call(timeouts.call, (id) => bridge.skipToIndex(id, contextUri, index)),
     queue: (uri) => call(timeouts.call, (id) => bridge.queue(id, uri)),

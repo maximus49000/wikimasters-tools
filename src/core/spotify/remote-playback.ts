@@ -12,6 +12,8 @@ export type PlayRoute = 'sdk' | 'web-api';
 export const REMOTE_STATUS_KEY = 'spotify-remote-v1';
 // Titres ajoutés à la file de Spotify après le premier d'une liste (hors album).
 export const QUEUE_MAX = 10;
+// Après une connexion en échec (panne, délai dépassé), la Web API joue seule pendant ce temps : un SDK bloqué ne retarde pas chaque ▶.
+export const SDK_COOLDOWN_MS = 60_000;
 
 const SET_ASIDE: Partial<Record<RemoteErrorCode, RemoteStatus>> = { 'not-installed': 'not-installed', 'not-authorized': 'not-configured', unsupported: 'outdated' };
 const isSetAside = (status: RemoteStatus): boolean => status === 'not-configured' || status === 'not-installed' || status === 'outdated';
@@ -26,12 +28,17 @@ export function createRemotePlayback(deps: {
   session: Pick<SpotifySession, 'clientId' | 'subscribe'>;
   redirectUri: () => Promise<string>;
   store: KeyValueStore;
+  now?: () => number;
 }) {
   const { remote, api, session, redirectUri, store } = deps;
+  const now = deps.now ?? Date.now;
   const listeners = new Set<() => void>();
   let connected = false;
   let track: RemoteTrack | null = null;
-  let connecting: Promise<void> | null = null;
+  // Connexion en cours, et si elle est silencieuse (une lecture ne s'y joint pas : elle en lance une avec l'écran d'accord).
+  let connecting: { promise: Promise<void>; silent: boolean } | null = null;
+  // Heure de la dernière connexion en échec (`failed`), pour la pause du SDK ; en mémoire seulement.
+  let failedAt = Number.NEGATIVE_INFINITY;
   let route: PlayRoute = 'web-api';
 
   const notify = () => listeners.forEach((listener) => listener());
@@ -49,22 +56,29 @@ export function createRemotePlayback(deps: {
     connected = false;
     track = null;
     connecting = null;
+    failedAt = Number.NEGATIVE_INFINITY;
     remote.disconnect();
     void writeStatus('untried').then(notify);
   });
 
-  function connect(): Promise<void> {
+  function connect(silent: boolean): Promise<void> {
     if (connected) return Promise.resolve();
-    connecting ??= (async () => {
-      const clientId = await session.clientId();
-      if (!clientId) throw new RemoteError('failed');
-      await remote.connect(clientId, await redirectUri());
-      connected = true;
-      await writeStatus('ok');
-    })().finally(() => {
-      connecting = null;
-    });
-    return connecting;
+    if (connecting && (silent || !connecting.silent)) return connecting.promise;
+    // Android remplace la tentative silencieuse en cours (elle répond `failed`) par celle-ci.
+    const current: { promise: Promise<void>; silent: boolean } = {
+      silent,
+      promise: (async () => {
+        const clientId = await session.clientId();
+        if (!clientId) throw new RemoteError('failed');
+        await remote.connect(clientId, await redirectUri(), silent);
+        connected = true;
+        await writeStatus('ok');
+      })().finally(() => {
+        if (connecting === current) connecting = null;
+      }),
+    };
+    connecting = current;
+    return current.promise;
   }
 
   function command(target: PlayTarget): () => Promise<void> {
@@ -84,25 +98,41 @@ export function createRemotePlayback(deps: {
     return () => remote.play(target.contextUri);
   }
 
-  // Le SDK, avec une reconnexion après une panne passagère ; `fallback` : la Web API fera l'appel.
+  // Erreur du SDK : écarté (statut enregistré), personne connecté dans Spotify, ou panne passagère (`null`).
+  async function failure(error: unknown): Promise<Outcome | null> {
+    const code: RemoteErrorCode = error instanceof RemoteError ? error.code : 'failed';
+    reportError('lecture-sdk', code);
+    const aside = SET_ASIDE[code];
+    if (aside) {
+      await writeStatus(aside);
+      notify();
+      return 'fallback';
+    }
+    if (code === 'not-logged-in') return 'logged-out';
+    return null;
+  }
+
+  // Le SDK ; `fallback` : la Web API fera l'appel. Une connexion en échec (ou trop lente) passe tout de suite la main
+  // à la Web API et met le SDK en pause ; seule une commande en échec sur une connexion établie vaut une reconnexion.
   async function viaSdk(run: () => Promise<void>): Promise<Outcome> {
     if (isSetAside(await readStatus())) return 'fallback';
+    if (now() - failedAt < SDK_COOLDOWN_MS) return 'fallback';
     if (!(await session.clientId())) return 'fallback';
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        await connect();
+        await connect(false);
+      } catch (error) {
+        const outcome = await failure(error);
+        if (outcome) return outcome;
+        failedAt = now();
+        return 'fallback';
+      }
+      try {
         await run();
         return 'done';
       } catch (error) {
-        const code: RemoteErrorCode = error instanceof RemoteError ? error.code : 'failed';
-        reportError('lecture-sdk', code);
-        const aside = SET_ASIDE[code];
-        if (aside) {
-          await writeStatus(aside);
-          notify();
-          return 'fallback';
-        }
-        if (code === 'not-logged-in') return 'logged-out';
+        const outcome = await failure(error);
+        if (outcome) return outcome;
         connected = false;
       }
     }
@@ -137,9 +167,9 @@ export function createRemotePlayback(deps: {
       await api.pause();
     },
 
-    // Connecté : le dernier état poussé par Spotify, sans appel réseau ; sinon la Web API.
+    // Connecté : le dernier état poussé par Spotify, sans appel réseau ; sinon (ou sans titre connu, page rechargée) la Web API.
     async playerState(): Promise<PlayerState> {
-      if (connected) return track ? { ...track } : null;
+      if (connected && track) return { ...track };
       return api.playerState();
     },
 
@@ -151,14 +181,16 @@ export function createRemotePlayback(deps: {
     status: readStatus,
 
     async reset(): Promise<void> {
+      failedAt = Number.NEGATIVE_INFINITY;
       await writeStatus('untried');
       notify();
     },
 
-    // Au démarrage : le SDK a déjà réussi sur ce téléphone, on se reconnecte sans bruit (le lecteur lit l'état sans Web API).
+    // Au démarrage : le SDK a déjà réussi sur ce téléphone, on se reconnecte sans bruit ni écran d'accord
+    // (le lecteur lit l'état sans Web API) ; la première lecture se connectera elle-même en cas d'échec.
     warm(): void {
       void readStatus().then((status) => {
-        if (status === 'ok') connect().catch(() => undefined);
+        if (status === 'ok') connect(true).catch(() => undefined);
       });
     },
 

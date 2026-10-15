@@ -6,7 +6,7 @@ import { SpotifyError } from '../../../src/core/spotify/errors';
 
 const KEY = '30d88341188741668651e8ab170849cb';
 
-function setup(options: { connectError?: RemoteErrorCode[]; status?: string; clientId?: string | null } = {}) {
+function setup(options: { connectError?: (RemoteErrorCode | null)[]; status?: string; clientId?: string | null; now?: () => number } = {}) {
   const store = createMemoryStore();
   if (options.status) void store.set(REMOTE_STATUS_KEY, { status: options.status });
   const failures = [...(options.connectError ?? [])];
@@ -42,7 +42,7 @@ function setup(options: { connectError?: RemoteErrorCode[]; status?: string; cli
       return () => undefined;
     }),
   };
-  const playback = createRemotePlayback({ remote, api, session, redirectUri: async () => 'wikimasterstools://spotify', store });
+  const playback = createRemotePlayback({ remote, api, session, redirectUri: async () => 'wikimasterstools://spotify', store, now: options.now });
   return { playback, remote, api, store, push: (event: RemoteEvent) => push(event), sessionChanged: () => sessionListener() };
 }
 
@@ -50,7 +50,7 @@ describe('createRemotePlayback.play', () => {
   it('titre d’album à sa position : skipToIndex, puis statut ok et voie sdk', async () => {
     const { playback, remote, api, store } = setup();
     await playback.play({ contextUri: 'spotify:album:A', offsetUri: 'spotify:track:2', offsetIndex: 1 });
-    expect(remote.connect).toHaveBeenCalledWith(KEY, 'wikimasterstools://spotify');
+    expect(remote.connect).toHaveBeenCalledWith(KEY, 'wikimasterstools://spotify', false);
     expect(remote.skipToIndex).toHaveBeenCalledWith('spotify:album:A', 1);
     expect(api.play).not.toHaveBeenCalled();
     expect(await store.get(REMOTE_STATUS_KEY)).toEqual({ status: 'ok' });
@@ -100,15 +100,46 @@ describe('createRemotePlayback.play', () => {
     expect(remote.connect).toHaveBeenCalledTimes(1);
   });
 
-  it('failed : une reconnexion, puis Web API pour cet appel seulement', async () => {
-    const { playback, remote, api, store } = setup({ connectError: ['failed', 'failed'] });
+  it('connexion en échec (failed ou délai) : pas de seconde connexion, Web API tout de suite, statut inchangé', async () => {
+    const { playback, remote, api, store } = setup({ connectError: ['failed'] });
+    await playback.play({ uris: ['spotify:track:0'] });
+    expect(remote.connect).toHaveBeenCalledTimes(1);
+    expect(api.play).toHaveBeenCalledTimes(1);
+    expect(playback.lastRoute()).toBe('web-api');
+    expect(await store.get(REMOTE_STATUS_KEY)).toBeUndefined();
+  });
+
+  it('commande en échec sur une connexion établie : une reconnexion, puis la commande réussit', async () => {
+    const { playback, remote, api } = setup();
+    remote.play.mockRejectedValueOnce(new RemoteError('failed'));
+    await playback.play({ uris: ['spotify:track:0'] });
+    expect(remote.connect).toHaveBeenCalledTimes(2);
+    expect(remote.play).toHaveBeenCalledTimes(2);
+    expect(api.play).not.toHaveBeenCalled();
+    expect(playback.lastRoute()).toBe('sdk');
+  });
+
+  it('commande en échec puis reconnexion en échec : Web API, sans troisième essai', async () => {
+    const { playback, remote, api } = setup({ connectError: [null, 'failed'] });
+    remote.play.mockRejectedValueOnce(new RemoteError('failed'));
     await playback.play({ uris: ['spotify:track:0'] });
     expect(remote.connect).toHaveBeenCalledTimes(2);
     expect(api.play).toHaveBeenCalledTimes(1);
-    expect(await store.get(REMOTE_STATUS_KEY)).toBeUndefined();
+  });
+
+  it('failed n’écarte pas le SDK : 60 s de pause sans le toucher, puis il est réessayé', async () => {
+    let clock = 1_000_000;
+    const { playback, remote, api } = setup({ connectError: ['failed'], now: () => clock });
+    await playback.play({ uris: ['spotify:track:0'] });
+    clock += 59_000;
     await playback.play({ uris: ['spotify:track:1'] });
-    expect(remote.connect).toHaveBeenCalledTimes(3);
-    expect(remote.play).toHaveBeenCalledWith('spotify:track:1');
+    expect(remote.connect).toHaveBeenCalledTimes(1);
+    expect(api.play).toHaveBeenCalledTimes(2);
+    clock += 2_000;
+    await playback.play({ uris: ['spotify:track:2'] });
+    expect(remote.connect).toHaveBeenCalledTimes(2);
+    expect(remote.play).toHaveBeenCalledWith('spotify:track:2');
+    expect(api.play).toHaveBeenCalledTimes(2);
   });
 
   it('not-logged-in : Web API pour cet appel ; si elle échoue aussi, message « connecte-toi dans l’appli »', async () => {
@@ -145,6 +176,14 @@ describe('createRemotePlayback : état et pause', () => {
     expect(api.playerState).not.toHaveBeenCalled();
   });
 
+  it('connecté sans titre connu (page rechargée) : la Web API donne l’état', async () => {
+    const { playback, api, push } = setup();
+    await playback.play(null);
+    push({ connected: true, track: null });
+    expect((await playback.playerState())?.uri).toBe('spotify:track:W');
+    expect(api.playerState).toHaveBeenCalled();
+  });
+
   it('déconnecté (arrière-plan) : retour à la Web API, sans l’ancien titre', async () => {
     const { playback, api, push } = setup();
     await playback.play(null);
@@ -176,6 +215,21 @@ describe('createRemotePlayback : statut', () => {
     const known = setup({ status: 'ok' });
     known.playback.warm();
     await vi.waitFor(() => expect(known.remote.connect).toHaveBeenCalledTimes(1));
+    expect(known.remote.connect).toHaveBeenCalledWith(KEY, 'wikimasterstools://spotify', true);
+  });
+
+  it('une lecture pendant la reconnexion silencieuse lance sa propre connexion, avec l’écran d’accord', async () => {
+    const { playback, remote } = setup({ status: 'ok' });
+    let settle: (error?: RemoteError) => void = () => undefined;
+    remote.connect.mockImplementationOnce(() => new Promise<void>((resolve, reject) => (settle = (error) => (error ? reject(error) : resolve()))));
+    playback.warm();
+    await vi.waitFor(() => expect(remote.connect).toHaveBeenCalledTimes(1));
+    const playing = playback.play({ uris: ['spotify:track:0'] });
+    await vi.waitFor(() => expect(remote.connect).toHaveBeenCalledTimes(2));
+    expect(remote.connect).toHaveBeenLastCalledWith(KEY, 'wikimasterstools://spotify', false);
+    settle(new RemoteError('failed'));
+    await playing;
+    expect(remote.play).toHaveBeenCalledWith('spotify:track:0');
   });
 
   it('délier, relier ou changer de clé : déconnexion et statut remis à zéro', async () => {

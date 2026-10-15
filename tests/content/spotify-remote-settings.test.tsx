@@ -75,6 +75,7 @@ describe('SpotifyRemoteSettings', () => {
     expect(byLabel('Réessayer la lecture directe')).toBeNull();
     const remote = control('not-configured');
     await render(remote);
+    expect(byLabel('Réessayer la lecture directe')?.textContent).toContain('Réessayer la lecture directe');
     await act(async () => byLabel('Réessayer la lecture directe')?.click());
     expect(remote.reset).toHaveBeenCalled();
     expect(text()).toContain('sera essayée à la prochaine lecture');

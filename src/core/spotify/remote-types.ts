@@ -14,7 +14,8 @@ export type RemoteEvent = { connected: false } | { connected: true; track: Remot
 
 export type SpotifyRemote = {
   // Ouvre au besoin l'écran d'accord de Spotify (la première fois) ; Spotify démarre en arrière-plan.
-  connect(clientId: string, redirectUri: string): Promise<void>;
+  // `silent` : reconnexion sans écran d'accord (au démarrage) ; elle échoue plutôt que de demander quoi que ce soit.
+  connect(clientId: string, redirectUri: string, silent?: boolean): Promise<void>;
   play(uri: string): Promise<void>;
   skipToIndex(contextUri: string, index: number): Promise<void>;
   queue(uri: string): Promise<void>;
