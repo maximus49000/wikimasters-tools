@@ -200,4 +200,10 @@ describe('corrections de revue', () => {
     await press(byLabel('Annuler'));
     expect(field()).toBeNull();
   });
+
+  it("sans lecture directe (ordinateur, ancien APK), pas de bloc « Lecture sur ce téléphone »", async () => {
+    serve(KEY);
+    await render(false);
+    expect(text()).not.toContain('Lecture sur ce téléphone');
+  });
 });
