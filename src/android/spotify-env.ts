@@ -2,10 +2,11 @@ import { ANDROID_REDIRECT_URI } from '../core/spotify/config';
 import { TIDAL_ANDROID_REDIRECT_URI } from '../core/tidal/config';
 import type { SpotifyEnv } from '../core/spotify/transport';
 import { createNativeFetch, type NativeHttpWindow } from './native-http';
+import { createAndroidSpotifyRemote, type RemoteWindow } from './spotify-remote';
 
 // Ce que MainActivity.java expose à la page : `WmtSpotify.openAuth(url)` ouvre le navigateur du téléphone ;
 // au retour sur `wikimasterstools://spotify?…`, l'activité appelle `window.__wmtSpotifyRedirect(url)`.
-export type AndroidWindow = NativeHttpWindow & {
+export type AndroidWindow = NativeHttpWindow & RemoteWindow & {
   // `scheme()` : schéma de retour du canal installé (production : wikimasterstools, pré-production : wikimasterstools-preprod).
   WmtSpotify?: { openAuth(url: string): void; openApp?(): void; scheme?(): string };
   __wmtSpotifyRedirect?: (url: string) => void;
@@ -26,8 +27,10 @@ export function createAndroidSpotifyEnv(win: AndroidWindow, timeoutMs: number = 
   let abandon: (() => void) | null = null;
   // Steam et IGDB sans CORS : ces hôtes passent par le pont natif, le reste garde le fetch de la page.
   const nativeFetch = createNativeFetch(win, (url, init) => win.fetch(url, init));
+  const remote = createAndroidSpotifyRemote(win);
   return {
     fetch: nativeFetch,
+    ...(remote ? { remote } : {}),
     deviceTypes: ['Smartphone', 'Tablet'],
     redirectUri: async () => withScheme(ANDROID_REDIRECT_URI, win),
     redirectUriFor: async () => withScheme(TIDAL_ANDROID_REDIRECT_URI, win),

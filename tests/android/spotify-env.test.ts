@@ -84,4 +84,10 @@ describe('createAndroidSpotifyEnv', () => {
     expect(await env.redirectUri()).toBe('wikimasterstools://spotify');
     expect(await env.redirectUriFor?.('tidal')).toBe('wikimasterstools://tidal');
   });
+
+  it('fournit la lecture par le SDK seulement quand le pont WmtSpotifyRemote existe', () => {
+    expect(createAndroidSpotifyEnv(fakeWindow()).remote).toBeUndefined();
+    const win = { ...fakeWindow(), WmtSpotifyRemote: { connect: vi.fn(), play: vi.fn(), skipToIndex: vi.fn(), queue: vi.fn(), pause: vi.fn(), resume: vi.fn(), disconnect: vi.fn(), packageName: () => 'p', fingerprint: () => 'f' } };
+    expect(createAndroidSpotifyEnv(win as never).remote?.packageName()).toBe('p');
+  });
 });
