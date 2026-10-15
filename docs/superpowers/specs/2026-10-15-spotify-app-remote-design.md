@@ -55,7 +55,7 @@ Sur l'APK, lancer une musique échoue souvent. La lecture passe par la Web API (
 
 **Couche `src/core/spotify/remote-playback.ts`**
 `createRemotePlayback({ remote, api, clientId, redirectUri, store })` → `play`, `pause`, `playerState`, `subscribe`, `status`.
-- Connexion à la demande, partagée entre appels simultanés. Une fois le SDK réussi, on le note dans le stockage : au démarrage suivant, reconnexion silencieuse (le lecteur lit l'état sans Web API dès l'ouverture).
+- Connexion à la demande, partagée entre lectures simultanées (une lecture ne rejoint pas la reconnexion silencieuse du démarrage : elle la remplace par une connexion interactive). Une fois le SDK réussi, on le note dans le stockage : au démarrage suivant, reconnexion silencieuse (`connect(…, silent = true)`, jamais d'écran d'accord ; le lecteur lit l'état sans Web API dès l'ouverture). Déjà connecté (changement de page) : Android renvoie l'état du lecteur.
 - `play(target)` :
 
 | Cible | SDK |
@@ -73,7 +73,8 @@ Sur l'APK, lancer une musique échoue souvent. La lecture passe par la Web API (
 | Erreur SDK | Réaction |
 |---|---|
 | `not-installed`, `not-authorized`, `unsupported` | SDK écarté jusqu'au prochain changement de clé ou nouvelle liaison ; tout passe par la Web API comme aujourd'hui |
-| `failed`, déconnexion | une reconnexion, puis Web API pour cet appel |
+| `failed` à la connexion (ou délai dépassé) | Web API pour cet appel, et SDK ignoré pendant 60 s (mémoire de la page) |
+| `failed` d'une commande sur une connexion établie, déconnexion | une reconnexion, puis Web API pour cet appel |
 | `not-logged-in` | Web API pour cet appel ; si elle échoue aussi : « Connecte-toi dans l'appli Spotify du téléphone. » |
 
 `status()` : `ok` / `not-configured` / `not-installed` / `outdated` (et « pas encore essayé »). Délier ou changer de clé déconnecte et remet le statut à zéro.
