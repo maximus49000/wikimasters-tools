@@ -18,7 +18,7 @@ function setup(options: { connectError?: RemoteErrorCode[]; status?: string; cli
     }),
     play: vi.fn(async () => undefined),
     skipToIndex: vi.fn(async () => undefined),
-    queue: vi.fn(async () => undefined),
+    queue: vi.fn(async (_uri: string) => undefined),
     pause: vi.fn(async () => undefined),
     resume: vi.fn(async () => undefined),
     disconnect: vi.fn(),
