@@ -187,14 +187,23 @@ export function ScreenSelector({ slug, title, onPlayed, video, onVideo }: MediaP
 const SUMMARY_CLAMP_CHARS = 140;
 
 // Fiche courte du jeu, en tête de la page gauche : titre, console · année · studio, note, description (3 lignes).
-function GameHead({ detail, box }: { detail: GameDetail; box: GameBox | null }): ReactElement {
+// La boîte (TheGamesDB, file d'attente du relais) arrive après coup : la page s'affiche sans l'attendre, l'en-tête se complète.
+function GameHead({ detail, slug, title }: { detail: GameDetail; slug: string; title: string }): ReactElement {
   const [open, setOpen] = useState(false);
+  const [box, setBox] = useState<GameBox | null>(() => getGameBoxService()?.peek(slug) ?? null);
+  useEffect(() => {
+    const boxes = getGameBoxService();
+    if (!boxes) return;
+    let alive = true;
+    boxes.box(slug, title).then((next) => { if (alive) setBox(next); }, () => undefined);
+    return () => { alive = false; };
+  }, [slug, title]);
   const platform = box?.platformName || detail.platforms?.[0] || '';
   const meta = [platform ? consoleLabelOf(platform) : '', detail.year ? String(detail.year) : '', box?.studio ?? detail.developers?.[0] ?? '']
     .filter((part) => part !== '').join(' · ');
   const rating = detail.rating;
   // Steam (en français) ou IGDB, sinon le résumé de TheGamesDB (anglais).
-  const summary = detail.summary ?? box?.summary;
+  const summary = detail.summary?.trim() || box?.summary;
   const long = (summary?.length ?? 0) > SUMMARY_CLAMP_CHARS;
   const clamped = long && !open;
   return (
@@ -229,12 +238,8 @@ export function GameSelector({ slug, title, onPlayed, video, onVideo }: MediaPro
     const view = await games.view(slug, title).catch((): GameViewLike => ({ status: 'error', message: 'Le jeu vidéo est indisponible pour le moment.' }));
     if (view.status !== 'detail') return gameRows(view, null);
     const { detail } = view;
-    const boxes = getGameBoxService();
-    const [box, bo] = await Promise.all([
-      boxes ? boxes.box(slug, title).catch((): GameBox | null => null) : Promise.resolve(null),
-      soundtrackOf(`game:${detail.source}:${detail.id}`, titlesOf(detail.title, detail.originalTitle)),
-    ]);
-    return { ...gameRows(view, bo), head: <GameHead detail={detail} box={box} /> };
+    const bo = await soundtrackOf(`game:${detail.source}:${detail.id}`, titlesOf(detail.title, detail.originalTitle));
+    return { ...gameRows(view, bo), head: <GameHead detail={detail} slug={slug} title={title} /> };
   };
   return <SelectorBody name="game" slug={slug} title={title} loadKey={`${slug}|${title}`} load={load} onPlayed={onPlayed} video={video} onVideo={onVideo} />;
 }

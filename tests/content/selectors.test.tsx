@@ -174,6 +174,22 @@ describe('ScreenSelector / GameSelector', () => {
       expect(container.querySelector('[data-game-summary]')!.textContent).toBe('English overview from TheGamesDB.');
     });
 
+    it('description Steam vide : celle de TheGamesDB', async () => {
+      await render({ status: 'detail', detail: { ...detail, summary: '' } });
+      expect(container.querySelector('[data-game-summary]')!.textContent).toBe('English overview from TheGamesDB.');
+    });
+
+    it('la page n’attend pas la boîte : vidéo et BO tout de suite, l’en-tête se complète à son arrivée', async () => {
+      let resolve: (b: unknown) => void = () => undefined;
+      services(null, { status: 'detail', detail });
+      setGameBoxService({ box: () => new Promise((r) => { resolve = r; }), peek: () => undefined, subscribe: () => () => undefined } as never);
+      await act(async () => root.render(<GameSelector slug="RDR2" title="RDR2" onPlayed={vi.fn()} video={null} onVideo={vi.fn()} />));
+      expect(container.querySelector('li[data-video]')).not.toBeNull();
+      expect(container.querySelector('[data-game-meta]')!.textContent).toContain('Rockstar Games');
+      await act(async () => resolve({ ...box, studio: 'Studio de la boîte' }));
+      expect(container.querySelector('[data-game-meta]')!.textContent).toContain('Studio de la boîte');
+    });
+
     it('sans boîte : la console de la fiche ; note IGDB sur 100', async () => {
       await render({ status: 'detail', detail: { ...detail, platforms: ['Nintendo Switch'], rating: { kind: 'score', value: 84, count: 10 } } }, null);
       expect(container.querySelector('[data-game-meta]')!.textContent).toBe('Switch · 2018 · Rockstar Games');
