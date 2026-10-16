@@ -19,6 +19,8 @@ export type SpotifyRemote = {
   play(uri: string): Promise<void>;
   skipToIndex(contextUri: string, index: number): Promise<void>;
   queue(uri: string): Promise<void>;
+  // Plus de « répéter le titre » : la liste lancée depuis une carte se lit dans l'ordre.
+  repeatOff(): Promise<void>;
   pause(): Promise<void>;
   resume(): Promise<void>;
   disconnect(): void;

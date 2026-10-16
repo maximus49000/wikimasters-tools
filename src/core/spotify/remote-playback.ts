@@ -81,8 +81,21 @@ export function createRemotePlayback(deps: {
     return current.promise;
   }
 
+  // Une liste lancée depuis une carte se lit dans l'ordre : on coupe « répéter le titre » (réglage gardé par Spotify),
+  // sans faire échouer la lecture déjà lancée si Spotify refuse.
+  function inOrder(start: () => Promise<void>): () => Promise<void> {
+    return async () => {
+      await start();
+      await remote.repeatOff().catch((error: unknown) => console.warn('[wikimasters-tools]', 'Spotify : répétition non coupée :', error));
+    };
+  }
+
   function command(target: PlayTarget): () => Promise<void> {
     if (!target) return () => remote.resume();
+    return inOrder(start(target));
+  }
+
+  function start(target: NonNullable<PlayTarget>): () => Promise<void> {
     if ('uris' in target) {
       return async () => {
         const [first, ...rest] = target.uris;
