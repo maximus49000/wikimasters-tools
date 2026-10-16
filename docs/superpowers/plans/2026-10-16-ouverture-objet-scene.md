@@ -233,3 +233,18 @@
 - [ ] **Step 2:** `npm run test:famille -- scene-piece fiche` → PASS ; `npx tsc --noEmit` → 0 erreur ; `npm run build` → OK.
 - [ ] **Step 3:** Captures (album ouvert, disque au poste, film avec vidéo, livre) montrées à l'utilisateur pour validation.
 - [ ] **Step 4:** Commit, PR vers `main`, fusion, `npm run preprod` ; validation sur le téléphone (APK pré-prod) puis l'extension.
+
+### Task 14: Notes de musique au-dessus du poste
+
+**Files:**
+- Create: `src/content/hifi/music-notes.tsx`
+- Modify: `src/content/RoomView.tsx` (monter les notes au-dessus de `[data-hifi]`)
+- Test: `tests/content/hifi-notes.test.tsx`
+
+**Interfaces:**
+- Consumes: `useHifi(layout)` (Task 8), rectangle du poste.
+- Produces: `MusicNotes(props: { anchor: { x: number; y: number; w: number }; active: boolean; accent: string; reduced: boolean })` — une note toutes les 700 ms tant que `active`, départ au-dessus du haut du poste (jamais sur le lecteur), montée ~110 px sur 3400 ms en ondulant, fondu ; encre `#2C2C2A`, ~1 sur 4 en `accent` ; croche / double croche encrées ; animation CSS seule sur de petits éléments (pas de rendu React par image) ; `reduced` → rien. Commentaire « Fable n'est pas passé ».
+
+- [ ] **Step 1: Tests** (fake timers) — `active` : une note après 700 ms, deux après 1400 ms, chacune retirée après 3400 ms ; `top` de départ < haut du poste ; `active=false` : plus aucune nouvelle note ; `reduced` : aucune note ; couleurs dans {`#2C2C2A`, `accent`}.
+- [ ] **Step 2:** → FAIL. **Step 3:** Implémenter. **Step 4:** → PASS.
+- [ ] **Step 5:** Commit `feat(bibliotheque): notes de musique au-dessus de la chaîne`.
