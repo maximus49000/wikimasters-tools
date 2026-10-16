@@ -1,3 +1,4 @@
+import type { BoxFormat } from '../game/platform-boxes';
 import type { Angle } from './footprint';
 import type { CityTime, DecoKind, NeonColor } from './deco';
 
@@ -24,7 +25,7 @@ export type WallShape = 'poster' | 'vinyl' | 'sleeve-square' | 'sleeve-round' | 
 export type ShelfShape = 'cd' | 'dvd' | 'game' | 'book';
 // Tablette d'une étagère (0 = haut) et présentation d'un objet rangé (couverture ou tranche vers l'avant).
 export type ShelfLevel = 0 | 1 | 2;
-export type StoredDisplay = 'cover' | 'spine';
+export type StoredDisplay = 'cover' | 'spine' | 'back';
 export type VinylColor = 'black' | 'red' | 'blue' | 'green' | 'gold';
 
 // Niveau de profondeur : 0 mur (fenêtres, objets accrochés), 1 fond, 2 milieu, 3 avant.
@@ -47,7 +48,7 @@ export type Placed =
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
   | { id: string; kind: 'window'; col: number; row: number; w: number; h: number }
   | { id: string; kind: 'deco'; deco: DecoKind; col: number; row: number; w?: number; h?: number; city?: CityTime; text?: string; neon?: NeonColor }
-  | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; level: ShelfLevel; order: number; display?: StoredDisplay; slug: string };
+  | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; level: ShelfLevel; order: number; display?: StoredDisplay; box?: BoxFormat; caseColor?: string; slug: string };
 
 export type Layout = Placed[];
 export type DecoPlaced = Extract<Placed, { kind: 'deco' }>;
@@ -113,7 +114,7 @@ export type Room = {
 };
 
 export type LibraryState = {
-  version: 7;
+  version: 8;
   activeRoomId: string;
   homeRoomId: string | null;
   // Heure globale de la Bibliothèque (toutes les pièces).

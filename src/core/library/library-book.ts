@@ -4,8 +4,10 @@ import { DECO_KINDS, MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN } from './deco';
 import { isKnownTz } from './clock-cities';
 import { drawSize, isAngle, type Angle } from './footprint';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
+import { BOX_FORMATS, type BoxFormat } from '../game/platform-boxes';
 import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, compactShelves, isStanding, SURFACE_SLOTS, canHostSmall, smallSpan, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
 
+const BOX_FORMAT_IDS = Object.keys(BOX_FORMATS) as [BoxFormat, ...BoxFormat[]];
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
 export const MAX_PET_NAME = 20;
@@ -61,9 +63,17 @@ const placedSchema = z.union([
     shelfId: z.string(),
     level: z.union([z.literal(0), z.literal(1), z.literal(2)]),
     order: z.number().int().min(0),
-    display: z.enum(['cover', 'spine']).optional(),
+    display: z.enum(['cover', 'spine', 'back']).optional(),
+    box: z.enum(BOX_FORMAT_IDS).optional().catch(undefined),
+    caseColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().catch(undefined),
     slug: z.string(),
-  }),
+  }).transform(({ box, caseColor, display, ...rest }) => ({
+    ...rest,
+    // Format et couleur de boîtier ne concernent que les jeux ; la présentation de dos aussi (ailleurs : la couverture).
+    ...(display && { display: display === 'back' && rest.shape !== 'game' ? ('cover' as const) : display }),
+    ...(rest.shape === 'game' && box && { box }),
+    ...(rest.shape === 'game' && box && caseColor && { caseColor }),
+  })),
 ]);
 const ptSchema = z.object({ x: z.number(), y: z.number() });
 const segmentSchema = z.object({
@@ -110,7 +120,7 @@ const roomSchema = z.object({
   cityEpoch: z.number().int().optional(),
 });
 const stateSchema = z.object({
-  version: z.literal(7),
+  version: z.literal(8),
   activeRoomId: z.string(),
   homeRoomId: z.string().nullable(),
   time: z.union([
@@ -148,7 +158,7 @@ const makeRoom = (id: string, name: string, orientation: Orientation, style: Roo
 });
 
 export function createInitialState(): LibraryState {
-  return { version: 7, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
+  return { version: 8, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
 }
 
 export function activeRoom(state: LibraryState): Room {
@@ -334,7 +344,13 @@ export function migrateV6(raw: unknown): unknown {
   return { ...state, version: 7, rooms };
 }
 
-const migrate = (raw: unknown): unknown => migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(raw))))));
+// La v8 ajoute au jeu rangé un format de boîte (`box`, `caseColor`) et la présentation de dos : champs optionnels, seule la version change.
+export function migrateV7(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 7) return raw;
+  return { ...(raw as object), version: 8 };
+}
+
+const migrate = (raw: unknown): unknown => migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(raw)))))));
 
 // Un animal impossible (espèce ou pelage inconnus…) est ignoré sans faire perdre la pièce ; trois au plus.
 function cleanPets(raw: unknown): unknown {

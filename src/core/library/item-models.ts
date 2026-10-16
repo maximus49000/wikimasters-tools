@@ -2,6 +2,7 @@
 // src/core/library/item-models.ts
 import { crown } from './furniture-models';
 import type { BoxFace, Decal, Model, Piece } from './furniture-render3d';
+import { BOX_FORMATS, type BoxFormat } from '../game/platform-boxes';
 import type { ShelfShape, StoredDisplay } from './library-types';
 
 // Objets qui garnissent les meubles, en vrais volumes (cm, même repère que les meubles : x largeur vue de face, y hauteur, z profondeur depuis l'avant) :
@@ -27,7 +28,7 @@ export const ITEM_MODELS: Record<ItemShape, Model> = {
   cd: stored('cd', 14, 12.5, 1),
   // Boîtier DVD et jeu : 13,5 × 19 × 1,5 cm (format portrait, comme les vrais).
   dvd: stored('dvd', 13.5, 19, 1.5),
-  game: stored('game', 13.5, 19, 1.5),
+  game: stored('game', 13.5, 19, 1.5, [{ face: 'back', key: 'back:game' }]),
   // Livre 15 × 23 × 3 cm : tranche des pages à droite (opposée au dos) et sur le dessus.
   book: stored('book', 15, 23, 3, [{ face: 'right', key: 'pages:book' }, { face: 'top', key: 'pages:book' }]),
   // Écran plat : socle, pied, dalle 55 × 33 × 3 cm, vitre (décalque de l'image de la carte) en léger relief devant la dalle.
@@ -104,14 +105,22 @@ export const STEAMPUNK_MONITOR: Model = {
   ],
 };
 
-export function itemModel(shape: ItemShape, steampunk = false): Model {
-  return shape === 'monitor' && steampunk ? STEAMPUNK_MONITOR : ITEM_MODELS[shape];
+// Modèle d'un objet rangé : un jeu au format de boîte `box` prend les dimensions et la couleur de plastique de la console ; sinon le modèle du type.
+export function storedModel(shape: ShelfShape, box?: BoxFormat): Model {
+  if (shape !== 'game' || !box) return ITEM_MODELS[shape];
+  const f = BOX_FORMATS[box];
+  return { w: f.w, h: f.h, d: f.d, pieces: [{ shape: 'box', x: 0, y: 0, z: 0, w: f.w, h: f.h, d: f.d, fill: 'metal', color: f.plastic, decals: [...roles('game'), { face: 'back', key: 'back:game' }], tag: 'body' }] };
+}
+
+export function itemModel(shape: ItemShape, steampunk = false, box?: BoxFormat): Model {
+  if (shape === 'monitor' && steampunk) return STEAMPUNK_MONITOR;
+  return shape === 'cd' || shape === 'dvd' || shape === 'game' || shape === 'book' ? storedModel(shape, box) : ITEM_MODELS[shape];
 }
 
 // Largeur occupée sur la tablette (cm), sans l'écart : la largeur de la couverture de face, l'épaisseur sur la tranche.
-export function itemFootprintCm(shape: ShelfShape, display: ItemDisplay): number {
-  const m = ITEM_MODELS[shape];
-  return display === 'cover' ? m.w : m.d;
+export function itemFootprintCm(shape: ShelfShape, display: ItemDisplay, box?: BoxFormat): number {
+  const m = storedModel(shape, box);
+  return display === 'spine' ? m.d : m.w;
 }
 
 // Couleur du dos d'un livre, dérivée du slug (donc stable) : teinte hsl(somme % 360, 35 %, 45 %), en #RRGGBB.
@@ -127,10 +136,12 @@ export function bookColor(slug: string): string {
 
 // Objet posé : `key` le distingue (clés de décalque « key|rôle:forme », formes « stored:key », abat-jour « glow:key ») ; (x, y, z) = coin bas avant gauche de sa boîte
 // dans le repère du meuble, une fois posé ; `color` : couleur du dos d'un livre.
-export type ItemPlacement = { key: string; shape: ItemShape; display?: ItemDisplay; x: number; y: number; z: number; color?: string };
+export type ItemPlacement = { key: string; shape: ItemShape; display?: ItemDisplay; x: number; y: number; z: number; color?: string; box?: BoxFormat };
 
 // Quart de tour (tranche vers l'avant) : la face gauche passe devant, l'avant à droite, la droite au fond, le fond à gauche.
 const TURNED: Record<BoxFace, BoxFace> = { left: 'front', front: 'right', right: 'back', back: 'left', top: 'top' };
+// Demi-tour (dos vers l'avant, jeu seulement) : l'avant et le fond s'échangent, la tranche passe à droite.
+const HALF: Record<BoxFace, BoxFace> = { front: 'back', back: 'front', left: 'right', right: 'left', top: 'top' };
 
 // Présentoir : un CD, un DVD ou un jeu rangé de face ne tient pas droit comme un piquet. Il penche vers l'arrière de STAND_LEAN_DEG,
 // posé sur un petit support sombre : socle fin, rebord avant qui retient le bas du boîtier, béquille au dos qui l'appuie aux deux tiers
@@ -139,7 +150,7 @@ const TURNED: Record<BoxFace, BoxFace> = { left: 'front', front: 'right', right:
 export const STAND_LEAN_DEG = 14;
 const STAND_COLOR = '#5B4636';
 const STAND = { base: 0.4, lip: 1, lipD: 0.5, strut: 0.4, back: 1.5, rest: 0.62 } as const;
-const onStand = (p: ItemPlacement): boolean => (p.display ?? 'cover') === 'cover' && (p.shape === 'cd' || p.shape === 'dvd' || p.shape === 'game');
+const onStand = (p: ItemPlacement): boolean => (p.display ?? 'cover') !== 'spine' && (p.shape === 'cd' || p.shape === 'dvd' || p.shape === 'game');
 
 // Support du boîtier `m` posé en (x, y, z) (coin bas avant gauche), et le boîtier penché dessus.
 function standPieces(m: Model, c: Extract<Piece, { shape: 'box' }>, x: number, y: number, z: number): Piece[] {
@@ -167,7 +178,7 @@ function standPieces(m: Model, c: Extract<Piece, { shape: 'box' }>, x: number, y
 // Face avant d'un objet rangé (couverture de face, penchée sur son présentoir ; tranche sur la tranche), repère du meuble (cm) :
 // haut gauche, haut droit, bas droit, bas gauche.
 export function storedFrontCorners(p: ItemPlacement): [number, number, number][] {
-  const m = ITEM_MODELS[p.shape];
+  const m = itemModel(p.shape, false, p.box);
   if (!onStand(p)) {
     const w = p.display === 'spine' ? m.d : m.w;
     return [[p.x, p.y + m.h, p.z], [p.x + w, p.y + m.h, p.z], [p.x + w, p.y, p.z], [p.x, p.y, p.z]];
@@ -180,7 +191,7 @@ export function storedFrontCorners(p: ItemPlacement): [number, number, number][]
 
 // Pièces d'un objet posé dans le repère de son meuble. Sur la tranche, l'objet rangé tourne d'un quart (les objets rangés ne sont faits que de boîtes).
 export function itemPieces(p: ItemPlacement, steampunk = false): Piece[] {
-  const m = itemModel(p.shape, steampunk);
+  const m = itemModel(p.shape, steampunk, p.box);
   const pieces = placedPieces(p, m);
   // Le boîtier (seule pièce d'un objet rangé) passe en dernier : la béquille et le socle se trient avec lui par le peintre.
   return onStand(p) && pieces[0]?.shape === 'box' ? standPieces(m, pieces[0], p.x, p.y, p.z) : pieces;
@@ -189,6 +200,7 @@ export function itemPieces(p: ItemPlacement, steampunk = false): Piece[] {
 function placedPieces(p: ItemPlacement, m: Model): Piece[] {
   const stored = p.shape !== 'monitor' && p.shape !== 'small-plant' && p.shape !== 'small-lamp' && p.shape !== 'small-alarm' && p.shape !== 'small-clock' && p.shape !== 'small-station' && p.shape !== 'small-hifi';
   const turned = p.display === 'spine' && stored;
+  const half = p.display === 'back' && p.shape === 'game';
   return m.pieces.map((q): Piece => {
     // Étiquettes : `body` reçoit la couleur propre ; un objet rangé est marqué « stored:key » (il ne se voit qu'à travers l'ouverture du meuble),
     // `glow` devient « glow:key » (allumage de cet objet-là).
@@ -198,7 +210,7 @@ function placedPieces(p: ItemPlacement, m: Model): Piece[] {
     else delete base.tag;
     switch (base.shape) {
       case 'box': {
-        const decals = base.decals?.map((d) => ({ face: turned ? TURNED[d.face] : d.face, key: `${p.key}|${d.key}` }));
+        const decals = base.decals?.map((d) => ({ face: turned ? TURNED[d.face] : half ? HALF[d.face] : d.face, key: `${p.key}|${d.key}` }));
         const placed = turned
           ? { x: p.x + m.d - (base.z + base.d), z: p.z + base.x, w: base.d, d: base.w }
           : { x: p.x + base.x, z: p.z + base.z, w: base.w, d: base.d };
