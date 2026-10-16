@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { activeHifi, hifiState, hiddenAtHome } from '../../../src/core/library/hifi';
+import { activeHifi, hifiState, hiddenAtHome, sleeveKindOf, sleeveRest } from '../../../src/core/library/hifi';
 import type { Layout } from '../../../src/core/library/library-types';
 
 const hifi = (id: string): Layout[number] => ({ id, kind: 'small', item: 'hifi', hostId: 'desk', slot: 0 });
@@ -27,5 +27,20 @@ describe('poste hi-fi', () => {
   });
   it('view.card null : rien au poste', () => {
     expect(hifiState([hifi('h1'), cd('c1', 'a')], { card: null, track: null }).atHifi).toBeNull();
+  });
+
+  it('pochette couchée devant le poste, sur le bureau, sans toucher sa façade', () => {
+    const station = { x: 0, y: 75, z: 17 };
+    for (const kind of ['cd', 'dvd', 'game', 'book', 'vinyl'] as const) {
+      const { top, bottom } = sleeveRest(station, kind);
+      for (const [, , z] of [...top, ...bottom]) {
+        expect(z, kind).toBeGreaterThanOrEqual(0);
+        expect(z, kind).toBeLessThan(station.z);
+      }
+      expect(top[0]![1]).toBeGreaterThan(bottom[0]![1]);
+      expect(bottom[0]![1]).toBe(75);
+    }
+    expect(sleeveKindOf({ id: 'w', kind: 'wall', shape: 'vinyl', col: 0, row: 0, slug: 'x' })).toBe('vinyl');
+    expect(sleeveKindOf({ id: 'p', kind: 'wall', shape: 'poster', col: 0, row: 0, slug: 'x' })).toBeNull();
   });
 });
