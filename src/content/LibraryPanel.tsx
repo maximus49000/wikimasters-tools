@@ -24,7 +24,7 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { STEAMPUNK_ONLY, isSmallKind, labelOf, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
-import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay, type DecoPlaced } from '../core/library/library-types';
+import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Placed, type Orientation, type PetPlan, type StyleId, type StoredDisplay, type DecoPlaced } from '../core/library/library-types';
 import { ensureDecoFonts } from './deco-fonts';
 import { hasCitySetting, isPanel, PANEL_MAX, PANEL_MIN, type CityTime } from '../core/library/deco';
 import type { LibraryRepo } from '../core/library/library-repo';
@@ -106,6 +106,13 @@ import type { Rect } from '../core/library/outside-camera';
 import { cameraOf, unionBox, zoomIdsOf, zoomTargetOf, type Box } from '../core/library/zoom-target';
 import { FurnitureZoom, ZOOM_MS, ZOOM_REDUCED_MS } from './furniture-zoom';
 import { useFurnitureZoom } from './use-furniture-zoom';
+import { openingOf, type Opening } from '../core/library/opened-item';
+import { bookColor } from '../core/library/item-models';
+import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
+import { MusicSelector } from './opened-item/selectors';
+import { useOpenedItem } from './opened-item/use-opened-item';
+import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
+import { getPlayerSource } from './music-registry';
 import { reducedMotion } from './ghibli-sky';
 import { getImageService } from './image-registry';
 
@@ -233,6 +240,10 @@ const REFUSALS = {
   taken: 'Cet emplacement est déjà occupé.',
   wall: 'Un objet mural s’accroche au mur.',
 } as const;
+
+// Formes ouvertes dans la scène à ce stade : boîtier de CD et pochette de vinyle (les autres viendront avec leurs sélecteurs).
+const OPENS_NOW: ReadonlySet<Opening> = new Set<Opening>(['jewel-cd', 'vinyl-sleeve']);
+const opensNow = (p: Placed): boolean => { const o = openingOf(p); return o !== null && OPENS_NOW.has(o); };
 
 type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void; onOpenMarket?: (slug: string) => void };
 
@@ -379,6 +390,22 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     return () => unlockOrientation();
   }, [stage.active, orientationNow]);
 
+  // Objet ouvert dans la scène (boîtier de CD, pochette de vinyle) : paysage forcé pendant l'ouverture, orientation de la pièce rendue
+  // à la fermeture. La fiche ⓘ passe par-dessus : le retour Android la ferme d'abord, la couche reste.
+  const { opened, open: openItem, close: closeItem } = useOpenedItem({
+    onBeforeClose: () => {
+      if (!viewingRef.current) return false;
+      setViewing(null);
+      return true;
+    },
+    restoreOrientation: () => (stage.active ? lockOrientation(orientationNow) : unlockOrientation()),
+  });
+  const openedRef = useRef(opened);
+  openedRef.current = opened;
+  // Sans poste, le disque du boîtier tourne quand le lecteur joue une piste de cette carte (rien de mémorisé à part).
+  const playerSource = getPlayerSource();
+  const playerNow = useSyncExternalStore(playerSource?.subscribe ?? noSubscribe, playerSource?.current ?? noPlayer);
+
   // Pièce horizontale en plein écran sur un écran en paysage : la pièce couvre tout l'écran, sans bandes noires.
   const [outsidePhase, setOutsidePhase] = useState<OutsidePhase>('inside');
   const outsideFrom = useRef<{ rect: Rect | null; left: number; top: number } | null>(null);
@@ -412,7 +439,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const zoomOpen = zoom !== null;
   useEffect(() => {
     if (!zoomOpen) return;
-    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current && !decoDialogRef.current) zoomBack(); };
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current && !decoDialogRef.current && !openedRef.current) zoomBack(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [zoomOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -715,7 +742,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       // Une carte rangée ou affichée sur un écran ouvre le zoom de son meuble ; la fiche s'ouvre ensuite depuis le zoom.
       if ((item.kind === 'stored' || item.kind === 'computer') && tryZoom(item.id)) return;
       const slug = item.kind === 'wall' || item.kind === 'stored' || item.kind === 'computer' ? item.slug : undefined;
-      if (slug && roomCards.cards[slug]) setViewing(slug);
+      if (!slug || !roomCards.cards[slug]) return;
+      // Un vinyle ou une pochette au mur s'ouvre dans la scène ; un poster ouvre la fiche.
+      if (opensNow(item)) return void openItem(item.id, boxInStage(item.id));
+      setViewing(slug);
       return;
     }
     // L'écran d'un ordinateur se manie comme l'ordinateur.
@@ -733,14 +763,26 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (placement) showPlacement(movePlacement(placement, room.cols, spotAt(col, row)));
   }
 
-  // Rectangle d'un meuble dans la scène (départ du pivot) ; null si non mesurable (tests).
-  const boxInStage = (id: string): Box | null => {
+  // Rectangle d'un élément dans le repère de la scène ; null si non mesurable (tests).
+  const boxOfEl = (el: Element | null | undefined): Box | null => {
     const stageEl = stage.ref.current;
-    const el = scrollRef.current?.querySelector(`[data-id="${id}"]`);
     if (!stageEl || !el) return null;
     const s = stageEl.getBoundingClientRect();
     const r = el.getBoundingClientRect();
     return r.width === 0 ? null : { x: r.left - s.left, y: r.top - s.top, w: r.width, h: r.height };
+  };
+  // Rectangle d'un meuble ou d'un objet de la pièce (départ du pivot, de l'ouverture).
+  const boxInStage = (id: string): Box | null => boxOfEl(scrollRef.current?.querySelector(`[data-id="${id}"]`));
+  // Rectangle d'une carte sur la tablette du second zoom (le slug n'est pas glissé dans un sélecteur : il peut contenir des guillemets).
+  const boxOnBoard = (slug: string): Box | null =>
+    boxOfEl([...(stage.ref.current?.querySelectorAll('[data-board-card]') ?? [])].find((el) => el.getAttribute('data-board-card') === slug));
+  // Objet de la pièce qui s'ouvre dans la scène pour cette carte ; les autres formes gardent la fiche pour l'instant.
+  const openedFor = (slug: string): Placed | undefined => layout.find((p) => (p.kind === 'stored' || p.kind === 'wall') && p.slug === slug && opensNow(p));
+  // Toucher une carte du second zoom : son boîtier s'ouvre s'il le peut, sinon la fiche.
+  const onZoomCard = (slug: string): void => {
+    const p = openedFor(slug);
+    if (p) openItem(p.id, boxOnBoard(slug));
+    else setViewing(slug);
   };
   // Ouvre le zoom si l'objet touché mène à une étagère garnie ou à un bureau dont l'écran affiche une carte.
   const tryZoom = (id: string): boolean => {
@@ -1246,10 +1288,34 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             stage={stageSize}
             level={zoom.level}
             onLevel={(lv) => setZoomLevel(lv)}
-            onCard={(slug) => setViewing(slug)}
+            onCard={onZoomCard}
             onBack={zoomBack}
           />
         )}
+        {opened && (() => {
+          const p = layout.find((x) => x.id === opened.placedId);
+          const slug = p && (p.kind === 'stored' || p.kind === 'wall') ? p.slug : undefined;
+          const card = slug ? roomCards.cards[slug] : undefined;
+          if (!p || !slug || !card) return null;
+          const view = playerSource ? playerNow : NO_PLAYER;
+          const spinning = view.card?.slug === slug && view.track?.playing === true;
+          return (
+            <OpenedItemLayer
+              placed={p}
+              card={card}
+              cover={imageOfCard(slug) ?? null}
+              color={bookColor(slug)}
+              state={opened}
+              disc={spinning ? 'spinning' : 'in'}
+              hasHifi={false}
+              onInfo={() => setViewing(slug)}
+              // Retour vers sa place d'origine : la carte sur la tablette du second zoom, sinon l'objet dans la pièce.
+              onClose={() => closeItem(boxOnBoard(slug) ?? boxInStage(p.id))}
+              onAddHifi={() => undefined}
+              selector={<MusicSelector slug={slug} title={card.title} onPlayed={() => undefined} />}
+            />
+          );
+        })()}
         {viewing && roomCards.cards[viewing] && (
           <RoomCardDialog
             slug={viewing}

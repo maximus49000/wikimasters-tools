@@ -51,6 +51,8 @@ export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomSta
     // Retour Android / navigateur : notre entrée vient d'être retirée, on ferme sans toucher à l'historique.
     const onPop = () => {
       if (!ours.current) return;
+      // Notre entrée est encore là : c'est celle d'une couche posée par-dessus (objet ouvert) qui vient d'être retirée.
+      if (history.state?.wmtZoom) return;
       // La fiche ouverte par-dessus se ferme d'abord : on repose notre entrée, le zoom reste ouvert.
       if (beforeClose.current?.()) {
         history.pushState({ ...(history.state ?? {}), wmtZoom: true }, '');
