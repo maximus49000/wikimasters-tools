@@ -91,6 +91,14 @@ Maquette de déroulé validée le 2026-10-16 (le dessin de la maquette n'est qu'
    jusqu'à ce qu'on le ferme, puis se pose devant le poste.
 6. Les **vidéos** (bande-annonce, vidéos Steam) ne vont pas au poste : elles se lisent toujours dans le boîtier ouvert.
 
+### Notes de musique
+
+Pendant la lecture (disque au poste, non en pause), des **notes de musique** naissent **au-dessus** de la chaîne (jamais sur
+le lecteur), montent en ondulant (~110 px d'écran sur ~3,4 s) puis s'effacent, une toutes les ~0,7 s. Couleur sobre :
+encre `#2C2C2A`, environ une sur quatre à la couleur de la pochette en cours. Croche et double croche, trait encré (cellulo).
+Plus aucune nouvelle note à la pause (celles en vol finissent leur course). Mouvement réduit : pas de notes.
+Maquette montrée le 2026-10-16.
+
 ### État
 
 Le poste **reflète le lecteur réel** (`getPlayerSource()`), sans état mémorisé à part : l'album au poste est celui de la piste en cours ;
