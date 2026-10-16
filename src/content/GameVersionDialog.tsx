@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { boxartUrl, type TgdbVersion } from '../core/game/tgdb-api';
+import { boxartUrl, PAL_REGION_IDS, regionLabel, type TgdbVersion } from '../core/game/tgdb-api';
 import type { GameBoxService } from './game-box-service';
 import { Glyph } from './Glyphs';
 import { useOverlayHost } from './SoundtrackDialog';
@@ -52,6 +52,11 @@ export function GameVersionDialog({ service, slug, title, versions, activeId, on
     onClose();
   };
 
+  // Console, puis PAL d'abord, puis année.
+  const palRank = (version: TgdbVersion): number => (version.regionId !== undefined && PAL_REGION_IDS.includes(version.regionId) ? 0 : 1);
+  const sorted = [...versions].sort(
+    (a, b) => a.platformName.localeCompare(b.platformName) || palRank(a) - palRank(b) || (a.year ?? Number.MAX_SAFE_INTEGER) - (b.year ?? Number.MAX_SAFE_INTEGER) || a.id - b.id,
+  );
   const check = <Glyph name="check" size={18} />;
 
   return createPortal(
@@ -79,7 +84,7 @@ export function GameVersionDialog({ service, slug, title, versions, activeId, on
               {activeId === undefined && check}
             </button>
           </li>
-          {versions.map((version) => {
+          {sorted.map((version) => {
             const active = version.id === activeId;
             return (
               <li key={version.id} style={{ borderTop: border }}>
@@ -89,7 +94,7 @@ export function GameVersionDialog({ service, slug, title, versions, activeId, on
                   </span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{version.platformName}</span>
-                    <span style={{ display: 'block', fontSize: 11, opacity: 0.7 }}>{version.year ?? 'Année inconnue'}</span>
+                    <span style={{ display: 'block', fontSize: 11, opacity: 0.7 }}>{[version.year ?? 'Année inconnue', regionLabel(version.regionId)].filter(Boolean).join(' · ')}</span>
                   </span>
                   {version.back && (
                     <span aria-label="Dos de la boîte connu" title="Dos de la boîte connu" style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 10, opacity: 0.75 }}>

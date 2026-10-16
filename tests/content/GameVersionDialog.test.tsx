@@ -102,4 +102,13 @@ describe('GameVersionDialog', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(dialog().querySelector('[role="status"]')).not.toBeNull();
   });
+
+  it('distingue les régions d’une même console et met le PAL en premier', async () => {
+    const two = [version(10, 'PlayStation 4', { regionId: 2, year: 2018 }), version(11, 'PlayStation 4', { regionId: 6, year: 2019 })];
+    await show(service(), two, undefined);
+    const rows = Array.from(dialog().querySelectorAll<HTMLElement>('[aria-label="Choisir PlayStation 4"]'));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.textContent).toContain('Europe (PAL)');
+    expect(rows[1]!.textContent).toContain('Amérique (NTSC-U)');
+  });
 });

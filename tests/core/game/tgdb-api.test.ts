@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import hollow from './fixtures/tgdb-hollow-knight.json';
 import rdr2 from './fixtures/tgdb-rdr2.json';
-import { boxartUrl, defaultVersion, fetchTgdbImages, fetchTgdbVersions, matchingVersions, parseTgdbGames, type TgdbVersion } from '../../../src/core/game/tgdb-api';
+import { boxartUrl, defaultVersion, fetchTgdbImages, fetchTgdbVersions, matchingVersions, parseTgdbGames, regionLabel, type TgdbVersion } from '../../../src/core/game/tgdb-api';
 
 const v = (over: Partial<TgdbVersion>): TgdbVersion => ({
   id: 1, title: 'X', platformId: 1, platformName: 'PC', format: 'generic', style: { plastic: '#000', band: null }, ...over,
@@ -102,4 +102,13 @@ describe('fetchTgdbImages', () => {
   });
   it('panne : null', async () => expect(await fetchTgdbImages([5], reply(500))).toBeNull());
   it('aucun id : {}', async () => expect(await fetchTgdbImages([], reply(500))).toEqual({}));
+});
+
+describe('regionLabel', () => {
+  it('nomme PAL, NTSC-U et NTSC, rien pour le reste', () => {
+    expect(regionLabel(6)).toBe('Europe (PAL)');
+    expect(regionLabel(2)).toBe('Amérique (NTSC-U)');
+    expect(regionLabel(1)).toBe('NTSC');
+    expect([0, 9, 42, undefined].map((id) => regionLabel(id))).toEqual([null, null, null, null]);
+  });
 });

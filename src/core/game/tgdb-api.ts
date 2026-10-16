@@ -6,7 +6,15 @@ import { caseStyleOfTgdbPlatform, formatOfTgdbPlatform, type BoxFormat, type Cas
 // Ids de région TheGamesDB signifiant « PAL » (Europe).
 // Source : pages publiques https://thegamesdb.net/game.php?id=… (ligne « Region »), relevées le 2026-10-16 :
 // region_id 0 = Region Not Set, 1 = NTSC, 2 = NTSC-U, 6 = PAL, 9 = Other.
-const PAL_REGION_IDS: number[] = [6];
+export const PAL_REGION_IDS: number[] = [6];
+
+// Libellé court de la région d'une version (rien si elle n'est pas renseignée ou ambiguë).
+export function regionLabel(id?: number): string | null {
+  if (id === 6) return 'Europe (PAL)';
+  if (id === 2) return 'Amérique (NTSC-U)';
+  if (id === 1) return 'NTSC';
+  return null;
+}
 
 // Une version d'un jeu sur une console ; front/back = nom de fichier de la pochette sur le CDN.
 export type TgdbVersion = {
