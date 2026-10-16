@@ -7,6 +7,8 @@ import { useHifiPlayer } from '../../src/content/hifi/use-hifi';
 import { setPlayerSource } from '../../src/content/music-registry';
 import type { PlayerSource, PlayerView } from '../../src/content/player-source';
 import type { Layout, Room } from '../../src/core/library/library-types';
+import { placementRectPx, smallPlacement } from '../../src/core/library/carried-items';
+import { pxRect, rectOf } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -164,4 +166,28 @@ describe('abonnement du poste au lecteur', () => {
     expect(renders).toBe(after + 1);
     expect(c.querySelector('[data-spin]')!.getAttribute('data-spin')).toBe('false');
   });
+
+  it('pendant la lecture, des notes naissent au-dessus du poste ; pas en Aménager', () => {
+    vi.useFakeTimers();
+    try {
+      install();
+      const c = render([...base, hifi]);
+      play(true);
+      act(() => { vi.advanceTimersByTime(1400); });
+      const notes = [...c.querySelectorAll('[data-music-note]')];
+      expect(notes.length).toBe(2);
+      const desk = base.find((p) => p.id === 'd')!;
+      const station = placementRectPx('desk', 0, pxRect(rectOf(desk)!), smallPlacement('h', 'hifi', 'desk', 0));
+      const stationTop = station.y;
+      expect(c.querySelector('[data-music-notes]')!.getAttribute('pointer-events')).toBe('none');
+      for (const n of notes) expect(Number(n.getAttribute('data-y'))).toBeLessThan(stationTop);
+      act(() => { vi.advanceTimersByTime(3400); });
+      render([...base, hifi], c, { editing: true });
+      act(() => { vi.advanceTimersByTime(3500); });
+      expect(c.querySelectorAll('[data-music-note]').length).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
+
