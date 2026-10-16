@@ -46,23 +46,71 @@ export function formatOfTgdbPlatform(id: number): BoxFormat {
 }
 
 // Motifs testés dans l'ordre : les plus précis d'abord (« playstation 4 » avant « playstation »).
-const NOMS: [RegExp, BoxFormat][] = [
-  [/switch/, 'switch'],
+// Le style (couleur de boîtier, bandeau) est propre à la console ; sans clé, on prend celui du format.
+const NOMS: [RegExp, BoxFormat, string?][] = [
+  [/switch/, 'switch', 'switch'],
   [/vita/, 'vita'],
-  [/portable|\bpsp\b/, 'psp'],
-  [/playstation 5|\bps5\b|playstation 4|\bps4\b|playstation 3|\bps3\b/, 'bluray'],
-  [/playstation 2|\bps2\b/, 'dvd'],
-  [/playstation|\bps1\b|\bpsx\b|saturn|dreamcast/, 'cd-jewel'],
-  [/xbox series|xbox one/, 'bluray'],
-  [/xbox/, 'dvd'],
-  [/wii/, 'dvd'],
+  [/playstation portable|psp/, 'psp'],
+  [/playstation 5|ps5/, 'bluray', 'ps5'],
+  [/playstation 4|ps4/, 'bluray', 'ps4'],
+  [/playstation 3|ps3/, 'bluray', 'ps3'],
+  [/playstation 2|ps2/, 'dvd', 'ps2'],
+  [/^playstation$|ps1|psx|saturn|dreamcast/, 'cd-jewel'],
+  [/xbox series/, 'bluray', 'xseries'],
+  [/xbox one/, 'bluray', 'xone'],
+  [/xbox/, 'dvd', 'xbox'],
+  [/wii u/, 'dvd', 'wiiu'],
+  [/wii/, 'dvd', 'wii'],
   [/gamecube/, 'gamecube'],
-  [/3ds|nintendo ds|\bnds\b|\bdsi\b/, 'ds'],
-  [/\bpc\b|windows/, 'dvd'],
+  [/3ds|nintendo ds|nds|dsi/, 'ds', 'ds'],
+  [/^pc( \(.*\))?$|^(microsoft )?windows$|\(microsoft windows\)/, 'dvd'],
 ];
 
+function lookup(name: string): [BoxFormat, string | undefined] {
+  const n = name.toLowerCase().trim();
+  for (const [re, f, k] of NOMS) if (re.test(n)) return [f, k];
+  return ['generic', undefined];
+}
+
 export function formatOfPlatformName(name: string): BoxFormat {
-  const n = name.toLowerCase();
-  for (const [re, f] of NOMS) if (re.test(n)) return f;
-  return 'generic';
+  return lookup(name)[0];
+}
+
+export type CaseStyle = { plastic: string; band: { color: string; label: string } | null };
+
+const VERT = '#107C10';
+const STYLES: Record<string, CaseStyle> = {
+  ps5: { plastic: BLANC, band: { color: '#FFFFFF', label: 'PS5' } },
+  ps4: { plastic: '#1F4C9E', band: { color: '#1F4C9E', label: 'PS4' } },
+  ps3: { plastic: NOIR, band: { color: NOIR, label: 'PS3' } },
+  ps2: { plastic: NOIR, band: null },
+  xseries: { plastic: VERT, band: { color: VERT, label: 'XBOX SERIES X' } },
+  xone: { plastic: VERT, band: { color: VERT, label: 'XBOX ONE' } },
+  xbox: { plastic: VERT, band: null },
+  switch: { plastic: '#E60012', band: { color: '#E60012', label: 'NINTENDO SWITCH' } },
+  wii: { plastic: BLANC, band: null },
+  wiiu: { plastic: BLANC, band: { color: '#0096C8', label: 'Wii U' } },
+  ds: { plastic: BLANC, band: null },
+};
+
+// Clé de style par id TheGamesDB.
+const TGDB_STYLE: Record<number, string> = {
+  4980: 'ps5', 4919: 'ps4', 12: 'ps3', 11: 'ps2',
+  4981: 'xseries', 4920: 'xone', 15: 'xbox', 14: 'xbox',
+  4971: 'switch', 9: 'wii', 38: 'wiiu', 8: 'ds', 4912: 'ds',
+};
+
+function styleOf(format: BoxFormat, key?: string): CaseStyle {
+  if (key && STYLES[key]) return STYLES[key];
+  const t = BOX_FORMATS[format];
+  return { plastic: t.plastic, band: t.band };
+}
+
+export function caseStyleOfTgdbPlatform(id: number): CaseStyle {
+  return styleOf(formatOfTgdbPlatform(id), TGDB_STYLE[id]);
+}
+
+export function caseStyleOfPlatformName(name: string): CaseStyle {
+  const [f, k] = lookup(name);
+  return styleOf(f, k);
 }
