@@ -1447,9 +1447,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           const disc = !hasHifi ? (spinning ? 'spinning' : 'in')
             : mine ? (mine.phase === 'fly' ? 'flying' : 'in')
             : landedFor === p.id ? 'away' : 'in';
+          // Jeu : gabarit et plastique de la console, tels que rangés (sinon la boîte déjà connue du service).
+          const box = p.kind === 'stored' && p.shape === 'game' ? boxService?.peek(slug) : undefined;
+          const format = p.kind === 'stored' ? p.box ?? box?.format : undefined;
+          const caseColor = p.kind === 'stored' ? p.caseColor ?? box?.style.plastic : undefined;
           return (
             <OpenedItemLayer
               placed={p}
+              {...(format ? { format } : {})}
+              {...(caseColor ? { caseColor } : {})}
               card={card}
               cover={imageOfCard(slug) ?? null}
               color={bookColor(slug)}

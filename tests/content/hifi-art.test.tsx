@@ -72,3 +72,14 @@ describe('dessin de la chaîne hi-fi', () => {
     expect(c.querySelector('[data-hifi-grille]')).not.toBeNull();
   });
 });
+
+describe('cartouche posée sur le poste', () => {
+  it('couchée, jamais tournée ni animée ; étiquette = pochette', () => {
+    const c = mount(<HifiDisc kind="cart" cover={COVER} color="#C0504D" spinning />);
+    const cart = c.querySelector('[data-hifi-cart]')!;
+    expect(cart).not.toBeNull();
+    expect(c.innerHTML).not.toContain('rotate');
+    expect(c.querySelector('[data-hifi-disc-spin]')).toBeNull();
+    expect(cart.querySelector('image')!.getAttribute('href')).toBe(COVER);
+  });
+});

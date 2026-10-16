@@ -1,6 +1,8 @@
 // Sélecteurs du plateau de l'objet ouvert (face intérieure du couvercle) : pistes d'une carte musique, bande-annonce et BO d'un film ou d'un jeu.
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import type { Track } from '../../core/spotify/spotify-api';
+import type { GameDetail } from '../../core/game/game-detail';
+import { consoleLabelOf } from '../../core/game/platform-boxes';
 import type { Listen } from '../../core/music/listen';
 import { bookRows, gameRows, musicRows, screenRows, type GameViewLike, type ScreenViewLike, type SelectorModel, type SelectorRow } from '../../core/library/opened-item';
 import { TIDAL_HOME_URL } from '../../core/tidal/config';
@@ -8,6 +10,8 @@ import { tidalUrl } from '../../core/tidal/tidal-listen';
 import { track as telemetry } from '../../core/telemetry/registry';
 import type { BookView } from '../book-service';
 import { getBookService } from '../book-registry';
+import type { GameBox } from '../game-box-service';
+import { getGameBoxService } from '../game-box-registry';
 import { getGameService } from '../game-registry';
 import { Glyph } from '../Glyphs';
 import { HlsTrailerPlayer } from '../HlsTrailerPlayer';
@@ -28,7 +32,9 @@ type Props = { slug: string; title: string; onPlayed: (track: Track) => void };
 // `onVideo` : la vidéo choisie (à montrer à la place du disque), ou null quand on la quitte.
 // `video` : la vidéo actuellement au plateau (source unique, tenue par le parent) ; null = le disque.
 type MediaProps = Props & { video: Video | null; onVideo: (video: Video | null) => void };
-type BodyProps = Props & { name: string; loadKey: string; load: () => Promise<SelectorModel>; video?: Video | null; onVideo?: (video: Video | null) => void };
+// `head` : en-tête au-dessus des lignes (fiche courte d'un jeu) ; avec lui, toute la page défile.
+type BodyModel = SelectorModel & { head?: ReactNode };
+type BodyProps = Props & { name: string; loadKey: string; load: () => Promise<BodyModel>; video?: Video | null; onVideo?: (video: Video | null) => void };
 
 // La vidéo choisie, à la place du disque : lecteur de bande-annonce (YouTube) ou flux HLS Steam, avec leur ⛶ plein écran.
 export function VideoPlayer({ video, onEnded }: { video: Video; onEnded?: () => void }): ReactElement {
@@ -49,7 +55,7 @@ function SelectorBody({ name, slug, title, loadKey, load, onPlayed, video = null
   const source = getPlayerSource();
   const platform = usePlatform();
   const player = useSyncExternalStore(source?.subscribe ?? noSubscribe, source?.current ?? noPlayer);
-  const [model, setModel] = useState<SelectorModel | null>(null);
+  const [model, setModel] = useState<BodyModel | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const videoOn = video !== null;
   // Carte affichée : le message d'une lecture d'une carte quittée ou démontée est ignoré.
@@ -72,6 +78,7 @@ function SelectorBody({ name, slug, title, loadKey, load, onPlayed, video = null
   }, [loadKey]);
 
   if (!model) return <div data-selector={name} />;
+  const page = model.head !== undefined;
   const play = async (item: Track, listen: Listen) => {
     if (!service) return;
     const result = await service.play(item, listen, { slug, title });
@@ -86,9 +93,10 @@ function SelectorBody({ name, slug, title, loadKey, load, onPlayed, video = null
   };
 
   return (
-    <div data-selector={name} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div data-selector={name} style={page ? { height: '100%', minHeight: 0, overflowY: 'auto' } : { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      {model.head}
       {model.empty && <p style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>{model.empty}</p>}
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0, flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      <ul style={page ? { listStyle: 'none', margin: 0, padding: 0 } : { listStyle: 'none', margin: 0, padding: 0, flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {model.rows.map((row, index) => {
           if (row.kind === 'video') {
             const label = 'Voir la bande-annonce';
@@ -175,13 +183,58 @@ export function ScreenSelector({ slug, title, onPlayed, video, onVideo }: MediaP
   return <SelectorBody name="screen" slug={slug} title={title} loadKey={`${slug}|${title}`} load={load} onPlayed={onPlayed} video={video} onVideo={onVideo} />;
 }
 
+// Description coupée à 3 lignes au-delà de cette longueur (« Lire la suite » la déplie).
+const SUMMARY_CLAMP_CHARS = 140;
+
+// Fiche courte du jeu, en tête de la page gauche : titre, console · année · studio, note, description (3 lignes).
+function GameHead({ detail, box }: { detail: GameDetail; box: GameBox | null }): ReactElement {
+  const [open, setOpen] = useState(false);
+  const platform = box?.platformName || detail.platforms?.[0] || '';
+  const meta = [platform ? consoleLabelOf(platform) : '', detail.year ? String(detail.year) : '', box?.studio ?? detail.developers?.[0] ?? '']
+    .filter((part) => part !== '').join(' · ');
+  const rating = detail.rating;
+  // Steam (en français) ou IGDB, sinon le résumé de TheGamesDB (anglais).
+  const summary = detail.summary ?? box?.summary;
+  const long = (summary?.length ?? 0) > SUMMARY_CLAMP_CHARS;
+  const clamped = long && !open;
+  return (
+    <div data-game-head="" style={{ paddingBottom: 6, borderBottom: '1px solid rgba(43,29,22,.25)' }}>
+      <h3 style={{ margin: 0, fontSize: '1.15em', lineHeight: 1.2, fontFamily: "Georgia, 'Times New Roman', serif" }}>{detail.title}</h3>
+      {meta && <div data-game-meta="" style={{ fontSize: '0.85em', opacity: 0.75, marginTop: 2 }}>{meta}</div>}
+      {rating && (
+        <div data-game-rating="" style={{ fontSize: '0.85em', fontWeight: 600, marginTop: 2 }}>
+          ★ {rating.kind === 'positive' ? `${rating.value} %${rating.verdict ? ` · ${rating.verdict}` : ' d’avis positifs'}` : `${rating.value}/100`}
+        </div>
+      )}
+      {summary && (
+        <p data-game-summary="" style={{ margin: '6px 0 0', fontSize: '0.85em', lineHeight: 1.35, ...(clamped ? { display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden' } : {}) }}>
+          {summary}
+        </p>
+      )}
+      {clamped && (
+        <button type="button" data-action="read-more" onClick={() => setOpen(true)}
+          style={{ marginTop: 2, padding: '4px 0', minHeight: 32, background: 'none', border: 'none', color: 'inherit', fontWeight: 700, fontSize: '0.85em', cursor: 'pointer' }}>
+          Lire la suite ›
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Jeu : fiche courte (la boîte de la version, si connue, donne la console et le studio), puis bande-annonce et BO.
 export function GameSelector({ slug, title, onPlayed, video, onVideo }: MediaProps): ReactElement {
-  const load = async (): Promise<SelectorModel> => {
+  const load = async (): Promise<BodyModel> => {
     const games = getGameService();
     if (!games) return gameRows({ status: 'none' }, null);
     const view = await games.view(slug, title).catch((): GameViewLike => ({ status: 'error', message: 'Le jeu vidéo est indisponible pour le moment.' }));
-    const bo = view.status === 'detail' ? await soundtrackOf(`game:${view.detail.source}:${view.detail.id}`, titlesOf(view.detail.title, view.detail.originalTitle)) : null;
-    return gameRows(view, bo);
+    if (view.status !== 'detail') return gameRows(view, null);
+    const { detail } = view;
+    const boxes = getGameBoxService();
+    const [box, bo] = await Promise.all([
+      boxes ? boxes.box(slug, title).catch((): GameBox | null => null) : Promise.resolve(null),
+      soundtrackOf(`game:${detail.source}:${detail.id}`, titlesOf(detail.title, detail.originalTitle)),
+    ]);
+    return { ...gameRows(view, bo), head: <GameHead detail={detail} box={box} /> };
   };
   return <SelectorBody name="game" slug={slug} title={title} loadKey={`${slug}|${title}`} load={load} onPlayed={onPlayed} video={video} onVideo={onVideo} />;
 }

@@ -114,3 +114,18 @@ export function caseStyleOfPlatformName(name: string): CaseStyle {
   const [f, k] = lookup(name);
   return styleOf(f, k);
 }
+
+// Nom court de la console (« PS4 », « Switch »), pour la fiche de la boîte ouverte ; une console inconnue garde son nom.
+const LABELS: Record<string, string> = {
+  ps5: 'PS5', ps4: 'PS4', ps3: 'PS3', ps2: 'PS2', xseries: 'Xbox Series', xone: 'Xbox One', xbox: 'Xbox',
+  switch: 'Switch', wii: 'Wii', wiiu: 'Wii U', ds: 'DS',
+};
+const FORMAT_LABELS: Partial<Record<BoxFormat, string>> = { psp: 'PSP', vita: 'PS Vita', gamecube: 'GameCube' };
+
+export function consoleLabelOf(name: string): string {
+  const n = name.toLowerCase().trim();
+  if (/3ds/.test(n)) return '3DS';
+  if (/^pc\b|windows/.test(n)) return 'PC';
+  const [f, k] = lookup(name);
+  return (k ? LABELS[k] : undefined) ?? FORMAT_LABELS[f] ?? name.trim();
+}

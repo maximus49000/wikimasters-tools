@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOX_FORMATS, caseStyleOfPlatformName, caseStyleOfTgdbPlatform, formatOfPlatformName, formatOfTgdbPlatform, type BoxFormat } from '../../../src/core/game/platform-boxes';
+import { BOX_FORMATS, caseStyleOfPlatformName, consoleLabelOf, caseStyleOfTgdbPlatform, formatOfPlatformName, formatOfTgdbPlatform, type BoxFormat } from '../../../src/core/game/platform-boxes';
 
 describe('formatOfTgdbPlatform', () => {
   it('associe les ids TheGamesDB aux formats', () => {
@@ -77,5 +77,17 @@ describe('styles par console', () => {
     expect(caseStyleOfPlatformName('Xbox One').band?.label).toBe('XBOX ONE');
     expect(caseStyleOfPlatformName('Wii U').band?.label).toBe('Wii U');
     expect(caseStyleOfPlatformName('PlayStation 4').band?.label).toBe('PS4');
+  });
+});
+
+describe('consoleLabelOf', () => {
+  it('nom court de la console, imprimé sur la fiche de la boîte ouverte', () => {
+    expect(consoleLabelOf('Sony Playstation 4')).toBe('PS4');
+    expect(consoleLabelOf('Nintendo Switch')).toBe('Switch');
+    expect(consoleLabelOf('Microsoft Xbox One')).toBe('Xbox One');
+    expect(consoleLabelOf('Nintendo 3DS')).toBe('3DS');
+    expect(consoleLabelOf('Sony Playstation Portable')).toBe('PSP');
+    expect(consoleLabelOf('PC (Microsoft Windows)')).toBe('PC');
+    expect(consoleLabelOf('Neo Geo')).toBe('Neo Geo');
   });
 });

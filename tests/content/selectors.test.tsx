@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from '../../src/content/opened-item/selectors';
 import { setBookService } from '../../src/content/book-registry';
 import { setGameService } from '../../src/content/game-registry';
+import { setGameBoxService } from '../../src/content/game-box-registry';
 import { setScreenService } from '../../src/content/screen-registry';
 import { setMusicService, setPlatformChoice } from '../../src/content/music-registry';
 import type { MusicService } from '../../src/content/music-service';
@@ -131,6 +132,55 @@ describe('ScreenSelector / GameSelector', () => {
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Voir la bande-annonce"]')!.click());
     expect(onVideo).toHaveBeenCalledWith({ kind: 'hls', url: 'https://x/m.m3u8', pageUrl: 'https://store.steampowered.com/app/9' });
   });
+  describe('jeu : fiche courte et description en tête de page', () => {
+    const LONG = 'Amérique, 1899. Arthur Morgan et la bande de Van der Linde sont en fuite. Traqués par les agents fédéraux et les meilleurs chasseurs de primes du pays, ils doivent voler, se battre et piller pour survivre.';
+    const detail = { ...gameView.detail, title: 'Red Dead Redemption 2', year: 2018, developers: ['Rockstar Games'], platforms: ['PlayStation 4'], genres: [], summary: LONG, rating: { kind: 'positive', value: 91, count: 1000 } };
+    const box = { format: 'bluray', style: { plastic: '#1F4C9E', band: null }, platformName: 'Sony Playstation 4', shots: [], title: 'Red Dead Redemption 2', studio: 'Rockstar Games', summary: 'English overview from TheGamesDB.' };
+    const render = (view: unknown, gameBox: unknown = box) => {
+      services(null, view);
+      setGameBoxService({ box: vi.fn().mockResolvedValue(gameBox), peek: () => undefined, subscribe: () => () => undefined } as never);
+      return act(async () => root.render(<GameSelector slug="RDR2" title="RDR2" onPlayed={vi.fn()} video={null} onVideo={vi.fn()} />));
+    };
+    afterEach(() => setGameBoxService(null));
+
+    it('titre, « PS4 · 2018 · Rockstar Games », note, description sur 3 lignes, puis vidéo et BO', async () => {
+      await render({ status: 'detail', detail });
+      const head = container.querySelector<HTMLElement>('[data-game-head]')!;
+      expect(head.textContent).toContain('Red Dead Redemption 2');
+      expect(head.querySelector('[data-game-meta]')!.textContent).toBe('PS4 · 2018 · Rockstar Games');
+      expect(head.querySelector('[data-game-rating]')!.textContent).toContain('91 %');
+      const text = head.querySelector<HTMLElement>('[data-game-summary]')!;
+      expect(text.textContent).toBe(LONG);
+      expect(text.style.webkitLineClamp).toBe('3');
+      // Puis les lignes d'avant : vidéo, BO.
+      const rows = [...container.querySelectorAll('li')];
+      expect(rows[0]!.hasAttribute('data-video')).toBe(true);
+      expect(rows.filter((r) => r.hasAttribute('data-track'))).toHaveLength(3);
+      expect(head.compareDocumentPosition(rows[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // La page défile si elle déborde.
+      expect(container.querySelector<HTMLElement>('[data-selector="game"]')!.style.overflowY).toBe('auto');
+    });
+
+    it('« Lire la suite » déplie la description', async () => {
+      await render({ status: 'detail', detail });
+      await act(async () => container.querySelector<HTMLButtonElement>('button[data-action="read-more"]')!.click());
+      expect(container.querySelector<HTMLElement>('[data-game-summary]')!.style.webkitLineClamp).toBe('');
+      expect(container.querySelector('button[data-action="read-more"]')).toBeNull();
+    });
+
+    it('sans description Steam/IGDB : celle de TheGamesDB', async () => {
+      const { summary: _s, ...bare } = detail;
+      await render({ status: 'detail', detail: bare });
+      expect(container.querySelector('[data-game-summary]')!.textContent).toBe('English overview from TheGamesDB.');
+    });
+
+    it('sans boîte : la console de la fiche ; note IGDB sur 100', async () => {
+      await render({ status: 'detail', detail: { ...detail, platforms: ['Nintendo Switch'], rating: { kind: 'score', value: 84, count: 10 } } }, null);
+      expect(container.querySelector('[data-game-meta]')!.textContent).toBe('Switch · 2018 · Rockstar Games');
+      expect(container.querySelector('[data-game-rating]')!.textContent).toContain('84/100');
+    });
+  });
+
   it('rien de connu : « Pas de bande-annonce ni de BO »', async () => {
     services({ status: 'none' }, null, null);
     await act(async () => root.render(<ScreenSelector slug="Film" title="Film" onPlayed={vi.fn()} video={null} onVideo={vi.fn()} />));

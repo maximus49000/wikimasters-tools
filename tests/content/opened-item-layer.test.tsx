@@ -84,4 +84,27 @@ describe('OpenedItemLayer', () => {
       vi.useRealTimers();
     }
   });
+  it('jeu : le format donne la boîte (Switch : cartouche) et le vol part en « cart »', () => {
+    vi.useFakeTimers();
+    try {
+      const game: Placed = { id: 'g1', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, slug: 'Zelda' };
+      act(() => root.render(
+        <OpenedItemLayer placed={game} format="switch" caseColor="#E60012" card={{ title: 'Zelda' }} cover={null} color="#c33" state={{ placedId: 'g1', from: null, to: null, phase: 'open' }}
+          disc="flying" hasHifi onInfo={vi.fn()} onClose={vi.fn()} onAddHifi={vi.fn()} flight={{ id: 1, target: { x: 600, y: 100, w: 30, h: 30 }, onLanded: vi.fn() }} />,
+      ));
+      expect(container.querySelector('[data-case-tray] > svg')!.getAttribute('viewBox')).toBe('0 0 105 170');
+      expect(container.querySelector('[data-case-disc][data-support="cart"]')).not.toBeNull();
+      expect(container.querySelector('[data-disc-flight]')!.getAttribute('data-kind')).toBe('cart');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('jeu Blu-ray : le disque vole en « game »', () => {
+    const game: Placed = { id: 'g1', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, slug: 'RDR2' };
+    act(() => root.render(
+      <OpenedItemLayer placed={game} format="bluray" card={{ title: 'RDR2' }} cover={null} color="#c33" state={{ placedId: 'g1', from: null, to: null, phase: 'open' }}
+        disc="flying" hasHifi onInfo={vi.fn()} onClose={vi.fn()} onAddHifi={vi.fn()} flight={{ id: 1, target: { x: 600, y: 100, w: 30, h: 30 }, onLanded: vi.fn() }} />,
+    ));
+    expect(container.querySelector('[data-disc-flight]')!.getAttribute('data-kind')).toBe('game');
+  });
 });

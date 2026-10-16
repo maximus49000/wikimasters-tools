@@ -3,6 +3,7 @@
 // pochette couchée devant le poste. Style cellulo : aplats, trait encré, ombre nette décalée ; les volumes arrondis sont suggérés
 // par des bandes claires et sombres sur les bords des faces.
 import { useId, type CSSProperties, type ReactElement } from 'react';
+import { BOX_FORMATS, type BoxFormat } from '../../core/game/platform-boxes';
 import type { SleeveKind } from '../../core/library/hifi';
 import { reducedMotion } from '../ghibli-sky';
 import type { ItemContent } from '../model3d-art';
@@ -23,15 +24,44 @@ function sector(r0: number, r1: number, a0: number, a1: number): string {
 }
 const uid = (raw: string): string => `wm-hifi-${raw.replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
-export type DiscKind = 'vinyl' | 'cd';
+// 'game' : disque de jeu (étiquette sur presque toute la face) ; 'cart' : cartouche de jeu, couchée, qui ne tourne pas.
+export type DiscKind = 'vinyl' | 'cd' | 'game' | 'cart';
+// Support d'un jeu selon le gabarit de sa console : cartouche, sinon disque de jeu.
+export const gameDiscKind = (format: BoxFormat | undefined): DiscKind => (BOX_FORMATS[format ?? 'generic'].support.kind === 'cart' ? 'cart' : 'game');
+
+// Cartouche dans le carré -60…60 : proportions d'une cartouche Switch (21 × 31), la même taille quel que soit le jeu.
+export const HIFI_CART = { w: 50, h: 74 };
+
+// Cartouche couchée sur le poste : coque sombre, stries en haut, étiquette = devant de la version. Jamais tournée ni animée.
+function HifiCart({ cover, color, clip }: { cover: string | null; color: string; clip: string }): ReactElement {
+  const w = HIFI_CART.w;
+  const h = HIFI_CART.h;
+  const x = -w / 2;
+  const y = -h / 2;
+  const label = { x: x + 4, y: y + 13, w: w - 8, h: h - 17 };
+  return (
+    <g data-hifi-disc="still" data-hifi-cart="">
+      <rect x={x + 3} y={y + 4} width={w} height={h} rx={4} fill={SHADOW} />
+      <path d={`M${x + 4} ${y} L${x + w - 7} ${y} L${x + w} ${y + 7} L${x + w} ${y + h - 4} Q${x + w} ${y + h} ${x + w - 4} ${y + h} L${x + 4} ${y + h} Q${x} ${y + h} ${x} ${y + h - 4} L${x} ${y + 4} Q${x} ${y} ${x + 4} ${y}Z`} fill="#26262C" {...INK} />
+      {[3.5, 6.5, 9.5].map((dy) => <line key={dy} x1={x + 10} y1={y + dy} x2={x + w - 10} y2={y + dy} {...THIN} stroke="#55555F" />)}
+      <clipPath id={clip}><rect x={label.x} y={label.y} width={label.w} height={label.h} rx={2} /></clipPath>
+      {cover
+        ? <image href={cover} x={label.x} y={label.y} width={label.w} height={label.h} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clip})`} />
+        : <rect x={label.x} y={label.y} width={label.w} height={label.h} rx={2} fill={color} />}
+      <rect x={label.x} y={label.y} width={label.w} height={label.h} rx={2} fill="none" {...THIN} />
+      <path d={`M${f(label.x + label.w * 0.6)} ${label.y} L${f(label.x + label.w * 0.82)} ${label.y} L${f(label.x + label.w * 0.4)} ${label.y + label.h} L${f(label.x + label.w * 0.18)} ${label.y + label.h}Z`} fill="#FFFFFF" opacity={0.18} />
+    </g>
+  );
+}
 
 // ---------- Disque posé ----------
 // Dessiné dans un carré -60…60 (le poste le met à l'échelle de son plateau, dans la perspective du dessus). Seul le calque intérieur
 // tourne (`transform: rotate`) : le disque reste centré ; l'ombre, le reflet asymétrique et l'axe restent fixes, d'où la rotation lisible.
 export function HifiDisc({ cover, color, spinning, kind = 'cd' }: { cover: string | null; color: string; spinning: boolean; kind?: DiscKind }): ReactElement {
   const clip = uid(useId());
+  if (kind === 'cart') return <HifiCart cover={cover} color={color} clip={clip} />;
   const vinyl = kind === 'vinyl';
-  const lr = vinyl ? 22 : 40;
+  const lr = vinyl ? 22 : kind === 'game' ? 52 : 40;
   const spin = spinning && !reducedMotion();
   const style: CSSProperties = {
     transformBox: 'fill-box', transformOrigin: 'center',
@@ -242,7 +272,7 @@ export function HifiTop({ w, h, disc, spinning }: { w: number; h: number; disc: 
       </g>
       {inWell && (
         <g data-hifi-disc-at="well" transform={`translate(${WELL.cx} ${WELL.cy}) scale(${f((WELL.r - 2) / 60)})`}>
-          <HifiDisc kind="cd" cover={disc.cover} color={disc.color} spinning={spinning} />
+          <HifiDisc kind={disc.kind} cover={disc.cover} color={disc.color} spinning={spinning} />
         </g>
       )}
       {/* Couvercle fumé : levé vers le fond quand un disque est dans le puits, sinon fermé dessus. */}

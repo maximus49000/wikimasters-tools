@@ -9,8 +9,8 @@ import { boxOfQuad, cardQuad, computerPlacement, hostPointPx, placementDepth, pl
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
 import { localPointOf, openingOf } from '../core/library/furniture-render3d';
 import { bookColor, type ItemPlacement } from '../core/library/item-models';
-import { hiddenAtHome, sleeveKindOf, sleeveRest } from '../core/library/hifi';
-import { SleeveArt, hifiContent, type HifiDiscShow } from './hifi/hifi-art';
+import { hiddenAtHome, sleeveKindOf, sleeveRest, type SleeveKind } from '../core/library/hifi';
+import { SleeveArt, gameDiscKind, hifiContent, type DiscKind, type HifiDiscShow } from './hifi/hifi-art';
 import { useHifiPlayer } from './hifi/use-hifi';
 import { MusicNotes, NOTE_INK } from './hifi/music-notes';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
@@ -124,6 +124,13 @@ type Props = {
   // Couches de la pièce (mur, vitres, meubles, animaux, lumière…) : 'hidden' les estompe (400 ms) puis les retire ; le nœud du monde, lui, reste.
   roomLayers?: 'shown' | 'hidden';
 };
+
+// Ce qui est posé sur le poste : un vinyle, une cartouche (jeu à cartouche, couchée), un disque de jeu ou un CD.
+function hifiDiscKindOf(placed: Placed, sleeve: SleeveKind): DiscKind {
+  if (sleeve === 'vinyl') return 'vinyl';
+  if (sleeve !== 'game') return 'cd';
+  return gameDiscKind(placed.kind === 'stored' ? placed.box : undefined);
+}
 
 // Matrice du repère d'une face (footprint.faceFrame) en attribut SVG.
 const matrixOf = (m: readonly number[]): string => `matrix(${m.join(' ')})`;
@@ -262,7 +269,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const atHifiSlug = atHifi && 'slug' in atHifi ? atHifi.slug : null;
   const sleeveKind = atHifi ? sleeveKindOf(atHifi) : null;
   const hifiDisc: HifiDiscShow | null = atHifiSlug && sleeveKind
-    ? { kind: sleeveKind === 'vinyl' ? 'vinyl' : 'cd', cover: imageOf(atHifiSlug) ?? null, color: bookColor(atHifiSlug) }
+    ? { kind: hifiDiscKindOf(atHifi!, sleeveKind), cover: imageOf(atHifiSlug) ?? null, color: bookColor(atHifiSlug) }
     : null;
   const trackTitle = player.track ? (player.track.artist ? `${player.track.title} — ${player.track.artist}` : player.track.title) : null;
   // Pose 3D de chaque objet rangé dans le repère de son étagère (rangement par largeur réelle), calculée une fois par disposition.

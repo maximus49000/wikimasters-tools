@@ -1,9 +1,10 @@
-// Fable n'est pas passé : à reprendre lors d'un rattrapage Fable.
+// Fable n'est pas passé : à reprendre lors d'un rattrapage Fable (boîtes de jeux : dessin provisoire Opus, gel jusqu'au 2026-10-17).
 //
 // Boîtier ouvert (CSS 3D) : l'objet touché dans la scène vole depuis sa place, grossit et se centre, puis son couvercle
 // (ou la couverture du livre) pivote de 180° autour de sa charnière gauche ; la face intérieure du couvercle porte le
 // sélecteur (à gauche) et le plateau garde le disque, centré, à droite. Style cellulo : aplats + trait encré + ombre nette.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { BOX_FORMATS, type BoxFormat } from '../../core/game/platform-boxes';
 import type { Opening } from '../../core/library/opened-item';
 import type { Box } from '../../core/library/zoom-target';
 
@@ -27,6 +28,9 @@ type Props = {
   selector: ReactNode;
   // Remplace le disque dans le plateau (vidéo, couverture du livre).
   right?: ReactNode;
+  // Boîte de jeu : le gabarit de la console (dimensions réelles, support) et la couleur de son plastique.
+  format?: BoxFormat;
+  caseColor?: string;
 };
 
 // Durées : vol puis pivot du couvercle ; fondu en mouvement réduit.
@@ -35,14 +39,35 @@ export const CASE_PIVOT_MS = 700;
 export const CASE_FADE_MS = 150;
 
 type Rect = { x: number; y: number; w: number; h: number };
-type DiscKind = 'cd' | 'dvd' | 'game' | 'vinyl';
-// Géométrie d'un boîtier, en unités du dessin (≈ mm) : une moitié (plateau ou couvercle).
-type Geometry = { w: number; h: number; disc: { kind: DiscKind; cx: number; cy: number; d: number } | null; selector: Rect; right: Rect };
+// 'mini' : mini-disque 8 cm (GameCube) ; 'umd' : disque PSP dans sa coque ; 'cart' : cartouche.
+type DiscKind = 'cd' | 'dvd' | 'game' | 'vinyl' | 'mini' | 'umd' | 'cart';
+// Géométrie d'un boîtier, en unités du dessin (≈ mm) : une moitié (plateau ou couvercle). `d` : diamètre (ou plus grand côté) du
+// support ; `w`/`h` : support rectangulaire (UMD, cartouche) ; `color` : plastique de la cartouche.
+export type Geometry = {
+  w: number; h: number;
+  disc: { kind: DiscKind; cx: number; cy: number; d: number; w?: number; h?: number; color?: string } | null;
+  selector: Rect; right: Rect;
+};
 
-const GEOMETRY: Record<Opening, Geometry> = {
+// Boîte de jeu ouverte : chaque moitié a la taille de la boîte fermée de la console ; le support, à l'échelle réelle, est centré dans
+// la moitié droite ; le sélecteur prend la moitié gauche moins 9 mm de marge.
+const PAGE_MARGIN = 9;
+export function gameGeometry(format: BoxFormat): Geometry {
+  const t = BOX_FORMATS[format];
+  const w = t.w * 10;
+  const h = t.h * 10;
+  const at = { cx: w / 2, cy: h / 2 };
+  const s = t.support;
+  const disc: Geometry['disc'] = s.kind === 'disc' ? { kind: s.d < 12 ? 'mini' : 'game', ...at, d: s.d * 10 }
+    : s.kind === 'umd' ? { kind: 'umd', ...at, d: Math.max(s.w, s.h) * 10, w: s.w * 10, h: s.h * 10 }
+    : { kind: 'cart', ...at, d: Math.max(s.w, s.h) * 10, w: s.w * 10, h: s.h * 10, color: s.color };
+  const page: Rect = { x: PAGE_MARGIN, y: PAGE_MARGIN, w: w - 2 * PAGE_MARGIN, h: h - 2 * PAGE_MARGIN };
+  return { w, h, disc, selector: page, right: { ...page } };
+}
+
+const GEOMETRY: Record<Exclude<Opening, 'game-case'>, Geometry> = {
   'jewel-cd': { w: 142, h: 125, disc: { kind: 'cd', cx: 76, cy: 62.5, d: 112 }, selector: { x: 9, y: 6, w: 116, h: 113 }, right: { x: 16, y: 5, w: 120, h: 115 } },
   'dvd-case': { w: 135, h: 190, disc: { kind: 'dvd', cx: 71, cy: 95, d: 114 }, selector: { x: 13, y: 27, w: 106, h: 136 }, right: { x: 14, y: 12, w: 113, h: 166 } },
-  'game-case': { w: 135, h: 170, disc: { kind: 'game', cx: 71, cy: 85, d: 114 }, selector: { x: 13, y: 27, w: 106, h: 116 }, right: { x: 14, y: 12, w: 113, h: 146 } },
   'vinyl-sleeve': { w: 100, h: 100, disc: { kind: 'vinyl', cx: 51, cy: 50, d: 88 }, selector: { x: 8, y: 8, w: 82, h: 84 }, right: { x: 7, y: 9, w: 88, h: 82 } },
   book: { w: 130, h: 200, disc: null, selector: { x: 13, y: 15, w: 102, h: 170 }, right: { x: 10, y: 10, w: 110, h: 180 } },
 };
@@ -56,6 +81,8 @@ const SHADOW = 'drop-shadow(5px 7px 0 rgba(28,18,12,.32))';
 
 const f = (n: number): number => Math.round(n * 100) / 100;
 
+const geometryOf = (opening: Opening, format: BoxFormat): Geometry => (opening === 'game-case' ? gameGeometry(format) : GEOMETRY[opening]);
+
 function rgbOf(c: string): [number, number, number] | null {
   const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c.trim());
   if (!m) return null;
@@ -68,6 +95,12 @@ function shade(c: string, k = 0.28): string {
   if (!rgb) return c;
   const ink = [30, 20, 16];
   return `#${rgb.map((v, i) => Math.round(v + (ink[i]! - v) * k).toString(16).padStart(2, '0')).join('')}`;
+}
+// Couleur éclaircie (fond moulé du plastique, stries).
+function lighten(c: string, k = 0.14): string {
+  const rgb = rgbOf(c);
+  if (!rgb) return c;
+  return `#${rgb.map((v) => Math.round(v + (255 - v) * k).toString(16).padStart(2, '0')).join('')}`;
 }
 // Texte lisible sur l'aplat.
 function textOn(c: string): string {
@@ -148,15 +181,17 @@ function CaseSpine({ x, h, c, dark }: { x: number; h: number; c: string; dark: s
   );
 }
 
-function plasticOf(opening: Opening): { c: string; light: string; dark: string } {
+type Plastic = { c: string; light: string; dark: string };
+// Plastique du boîtier : celui de la console pour un jeu (`caseColor`), sinon le bleu des jeux ou le noir des DVD.
+function plasticOf(opening: Opening, caseColor?: string): Plastic {
+  if (opening === 'game-case' && caseColor) return { c: caseColor, light: lighten(caseColor), dark: shade(caseColor, 0.22) };
   return opening === 'game-case'
     ? { c: '#1F4C9E', light: '#2C5DB4', dark: '#163A7C' }
     : { c: '#24262E', light: '#323540', dark: '#18191F' };
 }
 
 // Face extérieure du couvercle (vue quand le boîtier est fermé).
-function LidOuter({ opening, art }: { opening: Opening; art: Art }): ReactElement {
-  const g = GEOMETRY[opening];
+function LidOuter({ opening, art, g, plastic }: { opening: Opening; art: Art; g: Geometry; plastic: Plastic }): ReactElement {
   switch (opening) {
     case 'jewel-cd':
       return (
@@ -172,21 +207,22 @@ function LidOuter({ opening, art }: { opening: Opening; art: Art }): ReactElemen
       );
     case 'dvd-case':
     case 'game-case': {
-      const p = plasticOf(opening);
+      const p = plastic;
       const game = opening === 'game-case';
       const top = game ? 18 : 4;
+      const W = g.w;
       return (
         <>
-          <rect x={0} y={0} width={g.w} height={g.h} rx={4} fill={p.c} {...INK} />
+          <rect x={0} y={0} width={W} height={g.h} rx={4} fill={p.c} {...INK} />
           {game && <>
-            <rect x={9} y={4} width={122} height={14} fill={p.dark} {...THIN} />
+            <rect x={9} y={4} width={W - 13} height={14} fill={p.dark} {...THIN} />
             <rect x={14} y={8} width={30} height={6} rx={3} fill="#F4F1EA" opacity={0.85} />
-            <circle cx={124} cy={11} r={3.2} fill="#F4F1EA" opacity={0.7} />
+            <circle cx={W - 11} cy={11} r={3.2} fill="#F4F1EA" opacity={0.7} />
           </>}
-          <CoverArt r={{ x: 9, y: top, w: 122, h: g.h - top - 4 }} art={art} id="lid" />
+          <CoverArt r={{ x: 9, y: top, w: W - 13, h: g.h - top - 4 }} art={art} id="lid" />
           {/* Film transparent qui retient la jaquette. */}
-          <rect x={8} y={3} width={124} height={g.h - 6} rx={2} fill="none" {...THIN} stroke="#9AA3B5" />
-          <path d={`M70 ${top} L92 ${top} L50 ${g.h - 4} L28 ${g.h - 4}Z`} fill="#FFFFFF" opacity={0.18} />
+          <rect x={8} y={3} width={W - 11} height={g.h - 6} rx={2} fill="none" {...THIN} stroke="#9AA3B5" />
+          <path d={`M${f(W * 0.52)} ${top} L${f(W * 0.68)} ${top} L${f(W * 0.37)} ${g.h - 4} L${f(W * 0.21)} ${g.h - 4}Z`} fill="#FFFFFF" opacity={0.18} />
           <CaseSpine x={0} h={g.h} c={p.light} dark={p.dark} />
         </>
       );
@@ -221,8 +257,7 @@ function LidOuter({ opening, art }: { opening: Opening; art: Art }): ReactElemen
 }
 
 // Face intérieure du couvercle (vue à gauche quand le boîtier est ouvert ; la charnière est alors à droite).
-function LidInner({ opening, art }: { opening: Opening; art: Art }): ReactElement {
-  const g = GEOMETRY[opening];
+function LidInner({ opening, art, g, plastic }: { opening: Opening; art: Art; g: Geometry; plastic: Plastic }): ReactElement {
   switch (opening) {
     case 'jewel-cd':
       return (
@@ -238,7 +273,23 @@ function LidInner({ opening, art }: { opening: Opening; art: Art }): ReactElemen
       );
     case 'dvd-case':
     case 'game-case': {
-      const p = plasticOf(opening);
+      const p = plastic;
+      if (opening === 'game-case') {
+        // Jeu : pas de livret ; une page claire, tenue par deux pinces, porte la fiche courte et le sélecteur.
+        const W = g.w;
+        const r = g.selector;
+        const mid = (W - 7) / 2;
+        return (
+          <>
+            <rect x={0} y={0} width={W} height={g.h} rx={4} fill={p.c} {...INK} />
+            <rect x={4} y={4} width={W - 12} height={g.h - 8} rx={4} fill={p.light} {...THIN} />
+            <rect x={r.x - 2} y={r.y - 2} width={r.w + 4} height={r.h + 4} rx={2} fill="#F7F1E3" {...INK} />
+            <path d={`M${f(mid - 8)} 3 L${f(mid + 8)} 3 L${f(mid + 6)} ${r.y + 1} L${f(mid - 6)} ${r.y + 1}Z`} fill={p.dark} {...INK} />
+            <path d={`M${f(mid - 8)} ${g.h - 3} L${f(mid + 8)} ${g.h - 3} L${f(mid + 6)} ${g.h - r.y - 1} L${f(mid - 6)} ${g.h - r.y - 1}Z`} fill={p.dark} {...INK} />
+            <CaseSpine x={W - 7} h={g.h} c={p.light} dark={p.dark} />
+          </>
+        );
+      }
       return (
         <>
           <rect x={0} y={0} width={g.w} height={g.h} rx={4} fill={p.c} {...INK} />
@@ -281,8 +332,7 @@ const FIBRES: [number, number, number][] = [[8, 3, 5], [30, 2.5, 6], [70, 3, 4],
 const ENDPAPER_DOTS: [number, number][] = Array.from({ length: 8 * 13 }, (_, i) => [9 + (i % 8) * 15 + (Math.floor(i / 8) % 2) * 7.5, 8 + Math.floor(i / 8) * 15]);
 
 // Plateau (moitié droite) : le fond du boîtier, la charnière à gauche.
-function Tray({ opening, art }: { opening: Opening; art: Art }): ReactElement {
-  const g = GEOMETRY[opening];
+function Tray({ opening, art, g, plastic }: { opening: Opening; art: Art; g: Geometry; plastic: Plastic }): ReactElement {
   switch (opening) {
     case 'jewel-cd': {
       const { cx, cy } = g.disc!;
@@ -305,9 +355,10 @@ function Tray({ opening, art }: { opening: Opening; art: Art }): ReactElement {
         </>
       );
     }
-    case 'dvd-case':
-    case 'game-case': {
-      const p = plasticOf(opening);
+    case 'game-case':
+      return <GameTray g={g} p={plastic} />;
+    case 'dvd-case': {
+      const p = plastic;
       const { cx, cy } = g.disc!;
       return (
         <>
@@ -316,13 +367,7 @@ function Tray({ opening, art }: { opening: Opening; art: Art }): ReactElement {
           <circle cx={cx} cy={cy} r={60} fill={p.dark} {...THIN} />
           <rect x={18} y={12} width={8} height={8} rx={1} fill={p.dark} {...THIN} />
           <rect x={115} y={12} width={8} height={8} rx={1} fill={p.dark} {...THIN} />
-          {opening === 'game-case' && <rect x={30} y={g.h - 17} width={26} height={5} rx={1.5} fill={p.dark} {...THIN} />}
-          {/* Clip central : rosette de pétales souples autour du bouton. */}
-          <circle cx={cx} cy={cy} r={16} fill={p.c} {...THIN} />
-          {Array.from({ length: 8 }, (_, i) => (
-            <ellipse key={i} cx={cx} cy={cy - 9.5} rx={3} ry={5.5} fill="#3A3E48" {...THIN} transform={`rotate(${i * 45} ${cx} ${cy})`} />
-          ))}
-          <circle cx={cx} cy={cy} r={5.5} fill={p.light} {...INK} />
+          <Rosette cx={cx} cy={cy} p={p} />
           <CaseSpine x={0} h={g.h} c={p.light} dark={p.dark} />
         </>
       );
@@ -359,6 +404,101 @@ function Tray({ opening, art }: { opening: Opening; art: Art }): ReactElement {
   }
 }
 
+// Clip central d'un boîtier plastique : rosette de pétales souples autour du bouton (`k` : échelle, mini-disque).
+function Rosette({ cx, cy, p, k = 1 }: { cx: number; cy: number; p: Plastic; k?: number }): ReactElement {
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={f(16 * k)} fill={p.c} {...THIN} />
+      {Array.from({ length: 8 }, (_, i) => (
+        <ellipse key={i} cx={cx} cy={f(cy - 9.5 * k)} rx={f(3 * k)} ry={f(5.5 * k)} fill="#3A3E48" {...THIN} transform={`rotate(${i * 45} ${cx} ${cy})`} />
+      ))}
+      <circle cx={cx} cy={cy} r={f(5.5 * k)} fill={p.light} {...INK} />
+    </g>
+  );
+}
+
+// Plateau d'une boîte de jeu, à la taille du gabarit : logement du support (disque, mini-disque, UMD ou cartouche) en creux, centré.
+function GameTray({ g, p }: { g: Geometry; p: Plastic }): ReactElement {
+  const s = g.disc!;
+  const { cx, cy } = s;
+  let well: ReactElement;
+  if (s.w !== undefined && s.h !== undefined) {
+    const { w, h } = s;
+    well = (
+      <g data-case-well={s.kind}>
+        <rect x={f(cx - w / 2 - 2)} y={f(cy - h / 2 - 2)} width={w + 4} height={h + 4} rx={s.kind === 'umd' ? 6 : 2.5} fill={p.dark} {...INK} />
+        {/* Encoche pour saisir le support du bout du doigt. */}
+        <path d={`M${f(cx - 5)} ${f(cy + h / 2 + 2)} A5 4 0 0 0 ${f(cx + 5)} ${f(cy + h / 2 + 2)}Z`} fill={shade(p.dark, 0.3)} {...THIN} />
+      </g>
+    );
+  } else {
+    well = (
+      <g data-case-well={s.kind}>
+        <circle cx={cx} cy={cy} r={s.d / 2} fill={p.dark} {...THIN} />
+        <Rosette cx={cx} cy={cy} p={p} k={s.kind === 'mini' ? 0.8 : 1} />
+      </g>
+    );
+  }
+  return (
+    <>
+      <rect x={0} y={0} width={g.w} height={g.h} rx={4} fill={p.c} {...INK} />
+      <rect x={9} y={5} width={g.w - 13} height={g.h - 10} rx={5} fill={p.light} {...INK} />
+      {/* Ergots d'angle qui tiennent la jaquette intérieure. */}
+      <rect x={13} y={9} width={6} height={6} rx={1} fill={p.dark} {...THIN} />
+      <rect x={g.w - 10} y={9} width={6} height={6} rx={1} fill={p.dark} {...THIN} />
+      {well}
+      <CaseSpine x={0} h={g.h} c={p.light} dark={p.dark} />
+    </>
+  );
+}
+
+// Cartouche (repère en mm, 0…w × 0…h) : coque au plastique de la console, coin coupé et stries en haut, étiquette = devant de la version.
+function CartArt({ w, h, color, art }: { w: number; h: number; color: string; art: Art }): ReactElement {
+  const clip = `${art.uid}-cart`;
+  const top = Math.max(3, h * 0.14);
+  const label = { x: 1.6, y: top + 0.8, w: w - 3.2, h: h - top - 2.4 };
+  return (
+    <>
+      <rect x={0.8} y={1.1} width={w} height={h} rx={1.6} fill="rgba(12,8,6,.35)" />
+      <path d={`M1.6 0 L${f(w - 3)} 0 L${w} 3 L${w} ${f(h - 1.6)} Q${w} ${h} ${f(w - 1.6)} ${h} L1.6 ${h} Q0 ${h} 0 ${f(h - 1.6)} L0 1.6 Q0 0 1.6 0Z`} fill={color} {...INK} />
+      {[0.32, 0.55, 0.78].map((k) => <line key={k} x1={f(w * 0.2)} y1={f(top * k)} x2={f(w * 0.8)} y2={f(top * k)} {...THIN} stroke={lighten(color, 0.35)} />)}
+      <clipPath id={clip}><rect x={label.x} y={label.y} width={label.w} height={label.h} rx={0.8} /></clipPath>
+      {art.cover
+        ? <image href={art.cover} x={label.x} y={label.y} width={label.w} height={label.h} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clip})`} />
+        : <>
+            <rect x={label.x} y={label.y} width={label.w} height={label.h} rx={0.8} fill={art.color} />
+            <TitleText cx={w / 2} cy={label.y + label.h / 2} w={label.w * 0.9} title={art.title} fill={textOn(art.color)} size={Math.min(label.w, label.h) * 0.16} />
+          </>}
+      <rect x={label.x} y={label.y} width={label.w} height={label.h} rx={0.8} fill="none" {...THIN} />
+      {/* Reflet net sur l'étiquette. */}
+      <path d={`M${f(w * 0.62)} ${f(label.y)} L${f(w * 0.8)} ${f(label.y)} L${f(w * 0.45)} ${f(label.y + label.h)} L${f(w * 0.27)} ${f(label.y + label.h)}Z`} fill="#FFFFFF" opacity={0.16} />
+    </>
+  );
+}
+
+// UMD (repère en mm) : coque à deux pans coupés en haut, étiquette = pochette sur le haut, fenêtre ronde sur le disque.
+function UmdArt({ w, h, art }: { w: number; h: number; art: Art }): ReactElement {
+  const clip = `${art.uid}-umd`;
+  const r = Math.min(w, h) * 0.3;
+  const cy = h * 0.6;
+  const label = { x: f(w * 0.16), y: 2.5, w: f(w * 0.68), h: f(cy - r - 5) };
+  return (
+    <>
+      <path d={`M${f(w * 0.12)} 0 L${f(w * 0.88)} 0 L${w} ${f(h * 0.12)} L${w} ${h - 3} Q${w} ${h} ${w - 3} ${h} L3 ${h} Q0 ${h} 0 ${h - 3} L0 ${f(h * 0.12)}Z`} fill="#2A2B31" {...INK} />
+      <clipPath id={clip}><rect x={label.x} y={label.y} width={label.w} height={label.h} rx={1} /></clipPath>
+      {art.cover
+        ? <image href={art.cover} x={label.x} y={label.y} width={label.w} height={label.h} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clip})`} />
+        : <rect x={label.x} y={label.y} width={label.w} height={label.h} rx={1} fill={art.color} />}
+      <g transform={`translate(${f(w / 2)} ${f(cy)})`}>
+        <circle cx={0} cy={0} r={f(r)} fill="#D9DEE3" {...THIN} />
+        <path d={sector(r * 0.35, r * 0.95, 200, 250)} fill="#B8E3F0" opacity={0.6} />
+        <path d={sector(r * 0.35, r * 0.95, -48, -14)} fill="#FFFFFF" opacity={0.7} />
+        <circle cx={0} cy={0} r={f(r * 0.3)} fill="#1E1F24" {...THIN} />
+      </g>
+    </>
+  );
+}
+
 // Moyeu à dents du plateau cristal.
 function Hub({ cx, cy }: { cx: number; cy: number }): ReactElement {
   return (
@@ -384,7 +524,7 @@ function DiscArt({ kind, art }: { kind: DiscKind; art: Art }): ReactElement {
   const clip = `${art.uid}-label`;
   const vinyl = kind === 'vinyl';
   // Rayon de l'étiquette : petite sur un vinyle, presque toute la face sur un disque de jeu.
-  const lr = vinyl ? 21 : kind === 'game' ? 54 : 40;
+  const lr = vinyl ? 21 : kind === 'game' || kind === 'mini' ? 54 : 40;
   const hole = vinyl ? 1.8 : 7.5;
   const grooves = vinyl
     ? Array.from({ length: 19 }, (_, i) => 23.5 + i * 1.85)
@@ -448,8 +588,9 @@ function BookTitlePage({ art }: { art: Art }): ReactElement {
 
 type Pose = { x: number; y: number; s: number };
 
-export function ItemCase({ opening, phase, from, to, cover, color, title, disc, reduced, selector, right }: Props): ReactElement {
-  const g = GEOMETRY[opening];
+export function ItemCase({ opening, phase, from, to, cover, color, title, disc, reduced, selector, right, format = 'generic', caseColor }: Props): ReactElement {
+  const g = geometryOf(opening, format);
+  const plastic = plasticOf(opening, caseColor);
   const uid = `wm-case-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const art: Art = { cover, color, title, uid };
   const ref = useRef<HTMLDivElement>(null);
@@ -529,11 +670,25 @@ export function ItemCase({ opening, phase, from, to, cover, color, title, disc, 
   if (right !== undefined) content = <div style={{ ...pct(g.right), overflow: 'hidden' }}>{right}</div>;
   else if (opening === 'book') content = <BookTitlePage art={art} />;
   else if (g.disc && disc === 'away') {
+    // Sous un support rectangulaire (cartouche, UMD), sinon dans la partie basse du disque.
+    const below = g.disc.h !== undefined ? g.disc.h / 2 + 4 : 18;
     content = (
-      <div data-case-tray-empty="" style={{ position: 'absolute', left: 0, right: 0, top: `${f(((g.disc.cy + 18) / g.h) * 100)}%`, textAlign: 'center', padding: '0 12%' }}>
+      <div data-case-tray-empty="" style={{ position: 'absolute', left: 0, right: 0, top: `${f(((g.disc.cy + below) / g.h) * 100)}%`, textAlign: 'center', padding: '0 12%' }}>
         <span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: 999, background: 'rgba(251,246,234,.92)', border: `2px solid ${INK_C}`, color: INK_C, fontSize: Math.max(11, Math.round(H * 0.05)), fontWeight: 600, lineHeight: 1.25 }}>
-          Le disque est sur le poste
+          {g.disc.kind === 'cart' ? 'La cartouche est sur le poste' : 'Le disque est sur le poste'}
         </span>
+      </div>
+    );
+  } else if (g.disc && g.disc.w !== undefined && g.disc.h !== undefined) {
+    // Support rectangulaire à l'échelle réelle, immobile (ni la cartouche ni la coque de l'UMD ne tournent).
+    const s = g.disc;
+    const sw = g.disc.w;
+    const sh = g.disc.h;
+    content = (
+      <div data-case-disc="" data-disc={disc} data-support={s.kind} style={{ position: 'absolute', left: f((s.cx - sw / 2) * k), top: f((s.cy - sh / 2) * k), width: f(sw * k), height: f(sh * k), ...(disc === 'flying' ? { visibility: 'hidden' } : {}) }}>
+        <svg viewBox={`0 0 ${sw} ${sh}`} width="100%" height="100%" style={{ position: 'absolute', inset: 0, display: 'block', overflow: 'visible' }}>
+          {s.kind === 'cart' ? <CartArt w={sw} h={sh} color={s.color ?? '#1B1B1F'} art={art} /> : <UmdArt w={sw} h={sh} art={art} />}
+        </svg>
       </div>
     );
   } else if (g.disc) {
@@ -541,7 +696,7 @@ export function ItemCase({ opening, phase, from, to, cover, color, title, disc, 
     const spin = disc === 'spinning' && !reduced;
     // Centré dans le plateau par left/top : le conteneur du disque n'a jamais de translation ; seul le calque intérieur tourne.
     content = (
-      <div data-case-disc="" data-disc={disc} style={{ position: 'absolute', left: f((g.disc.cx - g.disc.d / 2) * k), top: f((g.disc.cy - g.disc.d / 2) * k), width: f(d), height: f(d), ...(disc === 'flying' ? { visibility: 'hidden' } : {}) }}>
+      <div data-case-disc="" data-disc={disc} data-support="disc" style={{ position: 'absolute', left: f((g.disc.cx - g.disc.d / 2) * k), top: f((g.disc.cy - g.disc.d / 2) * k), width: f(d), height: f(d), ...(disc === 'flying' ? { visibility: 'hidden' } : {}) }}>
         <svg viewBox="-60 -60 120 120" width="100%" height="100%" style={{ position: 'absolute', inset: 0, display: 'block', overflow: 'visible' }}>
           <circle cx={2.5} cy={3.5} r={59} fill="rgba(12,8,6,.35)" />
         </svg>
@@ -559,18 +714,18 @@ export function ItemCase({ opening, phase, from, to, cover, color, title, disc, 
       <style>{'@keyframes wmt-case-disc-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}'}</style>
       {/* Plateau : moitié droite (la charnière à gauche). */}
       <div data-case-tray="" style={{ position: 'absolute', inset: 0 }}>
-        <svg viewBox={viewBox} width="100%" height="100%" style={svgStyle}><Tray opening={opening} art={art} /></svg>
+        <svg viewBox={viewBox} width="100%" height="100%" style={svgStyle}><Tray opening={opening} art={art} g={g} plastic={plastic} /></svg>
         <div data-case-right="" style={{ position: 'absolute', inset: 0 }}>{content}</div>
       </div>
       {/* Couvercle : pivote autour de sa charnière gauche ; sa face intérieure porte le sélecteur. */}
       <div data-case-lid="" style={lidStyle}>
         {!reduced && (
           <div data-case-lid-outer="" style={face}>
-            <svg viewBox={viewBox} width="100%" height="100%" style={svgStyle}><LidOuter opening={opening} art={{ ...art, uid: `${uid}-o` }} /></svg>
+            <svg viewBox={viewBox} width="100%" height="100%" style={svgStyle}><LidOuter opening={opening} art={{ ...art, uid: `${uid}-o` }} g={g} plastic={plastic} /></svg>
           </div>
         )}
         <div data-case-lid-inner="" style={reduced ? { position: 'absolute', inset: 0 } : { ...face, transform: 'rotateY(180deg)' }}>
-          <svg viewBox={viewBox} width="100%" height="100%" style={svgStyle}><LidInner opening={opening} art={art} /></svg>
+          <svg viewBox={viewBox} width="100%" height="100%" style={svgStyle}><LidInner opening={opening} art={art} g={g} plastic={plastic} /></svg>
           <div data-case-selector="" style={{ ...pct(g.selector), overflow: 'auto', color: INK_C, fontSize: Math.max(12, Math.round(H * 0.045)) }}>{selector}</div>
         </div>
       </div>
