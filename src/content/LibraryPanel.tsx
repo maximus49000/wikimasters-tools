@@ -24,7 +24,7 @@ import {
   updateLayout,
 } from '../core/library/library-book';
 import { STEAMPUNK_ONLY, isSmallKind, labelOf, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
-import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Orientation, type PetPlan, type StyleId, type StoredDisplay, type DecoPlaced } from '../core/library/library-types';
+import { type Coat, type Pet, type Species, type TimeSetting, type WeatherSetting, type FurnitureKind, type Layout, type LibraryState, type Placed, type Orientation, type PetPlan, type StyleId, type StoredDisplay, type DecoPlaced } from '../core/library/library-types';
 import { ensureDecoFonts } from './deco-fonts';
 import { hasCitySetting, isPanel, PANEL_MAX, PANEL_MIN, type CityTime } from '../core/library/deco';
 import type { LibraryRepo } from '../core/library/library-repo';
@@ -106,7 +106,17 @@ import type { Rect } from '../core/library/outside-camera';
 import { cameraOf, unionBox, zoomIdsOf, zoomTargetOf, type Box } from '../core/library/zoom-target';
 import { FurnitureZoom, ZOOM_MS, ZOOM_REDUCED_MS } from './furniture-zoom';
 import { useFurnitureZoom } from './use-furniture-zoom';
+import { openingOf } from '../core/library/opened-item';
+import { bookColor } from '../core/library/item-models';
+import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
+import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
+import { useOpenedItem } from './opened-item/use-opened-item';
+import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
+import { getPlayerSource } from './music-registry';
 import { reducedMotion } from './ghibli-sky';
+import { useHifiPlayer } from './hifi/use-hifi';
+import { HifiBubble } from './hifi/HifiBubble';
+import { usePlatform } from './usePlatform';
 import { getImageService } from './image-registry';
 
 // Aide affichée pendant un placement valide.
@@ -234,6 +244,14 @@ const REFUSALS = {
   wall: 'Un objet mural s’accroche au mur.',
 } as const;
 
+// Toute forme qui a une ouverture s'ouvre dans la scène (CD, vinyle, DVD, jeu, livre) ; poster et petits objets n'ont que la fiche.
+const opensNow = (p: Placed): boolean => openingOf(p) !== null;
+const NO_LAYOUT: Layout = [];
+// Changer d'album : l'ancien disque quitte le poste et son boîtier rentre à sa place avant que le nouveau disque ne s'envole.
+const SWAP_MS = 450;
+// Vol du disque vers le poste : `wait` pendant que l'ancien album retourne à sa place, `fly` pendant le vol.
+type Flight = { id: number; placedId: string; phase: 'wait' | 'fly' };
+
 type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void; onOpenMarket?: (slug: string) => void };
 
 export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMarket }: Props) {
@@ -271,6 +289,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
+  // Bulle « En lecture » du poste hi-fi (ouverte en touchant le poste en mode Visiter) : liée à sa pièce, donc fermée si la pièce change.
+  const [hifiBubbleRoom, setHifiBubbleRoom] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<DrawerState>(INITIAL_DRAWER);
   // Placement en cours (objet neuf, carte choisie ou objet déplacé) : rien n'est enregistré avant ✓.
   const [placement, setPlacement] = useState<Placement | null>(null);
@@ -379,6 +399,97 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     return () => unlockOrientation();
   }, [stage.active, orientationNow]);
 
+  // Objet ouvert dans la scène (boîtier de CD, pochette de vinyle) : paysage forcé pendant l'ouverture, orientation de la pièce rendue
+  // à la fermeture. La fiche ⓘ passe par-dessus : le retour Android la ferme d'abord, la couche reste.
+  // Fermeture sans rectangle (✕, Échap, retour) : devant le poste si le disque y est, sinon la place d'origine (posée plus bas).
+  const closeTargetRef = useRef<() => Box | null>(() => null);
+  const { opened, open: openItem, close: closeItem, reset: resetOpened } = useOpenedItem({
+    onBeforeClose: () => {
+      if (!viewingRef.current) return false;
+      setViewing(null);
+      return true;
+    },
+    restoreOrientation: () => (stage.active ? lockOrientation(orientationNow) : unlockOrientation()),
+    closeTarget: () => closeTargetRef.current(),
+  });
+  const openedRef = useRef(opened);
+  openedRef.current = opened;
+  // Zoom et couche fermés d'un coup, sans animation (changement de pièce, Aménager, sortie du plein écran) : leurs entrées
+  // d'historique sont retirées en un seul saut.
+  const resetLayers = (): void => resetZoom(resetOpened() ? 1 : 0);
+
+  // Poste hi-fi de la pièce (déduit du lecteur) et vol du disque. Rien de mémorisé : `flight` ne vit que le temps de l'animation,
+  // `landedFor` dit que le disque de l'objet ouvert est au poste (atterri, ou déjà là à l'ouverture) ; il retombe dès que le lecteur
+  // passe à un autre album.
+  const hifi = useHifiPlayer(lib ? activeRoom(lib).layout : NO_LAYOUT).state;
+  const hifiRef = useRef(hifi);
+  hifiRef.current = hifi;
+  const platform = usePlatform();
+  const [flight, setFlight] = useState<Flight | null>(null);
+  // Vidéo (bande-annonce) choisie dans le plateau d'un film ou d'un jeu : elle remplace le disque, ne va jamais au poste.
+  const [videoShown, setVideoShown] = useState<{ placedId: string; video: Video } | null>(null);
+  const flightRef = useRef(flight);
+  flightRef.current = flight;
+  const flightSeq = useRef(0);
+  const [landedFor, setLandedFor] = useState<string | null>(null);
+  const landedRef = useRef(landedFor);
+  landedRef.current = landedFor;
+  // Objet au poste avant le dernier changement : savoir si un autre album y était quand la lecture vient d'aboutir.
+  const hifiTrail = useRef<{ cur: string | null; prev: string | null }>({ cur: hifi.atHifi, prev: null });
+  if (hifiTrail.current.cur !== hifi.atHifi) hifiTrail.current = { cur: hifi.atHifi, prev: hifiTrail.current.cur };
+  const lastAtHifi = useRef(hifi.atHifi);
+  useEffect(() => {
+    if (lastAtHifi.current !== hifi.atHifi && lastAtHifi.current === landedFor && hifi.atHifi !== landedFor) setLandedFor(null);
+    lastAtHifi.current = hifi.atHifi;
+  }, [hifi.atHifi]); // eslint-disable-line react-hooks/exhaustive-deps
+  // La couche fermée (ou passée à un autre objet) : le vol en cours s'arrête, le poste montre de nouveau son disque.
+  const openedId = opened?.placedId ?? null;
+  useEffect(() => { setVideoShown((v) => (v && v.placedId !== openedId ? null : v)); }, [openedId]);
+  useEffect(() => { if (flight && flight.placedId !== openedId) setFlight(null); }, [openedId, flight]);
+  // Ouvre un objet ; son plateau est vide si son disque est déjà au poste.
+  const openAt = (id: string, from: Box | null): void => {
+    const cur = openedRef.current;
+    if (cur && cur.phase !== 'open') return;
+    // La bulle du poste ne reste pas ouverte derrière la couche.
+    setHifiBubbleRoom(null);
+    setLandedFor(hifiRef.current.hifiId !== null && hifiRef.current.atHifi === id ? id : null);
+    openItem(id, from);
+  };
+  // Lecture aboutie depuis le sélecteur de l'objet `id` : avec un poste, son disque s'envole (sauf s'il y est déjà).
+  const onPlayedFrom = (id: string, slug: string, title: string): void => {
+    const cur = openedRef.current;
+    // Lecture arrivée après la fermeture de la couche ou pour un autre objet : rien ne s'envole.
+    if (!cur || cur.placedId !== id || cur.phase === 'closing') return;
+    // Tidal ouvre un lien externe, sans lecteur : la carte est posée au lecteur pour que le disque aille au poste.
+    if (platform === 'tidal') playerSource?.setCard({ slug, title });
+    if (hifiRef.current.hifiId === null || landedRef.current === id || flightRef.current?.placedId === id) return;
+    const trail = hifiTrail.current;
+    const before = trail.cur !== id ? trail.cur : trail.prev;
+    const swap = before !== null && before !== id && !reducedMotion();
+    const flightId = ++flightSeq.current;
+    setFlight({ id: flightId, placedId: id, phase: swap ? 'wait' : 'fly' });
+    if (swap) window.setTimeout(() => setFlight((f) => (f && f.id === flightId ? { ...f, phase: 'fly' } : f)), SWAP_MS);
+  };
+  const onLanded = (flightId: number, id: string): void => {
+    if (flightRef.current?.id !== flightId) return;
+    setFlight(null);
+    setLandedFor(id);
+  };
+  // Sans poste, le disque du boîtier tourne quand le lecteur joue une piste de cette carte (rien de mémorisé à part).
+  // Abonné au lecteur seulement quand une couche ou la bulle du poste le montre : sinon chaque relevé du lecteur (5 s en lecture,
+  // 15 s à l'arrêt) referait toute la pièce sur Android (le poste a son propre instantané, voir use-hifi).
+  const playerSource = getPlayerSource();
+  const playerShown = playerSource !== null && (opened !== null || hifiBubbleRoom !== null);
+  const playerNow = useSyncExternalStore(playerShown ? playerSource.subscribe : noSubscribe, playerShown ? playerSource.current : noPlayer);
+  // Objet ouvert disparu de la pièce (rangé ailleurs, carte retirée de la collection) : la couche se ferme d'un coup, avec son
+  // entrée d'historique et l'orientation, et le vol en cours s'arrête (effet sur openedId) ; sinon elle resterait invisible mais active.
+  const openedGone = opened !== null && (() => {
+    const p = (lib ? activeRoom(lib).layout : NO_LAYOUT).find((x) => x.id === opened.placedId);
+    const slug = p && (p.kind === 'stored' || p.kind === 'wall') ? p.slug : undefined;
+    return !slug || !roomCards.cards[slug];
+  })();
+  useEffect(() => { if (openedGone) resetLayers(); }, [openedGone]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Pièce horizontale en plein écran sur un écran en paysage : la pièce couvre tout l'écran, sans bandes noires.
   const [outsidePhase, setOutsidePhase] = useState<OutsidePhase>('inside');
   const outsideFrom = useRef<{ rect: Rect | null; left: number; top: number } | null>(null);
@@ -399,20 +510,20 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 
   // Retour à l'intérieur au changement de pièce et en Aménager (le bouton Aménager reste cliquable).
   // useLayoutEffect : aucune image peinte avec la nouvelle pièce encore dehors ; le défilement de l'ancienne pièce ne s'applique pas à la nouvelle.
-  useLayoutEffect(() => { outsideFrom.current = null; setOutsidePhase('inside'); resetZoom(); }, [roomIdNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { outsideFrom.current = null; setOutsidePhase('inside'); resetLayers(); }, [roomIdNow]); // eslint-disable-line react-hooks/exhaustive-deps
   const editingNow = mode === 'edit';
-  useLayoutEffect(() => { if (editingNow) { setOutsidePhase('inside'); resetZoom(); } }, [editingNow]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Sortie du plein écran : le zoom se ferme aussitôt (pas à l'entrée).
+  useLayoutEffect(() => { if (editingNow) { setOutsidePhase('inside'); resetLayers(); } }, [editingNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sortie du plein écran : le zoom et l'objet ouvert se ferment aussitôt (pas à l'entrée).
   const wasActive = useRef(stage.active);
   useEffect(() => {
-    if (wasActive.current && !stage.active) resetZoom();
+    if (wasActive.current && !stage.active) resetLayers();
     wasActive.current = stage.active;
   }, [stage.active]); // eslint-disable-line react-hooks/exhaustive-deps
   // Échap ferme le zoom ; la fiche ouverte par-dessus se ferme seule d'abord.
   const zoomOpen = zoom !== null;
   useEffect(() => {
     if (!zoomOpen) return;
-    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current && !decoDialogRef.current) zoomBack(); };
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !viewingRef.current && !decoDialogRef.current && !openedRef.current) zoomBack(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [zoomOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -715,7 +826,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       // Une carte rangée ou affichée sur un écran ouvre le zoom de son meuble ; la fiche s'ouvre ensuite depuis le zoom.
       if ((item.kind === 'stored' || item.kind === 'computer') && tryZoom(item.id)) return;
       const slug = item.kind === 'wall' || item.kind === 'stored' || item.kind === 'computer' ? item.slug : undefined;
-      if (slug && roomCards.cards[slug]) setViewing(slug);
+      if (!slug || !roomCards.cards[slug]) return;
+      // Un vinyle ou une pochette au mur s'ouvre dans la scène ; un poster ouvre la fiche.
+      if (opensNow(item)) return void openAt(item.id, boxInStage(item.id));
+      setViewing(slug);
       return;
     }
     // L'écran d'un ordinateur se manie comme l'ordinateur.
@@ -733,14 +847,47 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (placement) showPlacement(movePlacement(placement, room.cols, spotAt(col, row)));
   }
 
-  // Rectangle d'un meuble dans la scène (départ du pivot) ; null si non mesurable (tests).
-  const boxInStage = (id: string): Box | null => {
+  // Rectangle d'un élément dans le repère de la scène ; null si non mesurable (tests).
+  const boxOfEl = (el: Element | null | undefined): Box | null => {
     const stageEl = stage.ref.current;
-    const el = scrollRef.current?.querySelector(`[data-id="${id}"]`);
     if (!stageEl || !el) return null;
     const s = stageEl.getBoundingClientRect();
     const r = el.getBoundingClientRect();
     return r.width === 0 ? null : { x: r.left - s.left, y: r.top - s.top, w: r.width, h: r.height };
+  };
+  // Rectangle d'un meuble ou d'un objet de la pièce (départ du pivot, de l'ouverture).
+  const boxInStage = (id: string): Box | null => boxOfEl(scrollRef.current?.querySelector(`[data-id="${id}"]`));
+  // Rectangle d'une carte sur la tablette du second zoom (le slug n'est pas glissé dans un sélecteur : il peut contenir des guillemets).
+  const boxOnBoard = (slug: string): Box | null =>
+    boxOfEl([...(stage.ref.current?.querySelectorAll('[data-board-card]') ?? [])].find((el) => el.getAttribute('data-board-card') === slug));
+  // Objet de la pièce qui s'ouvre dans la scène pour cette carte ; les autres formes gardent la fiche pour l'instant.
+  const openedFor = (slug: string): Placed | undefined => layout.find((p) => (p.kind === 'stored' || p.kind === 'wall') && p.slug === slug && opensNow(p));
+  // Toucher une carte du second zoom : son boîtier s'ouvre s'il le peut, sinon la fiche.
+  const onZoomCard = (slug: string): void => {
+    const p = openedFor(slug);
+    if (p) openAt(p.id, boxOnBoard(slug));
+    else setViewing(slug);
+  };
+  // Pochette couchée devant le poste (rectangle de la scène) et disque posé sur le poste (l'arrivée du vol).
+  const sleeveBox = (id: string): Box | null =>
+    boxOfEl([...(scrollRef.current?.querySelectorAll('[data-sleeve-of]') ?? [])].find((el) => el.getAttribute('data-sleeve-of') === id));
+  const hifiDiscBox = (vinyl: boolean): Box | null => {
+    const station = scrollRef.current?.querySelector('[data-hifi]');
+    const spot = boxOfEl(station?.querySelector(vinyl ? '[data-hifi-platter]' : '[data-hifi-well]'));
+    if (spot) return { x: spot.x, y: spot.y + spot.h / 2 - spot.w / 2, w: spot.w, h: spot.w };
+    const whole = boxOfEl(station);
+    if (!whole) return null;
+    const side = Math.min(whole.w, whole.h) * 0.6;
+    return { x: whole.x + whole.w / 2 - side / 2, y: whole.y + whole.h / 2 - side / 2, w: side, h: side };
+  };
+  closeTargetRef.current = () => {
+    const cur = openedRef.current;
+    const p = cur ? layout.find((x) => x.id === cur.placedId) : undefined;
+    if (!p) return null;
+    if (hifiRef.current.hifiId !== null && hifiRef.current.atHifi === p.id) return sleeveBox(p.id);
+    // Sa place d'origine : la carte sur la tablette du second zoom, sinon l'objet dans la pièce.
+    const slug = p.kind === 'stored' || p.kind === 'wall' ? p.slug : undefined;
+    return (slug ? boxOnBoard(slug) : null) ?? boxInStage(p.id);
   };
   // Ouvre le zoom si l'objet touché mène à une étagère garnie ou à un bureau dont l'écran affiche une carte.
   const tryZoom = (id: string): boolean => {
@@ -758,6 +905,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (!editing) {
       if (press.consumeClick()) return;
       if (zoomRef.current) return;
+      if (hifiRef.current.hifiId === id) return setHifiBubbleRoom(room.id);
       if (tryZoom(id)) return;
       const tapped = layout.find((p) => p.id === id);
       if (tapped && hasCitySetting(tapped)) return setDecoDialog({ type: 'city', id });
@@ -894,6 +1042,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const setMode2 = (next: 'visit' | 'edit'): void => {
     reset();
+    setHifiBubbleRoom(null);
     setMode(next);
   };
   // Changer de pièce ramène la vue à gauche et annule tout défilement en attente.
@@ -903,6 +1052,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const chooseRoom = (id: string): void => {
     reset();
+    setHifiBubbleRoom(null);
     resetScroll();
     void library.update((state) => setActive(state, id));
   };
@@ -1074,6 +1224,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onPick={(id) => void onPick(id)}
             cards={roomCards.cards}
             onCardTap={onCardTap}
+            onSleeveTap={(id, el) => { if (!zoomRef.current) openAt(id, boxOfEl(el)); }}
+            hideHifiDisc={flight !== null}
+            hideSleeve={opened !== null && opened.placedId === hifi.atHifi}
             pets={sim.views}
             petFrames={sim.frames}
             petAttach={sim.attach}
@@ -1246,8 +1399,62 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             stage={stageSize}
             level={zoom.level}
             onLevel={(lv) => setZoomLevel(lv)}
-            onCard={(slug) => setViewing(slug)}
+            onCard={onZoomCard}
             onBack={zoomBack}
+          />
+        )}
+        {opened && (() => {
+          const p = layout.find((x) => x.id === opened.placedId);
+          const slug = p && (p.kind === 'stored' || p.kind === 'wall') ? p.slug : undefined;
+          const card = slug ? roomCards.cards[slug] : undefined;
+          if (!p || !slug || !card) return null;
+          const view = playerSource ? playerNow : NO_PLAYER;
+          const spinning = view.card?.slug === slug && view.track?.playing === true;
+          const hasHifi = hifi.hifiId !== null;
+          // Avec un poste, le disque ne tourne jamais dans le boîtier : il est dans le plateau, en vol, ou au poste.
+          const mine = flight !== null && flight.placedId === p.id ? flight : null;
+          const disc = !hasHifi ? (spinning ? 'spinning' : 'in')
+            : mine ? (mine.phase === 'fly' ? 'flying' : 'in')
+            : landedFor === p.id ? 'away' : 'in';
+          return (
+            <OpenedItemLayer
+              placed={p}
+              card={card}
+              cover={imageOfCard(slug) ?? null}
+              color={bookColor(slug)}
+              state={opened}
+              disc={disc}
+              hasHifi={hasHifi}
+              onInfo={() => setViewing(slug)}
+              // Vers le poste si son disque y est, sinon vers sa place d'origine (closeTarget).
+              onClose={() => closeItem()}
+              onAddHifi={() => {
+                // Aménager ferme la couche et le zoom d'un coup (effet sur editingNow : un seul saut d'historique), puis propose le poste.
+                setMode2('edit');
+                startNew('small-hifi');
+              }}
+              flight={mine && mine.phase === 'fly' ? { id: mine.id, target: hifiDiscBox(p.kind === 'wall'), onLanded: () => onLanded(mine.id, p.id) } : null}
+              selector={(() => {
+                const played = () => onPlayedFrom(p.id, slug, card.title);
+                const onVideo = (video: Video | null) => setVideoShown(video ? { placedId: p.id, video } : null);
+                const video = videoShown && videoShown.placedId === p.id ? videoShown.video : null;
+                const opening = openingOf(p);
+                if (opening === 'dvd-case') return <ScreenSelector slug={slug} title={card.title} onPlayed={played} video={video} onVideo={onVideo} />;
+                if (opening === 'book') return <BookSelector slug={slug} title={card.title} onPlayed={played} />;
+                if (opening === 'game-case') return <GameSelector slug={slug} title={card.title} onPlayed={played} video={video} onVideo={onVideo} />;
+                return <MusicSelector slug={slug} title={card.title} onPlayed={played} />;
+              })()}
+              {...(videoShown && videoShown.placedId === p.id ? { right: <VideoPlayer video={videoShown.video} onEnded={() => setVideoShown(null)} /> } : {})}
+            />
+          );
+        })()}
+        {hifiBubbleRoom === room.id && !editing && hifi.hifiId !== null && (
+          <HifiBubble
+            view={playerSource ? playerNow : NO_PLAYER}
+            albumTitle={(playerSource ? playerNow : NO_PLAYER).card?.title ?? null}
+            anchor={{ stage: stage.ref.current, scroll: scrollRef.current, targetId: hifi.hifiId }}
+            onClose={() => setHifiBubbleRoom(null)}
+            onEject={() => setHifiBubbleRoom(null)}
           />
         )}
         {viewing && roomCards.cards[viewing] && (

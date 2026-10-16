@@ -14,9 +14,9 @@ export const STANDING_KINDS = ['shelf', 'desk', 'chair', 'sofa', 'armchair', 'ba
 export type StandingKind = (typeof STANDING_KINDS)[number];
 
 // Petits objets posés sur la surface d'un bureau ou d'une étagère.
-export const SMALL_ITEMS = ['plant', 'lamp', 'alarm', 'clock', 'station'] as const;
+export const SMALL_ITEMS = ['plant', 'lamp', 'alarm', 'clock', 'station', 'hifi'] as const;
 export type SmallItem = (typeof SMALL_ITEMS)[number];
-export type SmallKind = 'small-plant' | 'small-lamp' | 'small-alarm' | 'small-clock' | 'small-station';
+export type SmallKind = 'small-plant' | 'small-lamp' | 'small-alarm' | 'small-clock' | 'small-station' | 'small-hifi';
 
 export type FurnitureKind = StandingKind | 'computer' | 'window' | SmallKind | DecoKind;
 

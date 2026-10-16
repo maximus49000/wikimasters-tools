@@ -8,6 +8,7 @@ import { itemModel, itemPieces, type ItemDisplay, type ItemPlacement, type ItemS
 import type { StandingKind } from '../core/library/library-types';
 import type { PxRect } from '../core/library/room-grid';
 import type { Palette } from '../core/library/styles';
+import { HifiFace, HifiGrille, HifiTop } from './hifi/hifi-art';
 
 const LIT_SHADE = '#FFE9A8';
 // referrerPolicy n'est pas typé sur <image> SVG : passé par déploiement d'objet.
@@ -119,7 +120,9 @@ function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?
 }
 
 // Contenu d'un objet posé : image et titre de sa carte, lampe allumée ou non.
-export type ItemContent = { url?: string; title?: string; lit?: boolean; face?: { key: string; draw: (w: number, h: number) => ReactElement } };
+// `face` / `top` : décor dessiné par l'appelant sur la façade / le dessus (clé : ce qui change son dessin, pour le mémo).
+export type FaceDraw = { key: string; draw: (w: number, h: number) => ReactElement };
+export type ItemContent = { url?: string; title?: string; lit?: boolean; face?: FaceDraw; top?: FaceDraw };
 
 const cut = (title: string, max: number) => (title.length > max ? `${title.slice(0, Math.max(1, max - 1))}…` : title);
 const GAME_RED = '#E24B4A';
@@ -159,7 +162,13 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
       </>
     );
   }
-  if (role === 'face') return content?.face ? content.face.draw(w, h) : <rect width={w} height={h} fill="#1D1F22" />;
+  // Chaîne hi-fi : dessus (platine, puits CD, disque posé), façade (afficheur, molette) et grilles des enceintes ; sans contenu, poste au repos.
+  if (role === 'top') return content?.top ? content.top.draw(w, h) : <HifiTop w={w} h={h} disc={null} spinning={false} />;
+  if (role === 'grille') return <HifiGrille w={w} h={h} />;
+  if (role === 'face') {
+    if (content?.face) return content.face.draw(w, h);
+    return shape === 'hifi' ? <HifiFace w={w} h={h} title={null} playing={false} /> : <rect width={w} height={h} fill="#1D1F22" />;
+  }
   if (role === 'screen') {
     return url ? <image href={url} width={w} height={h} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" /> : <rect width={w} height={h} fill={PLACEHOLDER} />;
   }
@@ -323,4 +332,4 @@ function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content,
 export const CarriedItem3D = memo(CarriedItem3DImpl, (a, b) => a.host === b.host && a.angle === b.angle && a.palette === b.palette && a.steampunk === b.steampunk
   && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
   && itemsKey([a.placement]) === itemsKey([b.placement])
-  && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit && a.content?.face?.key === b.content?.face?.key);
+  && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit && a.content?.face?.key === b.content?.face?.key && a.content?.top?.key === b.content?.top?.key);

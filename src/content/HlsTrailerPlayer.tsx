@@ -9,7 +9,7 @@ const HEIGHT = 'min(130px, 20vh)';
 // Bande-annonce Steam (flux HLS) : miniature + ▶ ; hls.js (build complet : le flux Steam sépare l'audio dans une piste alternative, que le build light ne charge pas, d'où une lecture muette ou en échec sur Android) est un import dynamique : exécuté au premier clic dans le module,
 // mais inclus dans le bundle du script (Chrome ne lit pas le HLS seul).
 // Si la lecture échoue (site qui bloque le flux), le bouton ▶ revient (un clic relance le chargement) et le lien vers la page du jeu reste là.
-export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster?: string; pageUrl: string }) {
+export function HlsTrailerPlayer({ url, poster, pageUrl, onEnded }: { url: string; poster?: string; pageUrl: string; onEnded?: () => void }) {
   const [playing, setPlaying] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const fullscreen = useFullscreen<HTMLDivElement>();
@@ -67,7 +67,7 @@ export function HlsTrailerPlayer({ url, poster, pageUrl }: { url: string; poster
   return (
     <div ref={fullscreen.ref} style={{ position: 'relative', width: '100%', height: HEIGHT, borderRadius: 8, overflow: 'hidden', background: '#000', border, ...fullscreenFrame(fullscreen.active) }}>
       {playing ? (
-        <video ref={video} controls autoPlay playsInline poster={poster} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+        <video ref={video} controls autoPlay playsInline poster={poster} onEnded={onEnded} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
       ) : (
         <button
           type="button"

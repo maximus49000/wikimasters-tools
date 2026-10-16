@@ -38,9 +38,9 @@ const iconButton = {
 } as const;
 
 // Sans lecteur (plateforme sans Spotify) : une vue vide stable.
-const NO_PLAYER: PlayerView = { linked: false, track: null, hidden: false, enabled: true, card: null };
-const noSubscribe = () => () => undefined;
-const noPlayer = () => NO_PLAYER;
+export const NO_PLAYER: PlayerView = { linked: false, track: null, hidden: false, enabled: true, card: null };
+export const noSubscribe = () => () => undefined;
+export const noPlayer = () => NO_PLAYER;
 
 type Props = { slug: string; title: string };
 

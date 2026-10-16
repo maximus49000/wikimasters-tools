@@ -48,7 +48,7 @@ describe('catalogue', () => {
   });
 
   it('les catégories couvrent chaque type une seule fois', () => {
-    const all = [...STANDING_KINDS, 'computer', 'window', 'small-plant', 'small-lamp', 'small-alarm', 'small-clock', 'small-station', ...DECO_KINDS].sort();
+    const all = [...STANDING_KINDS, 'computer', 'window', 'small-plant', 'small-lamp', 'small-alarm', 'small-clock', 'small-station', 'small-hifi', ...DECO_KINDS].sort();
     expect([...FURNITURE_KINDS].sort()).toEqual(all);
     expect(CATEGORIES.map((c) => c.id)).toEqual(['storage', 'seats', 'pets', 'deco', 'steampunk']);
   });
@@ -63,9 +63,9 @@ describe('catalogue', () => {
 });
 
 describe('catalogTree', () => {
-  it('découpe la Déco en Plantes, Lumières, Sol, Horloges et Murs', () => {
+  it('découpe la Déco en Plantes, Lumières, Sol, Horloges, Musique et Murs', () => {
     const deco = catalogTree('scandinave').find((n) => n.id === 'deco');
-    expect(deco?.subcategories.map((s) => s.id)).toEqual(['plants', 'lights', 'floor', 'clocks', 'walls']);
+    expect(deco?.subcategories.map((s) => s.id)).toEqual(['plants', 'lights', 'floor', 'clocks', 'music', 'walls']);
     expect(deco?.subcategories.find((s) => s.id === 'plants')?.kinds).toEqual(['plant', 'small-plant', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas']);
     expect(deco?.subcategories.find((s) => s.id === 'lights')?.kinds).toEqual(['lamp', 'small-lamp', 'paper-lantern', 'arc-lamp']);
     expect(deco?.subcategories.find((s) => s.id === 'floor')?.kinds).toEqual(['rug', 'coffee-table', 'side-table']);

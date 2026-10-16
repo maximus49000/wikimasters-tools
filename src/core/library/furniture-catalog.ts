@@ -101,6 +101,7 @@ const LABELS: Record<FurnitureKind, string> = {
   'small-alarm': 'Réveil numérique',
   'small-clock': 'Pendulette',
   'small-station': 'Station de table',
+  'small-hifi': 'Chaîne hi-fi',
   'panel-chalk': 'Ardoise',
   'panel-letter': 'Tableau à lettres',
   'panel-neon': 'Néon',
@@ -111,7 +112,7 @@ export const CATEGORIES: { id: Category; label: string; kinds: FurnitureKind[] }
   { id: 'storage', label: 'Rangement', kinds: ['shelf', 'desk', 'computer', 'dresser'] },
   { id: 'seats', label: 'Assises', kinds: ['chair', 'armchair', 'rocking-chair', 'egg-chair', 'peacock-chair', 'sofa', 'club-chair', 'loveseat', 'daybed', 'pouf', 'square-pouf', 'beanbag', 'bench'] },
   { id: 'pets', label: 'Pour animaux', kinds: ['basket', 'bowl', 'kennel', 'charger', 'cat-tree'] },
-  { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'side-table', 'plant', 'lamp', 'small-plant', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas', 'small-lamp', 'paper-lantern', 'arc-lamp', 'rug', 'window', 'wall-clock', 'digital-clock', 'weather-station', 'barometer', 'small-alarm', 'small-clock', 'small-station', 'panel-chalk', 'panel-letter', 'panel-neon', 'panel-cork'] },
+  { id: 'deco', label: 'Déco', kinds: ['coffee-table', 'side-table', 'plant', 'lamp', 'small-plant', 'monstera', 'strelitzia', 'palm', 'cactus', 'pampas', 'small-lamp', 'paper-lantern', 'arc-lamp', 'rug', 'window', 'wall-clock', 'digital-clock', 'weather-station', 'barometer', 'small-alarm', 'small-clock', 'small-station', 'small-hifi', 'panel-chalk', 'panel-letter', 'panel-neon', 'panel-cork'] },
   { id: 'steampunk', label: 'Steampunk', kinds: ['globe', 'telescope', 'automaton'] },
 ];
 
@@ -121,7 +122,7 @@ export const STEAMPUNK_ONLY: readonly StandingKind[] = ['globe', 'telescope', 'a
 // Catégories proposées au catalogue : « Steampunk » seulement dans une pièce Steampunk.
 export const categoriesFor = (style: StyleId): typeof CATEGORIES => CATEGORIES.filter((c) => c.id !== 'steampunk' || style === 'steampunk');
 
-export type Subcategory = 'chairs' | 'couches' | 'poufs' | 'plants' | 'lights' | 'floor' | 'walls' | 'clocks';
+export type Subcategory = 'chairs' | 'couches' | 'poufs' | 'plants' | 'lights' | 'floor' | 'walls' | 'clocks' | 'music';
 export type CatalogNode = { id: Category; label: string; kinds: FurnitureKind[]; subcategories: { id: Subcategory; label: string; kinds: FurnitureKind[] }[] };
 
 // Sous-catégories du tiroir de construction : seulement pour une catégorie trop fournie pour une seule ligne de vignettes.
@@ -136,6 +137,7 @@ const SUBCATEGORIES: Partial<Record<Category, CatalogNode['subcategories']>> = {
     { id: 'lights', label: 'Lumières', kinds: ['lamp', 'small-lamp', 'paper-lantern', 'arc-lamp'] },
     { id: 'floor', label: 'Sol', kinds: ['rug', 'coffee-table', 'side-table'] },
     { id: 'clocks', label: 'Horloges et météo', kinds: ['wall-clock', 'digital-clock', 'weather-station', 'barometer', 'small-alarm', 'small-clock', 'small-station'] },
+    { id: 'music', label: 'Musique', kinds: ['small-hifi'] },
     { id: 'walls', label: 'Murs', kinds: ['window', 'panel-chalk', 'panel-letter', 'panel-neon', 'panel-cork'] },
   ],
 };
@@ -146,7 +148,7 @@ export const catalogTree = (style: StyleId): CatalogNode[] =>
 
 export const FURNITURE_KINDS: FurnitureKind[] = CATEGORIES.flatMap((category) => category.kinds);
 
-export const SMALL_ITEM_OF: Record<SmallKind, SmallItem> = { 'small-plant': 'plant', 'small-lamp': 'lamp', 'small-alarm': 'alarm', 'small-clock': 'clock', 'small-station': 'station' };
+export const SMALL_ITEM_OF: Record<SmallKind, SmallItem> = { 'small-plant': 'plant', 'small-lamp': 'lamp', 'small-alarm': 'alarm', 'small-clock': 'clock', 'small-station': 'station', 'small-hifi': 'hifi' };
 
 export const isDecoKind = (kind: FurnitureKind): kind is DecoKind => (DECO_KINDS as readonly string[]).includes(kind);
 export const isStandingKind = (kind: FurnitureKind): kind is StandingKind => kind in FOOTPRINTS;

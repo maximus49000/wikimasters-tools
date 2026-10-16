@@ -6,6 +6,10 @@ import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/stor
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import { extendRoom, updateLayout } from '../../src/core/library/library-book';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
+import { setPlayerSource } from '../../src/content/music-registry';
+import type { PlayerSource, PlayerView } from '../../src/content/player-source';
+import type { CollectionRepo } from '../../src/core/collection/collection-repo';
+import type { Layout } from '../../src/core/library/library-types';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -406,5 +410,161 @@ describe('LibraryPanel : niveaux', () => {
     await click('[data-id="rg"]');
     expect(q('[data-action="depth-front"]')).toBeNull();
     expect(q('[data-action="remove"]')).not.toBeNull();
+  });
+});
+
+describe('LibraryPanel : objet ouvert dans la pièce', () => {
+  const known = [{ slug: 'Paris', title: 'Paris', imageUrl: 'p.png' }, { slug: 'Daft_Punk', title: 'Daft Punk' }, { slug: 'Abbey_Road', title: 'Abbey Road' }];
+  const fakeCollection = { list: async () => known, subscribe: () => () => undefined } as unknown as CollectionRepo;
+  const doc = (s: string) => document.querySelector<HTMLElement>(s);
+  const seed = async (layout: Layout) => {
+    await act(async () => { root.render(<LibraryPanel library={repo} collection={fakeCollection} />); });
+    await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => layout)); });
+    await settle();
+  };
+  // Retour Android réel : l'entrée de la couche est retirée, l'état redevient celui de l'entrée d'en dessous.
+  const back = (state: unknown) => act(async () => { history.replaceState(state, ''); window.dispatchEvent(new PopStateEvent('popstate', { state })); });
+  const SHELF: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' }];
+  // Rend l'état de l'entrée d'historique du zoom (celle que le retour depuis la couche retrouve).
+  const openShelfCd = async (): Promise<unknown> => {
+    await seed(SHELF);
+    await click('[data-furniture="shelf"]');
+    const zoomState: unknown = history.state;
+    await click('[data-zoom-card="Daft_Punk"]');
+    await click('[data-board-card="Daft_Punk"]');
+    return zoomState;
+  };
+  afterEach(() => { setPlayerSource(null); history.replaceState(null, ''); });
+
+  it('sans poste : le bouton 📻 ferme la couche, ouvre Aménager et propose la chaîne hi-fi', async () => {
+    await seed([...SHELF, { id: 'd', kind: 'desk', col: 12, row: 10 }]);
+    await click('[data-furniture="shelf"]');
+    await click('[data-zoom-card="Daft_Punk"]');
+    await click('[data-board-card="Daft_Punk"]');
+    const go = vi.spyOn(history, 'go').mockImplementation(() => undefined);
+    const backSpy = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    await click('[data-opened-item] [data-action="add-hifi"]');
+    await settle();
+    expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-opened-item]')).toBeNull();
+    // Couche et zoom retirés en un seul saut d'historique (pas de back() en plus : aucune entrée orpheline).
+    expect(go).toHaveBeenCalledTimes(1);
+    expect(go).toHaveBeenCalledWith(-2);
+    expect(backSpy).not.toHaveBeenCalled();
+    // La pose proposée est bien celle de la chaîne hi-fi : elle se pose sur le bureau.
+    await click('[data-furniture="desk"]');
+    await confirm();
+    expect(repo.current()?.rooms[0]?.layout.some((p) => p.kind === 'small' && p.item === 'hifi')).toBe(true);
+  });
+
+  it('objet ouvert retiré de la pièce : la couche se ferme d’un coup avec ses entrées d’historique', async () => {
+    await openShelfCd();
+    expect(q('[data-opened-item="c"]')).not.toBeNull();
+    const go = vi.spyOn(history, 'go').mockImplementation(() => undefined);
+    await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => [SHELF[0]!])); });
+    await settle();
+    expect(q('[data-opened-item]')).toBeNull();
+    expect(go).toHaveBeenCalledWith(-2);
+  });
+
+  it('sans couche ni bulle, la pièce ne s’abonne pas au lecteur (pas de rendu à chaque relevé)', async () => {
+    const view: PlayerView = { linked: true, hidden: false, enabled: true, card: null, track: null };
+    const subscribe = vi.fn(() => () => undefined);
+    setPlayerSource({ current: () => view, subscribe, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
+    await seed(SHELF);
+    expect(subscribe).not.toHaveBeenCalled();
+    await click('[data-furniture="shelf"]');
+    await click('[data-zoom-card="Daft_Punk"]');
+    await click('[data-board-card="Daft_Punk"]');
+    expect(subscribe).toHaveBeenCalled();
+  });
+
+  it('ouvrir un objet ferme la bulle du poste', async () => {
+    const view: PlayerView = { linked: true, hidden: false, enabled: true, card: null, track: null };
+    setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
+    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }, { id: 'w2', kind: 'wall', shape: 'vinyl', col: 4, row: 4, slug: 'Abbey_Road' }]);
+    await click('[data-id="h"]');
+    expect(q('[data-hifi-bubble]')).not.toBeNull();
+    await click('[data-card="Abbey_Road"]');
+    expect(q('[data-opened-item="w2"]')).not.toBeNull();
+    expect(q('[data-hifi-bubble]')).toBeNull();
+  });
+
+  it('toucher le poste en mode Visiter ouvre la bulle En lecture, ✕ la ferme', async () => {
+    const view: PlayerView = { linked: true, hidden: false, enabled: true, card: { slug: 'Daft_Punk', title: 'Daft Punk' }, track: { uri: 'u', title: 'Aerodynamic', artist: 'Daft Punk', imageUrl: null, playing: true } };
+    setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
+    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }]);
+    await click('[data-id="h"]');
+    expect(q('[data-hifi-bubble]')?.textContent).toContain('Aerodynamic');
+    await click('[data-hifi-bubble] [data-action="close"]');
+    expect(q('[data-hifi-bubble]')).toBeNull();
+  });
+
+  it('second zoom : toucher un CD ouvre son boîtier, pas la fiche', async () => {
+    await openShelfCd();
+    expect(q('[data-opened-item="c"]')).not.toBeNull();
+    expect(q('[data-opening="jewel-cd"]')).not.toBeNull();
+    expect(doc('[data-room-card]')).toBeNull();
+  });
+
+  it('mur : un poster ouvre la fiche comme avant, un vinyle ouvre sa pochette', async () => {
+    await seed([
+      { id: 'w1', kind: 'wall', shape: 'poster', col: 4, row: 4, slug: 'Paris' },
+      { id: 'w2', kind: 'wall', shape: 'vinyl', col: 12, row: 4, slug: 'Abbey_Road' },
+    ]);
+    await click('[data-card="Paris"]');
+    expect(doc('[data-room-card="Paris"]')).not.toBeNull();
+    expect(q('[data-opened-item]')).toBeNull();
+    await click('[data-room-card="Paris"] [data-action="close"]');
+    await click('[data-card="Abbey_Road"]');
+    expect(q('[data-opened-item="w2"]')).not.toBeNull();
+    expect(q('[data-opening="vinyl-sleeve"]')).not.toBeNull();
+    expect(doc('[data-room-card]')).toBeNull();
+  });
+
+  it('ⓘ ouvre la fiche par-dessus ; le retour ferme d’abord la fiche, puis la couche (le zoom reste)', async () => {
+    const zoomState = await openShelfCd();
+    await click('[data-opened-item] [data-action="info"]');
+    expect(doc('[data-room-card="Daft_Punk"]')).not.toBeNull();
+    expect(q('[data-opened-item]')).not.toBeNull();
+    await back(zoomState);
+    expect(doc('[data-room-card]')).toBeNull();
+    expect(q('[data-opened-item]')).not.toBeNull();
+    expect(typeof history.state?.wmtOpened).toBe('string');
+    await back(zoomState);
+    expect(q('[data-opened-item] [data-item-case]')?.getAttribute('data-phase')).toBe('closing');
+    expect(q('[data-shelf-board="0"]')).not.toBeNull();
+  });
+
+  it('Échap ferme la fiche d’abord, puis la couche, sans fermer le zoom', async () => {
+    await openShelfCd();
+    vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    await click('[data-opened-item] [data-action="info"]');
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(doc('[data-room-card]')).toBeNull();
+    expect(q('[data-opened-item] [data-item-case]')?.getAttribute('data-phase')).not.toBe('closing');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(q('[data-opened-item] [data-item-case]')?.getAttribute('data-phase')).toBe('closing');
+    expect(q('[data-shelf-board="0"]')).not.toBeNull();
+  });
+
+  it('✕ ferme la couche ; le retour d’historique qui suit ne ferme pas le zoom', async () => {
+    await openShelfCd();
+    await click('[data-opened-item] [data-action="close"]');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(q('[data-opened-item] [data-item-case]')?.getAttribute('data-phase')).toBe('closing');
+    expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).not.toBe('closing');
+    expect(q('[data-shelf-board="0"]')).not.toBeNull();
+  });
+
+  it('sans poste : le disque tourne quand le lecteur joue une piste de cette carte', async () => {
+    let view: PlayerView = { linked: true, hidden: false, enabled: true, card: { slug: 'Daft_Punk', title: 'Daft Punk' }, track: { uri: 'spotify:track:1', title: 'One More Time', artist: 'Daft Punk', imageUrl: null, playing: true } };
+    const listeners = new Set<() => void>();
+    setPlayerSource({ current: () => view, subscribe: (l: () => void) => { listeners.add(l); return () => listeners.delete(l); }, toggle: async () => undefined } as unknown as PlayerSource);
+    await openShelfCd();
+    expect(q('[data-case-disc]')?.getAttribute('data-disc')).toBe('spinning');
+    view = { ...view, track: { ...view.track!, playing: false } };
+    await act(async () => { listeners.forEach((l) => l()); });
+    expect(q('[data-case-disc]')?.getAttribute('data-disc')).toBe('in');
   });
 });

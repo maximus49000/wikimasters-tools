@@ -7,7 +7,7 @@ import { FURNITURE_MODELS } from './furniture-models';
 import { CELL_H, CELL_W, levelsOf, localPointOf, pieceBounds, projectOf, type V3t } from './furniture-render3d';
 import { ITEM_MODELS, bookColor, itemModel, itemPieces, storedFrontCorners, type ItemPlacement, type ItemShape } from './item-models';
 import type { Layout, Placed, ShelfLevel, SmallItem } from './library-types';
-import { SHELF_GAP_CM, SURFACE_SLOTS, boardItems, displayOf, storedWidthCm, type HostKind, type PxRect, type Stored } from './room-grid';
+import { SHELF_GAP_CM, SURFACE_SLOTS, smallSpan, boardItems, displayOf, storedWidthCm, type HostKind, type PxRect, type Stored } from './room-grid';
 
 const SHELF = FURNITURE_MODELS.shelf;
 const DESK = FURNITURE_MODELS.desk;
@@ -19,7 +19,7 @@ const DESK = FURNITURE_MODELS.desk;
 const FRONT_CM = 2;
 // Écran posé vers le fond du bureau (son pied à 40 cm de l'avant) : la place devant reste libre pour les petits objets.
 const MONITOR_Z_CM = 40;
-const SMALL_SHAPE: Record<SmallItem, ItemShape> = { plant: 'small-plant', lamp: 'small-lamp', alarm: 'small-alarm', clock: 'small-clock', station: 'small-station' };
+const SMALL_SHAPE: Record<SmallItem, ItemShape> = { plant: 'small-plant', lamp: 'small-lamp', alarm: 'small-alarm', clock: 'small-clock', station: 'small-station', hifi: 'small-hifi' };
 
 // Dessus (cm) de la planche qui porte chaque tablette : du haut (0) vers le bas (2), lu dans le modèle de l'étagère.
 // (arrondi au millionième : les fractions de levelsOf laissent des restes de calcul flottant).
@@ -60,7 +60,7 @@ export function smallPlacement(id: string, item: SmallItem, hostKind: HostKind, 
   const host = FURNITURE_MODELS[hostKind];
   const shape = SMALL_SHAPE[item];
   const m = ITEM_MODELS[shape];
-  return { key: id, shape, x: (host.w * (slot + 0.5)) / SURFACE_SLOTS[hostKind] - m.w / 2, y: host.h, z: host.d / 2 - m.d / 2 };
+  return { key: id, shape, x: (host.w * (slot + smallSpan(item) / 2)) / SURFACE_SLOTS[hostKind] - m.w / 2, y: host.h, z: host.d / 2 - m.d / 2 };
 }
 
 // Porteur et pose d'un objet porté ; null pour un autre objet ou un porteur absent. Un objet rangé est posé d'après ses voisins de tablette.

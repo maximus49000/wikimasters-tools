@@ -384,7 +384,7 @@ export const canShiftRow = (layout: Layout, cols: number, id: string, delta: 1 |
 export function canPlaceComputer(layout: Layout, deskId: string, ignoreId?: string): boolean {
   const desk = layout.find((p) => p.id === deskId);
   if (!desk || desk.kind !== 'desk') return false;
-  if (layout.some((p) => p.kind === 'small' && p.hostId === deskId && COMPUTER_SLOTS.has(p.slot))) return false;
+  if ([...usedSlots(layout, deskId)].some((s) => COMPUTER_SLOTS.has(s))) return false;
   return !layout.some((p) => p.kind === 'computer' && p.deskId === deskId && p.id !== ignoreId);
 }
 
@@ -421,12 +421,36 @@ function blockedSlots(layout: Layout, hostId: string): ReadonlySet<number> {
   return layout.some((p) => p.kind === 'computer' && p.deskId === hostId) ? COMPUTER_SLOTS : new Set<number>();
 }
 
-export function firstFreeSurfaceSlot(layout: Layout, hostId: string, ignoreId?: string): number | null {
+// Nombre d'emplacements consécutifs qu'occupe un petit objet : la chaîne hi-fi en prend deux (60 cm), les autres un.
+export const smallSpan = (item: SmallItem): 1 | 2 => (item === 'hifi' ? 2 : 1);
+
+// La chaîne hi-fi ne se pose que sur un bureau ; les autres petits objets sur un bureau ou une étagère.
+export const canHostSmall = (hostKind: HostKind, item: SmallItem): boolean => item !== 'hifi' || hostKind === 'desk';
+
+// Emplacements occupés par les petits objets d'un porteur (chacun sur toute son étendue).
+function usedSlots(layout: Layout, hostId: string, ignoreId?: string): Set<number> {
+  const used = new Set<number>();
+  for (const p of layout) {
+    if (p.kind !== 'small' || p.hostId !== hostId || p.id === ignoreId) continue;
+    for (let i = 0; i < smallSpan(p.item); i++) used.add(p.slot + i);
+  }
+  return used;
+}
+
+// Premier emplacement de départ libre pour `item` (sans objet : un emplacement, sans condition de porteur) : tous ses emplacements
+// consécutifs doivent exister, être libres et ne pas être pris par l'ordinateur ; null si le porteur ne convient pas ou si la place manque.
+export function firstFreeSurfaceSlot(layout: Layout, hostId: string, ignoreId?: string, item?: SmallItem): number | null {
   const host = layout.find((p) => p.id === hostId);
   if (!host || !isHost(host)) return null;
-  const used = new Set(layout.filter((p): p is SmallPlaced => p.kind === 'small' && p.hostId === hostId && p.id !== ignoreId).map((p) => p.slot));
+  if (item && !canHostSmall(host.kind, item)) return null;
+  const span = item ? smallSpan(item) : 1;
+  const used = usedSlots(layout, hostId, ignoreId);
   const blocked = blockedSlots(layout, hostId);
-  for (let i = 0; i < SURFACE_SLOTS[host.kind]; i++) if (!used.has(i) && !blocked.has(i)) return i;
+  for (let i = 0; i + span <= SURFACE_SLOTS[host.kind]; i++) {
+    let free = true;
+    for (let j = 0; j < span; j++) if (used.has(i + j) || blocked.has(i + j)) free = false;
+    if (free) return i;
+  }
   return null;
 }
 
@@ -434,7 +458,7 @@ export function firstFreeSurfaceSlot(layout: Layout, hostId: string, ignoreId?: 
 export const hasFreeHost = (layout: Layout): boolean => layout.some((p) => isHost(p) && firstFreeSurfaceSlot(layout, p.id) !== null);
 
 export function placeSmall(layout: Layout, hostId: string, item: SmallItem, id: string): Layout | null {
-  const slot = firstFreeSurfaceSlot(layout, hostId);
+  const slot = firstFreeSurfaceSlot(layout, hostId, undefined, item);
   if (slot === null) return null;
   return [...layout, { id, kind: 'small', item, hostId, slot }];
 }
@@ -443,7 +467,7 @@ export function placeSmall(layout: Layout, hostId: string, item: SmallItem, id: 
 export function moveSmall(layout: Layout, id: string, hostId: string): Layout | null {
   const small = layout.find((p) => p.id === id);
   if (!small || small.kind !== 'small') return null;
-  const slot = small.hostId === hostId ? small.slot : firstFreeSurfaceSlot(layout, hostId, id);
+  const slot = small.hostId === hostId ? small.slot : firstFreeSurfaceSlot(layout, hostId, id, small.item);
   if (slot === null) return null;
   return layout.map((p) => (p.id === id ? { ...small, hostId, slot } : p));
 }
@@ -461,10 +485,10 @@ export function toggleLamp(layout: Layout, id: string): Layout {
 
 // Emplacement d'un petit objet posé sur le dessus projeté de son porteur tourné : les emplacements se suivent le long de la largeur
 // du meuble (de dos, ils s'inversent à l'écran), à mi-profondeur ; le pied de l'objet touche le dessus.
-export function surfaceSlotRectOn(host: PxRect, kind: HostKind, angle: Angle, slot: number): PxRect {
+export function surfaceSlotRectOn(host: PxRect, kind: HostKind, angle: Angle, slot: number, span = 1): PxRect {
   const n = SURFACE_SLOTS[kind];
-  const [x, y] = topPoint(kind, angle, host, (slot + 0.5) / n, 0.5);
-  const w = host.w / n;
+  const [x, y] = topPoint(kind, angle, host, (slot + span / 2) / n, 0.5);
+  const w = (host.w * span) / n;
   return { x: x - w / 2, y: y - SMALL_H + 2, w, h: SMALL_H };
 }
 

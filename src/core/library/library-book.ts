@@ -4,7 +4,7 @@ import { DECO_KINDS, MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN } from './deco';
 import { isKnownTz } from './clock-cities';
 import { drawSize, isAngle, type Angle } from './footprint';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
-import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, compactShelves, isStanding, SURFACE_SLOTS, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
+import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, compactShelves, isStanding, SURFACE_SLOTS, canHostSmall, smallSpan, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
 
 export const MAX_ROOMS = 12;
 export const MAX_NAME = 30;
@@ -186,11 +186,14 @@ function cleanEntries(layout: Layout): Layout {
     }
     if (p.kind === 'small') {
       const host = unique.find((q) => q.id === p.hostId);
-      if (!host || (host.kind !== 'desk' && host.kind !== 'shelf') || p.slot >= SURFACE_SLOTS[host.kind]) return false;
-      const key = `${p.hostId}:small:${p.slot}`;
-      if (slots.has(key)) return false;
-      if (host.kind === 'desk' && (p.slot === 1 || p.slot === 2) && unique.some((q) => q.kind === 'computer' && q.deskId === host.id)) return false;
-      slots.add(key);
+      if (!host || (host.kind !== 'desk' && host.kind !== 'shelf') || !canHostSmall(host.kind, p.item)) return false;
+      const hostKind = host.kind;
+      const covered = Array.from({ length: smallSpan(p.item) }, (_, i) => p.slot + i);
+      if (covered.some((c) => c >= SURFACE_SLOTS[hostKind])) return false;
+      const keys = covered.map((c) => `${p.hostId}:small:${c}`);
+      if (keys.some((k) => slots.has(k))) return false;
+      if (host.kind === 'desk' && covered.some((c) => c === 1 || c === 2) && unique.some((q) => q.kind === 'computer' && q.deskId === host.id)) return false;
+      for (const k of keys) slots.add(k);
     }
     if ((p.kind === 'wall' || p.kind === 'stored' || p.kind === 'computer') && p.slug !== undefined) {
       if (slugs.has(p.slug)) return false;

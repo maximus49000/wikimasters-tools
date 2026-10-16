@@ -2338,4 +2338,59 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'ouvrir-objet',
+    theme: 'collection',
+    glyph: '💿',
+    title: 'Ouvrir un album dans la pièce',
+    summary: 'Touchez un album, un film, un jeu ou un livre posé dans Ma Pièce : il s’ouvre en grand, et un disque choisi vole jusqu’à la chaîne hi-fi',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        gesture: 'tap',
+        title: 'Ouvrir un objet',
+        text: 'Touchez un album, un vinyle, un DVD, un jeu ou un livre dans Ma Pièce : il s’ouvre au centre de l’écran, en paysage. Le bouton ⓘ rouvre la fiche de la carte ; ✕, retour ou Échap referme.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À regarder et écouter un objet de votre pièce sans quitter la scène, au lieu d’ouvrir la fiche.' },
+          { label: 'D’où viennent les données', text: 'Pistes : Spotify ou Tidal. Films : TMDB. Jeux : Steam, puis IGDB en repli. Livres : Open Library et Wikisource. Les pochettes viennent de ces mêmes sources.' },
+          { label: 'Comment faire', text: 'Ouvrez Ma Pièce et touchez l’objet. L’écran passe en paysage ; si l’appareil reste en hauteur, la couche est tournée de 90°.' },
+          { label: 'Astuce', text: 'Avec le mouvement réduit activé, l’ouverture se fait en simple fondu, sans vol ni pivot.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Choisir une piste',
+        text: 'Dans un album, la liste des pistes est à côté du disque. Choisissez-en une : le disque quitte le boîtier et vole jusqu’à la chaîne hi-fi, qui joue la piste. Le boîtier reste ouvert, au centre.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À écouter un album comme on pose un disque sur une platine, avec la pochette sous les yeux.' },
+          { label: 'Comment ça marche', text: 'La chaîne hi-fi se pose sur un bureau, sur deux emplacements. Si vous fermez le boîtier à la main alors que le disque est au poste, il se couche devant la chaîne.' },
+          { label: 'Limites', text: 'La chaîne ne se pose que sur un bureau. Si plusieurs chaînes sont posées, seule la première sert.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Le poste et la pochette',
+        text: 'Touchez la pochette couchée devant la chaîne : le boîtier se rouvre, plateau vide (le disque est sur le poste). Touchez la chaîne : une bulle « En lecture » propose ⏯ pause, ⏏ éjecter et ✕ fermer la bulle.',
+        details: [
+          { label: 'Comment faire', text: '⏏ met la lecture en pause et ramène le disque dans son boîtier ; ✕ ferme seulement la bulle, la musique continue. Des notes de musique s’échappent de la chaîne tant que la piste joue.' },
+          { label: 'Sans chaîne', text: 'Si aucune chaîne n’est posée, le disque tourne dans le boîtier, et le bouton 📻 propose d’en ajouter une.' },
+          { label: 'Limites', text: 'Avec Tidal (lien externe), le disque va bien au poste mais la lecture et la pause n’y sont pas suivies : la bulle affiche l’album avec « Rien en lecture », et le disque reste au poste jusqu’à ⏏. Pareil avec Spotify à l’arrêt ou sans appareil.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Films, jeux et livres',
+        text: 'Un film ou un jeu s’ouvre avec sa vidéo (bande-annonce) à la place du disque, et sa bande originale peut être envoyée au poste. Un livre montre son synopsis, ses liens de lecture et sa couverture à droite.',
+        details: [
+          { label: 'D’où viennent les données', text: 'Bandes-annonces : TMDB pour les films, Steam ou IGDB pour les jeux. Synopsis et liens de lecture : Open Library et Wikisource.' },
+          { label: 'Comment ça marche', text: 'La bande originale suit le même chemin qu’un album : elle vole vers la chaîne hi-fi.' },
+          { label: 'Limites', text: 'Les vidéos ne sont jamais jouées par le poste : elles restent dans l’objet ouvert. Un livre sans synopsis connu n’affiche que sa couverture et ses liens.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
 ];

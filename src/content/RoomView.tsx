@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room, TimeSetting, WeatherState } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { drawSize, faceFrame, frontFaceRect, groundTrace, type Angle } from '../core/library/footprint';
 import { boxesOf, lampsOf, signatureOf } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
-import { boxOfQuad, cardQuad, computerPlacement, placementDepth, placementRectPx, smallPlacement, storedDrawOrder, storedPlacementsOf } from '../core/library/carried-items';
+import { boxOfQuad, cardQuad, computerPlacement, hostPointPx, placementDepth, placementRectPx, smallPlacement, storedDrawOrder, storedPlacementsOf } from '../core/library/carried-items';
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
-import { openingOf } from '../core/library/furniture-render3d';
-import type { ItemPlacement } from '../core/library/item-models';
+import { localPointOf, openingOf } from '../core/library/furniture-render3d';
+import { bookColor, type ItemPlacement } from '../core/library/item-models';
+import { hiddenAtHome, sleeveKindOf, sleeveRest } from '../core/library/hifi';
+import { SleeveArt, hifiContent, type HifiDiscShow } from './hifi/hifi-art';
+import { useHifiPlayer } from './hifi/use-hifi';
+import { MusicNotes, NOTE_INK } from './hifi/music-notes';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
 import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
@@ -89,6 +93,12 @@ type Props = {
   cards?: Record<string, { title: string; imageUrl?: string }>;
   // Toucher sur un objet accroché, rangé ou sur l'écran de l'ordinateur.
   onCardTap?: (id: string) => void;
+  // Pochette couchée devant la chaîne hi-fi touchée (en visite seulement) : `placedId` est l'objet au poste, `el` le dessin touché.
+  onSleeveTap?: (placedId: string, el: Element) => void;
+  // Vol du disque vers le poste en cours : le poste ne montre pas encore le disque (le lecteur a déjà basculé) jusqu'à l'atterrissage.
+  hideHifiDisc?: boolean;
+  // Boîtier au poste ouvert dans la couche : sa pochette couchée est masquée (gardée mesurable : le boîtier y revient en se fermant).
+  hideSleeve?: boolean;
   // Ciel et heure vus à travers les fenêtres ; sans eux, un ciel d'après-midi.
   sceneView?: SceneView;
   // Chats de la pièce : `behind` = nombre de meubles debout dessinés avant lui. Leur position est posée par la boucle d'animation (attribut transform).
@@ -140,7 +150,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, linkedId = null, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, fitScreen = false, fillHeight, outside = false, roomLayers = 'shown' }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, linkedId = null, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, onSleeveTap, hideHifiDisc = false, hideSleeve = false, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, fitScreen = false, fillHeight, outside = false, roomLayers = 'shown' }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -213,7 +223,16 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   // Occulteurs et lampes allumées du calque de lumière ; la signature change quand l'un d'eux bouge ou s'allume.
   // HEIGHT est une constante : seuls le layout et wallH font varier la géométrie.
   const lightGeom = { wallH, floorH: HEIGHT - wallH };
-  const lightBoxes = useMemo(() => boxesOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Chaîne hi-fi : l'objet dont le disque est au poste (déduit du lecteur) quitte sa place d'origine ; son disque tourne sur le poste
+  // et sa pochette est couchée devant.
+  const { state: hifi, player } = useHifiPlayer(room.layout);
+  const awayFromHome = useMemo(() => hiddenAtHome(hifi), [hifi]);
+  // L'objet parti au poste n'arrête plus la lumière à sa place d'origine.
+  const lightLayout = useMemo(
+    () => (awayFromHome.size === 0 ? room.layout : room.layout.filter((p) => !awayFromHome.has(p.id))),
+    [room.layout, awayFromHome],
+  );
+  const lightBoxes = useMemo(() => boxesOf(lightLayout, lightGeom), [lightLayout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
   const lightLamps = useMemo(() => lampsOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
   const lightSignature = useMemo(() => signatureOf(lightBoxes, lightLamps), [lightBoxes, lightLamps]);
   // Identité stable (sinon le calque serait relancé à chaque rendu) : la disposition est lue par référence.
@@ -238,6 +257,13 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     const url = cards[slug]?.imageUrl;
     return images?.displayUrl(slug, url) ?? url;
   };
+  const atHifi = hifi.atHifi !== null ? (room.layout.find((p) => p.id === hifi.atHifi) ?? null) : null;
+  const atHifiSlug = atHifi && 'slug' in atHifi ? atHifi.slug : null;
+  const sleeveKind = atHifi ? sleeveKindOf(atHifi) : null;
+  const hifiDisc: HifiDiscShow | null = atHifiSlug && sleeveKind
+    ? { kind: sleeveKind === 'vinyl' ? 'vinyl' : 'cd', cover: imageOf(atHifiSlug) ?? null, color: bookColor(atHifiSlug) }
+    : null;
+  const trackTitle = player.track ? (player.track.artist ? `${player.track.title} — ${player.track.artist}` : player.track.title) : null;
   // Pose 3D de chaque objet rangé dans le repère de son étagère (rangement par largeur réelle), calculée une fois par disposition.
   const storedPlaces = useMemo(() => {
     const out = new Map<string, ItemPlacement>();
@@ -246,6 +272,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   }, [room.layout]);
   const hostOf = (hostId: string): Host | null => hosts.get(hostId) ?? null;
   const topPlacement = (placed: Placed) => topPlacementIn(hosts, placed);
+  // Notes de musique : au-dessus du haut du poste qui sert, tant que son disque tourne. Pas en Aménager (le poste y est un meuble à
+  // déplacer), ni pendant le vol du disque, ni quand la pièce s'efface ou que le bureau est soulevé.
+  const station = hifi.hifiId !== null ? (room.layout.find((p) => p.id === hifi.hifiId) ?? null) : null;
+  const stationAt = station ? topPlacement(station) : null;
+  const stationRect = stationAt ? placementRectPx(stationAt.host.kind, stationAt.host.angle, stationAt.host.rect, stationAt.pl, steampunk) : null;
+  const notesOn = hifi.spinning && !editing && !hideHifiDisc && roomLayers === 'shown' && drag === null && placing === null;
   const outline = (rect: PxRect, kind: 'selected' | 'linked' = 'selected') => (
     <rect data-outline={kind} x={rect.x - 3} y={rect.y - 3} width={rect.w + 6} height={rect.h + 6} rx={6} fill="none" stroke="#378ADD" strokeWidth={2.5} strokeDasharray="6 4" />
   );
@@ -279,7 +311,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       if (placed.kind === 'computer') content = { url: placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined };
       // Face décorée (heure, météo) : elle relit elle-même la seconde, le modèle 3D n'est pas redessiné à chaque seconde.
       else if (isTableClock(placed.item) && decoScene) content = tableFaceContent(placed.item, placed.city, room.style, decoScene);
-      else content = { lit: isLit(placed) };
+      // Seul le poste qui sert (le premier posé) montre la lecture.
+      else if (placed.item === 'hifi') {
+        const active = placed.id === hifi.hifiId;
+        content = hifiContent({ disc: active && !hideHifiDisc ? hifiDisc : null, spinning: active && hifi.spinning, title: active ? trackTitle : null, playing: active && player.track?.playing === true });
+      } else content = { lit: isLit(placed) };
       return { rect, art: <CarriedItem3D host={host.kind} angle={host.angle} rect={host.rect} placement={pl} palette={palette} steampunk={steampunk} content={content} /> };
     }
     if (placed.kind === 'window') {
@@ -335,6 +371,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
           data-furniture={placed.kind}
           data-id={placed.id}
           data-angle={isStanding(placed) && angleOf(placed) !== 0 ? angleOf(placed) : undefined}
+          data-hifi={placed.id === hifi.hifiId ? (hifi.spinning ? 'spinning' : hifi.atHifi !== null ? 'paused' : 'empty') : undefined}
           {...(isLamp(placed) && !editing ? {
             role: 'button', tabIndex: 0, 'aria-pressed': isLit(placed), 'aria-label': isLit(placed) ? 'Lampe allumée' : 'Lampe éteinte',
             // Au clavier : Entrée ou Espace bascule la lampe, comme un clic.
@@ -429,6 +466,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
 
   // Objet touchable d'un placement : objet accroché, objet rangé, ou écran d'ordinateur (touchable seulement quand une carte y est affichée).
   function cardArtOf(placed: Placed): { slug: string; rect: PxRect; art: ReactElement; extra?: Record<string, string>; quad?: [number, number][] } | null {
+    // Objet dont le disque est au poste : sa place d'origine reste vide.
+    if (awayFromHome.has(placed.id)) return null;
     if (placed.kind === 'wall') {
       const drawn = wallArtOf(placed);
       return drawn && { slug: placed.slug, ...drawn };
@@ -505,12 +544,44 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       </g>
     );
   };
+  // Pochette de l'album au poste, couchée devant lui sur le bureau, et sa profondeur (pour la ranger parmi les objets du dessus).
+  // La toucher rouvre l'album, comme à sa place d'origine.
+  const sleeveOn = (hostId: string): { depth: number; node: ReactElement } | null => {
+    const station = hifi.hifiId !== null ? room.layout.find((p) => p.id === hifi.hifiId) : undefined;
+    if (!station || station.kind !== 'small' || station.hostId !== hostId || !atHifi || !atHifiSlug || !sleeveKind) return null;
+    const at = topPlacement(station);
+    if (!at || at.host.kind !== 'desk') return null;
+    const { host } = at;
+    const rest = sleeveRest(at.pl, sleeveKind);
+    const px = (p: [number, number, number]) => hostPointPx('desk', host.angle, host.rect, p);
+    const mid = rest.bottom.reduce<[number, number, number]>((s, p) => [s[0] + p[0] / 4, s[1] + p[1] / 4, s[2] + p[2] / 4], [0, 0, 0]);
+    const node = (
+      <g key={`sleeve-${atHifi.id}`} data-hifi-sleeve={atHifiSlug} data-sleeve-of={atHifi.id}
+        // En Aménager, la pochette laisse passer les gestes vers le bureau (le soulever, l'appui long).
+        {...(editing || hideSleeve ? { pointerEvents: 'none' } : { onClick: (event: MouseEvent<SVGGElement>) => onSleeveTap?.(atHifi.id, event.currentTarget) })}
+        opacity={hideSleeve ? 0 : drag?.id === hostId ? 0.3 : undefined} style={{ cursor: editing ? 'default' : 'pointer', userSelect: 'none', WebkitTouchCallout: 'none' }}>
+        <SleeveArt top={rest.top.map(px)} bottom={rest.bottom.map(px)} w={rest.w} d={rest.d} kind={sleeveKind} cover={imageOf(atHifiSlug) ?? null} color={bookColor(atHifiSlug)} title={cards[atHifiSlug]?.title ?? ''} />
+      </g>
+    );
+    return { depth: localPointOf(FURNITURE_MODELS.desk, host.angle, mid).z, node };
+  };
   const carriedOf = (hostId: string): (ReactElement | null)[] => {
     const entry = carried.get(hostId);
     if (!entry) return [];
     const after: ReactElement[] = [];
     const stored = storedClip(hostId, '', entry.stored.map((p) => cardOf(p, after)));
-    return [stored, ...after, ...entry.tops.map((p) => renderPlaced(p)), ...entry.computers.map((p) => cardOf(p))];
+    const tops: (ReactElement | null)[] = entry.tops.map((p) => renderPlaced(p));
+    const sleeve = sleeveOn(hostId);
+    if (sleeve) {
+      // Objets du dessus triés du plus loin au plus proche : la pochette passe avant le premier plus proche qu'elle.
+      const host = hosts.get(hostId)!;
+      const i = entry.tops.findIndex((p) => {
+        const at = topPlacement(p);
+        return at !== null && placementDepth(host.kind, host.angle, at.pl, steampunk) < sleeve.depth;
+      });
+      tops.splice(i < 0 ? tops.length : i, 0, sleeve.node);
+    }
+    return [stored, ...after, ...tops, ...entry.computers.map((p) => cardOf(p))];
   };
   // Dessins seuls des objets portés (même ordre), pour la copie de sélection : ni `data-id` ni gestes.
   const carriedArtOf = (hostId: string): ReactElement[] => {
@@ -727,6 +798,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       {middle}
       {selectedCopy}
       {topPets}
+      {/* Monté tant que le poste existe : à l'éjection ou à la pause, les notes en vol finissent leur course. */}
+      {stationRect && (
+        <MusicNotes anchor={{ x: stationRect.x, y: stationRect.y, w: stationRect.w }} active={notesOn} accent={hifiDisc?.color ?? NOTE_INK} reduced={still} />
+      )}
       {/* Sans fenêtre à ciel (calque « sans ciel ») il n'y a rien à montrer tant qu'aucune lampe n'est allumée : pas de calque à 4 Hz. */}
       {light && ((weatherOn && windows.length > 0) || lightLamps.length > 0) && (
         <LightLayer windows={weatherOn ? glasses : NO_GLASS} width={width} height={HEIGHT} wallH={wallH} sky={view.sky} clock={view.weather?.clock ?? STILL_CLOCK} boxes={lightBoxes} lamps={lightLamps} signature={lightSignature} getPetBoxes={getPetBoxes} />
