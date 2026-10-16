@@ -122,6 +122,14 @@ Le support est à **l'échelle réelle** de la boîte : une cartouche Switch occ
 - Mise en page de dos de boîte au gabarit de la console : logo (`clearlogo` TheGamesDB) ou titre, 3 à 4 **captures du jeu**
   (TheGamesDB `screenshot`, sinon Steam/IGDB), début de la description, bandeau console. Rendu cellulo.
 
+### Tranche dessinée (ajout 2026-10-16)
+- Décision utilisateur : dans un premier temps, **tranche dessinée qui ressemble à la vraie** (aucune source ne fournit la tranche
+  hors Nintendo ; GameTDB / ScreenScraper écartés pour l'instant).
+- Mise en page propre à chaque console, d'après les vraies tranches : bandeau en haut (PS4/PS5 : bandeau de la couleur de la
+  console avec « PS4 » / « PS5 » ; Xbox : bandeau vert « XBOX ») ou tranche entièrement colorée (Switch : rouge, titre blanc,
+  pastille « Nintendo » en bas) ; titre (ou logo `clearlogo` TheGamesDB tourné) à la verticale, studio/éditeur en bas.
+- Même dessin dans l'armoire (présentation « sur la tranche »), dans le second zoom et sur la face extérieure de la boîte retournée.
+
 ## Hors champ
 - Livret, notice, papiers ; photos réelles de disques/cartouches.
 - Boîtes en carton (NES, SNES, N64, Game Boy, GBA, Mega Drive…) : premier temps sans elles.

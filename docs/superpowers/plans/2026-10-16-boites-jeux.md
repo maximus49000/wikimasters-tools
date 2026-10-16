@@ -213,6 +213,24 @@
 - [ ] **Step 4: Run** → PASS ; capture de l'étagère (un jeu Switch, un PS4 de face, un de dos) montrée à l'utilisateur.
 - [ ] **Step 5: Commit** `feat(bibliotheque): vraies boîtes de jeux dans l'armoire`
 
+### Task 7b: Tranche dessinée réaliste (ajout utilisateur 2026-10-16)
+
+**Files:**
+- Create: `src/content/game-spine.tsx` (dessin SVG de la tranche, réutilisable)
+- Modify: `src/content/model3d-art.tsx` (rôle `spine` des jeux → `GameSpine`), `src/content/shelf-board-zoom.tsx` (tranche en présentation « sur la tranche »), `src/content/game-box-content.ts` (données de tranche)
+- Test: `tests/content/game-spine.test.tsx` (ajouter à `scene-piece`)
+
+**Interfaces:**
+- Consumes: `GameBox` (`style`, `logoUrl`, `title`, `platformName`) ; développeurs de `getGameService().view` (`detail.developers[0]`).
+- Produces: `export function GameSpine(props: { w: number; h: number; style: CaseStyle; format: BoxFormat; title: string; logoUrl?: string; studio?: string }): ReactElement` — dessin dans un rectangle `w × h` (unités SVG), réutilisé par la tâche 9 (extérieur de la boîte).
+- Mises en page : `bluray`/PS (bandeau haut de la couleur du bandeau console, libellé du bandeau en blanc, corps de la couleur du plastique) ; Xbox (bandeau vert « XBOX » + libellé) ; `switch` (tranche entièrement rouge, titre blanc, pastille arrondie « Nintendo » en bas) ; formats blancs (Wii, Wii U, DS) : corps blanc, encre sombre (`inkOn`), bandeau de couleur s'il existe ; autres : corps couleur du plastique, titre seul. Titre vertical (logo `clearlogo` tourné de 90° si disponible, sinon texte), studio en petit en bas.
+
+- [ ] **Step 1: Write the failing tests** : Switch → fond `#E60012`, texte blanc, pastille « Nintendo » ; PS4 → bandeau « PS4 » en haut ; Wii → texte sombre sur blanc ; avec `logoUrl` → une `<image>` tournée ; sans → le titre en texte vertical ; studio affiché en bas.
+- [ ] **Step 2: Run** `npx vitest run tests/content/game-spine.test.tsx` → FAIL.
+- [ ] **Step 3: Implement** et brancher dans `DecalArt` (rôle `spine` d'un jeu au format connu) et le second zoom.
+- [ ] **Step 4: Run** `npm run test:famille -- scene-piece` → PASS ; captures `tache-7b-*.png` (tranches Switch, PS4, Xbox One, Wii côte à côte, et une étagère de jeux sur la tranche).
+- [ ] **Step 5: Commit** `feat(bibliotheque): tranche dessinée des boîtes de jeux`
+
 ### Task 8: Boîte ouverte aux vraies dimensions, disque ou cartouche, page de gauche
 
 **Files:**
@@ -242,7 +260,7 @@
 
 **Interfaces:**
 - Consumes: `GameBox` (tâche 4), `gameGeometry` (tâche 8).
-- Produces: `export function GameOutside(props: { box: GameBox; geometry: Geometry; onMagnify: () => void }): ReactElement` — trois zones : dos (`backUrl` ou `MadeBack`), tranche (largeur = `template.d*10` mm, titre vertical + console), devant (`frontUrl`) ; `export function MadeBack(props: { box: GameBox }): ReactElement` — bandeau console, logo (`logoUrl`) ou titre, jusqu'à 4 `shots`, début de `summary`.
+- Produces: `export function GameOutside(props: { box: GameBox; geometry: Geometry; onMagnify: () => void }): ReactElement` — trois zones : dos (`backUrl` ou `MadeBack`), tranche (`GameSpine` de la tâche 7b, largeur = `template.d*10` mm), devant (`frontUrl`) ; `export function MadeBack(props: { box: GameBox }): ReactElement` — bandeau console, logo (`logoUrl`) ou titre, jusqu'à 4 `shots`, début de `summary`.
 - Bouton : `data-action="flip"`, glyphe ⟲, 44 px, positionné au-dessus du bord haut de la boîte et centré horizontalement sur elle (dans le repère de la couche, rotation 90° comprise). Retournée : vidéo arrêtée, disque rendu ; ✕ / retour referment comme d'habitude (retour à l'intérieur sans animation, puis fermeture).
 
 - [ ] **Step 1: Write the failing tests** :
