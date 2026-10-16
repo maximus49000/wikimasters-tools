@@ -25,7 +25,7 @@ disque qui tourne pendant la lecture, **disque centré dans son plateau (aucun g
 | Poste à musique | Nouvel objet de la pièce. Choisir une piste **sort le disque** et le fait tourner **sur le poste** ; la pochette est posée à côté ; changer d'album range l'ancien et pose le nouveau (voir § Poste à musique). |
 | Sans poste dans la pièce | Le disque tourne dans le boîtier ouvert ; un glyphe propose d'ajouter un poste. |
 | Un poste pour tout | Une seule chaîne : CD, vinyles, BO des films et des jeux. |
-| Apparence | **Joli et naturel**, jamais un polygone grossier : vrai modèle en cm + décalques cellulo détaillés, dessinés par Fable. |
+| Apparence | **Joli et naturel**, jamais un polygone grossier : vrai modèle en cm + décalques cellulo détaillés, dessinés directement (pas de Fable sur ce chantier). |
 
 ## Objets concernés
 
@@ -65,9 +65,7 @@ Rotation du disque **dans le boîtier** (seulement quand la pièce n'a pas de po
 asymétrique et la pochette pour que la rotation se voie ; elle s'arrête quand la lecture est en pause ou finie
 (état lu dans `getPlayerSource()` : piste en cours appartenant à cet objet et non en pause).
 
-Style : cellulo (aplats + trait encré + ombre nette), comme les pantins et véhicules. Les visuels finaux
-des boîtiers et la séquence d'animation sont **à faire par Fable** (gel jusqu'au 2026-10-17) ;
-si l'implémentation passe avant, Opus pose une version simple et laisse la trace « Fable n'est pas passé ».
+Style : cellulo (aplats + trait encré + ombre nette), comme les pantins et véhicules. Les visuels finaux des boîtiers et la séquence d'animation sont définitifs dès l'implémentation (pas de Fable).
 
 ## Poste à musique
 
@@ -104,13 +102,13 @@ posé, immobile, jusqu'à ⏏ ou au prochain album. Plusieurs postes dans la pi�
 
 - Nouveau petit objet `small-hifi` (« Chaîne hi-fi »), posé **sur un bureau uniquement, sur 2 emplacements (60 cm)** — un emplacement de petit objet ne fait que 30 cm —, rangé dans la catégorie Déco
   (sous-groupe à créer « Musique »). La pochette se couche **devant** le poste, sur le bureau, sans chevaucher un autre objet.
-- Mini-chaîne aux **vraies proportions** (≈ 56 × 26 × 18 cm, à affiner par Fable) : corps central ~30 cm avec, sur le dessus,
+- Mini-chaîne aux **vraies proportions** (≈ 56 × 26 × 18 cm) : corps central ~30 cm avec, sur le dessus,
   une **platine** (plateau rond, bras, couvercle fumé relevé) et un **puits CD à chargement par le haut** ; deux enceintes ~13 cm de large
   de part et d'autre. Le disque posé est vu en perspective (ellipse) et sa rotation se voit grâce à
   l'étiquette (pochette) et au reflet.
 - **Apparence** : style cellulo (aplats + trait encré + ombre nette), comme les pantins, véhicules et meubles récents ; décalques détaillés
   (tissu des enceintes, boutons, molette de volume, afficheur qui fait défiler le titre de la piste, voyant allumé pendant la lecture).
-  Pas de forme brute : volumes arrondis par les décalques, comme les autres petits objets. **Réalisé par Fable** (gel jusqu'au 2026-10-17).
+  Pas de forme brute : volumes arrondis par les décalques, comme les autres petits objets.
 - Ajout d'un poste : glyphe proposé dans le boîtier ouvert quand la pièce n'en a pas → ouvre le mode Aménager sur l'objet `small-hifi`.
 
 ## Paysage forcé
@@ -141,7 +139,7 @@ Le verrou n'est accordé qu'en plein écran : si l'écran reste en hauteur, la c
   places vidées, ordre des gestes (ranger l'ancien puis poser le nouveau).
 - `src/core/library/item-models.ts` + `furniture-catalog.ts` + `library-types.ts` : objet `small-hifi` (modèle en cm, emprise avec la place de la pochette,
   catalogue) ; migration du livre de la bibliothèque si le schéma l'exige.
-- `src/content/hifi/` : décalques du poste (Fable), disque posé qui tourne, boîtier couché, bulle « En lecture », vols boîtier ↔ poste ↔ place d'origine.
+- `src/content/hifi/` : décalques du poste, disque posé qui tourne, boîtier couché, bulle « En lecture », vols boîtier ↔ poste ↔ place d'origine.
 - `LibraryPanel.tsx` : `onCard` du second zoom et le toucher d'un vinyle/pochette au mur ouvrent la couche
   quand `openingOf(shape)` n'est pas `null`, sinon `setViewing` comme avant.
 
@@ -166,7 +164,7 @@ Le verrou n'est accordé qu'en plein écran : si l'écran reste en hauteur, la c
 - Pas de nouvelle source : un objet sans pistes / vidéo / lien affiche un sélecteur vide qui le dit.
 - Une seule bande-annonce pour les films (TMDB `trailerKey`) ; pour les jeux, les vidéos fournies par `detail.trailer`.
 - Le paysage forcé par le verrou ne marche qu'en plein écran ; ailleurs, la rotation CSS demande d'incliner le téléphone.
-- Les visuels définitifs (boîtiers, poste, séquences d'animation) dépendent du passage de Fable.
+
 - Le poste suit le lecteur de l'appareil : pour Tidal (lien externe, pas de lecteur intégré), le poste ne peut pas savoir ce qui joue ;
   le disque y est posé au choix de la piste et tourne sans pouvoir suivre la pause.
 - Le poste ne se pose que sur un bureau, sur 2 emplacements contigus libres ; sinon le placement le refuse comme pour les autres objets.
@@ -174,6 +172,6 @@ Le verrou n'est accordé qu'en plein écran : si l'écran reste en hauteur, la c
 ## Découpage en lots (pour le plan)
 
 1. Couche d'ouverture + album (CD/vinyle) avec le disque qui tourne dans le boîtier.
-2. Poste à musique (objet, déroulé, bulle) — visuels Fable.
+2. Poste à musique (objet, déroulé, bulle).
 3. Film et jeu (vidéo à la place du disque, BO vers le poste).
 4. Livre.

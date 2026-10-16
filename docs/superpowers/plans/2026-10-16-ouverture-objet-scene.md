@@ -21,7 +21,7 @@
 - Glyphes, pas de texte, pour les boutons (ⓘ ✕ ⏯ ⏏ ⛶) ; cibles tactiles 44 px.
 - Poste `small-hifi` « Chaîne hi-fi » : **sur un bureau uniquement, 2 emplacements consécutifs (60 cm)**, pochette couchée devant ; seul le **premier posé** (ordre du layout) sert.
 - L'état du poste se **déduit** de `getPlayerSource().current()` (`view.card?.slug`, `view.track?.playing`) : rien de mémorisé à part.
-- Visuels finaux (boîtiers, poste, séquences) **par Fable** (Task 14) ; avant, Opus pose des versions propres et laisse la trace « Fable n'est pas passé ».
+- Visuels **définitifs dès les Tasks 2, 8 et 9** (pas de Fable sur ce chantier, pas d'habillage provisoire) : style cellulo (aplats + trait encré + ombre nette), détaillés, jamais un polygone brut.
 - Extension **et** Android ; fiche WikiHow dans la même PR ; tests rangés dans la famille `scene-piece`.
 
 ## Review Focus
@@ -67,7 +67,7 @@
 
 - [ ] **Step 1: Tests** — `phase='open'` : le couvercle a `transform` contenant `rotateY(-180deg)` ; `phase='opening'` avec `from` : le boîtier part de `from` (transform `translate(...) scale(...)`) ; `disc='spinning'` : le calque intérieur a l'animation de rotation, le **conteneur du disque n'a aucun `translate`** ; `disc='away'` : pas de disque, `[data-case-tray-empty]` présent avec « Le disque est sur le poste » ; `opening='book'` : pas de disque, couverture à droite ; `reduced` : pas de rotateY, transition d'opacité 150 ms ; `closing` avec `to` : le boîtier se dirige vers `to`.
 - [ ] **Step 2:** `npx vitest run tests/content/item-case.test.tsx` → FAIL.
-- [ ] **Step 3:** Implémenter (couvercle `transform-origin` gauche, `backface-visibility:hidden`, face intérieure = `selector` ; durées : vol 500 ms, pivot 700 ms après le vol ; trait encré 2 px, aplats). Commentaire `// Fable n'est pas passé : habillage provisoire.`
+- [ ] **Step 3:** Implémenter (couvercle `transform-origin` gauche, `backface-visibility:hidden`, face intérieure = `selector` ; durées : vol 500 ms, pivot 700 ms après le vol ; trait encré 2 px, aplats). Boîtiers définitifs : cristal (charnière, encoches du plateau, moyeu), DVD et jeu (boîtier plastique, clip central), pochette vinyle (carton, bord usé), livre (dos, tranche des pages).
 - [ ] **Step 4:** → PASS.
 - [ ] **Step 5:** Commit `feat(bibliotheque): boîtier ouvert`.
 
@@ -161,7 +161,7 @@
 - Produces: `useHifi(layout: Layout): HifiState` (abonné à `getPlayerSource().subscribe`) ; `HifiDisc(props: { cover: string | null; color: string; spinning: boolean })`.
 
 - [ ] **Step 1: Tests** — lecteur mocké sur une carte rangée + poste : l'objet n'est plus dessiné sur l'étagère, la pochette `[data-hifi-sleeve]` est dessinée devant le poste, le disque a l'animation de rotation ; pause → disque immobile ; poste supprimé du layout → l'objet revient sur l'étagère ; afficheur contient le titre de la piste.
-- [ ] **Step 2:** → FAIL. **Step 3:** Implémenter (habillage provisoire propre, trace « Fable n'est pas passé »). **Step 4:** → PASS.
+- [ ] **Step 2:** → FAIL. **Step 3:** Implémenter (visuel définitif : enceintes en tissu, molette, afficheur qui fait défiler le titre, platine + bras, puits CD à couvercle fumé, voyant ; volumes arrondis par les décalques). **Step 4:** → PASS.
 - [ ] **Step 5:** Commit `feat(bibliotheque): disque et pochette sur la chaîne hi-fi`.
 
 ### Task 9: Vols du disque et du boîtier
@@ -226,19 +226,10 @@
 ### Task 13: WikiHow, vérification, livraison
 
 **Files:**
-- Modify: `src/core/whats-new/entries.ts` (nouvelle entrée `id: 'ouvrir-objet'`, `theme: 'collection'`, `glyph: '💿'`, titre « Ouvrir un album dans la pièce », étapes text + how + tip : à quoi ça sert, d'où viennent les données (Spotify/Tidal, TMDB, Steam/IGDB, Open Library/Wikisource), comment (ouvrir, choisir, poste, pochette, ⏏), limites (Tidal sans suivi de pause, poste sur bureau seulement, visuels provisoires))
+- Modify: `src/core/whats-new/entries.ts` (nouvelle entrée `id: 'ouvrir-objet'`, `theme: 'collection'`, `glyph: '💿'`, titre « Ouvrir un album dans la pièce », étapes text + how + tip : à quoi ça sert, d'où viennent les données (Spotify/Tidal, TMDB, Steam/IGDB, Open Library/Wikisource), comment (ouvrir, choisir, poste, pochette, ⏏), limites (Tidal sans suivi de pause, poste sur bureau seulement))
 - Test: tests existants de `entries` (famille `fiche` / whats-new)
 
 - [ ] **Step 1:** Rédiger l'entrée ; `npx vitest run tests/core/whats-new` → PASS.
 - [ ] **Step 2:** `npm run test:famille -- scene-piece fiche` → PASS ; `npx tsc --noEmit` → 0 erreur ; `npm run build` → OK.
 - [ ] **Step 3:** Captures (album ouvert, disque au poste, film avec vidéo, livre) montrées à l'utilisateur pour validation.
 - [ ] **Step 4:** Commit, PR vers `main`, fusion, `npm run preprod` ; validation sur le téléphone (APK pré-prod) puis l'extension.
-
-### Task 14: Habillage Fable (à partir du 2026-10-17)
-
-**Files:**
-- Modify: `src/content/opened-item/item-case.tsx`, `src/content/hifi/hifi-art.tsx`, `src/content/opened-item/disc-flight.tsx`
-
-- [ ] **Step 1:** Fable dessine les boîtiers (cristal, DVD, jeu, pochette vinyle, livre), la chaîne hi-fi (enceintes en tissu, molette, afficheur, platine + bras, couvercle fumé, voyant) et règle les séquences (vol, pivot, atterrissage) en style cellulo — jamais un polygone brut.
-- [ ] **Step 2:** Les tests des Tasks 2, 8, 9 restent verts (`npm run test:famille -- scene-piece`).
-- [ ] **Step 3:** Retirer les traces « Fable n'est pas passé » ; captures à l'utilisateur ; PR, fusion, pré-prod.
