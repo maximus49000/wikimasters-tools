@@ -2,6 +2,7 @@ import type { Platform, PlatformSetting } from '../core/music/platform';
 import type { MusicService } from './music-service';
 import type { PlayerSource } from './player-source';
 import type { RemoteStatus } from '../core/spotify/remote-playback';
+import type { TempoService } from './tempo-service';
 
 // Lecture directe par l'appli Spotify du téléphone (APK seulement) : état, et ce qu'il faut déclarer dans la clé.
 export type RemoteControl = {
@@ -59,3 +60,11 @@ export const setSpotifyKey = (next: SpotifyKeyControl | null): void => {
   spotifyKey = next;
 };
 export const getSpotifyKey = (): SpotifyKeyControl | null => spotifyKey;
+
+// Tempo mesuré des morceaux (extrait Deezer) : les notes de la chaîne hi-fi y règlent leur cadence.
+let tempoService: TempoService | null = null;
+
+export const setTempoService = (next: TempoService | null): void => {
+  tempoService = next;
+};
+export const getTempoService = (): TempoService | null => tempoService;
