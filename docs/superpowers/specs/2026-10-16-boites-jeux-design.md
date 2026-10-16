@@ -102,9 +102,10 @@ Le support est à **l'échelle réelle** de la boîte : une cartouche Switch occ
 
 ### Loupe sur le dos
 - Boîte retournée : glyphe **loupe** (44 px) posé sur la moitié gauche (le dos), toujours visible.
-- *(Choix Claude)* Le toucher affiche le dos **en grand**, ajusté à l'écran, dans sa **meilleure définition**
-  (`images/original/` de TheGamesDB, les scans font souvent plus de 1 Mo) ; **pincer** pour zoomer davantage, glisser pour se déplacer,
-  double-toucher pour revenir à l'ajustement. ✕ / retour Android / Échap ferment la loupe et rendent la boîte retournée.
+- Le toucher affiche **le dos entier, en grand**, ajusté à l'écran (rien de coupé) — décision utilisateur. Image dans sa **meilleure
+  définition** (`images/original/` de TheGamesDB, souvent plus de 1 Mo ; repli `medium` pendant le chargement).
+- **Zoom aux doigts** (pincer), glisser pour se déplacer une fois zoomé ; *(choix Claude)* double-toucher revient à l'ajustement.
+- La **croix ✕** ramène à la **vue pochette intégrale** (boîte retournée : dos | tranche | devant) ; retour Android / Échap font pareil.
 - Dos fabriqué : la loupe marche aussi (texte = description).
 
 ### Boîte ouverte
