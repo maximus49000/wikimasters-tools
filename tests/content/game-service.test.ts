@@ -5,6 +5,9 @@ import { createGameChoiceRepo } from '../../src/core/game/game-repo';
 import type { GameCandidate, GameDetail } from '../../src/core/game/game-detail';
 import { GameError } from '../../src/core/game/errors';
 import { setGameBoxService } from '../../src/content/game-box-registry';
+import { createGameBoxService } from '../../src/content/game-box-service';
+import { createGameVersionRepo } from '../../src/core/game/game-version-repo';
+import { boxartUrl, type TgdbVersion } from '../../src/core/game/tgdb-api';
 
 const steamDetail: GameDetail = { source: 'steam', id: 1245620, title: 'ELDEN RING', genres: [], platforms: [], developers: [], pageUrl: 'https://store.steampowered.com/app/1245620' };
 const igdbDetail: GameDetail = { source: 'igdb', id: 1000, title: 'Super Metroid', genres: [], platforms: [], developers: [], coverUrl: 'https://img.test/igdb.jpg', pageUrl: 'https://www.igdb.com/games/super-metroid' };
@@ -196,7 +199,7 @@ describe('createGameService.cover', () => {
 });
 
 describe('createGameService.cover : boîte TheGamesDB en premier', () => {
-  const fakeBox = (box: unknown) => ({ box: async () => box }) as never;
+  const fakeBox = (box: unknown, failed = false) => ({ outcome: async () => ({ box, failed }) }) as never;
 
   it('rend [frontUrl, ...anciennes images] quand une version existe', async () => {
     setGameBoxService(fakeBox({ tgdbId: 20, frontUrl: 'https://cdn.test/front.jpg' }));
@@ -216,6 +219,49 @@ describe('createGameService.cover : boîte TheGamesDB en premier', () => {
     setGameBoxService(fakeBox({ frontUrl: 'https://img.test/cover.jpg' }));
     try {
       expect(await service.cover('Jeu', 'Jeu')).toEqual(before);
+    } finally {
+      setGameBoxService(null);
+    }
+  });
+
+  it('TheGamesDB en panne (429) : null, pas de repli sur Steam ; le nouvel essai rend le scan', async () => {
+    const { service } = setup({ ids: { steamId: 5 } });
+    const version: TgdbVersion = { id: 7, title: 'ELDEN RING', platformId: 1, platformName: 'PC', format: 'dvd', style: { plastic: '#111', band: null }, front: 'boxart/front/7.jpg' };
+    let quota = true;
+    const versions = vi.fn(async () => (quota ? null : [version]));
+    setGameBoxService(createGameBoxService({
+      versions, images: async () => ({}), choices: createGameVersionRepo(createMemoryStore()),
+      game: service, store: createMemoryStore(), spacingMs: 0,
+    }));
+    try {
+      expect(await service.cover('Jeu', 'Jeu')).toBeNull();
+      quota = false;
+      const covers = await service.cover('Jeu', 'Jeu');
+      expect(covers?.[0]).toBe(boxartUrl('boxart/front/7.jpg', 'medium'));
+      expect(versions).toHaveBeenCalledTimes(2);
+    } finally {
+      setGameBoxService(null);
+    }
+  });
+
+  it('TheGamesDB a répondu « rien trouvé » : repli sur les affiches de Steam', async () => {
+    const { service } = setup({ ids: { steamId: 5 } });
+    const before = await service.cover('Jeu', 'Jeu');
+    setGameBoxService(createGameBoxService({
+      versions: async () => [], images: async () => ({}), choices: createGameVersionRepo(createMemoryStore()),
+      game: service, store: createMemoryStore(), spacingMs: 0,
+    }));
+    try {
+      expect(await service.cover('Jeu', 'Jeu')).toEqual(before);
+    } finally {
+      setGameBoxService(null);
+    }
+  });
+
+  it('panne signalée par le service des boîtes : null', async () => {
+    setGameBoxService(fakeBox({ frontUrl: 'https://img.test/cover.jpg' }, true));
+    try {
+      expect(await setup({ ids: { steamId: 5 } }).service.cover('Jeu', 'Jeu')).toBeNull();
     } finally {
       setGameBoxService(null);
     }

@@ -161,10 +161,13 @@ export function createGameService(deps: GameServiceDeps) {
     },
 
     // Affiches possibles de la carte (la meilleure d'abord) : liste vide si ce n'est pas un jeu ou si rien n'existe ;
-    // `null` si une source n'a pas pu répondre (Wikidata, Steam, IGDB) : à redemander plus tard, sans rien mémoriser.
+    // `null` si une source n'a pas pu répondre (Wikidata, Steam, IGDB, TheGamesDB) : à redemander plus tard, sans rien mémoriser.
     async cover(slug: string, title: string): Promise<string[] | null> {
       // La pochette TheGamesDB de la version de la carte passe devant les affiches de Steam et d'IGDB.
-      const box = await getGameBoxService()?.box(slug, title).catch(() => null);
+      // TheGamesDB en panne (limite, réseau) : rien n'est rendu, sinon l'affiche Steam serait retenue pour de bon à sa place.
+      const outcome = await getGameBoxService()?.outcome(slug, title).catch(() => null);
+      if (outcome?.failed) return null;
+      const box = outcome?.box;
       const front = box?.tgdbId !== undefined ? box.frontUrl : undefined;
       const others = await otherCovers(slug, title);
       if (front === undefined) return others;

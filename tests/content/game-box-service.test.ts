@@ -21,6 +21,7 @@ function setup(over: { versions?: TgdbVersion[] | null; view?: unknown; now?: ()
     versions, images, choices, onChanged,
     game: { view: async () => (over.view ?? { status: 'detail', detail }) as never },
     store: createMemoryStore(),
+    spacingMs: 0,
     ...(over.now ? { now: over.now } : {}),
   });
   return { service, versions, images, choices, onChanged };
@@ -102,6 +103,7 @@ describe('createGameBoxService : mise en cache et choix', () => {
       game: { view: async () => ({ status: 'detail', detail }) },
       store: createMemoryStore(),
       now: () => t,
+      spacingMs: 0,
     });
     await service.box('Jeu', 'Hollow Knight');
     t = 3 * 24 * 3_600_000;
@@ -156,5 +158,86 @@ describe('createGameBoxService : mise en cache et choix', () => {
 
   it('versions() liste les versions du jeu', async () => {
     expect((await setup().service.versions('Jeu', 'Hollow Knight')).map((v) => v.id)).toEqual([10, 20]);
+  });
+});
+
+describe('createGameBoxService : file des appels au relais', () => {
+  const make = (over: { spacingMs?: number; timeoutMs?: number; versions?: (name: string) => Promise<TgdbVersion[] | null>; images?: () => Promise<never> } = {}) => {
+    const calls: { name: string; at: number }[] = [];
+    const versions = vi.fn(over.versions ?? (async (name: string) => {
+      calls.push({ name, at: Date.now() });
+      return [] as TgdbVersion[];
+    }));
+    const service = createGameBoxService({
+      versions, images: over.images ?? (async () => ({})), choices: createGameVersionRepo(createMemoryStore()),
+      game: { view: async (_slug: string, title: string) => ({ status: 'detail', detail: { ...detail, title } }) },
+      store: createMemoryStore(),
+      spacingMs: over.spacingMs ?? 40,
+      ...(over.timeoutMs !== undefined ? { timeoutMs: over.timeoutMs } : {}),
+    });
+    return { service, versions, calls };
+  };
+
+  it('un appel à la fois, espacés (rafale de la Collection)', async () => {
+    const { service, calls } = make();
+    await Promise.all(['A', 'B', 'C', 'D'].map((slug) => service.outcome(slug, `Jeu ${slug}`)));
+    expect(calls).toHaveLength(4);
+    for (let i = 1; i < calls.length; i += 1) expect(calls[i]!.at - calls[i - 1]!.at).toBeGreaterThanOrEqual(35);
+  });
+
+  it('la fiche (box) passe devant les affiches en attente', async () => {
+    const { service, calls } = make();
+    const background = ['A', 'B', 'C'].map((slug) => service.outcome(slug, `Jeu ${slug}`));
+    await new Promise((r) => setTimeout(r, 5));
+    await service.box('Z', 'Jeu Z');
+    await Promise.all(background);
+    expect(calls.map((c) => c.name).indexOf('Jeu Z')).toBeLessThanOrEqual(1);
+  });
+
+  it('un appel sans réponse au-delà du délai : panne (non mémorisée), la file continue', async () => {
+    let hang = true;
+    const { service, versions } = make({
+      spacingMs: 0, timeoutMs: 30,
+      versions: async () => (hang ? new Promise<never>(() => undefined) : []),
+    });
+    expect(await service.outcome('A', 'Jeu A')).toMatchObject({ failed: true });
+    hang = false;
+    expect(await service.outcome('A', 'Jeu A')).toMatchObject({ failed: false });
+    expect(versions).toHaveBeenCalledTimes(2);
+  });
+
+  it('« aucune image » est mémorisé (7 jours), pas une panne', async () => {
+    let t = 0;
+    const images = vi.fn(async () => ({}) as Record<number, { shots: string[] }>);
+    const service = createGameBoxService({
+      versions: async () => [switchV], images, choices: createGameVersionRepo(createMemoryStore()),
+      game: { view: async () => ({ status: 'detail', detail }) },
+      store: createMemoryStore(), now: () => t, spacingMs: 0,
+    });
+    await service.box('Jeu', 'Hollow Knight');
+    await service.box('Jeu', 'Hollow Knight');
+    expect(images).toHaveBeenCalledTimes(1);
+    t = 8 * 24 * 3_600_000;
+    await service.box('Jeu', 'Hollow Knight');
+    expect(images).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('createGameBoxService : versions et titre imprimé', () => {
+  it('±1 an pour la version par défaut, mais la fenêtre liste tous les portages', async () => {
+    const original = ver({ id: 1, year: 2011, front: 'f1' });
+    const port = ver({ id: 2, year: 2017, platformName: 'Nintendo Switch', format: 'switch', front: 'f2', back: 'b2' });
+    const service = createGameBoxService({
+      versions: async () => [original, port], images: async () => ({}), choices: createGameVersionRepo(createMemoryStore()),
+      game: { view: async () => ({ status: 'detail', detail: { ...detail, year: 2011 } }) },
+      store: createMemoryStore(), spacingMs: 0,
+    });
+    expect((await service.box('Jeu', 'Hollow Knight'))?.tgdbId).toBe(1);
+    expect((await service.versions('Jeu', 'Hollow Knight')).map((v) => v.id)).toEqual([1, 2]);
+  });
+
+  it('le titre imprimé perd la désambiguïsation « (jeu vidéo) »', async () => {
+    expect((await setup().service.box('Jeu', 'Hollow_Knight_(jeu_vidéo)'))?.title).toBe('Hollow Knight');
+    expect((await setup({ versions: [] }).service.box('Jeu', 'Hollow Knight (jeu vidéo)'))?.title).toBe('Hollow Knight');
   });
 });

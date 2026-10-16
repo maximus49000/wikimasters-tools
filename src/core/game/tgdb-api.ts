@@ -87,6 +87,8 @@ function normalizeTitle(title: string): string {
     .replace(/^the /, '');
 }
 
+// Fiches au titre exact. Avec `year` (choix de la version par défaut) : à ±1 an seulement, pour zéro faux positif ;
+// sans (fenêtre « Changer de version ») : tous les portages, quelle que soit leur année.
 export function matchingVersions(all: TgdbVersion[], titles: string[], year?: number): TgdbVersion[] {
   const wanted = new Set(titles.map(normalizeTitle).filter((title) => title !== ''));
   return all.filter((version) => wanted.has(normalizeTitle(version.title)) && (year === undefined || version.year === undefined || Math.abs(version.year - year) <= 1));
