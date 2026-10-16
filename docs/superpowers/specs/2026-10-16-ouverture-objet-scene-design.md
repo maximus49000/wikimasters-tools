@@ -76,8 +76,9 @@ Maquette de déroulé validée le 2026-10-16 (le dessin de la maquette n'est qu'
 ### Déroulé
 
 1. On ouvre un boîtier (album, vinyle, DVD/jeu pour sa BO) et on choisit une piste.
-2. Le **boîtier reste ouvert** : seul le **disque sort du plateau** et vole jusqu'au poste (au-dessus de la couche, voile assez léger
-   pour voir la pièce ; si le poste est hors de l'écran, le disque part vers le bord de son côté), s'y pose et tourne. Le plateau est
+2. Le **boîtier reste ouvert** : seul le **disque sort du plateau** et vole jusqu'à l'endroit du poste à l'écran, **par-dessus le boîtier**
+   (qui reste en grand, centré, à sa taille), en rapetissant, et s'y pose ; le poste étant souvent caché par le boîtier, on le voit
+   tourner une fois la pochette fermée. Si le poste est hors de l'écran, le disque part vers le bord de son côté. Le plateau est
    alors vide et la piste en cours est marquée dans le sélecteur ; on peut choisir une autre piste du même album sans que rien ne bouge.
    **On ferme le boîtier à la main** (✕, retour) : il vole alors se poser **à côté du poste** (couché, légèrement de biais), pas sur l'étagère.
    La place d'origine (étagère, présentoir ou mur) reste **vide** tant que l'objet est au poste. Un boîtier dont le disque n'est pas
