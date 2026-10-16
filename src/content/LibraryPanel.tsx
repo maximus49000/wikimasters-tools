@@ -106,10 +106,10 @@ import type { Rect } from '../core/library/outside-camera';
 import { cameraOf, unionBox, zoomIdsOf, zoomTargetOf, type Box } from '../core/library/zoom-target';
 import { FurnitureZoom, ZOOM_MS, ZOOM_REDUCED_MS } from './furniture-zoom';
 import { useFurnitureZoom } from './use-furniture-zoom';
-import { openingOf, type Opening } from '../core/library/opened-item';
+import { openingOf } from '../core/library/opened-item';
 import { bookColor } from '../core/library/item-models';
 import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
-import { GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
+import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
 import { useOpenedItem } from './opened-item/use-opened-item';
 import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
 import { getPlayerSource } from './music-registry';
@@ -244,9 +244,8 @@ const REFUSALS = {
   wall: 'Un objet mural s’accroche au mur.',
 } as const;
 
-// Formes ouvertes dans la scène à ce stade : CD, vinyle, DVD et jeu (le livre attend son sélecteur et ouvre encore la fiche).
-const OPENS_NOW: ReadonlySet<Opening> = new Set<Opening>(['jewel-cd', 'vinyl-sleeve', 'dvd-case', 'game-case']);
-const opensNow = (p: Placed): boolean => { const o = openingOf(p); return o !== null && OPENS_NOW.has(o); };
+// Toute forme qui a une ouverture s'ouvre dans la scène (CD, vinyle, DVD, jeu, livre) ; poster et petits objets n'ont que la fiche.
+const opensNow = (p: Placed): boolean => openingOf(p) !== null;
 const NO_LAYOUT: Layout = [];
 // Changer d'album : l'ancien disque quitte le poste et son boîtier rentre à sa place avant que le nouveau disque ne s'envole.
 const SWAP_MS = 450;
@@ -1430,6 +1429,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 const video = videoShown && videoShown.placedId === p.id ? videoShown.video : null;
                 const opening = openingOf(p);
                 if (opening === 'dvd-case') return <ScreenSelector slug={slug} title={card.title} onPlayed={played} video={video} onVideo={onVideo} />;
+                if (opening === 'book') return <BookSelector slug={slug} title={card.title} onPlayed={played} />;
                 if (opening === 'game-case') return <GameSelector slug={slug} title={card.title} onPlayed={played} video={video} onVideo={onVideo} />;
                 return <MusicSelector slug={slug} title={card.title} onPlayed={played} />;
               })()}

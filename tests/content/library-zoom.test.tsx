@@ -36,9 +36,9 @@ async function click(s: string) {
 async function seed(layout: Layout) { await repo.update((st) => updateLayout(st, 'r1', () => layout)); await settle(); }
 const advance = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); });
 
-// Un DVD : touché dans le second zoom, il ouvre encore la fiche (le CD, lui, s'ouvre dans la scène : tests/content/library-panel.test.tsx).
-// Livre : seule forme rangée dont l'ouverture est encore la fiche (DVD et jeu s'ouvrent dans la scène ; à revoir avec l'ouverture du livre).
+// Une carte rangée s'ouvre dans la scène (tests/content/library-panel.test.tsx) : la fiche ne s'ouvre plus depuis le zoom que pour l'écran d'un bureau.
 const SHELF: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 1 }, { id: 'c', kind: 'stored', shape: 'book', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' }];
+const DESK: Layout = [{ id: 'd', kind: 'desk', col: 0, row: 6 }, { id: 'pc', kind: 'computer', deskId: 'd', slug: 'Daft_Punk' }];
 
 beforeEach(async () => {
   container = document.createElement('div');
@@ -85,14 +85,11 @@ describe('zoom sur un meuble', () => {
     expect(q('[data-stage]')!.hasAttribute('data-zoom-open')).toBe(true);
   });
   it('toucher une carte dans le zoom ouvre la fiche ; la fermer revient au zoom', async () => {
-    await seed(SHELF);
+    await seed(DESK);
     vi.useFakeTimers();
-    await click('[data-furniture="shelf"]');
-    // Étagère de biais (angle 1) : les cartes de face n'apparaissent qu'à mi-ouverture.
+    await click('[data-furniture="desk"]');
     await advance(500);
     await click('[data-zoom-card="Daft_Punk"]');
-    expect(q('[data-shelf-board="0"]')).not.toBeNull();
-    await click('[data-board-card="Daft_Punk"]');
     expect(document.querySelector('[data-room-card="Daft_Punk"]')).not.toBeNull();
     await click('[data-action="close"]');
     expect(document.querySelector('[data-room-card]')).toBeNull();
@@ -167,13 +164,12 @@ describe('zoom sur un meuble', () => {
     expect(back).toHaveBeenCalledTimes(2);
   });
   it('Échap avec la fiche ouverte ferme la fiche seulement', async () => {
-    await seed(SHELF);
+    await seed(DESK);
     vi.useFakeTimers();
     const back = vi.spyOn(history, 'back');
-    await click('[data-furniture="shelf"]');
+    await click('[data-furniture="desk"]');
     await advance(500);
     await click('[data-zoom-card="Daft_Punk"]');
-    await click('[data-board-card="Daft_Punk"]');
     expect(document.querySelector('[data-room-card="Daft_Punk"]')).not.toBeNull();
     await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
     await advance(500);
@@ -182,12 +178,11 @@ describe('zoom sur un meuble', () => {
     expect(back).not.toHaveBeenCalled();
   });
   it('retour Android/navigateur avec la fiche ouverte : ferme la fiche, le zoom reste (et son entrée d’historique)', async () => {
-    await seed(SHELF);
+    await seed(DESK);
     vi.useFakeTimers();
-    await click('[data-furniture="shelf"]');
+    await click('[data-furniture="desk"]');
     await advance(500);
     await click('[data-zoom-card="Daft_Punk"]');
-    await click('[data-board-card="Daft_Punk"]');
     const push = vi.spyOn(history, 'pushState');
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     await advance(500);
@@ -195,12 +190,7 @@ describe('zoom sur un meuble', () => {
     expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
     expect(push).toHaveBeenCalledTimes(1);
     expect(typeof history.state?.wmtZoom).toBe('string');
-    // un second retour ramène du second zoom à la vue de face (le zoom reste)
-    await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
-    await advance(500);
-    expect(q('[data-shelf-board]')).toBeNull();
-    expect(q('[data-furniture-zoom]')).not.toBeNull();
-    // un troisième ferme alors le zoom
+    // un second retour ferme alors le zoom (le retour du second zoom à la vue de face est couvert plus bas)
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     await advance(500);
     expect(q('[data-furniture-zoom]')).toBeNull();

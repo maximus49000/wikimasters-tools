@@ -2,10 +2,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
 import type { Track } from '../../core/spotify/spotify-api';
 import type { Listen } from '../../core/music/listen';
-import { gameRows, musicRows, screenRows, type GameViewLike, type ScreenViewLike, type SelectorModel, type SelectorRow } from '../../core/library/opened-item';
+import { bookRows, gameRows, musicRows, screenRows, type GameViewLike, type ScreenViewLike, type SelectorModel, type SelectorRow } from '../../core/library/opened-item';
 import { TIDAL_HOME_URL } from '../../core/tidal/config';
 import { tidalUrl } from '../../core/tidal/tidal-listen';
 import { track as telemetry } from '../../core/telemetry/registry';
+import type { BookView } from '../book-service';
+import { getBookService } from '../book-registry';
 import { getGameService } from '../game-registry';
 import { Glyph } from '../Glyphs';
 import { HlsTrailerPlayer } from '../HlsTrailerPlayer';
@@ -101,6 +103,20 @@ function SelectorBody({ name, slug, title, loadKey, load, onPlayed, video = null
               </li>
             );
           }
+          if (row.kind === 'synopsis') {
+            return <li key="synopsis" data-synopsis="" style={{ ...ROW, display: 'block', padding: '6px 0', lineHeight: 1.4, whiteSpace: 'pre-line' }}>{row.text}</li>;
+          }
+          if (row.kind === 'link') {
+            const label = `Lire sur ${row.label}`;
+            return (
+              <li key={row.url} data-link={row.url} style={ROW}>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.label}</span>
+                <a href={row.url} target="_blank" rel="noopener noreferrer" aria-label={label} title={label} style={ROUND}>
+                  <Glyph name="external" size={16} />
+                </a>
+              </li>
+            );
+          }
           if (row.kind !== 'track') return null;
           const nowPlaying = isPlayingUri(source ? player : NO_PLAYER, row.track.uri);
           return (
@@ -168,4 +184,18 @@ export function GameSelector({ slug, title, onPlayed, video, onVideo }: MediaPro
     return gameRows(view, bo);
   };
   return <SelectorBody name="game" slug={slug} title={title} loadKey={`${slug}|${title}`} load={load} onPlayed={onPlayed} video={video} onVideo={onVideo} />;
+}
+
+// Livre : le synopsis et les liens de lecture gratuite (Wikisource, Gutenberg, Internet Archive). Rien ne se joue : pas de disque, pas de poste.
+export function BookSelector({ slug, title, onPlayed }: Props): ReactElement {
+  const load = async (): Promise<SelectorModel> => {
+    const books = getBookService();
+    if (!books) return bookRows({ status: 'none' }, null);
+    const view = await books.view(slug, title).catch((): BookView => ({ status: 'error', message: 'Le livre est indisponible pour le moment.' }));
+    const reading = view.status === 'detail'
+      ? await books.reading(slug, { id: view.detail.id, title: view.detail.title, ...(view.detail.author ? { author: view.detail.author } : {}) }).catch(() => null)
+      : null;
+    return bookRows(view, reading);
+  };
+  return <SelectorBody name="book" slug={slug} title={title} loadKey={`${slug}|${title}`} load={load} onPlayed={onPlayed} />;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Placed, WallShape, ShelfShape } from '../../../src/core/library/library-types';
-import { boxInLayer, flightTarget, gameRows, layerFrame, musicRows, openingOf, screenRows } from '../../../src/core/library/opened-item';
+import { boxInLayer, bookRows, flightTarget, gameRows, layerFrame, musicRows, openingOf, screenRows } from '../../../src/core/library/opened-item';
 
 const stored = (shape: ShelfShape): Placed => ({ id: 's', kind: 'stored', shape, shelfId: 'e', level: 0, order: 0, slug: 'x' });
 const wall = (shape: WallShape): Placed => ({ id: 'w', kind: 'wall', shape, col: 0, row: 0, slug: 'x' });
@@ -102,5 +102,27 @@ describe('screenRows / gameRows', () => {
   it('jeu sans rien : message ; vue vide', () => {
     expect(gameRows(jeu(), null).empty).toBe('Pas de bande-annonce ni de BO');
     expect(gameRows({ status: 'empty' }, null).empty).toBe('Pas de bande-annonce ni de BO');
+  });
+});
+
+describe('bookRows', () => {
+  const detail = (extra: object) => ({ status: 'detail' as const, detail: { id: 'OL1W', title: 'Livre', ...extra } as never });
+  const reading = { links: [{ label: 'Wikisource', url: 'https://fr.wikisource.org/wiki/L' }, { label: 'Internet Archive', url: 'https://archive.org/details/l' }] };
+  it('synopsis puis un lien par source de lecture', () => {
+    const model = bookRows(detail({ synopsis: { text: 'Résumé', url: 'u', source: 'wikipedia' } }), reading);
+    expect(model.empty).toBeNull();
+    expect(model.rows).toEqual([
+      { kind: 'synopsis', text: 'Résumé' },
+      { kind: 'link', label: 'Wikisource', url: 'https://fr.wikisource.org/wiki/L' },
+      { kind: 'link', label: 'Internet Archive', url: 'https://archive.org/details/l' },
+    ]);
+  });
+  it('sans synopsis : les liens seuls', () => {
+    expect(bookRows(detail({}), reading).rows.map((r) => r.kind)).toEqual(['link', 'link']);
+  });
+  it('rien à lire : message', () => {
+    expect(bookRows(detail({}), { links: [] })).toEqual({ rows: [], empty: 'Rien à lire pour ce livre' });
+    expect(bookRows({ status: 'none' }, null).empty).toBe('Rien à lire pour ce livre');
+    expect(bookRows({ status: 'error', message: 'Open Library indisponible' }, null).empty).toBe('Open Library indisponible');
   });
 });

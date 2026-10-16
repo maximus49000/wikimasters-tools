@@ -4,7 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenedItemLayer } from '../../src/content/opened-item/OpenedItemLayer';
 import { useState } from 'react';
-import { GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from '../../src/content/opened-item/selectors';
+import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from '../../src/content/opened-item/selectors';
+import { setBookService } from '../../src/content/book-registry';
 import { setGameService } from '../../src/content/game-registry';
 import { setScreenService } from '../../src/content/screen-registry';
 import { setMusicService, setPlatformChoice } from '../../src/content/music-registry';
@@ -191,5 +192,53 @@ describe('vidéo à la place du disque (couche ouverte)', () => {
     await act(async () => { window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ event: 'onStateChange', info: 1 }), source: iframe.contentWindow })); });
     await act(async () => { window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ event: 'onStateChange', info: 0 }), source: window })); });
     expect(container.querySelector('[data-case-video]')).not.toBeNull();
+  });
+});
+
+describe('BookSelector', () => {
+  const detail = { id: 'OL1W', title: 'Livre', synopsis: { text: 'Un résumé', url: 'u', source: 'wikipedia' } };
+  const reading = { links: [{ source: 'wikisource', label: 'Wikisource', url: 'https://fr.wikisource.org/wiki/L' }, { source: 'archive', label: 'Internet Archive', url: 'https://archive.org/details/l' }], complete: true };
+  afterEach(() => setBookService(null));
+  const mount = (view: unknown, read: unknown = reading) => {
+    const service = { view: vi.fn().mockResolvedValue(view), reading: vi.fn().mockResolvedValue(read) };
+    setBookService(service as never);
+    return service;
+  };
+  const render = () => act(async () => root.render(<BookSelector slug="Livre" title="Livre" onPlayed={vi.fn()} />));
+
+  it('synopsis et deux liens ; les liens s’ouvrent dans un nouvel onglet', async () => {
+    const service = mount({ status: 'detail', detail });
+    await render();
+    expect(service.reading).toHaveBeenCalledWith('Livre', { id: 'OL1W', title: 'Livre' });
+    expect(container.querySelectorAll('li')).toHaveLength(3);
+    expect(container.textContent).toContain('Un résumé');
+    const links = [...container.querySelectorAll<HTMLAnchorElement>('a[href]')];
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['https://fr.wikisource.org/wiki/L', 'https://archive.org/details/l']);
+    expect(links[0]!.getAttribute('target')).toBe('_blank');
+    expect(links[0]!.getAttribute('rel')).toContain('noopener');
+  });
+  it('rien à lire : « Rien à lire pour ce livre »', async () => {
+    mount({ status: 'none' });
+    await render();
+    expect(container.textContent).toContain('Rien à lire pour ce livre');
+    expect(container.querySelectorAll('li')).toHaveLength(0);
+  });
+  it('service en panne : pas de plantage', async () => {
+    setBookService({ view: vi.fn().mockRejectedValue(new Error('x')), reading: vi.fn() } as never);
+    await render();
+    expect(container.querySelectorAll('li')).toHaveLength(0);
+    expect(container.querySelector('[data-selector]')).not.toBeNull();
+  });
+  it('couche ouverte d’un livre : couverture à droite, aucun disque', async () => {
+    mount({ status: 'detail', detail });
+    Object.assign(window, { innerWidth: 800, innerHeight: 400 });
+    const placed = { id: 'b1', kind: 'stored', shape: 'book', shelfId: 's', level: 0, order: 0, slug: 'Livre' } as const;
+    await act(async () => root.render(
+      <OpenedItemLayer placed={placed} card={{ title: 'Livre' }} cover="https://x/c.jpg" color="#c33" state={{ placedId: 'b1', from: null, to: null, phase: 'open' }}
+        disc="in" hasHifi={false} onInfo={vi.fn()} onClose={vi.fn()} onAddHifi={vi.fn()}
+        selector={<BookSelector slug="Livre" title="Livre" onPlayed={vi.fn()} />} />));
+    expect(container.querySelector('[data-case-cover]')).not.toBeNull();
+    expect(container.querySelector('[data-case-disc]')).toBeNull();
+    expect(container.querySelectorAll('a[href]')).toHaveLength(2);
   });
 });

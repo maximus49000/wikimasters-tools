@@ -66,6 +66,20 @@ export function gameRows(view: GameViewLike, bo: Listen | null): SelectorModel {
   return mediaRows(video, bo, view.status === 'error' ? view.message : null);
 }
 
+// Ce que le service livre répond (forme minimale : BookView y est assignable) et les sources de lecture libre.
+export type BookViewLike = { status: 'detail'; detail: { synopsis?: { text: string } } } | { status: 'error'; message: string } | { status: 'none' | 'empty' };
+export type BookReadingLike = { links: { label: string; url: string }[] };
+
+// Livre : le synopsis, puis un lien par source de lecture libre. Rien de lisible : message (ou la panne du service).
+export function bookRows(view: BookViewLike, reading: BookReadingLike | null): SelectorModel {
+  const synopsis = view.status === 'detail' ? view.detail.synopsis?.text : undefined;
+  const rows: SelectorRow[] = [
+    ...(synopsis ? [{ kind: 'synopsis' as const, text: synopsis }] : []),
+    ...(reading?.links ?? []).map((l): SelectorRow => ({ kind: 'link', label: l.label, url: l.url })),
+  ];
+  return { rows, empty: rows.length === 0 ? (view.status === 'error' ? view.message : 'Rien à lire pour ce livre') : null };
+}
+
 // Calque paysage : en écran vertical, largeur et hauteur sont échangées (le calque est tourné de 90°).
 export function layerFrame(screen: { w: number; h: number }): { rotated: boolean; w: number; h: number } {
   return screen.h > screen.w ? { rotated: true, w: screen.h, h: screen.w } : { rotated: false, w: screen.w, h: screen.h };
