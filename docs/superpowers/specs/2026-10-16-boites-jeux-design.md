@@ -22,6 +22,7 @@ C'est une collection : l'objet doit être reconnaissable comme celui qu'on aurai
 | Dos manquant | On fabrique un dos **avec des images du jeu**. |
 | Dos dans l'armoire | Le dos est **visible dans l'armoire** (nouvelle présentation « de dos »). |
 | Retourner la boîte | La boîte **arrive ouverte** comme aujourd'hui (déroulé de l'ouverture inchangé). Une **flèche ⟲ au-dessus de la boîte, centrée** la retourne d'un demi-tour : on voit l'**extérieur, toujours ouvert à plat** — **dos à gauche, tranche au milieu, devant à droite**. ⟲ à nouveau revient à l'intérieur. Maquette validée (`retourner-v3.html`). |
+| Loupe sur le dos | Boîte retournée : une **loupe** sur le **dos (moitié gauche)** pour lire le texte qu'il porte. |
 
 ## TheGamesDB : ce qu'on sait (vérifié le 2026-10-16)
 
@@ -98,6 +99,13 @@ Le support est à **l'échelle réelle** de la boîte : une cartouche Switch occ
   face extérieure = **dos | tranche | devant**, chacun à la taille d'une moitié (tranche = épaisseur du gabarit).
 - Retournée, la vidéo éventuelle est arrêtée et le disque revient ; ⟲ ramène l'intérieur. Fermer (✕, retour) depuis l'extérieur
   referme la boîte normalement (retour à l'intérieur sans animation, puis fermeture habituelle).
+
+### Loupe sur le dos
+- Boîte retournée : glyphe **loupe** (44 px) posé sur la moitié gauche (le dos), toujours visible.
+- *(Choix Claude)* Le toucher affiche le dos **en grand**, ajusté à l'écran, dans sa **meilleure définition**
+  (`images/original/` de TheGamesDB, les scans font souvent plus de 1 Mo) ; **pincer** pour zoomer davantage, glisser pour se déplacer,
+  double-toucher pour revenir à l'ajustement. ✕ / retour Android / Échap ferment la loupe et rendent la boîte retournée.
+- Dos fabriqué : la loupe marche aussi (texte = description).
 
 ### Boîte ouverte
 - `GEOMETRY['game-case']` fixe remplacé par une géométrie **calculée depuis le gabarit** : deux moitiés égales à la boîte
