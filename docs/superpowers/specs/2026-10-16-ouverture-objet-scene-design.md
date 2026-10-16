@@ -80,7 +80,7 @@ Maquette de déroulé validée le 2026-10-16 (le dessin de la maquette n'est qu'
    (qui reste en grand, centré, à sa taille), en rapetissant, et s'y pose ; le poste étant souvent caché par le boîtier, on le voit
    tourner une fois la pochette fermée. Si le poste est hors de l'écran, le disque part vers le bord de son côté. Le plateau est
    alors vide et la piste en cours est marquée dans le sélecteur ; on peut choisir une autre piste du même album sans que rien ne bouge.
-   **On ferme le boîtier à la main** (✕, retour) : il vole alors se poser **à côté du poste** (couché, légèrement de biais), pas sur l'étagère.
+   **On ferme le boîtier à la main** (✕, retour) : il vole alors se poser **devant le poste** (couché sur le bureau, légèrement de biais), pas sur l'étagère.
    La place d'origine (étagère, présentoir ou mur) reste **vide** tant que l'objet est au poste. Un boîtier dont le disque n'est pas
    au poste retourne à sa place d'origine en se fermant.
 3. **Toucher le poste** : bulle « En lecture » — piste, album, ⏯ (pause/lecture), ⏏ (éjecter : arrête la lecture, le disque rentre
@@ -90,7 +90,7 @@ Maquette de déroulé validée le 2026-10-16 (le dessin de la maquette n'est qu'
    le disque reste sur le poste et continue de tourner ; la piste en cours est marquée dans le sélecteur.
 5. **Choisir une piste d'un autre album** (son boîtier ouvert) : l'ancien disque quitte le poste et rentre dans son boîtier posé à côté,
    qui retourne à sa place d'origine ; puis le nouveau disque sort du boîtier ouvert et va au poste. Le nouveau boîtier reste ouvert
-   jusqu'à ce qu'on le ferme, puis se pose à côté du poste.
+   jusqu'à ce qu'on le ferme, puis se pose devant le poste.
 6. Les **vidéos** (bande-annonce, vidéos Steam) ne vont pas au poste : elles se lisent toujours dans le boîtier ouvert.
 
 ### État
@@ -102,11 +102,11 @@ posé, immobile, jusqu'à ⏏ ou au prochain album. Plusieurs postes dans la pi�
 
 ### Objet
 
-- Nouveau petit objet `small-hifi` (« Chaîne hi-fi »), posé sur un meuble comme `small-station`, rangé dans la catégorie Déco
-  (sous-groupe à créer « Musique »). L'**emprise inclut la place de la pochette** à côté, pour qu'elle ne chevauche jamais un autre objet.
-- Mini-chaîne aux **vraies proportions** (ordre de grandeur, à affiner par Fable) : corps central ~32 × 28 × 14 cm avec, sur le dessus,
-  une **platine** (plateau rond, bras, couvercle fumé relevé) et un **puits CD à chargement par le haut** ; deux enceintes ~14 × 18 × 24 cm
-  de part et d'autre ; place de la pochette ~14 cm. Le disque posé est vu en perspective (ellipse) et sa rotation se voit grâce à
+- Nouveau petit objet `small-hifi` (« Chaîne hi-fi »), posé **sur un bureau uniquement, sur 2 emplacements (60 cm)** — un emplacement de petit objet ne fait que 30 cm —, rangé dans la catégorie Déco
+  (sous-groupe à créer « Musique »). La pochette se couche **devant** le poste, sur le bureau, sans chevaucher un autre objet.
+- Mini-chaîne aux **vraies proportions** (≈ 56 × 26 × 18 cm, à affiner par Fable) : corps central ~30 cm avec, sur le dessus,
+  une **platine** (plateau rond, bras, couvercle fumé relevé) et un **puits CD à chargement par le haut** ; deux enceintes ~13 cm de large
+  de part et d'autre. Le disque posé est vu en perspective (ellipse) et sa rotation se voit grâce à
   l'étiquette (pochette) et au reflet.
 - **Apparence** : style cellulo (aplats + trait encré + ombre nette), comme les pantins, véhicules et meubles récents ; décalques détaillés
   (tissu des enceintes, boutons, molette de volume, afficheur qui fait défiler le titre de la piste, voyant allumé pendant la lecture).
@@ -169,7 +169,7 @@ Le verrou n'est accordé qu'en plein écran : si l'écran reste en hauteur, la c
 - Les visuels définitifs (boîtiers, poste, séquences d'animation) dépendent du passage de Fable.
 - Le poste suit le lecteur de l'appareil : pour Tidal (lien externe, pas de lecteur intégré), le poste ne peut pas savoir ce qui joue ;
   le disque y est posé au choix de la piste et tourne sans pouvoir suivre la pause.
-- Le poste doit tenir sur un meuble assez large (≈ 80 cm avec enceintes et pochette) ; sinon le placement le refuse comme pour les autres objets.
+- Le poste ne se pose que sur un bureau, sur 2 emplacements contigus libres ; sinon le placement le refuse comme pour les autres objets.
 
 ## Découpage en lots (pour le plan)
 
