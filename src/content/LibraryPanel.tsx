@@ -115,6 +115,7 @@ import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
 import { getPlayerSource } from './music-registry';
 import { reducedMotion } from './ghibli-sky';
 import { useHifiPlayer } from './hifi/use-hifi';
+import { HifiBubble } from './hifi/HifiBubble';
 import { usePlatform } from './usePlatform';
 import { getImageService } from './image-registry';
 
@@ -289,6 +290,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
+  // Bulle « En lecture » du poste hi-fi (ouverte en touchant le poste en mode Visiter) : liée à sa pièce, donc fermée si la pièce change.
+  const [hifiBubbleRoom, setHifiBubbleRoom] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<DrawerState>(INITIAL_DRAWER);
   // Placement en cours (objet neuf, carte choisie ou objet déplacé) : rien n'est enregistré avant ✓.
   const [placement, setPlacement] = useState<Placement | null>(null);
@@ -887,6 +890,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (!editing) {
       if (press.consumeClick()) return;
       if (zoomRef.current) return;
+      if (hifiRef.current.hifiId === id) return setHifiBubbleRoom(room.id);
       if (tryZoom(id)) return;
       const tapped = layout.find((p) => p.id === id);
       if (tapped && hasCitySetting(tapped)) return setDecoDialog({ type: 'city', id });
@@ -1023,6 +1027,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const setMode2 = (next: 'visit' | 'edit'): void => {
     reset();
+    setHifiBubbleRoom(null);
     setMode(next);
   };
   // Changer de pièce ramène la vue à gauche et annule tout défilement en attente.
@@ -1032,6 +1037,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const chooseRoom = (id: string): void => {
     reset();
+    setHifiBubbleRoom(null);
     resetScroll();
     void library.update((state) => setActive(state, id));
   };
@@ -1407,12 +1413,27 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onInfo={() => setViewing(slug)}
               // Vers le poste si son disque y est, sinon vers sa place d'origine (closeTarget).
               onClose={() => closeItem()}
-              onAddHifi={() => undefined}
+              onAddHifi={() => {
+                // La couche se ferme par son chemin normal (historique, orientation), puis l'aménagement propose le poste.
+                closeItem();
+                setHifiBubbleRoom(null);
+                setMode('edit');
+                startNew('small-hifi');
+              }}
               flight={mine && mine.phase === 'fly' ? { id: mine.id, target: hifiDiscBox(p.kind === 'wall'), onLanded: () => onLanded(mine.id, p.id) } : null}
               selector={<MusicSelector slug={slug} title={card.title} onPlayed={() => onPlayedFrom(p.id, slug, card.title)} />}
             />
           );
         })()}
+        {hifiBubbleRoom === room.id && !editing && hifi.hifiId !== null && (
+          <HifiBubble
+            view={playerSource ? playerNow : NO_PLAYER}
+            albumTitle={(playerSource ? playerNow : NO_PLAYER).card?.title ?? null}
+            anchor={{ stage: stage.ref.current, scroll: scrollRef.current, targetId: hifi.hifiId }}
+            onClose={() => setHifiBubbleRoom(null)}
+            onEject={() => setHifiBubbleRoom(null)}
+          />
+        )}
         {viewing && roomCards.cards[viewing] && (
           <RoomCardDialog
             slug={viewing}

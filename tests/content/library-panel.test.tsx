@@ -436,6 +436,25 @@ describe('LibraryPanel : objet ouvert dans la pièce', () => {
   };
   afterEach(() => { setPlayerSource(null); history.replaceState(null, ''); });
 
+  it('sans poste : le bouton 📻 ferme la couche, ouvre Aménager et propose la chaîne hi-fi', async () => {
+    await openShelfCd();
+    await click('[data-opened-item] [data-action="add-hifi"]');
+    await settle();
+    expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-action="place-confirm"]')).not.toBeNull();
+    expect(q('[data-opened-item] [data-item-case]')?.getAttribute('data-phase') ?? 'closing').toBe('closing');
+  });
+
+  it('toucher le poste en mode Visiter ouvre la bulle En lecture, ✕ la ferme', async () => {
+    const view: PlayerView = { linked: true, hidden: false, enabled: true, card: { slug: 'Daft_Punk', title: 'Daft Punk' }, track: { uri: 'u', title: 'Aerodynamic', artist: 'Daft Punk', imageUrl: null, playing: true } };
+    setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
+    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }]);
+    await click('[data-id="h"]');
+    expect(q('[data-hifi-bubble]')?.textContent).toContain('Aerodynamic');
+    await click('[data-hifi-bubble] [data-action="close"]');
+    expect(q('[data-hifi-bubble]')).toBeNull();
+  });
+
   it('second zoom : toucher un CD ouvre son boîtier, pas la fiche', async () => {
     await openShelfCd();
     expect(q('[data-opened-item="c"]')).not.toBeNull();
