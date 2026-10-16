@@ -50,6 +50,7 @@ export const KIND_ICON: Record<FurnitureKind, readonly string[]> = {
   'small-alarm': ['M3 10h18v8H3z', 'M7 13v2', 'M11 13v2', 'M13 13.5h.01', 'M13 15.5h.01', 'M17 13v2', 'M6 10V8', 'M18 10V8'],
   'small-clock': ['M12 6a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'M12 10v4l2 1', 'M7 5l2 2', 'M17 5l-2 2'],
   'small-station': ['M4 5h16v11H4z', 'M9 11a2 2 0 1 1 3.6 1.2', 'M15 9v4', 'M10 20h4', 'M12 16v4'],
+  'small-hifi': ['M2 7h4v12H2z', 'M18 7h4v12h-4z', 'M7 10h10v9H7z', 'M12 14m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0'],
   'panel-chalk': ['M4 4h16v14H4z', 'M7 9h7', 'M7 13h10', 'M6 20h12'],
   'panel-letter': ['M4 4h16v16H4z', 'M8 8v3', 'M12 8v3', 'M16 8v3', 'M8 14v3', 'M12 14v3'],
   'panel-neon': ['M5 15a4 4 0 0 1 4-4h6a4 4 0 0 1 0 8H9', 'M12 4v3', 'M6 6l2 2', 'M18 6l-2 2'],

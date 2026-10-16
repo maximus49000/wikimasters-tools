@@ -159,6 +159,8 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
       </>
     );
   }
+  // Dessus et façade d'une chaîne hi-fi : fond sombre tant que hifi-art (tâche 8) ne les dessine pas.
+  if (role === 'top') return <rect width={w} height={h} fill="#1D1F22" />;
   if (role === 'face') return content?.face ? content.face.draw(w, h) : <rect width={w} height={h} fill="#1D1F22" />;
   if (role === 'screen') {
     return url ? <image href={url} width={w} height={h} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" /> : <rect width={w} height={h} fill={PLACEHOLDER} />;

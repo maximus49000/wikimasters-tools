@@ -1,7 +1,7 @@
 import { wallSizeOf } from '../core/library/furniture-catalog';
 import { drawSize, floorCells } from '../core/library/footprint';
-import type { Layout, ShelfLevel } from '../core/library/library-types';
-import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, decoSizeOf, dropOnShelf, firstFreeSurfaceSlot, moveStored, pxRect, rectOf, shelfLayoutOf, SURFACE_SLOTS, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import type { Layout, ShelfLevel, SmallItem } from '../core/library/library-types';
+import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, decoSizeOf, dropOnShelf, firstFreeSurfaceSlot, moveStored, pxRect, rectOf, shelfLayoutOf, SURFACE_SLOTS, canHostSmall, smallSpan, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -38,13 +38,15 @@ export function hostAtCell(layout: Layout, col: number, row: number): string | n
 
 // Le bureau ou l'étagère dont un emplacement de petit objet (posé sur le dessus projeté, à tout angle, comme `surfaceSlotRectOn`)
 // contient le point (x, y).
-export function hostAtSurface(layout: Layout, x: number, y: number): string | null {
+export function hostAtSurface(layout: Layout, x: number, y: number, item?: SmallItem): string | null {
   for (const placed of hostsFrontFirst(layout, true)) {
     const r = rectOf(placed);
     if (!r || (placed.kind !== 'desk' && placed.kind !== 'shelf')) continue;
     const draw = pxRect(r);
-    for (let i = 0; i < SURFACE_SLOTS[placed.kind]; i++) {
-      const s = surfaceSlotRectOn(draw, placed.kind, angleOf(placed), i);
+    if (item && !canHostSmall(placed.kind, item)) continue;
+    const span = item ? smallSpan(item) : 1;
+    for (let i = 0; i + span <= SURFACE_SLOTS[placed.kind]; i++) {
+      const s = surfaceSlotRectOn(draw, placed.kind, angleOf(placed), i, span);
       if (x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h) return placed.id;
     }
   }
@@ -144,11 +146,11 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     return { ok: true, cells: [], ghost, deskId };
   }
   if (item.kind === 'small') {
-    const hostId = hostAtCell(layout, col, row) ?? hostAtSurface(layout, x, y);
+    const hostId = hostAtCell(layout, col, row) ?? hostAtSurface(layout, x, y, item.item);
     if (!hostId) return { ok: false, reason: 'not-host', cells: [{ col, row }], ghost: { col, row, w: 1, h: 1 } };
     const host = layout.find((p) => p.id === hostId);
     const ghost = host ? rectOf(host) : null;
-    const room = hostId === item.hostId || firstFreeSurfaceSlot(layout, hostId, id) !== null;
+    const room = hostId === item.hostId || firstFreeSurfaceSlot(layout, hostId, id, item.item) !== null;
     return room ? { ok: true, cells: [], ghost, hostId } : { ok: false, reason: 'host-busy', cells: [], ghost, hostId };
   }
   const angle = angleOf(item);

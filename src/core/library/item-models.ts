@@ -7,7 +7,7 @@ import type { ShelfShape, StoredDisplay } from './library-types';
 // Objets qui garnissent les meubles, en vrais volumes (cm, même repère que les meubles : x largeur vue de face, y hauteur, z profondeur depuis l'avant) :
 // cartes rangées (CD, DVD, jeu, livre), écran du bureau, petite plante et petite lampe. Ils sont dessinés par le moteur dans le repère de leur
 // meuble (même angle, mêmes tablettes) : ils tournent avec lui et passent devant ou derrière ses planches selon la profondeur.
-export type ItemShape = ShelfShape | 'monitor' | 'small-plant' | 'small-lamp' | 'small-alarm' | 'small-clock' | 'small-station';
+export type ItemShape = ShelfShape | 'monitor' | 'small-plant' | 'small-lamp' | 'small-alarm' | 'small-clock' | 'small-station' | 'small-hifi';
 // Présentation d'un objet rangé : couverture vers l'avant (de face) ou tranche vers l'avant (titre lisible).
 export type ItemDisplay = StoredDisplay;
 
@@ -78,6 +78,16 @@ export const ITEM_MODELS: Record<ItemShape, Model> = {
   },
   // Station de table : boîtier 15 × 6 × 11 cm sur pied, écran en décalque `face:station`.
   'small-station': { w: 15, d: 6, h: 11, pieces: [box(4, 0, 1, 7, 1.2, 4, '#55555C'), box(0, 1.2, 0, 15, 9.8, 6, '#D8C3A0', [{ face: 'front', key: 'face:station' }])] },
+  // Chaîne hi-fi : 56 × 26 × 18 cm, corps de 30 cm entre deux enceintes de 13 cm ; platine et puits CD sur le dessus (décalque `top:hifi`),
+  // façade (afficheur, boutons) en décalque `face:hifi`. Dessin des décalques : voir hifi-art.
+  'small-hifi': {
+    w: 56, d: 26, h: 18,
+    pieces: [
+      box(0, 0, 3, 13, 18, 20, '#4A3B2F'),
+      box(43, 0, 3, 13, 18, 20, '#4A3B2F'),
+      box(13, 0, 0, 30, 12, 26, '#2E2E34', [{ face: 'front', key: 'face:hifi' }, { face: 'top', key: 'top:hifi' }]),
+    ],
+  },
 };
 
 // Écran d'une pièce Steampunk, façon machine analytique : socle en laiton et ses touches rondes, coffre de cuivre, écran à tube (image de la carte),
@@ -177,7 +187,7 @@ export function itemPieces(p: ItemPlacement, steampunk = false): Piece[] {
 }
 
 function placedPieces(p: ItemPlacement, m: Model): Piece[] {
-  const stored = p.shape !== 'monitor' && p.shape !== 'small-plant' && p.shape !== 'small-lamp' && p.shape !== 'small-alarm' && p.shape !== 'small-clock' && p.shape !== 'small-station';
+  const stored = p.shape !== 'monitor' && p.shape !== 'small-plant' && p.shape !== 'small-lamp' && p.shape !== 'small-alarm' && p.shape !== 'small-clock' && p.shape !== 'small-station' && p.shape !== 'small-hifi';
   const turned = p.display === 'spine' && stored;
   return m.pieces.map((q): Piece => {
     // Étiquettes : `body` reçoit la couleur propre ; un objet rangé est marqué « stored:key » (il ne se voit qu'à travers l'ouverture du meuble),
