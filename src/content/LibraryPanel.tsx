@@ -1427,12 +1427,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               selector={(() => {
                 const played = () => onPlayedFrom(p.id, slug, card.title);
                 const onVideo = (video: Video | null) => setVideoShown(video ? { placedId: p.id, video } : null);
+                const video = videoShown && videoShown.placedId === p.id ? videoShown.video : null;
                 const opening = openingOf(p);
-                if (opening === 'dvd-case') return <ScreenSelector slug={slug} title={card.title} onPlayed={played} onVideo={onVideo} />;
-                if (opening === 'game-case') return <GameSelector slug={slug} title={card.title} onPlayed={played} onVideo={onVideo} />;
+                if (opening === 'dvd-case') return <ScreenSelector slug={slug} title={card.title} onPlayed={played} video={video} onVideo={onVideo} />;
+                if (opening === 'game-case') return <GameSelector slug={slug} title={card.title} onPlayed={played} video={video} onVideo={onVideo} />;
                 return <MusicSelector slug={slug} title={card.title} onPlayed={played} />;
               })()}
-              {...(videoShown && videoShown.placedId === p.id ? { right: <VideoPlayer video={videoShown.video} /> } : {})}
+              {...(videoShown && videoShown.placedId === p.id ? { right: <VideoPlayer video={videoShown.video} onEnded={() => setVideoShown(null)} /> } : {})}
             />
           );
         })()}

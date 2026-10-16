@@ -24,31 +24,32 @@ const EMPTY: SelectorModel = { rows: [], empty: 'Aucune piste trouvée' };
 export type Video = Extract<SelectorRow, { kind: 'video' }>['video'];
 type Props = { slug: string; title: string; onPlayed: (track: Track) => void };
 // `onVideo` : la vidéo choisie (à montrer à la place du disque), ou null quand on la quitte.
-type MediaProps = Props & { onVideo: (video: Video | null) => void };
-type BodyProps = Props & { name: string; loadKey: string; load: () => Promise<SelectorModel>; onVideo?: (video: Video | null) => void };
+// `video` : la vidéo actuellement au plateau (source unique, tenue par le parent) ; null = le disque.
+type MediaProps = Props & { video: Video | null; onVideo: (video: Video | null) => void };
+type BodyProps = Props & { name: string; loadKey: string; load: () => Promise<SelectorModel>; video?: Video | null; onVideo?: (video: Video | null) => void };
 
 // La vidéo choisie, à la place du disque : lecteur de bande-annonce (YouTube) ou flux HLS Steam, avec leur ⛶ plein écran.
-export function VideoPlayer({ video }: { video: Video }): ReactElement {
+export function VideoPlayer({ video, onEnded }: { video: Video; onEnded?: () => void }): ReactElement {
   return (
     <div data-case-video="" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: '100%' }}>
         {video.kind === 'youtube'
-          ? <TrailerPlayer trailerKey={video.key} />
-          : <HlsTrailerPlayer url={video.url} pageUrl={video.pageUrl} {...(video.poster ? { poster: video.poster } : {})} />}
+          ? <TrailerPlayer trailerKey={video.key} {...(onEnded ? { onEnded } : {})} />
+          : <HlsTrailerPlayer url={video.url} pageUrl={video.pageUrl} {...(video.poster ? { poster: video.poster } : {})} {...(onEnded ? { onEnded } : {})} />}
       </div>
     </div>
   );
 }
 
 // Corps commun des sélecteurs : les lignes d'un modèle (pistes, vidéo), lecture d'une piste avec la carte.
-function SelectorBody({ name, slug, title, loadKey, load, onPlayed, onVideo }: BodyProps): ReactElement {
+function SelectorBody({ name, slug, title, loadKey, load, onPlayed, video = null, onVideo }: BodyProps): ReactElement {
   const service = getMusicService();
   const source = getPlayerSource();
   const platform = usePlatform();
   const player = useSyncExternalStore(source?.subscribe ?? noSubscribe, source?.current ?? noPlayer);
   const [model, setModel] = useState<SelectorModel | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [videoOn, setVideoOn] = useState(false);
+  const videoOn = video !== null;
   // Carte affichée : le message d'une lecture d'une carte quittée ou démontée est ignoré.
   const shown = useRef({ slug, title, alive: true });
   shown.current.slug = slug;
@@ -61,7 +62,6 @@ function SelectorBody({ name, slug, title, loadKey, load, onPlayed, onVideo }: B
     let cancelled = false;
     setModel(null);
     setMessage(null);
-    setVideoOn(false);
     loader.current().then(
       (next) => !cancelled && setModel(next),
       () => !cancelled && setModel(EMPTY),
@@ -79,7 +79,7 @@ function SelectorBody({ name, slug, title, loadKey, load, onPlayed, onVideo }: B
   };
   // Une piste de BO rend le disque au plateau avant de partir au poste ; une vidéo, elle, ne va jamais au poste.
   const played = (item: Track) => {
-    if (videoOn) { setVideoOn(false); onVideo?.(null); }
+    if (videoOn) onVideo?.(null);
     onPlayed(item);
   };
 
@@ -94,7 +94,7 @@ function SelectorBody({ name, slug, title, loadKey, load, onPlayed, onVideo }: B
               <li key="video" data-video="" data-playing={videoOn ? '1' : undefined} style={ROW}>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: videoOn ? 700 : 400 }}>{row.label}</span>
                 <button type="button" aria-label={label} title={label} aria-pressed={videoOn}
-                  onClick={() => { const next = !videoOn; setVideoOn(next); onVideo?.(next ? row.video : null); }}
+                  onClick={() => onVideo?.(videoOn ? null : row.video)}
                   style={{ ...ROUND, ...(videoOn ? { background: '#34d399', color: '#0d1117', borderColor: 'transparent' } : {}) }}>
                   <Glyph name="play" size={16} />
                 </button>
@@ -148,7 +148,7 @@ const soundtrackOf = async (key: string, titles: string[]): Promise<Listen | nul
 const titlesOf = (title: string, original?: string): string[] => (original ? [title, original] : [title]);
 
 // Film ou série : bande-annonce (à la place du disque) puis BO (qui va au poste). Le service dit sa panne ; ⓘ reste là pour la fiche.
-export function ScreenSelector({ slug, title, onPlayed, onVideo }: MediaProps): ReactElement {
+export function ScreenSelector({ slug, title, onPlayed, video, onVideo }: MediaProps): ReactElement {
   const load = async (): Promise<SelectorModel> => {
     const screen = getScreenService();
     if (!screen) return screenRows({ status: 'none' }, null);
@@ -156,10 +156,10 @@ export function ScreenSelector({ slug, title, onPlayed, onVideo }: MediaProps): 
     const bo = view.status === 'detail' ? await soundtrackOf(`${view.detail.mediaType}:${view.detail.id}`, titlesOf(view.detail.title, view.detail.originalTitle)) : null;
     return screenRows(view, bo);
   };
-  return <SelectorBody name="screen" slug={slug} title={title} loadKey={`${slug}|${title}`} load={load} onPlayed={onPlayed} onVideo={onVideo} />;
+  return <SelectorBody name="screen" slug={slug} title={title} loadKey={`${slug}|${title}`} load={load} onPlayed={onPlayed} video={video} onVideo={onVideo} />;
 }
 
-export function GameSelector({ slug, title, onPlayed, onVideo }: MediaProps): ReactElement {
+export function GameSelector({ slug, title, onPlayed, video, onVideo }: MediaProps): ReactElement {
   const load = async (): Promise<SelectorModel> => {
     const games = getGameService();
     if (!games) return gameRows({ status: 'none' }, null);
@@ -167,5 +167,5 @@ export function GameSelector({ slug, title, onPlayed, onVideo }: MediaProps): Re
     const bo = view.status === 'detail' ? await soundtrackOf(`game:${view.detail.source}:${view.detail.id}`, titlesOf(view.detail.title, view.detail.originalTitle)) : null;
     return gameRows(view, bo);
   };
-  return <SelectorBody name="game" slug={slug} title={title} loadKey={`${slug}|${title}`} load={load} onPlayed={onPlayed} onVideo={onVideo} />;
+  return <SelectorBody name="game" slug={slug} title={title} loadKey={`${slug}|${title}`} load={load} onPlayed={onPlayed} video={video} onVideo={onVideo} />;
 }

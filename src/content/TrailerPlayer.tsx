@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { embedUrl, thumbnailUrl, watchUrl } from '../core/screen/screen-format';
 import { FullscreenButton, fullscreenFrame, useFullscreen } from './fullscreen';
 import { Glyph } from './Glyphs';
@@ -7,8 +7,25 @@ import { track } from '../core/telemetry/registry';
 const border = '1px solid var(--color-border, rgba(148,163,184,0.5))';
 
 // Miniature + ▶ ; l'iframe YouTube (sans cookies) n'est chargée qu'au clic. Le lien externe reste là si le site la bloque.
-export function TrailerPlayer({ trailerKey }: { trailerKey: string }) {
+// `onEnded` : prévenu à la fin de la vidéo (API des lecteurs YouTube par messages : enablejsapi=1, puis « listening » ; état 0 = terminé).
+export function TrailerPlayer({ trailerKey, onEnded }: { trailerKey: string; onEnded?: () => void }) {
   const [playing, setPlaying] = useState(false);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const endedRef = useRef(onEnded);
+  endedRef.current = onEnded;
+  const watching = onEnded !== undefined;
+  useEffect(() => {
+    if (!playing || !watching) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== frame.current?.contentWindow || typeof event.data !== 'string') return;
+      try {
+        const data = JSON.parse(event.data) as { event?: string; info?: unknown };
+        if (data.event === 'onStateChange' && data.info === 0) endedRef.current?.();
+      } catch { /* message étranger */ }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [playing, watching]);
   const fullscreen = useFullscreen<HTMLDivElement>();
   const embed = embedUrl(trailerKey);
   const thumb = thumbnailUrl(trailerKey);
@@ -19,7 +36,9 @@ export function TrailerPlayer({ trailerKey }: { trailerKey: string }) {
     <div ref={fullscreen.ref} style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', maxHeight: 'min(220px, 32vh)', borderRadius: 8, overflow: 'hidden', background: '#000', border, ...fullscreenFrame(fullscreen.active) }}>
       {playing ? (
         <iframe
-          src={embed}
+          ref={frame}
+          src={watching ? `${embed}&enablejsapi=1` : embed}
+          onLoad={() => { if (watching) frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); }}
           title="Bande-annonce"
           allow="autoplay; encrypted-media; fullscreen"
           allowFullScreen
