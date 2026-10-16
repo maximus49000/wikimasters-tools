@@ -5,6 +5,7 @@ import type { GameBox, GameBoxService } from '../../src/content/game-box-service
 
 const PS4 = { plastic: '#1F4C9E', band: { color: '#1F4C9E', label: 'PS4' } };
 const box = (extra: Partial<GameBox> = {}): GameBox => ({ format: 'bluray', style: PS4, platformName: 'Sony Playstation 4', shots: [], title: 'RDR2', ...extra });
+const spine = { style: PS4, format: 'bluray', title: 'RDR2', console: 'Sony Playstation 4' };
 const serve = (b: GameBox | undefined) => setGameBoxService({ peek: () => b } as unknown as GameBoxService);
 
 describe('gameBoxContent', () => {
@@ -17,12 +18,12 @@ describe('gameBoxContent', () => {
   });
   it('bandeau imprimé seulement si l’image dessinée est le scan TheGamesDB', () => {
     serve(box({ tgdbId: 1, frontUrl: 'scan.jpg', backUrl: 'dos.jpg' }));
-    expect(gameBoxContent('game', 'x', 'scan.jpg')).toEqual({ band: PS4.band, printed: true, backUrl: 'dos.jpg' });
-    expect(gameBoxContent('game', 'x', 'remplacement.webp')).toEqual({ band: PS4.band, backUrl: 'dos.jpg' });
-    expect(gameBoxContent('game', 'x', undefined)).toEqual({ band: PS4.band, backUrl: 'dos.jpg' });
+    expect(gameBoxContent('game', 'x', 'scan.jpg')).toEqual({ band: PS4.band, spine, printed: true, backUrl: 'dos.jpg' });
+    expect(gameBoxContent('game', 'x', 'remplacement.webp')).toEqual({ band: PS4.band, spine, backUrl: 'dos.jpg' });
+    expect(gameBoxContent('game', 'x', undefined)).toEqual({ band: PS4.band, spine, backUrl: 'dos.jpg' });
   });
   it('repli Steam/IGDB (sans tgdbId) : pas de bandeau imprimé', () => {
     serve(box({ frontUrl: 'steam.jpg' }));
-    expect(gameBoxContent('game', 'x', 'steam.jpg')).toEqual({ band: PS4.band });
+    expect(gameBoxContent('game', 'x', 'steam.jpg')).toEqual({ band: PS4.band, spine });
   });
 });

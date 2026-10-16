@@ -7,6 +7,7 @@ import { SHELF_INNER_CM, SHELF_LEVELS, displayOf, isShelfLevel, shelfBoardsIn, s
 import { paletteOf } from '../core/library/styles';
 import { reducedMotion } from './ghibli-sky';
 import { gameBoxContent } from './game-box-content';
+import { GameSpine } from './game-spine';
 import { Icon, ICONS } from './library-ui';
 
 export type ShelfBoardProps = {
@@ -145,7 +146,10 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                 const spine = display === 'spine';
                 // Jeu de dos : l'image du dos de sa boîte ; sans image, l'aplat de la couleur du boîtier.
                 const back = display === 'back';
-                const backUrl = back ? gameBoxContent(p.shape, p.slug).backUrl : undefined;
+                const box = back || spine ? gameBoxContent(p.shape, p.slug) : {};
+                const backUrl = back ? box.backUrl : undefined;
+                // Jeu sur la tranche à boîte connue : la tranche dessinée comme la vraie.
+                const gameSpine = spine ? box.spine : undefined;
                 const spineFont = Math.min(w * 0.6, TITLE_FONT_CM);
                 return (
                   <g
@@ -158,10 +162,12 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                     }}
                     style={{ cursor: info ? 'pointer' : 'default' }}
                   >
-                    <rect x={x} y={y} width={w} height={h} fill={back ? (p.caseColor ?? GAME_CASE) : '#e8e2d6'} stroke={TITLE_INK} strokeWidth={0.3} />
+                    {gameSpine
+                      ? <g transform={`translate(${x} ${y})`}><GameSpine w={w} h={h} {...gameSpine} /></g>
+                      : <rect x={x} y={y} width={w} height={h} fill={back ? (p.caseColor ?? GAME_CASE) : '#e8e2d6'} stroke={TITLE_INK} strokeWidth={0.3} />}
                     {back ? backUrl && <image href={backUrl} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" />
                       : !spine && url && <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" />}
-                    {spine
+                    {gameSpine ? null : spine
                       ? <text data-board-title="" transform={`translate(${x + w / 2} ${y + h - 1}) rotate(-90)`} fontSize={spineFont} dominantBaseline="middle" fill={TITLE_INK}>{titleLines(title, (h - 2) / (spineFont * CHAR_W), 1)[0]}</text>
                       : titleLines(title, w / (TITLE_FONT_CM * CHAR_W)).map((line, k) => (
                         <text key={k} data-board-title="" x={x + w / 2} y={titleY + TITLE_FONT_CM * (k + 1)} fontSize={TITLE_FONT_CM} textAnchor="middle" fill={TITLE_INK}>{line}</text>

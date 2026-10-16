@@ -5,10 +5,11 @@ import { drawSize, type Angle } from '../core/library/footprint';
 import { FURNITURE_MODELS, STEAMPUNK_TRIM } from '../core/library/furniture-models';
 import { CELL_H, CELL_W, openingOf, overhangOf, pieceBounds, projectOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
 import { itemModel, itemPieces, type ItemDisplay, type ItemPlacement, type ItemShape } from '../core/library/item-models';
-import type { BoxFormat } from '../core/game/platform-boxes';
+import type { BoxFormat, CaseStyle } from '../core/game/platform-boxes';
 import type { StandingKind } from '../core/library/library-types';
 import type { PxRect } from '../core/library/room-grid';
 import type { Palette } from '../core/library/styles';
+import { GameSpine, inkOn, lightEdge } from './game-spine';
 import { HifiFace, HifiGrille, HifiTop } from './hifi/hifi-art';
 
 const LIT_SHADE = '#FFE9A8';
@@ -126,7 +127,9 @@ export type FaceDraw = { key: string; draw: (w: number, h: number) => ReactEleme
 // Jeu : `backUrl` image du dos de sa boîte ; `band` bandeau de sa console (null : boîte sans bandeau ; absent : boîte inconnue, bandeau rouge) ;
 // `printed` : la jaquette (scan TheGamesDB) porte déjà son bandeau, la couverture n'en ajoute pas (la tranche, si).
 export type Band = { color: string; label: string };
-export type ItemContent = { url?: string; title?: string; lit?: boolean; face?: FaceDraw; top?: FaceDraw; backUrl?: string; band?: Band | null; printed?: boolean };
+// `spine` : tranche dessinée comme la vraie (boîte connue) ; absente : bandeau et titre d'origine.
+export type SpineData = { style: CaseStyle; format: BoxFormat; title: string; logoUrl?: string; studio?: string; console?: string };
+export type ItemContent = { url?: string; title?: string; lit?: boolean; face?: FaceDraw; top?: FaceDraw; backUrl?: string; band?: Band | null; printed?: boolean; spine?: SpineData };
 
 const cut = (title: string, max: number) => (title.length > max ? `${title.slice(0, Math.max(1, max - 1))}…` : title);
 const GAME_RED = '#E24B4A';
@@ -134,14 +137,6 @@ const PLACEHOLDER = '#A8C5E6';
 
 // Bandeau d'un jeu : celui de sa console quand la boîte est connue (aucun pour une console sans bandeau), sinon le rouge d'origine.
 const gameBand = (content?: ItemContent): Band | null => (content?.band === undefined ? { color: GAME_RED, label: '' } : content.band);
-// Encre lisible sur une couleur #RRGGBB : foncée sur un fond clair, blanche sinon.
-const inkOn = (hex: string): string => {
-  const n = parseInt(hex.slice(1, 7), 16);
-  return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 160 ? '#1B1B1F' : '#FFFFFF';
-};
-// Bandeau clair (PS5 blanc sur boîtier blanc) : cerné d'un trait fin pour rester visible ; foncé : sans trait.
-const lightEdge = (hex: string): object => (inkOn(hex) === '#FFFFFF' ? {} : { stroke: '#1B1B1F', strokeWidth: 0.7, vectorEffect: 'non-scaling-stroke' });
-
 // Décor d'une face, dans son repère propre (w × h mm, haut à gauche) : couverture, tranche, pages ou écran.
 function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; color: string }): ReactElement | null {
   const { w, h, role, shape } = d;
@@ -160,6 +155,7 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
       </>
     );
   }
+  if (role === 'spine' && shape === 'game' && content?.spine) return <GameSpine w={w} h={h} {...content.spine} />;
   if (role === 'spine') {
     // Titre le long de la tranche (du haut vers le bas), taille selon l'épaisseur ; bandeau de la console en haut d'un jeu, jaquette claire d'un CD.
     const gb = shape === 'game' ? gameBand(content) : null;
@@ -363,10 +359,14 @@ function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content,
 }
 
 const sameBand = (a: Band | null | undefined, b: Band | null | undefined): boolean => (a && b ? a.color === b.color && a.label === b.label : a === b);
+const sameSpine = (a: SpineData | undefined, b: SpineData | undefined): boolean => (a && b
+  ? a.format === b.format && a.style.plastic === b.style.plastic && sameBand(a.style.band, b.style.band) && a.title === b.title
+    && a.logoUrl === b.logoUrl && a.studio === b.studio && a.console === b.console
+  : a === b);
 
 // Redessiné seulement si l'objet, sa place, son porteur ou son contenu changent (comparés par valeur : un animal qui bouge ne refait rien).
 export const CarriedItem3D = memo(CarriedItem3DImpl, (a, b) => a.host === b.host && a.angle === b.angle && a.palette === b.palette && a.steampunk === b.steampunk
   && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
   && itemsKey([a.placement]) === itemsKey([b.placement])
   && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit
-  && a.content?.backUrl === b.content?.backUrl && sameBand(a.content?.band, b.content?.band) && a.content?.printed === b.content?.printed && a.content?.face?.key === b.content?.face?.key && a.content?.top?.key === b.content?.top?.key);
+  && a.content?.backUrl === b.content?.backUrl && sameBand(a.content?.band, b.content?.band) && a.content?.printed === b.content?.printed && sameSpine(a.content?.spine, b.content?.spine) && a.content?.face?.key === b.content?.face?.key && a.content?.top?.key === b.content?.top?.key);

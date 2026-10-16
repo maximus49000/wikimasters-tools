@@ -18,6 +18,8 @@ export type GameBox = {
   shots: string[];
   logoUrl?: string;
   title: string;
+  // Studio (premier développeur de la fiche du jeu), imprimé en bas de la tranche.
+  studio?: string;
   summary?: string;
 };
 
@@ -35,6 +37,9 @@ export type GameBoxDeps = {
   // La version d'une carte vient de changer : les affiches déjà retenues pour elle sont à oublier.
   onChanged?: (slug: string) => void;
 };
+
+// Studio lu dans la fiche déjà chargée pour la boîte (aucun appel de plus).
+const studioOf = (detail: GameDetail): { studio?: string } => (detail.developers?.[0] ? { studio: detail.developers[0] } : {});
 
 const RETRY_AFTER_FAILURE_MS = 60_000;
 const FOUND_TTL_MS = 365 * 24 * 3_600_000;
@@ -109,11 +114,12 @@ export function createGameBoxService(deps: GameBoxDeps) {
       ...(detail.coverUrl ? { frontUrl: detail.coverUrl } : {}),
       shots: [],
       title,
+      ...studioOf(detail),
       ...(detail.summary ? { summary: detail.summary } : {}),
     };
   };
 
-  async function fromVersion(version: TgdbVersion, title: string): Promise<GameBox> {
+  async function fromVersion(version: TgdbVersion, title: string, detail: GameDetail): Promise<GameBox> {
     const extra = await extraOf(version.id);
     return {
       format: version.format,
@@ -125,6 +131,7 @@ export function createGameBoxService(deps: GameBoxDeps) {
       shots: (extra?.shots ?? []).map((file) => boxartUrl(file, 'medium')),
       ...(extra?.logo ? { logoUrl: boxartUrl(extra.logo, 'original') } : {}),
       title,
+      ...studioOf(detail),
       ...(version.overview ? { summary: version.overview } : {}),
     };
   }
@@ -143,7 +150,7 @@ export function createGameBoxService(deps: GameBoxDeps) {
     const wanted = (await choices.load())[slug]?.tgdbId;
     const chosen = wanted === undefined ? undefined : all.find((version) => version.id === wanted);
     const version = chosen ?? defaultVersion(matching, formatOfPlatformName(detail.platforms[0] ?? ''));
-    return { box: version ? await fromVersion(version, title) : fallback(detail, title), failed: false };
+    return { box: version ? await fromVersion(version, title, detail) : fallback(detail, title), failed: false };
   }
 
   // Un seul calcul à la fois par carte (box, request et cover partagent le même) ; un calcul lancé avant un
