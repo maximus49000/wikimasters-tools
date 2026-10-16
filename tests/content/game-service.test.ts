@@ -4,6 +4,7 @@ import { createMemoryStore } from '../../src/core/cache/store';
 import { createGameChoiceRepo } from '../../src/core/game/game-repo';
 import type { GameCandidate, GameDetail } from '../../src/core/game/game-detail';
 import { GameError } from '../../src/core/game/errors';
+import { setGameBoxService } from '../../src/content/game-box-registry';
 
 const steamDetail: GameDetail = { source: 'steam', id: 1245620, title: 'ELDEN RING', genres: [], platforms: [], developers: [], pageUrl: 'https://store.steampowered.com/app/1245620' };
 const igdbDetail: GameDetail = { source: 'igdb', id: 1000, title: 'Super Metroid', genres: [], platforms: [], developers: [], coverUrl: 'https://img.test/igdb.jpg', pageUrl: 'https://www.igdb.com/games/super-metroid' };
@@ -191,5 +192,32 @@ describe('createGameService.cover', () => {
 
   it('sans identifiants IGDB, seule la partie Steam répond', async () => {
     expect(await setup({ igdb: false, ids: { igdbSlug: 'super-metroid' } }).service.cover('Jeu', 'Super Metroid')).toEqual([]);
+  });
+});
+
+describe('createGameService.cover : boîte TheGamesDB en premier', () => {
+  const fakeBox = (box: unknown) => ({ box: async () => box }) as never;
+
+  it('rend [frontUrl, ...anciennes images] quand une version existe', async () => {
+    setGameBoxService(fakeBox({ tgdbId: 20, frontUrl: 'https://cdn.test/front.jpg' }));
+    try {
+      const { service } = setup({ ids: { steamId: 5 } });
+      const covers = await service.cover('Jeu', 'Jeu');
+      expect(covers?.[0]).toBe('https://cdn.test/front.jpg');
+      expect(covers?.length).toBeGreaterThan(1);
+    } finally {
+      setGameBoxService(null);
+    }
+  });
+
+  it('inchangé sans version TheGamesDB (repli ou pas de service)', async () => {
+    const { service } = setup({ ids: { steamId: 5 } });
+    const before = await service.cover('Jeu', 'Jeu');
+    setGameBoxService(fakeBox({ frontUrl: 'https://img.test/cover.jpg' }));
+    try {
+      expect(await service.cover('Jeu', 'Jeu')).toEqual(before);
+    } finally {
+      setGameBoxService(null);
+    }
   });
 });

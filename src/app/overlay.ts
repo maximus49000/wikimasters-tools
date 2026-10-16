@@ -90,6 +90,10 @@ import { fetchWikidataScreen } from '../core/screen/wikidata-screen';
 import { createScreenService } from '../content/screen-service';
 import { createGameService } from '../content/game-service';
 import { getGameService, setGameService } from '../content/game-registry';
+import { createGameBoxService } from '../content/game-box-service';
+import { setGameBoxService } from '../content/game-box-registry';
+import { createGameVersionRepo } from '../core/game/game-version-repo';
+import { fetchTgdbImages, fetchTgdbVersions } from '../core/game/tgdb-api';
 import type { GameFetch } from '../core/game/game-detail';
 import { createGameChoiceRepo, createGameRepo } from '../core/game/game-repo';
 import { createIgdbApi } from '../core/game/igdb-api';
@@ -679,6 +683,18 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       onChoice: (slug) => void images.forgetGameArt(slug),
     });
     setGameService(gameService);
+    // Boîtes des jeux : TheGamesDB via le relais (aucune clé dans le client), repli sur Steam/IGDB. Interrogé seulement pour un jeu affiché.
+    setGameBoxService(
+      createGameBoxService({
+        versions: (name) => fetchTgdbVersions(name, gameFetch),
+        images: (ids) => fetchTgdbImages(ids, gameFetch),
+        choices: createGameVersionRepo(store),
+        game: gameService,
+        cache: createTtlCache(store, { ttlMs: 365 * 24 * 3_600_000 }),
+        // Autre version choisie pour une carte : son affiche mémorisée n'est plus la bonne.
+        onChanged: (slug) => void images.forgetGameArt(slug),
+      }),
+    );
     // Affiches des jeux vidéo : même mécanisme que les pochettes d'albums et les affiches de films.
     artSources.game = gameService;
   } catch (error) {
