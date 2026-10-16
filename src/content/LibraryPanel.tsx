@@ -450,6 +450,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const openAt = (id: string, from: Box | null): void => {
     const cur = openedRef.current;
     if (cur && cur.phase !== 'open') return;
+    // La bulle du poste ne reste pas ouverte derrière la couche.
+    setHifiBubbleRoom(null);
     setLandedFor(hifiRef.current.hifiId !== null && hifiRef.current.atHifi === id ? id : null);
     openItem(id, from);
   };
@@ -474,8 +476,19 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     setLandedFor(id);
   };
   // Sans poste, le disque du boîtier tourne quand le lecteur joue une piste de cette carte (rien de mémorisé à part).
+  // Abonné au lecteur seulement quand une couche ou la bulle du poste le montre : sinon chaque relevé du lecteur (5 s en lecture,
+  // 15 s à l'arrêt) referait toute la pièce sur Android (le poste a son propre instantané, voir use-hifi).
   const playerSource = getPlayerSource();
-  const playerNow = useSyncExternalStore(playerSource?.subscribe ?? noSubscribe, playerSource?.current ?? noPlayer);
+  const playerShown = playerSource !== null && (opened !== null || hifiBubbleRoom !== null);
+  const playerNow = useSyncExternalStore(playerShown ? playerSource.subscribe : noSubscribe, playerShown ? playerSource.current : noPlayer);
+  // Objet ouvert disparu de la pièce (rangé ailleurs, carte retirée de la collection) : la couche se ferme d'un coup, avec son
+  // entrée d'historique et l'orientation, et le vol en cours s'arrête (effet sur openedId) ; sinon elle resterait invisible mais active.
+  const openedGone = opened !== null && (() => {
+    const p = (lib ? activeRoom(lib).layout : NO_LAYOUT).find((x) => x.id === opened.placedId);
+    const slug = p && (p.kind === 'stored' || p.kind === 'wall') ? p.slug : undefined;
+    return !slug || !roomCards.cards[slug];
+  })();
+  useEffect(() => { if (openedGone) resetLayers(); }, [openedGone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pièce horizontale en plein écran sur un écran en paysage : la pièce couvre tout l'écran, sans bandes noires.
   const [outsidePhase, setOutsidePhase] = useState<OutsidePhase>('inside');
@@ -1416,10 +1429,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               // Vers le poste si son disque y est, sinon vers sa place d'origine (closeTarget).
               onClose={() => closeItem()}
               onAddHifi={() => {
-                // La couche se ferme par son chemin normal (historique, orientation), puis l'aménagement propose le poste.
-                closeItem();
-                setHifiBubbleRoom(null);
-                setMode('edit');
+                // Aménager ferme la couche et le zoom d'un coup (effet sur editingNow : un seul saut d'historique), puis propose le poste.
+                setMode2('edit');
                 startNew('small-hifi');
               }}
               flight={mine && mine.phase === 'fly' ? { id: mine.id, target: hifiDiscBox(p.kind === 'wall'), onLanded: () => onLanded(mine.id, p.id) } : null}

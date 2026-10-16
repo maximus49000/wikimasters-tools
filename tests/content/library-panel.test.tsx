@@ -437,12 +437,57 @@ describe('LibraryPanel : objet ouvert dans la pièce', () => {
   afterEach(() => { setPlayerSource(null); history.replaceState(null, ''); });
 
   it('sans poste : le bouton 📻 ferme la couche, ouvre Aménager et propose la chaîne hi-fi', async () => {
-    await openShelfCd();
+    await seed([...SHELF, { id: 'd', kind: 'desk', col: 12, row: 10 }]);
+    await click('[data-furniture="shelf"]');
+    await click('[data-zoom-card="Daft_Punk"]');
+    await click('[data-board-card="Daft_Punk"]');
+    const go = vi.spyOn(history, 'go').mockImplementation(() => undefined);
+    const backSpy = vi.spyOn(history, 'back').mockImplementation(() => undefined);
     await click('[data-opened-item] [data-action="add-hifi"]');
     await settle();
     expect(q('[data-action="edit"]')?.getAttribute('aria-pressed')).toBe('true');
-    expect(q('[data-action="place-confirm"]')).not.toBeNull();
-    expect(q('[data-opened-item] [data-item-case]')?.getAttribute('data-phase') ?? 'closing').toBe('closing');
+    expect(q('[data-opened-item]')).toBeNull();
+    // Couche et zoom retirés en un seul saut d'historique (pas de back() en plus : aucune entrée orpheline).
+    expect(go).toHaveBeenCalledTimes(1);
+    expect(go).toHaveBeenCalledWith(-2);
+    expect(backSpy).not.toHaveBeenCalled();
+    // La pose proposée est bien celle de la chaîne hi-fi : elle se pose sur le bureau.
+    await click('[data-furniture="desk"]');
+    await confirm();
+    expect(repo.current()?.rooms[0]?.layout.some((p) => p.kind === 'small' && p.item === 'hifi')).toBe(true);
+  });
+
+  it('objet ouvert retiré de la pièce : la couche se ferme d’un coup avec ses entrées d’historique', async () => {
+    await openShelfCd();
+    expect(q('[data-opened-item="c"]')).not.toBeNull();
+    const go = vi.spyOn(history, 'go').mockImplementation(() => undefined);
+    await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => [SHELF[0]!])); });
+    await settle();
+    expect(q('[data-opened-item]')).toBeNull();
+    expect(go).toHaveBeenCalledWith(-2);
+  });
+
+  it('sans couche ni bulle, la pièce ne s’abonne pas au lecteur (pas de rendu à chaque relevé)', async () => {
+    const view: PlayerView = { linked: true, hidden: false, enabled: true, card: null, track: null };
+    const subscribe = vi.fn(() => () => undefined);
+    setPlayerSource({ current: () => view, subscribe, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
+    await seed(SHELF);
+    expect(subscribe).not.toHaveBeenCalled();
+    await click('[data-furniture="shelf"]');
+    await click('[data-zoom-card="Daft_Punk"]');
+    await click('[data-board-card="Daft_Punk"]');
+    expect(subscribe).toHaveBeenCalled();
+  });
+
+  it('ouvrir un objet ferme la bulle du poste', async () => {
+    const view: PlayerView = { linked: true, hidden: false, enabled: true, card: null, track: null };
+    setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
+    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }, { id: 'w2', kind: 'wall', shape: 'vinyl', col: 4, row: 4, slug: 'Abbey_Road' }]);
+    await click('[data-id="h"]');
+    expect(q('[data-hifi-bubble]')).not.toBeNull();
+    await click('[data-card="Abbey_Road"]');
+    expect(q('[data-opened-item="w2"]')).not.toBeNull();
+    expect(q('[data-hifi-bubble]')).toBeNull();
   });
 
   it('toucher le poste en mode Visiter ouvre la bulle En lecture, ✕ la ferme', async () => {
