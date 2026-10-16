@@ -82,44 +82,51 @@ describe('createSpotifyApi', () => {
   });
 
   it("lance un morceau, un titre d'album dans son contexte, ou reprend la lecture", async () => {
-    const { api, fetch } = setup([empty(204), empty(204), empty(204), empty(204), empty(204)]);
+    const { api, fetch } = setup([empty(204), empty(204), empty(204), empty(204), empty(204), empty(204), empty(204)]);
     await api.play({ uris: ['spotify:track:1'] });
     await api.play({ contextUri: 'spotify:album:alb1', offsetUri: 'spotify:track:9' });
     await api.play(null);
     expect(call(fetch, 0).init.method).toBe('PUT');
     expect(call(fetch, 0).url.pathname).toBe('/v1/me/player/play');
     expect(JSON.parse(call(fetch, 0).init.body as string)).toEqual({ uris: ['spotify:track:1'] });
-    expect(JSON.parse(call(fetch, 2).init.body as string)).toEqual({
+    expect(JSON.parse(call(fetch, 3).init.body as string)).toEqual({
       context_uri: 'spotify:album:alb1',
       offset: { uri: 'spotify:track:9' },
     });
-    expect(call(fetch, 4).init.body).toBeUndefined();
-    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(call(fetch, 6).init.body).toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(7);
   });
 
-  it("coupe « répéter le titre » après le lancement d'une liste (sur le même appareil), jamais à la reprise", async () => {
-    const { api, fetch } = setup([empty(204), empty(204), empty(204)]);
+  it("coupe l'aléatoire puis « répéter le titre » après le lancement d'une liste (sur le même appareil), jamais à la reprise", async () => {
+    const { api, fetch } = setup([empty(204), empty(204), empty(204), empty(204)]);
     await api.play({ contextUri: 'spotify:album:alb1', offsetUri: 'spotify:track:9' });
     expect(call(fetch, 1).init.method).toBe('PUT');
-    expect(call(fetch, 1).url.pathname).toBe('/v1/me/player/repeat');
-    expect(call(fetch, 1).url.searchParams.get('state')).toBe('off');
-    expect(call(fetch, 1).url.searchParams.get('device_id')).toBeNull();
+    expect(call(fetch, 1).url.pathname).toBe('/v1/me/player/shuffle');
+    expect(call(fetch, 1).url.searchParams.get('state')).toBe('false');
+    expect(call(fetch, 2).init.method).toBe('PUT');
+    expect(call(fetch, 2).url.pathname).toBe('/v1/me/player/repeat');
+    expect(call(fetch, 2).url.searchParams.get('state')).toBe('off');
+    expect(call(fetch, 2).url.searchParams.get('device_id')).toBeNull();
     await api.play(null);
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(4);
 
     const phone = setup(
-      [json({ devices: [{ id: 'echo', type: 'Speaker', is_active: true }, { id: 'phone', type: 'Smartphone', is_active: false }] }), empty(204), empty(204)],
+      [json({ devices: [{ id: 'echo', type: 'Speaker', is_active: true }, { id: 'phone', type: 'Smartphone', is_active: false }] }), empty(204), empty(204), empty(204)],
       ['Smartphone'],
     );
     await phone.api.play({ uris: ['spotify:track:1'] });
-    expect(call(phone.fetch, 2).url.pathname).toBe('/v1/me/player/repeat');
+    expect(call(phone.fetch, 2).url.pathname).toBe('/v1/me/player/shuffle');
     expect(call(phone.fetch, 2).url.searchParams.get('device_id')).toBe('phone');
+    expect(call(phone.fetch, 3).url.pathname).toBe('/v1/me/player/repeat');
+    expect(call(phone.fetch, 3).url.searchParams.get('device_id')).toBe('phone');
   });
 
-  it('un refus de couper la répétition ne fait pas échouer la lecture', async () => {
+  it('un refus de Spotify ne fait pas échouer la lecture', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { api } = setup([empty(204), json({ error: { status: 403, message: 'Restricted' } }, 403)]);
+    const { api, fetch } = setup([empty(204), json({ error: { status: 403, message: 'Restricted' } }, 403), empty(204)]);
     await expect(api.play({ uris: ['spotify:track:1'] })).resolves.toBeUndefined();
+    // L'aléatoire refusé n'empêche pas de couper la répétition.
+    expect(call(fetch, 2).url.pathname).toBe('/v1/me/player/repeat');
     warn.mockRestore();
   });
 

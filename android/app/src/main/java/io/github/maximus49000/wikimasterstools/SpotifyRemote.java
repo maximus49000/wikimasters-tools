@@ -198,9 +198,15 @@ final class SpotifyRemote {
         run(id, connected() ? remote.getPlayerApi().queue(uri) : null);
     }
 
-    // Lecture lancée depuis une carte : la liste se lit dans l'ordre, jamais un titre en boucle.
-    void repeatOff(String id) {
-        run(id, connected() ? remote.getPlayerApi().setRepeat(Repeat.OFF) : null);
+    // Lecture lancée depuis une carte : la liste se lit dans l'ordre, ni au hasard ni un titre en boucle.
+    // L'aléatoire est coupé d'abord ; la réponse suit la coupure de la répétition.
+    void inOrder(String id) {
+        if (!connected()) {
+            run(id, null);
+            return;
+        }
+        remote.getPlayerApi().setShuffle(false);
+        run(id, remote.getPlayerApi().setRepeat(Repeat.OFF));
     }
 
     void pause(String id) {
