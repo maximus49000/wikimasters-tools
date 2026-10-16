@@ -161,6 +161,16 @@ export function createSpotifyApi(deps: {
     }
   }
 
+  // Une liste lancée depuis une carte se lit dans l'ordre : on coupe « répéter le titre » (réglage gardé par Spotify).
+  // Un refus ne fait pas échouer la lecture déjà lancée.
+  async function repeatOff(deviceId: string | null): Promise<void> {
+    try {
+      await send('now', 'PUT', '/me/player/repeat', { query: { state: 'off', ...(deviceId ? { device_id: deviceId } : {}) } });
+    } catch (error) {
+      console.warn('[wikimasters-tools]', 'Spotify : répétition non coupée :', error);
+    }
+  }
+
   return {
     async searchTracks(query: string, limit = SEARCH_MAX): Promise<FoundTrack[]> {
       const response = await send('page', 'GET', '/search', { query: { q: query, type: 'track', limit: String(Math.min(limit, SEARCH_MAX)) } });
@@ -223,16 +233,19 @@ export function createSpotifyApi(deps: {
       const here = target ? await preferredDeviceId() : null;
       if (here) {
         await send('now', 'PUT', '/me/player/play', { query: { device_id: here }, body });
+        if (target) await repeatOff(here);
         return;
       }
       try {
         await send('now', 'PUT', '/me/player/play', body ? { body } : {});
+        if (target) await repeatOff(null);
       } catch (error) {
         if (!(error instanceof SpotifyError) || error.code !== 'no-device') throw error;
         // Application ouverte mais sans lecture récente : elle est visible comme appareil sans être « active », on la cible et elle se réveille.
         const deviceId = await firstDeviceId();
         if (!deviceId) throw error;
         await send('now', 'PUT', '/me/player/play', { query: { device_id: deviceId }, ...(body ? { body } : {}) });
+        if (target) await repeatOff(deviceId);
       }
     },
 

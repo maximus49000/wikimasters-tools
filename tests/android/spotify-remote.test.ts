@@ -8,6 +8,7 @@ function fakeWindow() {
     play: vi.fn(),
     skipToIndex: vi.fn(),
     queue: vi.fn(),
+    repeatOff: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
     disconnect: vi.fn(),
@@ -86,6 +87,15 @@ describe('createAndroidSpotifyRemote', () => {
       throw new Error('boum');
     });
     await expect(createAndroidSpotifyRemote(win)!.resume()).rejects.toMatchObject({ code: 'failed' });
+  });
+
+  it('transmet repeatOff', async () => {
+    const { win, bridge } = fakeWindow();
+    const remote = createAndroidSpotifyRemote(win)!;
+    const done = remote.repeatOff();
+    expect(bridge.repeatOff).toHaveBeenCalledWith(expect.any(String));
+    win.__wmtSpotifyRemoteDone!(bridge.repeatOff.mock.calls[0]![0] as string, '');
+    await expect(done).resolves.toBeUndefined();
   });
 
   it('transmet skipToIndex avec la position', async () => {
