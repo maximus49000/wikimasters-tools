@@ -12,6 +12,7 @@ import { bookColor, type ItemPlacement } from '../core/library/item-models';
 import { hiddenAtHome, sleeveKindOf, sleeveRest } from '../core/library/hifi';
 import { SleeveArt, hifiContent, type HifiDiscShow } from './hifi/hifi-art';
 import { useHifiPlayer } from './hifi/use-hifi';
+import { useTrackTempo } from './hifi/use-track-tempo';
 import { MusicNotes, NOTE_INK } from './hifi/music-notes';
 import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
 import { boundingRect, gapRects } from './window-gaps';
@@ -278,6 +279,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const stationAt = station ? topPlacement(station) : null;
   const stationRect = stationAt ? placementRectPx(stationAt.host.kind, stationAt.host.angle, stationAt.host.rect, stationAt.pl, steampunk) : null;
   const notesOn = hifi.spinning && !editing && !hideHifiDisc && roomLayers === 'shown' && drag === null && placing === null;
+  // Tempo de la piste en cours : lu et mesuré seulement tant que les notes sont visibles.
+  const trackBpm = useTrackTempo(notesOn);
   const outline = (rect: PxRect, kind: 'selected' | 'linked' = 'selected') => (
     <rect data-outline={kind} x={rect.x - 3} y={rect.y - 3} width={rect.w + 6} height={rect.h + 6} rx={6} fill="none" stroke="#378ADD" strokeWidth={2.5} strokeDasharray="6 4" />
   );
@@ -800,7 +803,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       {topPets}
       {/* Monté tant que le poste existe : à l'éjection ou à la pause, les notes en vol finissent leur course. */}
       {stationRect && (
-        <MusicNotes anchor={{ x: stationRect.x, y: stationRect.y, w: stationRect.w }} active={notesOn} accent={hifiDisc?.color ?? NOTE_INK} reduced={still} />
+        <MusicNotes anchor={{ x: stationRect.x, y: stationRect.y, w: stationRect.w }} active={notesOn} accent={hifiDisc?.color ?? NOTE_INK} reduced={still} bpm={trackBpm} />
       )}
       {/* Sans fenêtre à ciel (calque « sans ciel ») il n'y a rien à montrer tant qu'aucune lampe n'est allumée : pas de calque à 4 Hz. */}
       {light && ((weatherOn && windows.length > 0) || lightLamps.length > 0) && (

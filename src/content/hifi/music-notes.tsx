@@ -1,6 +1,7 @@
 // Fable n'est pas passé : à reprendre lors d'un rattrapage Fable.
 // Notes de musique qui montent au-dessus de la chaîne pendant la lecture. Une note naît toutes les 700 ms juste au-dessus du haut du
-// poste (jamais sur le lecteur), monte d'environ 110 px en ondulant sur 3,4 s puis s'efface. Style cellulo : aplat, trait encré,
+// poste (jamais sur le lecteur), monte d'environ 110 px en ondulant sur 3,4 s puis s'efface. Au tempo du morceau : k = 120 / BPM
+// (BPM borné à [60, 180], inconnu = 120) multiplie l'intervalle et la durée ; la hauteur de montée ne change pas. Style cellulo : aplat, trait encré,
 // ombre nette décalée, petit reflet sur la tête. Le mouvement est une animation CSS sur chaque petite note (une seule règle
 // `@keyframes` partagée) : React ne redessine qu'à la naissance et à la fin d'une note, jamais à chaque image.
 // À la pause, plus aucune note ne naît ; celles en vol finissent leur course. Mouvement réduit : aucune note.
@@ -8,6 +9,15 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactElement } fr
 
 export const NOTE_EVERY_MS = 700;
 export const NOTE_LIFE_MS = 3400;
+const BPM_REF = 120;
+const BPM_MIN = 60;
+const BPM_MAX = 180;
+// Cadence des notes pour un tempo : naissance toutes les `everyMs`, vie de `lifeMs`. Inconnu (null) = 120 BPM.
+export function noteTiming(bpm: number | null): { everyMs: number; lifeMs: number } {
+  const b = bpm === null || !Number.isFinite(bpm) ? BPM_REF : Math.min(BPM_MAX, Math.max(BPM_MIN, bpm));
+  const k = BPM_REF / b;
+  return { everyMs: NOTE_EVERY_MS * k, lifeMs: NOTE_LIFE_MS * k };
+}
 export const NOTE_INK = '#2C2C2A';
 const OUTLINE = '#22191A';
 // Ombre : aplat plein dans un groupe translucide (les formes qui se chevauchent ne foncent pas).
@@ -24,7 +34,7 @@ const KEYFRAMES =
   + '100%{opacity:0;transform:translate(calc(var(--wm-sway) * -2px),-110px) scale(.9) rotate(calc(var(--wm-sway) * -4deg))}}';
 
 type Glyph = 'croche' | 'double' | 'liees';
-type Note = { id: number; x: number; y: number; color: string; glyph: Glyph; sway: 1 | -1; size: number };
+type Note = { id: number; x: number; y: number; color: string; glyph: Glyph; sway: 1 | -1; size: number; lifeMs: number };
 
 const GLYPHS: readonly Glyph[] = ['croche', 'double', 'croche', 'liees', 'double'];
 
@@ -79,7 +89,7 @@ function NoteNode({ note }: { note: Note }): ReactElement {
   const style = {
     '--wm-sway': note.sway,
     transformBox: 'fill-box', transformOrigin: '50% 100%',
-    animation: `wmt-hifi-note-rise ${NOTE_LIFE_MS}ms cubic-bezier(.25,.6,.4,1) forwards`,
+    animation: `wmt-hifi-note-rise ${Math.round(note.lifeMs)}ms cubic-bezier(.25,.6,.4,1) forwards`,
     opacity: 0,
   } as CSSProperties;
   return (
@@ -95,35 +105,52 @@ function NoteNode({ note }: { note: Note }): ReactElement {
 
 // `anchor` : haut du poste dans le repère de la scène (x, y du bord haut, largeur). `active` : un disque tourne au poste.
 // `accent` : couleur de la pochette en cours (une note sur quatre). `reduced` : mouvement réduit, aucune note.
-export function MusicNotes({ anchor, active, accent, reduced }: { anchor: { x: number; y: number; w: number }; active: boolean; accent: string; reduced: boolean }): ReactElement | null {
+// `bpm` : tempo de la piste (null = inconnu, 120). Un changement de tempo reprogramme la minuterie en attente : la note suivante naît à
+// (dernière naissance + nouvel intervalle), ou tout de suite si ce moment est passé. Chaque note garde la durée posée à sa naissance.
+export function MusicNotes({ anchor, active, accent, reduced, bpm }: { anchor: { x: number; y: number; w: number }; active: boolean; accent: string; reduced: boolean; bpm: number | null }): ReactElement | null {
   const [notes, setNotes] = useState<Note[]>([]);
   const count = useRef(0);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   // Lu à la naissance de chaque note : un déplacement du poste ou un changement d'album n'arrête pas la cadence.
-  const live = useRef({ anchor, accent });
-  live.current = { anchor, accent };
+  const live = useRef({ anchor, accent, bpm });
+  live.current = { anchor, accent, bpm };
+  const rearm = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!active || reduced) return undefined;
-    const every = setInterval(() => {
+    let last = Date.now();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const arm = () => {
+      if (timer !== null) clearTimeout(timer);
+      const wait = Math.max(0, Math.ceil(last + noteTiming(live.current.bpm).everyMs - Date.now()));
+      timer = setTimeout(birth, wait);
+    };
+    const birth = () => {
+      last = Date.now();
       const n = count.current++;
-      const { anchor: a, accent: c } = live.current;
+      const { anchor: a, accent: c, bpm: tempo } = live.current;
+      const { lifeMs } = noteTiming(tempo);
       // Abscisse étalée sur la largeur du poste (suite à faible écart, sans hasard), en gardant une marge sur les bords.
       const t = (n * 0.618034 + 0.31) % 1;
       const x = Math.round((a.x + a.w * (0.18 + 0.64 * t)) * 10) / 10;
       const note: Note = {
         id: n, x, y: a.y - 5, color: n % 4 === 3 ? c : NOTE_INK,
-        glyph: GLYPHS[n % GLYPHS.length] ?? 'croche', sway: n % 2 === 0 ? 1 : -1, size: 0.9 + ((n * 0.37) % 1) * 0.3,
+        glyph: GLYPHS[n % GLYPHS.length] ?? 'croche', sway: n % 2 === 0 ? 1 : -1, size: 0.9 + ((n * 0.37) % 1) * 0.3, lifeMs,
       };
       setNotes((list) => [...list, note]);
       const end = setTimeout(() => {
         timers.current.delete(end);
         setNotes((list) => list.filter((m) => m.id !== note.id));
-      }, NOTE_LIFE_MS);
+      }, lifeMs);
       timers.current.add(end);
-    }, NOTE_EVERY_MS);
-    return () => clearInterval(every);
+      arm();
+    };
+    rearm.current = arm;
+    arm();
+    return () => { rearm.current = null; if (timer !== null) clearTimeout(timer); };
   }, [active, reduced]);
+  // Changement de tempo en cours de route : la minuterie en attente est reprogrammée.
+  useEffect(() => { rearm.current?.(); }, [bpm]);
   // Les fins de course ne sont annulées qu'au démontage : à la pause, les notes en vol finissent leur montée.
   useEffect(() => {
     const set = timers.current;
