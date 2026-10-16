@@ -11,7 +11,7 @@ import type { Layout } from '../../src/core/library/library-types';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const track = (playing: boolean) => ({ uri: 'u', title: 'One More Time', artist: 'Daft Punk', imageUrl: null, playing });
-const viewOf = (playing: boolean | null): PlayerView => ({ linked: true, hidden: false, enabled: true, card: { slug: 'Daft_Punk', title: 'Discovery' }, track: playing === null ? null : track(playing) });
+const viewOf = (playing: boolean | null, withCard = true): PlayerView => ({ linked: true, hidden: false, enabled: true, card: withCard ? { slug: 'Daft_Punk', title: 'Discovery' } : null, track: playing === null ? null : track(playing) });
 
 let root: Root | null = null;
 let container: HTMLElement;
@@ -60,8 +60,18 @@ describe('bulle de la chaîne hi-fi', () => {
     expect(toggle).not.toHaveBeenCalled();
     expect(setCard).toHaveBeenCalledWith(null);
   });
-  it('rien en lecture : message et ✕ seulement', () => {
-    const { onClose } = mount(viewOf(null));
+  it('disque au poste sans piste (Tidal, Spotify à l’arrêt) : titre de l’album, ⏏ sans ⏯', () => {
+    const { onEject } = mount(viewOf(null));
+    expect(container.textContent).toContain('Discovery');
+    expect(container.textContent).toContain('Rien en lecture');
+    expect(btn('toggle')).toBeNull();
+    act(() => btn('eject')!.click());
+    expect(toggle).not.toHaveBeenCalled();
+    expect(setCard).toHaveBeenCalledWith(null);
+    expect(onEject).toHaveBeenCalled();
+  });
+  it('rien en lecture ni disque : message et ✕ seulement', () => {
+    const { onClose } = mount(viewOf(null, false));
     expect(container.textContent).toContain('Rien en lecture');
     expect(btn('toggle')).toBeNull();
     expect(btn('eject')).toBeNull();

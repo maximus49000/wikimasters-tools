@@ -2372,11 +2372,11 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-library-entry]',
         title: 'Le poste et la pochette',
-        text: 'Touchez la pochette couchée devant la chaîne : le boîtier se rouvre, plateau vide (le disque est sur le poste). Touchez la chaîne : une bulle « En lecture » propose ⏯ pause, ⏏ éjecter et ✕ arrêter.',
+        text: 'Touchez la pochette couchée devant la chaîne : le boîtier se rouvre, plateau vide (le disque est sur le poste). Touchez la chaîne : une bulle « En lecture » propose ⏯ pause, ⏏ éjecter et ✕ fermer la bulle.',
         details: [
-          { label: 'Comment faire', text: '⏏ ramène le disque dans son boîtier ; ✕ arrête la lecture. Des notes de musique s’échappent de la chaîne tant que la piste joue.' },
+          { label: 'Comment faire', text: '⏏ met la lecture en pause et ramène le disque dans son boîtier ; ✕ ferme seulement la bulle, la musique continue. Des notes de musique s’échappent de la chaîne tant que la piste joue.' },
           { label: 'Sans chaîne', text: 'Si aucune chaîne n’est posée, le disque tourne dans le boîtier, et le bouton 📻 propose d’en ajouter une.' },
-          { label: 'Limites', text: 'Avec Tidal, la pause n’est pas suivie : la bulle ne reflète pas toujours l’état réel de la lecture.' },
+          { label: 'Limites', text: 'Avec Tidal (lien externe), le disque va bien au poste mais la lecture et la pause n’y sont pas suivies : la bulle affiche l’album avec « Rien en lecture », et le disque reste au poste jusqu’à ⏏. Pareil avec Spotify à l’arrêt ou sans appareil.' },
         ],
         scene: { page: '/collection', closeWindows: true },
       },

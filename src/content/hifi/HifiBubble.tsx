@@ -24,6 +24,9 @@ export function HifiBubble({ view, albumTitle, onClose, onEject, anchor }: Props
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   const track = view.track;
+  // Un disque est au poste dès qu'une carte est mémorisée, même sans piste (Tidal, Spotify à l'arrêt ou sans appareil) :
+  // ⏏ reste alors disponible pour le rendre, sinon il resterait coincé sur le poste.
+  const loaded = view.card !== null || track !== null;
   const eject = (): void => {
     const source = getPlayerSource();
     if (track?.playing) void source?.toggle();
@@ -40,12 +43,17 @@ export function HifiBubble({ view, albumTitle, onClose, onEject, anchor }: Props
             <span data-field="artist" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.artist}</span>
             {albumTitle && <span data-field="album" style={{ opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{albumTitle}</span>}
           </>
+        ) : view.card ? (
+          <>
+            <strong data-field="album" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{albumTitle ?? view.card.title}</strong>
+            <span data-field="empty" style={{ opacity: 0.75 }}>Rien en lecture</span>
+          </>
         ) : (
           <span data-field="empty">Rien en lecture</span>
         )}
       </div>
       {track && <button type="button" className="wmt-lib-btn" data-action="toggle" aria-label="Lecture / pause" title="Lecture / pause" onClick={() => void getPlayerSource()?.toggle()} style={BUTTON}>⏯</button>}
-      {track && <button type="button" className="wmt-lib-btn" data-action="eject" aria-label="Éjecter le disque" title="Éjecter le disque" onClick={eject} style={BUTTON}>⏏</button>}
+      {loaded && <button type="button" className="wmt-lib-btn" data-action="eject" aria-label="Éjecter le disque" title="Éjecter le disque" onClick={eject} style={BUTTON}>⏏</button>}
       <button type="button" className="wmt-lib-btn" data-action="close" aria-label="Fermer" title="Fermer" onClick={onClose} style={BUTTON}>✕</button>
     </div>
   );
