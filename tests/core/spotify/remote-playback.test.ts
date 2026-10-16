@@ -19,7 +19,7 @@ function setup(options: { connectError?: (RemoteErrorCode | null)[]; status?: st
     play: vi.fn(async () => undefined),
     skipToIndex: vi.fn(async () => undefined),
     queue: vi.fn(async (_uri: string) => undefined),
-    repeatOff: vi.fn(async () => undefined),
+    inOrder: vi.fn(async () => undefined),
     pause: vi.fn(async () => undefined),
     resume: vi.fn(async () => undefined),
     disconnect: vi.fn(),
@@ -70,18 +70,18 @@ describe('createRemotePlayback.play', () => {
     expect(remote.resume).toHaveBeenCalled();
   });
 
-  it('liste lancée depuis une carte : coupe « répéter le titre » après le lancement, pas à la reprise', async () => {
+  it('liste lancée depuis une carte : lecture dans l’ordre imposée après le lancement, pas à la reprise', async () => {
     const { playback, remote } = setup();
     await playback.play({ contextUri: 'spotify:album:A', offsetIndex: 1 });
-    expect(remote.repeatOff).toHaveBeenCalledTimes(1);
-    expect(remote.skipToIndex.mock.invocationCallOrder[0]!).toBeLessThan(remote.repeatOff.mock.invocationCallOrder[0]!);
+    expect(remote.inOrder).toHaveBeenCalledTimes(1);
+    expect(remote.skipToIndex.mock.invocationCallOrder[0]!).toBeLessThan(remote.inOrder.mock.invocationCallOrder[0]!);
     await playback.play(null);
-    expect(remote.repeatOff).toHaveBeenCalledTimes(1);
+    expect(remote.inOrder).toHaveBeenCalledTimes(1);
   });
 
-  it('un refus de couper la répétition ne fait pas échouer la lecture (reste sur le SDK)', async () => {
+  it('un refus de la lecture dans l’ordre ne fait pas échouer la lecture (reste sur le SDK)', async () => {
     const { playback, remote, api } = setup();
-    remote.repeatOff.mockRejectedValueOnce(new RemoteError('failed'));
+    remote.inOrder.mockRejectedValueOnce(new RemoteError('failed'));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await playback.play({ uris: ['spotify:track:1'] });
     expect(remote.play).toHaveBeenCalledWith('spotify:track:1');

@@ -310,9 +310,9 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void repeatOff(String id) {
+        public void inOrder(String id) {
             String callId = clean(id);
-            runOnUiThread(() -> spotifyRemote.repeatOff(callId));
+            runOnUiThread(() -> spotifyRemote.inOrder(callId));
         }
 
         @JavascriptInterface
