@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactElement } from 'react';
 import type { FurnitureKind, Placed, Room, TimeSetting, WeatherState } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
@@ -92,6 +92,8 @@ type Props = {
   cards?: Record<string, { title: string; imageUrl?: string }>;
   // Toucher sur un objet accroché, rangé ou sur l'écran de l'ordinateur.
   onCardTap?: (id: string) => void;
+  // Pochette couchée devant la chaîne hi-fi touchée (en visite seulement) : `placedId` est l'objet au poste, `el` le dessin touché.
+  onSleeveTap?: (placedId: string, el: Element) => void;
   // Ciel et heure vus à travers les fenêtres ; sans eux, un ciel d'après-midi.
   sceneView?: SceneView;
   // Chats de la pièce : `behind` = nombre de meubles debout dessinés avant lui. Leur position est posée par la boucle d'animation (attribut transform).
@@ -143,7 +145,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, linkedId = null, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, fitScreen = false, fillHeight, outside = false, roomLayers = 'shown' }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, linkedId = null, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, onSleeveTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, fitScreen = false, fillHeight, outside = false, roomLayers = 'shown' }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -216,7 +218,16 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   // Occulteurs et lampes allumées du calque de lumière ; la signature change quand l'un d'eux bouge ou s'allume.
   // HEIGHT est une constante : seuls le layout et wallH font varier la géométrie.
   const lightGeom = { wallH, floorH: HEIGHT - wallH };
-  const lightBoxes = useMemo(() => boxesOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Chaîne hi-fi : l'objet dont le disque est au poste (déduit du lecteur) quitte sa place d'origine ; son disque tourne sur le poste
+  // et sa pochette est couchée devant.
+  const { state: hifi, player } = useHifiPlayer(room.layout);
+  const awayFromHome = useMemo(() => hiddenAtHome(hifi), [hifi]);
+  // L'objet parti au poste n'arrête plus la lumière à sa place d'origine.
+  const lightLayout = useMemo(
+    () => (awayFromHome.size === 0 ? room.layout : room.layout.filter((p) => !awayFromHome.has(p.id))),
+    [room.layout, awayFromHome],
+  );
+  const lightBoxes = useMemo(() => boxesOf(lightLayout, lightGeom), [lightLayout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
   const lightLamps = useMemo(() => lampsOf(room.layout, lightGeom), [room.layout, wallH]); // eslint-disable-line react-hooks/exhaustive-deps
   const lightSignature = useMemo(() => signatureOf(lightBoxes, lightLamps), [lightBoxes, lightLamps]);
   // Identité stable (sinon le calque serait relancé à chaque rendu) : la disposition est lue par référence.
@@ -241,10 +252,6 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     const url = cards[slug]?.imageUrl;
     return images?.displayUrl(slug, url) ?? url;
   };
-  // Chaîne hi-fi : l'objet dont le disque est au poste (déduit du lecteur) quitte sa place d'origine ; son disque tourne sur le poste
-  // et sa pochette est couchée devant.
-  const { state: hifi, view: player } = useHifiPlayer(room.layout);
-  const awayFromHome = useMemo(() => hiddenAtHome(hifi), [hifi]);
   const atHifi = hifi.atHifi !== null ? (room.layout.find((p) => p.id === hifi.atHifi) ?? null) : null;
   const atHifiSlug = atHifi && 'slug' in atHifi ? atHifi.slug : null;
   const sleeveKind = atHifi ? sleeveKindOf(atHifi) : null;
@@ -538,7 +545,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     const px = (p: [number, number, number]) => hostPointPx('desk', host.angle, host.rect, p);
     const mid = rest.bottom.reduce<[number, number, number]>((s, p) => [s[0] + p[0] / 4, s[1] + p[1] / 4, s[2] + p[2] / 4], [0, 0, 0]);
     const node = (
-      <g key={`sleeve-${atHifi.id}`} data-hifi-sleeve={atHifiSlug} data-sleeve-of={atHifi.id} onClick={() => onCardTap?.(atHifi.id)} opacity={drag?.id === hostId ? 0.3 : undefined} style={{ cursor: 'pointer', userSelect: 'none', WebkitTouchCallout: 'none' }}>
+      <g key={`sleeve-${atHifi.id}`} data-hifi-sleeve={atHifiSlug} data-sleeve-of={atHifi.id}
+        // En Aménager, la pochette laisse passer les gestes vers le bureau (le soulever, l'appui long).
+        {...(editing ? { pointerEvents: 'none' } : { onClick: (event: MouseEvent<SVGGElement>) => onSleeveTap?.(atHifi.id, event.currentTarget) })}
+        opacity={drag?.id === hostId ? 0.3 : undefined} style={{ cursor: editing ? 'default' : 'pointer', userSelect: 'none', WebkitTouchCallout: 'none' }}>
         <SleeveArt top={rest.top.map(px)} bottom={rest.bottom.map(px)} w={rest.w} d={rest.d} kind={sleeveKind} cover={imageOf(atHifiSlug) ?? null} color={bookColor(atHifiSlug)} title={cards[atHifiSlug]?.title ?? ''} />
       </g>
     );
