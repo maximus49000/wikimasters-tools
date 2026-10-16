@@ -384,7 +384,7 @@ export const canShiftRow = (layout: Layout, cols: number, id: string, delta: 1 |
 export function canPlaceComputer(layout: Layout, deskId: string, ignoreId?: string): boolean {
   const desk = layout.find((p) => p.id === deskId);
   if (!desk || desk.kind !== 'desk') return false;
-  if (layout.some((p) => p.kind === 'small' && p.hostId === deskId && COMPUTER_SLOTS.has(p.slot))) return false;
+  if ([...usedSlots(layout, deskId)].some((s) => COMPUTER_SLOTS.has(s))) return false;
   return !layout.some((p) => p.kind === 'computer' && p.deskId === deskId && p.id !== ignoreId);
 }
 

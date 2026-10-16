@@ -4,7 +4,7 @@ import { ITEM_MODELS } from '../../../src/core/library/item-models';
 import { createInitialState, parseStoredLibraryState } from '../../../src/core/library/library-book';
 import type { Layout } from '../../../src/core/library/library-types';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
-import { canHostSmall, firstFreeSurfaceSlot, moveSmall, placeSmall, smallSpan, surfaceSlotRectOn } from '../../../src/core/library/room-grid';
+import { canHostSmall, canPlaceComputer, firstFreeSurfaceSlot, moveComputer, moveSmall, placeComputer, placeSmall, smallSpan, surfaceSlotRectOn } from '../../../src/core/library/room-grid';
 
 const desk: Layout = [{ id: 'd', kind: 'desk', col: 4, row: 13 }];
 const shelf: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 8 }];
@@ -88,5 +88,18 @@ describe('chaîne hi-fi : deux emplacements consécutifs sur un bureau', () => {
     expect(parseStoredLibraryState(withLayout([sh, { ...hifi, hostId: 's', slot: 0 }]))!.rooms[0]!.layout.map((p) => p.id)).toEqual(['s']);
     const pc = { id: 'c', kind: 'computer', deskId: 'd' };
     expect(parseStoredLibraryState(withLayout([d, pc, { ...hifi, slot: 0 }]))!.rooms[0]!.layout.map((p) => p.id)).toEqual(['d', 'c']);
+  });
+});
+
+describe('ordinateur et chaîne hi-fi', () => {
+  const withHifi: Layout = [...desk, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }, { id: 'd2', kind: 'desk', col: 20, row: 13 }, { id: 'c', kind: 'computer', deskId: 'd2' }];
+  it('refuse un ordinateur sur un bureau dont la chaîne couvre l’emplacement 1', () => {
+    expect(canPlaceComputer(withHifi, 'd')).toBe(false);
+    expect(placeComputer(withHifi, 'd', 'n')).toBeNull();
+    expect(moveComputer(withHifi, 'c', 'd')).toBeNull();
+  });
+  it('refuse aussi quand la chaîne est en 2-3 (couvre l’emplacement 2)', () => {
+    const l: Layout = [...desk, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 2 }];
+    expect(canPlaceComputer(l, 'd')).toBe(false);
   });
 });
