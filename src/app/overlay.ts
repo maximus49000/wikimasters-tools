@@ -690,7 +690,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         images: (ids) => fetchTgdbImages(ids, gameFetch),
         choices: createGameVersionRepo(store),
         game: gameService,
-        cache: createTtlCache(store, { ttlMs: 365 * 24 * 3_600_000 }),
+        store,
         // Autre version choisie pour une carte : son affiche mémorisée n'est plus la bonne.
         onChanged: (slug) => void images.forgetGameArt(slug),
       }),

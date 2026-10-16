@@ -20,7 +20,7 @@ function setup(over: { versions?: TgdbVersion[] | null; view?: unknown; now?: ()
   const service = createGameBoxService({
     versions, images, choices, onChanged,
     game: { view: async () => (over.view ?? { status: 'detail', detail }) as never },
-    cache: { getOrLoad: (_key, loader) => loader() },
+    store: createMemoryStore(),
     ...(over.now ? { now: over.now } : {}),
   });
   return { service, versions, images, choices, onChanged };
@@ -93,34 +93,65 @@ describe('createGameBoxService.request', () => {
 });
 
 describe('createGameBoxService : mise en cache et choix', () => {
-  it('une réponse vide n’est plus servie après 7 jours, une réponse trouvée est gardée', async () => {
-    const store = new Map<string, unknown>();
+  it('vide 7 jours, puis trouvé : gardé 365 jours sous la même clé', async () => {
     let t = 0;
-    const versions = vi.fn(async () => [] as TgdbVersion[]);
+    let found = false;
+    const versions = vi.fn(async () => (found ? [pc] : ([] as TgdbVersion[])));
     const service = createGameBoxService({
       versions, images: async () => ({}), choices: createGameVersionRepo(createMemoryStore()),
       game: { view: async () => ({ status: 'detail', detail }) },
-      cache: { getOrLoad: async (key: string, loader: () => Promise<unknown>) => (store.has(key) ? store.get(key) : (store.set(key, await loader()), store.get(key))) } as never,
+      store: createMemoryStore(),
       now: () => t,
     });
     await service.box('Jeu', 'Hollow Knight');
-    await service.box('Jeu', 'Hollow Knight');
+    t = 3 * 24 * 3_600_000;
+    await service.versions('Jeu', 'Hollow Knight');
     expect(versions).toHaveBeenCalledTimes(1);
+    found = true;
     t = 8 * 24 * 3_600_000;
-    await service.box('Jeu', 'Hollow Knight');
+    await service.versions('Jeu', 'Hollow Knight');
+    expect(versions).toHaveBeenCalledTimes(2);
+    t = 16 * 24 * 3_600_000;
+    expect((await service.versions('Jeu', 'Hollow Knight')).length).toBe(1);
     expect(versions).toHaveBeenCalledTimes(2);
   });
 
-  it('chooseVersion / resetVersion oublient l’affiche et préviennent', async () => {
-    const { service, choices, onChanged } = setup();
+  it('les captures sont mémorisées par identifiant, jamais une panne', async () => {
+    const { service, images, choices } = setup();
+    await choices.save('Jeu', { tgdbId: 20 });
+    await service.box('Jeu', 'Hollow Knight');
+    await service.box('Jeu', 'Hollow Knight');
+    expect(images).toHaveBeenCalledTimes(1);
+    images.mockResolvedValue(null as never);
+    await choices.save('Autre', { tgdbId: 10 });
+    expect((await service.box('Autre', 'Hollow Knight'))?.shots).toEqual([]);
+  });
+
+  it('erreur de la fiche : échec, nouvel essai après 60 s seulement', async () => {
+    let t = 0;
+    const { service } = setup({ view: { status: 'error', message: 'x' }, now: () => t });
+    service.request('Jeu', 'x');
+    await vi.waitFor(() => expect(service.peek('Jeu')).toBeNull());
+    t = 61_000;
     const listener = vi.fn();
     service.subscribe(listener);
-    await service.chooseVersion('Jeu', 20);
-    expect(await choices.load()).toEqual({ Jeu: { tgdbId: 20 } });
+    service.request('Jeu', 'x');
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(1));
+  });
+
+  it('chooseVersion recalcule seul ; un calcul plus ancien ne gagne pas', async () => {
+    const { service, onChanged } = setup();
+    const listener = vi.fn();
+    service.request('Jeu', 'Hollow Knight');
+    service.subscribe(listener);
+    await service.chooseVersion('Jeu', 10); // la première demande est encore en cours
+    await vi.waitFor(() => expect(service.peek('Jeu')?.tgdbId).toBe(10));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(service.peek('Jeu')?.tgdbId).toBe(10);
     await service.resetVersion('Jeu');
-    expect(await choices.load()).toEqual({});
+    await vi.waitFor(() => expect(service.peek('Jeu')?.tgdbId).toBe(20));
     expect(onChanged).toHaveBeenCalledTimes(2);
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalled();
   });
 
   it('versions() liste les versions du jeu', async () => {

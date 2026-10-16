@@ -6,7 +6,7 @@
 // car les images des API passent toujours devant les images de remplacement.
 export type CardImage = { url: string | null; candidates: string[]; rejected: string[]; art?: true; artCheckedAt?: number; artV?: number };
 
-// À augmenter quand une source officielle est ajoutée (1 : Spotify, TMDB ; 2 : jeux vidéo).
+// À augmenter quand une source officielle est ajoutée (1 : Spotify, TMDB ; 2 : jeux vidéo ; 3 : livres ; 4 : devant TheGamesDB).
 export const ART_VERSION = 4;
 
 // Clé : slug de l'article Wikipédia.

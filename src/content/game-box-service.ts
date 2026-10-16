@@ -1,4 +1,4 @@
-import type { TtlCache } from '../core/cache/ttl-cache';
+import type { KeyValueStore } from '../core/cache/store';
 import type { GameDetail } from '../core/game/game-detail';
 import { normalizeTitle } from '../core/game/game-format';
 import type { GameVersionRepo } from '../core/game/game-version-repo';
@@ -21,52 +21,81 @@ export type GameBox = {
   summary?: string;
 };
 
-type Images = Record<number, { shots: string[]; logo?: string }>;
+type Extra = { shots: string[]; logo?: string };
+type Images = Record<number, Extra>;
 
 export type GameBoxDeps = {
   versions: (name: string) => Promise<TgdbVersion[] | null>;
   images: (ids: number[]) => Promise<Images | null>;
   choices: Pick<GameVersionRepo, 'load' | 'save' | 'clear'>;
   game: { view(slug: string, title: string): Promise<GameView> };
-  // Réponses de TheGamesDB : 365 jours (une réponse vide n'en garde que 7, voir plus bas).
-  cache: Pick<TtlCache, 'getOrLoad'>;
+  // Réponses de TheGamesDB gardées ici : 365 jours (une réponse vide n'en garde que 7).
+  store: KeyValueStore;
   now?: () => number;
   // La version d'une carte vient de changer : les affiches déjà retenues pour elle sont à oublier.
   onChanged?: (slug: string) => void;
 };
 
 const RETRY_AFTER_FAILURE_MS = 60_000;
+const FOUND_TTL_MS = 365 * 24 * 3_600_000;
 const EMPTY_TTL_MS = 7 * 24 * 3_600_000;
 
 type Known = { box: GameBox | null; failedAt?: number };
 type Cached = { list: TgdbVersion[]; at: number };
+type CachedImages = Extra & { at: number };
 
 export function createGameBoxService(deps: GameBoxDeps) {
-  const { versions, images, choices, game, cache, onChanged } = deps;
+  const { versions, images, choices, game, store, onChanged } = deps;
   const now = deps.now ?? (() => Date.now());
   const known = new Map<string, Known>();
-  const running = new Map<string, Promise<void>>();
+  const running = new Map<string, Promise<GameBox | null>>();
+  const generation = new Map<string, number>();
+  const lastTitle = new Map<string, string>();
+  const loading = new Map<string, Promise<TgdbVersion[] | null>>();
   const listeners = new Set<() => void>();
   const notify = (): void => listeners.forEach((listener) => listener());
+  const generationOf = (slug: string): number => generation.get(slug) ?? 0;
 
-  // Versions d'un nom : null = panne (jamais mémorisée) ; [] = rien trouvé (mémorisé 7 jours seulement,
-  // car une erreur amont douce peut revenir sous cette forme) ; sinon mémorisé 365 jours.
+  async function loadVersions(name: string, key: string): Promise<TgdbVersion[] | null> {
+    const list = await versions(name);
+    if (list === null) return null;
+    await store.set<Cached>(key, { list, at: now() });
+    return list;
+  }
+
+  // Versions d'un nom : null = panne (jamais mémorisée) ; sinon mémorisé 365 jours, ou 7 jours si rien n'a été trouvé
+  // (une erreur amont douce peut revenir sous cette forme). Une seule clé, réécrite à l'expiration.
   async function lookup(name: string): Promise<TgdbVersion[] | null> {
     const normalized = normalizeTitle(name);
     if (normalized === '') return [];
-    const load = async (): Promise<Cached> => {
-      const list = await versions(name);
-      if (list === null) throw new Error('TheGamesDB indisponible');
-      return { list, at: now() };
-    };
+    const key = `game-tgdb-${normalized}`;
     try {
-      let entry = await cache.getOrLoad(`game-tgdb-${normalized}`, load);
-      if (entry.list.length === 0 && now() - entry.at >= EMPTY_TTL_MS) {
-        entry = await cache.getOrLoad(`game-tgdb-${normalized}-${Math.floor(now() / EMPTY_TTL_MS)}`, load);
+      const entry = await store.get<Cached>(key);
+      if (entry && entry.at <= now()) {
+        const age = now() - entry.at;
+        if (age < (entry.list.length > 0 ? FOUND_TTL_MS : EMPTY_TTL_MS)) return entry.list;
       }
-      return entry.list;
+      const existing = loading.get(key);
+      if (existing) return await existing;
+      const promise = loadVersions(name, key).finally(() => loading.delete(key));
+      loading.set(key, promise);
+      return await promise;
     } catch {
       return null;
+    }
+  }
+
+  // Captures et logo d'une version, mémorisés par identifiant (une panne n'est jamais mémorisée).
+  async function extraOf(id: number): Promise<Extra | undefined> {
+    const key = `game-tgdb-img-${id}`;
+    try {
+      const entry = await store.get<CachedImages>(key);
+      if (entry && entry.at <= now() && now() - entry.at < FOUND_TTL_MS) return entry;
+      const found = (await images([id]))?.[id];
+      if (found) await store.set<CachedImages>(key, { ...found, at: now() });
+      return found;
+    } catch {
+      return undefined;
     }
   }
 
@@ -85,12 +114,7 @@ export function createGameBoxService(deps: GameBoxDeps) {
   };
 
   async function fromVersion(version: TgdbVersion, title: string): Promise<GameBox> {
-    let extra: Images[number] | undefined;
-    try {
-      extra = (await images([version.id]))?.[version.id];
-    } catch {
-      extra = undefined;
-    }
+    const extra = await extraOf(version.id);
     return {
       format: version.format,
       style: version.style,
@@ -107,9 +131,10 @@ export function createGameBoxService(deps: GameBoxDeps) {
 
   const titlesOf = (detail: GameDetail, title: string): string[] => [title, detail.title, ...(detail.originalTitle ? [detail.originalTitle] : [])];
 
-  // `failed` : TheGamesDB n'a pas pu répondre (la boîte rendue est alors le repli).
+  // `failed` : une source n'a pas pu répondre (TheGamesDB : la boîte rendue est le repli ; erreur de la fiche : null).
   async function compute(slug: string, title: string): Promise<{ box: GameBox | null; failed: boolean }> {
     const view = await game.view(slug, title);
+    if (view.status === 'error') return { box: null, failed: true };
     if (view.status !== 'detail') return { box: null, failed: false };
     const detail = view.detail;
     const all = await lookup(detail.title);
@@ -121,32 +146,53 @@ export function createGameBoxService(deps: GameBoxDeps) {
     return { box: version ? await fromVersion(version, title) : fallback(detail, title), failed: false };
   }
 
-  async function box(slug: string, title: string): Promise<GameBox | null> {
-    try {
-      const out = await compute(slug, title);
-      known.set(slug, { box: out.box, ...(out.failed ? { failedAt: now() } : {}) });
-      return out.box;
-    } catch {
-      return null;
-    }
+  // Un seul calcul à la fois par carte (box, request et cover partagent le même) ; un calcul lancé avant un
+  // changement de version ne peut pas écraser le résultat plus récent.
+  function start(slug: string, title: string): Promise<GameBox | null> {
+    const existing = running.get(slug);
+    if (existing) return existing;
+    lastTitle.set(slug, title);
+    const gen = generationOf(slug);
+    const promise: Promise<GameBox | null> = compute(slug, title)
+      .then((out) => {
+        if (generationOf(slug) !== gen) return out.box;
+        known.set(slug, { box: out.box, ...(out.failed ? { failedAt: now() } : {}) });
+        return out.box;
+      })
+      .catch((): GameBox | null => null)
+      .finally(() => {
+        if (running.get(slug) === promise) running.delete(slug);
+      });
+    running.set(slug, promise);
+    void promise.then(() => {
+      if (generationOf(slug) === gen) notify();
+    });
+    return promise;
+  }
+
+  // Recalcule aussitôt la boîte d'une carte dont la version vient de changer.
+  function restart(slug: string): void {
+    generation.set(slug, generationOf(slug) + 1);
+    known.delete(slug);
+    running.delete(slug);
+    onChanged?.(slug);
+    notify();
+    const title = lastTitle.get(slug);
+    if (title !== undefined) void start(slug, title);
   }
 
   return {
-    box,
+    box: start,
 
     // Synchrone : undefined = pas encore demandé.
     peek: (slug: string): GameBox | null | undefined => known.get(slug)?.box,
 
-    // Lance box() si inconnu ; après une panne de TheGamesDB, un nouvel essai par minute au plus.
+    // Lance le calcul si inconnu ; après une panne, un nouvel essai par minute au plus.
     request(slug: string, title: string): void {
       if (running.has(slug)) return;
       const state = known.get(slug);
       if (state && (state.failedAt === undefined || now() - state.failedAt < RETRY_AFTER_FAILURE_MS)) return;
-      const run = box(slug, title)
-        .then(() => undefined)
-        .finally(() => running.delete(slug))
-        .then(notify);
-      running.set(slug, run);
+      void start(slug, title);
     },
 
     subscribe(listener: () => void): () => void {
@@ -168,16 +214,12 @@ export function createGameBoxService(deps: GameBoxDeps) {
 
     async chooseVersion(slug: string, tgdbId: number): Promise<void> {
       await choices.save(slug, { tgdbId });
-      known.delete(slug);
-      onChanged?.(slug);
-      notify();
+      restart(slug);
     },
 
     async resetVersion(slug: string): Promise<void> {
       await choices.clear(slug);
-      known.delete(slug);
-      onChanged?.(slug);
-      notify();
+      restart(slug);
     },
   };
 }
