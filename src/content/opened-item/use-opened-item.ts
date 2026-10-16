@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Box } from '../../core/library/zoom-target';
 import { reducedMotion } from '../ghibli-sky';
 import { lockOrientation } from '../orientation-lock';
+import { historyToken } from '../history-token';
 
 export type OpenedPhase = 'opening' | 'open' | 'closing';
 export type OpenedState = { placedId: string; from: Box | null; to: Box | null; phase: OpenedPhase };
@@ -23,6 +24,8 @@ export function useOpenedItem(opts: { onBeforeClose?: () => boolean; restoreOrie
   const phase = useRef<OpenedPhase | null>(null);
   const timer = useRef(0);
   const ours = useRef(false);
+  // Jeton propre à chaque ouverture (voir history-token) : une entrée plus ancienne portant `wmtOpened` n'est pas la nôtre.
+  const token = useRef('');
   const later = (fn: () => void) => { window.clearTimeout(timer.current); timer.current = window.setTimeout(fn, reducedMotion() ? OPENED_REDUCED_MS : OPENED_MS); };
 
   const beginClose = (to: Box | null) => {
@@ -39,7 +42,8 @@ export function useOpenedItem(opts: { onBeforeClose?: () => boolean; restoreOrie
     later(() => { phase.current = 'open'; setOpened((o) => (o ? { ...o, phase: 'open' } : o)); });
     lockOrientation('landscape');
     if (!ours.current) {
-      history.pushState({ ...(history.state ?? {}), wmtOpened: true }, '');
+      token.current = historyToken();
+      history.pushState({ ...(history.state ?? {}), wmtOpened: token.current }, '');
       ours.current = true;
     }
   };
@@ -48,7 +52,7 @@ export function useOpenedItem(opts: { onBeforeClose?: () => boolean; restoreOrie
     beginClose(to);
     if (ours.current) {
       ours.current = false;
-      if (history.state?.wmtOpened) history.back();
+      if (history.state?.wmtOpened === token.current) history.back();
     }
   };
 
@@ -57,7 +61,7 @@ export function useOpenedItem(opts: { onBeforeClose?: () => boolean; restoreOrie
     const onPop = () => {
       if (!ours.current) return;
       if (optsRef.current.onBeforeClose?.()) {
-        history.pushState({ ...(history.state ?? {}), wmtOpened: true }, '');
+        history.pushState({ ...(history.state ?? {}), wmtOpened: token.current }, '');
         return;
       }
       ours.current = false;

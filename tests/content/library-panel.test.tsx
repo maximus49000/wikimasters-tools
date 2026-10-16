@@ -425,11 +425,14 @@ describe('LibraryPanel : objet ouvert dans la pièce', () => {
   // Retour Android réel : l'entrée de la couche est retirée, l'état redevient celui de l'entrée d'en dessous.
   const back = (state: unknown) => act(async () => { history.replaceState(state, ''); window.dispatchEvent(new PopStateEvent('popstate', { state })); });
   const SHELF: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 6 }, { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' }];
-  const openShelfCd = async () => {
+  // Rend l'état de l'entrée d'historique du zoom (celle que le retour depuis la couche retrouve).
+  const openShelfCd = async (): Promise<unknown> => {
     await seed(SHELF);
     await click('[data-furniture="shelf"]');
+    const zoomState: unknown = history.state;
     await click('[data-zoom-card="Daft_Punk"]');
     await click('[data-board-card="Daft_Punk"]');
+    return zoomState;
   };
   afterEach(() => { setPlayerSource(null); history.replaceState(null, ''); });
 
@@ -456,15 +459,15 @@ describe('LibraryPanel : objet ouvert dans la pièce', () => {
   });
 
   it('ⓘ ouvre la fiche par-dessus ; le retour ferme d’abord la fiche, puis la couche (le zoom reste)', async () => {
-    await openShelfCd();
+    const zoomState = await openShelfCd();
     await click('[data-opened-item] [data-action="info"]');
     expect(doc('[data-room-card="Daft_Punk"]')).not.toBeNull();
     expect(q('[data-opened-item]')).not.toBeNull();
-    await back({ wmtZoom: true });
+    await back(zoomState);
     expect(doc('[data-room-card]')).toBeNull();
     expect(q('[data-opened-item]')).not.toBeNull();
-    expect(history.state).toMatchObject({ wmtOpened: true });
-    await back({ wmtZoom: true });
+    expect(typeof history.state?.wmtOpened).toBe('string');
+    await back(zoomState);
     expect(q('[data-opened-item] [data-item-case]')?.getAttribute('data-phase')).toBe('closing');
     expect(q('[data-shelf-board="0"]')).not.toBeNull();
   });

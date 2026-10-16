@@ -3,6 +3,7 @@ import type { ShelfLevel } from '../core/library/library-types';
 import type { Box, ZoomTarget } from '../core/library/zoom-target';
 import { ZOOM_MS, ZOOM_REDUCED_MS, type ZoomPhase } from './furniture-zoom';
 import { reducedMotion } from './ghibli-sky';
+import { historyToken } from './history-token';
 
 export type ZoomState = { target: ZoomTarget; from: Box | null; phase: ZoomPhase; level: ShelfLevel | null };
 
@@ -15,6 +16,8 @@ export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomSta
   beforeClose.current = onBeforeClose;
   const timer = useRef(0);
   const ours = useRef(false);
+  const token = useRef('');
+  const isOurs = () => history.state?.wmtZoom === token.current;
   const duration = () => (reducedMotion() ? ZOOM_REDUCED_MS : ZOOM_MS);
   const later = (fn: () => void) => { window.clearTimeout(timer.current); timer.current = window.setTimeout(fn, duration()); };
 
@@ -22,7 +25,8 @@ export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomSta
   const open = (target: ZoomTarget, from: Box | null) => {
     setZoom({ target, from, phase: 'opening', level: null });
     later(() => setZoom((z) => (z ? { ...z, phase: 'open' } : z)));
-    history.pushState({ ...(history.state ?? {}), wmtZoom: true }, '');
+    token.current = historyToken();
+    history.pushState({ ...(history.state ?? {}), wmtZoom: token.current }, '');
     ours.current = true;
   };
   // Second zoom : la tablette `level` (null : retour à la vue de face). Pas d'entrée d'historique en plus : le retour Android
@@ -34,7 +38,7 @@ export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomSta
     finishClose();
     if (ours.current) {
       ours.current = false;
-      if (history.state?.wmtZoom) history.back();
+      if (isOurs()) history.back();
     }
   };
   // Changement de pièce, sortie du plein écran : fermeture immédiate.
@@ -43,7 +47,7 @@ export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomSta
     setZoom(null);
     if (ours.current) {
       ours.current = false;
-      if (history.state?.wmtZoom) history.back();
+      if (isOurs()) history.back();
     }
   };
 
@@ -52,10 +56,10 @@ export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomSta
     const onPop = () => {
       if (!ours.current) return;
       // Notre entrée est encore là : c'est celle d'une couche posée par-dessus (objet ouvert) qui vient d'être retirée.
-      if (history.state?.wmtZoom) return;
+      if (isOurs()) return;
       // La fiche ouverte par-dessus se ferme d'abord : on repose notre entrée, le zoom reste ouvert.
       if (beforeClose.current?.()) {
-        history.pushState({ ...(history.state ?? {}), wmtZoom: true }, '');
+        history.pushState({ ...(history.state ?? {}), wmtZoom: token.current }, '');
         return;
       }
       ours.current = false;

@@ -33,12 +33,25 @@ describe('useOpenedItem', () => {
     m = mount({ restoreOrientation: vi.fn() });
     act(() => m!.ref.api!.open('p1', box));
     expect(m.ref.api!.opened).toMatchObject({ placedId: 'p1', from: box, to: null, phase: 'opening' });
-    expect(history.state.wmtOpened).toBe(true);
+    expect(typeof history.state.wmtOpened).toBe('string');
     expect(lock).toHaveBeenCalledWith('landscape');
     act(() => { vi.advanceTimersByTime(1199); });
     expect(m.ref.api!.opened!.phase).toBe('opening');
     act(() => { vi.advanceTimersByTime(1); });
     expect(m.ref.api!.opened!.phase).toBe('open');
+  });
+  it('jeton propre à chaque ouverture : une clé héritée d’une entrée plus ancienne n’est pas la nôtre', () => {
+    history.replaceState({ wmtOpened: true }, '');
+    m = mount({ restoreOrientation: vi.fn() });
+    act(() => m!.ref.api!.open('p1', box));
+    const first = history.state.wmtOpened;
+    expect(first).not.toBe(true);
+    act(() => { vi.advanceTimersByTime(1200); });
+    const back = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    // L'entrée du dessus n'est plus la nôtre (remplacée) : ✕ ne retire pas une entrée qui ne nous appartient pas.
+    history.replaceState({ wmtOpened: true }, '');
+    act(() => m!.ref.api!.close(null));
+    expect(back).not.toHaveBeenCalled();
   });
   it('mouvement réduit : 150 ms', () => {
     reduced.value = true;
@@ -77,7 +90,7 @@ describe('useOpenedItem', () => {
     act(() => { vi.advanceTimersByTime(1200); });
     act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
     expect(m.ref.api!.opened!.phase).toBe('open');
-    expect(history.state.wmtOpened).toBe(true);
+    expect(typeof history.state.wmtOpened).toBe('string');
     keep = false;
     act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
     expect(m.ref.api!.opened!.phase).toBe('closing');

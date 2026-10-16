@@ -124,7 +124,7 @@ describe('zoom sur un meuble', () => {
     const push = vi.spyOn(history, 'pushState');
     const back = vi.spyOn(history, 'back');
     await click('[data-furniture="shelf"]');
-    expect(history.state).toMatchObject({ wmtZoom: true });
+    expect(typeof history.state?.wmtZoom).toBe('string');
     expect(push).toHaveBeenCalledTimes(1);
     const afterOpen = history.length;
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
@@ -135,6 +135,17 @@ describe('zoom sur un meuble', () => {
     expect(back).not.toHaveBeenCalled();
     // un second retour hors zoom ne rouvre rien et ne plante pas
     await act(async () => { window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
+    expect(q('[data-furniture-zoom]')).toBeNull();
+  });
+  it('une entrée plus ancienne marquée wmtZoom (page rechargée zoom ouvert) n’empêche pas le retour de fermer le zoom', async () => {
+    await seed(SHELF);
+    vi.useFakeTimers();
+    history.replaceState({ wmtZoom: true }, '');
+    await click('[data-furniture="shelf"]');
+    await advance(500);
+    // Retour Android réel : l'état redevient celui de l'entrée d'en dessous, l'ancienne marquée wmtZoom.
+    await act(async () => { history.replaceState({ wmtZoom: true }, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: { wmtZoom: true } })); });
+    await advance(500);
     expect(q('[data-furniture-zoom]')).toBeNull();
   });
   it('← et Échap retirent chacun l’entrée d’historique du zoom exactement une fois', async () => {
@@ -182,7 +193,7 @@ describe('zoom sur un meuble', () => {
     expect(document.querySelector('[data-room-card]')).toBeNull();
     expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
     expect(push).toHaveBeenCalledTimes(1);
-    expect(history.state).toMatchObject({ wmtZoom: true });
+    expect(typeof history.state?.wmtZoom).toBe('string');
     // un second retour ramène du second zoom à la vue de face (le zoom reste)
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     await advance(500);
@@ -231,7 +242,7 @@ describe('zoom sur un meuble', () => {
     await act(async () => { history.replaceState(null, ''); window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
     expect(q('[data-shelf-board]')).toBeNull();
     expect(q('[data-furniture-zoom]')?.getAttribute('data-zoom-phase')).toBe('open');
-    expect(history.state).toMatchObject({ wmtZoom: true });
+    expect(typeof history.state?.wmtZoom).toBe('string');
     expect(push).toHaveBeenCalledTimes(2);
   });
   it('bibliothèques liées : toucher la vide ouvre les deux', async () => {
