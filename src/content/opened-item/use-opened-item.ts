@@ -15,8 +15,13 @@ export const OPENED_REDUCED_MS = 150;
 // le retour Android / navigateur ferme la couche ; ✕ et Échap retirent eux-mêmes l'entrée.
 // onBeforeClose : appelé au retour ; s'il renvoie vrai (il vient de fermer ce qui couvrait la couche), la couche reste.
 // restoreOrientation : rend l'orientation de la pièce à la fermeture.
-export function useOpenedItem(opts: { onBeforeClose?: () => boolean; restoreOrientation: () => void }): {
-  opened: OpenedState | null; open: (placedId: string, from: Box | null) => void; close: (to: Box | null) => void;
+// closeTarget : rectangle vers lequel le boîtier vole quand on le ferme sans en donner un (✕, Échap, retour) — devant le poste
+// si son disque y est, sinon sa place d'origine ; null = fondu sur place.
+export function useOpenedItem(opts: { onBeforeClose?: () => boolean; restoreOrientation: () => void; closeTarget?: () => Box | null }): {
+  opened: OpenedState | null; open: (placedId: string, from: Box | null) => void; close: (to?: Box | null) => void;
+  // Fermeture immédiate, sans animation (changement de pièce, sortie du plein écran, zoom remis à zéro). Rend vrai si l'entrée
+  // d'historique de la couche est au-dessus de la pile : l'appelant la retire (history.go), avec celles d'en dessous s'il y a lieu.
+  reset: () => boolean;
 } {
   const [opened, setOpened] = useState<OpenedState | null>(null);
   const optsRef = useRef(opts);
@@ -47,13 +52,26 @@ export function useOpenedItem(opts: { onBeforeClose?: () => boolean; restoreOrie
       ours.current = true;
     }
   };
-  const close = (to: Box | null) => {
+  const target = (): Box | null => optsRef.current.closeTarget?.() ?? null;
+  const close = (to?: Box | null) => {
     if (phase.current === null || phase.current === 'closing') return;
-    beginClose(to);
+    beginClose(to === undefined ? target() : to);
     if (ours.current) {
       ours.current = false;
       if (history.state?.wmtOpened === token.current) history.back();
     }
+  };
+
+  const reset = (): boolean => {
+    window.clearTimeout(timer.current);
+    // Une fermeture en cours a déjà rendu l'orientation.
+    const shown = phase.current === 'opening' || phase.current === 'open';
+    phase.current = null;
+    setOpened(null);
+    if (shown) optsRef.current.restoreOrientation();
+    if (!ours.current) return false;
+    ours.current = false;
+    return history.state?.wmtOpened === token.current;
   };
 
   useEffect(() => {
@@ -65,11 +83,11 @@ export function useOpenedItem(opts: { onBeforeClose?: () => boolean; restoreOrie
         return;
       }
       ours.current = false;
-      if (phase.current !== 'closing') beginClose(null);
+      if (phase.current !== 'closing') beginClose(target());
     };
     window.addEventListener('popstate', onPop);
     return () => { window.removeEventListener('popstate', onPop); window.clearTimeout(timer.current); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { opened, open, close };
+  return { opened, open, close, reset };
 }

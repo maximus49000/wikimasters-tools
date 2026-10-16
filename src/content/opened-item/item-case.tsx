@@ -8,7 +8,8 @@ import type { Opening } from '../../core/library/opened-item';
 import type { Box } from '../../core/library/zoom-target';
 
 export type CasePhase = 'opening' | 'open' | 'closing';
-export type DiscState = 'in' | 'spinning' | 'away';
+// 'flying' : le disque vient de quitter le plateau (il vole vers le poste) ; plateau vide, son emplacement reste mesurable.
+export type DiscState = 'in' | 'spinning' | 'away' | 'flying';
 
 type Props = {
   opening: Opening;
@@ -540,7 +541,7 @@ export function ItemCase({ opening, phase, from, to, cover, color, title, disc, 
     const spin = disc === 'spinning' && !reduced;
     // Centré dans le plateau par left/top : le conteneur du disque n'a jamais de translation ; seul le calque intérieur tourne.
     content = (
-      <div data-case-disc="" data-disc={disc} style={{ position: 'absolute', left: f((g.disc.cx - g.disc.d / 2) * k), top: f((g.disc.cy - g.disc.d / 2) * k), width: f(d), height: f(d) }}>
+      <div data-case-disc="" data-disc={disc} style={{ position: 'absolute', left: f((g.disc.cx - g.disc.d / 2) * k), top: f((g.disc.cy - g.disc.d / 2) * k), width: f(d), height: f(d), ...(disc === 'flying' ? { visibility: 'hidden' } : {}) }}>
         <svg viewBox="-60 -60 120 120" width="100%" height="100%" style={{ position: 'absolute', inset: 0, display: 'block', overflow: 'visible' }}>
           <circle cx={2.5} cy={3.5} r={59} fill="rgba(12,8,6,.35)" />
         </svg>

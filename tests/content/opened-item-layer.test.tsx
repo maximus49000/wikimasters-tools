@@ -57,4 +57,31 @@ describe('OpenedItemLayer', () => {
     act(() => { window.dispatchEvent(new Event('resize')); });
     expect(layer().style.transform).toContain('rotate(90deg)');
   });
+  it('écran en hauteur : départ et arrivée du boîtier convertis dans le repère du calque tourné', () => {
+    Object.assign(window, { innerWidth: 400, innerHeight: 800 });
+    act(() => root.render(
+      <OpenedItemLayer placed={placed} card={{ title: 'Abbey Road' }} cover={null} color="#c33" state={{ placedId: 'c1', from: { x: 10, y: 20, w: 30, h: 40 }, to: null, phase: 'opening' }}
+        disc="in" hasHifi onInfo={vi.fn()} onClose={vi.fn()} onAddHifi={vi.fn()} />,
+    ));
+    // (10, 20, 30×40) à l'écran → (20, 360, 40×30) dans le calque : le boîtier part de y = 360.
+    expect(container.querySelector<HTMLElement>('[data-item-case]')!.style.transform).toMatch(/translate\([\d.]+px, 360px\)/);
+  });
+  it('vol du disque : monté par-dessus le boîtier, posé après 900 ms', () => {
+    vi.useFakeTimers();
+    try {
+      const onLanded = vi.fn();
+      act(() => root.render(
+        <OpenedItemLayer placed={placed} card={{ title: 'Abbey Road' }} cover={null} color="#c33" state={{ placedId: 'c1', from: null, to: null, phase: 'open' }}
+          disc="flying" hasHifi onInfo={vi.fn()} onClose={vi.fn()} onAddHifi={vi.fn()} flight={{ id: 1, target: { x: 2000, y: 100, w: 30, h: 30 }, onLanded }} />,
+      ));
+      const fly = container.querySelector<HTMLElement>('[data-disc-flight]')!;
+      expect(fly).not.toBeNull();
+      // Dessiné après le boîtier, au-dessus de lui.
+      expect(container.querySelector('[data-item-case]')!.compareDocumentPosition(fly) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      act(() => { vi.advanceTimersByTime(900); });
+      expect(onLanded).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

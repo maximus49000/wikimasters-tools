@@ -13,7 +13,7 @@ import { useOpenedItem } from '../../src/content/opened-item/use-opened-item';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 type Api = ReturnType<typeof useOpenedItem>;
-function mount(opts: { onBeforeClose?: () => boolean; restoreOrientation: () => void }) {
+function mount(opts: Parameters<typeof useOpenedItem>[0]) {
   const ref: { api: Api | null } = { api: null };
   function Probe() { ref.api = useOpenedItem(opts); return null; }
   const container = document.createElement('div');
@@ -97,5 +97,41 @@ describe('useOpenedItem', () => {
     expect(restore).toHaveBeenCalledTimes(1);
     act(() => { vi.advanceTimersByTime(1200); });
     expect(m.ref.api!.opened).toBeNull();
+  });
+  it('closeTarget : ✕ sans rectangle et retour Android volent vers la cible donnée', () => {
+    let target: { x: number; y: number; w: number; h: number } | null = { x: 9, y: 8, w: 7, h: 6 };
+    m = mount({ restoreOrientation: vi.fn(), closeTarget: () => target });
+    act(() => m!.ref.api!.open('p1', box));
+    act(() => { vi.advanceTimersByTime(1200); });
+    vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    act(() => m!.ref.api!.close());
+    expect(m.ref.api!.opened).toMatchObject({ to: { x: 9, y: 8, w: 7, h: 6 }, phase: 'closing' });
+    act(() => { vi.advanceTimersByTime(1200); });
+    target = { x: 1, y: 1, w: 1, h: 1 };
+    act(() => m!.ref.api!.open('p2', null));
+    act(() => { vi.advanceTimersByTime(1200); });
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(m.ref.api!.opened).toMatchObject({ placedId: 'p2', to: target, phase: 'closing' });
+  });
+  it('reset : fermeture immédiate, rend l’orientation, signale son entrée sans toucher à l’historique', () => {
+    const restore = vi.fn();
+    m = mount({ restoreOrientation: restore });
+    act(() => m!.ref.api!.open('p1', box));
+    const back = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    let popped = false;
+    act(() => { popped = m!.ref.api!.reset(); });
+    expect(popped).toBe(true);
+    expect(m.ref.api!.opened).toBeNull();
+    expect(restore).toHaveBeenCalledTimes(1);
+    expect(back).not.toHaveBeenCalled();
+    // Le popstate qui suit (l'appelant retire l'entrée) est ignoré ; un second reset ne signale plus rien.
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(m.ref.api!.opened).toBeNull();
+    act(() => { popped = m!.ref.api!.reset(); });
+    expect(popped).toBe(false);
+    expect(restore).toHaveBeenCalledTimes(1);
+    // On peut rouvrir aussitôt (rien en cours).
+    act(() => m!.ref.api!.open('p2', null));
+    expect(m.ref.api!.opened!.placedId).toBe('p2');
   });
 });

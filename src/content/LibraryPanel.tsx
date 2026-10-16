@@ -114,6 +114,8 @@ import { useOpenedItem } from './opened-item/use-opened-item';
 import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
 import { getPlayerSource } from './music-registry';
 import { reducedMotion } from './ghibli-sky';
+import { useHifiPlayer } from './hifi/use-hifi';
+import { usePlatform } from './usePlatform';
 import { getImageService } from './image-registry';
 
 // Aide affichée pendant un placement valide.
@@ -244,6 +246,11 @@ const REFUSALS = {
 // Formes ouvertes dans la scène à ce stade : boîtier de CD et pochette de vinyle (les autres viendront avec leurs sélecteurs).
 const OPENS_NOW: ReadonlySet<Opening> = new Set<Opening>(['jewel-cd', 'vinyl-sleeve']);
 const opensNow = (p: Placed): boolean => { const o = openingOf(p); return o !== null && OPENS_NOW.has(o); };
+const NO_LAYOUT: Layout = [];
+// Changer d'album : l'ancien disque quitte le poste et son boîtier rentre à sa place avant que le nouveau disque ne s'envole.
+const SWAP_MS = 450;
+// Vol du disque vers le poste : `wait` pendant que l'ancien album retourne à sa place, `fly` pendant le vol.
+type Flight = { id: number; placedId: string; phase: 'wait' | 'fly' };
 
 type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsRepo; onOpenCard?: (slug: string) => void; onOpenMarket?: (slug: string) => void };
 
@@ -392,16 +399,75 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 
   // Objet ouvert dans la scène (boîtier de CD, pochette de vinyle) : paysage forcé pendant l'ouverture, orientation de la pièce rendue
   // à la fermeture. La fiche ⓘ passe par-dessus : le retour Android la ferme d'abord, la couche reste.
-  const { opened, open: openItem, close: closeItem } = useOpenedItem({
+  // Fermeture sans rectangle (✕, Échap, retour) : devant le poste si le disque y est, sinon la place d'origine (posée plus bas).
+  const closeTargetRef = useRef<() => Box | null>(() => null);
+  const { opened, open: openItem, close: closeItem, reset: resetOpened } = useOpenedItem({
     onBeforeClose: () => {
       if (!viewingRef.current) return false;
       setViewing(null);
       return true;
     },
     restoreOrientation: () => (stage.active ? lockOrientation(orientationNow) : unlockOrientation()),
+    closeTarget: () => closeTargetRef.current(),
   });
   const openedRef = useRef(opened);
   openedRef.current = opened;
+  // Zoom et couche fermés d'un coup, sans animation (changement de pièce, Aménager, sortie du plein écran) : leurs entrées
+  // d'historique sont retirées en un seul saut.
+  const resetLayers = (): void => resetZoom(resetOpened() ? 1 : 0);
+
+  // Poste hi-fi de la pièce (déduit du lecteur) et vol du disque. Rien de mémorisé : `flight` ne vit que le temps de l'animation,
+  // `landedFor` dit que le disque de l'objet ouvert est au poste (atterri, ou déjà là à l'ouverture) ; il retombe dès que le lecteur
+  // passe à un autre album.
+  const hifi = useHifiPlayer(lib ? activeRoom(lib).layout : NO_LAYOUT).state;
+  const hifiRef = useRef(hifi);
+  hifiRef.current = hifi;
+  const platform = usePlatform();
+  const [flight, setFlight] = useState<Flight | null>(null);
+  const flightRef = useRef(flight);
+  flightRef.current = flight;
+  const flightSeq = useRef(0);
+  const [landedFor, setLandedFor] = useState<string | null>(null);
+  const landedRef = useRef(landedFor);
+  landedRef.current = landedFor;
+  // Objet au poste avant le dernier changement : savoir si un autre album y était quand la lecture vient d'aboutir.
+  const hifiTrail = useRef<{ cur: string | null; prev: string | null }>({ cur: hifi.atHifi, prev: null });
+  if (hifiTrail.current.cur !== hifi.atHifi) hifiTrail.current = { cur: hifi.atHifi, prev: hifiTrail.current.cur };
+  const lastAtHifi = useRef(hifi.atHifi);
+  useEffect(() => {
+    if (lastAtHifi.current !== hifi.atHifi && lastAtHifi.current === landedFor && hifi.atHifi !== landedFor) setLandedFor(null);
+    lastAtHifi.current = hifi.atHifi;
+  }, [hifi.atHifi]); // eslint-disable-line react-hooks/exhaustive-deps
+  // La couche fermée (ou passée à un autre objet) : le vol en cours s'arrête, le poste montre de nouveau son disque.
+  const openedId = opened?.placedId ?? null;
+  useEffect(() => { if (flight && flight.placedId !== openedId) setFlight(null); }, [openedId, flight]);
+  // Ouvre un objet ; son plateau est vide si son disque est déjà au poste.
+  const openAt = (id: string, from: Box | null): void => {
+    const cur = openedRef.current;
+    if (cur && cur.phase !== 'open') return;
+    setLandedFor(hifiRef.current.hifiId !== null && hifiRef.current.atHifi === id ? id : null);
+    openItem(id, from);
+  };
+  // Lecture aboutie depuis le sélecteur de l'objet `id` : avec un poste, son disque s'envole (sauf s'il y est déjà).
+  const onPlayedFrom = (id: string, slug: string, title: string): void => {
+    const cur = openedRef.current;
+    // Lecture arrivée après la fermeture de la couche ou pour un autre objet : rien ne s'envole.
+    if (!cur || cur.placedId !== id || cur.phase === 'closing') return;
+    // Tidal ouvre un lien externe, sans lecteur : la carte est posée au lecteur pour que le disque aille au poste.
+    if (platform === 'tidal') playerSource?.setCard({ slug, title });
+    if (hifiRef.current.hifiId === null || landedRef.current === id || flightRef.current?.placedId === id) return;
+    const trail = hifiTrail.current;
+    const before = trail.cur !== id ? trail.cur : trail.prev;
+    const swap = before !== null && before !== id && !reducedMotion();
+    const flightId = ++flightSeq.current;
+    setFlight({ id: flightId, placedId: id, phase: swap ? 'wait' : 'fly' });
+    if (swap) window.setTimeout(() => setFlight((f) => (f && f.id === flightId ? { ...f, phase: 'fly' } : f)), SWAP_MS);
+  };
+  const onLanded = (flightId: number, id: string): void => {
+    if (flightRef.current?.id !== flightId) return;
+    setFlight(null);
+    setLandedFor(id);
+  };
   // Sans poste, le disque du boîtier tourne quand le lecteur joue une piste de cette carte (rien de mémorisé à part).
   const playerSource = getPlayerSource();
   const playerNow = useSyncExternalStore(playerSource?.subscribe ?? noSubscribe, playerSource?.current ?? noPlayer);
@@ -426,13 +492,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 
   // Retour à l'intérieur au changement de pièce et en Aménager (le bouton Aménager reste cliquable).
   // useLayoutEffect : aucune image peinte avec la nouvelle pièce encore dehors ; le défilement de l'ancienne pièce ne s'applique pas à la nouvelle.
-  useLayoutEffect(() => { outsideFrom.current = null; setOutsidePhase('inside'); resetZoom(); }, [roomIdNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { outsideFrom.current = null; setOutsidePhase('inside'); resetLayers(); }, [roomIdNow]); // eslint-disable-line react-hooks/exhaustive-deps
   const editingNow = mode === 'edit';
-  useLayoutEffect(() => { if (editingNow) { setOutsidePhase('inside'); resetZoom(); } }, [editingNow]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Sortie du plein écran : le zoom se ferme aussitôt (pas à l'entrée).
+  useLayoutEffect(() => { if (editingNow) { setOutsidePhase('inside'); resetLayers(); } }, [editingNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sortie du plein écran : le zoom et l'objet ouvert se ferment aussitôt (pas à l'entrée).
   const wasActive = useRef(stage.active);
   useEffect(() => {
-    if (wasActive.current && !stage.active) resetZoom();
+    if (wasActive.current && !stage.active) resetLayers();
     wasActive.current = stage.active;
   }, [stage.active]); // eslint-disable-line react-hooks/exhaustive-deps
   // Échap ferme le zoom ; la fiche ouverte par-dessus se ferme seule d'abord.
@@ -744,7 +810,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       const slug = item.kind === 'wall' || item.kind === 'stored' || item.kind === 'computer' ? item.slug : undefined;
       if (!slug || !roomCards.cards[slug]) return;
       // Un vinyle ou une pochette au mur s'ouvre dans la scène ; un poster ouvre la fiche.
-      if (opensNow(item)) return void openItem(item.id, boxInStage(item.id));
+      if (opensNow(item)) return void openAt(item.id, boxInStage(item.id));
       setViewing(slug);
       return;
     }
@@ -781,8 +847,29 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // Toucher une carte du second zoom : son boîtier s'ouvre s'il le peut, sinon la fiche.
   const onZoomCard = (slug: string): void => {
     const p = openedFor(slug);
-    if (p) openItem(p.id, boxOnBoard(slug));
+    if (p) openAt(p.id, boxOnBoard(slug));
     else setViewing(slug);
+  };
+  // Pochette couchée devant le poste (rectangle de la scène) et disque posé sur le poste (l'arrivée du vol).
+  const sleeveBox = (id: string): Box | null =>
+    boxOfEl([...(scrollRef.current?.querySelectorAll('[data-sleeve-of]') ?? [])].find((el) => el.getAttribute('data-sleeve-of') === id));
+  const hifiDiscBox = (vinyl: boolean): Box | null => {
+    const station = scrollRef.current?.querySelector('[data-hifi]');
+    const spot = boxOfEl(station?.querySelector(vinyl ? '[data-hifi-platter]' : '[data-hifi-well]'));
+    if (spot) return { x: spot.x, y: spot.y + spot.h / 2 - spot.w / 2, w: spot.w, h: spot.w };
+    const whole = boxOfEl(station);
+    if (!whole) return null;
+    const side = Math.min(whole.w, whole.h) * 0.6;
+    return { x: whole.x + whole.w / 2 - side / 2, y: whole.y + whole.h / 2 - side / 2, w: side, h: side };
+  };
+  closeTargetRef.current = () => {
+    const cur = openedRef.current;
+    const p = cur ? layout.find((x) => x.id === cur.placedId) : undefined;
+    if (!p) return null;
+    if (hifiRef.current.hifiId !== null && hifiRef.current.atHifi === p.id) return sleeveBox(p.id);
+    // Sa place d'origine : la carte sur la tablette du second zoom, sinon l'objet dans la pièce.
+    const slug = p.kind === 'stored' || p.kind === 'wall' ? p.slug : undefined;
+    return (slug ? boxOnBoard(slug) : null) ?? boxInStage(p.id);
   };
   // Ouvre le zoom si l'objet touché mène à une étagère garnie ou à un bureau dont l'écran affiche une carte.
   const tryZoom = (id: string): boolean => {
@@ -1116,6 +1203,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onPick={(id) => void onPick(id)}
             cards={roomCards.cards}
             onCardTap={onCardTap}
+            onSleeveTap={(id, el) => { if (!zoomRef.current) openAt(id, boxOfEl(el)); }}
+            hideHifiDisc={flight !== null}
+            hideSleeve={opened !== null && opened.placedId === hifi.atHifi}
             pets={sim.views}
             petFrames={sim.frames}
             petAttach={sim.attach}
@@ -1299,6 +1389,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           if (!p || !slug || !card) return null;
           const view = playerSource ? playerNow : NO_PLAYER;
           const spinning = view.card?.slug === slug && view.track?.playing === true;
+          const hasHifi = hifi.hifiId !== null;
+          // Avec un poste, le disque ne tourne jamais dans le boîtier : il est dans le plateau, en vol, ou au poste.
+          const mine = flight !== null && flight.placedId === p.id ? flight : null;
+          const disc = !hasHifi ? (spinning ? 'spinning' : 'in')
+            : mine ? (mine.phase === 'fly' ? 'flying' : 'in')
+            : landedFor === p.id ? 'away' : 'in';
           return (
             <OpenedItemLayer
               placed={p}
@@ -1306,13 +1402,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               cover={imageOfCard(slug) ?? null}
               color={bookColor(slug)}
               state={opened}
-              disc={spinning ? 'spinning' : 'in'}
-              hasHifi={false}
+              disc={disc}
+              hasHifi={hasHifi}
               onInfo={() => setViewing(slug)}
-              // Retour vers sa place d'origine : la carte sur la tablette du second zoom, sinon l'objet dans la pièce.
-              onClose={() => closeItem(boxOnBoard(slug) ?? boxInStage(p.id))}
+              // Vers le poste si son disque y est, sinon vers sa place d'origine (closeTarget).
+              onClose={() => closeItem()}
               onAddHifi={() => undefined}
-              selector={<MusicSelector slug={slug} title={card.title} onPlayed={() => undefined} />}
+              flight={mine && mine.phase === 'fly' ? { id: mine.id, target: hifiDiscBox(p.kind === 'wall'), onLanded: () => onLanded(mine.id, p.id) } : null}
+              selector={<MusicSelector slug={slug} title={card.title} onPlayed={() => onPlayedFrom(p.id, slug, card.title)} />}
             />
           );
         })()}

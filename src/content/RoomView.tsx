@@ -94,6 +94,10 @@ type Props = {
   onCardTap?: (id: string) => void;
   // Pochette couchée devant la chaîne hi-fi touchée (en visite seulement) : `placedId` est l'objet au poste, `el` le dessin touché.
   onSleeveTap?: (placedId: string, el: Element) => void;
+  // Vol du disque vers le poste en cours : le poste ne montre pas encore le disque (le lecteur a déjà basculé) jusqu'à l'atterrissage.
+  hideHifiDisc?: boolean;
+  // Boîtier au poste ouvert dans la couche : sa pochette couchée est masquée (gardée mesurable : le boîtier y revient en se fermant).
+  hideSleeve?: boolean;
   // Ciel et heure vus à travers les fenêtres ; sans eux, un ciel d'après-midi.
   sceneView?: SceneView;
   // Chats de la pièce : `behind` = nombre de meubles debout dessinés avant lui. Leur position est posée par la boucle d'animation (attribut transform).
@@ -145,7 +149,7 @@ function ghostBox(rect: Rect): { x: number; y: number; width: number; height: nu
   return { x: px.x, y: px.y, width: px.w, height: px.h };
 }
 
-export function RoomView({ room, editing, cellsActive, selectedId, linkedId = null, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, onSleeveTap, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, fitScreen = false, fillHeight, outside = false, roomLayers = 'shown' }: Props) {
+export function RoomView({ room, editing, cellsActive, selectedId, linkedId = null, blink, onCell, onPick, onFurnitureDown, onFurnitureMove, onFurnitureUp, drag = null, placing = null, cards = {}, onCardTap, onSleeveTap, hideHifiDisc = false, hideSleeve = false, sceneView, pets = [], petAttach, onPetTap, petFrames, light = false, fill = false, fitScreen = false, fillHeight, outside = false, roomLayers = 'shown' }: Props) {
   const palette = paletteOf(room.style);
   const decor = decorOf(room.style);
   const steampunk = room.style === 'steampunk';
@@ -303,7 +307,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       // Seul le poste qui sert (le premier posé) montre la lecture.
       else if (placed.item === 'hifi') {
         const active = placed.id === hifi.hifiId;
-        content = hifiContent({ disc: active ? hifiDisc : null, spinning: active && hifi.spinning, title: active ? trackTitle : null, playing: active && player.track?.playing === true });
+        content = hifiContent({ disc: active && !hideHifiDisc ? hifiDisc : null, spinning: active && hifi.spinning, title: active ? trackTitle : null, playing: active && player.track?.playing === true });
       } else content = { lit: isLit(placed) };
       return { rect, art: <CarriedItem3D host={host.kind} angle={host.angle} rect={host.rect} placement={pl} palette={palette} steampunk={steampunk} content={content} /> };
     }
@@ -547,8 +551,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     const node = (
       <g key={`sleeve-${atHifi.id}`} data-hifi-sleeve={atHifiSlug} data-sleeve-of={atHifi.id}
         // En Aménager, la pochette laisse passer les gestes vers le bureau (le soulever, l'appui long).
-        {...(editing ? { pointerEvents: 'none' } : { onClick: (event: MouseEvent<SVGGElement>) => onSleeveTap?.(atHifi.id, event.currentTarget) })}
-        opacity={drag?.id === hostId ? 0.3 : undefined} style={{ cursor: editing ? 'default' : 'pointer', userSelect: 'none', WebkitTouchCallout: 'none' }}>
+        {...(editing || hideSleeve ? { pointerEvents: 'none' } : { onClick: (event: MouseEvent<SVGGElement>) => onSleeveTap?.(atHifi.id, event.currentTarget) })}
+        opacity={hideSleeve ? 0 : drag?.id === hostId ? 0.3 : undefined} style={{ cursor: editing ? 'default' : 'pointer', userSelect: 'none', WebkitTouchCallout: 'none' }}>
         <SleeveArt top={rest.top.map(px)} bottom={rest.bottom.map(px)} w={rest.w} d={rest.d} kind={sleeveKind} cover={imageOf(atHifiSlug) ?? null} color={bookColor(atHifiSlug)} title={cards[atHifiSlug]?.title ?? ''} />
       </g>
     );

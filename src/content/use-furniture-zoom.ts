@@ -10,7 +10,7 @@ export type ZoomState = { target: ZoomTarget; from: Box | null; phase: ZoomPhase
 // État du zoom sur un meuble : ouverture (500 ms), ouvert, fermeture (500 ms). Une entrée d'historique est posée à l'ouverture,
 // pour que le retour Android (WebView.goBack) ou celui du navigateur ferme le zoom ; ← et Échap la retirent eux-mêmes.
 // onBeforeClose : appelé au retour ; s'il renvoie vrai (il vient de fermer ce qui couvrait le zoom, la fiche), le zoom reste.
-export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomState | null; open: (target: ZoomTarget, from: Box | null) => void; close: () => void; reset: () => void; setLevel: (level: ShelfLevel | null) => void } {
+export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomState | null; open: (target: ZoomTarget, from: Box | null) => void; close: () => void; reset: (above?: number) => void; setLevel: (level: ShelfLevel | null) => void } {
   const [zoom, setZoom] = useState<ZoomState | null>(null);
   const beforeClose = useRef(onBeforeClose);
   beforeClose.current = onBeforeClose;
@@ -41,14 +41,17 @@ export function useFurnitureZoom(onBeforeClose?: () => boolean): { zoom: ZoomSta
       if (isOurs()) history.back();
     }
   };
-  // Changement de pièce, sortie du plein écran : fermeture immédiate.
-  const reset = () => {
+  // Changement de pièce, sortie du plein écran : fermeture immédiate. `above` : entrées posées au-dessus de la nôtre (la couche
+  // de l'objet ouvert, fermée en même temps) à retirer avec elle, en un seul saut d'historique.
+  const reset = (above = 0) => {
     window.clearTimeout(timer.current);
     setZoom(null);
+    let pop = above;
     if (ours.current) {
       ours.current = false;
-      if (isOurs()) history.back();
+      if (isOurs()) pop += 1;
     }
+    if (pop > 0) history.go(-pop);
   };
 
   useEffect(() => {
