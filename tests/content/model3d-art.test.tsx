@@ -2,7 +2,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { Model3DArt } from '../../src/content/model3d-art';
+import { Item3DArt, Model3DArt, itemsKey } from '../../src/content/model3d-art';
 import { paletteOf } from '../../src/core/library/styles';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -56,5 +56,19 @@ describe('Model3DArt', () => {
     const on = draw(<Model3DArt kind="lamp" angle={2} rect={rect} palette={paletteOf('scandinave')} lit />);
     expect(on.querySelector('[data-lamp-halo]')!.getAttribute('pointer-events')).toBe('none');
     expect(draw(<Model3DArt kind="lamp" angle={2} rect={rect} palette={paletteOf('scandinave')} lit={false} />).querySelector('[data-lamp-halo]')).toBeNull();
+  });
+});
+
+describe('clé de dessin des objets posés : le format de boîte compte', () => {
+  const pl = { key: 'g', shape: 'game' as const, display: 'cover' as const, x: 1, y: 2, z: 3 };
+  it('deux placements identiques sauf box ont des clés différentes', () => {
+    expect(itemsKey([pl])).not.toBe(itemsKey([{ ...pl, box: 'switch' }]));
+    expect(itemsKey([{ ...pl, box: 'ds' }])).not.toBe(itemsKey([{ ...pl, box: 'switch' }]));
+  });
+  it('un objet seul change de dessin avec son format de boîte', () => {
+    const pal = paletteOf('scandinave');
+    const a = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} />).innerHTML;
+    const b = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="switch" />).innerHTML;
+    expect(a).not.toBe(b);
   });
 });

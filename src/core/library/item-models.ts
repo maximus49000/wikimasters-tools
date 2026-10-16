@@ -20,6 +20,8 @@ const roles = (shape: ShelfShape, extra: Decal[] = []): Decal[] => [{ face: 'fro
 // Boîtier rangé de face : couverture à l'avant, tranche (dos) à gauche, comme un vrai boîtier tenu couverture vers soi.
 // Le corps porte l'étiquette `body` : sa couleur peut être remplacée à la pose (dos d'un livre propre à chaque carte).
 const CASE_COLOR: Record<ShelfShape, string> = { cd: '#D9DEE6', dvd: '#1F3A5F', game: '#1B1B1F', book: '#7A5C3E' };
+// Dos d'un jeu (décalque propre aux jeux), commun au modèle par défaut et aux boîtes par console.
+const GAME_BACK: Decal = { face: 'back', key: 'back:game' };
 const stored = (shape: ShelfShape, w: number, h: number, d: number, extra?: Decal[]): Model =>
   ({ w, h, d, pieces: [box(0, 0, 0, w, h, d, CASE_COLOR[shape], roles(shape, extra), 'body')] });
 
@@ -28,7 +30,7 @@ export const ITEM_MODELS: Record<ItemShape, Model> = {
   cd: stored('cd', 14, 12.5, 1),
   // Boîtier DVD et jeu : 13,5 × 19 × 1,5 cm (format portrait, comme les vrais).
   dvd: stored('dvd', 13.5, 19, 1.5),
-  game: stored('game', 13.5, 19, 1.5, [{ face: 'back', key: 'back:game' }]),
+  game: stored('game', 13.5, 19, 1.5, [GAME_BACK]),
   // Livre 15 × 23 × 3 cm : tranche des pages à droite (opposée au dos) et sur le dessus.
   book: stored('book', 15, 23, 3, [{ face: 'right', key: 'pages:book' }, { face: 'top', key: 'pages:book' }]),
   // Écran plat : socle, pied, dalle 55 × 33 × 3 cm, vitre (décalque de l'image de la carte) en léger relief devant la dalle.
@@ -106,10 +108,17 @@ export const STEAMPUNK_MONITOR: Model = {
 };
 
 // Modèle d'un objet rangé : un jeu au format de boîte `box` prend les dimensions et la couleur de plastique de la console ; sinon le modèle du type.
-export function storedModel(shape: ShelfShape, box?: BoxFormat): Model {
-  if (shape !== 'game' || !box) return ITEM_MODELS[shape];
-  const f = BOX_FORMATS[box];
-  return { w: f.w, h: f.h, d: f.d, pieces: [{ shape: 'box', x: 0, y: 0, z: 0, w: f.w, h: f.h, d: f.d, fill: 'metal', color: f.plastic, decals: [...roles('game'), { face: 'back', key: 'back:game' }], tag: 'body' }] };
+// Mémorisé par format (appelé à chaque image d'un glissé via storedWidthCm).
+const BOXED = new Map<BoxFormat, Model>();
+export function storedModel(shape: ShelfShape, format?: BoxFormat): Model {
+  if (shape !== 'game' || !format) return ITEM_MODELS[shape];
+  let m = BOXED.get(format);
+  if (!m) {
+    const f = BOX_FORMATS[format];
+    m = { w: f.w, h: f.h, d: f.d, pieces: [box(0, 0, 0, f.w, f.h, f.d, f.plastic, roles('game', [GAME_BACK]), 'body')] };
+    BOXED.set(format, m);
+  }
+  return m;
 }
 
 export function itemModel(shape: ItemShape, steampunk = false, box?: BoxFormat): Model {
