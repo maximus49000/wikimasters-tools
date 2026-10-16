@@ -11,6 +11,7 @@ import { proxyDepartment } from './department';
 import { proxyShops } from './shops';
 import { proxyBusLines } from './buslines';
 import { proxyGeocode } from './geocode';
+import { proxyDeezerPreview } from './deezer';
 import { indexStatus, indexStep } from './indexer';
 import type { KvLike } from './kv';
 import { parseSearchRequest, searchDocumentaries } from './search';
@@ -93,7 +94,7 @@ async function oembed(id: string): Promise<Response> {
 }
 
 // Limites par adresse (compteurs en mémoire, voir limiter.ts) : [nombre d'appels, fenêtre en ms].
-const LIMITS = { tmdb: [300, 60_000], igdb: [240, 60_000], books: [60, 60_000], weather: [60, 60_000], schoolCalendar: [30, 60_000], department: [60, 60_000], geocode: [60, 60_000], shops: [20, 60_000], busLines: [20, 60_000], issues: [5, 3_600_000] } as const;
+const LIMITS = { tmdb: [300, 60_000], igdb: [240, 60_000], books: [60, 60_000], weather: [60, 60_000], schoolCalendar: [30, 60_000], department: [60, 60_000], geocode: [60, 60_000], deezer: [60, 60_000], shops: [20, 60_000], busLines: [20, 60_000], issues: [5, 3_600_000] } as const;
 const limiter = createLimiter(() => Date.now());
 const igdbToken: TokenState = { current: null };
 
@@ -141,6 +142,7 @@ async function relay(request: Request, url: URL, env: Env): Promise<Response | n
   if (get && url.pathname === '/department') return limited(request, 'department') ?? relayed(await proxyDepartment(url, { fetch: net, now: () => Date.now() }));
   if (get && url.pathname === '/shops') return limited(request, 'shops') ?? relayed(await proxyShops(url, { fetch: net, now: () => Date.now() }));
   if (get && url.pathname === '/geocode') return limited(request, 'geocode') ?? relayed(await proxyGeocode(url, { fetch: net, now: () => Date.now() }));
+  if (get && url.pathname === '/deezer-preview') return limited(request, 'deezer') ?? relayed(await proxyDeezerPreview(url, { fetch: net, now: () => Date.now() }));
   if (post && url.pathname === '/igdb/games') {
     return (
       limited(request, 'igdb') ??
