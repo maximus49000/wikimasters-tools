@@ -25,7 +25,7 @@ disque qui tourne pendant la lecture, **disque centré dans son plateau (aucun g
 | Poste à musique | Nouvel objet de la pièce. Choisir une piste **sort le disque** et le fait tourner **sur le poste** ; la pochette est posée à côté ; changer d'album range l'ancien et pose le nouveau (voir § Poste à musique). |
 | Sans poste dans la pièce | Le disque tourne dans le boîtier ouvert ; un glyphe propose d'ajouter un poste. |
 | Un poste pour tout | Une seule chaîne : CD, vinyles, BO des films et des jeux. |
-| Apparence | **Joli et naturel**, jamais un polygone grossier : vrai modèle en cm + décalques cellulo détaillés, dessinés directement (pas de Fable sur ce chantier). |
+| Apparence | **Joli et naturel**, jamais un polygone grossier : vrai modèle en cm + décalques cellulo détaillés, dessinés par Opus ; trace « Fable n'est pas passé » pour un rattrapage Fable. |
 
 ## Objets concernés
 
@@ -65,7 +65,7 @@ Rotation du disque **dans le boîtier** (seulement quand la pièce n'a pas de po
 asymétrique et la pochette pour que la rotation se voie ; elle s'arrête quand la lecture est en pause ou finie
 (état lu dans `getPlayerSource()` : piste en cours appartenant à cet objet et non en pause).
 
-Style : cellulo (aplats + trait encré + ombre nette), comme les pantins et véhicules. Les visuels finaux des boîtiers et la séquence d'animation sont définitifs dès l'implémentation (pas de Fable).
+Style : cellulo (aplats + trait encré + ombre nette), comme les pantins et véhicules. Visuels des boîtiers, du poste et séquences d'animation faits par Opus, aboutis, avec la trace « Fable n'est pas passé » (règle du projet) pour un rattrapage Fable.
 
 ## Poste à musique
 

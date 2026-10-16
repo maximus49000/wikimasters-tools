@@ -21,7 +21,7 @@
 - Glyphes, pas de texte, pour les boutons (ⓘ ✕ ⏯ ⏏ ⛶) ; cibles tactiles 44 px.
 - Poste `small-hifi` « Chaîne hi-fi » : **sur un bureau uniquement, 2 emplacements consécutifs (60 cm)**, pochette couchée devant ; seul le **premier posé** (ordre du layout) sert.
 - L'état du poste se **déduit** de `getPlayerSource().current()` (`view.card?.slug`, `view.track?.playing`) : rien de mémorisé à part.
-- Visuels **définitifs dès les Tasks 2, 8 et 9** (pas de Fable sur ce chantier, pas d'habillage provisoire) : style cellulo (aplats + trait encré + ombre nette), détaillés, jamais un polygone brut.
+- Visuels faits par Opus, **aboutis dès les Tasks 2, 8 et 9** (style cellulo : aplats + trait encré + ombre nette, détaillés, jamais un polygone brut). Règle du projet : chaque fichier de visuel ou de séquence porte le commentaire `// Fable n'est pas passé : à reprendre lors d'un rattrapage Fable.` (item-case.tsx, hifi-art.tsx, disc-flight.tsx), rappelé dans la PR.
 - Extension **et** Android ; fiche WikiHow dans la même PR ; tests rangés dans la famille `scene-piece`.
 
 ## Review Focus
