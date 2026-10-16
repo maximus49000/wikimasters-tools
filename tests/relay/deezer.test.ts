@@ -94,4 +94,22 @@ describe('proxyDeezerPreview', () => {
     await call('Rien', 'Personne', { fetch: fetchFn });
     expect(fetchFn).toHaveBeenCalledTimes(502);
   });
+
+  it('200 { error } sur /search → 502 et rien en cache (le 2e appel refait un /search)', async () => {
+    const fetchFn = vi.fn(async (_url: string) => reply({ error: { type: 'Exception', message: 'Quota limit exceeded', code: 4 } }));
+    expect((await call('T', 'A', { fetch: fetchFn })).status).toBe(502);
+    expect((await call('T', 'A', { fetch: fetchFn })).status).toBe(502);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    // « data » absent sans erreur : tout autant illisible.
+    expect((await call('T9', 'A', { fetch: async () => reply({}) })).status).toBe(502);
+  });
+
+  it('200 { error } sur /track → 502 (pas { previewUrl: null })', async () => {
+    const fetchFn = vi.fn(async (url: string) =>
+      new URL(url).pathname === '/search' ? reply({ data: [hit(5, 'T', 'A')] }) : reply({ error: { code: 4 } }),
+    );
+    const out = await call('T', 'A', { fetch: fetchFn });
+    expect(out.status).toBe(502);
+    expect(JSON.parse(out.body)).toEqual({ ok: false, reason: 'upstream' });
+  });
 });

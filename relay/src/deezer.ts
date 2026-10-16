@@ -54,7 +54,10 @@ export async function proxyDeezerPreview(url: URL, deps: { fetch: Fetcher; now: 
     if (found.status !== 200) return found.status === 429 ? found : failure(502, 'upstream');
     let data: unknown;
     try {
-      data = (JSON.parse(found.body) as { data?: unknown }).data ?? [];
+      // Deezer répond souvent 200 avec { error } (quota…) : panne passagère, jamais « aucun résultat » (ni mise en cache).
+      const parsed = JSON.parse(found.body) as { data?: unknown; error?: unknown } | null;
+      if (typeof parsed !== 'object' || parsed === null || parsed.error !== undefined) return failure(502, 'upstream');
+      data = parsed.data;
     } catch {
       return failure(502, 'upstream');
     }
@@ -73,7 +76,9 @@ export async function proxyDeezerPreview(url: URL, deps: { fetch: Fetcher; now: 
   if (track.status !== 200) return track.status === 429 ? track : failure(502, 'upstream');
   let body: { preview?: unknown; bpm?: unknown };
   try {
-    body = JSON.parse(track.body) as { preview?: unknown; bpm?: unknown };
+    const parsed = JSON.parse(track.body) as { preview?: unknown; bpm?: unknown; error?: unknown } | null;
+    if (typeof parsed !== 'object' || parsed === null || parsed.error !== undefined) return failure(502, 'upstream');
+    body = parsed;
   } catch {
     return failure(502, 'upstream');
   }
