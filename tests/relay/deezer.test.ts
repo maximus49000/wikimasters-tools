@@ -38,6 +38,15 @@ describe('proxyDeezerPreview', () => {
     expect(fetchFn.mock.calls[1]![0]).toBe('https://api.deezer.com/track/42');
   });
 
+  it('envoie une requête sans suffixe (« Imagine - Remastered 2010 »)', async () => {
+    const fetchFn = deezer([hit(42, 'Imagine', 'John Lennon')]);
+    await call('Imagine - Remastered 2010', 'John Lennon', { fetch: fetchFn });
+    expect(new URL(fetchFn.mock.calls[0]![0]).searchParams.get('q')).toBe('John Lennon Imagine');
+    const f2 = deezer([hit(43, 'Titre', 'A')]);
+    await call('Titre (feat. Y)', 'A', { fetch: f2 });
+    expect(new URL(f2.mock.calls[0]![0]).searchParams.get('q')).toBe('A Titre');
+  });
+
   it('bpm 0 → deezerBpm null', async () => {
     const out = await call('One More Time', 'Daft Punk', { fetch: deezer([hit(42, 'One More Time', 'Daft Punk')], { ...trackBody, bpm: 0 }) });
     expect(JSON.parse(out.body)).toEqual({ previewUrl: trackBody.preview, deezerBpm: null });

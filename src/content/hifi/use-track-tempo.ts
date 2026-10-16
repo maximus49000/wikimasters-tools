@@ -3,9 +3,9 @@
 // réseau n'est pas mémorisée par le service. Un résultat arrivé après un changement de piste n'est jamais rendu pour la nouvelle.
 // `null` = tempo inconnu (pas encore mesuré, pas de service, mesure impossible) : l'appelant retombe sur 120 BPM.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { noSubscribe } from '../ListenSection';
 import { getPlayerSource, getTempoService } from '../music-registry';
 
+const noSubscribe = () => () => undefined;
 const NONE = JSON.stringify(null);
 const none = (): string => NONE;
 

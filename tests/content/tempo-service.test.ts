@@ -38,7 +38,7 @@ describe('createTempoService', () => {
     expect(service.known(track.uri)).toBe(100);
   });
 
-  it('piste inconnue : relais, extrait, estimation avec deezerBpm en indice, sauvegarde', async () => {
+  it('piste inconnue : relais, extrait, estimation SANS indice (bpm Deezer ignoré), sauvegarde', async () => {
     const { repo, fetchMock, estimate, service } = setup();
     expect(service.known(track.uri)).toBeUndefined();
     expect(await service.tempo(track)).toBe(124);
@@ -47,7 +47,7 @@ describe('createTempoService', () => {
     expect(relayUrl).toContain('title=One+More+Time');
     expect(relayUrl).toContain('artist=Daft+Punk');
     expect(String(fetchMock.mock.calls[1]?.[0])).toBe('https://cdnt-preview.dzcdn.net/x.mp3');
-    expect(estimate).toHaveBeenCalledWith(expect.any(Float32Array), 22_050, 123);
+    expect(estimate).toHaveBeenCalledWith(expect.any(Float32Array), 22_050, null);
     expect(await repo.get(track.uri)).toBe(124);
     expect(service.known(track.uri)).toBe(124);
   });

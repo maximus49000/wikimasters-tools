@@ -33,7 +33,8 @@ export function createTempoService(deps: Deps) {
       if (!relay.ok) return null;
       const body = (await relay.json()) as { previewUrl?: unknown; deezerBpm?: unknown };
       if (typeof body.previewUrl !== 'string' || !body.previewUrl) return { bpm: null };
-      const hint = typeof body.deezerBpm === 'number' && body.deezerBpm > 0 ? body.deezerBpm : null;
+      // Le bpm Deezer est souvent doublé (190 au lieu de 92) et la spec dit « jamais répondre seul » : aucun indice n'est transmis.
+      const hint: number | null = null;
       const preview = await deps.fetch(body.previewUrl);
       if (!preview.ok) return null;
       const bytes = await preview.arrayBuffer();

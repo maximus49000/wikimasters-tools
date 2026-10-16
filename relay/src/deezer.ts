@@ -22,6 +22,14 @@ function normTitle(raw: string): string {
     .replace(/\s(feat\.?|ft\.?|featuring)\s.*$/, ' ');
   return alnum(base) || alnum(fold(raw));
 }
+// Requête de recherche : titre sans parenthèses, suite après « - » ni feat./ft., en gardant accents et casse.
+const searchTitle = (raw: string): string =>
+  raw
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    .replace(/\s+-\s.*$/, ' ')
+    .replace(/\s(feat\.?|ft\.?|featuring)\s.*$/i, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || raw;
 const normArtist = (raw: string): string => alnum(fold(raw).replace(/\s(feat\.?|ft\.?|featuring)\s.*$/, ' ')) || alnum(fold(raw));
 const related = (a: string, b: string): boolean => a !== '' && b !== '' && (a.includes(b) || b.includes(a));
 
@@ -49,7 +57,7 @@ export async function proxyDeezerPreview(url: URL, deps: { fetch: Fetcher; now: 
   if (cached && deps.now() - cached.at < CACHE_MS) {
     id = cached.id;
   } else {
-    const query = new URLSearchParams({ q: `${artist} ${title}`, limit: '5' });
+    const query = new URLSearchParams({ q: `${artist} ${searchTitle(title)}`, limit: '5' });
     const found = await forward(deps.fetch, `${BASE}/search?${query.toString()}`);
     if (found.status !== 200) return found.status === 429 ? found : failure(502, 'upstream');
     let data: unknown;
