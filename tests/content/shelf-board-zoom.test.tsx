@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setGameBoxService } from '../../src/content/game-box-registry';
+import type { GameBox, GameBoxService } from '../../src/content/game-box-service';
 import { ShelfBoardZoom, titleLines } from '../../src/content/shelf-board-zoom';
 import type { Room, ShelfLevel } from '../../src/core/library/library-types';
 
@@ -126,5 +128,59 @@ describe('vue d’une tablette', () => {
     expect(enter()).toBe('above');
     render(0, () => undefined);
     expect(enter()).toBe('above');
+  });
+});
+
+describe('jeux dans le second zoom', () => {
+  const box = (backUrl?: string): GameBox => ({ format: 'bluray', style: { plastic: '#1F4C9E', band: { color: '#1F4C9E', label: 'PS4' } }, platformName: 'Sony Playstation 4', ...(backUrl ? { backUrl } : {}), shots: [], title: 'RDR2' });
+  afterEach(() => setGameBoxService(null));
+  const games: Room = {
+    ...room,
+    layout: [
+      { id: 's', kind: 'shelf', col: 0, row: 6 },
+      { id: 'g1', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, slug: 'RDR2', box: 'bluray', caseColor: '#1F4C9E', display: 'back' },
+      { id: 'g2', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 1, slug: 'Zelda', box: 'switch', caseColor: '#E60012' },
+    ],
+  };
+  const mountGames = () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    act(() => { createRoot(container).render(<ShelfBoardZoom shelfIds={['s']} level={0} room={games} cards={{ RDR2: { title: 'RDR2' }, Zelda: { title: 'Zelda' } }} imageOf={(s) => `${s}-face.png`} onCard={vi.fn()} onLevel={vi.fn()} />); });
+    return container;
+  };
+  it('un jeu de dos montre l’image du dos, un jeu de face sa couverture', () => {
+    setGameBoxService({ peek: (slug: string) => (slug === 'RDR2' ? box('dos.png') : undefined), subscribe: () => () => undefined, request: () => undefined } as unknown as GameBoxService);
+    const c = mountGames();
+    const back = c.querySelector('[data-board-card="RDR2"]')!;
+    expect(back.getAttribute('data-board-display')).toBe('back');
+    expect(back.querySelector('image')!.getAttribute('href')).toBe('dos.png');
+    expect(c.querySelector('[data-board-card="Zelda"] image')!.getAttribute('href')).toBe('Zelda-face.png');
+  });
+  it('proportions du format : la boîte Switch garde ses mesures (10,5 × 17 cm)', () => {
+    setGameBoxService(null);
+    const c = mountGames();
+    const sw = c.querySelector('[data-board-card="Zelda"] rect')!;
+    expect(Number(sw.getAttribute('width'))).toBeCloseTo(10.5);
+    expect(Number(sw.getAttribute('height'))).toBeCloseTo(17);
+  });
+  it('de dos sans image du dos : aplat de la couleur du boîtier', () => {
+    setGameBoxService(null);
+    const c = mountGames();
+    const back = c.querySelector('[data-board-card="RDR2"]')!;
+    expect(back.querySelector('image')).toBeNull();
+    expect(back.querySelector('rect')!.getAttribute('fill')!.toUpperCase()).toBe('#1F4C9E');
+  });
+  it('de dos, boîte connue sans scan : dos fabriqué (bandeau de la console, titre)', () => {
+    setGameBoxService({ peek: (slug: string) => (slug === 'RDR2' ? box() : undefined), subscribe: () => () => undefined, request: () => undefined } as unknown as GameBoxService);
+    const c = mountGames();
+    const back = c.querySelector('[data-board-card="RDR2"]')!;
+    expect(back.querySelector('[data-made-back]')).not.toBeNull();
+    expect(back.querySelector('[data-made-back-band]')!.textContent).toBe('PS4');
+    expect(back.querySelector('[data-made-back-title]')!.textContent).toContain('RDR2');
+  });
+  it('les images ne transmettent pas la page d’origine', () => {
+    setGameBoxService({ peek: (slug: string) => (slug === 'RDR2' ? box('dos.png') : undefined), subscribe: () => () => undefined, request: () => undefined } as unknown as GameBoxService);
+    const c = mountGames();
+    for (const img of c.querySelectorAll('image')) expect(img.getAttribute('referrerPolicy')).toBe('no-referrer');
   });
 });

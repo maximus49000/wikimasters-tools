@@ -3,7 +3,8 @@ import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, invertMatrix,
 import { MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN, decoDefaultSize, isPanel, type CityTime, type DecoKind, type NeonColor } from './deco';
 import { STANDING_KINDS } from './library-types';
 import type { DecoPlaced, Depth, Layout, Orientation, Placed, ShelfLevel, ShelfShape, SmallItem, StandDepth, StandingKind, StoredDisplay, VinylColor, WallShape } from './library-types';
-import { ITEM_MODELS, itemFootprintCm } from './item-models';
+import type { BoxFormat } from '../game/platform-boxes';
+import { itemFootprintCm, storedModel } from './item-models';
 import { FURNITURE_MODELS } from './furniture-models';
 import { overhangOf, projectOf } from './furniture-render3d';
 
@@ -546,12 +547,12 @@ const SHELF_FACE_H_CM = FURNITURE_MODELS.shelf.face!.h;
 
 export type Stored = Extract<Placed, { kind: 'stored' }>;
 // Ce qu'il faut savoir d'un objet pour le ranger : sa forme et sa présentation (et son id s'il est déjà rangé, pour l'écarter du calcul).
-export type StoredLike = { id?: string; shape: ShelfShape; display?: StoredDisplay };
+export type StoredLike = { id?: string; shape: ShelfShape; display?: StoredDisplay; box?: BoxFormat };
 
 export const isShelfLevel = (v: unknown): v is ShelfLevel => v === 0 || v === 1 || v === 2;
 // Présentation effective : celle choisie, sinon le défaut du type (livre sur la tranche, CD/DVD/jeu de face).
 export const displayOf = (p: StoredLike): StoredDisplay => p.display ?? (p.shape === 'book' ? 'spine' : 'cover');
-export const storedWidthCm = (p: StoredLike): number => itemFootprintCm(p.shape, displayOf(p));
+export const storedWidthCm = (p: StoredLike): number => itemFootprintCm(p.shape, displayOf(p), p.box);
 
 // Objets d'une tablette, de gauche à droite (rang) ; `ignoreId` : l'objet qu'on déplace.
 export function boardItems(layout: Layout, shelfId: string, level: ShelfLevel, ignoreId?: string): Stored[] {
@@ -603,7 +604,7 @@ export function shelfLayoutIn(frame: FaceFrame, layout: Layout, shelfId: string)
     let x0 = 0;
     return boardItems(layout, shelfId, board.level).map((p, order) => {
       const wCm = storedWidthCm(p);
-      const h = Math.min(ITEM_MODELS[p.shape].h * sy, board.local.h);
+      const h = Math.min(storedModel(p.shape, p.box).h * sy, board.local.h);
       const local = { x: x0 * sx, y: board.local.y + board.local.h - h, w: wCm * sx, h };
       const box: ShelfItemBox = { id: p.id, level: board.level, order, x0Cm: x0, wCm, local, m: frame.m, ...onScreen(frame.m, local) };
       x0 += wCm + SHELF_GAP_CM;
@@ -715,6 +716,18 @@ export function storeCard(layout: Layout, shelfId: string, level: ShelfLevel, or
   const item: Stored = { id, kind: 'stored', shape, shelfId, level, order: 0, ...(display && { display }), slug };
   if (!fits(boardItems(layout, shelfId, level), item)) return null;
   return insertStored(layout, item, order);
+}
+
+// Format de boîte d'un jeu rangé (et couleur propre du boîtier de la console) : ne déplace rien, même si la tablette déborde ensuite
+// (une tablette qui déborde garde ses objets). Sans effet sur un objet inconnu ou qui n'est pas un jeu.
+export function setStoredBox(layout: Layout, id: string, box: BoxFormat, caseColor?: string): Layout {
+  const item = layout.find((p) => p.id === id);
+  if (!item || item.kind !== 'stored' || item.shape !== 'game') return layout;
+  return layout.map((p) => {
+    if (p.id !== id || p.kind !== 'stored') return p;
+    const { caseColor: _old, ...rest } = p;
+    return { ...rest, box, ...(caseColor && { caseColor }) };
+  });
 }
 
 // Déplace un objet rangé vers une tablette (la sienne ou une autre, sur cette étagère ou une autre) au rang `order`.

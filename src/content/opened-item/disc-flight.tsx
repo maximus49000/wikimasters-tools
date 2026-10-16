@@ -4,11 +4,20 @@
 // en rapetissant jusqu'à la taille du disque posé. Trajectoire courbe : un calque glisse en largeur, l'autre en hauteur avec une
 // courbe qui soulève d'abord le disque hors du plateau (il grossit un instant, plus près de l'œil) avant de redescendre ; le disque
 // tourne sur lui-même pendant le vol (reflet asymétrique fixe : la rotation se voit). Même dessin que le disque posé sur le poste (HifiDisc), style cellulo.
+// Une cartouche (jeu Switch, DS…) fait le même trajet sans tourner, et se pose couchée.
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import type { Box } from '../../core/library/zoom-target';
-import { HifiDisc, type DiscKind } from '../hifi/hifi-art';
+import { HIFI_CART, HifiDisc, type DiscKind } from '../hifi/hifi-art';
 
 export const DISC_FLIGHT_MS = 900;
+
+// Carré de vol d'un support : le disque remplit le carré -60…60 du dessin ; la cartouche n'en occupe que la hauteur HIFI_CART.h,
+// d'où un carré agrandi autour d'elle pour qu'au départ le dessin recouvre la cartouche du plateau.
+export function flightBoxOf(kind: DiscKind, support: Box): Box {
+  if (kind !== 'cart') return support;
+  const side = (support.h * 120) / HIFI_CART.h;
+  return { x: support.x + support.w / 2 - side / 2, y: support.y + support.h / 2 - side / 2, w: side, h: side };
+}
 
 type Props = {
   // Rectangles dans le repère du calque : le disque dans le plateau, le disque posé sur le poste.
@@ -51,7 +60,7 @@ export function DiscFlight({ from, to, cover, color, kind = 'cd', reduced, onLan
     transition: `transform ${DISC_FLIGHT_MS}ms cubic-bezier(.3,-.45,.6,1)`,
   };
   return (
-    <div data-disc-flight="" aria-hidden="true" style={outer}>
+    <div data-disc-flight="" data-kind={kind} aria-hidden="true" style={outer}>
       <div data-disc-flight-y="" style={inner}>
         {/* Ombre nette décalée du disque soulevé ; seul le calque intérieur du disque tourne (reflet et ombre fixes). */}
         <svg viewBox="-60 -60 120 120" width="100%" height="100%" style={{ display: 'block', overflow: 'visible', filter: 'drop-shadow(6px 9px 0 rgba(28,18,12,.3))' }}>

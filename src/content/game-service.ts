@@ -1,3 +1,4 @@
+import { getGameBoxService } from './game-box-registry';
 import type { TtlCache } from '../core/cache/ttl-cache';
 import type { KnownCard } from '../core/collection/collection-book';
 import { gameErrorMessage } from '../core/game/errors';
@@ -109,6 +110,23 @@ export function createGameService(deps: GameServiceDeps) {
     return igdbFound ? coverOf({ source: 'igdb', id: igdbFound.id }) : [];
   }
 
+  // Affiches de Steam et d'IGDB seules (null : une source n'a pas pu répondre).
+  async function otherCovers(slug: string, title: string): Promise<string[] | null> {
+    try {
+      // Le jeu choisi par l'utilisateur ne dépend pas de Wikidata : sans réponse de Wikidata, il reste affiché.
+      const choice = (await choices.load())[slug];
+      if (choice) return 'none' in choice ? [] : await coverOf(choice);
+      await kinds.resolveMissing([slug]);
+      const cardKinds = (await kinds.load()).cards[slug];
+      const ids = (await games.resolve([slug]))[slug];
+      if (cardKinds === undefined || ids === undefined) return null;
+      if (!isVideoGame(cardKinds) && ids.steamId === undefined) return [];
+      return await automaticCover(ids, title);
+    } catch {
+      return null;
+    }
+  }
+
   return {
     igdbEnabled: igdb !== null,
 
@@ -143,21 +161,17 @@ export function createGameService(deps: GameServiceDeps) {
     },
 
     // Affiches possibles de la carte (la meilleure d'abord) : liste vide si ce n'est pas un jeu ou si rien n'existe ;
-    // `null` si une source n'a pas pu répondre (Wikidata, Steam, IGDB) : à redemander plus tard, sans rien mémoriser.
+    // `null` si une source n'a pas pu répondre (Wikidata, Steam, IGDB, TheGamesDB) : à redemander plus tard, sans rien mémoriser.
     async cover(slug: string, title: string): Promise<string[] | null> {
-      try {
-        // Le jeu choisi par l'utilisateur ne dépend pas de Wikidata : sans réponse de Wikidata, il reste affiché.
-        const choice = (await choices.load())[slug];
-        if (choice) return 'none' in choice ? [] : await coverOf(choice);
-        await kinds.resolveMissing([slug]);
-        const cardKinds = (await kinds.load()).cards[slug];
-        const ids = (await games.resolve([slug]))[slug];
-        if (cardKinds === undefined || ids === undefined) return null;
-        if (!isVideoGame(cardKinds) && ids.steamId === undefined) return [];
-        return await automaticCover(ids, title);
-      } catch {
-        return null;
-      }
+      // La pochette TheGamesDB de la version de la carte passe devant les affiches de Steam et d'IGDB.
+      // TheGamesDB en panne (limite, réseau) : rien n'est rendu, sinon l'affiche Steam serait retenue pour de bon à sa place.
+      const outcome = await getGameBoxService()?.outcome(slug, title).catch(() => null);
+      if (outcome?.failed) return null;
+      const box = outcome?.box;
+      const front = box?.tgdbId !== undefined ? box.frontUrl : undefined;
+      const others = await otherCovers(slug, title);
+      if (front === undefined) return others;
+      return [front, ...(others ?? []).filter((url) => url !== front)];
     },
 
     // Les propositions de la fenêtre « Changer de jeu » : les deux sources, chacune pouvant échouer sans gêner l'autre.

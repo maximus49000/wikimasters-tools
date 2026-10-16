@@ -24,7 +24,7 @@ export const FAMILLES: Famille[] = [
     nom: 'fiche',
     fichiers: [
       ...c(
-        'Book*', 'book-service.*', 'Game*', 'game-service.*', 'Writer*', 'WatchProviders.*', 'HlsTrailerPlayer.*', 'fullscreen.*',
+        'Book*', 'book-service.*', 'Game*', 'game-service.*', 'game-box-service.*', 'Writer*', 'WatchProviders.*', 'HlsTrailerPlayer.*', 'fullscreen.*',
         'documentary-*', 'screen-*', 'platform-service.*', 'use-platform.*', 'work-list.*', 'orientation-lock.*',
         'card-art.*', 'card-frame.*', 'card-preview-dom.*', 'card-popup-position.*', 'card-thumb.*', 'media-art.*',
       ),
@@ -86,9 +86,9 @@ export const FAMILLES: Famille[] = [
     fichiers: [
       ...c(
         'furniture-drag*', 'placement.*', 'placement-bar.*', 'library-placement.*', 'library-sims-ui.*', 'furniture-thumb.*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
-        'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*', 'model3d-art.*', 'item3d-art.*', 'room-angle.*', 'room-carried*', 'furniture-zoom.*', 'library-zoom.*', 'shelf-board-zoom.*', 'deco-art.*', 'deco-fonts.*', 'library-deco*', 'item-case.*', 'opened-item-hook.*', 'opened-item-layer.*', 'selectors.*', 'hifi*', 'disc-flight.*',
+        'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*', 'model3d-art.*', 'item3d-art.*', 'room-angle.*', 'room-carried*', 'furniture-zoom.*', 'library-zoom.*', 'shelf-board-zoom.*', 'deco-art.*', 'deco-fonts.*', 'library-deco*', 'item-case.*', 'opened-item-hook.*', 'opened-item-layer.*', 'selectors.*', 'hifi*', 'disc-flight.*', 'game-box-content.*', 'game-spine.*', 'game-outside.*', 'back-magnifier.*',
       ),
-      ...lib('room-grid*', 'library-migration-v6.*', 'library-migration-v7.*', 'furniture-catalog.*', 'footprint.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*', 'zoom-target.*', 'shelf-link.*', 'furniture-render3d.*', 'furniture-models.*', 'item-models.*', 'carried-items.*', 'clock-cities.*', 'text-fit.*', 'opened-item.*', 'hifi.*'),
+      ...lib('room-grid*', 'library-migration-v6.*', 'library-migration-v7.*', 'library-migration-v8.*', 'furniture-catalog.*', 'footprint.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*', 'zoom-target.*', 'shelf-link.*', 'furniture-render3d.*', 'furniture-models.*', 'item-models.*', 'carried-items.*', 'clock-cities.*', 'text-fit.*', 'opened-item.*', 'hifi.*'),
       'tests/core/picker-filter.test.ts',
     ],
   },

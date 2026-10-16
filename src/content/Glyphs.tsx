@@ -168,6 +168,17 @@ const PATHS = {
       <line x1="12" y1="7" x2="12" y2="20" />
     </>
   ),
+  check: <polyline points="5,13 10,18 19,7" />,
+  // Console de salon vue de face : fente du disque et voyant.
+  console: (
+    <>
+      <rect x="2" y="8" width="20" height="9" rx="2" />
+      <line x1="6" y1="12" x2="14" y2="12" />
+      <circle cx="18" cy="12.5" r="1" />
+      <line x1="6" y1="20" x2="8" y2="20" />
+      <line x1="16" y1="20" x2="18" y2="20" />
+    </>
+  ),
 } as const;
 
 export type GlyphName = keyof typeof PATHS;

@@ -2,7 +2,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { Model3DArt } from '../../src/content/model3d-art';
+import { Item3DArt, Model3DArt, itemsKey } from '../../src/content/model3d-art';
 import { paletteOf } from '../../src/core/library/styles';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -56,5 +56,80 @@ describe('Model3DArt', () => {
     const on = draw(<Model3DArt kind="lamp" angle={2} rect={rect} palette={paletteOf('scandinave')} lit />);
     expect(on.querySelector('[data-lamp-halo]')!.getAttribute('pointer-events')).toBe('none');
     expect(draw(<Model3DArt kind="lamp" angle={2} rect={rect} palette={paletteOf('scandinave')} lit={false} />).querySelector('[data-lamp-halo]')).toBeNull();
+  });
+});
+
+describe('clé de dessin des objets posés : le format de boîte compte', () => {
+  const pl = { key: 'g', shape: 'game' as const, display: 'cover' as const, x: 1, y: 2, z: 3 };
+  it('deux placements identiques sauf box ont des clés différentes', () => {
+    expect(itemsKey([pl])).not.toBe(itemsKey([{ ...pl, box: 'switch' }]));
+    expect(itemsKey([{ ...pl, box: 'ds' }])).not.toBe(itemsKey([{ ...pl, box: 'switch' }]));
+  });
+  it('un objet seul change de dessin avec son format de boîte', () => {
+    const pal = paletteOf('scandinave');
+    const a = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} />).innerHTML;
+    const b = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="switch" />).innerHTML;
+    expect(a).not.toBe(b);
+  });
+});
+
+describe('boîte de jeu : dos et bandeau de console', () => {
+  const pal = paletteOf('scandinave');
+  const hrefs = (c: HTMLElement) => [...c.querySelectorAll('image')].map((i) => i.getAttribute('href'));
+  it('de dos, le décalque `back` dessine l’image du dos (pas la couverture)', () => {
+    const c = draw(<Item3DArt shape="game" display="back" angle={0} rect={rect} palette={pal} box="bluray" content={{ url: 'face.png', backUrl: 'dos.png', title: 'Hollow Knight' }} />);
+    expect(hrefs(c)).toContain('dos.png');
+    expect(c.querySelector('[data-decal-back]')).not.toBeNull();
+  });
+  it('sans image du dos : aplat de la couleur du boîtier et titre', () => {
+    const c = draw(<Item3DArt shape="game" display="back" angle={0} rect={rect} palette={pal} box="switch" color="#E60012" content={{ url: 'face.png', title: 'Zelda' }} />);
+    const back = c.querySelector('[data-decal-back]')!;
+    expect(back.querySelector('image')).toBeNull();
+    expect(back.querySelector('rect')!.getAttribute('fill')!.toUpperCase()).toBe('#E60012');
+    expect(back.textContent).toContain('Zelda');
+  });
+  it('sans scan du dos mais boîte connue : le dos fabriqué', () => {
+    const made = { key: 'k', draw: (w: number, h: number) => <rect data-test-made={`${w}x${h}`} width={w} height={h} /> };
+    const c = draw(<Item3DArt shape="game" display="back" angle={0} rect={rect} palette={pal} box="switch" content={{ url: 'face.png', title: 'Zelda', back: made }} />);
+    const back = c.querySelector('[data-decal-back]')!;
+    expect(back.querySelector('[data-test-made]')).not.toBeNull();
+    expect(back.textContent).not.toContain('Zelda');
+  });
+  it('bandeau de la console (couleur, nom) au lieu du rouge unique ; sans bandeau connu : aucun', () => {
+    const ps4 = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="bluray" content={{ url: 'face.png', title: 'RDR2', band: { color: '#1F4C9E', label: 'PS4' } }} />);
+    expect(ps4.innerHTML.toUpperCase()).toContain('#1F4C9E');
+    expect(ps4.innerHTML.toUpperCase()).not.toContain('#E24B4A');
+    expect(ps4.textContent).toContain('PS4');
+    const ps2 = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="dvd" content={{ url: 'face.png', title: 'GTA', band: null }} />);
+    expect(ps2.innerHTML.toUpperCase()).not.toContain('#E24B4A');
+    const unknown = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} content={{ url: 'face.png', title: 'GTA' }} />);
+    expect(unknown.innerHTML.toUpperCase()).toContain('#E24B4A');
+  });
+  it('jaquette scannée (TheGamesDB) : son bandeau imprimé suffit, pas de second bandeau sur la couverture ; sans image, le bandeau revient', () => {
+    const band = { color: '#1F4C9E', label: 'PS4' };
+    const scan = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="bluray" content={{ url: 'face.png', title: 'RDR2', band, printed: true }} />);
+    expect(scan.textContent).not.toContain('PS4');
+    const none = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="bluray" content={{ title: 'RDR2', band, printed: true }} />);
+    expect(none.textContent).toContain('PS4');
+  });
+});
+
+describe('boîtier blanc (PS5, Wii, DS)', () => {
+  const pal = paletteOf('scandinave');
+  const PS5 = { color: '#FFFFFF', label: 'PS5' };
+  it('titre de la tranche foncé sur un boîtier blanc ; bandeau blanc cerné d’un trait', () => {
+    // Sur la tranche, de face : la tranche (et son titre) est vers l'avant.
+    const c = draw(<Item3DArt shape="game" display="spine" angle={0} rect={rect} palette={pal} box="bluray" color="#F2F2F0" content={{ title: 'Astro Bot', band: PS5 }} />);
+    const title = [...c.querySelectorAll('text')].find((t) => t.textContent?.includes('Astro'))!;
+    expect(title.getAttribute('fill')).toBe('#1B1B1F');
+    const band = [...c.querySelectorAll('rect')].find((r) => r.getAttribute('fill')?.toUpperCase() === '#FFFFFF')!;
+    expect(band.getAttribute('stroke')).toBe('#1B1B1F');
+  });
+  it('boîtier foncé : titre blanc, bandeau sans trait', () => {
+    const c = draw(<Item3DArt shape="game" display="spine" angle={0} rect={rect} palette={pal} box="bluray" color="#1F4C9E" content={{ title: 'RDR2', band: { color: '#1F4C9E', label: 'PS4' } }} />);
+    const title = [...c.querySelectorAll('text')].find((t) => t.textContent?.includes('RDR2'))!;
+    expect(title.getAttribute('fill')).toBe('#FFFFFF');
+    const band = [...c.querySelectorAll('rect')].find((r) => r.getAttribute('fill')?.toUpperCase() === '#1F4C9E')!;
+    expect(band.getAttribute('stroke')).toBeNull();
   });
 });

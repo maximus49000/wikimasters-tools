@@ -13,7 +13,7 @@ export const OPENED_REDUCED_MS = 150;
 
 // Couche de l'objet ouvert : ouverture, ouvert, fermeture. Même modèle d'historique que le zoom d'un meuble (clé wmtOpened) :
 // le retour Android / navigateur ferme la couche ; ✕ et Échap retirent eux-mêmes l'entrée.
-// onBeforeClose : appelé au retour ; s'il renvoie vrai (il vient de fermer ce qui couvrait la couche), la couche reste.
+// onBeforeClose : appelé au retour ; s'il renvoie vrai (il vient de fermer ce qui couvrait la couche : fiche ⓘ, loupe du dos), la couche reste.
 // restoreOrientation : rend l'orientation de la pièce à la fermeture.
 // closeTarget : rectangle vers lequel le boîtier vole quand on le ferme sans en donner un (✕, Échap, retour) — devant le poste
 // si son disque y est, sinon sa place d'origine ; null = fondu sur place.

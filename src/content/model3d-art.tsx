@@ -1,13 +1,15 @@
-// Dessin provisoire Opus — reprise Fable prévue.
+// Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 2026-10-17), reprise Fable prévue.
 import { memo, useId, type ReactElement } from 'react';
 import { hostNativePx } from '../core/library/carried-items';
 import { drawSize, type Angle } from '../core/library/footprint';
 import { FURNITURE_MODELS, STEAMPUNK_TRIM } from '../core/library/furniture-models';
 import { CELL_H, CELL_W, openingOf, overhangOf, pieceBounds, projectOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
 import { itemModel, itemPieces, type ItemDisplay, type ItemPlacement, type ItemShape } from '../core/library/item-models';
+import type { BoxFormat, CaseStyle } from '../core/game/platform-boxes';
 import type { StandingKind } from '../core/library/library-types';
 import type { PxRect } from '../core/library/room-grid';
 import type { Palette } from '../core/library/styles';
+import { GameSpine, inkOn, lightEdge } from './game-spine';
 import { HifiFace, HifiGrille, HifiTop } from './hifi/hifi-art';
 
 const LIT_SHADE = '#FFE9A8';
@@ -100,8 +102,8 @@ function cached(key: string, make: () => Geometry): Geometry {
   geometryCache.set(key, g);
   return g;
 }
-const itemsKey = (items: ItemPlacement[] | undefined): string =>
-  (items ?? []).map((i) => `${i.key},${i.shape},${i.display ?? ''},${i.x},${i.y},${i.z},${i.color ?? ''}`).join(';');
+export const itemsKey = (items: ItemPlacement[] | undefined): string =>
+  (items ?? []).map((i) => `${i.key},${i.shape},${i.display ?? ''},${i.x},${i.y},${i.z},${i.color ?? ''},${i.box ?? ''}`).join(';');
 // `part` (meuble à socle) : 'base' = socle et tige seulement, 'overhang' = arc et dôme seulement (rangés à part dans la pièce) ; absent = tout.
 export type ModelPart = 'base' | 'overhang';
 function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?: ItemPlacement[], part?: ModelPart): Geometry {
@@ -122,12 +124,19 @@ function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?
 // Contenu d'un objet posé : image et titre de sa carte, lampe allumée ou non.
 // `face` / `top` : décor dessiné par l'appelant sur la façade / le dessus (clé : ce qui change son dessin, pour le mémo).
 export type FaceDraw = { key: string; draw: (w: number, h: number) => ReactElement };
-export type ItemContent = { url?: string; title?: string; lit?: boolean; face?: FaceDraw; top?: FaceDraw };
+// Jeu : `backUrl` image du dos de sa boîte, sinon `back` dos fabriqué ; `band` bandeau de sa console (null : boîte sans bandeau ; absent : boîte inconnue, bandeau rouge) ;
+// `printed` : la jaquette (scan TheGamesDB) porte déjà son bandeau, la couverture n'en ajoute pas (la tranche, si).
+export type Band = { color: string; label: string };
+// `spine` : tranche dessinée comme la vraie (boîte connue) ; absente : bandeau et titre d'origine.
+export type SpineData = { style: CaseStyle; format: BoxFormat; title: string; logoUrl?: string; studio?: string; console?: string };
+export type ItemContent = { url?: string; title?: string; lit?: boolean; face?: FaceDraw; top?: FaceDraw; backUrl?: string; back?: FaceDraw; band?: Band | null; printed?: boolean; spine?: SpineData };
 
 const cut = (title: string, max: number) => (title.length > max ? `${title.slice(0, Math.max(1, max - 1))}…` : title);
 const GAME_RED = '#E24B4A';
 const PLACEHOLDER = '#A8C5E6';
 
+// Bandeau d'un jeu : celui de sa console quand la boîte est connue (aucun pour une console sans bandeau), sinon le rouge d'origine.
+const gameBand = (content?: ItemContent): Band | null => (content?.band === undefined ? { color: GAME_RED, label: '' } : content.band);
 // Décor d'une face, dans son repère propre (w × h mm, haut à gauche) : couverture, tranche, pages ou écran.
 function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; color: string }): ReactElement | null {
   const { w, h, role, shape } = d;
@@ -146,16 +155,18 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
       </>
     );
   }
+  if (role === 'spine' && shape === 'game' && content?.spine) return <GameSpine w={w} h={h} {...content.spine} />;
   if (role === 'spine') {
-    // Titre le long de la tranche (du haut vers le bas), taille selon l'épaisseur ; bandeau rouge en haut d'un jeu, jaquette claire d'un CD.
-    const band = shape === 'game' ? h * 0.1 : 0;
+    // Titre le long de la tranche (du haut vers le bas), taille selon l'épaisseur ; bandeau de la console en haut d'un jeu, jaquette claire d'un CD.
+    const gb = shape === 'game' ? gameBand(content) : null;
+    const band = gb ? h * 0.1 : 0;
     const fs = w * 0.6;
     return (
       <>
         {shape === 'cd' && <rect x={r1(w * 0.12)} y={0} width={r1(w * 0.76)} height={h} fill="#F4F4F6" />}
-        {band > 0 && <rect width={w} height={r1(band)} fill={GAME_RED} />}
+        {gb && <rect width={w} height={r1(band)} fill={gb.color} {...lightEdge(gb.color)} />}
         {title && (
-          <text transform={`translate(${r1(w / 2 - fs * 0.35)} ${r1(band + h * 0.05)}) rotate(90)`} fontSize={r1(fs)} fontFamily="system-ui, sans-serif" fontWeight={600} fill={shape === 'cd' ? '#333333' : '#FFFFFF'}>
+          <text transform={`translate(${r1(w / 2 - fs * 0.35)} ${r1(band + h * 0.05)}) rotate(90)`} fontSize={r1(fs)} fontFamily="system-ui, sans-serif" fontWeight={600} fill={shape === 'cd' ? '#333333' : inkOn(color)}>
             {cut(title, Math.floor(((h - band) * 0.9) / (fs * 0.6)))}
           </text>
         )}
@@ -169,19 +180,38 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
     if (content?.face) return content.face.draw(w, h);
     return shape === 'hifi' ? <HifiFace w={w} h={h} title={null} playing={false} /> : <rect width={w} height={h} fill="#1D1F22" />;
   }
+  if (role === 'back') {
+    // Dos d'une boîte de jeu : son image (TheGamesDB), sinon le dos fabriqué de la boîte connue ; boîte inconnue : aplat du boîtier et titre.
+    const fs = Math.min(w * 0.12, h * 0.08);
+    return (
+      <g data-decal-back="">
+        {content?.backUrl
+          ? <image href={content.backUrl} x={r1(w * 0.03)} y={r1(h * 0.02)} width={r1(w * 0.94)} height={r1(h * 0.96)} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" />
+          : content?.back ? content.back.draw(w, h) : (
+            <>
+              <rect width={w} height={h} fill={color} />
+              {title && <text x={r1(w / 2)} y={r1(h * 0.2)} fontSize={r1(fs)} fontFamily="system-ui, sans-serif" fontWeight={600} textAnchor="middle" fill={inkOn(color)}>{cut(title, 14)}</text>}
+            </>
+          )}
+      </g>
+    );
+  }
   if (role === 'screen') {
     return url ? <image href={url} width={w} height={h} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" /> : <rect width={w} height={h} fill={PLACEHOLDER} />;
   }
   // Couverture : image de la carte (rognée au cadre), sinon couverture de remplacement titrée. Boîtier cristal : marge du boîtier, charnière et reflet ;
-  // DVD/jeu : bord du boîtier ; jeu : bandeau rouge en haut ; livre : marge du plat.
+  // DVD/jeu : bord du boîtier ; jeu : bandeau de sa console en haut (sauf jaquette scannée qui porte le sien) ; livre : marge du plat.
   // Marges de l'image : à gauche (charnière, dos), à droite, en haut et en bas (bord du boîtier ou du plat).
   const inset = shape === 'cd' ? { l: w * 0.09, r: w * 0.036, t: h * 0.04 } : shape === 'book' ? { l: w * 0.04, r: w * 0.046, t: h * 0.03 } : { l: w * 0.03, r: w * 0.028, t: h * 0.02 };
-  const band = shape === 'game' ? h * 0.09 : 0;
+  const gb = shape === 'game' && !(url && content?.printed) ? gameBand(content) : null;
+  const band = gb ? h * 0.09 : 0;
   const [ix, iy, iw, ih] = [inset.l, inset.t + band, w - inset.l - inset.r, h - 2 * inset.t - band];
   const fs = Math.min(iw * 0.16, ih * 0.14);
+  const bandFs = band * 0.55;
   return (
     <>
-      {band > 0 && <rect width={w} height={r1(band + inset.t)} fill={GAME_RED} />}
+      {gb && <rect width={w} height={r1(band + inset.t)} fill={gb.color} {...lightEdge(gb.color)} />}
+      {gb?.label && <text x={r1(w / 2)} y={r1(inset.t + band * 0.72)} fontSize={r1(bandFs)} fontFamily="system-ui, sans-serif" fontWeight={700} textAnchor="middle" fill={inkOn(gb.color)}>{cut(gb.label, Math.floor(w / (bandFs * 0.62)))}</text>}
       {url
         ? <image href={url} x={r1(ix)} y={r1(iy)} width={r1(iw)} height={r1(ih)} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" />
         : (
@@ -274,10 +304,10 @@ export const Model3DArt = memo(Model3DArtImpl, (a, b) => a.kind === b.kind && a.
 // de même forme, où qu'ils soient posés (la projection est affine : poser l'objet revient à translater son dessin).
 // La couleur propre du corps (dos d'un livre) n'entre pas dans la clé : le corps est marqué `body` et coloré au dessin (bodyColor).
 const BODY = '#B0D1E5';
-function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, steampunk: boolean): Geometry {
-  return cached(`item:${shape}:${display}:${angle}:${steampunk ? 1 : 0}`, () => {
-    const m = itemModel(shape, steampunk);
-    const pieces = itemPieces({ key: 'item', shape, display, x: 0, y: 0, z: 0, color: BODY }, steampunk);
+function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, steampunk: boolean, box?: BoxFormat): Geometry {
+  return cached(`item:${shape}:${display}:${angle}:${steampunk ? 1 : 0}:${box ?? ''}`, () => {
+    const m = itemModel(shape, steampunk, box);
+    const pieces = itemPieces({ key: 'item', shape, display, x: 0, y: 0, z: 0, color: BODY, ...(box && { box }) }, steampunk);
     // Objet rangé : sa boîte est celle de ses pièces posées (sur la tranche, largeur et profondeur échangées ; de face, le présentoir
     // l'allonge vers le fond et le boîtier penché).
     const stored = shape !== 'monitor' && shape !== 'small-plant' && shape !== 'small-lamp';
@@ -297,11 +327,11 @@ export function itemCells(shape: ItemShape, steampunk = false): { w: number; h: 
   return { w: g.cols, h: g.rows };
 }
 
-type ItemProps = { shape: ItemShape; display?: ItemDisplay; angle: Angle; rect: PxRect; palette: Palette; content?: ItemContent; color?: string; steampunk?: boolean };
+type ItemProps = { shape: ItemShape; display?: ItemDisplay; angle: Angle; rect: PxRect; palette: Palette; content?: ItemContent; color?: string; steampunk?: boolean; box?: BoxFormat };
 
 // Objet seul (vignette), dessiné depuis son modèle 3D dans son rectangle ; mêmes décors que sur un meuble.
-export function Item3DArt({ shape, display = 'cover', angle, rect, palette, content, color, steampunk = false }: ItemProps): ReactElement {
-  const g = itemGeometry(shape, display, angle, steampunk);
+export function Item3DArt({ shape, display = 'cover', angle, rect, palette, content, color, steampunk = false, box }: ItemProps): ReactElement {
+  const g = itemGeometry(shape, display, angle, steampunk, box);
   const sx = rect.w / (g.cols * CELL_W);
   const sy = rect.h / (g.rows * CELL_H);
   return (
@@ -316,7 +346,7 @@ type CarriedProps = { host: 'desk' | 'shelf'; angle: Angle; rect: PxRect; placem
 // Objet porté (carte rangée, écran, petit objet) dessiné à sa place dans le repère de son porteur tourné (`rect` : rectangle du porteur) :
 // même angle, même échelle, même ombrage que le meuble ; sa géométrie est celle de l'objet seul, translatée.
 function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content, steampunk = false }: CarriedProps): ReactElement {
-  const g = itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk);
+  const g = itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk, pl.box);
   const { w, h } = drawSize(host, angle);
   const [hx, hy] = hostNativePx(host, angle, [pl.x, pl.y, pl.z]);
   const [ox, oy] = g.origin ?? [0, 0];
@@ -328,8 +358,15 @@ function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content,
   );
 }
 
+const sameBand = (a: Band | null | undefined, b: Band | null | undefined): boolean => (a && b ? a.color === b.color && a.label === b.label : a === b);
+const sameSpine = (a: SpineData | undefined, b: SpineData | undefined): boolean => (a && b
+  ? a.format === b.format && a.style.plastic === b.style.plastic && sameBand(a.style.band, b.style.band) && a.title === b.title
+    && a.logoUrl === b.logoUrl && a.studio === b.studio && a.console === b.console
+  : a === b);
+
 // Redessiné seulement si l'objet, sa place, son porteur ou son contenu changent (comparés par valeur : un animal qui bouge ne refait rien).
 export const CarriedItem3D = memo(CarriedItem3DImpl, (a, b) => a.host === b.host && a.angle === b.angle && a.palette === b.palette && a.steampunk === b.steampunk
   && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
   && itemsKey([a.placement]) === itemsKey([b.placement])
-  && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit && a.content?.face?.key === b.content?.face?.key && a.content?.top?.key === b.content?.top?.key);
+  && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit
+  && a.content?.backUrl === b.content?.backUrl && a.content?.back?.key === b.content?.back?.key && sameBand(a.content?.band, b.content?.band) && a.content?.printed === b.content?.printed && sameSpine(a.content?.spine, b.content?.spine) && a.content?.face?.key === b.content?.face?.key && a.content?.top?.key === b.content?.top?.key);

@@ -33,6 +33,8 @@ export function storedPlacement(item: Stored, x0Cm: number): ItemPlacement {
     key: item.id, shape: item.shape, display,
     x: SHELF.face!.x + x0Cm, y: boardTopCm(item.level), z: FRONT_CM,
     ...(item.shape === 'book' && { color: bookColor(item.slug) }),
+    ...(item.box && { box: item.box }),
+    ...(item.box && item.caseColor && { color: item.caseColor }),
   };
 }
 

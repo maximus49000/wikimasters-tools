@@ -8,6 +8,7 @@ vi.mock('../../src/content/ghibli-sky', async (orig) => ({ ...(await orig<typeof
 
 import { DISC_FLIGHT_MS, DiscFlight } from '../../src/content/opened-item/disc-flight';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
+import { setGameService } from '../../src/content/game-registry';
 import { setMusicService, setPlatformChoice, setPlayerSource } from '../../src/content/music-registry';
 import type { MusicService } from '../../src/content/music-service';
 import type { PlayerCard, PlayerSource, PlayerView } from '../../src/content/player-source';
@@ -274,5 +275,57 @@ describe('le disque vole jusqu’au poste', () => {
     expect(go).toHaveBeenCalledTimes(1);
     expect(go).toHaveBeenCalledWith(-2);
     expect(back).not.toHaveBeenCalled();
+  });
+});
+
+// ---------- BO d'un jeu à cartouche ----------
+describe('BO d’un jeu Switch : la cartouche va au poste', () => {
+  const zelda = [{ slug: 'Zelda', title: 'Zelda' }];
+  const collection = { list: async () => zelda, subscribe: () => () => undefined } as unknown as CollectionRepo;
+  const GAME_LAYOUT: Layout = [
+    { id: 's', kind: 'shelf', col: 0, row: 6 },
+    { id: 'g', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, box: 'switch', caseColor: '#E60012', slug: 'Zelda' },
+    { id: 'd', kind: 'desk', col: 12, row: 10 },
+    { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 },
+  ];
+  let view: PlayerView;
+  const listeners = new Set<() => void>();
+
+  beforeEach(async () => {
+    view = { linked: true, hidden: false, enabled: true, card: null, track: null };
+    const notify = () => listeners.forEach((l) => l());
+    setPlayerSource({ current: () => view, subscribe: (l: () => void) => { listeners.add(l); return () => listeners.delete(l); }, toggle: async () => undefined, setCard: vi.fn() } as unknown as PlayerSource);
+    const bo = { kind: 'album', items: [{ uri: 'spotify:track:BO-1', title: 'BO 1', artist: 'X' }], albumUri: 'spotify:album:BO' };
+    setMusicService({
+      soundtrack: vi.fn(async () => bo),
+      play: vi.fn(async (_t: unknown, _l: unknown, card: { slug: string; title: string }) => {
+        view = { ...view, card, track: { uri: 'spotify:track:BO-1', title: 'BO 1', artist: 'X', imageUrl: null, playing: true } };
+        notify();
+        return null;
+      }),
+      subscribe: () => () => undefined,
+    } as unknown as MusicService);
+    setGameService({ view: vi.fn(async () => ({ status: 'detail', detail: { source: 'igdb', id: 1, title: 'Zelda', genres: [], platforms: ['Nintendo Switch'], developers: [], pageUrl: 'https://x' } })) } as never);
+    const repo = createLibraryRepo(createMemoryStore());
+    await act(async () => { root.render(<LibraryPanel library={repo} collection={collection} />); });
+    await settle();
+    await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => GAME_LAYOUT)); });
+    await settle();
+  });
+  afterEach(() => { setPlayerSource(null); setMusicService(null); setGameService(null); listeners.clear(); history.replaceState(null, ''); });
+
+  it('la cartouche vole (kind « cart ») et se pose couchée sur le poste, sans tourner', async () => {
+    await click('[data-furniture="shelf"]');
+    await click('[data-zoom-card="Zelda"]');
+    await click('[data-board-card="Zelda"]');
+    await advance(1200);
+    expect(q('[data-opened-item] [data-case-disc][data-support="cart"]')).not.toBeNull();
+    await click('[data-opened-item] button[aria-label="Lire BO 1"]');
+    expect(q('[data-disc-flight]')?.getAttribute('data-kind')).toBe('cart');
+    await advance(900);
+    const at = q('[data-hifi] [data-hifi-disc-at]')!;
+    expect(at.querySelector('[data-hifi-cart]')).not.toBeNull();
+    expect(at.outerHTML).not.toContain('rotate');
+    expect(at.querySelector('[data-hifi-disc-spin]')).toBeNull();
   });
 });
