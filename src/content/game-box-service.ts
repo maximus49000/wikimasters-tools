@@ -163,14 +163,15 @@ export function createGameBoxService(deps: GameBoxDeps) {
     }
   }
 
-  // Sans TheGamesDB : la jaquette de Steam/IGDB sur une boîte de la console du jeu.
-  const fallback = (detail: GameDetail, title: string): GameBox => {
+  // TheGamesDB a répondu « rien trouvé » : la jaquette de Steam/IGDB sur une boîte de la console du jeu.
+  // TheGamesDB en panne (limite, réseau) : aucune jaquette (boîtier dessiné et titre) en attendant le nouvel essai.
+  const fallback = (detail: GameDetail, title: string, withCover: boolean): GameBox => {
     const platform = detail.platforms[0] ?? '';
     return {
       format: formatOfPlatformName(platform),
       style: caseStyleOfPlatformName(platform),
       platformName: platform,
-      ...(detail.coverUrl ? { frontUrl: detail.coverUrl } : {}),
+      ...(withCover && detail.coverUrl ? { frontUrl: detail.coverUrl } : {}),
       shots: [],
       title: printedTitle(title, detail),
       ...studioOf(detail),
@@ -203,13 +204,13 @@ export function createGameBoxService(deps: GameBoxDeps) {
     if (view.status !== 'detail') return { box: null, failed: false };
     const detail = view.detail;
     const all = await lookup(detail.title, slug, urgent);
-    if (all === null) return { box: fallback(detail, title), failed: true };
+    if (all === null) return { box: fallback(detail, title, false), failed: true };
     // L'année (±1) ne sert qu'à la version par défaut : un portage plus tardif reste proposé dans « Changer de version ».
     const matching = matchingVersions(all, titlesOf(detail, title), detail.year);
     const wanted = (await choices.load())[slug]?.tgdbId;
     const chosen = wanted === undefined ? undefined : all.find((version) => version.id === wanted);
     const version = chosen ?? defaultVersion(matching, formatOfPlatformName(detail.platforms[0] ?? ''));
-    return { box: version ? await fromVersion(version, title, detail, slug, urgent) : fallback(detail, title), failed: false };
+    return { box: version ? await fromVersion(version, title, detail, slug, urgent) : fallback(detail, title, true), failed: false };
   }
 
   // Un seul calcul à la fois par carte (box, request et outcome partagent le même) ; un calcul lancé avant un

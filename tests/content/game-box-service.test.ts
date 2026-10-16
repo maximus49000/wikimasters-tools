@@ -76,12 +76,14 @@ describe('createGameBoxService.request', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('panne : repli, et pas de nouvel essai avant 60 s', async () => {
+  it('panne (429, réseau) : boîtier dessiné sans jaquette Steam, et pas de nouvel essai avant 60 s', async () => {
     let t = 1_000;
     const { service, versions } = setup({ versions: null, now: () => t });
     service.request('Jeu', 'Hollow Knight');
     await vi.waitFor(() => expect(service.peek('Jeu')).toBeTruthy());
-    expect(service.peek('Jeu')?.frontUrl).toBe('https://img.test/cover.jpg');
+    expect(service.peek('Jeu')).toMatchObject({ format: 'dvd', title: 'Hollow Knight', shots: [] });
+    expect(service.peek('Jeu')?.frontUrl).toBeUndefined();
+    expect(service.peek('Jeu')?.tgdbId).toBeUndefined();
     expect(versions).toHaveBeenCalledTimes(1);
     t += 59_000;
     service.request('Jeu', 'Hollow Knight');
@@ -139,6 +141,17 @@ describe('createGameBoxService : mise en cache et choix', () => {
     service.subscribe(listener);
     service.request('Jeu', 'x');
     await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(1));
+  });
+
+  it('panne puis nouvel essai réussi : le scan TheGamesDB, jamais la jaquette Steam', async () => {
+    let quota = true;
+    const service = createGameBoxService({
+      versions: async () => (quota ? null : [switchV]), images: async () => ({}), choices: createGameVersionRepo(createMemoryStore()),
+      game: { view: async () => ({ status: 'detail', detail }) }, store: createMemoryStore(), spacingMs: 0,
+    });
+    expect((await service.outcome('Jeu', 'Hollow Knight')).box?.frontUrl).toBeUndefined();
+    quota = false;
+    expect((await service.box('Jeu', 'Hollow Knight'))?.frontUrl).toBe(boxartUrl('boxart/front/20.jpg', 'medium'));
   });
 
   it('chooseVersion recalcule seul ; un calcul plus ancien ne gagne pas', async () => {
