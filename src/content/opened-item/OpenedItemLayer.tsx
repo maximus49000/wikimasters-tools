@@ -1,4 +1,5 @@
-// Couche plein écran de l'objet ouvert : le boîtier (ItemCase) et ses boutons en glyphes ⓘ ✕ ⏯ (+ « ajouter un poste »).
+// Couche plein écran de l'objet ouvert : le boîtier (ItemCase) et ses boutons en glyphes ⓘ ✕ ⏯ (+ « ajouter un poste »),
+// et pour un jeu ⟲ au-dessus de la boîte, qui la retourne (dos | tranche | devant).
 // Paysage forcé ; si l'écran reste en hauteur, la couche est tournée de 90° en CSS.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { Placed } from '../../core/library/library-types';
@@ -7,10 +8,12 @@ import type { Box } from '../../core/library/zoom-target';
 import { reducedMotion } from '../ghibli-sky';
 import { NO_PLAYER, noPlayer, noSubscribe } from '../ListenSection';
 import { getPlayerSource } from '../music-registry';
-import type { BoxFormat } from '../../core/game/platform-boxes';
+import { BOX_FORMATS, type BoxFormat } from '../../core/game/platform-boxes';
+import type { GameBox } from '../game-box-service';
 import { gameDiscKind, type DiscKind } from '../hifi/hifi-art';
 import { DiscFlight, flightBoxOf } from './disc-flight';
-import { ItemCase, type DiscState } from './item-case';
+import { GameOutside } from './game-outside';
+import { gameGeometry, ItemCase, openCaseLayout, type DiscState } from './item-case';
 import type { OpenedState } from './use-opened-item';
 
 type Props = {
@@ -32,6 +35,12 @@ type Props = {
   // Jeu : gabarit de la console (dimensions de la boîte, disque ou cartouche) et couleur de son plastique.
   format?: BoxFormat;
   caseColor?: string;
+  // Jeu : la boîte connue du service (scans, captures, logo, description), pour la face extérieure ; absente, un repli.
+  box?: GameBox;
+  // La boîte vient d'être retournée (true) ou remise à l'endroit : l'appelant arrête la vidéo éventuelle.
+  onFlip?(flipped: boolean): void;
+  // Loupe sur le dos (boîte retournée).
+  onMagnify?(): void;
 };
 
 // Disque du plateau quand il n'est pas mesurable (tests, rendu hors écran) : à droite du centre, à peu près où le boîtier le pose.
@@ -52,8 +61,13 @@ function flightKindOf(opening: string | null, format: BoxFormat | undefined): Di
   return gameDiscKind(format);
 }
 
-export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHifi, onInfo, onClose, selector, right, onAddHifi, flight = null, format, caseColor }: Props): ReactElement | null {
+const noop = (): void => {};
+
+export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHifi, onInfo, onClose, selector, right, onAddHifi, flight = null, format, caseColor, box, onFlip, onMagnify = noop }: Props): ReactElement | null {
   const opening = openingOf(placed);
+  const [flipped, setFlipped] = useState(false);
+  // Un autre objet ouvert repart à l'endroit.
+  useEffect(() => setFlipped(false), [state.placedId]);
   const kind = flightKindOf(opening, format);
   const [screen, setScreen] = useState(screenSize);
   const source = getPlayerSource();
@@ -97,6 +111,17 @@ export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHi
   const whole = { x: 0, y: 0, w: screen.w, h: screen.h };
   const from = boxInLayer(state.from, whole, frame.rotated);
   const to = boxInLayer(state.to, whole, frame.rotated);
+  // Jeu : face extérieure (dos | tranche | devant) et bouton ⟲ centré au-dessus de la boîte, dans le repère du calque (tourné ou non).
+  const game = opening === 'game-case';
+  const fmt = format ?? 'generic';
+  const out = game && flipped;
+  const front = box?.frontUrl ?? cover;
+  const outBox: GameBox | null = !game ? null : {
+    ...(box ?? { style: { plastic: caseColor ?? BOX_FORMATS[fmt].plastic, band: BOX_FORMATS[fmt].band }, platformName: '', shots: [], title: card.title }),
+    format: fmt, ...(front ? { frontUrl: front } : {}),
+  };
+  const place = openCaseLayout(opening, fmt, frame.w, frame.h);
+  const flip = () => { const next = !flipped; setFlipped(next); onFlip?.(next); };
   const geometry: CSSProperties = frame.rotated
     ? { top: 0, left: screen.w, width: frame.w, height: frame.h, transformOrigin: '0 0', transform: 'rotate(90deg)' }
     : { inset: 0 };
@@ -105,7 +130,14 @@ export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHi
     <div ref={layerRef} data-opened-item={placed.id} style={{ position: 'absolute', zIndex: 40, overflow: 'hidden', background: 'rgba(28,18,12,.55)', ...geometry }}>
       {/* Une seule ouverture par objet : ItemCase ne calcule son état « arrivé » qu'au montage. */}
       <ItemCase key={state.placedId} opening={opening} phase={state.phase} from={from} to={to} cover={cover} color={color} title={card.title}
-        disc={disc} reduced={reducedMotion()} selector={selector} right={right} {...(format ? { format } : {})} {...(caseColor ? { caseColor } : {})} />
+        disc={disc} reduced={reducedMotion()} selector={selector} size={frame} {...(format ? { format } : {})} {...(caseColor ? { caseColor } : {})}
+        // Retournée : la vidéo s'arrête (démontée) et le disque revient dans le plateau.
+        {...(right !== undefined && !out ? { right } : {})}
+        {...(outBox ? { outside: <GameOutside box={outBox} geometry={gameGeometry(fmt)} onMagnify={onMagnify} />, flipped } : {})} />
+      {game && state.phase !== 'closing' && (
+        <button type="button" data-action="flip" aria-label={flipped ? 'Voir l’intérieur de la boîte' : 'Retourner la boîte'} title={flipped ? 'Voir l’intérieur' : 'Retourner la boîte'} onClick={flip}
+          style={{ ...BUTTON, position: 'absolute', left: Math.round(place.x - 22), top: Math.max(4, Math.round(place.y - 44 - 6)), font: '600 24px system-ui, sans-serif' }}>⟲</button>
+      )}
       {/* Le disque vole par-dessus le boîtier, qui reste ouvert en grand. */}
       {flight && path && path.id === flight.id && (
         <DiscFlight key={path.id} from={path.from} to={path.to} cover={cover} color={color} kind={kind}

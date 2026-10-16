@@ -1456,6 +1456,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               placed={p}
               {...(format ? { format } : {})}
               {...(caseColor ? { caseColor } : {})}
+              {...(box ? { box } : {})}
+              // Boîte retournée : la vidéo éventuelle s'arrête.
+              onFlip={(flipped) => { if (flipped) setVideoShown(null); }}
               card={card}
               cover={imageOfCard(slug) ?? null}
               color={bookColor(slug)}

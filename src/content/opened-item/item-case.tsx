@@ -31,6 +31,11 @@ type Props = {
   // Boîte de jeu : le gabarit de la console (dimensions réelles, support) et la couleur de son plastique.
   format?: BoxFormat;
   caseColor?: string;
+  // Boîte de jeu : face extérieure (dos | tranche | devant), vue quand la boîte est retournée (⟲).
+  outside?: ReactNode;
+  flipped?: boolean;
+  // Taille du calque connue de l'appelant, tant qu'elle n'est pas mesurée (rendu hors écran, tests).
+  size?: { w: number; h: number };
 };
 
 // Durées : vol puis pivot du couvercle ; fondu en mouvement réduit.
@@ -82,6 +87,22 @@ const SHADOW = 'drop-shadow(5px 7px 0 rgba(28,18,12,.32))';
 const f = (n: number): number => Math.round(n * 100) / 100;
 
 const geometryOf = (opening: Opening, format: BoxFormat): Geometry => (opening === 'game-case' ? gameGeometry(format) : GEOMETRY[opening]);
+
+// Place gardée au-dessus (et au-dessous, pour rester centrée) d'une boîte de jeu pour le bouton ⟲ de 44 px.
+export const FLIP_ROOM = 56;
+
+// Boîte ouverte dans le calque (lw × lh) : `x` = la charnière (centre horizontal de la boîte), `y` = son bord haut, `W` × `H` = une moitié.
+// Elle tient dans 88 % de la largeur (face extérieure d'un jeu comprise, plus large de la tranche) et 80 % de la hauteur ;
+// un jeu laisse en plus la place du bouton ⟲ au-dessus.
+export function openCaseLayout(opening: Opening, format: BoxFormat, lw: number, lh: number): { x: number; y: number; W: number; H: number } {
+  const g = geometryOf(opening, format);
+  const game = opening === 'game-case';
+  const span = game ? 2 * g.w + BOX_FORMATS[format].d * 10 : 2 * g.w;
+  const maxH = game ? Math.min(lh * 0.8, lh - 2 * FLIP_ROOM) : lh * 0.8;
+  const H = Math.max(0, Math.min(maxH, (lw * 0.88 * g.h) / span));
+  const W = H * (g.w / g.h);
+  return { x: lw / 2, y: (lh - H) / 2, W, H };
+}
 
 function rgbOf(c: string): [number, number, number] | null {
   const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c.trim());
@@ -588,7 +609,7 @@ function BookTitlePage({ art }: { art: Art }): ReactElement {
 
 type Pose = { x: number; y: number; s: number };
 
-export function ItemCase({ opening, phase, from, to, cover, color, title, disc, reduced, selector, right, format = 'generic', caseColor }: Props): ReactElement {
+export function ItemCase({ opening, phase, from, to, cover, color, title, disc, reduced, selector, right, format = 'generic', caseColor, outside, flipped = false, size }: Props): ReactElement {
   const g = geometryOf(opening, format);
   const plastic = plasticOf(opening, caseColor);
   const uid = `wm-case-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -614,16 +635,13 @@ export function ItemCase({ opening, phase, from, to, cover, color, title, disc, 
     return () => window.cancelAnimationFrame(raf);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sans mesure (rendu hors écran, tests), un calque paysage par défaut.
-  const lw = layer.w > 0 ? layer.w : 800;
-  const lh = layer.h > 0 ? layer.h : 450;
-  const aspect = g.w / g.h;
-  // Ouvert, le boîtier fait deux moitiés côte à côte : il tient dans 88 % de la largeur et 80 % de la hauteur.
-  const H = Math.min(lh * 0.8, (lw * 0.88) / (2 * aspect));
-  const W = H * aspect;
+  // Sans mesure (rendu hors écran, tests), la taille donnée par l'appelant, sinon un calque paysage par défaut.
+  const lw = layer.w > 0 ? layer.w : size?.w ?? 800;
+  const lh = layer.h > 0 ? layer.h : size?.h ?? 450;
+  // Ouvert, le boîtier fait deux moitiés côte à côte, la charnière (bord gauche du plateau) au centre du calque.
+  const { x: hingeX, y: topY, W, H } = openCaseLayout(opening, format, lw, lh);
   const k = W / g.w;
-  // La charnière (bord gauche du plateau) au centre du calque.
-  const centre: Pose = { x: lw / 2, y: (lh - H) / 2, s: 1 };
+  const centre: Pose = { x: hingeX, y: topY, s: 1 };
   const poseIn = (b: Box): Pose => {
     const s = Math.min(b.w / W, b.h / H);
     return { x: b.x + (b.w - W * s) / 2, y: b.y + (b.h - H * s) / 2, s };
@@ -664,6 +682,26 @@ export function ItemCase({ opening, phase, from, to, cover, color, title, disc, 
     position: 'absolute', left: `${f((r.x / g.w) * 100)}%`, top: `${f((r.y / g.h) * 100)}%`, width: `${f((r.w / g.w) * 100)}%`, height: `${f((r.h / g.h) * 100)}%`,
   });
   const viewBox = `0 0 ${g.w} ${g.h}`;
+
+  // Retournée (⟲) : demi-tour autour de la charnière, centre de la boîte ouverte ; fondu en mouvement réduit. Fermer depuis
+  // l'extérieur ramène l'intérieur sans animation, puis la fermeture habituelle se déroule.
+  const hasOutside = outside !== undefined;
+  const out = hasOutside && flipped && phase !== 'closing';
+  const flipTransition = phase === 'closing' ? 'none' : `transform ${CASE_PIVOT_MS}ms ease-in-out`;
+  const flipperStyle: CSSProperties = reduced || !hasOutside
+    ? { position: 'absolute', inset: 0 }
+    : { position: 'absolute', inset: 0, transformOrigin: 'left center', transformStyle: 'preserve-3d', transform: `perspective(2400px) rotateY(${out ? 180 : 0}deg)`, transition: flipTransition };
+  // Faces de l'intérieur : cachées de dos ; en mouvement réduit, en fondu.
+  const fade = (shown: boolean): CSSProperties => ({ opacity: shown ? 1 : 0, transition: phase === 'closing' ? 'none' : `opacity ${CASE_FADE_MS}ms ease-out`, pointerEvents: shown ? undefined : 'none' });
+  const insideFace: CSSProperties = !hasOutside ? {} : reduced ? fade(!out) : { backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', pointerEvents: out ? 'none' : undefined };
+  // Face extérieure du couvercle (le devant) : retournée, elle serait de face sous la face extérieure dessinée ; masquée pendant
+  // le retournement, elle ne revient qu'une fois l'intérieur de nouveau de face.
+  const lidOuterHidden: CSSProperties = !hasOutside || phase === 'closing' ? {} : { visibility: out ? 'hidden' : 'visible', transition: out ? 'visibility 0s' : `visibility 0s linear ${CASE_PIVOT_MS}ms` };
+  const spineMm = opening === 'game-case' ? BOX_FORMATS[format].d * 10 : 0;
+  const outsideStyle: CSSProperties = {
+    position: 'absolute', top: 0, height: '100%', left: `${f((-(g.w + spineMm / 2) / g.w) * 100)}%`, width: `${f(((2 * g.w + spineMm) / g.w) * 100)}%`,
+    ...(reduced ? fade(out) : { transform: 'rotateY(180deg)', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', pointerEvents: out ? undefined : 'none' }),
+  };
 
   // Contenu du plateau : `right`, sinon la page de titre du livre, sinon le disque (ou le plateau vide).
   let content: ReactNode;
@@ -710,17 +748,18 @@ export function ItemCase({ opening, phase, from, to, cover, color, title, disc, 
   }
 
   return (
-    <div ref={ref} className="wmt-item-case" data-item-case="" data-phase={phase} data-opening={opening} style={caseStyle} aria-label={title}>
+    <div ref={ref} className="wmt-item-case" data-item-case="" data-phase={phase} data-opening={opening} data-flipped={hasOutside ? String(out) : undefined} style={caseStyle} aria-label={title}>
       <style>{'@keyframes wmt-case-disc-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}'}</style>
+      <div data-case-flipper="" style={flipperStyle}>
       {/* Plateau : moitié droite (la charnière à gauche). */}
-      <div data-case-tray="" style={{ position: 'absolute', inset: 0 }}>
+      <div data-case-tray="" style={{ position: 'absolute', inset: 0, ...insideFace }}>
         <svg viewBox={viewBox} width="100%" height="100%" style={svgStyle}><Tray opening={opening} art={art} g={g} plastic={plastic} /></svg>
         <div data-case-right="" style={{ position: 'absolute', inset: 0 }}>{content}</div>
       </div>
       {/* Couvercle : pivote autour de sa charnière gauche ; sa face intérieure porte le sélecteur. */}
-      <div data-case-lid="" style={lidStyle}>
+      <div data-case-lid="" style={{ ...lidStyle, ...(reduced ? insideFace : out ? { pointerEvents: 'none' } : {}) }}>
         {!reduced && (
-          <div data-case-lid-outer="" style={face}>
+          <div data-case-lid-outer="" style={{ ...face, ...lidOuterHidden }}>
             <svg viewBox={viewBox} width="100%" height="100%" style={svgStyle}><LidOuter opening={opening} art={{ ...art, uid: `${uid}-o` }} g={g} plastic={plastic} /></svg>
           </div>
         )}
@@ -728,6 +767,8 @@ export function ItemCase({ opening, phase, from, to, cover, color, title, disc, 
           <svg viewBox={viewBox} width="100%" height="100%" style={svgStyle}><LidInner opening={opening} art={art} g={g} plastic={plastic} /></svg>
           <div data-case-selector="" style={{ ...pct(g.selector), overflow: 'auto', color: INK_C, fontSize: Math.max(12, Math.round(H * 0.045)) }}>{selector}</div>
         </div>
+      </div>
+      {hasOutside && <div data-case-outside="" aria-hidden={!out} style={outsideStyle}>{outside}</div>}
       </div>
     </div>
   );
