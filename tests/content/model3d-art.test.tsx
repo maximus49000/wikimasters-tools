@@ -72,3 +72,37 @@ describe('clé de dessin des objets posés : le format de boîte compte', () => 
     expect(a).not.toBe(b);
   });
 });
+
+describe('boîte de jeu : dos et bandeau de console', () => {
+  const pal = paletteOf('scandinave');
+  const hrefs = (c: HTMLElement) => [...c.querySelectorAll('image')].map((i) => i.getAttribute('href'));
+  it('de dos, le décalque `back` dessine l’image du dos (pas la couverture)', () => {
+    const c = draw(<Item3DArt shape="game" display="back" angle={0} rect={rect} palette={pal} box="bluray" content={{ url: 'face.png', backUrl: 'dos.png', title: 'Hollow Knight' }} />);
+    expect(hrefs(c)).toContain('dos.png');
+    expect(c.querySelector('[data-decal-back]')).not.toBeNull();
+  });
+  it('sans image du dos : aplat de la couleur du boîtier et titre', () => {
+    const c = draw(<Item3DArt shape="game" display="back" angle={0} rect={rect} palette={pal} box="switch" color="#E60012" content={{ url: 'face.png', title: 'Zelda' }} />);
+    const back = c.querySelector('[data-decal-back]')!;
+    expect(back.querySelector('image')).toBeNull();
+    expect(back.querySelector('rect')!.getAttribute('fill')!.toUpperCase()).toBe('#E60012');
+    expect(back.textContent).toContain('Zelda');
+  });
+  it('bandeau de la console (couleur, nom) au lieu du rouge unique ; sans bandeau connu : aucun', () => {
+    const ps4 = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="bluray" content={{ url: 'face.png', title: 'RDR2', band: { color: '#1F4C9E', label: 'PS4' } }} />);
+    expect(ps4.innerHTML.toUpperCase()).toContain('#1F4C9E');
+    expect(ps4.innerHTML.toUpperCase()).not.toContain('#E24B4A');
+    expect(ps4.textContent).toContain('PS4');
+    const ps2 = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="dvd" content={{ url: 'face.png', title: 'GTA', band: null }} />);
+    expect(ps2.innerHTML.toUpperCase()).not.toContain('#E24B4A');
+    const unknown = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} content={{ url: 'face.png', title: 'GTA' }} />);
+    expect(unknown.innerHTML.toUpperCase()).toContain('#E24B4A');
+  });
+  it('jaquette scannée (TheGamesDB) : son bandeau imprimé suffit, pas de second bandeau sur la couverture ; sans image, le bandeau revient', () => {
+    const band = { color: '#1F4C9E', label: 'PS4' };
+    const scan = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="bluray" content={{ url: 'face.png', title: 'RDR2', band, printed: true }} />);
+    expect(scan.textContent).not.toContain('PS4');
+    const none = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="bluray" content={{ title: 'RDR2', band, printed: true }} />);
+    expect(none.textContent).toContain('PS4');
+  });
+});

@@ -6,6 +6,8 @@ import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/stor
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
 import { extendRoom, updateLayout } from '../../src/core/library/library-book';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
+import { setGameBoxService } from '../../src/content/game-box-registry';
+import type { GameBox, GameBoxService } from '../../src/content/game-box-service';
 import { setPlayerSource } from '../../src/content/music-registry';
 import type { PlayerSource, PlayerView } from '../../src/content/player-source';
 import type { CollectionRepo } from '../../src/core/collection/collection-repo';
@@ -566,5 +568,71 @@ describe('LibraryPanel : objet ouvert dans la pièce', () => {
     view = { ...view, track: { ...view.track!, playing: false } };
     await act(async () => { listeners.forEach((l) => l()); });
     expect(q('[data-case-disc]')?.getAttribute('data-disc')).toBe('in');
+  });
+});
+
+describe('LibraryPanel : boîtes de jeux', () => {
+  const known = [{ slug: 'Zelda', title: 'Zelda' }, { slug: 'Daft_Punk', title: 'Daft Punk' }];
+  const fakeCollection = { list: async () => known, subscribe: () => () => undefined } as unknown as CollectionRepo;
+  const LAYOUT: Layout = [
+    { id: 's', kind: 'shelf', col: 0, row: 6 },
+    { id: 'g', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, slug: 'Zelda' },
+    { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 1, slug: 'Daft_Punk' },
+  ];
+  const SWITCH: GameBox = { format: 'switch', style: { plastic: '#E60012', band: { color: '#E60012', label: 'NINTENDO SWITCH' } }, platformName: 'Nintendo Switch', shots: [], title: 'Zelda' };
+  let listeners: Set<() => void>;
+  let boxes: Record<string, GameBox | null>;
+  let request: ReturnType<typeof vi.fn>;
+  const seed = async () => {
+    await act(async () => { root.render(<LibraryPanel library={repo} collection={fakeCollection} />); });
+    await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => LAYOUT)); });
+    await settle();
+  };
+  const notify = () => act(async () => { listeners.forEach((l) => l()); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  beforeEach(() => {
+    listeners = new Set();
+    boxes = {};
+    request = vi.fn();
+    setGameBoxService({ peek: (slug: string) => boxes[slug], request, subscribe: (l: () => void) => { listeners.add(l); return () => listeners.delete(l); } } as unknown as GameBoxService);
+  });
+  afterEach(() => setGameBoxService(null));
+  const game = () => repo.current()!.rooms[0]!.layout.find((p) => p.id === 'g');
+
+  it('demande la boîte des jeux dessinés (pas des autres objets)', async () => {
+    await seed();
+    expect(request).toHaveBeenCalledWith('Zelda', 'Zelda');
+    expect(request.mock.calls.every(([slug]) => slug === 'Zelda')).toBe(true);
+  });
+
+  it('un jeu dont la boîte est Switch est réécrit une seule fois (format + couleur), jamais en boucle', async () => {
+    await seed();
+    const update = vi.spyOn(repo, 'update');
+    boxes.Zelda = SWITCH;
+    await notify();
+    expect(game()).toMatchObject({ box: 'switch', caseColor: '#E60012' });
+    expect(update).toHaveBeenCalledTimes(1);
+    await notify();
+    await notify();
+    expect(update).toHaveBeenCalledTimes(1);
+    // Version changée (PS4) : une écriture de plus.
+    boxes.Zelda = { ...SWITCH, format: 'bluray', style: { plastic: '#1F4C9E', band: { color: '#1F4C9E', label: 'PS4' } } };
+    await notify();
+    expect(game()).toMatchObject({ box: 'bluray', caseColor: '#1F4C9E' });
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  it('« Présenter de dos » pour un jeu, pas pour un CD', async () => {
+    await seed();
+    await click('[data-action="edit"]');
+    await click('[data-card="Zelda"]');
+    const back = q('[data-action="display-back"]')!;
+    expect(back.getAttribute('aria-label')).toBe('Présenter de dos');
+    await click('[data-action="display-back"]');
+    expect(q('[data-placement-bar] [data-action="display-back"]')!.getAttribute('aria-pressed')).toBe('true');
+    await click('[data-action="place-confirm"]');
+    expect(game()).toMatchObject({ display: 'back' });
+    await click('[data-card="Daft_Punk"]');
+    expect(q('[data-action="display-cover"]')).not.toBeNull();
+    expect(q('[data-action="display-back"]')).toBeNull();
   });
 });

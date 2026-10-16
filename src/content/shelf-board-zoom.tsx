@@ -6,6 +6,7 @@ import type { Room, ShelfLevel } from '../core/library/library-types';
 import { SHELF_INNER_CM, SHELF_LEVELS, displayOf, isShelfLevel, shelfBoardsIn, shelfLayoutIn, type Stored } from '../core/library/room-grid';
 import { paletteOf } from '../core/library/styles';
 import { reducedMotion } from './ghibli-sky';
+import { gameBoxContent } from './game-box-content';
 import { Icon, ICONS } from './library-ui';
 
 export type ShelfBoardProps = {
@@ -35,6 +36,8 @@ const TITLE_BAND = '#f3eee4';
 const TITLE_INK = '#2a2420';
 // Largeur moyenne d'un caractère, en fraction de la taille de police.
 const CHAR_W = 0.55;
+// Boîtier d'un jeu dont la console est inconnue (noir, comme dans la pièce).
+const GAME_CASE = '#1B1B1F';
 export const SWIPE_PX = 40;
 
 // Titre en `lines` lignes d'au plus `max` caractères (mots entiers ; un mot trop long est coupé), « … » si ça ne tient pas.
@@ -138,21 +141,26 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                 const y = y0 + b.local.y - cut;
                 const w = b.local.w;
                 const h = b.local.h;
-                const spine = displayOf(p) === 'spine';
+                const display = displayOf(p);
+                const spine = display === 'spine';
+                // Jeu de dos : l'image du dos de sa boîte ; sans image, l'aplat de la couleur du boîtier.
+                const back = display === 'back';
+                const backUrl = back ? gameBoxContent(p.shape, p.slug).backUrl : undefined;
                 const spineFont = Math.min(w * 0.6, TITLE_FONT_CM);
                 return (
                   <g
                     key={p.id}
                     data-board-card={p.slug}
-                    data-board-display={spine ? 'spine' : 'cover'}
+                    data-board-display={display}
                     onClick={() => {
                       if (swiped.current) { swiped.current = false; return; }
                       if (info) onCard(p.slug);
                     }}
                     style={{ cursor: info ? 'pointer' : 'default' }}
                   >
-                    <rect x={x} y={y} width={w} height={h} fill="#e8e2d6" stroke={TITLE_INK} strokeWidth={0.3} />
-                    {!spine && url && <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" />}
+                    <rect x={x} y={y} width={w} height={h} fill={back ? (p.caseColor ?? GAME_CASE) : '#e8e2d6'} stroke={TITLE_INK} strokeWidth={0.3} />
+                    {back ? backUrl && <image href={backUrl} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" />
+                      : !spine && url && <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" />}
                     {spine
                       ? <text data-board-title="" transform={`translate(${x + w / 2} ${y + h - 1}) rotate(-90)`} fontSize={spineFont} dominantBaseline="middle" fill={TITLE_INK}>{titleLines(title, (h - 2) / (spineFont * CHAR_W), 1)[0]}</text>
                       : titleLines(title, w / (TITLE_FONT_CM * CHAR_W)).map((line, k) => (

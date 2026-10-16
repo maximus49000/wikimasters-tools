@@ -18,6 +18,7 @@ import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { WallArt } from './library-card-art';
 import { CarriedItem3D, Model3DArt, type ItemContent, type ModelPart } from './model3d-art';
+import { gameBoxContent } from './game-box-content';
 import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
 import { getImageService } from './image-registry';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
@@ -479,7 +480,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       if (!host || !pl || !openingOf(FURNITURE_MODELS.shelf, host.angle)) return null;
       const info = cards[placed.slug];
       // Vraie boîte posée sur sa tablette, tournée avec l'étagère : image de la carte sur la couverture, titre sur la tranche.
-      const art = <CarriedItem3D host="shelf" angle={host.angle} rect={host.rect} placement={pl} palette={palette} content={info ? { url: imageOf(placed.slug), title: info.title } : undefined} />;
+      const art = <CarriedItem3D host="shelf" angle={host.angle} rect={host.rect} placement={pl} palette={palette} content={info ? { url: imageOf(placed.slug), title: info.title, ...gameBoxContent(placed.shape, placed.slug) } : undefined} />;
       const quad = cardQuad(placed, host.angle, host.rect, pl)!;
       return { slug: placed.slug, rect: boxOfQuad(quad), art, quad };
     }

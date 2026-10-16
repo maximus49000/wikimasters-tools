@@ -94,6 +94,8 @@ import { LocationDialog } from './LocationDialog';
 import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView } from './RoomView';
+import { applyBoxChanges, boxChanges } from './game-box-content';
+import { getGameBoxService } from './game-box-registry';
 import { Btn, Icon, ICONS } from './library-ui';
 import { LibraryTopBar } from './library-topbar';
 import { NEXT_ZONE, SkyMenu, placeBanner } from './library-sky-menu';
@@ -602,6 +604,31 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // Polices des panneaux : déclarées dans la page seulement quand un panneau est posé (avant tout retour anticipé : règle des hooks).
   const roomLayout = lib ? activeRoom(lib).layout : undefined;
   useEffect(() => { if (roomLayout?.some((p) => p.kind === 'deco' && isPanel(p.deco))) ensureDecoFonts(); }, [roomLayout]);
+  // Boîtes des jeux : demandées pour les jeux rangés de la pièce (seuls dessinés) ; chaque boîte qui arrive redessine la pièce
+  // (dos, bandeau de la console) et, si son format ou la couleur du boîtier a changé, l'objet rangé est réécrit.
+  const boxService = getGameBoxService();
+  const [boxTick, setBoxTick] = useState(0);
+  useEffect(() => boxService?.subscribe(() => setBoxTick((t) => t + 1)), [boxService]);
+  useEffect(() => {
+    for (const p of roomLayout ?? []) {
+      const title = p.kind === 'stored' && p.shape === 'game' ? roomCards.cards[p.slug]?.title : undefined;
+      if (p.kind === 'stored' && title !== undefined) boxService?.request(p.slug, title);
+    }
+  }, [boxService, roomLayout, roomCards.cards]);
+  // Une écriture par changement, toutes les boîtes changées ensemble ; jamais pendant un placement (son brouillon l'écraserait).
+  // `boxWrite` : réécriture en cours, pas relancée tant que l'état enregistré ne l'a pas reprise (ni en boucle).
+  const boxWrite = useRef<string | null>(null);
+  useEffect(() => {
+    if (!boxService || !lib || placement) return;
+    const changes = boxChanges(lib, boxService.peek);
+    const sig = JSON.stringify(changes);
+    if (changes.length === 0 || sig === boxWrite.current) {
+      if (changes.length === 0) boxWrite.current = null;
+      return;
+    }
+    boxWrite.current = sig;
+    library.update((state) => applyBoxChanges(state, boxChanges(state, boxService.peek))).catch(() => { boxWrite.current = null; });
+  }, [boxService, boxTick, lib, placement, library]);
   if (!lib) return <div className="wmt-lib" data-wmt-library />;
 
   const room = activeRoom(lib);
@@ -958,6 +985,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const selectedLamp = selectedItem && isLamp(selectedItem) ? { id: selectedItem.id, on: isLit(selectedItem) } : null;
   const selectedDisplay = selectedItem?.kind === 'stored' ? displayOf(selectedItem) : null;
   const placingDisplay = placement ? displayOfPlacement(placement) : null;
+  // Seul un jeu se présente de dos.
+  const selectedGame = selectedItem?.kind === 'stored' && selectedItem.shape === 'game';
+  const placingGame = placingItem?.kind === 'stored' ? placingItem.shape === 'game'
+    : placement?.subject.type === 'card' && placement.subject.choice.target === 'shelf' && placement.subject.choice.shape === 'game';
   // Bibliothèque sélectionnée : sa partenaire liée (contour) et le bouton ⛓ quand l'appui change quelque chose.
   const selectedShelf = selectedItem?.kind === 'shelf' ? selectedItem : undefined;
   const linkedToSelected = selectedShelf ? (shelfGroupOf(layout, selectedShelf.id).find((id) => id !== selectedShelf.id) ?? null) : null;
@@ -1283,7 +1314,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!canShiftRow(layout, room.cols, selectedStanding.id, -1)} onClick={() => void editLayout((l) => shiftRowOf(l, selectedStanding.id, -1))}><Icon paths={ICONS.depthBack} /></Btn>
               </>
             )}
-            {selectedDisplay && <DisplayButtons current={selectedDisplay} onChoose={displaySelected} />}
+            {selectedDisplay && <DisplayButtons current={selectedDisplay} game={selectedGame} onChoose={displaySelected} />}
             {selectedLamp && (
               <Btn label={selectedLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={selectedLamp.on} data={{ action: 'lamp' }} onClick={() => void editLayout((l) => toggleLamp(l, selectedLamp.id))}>
                 <Icon paths={ICONS.bulb} />
@@ -1333,7 +1364,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 <Btn label="Reculer" data={{ action: 'depth-back' }} disabled={!nudgePlacement(placement, room.cols, -1)} onClick={() => nudgePlacing(-1)}><Icon paths={ICONS.depthBack} /></Btn>
               </>
             )}
-            {placingDisplay && <DisplayButtons current={placingDisplay} onChoose={displayPlacing} />}
+            {placingDisplay && <DisplayButtons current={placingDisplay} game={placingGame} onChoose={displayPlacing} />}
             {placingLamp && (
               <Btn label={placingLamp.on ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={placingLamp.on} data={{ action: 'lamp' }} onClick={() => editPlacing({ type: 'lamp' })}>
                 <Icon paths={ICONS.bulb} />
@@ -1498,12 +1529,13 @@ const FIT_BUTTON = { position: 'absolute', top: 4, right: 148, height: 32, paddi
 
 type ScreenSize = { width: number; height: number };
 
-// Sélecteur de présentation d'un objet rangé : de face (couverture vers l'avant) ou sur la tranche (titre lisible).
-function DisplayButtons({ current, onChoose }: { current: StoredDisplay; onChoose: (display: StoredDisplay) => void }): ReactElement {
+// Sélecteur de présentation d'un objet rangé : de face (couverture vers l'avant), sur la tranche (titre lisible) ou, pour un jeu, de dos.
+function DisplayButtons({ current, game, onChoose }: { current: StoredDisplay; game: boolean; onChoose: (display: StoredDisplay) => void }): ReactElement {
   return (
     <>
       <Btn label="Présenter de face" pressed={current === 'cover'} data={{ action: 'display-cover' }} onClick={() => onChoose('cover')}><Icon paths={ICONS.cover} /></Btn>
       <Btn label="Présenter sur la tranche" pressed={current === 'spine'} data={{ action: 'display-spine' }} onClick={() => onChoose('spine')}><Icon paths={ICONS.spine} /></Btn>
+      {game && <Btn label="Présenter de dos" pressed={current === 'back'} data={{ action: 'display-back' }} onClick={() => onChoose('back')}><Icon paths={ICONS.boxBack} /></Btn>}
     </>
   );
 }

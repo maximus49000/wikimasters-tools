@@ -13,6 +13,7 @@ import { CarriedItem3D, Model3DArt, type ItemContent } from './model3d-art';
 import { Icon, ICONS } from './library-ui';
 import { reducedMotion } from './ghibli-sky';
 import { ShelfBoardZoom } from './shelf-board-zoom';
+import { gameBoxContent } from './game-box-content';
 import { isTableClock, tableFaceContent, useDecoScene, type DecoScene } from './deco-live';
 import type { SceneView } from './RoomView';
 
@@ -53,7 +54,8 @@ function garnishOf(layout: Placed[], item: Placed, cards: Cards, imageOf: (slug:
     const slug = p.kind === 'stored' || p.kind === 'computer' ? p.slug : undefined;
     const info = slug ? cards[slug] : undefined;
     const small = p.kind === 'small' ? (isTableClock(p.item) && scene ? tableFaceContent(p.item, p.city, style, scene) : { lit: isLit(p) }) : undefined;
-    out.push({ p, pl, content: small ?? (info && slug ? { url: imageOf(slug), title: info.title } : {}) });
+    const box = p.kind === 'stored' ? gameBoxContent(p.shape, p.slug) : {};
+    out.push({ p, pl, content: small ?? (info && slug ? { url: imageOf(slug), title: info.title, ...box } : {}) });
   }
   return out;
 }
