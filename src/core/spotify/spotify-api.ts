@@ -161,6 +161,19 @@ export function createSpotifyApi(deps: {
     }
   }
 
+  // Une liste lancée depuis une carte se lit dans l'ordre : on coupe l'aléatoire puis « répéter le titre » (réglages
+  // gardés par Spotify). Un refus ne fait pas échouer la lecture déjà lancée.
+  async function inOrder(deviceId: string | null): Promise<void> {
+    const device: Record<string, string> = deviceId ? { device_id: deviceId } : {};
+    for (const [path, state] of [['/me/player/shuffle', 'false'], ['/me/player/repeat', 'off']] as const) {
+      try {
+        await send('now', 'PUT', path, { query: { state, ...device } });
+      } catch (error) {
+        console.warn('[wikimasters-tools]', `Spotify : ${path} non réglé :`, error);
+      }
+    }
+  }
+
   return {
     async searchTracks(query: string, limit = SEARCH_MAX): Promise<FoundTrack[]> {
       const response = await send('page', 'GET', '/search', { query: { q: query, type: 'track', limit: String(Math.min(limit, SEARCH_MAX)) } });
@@ -223,16 +236,19 @@ export function createSpotifyApi(deps: {
       const here = target ? await preferredDeviceId() : null;
       if (here) {
         await send('now', 'PUT', '/me/player/play', { query: { device_id: here }, body });
+        if (target) await inOrder(here);
         return;
       }
       try {
         await send('now', 'PUT', '/me/player/play', body ? { body } : {});
+        if (target) await inOrder(null);
       } catch (error) {
         if (!(error instanceof SpotifyError) || error.code !== 'no-device') throw error;
         // Application ouverte mais sans lecture récente : elle est visible comme appareil sans être « active », on la cible et elle se réveille.
         const deviceId = await firstDeviceId();
         if (!deviceId) throw error;
         await send('now', 'PUT', '/me/player/play', { query: { device_id: deviceId }, ...(body ? { body } : {}) });
+        if (target) await inOrder(deviceId);
       }
     },
 

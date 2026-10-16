@@ -413,6 +413,12 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void inOrder(String id) {
+            String callId = clean(id);
+            runOnUiThread(() -> spotifyRemote.inOrder(callId));
+        }
+
+        @JavascriptInterface
         public void pause(String id) {
             String callId = clean(id);
             runOnUiThread(() -> spotifyRemote.pause(callId));

@@ -50,7 +50,7 @@ export const FAMILLES: Famille[] = [
   {
     nom: 'ecoute',
     fichiers: [
-      ...c('listen-*', 'music-registry.*', 'music-service.*', 'spotify-*', 'tidal-*', 'player-*', 'mount-player.*', 'SoundtrackButton.*', 'decorate-listen.*'),
+      ...c('listen-*', 'music-registry.*', 'music-service.*', 'spotify-*', 'tidal-*', 'player-*', 'mount-player.*', 'SoundtrackButton.*', 'decorate-listen.*', 'tempo-*'),
       'tests/core/{music,spotify,tidal}/**',
     ],
   },

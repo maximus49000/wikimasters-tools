@@ -69,7 +69,10 @@ import { migrateClientId } from '../core/spotify/client-id';
 import { createSpotifySession } from '../core/spotify/spotify-session';
 import type { SpotifyEnv } from '../core/spotify/transport';
 import { createMusicService } from '../content/music-service';
-import { getMusicService, getPlayerSource, setMusicService, setPlatformChoice, setPlayerSource, setSpotifyKey } from '../content/music-registry';
+import { getMusicService, getPlayerSource, setMusicService, setPlatformChoice, setPlayerSource, setSpotifyKey, setTempoService } from '../content/music-registry';
+import { createTempoService } from '../content/tempo-service';
+import { createTempoRepo } from '../core/music/tempo-repo';
+import { estimateBpm } from '../core/music/tempo-estimate';
 import { createPlatformSetting } from '../core/music/platform';
 import { createPlatformMusicService } from '../content/platform-service';
 import { createTidalService } from '../content/tidal-service';
@@ -131,6 +134,15 @@ import { TELEMETRY_ENDPOINT, USAGE_STATS_DEFAULT } from '../core/telemetry/confi
 
 const LOG = '[wikimasters-tools]';
 const DEBOUNCE_MS = 300;
+
+// Décodage de l'extrait Deezer pour mesurer le tempo : mono, 22 050 Hz (la fréquence où l'estimateur est réglé).
+const TEMPO_SAMPLE_RATE = 22_050;
+async function decodeForTempo(bytes: ArrayBuffer): Promise<{ samples: Float32Array; sampleRate: number }> {
+  // Contexte hors ligne mono ; sa fréquence impose le rééchantillonnage à 22 050 Hz.
+  const context = new OfflineAudioContext(1, TEMPO_SAMPLE_RATE, TEMPO_SAMPLE_RATE);
+  const buffer = await context.decodeAudioData(bytes);
+  return { samples: buffer.getChannelData(0), sampleRate: buffer.sampleRate };
+}
 
 // Surcouche Wikimasters : partagée par l'extension (content script) et l'application Android (WebView).
 export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): Promise<void> {
@@ -594,6 +606,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       const platformSetting = createPlatformSetting(window.localStorage);
       setMusicService(spotifyService);
       setPlayerSource(player);
+      setTempoService(createTempoService({ repo: createTempoRepo(store), fetch: (input, init) => fetch(input, init), decode: decodeForTempo, estimate: estimateBpm }));
       setPlatformChoice({ available: ['spotify'], setting: platformSetting });
       setSpotifyKey({
         clientId: () => session.clientId(),

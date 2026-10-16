@@ -19,6 +19,7 @@ import com.spotify.protocol.client.Subscription;
 import com.spotify.protocol.types.Artist;
 import com.spotify.protocol.types.Empty;
 import com.spotify.protocol.types.PlayerState;
+import com.spotify.protocol.types.Repeat;
 import com.spotify.protocol.types.Track;
 import com.spotify.sdk.android.auth.AuthorizationClient;
 import com.spotify.sdk.android.auth.AuthorizationRequest;
@@ -195,6 +196,17 @@ final class SpotifyRemote {
 
     void queue(String id, String uri) {
         run(id, connected() ? remote.getPlayerApi().queue(uri) : null);
+    }
+
+    // Lecture lancée depuis une carte : la liste se lit dans l'ordre, ni au hasard ni un titre en boucle.
+    // L'aléatoire est coupé d'abord ; la réponse suit la coupure de la répétition.
+    void inOrder(String id) {
+        if (!connected()) {
+            run(id, null);
+            return;
+        }
+        remote.getPlayerApi().setShuffle(false);
+        run(id, remote.getPlayerApi().setRepeat(Repeat.OFF));
     }
 
     void pause(String id) {
