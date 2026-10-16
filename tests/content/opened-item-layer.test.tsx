@@ -12,7 +12,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 function mount(hasHifi = true) {
-  const h = { onInfo: vi.fn(), onClose: vi.fn(), onPlayed: vi.fn(), onAddHifi: vi.fn() };
+  const h = { onInfo: vi.fn(), onClose: vi.fn(), onAddHifi: vi.fn() };
   act(() => root.render(
     <OpenedItemLayer placed={placed} card={{ title: 'Abbey Road' }} cover={null} color="#c33" state={{ placedId: 'c1', from: null, to: null, phase: 'open' }}
       disc="in" hasHifi={hasHifi} {...h} />,

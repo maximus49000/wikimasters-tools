@@ -1,5 +1,5 @@
 // Sélecteurs du plateau de l'objet ouvert (face intérieure du couvercle) : pour l'instant les pistes d'une carte musique.
-import { useEffect, useState, useSyncExternalStore, type ReactElement } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
 import type { Track } from '../../core/spotify/spotify-api';
 import type { Listen } from '../../core/music/listen';
 import { musicRows, type SelectorModel } from '../../core/library/opened-item';
@@ -26,6 +26,11 @@ export function MusicSelector({ slug, title, onPlayed }: Props): ReactElement {
   const player = useSyncExternalStore(source?.subscribe ?? noSubscribe, source?.current ?? noPlayer);
   const [model, setModel] = useState<SelectorModel | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Carte affichée : le message d'une lecture d'une carte quittée ou démontée est ignoré.
+  const shown = useRef({ slug, title, alive: true });
+  shown.current.slug = slug;
+  shown.current.title = title;
+  useEffect(() => { shown.current.alive = true; return () => { shown.current.alive = false; }; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,7 +48,8 @@ export function MusicSelector({ slug, title, onPlayed }: Props): ReactElement {
   const play = async (item: Track, listen: Listen) => {
     if (!service) return;
     const result = await service.play(item, listen, { slug, title });
-    setMessage(result);
+    const now = shown.current;
+    if (now.alive && now.slug === slug && now.title === title) setMessage(result);
     if (result === null) onPlayed(item);
   };
 

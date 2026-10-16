@@ -3,7 +3,6 @@
 import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { Placed } from '../../core/library/library-types';
 import { layerFrame, openingOf } from '../../core/library/opened-item';
-import type { Track } from '../../core/spotify/spotify-api';
 import { reducedMotion } from '../ghibli-sky';
 import { NO_PLAYER, noPlayer, noSubscribe } from '../ListenSection';
 import { getPlayerSource } from '../music-registry';
@@ -20,8 +19,6 @@ type Props = {
   hasHifi: boolean;
   onInfo(): void;
   onClose(): void;
-  // Branché par le parent sur le sélecteur (MusicSelector) qu'il passe en `selector`.
-  onPlayed(track: Track): void;
   onAddHifi(): void;
   right?: ReactNode;
   selector?: ReactNode;
