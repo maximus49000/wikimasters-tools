@@ -1,7 +1,7 @@
 // Couche plein écran de l'objet ouvert : le boîtier (ItemCase) et ses boutons en glyphes ⓘ ✕ ⏯ (+ « ajouter un poste »),
-// et pour un jeu ⟲ au-dessus de la boîte, qui la retourne (dos | tranche | devant).
+// et pour un jeu ⟲ au-dessus de la boîte, qui la retourne (dos | tranche | devant), puis 🔍 sur le dos, la loupe.
 // Paysage forcé ; si l'écran reste en hauteur, la couche est tournée de 90° en CSS.
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MutableRefObject, type ReactElement, type ReactNode } from 'react';
 import type { Placed } from '../../core/library/library-types';
 import { boxInLayer, flightTarget, layerFrame, openingOf } from '../../core/library/opened-item';
 import type { Box } from '../../core/library/zoom-target';
@@ -11,6 +11,7 @@ import { getPlayerSource } from '../music-registry';
 import { BOX_FORMATS, type BoxFormat } from '../../core/game/platform-boxes';
 import type { GameBox } from '../game-box-service';
 import { gameDiscKind, type DiscKind } from '../hifi/hifi-art';
+import { BackMagnifier } from './back-magnifier';
 import { DiscFlight, flightBoxOf } from './disc-flight';
 import { GameOutside } from './game-outside';
 import { gameGeometry, ItemCase, openCaseLayout, type DiscState } from './item-case';
@@ -39,8 +40,9 @@ type Props = {
   box?: GameBox;
   // La boîte vient d'être retournée (true) ou remise à l'endroit : l'appelant arrête la vidéo éventuelle.
   onFlip?(flipped: boolean): void;
-  // Loupe sur le dos (boîte retournée).
-  onMagnify?(): void;
+  // Retour Android / navigateur : la couche y range de quoi fermer d'abord la loupe (rend vrai si elle l'a fermée) ; l'appelant
+  // l'appelle depuis onBeforeClose de useOpenedItem, pour que le retour ferme la loupe sans fermer la boîte.
+  backRef?: MutableRefObject<(() => boolean) | null>;
 };
 
 // Disque du plateau quand il n'est pas mesurable (tests, rendu hors écran) : à droite du centre, à peu près où le boîtier le pose.
@@ -61,13 +63,24 @@ function flightKindOf(opening: string | null, format: BoxFormat | undefined): Di
   return gameDiscKind(format);
 }
 
-const noop = (): void => {};
-
-export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHifi, onInfo, onClose, selector, right, onAddHifi, flight = null, format, caseColor, box, onFlip, onMagnify = noop }: Props): ReactElement | null {
+export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHifi, onInfo, onClose, selector, right, onAddHifi, flight = null, format, caseColor, box, onFlip, backRef }: Props): ReactElement | null {
   const opening = openingOf(placed);
   const [flipped, setFlipped] = useState(false);
-  // Un autre objet ouvert repart à l'endroit.
-  useEffect(() => setFlipped(false), [state.placedId]);
+  // Loupe sur le dos : seulement boîte retournée.
+  const [magnified, setMagnified] = useState(false);
+  const magnifiedRef = useRef(magnified);
+  magnifiedRef.current = magnified;
+  // Un autre objet ouvert repart à l'endroit, loupe fermée.
+  useEffect(() => { setFlipped(false); setMagnified(false); }, [state.placedId]);
+  useEffect(() => {
+    if (!backRef) return;
+    backRef.current = () => {
+      if (!magnifiedRef.current) return false;
+      setMagnified(false);
+      return true;
+    };
+    return () => { backRef.current = null; };
+  }, [backRef]);
   const kind = flightKindOf(opening, format);
   const [screen, setScreen] = useState(screenSize);
   const source = getPlayerSource();
@@ -97,7 +110,8 @@ export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHi
     return () => window.removeEventListener('resize', onResize);
   }, []);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    // Loupe ouverte : Échap la ferme (elle écoute elle-même), pas la boîte.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !magnifiedRef.current) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -121,7 +135,7 @@ export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHi
     format: fmt, ...(front ? { frontUrl: front } : {}),
   };
   const place = openCaseLayout(opening, fmt, frame.w, frame.h);
-  const flip = () => { const next = !flipped; setFlipped(next); onFlip?.(next); };
+  const flip = () => { const next = !flipped; setFlipped(next); if (!next) setMagnified(false); onFlip?.(next); };
   const geometry: CSSProperties = frame.rotated
     ? { top: 0, left: screen.w, width: frame.w, height: frame.h, transformOrigin: '0 0', transform: 'rotate(90deg)' }
     : { inset: 0 };
@@ -133,7 +147,7 @@ export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHi
         disc={disc} reduced={reducedMotion()} selector={selector} size={frame} {...(format ? { format } : {})} {...(caseColor ? { caseColor } : {})}
         // Retournée : la vidéo s'arrête (démontée) et le disque revient dans le plateau.
         {...(right !== undefined && !out ? { right } : {})}
-        {...(outBox ? { outside: <GameOutside box={outBox} geometry={gameGeometry(fmt)} onMagnify={onMagnify} />, flipped } : {})} />
+        {...(outBox ? { outside: <GameOutside box={outBox} geometry={gameGeometry(fmt)} onMagnify={() => setMagnified(true)} />, flipped } : {})} />
       {game && state.phase !== 'closing' && (
         <button type="button" data-action="flip" aria-label={flipped ? 'Voir l’intérieur de la boîte' : 'Retourner la boîte'} title={flipped ? 'Voir l’intérieur' : 'Retourner la boîte'} onClick={flip}
           style={{ ...BUTTON, position: 'absolute', left: Math.round(place.x - 22), top: Math.max(4, Math.round(place.y - 44 - 6)), font: '600 24px system-ui, sans-serif' }}>⟲</button>
@@ -149,6 +163,8 @@ export function OpenedItemLayer({ placed, card, cover, color, state, disc, hasHi
         <button type="button" data-action="info" aria-label="Fiche de la carte" title="Fiche de la carte" onClick={onInfo} style={BUTTON}>ⓘ</button>
         <button type="button" data-action="close" aria-label="Fermer" title="Fermer" onClick={onClose} style={BUTTON}>✕</button>
       </div>
+      {/* Loupe par-dessus tout : ✕ ramène à la boîte retournée. */}
+      {out && magnified && outBox && state.phase !== 'closing' && <BackMagnifier box={outBox} onClose={() => setMagnified(false)} />}
     </div>
   );
 }

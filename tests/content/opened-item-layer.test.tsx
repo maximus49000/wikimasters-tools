@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenedItemLayer } from '../../src/content/opened-item/OpenedItemLayer';
 import type { Placed } from '../../src/core/library/library-types';
+import type { GameBox } from '../../src/content/game-box-service';
+import { useOpenedItem } from '../../src/content/opened-item/use-opened-item';
+import { caseStyleOfPlatformName } from '../../src/core/game/platform-boxes';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -158,6 +161,77 @@ describe('OpenedItemLayer', () => {
       act(() => btn('flip')!.click());
       expect(container.querySelector('[data-test-video]')).toBeNull();
       expect(onFlip).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('loupe sur le dos', () => {
+    const game: Placed = { id: 'g1', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, slug: 'RDR2' };
+    const box: GameBox = {
+      format: 'bluray', style: caseStyleOfPlatformName('Sony Playstation 4'), platformName: 'Sony Playstation 4',
+      backUrl: 'https://img/medium/back.jpg', backFullUrl: 'https://img/original/back.jpg', shots: [], title: 'RDR2',
+    };
+    const flipped = () => container.querySelector('[data-item-case]')!.getAttribute('data-flipped');
+    const magnifier = () => container.querySelector('[data-back-magnifier]');
+    const magnify = () => act(() => container.querySelector<HTMLButtonElement>('button[data-action="magnify"]')!.click());
+    it('🔍 ouvre la loupe ; ✕ la ferme et la boîte reste retournée', () => {
+      const onClose = vi.fn();
+      act(() => root.render(
+        <OpenedItemLayer placed={game} format="bluray" box={box} card={{ title: 'RDR2' }} cover={null} color="#c33" state={{ placedId: 'g1', from: null, to: null, phase: 'open' }}
+          disc="in" hasHifi onInfo={vi.fn()} onClose={onClose} onAddHifi={vi.fn()} />,
+      ));
+      act(() => btn('flip')!.click());
+      expect(magnifier()).toBeNull();
+      magnify();
+      expect(magnifier()).not.toBeNull();
+      act(() => btn('close-magnifier')!.click());
+      expect(magnifier()).toBeNull();
+      expect(flipped()).toBe('true');
+      expect(onClose).not.toHaveBeenCalled();
+    });
+    it('Échap ferme la loupe d’abord, pas la boîte', () => {
+      const onClose = vi.fn();
+      act(() => root.render(
+        <OpenedItemLayer placed={game} format="bluray" box={box} card={{ title: 'RDR2' }} cover={null} color="#c33" state={{ placedId: 'g1', from: null, to: null, phase: 'open' }}
+          disc="in" hasHifi onInfo={vi.fn()} onClose={onClose} onAddHifi={vi.fn()} />,
+      ));
+      act(() => btn('flip')!.click());
+      magnify();
+      act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+      expect(magnifier()).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(flipped()).toBe('true');
+      act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+    it('retour (popstate) : ferme la loupe sans fermer la boîte, puis ferme la boîte', () => {
+      vi.useFakeTimers();
+      try {
+        let api: ReturnType<typeof useOpenedItem> | null = null;
+        function Harness() {
+          const back = useRef<(() => boolean) | null>(null);
+          const h = useOpenedItem({ onBeforeClose: () => back.current?.() ?? false, restoreOrientation: () => {} });
+          api = h;
+          if (!h.opened) return null;
+          return (
+            <OpenedItemLayer placed={game} format="bluray" box={box} card={{ title: 'RDR2' }} cover={null} color="#c33" state={h.opened}
+              disc="in" hasHifi onInfo={vi.fn()} onClose={() => h.close()} onAddHifi={vi.fn()} backRef={back} />
+          );
+        }
+        act(() => root.render(<Harness />));
+        act(() => api!.open('g1', null));
+        act(() => { vi.advanceTimersByTime(1300); });
+        act(() => btn('flip')!.click());
+        magnify();
+        expect(magnifier()).not.toBeNull();
+        act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
+        expect(magnifier()).toBeNull();
+        expect(api!.opened?.phase).toBe('open');
+        expect(flipped()).toBe('true');
+        act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
+        expect(api!.opened?.phase).toBe('closing');
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

@@ -61,6 +61,25 @@ describe('GameOutside (face extérieure de la boîte retournée)', () => {
     act(() => container.querySelector<HTMLElement>('[data-outside-zone="back"]')!.click());
     expect(onMagnify).toHaveBeenCalledTimes(1);
   });
+  it('glyphe loupe de 44 px au coin bas droit du dos : un vrai bouton, un seul appel', () => {
+    const onMagnify = vi.fn();
+    render(<GameOutside box={RDR2} geometry={gameGeometry('bluray')} onMagnify={onMagnify} />);
+    const b = container.querySelector<HTMLButtonElement>('[data-outside-zone="back"] button[data-action="magnify"]')!;
+    expect(b).not.toBeNull();
+    expect(b.style.width).toBe('44px');
+    expect(b.style.height).toBe('44px');
+    expect(b.style.right).not.toBe('');
+    expect(b.style.bottom).not.toBe('');
+    expect(b.getAttribute('aria-label')).toBeTruthy();
+    act(() => b.click());
+    expect(onMagnify).toHaveBeenCalledTimes(1);
+  });
+  it('dos scanné introuvable : repli sur le dos fabriqué', () => {
+    render(<GameOutside box={RDR2} geometry={gameGeometry('bluray')} onMagnify={vi.fn()} />);
+    const img = container.querySelector('[data-outside-zone="back"] image')!;
+    act(() => { img.dispatchEvent(new Event('error')); });
+    expect(container.querySelector('[data-outside-zone="back"] [data-made-back]')).not.toBeNull();
+  });
 });
 
 describe('MadeBack (dos fabriqué)', () => {

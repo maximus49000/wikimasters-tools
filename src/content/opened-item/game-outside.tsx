@@ -2,7 +2,7 @@
 //
 // Face extérieure de la boîte de jeu retournée, ouverte à plat : dos | tranche | devant. Le dos est le scan de TheGamesDB, sinon
 // un dos fabriqué (bandeau console, logo ou titre, captures, début de la description). Style cellulo : aplats + trait encré.
-import { useId, type ReactElement } from 'react';
+import { useId, useState, type ReactElement, type ReactNode } from 'react';
 import { BOX_FORMATS, consoleLabelOf } from '../../core/game/platform-boxes';
 import type { GameBox } from '../game-box-service';
 import { GameSpine, inkOn } from '../game-spine';
@@ -99,14 +99,16 @@ export function MadeBack({ box }: { box: GameBox }): ReactElement {
   );
 }
 
-// Scan (dos ou devant) dans un cadre au trait ; sans image, l'aplat du plastique et le titre.
-function Scan({ url, w, h, box, id }: { url?: string; w: number; h: number; box: GameBox; id: string }): ReactElement {
+// Scan (dos ou devant) dans un cadre au trait ; sans image (ou image introuvable), `fallback` (sinon l'aplat du plastique et le titre).
+function Scan({ url, w, h, box, id, fallback }: { url?: string; w: number; h: number; box: GameBox; id: string; fallback?: ReactNode }): ReactElement {
+  const [failed, setFailed] = useState<string | null>(null);
+  const shown = url && failed !== url ? url : undefined;
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
       <clipPath id={id}><rect x={0} y={0} width={w} height={h} /></clipPath>
-      {url
-        ? <image href={url} x={0} y={0} width={w} height={h} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${id})`} {...NO_REFERRER} />
-        : <>
+      {shown
+        ? <image href={shown} x={0} y={0} width={w} height={h} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${id})`} onError={() => setFailed(shown)} {...NO_REFERRER} />
+        : fallback ?? <>
             <rect x={0} y={0} width={w} height={h} fill={box.style.plastic} />
             <text x={r2(w / 2)} y={r2(h / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={r2(w * 0.08)} fontWeight={700} fontFamily={FONT} fill={inkOn(box.style.plastic)}>
               {box.title.length > 22 ? box.title.slice(0, 21) + '…' : box.title}
@@ -116,6 +118,12 @@ function Scan({ url, w, h, box, id }: { url?: string; w: number; h: number; box:
     </svg>
   );
 }
+
+// Glyphe loupe (44 px), posé au coin bas droit du dos, toujours visible.
+const MAGNIFY_BUTTON = {
+  position: 'absolute', right: 6, bottom: 6, width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-in',
+  font: '600 20px system-ui, sans-serif', color: '#FBF6EA', background: 'rgba(43,29,22,.72)', border: '1px solid rgba(251,246,234,.5)', borderRadius: '50%', padding: 0,
+} as const;
 
 export function GameOutside({ box, geometry, onMagnify }: { box: GameBox; geometry: Geometry; onMagnify: () => void }): ReactElement {
   const uid = `wm-out-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -128,15 +136,17 @@ export function GameOutside({ box, geometry, onMagnify }: { box: GameBox; geomet
     <div data-game-outside="" style={{ position: 'absolute', inset: 0 }}>
       {/* Ombre nette : un aplat décalé (un filtre drop-shadow se décale mal sous le pivot 3D de la boîte). */}
       <div style={{ position: 'absolute', inset: 0, transform: 'translate(5px, 7px)', background: 'rgba(28,18,12,.32)', borderRadius: 3 }} />
-      {/* Dos : la loupe s'ouvre au toucher (tâche suivante). */}
+      {/* Dos : la loupe s'ouvre au glyphe 🔍 (ou au toucher du dos). */}
       <div data-outside-zone="back" onClick={onMagnify} style={{ ...zone(0, w), cursor: 'zoom-in' }}>
         {box.backUrl
-          ? <Scan url={box.backUrl} w={w} h={h} box={box} id={`${uid}-b`} />
+          ? <Scan url={box.backUrl} w={w} h={h} box={box} id={`${uid}-b`} fallback={<MadeBack box={box} />} />
           : (
             <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
               <MadeBack box={box} />
             </svg>
           )}
+        <button type="button" data-action="magnify" aria-label="Loupe sur le dos de la boîte" title="Lire le dos"
+          onClick={(e) => { e.stopPropagation(); onMagnify(); }} style={MAGNIFY_BUTTON}>🔍</button>
       </div>
       <div data-outside-zone="spine" style={zone(w, d)}>
         <svg viewBox={`0 0 ${d} ${h}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>

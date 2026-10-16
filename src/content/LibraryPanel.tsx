@@ -405,11 +405,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // à la fermeture. La fiche ⓘ passe par-dessus : le retour Android la ferme d'abord, la couche reste.
   // Fermeture sans rectangle (✕, Échap, retour) : devant le poste si le disque y est, sinon la place d'origine (posée plus bas).
   const closeTargetRef = useRef<() => Box | null>(() => null);
+  // Loupe sur le dos d'une boîte de jeu : la couche y range sa fermeture ; le retour la ferme d'abord, la boîte reste.
+  const openedBackRef = useRef<(() => boolean) | null>(null);
   const { opened, open: openItem, close: closeItem, reset: resetOpened } = useOpenedItem({
     onBeforeClose: () => {
-      if (!viewingRef.current) return false;
-      setViewing(null);
-      return true;
+      if (viewingRef.current) { setViewing(null); return true; }
+      return openedBackRef.current?.() ?? false;
     },
     restoreOrientation: () => (stage.active ? lockOrientation(orientationNow) : unlockOrientation()),
     closeTarget: () => closeTargetRef.current(),
@@ -1459,6 +1460,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               {...(box ? { box } : {})}
               // Boîte retournée : la vidéo éventuelle s'arrête.
               onFlip={(flipped) => { if (flipped) setVideoShown(null); }}
+              backRef={openedBackRef}
               card={card}
               cover={imageOfCard(slug) ?? null}
               color={bookColor(slug)}
