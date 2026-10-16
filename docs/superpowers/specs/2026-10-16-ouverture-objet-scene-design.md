@@ -80,7 +80,9 @@ Maquette de déroulé validée le 2026-10-16 (le dessin de la maquette n'est qu'
    La place d'origine (étagère, présentoir ou mur) reste **vide** tant que l'objet est au poste.
 3. **Toucher le poste** : bulle « En lecture » — piste, album, ⏯ (pause/lecture), ⏏ (éjecter : arrête la lecture, le disque rentre
    dans son boîtier qui retourne à sa place), ✕.
-4. **Toucher la pochette posée** : rouvre le boîtier (couche d'ouverture) pour changer de piste dans le même album.
+4. **Toucher la pochette posée** : rouvre le boîtier **avec le même effet d'ouverture** (vol depuis la place près du poste,
+   couvercle qui pivote) pour changer de piste dans le même album. Le **plateau est vide** (moyeu seul, « le disque est sur le poste ») :
+   le disque reste sur le poste et continue de tourner ; la piste en cours est marquée dans le sélecteur.
 5. **Choisir une piste d'un autre album** : l'ancien disque rentre dans son boîtier qui retourne à sa place, puis le nouveau prend la sienne.
 6. Les **vidéos** (bande-annonce, vidéos Steam) ne vont pas au poste : elles se lisent toujours dans le boîtier ouvert.
 
