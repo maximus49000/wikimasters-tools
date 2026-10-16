@@ -8,7 +8,7 @@ export type RemoteWindow = {
     play(id: string, uri: string): void;
     skipToIndex(id: string, contextUri: string, index: number): void;
     queue(id: string, uri: string): void;
-    repeatOff(id: string): void;
+    inOrder(id: string): void;
     pause(id: string): void;
     resume(id: string): void;
     disconnect(): void;
@@ -85,7 +85,7 @@ export function createAndroidSpotifyRemote(win: RemoteWindow, timeouts: { connec
     play: (uri) => call(timeouts.call, (id) => bridge.play(id, uri)),
     skipToIndex: (contextUri, index) => call(timeouts.call, (id) => bridge.skipToIndex(id, contextUri, index)),
     queue: (uri) => call(timeouts.call, (id) => bridge.queue(id, uri)),
-    repeatOff: () => call(timeouts.call, (id) => bridge.repeatOff(id)),
+    inOrder: () => call(timeouts.call, (id) => bridge.inOrder(id)),
     pause: () => call(timeouts.call, (id) => bridge.pause(id)),
     resume: () => call(timeouts.call, (id) => bridge.resume(id)),
     disconnect: () => {

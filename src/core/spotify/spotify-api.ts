@@ -161,13 +161,16 @@ export function createSpotifyApi(deps: {
     }
   }
 
-  // Une liste lancée depuis une carte se lit dans l'ordre : on coupe « répéter le titre » (réglage gardé par Spotify).
-  // Un refus ne fait pas échouer la lecture déjà lancée.
-  async function repeatOff(deviceId: string | null): Promise<void> {
-    try {
-      await send('now', 'PUT', '/me/player/repeat', { query: { state: 'off', ...(deviceId ? { device_id: deviceId } : {}) } });
-    } catch (error) {
-      console.warn('[wikimasters-tools]', 'Spotify : répétition non coupée :', error);
+  // Une liste lancée depuis une carte se lit dans l'ordre : on coupe l'aléatoire puis « répéter le titre » (réglages
+  // gardés par Spotify). Un refus ne fait pas échouer la lecture déjà lancée.
+  async function inOrder(deviceId: string | null): Promise<void> {
+    const device: Record<string, string> = deviceId ? { device_id: deviceId } : {};
+    for (const [path, state] of [['/me/player/shuffle', 'false'], ['/me/player/repeat', 'off']] as const) {
+      try {
+        await send('now', 'PUT', path, { query: { state, ...device } });
+      } catch (error) {
+        console.warn('[wikimasters-tools]', `Spotify : ${path} non réglé :`, error);
+      }
     }
   }
 
@@ -233,19 +236,19 @@ export function createSpotifyApi(deps: {
       const here = target ? await preferredDeviceId() : null;
       if (here) {
         await send('now', 'PUT', '/me/player/play', { query: { device_id: here }, body });
-        if (target) await repeatOff(here);
+        if (target) await inOrder(here);
         return;
       }
       try {
         await send('now', 'PUT', '/me/player/play', body ? { body } : {});
-        if (target) await repeatOff(null);
+        if (target) await inOrder(null);
       } catch (error) {
         if (!(error instanceof SpotifyError) || error.code !== 'no-device') throw error;
         // Application ouverte mais sans lecture récente : elle est visible comme appareil sans être « active », on la cible et elle se réveille.
         const deviceId = await firstDeviceId();
         if (!deviceId) throw error;
         await send('now', 'PUT', '/me/player/play', { query: { device_id: deviceId }, ...(body ? { body } : {}) });
-        if (target) await repeatOff(deviceId);
+        if (target) await inOrder(deviceId);
       }
     },
 
