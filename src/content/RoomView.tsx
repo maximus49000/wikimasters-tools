@@ -480,7 +480,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       if (!host || !pl || !openingOf(FURNITURE_MODELS.shelf, host.angle)) return null;
       const info = cards[placed.slug];
       // Vraie boîte posée sur sa tablette, tournée avec l'étagère : image de la carte sur la couverture, titre sur la tranche.
-      const art = <CarriedItem3D host="shelf" angle={host.angle} rect={host.rect} placement={pl} palette={palette} content={info ? { url: imageOf(placed.slug), title: info.title, ...gameBoxContent(placed.shape, placed.slug) } : undefined} />;
+      const url = info ? imageOf(placed.slug) : undefined;
+      const art = <CarriedItem3D host="shelf" angle={host.angle} rect={host.rect} placement={pl} palette={palette} content={info ? { url, title: info.title, ...gameBoxContent(placed.shape, placed.slug, url) } : undefined} />;
       const quad = cardQuad(placed, host.angle, host.rect, pl)!;
       return { slug: placed.slug, rect: boxOfQuad(quad), art, quad };
     }

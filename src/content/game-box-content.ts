@@ -7,13 +7,14 @@ import type { GameBox } from './game-box-service';
 import type { ItemContent } from './model3d-art';
 
 // Décor propre à un jeu rangé, lu dans le service des boîtes (boîte déjà connue seulement) : image du dos et bandeau de sa console.
+// `url` : l'image réellement dessinée sur la couverture (le bandeau n'est « imprimé » que si c'est le scan TheGamesDB).
 // Boîte inconnue : rien (le jeu garde son bandeau rouge d'origine, le dos son aplat).
-export function gameBoxContent(shape: ShelfShape, slug: string): Pick<ItemContent, 'backUrl' | 'band' | 'printed'> {
+export function gameBoxContent(shape: ShelfShape, slug: string, url?: string): Pick<ItemContent, 'backUrl' | 'band' | 'printed'> {
   if (shape !== 'game') return {};
   const box = getGameBoxService()?.peek(slug);
   if (!box) return {};
   // Version TheGamesDB : la couverture montrée est son scan, bandeau compris.
-  return { band: box.style.band, ...(box.tgdbId !== undefined && box.frontUrl ? { printed: true } : {}), ...(box.backUrl ? { backUrl: box.backUrl } : {}) };
+  return { band: box.style.band, ...(box.tgdbId !== undefined && url !== undefined && url === box.frontUrl ? { printed: true } : {}), ...(box.backUrl ? { backUrl: box.backUrl } : {}) };
 }
 
 // Format de boîte à réécrire : un jeu rangé dont la boîte connue (format ou couleur du boîtier) diffère de ce qui est enregistré.

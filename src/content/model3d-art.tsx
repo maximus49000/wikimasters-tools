@@ -139,6 +139,8 @@ const inkOn = (hex: string): string => {
   const n = parseInt(hex.slice(1, 7), 16);
   return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 160 ? '#1B1B1F' : '#FFFFFF';
 };
+// Bandeau clair (PS5 blanc sur boîtier blanc) : cerné d'un trait fin pour rester visible ; foncé : sans trait.
+const lightEdge = (hex: string): object => (inkOn(hex) === '#FFFFFF' ? {} : { stroke: '#1B1B1F', strokeWidth: 0.7, vectorEffect: 'non-scaling-stroke' });
 
 // Décor d'une face, dans son repère propre (w × h mm, haut à gauche) : couverture, tranche, pages ou écran.
 function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; color: string }): ReactElement | null {
@@ -166,9 +168,9 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
     return (
       <>
         {shape === 'cd' && <rect x={r1(w * 0.12)} y={0} width={r1(w * 0.76)} height={h} fill="#F4F4F6" />}
-        {gb && <rect width={w} height={r1(band)} fill={gb.color} />}
+        {gb && <rect width={w} height={r1(band)} fill={gb.color} {...lightEdge(gb.color)} />}
         {title && (
-          <text transform={`translate(${r1(w / 2 - fs * 0.35)} ${r1(band + h * 0.05)}) rotate(90)`} fontSize={r1(fs)} fontFamily="system-ui, sans-serif" fontWeight={600} fill={shape === 'cd' ? '#333333' : '#FFFFFF'}>
+          <text transform={`translate(${r1(w / 2 - fs * 0.35)} ${r1(band + h * 0.05)}) rotate(90)`} fontSize={r1(fs)} fontFamily="system-ui, sans-serif" fontWeight={600} fill={shape === 'cd' ? '#333333' : inkOn(color)}>
             {cut(title, Math.floor(((h - band) * 0.9) / (fs * 0.6)))}
           </text>
         )}
@@ -212,7 +214,7 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
   const bandFs = band * 0.55;
   return (
     <>
-      {gb && <rect width={w} height={r1(band + inset.t)} fill={gb.color} />}
+      {gb && <rect width={w} height={r1(band + inset.t)} fill={gb.color} {...lightEdge(gb.color)} />}
       {gb?.label && <text x={r1(w / 2)} y={r1(inset.t + band * 0.72)} fontSize={r1(bandFs)} fontFamily="system-ui, sans-serif" fontWeight={700} textAnchor="middle" fill={inkOn(gb.color)}>{cut(gb.label, Math.floor(w / (bandFs * 0.62)))}</text>}
       {url
         ? <image href={url} x={r1(ix)} y={r1(iy)} width={r1(iw)} height={r1(ih)} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" />

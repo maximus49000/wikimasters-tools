@@ -106,3 +106,23 @@ describe('boîte de jeu : dos et bandeau de console', () => {
     expect(none.textContent).toContain('PS4');
   });
 });
+
+describe('boîtier blanc (PS5, Wii, DS)', () => {
+  const pal = paletteOf('scandinave');
+  const PS5 = { color: '#FFFFFF', label: 'PS5' };
+  it('titre de la tranche foncé sur un boîtier blanc ; bandeau blanc cerné d’un trait', () => {
+    // Sur la tranche, de face : la tranche (et son titre) est vers l'avant.
+    const c = draw(<Item3DArt shape="game" display="spine" angle={0} rect={rect} palette={pal} box="bluray" color="#F2F2F0" content={{ title: 'Astro Bot', band: PS5 }} />);
+    const title = [...c.querySelectorAll('text')].find((t) => t.textContent?.includes('Astro'))!;
+    expect(title.getAttribute('fill')).toBe('#1B1B1F');
+    const band = [...c.querySelectorAll('rect')].find((r) => r.getAttribute('fill')?.toUpperCase() === '#FFFFFF')!;
+    expect(band.getAttribute('stroke')).toBe('#1B1B1F');
+  });
+  it('boîtier foncé : titre blanc, bandeau sans trait', () => {
+    const c = draw(<Item3DArt shape="game" display="spine" angle={0} rect={rect} palette={pal} box="bluray" color="#1F4C9E" content={{ title: 'RDR2', band: { color: '#1F4C9E', label: 'PS4' } }} />);
+    const title = [...c.querySelectorAll('text')].find((t) => t.textContent?.includes('RDR2'))!;
+    expect(title.getAttribute('fill')).toBe('#FFFFFF');
+    const band = [...c.querySelectorAll('rect')].find((r) => r.getAttribute('fill')?.toUpperCase() === '#1F4C9E')!;
+    expect(band.getAttribute('stroke')).toBeNull();
+  });
+});

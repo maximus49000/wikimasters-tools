@@ -54,8 +54,9 @@ function garnishOf(layout: Placed[], item: Placed, cards: Cards, imageOf: (slug:
     const slug = p.kind === 'stored' || p.kind === 'computer' ? p.slug : undefined;
     const info = slug ? cards[slug] : undefined;
     const small = p.kind === 'small' ? (isTableClock(p.item) && scene ? tableFaceContent(p.item, p.city, style, scene) : { lit: isLit(p) }) : undefined;
-    const box = p.kind === 'stored' ? gameBoxContent(p.shape, p.slug) : {};
-    out.push({ p, pl, content: small ?? (info && slug ? { url: imageOf(slug), title: info.title, ...box } : {}) });
+    const url = info && slug ? imageOf(slug) : undefined;
+    const box = p.kind === 'stored' ? gameBoxContent(p.shape, p.slug, url) : {};
+    out.push({ p, pl, content: small ?? (info && slug ? { url, title: info.title, ...box } : {}) });
   }
   return out;
 }
