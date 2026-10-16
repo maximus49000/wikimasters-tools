@@ -76,14 +76,20 @@ Maquette de déroulé validée le 2026-10-16 (le dessin de la maquette n'est qu'
 ### Déroulé
 
 1. On ouvre un boîtier (album, vinyle, DVD/jeu pour sa BO) et on choisit une piste.
-2. La couche se referme ; le **boîtier vole** se poser **à côté du poste** (couché, légèrement de biais) et le **disque se pose sur le poste** et tourne.
-   La place d'origine (étagère, présentoir ou mur) reste **vide** tant que l'objet est au poste.
+2. Le **boîtier reste ouvert** : seul le **disque sort du plateau** et vole jusqu'au poste (au-dessus de la couche, voile assez léger
+   pour voir la pièce ; si le poste est hors de l'écran, le disque part vers le bord de son côté), s'y pose et tourne. Le plateau est
+   alors vide et la piste en cours est marquée dans le sélecteur ; on peut choisir une autre piste du même album sans que rien ne bouge.
+   **On ferme le boîtier à la main** (✕, retour) : il vole alors se poser **à côté du poste** (couché, légèrement de biais), pas sur l'étagère.
+   La place d'origine (étagère, présentoir ou mur) reste **vide** tant que l'objet est au poste. Un boîtier dont le disque n'est pas
+   au poste retourne à sa place d'origine en se fermant.
 3. **Toucher le poste** : bulle « En lecture » — piste, album, ⏯ (pause/lecture), ⏏ (éjecter : arrête la lecture, le disque rentre
    dans son boîtier qui retourne à sa place), ✕.
 4. **Toucher la pochette posée** : rouvre le boîtier **avec le même effet d'ouverture** (vol depuis la place près du poste,
    couvercle qui pivote) pour changer de piste dans le même album. Le **plateau est vide** (moyeu seul, « le disque est sur le poste ») :
    le disque reste sur le poste et continue de tourner ; la piste en cours est marquée dans le sélecteur.
-5. **Choisir une piste d'un autre album** : l'ancien disque rentre dans son boîtier qui retourne à sa place, puis le nouveau prend la sienne.
+5. **Choisir une piste d'un autre album** (son boîtier ouvert) : l'ancien disque quitte le poste et rentre dans son boîtier posé à côté,
+   qui retourne à sa place d'origine ; puis le nouveau disque sort du boîtier ouvert et va au poste. Le nouveau boîtier reste ouvert
+   jusqu'à ce qu'on le ferme, puis se pose à côté du poste.
 6. Les **vidéos** (bande-annonce, vidéos Steam) ne vont pas au poste : elles se lisent toujours dans le boîtier ouvert.
 
 ### État
