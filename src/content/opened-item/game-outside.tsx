@@ -99,6 +99,20 @@ export function MadeBack({ box }: { box: GameBox }): ReactElement {
   );
 }
 
+// Dos fabriqué posé sur une face de w × h (unités de l'appelant : décor de la pièce, second zoom) ; la clé change avec ce qu'il montre.
+export function madeBackFace(box: GameBox): { key: string; draw: (w: number, h: number) => ReactElement } {
+  const t = BOX_FORMATS[box.format];
+  const key = ['made-back', box.format, box.title, box.platformName, box.style.plastic, box.style.band?.color ?? '', box.style.band?.label ?? '', box.logoUrl ?? '', box.shots.slice(0, 4).join(','), box.summary ?? ''].join('|');
+  return {
+    key,
+    draw: (w, h) => (
+      <svg data-made-back-face="" x={0} y={0} width={w} height={h} viewBox={`0 0 ${t.w * 10} ${t.h * 10}`} preserveAspectRatio="none" overflow="visible">
+        <MadeBack box={box} />
+      </svg>
+    ),
+  };
+}
+
 // Scan (dos ou devant) dans un cadre au trait ; sans image (ou image introuvable), `fallback` (sinon l'aplat du plastique et le titre).
 function Scan({ url, w, h, box, id, fallback }: { url?: string; w: number; h: number; box: GameBox; id: string; fallback?: ReactNode }): ReactElement {
   const [failed, setFailed] = useState<string | null>(null);

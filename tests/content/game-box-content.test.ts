@@ -24,6 +24,16 @@ describe('gameBoxContent', () => {
   });
   it('repli Steam/IGDB (sans tgdbId) : pas de bandeau imprimé', () => {
     serve(box({ frontUrl: 'steam.jpg' }));
-    expect(gameBoxContent('game', 'x', 'steam.jpg')).toEqual({ band: PS4.band, spine });
+    const { back, ...rest } = gameBoxContent('game', 'x', 'steam.jpg');
+    expect(rest).toEqual({ band: PS4.band, spine });
+    expect(back?.key).toContain('made-back');
+  });
+  it('sans scan du dos : dos fabriqué, dont la clé suit la boîte', () => {
+    serve(box());
+    const first = gameBoxContent('game', 'x').back!;
+    serve(box({ shots: ['a.jpg'] }));
+    expect(gameBoxContent('game', 'x').back!.key).not.toBe(first.key);
+    serve(box({ backUrl: 'dos.jpg' }));
+    expect(gameBoxContent('game', 'x').back).toBeUndefined();
   });
 });

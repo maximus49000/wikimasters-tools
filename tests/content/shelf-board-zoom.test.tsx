@@ -170,4 +170,17 @@ describe('jeux dans le second zoom', () => {
     expect(back.querySelector('image')).toBeNull();
     expect(back.querySelector('rect')!.getAttribute('fill')!.toUpperCase()).toBe('#1F4C9E');
   });
+  it('de dos, boîte connue sans scan : dos fabriqué (bandeau de la console, titre)', () => {
+    setGameBoxService({ peek: (slug: string) => (slug === 'RDR2' ? box() : undefined), subscribe: () => () => undefined, request: () => undefined } as unknown as GameBoxService);
+    const c = mountGames();
+    const back = c.querySelector('[data-board-card="RDR2"]')!;
+    expect(back.querySelector('[data-made-back]')).not.toBeNull();
+    expect(back.querySelector('[data-made-back-band]')!.textContent).toBe('PS4');
+    expect(back.querySelector('[data-made-back-title]')!.textContent).toContain('RDR2');
+  });
+  it('les images ne transmettent pas la page d’origine', () => {
+    setGameBoxService({ peek: (slug: string) => (slug === 'RDR2' ? box('dos.png') : undefined), subscribe: () => () => undefined, request: () => undefined } as unknown as GameBoxService);
+    const c = mountGames();
+    for (const img of c.querySelectorAll('image')) expect(img.getAttribute('referrerPolicy')).toBe('no-referrer');
+  });
 });

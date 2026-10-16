@@ -1,4 +1,4 @@
-// Dessin provisoire Opus — Fable n'est pas passé, reprise prévue.
+// Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 2026-10-17), reprise Fable prévue.
 import { useRef, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
 import type { Matrix } from '../core/library/footprint';
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
@@ -40,6 +40,8 @@ const CHAR_W = 0.55;
 // Boîtier d'un jeu dont la console est inconnue (noir, comme dans la pièce).
 const GAME_CASE = '#1B1B1F';
 export const SWIPE_PX = 40;
+// referrerPolicy n'est pas typé sur <image> SVG : passé par déploiement d'objet.
+const NO_REFERRER = { referrerPolicy: 'no-referrer' } as object;
 
 // Titre en `lines` lignes d'au plus `max` caractères (mots entiers ; un mot trop long est coupé), « … » si ça ne tient pas.
 export function titleLines(title: string, max: number, lines = 2): string[] {
@@ -144,7 +146,7 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                 const h = b.local.h;
                 const display = displayOf(p);
                 const spine = display === 'spine';
-                // Jeu de dos : l'image du dos de sa boîte ; sans image, l'aplat de la couleur du boîtier.
+                // Jeu de dos : l'image du dos de sa boîte, sinon le dos fabriqué ; boîte inconnue : l'aplat de la couleur du boîtier.
                 const back = display === 'back';
                 const box = back || spine ? gameBoxContent(p.shape, p.slug) : {};
                 const backUrl = back ? box.backUrl : undefined;
@@ -165,8 +167,10 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                     {gameSpine
                       ? <g transform={`translate(${x} ${y})`}><GameSpine w={w} h={h} {...gameSpine} /></g>
                       : <rect x={x} y={y} width={w} height={h} fill={back ? (p.caseColor ?? GAME_CASE) : '#e8e2d6'} stroke={TITLE_INK} strokeWidth={0.3} />}
-                    {back ? backUrl && <image href={backUrl} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" />
-                      : !spine && url && <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" />}
+                    {back ? (backUrl
+                      ? <image href={backUrl} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" {...NO_REFERRER} />
+                      : box.back && <g transform={`translate(${x} ${y})`}>{box.back.draw(w, h)}</g>)
+                      : !spine && url && <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" {...NO_REFERRER} />}
                     {gameSpine ? null : spine
                       ? <text data-board-title="" transform={`translate(${x + w / 2} ${y + h - 1}) rotate(-90)`} fontSize={spineFont} dominantBaseline="middle" fill={TITLE_INK}>{titleLines(title, (h - 2) / (spineFont * CHAR_W), 1)[0]}</text>
                       : titleLines(title, w / (TITLE_FONT_CM * CHAR_W)).map((line, k) => (

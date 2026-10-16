@@ -1,4 +1,4 @@
-// Dessin provisoire Opus — reprise Fable prévue.
+// Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 2026-10-17), reprise Fable prévue.
 import { memo, useId, type ReactElement } from 'react';
 import { hostNativePx } from '../core/library/carried-items';
 import { drawSize, type Angle } from '../core/library/footprint';
@@ -124,12 +124,12 @@ function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?
 // Contenu d'un objet posé : image et titre de sa carte, lampe allumée ou non.
 // `face` / `top` : décor dessiné par l'appelant sur la façade / le dessus (clé : ce qui change son dessin, pour le mémo).
 export type FaceDraw = { key: string; draw: (w: number, h: number) => ReactElement };
-// Jeu : `backUrl` image du dos de sa boîte ; `band` bandeau de sa console (null : boîte sans bandeau ; absent : boîte inconnue, bandeau rouge) ;
+// Jeu : `backUrl` image du dos de sa boîte, sinon `back` dos fabriqué ; `band` bandeau de sa console (null : boîte sans bandeau ; absent : boîte inconnue, bandeau rouge) ;
 // `printed` : la jaquette (scan TheGamesDB) porte déjà son bandeau, la couverture n'en ajoute pas (la tranche, si).
 export type Band = { color: string; label: string };
 // `spine` : tranche dessinée comme la vraie (boîte connue) ; absente : bandeau et titre d'origine.
 export type SpineData = { style: CaseStyle; format: BoxFormat; title: string; logoUrl?: string; studio?: string; console?: string };
-export type ItemContent = { url?: string; title?: string; lit?: boolean; face?: FaceDraw; top?: FaceDraw; backUrl?: string; band?: Band | null; printed?: boolean; spine?: SpineData };
+export type ItemContent = { url?: string; title?: string; lit?: boolean; face?: FaceDraw; top?: FaceDraw; backUrl?: string; back?: FaceDraw; band?: Band | null; printed?: boolean; spine?: SpineData };
 
 const cut = (title: string, max: number) => (title.length > max ? `${title.slice(0, Math.max(1, max - 1))}…` : title);
 const GAME_RED = '#E24B4A';
@@ -181,13 +181,13 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
     return shape === 'hifi' ? <HifiFace w={w} h={h} title={null} playing={false} /> : <rect width={w} height={h} fill="#1D1F22" />;
   }
   if (role === 'back') {
-    // Dos d'une boîte de jeu : son image (TheGamesDB) ; sans image, aplat de la couleur du boîtier et titre (en attendant le dos fabriqué).
+    // Dos d'une boîte de jeu : son image (TheGamesDB), sinon le dos fabriqué de la boîte connue ; boîte inconnue : aplat du boîtier et titre.
     const fs = Math.min(w * 0.12, h * 0.08);
     return (
       <g data-decal-back="">
         {content?.backUrl
           ? <image href={content.backUrl} x={r1(w * 0.03)} y={r1(h * 0.02)} width={r1(w * 0.94)} height={r1(h * 0.96)} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" />
-          : (
+          : content?.back ? content.back.draw(w, h) : (
             <>
               <rect width={w} height={h} fill={color} />
               {title && <text x={r1(w / 2)} y={r1(h * 0.2)} fontSize={r1(fs)} fontFamily="system-ui, sans-serif" fontWeight={600} textAnchor="middle" fill={inkOn(color)}>{cut(title, 14)}</text>}
@@ -369,4 +369,4 @@ export const CarriedItem3D = memo(CarriedItem3DImpl, (a, b) => a.host === b.host
   && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
   && itemsKey([a.placement]) === itemsKey([b.placement])
   && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit
-  && a.content?.backUrl === b.content?.backUrl && sameBand(a.content?.band, b.content?.band) && a.content?.printed === b.content?.printed && sameSpine(a.content?.spine, b.content?.spine) && a.content?.face?.key === b.content?.face?.key && a.content?.top?.key === b.content?.top?.key);
+  && a.content?.backUrl === b.content?.backUrl && a.content?.back?.key === b.content?.back?.key && sameBand(a.content?.band, b.content?.band) && a.content?.printed === b.content?.printed && sameSpine(a.content?.spine, b.content?.spine) && a.content?.face?.key === b.content?.face?.key && a.content?.top?.key === b.content?.top?.key);

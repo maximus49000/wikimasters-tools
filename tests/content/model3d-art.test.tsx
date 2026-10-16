@@ -88,6 +88,13 @@ describe('boîte de jeu : dos et bandeau de console', () => {
     expect(back.querySelector('rect')!.getAttribute('fill')!.toUpperCase()).toBe('#E60012');
     expect(back.textContent).toContain('Zelda');
   });
+  it('sans scan du dos mais boîte connue : le dos fabriqué', () => {
+    const made = { key: 'k', draw: (w: number, h: number) => <rect data-test-made={`${w}x${h}`} width={w} height={h} /> };
+    const c = draw(<Item3DArt shape="game" display="back" angle={0} rect={rect} palette={pal} box="switch" content={{ url: 'face.png', title: 'Zelda', back: made }} />);
+    const back = c.querySelector('[data-decal-back]')!;
+    expect(back.querySelector('[data-test-made]')).not.toBeNull();
+    expect(back.textContent).not.toContain('Zelda');
+  });
   it('bandeau de la console (couleur, nom) au lieu du rouge unique ; sans bandeau connu : aucun', () => {
     const ps4 = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="bluray" content={{ url: 'face.png', title: 'RDR2', band: { color: '#1F4C9E', label: 'PS4' } }} />);
     expect(ps4.innerHTML.toUpperCase()).toContain('#1F4C9E');
