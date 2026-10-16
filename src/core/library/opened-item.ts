@@ -3,6 +3,8 @@ import type { Placed } from './library-types';
 import type { Track } from '../spotify/spotify-api';
 import type { Listen } from '../music/listen';
 import type { Box } from './zoom-target';
+import type { ScreenDetail } from '../screen/tmdb-api';
+import type { GameDetail } from '../game/game-detail';
 
 export type Opening = 'jewel-cd' | 'vinyl-sleeve' | 'dvd-case' | 'game-case' | 'book';
 
@@ -33,6 +35,35 @@ export type SelectorModel = { rows: SelectorRow[]; empty: string | null };
 export function musicRows(listen: Listen | null): SelectorModel {
   if (!listen || listen.items.length === 0) return { rows: [], empty: 'Aucune piste trouvée' };
   return { rows: listen.items.map((track): SelectorRow => ({ kind: 'track', track, listen })), empty: null };
+}
+
+// Ce que les services film/série et jeu répondent (forme minimale : les vues complètes des services y sont assignables).
+export type ScreenViewLike = { status: 'detail'; detail: ScreenDetail } | { status: 'error'; message: string } | { status: 'none' | 'filmography' };
+export type GameViewLike = { status: 'detail'; detail: GameDetail } | { status: 'error'; message: string } | { status: 'none' | 'empty' };
+
+const NO_VIDEO_NOR_BO = 'Pas de bande-annonce ni de BO';
+const boRows = (bo: Listen | null): SelectorRow[] => (bo ? bo.items.map((track): SelectorRow => ({ kind: 'track', track, listen: bo })) : []);
+function mediaRows(video: SelectorRow | null, bo: Listen | null, failure: string | null): SelectorModel {
+  const rows = [...(video ? [video] : []), ...boRows(bo)];
+  // Une panne du service est dite, mais ne cache pas une BO trouvée par ailleurs.
+  return { rows, empty: rows.length === 0 ? failure ?? NO_VIDEO_NOR_BO : null };
+}
+
+// Film ou série : la bande-annonce d'abord, puis les pistes de la BO.
+export function screenRows(view: ScreenViewLike, bo: Listen | null): SelectorModel {
+  const detail = view.status === 'detail' ? view.detail : null;
+  const video: SelectorRow | null = detail?.trailerKey ? { kind: 'video', label: 'Bande-annonce', video: { kind: 'youtube', key: detail.trailerKey } } : null;
+  return mediaRows(video, bo, view.status === 'error' ? view.message : null);
+}
+
+// Jeu vidéo : la bande-annonce (YouTube ou flux HLS Steam, avec la page du jeu en repli), puis les pistes de la BO.
+export function gameRows(view: GameViewLike, bo: Listen | null): SelectorModel {
+  const detail = view.status === 'detail' ? view.detail : null;
+  const trailer = detail?.trailer;
+  const video: SelectorRow | null = !detail || !trailer ? null
+    : trailer.kind === 'youtube' ? { kind: 'video', label: 'Bande-annonce', video: { kind: 'youtube', key: trailer.key } }
+    : { kind: 'video', label: 'Bande-annonce', video: { kind: 'hls', url: trailer.url, pageUrl: detail.pageUrl, ...(trailer.poster ? { poster: trailer.poster } : {}) } };
+  return mediaRows(video, bo, view.status === 'error' ? view.message : null);
 }
 
 // Calque paysage : en écran vertical, largeur et hauteur sont échangées (le calque est tourné de 90°).

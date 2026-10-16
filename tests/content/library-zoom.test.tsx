@@ -37,7 +37,8 @@ async function seed(layout: Layout) { await repo.update((st) => updateLayout(st,
 const advance = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); });
 
 // Un DVD : touché dans le second zoom, il ouvre encore la fiche (le CD, lui, s'ouvre dans la scène : tests/content/library-panel.test.tsx).
-const SHELF: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 1 }, { id: 'c', kind: 'stored', shape: 'dvd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' }];
+// Livre : seule forme rangée dont l'ouverture est encore la fiche (DVD et jeu s'ouvrent dans la scène ; à revoir avec l'ouverture du livre).
+const SHELF: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 6, angle: 1 }, { id: 'c', kind: 'stored', shape: 'book', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' }];
 
 beforeEach(async () => {
   container = document.createElement('div');

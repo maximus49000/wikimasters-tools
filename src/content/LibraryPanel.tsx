@@ -109,7 +109,7 @@ import { useFurnitureZoom } from './use-furniture-zoom';
 import { openingOf, type Opening } from '../core/library/opened-item';
 import { bookColor } from '../core/library/item-models';
 import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
-import { MusicSelector } from './opened-item/selectors';
+import { GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
 import { useOpenedItem } from './opened-item/use-opened-item';
 import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
 import { getPlayerSource } from './music-registry';
@@ -244,8 +244,8 @@ const REFUSALS = {
   wall: 'Un objet mural s’accroche au mur.',
 } as const;
 
-// Formes ouvertes dans la scène à ce stade : boîtier de CD et pochette de vinyle (les autres viendront avec leurs sélecteurs).
-const OPENS_NOW: ReadonlySet<Opening> = new Set<Opening>(['jewel-cd', 'vinyl-sleeve']);
+// Formes ouvertes dans la scène à ce stade : CD, vinyle, DVD et jeu (le livre attend son sélecteur et ouvre encore la fiche).
+const OPENS_NOW: ReadonlySet<Opening> = new Set<Opening>(['jewel-cd', 'vinyl-sleeve', 'dvd-case', 'game-case']);
 const opensNow = (p: Placed): boolean => { const o = openingOf(p); return o !== null && OPENS_NOW.has(o); };
 const NO_LAYOUT: Layout = [];
 // Changer d'album : l'ancien disque quitte le poste et son boîtier rentre à sa place avant que le nouveau disque ne s'envole.
@@ -427,6 +427,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   hifiRef.current = hifi;
   const platform = usePlatform();
   const [flight, setFlight] = useState<Flight | null>(null);
+  // Vidéo (bande-annonce) choisie dans le plateau d'un film ou d'un jeu : elle remplace le disque, ne va jamais au poste.
+  const [videoShown, setVideoShown] = useState<{ placedId: string; video: Video } | null>(null);
   const flightRef = useRef(flight);
   flightRef.current = flight;
   const flightSeq = useRef(0);
@@ -443,6 +445,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   }, [hifi.atHifi]); // eslint-disable-line react-hooks/exhaustive-deps
   // La couche fermée (ou passée à un autre objet) : le vol en cours s'arrête, le poste montre de nouveau son disque.
   const openedId = opened?.placedId ?? null;
+  useEffect(() => { setVideoShown((v) => (v && v.placedId !== openedId ? null : v)); }, [openedId]);
   useEffect(() => { if (flight && flight.placedId !== openedId) setFlight(null); }, [openedId, flight]);
   // Ouvre un objet ; son plateau est vide si son disque est déjà au poste.
   const openAt = (id: string, from: Box | null): void => {
@@ -1421,7 +1424,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
                 startNew('small-hifi');
               }}
               flight={mine && mine.phase === 'fly' ? { id: mine.id, target: hifiDiscBox(p.kind === 'wall'), onLanded: () => onLanded(mine.id, p.id) } : null}
-              selector={<MusicSelector slug={slug} title={card.title} onPlayed={() => onPlayedFrom(p.id, slug, card.title)} />}
+              selector={(() => {
+                const played = () => onPlayedFrom(p.id, slug, card.title);
+                const onVideo = (video: Video | null) => setVideoShown(video ? { placedId: p.id, video } : null);
+                const opening = openingOf(p);
+                if (opening === 'dvd-case') return <ScreenSelector slug={slug} title={card.title} onPlayed={played} onVideo={onVideo} />;
+                if (opening === 'game-case') return <GameSelector slug={slug} title={card.title} onPlayed={played} onVideo={onVideo} />;
+                return <MusicSelector slug={slug} title={card.title} onPlayed={played} />;
+              })()}
+              {...(videoShown && videoShown.placedId === p.id ? { right: <VideoPlayer video={videoShown.video} /> } : {})}
             />
           );
         })()}

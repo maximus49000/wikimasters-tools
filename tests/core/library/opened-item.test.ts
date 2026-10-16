@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Placed, WallShape, ShelfShape } from '../../../src/core/library/library-types';
-import { boxInLayer, flightTarget, layerFrame, musicRows, openingOf } from '../../../src/core/library/opened-item';
+import { boxInLayer, flightTarget, gameRows, layerFrame, musicRows, openingOf, screenRows } from '../../../src/core/library/opened-item';
 
 const stored = (shape: ShelfShape): Placed => ({ id: 's', kind: 'stored', shape, shelfId: 'e', level: 0, order: 0, slug: 'x' });
 const wall = (shape: WallShape): Placed => ({ id: 'w', kind: 'wall', shape, col: 0, row: 0, slug: 'x' });
@@ -70,5 +70,37 @@ describe('flightTarget', () => {
   });
   it('non mesurable : milieu du bord droit, à la taille donnée', () => {
     expect(flightTarget(null, frame, 60)).toEqual({ x: 770, y: 170, w: 60, h: 60 });
+  });
+});
+
+describe('screenRows / gameRows', () => {
+  const bo = { kind: 'album' as const, items: [track(1), track(2)], albumUri: 'spotify:album:Z' };
+  const film = (extra: object) => ({ status: 'detail' as const, detail: { mediaType: 'movie', id: 7, title: 'Film', ...extra } as never });
+  it('film : vidéo d’abord, puis les pistes de la BO', () => {
+    const model = screenRows(film({ trailerKey: 'abc' }), bo);
+    expect(model.empty).toBeNull();
+    expect(model.rows.map((r) => r.kind)).toEqual(['video', 'track', 'track']);
+    expect(model.rows[0]).toMatchObject({ label: 'Bande-annonce', video: { kind: 'youtube', key: 'abc' } });
+  });
+  it('film sans bande-annonce ni BO, ou service muet : message', () => {
+    expect(screenRows(film({}), null)).toEqual({ rows: [], empty: 'Pas de bande-annonce ni de BO' });
+    expect(screenRows({ status: 'none' }, null).empty).toBe('Pas de bande-annonce ni de BO');
+    expect(screenRows({ status: 'error', message: 'TMDB indisponible' }, null).empty).toBe('TMDB indisponible');
+  });
+  it('une panne ne cache pas une BO trouvée', () => {
+    const model = screenRows({ status: 'error', message: 'x' }, bo);
+    expect(model.rows).toHaveLength(2);
+    expect(model.empty).toBeNull();
+  });
+  const jeu = (trailer?: object) => ({ status: 'detail' as const, detail: { source: 'steam', id: 1, title: 'J', pageUrl: 'https://store.steampowered.com/app/1', ...(trailer ? { trailer } : {}) } as never });
+  it('jeu : flux HLS avec la page du jeu, ou YouTube', () => {
+    expect(gameRows(jeu({ kind: 'hls', url: 'https://x/m.m3u8', poster: 'p.jpg' }), bo).rows[0]).toMatchObject({
+      kind: 'video', video: { kind: 'hls', url: 'https://x/m.m3u8', poster: 'p.jpg', pageUrl: 'https://store.steampowered.com/app/1' },
+    });
+    expect(gameRows(jeu({ kind: 'youtube', key: 'k' }), null).rows).toEqual([{ kind: 'video', label: 'Bande-annonce', video: { kind: 'youtube', key: 'k' } }]);
+  });
+  it('jeu sans rien : message ; vue vide', () => {
+    expect(gameRows(jeu(), null).empty).toBe('Pas de bande-annonce ni de BO');
+    expect(gameRows({ status: 'empty' }, null).empty).toBe('Pas de bande-annonce ni de BO');
   });
 });
