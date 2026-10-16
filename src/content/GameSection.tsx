@@ -1,7 +1,10 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { GameDetail } from '../core/game/game-detail';
+import type { TgdbVersion } from '../core/game/tgdb-api';
 import { formatCount } from '../core/game/game-format';
 import { GameChoiceDialog } from './GameChoiceDialog';
+import { getGameBoxService } from './game-box-registry';
+import { GameVersionDialog } from './GameVersionDialog';
 import { getGameService } from './game-registry';
 import type { GameView } from './game-service';
 import { Glyph } from './Glyphs';
@@ -101,6 +104,26 @@ export function GameSection({ slug, title }: Props) {
   const [view, setView] = useState<GameView | null>(null);
   const [version, setVersion] = useState(0);
   const [choosing, setChoosing] = useState(false);
+  const boxService = getGameBoxService();
+  const [versions, setVersions] = useState<TgdbVersion[]>([]);
+  const [pickingVersion, setPickingVersion] = useState(false);
+  const currentKey = view?.status === 'detail' ? `${view.detail.source}:${view.detail.id}` : null;
+
+  // Les versions (consoles) du jeu affiché : le bouton n'apparaît qu'à partir de deux.
+  useEffect(() => {
+    if (!boxService || currentKey === null) {
+      setVersions([]);
+      return;
+    }
+    let cancelled = false;
+    void boxService
+      .versions(slug, title)
+      .catch((): TgdbVersion[] => [])
+      .then((list) => !cancelled && setVersions(list));
+    return () => {
+      cancelled = true;
+    };
+  }, [boxService, slug, title, currentKey]);
 
   useEffect(() => {
     if (!service) return;
@@ -125,6 +148,11 @@ export function GameSection({ slug, title }: Props) {
         <button type="button" onClick={() => setChoosing(true)} aria-label="Changer de jeu" title="Changer de jeu" style={iconButton}>
           <Glyph name="swap" />
         </button>
+        {boxService && versions.length >= 2 && (
+          <button type="button" onClick={() => setPickingVersion(true)} aria-label="Changer de version" title="Changer de version" style={iconButton}>
+            <Glyph name="console" />
+          </button>
+        )}
       </div>
       {view.status === 'error' && (
         <p role="status" style={{ margin: 0, fontSize: 12, opacity: 0.8 }}>
@@ -132,6 +160,7 @@ export function GameSection({ slug, title }: Props) {
         </p>
       )}
       {current && <Detail detail={current} />}
+      {pickingVersion && boxService && <GameVersionDialog service={boxService} slug={slug} title={title} versions={versions} activeId={boxService.peek(slug)?.tgdbId} onClose={() => setPickingVersion(false)} />}
       {choosing && <GameChoiceDialog service={service} slug={slug} title={title} current={current} onChanged={() => setVersion((value) => value + 1)} onClose={() => setChoosing(false)} />}
     </div>
   );
