@@ -1,13 +1,16 @@
 // Ouverture / fermeture de la vue Modifier d'un plateau, avec le même modèle d'historique que l'objet ouvert (use-opened-item) :
 // une entrée `wmtArrange` est poussée à l'ouverture, le retour Android / navigateur ferme la vue ; ✓ et Échap retirent eux-mêmes l'entrée.
-// open / close / reset sont stables (useCallback) : la vue garde ses écouteurs d'un rendu à l'autre.
+// `onBeforeClose` : appelé au retour ; s'il renvoie vrai (il vient de dézoomer la vue d'une étagère au meuble entier), l'entrée est
+// reposée et la vue reste (même mécanisme que use-furniture-zoom). open / close / reset sont stables (useCallback).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { historyToken } from '../history-token';
 
-export function useArrangeView(): { hostId: string | null; open(hostId: string): void; close(): void; reset(): void } {
+export function useArrangeView(onBeforeClose?: () => boolean): { hostId: string | null; open(hostId: string): void; close(): void; reset(): void } {
   const [hostId, setHostId] = useState<string | null>(null);
   const ours = useRef(false);
   const token = useRef('');
+  const beforeClose = useRef(onBeforeClose);
+  beforeClose.current = onBeforeClose;
 
   const open = useCallback((id: string): void => {
     setHostId(id);
@@ -25,9 +28,14 @@ export function useArrangeView(): { hostId: string | null; open(hostId: string):
   }, []);
 
   useEffect(() => {
-    // Notre entrée vient d'être retirée (retour) : on ferme sans toucher à l'historique.
+    // Notre entrée vient d'être retirée (retour) : le zoom d'une étagère revient d'abord au meuble entier (entrée reposée), sinon on
+    // ferme sans toucher à l'historique.
     const onPop = () => {
       if (!ours.current) return;
+      if (beforeClose.current?.()) {
+        history.pushState({ ...(history.state ?? {}), wmtArrange: token.current }, '');
+        return;
+      }
       ours.current = false;
       setHostId(null);
     };

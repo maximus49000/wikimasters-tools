@@ -748,17 +748,25 @@ export function moveStored(layout: Layout, id: string, shelfId: string, level: S
 // dessus (il perd x/z, garde lit/city) ou une carte posée (elle devient rangée : même slug, forme, boîte, couleur ; présentation par défaut).
 // Refusé : chaîne hi-fi, objet trop haut ou place qui manque (jamais dans sa propre tablette, même si elle déborde).
 export function moveToBoard(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): Layout | null {
-  const item = layout.find((p) => p.id === id);
-  const shelf = layout.find((p) => p.id === shelfId);
-  if (!item || !shelf || shelf.kind !== 'shelf' || !isShelfLevel(level) || !Number.isFinite(order)) return null;
-  let moved: BoardItem;
-  if (item.kind === 'stored') moved = { ...item, shelfId, level };
-  else if (item.kind === 'posed') moved = { id, kind: 'stored', shape: item.shape, shelfId, level, order: 0, ...(item.box && { box: item.box }), ...(item.box && item.caseColor && { caseColor: item.caseColor }), slug: item.slug };
-  else if (item.kind === 'small') moved = { id, kind: 'small', item: item.item, hostId: shelfId, level, order: 0, ...(item.lit !== undefined && { lit: item.lit }), ...(item.city && { city: item.city }) };
-  else return null;
-  if (!boardAccepts(moved)) return null;
+  const moved = asBoardItem(layout, id, shelfId, level);
+  if (!moved || !Number.isFinite(order) || !boardAccepts(moved)) return null;
   if (!onThisBoard(layout, id, shelfId, level) && (!fitsHeight(level, moved) || !fits(boardItems(layout, shelfId, level, id), moved))) return null;
   return insertOnBoard(layout, moved, order);
+}
+// L'objet `id` tel qu'il serait sur la tablette `level` de `shelfId` (rang à fixer) ; null si l'un ou l'autre n'existe pas ou ne s'y range pas.
+function asBoardItem(layout: Layout, id: string, shelfId: string, level: ShelfLevel): BoardItem | null {
+  const item = layout.find((p) => p.id === id);
+  const shelf = layout.find((p) => p.id === shelfId);
+  if (!item || !shelf || shelf.kind !== 'shelf' || !isShelfLevel(level)) return null;
+  if (item.kind === 'stored') return { ...item, shelfId, level };
+  if (item.kind === 'posed') return { id, kind: 'stored', shape: item.shape, shelfId, level, order: 0, ...(item.box && { box: item.box }), ...(item.box && item.caseColor && { caseColor: item.caseColor }), slug: item.slug };
+  if (item.kind === 'small') return { id, kind: 'small', item: item.item, hostId: shelfId, level, order: 0, ...(item.lit !== undefined && { lit: item.lit }), ...(item.city && { city: item.city }) };
+  return null;
+}
+// Pose de force (fantôme d'un dépôt refusé) : même rangement que moveToBoard, sans vérifier la place ni la hauteur ; la tablette déborde.
+export function forceOnBoard(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): Layout | null {
+  const moved = asBoardItem(layout, id, shelfId, level);
+  return moved && Number.isFinite(order) ? insertOnBoard(layout, moved, order) : null;
 }
 
 // Pose un petit objet (du dessus ou de tablette) sur le dessus du bureau ou de l'étagère `hostId`, en (x, z) cm (canPutOnTop) ; sa tablette

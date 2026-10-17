@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactElement } from 'react';
 import { isOnBoard, type FurnitureKind, type Placed, type Room, type TimeSetting, type WeatherState } from '../core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type BoardItem, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { drawSize, faceFrame, frontFaceRect, groundTrace, type Angle } from '../core/library/footprint';
 import { boxesOf, lampsOf, signatureOf } from '../core/library/light/occluders';
@@ -152,7 +152,8 @@ function topPlacementIn(hosts: ReadonlyMap<string, Host>, placed: Placed): { hos
   const host = hosts.get(placed.hostId);
   return host ? { host, pl: smallPlacement(placed.id, placed.item, host.kind, placed.x, placed.z) } : null;
 }
-type Carried = { tops: Placed[]; stored: Extract<Placed, { kind: 'stored' }>[]; computers: Placed[] };
+// `stored` : objets des tablettes (cartes rangées et petits objets de tablette), dessinés dans l'ouverture de l'étagère.
+type Carried = { tops: Placed[]; stored: BoardItem[]; computers: Placed[] };
 
 export type DragView = { id: string; x: number; y: number; ok: boolean; ghost: Rect | null; ghostPx?: PxRect & { quad?: [number, number][] }; floor?: Cell[] };
 
@@ -323,7 +324,14 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     if (placed.kind === 'computer' || placed.kind === 'small') {
       // Écran (machine analytique dans une pièce Steampunk) ou petit objet : modèle 3D posé sur le dessus du porteur tourné, avec lui
       // (de dos, l'écran montre son dos, sans image). Son rectangle (zone touchable, contour) est celui de son dessin : l'écran dépasse du bureau.
-      const at = topPlacement(placed);
+      // Petit objet de tablette : posé sur sa planche d'après ses voisins (même rangement que les cartes) ; étagère de profil ou de dos : caché.
+      const at = placed.kind === 'small' && isOnBoard(placed)
+        ? (() => {
+          const host = hostOf(placed.hostId);
+          const pl = storedPlaces.get(placed.id);
+          return host && pl && openingOf(FURNITURE_MODELS.shelf, host.angle) ? { host, pl } : null;
+        })()
+        : topPlacement(placed);
       if (!at) return null;
       const { host, pl } = at;
       const rect = placementRectPx(host.kind, host.angle, host.rect, pl, steampunk);
@@ -377,7 +385,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     };
   }
 
-  function renderPlaced(placed: Placed, part?: ModelPart): ReactElement | null {
+  // `after` : reçoit la copie soulevée et le contour de sélection au lieu de les garder dans le groupe (petit objet de tablette : son groupe
+  // est découpé à l'ouverture de l'étagère, la copie qui suit le doigt et le contour ne doivent pas l'être).
+  function renderPlaced(placed: Placed, part?: ModelPart, after?: ReactElement[]): ReactElement | null {
     const drawn = artOf(placed, part);
     if (!drawn) return null;
     const { rect, art, liftedArt } = drawn;
@@ -385,6 +395,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     // Un ordinateur suit aussi son bureau soulevé.
     const lifted = drag !== null && (drag.id === placed.id || (placed.kind === 'computer' && drag.id === placed.deskId) || (placed.kind === 'small' && drag.id === placed.hostId));
     const liftedCopy = lifted ? liftedCopyOf(rect, liftedArt ?? art, drag.id === placed.id ? rect : (hosts.get(drag.id)?.rect ?? rect)) : null;
+    const selection = editing && selectedId === placed.id ? outline(rect) : null;
+    if (after) {
+      if (selection) after.push(<g key={`sel-${placed.id}`} pointerEvents="none">{selection}</g>);
+      if (liftedCopy) after.push(<g key={`lift-${placed.id}`}>{liftedCopy}</g>);
+    }
     return (
       <g key={placed.id}>
         <g
@@ -414,14 +429,14 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
         >
           {art}
           {decor.glow && placed.kind !== 'rug' && neonOutline(rect, decor.glow)}
-          {editing && selectedId === placed.id && outline(rect)}
+          {!after && selection}
           {editing && linkedId === placed.id && outline(rect, 'linked')}
           {(() => {
             const hit = isStanding(placed) ? hitRectOf(placed) : rect;
             return <rect x={hit.x} y={hit.y} width={hit.w} height={hit.h} fill="transparent" />;
           })()}
         </g>
-        {liftedCopy}
+        {!after && liftedCopy}
       </g>
     );
   }
@@ -528,7 +543,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       const hostId = placed.kind === 'computer' ? placed.deskId : placed.kind === 'small' ? placed.hostId : placed.kind === 'stored' ? placed.shelfId : null;
       if (hostId === null) continue;
       const entry = out.get(hostId) ?? { tops: [], stored: [], computers: [] };
-      if (placed.kind === 'stored') entry.stored.push(placed);
+      if (placed.kind === 'stored' || (placed.kind === 'small' && isOnBoard(placed))) entry.stored.push(placed);
       else entry.tops.push(placed);
       if (placed.kind === 'computer') entry.computers.push(placed);
       out.set(hostId, entry);
@@ -590,7 +605,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     const entry = carried.get(hostId);
     if (!entry) return [];
     const after: ReactElement[] = [];
-    const stored = storedClip(hostId, '', entry.stored.map((p) => cardOf(p, after)));
+    const stored = storedClip(hostId, '', entry.stored.map((p) => (p.kind === 'stored' ? cardOf(p, after) : renderPlaced(p, undefined, after))));
     const tops: (ReactElement | null)[] = entry.tops.map((p) => renderPlaced(p));
     const sleeve = sleeveOn(hostId);
     if (sleeve) {
@@ -614,7 +629,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       const drawn = cardArtOf(placed);
       return drawn ? copy(placed, drawn.art, !cards[drawn.slug], tag) : [];
     };
-    const stored = storedClip(hostId, 'copy-', entry.stored.flatMap((p) => card(p)));
+    const stored = storedClip(hostId, 'copy-', entry.stored.flatMap((p) => (p.kind === 'stored' ? card(p) : copy(p, artOf(p)?.art))));
     return [
       ...(stored ? [stored] : []),
       ...entry.tops.flatMap((p) => copy(p, artOf(p)?.art)),

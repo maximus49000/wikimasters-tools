@@ -85,7 +85,7 @@ export const FAMILLES: Famille[] = [
     lourde: true,
     fichiers: [
       ...c(
-        'furniture-drag*', 'arrange-view.*', 'placement.*', 'placement-bar.*', 'library-placement.*', 'library-sims-ui.*', 'furniture-thumb.*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
+        'furniture-drag*', 'arrange-view.*', 'arrange-shelf.*', 'placement.*', 'placement-bar.*', 'library-placement.*', 'library-sims-ui.*', 'furniture-thumb.*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
         'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*', 'model3d-art.*', 'item3d-art.*', 'room-angle.*', 'room-carried*', 'furniture-zoom.*', 'library-zoom.*', 'shelf-board-zoom.*', 'deco-art.*', 'deco-fonts.*', 'library-deco*', 'item-case.*', 'opened-item-hook.*', 'opened-item-layer.*', 'selectors.*', 'hifi*', 'disc-flight.*', 'game-box-content.*', 'game-spine.*', 'game-outside.*', 'back-magnifier.*',
       ),
       ...lib('room-grid*', 'board-mixed.*', 'surface.*', 'arrange.*', 'library-migration-v6.*', 'library-migration-v7.*', 'library-migration-v8.*', 'library-migration-v9.*', 'furniture-catalog.*', 'footprint.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*', 'zoom-target.*', 'shelf-link.*', 'furniture-render3d.*', 'furniture-models.*', 'item-models.*', 'carried-items.*', 'clock-cities.*', 'text-fit.*', 'opened-item.*', 'hifi.*'),

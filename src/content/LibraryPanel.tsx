@@ -60,7 +60,10 @@ import {
   fitsWithin,
   screenCols,
   SHELF_FULL_MESSAGE,
+  SHELF_TOO_HIGH_MESSAGE,
   displayOf,
+  moveToBoard,
+  moveToTop,
   type Cell,
 } from '../core/library/room-grid';
 import { formatMinutes } from '../core/library/time-setting';
@@ -112,6 +115,7 @@ import { openingOf } from '../core/library/opened-item';
 import { bookColor } from '../core/library/item-models';
 import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
 import { ArrangeView } from './arrange/ArrangeView';
+import { ArrangeShelf, type ArrangeLevel } from './arrange/ArrangeShelf';
 import { useArrangeView } from './arrange/use-arrange-view';
 import { moveOnTop } from '../core/library/arrange';
 import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
@@ -312,12 +316,24 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [following, setFollowing] = useState(false);
   useEffect(() => () => stopFollow.current?.(), []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Vue Modifier (✋) du plateau d'un porteur (bureau, dessus d'étagère) : fermée avec Aménager ou au changement de pièce.
-  // Entrée d'historique propre (use-arrange-view) : le retour Android la ferme.
-  const arrange = useArrangeView();
+  // Vue Modifier (✋) d'un porteur : le plateau d'un bureau, ou l'étagère entière avec ses niveaux (meuble entier, dessus, tablettes).
+  // Fermée avec Aménager ou au changement de pièce. Entrée d'historique propre (use-arrange-view) : le retour Android dézoome d'abord
+  // (niveau → meuble entier, sans nouvelle entrée), puis ferme.
+  const [arrangeLevel, setArrangeLevel] = useState<ArrangeLevel>('whole');
+  const arrangeLevelRef = useRef(arrangeLevel);
+  arrangeLevelRef.current = arrangeLevel;
+  const arrange = useArrangeView(() => {
+    if (arrangeLevelRef.current === 'whole') return false;
+    setArrangeLevel('whole');
+    return true;
+  });
   const arrangeHostId = arrange.hostId;
   const arrangeRef = useRef(arrange);
   arrangeRef.current = arrange;
+  const openArrange = (id: string): void => {
+    setArrangeLevel('whole');
+    arrange.open(id);
+  };
   const activeRoomId = lib ? activeRoom(lib).id : null;
   useEffect(() => { if (mode !== 'edit') arrangeRef.current.reset(); }, [mode]);
   useEffect(() => { arrangeRef.current.reset(); }, [activeRoomId]);
@@ -692,7 +708,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   cancelRef.current = reset;
 
-  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'desk-middle': 'Libérez le milieu du bureau pour y poser l’ordinateur.', 'not-slot': 'Déposez l’objet sur une tablette de l’étagère.', 'shelf-full': SHELF_FULL_MESSAGE, 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.', 'not-screen': 'Touchez un ordinateur.' } as const;
+  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'desk-middle': 'Libérez le milieu du bureau pour y poser l’ordinateur.', 'not-slot': 'Déposez l’objet sur une tablette de l’étagère.', 'shelf-full': SHELF_FULL_MESSAGE, 'too-high': SHELF_TOO_HIGH_MESSAGE, 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.', 'not-screen': 'Touchez un ordinateur.' } as const;
   // Case au centre de la partie visible de la pièce (au milieu de la pièce si elle n'est pas mesurable, par exemple dans les tests).
   const centerSpot = (): Spot => {
     const sc = scrollRef.current;
@@ -1321,7 +1337,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <Icon paths={ICONS.trash} />
             </Btn>
             {selectedItem && (selectedItem.kind === 'desk' || selectedItem.kind === 'shelf') && (
-              <Btn label="Modifier la disposition" data={{ action: 'arrange' }} onClick={() => arrange.open(selectedItem.id)}>✋</Btn>
+              <Btn label="Modifier la disposition" data={{ action: 'arrange' }} onClick={() => openArrange(selectedItem.id)}>✋</Btn>
             )}
             {selectedItem && isStanding(selectedItem) && (
               <>
@@ -1461,16 +1477,33 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
           />
         )}
         {editing && !outside && arrangeHostId && layout.some((p) => p.id === arrangeHostId) && (
-          <ArrangeView
-            layout={layout}
-            room={room}
-            hostId={arrangeHostId}
-            mode="move"
-            sceneView={sceneView}
-            imageOf={imageOfCard}
-            onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
-            onClose={arrange.close}
-          />
+          layout.find((p) => p.id === arrangeHostId)?.kind === 'shelf' ? (
+            <ArrangeShelf
+              layout={layout}
+              room={room}
+              shelfIds={shelfGroupOf(layout, arrangeHostId)}
+              level={arrangeLevel}
+              cards={roomCards.cards}
+              imageOf={imageOfCard}
+              sceneView={sceneView}
+              onLevel={setArrangeLevel}
+              onBoard={(id, shelfId, level, order) => editLayout((l) => moveToBoard(l, id, shelfId, level, order))}
+              onTop={(id, hostId, x, z) => editLayout((l) => moveToTop(l, id, hostId, x, z))}
+              onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
+              onClose={arrange.close}
+            />
+          ) : (
+            <ArrangeView
+              layout={layout}
+              room={room}
+              hostId={arrangeHostId}
+              mode="move"
+              sceneView={sceneView}
+              imageOf={imageOfCard}
+              onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
+              onClose={arrange.close}
+            />
+          )
         )}
         {opened && (() => {
           const p = layout.find((x) => x.id === opened.placedId);
