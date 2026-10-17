@@ -46,12 +46,13 @@ function faux(over: Partial<Deps> = {}) {
       open: async () => ({
         match: async (u: string) => store.get(u)?.clone(),
         put: async (u: string, r: Response) => void store.set(u, r),
+        delete: async (u: string) => store.delete(u),
       }),
     },
     decode: { glb: async () => ({ scene: scene() }), image: async () => new THREE.Texture() },
     ...over,
   };
-  return { deps, fetchMock };
+  return { deps, fetchMock, store };
 }
 
 beforeEach(() => __resetModelCache());
@@ -68,10 +69,11 @@ describe('model-cache', () => {
   it('2e appel sans réseau (lu dans le cache)', async () => {
     const { deps, fetchMock } = faux();
     await loadBase('papy', deps);
-    const n = fetchMock.mock.calls.length;
+    const modeles = () => fetchMock.mock.calls.filter(([u]) => !u.endsWith('manifest.json')).length;
+    const n = modeles();
     __resetModelCache();
     expect(await loadBase('papy', deps)).not.toBeNull();
-    expect(fetchMock.mock.calls.length).toBe(n);
+    expect(modeles()).toBe(n); // GLB et PNG lus dans le cache (le manifeste, lui, est rafraîchi)
   });
 
   it('404 : null sans exception', async () => {
@@ -111,5 +113,66 @@ describe('model-cache', () => {
 
   it('base inconnue : null', async () => {
     expect(await loadBase('zzz', faux().deps)).toBeNull();
+  });
+
+  it('put qui échoue (quota) : le modèle est quand même rendu', async () => {
+    const base = faux().deps;
+    const deps: Deps = {
+      ...base,
+      caches: { open: async () => ({ match: async () => undefined, put: async () => Promise.reject(new Error('quota')) }) },
+    };
+    expect(await loadBase('papy', deps)).not.toBeNull();
+  });
+
+  it('caches.open qui lève : repli sur fetch', async () => {
+    const deps: Deps = { ...faux().deps, caches: { open: async () => Promise.reject(new Error('webview')) } };
+    expect(await loadBase('papy', deps)).not.toBeNull();
+  });
+
+  it('manifeste invalide : null, puis un manifeste valide réussit', async () => {
+    const bon = faux().deps;
+    let casse = true;
+    const deps: Deps = {
+      ...bon,
+      caches: undefined,
+      fetch: async (u) => (casse && u.endsWith('manifest.json') ? new Response('{"x":1}') : bon.fetch(u)),
+    };
+    expect(await loadBase('papy', deps)).toBeNull();
+    casse = false;
+    expect(await loadBase('papy', deps)).not.toBeNull();
+  });
+
+  it('GLB corrompu en cache : évincé puis retéléchargé', async () => {
+    const { deps, store } = faux();
+    await loadBase('papy', deps);
+    __resetModelCache();
+    let n = 0;
+    const d2: Deps = {
+      ...deps,
+      decode: { ...deps.decode, glb: async (b) => (n++ === 0 ? Promise.reject(new Error('tronqué')) : deps.decode.glb(b)) },
+    };
+    const b = await loadBase('papy', d2);
+    expect(b).not.toBeNull();
+    expect(n).toBe(2);
+    expect(store.size).toBeGreaterThan(0);
+  });
+
+  it('GLB invalide du réseau : pas mis en cache', async () => {
+    const { deps, store } = faux();
+    const d2: Deps = { ...deps, decode: { ...deps.decode, glb: async () => Promise.reject(new Error('tronqué')) } };
+    expect(await loadBase('papy', d2)).toBeNull();
+    expect([...store.keys()].some((k) => k.endsWith('.glb'))).toBe(false);
+  });
+
+  it('manifeste : rafraîchi depuis le réseau, copie en cache si hors ligne', async () => {
+    const { deps, fetchMock } = faux();
+    await loadBase('papy', deps);
+    __resetModelCache();
+    const avant = fetchMock.mock.calls.filter(([u]) => u.endsWith('manifest.json')).length;
+    await loadBase('papy', deps);
+    expect(fetchMock.mock.calls.filter(([u]) => u.endsWith('manifest.json')).length).toBe(avant + 1);
+    __resetModelCache();
+    const horsLigne: Deps = { ...deps, fetch: async () => Promise.reject(new Error('hors ligne')) };
+    expect(await loadBase('papy', horsLigne)).not.toBeNull();
   });
 });
