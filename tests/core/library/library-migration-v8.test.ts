@@ -7,12 +7,12 @@ const sh = { id: 'sh', kind: 'shelf', col: 0, row: 6 };
 const st = (id: string, shape: string, extra: object = {}) => ({ id, kind: 'stored', shape, shelfId: 'sh', level: 0, order: Number(id.slice(1)), slug: `S_${id}`, ...extra });
 
 describe('migration v8 (format de boîte, présentation de dos)', () => {
-  it('un état v7 migre à l’identique (version 9 après lecture)', () => {
+  it('un état v7 migre à l’identique (version 10 après lecture)', () => {
     const layout = [sh, st('a0', 'game'), st('a1', 'cd', { display: 'spine' })];
     const s = parseLibraryState(state(7, layout));
-    expect(s.version).toBe(9);
+    expect(s.version).toBe(10);
     expect(s.rooms[0]!.layout).toEqual(layout);
-    expect(createInitialState().version).toBe(9);
+    expect(createInitialState().version).toBe(10);
   });
 
   it('migrateV7 seule : version 8, idempotente', () => {

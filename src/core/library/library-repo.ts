@@ -5,11 +5,13 @@ import type { LibraryState } from './library-types';
 
 const KEY = 'library';
 const CARDS_KEY = 'library-cards';
-// Copies du blob brut d'avant une conversion des données (v7 : rangement par largeur réelle ; v9 : petits objets posés en cm), chacune
+// Copies du blob brut d'avant une conversion des données (v7 : rangement par largeur réelle ; v9 : petits objets posés en cm ; v10 : poses
+// et pochettes des cartes, qu'une version d'avant ne relit pas), chacune
 // écrite une seule fois avant la première écriture, jamais remplacée.
 const BACKUPS = [
   { key: 'library-backup-pre-v7', before: 7 },
   { key: 'library-backup-pre-v9', before: 9 },
+  { key: 'library-backup-pre-v10', before: 10 },
 ] as const;
 
 // État brut enregistré par une version d'avant `before` (à copier avant de le convertir).

@@ -12,7 +12,7 @@ import type { Layout, Placed, StyleId } from '../../core/library/library-types';
 import { layerFrame } from '../../core/library/opened-item';
 import { isLit, type HostKind, type PxRect } from '../../core/library/room-grid';
 import { paletteOf } from '../../core/library/styles';
-import { computerTopRect, topSize, type TopRect, type TopThing } from '../../core/library/surface';
+import { computerTopRect, topSize, topThingOf, type TopRect } from '../../core/library/surface';
 import { isTableClock, tableFaceContent, useDecoScene } from '../deco-live';
 import { CarriedItem3D, Model3DArt, type ItemContent } from '../model3d-art';
 import type { SceneView } from '../RoomView';
@@ -92,8 +92,7 @@ function topItemsOf(layout: Layout, hostIds: string[]): TopItem[] {
     if (host < 0) continue;
     const at = carriedPlacementOf(layout, p);
     if (!at) continue;
-    const thing: TopThing | null = p.kind === 'small' ? { item: p.item } : p.kind === 'posed' ? { shape: p.shape, box: p.box } : null;
-    const rect: TopRect = thing && 'x' in p ? { x: p.x, z: p.z, ...topSize(thing) } : computerTopRect();
+    const rect: TopRect = (p.kind === 'small' || p.kind === 'posed') && 'x' in p ? { x: p.x, z: p.z, ...topSize(topThingOf(p)) } : computerTopRect();
     out.push({ placed: p, rect, placement: at.placement, fixed: p.kind === 'computer', host });
   }
   // Le plus loin d'abord (z grand), le plus proche passe devant.

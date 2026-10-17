@@ -35,7 +35,11 @@ export type StandDepth = 1 | 2 | 3;
 // Nouvelles dispositions (cm) : petit objet posé sur le plateau d'un meuble (x vers la droite, z = 0 au bord avant), sur une tablette, ou carte posée sur un chevalet.
 export type SmallOnTop = { id: string; kind: 'small'; item: SmallItem; hostId: string; x: number; z: number; lit?: boolean; city?: CityTime };
 export type SmallOnBoard = { id: string; kind: 'small'; item: SmallItem; hostId: string; level: ShelfLevel; order: number; lit?: boolean; city?: CityTime };
-export type Posed = { id: string; kind: 'posed'; shape: ShelfShape; hostId: string; x: number; z: number; box?: BoxFormat; caseColor?: string; slug: string };
+// Pose d'une carte posée sur un plateau : debout sur un trépied (de face), ou à plat (couchée, couverture vers le haut).
+export type Pose = 'stand' | 'flat';
+// `pose` absent = trépied. `cover` (carte posée ou rangée) : pochette choisie pour cet objet seulement (adresse https), absente = celle de la carte.
+export type Posed = { id: string; kind: 'posed'; shape: ShelfShape; hostId: string; x: number; z: number; pose?: Pose; box?: BoxFormat; caseColor?: string; slug: string; cover?: string };
+export const poseOf = (p: Posed): Pose => p.pose ?? 'stand';
 export type SmallPlaced = SmallOnTop | SmallOnBoard;
 export const isOnBoard = (p: SmallPlaced): p is SmallOnBoard => 'level' in p;
 
@@ -58,7 +62,7 @@ export type Placed =
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
   | { id: string; kind: 'window'; col: number; row: number; w: number; h: number }
   | { id: string; kind: 'deco'; deco: DecoKind; col: number; row: number; w?: number; h?: number; city?: CityTime; text?: string; neon?: NeonColor }
-  | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; level: ShelfLevel; order: number; display?: StoredDisplay; box?: BoxFormat; caseColor?: string; slug: string };
+  | { id: string; kind: 'stored'; shape: ShelfShape; shelfId: string; level: ShelfLevel; order: number; display?: StoredDisplay; box?: BoxFormat; caseColor?: string; slug: string; cover?: string };
 
 export type Layout = Placed[];
 export type DecoPlaced = Extract<Placed, { kind: 'deco' }>;
@@ -124,7 +128,7 @@ export type Room = {
 };
 
 export type LibraryState = {
-  version: 9;
+  version: 10;
   activeRoomId: string;
   homeRoomId: string | null;
   // Heure globale de la Bibliothèque (toutes les pièces).

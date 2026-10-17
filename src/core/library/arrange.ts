@@ -2,7 +2,7 @@
 import { FURNITURE_MODELS } from './furniture-models';
 import { PLUNGE_CAMERA, projectOf } from './furniture-render3d';
 import type { Layout } from './library-types';
-import { canPutOnTop, type TopThing } from './surface';
+import { canPutOnTop, topThingOf } from './surface';
 import type { HostKind } from './room-grid';
 
 // Le plateau est toujours montré de face (angle 0) en plongée, quel que soit l'angle du meuble dans la pièce.
@@ -33,7 +33,7 @@ export function screenToTop(f: ArrangeFrame, sx: number, sy: number): { x: numbe
 export function dropOnTop(layout: Layout, hostId: string, id: string, x: number, z: number): TopDrop {
   const p = layout.find((q) => q.id === id);
   if (!p || (p.kind !== 'small' && p.kind !== 'posed') || !('x' in p) || p.hostId !== hostId) return { ok: false };
-  const thing: TopThing = p.kind === 'small' ? { item: p.item } : { shape: p.shape, box: p.box };
+  const thing = topThingOf(p);
   return canPutOnTop(layout, hostId, thing, x, z, id) ? { ok: true, x, z } : { ok: false };
 }
 

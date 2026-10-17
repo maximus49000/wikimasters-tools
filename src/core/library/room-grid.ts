@@ -2,8 +2,8 @@ import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, underOf,
 import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, invertMatrix, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
 import { MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN, decoDefaultSize, isPanel, type CityTime, type DecoKind, type NeonColor } from './deco';
 import { STANDING_KINDS } from './library-types';
-import { isOnBoard, type DecoPlaced, type Depth, type Layout, type Orientation, type Placed, type ShelfLevel, type ShelfShape, type SmallItem, type SmallOnBoard, type SmallOnTop, type StandDepth, type StandingKind, type StoredDisplay, type VinylColor, type WallShape } from './library-types';
-import { HOST_TOP, canPutOnTop, computerTopRect, firstFreeTopSpot, topRectsOf, topsApart, type TopRect } from './surface';
+import { isOnBoard, type DecoPlaced, type Depth, type Layout, type Orientation, type Placed, type Pose, type Posed, type ShelfLevel, type ShelfShape, type SmallItem, type SmallOnBoard, type SmallOnTop, type StandDepth, type StandingKind, type StoredDisplay, type VinylColor, type WallShape } from './library-types';
+import { HOST_TOP, canPutOnTop, computerTopRect, firstFreeTopSpot, topRectsOf, topThingOf, topsApart, type TopRect } from './surface';
 import type { BoxFormat } from '../game/platform-boxes';
 import { ITEM_MODELS, itemFootprintCm, storedModel } from './item-models';
 import { FURNITURE_MODELS } from './furniture-models';
@@ -745,7 +745,8 @@ export function moveStored(layout: Layout, id: string, shelfId: string, level: S
 }
 
 // Pose sur la tablette `level` de l'étagère `shelfId`, au rang `order` : une carte rangée, un petit objet de tablette, un petit objet du
-// dessus (il perd x/z, garde lit/city) ou une carte posée (elle devient rangée : même slug, forme, boîte, couleur ; présentation par défaut).
+// dessus (il perd x/z, garde lit/city) ou une carte posée (elle devient rangée : même slug, forme, boîte, couleur, pochette ; présentation par
+// défaut, pose oubliée).
 // Refusé : chaîne hi-fi, objet trop haut ou place qui manque (jamais dans sa propre tablette, même si elle déborde).
 export function moveToBoard(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): Layout | null {
   const moved = asBoardItem(layout, id, shelfId, level);
@@ -759,7 +760,7 @@ function asBoardItem(layout: Layout, id: string, shelfId: string, level: ShelfLe
   const shelf = layout.find((p) => p.id === shelfId);
   if (!item || !shelf || shelf.kind !== 'shelf' || !isShelfLevel(level)) return null;
   if (item.kind === 'stored') return { ...item, shelfId, level };
-  if (item.kind === 'posed') return { id, kind: 'stored', shape: item.shape, shelfId, level, order: 0, ...(item.box && { box: item.box }), ...(item.box && item.caseColor && { caseColor: item.caseColor }), slug: item.slug };
+  if (item.kind === 'posed') return { id, kind: 'stored', shape: item.shape, shelfId, level, order: 0, ...(item.box && { box: item.box }), ...(item.box && item.caseColor && { caseColor: item.caseColor }), slug: item.slug, ...(item.cover && { cover: item.cover }) };
   if (item.kind === 'small') return { id, kind: 'small', item: item.item, hostId: shelfId, level, order: 0, ...(item.lit !== undefined && { lit: item.lit }), ...(item.city && { city: item.city }) };
   return null;
 }
@@ -769,14 +770,38 @@ export function forceOnBoard(layout: Layout, id: string, shelfId: string, level:
   return moved && Number.isFinite(order) ? insertOnBoard(layout, moved, order) : null;
 }
 
-// Pose un petit objet (du dessus ou de tablette) sur le dessus du bureau ou de l'étagère `hostId`, en (x, z) cm (canPutOnTop) ; sa tablette
-// d'origine se recompacte. Une carte est refusée (pas encore posée sur un dessus depuis une tablette).
+// Pose sur le dessus du bureau ou de l'étagère `hostId`, en (x, z) cm (canPutOnTop) : un petit objet (du dessus ou de tablette), une carte
+// posée (elle garde sa pose) ou une carte rangée (elle devient posée sur trépied : même slug, forme, boîte, couleur, pochette ; présentation
+// oubliée). Une tablette quittée se recompacte.
 export function moveToTop(layout: Layout, id: string, hostId: string, x: number, z: number): Layout | null {
   const item = layout.find((p) => p.id === id);
-  if (!item || item.kind !== 'small' || !Number.isFinite(x) || !Number.isFinite(z) || !canPutOnTop(layout, hostId, { item: item.item }, x, z, id)) return null;
-  const moved: SmallOnTop = { id, kind: 'small', item: item.item, hostId, ...(item.lit !== undefined && { lit: item.lit }), ...(item.city && { city: item.city }), x, z };
+  if (!item || !Number.isFinite(x) || !Number.isFinite(z)) return null;
+  const moved: SmallOnTop | Posed | null =
+    item.kind === 'small' ? { id, kind: 'small', item: item.item, hostId, ...(item.lit !== undefined && { lit: item.lit }), ...(item.city && { city: item.city }), x, z }
+    : item.kind === 'posed' ? { ...item, hostId, x, z }
+    : item.kind === 'stored' ? { id, kind: 'posed', shape: item.shape, hostId, x, z, ...(item.box && { box: item.box }), ...(item.box && item.caseColor && { caseColor: item.caseColor }), slug: item.slug, ...(item.cover && { cover: item.cover }) }
+    : null;
+  if (!moved || !canPutOnTop(layout, hostId, topThingOf(moved), x, z, id)) return null;
   const next = layout.map((p) => (p.id === id ? moved : p));
-  return isOnBoard(item) ? compactShelves(next) : next;
+  return item.kind === 'stored' || (item.kind === 'small' && isOnBoard(item)) ? compactShelves(next) : next;
+}
+
+// Pose une carte sur le dessus du bureau ou de l'étagère `hostId`, en (x, z) cm, dans la pose `pose` (trépied par défaut) ; refusée si la
+// carte est déjà posée ailleurs (slug) ou si la place est prise.
+export function poseCard(layout: Layout, hostId: string, shape: ShelfShape, slug: string, id: string, x: number, z: number, pose: Pose = 'stand'): Layout | null {
+  if (!Number.isFinite(x) || !Number.isFinite(z) || placedSlugs(layout).has(slug)) return null;
+  const card: Posed = { id, kind: 'posed', shape, hostId, x, z, ...(pose === 'flat' && { pose }), slug };
+  return canPutOnTop(layout, hostId, topThingOf(card), x, z) ? [...layout, card] : null;
+}
+
+// Change la pose d'une carte posée, à la même place (coin avant gauche) ; refusé (null) si elle n'y tient plus : elle ne bouge jamais seule.
+export function setPose(layout: Layout, id: string, pose: Pose): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || card.kind !== 'posed') return null;
+  const { pose: _old, ...rest } = card;
+  const next: Posed = { ...rest, ...(pose === 'flat' && { pose }) };
+  if (!canPutOnTop(layout, card.hostId, topThingOf(next), card.x, card.z, id)) return null;
+  return layout.map((p) => (p.id === id ? next : p));
 }
 
 export function setScreenCard(layout: Layout, computerId: string, slug: string | null): Layout | null {
