@@ -7,7 +7,9 @@ import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-h
 import { SANTA_K, SANTA_OUTFIT, SantaLayer } from '../../src/content/santa-layer';
 import { cityFacades } from '../../src/core/library/city/facades';
 import { cityMetrics } from '../../src/core/library/city/metrics';
-import { SANTA_SEAT, SANTA_SUNK, SANTA_WINDOW_S, santaPassFor, santaRoof, santaStepAt } from '../../src/core/library/city/santa';
+import { SANTA_SEAT, SANTA_SUNK, SANTA_WINDOW_S, landDx, roofSurface, santaHillRoof, santaHillScale, santaHillStepAt, santaHillWindow, santaPassFor, santaRoof, santaStepAt, visibleHillHouses } from '../../src/core/library/city/santa';
+import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
+import { REINDEER_CYCLE_S, REINDEER_IDLE_S, TRAIL_CYCLE_S } from '../../src/core/library/paint/props/santa';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -138,41 +140,119 @@ describe('toits ordinaires', () => {
   });
 });
 
+// Ghibli (G5) : la livraison se fait sur une maison de la colline peinte (santaHillRoof), le passage simple dans le ciel.
+const houses = visibleHillHouses(cityPaintPlan(W, H, SEED).hill.houses, facades, ground);
+const hillFound = ((): { pass: ReturnType<typeof santaPassFor>; hill: NonNullable<ReturnType<typeof santaHillRoof>> } => {
+  for (let n = Math.floor(T0); ; n++) {
+    const pass = santaPassFor(n, SEED);
+    const hill = pass.deliver ? santaHillRoof(pass, houses, 0, W) : null;
+    if (hill) return { pass, hill };
+  }
+})();
+const simplePass = ((): ReturnType<typeof santaPassFor> => {
+  for (let n = Math.floor(T0); ; n++) {
+    const pass = santaPassFor(n, SEED);
+    if (!pass.deliver) return pass;
+  }
+})();
+const hAt = (p: number): number => hillFound.pass.start + p * SANTA_WINDOW_S;
+const displayed = (n: Element | null): boolean => n !== null && n.getAttribute('display') !== 'none';
+
 describe('père Noël Ghibli', () => {
-  it('tenue rouge, bonnet rouge', () => {
+  it('tenue rouge, bonnet rouge ; échelle des passants', () => {
     expect(SANTA_OUTFIT).toMatchObject({ topColor: '#C0302B', bottomColor: '#C0302B', hair: 'beanie', hatColor: '#C0302B' });
+    expect(SANTA_K).toBe(0.55);
   });
-  it('à bord en vol : un pantin dans le traîneau, hotte tenue, jamais en miroir', () => {
-    const c = mount(at(0.1), true);
+  it('passage simple dans le ciel : attelage peint (rennes au galop, traînée), pantin assis les rênes en main, hotte à la nuque, jamais en miroir', () => {
+    const c = mount(simplePass.start + 10, true);
+    expect(c.querySelector('[data-santa-hill]')).toBeNull();
+    expect(c.querySelector('mask')).toBeNull();
     const where = c.querySelector('[data-santa-figure]')!;
     expect(where.getAttribute('data-santa-where')).toBe('aboard');
+    expect(where.getAttribute('transform')).toContain(`scale(${(simplePass.dir * SANTA_K).toFixed(3)} ${SANTA_K.toFixed(3)})`);
     const fig = where.querySelector('[data-figure]')!;
-    expect(fig).not.toBeNull();
-    expect(fig.querySelector('[data-held="hands"] [data-santa-sack]')).not.toBeNull();
-    expect(where.getAttribute('transform')).toContain(`scale(${(pass.dir * SANTA_K).toFixed(3)} ${SANTA_K.toFixed(3)})`);
-    expect(keyParts(fig)[5]).toBe('carry');
-  });
-  it('descend du traîneau en grimpant, puis marche avec la hotte', () => {
-    const climb = mount(at(0.3) + 1.2, true).querySelector('[data-santa-figure] [data-figure]')!;
-    expect(keyParts(climb)[2]).toBe('climb');
-    const step = santaStepAt(pass, roof, at(0.3) + 2.6)!;
-    expect(step.gait).toBe('walk');
-    const walk = mount(at(0.3) + 2.6, true).querySelector('[data-santa-figure]')!;
-    expect(keyParts(walk.querySelector('[data-figure]')!)[2]).toBe('walk');
-    expect(translateOf(walk)[0]).toBeCloseTo(step.x, 1);
-  });
-  it('caché derrière la cheminée : aucun personnage', () => {
-    expect(mount(at(0.5), true).querySelector('[data-santa-figure]')).toBeNull();
-  });
-  it('le personnage est rogné au toit (svg imbriqué au repère du traîneau : viewBox = cadre), sans id', () => {
-    const c = mount(at(0.3) + 6, true);
-    const clip = c.querySelector('svg[data-santa-clip]')!;
-    expect(clip.querySelector('[data-santa-figure]')).not.toBeNull();
-    // Sans viewBox, l'origine des enfants serait le coin (x, y) du cadre : le père Noël serait à 200 unités du traîneau.
-    expect(clip.getAttribute('viewBox')!.split(' ').map(Number)).toEqual(['x', 'y', 'width', 'height'].map((k) => Number(clip.getAttribute(k))));
-    // Coupe au niveau du toit : bas du cadre à y = 0.
-    expect(Number(clip.getAttribute('y')) + Number(clip.getAttribute('height'))).toBe(0);
+    expect(fig.getAttribute('data-sig')!.endsWith('.s')).toBe(true);
+    expect(keyParts(fig)[2]).toBe('seated');
+    expect(keyParts(fig)[5]).toBe('handlebar');
+    // Hotte peinte derrière le corps (le repli SantaSack tant que l'image n'est pas cuite).
+    expect(displayed(where.querySelector('[data-santa-sack-nape="back"]'))).toBe(true);
+    expect(displayed(where.querySelector('[data-santa-sack-nape="front"]'))).toBe(false);
+    expect(where.querySelector('[data-santa-sack-nape="back"] [data-santa-sack]')).not.toBeNull();
+    // Cinq rennes cycliques au galop, traînée cyclique.
+    const reindeer = [...c.querySelectorAll('[data-santa-reindeer] [data-prop-cycle]')];
+    expect(reindeer.length).toBe(5);
+    expect(reindeer.map((r) => r.getAttribute('data-prop-cycle'))).toEqual(Array<string>(5).fill(String(REINDEER_CYCLE_S)));
+    expect(c.querySelector(`[data-santa-trail] [data-prop-cycle="${TRAIL_CYCLE_S}"]`)).not.toBeNull();
     expect(c.querySelector('[data-santa] [id]')).toBeNull();
+  });
+  it('livraison : sur une maison de la colline, derrière les immeubles (masque), repère local du toit retourné avec le sens, à l’échelle 0,55·s', () => {
+    const { pass: hp, hill } = hillFound;
+    const c = mount(hAt(0.27), true);
+    const hillG = c.querySelector('[data-santa-hill]')!;
+    expect(hillG).not.toBeNull();
+    const maskRef = /url\(#(.+)\)/.exec(hillG.getAttribute('mask') ?? '')![1]!;
+    const mask = c.querySelector(`mask[id="${maskRef}"]`)!;
+    expect(mask.querySelectorAll('rect').length).toBe(facades.length + 1);
+    expect(c.querySelector('[data-santa] [id]')).toBeNull();
+    expect(c.querySelector('[data-santa-roof]')!.getAttribute('transform')).toBe(`translate(${hill.cx.toFixed(1)} ${hill.y.toFixed(1)}) scale(${hp.dir} 1)`);
+    const train = c.querySelector<SVGGElement>('[data-santa-roof] > g')!;
+    expect(train.getAttribute('display')).toBe('inline');
+    const [u, y] = translateOf(train);
+    expect(u).toBeCloseTo(landDx(hill), 1);
+    expect(y).toBeCloseTo(roofSurface(hill, hill.cx + landDx(hill)) - hill.y, 1);
+    // Incliné comme la pente, pas de traînée, rennes posés (poses de vie), pantin assis à l'échelle du traîneau.
+    expect(c.querySelector('[data-santa-body]')!.parentElement!.getAttribute('transform')).toContain('rotate(');
+    expect(c.querySelector('[data-santa-trail]')).toBeNull();
+    expect([...c.querySelectorAll('[data-santa-reindeer] [data-prop-cycle]')].map((r) => r.getAttribute('data-prop-cycle'))).toEqual(Array<string>(5).fill(String(REINDEER_IDLE_S)));
+    const k = santaHillScale(hill);
+    const where = c.querySelector('[data-santa-figure]')!;
+    expect(where.getAttribute('transform')).toContain(`scale(${(hp.dir * k).toFixed(3)} ${k.toFixed(3)})`);
+    expect(keyParts(where.querySelector('[data-figure]')!)[2]).toBe('seated');
+    expect(c.querySelector('[data-santa-window]')).toBeNull();
+  });
+  it('à pied sur le toit : marche penchée la hotte à l’épaule, pose la hotte, descend dans la cheminée (rogné à sa bouche), fenêtre allumée quand il est dedans', () => {
+    const { pass: hp, hill } = hillFound;
+    const walk = mount(hAt(0.3) + 3, true).querySelector('[data-santa-figure]')!;
+    const step = santaHillStepAt(hp, hill, hAt(0.3) + 3)!;
+    expect(step.gait).toBe('walk');
+    expect(keyParts(walk.querySelector('[data-figure]')!)[2]).toBe('walk');
+    expect(keyParts(walk.querySelector('[data-figure]')!)[5]).toBe('phone');
+    // Penché vers l'amont (sauf sur la partie plate d'une croupe ou d'une mansarde).
+    if (step.slope !== 0) expect(walk.getAttribute('transform')).toContain('rotate(');
+    expect(translateOf(walk)[0]).toBeCloseTo(step.x, 1);
+    expect(displayed(walk.querySelector('[data-santa-sack-nape="back"]'))).toBe(true);
+    // Pose la hotte : elle est au sol, plus à la nuque.
+    const reach = mount(hAt(0.3) + 1.2 + 4.5 + 0.4, true);
+    expect(keyParts(reach.querySelector('[data-figure]')!)[5]).toBe('reach');
+    expect(displayed(reach.querySelector('[data-santa-sack-ground]'))).toBe(true);
+    expect(displayed(reach.querySelector('[data-santa-sack-nape="back"]'))).toBe(false);
+    // Dans la cheminée : grimpe de dos, cadre du svg imbriqué coupé à la bouche de la cheminée (hauteur < 400), viewBox = cadre.
+    const sink = mount(hAt(0.3) + 1.2 + 4.5 + 0.9 + 0.7, true);
+    const clip = sink.querySelector('svg[data-santa-clip]')!;
+    expect(keyParts(clip.querySelector('[data-figure]')!)[2]).toBe('climb');
+    expect(Number(clip.getAttribute('height'))).toBeLessThan(400);
+    expect(clip.getAttribute('viewBox')!.split(' ').map(Number)).toEqual(['x', 'y', 'width', 'height'].map((k) => Number(clip.getAttribute(k))));
+    // Caché : aucun personnage, fenêtre de la maison allumée.
+    const hidden = mount(hAt(0.5), true);
+    expect(hidden.querySelector('[data-santa-figure]')).toBeNull();
+    const win = hidden.querySelector('[data-santa-window]')!;
+    expect(Number(win.getAttribute('data-x'))).toBeCloseTo(santaHillWindow(hill).x);
+  });
+  it('mouvement réduit : le groupe posé, à bord, sans pose cyclique', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    vi.spyOn(Date, 'now').mockReturnValue(hAt(0.1) * 1000);
+    const c = render(
+      <FigureContext.Provider value={new FigureRegistry('t9r', { perFrame: 200 })}>
+        <svg>
+          <SantaLayer width={W} height={H} seed={SEED} sky={night} facades={facades} ground={ground} fests={['christmas-eve']} daylight={0} still frozenT={hAt(0.1)} ghibli />
+        </svg>
+      </FigureContext.Provider>,
+    );
+    vi.unstubAllGlobals();
+    expect(c.querySelector('[data-santa-roof] > g')!.getAttribute('display')).toBe('inline');
+    expect(c.querySelector('[data-prop-cycle]')).toBeNull();
+    expect(c.querySelectorAll('[data-santa-reindeer]').length).toBe(5);
+    expect(keyParts(c.querySelector('[data-figure]')!)[2]).toBe('seated');
   });
 });
 

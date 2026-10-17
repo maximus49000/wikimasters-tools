@@ -1,7 +1,9 @@
 import type { ReactElement, ReactNode } from 'react';
+import { REINDEER_CYCLE_S, REINDEER_IDLE_S, TRAIL_CYCLE_S } from '../core/library/paint/props/santa';
 import type { SantaPose } from '../core/library/city/santa';
 import type { Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
+import { CycledProp, PropImage, PropInMirror, type PropSpec } from './prop/prop-host';
 
 // Le traîneau du père Noël. Repère : bas du traîneau (patins) à y = 0, centré en x = 0, tourné vers +x (le calque applique
 // `scale(dir, 1)`) ; les rennes sont devant (x > 0), la traînée derrière. Aucun id SVG fixe ; une animation SMIL par élément
@@ -18,7 +20,7 @@ const FUR = '#8A5A34';
 const SKIN = '#F0C8A0';
 
 // Un renne : corps, tête, bois, nez rouge pour le meneur, clochette. `legs` : pattes tendues en vol, repliées au sol.
-function Reindeer({ x, y, lead, landed, t }: { x: number; y: number; lead: boolean; landed: boolean; t: (c: string) => string }): ReactElement {
+export function Reindeer({ x, y, lead, landed, t }: { x: number; y: number; lead: boolean; landed: boolean; t: (c: string) => string }): ReactElement {
   const fur = t(FUR);
   return (
     <g transform={`translate(${x} ${y})`} data-reindeer="">
@@ -111,3 +113,99 @@ export function ClassicSantaWalker({ sky }: { sky: Sky }): ReactElement {
     </>
   );
 }
+
+// ---------- Ghibli (G5) : attelage, traîneau, traînée et hotte en images peintes (paint/props/santa.ts) ----------
+// Les images sont posées dans le repère du sprite classique (patins à y = 0, rennes vers +x). L'hôte retourne le repère
+// avec le sens du traîneau (`scale(dir 1)`) : chaque image est cuite dans le sens `dir` (lumière juste) et annule ce miroir
+// autour d'elle (PropInMirror) ; jamais d'image retournée. Tant qu'une image n'est pas cuite, le dessin classique correspondant
+// reste affiché (sans animation SMIL : poses fixes). `far` : teinte lointaine du groupe posé sur la colline.
+type GhibliBase = { sky: Sky; dir: 1 | -1; still: boolean; far?: number };
+const specOf = (id: string, g: GhibliBase, args: Record<string, string | number | boolean> = {}): Omit<PropSpec, 'frame'> => ({
+  id,
+  args: g.far ? { ...args, far: g.far } : args,
+  dir: g.dir,
+  day: g.sky.daylight,
+  lit: true,
+});
+// Image cyclique dans le repère retourné par l'hôte (même règle que PropInMirror).
+function CycledInMirror({ spec, period, phase, fallback }: { spec: Omit<PropSpec, 'frame'>; period: number; phase: number; fallback: ReactNode }): ReactElement {
+  if ((spec.dir ?? 1) === 1) return <CycledProp spec={spec} period={period} phase={phase} fallback={fallback} />;
+  return (
+    <g transform="scale(-1 1)">
+      <CycledProp spec={spec} period={period} phase={phase} fallback={<g transform="scale(-1 1)">{fallback}</g>} />
+    </g>
+  );
+}
+
+// Positions de l'attelage dans le repère du traîneau (unités), en vol et posé sur un immeuble (classique, inchangé) ; sur la
+// colline, le calque étage les rennes sur la pente à partir des mêmes x (santa-layer).
+export type TeamSpot = { x: number; y: number; lead: boolean };
+export const TEAM_FLIGHT: readonly TeamSpot[] = [{ x: 28, y: -11, lead: false }, { x: 46, y: -11, lead: false }, { x: 22, y: -5, lead: false }, { x: 40, y: -5, lead: false }, { x: 62, y: -7, lead: true }];
+export const TEAM_LANDED: readonly TeamSpot[] = [{ x: 24, y: -11, lead: false }, { x: 35, y: -11, lead: false }, { x: 20, y: -5, lead: false }, { x: 31, y: -5, lead: false }, { x: 46, y: -7, lead: true }];
+// Traits de harnais (repère du traîneau, unités) : du devant de la caisse (8, y) aux deux rangs.
+export const HARNESS_FLIGHT: readonly (readonly [number, number])[] = [[70, -7], [58, -4]];
+
+// Un renne : galop (8 poses sur REINDEER_CYCLE_S, décalé de `phase` cycles) ou posé (4 poses de vie sur REINDEER_IDLE_S) ;
+// mouvement réduit : pose 0 sans nœud cyclique. `k` : échelle (px par unité) appliquée autour de (x, y).
+export function GhibliReindeer({ x, y, k, lead, landed, phase, g }: { x: number; y: number; k: number; lead: boolean; landed: boolean; phase: number; g: GhibliBase }): ReactElement {
+  const t = (c: string): string => tone(c, g.sky);
+  const spec = specOf('reindeer', g, { lead, landed });
+  const fallback = <Reindeer x={0} y={0} lead={lead} landed={landed} t={t} />;
+  return (
+    <g transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) scale(${k})`} data-santa-reindeer="">
+      {g.still ? <PropInMirror spec={{ ...spec, frame: 0 }} fallback={fallback} /> : <CycledInMirror spec={spec} period={landed ? REINDEER_IDLE_S : REINDEER_CYCLE_S} phase={phase} fallback={fallback} />}
+    </g>
+  );
+}
+
+// Traînée derrière le traîneau (en vol seulement) : 8 poses bouclées sur TRAIL_CYCLE_S.
+export function GhibliTrail({ k, g }: { k: number; g: GhibliBase }): ReactElement {
+  const spec = specOf('santa-trail', g);
+  const fallback = (
+    <g>
+      {[[-30, -9, 1.6], [-40, -7, 1.2], [-51, -10, 1.4], [-62, -8, 1], [-72, -9.5, 0.8]].map(([cx, cy, r]) => (
+        <circle key={cx} cx={cx} cy={cy} r={r} fill="#FFF3B0" opacity={0.85} />
+      ))}
+    </g>
+  );
+  return (
+    <g data-santa-trail="" transform={`scale(${k})`}>
+      {g.still ? <PropInMirror spec={{ ...spec, frame: 0 }} fallback={fallback} /> : <CycledInMirror spec={spec} period={TRAIL_CYCLE_S} phase={0} fallback={fallback} />}
+    </g>
+  );
+}
+
+// Caisse, patins et lanterne (allumée : lanterne dans glowing). L'hôte l'incline avec la pente (rotate sur son parent).
+export function GhibliSleighBody({ k, g }: { k: number; g: GhibliBase }): ReactElement {
+  const t = (c: string): string => tone(c, g.sky);
+  const fallback = (
+    <g>
+      <path d="M-18 -8 Q-19 -14 -14 -14 L-12 -9 L10 -9 Q12 -7 9 -4 L-14 -4 Q-18 -4 -18 -8Z" fill={t(RED)} />
+      <path d="M-20 0 Q-22 -2 -19 -3 H9 Q13 -3 13 -7 M-16 -3 V0 M0 -3 V0" stroke={t(GOLD)} strokeWidth={1.4} fill="none" />
+    </g>
+  );
+  return (
+    <g data-santa-body="" transform={`scale(${k})`}>
+      <PropInMirror spec={{ ...specOf('sleigh', g), frame: 0 }} fallback={fallback} />
+    </g>
+  );
+}
+
+// Hotte peinte (repère de SantaSack) ; `mirror` : dans un repère retourné par l'hôte (sinon repère du pantin, déjà redressé).
+export function GhibliSack({ g, mirror }: { g: GhibliBase; mirror: boolean }): ReactElement {
+  const t = (c: string): string => tone(c, g.sky);
+  const spec: PropSpec = { ...specOf('santa-sack', g), dir: mirror ? g.dir : 1, frame: 0 };
+  return mirror ? <PropInMirror spec={spec} fallback={<SantaSack t={t} />} /> : <PropImage spec={spec} fallback={<SantaSack t={t} />} />;
+}
+
+// Traits de harnais rouges cernés d'encre, du devant de la caisse (8, −7) / (8, −4) aux bouts `ends` (px, repère du traîneau).
+export function GhibliHarness({ k, ends }: { k: number; ends: readonly (readonly [number, number])[] }): ReactElement {
+  const d = ends.map(([x1, y1], i) => `M${(8 * k).toFixed(2)} ${((i === 0 ? -7 : -4) * k).toFixed(2)} L${x1.toFixed(2)} ${y1.toFixed(2)}`).join(' ');
+  return (
+    <g data-santa-harness="">
+      <path d={d} stroke={INK_HARNESS} strokeWidth={1.1 * k} fill="none" />
+      <path d={d} stroke="#A02030" strokeWidth={0.6 * k} fill="none" />
+    </g>
+  );
+}
+const INK_HARNESS = '#2A1A18';
