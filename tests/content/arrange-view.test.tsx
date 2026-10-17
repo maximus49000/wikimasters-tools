@@ -162,6 +162,51 @@ describe('ArrangeView : glissé sur le plateau', () => {
     expect(h.onCommit).toHaveBeenCalledTimes(1);
   });
 
+  it('écriture refusée (promesse rejetée) : l’attente tombe, l’objet revient et se ressaisit à son ancienne place', async () => {
+    const h = { onCommit: vi.fn(() => Promise.reject(new Error('refusé'))), onClose: vi.fn() };
+    act(() => root.render(<ArrangeView layout={DESK} room={{ style: 'scandinave' }} hostId="d" mode="move" {...h} />));
+    await drag('a', delta(40, 2, 60, 20));
+    expect(h.onCommit).toHaveBeenCalledTimes(1);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(item('a').style.transform).toBe('');
+    await drag('a', delta(40, 2, 60, 20), false);
+    expect(q('[data-footprint]')?.getAttribute('data-ok')).toBe('true');
+    expect(item('a').style.transform).toContain('translate');
+    await pointer('pointerup', window, 0, 0);
+    expect(h.onCommit).toHaveBeenCalledTimes(2);
+  });
+
+  it('écriture sans effet (promesse tenue, disposition inchangée) : l’attente tombe', async () => {
+    const h = { onCommit: vi.fn(() => Promise.resolve()), onClose: vi.fn() };
+    act(() => root.render(<ArrangeView layout={DESK} room={{ style: 'scandinave' }} hostId="d" mode="move" {...h} />));
+    await drag('a', delta(40, 2, 60, 20));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(item('a').style.transform).toBe('');
+  });
+
+  it('la disposition reçue met l’objet ailleurs : l’attente tombe, il est dessiné là', async () => {
+    const h = mount();
+    await drag('a', delta(40, 2, 60, 20));
+    expect(item('a').style.transform).toContain('translate');
+    const elsewhere: Layout = DESK.map((p) => (p.id === 'a' ? { ...p, x: 70, z: 30 } : p));
+    act(() => root.render(<ArrangeView layout={elsewhere} room={{ style: 'scandinave' }} hostId="d" mode="move" {...h} />));
+    expect(item('a').style.transform).toBe('');
+    // Ressaisi depuis (70, 30) : un glissé de +10 cm vise (80, 30).
+    await drag('a', delta(70, 30, 80, 30));
+    expect((h.onCommit.mock.calls[1]![0] as Layout).find((p) => p.id === 'a')).toMatchObject({ x: 80, z: 30 });
+  });
+
+  it('lâcher la plante pendant que le réveil attend ne fait pas revenir le réveil', async () => {
+    const h = mount();
+    await drag('a', delta(40, 2, 60, 20));
+    const t = item('a').style.transform;
+    expect(t).toContain('translate');
+    await drag('p', delta(100, 2, 100, 30));
+    expect(h.onCommit).toHaveBeenCalledTimes(2);
+    expect(item('a').style.transform).toBe(t);
+    expect(item('p').style.transform).toContain('translate');
+  });
+
   it('un autre doigt ne déplace pas l’objet tenu et ne termine pas le glissé', async () => {
     const h = mount();
     const [dx, dy] = delta(40, 2, 60, 20);

@@ -1463,7 +1463,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             mode="move"
             sceneView={sceneView}
             imageOf={imageOfCard}
-            onCommit={(next) => void editLayout(() => next)}
+            onCommit={(next) => editLayout(() => next)}
             onClose={arrange.close}
           />
         )}

@@ -25,7 +25,8 @@ type Props = {
   hostId: string;
   // Partie 4 : 'add' (carte en attente). Ici, seulement le déplacement.
   mode: 'move';
-  onCommit(next: Layout): void;
+  // Rend la promesse de l'écriture (ou rien) : l'objet lâché reste à sa place jusqu'à ce qu'elle aboutisse.
+  onCommit(next: Layout): Promise<unknown> | void;
   onClose(): void;
   sceneView?: SceneView;
   // Image de la carte affichée par un écran.
@@ -122,7 +123,7 @@ export function ArrangeView({ layout, room, hostId, onCommit, onClose, sceneView
   };
   const dragged = drag ? items.find((i) => i.placed.id === drag.id) : undefined;
   // Objet déplacé à l'écran : tenu, ou lâché en vert et en attente de la disposition écrite.
-  const lifted = drag ?? pending;
+  const liftedOf = (id: string): { tx: number; ty: number } | null => (drag?.id === id ? drag : pending.find((w) => w.id === id) ?? null);
   const geometry: CSSProperties = layer.rotated
     ? { top: 0, left: screen.w, width: layer.w, height: layer.h, transformOrigin: '0 0', transform: 'rotate(90deg)' }
     : { inset: 0 };
@@ -137,14 +138,14 @@ export function ArrangeView({ layout, room, hostId, onCommit, onClose, sceneView
         <rect data-backdrop="skirt" y={floorY - 4} width={layer.w} height={5} fill={palette.skirt} opacity={0.6} />
         <Model3DArt kind={hostKind} angle={0} rect={fit.rect} palette={palette} steampunk={steampunk} camera={PLUNGE_CAMERA} />
         {/* Ombres nettes des objets sur le plateau (cellulo), puis l'empreinte de l'objet tenu. */}
-        {items.filter((i) => i.placed.id !== lifted?.id).map((i) => <polygon key={`s${i.placed.id}`} data-shadow={i.placed.id} points={quad(frame, i.rect, 1.5, 2)} fill="#10080E" opacity={0.18} pointerEvents="none" />)}
+        {items.filter((i) => !liftedOf(i.placed.id)).map((i) => <polygon key={`s${i.placed.id}`} data-shadow={i.placed.id} points={quad(frame, i.rect, 1.5, 2)} fill="#10080E" opacity={0.18} pointerEvents="none" />)}
         {drag && dragged && (
           <polygon data-footprint={drag.id} data-ok={drag.ok ? 'true' : 'false'} points={quad(frame, { ...dragged.rect, x: drag.x, z: drag.z })}
             fill={drag.ok ? 'rgba(62,155,90,.28)' : 'rgba(200,68,58,.3)'} stroke={drag.ok ? '#3E9B5A' : '#C8443A'} strokeWidth={2.5} strokeDasharray="7 5" pointerEvents="none" />
         )}
         {items.map((i) => {
           const held = drag?.id === i.placed.id;
-          const moved = lifted?.id === i.placed.id ? lifted : null;
+          const moved = liftedOf(i.placed.id);
           return (
             <g key={i.placed.id} data-arrange-item={i.placed.id} {...(i.fixed ? { 'data-fixed': '' } : {})}
               style={{ cursor: i.fixed ? 'default' : held ? 'grabbing' : 'grab', ...(moved ? { transform: `translate(${r1(moved.tx)}px, ${r1(moved.ty - (held ? LIFT_PX : 0))}px)` } : {}), ...(held ? { opacity: 0.9 } : {}) }}
