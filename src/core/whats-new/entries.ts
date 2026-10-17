@@ -2226,7 +2226,7 @@ export const ENTRIES: Entry[] = [
           { label: 'À quoi ça sert', text: 'À ranger ses cartes soi-même : voir toute l’étagère d’un coup, choisir la tablette, et travailler de près sur celle qu’on arrange.' },
           { label: 'D’où viennent les données', text: 'Les cartes et objets viennent de votre pièce, enregistrée sur l’appareil ; rien n’est envoyé ailleurs. Le meuble et les tablettes sont dessinés comme dans le zoom d’étagère que vous connaissez déjà (mêmes mesures en centimètres).' },
           { label: 'Comment ça marche', text: 'Le meuble entier et les tablettes sont vus de face ; le dessus garde la vue de trois quarts au-dessus. Balayer verticalement dans le vide change aussi de tablette. Le bouton Retour d’Android revient d’abord au meuble entier, puis ferme la vue.' },
-          { label: 'Limites', text: 'Deux bibliothèques liées partagent la même vue, mais le dessus montré est celui de la première. Le bureau garde sa vue du plateau seul.' },
+          { label: 'Limites', text: 'Deux bibliothèques liées partagent la même vue, dessus compris (côte à côte) ; un objet déjà posé sur un dessus reste sur le sien. Le bureau garde sa vue du plateau seul.' },
         ],
         scene: { page: '/collection', closeWindows: true },
       },
