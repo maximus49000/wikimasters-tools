@@ -1,8 +1,8 @@
 import { drawSize, localPointAt, occludersAt, perchAt, type Angle } from '../footprint';
 import { FURNITURE_MODELS } from '../furniture-models';
 import { CELL_H, CELL_W, DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, occluderBoxesOf, openingOf, pieceBounds, type Piece } from '../furniture-render3d';
-import { SHELF_GAP_CM, angleOf, boardItems, isLamp, isLit, isStanding, pxRect, rectOf, storedWidthCm } from '../room-grid';
-import { computerPlacement, placementBounds, smallPlacement, storedPlacement } from '../carried-items';
+import { SHELF_GAP_CM, angleOf, boardItems, boardWidthCm, isLamp, isLit, isStanding, pxRect, rectOf } from '../room-grid';
+import { boardPlacement, computerPlacement, placementBounds, smallPlacement, storedPlacement } from '../carried-items';
 import { itemPieces, type ItemPlacement } from '../item-models';
 import type { PxRect } from '../room-grid';
 import { isOnBoard, type Layout, type Placed, type StandingKind } from '../library-types';
@@ -55,15 +55,23 @@ function carriedBoxes(owner: string, host: HostFrame, pieces: Piece[], out: Box[
   }
 }
 
-// Pose 3D d'un écran ou d'un petit objet sur le dessus de son porteur.
+// Pose 3D d'un écran ou d'un petit objet sur le dessus de son porteur, ou d'un petit objet sur sa tablette (à la suite de ses voisins).
 function topPlacementOf(p: Placed, layout: Layout, g: Geom): { host: HostFrame; pl: ItemPlacement } | null {
   if (p.kind === 'computer') {
     const host = hostFrame(layout, p.deskId, g);
     return host && host.kind === 'desk' ? { host, pl: computerPlacement(p.id) } : null;
   }
-  if (p.kind !== 'small' || isOnBoard(p)) return null;
+  if (p.kind !== 'small') return null;
   const host = hostFrame(layout, p.hostId, g);
-  return host ? { host, pl: smallPlacement(p.id, p.item, host.kind, p.x, p.z) } : null;
+  if (!host) return null;
+  if (!isOnBoard(p)) return { host, pl: smallPlacement(p.id, p.item, host.kind, p.x, p.z) };
+  if (host.kind !== 'shelf') return null;
+  let at = 0;
+  for (const item of boardItems(layout, p.hostId, p.level)) {
+    if (item.id === p.id) return { host, pl: boardPlacement(item, at) };
+    at += boardWidthCm(item) + SHELF_GAP_CM;
+  }
+  return null;
 }
 
 export function boxesOf(layout: Layout, geom: Geom): Box[] {
@@ -76,22 +84,36 @@ export function boxesOf(layout: Layout, geom: Geom): Box[] {
       for (const b of occludersAt(f.kind, f.angle)) {
         out.push({ owner: p.id, x0: wx(f, b.x0), x1: wx(f, b.x1), d0: wd(f, b.d1), d1: wd(f, b.d0), z0: wz(f, b.z0), z1: wz(f, b.z1) });
       }
-      // Objets rangés : une boîte par tablette garnie (du premier au dernier objet, à la hauteur du plus haut), pas une par objet :
-      // le calque de lumière reste léger avec une étagère pleine. Ouverture cachée (profil, dos) : les montants pleins suffisent.
+      // Objets rangés : une boîte par suite de cartes voisines sur une tablette (de la première à la dernière, à la hauteur de la plus haute),
+      // pas une par objet : le calque de lumière reste léger avec une étagère pleine. Les petits objets de tablette comptent dans le rangement,
+      // coupent la suite et ont leurs propres boîtes (plus bas, comme sur un dessus : une lampe de tablette n'est pas enfermée dans la boîte
+      // des cartes qui l'entourent). Ouverture cachée (profil, dos) : les montants pleins suffisent.
       if (p.kind === 'shelf' && openingOf(FURNITURE_MODELS.shelf, f.angle)) {
         const host = f as HostFrame;
         // Tablette par tablette (même rangement que storedPlacementsOf : largeur réelle + 1 cm d'écart), sans recherche par objet.
         for (const level of [0, 1, 2] as const) {
           let u: [number, number, number, number, number, number] | null = null;
+          let runs = 0;
+          // Première suite : `<étagère>#<tablette>` (comme sans petit objet) ; les suivantes : `#<tablette>.<n>`.
+          const flush = (): void => {
+            if (!u) return;
+            const [x0, x1, y0, y1, z0, z1] = u;
+            carriedBoxes(`${p.id}#${level}${runs ? `.${runs}` : ''}`, host, [{ shape: 'box', x: x0, y: y0, z: z0, w: x1 - x0, h: y1 - y0, d: z1 - z0, fill: 'metal' }], out);
+            runs++;
+            u = null;
+          };
           let at = 0;
           for (const item of boardItems(layout, p.id, level)) {
-            const b = placementBounds(storedPlacement(item, at));
-            at += storedWidthCm(item) + SHELF_GAP_CM;
+            const x0 = at;
+            at += boardWidthCm(item) + SHELF_GAP_CM;
+            if (item.kind !== 'stored') {
+              flush();
+              continue;
+            }
+            const b = placementBounds(storedPlacement(item, x0));
             u = u ? [Math.min(u[0], b[0]), Math.max(u[1], b[1]), Math.min(u[2], b[2]), Math.max(u[3], b[3]), Math.min(u[4], b[4]), Math.max(u[5], b[5])] : b;
           }
-          if (!u) continue;
-          const [x0, x1, y0, y1, z0, z1] = u;
-          carriedBoxes(`${p.id}#${level}`, host, [{ shape: 'box', x: x0, y: y0, z: z0, w: x1 - x0, h: y1 - y0, d: z1 - z0, fill: 'metal' }], out);
+          flush();
         }
       }
     } else if (p.kind === 'computer' || p.kind === 'small') {
