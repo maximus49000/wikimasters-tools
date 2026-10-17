@@ -21,6 +21,7 @@ import { WallArt } from './library-card-art';
 import { CarriedItem3D, Model3DArt, type ItemContent, type ModelPart } from './model3d-art';
 import { gameBoxContent, gameCoverUrl } from './game-box-content';
 import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
+import { localImage, useCoverCache } from './cover-cache';
 import { usableImage, useImageProbe } from './image-probe';
 import { getImageService } from './image-registry';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
@@ -174,6 +175,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   useSyncExternalStore(subscribeImages, () => imageVersion.current);
   // Une image qui ne se charge pas : la pièce se redessine sans elle.
   useImageProbe();
+  // Une pochette arrivée sur l'appareil : la pièce la dessine depuis là.
+  useCoverCache();
   const width = room.cols * CELL_W;
   const wallH = WALL_ROWS * CELL_H;
   const worldId = `${useId()}-world`.replace(/:/g, '');
@@ -270,7 +273,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const imageOf = (slug: string): string | undefined => {
     const url = cards[slug]?.imageUrl;
     const own = images ? images.displayUrl(slug, url, usableImage) : url && usableImage(url) ? url : undefined;
-    return gameCoverUrl('game', slug, own);
+    return localImage(gameCoverUrl('game', slug, own));
   };
   const atHifi = hifi.atHifi !== null ? (room.layout.find((p) => p.id === hifi.atHifi) ?? null) : null;
   const atHifiSlug = atHifi && 'slug' in atHifi ? atHifi.slug : null;

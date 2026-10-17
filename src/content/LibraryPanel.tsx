@@ -94,7 +94,7 @@ import { LocationDialog } from './LocationDialog';
 import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView } from './RoomView';
-import { applyBoxChanges, boxChanges, gameCoverUrl } from './game-box-content';
+import { applyBoxChanges, boxChanges, gameCoverUrl, localGameBox } from './game-box-content';
 import { getGameBoxService } from './game-box-registry';
 import { Btn, Icon, ICONS } from './library-ui';
 import { LibraryTopBar } from './library-topbar';
@@ -119,6 +119,7 @@ import { reducedMotion } from './ghibli-sky';
 import { useHifiPlayer } from './hifi/use-hifi';
 import { HifiBubble } from './hifi/HifiBubble';
 import { usePlatform } from './usePlatform';
+import { localImage, useCoverCache } from './cover-cache';
 import { usableImage, useImageProbe } from './image-probe';
 import { getImageService } from './image-registry';
 
@@ -261,6 +262,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const roomCards = useRoomCards(collection, kinds, library);
   // Une image qui ne se charge pas (boîte ouverte, second zoom) : redessin sans elle.
   useImageProbe();
+  // Une pochette arrivée sur l'appareil (boîte ouverte, zooms) : redessin depuis l'appareil.
+  useCoverCache();
   const [lightOn, setLightOn] = useLightEnabled();
   const [zoneChoice, setZoneChoice] = useZoneChoice();
   const zoneLabel = zoneChoice === 'auto' ? 'automatique' : `zone ${zoneChoice}`;
@@ -1161,7 +1164,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const url = roomCards.cards[slug]?.imageUrl;
     const images = getImageService();
     const own = images ? images.displayUrl(slug, url, usableImage) : url && usableImage(url) ? url : undefined;
-    return gameCoverUrl('game', slug, own);
+    return localImage(gameCoverUrl('game', slug, own));
   };
 
   return (
@@ -1464,7 +1467,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               placed={p}
               {...(format ? { format } : {})}
               {...(caseColor ? { caseColor } : {})}
-              {...(box ? { box } : {})}
+              {...(box ? { box: localGameBox(box) } : {})}
               // Boîte retournée : la vidéo éventuelle s'arrête.
               onFlip={(flipped) => { if (flipped) setVideoShown(null); }}
               backRef={openedBackRef}

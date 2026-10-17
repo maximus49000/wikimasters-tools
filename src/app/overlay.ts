@@ -95,7 +95,8 @@ import { createGameService } from '../content/game-service';
 import { getGameService, setGameService } from '../content/game-registry';
 import { createGameBoxService } from '../content/game-box-service';
 import { measureImage } from '../content/image-probe';
-import { setGameBoxService } from '../content/game-box-registry';
+import { createCoverCache, getCoverCache, setCoverCache } from '../content/cover-cache';
+import { getGameBoxService, setGameBoxService } from '../content/game-box-registry';
 import { createGameVersionRepo } from '../core/game/game-version-repo';
 import { fetchTgdbImages, fetchTgdbVersions } from '../core/game/tgdb-api';
 import type { GameFetch } from '../core/game/game-detail';
@@ -339,6 +340,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     settings: window.localStorage,
   });
   setImageService(images);
+  // Pochettes gardées sur l'appareil (Cache Storage de la page ; absent hors contexte sécurisé : adresses d'origine).
+  setCoverCache(createCoverCache({ caches: typeof caches === 'undefined' ? undefined : caches, fetch: (url, init) => fetch(url, init) }));
   // « Publicité d'achat » : désactivée par défaut, les offres en argent réel du site sont masquées.
   const purchaseAds = createPurchaseAds(window.localStorage);
   // Liens des articles Wikipédia entre cartes (introduction de chaque article, 50 articles par requête) : requêtes sans identifiants,
@@ -693,8 +696,11 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       igdb: createIgdbApi({ fetch: (url, init) => fetch(url, init) }),
       steamCache: createTtlCache(store, { ttlMs: 6 * 3_600_000 }),
       igdbCache: createTtlCache(store, { ttlMs: 7 * 24 * 3_600_000 }),
-      // Autre jeu choisi pour une carte : son affiche mémorisée n'est plus la bonne.
-      onChoice: (slug) => void images.forgetGameArt(slug),
+      // Autre jeu choisi pour une carte : son affiche et sa boîte mémorisées ne sont plus les bonnes.
+      onChoice: (slug) => {
+        void images.forgetGameArt(slug);
+        getGameBoxService()?.forget(slug);
+      },
     });
     setGameService(gameService);
     // Boîtes des jeux : TheGamesDB via le relais (aucune clé dans le client), repli sur Steam/IGDB. Interrogé seulement pour un jeu affiché.
@@ -707,8 +713,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         store,
         // Autre version choisie pour une carte : son affiche mémorisée n'est plus la bonne.
         onChanged: (slug) => void images.forgetGameArt(slug),
-        // « Jaquettes » qui sont des bannières : repérées à la taille réelle de l'image.
-        measure: measureImage,
+        // « Jaquettes » qui sont des bannières : repérées à la taille réelle de l'image (copie gardée sur l'appareil si possible).
+        measure: async (url) => measureImage((await getCoverCache()?.blobUrl(url)) ?? url),
       }),
     );
     // Affiches des jeux vidéo : même mécanisme que les pochettes d'albums et les affiches de films.

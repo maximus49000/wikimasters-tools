@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TGDB_CDN, TGDB_RELAY } from './config';
+import { TGDB_IMAGES, TGDB_RELAY } from './config';
 import type { GameFetch } from './game-detail';
 import { caseStyleOfTgdbPlatform, formatOfTgdbPlatform, type BoxFormat, type CaseStyle } from './platform-boxes';
 
@@ -113,7 +113,7 @@ export function defaultVersion(list: TgdbVersion[], preferred?: BoxFormat): Tgdb
 }
 
 export function boxartUrl(file: string, size: 'medium' | 'original'): string {
-  return `${TGDB_CDN}/${size}/${file}`;
+  return `${TGDB_IMAGES}/${size}/${file}`;
 }
 
 async function getJson(fetchFn: GameFetch, url: string): Promise<unknown> {

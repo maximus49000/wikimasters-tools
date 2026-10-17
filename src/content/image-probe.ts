@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { getCoverCache } from './cover-cache';
 
 // Images de la pièce qui ne se chargent pas (adresse introuvable, 404…) : chaque adresse est essayée une fois en arrière-plan ;
 // une adresse en échec est ensuite sautée (image suivante, ou couverture titrée) au lieu de dessiner l'icône d'image cassée.
@@ -23,6 +24,12 @@ function probe(url: string): void {
 
 // Vrai tant que l'adresse n'a pas échoué (le premier appel lance l'essai).
 export function usableImage(url: string): boolean {
+  // Pochette gardée sur l'appareil : son téléchargement (une seule fois) tient lieu d'essai.
+  const covers = getCoverCache();
+  if (covers?.handles(url)) {
+    covers.want(url);
+    return !covers.failed(url);
+  }
   const known = probes.get(url);
   if (known === undefined) probe(url);
   return known !== 'broken';

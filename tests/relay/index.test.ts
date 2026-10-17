@@ -46,6 +46,15 @@ describe('routes de transmission', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
     expect(String(upstream.mock.calls[0]?.[0])).toContain('api_key=SECRET-TMDB');
   });
+  it('/tgdb-img relaie une image TheGamesDB en binaire, lisible (CORS) et gardée un an', async () => {
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 9]);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(jpeg, { status: 200, headers: { 'content-type': 'image/jpeg' } })));
+    const response = await call('/tgdb-img/medium/boxart/front/3279-1.jpg');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('content-type')).toBe('image/jpeg');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(jpeg);
+  });
   it('/books transmet avec la clé', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"items":[]}', { status: 200 })));
     expect((await call('/books/volumes?q=Dune&country=FR&maxResults=10')).status).toBe(200);
