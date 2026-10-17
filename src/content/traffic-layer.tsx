@@ -191,7 +191,8 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         if (brake) brake.setAttribute('opacity', braking(a, w.unit) ? '1' : '0');
         const hazard = node.querySelector(':scope > [data-hazard]');
         if (hazard) hazard.setAttribute('opacity', a.hazard && Math.floor(t * 1.6) % 2 === 0 ? '1' : '0');
-        if (ghibli && a.kind === 'bike' && !still) poseFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), riderPose(1, crankPhase(a.dist / kOf(a, metrics)), a.v < FOOT_DOWN_V * metrics.unit));
+        // Cycliste, et livreur du vélo de livraison (G5) : pédalage réglé sur la distance parcourue.
+        if (ghibli && (a.kind === 'bike' || a.kind === 'delivery-bike') && !still) poseFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), riderPose(1, crankPhase(a.dist / kOf(a, metrics)), a.v < FOOT_DOWN_V * metrics.unit));
       }
       if (ghibli) {
         forgetPuffSources(puffs, alive);

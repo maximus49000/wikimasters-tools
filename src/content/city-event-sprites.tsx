@@ -7,23 +7,28 @@ import { anchorsOf } from '../core/library/figure/bake';
 import { shapeOf, signatureOf } from '../core/library/figure/dress';
 import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
 import type { ArmPose } from '../core/library/figure/skeleton';
+import { BALLOON_CYCLE_S, BANNER_CYCLE_S, BELLS_CYCLE_S, DRONE_CYCLE_S, FEST_BALLOONS_CYCLE_S, HELI_CYCLE_S, KITE_CYCLE_S } from '../core/library/paint/props/sky';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
+import { Contrail, GhibliFireworks, craneSideAt } from './city-event-art';
 import { PersonSprite, tone } from './city-sprites';
 import type { FigureRegistry } from './figure/figure-host';
+import { GhibliRider } from './figure/ghibli-cyclist';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { CycledInMirror, PropInMirror, type PropSpec } from './prop/prop-host';
 
 // Dessins des événements de la ville (maquette validée du 2026-10-09). Petites animations en SMIL, jamais en mouvement
 // réduit ; aucun id SVG fixe. Les tirages de couleurs viennent de la clé de l'événement (déterministes).
 // `fests` : fêtes en cours (forme des ballons de fête). `ghibli` : figurants en pantins ; `walked` : chemin parcouru par les
-// marcheurs à l'instant du rendu (unités du pantin, eventWalked).
-type Props = { event: CityEvent; sky: Sky; still: boolean; lights: boolean; rainy: boolean; fests: readonly FestivityId[]; ghibli?: boolean; walked?: number };
+// marcheurs à l'instant du rendu (unités du pantin, eventWalked) ; `now` : instant du rendu (s), pour les parties vectorielles
+// Ghibli calculées en t (feux d'artifice, traînée, côté de la grue : city-event-art).
+type Props = { event: CityEvent; sky: Sky; still: boolean; lights: boolean; rainy: boolean; fests: readonly FestivityId[]; ghibli?: boolean; walked?: number; now?: number };
 
 // Figurants Ghibli (G3b) : pantins posés dans le repère du sprite, que placeEvent retourne selon `dir` ; `scale(dir 1)`
 // annule ce retournement (jamais de miroir), le profil suit le sens de marche (sens constant : aucun demi-tour). Les
 // marcheurs du trottoir portent `data-walker` (unités ajoutées au chemin parcouru : un groupe ne marche pas au même pas) et
 // `data-arms` : la boucle des événements avance leurs pas (poseEventFigures). Le ripeur, debout sur le marchepied du camion,
-// garde une pose fixe. Le livreur à vélo reste un dessin simple (cyclistes en G3c).
+// garde une pose fixe. Le livreur à vélo est un GhibliRider (G5) à la selle du vélo peint, dont la boucle de la voie règle le pédalage.
 export const eventWalked = (e: CityEvent, t: number, m: CityMetrics): number => (e.speed * (t - e.start)) / (m.unit * STREET_SCALE.person);
 export const eventWalkPose = (e: CityEvent, walked: number, still: boolean, arms: ArmPose = 'swing'): PoseIn =>
   still ? { yaw: facingYaw(e.dir), gait: 'stand', phase: 0, head: 0, arms } : { yaw: facingYaw(e.dir), gait: 'walk', phase: phaseIndexOf(walked), head: 0, arms };
@@ -61,29 +66,61 @@ const outfitsOf = (key: string, profile: Parameters<typeof outfitFor>[0], n: num
   const rng = mulberry32(hashString(key));
   return Array.from({ length: n }, () => outfitFor(profile, rng));
 };
+// Phase (en cycles) qui règle une pose cyclique sur le début de l'événement : u = t/période + phase ≡ (t − start)/période.
+const frac = (v: number): number => v - Math.floor(v);
+export const eventCyclePhase = (e: CityEvent, period: number): number => frac(-e.start / period);
 
-export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, ghibli = false, walked = 0 }: Props): ReactElement {
+export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, ghibli = false, walked = 0, now = 0 }: Props): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const anim = !still;
+  // SMIL seulement en classique : en Ghibli, le dessin classique ne sert que de repli, figé, le temps de la cuisson.
+  const smil = anim && !ghibli;
+  const night = sky.daylight < 0.3;
+  // Ghibli (G5) : image de l'engin au cadre de son sprite classique (peintres paint/props/sky.ts). Événements du ciel et de la
+  // rue : le groupe est retourné par placeEvent selon `dir`, l'image est cuite dans le sens de vol et le miroir annulé autour
+  // d'elle (jamais de miroir d'image) ; événements fixes : pas de retournement. `period` : poses cycliques réglées sur le temps
+  // de l'événement, pose 0 en mouvement réduit. Le repli classique reste affiché tant que l'image n'est pas cuite.
+  const art = (spec: Omit<PropSpec, 'frame' | 'dir' | 'day'>, fallback: ReactElement, period?: number): ReactElement => {
+    const s: Omit<PropSpec, 'frame'> = { ...spec, day: sky.daylight, dir: e.layer === 'sky' || e.layer === 'street' ? e.dir : 1 };
+    if (period && anim) return <CycledInMirror spec={s} period={period} phase={eventCyclePhase(e, period)} fallback={fallback} />;
+    return <PropInMirror spec={{ ...s, frame: 0 }} fallback={fallback} />;
+  };
   const body = ((): ReactElement => {
     switch (e.id) {
-      case 'plane':
-        return (
-          <g>
-            {sky.daylight > 0.3 && <line x1={-24} y1={0} x2={-160} y2={1} stroke="#FFFFFF" strokeWidth={2} opacity={0.6} />}
+      case 'plane': {
+        const far = e.y < 0.105;
+        // Fuselage et feux (fragment : le classique garde exactement sa structure, traînée comprise dans le même groupe).
+        const hull = (
+          <>
             <path d="M-20 0 L18 -2 Q24 0 18 2 Z" fill={t('#F4F4F4')} />
             <path d="M-4 0 L-12 10 L-6 10 L4 0Z M-16 0 L-22 -8 L-18 -8 L-12 0Z" fill={t('#D0D4DC')} />
-            {sky.daylight < 0.3 && (
+            {night && (
               <>
-                <circle cx={-4} cy={9} r={1.5} fill="#FF4040">{anim && <animate attributeName="opacity" values="1;0.1;1" dur="1.2s" repeatCount="indefinite" />}</circle>
+                <circle cx={-4} cy={9} r={1.5} fill="#FF4040">{smil && <animate attributeName="opacity" values="1;0.1;1" dur="1.2s" repeatCount="indefinite" />}</circle>
                 <circle cx={19} cy={0} r={1.2} fill="#FFFFFF" />
               </>
             )}
+          </>
+        );
+        if (!ghibli) {
+          return (
+            <g>
+              {sky.daylight > 0.3 && <line x1={-24} y1={0} x2={-160} y2={1} stroke="#FFFFFF" strokeWidth={2} opacity={0.6} />}
+              {hull}
+            </g>
+          );
+        }
+        return (
+          <g>
+            {sky.daylight > 0.3 && <Contrail event={e} t={now} still={still} />}
+            {art({ id: 'plane', args: { far }, lit: night }, <g>{hull}</g>)}
           </g>
         );
+      }
       case 'helicopter': {
-        const c = t(pickOf(['#C0463A', '#2E5E8A', '#E0A21E'], e.variant));
-        return (
+        const raw = pickOf(['#C0463A', '#2E5E8A', '#E0A21E'], e.variant);
+        const c = t(raw);
+        const classic = (
           <g>
             <ellipse cx={0} cy={0} rx={13} ry={7} fill={c} />
             <rect x={-30} y={-2} width={18} height={3} fill={c} />
@@ -91,28 +128,31 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
             <line x1={0} y1={-7} x2={0} y2={-10} stroke="#333" />
             <path d="M-6 8 H10 M-4 7 V8 M8 7 V8" stroke="#333" fill="none" />
             <line x1={-22} y1={-10} x2={22} y2={-10} stroke="#333" strokeWidth={1.5}>
-              {anim && <animateTransform attributeName="transform" type="scale" values="1 1;0.1 1;1 1" dur="0.25s" repeatCount="indefinite" />}
+              {smil && <animateTransform attributeName="transform" type="scale" values="1 1;0.1 1;1 1" dur="0.25s" repeatCount="indefinite" />}
             </line>
-            {sky.daylight < 0.3 && <circle cx={-30} cy={0} r={1.5} fill="#FF4040" />}
+            {night && <circle cx={-30} cy={0} r={1.5} fill="#FF4040" />}
           </g>
         );
+        return ghibli ? art({ id: 'helicopter', args: { c: raw }, lit: night }, classic, HELI_CYCLE_S) : classic;
       }
-      case 'drone':
-        return (
+      case 'drone': {
+        const classic = (
           <g>
             <rect x={-5} y={-2} width={10} height={4} rx={1} fill="#333" />
             <line x1={-10} y1={-3} x2={10} y2={-3} stroke="#333" />
             {[-10, 10].map((cx) => (
               <ellipse key={cx} cx={cx} cy={-4} rx={5} ry={1} fill="#555">
-                {anim && <animate attributeName="rx" values="5;1;5" dur="0.2s" repeatCount="indefinite" />}
+                {smil && <animate attributeName="rx" values="5;1;5" dur="0.2s" repeatCount="indefinite" />}
               </ellipse>
             ))}
-            {sky.daylight < 0.3 && <circle cx={0} cy={2} r={1.2} fill="#40FF80" />}
+            {night && <circle cx={0} cy={2} r={1.2} fill="#40FF80" />}
           </g>
         );
+        return ghibli ? art({ id: 'drone', lit: night }, classic, DRONE_CYCLE_S) : classic;
+      }
       case 'balloon': {
         const [a, b] = pickOf([['#E0A21E', '#C0463A'], ['#3B6FD6', '#F2C94C'], ['#2E8B6A', '#E07A8C']] as const, e.variant);
-        return (
+        const classic = (
           <g>
             <path d="M-16 -10 Q-16 -36 0 -36 Q16 -36 16 -10 Q12 2 4 8 H-4 Q-12 2 -16 -10Z" fill={t(a)} />
             <path d="M-6 -35 Q-9 -10 -4 8 M6 -35 Q9 -10 4 8" stroke={t(b)} strokeWidth={3} fill="none" />
@@ -120,33 +160,39 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
             <rect x={-5} y={14} width={10} height={7} fill={t('#8A5A2B')} />
           </g>
         );
+        return ghibli ? art({ id: 'balloon', args: { a, b }, lit: night }, classic, BALLOON_CYCLE_S) : classic;
       }
-      case 'banner-plane':
-        return (
+      case 'banner-plane': {
+        const col = pickOf(['#F2C94C', '#E07A8C', '#9FE1CB'], e.variant);
+        const classic = (
           <g>
             <path d="M-12 0 L12 -2 Q16 0 12 2Z" fill={t('#F4F4F4')} />
             <path d="M-2 0 L-8 7 L-4 7 L4 0Z" fill={t('#D0D4DC')} />
             <line x1={-12} y1={0} x2={-24} y2={0} stroke="#555" strokeWidth={0.6} />
-            <rect x={-104} y={-7} width={80} height={14} fill={t(pickOf(['#F2C94C', '#E07A8C', '#9FE1CB'], e.variant))} />
+            <rect x={-104} y={-7} width={80} height={14} fill={t(col)} />
             {/* Banderole lue dans le bon sens quel que soit le sens de vol : texte retourné avec le sprite. */}
             <g transform={e.dir < 0 ? 'translate(-128 0) scale(-1 1)' : undefined}>
               <text x={-64} y={4} textAnchor="middle" fontSize={9} fill="#5A3A0A" fontFamily="sans-serif">Wikimasters</text>
             </g>
           </g>
         );
+        return ghibli ? art({ id: 'banner-plane', args: { col } }, classic, BANNER_CYCLE_S) : classic;
+      }
       case 'kite': {
-        const c = t(pickOf(['#E07A8C', '#3B6FD6', '#E0A21E', '#2E8B6A'], e.variant));
-        return (
+        const raw = pickOf(['#E07A8C', '#3B6FD6', '#E0A21E', '#2E8B6A'], e.variant);
+        const c = t(raw);
+        const classic = (
           <g>
             <path d="M0 14 Q-20 80 -40 150" stroke="#555" strokeWidth={0.5} fill="none" opacity={0.6} />
             <g>
-              {anim && <animateTransform attributeName="transform" type="rotate" values="-8;8;-8" dur="3s" repeatCount="indefinite" />}
+              {smil && <animateTransform attributeName="transform" type="rotate" values="-8;8;-8" dur="3s" repeatCount="indefinite" />}
               <path d="M0 -12 L9 0 L0 14 L-9 0Z" fill={c} />
               <path d="M0 -12 V14 M-9 0 H9" stroke="#FFFFFF" strokeWidth={0.8} />
               <path d="M0 14 q4 6 0 12 q-4 6 0 12" stroke={t('#3B6FD6')} fill="none" />
             </g>
           </g>
         );
+        return ghibli ? art({ id: 'kite', args: { c: raw } }, classic, KITE_CYCLE_S) : classic;
       }
       case 'bus': {
         // Bus articulé : deux caisses reliées par un soufflet.
@@ -198,14 +244,20 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
         );
       case 'garbage-truck': {
         const [worker] = outfitsOf(e.key, 'ordinary', 1);
-        return (
-          <g>
+        // Caisse du camion (Ghibli : image `garbage-truck`, phare allumé avec les feux ; repli : le dessin classique).
+        const chassis = (
+          <>
             <rect x={-30} y={-30} width={40} height={26} rx={2} fill={t('#2E8B6A')} />
             <rect x={10} y={-24} width={16} height={20} rx={2} fill={t('#E8E8E8')} />
             <rect x={16} y={-21} width={8} height={7} fill={t(GLASS)} />
             <rect x={-34} y={-20} width={4} height={12} fill="#E0A21E" />
             <circle cx={-18} cy={-3} r={4.5} fill="#222" />
             <circle cx={16} cy={-3} r={4.5} fill="#222" />
+          </>
+        );
+        return (
+          <g>
+            {ghibli ? art({ id: 'garbage-truck', lit: lights }, <g>{chassis}</g>) : chassis}
             {/* Ripeur derrière le camion, gilet orange. Ghibli : debout sur le marchepied, la main sur la barre. */}
             {ghibli ? (
               <>
@@ -234,7 +286,25 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
       }
       case 'delivery-bike': {
         const [rider] = outfitsOf(e.key, 'ordinary', 1);
-        const box = t(pickOf(['#2A9DAA', '#E0A21E', '#C0463A'], e.variant));
+        const raw = pickOf(['#2A9DAA', '#E0A21E', '#C0463A'], e.variant);
+        const box = t(raw);
+        if (ghibli) {
+          // Vélo et caisse isotherme peints ; livreur en pantin à la selle (−4, −16), pédalage réglé par la boucle de la voie.
+          const bike = (
+            <g fill="none" stroke={t('#3B3F4A')} strokeWidth={1.2}>
+              <circle cx={-7} cy={-5} r={5} />
+              <circle cx={7} cy={-5} r={5} />
+              <path d="M-7 -5 L0 -12 L7 -5 M0 -12 L2 -15" />
+              <rect x={-13} y={-34} width={12} height={11} rx={1} fill={box} stroke="none" />
+            </g>
+          );
+          return (
+            <g>
+              {art({ id: 'delivery-bike', args: { box: raw } }, bike)}
+              <GhibliRider outfit={rider!} sky={sky} rainy={rainy} dir={e.dir} phase={0} seatX={-4} seatY={-16} />
+            </g>
+          );
+        }
         return (
           <g>
             <g fill="none" stroke={t('#3B3F4A')} strokeWidth={1.2}>
@@ -304,42 +374,65 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
         );
       case 'crane': {
         const yellow = t('#E0A21E');
-        return (
-          <g>
+        const mast = (
+          <>
             <path d="M-4 0 V-200 M4 0 V-200" stroke={yellow} strokeWidth={2} />
             {Array.from({ length: 20 }, (_, i) => <path key={i} d={`M-4 ${-i * 10} L4 ${-i * 10 - 10}`} stroke={yellow} />)}
             <path d="M0 -212 L-4 -200 M0 -212 L4 -200" stroke={yellow} />
-            <g transform="translate(0 -200)">
-              <g>
-                {anim && <animateTransform attributeName="transform" type="scale" values="1 1;-1 1;1 1" dur="80s" repeatCount="indefinite" />}
-                <path d="M-30 0 H70 M-30 -1 H70" stroke={yellow} strokeWidth={2.5} />
-                <rect x={-34} y={-2} width={8} height={8} fill={t('#555555')} />
-                <line x1={45} y1={0} x2={45} y2={30} stroke="#333" strokeWidth={0.6} />
-                <rect x={41} y={30} width={8} height={5} fill={t('#8A5A2B')} />
-              </g>
+          </>
+        );
+        const jib = (side: 1 | -1): ReactElement => (
+          <g transform="translate(0 -200)">
+            <g transform={side < 0 ? 'scale(-1 1)' : undefined}>
+              {smil && <animateTransform attributeName="transform" type="scale" values="1 1;-1 1;1 1" dur="80s" repeatCount="indefinite" />}
+              <path d="M-30 0 H70 M-30 -1 H70" stroke={yellow} strokeWidth={2.5} />
+              <rect x={-34} y={-2} width={8} height={8} fill={t('#555555')} />
+              <line x1={45} y1={0} x2={45} y2={30} stroke="#333" strokeWidth={0.6} />
+              <rect x={41} y={30} width={8} height={5} fill={t('#8A5A2B')} />
             </g>
           </g>
         );
-      }
-      case 'apartment':
+        if (!ghibli) {
+          return (
+            <g>
+              {mast}
+              {jib(1)}
+            </g>
+          );
+        }
+        // Ghibli : une image par côté de flèche (dessinée dans le bon sens, pas en miroir), la boucle montre celle de l'instant.
+        const side = craneSideAt(e, now, still);
         return (
+          <g>
+            {([1, -1] as const).map((s) => (
+              <g key={s} data-crane-side={s} display={s === side ? 'inline' : 'none'}>
+                {art({ id: 'crane', args: { side: s } }, <g>{mast}{jib(s)}</g>)}
+              </g>
+            ))}
+          </g>
+        );
+      }
+      case 'apartment': {
+        const classic = (
           <g>
             <rect x={-3} y={-3} width={11} height={13} fill="#FFD27A" opacity={0.25} />
             <rect x={0} y={0} width={5} height={7} fill="#FFD27A" />
           </g>
         );
+        return ghibli ? art({ id: 'apartment-glow', lit: true }, classic) : classic;
+      }
       case 'fest-balloons': {
         // Grappe de trois ballons noués ensemble : lapins à Pâques, cœurs à la Saint-Valentin (tirage `variant` si les deux).
         const bunny = fests.includes('easter') && !(fests.includes('valentine') && e.variant < 0.5);
         const cols = bunny ? ['#F7C6D9', '#CFE8FF', '#FFF2A8'] : ['#E0305A', '#F2708C', '#B01E48'];
-        return (
-          <g data-balloon-kind={bunny ? 'bunny' : 'heart'}>
+        const classic = (
+          <>
             {cols.map((c, k) => {
               const dx = (k - 1) * 14;
               const knot = 34 + (k % 2) * 6;
               return (
                 <g key={k} transform={`translate(${dx} ${-(k % 2) * 6})`}>
-                  {anim && <animateTransform attributeName="transform" additive="sum" type="rotate" values={`-4 ${-dx} ${knot};4 ${-dx} ${knot};-4 ${-dx} ${knot}`} dur={`${3 + k * 0.4}s`} repeatCount="indefinite" />}
+                  {smil && <animateTransform attributeName="transform" additive="sum" type="rotate" values={`-4 ${-dx} ${knot};4 ${-dx} ${knot};-4 ${-dx} ${knot}`} dur={`${3 + k * 0.4}s`} repeatCount="indefinite" />}
                   <path d={`M0 8 Q${-dx * 0.3} 22 ${-dx} ${knot}`} stroke="#6B5B4A" strokeWidth={0.6} fill="none" />
                   {bunny ? (
                     <>
@@ -358,12 +451,13 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
               );
             })}
             <circle cx={0} cy={34} r={1} fill="#6B5B4A" />
-          </g>
+          </>
         );
+        return <g data-balloon-kind={bunny ? 'bunny' : 'heart'}>{ghibli ? art({ id: 'fest-balloons', args: { bunny } }, <g>{classic}</g>, FEST_BALLOONS_CYCLE_S) : classic}</g>;
       }
-      case 'bells':
+      case 'bells': {
         // Cloches de Pâques : deux cloches dorées qui se balancent sous un ruban noué.
-        return (
+        const classic = (
           <g>
             <path d="M-11 -10 Q0 -16 11 -10" stroke={t('#C0463A')} strokeWidth={1.6} fill="none" />
             <path d="M0 -14 L-5 -18 L-5 -10Z M0 -14 L5 -18 L5 -10Z M0 -14 L-3 -6 M0 -14 L3 -6" fill={t('#C0463A')} stroke={t('#C0463A')} strokeWidth={0.8} />
@@ -372,7 +466,7 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
               return (
                 <g key={k} transform={`translate(${x} 0)`}>
                   <g>
-                    {anim && <animateTransform attributeName="transform" type="rotate" values={`${a} 0 -10;${-a} 0 -10;${a} 0 -10`} dur="1.6s" repeatCount="indefinite" />}
+                    {smil && <animateTransform attributeName="transform" type="rotate" values={`${a} 0 -10;${-a} 0 -10;${a} 0 -10`} dur="1.6s" repeatCount="indefinite" />}
                     <line x1={0} y1={-10} x2={0} y2={-7} stroke={t('#C0463A')} strokeWidth={1.2} />
                     <path d="M-7 7 Q-7 -6 0 -8 Q7 -6 7 7Z" fill={t('#E8B923')} />
                     <path d="M-7 7 H7" stroke={t('#B08A16')} strokeWidth={1.4} />
@@ -384,7 +478,10 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
             })}
           </g>
         );
+        return ghibli ? art({ id: 'bells' }, classic, BELLS_CYCLE_S) : classic;
+      }
       case 'fireworks': {
+        if (ghibli) return <GhibliFireworks event={e} t={now} still={still} />;
         const colors = ['#FF4F4F', '#F2C94C', '#4FD8FF', '#B04FFF', '#4FFF8A'];
         return (
           <g>

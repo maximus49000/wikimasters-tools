@@ -29,6 +29,7 @@ import { useArtStyle } from './art-setting';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
+import { poseEventArt } from './city-event-art';
 import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
 import { MarkHeld, markAnchor, markArms } from './festive-marks';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, staffOutfit, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
@@ -495,6 +496,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       if (!el) return;
       // Une fois par image : peint les sprites demandés (budget par image) et applique le plafond.
       if (ghibli) figures.flush();
+      // Un nœud à poses cycliques remplacé par un re-rendu sans nouvelle boucle (G5) : table des nœuds refaite.
+      if (nodes && ghibli && cycles.some((c) => !c.node.isConnected)) nodes = null;
       if (!nodes) {
         nodes = new Map();
         for (const node of el.querySelectorAll<SVGGElement>('[data-life-id]')) nodes.set(node.getAttribute('data-life-id')!, node);
@@ -521,6 +524,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             if (!node) continue;
             pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
             cycles.push(...collectCycles(node));
+          }
+          // Engins du ciel, ballons et cloches à poses cycliques (G5).
+          for (const e of events.active) {
+            const node = nodes.get(e.key);
+            if (node) cycles.push(...collectCycles(node));
           }
         }
         scene = ghibli ? collectScene(el) : null;
@@ -571,6 +579,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (e.layer === 'fixed') setIfChanged(node, 'opacity', eventOpacity(e, t, still));
         // Ghibli : pas des figurants du trottoir réglés sur leur chemin (le ripeur du camion garde sa pose).
         else if (ghibli && e.layer === 'sidewalk') poseEventFigures(figures, node, e, t, metrics, still);
+        // Ghibli : parties vectorielles calculées en t (feux d'artifice, traînée de l'avion, côté de la flèche de la grue).
+        if (ghibli) poseEventArt(node, e, t, still);
       }
       for (const trip of trips) {
         const node = nodes.get(trip.id);
@@ -646,7 +656,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const sceneSeconds = city.minutes * 60 + (t0! - sceneClock.current.base);
   const eventNode = (e: CityEvent): ReactElement => (
     <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)}>
-      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} walked={e.layer === 'sidewalk' ? eventWalked(e, t0, metrics) : 0} />
+      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} walked={e.layer === 'sidewalk' ? eventWalked(e, t0, metrics) : 0} now={t0} />
     </g>
   );
   const of = (pred: (e: CityEvent) => boolean): CityEvent[] => events.active.filter(pred);
@@ -689,7 +699,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         {cranes.length > 0 && <g data-event-mask="near" mask={`url(#${maskBase}-near)`}>{cranes.map(eventNode)}</g>}
         {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment' || e.id === 'bells').map(eventNode)}
         <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} ghibli={ghibli} />
-        <FlypastLayer width={width} height={height} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} />
+        <FlypastLayer width={width} height={height} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} ghibli={ghibli} />
       </g>
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
           lampadaires (bord du trottoir), la file du fond, puis celle du premier plan. */}

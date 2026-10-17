@@ -155,7 +155,7 @@ export const FAMILLES: Famille[] = [
     fichiers: [
       ...c(
         'city-event*', 'city-extras-ghibli.*', 'concert-light.*', 'install-*', 'parade-*', 'music-fest.*', 'music-street*', 'stage-band.*',
-        'santa-*', 'use-city-calendar.*', 'use-city-events.*', 'zone-setting.*', 'prop-host.*',
+        'santa-*', 'use-city-calendar.*', 'use-city-events.*', 'zone-setting.*', 'prop-host.*', 'flypast-*',
       ),
       ...lib(
         'city-calendar.*', 'city-school-calendar.*', 'city-event*', 'city-install.*', 'city-music-crowd.*', 'city-parade.*', 'city-santa.*',
