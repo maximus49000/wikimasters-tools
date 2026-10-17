@@ -119,6 +119,7 @@ import { reducedMotion } from './ghibli-sky';
 import { useHifiPlayer } from './hifi/use-hifi';
 import { HifiBubble } from './hifi/HifiBubble';
 import { usePlatform } from './usePlatform';
+import { usableImage, useImageProbe } from './image-probe';
 import { getImageService } from './image-registry';
 
 // Aide affichée pendant un placement valide.
@@ -258,6 +259,8 @@ type Props = { library: LibraryRepo; collection?: CollectionRepo; kinds?: KindsR
 
 export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMarket }: Props) {
   const roomCards = useRoomCards(collection, kinds, library);
+  // Une image qui ne se charge pas (boîte ouverte, second zoom) : redessin sans elle.
+  useImageProbe();
   const [lightOn, setLightOn] = useLightEnabled();
   const [zoneChoice, setZoneChoice] = useZoneChoice();
   const zoneLabel = zoneChoice === 'auto' ? 'automatique' : `zone ${zoneChoice}`;
@@ -1152,9 +1155,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       transition: `transform ${zoomMs}ms ease-out, filter ${zoomMs}ms ease-out`,
     };
   })();
+  // Image d'une carte : celles qui ne se chargent pas sont sautées (couverture titrée à défaut).
   const imageOfCard = (slug: string): string | undefined => {
     const url = roomCards.cards[slug]?.imageUrl;
-    return getImageService()?.displayUrl(slug, url) ?? url;
+    const images = getImageService();
+    if (images) return images.displayUrl(slug, url, usableImage);
+    return url && usableImage(url) ? url : undefined;
   };
 
   return (

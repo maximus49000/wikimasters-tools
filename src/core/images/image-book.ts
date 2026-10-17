@@ -51,3 +51,14 @@ export function addCandidates(state: ImageState, slug: string, fresh: string[]):
   const candidates = [...known.candidates, ...fresh.filter((url) => !known.candidates.includes(url))];
   return { ...state, [slug]: { ...known, candidates, url: pickImage(candidates, known.rejected) } };
 }
+
+// Anciennes adresses Steam fabriquées sur l'identifiant (`…/apps/<id>/library_600x900.jpg`, `…/header.jpg`) : introuvables (404)
+// pour les jeux récents, dont les images sont rangées dans un dossier à empreinte. Les adresses rendues par Steam portent `?t=`.
+const LEGACY_STEAM = /^https:\/\/shared\.akamai\.steamstatic\.com\/store_item_assets\/steam\/apps\/\d+\/(library_600x900|header)\.jpg$/;
+
+// Cartes dont une image vient de ces adresses : oubliées, pour être cherchées à nouveau (même état si rien à oublier).
+export function dropLegacySteamArt(state: ImageState): ImageState {
+  const stale = (image: CardImage): boolean => [image.url, ...image.candidates].some((url) => url !== null && LEGACY_STEAM.test(url));
+  if (!Object.values(state).some(stale)) return state;
+  return Object.fromEntries(Object.entries(state).filter(([, image]) => !stale(image)));
+}

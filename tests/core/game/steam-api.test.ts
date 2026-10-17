@@ -85,6 +85,54 @@ describe('createSteamApi.detail', () => {
   });
 });
 
+// Réponse de IStoreBrowseService/GetItems : jeu récent (fichiers dans un dossier à empreinte) et ancien (fichiers à la racine).
+const items = {
+  response: {
+    store_items: [
+      {
+        appid: 2483190,
+        assets: {
+          asset_url_format: 'steam/apps/2483190/${FILENAME}?t=1791312088',
+          library_capsule: '711e3980/library_capsule.jpg',
+          header: 'bd1e762f/header_alt_assets_5.jpg',
+        },
+      },
+    ],
+  },
+};
+const ASSETS = 'https://shared.akamai.steamstatic.com/store_item_assets/';
+
+describe('createSteamApi.art', () => {
+  it('rend les vraies adresses de Steam : affiche portrait puis bandeau', async () => {
+    const api = createSteamApi({ fetch: route({ GetItems: items }) });
+    expect(await api.art(2483190)).toEqual([
+      `${ASSETS}steam/apps/2483190/711e3980/library_capsule.jpg?t=1791312088`,
+      `${ASSETS}steam/apps/2483190/bd1e762f/header_alt_assets_5.jpg?t=1791312088`,
+    ]);
+  });
+
+  it('rend une liste vide pour un jeu sans images', async () => {
+    const api = createSteamApi({ fetch: route({ GetItems: { response: { store_items: [{ appid: 7 }] } } }) });
+    expect(await api.art(7)).toEqual([]);
+  });
+
+  it('demande les images du bon jeu', async () => {
+    const fetch = route({ GetItems: items });
+    await createSteamApi({ fetch }).art(2483190);
+    const url = decodeURIComponent(String(fetch.mock.calls[0]?.[0]));
+    expect(url).toContain('IStoreBrowseService/GetItems');
+    expect(url).toContain('"appid":2483190');
+    expect(url).toContain('"include_assets":true');
+  });
+});
+
+describe('createSteamApi.detail (affiche)', () => {
+  it('la couverture est l’affiche portrait quand Steam la donne', async () => {
+    const api = createSteamApi({ fetch: route({ appdetails: { '2483190': details['1245620'] }, GetItems: items }) });
+    expect((await api.detail(2483190))?.coverUrl).toBe(`${ASSETS}steam/apps/2483190/711e3980/library_capsule.jpg?t=1791312088`);
+  });
+});
+
 describe('createSteamApi.search', () => {
   it('rend les jeux (type app) comme candidats, dans l’ordre de Steam', async () => {
     const api = createSteamApi({ fetch: route({ storesearch: search }) });

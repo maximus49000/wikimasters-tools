@@ -38,7 +38,7 @@ export function createDemoGameService(): GameServiceLike {
     },
     games: { resolve: async () => ({ [DEMO_GAME_SLUG]: { steamId: DETAIL.id } }) },
     choices,
-    steam: { detail: async () => DETAIL, search: async () => [] },
+    steam: { detail: async () => DETAIL, search: async () => [], art: async () => [] },
     igdb: null,
     steamCache: direct,
     igdbCache: direct,

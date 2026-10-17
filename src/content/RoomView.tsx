@@ -21,6 +21,7 @@ import { WallArt } from './library-card-art';
 import { CarriedItem3D, Model3DArt, type ItemContent, type ModelPart } from './model3d-art';
 import { gameBoxContent } from './game-box-content';
 import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
+import { usableImage, useImageProbe } from './image-probe';
 import { getImageService } from './image-registry';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
 import { ShopContext, ShopRegistry } from './shop/shop-host';
@@ -171,6 +172,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     [images],
   );
   useSyncExternalStore(subscribeImages, () => imageVersion.current);
+  // Une image qui ne se charge pas : la pièce se redessine sans elle.
+  useImageProbe();
   const width = room.cols * CELL_W;
   const wallH = WALL_ROWS * CELL_H;
   const worldId = `${useId()}-world`.replace(/:/g, '');
@@ -262,9 +265,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     }
     return out;
   }, [room.layout]);
+  // Image d'une carte : celles qui ne se chargent pas sont sautées (couverture titrée à défaut).
   const imageOf = (slug: string): string | undefined => {
     const url = cards[slug]?.imageUrl;
-    return images?.displayUrl(slug, url) ?? url;
+    if (images) return images.displayUrl(slug, url, usableImage);
+    return url && usableImage(url) ? url : undefined;
   };
   const atHifi = hifi.atHifi !== null ? (room.layout.find((p) => p.id === hifi.atHifi) ?? null) : null;
   const atHifiSlug = atHifi && 'slug' in atHifi ? atHifi.slug : null;
