@@ -80,6 +80,38 @@ describe('GameOutside (face extérieure de la boîte retournée)', () => {
     act(() => { img.dispatchEvent(new Event('error')); });
     expect(container.querySelector('[data-outside-zone="back"] [data-made-back]')).not.toBeNull();
   });
+
+  it('jaquette entière : l’image n’est pas rognée, le plastique du boîtier comble le reste', () => {
+    render(<GameOutside box={RDR2} geometry={gameGeometry('bluray')} onMagnify={vi.fn()} />);
+    for (const zone of ['front', 'back']) {
+      const img = container.querySelector(`[data-outside-zone="${zone}"] image`)!;
+      expect(img.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet');
+      expect(container.querySelector(`[data-outside-zone="${zone}"] [data-scan-ground]`)!.getAttribute('fill')).toBe(RDR2.style.plastic);
+    }
+  });
+
+  it('jaquette en largeur (bandeau Steam) : posée en haut, le titre imprimé dessous', async () => {
+    class WideImage {
+      naturalWidth = 460;
+      naturalHeight = 215;
+      onload: (() => void) | null = null;
+      referrerPolicy = '';
+      set src(_url: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal('Image', WideImage);
+    try {
+      render(<GameOutside box={RDR2} geometry={gameGeometry('bluray')} onMagnify={vi.fn()} />);
+      await act(async () => undefined);
+      const img = container.querySelector('[data-outside-zone="front"] image')!;
+      expect(img.getAttribute('preserveAspectRatio')).toBe('xMidYMin meet');
+      const lines = [...container.querySelectorAll('[data-outside-zone="front"] [data-scan-title] tspan')].map((t) => t.textContent);
+      expect(lines.join(' ')).toBe('Red Dead Redemption 2');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('MadeBack (dos fabriqué)', () => {

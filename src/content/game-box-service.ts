@@ -192,7 +192,8 @@ export function createGameBoxService(deps: GameBoxDeps) {
       ...(extra?.logo ? { logoUrl: boxartUrl(extra.logo, 'original') } : {}),
       title: printedTitle(title, detail),
       ...studioOf(detail),
-      ...(version.overview ? { summary: version.overview } : {}),
+      // Résumé de la version, sinon celui de la fiche du jeu (une édition sans résumé ne laisse pas le dos vide).
+      ...(version.overview || detail.summary ? { summary: version.overview || detail.summary } : {}),
     };
   }
 

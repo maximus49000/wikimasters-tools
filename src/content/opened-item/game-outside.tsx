@@ -2,7 +2,7 @@
 //
 // Face extérieure de la boîte de jeu retournée, ouverte à plat : dos | tranche | devant. Le dos est le scan de TheGamesDB, sinon
 // un dos fabriqué (bandeau console, logo ou titre, captures, début de la description). Style cellulo : aplats + trait encré.
-import { useId, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactElement, type ReactNode } from 'react';
 import { BOX_FORMATS, consoleLabelOf } from '../../core/game/platform-boxes';
 import type { GameBox } from '../game-box-service';
 import { GameSpine, inkOn } from '../game-spine';
@@ -113,18 +113,59 @@ export function madeBackFace(box: GameBox): { key: string; draw: (w: number, h: 
   };
 }
 
-// Scan (dos ou devant) dans un cadre au trait ; sans image (ou image introuvable), `fallback` (sinon l'aplat du plastique et le titre).
+// Proportions (largeur / hauteur) d'une image, lues à son chargement ; undefined tant qu'elle n'est pas chargée.
+function useImageRatio(url: string | undefined): number | undefined {
+  const [ratio, setRatio] = useState<{ url: string; value: number } | null>(null);
+  useEffect(() => {
+    if (!url || typeof Image === 'undefined') return;
+    let alive = true;
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => {
+      if (alive && img.naturalWidth > 0 && img.naturalHeight > 0) setRatio({ url, value: img.naturalWidth / img.naturalHeight });
+    };
+    img.src = url;
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+  return ratio && ratio.url === url ? ratio.value : undefined;
+}
+
+// Scan (dos ou devant) dans un cadre au trait, montré en entier : le plastique du boîtier comble ce que l'image ne couvre pas.
+// Image en largeur (bandeau Steam sur une boîte en hauteur) : posée en haut, le titre imprimé dessous.
+// Sans image (ou image introuvable) : `fallback` (sinon l'aplat du plastique et le titre).
 function Scan({ url, w, h, box, id, fallback }: { url?: string; w: number; h: number; box: GameBox; id: string; fallback?: ReactNode }): ReactElement {
   const [failed, setFailed] = useState<string | null>(null);
   const shown = url && failed !== url ? url : undefined;
+  const ratio = useImageRatio(shown);
+  const wide = ratio !== undefined && ratio > 1;
+  const top = h * 0.06;
+  const imgH = wide ? Math.min(h - top, w / ratio) : h;
+  const ink = inkOn(box.style.plastic);
+  const titleSize = w * 0.085;
+  const titleLines = wide ? wrap(box.title, Math.max(6, Math.floor((w * 0.86) / (titleSize * 0.58))), 3) : [];
+  const titleMid = top + imgH + (h - top - imgH) / 2 - ((titleLines.length - 1) * titleSize * 1.15) / 2;
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
       <clipPath id={id}><rect x={0} y={0} width={w} height={h} /></clipPath>
       {shown
-        ? <image href={shown} x={0} y={0} width={w} height={h} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${id})`} onError={() => setFailed(shown)} {...NO_REFERRER} />
+        ? (
+          <>
+            <rect data-scan-ground="" x={0} y={0} width={w} height={h} fill={box.style.plastic} />
+            <image href={shown} x={0} y={r2(wide ? top : 0)} width={w} height={r2(imgH)} preserveAspectRatio={wide ? 'xMidYMin meet' : 'xMidYMid meet'}
+              clipPath={`url(#${id})`} onError={() => setFailed(shown)} {...NO_REFERRER} />
+            {wide && (
+              <text data-scan-title="" x={r2(w / 2)} y={r2(titleMid)} textAnchor="middle" dominantBaseline="middle" fontSize={r2(titleSize)} fontWeight={800}
+                fontFamily="Georgia, 'Times New Roman', serif" fill={ink}>
+                {titleLines.map((l, i) => <tspan key={i} x={r2(w / 2)} dy={i === 0 ? 0 : r2(titleSize * 1.15)}>{l}</tspan>)}
+              </text>
+            )}
+          </>
+        )
         : fallback ?? <>
             <rect x={0} y={0} width={w} height={h} fill={box.style.plastic} />
-            <text x={r2(w / 2)} y={r2(h / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={r2(w * 0.08)} fontWeight={700} fontFamily={FONT} fill={inkOn(box.style.plastic)}>
+            <text x={r2(w / 2)} y={r2(h / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={r2(w * 0.08)} fontWeight={700} fontFamily={FONT} fill={ink}>
               {box.title.length > 22 ? box.title.slice(0, 21) + '…' : box.title}
             </text>
           </>}

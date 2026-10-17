@@ -11,6 +11,8 @@ import { boxartUrl, type TgdbVersion } from '../../src/core/game/tgdb-api';
 
 const steamDetail: GameDetail = { source: 'steam', id: 1245620, title: 'ELDEN RING', genres: [], platforms: [], developers: [], pageUrl: 'https://store.steampowered.com/app/1245620' };
 const igdbDetail: GameDetail = { source: 'igdb', id: 1000, title: 'Super Metroid', genres: [], platforms: [], developers: [], coverUrl: 'https://img.test/igdb.jpg', pageUrl: 'https://www.igdb.com/games/super-metroid' };
+// Affiches rendues par Steam (IStoreBrowseService/GetItems) : dossier à empreinte, impossible à deviner depuis l'identifiant.
+const STEAM_ART = (id: number) => [`https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${id}/aa11/library_capsule.jpg?t=1`, `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${id}/bb22/header.jpg?t=1`];
 const cand = (source: 'steam' | 'igdb', id: number, title: string, popularity = 0): GameCandidate => ({ source, id, title, platforms: [], popularity });
 
 type Setup = { unreachable?: boolean; natures?: string[]; ids?: object; collection?: string[]; steamSearch?: GameCandidate[]; igdbSearch?: GameCandidate[]; igdb?: boolean; steamDetail?: GameDetail | null; onChoice?: (slug: string) => void };
@@ -19,6 +21,7 @@ function setup(over: Setup = {}) {
   const steam = {
     detail: vi.fn(async (id: number) => (over.steamDetail === undefined ? { ...steamDetail, id } : over.steamDetail)),
     search: vi.fn(async () => over.steamSearch ?? []),
+    art: vi.fn(async (id: number) => STEAM_ART(id)),
   };
   const igdb = {
     detail: vi.fn(async (by: { id: number } | { slug: string }) => ({ ...igdbDetail, id: 'id' in by ? by.id : igdbDetail.id })),
@@ -132,7 +135,6 @@ describe('createGameService : fenêtre « Changer de jeu »', () => {
   });
 });
 
-const STEAM_ART = (id: number) => [`https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${id}/library_600x900.jpg`, `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${id}/header.jpg`];
 
 describe('createGameService.gameSlugs', () => {
   it('ne garde que les cartes de nature « jeu vidéo », sans appeler Steam ni IGDB', async () => {
@@ -146,9 +148,10 @@ describe('createGameService.gameSlugs', () => {
 });
 
 describe('createGameService.cover', () => {
-  it("un identifiant Steam suffit : affiche portrait puis bandeau, sans aucun appel à Steam", async () => {
+  it("un identifiant Steam suffit : les vraies adresses de Steam (affiche portrait puis bandeau), sans fiche ni recherche", async () => {
     const { service, steam, igdb } = setup({ ids: { steamId: 1245620, igdbSlug: 'elden-ring' } });
     expect(await service.cover('Jeu', 'Elden Ring')).toEqual(STEAM_ART(1245620));
+    expect(steam.art).toHaveBeenCalledWith(1245620);
     expect(steam.detail).not.toHaveBeenCalled();
     expect(steam.search).not.toHaveBeenCalled();
     expect(igdb.detail).not.toHaveBeenCalled();
@@ -191,6 +194,9 @@ describe('createGameService.cover', () => {
     const failing = setup({ steamSearch: [] });
     failing.steam.search.mockRejectedValueOnce(new GameError('steam', 'rate-limited', 'x'));
     expect(await failing.service.cover('Jeu', 'Jeu')).toBeNull();
+    const noArt = setup({ ids: { steamId: 5 } });
+    noArt.steam.art.mockRejectedValueOnce(new GameError('steam', 'rate-limited', 'x'));
+    expect(await noArt.service.cover('Jeu', 'Jeu')).toBeNull();
   });
 
   it('sans identifiants IGDB, seule la partie Steam répond', async () => {

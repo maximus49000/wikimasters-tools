@@ -44,6 +44,11 @@ describe('createGameBoxService.box', () => {
     });
   });
 
+  it('version TheGamesDB sans résumé (ex. édition japonaise) : le dos reprend le résumé de la fiche du jeu', async () => {
+    const box = await setup({ versions: [pc] }).service.box('Jeu', 'Hollow Knight');
+    expect(box).toMatchObject({ tgdbId: 10, summary: 'Résumé IGDB' });
+  });
+
   it('sans choix : la version par défaut, format de la première plateforme préféré', async () => {
     const { service } = setup({ versions: [pc, ver({ id: 30, front: 'f30', platformName: 'Sony Playstation 4', format: 'bluray' })] });
     expect((await service.box('Jeu', 'Hollow Knight'))?.tgdbId).toBe(10);

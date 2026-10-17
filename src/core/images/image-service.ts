@@ -1,6 +1,6 @@
 import type { KeyValueStore } from '../cache/store';
 import { MAX_CANDIDATES } from './card-image-search';
-import { ART_VERSION, addCandidates, EMPTY_IMAGES, markArtChecked, promoteArt, rejectCurrent, setFound, type ImageState } from './image-book';
+import { ART_VERSION, addCandidates, dropLegacySteamArt, EMPTY_IMAGES, markArtChecked, promoteArt, rejectCurrent, setFound, type ImageState } from './image-book';
 
 const KEY = 'card-images';
 const SETTING_KEY = 'wmt:imageReplace';
@@ -45,10 +45,12 @@ export function createImageService(deps: {
 
   const ready = deps.store.get<ImageState>(KEY).then(
     (saved) => {
-      // Ce qui a été trouvé pendant la lecture a priorité sur l'état enregistré.
-      state = { ...(saved ?? {}), ...state };
+      // Ce qui a été trouvé pendant la lecture a priorité sur l'état enregistré ; les anciennes adresses Steam (404) sont oubliées.
+      const kept = saved ? dropLegacySteamArt(saved) : {};
+      state = { ...kept, ...state };
       loaded = true;
-      notify();
+      if (saved && kept !== saved) commit(state);
+      else notify();
     },
     () => {
       loaded = true;
@@ -115,12 +117,16 @@ export function createImageService(deps: {
     peekGameArt: (slug: string): string | null | undefined => gameArtOf.get(slug),
     // Image à montrer pour une carte dans les vues de l'extension : l'affiche du jeu vidéo d'abord, puis l'image propre de la carte,
     // puis l'image de remplacement. Une carte qui a une image et dont l'affiche est inconnue la fait chercher (réponse via `subscribe`).
-    displayUrl(slug: string, own: string | undefined): string | undefined {
-      if (!enabled) return own;
+    // `usable` : faux pour une image qui n'a pas pu se charger, sautée au profit de la suivante (undefined : aucune).
+    displayUrl(slug: string, own: string | undefined, usable: (url: string) => boolean = () => true): string | undefined {
+      const ok = (url: string | null | undefined): url is string => !!url && usable(url);
+      if (!enabled) return ok(own) ? own : undefined;
       const game = gameArtOf.get(slug);
-      if (game) return game;
+      if (ok(game)) return game;
       if (game === undefined && own) void this.requestGameArt(slug, slug.replaceAll('_', ' '));
-      return own ?? state[slug]?.url ?? undefined;
+      if (ok(own)) return own;
+      const replacement = state[slug]?.url;
+      return ok(replacement) ? replacement : undefined;
     },
     requestGameArt(slug: string, title: string): Promise<void> {
       const failed = gameArtFailedAt.get(slug);

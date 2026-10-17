@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ART_VERSION, addCandidates, markArtChecked, rejectCurrent, setFound } from '../../../src/core/images/image-book';
+import { ART_VERSION, addCandidates, dropLegacySteamArt, markArtChecked, rejectCurrent, setFound } from '../../../src/core/images/image-book';
 
 describe('image-book', () => {
   it('mémorise le moment où la pochette officielle a été cherchée sans rien trouver', () => {
@@ -25,5 +25,26 @@ describe('image-book', () => {
     const next = rejectCurrent(rejectCurrent(setFound({}, 'A', ['u1']), 'A'), 'A');
     expect(next.A?.url).toBeNull();
     expect(addCandidates(next, 'A', ['u1', 'u3']).A).toMatchObject({ url: 'u3', rejected: ['u1'] });
+  });
+});
+
+describe('dropLegacySteamArt', () => {
+  const OLD = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2483190/library_600x900.jpg';
+  const OLD_HEADER = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2483190/header.jpg';
+  const NEW = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/library_600x900.jpg?t=1790187113';
+
+  it('oublie les cartes dont une image est une ancienne adresse Steam fabriquée (introuvable pour les jeux récents)', () => {
+    const state = {
+      Forza: { url: OLD, candidates: [OLD, OLD_HEADER, 'https://wiki/a.jpg'], rejected: [], art: true as const },
+      Bandeau: { url: 'https://wiki/b.jpg', candidates: ['https://wiki/b.jpg', OLD_HEADER], rejected: [] },
+      Portal: { url: NEW, candidates: [NEW], rejected: [], art: true as const },
+      Livre: { url: 'https://covers/c.jpg', candidates: ['https://covers/c.jpg'], rejected: [] },
+    };
+    expect(Object.keys(dropLegacySteamArt(state))).toEqual(['Portal', 'Livre']);
+  });
+
+  it('rend le même état quand il n’y a rien à oublier', () => {
+    const state = { Livre: { url: 'https://covers/c.jpg', candidates: [], rejected: [] } };
+    expect(dropLegacySteamArt(state)).toBe(state);
   });
 });
