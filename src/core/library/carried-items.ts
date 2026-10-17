@@ -4,7 +4,7 @@
 // est affine) : sa géométrie est calculée une fois par (forme, présentation, angle), quelle que soit sa place.
 import { drawSize, type Angle } from './footprint';
 import { FURNITURE_MODELS } from './furniture-models';
-import { CELL_H, CELL_W, levelsOf, localPointOf, pieceBounds, projectOf, type V3t } from './furniture-render3d';
+import { CELL_H, CELL_W, FACE_CAMERA, cameraKey, levelsOf, localPointOf, pieceBounds, projectOf, type Camera, type V3t } from './furniture-render3d';
 import { ITEM_MODELS, bookColor, itemModel, itemPieces, storedFrontCorners, type ItemPlacement, type ItemShape } from './item-models';
 import { isOnBoard, type Layout, type Placed, type Posed, type ShelfLevel, type SmallItem } from './library-types';
 import { SHELF_GAP_CM, boardItems, displayOf, storedWidthCm, type HostKind, type PxRect, type Stored } from './room-grid';
@@ -95,14 +95,14 @@ export function carriedPlacementOf(layout: Layout, p: Placed): { hostId: string;
 // Projection du porteur (affine) mise en cache par (porteur, angle) : origine et images des trois axes, en px de son dessin non mis à l'échelle.
 const affineCache = new Map<string, [number, number][]>();
 // Point du repère du porteur (cm) → px de son dessin à l'échelle 1 (repère du Model3DArt avant mise à l'échelle).
-export function hostNativePx(hostKind: HostKind, angle: Angle, p: V3t): [number, number] {
-  const key = `${hostKind}:${angle}`;
+export function hostNativePx(hostKind: HostKind, angle: Angle, p: V3t, cam: Camera = FACE_CAMERA): [number, number] {
+  const key = `${hostKind}:${angle}${cameraKey(cam)}`;
   let a = affineCache.get(key);
   if (!a) {
     const m = FURNITURE_MODELS[hostKind];
-    const o = projectOf(m, angle, [0, 0, 0]);
+    const o = projectOf(m, angle, [0, 0, 0], cam);
     const axis = (v: V3t): [number, number] => {
-      const q = projectOf(m, angle, v);
+      const q = projectOf(m, angle, v, cam);
       return [q[0] - o[0], q[1] - o[1]];
     };
     a = [o, axis([1, 0, 0]), axis([0, 1, 0]), axis([0, 0, 1])];
@@ -113,9 +113,9 @@ export function hostNativePx(hostKind: HostKind, angle: Angle, p: V3t): [number,
 }
 
 // Point du repère du porteur (cm) → px de la pièce, dans le rectangle `rect` du porteur tourné (même projection et même échelle que son dessin).
-export function hostPointPx(hostKind: HostKind, angle: Angle, rect: PxRect, p: V3t): [number, number] {
-  const { w, h } = drawSize(hostKind, angle);
-  const [x, y] = hostNativePx(hostKind, angle, p);
+export function hostPointPx(hostKind: HostKind, angle: Angle, rect: PxRect, p: V3t, cam: Camera = FACE_CAMERA): [number, number] {
+  const { w, h } = drawSize(hostKind, angle, cam);
+  const [x, y] = hostNativePx(hostKind, angle, p, cam);
   return [rect.x + (x * rect.w) / (w * CELL_W), rect.y + (y * rect.h) / (h * CELL_H)];
 }
 

@@ -2,7 +2,9 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { Item3DArt, Model3DArt, itemsKey } from '../../src/content/model3d-art';
+import { CarriedItem3D, Item3DArt, Model3DArt, itemsKey } from '../../src/content/model3d-art';
+import { drawSize } from '../../src/core/library/footprint';
+import { CELL_H, CELL_W, PLUNGE_CAMERA } from '../../src/core/library/furniture-render3d';
 import { paletteOf } from '../../src/core/library/styles';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -143,5 +145,30 @@ describe('boîtier blanc (PS5, Wii, DS)', () => {
     expect(title.getAttribute('fill')).toBe('#FFFFFF');
     const band = [...c.querySelectorAll('rect')].find((r) => r.getAttribute('fill')?.toUpperCase() === '#1F4C9E')!;
     expect(band.getAttribute('stroke')).toBeNull();
+  });
+});
+
+describe('objet porté sous une caméra plongeante', () => {
+  it('se dessine sur le dessus du bureau projeté : comme le même objet dessiné dans le meuble', () => {
+    const palette = paletteOf('scandinave');
+    const pl = { key: 'm', shape: 'monitor', x: 10, y: 75, z: 10 } as const;
+    const { w, h } = drawSize('desk', 0, PLUNGE_CAMERA);
+    const r = { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H };
+    const polys = (c: HTMLElement) => [...c.querySelectorAll('polygon')].map((e) => e.getAttribute('points')!);
+    const host = new Set(polys(draw(<Model3DArt kind="desk" angle={0} rect={r} palette={palette} camera={PLUNGE_CAMERA} />)));
+    const inHost = polys(draw(<Model3DArt kind="desk" angle={0} rect={r} palette={palette} camera={PLUNGE_CAMERA} items={[pl]} />)).filter((q) => !host.has(q));
+    const alone = draw(<svg><CarriedItem3D host="desk" angle={0} rect={r} placement={pl} palette={palette} camera={PLUNGE_CAMERA} /></svg>);
+    const g = alone.querySelector('[data-item3d]')!;
+    const [tx, ty] = g.getAttribute('transform')!.match(/translate\(([-\d.]+) ([-\d.]+)\)$/)!.slice(1).map(Number) as [number, number];
+    const box = (list: string[], dx: number, dy: number) => {
+      const xy = list.flatMap((q) => q.trim().split(/\s+/).map((v) => v.split(',').map(Number) as [number, number]));
+      return [Math.min(...xy.map((v) => v[0])) + dx, Math.min(...xy.map((v) => v[1])) + dy, Math.max(...xy.map((v) => v[0])) + dx, Math.max(...xy.map((v) => v[1])) + dy];
+    };
+    expect(inHost.length).toBeGreaterThan(0);
+    const mine = box(polys(alone), tx, ty);
+    box(inHost, 0, 0).forEach((v, i) => expect(mine[i]).toBeCloseTo(v, 0));
+    // Et ce n'est pas la même place que sous la caméra de face.
+    const face = draw(<svg><CarriedItem3D host="desk" angle={0} rect={{ x: 0, y: 0, w: drawSize('desk', 0).w * CELL_W, h: drawSize('desk', 0).h * CELL_H }} placement={pl} palette={palette} /></svg>);
+    expect(face.querySelector('[data-item3d]')!.getAttribute('transform')).not.toBe(g.getAttribute('transform'));
   });
 });
