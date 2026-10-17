@@ -3,7 +3,6 @@
 // On y glisse les objets posés au cm (use-top-drag) ; l'ordinateur reste fixé à son bureau.
 import { useEffect, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
 import type { ArrangeFrame } from '../../core/library/arrange';
-import { topToScreen } from '../../core/library/arrange';
 import { carriedPlacementOf, hostNativePx } from '../../core/library/carried-items';
 import { drawSize } from '../../core/library/footprint';
 import { CELL_H, CELL_W, PLUNGE_CAMERA } from '../../core/library/furniture-render3d';
@@ -17,7 +16,7 @@ import { computerTopRect, topSize, type TopRect, type TopThing } from '../../cor
 import { isTableClock, tableFaceContent, useDecoScene } from '../deco-live';
 import { CarriedItem3D, Model3DArt, type ItemContent } from '../model3d-art';
 import type { SceneView } from '../RoomView';
-import { useTopDrag } from './use-top-drag';
+import { topPx, useTopDrag, type TopAxes } from './use-top-drag';
 
 type Props = {
   layout: Layout;
@@ -25,8 +24,9 @@ type Props = {
   hostId: string;
   // Partie 4 : 'add' (carte en attente). Ici, seulement le déplacement.
   mode: 'move';
-  // Rend la promesse de l'écriture (ou rien) : l'objet lâché reste à sa place jusqu'à ce qu'elle aboutisse.
-  onCommit(next: Layout): Promise<unknown> | void;
+  // Intention de déplacement (appliquée par l'appelant à la disposition du moment) ; rend la promesse de l'écriture (ou rien) :
+  // l'objet lâché reste à sa place jusqu'à ce qu'elle aboutisse.
+  onMove(id: string, x: number, z: number): Promise<unknown> | void;
   onClose(): void;
   sceneView?: SceneView;
   // Image de la carte affichée par un écran.
@@ -85,11 +85,17 @@ function topItemsOf(layout: Layout, hostId: string): TopItem[] {
   return out.sort((a, b) => b.rect.z - a.rect.z);
 }
 
-const quad = (f: ArrangeFrame, r: TopRect, dx = 0, dz = 0): string =>
+// Quadrilatère écran d'un rectangle du plateau (projection affine mémorisée du cadre).
+const quad = (a: TopAxes, r: TopRect): string =>
   [[r.x, r.z], [r.x + r.w, r.z], [r.x + r.w, r.z + r.d], [r.x, r.z + r.d]]
-    .map(([x, z]) => topToScreen(f, x! + dx, z! + dz)).map(([x, y]) => `${r1(x)},${r1(y)}`).join(' ');
+    .map(([x, z]) => topPx(a, x!, z!)).map(([x, y]) => `${r1(x)},${r1(y)}`).join(' ');
+// Ombre nette (cellulo) d'un objet posé : son assise (empreinte rentrée de 12 %), décalée d'un demi-centimètre vers la droite et le fond ;
+// elle dépasse à peine sous l'objet.
+const SHADOW_INSET = 0.12;
+const SHADOW_SHIFT_CM = 0.5;
+const shadowRect = (r: TopRect): TopRect => ({ x: r.x + r.w * SHADOW_INSET + SHADOW_SHIFT_CM, z: r.z + r.d * SHADOW_INSET + SHADOW_SHIFT_CM, w: r.w * (1 - 2 * SHADOW_INSET), d: r.d * (1 - 2 * SHADOW_INSET) });
 
-export function ArrangeView({ layout, room, hostId, onCommit, onClose, sceneView, imageOf }: Props): ReactElement | null {
+export function ArrangeView({ layout, room, hostId, onMove, onClose, sceneView, imageOf }: Props): ReactElement | null {
   const [screen, setScreen] = useState(screenSize);
   useEffect(() => {
     const onResize = () => setScreen(screenSize());
@@ -107,8 +113,10 @@ export function ArrangeView({ layout, room, hostId, onCommit, onClose, sceneView
   const layer = layerFrame(screen);
   const fit = useMemo(() => (hostKind ? arrangeFrameFor(hostKind, layer) : null), [hostKind, layer.w, layer.h]); // eslint-disable-line react-hooks/exhaustive-deps
   const frame: ArrangeFrame = useMemo(() => (fit ? { hostKind: fit.hostKind, scale: fit.scale, origin: fit.origin } : { hostKind: 'desk', scale: 1, origin: [0, 0] }), [fit]);
-  const { drag, pending, grab } = useTopDrag({ layout, hostId, frame, rotated: layer.rotated, onCommit });
+  const { drag, pending, axes, grab } = useTopDrag({ layout, hostId, frame, rotated: layer.rotated, onMove });
   const items = useMemo(() => topItemsOf(layout, hostId), [layout, hostId]);
+  // Ombres calculées une fois par (objets, cadre) : la pièce se redessine à chaque mouvement du doigt.
+  const shadows = useMemo(() => items.map((i) => ({ id: i.placed.id, points: quad(axes, shadowRect(i.rect)) })), [items, axes]);
   const decoScene = useDecoScene(sceneView, false, items.some((i) => i.placed.kind === 'small' && isTableClock(i.placed.item)));
   if (!hostKind || !fit) return null;
 
@@ -124,6 +132,8 @@ export function ArrangeView({ layout, room, hostId, onCommit, onClose, sceneView
   const dragged = drag ? items.find((i) => i.placed.id === drag.id) : undefined;
   // Objet déplacé à l'écran : tenu, ou lâché en vert et en attente de la disposition écrite.
   const liftedOf = (id: string): { tx: number; ty: number } | null => (drag?.id === id ? drag : pending.find((w) => w.id === id) ?? null);
+  // Les objets soulevés se dessinent en dernier : un objet du fond amené devant n'est pas caché par ceux de devant.
+  const ordered = [...items.filter((i) => !liftedOf(i.placed.id)), ...items.filter((i) => liftedOf(i.placed.id))];
   const geometry: CSSProperties = layer.rotated
     ? { top: 0, left: screen.w, width: layer.w, height: layer.h, transformOrigin: '0 0', transform: 'rotate(90deg)' }
     : { inset: 0 };
@@ -138,12 +148,12 @@ export function ArrangeView({ layout, room, hostId, onCommit, onClose, sceneView
         <rect data-backdrop="skirt" y={floorY - 4} width={layer.w} height={5} fill={palette.skirt} opacity={0.6} />
         <Model3DArt kind={hostKind} angle={0} rect={fit.rect} palette={palette} steampunk={steampunk} camera={PLUNGE_CAMERA} />
         {/* Ombres nettes des objets sur le plateau (cellulo), puis l'empreinte de l'objet tenu. */}
-        {items.filter((i) => !liftedOf(i.placed.id)).map((i) => <polygon key={`s${i.placed.id}`} data-shadow={i.placed.id} points={quad(frame, i.rect, 1.5, 2)} fill="#10080E" opacity={0.18} pointerEvents="none" />)}
+        {shadows.filter((s) => !liftedOf(s.id)).map((s) => <polygon key={`s${s.id}`} data-shadow={s.id} points={s.points} fill="#10080E" opacity={0.22} pointerEvents="none" />)}
         {drag && dragged && (
-          <polygon data-footprint={drag.id} data-ok={drag.ok ? 'true' : 'false'} points={quad(frame, { ...dragged.rect, x: drag.x, z: drag.z })}
+          <polygon data-footprint={drag.id} data-ok={drag.ok ? 'true' : 'false'} points={quad(axes, { ...dragged.rect, x: drag.x, z: drag.z })}
             fill={drag.ok ? 'rgba(62,155,90,.28)' : 'rgba(200,68,58,.3)'} stroke={drag.ok ? '#3E9B5A' : '#C8443A'} strokeWidth={2.5} strokeDasharray="7 5" pointerEvents="none" />
         )}
-        {items.map((i) => {
+        {ordered.map((i) => {
           const held = drag?.id === i.placed.id;
           const moved = liftedOf(i.placed.id);
           return (

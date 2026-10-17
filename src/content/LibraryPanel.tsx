@@ -113,6 +113,7 @@ import { bookColor } from '../core/library/item-models';
 import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
 import { ArrangeView } from './arrange/ArrangeView';
 import { useArrangeView } from './arrange/use-arrange-view';
+import { moveOnTop } from '../core/library/arrange';
 import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
 import { useOpenedItem } from './opened-item/use-opened-item';
 import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
@@ -1463,7 +1464,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             mode="move"
             sceneView={sceneView}
             imageOf={imageOfCard}
-            onCommit={(next) => editLayout(() => next)}
+            onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
             onClose={arrange.close}
           />
         )}

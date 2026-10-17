@@ -10,6 +10,8 @@ import { topToScreen } from '../../src/core/library/arrange';
 import type { Layout } from '../../src/core/library/library-types';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 import { ArrangeView, arrangeFrameFor } from '../../src/content/arrange/ArrangeView';
+import { moveOnTop } from '../../src/core/library/arrange';
+import { useEffect, useState } from 'react';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -108,6 +110,54 @@ describe('bulle d’un meuble porteur', () => {
   });
 });
 
+describe('ArrangeView sur un vrai dépôt : deux lâchers avant l’écriture', () => {
+  const frame = arrangeFrameFor('desk', { w: 800, h: 400 });
+  const delta = (x0: number, z0: number, x1: number, z1: number): [number, number] => {
+    const a = topToScreen(frame, x0, z0);
+    const b = topToScreen(frame, x1, z1);
+    return [b[0] - a[0], b[1] - a[1]];
+  };
+  const item = (id: string) => q(`[data-arrange-item="${id}"]`) as SVGGElement;
+
+  it('les deux déplacements sont enregistrés et dessinés (aucun ne saute en arrière)', async () => {
+    // Dépôt dont l'écriture attend une porte (fermée après l'amorçage) : les deux lâchers partent avant la première réponse.
+    let release: (() => void) | null = null;
+    let gate: Promise<void> | null = null;
+    const base = createMemoryStore();
+    const slow = { get: base.get, set: async <T,>(k: string, v: T) => { if (gate) await gate; await base.set(k, v); } };
+    const repo = createLibraryRepo(slow);
+    await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => DESK)); });
+    gate = new Promise<void>((resolve) => { release = resolve; });
+    function Host() {
+      const [state, setState] = useState(repo.current()!);
+      useEffect(() => repo.subscribe(() => setState(repo.current()!)), []);
+      return <ArrangeView layout={state.rooms[0]!.layout} room={{ style: 'scandinave' }} hostId="d" mode="move"
+        onMove={(id, x, z) => repo.update((st) => updateLayout(st, 'r1', (l) => moveOnTop(l, id, x, z)))} onClose={() => undefined} />;
+    }
+    act(() => root.render(<Host />));
+    const pointerAt = (type: string, target: EventTarget, x: number, y: number) => pointer(type, target, x, y);
+    const dragTo = async (id: string, [dx, dy]: [number, number]) => {
+      await pointerAt('pointerdown', item(id), 300, 200);
+      await pointerAt('pointermove', window, 300 + dx, 200 + dy);
+      await pointerAt('pointerup', window, 300 + dx, 200 + dy);
+    };
+    await dragTo('a', delta(40, 2, 60, 20));
+    await dragTo('p', delta(100, 2, 100, 30));
+    // Rien n'est encore écrit : les deux objets attendent, dessinés à leur nouvelle place.
+    expect(repo.current()!.rooms[0]!.layout.find((p) => p.id === 'a')).toMatchObject({ x: 40, z: 2 });
+    expect(item('a').style.transform).toContain('translate');
+    expect(item('p').style.transform).toContain('translate');
+    await act(async () => { release!(); });
+    await settle();
+    await settle();
+    const layout = repo.current()!.rooms[0]!.layout;
+    expect(layout.find((p) => p.id === 'a')).toMatchObject({ x: 60, z: 20 });
+    expect(layout.find((p) => p.id === 'p')).toMatchObject({ x: 100, z: 30 });
+    expect(item('a').style.transform).toBe('');
+    expect(item('p').style.transform).toBe('');
+  });
+});
+
 describe('ArrangeView : glissé sur le plateau', () => {
   const frame = arrangeFrameFor('desk', { w: 800, h: 400 });
   // Déplacement écran (px) qui fait passer un coin avant gauche de (x0, z0) à (x1, z1) cm.
@@ -117,7 +167,7 @@ describe('ArrangeView : glissé sur le plateau', () => {
     return [b[0] - a[0], b[1] - a[1]];
   };
   const mount = (layout: Layout = DESK) => {
-    const h = { onCommit: vi.fn(), onClose: vi.fn() };
+    const h = { onMove: vi.fn(), onClose: vi.fn() };
     act(() => root.render(<ArrangeView layout={layout} room={{ style: 'scandinave' }} hostId="d" mode="move" {...h} />));
     return h;
   };
@@ -135,16 +185,15 @@ describe('ArrangeView : glissé sur le plateau', () => {
     expect(q('[data-footprint]')?.getAttribute('data-ok')).toBe('true');
     expect(item('a').style.transform).toContain('translate');
     await pointer('pointerup', window, 0, 0);
-    expect(h.onCommit).toHaveBeenCalledTimes(1);
-    const next = h.onCommit.mock.calls[0]![0] as Layout;
-    expect(next.find((p) => p.id === 'a')).toMatchObject({ x: 60, z: 20 });
+    expect(h.onMove).toHaveBeenCalledTimes(1);
+    expect(h.onMove).toHaveBeenCalledWith('a', 60, 20);
     expect(q('[data-footprint]')).toBeNull();
   });
 
   it('lâché en vert : l’objet reste à sa nouvelle place tant que la disposition écrite n’est pas revenue, puis se pose sans sauter', async () => {
     const h = mount();
     await drag('a', delta(40, 2, 60, 20));
-    expect(h.onCommit).toHaveBeenCalledTimes(1);
+    expect(h.onMove).toHaveBeenCalledTimes(1);
     // Le dépôt n'a pas encore répondu : la translation du lâcher tient toujours, sans empreinte.
     const t = item('a').style.transform;
     expect(t).toContain('translate');
@@ -156,28 +205,28 @@ describe('ArrangeView : glissé sur le plateau', () => {
     expect(item('a').style.transform).toBe(t);
     await pointer('pointerup', window, 400, 200);
     // La disposition écrite arrive : l'objet est dessiné à (60, 20), plus de translation.
-    const next = h.onCommit.mock.calls[0]![0] as Layout;
+    const next = moveOnTop(DESK, 'a', 60, 20)!;
     act(() => root.render(<ArrangeView layout={next} room={{ style: 'scandinave' }} hostId="d" mode="move" {...h} />));
     expect(item('a').style.transform).toBe('');
-    expect(h.onCommit).toHaveBeenCalledTimes(1);
+    expect(h.onMove).toHaveBeenCalledTimes(1);
   });
 
   it('écriture refusée (promesse rejetée) : l’attente tombe, l’objet revient et se ressaisit à son ancienne place', async () => {
-    const h = { onCommit: vi.fn(() => Promise.reject(new Error('refusé'))), onClose: vi.fn() };
+    const h = { onMove: vi.fn(() => Promise.reject(new Error('refusé'))), onClose: vi.fn() };
     act(() => root.render(<ArrangeView layout={DESK} room={{ style: 'scandinave' }} hostId="d" mode="move" {...h} />));
     await drag('a', delta(40, 2, 60, 20));
-    expect(h.onCommit).toHaveBeenCalledTimes(1);
+    expect(h.onMove).toHaveBeenCalledTimes(1);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(item('a').style.transform).toBe('');
     await drag('a', delta(40, 2, 60, 20), false);
     expect(q('[data-footprint]')?.getAttribute('data-ok')).toBe('true');
     expect(item('a').style.transform).toContain('translate');
     await pointer('pointerup', window, 0, 0);
-    expect(h.onCommit).toHaveBeenCalledTimes(2);
+    expect(h.onMove).toHaveBeenCalledTimes(2);
   });
 
   it('écriture sans effet (promesse tenue, disposition inchangée) : l’attente tombe', async () => {
-    const h = { onCommit: vi.fn(() => Promise.resolve()), onClose: vi.fn() };
+    const h = { onMove: vi.fn(() => Promise.resolve()), onClose: vi.fn() };
     act(() => root.render(<ArrangeView layout={DESK} room={{ style: 'scandinave' }} hostId="d" mode="move" {...h} />));
     await drag('a', delta(40, 2, 60, 20));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
@@ -193,7 +242,7 @@ describe('ArrangeView : glissé sur le plateau', () => {
     expect(item('a').style.transform).toBe('');
     // Ressaisi depuis (70, 30) : un glissé de +10 cm vise (80, 30).
     await drag('a', delta(70, 30, 80, 30));
-    expect((h.onCommit.mock.calls[1]![0] as Layout).find((p) => p.id === 'a')).toMatchObject({ x: 80, z: 30 });
+    expect(h.onMove).toHaveBeenLastCalledWith('a', 80, 30);
   });
 
   it('lâcher la plante pendant que le réveil attend ne fait pas revenir le réveil', async () => {
@@ -202,9 +251,37 @@ describe('ArrangeView : glissé sur le plateau', () => {
     const t = item('a').style.transform;
     expect(t).toContain('translate');
     await drag('p', delta(100, 2, 100, 30));
-    expect(h.onCommit).toHaveBeenCalledTimes(2);
+    expect(h.onMove).toHaveBeenCalledTimes(2);
     expect(item('a').style.transform).toBe(t);
     expect(item('p').style.transform).toContain('translate');
+  });
+
+  it('pointercancel ne demande rien : l’objet revient', async () => {
+    const h = mount();
+    await drag('a', delta(40, 2, 60, 20), false);
+    expect(q('[data-footprint]')?.getAttribute('data-ok')).toBe('true');
+    await pointer('pointercancel', window, 0, 0);
+    expect(h.onMove).not.toHaveBeenCalled();
+    expect(item('a').style.transform).toBe('');
+    expect(q('[data-footprint]')).toBeNull();
+  });
+
+  it('un glissé se valide contre les déplacements en attente : la place que le réveil vient de prendre est rouge pour la plante', async () => {
+    mount();
+    await drag('a', delta(40, 2, 60, 20));
+    await drag('p', delta(100, 2, 62, 22), false);
+    expect(q('[data-footprint]')?.getAttribute('data-ok')).toBe('false');
+  });
+
+  it('l’objet soulevé se dessine en dernier', async () => {
+    mount();
+    const order = () => Array.from(container.querySelectorAll('[data-arrange-item]')).map((el) => el.getAttribute('data-arrange-item'));
+    // Au repos : du plus loin (écran) au plus proche ; le réveil (z = 2) n'est pas dernier.
+    expect(order()[0]).toBe('pc');
+    await drag('a', delta(40, 2, 60, 20), false);
+    expect(order()[order().length - 1]).toBe('a');
+    await pointer('pointerup', window, 0, 0);
+    expect(order()[order().length - 1]).toBe('a');
   });
 
   it('un autre doigt ne déplace pas l’objet tenu et ne termine pas le glissé', async () => {
@@ -217,10 +294,10 @@ describe('ArrangeView : glissé sur le plateau', () => {
     await pointer('pointermove', window, 100, 100, 2);
     expect(item('a').style.transform).toBe(t);
     await pointer('pointerup', window, 100, 100, 2);
-    expect(h.onCommit).not.toHaveBeenCalled();
+    expect(h.onMove).not.toHaveBeenCalled();
     expect(q('[data-footprint]')?.getAttribute('data-ok')).toBe('true');
     await pointer('pointerup', window, 300 + dx, 200 + dy);
-    expect(h.onCommit).toHaveBeenCalledTimes(1);
+    expect(h.onMove).toHaveBeenCalledTimes(1);
   });
 
   it('au-dessus de la lampe : empreinte rouge ; lâcher : rien n’est enregistré, l’objet revient', async () => {
@@ -228,7 +305,7 @@ describe('ArrangeView : glissé sur le plateau', () => {
     await drag('a', delta(40, 2, 2, 2), false);
     expect(q('[data-footprint]')?.getAttribute('data-ok')).toBe('false');
     await pointer('pointerup', window, 0, 0);
-    expect(h.onCommit).not.toHaveBeenCalled();
+    expect(h.onMove).not.toHaveBeenCalled();
     expect(item('a').style.transform).toBe('');
     expect(q('[data-footprint]')).toBeNull();
   });
@@ -246,7 +323,7 @@ describe('ArrangeView : glissé sur le plateau', () => {
     expect(q('[data-footprint]')).toBeNull();
     expect(item('a').style.transform).toBe('');
     await pointer('pointerup', window, 302, 201);
-    expect(h.onCommit).not.toHaveBeenCalled();
+    expect(h.onMove).not.toHaveBeenCalled();
   });
 
   it('l’ordinateur ne se saisit pas', async () => {
@@ -255,7 +332,7 @@ describe('ArrangeView : glissé sur le plateau', () => {
     expect(q('[data-footprint]')).toBeNull();
     expect(item('pc').style.transform).toBe('');
     await pointer('pointerup', window, 0, 0);
-    expect(h.onCommit).not.toHaveBeenCalled();
+    expect(h.onMove).not.toHaveBeenCalled();
   });
 
   it('✓ ferme la vue', () => {

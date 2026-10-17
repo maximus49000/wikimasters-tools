@@ -2203,6 +2203,7 @@ export const ENTRIES: Entry[] = [
         text: 'Un doigt sur un objet le saisit tout de suite ; il suit le doigt et son empreinte au sol s’affiche : verte si la place est libre, rouge s’il chevauche un autre objet ou dépasse du plateau. Lâché en vert, il reste là et la pièce le montre aussitôt ; lâché en rouge, il revient à sa place.',
         details: [
           { label: 'À quoi ça sert', text: 'À poser chaque objet exactement où on le veut, et à voir avant de lâcher si la place est bonne.' },
+          { label: 'D’où viennent les données', text: 'La place de chaque objet est enregistrée dans votre pièce, sur l’appareil ; les tailles des objets viennent de leurs modèles en trois dimensions.' },
           { label: 'Comment ça marche', text: 'La position est arrondie au centimètre dans le repère du plateau. L’ordinateur reste fixé à son bureau : il ne se saisit pas, mais il compte pour les chevauchements. Un toucher sans glisser ne fait rien. Chaque glissé réussi est enregistré tout de suite.' },
           { label: 'Limites', text: 'Les tablettes de l’étagère et l’ajout d’une carte à l’endroit exact viennent ensuite. Les objets restent de face, sans rotation ni empilement.' },
         ],
