@@ -254,7 +254,7 @@ export function ArrangeShelf({ layout, room, shelfIds, level, cards = {}, imageO
       </svg>
       {board && (
         <ShelfBoardZoom shelfIds={ids} level={board.level} room={{ style: room.style, layout: preview }} measure={applied} cards={cards} imageOf={imageOf}
-          onCard={NO_IMAGE} onLevel={onLevel} onAbove={() => onLevel('top')} frame={boardRect(board)}
+          onCard={NO_IMAGE} onLevel={onLevel} onAbove={() => onLevel('top')} frame={boardRect(board)} rotated={layer.rotated}
           arrange={{ held: drag?.id ?? null, marker, onGrab: grab }} />
       )}
       {held}

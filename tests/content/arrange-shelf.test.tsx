@@ -87,8 +87,10 @@ const level = () => q('[data-arrange-shelf]')?.getAttribute('data-arrange-level'
 
 describe('✋ sur une étagère (LibraryPanel)', () => {
   let repo: LibraryRepo;
+  let store: ReturnType<typeof createMemoryStore>;
   const seed = async (layout: Layout) => {
-    repo = createLibraryRepo(createMemoryStore());
+    store = createMemoryStore();
+    repo = createLibraryRepo(store);
     await act(async () => { root.render(<LibraryPanel library={repo} />); });
     await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => layout)); });
     await settle();
@@ -140,6 +142,9 @@ describe('✋ sur une étagère (LibraryPanel)', () => {
     await settle();
     await settle();
     expect(repo.current()!.rooms[0]!.layout.find((p) => p.id === 'c1')).toMatchObject({ shelfId: 't', level: 0, order: 1 });
+    // Elle survit à un rechargement : un nouveau dépôt sur le même stockage relit la carte sur l'autre tablette.
+    const reloaded = await createLibraryRepo(store).load();
+    expect(reloaded.rooms[0]!.layout.find((p) => p.id === 'c1')).toMatchObject({ shelfId: 't', level: 0, order: 1 });
   });
 });
 
@@ -183,6 +188,27 @@ describe('niveaux : meuble entier, tablettes, dessus', () => {
     expect(q('[data-arrange-held]')).not.toBeNull();
     await pointer('pointerup', window, 300, 300 - SWIPE_PX);
     expect(s.onLevel).not.toHaveBeenCalled();
+  });
+
+  it('calque tourné (écran en hauteur) : balayer le long de la verticale du calque (axe X) change de tablette, pas le long de l’axe Y', async () => {
+    Object.assign(window, { innerWidth: 400, innerHeight: 800 });
+    const s = mount(SHELVES, 0);
+    const board = q('[data-shelf-board]')!;
+    // Axe Y de l'écran = horizontale du calque : ignoré.
+    await pointer('pointerdown', board, 200, 500);
+    await pointer('pointerup', board, 200, 500 - SWIPE_PX - 20);
+    expect(s.onLevel).not.toHaveBeenCalled();
+    // ly = innerWidth − clientX : X qui croît = ly qui décroît = vers le haut du calque = tablette suivante.
+    await pointer('pointerdown', board, 200, 500);
+    await pointer('pointerup', board, 200 + SWIPE_PX + 20, 500);
+    expect(s.onLevel).toHaveBeenLastCalledWith(1);
+    expect(level()).toBe('1');
+    // X qui décroît = vers le bas du calque = tablette précédente.
+    const next = q('[data-shelf-board]')!;
+    await pointer('pointerdown', next, 200, 500);
+    await pointer('pointerup', next, 200 - SWIPE_PX - 20, 500);
+    expect(s.onLevel).toHaveBeenLastCalledWith(0);
+    expect(level()).toBe('0');
   });
 
   it('toucher une carte sans glisser en zoom ne fait rien pour l’instant', async () => {

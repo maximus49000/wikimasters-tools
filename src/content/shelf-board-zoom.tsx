@@ -27,6 +27,8 @@ export type ShelfBoardProps = {
   onLevel: (level: ShelfLevel) => void;
   // Portrait et deux bibliothèques liées : les deux tablettes l'une au-dessus de l'autre (celle de gauche en haut) au lieu de côte à côte.
   stacked?: boolean;
+  // Calque tourné de 90° (vue Modifier en portrait) : le balayage se lit sur la verticale du calque, soit l'axe X de l'écran.
+  rotated?: boolean;
   // ▲ depuis la tablette 0 (ou balayer vers le bas) : le niveau au-dessus (le dessus de l'étagère, vue Modifier) ; absent : ▲ grisé.
   onAbove?: () => void;
   // Vue Modifier : cadre exact (px du calque) au lieu de la mise en page du zoom, disposition qui donne le recadrage (celle sans le
@@ -101,7 +103,7 @@ export function boardGeometry(layout: Layout, shelfIds: string[], level: ShelfLe
 
 // Second zoom : une tablette (de une ou deux bibliothèques liées, à la suite ou empilées), cartes au plus grand avec leur titre, petits
 // objets de tablette à leur place ; ↑ ↓ ou glisser verticalement pour changer de tablette.
-export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, onLevel, stacked = false, onAbove, frame, measure, arrange }: ShelfBoardProps): ReactElement {
+export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, onLevel, stacked = false, onAbove, frame, measure, arrange, rotated = false }: ShelfBoardProps): ReactElement {
   const palette = paletteOf(room.style);
   const n = shelfIds.length;
   const { boxesOf, cropH, cut, rowH, width, height, originOf } = boardGeometry(room.layout, shelfIds, level, stacked, measure);
@@ -118,13 +120,15 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
     if (isShelfLevel(next)) onLevel(next);
     else if (next < 0) onAbove?.();
   };
+  // Calque tourné de 90° (écran en hauteur) : sa verticale est l'axe X de l'écran, inversé (ly = innerWidth − clientX).
+  const vy = (e: ReactPointerEvent): number => (rotated ? -e.clientX : e.clientY);
   const captured = useRef(false);
-  const onPointerDown = (e: ReactPointerEvent): void => { startY.current = e.clientY; swiped.current = false; captured.current = false; };
+  const onPointerDown = (e: ReactPointerEvent): void => { startY.current = vy(e); swiped.current = false; captured.current = false; };
   // Un glissement qui finit hors de la tablette compte quand même : le doigt est capturé dès qu'il bouge (pas au simple toucher,
   // sinon le clic serait adressé à la tablette entière et non à la carte touchée).
   const onPointerMove = (e: ReactPointerEvent): void => {
     const s = startY.current;
-    if (s === null || captured.current || Math.abs(e.clientY - s) < 8) return;
+    if (s === null || captured.current || Math.abs(vy(e) - s) < 8) return;
     captured.current = true;
     const el = e.currentTarget as Element;
     try {
@@ -135,7 +139,7 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
     const s = startY.current;
     startY.current = null;
     if (s === null) return;
-    const dy = e.clientY - s;
+    const dy = vy(e) - s;
     if (Math.abs(dy) < SWIPE_PX) return;
     swiped.current = true;
     go(dy < 0 ? 1 : -1);
