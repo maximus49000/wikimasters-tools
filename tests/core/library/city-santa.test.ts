@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DARK } from '../../../src/core/library/city/events';
-import { SANTA_DARK, SANTA_PERIOD_S, SANTA_WINDOW_S, chimneyHole, landDx, roofSlope, roofSurface, santaHillPoseAt, santaHillRoof, santaHillScale, santaHillStepAt, santaHillWindow, santaOn, santaPassFor, santaPoseAt, santaRoof, santaWindowsIn, visibleHillHouses } from '../../../src/core/library/city/santa';
+import { SANTA_DARK, SANTA_PERIOD_S, SANTA_WINDOW_S, chimneyHole, landDx, roofSlope, roofSurface, santaHillPoseAt, santaHillRoof, santaHillScale, santaHillStepAt, santaHillWindow, santaOn, santaPassFor, santaPoseAt, santaRoof, santaWindowsIn, santaHillSackGround, visibleHillHouses } from '../../../src/core/library/city/santa';
 import { WORLD_MARGIN } from '../../../src/core/library/scene-world';
 
 const SEED = 4242;
@@ -135,6 +135,46 @@ describe('père Noël sur la colline (Ghibli)', () => {
   });
   const r = { cx: 300, y: 120, w: 40, rh: 9.6, kind: 'gable', chimney: 0.7, s: 0.76, haze: 0.14 } as const;
   const deliver = (dir: 1 | -1) => { for (let n = 0; ; n++) { const p = santaPassFor(n, SEED); if (p.deliver && p.dir === dir) return p; } };
+  it('atterrissage et décollage continus : pas de saut de position ni d’inclinaison à 23,5 % ni à 75 %, montée le long du versant', () => {
+    for (const dir of [1, -1] as const) {
+      const pass = deliver(dir);
+      const at = (p: number) => santaHillPoseAt(pass, r, pass.start + p * SANTA_WINDOW_S, 800, 400)!;
+      const K = santaHillScale(r);
+      // Fin d'approche = début de glissade : même point (6 unités avant la place), même inclinaison.
+      const a = at(0.235 - 1e-6);
+      const b = at(0.235);
+      expect(Math.hypot(a.u - b.u, a.y - b.y)).toBeLessThan(0.05);
+      expect(Math.abs(a.tilt - b.tilt)).toBeLessThan(0.01);
+      expect(b.u).toBeCloseTo(landDx(r) - 6 * K, 1);
+      // Fin de glissade = posé : inclinaison raccordée à la pente.
+      expect(Math.abs(at(0.25 - 1e-6).tilt - at(0.25).tilt)).toBeLessThan(0.01);
+      expect(Math.abs(at(0.25 - 1e-6).u - at(0.25).u)).toBeLessThan(0.05);
+      // Décollage : part de sa place avec la pente, puis les patins suivent le versant jusqu'au faîte, jamais dedans.
+      const c = at(0.75 - 1e-6);
+      const d = at(0.75);
+      expect(Math.hypot(c.u - d.u, c.y - d.y)).toBeLessThan(0.05);
+      expect(Math.abs(c.tilt - d.tilt)).toBeLessThan(0.01);
+      let prev = d;
+      for (let p = 0.75; p < 1; p += 0.0005) {
+        const s = at(p);
+        if (s.u <= 0) {
+          expect(s.y).toBeCloseTo(roofSurface(r, r.cx + s.u) - r.y, 1);
+          expect(s.tilt).toBeLessThanOrEqual(0);
+          expect(s.tilt).toBeGreaterThanOrEqual(d.tilt - 1e-9);
+        }
+        expect(Math.abs(s.tilt - prev.tilt)).toBeLessThan(0.05);
+        expect(Math.hypot(s.u - prev.u, s.y - prev.y)).toBeLessThan(6);
+        prev = s;
+      }
+    }
+  });
+  it('la hotte posée garde le même point pendant toute la visite (script et aide du calque)', () => {
+    const pass = deliver(1);
+    const g = santaHillSackGround(pass, r);
+    expect(santaHillStepAt(pass, r, pass.start + 0.38 * SANTA_WINDOW_S)!.sack).toEqual(g);
+    expect(santaHillStepAt(pass, r, pass.start + 0.62 * SANTA_WINDOW_S)!.sack).toEqual(g);
+    expect(g.y).toBeGreaterThan(-20);
+  });
   it('livraison : arrive du bord, glisse sur le versant d’arrivée, se pose incliné comme la pente, repart', () => {
     for (const dir of [1, -1] as const) {
       const pass = deliver(dir);

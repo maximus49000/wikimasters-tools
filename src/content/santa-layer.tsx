@@ -2,7 +2,7 @@ import { useContext, useId, useMemo, useRef, useState, type ReactElement } from 
 import type { Facade } from '../core/library/city/facades';
 import type { Outfit } from '../core/library/city/people';
 import {
-  SANTA_FAR_HAZE, SANTA_PERIOD_S, SANTA_WINDOW_S, landDx, roofSurface, santaHillPoseAt, santaHillRoof, santaHillScale, santaHillStepAt, santaHillWindow, santaOn, santaPassFor, santaPoseAt, santaRoof, santaStepAt,
+  SANTA_FAR_HAZE, SANTA_PERIOD_S, SANTA_WINDOW_S, landDx, roofSurface, santaHillPoseAt, santaHillRoof, santaHillSackGround, santaHillScale, santaHillStepAt, santaHillWindow, santaOn, santaPassFor, santaPoseAt, santaRoof, santaStepAt,
   visibleHillHouses, type SantaHillRoof, type SantaHillStep, type SantaPose, type SantaStep,
 } from '../core/library/city/santa';
 import { anchorsOf, type FigureKey } from '../core/library/figure/bake';
@@ -12,7 +12,7 @@ import type { Sky } from '../core/library/sky';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 import { collectCycles, placeCycles, PropContext, type CycledNode } from './prop/prop-host';
-import { ClassicSantaWalker, GhibliHarness, GhibliReindeer, GhibliSack, GhibliSleighBody, GhibliTrail, HARNESS_FLIGHT, SantaSprite, TEAM_FLIGHT, TEAM_LANDED } from './santa-sprite';
+import { ClassicSantaWalker, GhibliHarness, GhibliReindeer, GhibliSack, GhibliSleighBody, GhibliTrail, HARNESS_FLIGHT, SantaSprite, TEAM_FLIGHT, TEAM_LANDED, ghibliTone } from './santa-sprite';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Ghibli (G5) : vrai pantin du père Noël (tenue `santa` du moteur : barbe, fourrure, ceinture, bottes, gants ; le bonnet rouge
@@ -110,6 +110,13 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
   const state = useRef({ pass, roof, hill });
   state.current = { pass, roof, hill };
 
+  // Hotte posée sur le toit (point relatif au traîneau) ou cachée.
+  const placeGroundSack = (at: { x: number; y: number } | null, k: number): void => {
+    const sg = sackGround.current;
+    if (!sg) return;
+    sg.setAttribute('display', at ? 'inline' : 'none');
+    if (at) sg.setAttribute('transform', `translate(${at.x.toFixed(2)} ${at.y.toFixed(2)}) scale(${(k * 1.3).toFixed(3)})`);
+  };
   // Pantin Ghibli : transform, pose, hotte à la nuque (derrière le corps, devant quand il est vu de dos), hotte posée, rognage.
   const placeWalker = (f: FigStep, dir: 1 | -1): void => {
     const w = walker.current;
@@ -123,12 +130,7 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
       node.setAttribute('display', show ? 'inline' : 'none');
       if (show) node.setAttribute('transform', tr);
     }
-    const sg = sackGround.current;
-    if (sg) {
-      const posed = typeof f.sack === 'object' && f.sack !== null ? f.sack : null;
-      sg.setAttribute('display', posed ? 'inline' : 'none');
-      if (posed) sg.setAttribute('transform', `translate(${posed.x.toFixed(2)} ${posed.y.toFixed(2)}) scale(${(f.k * 1.3).toFixed(3)})`);
-    }
+    placeGroundSack(typeof f.sack === 'object' && f.sack !== null ? f.sack : null, f.k);
     const c = clipEl.current;
     if (c && clipShown.current !== f.clip) {
       clipShown.current = f.clip;
@@ -167,6 +169,8 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
         frost.current?.setAttribute('opacity', pose.slide > 0 && pose.slide < 1.6 ? (0.7 * (1 - pose.slide / 1.6)).toFixed(2) : '0');
         const step = santaHillStepAt(cur.pass, h, still ? seatT : t);
         if (step) placeWalker(hillFigStep(step, cur.pass.dir, santaHillScale(h), still), cur.pass.dir);
+        // Dans la maison : la hotte reste posée sur le toit.
+        else if (pose.santa === 'hidden') placeGroundSack(santaHillSackGround(cur.pass, h), santaHillScale(h));
         next = { santa: pose.santa, lit: pose.windowLit, landed: pose.landed };
       } else {
         // Mouvement réduit : le traîneau posé sur son toit (classique), ou rien.
@@ -197,7 +201,6 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
       }
       setView((v) => (v.santa === next.santa && v.lit === next.lit && v.landed === next.landed ? v : { ...v, ...next }));
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [on, still, frozenT, width, height, ghibli, figures, props],
   );
   useWallClockLoop(place, [place, pass, roof, hill]);
@@ -250,7 +253,7 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
           <g ref={sackBack} data-santa-sack-nape="back" display={onShoulder && sackBehindBody(fs.pose.yaw) ? 'inline' : 'none'} transform={sackTr}>
             <GhibliSack g={gb} mirror={false} />
           </g>
-          <GhibliFigure outfit={SANTA_OUTFIT} sky={sky} rainy={false} umbrella={false} santa initial={fs.pose} />
+          <GhibliFigure outfit={SANTA_OUTFIT} sky={sky} rainy={false} umbrella={false} santa haze={gb.far} initial={fs.pose} />
           <g ref={sackFront} data-santa-sack-nape="front" display={onShoulder && !sackBehindBody(fs.pose.yaw) ? 'inline' : 'none'} transform={sackTr}>
             <GhibliSack g={gb} mirror={false} />
           </g>
@@ -266,11 +269,12 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
   const team = spots.map((s, i) => ({ lead: s.lead, x: s.x * k, y: view.landed ? surfRel(s.x * k) - 2.6 * k + (i < 2 ? -1.2 * k : 0) : s.y * k, phase: view.landed ? i * 0.37 : i * 0.2 }));
   const harnessX = hill ? [50, 40] : HARNESS_FLIGHT.map((e) => e[0]);
   const harness = harnessX.map((x1, i) => [x1 * k, view.landed ? surfRel(x1 * k) + (i === 0 ? -7 : -4) * k * 0.3 : (i === 0 ? -7 : -4) * k] as const);
-  const posed = typeof fs.sack === 'object' && fs.sack !== null ? fs.sack : null;
+  // Hotte posée : pendant qu'il enjambe la cheminée (script) et tant qu'il est dans la maison.
+  const posed = typeof fs.sack === 'object' && fs.sack !== null ? fs.sack : hill && view.santa === 'hidden' ? santaHillSackGround(pass, hill) : null;
   const train = (
     <g ref={g} display="none">
       {!view.landed && <GhibliTrail k={k} g={gb} />}
-      <GhibliHarness k={k} ends={harness} />
+      <GhibliHarness k={k} ends={harness} g={gb} />
       {/* Sur la colline (toits étroits), le père Noël passe DERRIÈRE l'attelage pour gagner la cheminée de l'autre versant. */}
       {hill && figure}
       {team.map((r, i) => (
@@ -288,7 +292,7 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
           {/* Gerbe de givre derrière les patins pendant la glissade (opacité posée par la boucle). */}
           <g ref={frost} data-santa-frost="" opacity={0}>
             {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-              <circle key={i} cx={-20 * k - i * 1.6} cy={-1 - i * 0.8 - Math.abs(Math.sin(i * 2.1)) * 1.5} r={(0.8 + i * 0.2) * k * 2.4} fill="#FFFFFF" />
+              <circle key={i} cx={-20 * k - i * 1.6} cy={-1 - i * 0.8 - Math.abs(Math.sin(i * 2.1)) * 1.5} r={(0.8 + i * 0.2) * k * 2.4} fill={ghibliTone('#FFFFFF', gb)} />
             ))}
           </g>
         </>
@@ -303,8 +307,10 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
       <defs>
         <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={width} height={height}>
           <rect x={0} y={0} width={width} height={height} fill="#fff" />
+          {/* Silhouettes avec ce que le peintre fait dépasser : antenne (8 px au-dessus du toit), débord des pignons et du
+              mur du fond (2 px de chaque côté). */}
           {facades.map((b, i) => (
-            <rect key={i} x={b.x} y={ground - b.h} width={b.w} height={b.h + 4} fill="#000" />
+            <rect key={i} x={b.x - 2} y={ground - b.h - 9} width={b.w + 4} height={b.h + 13} fill="#000" />
           ))}
         </mask>
       </defs>

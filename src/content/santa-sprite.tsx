@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { REINDEER_CYCLE_S, REINDEER_IDLE_S, TRAIL_CYCLE_S } from '../core/library/paint/props/santa';
 import type { SantaPose } from '../core/library/city/santa';
-import type { Sky } from '../core/library/sky';
+import { mixHex, type Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
 import { CycledProp, PropImage, PropInMirror, type PropSpec } from './prop/prop-host';
 
@@ -119,7 +119,7 @@ export function ClassicSantaWalker({ sky }: { sky: Sky }): ReactElement {
 // avec le sens du traîneau (`scale(dir 1)`) : chaque image est cuite dans le sens `dir` (lumière juste) et annule ce miroir
 // autour d'elle (PropInMirror) ; jamais d'image retournée. Tant qu'une image n'est pas cuite, le dessin classique correspondant
 // reste affiché (sans animation SMIL : poses fixes). `far` : teinte lointaine du groupe posé sur la colline.
-type GhibliBase = { sky: Sky; dir: 1 | -1; still: boolean; far?: number };
+export type GhibliBase = { sky: Sky; dir: 1 | -1; still: boolean; far?: number };
 const specOf = (id: string, g: GhibliBase, args: Record<string, string | number | boolean> = {}): Omit<PropSpec, 'frame'> => ({
   id,
   args: g.far ? { ...args, far: g.far } : args,
@@ -199,13 +199,14 @@ export function GhibliSack({ g, mirror }: { g: GhibliBase; mirror: boolean }): R
 }
 
 // Traits de harnais rouges cernés d'encre, du devant de la caisse (8, −7) / (8, −4) aux bouts `ends` (px, repère du traîneau).
-export function GhibliHarness({ k, ends }: { k: number; ends: readonly (readonly [number, number])[] }): ReactElement {
+// Couleurs teintes par la lumière du moment et, pour le groupe lointain, mélangées au bleu de brume (comme les images `far`).
+export const ghibliTone = (c: string, g: GhibliBase): string => tone(g.far ? mixHex(c, '#9CC0E4', g.far) : c, g.sky);
+export function GhibliHarness({ k, ends, g }: { k: number; ends: readonly (readonly [number, number])[]; g: GhibliBase }): ReactElement {
   const d = ends.map(([x1, y1], i) => `M${(8 * k).toFixed(2)} ${((i === 0 ? -7 : -4) * k).toFixed(2)} L${x1.toFixed(2)} ${y1.toFixed(2)}`).join(' ');
   return (
     <g data-santa-harness="">
-      <path d={d} stroke={INK_HARNESS} strokeWidth={1.1 * k} fill="none" />
-      <path d={d} stroke="#A02030" strokeWidth={0.6 * k} fill="none" />
+      <path d={d} stroke={ghibliTone('#2A1A18', g)} strokeWidth={1.1 * k} fill="none" />
+      <path d={d} stroke={ghibliTone('#A02030', g)} strokeWidth={0.6 * k} fill="none" />
     </g>
   );
 }
-const INK_HARNESS = '#2A1A18';

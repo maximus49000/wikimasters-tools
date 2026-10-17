@@ -276,21 +276,46 @@ export function santaHillPoseAt(pass: SantaPass, r: SantaHillRoof, t: number, wi
   const landY = surfLocal(r, landU);
   const slope = slopeLocal(r, landU);
   const posed = (santa: SantaPose['santa'], windowLit = false): SantaHillPose => ({ u: landU, y: landY, dir, landed: true, santa, windowLit, tilt: slope, slide: 0 });
+  // Approche : toute la courbe tient dans 0–23,5 % (les patins touchent au début de la glissade, sans saut) ; inclinaison
+  // −0,08 → APPROACH_TILT, raccordée à la pente pendant la glissade.
   if (p < 0.235) {
-    const e = ease(p / 0.25);
-    return { u: lerp(entry, landU - 6 * K, e), y: lerp(sky, landY, e) - Math.sin(e * Math.PI) * 8 * K, dir, landed: false, santa: 'aboard', windowLit: false, tilt: -0.08 + 0.2 * e, slide: 0 };
+    const e = ease(p / 0.235);
+    return { u: lerp(entry, landU - 6 * K, e), y: lerp(sky, landY, e) - Math.sin(e * Math.PI) * 8 * K, dir, landed: false, santa: 'aboard', windowLit: false, tilt: -0.08 + (APPROACH_TILT + 0.08) * e, slide: 0 };
   }
   if (p < 0.25) {
     const k = (p - 0.235) / 0.015;
-    return { ...posed('aboard'), u: lerp(landU - 6 * K, landU, ease(k)), slide: k };
+    return { ...posed('aboard'), u: lerp(landU - 6 * K, landU, ease(k)), tilt: lerp(APPROACH_TILT, slope, ease(k)), slide: k };
   }
   if (p < 0.3) return posed('aboard');
   if (p < 0.4) return posed('walking');
   if (p < 0.6) return posed('hidden', true);
   if (p < 0.7) return posed('walking');
   if (p < 0.75) return posed('aboard');
+  // Départ : les patins suivent le versant jusqu'au faîte (u = 0), puis montée vers la sortie ; l'inclinaison passe de la
+  // pente à TAKEOFF_TILT sur les premiers 15 % du trajet après le faîte.
   const e = ease((p - 0.75) / 0.25);
-  return { u: lerp(landU, exit, e), y: lerp(landY, sky - 10, e) - Math.sin(e * Math.PI) * 6 * K, dir, landed: false, santa: 'aboard', windowLit: false, tilt: 0.1, slide: 0 };
+  const u = lerp(landU, exit, e);
+  // Sur le versant, l'inclinaison se redresse progressivement de la pente à 0 (horizontal au faîte), sans le coup de bascule
+  // du changement de versant.
+  if (u <= 0) return { u, y: surfLocal(r, u), dir, landed: false, santa: 'aboard', windowLit: false, tilt: slope * (landU < 0 ? Math.max(0, u / landU) : 0), slide: 0 };
+  const g = u / exit;
+  const ridge = surfLocal(r, 0);
+  return { u, y: lerp(ridge, sky - 10, g) - Math.sin(g * Math.PI) * 6 * K, dir, landed: false, santa: 'aboard', windowLit: false, tilt: TAKEOFF_TILT * Math.min(1, g / 0.15), slide: 0 };
+}
+const APPROACH_TILT = 0.12;
+const TAKEOFF_TILT = 0.1;
+
+// Point relatif (au contact du traîneau) où la hotte est posée sur le toit, de l'autre côté de la cheminée : visible tant
+// que le père Noël est dans la maison.
+export function santaHillSackGround(pass: SantaPass, r: SantaHillRoof): Pt {
+  const K = santaHillScale(r);
+  const landU = landDx(r);
+  const landY = surfLocal(r, landU);
+  const hole = chimneyHole(r);
+  const holeX = pass.dir * (hole.x - r.cx) - landU;
+  const sign = holeX > BEHIND_U * K ? 1 : -1;
+  const x = holeX + sign * 9 * K;
+  return { x, y: surfLocal(r, landU + x) - landY + 1 };
 }
 
 // Pas du père Noël sur la maison (repère local, RELATIF au point de contact du traîneau, en px) : assis les rênes en main
@@ -335,7 +360,7 @@ export function santaHillStepAt(pass: SantaPass, r: SantaHillRoof, t: number): S
   const standX = holeP.x - sign * GAP_U * K;
   const stand: Pt = { x: standX, y: surf(standX) };
   const sunk: Pt = { x: holeP.x, y: holeP.y + SUNK_U * K };
-  const ground = { x: holeP.x + sign * 9 * K, y: surf(holeP.x + sign * 9 * K) + 1 };
+  const ground = santaHillSackGround(pass, r);
   const go = sign > 0 ? 0 : 8;
   const out = p < 0.5;
   // Temps dans la tranche à pied ; au retour, le même chemin lu à l'envers.

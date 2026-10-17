@@ -7,7 +7,7 @@ import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-h
 import { SANTA_K, SANTA_OUTFIT, SantaLayer } from '../../src/content/santa-layer';
 import { cityFacades } from '../../src/core/library/city/facades';
 import { cityMetrics } from '../../src/core/library/city/metrics';
-import { SANTA_SEAT, SANTA_SUNK, SANTA_WINDOW_S, landDx, roofSurface, santaHillRoof, santaHillScale, santaHillStepAt, santaHillWindow, santaPassFor, santaRoof, santaStepAt, visibleHillHouses } from '../../src/core/library/city/santa';
+import { SANTA_SEAT, SANTA_SUNK, SANTA_WINDOW_S, landDx, roofSurface, santaHillRoof, santaHillSackGround, santaHillScale, santaHillStepAt, santaHillWindow, santaPassFor, santaRoof, santaStepAt, visibleHillHouses } from '../../src/core/library/city/santa';
 import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
 import { REINDEER_CYCLE_S, REINDEER_IDLE_S, TRAIL_CYCLE_S } from '../../src/core/library/paint/props/santa';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
@@ -142,18 +142,22 @@ describe('toits ordinaires', () => {
 
 // Ghibli (G5) : la livraison se fait sur une maison de la colline peinte (santaHillRoof), le passage simple dans le ciel.
 const houses = visibleHillHouses(cityPaintPlan(W, H, SEED).hill.houses, facades, ground);
+// Première tranche (bornée : 400 quarts d'heure) qui livre sur une maison, et première qui ne livre pas.
+const MAX_TRANCHES = 400;
 const hillFound = ((): { pass: ReturnType<typeof santaPassFor>; hill: NonNullable<ReturnType<typeof santaHillRoof>> } => {
-  for (let n = Math.floor(T0); ; n++) {
+  for (let n = Math.floor(T0); n < Math.floor(T0) + MAX_TRANCHES; n++) {
     const pass = santaPassFor(n, SEED);
     const hill = pass.deliver ? santaHillRoof(pass, houses, 0, W) : null;
     if (hill) return { pass, hill };
   }
+  throw new Error(`aucune livraison sur la colline en ${MAX_TRANCHES} tranches (graine ${SEED}, ${houses.length} maisons visibles)`);
 })();
 const simplePass = ((): ReturnType<typeof santaPassFor> => {
-  for (let n = Math.floor(T0); ; n++) {
+  for (let n = Math.floor(T0); n < Math.floor(T0) + MAX_TRANCHES; n++) {
     const pass = santaPassFor(n, SEED);
     if (!pass.deliver) return pass;
   }
+  throw new Error(`aucun passage simple en ${MAX_TRANCHES} tranches`);
 })();
 const hAt = (p: number): number => hillFound.pass.start + p * SANTA_WINDOW_S;
 const displayed = (n: Element | null): boolean => n !== null && n.getAttribute('display') !== 'none';
@@ -217,8 +221,13 @@ describe('père Noël Ghibli', () => {
     expect(step.gait).toBe('walk');
     expect(keyParts(walk.querySelector('[data-figure]')!)[2]).toBe('walk');
     expect(keyParts(walk.querySelector('[data-figure]')!)[5]).toBe('phone');
-    // Penché vers l'amont (sauf sur la partie plate d'une croupe ou d'une mansarde).
-    if (step.slope !== 0) expect(walk.getAttribute('transform')).toContain('rotate(');
+    // Penché vers l'amont : au début de la marche (pied du traîneau), il est sur le versant quel que soit le toit.
+    const t1 = hAt(0.3) + 1.25;
+    const onSlope = santaHillStepAt(hp, hill, t1)!;
+    expect(onSlope.gait).toBe('walk');
+    expect(onSlope.slope).toBeLessThan(0);
+    const leaning = mount(t1, true).querySelector('[data-santa-figure]')!.getAttribute('transform')!;
+    expect(leaning).toContain(`rotate(${(-0.45 * onSlope.slope * (180 / Math.PI)).toFixed(2)})`);
     expect(translateOf(walk)[0]).toBeCloseTo(step.x, 1);
     expect(displayed(walk.querySelector('[data-santa-sack-nape="back"]'))).toBe(true);
     // Pose la hotte : elle est au sol, plus à la nuque.
@@ -234,9 +243,47 @@ describe('père Noël Ghibli', () => {
     expect(clip.getAttribute('viewBox')!.split(' ').map(Number)).toEqual(['x', 'y', 'width', 'height'].map((k) => Number(clip.getAttribute(k))));
     // Caché : aucun personnage, fenêtre de la maison allumée.
     const hidden = mount(hAt(0.5), true);
+    // La hotte reste posée sur le toit pendant qu'il est dans la maison.
+    const ground = santaHillSackGround(hp, hill);
+    const sg = hidden.querySelector('[data-santa-sack-ground]')!;
+    expect(displayed(sg)).toBe(true);
+    expect(translateOf(sg)[0]).toBeCloseTo(ground.x, 1);
     expect(hidden.querySelector('[data-santa-figure]')).toBeNull();
     const win = hidden.querySelector('[data-santa-window]')!;
     expect(Number(win.getAttribute('data-x'))).toBeCloseTo(santaHillWindow(hill).x);
+  });
+  it('brume et teinte de nuit du groupe posé : palette du pantin différente de celle du passage simple, harnais et givre teints', () => {
+    const far = mount(hAt(0.27), true);
+    const near = mount(simplePass.start + 10, true);
+    expect(far.querySelector('[data-figure]')!.getAttribute('data-palette')).not.toBe(near.querySelector('[data-figure]')!.getAttribute('data-palette'));
+    const strokes = [...far.querySelectorAll('[data-santa-harness] path')].map((p) => p.getAttribute('stroke'));
+    expect(strokes).not.toContain('#A02030');
+    expect(strokes).not.toContain('#2A1A18');
+    expect(far.querySelector('[data-santa-frost] circle')!.getAttribute('fill')).not.toBe('#FFFFFF');
+    // Le masque couvre l'antenne (8 px) et le débord des pignons (2 px).
+    const r = far.querySelector('mask rect:nth-of-type(2)')!;
+    expect(Number(r.getAttribute('x'))).toBeCloseTo(facades[0]!.x - 2);
+    expect(Number(r.getAttribute('y'))).toBeCloseTo(ground - facades[0]!.h - 9);
+  });
+  it('livraison sans maison visible : retombe en passage simple dans le ciel', () => {
+    const { pass: hp } = hillFound;
+    vi.spyOn(Date, 'now').mockReturnValue(hAt(0.5) * 1000);
+    // Une façade qui couvre toute la scène : aucune maison de la colline n'est visible.
+    const wall = [{ ...facades[0]!, x: 0, w: W, h: H }];
+    const c = render(
+      <FigureContext.Provider value={new FigureRegistry('t9w', { perFrame: 200 })}>
+        <svg>
+          <SantaLayer width={W} height={H} seed={SEED} sky={night} facades={wall} ground={ground} fests={['christmas-eve']} daylight={0} still={false} frozenT={hAt(0.5)} ghibli />
+        </svg>
+      </FigureContext.Provider>,
+    );
+    expect(c.querySelector('[data-santa-hill]')).toBeNull();
+    expect(c.querySelector('[data-santa-window]')).toBeNull();
+    const train = c.querySelector<SVGGElement>('[data-santa] > g')!;
+    expect(train.getAttribute('display')).toBe('inline');
+    expect(train.getAttribute('transform')).toContain(`scale(${hp.dir} 1)`);
+    expect(c.querySelector('[data-santa-trail]')).not.toBeNull();
+    expect(c.querySelector('[data-santa-figure]')!.getAttribute('data-santa-where')).toBe('aboard');
   });
   it('mouvement réduit : le groupe posé, à bord, sans pose cyclique', () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));

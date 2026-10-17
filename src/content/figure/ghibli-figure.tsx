@@ -17,9 +17,11 @@ const shadeOf = (c: string): string => mixHex(mixHex(c, '#4a3a6a', 0.3), '#00000
 // sans palier, toutes les figures changeaient de palette (sprites refaits) à chaque minute.
 const PALETTE_STEPS = 8;
 // `santa` : tenue du père Noël (bottes noires ; les cases de la tenue sont toujours présentes, la clé de palette est complète).
-export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, santa = false): Palette {
+// `haze` (0–1) : pantin lointain, couleurs mélangées au bleu de brume du décor du fond (#9CC0E4) avant la teinte du moment.
+const HAZE = '#9CC0E4';
+export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, santa = false, haze = 0): Palette {
   const lit: Sky = { ...sky, daylight: Math.round(sky.daylight * PALETTE_STEPS) / PALETTE_STEPS };
-  const t = (c: string): string => tone(c, lit);
+  const t = (c: string): string => tone(haze > 0 ? mixHex(c, HAZE, haze) : c, lit);
   // Sous la pluie, les hauts légers deviennent un imperméable (comme PersonSprite).
   const raincoat = rainy && (o.top === 'jacket' || o.top === 'sweater' || o.top === 'tee' || o.top === 'shirt');
   const slots: Record<string, string> = {
@@ -103,6 +105,7 @@ export function GhibliFigure({
   hidden = false,
   work = 'none',
   santa = false,
+  haze = 0,
   held,
 }: {
   outfit: Outfit;
@@ -113,12 +116,13 @@ export function GhibliFigure({
   hidden?: boolean;
   work?: Work;
   santa?: boolean;
+  haze?: number;
   held?: readonly Held[];
 }): ReactElement {
   const reg = useFigureRegistry();
   const ref = useRef<SVGGElement | null>(null);
   const sig = signatureOf(shapeOf(outfit, umbrella, work, santa));
-  const pk = reg.addPalette(figurePalette(outfit, sky, rainy, santa));
+  const pk = reg.addPalette(figurePalette(outfit, sky, rainy, santa, haze));
   const key = keyOf(sig, initial);
   const sk = spriteKey(pk, key);
   let shownKey: string | undefined;
