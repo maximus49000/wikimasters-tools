@@ -111,6 +111,7 @@ import { useFurnitureZoom } from './use-furniture-zoom';
 import { openingOf } from '../core/library/opened-item';
 import { bookColor } from '../core/library/item-models';
 import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
+import { ArrangeView } from './arrange/ArrangeView';
 import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
 import { useOpenedItem } from './opened-item/use-opened-item';
 import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
@@ -306,6 +307,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [following, setFollowing] = useState(false);
   useEffect(() => () => stopFollow.current?.(), []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Vue Modifier (✋) du plateau d'un porteur (bureau, dessus d'étagère) : fermée avec Aménager ou au changement de pièce.
+  const [arrangeHostId, setArrangeHostId] = useState<string | null>(null);
+  const activeRoomId = lib ? activeRoom(lib).id : null;
+  useEffect(() => { if (mode !== 'edit') setArrangeHostId(null); }, [mode]);
+  useEffect(() => { setArrangeHostId(null); }, [activeRoomId]);
   const [blink, setBlink] = useState<Cell[]>([]);
   const [message, setMessage] = useState('');
   // Bulle du plein écran : chaque nouveau message s'y montre un instant ; l'aide du placement une seule fois par placement,
@@ -1304,6 +1310,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => void removeSelected()}>
               <Icon paths={ICONS.trash} />
             </Btn>
+            {selectedItem && (selectedItem.kind === 'desk' || selectedItem.kind === 'shelf') && (
+              <Btn label="Modifier la disposition" data={{ action: 'arrange' }} onClick={() => setArrangeHostId(selectedItem.id)}>✋</Btn>
+            )}
             {selectedItem && isStanding(selectedItem) && (
               <>
                 <Btn label="Tourner à gauche" data={{ action: 'rotate-left' }} onClick={() => rotateSelected(1)}><Icon paths={ICONS.rotateLeft} /></Btn>
@@ -1439,6 +1448,18 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onLevel={(lv) => setZoomLevel(lv)}
             onCard={onZoomCard}
             onBack={zoomBack}
+          />
+        )}
+        {editing && !outside && arrangeHostId && layout.some((p) => p.id === arrangeHostId) && (
+          <ArrangeView
+            layout={layout}
+            room={room}
+            hostId={arrangeHostId}
+            mode="move"
+            sceneView={sceneView}
+            imageOf={imageOfCard}
+            onCommit={(next) => void editLayout(() => next)}
+            onClose={() => setArrangeHostId(null)}
           />
         )}
         {opened && (() => {

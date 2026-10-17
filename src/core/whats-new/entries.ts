@@ -2179,6 +2179,38 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'bibliotheque-v33',
+    theme: 'collection',
+    glyph: '✋',
+    title: 'Modifier la disposition d’un plateau',
+    summary: 'En Aménager, ✋ dans la bulle d’un bureau ou d’une étagère ouvre son plateau en grand : on y glisse lampe, plante, réveil ou chaîne au centimètre',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Ouvrir le plateau',
+        text: 'En Aménager, touchez un bureau ou une étagère : sa bulle d’actions montre un nouveau bouton ✋ « Modifier la disposition ». Il ouvre une vue en grand, de trois quarts au-dessus, du plateau du meuble avec tout ce qui est posé dessus, sur le mur et le sol de votre pièce.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À choisir soi-même où va chaque objet posé sur un meuble, au lieu de la première place libre que l’extension prenait jusqu’ici.' },
+          { label: 'D’où viennent les données', text: 'Les objets et leur place viennent de votre pièce, enregistrée sur l’appareil ; rien n’est envoyé ailleurs. Les meubles et objets sont les mêmes modèles en trois dimensions que dans la pièce, seule la caméra change.' },
+          { label: 'Comment ça marche', text: 'Le bureau (120 × 60 cm) ou le dessus de l’étagère (80 × 30 cm) est montré au plus grand qui tient dans l’écran, en paysage. La pastille ✋ en haut à gauche rappelle le mode, ✓ en haut à droite referme la vue.' },
+          { label: 'Limites', text: 'Les tablettes de l’étagère et l’ajout d’une carte depuis cette vue viennent ensuite. Les objets restent de face : pas de rotation.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Glisser un objet au centimètre',
+        text: 'Un doigt sur un objet le saisit tout de suite ; il suit le doigt et son empreinte au sol s’affiche : verte si la place est libre, rouge s’il chevauche un autre objet ou dépasse du plateau. Lâché en vert, il reste là et la pièce le montre aussitôt ; lâché en rouge, il revient à sa place.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À poser chaque objet exactement où on le veut, et à voir avant de lâcher si la place est bonne.' },
+          { label: 'Comment ça marche', text: 'La position est arrondie au centimètre dans le repère du plateau. L’ordinateur reste fixé à son bureau : il ne se saisit pas, mais il compte pour les chevauchements. Un toucher sans glisser ne fait rien. Chaque glissé réussi est enregistré tout de suite.' },
+          { label: 'Limites', text: 'Les tablettes de l’étagère et l’ajout d’une carte à l’endroit exact viennent ensuite. Les objets restent de face, sans rotation ni empilement.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
     id: 'horloges-meteo-panneaux-2026-10',
     theme: 'collection',
     glyph: '🕰️',
