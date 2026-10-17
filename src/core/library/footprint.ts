@@ -1,6 +1,6 @@
 import type { Poi, PoiType } from './furniture-catalog';
 import { FURNITURE_MODELS } from './furniture-models';
-import { CELL_H, CELL_W, FACE_CAMERA, PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, floorTraceOf, frontFaceOf, levelsOf, localPointOf, occluderBoxesOf, perchOf, poisOf3d, projectOf, renderModel, topCornersOf, type Camera, type LocalBox, type Rendered } from './furniture-render3d';
+import { CELL_H, CELL_W, FACE_CAMERA, cameraKey, PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, floorTraceOf, frontFaceOf, levelsOf, localPointOf, occluderBoxesOf, perchOf, poisOf3d, projectOf, renderModel, topCornersOf, type Camera, type LocalBox, type Rendered } from './furniture-render3d';
 import type { StandingKind } from './library-types';
 import type { Cell, PxRect, Rect } from './room-grid';
 
@@ -13,7 +13,7 @@ export const rotateAngle = (a: Angle, dir: 1 | -1): Angle => (((a + dir) % 8) + 
 // Rendu du modèle 3D tourné, mis en cache par (meuble, angle) : il est demandé à chaque rendu de la pièce et coûte jusqu'à ~2 ms.
 const cache = new Map<string, Rendered>();
 export function renderedOf(kind: StandingKind, angle: Angle, cam: Camera = FACE_CAMERA): Rendered {
-  const key = cam === FACE_CAMERA ? `${kind}:${angle}` : `${kind}:${angle}:${cam.pxPerCmX},${cam.pxPerCmY},${cam.depthPxPerCm}`;
+  const key = `${kind}:${angle}${cameraKey(cam)}`;
   let r = cache.get(key);
   if (!r) {
     r = renderModel(FURNITURE_MODELS[kind], angle, cam);

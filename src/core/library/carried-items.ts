@@ -4,7 +4,7 @@
 // est affine) : sa géométrie est calculée une fois par (forme, présentation, angle), quelle que soit sa place.
 import { drawSize, type Angle } from './footprint';
 import { FURNITURE_MODELS } from './furniture-models';
-import { CELL_H, CELL_W, FACE_CAMERA, levelsOf, localPointOf, pieceBounds, projectOf, type Camera, type V3t } from './furniture-render3d';
+import { CELL_H, CELL_W, FACE_CAMERA, cameraKey, levelsOf, localPointOf, pieceBounds, projectOf, type Camera, type V3t } from './furniture-render3d';
 import { ITEM_MODELS, bookColor, itemModel, itemPieces, storedFrontCorners, type ItemPlacement, type ItemShape } from './item-models';
 import { isOnBoard, type Layout, type Placed, type Posed, type ShelfLevel, type SmallItem } from './library-types';
 import { SHELF_GAP_CM, boardItems, displayOf, storedWidthCm, type HostKind, type PxRect, type Stored } from './room-grid';
@@ -96,8 +96,7 @@ export function carriedPlacementOf(layout: Layout, p: Placed): { hostId: string;
 const affineCache = new Map<string, [number, number][]>();
 // Point du repère du porteur (cm) → px de son dessin à l'échelle 1 (repère du Model3DArt avant mise à l'échelle).
 export function hostNativePx(hostKind: HostKind, angle: Angle, p: V3t, cam: Camera = FACE_CAMERA): [number, number] {
-  // La caméra de face (défaut) garde sa clé d'origine ; une autre caméra a ses propres affines.
-  const key = cam === FACE_CAMERA ? `${hostKind}:${angle}` : `${hostKind}:${angle}:${cam.pxPerCmX},${cam.pxPerCmY},${cam.depthPxPerCm}`;
+  const key = `${hostKind}:${angle}${cameraKey(cam)}`;
   let a = affineCache.get(key);
   if (!a) {
     const m = FURNITURE_MODELS[hostKind];

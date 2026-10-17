@@ -71,6 +71,8 @@ export const DEPTH_PX_PER_CM = CELL_H / 50;
 // FACE_CAMERA est une constante partagée (aucun objet créé par appel), la projection reste identique à celle d'avant.
 export type Camera = { pxPerCmX: number; pxPerCmY: number; depthPxPerCm: number };
 export const FACE_CAMERA: Camera = { pxPerCmX: PX_PER_CM_X, pxPerCmY: PX_PER_CM_Y, depthPxPerCm: DEPTH_PX_PER_CM };
+// Suffixe de clé de cache propre à une caméra ('' pour la vue de face : les clés d'origine ne changent pas).
+export const cameraKey = (cam: Camera): string => (cam === FACE_CAMERA ? '' : `:${cam.pxPerCmX},${cam.pxPerCmY},${cam.depthPxPerCm}`);
 // Vue plongeante de la vue Modifier : la profondeur s'étale (on voit le dessus du plateau), la hauteur s'écrase. Valeurs de départ, réglées à l'œil.
 export const PLUNGE_CAMERA: Camera = { pxPerCmX: PX_PER_CM_X, pxPerCmY: PX_PER_CM_Y * 0.55, depthPxPerCm: PX_PER_CM_Y * 0.8 };
 const SHADE = { front: 1, side: 0.82, top: 1.12 } as const;
