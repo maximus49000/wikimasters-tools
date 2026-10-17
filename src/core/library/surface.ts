@@ -46,6 +46,8 @@ export function topRectsOf(layout: Layout, hostId: string, ignoreId?: string): T
 export const topsApart = (a: TopRect, b: TopRect): boolean => a.x + a.w <= b.x || b.x + b.w <= a.x || a.z + a.d <= b.z || b.z + b.d <= a.z;
 
 // Empreinte de l'écran sur le bureau (bornes x/z de ses pièces) : la même pour tout ordinateur (il ne se déplace pas sur son bureau).
+// Toujours l'écran plat, même en Steampunk (la machine analytique a 1 cm de plus en profondeur) : la chaîne hi-fi (40,5 cm avec sa
+// pochette) doit tenir devant l'écran dans tous les styles, et une empreinte qui changerait avec le style déplacerait des objets.
 let computerRect: TopRect | null = null;
 export function computerTopRect(): TopRect {
   if (!computerRect) {
@@ -66,6 +68,7 @@ export function canPutOnTop(layout: Layout, hostId: string, thing: TopThing, x: 
 }
 
 // Première place libre : du bord avant vers le fond, de la gauche vers la droite, au pas de 2 cm ; en dernier essai, collé au bord droit / fond.
+// La grille de 2 cm peut manquer un creux à un décalage impair : la pose précise viendra avec la vue Modifier.
 // Les empreintes du plateau sont lues une seule fois (la fonction sert pendant les glissés).
 export function firstFreeTopSpot(layout: Layout, hostId: string, thing: TopThing, ignoreId?: string): { x: number; z: number } | null {
   const kind = hostKindOf(layout, hostId);

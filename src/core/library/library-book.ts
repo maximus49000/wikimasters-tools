@@ -215,7 +215,7 @@ function cleanEntries(layout: Layout): Layout {
     if (p.kind === 'computer' && hostKindOf(p.deskId) !== 'desk') continue;
     if (p.kind === 'stored' || (p.kind === 'small' && 'level' in p)) {
       const shelfId = p.kind === 'stored' ? p.shelfId : p.hostId;
-      if (hostKindOf(shelfId) !== 'shelf') continue;
+      if (hostKindOf(shelfId) !== 'shelf' || (p.kind === 'small' && !canHostSmall('shelf', p.item))) continue;
       const key = `${shelfId}:${p.level}:${p.order}`;
       if (slots.has(key)) continue;
       slots.add(key);
@@ -389,8 +389,9 @@ export function slotToTop(hostKind: HostKind, item: SmallItem, slot: number): { 
 }
 
 // La v9 pose les petits objets en cm : l'emplacement `slot` devient `x`/`z` (slotToTop), à la même place à l'écran. Un petit objet sans
-// porteur (bureau ou étagère) est retiré, comme le faisait la lecture ; un emplacement abîmé est laissé tel quel : la lecture écartera
-// cet objet comme avant.
+// porteur (bureau ou étagère) est retiré, comme le faisait la lecture ; un emplacement abîmé, ou que la lecture v8 écartait (hors des
+// emplacements du porteur, déjà pris par un objet gardé avant lui, ou au milieu d'un bureau qui porte un ordinateur), est laissé tel
+// quel : la lecture l'écarte comme avant (l'aménagement ne change pas à la mise à jour).
 export function migrateV8(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 8) return raw;
   const state = raw as { rooms?: unknown };
@@ -403,12 +404,22 @@ export function migrateV8(raw: unknown): unknown {
           const host = layout.find((q) => typeof q === 'object' && q !== null && (q as { id?: unknown }).id === id) as { kind?: unknown } | undefined;
           return host?.kind === 'desk' || host?.kind === 'shelf' ? host.kind : null;
         };
+        const withComputer = new Set(layout.flatMap((q) => (typeof q === 'object' && q !== null && (q as { kind?: unknown }).kind === 'computer' ? [(q as { deskId?: unknown }).deskId] : [])));
+        // Emplacements déjà pris (`porteur:emplacement`) par les objets convertis, dans l'ordre du tableau (comme la lecture v8).
+        const used = new Set<string>();
         const converted = layout.flatMap((p: unknown): unknown[] => {
           if (typeof p !== 'object' || p === null || (p as { kind?: unknown }).kind !== 'small') return [p];
           const { slot, ...rest } = p as { slot?: unknown; hostId?: unknown; item?: unknown };
           if (typeof slot !== 'number' || !Number.isInteger(slot) || slot < 0 || slot > 3 || !(SMALL_ITEMS as readonly unknown[]).includes(rest.item)) return [p];
           const kind = hostKind(rest.hostId);
-          return kind ? [{ ...rest, ...slotToTop(kind, rest.item as SmallItem, slot) }] : [];
+          if (!kind) return [];
+          const covered = Array.from({ length: rest.item === 'hifi' ? 2 : 1 }, (_, i) => slot + i);
+          const keys = covered.map((c) => `${String(rest.hostId)}:${c}`);
+          const dropped = covered.some((c) => c >= V8_SLOTS[kind]) || keys.some((k) => used.has(k))
+            || (kind === 'desk' && withComputer.has(rest.hostId) && covered.some((c) => c === 1 || c === 2));
+          if (dropped) return [p];
+          if (canHostSmall(kind, rest.item as SmallItem)) for (const k of keys) used.add(k);
+          return [{ ...rest, ...slotToTop(kind, rest.item as SmallItem, slot) }];
         });
         return { ...r, layout: converted };
       })

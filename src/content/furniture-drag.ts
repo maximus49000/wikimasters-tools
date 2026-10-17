@@ -38,7 +38,12 @@ export function hostAtCell(layout: Layout, col: number, row: number): string | n
 }
 
 // Le bureau ou l'étagère dont le plateau (projeté sur son dessus, à tout angle, prolongé de la hauteur d'un petit objet : `topRectOn`)
-// contient le point (x, y) et qui a encore une place pour l'objet (`item`, réveil par défaut ; `ignoreId` : l'objet qu'on déplace).
+// contient le point (x, y) et qui a encore une place pour l'objet (`item`, réveil par défaut ; `ignoreId` : l'objet qu'on déplace, toujours
+// accepté sur son propre plateau, où il garde sa place).
+// L'objet `id` est déjà posé sur le plateau de `hostId` (pas sur une de ses tablettes).
+const isOwnTop = (layout: Layout, id: string | undefined, hostId: string): boolean =>
+  id !== undefined && layout.some((p) => p.id === id && p.kind === 'small' && p.hostId === hostId && 'x' in p);
+
 export function hostAtSurface(layout: Layout, x: number, y: number, item: SmallItem = 'alarm', ignoreId?: string): string | null {
   for (const placed of hostsFrontFirst(layout, true)) {
     const r = rectOf(placed);
@@ -46,7 +51,7 @@ export function hostAtSurface(layout: Layout, x: number, y: number, item: SmallI
     const top = HOST_TOP[placed.kind];
     const s = topRectOn(pxRect(r), placed.kind, angleOf(placed), { x: 0, z: 0, ...top });
     if (x < s.x || x >= s.x + s.w || y < s.y || y >= s.y + s.h) continue;
-    if (firstFreeTopSpot(layout, placed.id, { item }, ignoreId) !== null) return placed.id;
+    if (isOwnTop(layout, ignoreId, placed.id) || firstFreeTopSpot(layout, placed.id, { item }, ignoreId) !== null) return placed.id;
   }
   return null;
 }
@@ -146,11 +151,13 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
   // Carte posée sur un plateau : pas encore déplaçable dans la pièce (vue Modifier du meuble).
   if (item.kind === 'posed') return { ok: false, cells: [], ghost: null };
   if (item.kind === 'small') {
-    const hostId = hostAtCell(layout, col, row) ?? hostAtSurface(layout, x, y, item.item, id);
+    const cellHost = hostAtCell(layout, col, row);
+    const hostId = cellHost ?? hostAtSurface(layout, x, y, item.item, id);
     if (!hostId) return { ok: false, reason: 'not-host', cells: [{ col, row }], ghost: { col, row, w: 1, h: 1 } };
     const host = layout.find((p) => p.id === hostId);
     const ghost = host ? rectOf(host) : null;
-    const room = (hostId === item.hostId && 'x' in item) || firstFreeTopSpot(layout, hostId, { item: item.item }, id) !== null;
+    // Un porteur trouvé par son plateau a déjà sa place vérifiée (hostAtSurface) : pas de second balayage à chaque mouvement du doigt.
+    const room = cellHost === null || isOwnTop(layout, id, hostId) || firstFreeTopSpot(layout, hostId, { item: item.item }, id) !== null;
     return room ? { ok: true, cells: [], ghost, hostId } : { ok: false, reason: 'host-busy', cells: [], ghost, hostId };
   }
   const angle = angleOf(item);

@@ -109,6 +109,45 @@ describe('migration v9 (petits objets en cm)', () => {
     expect(layoutOf(s)[2]).toMatchObject({ level: 1, order: 1 });
   });
 
+  describe('pièces v8 complètes : chaque objet à sa place, aucun retiré', () => {
+    const small = (id: string, hostId: string, item: SmallItem, slot: number) => ({ id, kind: 'small', item, hostId, slot });
+    const check = (layout: { id: string; kind: string; hostId?: string; item?: SmallItem; slot?: number }[], hostKind: 'desk' | 'shelf', style = 'scandinave') => {
+      const raw = state(8, layout);
+      raw.rooms[0]!.style = style;
+      const read = layoutOf(parseLibraryState(raw));
+      expect(read.map((p) => p.id)).toEqual(layout.map((p) => p.id));
+      for (const p of layout) {
+        if (p.kind !== 'small') continue;
+        expect(read.find((q) => q.id === p.id), p.id).toEqual({ id: p.id, kind: 'small', item: p.item, hostId: p.hostId, ...slotToTop(hostKind, p.item!, p.slot!) });
+      }
+    };
+    it('(a) bureau : chaîne en 0, réveil en 2', () => check([desk, small('c', 'h', 'hifi', 0), small('r', 'h', 'alarm', 2)], 'desk'));
+    it('(b) bureau : chaîne en 1, plantes en 0 et 3', () => check([desk, small('c', 'h', 'hifi', 1), small('p0', 'h', 'plant', 0), small('p3', 'h', 'plant', 3)], 'desk'));
+    const withPc = [desk, { id: 'pc', kind: 'computer', deskId: 'h' }, small('p0', 'h', 'plant', 0), small('p3', 'h', 'plant', 3)];
+    it('(c) bureau avec ordinateur : plantes en 0 et 3', () => check(withPc, 'desk'));
+    it('(d) étagère : 3 plantes', () => check([shelf, small('p0', 'h', 'plant', 0), small('p1', 'h', 'plant', 1), small('p2', 'h', 'plant', 2)], 'shelf'));
+    it('(e) bureau avec ordinateur dans une pièce Steampunk', () => check(withPc, 'desk', 'steampunk'));
+  });
+
+  it('ce que la lecture v8 écartait reste écarté (rien ne change à la mise à jour)', () => {
+    const read = (layout: unknown[]) => layoutOf(parseLibraryState(state(8, layout))).map((p) => p.id);
+    // Hors des emplacements du porteur : plante en 3 sur une étagère, chaîne en 3 sur un bureau.
+    expect(read([shelf, { id: 'o', kind: 'small', item: 'plant', hostId: 'h', slot: 3 }])).toEqual(['h']);
+    expect(read([desk, { id: 'o', kind: 'small', item: 'hifi', hostId: 'h', slot: 3 }])).toEqual(['h']);
+    // Emplacement déjà pris par un objet gardé avant lui (la chaîne en 0 couvre 0 et 1).
+    expect(read([desk, { id: 'c', kind: 'small', item: 'hifi', hostId: 'h', slot: 0 }, { id: 'o', kind: 'small', item: 'plant', hostId: 'h', slot: 1 }])).toEqual(['h', 'c']);
+    // Milieu d'un bureau qui porte un ordinateur.
+    expect(read([desk, { id: 'pc', kind: 'computer', deskId: 'h' }, { id: 'o', kind: 'small', item: 'plant', hostId: 'h', slot: 2 }])).toEqual(['h', 'pc']);
+    // Une chaîne sur une étagère (écartée) ne prend pas d'emplacement.
+    expect(read([shelf, { id: 'c', kind: 'small', item: 'hifi', hostId: 'h', slot: 0 }, { id: 'o', kind: 'small', item: 'plant', hostId: 'h', slot: 1 }])).toEqual(['h', 'o']);
+  });
+
+  it('une chaîne sur une tablette d’étagère est écartée', () => {
+    const s = parseLibraryState(state(9, [shelf, { id: 'c', kind: 'small', item: 'hifi', hostId: 'h', level: 0, order: 0 }, { id: 'l', kind: 'small', item: 'lamp', hostId: 'h', level: 0, order: 1 }]));
+    expect(layoutOf(s).map((p) => p.id)).toEqual(['h', 'l']);
+    expect(layoutOf(s)[1]).toMatchObject({ level: 0, order: 0 });
+  });
+
   it('nouvel état : version 9', () => {
     expect(createInitialState().version).toBe(9);
   });

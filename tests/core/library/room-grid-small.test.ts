@@ -137,11 +137,26 @@ describe('lecture : nettoyage des petits objets', () => {
     expect(read([...host, { id: 's', kind: 'small', item: 'plant', hostId: 'f1', x: 97.5, z: 22.5 }])).toContain('s');
   });
 
-  it('ignore un petit objet sans porteur ; replace celui qui dépasse du plateau ou chevauche un autre', () => {
-    const layout = readLayout([
+  it('ancien état : ignore un petit objet sans porteur, hors emplacements ou en double (comme avant la v9)', () => {
+    const ids = read([
       ...host,
       { id: 'a', kind: 'small', item: 'plant', hostId: 'absent', slot: 0 },
-      { id: 'b', kind: 'small', item: 'plant', hostId: 'f2', x: 85.83333333333333, z: 7.5 },
+      { id: 'b', kind: 'small', item: 'plant', hostId: 'f2', slot: 3 },
+      { id: 'c', kind: 'small', item: 'lamp', hostId: 'f1', slot: 0 },
+      { id: 'd', kind: 'small', item: 'lamp', hostId: 'f1', slot: 0 },
+    ]);
+    expect(ids).toEqual(['f1', 'f2', 'c']);
+  });
+
+  it('ancien état : ignore un petit objet sur le milieu d’un bureau qui porte un ordinateur', () => {
+    const ids = read([...host, { id: 'pc', kind: 'computer', deskId: 'f1' }, { id: 's', kind: 'small', item: 'plant', hostId: 'f1', slot: 1 }]);
+    expect(ids).not.toContain('s');
+  });
+
+  it('état en cm : replace celui qui dépasse du plateau, chevauche un autre ou l’écran', () => {
+    const layout = readLayout([
+      ...host,
+      { id: 'b', kind: 'small', item: 'plant', hostId: 'f2', x: 70, z: 7.5 },
       { id: 'c', kind: 'small', item: 'lamp', hostId: 'f1', x: 7.5, z: 22.5 },
       { id: 'd', kind: 'small', item: 'lamp', hostId: 'f1', x: 7.5, z: 22.5 },
     ]);
@@ -149,10 +164,7 @@ describe('lecture : nettoyage des petits objets', () => {
     expect(layout[2]).toMatchObject({ hostId: 'f2', x: 0, z: 0 });
     expect(layout[3]).toMatchObject({ x: 7.5, z: 22.5 });
     expect(layout[4]).toMatchObject({ x: 0, z: 0 });
-  });
-
-  it('replace un petit objet posé sur l’empreinte de l’écran', () => {
-    const layout = readLayout([...host, { id: 'pc', kind: 'computer', deskId: 'f1' }, { id: 's', kind: 'small', item: 'plant', hostId: 'f1', x: 40, z: 40 }]);
-    expect(layout.find((p) => p.id === 's')).toMatchObject({ x: 0, z: 0 });
+    const onScreen = readLayout([...host, { id: 'pc', kind: 'computer', deskId: 'f1' }, { id: 's', kind: 'small', item: 'plant', hostId: 'f1', x: 40, z: 40 }]);
+    expect(onScreen.find((p) => p.id === 's')).toMatchObject({ x: 0, z: 0 });
   });
 });
