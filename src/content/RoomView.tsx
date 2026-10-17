@@ -19,7 +19,7 @@ import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { WallArt } from './library-card-art';
 import { CarriedItem3D, Model3DArt, type ItemContent, type ModelPart } from './model3d-art';
-import { gameBoxContent } from './game-box-content';
+import { gameBoxContent, gameCoverUrl } from './game-box-content';
 import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
 import { usableImage, useImageProbe } from './image-probe';
 import { getImageService } from './image-registry';
@@ -265,11 +265,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     }
     return out;
   }, [room.layout]);
-  // Image d'une carte : celles qui ne se chargent pas sont sautées (couverture titrée à défaut).
+  // Image d'une carte : celles qui ne se chargent pas sont sautées (couverture titrée à défaut) ; un jeu à boîte connue montre
+  // sa jaquette, la même que sur la boîte ouverte.
   const imageOf = (slug: string): string | undefined => {
     const url = cards[slug]?.imageUrl;
-    if (images) return images.displayUrl(slug, url, usableImage);
-    return url && usableImage(url) ? url : undefined;
+    const own = images ? images.displayUrl(slug, url, usableImage) : url && usableImage(url) ? url : undefined;
+    return gameCoverUrl('game', slug, own);
   };
   const atHifi = hifi.atHifi !== null ? (room.layout.find((p) => p.id === hifi.atHifi) ?? null) : null;
   const atHifiSlug = atHifi && 'slug' in atHifi ? atHifi.slug : null;

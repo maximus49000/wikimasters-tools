@@ -692,13 +692,13 @@ export function storeCard(layout: Layout, shelfId: string, level: ShelfLevel, or
   return insertStored(layout, item, order);
 }
 
-// Format de boîte d'un jeu rangé (et couleur propre du boîtier de la console) : ne déplace rien, même si la tablette déborde ensuite
+// Format de boîte d'un jeu rangé ou posé (et couleur propre du boîtier de la console) : ne déplace rien, même si la tablette déborde ensuite
 // (une tablette qui déborde garde ses objets). Sans effet sur un objet inconnu ou qui n'est pas un jeu.
 export function setStoredBox(layout: Layout, id: string, box: BoxFormat, caseColor?: string): Layout {
   const item = layout.find((p) => p.id === id);
-  if (!item || item.kind !== 'stored' || item.shape !== 'game') return layout;
+  if (!item || (item.kind !== 'stored' && item.kind !== 'posed') || item.shape !== 'game') return layout;
   return layout.map((p) => {
-    if (p.id !== id || p.kind !== 'stored') return p;
+    if (p.id !== id || (p.kind !== 'stored' && p.kind !== 'posed')) return p;
     const { caseColor: _old, ...rest } = p;
     return { ...rest, box, ...(caseColor && { caseColor }) };
   });

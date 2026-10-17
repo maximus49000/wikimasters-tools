@@ -166,11 +166,12 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                   >
                     {gameSpine
                       ? <g transform={`translate(${x} ${y})`}><GameSpine w={w} h={h} {...gameSpine} /></g>
-                      : <rect x={x} y={y} width={w} height={h} fill={back ? (p.caseColor ?? GAME_CASE) : '#e8e2d6'} stroke={TITLE_INK} strokeWidth={0.3} />}
+                      : <rect x={x} y={y} width={w} height={h} fill={back || p.shape === 'game' ? (p.caseColor ?? GAME_CASE) : '#e8e2d6'} stroke={TITLE_INK} strokeWidth={0.3} />}
                     {back ? (backUrl
                       ? <image href={backUrl} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" {...NO_REFERRER} />
                       : box.back && <g transform={`translate(${x} ${y})`}>{box.back.draw(w, h)}</g>)
-                      : !spine && url && <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="xMidYMid slice" {...NO_REFERRER} />}
+                      // Jeu : jaquette entière sur le plastique du boîtier, comme sur la boîte ouverte.
+                      : !spine && url && <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio={p.shape === 'game' ? 'xMidYMid meet' : 'xMidYMid slice'} {...NO_REFERRER} />}
                     {gameSpine ? null : spine
                       ? <text data-board-title="" transform={`translate(${x + w / 2} ${y + h - 1}) rotate(-90)`} fontSize={spineFont} dominantBaseline="middle" fill={TITLE_INK}>{titleLines(title, (h - 2) / (spineFont * CHAR_W), 1)[0]}</text>
                       : titleLines(title, w / (TITLE_FONT_CM * CHAR_W)).map((line, k) => (

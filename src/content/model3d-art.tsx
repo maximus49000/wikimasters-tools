@@ -212,7 +212,15 @@ function DecalArt({ d, content, color }: { d: DecalDraw; content?: ItemContent; 
     <>
       {gb && <rect width={w} height={r1(band + inset.t)} fill={gb.color} {...lightEdge(gb.color)} />}
       {gb?.label && <text x={r1(w / 2)} y={r1(inset.t + band * 0.72)} fontSize={r1(bandFs)} fontFamily="system-ui, sans-serif" fontWeight={700} textAnchor="middle" fill={inkOn(gb.color)}>{cut(gb.label, Math.floor(w / (bandFs * 0.62)))}</text>}
-      {url
+      {url && shape === 'game'
+        // Jeu : jaquette entière sur le plastique du boîtier, comme sur la boîte ouverte.
+        ? (
+          <>
+            <rect data-cover-ground="" x={r1(ix)} y={r1(iy)} width={r1(iw)} height={r1(ih)} fill={color} />
+            <image href={url} x={r1(ix)} y={r1(iy)} width={r1(iw)} height={r1(ih)} {...NO_REFERRER} preserveAspectRatio="xMidYMid meet" />
+          </>
+        )
+        : url
         ? <image href={url} x={r1(ix)} y={r1(iy)} width={r1(iw)} height={r1(ih)} {...NO_REFERRER} preserveAspectRatio="xMidYMid slice" />
         : (
           <>

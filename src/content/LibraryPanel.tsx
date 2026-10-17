@@ -94,7 +94,7 @@ import { LocationDialog } from './LocationDialog';
 import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView } from './RoomView';
-import { applyBoxChanges, boxChanges } from './game-box-content';
+import { applyBoxChanges, boxChanges, gameCoverUrl } from './game-box-content';
 import { getGameBoxService } from './game-box-registry';
 import { Btn, Icon, ICONS } from './library-ui';
 import { LibraryTopBar } from './library-topbar';
@@ -608,15 +608,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // Polices des panneaux : déclarées dans la page seulement quand un panneau est posé (avant tout retour anticipé : règle des hooks).
   const roomLayout = lib ? activeRoom(lib).layout : undefined;
   useEffect(() => { if (roomLayout?.some((p) => p.kind === 'deco' && isPanel(p.deco))) ensureDecoFonts(); }, [roomLayout]);
-  // Boîtes des jeux : demandées pour les jeux rangés de la pièce (seuls dessinés) ; chaque boîte qui arrive redessine la pièce
-  // (dos, bandeau de la console) et, si son format ou la couleur du boîtier a changé, l'objet rangé est réécrit.
+  // Boîtes des jeux : demandées pour les jeux rangés ou posés (présentoir) de la pièce ; chaque boîte qui arrive redessine la pièce
+  // (jaquette, dos, bandeau de la console) et, si son format ou la couleur du boîtier a changé, l'objet est réécrit.
   const boxService = getGameBoxService();
   const [boxTick, setBoxTick] = useState(0);
   useEffect(() => boxService?.subscribe(() => setBoxTick((t) => t + 1)), [boxService]);
   useEffect(() => {
     for (const p of roomLayout ?? []) {
-      const title = p.kind === 'stored' && p.shape === 'game' ? roomCards.cards[p.slug]?.title : undefined;
-      if (p.kind === 'stored' && title !== undefined) boxService?.request(p.slug, title);
+      const title = (p.kind === 'stored' || p.kind === 'posed') && p.shape === 'game' ? roomCards.cards[p.slug]?.title : undefined;
+      if ((p.kind === 'stored' || p.kind === 'posed') && title !== undefined) boxService?.request(p.slug, title);
     }
   }, [boxService, roomLayout, roomCards.cards]);
   // Une écriture par changement, toutes les boîtes changées ensemble ; jamais pendant un placement (son brouillon l'écraserait).
@@ -1155,12 +1155,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       transition: `transform ${zoomMs}ms ease-out, filter ${zoomMs}ms ease-out`,
     };
   })();
-  // Image d'une carte : celles qui ne se chargent pas sont sautées (couverture titrée à défaut).
+  // Image d'une carte : celles qui ne se chargent pas sont sautées (couverture titrée à défaut) ; un jeu à boîte connue montre
+  // sa jaquette, la même sur le présentoir, l'étagère, les zooms et la boîte ouverte.
   const imageOfCard = (slug: string): string | undefined => {
     const url = roomCards.cards[slug]?.imageUrl;
     const images = getImageService();
-    if (images) return images.displayUrl(slug, url, usableImage);
-    return url && usableImage(url) ? url : undefined;
+    const own = images ? images.displayUrl(slug, url, usableImage) : url && usableImage(url) ? url : undefined;
+    return gameCoverUrl('game', slug, own);
   };
 
   return (

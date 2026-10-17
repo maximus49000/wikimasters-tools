@@ -156,6 +156,13 @@ describe('jeux dans le second zoom', () => {
     expect(back.querySelector('image')!.getAttribute('href')).toBe('dos.png');
     expect(c.querySelector('[data-board-card="Zelda"] image')!.getAttribute('href')).toBe('Zelda-face.png');
   });
+  it('jeu de face : jaquette entière sur le plastique du boîtier, comme sur la boîte ouverte', () => {
+    setGameBoxService(null);
+    const c = mountGames();
+    const card = c.querySelector('[data-board-card="Zelda"]')!;
+    expect(card.querySelector('image')!.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet');
+    expect(card.querySelector('rect')!.getAttribute('fill')).toBe('#E60012');
+  });
   it('proportions du format : la boîte Switch garde ses mesures (10,5 × 17 cm)', () => {
     setGameBoxService(null);
     const c = mountGames();
