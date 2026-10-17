@@ -2212,6 +2212,39 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'bibliotheque-v34',
+    theme: 'collection',
+    glyph: '✋',
+    title: 'Ranger les tablettes d’une étagère',
+    summary: 'En Aménager, ✋ sur une étagère ouvre tout le meuble : on zoome sur une tablette et on glisse cartes et petits objets d’une tablette à l’autre',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Toute l’étagère, puis une tablette',
+        text: 'En Aménager, touchez une étagère puis ✋ « Modifier la disposition » : le meuble entier s’ouvre de face, avec ses trois tablettes (deux bibliothèques liées côte à côte). Touchez une tablette, ou une carte, pour zoomer dessus ; ▲ ▼ passent à la tablette voisine, et ▲ depuis la tablette du haut montre le dessus de l’étagère.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À ranger ses cartes soi-même : voir toute l’étagère d’un coup, choisir la tablette, et travailler de près sur celle qu’on arrange.' },
+          { label: 'D’où viennent les données', text: 'Les cartes et objets viennent de votre pièce, enregistrée sur l’appareil ; rien n’est envoyé ailleurs. Le meuble et les tablettes sont dessinés comme dans le zoom d’étagère que vous connaissez déjà (mêmes mesures en centimètres).' },
+          { label: 'Comment ça marche', text: 'Le meuble entier et les tablettes sont vus de face ; le dessus garde la vue de trois quarts au-dessus. Balayer verticalement dans le vide change aussi de tablette. Le bouton Retour d’Android revient d’abord au meuble entier, puis ferme la vue.' },
+          { label: 'Limites', text: 'Deux bibliothèques liées partagent la même vue, dessus compris (côte à côte) ; un objet déjà posé sur un dessus reste sur le sien. Le bureau garde sa vue du plateau seul.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Glisser d’une tablette à l’autre',
+        text: 'Un doigt sur une carte ou un petit objet (lampe, plante, réveil…) le saisit tout de suite. Une place verte s’ouvre là où il ira, entre deux voisins ; elle devient rouge si la tablette est pleine ou si l’objet est trop haut pour elle, avec le message. En zoom, tenez l’objet au bord haut ou bas de l’écran un court instant : la vue passe à la tablette voisine et vous le lâchez là. Au niveau du meuble entier, lâchez-le directement sur la tablette visée.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À déplacer une carte ou un petit objet d’une tablette à l’autre, ou à changer son rang, sans passer par le tiroir.' },
+          { label: 'D’où viennent les données', text: 'La place de chaque objet (tablette et rang) est enregistrée dans votre pièce, sur l’appareil ; les largeurs et hauteurs viennent des modèles en trois dimensions des cartes et des objets.' },
+          { label: 'Comment ça marche', text: 'Sur une tablette, on change l’ordre : les objets restent alignés, avec un centimètre entre deux voisins, et la place verte se glisse avant le premier voisin dont le centre est à droite du doigt. Chaque glissé réussi est enregistré tout de suite ; lâché en rouge, l’objet revient. La lampe d’une tablette éclaire comme sur un bureau.' },
+          { label: 'Limites', text: 'Une carte lâchée sur le dessus de l’étagère est refusée pour l’instant : les cartes posées sur un plateau arrivent avec la prochaine mise à jour. Toucher une carte sans la glisser ne fait rien encore : sa bulle (présentation, pochette, format) vient ensuite.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
     id: 'horloges-meteo-panneaux-2026-10',
     theme: 'collection',
     glyph: '🕰️',

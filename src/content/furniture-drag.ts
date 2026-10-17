@@ -1,7 +1,7 @@
 import { wallSizeOf } from '../core/library/furniture-catalog';
 import { drawSize, floorCells } from '../core/library/footprint';
 import type { Layout, ShelfLevel, SmallItem } from '../core/library/library-types';
-import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, decoSizeOf, dropOnShelf, moveStored, pxRect, rectOf, shelfLayoutOf, topRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, decoSizeOf, dropOnShelf, forceOnBoard, moveStored, pxRect, rectOf, shelfLayoutOf, topRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { HOST_TOP, firstFreeTopSpot } from '../core/library/surface';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
@@ -57,19 +57,17 @@ export function hostAtSurface(layout: Layout, x: number, y: number, item: SmallI
 }
 
 // Place qu'aurait l'objet rangé `id` à ce rang de la tablette (rectangle englobant à l'écran et parallélogramme de sa face) ; si la place manque,
-// posé de force à ce rang (au bout de la tablette pour un refus), quitte à déborder.
+// posé de force à ce rang (au bout de la tablette pour un refus), quitte à déborder (forceOnBoard : même rangement, sans vérification).
 function ghostOf(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): GhostPx | undefined {
-  const item = layout.find((p) => p.id === id);
-  if (!item || item.kind !== 'stored') return undefined;
-  const moved = moveStored(layout, id, shelfId, level, order) ?? [...layout.filter((p) => p.id !== id), { ...item, shelfId, level, order }];
-  const box = shelfLayoutOf(moved, shelfId).find((b) => b.id === id);
+  const moved = moveStored(layout, id, shelfId, level, order) ?? forceOnBoard(layout, id, shelfId, level, order);
+  const box = moved ? shelfLayoutOf(moved, shelfId).find((b) => b.id === id) : undefined;
   return box && { x: box.x, y: box.y, w: box.w, h: box.h, quad: box.quad };
 }
 
 // Fantôme d'un objet rangé à l'écran : rectangle englobant, et les 4 coins de sa face (parallélogramme en ¾).
 export type GhostPx = PxRect & { quad?: [number, number][] };
 
-export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'not-slot' | 'shelf-full' | 'host-busy' | 'not-host' | 'not-screen';
+export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'not-slot' | 'shelf-full' | 'too-high' | 'host-busy' | 'not-host' | 'not-screen';
 
 export type DropTarget = {
   ok: boolean;
@@ -108,8 +106,8 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     const drop = dropOnShelf(layout, hit.shelfId, hit.level, hit.xCm, item);
     const where = { shelfId: hit.shelfId, level: hit.level };
     if (!drop.ok) {
-      // Tablette pleine : l'empreinte rouge est l'objet posé au bout de la tablette (il déborde).
-      return { ok: false, reason: drop.reason === 'shelf-full' ? 'shelf-full' : 'not-slot', cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, boardItems(layout, hit.shelfId, hit.level, id).length), ...where };
+      // Tablette pleine ou objet trop haut (chacun son message) : l'empreinte rouge est l'objet posé au bout de la tablette (il déborde).
+      return { ok: false, reason: drop.reason === 'not-shelf' ? 'not-slot' : drop.reason, cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, boardItems(layout, hit.shelfId, hit.level, id).length), ...where };
     }
     return { ok: true, cells: [], ghost: null, ghostPx: ghostOf(layout, id, hit.shelfId, hit.level, drop.order), ...where, order: drop.order };
   }

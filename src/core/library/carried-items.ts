@@ -7,7 +7,7 @@ import { FURNITURE_MODELS } from './furniture-models';
 import { CELL_H, CELL_W, FACE_CAMERA, cameraKey, levelsOf, localPointOf, pieceBounds, projectOf, type Camera, type V3t } from './furniture-render3d';
 import { ITEM_MODELS, bookColor, itemModel, itemPieces, storedFrontCorners, type ItemPlacement, type ItemShape } from './item-models';
 import { isOnBoard, type Layout, type Placed, type Posed, type ShelfLevel, type SmallItem } from './library-types';
-import { SHELF_GAP_CM, boardItems, displayOf, storedWidthCm, type HostKind, type PxRect, type Stored } from './room-grid';
+import { SHELF_GAP_CM, boardItems, boardWidthCm, displayOf, type BoardItem, type HostKind, type PxRect, type Stored } from './room-grid';
 import { SLEEVE_ZONE_CM } from './surface';
 
 const SHELF = FURNITURE_MODELS.shelf;
@@ -39,14 +39,20 @@ export function storedPlacement(item: Stored, x0Cm: number): ItemPlacement {
   };
 }
 
-// Objets rangés d'une étagère posés à leur place (même rangement que shelfLayoutIn : largeur réelle + 1 cm entre deux objets).
+// Objet d'une tablette à `x0Cm` du bord gauche de la face : une carte rangée, ou un petit objet posé sur la planche, près du bord avant.
+export function boardPlacement(item: BoardItem, x0Cm: number): ItemPlacement {
+  return item.kind === 'stored' ? storedPlacement(item, x0Cm) : { key: item.id, shape: SMALL_SHAPE[item.item], x: SHELF.face!.x + x0Cm, y: boardTopCm(item.level), z: FRONT_CM };
+}
+
+// Objets des tablettes d'une étagère (cartes et petits objets) posés à leur place (même rangement que shelfLayoutIn : largeur réelle
+// + 1 cm entre deux objets).
 export function storedPlacementsOf(layout: Layout, shelfId: string): Map<string, ItemPlacement> {
   const out = new Map<string, ItemPlacement>();
   for (const level of [0, 1, 2] as const) {
     let x0 = 0;
     for (const p of boardItems(layout, shelfId, level)) {
-      out.set(p.id, storedPlacement(p, x0));
-      x0 += storedWidthCm(p) + SHELF_GAP_CM;
+      out.set(p.id, boardPlacement(p, x0));
+      x0 += boardWidthCm(p) + SHELF_GAP_CM;
     }
   }
   return out;
@@ -76,16 +82,16 @@ export function posedPlacement(p: Posed, hostKind: HostKind): ItemPlacement {
   };
 }
 
-// Porteur et pose d'un objet porté ; null pour un autre objet ou un porteur absent. Un objet rangé est posé d'après ses voisins de tablette.
+// Porteur et pose d'un objet porté ; null pour un autre objet ou un porteur absent. Un objet de tablette (carte rangée, petit objet) est posé
+// d'après ses voisins de tablette.
 export function carriedPlacementOf(layout: Layout, p: Placed): { hostId: string; hostKind: HostKind; placement: ItemPlacement } | null {
   const hostId = p.kind === 'computer' ? p.deskId : p.kind === 'small' || p.kind === 'posed' ? p.hostId : p.kind === 'stored' ? p.shelfId : null;
   const host = hostId ? layout.find((x) => x.id === hostId) : undefined;
   if (!host || (host.kind !== 'desk' && host.kind !== 'shelf')) return null;
   if (p.kind === 'computer') return host.kind === 'desk' ? { hostId: host.id, hostKind: 'desk', placement: computerPlacement(p.id) } : null;
-  // Petit objet de tablette : posé avec les objets rangés (pas encore dessiné).
-  if (p.kind === 'small') return isOnBoard(p) ? null : { hostId: host.id, hostKind: host.kind, placement: smallPlacement(p.id, p.item, host.kind, p.x, p.z) };
+  if (p.kind === 'small' && !isOnBoard(p)) return { hostId: host.id, hostKind: host.kind, placement: smallPlacement(p.id, p.item, host.kind, p.x, p.z) };
   if (p.kind === 'posed') return { hostId: host.id, hostKind: host.kind, placement: posedPlacement(p, host.kind) };
-  if (p.kind === 'stored' && host.kind === 'shelf') {
+  if ((p.kind === 'stored' || p.kind === 'small') && host.kind === 'shelf') {
     const placement = storedPlacementsOf(layout, host.id).get(p.id);
     return placement ? { hostId: host.id, hostKind: 'shelf', placement } : null;
   }

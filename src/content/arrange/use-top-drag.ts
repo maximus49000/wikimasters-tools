@@ -32,7 +32,9 @@ type Held = { id: string; x0: number; z0: number; sx: number; sy: number; moving
 
 type Options = {
   layout: Layout;
-  hostId: string;
+  // Plateaux de la vue (un bureau, ou deux bibliothèques liées) : un objet se déplace sur son propre plateau.
+  hostIds: string[];
+  // Cadre du premier plateau ; les suivants ont les mêmes images des axes (seule l'origine change, sans effet sur les translations).
   frame: ArrangeFrame;
   // Calque tourné de 90° (écran en hauteur) : un déplacement écran (dX, dY) vaut (dY, −dX) dans le calque.
   rotated: boolean;
@@ -46,7 +48,7 @@ const settledIn = (layout: Layout, w: TopPending): boolean => {
   return !p || !('x' in p) || p.x !== w.from.x || p.z !== w.from.z;
 };
 
-export function useTopDrag({ layout, hostId, frame, rotated, onMove }: Options): { drag: TopDrag | null; pending: TopPending[]; axes: TopAxes; grab(id: string, e: ReactPointerEvent): void } {
+export function useTopDrag({ layout, hostIds, frame, rotated, onMove }: Options): { drag: TopDrag | null; pending: TopPending[]; axes: TopAxes; grab(id: string, e: ReactPointerEvent): void } {
   const [drag, setDrag] = useState<TopDrag | null>(null);
   // Un objet en attente par id : lâcher B pendant que A attend ne fait pas revenir A.
   const [pendingState, setPending] = useState<TopPending[]>([]);
@@ -59,8 +61,8 @@ export function useTopDrag({ layout, hostId, frame, rotated, onMove }: Options):
   // Disposition avec les déplacements en attente appliqués : un glissé ne passe pas au vert sur la place qu'un autre objet vient de prendre.
   const applied = useMemo(() => pending.reduce((l, w) => moveOnTop(l, w.id, w.x, w.z) ?? l, layout), [layout, pending]);
   // Relus par les écouteurs de la fenêtre (posés une fois par saisie).
-  const live = useRef({ layout: applied, hostId, axes, rotated, onMove, pending });
-  live.current = { layout: applied, hostId, axes, rotated, onMove, pending };
+  const live = useRef({ layout: applied, hostIds, axes, rotated, onMove, pending });
+  live.current = { layout: applied, hostIds, axes, rotated, onMove, pending };
   const stop = useRef<(() => void) | null>(null);
   useEffect(() => () => stop.current?.(), []);
   const forget = useCallback((w: TopPending): void => setPending((list) => (list.includes(w) ? list.filter((q) => q !== w) : list)), []);
@@ -68,8 +70,9 @@ export function useTopDrag({ layout, hostId, frame, rotated, onMove }: Options):
   const grab = useCallback((id: string, e: ReactPointerEvent): void => {
     const p = live.current.layout.find((q) => q.id === id);
     // Objet en attente d'écriture : pas de nouvelle prise avant que sa place soit enregistrée.
-    if (held.current || live.current.pending.some((w) => w.id === id) || !p || (p.kind !== 'small' && p.kind !== 'posed') || !('x' in p) || p.hostId !== live.current.hostId) return;
+    if (held.current || live.current.pending.some((w) => w.id === id) || !p || (p.kind !== 'small' && p.kind !== 'posed') || !('x' in p) || !live.current.hostIds.includes(p.hostId)) return;
     e.preventDefault();
+    const hostId = p.hostId;
     held.current = { id, x0: p.x, z0: p.z, sx: e.clientX, sy: e.clientY, moving: false, pointerId: e.pointerId };
     const mine = (ev: PointerEvent): boolean => held.current !== null && ev.pointerId === held.current.pointerId;
     const move = (ev: PointerEvent): void => {
@@ -83,7 +86,7 @@ export function useTopDrag({ layout, hostId, frame, rotated, onMove }: Options):
       const det = a.ex[0] * a.ez[1] - a.ez[0] * a.ex[1];
       const x = Math.round(h.x0 + (dX * a.ez[1] - a.ez[0] * dY) / det);
       const z = Math.round(h.z0 + (a.ex[0] * dY - a.ex[1] * dX) / det);
-      const ok = dropOnTop(live.current.layout, live.current.hostId, h.id, x, z).ok;
+      const ok = dropOnTop(live.current.layout, hostId, h.id, x, z).ok;
       // L'objet se pose sur la place visée (au cm), pas sous le doigt au px près : l'empreinte et l'objet coïncident.
       const [cx, cz] = [x - h.x0, z - h.z0];
       dragRef.current = { id: h.id, x, z, ok, tx: cx * a.ex[0] + cz * a.ez[0], ty: cx * a.ex[1] + cz * a.ez[1] };
