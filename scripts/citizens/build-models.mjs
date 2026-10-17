@@ -1,7 +1,8 @@
 // Allège les 6 modèles pleine résolution (Mixamo, ~18 Mo chacun) en GLB légers + PNG 512 px,
 // et écrit le manifeste lu par le jeu. Les repères du visage viennent de faces-source.json
 // (calculés au banc sur les modèles pleine résolution) et sont recopiés tels quels.
-// Usage : npm run citizens:models [-- <dossier des modèles d'origine>]
+// Usage : npm run citizens:models -- <dossier des modèles d'origine>   (ou variable CITIZENS_SRC)
+// Le dossier contient base-generique, base-homme-maigre, base-femme-frele, base-papy, base-mamie, base-enfant (model.glb).
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,9 +14,12 @@ import sharp from 'sharp';
 
 const ici = dirname(fileURLToPath(import.meta.url));
 const sortie = resolve(ici, '../../relay/public/persos');
-const sources = resolve(
-  process.argv[2] ?? 'C:/Users/maxim/Downloads/Wikimasters tools/.superpowers/autosprite',
-);
+const dossierSources = process.argv[2] ?? process.env.CITIZENS_SRC;
+if (!dossierSources) {
+  console.error("Dossier des modèles d'origine manquant : passer le chemin en argument ou définir CITIZENS_SRC.");
+  process.exit(1);
+}
+const sources = resolve(dossierSources);
 
 /** Triangles visés par modèle. */
 const CIBLE_TRIANGLES = 8000;

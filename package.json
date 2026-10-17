@@ -26,7 +26,8 @@
     "promouvoir": "node scripts/promote.mjs",
     "corriger": "node scripts/fix-release.mjs",
     "preprod": "node scripts/publish-preprod.mjs",
-    "documentaire:reglage": "vite-node scripts/documentary-tuning.ts"
+    "documentaire:reglage": "vite-node scripts/documentary-tuning.ts",
+    "citizens:models": "node scripts/citizens/build-models.mjs"
   },
   "dependencies": {
     "@fontsource/caveat": "^5.3.0",
