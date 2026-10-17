@@ -188,6 +188,6 @@ describe('carte posée', () => {
     const layout: Layout = [desk('d', 4, 10), { id: 'p', kind: 'posed', shape: 'cd', hostId: 'd', x: 0, z: 0, slug: 'S' }];
     const t = dropTargetFor(layout, COLS, 'p', 4, 10);
     expect(t.ok).toBe(false);
-    expect(t.reason).toBeDefined();
+    expect(t.reason).toBe('posed-locked');
   });
 });

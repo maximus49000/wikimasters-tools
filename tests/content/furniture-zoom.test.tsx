@@ -226,6 +226,10 @@ describe('zoom : objets en 3D', () => {
     const { container } = zoomOf(desk, { kind: 'desk', id: 'd' });
     expect(container.querySelector('.wmt-lib-zoom-piece [data-item3d="cd"] image')!.getAttribute('href')).toBe(IMG);
     expect(container.querySelector('.wmt-lib-zoom-piece [data-item3d="dvd"] image')!.getAttribute('href')).toBe(IMG);
+    // À plat : pas de trépied (moins de formes que le même DVD sur trépied).
+    const upright = zoomOf({ ...desk, layout: desk.layout.map((p) => (p.id === 'dv' && p.kind === 'posed' ? { ...p, pose: undefined } : p)) }, { kind: 'desk', id: 'd' }).container;
+    const count = (c: HTMLElement) => c.querySelector('.wmt-lib-zoom-piece [data-item3d="dvd"]')!.querySelectorAll('polygon').length;
+    expect(count(container)).toBeLessThan(count(upright));
   });
   it('bureau : écran et petits objets en 3D, dessinés après le plateau ; la carte de l’écran se touche sur la vitre ; le pivot montre aussi les objets', () => {
     const desk: Room = { ...room, layout: [{ id: 'd', kind: 'desk', col: 0, row: 10, angle: 1 }, { id: 'pc', kind: 'computer', deskId: 'd', slug: 'Daft_Punk' }, { id: 'l', kind: 'small', item: 'lamp', hostId: 'd', x: 7.5, z: 22.5 }] };

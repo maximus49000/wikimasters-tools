@@ -153,6 +153,22 @@ describe('cartes posées en 3D sur le plateau', () => {
     expect(dvd.querySelectorAll('[data-item3d="dvd"] polygon').length).toBeLessThan(cd.querySelectorAll('[data-item3d="cd"] polygon').length);
   });
 
+  it('à plat : pas de trépied, la couverture est couchée sur le dessus (plus large que haute), ce n’est pas le même dessin que sur trépied', () => {
+    const coverBox = (c: HTMLElement) => {
+      const poly = c.querySelector('[data-furniture="posed"][data-id="dv"] [data-item3d="dvd"] image')!.parentElement!.previousElementSibling!;
+      const xy = pts(poly.getAttribute('points'));
+      const xs = xy.map((p) => p[0]); const ys = xy.map((p) => p[1]);
+      return { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+    };
+    const flat = mount(layout());
+    const upright = mount(layout().map((p) => (p.id === 'dv' && p.kind === 'posed' ? { ...p, pose: undefined } : p)));
+    const item = (c: HTMLElement) => c.querySelector('[data-furniture="posed"][data-id="dv"] [data-item3d="dvd"]')!;
+    expect(item(flat).innerHTML).not.toBe(item(upright).innerHTML);
+    expect(item(flat).querySelectorAll('polygon').length).toBeLessThan(item(upright).querySelectorAll('polygon').length);
+    expect(coverBox(upright).h).toBeGreaterThan(coverBox(upright).w);
+    expect(coverBox(flat).w).toBeGreaterThan(coverBox(flat).h);
+  });
+
   it('une carte posée jouée sur la chaîne disparaît de sa place pendant la lecture', () => {
     const withHifi: Layout = [...layout(), { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 100, z: 2 }];
     const view = { linked: true, hidden: false, enabled: true, card: { slug: 'Daft_Punk', title: 'Discovery' }, track: { uri: 'u', title: 'T', artist: 'A', imageUrl: null, playing: true } };
