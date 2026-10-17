@@ -31,7 +31,7 @@ afterEach(() => {
   }
 });
 const night = skyAt(23 * 60, sunTimes({ y: 2026, m: 6, d: 10 }, { lat: 48.85, lon: 2.35 }, 120));
-const mount = (ghibli: boolean, opts: { still?: boolean; s?: typeof sky } = {}): { svg: SVGSVGElement; reg: PropRegistry; flush: () => Promise<void>; render: (s: typeof sky) => void } => {
+const mount = (ghibli: boolean, opts: { still?: boolean; s?: typeof sky } = {}): { svg: SVGSVGElement; reg: PropRegistry; flush: () => Promise<void>; render: (s: typeof sky, rain?: number) => void } => {
   vi.spyOn(Date, 'now').mockReturnValue(T * 1000);
   const jobs: (() => void)[] = [];
   const reg = new PropRegistry('t14gl', { schedule: (cb) => jobs.push(cb) });
@@ -39,12 +39,12 @@ const mount = (ghibli: boolean, opts: { still?: boolean; s?: typeof sky } = {}):
   document.body.append(host);
   const root = createRoot(host);
   mounted.push({ root, host });
-  const render = (s: typeof sky): void =>
+  const render = (s: typeof sky, rain = 0): void =>
     act(() =>
       root.render(
         <PropContext.Provider value={reg}>
           <svg>
-            <GullsLayer width={W} height={H} seed={SEED} sky={s} facades={[]} ground={H * 0.7} minutes={8 * 60} rain={0} still={opts.still ?? true} frozenT={T} ghibli={ghibli} />
+            <GullsLayer width={W} height={H} seed={SEED} sky={s} facades={[]} ground={H * 0.7} minutes={8 * 60} rain={rain} still={opts.still ?? true} frozenT={T} ghibli={ghibli} />
           </svg>
         </PropContext.Provider>,
       ),
@@ -91,6 +91,21 @@ describe('calque des mouettes', () => {
     const late = mount(true, { still: false, s: night });
     await late.flush();
     expect(shown(late.svg)).toBe(0);
+  });
+  it('averse courte (pluie forte puis plus forte) : les volées parties avant restent visibles à la réouverture', async () => {
+    const shown = (svg: SVGSVGElement): number => [...svg.querySelectorAll('[data-gull]')].filter((g) => g.getAttribute('display') === 'inline').length;
+    const { svg, flush, render } = mount(true, { still: false });
+    await flush();
+    const before = shown(svg);
+    expect(before).toBeGreaterThan(0);
+    vi.spyOn(Date, 'now').mockReturnValue((T + 10) * 1000);
+    render(sky, 0.8);
+    await flush();
+    vi.spyOn(Date, 'now').mockReturnValue((T + 20) * 1000);
+    render(sky, 0);
+    await flush();
+    expect(shown(svg)).toBe(flocksAt(T + 20, SEED, W, H, { ...ctx, closed: [[T + 10, T + 20]] }, perches).slice(0, GULL_POOL).length);
+    expect(shown(svg)).toBeGreaterThan(0);
   });
   it('cheminées : maisons visibles des rangs 1 et 2, au haut de la brique peinte', () => {
     const plan = cityPaintPlan(W, H, SEED);

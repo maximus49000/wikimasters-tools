@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flocksAt, gullDepartures, type GullPose } from '../../../../src/core/library/city/gulls';
+import { flocksAt, gullDepartures, gullMinutes, type GullPose } from '../../../../src/core/library/city/gulls';
 
 const day = { minutes: 8 * 60, daylight: 1, rain: 0 };
 describe('mouettes', () => {
@@ -118,7 +118,7 @@ describe('mouettes', () => {
       for (let t = 100.25; t < 7200; t += 5) if (flocksAt(t, seed, W, 400, day, [perch]).some((g) => g.x > 200 && g.x < 800)) { t0 = t; break; }
       if (t0 < 0) continue;
       checked++;
-      for (const closed of [{ ...day, daylight: 0.1, since: t0 }, { ...day, rain: 0.8, since: t0 }]) {
+      for (const closed of [{ ...day, daylight: 0.1, closed: [[t0, Infinity]] as [number, number][] }, { ...day, rain: 0.8, closed: [[t0, Infinity]] as [number, number][] }]) {
         const frames: GullPose[][] = [flocksAt(t0 - 0.5, seed, W, 400, day, [perch])];
         for (let t = t0; t < t0 + 600; t += 0.5) frames.push(flocksAt(t, seed, W, 400, closed, [perch]));
         // À la bascule, les mêmes oiseaux qu'avec le beau temps.
@@ -142,7 +142,7 @@ describe('mouettes', () => {
       const frames: GullPose[][] = [flocksAt(t1 - 0.5, seed, W, 400, { ...day, daylight: 0.1 }, [perch])];
       let seen = 0;
       for (let t = t1; t < t1 + 3600; t += 0.5) {
-        const f = flocksAt(t, seed, W, 400, { ...day, since: t1 }, [perch]);
+        const f = flocksAt(t, seed, W, 400, { ...day, closed: [[-Infinity, t1]] }, [perch]);
         seen += f.length;
         frames.push(f);
       }
@@ -175,6 +175,57 @@ describe('mouettes', () => {
         if (morning) expect(n).toBeGreaterThanOrEqual(5);
         else expect(n).toBeLessThanOrEqual(5);
       }
+    }
+  });
+
+  // Tour de corrections 2 : une fermeture courte (pluie qui oscille autour de 0,6) ne fait rien disparaître à la réouverture :
+  // une volée partie avant la fermeture et encore en vol reste visible jusqu'à sa sortie par le bord.
+  it('fermeture de 30 s pendant une traversée : la volée reste visible jusqu\'à sa sortie par le bord', () => {
+    let checked = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      let t0 = -1;
+      for (let t = 100.25; t < 7200; t += 5) if (flocksAt(t, seed, W, 400, day, [perch]).some((g) => g.x > 200 && g.x < 800)) { t0 = t; break; }
+      if (t0 < 0) continue;
+      checked++;
+      const ctxAt = (t: number) =>
+        t < t0 ? day : t < t0 + 30 ? { ...day, rain: 0.8, closed: [[t0, Infinity]] as [number, number][] } : { ...day, closed: [[t0, t0 + 30]] as [number, number][] };
+      const frames: GullPose[][] = [];
+      for (let t = t0 - 0.5; t < t0 + 600; t += 0.5) frames.push(flocksAt(t, seed, W, 400, ctxAt(t), [perch]));
+      edgeOnly(frames);
+      // À la réouverture : les mêmes oiseaux qu'un ciel resté beau, hors volées parties pendant les 30 s.
+      expect(flocksAt(t0 + 30.5, seed, W, 400, ctxAt(t0 + 30.5), [perch]).length).toBeGreaterThan(0);
+    }
+    expect(checked).toBeGreaterThan(4);
+  });
+  // Mode « heure fixe » : `city.minutes` ne bouge pas pendant que l'horloge murale avance ; l'heure de la scène vue par les
+  // mouettes avance avec l'horloge depuis le dernier changement de minute : départs d'une heure stables image après image.
+  it('heure fixe juste après 7 h ou 10 h : aucune redistribution des volées dans l\'heure', () => {
+    const H = 500_000;
+    for (const fixed of [7 * 60 + 10, 10 * 60 + 5, 8 * 60]) {
+      for (let seed = 1; seed <= 10; seed++) {
+        let clock: { m: number; base: number } | null = null;
+        const byHour = new Map<number, string>();
+        for (let t = H * 3600 + 13.7; t < (H + 3) * 3600; t += 11.3) {
+          const g = gullMinutes(clock, fixed, t);
+          clock = g.clock;
+          const h = Math.floor(t / 3600);
+          for (const hh of [h - 1, h]) {
+            const d = JSON.stringify(gullDepartures(hh, seed, t, g.minutes));
+            const key = hh;
+            if (!byHour.has(key)) byHour.set(key, d);
+            else expect(d).toBe(byHour.get(key));
+          }
+        }
+      }
+    }
+  });
+  it('heure réelle : les minutes de la scène passent telles quelles', () => {
+    let clock: { m: number; base: number } | null = null;
+    for (let t = 6000.5; t < 9000; t += 7) {
+      const m = 420 + Math.floor((t - 6000) / 60);
+      const g = gullMinutes(clock, m, t);
+      clock = g.clock;
+      expect(g.minutes).toBe(m);
     }
   });
 });

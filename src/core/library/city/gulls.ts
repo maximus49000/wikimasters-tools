@@ -8,7 +8,7 @@ import { hashString, mulberry32 } from '../scene-world';
 //
 // Horaire : par heure d'horloge, 3 à 5 volées (5 à 7 de 7 h à 10 h), une par part égale de l'heure, tirées de (graine, heure) ;
 // aucune ne PART la nuit (`daylight` < 0,3) ni par forte pluie (`rain` ≥ 0,6) : décidé à l'heure de départ de chaque volée
-// (`since`, instant de la dernière bascule) ; une volée partie avant la nuit ou la pluie finit sa traversée par le bord, une
+// (`closed`, intervalles de mauvais temps que le calque mémorise) ; une volée partie avant la nuit ou la pluie finit sa traversée par le bord, une
 // volée qui serait partie pendant n'apparaît pas au retour du beau temps (rien n'apparaît ni ne disparaît sur place). Distance par volée : lointaine une fois sur quatre
 // (s 0,3, pâleur 0,6, 9 px/s), moyenne (0,55 / 0,35 / 16 px/s) ou proche (1 / 0 / 24 px/s) ; chaque oiseau ×0,8..1,2.
 // Vol : salves de battement de 1,6 s (3,3 battements/s, 8 poses) puis plané de 1,5 à 3,5 s (vu de biais quand il vire),
@@ -21,9 +21,10 @@ import { hashString, mulberry32 } from '../scene-world';
 export type GullPose = { x: number; y: number; s: number; far: number; wing: 'flap' | 'glide' | 'turn' | 'perched'; flap: number; dir: 1 | -1 };
 // Haut d'une cheminée de la colline (centre de la brique, à son sommet), échelle et brume de la maison.
 export type GullPerch = { x: number; y: number; s: number; haze: number };
-// `minutes` : heure de la scène en minutes entières, alignée sur la minute murale (`city.minutes`). `since` : instant mural de
-// la dernière bascule du temps (jour ↔ nuit, pluie forte ↔ non) ; absent, le temps est tel quel depuis toujours.
-export type GullSky = { minutes: number; daylight: number; rain: number; since?: number };
+// `minutes` : heure de la scène en minutes entières, alignée sur la minute murale (voir `gullMinutes`). `closed` : intervalles
+// muraux [début, fin] où le temps était fermé (nuit, pluie forte ; fin = Infinity s'il l'est encore) ; absent, le temps
+// actuel (`daylight`, `rain`) vaut depuis toujours.
+export type GullSky = { minutes: number; daylight: number; rain: number; closed?: readonly (readonly [number, number])[] };
 
 const HOUR = 3600;
 export const GULL_DARK = 0.3;
@@ -126,6 +127,15 @@ function lander(b: Bird, f: Flock, p: GullPerch, tau: number, x0: number, band: 
 // minute murale de t, donc on recule d'un nombre entier de minutes (stable dans toute la minute, et d'une minute à l'autre).
 const hourStartMinutes = (t: number, h: number, minutes: number): number => mod(minutes - (Math.floor(t / 60) * 60 - h * HOUR) / 60, 1440);
 
+// Heure de la scène vue par les mouettes : `minutes` (minute de la scène, entière) avancée avec l'horloge murale depuis le
+// dernier changement de `minutes` vu (`clock`, gardée par l'appelant). En heure réelle, c'est `minutes` ; en heure fixe
+// (`minutes` immobile), l'heure avance quand même minute par minute : les départs d'une heure ne sont jamais redistribués.
+export function gullMinutes(clock: { m: number; base: number } | null, minutes: number, t: number): { clock: { m: number; base: number }; minutes: number } {
+  const now = Math.floor(t / 60) * 60;
+  const c = clock && clock.m === minutes ? clock : { m: minutes, base: now };
+  return { clock: c, minutes: mod(minutes + (now - c.base) / 60, 1440) };
+}
+
 // Instants de départ des volées de l'heure d'horloge `h`, vue depuis l'instant t (tests : fenêtre du matin, stabilité).
 export function gullDepartures(h: number, seed: number, t: number, minutes: number): number[] {
   return flocksOfHour(h, seed, 400, hourStartMinutes(t, h, minutes), 0).map((f) => f.start);
@@ -136,10 +146,10 @@ export const gullsOpen = (ctx: Pick<GullSky, 'daylight' | 'rain'>): boolean => c
 
 // Oiseaux visibles à l'instant t. `perches` : hauts de cheminée de la colline (sans eux, aucune pose).
 export function flocksAt(t: number, seed: number, width: number, height: number, ctx: GullSky, perches: readonly GullPerch[] = []): GullPose[] {
-  const open = gullsOpen(ctx);
-  // Volée montrée seulement si elle est partie par beau temps : après l'ouverture, ou avant la fermeture.
-  const departed = (start: number): boolean => (ctx.since === undefined ? open : open ? start >= ctx.since : start < ctx.since);
-  if (!open && ctx.since === undefined) return [];
+  // Volée montrée seulement si elle est partie par beau temps (départ hors de tout intervalle fermé).
+  const closed = ctx.closed ?? (gullsOpen(ctx) ? [] : [[-Infinity, Infinity] as const]);
+  const departed = (start: number): boolean => !closed.some(([a, b]) => start >= a && start < b);
+  if (closed.some(([a, b]) => a === -Infinity && b === Infinity)) return [];
   const out: GullPose[] = [];
   const band: [number, number] = [height * BAND[0], height * BAND[1]];
   const span = width + 2 * MARGIN + 60;

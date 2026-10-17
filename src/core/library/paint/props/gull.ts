@@ -4,7 +4,7 @@ import { ball, disc, ED, PD } from './kit';
 import { registerProps, type PropArgs, type PropPaint } from './index';
 
 // Mouette cellulo (G5, tâche 14), portée de la maquette validée (docs/superpowers/maquettes/g5-fetes/index.html : `gull`, notes.md
-// §10) dans le repère du sprite classique `paintGull` (hill-painter.ts : origine au corps, ailes vers ±x, tête vers +x). Corps
+// §10) dans le repère de l'ancien sprite figé du décor (supprimé en G5 : origine au corps, ailes vers ±x, tête vers +x). Corps
 // 5,2 × 2 blanc à dos gris, tête, bec jaune, œil ; ailes en deux courbes (bord d'attaque convexe, bord de fuite) à bout noir,
 // aile du fond grise, aile de devant blanche. Quatre ailes (`wing`) : `flap` battement en 8 poses clés (ailes à plat → basses →
 // à plat → hautes, le corps suit d'un peu moins d'une unité en sens inverse), `glide` plané (ailes tendues légèrement

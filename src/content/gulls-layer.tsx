@@ -1,5 +1,5 @@
 import { useContext, useId, useMemo, useRef, type ReactElement } from 'react';
-import { flocksAt, gullsOpen, type GullPerch } from '../core/library/city/gulls';
+import { flocksAt, gullMinutes, gullsOpen, type GullPerch } from '../core/library/city/gulls';
 import { hillChimneyTop, visibleHillHouses } from '../core/library/city/santa';
 import { cityPaintPlan, type HillHouse } from '../core/library/paint/city-plan';
 import { PROPS } from '../core/library/paint/props/index';
@@ -17,6 +17,7 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // des maisons visibles de la colline (rangs 1 et 2, même cheminée que `paintHillHouse`). Mouvement réduit : les oiseaux de
 // l'instant `frozenT`, pose 0 du battement, immobiles.
 export const GULL_POOL = 16;
+const GATE_KEEP_S = 4 * 3600;
 
 // Cheminées où se poser : maisons des rangs 1 et 2 (le rang 0 est trop loin) dont le toit se voit, entières dans la scène.
 export function gullPerches(houses: readonly HillHouse[], facades: readonly { x: number; w: number; h: number }[], ground: number, width: number): GullPerch[] {
@@ -40,19 +41,34 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
   // Sens de l'image montrée par nœud (gardé d'un rendu à l'autre : au changement de palier de lumière, l'image précédente
   // reste pendant la cuisson) ; une image de l'autre sens n'est jamais gardée en attendant.
   const shownDir = useRef<(1 | -1 | 0)[]>(new Array<1 | -1 | 0>(GULL_POOL).fill(0));
-  // Dernière bascule du temps (nuit, forte pluie) vue par ce calque : instant mural passé à `flocksAt` (`since`), pour que les
-  // volées en vol finissent leur traversée et que rien ne surgisse au retour du beau temps. État au montage : « depuis toujours ».
-  const gate = useRef<{ open: boolean | null; since: number | undefined }>({ open: null, since: undefined });
+  // Intervalles de mauvais temps (nuit, forte pluie) vus par ce calque, passés à `flocksAt` (`closed`) : les volées en vol
+  // finissent leur traversée, rien ne surgit au retour du beau temps, et une fermeture courte n'efface pas à la réouverture
+  // une volée partie avant. État au montage : le temps du moment, « depuis toujours ». Les intervalles finis depuis plus de
+  // GATE_KEEP_S (bien au-delà de la plus longue traversée) sont oubliés.
+  const gate = useRef<{ open: boolean | null; closed: [number, number][] }>({ open: null, closed: [] });
+  // Heure de la scène vue par les mouettes (avance avec l'horloge murale même en heure fixe) : voir `gullMinutes`.
+  const clock = useRef<{ m: number; base: number } | null>(null);
+  // `run` courant : la fin d'une cuisson rappelle toujours le dernier (jamais un ancien contexte qui réécrirait `gate`).
+  const current = useRef<(now: number) => void>(() => undefined);
+  // Pose cuite : re-pose tout de suite (sans attendre l'image suivante ; seule pose en mouvement réduit). Fonction stable :
+  // le registre ne la garde qu'une fois par clé.
+  const again = useRef((): void => current.current(Date.now() / 1000)).current;
   const place = useMemo(() => {
     const run = (now: number): void => {
       const el = root.current;
       if (!el || !ghibli) return;
       const t = still ? frozenT : now;
       const open = gullsOpen({ daylight: day, rain });
-      if (gate.current.open === null) gate.current = { open, since: undefined };
-      else if (gate.current.open !== open) gate.current = { open, since: t };
+      const g = gate.current;
+      if (g.open === null) g.closed = open ? [] : [[-Infinity, Infinity]];
+      else if (g.open && !open) g.closed.push([t, Infinity]);
+      else if (!g.open && open && g.closed.length > 0) g.closed[g.closed.length - 1]![1] = t;
+      g.open = open;
+      g.closed = g.closed.filter(([, b]) => b > t - GATE_KEEP_S);
+      const c = gullMinutes(clock.current, minutes, t);
+      clock.current = c.clock;
       // Mouvement réduit : rien ne bouge, le temps s'applique tel quel (pas de traversée à finir).
-      const poses = flocksAt(t, seed, width, height, { minutes, daylight: day, rain, since: still ? undefined : gate.current.since }, perches);
+      const poses = flocksAt(t, seed, width, height, { minutes: c.minutes, daylight: day, rain, closed: still ? undefined : g.closed }, perches);
       const dirs = shownDir.current;
       const nodes = el.querySelectorAll<SVGGElement>('[data-gull]');
       nodes.forEach((g, i) => {
@@ -84,11 +100,9 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
         g.setAttribute('opacity', (1 - p.far).toFixed(2));
       });
     };
-    // Pose cuite : re-pose tout de suite (sans attendre l'image suivante ; seule pose en mouvement réduit). Fonction stable :
-    // le registre ne la garde qu'une fois par clé.
-    const again = (): void => run(Date.now() / 1000);
+    current.current = run;
     return run;
-  }, [ghibli, still, frozenT, seed, width, height, minutes, day, rain, perches, props]);
+  }, [ghibli, still, frozenT, seed, width, height, minutes, day, rain, perches, props, again]);
   useWallClockLoop(place, [place]);
 
   if (!ghibli) return null;
