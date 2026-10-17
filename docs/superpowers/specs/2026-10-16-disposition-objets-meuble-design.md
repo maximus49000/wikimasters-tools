@@ -153,3 +153,94 @@ ne fait rien dans la vue Modifier ; chaque glissé est enregistré tout de suite
 
 Nom exact des types et fichiers, pas de balayage pour la première place libre, découpage des composants, détail de la caméra
 (angle exact) tant qu'il ressemble à la maquette.
+
+---
+
+## Révision du 2026-10-17 (après les parties 1 et 2)
+
+Les parties 1 (positions en cm, stockage **v9** — et non v8, prise entre-temps) et 2 (caméra plongeante, vue Modifier d'un
+plateau, ✋) sont livrées (PR #327, #330). L'utilisateur a précisé trois points après avoir vu la vue Modifier. Cette révision
+**remplace** les passages contraires plus haut (en particulier « un toucher sans glisser ne fait rien »).
+
+### Pourquoi
+
+La vue Modifier d'une étagère ne montrait que le dessus : l'utilisateur veut **tout le meuble** pour ranger ses cartes, les
+choisir et les passer d'une tablette à l'autre. Il veut aussi des cartes **mises en valeur** sur un plateau (sur un trépied ou
+couchées comme un disque qu'on vient de sortir), et pouvoir **corriger une carte** sur place : la bonne pochette, le bon format.
+
+### R1. Toute l'étagère dans la vue Modifier, avec zoom
+
+- ✋ sur une étagère ouvre la vue sur **le meuble entier** (dessus + 3 tablettes ; deux bibliothèques liées côte à côte).
+- **Zoom comme le zoom d'étagère actuel** (`FurnitureZoom` / `ShelfBoardZoom`, `useFurnitureZoom.setLevel`) : toucher une tablette
+  zoome dessus ; ▲ / ▼ (« Tablette du dessus / du dessous ») passent d'une tablette à l'autre ; le dessus d'étagère est un niveau
+  de plus (au-dessus de la tablette 0) ; deux bibliothèques liées défilent ensemble. Retour Android : dézoome d'abord, puis ferme.
+- **Glisser d'une tablette à l'autre en zoom** (décision utilisateur) : une carte tenue amenée au **bord haut ou bas** de l'écran
+  fait passer la vue à la tablette voisine après un court instant ; on la lâche là. Au niveau « meuble entier », on lâche
+  directement sur la tablette visée.
+- Le bureau garde sa vue actuelle (plateau seul : il n'a pas d'autre niveau).
+
+### R2. Deux poses pour une carte sur un plateau
+
+Une carte posée sur un plateau (bureau, dessus d'étagère) a une **pose** :
+- **trépied** : debout, de face, sur un petit trépied (la « carte posée sur chevalet » de la partie 4) ;
+- **à plat** : couchée, pochette vers le haut, comme la pochette devant la chaîne hi-fi (décision utilisateur).
+L'empreinte au sol dépend de la pose (à plat : la taille réelle de la couverture couchée ; trépied : largeur × profondeur du
+trépied) ; le vert / rouge en tient compte. Changer de pose qui ne tient plus à cette place est **refusé** (rouge, message), la
+carte ne bouge pas toute seule.
+
+### R3. Modifier une carte depuis la vue
+
+**Toucher une carte sans la glisser** ouvre sa **bulle** dans la vue Modifier (glisser déplace toujours ; toucher un petit objet
+ne fait toujours rien). Boutons en glyphes :
+- **Présentation** : sur une tablette, de face / sur la tranche / de dos (jeu) — l'existant ; sur un plateau, trépied / à plat.
+- **Version de la pochette** :
+  - jeu : choix de la boîte existant (`GameVersionDialog`, TheGamesDB) ;
+  - livre : choix de l'édition existant (`BookChoiceDialog`, Open Library) ;
+  - **CD : autres éditions de l'album** (nouveau) ;
+  - **DVD : autres affiches / jaquettes du film** (nouveau).
+- **Format de l'objet** : CD, DVD, jeu, livre — la même carte change de boîtier (le slug ne change pas). Format qui ne tient plus
+  à sa place (tablette pleine, trop haut, chevauchement sur un plateau) : **refusé** avec le message habituel (« Plus de place sur
+  cette tablette. »), rien ne bouge.
+- **ⓘ** fiche de la carte, **🗑** retirer.
+
+### Découpage révisé (remplace le découpage proposé)
+
+1. ~~Données~~ — livré. 2. ~~Vue Modifier d'un plateau~~ — livré.
+3. **Étagère entière + zoom par tablette** dans la vue Modifier, tablettes mixtes (cartes + petits objets), glissé d'une tablette à
+   l'autre (bord d'écran en zoom).
+4. **Cartes posées sur un plateau** (trépied / à plat) + ajout ＋ avec réglette.
+5. **Bulle d'une carte** dans la vue : présentation, format, ⓘ, 🗑.
+6. **Versions de pochette** CD et DVD (nouvelles sources) + branchement des choix jeu / livre existants.
+7. Zoom de la chaîne hi-fi (inchangé).
+
+Chaque partie : sa PR, sa fiche WikiHow (nouvel id), puis la pré-prod.
+
+### Anti-objectifs ajoutés
+
+- Une carte qui change de place quand on change sa pose, son format ou sa pochette.
+- Une pochette « choisie » qui n'existe pas (image cassée, version inventée) : la source doit être réelle ; sans autre version, le
+  bouton est grisé.
+- Le zoom de la vue Modifier qui ne ressemble pas au zoom d'étagère qu'on connaît déjà.
+
+### Décisions de la révision (2026-10-17)
+
+Utilisateur :
+- **Pochette et format choisis dans la pièce = seulement pour cet objet posé.** Ils ne changent ni la Collection, ni la fiche
+  de la carte, ni les images de remplacement du site. Stockés sur l'objet du plan (champ(s) optionnel(s), version de stockage
+  suivante). Les choix jeu (`GameVersionDialog`) et livre (`BookChoiceDialog`) existants gardent leur comportement global hors de
+  la pièce ; dans la vue Modifier, le choix fait pour un jeu ou un livre est lui aussi propre à l'objet posé.
+- **Versions de pochette d'un CD : Spotify d'abord** (il gère déjà les pochettes d'album, versions de l'album comprises),
+  **Deezer seulement si Spotify n'a pas de pochette** pour cet album (ou sans compte Spotify lié). Deezer passe par le relais existant.
+- Sans autre version disponible, le bouton est **grisé** (jamais de version inventée).
+
+Choix de Claude (à relire) :
+- **DVD : affiches de film TMDB** (plusieurs langues) via le relais (une adresse d'images à ajouter à la liste blanche du relais,
+  redéploiement à la main).
+- **Caméras** : meuble entier et tablettes **de face**, comme le zoom d'étagère actuel ; le **dessus** garde la vue plongeante au cm
+  de la partie 2 (en plongée, chaque tablette serait cachée par celle du dessus).
+- **Gestes** : au niveau « meuble entier », toucher une carte zoome sur sa tablette ; en zoom, toucher une carte ouvre sa bulle,
+  la glisser la déplace ; balayer verticalement dans le vide change de tablette (comme aujourd'hui) ; toucher un petit objet ne fait rien.
+- **Format / version pour une carte d'une autre nature** (un film rangé en CD…) : la version cherche dans la source du **format
+  choisi** à partir du titre de la carte ; rien trouvé → bouton grisé.
+- **Ordre des parties** : en partie 3, une carte lâchée sur le dessus d'étagère est refusée (rouge) ; la partie 4 l'autorise, pose
+  par défaut **trépied**.
