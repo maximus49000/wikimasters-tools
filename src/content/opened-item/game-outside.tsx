@@ -139,7 +139,8 @@ function Scan({ url, w, h, box, id, fallback }: { url?: string; w: number; h: nu
   const [failed, setFailed] = useState<string | null>(null);
   const shown = url && failed !== url ? url : undefined;
   const ratio = useImageRatio(shown);
-  const wide = ratio !== undefined && ratio > 1;
+  // En largeur par rapport à la face (une jaquette de Super Nintendo sur sa boîte en largeur ne l'est pas) : bandeau + titre.
+  const wide = ratio !== undefined && ratio > 1 && ratio / (w / h) >= 1.4;
   const top = h * 0.06;
   const imgH = wide ? Math.min(h - top, w / ratio) : h;
   const ink = inkOn(box.style.plastic);

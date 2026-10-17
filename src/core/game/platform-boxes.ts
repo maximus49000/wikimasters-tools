@@ -1,5 +1,9 @@
 // Formats de boîte de jeu par console (dimensions réelles en cm), pour dessiner les boîtes.
-export type BoxFormat = 'bluray' | 'dvd' | 'gamecube' | 'switch' | 'ds' | 'psp' | 'vita' | 'cd-jewel' | 'generic';
+export type BoxFormat =
+  | 'bluray' | 'dvd' | 'gamecube' | 'switch' | 'ds' | 'psp' | 'vita' | 'cd-jewel'
+  // Consoles à cartouche : boîte en carton (en largeur pour SNES et N64) ou boîtier à clapet (Mega Drive), cartouche dedans.
+  | 'snes' | 'n64' | 'nes' | 'gb' | 'gba' | 'genesis'
+  | 'generic';
 
 export type BoxSupport =
   | { kind: 'disc'; d: number }
@@ -26,6 +30,14 @@ export const BOX_FORMATS: Record<BoxFormat, BoxTemplate> = {
   // Vita : valeurs approximatives (étui de carte ~ 10,5 x 13,5 x 1,1 ; carte ~ 2,2 x 3,2), recoupées sur des photos d'étuis, non mesurées.
   vita: { w: 10.5, h: 13.5, d: 1.1, plastic: NOIR, band: null, support: { kind: 'cart', w: 2.2, h: 3.2, color: NOIR } },
   'cd-jewel': { w: 14.2, h: 12.5, d: 1, plastic: '#D9DEE6', band: null, support: { kind: 'disc', d: 12 } },
+  // Consoles à cartouche : valeurs approximatives (boîtes et cartouches nord-américaines et européennes), recoupées sur des photos
+  // et sur les proportions des scans de TheGamesDB (SNES 974×720, N64 986×720, GBA 804×720), non mesurées.
+  snes: { w: 18.3, h: 13.2, d: 3.2, plastic: NOIR, band: null, support: { kind: 'cart', w: 12, h: 8.6, color: '#8E8C93' } },
+  n64: { w: 18.4, h: 13.4, d: 3.4, plastic: NOIR, band: null, support: { kind: 'cart', w: 11.6, h: 7.5, color: '#55555A' } },
+  nes: { w: 12.7, h: 17.8, d: 2.9, plastic: NOIR, band: null, support: { kind: 'cart', w: 12, h: 13.3, color: '#6E6E73' } },
+  gb: { w: 12, h: 13.2, d: 2.5, plastic: BLANC, band: null, support: { kind: 'cart', w: 5.7, h: 6.5, color: '#8A8D93' } },
+  gba: { w: 14.2, h: 12.7, d: 2.6, plastic: BLANC, band: null, support: { kind: 'cart', w: 5.7, h: 3.5, color: '#55555A' } },
+  genesis: { w: 13.6, h: 18.9, d: 2.2, plastic: NOIR, band: null, support: { kind: 'cart', w: 11, h: 13.4, color: NOIR } },
   generic: { w: 13.5, h: 19, d: 1.5, plastic: NOIR, band: null, support: { kind: 'disc', d: 12 } },
 };
 
@@ -39,6 +51,7 @@ const TGDB: Record<number, BoxFormat> = {
   13: 'psp',
   39: 'vita',
   10: 'cd-jewel', 17: 'cd-jewel', 16: 'cd-jewel',
+  6: 'snes', 3: 'n64', 7: 'nes', 4: 'gb', 41: 'gb', 5: 'gba', 18: 'genesis',
 };
 
 export function formatOfTgdbPlatform(id: number): BoxFormat {
@@ -50,19 +63,27 @@ export function formatOfTgdbPlatform(id: number): BoxFormat {
 const NOMS: [RegExp, BoxFormat, string?][] = [
   [/switch/, 'switch', 'switch'],
   [/vita/, 'vita'],
-  [/playstation portable|psp/, 'psp'],
-  [/playstation 5|ps5/, 'bluray', 'ps5'],
-  [/playstation 4|ps4/, 'bluray', 'ps4'],
-  [/playstation 3|ps3/, 'bluray', 'ps3'],
-  [/playstation 2|ps2/, 'dvd', 'ps2'],
-  [/^playstation$|ps1|psx|saturn|dreamcast/, 'cd-jewel'],
+  [/playstation portable|\bpsp\b/, 'psp'],
+  [/playstation 5|\bps5\b/, 'bluray', 'ps5'],
+  [/playstation 4|\bps4\b/, 'bluray', 'ps4'],
+  [/playstation 3|\bps3\b/, 'bluray', 'ps3'],
+  [/playstation 2|\bps2\b/, 'dvd', 'ps2'],
+  [/^playstation$|\bps1\b|\bpsx\b|saturn|dreamcast/, 'cd-jewel'],
   [/xbox series/, 'bluray', 'xseries'],
   [/xbox one/, 'bluray', 'xone'],
   [/xbox/, 'dvd', 'xbox'],
   [/wii u/, 'dvd', 'wiiu'],
   [/wii/, 'dvd', 'wii'],
   [/gamecube/, 'gamecube'],
-  [/3ds|nintendo ds|nds|dsi/, 'ds', 'ds'],
+  [/3ds|nintendo ds|\bnds\b|\bdsi\b/, 'ds', 'ds'],
+  // Cartouches : Super Nintendo avant NES (« Super Nintendo Entertainment System »), Advance avant Game Boy.
+  [/super nintendo|snes|super famicom/, 'snes', 'snes'],
+  [/nintendo 64|\bn64\b/, 'n64', 'n64'],
+  [/nintendo entertainment system|\bnes\b|famicom/, 'nes', 'nes'],
+  [/game ?boy advance|\bgba\b/, 'gba', 'gba'],
+  [/game ?boy color|\bgbc\b/, 'gb', 'gbc'],
+  [/game ?boy/, 'gb', 'gb'],
+  [/genesis|mega ?drive/, 'genesis', 'genesis'],
   [/^pc( \(.*\))?$|^(microsoft )?windows$|\(microsoft windows\)/, 'dvd'],
 ];
 
@@ -119,6 +140,7 @@ export function caseStyleOfPlatformName(name: string): CaseStyle {
 const LABELS: Record<string, string> = {
   ps5: 'PS5', ps4: 'PS4', ps3: 'PS3', ps2: 'PS2', xseries: 'Xbox Series', xone: 'Xbox One', xbox: 'Xbox',
   switch: 'Switch', wii: 'Wii', wiiu: 'Wii U', ds: 'DS',
+  snes: 'Super Nintendo', n64: 'N64', nes: 'NES', gba: 'GBA', gbc: 'Game Boy Color', gb: 'Game Boy', genesis: 'Mega Drive',
 };
 const FORMAT_LABELS: Partial<Record<BoxFormat, string>> = { psp: 'PSP', vita: 'PS Vita', gamecube: 'GameCube' };
 
