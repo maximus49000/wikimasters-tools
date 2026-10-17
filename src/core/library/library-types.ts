@@ -32,6 +32,11 @@ export type VinylColor = 'black' | 'red' | 'blue' | 'green' | 'gold';
 export type Depth = 0 | 1 | 2 | 3;
 export type StandDepth = 1 | 2 | 3;
 
+// Nouvelles dispositions (cm) : petit objet posé sur le plateau d'un meuble (x vers la droite, z = 0 au bord avant), sur une tablette, ou carte posée sur un chevalet.
+export type SmallOnTop = { id: string; kind: 'small'; item: SmallItem; hostId: string; x: number; z: number; lit?: boolean; city?: CityTime };
+export type SmallOnBoard = { id: string; kind: 'small'; item: SmallItem; hostId: string; level: ShelfLevel; order: number; lit?: boolean; city?: CityTime };
+export type Posed = { id: string; kind: 'posed'; shape: ShelfShape; hostId: string; x: number; z: number; box?: BoxFormat; caseColor?: string; slug: string };
+
 // Un meuble au sol : (col, row) est sa case en haut à gauche. L'ordinateur n'a pas de case : il suit son bureau (et peut afficher une carte).
 // `small` : petit objet posé sur l'emplacement `slot` de la surface du bureau ou de l'étagère `hostId`.
 // `lit` (lampes seulement) : faux = éteinte ; absent = allumée. `city` (réveil, pendulette) : ville de l'heure affichée, absent = heure de la scène.
