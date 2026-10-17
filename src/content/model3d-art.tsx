@@ -3,7 +3,7 @@ import { memo, useId, type ReactElement } from 'react';
 import { hostNativePx } from '../core/library/carried-items';
 import { drawSize, type Angle } from '../core/library/footprint';
 import { FURNITURE_MODELS, STEAMPUNK_TRIM } from '../core/library/furniture-models';
-import { CELL_H, CELL_W, openingOf, overhangOf, pieceBounds, projectOf, renderModel, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
+import { CELL_H, CELL_W, FACE_CAMERA, openingOf, overhangOf, pieceBounds, projectOf, renderModel, type Camera, type Fill, type Model, type Shape } from '../core/library/furniture-render3d';
 import { itemModel, itemPieces, type ItemDisplay, type ItemPlacement, type ItemShape } from '../core/library/item-models';
 import type { BoxFormat, CaseStyle } from '../core/game/platform-boxes';
 import type { StandingKind } from '../core/library/library-types';
@@ -53,8 +53,8 @@ function haloOf(shapes: Shape[], pick: (s: Shape) => boolean): Omit<Halo, 'item'
   return { cx: r1((x0 + x1) / 2), cy: r1((y0 + y1) / 2), rx: r1((x1 - x0) * 1.1), ry: r1(y1 - y0) };
 }
 
-function geometryFrom(model: Model, angle: Angle, lampHalo: boolean): Geometry {
-  const r = renderModel(model, angle);
+function geometryFrom(model: Model, angle: Angle, lampHalo: boolean, cam: Camera = FACE_CAMERA): Geometry {
+  const r = renderModel(model, angle, cam);
   const shapes = r.shapes.map((s): Drawn => {
     const common: Common = { fill: s.fill, shade: s.shade, ...(s.color && { color: s.color }), ...(s.tag?.startsWith('glow:') && { glow: s.tag.slice(5) }), ...(s.tag?.startsWith('stored:') && { stored: true as const }) };
     if (s.kind === 'line') return { ...common, tag: 'polyline', points: pts(s.points) };
@@ -106,17 +106,19 @@ export const itemsKey = (items: ItemPlacement[] | undefined): string =>
   (items ?? []).map((i) => `${i.key},${i.shape},${i.display ?? ''},${i.x},${i.y},${i.z},${i.color ?? ''},${i.box ?? ''}`).join(';');
 // `part` (meuble à socle) : 'base' = socle et tige seulement, 'overhang' = arc et dôme seulement (rangés à part dans la pièce) ; absent = tout.
 export type ModelPart = 'base' | 'overhang';
-function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?: ItemPlacement[], part?: ModelPart): Geometry {
-  return cached(`${kind}:${angle}:${steampunk ? 1 : 0}:${itemsKey(items)}:${part ?? ''}`, () => {
+function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?: ItemPlacement[], part?: ModelPart, cam: Camera = FACE_CAMERA): Geometry {
+  // Clé d'origine pour la caméra de face ; une autre caméra a ses propres géométries.
+  const camKey = cam === FACE_CAMERA ? '' : `:${cam.pxPerCmX},${cam.pxPerCmY},${cam.depthPxPerCm}`;
+  return cached(`${kind}:${angle}:${steampunk ? 1 : 0}:${itemsKey(items)}:${part ?? ''}${camKey}`, () => {
     const base = FURNITURE_MODELS[kind];
     const trim = steampunk ? (STEAMPUNK_TRIM[kind] ?? []) : [];
     const extra = (items ?? []).flatMap((i) => itemPieces(i, steampunk));
     const whole = trim.length + extra.length > 0 ? { ...base, pieces: [...base.pieces, ...trim, ...extra] } : base;
     const over = part ? overhangOf(whole) : null;
     const model = over ? { ...whole, pieces: whole.pieces.filter((_, i) => over.pieces.has(i) === (part === 'overhang')) } : whole;
-    const g = geometryFrom(model, angle, base.glow !== undefined);
+    const g = geometryFrom(model, angle, base.glow !== undefined, cam);
     if (!g.shapes.some((s) => s.stored)) return g;
-    const o = openingOf(base, angle);
+    const o = openingOf(base, angle, cam);
     return { ...g, opening: o ? pts(o) : null };
   });
 }
@@ -281,11 +283,11 @@ function runsOf(shapes: Drawn[]): { stored: boolean; shapes: [Drawn, number][] }
   return out;
 }
 
-type Props = { kind: StandingKind; angle: Angle; rect: PxRect; palette: Palette; lit?: boolean; steampunk?: boolean; items?: ItemPlacement[]; content?: Record<string, ItemContent>; part?: ModelPart };
+type Props = { kind: StandingKind; angle: Angle; rect: PxRect; palette: Palette; lit?: boolean; steampunk?: boolean; items?: ItemPlacement[]; content?: Record<string, ItemContent>; part?: ModelPart; camera?: Camera };
 
 // Meuble dessiné depuis son modèle 3D (vraies proportions), mis à l'échelle de son rectangle, avec les objets qui le garnissent (`items`, dans son repère).
-function Model3DArtImpl({ kind, angle, rect, palette, lit = true, steampunk = false, items, content, part }: Props): ReactElement {
-  const g = geometryOf(kind, angle, steampunk, items, part);
+function Model3DArtImpl({ kind, angle, rect, palette, lit = true, steampunk = false, items, content, part, camera }: Props): ReactElement {
+  const g = geometryOf(kind, angle, steampunk, items, part, camera);
   const sx = rect.w / (g.cols * CELL_W);
   const sy = rect.h / (g.rows * CELL_H);
   return (
@@ -298,7 +300,7 @@ function Model3DArtImpl({ kind, angle, rect, palette, lit = true, steampunk = fa
 // Redessiné seulement si le meuble change (le rectangle et la liste d'objets arrivent neufs à chaque rendu : comparés par valeur).
 export const Model3DArt = memo(Model3DArtImpl, (a, b) => a.kind === b.kind && a.angle === b.angle && a.palette === b.palette && a.lit === b.lit
   && a.steampunk === b.steampunk && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
-  && a.content === b.content && itemsKey(a.items) === itemsKey(b.items) && a.part === b.part);
+  && a.content === b.content && itemsKey(a.items) === itemsKey(b.items) && a.part === b.part && a.camera === b.camera);
 
 // Géométrie d'un objet seul, dans son propre repère, par (forme, présentation, angle, Steampunk, couleur) : la même pour tous les objets
 // de même forme, où qu'ils soient posés (la projection est affine : poser l'objet revient à translater son dessin).

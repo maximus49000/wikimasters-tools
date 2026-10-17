@@ -1,6 +1,6 @@
 // tests/core/library/furniture-render3d.test.ts
 import { describe, expect, it } from 'vitest';
-import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, leafHalf, localPointOf, occluderBoxesOf, perchOf, pieceBounds, poisOf3d, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
+import { DEPTH_PX_PER_CM, FACE_CAMERA, PLUNGE_CAMERA, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, leafHalf, localPointOf, occluderBoxesOf, perchOf, pieceBounds, poisOf3d, projectOf, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 
 const CELL_W = 30;
@@ -567,5 +567,28 @@ describe('boîte penchée (lean)', () => {
     expect(polys).toHaveLength(2);
     // Dos penché vers l'avant : il remonte vers le haut ; dessous : le plus clair des deux n'est pas un dessus (teinte < dessus).
     expect(polys.every((s) => s.shade < 1.12)).toBe(true);
+  });
+});
+
+describe('caméra', () => {
+  it('FACE_CAMERA reprend les constantes de la pièce', () => {
+    expect(FACE_CAMERA).toEqual({ pxPerCmX: PX_PER_CM_X, pxPerCmY: PX_PER_CM_Y, depthPxPerCm: DEPTH_PX_PER_CM });
+  });
+  it('la caméra de face (explicite ou par défaut) donne le même rendu et la même projection', () => {
+    for (const a of ANGLES) {
+      expect(renderModel(cube, a, FACE_CAMERA)).toEqual(renderModel(cube, a));
+      expect(projectOf(cube, a, [10, 20, 30], FACE_CAMERA)).toEqual(projectOf(cube, a, [10, 20, 30]));
+    }
+  });
+  it('vue plongeante : le plateau du bureau s’étale (≥ 1,5 × la hauteur écran de la vue de face)', () => {
+    const desk = FURNITURE_MODELS.desk;
+    const span = (cam?: typeof FACE_CAMERA) => Math.abs(projectOf(desk, 0, [0, 75, 0], cam)[1] - projectOf(desk, 0, [0, 75, desk.d], cam)[1]);
+    expect(span(PLUNGE_CAMERA)).toBeGreaterThanOrEqual(1.5 * span(FACE_CAMERA));
+    const r = renderModel(desk, 0, PLUNGE_CAMERA);
+    for (const sh of r.shapes) if (sh.kind === 'poly') for (const [x, y] of sh.points) {
+      expect(Number.isFinite(x) && Number.isFinite(y)).toBe(true);
+      expect(y).toBeGreaterThanOrEqual(-1e-6);
+      expect(y).toBeLessThanOrEqual(r.rows * CELL_H + 1e-6);
+    }
   });
 });

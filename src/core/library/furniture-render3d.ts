@@ -67,6 +67,12 @@ export const CELL_H = 510 / 18;
 export const PX_PER_CM_X = CELL_W / 21;
 export const PX_PER_CM_Y = CELL_H / 21;
 export const DEPTH_PX_PER_CM = CELL_H / 50;
+// Caméra : échelle écran (px par cm) de la largeur, de la hauteur et de la profondeur du modèle. Par défaut, la vue de face de la pièce ;
+// FACE_CAMERA est une constante partagée (aucun objet créé par appel), la projection reste identique à celle d'avant.
+export type Camera = { pxPerCmX: number; pxPerCmY: number; depthPxPerCm: number };
+export const FACE_CAMERA: Camera = { pxPerCmX: PX_PER_CM_X, pxPerCmY: PX_PER_CM_Y, depthPxPerCm: DEPTH_PX_PER_CM };
+// Vue plongeante de la vue Modifier : la profondeur s'étale (on voit le dessus du plateau), la hauteur s'écrase. Valeurs de départ, réglées à l'œil.
+export const PLUNGE_CAMERA: Camera = { pxPerCmX: PX_PER_CM_X, pxPerCmY: PX_PER_CM_Y * 0.55, depthPxPerCm: PX_PER_CM_Y * 0.8 };
 const SHADE = { front: 1, side: 0.82, top: 1.12 } as const;
 const ROUND_STEPS = 24;
 const TINY_PX = 4; // en dessous, un corps rond se dessine d'une seule ellipse
@@ -78,17 +84,17 @@ const LEAF_STEPS = 10;
 const LEAF_TWIST = (40 * Math.PI) / 180;
 
 type V3 = { x: number; y: number; z: number };
-type Frame = { cos: number; sin: number; cx: number; cz: number; minX: number; minZ: number };
+type Frame = { cos: number; sin: number; cx: number; cz: number; minX: number; minZ: number; cam: Camera };
 
 // Rotation autour du centre de la base ; angle 1 = la face avant tourne vers la gauche.
-function frameOf(model: Model, angle: Angle): Frame {
+function frameOf(model: Model, angle: Angle, cam: Camera): Frame {
   const t = (angle * Math.PI) / 4;
   const cos = Math.cos(t);
   const sin = Math.sin(t);
   const cx = model.w / 2;
   const cz = model.d / 2;
   const rot = baseOf(model).map(([x, z]) => turn({ cos, sin, cx, cz }, x, z));
-  return { cos, sin, cx, cz, minX: Math.min(...rot.map((p) => p[0])), minZ: Math.min(...rot.map((p) => p[1])) };
+  return { cos, sin, cx, cz, minX: Math.min(...rot.map((p) => p[0])), minZ: Math.min(...rot.map((p) => p[1])), cam };
 }
 // (x, z) du modèle → (x', z') tournés, encore non décalés.
 function turn(f: Pick<Frame, 'cos' | 'sin' | 'cx' | 'cz'>, x: number, z: number): [number, number] {
@@ -160,25 +166,25 @@ function clippedArea(poly: [number, number][], x0: number, x1: number, z0: numbe
   return Math.abs(area) / 2;
 }
 
-type Layout3d = { f: Frame; cols: number; rows: number; depthRows: number; toPx: (p: V3) => [number, number] };
+type Layout3d = { f: Frame; cam: Camera; cols: number; rows: number; depthRows: number; toPx: (p: V3) => [number, number] };
 
 // Taille du rectangle de dessin et passage d'un point du modèle aux px du rectangle (origine en haut à gauche).
-function layoutOf(model: Model, angle: Angle): Layout3d {
-  const f = frameOf(model, angle);
+function layoutOf(model: Model, angle: Angle, cam: Camera = FACE_CAMERA): Layout3d {
+  const f = frameOf(model, angle, cam);
   const trace = footprint(model, f);
   const traceW = Math.max(...trace.map((p) => p[0]));
   const traceD = Math.max(...trace.map((p) => p[1]));
   const cols = Math.max(1, Math.round(traceW / 21)); // le dessin est centré, un débord d'une demi-case au plus est toléré
   const depthRows = Math.max(1, Math.round(traceD / 50));
-  const heightPx = model.h * PX_PER_CM_Y + traceD * DEPTH_PX_PER_CM;
+  const heightPx = model.h * cam.pxPerCmY + traceD * cam.depthPxPerCm;
   const rows = Math.max(depthRows, Math.ceil(heightPx / CELL_H - 0.05)); // jamais le haut coupé
   const bottom = rows * CELL_H;
-  const offsetX = (cols * CELL_W - traceW * PX_PER_CM_X) / 2;
+  const offsetX = (cols * CELL_W - traceW * cam.pxPerCmX) / 2;
   const toPx = (p: V3): [number, number] => {
     const l = local(f, p);
-    return [offsetX + l.x * PX_PER_CM_X, bottom - l.y * PX_PER_CM_Y - l.z * DEPTH_PX_PER_CM];
+    return [offsetX + l.x * cam.pxPerCmX, bottom - l.y * cam.pxPerCmY - l.z * cam.depthPxPerCm];
   };
-  return { f, cols, rows, depthRows, toPx };
+  return { f, cam, cols, rows, depthRows, toPx };
 }
 
 // Profondeur (z' tourné) d'un point : sert au tri du plus loin au plus proche.
@@ -250,7 +256,7 @@ function prismFaces(p: Extract<Piece, { shape: 'prism' }>): { sides: Face[]; cap
 
 // Direction du spectateur dans le repère du modèle : la projection confond les points alignés sur (0, d, −k) tourné (vers le haut et l'avant).
 function viewDir(f: Frame): V3 {
-  return { x: PX_PER_CM_Y * f.sin, y: DEPTH_PX_PER_CM, z: -PX_PER_CM_Y * f.cos };
+  return { x: f.cam.pxPerCmY * f.sin, y: f.cam.depthPxPerCm, z: -f.cam.pxPerCmY * f.cos };
 }
 const dot = (a: V3, b: V3): number => a.x * b.x + a.y * b.y + a.z * b.z;
 
@@ -395,8 +401,8 @@ function paintOrder(pieces: Piece[], f: Frame): Piece[] {
   return out;
 }
 
-export function renderModel(model: Model, angle: Angle): Rendered {
-  const L = layoutOf(model, angle);
+export function renderModel(model: Model, angle: Angle, cam: Camera = FACE_CAMERA): Rendered {
+  const L = layoutOf(model, angle, cam);
   const { f } = L;
   const order = paintOrder(model.pieces, f);
   const shapes: Shape[] = [];
@@ -481,10 +487,10 @@ function runs<T>(pts: T[], front: boolean[]): { front: boolean; pts: T[] }[] {
 function drawBall(p: Extract<Piece, { shape: 'ball' }>, L: Layout3d, push: Push): void {
   const { f } = L;
   const [cx, cy] = L.toPx({ x: p.cx, y: p.cy, z: p.cz });
-  const rx = Math.hypot(p.rx * f.cos, p.rz * f.sin) * PX_PER_CM_X;
+  const rx = Math.hypot(p.rx * f.cos, p.rz * f.sin) * L.cam.pxPerCmX;
   // Hauteur écran : la hauteur propre + la profondeur tournée (rz') qui remonte dans la perspective.
   const rzTurned = Math.hypot(p.rx * f.sin, p.rz * f.cos);
-  const ry = Math.hypot(p.ry * PX_PER_CM_Y, rzTurned * DEPTH_PX_PER_CM);
+  const ry = Math.hypot(p.ry * L.cam.pxPerCmY, rzTurned * L.cam.depthPxPerCm);
   const R = p.rx;
   const t = ((p.tilt ?? 0) * Math.PI) / 180;
   const v = viewDir(f);
@@ -506,7 +512,7 @@ function drawBall(p: Extract<Piece, { shape: 'ball' }>, L: Layout3d, push: Push)
     const qs = Array.from({ length: n + 1 }, (_, i) => dirOf(g.from + ((g.to - g.from) * i) / n, g.lon));
     for (const run of runs(qs, qs.map((q) => dot(q, v) > 0))) {
       if (run.pts.length < 2) continue;
-      const { left, right } = band(run.pts.map((q) => at(q, g.r)), (g.w / 2) * PX_PER_CM_X);
+      const { left, right } = band(run.pts.map((q) => at(q, g.r)), (g.w / 2) * L.cam.pxPerCmX);
       const shape: Shape = { kind: 'poly', points: [...left, ...right], fill: g.fill, shade: SHADE.front };
       if (run.front) front.push(shape);
       else push(shape);
@@ -833,18 +839,18 @@ export function floorTraceOf(model: Model, angle: Angle): [number, number][] {
 
 // Coins de la face avant (`model.face`, plan z = 0) projetés, px du rectangle de dessin : haut gauche, haut droit, bas gauche ;
 // null si on ne la voit pas. La projection est affine : en ¾, la face est un parallélogramme.
-export function faceCornersOf(model: Model, angle: Angle): { tl: [number, number]; tr: [number, number]; bl: [number, number] } | null {
+export function faceCornersOf(model: Model, angle: Angle, cam: Camera = FACE_CAMERA): { tl: [number, number]; tr: [number, number]; bl: [number, number] } | null {
   if (angle !== 0 && angle !== 1 && angle !== 7) return null;
   const face = model.face ?? { x: 0, y: 0, w: model.w, h: model.h };
-  const L = layoutOf(model, angle);
+  const L = layoutOf(model, angle, cam);
   const top = face.y + face.h;
   return { tl: L.toPx({ x: face.x, y: top, z: 0 }), tr: L.toPx({ x: face.x + face.w, y: top, z: 0 }), bl: L.toPx({ x: face.x, y: face.y, z: 0 }) };
 }
 
 // Ouverture de la face avant (`model.face` : entre les montants, la plinthe et le dessus) projetée, px du rectangle de dessin :
 // haut gauche, haut droit, bas droit, bas gauche ; null si on ne la voit pas. Un objet rangé dans le meuble ne se voit qu'à travers elle.
-export function openingOf(model: Model, angle: Angle): [number, number][] | null {
-  const c = faceCornersOf(model, angle);
+export function openingOf(model: Model, angle: Angle, cam: Camera = FACE_CAMERA): [number, number][] | null {
+  const c = faceCornersOf(model, angle, cam);
   if (!c) return null;
   return [c.tl, c.tr, [c.tr[0] + c.bl[0] - c.tl[0], c.tr[1] + c.bl[1] - c.tl[1]], c.bl];
 }
@@ -896,8 +902,8 @@ const shiftOf = (model: Model, angle: Angle): { f: Frame; dx: number } => {
 };
 
 // Point du modèle → px du rectangle de dessin (même projection que le dessin).
-export function projectOf(model: Model, angle: Angle, p: V3t): [number, number] {
-  return layoutOf(model, angle).toPx({ x: p[0], y: p[1], z: p[2] });
+export function projectOf(model: Model, angle: Angle, p: V3t, cam: Camera = FACE_CAMERA): [number, number] {
+  return layoutOf(model, angle, cam).toPx({ x: p[0], y: p[1], z: p[2] });
 }
 
 export function localPointOf(model: Model, angle: Angle, p: V3t): { x: number; y: number; z: number } {
