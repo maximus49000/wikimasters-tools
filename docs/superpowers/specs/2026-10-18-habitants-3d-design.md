@@ -1,6 +1,6 @@
 # Habitants 3D — conception
 
-Date : 2026-10-18. Statut : à valider par l'utilisateur.
+Date : 2026-10-18. Statut : relu (contrôle constructeur fait), à valider par l'utilisateur.
 
 ## Intention
 
@@ -143,6 +143,32 @@ téléchargement (comme les pochettes). Tant qu'ils ne sont pas là, le pantin s
 - Mesure sur le S26 (cadence, temps d'apparition, mémoire) avant la pré-prod ; comparaison avec l'interrupteur à `false`.
 - Captures montrées à l'utilisateur au fil de l'eau.
 - Fiche WikiHow (nouveauté visible) dans la même PR que la fonctionnalité.
+
+## Réponses de l'utilisateur après relecture
+
+- **Première ouverture (images 3D pas encore prêtes) : option (b).** Les passants n'entrent sur le trottoir qu'une fois
+  leurs images 3D prêtes (la rue se remplit progressivement par les bords, d'où ils arrivent déjà) ; les commerçants et
+  personnages fixes restent en pantin jusqu'à ce que leurs images soient prêtes, puis basculent.
+- **Extension Chrome et application Android : les deux** reçoivent les habitants 3D (three.js dans les deux bundles).
+
+## Choix du rédacteur (à vérifier en lisant)
+
+- **Émotions** : chaque habitant a une humeur de fond tirée de sa graine (surtout neutre ou content) ; les scènes des
+  commerces en déduisent d'autres selon le geste (payer, recevoir → content ; trinquer → heureux ; attendre longtemps →
+  inquiet ; éternuer → surpris…), table de correspondance dans le code. Les variantes de visage (émotion, clignement) ne
+  sont produites que lorsque le personnage est assez grand à l'écran (gros plan, scènes des commerces).
+- **Gros plans au zoom** : seconde résolution d'images (plus de pixels par unité) pour les vues zoomées, pour que la 3D
+  reste nette de près.
+- **Nombre d'habitants différents** : pas de limite a priori (chaque graine garde son habitant) ; cache d'images à
+  plafond + rendu au budget de temps ; si la mémoire du S26 l'exige, un regroupement en un nombre fixe d'apparences sera
+  proposé à l'utilisateur avant d'être fait.
+- **Gestes** : test automatique de tolérance (position des mains 3D par rapport aux cibles du pantin, pour les 56 gestes et
+  toutes les silhouettes) + planches des 56 gestes par silhouette montrées à l'utilisateur.
+- **Hébergement des modèles** : fichiers statiques du Worker relais (section `[assets]` de `wrangler.toml`, déployée par
+  Workers Builds à la fusion) : aucune action de l'utilisateur.
+- **Nouvelles silhouettes** : générées tôt (envois validés un par un), mais la pré-prod ne les attend pas ; elles
+  rejoignent le tirage dès qu'elles sont prêtes.
+- **Repli** : le pantin reste le dessin de secours pour toute figure dont le modèle ou l'image 3D manque.
 
 ## Laissé au constructeur
 
