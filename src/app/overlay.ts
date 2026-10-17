@@ -94,6 +94,7 @@ import { createScreenService } from '../content/screen-service';
 import { createGameService } from '../content/game-service';
 import { getGameService, setGameService } from '../content/game-registry';
 import { createGameBoxService } from '../content/game-box-service';
+import { measureImage } from '../content/image-probe';
 import { setGameBoxService } from '../content/game-box-registry';
 import { createGameVersionRepo } from '../core/game/game-version-repo';
 import { fetchTgdbImages, fetchTgdbVersions } from '../core/game/tgdb-api';
@@ -706,6 +707,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
         store,
         // Autre version choisie pour une carte : son affiche mémorisée n'est plus la bonne.
         onChanged: (slug) => void images.forgetGameArt(slug),
+        // « Jaquettes » qui sont des bannières : repérées à la taille réelle de l'image.
+        measure: measureImage,
       }),
     );
     // Affiches des jeux vidéo : même mécanisme que les pochettes d'albums et les affiches de films.

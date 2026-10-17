@@ -5,7 +5,8 @@ import type { CardGame } from './wikidata-game';
 export type GameState = Record<string, CardGame>;
 export type GameFetcher = (slugs: string[]) => Promise<Record<string, CardGame>>;
 
-const KEY = 'game-v1';
+// v2 : avec l'année de première sortie (les entrées v1 n'en ont pas, elles sont redemandées).
+const KEY = 'game-v2';
 const CHOICE_KEY = 'game-choice-v1';
 // Après un échec (429, hors ligne), on laisse Wikidata respirer avant de réessayer.
 const COOLDOWN_MS = 60_000;
