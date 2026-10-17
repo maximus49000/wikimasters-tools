@@ -73,6 +73,13 @@ describe('createGameService.view', () => {
     expect(igdb.detail).not.toHaveBeenCalled();
   });
 
+  it("l'année de l'article (Wikidata) accompagne la fiche, choix de l'utilisateur compris", async () => {
+    const { service } = setup({ ids: { steamId: 2290, year: 1996 } });
+    expect(await service.view('Jeu', 'Final Doom')).toEqual({ status: 'detail', detail: { ...steamDetail, id: 2290 }, cardYear: 1996 });
+    await service.choose('Jeu', { source: 'igdb', id: 42 });
+    expect(await service.view('Jeu', 'Final Doom')).toMatchObject({ status: 'detail', cardYear: 1996 });
+  });
+
   it("repli IGDB par slug quand Steam n'a rien (ou ne connaît pas le jeu)", async () => {
     const { service, igdb } = setup({ ids: { steamId: 7, igdbSlug: 'super-metroid' }, steamDetail: null });
     expect(await service.view('Jeu', 'Super Metroid')).toMatchObject({ status: 'detail', detail: { source: 'igdb' } });

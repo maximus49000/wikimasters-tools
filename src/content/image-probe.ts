@@ -39,6 +39,18 @@ export function useImageProbe(): number {
   );
 }
 
+// Taille réelle d'une image (null : introuvable ou illisible).
+export function measureImage(url: string): Promise<{ w: number; h: number } | null> {
+  if (typeof Image === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => resolve(img.naturalWidth > 0 && img.naturalHeight > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
 // Tests : oublie les essais.
 export function resetImageProbes(): void {
   probes.clear();

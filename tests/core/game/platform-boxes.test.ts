@@ -18,9 +18,7 @@ describe('formatOfTgdbPlatform', () => {
     expect(formatOfTgdbPlatform(8)).toBe('ds');
   });
   it('retombe sur generic', () => {
-    expect(formatOfTgdbPlatform(6)).toBe('generic');
     expect(formatOfTgdbPlatform(4916)).toBe('generic');
-    expect(formatOfTgdbPlatform(41)).toBe('generic');
     expect(formatOfTgdbPlatform(999999)).toBe('generic');
   });
 });
@@ -44,7 +42,6 @@ describe('formatOfPlatformName', () => {
     expect(formatOfPlatformName('Dreamcast')).toBe('cd-jewel');
   });
   it('retombe sur generic', () => {
-    expect(formatOfPlatformName('Super Nintendo Entertainment System')).toBe('generic');
     expect(formatOfPlatformName('')).toBe('generic');
     for (const n of ['PC Engine', 'NEC PC-8801', 'Windows Phone', 'PlayStation VR', 'PlayStation Now']) expect(formatOfPlatformName(n), n).toBe('generic');
   });
@@ -89,5 +86,67 @@ describe('consoleLabelOf', () => {
     expect(consoleLabelOf('Sony Playstation Portable')).toBe('PSP');
     expect(consoleLabelOf('PC (Microsoft Windows)')).toBe('PC');
     expect(consoleLabelOf('Neo Geo')).toBe('Neo Geo');
+  });
+});
+
+describe('consoles à cartouche (boîtes en carton ou clapet, cartouche dedans)', () => {
+  it('ids TheGamesDB : SNES, N64, NES, Game Boy (Color), GBA, Mega Drive', () => {
+    expect(formatOfTgdbPlatform(6)).toBe('snes');
+    expect(formatOfTgdbPlatform(3)).toBe('n64');
+    expect(formatOfTgdbPlatform(7)).toBe('nes');
+    expect(formatOfTgdbPlatform(4)).toBe('gb');
+    expect(formatOfTgdbPlatform(41)).toBe('gb');
+    expect(formatOfTgdbPlatform(5)).toBe('gba');
+    expect(formatOfTgdbPlatform(18)).toBe('genesis');
+  });
+
+  it('noms IGDB/Steam : la plus précise d’abord (Super Nintendo avant NES, Advance avant Game Boy)', () => {
+    expect(formatOfPlatformName('Super Nintendo Entertainment System')).toBe('snes');
+    expect(formatOfPlatformName('Super Nintendo (SNES)')).toBe('snes');
+    expect(formatOfPlatformName('Super Famicom')).toBe('snes');
+    expect(formatOfPlatformName('Nintendo Entertainment System')).toBe('nes');
+    expect(formatOfPlatformName('Nintendo Entertainment System (NES)')).toBe('nes');
+    expect(formatOfPlatformName('Nintendo 64')).toBe('n64');
+    expect(formatOfPlatformName('Game Boy Advance')).toBe('gba');
+    expect(formatOfPlatformName('Nintendo Game Boy Advance')).toBe('gba');
+    expect(formatOfPlatformName('Game Boy Color')).toBe('gb');
+    expect(formatOfPlatformName('Game Boy')).toBe('gb');
+    expect(formatOfPlatformName('Sega Mega Drive/Genesis')).toBe('genesis');
+    expect(formatOfPlatformName('Sega Genesis')).toBe('genesis');
+  });
+
+  it('SNES et N64 en largeur, comme leurs scans (WWF Super WrestleMania 974×720, Powerpuff Girls N64 986×720)', () => {
+    const ratio = (f: BoxFormat) => BOX_FORMATS[f].w / BOX_FORMATS[f].h;
+    expect(ratio('snes')).toBeGreaterThan(1.3);
+    expect(ratio('n64')).toBeGreaterThan(1.3);
+    expect(ratio('gba')).toBeGreaterThan(1);
+    expect(ratio('nes')).toBeLessThan(1);
+    expect(ratio('genesis')).toBeLessThan(1);
+    for (const f of ['snes', 'n64', 'nes', 'gb', 'gba', 'genesis'] as BoxFormat[]) {
+      const t = BOX_FORMATS[f];
+      expect(t.support.kind).toBe('cart');
+      if (t.support.kind === 'cart') {
+        expect(t.support.w).toBeLessThan(t.w);
+        expect(t.support.h).toBeLessThan(t.h);
+      }
+    }
+  });
+
+  it('abréviations seules (« PS4 », « PSP », « NDS ») : mots entiers, pas des caractères de contrôle', () => {
+    expect(formatOfPlatformName('PS4')).toBe('bluray');
+    expect(formatOfPlatformName('PSP')).toBe('psp');
+    expect(formatOfPlatformName('PSX')).toBe('cd-jewel');
+    expect(formatOfPlatformName('NDS')).toBe('ds');
+    expect(formatOfPlatformName('N64')).toBe('n64');
+    expect(formatOfPlatformName('GBA')).toBe('gba');
+  });
+
+  it('noms courts sur le dos et la fiche', () => {
+    expect(consoleLabelOf('Super Nintendo (SNES)')).toBe('Super Nintendo');
+    expect(consoleLabelOf('Nintendo 64')).toBe('N64');
+    expect(consoleLabelOf('Nintendo Game Boy Advance')).toBe('GBA');
+    expect(consoleLabelOf('Nintendo Game Boy Color')).toBe('Game Boy Color');
+    expect(consoleLabelOf('Nintendo Entertainment System (NES)')).toBe('NES');
+    expect(consoleLabelOf('Sega Genesis')).toBe('Mega Drive');
   });
 });

@@ -67,6 +67,12 @@ function yearsOf(claims: Record<string, unknown>, property: string): number[] {
   });
 }
 
+// Année la plus ancienne d'une propriété (ex. P577, première sortie d'une œuvre parmi ses rééditions).
+export const earliestYearOf = (claims: Record<string, unknown>, property: string): number | null => {
+  const years = yearsOf(claims, property);
+  return years.length > 0 ? Math.min(...years) : null;
+};
+
 const first = (years: number[]): number | null => years[0] ?? null;
 const earliest = (years: number[]): number | null => (years.length > 0 ? Math.min(...years) : null);
 const latest = (years: number[]): number | null => (years.length > 0 ? Math.max(...years) : null);

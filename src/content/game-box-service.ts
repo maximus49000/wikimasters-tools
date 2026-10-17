@@ -2,7 +2,7 @@ import type { KeyValueStore } from '../core/cache/store';
 import type { GameDetail } from '../core/game/game-detail';
 import { normalizeTitle } from '../core/game/game-format';
 import type { GameVersionRepo } from '../core/game/game-version-repo';
-import { caseStyleOfPlatformName, formatOfPlatformName, type BoxFormat, type CaseStyle } from '../core/game/platform-boxes';
+import { BOX_FORMATS, caseStyleOfPlatformName, formatOfPlatformName, type BoxFormat, type CaseStyle } from '../core/game/platform-boxes';
 import { boxartUrl, defaultVersion, matchingVersions, type TgdbVersion } from '../core/game/tgdb-api';
 import { cleanTitle } from '../core/music/listen';
 import type { GameView } from './game-service';
@@ -41,6 +41,8 @@ export type GameBoxDeps = {
   spacingMs?: number;
   // Délai maximal d'un appel : au-delà, c'est une panne (défaut 15 s).
   timeoutMs?: number;
+  // Taille réelle d'une image (null : illisible) : repère les « jaquettes » TheGamesDB qui sont des bannières.
+  measure?: (url: string) => Promise<{ w: number; h: number } | null>;
 };
 
 // Studio lu dans la fiche déjà chargée pour la boîte (aucun appel de plus).
@@ -54,6 +56,9 @@ const FOUND_TTL_MS = 365 * 24 * 3_600_000;
 const EMPTY_TTL_MS = 7 * 24 * 3_600_000;
 const SPACING_MS = 1_100;
 const TIMEOUT_MS = 15_000;
+
+// Image au moins 1,5 fois plus large que haute sur une boîte en hauteur : une bannière (Steam, promotion), pas une jaquette.
+const BANNER_RATIO = 1.5;
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -179,14 +184,31 @@ export function createGameBoxService(deps: GameBoxDeps) {
     };
   };
 
+  // Mesures déjà faites (une par image, le temps de la session).
+  const sizes = new Map<string, Promise<{ w: number; h: number } | null>>();
+  async function isBanner(url: string, format: BoxFormat): Promise<boolean> {
+    const t = BOX_FORMATS[format];
+    if (!deps.measure || t.w >= t.h) return false;
+    let size = sizes.get(url);
+    if (!size) {
+      size = withTimeout(deps.measure(url).catch((): null => null), timeoutMs);
+      sizes.set(url, size);
+    }
+    const got = await size;
+    return got !== null && got.h > 0 && got.w / got.h >= BANNER_RATIO;
+  }
+
   async function fromVersion(version: TgdbVersion, title: string, detail: GameDetail, slug: string, urgent: boolean): Promise<GameBox> {
     const extra = await extraOf(version.id, slug, urgent);
+    // Scan de la version, sauf s'il s'agit d'une bannière : l'affiche de la fiche (Steam, IGDB) prend sa place quand elle existe.
+    const scan = version.front ? boxartUrl(version.front, 'medium') : undefined;
+    const front = scan && detail.coverUrl && (await isBanner(scan, version.format)) ? detail.coverUrl : scan;
     return {
       format: version.format,
       style: version.style,
       tgdbId: version.id,
       platformName: version.platformName,
-      ...(version.front ? { frontUrl: boxartUrl(version.front, 'medium') } : {}),
+      ...(front ? { frontUrl: front } : {}),
       ...(version.back ? { backUrl: boxartUrl(version.back, 'medium'), backFullUrl: boxartUrl(version.back, 'original') } : {}),
       shots: (extra?.shots ?? []).map((file) => boxartUrl(file, 'medium')),
       ...(extra?.logo ? { logoUrl: boxartUrl(extra.logo, 'original') } : {}),
@@ -207,7 +229,11 @@ export function createGameBoxService(deps: GameBoxDeps) {
     const all = await lookup(detail.title, slug, urgent);
     if (all === null) return { box: fallback(detail, title, false), failed: true };
     // L'année (±1) ne sert qu'à la version par défaut : un portage plus tardif reste proposé dans « Changer de version ».
-    const matching = matchingVersions(all, titlesOf(detail, title), detail.year);
+    // Années admises : la première sortie (article de la carte) et celle de la fiche (Steam peut dater d'une réédition).
+    const titles = titlesOf(detail, title);
+    const years = [...new Set([view.cardYear, detail.year].filter((y): y is number => y !== undefined))];
+    const ids = new Set((years.length > 0 ? years.flatMap((y) => matchingVersions(all, titles, y)) : matchingVersions(all, titles)).map((v) => v.id));
+    const matching = all.filter((v) => ids.has(v.id));
     const wanted = (await choices.load())[slug]?.tgdbId;
     const chosen = wanted === undefined ? undefined : all.find((version) => version.id === wanted);
     const version = chosen ?? defaultVersion(matching, formatOfPlatformName(detail.platforms[0] ?? ''));

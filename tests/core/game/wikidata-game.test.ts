@@ -18,6 +18,12 @@ describe('parseCardGame', () => {
     expect(parsed.Q1).toEqual({ steamId: 2 });
   });
 
+  it('année de première sortie : la plus ancienne date de publication (P577), pas celle d’une réédition', () => {
+    const date = (time: string, precision = 11) => ({ rank: 'normal', mainsnak: { datavalue: { value: { time, precision } } } });
+    const parsed = parseCardGame(entities({ Q1: { P1733: [text('2290')], P577: [date('+2007-08-03T00:00:00Z'), date('+1996-05-31T00:00:00Z'), date('+1997-00-00T00:00:00Z', 9)] } }));
+    expect(parsed.Q1).toEqual({ steamId: 2290, year: 1996 });
+  });
+
   it('rend un objet vide sans valeur, et lève sur un format inattendu', () => {
     expect(parseCardGame(entities({ Q1: {} })).Q1).toEqual({});
     expect(() => parseCardGame({ pas: 'wikidata' })).toThrow();

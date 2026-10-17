@@ -12,7 +12,7 @@ const ver = (over: Partial<TgdbVersion>): TgdbVersion => ({
 const pc = ver({ id: 10, front: 'boxart/front/10.jpg' });
 const switchV = ver({ id: 20, platformName: 'Nintendo Switch', format: 'switch', front: 'boxart/front/20.jpg', back: 'boxart/back/20.jpg', overview: 'Résumé TGDB' });
 
-function setup(over: { versions?: TgdbVersion[] | null; view?: unknown; now?: () => number } = {}) {
+function setup(over: { versions?: TgdbVersion[] | null; view?: unknown; now?: () => number; measure?: (url: string) => Promise<{ w: number; h: number } | null> } = {}) {
   const versions = vi.fn(async () => (over.versions === undefined ? [pc, switchV] : over.versions));
   const images = vi.fn(async () => ({ 20: { shots: ['screenshots/20-1.jpg'], logo: 'clearlogo/20.png' } }));
   const choices = createGameVersionRepo(createMemoryStore());
@@ -23,6 +23,7 @@ function setup(over: { versions?: TgdbVersion[] | null; view?: unknown; now?: ()
     store: createMemoryStore(),
     spacingMs: 0,
     ...(over.now ? { now: over.now } : {}),
+    ...(over.measure ? { measure: over.measure } : {}),
   });
   return { service, versions, images, choices, onChanged };
 }
@@ -47,6 +48,30 @@ describe('createGameBoxService.box', () => {
   it('version TheGamesDB sans résumé (ex. édition japonaise) : le dos reprend le résumé de la fiche du jeu', async () => {
     const box = await setup({ versions: [pc] }).service.box('Jeu', 'Hollow Knight');
     expect(box).toMatchObject({ tgdbId: 10, summary: 'Résumé IGDB' });
+  });
+
+  it('« jaquette » TheGamesDB qui est une bannière (1540×720 sur une boîte en hauteur) : l’affiche de la fiche la remplace', async () => {
+    const measure = vi.fn(async () => ({ w: 1540, h: 720 }));
+    const box = await setup({ versions: [pc], measure }).service.box('Jeu', 'Hollow Knight');
+    expect(box).toMatchObject({ tgdbId: 10, frontUrl: 'https://img.test/cover.jpg' });
+    expect(measure).toHaveBeenCalledWith(boxartUrl('boxart/front/10.jpg', 'medium'));
+  });
+
+  it('vraie jaquette, mesure impossible ou boîte en largeur : le scan TheGamesDB est gardé', async () => {
+    const scan = boxartUrl('boxart/front/10.jpg', 'medium');
+    expect((await setup({ versions: [pc], measure: async () => ({ w: 720, h: 1010 }) }).service.box('Jeu', 'Hollow Knight'))?.frontUrl).toBe(scan);
+    expect((await setup({ versions: [pc], measure: async () => null }).service.box('Jeu', 'Hollow Knight'))?.frontUrl).toBe(scan);
+    const snes = ver({ id: 40, platformName: 'Super Nintendo (SNES)', format: 'snes', front: 'boxart/front/40.jpg' });
+    expect((await setup({ versions: [snes], measure: async () => ({ w: 974, h: 720 }) }).service.box('Jeu', 'Hollow Knight'))?.frontUrl).toBe(boxartUrl('boxart/front/40.jpg', 'medium'));
+  });
+
+  it('année : celle de l’article (première sortie) retient la version d’origine qu’une réédition Steam écarterait', async () => {
+    const original = ver({ id: 50, title: 'Final Doom', year: 1996, front: 'boxart/front/50.jpg' });
+    const steam = { ...detail, title: 'Final Doom', year: 2007 };
+    const withCardYear = setup({ versions: [original], view: { status: 'detail', detail: steam, cardYear: 1996 } });
+    expect((await withCardYear.service.box('Jeu', 'Final Doom'))?.tgdbId).toBe(50);
+    const steamYearOnly = setup({ versions: [original], view: { status: 'detail', detail: steam } });
+    expect((await steamYearOnly.service.box('Jeu', 'Final Doom'))?.tgdbId).toBeUndefined();
   });
 
   it('sans choix : la version par défaut, format de la première plateforme préféré', async () => {

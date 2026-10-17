@@ -11,7 +11,8 @@ import type { SteamApi } from '../core/game/steam-api';
 import type { KindsRepo } from '../core/kinds/kinds-repo';
 import { cleanTitle } from '../core/music/listen';
 
-export type GameView = { status: 'none' } | { status: 'empty' } | { status: 'detail'; detail: GameDetail } | { status: 'error'; message: string };
+// `cardYear` : première sortie lue sur Wikidata pour l'article de la carte (la fiche Steam peut dater d'une réédition).
+export type GameView = { status: 'none' } | { status: 'empty' } | { status: 'detail'; detail: GameDetail; cardYear?: number } | { status: 'error'; message: string };
 export type GameCandidates = { steam: GameCandidate[]; igdb: GameCandidate[]; message?: string };
 export type GamePreview = { detail?: GameDetail; message?: string };
 
@@ -149,14 +150,15 @@ export function createGameService(deps: GameServiceDeps) {
         const ids = (await games.resolve([slug]))[slug] ?? {};
         if (!isVideoGame(cardKinds) && ids.steamId === undefined) return { status: 'none' };
 
+        const year = ids.year !== undefined ? { cardYear: ids.year } : {};
         const choice = (await choices.load())[slug];
         if (choice) {
           if ('none' in choice) return { status: 'empty' };
           const chosen = await detailOf(choice);
-          return chosen ? { status: 'detail', detail: chosen } : { status: 'empty' };
+          return chosen ? { status: 'detail', detail: chosen, ...year } : { status: 'empty' };
         }
         const found = await automatic(ids, title);
-        return found ? { status: 'detail', detail: found } : { status: 'empty' };
+        return found ? { status: 'detail', detail: found, ...year } : { status: 'empty' };
       } catch (error) {
         return { status: 'error', message: gameErrorMessage(error) };
       }

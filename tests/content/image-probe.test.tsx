@@ -2,13 +2,15 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetImageProbes, useImageProbe, usableImage } from '../../src/content/image-probe';
+import { measureImage, resetImageProbes, useImageProbe, usableImage } from '../../src/content/image-probe';
 
 // Image factice : chaque image créée est gardée pour déclencher son chargement ou son échec.
 class FakeImage {
   static made: FakeImage[] = [];
   referrerPolicy = '';
   src = '';
+  naturalWidth = 0;
+  naturalHeight = 0;
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
   constructor() {
@@ -47,5 +49,17 @@ describe('image-probe', () => {
     expect(usableImage('https://a/404.jpg')).toBe(false);
     expect(seen.at(-1)).toBe(seen[0]! + 1);
     act(() => root.unmount());
+  });
+
+  it('measureImage : taille réelle à la fin du chargement, null en cas d’échec', async () => {
+    const size = measureImage('https://a/b.jpg');
+    const img = FakeImage.made[0]!;
+    img.naturalWidth = 1540;
+    img.naturalHeight = 720;
+    img.onload?.();
+    expect(await size).toEqual({ w: 1540, h: 720 });
+    const failed = measureImage('https://a/404.jpg');
+    FakeImage.made[1]?.onerror?.();
+    expect(await failed).toBeNull();
   });
 });

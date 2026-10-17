@@ -112,6 +112,30 @@ describe('GameOutside (face extérieure de la boîte retournée)', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('boîte en largeur (Super Nintendo) et scan en largeur : jaquette entière, centrée, sans titre ajouté', async () => {
+    class SnesScan {
+      naturalWidth = 974;
+      naturalHeight = 720;
+      onload: (() => void) | null = null;
+      referrerPolicy = '';
+      set src(_url: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal('Image', SnesScan);
+    try {
+      const snes: GameBox = { ...RDR2, format: 'snes', style: caseStyleOfPlatformName('Super Nintendo (SNES)'), platformName: 'Super Nintendo (SNES)' };
+      render(<GameOutside box={snes} geometry={gameGeometry('snes')} onMagnify={vi.fn()} />);
+      await act(async () => undefined);
+      for (const zone of ['front', 'back']) {
+        expect(container.querySelector(`[data-outside-zone="${zone}"] image`)!.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet');
+        expect(container.querySelector(`[data-outside-zone="${zone}"] [data-scan-title]`)).toBeNull();
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('MadeBack (dos fabriqué)', () => {

@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { getJson, parseWikibaseItems, usableClaims, type FetchLike } from '../birth/wikidata-birth';
+import { earliestYearOf, getJson, parseWikibaseItems, usableClaims, type FetchLike } from '../birth/wikidata-birth';
 import { slugToTitle } from '../market/market-book';
 
 // Identifiants lus sur Wikidata : Steam (P1733, numérique) et IGDB (P5794, le slug du jeu, ex. `elden-ring`) ; champ absent = inconnu.
-export type CardGame = { steamId?: number; igdbSlug?: string };
+// `year` : première sortie (la plus ancienne date de publication P577), qui ne suit pas une réédition (Steam).
+export type CardGame = { steamId?: number; igdbSlug?: string; year?: number };
 
 const WIKIPEDIA = 'https://fr.wikipedia.org/w/api.php';
 const WIKIDATA = 'https://www.wikidata.org/w/api.php';
@@ -39,7 +40,10 @@ export function parseCardGame(json: unknown): Record<string, CardGame> {
     const claims = entity.claims ?? {};
     const steam = firstSteamId(claims);
     const slug = firstSlug(claims);
-    result[id] = { ...(steam !== undefined ? { steamId: steam } : {}), ...(slug !== undefined ? { igdbSlug: slug } : {}) };
+    // Année décimale (mois compris) ramenée à l'année civile.
+    const found = earliestYearOf(claims, 'P577');
+    const year = found === null ? null : Math.floor(found);
+    result[id] = { ...(steam !== undefined ? { steamId: steam } : {}), ...(slug !== undefined ? { igdbSlug: slug } : {}), ...(year !== null ? { year } : {}) };
   }
   return result;
 }
